@@ -83,7 +83,8 @@ extern "C"
     CAS_CLIENT_PHP = 4,
     CAS_CLIENT_OLEDB = 5,
     CAS_CLIENT_SERVER_SIDE_JDBC = 6,
-    CAS_CLIENT_TYPE_MAX = 6
+    CAS_CLIENT_GATEWAY = 7,
+    CAS_CLIENT_TYPE_MAX = 7
   } CAS_CLIENT_TYPE;
 
   typedef enum
@@ -231,7 +232,8 @@ extern "C"
     PROTOCOL_V8 = 8,		/* JSON type */
     PROTOCOL_V9 = 9,		/* cas health check: get function status */
     PROTOCOL_V10 = 10,		/* Secure Broker/CAS using SSL */
-    CURRENT_PROTOCOL = PROTOCOL_V10
+    PROTOCOL_V11 = 11,		/* make out resultset */
+    CURRENT_PROTOCOL = PROTOCOL_V11
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
 

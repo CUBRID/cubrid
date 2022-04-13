@@ -6613,6 +6613,7 @@ pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_
       if (arg_infos[i].type == AVT_IDENTIFIER)
 	{
 	  /* replace identifier node with string value node */
+	  pt_set_user_specified_name (parser, arg, NULL, NULL);
 	  id_string = pt_make_string_value (parser, arg->info.name.original);
 	  if (id_string == NULL)
 	    {
@@ -6982,6 +6983,7 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser, PT_NODE * original_cls_id, 
       PT_SELECT_INFO_SET_FLAG (sub_query, PT_SELECT_INFO_COLS_SCHEMA);
     }
 
+  pt_set_user_specified_name (parser, original_cls_id, NULL, NULL);
   intl_identifier_lower (original_cls_id->info.name.original, lower_table_name);
 
   db_make_int (db_valuep + 0, 0);
@@ -7162,6 +7164,8 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   parser_block_allocator alloc (parser);
   string_buffer strbuf (alloc);
 
+  pt_set_user_specified_name (parser, table_name, NULL, NULL);
+
   pt_help_show_create_table (parser, table_name, strbuf);
   if (strbuf.len () == 0)
     {
@@ -7227,6 +7231,8 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
   assert (view_identifier != NULL);
   assert (view_identifier->node_type == PT_NAME);
 
+  pt_set_user_specified_name (parser, view_identifier, NULL, NULL);
+
   node = parser_new_node (parser, PT_SELECT);
   if (node == NULL)
     {
@@ -7283,7 +7289,8 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
   /* ------ SELECT ... WHERE ------- */
   {
     PT_NODE *where_item = NULL;
-    where_item = pt_make_pred_name_string_val (parser, PT_EQ, "VC.vclass_name", lower_view_name);
+    where_item =
+      pt_make_pred_name_string_val (parser, PT_EQ, "VC.vclass_name", sm_remove_qualifier_name (lower_view_name));
 
     /* WHERE list should be empty */
     assert (node->info.query.q.select.where == NULL);
@@ -8069,6 +8076,7 @@ pt_make_query_describe_w_identifier (PARSER_CONTEXT * parser, PT_NODE * original
 	}
     }
 
+  pt_set_user_specified_name (parser, original_cls_id, NULL, NULL);
   node = pt_make_query_show_columns (parser, original_cls_id, (where_node == NULL) ? 0 : 2, where_node, 0);
 
   return node;
@@ -8119,6 +8127,8 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
 
   assert (original_cls_id != NULL);
   assert (original_cls_id->node_type == PT_NAME);
+
+  pt_set_user_specified_name (parser, original_cls_id, NULL, NULL);
 
   query = parser_new_node (parser, PT_SELECT);
   if (query == NULL)
@@ -10164,4 +10174,252 @@ pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *contin
     }
 
   return node;
+}
+
+PT_NODE *
+pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  const char *dot = NULL;
+  const char *original_name = NULL;
+  const char *resolved_name = NULL;
+  char downcase_resolved_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
+  const char *user_specified_name = NULL;
+
+  if (parser == NULL || node == NULL)
+    {
+      PT_ERROR (parser, node, "Invalid arguments.");
+      return NULL;
+    }
+
+  if (PT_IS_NAME_NODE (node) && PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED))
+    {
+      original_name = node->info.name.original;
+      resolved_name = node->info.name.resolved;
+    }
+  else if (PT_IS_EXPR_NODE (node) && PT_IS_SERIAL (node->info.expr.op))
+    {
+      if (PT_IS_DOT_NODE (node->info.expr.arg1)
+	  && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg1)
+	  && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg2))
+	{
+	  PT_NODE *owner = node->info.expr.arg1->info.dot.arg1;
+	  PT_NODE *name = node->info.expr.arg1->info.dot.arg2;
+
+	  original_name = name->info.name.original;
+	  resolved_name = owner->info.name.original;
+	}
+      else
+	{
+	  assert (PT_IS_NAME_NODE (node->info.expr.arg1));
+
+	  PT_NODE *name = node->info.expr.arg1;
+
+	  original_name = name->info.name.original;
+	  resolved_name = name->info.name.resolved;
+	}
+    }
+  else
+    {
+      return node;
+    }
+
+  assert (original_name && original_name[0] != '\0');
+
+  if (strchr (original_name, '.'))
+    {
+      /* It is already user_specified_name. */
+      return node;
+    }
+
+  if (strlen (original_name) >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_SCHEMA_LENGTH)
+    {
+      PT_ERRORf2 (parser, node,
+		  "Object name [%s] not allowed. It cannot exceed %d bytes.",
+		  pt_short_print (parser, node), DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH);
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  /* In the system_class, user_specified_name does not include user_name.
+   * So, info.name.original is different for each case below.
+   *
+   *    original_name        resolve_name        user_specified_name
+   * -------------------------------------------------------------------------------
+   * 1. common_class_name &&             NULL -> current_user_name.common_class_name
+   * 2. common_class_name && common_user_name ->  common_user_name.common_class_name
+   * 3. common_class_name &&    dba_user_name ->     dba_user_name.common_class_name
+   * 4. system_class_name &&             NULL ->                   system_class_name
+   * 5. system_class_name && common_user_name ->  common_user_name.system_class_name
+   * 6. system_class_name &&    dba_user_name ->                   system_class_name
+   * 
+   * In case 5, raises an error to inform the user of an incorrect customization.
+   */
+  if (!PT_IS_SERIAL (node->info.expr.op) && sm_check_system_class_by_name (original_name))
+    {
+      /* Skip in case 4, 6 */
+      if (resolved_name == NULL || resolved_name[0] == '\0' || intl_identifier_casecmp (resolved_name, "DBA") == 0)
+	{
+	  return node;
+	}
+    }
+
+  if (resolved_name == NULL || resolved_name[0] == '\0')
+    {
+      if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
+	{
+	  ASSERT_ERROR ();
+	  return node;
+	}
+
+      resolved_name = current_user_name;
+    }
+  else if (intl_identifier_lower_string_size (resolved_name) >= DB_MAX_USER_LENGTH)
+    {
+      PT_ERRORf2 (parser, node,
+		  "User name [%s] not allowed. It cannot exceed %d bytes.", resolved_name, DB_MAX_USER_LENGTH);
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  intl_identifier_lower (resolved_name, downcase_resolved_name);
+
+  /* In case 1, 2, 3, 5 */
+  user_specified_name = pt_append_string (parser, downcase_resolved_name, ".");
+  user_specified_name = pt_append_string (parser, user_specified_name, original_name);
+
+  assert (intl_identifier_lower_string_size (user_specified_name) < DB_MAX_IDENTIFIER_LENGTH);
+
+  if (PT_IS_NAME_NODE (node))
+    {
+      node->info.name.original = user_specified_name;
+      node->info.name.resolved = NULL;
+    }
+  else
+    {
+      assert (PT_IS_EXPR_NODE (node) && PT_IS_SERIAL (node->info.expr.op));
+
+      if (PT_IS_DOT_NODE (node->info.expr.arg1))
+	{
+	  node->info.expr.arg1->info.dot.arg2->info.name.original = user_specified_name;
+	  node->info.expr.arg1->info.dot.arg2->info.name.resolved = NULL;
+
+	  parser_free_tree (parser, node->info.expr.arg1->info.dot.arg1);
+	  node->info.expr.arg1 = node->info.expr.arg1->info.dot.arg2;
+	}
+      else
+	{
+	  assert (PT_IS_NAME_NODE (node->info.expr.arg1));
+
+	  node->info.expr.arg1->info.name.original = user_specified_name;
+	  node->info.expr.arg1->info.name.resolved = NULL;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_get_qualifier_name() - If the name is a user-specified name, get the user name.
+ * return	: user name or NULL on error
+ * parser (in)	: parser context
+ * node (in)	: node of type PT_NAME
+ */
+const char *
+pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
+
+  if (node == NULL || !PT_IS_NAME_NODE (node))
+    {
+      PT_ERROR (parser, node, "Invalid arguments.");
+      return NULL;
+    }
+
+  if (node->info.name.original == NULL || node->info.name.original[0] == '\0')
+    {
+      return NULL;
+    }
+
+  if (sm_qualifier_name (node->info.name.original, qualifier_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      return node->info.name.resolved;
+    }
+
+  return pt_append_string (parser, NULL, qualifier_name);
+}
+
+/*
+ * pt_get_name_with_qualifier_removed() - If the name has a qualifier name, remove it.
+ * return	: name with qualifier name removed
+ * name (in)	: user-specified name or object name
+ */
+const char *
+pt_get_name_with_qualifier_removed (const char *name)
+{
+  return sm_remove_qualifier_name (name);
+}
+
+/*
+ * pt_get_name_without_current_user_name() - If the name is a user-specified name and the specified user is
+ *                                           the current user, return only the object name.
+ * return	: user name or NULL on error
+ * parser (in)	: parser context
+ * node (in)	: node of type PT_NAME
+ */
+const char *
+pt_get_name_without_current_user_name (const char *name)
+{
+  char *dot = NULL;
+  char name_copy[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
+  const char *object_name = NULL;
+  int error = NO_ERROR;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      return name;
+    }
+
+  assert (strlen (name) < DB_MAX_IDENTIFIER_LENGTH);
+  strcpy (name_copy, name);
+
+  dot = strchr (name_copy, '.');
+
+  /* If the name is not a user-specified name, it is returned as is. */
+  if (dot == NULL)
+    {
+      /*
+       * e.g.        name: object_name
+       *      object_name: object_name
+       */
+      return name;
+    }
+
+  if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR ();
+      return name;
+    }
+
+  dot[0] = '\0';
+
+  if (intl_identifier_casecmp (name_copy, current_user_name) == 0)
+    {
+      /*
+       * e.g.        name: current_user_name.object_name
+       *      object_name: object_name
+       */
+      object_name = strchr (name, '.') + 1;
+    }
+  else
+    {
+      /*
+       * e.g.        name: other_user_name.object_name
+       *      object_name: other_user_name.object_name
+       */
+      object_name = name;
+    }
+
+  return object_name;
 }

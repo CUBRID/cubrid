@@ -11,7 +11,7 @@ matrix:
 
 install:
 - ps: choco install ant --ignore-dependencies --no-progress
-- ps: $env:ANT_PATH="C:\ProgramData\chocolatey\lib\ant\bin\ant"
+- ps: $env:ANT="C:\ProgramData\chocolatey\bin\ant.exe"
 
 clone_script:
 - ps: >-

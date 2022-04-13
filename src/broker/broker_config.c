@@ -53,7 +53,11 @@
 
 #include "ini_parser.h"
 
+#if defined (FOR_ODBC_GATEWAY)
+#define DEFAULT_ADMIN_LOG_FILE		"log/gateway/cubrid_gateway.log"
+#else
 #define DEFAULT_ADMIN_LOG_FILE		"log/broker/cubrid_broker.log"
+#endif
 #define DEFAULT_SESSION_TIMEOUT		"5min"
 #define DEFAULT_MAX_QUERY_TIMEOUT       "0"
 #define DEFAULT_MYSQL_READ_TIMEOUT      "0"
@@ -81,6 +85,9 @@
 #define	TRUE	1
 #define	FALSE	0
 
+#define MAX_NUM_CACHED_BROKER_FILES	4
+#define IS_FILE_MATCH_CONF_CACHE(cid, file)	(strcmp (br_conf_info[cid].conf_file, file) == 0)
+
 typedef struct t_conf_table T_CONF_TABLE;
 struct t_conf_table
 {
@@ -88,16 +95,32 @@ struct t_conf_table
   int conf_value;
 };
 
+typedef struct br_conf_info T_CONF_INFO;
+struct br_conf_info
+{
+  int num_broker;
+  int acl_flag;
+  int br_shm_id;
+  char *conf_file;
+  char *admin_log_file;
+  time_t last_modified;
+  T_BROKER_INFO br_info[MAX_BROKER_NUM];
+};
+
 enum
 { PARAM_NO_ERROR = 0, PARAM_INVAL_SEC = 1,
   PARAM_BAD_VALUE = 2, PARAM_BAD_RANGE = 3,
-  SECTION_NAME_TOO_LONG = 4
+  SECTION_NAME_TOO_LONG = 4, PARAM_RUN_TIME_ERROR = 5
 };
 
 static void conf_file_has_been_loaded (const char *conf_path);
 static int check_port_number (T_BROKER_INFO * br_info, int num_brs);
 static int get_conf_value (const char *string, T_CONF_TABLE * conf_table);
 static const char *get_conf_string (int value, T_CONF_TABLE * conf_table);
+static void read_conf_cache (int cid, bool * acl, int *num_br, int *shm_id, char *log_file, T_BROKER_INFO * br_info);
+static void write_conf_cache (char *file, bool * acl_flag, int *num_broker, int *shm_id, char *alog,
+			      T_BROKER_INFO * br_info, time_t bf_mtime);
+static void clear_conf_cache_entry (int cid);
 
 static T_CONF_TABLE tbl_appl_server[] = {
   {APPL_SERVER_CAS_TYPE_NAME, APPL_SERVER_CAS},
@@ -157,15 +180,24 @@ static T_CONF_TABLE tbl_proxy_log_mode[] = {
   {NULL, 0}
 };
 
+#if defined (FOR_ODBC_GATEWAY)
+static const char SECTION_NAME[] = "gateway";
+#else
 static const char SECTION_NAME[] = "broker";
+#endif
 
 static const char *tbl_conf_err_msg[] = {
   "",
   "Cannot find any section in conf file.",
   "Value type does not match parameter type.",
   "Value is out of range.",
-  "Section name is too long. Section name must be less than 64."
+  "Section name is too long. Section name must be less than 64.",
+  "Temporary runtime error."
 };
+
+static bool is_first_br_conf_read = true;
+static char default_conf_file_path[BROKER_PATH_MAX];
+static T_CONF_INFO br_conf_info[MAX_NUM_CACHED_BROKER_FILES];
 
 /* conf files that have been loaded */
 #define MAX_NUM_OF_CONF_FILE_LOADED     5
@@ -217,11 +249,13 @@ const char *broker_keywords[] = {
   "SQL_LOG_MAX_SIZE",
   "SERVICE",
   "SSL",
+#if defined (FOR_ODBC_GATEWAY)
   "CGW_LINK_SERVER",
   "CGW_LINK_SERVER_IP",
   "CGW_LINK_SERVER_PORT",
   "CGW_LINK_ODBC_DRIVER_NAME",
   "CGW_LINK_CONNECT_URL_PROPERTY",
+#endif
   "SOURCE_ENV",
   /* Below is a keyword referenced from the source code, although it is not in the manual. */
   "APPL_SERVER",
@@ -354,6 +388,11 @@ get_conf_value (const char *string, T_CONF_TABLE * conf_table)
 {
   int i;
 
+  if (string == NULL || conf_table == NULL)
+    {
+      return -1;
+    }
+
   for (i = 0; conf_table[i].conf_str != NULL; i++)
     {
       if (strcasecmp (string, conf_table[i].conf_str) == 0)
@@ -366,6 +405,11 @@ static const char *
 get_conf_string (int value, T_CONF_TABLE * conf_table)
 {
   int i;
+
+  if (conf_table == NULL)
+    {
+      return NULL;
+    }
 
   for (i = 0; conf_table[i].conf_str != NULL; i++)
     {
@@ -409,6 +453,19 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 #if defined (WINDOWS)
   char appl_server_port_assigned[MAX_BROKER_NUM];
 #endif
+
+#define INI_GETSTR_CHK(str, ini, sec, key, def, lineno) \
+  do { \
+    str = ini_getstr(ini, sec, key, def, lineno); \
+    if (str == NULL) \
+    { \
+      errcode = PARAM_RUN_TIME_ERROR; \
+      PRINT_AND_LOG_ERR_MSG("%s:%d ini_getstr () returned NULL: key = '%s'\n", __FILE__, __LINE__, key); \
+      goto conf_error; \
+    } \
+  } \
+  while (0)
+
   INI_TABLE *ini;
   int tmp_int;
   float tmp_float;
@@ -418,6 +475,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
   char library_name[BROKER_PATH_MAX];
   char size_str[LINE_MAX];
   char time_str[LINE_MAX];
+  const char *s;
 
   ini = ini_parser_load (conf_file);
   if (ini == NULL)
@@ -473,22 +531,33 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 
       if (!found)
 	{
+#if defined(FOR_ODBC_GATEWAY)
+	  PRINTERROR ("cubrid_gateway.conf: invalid keyword '%s' (%d)\n", key, ini->lineno[i]);
+#else
 	  PRINTERROR ("cubrid_broker.conf: invalid keyword '%s' (%d)\n", key, ini->lineno[i]);
+#endif
 	  ini_parser_free (ini);
 	  return -1;
 	}
     }
 
   master_shm_id = ini_gethex (ini, SECTION_NAME, "MASTER_SHM_ID", 0, &lineno);
+  if (master_shm_id == 0)
+    {
+      PRINTERROR ("cannot find MASTER_SHM_ID in conf file %s\n", conf_file);
+      goto conf_error;
+    }
+
   if (admin_log_file != NULL)
     {
-      ini_string = ini_getstr (ini, SECTION_NAME, "ADMIN_LOG_FILE", DEFAULT_ADMIN_LOG_FILE, &lineno);
+      INI_GETSTR_CHK (ini_string, ini, SECTION_NAME, "ADMIN_LOG_FILE", DEFAULT_ADMIN_LOG_FILE, &lineno);
       MAKE_FILEPATH (admin_log_file, ini_string, BROKER_PATH_MAX);
     }
 
   if (acl_flag != NULL)
     {
-      tmp_int = conf_get_value_table_on_off (ini_getstr (ini, SECTION_NAME, "ACCESS_CONTROL", "OFF", &lineno));
+      INI_GETSTR_CHK (s, ini, SECTION_NAME, "ACCESS_CONTROL", "OFF", &lineno);
+      tmp_int = conf_get_value_table_on_off (s);
       if (tmp_int < 0)
 	{
 	  errcode = PARAM_BAD_RANGE;
@@ -499,7 +568,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 
   if (acl_file != NULL)
     {
-      ini_string = ini_getstr (ini, SECTION_NAME, "ACCESS_CONTROL_FILE", "", &lineno);
+      INI_GETSTR_CHK (ini_string, ini, SECTION_NAME, "ACCESS_CONTROL_FILE", "", &lineno);
       MAKE_FILEPATH (acl_file, ini_string, BROKER_PATH_MAX);
     }
 
@@ -528,8 +597,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 
       strcpy (br_info[num_brs].name, sec_name + 1);
 
-      br_info[num_brs].cci_default_autocommit =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "CCI_DEFAULT_AUTOCOMMIT", "ON", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "CCI_DEFAULT_AUTOCOMMIT", "ON", &lineno);
+      br_info[num_brs].cci_default_autocommit = conf_get_value_table_on_off (s);
       if (br_info[num_brs].cci_default_autocommit < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
@@ -537,37 +606,45 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	}
 
       br_info[num_brs].port = ini_getint (ini, sec_name, "BROKER_PORT", 0, &lineno);
+      if (br_info[num_brs].port == 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
 
-      br_info[num_brs].service_flag =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "SERVICE", "ON", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SERVICE", "ON", &lineno);
+      br_info[num_brs].service_flag = conf_get_value_table_on_off (s);
       if (br_info[num_brs].service_flag < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
 
-      br_info[num_brs].use_SSL =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "SSL", DEFAULT_SSL_MODE, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SSL", DEFAULT_SSL_MODE, &lineno);
+      br_info[num_brs].use_SSL = conf_get_value_table_on_off (s);
       if (br_info[num_brs].use_SSL < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
+#if defined (FOR_ODBC_GATEWAY)
+      INI_GETSTR_CHK (s, ini, sec_name, "CGW_LINK_SERVER", DEFAULT_EMPTY_STRING, &lineno);
+      strcpy (br_info[num_brs].cgw_link_server, s);
 
-      strcpy (br_info[num_brs].cgw_link_server,
-	      ini_getstr (ini, sec_name, "CGW_LINK_SERVER", DEFAULT_EMPTY_STRING, &lineno));
-      strcpy (br_info[num_brs].cgw_link_server_ip,
-	      ini_getstr (ini, sec_name, "CGW_LINK_SERVER_IP", DEFAULT_EMPTY_STRING, &lineno));
-      strcpy (br_info[num_brs].cgw_link_server_port,
-	      ini_getstr (ini, sec_name, "CGW_LINK_SERVER_PORT", DEFAULT_EMPTY_STRING, &lineno));
-      strcpy (br_info[num_brs].cgw_link_odbc_driver_name,
-	      ini_getstr (ini, sec_name, "CGW_LINK_ODBC_DRIVER_NAME", DEFAULT_EMPTY_STRING, &lineno));
-      strcpy (br_info[num_brs].cgw_link_connect_url_property,
-	      ini_getstr (ini, sec_name, "CGW_LINK_CONNECT_URL_PROPERTY", DEFAULT_EMPTY_STRING, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "CGW_LINK_SERVER_IP", DEFAULT_EMPTY_STRING, &lineno);
+      strcpy (br_info[num_brs].cgw_link_server_ip, s);
 
+      INI_GETSTR_CHK (s, ini, sec_name, "CGW_LINK_SERVER_PORT", DEFAULT_EMPTY_STRING, &lineno);
+      strcpy (br_info[num_brs].cgw_link_server_port, s);
 
-      br_info[num_brs].appl_server =
-	get_conf_value (ini_getstr (ini, sec_name, "APPL_SERVER", DEFAULT_APPL_SERVER, &lineno), tbl_appl_server);
+      INI_GETSTR_CHK (s, ini, sec_name, "CGW_LINK_ODBC_DRIVER_NAME", DEFAULT_EMPTY_STRING, &lineno);
+      strcpy (br_info[num_brs].cgw_link_odbc_driver_name, s);
+
+      INI_GETSTR_CHK (s, ini, sec_name, "CGW_LINK_CONNECT_URL_PROPERTY", DEFAULT_EMPTY_STRING, &lineno);
+      strcpy (br_info[num_brs].cgw_link_connect_url_property, s);
+#endif
+      INI_GETSTR_CHK (s, ini, sec_name, "APPL_SERVER", DEFAULT_APPL_SERVER, &lineno);
+      br_info[num_brs].appl_server = get_conf_value (s, tbl_appl_server);
       if (br_info[num_brs].appl_server < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
@@ -582,7 +659,6 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
-
 
       br_info[num_brs].appl_server_max_num =
 	ini_getuint (ini, sec_name, "MAX_NUM_APPL_SERVER", DEFAULT_AS_MAX_NUM, &lineno);
@@ -606,8 +682,14 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 #endif
 
       br_info[num_brs].appl_server_shm_id = ini_gethex (ini, sec_name, "APPL_SERVER_SHM_ID", 0, &lineno);
+      if (br_info[num_brs].appl_server_shm_id == 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
 
-      strncpy_bufsize (size_str, ini_getstr (ini, sec_name, "APPL_SERVER_MAX_SIZE", DEFAULT_SERVER_MAX_SIZE, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "APPL_SERVER_MAX_SIZE", DEFAULT_SERVER_MAX_SIZE, &lineno);
+      strncpy_bufsize (size_str, s);
       br_info[num_brs].appl_server_max_size = (int) ut_size_string_to_kbyte (size_str, "M");
       if (br_info[num_brs].appl_server_max_size < 0)
 	{
@@ -615,8 +697,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy_bufsize (size_str, ini_getstr (ini, sec_name, "APPL_SERVER_MAX_SIZE_HARD_LIMIT",
-					     DEFAULT_SERVER_HARD_LIMIT, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "APPL_SERVER_MAX_SIZE_HARD_LIMIT", DEFAULT_SERVER_HARD_LIMIT, &lineno);
+      strncpy_bufsize (size_str, s);
       br_info[num_brs].appl_server_hard_limit = (int) ut_size_string_to_kbyte (size_str, "M");
       if (br_info[num_brs].appl_server_hard_limit <= 0)
 	{
@@ -624,7 +706,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "SESSION_TIMEOUT", DEFAULT_SESSION_TIMEOUT, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SESSION_TIMEOUT", DEFAULT_SESSION_TIMEOUT, &lineno);
+      strncpy_bufsize (time_str, s);
       br_info[num_brs].session_timeout = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].session_timeout < 0)
 	{
@@ -632,16 +715,16 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      ini_string = ini_getstr (ini, sec_name, "LOG_DIR", DEFAULT_LOG_DIR, &lineno);
+      INI_GETSTR_CHK (ini_string, ini, sec_name, "LOG_DIR", DEFAULT_LOG_DIR, &lineno);
       MAKE_FILEPATH (br_info[num_brs].log_dir, ini_string, CONF_LOG_FILE_LEN);
-      ini_string = ini_getstr (ini, sec_name, "SLOW_LOG_DIR", DEFAULT_SLOW_LOG_DIR, &lineno);
+      INI_GETSTR_CHK (ini_string, ini, sec_name, "SLOW_LOG_DIR", DEFAULT_SLOW_LOG_DIR, &lineno);
       MAKE_FILEPATH (br_info[num_brs].slow_log_dir, ini_string, CONF_LOG_FILE_LEN);
-      ini_string = ini_getstr (ini, sec_name, "ERROR_LOG_DIR", DEFAULT_ERR_DIR, &lineno);
+      INI_GETSTR_CHK (ini_string, ini, sec_name, "ERROR_LOG_DIR", DEFAULT_ERR_DIR, &lineno);
       MAKE_FILEPATH (br_info[num_brs].err_log_dir, ini_string, CONF_LOG_FILE_LEN);
 
-      ini_string = ini_getstr (ini, sec_name, "ACCESS_LOG_DIR", DEFAULT_ACCESS_LOG_DIR, &lineno);
+      INI_GETSTR_CHK (ini_string, ini, sec_name, "ACCESS_LOG_DIR", DEFAULT_ACCESS_LOG_DIR, &lineno);
       MAKE_FILEPATH (br_info[num_brs].access_log_dir, ini_string, CONF_LOG_FILE_LEN);
-      ini_string = ini_getstr (ini, sec_name, "DATABASES_CONNECTION_FILE", DEFAULT_EMPTY_STRING, &lineno);
+      INI_GETSTR_CHK (ini_string, ini, sec_name, "DATABASES_CONNECTION_FILE", DEFAULT_EMPTY_STRING, &lineno);
       MAKE_FILEPATH (br_info[num_brs].db_connection_file, ini_string, BROKER_INFO_PATH_MAX);
 
       strcpy (br_info[num_brs].access_log_file, br_info[num_brs].access_log_dir);
@@ -655,26 +738,27 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      br_info[num_brs].log_backup =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "LOG_BACKUP", "OFF", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "LOG_BACKUP", "OFF", &lineno);
+      br_info[num_brs].log_backup = conf_get_value_table_on_off (s);
       if (br_info[num_brs].log_backup < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
 
-      strcpy (br_info[num_brs].source_env, ini_getstr (ini, sec_name, "SOURCE_ENV", DEFAULT_EMPTY_STRING, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SOURCE_ENV", DEFAULT_EMPTY_STRING, &lineno);
+      strcpy (br_info[num_brs].source_env, s);
 
-      br_info[num_brs].sql_log_mode =
-	conf_get_value_sql_log_mode (ini_getstr (ini, sec_name, "SQL_LOG", DEFAULT_SQL_LOG_MODE, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SQL_LOG", DEFAULT_SQL_LOG_MODE, &lineno);
+      br_info[num_brs].sql_log_mode = conf_get_value_sql_log_mode (s);
       if (br_info[num_brs].sql_log_mode < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
 
-      br_info[num_brs].slow_log_mode =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "SLOW_LOG", "ON", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SLOW_LOG", "ON", &lineno);
+      br_info[num_brs].slow_log_mode = conf_get_value_table_on_off (s);
       if (br_info[num_brs].slow_log_mode < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
@@ -685,7 +769,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       br_info[num_brs].sql_log2 = ini_getuint_max (ini, sec_name, "SQL_LOG2", SQL_LOG2_NONE, SQL_LOG2_MAX, &lineno);
 #endif
 
-      strncpy_bufsize (size_str, ini_getstr (ini, sec_name, "SQL_LOG_MAX_SIZE", DEFAULT_SQL_LOG_MAX_SIZE, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SQL_LOG_MAX_SIZE", DEFAULT_SQL_LOG_MAX_SIZE, &lineno);
+      strncpy_bufsize (size_str, s);
       br_info[num_brs].sql_log_max_size = (int) ut_size_string_to_kbyte (size_str, "K");
       if (br_info[num_brs].sql_log_max_size < 0)
 	{
@@ -698,7 +783,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "LONG_QUERY_TIME", DEFAULT_LONG_QUERY_TIME, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "LONG_QUERY_TIME", DEFAULT_LONG_QUERY_TIME, &lineno);
+      strncpy_bufsize (time_str, s);
       tmp_float = (float) ut_time_string_to_sec (time_str, "sec");
       if (tmp_float < 0 || tmp_float > LONG_QUERY_TIME_LIMIT)
 	{
@@ -708,8 +794,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       /* change float to msec */
       br_info[num_brs].long_query_time = (int) (tmp_float * 1000.0);
 
-      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "LONG_TRANSACTION_TIME", DEFAULT_LONG_TRANSACTION_TIME,
-					     &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "LONG_TRANSACTION_TIME", DEFAULT_LONG_TRANSACTION_TIME, &lineno);
+      strncpy_bufsize (time_str, s);
       tmp_float = (float) ut_time_string_to_sec (time_str, "sec");
       if (tmp_float < 0 || tmp_float > LONG_TRANSACTION_TIME_LIMIT)
 	{
@@ -719,8 +805,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       /* change float to msec */
       br_info[num_brs].long_transaction_time = (int) (tmp_float * 1000.0);
 
-      br_info[num_brs].auto_add_appl_server =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "AUTO_ADD_APPL_SERVER", "ON", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "AUTO_ADD_APPL_SERVER", "ON", &lineno);
+      br_info[num_brs].auto_add_appl_server = conf_get_value_table_on_off (s);
       if (br_info[num_brs].auto_add_appl_server < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
@@ -730,7 +816,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       br_info[num_brs].job_queue_size =
 	ini_getuint_max (ini, sec_name, "JOB_QUEUE_SIZE", DEFAULT_JOB_QUEUE_SIZE, JOB_QUEUE_MAX_SIZE, &lineno);
 
-      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "TIME_TO_KILL", DEFAULT_TIME_TO_KILL, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "TIME_TO_KILL", DEFAULT_TIME_TO_KILL, &lineno);
+      strncpy_bufsize (time_str, s);
       br_info[num_brs].time_to_kill = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].time_to_kill < 0)
 	{
@@ -738,16 +825,16 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      br_info[num_brs].access_log =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "ACCESS_LOG", "OFF", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "ACCESS_LOG", "OFF", &lineno);
+      br_info[num_brs].access_log = conf_get_value_table_on_off (s);
       if (br_info[num_brs].access_log < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
 
-      strncpy_bufsize (size_str, ini_getstr (ini, sec_name, "ACCESS_LOG_MAX_SIZE", DEFAULT_ACCESS_LOG_MAX_SIZE,
-					     &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "ACCESS_LOG_MAX_SIZE", DEFAULT_ACCESS_LOG_MAX_SIZE, &lineno);
+      strncpy_bufsize (size_str, s);
       br_info[num_brs].access_log_max_size = (int) ut_size_string_to_kbyte (size_str, "K");
 
       if (br_info[num_brs].access_log_max_size < 0)
@@ -761,53 +848,53 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      ini_string = ini_getstr (ini, sec_name, "ACCESS_LIST", DEFAULT_EMPTY_STRING, &lineno);
+      INI_GETSTR_CHK (ini_string, ini, sec_name, "ACCESS_LIST", DEFAULT_EMPTY_STRING, &lineno);
       MAKE_FILEPATH (br_info[num_brs].acl_file, ini_string, CONF_LOG_FILE_LEN);
 
       br_info[num_brs].max_string_length = ini_getint (ini, sec_name, "MAX_STRING_LENGTH", -1, &lineno);
 
-      br_info[num_brs].stripped_column_name =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "STRIPPED_COLUMN_NAME", "ON", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "STRIPPED_COLUMN_NAME", "ON", &lineno);
+      br_info[num_brs].stripped_column_name = conf_get_value_table_on_off (s);
       if (br_info[num_brs].stripped_column_name < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
 
-      br_info[num_brs].keep_connection =
-	conf_get_value_keep_con (ini_getstr (ini, sec_name, "KEEP_CONNECTION", DEFAULT_KEEP_CONNECTION, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "KEEP_CONNECTION", DEFAULT_KEEP_CONNECTION, &lineno);
+      br_info[num_brs].keep_connection = conf_get_value_keep_con (s);
       if (br_info[num_brs].keep_connection < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
 
-      br_info[num_brs].cache_user_info =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "CACHE_USER_INFO", "OFF", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "CACHE_USER_INFO", "OFF", &lineno);
+      br_info[num_brs].cache_user_info = conf_get_value_table_on_off (s);
       if (br_info[num_brs].cache_user_info < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
 
-      br_info[num_brs].statement_pooling =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "STATEMENT_POOLING", "ON", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "STATEMENT_POOLING", "ON", &lineno);
+      br_info[num_brs].statement_pooling = conf_get_value_table_on_off (s);
       if (br_info[num_brs].statement_pooling < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
 
-      br_info[num_brs].jdbc_cache =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "JDBC_CACHE", "OFF", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "JDBC_CACHE", "OFF", &lineno);
+      br_info[num_brs].jdbc_cache = conf_get_value_table_on_off (s);
       if (br_info[num_brs].jdbc_cache < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
 
-      br_info[num_brs].jdbc_cache_only_hint =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "JDBC_CACHE_HINT_ONLY", "OFF", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "JDBC_CACHE_HINT_ONLY", "OFF", &lineno);
+      br_info[num_brs].jdbc_cache_only_hint = conf_get_value_table_on_off (s);
       if (br_info[num_brs].jdbc_cache_only_hint < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
@@ -817,15 +904,16 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       br_info[num_brs].jdbc_cache_life_time =
 	ini_getint (ini, sec_name, "JDBC_CACHE_LIFE_TIME", DEFAULT_JDBC_CACHE_LIFE_TIME, &lineno);
 
-      br_info[num_brs].cci_pconnect =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "CCI_PCONNECT", "OFF", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "CCI_PCONNECT", "OFF", &lineno);
+      br_info[num_brs].cci_pconnect = conf_get_value_table_on_off (s);
       if (br_info[num_brs].cci_pconnect < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
 
-      tmp_int = conf_get_value_table_on_off (ini_getstr (ini, sec_name, "READ_ONLY_BROKER", "OFF", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "READ_ONLY_BROKER", "OFF", &lineno);
+      tmp_int = conf_get_value_table_on_off (s);
       if (tmp_int < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
@@ -833,13 +921,13 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	}
       else if (tmp_int == ON)
 	{
-	  br_info[num_brs].access_mode =
-	    get_conf_value (ini_getstr (ini, sec_name, "ACCESS_MODE", "RO", &lineno), tbl_access_mode);
+	  INI_GETSTR_CHK (s, ini, sec_name, "ACCESS_MODE", "RO", &lineno);
+	  br_info[num_brs].access_mode = get_conf_value (s, tbl_access_mode);
 	}
       else
 	{
-	  br_info[num_brs].access_mode =
-	    get_conf_value (ini_getstr (ini, sec_name, "ACCESS_MODE", "RW", &lineno), tbl_access_mode);
+	  INI_GETSTR_CHK (s, ini, sec_name, "ACCESS_MODE", "RW", &lineno);
+	  br_info[num_brs].access_mode = get_conf_value (s, tbl_access_mode);
 	}
       if (br_info[num_brs].access_mode < 0)
 	{
@@ -847,19 +935,19 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      br_info[num_brs].replica_only_flag =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "REPLICA_ONLY", "OFF", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "REPLICA_ONLY", "OFF", &lineno);
+      br_info[num_brs].replica_only_flag = conf_get_value_table_on_off (s);
       if (br_info[num_brs].replica_only_flag < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
 
-      strcpy (br_info[num_brs].preferred_hosts,
-	      ini_getstr (ini, sec_name, "PREFERRED_HOSTS", DEFAULT_EMPTY_STRING, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "PREFERRED_HOSTS", DEFAULT_EMPTY_STRING, &lineno);
+      strcpy (br_info[num_brs].preferred_hosts, s);
 
-      br_info[num_brs].connect_order =
-	conf_get_value_connect_order (ini_getstr (ini, sec_name, "CONNECT_ORDER", "SEQ", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "CONNECT_ORDER", "SEQ", &lineno);
+      br_info[num_brs].connect_order = conf_get_value_connect_order (s);
       if (br_info[num_brs].connect_order < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
@@ -874,7 +962,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "RECONNECT_TIME", DEFAULT_RECONNECT_TIME, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "RECONNECT_TIME", DEFAULT_RECONNECT_TIME, &lineno);
+      strncpy_bufsize (time_str, s);
       br_info[num_brs].cas_rctime = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].cas_rctime < 0)
 	{
@@ -882,7 +971,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "MAX_QUERY_TIMEOUT", DEFAULT_MAX_QUERY_TIMEOUT, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "MAX_QUERY_TIMEOUT", DEFAULT_MAX_QUERY_TIMEOUT, &lineno);
+      strncpy_bufsize (time_str, s);
       br_info[num_brs].query_timeout = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].query_timeout < 0)
 	{
@@ -895,7 +985,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "MYSQL_READ_TIMEOUT", DEFAULT_MYSQL_READ_TIMEOUT, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "MYSQL_READ_TIMEOUT", DEFAULT_MYSQL_READ_TIMEOUT, &lineno);
+      strncpy_bufsize (time_str, s);
       br_info[num_brs].mysql_read_timeout = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].mysql_read_timeout < 0)
 	{
@@ -908,8 +999,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "MYSQL_KEEPALIVE_INTERVAL",
-					     DEFAULT_MYSQL_KEEPALIVE_INTERVAL, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "MYSQL_KEEPALIVE_INTERVAL", DEFAULT_MYSQL_KEEPALIVE_INTERVAL, &lineno);
+      strncpy_bufsize (time_str, s);
       br_info[num_brs].mysql_keepalive_interval = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].mysql_keepalive_interval < MIN_MYSQL_KEEPALIVE_INTERVAL)
 	{
@@ -919,7 +1010,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 
       /* parameters related to checking hanging cas */
       br_info[num_brs].reject_client_flag = false;
-      tmp_int = conf_get_value_table_on_off (ini_getstr (ini, sec_name, "ENABLE_MONITOR_HANG", "OFF", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "ENABLE_MONITOR_HANG", "OFF", &lineno);
+      tmp_int = conf_get_value_table_on_off (s);
       if (tmp_int < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
@@ -932,15 +1024,16 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  br_info[num_brs].hang_timeout = DEFAULT_HANG_TIMEOUT;
 	}
 
-      br_info[num_brs].trigger_action_flag =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "TRIGGER_ACTION", "ON", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "TRIGGER_ACTION", "ON", &lineno);
+      br_info[num_brs].trigger_action_flag = conf_get_value_table_on_off (s);
       if (br_info[num_brs].trigger_action_flag < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
 
-      tmp_int = conf_get_value_table_on_off (ini_getstr (ini, sec_name, "ENABLE_MONITOR_SERVER", "ON", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "ENABLE_MONITOR_SERVER", "ON", &lineno);
+      tmp_int = conf_get_value_table_on_off (s);
       if (tmp_int < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
@@ -951,7 +1044,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  br_info[num_brs].monitor_server_flag = tmp_int;
 	}
 
-      br_info[num_brs].shard_flag = conf_get_value_table_on_off (ini_getstr (ini, sec_name, "SHARD", "OFF", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SHARD", "OFF", &lineno);
+      br_info[num_brs].shard_flag = conf_get_value_table_on_off (s);
       if (br_info[num_brs].shard_flag < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
@@ -961,14 +1055,14 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       /* SHARD PHASE0 */
       br_info[num_brs].proxy_shm_id = ini_gethex (ini, sec_name, "SHARD_PROXY_SHM_ID", 0, &lineno);
 
-      strncpy_bufsize (br_info[num_brs].shard_db_name, ini_getstr (ini, sec_name, "SHARD_DB_NAME", DEFAULT_EMPTY_STRING,
-								   &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SHARD_DB_NAME", DEFAULT_EMPTY_STRING, &lineno);
+      strncpy_bufsize (br_info[num_brs].shard_db_name, s);
 
-      strncpy_bufsize (br_info[num_brs].shard_db_user, ini_getstr (ini, sec_name, "SHARD_DB_USER", DEFAULT_EMPTY_STRING,
-								   &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SHARD_DB_USER", DEFAULT_EMPTY_STRING, &lineno);
+      strncpy_bufsize (br_info[num_brs].shard_db_user, s);
 
-      strncpy_bufsize (br_info[num_brs].shard_db_password, ini_getstr (ini, sec_name, "SHARD_DB_PASSWORD",
-								       DEFAULT_EMPTY_STRING, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SHARD_DB_PASSWORD", DEFAULT_EMPTY_STRING, &lineno);
+      strncpy_bufsize (br_info[num_brs].shard_db_password, s);
 
       br_info[num_brs].num_proxy = ini_getuint (ini, sec_name, "SHARD_NUM_PROXY", DEFAULT_SHARD_NUM_PROXY, &lineno);
 
@@ -978,12 +1072,11 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strcpy (br_info[num_brs].proxy_log_dir,
-	      ini_getstr (ini, sec_name, "SHARD_PROXY_LOG_DIR", DEFAULT_SHARD_PROXY_LOG_DIR, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SHARD_PROXY_LOG_DIR", DEFAULT_SHARD_PROXY_LOG_DIR, &lineno);
+      strcpy (br_info[num_brs].proxy_log_dir, s);
 
-      br_info[num_brs].proxy_log_mode =
-	conf_get_value_proxy_log_mode (ini_getstr
-				       (ini, sec_name, "SHARD_PROXY_LOG", DEFAULT_SHARD_PROXY_LOG_MODE, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SHARD_PROXY_LOG", DEFAULT_SHARD_PROXY_LOG_MODE, &lineno);
+      br_info[num_brs].proxy_log_mode = conf_get_value_proxy_log_mode (s);
       if (br_info[num_brs].proxy_log_mode < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
@@ -998,16 +1091,16 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy_bufsize (br_info[num_brs].shard_connection_file, ini_getstr (ini, sec_name, "SHARD_CONNECTION_FILE",
-									   "shard_connection.txt", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SHARD_CONNECTION_FILE", "shard_connection.txt", &lineno);
+      strncpy_bufsize (br_info[num_brs].shard_connection_file, s);
       if (br_info[num_brs].shard_connection_file[0] == '\0')
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
 
-      strncpy_bufsize (br_info[num_brs].shard_key_file, ini_getstr (ini, sec_name, "SHARD_KEY_FILE", "shard_key.txt",
-								    &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SHARD_KEY_FILE", "shard_key.txt", &lineno);
+      strncpy_bufsize (br_info[num_brs].shard_key_file, s);
       if (br_info[num_brs].shard_key_file[0] == '\0')
 	{
 	  errcode = PARAM_BAD_VALUE;
@@ -1021,7 +1114,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
-      strcpy (library_name, ini_getstr (ini, sec_name, "SHARD_KEY_LIBRARY_NAME", DEFAULT_EMPTY_STRING, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SHARD_KEY_LIBRARY_NAME", DEFAULT_EMPTY_STRING, &lineno);
+      strcpy (library_name, s);
 
       if (library_name[0] != 0 && !IS_ABS_PATH (library_name))
 	{
@@ -1032,11 +1126,11 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  snprintf (br_info[num_brs].shard_key_library_name, BROKER_PATH_MAX, "%s", library_name);
 	}
 
-      strcpy (br_info[num_brs].shard_key_function_name,
-	      ini_getstr (ini, sec_name, "SHARD_KEY_FUNCTION_NAME", DEFAULT_EMPTY_STRING, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SHARD_KEY_FUNCTION_NAME", DEFAULT_EMPTY_STRING, &lineno);
+      strcpy (br_info[num_brs].shard_key_function_name, s);
 
-      strncpy_bufsize (size_str, ini_getstr (ini, sec_name, "SHARD_PROXY_LOG_MAX_SIZE",
-					     DEFAULT_SHARD_PROXY_LOG_MAX_SIZE, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SHARD_PROXY_LOG_MAX_SIZE", DEFAULT_SHARD_PROXY_LOG_MAX_SIZE, &lineno);
+      strncpy_bufsize (size_str, s);
       br_info[num_brs].proxy_log_max_size = (int) ut_size_string_to_kbyte (size_str, "K");
       if (br_info[num_brs].proxy_log_max_size < 0)
 	{
@@ -1057,16 +1151,16 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      br_info[num_brs].ignore_shard_hint =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "SHARD_IGNORE_HINT", "OFF", &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SHARD_IGNORE_HINT", "OFF", &lineno);
+      br_info[num_brs].ignore_shard_hint = conf_get_value_table_on_off (s);
       if (br_info[num_brs].ignore_shard_hint < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
 
-      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "SHARD_PROXY_TIMEOUT", DEFAULT_SHARD_PROXY_TIMEOUT,
-					     &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SHARD_PROXY_TIMEOUT", DEFAULT_SHARD_PROXY_TIMEOUT, &lineno);
+      strncpy_bufsize (time_str, s);
       br_info[num_brs].proxy_timeout = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].proxy_timeout < 0)
 	{
@@ -1079,8 +1173,9 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "SHARD_PROXY_CONN_WAIT_TIMEOUT",
-					     DEFAULT_SHARD_PROXY_CONN_WAIT_TIMEOUT, &lineno));
+      INI_GETSTR_CHK (s, ini, sec_name, "SHARD_PROXY_CONN_WAIT_TIMEOUT",
+		      DEFAULT_SHARD_PROXY_CONN_WAIT_TIMEOUT, &lineno);
+      strncpy_bufsize (time_str, s);
       br_info[num_brs].proxy_conn_wait_timeout = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].proxy_conn_wait_timeout < 0)
 	{
@@ -1232,6 +1327,88 @@ conf_error:
   return -1;
 }
 
+static void
+write_conf_cache (char *broker_conf_file, bool * acl_flag, int *num_broker, int *br_shm_id, char *admin_logfile,
+		  T_BROKER_INFO * br_info, time_t br_conf_mtime)
+{
+  if (broker_conf_file == NULL || num_broker == NULL || br_info == NULL || br_shm_id == NULL)
+    {
+      return;
+    }
+
+  for (int i = 0; i < MAX_NUM_CACHED_BROKER_FILES; i++)
+    {
+      if (br_conf_info[i].conf_file == NULL)
+	{
+	  br_conf_info[i].conf_file = strdup (broker_conf_file);
+	  br_conf_info[i].num_broker = *num_broker;
+	  br_conf_info[i].br_shm_id = *br_shm_id;
+	  br_conf_info[i].last_modified = br_conf_mtime;
+
+	  if (acl_flag)
+	    {
+	      br_conf_info[i].acl_flag = *acl_flag;
+	    }
+
+	  if (admin_logfile)
+	    {
+	      br_conf_info[i].admin_log_file = strdup (admin_logfile);
+	    }
+
+	  memcpy (br_conf_info[i].br_info, br_info, sizeof (T_BROKER_INFO) * MAX_BROKER_NUM);
+	  break;
+	}
+    }
+}
+
+static void
+read_conf_cache (int cid, bool * acl_flag, int *num_broker, int *br_shm_id, char *logfile, T_BROKER_INFO * br_info)
+{
+  if (cid < 0 || cid >= MAX_NUM_CACHED_BROKER_FILES || br_shm_id == NULL || br_info == NULL)
+    {
+      return;
+    }
+
+  if (acl_flag)
+    {
+      *acl_flag = br_conf_info[cid].acl_flag;
+    }
+
+  if (logfile && br_conf_info[cid].admin_log_file)
+    {
+      strcpy (logfile, br_conf_info[cid].admin_log_file);
+    }
+
+  *num_broker = br_conf_info[cid].num_broker;
+  *br_shm_id = br_conf_info[cid].br_shm_id;
+  memcpy (br_info, br_conf_info[cid].br_info, sizeof (T_BROKER_INFO) * MAX_BROKER_NUM);
+
+  return;
+}
+
+static void
+clear_conf_cache_entry (int cid)
+{
+  if (cid < 0 || cid >= MAX_NUM_CACHED_BROKER_FILES)
+    {
+      return;
+    }
+
+  if (br_conf_info[cid].conf_file)
+    {
+      free (br_conf_info[cid].conf_file);
+    }
+
+  if (br_conf_info[cid].admin_log_file)
+    {
+      free (br_conf_info[cid].admin_log_file);
+    }
+
+  memset (&br_conf_info[cid], 0, sizeof (T_CONF_INFO));
+
+  return;
+}
+
 /*
  * broker_config_read - read and parse broker configurations
  *   return: 0 or -1 if fail
@@ -1247,20 +1424,28 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
 		    char *admin_log_file, char admin_flag, bool * acl_flag, char *acl_file, char *admin_err_msg)
 {
   int err = 0;
-  bool is_conf_found = false;
-  char default_conf_file_path[BROKER_PATH_MAX], file_name[BROKER_PATH_MAX], file_being_dealt_with[BROKER_PATH_MAX];
+  char file_name[BROKER_PATH_MAX], file_being_dealt_with[BROKER_PATH_MAX];
   struct stat stat_buf;
+  int rc = 0;
 
 #if !defined (_UC_ADMIN_SO_)
   admin_flag = 1;
   admin_err_msg = NULL;
 #endif /* !_UC_ADMIN_SO_ */
 
-  memset (br_info, 0, sizeof (T_BROKER_INFO) * MAX_BROKER_NUM);
-
-  get_cubrid_file (FID_CUBRID_BROKER_CONF, default_conf_file_path, BROKER_PATH_MAX);
-
-  basename_r (default_conf_file_path, file_name, BROKER_PATH_MAX);
+  if (is_first_br_conf_read)
+    {
+      memset (&br_conf_info, 0, sizeof (br_conf_info));
+#if defined (FOR_ODBC_GATEWAY)
+      if (get_cubrid_file (FID_CUBRID_GATEWAY_CONF, default_conf_file_path, BROKER_PATH_MAX) != NULL)
+#else
+      if (get_cubrid_file (FID_CUBRID_BROKER_CONF, default_conf_file_path, BROKER_PATH_MAX) != NULL)
+#endif
+	{
+	  basename_r (default_conf_file_path, file_name, BROKER_PATH_MAX);
+	}
+      is_first_br_conf_read = false;
+    }
 
   if (conf_file == NULL)
     {
@@ -1273,27 +1458,40 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
 	}
     }
 
-  if (conf_file != NULL)
+  snprintf (file_being_dealt_with, BROKER_PATH_MAX, "%s", conf_file ? conf_file : default_conf_file_path);
+
+  if (stat (file_being_dealt_with, &stat_buf) != 0)
     {
-      strcpy (file_being_dealt_with, conf_file);
-    }
-  else
-    {
-      /* $CUBRID/conf/cubrid_broker.conf */
-      strcpy (file_being_dealt_with, default_conf_file_path);
-    }
-  if (stat (file_being_dealt_with, &stat_buf) == 0)
-    {
-      is_conf_found = true;
-      err =
-	broker_config_read_internal (file_being_dealt_with, br_info, num_broker, br_shm_id, admin_log_file, admin_flag,
-				     acl_flag, acl_file, admin_err_msg);
+      PRINT_AND_LOG_ERR_MSG ("Error: can't find %s\n", (conf_file == NULL) ? default_conf_file_path : conf_file);
+      return -1;
     }
 
-  if (!is_conf_found)
+  for (int cid = 0; cid < MAX_NUM_CACHED_BROKER_FILES; cid++)
     {
-      err = -1;
-      PRINT_AND_LOG_ERR_MSG ("Error: can't find %s\n", (conf_file == NULL) ? default_conf_file_path : conf_file);
+      if (br_conf_info[cid].conf_file && IS_FILE_MATCH_CONF_CACHE (cid, file_being_dealt_with))
+	{
+	  if (br_conf_info[cid].last_modified == stat_buf.st_mtime)
+	    {
+	      read_conf_cache (cid, acl_flag, num_broker, br_shm_id, admin_log_file, br_info);
+
+	      return 0;
+	    }
+	  else
+	    {
+	      clear_conf_cache_entry (cid);
+	      PRINT_AND_LOG_ERR_MSG ("broker conf: %s changed (reload).\n", file_being_dealt_with);
+	    }
+	}
+    }
+
+  memset (br_info, 0, sizeof (T_BROKER_INFO) * MAX_BROKER_NUM);
+  err =
+    broker_config_read_internal (file_being_dealt_with, br_info, num_broker, br_shm_id, admin_log_file, admin_flag,
+				 acl_flag, acl_file, admin_err_msg);
+  if (err == 0)
+    {
+      write_conf_cache (file_being_dealt_with, acl_flag, num_broker, br_shm_id, admin_log_file, br_info,
+			stat_buf.st_mtime);
     }
 
   return err;
@@ -1313,8 +1511,13 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
   if (br_info == NULL || num_broker <= 0 || num_broker > MAX_BROKER_NUM || br_shm_id <= 0)
     return;
 
+#if defined(FOR_ODBC_GATEWAY)
+  fprintf (fp, "#\n# cubrid_gateway.conf\n#\n\n");
+  fprintf (fp, "# gateway parameters were loaded from the files\n");
+#else
   fprintf (fp, "#\n# cubrid_broker.conf\n#\n\n");
   fprintf (fp, "# broker parameters were loaded from the files\n");
+#endif
 
   for (i = 0; i < MAX_NUM_OF_CONF_FILE_LOADED; i++)
     {
@@ -1324,9 +1527,15 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 	}
     }
 
+#if defined(FOR_ODBC_GATEWAY)
+  fprintf (fp, "\n# gateway parameters\n");
+
+  fprintf (fp, "[gateway]\n");
+#else
   fprintf (fp, "\n# broker parameters\n");
 
   fprintf (fp, "[broker]\n");
+#endif
   fprintf (fp, "MASTER_SHM_ID\t=%x\n\n", br_shm_id);
 
   for (i = 0; i < num_broker; i++)
@@ -1499,11 +1708,13 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 	  fprintf (fp, "REJECT_CLIENT_FLAG\t=%s\n", tmp_str);
 	}
 
+#if defined (FOR_ODBC_GATEWAY)
       fprintf (fp, "CGW_LINK_SERVER\t\t=%s\n", br_info[i].cgw_link_server);
       fprintf (fp, "CGW_LINK_SERVER_IP\t=%s\n", br_info[i].cgw_link_server_ip);
       fprintf (fp, "CGW_LINK_SERVER_PORT\t=%s\n", br_info[i].cgw_link_server_port);
       fprintf (fp, "CGW_LINK_ODBC_DRIVER_NAME\t=%s\n", br_info[i].cgw_link_odbc_driver_name);
       fprintf (fp, "CGW_LINK_CONNECT_URL_PROPERTY\t=%s\n", br_info[i].cgw_link_connect_url_property);
+#endif
 
       if (br_info[i].shard_flag == OFF)
 	{

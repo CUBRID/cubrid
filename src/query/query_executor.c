@@ -1939,6 +1939,7 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	case S_SHOWSTMT_SCAN:
 	  break;
 	case S_METHOD_SCAN:
+	  p->s_id.s.msid.clear (is_final);
 	  break;
 	case S_VALUES_SCAN:
 	  break;
@@ -7868,8 +7869,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	      ACCESS_SPEC_TYPE *specp = xasl->spec_list;
 	      if (specp->next == NULL && specp->access == ACCESS_METHOD_INDEX
 		  && specp->s.cls_node.cls_regu_list_pred == NULL && specp->where_pred == NULL
-		  && !specp->indexptr->use_iss && !SCAN_IS_INDEX_MRO (&specp->s_id.s.isid)
-		  && !SCAN_IS_INDEX_COVERED (&specp->s_id.s.isid))
+		  && !specp->indexptr->use_iss && !SCAN_IS_INDEX_MRO (&specp->s_id.s.isid))
 		{
 		  /* count(*) query will scan an index but does not have a data-filter */
 		  specp->s_id.s.isid.need_count_only = true;

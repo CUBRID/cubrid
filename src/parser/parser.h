@@ -393,6 +393,7 @@ extern "C"
   extern PT_NODE *pt_bind_param_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern int pt_statement_have_methods (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern int pt_str_compare (const char *p, const char *q, CASE_SENSITIVENESS case_flag);
+  extern int pt_user_specified_name_compare (const char *p, const char *q);
 
   extern void pt_to_regu_resolve_domain (int *p_precision, int *p_scale, const PT_NODE * node);
   extern PT_NODE *pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser, int prec, int scale);
@@ -626,7 +627,7 @@ extern "C"
   extern bool pt_is_join_expr (PT_NODE * expr, UINTPTR * spec_id);
   extern PT_NODE *pt_sort_spec_list_to_name_node_list (PARSER_CONTEXT * parser, PT_NODE * sort_spec_list);
 
-  extern DB_OBJECT *pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node);
+  extern DB_OBJECT *pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * node);
   extern int pt_check_grammar_charset_collation (PARSER_CONTEXT * parser, PT_NODE * charset_node, PT_NODE * coll_node,
 						 int *charset, int *coll_id);
   extern bool pt_get_collation_info (const PT_NODE * node, PT_COLL_INFER * coll_infer);
@@ -669,6 +670,11 @@ extern "C"
 
   extern int pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cipher, int ciper_size);
   extern int pt_remake_dblink_password (const char *passwd, DB_VALUE * outval, bool is_external);
+
+  extern PT_NODE *pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+  extern const char *pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * name);
+  extern const char *pt_get_name_with_qualifier_removed (const char *name);
+  extern const char *pt_get_name_without_current_user_name (const char *name);
 #ifdef __cplusplus
 }
 #endif

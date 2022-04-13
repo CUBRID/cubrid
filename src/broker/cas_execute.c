@@ -310,8 +310,6 @@ static short constraint_dbtype_to_castype (int db_const_type);
 static T_PREPARE_CALL_INFO *make_prepare_call_info (int num_args, int is_first_out);
 static void prepare_call_info_dbval_clear (T_PREPARE_CALL_INFO * call_info);
 static int fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
-static int create_srv_handle_with_query_result (T_QUERY_RESULT * src_q_result, DB_QUERY_TYPE * column_info,
-						unsigned int query_seq_num);
 #define check_class_chn(s) 0
 static int get_client_result_cache_lifetime (DB_SESSION * session, int stmt_id);
 static bool has_stmt_result_set (char stmt_type);
@@ -758,11 +756,8 @@ ux_set_default_setting ()
 void
 ux_database_shutdown ()
 {
-#if defined(CAS_FOR_CGW)
-  cgw_database_disconnect ();
-#else
+#if !defined(CAS_FOR_CGW)
   db_shutdown ();
-#endif /* CAS_FOR_CGW */
   cas_log_debug (ARG_FILE_LINE, "ux_database_shutdown: db_shutdown()");
 #ifndef LIBCAS_FOR_JSP
   as_info->database_name[0] = '\0';
@@ -776,6 +771,7 @@ ux_database_shutdown ()
   memset (database_passwd, 0, sizeof (database_passwd));
   cas_default_isolation_level = 0;
   cas_default_lock_timeout = -1;
+#endif /* CAS_FOR_CGW */
 }
 
 #if !defined(CAS_FOR_CGW)
@@ -1064,7 +1060,7 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
       goto prepare_error;
     }
 
-  err_code = cgw_get_handle (&srv_handle->cgw_handle, true);
+  err_code = cgw_get_handle (&srv_handle->cgw_handle);
   if (err_code < 0)
     {
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -1110,27 +1106,7 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
       goto prepare_error;
     }
 
-  if (srv_handle->cgw_handle->hstmt == NULL)
-    {
-      err_code = cgw_get_stmt_handle (srv_handle->cgw_handle->hdbc, &srv_handle->cgw_handle->hstmt);
-      if (err_code < 0)
-	{
-	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-	  goto prepare_error;
-	}
-
-      err_code =
-	cgw_set_stmt_attr (srv_handle->cgw_handle->hstmt, SQL_ATTR_CURSOR_TYPE, (SQLPOINTER) SQL_CURSOR_STATIC,
-			   SQL_IS_INTEGER);
-      if (err_code < 0)
-	{
-	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-	  goto prepare_error;
-	}
-    }
-
-  err_code = cgw_sql_prepare (srv_handle->cgw_handle->hstmt, (SQLCHAR *) sql_stmt);
-
+  err_code = cgw_sql_prepare ((SQLCHAR *) sql_stmt);
   if (err_code < 0)
     {
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -1273,7 +1249,7 @@ ux_end_tran (int tran_type, bool reset_con_status)
 
 #if defined(CAS_FOR_CGW)
   T_CGW_HANDLE *cgw_handle = NULL;
-  cgw_get_handle (&cgw_handle, false);
+  cgw_get_handle (&cgw_handle);
   if (cgw_handle)
     {
       cgw_endtran (cgw_handle->hdbc, tran_type);
@@ -1353,7 +1329,7 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
   if (srv_handle->is_prepared == FALSE)
     {
-      err_code = cgw_sql_prepare (srv_handle->cgw_handle->hstmt, (SQLCHAR *) srv_handle->sql_stmt);
+      err_code = cgw_sql_prepare ((SQLCHAR *) srv_handle->sql_stmt);
 
       if (err_code < 0)
 	{
@@ -1366,7 +1342,7 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
   if (num_bind > 0)
     {
-      err_code = cgw_make_bind_value (srv_handle->cgw_handle, num_bind, argc, argv, &bind_data_list, net_buf);
+      err_code = cgw_make_bind_value (srv_handle->cgw_handle, num_bind, argc, argv, &bind_data_list);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -1376,7 +1352,7 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
   if (srv_handle->is_prepared == FALSE)
     {
-      err_code = cgw_sql_prepare (srv_handle->cgw_handle->hstmt, (SQLCHAR *) srv_handle->sql_stmt);
+      err_code = cgw_sql_prepare ((SQLCHAR *) srv_handle->sql_stmt);
 
       if (err_code != SQL_SUCCESS && err_code != SQL_SUCCESS_WITH_INFO)
 	{
@@ -1415,6 +1391,7 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   srv_handle->num_q_result = 1;
   srv_handle->cur_result_index = 1;
   srv_handle->max_row = max_row;
+  srv_handle->total_tuple_count = INT_MAX;	// ODBC does not provide the number of query results, so set to int_max.
 
   if (do_commit_after_execute (*srv_handle))
     {
@@ -3075,11 +3052,7 @@ ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
 {
   T_SRV_HANDLE *srv_handle;
   int err_code;
-#if defined(CAS_FOR_CGW)
-  SQLLEN count;
-#else
   int count;
-#endif
   char *err_str = NULL;
 #if !defined(CAS_FOR_CGW)
   T_QUERY_RESULT *cur_result;
@@ -3091,17 +3064,7 @@ ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
       goto cursor_error;
     }
 #if defined(CAS_FOR_CGW)
-  err_code = cgw_get_row_count (srv_handle->cgw_handle->hstmt, &count);
-  if (err_code < 0)
-    {
-      err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
-      goto cursor_error;
-    }
-
-  if (count > INT_MAX)
-    {
-      count = INT_MAX;
-    }
+  count = srv_handle->total_tuple_count;
 #else
   cur_result = (T_QUERY_RESULT *) srv_handle->cur_result;
   if (cur_result == NULL)
@@ -3236,10 +3199,7 @@ ux_cursor_close (T_SRV_HANDLE * srv_handle)
       return;
     }
 #if defined(CAS_FOR_CGW)
-  if (cgw_cursor_close (srv_handle->cgw_handle->hstmt) > -1)
-    {
-      srv_handle->cgw_handle->hstmt = NULL;
-    }
+  cgw_cursor_close (srv_handle);
 #else
   ux_free_result (srv_handle->q_result[idx].result);
   srv_handle->q_result[idx].result = NULL;
@@ -5471,10 +5431,10 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 
     case DB_TYPE_RESULTSET:
       {
-	int h_id;
+	DB_BIGINT query_id;
 
-	h_id = db_get_resultset (val);
-	add_res_data_int (net_buf, h_id, ext_col_type, &data_size);
+	query_id = db_get_resultset (val);
+	add_res_data_bigint (net_buf, query_id, ext_col_type, &data_size);
       }
       break;
 
@@ -5773,6 +5733,33 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
       return ERROR_INFO_SET (CAS_ER_NO_MORE_RESULT_SET, CAS_ERROR_INDICATOR);
     }
 
+
+  if (srv_handle->is_cursor_open == false)
+    {
+      err_code = cgw_execute (srv_handle);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto fetch_error;
+	}
+    }
+  else if (srv_handle->is_cursor_open && cursor_pos == 1 && srv_handle->cursor_pos > 1)
+    {
+      err_code = cgw_cursor_close (srv_handle);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto fetch_error;
+	}
+
+      err_code = cgw_execute (srv_handle);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto fetch_error;
+	}
+    }
+
   net_buf_cp_int (net_buf, (int) total_row_count, &num_tuple_msg_offset);
 
   err_code = cgw_get_num_cols (srv_handle->cgw_handle->hstmt, &num_cols);
@@ -5817,19 +5804,19 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	{
 	  fetch_end_flag = 1;
 
+	  err_code = cgw_cursor_close (srv_handle);
+	  if (err_code < 0)
+	    {
+	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	      goto fetch_error;
+	    }
+
+
 	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
-	      ux_cursor_close (srv_handle);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	    }
 	  break;
-	}
-
-      err_code = cgw_get_row_count (srv_handle->cgw_handle->hstmt, &total_row_count);
-      if (err_code < 0)
-	{
-	  err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
-	  goto fetch_error;
 	}
 
       err_code = cgw_cur_tuple (net_buf, first_col_binding, cursor_pos);
@@ -5844,7 +5831,12 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	{
 	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
-	      ux_cursor_close (srv_handle);
+	      err_code = cgw_cursor_close (srv_handle);
+	      if (err_code < 0)
+		{
+		  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+		  goto fetch_error;
+		}
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	    }
 	  break;
@@ -5859,16 +5851,6 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
       net_buf_cp_byte (net_buf, fetch_end_flag);
     }
 
-  if (total_row_count > INT_MAX)
-    {
-      srv_handle->total_tuple_count = INT_MAX;
-    }
-  else
-    {
-      srv_handle->total_tuple_count = (int) total_row_count;
-    }
-  net_buf_overwrite_int (net_buf, srv_handle->total_row_count_msg_offset, srv_handle->total_tuple_count);
-  net_buf_overwrite_int (net_buf, srv_handle->res_tuple_count_msg_offset, srv_handle->total_tuple_count);
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, num_tuple);
 
   srv_handle->cursor_pos = cursor_pos;
@@ -9718,50 +9700,55 @@ error:
   return err_code;
 }
 
-extern void *jsp_get_db_result_set (int h_id);
-extern void jsp_srv_handle_free (int h_id);
-
-static int
-ux_use_sp_out (int srv_h_id)
+int
+ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT * result, int stmt_type, int num_column,
+					       DB_QUERY_TYPE * column_info, bool is_holdable)
 {
-  T_SRV_HANDLE *srv_handle;
-  T_QUERY_RESULT *q_result;
-  DB_QUERY_TYPE *column_info;
-  int new_handle_id = 0;
+  int srv_h_id;
+  int err_code = 0;
+  T_SRV_HANDLE *srv_handle = NULL;
+  T_QUERY_RESULT *q_result = NULL;
 
-  srv_handle = (T_SRV_HANDLE *) jsp_get_db_result_set (srv_h_id);
-  if (srv_handle == NULL || srv_handle->cur_result == NULL)
+  srv_h_id = hm_new_srv_handle (&srv_handle, -1);
+  if (srv_h_id < 0)
     {
-      jsp_srv_handle_free (srv_h_id);
-      return CAS_ER_SRV_HANDLE;
+      err_code = srv_h_id;
+      goto error;
     }
+  srv_handle->schema_type = -1;
 
-  q_result = (T_QUERY_RESULT *) srv_handle->cur_result;
-  if (srv_handle->session != NULL && q_result->stmt_id >= 0)
+  q_result = (T_QUERY_RESULT *) malloc (sizeof (T_QUERY_RESULT));
+  if (q_result == NULL)
     {
-      column_info = db_get_query_type_list ((DB_SESSION *) srv_handle->session, q_result->stmt_id);
+      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+      goto error;
     }
-  else
+  hm_qresult_clear (q_result);
+  srv_handle->q_result = q_result;
+
+  q_result->result = result;
+  q_result->tuple_count = db_query_tuple_count ((DB_QUERY_RESULT *) result);
+  q_result->stmt_type = stmt_type;
+  q_result->col_updatable = FALSE;
+  q_result->include_oid = FALSE;
+  q_result->num_column = num_column;
+  q_result->column_info = column_info;
+  q_result->is_holdable = is_holdable;
+
+  srv_handle->cur_result = (void *) srv_handle->q_result;
+  srv_handle->cur_result_index = 1;
+  srv_handle->num_q_result = 1;
+  srv_handle->has_result_set = true;
+  srv_handle->max_row = q_result->tuple_count;
+
+  return srv_h_id;
+
+error:
+  if (srv_handle)
     {
-      column_info = NULL;
+      hm_srv_handle_free (srv_h_id);
     }
-
-  if (q_result->result != NULL && column_info != NULL)
-    {
-      new_handle_id = create_srv_handle_with_query_result (q_result, column_info, srv_handle->query_seq_num);
-      if (new_handle_id > 0)
-	{
-	  q_result->copied = TRUE;
-	}
-      else
-	{
-	  FREE_MEM (column_info);
-	}
-    }
-
-  jsp_srv_handle_free (srv_h_id);
-
-  return new_handle_id;
+  return err_code;
 }
 
 int
@@ -10078,8 +10065,10 @@ ux_get_generated_keys_error:
   return err_code;
 }
 
+extern int method_make_out_rs (DB_BIGINT query_id);
+
 int
-ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   T_SRV_HANDLE *srv_handle;
   int err_code;
@@ -10090,7 +10079,7 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   int new_handle_id = 0;
   T_BROKER_VERSION client_version = req_info->client_version;
 
-  new_handle_id = ux_use_sp_out (srv_h_id);
+  new_handle_id = method_make_out_rs (query_id);
   srv_handle = hm_find_srv_handle (new_handle_id);
 
   if (srv_handle == NULL || srv_handle->cur_result == NULL)

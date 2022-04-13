@@ -234,7 +234,7 @@ extern void cdc_daemons_destroy ();
 
 extern LOG_PAGEID cdc_min_log_pageid_to_keep ();
 
-/*cdc functions*/
+/* cdc functions */
 extern int cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * input_time, LOG_LSA * start_lsa);
 extern int cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **user, int num_user,
 				  uint64_t * classoids, int num_class);
@@ -257,6 +257,16 @@ extern void cdc_kill_producer ();
 
 extern void cdc_pause_consumer ();
 extern void cdc_wakeup_consumer ();
+
+extern SCAN_CODE cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa,
+				      RECDES * undo_recdes);
+
+extern int cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recdes, LOG_LSA * redo_lsa,
+			   RECDES * redo_recdes, bool is_flashback);
+extern int cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYPE dml_type, OID classoid,
+				 RECDES * undo_recdes, RECDES * redo_recdes, CDC_LOGINFO_ENTRY * dml_entry,
+				 bool is_flashback);
+
 //
 // log critical section
 //
