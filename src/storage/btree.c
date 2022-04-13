@@ -9159,15 +9159,6 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE
 
       /* Do not delete overflow key here, do it after deleting leaf record to ensure
        * consistent top-down replication */
-
-      /* Delete overflow key. */
-//      ret = btree_delete_overflow_key (thread_p, btid, leaf_pg, search_key->slotid, BTREE_LEAF_NODE);
-//      if (ret != NO_ERROR)
-//      {
-//        ASSERT_ERROR ();
-//        goto exit_on_error;
-//      }
-      /* Overflow key deleted. */
     }
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
