@@ -3285,22 +3285,23 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  db_clear_host_connected ();
 	  if (check_database_name (local_database_name))
 	    {
-	      printf ("\n *** Applied Info. *** \n");
 	      check_applied_info = false;
-	      PRINT_AND_LOG_ERR_MSG ("\nERROR : %s\n", db_error_string (3));
 	    }
 	  if ((check_applied_info != false) && (db_login ("DBA", NULL) != NO_ERROR))
 	    {
-	      printf ("\n *** Applied Info. *** \n");
 	      check_applied_info = false;
-	      PRINT_AND_LOG_ERR_MSG ("\nERROR : %s\n", db_error_string (3));
 	    }
 	  if ((check_applied_info != false) && (db_restart (arg->command_name, TRUE, local_database_name) != NO_ERROR))
 	    {
-	      printf ("\n *** Applied Info. *** \n");
 	      check_applied_info = false;
-	      PRINT_AND_LOG_ERR_MSG ("\nERROR : %s\n", db_error_string (3));
 	    }
+
+	  if (check_applied_info == false)
+            {
+	      printf ("\n *** Applied Info. *** \n");
+	      PRINT_AND_LOG_ERR_MSG ("\nERROR : %s\n", db_error_string (3));
+
+            }
 
 	  if ((check_applied_info != false) && HA_DISABLED ())
 	    {
