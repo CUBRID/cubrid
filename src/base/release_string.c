@@ -100,7 +100,7 @@ static REL_COMPATIBILITY rel_get_compatible_internal (const char *base_rel_str, 
 /*
  * Disk (database image) Version Compatibility
  */
-static float disk_compatibility_level = 11.0f;
+static float disk_compatibility_level = 11.2f;
 
 /*
  * rel_copy_version_string - version string of the product
