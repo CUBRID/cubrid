@@ -1461,7 +1461,7 @@ static int btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_
 						  VPID * ovfl_vpid);
 static int btree_modify_leaf_ovfl_vpid (THREAD_ENTRY * thread_p, const BTID_INT * btid_int,
 					BTREE_DELETE_HELPER * delete_helper, PAGE_PTR leaf_page, RECDES * leaf_record,
-					BTREE_SEARCH_KEY_HELPER * search_key, VPID * next_ovfl_vpid);
+					const BTREE_SEARCH_KEY_HELPER * search_key, VPID * next_ovfl_vpid);
 static int btree_modify_overflow_link (THREAD_ENTRY * thread_p, const BTID_INT * btid_int,
 				       BTREE_DELETE_HELPER * delete_helper, PAGE_PTR ovfl_page, VPID * next_ovfl_vpid);
 
@@ -1655,7 +1655,7 @@ static int btree_leaf_record_replace_first_with_last (THREAD_ENTRY * thread_p, B
 						      BTREE_MVCC_INFO * last_mvcc_info, int offset_to_last_object);
 static int btree_record_remove_object (THREAD_ENTRY * thread_p, const BTID_INT * btid_int,
 				       BTREE_DELETE_HELPER * delete_helper, PAGE_PTR page, RECDES * record,
-				       BTREE_SEARCH_KEY_HELPER * search_key, BTREE_NODE_TYPE node_type,
+				       const BTREE_SEARCH_KEY_HELPER * search_key, BTREE_NODE_TYPE node_type,
 				       int offset_to_object, LOG_DATA_ADDR * addr);
 static void btree_record_remove_object_internal (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, RECDES * record,
 						 BTREE_NODE_TYPE node_type, int offset_to_object, char **rv_undo_data,
@@ -1668,7 +1668,7 @@ static int btree_key_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTI
 static int btree_overflow_remove_object (THREAD_ENTRY * thread_p, const DB_VALUE * key, const BTID_INT * btid_int,
 					 BTREE_DELETE_HELPER * delete_helper, PAGE_PTR * overflow_page,
 					 PAGE_PTR prev_page, PAGE_PTR leaf_page, RECDES * leaf_record,
-					 BTREE_SEARCH_KEY_HELPER * search_key, int offset_to_object);
+					 const BTREE_SEARCH_KEY_HELPER * search_key, int offset_to_object);
 static int btree_leaf_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT * btid_int,
 				     BTREE_DELETE_HELPER * delete_helper, PAGE_PTR leaf_page, RECDES * leaf_record,
 				     LEAF_REC * leaf_rec_info, int offset_after_key,
@@ -2307,7 +2307,8 @@ btree_leaf_get_vpid_for_overflow_oids (RECDES * rec, VPID * ovfl_vpid)
  */
 void
 btree_leaf_record_change_overflow_link (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, RECDES * leaf_record,
-					VPID * new_overflow_vpid, char **rv_undo_data_ptr, char **rv_redo_data_ptr)
+					const VPID * new_overflow_vpid, char **rv_undo_data_ptr,
+					char **rv_redo_data_ptr)
 {
   char *ovf_link_ptr = NULL;
   bool undo_logging = false;
@@ -9468,7 +9469,7 @@ exit_on_error:
  */
 static int
 btree_modify_leaf_ovfl_vpid (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, BTREE_DELETE_HELPER * delete_helper,
-			     PAGE_PTR leaf_page, RECDES * leaf_record, BTREE_SEARCH_KEY_HELPER * search_key,
+			     PAGE_PTR leaf_page, RECDES * leaf_record, const BTREE_SEARCH_KEY_HELPER * search_key,
 			     VPID * next_ovfl_vpid)
 {
   char rv_undo_data_buffer[BTREE_RV_BUFFER_SIZE + BTREE_MAX_ALIGN];
@@ -18884,10 +18885,10 @@ btree_compare_individual_key_value (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN 
     }
 
   /* both are not null values */
-  /* 
+  /*
    * for do_coercion = 2, we need to process key comparing as char-type
    * in case that one of two arguments has varchar-type
-   * if the other argument has char-type 
+   * if the other argument has char-type
    */
   c = key_domain->type->cmpval (key1, key2, 2, 1, NULL, key_domain->collation_id);
 
@@ -20951,7 +20952,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
     }
   else
     {
-      /* the statistics values is always same as initial (-1) 
+      /* the statistics values is always same as initial (-1)
        * so, it's not necessary to extend 64 bit */
       num_oids = root_header->num_oids;
       num_nulls = root_header->num_oids;
@@ -31522,7 +31523,7 @@ btree_leaf_record_replace_first_with_last (THREAD_ENTRY * thread_p, BTID_INT * b
  */
 static int
 btree_record_remove_object (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, BTREE_DELETE_HELPER * delete_helper,
-			    PAGE_PTR page, RECDES * record, BTREE_SEARCH_KEY_HELPER * search_key,
+			    PAGE_PTR page, RECDES * record, const BTREE_SEARCH_KEY_HELPER * search_key,
 			    BTREE_NODE_TYPE node_type, int offset_to_object, LOG_DATA_ADDR * addr)
 {
   char rv_undo_data_buffer[BTREE_RV_BUFFER_SIZE + BTREE_MAX_ALIGN];
@@ -31730,7 +31731,7 @@ btree_key_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT * bti
 static int
 btree_overflow_remove_object (THREAD_ENTRY * thread_p, const DB_VALUE * key, const BTID_INT * btid_int,
 			      BTREE_DELETE_HELPER * delete_helper, PAGE_PTR * overflow_page, PAGE_PTR prev_page,
-			      PAGE_PTR leaf_page, RECDES * leaf_record, BTREE_SEARCH_KEY_HELPER * search_key,
+			      PAGE_PTR leaf_page, RECDES * leaf_record, const BTREE_SEARCH_KEY_HELPER * search_key,
 			      int offset_to_object)
 {
   int error_code = NO_ERROR;	/* Error code. */
@@ -31851,6 +31852,7 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, const DB_VALUE * key, con
 	  btree_delete_sysop_end (thread_p, delete_helper);
 	  // TODO: restore is_system_op_started?
 	  // TODO: if not reset, will lead to another sysop end being added in calling function
+	  // double sysop end will broke atomic replication
 	}
     }
   else
@@ -33215,11 +33217,11 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
   error_code = heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo);
   if (error_code == NO_ERROR)
     {
-      /* 
+      /*
        * It can happen to fail to get the class record.
        * For example, a class record that is assigned but not updated poperly yet.
        * In this case, Setting tde flag is just skipped and it is expected to be done later.
-       * see file_apply_tde_to_class_files() 
+       * see file_apply_tde_to_class_files()
        */
       error_code = file_apply_tde_algorithm (thread_p, &btid->vfid, tde_algo);
       if (error_code != NO_ERROR)

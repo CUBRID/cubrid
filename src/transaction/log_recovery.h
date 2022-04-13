@@ -42,9 +42,9 @@ int log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p, char *rcv_d
 int log_rv_redo_record_modify (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 int log_rv_undo_record_modify (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 char *log_rv_pack_redo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size,
-				       char *new_data);
+				       const char *new_data);
 char *log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size,
-				       char *old_data);
+				       const char *old_data);
 bool log_rv_need_sync_redo (const vpid & a_rcv_vpid, LOG_RCVINDEX a_rcvindex);
 void log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
 			 int (*redofun) (THREAD_ENTRY * thread_p, const LOG_RCV *), LOG_RCV * rcv,

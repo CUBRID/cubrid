@@ -3921,7 +3921,8 @@ log_rv_record_modify_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv, boo
  * new_data (in)       : New data.
  */
 char *
-log_rv_pack_redo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size, char *new_data)
+log_rv_pack_redo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size,
+				 const char *new_data)
 {
   /* Assert expected arguments. */
   assert (ptr != NULL);
@@ -3963,7 +3964,8 @@ log_rv_pack_redo_record_changes (char *ptr, int offset_to_data, int old_data_siz
  * old_data (in)       : Old data.
  */
 char *
-log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size, char *old_data)
+log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size,
+				 const char *old_data)
 {
   /* Assert expected arguments. */
   assert (ptr != NULL);

@@ -822,7 +822,7 @@ extern int btree_rv_undo_record_modify (THREAD_ENTRY * thread_p, const LOG_RCV *
 extern int btree_rv_remove_unique_stats (THREAD_ENTRY * thread_p, const LOG_RCV * recv);
 
 extern void btree_leaf_record_change_overflow_link (THREAD_ENTRY * thread_p, const BTID_INT * btid_int,
-						    RECDES * leaf_record, VPID * new_overflow_vpid,
+						    RECDES * leaf_record, const VPID * new_overflow_vpid,
 						    char **rv_undo_data_ptr, char **rv_redo_data_ptr);
 
 extern int btree_rv_undo_mark_dealloc_page (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
