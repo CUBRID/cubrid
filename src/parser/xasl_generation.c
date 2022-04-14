@@ -17671,6 +17671,7 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * qu
 
 	      fclose (query_Plan_dump_fp);
 	      query_Plan_dump_fp = stdout;
+	      query_Plan_dump_filename = NULL;
 	    }
 	  break;
 
