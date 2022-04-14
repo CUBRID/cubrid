@@ -248,7 +248,7 @@ namespace cublog
 		    set_unapplied_log_lsa_from_execute_func (job->get_log_lsa ());
 		  }
 #if !defined(NDEBUG)
-		task_execute_counter++;
+		++task_execute_counter;
 #endif
 		job->execute (thread_entry, m_redo_context);
 		m_perf_stats.time_and_increment (cublog::PERF_STAT_ID_PARALLEL_EXECUTE);
