@@ -459,6 +459,8 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 		{
 		  memcpy (&classoid, supplement_data, sizeof (OID));
 
+		  assert (oid_is_system_class (&classoid) == false);
+
                   // *INDENT-OFF*
 		  if (std::find (context->classoids.begin(), context->classoids.end(), classoid) == context->classoids.end())
 		    {
