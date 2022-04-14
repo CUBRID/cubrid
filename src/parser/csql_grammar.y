@@ -26549,6 +26549,13 @@ pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str,
   char *invalid_pos = NULL;
   int composed_size;
 
+  if (strchr (str, '[') || strchr (str, ']'))
+    {
+      PT_ERRORf (this_parser, p,
+		 "Identifier name \"%s\" not allowed. It cannot contain '[' or ']'.",
+		 str);
+    }
+
   if (intl_check_string ((char *) str, str_size, &invalid_pos, LANG_SYS_CODESET) == INTL_UTF8_INVALID)
     {
       PT_ERRORmf (parser, NULL, MSGCAT_SET_ERROR, -(ER_INVALID_CHAR),
