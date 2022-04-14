@@ -30,7 +30,7 @@ namespace cublog
    *********************************************************************/
 
   template <typename T>
-  void atomic_replication_helper::add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa,
+  int atomic_replication_helper::add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa,
       LOG_RCVINDEX rcvindex, VPID vpid, log_rv_redo_context &redo_context, const log_rv_redo_rec_info<T> &record_info)
   {
 #if !defined (NDEBUG)
@@ -47,8 +47,14 @@ namespace cublog
       }
 
     iterator->second.emplace_back (atomic_unit (record_lsa, vpid, rcvindex));
-    iterator->second.back ().fix_page (thread_p);
+    int error_code = iterator->second.back ().fix_page (thread_p);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
+
     iterator->second.back ().apply_log_redo (thread_p, redo_context, record_info);
+    return NO_ERROR;
   }
 
 #if !defined (NDEBUG)
@@ -139,7 +145,7 @@ namespace cublog
     log_rv_redo_record_sync_apply (thread_p,redo_context, record_info, m_vpid, rcv);
   }
 
-  void atomic_replication_helper::atomic_replication_unit::fix_page (THREAD_ENTRY *thread_p)
+  int atomic_replication_helper::atomic_replication_unit::fix_page (THREAD_ENTRY *thread_p)
   {
     switch (m_record_index)
       {
@@ -157,8 +163,7 @@ namespace cublog
 	  {
 	    er_log_debug (ARG_FILE_LINE, "[ATOMIC REPLICATION] Unnable to apply ordered fix on page %d|%d.",
 			  VPID_AS_ARGS (&m_vpid));
-	    assert (false);
-	    return;
+	    return ER_FAILED;
 	  }
 	break;
       case RVHF_UPDATE_NOTIFY_VACUUM:
@@ -170,11 +175,12 @@ namespace cublog
 	if (m_page_ptr == nullptr)
 	  {
 	    er_log_debug (ARG_FILE_LINE, "[ATOMIC REPLICATION] Unnable to apply fix on page %d|%d.", VPID_AS_ARGS (&m_vpid));
-	    assert (false);
-	    return;
+	    return ER_FAILED;
 	  }
 	break;
       }
+
+    return NO_ERROR;
   }
 
   void atomic_replication_helper::atomic_replication_unit::unfix_page (THREAD_ENTRY *thread_p)
