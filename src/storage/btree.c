@@ -1461,9 +1461,10 @@ static int btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_
 						  VPID * ovfl_vpid);
 static int btree_modify_leaf_ovfl_vpid (THREAD_ENTRY * thread_p, const BTID_INT * btid_int,
 					BTREE_DELETE_HELPER * delete_helper, PAGE_PTR leaf_page, RECDES * leaf_record,
-					const BTREE_SEARCH_KEY_HELPER * search_key, VPID * next_ovfl_vpid);
+					const BTREE_SEARCH_KEY_HELPER * search_key, const VPID * next_ovfl_vpid);
 static int btree_modify_overflow_link (THREAD_ENTRY * thread_p, const BTID_INT * btid_int,
-				       BTREE_DELETE_HELPER * delete_helper, PAGE_PTR ovfl_page, VPID * next_ovfl_vpid);
+				       BTREE_DELETE_HELPER * delete_helper, PAGE_PTR ovfl_page,
+				       const VPID * next_ovfl_vpid);
 
 static DISK_ISVALID btree_repair_prev_link_by_btid (THREAD_ENTRY * thread_p, BTID * btid, bool repair,
 						    char *index_name);
@@ -9470,7 +9471,7 @@ exit_on_error:
 static int
 btree_modify_leaf_ovfl_vpid (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, BTREE_DELETE_HELPER * delete_helper,
 			     PAGE_PTR leaf_page, RECDES * leaf_record, const BTREE_SEARCH_KEY_HELPER * search_key,
-			     VPID * next_ovfl_vpid)
+			     const VPID * next_ovfl_vpid)
 {
   char rv_undo_data_buffer[BTREE_RV_BUFFER_SIZE + BTREE_MAX_ALIGN];
   char *rv_undo_data = PTR_ALIGN (rv_undo_data_buffer, BTREE_MAX_ALIGN);
@@ -9545,7 +9546,7 @@ btree_modify_leaf_ovfl_vpid (THREAD_ENTRY * thread_p, const BTID_INT * btid_int,
  */
 static int
 btree_modify_overflow_link (THREAD_ENTRY * thread_p, const BTID_INT * btid_int, BTREE_DELETE_HELPER * delete_helper,
-			    PAGE_PTR ovfl_page, VPID * next_ovfl_vpid)
+			    PAGE_PTR ovfl_page, const VPID * next_ovfl_vpid)
 {
   LOG_DATA_ADDR ovf_addr;
   BTREE_OVERFLOW_HEADER ovf_header_info;
