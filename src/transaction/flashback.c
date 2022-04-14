@@ -679,7 +679,7 @@ static int
 flashback_find_start_lsa (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * context)
 {
   LOG_PAGE *log_page_p = NULL;
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT] = "\0";
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
   int error = NO_ERROR;
 
@@ -689,6 +689,8 @@ flashback_find_start_lsa (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * c
   LOG_RECORD_HEADER *log_rec_header;
 
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+
+  log_page_p->hdr.logical_pageid = NULL_LOG_PAGEID;
 
   assert (!LSA_ISNULL (&context->end_lsa));
   LSA_COPY (&process_lsa, &context->end_lsa);
