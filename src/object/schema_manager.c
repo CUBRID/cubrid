@@ -3280,8 +3280,11 @@ sm_check_system_class_by_name (const char *name)
   };
   // *INDENT-ON*
 
+  static int count = sizeof (system_classes) / sizeof (system_classes[0]);
+
   char downcase_name[SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH] = { '\0' };
   int count = 0;
+  int len = 0;
   int i = 0;
 
   if (name == NULL || name[0] == '\0')
@@ -3312,9 +3315,15 @@ sm_check_system_class_by_name (const char *name)
       return false;
     }
 
+  len = strlen (downcase_name);
   count = sizeof (system_classes) / sizeof (system_classes[0]);
   for (i = 0; i < count; i++)
     {
+      if (len != system_classes[i].len)
+	{
+	  continue;
+	}
+
       if (strncmp (downcase_name, system_classes[i].name, system_classes[i].len) == 0)
 	{
 	  return true;
