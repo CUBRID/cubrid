@@ -35,6 +35,7 @@ namespace cublog
    */
   class atomic_replication_helper
   {
+      using atomic_replication_sequence_type = std::vector<atomic_replication_unit>;
     public:
       atomic_replication_helper () = default;
 
@@ -52,7 +53,7 @@ namespace cublog
       void unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, TRANID tranid);
       bool is_part_of_atomic_replication (TRANID tranid) const;
 #if !defined (NDEBUG)
-      bool is_page_part_of_atomic_replication_sequence (VPID vpid) const;
+      bool check_for_page_validity (VPID vpid, TRANID tranid) const;
 #endif
 
     private:
@@ -87,7 +88,7 @@ namespace cublog
 	  LOG_RCVINDEX m_record_index;
       };
 
-      std::map<TRANID, std::vector<atomic_replication_unit>> m_atomic_sequences_map;
+      std::map<TRANID, atomic_replication_sequence_type> m_atomic_sequences_map;
   };
 }
 
