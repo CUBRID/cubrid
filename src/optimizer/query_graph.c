@@ -1524,7 +1524,7 @@ qo_insert_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * node, QO_ENV * env,
 
   /* check is_not_null */
   entity = QO_NODE_ENTITY_SPEC (head);
-  if (pt_is_name_node (node) && !PT_SPEC_IS_DERIVED (entity))
+  if (pt_is_name_node (node) && PT_SPEC_IS_ENTITY (entity))
     {
       int i;
       bool found = false;
