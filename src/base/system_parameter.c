@@ -703,6 +703,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_THREAD_CORE_COUNT "thread_core_count"
 
 #define PRM_NAME_FLASHBACK_TIMEOUT "flashback_timeout"
+#define PRM_NAME_FLASHBACK_MAX_TRANSACTION "flashback_max_transaction"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2399,6 +2400,12 @@ static int prm_flashback_timeout_default = 300;
 static int prm_flashback_timeout_lower = 0;
 static int prm_flashback_timeout_upper = 3600;
 static unsigned int prm_flashback_timeout_flag = 0;
+
+int PRM_FLASHBACK_MAX_TRANSACTION = INT_MAX;
+static int prm_flashback_max_transaction_default = INT_MAX;
+static int prm_flashback_max_transaction_lower = 1;
+static int prm_flashback_max_transaction_upper = INT_MAX;
+static unsigned int prm_flashback_max_transaction_flag = 0;
 
 bool PRM_NO_USER_SPECIFIED_NAME = false;
 static const bool prm_no_user_specified_name_default = false;
@@ -6177,6 +6184,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_FLASHBACK_TIMEOUT,
    (void *) &prm_flashback_timeout_upper,
    (void *) &prm_flashback_timeout_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_FLASHBACK_MAX_TRANSACTION,
+   PRM_NAME_FLASHBACK_MAX_TRANSACTION,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_flashback_max_transaction_flag,
+   (void *) &prm_flashback_max_transaction_default,
+   (void *) &PRM_FLASHBACK_MAX_TRANSACTION,
+   (void *) &prm_flashback_max_transaction_upper,
+   (void *) &prm_flashback_max_transaction_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
