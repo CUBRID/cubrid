@@ -563,6 +563,7 @@ extern "C"
 
 /* query post-processing functions */
   extern int db_query_plan_dump_file (char *filename);
+  extern char *db_query_get_plan_dump_file ();
 
 /* sql query routines */
   extern DB_SESSION *db_open_buffer (const char *buffer);

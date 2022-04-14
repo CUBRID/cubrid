@@ -3573,6 +3573,16 @@ db_query_plan_dump_file (char *filename)
 }
 
 /*
+ * db_query_get_plan_dump_file() -
+ * return : query dump file
+ */
+char *
+db_query_get_plan_dump_file ()
+{
+  return query_Plan_dump_filename;
+}
+
+/*
  * db_set_execution_plan
  *   plan(in):
  *   length(in):
