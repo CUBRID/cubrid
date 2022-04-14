@@ -10223,6 +10223,38 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	  resolved_name = name->info.name.resolved;
 	}
     }
+  else if (PT_IS_SYNONYM_NODE (node))
+    {
+      if (node->node_type == PT_ALTER_SYNONYM || node->node_type == PT_CREATE_SYNONYM)
+	{
+	  PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)));
+	  if (pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)) == NULL
+	      && sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
+	    {
+	      PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, "dba");
+	    }
+	  else
+	    {
+	      PT_SYNONYM_TARGET_OWNER_NAME (node) =
+		pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)));
+	    }
+	}
+      else if (node->node_type == PT_DROP_SYNONYM)
+	{
+	  PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)));
+	}
+      else
+	{
+	  assert (node->node_type == PT_RENAME_SYNONYM);
+
+	  PT_SYNONYM_OLD_OWNER_NAME (node) =
+	    pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_OLD_NAME (node)));
+	  PT_SYNONYM_NEW_OWNER_NAME (node) =
+	    pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NEW_NAME (node)));
+	}
+
+      return node;
+    }
   else
     {
       return node;
@@ -10332,22 +10364,27 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 const char *
 pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * node)
 {
+  const char *name = NULL;
   char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
 
-  if (node == NULL || !PT_IS_NAME_NODE (node))
-    {
-      PT_ERROR (parser, node, "Invalid arguments.");
-      return NULL;
-    }
-
-  if (node->info.name.original == NULL || node->info.name.original[0] == '\0')
+  if (parser == NULL || node == NULL)
     {
       return NULL;
     }
 
-  if (sm_qualifier_name (node->info.name.original, qualifier_name, DB_MAX_USER_LENGTH) == NULL)
+  if (PT_IS_NAME_NODE (node) == false)
     {
-      return node->info.name.resolved;
+      return NULL;
+    }
+
+  if (PT_NAME_ORIGINAL (node) == NULL || (PT_NAME_ORIGINAL (node))[0] == '\0')
+    {
+      return NULL;
+    }
+
+  if (sm_qualifier_name (PT_NAME_ORIGINAL (node), qualifier_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      return PT_NAME_RESOLVED (node);
     }
 
   return pt_append_string (parser, NULL, qualifier_name);

@@ -1659,6 +1659,7 @@
 #define ER_CDC_NULL_EXTRACTION_LSA                  -1293
 #define ER_CDC_LOGINFO_ENTRY_GENERATED              -1294
 #define ER_CDC_IGNORE_LOG_INFO                      -1295
+
 #define ER_LOG_RECOVERY_ANALYSIS_STARTED            -1296
 #define ER_LOG_RECOVERY_REDO_STARTED                -1297
 #define ER_LOG_RECOVERY_UNDO_STARTED                -1298
@@ -1717,7 +1718,13 @@
 #define ER_QPROC_CREATE_SERIAL_NOT_OWNER            -1344
 #define ER_TR_CREATE_NOT_ALLOWED                    -1345
 
-#define ER_LAST_ERROR                               -1346
+#define ER_SYNONYM_PUBLIC_ALREADY_EXIST             -1346
+#define ER_SYNONYM_PUBLIC_NOT_EXIST                 -1347
+#define ER_SYNONYM_ALREADY_EXIST                    -1348
+#define ER_SYNONYM_NOT_EXIST                        -1349
+
+#define ER_LAST_ERROR                               -1350
+
 /*
  * CAUTION!
  *

@@ -904,7 +904,7 @@ $ LOADDB
 834 Kaynak dizesi arasında bazı uyumsuzluklar "%1$s" ve verilen "%2$s" biçim dizesi vardır to_number() .
 835 Tanımlanmamış istatistikler öğesi.
 836 SAYFASINDA LATCH (%1$d|%2$d) ZAMAN AŞIMI.
-837 Veritabanı nesneleri (sınıf / tetik / seri / sunucu vb) sahibi olan kullanıcılara aittir iptal edemezsiniz..
+837 Veritabanı nesneleri (sınıf / tetik / seri / sunucu / synonym vb) sahibi olan kullanıcılara aittir iptal edemezsiniz..
 838 Eşzamanlı olarak taranan indeksi %1$d den daha fazla açılamaz .
 839 "%1$s": Bilinmeyen sistem parametresi veya bozuk bir değer.
 840 Sistem parametresi değiştiremezsiniz "%1$s".
@@ -1424,7 +1424,12 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
 1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
 
-1346 Son Hata
+1346 Public synonym "%1$s" already exists.
+1347 Public synonym "%1$s" does not exist.
+1348 Synonym "%1$s" already exists.
+1349 Synonym "%1$s" does not exist.
+
+1350 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
@@ -1583,11 +1588,10 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 128 JSON_OBJECTAGG için bağımsız değişken sayısı geçersiz
 129 PARALLEL count argümanı %1$d ve %2$d arasında olmalıdır.
 130 dblink - Server name cannot contain periods.
-131 Yeniden adlandırmadan önce ve sonra farklı sahipler.\n  Yeniden adlandırma sahibi değiştiremez.
-132 Invalid alter synonym.\n  ALTER [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-133 Invalid create synonym.\n  CREATE [OR REPLACE] [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-134 Invalid drop synonym.\n  DROP [PUBLIC|PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
-135 Invalid rename synonym.\n  RENAME [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
+131 Invalid alter synonym.\n  ALTER [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+132 Invalid create synonym.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+133 Invalid drop synonym.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
+134 Invalid rename synonym.\n  RENAME [PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Bellek yetersiz.
@@ -1898,6 +1902,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 306 dblink - Gerekli bilgiler eksik.
 307 dblink - not supported type %1$s.
 308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
+309 Invalid synonym name "%1$s".\n  The system class/vclass name cannot be a synonym name.
+310 DBA, members of DBA group, and owner can perform %1$s.
+311 Public synonym "%1$s" already exists.
+312 Public synonym "%1$s" does not exist.
+313 Synonym "%1$s" already exists.
+314 Synonym "%1$s" does not exist.
+315 Rename cannot change owner.
+316 Rename cannot be changed to the same name.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.

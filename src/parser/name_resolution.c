@@ -6023,9 +6023,14 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_
 
 	  if (au_fetch_class (classop, &class_, fetchmode, type) == NO_ERROR)
 	    {
-	      if (intl_identifier_casecmp (class_name, class_->header.ch_name))
+	      /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
+	      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY
+		  && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
 		{
-		  name->info.name.original = pt_append_string (parser, NULL, class_->header.ch_name);
+		  if (intl_identifier_casecmp (class_name, class_->header.ch_name) != 0)
+		    {
+		      name->info.name.original = pt_append_string (parser, NULL, class_->header.ch_name);
+		    }
 		}
 
 	      if (class_->partition != NULL)

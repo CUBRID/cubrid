@@ -727,6 +727,32 @@ struct json_t;
           ( (n)->info.method_call.method_type == PT_SP_PROCEDURE || \
             (n)->info.method_call.method_type == PT_SP_FUNCTION) )
 
+/* PT_NAME_INFO */
+#define PT_NAME_ORIGINAL(n)		((n)->info.name.original)
+#define PT_NAME_RESOLVED(n)		((n)->info.name.resolved)
+
+/* PT_SYNONYM_INFO */
+#define PT_SYNONYM_NAME(n)		((n)->info.synonym.synonym_name)
+#define PT_SYNONYM_OWNER_NAME(n)	((n)->info.synonym.synonym_owner_name)
+#define PT_SYNONYM_OLD_NAME(n)		((n)->info.synonym.old_synonym_name)
+#define PT_SYNONYM_OLD_OWNER_NAME(n)	((n)->info.synonym.old_synonym_owner_name)
+#define PT_SYNONYM_NEW_NAME(n)		((n)->info.synonym.new_synonym_name)
+#define PT_SYNONYM_NEW_OWNER_NAME(n)	((n)->info.synonym.new_synonym_owner_name)
+#define PT_SYNONYM_TARGET_NAME(n)	((n)->info.synonym.target_name)
+#define PT_SYNONYM_TARGET_OWNER_NAME(n)	((n)->info.synonym.target_owner_name)
+#define PT_SYNONYM_COMMENT(n)		((n)->info.synonym.comment)
+#define PT_SYNONYM_COMMENT_STR(n)	((n)->info.synonym.comment->info.value.data_value.str)
+#define PT_SYNONYM_COMMENT_BYTES(n)	((n)->info.synonym.comment->info.value.data_value.str->bytes)
+#define PT_SYNONYM_ACCESS_MODIFIER(n)	((n)->info.synonym.access_modifier)
+#define PT_SYNONYM_OR_REPLACE(n)	((n)->info.synonym.or_replace)
+#define PT_SYNONYM_IF_EXISTS(n)		((n)->info.synonym.if_exists)
+
+#define PT_IS_SYNONYM_NODE(n) \
+	( (n)->node_type == PT_ALTER_SYNONYM || \
+	  (n)->node_type == PT_CREATE_SYNONYM || \
+	  (n)->node_type == PT_DROP_SYNONYM || \
+	  (n)->node_type == PT_RENAME_SYNONYM )
+
 /*
  Enumerated types of parse tree statements
   WARNING ------ WARNING ----- WARNING
@@ -1185,7 +1211,7 @@ typedef enum
   PT_PRIVATE,
   PT_PUBLIC,
   PT_SYNONYM
-  // todo: separate into relevant enumerations
+    // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 
 /* Enumerated join type */
@@ -1721,10 +1747,7 @@ typedef struct pt_json_table_info PT_JSON_TABLE_INFO;
 typedef struct pt_json_table_node_info PT_JSON_TABLE_NODE_INFO;
 typedef struct pt_json_table_column_info PT_JSON_TABLE_COLUMN_INFO;
 
-typedef struct pt_alter_synonym_info PT_ALTER_SYNONYM_INFO;
-typedef struct pt_create_synonym_info PT_CREATE_SYNONYM_INFO;
-typedef struct pt_drop_synonym_info PT_DROP_SYNONYM_INFO;
-typedef struct pt_rename_synonym_info PT_RENAME_SYNONYM_INFO;
+typedef struct pt_synonym_info PT_SYNONYM_INFO;
 
 typedef PT_NODE *(*PT_NODE_WALK_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree, void *arg, int *continue_walk);
 
@@ -3374,41 +3397,20 @@ typedef struct pt_rename_server_info
   PT_NODE *new_name;		/* PT_NAME */
 } PT_RENAME_SERVER_INFO;
 
-struct pt_alter_synonym_info
+struct pt_synonym_info
 {
-  PT_NODE *synonym_name;
-  PT_NODE *synonym_owner_name;
-  PT_NODE *target_name;
-  PT_NODE *target_owner_name;
-  PT_NODE *comment;
-  PT_MISC_TYPE access_modifier;
-};
-
-struct pt_create_synonym_info
-{
-  PT_NODE *synonym_name;
-  PT_NODE *synonym_owner_name;
-  PT_NODE *target_name;
-  PT_NODE *target_owner_name;
-  PT_NODE *comment;
-  PT_MISC_TYPE access_modifier;
-  bool or_replace;
-};
-
-struct pt_drop_synonym_info
-{
-  PT_NODE *synonym_list;
-  PT_MISC_TYPE access_modifier;
-  bool if_exists;
-};
-
-struct pt_rename_synonym_info
-{
-  PT_NODE *old_name;
-  PT_NODE *old_owner_name;
-  PT_NODE *new_name;
-  PT_NODE *new_owner_name;
-  PT_MISC_TYPE access_modifier;
+  PT_NODE *synonym_name;	/* PT_NAME */
+  PT_NODE *synonym_owner_name;	/* PT_NAME */
+  PT_NODE *old_synonym_name;	/* PT_NAME */
+  PT_NODE *old_synonym_owner_name;	/* PT_NAME */
+  PT_NODE *new_synonym_name;	/* PT_NAME */
+  PT_NODE *new_synonym_owner_name;	/* PT_NAME */
+  PT_NODE *target_name;		/* PT_NAME */
+  PT_NODE *target_owner_name;	/* PT_NAME */
+  PT_MISC_TYPE access_modifier;	/* PT_MISC_TYPE */
+  PT_NODE *comment;		/* PT_VALUE */
+  unsigned or_replace:1;	/* OR REPLACE clause for CREATE SYNONYM */
+  unsigned if_exists:1;		/* IF EXISTS clause for DROP SYNONYM */
 };
 
 /* Info field of the basic NODE
@@ -3504,6 +3506,7 @@ union pt_statement_info
   PT_STORED_PROC_INFO sp;
   PT_STORED_PROC_PARAM_INFO sp_param;
   PT_SPEC_INFO spec;
+  PT_SYNONYM_INFO synonym;
   PT_TABLE_OPTION_INFO table_option;
   PT_TIMEOUT_INFO timeout;
   PT_TRIGGER_ACTION_INFO trigger_action;
@@ -3520,10 +3523,6 @@ union pt_statement_info
   PT_TRACE_INFO trace;
   PT_KILLSTMT_INFO killstmt;
   PT_WITH_CLAUSE_INFO with_clause;
-  PT_ALTER_SYNONYM_INFO alter_synonym;
-  PT_CREATE_SYNONYM_INFO create_synonym;
-  PT_DROP_SYNONYM_INFO drop_synonym;
-  PT_RENAME_SYNONYM_INFO rename_synonym;
 };
 
 /*

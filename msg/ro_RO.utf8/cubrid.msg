@@ -904,7 +904,7 @@ $ LOADDB
 834 Există disconcordanţe între şirul de caractere sursă "%1$s" şi şirul de formatare "%2$s" date în to_number().
 835 Element de statistică necunoscut.
 836 Latch-ul pe pagina(%1$d|%2$d) a expirat.
-837 Un utilizator care deţine obiecte în baza de date(clase/declanşatori/seriale/server etc) nu poate fi şters.
+837 Un utilizator care deţine obiecte în baza de date(clase/declanşatori/seriale/server/synonym etc) nu poate fi şters.
 838 Nu se pot deschide simultan mai mult de %1$d indecşi.
 839 "%1$s": Parametru de sistem necunoscut sau valoare invalidă.
 840 Parametrul de sistem "%1$s" nu poate fi schimbat.
@@ -1424,7 +1424,12 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
 1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
 
-1346 Ultima eroare
+1346 Public synonym "%1$s" already exists.
+1347 Public synonym "%1$s" does not exist.
+1348 Synonym "%1$s" already exists.
+1349 Synonym "%1$s" does not exist.
+
+1350 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
@@ -1583,11 +1588,10 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 128 Număr invalid de argumente pentru JSON_OBJECTAGG
 129 Valoarea argumentului PARALLEL trebuie sa fie între %1$d and %2$d.
 130 dblink - Server name cannot contain periods.
-131 Diferenți proprietari înainte și după redenumire.\n  Redenumirea nu poate schimba proprietarul.
-132 Invalid alter synonym.\n  ALTER [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-133 Invalid create synonym.\n  CREATE [OR REPLACE] [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-134 Invalid drop synonym.\n  DROP [PUBLIC|PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
-135 Invalid rename synonym.\n  RENAME [PUBLIC|PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
+131 Invalid alter synonym.\n  ALTER [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+132 Invalid create synonym.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+133 Invalid drop synonym.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
+134 Invalid rename synonym.\n  RENAME [PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memorie epuizată.
@@ -1898,6 +1902,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 306 dblink - Informațiile necesare lipsesc.
 307 dblink - not supported type %1$s.
 308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
+309 Invalid synonym name "%1$s".\n  The system class/vclass name cannot be a synonym name.
+310 DBA, members of DBA group, and owner can perform %1$s.
+311 Public synonym "%1$s" already exists.
+312 Public synonym "%1$s" does not exist.
+313 Synonym "%1$s" already exists.
+314 Synonym "%1$s" does not exist.
+315 Rename cannot change owner.
+316 Rename cannot be changed to the same name.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %1$d bytes.

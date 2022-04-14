@@ -177,6 +177,7 @@ const char *AU_DBA_USER_NAME = "DBA";
          strcmp(name, CT_AUTHORIZATIONS_NAME) == 0 || \
 	 strcmp(name, CT_CHARSET_NAME) == 0 || \
          strcmp(name, CT_DB_SERVER_NAME) == 0 || \
+	 strcmp(name, CT_SYNONYM_NAME) == 0 || \
 	 strcmp(name, CT_DUAL_NAME) == 0)
 
 enum fetch_by
@@ -3433,12 +3434,12 @@ au_drop_user (MOP user)
   DB_SET *new_groups, *direct_groups;
   int g, gcard, i;
   DB_VALUE name;
-  const char *class_name[] = {
+  static const char *class_name[] = {
     /*
      * drop user command can be called only by DBA group,
      * so we can use query for _db_class directly
      */
-    "_db_class", "db_trigger", "db_serial", "_db_server", NULL
+    "_db_class", "db_trigger", "db_serial", "_db_server", "_db_synonym", NULL
   };
   char query_buf[1024];
 
@@ -3467,7 +3468,7 @@ au_drop_user (MOP user)
       goto error;
     }
 
-  /* check if user owns class/vclass/trigger/serial */
+  /* check if user owns class/vclass/trigger/serial/synonym */
   for (i = 0; class_name[i] != NULL; i++)
     {
       sprintf (query_buf, "select count(*) from [%s] where [owner] = ?;", class_name[i]);
@@ -9282,10 +9283,12 @@ au_check_serial_authorization (MOP serial_object)
   int ret_val;
 
   ret_val = db_get (serial_object, "owner", &creator_val);
-  if (ret_val != NO_ERROR || DB_IS_NULL (&creator_val))
+  if (ret_val != NO_ERROR)
     {
       return ret_val;
     }
+
+  assert (!DB_IS_NULL (&creator_val));
 
   ret_val = au_check_owner (&creator_val);
   if (ret_val != NO_ERROR)
