@@ -1527,6 +1527,7 @@ qo_insert_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * node, QO_ENV * env,
   if (pt_is_name_node (node) && !PT_SPEC_IS_DERIVED (entity))
     {
       int i;
+      bool found = false;
       cls = sm_find_class (entity->info.spec.entity_name->info.name.original);
       constraints = sm_class_constraints (cls);
 
@@ -1545,8 +1546,13 @@ qo_insert_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * node, QO_ENV * env,
 	      if (intl_identifier_casecmp (node->info.name.original, attrp->header.name) == 0)
 		{
 		  QO_SEG_IS_NOT_NULL (seg) = true;
+		  found = true;
 		  break;
 		}
+	    }
+	  if (found)
+	    {
+	      break;
 	    }
 	  constraints = constraints->next;
 	}
