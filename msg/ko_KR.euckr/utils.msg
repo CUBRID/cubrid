@@ -152,6 +152,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     service\n\
     server\n\
     broker\n\
+    gateway\n\
     manager\n\
     heartbeat\n\
     javasp\n\
@@ -265,6 +266,18 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     stop        [데이터베이스 이름]\n\
     restart     [데이터베이스 이름]\n\
     status      [데이터베이스 이름]\n
+45 cubrid 유틸리티, 버전 %1$s\n\
+사용법: %2$s gateway <명령어> [인자]\n\
+\n\
+가용한 명령어:\n\
+    start\n\
+    stop\n\
+    restart\n\
+    info\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
+    on          <게이트웨이 이름>\n\
+    off         <게이트웨이 이름>\n\
+    reset       <게이트웨이 이름>\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 경고: -t 옵션은 독립 실행 모드에서는 무시 됩니다.\n
@@ -471,7 +484,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 119 전체 %1$8d 오브젝트 검사, %2$d 오브젝트 실패.\n
 120 데이터 파일이 '%%class'을 포함하거나 '--table' 옵션이 주어져야 합니다.\n
 121 무시된 테이블 %1$s.\n
-122 \
+122 사용자 이름의 최대 길이는 %1$d 바이트 입니다.\n
+123 \
 loaddb: 데이터베이스에 객체 및 스키마 적재\n\
 사용법: %1$s loaddb [옵션] 데이터베이스 이름[@호스트]\n\
 \n\
@@ -493,7 +507,9 @@ loaddb: 데이터베이스에 객체 및 스키마 적재\n\
   -d, --data-file=FILE           적재할 데이터 파일\n\
   -t, --table=TABLE              데이터를 적재할 테이블 이름; 데이터 파일에 테이블 정보가 없는 경우 사용\n\
       --error-control-file=FILE  적재 시 발생하는 에러에 대한 제어 파일\n\
-      --ignore-class-file=FILE   적재하지 않을 클래스 이름이 있는 파일\n
+      --ignore-class-file=FILE   적재하지 않을 클래스 이름이 있는 파일\n\
+      --no-user-specified-name   소유자 이름 없이 객체 이름으로 CLASS, SERIAL 및 TRIGGER를 찾음.\n\
+                                 CUBRID 11.2 전 버전에서 생성된 파일을 불러오기 위함.\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
@@ -506,6 +522,9 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 47 출력 디렉터리 이름이 너무 깁니다.\n
 48 LSA : %1$d %2$d \n
 49 패스워드:
+50 클래스 이름의 최대 길이는 %1$d 바이트 입니다.\n
+51 사용자 이름의 최대 길이는 %1$d 바이트 입니다.\n
+52 클래스 %1$s를 찾을 수 없습니다.\n
 60 \
 unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
 사용법: %1$s unloaddb [옵션] <데이터베이스 이름>\n\
@@ -571,6 +590,8 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 44 Pass 3\n\n
 45 힙 공간 정리에 실패했습니다.\n
 46 힙 공간 정리에 성공했습니다.\n
+47 클래스 이름의 최대 길이는 %1$d 바이트 입니다.\n
+48 사용자 이름의 최대 길이는 %1$d 바이트 입니다.\n
 60 \
 compactdb: 데이터베이스에서 사용되지 않는 영역을 해제.\n\
 사용법: %1$s compactdb [옵션] <데이터베이스 이름> [테이블1 테이블2 ...]\n\

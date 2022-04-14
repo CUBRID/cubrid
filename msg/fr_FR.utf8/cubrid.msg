@@ -1391,19 +1391,19 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1317 dblink - Not allowed "%1$s" Server.
 
 1318 [%1$5.5s][%2$d] %3$s
-1319 Parameter binding error.
-1320 Invalid ODBC handle.
-1321 Type conversion error.
-1322 Not supported data type.
-1323 Invalid Statement handle.
-1324 Invalid db connection handle.
-1325 Link server connection url do not exist.
-1326 Invalid numeric value.
-1327 Invalid precision value of "%1$s" column.
+1319 dblink - Parameter binding error.
+1320 dblink - Invalid ODBC handle.
+1321 dblink - Type conversion error.
+1322 dblink - not supported type %1$s(%2$d).
+1323 dblink - Invalid Statement handle.
+1324 dblink - Invalid db connection handle.
+1325 dblink - Link server connection url do not exist.
+1326 dblink - Invalid numeric value.
+1327 dblink - Invalid precision value of "%1$s" column.
 
-1328 Invalid Descriptor handle.
-1329 Not supported dbms.
-1330 Unable to allocate an environment handle.
+1328 dblink - Invalid Descriptor handle.
+1329 dblink - Not supported dbms.
+1330 dblink - Unable to allocate an environment handle.
 1331 Error reserved for dblink development.
 
 1332 Le volume de journal actif (%1$s) est trop sain pour être recréé. Si vous supprimez le journal actif, cela peut provoquer un problème inattendu et irréversible.
@@ -1418,7 +1418,13 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1339 Type d'argument de procédure stockée non pris en charge: %1$s
 1340 Type de retour de procédure stockée non pris en charge: %1$s
 
-1341 Dernière erreur
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
@@ -1886,6 +1892,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 305 La signature %1$s n'est pas compatible avec les arguments de la fonction.
 306 dblink - Les informations requises sont manquantes.
 307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Mémoire virtuelle épuisée: impossible d'allouer %1$d octets.

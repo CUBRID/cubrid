@@ -53,7 +53,11 @@
 
 #include "ini_parser.h"
 
+#if defined (FOR_ODBC_GATEWAY)
+#define DEFAULT_ADMIN_LOG_FILE		"log/gateway/cubrid_gateway.log"
+#else
 #define DEFAULT_ADMIN_LOG_FILE		"log/broker/cubrid_broker.log"
+#endif
 #define DEFAULT_SESSION_TIMEOUT		"5min"
 #define DEFAULT_MAX_QUERY_TIMEOUT       "0"
 #define DEFAULT_MYSQL_READ_TIMEOUT      "0"
@@ -176,7 +180,11 @@ static T_CONF_TABLE tbl_proxy_log_mode[] = {
   {NULL, 0}
 };
 
+#if defined (FOR_ODBC_GATEWAY)
+static const char SECTION_NAME[] = "gateway";
+#else
 static const char SECTION_NAME[] = "broker";
+#endif
 
 static const char *tbl_conf_err_msg[] = {
   "",
@@ -241,11 +249,13 @@ const char *broker_keywords[] = {
   "SQL_LOG_MAX_SIZE",
   "SERVICE",
   "SSL",
+#if defined (FOR_ODBC_GATEWAY)
   "CGW_LINK_SERVER",
   "CGW_LINK_SERVER_IP",
   "CGW_LINK_SERVER_PORT",
   "CGW_LINK_ODBC_DRIVER_NAME",
   "CGW_LINK_CONNECT_URL_PROPERTY",
+#endif
   "SOURCE_ENV",
   /* Below is a keyword referenced from the source code, although it is not in the manual. */
   "APPL_SERVER",
@@ -521,7 +531,11 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 
       if (!found)
 	{
+#if defined(FOR_ODBC_GATEWAY)
+	  PRINTERROR ("cubrid_gateway.conf: invalid keyword '%s' (%d)\n", key, ini->lineno[i]);
+#else
 	  PRINTERROR ("cubrid_broker.conf: invalid keyword '%s' (%d)\n", key, ini->lineno[i]);
+#endif
 	  ini_parser_free (ini);
 	  return -1;
 	}
@@ -613,7 +627,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
-
+#if defined (FOR_ODBC_GATEWAY)
       INI_GETSTR_CHK (s, ini, sec_name, "CGW_LINK_SERVER", DEFAULT_EMPTY_STRING, &lineno);
       strcpy (br_info[num_brs].cgw_link_server, s);
 
@@ -628,7 +642,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 
       INI_GETSTR_CHK (s, ini, sec_name, "CGW_LINK_CONNECT_URL_PROPERTY", DEFAULT_EMPTY_STRING, &lineno);
       strcpy (br_info[num_brs].cgw_link_connect_url_property, s);
-
+#endif
       INI_GETSTR_CHK (s, ini, sec_name, "APPL_SERVER", DEFAULT_APPL_SERVER, &lineno);
       br_info[num_brs].appl_server = get_conf_value (s, tbl_appl_server);
       if (br_info[num_brs].appl_server < 0)
@@ -1422,7 +1436,11 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
   if (is_first_br_conf_read)
     {
       memset (&br_conf_info, 0, sizeof (br_conf_info));
+#if defined (FOR_ODBC_GATEWAY)
+      if (get_cubrid_file (FID_CUBRID_GATEWAY_CONF, default_conf_file_path, BROKER_PATH_MAX) != NULL)
+#else
       if (get_cubrid_file (FID_CUBRID_BROKER_CONF, default_conf_file_path, BROKER_PATH_MAX) != NULL)
+#endif
 	{
 	  basename_r (default_conf_file_path, file_name, BROKER_PATH_MAX);
 	}
@@ -1493,8 +1511,13 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
   if (br_info == NULL || num_broker <= 0 || num_broker > MAX_BROKER_NUM || br_shm_id <= 0)
     return;
 
+#if defined(FOR_ODBC_GATEWAY)
+  fprintf (fp, "#\n# cubrid_gateway.conf\n#\n\n");
+  fprintf (fp, "# gateway parameters were loaded from the files\n");
+#else
   fprintf (fp, "#\n# cubrid_broker.conf\n#\n\n");
   fprintf (fp, "# broker parameters were loaded from the files\n");
+#endif
 
   for (i = 0; i < MAX_NUM_OF_CONF_FILE_LOADED; i++)
     {
@@ -1504,9 +1527,15 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 	}
     }
 
+#if defined(FOR_ODBC_GATEWAY)
+  fprintf (fp, "\n# gateway parameters\n");
+
+  fprintf (fp, "[gateway]\n");
+#else
   fprintf (fp, "\n# broker parameters\n");
 
   fprintf (fp, "[broker]\n");
+#endif
   fprintf (fp, "MASTER_SHM_ID\t=%x\n\n", br_shm_id);
 
   for (i = 0; i < num_broker; i++)
@@ -1679,11 +1708,13 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 	  fprintf (fp, "REJECT_CLIENT_FLAG\t=%s\n", tmp_str);
 	}
 
+#if defined (FOR_ODBC_GATEWAY)
       fprintf (fp, "CGW_LINK_SERVER\t\t=%s\n", br_info[i].cgw_link_server);
       fprintf (fp, "CGW_LINK_SERVER_IP\t=%s\n", br_info[i].cgw_link_server_ip);
       fprintf (fp, "CGW_LINK_SERVER_PORT\t=%s\n", br_info[i].cgw_link_server_port);
       fprintf (fp, "CGW_LINK_ODBC_DRIVER_NAME\t=%s\n", br_info[i].cgw_link_odbc_driver_name);
       fprintf (fp, "CGW_LINK_CONNECT_URL_PROPERTY\t=%s\n", br_info[i].cgw_link_connect_url_property);
+#endif
 
       if (br_info[i].shard_flag == OFF)
 	{

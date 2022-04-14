@@ -421,7 +421,9 @@ typedef enum
   COMPACTDB_MSG_RECLAIM_ERROR = 43,
   COMPACTDB_MSG_PASS3 = 44,
   COMPACTDB_MSG_HEAP_COMPACT_FAILED = 45,
-  COMPACTDB_MSG_HEAP_COMPACT_SUCCEEDED = 46
+  COMPACTDB_MSG_HEAP_COMPACT_SUCCEEDED = 46,
+  COMPACTDB_MSG_EXCEED_MAX_LEN = 47,
+  COMPACTDB_MSG_EXCEED_MAX_USER_LEN = 48
 } MSGCAT_COMPACTDB_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_UNLOADDB */
@@ -433,7 +435,10 @@ typedef enum
   UNLOADDB_MSG_OBJECTS_FAILED = 46,
   UNLOADDB_MSG_INVALID_DIR_NAME = 47,
   UNLOADDB_MSG_LOG_LSA = 48,
-  UNLOADDB_MSG_PASSWORD_PROMPT = 49
+  UNLOADDB_MSG_PASSWORD_PROMPT = 49,
+  UNLOADDB_MSG_EXCEED_MAX_LEN = 50,
+  UNLOADDB_MSG_EXCEED_MAX_USER_LEN = 51,
+  UNLOADDB_MSG_CLASS_NOT_FOUND = 52
 } MSGCAT_UNLOADDB_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_LOADDB */
@@ -493,8 +498,9 @@ typedef enum
   LOADDB_MSG_OBJECTS_SYNTAX_CHECKED = 119,
   LOADDB_MSG_TABLE_IS_MISSING = 120,
   LOADDB_MSG_IGNORED_CLASS = 121,
+  LOADDB_MSG_EXCEED_MAX_USER_LEN = 122,
 
-  LOADDB_MSG_USAGE = 122
+  LOADDB_MSG_USAGE = 123
 } MSGCAT_LOADDB_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_MIGDB */
@@ -849,7 +855,9 @@ typedef struct _ha_config
 #define UTIL_COMMDB_NAME        "cub_commdb" UTIL_EXE_EXT
 #define UTIL_CUBRID_NAME        "cub_server" UTIL_EXE_EXT
 #define UTIL_BROKER_NAME        "cubrid_broker" UTIL_EXE_EXT
+#define UTIL_GATEWAY_NAME       "cubrid_gateway" UTIL_EXE_EXT
 #define UTIL_MONITOR_NAME       "broker_monitor" UTIL_EXE_EXT
+#define UTIL_GATEWAY_MONITOR_NAME       "gateway_monitor" UTIL_EXE_EXT
 #define UTIL_TESTER_NAME        "broker_tester" UTIL_EXE_EXT
 #define UTIL_CUB_MANAGER_NAME   "cub_manager" UTIL_EXE_EXT
 #define UTIL_ADMIN_NAME         "cub_admin" UTIL_EXE_EXT
@@ -870,6 +878,7 @@ typedef struct _ha_config
 #define PRINT_MASTER_NAME       "cubrid master"
 #define PRINT_SERVER_NAME       "cubrid server"
 #define PRINT_BROKER_NAME       "cubrid broker"
+#define PRINT_GATEWAY_NAME      "cubrid gateway"
 #define PRINT_MANAGER_NAME      "cubrid manager server"
 #define PRINT_HEARTBEAT_NAME    "cubrid heartbeat"
 #define PRINT_JAVASP_NAME       "cubrid javasp"
@@ -877,6 +886,7 @@ typedef struct _ha_config
 
 #define PRINT_CMD_SERVICE       "service"
 #define PRINT_CMD_BROKER        "broker"
+#define PRINT_CMD_GATEWAY       "gateway"
 #define PRINT_CMD_MANAGER       "manager"
 #define PRINT_CMD_SERVER        "server"
 #define PRINT_CMD_JAVASP        "javasp"
@@ -930,6 +940,7 @@ typedef struct _ha_config
 #define MASK_SERVER             0x02
 #define MASK_BROKER             0x04
 #define MASK_MANAGER            0x08
+#define MASK_GATEWAY            0x10
 #define MASK_ADMIN              0x20
 #define MASK_HEARTBEAT          0x40
 #define MASK_JAVASP             0x80
@@ -1297,6 +1308,8 @@ typedef struct _ha_config
 #define LOAD_TABLE_NAME_L                       "table"
 #define LOAD_COMPARE_STORAGE_ORDER_S            11820
 #define LOAD_COMPARE_STORAGE_ORDER_L            "compare-storage-order"
+#define LOAD_NO_USER_SPECIFIED_NAME_S           11825
+#define LOAD_NO_USER_SPECIFIED_NAME_L           "no-user-specified-name"
 
 /* unloaddb option list */
 #define UNLOAD_INPUT_CLASS_FILE_S               'i'

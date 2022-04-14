@@ -3573,10 +3573,12 @@ put_class_varinfo (OR_BUF * buf, SM_CLASS * class_)
 
   /* compute the variable offsets relative to the end of the header (beginning of variable table) */
   offset = tf_Metaclass_class.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_class.mc_n_variable);
+
   /* name */
   or_put_offset (buf, offset);
 
   offset += string_disk_size (sm_ch_name ((MOBJ) class_));
+
   or_put_offset (buf, offset);
 
   offset += string_disk_size (class_->loader_commands);
@@ -3698,6 +3700,7 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
 
   /* 0: NAME */
   put_string (buf, sm_ch_name ((MOBJ) class_));
+
   put_string (buf, class_->loader_commands);
 
   put_substructure_set (buf, (DB_LIST *) class_->representations, representation_to_disk_lwriter,

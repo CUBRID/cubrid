@@ -527,6 +527,10 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   /* login */
   if (!args.user_name.empty () || !dba_mode)
     {
+      if (strcasecmp (args.user_name.c_str (), "DBA") == 0)
+	{
+	  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+	}
       (void) db_login (args.user_name.c_str (), args.password.c_str ());
       error = db_restart (arg->command_name, true, args.volume.c_str ());
       if (error != NO_ERROR)
@@ -543,6 +547,11 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	      (void) db_login (args.user_name.c_str (), passwd);
 	      error = db_restart (arg->command_name, true, args.volume.c_str ());
 	    }
+	}
+
+      if (args.no_user_specified_name)
+	{
+	  prm_set_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME, true);
 	}
     }
   else
@@ -975,8 +984,6 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 
   util_arm_signal_handlers (&ldr_exec_query_interrupt_handler, &ldr_exec_query_interrupt_handler);
 
-  logddl_set_start_time (NULL);
-
   while (true)
     {
       if (interrupt_query)
@@ -1125,6 +1132,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->compare_storage_order = utility_get_option_bool_value (arg_map, LOAD_COMPARE_STORAGE_ORDER_S);
   args->table_name = table_name ? table_name : empty;
   args->ignore_class_file = ignore_class_file ? ignore_class_file : empty;
+  args->no_user_specified_name = utility_get_option_bool_value (arg_map, LOAD_NO_USER_SPECIFIED_NAME_S);
 }
 
 static void

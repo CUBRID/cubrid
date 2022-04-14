@@ -17429,11 +17429,6 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	}
       fputs ("\nQuery plan:\n", query_Plan_dump_fp);
       qo_plan_dump (plan, query_Plan_dump_fp);
-
-      {
-	extern void print_hint_dump (FILE * fp);
-	print_hint_dump (query_Plan_dump_fp);
-      }
     }
 
   if (dump_plan == true)
@@ -17449,6 +17444,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	{
 	  save_custom = parser->custom_print;
 	  parser->custom_print |= PT_CONVERT_RANGE;
+	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
 	  fprintf (query_Plan_dump_fp, "\nQuery stmt:%s\n\n%s\n\n", ((hint_ignored) ? " [Warning: HINT ignored]" : ""),
 		   parser_print_tree (parser, select_node));
 	  parser->custom_print = save_custom;
@@ -19867,6 +19863,7 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 {
   PT_NODE *statement = NULL, *from_temp = NULL, *node = NULL;
   PT_NODE *save_next = NULL, *spec = NULL;
+  unsigned int save_custom;
 
   assert (parser != NULL);
 
@@ -19894,11 +19891,14 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 
 	  PT_NODE *lhs, *rhs;
 
+	  save_custom = parser->custom_print;
+	  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
 	  for (rhs = statement->info.query.q.select.list, lhs = select_names;
 	       rhs != NULL && lhs != NULL; rhs = rhs->next, lhs = lhs->next)
 	    {
 	      rhs->alias_print = parser_print_tree (parser, lhs);
 	    }
+	  parser->custom_print = save_custom;
 	}
 
       statement->info.query.q.select.from = parser_copy_tree_list (parser, from);

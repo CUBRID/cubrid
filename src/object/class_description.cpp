@@ -289,7 +289,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
        * this->name is set to the exact class name
        */
       sb.clear ();
-      sb ("[%s]", sm_ch_name ((MOBJ) class_));
+      sb ("[%s]", sm_remove_qualifier_name (sm_ch_name ((MOBJ) class_)));
       this->name = object_print::copy_string (sb.get_buffer ());
     }
 

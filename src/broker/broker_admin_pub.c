@@ -256,7 +256,11 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 
   if (br_num <= 0)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      strcpy (admin_err_msg, "Cannot start CUBRID Gateway. (number of gateway is 0)");
+#else
       strcpy (admin_err_msg, "Cannot start CUBRID Broker. (number of broker is 0)");
+#endif
       return -1;
     }
   chdir ("..");
@@ -302,7 +306,11 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 
   if (shm_br == NULL)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      strcpy (admin_err_msg, "failed to initialize gateway shared memory");
+#else
       strcpy (admin_err_msg, "failed to initialize broker shared memory");
+#endif
       return -1;
     }
 
@@ -471,7 +479,11 @@ admin_stop_cmd (int master_shm_id)
 #if !defined(WINDOWS)
   if (shm_br->owner_uid != getuid ())
     {
+#if defined(FOR_ODBC_GATEWAY)
+      strcpy (admin_err_msg, "Cannot stop CUBRID Gateway. (Not owner)\n");
+#else
       strcpy (admin_err_msg, "Cannot stop CUBRID Broker. (Not owner)\n");
+#endif
       return -1;
     }
 #endif /* WINDOWS */
@@ -485,7 +497,11 @@ admin_stop_cmd (int master_shm_id)
 	  res = br_inactivate (&(shm_br->br_info[i]));
 	  if (res < 0)
 	    {
+#if defined(FOR_ODBC_GATEWAY)
+	      sprintf (admin_err_msg, "Cannot inactivate gateway [%s]", shm_br->br_info[i].name);
+#else
 	      sprintf (admin_err_msg, "Cannot inactivate broker [%s]", shm_br->br_info[i].name);
+#endif
 	      uw_shm_detach (shm_br);
 	      return -1;
 	    }
@@ -539,7 +555,11 @@ admin_add_cmd (int master_shm_id, const char *broker)
     }
   if (br_index < 0)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Cannot find gateway [%s]", broker);
+#else
       sprintf (admin_err_msg, "Cannot find broker [%s]", broker);
+#endif
       uw_shm_detach (shm_br);
       return -1;
     }
@@ -623,7 +643,11 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
     }
   if (br_index < 0)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Cannot find gateway [%s]\n", broker);
+#else
       sprintf (admin_err_msg, "Cannot find broker [%s]\n", broker);
+#endif
       goto restart_error;
     }
   if (shm_br->br_info[br_index].shard_flag == ON)
@@ -806,7 +830,11 @@ admin_drop_cmd (int master_shm_id, const char *broker)
     }
   if (br_index < 0)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Cannot find gateway [%s]", broker);
+#else
       sprintf (admin_err_msg, "Cannot find broker [%s]", broker);
+#endif
       uw_shm_detach (shm_br);
       return -1;
     }
@@ -895,7 +923,11 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
 	{
 	  if (shm_br->br_info[i].service_flag == ON)
 	    {
+#if defined(FOR_ODBC_GATEWAY)
+	      sprintf (admin_err_msg, "Gateway[%s] is already running", broker_name);
+#else
 	      sprintf (admin_err_msg, "Broker[%s] is already running", broker_name);
+#endif
 	      uw_shm_detach (shm_br);
 	      return -1;
 	    }
@@ -980,8 +1012,11 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
 
   if (i >= shm_br->num_broker)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Cannot find gateway [%s]", broker_name);
+#else
       sprintf (admin_err_msg, "Cannot find broker [%s]", broker_name);
-
+#endif
       res = -1;
     }
 
@@ -1014,7 +1049,11 @@ admin_off_cmd (int master_shm_id, const char *broker_name)
 #if !defined(WINDOWS)
   if (shm_br->owner_uid != getuid ())
     {
+#if defined(FOR_ODBC_GATEWAY)
+      strcpy (admin_err_msg, "Cannot stop gateway. (Not owner)");
+#else
       strcpy (admin_err_msg, "Cannot stop broker. (Not owner)");
+#endif
       return -1;
     }
 #endif /* !WINDOWS */
@@ -1025,7 +1064,11 @@ admin_off_cmd (int master_shm_id, const char *broker_name)
 	{
 	  if (shm_br->br_info[i].service_flag == OFF)
 	    {
+#if defined(FOR_ODBC_GATEWAY)
+	      sprintf (admin_err_msg, "Gateway[%s] is not running", broker_name);
+#else
 	      sprintf (admin_err_msg, "Broker[%s] is not running", broker_name);
+#endif
 	      uw_shm_detach (shm_br);
 	      return -1;
 	    }
@@ -1034,7 +1077,11 @@ admin_off_cmd (int master_shm_id, const char *broker_name)
 	      res = br_inactivate (&(shm_br->br_info[i]));
 	      if (res < 0)
 		{
+#if defined(FOR_ODBC_GATEWAY)
+		  sprintf (admin_err_msg, "Cannot inactivate gateway [%s]", broker_name);
+#else
 		  sprintf (admin_err_msg, "Cannot inactivate broker [%s]", broker_name);
+#endif
 		  uw_shm_detach (shm_br);
 		  return -1;
 		}
@@ -1053,7 +1100,11 @@ admin_off_cmd (int master_shm_id, const char *broker_name)
 
   if (i >= shm_br->num_broker)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Cannot find gateway [%s]", broker_name);
+#else
       sprintf (admin_err_msg, "Cannot find broker [%s]", broker_name);
+#endif
       uw_shm_detach (shm_br);
       return -1;
     }
@@ -1087,7 +1138,11 @@ admin_reset_cmd (int master_shm_id, const char *broker_name)
 	{
 	  if (shm_br->br_info[i].service_flag == OFF)
 	    {
+#if defined(FOR_ODBC_GATEWAY)
+	      sprintf (admin_err_msg, "Gateway[%s] is not running", broker_name);
+#else
 	      sprintf (admin_err_msg, "Broker[%s] is not running", broker_name);
+#endif
 	      uw_shm_detach (shm_br);
 	      return -1;
 	    }
@@ -1101,7 +1156,11 @@ admin_reset_cmd (int master_shm_id, const char *broker_name)
 
   if (br_index < 0)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Cannot find gateway [%s]", broker_name);
+#else
       sprintf (admin_err_msg, "Cannot find broker [%s]", broker_name);
+#endif
       uw_shm_detach (shm_br);
       return -1;
     }
@@ -1264,8 +1323,13 @@ make_sp_value (SP_VALUE * value_p, char *shard_key)
 static void
 print_usage (void)
 {
+#if defined(FOR_ODBC_GATEWAY)
+  printf ("shard_getid -b <gateway-name> [-f] shard-key\n");
+  printf ("\t-b shard gateway name\n");
+#else
   printf ("shard_getid -b <broker-name> [-f] shard-key\n");
   printf ("\t-b shard broker name\n");
+#endif
   printf ("\t-f full information\n");
 }
 
@@ -1324,7 +1388,11 @@ admin_getid_cmd (int master_shm_id, int argc, const char **argv)
 
   if (strcmp (broker_name, "") == 0)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Gateway name is null.\n");
+#else
       sprintf (admin_err_msg, "Broker name is null.\n");
+#endif
       print_usage ();
       goto getid_error;
     }
@@ -1343,7 +1411,11 @@ admin_getid_cmd (int master_shm_id, int argc, const char **argv)
 	{
 	  if (shm_br->br_info[i].service_flag == OFF)
 	    {
+#if defined(FOR_ODBC_GATEWAY)
+	      sprintf (admin_err_msg, "Gateway [%s] is not running.\n", broker_name);
+#else
 	      sprintf (admin_err_msg, "Broker [%s] is not running.\n", broker_name);
+#endif
 	      goto getid_error;
 	    }
 	  else
@@ -1356,7 +1428,11 @@ admin_getid_cmd (int master_shm_id, int argc, const char **argv)
 
   if (br_index < 0)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Cannot find shard gateway [%s].\n", broker_name);
+#else
       sprintf (admin_err_msg, "Cannot find shard broker [%s].\n", broker_name);
+#endif
       goto getid_error;
     }
 
@@ -1538,7 +1614,11 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
   shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
   if (shm_br == NULL)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Gateway is not started.");
+#else
       sprintf (admin_err_msg, "Broker is not started.");
+#endif
       goto set_conf_error;
     }
 
@@ -1553,13 +1633,21 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
     }
   if (br_index < 0)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Cannot find Gateway [%s]", br_name);
+#else
       sprintf (admin_err_msg, "Cannot find Broker [%s]", br_name);
+#endif
       goto set_conf_error;
     }
 
   if (shm_br->br_info[br_index].service_flag == OFF)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Gateway [%s] is not running.", br_name);
+#else
       sprintf (admin_err_msg, "Broker [%s] is not running.", br_name);
+#endif
       goto set_conf_error;
     }
 
@@ -2574,7 +2662,11 @@ admin_acl_status_cmd (int master_shm_id, const char *broker_name)
 	}
       if (br_index == -1)
 	{
+#if defined(FOR_ODBC_GATEWAY)
+	  sprintf (admin_err_msg, "Cannot find gateway [%s]\n", broker_name);
+#else
 	  sprintf (admin_err_msg, "Cannot find broker [%s]\n", broker_name);
+#endif
 	  uw_shm_detach (shm_br);
 	  return -1;
 	}
@@ -2769,7 +2861,11 @@ admin_acl_reload_cmd (int master_shm_id, const char *broker_name)
 	}
       if (br_index == -1)
 	{
+#if defined(FOR_ODBC_GATEWAY)
+	  sprintf (admin_err_msg, "Cannot find gateway [%s]\n", broker_name);
+#else
 	  sprintf (admin_err_msg, "Cannot find broker [%s]\n", broker_name);
+#endif
 	  uw_shm_detach (shm_br);
 	  return -1;
 	}
@@ -2928,7 +3024,11 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id, T_SHM_BROKER * shm_br)
 
       if (IS_APPL_SERVER_TYPE_CAS (br_info->appl_server))
 	{
+#if defined(FOR_ODBC_GATEWAY)
+	  broker_exe_name = NAME_CAS_GATEWAY;
+#else
 	  broker_exe_name = NAME_CAS_BROKER;
+#endif
 	}
       else
 	{
@@ -3526,6 +3626,7 @@ static char **
 make_env (char *env_file, int *env_num)
 {
   char **env = NULL;
+  char **new_env = NULL;
   int num, read_num;
   FILE *env_fp;
   char read_buf[BUFSIZ], col1[128], col2[128];
@@ -3550,11 +3651,24 @@ make_env (char *env_file, int *env_num)
 	continue;
 
       if (env == NULL)
-	env = (char **) malloc (sizeof (char *));
+	{
+	  env = (char **) malloc (sizeof (char *));
+	  if (env == NULL)
+	    break;
+	}
       else
-	env = (char **) realloc (env, sizeof (char *) * (num + 1));
-      if (env == NULL)
-	break;
+	{
+	  new_env = (char **) realloc (env, sizeof (char *) * (num + 1));
+	  if (new_env == NULL)
+	    {
+	      for (num--; num >= 0; num--)
+		FREE_MEM (env[num]);
+	      FREE_MEM (env);
+	      env = NULL;
+	      break;
+	    }
+	  env = new_env;
+	}
 
       env[num] = (char *) malloc (strlen (col1) + strlen (col2) + 2);
       if (env[num] == NULL)
