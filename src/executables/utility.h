@@ -1308,8 +1308,6 @@ typedef struct _ha_config
 #define LOAD_TABLE_NAME_L                       "table"
 #define LOAD_COMPARE_STORAGE_ORDER_S            11820
 #define LOAD_COMPARE_STORAGE_ORDER_L            "compare-storage-order"
-#define LOAD_CS_FORCE_LOAD_S                    11824
-#define LOAD_CS_FORCE_LOAD_L                    "force-load"
 #define LOAD_NO_USER_SPECIFIED_NAME_S           11825
 #define LOAD_NO_USER_SPECIFIED_NAME_L           "no-user-specified-name"
 
