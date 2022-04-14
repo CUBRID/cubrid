@@ -37,16 +37,16 @@ namespace cublog
     if (!VPID_ISNULL (&vpid) && !check_for_page_validity (vpid, tranid))
       {
 	// page is already part of atomic replication
-	return;
+	return ER_FAILED;
       }
 #endif
     auto iterator = m_atomic_sequences_map.find (tranid);
     if (iterator == m_atomic_sequences_map.end ())
       {
-	iterator = m_atomic_sequences_map.emplace ({tranid, atomic_replication_sequence_type ()});
+	iterator = m_atomic_sequences_map.emplace (tranid, atomic_replication_sequence_type ());
       }
 
-    iterator->second.emplace_back (atomic_unit (record_lsa, vpid, rcvindex));
+    iterator->second.emplace_back (record_lsa, vpid, rcvindex);
     int error_code = iterator->second.back ().fix_page (thread_p);
     if (error_code != NO_ERROR)
       {
@@ -62,12 +62,12 @@ namespace cublog
   {
     for (auto const &sequence : m_atomic_sequences_map)
       {
-	for (size_t i = 0; i < sequence->second.size (); i++)
+	for (size_t i = 0; i < sequence.second.size (); i++)
 	  {
-	    const VPID element_vpid = sequence->second[i].m_vpid;
+	    const VPID element_vpid = sequence.second[i].m_vpid;
 	    if (element_vpid.pageid == vpid.pageid && element_vpid.volid == vpid.volid)
 	      {
-		if (sequence->first != tranid)
+		if (sequence.first != tranid)
 		  {
 		    return false;
 		  }

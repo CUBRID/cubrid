@@ -35,7 +35,6 @@ namespace cublog
    */
   class atomic_replication_helper
   {
-      using atomic_replication_sequence_type = std::vector<atomic_replication_unit>;
     public:
       atomic_replication_helper () = default;
 
@@ -88,6 +87,7 @@ namespace cublog
 	  LOG_RCVINDEX m_record_index;
       };
 
+      using atomic_replication_sequence_type = std::vector<atomic_replication_unit>;
       std::map<TRANID, atomic_replication_sequence_type> m_atomic_sequences_map;
   };
 }
