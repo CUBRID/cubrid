@@ -679,7 +679,7 @@ static int
 flashback_find_start_lsa (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * context)
 {
   LOG_PAGE *log_page_p = NULL;
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT] = "\0";
 
   int error = NO_ERROR;
 
