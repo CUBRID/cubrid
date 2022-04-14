@@ -3583,6 +3583,81 @@ db_query_get_plan_dump_file ()
 }
 
 /*
+ * db_query_is_plan_dump_opened() -
+ * return : is fp opened
+ */
+bool
+db_query_is_plan_dump_opened ()
+{
+  return query_Plan_dump_fp_open;
+}
+
+/*
+ * db_query_plan_dump_fp_open() -
+ * return : FILE *
+ */
+FILE *
+db_query_plan_dump_fp_open ()
+{
+  if (query_Plan_dump_fp_open)
+    {
+      return query_Plan_dump_fp;
+    }
+
+  if (query_Plan_dump_filename != NULL)
+    {
+      if (query_Plan_dump_fp == NULL || query_Plan_dump_fp == stdout)
+	{
+	  query_Plan_dump_fp = fopen (query_Plan_dump_filename, "a");
+	  if (query_Plan_dump_fp != NULL)
+	    {
+	      query_Plan_dump_fp_open = true;
+	    }
+	}
+    }
+
+  if (query_Plan_dump_fp == NULL)
+    {
+      query_Plan_dump_fp = stdout;
+    }
+
+  return query_Plan_dump_fp;
+}
+
+/*
+ * db_query_plan_dump_fp_close() -
+ * return : void
+ */
+void
+db_query_plan_dump_fp_close ()
+{
+  /* close file handle if this function open it */
+  if (query_Plan_dump_fp_open)
+    {
+      assert (query_Plan_dump_fp != NULL && query_Plan_dump_fp != stdout);
+
+      fclose (query_Plan_dump_fp);
+      query_Plan_dump_fp = NULL;
+      query_Plan_dump_fp_open = false;
+    }
+}
+
+/*
+ * db_query_get_plan_dump_fp() -
+ * return : FILE *
+ */
+FILE *
+db_query_get_plan_dump_fp ()
+{
+  if (query_Plan_dump_fp == NULL)
+    {
+      return stdout;
+    }
+
+  return query_Plan_dump_fp;
+}
+
+/*
  * db_set_execution_plan
  *   plan(in):
  *   length(in):
