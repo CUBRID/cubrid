@@ -1392,24 +1392,40 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1317 dblink - Not allowed "%1$s" Server.
 
 1318 [%1$5.5s][%2$d] %3$s
-1319 Parameter binding error.
-1320 Invalid ODBC handle.
-1321 Type conversion error.
-1322 Not supported data type.
-1323 Invalid Statement handle.
-1324 Invalid db connection handle.
-1325 Link server connection url do not exist.
-1326 Invalid numeric value.
-1327 Invalid precision value of "%1$s" column.
+1319 dblink - Parameter binding error.
+1320 dblink - Invalid ODBC handle.
+1321 dblink - Type conversion error.
+1322 dblink - not supported type %1$s(%2$d).
+1323 dblink - Invalid Statement handle.
+1324 dblink - Invalid db connection handle.
+1325 dblink - Link server connection url do not exist.
+1326 dblink - Invalid numeric value.
+1327 dblink - Invalid precision value of "%1$s" column.
 
-1328 Invalid Descriptor handle.
-1329 Not supported dbms.
-1330 Error reserved for dblink development.
+1328 dblink - Invalid Descriptor handle.
+1329 dblink - Not supported dbms.
+1330 dblink - Unable to allocate an environment handle.
 1331 Error reserved for dblink development.
 
 1332 The active log volume (%1$s) is too sane to recreate. If you remove the active log, it could cause an unexpected and irreversible problem.
 
-1333 Last Error
+1333 Invalid time (%1$s) to start flashback. Time is required to be set between (%2$s) and (%3$s).
+1334 Can not find the class to flashback (%1$s).
+1335 Too many transactions to flashback. Less than %1$d transactions can be flashback.
+1336 Cannot support flashback for this class (name : %1$s , OID : %2$d|%3$d|%4$d). Class schema has been changed.
+1337 Log record does not exist (lsa : %1$lld|%2$d). The archive log volume has been deleted.
+1338 Flashback is already running. Flashback cannot be run by more than one user at the same time.
+
+1339 Unsupported argument type of stored procedure: %1$s
+1340 Unsupported return type of stored procedure: %1$s
+
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1876,6 +1892,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 304 Could not find compatible signature for function %1$s()
 305 Signature %1$s is not compatible with function arguments.
 306 dblink - Required information is missing.
+307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.

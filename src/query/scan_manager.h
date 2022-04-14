@@ -37,7 +37,7 @@
 
 #include "btree.h"		/* TODO: for BTREE_SCAN */
 #include "heap_file.h"		/* for HEAP_SCANCACHE */
-#include "method_scan.h"	/* for METHOD_SCAN_BUFFER */
+#include "method_scan.hpp"	/* METHOD_SCAN_ID */
 #include "dblink_scan.h"
 #include "oid.h"		/* for OID */
 #include "query_evaluator.h"
@@ -294,12 +294,6 @@ struct set_scan_id
   SCAN_PRED scan_pred;		/* scan predicates(filters) */
 };
 
-typedef struct va_scan_id VA_SCAN_ID;
-struct va_scan_id
-{
-  METHOD_SCAN_BUFFER scan_buf;	/* value array buffer */
-};
-
 /* Note: Scan position is currently supported only for list file scans. */
 typedef struct scan_pos SCAN_POS;
 struct scan_pos
@@ -365,11 +359,11 @@ struct scan_id_struct
     INDX_SCAN_ID isid;		/* Indexed Heap File Scan Identifier */
     INDEX_NODE_SCAN_ID insid;	/* Scan b-tree nodes */
     SET_SCAN_ID ssid;		/* Set Scan Identifier */
-    VA_SCAN_ID vaid;		/* Value Array Identifier */
     DBLINK_SCAN_ID dblid;	/* DBLink Array Identifier */
     REGU_VALUES_SCAN_ID rvsid;	/* regu_variable list identifier */
     SHOWSTMT_SCAN_ID stsid;	/* show stmt identifier */
     JSON_TABLE_SCAN_ID jtid;
+    METHOD_SCAN_ID msid;
   } s;
 
   SCAN_STATS scan_stats;

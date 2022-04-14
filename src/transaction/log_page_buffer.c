@@ -104,6 +104,7 @@
 #include "thread_manager.hpp"
 #include "crypt_opfunc.h"
 #include "object_representation.h"
+#include "flashback.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -5982,6 +5983,9 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
   LOG_PAGEID cdc_first_pageid = NULL_PAGEID;
   int min_arv_required_for_cdc;
 
+  LOG_PAGEID flashback_first_pageid = NULL_LOG_PAGEID;
+  int min_arv_required_for_flashback;
+
   if (log_max_archives == INT_MAX)
     {
       return 0;			/* none is deleted */
@@ -6092,6 +6096,33 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 		  assert (false);
 		}
 	    }
+
+	  /* check flashback */
+	  if (flashback_is_needed_to_keep_archive ())
+	    {
+	      flashback_first_pageid = flashback_min_log_pageid_to_keep ();
+
+	      _er_log_debug (ARG_FILE_LINE, "First log pageid for flashback is %lld", flashback_first_pageid);
+
+	      /* NULL check for flashback_first_pageid is done in flashback_is_needed_to_keep_archive () */
+	      if (flashback_first_pageid != NULL_LOG_PAGEID && logpb_is_page_in_archive (flashback_first_pageid))
+		{
+		  min_arv_required_for_flashback = logpb_get_archive_number (thread_p, flashback_first_pageid);
+
+		  _er_log_debug (ARG_FILE_LINE, "First archive number used for flashback is %d",
+				 min_arv_required_for_flashback);
+
+		  if (min_arv_required_for_flashback >= 0)
+		    {
+		      last_arv_num_to_delete = MIN (last_arv_num_to_delete, min_arv_required_for_flashback);
+		    }
+		  else
+		    {
+		      /* Page should be in archive. */
+		      assert (false);
+		    }
+		}
+	    }
 	}
 
       if (max_count > 0)
@@ -6150,7 +6181,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
  *
  *   info_reason(in):
  *
- * NOTE: Archive that are not needed for system crashes and vacuum are removed.
+ * NOTE: Archive that are not needed for system crashes, vacuum, cdc, and flashback are removed.
  *       That these archives may be needed for media crash recovery.
  *       Therefore, it is important that the user copy these archives
  *       to tape. Check the log information file.
@@ -6169,6 +6200,9 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
 
   int min_arv_required_for_cdc;
   LOG_PAGEID cdc_first_pageid;
+
+  int min_arv_required_for_flashback;
+  LOG_PAGEID flashback_first_pageid;
 
   if (!vacuum_is_safe_to_remove_archives ())
     {
@@ -6239,6 +6273,24 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
 	  min_arv_required_for_cdc = logpb_get_archive_number (thread_p, cdc_first_pageid);
 	  min_arv_required_for_cdc--;
 	  last_deleted_arv_num = MIN (last_deleted_arv_num, min_arv_required_for_cdc);
+	}
+
+      /* flashback */
+      if (flashback_is_needed_to_keep_archive ())
+	{
+
+	  flashback_first_pageid = flashback_min_log_pageid_to_keep ();
+
+	  if (flashback_first_pageid != NULL_LOG_PAGEID && logpb_is_page_in_archive (flashback_first_pageid))
+	    {
+	      min_arv_required_for_flashback = logpb_get_archive_number (thread_p, flashback_first_pageid);
+	      min_arv_required_for_flashback--;
+	      last_deleted_arv_num = MIN (last_deleted_arv_num, min_arv_required_for_flashback);
+
+	      _er_log_debug (ARG_FILE_LINE,
+			     "FLASHBACK : first log pageid is %d, first archive log number is %d, last_deleted_arv_num is %d",
+			     flashback_first_pageid, min_arv_required_for_flashback, last_deleted_arv_num);
+	    }
 	}
     }
 

@@ -37,12 +37,17 @@
 #define NAME_BROKER			"Tbroker"
 #define NAME_PROXY			"cub_proxy"
 #define NAME_CAS_BROKER			"cub_broker"
+#define NAME_CAS_GATEWAY		"cub_gateway"
 #if defined(WINDOWS)
 #define NAME_CAS_BROKER2		"Cbroker2"
 #define NAME_UC_SHM			"broker_shm"
 #endif
 
+#if defined(FOR_ODBC_GATEWAY)
+#define CUBRID_BASE_DIR                 "log/gateway/"
+#else
 #define CUBRID_BASE_DIR                 "log/broker/"
+#endif
 
 #ifdef DISPATCHER
 #define ERROR_MSG_FILE			"uw_er.msg"
@@ -51,12 +56,19 @@
 #define BROKER_PATH_MAX             (PATH_MAX)
 
 /* default values */
+#if defined(FOR_ODBC_GATEWAY)
+#define DEFAULT_LOG_DIR               "log/gateway/sql_log/"
+#define DEFAULT_SLOW_LOG_DIR          DEFAULT_LOG_DIR
+#define DEFAULT_ERR_DIR               "log/gateway/error_log/"
+#define DEFAULT_SHARD_PROXY_LOG_DIR   "log/gateway/proxy_log/"
+#define DEFAULT_ACCESS_LOG_DIR        "log/gateway/"
+#else
 #define DEFAULT_LOG_DIR               "log/broker/sql_log/"
 #define DEFAULT_SLOW_LOG_DIR          DEFAULT_LOG_DIR
 #define DEFAULT_ERR_DIR               "log/broker/error_log/"
 #define DEFAULT_SHARD_PROXY_LOG_DIR   "log/broker/proxy_log/"
 #define DEFAULT_ACCESS_LOG_DIR        "log/broker/"
-
+#endif
 #define ACCESS_LOG_DENIED_FILENAME_POSTFIX ".denied"
 
 enum t_cubrid_file_id
@@ -82,6 +94,7 @@ enum t_cubrid_file_id
   FID_SLOW_LOG_DIR,
   FID_SHARD_DBINFO,
   FID_SHARD_PROXY_LOG_DIR,
+  FID_CUBRID_GATEWAY_CONF,
   MAX_CUBRID_FILE
 };
 typedef enum t_cubrid_file_id T_CUBRID_FILE_ID;

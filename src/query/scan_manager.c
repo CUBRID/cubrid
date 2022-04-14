@@ -4003,7 +4003,12 @@ scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* mvcc_select_lock_needed = false, fixed = true */
   scan_init_scan_id (scan_id, false, S_SELECT, true, grouped, single_fetch, join_dbval, val_list, vd);
 
-  return method_open_scan (thread_p, &scan_id->s.vaid.scan_buf, list_id, meth_sig_list);
+  int error = scan_id->s.msid.init (thread_p, meth_sig_list, list_id);
+  if (error == NO_ERROR)
+    {
+      error = scan_id->s.msid.open ();
+    }
+  return error;
 }
 
 /*
@@ -4933,7 +4938,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_METHOD_SCAN:
-      method_close_scan (thread_p, &scan_id->s.vaid.scan_buf);
+      scan_id->s.msid.close ();
       break;
 
     case S_DBLINK_SCAN:
@@ -6806,55 +6811,50 @@ scan_next_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 static SCAN_CODE
 scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
-  VA_SCAN_ID *vaidp;
   SCAN_CODE qp_scan;
   val_list_node vl;
   QPROC_DB_VALUE_LIST src_valp;
   QPROC_DB_VALUE_LIST dest_valp;
 
-  vaidp = &scan_id->s.vaid;
-
   /* execute method scan */
-  qp_scan = method_scan_next (thread_p, &vaidp->scan_buf, &vl);
-  if (qp_scan != S_SUCCESS)
+  qp_scan = scan_id->s.msid.next_scan (vl);
+  if (qp_scan == S_SUCCESS)
     {
-      /* scan error or end of scan */
-      if (qp_scan == S_END)
+      /* copy the result into the value list of the scan ID */
+      for (src_valp = vl.valp, dest_valp = scan_id->val_list->valp; src_valp && dest_valp;
+	   src_valp = src_valp->next, dest_valp = dest_valp->next)
 	{
-	  scan_id->position = S_AFTER;
-	  return S_END;
-	}
-      else
-	{
-	  return S_ERROR;
-	}
-    }
+	  if (DB_IS_NULL (src_valp->val))
+	    {
+	      pr_clear_value (dest_valp->val);
+	    }
+	  else if (DB_VALUE_DOMAIN_TYPE (src_valp->val) != DB_VALUE_DOMAIN_TYPE (dest_valp->val))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+	      qp_scan = S_ERROR;
+	      break;
+	    }
+	  else if (!qdata_copy_db_value (dest_valp->val, src_valp->val))
+	    {
+	      qp_scan = S_ERROR;
+	      break;
+	    }
 
-  /* copy the result into the value list of the scan ID */
-  for (src_valp = vl.valp, dest_valp = scan_id->val_list->valp; src_valp && dest_valp;
-       src_valp = src_valp->next, dest_valp = dest_valp->next)
-    {
-      if (DB_IS_NULL (src_valp->val))
-	{
-	  pr_clear_value (dest_valp->val);
-	}
-      else if (DB_VALUE_DOMAIN_TYPE (src_valp->val) != DB_VALUE_DOMAIN_TYPE (dest_valp->val))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  pr_clear_value (src_valp->val);
-	  free_and_init (src_valp->val);
-	  return S_ERROR;
 	}
-      else if (!qdata_copy_db_value (dest_valp->val, src_valp->val))
-	{
-	  return S_ERROR;
-	}
-
-      pr_clear_value (src_valp->val);
-      free_and_init (src_valp->val);
+    }
+  else if (qp_scan == S_END)
+    {
+      scan_id->position = S_AFTER;
     }
 
-  return S_SUCCESS;
+  /* clear */
+  for (src_valp = vl.valp; src_valp; src_valp = src_valp->next)
+    {
+      db_private_free_and_init (thread_p, src_valp->val);
+    }
+
+  return qp_scan;
 }
 
 /*
