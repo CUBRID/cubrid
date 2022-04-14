@@ -51,8 +51,8 @@ function show_usage ()
 	echo "  -u arg  Set database user name; default dba"
 	echo "  -D arg  Set directory for unloaddb output dir/files"
 	echo "  -v      Set verbose mode on"
-	echo "  -d      dump schema only; default: schema and objects"
-	echo "  -s      dump objects only; default: schema and objects"
+	echo "  -d      dump objects only; default: schema and objects"
+	echo "  -s      dump schema only; default: schema and objects"
 
 	echo ""
 	echo " EXAMPLES"
