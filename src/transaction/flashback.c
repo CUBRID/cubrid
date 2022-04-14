@@ -459,6 +459,13 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 		{
 		  memcpy (&classoid, supplement_data, sizeof (OID));
 
+		  if (oid_is_system_class (&classoid))
+		    {
+		      /* while creating database, there is no information about system class in server
+		       * so that supplemental log can be logged */
+		      break;
+		    }
+
                   // *INDENT-OFF*
 		  if (std::find (context->classoids.begin(), context->classoids.end(), classoid) == context->classoids.end())
 		    {
