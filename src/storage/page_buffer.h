@@ -375,7 +375,7 @@ extern void pgbuf_unfix_all (THREAD_ENTRY * thread_p);
 extern void pgbuf_set_lsa_as_temporary (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern void pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype);
 extern bool pgbuf_is_lsa_temporary (PAGE_PTR pgptr);
-extern bool pgbuf_check_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype);
+extern bool pgbuf_check_page_ptype (THREAD_ENTRY * thread_p, const PAGE_PTR pgptr, PAGE_TYPE ptype);
 extern bool pgbuf_check_page_type_no_error (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype);
 extern DISK_ISVALID pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
 					 DISK_ISVALID (*fun) (const VPID * vpid, void *args), void *args);

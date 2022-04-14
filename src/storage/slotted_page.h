@@ -97,7 +97,7 @@ extern int spage_header_size (void);
 extern int spage_get_free_space (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern int spage_get_free_space_without_saving (THREAD_ENTRY * thread_p, PAGE_PTR page_p, bool * need_update);
 extern void spage_set_need_update_best_hint (THREAD_ENTRY * thread_p, PAGE_PTR page_p, bool need_update);
-extern PGNSLOTS spage_number_of_records (PAGE_PTR pgptr);
+extern PGNSLOTS spage_number_of_records (const PAGE_PTR pgptr);
 extern PGNSLOTS spage_number_of_slots (PAGE_PTR pgptr);
 extern void spage_initialize (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slots_type, unsigned short alignment,
 			      bool safeguard_rvspace);

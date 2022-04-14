@@ -861,13 +861,13 @@ spage_max_record_size (void)
  *   page_p(in): Pointer to slotted page
  */
 PGNSLOTS
-spage_number_of_records (PAGE_PTR page_p)
+spage_number_of_records (const PAGE_PTR page_p)
 {
-  SPAGE_HEADER *page_header_p;
+  const SPAGE_HEADER *page_header_p;
 
   assert (page_p != NULL);
 
-  page_header_p = (SPAGE_HEADER *) page_p;
+  page_header_p = (const SPAGE_HEADER *) page_p;
   SPAGE_VERIFY_HEADER (page_header_p);
 
   return page_header_p->num_records;

@@ -130,6 +130,13 @@ static int rv;
     assert ((bufptr) == (bufptr)->iopage_buffer->bcb); \
   } while (0)
 
+#define CAST_CONST_PGPTR_TO_CONST_BFPTR(bufptr, pgptr) \
+  do { \
+    (bufptr) = ((const PGBUF_BCB *) ((const PGBUF_IOPAGE_BUFFER *) \
+      ((const char *) pgptr - offsetof (PGBUF_IOPAGE_BUFFER, iopage.page)))->bcb); \
+    assert ((bufptr) == (bufptr)->iopage_buffer->bcb); \
+  } while (0)
+
 #define CAST_PGPTR_TO_IOPGPTR(io_pgptr, pgptr) \
   do { \
     (io_pgptr) = (FILEIO_PAGE *) ((char *) pgptr - offsetof (FILEIO_PAGE, page)); \
@@ -1125,7 +1132,7 @@ STATIC_INLINE void pgbuf_wakeup_reader_writer (THREAD_ENTRY * thread_p, PGBUF_BC
 STATIC_INLINE bool pgbuf_get_check_page_validation_level (int page_validation_level) __attribute__ ((ALWAYS_INLINE));
 static bool pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr);
 STATIC_INLINE void pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool pgbuf_check_bcb_page_vpid (PGBUF_BCB * bufptr, bool maybe_deallocated)
+STATIC_INLINE bool pgbuf_check_bcb_page_vpid (const PGBUF_BCB * bufptr, bool maybe_deallocated)
   __attribute__ ((ALWAYS_INLINE));
 
 #if defined(CUBRID_DEBUG)
@@ -1147,7 +1154,7 @@ STATIC_INLINE void pgbuf_set_dirty_buffer_ptr (THREAD_ENTRY * thread_p, PGBUF_BC
   __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_compare_victim_list (const void *p1, const void *p2);
 static void pgbuf_wakeup_page_flush_daemon (THREAD_ENTRY * thread_p);
-STATIC_INLINE bool pgbuf_check_page_ptype_internal (PAGE_PTR pgptr, PAGE_TYPE ptype, bool no_error)
+STATIC_INLINE bool pgbuf_check_page_ptype_internal (const PAGE_PTR pgptr, PAGE_TYPE ptype, bool no_error)
   __attribute__ ((ALWAYS_INLINE));
 #if defined (SERVER_MODE)
 static bool pgbuf_is_thread_high_priority (THREAD_ENTRY * thread_p);
@@ -10977,7 +10984,7 @@ pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr)
  * ptype (in)	 : Expected page type.
  */
 bool
-pgbuf_check_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype)
+pgbuf_check_page_ptype (THREAD_ENTRY * thread_p, const PAGE_PTR pgptr, PAGE_TYPE ptype)
 {
   return pgbuf_check_page_ptype_internal (pgptr, ptype, false);
 }
@@ -11007,9 +11014,9 @@ pgbuf_check_page_type_no_error (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TY
  *       This function is used for debugging purposes.
  */
 STATIC_INLINE bool
-pgbuf_check_page_ptype_internal (PAGE_PTR pgptr, PAGE_TYPE ptype, bool no_error)
+pgbuf_check_page_ptype_internal (const PAGE_PTR pgptr, PAGE_TYPE ptype, bool no_error)
 {
-  PGBUF_BCB *bufptr;
+  const PGBUF_BCB *bufptr;
 
   if (pgptr == NULL)
     {
@@ -11036,7 +11043,7 @@ pgbuf_check_page_ptype_internal (PAGE_PTR pgptr, PAGE_TYPE ptype, bool no_error)
 
   /* NOTE: Does not need to hold mutex since the page is fixed */
 
-  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  CAST_CONST_PGPTR_TO_CONST_BFPTR (bufptr, pgptr);
   assert (!VPID_ISNULL (&bufptr->vpid));
 
   if (pgbuf_check_bcb_page_vpid (bufptr, false) == true)
@@ -11066,7 +11073,7 @@ pgbuf_check_page_ptype_internal (PAGE_PTR pgptr, PAGE_TYPE ptype, bool no_error)
  *       This function is used for debugging purposes.
  */
 STATIC_INLINE bool
-pgbuf_check_bcb_page_vpid (PGBUF_BCB * bufptr, bool maybe_deallocated)
+pgbuf_check_bcb_page_vpid (const PGBUF_BCB * bufptr, bool maybe_deallocated)
 {
   if (bufptr == NULL || VPID_ISNULL (&bufptr->vpid))
     {
