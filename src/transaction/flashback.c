@@ -693,14 +693,6 @@ flashback_find_start_lsa (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * c
   assert (!LSA_ISNULL (&context->end_lsa));
   LSA_COPY (&process_lsa, &context->end_lsa);
 
-  /* fetch log page */
-  error = logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p);
-  if (error != NO_ERROR)
-    {
-      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "flashback_make_loginfo");
-      goto error;
-    }
-
   while (!LSA_ISNULL (&process_lsa))
     {
       /* fetch page from archive or active, if previous page is needed */
