@@ -31300,7 +31300,7 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       BTREE_RV_REDO_SET_DEBUG_INFO (&delete_helper->leaf_addr, rv_redo_data_ptr, btid_int,
 				    BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD);
 #endif /* !NDEBUG */
-      LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
+      //LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
 
       /* Remove record from leaf. */
       btree_record_remove_object_internal (thread_p, btid_int, &leaf_record, BTREE_LEAF_NODE, offset_to_second_object,
@@ -31309,17 +31309,18 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
   else
     {
       /* Leaf and overflow OID's page are going to be changed. A system operation and undo logging is required. */
-      log_sysop_start (thread_p);
+      assert (!delete_helper->is_system_op_started);
+      log_sysop_start_atomic (thread_p);
       delete_helper->is_system_op_started = true;
 
-      error_code =
-	btree_overflow_remove_object (thread_p, key, btid_int, delete_helper, &found_page, prev_found_page, *leaf_page,
-				      &leaf_record, search_key, offset_to_second_object);
-      if (error_code != NO_ERROR)
-	{
-	  assert_release (false);
-	  goto exit;
-	}
+//      error_code =
+//      btree_overflow_remove_object (thread_p, key, btid_int, delete_helper, &found_page, prev_found_page, *leaf_page,
+//                                    &leaf_record, search_key, offset_to_second_object);
+//      if (error_code != NO_ERROR)
+//      {
+//        assert_release (false);
+//        goto exit;
+//      }
 
       rv_undo_data_ptr = rv_undo_data;
       rv_redo_data_ptr = rv_redo_data;
@@ -31331,8 +31332,9 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       BTREE_RV_UNDOREDO_SET_DEBUG_INFO (&delete_helper->leaf_addr, rv_redo_data_ptr, rv_undo_data_ptr, btid_int,
 					BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD);
 #endif /* !NDEBUG */
-      LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
+      //LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
     }
+  LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
 
   /* Replace inserted object with second visible object. */
   btree_leaf_change_first_object (thread_p, &leaf_record, btid_int, &delete_helper->second_object_info.oid,
@@ -31356,6 +31358,16 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       BTREE_RV_GET_DATA_LENGTH (rv_undo_data_ptr, rv_undo_data, rv_undo_data_length);
       log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &delete_helper->leaf_addr, rv_undo_data_length,
 				rv_redo_data_length, rv_undo_data, rv_redo_data);
+
+      /* Update overflow OID page */
+      error_code =
+	btree_overflow_remove_object (thread_p, key, btid_int, delete_helper, &found_page, prev_found_page, *leaf_page,
+				      &leaf_record, search_key, offset_to_second_object);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  goto exit;
+	}
     }
   else
     {
@@ -31825,7 +31837,11 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
       /* End system operation. */
       if (delete_helper->is_system_op_started && !save_system_op_started)
 	{
+	  // only end sysop if started in current function
 	  btree_delete_sysop_end (thread_p, delete_helper);
+	  // TODO: restore is_system_op_started?
+	  // TODO: if not reset, will lead to another sysop end being added in calling function
+	  // double sysop end will broke atomic replication
 	}
     }
   else
@@ -31856,7 +31872,10 @@ error:
       assert (delete_helper->purpose != BTREE_OP_DELETE_UNDO_INSERT
 	      && delete_helper->purpose != BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
 	      && delete_helper->purpose != BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED);
+      // only end sysop if started in current function
       btree_delete_sysop_end (thread_p, delete_helper);
+      // TODO: restore is_system_op_started?
+      // TODO: if not reset, will lead to another sysop end being added in calling function
     }
   assert_release (error_code != NO_ERROR);
   return error_code;
