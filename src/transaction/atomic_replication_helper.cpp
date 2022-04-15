@@ -63,7 +63,7 @@ namespace cublog
 	    if (vpid_sets_iterator->second.find (vpid) != vpid_sets_iterator->second.cend ())
 	      {
 		er_log_debug (ARG_FILE_LINE, "[ATOMIC REPLICATION] Page %d|%d is part of multiple atomic replication sequences."
-			      " Already exists in transaction: %d, wants to be added by transaction %d", VPID_AS_ARGS (&vpid),
+			      " Already exists in transaction: %d, wants to be added by transaction: %d.", VPID_AS_ARGS (&vpid),
 			      vpid_sets_iterator->first, tranid);
 		return false;
 	      }
