@@ -308,6 +308,7 @@ set(METHOD_SOURCES
   )
 
 set(TRANSACTION_SOURCES
+  ${TRANSACTION_DIR}/atomic_replication_helper.cpp
   ${TRANSACTION_DIR}/boot_sr.c
   ${TRANSACTION_DIR}/client_credentials.cpp
   ${TRANSACTION_DIR}/locator.c
@@ -349,6 +350,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/flashback.c
   )
 set(TRANSACTION_HEADERS
+  ${TRANSACTION_DIR}/atomic_replication_helper.hpp
   ${TRANSACTION_DIR}/client_credentials.hpp
   ${TRANSACTION_DIR}/log_2pc.h
   ${TRANSACTION_DIR}/log_append.hpp
