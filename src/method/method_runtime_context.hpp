@@ -73,6 +73,10 @@ namespace cubmethod
       void pop_stack (cubthread::entry *thread_p);
       method_invoke_group *top_stack ();
 
+      void set_interrupt (int reason);
+      bool is_interrupted ();
+      int get_interrupt_reason ();
+
     private:
       void destroy_all_groups ();
       void destroy_all_cursors ();
@@ -82,6 +86,9 @@ namespace cubmethod
 
       std::unordered_map <METHOD_GROUP_ID, method_invoke_group *> m_group_map; // method executor storage
       std::unordered_map <QUERY_ID, query_cursor *> m_cursor_map; // server-side cursor storage
+
+      bool m_is_interrupted;
+      int m_interrupt_reason;
   };
 
   /* global interface */

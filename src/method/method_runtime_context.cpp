@@ -45,6 +45,8 @@ namespace cubmethod
     , m_returning_cursors {}
     , m_group_map {}
     , m_cursor_map {}
+    , m_is_interrupted (false)
+    , m_interrupt_reason (NO_ERROR)
   {
     //
   }
@@ -76,6 +78,13 @@ namespace cubmethod
   runtime_context::pop_stack (cubthread::entry *thread_p)
   {
     m_group_stack.pop_back ();
+
+    if (m_group_stack.empty())
+      {
+	// reset interrupt state
+	m_is_interrupted = false;
+	m_interrupt_reason = NO_ERROR;
+      }
   }
 
   method_invoke_group *
@@ -94,6 +103,34 @@ namespace cubmethod
       }
 
     return it->second;
+  }
+
+  void
+  runtime_context::set_interrupt (int reason)
+  {
+    switch (reason)
+      {
+      case ER_INTERRUPTED:
+      case ER_SP_TOO_MANY_NESTED_CALL:
+	m_is_interrupted = true;
+	m_interrupt_reason = reason;
+	break;
+      default:
+	/* do nothing */
+	break;
+      }
+  }
+
+  bool
+  runtime_context::is_interrupted ()
+  {
+    return m_is_interrupted;
+  }
+
+  int
+  runtime_context::get_interrupt_reason ()
+  {
+    return m_interrupt_reason;
   }
 
   query_cursor *
