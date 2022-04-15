@@ -36,7 +36,7 @@ namespace cublog
 #if !defined (NDEBUG)
     if (!VPID_ISNULL (&vpid) && !check_for_page_validity (vpid, tranid))
       {
-	// page is already part of atomic replication
+	// the page is no longer relevant
 	return ER_FAILED;
       }
 #endif
@@ -69,6 +69,8 @@ namespace cublog
 	      {
 		if (sequence.first != tranid)
 		  {
+		    er_log_debug (ARG_FILE_LINE, "[ATOMIC REPLICATION] Page %d|%d is part of multiple atomic replication sequences.",
+				  VPID_AS_ARGS (&vpid));
 		    return false;
 		  }
 	      }
@@ -159,13 +161,16 @@ namespace cublog
       case RVHF_UPDATE:
       case RVHF_MVCC_UPDATE_OVERFLOW:
       case RVHF_INSERT_NEWHOME:
-	if (pgbuf_ordered_fix (thread_p, &m_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &m_watcher) != NO_ERROR)
+      {
+	const int error_code = pgbuf_ordered_fix (thread_p, &m_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &m_watcher);
+	if (error_code != NO_ERROR)
 	  {
 	    er_log_debug (ARG_FILE_LINE, "[ATOMIC REPLICATION] Unnable to apply ordered fix on page %d|%d.",
 			  VPID_AS_ARGS (&m_vpid));
-	    return ER_FAILED;
+	    return error_code;
 	  }
 	break;
+      }
       case RVHF_UPDATE_NOTIFY_VACUUM:
 	er_log_debug (ARG_FILE_LINE, "[ATOMIC REPLICATION] Unnable to fix RVHF_UPDATE_NOTIFY_VACUUM.");
 	assert (false);
