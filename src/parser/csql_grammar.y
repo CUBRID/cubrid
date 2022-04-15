@@ -416,6 +416,9 @@ static void pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_
 static bool pt_ct_check_fill_connection_info (char *pIn, char *pInfo[], char *perr_msg );
 static bool pt_ct_check_select (char* p, char *perr_msg);
 
+static PT_NODE* pt_mk_spec_drived_dblink_table(PT_SPEC_INFO* class_spec, PT_NODE* select_col_list, S_LINK_COLUMNS* plkcol);
+static void pt_convert_dblink_query(PT_NODE* query_stmt);
+
 static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
 				       PT_NODE *node,
 				       const int codeset_id,
@@ -650,6 +653,7 @@ int g_original_buffer_len;
 %type <node> user_specified_name
 %type <node> class_name_without_dot
 %type <node> class_name
+%type <node> class_name_with_server_name
 %type <node> class_name_list
 %type <node> trigger_name_without_dot
 %type <node> trigger_name
@@ -1696,6 +1700,7 @@ stmt_list
 			#ifdef PARSER_DEBUG
 			    printf ("node: %s\n", parser_print_tree (this_parser, $1));
 			#endif
+                        printf ("node: %s\n", parser_print_tree (this_parser, $1));
 			  }
 
 		DBG_PRINT}}
@@ -4849,6 +4854,13 @@ original_table_spec
 					       MSGCAT_SET_PARSER_SEMANTIC,
 					       MSGCAT_SEMANTIC_MERGE_HIERARCHY_NOT_ALLOWED);
 				  }
+#if 1 // ctshim 
+ //                             parser_top_select_stmt_node()->node_type != PT_SELECT ?
+                                if(stmt->node_type != PT_SELECT && ent->info.spec.ct_server_name != NULL)
+                                {                                   
+                                    PT_ERROR (this_parser, ent, "Oops! Sorr,. only SELECT statements are supported yet."); // ctshim
+                                }
+#endif                                
 			      }
 
 			    range_var = CONTAINER_AT_0 ($2);
@@ -5267,11 +5279,58 @@ only_all_class_spec
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+        | class_name_with_server_name  opt_partition_spec 
+                {{ DBG_TRACE_GRAMMAR(only_all_class_spec, | class_name_with_server_name opt_partition_spec);
+#if 1 // ctshim                    
+                        PT_NODE *scs = parser_new_node (this_parser, PT_SPEC);
+			if (scs)
+			  {
+                            // $1 : class_name -> server_name    
+			    scs->info.spec.entity_name = $1;
+                            scs->info.spec.ct_server_name = $1->next;
+                            $1->next = NULL;
+
+			    scs->info.spec.only_all = PT_ONLY;
+			    scs->info.spec.meta_class = PT_CLASS;
+			    if ($2)
+			      {
+				scs->info.spec.partition = $2;
+			      }
+			  }
+                    
+                        $$ = scs;
+#endif                        
+                        
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT}}       
 	;
+
+class_name_with_server_name
+        : class_name '@' dblink_server_name
+                {{DBG_TRACE_GRAMMAR(class_name_with_server_name, : class_name '@' dblink_server_name);
+                assert($1 != NULL && $3 != NULL);
+#if 1 // ctshim
+
+                PT_NODE *name_node =  $3;
+		PT_NODE *owner_node = $3->next;
+
+                //if (owner_node != NULL)
+                //  {
+                //     name_node->info.name.resolved = pt_append_string (this_parser, NULL,
+                //                                                    owner_node->info.name.original);
+                //     name_node->next = NULL;
+                //     parser_free_tree (this_parser, owner_node);
+                //  }
+
+                $1->next = name_node;
+                $$ = $1;
+#endif                
+                DBG_PRINT}}
+        ;
 
 object_name
 	: identifier DOT identifier
-		{{ DBG_TRACE_GRAMMAR(class_name, : identifier DOT identifier);
+		{{ DBG_TRACE_GRAMMAR(object_name, : identifier DOT identifier);
 
 			PT_NODE *qualifier = $1;
 			PT_NODE *node = $3;
@@ -5287,7 +5346,7 @@ object_name
 
 		DBG_PRINT}}
 	| identifier
-		{{ DBG_TRACE_GRAMMAR(class_name, | identifier);
+		{{ DBG_TRACE_GRAMMAR(object_name, | identifier);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -13761,6 +13820,10 @@ opt_from_clause
 				PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_ANSI_JOIN);
 			      }
 
+                        // ctshim ================                        
+#if 1        
+                            pt_convert_dblink_query(node);
+#endif
 			    node->info.query.q.select.where = n = $4;
 			    if (n)
 			      is_dummy_select = false;	/* not dummy */
@@ -13802,10 +13865,11 @@ opt_from_clause
 
 			    node->info.query.q.select.with_increment = $10;
 			    node->info.query.id = (UINTPTR) node;
+
+                            if (node->info.query.all_distinct != PT_ALL)
+			        is_dummy_select = false;	/* not dummy */
 			  }
 
-			if (node->info.query.all_distinct != PT_ALL)
-			  is_dummy_select = false;	/* not dummy */
 			if (is_dummy_select == true)
 			  {
 			    /* mark as dummy */
@@ -26973,7 +27037,8 @@ pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_neste
     }
 }
 
-static bool pt_ct_check_fill_connection_info (char* p, char *pInfo[], char *perr_msg)
+static bool 
+pt_ct_check_fill_connection_info (char* p, char *pInfo[], char *perr_msg)
 {   
    //  <host>:<port>:<db_name>:<db_user>:<db_password>:[?<properties>]     
    int   nCnt, i;
@@ -27043,6 +27108,356 @@ static bool pt_ct_check_fill_connection_info (char* p, char *pInfo[], char *perr
      }
 
    return true;
+}
+
+static PT_NODE* 
+pt_mk_attr_def_node(PT_NODE* name_node)
+{
+    PT_NODE *def_node;    
+  
+    def_node = parser_new_node (this_parser, PT_ATTR_DEF);
+    if (!def_node)
+     {
+        PT_ERROR (this_parser, def_node, "Oops! Sorry, insufficient memory."); // ctshim     
+        return NULL;
+     }
+
+   def_node->type_enum = PT_TYPE_NONE;
+   def_node->data_type = NULL;
+
+   def_node->info.attr_def.attr_name = name_node;
+   return def_node; 
+}
+
+static PARSER_VARCHAR *
+pt_build_select_list_4_dblink(S_LINK_COLUMNS* plkcol)
+{   
+   PARSER_VARCHAR * tvc = 0x00;
+   PT_NODE* dbl_col;
+   int custom_print_saved = this_parser->custom_print;
+   
+   if(plkcol->col_list == NULL)
+   { // case: select 1, 'test' from tbl@srv
+        return pt_append_nulstring(this_parser, NULL, "1");
+   }
+   
+   dbl_col = plkcol->col_list;
+   if(dbl_col->type_enum == PT_TYPE_STAR)
+   { // case:  * or tbl.*
+       tvc = pt_append_nulstring(this_parser, NULL, "*");
+   }
+   else
+   {
+      this_parser->custom_print |= PT_SUPPRESS_RESOLVED;   
+       tvc = pt_print_bytes (this_parser, dbl_col);
+#if 1
+        if(plkcol->col_list->next)
+        {
+        tvc = pt_append_nulstring (this_parser, tvc, ", ");    
+        tvc = pt_append_varchar(this_parser, tvc, pt_print_bytes_l(this_parser, plkcol->col_list->next));
+        }
+#else   
+        for(dbl_col = dbl_col->next; dbl_col; dbl_col = dbl_col->next)
+        {        
+                tvc = pt_append_nulstring (this_parser, tvc, ", ");
+                tvc = pt_append_varchar (this_parser, tvc, pt_print_bytes(this_parser, dbl_col));
+        }
+#endif
+
+        this_parser->custom_print = custom_print_saved;
+   }
+  return tvc;
+}
+
+static PT_NODE* 
+pt_mk_spec_drived_dblink_table(PT_SPEC_INFO* class_spec, PT_NODE* select_col_list, S_LINK_COLUMNS* plkcol)
+{
+   // dblink_expr::= : dblink_conn  ','  CHAR_STRING);
+   PT_NODE *dbl_expr = parser_new_node(this_parser, PT_DBLINK_TABLE);
+   PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+   PT_NODE *dbl_spec = parser_new_node (this_parser, PT_SPEC);
+
+   PT_NODE* server_name = class_spec->ct_server_name;
+   PT_NODE* table_name = class_spec->entity_name;  
+   PT_NODE* dbl_col = NULL;
+  
+   if(!dbl_expr || !val || !dbl_spec)
+   {
+        if(dbl_expr)   
+            parser_free_node (this_parser, dbl_expr);  
+
+        if(val)   
+            parser_free_node (this_parser, val);  
+
+        if(dbl_spec)   
+            parser_free_node (this_parser, dbl_spec);          
+
+        return NULL;
+   }
+  dbl_expr->info.dblink_table.is_xflag = true; 
+  dbl_expr->info.dblink_table.remote_table_name =  pt_append_string (this_parser, NULL, table_name->info.name.original);
+
+   assert(server_name->node_type == PT_NAME);
+   dbl_expr->info.dblink_table.is_name = true;
+   dbl_expr->info.dblink_table.conn = server_name;
+   if (server_name->next)
+     {
+        dbl_expr->info.dblink_table.owner_name = server_name->next;
+        server_name->next = NULL;
+     }
+
+   // select * from dblink_t1@remote_srv1;
+   PARSER_VARCHAR *var_buf = 0;   
+   var_buf = pt_append_nulstring (this_parser, var_buf, "SELECT ");
+   var_buf = pt_append_varchar (this_parser, var_buf, pt_build_select_list_4_dblink(plkcol));
+   
+   // from table
+   var_buf = pt_append_nulstring (this_parser, var_buf, " FROM ");
+   var_buf = pt_append_varchar (this_parser, var_buf, pt_print_bytes (this_parser, table_name));
+
+   if(class_spec->range_var)
+   { // ctahim: select *, t from tbl@srv t
+     var_buf = pt_append_nulstring (this_parser, var_buf, " ");
+     var_buf = pt_append_varchar (this_parser, var_buf, pt_print_bytes (this_parser, class_spec->range_var));
+   }
+
+   val->type_enum = PT_TYPE_CHAR;
+   val->info.value.string_type = ' ';
+   val->info.value.data_value.str = var_buf;
+   PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+   dbl_expr->info.dblink_table.qstr = val;
+      
+   // original_table_spec::= | DBLINK  '('  dblink_expr ')' dblink_identifier_col_attrs
+   dbl_spec->info.spec.derived_table = dbl_expr; 
+   dbl_spec->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE;
+
+   dbl_spec->info.spec.range_var = parser_new_node (this_parser, PT_NAME); // alias table_name
+   if (dbl_spec->info.spec.range_var == NULL)                                           
+     {            
+        PT_ERROR (this_parser, dbl_spec, "Oops! Sorry, insufficient memory."); // ctshim
+     }
+   else
+     {
+////////////////
+        if(class_spec->range_var)  
+        {/* alias table name */
+            var_buf = pt_print_bytes (this_parser, class_spec->range_var);
+        }
+        else
+        {
+            // 유니크한 이름이어야 한다. <server_name>_<table_naem>도 대안인데 길이에 대한 고민 필요
+            var_buf = pt_print_bytes (this_parser, table_name);
+        }  
+        dbl_spec->info.spec.range_var->info.name.original = pt_makename ((char*)var_buf->bytes);
+     }    
+
+   dbl_spec->info.spec.derived_table->info.dblink_table.cols = NULL; 
+
+////////////////  
+   PT_NODE *attr_def_node = NULL;
+   PT_NODE *id_node;
+   PT_NODE *tmp;
+#if 1 //============
+  if(plkcol->col_list == NULL)
+  { // temp create (dummy int)
+       id_node = parser_new_node (this_parser, PT_NAME); 
+       id_node->info.name.original = pt_makename("dummy");      
+       attr_def_node = pt_mk_attr_def_node(id_node);
+       attr_def_node->type_enum = PT_TYPE_INTEGER;
+  }
+  else if(plkcol->col_list->node_type == PT_NAME && plkcol->col_list->type_enum == PT_TYPE_STAR)
+  {
+        if(plkcol->col_list->next != NULL)
+        {
+            ;//  PT_ERROR (this_parser, dbl_spec, "Oops! Sorry, Not yet implements."); // ctshim            
+        }
+  }
+  else
+  {
+        while(plkcol->col_list)
+        { 
+          id_node = plkcol->col_list;
+          plkcol->col_list = id_node->next;
+          id_node->next = NULL;
+
+          tmp = pt_mk_attr_def_node(id_node);
+          attr_def_node = attr_def_node ? parser_make_link(attr_def_node, tmp) : tmp;  
+        } 
+  }
+ #else //================= 
+
+
+   if(class_spec->info.spec.as_attr_list)
+     { /* alias column list */
+       // will be Error?
+         do {
+            id_node = class_spec->info.spec.as_attr_list;
+            class_spec->info.spec.as_attr_list = id_node->next;
+            id_node->next = NULL; // prevent infinite loop
+
+            tmp = pt_mk_attr_def_node(id_node);
+            attr_def_node = attr_def_node ? parser_make_link(attr_def_node, tmp) : tmp;
+         } while(class_spec->info.spec.as_attr_list);
+     }
+   else if(select_col_list->node_type == PT_VALUE && select_col_list->type_enum == PT_TYPE_STAR)
+     {
+        attr_def_node = NULL;
+     }  
+   else
+     { 
+        PT_NODE*  list = select_col_list;
+
+         do {
+             id_node = parser_new_node (this_parser, PT_NAME); 
+             if (!id_node)
+              {
+                      PT_ERROR (this_parser, dbl_spec, "Oops! Sorry, insufficient memory."); // ctshim
+                      break;
+              }  
+
+               // if (intl_identifier_casecmp (str, lcks->classes[i]) == 0)
+
+            switch(list->node_type)
+              {
+                case PT_NAME:
+                   id_node->info.name.original = pt_makename(list->info.name.original);
+                        //(list->alias_print) ? pt_makename(list->alias_print) : pt_makename(list->info.name.original);
+                   tmp = pt_mk_attr_def_node(id_node);
+                   attr_def_node = attr_def_node ? parser_make_link(attr_def_node, tmp) : tmp;
+                   break;                
+                case PT_EXPR:
+                   break;
+                case PT_VALUE:
+                   if (list->type_enum == PT_TYPE_STAR)
+                     {
+                        plkcol->ppcol[plkcol->nused] = pt_makename("*");
+                        assert(plkcol->ppcol[plkcol->nused] != NULL);
+                        plkcol->nused++;
+                     }
+                   break;
+                default:
+                   break;
+              }  
+            
+            list = list->next;
+         } while(list);
+    }
+#endif //=================    
+   dbl_spec->info.spec.derived_table->info.dblink_table.cols = attr_def_node;
+
+   return dbl_spec;        
+}
+
+
+static void pt_get_cols_4_dblink(S_LINK_COLUMNS* plkcol, PT_NODE* select_col_list)
+{  
+   (void) parser_walk_tree (this_parser, select_col_list, 
+                            pt_get_column_name_pre, plkcol, pt_get_column_name_post, plkcol);
+
+    PARSER_VARCHAR *q = 0;
+   printf ("*******************************\n"); 
+   for(PT_NODE* col = plkcol->col_list; col; col = col->next)
+   {        
+        q = pt_print_bytes (this_parser, col);
+	printf (">>>(%s)<<<\n", (char *) q->bytes);
+   }
+   printf ("*******************************\n"); 
+
+#if 0
+   PT_NODE* node;
+   while(select_col_list)
+    {
+        node = select_col_list;
+         // node->alias_print
+
+        switch(node->node_type)
+          {
+             case PT_NAME:
+                   plkcol->ppcol[plkcol->nused] = pt_makename(node->info.name.original);
+                   assert(plkcol->ppcol[plkcol->nused] != NULL);
+                   plkcol->nused++;
+                   break;
+             case PT_SELECT:
+                   break;  
+             case PT_EXPR:
+                   // pt_print_expr
+                   break;
+             case PT_FUNCTION:
+                  //pt_print_function
+                   break;
+             case PT_VALUE:
+                   if (node->type_enum == PT_TYPE_STAR)
+                     {
+                        plkcol->ppcol[plkcol->nused] = pt_makename("*");
+                        assert(plkcol->ppcol[plkcol->nused] != NULL);
+                        plkcol->nused++;
+                     }
+                   break;
+             default:
+                   break;
+          }
+
+        select_col_list = select_col_list->next;
+    }
+#endif
+}
+
+static void pt_convert_dblink_query(PT_NODE* query_stmt)
+{
+   PT_QUERY_INFO* query = &query_stmt->info.query;
+   PT_NODE* list = query->q.select.from;
+   PT_NODE* new_list = NULL;      
+   PT_NODE* from_tbl;
+   PT_NODE* dbl;   
+   PT_SPEC_INFO* spec;
+
+   while(list)
+     {
+        from_tbl = list;
+        list = list->next;
+        from_tbl->next = NULL;
+
+        spec = &(from_tbl->info.spec);
+
+        if(spec->entity_name && spec->ct_server_name)
+          {
+             S_LINK_COLUMNS lkcol;
+
+             memset(&lkcol, 0x00, sizeof(lkcol));
+
+             lkcol.tbl_name_node = spec->range_var ? spec->range_var : spec->entity_name;
+
+             pt_get_cols_4_dblink(&lkcol, query->q.select.list);
+            // PT_ERROR (this_parser, query_stmt, "777777777777777777777");
+             if(lkcol.err != 0)
+             {
+                     ;
+             }           
+             else 
+             {
+                dbl = pt_mk_spec_drived_dblink_table(spec, query->q.select.list, &lkcol);
+                if(!dbl)
+                {
+                        PT_ERROR (this_parser, query_stmt, "Oops! Sorry, insufficient memory."); // ctshim
+                }
+                else
+                {
+                        // TO DO: clear check
+                        spec->ct_server_name = NULL;
+                        spec->entity_name = NULL;
+
+                        parser_free_tree(this_parser, from_tbl);
+                }  
+                from_tbl = dbl;
+             }
+              parser_free_tree(this_parser, lkcol.col_list);
+          }
+
+        new_list = new_list ? parser_make_link(new_list, from_tbl) : from_tbl;        
+        printf ("DEBUG: %s\n", parser_print_tree (this_parser, from_tbl));
+     }
+
+   query->q.select.from = new_list;
 }
 
 static PT_NODE *

@@ -3451,7 +3451,6 @@ pt_has_nullable_term (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
->>>>>>> upstream/develop
  * pt_insert_host_var () - insert a host_var into a list based on
  *                         its ordinal position
  *   return: a list of PT_HOST_VAR type nodes
@@ -10422,4 +10421,255 @@ pt_get_name_without_current_user_name (const char *name)
     }
 
   return object_name;
+}
+
+static bool
+check_for_already_exists (S_LINK_COLUMNS * plkcol, const char *resolved, const char *original)
+{
+  //  plkcol->tbl_name_node->info.name.original
+  PT_NODE *col;
+
+  for (col = plkcol->col_list; col; col = col->next)
+    {
+      if (col->type_enum == PT_TYPE_STAR)
+	{			// case: * or tbl.*
+	  if (col->info.name.resolved == NULL)
+	    {
+	      return true;	// * vs anything
+	    }
+	  else if (resolved && intl_identifier_casecmp (col->info.name.resolved, resolved) == 0)
+	    {
+	      return true;	// tbl.* vs  tbl.c1 or t.c2
+	    }
+	  else
+	    {			// tbl.* vs  c3
+	      ;			// ctshim
+	    }
+	}
+      else if (col->info.name.resolved)
+	{			// tbl.c1 vs tbl.c1 or c1 or tbl.*        
+	  if (original && intl_identifier_casecmp (col->info.name.original, original) != 0)
+	    {			// tbl.c1 or c1
+	      continue;
+	    }
+
+	  if (resolved && intl_identifier_casecmp (col->info.name.resolved, resolved) != 0)
+	    {			// tbl.c1  or tbl.*
+	      continue;
+	    }
+
+	  return true;
+	}
+      else
+	{			// c1     vs tbl.c1 or c1 or tbl.*
+	  if (original && intl_identifier_casecmp (col->info.name.original, original) != 0)
+	    {			// tbl.c1 or c1 
+	      continue;
+	    }
+
+	  if (resolved)
+	    {			// tbl.c1  or tbl.*
+	      continue;
+	    }
+
+	  return true;
+	}
+    }
+  return false;
+}
+
+//#define CHECK_LIST_AT_POST
+#ifdef CHECK_LIST_AT_POST
+#define ADD_NODE_2_LIST(list, node) ((node)->next = (list), (list) = (node))
+
+#else
+#define ADD_NODE_2_LIST(list, node)  (list) = parser_append_node ((node), (list))
+#endif
+
+PT_NODE *
+pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  S_LINK_COLUMNS *plkcol = (S_LINK_COLUMNS *) arg;
+  PT_NODE *tbl_alias = plkcol->tbl_name_node;
+  PT_NODE *name = NULL;
+
+  if (node->node_type == PT_SELECT)
+    {
+      plkcol->err = 1;
+      plkcol->depth++;
+      if (plkcol->depth < 2)
+	{
+	  (void *) parser_walk_tree (parser, node->info.query.q.select.list, pt_get_column_name_pre, plkcol,
+				     pt_get_column_name_post, plkcol);
+	}
+      *continue_walk = PT_STOP_WALK;
+    }
+#if defined(CHECK_LIST_AT_POST)
+  else if (node->node_type == PT_DOT_)
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+#else
+  else if (node->node_type == PT_DOT_)
+    {				// case: tbl.col      
+      printf (">>>(%s)<<<", (char *) pt_print_bytes (parser, node)->bytes);
+
+      if (intl_identifier_casecmp (tbl_alias->info.name.original, node->info.dot.arg1->info.name.original) == 0)
+	{
+	  if (check_for_already_exists
+	      (plkcol, node->info.dot.arg1->info.name.original, node->info.dot.arg2->info.name.original) == false)
+	    {
+	      printf ("<<<(%s)", (char *) "append");
+	      name = parser_new_node (parser, PT_NAME);
+	      name->info.name.resolved = pt_append_string (parser, NULL, node->info.dot.arg1->info.name.original);
+	      name->info.name.original = pt_append_string (parser, NULL, node->info.dot.arg2->info.name.original);
+
+	      ADD_NODE_2_LIST (plkcol->col_list, name);
+	    }
+	}
+      printf ("\n");
+
+      *continue_walk = PT_LIST_WALK;
+    }
+  else if (node->node_type == PT_NAME)
+    {
+      if (plkcol->depth > 1)
+	{
+	  *continue_walk = PT_CONTINUE_WALK;
+	  return node;
+	}
+
+      printf (">>>(%s)<<<", (char *) pt_print_bytes (parser, node)->bytes);
+
+      if (node->type_enum == PT_TYPE_STAR)
+	{			// case:  tbl.*
+	  if (intl_identifier_casecmp (tbl_alias->info.name.original, node->info.name.original) == 0)
+	    {
+	      if (check_for_already_exists (plkcol, node->info.name.original, NULL) == false)
+		{
+		  printf ("<<<(%s)", (char *) "append");
+		  name = parser_new_node (parser, PT_NAME);
+		  name->type_enum = PT_TYPE_STAR;
+		  name->info.name.resolved = pt_append_string (parser, NULL, node->info.name.original);
+		}
+	    }
+	}
+      else
+	{
+	  if (check_for_already_exists (plkcol, NULL, node->info.name.original) == false)
+	    {
+	      printf ("<<<(%s)", (char *) "append");
+	      name = parser_new_node (parser, PT_NAME);
+	      name->info.name.original = pt_append_string (parser, NULL, node->info.name.original);
+	    }
+	}
+
+      ADD_NODE_2_LIST (plkcol->col_list, name);
+      printf ("\n");
+    }
+  else if (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_STAR)
+    {
+      printf (">>>(%s)<<<", (char *) "*");
+      // if (check_for_already_exists (plkcol, NULL, NULL, true) == false)
+      {
+	printf ("<<<(%s)", (char *) "append");
+
+	name = parser_new_node (parser, PT_NAME);
+	name->type_enum = PT_TYPE_STAR;
+
+	ADD_NODE_2_LIST (plkcol->col_list, name);
+      }
+      printf ("\n");
+    }
+#endif
+  return node;
+}
+
+PT_NODE *
+pt_get_column_name_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  S_LINK_COLUMNS *plkcol = (S_LINK_COLUMNS *) arg;
+  PT_NODE *tbl_alias = plkcol->tbl_name_node;
+  PT_NODE *name = NULL;
+
+  if (node->node_type == PT_SELECT)
+    {
+      plkcol->depth--;
+    }
+#if defined(CHECK_LIST_AT_POST)	//
+  else if (node->node_type == PT_NAME)
+    {
+      if (plkcol->depth > 1)
+	{
+	  *continue_walk = PT_CONTINUE_WALK;
+	  return node;
+	}
+
+      printf (">>>(%s)<<<", (char *) pt_print_bytes (parser, node)->bytes);
+
+      if (node->type_enum == PT_TYPE_STAR)
+	{			// case:  tbl.*
+	  if (intl_identifier_casecmp (tbl_alias->info.name.original, node->info.name.original) == 0)
+	    {
+	      if (check_for_already_exists (plkcol, node->info.name.original, NULL) == false)
+		{
+		  printf ("<<<(%s)", (char *) "append");
+		  name = parser_new_node (parser, PT_NAME);
+		  name->type_enum = PT_TYPE_STAR;
+		  name->info.name.resolved = pt_append_string (parser, NULL, node->info.name.original);
+		}
+	    }
+	}
+      else
+	{
+	  if (check_for_already_exists (plkcol, NULL, node->info.name.original) == false)
+	    {
+	      printf ("<<<(%s)", (char *) "append");
+	      name = parser_new_node (parser, PT_NAME);
+	      name->info.name.original = pt_append_string (parser, NULL, node->info.name.original);
+	    }
+	}
+
+      ADD_NODE_2_LIST (plkcol->col_list, name);
+      printf ("\n");
+    }
+  else if (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_STAR)
+    {
+      printf (">>>(%s)<<<", (char *) "*");
+      // if (check_for_already_exists (plkcol, NULL, NULL, true) == false)
+      {
+	printf ("<<<(%s)", (char *) "append");
+
+	name = parser_new_node (parser, PT_NAME);
+	name->type_enum = PT_TYPE_STAR;
+
+	ADD_NODE_2_LIST (plkcol->col_list, name);
+      }
+      printf ("\n");
+    }
+  else if (node->node_type == PT_DOT_)
+    {				// case: tbl.col      
+      printf (">>>(%s)<<<", (char *) pt_print_bytes (parser, node)->bytes);
+
+      if (intl_identifier_casecmp (tbl_alias->info.name.original, node->info.dot.arg1->info.name.original) == 0)
+	{
+	  if (check_for_already_exists
+	      (plkcol, node->info.dot.arg1->info.name.original, node->info.dot.arg2->info.name.original) == false)
+	    {
+	      printf ("<<<(%s)", (char *) "append");
+	      name = parser_new_node (parser, PT_NAME);
+	      name->info.name.resolved = pt_append_string (parser, NULL, node->info.dot.arg1->info.name.original);
+	      name->info.name.original = pt_append_string (parser, NULL, node->info.dot.arg2->info.name.original);
+
+	      ADD_NODE_2_LIST (plkcol->col_list, name);
+	    }
+	}
+      printf ("\n");
+
+      *continue_walk = PT_LIST_WALK;
+    }
+#endif
+
+  *continue_walk = PT_CONTINUE_WALK;
+  return node;
 }

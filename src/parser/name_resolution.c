@@ -53,6 +53,12 @@
 
 #include "dbtype.h"
 
+#ifndef DBDEF_HEADER_
+#define DBDEF_HEADER_
+#endif
+
+#include <cas_cci.h>
+
 extern "C"
 {
   extern int parser_function_code;
@@ -246,6 +252,8 @@ static void pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_l
 				    PT_NODE * derived_table, PT_NODE * parent_spec);
 static PT_NODE *pt_count_with_clauses (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static int pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node);
+
+static int pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, char *table_name);
 
 /*
  * pt_undef_names_pre () - Set error if name matching spec is found. Used in
@@ -1015,6 +1023,21 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 		    {
 		      return;
 		    }
+
+		  {		// ctshim                        
+		    if (table->info.dblink_table.remote_table_name && *table->info.dblink_table.remote_table_name)
+		      {
+			int err;
+			err =
+			  pt_dblink_table_get_column_defs (parser, table,
+							   (char *) table->info.dblink_table.remote_table_name);
+			if (err != NO_ERROR)
+			  {
+			    return;
+			  }
+		      }
+		  }
+
 		}
 
 	      table->info.dblink_table.cols =
@@ -4499,6 +4522,361 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
   sorted_attrs[columns_nr - 1]->next = NULL;
 
   return sorted_attrs[0];
+}
+
+#define DBLINK_ATTR_NAME      (1)
+#define DBLINK_ATTR_TYPE      (2)
+#define DBLINK_ATTR_SCALE     (3)
+#define DBLINK_ATTR_PRECISION (4)
+#define DBLINK_ATTR_CLASS_NAME (11)
+
+PT_TYPE_ENUM pt_type[CCI_U_TYPE_LAST + 1] = {
+  PT_TYPE_NULL,
+  PT_TYPE_CHAR,
+  PT_TYPE_VARCHAR,
+  PT_TYPE_NCHAR,
+  PT_TYPE_VARNCHAR,
+  PT_TYPE_BIT,
+  PT_TYPE_VARBIT,
+  PT_TYPE_NUMERIC,
+  PT_TYPE_INTEGER,
+  PT_TYPE_SMALLINT,
+  PT_TYPE_MONETARY,
+  PT_TYPE_FLOAT,
+  PT_TYPE_DOUBLE,
+  PT_TYPE_DATE,
+  PT_TYPE_TIME,
+  PT_TYPE_TIMESTAMP,
+  PT_TYPE_SET,
+  PT_TYPE_MULTISET,
+  PT_TYPE_SEQUENCE,
+  PT_TYPE_OBJECT,
+  PT_TYPE_RESULTSET,
+  PT_TYPE_BIGINT,
+  PT_TYPE_DATETIME,
+  PT_TYPE_BLOB,
+  PT_TYPE_CLOB,
+  PT_TYPE_ENUMERATION,
+  PT_TYPE_SMALLINT,
+  PT_TYPE_INTEGER,
+  PT_TYPE_BIGINT,
+  PT_TYPE_TIMESTAMPTZ,
+  PT_TYPE_TIMESTAMPLTZ,
+  PT_TYPE_DATETIMETZ,
+  PT_TYPE_DATETIMELTZ,
+  /* Disabled type */
+  PT_TYPE_NA,			/* CCI_U_TYPE_TIMETZ, internal only */
+  /* end of disabled types */
+  PT_TYPE_JSON
+};
+
+static int
+pt_dblink_table_find_or_make_attr_def (PARSER_CONTEXT * parser, int req, PT_NODE * &attr_def, PT_NODE * dblink_cols)
+{
+  int res;
+  int ind;
+  T_CCI_ERROR cci_error;
+  char *buf = 0x00;
+
+  res = cci_fetch (req, &cci_error);
+  if (res < 0)
+    {
+      return res;
+    }
+
+  if ((res = cci_get_data (req, DBLINK_ATTR_NAME, CCI_A_TYPE_STR, &buf, &ind)) < 0)
+    {
+      return res;
+    }
+
+  if (dblink_cols == NULL)
+    {
+      attr_def = parser_new_node (parser, PT_ATTR_DEF);
+      attr_def->info.attr_def.attr_name = parser_new_node (parser, PT_NAME);
+      attr_def->info.attr_def.attr_name->info.name.original = buf;
+    }
+  else
+    {
+      for (PT_NODE * def = dblink_cols; def; def = def->next)
+	{
+	  if (def->type_enum != PT_TYPE_NONE)
+	    {
+	      continue;
+	    }
+
+	  assert (def->info.attr_def.attr_name->info.name.original != NULL);
+	  if (intl_identifier_casecmp (def->info.attr_def.attr_name->info.name.original, buf) == 0)
+	    {
+	      attr_def = def;
+	      break;
+	    }
+	}
+    }
+
+  return CCI_ER_NO_ERROR;
+}
+
+static int
+pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, int req, PT_NODE * attr_def_node, PT_NODE * dblink_cols)
+{
+  int res;
+  T_CCI_ERROR cci_error;
+  int ind;
+  PT_TYPE_ENUM type_idx;
+
+  if ((res = cci_get_data (req, DBLINK_ATTR_TYPE, CCI_A_TYPE_INT, &type_idx, &ind)) < 0)
+    {
+      return res;
+    }
+
+  PT_NODE *dt = NULL;
+  int is_default = 0;
+  attr_def_node->data_type = NULL;
+
+  attr_def_node->type_enum = pt_type[type_idx];
+  switch (attr_def_node->type_enum)
+    {
+    case PT_TYPE_JSON:
+      attr_def_node->data_type = dt = parser_new_node (parser, PT_DATA_TYPE);
+      dt->type_enum = attr_def_node->type_enum;
+      break;
+      /*
+         if (dt && json_schema_str)
+         {
+         dt->type_enum = type;
+         dt->info.data_type.json_schema = pt_append_bytes (this_parser,
+         NULL,
+         json_schema_str,
+         strlen (json_schema_str));
+         SET_CONTAINER_2 (ctn, FROM_NUMBER (type), dt);
+         }
+         else
+         {
+         SET_CONTAINER_2 (ctn, FROM_NUMBER (type), NULL);
+         }
+       */
+
+    case PT_TYPE_VARCHAR:
+      attr_def_node->data_type = dt = parser_new_node (parser, PT_DATA_TYPE);
+      dt->type_enum = attr_def_node->type_enum;
+      break;
+/*
+   PT_TYPE_ENUM typ = PT_TYPE_VARCHAR;
+			PT_NODE *dt = parser_new_node (this_parser, PT_DATA_TYPE);
+			PT_NODE *charset_node = $2;
+			PT_NODE *coll_node = $3;
+			if (dt)
+			  {
+			    int coll_id, charset;
+
+			    dt->type_enum = typ;
+			    dt->info.data_type.precision = DB_MAX_VARCHAR_PRECISION;
+
+			    if (pt_check_grammar_charset_collation
+				  (this_parser, charset_node,
+				   coll_node, &charset, &coll_id) == NO_ERROR)
+			      {
+				dt->info.data_type.units = charset;
+				dt->info.data_type.collation_id = coll_id;
+			      }
+			    else
+			      {
+				dt->info.data_type.units = -1;
+				dt->info.data_type.collation_id = -1;
+			      }
+
+			    if (charset_node)
+			      {
+				dt->info.data_type.has_cs_spec = true;
+			      }
+			    else
+			      {
+				dt->info.data_type.has_cs_spec = false;
+			      }
+
+			    if (coll_node)
+			      {
+				dt->info.data_type.has_coll_spec = true;
+			      }
+			    else
+			      {
+			        dt->info.data_type.has_coll_spec = false;
+			      }
+			  }
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
+			$$ = ctn;
+*/
+
+    case PT_TYPE_CHAR:
+      attr_def_node->data_type = dt = parser_new_node (parser, PT_DATA_TYPE);
+      dt->type_enum = attr_def_node->type_enum;
+      break;
+
+    case PT_TYPE_NUMERIC:
+    case PT_TYPE_FLOAT:
+      attr_def_node->data_type = dt = parser_new_node (parser, PT_DATA_TYPE);
+      dt->type_enum = attr_def_node->type_enum;
+      break;
+
+    case PT_TYPE_BLOB:
+    case PT_TYPE_CLOB:
+    case PT_TYPE_OBJECT:
+    case PT_TYPE_ENUMERATION:
+      //PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+      //                MSGCAT_SEMANTIC_DBLINK_NOT_SUPPORTED_TYPE, pt_show_type_enum (attr_def_node->type_enum));
+      res = -1;
+      break;
+    default:
+      is_default = 1;
+      break;
+    }
+
+  if (is_default == 0)
+    {
+      /* scale */
+      if ((res = cci_get_data (req, DBLINK_ATTR_SCALE, CCI_A_TYPE_INT, &dt->info.data_type.dec_precision, &ind)) < 0)
+	{
+	  return res;
+	}
+
+      /* precision */
+      if ((res = cci_get_data (req, DBLINK_ATTR_PRECISION, CCI_A_TYPE_INT, &dt->info.data_type.precision, &ind)) < 0)
+	{
+	  return res;
+	}
+    }
+
+  attr_def_node->data_type = dt;
+  if (attr_def_node->type_enum == PT_TYPE_CHAR && dt)
+    {
+      attr_def_node->info.attr_def.size_constraint = dt->info.data_type.precision;
+    }
+
+  return CCI_ER_NO_ERROR;
+}
+
+static int
+pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, char *table_name)
+{
+  PT_NODE *attr_def, *head = NULL, *tail = NULL;
+  int i, req, conn, col_count, res;
+  //char *data, query_result_buffer[1024];
+  T_CCI_ERROR cci_error;
+  T_CCI_COL_INFO *col_info;
+  T_CCI_CUBRID_STMT cmd_type;
+  PT_DBLINK_INFO *dblink_table = &dblink->info.dblink_table;
+
+  char *url = (char *) dblink_table->url->info.value.data_value.str->bytes;
+  char *user = (char *) dblink_table->user->info.value.data_value.str->bytes;
+  char *passwd = (char *) dblink_table->pwd->info.value.data_value.str->bytes;
+
+  int def_cnt = 0;
+  if (dblink_table->cols == NULL)
+    {
+      def_cnt = 0x7FFFFFFF;
+    }
+  else
+    {
+      for (PT_NODE * orig_node = dblink_table->cols; orig_node; orig_node = orig_node->next)
+	{
+	  if (orig_node->type_enum == PT_TYPE_NONE)
+	    {
+	      def_cnt++;
+	    }
+	}
+
+      if (def_cnt == 0)
+	{
+	  return NO_ERROR;
+	}
+    }
+
+  conn = cci_connect_with_url_ex (url, user, passwd, &cci_error);
+  if (conn < 0)
+    {
+      return ER_FAILED;
+    }
+
+  req = cci_schema_info (conn, CCI_SCH_ATTRIBUTE, table_name, NULL, CCI_ATTR_NAME_PATTERN_MATCH, &cci_error);
+  if (req < 0)
+    {
+      return ER_FAILED;
+    }
+
+  /* 
+   * TTR_NAME, DOMAIN, SCALE, PRECISION, INDEXED, NON_NULL, SHARED, UNIQUE, DEFAULT, ATTR_ORDER, 
+   * CLASS_NAME, SOURCE_CLASS, IS_KEY, REMARKS 
+   */
+  col_info = cci_get_result_info (req, &cmd_type, &col_count);
+  if (!col_info && col_count == 0)
+    {
+      return ER_FAILED;
+    }
+
+  res = cci_cursor (req, 1, CCI_CURSOR_FIRST, &cci_error);
+  if (res < 0)
+    {
+      return ER_FAILED;
+    }
+
+  do
+    {
+      attr_def = NULL;
+      res = pt_dblink_table_find_or_make_attr_def (parser, req, attr_def, dblink_table->cols);
+      if (res != CCI_ER_NO_ERROR)
+	{
+	  break;
+	}
+      else if (attr_def)
+	{
+	  if (dblink_table->cols == NULL)
+	    {
+	      if (head == NULL)
+		{
+		  head = attr_def;
+		  tail = head;
+		}
+	      else
+		{
+		  tail->next = attr_def;
+		  tail = attr_def;
+		}
+	    }
+
+	  res = pt_dblink_table_fill_attr_def (parser, req, attr_def, dblink_table->cols);
+	  if (res == CCI_ER_NO_ERROR)
+	    {
+	      if (--def_cnt == 0)
+		{
+		  res = CCI_ER_NO_MORE_DATA;
+		  break;
+		}
+	    }
+	}
+
+      res = cci_cursor (req, 1, CCI_CURSOR_CURRENT, &cci_error);
+    }
+  while (res == CCI_ER_NO_ERROR);
+
+  if (res != CCI_ER_NO_MORE_DATA)
+    {
+      if (head)
+	{
+	  parser_free_tree (parser, head);
+	}
+      return ER_FAILED;
+    }
+
+  if (dblink_table->cols == NULL)
+    {
+      dblink_table->cols = head;
+    }
+  else if (def_cnt > 0)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
 }
 
 static PT_NODE *

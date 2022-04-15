@@ -2155,6 +2155,9 @@ struct pt_drop_session_var_info
 struct pt_spec_info
 {
   PT_NODE *entity_name;		/* PT_NAME */
+#if 1				// ctshim
+  PT_NODE *ct_server_name;	/* PT_NAME */
+#endif
   PT_NODE *cte_name;		/* PT_NAME */
   PT_NODE *cte_pointer;		/* PT_POINTER - points to the cte_definition */
   PT_NODE *except_list;		/* PT_SPEC */
@@ -3305,6 +3308,8 @@ typedef struct pt_dblink_info
   PARSER_VARCHAR *rewritten;	/* rewritten query string for dblink */
   PT_HOST_VAR_IDX_INFO host_vars;	/* host variable index info for rewritten query */
   bool is_name;			/*  */
+  bool is_xflag;		// ctshim false:  original , true:  by table_name@server_name
+  char *remote_table_name;
 } PT_DBLINK_INFO;
 
 typedef struct pt_create_server_info

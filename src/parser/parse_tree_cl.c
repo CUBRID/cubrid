@@ -8994,6 +8994,9 @@ static PT_NODE *
 pt_apply_spec (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.spec.entity_name, arg);
+#if 1				// ctshim
+  PT_APPLY_WALK (parser, p->info.spec.ct_server_name, arg);
+#endif
   PT_APPLY_WALK (parser, p->info.spec.cte_name, arg);
   PT_APPLY_WALK (parser, p->info.spec.cte_pointer, arg);
   PT_APPLY_WALK (parser, p->info.spec.except_list, arg);
@@ -9087,6 +9090,14 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, "(");
       r1 = pt_print_bytes_l (parser, p->info.spec.entity_name);
       q = pt_append_varchar (parser, q, r1);
+#if 1				// ctshim
+      if (p->info.spec.ct_server_name)
+	{
+	  q = pt_append_nulstring (parser, q, "@");
+	  r1 = pt_print_bytes (parser, p->info.spec.ct_server_name);
+	  q = pt_append_varchar (parser, q, r1);
+	}
+#endif
       q = pt_append_nulstring (parser, q, ")");
       parser->custom_print = save_custom;
     }
@@ -9105,6 +9116,14 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       r1 = pt_print_bytes (parser, p->info.spec.entity_name);
       q = pt_append_varchar (parser, q, r1);
+#if 1				// ctshim
+      if (p->info.spec.ct_server_name)
+	{
+	  q = pt_append_nulstring (parser, q, "@");
+	  r1 = pt_print_bytes (parser, p->info.spec.ct_server_name);
+	  q = pt_append_varchar (parser, q, r1);
+	}
+#endif
       if (p->info.spec.partition)
 	{
 	  q = pt_append_nulstring (parser, q, " PARTITION (");

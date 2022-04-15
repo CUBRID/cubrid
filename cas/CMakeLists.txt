@@ -59,5 +59,7 @@ if(WIN32)
   endif(TARGET_PLATFORM_BITS EQUAL 32)
 endif(WIN32)
 target_link_libraries(cas ${SYS_LIBS} ${LIBOPENSSL_LIBS})
+# for dblink
+target_link_libraries(cas cascci)
 
 add_dependencies(cas ${EP_TARGETS})
