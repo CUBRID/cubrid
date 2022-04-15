@@ -21,6 +21,7 @@
 #include "log_recovery_redo.hpp"
 #include "page_buffer.h"
 #include "system_parameter.h"
+#include "vpid_utilities.hpp"
 
 namespace cublog
 {
@@ -39,7 +40,8 @@ namespace cublog
 	// the page is no longer relevant
 	assert (false);
       }
-    m_atomic_sequences_vpids_map[tranid].emplace (vpid);
+    vpid_set_type &vpids = m_atomic_sequences_vpids_map[tranid];
+    vpids.insert (vpid);
 #endif
 
     m_atomic_sequences_map[tranid].emplace_back (record_lsa, vpid, rcvindex);
@@ -58,13 +60,14 @@ namespace cublog
   {
     for (auto const &vpid_sets_iterator : m_atomic_sequences_vpids_map)
       {
-	if (vpid_sets_iterator->first != tranid)
+	if (vpid_sets_iterator.first != tranid)
 	  {
-	    if (vpid_sets_iterator->second.find (vpid) != vpid_sets_iterator->second.cend ())
+	    const vpid_set_type::const_iterator find_it = vpid_sets_iterator.second.find (vpid);
+	    if (find_it != vpid_sets_iterator.second.cend ())
 	      {
 		er_log_debug (ARG_FILE_LINE, "[ATOMIC REPLICATION] Page %d|%d is part of multiple atomic replication sequences."
 			      " Already exists in transaction: %d, wants to be added by transaction: %d.", VPID_AS_ARGS (&vpid),
-			      vpid_sets_iterator->first, tranid);
+			      vpid_sets_iterator.first, tranid);
 		return false;
 	      }
 	  }
@@ -102,7 +105,6 @@ namespace cublog
     m_atomic_sequences_map.erase (iterator);
 
 #if !defined (NDEBUG)
-    m_atomic_sequences_vpids_map[tranid].clear ();
     m_atomic_sequences_vpids_map.erase (tranid);
 #endif
   }
