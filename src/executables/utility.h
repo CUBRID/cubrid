@@ -855,7 +855,9 @@ typedef struct _ha_config
 #define UTIL_COMMDB_NAME        "cub_commdb" UTIL_EXE_EXT
 #define UTIL_CUBRID_NAME        "cub_server" UTIL_EXE_EXT
 #define UTIL_BROKER_NAME        "cubrid_broker" UTIL_EXE_EXT
+#define UTIL_GATEWAY_NAME       "cubrid_gateway" UTIL_EXE_EXT
 #define UTIL_MONITOR_NAME       "broker_monitor" UTIL_EXE_EXT
+#define UTIL_GATEWAY_MONITOR_NAME       "gateway_monitor" UTIL_EXE_EXT
 #define UTIL_TESTER_NAME        "broker_tester" UTIL_EXE_EXT
 #define UTIL_CUB_MANAGER_NAME   "cub_manager" UTIL_EXE_EXT
 #define UTIL_ADMIN_NAME         "cub_admin" UTIL_EXE_EXT
@@ -876,6 +878,7 @@ typedef struct _ha_config
 #define PRINT_MASTER_NAME       "cubrid master"
 #define PRINT_SERVER_NAME       "cubrid server"
 #define PRINT_BROKER_NAME       "cubrid broker"
+#define PRINT_GATEWAY_NAME      "cubrid gateway"
 #define PRINT_MANAGER_NAME      "cubrid manager server"
 #define PRINT_HEARTBEAT_NAME    "cubrid heartbeat"
 #define PRINT_JAVASP_NAME       "cubrid javasp"
@@ -883,6 +886,7 @@ typedef struct _ha_config
 
 #define PRINT_CMD_SERVICE       "service"
 #define PRINT_CMD_BROKER        "broker"
+#define PRINT_CMD_GATEWAY       "gateway"
 #define PRINT_CMD_MANAGER       "manager"
 #define PRINT_CMD_SERVER        "server"
 #define PRINT_CMD_JAVASP        "javasp"
@@ -936,6 +940,7 @@ typedef struct _ha_config
 #define MASK_SERVER             0x02
 #define MASK_BROKER             0x04
 #define MASK_MANAGER            0x08
+#define MASK_GATEWAY            0x10
 #define MASK_ADMIN              0x20
 #define MASK_HEARTBEAT          0x40
 #define MASK_JAVASP             0x80
@@ -1303,8 +1308,6 @@ typedef struct _ha_config
 #define LOAD_TABLE_NAME_L                       "table"
 #define LOAD_COMPARE_STORAGE_ORDER_S            11820
 #define LOAD_COMPARE_STORAGE_ORDER_L            "compare-storage-order"
-#define LOAD_CS_FORCE_LOAD_S                    11824
-#define LOAD_CS_FORCE_LOAD_L                    "force-load"
 #define LOAD_NO_USER_SPECIFIED_NAME_S           11825
 #define LOAD_NO_USER_SPECIFIED_NAME_L           "no-user-specified-name"
 

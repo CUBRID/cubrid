@@ -470,7 +470,6 @@ EXPORTS
     tz_create_session_tzid_for_timestamp
     tz_create_timestamptz
     tz_utc_datetimetz_to_local
-    set_plan_include_hint
 ;
 ; utility functions
 ;

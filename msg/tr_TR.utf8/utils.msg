@@ -152,6 +152,7 @@ Mevcut hizmetin programları:\n\
     service\n\
     server\n\
     broker\n\
+    gateway\n\
     manager\n\
     heartbeat\n\
     javasp\n\
@@ -265,6 +266,18 @@ Mevcut komut:\n\
     stop        [database-name]\n\
     restart     [database-name]\n\
     status      [database-name]\n
+45 cubrid utility, version %1$s\n\
+usage: %2$s gateway <command> [args]\n\
+\n\
+Available command:\n\
+    start\n\
+    stop\n\
+    restart\n\
+    info\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
+    on          gateway-name\n\
+    off         gateway-name\n\
+    reset       gateway-name\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 UYARI: -t seçeneği stand-alone modu yürütülmesine göz ardı edilir.\n
