@@ -14119,8 +14119,8 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
   char ctime_buf[CTIME_MAX];
   int error_code;
 
-  LOG_LSA process_lsa;
-  LOG_LSA forw_lsa;
+  LOG_LSA process_lsa = LSA_INITIALIZER;
+  LOG_LSA forw_lsa = LSA_INITIALIZER;
 
   LOG_RECORD_HEADER *log_rec_header;
   LOG_REC_DONETIME *donetime;
@@ -14187,7 +14187,6 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 		  process_lsa.offset = 0;
 
 		  fileio_dismount (thread_p, vdes);
-
 		}
 	    }
 	}
@@ -14196,6 +14195,17 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
     }
 
   LOG_CS_EXIT (thread_p);
+
+  if (LSA_ISNULL (&process_lsa))
+    {
+      /* can not find any LSA from archive log volume */
+      assert (!LSA_ISNULL (&process_lsa));
+
+      ctime_r (time, ctime_buf);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_LSA_NOT_FOUND, 1, ctime_buf);
+
+      return ER_CDC_LSA_NOT_FOUND;
+    }
 
   if ((error_code = logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_pgptr)) != NO_ERROR)
     {
