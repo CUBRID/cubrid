@@ -17418,11 +17418,6 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
       FILE *dump_fp = db_query_get_plan_dump_fp ();
       fputs ("\nQuery plan:\n", dump_fp);
       qo_plan_dump (plan, dump_fp);
-
-      {
-	extern void print_hint_dump (FILE * fp);
-	print_hint_dump (dump_fp);
-      }
     }
 
   if (dump_plan == true)

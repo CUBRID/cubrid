@@ -503,6 +503,7 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
   char *password = spec->s.dblink_node.conn_password;
   char *sql_text = spec->s.dblink_node.conn_sql;
 
+  cci_set_client_type (CLIENT_TYPE_GATEWAY);
   scan_info->conn_handle = cci_connect_with_url_ex (conn_url, user_name, password, &err_buf);
   if (scan_info->conn_handle < 0)
     {
