@@ -21,6 +21,7 @@
 
 #include <map>
 #include <vector>
+#include <set>
 
 #include "log_lsa.hpp"
 #include "log_record.hpp"
@@ -89,6 +90,11 @@ namespace cublog
 
       using atomic_replication_sequence_type = std::vector<atomic_replication_unit>;
       std::map<TRANID, atomic_replication_sequence_type> m_atomic_sequences_map;
+
+#if !defined (NDEBUG)
+      using vpid_set_type = std::set<VPID>;
+      std::map<TRANID, vpid_set_type> m_atomic_sequences_vpids_map;
+#endif
   };
 }
 

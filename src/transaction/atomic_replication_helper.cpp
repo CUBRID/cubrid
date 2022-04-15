@@ -37,42 +37,34 @@ namespace cublog
     if (!VPID_ISNULL (&vpid) && !check_for_page_validity (vpid, tranid))
       {
 	// the page is no longer relevant
-	return ER_FAILED;
+	assert (false);
       }
+    m_atomic_sequences_vpids_map[tranid].emplace (vpid);
 #endif
-    auto iterator = m_atomic_sequences_map.find (tranid);
-    if (iterator == m_atomic_sequences_map.end ())
-      {
-	iterator = m_atomic_sequences_map.emplace (tranid, atomic_replication_sequence_type ());
-      }
 
-    iterator->second.emplace_back (record_lsa, vpid, rcvindex);
-    int error_code = iterator->second.back ().fix_page (thread_p);
+    m_atomic_sequences_map[tranid].emplace_back (record_lsa, vpid, rcvindex);
+    int error_code = m_atomic_sequences_map[tranid].back ().fix_page (thread_p);
     if (error_code != NO_ERROR)
       {
 	return error_code;
       }
 
-    iterator->second.back ().apply_log_redo (thread_p, redo_context, record_info);
+    m_atomic_sequences_map[tranid].back ().apply_log_redo (thread_p, redo_context, record_info);
     return NO_ERROR;
   }
 
 #if !defined (NDEBUG)
   bool atomic_replication_helper::check_for_page_validity (VPID vpid, TRANID tranid) const
   {
-    for (auto const &sequence : m_atomic_sequences_map)
+    for (auto const &vpid_sets_iterator : m_atomic_sequences_vpids_map)
       {
-	for (size_t i = 0; i < sequence.second.size (); i++)
+	if (vpid_sets_iterator->first != tranid)
 	  {
-	    const VPID element_vpid = sequence.second[i].m_vpid;
-	    if (element_vpid.pageid == vpid.pageid && element_vpid.volid == vpid.volid)
+	    if (vpid_sets_iterator->second.find (vpid) != vpid_sets_iterator->second.end ())
 	      {
-		if (sequence.first != tranid)
-		  {
-		    er_log_debug (ARG_FILE_LINE, "[ATOMIC REPLICATION] Page %d|%d is part of multiple atomic replication sequences.",
-				  VPID_AS_ARGS (&vpid));
-		    return false;
-		  }
+		er_log_debug (ARG_FILE_LINE, "[ATOMIC REPLICATION] Page %d|%d is part of multiple atomic replication sequences.",
+			      VPID_AS_ARGS (&vpid));
+		return false;
 	      }
 	  }
       }
@@ -107,6 +99,11 @@ namespace cublog
       }
     iterator->second.clear ();
     m_atomic_sequences_map.erase (iterator);
+
+#if !defined (NDEBUG)
+    m_atomic_sequences_vpids_map[tranid].clear ();
+    m_atomic_sequences_vpids_map.erase (tranid);
+#endif
   }
 
   /****************************************************************************
