@@ -1271,6 +1271,10 @@ static int btree_load_overflow_key (THREAD_ENTRY * thread_p, const BTID_INT * bt
 				    BTREE_NODE_TYPE node_type);
 static int btree_delete_overflow_key (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE_PTR page_ptr, INT16 slot_id,
 				      BTREE_NODE_TYPE node_type);
+static int btree_get_first_overflow_page_vpid_from_leaf (THREAD_ENTRY * thread_p, const BTID_INT * btid,
+							 PAGE_PTR page_ptr, INT16 slot_id, BTREE_NODE_TYPE node_type,
+							 VPID & out_page_vpid);
+
 static void btree_write_fixed_portion_of_non_leaf_record (RECDES * rec, NON_LEAF_REC * nlf_rec);
 static void btree_read_fixed_portion_of_non_leaf_record (RECDES * rec, NON_LEAF_REC * nlf_rec);
 static void btree_write_fixed_portion_of_non_leaf_record_to_orbuf (OR_BUF * buf, NON_LEAF_REC * nlf_rec);
@@ -2181,24 +2185,18 @@ exit_on_error:
 }
 
 /*
- * btree_delete_overflow_key () -
- *   return: NO_ERROR
- *   btid(in): B+tree index identifier
- *   page_ptr(in): Page that contains the overflow key
- *   slot_id(in): Slot that contains the overflow key
- *   node_type(in): Leaf or NonLeaf page
- *
- * Note: The overflow key is deleted. This routine will not delete the btree slot containing the key.
+ * btree_get_first_overflow_page_vpid_from_leaf - extract the vpid of the first overflow key page;
+ *                         the leaf page ptr supplied is assumed to be a leaf page with overflow
  */
 static int
-btree_delete_overflow_key (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE_PTR page_ptr, INT16 slot_id,
-			   BTREE_NODE_TYPE node_type)
+btree_get_first_overflow_page_vpid_from_leaf (THREAD_ENTRY * thread_p, const BTID_INT * btid,
+					      PAGE_PTR page_ptr, INT16 slot_id, BTREE_NODE_TYPE node_type,
+					      VPID & out_page_vpid)
 {
+  int error_code = NO_ERROR;
   RECDES rec RECDES_INITIALIZER;
-  VPID page_vpid;
   char *start_ptr;
   OR_BUF buf;
-  int rc = NO_ERROR;
 
   assert (slot_id > 0);
 
@@ -2207,7 +2205,9 @@ btree_delete_overflow_key (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE_
   /* first read the record to get first page identifier */
   if (spage_get_record (thread_p, page_ptr, slot_id, &rec, PEEK) != S_SUCCESS)
     {
-      goto exit_on_error;
+      ASSERT_ERROR ();
+      error_code = er_errid ();
+      return (error_code == NO_ERROR) ? ER_FAILED : error_code;
     }
 
   /* get first page identifier */
@@ -2242,11 +2242,35 @@ btree_delete_overflow_key (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE_
 
   or_init (&buf, start_ptr, DISK_VPID_SIZE);
 
-  page_vpid.pageid = or_get_int (&buf, &rc);
-  if (rc == NO_ERROR)
+  out_page_vpid.pageid = or_get_int (&buf, &error_code);
+  if (error_code == NO_ERROR)
     {
-      page_vpid.volid = or_get_short (&buf, &rc);
+      out_page_vpid.volid = or_get_short (&buf, &error_code);
     }
+
+  return error_code;
+}
+
+/*
+ * btree_delete_overflow_key () - from leaf page, get the vpid of the first overflow page
+ *                        for a key/record/slot; delete all overflow pages in the chain;
+ *                        it is assumed that the key has overflow
+ *   return: NO_ERROR
+ *   btid(in): B+tree index identifier
+ *   page_ptr(in): Page that contains the overflow key
+ *   slot_id(in): Slot that contains the overflow key
+ *   node_type(in): Leaf or NonLeaf page
+ *
+ * Note: The overflow key is deleted. This routine will not delete the btree slot containing the key.
+ */
+static int
+btree_delete_overflow_key (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE_PTR page_ptr, INT16 slot_id,
+			   BTREE_NODE_TYPE node_type)
+{
+  VPID page_vpid;
+  int rc = NO_ERROR;
+
+  rc = btree_get_first_overflow_page_vpid_from_leaf (thread_p, btid, page_ptr, slot_id, node_type, page_vpid);
   if (rc != NO_ERROR)
     {
       goto exit_on_error;
@@ -2254,13 +2278,13 @@ btree_delete_overflow_key (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE_
 
   if (overflow_delete (thread_p, &(btid->ovfid), &page_vpid) == NULL)
     {
+      ASSERT_ERROR ();
       goto exit_on_error;
     }
 
   return NO_ERROR;
 
 exit_on_error:
-
   return (rc == NO_ERROR && (rc = er_errid ()) == NO_ERROR) ? ER_FAILED : rc;
 }
 
@@ -9147,6 +9171,7 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE
   LOG_LSA prev_lsa;
   char leaf_record_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   RECDES leaf_record RECDES_INITIALIZER;
+  VPID first_overflow_page_vpid VPID_INITIALIZER;
 
   assert (delete_helper->is_system_op_started == false);
   assert (delete_helper->purpose != BTREE_OP_INSERT_MVCC_DELID
@@ -9161,7 +9186,15 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE
       delete_helper->is_system_op_started = true;
 
       /* Do not delete overflow key here, do it after deleting leaf record to ensure
-       * consistent top-down replication */
+       * consistent top-down replication.
+       * Only extract the first overflow page vpid before deleting the leaf entry. */
+      ret = btree_get_first_overflow_page_vpid_from_leaf (thread_p, btid, leaf_pg, search_key->slotid,
+							  BTREE_LEAF_NODE, first_overflow_page_vpid);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
     }
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
@@ -9176,7 +9209,6 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE
 
   if (delete_helper->is_system_op_started)
     {
-      // TODO: why is this done only with overflow key?
       /* Before deleting the slot, we will need the record data for undo logging. */
       /* overflow key */
       leaf_record.area_size = DB_PAGESIZE;
@@ -9227,10 +9259,9 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE
 
   if (delete_helper->is_system_op_started)
     {
-      /* Delete overflow key. */
+      /* Delete overflow key pages chain starting with first one. */
       assert (leafrec_pnt->key_len < 0);
-      ret = btree_delete_overflow_key (thread_p, btid, leaf_pg, search_key->slotid, BTREE_LEAF_NODE);
-      if (ret != NO_ERROR)
+      if (overflow_delete (thread_p, &(btid->ovfid), &first_overflow_page_vpid) == nullptr)
 	{
 	  ASSERT_ERROR ();
 	  goto exit_on_error;
