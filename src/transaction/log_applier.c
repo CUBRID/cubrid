@@ -7118,49 +7118,127 @@ la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool v
 }
 
 /*
- * la_log_page_check() - test the transaction log
- *   return: void
- *   log_path: log path
- *   page_num: test page number
+ * applyinfo_applied_log_info() - 
+ *   return: 
  */
 int
-la_log_page_check (const char *database_name, const char *log_path, INT64 page_num, bool pageid_flag,
-		   bool * check_applied_info, bool * check_copied_info, bool * check_replica_info, bool verbose,
-		   LOG_LSA * copied_eof_lsa, LOG_LSA * copied_append_lsa, LOG_LSA * applied_final_lsa)
+la_applyinfo_applied_log_info (const char *database_name, const char *log_path, bool check_replica_info, bool verbose,
+			       LOG_LSA * applied_final_lsa)
 {
   int error = NO_ERROR;
   int res;
-  char *atchar;
-  char active_log_path[PATH_MAX];
-  char log_path_buf[PATH_MAX];
   char *replica_time_bound_str;
 
   assert (database_name != NULL);
   assert (log_path != NULL);
 
-  atchar = (char *) strchr (database_name, '@');
-  if (atchar)
+  LA_HA_APPLY_INFO ha_apply_info;
+  char timebuf[1024];
+
+  la_init (log_path, 0);
+  la_init_ha_apply_info (&ha_apply_info);
+
+  res = la_get_ha_apply_info (log_path, database_name, &ha_apply_info);
+  if ((res <= 0) || (ha_apply_info.creation_time.date == 0 && ha_apply_info.creation_time.time == 0))
     {
-      *atchar = '\0';
-    }
-  if (log_path != NULL)
-    {
-      if (realpath (log_path, log_path_buf) != NULL)
+      error = res;
+      if ((res < 0) && (ha_apply_info.creation_time.date != 0 || ha_apply_info.creation_time.time != 0))
 	{
-	  log_path = log_path_buf;
+	  goto check_applied_info_end;
+	}
+      else
+	{
+	  printf ("\nERROR : Query object is not loaded\n\n");
+	  return ER_FAILED;
 	}
     }
+  *applied_final_lsa = ha_apply_info.final_lsa;
 
+  if (verbose)
+    {
+      db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.creation_time);
+      printf ("%-30s : %s\n", "DB creation time", timebuf);
+
+      printf ("%-30s : %lld | %d\n", "Last committed LSA", LSA_AS_ARGS (&ha_apply_info.committed_lsa));
+      printf ("%-30s : %lld | %d\n", "Last committed replog LSA", LSA_AS_ARGS (&ha_apply_info.committed_rep_lsa));
+      printf ("%-30s : %lld | %d\n", "Last append LSA", LSA_AS_ARGS (&ha_apply_info.append_lsa));
+      printf ("%-30s : %lld | %d\n", "Last EOF LSA", LSA_AS_ARGS (&ha_apply_info.eof_lsa));
+      printf ("%-30s : %lld | %d\n", "Final LSA", LSA_AS_ARGS (&ha_apply_info.final_lsa));
+      printf ("%-30s : %lld | %d\n", "Required LSA", LSA_AS_ARGS (&ha_apply_info.required_lsa));
+
+      db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.log_record_time);
+      printf ("%-30s : %s\n", "Log record time", timebuf);
+
+      db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.log_commit_time);
+      printf ("%-30s : %s\n", "Log committed time", timebuf);
+
+      db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.last_access_time);
+      printf ("%-30s : %s\n", "Last access time", timebuf);
+    }
+
+  printf ("%-30s : %ld\n", "Insert count", ha_apply_info.insert_counter);
+  printf ("%-30s : %ld\n", "Update count", ha_apply_info.update_counter);
+  printf ("%-30s : %ld\n", "Delete count", ha_apply_info.delete_counter);
+  printf ("%-30s : %ld\n", "Schema count", ha_apply_info.schema_counter);
+  printf ("%-30s : %ld\n", "Commit count", ha_apply_info.commit_counter);
+  printf ("%-30s : %ld\n", "Fail count", ha_apply_info.fail_counter);
+
+  if (verbose)
+    {
+      db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.start_time);
+      printf ("%-30s : %s\n", "Start time", timebuf);
+    }
+
+  if (check_replica_info)
+    {
+      replica_time_bound_str = prm_get_string_value (PRM_ID_HA_REPLICA_TIME_BOUND);
+      db_datetime_to_string2 ((char *) timebuf, 1024, &ha_apply_info.log_record_time);
+
+      printf ("\n *** Replica-specific Info. *** \n");
+      if (replica_time_bound_str == NULL)
+	{
+	  printf ("%-30s : %d second(s)\n", "Deliberate lag", prm_get_integer_value (PRM_ID_HA_REPLICA_DELAY_IN_SECS));
+	}
+
+      printf ("%-30s : %s\n", "Last applied log record time", timebuf);
+      if (replica_time_bound_str != NULL)
+	{
+	  printf ("%-30s : %s\n", "Will apply log records up to", replica_time_bound_str);
+	}
+    }
+check_applied_info_end:
+  if (error != NO_ERROR)
+    {
+      printf ("ERROR : %s\n\n", db_error_string (3));
+    }
+  return error;
+}
+
+/*
+ * applyinfo_copied_log_info() - 
+ *   return: 
+ */
+int
+la_applyinfo_copied_log_info (const char *database_name, const char *log_path, INT64 page_num, bool verbose,
+			      LOG_LSA * copied_eof_lsa, LOG_LSA * copied_append_lsa)
+{
+  int error = NO_ERROR;
+  char active_log_path[PATH_MAX];
+
+  assert (database_name != NULL);
+  assert (log_path != NULL);
+
+  memset (active_log_path, 0, PATH_MAX);
   /* init la_Info */
   la_init (log_path, 0);
-  memset (active_log_path, 0, PATH_MAX);
+
+  printf ("\n *** Copied Active Info. *** \n");
+
   fileio_make_log_active_name ((char *) active_log_path, la_Info.log_path, database_name);
   if (!fileio_is_volume_exist ((const char *) active_log_path))
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, active_log_path);
       error = ER_LOG_MOUNT_FAIL;
-      *check_copied_info = false;
-      printf ("\n *** Copied Active Info. *** \n");
       goto check_copied_info_end;
     }
 
@@ -7168,114 +7246,24 @@ la_log_page_check (const char *database_name, const char *log_path, INT64 page_n
   error = la_find_log_pagesize (&la_Info.act_log, la_Info.log_path, database_name, false);
   if (error != NO_ERROR)
     {
-      *check_copied_info = false;
-      printf ("\n *** Copied Active Info. *** \n");
       goto check_copied_info_end;
     }
+  *copied_eof_lsa = la_Info.act_log.log_hdr->eof_lsa;
+  *copied_append_lsa = la_Info.act_log.log_hdr->append_lsa;
 
-  if (*check_applied_info)
-    {
-      LA_HA_APPLY_INFO ha_apply_info;
-      char timebuf[1024];
+  la_print_log_header (database_name, la_Info.act_log.log_hdr, verbose);
 
-      la_init_ha_apply_info (&ha_apply_info);
-
-      res = la_get_ha_apply_info (log_path, database_name, &ha_apply_info);
-      if ((res <= 0) || (ha_apply_info.creation_time.date == 0 && ha_apply_info.creation_time.time == 0))
-	{
-	  printf ("\n *** Applied Info. *** \n");
-	  if ((res < 0) && (ha_apply_info.creation_time.date != 0 || ha_apply_info.creation_time.time != 0))
-	    {
-	      error = res;
-	      goto check_applied_info_end;
-	    }
-	  else
-	    {
-	      error = res;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_AVAILABLE_INFORMATION, 0);
-	      *check_applied_info = false;
-	      printf ("\nERROR : %s\n\n", db_error_string (3));
-	      goto check_applied_info_end;
-	    }
-	}
-      printf ("\n *** Applied Info. *** \n");
-      *applied_final_lsa = ha_apply_info.final_lsa;
-
-      if (verbose)
-	{
-	  db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.creation_time);
-	  printf ("%-30s : %s\n", "DB creation time", timebuf);
-
-	  printf ("%-30s : %lld | %d\n", "Last committed LSA", LSA_AS_ARGS (&ha_apply_info.committed_lsa));
-	  printf ("%-30s : %lld | %d\n", "Last committed replog LSA", LSA_AS_ARGS (&ha_apply_info.committed_rep_lsa));
-	  printf ("%-30s : %lld | %d\n", "Last append LSA", LSA_AS_ARGS (&ha_apply_info.append_lsa));
-	  printf ("%-30s : %lld | %d\n", "Last EOF LSA", LSA_AS_ARGS (&ha_apply_info.eof_lsa));
-	  printf ("%-30s : %lld | %d\n", "Final LSA", LSA_AS_ARGS (&ha_apply_info.final_lsa));
-	  printf ("%-30s : %lld | %d\n", "Required LSA", LSA_AS_ARGS (&ha_apply_info.required_lsa));
-
-	  db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.log_record_time);
-	  printf ("%-30s : %s\n", "Log record time", timebuf);
-
-	  db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.log_commit_time);
-	  printf ("%-30s : %s\n", "Log committed time", timebuf);
-
-	  db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.last_access_time);
-	  printf ("%-30s : %s\n", "Last access time", timebuf);
-	}
-
-      printf ("%-30s : %ld\n", "Insert count", ha_apply_info.insert_counter);
-      printf ("%-30s : %ld\n", "Update count", ha_apply_info.update_counter);
-      printf ("%-30s : %ld\n", "Delete count", ha_apply_info.delete_counter);
-      printf ("%-30s : %ld\n", "Schema count", ha_apply_info.schema_counter);
-      printf ("%-30s : %ld\n", "Commit count", ha_apply_info.commit_counter);
-      printf ("%-30s : %ld\n", "Fail count", ha_apply_info.fail_counter);
-
-      if (verbose)
-	{
-	  db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.start_time);
-	  printf ("%-30s : %s\n", "Start time", timebuf);
-	}
-
-      if (*check_replica_info)
-	{
-	  replica_time_bound_str = prm_get_string_value (PRM_ID_HA_REPLICA_TIME_BOUND);
-	  db_datetime_to_string2 ((char *) timebuf, 1024, &ha_apply_info.log_record_time);
-
-	  printf ("\n *** Replica-specific Info. *** \n");
-	  if (replica_time_bound_str == NULL)
-	    {
-	      printf ("%-30s : %d second(s)\n", "Deliberate lag",
-		      prm_get_integer_value (PRM_ID_HA_REPLICA_DELAY_IN_SECS));
-	    }
-
-	  printf ("%-30s : %s\n", "Last applied log record time", timebuf);
-	  if (replica_time_bound_str != NULL)
-	    {
-	      printf ("%-30s : %s\n", "Will apply log records up to", replica_time_bound_str);
-	    }
-	}
-    }
-check_applied_info_end:
+check_copied_info_end:
   if (error != NO_ERROR)
     {
-      *check_applied_info = false;
-      printf ("\nERROR : %s\n\n", db_error_string (3));
-    }
-  error = NO_ERROR;
-
-  if (*check_copied_info)
-    {
-      /* check active log file */
-      printf ("\n *** Copied Active Info. *** \n");
-      *copied_eof_lsa = la_Info.act_log.log_hdr->eof_lsa;
-      *copied_append_lsa = la_Info.act_log.log_hdr->append_lsa;
-
-      la_print_log_header (database_name, la_Info.act_log.log_hdr, verbose);
+      printf ("ERROR : %s\n", db_error_string (3));
+      return error;
     }
 
-  if (*check_copied_info && pageid_flag && page_num >= 0)
+  if (page_num >= 0)
     {
       printf ("\n *** Copied Log Page Info. *** \n");
+
       LOG_PAGE *logpage;
 
       /* get last deleted archive number */
@@ -7289,12 +7277,12 @@ check_applied_info_end:
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, la_Info.act_log.db_iopagesize);
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto copied_log_page_info_end;
+	  goto check_copied_log_page_info_end;
 	}
 
       logpage = (LOG_PAGE *) la_Info.log_data;
 
-      if (LA_LOG_IS_IN_ARCHIVE (page_num) && page_num >= 0)
+      if (LA_LOG_IS_IN_ARCHIVE (page_num))
 	{
 	  /* read from the archive log file */
 	  printf ("\n *** Copied Archive Info. *** \n");
@@ -7313,15 +7301,14 @@ check_applied_info_end:
 	      error = tde_decrypt_log_page (logpage, logwr_get_tde_algorithm (logpage), logpage);
 	      if (error != NO_ERROR)
 		{
-		  goto copied_log_page_info_end;
+		  goto check_copied_log_page_info_end;
 		}
 	    }
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 	}
-
       if (error != NO_ERROR)
 	{
-	  goto copied_log_page_info_end;
+	  goto check_copied_log_page_info_end;
 	}
       else
 	{
@@ -7340,7 +7327,7 @@ check_applied_info_end:
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Invalid pageid");
 	      error = ER_HA_GENERIC_ERROR;
-	      goto copied_log_page_info_end;
+	      goto check_copied_log_page_info_end;
 	    }
 
 	  lsa.pageid = logpage->hdr.logical_pageid;
@@ -7357,22 +7344,14 @@ check_applied_info_end:
 	    }
 	}
       free_and_init (la_Info.log_data);
-    }
-  else if (*check_copied_info && pageid_flag && page_num < 0)
-    {
-      printf ("\n *** Copied Log Page Info. *** \n");
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Invalid pageid");
-      error = ER_HA_GENERIC_ERROR;
     }				/* check_copied_info */
-copied_log_page_info_end:
+
+check_copied_log_page_info_end:
   if (error != NO_ERROR)
     {
-      printf ("\nERROR : %s\n\n", db_error_string (3));
+      printf ("ERROR : %s\n", db_error_string (3));
     }
-  error = NO_ERROR;
-
-check_copied_info_end:
-  return error;
+  return NO_ERROR;
 }
 
 void
