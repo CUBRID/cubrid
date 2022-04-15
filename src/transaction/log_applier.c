@@ -7135,7 +7135,6 @@ la_applyinfo_applied_log_info (const char *database_name, const char *log_path, 
   LA_HA_APPLY_INFO ha_apply_info;
   char timebuf[1024];
 
-  la_init (log_path, 0);
   la_init_ha_apply_info (&ha_apply_info);
 
   res = la_get_ha_apply_info (log_path, database_name, &ha_apply_info);

@@ -3156,7 +3156,6 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   int error = NO_ERROR;
   INT64 pageid = 0;
   int interval;
-  int argv_index = 0;
   float process_rate = 0.0f;
   char *replica_time_bound_str;
   /* log lsa to calculate the estimated delay */
