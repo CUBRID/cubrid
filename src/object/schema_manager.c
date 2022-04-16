@@ -3323,6 +3323,12 @@ sm_check_system_class_by_name (const char *name)
   sm_downcase_name (name, downcase_name, SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
 
   len = strlen (downcase_name);
+
+  if (len > system_classes[count - 1].len)
+    {
+      return false;
+    }
+
   for (i = 0; i < count; i++)
     {
       if (len < system_classes[i].len)
