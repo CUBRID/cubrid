@@ -139,6 +139,9 @@ typedef struct system_class_def
 
 // *INDENT-OFF*
 static SYSTEM_CLASS_DEF system_classes[] = {
+  {ROOTCLASS_NAME, strlen (ROOTCLASS_NAME)},			// "Rootclass"
+  {CT_DUAL_NAME, strlen (CT_DUAL_NAME)},			// "dual"
+
   /*
    * authorization classes
    *
@@ -3267,9 +3270,21 @@ sm_is_system_class (MOP op)
 }
 
 static int
-system_class_compare (const void *a, const void *b)
+system_class_def_compare (const void *a, const void *b)
 {
-  return strcmp (((const SYSTEM_CLASS_DEF *) a)->name, ((const SYSTEM_CLASS_DEF *) b)->name);
+  int a_len = ((const SYSTEM_CLASS_DEF *) a)->len;
+  int b_len = ((const SYSTEM_CLASS_DEF *) b)->len;
+
+  if (a_len < b_len)
+    {
+      return -1;
+    }
+  else if (a_len > b_len)
+    {
+      return 1;
+    }
+
+  return 0;
 }
 
 /*
@@ -3285,7 +3300,8 @@ sm_check_system_class_by_name (const char *name)
   static int count = sizeof (system_classes) / sizeof (system_classes[0]);
 
   char downcase_name[SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH] = { '\0' };
-  int left = 0, middle = 0, right = 0, result = 0;
+  int len = 0;
+  int i = 0;
 
   if (name == NULL || name[0] == '\0')
     {
@@ -3294,7 +3310,7 @@ sm_check_system_class_by_name (const char *name)
 
   if (!was_initialized)
     {
-      qsort (system_classes, count, sizeof (system_classes[0]), system_class_compare);
+      qsort (system_classes, count, sizeof (system_classes[0]), system_class_def_compare);
       was_initialized = TRUE;
     }
 
@@ -3306,37 +3322,15 @@ sm_check_system_class_by_name (const char *name)
 
   sm_downcase_name (name, downcase_name, SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
 
-  if (strncmp (downcase_name, ROOTCLASS_NAME, strlen (ROOTCLASS_NAME)) == 0)
+  len = strlen (downcase_name);
+  for (i = 0; i < count; i++)
     {
-      return true;
-    }
-
-  if (strncmp (downcase_name, CT_DUAL_NAME, strlen (CT_DUAL_NAME)) == 0)
-    {
-      return true;
-    }
-
-  if (strncmp (downcase_name, "_db_", 4) != 0 && strncmp (downcase_name, "db_", 3) != 0)
-    {
-      return false;
-    }
-
-  /* binary search */
-  left = 0;
-  right = count;
-  while (left <= right)
-    {
-      middle = (left + right) / 2;
-      result = strcmp (downcase_name, system_classes[middle].name);
-      if (result < 0)
+      if (len < system_classes[i].len)
 	{
-	  right = middle - 1;
+	  return false;
 	}
-      else if (result > 0)
-	{
-	  left = middle + 1;
-	}
-      else
+
+      if (strcmp (downcase_name, system_classes[i].name) == 0)
 	{
 	  return true;
 	}
