@@ -683,22 +683,17 @@ flashback_find_start_lsa (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * c
 
   int error = NO_ERROR;
 
-  LOG_LSA process_lsa;
+  LOG_LSA process_lsa = LSA_INITIALIZER;
+  LOG_LSA cur_log_rec_lsa = LSA_INITIALIZER;
 
   LOG_RECORD_HEADER *log_rec_header;
 
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
+  log_page_p->hdr.logical_pageid = NULL_LOG_PAGEID;
+
   assert (!LSA_ISNULL (&context->end_lsa));
   LSA_COPY (&process_lsa, &context->end_lsa);
-
-  /* fetch log page */
-  error = logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p);
-  if (error != NO_ERROR)
-    {
-      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "flashback_make_loginfo");
-      goto error;
-    }
 
   while (!LSA_ISNULL (&process_lsa))
     {
@@ -707,13 +702,19 @@ flashback_find_start_lsa (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * c
 	{
 	  if (logpb_is_page_in_archive (process_lsa.pageid))
 	    {
+	      LOG_CS_ENTER_READ_MODE (thread_p);
+
 	      if (logpb_fetch_from_archive (thread_p, process_lsa.pageid, log_page_p, 0, NULL, false) == NULL)
 		{
 		  /* archive log volume has been removed */
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_LOG_NOT_EXIST, 2, LSA_AS_ARGS (&process_lsa));
-		  error = ER_FLASHBACK_LOG_NOT_EXIST;;
+		  error = ER_FLASHBACK_LOG_NOT_EXIST;
+
+		  LOG_CS_EXIT (thread_p);
 		  goto error;
 		}
+
+	      LOG_CS_EXIT (thread_p);
 	    }
 	  else
 	    {
@@ -728,10 +729,11 @@ flashback_find_start_lsa (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * c
 
       log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
 
+      LSA_COPY (&cur_log_rec_lsa, &process_lsa);
       LSA_COPY (&process_lsa, &log_rec_header->prev_tranlsa);
     }
 
-  LSA_COPY (&context->start_lsa, &process_lsa);
+  LSA_COPY (&context->start_lsa, &cur_log_rec_lsa);
 
   return error;
 
