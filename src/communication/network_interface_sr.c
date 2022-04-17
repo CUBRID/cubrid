@@ -10368,7 +10368,24 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
   db_make_null (&ret_value);
   int error_code = xmethod_invoke_fold_constants (thread_p, sig_list, ref_args, ret_value);
 
-  cubmethod::method_invoke_group * top_on_stack = cubmethod::get_rctx (thread_p)->top_stack ();
+  cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
+  cubmethod::method_invoke_group * top_on_stack = NULL;
+  if (rctx)
+    {
+      top_on_stack = rctx->top_stack ();
+    }
+
+  if (rctx == NULL || top_on_stack == NULL)
+    {
+      /* might be interrupted and session is already freed */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+      (void) return_error_to_client (thread_p, rid);
+      sig_list.freemem ();
+      pr_clear_value_vector (args);
+      db_value_clear (&ret_value);
+      return;
+    }
+
 
   packing_packer packer;
   cubmem::extensible_block eb;
@@ -10396,13 +10413,16 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
     }
   else
     {
-      if (er_has_error () == false)
+      std::string err_msg;
+
+      assert (top_on_stack);
+      err_msg.assign (top_on_stack->get_error_msg ());
+      if (rctx->is_interrupted () == false)
 	{
-	  std::string err_msg = top_on_stack->get_error_msg ();
-	  packer.set_buffer_and_pack_all (eb, err_msg);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg.c_str ());
 	}
 
+      packer.set_buffer_and_pack_all (eb, err_msg);
       (void) return_error_to_client (thread_p, rid);
     }
 
@@ -10419,10 +10439,11 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 				     reply_data_size);
 
   // clear
+  assert (top_on_stack);
   top_on_stack->end ();
+
   pr_clear_value_vector (args);
   db_value_clear (&ret_value);
-
   sig_list.freemem ();
 }
 
