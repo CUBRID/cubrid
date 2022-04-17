@@ -13745,8 +13745,7 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
 	  else if (error == ER_CDC_LSA_NOT_FOUND)
 	    {
 	      /* input time is too big to find log, then returns latest log */
-	      LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
-	      LSA_COPY (start_lsa, &nxio_lsa);
+	      LSA_COPY (start_lsa, &log_Gl.append.prev_lsa);
 
 	      *extraction_time = time (NULL);	/* can not know time of latest log */
 	      is_found = true;
@@ -13831,8 +13830,7 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
 	      else
 		{
 		  /* num_arvs ==0 but no time info has been found in active log volume */
-		  LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
-		  LSA_COPY (start_lsa, &nxio_lsa);
+		  LSA_COPY (start_lsa, &log_Gl.append.prev_lsa);
 
 		  *extraction_time = time (NULL);	/* can not know time of latest log */
 		  is_found = true;
