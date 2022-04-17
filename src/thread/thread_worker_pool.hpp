@@ -43,6 +43,7 @@
 #include <string>
 #include <system_error>
 #include <thread>
+#include <set>
 
 #include <cassert>
 #include <cstring>
@@ -326,6 +327,10 @@ namespace cubthread
 	return m_parent_pool;
       }
 
+      // temp worker
+      void register_free_temp_list (worker *w);
+      void free_all_temp_list ();
+
     private:
       // execute task for method/stored procedure by recursive call; This task is not pooled and executes in a temporary created thread.
       void execute_temp_task (task_type *task_p, const cubperf::time_point &push_time);
@@ -344,7 +349,8 @@ namespace cubthread
       std::queue<task_type *> m_task_queue;           // list of tasks pushed while all workers were occupied
       std::mutex m_workers_mutex;                     // mutex to synchronize activity on worker lists
 
-      std::vector<worker *> m_temp_workers;           // temporary executed workers for method/stored procedure
+      std::set<worker *> m_temp_workers;              // temporary executed workers for method/stored procedure
+      std::vector<worker *> m_temp_free_workers;      //
   };
 
   // worker_pool<Context>::worker
@@ -1015,21 +1021,9 @@ namespace cubthread
   worker_pool<Context>::core::execute_temp_task (task_type *task_p, const cubperf::time_point &push_time)
   {
     worker *w = new worker (true);
+    m_temp_workers.insert (w);
     w->init_core (*this);
     w->assign_task (task_p, push_time);
-
-    std::size_t i = 0;
-    for (; i < m_temp_workers.size (); i++)
-      {
-	if (m_temp_workers[i] == nullptr)
-	  {
-	    m_temp_workers[i] = w;
-	  }
-      }
-    if (i == m_temp_workers.size())
-      {
-	m_temp_workers.push_back (w);
-      }
   }
 
   template <typename Context>
@@ -1103,12 +1097,9 @@ namespace cubthread
 	  }
       }
 
-    for (std::size_t it = 0; it < m_temp_workers.size () && !stop; it++)
+    for (worker *w : m_temp_workers)
       {
-	if (m_temp_workers[it])
-	  {
-	    m_temp_workers[it]->map_context_if_running (stop, func, args...);
-	  }
+	w->map_context_if_running (stop, func, args...);
 	if (stop)
 	  {
 	    // stop mapping
@@ -1121,16 +1112,11 @@ namespace cubthread
   void
   worker_pool<Context>::core::notify_stop (bool &is_not_stopped)
   {
-    /*
     // stop all temp workers first
-    for (std::size_t it = 0; it < m_temp_workers.size (); it++)
+    for (worker *w : m_temp_workers)
       {
-    if (m_temp_workers[it])
-      {
-        m_temp_workers[it]->stop_execution (is_not_stopped);
+	w->stop_execution (is_not_stopped);
       }
-      }
-    */
 
     // tell all workers to stop
     for (std::size_t it = 0; it < m_max_workers; it++)
@@ -1234,13 +1220,33 @@ namespace cubthread
 	m_worker_array[it].get_stats (stats_out);
       }
 
-    for (std::size_t it = 0; it < m_temp_workers.size (); it++)
+    for (worker *w: m_temp_workers)
       {
-	if (m_temp_workers[it])
-	  {
-	    m_temp_workers[it]->get_stats (stats_out);
-	  }
+	w->get_stats (stats_out);
       }
+  }
+
+  template <typename Context>
+  void
+  worker_pool<Context>::core::register_free_temp_list (worker *w)
+  {
+    std::unique_lock<std::mutex> ulock (m_workers_mutex);
+
+    m_temp_workers.erase (w);
+    m_temp_free_workers.push_back (w);
+  }
+
+  template <typename Context>
+  void
+  worker_pool<Context>::core::free_all_temp_list ()
+  {
+    std::unique_lock<std::mutex> ulock (m_workers_mutex);
+
+    for (worker *w: m_temp_free_workers)
+      {
+	delete w;
+      }
+    m_temp_free_workers.clear ();
   }
 
   //////////////////////////////////////////////////////////////////////////
@@ -1287,6 +1293,13 @@ namespace cubthread
 
     // save task
     m_task_p = work_p;
+
+    if (m_is_temp)
+      {
+	m_has_thread = true;
+	assert (m_context_p == NULL);
+	start_thread ();
+      }
 
     if (m_has_thread)
       {
@@ -1377,6 +1390,11 @@ namespace cubthread
     m_stop = true;    // stop worker
     ulock.unlock ();    // mutex is not needed for notify
 
+    if (m_is_temp)
+      {
+	// not to notify one if it is for temp
+	return;
+      }
     m_task_cv.notify_one ();
   }
 
@@ -1388,7 +1406,10 @@ namespace cubthread
     assert (m_has_thread);
 
     // safe-guard - threads should [no longer] be available
-    m_parent_core->check_worker_not_available (*this);
+    if (m_is_temp == false)
+      {
+	m_parent_core->check_worker_not_available (*this);
+      }
 
     // thread was started
     m_statistics.m_timept = m_push_time;
@@ -1410,6 +1431,11 @@ namespace cubthread
     m_parent_core->get_context_manager ().retire_context (*m_context_p);
     m_context_p = NULL;
     wp_worker_statset_time_and_increment (m_statistics, Wpstat_retire_context);
+
+    if (m_is_temp)
+      {
+	m_parent_core->register_free_temp_list (this);
+      }
   }
 
   template <typename Context>
@@ -1442,7 +1468,11 @@ namespace cubthread
     wp_worker_statset_time_and_increment (m_statistics, Wpstat_recycle_context);
 
     // notify core one task was finished
-    m_parent_core->finished_task_notification ();
+    if (m_is_temp == false)
+      {
+	m_parent_core->finished_task_notification ();
+	m_parent_core->free_all_temp_list ();
+      }
   }
 
   template <typename Context>
