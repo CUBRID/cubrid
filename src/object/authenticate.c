@@ -6242,65 +6242,6 @@ au_check_user (void)
 }
 
 /*
- * au_current_user_name() - Get the user name currently connected.
- *    return: output buffer pointer or NULL on error
- *    buf(out): output buffer
- *    buf_size(in): output buffer length
- */
-char *
-au_current_user_name (char *buf, int buf_size)
-{
-  DB_VALUE value;
-  const char *user_name = NULL;
-  int save = 0;
-  int error = NO_ERROR;
-
-  if (buf == NULL || buf_size < 0)
-    {
-      ERROR_SET_WARNING (error, ER_AU_INVALID_ARGUMENTS);
-      return NULL;
-    }
-
-  if (Au_user == NULL)
-    {
-      ERROR_SET_WARNING (error, ER_AU_NO_USER_LOGGED_IN);
-      return NULL;
-    }
-
-  AU_DISABLE (save);
-
-  error = obj_get (Au_user, "name", &value);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return NULL;
-    }
-
-  AU_ENABLE (save);
-
-  if (DB_IS_NULL (&value))
-    {
-      return NULL;
-    }
-
-  if (!DB_IS_STRING (&value))
-    {
-      ERROR_SET_ERROR (error, ER_AU_CORRUPTED);
-      pr_clear_value (&value);
-      return NULL;
-    }
-
-  user_name = db_get_string (&value);
-
-  assert (strlen (user_name) < buf_size);
-  strcpy (buf, user_name);
-
-  pr_clear_value (&value);
-
-  return buf;
-}
-
-/*
  * au_user_name - Returns the name of the current user, the string must be
  *                freed with ws_free_string (db_string_free).
  *   return: user name (NULL if error)
@@ -7204,6 +7145,8 @@ au_perform_login (const char *name, const char *password, bool ignore_dba_privil
 	      if (error == NO_ERROR)
 		{
 		  error = AU_SET_USER (user);
+
+		  error = sc_set_current_schema (user);
 
 		  /* necessary to invalidate vclass cache */
 		  sm_bump_local_schema_version ();

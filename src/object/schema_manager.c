@@ -497,7 +497,6 @@ sc_set_current_schema (MOP user)
   return error;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * sc_current_schema_name() - Returns current schema name which is
  *                            the default qualifier for otherwise
@@ -505,13 +504,11 @@ sc_set_current_schema (MOP user)
  *      return: pointer to current schema name
  *
  */
-
-static const char *
+const char *
 sc_current_schema_name (void)
 {
   return (const char *) &(Current_Schema.name);
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * sm_add_static_method() - Adds an element to the static link table.
@@ -2184,7 +2181,7 @@ char *
 sm_user_specified_name (const char *name, char *buf, int buf_size)
 {
   char user_specified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char current_user_name[SM_MAX_USER_LENGTH] = { '\0' };
+  const char *current_schema_name = NULL;
   const char *dot = NULL;
   int error = NO_ERROR;
 
@@ -2217,21 +2214,16 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
       return sm_downcase_name (name, buf, buf_size);
     }
 
-  /* Appends the current username, making it a user-specified name. */
-  if (db_get_current_user_name (current_user_name, SM_MAX_USER_LENGTH) == NULL)
-    {
-      ASSERT_ERROR ();
-      return NULL;
-    }
+  current_schema_name = sc_current_schema_name ();
 
-  assert (snprintf (NULL, 0, "%s.%s", current_user_name, name) < buf_size);
-  assert (snprintf (NULL, 0, "%s.%s", current_user_name, name) < SM_MAX_IDENTIFIER_LENGTH);
+  assert (snprintf (NULL, 0, "%s.%s", current_schema_name, name) < buf_size);
+  assert (snprintf (NULL, 0, "%s.%s", current_schema_name, name) < SM_MAX_IDENTIFIER_LENGTH);
 
   /*
    * e.g.   name: object_name
    *      return: current_user_name.object_name
    */
-  snprintf (user_specified_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", current_user_name, name);
+  snprintf (user_specified_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", current_schema_name, name);
   return sm_downcase_name (user_specified_name, buf, buf_size);
 }
 
