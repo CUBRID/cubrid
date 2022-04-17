@@ -30,6 +30,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <deque>
+#include <condition_variable>
 
 #include "method_connection_pool.hpp"
 #include "method_def.hpp"
@@ -76,10 +77,15 @@ namespace cubmethod
       void set_interrupt (int reason);
       bool is_interrupted ();
       int get_interrupt_reason ();
+      void wait_for_interrupt ();
+      bool is_running ();
 
     private:
       void destroy_all_groups ();
       void destroy_all_cursors ();
+
+      std::mutex m_mutex;
+      std::condition_variable m_cond_var;
 
       std::deque <METHOD_GROUP_ID> m_group_stack; // runtime stack
       std::unordered_set <QUERY_ID> m_returning_cursors;
@@ -89,6 +95,7 @@ namespace cubmethod
 
       bool m_is_interrupted;
       int m_interrupt_reason;
+      bool m_is_running;
   };
 
   /* global interface */

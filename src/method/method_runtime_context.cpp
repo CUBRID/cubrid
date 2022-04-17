@@ -41,12 +41,14 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 
   runtime_context::runtime_context ()
-    : m_group_stack {}
+    : m_mutex ()
+    , m_group_stack {}
     , m_returning_cursors {}
     , m_group_map {}
     , m_cursor_map {}
     , m_is_interrupted (false)
     , m_interrupt_reason (NO_ERROR)
+    , m_is_running (false)
   {
     //
   }
@@ -60,6 +62,8 @@ namespace cubmethod
   method_invoke_group *
   runtime_context::create_invoke_group (cubthread::entry *thread_p, const method_sig_list &sig_list)
   {
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
     method_invoke_group *group = new (std::nothrow) cubmethod::method_invoke_group (thread_p, sig_list);
     if (group)
       {
@@ -71,12 +75,17 @@ namespace cubmethod
   void
   runtime_context::push_stack (cubthread::entry *thread_p, method_invoke_group *group)
   {
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
+    m_is_running = true;
     m_group_stack.push_back (group->get_id ());
   }
 
   void
   runtime_context::pop_stack (cubthread::entry *thread_p)
   {
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
     m_group_stack.pop_back ();
 
     if (m_group_stack.empty())
@@ -84,12 +93,15 @@ namespace cubmethod
 	// reset interrupt state
 	m_is_interrupted = false;
 	m_interrupt_reason = NO_ERROR;
+	m_is_running = false;
       }
   }
 
   method_invoke_group *
   runtime_context::top_stack ()
   {
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
     assert (m_group_stack.empty () == false);
 
     METHOD_GROUP_ID top = m_group_stack.back ();
@@ -131,6 +143,24 @@ namespace cubmethod
   runtime_context::get_interrupt_reason ()
   {
     return m_interrupt_reason;
+  }
+
+  void
+  runtime_context::wait_for_interrupt ()
+  {
+    auto pred = [this] () -> bool
+    {
+      return m_group_stack.empty () && is_running ();
+    };
+
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    m_cond_var.wait (ulock, pred);
+  }
+
+  bool
+  runtime_context::is_running ()
+  {
+    return m_is_running;
   }
 
   query_cursor *

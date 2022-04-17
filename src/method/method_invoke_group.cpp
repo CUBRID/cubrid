@@ -198,8 +198,20 @@ namespace cubmethod
 	  }
 
 	error = m_method_vector[i]->get_return (m_thread_p, arg_base, m_result_vector[i]);
+	if (m_rctx->is_interrupted ())
+	  {
+	    error = m_rctx->get_interrupt_reason ();
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	    break;
+	  }
+
 	if (error != NO_ERROR)
 	  {
+	    if (error == ER_INTERRUPTED || error == ER_SP_TOO_MANY_NESTED_CALL)
+	      {
+		m_rctx->set_interrupt (error);
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	      }
 	    break;
 	  }
       }
@@ -256,7 +268,9 @@ namespace cubmethod
 
     reset (true);
 
-    get_connection_pool ()->retire (m_connection);
+    // FIXME: The connection is closed to prevent Java thread from entering an unexpected state.
+    bool kill = (m_rctx->is_interrupted());
+    get_connection_pool ()->retire (m_connection, kill);
     m_connection = nullptr;
 
     m_rctx->pop_stack (m_thread_p);
