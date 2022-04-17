@@ -164,7 +164,7 @@ method_dispatch (packing_unpacker &unpacker)
 
   tran_begin_libcas_function ();
   int depth = tran_get_libcas_depth ();
-  if (depth > METHOD_MAX_RECURSION_DEPTH)
+  if (depth >= METHOD_MAX_RECURSION_DEPTH)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_NESTED_CALL, 0);
       error = ER_SP_TOO_MANY_NESTED_CALL;

@@ -3218,6 +3218,8 @@ session_stop_attached_threads (void *session_arg)
 
   if (session->method_rctx_p != NULL)
     {
+      session->method_rctx_p->wait_for_interrupt ();
+
       delete session->method_rctx_p;
       session->method_rctx_p = NULL;
     }
