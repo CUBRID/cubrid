@@ -7612,10 +7612,29 @@ static bool
 la_need_filter_out (LA_ITEM * item)
 {
   LA_REPL_FILTER *filter;
+  char class_name[DB_MAX_IDENTIFIER_LENGTH];
+  int len;
   bool filter_found = false;
   int i;
 
   filter = &la_Info.repl_filter;
+
+  len = strlen (item->class_name);
+  if (item->class_name[0] == '[' && item->class_name[len - 1] == ']')
+    {
+      /*
+       * e.g.  filter->list[i]:  dba.t1
+       *      item->class_name: [dba.t1]
+       *            class_name:  dba.t1
+       */
+      memcpy (class_name, item->class_name + 1, len - 2);
+      class_name[len - 2] = '\0';
+    }
+  else
+    {
+      memcpy (class_name, item->class_name, len);
+      class_name[len] = '\0';
+    }
 
   if (filter->type == REPL_FILTER_NONE
       || (item->log_type == LOG_REPLICATION_STATEMENT && item->item_type != CUBRID_STMT_TRUNCATE)
