@@ -160,10 +160,6 @@ namespace cubthread
       //       execute_on_core provides control on core scheduling.
       void execute_on_core (task_type *work_arg, std::size_t core_hash, bool method_mode = false);
 
-      // try to execute task on given core
-      // it return true when task is executed, false otherwise
-      bool try_execute_on_core (task_type *work_arg, std::size_t core_hash);
-
       // stop worker pool; stop all running threads; discard any tasks in queue
       void stop_execution (void);
 
@@ -291,8 +287,6 @@ namespace cubthread
       // task management
       // execute task; returns true if task is accepted, false if it is rejected (no available workers)
       void execute_task (task_type *task_p, bool method_mode);
-      // try to execute task; returns true if task is accepted, false if it is rejected
-      bool try_execute_task (task_type *task_p);
 
       // context management
       // map function to all workers (and their contexts)
@@ -625,24 +619,6 @@ namespace cubthread
 
     execute (work_arg);
     return true;
-  }
-
-  template <typename Context>
-  bool
-  worker_pool<Context>::try_execute_on_core (task_type *work_arg, std::size_t core_hash)
-  {
-    std::size_t core_index = core_hash % m_core_count;
-
-    bool is_success = m_core_array[core_index].try_execute_task (work_arg, core_index);
-    if (is_success)
-      {
-	++m_task_count;
-	return true;
-      }
-    else
-      {
-	return false;
-      }
   }
 
   template <typename Context>
@@ -986,37 +962,6 @@ namespace cubthread
   }
 
   template <typename Context>
-  bool
-  worker_pool<Context>::core::try_execute_task (task_type *task_p)
-  {
-    assert (task_p != NULL);
-
-    cubperf::time_point push_time = cubperf::clock::now ();
-    std::unique_lock<std::mutex> ulock (m_workers_mutex);
-
-    if (m_parent_pool->m_stopped)
-      {
-	// reject task
-	task_p->retire ();
-	return false;
-      }
-
-    if (m_available_count > 0)
-      {
-	worker *refp = m_available_workers[--m_available_count];
-	ulock.unlock ();
-
-	assert (refp != NULL);
-	refp->assign_task (task_p, push_time);
-	return true;
-      }
-    else
-      {
-	return false;
-      }
-  }
-
-  template <typename Context>
   void
   worker_pool<Context>::core::execute_temp_task (task_type *task_p, const cubperf::time_point &push_time)
   {
@@ -1262,9 +1207,9 @@ namespace cubthread
     , m_task_mutex ()
     , m_stop (false)
     , m_has_thread (false)
+    , m_is_temp (is_temp)
     , m_statistics (wp_worker_statset_create ())
     , m_push_time ()
-    , m_is_temp (is_temp)
   {
     //
   }
