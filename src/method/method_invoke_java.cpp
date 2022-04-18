@@ -274,7 +274,7 @@ namespace cubmethod
     db_value_clear (&error_value);
     db_value_clear (&error_msg);
 
-    return NO_ERROR;
+    return ER_FAILED;
   }
 
   int

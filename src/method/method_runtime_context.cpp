@@ -150,8 +150,14 @@ namespace cubmethod
   {
     auto pred = [this] () -> bool
     {
-      return m_group_stack.empty () && is_running ();
+      // condition of finish
+      return m_group_stack.empty () && is_running () == false;
     };
+
+    if (pred ())
+      {
+	return;
+      }
 
     std::unique_lock<std::mutex> ulock (m_mutex);
     m_cond_var.wait (ulock, pred);
