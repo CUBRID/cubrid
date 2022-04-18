@@ -3294,7 +3294,8 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	      goto check_applied_info_end;
 	    }
 	  error =
-	    la_applyinfo_applied_log_info (database_name, log_path, check_replica_info, verbose, &applied_final_lsa);
+	    la_get_applyinfo_applied_log_info (database_name, log_path, check_replica_info, verbose,
+					       &applied_final_lsa);
 	  if (error != NO_ERROR)
 	    {
 	      check_applied_info = false;
@@ -3313,8 +3314,8 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       if (check_copied_info)
 	{
 	  error =
-	    la_applyinfo_copied_log_info (database_name, log_path, pageid, verbose, &copied_eof_lsa,
-					  &copied_append_lsa);
+	    la_get_applyinfo_copied_log_info (database_name, log_path, pageid, verbose, &copied_eof_lsa,
+					      &copied_append_lsa);
 	  if (error != NO_ERROR)
 	    {
 	      check_copied_info = false;

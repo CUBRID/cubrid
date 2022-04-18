@@ -7118,12 +7118,18 @@ la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool v
 }
 
 /*
- * applyinfo_applied_log_info() - 
- *   return: 
+ * la_get_applyinfo_applied_log_info() - 
+ *   return: NO_ERROR or error code
+ *   database_name(in): db name
+ *   log_path(in): real path of log file
+ *   check_replica_info(in): whether replica node execute applyinfo utility
+ *   verbose(in): applyinfo -v option
+ *   applied_final_lsa(in): information for delayed applying copied log
+ *
  */
 int
-la_applyinfo_applied_log_info (const char *database_name, const char *log_path, bool check_replica_info, bool verbose,
-			       LOG_LSA * applied_final_lsa)
+la_get_applyinfo_applied_log_info (const char *database_name, const char *log_path, bool check_replica_info,
+				   bool verbose, LOG_LSA * applied_final_lsa)
 {
   int error = NO_ERROR;
   int res;
@@ -7214,12 +7220,18 @@ check_applied_info_end:
 }
 
 /*
- * applyinfo_copied_log_info() - 
- *   return: 
+ * la_get_applyinfo_copied_log_info() - 
+ *   return: NO_ERROR or error code
+ *   database_name(in): db name
+ *   log_path(in): real path of log file
+ *   page_num(in): the number of log page 
+ *   verbose(in): applyinfo -v option
+ *   copied_eof_lsa(in): inforamtion for delayed log count
+ *   copied_append_lsa(in): current append location
  */
 int
-la_applyinfo_copied_log_info (const char *database_name, const char *log_path, INT64 page_num, bool verbose,
-			      LOG_LSA * copied_eof_lsa, LOG_LSA * copied_append_lsa)
+la_get_applyinfo_copied_log_info (const char *database_name, const char *log_path, INT64 page_num, bool verbose,
+				  LOG_LSA * copied_eof_lsa, LOG_LSA * copied_append_lsa)
 {
   int error = NO_ERROR;
   char active_log_path[PATH_MAX];
