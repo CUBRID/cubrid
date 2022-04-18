@@ -1492,7 +1492,7 @@ serial_cache_index_btid (THREAD_ENTRY * thread_p)
   assert (!OID_ISNULL (&serial_oid));
 
   /* Now try to get index BTID. */
-  error_code = heap_get_btid_from_index_name (thread_p, &serial_oid, "u_db_serial_unique_name", &serial_Cached_btid);
+  error_code = heap_get_btid_from_index_name (thread_p, &serial_oid, "pk_db_serial_unique_name", &serial_Cached_btid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
