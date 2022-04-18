@@ -152,7 +152,7 @@ Available service's utilities:\n\
     service\n\
     server\n\
     broker\n\
-    gateway\n\	
+    gateway\n\
     manager\n\
     heartbeat\n\
     javasp\n\
