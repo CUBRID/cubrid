@@ -3356,7 +3356,6 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	      goto check_master_info_end;
 	    }
 
-	  (void) db_shutdown ();
 	}
 
     check_master_info_end:
