@@ -593,6 +593,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
   sysprm_set_force (prm_get_name (PRM_ID_XASL_CACHE_MAX_ENTRIES), "-1");
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
+  sysprm_set_force (prm_get_name (PRM_ID_SUPPLEMENTAL_LOG), "0");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
