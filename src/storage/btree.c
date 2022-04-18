@@ -1271,9 +1271,8 @@ static int btree_load_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, VP
 				    BTREE_NODE_TYPE node_type);
 static int btree_delete_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, INT16 slot_id,
 				      BTREE_NODE_TYPE node_type);
-static int btree_get_first_overflow_page_vpid_from_leaf (THREAD_ENTRY * thread_p, const BTID_INT * btid,
-							 PAGE_PTR page_ptr, INT16 slot_id, BTREE_NODE_TYPE node_type,
-							 VPID & out_page_vpid);
+static int btree_get_first_overflow_key_page_vpid (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE_PTR page_ptr,
+						   INT16 slot_id, BTREE_NODE_TYPE node_type, VPID & out_page_vpid);
 
 static void btree_write_fixed_portion_of_non_leaf_record (RECDES * rec, NON_LEAF_REC * nlf_rec);
 static void btree_read_fixed_portion_of_non_leaf_record (RECDES * rec, NON_LEAF_REC * nlf_rec);
@@ -2183,13 +2182,12 @@ exit_on_error:
 }
 
 /*
- * btree_get_first_overflow_page_vpid_from_leaf - extract the vpid of the first overflow key page;
+ * btree_get_first_overflow_key_page_vpid - extract the vpid of the first overflow key page;
  *                         the leaf page ptr supplied is assumed to be a leaf page with overflow
  */
 static int
-btree_get_first_overflow_page_vpid_from_leaf (THREAD_ENTRY * thread_p, const BTID_INT * btid,
-					      PAGE_PTR page_ptr, INT16 slot_id, BTREE_NODE_TYPE node_type,
-					      VPID & out_page_vpid)
+btree_get_first_overflow_key_page_vpid (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE_PTR page_ptr,
+					INT16 slot_id, BTREE_NODE_TYPE node_type, VPID & out_page_vpid)
 {
   int error_code = NO_ERROR;
   RECDES rec RECDES_INITIALIZER;
@@ -2268,7 +2266,7 @@ btree_delete_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
   VPID page_vpid;
   int rc = NO_ERROR;
 
-  rc = btree_get_first_overflow_page_vpid_from_leaf (thread_p, btid, page_ptr, slot_id, node_type, page_vpid);
+  rc = btree_get_first_overflow_key_page_vpid (thread_p, btid, page_ptr, slot_id, node_type, page_vpid);
   if (rc != NO_ERROR)
     {
       goto exit_on_error;
@@ -9182,8 +9180,8 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
       /* Do not delete overflow key here, do it after deleting leaf record to ensure
        * consistent top-down replication.
        * Only extract the first overflow page vpid before deleting the leaf entry. */
-      ret = btree_get_first_overflow_page_vpid_from_leaf (thread_p, btid, leaf_pg, search_key->slotid,
-							  BTREE_LEAF_NODE, first_overflow_page_vpid);
+      ret = btree_get_first_overflow_key_page_vpid (thread_p, btid, leaf_pg, search_key->slotid,
+						    BTREE_LEAF_NODE, first_overflow_page_vpid);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
