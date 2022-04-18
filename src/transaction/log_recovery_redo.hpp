@@ -661,18 +661,9 @@ extern vpid_lsa_consistency_check log_Gl_recovery_redo_consistency_check;
 #endif
 
 template <typename T>
-void log_rv_redo_record_sync_fix_and_apply (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
-    const log_rv_redo_rec_info<T> &record_info, const VPID &rcv_vpid, LOG_RCV &rcv)
+void log_rv_redo_record_sync_apply (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
+				    const log_rv_redo_rec_info<T> &record_info, const VPID &rcv_vpid, LOG_RCV &rcv)
 {
-  if (!log_rv_fix_page_and_check_redo_is_needed (thread_p, rcv_vpid, rcv, record_info.m_start_lsa,
-      redo_context.m_end_redo_lsa, redo_context.m_page_fetch_mode))
-    {
-      /* nothing else needs to be done, see explanation in function */
-      assert (rcv.pgptr == nullptr);
-      return;
-    }
-  // at this point, pgptr can be null or not
-
   rcv.length = log_rv_get_log_rec_redo_length<T> (record_info.m_logrec);
   rcv.mvcc_id = log_rv_get_log_rec_mvccid<T> (record_info.m_logrec);
   rcv.offset = log_rv_get_log_rec_offset<T> (record_info.m_logrec);
@@ -702,7 +693,7 @@ void log_rv_redo_record_sync_fix_and_apply (THREAD_ENTRY *thread_p, log_rv_redo_
   if (err_func != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "log_rv_redo_record_sync: Error applying redo record at log_lsa=(%lld, %d), "
+			 "log_rv_redo_record_sync_apply: Error applying redo record at log_lsa=(%lld, %d), "
 			 "rcv = {mvccid=%llu, vpid=(%d, %d), offset = %d, data_length = %d}",
 			 LSA_AS_ARGS (&record_info.m_start_lsa), (long long int) rcv.mvcc_id,
 			 VPID_AS_ARGS (&rcv_vpid), (int) rcv.offset, (int) rcv.length);
@@ -713,7 +704,6 @@ void log_rv_redo_record_sync_fix_and_apply (THREAD_ENTRY *thread_p, log_rv_redo_
       pgbuf_set_lsa (thread_p, rcv.pgptr, &record_info.m_start_lsa);
       // rcv pgptr will be automatically unfixed at the end of the parent scope
     }
-
 }
 
 template <typename T>
@@ -740,8 +730,16 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
       }
   });
 
+  if (!log_rv_fix_page_and_check_redo_is_needed (thread_p, rcv_vpid, rcv, record_info.m_start_lsa,
+      redo_context.m_end_redo_lsa, redo_context.m_page_fetch_mode))
+    {
+      /* nothing else needs to be done, see explanation in function */
+      assert (rcv.pgptr == nullptr);
+      return;
+    }
+
   // process the log record
-  log_rv_redo_record_sync_fix_and_apply (thread_p, redo_context, record_info, rcv_vpid, rcv);
+  log_rv_redo_record_sync_apply (thread_p, redo_context, record_info, rcv_vpid, rcv);
 }
 
 template <typename T>
