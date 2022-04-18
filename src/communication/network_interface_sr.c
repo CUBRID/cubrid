@@ -10386,7 +10386,6 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
       return;
     }
 
-
   packing_packer packer;
   cubmem::extensible_block eb;
   if (error_code == NO_ERROR)
