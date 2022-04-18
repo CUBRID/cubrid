@@ -7706,6 +7706,8 @@ la_create_repl_filter (void)
   char error_msg[LINE_MAX];
   char classname[SM_MAX_IDENTIFIER_LENGTH];
   int classname_len = 0;
+  const char *dot = NULL;
+  int len = 0;
   LA_REPL_FILTER *filter;
   FILE *fp;
   DB_OBJECT *class_ = NULL;
@@ -7768,16 +7770,33 @@ la_create_repl_filter (void)
 	  continue;
 	}
 
-      if (classname_len >= SM_MAX_IDENTIFIER_LENGTH)
+      len = classname_len;
+      dot = strchr (buffer, '.');
+      if (dot)
+	{
+	  /* user specified name */
+
+	  /* user name of user specified name */
+	  len = STATIC_CAST (int, dot - buffer);
+	  if (len >= DB_MAX_USER_LENGTH)
+	    {
+	      snprintf_dots_truncate (error_msg, LINE_MAX - 1, "invalid table name %s", buffer);
+	      ERROR_SET_ERROR_1ARG (error, ER_HA_LA_REPL_FILTER_GENERIC, error_msg);
+	      goto error_return;
+	    }
+
+	  /* class name of user specified name */
+	  len = STATIC_CAST (int, strlen (dot + 1));
+	}
+
+      if (len >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
 	{
 	  snprintf_dots_truncate (error_msg, LINE_MAX - 1, "invalid table name %s", buffer);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_REPL_FILTER_GENERIC, 1, error_msg);
-	  error = ER_HA_LA_REPL_FILTER_GENERIC;
-
+	  ERROR_SET_ERROR_1ARG (error, ER_HA_LA_REPL_FILTER_GENERIC, error_msg);
 	  goto error_return;
 	}
 
-      sm_downcase_name (buffer, classname, SM_MAX_IDENTIFIER_LENGTH);
+      sm_user_specified_name (buffer, classname, SM_MAX_IDENTIFIER_LENGTH);
 
       class_ = locator_find_class (classname);
       if (class_ == NULL)
