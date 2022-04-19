@@ -10414,11 +10414,14 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 	{
 	  err_msg.assign (top_on_stack->get_error_msg ());
 	}
-      if (rctx->is_interrupted () == false)
+      if (rctx->is_interrupted ())
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, rctx->get_interrupt_reason (), 0);
+	}
+      else
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg.c_str ());
 	}
-
       packer.set_buffer_and_pack_all (eb, err_msg);
       (void) return_error_to_client (thread_p, rid);
     }
