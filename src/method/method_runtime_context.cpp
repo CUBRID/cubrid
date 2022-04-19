@@ -60,11 +60,11 @@ namespace cubmethod
   }
 
   method_invoke_group *
-  runtime_context::create_invoke_group (cubthread::entry *thread_p, const method_sig_list &sig_list)
+  runtime_context::create_invoke_group (cubthread::entry *thread_p, const method_sig_list &sig_list, bool is_scan)
   {
     std::unique_lock<std::mutex> ulock (m_mutex);
 
-    method_invoke_group *group = new (std::nothrow) cubmethod::method_invoke_group (thread_p, sig_list);
+    method_invoke_group *group = new (std::nothrow) cubmethod::method_invoke_group (thread_p, sig_list, is_scan);
     if (group)
       {
 	m_group_map [group->get_id ()] = group;
@@ -84,7 +84,18 @@ namespace cubmethod
   void
   runtime_context::pop_stack (cubthread::entry *thread_p, method_invoke_group *claimed)
   {
-    std::unique_lock<std::mutex> ulock (m_mutex, std::defer_lock);
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
+    if (claimed->is_for_scan () && m_group_stack.back() != claimed->get_id ())
+      {
+	// push deferred
+	// When beginning method_invoke_group with method scan, method_invoke_group belonging to child node in XASL is pushed first (postorder)
+	// When method_invoke_group is ended while clearing XASL by qexec_clear_xasl(), method_invoke_group belonging to the parent node in XASL is poped first (preorder)
+	// Because of these differences, I've introduced the m_deferred_free_stack structure to follow the order of clearing according to the XASL structure when clearing method_invoke_groups from the m_group_stack.
+	m_deferred_free_stack.push_back (claimed->get_id ());
+	return;
+      }
+
     auto pred = [&] () -> bool
     {
       // condition to check
@@ -92,10 +103,20 @@ namespace cubmethod
     };
 
     // Guaranteed to be removed from the topmost element
-    ulock.lock ();
     m_cond_var.wait (ulock, pred);
 
-    m_group_stack.pop_back ();
+    if (m_group_stack.back() == claimed->get_id ())
+      {
+	m_group_stack.pop_back ();
+      }
+
+    // should be freed for all XASL structure
+    while (m_deferred_free_stack.empty () == false && m_deferred_free_stack.back () == m_group_stack.back())
+      {
+	m_group_stack.pop_back ();
+	m_deferred_free_stack.pop_back ();
+      }
+
     if (m_group_stack.empty())
       {
 	// reset interrupt state
@@ -109,11 +130,12 @@ namespace cubmethod
   runtime_context::top_stack ()
   {
     std::unique_lock<std::mutex> ulock (m_mutex);
-
-    assert (m_group_stack.empty () == false);
+    if (m_group_stack.empty())
+      {
+	return nullptr;
+      }
 
     METHOD_GROUP_ID top = m_group_stack.back ();
-
     const auto &it = m_group_map.find (top);
     if (it == m_group_map.end ())
       {

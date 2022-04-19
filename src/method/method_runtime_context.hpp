@@ -65,7 +65,7 @@ namespace cubmethod
       void register_returning_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
       void deregister_returning_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
 
-      method_invoke_group *create_invoke_group (cubthread::entry *thread_p, const method_sig_list &siglist);
+      method_invoke_group *create_invoke_group (cubthread::entry *thread_p, const method_sig_list &siglist, bool is_scan);
 
       // Currently these functions are used for debugging purpose.
       // In the recursive call situation, each time the function is called, a new worker from the thread pool is assigned. With this code, you can easily know the current state.
@@ -92,6 +92,8 @@ namespace cubmethod
 
       std::unordered_map <METHOD_GROUP_ID, method_invoke_group *> m_group_map; // method executor storage
       std::unordered_map <QUERY_ID, query_cursor *> m_cursor_map; // server-side cursor storage
+
+      std::deque <METHOD_GROUP_ID> m_deferred_free_stack;
 
       bool m_is_interrupted;
       int m_interrupt_reason;
