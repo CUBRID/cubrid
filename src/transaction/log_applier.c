@@ -7620,6 +7620,7 @@ la_need_filter_out (LA_ITEM * item)
   filter = &la_Info.repl_filter;
 
   len = strlen (item->class_name);
+  /* In pt_append_name(), only "[", "]" is used. */
   if (item->class_name[0] == '[' && item->class_name[len - 1] == ']')
     {
       /*
