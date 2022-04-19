@@ -41,7 +41,7 @@
 #include "connection_defs.h"
 #include "log_manager.h"
 
-#define FLASHBACK_MAX_NUM_TRAN_TO_SUMMARY   INT_MAX
+#define FLASHBACK_MAX_NUM_TRAN_TO_SUMMARY (prm_get_integer_value(PRM_ID_FLASHBACK_MAX_TRANSACTION))
 
 #define FLASHBACK_CHECK_AND_GET_SUMMARY(summary_list, trid, summary_entry) \
   do \
