@@ -7146,8 +7146,6 @@ au_perform_login (const char *name, const char *password, bool ignore_dba_privil
 		{
 		  error = AU_SET_USER (user);
 
-		  error = sc_set_current_schema (user);
-
 		  /* necessary to invalidate vclass cache */
 		  sm_bump_local_schema_version ();
 		}
