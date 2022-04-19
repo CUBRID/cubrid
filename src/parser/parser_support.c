@@ -10423,74 +10423,123 @@ pt_get_name_without_current_user_name (const char *name)
   return object_name;
 }
 
-static bool
-check_for_already_exists (S_LINK_COLUMNS * plkcol, const char *resolved, const char *original)
+static void
+check_for_already_exists (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, const char *resolved, const char *original)
 {
-  //  plkcol->tbl_name_node->info.name.original
+  const char *tbl_alias_nm = plkcol->tbl_name_node->info.name.original;
   PT_NODE *col;
 
-  for (col = plkcol->col_list; col; col = col->next)
+  if (plkcol->col_list == NULL)
     {
-      if (col->type_enum == PT_TYPE_STAR)
-	{			// case: * or tbl.*
-	  if (col->info.name.resolved == NULL)
+      goto new_column;
+    }
+
+  if (plkcol->col_list->type_enum == PT_TYPE_STAR && plkcol->col_list->info.name.resolved == NULL)
+    {
+      return;			// case: * vs anything
+    }
+
+  if (resolved == NULL)
+    {
+      for (col = plkcol->col_list; col; col = col->next)
+	{
+	  if (col->type_enum != PT_TYPE_STAR && col->info.name.resolved == NULL)
 	    {
-	      return true;	// * vs anything
+	      // col   vs  c1
+	      if (intl_identifier_casecmp (col->info.name.original, original) == 0)
+		{
+		  return;	// case: col  vs col
+		}
 	    }
-	  else if (resolved && intl_identifier_casecmp (col->info.name.resolved, resolved) == 0)
-	    {
-	      return true;	// tbl.* vs  tbl.c1 or t.c2
-	    }
-	  else
-	    {			// tbl.* vs  c3
-	      ;			// ctshim
-	    }
-	}
-      else if (col->info.name.resolved)
-	{			// tbl.c1 vs tbl.c1 or c1 or tbl.*        
-	  if (original && intl_identifier_casecmp (col->info.name.original, original) != 0)
-	    {			// tbl.c1 or c1
-	      continue;
-	    }
-
-	  if (resolved && intl_identifier_casecmp (col->info.name.resolved, resolved) != 0)
-	    {			// tbl.c1  or tbl.*
-	      continue;
-	    }
-
-	  return true;
-	}
-      else
-	{			// c1     vs tbl.c1 or c1 or tbl.*
-	  if (original && intl_identifier_casecmp (col->info.name.original, original) != 0)
-	    {			// tbl.c1 or c1 
-	      continue;
-	    }
-
-	  if (resolved)
-	    {			// tbl.c1  or tbl.*
-	      continue;
-	    }
-
-	  return true;
 	}
     }
-  return false;
+  else
+    {
+      if (intl_identifier_casecmp (tbl_alias_nm, resolved) != 0)
+	{
+	  return;		// trick
+	}
+
+      // tbl.c1 or tbl.*
+      PT_NODE *prev = NULL;
+      for (col = plkcol->col_list; col; prev = col, col = col->next)
+	{
+	  if (col->type_enum == PT_TYPE_STAR)
+	    {
+	      return;		// case: tbl.* vs  tbl.c1 or tbl.*
+	    }
+	  else if (col->info.name.resolved)
+	    {
+	      if (original)
+		{
+		  if ((intl_identifier_casecmp (col->info.name.original, original) == 0) &&
+		      (intl_identifier_casecmp (col->info.name.resolved, resolved) == 0))
+		    {
+		      return;	// case: tbl.c1 vs tbl.c1 
+		    }
+		}
+	      else
+		{
+		  // case: tbl.col vs tbl.*                                                    
+		  PT_NODE *tmp;
+		  while (col)
+		    {
+		      if (col->info.name.resolved == NULL)
+			{
+			  prev = col;
+			  col = col->next;
+			}
+		      else
+			{
+			  tmp = col;
+			  col = col->next;
+			  if (prev)
+			    {
+			      prev->next = col;
+			    }
+			  else
+			    {
+			      plkcol->col_list = col;
+			    }
+
+			  tmp->next = NULL;
+			  parser_free_node (parser, tmp);
+			}
+		    }
+
+		  goto new_column;
+		}
+	    }
+	}
+    }
+
+new_column:
+  PT_NODE * name = parser_new_node (parser, PT_NAME);
+
+  printf ("<<<(%s)", (char *) "append");
+  if (resolved && original)
+    {
+      name->info.name.resolved = pt_append_string (parser, NULL, resolved);
+      name->info.name.original = pt_append_string (parser, NULL, original);
+    }
+  else if (resolved)
+    {
+      name->type_enum = PT_TYPE_STAR;
+      name->info.name.resolved = pt_append_string (parser, NULL, resolved);
+    }
+  else
+    {
+      name->info.name.original = pt_append_string (parser, NULL, original);
+    }
+
+  plkcol->col_list = parser_append_node (name, plkcol->col_list);
 }
 
-//#define CHECK_LIST_AT_POST
-#ifdef CHECK_LIST_AT_POST
-#define ADD_NODE_2_LIST(list, node) ((node)->next = (list), (list) = (node))
-
-#else
-#define ADD_NODE_2_LIST(list, node)  (list) = parser_append_node ((node), (list))
-#endif
 
 PT_NODE *
 pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   S_LINK_COLUMNS *plkcol = (S_LINK_COLUMNS *) arg;
-  PT_NODE *tbl_alias = plkcol->tbl_name_node;
   PT_NODE *name = NULL;
 
   if (node->node_type == PT_SELECT)
@@ -10504,29 +10553,12 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	}
       *continue_walk = PT_STOP_WALK;
     }
-#if defined(CHECK_LIST_AT_POST)
-  else if (node->node_type == PT_DOT_)
-    {
-      *continue_walk = PT_LIST_WALK;
-    }
-#else
   else if (node->node_type == PT_DOT_)
     {				// case: tbl.col      
       printf (">>>(%s)<<<", (char *) pt_print_bytes (parser, node)->bytes);
 
-      if (intl_identifier_casecmp (tbl_alias->info.name.original, node->info.dot.arg1->info.name.original) == 0)
-	{
-	  if (check_for_already_exists
-	      (plkcol, node->info.dot.arg1->info.name.original, node->info.dot.arg2->info.name.original) == false)
-	    {
-	      printf ("<<<(%s)", (char *) "append");
-	      name = parser_new_node (parser, PT_NAME);
-	      name->info.name.resolved = pt_append_string (parser, NULL, node->info.dot.arg1->info.name.original);
-	      name->info.name.original = pt_append_string (parser, NULL, node->info.dot.arg2->info.name.original);
-
-	      ADD_NODE_2_LIST (plkcol->col_list, name);
-	    }
-	}
+      check_for_already_exists
+	(parser, plkcol, node->info.dot.arg1->info.name.original, node->info.dot.arg2->info.name.original);
       printf ("\n");
 
       *continue_walk = PT_LIST_WALK;
@@ -10543,45 +10575,29 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 
       if (node->type_enum == PT_TYPE_STAR)
 	{			// case:  tbl.*
-	  if (intl_identifier_casecmp (tbl_alias->info.name.original, node->info.name.original) == 0)
-	    {
-	      if (check_for_already_exists (plkcol, node->info.name.original, NULL) == false)
-		{
-		  printf ("<<<(%s)", (char *) "append");
-		  name = parser_new_node (parser, PT_NAME);
-		  name->type_enum = PT_TYPE_STAR;
-		  name->info.name.resolved = pt_append_string (parser, NULL, node->info.name.original);
-		}
-	    }
+	  check_for_already_exists (parser, plkcol, node->info.name.original, NULL);
 	}
       else
 	{
-	  if (check_for_already_exists (plkcol, NULL, node->info.name.original) == false)
-	    {
-	      printf ("<<<(%s)", (char *) "append");
-	      name = parser_new_node (parser, PT_NAME);
-	      name->info.name.original = pt_append_string (parser, NULL, node->info.name.original);
-	    }
+	  check_for_already_exists (parser, plkcol, NULL, node->info.name.original);
 	}
-
-      ADD_NODE_2_LIST (plkcol->col_list, name);
       printf ("\n");
     }
   else if (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_STAR)
     {
       printf (">>>(%s)<<<", (char *) "*");
-      // if (check_for_already_exists (plkcol, NULL, NULL, true) == false)
       {
 	printf ("<<<(%s)", (char *) "append");
-
 	name = parser_new_node (parser, PT_NAME);
 	name->type_enum = PT_TYPE_STAR;
-
-	ADD_NODE_2_LIST (plkcol->col_list, name);
+	if (plkcol->col_list)
+	  {
+	    parser_free_node (parser, plkcol->col_list);
+	  }
+	plkcol->col_list = name;
       }
       printf ("\n");
     }
-#endif
   return node;
 }
 
@@ -10589,86 +10605,13 @@ PT_NODE *
 pt_get_column_name_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   S_LINK_COLUMNS *plkcol = (S_LINK_COLUMNS *) arg;
-  PT_NODE *tbl_alias = plkcol->tbl_name_node;
+  const char *tbl_alias_nm = plkcol->tbl_name_node->info.name.original;
   PT_NODE *name = NULL;
 
   if (node->node_type == PT_SELECT)
     {
       plkcol->depth--;
     }
-#if defined(CHECK_LIST_AT_POST)	//
-  else if (node->node_type == PT_NAME)
-    {
-      if (plkcol->depth > 1)
-	{
-	  *continue_walk = PT_CONTINUE_WALK;
-	  return node;
-	}
-
-      printf (">>>(%s)<<<", (char *) pt_print_bytes (parser, node)->bytes);
-
-      if (node->type_enum == PT_TYPE_STAR)
-	{			// case:  tbl.*
-	  if (intl_identifier_casecmp (tbl_alias->info.name.original, node->info.name.original) == 0)
-	    {
-	      if (check_for_already_exists (plkcol, node->info.name.original, NULL) == false)
-		{
-		  printf ("<<<(%s)", (char *) "append");
-		  name = parser_new_node (parser, PT_NAME);
-		  name->type_enum = PT_TYPE_STAR;
-		  name->info.name.resolved = pt_append_string (parser, NULL, node->info.name.original);
-		}
-	    }
-	}
-      else
-	{
-	  if (check_for_already_exists (plkcol, NULL, node->info.name.original) == false)
-	    {
-	      printf ("<<<(%s)", (char *) "append");
-	      name = parser_new_node (parser, PT_NAME);
-	      name->info.name.original = pt_append_string (parser, NULL, node->info.name.original);
-	    }
-	}
-
-      ADD_NODE_2_LIST (plkcol->col_list, name);
-      printf ("\n");
-    }
-  else if (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_STAR)
-    {
-      printf (">>>(%s)<<<", (char *) "*");
-      // if (check_for_already_exists (plkcol, NULL, NULL, true) == false)
-      {
-	printf ("<<<(%s)", (char *) "append");
-
-	name = parser_new_node (parser, PT_NAME);
-	name->type_enum = PT_TYPE_STAR;
-
-	ADD_NODE_2_LIST (plkcol->col_list, name);
-      }
-      printf ("\n");
-    }
-  else if (node->node_type == PT_DOT_)
-    {				// case: tbl.col      
-      printf (">>>(%s)<<<", (char *) pt_print_bytes (parser, node)->bytes);
-
-      if (intl_identifier_casecmp (tbl_alias->info.name.original, node->info.dot.arg1->info.name.original) == 0)
-	{
-	  if (check_for_already_exists
-	      (plkcol, node->info.dot.arg1->info.name.original, node->info.dot.arg2->info.name.original) == false)
-	    {
-	      printf ("<<<(%s)", (char *) "append");
-	      name = parser_new_node (parser, PT_NAME);
-	      name->info.name.resolved = pt_append_string (parser, NULL, node->info.dot.arg1->info.name.original);
-	      name->info.name.original = pt_append_string (parser, NULL, node->info.dot.arg2->info.name.original);
-
-	      ADD_NODE_2_LIST (plkcol->col_list, name);
-	    }
-	}
-      printf ("\n");
-
-      *continue_walk = PT_LIST_WALK;
-    }
-#endif
 
   *continue_walk = PT_CONTINUE_WALK;
   return node;

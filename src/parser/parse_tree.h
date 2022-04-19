@@ -3308,8 +3308,10 @@ typedef struct pt_dblink_info
   PARSER_VARCHAR *rewritten;	/* rewritten query string for dblink */
   PT_HOST_VAR_IDX_INFO host_vars;	/* host variable index info for rewritten query */
   bool is_name;			/*  */
-  bool is_xflag;		// ctshim false:  original , true:  by table_name@server_name
+
+  // ctshim
   char *remote_table_name;
+  PT_NODE *sel_list;
 } PT_DBLINK_INFO;
 
 typedef struct pt_create_server_info
