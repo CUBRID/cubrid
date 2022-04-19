@@ -1276,7 +1276,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 14 Flashback cannot run as standalone mode.\n
 60 \
 flashback: Provides statements to flashback a specific transaction.\n\
-usage: %1$s flashback [OPTION] database-name class_name1 [class_name2 ...]\n\
+usage: %1$s flashback [OPTION] database-name owner_name.class_name1 [owner_name.class_name2 ...]\n\
 \n\
 valid options:\n\
     -o, --output-file=FILE        redirect output message to FILE; default: none.\n\
