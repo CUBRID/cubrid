@@ -1245,12 +1245,14 @@ cas_main (void)
 	    err_code = ux_database_connect (db_name, db_user, db_passwd, &db_err_msg);
 #else
 	    find_gateway = strstr (url, "__gateway=true");
-	    if(find_gateway == NULL)
+	    if (find_gateway == NULL)
 	      {
 		cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
 		net_write_error (client_sock_fd, req_info.client_version, req_info.driver_info, cas_info,
-		  cas_info_size, DBMS_ERROR_INDICATOR, CAS_ER_NOT_AUTHORIZED_CLIENT, "Authorization error");
+				 cas_info_size, DBMS_ERROR_INDICATOR, CAS_ER_NOT_AUTHORIZED_CLIENT,
+				 "Authorization error");
 
+		CLOSE_SOCKET (client_sock_fd);
 		goto finish_cas;
 	      }
 
@@ -1297,6 +1299,7 @@ cas_main (void)
 		net_write_error (client_sock_fd, req_info.client_version, req_info.driver_info, cas_info,
 				 cas_info_size, DBMS_ERROR_INDICATOR, CAS_ER_NOT_AUTHORIZED_CLIENT, err_msg);
 
+		CLOSE_SOCKET (client_sock_fd);
 		goto finish_cas;
 	      }
 
