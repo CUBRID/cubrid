@@ -62,6 +62,16 @@ if(UNIX)
   target_link_libraries(cub_broker LINK_PRIVATE m)
 endif(UNIX)
 
+add_executable(cub_gateway WIN32 ${CUB_BROKER_SOURCES})
+set_target_properties(cub_gateway PROPERTIES PUBLIC_HEADER "${COMPAT_DIR}/dbtran_def.h;${BROKER_DIR}/cas_error.h")
+target_compile_definitions(cub_gateway PRIVATE ${BROKER_DEFS} FOR_ODBC_GATEWAY)
+if(WIN32)
+  target_link_libraries(cub_gateway LINK_PRIVATE ws2_32)
+endif(WIN32)
+target_link_libraries(cub_gateway LINK_PRIVATE cubridcs)
+if(UNIX)
+  target_link_libraries(cub_gateway LINK_PRIVATE m)
+endif(UNIX)
 
 set(BROKER_MONITOR_SOURCES
   ${BROKER_DIR}/broker_monitor.c
@@ -102,6 +112,13 @@ target_compile_definitions(broker_monitor PRIVATE ${BROKER_DEFS})
 target_link_libraries(broker_monitor LINK_PRIVATE cubridcs)
 if(WIN32)
   target_link_libraries(broker_monitor LINK_PRIVATE ws2_32)
+endif(WIN32)
+
+add_executable(gateway_monitor ${BROKER_MONITOR_SOURCES})
+target_compile_definitions(gateway_monitor PRIVATE ${BROKER_DEFS} FOR_ODBC_GATEWAY)
+target_link_libraries(gateway_monitor LINK_PRIVATE cubridcs)
+if(WIN32)
+  target_link_libraries(gateway_monitor LINK_PRIVATE ws2_32)
 endif(WIN32)
 
 
@@ -198,6 +215,22 @@ if(WIN32)
     set_target_properties(cubrid_broker PROPERTIES LINK_FLAGS "/MANIFESTUAC:\"level='requireAdministrator' uiAccess='false'\"")
   else(MSVC_VERSION LESS 1600)
     set_target_properties(cubrid_broker PROPERTIES LINK_FLAGS "/level='requireAdministrator' /uiAccess='false'")
+  endif(MSVC_VERSION LESS 1600)
+endif(WIN32)
+
+add_executable(cubrid_gateway ${CUBRID_BROKER_SOURCES})
+target_compile_definitions(cubrid_gateway PRIVATE ${BROKER_DEFS} FOR_ODBC_GATEWAY)
+target_link_libraries(cubrid_gateway LINK_PRIVATE cubridcs)
+if(UNIX)
+  target_link_libraries(cubrid_gateway LINK_PRIVATE m)
+endif(UNIX)
+if(WIN32)
+  target_link_libraries(cubrid_gateway LINK_PRIVATE ws2_32)
+  if(MSVC_VERSION LESS 1600)
+    # for VS 2008 (9.0) or less version
+    set_target_properties(cubrid_gateway PROPERTIES LINK_FLAGS "/MANIFESTUAC:\"level='requireAdministrator' uiAccess='false'\"")
+  else(MSVC_VERSION LESS 1600)
+    set_target_properties(cubrid_gateway PROPERTIES LINK_FLAGS "/level='requireAdministrator' /uiAccess='false'")
   endif(MSVC_VERSION LESS 1600)
 endif(WIN32)
 
@@ -558,9 +591,12 @@ endif(WITH_CCI)
 
 install(TARGETS
   cub_broker
+  cub_gateway
   broker_monitor
+  gateway_monitor
   broker_changer
   cubrid_broker
+  cubrid_gateway
   cub_cas
   cub_cas_cgw
   cub_proxy

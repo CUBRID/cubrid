@@ -3359,6 +3359,12 @@ qo_reduce_outer_joined_tables (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
       return query;
     }
 
+  /* check no_merge sql hint */
+  if (query->info.query.q.select.hint & PT_HINT_NO_MERGE)
+    {
+      return query;
+    }
+
   /* check referenced columns except on_cond */
   info.spec = spec;
   info.my_spec_cnt = 0;
