@@ -2835,20 +2835,29 @@ sm_rename_class (MOP class_mop, const char *new_name)
   SM_CLASS *class_ = NULL;
   SM_ATTRIBUTE *att = NULL;
   MOBJ obj = NULL;
-  DB_VALUE value;
   char *class_old_name = NULL;
   char *class_new_name = NULL;
-  const char *class_name_of_serial = NULL;
   char buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int is_partition = 0;
-  bool has_savepoint = false;
+  bool need_free_old_name = false;
+  bool need_free_new_name = false;
   int error = NO_ERROR;
-
-  db_make_null (&value);
 
   er_clear ();
 
+  if (new_name == NULL || new_name[0] == '\0')
+    {
+      ERROR_SET_WARNING_1ARG (error, ER_SM_INVALID_NAME, new_name);
+      return error;
+    }
+
   error = sm_partitioned_class_type (class_mop, &is_partition, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+
   if (is_partition == DB_PARTITIONED_CLASS)
     {
       error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_RENAME);
@@ -2857,14 +2866,6 @@ sm_rename_class (MOP class_mop, const char *new_name)
 	  ASSERT_ERROR ();
 	  return error;
 	}
-
-      has_savepoint = true;
-    }
-
-  if (new_name == NULL || new_name[0] == '\0')
-    {
-      ERROR_SET_WARNING_1ARG (error, ER_SM_INVALID_NAME, new_name);
-      return error;
     }
 
   error = au_fetch_class (class_mop, &class_, AU_FETCH_UPDATE, AU_ALTER);
@@ -2876,6 +2877,7 @@ sm_rename_class (MOP class_mop, const char *new_name)
 
   /* We need to go ahead and copy the string since prepare_rename uses the address of the string in the hash table. */
   class_old_name = CONST_CAST (char *, sm_ch_name ((MOBJ) class_));
+  assert (class_old_name != NULL);
 
   /* make sure this gets into the server table with no capitalization */
   sm_user_specified_name (new_name, buf, SM_MAX_IDENTIFIER_LENGTH);
@@ -2886,6 +2888,8 @@ sm_rename_class (MOP class_mop, const char *new_name)
       return error;
     }
 
+  need_free_new_name = true;
+
   obj = locator_prepare_rename_class (class_mop, class_old_name, class_new_name);
   if (obj == NULL)
     {
@@ -2895,10 +2899,13 @@ sm_rename_class (MOP class_mop, const char *new_name)
 
   class_->header.ch_name = class_new_name;
 
+  need_free_old_name = true;
+  need_free_new_name = false;
+
   error = sm_flush_objects (class_mop);
-  if (obj == NULL)
+  if (error != NO_ERROR)
     {
-      ASSERT_ERROR_AND_SET (error);
+      ASSERT_ERROR ();
       goto end;
     }
 
@@ -2907,6 +2914,9 @@ sm_rename_class (MOP class_mop, const char *new_name)
     {
       if (att->auto_increment != NULL)
 	{
+	  DB_VALUE value;
+	  const char *class_name_of_serial = NULL;
+
 	  error = db_get (att->auto_increment, SERIAL_ATTR_CLASS_NAME, &value);
 	  if (error != NO_ERROR)
 	    {
@@ -2951,15 +2961,13 @@ sm_rename_class (MOP class_mop, const char *new_name)
 	}
     }
 
-  if (class_old_name)
+end:
+  if (need_free_old_name && class_old_name != NULL)
     {
       db_private_free_and_init (NULL, class_old_name);
     }
 
-  class_new_name = NULL;
-
-end:
-  if (class_new_name)
+  if (need_free_new_name && class_new_name != NULL)
     {
       db_private_free_and_init (NULL, class_new_name);
     }
