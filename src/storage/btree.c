@@ -31334,7 +31334,6 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       BTREE_RV_REDO_SET_DEBUG_INFO (&delete_helper->leaf_addr, rv_redo_data_ptr, btid_int,
 				    BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD);
 #endif /* !NDEBUG */
-      //LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
 
       /* Remove record from leaf. */
       btree_record_remove_object_internal (thread_p, btid_int, &leaf_record, BTREE_LEAF_NODE, offset_to_second_object,
@@ -31347,15 +31346,6 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       log_sysop_start_atomic (thread_p);
       delete_helper->is_system_op_started = true;
 
-//      error_code =
-//      btree_overflow_remove_object (thread_p, key, btid_int, delete_helper, &found_page, prev_found_page, *leaf_page,
-//                                    &leaf_record, search_key, offset_to_second_object);
-//      if (error_code != NO_ERROR)
-//      {
-//        assert_release (false);
-//        goto exit;
-//      }
-
       rv_undo_data_ptr = rv_undo_data;
       rv_redo_data_ptr = rv_redo_data;
 
@@ -31366,7 +31356,6 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       BTREE_RV_UNDOREDO_SET_DEBUG_INFO (&delete_helper->leaf_addr, rv_redo_data_ptr, rv_undo_data_ptr, btid_int,
 					BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD);
 #endif /* !NDEBUG */
-      //LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
     }
   LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
 
@@ -31392,7 +31381,17 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       BTREE_RV_GET_DATA_LENGTH (rv_undo_data_ptr, rv_undo_data, rv_undo_data_length);
       log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &delete_helper->leaf_addr, rv_undo_data_length,
 				rv_redo_data_length, rv_undo_data, rv_redo_data);
+    }
+  else
+    {
+      log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, pgbuf_get_vpid_ptr (*leaf_page),
+					     delete_helper->leaf_addr.offset, *leaf_page, rv_redo_data_length,
+					     rv_redo_data, LOG_FIND_CURRENT_TDES (thread_p),
+					     &delete_helper->reference_lsa);
+    }
 
+  if (delete_helper->is_system_op_started)
+    {
       /* Update overflow OID page */
       error_code =
 	btree_overflow_remove_object (thread_p, key, btid_int, delete_helper, &found_page, prev_found_page, *leaf_page,
@@ -31402,13 +31401,6 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
 	  assert_release (false);
 	  goto exit;
 	}
-    }
-  else
-    {
-      log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, pgbuf_get_vpid_ptr (*leaf_page),
-					     delete_helper->leaf_addr.offset, *leaf_page, rv_redo_data_length,
-					     rv_redo_data, LOG_FIND_CURRENT_TDES (thread_p),
-					     &delete_helper->reference_lsa);
     }
 
   /* Success. */
