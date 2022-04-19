@@ -30,6 +30,17 @@ namespace cublog
    * atomic_replication_helper function definitions                    *
    *********************************************************************/
 
+  int atomic_replication_helper::start_new_atomic_replication_sequence (TRANID tranid)
+  {
+    if (tranid == NULL_TRANID)
+      {
+	return ER_FAILED;
+      }
+
+    m_atomic_sequences_map.emplace (tranid, atomic_replication_sequence_type ());
+    return NO_ERROR;
+  }
+
   template <typename T>
   int atomic_replication_helper::add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa,
       LOG_RCVINDEX rcvindex, VPID vpid, log_rv_redo_context &redo_context, const log_rv_redo_rec_info<T> &record_info)
