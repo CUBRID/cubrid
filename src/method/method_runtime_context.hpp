@@ -71,10 +71,10 @@ namespace cubmethod
       // In the recursive call situation, each time the function is called, a new worker from the thread pool is assigned. With this code, you can easily know the current state.
       // In the future, these functions will resolve some cases when it is necessary to set an error for all threads participating in a recursive call e.g. interrupt
       void push_stack (cubthread::entry *thread_p, method_invoke_group *group);
-      void pop_stack (cubthread::entry *thread_p);
+      void pop_stack (cubthread::entry *thread_p, method_invoke_group *claimed);
       method_invoke_group *top_stack ();
 
-      void set_interrupt (int reason);
+      void set_interrupt_by_reason (int reason);
       bool is_interrupted ();
       int get_interrupt_reason ();
       void wait_for_interrupt ();

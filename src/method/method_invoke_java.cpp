@@ -76,9 +76,9 @@ namespace cubmethod
     do
       {
 	/* read request code */
-	int nbytes =
-		jsp_readn (m_group->get_socket(), (char *) &start_code, (int) sizeof (int));
-	if (nbytes < 0 && errno == ETIMEDOUT)
+
+	int nbytes = -1;
+	do
 	  {
 	    // to check interrupt
 	    cubmethod::runtime_context *rctx = cubmethod::get_rctx (thread_p);
@@ -87,8 +87,9 @@ namespace cubmethod
 		return rctx->get_interrupt_reason ();
 	      }
 
-	    continue;
+	    nbytes = jsp_readn (m_group->get_socket(), (char *) &start_code, (int) sizeof (int));
 	  }
+	while (nbytes < 0 && errno == ETIMEDOUT);
 
 	if (nbytes != (int) sizeof (int))
 	  {
@@ -140,26 +141,23 @@ namespace cubmethod
   int
   method_invoke_java::alloc_response (cubthread::entry *thread_p)
   {
-    const int time_unit = 5000;
     int res_size;
 
     cubmem::extensible_block blk;
 
     int nbytes = -1;
-    while (nbytes < 0)
+    do
       {
-	nbytes = jsp_readn (m_group->get_socket(), (char *) &res_size, (int) sizeof (int));
-	if (nbytes < 0 && errno == ETIMEDOUT)
+	// to check interrupt
+	cubmethod::runtime_context *rctx = cubmethod::get_rctx (thread_p);
+	if (rctx && rctx->is_interrupted ())
 	  {
-	    // to check interrupt
-	    cubmethod::runtime_context *rctx = cubmethod::get_rctx (thread_p);
-	    if (rctx && rctx->is_interrupted ())
-	      {
-		return rctx->get_interrupt_reason ();
-	      }
-	    continue;
+	    return rctx->get_interrupt_reason ();
 	  }
+
+	nbytes = jsp_readn (m_group->get_socket(), (char *) &res_size, (int) sizeof (int));
       }
+    while (nbytes < 0 && errno == ETIMEDOUT);
 
     if (nbytes != (int) sizeof (int))
       {

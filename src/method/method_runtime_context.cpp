@@ -82,12 +82,20 @@ namespace cubmethod
   }
 
   void
-  runtime_context::pop_stack (cubthread::entry *thread_p)
+  runtime_context::pop_stack (cubthread::entry *thread_p, method_invoke_group *claimed)
   {
-    std::unique_lock<std::mutex> ulock (m_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex, std::defer_lock);
+    auto pred = [&] () -> bool
+    {
+      // condition to check
+      return m_group_stack.back() == claimed->get_id ();
+    };
+
+    // Guaranteed to be removed from the topmost element
+    ulock.lock ();
+    m_cond_var.wait (ulock, pred);
 
     m_group_stack.pop_back ();
-
     if (m_group_stack.empty())
       {
 	// reset interrupt state
@@ -118,12 +126,13 @@ namespace cubmethod
   }
 
   void
-  runtime_context::set_interrupt (int reason)
+  runtime_context::set_interrupt_by_reason (int reason)
   {
     switch (reason)
       {
       case ER_INTERRUPTED:
       case ER_SP_TOO_MANY_NESTED_CALL:
+      case ER_NET_SERVER_SHUTDOWN:
 	m_is_interrupted = true;
 	m_interrupt_reason = reason;
 	break;

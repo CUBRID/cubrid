@@ -201,17 +201,12 @@ namespace cubmethod
 	if (m_rctx->is_interrupted ())
 	  {
 	    error = m_rctx->get_interrupt_reason ();
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	    break;
 	  }
 
 	if (error != NO_ERROR)
 	  {
-	    if (error == ER_INTERRUPTED || error == ER_SP_TOO_MANY_NESTED_CALL)
-	      {
-		m_rctx->set_interrupt (error);
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	      }
+	    // if error is not interrupt reason, interrupt is not set
+	    m_rctx->set_interrupt_by_reason (error);
 	    break;
 	  }
       }
@@ -273,7 +268,7 @@ namespace cubmethod
     get_connection_pool ()->retire (m_connection, kill);
     m_connection = nullptr;
 
-    m_rctx->pop_stack (m_thread_p);
+    m_rctx->pop_stack (m_thread_p, this);
     m_is_running = false;
   }
 

@@ -10379,11 +10379,8 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
     {
       /* might be interrupted and session is already freed */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-      (void) return_error_to_client (thread_p, rid);
-      sig_list.freemem ();
-      pr_clear_value_vector (args);
-      db_value_clear (&ret_value);
-      return;
+      error_code = ER_INTERRUPTED;
+      assert (false);		// oops
     }
 
   packing_packer packer;
@@ -10413,9 +10410,10 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
   else
     {
       std::string err_msg;
-
-      assert (top_on_stack);
-      err_msg.assign (top_on_stack->get_error_msg ());
+      if (top_on_stack)
+	{
+	  err_msg.assign (top_on_stack->get_error_msg ());
+	}
       if (rctx->is_interrupted () == false)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg.c_str ());
@@ -10438,8 +10436,10 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 				     reply_data_size);
 
   // clear
-  assert (top_on_stack);
-  top_on_stack->end ();
+  if (top_on_stack)
+    {
+      top_on_stack->end ();
+    }
 
   pr_clear_value_vector (args);
   db_value_clear (&ret_value);
