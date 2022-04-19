@@ -10429,6 +10429,11 @@ check_for_already_exists (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, cons
   const char *tbl_alias_nm = plkcol->tbl_name_node->info.name.original;
   PT_NODE *col;
 
+  if (resolved && intl_identifier_casecmp (tbl_alias_nm, resolved) != 0)
+    {
+      return;
+    }
+
   if (plkcol->col_list == NULL)
     {
       goto new_column;
@@ -10455,11 +10460,6 @@ check_for_already_exists (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, cons
     }
   else
     {
-      if (intl_identifier_casecmp (tbl_alias_nm, resolved) != 0)
-	{
-	  return;		// trick
-	}
-
       // tbl.c1 or tbl.*
       PT_NODE *prev = NULL;
       for (col = plkcol->col_list; col; prev = col, col = col->next)

@@ -27235,6 +27235,8 @@ static void pt_convert_dblink_query(PT_NODE* query_stmt)
              PT_NAME_INFO_CLEAR_FLAG(spec->entity_name, PT_NAME_INFO_USER_SPECIFIED); 
             
              lkcol.tbl_name_node = spec->range_var ? spec->range_var : spec->entity_name;
+             //printf ("alias=%s\n", lkcol.tbl_name_node->info.name.original);
+
              pt_get_cols_4_dblink(&lkcol, query->q.select.list);
             // PT_ERROR (this_parser, query_stmt, "777777777777777777777");
              if(lkcol.err != 0)
