@@ -3272,19 +3272,15 @@ sm_is_system_class (MOP op)
 static int
 system_class_def_compare (const void *a, const void *b)
 {
-  int a_len = ((const SYSTEM_CLASS_DEF *) a)->len;
-  int b_len = ((const SYSTEM_CLASS_DEF *) b)->len;
+  const SYSTEM_CLASS_DEF *sa = STATIC_CAST (const SYSTEM_CLASS_DEF *, a);
+  const SYSTEM_CLASS_DEF *sb = STATIC_CAST (const SYSTEM_CLASS_DEF *, b);
 
-  if (a_len < b_len)
+  if (sa->len != sb->len)
     {
-      return -1;
-    }
-  else if (a_len > b_len)
-    {
-      return 1;
+      return sa->len - sb->len;
     }
 
-  return 0;
+  return strcmp (sa->name, sb->name);
 }
 
 /*
@@ -3299,8 +3295,10 @@ sm_check_system_class_by_name (const char *name)
   static int was_initialized = FALSE;
   static int count = sizeof (system_classes) / sizeof (system_classes[0]);
 
+  SYSTEM_CLASS_DEF sa;
   char downcase_name[SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH] = { '\0' };
   int len = 0;
+  int cmp = 0;
   int i = 0;
 
   if (name == NULL || name[0] == '\0')
@@ -3321,24 +3319,20 @@ sm_check_system_class_by_name (const char *name)
     }
 
   sm_downcase_name (name, downcase_name, SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+  sa.name = downcase_name;
+  sa.len = strlen (downcase_name);
 
-  len = strlen (downcase_name);
-
-  if (len > system_classes[count - 1].len)
+  if (sa.len > system_classes[count - 1].len)
     {
       return false;
     }
 
   for (i = 0; i < count; i++)
     {
-      if (len < system_classes[i].len)
+      cmp = system_class_def_compare (&sa, system_classes + i);
+      if (cmp <= 0)
 	{
-	  return false;
-	}
-
-      if (strcmp (downcase_name, system_classes[i].name) == 0)
-	{
-	  return true;
+	  return (cmp == 0);
 	}
     }
 
