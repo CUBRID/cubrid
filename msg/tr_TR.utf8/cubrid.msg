@@ -1428,8 +1428,9 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1347 Public synonym "%1$s" does not exist.
 1348 Synonym "%1$s" already exists.
 1349 Synonym "%1$s" does not exist.
+1350 Invalid synonym value.
 
-1350 Son Hata
+1351 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
