@@ -472,14 +472,14 @@ sc_set_current_schema (MOP user)
   int error = ER_FAILED;
   char *wsp_user_name;
 
-  Current_Schema.name[0] = '\0';
-  Current_Schema.owner = user;
   wsp_user_name = au_get_user_name (user);
-
   if (wsp_user_name == NULL)
     {
       return error;
     }
+
+  Current_Schema.name[0] = '\0';
+  Current_Schema.owner = user;
 
   /* As near as I can tell, this is the most generalized */
   /* case conversion function on our system.  If it's not */
