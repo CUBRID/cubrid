@@ -7277,6 +7277,38 @@ qo_check_distinct_union (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * qo_check_hint_union () - check having distinct in union clause
+ *   return: PT_NODE *
+ *   parser(in): parser environment
+ *   node(in): possible query
+ *   arg(in):
+ *   continue_walk(in):
+ */
+static bool
+qo_check_hint_union (PARSER_CONTEXT * parser, PT_NODE * node, PT_HINT_ENUM hint)
+{
+  bool result = false;
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      if (node->info.query.q.select.hint & hint)
+	{
+	  return true;
+	}
+      break;
+    case PT_UNION:
+      result |= qo_check_hint_union (parser, node->info.query.q.union_.arg1, hint);
+      result |= qo_check_hint_union (parser, node->info.query.q.union_.arg2, hint);
+      break;
+
+    default:
+      break;
+    }
+  return result;
+}
+
+/*
  * qo_optimize_queries () - checks all subqueries for rewrite optimizations
  *   return: PT_NODE *
  *   parser(in): parser environment
@@ -7428,7 +7460,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 
 	      /* push limit to union */
 	      if (node->info.query.order_by == NULL && !qo_check_distinct_union (parser, node)
-		  && !(node->info.query.q.select.hint & PT_HINT_NO_PUSH_PRED))
+		  && !qo_check_hint_union (parser, node, PT_HINT_NO_PUSH_PRED))
 		{
 		  node = qo_push_limit_to_union (parser, node, limit_node);
 		}

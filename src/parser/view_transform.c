@@ -217,7 +217,7 @@ static bool pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_
 static PT_NODE *pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * infop);
 static PUSHABLE_TYPE mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
-					      PT_NODE * class_spec, bool is_vclass, PT_NODE * order_by);
+					      PT_NODE * class_spec, bool is_vclass, PT_NODE * order_by, PT_NODE * class_);
 static PUSHABLE_TYPE mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery);
 static void pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * term_list,
 			       FIND_ID_TYPE type);
@@ -394,7 +394,7 @@ static PT_NODE *mq_replace_virtual_oid_with_real_oid (PARSER_CONTEXT * parser, P
 
 static void mq_copy_view_error_msgs (PARSER_CONTEXT * parser, PARSER_CONTEXT * query_cache);
 static void mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_query);
-static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * order_by);
+static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * order_by, PT_NODE * subquery, PT_NODE * class_);
 
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -1659,7 +1659,7 @@ mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, voi
  */
 static PUSHABLE_TYPE
 mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery, PT_NODE * class_spec,
-			 bool is_vclass, PT_NODE * order_by)
+			 bool is_vclass, PT_NODE * order_by, PT_NODE * class_)
 {
   PT_NODE *pred, *statement_spec = NULL, *orderby_for;
   CHECK_PUSHABLE_INFO cpi;
@@ -1722,7 +1722,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     }
 
   /* determine if class_spec is the only spec in the statement */
-  is_rownum_only = mq_is_rownum_only_predicate (parser, statement_spec, mainquery, order_by);
+  is_rownum_only = mq_is_rownum_only_predicate (parser, statement_spec, mainquery, order_by, subquery, class_);
   is_only_spec = ((statement_spec->next == NULL && (pred == NULL || is_rownum_only)) ? true : false);
 
   /* check if orderby_for set to PT_EXPR_INFO_ROWNUM_ONLY */
@@ -2289,7 +2289,7 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
   mq_reset_ids_in_methods (parser, tmp_result);
 
   /* check whether subquery is pushable */
-  is_mergeable = mq_is_pushable_subquery (parser, subquery, tmp_result, derived_spec, false, order_by);
+  is_mergeable = mq_is_pushable_subquery (parser, subquery, tmp_result, derived_spec, false, order_by, NULL);
   if (is_mergeable == HAS_ERROR)
     {
       goto exit_on_error;
@@ -2486,7 +2486,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	}
 
       /* check whether subquery is pushable */
-      is_mergeable = mq_is_pushable_subquery (parser, query_spec, tmp_result, class_spec, true, order_by);
+      is_mergeable = mq_is_pushable_subquery (parser, query_spec, tmp_result, class_spec, true, order_by, class_);
       if (is_mergeable == HAS_ERROR)
 	{
 	  goto exit_on_error;
@@ -3864,7 +3864,7 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
  *              rownum          '= > <'        no restriction
  */
 bool
-mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * order_by)
+mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * order_by, PT_NODE * subquery, PT_NODE * class_)
 {
   PT_NODE *where, *from, *attributes, *query_spec_columns, *col, *attr, *pred;
   PT_NODE *arg1, *arg2, *sub_where, *sub_sel_list, *sub_order_by, *save_next;
@@ -3875,12 +3875,7 @@ mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * 
       return false;
     }
 
-  if (!PT_SPEC_IS_DERIVED (spec))
-    {
-      return false;
-    }
-
-  if (PT_IS_VALUE_QUERY (spec->info.spec.derived_table))
+  if (PT_IS_VALUE_QUERY (subquery))
     {
       return false;
     }
@@ -3892,8 +3887,7 @@ mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * 
     }
 
   /* check only spec */
-  from = node->info.query.q.select.from;
-  if (from->next != NULL)
+  if (spec->next != NULL)
     {
       return false;
     }
@@ -3916,23 +3910,34 @@ mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * 
     }
   
   /* subquery check */
-  if (!pt_is_select (spec->info.spec.derived_table))
+  if (!pt_is_select (subquery))
     {
       return false;
     }
 
   /* check instnum, order_by of subquery */
-  sub_where = spec->info.spec.derived_table->info.query.q.select.where;
-  sub_sel_list = spec->info.spec.derived_table->info.query.q.select.list;
-  sub_order_by = spec->info.spec.derived_table->info.query.order_by;
+  sub_where = subquery->info.query.q.select.where;
+  sub_sel_list = subquery->info.query.q.select.list;
+  sub_order_by = subquery->info.query.order_by;
   if (sub_order_by && (pt_has_inst_num (parser, sub_where) || pt_has_inst_num (parser, sub_sel_list)))
     {
       return false;
     }
 
   /* get attr_list */
-  attributes = spec->info.spec.as_attr_list;
-  query_spec_columns = spec->info.spec.derived_table->info.query.q.select.list;
+  if (PT_SPEC_IS_DERIVED (spec))
+    {
+      attributes = spec->info.spec.as_attr_list;
+    }
+  else if (class_ != NULL)
+    {
+      attributes = mq_fetch_attributes (parser, class_);
+    }
+  else
+    {
+      return false;
+    }
+  query_spec_columns = subquery->info.query.q.select.list;
 
   col = query_spec_columns;
   attr = attributes;
@@ -4104,7 +4109,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   PT_NODE *temp;
   int nullable_cnt;		/* nullable terms count */
   PT_NODE *save_next;
-  bool is_outer_joined, is_rownum_only;
+  bool is_outer_joined;
 
   /* init */
   push_term_list = NULL;
