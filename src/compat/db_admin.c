@@ -1944,20 +1944,6 @@ db_get_user_name (void)
 }
 
 /*
- * db_get_current_user_name() - Get the user name currently connected.
- *    return: output buffer pointer or NULL on error
- *    buf(out): output buffer
- *    buf_size(in): output buffer length
- */
-char *
-db_get_current_user_name (char *buf, int buf_size)
-{
-  CHECK_CONNECT_NULL ();
-
-  return au_current_user_name (buf, buf_size);
-}
-
-/*
  * db_get_user_and_host_name() - This returns the name of the user that is
  *    currently logged in and the host name. Format for return value is
  *    user_name@host_name
