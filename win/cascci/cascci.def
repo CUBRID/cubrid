@@ -107,8 +107,7 @@ EXPORTS
 	cci_set_holdability
 	cci_get_holdability
 	cci_get_cas_info
-	cci_set_client_type
-
+	
 	cci_log_get
 	cci_log_finalize
 	cci_log_write
