@@ -869,6 +869,7 @@ cas_main (void)
   char tmp_user[SRV_CON_DBUSER_SIZE] = { 0, };
   char tmp_passwd[SRV_CON_DBPASSWD_SIZE] = { 0, };
   SUPPORTED_DBMS_TYPE dbms_type = NOT_SUPPORTED_DBMS;
+  char *find_gateway = NULL;
 #endif
 
 #if defined(CAS_FOR_ORACLE)
@@ -1243,6 +1244,15 @@ cas_main (void)
 #if !defined (CAS_FOR_CGW)
 	    err_code = ux_database_connect (db_name, db_user, db_passwd, &db_err_msg);
 #else
+	    find_gateway = strstr (url, "__gateway=true");
+	    if(find_gateway == NULL)
+	      {
+		cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
+		net_write_error (client_sock_fd, req_info.client_version, req_info.driver_info, cas_info,
+		  cas_info_size, DBMS_ERROR_INDICATOR, CAS_ER_NOT_AUTHORIZED_CLIENT, "Authorization error");
+
+		goto finish_cas;
+	      }
 
 	    dbms_type = cgw_is_supported_dbms (shm_appl->cgw_link_server);
 	    cgw_set_dbms_type (dbms_type);
