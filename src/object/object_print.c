@@ -348,11 +348,10 @@ help_class_names (const char *qualifier)
 {
   DB_OBJLIST *mops, *m;
   char **names;
-  const char *cname, *tmp;
   int count, i, outcount;
   DB_OBJECT *requested_owner, *owner;
   char buffer[2 * DB_MAX_IDENTIFIER_LENGTH + 4];
-  DB_VALUE owner_name;
+  const char *unique_name;
 
   requested_owner = NULL;
   owner = NULL;
@@ -385,24 +384,15 @@ help_class_names (const char *qualifier)
 	      owner = db_get_owner (m->op);
 	      if (!requested_owner || ws_is_same_object (requested_owner, owner))
 		{
-		  cname = db_get_class_name (m->op);
+		  unique_name = db_get_class_name (m->op);
 		  buffer[0] = '\0';
-		  if (!requested_owner && db_get (owner, "name", &owner_name) >= 0)
+		  if (!requested_owner)
 		    {
-		      tmp = db_get_string (&owner_name);
-		      if (tmp)
-			{
-			  snprintf (buffer, sizeof (buffer) - 1, "%s.%s", tmp, sm_remove_qualifier_name (cname));
-			}
-		      else
-			{
-			  snprintf (buffer, sizeof (buffer) - 1, "%s.%s", "unknown_user", cname);
-			}
-		      db_value_clear (&owner_name);
+		      snprintf (buffer, sizeof (buffer) - 1, "%s", unique_name);
 		    }
 		  else
 		    {
-		      snprintf (buffer, sizeof (buffer) - 1, "%s", cname);
+		      snprintf (buffer, sizeof (buffer) - 1, "%s", sm_remove_qualifier_name (unique_name));
 		    }
 
 		  names[outcount++] = object_print::copy_string (buffer);
