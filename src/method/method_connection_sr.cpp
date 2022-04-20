@@ -67,7 +67,10 @@ namespace cubmethod
       }
     else
       {
-	error = (error == NO_ERROR) ? er_errid () : NO_ERROR; // ER_SP_TOO_MANY_NESTED_CALL
+	if (error == NO_ERROR)
+	  {
+	    error = er_errid (); // ER_SP_TOO_MANY_NESTED_CALL, ER_INTERRUPTED... (interrupt reasons)
+	  }
       }
 
     free_and_init (buffer.ptr);
@@ -85,7 +88,10 @@ namespace cubmethod
       }
     else
       {
-	error = (error == NO_ERROR) ? er_errid () : NO_ERROR; // ER_SP_TOO_MANY_NESTED_CALL
+	if (error == NO_ERROR)
+	  {
+	    error = er_errid (); // ER_SP_TOO_MANY_NESTED_CALL, ER_INTERRUPTED... (interrupt reasons)
+	  }
       }
 
     free_and_init (buffer.ptr);
