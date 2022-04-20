@@ -84,7 +84,7 @@ namespace cubmethod
   }
 
   void
-  connection_pool::retire (connection *claimed)
+  connection_pool::retire (connection *claimed, bool kill)
   {
     if (claimed == nullptr)
       {
@@ -92,6 +92,12 @@ namespace cubmethod
       }
 
     std::unique_lock<std::mutex> ulock (m_mutex);
+
+    if (kill)
+      {
+	delete claimed;
+	return;
+      }
 
     // test connection
     if (claimed->is_valid () == true)

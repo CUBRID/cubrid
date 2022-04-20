@@ -136,6 +136,7 @@ typedef struct
 
 extern char *query_Plan_dump_filename;
 extern FILE *query_Plan_dump_fp;
+extern bool query_Plan_dump_fp_open;
 
 extern REGU_VARIABLE *pt_to_regu_variable (PARSER_CONTEXT * p, PT_NODE * node, UNBOX unbox);
 extern PRED_EXPR *pt_to_pred_expr (PARSER_CONTEXT * parser, PT_NODE * node);

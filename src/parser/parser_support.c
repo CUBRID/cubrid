@@ -10234,7 +10234,6 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   const char *original_name = NULL;
   const char *resolved_name = NULL;
   char downcase_resolved_name[DB_MAX_USER_LENGTH] = { '\0' };
-  char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
   const char *user_specified_name = NULL;
 
   if (parser == NULL || node == NULL)
@@ -10317,13 +10316,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 
   if (resolved_name == NULL || resolved_name[0] == '\0')
     {
-      if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
-	{
-	  ASSERT_ERROR ();
-	  return node;
-	}
-
-      resolved_name = current_user_name;
+      resolved_name = sc_current_schema_name ();
     }
   else if (intl_identifier_lower_string_size (resolved_name) >= DB_MAX_USER_LENGTH)
     {
@@ -10423,7 +10416,7 @@ pt_get_name_without_current_user_name (const char *name)
 {
   char *dot = NULL;
   char name_copy[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
+  const char *current_schema_name = NULL;
   const char *object_name = NULL;
   int error = NO_ERROR;
 
@@ -10447,18 +10440,14 @@ pt_get_name_without_current_user_name (const char *name)
       return name;
     }
 
-  if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
-    {
-      ASSERT_ERROR ();
-      return name;
-    }
+  current_schema_name = sc_current_schema_name ();
 
   dot[0] = '\0';
 
-  if (intl_identifier_casecmp (name_copy, current_user_name) == 0)
+  if (intl_identifier_casecmp (name_copy, current_schema_name) == 0)
     {
       /*
-       * e.g.        name: current_user_name.object_name
+       * e.g.        name: current_schema_name.object_name
        *      object_name: object_name
        */
       object_name = strchr (name, '.') + 1;

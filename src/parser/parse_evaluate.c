@@ -1355,7 +1355,17 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
       break;
 
     case PT_METHOD_CALL:
-      error = do_call_method (parser, tree);
+      if (prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL) == 514)
+	{
+	  // It is for the get_query_info.
+	  // Do not call method by constant folding
+	  db_make_null (db_values);
+	  error = NO_ERROR;
+	}
+      else
+	{
+	  error = do_call_method (parser, tree);
+	}
       if (error >= NO_ERROR)
 	{
 	  if ((val = (DB_VALUE *) (tree->etc)) != NULL)
