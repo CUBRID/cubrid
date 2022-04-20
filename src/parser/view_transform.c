@@ -2037,13 +2037,15 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 
   prev_order = NULL;
   /* update the position number of order by clause */
-  for (order = order_by; order != NULL; order = order->next)
+  order = order_by;
+  while (order != NULL)
     {
       assert (order->node_type == PT_SORT_SPEC);
 
       val = order->info.sort_spec.expr;
       assert (val->node_type == PT_VALUE);
 
+      save_next = order->next;
       if (attr_count < val->info.value.data_value.i)
 	{
 	  /* order by is a hidden column and not in attribute list, in this case, we need append a hidden column at the
@@ -2099,17 +2101,15 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 	      /* remove unnecessary order */
 	      if (prev_order == NULL)
 		{
-		  statement->info.query.order_by = order->next;
+		  statement->info.query.order_by = save_next;
 		}
 	      else
 		{
-		  prev_order->next = order->next;
+		  prev_order->next = save_next;
 		}
 	      /* free order */
-	      save_next = order->next;
 	      order->next = NULL;
 	      free_node = parser_append_node (order, free_node);
-	      order->next = save_next;
 	    }
 	  else
 	    {
@@ -2129,13 +2129,15 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 	      val->info.value.db_value.data.i = i;
 	      val->info.value.text = NULL;
 	      order->info.sort_spec.pos_descr.pos_no = i;
-	    }
 
+	      prev_order = order;
+	    }
 	}
       else
 	{
 	  prev_order = order;
 	}
+      order = save_next;
     }
 
   statement->info.query.order_by = parser_append_node (order_by, statement->info.query.order_by);
