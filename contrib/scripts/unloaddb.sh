@@ -322,10 +322,24 @@ function analyze_table_info ()
 	local idx=0
 	local table_name
 	local db=$database
-	local query="show tables"
+	local query_112="SELECT CONCAT(owner_name, '.', class_name) FROM db_class WHERE is_system_class = 'NO' AND class_type = 'CLASS'"
+	local query_110="SHOW TABLES"
+	local ver
 
 	# Phase1: Get all table names if $from_file equals 0, otherwise from input file
 	# and fill it to array table_selected []
+
+	ver=$(cubrid_rel | awk '{print $2}')
+	major=$(echo $ver | cut -d'.' -f1-1)
+	minor=$(echo $ver | cut -d'.' -f2-2)
+
+	let "ver = major * 1000 + minor"
+
+	if [ $ver -lt 11002 ];then
+		query=$query_110
+	else
+		query=$query_112
+	fi
 
 	if [ $from_file -eq 1 ];then  # Read table name from file
 		result=$(cat $filename)
