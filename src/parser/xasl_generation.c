@@ -363,6 +363,7 @@ typedef struct corr_info
 
 FILE *query_Plan_dump_fp = NULL;
 char *query_Plan_dump_filename = NULL;
+bool query_Plan_dump_fp_open = false;
 
 static XASL_SUPP_INFO xasl_Supp_info = { NULL, NULL, NULL, NULL, 0, 0, 0 };
 
@@ -1224,12 +1225,8 @@ pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser, PT_NODE * select_no
       qo_get_optimization_param (&level, QO_PARAM_LEVEL);
       if (level >= 0x100 && plan)
 	{
-	  if (query_Plan_dump_fp == NULL)
-	    {
-	      query_Plan_dump_fp = stdout;
-	    }
-	  fputs ("\nPlan for single table hierarchical iterations:\n", query_Plan_dump_fp);
-	  qo_plan_dump (plan, query_Plan_dump_fp);
+	  fputs ("\nPlan for single table hierarchical iterations:\n", db_query_get_plan_dump_fp ());
+	  qo_plan_dump (plan, db_query_get_plan_dump_fp ());
 	}
     }
 
@@ -17307,15 +17304,10 @@ pt_plan_schema (PARSER_CONTEXT * parser, PT_NODE * select_node)
       if (level & 0x200)
 	{
 	  unsigned int save_custom;
-
-	  if (query_Plan_dump_fp == NULL)
-	    {
-	      query_Plan_dump_fp = stdout;
-	    }
-
 	  save_custom = parser->custom_print;
 	  parser->custom_print |= PT_CONVERT_RANGE;
-	  fprintf (query_Plan_dump_fp, "\nQuery stmt:%s\n\n%s\n\n", "", parser_print_tree (parser, select_node));
+	  fprintf (db_query_get_plan_dump_fp (), "\nQuery stmt:%s\n\n%s\n\n", "",
+		   parser_print_tree (parser, select_node));
 
 	  parser->custom_print = save_custom;
 	}
@@ -17423,29 +17415,22 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
    * produce a plan. If this happens in the field at least we'll be able to glean some info */
   if (plan != NULL && dump_plan == true)
     {
-      if (query_Plan_dump_fp == NULL)
-	{
-	  query_Plan_dump_fp = stdout;
-	}
-      fputs ("\nQuery plan:\n", query_Plan_dump_fp);
-      qo_plan_dump (plan, query_Plan_dump_fp);
+      FILE *dump_fp = db_query_get_plan_dump_fp ();
+      fputs ("\nQuery plan:\n", dump_fp);
+      qo_plan_dump (plan, dump_fp);
     }
 
   if (dump_plan == true)
     {
       unsigned int save_custom;
 
-      if (query_Plan_dump_fp == NULL)
-	{
-	  query_Plan_dump_fp = stdout;
-	}
-
+      FILE *dump_fp = db_query_get_plan_dump_fp ();
       if (DETAILED_DUMP (level))
 	{
 	  save_custom = parser->custom_print;
 	  parser->custom_print |= PT_CONVERT_RANGE;
 	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
-	  fprintf (query_Plan_dump_fp, "\nQuery stmt:%s\n\n%s\n\n", ((hint_ignored) ? " [Warning: HINT ignored]" : ""),
+	  fprintf (dump_fp, "\nQuery stmt:%s\n\n%s\n\n", ((hint_ignored) ? " [Warning: HINT ignored]" : ""),
 		   parser_print_tree (parser, select_node));
 	  parser->custom_print = save_custom;
 	}
@@ -17455,11 +17440,11 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	{
 	  if (DETAILED_DUMP (level))
 	    {
-	      fprintf (query_Plan_dump_fp, "/* ---> skip ORDER BY */\n");
+	      fprintf (dump_fp, "/* ---> skip ORDER BY */\n");
 	    }
 	  else if (SIMPLE_DUMP (level))
 	    {
-	      fprintf (query_Plan_dump_fp, " skip ORDER BY\n");
+	      fprintf (dump_fp, " skip ORDER BY\n");
 	    }
 	}
 
@@ -17468,11 +17453,11 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	{
 	  if (DETAILED_DUMP (level))
 	    {
-	      fprintf (query_Plan_dump_fp, "/* ---> skip GROUP BY */\n");
+	      fprintf (dump_fp, "/* ---> skip GROUP BY */\n");
 	    }
 	  else if (SIMPLE_DUMP (level))
 	    {
-	      fprintf (query_Plan_dump_fp, " skip GROUP BY\n");
+	      fprintf (dump_fp, " skip GROUP BY\n");
 	    }
 	}
     }
@@ -17571,13 +17556,14 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 
   if (level >= 0x100)
     {
+      FILE *dump_fp = db_query_get_plan_dump_fp ();
       if (select_node->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY)
 	{
-	  fprintf (query_Plan_dump_fp, "\nend of non recursive part of CTE\n");
+	  fprintf (dump_fp, "\nend of non recursive part of CTE\n");
 	}
       else if (select_node->info.query.is_subquery == PT_IS_CTE_REC_SUBQUERY)
 	{
-	  fprintf (query_Plan_dump_fp, "\nend of CTE definition\n");
+	  fprintf (dump_fp, "\nend of CTE definition\n");
 	}
     }
 
@@ -17605,7 +17591,6 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * qu
 {
   XASL_NODE *xasl = NULL;
   PT_NODE *query;
-  bool query_Plan_dump_fp_open = false;
 
   /* we should propagate abort error from the server */
   if (!parser->flag.abort && (PT_IS_QUERY (node) || node->node_type == PT_CTE))
@@ -17627,25 +17612,6 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * qu
       switch (node->node_type)
 	{
 	case PT_SELECT:
-	  /* This function is reenterable by pt_plan_query so, query_Plan_dump_fp should be open once at first call and
-	   * be closed at that call. */
-	  if (query_Plan_dump_filename != NULL)
-	    {
-	      if (query_Plan_dump_fp == NULL || query_Plan_dump_fp == stdout)
-		{
-		  query_Plan_dump_fp = fopen (query_Plan_dump_filename, "a");
-		  if (query_Plan_dump_fp != NULL)
-		    {
-		      query_Plan_dump_fp_open = true;
-		    }
-		}
-	    }
-
-	  if (query_Plan_dump_fp == NULL)
-	    {
-	      query_Plan_dump_fp = stdout;
-	    }
-
 	  if (PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_IDX_SCHEMA)
 	      || ((PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_COLS_SCHEMA)
 		   || PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_FULL_INFO_COLS_SCHEMA))
@@ -17658,15 +17624,6 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * qu
 	      xasl = pt_plan_query (parser, node);
 	    }
 	  node->info.query.xasl = xasl;
-
-	  /* close file handle if this function open it */
-	  if (query_Plan_dump_fp_open == true)
-	    {
-	      assert (query_Plan_dump_fp != NULL && query_Plan_dump_fp != stdout);
-
-	      fclose (query_Plan_dump_fp);
-	      query_Plan_dump_fp = stdout;
-	    }
 	  break;
 
 	case PT_UNION:
@@ -18594,8 +18551,12 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       parser->symbols->table_info = ti;
 
+      db_query_plan_dump_fp_open ();
+
       value_clauses = parser_walk_tree (parser, value_clauses, parser_generate_xasl_pre, NULL,
 					parser_generate_xasl_post, &xasl_Supp_info);
+
+      db_query_plan_dump_fp_close ();
 
       if ((n = xasl_Supp_info.n_oid_list) > 0 && (xasl->class_oid_list = regu_oid_array_alloc (n))
 	  && (xasl->class_locks = regu_int_array_alloc (n)) && (xasl->tcard_list = regu_int_array_alloc (n)))
@@ -21924,8 +21885,13 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 	  /* XASL cache related information */
 	  pt_init_xasl_supp_info ();
 
+	  db_query_plan_dump_fp_open ();
+
 	  node =
 	    parser_walk_tree (parser, node, parser_generate_xasl_pre, NULL, parser_generate_xasl_post, &xasl_Supp_info);
+
+	  /* close file handle for query plan if this function open it */
+	  db_query_plan_dump_fp_close ();
 
 	  parser_free_tree (parser, xasl_Supp_info.query_list);
 	  xasl_Supp_info.query_list = NULL;
