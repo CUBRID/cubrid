@@ -642,20 +642,20 @@ pt_lambda_node (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
   /* change inst_num() to orderby_num() */
   if (PT_IS_INSTNUM (tree_or_name) && PT_IS_INSTNUM (lambda_name))
     {
-	  /* found match */
-	  /* replace 'tree_or_name' node with 'lambda_arg->tree' */
-	  next = tree_or_name->next;
-	  result = parser_copy_tree_list (parser, lambda_arg->tree);
-	  parser_free_node (parser, tree_or_name);
-	  for (temp = result; temp->next; temp = temp->next)
-	    {
-	      ;
-	    }
-	  temp->next = next;
+      /* found match */
+      /* replace 'tree_or_name' node with 'lambda_arg->tree' */
+      next = tree_or_name->next;
+      result = parser_copy_tree_list (parser, lambda_arg->tree);
+      parser_free_node (parser, tree_or_name);
+      for (temp = result; temp->next; temp = temp->next)
+	{
+	  ;
+	}
+      temp->next = next;
 
-	  lambda_arg->replace_num++;
+      lambda_arg->replace_num++;
 
-	  return result;
+      return result;
     }
 
   if (name_node->node_type != PT_NAME || lambda_name->node_type != PT_NAME)

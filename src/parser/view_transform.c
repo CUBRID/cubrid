@@ -217,7 +217,8 @@ static bool pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_
 static PT_NODE *pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * infop);
 static PUSHABLE_TYPE mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
-					      PT_NODE * class_spec, bool is_vclass, PT_NODE * order_by, PT_NODE * class_);
+					      PT_NODE * class_spec, bool is_vclass, PT_NODE * order_by,
+					      PT_NODE * class_);
 static PUSHABLE_TYPE mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery);
 static void pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * term_list,
 			       FIND_ID_TYPE type);
@@ -394,7 +395,8 @@ static PT_NODE *mq_replace_virtual_oid_with_real_oid (PARSER_CONTEXT * parser, P
 
 static void mq_copy_view_error_msgs (PARSER_CONTEXT * parser, PARSER_CONTEXT * query_cache);
 static void mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_query);
-static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * order_by, PT_NODE * subquery, PT_NODE * class_);
+static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * order_by,
+					 PT_NODE * subquery, PT_NODE * class_);
 
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -1727,7 +1729,9 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 
   /* check if orderby_for set to PT_EXPR_INFO_ROWNUM_ONLY */
   orderby_for = subquery->info.query.orderby_for;
-  is_orderby_for = orderby_for && (order_by || (orderby_for->node_type == PT_EXPR && !PT_EXPR_INFO_IS_FLAGED (orderby_for, PT_EXPR_INFO_ROWNUM_ONLY)));
+  is_orderby_for = orderby_for && (order_by
+				   || (orderby_for->node_type == PT_EXPR
+				       && !PT_EXPR_INFO_IS_FLAGED (orderby_for, PT_EXPR_INFO_ROWNUM_ONLY)));
 
   /* do not rewrite vclass_query as a derived table if spec belongs to an insert statement. */
   if (mainquery->node_type == PT_INSERT)
@@ -2148,8 +2152,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
   statement->info.query.order_by = parser_append_node (order_by, statement->info.query.order_by);
 
   where = statement->info.query.q.select.where;
-  if (where != NULL && PT_EXPR_INFO_IS_FLAGED(where, PT_EXPR_INFO_ROWNUM_ONLY)
-      && statement->info.query.order_by)
+  if (where != NULL && PT_EXPR_INFO_IS_FLAGED (where, PT_EXPR_INFO_ROWNUM_ONLY) && statement->info.query.order_by)
     {
       /* replace orderby_num() to inst_num() */
       PT_NODE *ord_num = NULL, *ins_num = NULL, *prev_orderby_for;
@@ -2171,7 +2174,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 
       where = pt_lambda_with_arg (parser, where, ins_num, ord_num, false, 0, false);
       statement->info.query.q.select.list =
-		    pt_lambda_with_arg (parser, statement->info.query.q.select.list, ins_num, ord_num, false, 0, false);
+	pt_lambda_with_arg (parser, statement->info.query.q.select.list, ins_num, ord_num, false, 0, false);
 
       /* move prev orderby_for to orderby_for */
       prev_orderby_for = parser_copy_tree (parser, query_spec->info.query.orderby_for);
@@ -2207,7 +2210,7 @@ mq_update_orderby_for (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   orderby_for = statement->info.query.orderby_for;
 
-  if (orderby_for != NULL && PT_EXPR_INFO_IS_FLAGED(orderby_for, PT_EXPR_INFO_ROWNUM_ONLY))
+  if (orderby_for != NULL && PT_EXPR_INFO_IS_FLAGED (orderby_for, PT_EXPR_INFO_ROWNUM_ONLY))
     {
       /* replace orderby_num() to inst_num() */
       PT_NODE *ord_num = NULL, *ins_num = NULL;
@@ -3864,7 +3867,8 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
  *              rownum          '= > <'        no restriction
  */
 bool
-mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * order_by, PT_NODE * subquery, PT_NODE * class_)
+mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * order_by,
+			     PT_NODE * subquery, PT_NODE * class_)
 {
   PT_NODE *where, *from, *attributes, *query_spec_columns, *col, *attr, *pred;
   PT_NODE *arg1, *arg2, *sub_where, *sub_sel_list, *sub_order_by, *save_next;
@@ -3908,7 +3912,7 @@ mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * 
       col->next = save_next;
       col = col->next;
     }
-  
+
   /* subquery check */
   if (!pt_is_select (subquery))
     {
