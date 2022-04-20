@@ -18551,8 +18551,12 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       parser->symbols->table_info = ti;
 
+      db_query_plan_dump_fp_open ();
+
       value_clauses = parser_walk_tree (parser, value_clauses, parser_generate_xasl_pre, NULL,
 					parser_generate_xasl_post, &xasl_Supp_info);
+
+      db_query_plan_dump_fp_close ();
 
       if ((n = xasl_Supp_info.n_oid_list) > 0 && (xasl->class_oid_list = regu_oid_array_alloc (n))
 	  && (xasl->class_locks = regu_int_array_alloc (n)) && (xasl->tcard_list = regu_int_array_alloc (n)))
