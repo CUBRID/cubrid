@@ -469,17 +469,6 @@ extern "C"
   extern PT_NODE *pt_check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern PT_NODE *pt_check_subquery_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
-  typedef struct link_columns
-  {
-    int depth;
-    int err;
-    PT_NODE *col_list;
-    PT_NODE *tbl_name_node;
-  } S_LINK_COLUMNS;
-
-  extern PT_NODE *pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-  extern PT_NODE *pt_get_column_name_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-
 #if defined (ENABLE_UNUSED_FUNCTION)
   extern PT_NODE *pt_assignments_part (const PT_NODE * update_statement);
   extern PT_NODE *pt_class_names_part (const PT_NODE * stmt);

@@ -616,6 +616,11 @@ db_compile_statement_local (DB_SESSION * session)
       srand48 (seed = (long) time (NULL));
     }
 
+  {				// ctshim 
+    extern PT_NODE *pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+    parser_walk_tree (parser, statement, pt_check_dblink_query, NULL, NULL, NULL);
+  }
+
   /* do semantic check for the statement */
   statement_result = pt_compile (parser, statement);
 

@@ -252,7 +252,7 @@ static void pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_l
 				    PT_NODE * derived_table, PT_NODE * parent_spec);
 static PT_NODE *pt_count_with_clauses (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static int pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node);
-
+static void pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt);
 typedef struct
 {
   int norder;
@@ -1788,6 +1788,10 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
   switch (node->node_type)
     {
     case PT_SELECT:
+
+      {
+	//pt_gather_dblink_colums(parser, node); // ctshim
+      }
 
       scopestack.specs = node->info.query.q.select.from;
       spec_frame.next = bind_arg->spec_frames;
@@ -11139,4 +11143,224 @@ pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node)
   pr_clear_value (&(values[2]));
 
   return NO_ERROR;
+}
+
+//////////////////////////////////////////////////
+typedef struct link_columns
+{
+  PT_NODE *col_list;
+  PT_NODE *tbl_name_node;
+} S_LINK_COLUMNS;
+
+
+static void
+check_for_already_exists (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, const char *resolved, const char *original)
+{
+  const char *tbl_alias_nm = plkcol->tbl_name_node->info.name.original;
+  PT_NODE *col;
+
+  if (resolved && intl_identifier_casecmp (tbl_alias_nm, resolved) != 0)
+    {
+      return;
+    }
+
+  if (plkcol->col_list)
+    {
+      if (plkcol->col_list->type_enum == PT_TYPE_STAR && plkcol->col_list->info.name.resolved == NULL)
+	{
+	  return;		// case: * vs anything
+	}
+
+      if (resolved == NULL)
+	{			// col
+	  for (col = plkcol->col_list; col; col = col->next)
+	    {
+	      if (col->type_enum == PT_TYPE_STAR)
+		{
+		  return;	// case: tbl.* vs anything
+		}
+	      else if (intl_identifier_casecmp (col->info.name.original, original) == 0)
+		{
+		  return;	// case: col  vs col
+		}
+	    }
+	}
+      else if (original)
+	{			// tbl.col
+	  for (col = plkcol->col_list; col; col = col->next)
+	    {
+	      if (col->type_enum == PT_TYPE_STAR)
+		{
+		  return;	// case: tbl.* vs anything
+		}
+	      else if (intl_identifier_casecmp (col->info.name.original, original) == 0)
+		{
+		  return;	// case: col  vs col  or  col vs tbl.col
+		}
+	    }
+	}
+      else
+	{			// tbl.*
+	  if (plkcol->col_list->type_enum == PT_TYPE_STAR)
+	    {
+	      return;		// case: tbl.* vs tbl.*
+	    }
+
+	  parser_free_node (parser, plkcol->col_list);
+	  plkcol->col_list = NULL;
+	}
+    }
+
+  PT_NODE *name = parser_new_node (parser, PT_NAME);
+
+  printf ("<<<(%s)", (char *) "append");
+  if (resolved && original)
+    {
+      //name->info.name.resolved = pt_append_string (parser, NULL, resolved);
+      name->info.name.original = pt_append_string (parser, NULL, original);
+    }
+  else if (resolved)
+    {
+      name->type_enum = PT_TYPE_STAR;
+      name->info.name.resolved = pt_append_string (parser, NULL, resolved);
+    }
+  else
+    {
+      name->info.name.original = pt_append_string (parser, NULL, original);
+    }
+
+  plkcol->col_list = parser_append_node (name, plkcol->col_list);
+}
+
+
+static PT_NODE *
+pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  S_LINK_COLUMNS *plkcol = (S_LINK_COLUMNS *) arg;
+  PT_NODE *name = NULL;
+
+  if (node->node_type == PT_SELECT)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if (node->node_type == PT_DOT_)
+    {				// case: tbl.col      
+      printf (">>>(%s)<<<", (char *) pt_print_bytes (parser, node)->bytes);
+
+      check_for_already_exists
+	(parser, plkcol, node->info.dot.arg1->info.name.original, node->info.dot.arg2->info.name.original);
+      printf ("\n");
+
+      *continue_walk = PT_LIST_WALK;
+    }
+  else if (node->node_type == PT_NAME)
+    {
+      printf (">>>(%s)<<<", (char *) pt_print_bytes (parser, node)->bytes);
+
+      if (node->type_enum == PT_TYPE_STAR)
+	{			// case:  tbl.*
+	  check_for_already_exists (parser, plkcol, node->info.name.original, NULL);
+	}
+      else
+	{
+	  check_for_already_exists (parser, plkcol, NULL, node->info.name.original);
+	}
+      printf ("\n");
+    }
+  else if (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_STAR)
+    {
+      printf (">>>(%s)<<<", (char *) "*");
+      {
+	printf ("<<<(%s)", (char *) "append");
+	name = parser_new_node (parser, PT_NAME);
+	name->type_enum = PT_TYPE_STAR;
+	if (plkcol->col_list)
+	  {
+	    parser_free_node (parser, plkcol->col_list);
+	  }
+	plkcol->col_list = name;
+      }
+      printf ("\n");
+    }
+  return node;
+}
+
+static PT_NODE *
+pt_get_column_name_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  *continue_walk = PT_CONTINUE_WALK;
+  return node;
+}
+
+static void
+pt_get_cols_4_dblink (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, PT_NODE * select_col_list)
+{
+  (void) parser_walk_tree (parser, select_col_list,
+			   pt_get_column_name_pre, plkcol, pt_get_column_name_post, /*plkcol */ NULL);
+
+  PARSER_VARCHAR *q = 0;
+  printf ("*******************************\n");
+  for (PT_NODE * col = plkcol->col_list; col; col = col->next)
+    {
+      q = pt_print_bytes (parser, col);
+      printf (">>>(%s)<<<\n", (char *) q->bytes);
+    }
+  printf ("*******************************\n");
+}
+
+static void
+pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
+{
+  PT_QUERY_INFO *query = &query_stmt->info.query;
+  PT_NODE *table;
+
+  for (PT_NODE * spec = query->q.select.from; spec; spec = spec->next)
+    {
+      if (!PT_SPEC_IS_DERIVED (spec))
+	{
+	  continue;
+	}
+
+      table = spec->info.spec.derived_table;
+      if (table->node_type == PT_DBLINK_TABLE)
+	{
+	  assert (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE);
+	  if (table->info.dblink_table.remote_table_name && *table->info.dblink_table.remote_table_name)
+	    {
+	      S_LINK_COLUMNS lkcol;
+
+	      memset (&lkcol, 0x00, sizeof (lkcol));
+	      lkcol.col_list = table->info.dblink_table.sel_list;
+
+	      // Do NOT automatically assign a user name. 
+	      //PT_NAME_INFO_CLEAR_FLAG(spec->entity_name, PT_NAME_INFO_USER_SPECIFIED); 
+
+
+	      lkcol.tbl_name_node = spec->info.spec.range_var;	// spec->range_var ? spec->range_var : spec->entity_name;
+	      //printf ("alias=%s\n", lkcol.tbl_name_node->info.name.original);
+
+	      pt_get_cols_4_dblink (parser, &lkcol, query->q.select.list);
+	      pt_get_cols_4_dblink (parser, &lkcol, query->q.select.where);
+	      table->info.dblink_table.sel_list = lkcol.col_list;
+	      lkcol.col_list = NULL;
+	    }
+	}
+    }
+}
+
+PT_NODE *
+pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  *continue_walk = PT_CONTINUE_WALK;
+  if (!node || !parser)
+    {
+      return node;
+    }
+
+  if (node->node_type == PT_SELECT)
+    {
+      pt_gather_dblink_colums (parser, node);	// ctshim
+    }
+
+  return node;
 }

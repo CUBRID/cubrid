@@ -4856,9 +4856,16 @@ original_table_spec
 				  }
 #if 1 // ctshim 
  //                             parser_top_select_stmt_node()->node_type != PT_SELECT ?
-                                if(stmt->node_type != PT_SELECT && ent->info.spec.ct_server_name != NULL)
-                                {                                   
-                                    PT_ERROR (this_parser, ent, "Oops! Sorr,. only SELECT statements are supported yet."); // ctshim
+                                if(ent->info.spec.ct_server_name != NULL)
+                                {  
+                                   if(stmt->node_type != PT_SELECT)                                      
+                                   {
+                                      PT_ERROR (this_parser, ent, "Oops! Sorry. only SELECT statements are supported yet."); // ctshim
+                                   }
+                                   else if(CONTAINER_AT_1 ($2))
+                                   {
+                                      PT_ERROR (this_parser, ent, "Oops! Sorry. only SELECT statements are supported yet."); // ctshim
+                                   }
                                 }
 #endif                                
 			      }
@@ -27193,21 +27200,6 @@ pt_mk_spec_drived_dblink_table(PT_SPEC_INFO* class_spec, PT_NODE* select_col_lis
 }
 
 
-static void pt_get_cols_4_dblink(S_LINK_COLUMNS* plkcol, PT_NODE* select_col_list)
-{  
-   (void) parser_walk_tree (this_parser, select_col_list, 
-                            pt_get_column_name_pre, plkcol, pt_get_column_name_post, plkcol);
-
-    PARSER_VARCHAR *q = 0;
-   printf ("*******************************\n"); 
-   for(PT_NODE* col = plkcol->col_list; col; col = col->next)
-   {        
-        q = pt_print_bytes (this_parser, col);
-	printf (">>>(%s)<<<\n", (char *) q->bytes);
-   }
-   printf ("*******************************\n"); 
-}
-
 static void pt_convert_dblink_query(PT_NODE* query_stmt)
 {
    PT_QUERY_INFO* query = &query_stmt->info.query;
@@ -27226,40 +27218,25 @@ static void pt_convert_dblink_query(PT_NODE* query_stmt)
         spec = &(from_tbl->info.spec);
 
         if(spec->entity_name && spec->ct_server_name)
-          {
-             S_LINK_COLUMNS lkcol;
-
-             memset(&lkcol, 0x00, sizeof(lkcol));
-
+          {            
              // Do NOT automatically assign a user name. 
              PT_NAME_INFO_CLEAR_FLAG(spec->entity_name, PT_NAME_INFO_USER_SPECIFIED); 
             
-             lkcol.tbl_name_node = spec->range_var ? spec->range_var : spec->entity_name;
-             //printf ("alias=%s\n", lkcol.tbl_name_node->info.name.original);
-
-             pt_get_cols_4_dblink(&lkcol, query->q.select.list);
-            // PT_ERROR (this_parser, query_stmt, "777777777777777777777");
-             if(lkcol.err != 0)
-             {
-                     ;
-             }           
-             else 
-             {
+             //lkcol.tbl_name_node = spec->range_var ? spec->range_var : spec->entity_name;                         
                 dbl = pt_mk_spec_drived_dblink_table(spec, query->q.select.list);
                 if(!dbl)
                 {
                         PT_ERROR (this_parser, query_stmt, "Oops! Sorry, insufficient memory."); // ctshim
                 }
                 else
-                {                     
-                        dbl->info.spec.derived_table->info.dblink_table.sel_list = lkcol.col_list;                        
-                        lkcol.col_list = NULL;
+                { 
+                        dbl->info.spec.as_attr_list = from_tbl->info.spec.as_attr_list;
+                        from_tbl->info.spec.as_attr_list = NULL;
+
                         parser_free_tree(this_parser, from_tbl);
-                }  
-                from_tbl = dbl;
-             }
-              parser_free_tree(this_parser, lkcol.col_list);
-              printf ("DEBUG(1): %s\n", parser_print_tree (this_parser, from_tbl));
+                        from_tbl = dbl;               
+                        printf ("DEBUG(1): %s\n", parser_print_tree (this_parser, from_tbl));
+                }
           }
 
         new_list = new_list ? parser_make_link(new_list, from_tbl) : from_tbl;        
