@@ -31864,11 +31864,7 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
        * If started in a parent context, it is up to the parent context to end it */
       if (delete_helper->is_system_op_started && !save_system_op_started)
 	{
-	  // only end sysop if started in current function
 	  btree_delete_sysop_end (thread_p, delete_helper);
-	  // TODO: restore is_system_op_started?
-	  // TODO: if not reset, will lead to another sysop end being added in calling function
-	  // double sysop end will broke atomic replication
 	}
     }
   else
@@ -31894,15 +31890,14 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
   return NO_ERROR;
 
 error:
+  /* End system operation. Only if started in current context.
+   * If started in a parent context, it is up to the parent context to end it */
   if (delete_helper->is_system_op_started && !save_system_op_started)
     {
       assert (delete_helper->purpose != BTREE_OP_DELETE_UNDO_INSERT
 	      && delete_helper->purpose != BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
 	      && delete_helper->purpose != BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED);
-      // only end sysop if started in current function
       btree_delete_sysop_end (thread_p, delete_helper);
-      // TODO: restore is_system_op_started?
-      // TODO: if not reset, will lead to another sysop end being added in calling function
     }
   assert_release (error_code != NO_ERROR);
   return error_code;
