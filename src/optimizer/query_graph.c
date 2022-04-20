@@ -8429,10 +8429,6 @@ void
 qo_seg_fprint (QO_SEGMENT * seg, FILE * f)
 {
   fprintf (f, "%s[%d]", QO_SEG_NAME (seg), QO_NODE_IDX (QO_SEG_HEAD (seg)));
-  if (QO_SEG_IS_NOT_NULL (seg))
-    {
-      fprintf (f, " not_null");
-    }
 }
 
 /*
