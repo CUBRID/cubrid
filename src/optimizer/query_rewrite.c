@@ -7206,7 +7206,7 @@ qo_push_limit_to_union (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * limit
   switch (node->node_type)
     {
     case PT_SELECT:
-      if (!pt_has_inst_in_where_and_select_list (parser, node) && node->info.query.limit == NULL)
+      if (!pt_has_inst_or_orderby_num_in_where (parser, node) && node->info.query.limit == NULL)
 	{
 	  /* case of limit 10,10 */
 	  if (limit->next)
