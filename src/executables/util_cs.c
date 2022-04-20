@@ -3201,10 +3201,6 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   if (log_path != NULL)
     {
       check_copied_info = true;
-      if (realpath (log_path, log_path_buf) != NULL)
-	{
-	  log_path = log_path_buf;
-	}
     }
   if (!check_copied_info && !check_master_info)
     {
