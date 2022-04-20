@@ -9374,7 +9374,7 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   /* Swap operation must use system op. */
   save_system_op_started = delete_helper->is_system_op_started;
-  log_sysop_start (thread_p);
+  log_sysop_start_atomic (thread_p);
   is_sytem_op_started = true;
   delete_helper->is_system_op_started = true;
 
@@ -10845,7 +10845,7 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
   save_sysop_started = insert_helper->is_system_op_started;
   if (!insert_helper->is_system_op_started)
     {
-      log_sysop_start (thread_p);
+      log_sysop_start_atomic (thread_p);
       insert_helper->is_system_op_started = true;
     }
   assert (log_check_system_op_is_started (thread_p));
@@ -27750,7 +27750,7 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
     {
       key_type = BTREE_OVERFLOW_KEY;
 
-      log_sysop_start (thread_p);
+      log_sysop_start_atomic (thread_p);
       insert_helper->is_system_op_started = true;
     }
   else
@@ -28597,7 +28597,7 @@ btree_key_relocate_last_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   assert (offset_to_last_object > 0);
 
   /* We need to change leaf page and at least one overflow page. Start a system operation. */
-  log_sysop_start (thread_p);
+  log_sysop_start_atomic (thread_p);
   insert_helper->is_system_op_started = true;
 
   /* Copy last object into an overflow page. */
