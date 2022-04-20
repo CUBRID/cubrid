@@ -66,6 +66,7 @@
 #endif
 #include "connection_cl.h"
 #include "dbtype.h"
+#include "method_callback.hpp"
 
 #if !defined(WINDOWS)
 void (*prev_sigfpe_handler) (int) = SIG_DFL;
@@ -1056,6 +1057,8 @@ db_end_session (void)
 
   retval = csession_end_session (db_get_session_id ());
 
+  cubmethod::get_callback_handler ()->free_query_handle_all (true);
+
   return (retval);
 }
 
@@ -1120,6 +1123,8 @@ db_commit_transaction (void)
   /* API does not support RETAIN LOCK */
   retval = tran_commit (false);
 
+  cubmethod::get_callback_handler ()->free_query_handle_all (true);
+
   return (retval);
 }
 
@@ -1141,6 +1146,8 @@ db_abort_transaction (void)
   /* CHECK_MODIFICATION_ERROR (); */
 
   error = tran_abort ();
+
+  cubmethod::get_callback_handler ()->free_query_handle_all (true);
 
   return (error);
 }
