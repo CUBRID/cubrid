@@ -4789,12 +4789,12 @@ pt_build_select_list_4_dblink (PARSER_CONTEXT * parser, PT_NODE * col_list)
 
   if (col_list == NULL)
     {				// case: select 1, 'test' from tbl@srv
-      return pt_append_nulstring (parser, NULL, "1");
+      return pt_append_bytes (parser, NULL, "1", 1);
     }
 
   if (col_list->type_enum == PT_TYPE_STAR)
     {				// case:  * or tbl.*
-      tvc = pt_append_nulstring (parser, NULL, "*");
+      tvc = pt_append_bytes (parser, NULL, "*", 1);
     }
   else
     {
@@ -4802,7 +4802,7 @@ pt_build_select_list_4_dblink (PARSER_CONTEXT * parser, PT_NODE * col_list)
       tvc = pt_print_bytes (parser, col_list);
       if (col_list->next)
 	{
-	  tvc = pt_append_nulstring (parser, tvc, ", ");
+	  tvc = pt_append_bytes (parser, tvc, ", ", 2);
 	  tvc = pt_append_varchar (parser, tvc, pt_print_bytes_l (parser, col_list->next));
 	}
       parser->custom_print = custom_print_saved;
@@ -4920,7 +4920,7 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
   // table alias 
   if (range_var)
     {				// ctahim: select *, t from tbl@srv t
-      var_buf = pt_append_nulstring (parser, var_buf, " ");
+      var_buf = pt_append_bytes (parser, var_buf, " ", 1);
       var_buf = pt_append_varchar (parser, var_buf, pt_print_bytes (parser, range_var));
     }
 
