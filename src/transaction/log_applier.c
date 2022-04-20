@@ -7118,22 +7118,23 @@ la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool v
 }
 
 /*
- * la_get_applyinfo_applied_log_info() - 
+ * la_get_applied_log_info() - 
  *   return: NO_ERROR or error code
  *   database_name(in): db name
  *   log_path(in): real path of log file
  *   check_replica_info(in): whether replica node execute applyinfo utility
  *   verbose(in): applyinfo -v option
- *   applied_final_lsa(in): information for delayed applying copied log
+ *   applied_final_lsa(in/out): information for delayed applying copied log
  *
  */
 int
-la_get_applyinfo_applied_log_info (const char *database_name, const char *log_path, bool check_replica_info,
-				   bool verbose, LOG_LSA * applied_final_lsa)
+la_get_applied_log_info (const char *database_name, const char *log_path, bool check_replica_info,
+			 bool verbose, LOG_LSA * applied_final_lsa)
 {
   int error = NO_ERROR;
   int res;
   char *replica_time_bound_str;
+  char log_path_buf[PATH_MAX];
 
   assert (database_name != NULL);
   assert (log_path != NULL);
@@ -7141,20 +7142,26 @@ la_get_applyinfo_applied_log_info (const char *database_name, const char *log_pa
   LA_HA_APPLY_INFO ha_apply_info;
   char timebuf[1024];
 
+  if (realpath (log_path, log_path_buf) != NULL)
+    {
+      log_path = log_path_buf;
+    }
+
   la_init_ha_apply_info (&ha_apply_info);
 
   res = la_get_ha_apply_info (log_path, database_name, &ha_apply_info);
   if ((res <= 0) || (ha_apply_info.creation_time.date == 0 && ha_apply_info.creation_time.time == 0))
     {
       error = res;
-      if ((res < 0) && (ha_apply_info.creation_time.date != 0 || ha_apply_info.creation_time.time != 0))
+      if (res < 0)
 	{
 	  goto check_applied_info_end;
 	}
       else
 	{
-	  printf ("\nERROR : Query object is not loaded\n\n");
-	  return ER_FAILED;
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO, APPLYINFO_MSG_QUERY_RESULTS_FAIL));
+	  goto check_applied_info_end;
 	}
     }
   *applied_final_lsa = ha_apply_info.final_lsa;
@@ -7214,30 +7221,36 @@ la_get_applyinfo_applied_log_info (const char *database_name, const char *log_pa
 check_applied_info_end:
   if (error != NO_ERROR)
     {
-      printf ("ERROR : %s\n\n", db_error_string (3));
+      printf ("%s\n\n", db_error_string (3));
     }
   return error;
 }
 
 /*
- * la_get_applyinfo_copied_log_info() - 
+ * la_get_copied_log_info() - 
  *   return: NO_ERROR or error code
  *   database_name(in): db name
  *   log_path(in): real path of log file
  *   page_num(in): the number of log page 
  *   verbose(in): applyinfo -v option
- *   copied_eof_lsa(in): inforamtion for delayed log count
- *   copied_append_lsa(in): current append location
+ *   copied_eof_lsa(in/out): inforamtion for delayed log count
+ *   copied_append_lsa(in/out): current append location
  */
 int
-la_get_applyinfo_copied_log_info (const char *database_name, const char *log_path, INT64 page_num, bool verbose,
-				  LOG_LSA * copied_eof_lsa, LOG_LSA * copied_append_lsa)
+la_get_copied_log_info (const char *database_name, const char *log_path, INT64 page_num, bool verbose,
+			LOG_LSA * copied_eof_lsa, LOG_LSA * copied_append_lsa)
 {
   int error = NO_ERROR;
   char active_log_path[PATH_MAX];
+  char log_path_buf[PATH_MAX];
 
   assert (database_name != NULL);
   assert (log_path != NULL);
+
+  if (realpath (log_path, log_path_buf) != NULL)
+    {
+      log_path = log_path_buf;
+    }
 
   memset (active_log_path, 0, PATH_MAX);
   /* init la_Info */
@@ -7259,6 +7272,7 @@ la_get_applyinfo_copied_log_info (const char *database_name, const char *log_pat
     {
       goto check_copied_info_end;
     }
+
   *copied_eof_lsa = la_Info.act_log.log_hdr->eof_lsa;
   *copied_append_lsa = la_Info.act_log.log_hdr->append_lsa;
 
@@ -7267,7 +7281,7 @@ la_get_applyinfo_copied_log_info (const char *database_name, const char *log_pat
 check_copied_info_end:
   if (error != NO_ERROR)
     {
-      printf ("ERROR : %s\n", db_error_string (3));
+      printf ("%s\n", db_error_string (3));
       return error;
     }
 
@@ -7317,6 +7331,7 @@ check_copied_info_end:
 	    }
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 	}
+
       if (error != NO_ERROR)
 	{
 	  goto check_copied_log_page_info_end;
@@ -7360,8 +7375,9 @@ check_copied_info_end:
 check_copied_log_page_info_end:
   if (error != NO_ERROR)
     {
-      printf ("ERROR : %s\n", db_error_string (3));
+      printf ("%s\n", db_error_string (3));
     }
+
   return NO_ERROR;
 }
 

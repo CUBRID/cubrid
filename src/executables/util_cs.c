@@ -2648,7 +2648,6 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name;
   const char *log_path;
-  char log_path_buf[PATH_MAX];
   char *mode_name;
   int mode = -1;
   int error = NO_ERROR;
@@ -2678,10 +2677,6 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
   if (check_database_name (database_name))
     {
       goto error_exit;
-    }
-  if (log_path != NULL)
-    {
-      log_path = realpath (log_path, log_path_buf);
     }
   if (log_path == NULL)
     {
@@ -3224,6 +3219,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   check_replica_info = (HA_GET_MODE () == HA_MODE_REPLICA);
   pageid = utility_get_option_bigint_value (arg_map, APPLYINFO_PAGE_S);
   verbose = utility_get_option_bool_value (arg_map, APPLYINFO_VERBOSE_S);
+
   interval = utility_get_option_int_value (arg_map, APPLYINFO_INTERVAL_S);
 
   if (interval < 0)
@@ -3276,11 +3272,13 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	    {
 	      goto check_applied_info_end;
 	    }
-	  if (db_login ("DBA", NULL) != NO_ERROR)
+	  error = db_login ("DBA", NULL);
+	  if (error != NO_ERROR)
 	    {
 	      goto check_applied_info_end;
 	    }
-	  if ((error = db_restart (arg->command_name, TRUE, local_database_name)) != NO_ERROR)
+	  error = db_restart (arg->command_name, TRUE, local_database_name);
+	  if (error != NO_ERROR)
 	    {
 	      goto check_applied_info_end;
 	    }
@@ -3288,14 +3286,11 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  if (HA_DISABLED ())
 	    {
 	      check_applied_info = false;
-	      printf ("\nERROR : ");
 	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO,
 						     APPLYINFO_MSG_NOT_HA_MODE));
 	      goto check_applied_info_end;
 	    }
-	  error =
-	    la_get_applyinfo_applied_log_info (database_name, log_path, check_replica_info, verbose,
-					       &applied_final_lsa);
+	  error = la_get_applied_log_info (database_name, log_path, check_replica_info, verbose, &applied_final_lsa);
 	  if (error != NO_ERROR)
 	    {
 	      check_applied_info = false;
@@ -3307,15 +3302,15 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
       if (error != NO_ERROR)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("ERROR : %s\n", db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  check_applied_info = false;
 	  error = NO_ERROR;
 	}
+
       if (check_copied_info)
 	{
 	  error =
-	    la_get_applyinfo_copied_log_info (database_name, log_path, pageid, verbose, &copied_eof_lsa,
-					      &copied_append_lsa);
+	    la_get_copied_log_info (database_name, log_path, pageid, verbose, &copied_eof_lsa, &copied_append_lsa);
 	  if (error != NO_ERROR)
 	    {
 	      check_copied_info = false;
@@ -3333,7 +3328,9 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  strcpy (master_database_name, database_name);
 	  strcat (master_database_name, "@");
 	  strcat (master_database_name, master_node_name);
+
 	  db_clear_host_connected ();
+
 	  if (check_database_name (master_database_name))
 	    {
 	      goto check_master_info_end;
@@ -3361,7 +3358,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
     check_master_info_end:
       if (error != NO_ERROR)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("ERROR : %s\n", db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  check_master_info = false;
 	  error = NO_ERROR;
 	}
@@ -3408,11 +3405,14 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       sleep (interval);
     }
   while (interval > 0 && !is_Sigint_caught);
+
   return EXIT_SUCCESS;
+
 print_applyinfo_usage:
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO, APPLYINFO_MSG_USAGE),
 	   basename (arg->argv0));
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
   return EXIT_FAILURE;
 #else /* CS_MODE */
   fprintf
