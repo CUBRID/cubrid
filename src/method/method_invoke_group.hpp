@@ -62,7 +62,7 @@ namespace cubmethod
   {
     public:
       method_invoke_group () = delete; // Not DefaultConstructible
-      method_invoke_group (cubthread::entry *thread_p, const method_sig_list &sigs);
+      method_invoke_group (cubthread::entry *thread_p, const method_sig_list &sigs, bool is_for_scan);
 
       method_invoke_group (method_invoke_group &&other) = delete; // Not MoveConstructible
       method_invoke_group (const method_invoke_group &copy) = delete; // Not CopyConstructible
@@ -87,6 +87,7 @@ namespace cubmethod
       std::queue<cubmem::extensible_block> &get_data_queue ();
 
       bool is_running () const;
+      bool is_for_scan () const;
 
       // cursor interface for method_invoke
       query_cursor *create_cursor (QUERY_ID query_id, bool oid_included);
@@ -106,6 +107,7 @@ namespace cubmethod
 
       runtime_context *m_rctx;
       bool m_is_running;
+      bool m_is_for_scan;
 
       connection *m_connection;
       std::queue<cubmem::extensible_block> m_data_queue;
