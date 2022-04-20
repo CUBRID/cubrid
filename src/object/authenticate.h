@@ -202,7 +202,6 @@ extern int au_drop_user (MOP user);
 extern int au_set_password (MOP user, const char *password);
 extern int au_set_user_comment (MOP user, const char *comment);
 
-extern char *au_current_user_name (char *buf, int buf_size);
 extern const char *au_user_name (void);
 extern char *au_user_name_dup (void);
 extern bool au_has_user_name (void);
