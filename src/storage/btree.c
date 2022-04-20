@@ -31750,7 +31750,7 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
 			      int offset_to_object)
 {
   int error_code = NO_ERROR;	/* Error code. */
-  OID *notification_class_oid;
+  const OID *notification_class_oid;
   RECDES overflow_record;	/* Overflow record. */
   /* Buffer to copy overflow record data. */
   char overflow_record_data_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
@@ -31807,32 +31807,9 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
       /* we need system op to deallocate pages. */
       if (!delete_helper->is_system_op_started)
 	{
-	  log_sysop_start (thread_p);
+	  log_sysop_start_atomic (thread_p);
 	  delete_helper->is_system_op_started = true;
 	}
-
-      /* todo: we always need a system operation to deallocate page. otherwise the page may be "leaked" on rollback.
-       * fixme when replacing the old system operation system */
-      /* Deallocate page. */
-      error_code = file_dealloc (thread_p, &btid_int->sys_btid->vfid, &overflow_vpid, FILE_BTREE);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto error;
-	}
-      /* Notification. */
-      if (!OID_ISNULL (BTREE_DELETE_CLASS_OID (delete_helper)))
-	{
-	  notification_class_oid = BTREE_DELETE_CLASS_OID (delete_helper);
-	}
-      else
-	{
-	  notification_class_oid = &btid_int->topclass_oid;
-	}
-      BTREE_SET_DELETED_OVERFLOW_PAGE_NOTIFICATION (thread_p, key, BTREE_DELETE_OID (delete_helper),
-						    notification_class_oid, btid_int->sys_btid);
-
-      FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
       /* Update previous page link. */
       if (prev_page == leaf_page)
@@ -31860,7 +31837,31 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
 
       FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
-      /* End system operation. */
+      /* todo: we always need a system operation to deallocate page. otherwise the page may be "leaked" on rollback.
+       * fixme when replacing the old system operation system */
+      /* Deallocate page. */
+      error_code = file_dealloc (thread_p, &btid_int->sys_btid->vfid, &overflow_vpid, FILE_BTREE);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+      /* Notification. */
+      if (!OID_ISNULL (BTREE_DELETE_CLASS_OID (delete_helper)))
+	{
+	  notification_class_oid = BTREE_DELETE_CLASS_OID (delete_helper);
+	}
+      else
+	{
+	  notification_class_oid = &btid_int->topclass_oid;
+	}
+      BTREE_SET_DELETED_OVERFLOW_PAGE_NOTIFICATION (thread_p, key, BTREE_DELETE_OID (delete_helper),
+						    notification_class_oid, btid_int->sys_btid);
+
+      FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
+
+      /* End system operation. Only if started in current context.
+       * If started in a parent context, it is up to the parent context to end it */
       if (delete_helper->is_system_op_started && !save_system_op_started)
 	{
 	  // only end sysop if started in current function
