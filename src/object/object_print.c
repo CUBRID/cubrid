@@ -392,7 +392,7 @@ help_class_names (const char *qualifier)
 		      tmp = db_get_string (&owner_name);
 		      if (tmp)
 			{
-			  snprintf (buffer, sizeof (buffer) - 1, "%s.%s", tmp, cname);
+			  snprintf (buffer, sizeof (buffer) - 1, "%s.%s", tmp, sm_remove_qualifier_name (cname));
 			}
 		      else
 			{

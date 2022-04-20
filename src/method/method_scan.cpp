@@ -47,7 +47,7 @@ namespace cubscan
 
       if (m_method_group == nullptr) // signature is not initialized
 	{
-	  m_method_group = cubmethod::get_rctx (thread_p)->create_invoke_group (thread_p, *sig_list);
+	  m_method_group = cubmethod::get_rctx (thread_p)->create_invoke_group (thread_p, *sig_list, true);
 	}
 
       if (m_list_id == nullptr)

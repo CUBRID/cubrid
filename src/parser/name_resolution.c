@@ -3062,6 +3062,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		  node1 = pt_resolve_method (parser, node, bind_arg);
 		}
 
+	      if (node1 == NULL)
+		{
+		  break;	// FIXME: something wrong
+		}
+
 	      if (node1->node_type == PT_METHOD_CALL)
 		{
 		  PT_NODE_INIT_OUTERLINK (node);

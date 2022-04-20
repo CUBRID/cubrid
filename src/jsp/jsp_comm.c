@@ -45,6 +45,7 @@
 
 #include "jsp_comm.h"
 
+#include "connection_support.h"
 #include "porting.h"
 #include "error_manager.h"
 #include "environment_variable.h"
@@ -183,47 +184,8 @@ jsp_writen (SOCKET fd, const void *vptr, int n)
 int
 jsp_readn (SOCKET fd, void *vptr, int n)
 {
-  int nleft;
-  int nread;
-  char *ptr;
-
-  ptr = (char *) vptr;
-  nleft = n;
-
-  while (nleft > 0)
-    {
-#if defined(WINDOWS)
-      nread = recv (fd, ptr, nleft, 0);
-#else
-      nread = recv (fd, ptr, (size_t) nleft, 0);
-#endif
-
-      if (nread < 0)
-	{
-
-#if defined(WINDOWS)
-	  if (errno == WSAEINTR)
-#else /* not WINDOWS */
-	  if (errno == EINTR)
-#endif /* not WINDOWS */
-	    {
-	      nread = 0;	/* and call read() again */
-	    }
-	  else
-	    {
-	      return (-1);
-	    }
-	}
-      else if (nread == 0)
-	{
-	  break;		/* EOF */
-	}
-
-      nleft -= nread;
-      ptr += nread;
-    }
-
-  return (n - nleft);		/* return >= 0 */
+  const static int PING_TIMEOUT = 5000;
+  return css_readn (fd, (char *) vptr, n, PING_TIMEOUT);
 }
 
 int

@@ -41,10 +41,14 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 
   runtime_context::runtime_context ()
-    : m_group_stack {}
+    : m_mutex ()
+    , m_group_stack {}
     , m_returning_cursors {}
     , m_group_map {}
     , m_cursor_map {}
+    , m_is_interrupted (false)
+    , m_interrupt_reason (NO_ERROR)
+    , m_is_running (false)
   {
     //
   }
@@ -56,9 +60,11 @@ namespace cubmethod
   }
 
   method_invoke_group *
-  runtime_context::create_invoke_group (cubthread::entry *thread_p, const method_sig_list &sig_list)
+  runtime_context::create_invoke_group (cubthread::entry *thread_p, const method_sig_list &sig_list, bool is_scan)
   {
-    method_invoke_group *group = new (std::nothrow) cubmethod::method_invoke_group (thread_p, sig_list);
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
+    method_invoke_group *group = new (std::nothrow) cubmethod::method_invoke_group (thread_p, sig_list, is_scan);
     if (group)
       {
 	m_group_map [group->get_id ()] = group;
@@ -69,22 +75,67 @@ namespace cubmethod
   void
   runtime_context::push_stack (cubthread::entry *thread_p, method_invoke_group *group)
   {
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
+    m_is_running = true;
     m_group_stack.push_back (group->get_id ());
   }
 
   void
-  runtime_context::pop_stack (cubthread::entry *thread_p)
+  runtime_context::pop_stack (cubthread::entry *thread_p, method_invoke_group *claimed)
   {
-    m_group_stack.pop_back ();
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
+    if (claimed->is_for_scan () && m_group_stack.back() != claimed->get_id ())
+      {
+	// push deferred
+	// When beginning method_invoke_group with method scan, method_invoke_group belonging to child node in XASL is pushed first (postorder)
+	// When method_invoke_group is ended while clearing XASL by qexec_clear_xasl(), method_invoke_group belonging to the parent node in XASL is poped first (preorder)
+	// Because of these differences, I've introduced the m_deferred_free_stack structure to follow the order of clearing according to the XASL structure when clearing method_invoke_groups from the m_group_stack.
+	m_deferred_free_stack.push_back (claimed->get_id ());
+	return;
+      }
+
+    auto pred = [&] () -> bool
+    {
+      // condition to check
+      return m_group_stack.back() == claimed->get_id ();
+    };
+
+    // Guaranteed to be removed from the topmost element
+    m_cond_var.wait (ulock, pred);
+
+    if (m_group_stack.back() == claimed->get_id ())
+      {
+	m_group_stack.pop_back ();
+      }
+
+    // should be freed for all XASL structure
+    while (m_deferred_free_stack.empty () == false && m_deferred_free_stack.back () == m_group_stack.back())
+      {
+	m_group_stack.pop_back ();
+	m_deferred_free_stack.pop_back ();
+      }
+
+    if (m_group_stack.empty())
+      {
+	// reset interrupt state
+	m_is_interrupted = false;
+	m_interrupt_reason = NO_ERROR;
+	m_is_running = false;
+      }
   }
 
   method_invoke_group *
   runtime_context::top_stack ()
   {
-    assert (m_group_stack.empty () == false);
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    if (m_group_stack.empty())
+      {
+	return nullptr;
+      }
 
     METHOD_GROUP_ID top = m_group_stack.back ();
-
     const auto &it = m_group_map.find (top);
     if (it == m_group_map.end ())
       {
@@ -94,6 +145,59 @@ namespace cubmethod
       }
 
     return it->second;
+  }
+
+  void
+  runtime_context::set_interrupt_by_reason (int reason)
+  {
+    switch (reason)
+      {
+      case ER_INTERRUPTED:
+      case ER_SP_TOO_MANY_NESTED_CALL:
+      case ER_NET_SERVER_SHUTDOWN:
+	m_is_interrupted = true;
+	m_interrupt_reason = reason;
+	break;
+      default:
+	/* do nothing */
+	break;
+      }
+  }
+
+  bool
+  runtime_context::is_interrupted ()
+  {
+    return m_is_interrupted;
+  }
+
+  int
+  runtime_context::get_interrupt_reason ()
+  {
+    return m_interrupt_reason;
+  }
+
+  void
+  runtime_context::wait_for_interrupt ()
+  {
+    auto pred = [this] () -> bool
+    {
+      // condition of finish
+      return m_group_stack.empty () && is_running () == false;
+    };
+
+    if (pred ())
+      {
+	return;
+      }
+
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    m_cond_var.wait (ulock, pred);
+  }
+
+  bool
+  runtime_context::is_running ()
+  {
+    return m_is_running;
   }
 
   query_cursor *

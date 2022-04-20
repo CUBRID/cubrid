@@ -3425,7 +3425,8 @@ boot_define_serial (MOP class_mop)
     }
 
   /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_UNIQUE, "u_db_serial_unique_name", index1_col_names, 0);
+  error_code =
+    db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, "pk_db_serial_unique_name", index1_col_names, 0);
   if (error_code != NO_ERROR)
     {
       return error_code;
