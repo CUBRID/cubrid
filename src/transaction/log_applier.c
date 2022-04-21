@@ -7152,13 +7152,14 @@ la_get_applied_log_info (const char *database_name, const char *log_path, bool c
   res = la_get_ha_apply_info (log_path, database_name, &ha_apply_info);
   if ((res <= 0) || (ha_apply_info.creation_time.date == 0 && ha_apply_info.creation_time.time == 0))
     {
-      error = res;
       if (res < 0)
 	{
+	  error = res;
 	  goto check_applied_info_end;
 	}
       else
 	{
+	  error = ER_GENERIC_ERROR;
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
 				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO, APPLYINFO_MSG_NO_QUERY_RESULTS));
 	  goto check_applied_info_end;
