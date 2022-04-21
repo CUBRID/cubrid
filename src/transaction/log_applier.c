@@ -7221,7 +7221,7 @@ la_get_applied_log_info (const char *database_name, const char *log_path, bool c
 	}
     }
 check_applied_info_end:
-  if (error != NO_ERROR)
+  if (error != NO_ERROR && res != 0)
     {
       printf ("%s\n\n", db_error_string (3));
     }
@@ -7290,8 +7290,6 @@ check_copied_info_end:
 
   if (page_num >= 0)
     {
-      printf ("\n *** Copied Log Page Info. *** \n");
-
       LOG_PAGE *logpage;
 
       /* get last deleted archive number */
