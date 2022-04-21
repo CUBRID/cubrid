@@ -4000,6 +4000,58 @@ error_exit:
   return EXIT_FAILURE;
 }
 
+static int
+check_table_name (const char *table_name)
+{
+  int table_name_len = STATIC_CAST (int, strlen (table_name));
+  int sub_len = 0;
+  const char *dot = NULL;
+
+  if (table_name_len >= SM_MAX_IDENTIFIER_LENGTH)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
+			      FLASHBACK_MSG_EXCEED_MAX_OWNER_CLASS_LENGTH), SM_MAX_IDENTIFIER_LENGTH);
+
+      return ER_FAILED;
+    }
+
+  dot = strchr (table_name, '.');
+  if (dot == NULL)
+    {
+      /* owner name is not specified */
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_OWNER_NOT_SPECIFIED),
+			     table_name);
+
+      return ER_FAILED;
+    }
+
+  /* check length of owner name */
+  sub_len = STATIC_CAST (int, dot - table_name);
+  if (sub_len < 1 || sub_len >= SM_MAX_USER_LENGTH)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_OWNER_LENGTH),
+			     SM_MAX_USER_LENGTH);
+
+      return ER_FAILED;
+    }
+
+  /* class name of user specified name */
+  sub_len = STATIC_CAST (int, strlen (dot + 1));
+  if (sub_len < 1 || sub_len >= SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_CLASS_LENGTH),
+			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
 static void
 clean_stdin ()
 {
@@ -4132,6 +4184,24 @@ flashback (UTIL_FUNCTION_ARG * arg)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
       goto error_exit;
+    }
+
+  for (i = 0; i < num_tables; i++)
+    {
+      table_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i + 1);
+
+      if (check_table_name (table_name) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      strncpy_bufsize (table_name_buf, table_name);
+
+      if (da_add (darray, table_name_buf) != NO_ERROR)
+	{
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+	  goto error_exit;
+	}
     }
 
   /* start date check */
@@ -4277,20 +4347,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_NO_SUPPLEMENTAL_LOG));
       goto error_exit;
-    }
-
-  for (i = 0; i < num_tables; i++)
-    {
-      table_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i + 1);
-
-      /* when table_name doesn't contain the user name (owner), then attach the user name to the table name */
-      sm_user_specified_name (table_name, table_name_buf, SM_MAX_IDENTIFIER_LENGTH);
-
-      if (da_add (darray, table_name_buf) != NO_ERROR)
-	{
-	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
-	  goto error_exit;
-	}
     }
 
   oid_list = (OID *) malloc (sizeof (OID) * num_tables);
