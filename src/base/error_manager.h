@@ -311,10 +311,11 @@ extern "C"
 #endif
 
 STATIC_INLINE void
-ASSERT_NOT_ERROR (int not_error_code)
+ASSERT_NOT_ERROR (const int not_error_code)
 {
+  assert (not_error_code != NO_ERROR);
   const int error_code = er_errid ();
-  assert (error_code == NO_ERROR || error_code != not_error_code);
+  assert (error_code != not_error_code);
 }
 
 #ifdef __cplusplus
