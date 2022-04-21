@@ -993,6 +993,7 @@ geçerli seçenekler:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBA şifrenizi girin:
 22 Sunucu modunda HA ayarlı değil.\n
+57 -L seçeneğinin geçersiz yolu veya db_ha_apply_info katalog tablosunda ilgili bilgi olmaması nedeniyle uygulanan bilgi oluşturulamıyor.\n
 58 HA özelliği bu platformda desteklenmiyor.\n
 59 applyinfo standlone modu olarak çalıştıramazsınız.\n
 60 \

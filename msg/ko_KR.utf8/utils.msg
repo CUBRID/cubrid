@@ -993,6 +993,7 @@ valid options:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBA 암호 입력:
 22 서버가 HA 모드로 설정되지 않았습니다.\n
+57 -L 옵션의 경로가 잘못되었거나 db_ha_apply_info 카탈로그 테이블에 관련 정보가 없기 때문에 적용된 정보를 생성할 수 없습니다.\n
 58 HA 기능이 지원되지 않는 플랫폼입니다.\n
 59 applyinfo는 독립 모드에서 실행할 수 없습니다.\n
 60 \
