@@ -4011,7 +4011,8 @@ check_table_name (const char *table_name)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
-			      FLASHBACK_MSG_EXCEED_MAX_OWNER_CLASS_LENGTH), SM_MAX_IDENTIFIER_LENGTH);
+			      FLASHBACK_MSG_EXCEED_MAX_CLASSNAME_LENGTH), SM_MAX_USER_LENGTH,
+			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
 
       return ER_FAILED;
     }
@@ -4019,9 +4020,9 @@ check_table_name (const char *table_name)
   dot = strchr (table_name, '.');
   if (dot == NULL)
     {
-      /* owner name is not specified */
+      /* owner name or class name is not specified */
       PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_OWNER_NOT_SPECIFIED),
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_CLASSNAME_FORMAT),
 			     table_name);
 
       return ER_FAILED;
@@ -4029,21 +4030,43 @@ check_table_name (const char *table_name)
 
   /* check length of owner name */
   sub_len = STATIC_CAST (int, dot - table_name);
-  if (sub_len < 1 || sub_len >= SM_MAX_USER_LENGTH)
+  if (sub_len < 1)
+    {
+      /* owner name is not specified (e.g. '.table' */
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_CLASSNAME_FORMAT),
+			     table_name);
+
+      return ER_FAILED;
+    }
+
+  if (sub_len >= SM_MAX_USER_LENGTH)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_OWNER_LENGTH),
-			     SM_MAX_USER_LENGTH);
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
+			      FLASHBACK_MSG_EXCEED_MAX_CLASSNAME_LENGTH), SM_MAX_USER_LENGTH,
+			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
 
       return ER_FAILED;
     }
 
   /* check length of class name */
   sub_len = STATIC_CAST (int, strlen (dot + 1));
-  if (sub_len < 1 || sub_len >= SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH)
+  if (sub_len < 1)
+    {
+      /* class name is not specified (e.g. 'dba.') */
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_CLASSNAME_FORMAT),
+			     table_name);
+
+      return ER_FAILED;
+    }
+
+  if (sub_len >= SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_CLASS_LENGTH),
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
+			      FLASHBACK_MSG_EXCEED_MAX_CLASSNAME_LENGTH), SM_MAX_USER_LENGTH,
 			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
 
       return ER_FAILED;

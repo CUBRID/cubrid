@@ -1274,10 +1274,8 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 Transaction ID should be entered in %1$d seconds. The timeout can be adjusted through the 'flashback_timeout' setting in 'cubrid.conf'\n
 13 Flashback is already running. Flashback cannot be run by two processes.\n
 14 Flashback cannot run as standalone mode.\n
-15 Length of owner_name.class_name is required to be greater than 0 and less than %1$d bytes.\n
-16 Length of class_name is required to be greater than 0 and less than %1$d bytes.\n
-17 Length of owner_name is required to be greater than 0 and less than %1$d bytes.\n
-18 Owner name for '%1$s' is required to be specified.\n
+15 The length of owner_name is required to be less than %1$d and the length of class_name is required to be less than %2$d bytes.\n
+16 Invalid format for owner_name.class_name ('%1$s').\n
 60 \
 flashback: Provides statements to flashback a specific transaction.\n\
 usage: %1$s flashback [OPTION] database-name owner_name.class_name1 [owner_name.class_name2 ...]\n\
