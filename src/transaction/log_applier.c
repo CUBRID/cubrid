@@ -7118,7 +7118,7 @@ la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool v
 }
 
 /*
- * la_get_applied_log_info() - 
+ * la_get_applied_log_info() - when applyinfo utility is executed with -a option, this fuction will try to get applied log information.
  *   return: NO_ERROR or error code
  *   database_name(in): db name
  *   log_path(in): real path of log file
@@ -7160,7 +7160,7 @@ la_get_applied_log_info (const char *database_name, const char *log_path, bool c
       else
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO, APPLYINFO_MSG_QUERY_RESULTS_FAIL));
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO, APPLYINFO_MSG_NO_QUERY_RESULTS));
 	  goto check_applied_info_end;
 	}
     }
@@ -7227,7 +7227,7 @@ check_applied_info_end:
 }
 
 /*
- * la_get_copied_log_info() - 
+ * la_get_copied_log_info() - when applyinfo utility is executed with -L or -p option, this fuction will try to get copied log or copied log page information.
  *   return: NO_ERROR or error code
  *   database_name(in): db name
  *   log_path(in): real path of log file

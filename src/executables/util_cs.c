@@ -3411,9 +3411,8 @@ print_applyinfo_usage:
 
   return EXIT_FAILURE;
 #else /* CS_MODE */
-  fprintf
-    (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO, APPLYINFO_MSG_NOT_IN_STANDALONE),
-     basename (arg->argv0));
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO, APPLYINFO_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
   return EXIT_FAILURE;
 #endif /* !CS_MODE */
 #endif /* !WINDOWS */
