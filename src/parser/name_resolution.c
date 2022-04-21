@@ -11313,8 +11313,18 @@ pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
 {
   PT_QUERY_INFO *query = &query_stmt->info.query;
   PT_NODE *table;
+  PT_NODE * spec;
+  PT_NODE * on_cond;
 
-  for (PT_NODE * spec = query->q.select.from; spec; spec = spec->next)
+  spec = query->q.select.from; 
+  while(spec->next) 
+  {
+        spec = spec->next;
+  }
+  on_cond = spec->info.spec.on_cond;
+
+
+  for (spec = query->q.select.from; spec; spec = spec->next)
     {
       if (!PT_SPEC_IS_DERIVED (spec))
 	{
@@ -11340,7 +11350,15 @@ pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
 	      //printf ("alias=%s\n", lkcol.tbl_name_node->info.name.original);
 
 	      pt_get_cols_4_dblink (parser, &lkcol, query->q.select.list);
-	      pt_get_cols_4_dblink (parser, &lkcol, query->q.select.where);
+              if(query->q.select.where)
+              {
+                pt_get_cols_4_dblink (parser, &lkcol, query->q.select.where);
+              }
+              if(on_cond)
+              {
+                pt_get_cols_4_dblink (parser, &lkcol, on_cond);
+              }
+
 	      table->info.dblink_table.sel_list = lkcol.col_list;
 	      lkcol.col_list = NULL;
 	    }
@@ -11360,6 +11378,7 @@ pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
   if (node->node_type == PT_SELECT)
     {
       pt_gather_dblink_colums (parser, node);	// ctshim
+      printf ("DEBUG(3): %s\n", parser_print_tree (parser, node));	//------ ctshim
     }
 
   return node;
