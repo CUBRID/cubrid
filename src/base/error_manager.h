@@ -40,6 +40,7 @@
 #endif /* SERVER_MODE */
 
 #include "error_code.h"
+#include "porting_inline.hpp"
 
 #define ARG_FILE_LINE           __FILE__, __LINE__
 #define NULL_LEVEL              0
@@ -309,6 +310,14 @@ extern "C"
 }
 #endif
 
+STATIC_INLINE void
+ASSERT_NOT_ERROR (const int not_error_code)
+{
+  assert (not_error_code != NO_ERROR);
+  const int error_code = er_errid ();
+  assert (error_code != not_error_code);
+}
+
 #ifdef __cplusplus
 
 #if defined (SERVER_MODE) || !defined (WINDOWS)
@@ -317,10 +326,10 @@ extern "C"
 #elif defined (CS_MODE) || defined (SA_MODE)
 // Windows CS_MODE or SA_MODE - export
 #define CUBERR_MANAGER_DLL __declspec( dllexport )
-#else				// Windows, not CS_MODE and not SA_MODE
+#else // Windows, not CS_MODE and not SA_MODE
 // import
 #define CUBERR_MANAGER_DLL __declspec( dllimport )
-#endif				// Windows, not CS_MODE and not SA_MODE
+#endif // Windows, not CS_MODE and not SA_MODE
 
 /* *INDENT-OFF* */
 namespace cuberr
@@ -338,6 +347,6 @@ namespace cuberr
 // NOTE - cuberr_manager variable is created. it may cause naming conflicts
 // NOTE - if used after jumps, expect "crosses initialization" errors
 #define ER_SAFE_INIT(msg_file, exit_arg) cuberr::manager cuberr_manager (msg_file, exit_arg)
-#endif				// c++
+#endif // c++
 
-#endif				/* _ERROR_MANAGER_H_ */
+#endif /* _ERROR_MANAGER_H_ */
