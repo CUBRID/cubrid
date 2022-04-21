@@ -6428,30 +6428,7 @@ pt_make_query_show_table (PARSER_CONTEXT * parser, bool is_full_syntax, int like
     }
 
   /* ------ SELECT list ------- */
-  {
-    PT_NODE *lower_node = NULL;
-    PT_NODE *concat_node = NULL;
-    PT_NODE *arg_list_node = NULL, *arg_node = NULL;
-
-    /* CONCAT (C.owner_name, '.', C.class_name) */
-    arg_node = pt_make_dotted_identifier (parser, "C.owner_name");
-    arg_list_node = parser_append_node (arg_node, arg_list_node);
-
-    arg_node = pt_make_string_value (parser, ".");
-    arg_list_node = parser_append_node (arg_node, arg_list_node);
-
-    arg_node = pt_make_dotted_identifier (parser, "C.class_name");
-    arg_list_node = parser_append_node (arg_node, arg_list_node);
-
-    concat_node = parser_keyword_func ("concat", arg_list_node);
-
-    /* LOWER (CONCAT (C.owner_name, '.', C.class_name)) */
-    lower_node = parser_make_expression (parser, PT_LOWER, concat_node, NULL, NULL);
-
-    /* LOWER (CONCAT (C.owner_name, '.', C.class_name)) AS tables_in_<dbname> */
-    lower_node->alias_print = pt_append_string (parser, NULL, tables_col_name);
-    sub_query->info.query.q.select.list = parser_append_node (lower_node, sub_query->info.query.q.select.list);
-  }
+  pt_add_name_col_to_sel_list (parser, sub_query, "C.class_name", tables_col_name);
 
   /* ------ SELECT ... FROM ------- */
   /* db_class is a view on the _db_class table; we are selecting from the view, to avoid checking the authorization as
@@ -6476,6 +6453,7 @@ pt_make_query_show_table (PARSER_CONTEXT * parser, bool is_full_syntax, int like
       /* add IF to SELECT list, list should not be empty at this point */
       assert (sub_query->info.query.q.select.list != NULL);
 
+      pt_add_name_col_to_sel_list (parser, sub_query, "C.owner_name", "Owner");
       sub_query->info.query.q.select.list = parser_append_node (if_node, sub_query->info.query.q.select.list);
     }
 
