@@ -274,10 +274,11 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     stop\n\
     restart\n\
     info\n\
-    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-c] [-u] [<expr>]\n\
     on          <ゲートウェイ名>\n\
     off         <ゲートウェイ名>\n\
     reset       <ゲートウェイ名>\n\
+    acl         <status|reload> [ゲートウェイ名]\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: -tオプションは独立実行モードでは無視されます。\n

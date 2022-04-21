@@ -274,11 +274,12 @@ Available command:\n\
     stop\n\
     restart\n\
     info\n\
-    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-c] [-u] [<expr>]\n\
     on          gateway-name\n\
     off         gateway-name\n\
     reset       gateway-name\n\
-	
+    acl         <status|reload> [gateway-name]\n\
+
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNUNG: -t Option wird in Stand-Alone-Ausführung ignoriert.\n
 31 FEHLER: Destination-Pfad existiert nicht oder ist kein Verzeichnis.\n
