@@ -3274,6 +3274,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	    {
 	      goto check_applied_info_end;
 	    }
+
 	  error = db_restart (arg->command_name, TRUE, local_database_name);
 	  if (error != NO_ERROR)
 	    {
