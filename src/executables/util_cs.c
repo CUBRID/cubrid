@@ -4038,7 +4038,7 @@ check_table_name (const char *table_name)
       return ER_FAILED;
     }
 
-  /* class name of user specified name */
+  /* check length of class name */
   sub_len = STATIC_CAST (int, strlen (dot + 1));
   if (sub_len < 1 || sub_len >= SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH)
     {
