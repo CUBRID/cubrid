@@ -1700,7 +1700,7 @@ stmt_list
 			#ifdef PARSER_DEBUG
 			    printf ("node: %s\n", parser_print_tree (this_parser, $1));
 			#endif
-                        printf ("node: %s\n", parser_print_tree (this_parser, $1));
+                        //printf ("node: %s\n", parser_print_tree (this_parser, $1));
 			  }
 
 		DBG_PRINT}}
@@ -27192,9 +27192,8 @@ static void pt_convert_dblink_query(PT_NODE* query_stmt)
              // Do NOT automatically assign a user name. 
              PT_NAME_INFO_CLEAR_FLAG(from_tbl->info.spec.entity_name, PT_NAME_INFO_USER_SPECIFIED); 
                          
-              printf ("DEBUG(1-1): %s\n", parser_print_tree (this_parser, from_tbl));
               pt_mk_spec_drived_dblink_table(from_tbl);              
-              printf ("DEBUG(1-2): %s\n", parser_print_tree (this_parser, from_tbl)); 
+              printf ("DEBUG(1): %s\n", parser_print_tree (this_parser, from_tbl)); 
           }
 
           from_tbl = from_tbl->next;

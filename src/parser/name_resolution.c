@@ -11293,19 +11293,19 @@ pt_get_column_name_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 }
 
 static void
-pt_get_cols_4_dblink (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, PT_NODE * select_col_list)
+pt_get_cols_4_dblink (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, PT_NODE * node_list)
 {
-  (void) parser_walk_tree (parser, select_col_list,
-			   pt_get_column_name_pre, plkcol, pt_get_column_name_post, /*plkcol */ NULL);
-
-  PARSER_VARCHAR *q = 0;
-  printf ("*******************************\n");
-  for (PT_NODE * col = plkcol->col_list; col; col = col->next)
+  if (node_list == NULL)
     {
-      q = pt_print_bytes (parser, col);
-      printf (">>>(%s)<<<\n", (char *) q->bytes);
+      return;
     }
-  printf ("*******************************\n");
+  else if (plkcol->col_list && plkcol->col_list->type_enum == PT_TYPE_STAR)
+    {
+      return;
+    }
+
+  (void) parser_walk_tree (parser, node_list,
+			   pt_get_column_name_pre, plkcol, pt_get_column_name_post, /*plkcol */ NULL);
 }
 
 static void
@@ -11313,14 +11313,14 @@ pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
 {
   PT_QUERY_INFO *query = &query_stmt->info.query;
   PT_NODE *table;
-  PT_NODE * spec;
-  PT_NODE * on_cond;
+  PT_NODE *spec;
+  PT_NODE *on_cond;
 
-  spec = query->q.select.from; 
-  while(spec->next) 
-  {
-        spec = spec->next;
-  }
+  spec = query->q.select.from;
+  while (spec->next)
+    {
+      spec = spec->next;
+    }
   on_cond = spec->info.spec.on_cond;
 
 
@@ -11349,15 +11349,26 @@ pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
 	      lkcol.tbl_name_node = spec->info.spec.range_var;	// spec->range_var ? spec->range_var : spec->entity_name;
 	      //printf ("alias=%s\n", lkcol.tbl_name_node->info.name.original);
 
+              printf ("*** SELECT LIST ::  \n"); 
 	      pt_get_cols_4_dblink (parser, &lkcol, query->q.select.list);
-              if(query->q.select.where)
-              {
-                pt_get_cols_4_dblink (parser, &lkcol, query->q.select.where);
-              }
-              if(on_cond)
-              {
-                pt_get_cols_4_dblink (parser, &lkcol, on_cond);
-              }
+              printf ("*** WHERE ::  \n");              
+	      pt_get_cols_4_dblink (parser, &lkcol, query->q.select.where);
+              printf ("*** ON COND ::  \n");              
+	      pt_get_cols_4_dblink (parser, &lkcol, on_cond);
+              printf ("*** HAVING ::  \n");              
+	      pt_get_cols_4_dblink (parser, &lkcol, query->q.select.having);
+              printf ("*** GROUP BY ::  \n");              
+	      pt_get_cols_4_dblink (parser, &lkcol, query->q.select.group_by);
+              printf ("*** ORDER BY ::  \n");              
+	      pt_get_cols_4_dblink (parser, &lkcol, query->order_by);
+	      PARSER_VARCHAR *q = 0;
+	      printf ("*******************************\n");
+	      for (PT_NODE * col = lkcol.col_list; col; col = col->next)
+		{
+		  q = pt_print_bytes (parser, col);
+		  printf (">>>(%s)<<<\n", (char *) q->bytes);
+		}
+	      printf ("*******************************\n");
 
 	      table->info.dblink_table.sel_list = lkcol.col_list;
 	      lkcol.col_list = NULL;
