@@ -3197,11 +3197,11 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
   check_applied_info = utility_get_option_bool_value (arg_map, APPLYINFO_APPLIED_INFO_S);
   log_path = utility_get_option_string_value (arg_map, APPLYINFO_COPIED_LOG_PATH_S, 0);
-
   if (log_path != NULL)
     {
       check_copied_info = true;
     }
+
   if (!check_copied_info && !check_master_info)
     {
       goto print_applyinfo_usage;
@@ -3268,6 +3268,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	    {
 	      goto check_applied_info_end;
 	    }
+
 	  error = db_login ("DBA", NULL);
 	  if (error != NO_ERROR)
 	    {
@@ -3286,6 +3287,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 						     APPLYINFO_MSG_NOT_HA_MODE));
 	      goto check_applied_info_end;
 	    }
+
 	  error = la_get_applied_log_info (database_name, log_path, check_replica_info, verbose, &applied_final_lsa);
 	  if (error != NO_ERROR)
 	    {
@@ -3313,10 +3315,12 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	      error = NO_ERROR;
 	    }
 	}
+
       if (BOOT_IS_CLIENT_RESTARTED ())
 	{
 	  (void) db_shutdown ();
 	}
+
       if (check_master_info)
 	{
 	  printf ("\n ***  Active Info. *** \n");
@@ -3358,10 +3362,12 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  check_master_info = false;
 	  error = NO_ERROR;
 	}
+
       if (BOOT_IS_CLIENT_RESTARTED ())
 	{
 	  (void) db_shutdown ();
 	}
+
       /* print delay info */
       cur_time = time (NULL);
       if (check_copied_info && check_master_info)

@@ -7164,6 +7164,7 @@ la_get_applied_log_info (const char *database_name, const char *log_path, bool c
 	  goto check_applied_info_end;
 	}
     }
+
   *applied_final_lsa = ha_apply_info.final_lsa;
 
   if (verbose)
@@ -7223,6 +7224,7 @@ check_applied_info_end:
     {
       printf ("%s\n\n", db_error_string (3));
     }
+
   return error;
 }
 
