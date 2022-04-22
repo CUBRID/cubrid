@@ -76,8 +76,21 @@ namespace cubmethod
     do
       {
 	/* read request code */
-	int nbytes =
-		css_readn (m_group->get_socket(), (char *) &start_code, (int) sizeof (int), -1);
+
+	int nbytes = -1;
+	do
+	  {
+	    // to check interrupt
+	    cubmethod::runtime_context *rctx = cubmethod::get_rctx (thread_p);
+	    if (rctx && rctx->is_interrupted ())
+	      {
+		return rctx->get_interrupt_reason ();
+	      }
+
+	    nbytes = jsp_readn (m_group->get_socket(), (char *) &start_code, (int) sizeof (int));
+	  }
+	while (nbytes < 0 && errno == ETIMEDOUT);
+
 	if (nbytes != (int) sizeof (int))
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
@@ -88,7 +101,7 @@ namespace cubmethod
 	start_code = ntohl (start_code);
 
 	/* read size of buffer to allocate and data */
-	error_code = alloc_response ();
+	error_code = alloc_response (thread_p);
 	if (error_code != NO_ERROR)
 	  {
 	    break;
@@ -115,7 +128,10 @@ namespace cubmethod
 	    error_code = ER_SP_NETWORK_ERROR;
 	  }
 
-	m_group->get_data_queue().pop ();
+	if (m_group->get_data_queue().empty() == false)
+	  {
+	    m_group->get_data_queue().pop ();
+	  }
       }
     while (error_code == NO_ERROR && start_code == SP_CODE_INTERNAL_JDBC);
 
@@ -123,12 +139,26 @@ namespace cubmethod
   }
 
   int
-  method_invoke_java::alloc_response ()
+  method_invoke_java::alloc_response (cubthread::entry *thread_p)
   {
     int res_size;
 
     cubmem::extensible_block blk;
-    int nbytes = css_readn (m_group->get_socket(), (char *) &res_size, (int) sizeof (int), -1);
+
+    int nbytes = -1;
+    do
+      {
+	// to check interrupt
+	cubmethod::runtime_context *rctx = cubmethod::get_rctx (thread_p);
+	if (rctx && rctx->is_interrupted ())
+	  {
+	    return rctx->get_interrupt_reason ();
+	  }
+
+	nbytes = jsp_readn (m_group->get_socket(), (char *) &res_size, (int) sizeof (int));
+      }
+    while (nbytes < 0 && errno == ETIMEDOUT);
+
     if (nbytes != (int) sizeof (int))
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
@@ -157,6 +187,12 @@ namespace cubmethod
 				      DB_VALUE &returnval)
   {
     int error_code = NO_ERROR;
+
+    // check queue
+    if (m_group->get_data_queue().empty() == true)
+      {
+	return ER_FAILED;
+      }
 
     cubmem::extensible_block &ext_blk = m_group->get_data_queue().front ();
     packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
@@ -211,6 +247,12 @@ namespace cubmethod
     db_make_null (&error_value);
     db_make_null (&error_msg);
 
+    // check queue
+    if (m_group->get_data_queue().empty() == true)
+      {
+	return ER_FAILED;
+      }
+
     cubmem::extensible_block &ext_blk = m_group->get_data_queue().front ();
     packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
 
@@ -237,6 +279,12 @@ namespace cubmethod
   method_invoke_java::callback_dispatch (cubthread::entry &thread_ref)
   {
     int error = NO_ERROR;
+
+    // check queue
+    if (m_group->get_data_queue().empty() == true)
+      {
+	return ER_FAILED;
+      }
 
     cubmem::extensible_block &ext_blk = m_group->get_data_queue().front ();
     packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());

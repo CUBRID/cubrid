@@ -51,7 +51,7 @@ namespace cubmethod
       connection_pool &operator= (const connection_pool &copy) = delete; // Not CopyAssignable
 
       connection *claim ();
-      void retire (connection *claimed);
+      void retire (connection *claimed, bool kill);
 
       int max_size () const;
 

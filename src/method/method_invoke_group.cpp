@@ -40,7 +40,8 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 // Method Group to invoke together
 //////////////////////////////////////////////////////////////////////////
-  method_invoke_group::method_invoke_group (cubthread::entry *thread_p, const method_sig_list &sig_list)
+  method_invoke_group::method_invoke_group (cubthread::entry *thread_p, const method_sig_list &sig_list,
+      bool is_for_scan = false)
     : m_id ((std::uint64_t) this), m_thread_p (thread_p), m_connection (nullptr)
   {
     assert (sig_list.num_methods > 0);
@@ -79,6 +80,7 @@ namespace cubmethod
     m_result_vector.resize (sig_list.num_methods, v);
     m_is_running = false;
     m_parameter_info = nullptr;
+    m_is_for_scan = is_for_scan;
   }
 
   method_invoke_group::~method_invoke_group ()
@@ -136,6 +138,12 @@ namespace cubmethod
   method_invoke_group::is_running () const
   {
     return m_is_running;
+  }
+
+  bool
+  method_invoke_group::is_for_scan () const
+  {
+    return m_is_for_scan;
   }
 
   db_parameter_info *
@@ -198,8 +206,15 @@ namespace cubmethod
 	  }
 
 	error = m_method_vector[i]->get_return (m_thread_p, arg_base, m_result_vector[i]);
+	if (m_rctx->is_interrupted ())
+	  {
+	    error = m_rctx->get_interrupt_reason ();
+	  }
+
 	if (error != NO_ERROR)
 	  {
+	    // if error is not interrupt reason, interrupt is not set
+	    m_rctx->set_interrupt_by_reason (error);
 	    break;
 	  }
       }
@@ -256,10 +271,12 @@ namespace cubmethod
 
     reset (true);
 
-    get_connection_pool ()->retire (m_connection);
+    // FIXME: The connection is closed to prevent Java thread from entering an unexpected state.
+    bool kill = (m_rctx->is_interrupted());
+    get_connection_pool ()->retire (m_connection, kill);
     m_connection = nullptr;
 
-    m_rctx->pop_stack (m_thread_p);
+    m_rctx->pop_stack (m_thread_p, this);
     m_is_running = false;
   }
 

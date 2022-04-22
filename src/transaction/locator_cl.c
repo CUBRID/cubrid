@@ -201,6 +201,19 @@ locator_set_sig_interrupt (int set)
 }
 
 /*
+ * locator_get_sig_interrupt () -
+ *
+ * return: lc_Is_siginterrupt
+ *
+ * Note:
+ */
+int
+locator_get_sig_interrupt ()
+{
+  return lc_Is_siginterrupt;
+}
+
+/*
  * locator_is_root () - Is mop the root mop?
  *
  * return:
