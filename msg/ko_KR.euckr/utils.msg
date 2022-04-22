@@ -1255,7 +1255,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 6 ÇÃ·¡½Ã¹éÇÒ Æ®·£Àè¼ÇÀÌ ³Ê¹« ¸¹½À´Ï´Ù. ½ÃÀÛ ³¯Â¥¿Í Á¾·á ³¯Â¥ »çÀÌÀÇ °£°ÝÀ» ÁÙÀÌ½Ê½Ã¿À.\n
 7 ½ºÅ°¸¶(%1$s)°¡ º¯°æµÇ¾ú±â ¶§¹®¿¡ ÇÃ·¡½Ã¹éÀ» ¼öÇàÇÒ ¼ö ¾ø½À´Ï´Ù.\n
 8 ·Î±× º¼·ýÀÌ Á¦°ÅµÇ¾ú½À´Ï´Ù. ³ªÁß ³¯Â¥·Î ½ÃµµÇÏ½Ê½Ã¿À.\n
-9 Ãâ·Â ÆÄÀÏ '%1$s'À» ¿­ ¼ö ¾ø½À´Ï´Ù\n
+9 Ãâ·Â ÆÄÀÏ '%1$s'À» ¿­ ¼ö ¾øÀ´Ï´Ù.\n
 10 Æ®·£Àè¼Ç ID(%1$d)°¡ Á¸ÀçÇÏÁö ¾Ê½À´Ï´Ù.\n
 11 'cubrid.conf'ÀÇ 'supplemental_log'¸¦ ¼³Á¤ÇØ ÁÖ¼¼¿ä. 'supplemental_log'¸¦ ¼³Á¤ÇÑ ÈÄ ½ÇÇàµÈ SQL ·Î±×¸¸ ÇÃ·¡½Ã¹éÇÒ ¼ö ÀÖ½À´Ï´Ù.\n
 12 Æ®·£Àè¼Ç ID´Â %1$dÃÊ ¾È¿¡ ÀÔ·ÂÇØ¾ß ÇÕ´Ï´Ù. 'cubrid.conf'ÀÇ 'flashback_timeout' ¼³Á¤À» ÅëÇØ ½Ã°£ °ªÀ» Á¶Á¤ÇÒ ¼ö ÀÖ½À´Ï´Ù. \n
