@@ -4032,7 +4032,7 @@ check_table_name (const char *table_name)
   sub_len = STATIC_CAST (int, dot - table_name);
   if (sub_len < 1)
     {
-      /* owner name is not specified (e.g. '.table' */
+      /* owner name is not specified (e.g. '.table') */
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_CLASSNAME_FORMAT),
 			     table_name);
