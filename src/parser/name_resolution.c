@@ -5052,7 +5052,8 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
   col_info = cci_get_result_info (req, &cmd_type, &col_count);
   if (!col_info && col_count == 0)
     {
-      res = ER_FAILED;
+      //ctshim: Can I get an error code?
+      res = ER_FAILED; 
       goto set_parser_error;
     }
 
