@@ -1267,9 +1267,11 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 İşlem Kimliği %1$d saniye içinde girilmelidir. Zaman aşımı, 'cubrid.conf' içindeki 'flashback_timeout' ayarı ile ayarlanabilir.\n
 13 Flashback zaten çalışıyor. Flashback iki işlem tarafından çalıştırılamaz.\n
 14 Flashback bağımsız mod olarak çalıştırılamaz.\n
+15 Sahip_adı uzunluğunun %1$d'den az olması ve sınıf_adı uzunluğunun %2$d bayttan az olması gerekir.\n
+16 sahibi_adı.sınıf_adı ('%1$s') için geçersiz biçim.\n
 60 \
 flashback: Belirli bir işlemi flashback yapmak için ifadeler sağlar.\n\
-kullanım: %1$s flashback [SEÇENEK] veritabanı adı sınıf_adı1 [sınıf_adı2 ...]\n\
+kullanım: %1$s flashback [SEÇENEK] veritabanı adı sahibi_adı.sınıf_adı1 [sahibi_adı.sınıf_adı2 ...]\n\
 \n\
 geçerli seçenekler:\n\
     -o, --output-file=FILE      çıktı mesajını DOSYA'ya yönlendirir; varsayılan: yok.\n\
