@@ -184,7 +184,7 @@ static SYSTEM_CLASS_DEF system_classes[] = {
   {CT_COLLATION_NAME, strlen (CT_COLLATION_NAME)},		// "_db_collation"
   {CT_CHARSET_NAME, strlen (CT_CHARSET_NAME)},			// "_db_charset"
   {CT_DB_SERVER_NAME, strlen (CT_DB_SERVER_NAME)},		// "_db_server"
-  {CT_SYNONYM_NAME, strlen (CT_SYNONYM_NAME)},			// "db_synonym"
+  {CT_SYNONYM_NAME, strlen (CT_SYNONYM_NAME)},			// "_db_synonym"
 
   {CT_TRIGGER_NAME, strlen (CT_TRIGGER_NAME)},			// "db_trigger"
 
