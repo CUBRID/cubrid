@@ -7617,10 +7617,30 @@ static bool
 la_need_filter_out (LA_ITEM * item)
 {
   LA_REPL_FILTER *filter;
+  char class_name[DB_MAX_IDENTIFIER_LENGTH];
+  int len;
   bool filter_found = false;
   int i;
 
   filter = &la_Info.repl_filter;
+
+  len = strlen (item->class_name);
+  /* In pt_append_name(), only "[", "]" is used. */
+  if (item->class_name[0] == '[' && item->class_name[len - 1] == ']')
+    {
+      /*
+       * e.g.  filter->list[i]:  dba.t1
+       *      item->class_name: [dba.t1]
+       *            class_name:  dba.t1
+       */
+      memcpy (class_name, item->class_name + 1, len - 2);
+      class_name[len - 2] = '\0';
+    }
+  else
+    {
+      memcpy (class_name, item->class_name, len);
+      class_name[len] = '\0';
+    }
 
   if (filter->type == REPL_FILTER_NONE
       || (item->log_type == LOG_REPLICATION_STATEMENT && item->item_type != CUBRID_STMT_TRUNCATE)
@@ -7711,6 +7731,8 @@ la_create_repl_filter (void)
   char error_msg[LINE_MAX];
   char classname[SM_MAX_IDENTIFIER_LENGTH];
   int classname_len = 0;
+  const char *dot = NULL;
+  int len = 0;
   LA_REPL_FILTER *filter;
   FILE *fp;
   DB_OBJECT *class_ = NULL;
@@ -7773,16 +7795,33 @@ la_create_repl_filter (void)
 	  continue;
 	}
 
-      if (classname_len >= SM_MAX_IDENTIFIER_LENGTH)
+      len = classname_len;
+      dot = strchr (buffer, '.');
+      if (dot)
+	{
+	  /* user specified name */
+
+	  /* user name of user specified name */
+	  len = STATIC_CAST (int, dot - buffer);
+	  if (len >= DB_MAX_USER_LENGTH)
+	    {
+	      snprintf_dots_truncate (error_msg, LINE_MAX - 1, "invalid table name %s", buffer);
+	      ERROR_SET_ERROR_1ARG (error, ER_HA_LA_REPL_FILTER_GENERIC, error_msg);
+	      goto error_return;
+	    }
+
+	  /* class name of user specified name */
+	  len = STATIC_CAST (int, strlen (dot + 1));
+	}
+
+      if (len >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
 	{
 	  snprintf_dots_truncate (error_msg, LINE_MAX - 1, "invalid table name %s", buffer);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_REPL_FILTER_GENERIC, 1, error_msg);
-	  error = ER_HA_LA_REPL_FILTER_GENERIC;
-
+	  ERROR_SET_ERROR_1ARG (error, ER_HA_LA_REPL_FILTER_GENERIC, error_msg);
 	  goto error_return;
 	}
 
-      sm_downcase_name (buffer, classname, SM_MAX_IDENTIFIER_LENGTH);
+      sm_user_specified_name (buffer, classname, SM_MAX_IDENTIFIER_LENGTH);
 
       class_ = locator_find_class (classname);
       if (class_ == NULL)

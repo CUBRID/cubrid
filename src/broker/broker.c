@@ -960,17 +960,12 @@ receiver_thr_f (void *arg)
       cas_client_type = cas_req_header[SRV_CON_MSG_IDX_CLIENT_TYPE];
       if (!(strncmp (cas_req_header, SRV_CON_CLIENT_MAGIC_STR, SRV_CON_CLIENT_MAGIC_LEN) == 0
 	    || strncmp (cas_req_header, SRV_CON_CLIENT_MAGIC_STR_SSL, SRV_CON_CLIENT_MAGIC_LEN) == 0)
-#if defined(FOR_ODBC_GATEWAY)
-	  || cas_client_type != CAS_CLIENT_GATEWAY)
-#else
-	  || cas_client_type == CAS_CLIENT_GATEWAY || cas_client_type < CAS_CLIENT_TYPE_MIN
-	  || cas_client_type > CAS_CLIENT_TYPE_MAX)
-#endif
-      {
-	send_error_to_driver (clt_sock_fd, CAS_ER_NOT_AUTHORIZED_CLIENT, cas_req_header);
-	CLOSE_SOCKET (clt_sock_fd);
-	continue;
-      }
+	  || cas_client_type < CAS_CLIENT_TYPE_MIN || cas_client_type > CAS_CLIENT_TYPE_MAX)
+	{
+	  send_error_to_driver (clt_sock_fd, CAS_ER_NOT_AUTHORIZED_CLIENT, cas_req_header);
+	  CLOSE_SOCKET (clt_sock_fd);
+	  continue;
+	}
 
       if ((IS_SSL_CLIENT (cas_req_header) && shm_br->br_info[br_index].use_SSL == OFF)
 	  || (!IS_SSL_CLIENT (cas_req_header) && shm_br->br_info[br_index].use_SSL == ON))

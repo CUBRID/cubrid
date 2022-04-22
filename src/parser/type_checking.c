@@ -19820,7 +19820,7 @@ end:
 	    {
 	      /* print expr to alias_print */
 	      expr->alias_print = NULL;
-	      PT_NODE_PRINT_TO_ALIAS (parser, expr, PT_CONVERT_RANGE);
+	      PT_NODE_PRINT_TO_ALIAS (parser, expr, PT_CONVERT_RANGE | PT_PRINT_NO_SPECIFIED_USER_NAME);
 	    }
 	  if (alias_print == NULL)
 	    {
@@ -20149,7 +20149,7 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
 	  if (alias_print == NULL || (PT_IS_VALUE_NODE (result) && !result->info.value.text))
 	    {
 	      func->alias_print = NULL;
-	      PT_NODE_PRINT_TO_ALIAS (parser, func, PT_CONVERT_RANGE);
+	      PT_NODE_PRINT_TO_ALIAS (parser, func, PT_CONVERT_RANGE | PT_PRINT_NO_SPECIFIED_USER_NAME);
 	    }
 	  if (PT_IS_VALUE_NODE (result) && !result->info.value.text)
 	    {
