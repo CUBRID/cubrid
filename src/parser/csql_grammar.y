@@ -13827,10 +13827,11 @@ opt_from_clause
 				PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_ANSI_JOIN);
 			      }
 
-                        // ctshim ================                        
-#if 1        
-                            pt_convert_dblink_query(node);
-#endif
+                            {
+                               // ctshim ================
+                               pt_convert_dblink_query(node);
+                            }
+
 			    node->info.query.q.select.where = n = $4;
 			    if (n)
 			      is_dummy_select = false;	/* not dummy */
@@ -27127,15 +27128,15 @@ pt_mk_spec_drived_dblink_table(PT_NODE* from_tbl)
   
   if((drived_spec = parser_new_node(this_parser, PT_DBLINK_TABLE)) == NULL)
   {
-          PT_ERROR (this_parser, from_tbl, "Oops! Sorry, insufficient memory.");
-          return NULL;
+     PT_ERROR (this_parser, from_tbl, "Oops! Sorry, insufficient memory.");
+     return NULL;
   }
 
   if((new_range_var =  parser_new_node (this_parser, PT_NAME)) == NULL)
   {
-      PT_ERROR (this_parser, from_tbl, "Oops! Sorry, insufficient memory.");    
-       parser_free_node(this_parser, drived_spec);         
-       return NULL; 
+     PT_ERROR (this_parser, from_tbl, "Oops! Sorry, insufficient memory.");    
+     parser_free_node(this_parser, drived_spec);         
+     return NULL; 
   } 
 
   drived_spec->info.dblink_table.remote_table_name =  pt_append_string (this_parser, NULL, class_spec_info->entity_name->info.name.original);
@@ -27154,12 +27155,16 @@ pt_mk_spec_drived_dblink_table(PT_NODE* from_tbl)
    PARSER_VARCHAR *var_buf = 0;   
    if(class_spec_info->range_var)
      {/* alias table name */
-                var_buf = pt_print_bytes (this_parser, class_spec_info->range_var);
+        var_buf = pt_print_bytes (this_parser, class_spec_info->range_var);
      }
    else
-    {
-                // 유니크한 이름이어야 한다. <server_name>_<table_naem>도 대안인데 길이에 대한 고민 필요
-                var_buf = pt_print_bytes (this_parser, class_spec_info->entity_name);
+    {  
+        // from test_tbl@srv, test_tbl  
+        /* Should be unique.
+         * What if the remote table and local table name are the same?
+         * In the case of "<server_name>_<table_naem>", it is necessary to review the length limitation.  
+        */         
+        var_buf = pt_print_bytes (this_parser, class_spec_info->entity_name);
      }  
    new_range_var->info.name.original = pt_makename ((char*)var_buf->bytes);
 
@@ -27192,8 +27197,8 @@ static void pt_convert_dblink_query(PT_NODE* query_stmt)
              // Do NOT automatically assign a user name. 
              PT_NAME_INFO_CLEAR_FLAG(from_tbl->info.spec.entity_name, PT_NAME_INFO_USER_SPECIFIED); 
                          
-              pt_mk_spec_drived_dblink_table(from_tbl);              
-              printf ("DEBUG(1): %s\n", parser_print_tree (this_parser, from_tbl)); 
+             pt_mk_spec_drived_dblink_table(from_tbl);              
+             printf ("DEBUG(1): %s\n", parser_print_tree (this_parser, from_tbl)); 
           }
 
           from_tbl = from_tbl->next;
