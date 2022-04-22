@@ -7155,15 +7155,15 @@ la_get_applied_log_info (const char *database_name, const char *log_path, bool c
       if (res < 0)
 	{
 	  error = res;
-	  goto check_applied_info_end;
+	  printf ("%s\n\n", db_error_string (3));
 	}
       else
 	{
-	  error = ER_GENERIC_ERROR;
+	  error = ER_FAILED;
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
 				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO, APPLYINFO_MSG_NO_QUERY_RESULTS));
-	  goto check_applied_info_end;
 	}
+      goto check_applied_info_end;
     }
 
   *applied_final_lsa = ha_apply_info.final_lsa;
@@ -7220,11 +7220,8 @@ la_get_applied_log_info (const char *database_name, const char *log_path, bool c
 	  printf ("%-30s : %s\n", "Will apply log records up to", replica_time_bound_str);
 	}
     }
+
 check_applied_info_end:
-  if (error != NO_ERROR && res != 0)
-    {
-      printf ("%s\n\n", db_error_string (3));
-    }
 
   return error;
 }
