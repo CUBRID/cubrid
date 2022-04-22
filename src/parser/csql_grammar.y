@@ -3127,7 +3127,7 @@ create_stmt
 	  class_name			/* 8 */
 	  opt_comment_spec		/* 9 */
 	  	{ pop_msg(); }
-		{{
+		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace opt_access_modifier SYNONYM synonym_name_without_dot For class_name opt_comment_spec);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SYNONYM);
 			PT_MISC_TYPE synonym_access_modifier;
@@ -3977,7 +3977,7 @@ alter_stmt
 	  class_name			/* 7 */
 	  opt_comment_spec		/* 8 */
 		{ pop_msg(); }
-		{{
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER opt_access_modifier SYNONYM synonym_name For class_name opt_comment_spec);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SYNONYM);
 			PT_MISC_TYPE synonym_access_modifier;
@@ -4102,7 +4102,7 @@ rename_stmt
 	  as_or_to			/* 6 */
 	  synonym_name_without_dot	/* 7 */
 	  	{ pop_msg(); }
-		{{
+		{{ DBG_TRACE_GRAMMAR(rename_stmt, | RENAME opt_access_modifier SYNONYM synonym_name as_or_to synonym_name_without_dot);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_RENAME_SYNONYM);
 			PT_MISC_TYPE synonym_access_modifier;
@@ -4451,7 +4451,7 @@ drop_stmt
 	  opt_if_exists			/* 5 */
 	  synonym_name			/* 6 */
 	  	{ pop_msg(); }
-		{{
+		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP SERVER opt_access_modifier SYNONYM opt_if_exists synonym_name);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_SYNONYM);
 			PT_MISC_TYPE synonym_access_modifier;
@@ -5560,12 +5560,16 @@ serial_name
 
 synonym_name_without_dot
 	: user_specified_name_without_dot
-		{ $$ = $1; }
+		{ DBG_TRACE_GRAMMAR(synonym_name_without_dot, : user_specified_name_without_dot);
+			$$ = $1;
+		}
 	;
 
 synonym_name
 	: user_specified_name
-		{ $$ = $1; }
+		{ DBG_TRACE_GRAMMAR(synonym_name, : user_specified_name);
+			$$ = $1;
+		}
 	;
 
 opt_partition_spec
