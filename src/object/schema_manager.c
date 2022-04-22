@@ -184,6 +184,7 @@ static SYSTEM_CLASS_DEF system_classes[] = {
   {CT_COLLATION_NAME, strlen (CT_COLLATION_NAME)},		// "_db_collation"
   {CT_CHARSET_NAME, strlen (CT_CHARSET_NAME)},			// "_db_charset"
   {CT_DB_SERVER_NAME, strlen (CT_DB_SERVER_NAME)},		// "_db_server"
+  {CT_SYNONYM_NAME, strlen (CT_SYNONYM_NAME)},			// "_db_synonym"
 
   {CT_TRIGGER_NAME, strlen (CT_TRIGGER_NAME)},			// "db_trigger"
 
@@ -211,7 +212,8 @@ static SYSTEM_CLASS_DEF system_classes[] = {
   {CTV_STORED_PROC_ARGS_NAME, strlen (CTV_STORED_PROC_ARGS_NAME)},	// "db_stored_procedure_args"
   {CTV_DB_COLLATION_NAME, strlen (CTV_DB_COLLATION_NAME)},	// "db_collation"
   {CTV_DB_CHARSET_NAME, strlen (CTV_DB_CHARSET_NAME)},		// "db_charset"
-  {CTV_DB_SERVER_NAME, strlen (CTV_DB_SERVER_NAME)}		// "db_server"
+  {CTV_DB_SERVER_NAME, strlen (CTV_DB_SERVER_NAME)},		// "db_server"
+  {CTV_SYNONYM_NAME, strlen (CTV_SYNONYM_NAME)}			// "db_synonym"
 };
 // *INDENT-ON*
 
@@ -4358,7 +4360,8 @@ sm_update_all_catalog_statistics (bool with_fullscan)
     CT_METHOD_NAME, CT_METHSIG_NAME, CT_METHARG_NAME,
     CT_METHFILE_NAME, CT_QUERYSPEC_NAME, CT_INDEX_NAME,
     CT_INDEXKEY_NAME, CT_CLASSAUTH_NAME, CT_DATATYPE_NAME,
-    CT_COLLATION_NAME, CT_CHARSET_NAME, NULL
+    CT_COLLATION_NAME, CT_CHARSET_NAME, CT_SYNONYM_NAME,
+    NULL
   };
 
   for (i = 0; classes[i] != NULL && error == NO_ERROR; i++)
@@ -5362,11 +5365,7 @@ sm_class_constraints (MOP classop)
 MOP
 sm_find_class (const char *name)
 {
-  char realname[SM_MAX_IDENTIFIER_LENGTH];
-
-  sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
-
-  return (locator_find_class (realname));
+  return sm_find_class_with_purpose (name, false);
 }
 
 /*
@@ -5382,10 +5381,95 @@ MOP
 sm_find_class_with_purpose (const char *name, bool for_update)
 {
   char realname[SM_MAX_IDENTIFIER_LENGTH];
+  MOP class_mop = NULL;
+  MOP synonym_mop = NULL;
+  const char *target_name = NULL;
 
   sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
-  return (locator_find_class_with_purpose (realname, for_update));
+  class_mop = locator_find_class_with_purpose (realname, for_update);
+  if (class_mop)
+    {
+      return class_mop;
+    }
+
+  synonym_mop = sm_find_synonym (realname);
+  if (synonym_mop)
+    {
+      target_name = sm_get_synonym_target_name (synonym_mop);
+      class_mop = locator_find_class_with_purpose (target_name, for_update);
+    }
+
+  return class_mop;
+}
+
+/*
+ * sm_find_synonym() - find synonyms.
+ *   return: synonym object
+ *   name(in): synonym name
+ */
+MOP
+sm_find_synonym (const char *name)
+{
+  DB_OBJECT *synonym_class_obj = NULL;
+  DB_OBJECT *synonym_obj = NULL;
+  DB_VALUE value;
+  char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  int error = NO_ERROR;
+  int save = 0;
+
+  synonym_class_obj = sm_find_class (CT_SYNONYM_NAME);
+  if (synonym_class_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return NULL;
+    }
+
+  sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
+  db_make_string (&value, realname);
+
+  AU_DISABLE (save);
+  synonym_obj = obj_find_unique (synonym_class_obj, "unique_name", &value, AU_FETCH_READ);
+  AU_ENABLE (save);
+  if (synonym_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_clear ();
+	  ERROR_SET_ERROR_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
+	}
+      return NULL;
+    }
+
+  return synonym_obj;
+}
+
+/*
+ * sm_get_synonym_target_name() - get target_name.
+ *   return: target_name
+ *   synonym(in): synonym object
+ */
+const char *
+sm_get_synonym_target_name (MOP synonym)
+{
+  const char *target_name = NULL;
+  DB_VALUE value;
+  int save = 0;
+
+  if (synonym == NULL)
+    {
+      return NULL;
+    }
+
+  AU_DISABLE (save);
+  db_get (synonym, "target_unique_name", &value);
+  AU_ENABLE (save);
+
+  target_name = db_get_string (&value);
+  assert (target_name && target_name[0] != '\0');
+
+  return target_name;
 }
 
 /*
