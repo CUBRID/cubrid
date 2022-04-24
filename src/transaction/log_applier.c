@@ -7263,14 +7263,14 @@ la_get_copied_log_info (const char *database_name, const char *log_path, INT64 p
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, active_log_path);
       error = ER_LOG_MOUNT_FAIL;
-      goto check_copied_info_end;
+      goto check_copied_log_volume_info_end;
     }
 
   /* read copied active page */
   error = la_find_log_pagesize (&la_Info.act_log, la_Info.log_path, database_name, false);
   if (error != NO_ERROR)
     {
-      goto check_copied_info_end;
+      goto check_copied_log_volume_info_end;
     }
 
   *copied_eof_lsa = la_Info.act_log.log_hdr->eof_lsa;
@@ -7278,10 +7278,11 @@ la_get_copied_log_info (const char *database_name, const char *log_path, INT64 p
 
   la_print_log_header (database_name, la_Info.act_log.log_hdr, verbose);
 
-check_copied_info_end:
+check_copied_log_volume_info_end:
   if (error != NO_ERROR)
     {
       printf ("%s\n", db_error_string (3));
+      /*If error occured about the -L option, it is not necessary to check log page information. So, fuction is end here */
       return error;
     }
 
@@ -7375,7 +7376,7 @@ check_copied_log_page_info_end:
     {
       printf ("%s\n", db_error_string (3));
     }
-
+  /*The -p option does not affect any results in the applyinfo utility. So, here returns the NO_ERROR */
   return NO_ERROR;
 }
 
