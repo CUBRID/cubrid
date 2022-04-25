@@ -653,7 +653,6 @@ int g_original_buffer_len;
 %type <node> user_specified_name
 %type <node> class_name_without_dot
 %type <node> class_name
-%type <node> class_name_with_server_name
 %type <node> class_name_list
 %type <node> trigger_name_without_dot
 %type <node> trigger_name
@@ -1022,6 +1021,7 @@ int g_original_buffer_len;
 %type <c2> insert_assignment_list
 %type <c2> expression_queue
 %type <c2> of_cast_data_type
+%type <c2> class_name_with_server_name
 /*}}}*/
 
 /* define rule type (json_table_column_behavior) */
@@ -4856,7 +4856,7 @@ original_table_spec
 				  }
 #if 1 // ctshim 
  //                             parser_top_select_stmt_node()->node_type != PT_SELECT ?
-                                if(ent->info.spec.ct_server_name != NULL)
+                                if(ent->info.spec.remote_server_name != NULL)
                                 {  
                                    if(stmt->node_type != PT_SELECT)                                      
                                    {
@@ -5288,14 +5288,12 @@ only_all_class_spec
 		DBG_PRINT}}
         | class_name_with_server_name  opt_partition_spec 
                 {{ DBG_TRACE_GRAMMAR(only_all_class_spec, | class_name_with_server_name opt_partition_spec);
-#if 1 // ctshim                    
+
                         PT_NODE *scs = parser_new_node (this_parser, PT_SPEC);
 			if (scs)
 			  {
-                            // $1 : class_name -> server_name    
-			    scs->info.spec.entity_name = $1;
-                            scs->info.spec.ct_server_name = $1->next;
-                            $1->next = NULL;
+                            scs->info.spec.entity_name = CONTAINER_AT_0 ($1);
+                            scs->info.spec.remote_server_name = CONTAINER_AT_1 ($1);
 
 			    scs->info.spec.only_all = PT_ONLY;
 			    scs->info.spec.meta_class = PT_CLASS;
@@ -5305,9 +5303,7 @@ only_all_class_spec
 			      }
 			  }
                     
-                        $$ = scs;
-#endif                        
-                        
+                        $$ = scs;                       
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
                 DBG_PRINT}}       
 	;
@@ -5316,22 +5312,9 @@ class_name_with_server_name
         : class_name '@' dblink_server_name
                 {{DBG_TRACE_GRAMMAR(class_name_with_server_name, : class_name '@' dblink_server_name);
                 assert($1 != NULL && $3 != NULL);
-#if 1 // ctshim
-
-                PT_NODE *name_node =  $3;
-		PT_NODE *owner_node = $3->next;
-
-                //if (owner_node != NULL)
-                //  {
-                //     name_node->info.name.resolved = pt_append_string (this_parser, NULL,
-                //                                                    owner_node->info.name.original);
-                //     name_node->next = NULL;
-                //     parser_free_tree (this_parser, owner_node);
-                //  }
-
-                $1->next = name_node;
-                $$ = $1;
-#endif                
+                container_2 ctn;
+                SET_CONTAINER_2 (ctn, $1, $3);
+                $$ = ctn;
                 DBG_PRINT}}
         ;
 
@@ -27141,15 +27124,15 @@ pt_mk_spec_drived_dblink_table(PT_NODE* from_tbl)
 
   drived_spec->info.dblink_table.remote_table_name =  pt_append_string (this_parser, NULL, class_spec_info->entity_name->info.name.original);
 
-   assert(class_spec_info->ct_server_name->node_type == PT_NAME);
+   assert(class_spec_info->remote_server_name->node_type == PT_NAME);
    drived_spec->info.dblink_table.is_name = true;
-   drived_spec->info.dblink_table.conn = class_spec_info->ct_server_name;  
-   if (class_spec_info->ct_server_name->next)
+   drived_spec->info.dblink_table.conn = class_spec_info->remote_server_name;  
+   if (class_spec_info->remote_server_name->next)
      {
-        drived_spec->info.dblink_table.owner_name = class_spec_info->ct_server_name->next;
-        class_spec_info->ct_server_name->next = NULL;
+        drived_spec->info.dblink_table.owner_name = class_spec_info->remote_server_name->next;
+        class_spec_info->remote_server_name->next = NULL;
      }
-    class_spec_info->ct_server_name = NULL;  
+    class_spec_info->remote_server_name = NULL;  
  
    // alias table_name
    PARSER_VARCHAR *var_buf = 0;   
@@ -27192,7 +27175,7 @@ static void pt_convert_dblink_query(PT_NODE* query_stmt)
    
    while(from_tbl)
      {
-        if(from_tbl->info.spec.entity_name && from_tbl->info.spec.ct_server_name)
+        if(from_tbl->info.spec.entity_name && from_tbl->info.spec.remote_server_name)
           {            
              // Do NOT automatically assign a user name. 
              PT_NAME_INFO_CLEAR_FLAG(from_tbl->info.spec.entity_name, PT_NAME_INFO_USER_SPECIFIED); 

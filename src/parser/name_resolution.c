@@ -384,11 +384,11 @@ static int pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * d
 
 // ctshim
 #if 1
-#  define PRINT_DEBUG_MSG(...)
-#  define PRINT_DEBUG_MSG_2(...)
+#define PRINT_DEBUG_MSG(...)
+#define PRINT_DEBUG_MSG_2(...)
 #else
-#  define PRINT_DEBUG_MSG(...)  printf(__VA_ARGS__)
-#  define PRINT_DEBUG_MSG_2(...)  printf(__VA_ARGS__)
+#define PRINT_DEBUG_MSG(...)  printf(__VA_ARGS__)
+#define PRINT_DEBUG_MSG_2(...)  printf(__VA_ARGS__)
 #endif
 
 /*
@@ -4752,10 +4752,10 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
     case PT_TYPE_CLOB:
     case PT_TYPE_OBJECT:
     case PT_TYPE_ENUMERATION:
-      // ctshim ==============================
-      //PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-      //                MSGCAT_SEMANTIC_DBLINK_NOT_SUPPORTED_TYPE, pt_show_type_enum (attr_def_node->type_enum));     
-      break;
+      PT_ERRORmf (parser, attr_def_node, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_DBLINK_NOT_SUPPORTED_TYPE, pt_show_type_enum (attr_def_node->type_enum));
+      return false;
+
     default:
       is_default = 1;
       break;
@@ -4971,13 +4971,16 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 	  return ER_FAILED;
 	}
       id_node->info.name.original = pt_append_string (parser, NULL, "dummy");
-      attr_def_node = pt_mk_attr_def_node (parser, id_node, NULL);
+      if ((attr_def_node = pt_mk_attr_def_node (parser, id_node, NULL)) == NULL)
+	{
+	  return ER_FAILED;
+	}
     }
   else if (dblink_table->sel_list->node_type == PT_NAME && dblink_table->sel_list->type_enum == PT_TYPE_STAR)
     {
       if (dblink_table->sel_list->next != NULL)
 	{
-	  ;			//  PT_ERROR (this_parser, dbl_spec, "Oops! Sorry, Not yet implements."); // ctshim
+	  PT_ERROR (parser, derived_table, "Oops! Sorry, Not yet implements.");	// ctshim
 	}
 
       for (int i = 0; i < rmt_cols->get_attr_size (); i++)
@@ -4989,7 +4992,10 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 	    }
 
 	  id_node->info.name.original = pt_append_string (parser, NULL, rmt_cols->get_name (i));
-	  tmp = pt_mk_attr_def_node (parser, id_node, rmt_cols);
+	  if ((tmp = pt_mk_attr_def_node (parser, id_node, rmt_cols)) == NULL)
+	    {
+	      return ER_FAILED;
+	    }
 	  attr_def_node = attr_def_node ? parser_append_node (tmp, attr_def_node) : tmp;
 	}
     }
@@ -5001,7 +5007,10 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 	  dblink_table->sel_list = id_node->next;
 	  id_node->next = NULL;
 
-	  tmp = pt_mk_attr_def_node (parser, id_node, rmt_cols);
+	  if ((tmp = pt_mk_attr_def_node (parser, id_node, rmt_cols)) == NULL)
+	    {
+	      return ER_FAILED;
+	    }
 	  attr_def_node = attr_def_node ? parser_append_node (tmp, attr_def_node) : tmp;
 	}
     }
@@ -5053,7 +5062,7 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
   if (!col_info && col_count == 0)
     {
       //ctshim: Can I get an error code?
-      res = ER_FAILED; 
+      res = ER_FAILED;
       goto set_parser_error;
     }
 

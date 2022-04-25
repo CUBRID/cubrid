@@ -8994,7 +8994,7 @@ static PT_NODE *
 pt_apply_spec (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.spec.entity_name, arg);
-  PT_APPLY_WALK (parser, p->info.spec.ct_server_name, arg);
+  PT_APPLY_WALK (parser, p->info.spec.remote_server_name, arg);
   PT_APPLY_WALK (parser, p->info.spec.cte_name, arg);
   PT_APPLY_WALK (parser, p->info.spec.cte_pointer, arg);
   PT_APPLY_WALK (parser, p->info.spec.except_list, arg);
@@ -9089,11 +9089,15 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes_l (parser, p->info.spec.entity_name);
       q = pt_append_varchar (parser, q, r1);
 
-      if (p->info.spec.ct_server_name)
+      if (p->info.spec.remote_server_name)
 	{
 	  q = pt_append_nulstring (parser, q, "@");
-	  r1 = pt_print_bytes (parser, p->info.spec.ct_server_name);
-	  q = pt_append_varchar (parser, q, r1);
+	  if (p->info.spec.remote_server_name->next)
+	    {
+	      q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.spec.remote_server_name->next));
+	      q = pt_append_nulstring (parser, q, ".");
+	    }
+	  q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.spec.remote_server_name));
 	}
 
       q = pt_append_nulstring (parser, q, ")");
@@ -9115,10 +9119,10 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.spec.entity_name);
       q = pt_append_varchar (parser, q, r1);
 
-      if (p->info.spec.ct_server_name)
+      if (p->info.spec.remote_server_name)
 	{
 	  q = pt_append_nulstring (parser, q, "@");
-	  r1 = pt_print_bytes (parser, p->info.spec.ct_server_name);
+	  r1 = pt_print_bytes (parser, p->info.spec.remote_server_name);
 	  q = pt_append_varchar (parser, q, r1);
 	}
 
