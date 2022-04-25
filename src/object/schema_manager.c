@@ -5418,6 +5418,11 @@ sm_find_synonym (const char *name)
   int error = NO_ERROR;
   int save = 0;
 
+  if (sm_check_system_class_by_name (name))
+    {
+      return NULL;
+    }
+
   synonym_class_obj = sm_find_class (CT_SYNONYM_NAME);
   if (synonym_class_obj == NULL)
     {

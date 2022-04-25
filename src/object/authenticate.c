@@ -6309,9 +6309,11 @@ au_user_name (void)
        * When au_login_method () is called, Au_user_name is not changed.
        */
       const char *current_schema_name = sc_current_schema_name ();
+      char uppercase_name[DB_MAX_USER_LENGTH];
       if (current_schema_name && current_schema_name[0] != '\0')
 	{
-	  return ws_copy_string (current_schema_name);
+	  intl_identifier_upper (current_schema_name, uppercase_name);
+	  return ws_copy_string (uppercase_name);
 	}
 
       AU_DISABLE (save);
@@ -7461,9 +7463,11 @@ au_get_user_name (MOP obj)
   if (ws_is_same_object (Au_user, obj))
     {
       const char *current_schema_name = sc_current_schema_name ();
+      char uppercase_name[DB_MAX_USER_LENGTH];
       if (current_schema_name && current_schema_name[0] != '\0')
 	{
-	  return ws_copy_string (current_schema_name);
+	  intl_identifier_upper (current_schema_name, uppercase_name);
+	  return ws_copy_string (uppercase_name);
 	}
     }
 
