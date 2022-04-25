@@ -7282,7 +7282,7 @@ check_copied_log_volume_info_end:
   if (error != NO_ERROR)
     {
       printf ("%s\n", db_error_string (3));
-      /*If error occured about the -L option, it is not necessary to check log page information. So, fuction is end here */
+      /* If error occured about the -L option, it is not necessary to check log page information. So, fuction is end here */
       return error;
     }
 
@@ -7376,7 +7376,7 @@ check_copied_log_page_info_end:
     {
       printf ("%s\n", db_error_string (3));
     }
-  /*The -p option does not affect any results in the applyinfo utility. So, here returns the NO_ERROR */
+  /* The -p option does not affect any results in the applyinfo utility. So, here returns the NO_ERROR */
   return NO_ERROR;
 }
 
