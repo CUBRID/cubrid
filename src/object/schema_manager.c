@@ -593,6 +593,18 @@ sc_current_schema_name (void)
 }
 
 /*
+ * sc_current_schema_owner() - Returns current schema owner
+ *      return: current schema owner object
+ *
+ */
+MOP
+sc_current_schema_owner (void)
+{
+  return Current_Schema.owner;
+}
+
+
+/*
  * sm_add_static_method() - Adds an element to the static link table.
  *    The name argument and the name of the function pointed to
  *    are usually the same but this is not mandatory.

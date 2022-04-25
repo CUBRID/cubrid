@@ -1191,9 +1191,8 @@ au_find_user (const char *user_name)
      * Au_user_name cannot be used because it does not always store the current user name.
      * When au_login_method () is called, Au_user_name is not changed.
      */
-    const char *current_schema_name = sc_current_schema_name ();
-    if (current_schema_name && current_schema_name[0] != '\0'
-	&& intl_identifier_casecmp (current_schema_name, user_name) == 0)
+    const char *sc_name = sc_current_schema_name ();
+    if (sc_name && sc_name[0] != '\0' && intl_identifier_casecmp (sc_name, user_name) == 0)
       {
 	return Au_user;
       }
@@ -6308,12 +6307,12 @@ au_user_name (void)
        * Au_user_name cannot be used because it does not always store the current user name.
        * When au_login_method () is called, Au_user_name is not changed.
        */
-      const char *current_schema_name = sc_current_schema_name ();
-      char uppercase_name[DB_MAX_USER_LENGTH];
-      if (current_schema_name && current_schema_name[0] != '\0')
+      const char *sc_name = sc_current_schema_name ();
+      char upper_sc_name[DB_MAX_USER_LENGTH];
+      if (sc_name && sc_name[0] != '\0')
 	{
-	  intl_identifier_upper (current_schema_name, uppercase_name);
-	  return ws_copy_string (uppercase_name);
+	  intl_identifier_upper (sc_name, upper_sc_name);
+	  return ws_copy_string (upper_sc_name);
 	}
 
       AU_DISABLE (save);
@@ -7451,25 +7450,31 @@ au_get_user_name (MOP obj)
   db_make_null (&value);
   char *name = NULL;
 
-  /*
-   * To reduce unnecessary code execution,
-   * the current schema name can be used instead of the current user name.
-   * 
-   * Returns the current schema name if the user object is the same as the current user object.
-   * 
-   * Au_user_name cannot be used because it does not always store the current user name.
-   * When au_login_method () is called, Au_user_name is not changed.
-   */
-  if (ws_is_same_object (Au_user, obj))
-    {
-      const char *current_schema_name = sc_current_schema_name ();
-      char uppercase_name[DB_MAX_USER_LENGTH];
-      if (current_schema_name && current_schema_name[0] != '\0')
-	{
-	  intl_identifier_upper (current_schema_name, uppercase_name);
-	  return ws_copy_string (uppercase_name);
-	}
-    }
+  {
+    MOP sc_owner;
+    const char *sc_name;
+    char upper_sc_name[DB_MAX_USER_LENGTH];
+
+    /*
+     * To reduce unnecessary code execution,
+     * the current schema name can be used instead of the current user name.
+     * 
+     * Returns the current schema name if the user object is the same as the current user object.
+     * 
+     * Au_user_name cannot be used because it does not always store the current user name.
+     * When au_login_method () is called, Au_user_name is not changed.
+     */
+    sc_owner = sc_current_schema_owner ();
+    if (sc_owner && ws_is_same_object (sc_owner, obj))
+      {
+	sc_name = sc_current_schema_name ();
+	if (sc_name && sc_name[0] != '\0')
+	  {
+	    intl_identifier_upper (sc_name, upper_sc_name);
+	    return ws_copy_string (upper_sc_name);
+	  }
+      }
+  }
 
   int error = obj_get (obj, "name", &value);
   if (error == NO_ERROR)
