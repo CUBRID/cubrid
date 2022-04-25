@@ -133,6 +133,15 @@ static int do_vacuum (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class_,
 			     PT_NODE ** update, PT_NODE * values);
 
+static int do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB_OBJECT * target_owner,
+				      const char *comment, const int is_public_synonym);
+static int do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner, const char *target_name,
+				       DB_OBJECT * target_owner, const char *comment, const int is_public_synonym,
+				       const int or_replace);
+static int do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists,
+				     DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj);
+static int do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name);
+
 #define MAX_SERIAL_INVARIANT	8
 typedef struct serial_invariant SERIAL_INVARIANT;
 
@@ -3651,11 +3660,17 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DROP_SESSION_VARIABLES:
     case PT_SET_NAMES:
     case PT_SET_TIMEZONE:
+
       /* TODO: check it  */
     case PT_CREATE_SERVER:
     case PT_DROP_SERVER:
     case PT_RENAME_SERVER:
     case PT_ALTER_SERVER:
+
+    case PT_ALTER_SYNONYM:
+    case PT_CREATE_SYNONYM:
+    case PT_DROP_SYNONYM:
+    case PT_RENAME_SYNONYM:
       /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
       db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
       break;
@@ -3867,6 +3882,18 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_ALTER_SERVER:
       err = do_alter_server (parser, statement);
+      break;
+    case PT_ALTER_SYNONYM:
+      err = do_alter_synonym (parser, statement);
+      break;
+    case PT_CREATE_SYNONYM:
+      err = do_create_synonym (parser, statement);
+      break;
+    case PT_DROP_SYNONYM:
+      err = do_drop_synonym (parser, statement);
+      break;
+    case PT_RENAME_SYNONYM:
+      err = do_rename_synonym (parser, statement);
       break;
 
     default:
@@ -4174,7 +4201,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
-	      ASSERT_ERROR_AND_SET (error);
+	      ERROR_SET_ERROR_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, cls->info.name.original);
 	      return error;
 	    }
 
@@ -6379,8 +6406,8 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
       class_ = db_find_class (PT_TR_TARGET_CLASS (target));
       if (class_ == NULL)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  ERROR_SET_ERROR_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, PT_TR_TARGET_CLASS (target));
+	  return error;
 	}
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
       if (sm_has_text_domain (db_get_attributes (class_), 1))
@@ -15627,6 +15654,22 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_stmt.statement_type = CUBRID_STMT_ALTER_SERVER;
       break;
 
+    case PT_ALTER_SYNONYM:
+      repl_stmt.statement_type = CUBRID_STMT_ALTER_SYNONYM;
+      break;
+
+    case PT_CREATE_SYNONYM:
+      repl_stmt.statement_type = CUBRID_STMT_CREATE_SYNONYM;
+      break;
+
+    case PT_DROP_SYNONYM:
+      repl_stmt.statement_type = CUBRID_STMT_DROP_SYNONYM;
+      break;
+
+    case PT_RENAME_SYNONYM:
+      repl_stmt.statement_type = CUBRID_STMT_RENAME_SYNONYM;
+      break;
+
     case PT_CREATE_USER:
       repl_stmt.statement_type = CUBRID_STMT_CREATE_USER;
       break;
@@ -17611,6 +17654,648 @@ do_set_timezone (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
+ * do_alter_synonym () - change target or comment of synonym.
+ * return: error code
+ * parser(in): parser context
+ * statement(in): parse tree of a statement
+ */
+int
+do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  DB_OBJECT *target_owner_obj = NULL;
+  char synonym_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  const char *comment = NULL;
+  int error = NO_ERROR;
+
+  CHECK_MODIFICATION_ERROR ();
+  CHECK_2ARGS_ERROR (parser, statement);
+
+  assert (statement->node_type == PT_ALTER_SYNONYM);
+
+  /* syntax is not supported. */
+  assert (PT_SYNONYM_ACCESS_MODIFIER (statement) != PT_PUBLIC);
+
+  /* synonym_name */
+  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_NAME (statement)), synonym_name, DB_MAX_IDENTIFIER_LENGTH);
+
+  /* target_name */
+  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name, DB_MAX_IDENTIFIER_LENGTH);
+
+  /* target_owner */
+  target_owner_obj = au_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
+  if (target_owner_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  /* comment */
+  if (PT_SYNONYM_COMMENT (statement) != NULL && PT_SYNONYM_COMMENT_STR (statement) != NULL)
+    {
+      assert ((PT_SYNONYM_COMMENT (statement))->node_type == PT_VALUE);
+      comment = (char *) PT_SYNONYM_COMMENT_BYTES (statement);
+    }
+
+  error = do_alter_synonym_internal (synonym_name, target_name, target_owner_obj, comment, FALSE);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+
+  return error;
+}
+
+/*
+ * do_alter_synonym_internal () - alter synonym.
+ * return: error code
+ * synonym_name(in): synonym name
+ * target_name(in): synonym target class name
+ * target_owner(in): synonym target class owner
+ * comment(in): comments on synonyms
+ * is_public_synonym(in): access modifiers for synonyms
+ */
+static int
+do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB_OBJECT * target_owner,
+			   const char *comment, const int is_public_synonym)
+{
+  DB_OBJECT *class_obj = NULL;
+  DB_OBJECT *instance_obj = NULL;
+  DB_OBJECT *owner_obj = NULL;
+  DB_IDENTIFIER instance_obj_id = OID_INITIALIZER;
+  DB_OTMPL *obj_tmpl = NULL;
+  DB_VALUE value;
+  int error = NO_ERROR;
+  int save = 0;
+
+  AU_DISABLE (save);
+
+  class_obj = sm_find_class (CT_SYNONYM_NAME);
+  if (class_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  instance_obj = do_get_obj_id (&instance_obj_id, class_obj, synonym_name, "unique_name");
+  if (instance_obj == NULL)
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_SYNONYM_NOT_EXIST, synonym_name);
+      goto end;
+    }
+
+  obj_tmpl = dbt_edit_object (instance_obj);
+  if (obj_tmpl == NULL)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  /* target_unique_name */
+  db_make_string (&value, target_name);
+  error = dbt_put_internal (obj_tmpl, "target_unique_name", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  /* target_name */
+  db_make_string (&value, sm_remove_qualifier_name (target_name));
+  error = dbt_put_internal (obj_tmpl, "target_name", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  /* target_owner */
+  db_make_object (&value, target_owner);
+  error = dbt_put_internal (obj_tmpl, "target_owner", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  /* comment */
+  if (comment != NULL)
+    {
+      db_make_string (&value, comment);
+      error = dbt_put_internal (obj_tmpl, "comment", &value);
+      pr_clear_value (&value);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
+    }
+
+  instance_obj = dbt_finish_object (obj_tmpl);
+  if (instance_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+    }
+
+end:
+  if (obj_tmpl != NULL && instance_obj == NULL)
+    {
+      dbt_abort_object (obj_tmpl);
+    }
+
+  AU_ENABLE (save);
+
+  return error;
+}
+
+/*
+ * do_create_synonym () - create synonym.
+ * return: error code
+ * parser(in): parser context
+ * statement(in): parse tree of a statement
+ */
+int
+do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  DB_OBJECT *synonym_obj = NULL;
+  DB_OBJECT *synonym_owner_obj = NULL;
+  DB_OBJECT *target_owner_obj = NULL;
+  char synonym_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  const char *comment = NULL;
+  int or_replace = FALSE;
+  int error = NO_ERROR;
+
+  CHECK_MODIFICATION_ERROR ();
+  CHECK_2ARGS_ERROR (parser, statement);
+
+  assert (statement->node_type == PT_CREATE_SYNONYM);
+
+  /* syntax is not supported. */
+  assert (PT_SYNONYM_ACCESS_MODIFIER (statement) != PT_PUBLIC);
+
+  /* synonym_name */
+  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_NAME (statement)), synonym_name, DB_MAX_IDENTIFIER_LENGTH);
+
+  /* synonym_owner */
+  synonym_owner_obj = au_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_OWNER_NAME (statement)));
+  if (synonym_owner_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  /* or_replace */
+  or_replace = PT_SYNONYM_OR_REPLACE (statement);
+
+  /* target_name */
+  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name, DB_MAX_IDENTIFIER_LENGTH);
+
+  /* target_owner */
+  target_owner_obj = au_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
+  if (target_owner_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  /* comment */
+  if (PT_SYNONYM_COMMENT (statement) != NULL && PT_SYNONYM_COMMENT_STR (statement) != NULL)
+    {
+      assert ((PT_SYNONYM_COMMENT (statement))->node_type == PT_VALUE);
+      comment = (char *) PT_SYNONYM_COMMENT_BYTES (statement);
+    }
+
+  error =
+    do_create_synonym_internal (synonym_name, synonym_owner_obj, target_name, target_owner_obj, comment, FALSE,
+				or_replace);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+
+  return error;
+}
+
+/*
+ * do_create_synonym_internal () - create synonym.
+ * return: error code
+ * synonym_name(in): synonym name
+ * synonym_owner(in): synonym owner
+ * target_name(in): synonym target class name
+ * target_owner_name(in): synonym target class owner
+ * comment(in): comments on synonyms
+ * is_public_synonym(in): access modifiers for synonyms
+ * or_replace(in): or replace
+ */
+static int
+do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner, const char *target_name,
+			    DB_OBJECT * target_owner, const char *comment, const int is_public_synonym,
+			    const int or_replace)
+{
+  DB_OBJECT *class_obj = NULL;
+  DB_OBJECT *instance_obj = NULL;
+  DB_IDENTIFIER instance_obj_id = OID_INITIALIZER;
+  DB_OTMPL *obj_tmpl = NULL;
+  DB_VALUE value;
+  int error = NO_ERROR;
+  int save = 0;
+
+  AU_DISABLE (save);
+
+  /* synonym class object */
+  class_obj = sm_find_class (CT_SYNONYM_NAME);
+  if (class_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  instance_obj = do_get_obj_id (&instance_obj_id, class_obj, synonym_name, "unique_name");
+  if (instance_obj != NULL)
+    {
+      if (or_replace == TRUE)
+	{
+	  error = do_drop_synonym_internal (synonym_name, FALSE, FALSE, class_obj, instance_obj);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error;
+	    }
+
+	  instance_obj = NULL;
+	}
+      else
+	{
+	  assert (or_replace == FALSE);
+	  ERROR_SET_ERROR_1ARG (error, ER_SYNONYM_ALREADY_EXIST, synonym_name);
+	  goto end;
+	}
+    }
+  else
+    {
+      /* Check if class exists by name. */
+      if (db_find_class (synonym_name) != NULL)
+	{
+	  ERROR_SET_ERROR_1ARG (error, ER_LC_CLASSNAME_EXIST, synonym_name);
+	  goto end;
+	}
+    }
+
+  obj_tmpl = dbt_create_object (class_obj);
+  if (obj_tmpl == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  /* unique_name */
+  db_make_string (&value, synonym_name);
+  error = dbt_put_internal (obj_tmpl, "unique_name", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  /* synonym_name */
+  db_make_string (&value, sm_remove_qualifier_name (synonym_name));
+  error = dbt_put_internal (obj_tmpl, "name", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  /* synonym_owner */
+  db_make_object (&value, synonym_owner);
+  error = dbt_put_internal (obj_tmpl, "owner", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  /* is_public_synonym */
+  db_make_int (&value, is_public_synonym);
+  error = dbt_put_internal (obj_tmpl, "is_public", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  /* target_unique_name */
+  db_make_string (&value, target_name);
+  error = dbt_put_internal (obj_tmpl, "target_unique_name", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  /* target_name */
+  db_make_string (&value, sm_remove_qualifier_name (target_name));
+  error = dbt_put_internal (obj_tmpl, "target_name", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  /* target_owner */
+  db_make_object (&value, target_owner);
+  error = dbt_put_internal (obj_tmpl, "target_owner", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  /* comment */
+  if (comment != NULL)
+    {
+      db_make_string (&value, comment);
+      error = dbt_put_internal (obj_tmpl, "comment", &value);
+      pr_clear_value (&value);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
+    }
+
+  /* flush template */
+  instance_obj = dbt_finish_object (obj_tmpl);
+  if (instance_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+    }
+
+end:
+  if (obj_tmpl != NULL && instance_obj == NULL)
+    {
+      dbt_abort_object (obj_tmpl);
+    }
+
+  AU_ENABLE (save);
+
+  return error;
+}
+
+/*
+ * do_drop_synonym () - drop synonym.
+ * return: error code
+ * parser(in): parser context
+ * statement(in): parse tree of a statement
+ */
+int
+do_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  DB_OBJECT *synonym_owner_obj = NULL;
+  char synonym_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  int if_exists = FALSE;
+  int error = NO_ERROR;
+
+  CHECK_MODIFICATION_ERROR ();
+  CHECK_2ARGS_ERROR (parser, statement);
+
+  assert (statement->node_type == PT_DROP_SYNONYM);
+
+  /* syntax is not supported. */
+  assert (PT_SYNONYM_ACCESS_MODIFIER (statement) != PT_PUBLIC);
+
+  /* synonym_name */
+  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_NAME (statement)), synonym_name, DB_MAX_IDENTIFIER_LENGTH);
+
+  /* if_exists */
+  if_exists = PT_SYNONYM_IF_EXISTS (statement);
+
+  error = do_drop_synonym_internal (synonym_name, FALSE, if_exists, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+
+  return error;
+}
+
+/*
+ * do_drop_synonym_internal () - drop synonym.
+ * return: error code
+ * synonym_name(in): synonym name
+ * is_public_synonym(in): access modifiers for synonyms
+ * if_exists(in): if_exists
+ * synonym_class_obj(in): NULL or synonym_class_obj
+ * synonym_obj(in): NULL or synonym_obj
+ */
+static int
+do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists,
+			  DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj)
+{
+  DB_OBJECT *class_obj = NULL;
+  DB_OBJECT *instance_obj = NULL;
+  DB_OBJECT *owner_obj = NULL;
+  DB_IDENTIFIER instance_obj_id = OID_INITIALIZER;
+  DB_VALUE value;
+  int error = NO_ERROR;
+  int save = 0;
+
+  AU_DISABLE (save);
+
+  if (synonym_class_obj != NULL)
+    {
+      class_obj = synonym_class_obj;
+    }
+  else
+    {
+      class_obj = sm_find_class (CT_SYNONYM_NAME);
+      if (class_obj == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto end;
+	}
+    }
+
+  if (synonym_obj != NULL)
+    {
+      instance_obj = synonym_obj;
+    }
+  else
+    {
+      instance_obj = do_get_obj_id (&instance_obj_id, class_obj, synonym_name, "unique_name");
+      if (instance_obj == NULL)
+	{
+	  if (if_exists == TRUE)
+	    {
+	      error = NO_ERROR;
+	      er_clear ();
+	      goto end;
+	    }
+	  else
+	    {
+	      assert (if_exists == FALSE);
+	      ERROR_SET_ERROR_1ARG (error, ER_SYNONYM_NOT_EXIST, synonym_name);
+	      goto end;
+	    }
+	}
+    }
+
+  error = db_drop (instance_obj);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+
+end:
+  AU_ENABLE (save);
+
+  return error;
+}
+
+/*
+ * do_rename_synonym () - rename synonym.
+ * return: error code
+ * parser(in): parser context
+ * statement(in): parse tree of a statement
+ */
+int
+do_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  char old_synonym_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char new_synonym_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  int error = NO_ERROR;
+
+  CHECK_MODIFICATION_ERROR ();
+  CHECK_2ARGS_ERROR (parser, statement);
+
+  assert (statement->node_type == PT_RENAME_SYNONYM);
+
+  /* syntax is not supported. */
+  assert (PT_SYNONYM_ACCESS_MODIFIER (statement) != PT_PUBLIC);
+
+  /* old_synonym_name */
+  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_OLD_NAME (statement)), old_synonym_name,
+			  DB_MAX_IDENTIFIER_LENGTH);
+
+  /* new_synonym_name */
+  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_NEW_NAME (statement)), new_synonym_name,
+			  DB_MAX_IDENTIFIER_LENGTH);
+
+  error = do_rename_synonym_internal (old_synonym_name, new_synonym_name);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+
+  return error;
+}
+
+/*
+ * do_rename_synonym_internal () - rename synonym.
+ * return: error code
+ * old_synonym_name(in): old synonym name
+ * new_synonym_name(in): new synonym name
+ */
+static int
+do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name)
+{
+  DB_OBJECT *class_obj = NULL;
+  DB_OBJECT *instance_obj = NULL;
+  DB_OBJECT *new_instance_obj = NULL;
+  DB_IDENTIFIER instance_obj_id = OID_INITIALIZER;
+  DB_OTMPL *obj_tmpl = NULL;
+  DB_VALUE value;
+  int error = NO_ERROR;
+  int save = 0;
+
+  AU_DISABLE (save);
+
+  class_obj = sm_find_class (CT_SYNONYM_NAME);
+  if (class_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  instance_obj = do_get_obj_id (&instance_obj_id, class_obj, old_synonym_name, "unique_name");
+  if (instance_obj == NULL)
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_SYNONYM_NOT_EXIST, old_synonym_name);
+      goto end;
+    }
+
+  new_instance_obj = do_get_obj_id (&instance_obj_id, class_obj, new_synonym_name, "unique_name");
+  if (new_instance_obj != NULL)
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_SYNONYM_ALREADY_EXIST, new_synonym_name);
+      goto end;
+    }
+  else
+    {
+      /* Check if class exists by name. */
+      if (db_find_class (new_synonym_name) != NULL)
+	{
+	  ERROR_SET_ERROR_1ARG (error, ER_LC_CLASSNAME_EXIST, new_synonym_name);
+	  goto end;
+	}
+    }
+
+  obj_tmpl = dbt_edit_object (instance_obj);
+  if (obj_tmpl == NULL)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  /* unique_name */
+  db_make_string (&value, new_synonym_name);
+  error = dbt_put_internal (obj_tmpl, "unique_name", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  /* name */
+  db_make_string (&value, sm_remove_qualifier_name (new_synonym_name));
+  error = dbt_put_internal (obj_tmpl, "name", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  instance_obj = dbt_finish_object (obj_tmpl);
+  if (instance_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+    }
+
+end:
+  if (obj_tmpl != NULL && instance_obj == NULL)
+    {
+      dbt_abort_object (obj_tmpl);
+    }
+
+  AU_ENABLE (save);
+
+  return error;
+}
+
+/*
  * pt_append_odku_references () - append references to SELECT specs from
  *				  on duplicate key assignments to the SELECT
  *				  list
@@ -18680,6 +19365,91 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
       /* unique_name must not be null. */
       ASSERT_ERROR_AND_SET (error);
       goto end;
+    }
+
+  error = db_query_next_tuple (query_result);
+  if (error != DB_CURSOR_END)
+    {
+      /* No result can be returned because unique_name is not unique. */
+      buf[0] = '\0';
+    }
+
+end:
+  if (query_result)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+
+  return error;
+#undef QUERY_BUF_SIZE
+}
+
+int
+do_find_synonym_by_query (const char *name, char *buf, int buf_size)
+{
+#define QUERY_BUF_SIZE 2048
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE value;
+  const char *query = NULL;
+  char query_buf[QUERY_BUF_SIZE] = { '\0' };
+  int error = NO_ERROR;
+
+  db_make_null (&value);
+  query_error.err_lineno = 0;
+  query_error.err_posno = 0;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
+
+  assert (buf != NULL);
+
+  query = "SELECT [target_unique_name] FROM [%s] WHERE [unique_name] = '%s'";
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_SYNONYM_NAME, name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_SYNONYM_NAME, name);
+
+  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
+  if (error < NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
+    {
+      if (error == DB_CURSOR_END)
+	{
+	  ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_NOT_EXIST, name);
+	}
+      else
+	{
+	  ASSERT_ERROR ();
+	}
+
+      goto end;
+    }
+
+  error = db_query_get_tuple_value (query_result, 0, &value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  if (!DB_IS_NULL (&value))
+    {
+      assert (strlen (db_get_string (&value)) < buf_size);
+      strcpy (buf, db_get_string (&value));
+    }
+  else
+    {
+      /* unique_name must not be null. */
+      assert (false);
     }
 
   error = db_query_next_tuple (query_result);

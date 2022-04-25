@@ -904,7 +904,7 @@ $ LOADDB
 834 to_number() 함수에 주어진 source 문자열 "%1$s"과 format 문자열 "%2$s"이 매칭되지 않습니다.
 835 정의되지 않은 통계 아이템입니다.
 836 페이지(%1$d|%2$d)에 대한 래치 획득 요청이 시간을 초과하였습니다.
-837 데이터베이스 객체(클래스/뷰/트리거/serial/server 등)을 소유한 사용자는 삭제할 수 없습니다.
+837 데이터베이스 객체(클래스/뷰/트리거/serial/server/synonym 등)을 소유한 사용자는 삭제할 수 없습니다.
 838 동시에 %1$d개를 초과하는 인덱스 스캔을 열 수 없습니다.
 839 "%1$s": 알 수 없는 시스템 파라미터 이거나 값이 잘못되었습니다.
 840 시스템 파라미터 "%1$s"를 바꿀 수 없습니다.
@@ -1424,7 +1424,12 @@ $ LOADDB
 1344 DBA, DBA 그룹의 구성원 및 소유자가 CREATE SERIAL을 수행할 수 있습니다.
 1345 DBA, DBA 그룹의 구성원 및 소유자가 CREATE TRIGGER를 수행할 수 있습니다.
 
-1346 마지막 에러
+1346 공개 동의어 "%1$s"이(가) 이미 존재합니다.
+1347 공개 동의어 "%1$s"이(가) 존재하지 않습니다.
+1348 동의어 "%1$s"이(가) 이미 존재합니다.
+1349 동의어 "%1$s"이(가) 존재하지 않습니다.
+
+1350 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1582,7 +1587,11 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 커맨트의 최대 길이는 %1$d 바이트입니다.
 128 JSON_OBJECTAGG 인자의 갯수가 잘못되었습니다.
 129 PARALLEL 인자 값은 %1$d에서 %2$d까지 허용됩니다.
-130 dblink - 서버명은 점(.)을 포함할 수 없습니다.
+130 dblink - Server name cannot contain periods.
+131 잘못된 형식의 alter synonym 구문입니다.\n  ALTER [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+132 잘못된 형식의 create synonym 구문입니다.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+133 잘못된 형식의 drop synonym 구문입니다.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
+134 잘못된 형식의 rename synonym 구문입니다.\n  RENAME [PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -1893,6 +1902,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 306 dblink - 필수 정보가 누락되었습니다.
 307 dblink - %1$s 타입은 지원하지 않습니다.
 308 DBA, DBA 그룹의 구성원 및 소유자가 CREATE TABLE/VIEW를 수행할 수 있습니다.
+309 잘못된 동의어 이름 "%1$s".\n  시스템 클래스/뷰 이름은 동의어 이름이 될 수 없습니다.
+310 DBA, DBA 그룹의 구성원 및 소유자가 %1$s을(를) 수행할 수 있습니다.
+311 공개 동의어 "%1$s"이(가) 이미 존재합니다.
+312 공개 동의어 "%1$s"이(가) 존재하지 않습니다.
+313 동의어 "%1$s"이(가) 이미 존재합니다.
+314 동의어 "%1$s"이(가) 존재하지 않습니다.
+315 이름 바꾸기는 소유자를 변경할 수 없습니다.
+316 이름 바꾸기는 같은 이름으로 변경할 수 없습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
