@@ -687,6 +687,16 @@ main (int argc, char **argv)
 static void
 print_usage (void)
 {
+#if defined (FOR_ODBC_GATEWAY)
+  printf ("gateway_monitor [-b] [-q] [-t] [-s <sec>] [-c] [-u] [-f] [<expr>]\n");
+  printf ("\t<expr> part of gateway name or SERVICE=[ON|OFF]\n");
+  printf ("\t-q display job queue\n");
+  printf ("\t-c display client information\n");
+  printf ("\t-u display unusable database server\n");
+  printf ("\t-b brief mode (show gateway info)\n");
+  printf ("\t-s refresh time in sec\n");
+  printf ("\t-f full info\n");
+#else
   printf ("broker_monitor [-b] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [-f] [<expr>]\n");
   printf ("\t<expr> part of broker name or SERVICE=[ON|OFF]\n");
   printf ("\t-q display job queue\n");
@@ -698,6 +708,7 @@ print_usage (void)
   printf ("\t-P brief mode (show proxy info)\n");
   printf ("\t-s refresh time in sec\n");
   printf ("\t-f full info\n");
+#endif
 }
 
 static int
@@ -744,11 +755,18 @@ get_args (int argc, char *argv[], char *br_vector)
 	case 'f':
 	  full_info_flag = true;
 	  break;
-	case 'm':
-	  monitor_flag |= METADATA_MONITOR_FLAG_MASK;
-	  break;
 	case 'c':
 	  monitor_flag |= CLIENT_MONITOR_FLAG_MASK;
+	  break;
+#if defined (FOR_ODBC_GATEWAY)
+	case 'm':
+	case 'S':
+	case 'P':
+	  print_usage ();
+	  return -1;
+#else
+	case 'm':
+	  monitor_flag |= METADATA_MONITOR_FLAG_MASK;
 	  break;
 	case 'S':
 	  monitor_flag |= SHARDDB_MONITOR_FLAG_MASK;
@@ -756,6 +774,7 @@ get_args (int argc, char *argv[], char *br_vector)
 	case 'P':
 	  monitor_flag |= PROXY_MONITOR_FLAG_MASK;
 	  break;
+#endif
 	case 'u':
 	  monitor_flag |= UNUSABLE_DATABASES_FLAG_MASK;
 	  break;

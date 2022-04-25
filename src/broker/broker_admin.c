@@ -301,7 +301,11 @@ main (int argc, char **argv)
 
       if (argc < 3)
 	{
+#if defined (FOR_ODBC_GATEWAY)
+	  PRINT_AND_LOG_ERR_MSG ("%s acl <reload|status> <gateway-name>\n", argv[0]);
+#else
 	  PRINT_AND_LOG_ERR_MSG ("%s acl <reload|status> <broker-name>\n", argv[0]);
+#endif
 	  return -1;
 	}
 
@@ -320,7 +324,11 @@ main (int argc, char **argv)
 	}
       else
 	{
+#if defined (FOR_ODBC_GATEWAY)
+	  PRINT_AND_LOG_ERR_MSG ("%s acl <reload|status> <gateway-name>\n", argv[0]);
+#else
 	  PRINT_AND_LOG_ERR_MSG ("%s acl <reload|status> <broker-name>\n", argv[0]);
+#endif
 	  return -1;
 	}
       if (err_code < 0)
