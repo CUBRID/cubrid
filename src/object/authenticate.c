@@ -1192,7 +1192,8 @@ au_find_user (const char *user_name)
      * When au_login_method () is called, Au_user_name is not changed.
      */
     const char *current_schema_name = sc_current_schema_name ();
-    if (current_schema_name && intl_identifier_casecmp (current_schema_name, user_name) == 0)
+    if (current_schema_name && current_schema_name[0] != '\0'
+	&& intl_identifier_casecmp (current_schema_name, user_name) == 0)
       {
 	return Au_user;
       }
@@ -6308,7 +6309,7 @@ au_user_name (void)
        * When au_login_method () is called, Au_user_name is not changed.
        */
       const char *current_schema_name = sc_current_schema_name ();
-      if (current_schema_name)
+      if (current_schema_name && current_schema_name[0] != '\0')
 	{
 	  return ws_copy_string (current_schema_name);
 	}
@@ -7460,7 +7461,7 @@ au_get_user_name (MOP obj)
   if (ws_is_same_object (Au_user, obj))
     {
       const char *current_schema_name = sc_current_schema_name ();
-      if (current_schema_name)
+      if (current_schema_name && current_schema_name[0] != '\0')
 	{
 	  return ws_copy_string (current_schema_name);
 	}
