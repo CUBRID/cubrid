@@ -274,10 +274,11 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     stop\n\
     restart\n\
     info\n\
-    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-c] [-u] [<expr>]\n\
     on          <ゲートウェイ名>\n\
     off         <ゲートウェイ名>\n\
     reset       <ゲートウェイ名>\n\
+    acl         <status|reload> [ゲートウェイ名]\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: -tオプションは独立実行モードでは無視されます。\n
@@ -1275,9 +1276,11 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 トランザクションIDは%1$d秒で入力する必要があります。タイムアウトは、「cubrid.conf」の「flashback_timeout」設定で調整できます。\n
 13 フラッシュバックはすでに実行されています。フラッシュバックは2つのプロセスで実行できません。\n
 14 フラッシュバックをスタンドアロンモードとして実行することはできません。\n
+15 owner_nameの長さは%1$d未満である必要があり、class_nameの長さは%2$dバイト未満である必要があります。\n
+16 owner_name.class_name（'%1$s'）の形式が無効です。\ n
 60 \
 flashback：特定のトランザクションをフラッシュバックするステートメントを提供します。\n\
-使用法：%1$s flashback [オプション] データベース名class_name1[class_name2...] \n\
+使用法：%1$s flashback [オプション] データベース名owner_name.class_name1[owner_name.class_name2...] \n\
 \n\
 有効なオプション：\n\
     -o、--output-file=FILE        出力メッセージをFILEにリダイレクトします。デフォルト：なし。\n\

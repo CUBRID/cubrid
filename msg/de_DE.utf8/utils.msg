@@ -274,11 +274,12 @@ Available command:\n\
     stop\n\
     restart\n\
     info\n\
-    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-c] [-u] [<expr>]\n\
     on          gateway-name\n\
     off         gateway-name\n\
     reset       gateway-name\n\
-	
+    acl         <status|reload> [gateway-name]\n\
+
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNUNG: -t Option wird in Stand-Alone-Ausführung ignoriert.\n
 31 FEHLER: Destination-Pfad existiert nicht oder ist kein Verzeichnis.\n
@@ -1273,9 +1274,11 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 Transaktions-ID sollte in %1$d Sekunden eingegeben werden. Das Timeout kann über die Einstellung „flashback_timeout“ in „cubrid.conf“ angepasst werden.\n
 13 Flashback läuft bereits. Flashback kann nicht von zwei Prozessen ausgeführt werden.\n
 14 Flashback kann nicht im eigenständigen Modus ausgeführt werden.\n
+15 Die Länge von owner_name muss kleiner als %1$d sein und die Länge von class_name muss kleiner als %2$d Bytes sein.\n
+16 Ungültiges Format für Besitzername.Klassenname ('%1$s').\n
 60 \
 flashback: Stellt Anweisungen zum Flashback einer bestimmten Transaktion bereit.\n\
-Verwendung: %1$s flashback [OPTION] Datenbankname Klassenname1 [Klassenname2 ...]\n\
+Verwendung: %1$s flashback [OPTION] Datenbankname Besitzername.Klassenname1 [Besitzername.Klassenname2 ...]\n\
 \n\
 gültige Optionen:\n\
     -o, --output-file=DATEI             Ausgabenachricht an DATEI umleiten; Standard: keine.\n\
