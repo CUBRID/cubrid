@@ -1274,9 +1274,11 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 El ID de transacción debe ingresarse en %1$d segundos. El tiempo de espera se puede ajustar a través de la configuración de 'flashback_timeout' en 'cubrid.conf'.\n
 13 Flashback ya se está ejecutando. Dos procesos no pueden ejecutar Flashback.\n
 14 Flashback no se puede ejecutar como modo independiente.\n
+15 La longitud de nombre_propietario debe ser inferior a %1$d y la longitud de nombre_clase debe ser inferior a %2$d bytes.\n
+16 Formato no válido para nombre_propietario.nombre_clase ('%1$s').\n
 60 \
 flashback: proporciona declaraciones para retroceder una transacción específica.\n\
-uso: %1$s flashback [OPCIÓN] database-name class_name1 [class_name2 ...]\n\
+uso: %1$s flashback [OPCIÓN] database-name owner_name.class_name1 [owner_name.class_name2 ...]\n\
 \n\
 opciones válidas:\n\
     -o, --output-file=ARCHIVO     redirige el mensaje de salida a ARCHIVO; predeterminado: ninguno.\n\

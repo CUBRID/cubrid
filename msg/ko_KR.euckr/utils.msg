@@ -1262,9 +1262,11 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 트랜잭션 ID는 %1$d초 안에 입력해야 합니다. 'cubrid.conf'의 'flashback_timeout' 설정을 통해 시간 값을 조정할 수 있습니다. \n
 13 플래시백이 이미 실행 중입니다. 플래시백은 두 개 이상의 프로세스에서 실행할 수 없습니다.\n
 14 플래시백은 독립 모드에서 실행할 수 없습니다.\n
+15 owner_name의 길이는 %1$d 미만이어야 하고 class_name의 길이는 %2$d 바이트 미만이어야 합니다.\n
+16 테이블 이름('%1$s')을 owner_name.class_name 형식으로 입력하십시오.\n
 60 \
 flashback: 특정 트랜잭션을 플래시백하는 명령문을 제공합니다.\n\
-사용법: %1$s flashback [OPTION] 데이터베이스 이름 class_name1 [class_name2 ...]\n\
+사용법: %1$s flashback [OPTION] 데이터베이스 이름 owner_name.class_name1 [owner_name.class_name2 ...]\n\
 \n\
 유효한 옵션:\n\
     -o, --output-file=FILE      출력 메시지를 FILE로 리디렉션합니다. 기본값: 없음.\n\
