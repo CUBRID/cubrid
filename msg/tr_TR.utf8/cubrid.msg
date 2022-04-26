@@ -1429,7 +1429,9 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1348 Synonym "%1$s" already exists.
 1349 Synonym "%1$s" does not exist.
 
-1350 Son Hata
+1350 The maximum length of the function expression string must be %1$d.
+
+1351 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

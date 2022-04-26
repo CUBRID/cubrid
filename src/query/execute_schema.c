@@ -83,6 +83,7 @@
 
 #define QUERY_MAX_SIZE	1024 * 1024
 #define MAX_FILTER_PREDICATE_STRING_LENGTH 255
+#define MAX_FUNCTION_EXPRESSION_STRING_LENGTH 1024
 
 typedef enum
 {
@@ -14332,6 +14333,7 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * no
   char *expr_str = NULL;
   TP_DOMAIN *d = NULL;
   unsigned int save_custom;
+  int error = NO_ERROR;
 
   if (node->node_type == PT_SORT_SPEC)
     {
@@ -14374,6 +14376,14 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * no
   expr_str = parser_print_tree_with_quotes (parser, expr);
   parser->custom_print = save_custom;
   assert (expr_str != NULL);
+
+  if (expr_str && (strlen (expr_str) >= MAX_FUNCTION_EXPRESSION_STRING_LENGTH))
+    {
+      error = ER_SM_INVALID_FILTER_PREDICATE_LENGTH;
+      PT_ERRORmf ((PARSER_CONTEXT *) parser, node, MSGCAT_SET_ERROR, -(ER_SM_INVALID_FUNCTION_EXPRESSION_LENGTH),
+		  MAX_FUNCTION_EXPRESSION_STRING_LENGTH);
+      goto error_exit;
+    }
 
   func_index_info->expr_str = strdup (expr_str);
   if (func_index_info->expr_str == NULL)

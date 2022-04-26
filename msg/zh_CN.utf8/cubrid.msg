@@ -1430,7 +1430,9 @@ $ LOADDB
 1348 Synonym "%1$s" already exists.
 1349 Synonym "%1$s" does not exist.
 
-1350 最后一个错误.
+1350 The maximum length of the function expression string must be %1$d.
+
+1351 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):

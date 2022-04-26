@@ -1723,7 +1723,9 @@
 #define ER_SYNONYM_ALREADY_EXIST                    -1348
 #define ER_SYNONYM_NOT_EXIST                        -1349
 
-#define ER_LAST_ERROR                               -1350
+#define ER_SM_INVALID_FUNCTION_EXPRESSION_LENGTH    -1350
+
+#define ER_LAST_ERROR                               -1351
 
 /*
  * CAUTION!
