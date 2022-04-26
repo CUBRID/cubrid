@@ -177,6 +177,7 @@ const char *AU_DBA_USER_NAME = "DBA";
          strcmp(name, CT_AUTHORIZATIONS_NAME) == 0 || \
 	 strcmp(name, CT_CHARSET_NAME) == 0 || \
          strcmp(name, CT_DB_SERVER_NAME) == 0 || \
+	 strcmp(name, CT_SYNONYM_NAME) == 0 || \
 	 strcmp(name, CT_DUAL_NAME) == 0)
 
 enum fetch_by
@@ -3433,12 +3434,12 @@ au_drop_user (MOP user)
   DB_SET *new_groups, *direct_groups;
   int g, gcard, i;
   DB_VALUE name;
-  const char *class_name[] = {
+  static const char *class_name[] = {
     /*
      * drop user command can be called only by DBA group,
      * so we can use query for _db_class directly
      */
-    "_db_class", "db_trigger", "db_serial", "_db_server", NULL
+    "_db_class", "db_trigger", "db_serial", "_db_server", "_db_synonym", NULL
   };
   char query_buf[1024];
 
@@ -3467,7 +3468,7 @@ au_drop_user (MOP user)
       goto error;
     }
 
-  /* check if user owns class/vclass/trigger/serial */
+  /* check if user owns class/vclass/trigger/serial/synonym */
   for (i = 0; class_name[i] != NULL; i++)
     {
       sprintf (query_buf, "select count(*) from [%s] where [owner] = ?;", class_name[i]);
@@ -6239,65 +6240,6 @@ au_check_user (void)
     }
 
   return (error);
-}
-
-/*
- * au_current_user_name() - Get the user name currently connected.
- *    return: output buffer pointer or NULL on error
- *    buf(out): output buffer
- *    buf_size(in): output buffer length
- */
-char *
-au_current_user_name (char *buf, int buf_size)
-{
-  DB_VALUE value;
-  const char *user_name = NULL;
-  int save = 0;
-  int error = NO_ERROR;
-
-  if (buf == NULL || buf_size < 0)
-    {
-      ERROR_SET_WARNING (error, ER_AU_INVALID_ARGUMENTS);
-      return NULL;
-    }
-
-  if (Au_user == NULL)
-    {
-      ERROR_SET_WARNING (error, ER_AU_NO_USER_LOGGED_IN);
-      return NULL;
-    }
-
-  AU_DISABLE (save);
-
-  error = obj_get (Au_user, "name", &value);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return NULL;
-    }
-
-  AU_ENABLE (save);
-
-  if (DB_IS_NULL (&value))
-    {
-      return NULL;
-    }
-
-  if (!DB_IS_STRING (&value))
-    {
-      ERROR_SET_ERROR (error, ER_AU_CORRUPTED);
-      pr_clear_value (&value);
-      return NULL;
-    }
-
-  user_name = db_get_string (&value);
-
-  assert (strlen (user_name) < buf_size);
-  strcpy (buf, user_name);
-
-  pr_clear_value (&value);
-
-  return buf;
 }
 
 /*
@@ -9282,10 +9224,12 @@ au_check_serial_authorization (MOP serial_object)
   int ret_val;
 
   ret_val = db_get (serial_object, "owner", &creator_val);
-  if (ret_val != NO_ERROR || DB_IS_NULL (&creator_val))
+  if (ret_val != NO_ERROR)
     {
       return ret_val;
     }
+
+  assert (!DB_IS_NULL (&creator_val));
 
   ret_val = au_check_owner (&creator_val);
   if (ret_val != NO_ERROR)

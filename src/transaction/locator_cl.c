@@ -201,6 +201,19 @@ locator_set_sig_interrupt (int set)
 }
 
 /*
+ * locator_get_sig_interrupt () -
+ *
+ * return: lc_Is_siginterrupt
+ *
+ * Note:
+ */
+int
+locator_get_sig_interrupt ()
+{
+  return lc_Is_siginterrupt;
+}
+
+/*
  * locator_is_root () - Is mop the root mop?
  *
  * return:
@@ -3141,33 +3154,7 @@ locator_find_class_by_name (const char *classname, LOCK lock, MOP * class_mop)
 MOP
 locator_find_class (const char *classname)
 {
-  MOP class_mop = NULL;
-  LOCK lock = SCH_S_LOCK;	/* This is done to avoid some deadlocks caused by our parsing */
-  LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
-
-  found = locator_find_class_by_name (classname, lock, &class_mop);
-  if (found == LC_CLASSNAME_EXIST)
-    {
-      return class_mop;
-    }
-
-  /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
-    {
-      char other_class_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-
-      do_find_class_by_query (classname, other_class_name, DB_MAX_IDENTIFIER_LENGTH);
-      if (other_class_name[0] != '\0')
-	{
-	  found = locator_find_class_by_name (other_class_name, lock, &class_mop);
-	  if (found == LC_CLASSNAME_EXIST)
-	    {
-	      return class_mop;
-	    }
-	}
-    }
-
-  return NULL;
+  return locator_find_class_with_purpose (classname, false);
 }
 
 /*

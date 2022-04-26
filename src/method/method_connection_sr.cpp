@@ -61,9 +61,16 @@ namespace cubmethod
     cubmem::block buffer (0, nullptr);
 
     int error = xs_receive_data_from_client (thread_p, &buffer.ptr, (int *) &buffer.dim);
-    if (error == NO_ERROR)
+    if (error == NO_ERROR && er_errid () == NO_ERROR)
       {
 	error = func (buffer);
+      }
+    else
+      {
+	if (error == NO_ERROR)
+	  {
+	    error = er_errid (); // ER_SP_TOO_MANY_NESTED_CALL, ER_INTERRUPTED... (interrupt reasons)
+	  }
       }
 
     free_and_init (buffer.ptr);
@@ -75,9 +82,16 @@ namespace cubmethod
     cubmem::block buffer (0, nullptr);
 
     int error = xs_receive_data_from_client (thread_p, &buffer.ptr, (int *) &buffer.dim);
-    if (error == NO_ERROR)
+    if (error == NO_ERROR && er_errid () == NO_ERROR)
       {
 	error = func (socket, buffer);
+      }
+    else
+      {
+	if (error == NO_ERROR)
+	  {
+	    error = er_errid (); // ER_SP_TOO_MANY_NESTED_CALL, ER_INTERRUPTED... (interrupt reasons)
+	  }
       }
 
     free_and_init (buffer.ptr);

@@ -4000,6 +4000,81 @@ error_exit:
   return EXIT_FAILURE;
 }
 
+static int
+check_table_name (const char *table_name)
+{
+  int table_name_len = STATIC_CAST (int, strlen (table_name));
+  int sub_len = 0;
+  const char *dot = NULL;
+
+  if (table_name_len >= SM_MAX_IDENTIFIER_LENGTH)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
+			      FLASHBACK_MSG_EXCEED_MAX_CLASSNAME_LENGTH), SM_MAX_USER_LENGTH,
+			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+
+      return ER_FAILED;
+    }
+
+  dot = strchr (table_name, '.');
+  if (dot == NULL)
+    {
+      /* owner name or class name is not specified */
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_CLASSNAME_FORMAT),
+			     table_name);
+
+      return ER_FAILED;
+    }
+
+  /* check length of owner name */
+  sub_len = STATIC_CAST (int, dot - table_name);
+  if (sub_len < 1)
+    {
+      /* owner name is not specified (e.g. '.table') */
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_CLASSNAME_FORMAT),
+			     table_name);
+
+      return ER_FAILED;
+    }
+
+  if (sub_len >= SM_MAX_USER_LENGTH)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
+			      FLASHBACK_MSG_EXCEED_MAX_CLASSNAME_LENGTH), SM_MAX_USER_LENGTH,
+			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+
+      return ER_FAILED;
+    }
+
+  /* check length of class name */
+  sub_len = STATIC_CAST (int, strlen (dot + 1));
+  if (sub_len < 1)
+    {
+      /* class name is not specified (e.g. 'dba.') */
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_CLASSNAME_FORMAT),
+			     table_name);
+
+      return ER_FAILED;
+    }
+
+  if (sub_len >= SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
+			      FLASHBACK_MSG_EXCEED_MAX_CLASSNAME_LENGTH), SM_MAX_USER_LENGTH,
+			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
 static void
 clean_stdin ()
 {
@@ -4138,7 +4213,13 @@ flashback (UTIL_FUNCTION_ARG * arg)
     {
       table_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i + 1);
 
+      if (check_table_name (table_name) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
       strncpy_bufsize (table_name_buf, table_name);
+
       if (da_add (darray, table_name_buf) != NO_ERROR)
 	{
 	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);

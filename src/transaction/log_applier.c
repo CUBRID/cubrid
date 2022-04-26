@@ -5523,6 +5523,11 @@ la_apply_statement_log (LA_ITEM * item)
     case CUBRID_STMT_RENAME_SERVER:
     case CUBRID_STMT_ALTER_SERVER:
 
+    case CUBRID_STMT_ALTER_SYNONYM:
+    case CUBRID_STMT_CREATE_SYNONYM:
+    case CUBRID_STMT_DROP_SYNONYM:
+    case CUBRID_STMT_RENAME_SYNONYM:
+
     case CUBRID_STMT_TRUNCATE:
 
       /* TODO: check it */

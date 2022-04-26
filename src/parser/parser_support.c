@@ -1486,6 +1486,10 @@ pt_is_ddl_statement (const PT_NODE * node)
 	case PT_RENAME_SERVER:
 	case PT_ALTER_SERVER:
 	case PT_TRUNCATE:
+	case PT_ALTER_SYNONYM:
+	case PT_CREATE_SYNONYM:
+	case PT_DROP_SYNONYM:
+	case PT_RENAME_SYNONYM:
 	  return true;
 	default:
 	  break;
@@ -10183,7 +10187,6 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   const char *original_name = NULL;
   const char *resolved_name = NULL;
   char downcase_resolved_name[DB_MAX_USER_LENGTH] = { '\0' };
-  char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
   const char *user_specified_name = NULL;
 
   if (parser == NULL || node == NULL)
@@ -10218,6 +10221,38 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	  original_name = name->info.name.original;
 	  resolved_name = name->info.name.resolved;
 	}
+    }
+  else if (PT_IS_SYNONYM_NODE (node))
+    {
+      if (node->node_type == PT_ALTER_SYNONYM || node->node_type == PT_CREATE_SYNONYM)
+	{
+	  PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)));
+	  if (pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)) == NULL
+	      && sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
+	    {
+	      PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, "dba");
+	    }
+	  else
+	    {
+	      PT_SYNONYM_TARGET_OWNER_NAME (node) =
+		pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)));
+	    }
+	}
+      else if (node->node_type == PT_DROP_SYNONYM)
+	{
+	  PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)));
+	}
+      else
+	{
+	  assert (node->node_type == PT_RENAME_SYNONYM);
+
+	  PT_SYNONYM_OLD_OWNER_NAME (node) =
+	    pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_OLD_NAME (node)));
+	  PT_SYNONYM_NEW_OWNER_NAME (node) =
+	    pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NEW_NAME (node)));
+	}
+
+      return node;
     }
   else
     {
@@ -10266,13 +10301,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 
   if (resolved_name == NULL || resolved_name[0] == '\0')
     {
-      if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
-	{
-	  ASSERT_ERROR ();
-	  return node;
-	}
-
-      resolved_name = current_user_name;
+      resolved_name = sc_current_schema_name ();
     }
   else if (intl_identifier_lower_string_size (resolved_name) >= DB_MAX_USER_LENGTH)
     {
@@ -10328,22 +10357,27 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 const char *
 pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * node)
 {
+  const char *name = NULL;
   char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
 
-  if (node == NULL || !PT_IS_NAME_NODE (node))
-    {
-      PT_ERROR (parser, node, "Invalid arguments.");
-      return NULL;
-    }
-
-  if (node->info.name.original == NULL || node->info.name.original[0] == '\0')
+  if (parser == NULL || node == NULL)
     {
       return NULL;
     }
 
-  if (sm_qualifier_name (node->info.name.original, qualifier_name, DB_MAX_USER_LENGTH) == NULL)
+  if (PT_IS_NAME_NODE (node) == false)
     {
-      return node->info.name.resolved;
+      return NULL;
+    }
+
+  if (PT_NAME_ORIGINAL (node) == NULL || (PT_NAME_ORIGINAL (node))[0] == '\0')
+    {
+      return NULL;
+    }
+
+  if (sm_qualifier_name (PT_NAME_ORIGINAL (node), qualifier_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      return PT_NAME_RESOLVED (node);
     }
 
   return pt_append_string (parser, NULL, qualifier_name);
@@ -10372,7 +10406,7 @@ pt_get_name_without_current_user_name (const char *name)
 {
   char *dot = NULL;
   char name_copy[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
+  const char *current_schema_name = NULL;
   const char *object_name = NULL;
   int error = NO_ERROR;
 
@@ -10396,18 +10430,14 @@ pt_get_name_without_current_user_name (const char *name)
       return name;
     }
 
-  if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
-    {
-      ASSERT_ERROR ();
-      return name;
-    }
+  current_schema_name = sc_current_schema_name ();
 
   dot[0] = '\0';
 
-  if (intl_identifier_casecmp (name_copy, current_user_name) == 0)
+  if (intl_identifier_casecmp (name_copy, current_schema_name) == 0)
     {
       /*
-       * e.g.        name: current_user_name.object_name
+       * e.g.        name: current_schema_name.object_name
        *      object_name: object_name
        */
       object_name = strchr (name, '.') + 1;

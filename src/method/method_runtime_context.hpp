@@ -30,6 +30,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <deque>
+#include <condition_variable>
 
 #include "method_connection_pool.hpp"
 #include "method_def.hpp"
@@ -64,24 +65,39 @@ namespace cubmethod
       void register_returning_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
       void deregister_returning_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
 
-      method_invoke_group *create_invoke_group (cubthread::entry *thread_p, const method_sig_list &siglist);
+      method_invoke_group *create_invoke_group (cubthread::entry *thread_p, const method_sig_list &siglist, bool is_scan);
 
       // Currently these functions are used for debugging purpose.
       // In the recursive call situation, each time the function is called, a new worker from the thread pool is assigned. With this code, you can easily know the current state.
       // In the future, these functions will resolve some cases when it is necessary to set an error for all threads participating in a recursive call e.g. interrupt
       void push_stack (cubthread::entry *thread_p, method_invoke_group *group);
-      void pop_stack (cubthread::entry *thread_p);
+      void pop_stack (cubthread::entry *thread_p, method_invoke_group *claimed);
       method_invoke_group *top_stack ();
+
+      void set_interrupt_by_reason (int reason);
+      bool is_interrupted ();
+      int get_interrupt_reason ();
+      void wait_for_interrupt ();
+      bool is_running ();
 
     private:
       void destroy_all_groups ();
       void destroy_all_cursors ();
+
+      std::mutex m_mutex;
+      std::condition_variable m_cond_var;
 
       std::deque <METHOD_GROUP_ID> m_group_stack; // runtime stack
       std::unordered_set <QUERY_ID> m_returning_cursors;
 
       std::unordered_map <METHOD_GROUP_ID, method_invoke_group *> m_group_map; // method executor storage
       std::unordered_map <QUERY_ID, query_cursor *> m_cursor_map; // server-side cursor storage
+
+      std::deque <METHOD_GROUP_ID> m_deferred_free_stack;
+
+      bool m_is_interrupted;
+      int m_interrupt_reason;
+      bool m_is_running;
   };
 
   /* global interface */

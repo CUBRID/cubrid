@@ -274,10 +274,11 @@ cubrid 管理工具，版本 %1$s\n\
     stop\n\
     restart\n\
     info\n\
-    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-c] [-u] [<expr>]\n\
     on          gateway-name\n\
     off         gateway-name\n\
     reset       gateway-name\n\
+    acl         <status|reload> [gateway-name]\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: 在单机模式下 -t 选项将被忽略.\n
@@ -1262,9 +1263,11 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 事务 ID 应在 %1$d 秒内输入。可以通过“cubrid.conf”中的“flashback_timeout”设置来调整超时。\n
 13 闪回已在运行。闪回不能由两个进程运行。\n
 14 闪回不能作为独立模式运行。\n
+15 owner_name 的长度要求小于 %1$d，class_name 的长度要求小于 %2$d 个字节。\n
+16 owner_name.class_name ('%1$s') 的格式无效。\n
 60 \
 flashback：提供用于闪回特定事务的语句。\n\
-用法：%1$s flashback [OPTION] 数据库名称 class_name1 [class_name2 ...]\n\
+用法：%1$s flashback [OPTION] 数据库名称 owner_name.class_name1 [owner_name.class_name2 ...]\n\
 \n\
 有效选项：\n\
     -o, --output-file=FILE      将输出消息重定向到 FILE；默认值：无。\n\

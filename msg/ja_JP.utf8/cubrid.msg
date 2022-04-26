@@ -904,7 +904,7 @@ $ LOADDB
 834 to_number()ファンクションに使ったストリング「%1$s」とフォマットストリング「%2$s」マッチングしません。
 835 定義されていない通計アイテムです。
 836 ページ(%1$d|%2$d)に対するラッチ獲得リクエストがタイムアウトされました。
-837 データベースオブジェクト(クラス/ビュー/トリガー/シリアル/サーバーなど)を持っているユーザーは削除できません。
+837 データベースオブジェクト（クラス/ビュー/トリガー/シリアル/サーバー/同義語など）を持つユーザーは削除できません。
 838 同時に%1$d個を超えるインデックススキャンが開けません。
 839 「%1$s」: わからないシステムパラメーター、または正しくないバリューです。
 840 システムパラメーター「%1$s」が変えられません。
@@ -1424,7 +1424,12 @@ $ LOADDB
 1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
 1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
 
-1346 ラストエラー
+1346 Public synonym "%1$s" already exists.
+1347 Public synonym "%1$s" does not exist.
+1348 Synonym "%1$s" already exists.
+1349 Synonym "%1$s" does not exist.
+
+1350 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
@@ -1583,6 +1588,10 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 128 Invalid number of arguments for JSON_OBJECTAGG
 129 PARALLEL count argument must be between %1$d and %2$d.
 130 dblink - Server name cannot contain periods.
+131 Invalid alter synonym.\n  ALTER [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+132 Invalid create synonym.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+133 Invalid drop synonym.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
+134 Invalid rename synonym.\n  RENAME [PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 メモリーが足りません。
@@ -1893,6 +1902,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 306 dblink - Required information is missing.
 307 dblink - not supported type %1$s.
 308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
+309 Invalid synonym name "%1$s".\n  The system class/vclass name cannot be a synonym name.
+310 DBA, members of DBA group, and owner can perform %1$s.
+311 Public synonym "%1$s" already exists.
+312 Public synonym "%1$s" does not exist.
+313 Synonym "%1$s" already exists.
+314 Synonym "%1$s" does not exist.
+315 Rename cannot change owner.
+316 Rename cannot be changed to the same name.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %1$dバイトがアロケーションできません。

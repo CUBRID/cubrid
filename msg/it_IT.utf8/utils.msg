@@ -274,10 +274,11 @@ Available command:\n\
     stop\n\
     restart\n\
     info\n\
-    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-c] [-u] [<expr>]\n\
     on          gateway-name\n\
     off         gateway-name\n\
     reset       gateway-name\n\
+    acl         <status|reload> [gateway-name]\n\
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 ATTENZIONE: opzione -t viene ignorata in modalità di esecuzione stand-alone.\n
@@ -1272,9 +1273,11 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 L'ID transazione deve essere inserito tra %1$d secondi. Il timeout può essere regolato tramite l'impostazione 'flashback_timeout' in 'cubrid.conf'.\n
 13 Flashback è già in esecuzione. Flashback non può essere eseguito da due processi.\n
 14 Flashback non può essere eseguito in modalità standalone.\n
+15 La lunghezza di nome_proprietario deve essere inferiore a %1$d e la lunghezza di nome_classe deve essere inferiore a %2$d byte.\n
+16 Formato non valido per nome_proprietario.nome_classe ('%1$s').\n
 60 \
 flashback: fornisce istruzioni per eseguire il flashback di una transazione specifica.\n\
-utilizzo: %1$s flashback [OPZIONE] nome-database nome_classe1 [nome_classe2 ...]\n\
+utilizzo: %1$s flashback [OPZIONE] nome-database nome_proprietario.nome_classe1 [nome_proprietario.nome_classe2 ...]\n\
 \n\
 opzioni valide:\n\
     -o, --output-file=FILE       reindirizza il messaggio di output a FILE; predefinito: nessuno.\n\

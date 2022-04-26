@@ -38,6 +38,8 @@
 #include "tz_support.h"
 #include <cas_cci.h>
 
+#define MAX_LEN_CONNECTION_URL    512
+
 // *INDENT-OFF*
 #define  DATETIME_DECODE(date, dt, m, d, y, hour, min, sec, msec) \
   do \
@@ -498,12 +500,21 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 {
   int ret;
   T_CCI_ERROR err_buf;
-  char *conn_url = spec->s.dblink_node.conn_url;
+  char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
   char *user_name = spec->s.dblink_node.conn_user;
   char *password = spec->s.dblink_node.conn_password;
   char *sql_text = spec->s.dblink_node.conn_sql;
 
-  cci_set_client_type (CLIENT_TYPE_GATEWAY);
+  char *find = strstr (spec->s.dblink_node.conn_url, ":?");
+  if (find)
+    {
+      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", spec->s.dblink_node.conn_url, "&__gateway=true");
+    }
+  else
+    {
+      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", spec->s.dblink_node.conn_url, "?__gateway=true");
+    }
+
   scan_info->conn_handle = cci_connect_with_url_ex (conn_url, user_name, password, &err_buf);
   if (scan_info->conn_handle < 0)
     {
