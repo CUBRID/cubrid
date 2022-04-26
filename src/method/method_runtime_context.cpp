@@ -123,6 +123,10 @@ namespace cubmethod
 	m_is_interrupted = false;
 	m_interrupt_reason = NO_ERROR;
 	m_is_running = false;
+
+	// notify m_group_stack becomes empty ();
+	ulock.unlock ();
+	m_cond_var.notify_all ();
       }
   }
 
