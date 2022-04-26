@@ -320,7 +320,8 @@ extern int classobj_drop_foreign_key_ref (DB_SEQ ** properties, const BTID * bti
 /* currently this is a private function to be called only by AU_SET_USER */
 extern int sc_set_current_schema (MOP user);
 extern const char *sc_current_schema_name (void);
-/* Obtain (pointer to) current schema name.                            */
+extern MOP sc_current_schema_owner (void);
+/* Obtain (pointer to) current schema name. */
 
 extern int sm_has_non_null_attribute (SM_ATTRIBUTE ** attrs);
 extern void sm_free_function_index_info (SM_FUNCTION_INFO * func_index_info);

@@ -593,6 +593,18 @@ sc_current_schema_name (void)
 }
 
 /*
+ * sc_current_schema_owner() - Returns current schema owner
+ *      return: current schema owner object
+ *
+ */
+MOP
+sc_current_schema_owner (void)
+{
+  return Current_Schema.owner;
+}
+
+
+/*
  * sm_add_static_method() - Adds an element to the static link table.
  *    The name argument and the name of the function pointed to
  *    are usually the same but this is not mandatory.
@@ -5418,7 +5430,12 @@ sm_find_synonym (const char *name)
   int error = NO_ERROR;
   int save = 0;
 
-  synonym_class_obj = sm_find_class (CT_SYNONYM_NAME);
+  if (sm_check_system_class_by_name (name))
+    {
+      return NULL;
+    }
+
+  synonym_class_obj = locator_find_class_with_purpose (CT_SYNONYM_NAME, false);
   if (synonym_class_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
