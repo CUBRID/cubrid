@@ -5435,7 +5435,7 @@ sm_find_synonym (const char *name)
       return NULL;
     }
 
-  synonym_class_obj = sm_find_class (CT_SYNONYM_NAME);
+  synonym_class_obj = locator_find_class_with_purpose (CT_SYNONYM_NAME, false);
   if (synonym_class_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
