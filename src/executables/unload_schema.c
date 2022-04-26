@@ -122,6 +122,19 @@ typedef enum
   SERIAL_VALUE_INDEX_MAX
 } SERIAL_VALUE_INDEX;
 
+typedef enum
+{
+  SYNONYM_NAME,
+  SYNONYM_OWNER,
+  SYNONYM_OWNER_NAME,
+  SYNONYM_IS_PUBLIC,
+  SYNONYM_TARGET_NAME,
+  SYNONYM_TARGET_OWNER_NAME,
+  SYNONYM_COMMENT,
+
+  SYNONYM_VALUE_INDEX_MAX
+} SYNONYM_VALUE_INDEX;
+
 static void filter_system_classes (DB_OBJLIST ** class_list);
 static void filter_unrequired_classes (DB_OBJLIST ** class_list);
 static int is_dependent_class (DB_OBJECT * class_, DB_OBJLIST * unordered, DB_OBJLIST * ordered);
@@ -816,6 +829,148 @@ err:
 }
 
 /*
+ * export_synonym - export _db_synonym
+ *    return: NO_ERROR if successful, error code otherwise
+ *    output_ctx(in/out): output context
+ */
+static int
+export_synonym (print_output & output_ctx)
+{
+  DB_QUERY_RESULT *query_result;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE values[SYNONYM_VALUE_INDEX_MAX];
+  const char *synonym_name = NULL;
+  DB_OBJECT *synonym_owner = NULL;
+  const char *synonym_owner_name = NULL;
+  int is_public = 0;
+  const char *target_name = NULL;
+  const char *target_owner_name = NULL;
+  const char *comment = NULL;
+  bool is_dba_group_member = false;
+  int i = 0;
+  int error = NO_ERROR;
+
+  const char *query =
+    "SELECT [name], [owner], [owner].[name], [is_public], [target_name], [target_owner].[name], [comment] FROM [_db_synonym]";
+
+  query_error.err_lineno = 0;
+  query_error.err_posno = 0;
+
+  error = db_compile_and_execute_local (query, &query_result, &query_error);
+  if (error < 0)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  is_dba_group_member = au_is_dba_group_member (Au_user);
+
+  while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+    {
+      for (i = 0; i < SYNONYM_VALUE_INDEX_MAX; i++)
+	{
+	  error = db_query_get_tuple_value (query_result, i, &values[i]);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto end;
+	    }
+
+	  /* Validation of the result value */
+	  switch (i)
+	    {
+	    case SYNONYM_NAME:
+	    case SYNONYM_OWNER_NAME:
+	    case SYNONYM_TARGET_NAME:
+	    case SYNONYM_TARGET_OWNER_NAME:
+	      {
+		if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		  {
+		    ERROR_SET_ERROR (error, ER_SYNONYM_INVALID_VALUE);
+		    goto end;
+		  }
+	      }
+	      break;
+
+	    case SYNONYM_OWNER:
+	      {
+		if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_OBJECT)
+		  {
+		    ERROR_SET_ERROR (error, ER_SYNONYM_INVALID_VALUE);
+		    goto end;
+		  }
+	      }
+	      break;
+
+	    case SYNONYM_IS_PUBLIC:
+	      {
+		if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_INTEGER)
+		  {
+		    ERROR_SET_ERROR (error, ER_SYNONYM_INVALID_VALUE);
+		    goto end;
+		  }
+	      }
+	      break;
+
+	    case SYNONYM_COMMENT:
+	      {
+		if (DB_IS_NULL (&values[i]) == false && DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		  {
+		    ERROR_SET_ERROR (error, ER_SYNONYM_INVALID_VALUE);
+		    goto end;
+		  }
+	      }
+	      break;
+
+	    default:
+	      ERROR_SET_ERROR (error, ER_SYNONYM_INVALID_VALUE);
+	      goto end;
+	    }
+	}
+
+      synonym_name = db_get_string (&values[SYNONYM_NAME]);
+      synonym_owner = db_get_object (&values[SYNONYM_OWNER]);
+      synonym_owner_name = db_get_string (&values[SYNONYM_OWNER_NAME]);
+      is_public = db_get_int (&values[SYNONYM_IS_PUBLIC]);
+      target_name = db_get_string (&values[SYNONYM_TARGET_NAME]);
+      target_owner_name = db_get_string (&values[SYNONYM_TARGET_OWNER_NAME]);
+
+      if (!is_dba_group_member && !ws_is_same_object (Au_user, synonym_owner))
+	{
+	  continue;
+	}
+
+      if (is_public == 1)
+	{
+	  output_ctx ("create public");
+	}
+      else
+	{
+	  output_ctx ("create private");
+	}
+      output_ctx (" synonym %s%s%s.%s%s%s for %s%s%s.%s%s%s", PRINT_IDENTIFIER (synonym_owner_name),
+		  PRINT_IDENTIFIER (synonym_name), PRINT_IDENTIFIER (target_owner_name),
+		  PRINT_IDENTIFIER (target_name));
+      if (DB_IS_NULL (&values[SYNONYM_COMMENT]) == false)
+	{
+	  output_ctx (" comment ");
+	  desc_value_print (output_ctx, &values[SYNONYM_COMMENT]);
+	}
+      output_ctx (";\n");
+
+      for (i = 0; i < SYNONYM_VALUE_INDEX_MAX; i++)
+	{
+	  db_value_clear (&values[i]);
+	}
+    }
+
+end:
+  db_query_end (query_result);
+
+  return error;
+}
+
+/*
  * extract_classes_to_file - exports schema to file
  *    return: 0 if successful, error count otherwise
  *    ctxt(in/out): extract context
@@ -899,6 +1054,15 @@ extract_classes (extract_context & ctxt, print_output & schema_output_ctx)
       if (db_error_code () == ER_INVALID_SERIAL_VALUE)
 	{
 	  fprintf (stderr, " Check the value of db_serial object.\n");
+	}
+    }
+
+  if (!required_class_only && export_synonym (schema_output_ctx) < 0)
+    {
+      fprintf (stderr, "%s", db_error_string (3));
+      if (db_error_code () == ER_SYNONYM_INVALID_VALUE)
+	{
+	  fprintf (stderr, " Check the value of _db_synonym object.\n");
 	}
     }
 
