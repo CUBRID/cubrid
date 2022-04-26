@@ -992,6 +992,7 @@ statdump: 转储全局统计信息.\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 输入 DBA 密码:
 22 服务没有被设置为HA模式.\n
+57 由于 -L 选项的路径无效或 db_ha_apply_info 目录表中没有相关信息，无法生成应用信息.\n
 58 HA 特性在这个平台上不被支持..\n
 59 applylogdb 无法以单机模式运行.\n
 60 \

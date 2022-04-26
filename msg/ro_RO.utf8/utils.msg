@@ -1010,6 +1010,7 @@ opţiuni valide:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Introduceţi parola de administrator (DBA):
 22 Serverul nu a fost configurat pentru HA.\n
+57 Nu se pot genera informațiile aplicate din cauza unei căi nevalide a opțiunii -L sau a lipsei informațiilor asociate din tabelul de catalog db_ha_apply_info.\n
 58 Funcţionalitatea HA nu este suportată pe această platformă.\n
 59 applyinfo nu poate fi executat în modul independent.\n
 60 \
