@@ -7644,16 +7644,16 @@ la_need_filter_out (LA_ITEM * item)
 
   if (filter->type == REPL_FILTER_NONE
       || (item->log_type == LOG_REPLICATION_STATEMENT && item->item_type != CUBRID_STMT_TRUNCATE)
-      || strcasecmp (item->class_name, CT_SERIAL_NAME) == 0)
+      || strcasecmp (class_name, CT_SERIAL_NAME) == 0)
     {
       return false;
     }
 
-  assert (item != NULL && item->class_name != NULL);
+  assert (item != NULL && class_name != NULL);
 
   for (i = 0; i < filter->num_filters; i++)
     {
-      if (strcasecmp (filter->list[i], item->class_name) == 0)
+      if (strcasecmp (filter->list[i], class_name) == 0)
 	{
 	  filter_found = true;
 	  break;
