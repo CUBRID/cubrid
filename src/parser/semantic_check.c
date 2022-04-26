@@ -1332,24 +1332,11 @@ pt_check_user_exists (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
 
   assert (parser != NULL);
 
-  if (!cls_ref || cls_ref->node_type != PT_NAME || (user_name = cls_ref->info.name.resolved) == NULL
-      || user_name[0] == '\0')
-    {
-      return NULL;
-    }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-  /*
-   * When this code is executed, the answer from the existing test case may be different.
-   * Previously, the problem only occurred when resolved names were used.
-   * User-specified names cause problems because they always have resolved names.
-   */
   user_name = pt_get_qualifier_name (parser, cls_ref);
   if (user_name == NULL || user_name[0] == '\0')
     {
       return NULL;
     }
-#endif
 
   result = db_find_user (user_name);
   if (!result)
