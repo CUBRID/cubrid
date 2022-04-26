@@ -848,13 +848,24 @@ export_synonym (print_output & output_ctx)
   const char *comment = NULL;
   bool is_dba_group_member = false;
   int i = 0;
+  int save = 0;
   int error = NO_ERROR;
 
-  const char *query =
-    "SELECT [name], [owner], [owner].[name], [is_public], [target_name], [target_owner].[name], [comment] FROM [_db_synonym]";
+  // *INDENT-OFF*
+  const char *query = "SELECT [name], "
+			     "[owner], "
+			     "[owner].[name], "
+			     "[is_public], "
+			     "[target_name], "
+			     "[target_owner].[name], "
+			     "[comment] "
+			"FROM [_db_synonym]";
+  // *INDENT-ON*
 
   query_error.err_lineno = 0;
   query_error.err_posno = 0;
+
+  AU_DISABLE (save);
 
   error = db_compile_and_execute_local (query, &query_result, &query_error);
   if (error < 0)
@@ -967,6 +978,8 @@ export_synonym (print_output & output_ctx)
 end:
   db_query_end (query_result);
 
+  AU_ENABLE (save);
+
   return error;
 }
 
@@ -1057,6 +1070,11 @@ extract_classes (extract_context & ctxt, print_output & schema_output_ctx)
 	}
     }
 
+  /*
+   * If there is a view using synonym, the synonym must be created first.
+   * Since a synonym is like an alias, it can be created even if the target does not exist.
+   * So, unload the synonym before class/vclass.
+   */
   if (!required_class_only && export_synonym (schema_output_ctx) < 0)
     {
       fprintf (stderr, "%s", db_error_string (3));
