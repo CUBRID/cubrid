@@ -12458,7 +12458,7 @@ cdc_check_if_schema_changed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
   reprid = or_rep_id (recdes);
   latest_reprid = attr_info->last_classrepr->id;
 
-  if (reprid != last_reprid)
+  if (reprid != latest_reprid)
     {
       /* schema has been changed */
       return true;
