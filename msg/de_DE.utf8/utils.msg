@@ -993,6 +993,7 @@ gültige Optionen:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBA-Passwort eingeben:
 22 Der Server wurde für HA nicht konfiguriert.\n
+57 Die angewendeten Informationen können aufgrund eines ungültigen Pfads der Option -L oder aufgrund fehlender zugehöriger Informationen in der Katalogtabelle db_ha_apply_info nicht generiert werden.\n
 58 HA-Funktion wird auf dieser Plattform nicht unterstützt.\n
 59 applyinfo kann nicht in Stand-Alone-Modus ausgeführt werden.\n
 60 \

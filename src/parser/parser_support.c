@@ -6457,6 +6457,7 @@ pt_make_query_show_table (PARSER_CONTEXT * parser, bool is_full_syntax, int like
       /* add IF to SELECT list, list should not be empty at this point */
       assert (sub_query->info.query.q.select.list != NULL);
 
+      pt_add_name_col_to_sel_list (parser, sub_query, "C.owner_name", "Owner");
       sub_query->info.query.q.select.list = parser_append_node (if_node, sub_query->info.query.q.select.list);
     }
 

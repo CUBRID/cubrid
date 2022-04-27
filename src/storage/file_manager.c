@@ -9293,7 +9293,7 @@ file_tempcache_put (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
   /* lock temporary cache */
   file_tempcache_lock ();
 
-  if (file_Tempcache->ncached_not_numerable + file_Tempcache->ncached_numerable <= file_Tempcache->ncached_max)
+  if (file_Tempcache->ncached_not_numerable + file_Tempcache->ncached_numerable < file_Tempcache->ncached_max)
     {
       /* cache not full */
       assert ((file_Tempcache->cached_not_numerable == NULL) == (file_Tempcache->ncached_not_numerable == 0));
