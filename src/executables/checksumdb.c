@@ -207,10 +207,20 @@ chksum_report_schema_diff (FILE * fp)
   CHKSUM_PRINT_AND_LOG (fp, " different table schema\n");
   CHKSUM_PRINT_AND_LOG (fp, "------------------------\n");
 
+  // *INDENT-OFF*
   snprintf (query_buf, sizeof (query_buf),
-	    "SELECT " CHKSUM_TABLE_CLASS_NAME_COL ", " CHKSUM_TABLE_SCHEMA_TIME_COL ", " CHKSUM_TABLE_SCHEMA_COL ", "
-	    CHKSUM_TABLE_MASTER_SCHEMA_COL " FROM %s WHERE " CHKSUM_TABLE_SCHEMA_COL " IS NULL OR "
-	    CHKSUM_TABLE_SCHEMA_COL " <> " CHKSUM_TABLE_MASTER_SCHEMA_COL, chksum_schema_Table_name);
+	"SELECT "
+	  CHKSUM_TABLE_CLASS_NAME_COL ", "
+	  CHKSUM_TABLE_SCHEMA_TIME_COL ", "
+	  CHKSUM_TABLE_SCHEMA_COL ", "
+	  CHKSUM_TABLE_MASTER_SCHEMA_COL " "
+	"FROM "
+	  "%s "
+	"WHERE "
+	  CHKSUM_TABLE_SCHEMA_COL " IS NULL "
+	  "OR " CHKSUM_TABLE_SCHEMA_COL " <> " CHKSUM_TABLE_MASTER_SCHEMA_COL,
+	chksum_schema_Table_name);
+  // *INDENT-ON*
 
   res = db_execute (query_buf, &query_result, &query_error);
   if (res > 0)
@@ -328,10 +338,19 @@ chksum_report_diff (FILE * fp)
   CHKSUM_PRINT_AND_LOG (fp, "table name\tdiff chunk id\tchunk lower bound\n");
   CHKSUM_PRINT_AND_LOG (fp, "-------------------------------" "---------------------------------\n");
 
+  // *INDENT-OFF*
   snprintf (query_buf, sizeof (query_buf),
-	    "SELECT " CHKSUM_TABLE_CLASS_NAME_COL ", " CHKSUM_TABLE_CHUNK_ID_COL ", " CHKSUM_TABLE_LOWER_BOUND_COL
-	    " FROM %s WHERE " CHKSUM_TABLE_MASTER_CHEKSUM_COL " <> " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " OR "
-	    CHKSUM_TABLE_CHUNK_CHECKSUM_COL " IS NULL", chksum_result_Table_name);
+	"SELECT "
+	  CHKSUM_TABLE_CLASS_NAME_COL ", "
+	  CHKSUM_TABLE_CHUNK_ID_COL ", "
+	  CHKSUM_TABLE_LOWER_BOUND_COL " "
+	"FROM "
+	  "%s "
+	"WHERE "
+	  CHKSUM_TABLE_MASTER_CHEKSUM_COL " <> " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " "
+	  "OR " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " IS NULL",
+	chksum_result_Table_name);
+  // *INDENT-ON*
 
   res = db_execute (query_buf, &query_result, &query_error);
   if (res > 0)
@@ -410,12 +429,26 @@ chksum_report_summary (FILE * fp)
   CHKSUM_PRINT_AND_LOG (fp,
 			"-------------------------------------------------" "-------------------------------------\n");
 
+  // *INDENT-OFF*
   snprintf (query_buf, sizeof (query_buf),
-	    "SELECT " CHKSUM_TABLE_CLASS_NAME_COL ", " "COUNT (*), " "COUNT(CASE WHEN " CHKSUM_TABLE_MASTER_CHEKSUM_COL
-	    " <> " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " OR " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " IS NULL THEN 1 END), "
-	    " SUM (" CHKSUM_TABLE_ELAPSED_TIME_COL "), " " MIN (" CHKSUM_TABLE_ELAPSED_TIME_COL "), " " MAX ("
-	    CHKSUM_TABLE_ELAPSED_TIME_COL ") " "FROM %s GROUP BY " CHKSUM_TABLE_CLASS_NAME_COL,
-	    chksum_result_Table_name);
+	"SELECT "
+	  CHKSUM_TABLE_CLASS_NAME_COL ", "
+	  "CAST (COUNT (*) AS INTEGER), "
+	  "CAST (COUNT ("
+	      "CASE WHEN " CHKSUM_TABLE_MASTER_CHEKSUM_COL " <> " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " "
+			 "OR " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " IS NULL "
+			 "THEN 1 "
+	      "END"
+	    ") AS INTEGER), "
+	  "SUM (" CHKSUM_TABLE_ELAPSED_TIME_COL "), "
+	  "MIN (" CHKSUM_TABLE_ELAPSED_TIME_COL "), "
+	  "MAX (" CHKSUM_TABLE_ELAPSED_TIME_COL ") "
+	"FROM "
+	  "%s "
+	"GROUP BY "
+	  CHKSUM_TABLE_CLASS_NAME_COL,
+	chksum_result_Table_name);
+  // *INDENT-ON*
 
   res = db_execute (query_buf, &query_result, &query_error);
   if (res > 0)
@@ -672,46 +705,51 @@ chksum_drop_and_create_checksum_table (void)
   int res, error = NO_ERROR;
   char query_buf[QUERY_BUF_SIZE];
 
-  snprintf (query_buf, sizeof (query_buf), "DROP TABLE IF EXISTS %s;"	/* 0 */
-	    "CREATE TABLE %s"	/* 1 */
-	    "(%s VARCHAR (255) NOT NULL,"	/* 2 */
-	    " %s INT NOT NULL,"	/* 3 */
-	    " %s VARCHAR,"	/* 4 */
-	    " %s INT NOT NULL,"	/* 5 */
-	    " %s INT,"		/* 6 */
-	    " %s INT,"		/* 7 */
-	    " %s DATETIME DEFAULT sys_datetime,"	/* 8 */
-	    " %s INT,"		/* 9 */
-	    " CONSTRAINT UNIQUE INDEX (%s, %s));"	/* 10, 11 */
-	    "DROP TABLE IF EXISTS %s;"	/* 12 */
-	    "CREATE TABLE %s"	/* 13 */
-	    "(%s VARCHAR (255) NOT NULL,"	/* 14 */
-	    " %s INT NOT NULL,"	/* 15 */
-	    " %s VARCHAR,"	/* 16 */
-	    " %s VARCHAR,"	/* 17 */
-	    " %s DATETIME,"	/* 18 */
-	    " PRIMARY KEY (%s, %s));",	/* 19, 20 */
-	    chksum_result_Table_name,	/* 0 */
-	    chksum_result_Table_name,	/* 1 */
-	    CHKSUM_TABLE_CLASS_NAME_COL,	/* 2 */
-	    CHKSUM_TABLE_CHUNK_ID_COL,	/* 3 */
-	    CHKSUM_TABLE_LOWER_BOUND_COL,	/* 4 */
-	    CHKSUM_TABLE_COUNT_COL,	/* 5 */
-	    CHKSUM_TABLE_CHUNK_CHECKSUM_COL,	/* 6 */
-	    CHKSUM_TABLE_MASTER_CHEKSUM_COL,	/* 7 */
-	    CHKSUM_TABLE_BEGINS_AT_COL,	/* 8 */
-	    CHKSUM_TABLE_ELAPSED_TIME_COL,	/* 9 */
-	    CHKSUM_TABLE_CLASS_NAME_COL,	/* 10 */
-	    CHKSUM_TABLE_CHUNK_ID_COL,	/* 11 */
-	    chksum_schema_Table_name,	/* 12 */
-	    chksum_schema_Table_name,	/* 13 */
-	    CHKSUM_TABLE_CLASS_NAME_COL,	/* 14 */
-	    CHKSUM_TABLE_SCHEMA_REPID_COL,	/* 15 */
-	    CHKSUM_TABLE_SCHEMA_COL,	/* 16 */
-	    CHKSUM_TABLE_MASTER_SCHEMA_COL,	/* 17 */
-	    CHKSUM_TABLE_SCHEMA_TIME_COL,	/* 18 */
-	    CHKSUM_TABLE_CLASS_NAME_COL,	/* 19 */
-	    CHKSUM_TABLE_SCHEMA_REPID_COL);	/* 20 */
+  // *INDENT-OFF*
+  snprintf (query_buf, sizeof (query_buf),
+  	"DROP TABLE IF EXISTS %s; "		/* 0 */
+	"CREATE TABLE %s ("			/* 1 */
+	    "%s VARCHAR (255) NOT NULL, "	/* 2 */
+	    "%s INT NOT NULL, "			/* 3 */
+	    "%s VARCHAR, "			/* 4 */
+	    "%s INT NOT NULL, "			/* 5 */
+	    "%s INT, "				/* 6 */
+	    "%s INT, "				/* 7 */
+	    "%s DATETIME DEFAULT SYS_DATETIME, "	/* 8 */
+	    "%s INT, "				/* 9 */
+	    "CONSTRAINT UNIQUE INDEX (%s, %s)"	/* 10, 11 */
+	  "); "
+	"DROP TABLE IF EXISTS %s; "		/* 12 */
+	"CREATE TABLE %s ("			/* 13 */
+	    "%s VARCHAR (255) NOT NULL, "	/* 14 */
+	    "%s INT NOT NULL, "			/* 15 */
+	    "%s VARCHAR, "			/* 16 */
+	    "%s VARCHAR, "			/* 17 */
+	    "%s DATETIME, "			/* 18 */
+	    "PRIMARY KEY (%s, %s)"		/* 19, 20 */
+	  ");",
+	chksum_result_Table_name,		/* 0 */
+	chksum_result_Table_name,		/* 1 */
+	CHKSUM_TABLE_CLASS_NAME_COL,		/* 2 */
+	CHKSUM_TABLE_CHUNK_ID_COL,		/* 3 */
+	CHKSUM_TABLE_LOWER_BOUND_COL,		/* 4 */
+	CHKSUM_TABLE_COUNT_COL,			/* 5 */
+	CHKSUM_TABLE_CHUNK_CHECKSUM_COL,	/* 6 */
+	CHKSUM_TABLE_MASTER_CHEKSUM_COL,	/* 7 */
+	CHKSUM_TABLE_BEGINS_AT_COL,		/* 8 */
+	CHKSUM_TABLE_ELAPSED_TIME_COL,		/* 9 */
+	CHKSUM_TABLE_CLASS_NAME_COL,		/* 10 */
+	CHKSUM_TABLE_CHUNK_ID_COL,		/* 11 */
+	chksum_schema_Table_name,		/* 12 */
+	chksum_schema_Table_name,		/* 13 */
+	CHKSUM_TABLE_CLASS_NAME_COL,		/* 14 */
+	CHKSUM_TABLE_SCHEMA_REPID_COL,		/* 15 */
+	CHKSUM_TABLE_SCHEMA_COL,		/* 16 */
+	CHKSUM_TABLE_MASTER_SCHEMA_COL,		/* 17 */
+	CHKSUM_TABLE_SCHEMA_TIME_COL,		/* 18 */
+	CHKSUM_TABLE_CLASS_NAME_COL,		/* 19 */
+	CHKSUM_TABLE_SCHEMA_REPID_COL);		/* 20 */
+  // *INDENT-ON*
 
   res = db_execute (query_buf, &query_result, &query_error);
   if (res >= 0)
@@ -810,13 +848,29 @@ chksum_get_prev_checksum_results (void)
       chksum_free_results (chksum_Prev_results);
     }
 
+  // *INDENT-OFF*
   snprintf (query_buf, sizeof (query_buf),
-	    "SELECT " "C1." CHKSUM_TABLE_CLASS_NAME_COL ", " "C1." CHKSUM_TABLE_CHUNK_ID_COL ", " "C1."
-	    CHKSUM_TABLE_LOWER_BOUND_COL ", " "C1." CHKSUM_TABLE_COUNT_COL " FROM " " %s AS C1 INNER JOIN (SELECT "
-	    CHKSUM_TABLE_CLASS_NAME_COL ", " "MAX (" CHKSUM_TABLE_CHUNK_ID_COL ") " "AS MAX_ID FROM %s GROUP BY "
-	    CHKSUM_TABLE_CLASS_NAME_COL ") C2 " "ON C1." CHKSUM_TABLE_CLASS_NAME_COL " = C2."
-	    CHKSUM_TABLE_CLASS_NAME_COL " AND C1." CHKSUM_TABLE_CHUNK_ID_COL " = C2.MAX_ID", chksum_result_Table_name,
-	    chksum_result_Table_name);
+	"SELECT "
+	  "C1." CHKSUM_TABLE_CLASS_NAME_COL ", "
+	  "C1." CHKSUM_TABLE_CHUNK_ID_COL ", "
+	  "C1." CHKSUM_TABLE_LOWER_BOUND_COL ", "
+	  "C1." CHKSUM_TABLE_COUNT_COL " "
+	"FROM "
+	  "%s AS C1 "
+	  "INNER JOIN ("
+	      "SELECT "
+		CHKSUM_TABLE_CLASS_NAME_COL ", "
+		"MAX (" CHKSUM_TABLE_CHUNK_ID_COL ") AS MAX_ID "
+	      "FROM "
+		"%s "
+	      "GROUP BY "
+		CHKSUM_TABLE_CLASS_NAME_COL
+	    ") C2 "
+	    "ON C1." CHKSUM_TABLE_CLASS_NAME_COL " = C2." CHKSUM_TABLE_CLASS_NAME_COL " "
+	        "AND C1." CHKSUM_TABLE_CHUNK_ID_COL " = C2.MAX_ID",
+	chksum_result_Table_name,
+	chksum_result_Table_name);
+  // *INDENT-ON*
 
   res = db_execute (query_buf, &query_result, &query_error);
   if (res >= 0)
@@ -1591,13 +1645,21 @@ chksum_update_current_schema_definition (const char *table_name, int repid)
   int res, error = NO_ERROR;
   char query_buf[QUERY_BUF_SIZE];
 
-  snprintf (query_buf, sizeof (query_buf), "UPDATE /*+ USE_SBR */ %s "	/* 1 */
-	    "SET " CHKSUM_TABLE_SCHEMA_COL " = SCHEMA_DEF ('%s'), "	/* 2 */
-	    CHKSUM_TABLE_SCHEMA_TIME_COL " = SYS_DATETIME "	/* collected time */
-	    "WHERE " CHKSUM_TABLE_CLASS_NAME_COL " = '%s' "	/* 3 */
-	    "AND " CHKSUM_TABLE_SCHEMA_REPID_COL " = %d;",	/* 4 */
-	    chksum_schema_Table_name,	/* 1 */
-	    table_name, table_name, repid);	/* 2, 3, 4 */
+  // *INDENT-OFF*
+  snprintf (query_buf, sizeof (query_buf),
+	"UPDATE /*+ USE_SBR */ "
+	  "%s "			/* 1 */
+	"SET "				
+	  CHKSUM_TABLE_SCHEMA_COL " = SCHEMA_DEF ('%s'), "	/* 2 */
+	  CHKSUM_TABLE_SCHEMA_TIME_COL " = SYS_DATETIME "	/* collected time */
+	"WHERE "
+	  CHKSUM_TABLE_CLASS_NAME_COL " = '%s' "		/* 3 */
+	  "AND " CHKSUM_TABLE_SCHEMA_REPID_COL " = %d;",	/* 4 */
+	chksum_schema_Table_name,	/* 1 */
+	table_name,		/* 2 */
+	table_name,		/* 3 */
+	repid);			/* 4 */
+  // *INDENT-ON*
 
   res = db_execute (query_buf, &query_result, &query_error);
   if (res >= 0)
@@ -1632,8 +1694,21 @@ chksum_insert_schema_definition (const char *table_name, int repid)
   int res, error = NO_ERROR;
   char query_buf[QUERY_BUF_SIZE];
 
-  snprintf (query_buf, sizeof (query_buf), "REPLACE INTO %s " "SELECT '%s', %d, NULL, SCHEMA_DEF ('%s'), NULL;",
-	    chksum_schema_Table_name, table_name, repid, table_name);
+  // *INDENT-OFF*
+  snprintf (query_buf, sizeof (query_buf),
+  	"REPLACE INTO "
+	  "%s "		/* 1 */
+	"SELECT "
+	  "'%s', "	/* 2 */
+	  "%d, "	/* 3 */
+	  "NULL, "
+	  "SCHEMA_DEF ('%s'), "		/* 4 */
+	  "NULL;",
+	chksum_schema_Table_name,	/* 1 */
+	table_name,	/* 2 */
+	repid,		/* 3 */
+	table_name);	/* 4 */
+  // *INDENT-ON*
 
   res = db_execute (query_buf, &query_result, &query_error);
   if (res >= 0)
@@ -1738,8 +1813,10 @@ chksum_need_skip_table (const char *table_name, CHKSUM_ARG * chksum_arg)
   dynamic_array *list = NULL;
   char table_in_list[SM_MAX_IDENTIFIER_LENGTH];
 
-  if (table_name == NULL || (strcasecmp (table_name, chksum_result_Table_name) == 0)
-      || (strcasecmp (table_name, chksum_schema_Table_name) == 0))
+  /* Because checksumdb always runs as the DBA user,
+   * the owner_name in the user-specified name can be ignored and compared. */
+  if (table_name == NULL || (pt_user_specified_name_compare (table_name, chksum_result_Table_name) == 0)
+      || (pt_user_specified_name_compare (table_name, chksum_schema_Table_name) == 0))
     {
       return true;
     }

@@ -213,7 +213,21 @@ static SYSTEM_CLASS_DEF system_classes[] = {
   {CTV_DB_COLLATION_NAME, strlen (CTV_DB_COLLATION_NAME)},	// "db_collation"
   {CTV_DB_CHARSET_NAME, strlen (CTV_DB_CHARSET_NAME)},		// "db_charset"
   {CTV_DB_SERVER_NAME, strlen (CTV_DB_SERVER_NAME)},		// "db_server"
-  {CTV_SYNONYM_NAME, strlen (CTV_SYNONYM_NAME)}			// "db_synonym"
+  {CTV_SYNONYM_NAME, strlen (CTV_SYNONYM_NAME)},		// "db_synonym"
+
+  /*
+   * checksumdb
+   *   - Although it is not a system table, it is used as a reserved name corresponding to the system table name.
+   */
+#define CHKSUM_DEFAULT_TABLE_NAME	"db_ha_checksum"
+#define CHKSUM_SCHEMA_TABLE_SUFFIX	"_schema"
+#define CHKSUM_DEFAULT_TABLE_NAME_WITH_SUFFIX	"db_ha_checksum_schema"
+  {CHKSUM_DEFAULT_TABLE_NAME, strlen (CHKSUM_DEFAULT_TABLE_NAME)},	// "db_ha_checksum"
+  {CHKSUM_DEFAULT_TABLE_NAME_WITH_SUFFIX, strlen (CHKSUM_DEFAULT_TABLE_NAME_WITH_SUFFIX)}
+  	// "db_ha_checksum_schema"
+#undef CHKSUM_DEFAULT_TABLE_NAME
+#undef CHKSUM_SCHEMA_TABLE_SUFFIX
+#undef CHKSUM_DEFAULT_TABLE_NAME_WITH_SUFFIX
 };
 // *INDENT-ON*
 
