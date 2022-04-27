@@ -12588,6 +12588,8 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	{
 	  heap_value = &attr_info.values[i];
 
+	  assert (heap_value->read_attrepr != NULL);
+
 	  oldval_deforder = heap_value->read_attrepr->def_order;
 
 	  memcpy (&old_values[oldval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
@@ -12626,6 +12628,8 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       for (i = 0; i < attr_info.num_values; i++)
 	{
 	  heap_value = &attr_info.values[i];
+
+	  assert (heap_value->read_attrepr != NULL);
 
 	  newval_deforder = heap_value->read_attrepr->def_order;
 
