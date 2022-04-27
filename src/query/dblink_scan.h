@@ -60,10 +60,10 @@ struct dblink_scan_info
   void *col_info;		/* column information T_CCI_COL_INFO */
 };
 
-extern int dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
+extern int dblink_open_scan (THREAD_ENTRY * thread_entry, DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 			     VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars);
-extern int dblink_close_scan (DBLINK_SCAN_INFO * scan_info);
-extern SCAN_CODE dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list);
+extern int dblink_close_scan (THREAD_ENTRY * thread_entry, DBLINK_SCAN_INFO * scan_info);
+extern SCAN_CODE dblink_scan_next (THREAD_ENTRY * thread_entry, DBLINK_SCAN_INFO * scan_info, val_list_node * val_list);
 extern SCAN_CODE dblink_scan_reset (DBLINK_SCAN_INFO * scan_info);
 
 #endif

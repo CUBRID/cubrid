@@ -4038,7 +4038,7 @@ scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   scan_init_scan_pred (&dblid->scan_pred, NULL, spec->where_pred,
 		       ((spec->where_pred) ? eval_fnc (thread_p, spec->where_pred, &single_node_type) : NULL));
 
-  return dblink_open_scan (&scan_id->s.dblid.scan_info, spec, vd, host_vars);
+  return dblink_open_scan (thread_p, &scan_id->s.dblid.scan_info, spec, vd, host_vars);
 }
 
 /*
@@ -4942,7 +4942,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_DBLINK_SCAN:
-      dblink_close_scan (&scan_id->s.dblid.scan_info);
+      dblink_close_scan (thread_p, &scan_id->s.dblid.scan_info);
       break;
 
     case S_JSON_TABLE_SCAN:
@@ -6876,7 +6876,7 @@ scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   /* execute dblink scan */
 
-  while ((qp_scan = dblink_scan_next (&vaidp->scan_info, scan_id->val_list)) == S_SUCCESS)
+  while ((qp_scan = dblink_scan_next (thread_p, &vaidp->scan_info, scan_id->val_list)) == S_SUCCESS)
     {
       /* evaluate the predicate to see if the tuple qualifies */
       ev_res = V_TRUE;

@@ -37,6 +37,7 @@
 #include "db_date.h"
 #include "tz_support.h"
 #include <cas_cci.h>
+#include <sys/time.h>
 
 #define MAX_LEN_CONNECTION_URL    512
 
@@ -485,6 +486,8 @@ dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd, DBLINK_HOST_VAR
   return S_SUCCESS;
 }
 
+static FILE *dblink_log = NULL;
+
 /*
  * dblink_open_scan () - open the scan for dblink
  *   return: int
@@ -495,7 +498,7 @@ dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd, DBLINK_HOST_VAR
  *   sql_text(in)	 : SQL text for dblink
  */
 int
-dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
+dblink_open_scan (THREAD_ENTRY * thread_entry, DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 		  VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars)
 {
   int ret;
@@ -504,6 +507,9 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
   char *user_name = spec->s.dblink_node.conn_user;
   char *password = spec->s.dblink_node.conn_password;
   char *sql_text = spec->s.dblink_node.conn_sql;
+
+  long long begin, end;
+  struct timeval te;
 
   char *find = strstr (spec->s.dblink_node.conn_url, ":?");
   if (find)
@@ -515,6 +521,23 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
       snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", spec->s.dblink_node.conn_url, "?__gateway=true");
     }
 
+  if (!dblink_log)
+    {
+      char *cubrid = getenv ("CUBRID");
+      char log_path[1024];
+
+      sprintf (log_path, "%s/log/dblink.log", cubrid);
+
+      dblink_log = fopen (log_path, "w+");
+      if (!dblink_log)
+	{
+	  printf ("dblink.log: can not open the file\n");
+	}
+    }
+
+  gettimeofday (&te, NULL);
+  begin = te.tv_sec * 1000000LL + te.tv_usec;
+
   scan_info->conn_handle = cci_connect_with_url_ex (conn_url, user_name, password, &err_buf);
   if (scan_info->conn_handle < 0)
     {
@@ -524,6 +547,12 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
     }
   else
     {
+      gettimeofday (&te, NULL);
+      end = te.tv_sec * 1000000LL + te.tv_usec;
+      if (dblink_log)
+	fprintf (dblink_log, "[tran-%03d] cci_connect: %5d(us)\n", thread_entry->tran_index, end - begin);
+      fflush (dblink_log);
+      begin = end;
       cci_set_autocommit (scan_info->conn_handle, CCI_AUTOCOMMIT_FALSE);
       scan_info->stmt_handle = cci_prepare (scan_info->conn_handle, sql_text, 0, &err_buf);
       if (scan_info->stmt_handle < 0)
@@ -540,6 +569,13 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 	    }
 	}
 
+      gettimeofday (&te, NULL);
+      end = te.tv_sec * 1000000LL + te.tv_usec;
+      if (dblink_log)
+	fprintf (dblink_log, "[tran-%03d] cci_prepare: %5d(us)\n", thread_entry->tran_index, end - begin);
+      fflush (dblink_log);
+      begin = end;
+
       ret = cci_execute (scan_info->stmt_handle, 0, 0, &err_buf);
       if (ret < 0)
 	{
@@ -549,6 +585,13 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
       else
 	{
 	  T_CCI_CUBRID_STMT stmt_type;
+
+	  gettimeofday (&te, NULL);
+	  end = te.tv_sec * 1000000LL + te.tv_usec;
+	  if (dblink_log)
+	    fprintf (dblink_log, "[tran-%03d] cci_execute: %5d(us)\n", thread_entry->tran_index, end - begin);
+	  fflush (dblink_log);
+	  begin = end;
 
 	  scan_info->col_info = (void *) cci_get_result_info (scan_info->stmt_handle, &stmt_type, &scan_info->col_cnt);
 	  if (scan_info->col_info == NULL)
@@ -570,12 +613,18 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
  *   scan_info(in)       : information for dblink
  */
 int
-dblink_close_scan (DBLINK_SCAN_INFO * scan_info)
+dblink_close_scan (THREAD_ENTRY * thread_entry, DBLINK_SCAN_INFO * scan_info)
 {
   int error;
   T_CCI_ERROR err_buf;
 
   /*  note: return NO_ERROR even though the connection or stmt handle is not valid */
+
+  long long begin, end;
+  struct timeval te;
+
+  gettimeofday (&te, NULL);
+  begin = te.tv_sec * 1000000LL + te.tv_usec;
 
   if (scan_info->stmt_handle >= 0)
     {
@@ -597,6 +646,13 @@ dblink_close_scan (DBLINK_SCAN_INFO * scan_info)
 	}
     }
 
+  gettimeofday (&te, NULL);
+  end = te.tv_sec * 1000000LL + te.tv_usec;
+
+  if (dblink_log)
+    fprintf (dblink_log, "[tran-%03d] cci_closing: %5d(us)\n", thread_entry->tran_index, end - begin);
+  fflush (dblink_log);
+
   return NO_ERROR;
 }
 
@@ -607,7 +663,7 @@ dblink_close_scan (DBLINK_SCAN_INFO * scan_info)
  *   val_list(in)       : value list for derived dblink table
  */
 SCAN_CODE
-dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
+dblink_scan_next (THREAD_ENTRY * thread_entry, DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 {
   T_CCI_ERROR err_buf;
   int col_no, col_cnt, ind, error = NO_ERROR;
@@ -620,6 +676,12 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
   T_CCI_COL_INFO *col_info = (T_CCI_COL_INFO *) scan_info->col_info;
 
   int codeset;
+
+  long long begin, end;
+  struct timeval te;
+
+  gettimeofday (&te, NULL);
+  begin = te.tv_sec * 1000000LL + te.tv_usec;
 
   col_cnt = scan_info->col_cnt;
 
