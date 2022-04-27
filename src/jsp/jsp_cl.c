@@ -1327,10 +1327,9 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
   {
     char *parsed_method_name = (char *) node->info.method_call.method_name->info.name.original;
     DB_OBJECT *mop_p = jsp_find_stored_procedure (parsed_method_name);
+    AU_DISABLE (save);
     if (mop_p)
       {
-	AU_DISABLE (save);
-
 	/* check java stored prcedure target */
 	error = db_get (mop_p, SP_ATTR_TARGET, &method);
 	if (error != NO_ERROR)
