@@ -217,7 +217,7 @@ static SYSTEM_CLASS_DEF system_classes[] = {
 
   /*
    * checksumdb
-   *   - Although it is not a system table, it is used as a reserved name corresponding to the system table name.
+   *   - It is not a system class name, but it is used as a reserved name like a system class name.
    */
 #define CHKSUM_DEFAULT_TABLE_NAME	"db_ha_checksum"
 #define CHKSUM_SCHEMA_TABLE_SUFFIX	"_schema"
