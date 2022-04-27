@@ -1278,6 +1278,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 14 Flashback cannot run as standalone mode.\n
 15 The length of owner_name is required to be less than %1$d and the length of class_name is required to be less than %2$d bytes.\n
 16 Invalid format for owner_name.class_name ('%1$s').\n
+17 System catalog classes (%1$s) are not supported in flashback.\n
 60 \
 flashback: Provides statements to flashback a specific transaction.\n\
 usage: %1$s flashback [OPTION] database-name owner_name.class_name1 [owner_name.class_name2 ...]\n\
