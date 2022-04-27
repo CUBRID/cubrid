@@ -12449,6 +12449,26 @@ error:
     } \
   while (0)
 
+static bool
+cdc_check_if_schema_changed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
+{
+  REPR_ID reprid = NULL_REPRID;
+  REPR_ID latest_reprid = NULL_REPRID;
+
+  reprid = or_rep_id (recdes);
+  latest_reprid = attr_info->last_classrepr->id;
+
+  if (reprid != last_reprid)
+    {
+      /* schema has been changed */
+      return true;
+    }
+  else
+    {
+      return false;
+    }
+}
+
 int
 cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYPE dml_type,
 		      OID classoid, RECDES * undo_recdes, RECDES * redo_recdes, CDC_LOGINFO_ENTRY * dml_entry,
@@ -12540,6 +12560,16 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
   if (undo_recdes != NULL)
     {
+      if (cdc_check_if_schema_changed (undo_recdes, &attr_info))
+	{
+	  FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED, classoid, classname);
+
+	  error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
+	  cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
+
+	  goto exit;
+	}
+
       if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, undo_recdes, NULL, &attr_info)) != NO_ERROR)
 	{
 	  goto exit;
@@ -12557,17 +12587,9 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       for (i = 0; i < attr_info.num_values; i++)
 	{
 	  heap_value = &attr_info.values[i];
-	  if (heap_value->read_attrepr == NULL)
-	    {
-	      FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED, classoid, classname);
-
-	      error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
-	      cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
-
-	      goto exit;
-	    }
 
 	  oldval_deforder = heap_value->read_attrepr->def_order;
+
 	  memcpy (&old_values[oldval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
 	}
 
@@ -12576,6 +12598,16 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
   if (redo_recdes != NULL)
     {
+      if (cdc_check_if_schema_changed (redo_recdes, &attr_info))
+	{
+	  FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED, classoid, classname);
+
+	  error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
+	  cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
+
+	  goto exit;
+	}
+
       if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, redo_recdes, NULL, &attr_info)) != NO_ERROR)
 	{
 	  goto exit;
@@ -12594,17 +12626,9 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       for (i = 0; i < attr_info.num_values; i++)
 	{
 	  heap_value = &attr_info.values[i];
-	  if (heap_value->read_attrepr == NULL)
-	    {
-	      FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED, classoid, classname);
-
-	      error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
-	      cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
-
-	      goto exit;
-	    }
 
 	  newval_deforder = heap_value->read_attrepr->def_order;
+
 	  memcpy (&new_values[newval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
 	}
 
