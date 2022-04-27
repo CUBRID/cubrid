@@ -3648,6 +3648,7 @@ static bool
 pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * infop)
 {
   bool is_correlated_with_agg = false;
+  bool is_correlated_with_dblink = false;
   /* init output section */
   infop->out.found = false;
   infop->out.others_found = false;
@@ -3656,15 +3657,26 @@ pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * 
 
   parser_walk_leaves (parser, term, pt_find_only_name_id, infop, NULL, NULL);
 
-  if (infop->out.correlated_found && pt_has_aggregate (parser, infop->in.subquery))
+  if (infop->out.correlated_found)
     {
-      /* When a correlated term is pushed to a subquery that includes an aggregate function, */
-      /* group_by processing can be repeatedly performed. */
-      /* This may cause performance degradation. In this case, copypush is not performed. */
-      is_correlated_with_agg = true;
+      if (pt_has_aggregate (parser, infop->in.subquery))
+	{
+	  /* When a correlated term is pushed to a subquery that includes an aggregate function, */
+	  /* group_by processing can be repeatedly performed. */
+	  /* This may cause performance degradation. In this case, copypush is not performed. */
+	  is_correlated_with_agg = true;
+	}
+
+      if (pt_has_dblink (parser, infop->in.subquery))
+	{
+	  /* When a correlated term is pushed to a subquery that includes a dblink */
+	  /* the pushed predicated can be transferred to remote server */
+	  /* This may cause error because the remote's query could not process the correlated term */
+	  is_correlated_with_dblink = true;
+	}
     }
 
-  return PT_PUSHABLE_TERM (infop) && !is_correlated_with_agg;
+  return PT_PUSHABLE_TERM (infop) && !is_correlated_with_agg && !is_correlated_with_dblink;
 }
 
 /*

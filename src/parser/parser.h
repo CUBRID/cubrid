@@ -530,6 +530,7 @@ extern "C"
   extern PT_NODE *pt_get_cursor (const PT_HOST_VARS * hv);
   extern PT_NODE *pt_get_parameters (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+  extern bool pt_has_dblink (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_aggregate (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_analytic (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_order_sensitive_agg (PARSER_CONTEXT * parser, PT_NODE * node);

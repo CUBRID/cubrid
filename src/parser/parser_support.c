@@ -3058,6 +3058,36 @@ pt_get_spec_name (PARSER_CONTEXT * parser, const PT_NODE * selqry)
 }
 
 /*
+ * pt_has_dblink () -
+ *   return: true if statement has a dblink node in its parse tree
+ *   parser(in):
+ *   node(in/out):
+ */
+bool
+pt_has_dblink (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *spec;
+
+  if (!node)
+    {
+      return false;
+    }
+
+  if (node->node_type == PT_SELECT)
+    {
+      if (spec = node->info.query.q.select.from)
+	{
+	  if (spec->info.spec.derived_table && spec->info.spec.derived_table->node_type == PT_DBLINK_TABLE)
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
  * pt_has_aggregate () -
  *   return: true if statement has an aggregate node in its parse tree
  *   parser(in):
