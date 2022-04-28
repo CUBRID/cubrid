@@ -1192,7 +1192,7 @@ au_find_user (const char *user_name)
      * When au_login_method () is called, Au_user_name is not changed.
      */
     const char *sc_name = sc_current_schema_name ();
-    if (sc_name && sc_name[0] != '\0' && intl_identifier_casecmp (sc_name, user_name) == 0)
+    if (Au_user && sc_name && sc_name[0] != '\0' && intl_identifier_casecmp (sc_name, user_name) == 0)
       {
 	return Au_user;
       }
