@@ -181,6 +181,8 @@ static SYSTEM_CLASS_DEF system_classes[] = {
   {CT_STORED_PROC_ARGS_NAME, strlen (CT_STORED_PROC_ARGS_NAME)},	// "_db_stored_procedure_args"
   {CT_SERIAL_NAME, strlen (CT_SERIAL_NAME)},			// "db_serial"
   {CT_HA_APPLY_INFO_NAME, strlen (CT_HA_APPLY_INFO_NAME)},	// "db_ha_apply_info"
+  {CT_HA_CHECKSUM_NAME, strlen (CT_HA_CHECKSUM_NAME)},          // "db_ha_checksum"
+  {CT_HA_CHECKSUM_SCHEMA_NAME, strlen (CT_HA_CHECKSUM_SCHEMA_NAME)},    // "db_ha_checksum_schema"
   {CT_COLLATION_NAME, strlen (CT_COLLATION_NAME)},		// "_db_collation"
   {CT_CHARSET_NAME, strlen (CT_CHARSET_NAME)},			// "_db_charset"
   {CT_DB_SERVER_NAME, strlen (CT_DB_SERVER_NAME)},		// "_db_server"
