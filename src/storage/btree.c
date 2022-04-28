@@ -1827,7 +1827,6 @@ btree_fix_root_with_info (THREAD_ENTRY * thread_p, BTID * btid, PGBUF_LATCH_MODE
 
   /* Fix root page. */
   root_page = pgbuf_fix_old_and_check_repl_desync (thread_p, *root_vpid_p, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
-
   if (root_page == NULL)
     {
       /* Failed fixing root page. */
@@ -9374,7 +9373,7 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   /* Swap operation must use system op. */
   save_system_op_started = delete_helper->is_system_op_started;
-  log_sysop_start (thread_p);
+  log_sysop_start_atomic (thread_p);
   is_sytem_op_started = true;
   delete_helper->is_system_op_started = true;
 
@@ -10845,7 +10844,7 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
   save_sysop_started = insert_helper->is_system_op_started;
   if (!insert_helper->is_system_op_started)
     {
-      log_sysop_start (thread_p);
+      log_sysop_start_atomic (thread_p);
       insert_helper->is_system_op_started = true;
     }
   assert (log_check_system_op_is_started (thread_p));
@@ -14422,9 +14421,7 @@ btree_find_boundary_leaf_with_repl_desync_check (THREAD_ENTRY * thread_p, const 
   int root_level = 0, depth = 0;
 
   desync_occured = false;
-  // TODO: temporary change to identify problem
-  const int temp_error_code = er_errid ();
-  ASSERT_NO_ERROR ();
+  ASSERT_NOT_ERROR (ER_PAGE_AHEAD_OF_REPLICATION);
 
   VPID_SET_NULL (pg_vpid);
 
@@ -22826,6 +22823,7 @@ btree_get_root_with_key (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_i
   assert (root_page != NULL && *root_page == NULL);
   assert (is_leaf != NULL);
   assert (search_key != NULL);
+  ASSERT_NOT_ERROR (ER_PAGE_AHEAD_OF_REPLICATION);
 
   bool reuse_btid_int = other_args ? *((bool *) other_args) : false;
 
@@ -22900,6 +22898,7 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
   assert (crt_page != NULL && *crt_page != NULL);
   assert (advance_to_page != NULL && *advance_to_page == NULL);
   assert (search_key != NULL);
+  ASSERT_NOT_ERROR (ER_PAGE_AHEAD_OF_REPLICATION);
 
   /* Get node header. */
   node_header = btree_get_node_header (thread_p, *crt_page);
@@ -24841,6 +24840,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   assert (bts != NULL && bts->use_desc_index == true);
   assert (key_count != NULL);
   assert (next_vpid != NULL);
+  ASSERT_NOT_ERROR (ER_PAGE_AHEAD_OF_REPLICATION);
 
   VPID_COPY (&prev_leaf_vpid, next_vpid);
 
@@ -25407,6 +25407,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   assert (bts->C_page != NULL);
   /* MRO optimization are not compatible with bts->need_count_only. */
   assert (!BTS_NEED_COUNT_ONLY (bts) || !BTS_IS_INDEX_MRO (bts));
+  ASSERT_NOT_ERROR (ER_PAGE_AHEAD_OF_REPLICATION);
 
   /* Index skip scan optimization has an early out when a new key is found: */
   if (BTS_IS_INDEX_ISS (bts)
@@ -27750,7 +27751,7 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
     {
       key_type = BTREE_OVERFLOW_KEY;
 
-      log_sysop_start (thread_p);
+      log_sysop_start_atomic (thread_p);
       insert_helper->is_system_op_started = true;
     }
   else
@@ -28597,7 +28598,7 @@ btree_key_relocate_last_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   assert (offset_to_last_object > 0);
 
   /* We need to change leaf page and at least one overflow page. Start a system operation. */
-  log_sysop_start (thread_p);
+  log_sysop_start_atomic (thread_p);
   insert_helper->is_system_op_started = true;
 
   /* Copy last object into an overflow page. */
