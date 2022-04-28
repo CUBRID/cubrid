@@ -44,6 +44,7 @@ namespace cublog
   // addind this here allows to include the corresponding header only in the source
   class reusable_jobs_stack;
   class redo_parallel;
+  class replicator_mvcc;
 }
 
 namespace cublog
@@ -91,9 +92,12 @@ namespace cublog
       template <typename T>
       void calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
 	  const log_lsa &rec_lsa);
+      template <typename T>
+      void register_assigned_mvccid (TRANID tranid);
 
     private:
       const bool m_bookkeep_mvcc_vacuum_info;
+      const bool m_replicate_mvcc;
       std::unique_ptr<cubthread::entry_manager> m_daemon_context_manager;
       cubthread::daemon *m_daemon = nullptr;
 
@@ -122,6 +126,8 @@ namespace cublog
       /* does not record anything; needed just to please reused recovery infrastructure
        */
       perf_stats m_perf_stat_idle;
+
+      std::unique_ptr<cublog::replicator_mvcc> m_replicator_mvccid;
   };
 }
 
