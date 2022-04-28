@@ -79,34 +79,27 @@ namespace cublog
 
     protected:
       virtual void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa);
-
-    private:
-      void redo_upto_nxio_lsa (cubthread::entry &thread_entry);
+      template <typename T>
+      void calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
+	  const log_lsa &rec_lsa);
       template <typename T>
       void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype,
 				 const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa);
       template <typename T>
-      void read_and_bookkeep_mvcc_vacuum (LOG_RECTYPE rectype, const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa,
-					  bool assert_mvccid_non_null);
-      template <typename T>
       void read_and_redo_btree_stats (cubthread::entry &thread_entry, const log_rv_redo_rec_info<T> &record_info);
-      template <typename T>
-      void calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
-	  const log_lsa &rec_lsa);
 
     private:
-      const bool m_bookkeep_mvcc_vacuum_info;
-      std::unique_ptr<cubthread::entry_manager> m_daemon_context_manager;
-      cubthread::daemon *m_daemon = nullptr;
+      void redo_upto_nxio_lsa (cubthread::entry &thread_entry);
+      template <typename T>
+      void read_and_bookkeep_mvcc_vacuum (LOG_RECTYPE rectype, const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa,
+					  bool assert_mvccid_non_null);
 
+    protected:
       log_lsa m_redo_lsa = NULL_LSA;
+      log_rv_redo_context m_redo_context;
       mutable bool m_replication_active;
       mutable std::mutex m_redo_lsa_mutex;
       mutable std::condition_variable m_redo_lsa_condvar;
-      log_rv_redo_context m_redo_context;
-
-      std::unique_ptr<cublog::reusable_jobs_stack> m_reusable_jobs;
-      std::unique_ptr<cublog::redo_parallel> m_parallel_replication_redo;
 
       /* perf data for processing log redo on the page server - the synchronous part:
        *  - if the infrastructure to apply recovery log redo in parallel is used, it does not
@@ -120,10 +113,18 @@ namespace cublog
       /*
        */
       std::atomic<log_lsa> m_most_recent_trantable_snapshot_lsa;
+      const bool m_bookkeep_mvcc_vacuum_info;
+
+      std::unique_ptr<cublog::reusable_jobs_stack> m_reusable_jobs;
+      std::unique_ptr<cublog::redo_parallel> m_parallel_replication_redo;
 
       /* does not record anything; needed just to please reused recovery infrastructure
        */
       perf_stats m_perf_stat_idle;
+
+    private:
+      std::unique_ptr<cubthread::entry_manager> m_daemon_context_manager;
+      cubthread::daemon *m_daemon = nullptr;
   };
 }
 

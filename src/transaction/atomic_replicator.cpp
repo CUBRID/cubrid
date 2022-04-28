@@ -18,10 +18,12 @@
 
 #include "atomic_replicator.hpp"
 
+#include "log_recovery_redo_parallel.hpp"
+
 namespace cublog
 {
 
-  atomic_replicator::redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa)
+  void atomic_replicator::redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa)
   {
     assert (m_redo_lsa < end_redo_lsa);
 
@@ -110,7 +112,7 @@ namespace cublog
 		//log here for end without start
 		assert (false);
 	      }
-	    m_atomic_helper.unfix_sequence (thread_entry, header.trid);
+	    m_atomic_helper.unfix_atomic_replication_sequence (&thread_entry, header.trid);
 	    break;
 	  default:
 	    // do nothing
@@ -126,10 +128,6 @@ namespace cublog
 
 	  m_redo_lsa = header.forw_lsa;
 	}
-	if (m_parallel_replication_redo != nullptr)
-	  {
-	    m_parallel_replication_redo->set_main_thread_unapplied_log_lsa (m_redo_lsa);
-	  }
 
 	// to accurately track progress and avoid clients to wait for too long, notify each change
 	m_redo_lsa_condvar.notify_all ();
@@ -155,10 +153,11 @@ namespace cublog
     // Redo b-tree stats differs from what the recovery usually does. Get the recovery index before deciding how to
     // proceed.
     const LOG_RCVINDEX rcvindex = log_rv_get_log_rec_data (record_info.m_logrec).rcvindex;
-
+    const VPID log_vpid = log_rv_get_log_rec_vpid<T> (record_info.m_logrec);
     if (m_atomic_helper.is_part_of_atomic_replication (trid))
       {
-	m_atomic_helper.add_atomic_replication_unit (thread_entry, trid, rec_lsa, rcvindex, vpid, m_redo_context, record_info);
+	m_atomic_helper.add_atomic_replication_unit (&thread_entry, trid, rec_lsa, rcvindex, log_vpid, m_redo_context,
+	    record_info);
       }
 
     if (rcvindex == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)
