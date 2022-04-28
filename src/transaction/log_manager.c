@@ -12449,6 +12449,21 @@ error:
     } \
   while (0)
 
+/*
+ * cdc_check_if_schema_changed - compare the representation in record descriptor with latest representation,
+ *                               then check if they have different representation ID
+ *
+ * return: TRUE if schema has been changed
+ *
+ * recdes (in) : the instance record descriptor
+ * attr_info (in) : attribute information structure which contains last class representation
+ *
+ * NOTE: This function is called in making log info entry for CDC and Flashback.
+ *       CDC cannot support schema-changed tables because CDC can interpret tables with schemas pre-fetched through JDBC.
+ *       Also, since the old representation does not contain information necessary to construct SQL,
+ *       such as def_order, CDC and Flashback have design issue that cannot support tables whose schema has been changed.
+ *       So this function is used to check if the schema has changed.
+ */
 static bool
 cdc_check_if_schema_changed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
 {
