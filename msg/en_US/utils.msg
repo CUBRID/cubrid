@@ -995,6 +995,7 @@ valid options:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Enter DBA password:
 22 The server was not configured for HA.\n
+57 Can't generate the applied info due to an invalid path of the -L option or no related information in the db_ha_apply_info catalog table.\n
 58 HA feature is not supported in this platform.\n
 59 applyinfo cannot run as standalone mode.\n
 60 \

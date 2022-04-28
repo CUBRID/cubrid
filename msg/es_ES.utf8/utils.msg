@@ -993,6 +993,7 @@ opciones validas:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Introducir contrasena DBA:
 22 El servidor no ha sido configurado para HA. \n
+57 No se puede generar la información aplicada debido a una ruta no válida de la opción -L o no hay información relacionada en la tabla de catálogo db_ha_apply_info.\n
 58 Caracteristica HA no es soportada en esta plataforma.\n
 59 applyinfo no puede ejecutar como modo independiente.\n
 60 \

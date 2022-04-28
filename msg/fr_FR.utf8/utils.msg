@@ -996,6 +996,7 @@ options valids:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Entrez mot de passe DBA:
 22 Le serveur n'a pas été configuré pour HA.\n
+57 Impossible de générer les informations appliquées en raison d'un chemin non valide de l'option -L ou de l'absence d'informations associées dans la table de catalogue db_ha_apply_info.\n
 58 HA fonctionnalité n'est pas supportée par cette plate-forme.\n
 59 applyinfo ne peut pas fonctionner en mode autonome.\n
 60 \
