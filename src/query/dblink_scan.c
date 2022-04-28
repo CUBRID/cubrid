@@ -876,6 +876,13 @@ dblink_scan_next (THREAD_ENTRY * thread_entry, DBLINK_SCAN_INFO * scan_info, val
       return S_ERROR;
     }
 
+  gettimeofday (&te, NULL);
+  end = te.tv_sec * 1000000LL + te.tv_usec;
+
+  if (dblink_log)
+    fprintf (dblink_log, "[tran-%03d] cci_cursoring: %3d(us)\n", thread_entry->tran_index, end - begin);
+  fflush (dblink_log);
+
   return S_SUCCESS;
 }
 
