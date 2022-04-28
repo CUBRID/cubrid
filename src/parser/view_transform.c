@@ -3648,6 +3648,9 @@ static bool
 pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * infop)
 {
   bool is_correlated_with_agg = false;
+  bool is_correlated_with_dblink = false;
+  PT_NODE *derived;
+
   /* init output section */
   infop->out.found = false;
   infop->out.others_found = false;
@@ -3664,7 +3667,19 @@ pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * 
       is_correlated_with_agg = true;
     }
 
-  return PT_PUSHABLE_TERM (infop) && !is_correlated_with_agg;
+  if (infop->in.spec);
+    {
+      derived = infop->in.spec->info.spec.derived_table;
+      if (derived->node_type == PT_DBLINK_TABLE)
+        {
+	  /* When a correlated term is pushed to a subquery that includes a dblink */
+	  /* the pushed predicated can be transferred to remote server */
+	  /* This may cause error because the remote's query could not process the correlated term */
+          is_correlated_with_dblink = true;
+        }
+    }
+
+  return PT_PUSHABLE_TERM (infop) && !is_correlated_with_agg && !is_correlated_with_dblink;
 }
 
 /*

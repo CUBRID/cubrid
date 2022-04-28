@@ -1287,8 +1287,8 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
     }
   else
     {
-      QO_NODE_NCARD (node) = 5;	/* just guess */
-      QO_NODE_TCARD (node) = 1;	/* just guess */
+      QO_NODE_NCARD (node) = 1000;	/* just guess for dblink */
+      QO_NODE_TCARD (node) = 100;	/* just guess for dblink */
 
       /* recalculate derived table size */
       if (PT_SPEC_IS_DERIVED (entity))
