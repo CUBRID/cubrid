@@ -27751,7 +27751,7 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
     {
       key_type = BTREE_OVERFLOW_KEY;
 
-      log_sysop_start (thread_p);
+      log_sysop_start_atomic (thread_p);
       insert_helper->is_system_op_started = true;
     }
   else
@@ -28693,7 +28693,7 @@ exit:
 }
 
 /*
- * btree_key_relocate_last_into_ovf () - Append a new object in overflow OID's pages.
+ * btree_key_append_object_into_ovf () - Append a new object in overflow OID's pages.
  *
  * return		 : Error code.
  * thread_p (in)	 : Thread entry.
