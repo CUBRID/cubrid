@@ -4226,24 +4226,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  for (i = 0; i < num_tables; i++)
-    {
-      table_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i + 1);
-
-      if (check_table_name (table_name) != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-
-      strncpy_bufsize (table_name_buf, table_name);
-
-      if (da_add (darray, table_name_buf) != NO_ERROR)
-	{
-	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
-	  goto error_exit;
-	}
-    }
-
   /* start date check */
   if (start_date != NULL && strlen (start_date) > 0)
     {
@@ -4387,6 +4369,33 @@ flashback (UTIL_FUNCTION_ARG * arg)
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_NO_SUPPLEMENTAL_LOG));
       goto error_exit;
+    }
+
+  for (i = 0; i < num_tables; i++)
+    {
+      table_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i + 1);
+
+      if (sm_check_system_class_by_name (table_name))
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
+				  FLASHBACK_MSG_SYSTEM_CLASS_NOT_SUPPORTED), table_name);
+
+	  goto error_exit;
+	}
+
+      if (check_table_name (table_name) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      strncpy_bufsize (table_name_buf, table_name);
+
+      if (da_add (darray, table_name_buf) != NO_ERROR)
+	{
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+	  goto error_exit;
+	}
     }
 
   oid_list = (OID *) malloc (sizeof (OID) * num_tables);

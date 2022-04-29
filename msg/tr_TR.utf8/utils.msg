@@ -1271,6 +1271,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 14 Flashback bağımsız mod olarak çalıştırılamaz.\n
 15 Sahip_adı uzunluğunun %1$d'den az olması ve sınıf_adı uzunluğunun %2$d bayttan az olması gerekir.\n
 16 sahibi_adı.sınıf_adı ('%1$s') için geçersiz biçim.\n
+17 Sistem kataloğu sınıfı (%1$s) flashback'te desteklenmiyor.\n
 60 \
 flashback: Belirli bir işlemi flashback yapmak için ifadeler sağlar.\n\
 kullanım: %1$s flashback [SEÇENEK] veritabanı adı sahibi_adı.sınıf_adı1 [sahibi_adı.sınıf_adı2 ...]\n\
