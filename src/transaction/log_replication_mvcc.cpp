@@ -44,7 +44,6 @@ namespace cublog
   replicator_mvcc::complete_mvccid (TRANID tranid, bool committed)
   {
     const map_type::iterator found_it = m_mapped_mvccids.find (tranid);
-    assert (found_it != m_mapped_mvccids.cend ());
 
     if (found_it != m_mapped_mvccids.cend ())
       {
@@ -59,5 +58,6 @@ namespace cublog
 	_er_log_debug (ARG_FILE_LINE, "CRSDBG: complete_mvccid NOTFOUND trid=%d",
 		       tranid);
       }
+    // if not found, it means the transaction contains proper MVCC log records
   }
 }
