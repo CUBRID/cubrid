@@ -83,6 +83,7 @@ void csql_yyerror (const char *s);
 extern int g_msg[1024];
 extern int msg_ptr;
 extern int yybuffer_pos;
+extern int is_dblink_query_string;
 
 #if defined(SA_MODE)
      /*
@@ -23944,8 +23945,13 @@ server_identifier
                 DBG_PRINT}}
          ;
 dblink_expr
-        :   dblink_conn  ','  CHAR_STRING  
+        :   dblink_conn  ',' 
+            {
+                is_dblink_query_string = 1;
+            }
+         CHAR_STRING  
             {{ DBG_TRACE_GRAMMAR(dblink_expr, : dblink_conn  ','  CHAR_STRING);
+             is_dblink_query_string = 0;
              PT_NODE *ct = parser_new_node(this_parser, PT_DBLINK_TABLE) ;           
              if(ct)
              {
@@ -23954,7 +23960,7 @@ dblink_expr
 		  {                  
                         char err_msg[256]; 
                         
-                        if (pt_ct_check_select($3, err_msg) == false)
+                        if (pt_ct_check_select($4, err_msg) == false)
                         {
                              PT_ERROR (this_parser, val, err_msg);                                
                         }                        
@@ -23962,7 +23968,7 @@ dblink_expr
                         val->type_enum = PT_TYPE_CHAR;
                         val->info.value.string_type = ' ';
                         val->info.value.data_value.str =
-                                pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+                                pt_append_bytes (this_parser, NULL, $4, strlen ($4));
                         
                         PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
 		   }
@@ -25307,6 +25313,7 @@ parser_main (PARSER_CONTEXT * parser)
 
   yycolumn = yycolumn_end = 1;
   yybuffer_pos=0;
+  is_dblink_query_string = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;
@@ -25406,6 +25413,7 @@ parse_one_statement (int state)
   parser_yyinput_single_mode = 1;
 
   yybuffer_pos=0;
+  is_dblink_query_string = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;
