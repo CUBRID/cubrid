@@ -27,7 +27,7 @@
 #include "cas_util.h"
 #include "cas_log.h"
 
-#define LONGVARCHAR_MAX_SIZE 16*1024*1024
+#define STRING_MAX_SIZE_LIMIT 16*1024*1024
 #define LOGIN_TIME_OUT       5
 #define NUM_OF_DIGITS(NUMBER) (int)log10(NUMBER) + 1
 #define DISCONNECTED_STATE   -1
@@ -2145,7 +2145,7 @@ cgw_is_support_datatype (SQLSMALLINT data_type, SQLLEN type_size)
     case SQL_TYPE_DATE:
     case SQL_TYPE_TIME:
 #endif
-      if (data_type == SQL_LONGVARCHAR && type_size > LONGVARCHAR_MAX_SIZE)
+      if ((data_type == SQL_LONGVARCHAR || data_type == SQL_WLONGVARCHAR) && type_size > STRING_MAX_SIZE_LIMIT)
 	{
 	  support_data_type = false;
 	}
