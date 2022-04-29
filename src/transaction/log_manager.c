@@ -12378,6 +12378,28 @@ error:
   return error_code;
 }
 
+ /*
+  * cdc_check_if_schema_changed - compare the representation in record descriptor with latest representation,
+  *                               then check if they have different representation ID
+  *
+  * return: TRUE if schema has been changed
+  *
+  * recdes (in) : the instance record descriptor
+  * attr_info (in) : attribute information structure which contains last class representation
+  *
+  * NOTE: This function is called in making log info entry for CDC.
+  *       CDC cannot support schema-changed tables because CDC can interpret tables with schemas pre-fetched through JDBC.
+  *       Also, since the old representation does not contain information necessary to construct SQL,
+  *       such as def_order, CDC has design issue that cannot support tables whose schema has been changed.
+  *       So this function is used to check if the schema has changed.
+  */
+static bool
+cdc_check_if_schema_changed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
+{
+  /* schema has been changed */
+  return or_rep_id (recdes) != attr_info->last_classrepr->id;
+}
+
 static int
 cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYPE dml_type,
 		      OID classoid, RECDES * undo_recdes, RECDES * redo_recdes, CDC_LOGINFO_ENTRY * dml_entry)
@@ -12460,6 +12482,14 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
   if (undo_recdes != NULL)
     {
+      if (cdc_check_if_schema_changed (undo_recdes, &attr_info))
+	{
+	  error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
+	  cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
+
+	  goto error;
+	}
+
       if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, undo_recdes, NULL, &attr_info)) != NO_ERROR)
 	{
 	  goto error;
@@ -12477,15 +12507,11 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       for (i = 0; i < attr_info.num_values; i++)
 	{
 	  heap_value = &attr_info.values[i];
-	  if (heap_value->read_attrepr == NULL)
-	    {
-	      error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
-	      cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
 
-	      goto error;
-	    }
+	  assert (heap_value->read_attrepr != NULL);
 
 	  oldval_deforder = heap_value->read_attrepr->def_order;
+
 	  memcpy (&old_values[oldval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
 	}
 
@@ -12494,6 +12520,14 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
   if (redo_recdes != NULL)
     {
+      if (cdc_check_if_schema_changed (redo_recdes, &attr_info))
+	{
+	  error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
+	  cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
+
+	  goto error;
+	}
+
       if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, redo_recdes, NULL, &attr_info)) != NO_ERROR)
 	{
 	  goto error;
@@ -12512,15 +12546,11 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       for (i = 0; i < attr_info.num_values; i++)
 	{
 	  heap_value = &attr_info.values[i];
-	  if (heap_value->read_attrepr == NULL)
-	    {
-	      error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
-	      cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
 
-	      goto error;
-	    }
+	  assert (heap_value->read_attrepr != NULL);
 
 	  newval_deforder = heap_value->read_attrepr->def_order;
+
 	  memcpy (&new_values[newval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
 	}
 
