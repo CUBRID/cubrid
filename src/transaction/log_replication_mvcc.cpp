@@ -35,8 +35,6 @@ namespace cublog
   {
     assert (m_mapped_mvccids.find (tranid) == m_mapped_mvccids.cend ());
 
-    _er_log_debug (ARG_FILE_LINE, "CRSDBG: new_assigned_mvccid trid=%d mvccid=%lld",
-		   tranid, (long long)mvccid);
     m_mapped_mvccids.emplace (tranid, mvccid);
   }
 
@@ -48,15 +46,8 @@ namespace cublog
     if (found_it != m_mapped_mvccids.cend ())
       {
 	const MVCCID found_mvccid = found_it->second;
-	_er_log_debug (ARG_FILE_LINE, "CRSDBG: complete_mvccid FOUND trid=%d mvccid=%lld",
-		       tranid, (long long)found_mvccid);
 	log_Gl.mvcc_table.complete_mvcc (tranid, found_mvccid, committed);
 	m_mapped_mvccids.erase (found_it);
-      }
-    else
-      {
-	_er_log_debug (ARG_FILE_LINE, "CRSDBG: complete_mvccid NOTFOUND trid=%d",
-		       tranid);
       }
     // if not found, it means the transaction contains proper MVCC log records
   }

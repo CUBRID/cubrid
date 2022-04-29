@@ -155,7 +155,7 @@ namespace cublog
     m_daemon_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (TT_REPLICATION);
 
     // NOTE: make sure any internal structure which is a requirement to functioning is initialized
-    // before the daemon to avoid rare-occuring race conditions
+    // before the daemon to avoid seldom-occuring race conditions
     m_daemon = cubthread::get_manager ()->create_daemon (loop, daemon_task.release (), "cublog::replicator",
 	       m_daemon_context_manager.get ());
   }
@@ -249,7 +249,6 @@ namespace cublog
 	  case LOG_COMMIT:
 	    if (m_replicate_mvcc)
 	      {
-		_er_log_debug (ARG_FILE_LINE, "CRSDBG: commit trid=%d", header.trid);
 		m_replicator_mvccid->complete_mvccid (header.trid, true);
 	      }
 	    calculate_replication_delay_or_dispatch_async<log_rec_donetime> (
@@ -258,7 +257,6 @@ namespace cublog
 	  case LOG_ABORT:
 	    if (m_replicate_mvcc)
 	      {
-		_er_log_debug (ARG_FILE_LINE, "CRSDBG: abort trid=%d", header.trid);
 		m_replicator_mvccid->complete_mvccid (header.trid, false);
 	      }
 	    calculate_replication_delay_or_dispatch_async<log_rec_donetime> (
@@ -427,7 +425,6 @@ namespace cublog
 
     const LOG_REC_ASSIGNED_MVCCID log_rec = m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ();
 
-    _er_log_debug (ARG_FILE_LINE, "CRSDBG: assigned_mvccid trid=%d mvccid=%lld", tranid, (long long)log_rec.mvccid);
     m_replicator_mvccid->new_assigned_mvccid (tranid, log_rec.mvccid);
   }
 
