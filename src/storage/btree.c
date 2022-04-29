@@ -28598,7 +28598,7 @@ btree_key_relocate_last_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   assert (offset_to_last_object > 0);
 
   /* We need to change leaf page and at least one overflow page. Start a system operation. */
-  log_sysop_start (thread_p);
+  log_sysop_start_atomic (thread_p);
   insert_helper->is_system_op_started = true;
 
   /* Copy last object into an overflow page. */
