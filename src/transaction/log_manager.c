@@ -12467,21 +12467,8 @@ error:
 static bool
 cdc_check_if_schema_changed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
 {
-  REPR_ID reprid = NULL_REPRID;
-  REPR_ID latest_reprid = NULL_REPRID;
-
-  reprid = or_rep_id (recdes);
-  latest_reprid = attr_info->last_classrepr->id;
-
-  if (reprid != latest_reprid)
-    {
-      /* schema has been changed */
-      return true;
-    }
-  else
-    {
-      return false;
-    }
+  /* schema has been changed */
+  return or_rep_id (recdes) != attr_info->last_classrepr->id;
 }
 
 int
