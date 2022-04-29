@@ -8527,7 +8527,7 @@ qo_search_partition_join (QO_PLANNER * planner, QO_PARTITION * partition, BITSET
       QO_INFO *r_info, *f_info;
       QO_PLAN *r_plan, *f_plan;
       PT_NODE *entity;
-      bool found_f_edge, found_other_edge;
+      bool found_f_edge, found_other_edge, found_r_edge;
       BITSET_ITERATOR bi, bj, bt;
       QO_PLAN_COMPARE_RESULT cmp;
       BITSET derived_nodes;
@@ -8554,6 +8554,17 @@ qo_search_partition_join (QO_PLANNER * planner, QO_PARTITION * partition, BITSET
 	  if (entity->info.spec.derived_table)
 	    {			/* inline view */
 	      bitset_add (&derived_nodes, r);
+	      continue;		/* OK */
+	    }
+
+	  /*
+	   * The first node is not excluded up to 10 nodes.
+	   * In fact, the logic to exclude from the first node is not perfect because the cost of index scan is not compared.
+	   * TO_DO : remove routines related to excluding first node
+	   */
+	  if (nodes_cnt <= 10)
+	    {
+	      bitset_add (&first_nodes, r);
 	      continue;		/* OK */
 	    }
 
@@ -8620,6 +8631,48 @@ qo_search_partition_join (QO_PLANNER * planner, QO_PARTITION * partition, BITSET
 			{
 			  continue;	/* do not skip out index scan plan */
 			}
+		    }
+
+		  /* check for join-connectivity of r_node to f_node */
+		  found_r_edge = found_other_edge = false;	/* init */
+		  for (t = bitset_iterate (&remaining_terms, &bt); t != -1 && !found_other_edge;
+		       t = bitset_next_member (&bt))
+		    {
+		      term = QO_ENV_TERM (env, t);
+
+		      if (!QO_IS_EDGE_TERM (term))
+			{
+			  continue;
+			}
+
+		      if (!BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (r_node)))
+			{
+			  continue;
+			}
+
+		      /* check for f_node's edges */
+		      if (BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (f_node)))
+			{
+			  /* edge between f_node and r_node */
+
+			  for (i = 0; i < QO_TERM_CAN_USE_INDEX (term) && !found_r_edge; i++)
+			    {
+			      if (QO_NODE_IDX (QO_SEG_HEAD (QO_TERM_INDEX_SEG (term, i))) == QO_NODE_IDX (r_node))
+				{
+				  found_r_edge = true;	/* indexable edge */
+				}
+			    }
+			}
+		      else
+			{
+			  /* edge between f_node and other_node */
+			  found_other_edge = true;
+			}
+		    }
+
+		  if (!found_f_edge || found_other_edge)
+		    {
+		      continue;	/* do not skip out having other edge or non-inner index scan */
 		    }
 
 		  /* do not add r_node to the first_nodes */
