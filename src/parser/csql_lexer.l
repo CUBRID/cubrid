@@ -69,6 +69,7 @@ int g_msg[1024];
 int msg_ptr;
 
 int yybuffer_pos;
+int is_dblink_query_string = 0;
 %}
 
 %option yylineno
@@ -1242,7 +1243,7 @@ _[uU][tT][fF]8[']		{
 				}
 
 ["] 				{
-					if (prm_get_bool_value (PRM_ID_ANSI_QUOTES))
+					if (prm_get_bool_value (PRM_ID_ANSI_QUOTES) && (is_dblink_query_string == 0))
 					  {
 					    BEGIN(DELIMITED_ID_NAME);
 					  }

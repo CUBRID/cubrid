@@ -1277,6 +1277,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 14 Flashback no se puede ejecutar como modo independiente.\n
 15 La longitud de nombre_propietario debe ser inferior a %1$d y la longitud de nombre_clase debe ser inferior a %2$d bytes.\n
 16 Formato no válido para nombre_propietario.nombre_clase ('%1$s').\n
+17 La clase de catálogo del sistema (%1$s) no se admite en flashback.\n
 60 \
 flashback: proporciona declaraciones para retroceder una transacción específica.\n\
 uso: %1$s flashback [OPCIÓN] database-name owner_name.class_name1 [owner_name.class_name2 ...]\n\
