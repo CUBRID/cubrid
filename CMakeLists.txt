@@ -1240,7 +1240,7 @@ endif(UNIX)
 
 set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "CUBRID Open Source RDBMS")
-set(CPACK_PACKAGE_VENDOR "Search Solution Corporation")
+set(CPACK_PACKAGE_VENDOR "CUBRID Corporation")
 set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/COPYING")
 # for WiX (txt file extension is required)
 configure_file(COPYING LICENSE.txt)
