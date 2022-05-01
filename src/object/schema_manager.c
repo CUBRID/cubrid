@@ -5396,6 +5396,7 @@ sm_find_class_with_purpose (const char *name, bool for_update)
   MOP class_mop = NULL;
   MOP synonym_mop = NULL;
   const char *target_name = NULL;
+  int error = NO_ERROR;
 
   sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
@@ -5405,11 +5406,22 @@ sm_find_class_with_purpose (const char *name, bool for_update)
       return class_mop;
     }
 
+  /* backup error */
+  error = er_errid ();
+
   synonym_mop = sm_find_synonym (realname);
   if (synonym_mop)
     {
       target_name = sm_get_synonym_target_name (synonym_mop);
       class_mop = locator_find_class_with_purpose (target_name, for_update);
+    }
+  else
+    {
+      if (error == ER_LC_UNKNOWN_CLASSNAME)
+	{
+	  er_clear ();
+	  ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, realname);
+	}
     }
 
   return class_mop;
@@ -5448,15 +5460,10 @@ sm_find_synonym (const char *name)
   AU_DISABLE (save);
   synonym_obj = obj_find_unique (synonym_class_obj, "unique_name", &value, AU_FETCH_READ);
   AU_ENABLE (save);
-  if (synonym_obj == NULL)
+
+  if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
     {
-      ASSERT_ERROR_AND_SET (error);
-      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
-	{
-	  er_clear ();
-	  ERROR_SET_ERROR_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
-	}
-      return NULL;
+      er_clear ();
     }
 
   return synonym_obj;

@@ -742,10 +742,6 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
   /* If it is a synonym name, change it to the target name. */
   class_name = spec->info.spec.entity_name->info.name.original;
   synonym_mop = db_find_synonym (class_name);
-  if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND || er_errid () == ER_LC_UNKNOWN_CLASSNAME)
-    {
-      er_clear ();
-    }
   if (synonym_mop != NULL)
     {
       class_name = db_get_synonym_target_name (synonym_mop);
