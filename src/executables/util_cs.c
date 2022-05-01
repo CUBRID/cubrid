@@ -2648,7 +2648,6 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name;
   const char *log_path;
-  char log_path_buf[PATH_MAX];
   char *mode_name;
   int mode = -1;
   int error = NO_ERROR;
@@ -2678,10 +2677,6 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
   if (check_database_name (database_name))
     {
       goto error_exit;
-    }
-  if (log_path != NULL)
-    {
-      log_path = realpath (log_path, log_path_buf);
     }
   if (log_path == NULL)
     {
@@ -3204,14 +3199,15 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   log_path = utility_get_option_string_value (arg_map, APPLYINFO_COPIED_LOG_PATH_S, 0);
   if (log_path != NULL)
     {
-      log_path = realpath (log_path, log_path_buf);
-    }
-  if (log_path != NULL)
-    {
       check_copied_info = true;
     }
 
-  if (check_applied_info && (log_path == NULL))
+  if (!check_copied_info && !check_master_info)
+    {
+      goto print_applyinfo_usage;
+    }
+
+  if (!check_copied_info && check_applied_info)
     {
       goto print_applyinfo_usage;
     }
@@ -3221,6 +3217,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   verbose = utility_get_option_bool_value (arg_map, APPLYINFO_VERBOSE_S);
 
   interval = utility_get_option_int_value (arg_map, APPLYINFO_INTERVAL_S);
+
   if (interval < 0)
     {
       goto print_applyinfo_usage;
@@ -3258,23 +3255,26 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
   do
     {
+      memset (local_database_name, 0x00, CUB_MAXHOSTNAMELEN);
+      strcpy (local_database_name, database_name);
+      strcat (local_database_name, "@localhost");
 
       if (check_applied_info)
 	{
-	  memset (local_database_name, 0x00, CUB_MAXHOSTNAMELEN);
-	  strcpy (local_database_name, database_name);
-	  strcat (local_database_name, "@localhost");
-
 	  db_clear_host_connected ();
 
+	  printf ("\n *** Applied Info. *** \n");
 	  if (check_database_name (local_database_name))
 	    {
 	      goto check_applied_info_end;
 	    }
-	  if (db_login ("DBA", NULL) != NO_ERROR)
+
+	  error = db_login ("DBA", NULL);
+	  if (error != NO_ERROR)
 	    {
 	      goto check_applied_info_end;
 	    }
+
 	  error = db_restart (arg->command_name, TRUE, local_database_name);
 	  if (error != NO_ERROR)
 	    {
@@ -3283,36 +3283,48 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
 	  if (HA_DISABLED ())
 	    {
+	      check_applied_info = false;
 	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO,
 						     APPLYINFO_MSG_NOT_HA_MODE));
 	      goto check_applied_info_end;
 	    }
 
-	  error = la_log_page_check (local_database_name, log_path, pageid, check_applied_info, check_copied_info,
-				     check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa,
-				     &applied_final_lsa);
-	  (void) db_shutdown ();
-	}
-      else if (check_copied_info)
-	{
-	  memset (local_database_name, 0x00, CUB_MAXHOSTNAMELEN);
-	  strcpy (local_database_name, database_name);
-	  strcat (local_database_name, "@localhost");
-
-	  error = la_log_page_check (local_database_name, log_path, pageid, check_applied_info, check_copied_info,
-				     check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa,
-				     &applied_final_lsa);
+	  error = la_get_applied_log_info (database_name, log_path, check_replica_info, verbose, &applied_final_lsa);
+	  if (error != NO_ERROR)
+	    {
+	      check_applied_info = false;
+	      error = NO_ERROR;
+	    }
 	}
 
     check_applied_info_end:
+
       if (error != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  check_applied_info = false;
+	  error = NO_ERROR;
 	}
-      error = NO_ERROR;
+
+      if (check_copied_info)
+	{
+	  error =
+	    la_get_copied_log_info (database_name, log_path, pageid, verbose, &copied_eof_lsa, &copied_append_lsa);
+	  if (error != NO_ERROR)
+	    {
+	      check_copied_info = false;
+	      error = NO_ERROR;
+	    }
+	}
+
+      if (BOOT_IS_CLIENT_RESTARTED ())
+	{
+	  (void) db_shutdown ();
+	}
 
       if (check_master_info)
 	{
+	  printf ("\n ***  Active Info. *** \n");
 	  memset (master_database_name, 0x00, CUB_MAXHOSTNAMELEN);
 	  strcpy (master_database_name, database_name);
 	  strcat (master_database_name, "@");
@@ -3342,15 +3354,20 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	      goto check_master_info_end;
 	    }
 
-	  (void) db_shutdown ();
 	}
 
     check_master_info_end:
       if (error != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  check_master_info = false;
+	  error = NO_ERROR;
 	}
-      error = NO_ERROR;
+
+      if (BOOT_IS_CLIENT_RESTARTED ())
+	{
+	  (void) db_shutdown ();
+	}
 
       /* print delay info */
       cur_time = time (NULL);
@@ -4209,24 +4226,6 @@ flashback (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  for (i = 0; i < num_tables; i++)
-    {
-      table_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i + 1);
-
-      if (check_table_name (table_name) != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-
-      strncpy_bufsize (table_name_buf, table_name);
-
-      if (da_add (darray, table_name_buf) != NO_ERROR)
-	{
-	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
-	  goto error_exit;
-	}
-    }
-
   /* start date check */
   if (start_date != NULL && strlen (start_date) > 0)
     {
@@ -4370,6 +4369,33 @@ flashback (UTIL_FUNCTION_ARG * arg)
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_NO_SUPPLEMENTAL_LOG));
       goto error_exit;
+    }
+
+  for (i = 0; i < num_tables; i++)
+    {
+      table_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i + 1);
+
+      if (sm_check_system_class_by_name (table_name))
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
+				  FLASHBACK_MSG_SYSTEM_CLASS_NOT_SUPPORTED), table_name);
+
+	  goto error_exit;
+	}
+
+      if (check_table_name (table_name) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      strncpy_bufsize (table_name_buf, table_name);
+
+      if (da_add (darray, table_name_buf) != NO_ERROR)
+	{
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+	  goto error_exit;
+	}
     }
 
   oid_list = (OID *) malloc (sizeof (OID) * num_tables);

@@ -993,6 +993,7 @@ gültige Optionen:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBA-Passwort eingeben:
 22 Der Server wurde für HA nicht konfiguriert.\n
+57 Die angewendeten Informationen können aufgrund eines ungültigen Pfads der Option -L oder aufgrund fehlender zugehöriger Informationen in der Katalogtabelle db_ha_apply_info nicht generiert werden.\n
 58 HA-Funktion wird auf dieser Plattform nicht unterstützt.\n
 59 applyinfo kann nicht in Stand-Alone-Modus ausgeführt werden.\n
 60 \
@@ -1276,6 +1277,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 14 Flashback kann nicht im eigenständigen Modus ausgeführt werden.\n
 15 Die Länge von owner_name muss kleiner als %1$d sein und die Länge von class_name muss kleiner als %2$d Bytes sein.\n
 16 Ungültiges Format für Besitzername.Klassenname ('%1$s').\n
+17 Die Systemkatalogklasse (%1$s) wird in Flashback nicht unterstützt.\n
 60 \
 flashback: Stellt Anweisungen zum Flashback einer bestimmten Transaktion bereit.\n\
 Verwendung: %1$s flashback [OPTION] Datenbankname Besitzername.Klassenname1 [Besitzername.Klassenname2 ...]\n\

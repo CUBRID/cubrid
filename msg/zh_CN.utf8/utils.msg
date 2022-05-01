@@ -992,6 +992,7 @@ statdump: 转储全局统计信息.\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 输入 DBA 密码:
 22 服务没有被设置为HA模式.\n
+57 由于 -L 选项的路径无效或 db_ha_apply_info 目录表中没有相关信息，无法生成应用信息.\n
 58 HA 特性在这个平台上不被支持..\n
 59 applylogdb 无法以单机模式运行.\n
 60 \
@@ -1265,6 +1266,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 14 闪回不能作为独立模式运行。\n
 15 owner_name 的长度要求小于 %1$d，class_name 的长度要求小于 %2$d 个字节。\n
 16 owner_name.class_name ('%1$s') 的格式无效。\n
+17 闪回不支持系统目录类 (%1$s)。\n
 60 \
 flashback：提供用于闪回特定事务的语句。\n\
 用法：%1$s flashback [OPTION] 数据库名称 owner_name.class_name1 [owner_name.class_name2 ...]\n\

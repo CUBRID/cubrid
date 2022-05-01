@@ -1010,6 +1010,7 @@ opţiuni valide:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Introduceţi parola de administrator (DBA):
 22 Serverul nu a fost configurat pentru HA.\n
+57 Nu se pot genera informațiile aplicate din cauza unei căi nevalide a opțiunii -L sau a lipsei informațiilor asociate din tabelul de catalog db_ha_apply_info.\n
 58 Funcţionalitatea HA nu este suportată pe această platformă.\n
 59 applyinfo nu poate fi executat în modul independent.\n
 60 \
@@ -1303,6 +1304,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 14 Flashback nu poate rula ca mod independent.\n
 15 Lungimea numelui_proprietarului trebuie să fie mai mică de %1$d, iar lungimea numelui_clasei trebuie să fie mai mică de %2$d octeți.\n
 16 Format nevalid pentru proprietar_name.class_name ('%1$s').\n
+17 Clasa de catalog de sistem (%1$s) nu este acceptată în flashback.\n
 60 \
 flashback: furnizează declarații pentru a flashback o anumită tranzacție.\n\
 utilizare: %1$s flashback [OPȚIUNE] bază de date proprietar_name.nume_clasă1 [proprietar_name.nume_clasă2 ...]\n\

@@ -82,7 +82,7 @@ namespace cubmethod
   int
   query_handler::get_num_markers ()
   {
-    std::string &sql = m_sql_stmt;
+    const std::string &sql = m_sql_stmt;
     if (m_num_markers == -1 && !sql.empty ())
       {
 	m_num_markers = calculate_num_markers (sql);
@@ -110,7 +110,7 @@ namespace cubmethod
     if (is_prepared())
       {
 	info.stmt_type = m_query_result.stmt_type;
-	info.num_markers = m_num_markers;
+	info.num_markers = get_num_markers ();
 	set_prepare_column_list_info (info.column_infos);
 	return true;
       }
@@ -161,7 +161,7 @@ namespace cubmethod
       {
 	info.handle_id = get_id ();
 	info.stmt_type = m_query_result.stmt_type;
-	info.num_markers = m_num_markers;
+	info.num_markers = get_num_markers ();
 	set_prepare_column_list_info (info.column_infos);
 
 	m_is_occupied = true;
@@ -221,7 +221,7 @@ namespace cubmethod
 	if (db_check_single_query (m_session) != NO_ERROR) /* ER_IT_MULTIPLE_STATEMENT */
 	  {
 	    info.stmt_type = m_query_result.stmt_type;
-	    info.num_markers = m_num_markers;
+	    info.num_markers = get_num_markers ();
 	    set_prepare_column_list_info (info.column_infos);
 	  }
       }
@@ -517,7 +517,7 @@ namespace cubmethod
 
     prepare_call_info &call_info = m_prepare_call_info;
 
-    int num_bind = m_num_markers;
+    int num_bind = get_num_markers ();
     assert (num_bind == (int) bind_values.size ());
     if (num_bind > 0)
       {
@@ -630,7 +630,7 @@ namespace cubmethod
       }
 
     // 2) bind host variables
-    int num_bind = m_num_markers;
+    int num_bind = get_num_markers ();
     assert (num_bind == (int) bind_values.size ());
     if (num_bind > 0)
       {

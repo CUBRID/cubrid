@@ -995,6 +995,7 @@ valid options:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Enter DBA password:
 22 The server was not configured for HA.\n
+57 Can't generate the applied info due to an invalid path of the -L option or no related information in the db_ha_apply_info catalog table.\n
 58 HA feature is not supported in this platform.\n
 59 applyinfo cannot run as standalone mode.\n
 60 \
@@ -1277,6 +1278,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 14 Flashback cannot run as standalone mode.\n
 15 The length of owner_name is required to be less than %1$d and the length of class_name is required to be less than %2$d bytes.\n
 16 Invalid format for owner_name.class_name ('%1$s').\n
+17 The system catalog class (%1$s) is not supported in flashback.\n
 60 \
 flashback: Provides statements to flashback a specific transaction.\n\
 usage: %1$s flashback [OPTION] database-name owner_name.class_name1 [owner_name.class_name2 ...]\n\

@@ -996,6 +996,7 @@ options valids:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Entrez mot de passe DBA:
 22 Le serveur n'a pas été configuré pour HA.\n
+57 Impossible de générer les informations appliquées en raison d'un chemin non valide de l'option -L ou de l'absence d'informations associées dans la table de catalogue db_ha_apply_info.\n
 58 HA fonctionnalité n'est pas supportée par cette plate-forme.\n
 59 applyinfo ne peut pas fonctionner en mode autonome.\n
 60 \
@@ -1286,6 +1287,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 14 Flashback ne peut pas s'exécuter en mode autonome.\n
 15 La longueur de owner_name doit être inférieure à %1$d et la longueur de class_name doit être inférieure à %2$d octets.\n
 16 Format non valide pour nom_propriétaire.nom_classe ('%1$s').\n
+17 La classe de catalogue système (%1$s) n'est pas prise en charge dans Flashback.\n
 60 \
 flashback : fournit des instructions pour revenir en arrière sur une transaction spécifique.\n\
 utilisation : %1$s flashback [OPTION] nom-base de données nom_propriétaire.nom_classe1 [nom_propriétaire.nom_classe2 ...]\n\
