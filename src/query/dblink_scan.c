@@ -553,7 +553,7 @@ dblink_open_scan (THREAD_ENTRY * thread_entry, DBLINK_SCAN_INFO * scan_info, str
 	fprintf (dblink_log, "[tran-%03d] cci_connect: %5d(us)\n", thread_entry->tran_index, end - begin);
       fflush (dblink_log);
       begin = end;
-      cci_set_autocommit (scan_info->conn_handle, CCI_AUTOCOMMIT_FALSE);
+      cci_set_autocommit (scan_info->conn_handle, CCI_AUTOCOMMIT_TRUE);
       scan_info->stmt_handle = cci_prepare (scan_info->conn_handle, sql_text, 0, &err_buf);
       if (scan_info->stmt_handle < 0)
 	{
