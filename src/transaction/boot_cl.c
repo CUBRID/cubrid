@@ -2808,7 +2808,7 @@ boot_define_index_key (MOP class_mop)
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "func", "varchar(1024)", NULL);
+  error_code = smt_add_attribute (def, "func", "varchar(1023)", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
