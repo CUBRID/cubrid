@@ -1391,19 +1391,19 @@ $ LOADDB
 1317 dblink - 소유권을 갖는 "%1$s" 서버가 없습니다. 
 
 1318 [%1$5.5s][%2$d] %3$s
-1319 dblink - 매개 변수 바인딩 오류.
-1320 dblink - 잘못된 ODBC Handle 입니다.
-1321 dblink - 데이터 형식 변환 오류.
-1322 dblink - %1$s(%2$d) 타입은 지원하지 않습니다.
-1323 dblink - 잘못된 Statement Handle 입니다.
-1324 dblink - Connection Handle이 잘못되었습니다.
-1325 dblink - Connection URL이 존재하지 않습니다.
-1326 dblink - 유효하지 않은 Numeric 값입니다.
-1327 dblink - "%1$s" 열의 정밀도 값이 잘못되었습니다.
+1319 매개 변수 바인딩 오류.
+1320 잘못된 ODBC Handle 입니다.
+1321 데이터 형식 변환 오류.
+1322 %1$s(%2$d) 타입은 지원하지 않습니다.
+1323 잘못된 Statement Handle 입니다.
+1324 Connection Handle이 잘못되었습니다.
+1325 Connection URL이 존재하지 않습니다.
+1326 유효하지 않은 Numeric 값입니다.
+1327 "%1$s" 열의 정밀도 값이 잘못되었습니다.
 
-1328 dblink - 잘못된 Descriptor Handle 입니다.
-1329 dblink - 지원하지 않는 DBMS 입니다.
-1330 dblink - 환경 핸들을 할당할 수 없습니다.
+1328 잘못된 Descriptor Handle 입니다.
+1329 지원하지 않는 DBMS 입니다.
+1330 환경 핸들을 할당할 수 없습니다.
 1331 Error reserved for dblink development.
 
 1332 액티브 로그 볼륨 (%1$s)에서 문제를 발견할 수 없어 재생성할 수 없습니다. 액티브 로그 볼륨을 제거할 경우에 예측할 수 없는 문제가 발생할 수 있으며, 되돌릴 수 없습니다.
