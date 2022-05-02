@@ -1568,10 +1568,10 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
       tdes->rcv.sysop_start_postpone_lsa = start_lsa;
 
       sysop_start_postpone = (LOG_REC_SYSOP_START_POSTPONE *) node->data_header;
-      if (LSA_LT (&sysop_start_postpone->sysop_end.lastparent_lsa, &tdes->rcv.atomic_sysop_start_lsa))
+      if (LSA_LT (&sysop_start_postpone->sysop_end.lastparent_lsa, &tdes->rcv.get_atomic_sysop_start_lsa ()))
 	{
 	  /* atomic system operation finished. */
-	  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+	  tdes->rcv.set_atomic_sysop_start_lsa (NULL_LSA);
 	}
 
       /* for correct checkpoint, this state change must be done under the protection of prior_lsa_mutex */
@@ -1584,11 +1584,11 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
       LOG_REC_SYSOP_END *sysop_end = NULL;
 
       sysop_end = (LOG_REC_SYSOP_END *) node->data_header;
-      if (!LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)
-	  && LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.atomic_sysop_start_lsa))
+      if (!LSA_ISNULL (&tdes->rcv.get_atomic_sysop_start_lsa ())
+	  && LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.get_atomic_sysop_start_lsa ()))
 	{
 	  /* atomic system operation finished. */
-	  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+	  tdes->rcv.set_atomic_sysop_start_lsa (NULL_LSA);
 	}
       if (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa)
 	  && LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.sysop_start_postpone_lsa))
@@ -1605,8 +1605,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
   else if (node->log_header.type == LOG_SYSOP_ATOMIC_START)
     {
       /* same as with system op start postpone, we need to save these log records lsa */
-      assert (LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa));
-      tdes->rcv.atomic_sysop_start_lsa = start_lsa;
+      assert (LSA_ISNULL (&tdes->rcv.get_atomic_sysop_start_lsa ()));
+      tdes->rcv.set_atomic_sysop_start_lsa (start_lsa);
     }
   else if (node->log_header.type == LOG_COMMIT || node->log_header.type == LOG_ABORT)
     {

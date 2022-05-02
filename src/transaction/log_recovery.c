@@ -2255,24 +2255,24 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       return;
     }
 
-  if (LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa))
+  if (LSA_ISNULL (&tdes->rcv.get_atomic_sysop_start_lsa ()))
     {
       /* no atomic system operation */
       return;
     }
-  if (LSA_GE (&tdes->rcv.atomic_sysop_start_lsa, &tdes->undo_nxlsa))
+  if (LSA_GE (&tdes->rcv.get_atomic_sysop_start_lsa (), &tdes->undo_nxlsa))
     {
       /* nothing after tdes->rcv.atomic_sysop_start_lsa */
-      assert (LSA_EQ (&tdes->rcv.atomic_sysop_start_lsa, &tdes->undo_nxlsa));
-      LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+      assert (LSA_EQ (&tdes->rcv.get_atomic_sysop_start_lsa (), &tdes->undo_nxlsa));
+      tdes->rcv.set_atomic_sysop_start_lsa (NULL_LSA);
       er_log_debug (ARG_FILE_LINE, "(trid = %d) Nothing after atomic sysop (%lld|%d), nothing to rollback.\n",
-		    tdes->trid, LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
+		    tdes->trid, LSA_AS_ARGS (&tdes->rcv.get_atomic_sysop_start_lsa ()));
       return;
     }
   assert (tdes->topops.last <= 0);
 
   if (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE
-      && LSA_GT (&tdes->rcv.sysop_start_postpone_lsa, &tdes->rcv.atomic_sysop_start_lsa))
+      && LSA_GT (&tdes->rcv.sysop_start_postpone_lsa, &tdes->rcv.get_atomic_sysop_start_lsa ()))
     {
       /* we have (maybe) the next case:
        *
@@ -2287,7 +2287,8 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       /* finish postpone of nested system op. */
       er_log_debug (ARG_FILE_LINE,
 		    "(trid = %d) Nested sysop start pospone (%lld|%d) inside atomic sysop (%lld|%d). \n", tdes->trid,
-		    LSA_AS_ARGS (&tdes->rcv.sysop_start_postpone_lsa), LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
+		    LSA_AS_ARGS (&tdes->rcv.sysop_start_postpone_lsa),
+		    LSA_AS_ARGS (&tdes->rcv.get_atomic_sysop_start_lsa ()));
       log_recovery_finish_sysop_postpone (thread_p, tdes);
     }
   else if (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE)
@@ -2302,23 +2303,24 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
        * we first have to abort atomic system op. postpone will be finished later. */
       er_log_debug (ARG_FILE_LINE,
 		    "(trid = %d) Nested atomic sysop  (%lld|%d) after sysop start postpone (%lld|%d). \n", tdes->trid,
-		    LSA_AS_ARGS (&tdes->rcv.sysop_start_postpone_lsa), LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
+		    LSA_AS_ARGS (&tdes->rcv.sysop_start_postpone_lsa),
+		    LSA_AS_ARGS (&tdes->rcv.get_atomic_sysop_start_lsa ()));
     }
   else
     {
       er_log_debug (ARG_FILE_LINE, "(trid = %d) Atomic sysop (%lld|%d). Rollback. \n", tdes->trid,
-		    LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
+		    LSA_AS_ARGS (&tdes->rcv.get_atomic_sysop_start_lsa ()));
     }
 
   /* Get transaction lsa that precede atomic_sysop_start_lsa. */
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
-  if (logpb_fetch_page (thread_p, &tdes->rcv.atomic_sysop_start_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+  if (logpb_fetch_page (thread_p, &tdes->rcv.get_atomic_sysop_start_lsa (), LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_abort_atomic_sysop");
       return;
     }
-  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &tdes->rcv.atomic_sysop_start_lsa);
+  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &tdes->rcv.get_atomic_sysop_start_lsa ());
   LSA_COPY (&prev_atomic_sysop_start_lsa, &log_rec->prev_tranlsa);
 
   /* rollback. simulate a new system op */
@@ -2333,7 +2335,7 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   assert (tdes->topops.last <= 0);
 
   /* this is it. reset tdes->rcv.atomic_sysop_start_lsa and we're done. */
-  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+  tdes->rcv.set_atomic_sysop_start_lsa (NULL_LSA);
 }
 
 /*

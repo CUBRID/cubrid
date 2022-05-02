@@ -471,9 +471,39 @@ struct log_rcv_tdes
   /* we need to know if file_perm_alloc or file_perm_dealloc operations have been interrupted. these operation must be
    * executed atomically (all changes applied or all rollbacked) before executing finish all postpones. to know what
    * to abort, we remember the starting LSA of such operation. */
-  LOG_LSA atomic_sysop_start_lsa;
-  LOG_LSA analysis_last_aborted_sysop_lsa;	/* to recover logical redo operation. */
+private:
+    LOG_LSA atomic_sysop_start_lsa;
+public:
+    LOG_LSA analysis_last_aborted_sysop_lsa;	/* to recover logical redo operation. */
   LOG_LSA analysis_last_aborted_sysop_start_lsa;	/* to recover logical redo operation. */
+
+public:
+  // *INDENT-OFF*
+  inline const LOG_LSA & get_atomic_sysop_start_lsa () const
+  {
+    return atomic_sysop_start_lsa;
+  }
+
+  inline void set_atomic_sysop_start_lsa (LOG_LSA new_log_lsa)
+  {
+    if (atomic_sysop_start_lsa.is_null () && !new_log_lsa.is_null ())
+      {
+	er_print_callstack (ARG_FILE_LINE, "CRSDBG: set_atomic_sysop_start_lsa NULL -> (%lld|%d)",
+			    LSA_AS_ARGS (&new_log_lsa));
+      }
+    if (!atomic_sysop_start_lsa.is_null () && new_log_lsa.is_null ())
+      {
+	er_print_callstack (ARG_FILE_LINE, "CRSDBG: set_atomic_sysop_start_lsa (%lld|%d) -> NULL",
+			    LSA_AS_ARGS (&atomic_sysop_start_lsa));
+      }
+    if (!atomic_sysop_start_lsa.is_null () && !new_log_lsa.is_null ())
+      {
+	er_print_callstack (ARG_FILE_LINE, "CRSDBG: set_atomic_sysop_start_lsa (%lld|%d) -> (%lld|%d)",
+			    LSA_AS_ARGS (&atomic_sysop_start_lsa), LSA_AS_ARGS (&new_log_lsa));
+      }
+    atomic_sysop_start_lsa = new_log_lsa;
+  }
+  // *INDENT-ON*
 };
 
 typedef struct log_tdes LOG_TDES;

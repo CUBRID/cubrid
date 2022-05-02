@@ -3996,7 +3996,7 @@ log_sysop_start_atomic (THREAD_ENTRY * thread_p)
       assert_release (false);
       return;
     }
-  if (LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa))
+  if (LSA_ISNULL (&tdes->rcv.get_atomic_sysop_start_lsa ()))
     {
       LOG_PRIOR_NODE *node =
 	prior_lsa_alloc_and_copy_data (thread_p, LOG_SYSOP_ATOMIC_START, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);

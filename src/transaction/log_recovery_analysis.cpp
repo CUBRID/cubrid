@@ -49,7 +49,7 @@ static int log_rv_analysis_commit_with_postpone (THREAD_ENTRY *thread_p, int tra
     LOG_PAGE *log_page_p);
 static int log_rv_analysis_sysop_start_postpone (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa,
     LOG_PAGE *log_page_p);
-static int log_rv_analysis_atomic_sysop_start (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa);
+static int log_rv_analysis_atomic_sysop_start (THREAD_ENTRY *thread_p, int tran_id, const LOG_LSA *log_lsa);
 static int log_rv_analysis_complete (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa, LOG_PAGE *log_page_p,
 				     LOG_LSA *prev_lsa, log_recovery_context &context);
 static int log_rv_analysis_sysop_end (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa, LOG_PAGE *log_page_p);
@@ -915,10 +915,10 @@ log_rv_analysis_sysop_start_postpone (THREAD_ENTRY *thread_p, int tran_id, LOG_L
   LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, &sysop_start_posp->sysop_end.lastparent_lsa);
   LSA_COPY (&tdes->topops.stack[tdes->topops.last].posp_lsa, &sysop_start_posp->posp_lsa);
 
-  if (LSA_LT (&sysop_start_posp->sysop_end.lastparent_lsa, &tdes->rcv.atomic_sysop_start_lsa))
+  if (LSA_LT (&sysop_start_posp->sysop_end.lastparent_lsa, &tdes->rcv.get_atomic_sysop_start_lsa ()))
     {
       /* reset tdes->rcv.atomic_sysop_start_lsa */
-      LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+      tdes->rcv.set_atomic_sysop_start_lsa (NULL_LSA);
     }
 
   return NO_ERROR;
@@ -933,7 +933,7 @@ log_rv_analysis_sysop_start_postpone (THREAD_ENTRY *thread_p, int tran_id, LOG_L
  * log_lsa (in)  : log record LSA. will be used as marker for start system operation.
  */
 static int
-log_rv_analysis_atomic_sysop_start (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa)
+log_rv_analysis_atomic_sysop_start (THREAD_ENTRY *thread_p, int tran_id, const LOG_LSA *log_lsa)
 {
   LOG_TDES *tdes;
 
@@ -949,7 +949,7 @@ log_rv_analysis_atomic_sysop_start (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA
 
   /* this is a marker for system operations that need to be atomic. they will be rollbacked before postpone is finished.
    */
-  tdes->rcv.atomic_sysop_start_lsa = *log_lsa;
+  tdes->rcv.set_atomic_sysop_start_lsa (*log_lsa);
 
   return NO_ERROR;
 }
@@ -1242,19 +1242,19 @@ log_rv_analysis_sysop_end (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa
   // 1. is there atomic system operation started?
   // 2. is atomic system operation more recent than start postpone?
   // 3. is atomic system operation equal or more recent to system operation last parent?
-  if (!LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)	/* 1 */
-      && LSA_GT (&tdes->rcv.atomic_sysop_start_lsa, &tdes->rcv.sysop_start_postpone_lsa)	/* 2 */
-      && LSA_GT (&tdes->rcv.atomic_sysop_start_lsa, &sysop_end->lastparent_lsa) /* 3 */ )
+  if (!LSA_ISNULL (&tdes->rcv.get_atomic_sysop_start_lsa ())	/* 1 */
+      && LSA_GT (&tdes->rcv.get_atomic_sysop_start_lsa (), &tdes->rcv.sysop_start_postpone_lsa)	/* 2 */
+      && LSA_GT (&tdes->rcv.get_atomic_sysop_start_lsa (), &sysop_end->lastparent_lsa) /* 3 */ )
     {
       /* reset tdes->rcv.atomic_sysop_start_lsa */
-      LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+      tdes->rcv.set_atomic_sysop_start_lsa (NULL_LSA);
     }
   // do we reset sysop start postpone? next conditions must be met:
   // 1. is there system operation start postpone in progress?
   // 2. is system operation start postpone more recent than atomic system operation?
   // 3. is system operation start postpone more recent than system operation last parent?
   if (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa)
-      && LSA_GT (&tdes->rcv.sysop_start_postpone_lsa, &tdes->rcv.atomic_sysop_start_lsa)
+      && LSA_GT (&tdes->rcv.sysop_start_postpone_lsa, &tdes->rcv.get_atomic_sysop_start_lsa ())
       && LSA_GT (&tdes->rcv.sysop_start_postpone_lsa, &sysop_end->lastparent_lsa))
     {
       /* reset tdes->rcv.sysop_start_postpone_lsa */

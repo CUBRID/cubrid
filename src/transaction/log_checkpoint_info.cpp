@@ -226,7 +226,7 @@ namespace cublog
   checkpoint_info::load_checkpoint_topop (log_tdes &tdes)
   {
     if (tdes.trid != NULL_TRANID && (!LSA_ISNULL (&tdes.rcv.sysop_start_postpone_lsa)
-				     || !LSA_ISNULL (&tdes.rcv.atomic_sysop_start_lsa)))
+				     || !LSA_ISNULL (&tdes.rcv.get_atomic_sysop_start_lsa ())))
       {
 	/* this transaction is running system operation postpone or an atomic system operation
 	 * note: we cannot compare tdes->state with TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE. we are
@@ -238,7 +238,7 @@ namespace cublog
 	sysop_info &chkpt_topop = m_sysops.back ();
 	chkpt_topop.trid = tdes.trid;
 	chkpt_topop.sysop_start_postpone_lsa = tdes.rcv.sysop_start_postpone_lsa;
-	chkpt_topop.atomic_sysop_start_lsa = tdes.rcv.atomic_sysop_start_lsa;
+	chkpt_topop.atomic_sysop_start_lsa = tdes.rcv.get_atomic_sysop_start_lsa ();
       }
   }
 
@@ -369,7 +369,7 @@ namespace cublog
 	  }
 
 	tdes->rcv.sysop_start_postpone_lsa = sysop.sysop_start_postpone_lsa;
-	tdes->rcv.atomic_sysop_start_lsa = sysop.atomic_sysop_start_lsa;
+	tdes->rcv.set_atomic_sysop_start_lsa (sysop.atomic_sysop_start_lsa);
 	if (!sysop.sysop_start_postpone_lsa.is_null ())
 	  {
 	    // Bump the sysop level to save lastparent_lsa and posp_lsa.

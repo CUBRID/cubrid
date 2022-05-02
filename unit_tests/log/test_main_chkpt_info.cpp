@@ -218,7 +218,7 @@ test_env_chkpt::find_or_insert_recovery_tdes (TRANID trid)
       tdes->topops.last = -1;
       tdes->topops.stack = nullptr;
       tdes->rcv.sysop_start_postpone_lsa.set_null ();
-      tdes->rcv.atomic_sysop_start_lsa.set_null ();
+      tdes->rcv.set_atomic_sysop_start_lsa (NULL_LSA);
       m_after_tdes_map.insert (std::make_pair (trid, tdes));
       return tdes;
     }
@@ -283,7 +283,7 @@ test_env_chkpt::check_recovery ()
 
       //check tdes sysop
       if (tdes->rcv.sysop_start_postpone_lsa == NULL_LSA &&
-	  tdes->rcv.atomic_sysop_start_lsa == NULL_LSA)
+	  tdes->rcv.get_atomic_sysop_start_lsa () == NULL_LSA)
 	{
 	  REQUIRE (tdes_after->topops.last == -1);
 	}
@@ -300,7 +300,7 @@ test_env_chkpt::check_recovery ()
 	      REQUIRE (tdes_after->topops.last == 0);
 	    }
 	  REQUIRE (tdes->rcv.sysop_start_postpone_lsa == tdes_after->rcv.sysop_start_postpone_lsa);
-	  REQUIRE (tdes->rcv.atomic_sysop_start_lsa == tdes_after->rcv.atomic_sysop_start_lsa);
+	  REQUIRE (tdes->rcv.get_atomic_sysop_start_lsa () == tdes_after->rcv.get_atomic_sysop_start_lsa ());
 	}
     }
 
@@ -315,7 +315,7 @@ test_env_chkpt::check_recovery ()
 	}
 
       if (itr->second->rcv.sysop_start_postpone_lsa == NULL_LSA &&
-	  itr->second->rcv.atomic_sysop_start_lsa == NULL_LSA)
+	  itr->second->rcv.get_atomic_sysop_start_lsa () == NULL_LSA)
 	{
 	  REQUIRE (tdes_after == m_after_tdes_map.end ());
 	}
@@ -328,7 +328,7 @@ test_env_chkpt::check_recovery ()
 	      continue;
 	    }
 	  REQUIRE (itr->second->rcv.sysop_start_postpone_lsa == tdes_after->second->rcv.sysop_start_postpone_lsa);
-	  REQUIRE (itr->second->rcv.atomic_sysop_start_lsa == tdes_after->second->rcv.atomic_sysop_start_lsa);
+	  REQUIRE (itr->second->rcv.get_atomic_sysop_start_lsa () == tdes_after->second->rcv.get_atomic_sysop_start_lsa ());
 	}
     }
 
@@ -588,7 +588,7 @@ test_env_chkpt::generate_tran_table ()
   //
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->tail_lsa = NULL_LSA;
-  tdes->rcv.atomic_sysop_start_lsa = NULL_LSA;
+  tdes->rcv.set_atomic_sysop_start_lsa (NULL_LSA);
   tdes->rcv.sysop_start_postpone_lsa = NULL_LSA;
   ++tran_index;
 
@@ -661,25 +661,25 @@ test_env_chkpt::generate_tran_table ()
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->topops.last = 0;
   tdes->rcv.sysop_start_postpone_lsa = NULL_LSA;
-  tdes->rcv.atomic_sysop_start_lsa = NULL_LSA;
+  tdes->rcv.set_atomic_sysop_start_lsa (NULL_LSA);
   ++tran_index;
 
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->topops.last = 1;
   tdes->rcv.sysop_start_postpone_lsa = {1, 1};
-  tdes->rcv.atomic_sysop_start_lsa = NULL_LSA;
+  tdes->rcv.set_atomic_sysop_start_lsa (NULL_LSA);
   ++tran_index;
 
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->topops.last = 2;
   tdes->rcv.sysop_start_postpone_lsa = NULL_LSA;
-  tdes->rcv.atomic_sysop_start_lsa = {1, 1};
+  tdes->rcv.set_atomic_sysop_start_lsa ({1, 1});
   ++tran_index;
 
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->topops.last = 3;
   tdes->rcv.sysop_start_postpone_lsa = {1, 1};
-  tdes->rcv.atomic_sysop_start_lsa = {1, 1};
+  tdes->rcv.set_atomic_sysop_start_lsa ({1, 1});
   ++tran_index;
 
   assert (tran_index == log_Gl.trantable.num_total_indices);
@@ -689,13 +689,13 @@ test_env_chkpt::generate_tran_table ()
   systb_System_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->topops.last = -1;
   tdes->rcv.sysop_start_postpone_lsa = {1, 1};
-  tdes->rcv.atomic_sysop_start_lsa = {1, 1};
+  tdes->rcv.set_atomic_sysop_start_lsa ({1, 1});
 
   tran_index = -3;
   systb_System_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->topops.last = 0;
   tdes->rcv.sysop_start_postpone_lsa = {1, 1};
-  tdes->rcv.atomic_sysop_start_lsa = {1, 1};
+  tdes->rcv.set_atomic_sysop_start_lsa ({1, 1});
 
   m_count_2pc_in_trantable = number_of_2pc ();
 }
@@ -1068,4 +1068,10 @@ int
 basename_r (const char *path, char *pathbuf, size_t buflen)
 {
   return 1;
+}
+
+void
+er_print_callstack (const char *file_name, const int line_no, const char *fmt, ...)
+{
+  assert (false);
 }
