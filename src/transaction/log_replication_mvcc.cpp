@@ -39,7 +39,7 @@ namespace cublog
   }
 
   void
-  replicator_mvcc::complete_mvccid (TRANID tranid, bool committed)
+  replicator_mvcc::complete_mvcc (TRANID tranid, bool committed)
   {
     const map_type::iterator found_it = m_mapped_mvccids.find (tranid);
 

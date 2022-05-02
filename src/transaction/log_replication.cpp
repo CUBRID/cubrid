@@ -249,7 +249,7 @@ namespace cublog
 	  case LOG_COMMIT:
 	    if (m_replicate_mvcc)
 	      {
-		m_replicator_mvccid->complete_mvccid (header.trid, true);
+		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::COMMITTED);
 	      }
 	    calculate_replication_delay_or_dispatch_async<log_rec_donetime> (
 		    thread_entry, m_redo_lsa);
@@ -257,7 +257,7 @@ namespace cublog
 	  case LOG_ABORT:
 	    if (m_replicate_mvcc)
 	      {
-		m_replicator_mvccid->complete_mvccid (header.trid, false);
+		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::ROLLEDBACK);
 	      }
 	    calculate_replication_delay_or_dispatch_async<log_rec_donetime> (
 		    thread_entry, m_redo_lsa);

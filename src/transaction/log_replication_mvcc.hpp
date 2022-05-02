@@ -15,6 +15,10 @@ namespace cublog
   class replicator_mvcc
   {
     public:
+      static constexpr bool COMMITTED = true;
+      static constexpr bool ROLLEDBACK = false;
+
+    public:
       replicator_mvcc () = default;
 
       replicator_mvcc (const replicator_mvcc &) = delete;
@@ -26,7 +30,7 @@ namespace cublog
       replicator_mvcc &operator = (replicator_mvcc &&) = delete;
 
       void new_assigned_mvccid (TRANID tranid, MVCCID mvccid);
-      void complete_mvccid (TRANID tranid, bool committed);
+      void complete_mvcc (TRANID tranid, bool committed);
 
     private:
       using map_type = std::map<TRANID, MVCCID>;
