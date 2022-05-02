@@ -25,6 +25,7 @@
 #include "log_recovery.h"
 #include "log_recovery_redo.hpp"
 #include "log_recovery_redo_parallel.hpp"
+#include "log_replication_mvcc.hpp"
 #include "object_representation.h"
 #include "page_buffer.h"
 #include "recovery.h"
@@ -112,6 +113,7 @@ namespace cublog
 
   replicator::replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode, int parallel_count)
     : m_bookkeep_mvcc_vacuum_info { is_page_server () }
+    , m_replicate_mvcc { is_passive_transaction_server () }
     , m_redo_lsa { start_redo_lsa }
     , m_replication_active { true }
     , m_redo_context { NULL_LSA, page_fetch_mode, log_reader::fetch_mode::FORCE }
@@ -135,6 +137,11 @@ namespace cublog
 		new cublog::redo_parallel (parallel_count, true, m_redo_lsa, m_redo_context));
       }
 
+    if (m_replicate_mvcc)
+      {
+	m_replicator_mvccid = std::make_unique<replicator_mvcc> ();
+      }
+
     // Create the daemon
     cubthread::looper loop (std::chrono::milliseconds (1));   // don't spin when there is no new log, wait a bit
     auto func_exec = std::bind (&replicator::redo_upto_nxio_lsa, std::ref (*this), std::placeholders::_1);
@@ -147,6 +154,8 @@ namespace cublog
 
     m_daemon_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (TT_REPLICATION);
 
+    // NOTE: make sure any internal structure which is a requirement to functioning is initialized
+    // before the daemon to avoid seldom-occuring race conditions
     m_daemon = cubthread::get_manager ()->create_daemon (loop, daemon_task.release (), "cublog::replicator",
 	       m_daemon_context_manager.get ());
   }
@@ -158,6 +167,11 @@ namespace cublog
     if (m_parallel_replication_redo != nullptr)
       {
 	m_parallel_replication_redo.reset (nullptr);
+      }
+
+    if (m_replicate_mvcc)
+      {
+	m_replicator_mvccid.reset (nullptr);
       }
   }
 
@@ -233,10 +247,18 @@ namespace cublog
 	    break;
 	  }
 	  case LOG_COMMIT:
+	    if (m_replicate_mvcc)
+	      {
+		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::COMMITTED);
+	      }
 	    calculate_replication_delay_or_dispatch_async<log_rec_donetime> (
 		    thread_entry, m_redo_lsa);
 	    break;
 	  case LOG_ABORT:
+	    if (m_replicate_mvcc)
+	      {
+		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::ROLLEDBACK);
+	      }
 	    calculate_replication_delay_or_dispatch_async<log_rec_donetime> (
 		    thread_entry, m_redo_lsa);
 	    break;
@@ -254,6 +276,12 @@ namespace cublog
 	    break;
 	  case LOG_SYSOP_END:
 	    read_and_bookkeep_mvcc_vacuum<log_rec_sysop_end> (header.type, header.back_lsa, m_redo_lsa, false);
+	    break;
+	  case LOG_ASSIGNED_MVCCID:
+	    if (m_replicate_mvcc)
+	      {
+		register_assigned_mvccid<log_rec_assigned_mvccid> (header.trid);
+	      }
 	    break;
 	  default:
 	    // do nothing
@@ -388,6 +416,16 @@ namespace cublog
 	// calculate the time difference synchronously
 	log_rpl_calculate_replication_delay (&thread_entry, start_time_msec);
       }
+  }
+
+  template <typename T>
+  void replicator::register_assigned_mvccid (TRANID tranid)
+  {
+    assert (m_replicate_mvcc);
+
+    const LOG_REC_ASSIGNED_MVCCID log_rec = m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ();
+
+    m_replicator_mvccid->new_assigned_mvccid (tranid, log_rec.mvccid);
   }
 
   void
