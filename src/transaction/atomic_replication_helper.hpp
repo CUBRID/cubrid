@@ -28,6 +28,7 @@
 #include "log_recovery_redo.hpp"
 #include "page_buffer.h"
 #include "thread_entry.hpp"
+#include "vpid_utilities.hpp"
 
 namespace cublog
 {
@@ -68,7 +69,7 @@ namespace cublog
 	  atomic_replication_unit (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex);
 
 	  atomic_replication_unit (const atomic_replication_unit &) = delete;
-	  atomic_replication_unit (atomic_replication_unit &&) = delete;
+	  atomic_replication_unit (atomic_replication_unit &&);
 
 	  ~atomic_replication_unit ();
 
@@ -81,12 +82,13 @@ namespace cublog
 	  int fix_page (THREAD_ENTRY *thread_p);
 	  void unfix_page (THREAD_ENTRY *thread_p);
 
-	  VPID m_vpid;
+	  const VPID m_vpid;
 	private:
-	  log_lsa m_record_lsa;
+	  const log_lsa m_record_lsa;
+	  const LOG_RCVINDEX m_record_index;
+
 	  PAGE_PTR m_page_ptr;
 	  PGBUF_WATCHER m_watcher;
-	  LOG_RCVINDEX m_record_index;
       };
 
       using atomic_replication_sequence_type = std::vector<atomic_replication_unit>;
@@ -97,6 +99,49 @@ namespace cublog
       std::map<TRANID, vpid_set_type> m_atomic_sequences_vpids_map;
 #endif
   };
+
+  template <typename T>
+  int atomic_replication_helper::add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa,
+      LOG_RCVINDEX rcvindex, VPID vpid, log_rv_redo_context &redo_context, const log_rv_redo_rec_info<T> &record_info)
+  {
+#if !defined (NDEBUG)
+    if (!VPID_ISNULL (&vpid) && !check_for_page_validity (vpid, tranid))
+      {
+	// the page is no longer relevant
+	assert (false);
+      }
+    vpid_set_type &vpids = m_atomic_sequences_vpids_map[tranid];
+    vpids.insert (vpid);
+#endif
+
+    m_atomic_sequences_map[tranid].emplace_back (atomic_replication_unit (record_lsa, vpid, rcvindex));
+    int error_code = m_atomic_sequences_map[tranid].back ().fix_page (thread_p);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
+
+    m_atomic_sequences_map[tranid].back ().apply_log_redo (thread_p, redo_context, record_info);
+    return NO_ERROR;
+  }
+
+  template <typename T>
+  void atomic_replication_helper::atomic_replication_unit::apply_log_redo (THREAD_ENTRY *thread_p,
+      log_rv_redo_context &redo_context, const log_rv_redo_rec_info<T> &record_info)
+  {
+    LOG_RCV rcv;
+    if (m_page_ptr != nullptr)
+      {
+	rcv.pgptr = m_page_ptr;
+      }
+    else
+      {
+	rcv.pgptr = m_watcher.pgptr;
+      }
+    rcv.reference_lsa = m_record_lsa;
+    log_rv_redo_record_sync_apply (thread_p,redo_context, record_info, m_vpid, rcv);
+  }
+
 }
 
 #endif // _ATOMIC_REPLICATION_HELPER_HPP_
