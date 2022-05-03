@@ -1428,8 +1428,9 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1347 Public synonym "%1$s" does not exist.
 1348 Synonym "%1$s" already exists.
 1349 Synonym "%1$s" does not exist.
+1350 Invalid synonym value.
 
-1350 Ultima eroare
+1351 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):

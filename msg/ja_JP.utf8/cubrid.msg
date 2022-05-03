@@ -1428,8 +1428,9 @@ $ LOADDB
 1347 Public synonym "%1$s" does not exist.
 1348 Synonym "%1$s" already exists.
 1349 Synonym "%1$s" does not exist.
+1350 Invalid synonym value.
 
-1350 ラストエラー
+1351 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):

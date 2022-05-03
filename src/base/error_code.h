@@ -1722,8 +1722,9 @@
 #define ER_SYNONYM_PUBLIC_NOT_EXIST                 -1347
 #define ER_SYNONYM_ALREADY_EXIST                    -1348
 #define ER_SYNONYM_NOT_EXIST                        -1349
+#define ER_SYNONYM_INVALID_VALUE                    -1350
 
-#define ER_LAST_ERROR                               -1350
+#define ER_LAST_ERROR                               -1351
 
 /*
  * CAUTION!

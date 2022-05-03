@@ -1428,8 +1428,9 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1347 Public synonym "%1$s" does not exist.
 1348 Synonym "%1$s" already exists.
 1349 Synonym "%1$s" does not exist.
+1350 Invalid synonym value.
 
-1350 Dernière erreur
+1351 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
