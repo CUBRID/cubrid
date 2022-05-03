@@ -13416,6 +13416,15 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 
       break;
     case DB_TYPE_MONETARY:
+      {
+	valcnv_convert_value_to_string (new_value);
+
+	func_type = 7;
+	ptr = or_pack_int (ptr, func_type);
+	ptr = or_pack_string (ptr, db_get_string (new_value));
+
+	db_value_clear (new_value);
+      }
       break;
     case DB_TYPE_NULL:
       /* Can't get here because the DB_IS_NULL test covers DB_TYPE_NULL */
