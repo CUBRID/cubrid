@@ -14822,6 +14822,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
   OID *classoid = NULL;
   OID *classoid_list[1024];
   OID *oid = NULL;
+  OID null_oid = OID_INITIALIZER;
+
   int stmt_length = 0;
 
   bool supp_appended = false;
@@ -15185,10 +15187,17 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 
     case PT_CREATE_TRIGGER:
       target = PT_NODE_TR_TARGET (statement);
+
       if (target)
 	{
 	  classname = target->info.event_target.class_name->info.name.original;
+
 	  classoid = ws_oid (sm_find_class (classname));
+	}
+      else
+	{
+	  /* Trigger that does not have target (e.g. create trigger.. execute print.. ) */
+	  classoid = &null_oid;
 	}
 
       ddl_type = CDC_CREATE;
