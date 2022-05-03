@@ -3709,7 +3709,8 @@ enum cdc_ddl_type
   CDC_ALTER,
   CDC_DROP,
   CDC_RENAME,
-  CDC_TRUNCATE
+  CDC_TRUNCATE,
+  CDC_TRUNCATE_CASCADE
 };
 typedef enum cdc_ddl_type CDC_DDL_TYPE;
 
