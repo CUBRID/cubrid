@@ -17941,6 +17941,30 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
 	  ASSERT_ERROR_AND_SET (error);
 	  goto end;
 	}
+
+      /* comment */
+      if (comment != NULL)
+	{
+	  db_make_string (&value, comment);
+	  error = dbt_put_internal (obj_tmpl, "comment", &value);
+	  pr_clear_value (&value);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto end;
+	    }
+	}
+      else
+	{
+	  db_make_null (&value);
+	  error = dbt_put_internal (obj_tmpl, "comment", &value);
+	  pr_clear_value (&value);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto end;
+	    }
+	}
     }
   else
     {
@@ -17997,6 +18021,19 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
 	  ASSERT_ERROR ();
 	  goto end;
 	}
+
+      /* comment */
+      if (comment != NULL)
+	{
+	  db_make_string (&value, comment);
+	  error = dbt_put_internal (obj_tmpl, "comment", &value);
+	  pr_clear_value (&value);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto end;
+	    }
+	}
     }
 
   /* target_unique_name */
@@ -18027,19 +18064,6 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
     {
       ASSERT_ERROR ();
       goto end;
-    }
-
-  /* comment */
-  if (comment != NULL)
-    {
-      db_make_string (&value, comment);
-      error = dbt_put_internal (obj_tmpl, "comment", &value);
-      pr_clear_value (&value);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto end;
-	}
     }
 
   /* flush template */
