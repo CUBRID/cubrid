@@ -138,8 +138,7 @@ static int do_alter_synonym_internal (const char *synonym_name, const char *targ
 static int do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner, const char *target_name,
 				       DB_OBJECT * target_owner, const char *comment, const int is_public_synonym,
 				       const int or_replace);
-static int do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists,
-				     DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj);
+static int do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists);
 static int do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name);
 
 #define MAX_SERIAL_INVARIANT	8
@@ -17758,7 +17757,7 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
   obj_tmpl = dbt_edit_object (instance_obj);
   if (obj_tmpl == NULL)
     {
-      ASSERT_ERROR ();
+      ASSERT_ERROR_AND_SET (error);
       goto end;
     }
 
@@ -17928,21 +17927,18 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
   instance_obj = do_get_obj_id (&instance_obj_id, class_obj, synonym_name, "unique_name");
   if (instance_obj != NULL)
     {
-      if (or_replace == TRUE)
+      if (or_replace == FALSE)
 	{
-	  error = do_drop_synonym_internal (synonym_name, FALSE, FALSE, class_obj, instance_obj);
-	  if (error != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return error;
-	    }
-
-	  instance_obj = NULL;
-	}
-      else
-	{
-	  assert (or_replace == FALSE);
 	  ERROR_SET_ERROR_1ARG (error, ER_SYNONYM_ALREADY_EXIST, synonym_name);
+	  goto end;
+	}
+
+      assert (or_replace == TRUE);
+
+      obj_tmpl = dbt_edit_object (instance_obj);
+      if (obj_tmpl == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
 	  goto end;
 	}
     }
@@ -17954,53 +17950,53 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
 	  ERROR_SET_ERROR_1ARG (error, ER_LC_CLASSNAME_EXIST, synonym_name);
 	  goto end;
 	}
-    }
 
-  obj_tmpl = dbt_create_object (class_obj);
-  if (obj_tmpl == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
-    }
+      obj_tmpl = dbt_create_object (class_obj);
+      if (obj_tmpl == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto end;
+	}
 
-  /* unique_name */
-  db_make_string (&value, synonym_name);
-  error = dbt_put_internal (obj_tmpl, "unique_name", &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto end;
-    }
+      /* unique_name */
+      db_make_string (&value, synonym_name);
+      error = dbt_put_internal (obj_tmpl, "unique_name", &value);
+      pr_clear_value (&value);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
 
-  /* synonym_name */
-  db_make_string (&value, sm_remove_qualifier_name (synonym_name));
-  error = dbt_put_internal (obj_tmpl, "name", &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto end;
-    }
+      /* synonym_name */
+      db_make_string (&value, sm_remove_qualifier_name (synonym_name));
+      error = dbt_put_internal (obj_tmpl, "name", &value);
+      pr_clear_value (&value);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
 
-  /* synonym_owner */
-  db_make_object (&value, synonym_owner);
-  error = dbt_put_internal (obj_tmpl, "owner", &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto end;
-    }
+      /* synonym_owner */
+      db_make_object (&value, synonym_owner);
+      error = dbt_put_internal (obj_tmpl, "owner", &value);
+      pr_clear_value (&value);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
 
-  /* is_public_synonym */
-  db_make_int (&value, is_public_synonym);
-  error = dbt_put_internal (obj_tmpl, "is_public", &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto end;
+      /* is_public_synonym */
+      db_make_int (&value, is_public_synonym);
+      error = dbt_put_internal (obj_tmpl, "is_public", &value);
+      pr_clear_value (&value);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
     }
 
   /* target_unique_name */
@@ -18092,7 +18088,7 @@ do_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* if_exists */
   if_exists = PT_SYNONYM_IF_EXISTS (statement);
 
-  error = do_drop_synonym_internal (synonym_name, FALSE, if_exists, NULL, NULL);
+  error = do_drop_synonym_internal (synonym_name, FALSE, if_exists);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -18111,8 +18107,7 @@ do_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
  * synonym_obj(in): NULL or synonym_obj
  */
 static int
-do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists,
-			  DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj)
+do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists)
 {
   DB_OBJECT *class_obj = NULL;
   DB_OBJECT *instance_obj = NULL;
@@ -18124,41 +18119,27 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
 
   AU_DISABLE (save);
 
-  if (synonym_class_obj != NULL)
+  class_obj = sm_find_class (CT_SYNONYM_NAME);
+  if (class_obj == NULL)
     {
-      class_obj = synonym_class_obj;
-    }
-  else
-    {
-      class_obj = sm_find_class (CT_SYNONYM_NAME);
-      if (class_obj == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error);
-	  goto end;
-	}
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
     }
 
-  if (synonym_obj != NULL)
+  instance_obj = do_get_obj_id (&instance_obj_id, class_obj, synonym_name, "unique_name");
+  if (instance_obj == NULL)
     {
-      instance_obj = synonym_obj;
-    }
-  else
-    {
-      instance_obj = do_get_obj_id (&instance_obj_id, class_obj, synonym_name, "unique_name");
-      if (instance_obj == NULL)
+      if (if_exists == TRUE)
 	{
-	  if (if_exists == TRUE)
-	    {
-	      error = NO_ERROR;
-	      er_clear ();
-	      goto end;
-	    }
-	  else
-	    {
-	      assert (if_exists == FALSE);
-	      ERROR_SET_ERROR_1ARG (error, ER_SYNONYM_NOT_EXIST, synonym_name);
-	      goto end;
-	    }
+	  error = NO_ERROR;
+	  er_clear ();
+	  goto end;
+	}
+      else
+	{
+	  assert (if_exists == FALSE);
+	  ERROR_SET_ERROR_1ARG (error, ER_SYNONYM_NOT_EXIST, synonym_name);
+	  goto end;
 	}
     }
 
@@ -18265,7 +18246,7 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
   obj_tmpl = dbt_edit_object (instance_obj);
   if (obj_tmpl == NULL)
     {
-      ASSERT_ERROR ();
+      ASSERT_ERROR_AND_SET (error);
       goto end;
     }
 

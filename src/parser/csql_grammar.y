@@ -2942,8 +2942,8 @@ create_stmt
 		DBG_PRINT}}
 	| CREATE					/* 1 */
 	  opt_or_replace                		/* 2 */
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE); }	/* 3 */
-	  PROCEDURE					/* 4 */
+	  PROCEDURE					/* 3 */
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE); }	/* 4 */
 	  identifier '(' opt_sp_param_list  ')'		/* 5, 6, 7, 8 */
 	  opt_of_is_as LANGUAGE JAVA			/* 9, 10, 11 */
 	  NAME char_string_literal			/* 12, 13 */
@@ -2969,8 +2969,8 @@ create_stmt
 		DBG_PRINT}}
 	| CREATE                        		/* 1 */
 	  opt_or_replace                		/* 2 */
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION); }	/* 3 */
-	  FUNCTION					/* 4 */
+	  FUNCTION					/* 3 */
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION); }	/* 4 */
 	  identifier '('  opt_sp_param_list  ')'	/* 5, 6, 7, 8 */
 	  RETURN opt_of_data_type_cursor		/* 9, 10 */
 	  opt_of_is_as LANGUAGE JAVA			/* 11, 12, 13 */
@@ -3120,9 +3120,9 @@ create_stmt
 		DBG_PRINT}}
 	| CREATE			/* 1 */
 	  opt_or_replace		/* 2 */
-	  	{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_CREATE); }	/* 3 */
-	  opt_access_modifier		/* 4 */
-	  SYNONYM			/* 5 */
+	  opt_access_modifier		/* 3 */
+	  SYNONYM			/* 4 */
+	  	{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_CREATE); }	/* 5 */
 	  synonym_name_without_dot	/* 6 */
 	  For				/* 7 */
 	  class_name			/* 8 */
@@ -3136,7 +3136,7 @@ create_stmt
 			if (node)
 			  {
 			    PT_SYNONYM_OR_REPLACE (node) = $2;
-			    PT_SYNONYM_ACCESS_MODIFIER (node) = $4;
+			    PT_SYNONYM_ACCESS_MODIFIER (node) = $3;
 			    PT_SYNONYM_NAME (node) = $6;
 			    PT_SYNONYM_TARGET_NAME (node) = $8;
 			    PT_SYNONYM_COMMENT (node) = $9;
@@ -3970,9 +3970,9 @@ alter_stmt
 
 		DBG_PRINT}}
 	| ALTER				/* 1 */
-		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_ALTER); }	/* 2 */
-	  opt_access_modifier		/* 3 */
-	  SYNONYM			/* 4 */
+	  opt_access_modifier		/* 2 */
+	  SYNONYM			/* 3 */
+		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_ALTER); }	/* 4 */
 	  synonym_name			/* 5 */
 	  For				/* 6 */
 	  class_name			/* 7 */
@@ -3985,7 +3985,7 @@ alter_stmt
 
 			if (node)
 			  {
-			    PT_SYNONYM_ACCESS_MODIFIER (node) = $3;
+			    PT_SYNONYM_ACCESS_MODIFIER (node) = $2;
 			    PT_SYNONYM_NAME (node) = $5;
 			    PT_SYNONYM_TARGET_NAME (node) = $7;
 			    PT_SYNONYM_COMMENT (node) = $8;
@@ -4096,9 +4096,9 @@ rename_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	| RENAME			/* 1 */
-		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_RENAME); }	/* 2 */
-	  opt_access_modifier		/* 3 */
-	  SYNONYM			/* 4 */
+	  opt_access_modifier		/* 2 */
+	  SYNONYM			/* 3 */
+		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_RENAME); }	/* 4 */
 	  synonym_name			/* 5 */
 	  as_or_to			/* 6 */
 	  synonym_name_without_dot	/* 7 */
@@ -4110,7 +4110,7 @@ rename_stmt
 
 			if (node)
 			  {
-			    PT_SYNONYM_ACCESS_MODIFIER (node) = $3;
+			    PT_SYNONYM_ACCESS_MODIFIER (node) = $2;
 			    PT_SYNONYM_OLD_NAME (node) = $5;
 			    PT_SYNONYM_NEW_NAME (node) = $7;
 			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
@@ -4446,9 +4446,9 @@ drop_stmt
 
 		DBG_PRINT}}
 	| DROP				/* 1 */
-		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_DROP); }	/* 2 */
-	  opt_access_modifier		/* 3 */
-	  SYNONYM			/* 4 */
+	  opt_access_modifier		/* 2 */
+	  SYNONYM			/* 3 */
+		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_DROP); }	/* 4 */
 	  opt_if_exists			/* 5 */
 	  synonym_name			/* 6 */
 	  	{ pop_msg(); }
@@ -4460,7 +4460,7 @@ drop_stmt
 
 			if (node)
 			  {
-			    PT_SYNONYM_ACCESS_MODIFIER (node) = $3;
+			    PT_SYNONYM_ACCESS_MODIFIER (node) = $2;
 			    PT_SYNONYM_IF_EXISTS (node) = $5;
 			    PT_SYNONYM_NAME (node) = $6;
 			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
