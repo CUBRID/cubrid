@@ -15299,18 +15299,18 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       break;
 
     case PT_CREATE_USER:
+      ddl_type = CDC_CREATE;
+      objtype = CDC_USER;
       break;
 
     case PT_ALTER_USER:
+      ddl_type = CDC_ALTER;
+      objtype = CDC_USER;
       break;
 
     case PT_DROP_USER:
-      break;
-
-    case PT_GRANT:
-      break;
-
-    case PT_REVOKE:
+      ddl_type = CDC_DROP;
+      objtype = CDC_USER;
       break;
 
     case PT_CREATE_TRIGGER:
