@@ -2625,7 +2625,7 @@ do_rename (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (db_find_synonym (old_name))
 	{
 	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, old_name);
-	  return error;
+	  goto error_exit;
 	}
 
       const char *old_qualifier_name = pt_get_qualifier_name (parser, current_rename->info.rename.old_name);

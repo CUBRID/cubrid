@@ -746,6 +746,14 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
     {
       class_name = db_get_synonym_target_name (synonym_mop);
     }
+  else
+    {
+      /* db_find_synonym () == NULL */
+      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_clear ();
+	}
+    }
 
   sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
 
