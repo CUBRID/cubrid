@@ -88,7 +88,7 @@ namespace cublog
 				 const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa);
       template <typename T>
       void read_and_redo_btree_stats (cubthread::entry &thread_entry, const log_rv_redo_rec_info<T> &record_info);
- 
+
     private:
       void redo_upto_nxio_lsa (cubthread::entry &thread_entry);
       template <typename T>
@@ -112,10 +112,6 @@ namespace cublog
        *    effective calling of the redo function
        */
       perfmon_counter_timer_tracker m_perfmon_redo_sync;
-
-      /*
-       */
-      std::atomic<log_lsa> m_most_recent_trantable_snapshot_lsa;
       const bool m_bookkeep_mvcc_vacuum_info;
 
       std::unique_ptr<cublog::reusable_jobs_stack> m_reusable_jobs;
@@ -127,6 +123,10 @@ namespace cublog
 
     private:
       const bool m_replicate_mvcc;
+
+      /*
+       */
+      std::atomic<log_lsa> m_most_recent_trantable_snapshot_lsa;
       std::unique_ptr<cubthread::entry_manager> m_daemon_context_manager;
       cubthread::daemon *m_daemon = nullptr;
       std::unique_ptr<cublog::replicator_mvcc> m_replicator_mvccid;

@@ -107,9 +107,6 @@ namespace cublog
 		    thread_entry, m_redo_lsa);
 	    break;
 	  case LOG_TRANTABLE_SNAPSHOT:
-	    // save the LSA of the last transaction table snapshot that can be found in the log
-	    // only needed on the passive transaction server
-	    m_most_recent_trantable_snapshot_lsa.store (m_redo_lsa);
 	    break;
 	  case LOG_START_ATOMIC_REPL:
 	  case LOG_SYSOP_ATOMIC_START:
@@ -169,18 +166,18 @@ namespace cublog
     // proceed.
     const LOG_RCVINDEX rcvindex = log_rv_get_log_rec_data (record_info.m_logrec).rcvindex;
     const VPID log_vpid = log_rv_get_log_rec_vpid<T> (record_info.m_logrec);
-    if (m_atomic_helper.is_part_of_atomic_replication (trid))
-      {
-	m_atomic_helper.add_atomic_replication_unit (&thread_entry, trid, rec_lsa, rcvindex, log_vpid, m_redo_context,
-	    record_info);
-	return;
-      }
 
     if (rcvindex == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)
       {
 	read_and_redo_btree_stats (thread_entry, record_info);
       }
-    else
+
+    if (m_atomic_helper.is_part_of_atomic_replication (trid))
+      {
+	m_atomic_helper.add_atomic_replication_unit (&thread_entry, trid, rec_lsa, rcvindex, log_vpid, m_redo_context,
+	    record_info);
+      }
+    else if (rcvindex != RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)
       {
 	log_rv_redo_record_sync_or_dispatch_async (&thread_entry, m_redo_context, record_info,
 	    m_parallel_replication_redo, *m_reusable_jobs.get (), m_perf_stat_idle);
