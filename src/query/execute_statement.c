@@ -17809,6 +17809,14 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
   if (instance_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+  obj_tmpl = NULL;
+
+  error = locator_flush_instance (instance_obj);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
     }
 
 end:
@@ -17934,10 +17942,8 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
-	      return error;
+	      goto end;
 	    }
-
-	  instance_obj = NULL;
 	}
       else
 	{
@@ -18051,6 +18057,13 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
   if (instance_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
+    }
+  obj_tmpl = NULL;
+
+  error = locator_flush_instance (instance_obj);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
     }
 
 end:
@@ -18166,6 +18179,7 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
+      goto end;
     }
 
   error = locator_flush_instance (instance_obj);
@@ -18299,6 +18313,14 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
   if (instance_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+  obj_tmpl = NULL;
+
+  error = locator_flush_instance (instance_obj);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
     }
 
 end:
