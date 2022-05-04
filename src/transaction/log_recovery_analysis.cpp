@@ -905,6 +905,9 @@ log_rv_analysis_sysop_start_postpone (THREAD_ENTRY *thread_p, int tran_id, LOG_L
   if (tdes->topops.last == -1)
     {
       tdes->topops.last++;
+      er_print_callstack (ARG_FILE_LINE,
+			  "CRSDBG: log_rv_analysis_sysop_start_postpone topops_last++ trid=%d topops_last=%d\n",
+			  tdes->trid, tdes->topops.last);
     }
   else
     {
