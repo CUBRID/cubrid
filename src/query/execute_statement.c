@@ -15313,16 +15313,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       objtype = CDC_USER;
       break;
 
-    case PT_GRANT:
-      ddl_type = CDC_GRANT;
-      objtype = CDC_USER;
-      break;
-
-    case PT_REVOKE:
-      ddl_type = CDC_REVOKE;
-      objtype = CDC_USER;
-      break;
-
     case PT_CREATE_TRIGGER:
       target = PT_NODE_TR_TARGET (statement);
 
