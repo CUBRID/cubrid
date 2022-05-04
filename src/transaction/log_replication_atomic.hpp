@@ -24,6 +24,11 @@
 
 namespace cublog
 {
+  /*
+   * Replicator derived class responsible for handling the log redo only on Passive Transaction Servers
+   * In addition to the standard replicator, the atomic variant also adds support for atomic log replication
+   * with the help of the atomic_replication_helper class.
+   */
   class atomic_replicator : replicator
   {
     public:
