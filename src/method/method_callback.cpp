@@ -19,6 +19,9 @@
 #include "method_callback.hpp"
 
 #include "dbi.h"
+
+#include "ddl_log.h"
+
 #include "method_def.hpp"
 #include "method_query_util.hpp"
 #include "method_struct_oid_info.hpp"
@@ -131,6 +134,11 @@ namespace cubmethod
 	  }
       }
 
+    /* DDL audit */
+    logddl_set_sql_text ((char *) sql.c_str (), sql.size ());
+    logddl_set_stmt_type (info.stmt_type);
+    logddl_set_err_code (m_error_ctx.get_error ());
+
     if (m_error_ctx.has_error())
       {
 	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
@@ -171,6 +179,9 @@ namespace cubmethod
 	uint64_t qid = (uint64_t) info.qresult_info.query_id;
 	m_qid_handler_map[qid] = request.handler_id;
       }
+
+    /* DDL audit */
+    logddl_write_end ();
 
     if (m_error_ctx.has_error())
       {
