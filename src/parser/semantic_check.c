@@ -4746,6 +4746,14 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		  MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
       return;
     }
+  else
+    {
+      /* db_find_synonym () == NULL */
+      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_clear ();
+	}
+    }
 
   db = pt_find_class (parser, name, for_update);
   if (!db)
@@ -8213,7 +8221,6 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *tbl_opt = NULL;
   PT_MISC_TYPE entity_type;
   DB_OBJECT *db_obj, *existing_entity;
-  DB_OBJECT *existing_synonym = NULL;
   const char *owner_name = NULL;
   int found, partition_status = DB_NOT_PARTITIONED_CLASS;
   int collation_id, charset;
@@ -8391,12 +8398,21 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* check name doesn't already exist as a class */
   name = node->info.create_entity.entity_name;
-  existing_synonym = db_find_synonym (name->info.name.original);
-  if (existing_synonym != NULL)
+
+  if (db_find_synonym (name->info.name.original))
     {
       PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_EXISTS, name->info.name.original);
       return;
     }
+  else
+    {
+      /* db_find_synonym () == NULL */
+      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_clear ();
+	}
+    }
+
   existing_entity = pt_find_class (parser, name, false);
   if (existing_entity != NULL)
     {
@@ -8650,11 +8666,21 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* check that there trying to create an index on a class */
   name = node->info.index.indexed_class->info.spec.entity_name;
+
   if (db_find_synonym (name->info.name.original))
     {
       PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A_CLASS, name->info.name.original);
       return;
     }
+  else
+    {
+      /* db_find_synonym () == NULL */
+      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_clear ();
+	}
+    }
+
   db_obj = db_find_class (name->info.name.original);
   if (db_obj == NULL)
     {
@@ -9120,10 +9146,25 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 	  const char *cls_name;
 	  /* check if class name exists. if not, we remove the corresponding node from spec_list. */
 	  if ((name = free_node->info.spec.entity_name) != NULL && name->node_type == PT_NAME
-	      && (cls_name = name->info.name.original) != NULL
-	      && ((db_obj = db_find_synonym (cls_name)) != NULL
-		  || (db_obj = db_find_class_with_purpose (cls_name, true)) == NULL))
+	      && (cls_name = name->info.name.original) != NULL)
 	    {
+	      if (db_find_synonym (cls_name) == NULL)
+		{
+		  if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+		    {
+		      er_clear ();
+		    }
+
+		  if ((db_obj = db_find_class_with_purpose (cls_name, true)) != NULL)
+		    {
+		      prev_node = free_node;
+		      free_node = free_node->next;
+
+		      continue;
+		    }
+		}
+
+	      /* db_find_synonym () != NULL || db_find_class_with_purpose () == NULL */
 	      if (free_node == node->info.drop.spec_list)
 		{
 		  node->info.drop.spec_list = node->info.drop.spec_list->next;
@@ -9239,6 +9280,15 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
 		  return;
 		}
+	      else
+		{
+		  /* db_find_synonym () == NULL */
+		  if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+		    {
+		      er_clear ();
+		    }
+		}
+
 	      if ((db_obj = db_find_class (cls_nam)) != NULL)
 		{
 		  if (typ != PT_MISC_DUMMY)
@@ -9491,6 +9541,15 @@ pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node)
 	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
 	      return;
 	    }
+	  else
+	    {
+	      /* db_find_synonym () == NULL */
+	      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+		{
+		  er_clear ();
+		}
+	    }
+
 	  if ((db_obj = db_find_class (cls_nam)) != NULL)
 	    {
 	      name->info.name.db_object = db_obj;

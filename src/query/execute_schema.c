@@ -2627,6 +2627,14 @@ do_rename (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, old_name);
 	  goto error_exit;
 	}
+      else
+	{
+	  /* db_find_synonym () == NULL */
+	  if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+	    {
+	      er_clear ();
+	    }
+	}
 
       const char *old_qualifier_name = pt_get_qualifier_name (parser, current_rename->info.rename.old_name);
       const char *new_qualifier_name = pt_get_qualifier_name (parser, current_rename->info.rename.new_name);
