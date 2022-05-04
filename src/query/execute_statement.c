@@ -14950,6 +14950,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
   OID *classoid = NULL;
   OID *classoid_list[1024];
   OID *oid = NULL;
+  OID null_oid = OID_INITIALIZER;
+
   int stmt_length = 0;
 
   bool supp_appended = false;
@@ -15297,25 +15299,34 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       break;
 
     case PT_CREATE_USER:
+      ddl_type = CDC_CREATE;
+      objtype = CDC_USER;
       break;
 
     case PT_ALTER_USER:
+      ddl_type = CDC_ALTER;
+      objtype = CDC_USER;
       break;
 
     case PT_DROP_USER:
-      break;
-
-    case PT_GRANT:
-      break;
-
-    case PT_REVOKE:
+      ddl_type = CDC_DROP;
+      objtype = CDC_USER;
       break;
 
     case PT_CREATE_TRIGGER:
       target = PT_NODE_TR_TARGET (statement);
-      classname = target->info.event_target.class_name->info.name.original;
 
-      classoid = ws_oid (sm_find_class (classname));
+      if (target)
+	{
+	  classname = target->info.event_target.class_name->info.name.original;
+
+	  classoid = ws_oid (sm_find_class (classname));
+	}
+      else
+	{
+	  /* Trigger that does not have target (e.g. create trigger.. execute print.. ) */
+	  classoid = &null_oid;
+	}
 
       ddl_type = CDC_CREATE;
       objtype = CDC_TRIGGER;
@@ -17747,7 +17758,7 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
   obj_tmpl = dbt_edit_object (instance_obj);
   if (obj_tmpl == NULL)
     {
-      ASSERT_ERROR ();
+      ASSERT_ERROR_AND_SET (error);
       goto end;
     }
 
@@ -17798,6 +17809,14 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
   if (instance_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+  obj_tmpl = NULL;
+
+  error = locator_flush_instance (instance_obj);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
     }
 
 end:
@@ -17923,10 +17942,8 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
-	      return error;
+	      goto end;
 	    }
-
-	  instance_obj = NULL;
 	}
       else
 	{
@@ -18040,6 +18057,13 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
   if (instance_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
+    }
+  obj_tmpl = NULL;
+
+  error = locator_flush_instance (instance_obj);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
     }
 
 end:
@@ -18155,6 +18179,13 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
+      goto end;
+    }
+
+  error = locator_flush_instance (instance_obj);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
     }
 
 end:
@@ -18254,7 +18285,7 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
   obj_tmpl = dbt_edit_object (instance_obj);
   if (obj_tmpl == NULL)
     {
-      ASSERT_ERROR ();
+      ASSERT_ERROR_AND_SET (error);
       goto end;
     }
 
@@ -18282,6 +18313,14 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
   if (instance_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+  obj_tmpl = NULL;
+
+  error = locator_flush_instance (instance_obj);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
     }
 
 end:

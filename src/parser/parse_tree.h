@@ -3870,8 +3870,7 @@ enum cdc_ddl_type
   CDC_ALTER,
   CDC_DROP,
   CDC_RENAME,
-  CDC_TRUNCATE,
-  CDC_TRUNCATE_CASCADE
+  CDC_TRUNCATE
 };
 typedef enum cdc_ddl_type CDC_DDL_TYPE;
 
@@ -3883,7 +3882,8 @@ enum cdc_ddl_object_type
   CDC_VIEW,
   CDC_FUNCTION,
   CDC_PROCEDURE,
-  CDC_TRIGGER
+  CDC_TRIGGER,
+  CDC_USER
 };
 typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
 
