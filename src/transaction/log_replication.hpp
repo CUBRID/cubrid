@@ -44,6 +44,7 @@ namespace cublog
   // addind this here allows to include the corresponding header only in the source
   class reusable_jobs_stack;
   class redo_parallel;
+  class replicator_mvcc;
 }
 
 namespace cublog
@@ -87,12 +88,14 @@ namespace cublog
 				 const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa);
       template <typename T>
       void read_and_redo_btree_stats (cubthread::entry &thread_entry, const log_rv_redo_rec_info<T> &record_info);
-
+ 
     private:
       void redo_upto_nxio_lsa (cubthread::entry &thread_entry);
       template <typename T>
       void read_and_bookkeep_mvcc_vacuum (LOG_RECTYPE rectype, const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa,
 					  bool assert_mvccid_non_null);
+      template <typename T>
+      void register_assigned_mvccid (TRANID tranid);
 
     protected:
       log_lsa m_redo_lsa = NULL_LSA;
@@ -123,8 +126,10 @@ namespace cublog
       perf_stats m_perf_stat_idle;
 
     private:
+      const bool m_replicate_mvcc;
       std::unique_ptr<cubthread::entry_manager> m_daemon_context_manager;
       cubthread::daemon *m_daemon = nullptr;
+      std::unique_ptr<cublog::replicator_mvcc> m_replicator_mvccid;
   };
 }
 

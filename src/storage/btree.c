@@ -1827,7 +1827,6 @@ btree_fix_root_with_info (THREAD_ENTRY * thread_p, BTID * btid, PGBUF_LATCH_MODE
 
   /* Fix root page. */
   root_page = pgbuf_fix_old_and_check_repl_desync (thread_p, *root_vpid_p, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
-
   if (root_page == NULL)
     {
       /* Failed fixing root page. */
@@ -14422,9 +14421,7 @@ btree_find_boundary_leaf_with_repl_desync_check (THREAD_ENTRY * thread_p, const 
   int root_level = 0, depth = 0;
 
   desync_occured = false;
-  // TODO: temporary change to identify problem
-  const int temp_error_code = er_errid ();
-  ASSERT_NO_ERROR ();
+  ASSERT_NOT_ERROR (ER_PAGE_AHEAD_OF_REPLICATION);
 
   VPID_SET_NULL (pg_vpid);
 
@@ -22826,6 +22823,7 @@ btree_get_root_with_key (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_i
   assert (root_page != NULL && *root_page == NULL);
   assert (is_leaf != NULL);
   assert (search_key != NULL);
+  ASSERT_NOT_ERROR (ER_PAGE_AHEAD_OF_REPLICATION);
 
   bool reuse_btid_int = other_args ? *((bool *) other_args) : false;
 
@@ -22900,6 +22898,7 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
   assert (crt_page != NULL && *crt_page != NULL);
   assert (advance_to_page != NULL && *advance_to_page == NULL);
   assert (search_key != NULL);
+  ASSERT_NOT_ERROR (ER_PAGE_AHEAD_OF_REPLICATION);
 
   /* Get node header. */
   node_header = btree_get_node_header (thread_p, *crt_page);
@@ -24841,6 +24840,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   assert (bts != NULL && bts->use_desc_index == true);
   assert (key_count != NULL);
   assert (next_vpid != NULL);
+  ASSERT_NOT_ERROR (ER_PAGE_AHEAD_OF_REPLICATION);
 
   VPID_COPY (&prev_leaf_vpid, next_vpid);
 
@@ -25407,6 +25407,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   assert (bts->C_page != NULL);
   /* MRO optimization are not compatible with bts->need_count_only. */
   assert (!BTS_NEED_COUNT_ONLY (bts) || !BTS_IS_INDEX_MRO (bts));
+  ASSERT_NOT_ERROR (ER_PAGE_AHEAD_OF_REPLICATION);
 
   /* Index skip scan optimization has an early out when a new key is found: */
   if (BTS_IS_INDEX_ISS (bts)
@@ -31746,7 +31747,7 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
 			      int offset_to_object)
 {
   int error_code = NO_ERROR;	/* Error code. */
-  OID *notification_class_oid;
+  const OID *notification_class_oid;
   RECDES overflow_record;	/* Overflow record. */
   /* Buffer to copy overflow record data. */
   char overflow_record_data_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
@@ -31803,32 +31804,9 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
       /* we need system op to deallocate pages. */
       if (!delete_helper->is_system_op_started)
 	{
-	  log_sysop_start (thread_p);
+	  log_sysop_start_atomic (thread_p);
 	  delete_helper->is_system_op_started = true;
 	}
-
-      /* todo: we always need a system operation to deallocate page. otherwise the page may be "leaked" on rollback.
-       * fixme when replacing the old system operation system */
-      /* Deallocate page. */
-      error_code = file_dealloc (thread_p, &btid_int->sys_btid->vfid, &overflow_vpid, FILE_BTREE);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto error;
-	}
-      /* Notification. */
-      if (!OID_ISNULL (BTREE_DELETE_CLASS_OID (delete_helper)))
-	{
-	  notification_class_oid = BTREE_DELETE_CLASS_OID (delete_helper);
-	}
-      else
-	{
-	  notification_class_oid = &btid_int->topclass_oid;
-	}
-      BTREE_SET_DELETED_OVERFLOW_PAGE_NOTIFICATION (thread_p, key, BTREE_DELETE_OID (delete_helper),
-						    notification_class_oid, btid_int->sys_btid);
-
-      FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
       /* Update previous page link. */
       if (prev_page == leaf_page)
@@ -31856,7 +31834,31 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
 
       FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
-      /* End system operation. */
+      /* todo: we always need a system operation to deallocate page. otherwise the page may be "leaked" on rollback.
+       * fixme when replacing the old system operation system */
+      /* Deallocate page. */
+      error_code = file_dealloc (thread_p, &btid_int->sys_btid->vfid, &overflow_vpid, FILE_BTREE);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+      /* Notification. */
+      if (!OID_ISNULL (BTREE_DELETE_CLASS_OID (delete_helper)))
+	{
+	  notification_class_oid = BTREE_DELETE_CLASS_OID (delete_helper);
+	}
+      else
+	{
+	  notification_class_oid = &btid_int->topclass_oid;
+	}
+      BTREE_SET_DELETED_OVERFLOW_PAGE_NOTIFICATION (thread_p, key, BTREE_DELETE_OID (delete_helper),
+						    notification_class_oid, btid_int->sys_btid);
+
+      FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
+
+      /* End system operation. Only if started in current context.
+       * If started in a parent context, it is up to the parent context to end it */
       if (delete_helper->is_system_op_started && !save_system_op_started)
 	{
 	  btree_delete_sysop_end (thread_p, delete_helper);
