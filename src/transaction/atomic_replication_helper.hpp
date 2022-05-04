@@ -48,7 +48,7 @@ namespace cublog
       atomic_replication_helper &operator= (const atomic_replication_helper &) = delete;
       atomic_replication_helper &operator= (atomic_replication_helper &&) = delete;
 
-      int start_new_atomic_replication_sequence (TRANID tranid);
+      void start_new_atomic_replication_sequence (TRANID tranid);
       template <typename T>
       int add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa, LOG_RCVINDEX rcvindex,
 				       VPID vpid, log_rv_redo_context &redo_context, const log_rv_redo_rec_info<T> &record_info);
@@ -69,7 +69,7 @@ namespace cublog
 	  atomic_replication_unit (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex);
 
 	  atomic_replication_unit (const atomic_replication_unit &) = delete;
-	  atomic_replication_unit (atomic_replication_unit &&);
+	  atomic_replication_unit (atomic_replication_unit &&that);
 
 	  ~atomic_replication_unit ();
 
@@ -82,8 +82,8 @@ namespace cublog
 	  int fix_page (THREAD_ENTRY *thread_p);
 	  void unfix_page (THREAD_ENTRY *thread_p);
 
-	  const VPID m_vpid;
 	private:
+	  const VPID m_vpid;
 	  const log_lsa m_record_lsa;
 	  const LOG_RCVINDEX m_record_index;
 
@@ -108,7 +108,7 @@ namespace cublog
     if (!VPID_ISNULL (&vpid) && !check_for_page_validity (vpid, tranid))
       {
 	// the page is no longer relevant
-	assert (false);
+	return ER_FAILED;
       }
     vpid_set_type &vpids = m_atomic_sequences_vpids_map[tranid];
     vpids.insert (vpid);
@@ -136,6 +136,7 @@ namespace cublog
       }
     else
       {
+	assert (m_watcher.page_was_unfixed == 0);
 	rcv.pgptr = m_watcher.pgptr;
       }
     rcv.reference_lsa = m_record_lsa;

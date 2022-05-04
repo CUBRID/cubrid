@@ -16,12 +16,27 @@
  *
  */
 
-#include "atomic_replicator.hpp"
+#include "log_replication_atomic.hpp"
 
 #include "log_recovery_redo_parallel.hpp"
 
 namespace cublog
 {
+
+  atomic_replicator::atomic_replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode)
+    : replicator (start_redo_lsa, page_fetch_mode, 0)
+  {
+
+  }
+
+  atomic_replicator::~atomic_replicator ()
+  {
+    /*
+     * a passive transaction server is a "transient" server instance; it does not store any data
+     * and, thus, does not need to be left in consistent state; thus, no check as to the consistent
+     * termination state for atomic replication is needed
+     */
+  }
 
   void atomic_replicator::redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa)
   {
@@ -158,6 +173,7 @@ namespace cublog
       {
 	m_atomic_helper.add_atomic_replication_unit (&thread_entry, trid, rec_lsa, rcvindex, log_vpid, m_redo_context,
 	    record_info);
+	return;
       }
 
     if (rcvindex == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)

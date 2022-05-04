@@ -29,15 +29,14 @@ namespace cublog
    * atomic_replication_helper function definitions                    *
    *********************************************************************/
 
-  int atomic_replication_helper::start_new_atomic_replication_sequence (TRANID tranid)
+  void atomic_replication_helper::start_new_atomic_replication_sequence (TRANID tranid)
   {
     if (tranid == NULL_TRANID)
       {
-	return ER_FAILED;
+	assert (false);
       }
 
     m_atomic_sequences_map.emplace (tranid, atomic_replication_sequence_type ());
-    return NO_ERROR;
   }
 
 #if !defined (NDEBUG)
@@ -116,6 +115,7 @@ namespace cublog
     , m_vpid {std::move (that.m_vpid)}
     , m_record_index {std::move (that.m_record_index)}
   {
+    // ctor only used during construction; not allowed while operation is in progress
     assert (m_page_ptr == nullptr);
     assert (PGBUF_IS_CLEAN_WATCHER (&m_watcher));
   }

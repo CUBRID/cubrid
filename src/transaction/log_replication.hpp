@@ -59,7 +59,7 @@ namespace cublog
       replicator (const replicator &) = delete;
       replicator (replicator &&) = delete;
 
-      ~replicator ();
+      virtual ~replicator ();
 
       replicator &operator= (const replicator &) = delete;
       replicator &operator= (replicator &&) = delete;

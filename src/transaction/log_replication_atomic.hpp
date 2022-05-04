@@ -27,18 +27,18 @@ namespace cublog
   class atomic_replicator : replicator
   {
     public:
-      atomic_replicator () = default;
+      atomic_replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode);
 
       atomic_replicator (const atomic_replicator &) = delete;
       atomic_replicator (atomic_replicator &&) = delete;
 
-      ~atomic_replicator () = default;
+      ~atomic_replicator ();
 
       atomic_replicator &operator= (const atomic_replicator &) = delete;
       atomic_replicator &operator= (atomic_replicator &&) = delete;
 
     private:
-      void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa);
+      void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa) override;
       // TODO: change name
       template <typename T>
       void read_and_redo_record_with_atomic_consideration (cubthread::entry &thread_entry, LOG_RECTYPE rectype,
