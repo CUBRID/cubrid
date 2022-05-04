@@ -836,8 +836,10 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 
   /*
    * Lock all unloaded classes with IS_LOCK
+   *   - If there is only view, num_unload_classes can be 0.
    */
-  if (locator_fetch_set (num_unload_classes, unload_class_table, DB_FETCH_READ, DB_FETCH_READ, true) == NULL)
+  if (num_unload_classes
+      && locator_fetch_set (num_unload_classes, unload_class_table, DB_FETCH_READ, DB_FETCH_READ, true) == NULL)
     {
       status = 1;
       goto end;

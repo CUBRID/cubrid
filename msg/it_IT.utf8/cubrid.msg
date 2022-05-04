@@ -1391,19 +1391,19 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1317 dblink - Not allowed "%1$s" Server.
 
 1318 [%1$5.5s][%2$d] %3$s
-1319 dblink - Parameter binding error.
-1320 dblink - Invalid ODBC handle.
-1321 dblink - Type conversion error.
-1322 dblink - not supported type %1$s(%2$d).
-1323 dblink - Invalid Statement handle.
-1324 dblink - Invalid db connection handle.
-1325 dblink - Link server connection url do not exist.
-1326 dblink - Invalid numeric value.
-1327 dblink - Invalid precision value of "%1$s" column.
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 not supported type %1$s(%2$d).
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
 
-1328 dblink - Invalid Descriptor handle.
-1329 dblink - Not supported dbms.
-1330 dblink - Unable to allocate an environment handle.
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
+1330 Unable to allocate an environment handle.
 1331 Error reserved for dblink development.
 
 1332 Il volume del registro attivo (%1$s) è troppo sano per essere ricreato. Se rimuovi il registro attivo, potrebbe causare un problema imprevisto e irreversibile.
@@ -1428,10 +1428,11 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1347 Public synonym "%1$s" does not exist.
 1348 Synonym "%1$s" already exists.
 1349 Synonym "%1$s" does not exist.
+1350 Invalid synonym value.
 
-1350 The maximum length of the function expression string must be %1$d.
+1351 The maximum length of the function expression string must be %1$d.
 
-1351 Ultimo errore
+1352 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
