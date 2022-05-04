@@ -1430,7 +1430,9 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1349 Synonym "%1$s" does not exist.
 1350 Invalid synonym value.
 
-1351 Ultima eroare
+1351 The maximum length of the function expression string must be %1$d.
+
+1352 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):

@@ -1430,7 +1430,9 @@ $ LOADDB
 1349 Synonym "%1$s" does not exist.
 1350 Invalid synonym value.
 
-1351 ラストエラー
+1351 The maximum length of the function expression string must be %1$d.
+
+1352 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
