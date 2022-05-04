@@ -81,8 +81,7 @@ namespace cublog
     protected:
       virtual void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa);
       template <typename T>
-      void calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
-	  const log_lsa &rec_lsa);
+      void calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry, const log_lsa &rec_lsa);
       template <typename T>
       void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype,
 				 const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa);
