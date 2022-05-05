@@ -377,8 +377,9 @@ er_dump_call_stack_internal (print_output & output)
   char buffer[BUFFER_SIZE];
 
   trace_count = backtrace (return_addr, MAX_TRACE);
+  trace_count = (17 < trace_count) ? 17 : trace_count;
 
-  for (i = 0; i < trace_count; i++)
+  for (i = 3; i < trace_count; i++)
     {
       if (dladdr (return_addr[i], &dl_info) == 0)
 	{
@@ -410,7 +411,8 @@ er_dump_call_stack_internal (print_output & output)
 	    }
 	}
 
-      output ("%s(%p): %s\n", dl_info.dli_fname, func_addr_p, func_name_p);
+      //output ("%s(%p): %s\n", dl_info.dli_fname, func_addr_p, func_name_p);
+      output ("(%p): %s\n", func_addr_p, func_name_p);
     }
 
   output.flush ();
