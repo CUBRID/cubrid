@@ -95,13 +95,16 @@ namespace cublog
 	    break;
 	  }
 	  case LOG_COMMIT:
-	    replicator::calculate_replication_delay_or_dispatch_async<log_rec_donetime> (thread_entry, m_redo_lsa);
+	    calculate_replication_delay_or_dispatch_async<log_rec_donetime> (
+		    thread_entry, m_redo_lsa);
 	    break;
 	  case LOG_ABORT:
-	    replicator::calculate_replication_delay_or_dispatch_async<log_rec_donetime> (thread_entry, m_redo_lsa);
+	    calculate_replication_delay_or_dispatch_async<log_rec_donetime> (
+		    thread_entry, m_redo_lsa);
 	    break;
 	  case LOG_DUMMY_HA_SERVER_STATE:
-	    replicator::calculate_replication_delay_or_dispatch_async<log_rec_ha_server_state> (thread_entry, m_redo_lsa);
+	    calculate_replication_delay_or_dispatch_async<log_rec_ha_server_state> (
+		    thread_entry, m_redo_lsa);
 	    break;
 	  case LOG_TRANTABLE_SNAPSHOT:
 	    break;
