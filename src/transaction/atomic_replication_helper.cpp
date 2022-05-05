@@ -29,14 +29,15 @@ namespace cublog
    * atomic_replication_helper function definitions                    *
    *********************************************************************/
 
-  void atomic_replication_helper::start_new_atomic_replication_sequence (TRANID tranid)
+  void atomic_replication_helper::start_new_atomic_replication_sequence (TRANID tranid, LOG_LSA lsa)
   {
     if (tranid == NULL_TRANID)
       {
 	assert (false);
       }
-
+    // the start log record is an empty log record and we only want to know its lsa
     m_atomic_sequences_map.emplace (tranid, atomic_replication_sequence_type ());
+    m_atomic_sequences_map[tranid].emplace_back (atomic_replication_unit (lsa, vpid_Null_vpid, RV_NOT_DEFINED));
   }
 
 #if !defined (NDEBUG)
@@ -72,6 +73,19 @@ namespace cublog
     return true;
   }
 
+  bool atomic_replication_helper::check_for_sysop_end (TRANID tranid, LOG_LSA parent_lsa) const
+  {
+    const auto iterator = m_atomic_sequences_map.find (tranid);
+    if (iterator == m_atomic_sequences_map.cend ())
+      {
+	return false;
+      }
+
+    // if the atomic replication sequence start lsa is higher or equal to the parent lsa of the LOG_SYSOP_END
+    // then the sequence can end
+    return iterator->second[0].get_lsa () >= parent_lsa;
+  }
+
   void atomic_replication_helper::unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, TRANID tranid)
   {
     auto iterator = m_atomic_sequences_map.find (tranid);
@@ -81,7 +95,7 @@ namespace cublog
 	return;
       }
 
-    for (size_t i = 0; i < iterator->second.size (); i++)
+    for (size_t i = 1; i < iterator->second.size (); i++)
       {
 	iterator->second[i].unfix_page (thread_p);
       }
@@ -186,5 +200,10 @@ namespace cublog
 	pgbuf_unfix (thread_p, m_page_ptr);
 	break;
       }
+  }
+
+  LOG_LSA atomic_replication_helper::atomic_replication_unit::get_lsa () const
+  {
+    return m_record_lsa;
   }
 }

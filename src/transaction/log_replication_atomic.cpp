@@ -115,10 +115,9 @@ namespace cublog
 		// nested atomic replication
 		assert (false);
 	      }
-	    m_atomic_helper.start_new_atomic_replication_sequence (header.trid);
+	    m_atomic_helper.start_new_atomic_replication_sequence (header.trid, header.back_lsa);
 	    break;
 	  case LOG_END_ATOMIC_REPL:
-	  case LOG_SYSOP_END:
 	    if (!m_atomic_helper.is_part_of_atomic_replication (header.trid))
 	      {
 		//log here for end without start
@@ -126,6 +125,13 @@ namespace cublog
 	      }
 	    m_atomic_helper.unfix_atomic_replication_sequence (&thread_entry, header.trid);
 	    break;
+	  case LOG_SYSOP_END:
+	    if (!m_atomic_helper.is_part_of_atomic_replication (header.trid))
+	      {
+		//log here for end without start
+		assert (false);
+	      }
+	    process_end_sysop (thread_entry, header.trid);
 	  default:
 	    // do nothing
 	    break;
@@ -181,6 +187,24 @@ namespace cublog
       {
 	log_rv_redo_record_sync_or_dispatch_async (&thread_entry, m_redo_context, record_info,
 	    m_parallel_replication_redo, *m_reusable_jobs.get (), m_perf_stat_idle);
+      }
+  }
+
+  void atomic_replicator::process_end_sysop (cubthread::entry &thread_entry, TRANID trid)
+  {
+    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SYSOP_END));
+    /* Result of top system op */
+    const LOG_REC_SYSOP_END *sysop_end = m_redo_context.m_reader.reinterpret_cptr<LOG_REC_SYSOP_END> ();
+
+    if (! (sysop_end->type == LOG_SYSOP_END_COMMIT || sysop_end->type == LOG_SYSOP_END_ABORT))
+      {
+	return;
+      }
+
+    // check to see if it can close an atomic replication sequence
+    if (m_atomic_helper.check_for_sysop_end (trid, sysop_end->lastparent_lsa))
+      {
+	m_atomic_helper.unfix_atomic_replication_sequence (&thread_entry, trid);
       }
   }
 }

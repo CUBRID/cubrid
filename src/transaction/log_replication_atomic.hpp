@@ -48,6 +48,7 @@ namespace cublog
       template <typename T>
       void read_and_redo_record_with_atomic_consideration (cubthread::entry &thread_entry, LOG_RECTYPE rectype,
 	  const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa, TRANID trid);
+      void process_end_sysop (cubthread::entry &thread_entry, TRANID trid);
 
     private:
       atomic_replication_helper m_atomic_helper;
