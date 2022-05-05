@@ -486,7 +486,7 @@ public:
 
   inline void set_atomic_sysop_start_lsa (const LOG_LSA& new_log_lsa)
   {
-    _er_log_debug (ARG_FILE_LINE, "CRSDBG: set_atomic_sysop_start_lsa (%lld|%d) -> (%lld|%d)\n",
+    er_print_callstack (ARG_FILE_LINE, "CRSDBG: set_atomic_sysop_start_lsa (%lld|%d) -> (%lld|%d)\n",
                         LSA_AS_ARGS (&atomic_sysop_start_lsa), LSA_AS_ARGS (&new_log_lsa));
     atomic_sysop_start_lsa = new_log_lsa;
   }

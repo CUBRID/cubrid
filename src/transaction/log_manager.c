@@ -3911,13 +3911,14 @@ log_sysop_end_type_string (LOG_SYSOP_END_TYPE end_type)
 }
 
 void
-log_dump_log_rcv_tdes (const log_rcv_tdes & rcv_tdes)
+log_dump_log_rcv_tdes (const log_rcv_tdes & rcv_tdes, const char* message)
 {
   _er_log_debug ("", 0,
-		 "CRSDBG: log_dump_log_rcv_tdes\n"
+		 "CRSDBG: log_dump_log_rcv_tdes - %s\n"
 		 "    sysop_start_postpone_lsa=(%lld|%d) tran_start_postpone_lsa=(%lld|%d)\n"
 		 "    atomic_sysop_start_lsa=(%lld|%d) analysis_last_aborted_sysop_lsa=(%lld|%d)\n"
 		 "    analysis_last_aborted_sysop_start_lsa=(%lld|%d)\n",
+		 ((message != nullptr) ? message : ""),
 		 LSA_AS_ARGS (&rcv_tdes.sysop_start_postpone_lsa),
 		 LSA_AS_ARGS (&rcv_tdes.tran_start_postpone_lsa),
 		 LSA_AS_ARGS (&rcv_tdes.get_atomic_sysop_start_lsa ()),
@@ -3989,7 +3990,7 @@ log_sysop_start (THREAD_ENTRY * thread_p)
 
   er_print_callstack (ARG_FILE_LINE, "CRSDBG: log_sysop_start after topops_last++ trid=%d topops_last=%d"
 		      " tdes_tail_lsa=(%lld|%d)\n", tdes->trid, tdes->topops.last, LSA_AS_ARGS (&tdes->tail_lsa));
-  log_dump_log_rcv_tdes (tdes->rcv);
+  log_dump_log_rcv_tdes (tdes->rcv, "called from log_sysop_start");
 
   perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_START_TOPOPS);
 }
@@ -4021,13 +4022,12 @@ log_sysop_start_atomic (THREAD_ENTRY * thread_p)
 			  tdes->trid, tdes->topops.last);
       for (int topop_index = 0; topop_index <= tdes->topops.last; ++topop_index)
 	{
-	  _er_log_debug ("iterate", 0,
-			 "CRSDBG: log_sysop_start_atomic IF"
+	  _er_log_debug ("iterate", 0, "CRSDBG: log_sysop_start_atomic IF\n"
 			 " topop_index=%d lastparent_lsa=(%lld|%d), posp_lsa=(%lld|%d)\n",
 			 topop_index, LSA_AS_ARGS (&tdes->topops.stack[topop_index].lastparent_lsa),
 			 LSA_AS_ARGS (&tdes->topops.stack[topop_index].posp_lsa));
 	}
-      log_dump_log_rcv_tdes (tdes->rcv);
+      log_dump_log_rcv_tdes (tdes->rcv, "from log_sysop_start_atomic IF");
 
       LOG_PRIOR_NODE *node =
 	prior_lsa_alloc_and_copy_data (thread_p, LOG_SYSOP_ATOMIC_START, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
@@ -4037,32 +4037,32 @@ log_sysop_start_atomic (THREAD_ENTRY * thread_p)
 	}
 
       (void) prior_lsa_next_record (thread_p, node, tdes);
-      _er_log_debug (ARG_FILE_LINE, "CRSDBG: log_sysop_start_atomic IF after call to prior_lsa_next_record"
+      _er_log_debug (ARG_FILE_LINE, "CRSDBG: log_sysop_start_atomic IF after call to prior_lsa_next_record\n"
 		     " tdes_rcv_atomic_sysop_start_lsa=(%lld|%d)\n",
 		     LSA_AS_ARGS (&tdes->rcv.get_atomic_sysop_start_lsa ()));
-      log_dump_log_rcv_tdes (tdes->rcv);
+      log_dump_log_rcv_tdes (tdes->rcv, "from log_sysop_start_atomic IF after call to prior_lsa_next_record");
     }
   else
     {
       const LOG_LSA & current_sysop_start_lsa = tdes->rcv.get_atomic_sysop_start_lsa ();
-      er_print_callstack (ARG_FILE_LINE, "CRSDBG: log_sysop_start_atomic ELSE trid=%d"
+      er_print_callstack (ARG_FILE_LINE, "CRSDBG: log_sysop_start_atomic ELSE trid=%d\n"
 			  " current_sysop_start_lsa=(%lld|%d) topops_last=%d\n",
 			  tdes->trid, LSA_AS_ARGS (&current_sysop_start_lsa), tdes->topops.last);
       for (int topop_index = 0; topop_index <= tdes->topops.last; ++topop_index)
 	{
-	  _er_log_debug ("iterate", 0,
-			 "CRSDBG: log_sysop_start_atomic ELSE"
+	  _er_log_debug ("iterate", 0, "CRSDBG: log_sysop_start_atomic ELSE\n"
 			 " topop_index=%d lastparent_lsa=(%lld|%d), posp_lsa=(%lld|%d)\n",
 			 topop_index, LSA_AS_ARGS (&tdes->topops.stack[topop_index].lastparent_lsa),
 			 LSA_AS_ARGS (&tdes->topops.stack[topop_index].posp_lsa));
 	}
-      log_dump_log_rcv_tdes (tdes->rcv);
+      log_dump_log_rcv_tdes (tdes->rcv, "from log_sysop_start_atomic ELSE");
 
       /* this must be a nested atomic system operation. If parent is atomic, we'll be atomic too. */
       while (tdes->topops.last <= 0)
 	{
 	  const auto last = tdes->topops.last;
 	  msleep (100);
+	  log_wakeup_log_flush_daemon ();
 	}
       assert (tdes->topops.last > 0);
 
@@ -4131,7 +4131,7 @@ log_sysop_end_unstack (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     }
   er_print_callstack (ARG_FILE_LINE, "CRSDBG: log_sysop_end_unstack after topops_last-- trid=%d topops_last=%d\n",
 		      tdes->trid, tdes->topops.last);
-  log_dump_log_rcv_tdes (tdes->rcv);
+  log_dump_log_rcv_tdes (tdes->rcv, "called from log_sysop_end_unstack");
 }
 
 /*
@@ -6630,11 +6630,11 @@ log_dump_record_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*undoredo), log_lsa, log_page_p);
   /* Print UNDO(BEFORE) DATA */
-  fprintf (out_fp, "-->> Undo (Before) Data:\n");
-  log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
+  //fprintf (out_fp, "-->> Undo (Before) Data:\n");
+  //log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
   /* Print REDO (AFTER) DATA */
-  fprintf (out_fp, "-->> Redo (After) Data:\n");
-  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_redofun, log_zip_p);
+  //fprintf (out_fp, "-->> Redo (After) Data:\n");
+  //log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_redofun, log_zip_p);
 
   return log_page_p;
 }
@@ -6660,8 +6660,8 @@ log_dump_record_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*undo), log_lsa, log_page_p);
 
   /* Print UNDO(BEFORE) DATA */
-  fprintf (out_fp, "-->> Undo (Before) Data:\n");
-  log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
+  //fprintf (out_fp, "-->> Undo (Before) Data:\n");
+  //log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
 
   return log_page_p;
 }
@@ -6687,8 +6687,8 @@ log_dump_record_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*redo), log_lsa, log_page_p);
 
   /* Print REDO(AFTER) DATA */
-  fprintf (out_fp, "-->> Redo (After) Data:\n");
-  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_redofun, log_zip_p);
+  //fprintf (out_fp, "-->> Redo (After) Data:\n");
+  //log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_redofun, log_zip_p);
 
   return log_page_p;
 }
@@ -6722,11 +6722,11 @@ log_dump_record_mvcc_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA *
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undoredo), log_lsa, log_page_p);
   /* Print UNDO(BEFORE) DATA */
-  fprintf (out_fp, "-->> Undo (Before) Data:\n");
-  log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
+  //fprintf (out_fp, "-->> Undo (Before) Data:\n");
+  //log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
   /* Print REDO (AFTER) DATA */
-  fprintf (out_fp, "-->> Redo (After) Data:\n");
-  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_redofun, log_zip_p);
+  //fprintf (out_fp, "-->> Redo (After) Data:\n");
+  //log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_redofun, log_zip_p);
 
   return log_page_p;
 }
@@ -6757,8 +6757,8 @@ log_dump_record_mvcc_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undo), log_lsa, log_page_p);
 
   /* Print UNDO(BEFORE) DATA */
-  fprintf (out_fp, "-->> Undo (Before) Data:\n");
-  log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
+  //fprintf (out_fp, "-->> Undo (Before) Data:\n");
+  //log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
 
   return log_page_p;
 }
@@ -6786,8 +6786,8 @@ log_dump_record_mvcc_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_redo), log_lsa, log_page_p);
 
   /* Print REDO(AFTER) DATA */
-  fprintf (out_fp, "-->> Redo (After) Data:\n");
-  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_redofun, log_zip_p);
+  //fprintf (out_fp, "-->> Redo (After) Data:\n");
+  //log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_redofun, log_zip_p);
 
   return log_page_p;
 }
@@ -6813,8 +6813,8 @@ log_dump_record_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*run_posp), log_lsa, log_page_p);
 
   /* Print RUN POSTPONE (REDO/AFTER) DATA */
-  fprintf (out_fp, "-->> Run Postpone (Redo/After) Data:\n");
-  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_redofun, NULL);
+  //fprintf (out_fp, "-->> Run Postpone (Redo/After) Data:\n");
+  //log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_redofun, NULL);
 
   return log_page_p;
 }
@@ -6838,8 +6838,8 @@ log_dump_record_dbout_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*dbout_redo), log_lsa, log_page_p);
 
   /* Print Database External DATA */
-  fprintf (out_fp, "-->> Database external Data:\n");
-  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_redofun, NULL);
+  //fprintf (out_fp, "-->> Database external Data:\n");
+  //log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_redofun, NULL);
 
   return log_page_p;
 }
@@ -6865,8 +6865,8 @@ log_dump_record_compensate (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*compensate), log_lsa, log_page_p);
 
   /* Print COMPENSATE DATA */
-  fprintf (out_fp, "-->> Compensate Data:\n");
-  log_dump_data (thread_p, out_fp, length_compensate, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, NULL);
+  //fprintf (out_fp, "-->> Compensate Data:\n");
+  //log_dump_data (thread_p, out_fp, length_compensate, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, NULL);
 
   return log_page_p;
 }
@@ -7022,7 +7022,7 @@ log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END *
       undo_length = sysop_end->undo.length;
       rcvindex = sysop_end->undo.data.rcvindex;
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), log_lsa, log_page_p);
-      log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
+      //log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
       break;
     case LOG_SYSOP_END_LOGICAL_MVCC_UNDO:
       assert (log_lsa != NULL && log_page_p != NULL && log_zip_p != NULL);
@@ -7039,7 +7039,7 @@ log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END *
       undo_length = sysop_end->mvcc_undo.undo.length;
       rcvindex = sysop_end->mvcc_undo.undo.data.rcvindex;
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), log_lsa, log_page_p);
-      log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
+      //log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
       break;
     default:
       assert (false);
@@ -10891,7 +10891,7 @@ log_daemons_init ()
       log_remove_log_archive_daemon_init ();
       log_checkpoint_daemon_init ();
       log_checkpoint_trantable_daemon_init ();
-      log_check_ha_delay_info_daemon_init ();
+      //log_check_ha_delay_info_daemon_init ();
       log_clock_daemon_init ();
     }
   log_flush_daemon_init ();

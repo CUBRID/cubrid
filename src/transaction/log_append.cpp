@@ -1573,6 +1573,15 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 	  /* atomic system operation finished. */
 	  tdes->rcv.set_atomic_sysop_start_lsa (NULL_LSA);
 	}
+      else
+        {
+	  _er_log_debug (ARG_FILE_LINE,
+			 "CRSDBG: prior_lsa_next_record_internal LOG_SYSOP_START_POSTPONE ELSE_NOT\n"
+			 " sysop_start_postpone->sysop_end.lastparent_lsa=(%lld|%d)\n"
+			 " tdes->rcv.get_atomic_sysop_start_lsa=(%lld|%d)\n",
+			 LSA_AS_ARGS (&sysop_start_postpone->sysop_end.lastparent_lsa),
+			 LSA_AS_ARGS (&tdes->rcv.get_atomic_sysop_start_lsa ()));
+        }
 
       /* for correct checkpoint, this state change must be done under the protection of prior_lsa_mutex */
       tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
@@ -1584,12 +1593,22 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
       LOG_REC_SYSOP_END *sysop_end = NULL;
 
       sysop_end = (LOG_REC_SYSOP_END *) node->data_header;
+      // TODO: log this condition here; it might be the cause that atomic_sysop_start_lsa is not reset
       if (!LSA_ISNULL (&tdes->rcv.get_atomic_sysop_start_lsa ())
 	  && LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.get_atomic_sysop_start_lsa ()))
 	{
 	  /* atomic system operation finished. */
 	  tdes->rcv.set_atomic_sysop_start_lsa (NULL_LSA);
 	}
+      else
+        {
+	  _er_log_debug (ARG_FILE_LINE,
+			 "CRSDBG: prior_lsa_next_record_internal LOG_SYSOP_END ELSE_NOT\n"
+			 " sysop_end->lastparent_lsa=(%lld|%d)\n"
+			 " tdes->rcv.get_atomic_sysop_start_lsa=(%lld|%d)\n",
+			 LSA_AS_ARGS (&sysop_end->lastparent_lsa),
+			 LSA_AS_ARGS (&tdes->rcv.get_atomic_sysop_start_lsa ()));
+        }
       if (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa)
 	  && LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.sysop_start_postpone_lsa))
 	{
