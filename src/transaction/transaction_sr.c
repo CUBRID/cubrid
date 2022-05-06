@@ -273,11 +273,15 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
 	}
       if (result == LOG_RESULT_TOPOP_COMMIT)
 	{
+          _er_log_debug (ARG_FILE_LINE, "CRSDBG: xtran_server_end_topop result=%d topop_lsa=(%lld|%d)\n",
+                         result, LSA_AS_ARGS (topop_lsa));
 	  log_sysop_commit (thread_p);
 	  state = TRAN_UNACTIVE_COMMITTED;
 	}
       else
 	{
+          _er_log_debug (ARG_FILE_LINE, "CRSDBG: xtran_server_end_topop result=%d topop_lsa=(%lld|%d)\n",
+                         result, LSA_AS_ARGS (topop_lsa));
 	  log_sysop_abort (thread_p);
 	  state = TRAN_UNACTIVE_ABORTED;
 	}
@@ -292,10 +296,12 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
       break;
 
     case LOG_RESULT_TOPOP_ATTACH_TO_OUTER:
-    default:
+      _er_log_debug (ARG_FILE_LINE, "CRSDBG: xtran_server_end_topop result=%d\n", result);
       log_sysop_attach_to_outer (thread_p);
       state = tdes->state;
       break;
+    default:
+      assert ("other LOG_RESULT_TOPOP not implemented" == nullptr);
     }
 
   er_stack_pop ();
