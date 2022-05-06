@@ -3911,7 +3911,7 @@ log_sysop_end_type_string (LOG_SYSOP_END_TYPE end_type)
 }
 
 void
-log_dump_log_rcv_tdes (const log_rcv_tdes & rcv_tdes, const char* message)
+log_dump_log_rcv_tdes (const log_rcv_tdes & rcv_tdes, const char *message)
 {
   _er_log_debug ("", 0,
 		 "CRSDBG: log_dump_log_rcv_tdes - %s\n"
@@ -4496,6 +4496,7 @@ log_sysop_attach_to_outer (THREAD_ENTRY * thread_p)
   /* Attach to outer: transfer postpone LSA. Not much to do really :) */
   if (tdes->topops.last - 1 >= 0)
     {
+      /* At least one more outer sysop */
       if (LSA_ISNULL (&tdes->topops.stack[tdes->topops.last - 1].posp_lsa))
 	{
 	  LSA_COPY (&tdes->topops.stack[tdes->topops.last - 1].posp_lsa,
@@ -4504,10 +4505,20 @@ log_sysop_attach_to_outer (THREAD_ENTRY * thread_p)
     }
   else
     {
+      /* No outer sysop present */
+      assert (tdes->topops.last == 0);
       if (LSA_ISNULL (&tdes->posp_nxlsa))
 	{
 	  LSA_COPY (&tdes->posp_nxlsa, &tdes->topops.stack[tdes->topops.last].posp_lsa);
 	}
+
+      // - if the last sysop has been assigned to the parent transaction, meaning that, effectively
+      //  there are no sysop's present in the transaction anymore; clean traces of atomic sysops as well;
+      // - this occurs when there are nested non-atomic sysops and atomic sysops (in whichever order, not sure
+      //  which)
+      // - similar logic to this exists in 'log_sysop_commit_internal'
+      // TODO: this might be a workaround for an issue whose root cause is elsewhere
+      tdes->rcv.set_atomic_sysop_start_lsa (NULL_LSA);
     }
 
   log_sysop_end_final (thread_p, tdes);
