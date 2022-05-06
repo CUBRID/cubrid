@@ -139,8 +139,10 @@ enum log_rectype
   LOG_START_ATOMIC_REPL = 51,
   LOG_END_ATOMIC_REPL = 52,
   LOG_TRANTABLE_SNAPSHOT = 53,
-  LOG_ASSIGNED_MVCCID = 54,	/* not used or obsolete */
-
+  LOG_ASSIGNED_MVCCID = 54,	/* There are transactions that assign an mvccid but do not also record it in a log record.
+                                   Because the log records are the only communication means from active transaction server
+                                   towards passive transaction servers, it is needed to relay such mvccid for completion
+                                   on the passive transaction server as well. */
   LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
                                  * case. we should find a different approach */
 
