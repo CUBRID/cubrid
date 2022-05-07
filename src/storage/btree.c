@@ -10844,7 +10844,7 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
   save_sysop_started = insert_helper->is_system_op_started;
   if (!insert_helper->is_system_op_started)
     {
-      log_sysop_start (thread_p);
+      log_sysop_start_atomic (thread_p);
       insert_helper->is_system_op_started = true;
     }
   assert (log_check_system_op_is_started (thread_p));
@@ -10892,7 +10892,7 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
 
   if (!save_sysop_started)
     {
-      /* End system operation. */
+      /* End system operation if started in this context. If not, it is the calle's responsibility. */
       btree_insert_sysop_end (thread_p, insert_helper);
     }
 
