@@ -2623,6 +2623,7 @@ do_rename (PARSER_CONTEXT * parser, PT_NODE * statement)
       const char *old_name = current_rename->info.rename.old_name->info.name.original;
       const char *new_name = current_rename->info.rename.new_name->info.name.original;
 
+      /* We cannot change the schema of a class by using synonym names. */
       if (db_find_synonym (old_name))
 	{
 	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, old_name);
@@ -2631,7 +2632,7 @@ do_rename (PARSER_CONTEXT * parser, PT_NODE * statement)
       else
 	{
 	  /* db_find_synonym () == NULL */
-	  if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+	  if (er_errid () == ER_SYNONYM_NOT_EXIST)
 	    {
 	      er_clear ();
 	    }

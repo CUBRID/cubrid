@@ -4740,6 +4740,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       for_update = true;
     }
 
+  /* We cannot change the schema of a class by using synonym names. */
   if (db_find_synonym (cls_nam))
     {
       PT_ERRORmf (parser, alter->info.alter.entity_name, MSGCAT_SET_PARSER_SEMANTIC,
@@ -4749,7 +4750,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   else
     {
       /* db_find_synonym () == NULL */
-      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+      if (er_errid () == ER_SYNONYM_NOT_EXIST)
 	{
 	  er_clear ();
 	}
@@ -8399,6 +8400,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   /* check name doesn't already exist as a class */
   name = node->info.create_entity.entity_name;
 
+  /* We cannot use an existing synonym name as a class name. */
   if (db_find_synonym (name->info.name.original))
     {
       PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_EXISTS, name->info.name.original);
@@ -8407,7 +8409,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   else
     {
       /* db_find_synonym () == NULL */
-      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+      if (er_errid () == ER_SYNONYM_NOT_EXIST)
 	{
 	  er_clear ();
 	}
@@ -8667,6 +8669,7 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
   /* check that there trying to create an index on a class */
   name = node->info.index.indexed_class->info.spec.entity_name;
 
+  /* We cannot create index of a class by using synonym names. */
   if (db_find_synonym (name->info.name.original))
     {
       PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A_CLASS, name->info.name.original);
@@ -8675,7 +8678,7 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
   else
     {
       /* db_find_synonym () == NULL */
-      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+      if (er_errid () == ER_SYNONYM_NOT_EXIST)
 	{
 	  er_clear ();
 	}
@@ -9148,9 +9151,10 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if ((name = free_node->info.spec.entity_name) != NULL && name->node_type == PT_NAME
 	      && (cls_name = name->info.name.original) != NULL)
 	    {
+	      /* We cannot change the schema of a class by using synonym names. */
 	      if (db_find_synonym (cls_name) == NULL)
 		{
-		  if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+		  if (er_errid () == ER_SYNONYM_NOT_EXIST)
 		    {
 		      er_clear ();
 		    }
@@ -9275,6 +9279,7 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if ((name = temp->info.spec.entity_name) != NULL && name->node_type == PT_NAME
 	      && (cls_nam = name->info.name.original) != NULL)
 	    {
+	      /* We cannot change the schema of a class by using synonym names. */
 	      if (db_find_synonym (cls_nam))
 		{
 		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
@@ -9283,7 +9288,7 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 	      else
 		{
 		  /* db_find_synonym () == NULL */
-		  if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+		  if (er_errid () == ER_SYNONYM_NOT_EXIST)
 		    {
 		      er_clear ();
 		    }
@@ -9536,6 +9541,7 @@ pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node)
       if ((name = temp->info.spec.entity_name) != NULL && name->node_type == PT_NAME
 	  && (cls_nam = name->info.name.original) != NULL)
 	{
+	  /* We cannot change the schema of a class by using synonym names. */
 	  if (db_find_synonym (cls_nam))
 	    {
 	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
@@ -9544,7 +9550,7 @@ pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node)
 	  else
 	    {
 	      /* db_find_synonym () == NULL */
-	      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+	      if (er_errid () == ER_SYNONYM_NOT_EXIST)
 		{
 		  er_clear ();
 		}

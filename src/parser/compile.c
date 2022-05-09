@@ -749,7 +749,7 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
   else
     {
       /* db_find_synonym () == NULL */
-      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+      if (er_errid () == ER_SYNONYM_NOT_EXIST)
 	{
 	  er_clear ();
 	}
