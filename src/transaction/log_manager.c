@@ -14366,8 +14366,9 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
 	      *time = donetime->at_time;
 
 	      /* It returns LSA of next log record because LSA of current log record is useless in CDC or flashback.
-	       * But if LSA of next log record (forw_lsa) is returned before next log record is appended,
-	       * CDC or flashback can access the wrong log LSA.
+	       * But if LSA of next log record (forw_lsa) is returned
+	       * before next log record is appended (forw_lsa == log_Gl.hdr.append_lsa),
+	       * CDC or flashback can access the invalid log record.
 	       * Because, next log record is not always added at log_Gl.hdr.append_lsa */
 
 	      LSA_EQ (&forw_lsa, &log_Gl.hdr.append_lsa) ?
