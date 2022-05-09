@@ -144,6 +144,7 @@ extern void sqp_get_sys_timestamp (THREAD_ENTRY * thread_p, unsigned int rid, ch
 extern void sserial_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sserial_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sserial_decache (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void ssynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void smnt_server_start_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void smnt_server_stop_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

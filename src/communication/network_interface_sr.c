@@ -6325,6 +6325,31 @@ sserial_decache (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
 }
 
 /*
+ * ssynonym_remove_xasl_by_oid -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+ssynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OID oid;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  (void) or_unpack_oid (request, &oid);
+  xsynonym_remove_xasl_by_oid (thread_p, &oid);
+
+  (void) or_pack_int (reply, NO_ERROR);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
  * smnt_server_start_stats -
  *
  * return:

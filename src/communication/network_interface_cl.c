@@ -7453,6 +7453,51 @@ serial_decache (OID * oid)
 }
 
 /*
+ * synonym_remove_xasl_by_oid -
+ *
+ * return: NO_ERROR or error status
+ *
+ *   oid(in):
+ *
+ * NOTE:
+ */
+int
+synonym_remove_xasl_by_oid (OID * oid)
+{
+#if defined(CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_OID_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;	/* need dummy reply message */
+  char *request;
+  char *reply;
+  int status;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  or_pack_oid (request, oid);
+
+  req_error =
+    net_client_request (NET_SERVER_SYNONYM_REMOVE_XASL_BY_OID, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &status);
+    }
+
+  return req_error;
+#else /* CS_MODE */
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  xsynonym_remove_xasl_by_oid (thread_p, oid);
+
+  exit_server (*thread_p);
+
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+/*
  * perfmon_server_start_stats -
  *
  * return:
