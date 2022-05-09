@@ -247,24 +247,9 @@ namespace cublog
 	    break;
 	  }
 	  case LOG_COMMIT:
-	    if (m_replicate_mvcc)
-	      {
-		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::COMMITTED);
-	      }
-	    calculate_replication_delay_or_dispatch_async<log_rec_donetime> (
-		    thread_entry, m_redo_lsa);
-	    break;
 	  case LOG_ABORT:
-	    if (m_replicate_mvcc)
-	      {
-		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::ROLLEDBACK);
-	      }
-	    calculate_replication_delay_or_dispatch_async<log_rec_donetime> (
-		    thread_entry, m_redo_lsa);
-	    break;
 	  case LOG_DUMMY_HA_SERVER_STATE:
-	    calculate_replication_delay_or_dispatch_async<log_rec_ha_server_state> (
-		    thread_entry, m_redo_lsa);
+	    calculate_replication_delay_demux (thread_entry, header.type, header.trid);
 	    break;
 	  case LOG_TRANTABLE_SNAPSHOT:
 	    // save the LSA of the last transaction table snapshot that can be found in the log
@@ -395,8 +380,7 @@ namespace cublog
   }
 
   template <typename T>
-  void replicator::calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
-      const log_lsa &rec_lsa)
+  void replicator::calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry)
   {
     const T log_rec = m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ();
     // at_time, expressed in milliseconds rather than seconds
@@ -415,6 +399,34 @@ namespace cublog
       {
 	// calculate the time difference synchronously
 	log_rpl_calculate_replication_delay (&thread_entry, start_time_msec);
+      }
+  }
+
+  void
+  replicator::calculate_replication_delay_demux (cubthread::entry &thread_entry, LOG_RECTYPE record_type, TRANID trid)
+  {
+    switch (record_type)
+      {
+      case LOG_COMMIT:
+	if (m_replicate_mvcc)
+	  {
+	    m_replicator_mvccid->complete_mvcc (trid, replicator_mvcc::COMMITTED);
+	  }
+	calculate_replication_delay_or_dispatch_async<log_rec_donetime> (thread_entry);
+	break;
+      case LOG_ABORT:
+	if (m_replicate_mvcc)
+	  {
+	    m_replicator_mvccid->complete_mvcc (trid, replicator_mvcc::ROLLEDBACK);
+	  }
+	calculate_replication_delay_or_dispatch_async<log_rec_donetime> (thread_entry);
+	break;
+      case LOG_DUMMY_HA_SERVER_STATE:
+	calculate_replication_delay_or_dispatch_async<log_rec_ha_server_state> (thread_entry);
+	break;
+      default:
+	// not get here
+	assert (false);
       }
   }
 

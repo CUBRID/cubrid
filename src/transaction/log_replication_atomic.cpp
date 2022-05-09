@@ -94,15 +94,11 @@ namespace cublog
 				&m_redo_lsa, 0, nullptr, m_redo_context.m_redo_zip);
 	    break;
 	  }
-//	  case LOG_COMMIT:
-//	    calculate_replication_delay_or_dispatch_async<log_rec_donetime> (thread_entry, m_redo_lsa);
-//	    break;
-//	  case LOG_ABORT:
-//	    calculate_replication_delay_or_dispatch_async<log_rec_donetime> (thread_entry, m_redo_lsa);
-//	    break;
-//	  case LOG_DUMMY_HA_SERVER_STATE:
-//	    calculate_replication_delay_or_dispatch_async<log_rec_ha_server_state> (thread_entry, m_redo_lsa);
-//	    break;
+	  case LOG_COMMIT:
+	  case LOG_ABORT:
+	  case LOG_DUMMY_HA_SERVER_STATE:
+	    calculate_replication_delay_demux (thread_entry, header.type, header.trid);
+	    break;
 	  case LOG_TRANTABLE_SNAPSHOT:
 	    break;
 	  case LOG_START_ATOMIC_REPL:
@@ -123,11 +119,6 @@ namespace cublog
 	    m_atomic_helper.unfix_atomic_replication_sequence (&thread_entry, header.trid);
 	    break;
 	  case LOG_SYSOP_END:
-	    if (!m_atomic_helper.is_part_of_atomic_replication (header.trid))
-	      {
-		//log here for end without start
-		assert (false);
-	      }
 	    process_end_sysop (thread_entry, header.trid);
 	  default:
 	    // do nothing

@@ -29,7 +29,7 @@ namespace cublog
    * In addition to the standard replicator, the atomic variant also adds support for atomic log replication
    * with the help of the atomic_replication_helper class.
    */
-  class atomic_replicator : replicator
+  class atomic_replicator : public replicator
   {
     public:
       atomic_replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode);
