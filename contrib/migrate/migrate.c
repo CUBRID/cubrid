@@ -119,8 +119,7 @@ static const char *catalog_query[] = {
   "update _db_class set is_system_class = 1 where class_name in ('_db_server', 'db_server', '_db_synonym', 'db_synonym')"
 };
 
-static char *rename_query = 
-  "select \
+static char *rename_query = "select \
   	'rename table ' || class_name || ' to [' || lower (owner.name) || '.' || class_name || '] ' as q \
    from  _db_class \
    where is_system_class % 8 = 0";
@@ -150,10 +149,11 @@ print_errmsg (const char *err_msg)
 {
   fprintf (stderr, "ERROR: %s\n", err_msg);
 
-  return ;
+  return;
 }
 
-static void print_log (const char *log_fmt, ...)
+static void
+print_log (const char *log_fmt, ...)
 {
   char log_msg[BUF_LEN];
   time_t t;
@@ -164,12 +164,7 @@ static void print_log (const char *log_fmt, ...)
   tm = localtime (&t);
 
   snprintf (log_msg, BUF_LEN, "%d-%02d-%02d %02d:%02d:%02d\t",
-      tm->tm_year + 1900,
-      tm->tm_mon + 1,
-      tm->tm_mday,
-      tm->tm_hour,
-      tm->tm_min,
-      tm->tm_sec);
+	    tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec);
 
   va_start (ap, log_fmt);
 
@@ -181,7 +176,7 @@ static void print_log (const char *log_fmt, ...)
 
   fprintf (stderr, "ERROR : %s\n", log_msg);
 
-  return ;
+  return;
 }
 
 static int
@@ -311,17 +306,17 @@ migrate_check_log_volume (char *dbname)
 
   if (version)
     {
-      if ((strncmp(version, "11.0", 4) == 0 || strncmp(version, "11.1", 4) == 0))
-        {
-          printf ("CUBRID version should be 11.0.x or 11.1.x\n");
-          return -1;
-        }
+      if ((strncmp (version, "11.0", 4) == 0 || strncmp (version, "11.1", 4) == 0))
+	{
+	  printf ("CUBRID version should be 11.0.x or 11.1.x\n");
+	  return -1;
+	}
 
-      printf("%s\n", version);
+      printf ("%s\n", version);
     }
   else
     {
-      printf("migrate: can not get version info.\n");
+      printf ("migrate: can not get version info.\n");
       return -1;
     }
 
@@ -357,7 +352,7 @@ migrate_check_log_volume (char *dbname)
       return -1;
     }
 
-  close(fd);
+  close (fd);
 
   return 0;
 }
@@ -394,7 +389,8 @@ migrate_log_volume ()
   close (fd);
 }
 
-static int cub_db_execute_query (const char *str, DB_QUERY_RESULT ** result)
+static int
+cub_db_execute_query (const char *str, DB_QUERY_RESULT ** result)
 {
   DB_SESSION *session = NULL;
   STATEMENT_ID stmt_id;
@@ -583,52 +579,54 @@ migrate_generated (const char *generated, int col_num)
   error = cub_db_execute_query (generated, &gen_result);
   if (error < 0)
     {
-      printf("generated: execute query failed\n \"%s\"\n", generated);
+      printf ("generated: execute query failed\n \"%s\"\n", generated);
       return -1;
     }
 
   if (cub_db_query_first_tuple (gen_result) == DB_CURSOR_SUCCESS)
     {
-      do {
-	int i;
-	DB_VALUE value;
+      do
+	{
+	  int i;
+	  DB_VALUE value;
 
-	for (i = 0; i < col_num; i++)
-	  {
-	    /* from query */
-            error = cub_db_query_get_tuple_value (gen_result, i, &value);
-            if (error < 0)
-              {
-                printf("generated: can not get a tuple for \"%s\"\n", generated);
-                return -1;
-              }
- 
-	    query = value.data.ch.medium.buf;
+	  for (i = 0; i < col_num; i++)
+	    {
+	      /* from query */
+	      error = cub_db_query_get_tuple_value (gen_result, i, &value);
+	      if (error < 0)
+		{
+		  printf ("generated: can not get a tuple for \"%s\"\n", generated);
+		  return -1;
+		}
 
-	    /* from generated result */
-  	    error = cub_db_execute_query (query, &result);
-	    if (error < 0)
-	      {
-                printf("generated: can not get a tuple for \"%s\"\n", query);
-                return -1;
-	      }
+	      query = value.data.ch.medium.buf;
 
-	    cub_db_query_end (result);
-	  }
-	error = cub_db_query_next_tuple (gen_result);
-      } while (error != DB_CURSOR_END && error != DB_CURSOR_ERROR);
+	      /* from generated result */
+	      error = cub_db_execute_query (query, &result);
+	      if (error < 0)
+		{
+		  printf ("generated: can not get a tuple for \"%s\"\n", query);
+		  return -1;
+		}
+
+	      cub_db_query_end (result);
+	    }
+	  error = cub_db_query_next_tuple (gen_result);
+	}
+      while (error != DB_CURSOR_END && error != DB_CURSOR_ERROR);
 
       cub_db_query_end (gen_result);
     }
   else
     {
-      printf("generated: can not get first tuple for \"%s\"\n", generated);
+      printf ("generated: can not get first tuple for \"%s\"\n", generated);
       return -1;
     }
 
   if (error < 0)
     {
-      printf("generated: can not get a next tuple for \"%s\"\n", generated);
+      printf ("generated: can not get a next tuple for \"%s\"\n", generated);
       return -1;
     }
 
@@ -643,12 +641,12 @@ migrate_queries ()
   int i, error;
 
   /* catalog query */
-  for (i = 0; i < sizeof(catalog_query) / sizeof(const char *); i++) 
+  for (i = 0; i < sizeof (catalog_query) / sizeof (const char *); i++)
     {
       error = cub_db_execute_query (catalog_query[i], &result);
       if (error < 0)
-        {
-	  printf("migrate: execute query failed \"%s\"\n", catalog_query[i]);
+	{
+	  printf ("migrate: execute query failed \"%s\"\n", catalog_query[i]);
 	  return -1;
 	}
       cub_db_query_end (result);
@@ -658,24 +656,24 @@ migrate_queries ()
   error = migrate_generated (rename_query, 1);
   if (error < 0)
     {
-      printf("migrate: execute query failed \"%s\"\n", rename_query);
+      printf ("migrate: execute query failed \"%s\"\n", rename_query);
       return -1;
     }
 
   error = migrate_generated (serial_query, 2);
   if (error < 0)
     {
-      printf("migrate: execute query failed \"%s\"\n", serial_query);
+      printf ("migrate: execute query failed \"%s\"\n", serial_query);
       return -1;
     }
 
   /* index query */
-  for (i = 0; i < sizeof(index_query) / sizeof (const char *); i++) 
+  for (i = 0; i < sizeof (index_query) / sizeof (const char *); i++)
     {
       error = cub_db_execute_query (index_query[i], &result);
       if (error < 0)
-        {
-	  printf("migrate: execute query failed \"%s\"\n", index_query[i]);
+	{
+	  printf ("migrate: execute query failed \"%s\"\n", index_query[i]);
 	  return -1;
 	}
       cub_db_query_end (result);
@@ -699,9 +697,9 @@ main (int argc, char *argv[])
   error = migrate_initialize ();
   if (error < 0)
     {
-      printf("migrate: error encountered while initializing\n");
+      printf ("migrate: error encountered while initializing\n");
       return -1;
-    } 
+    }
 
   status = migrate_check_log_volume (argv[1]);
   if (status < 0)
@@ -724,19 +722,19 @@ main (int argc, char *argv[])
   error = migrate_queries ();
   if (error < 0)
     {
-      printf("migrate: error encountered while executing quries\n");
+      printf ("migrate: error encountered while executing quries\n");
       cub_db_abort_transaction ();
       return -1;
-    } 
+    }
 
   error = cub_db_commit_transaction ();
   if (error < 0)
     {
-      printf("migrate: error encountered while committing\n");
+      printf ("migrate: error encountered while committing\n");
       cub_db_abort_transaction ();
       return -1;
-    } 
- 
+    }
+
 #if 0
   migrate_update_log_volume ();
 #endif
