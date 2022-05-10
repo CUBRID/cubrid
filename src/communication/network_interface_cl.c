@@ -10648,15 +10648,34 @@ cleanup:
 
   return req_error;
 #else /* CS_MODE */
-  int success = ER_FAILED;
+  int error_code = NO_ERROR;
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xmethod_invoke_fold_constants (thread_p, sig_list, args, result);
+  error_code = xmethod_invoke_fold_constants (thread_p, sig_list, args, result);
 
+  cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
+  assert (rctx);
+
+  cubmethod::method_invoke_group * top_on_stack = rctx->top_stack ();
+  assert (top_on_stack);
+
+  if (error_code != NO_ERROR)
+  {
+    if (rctx->is_interrupted ())
+    {
+      rctx->set_local_error_for_interrupt ();
+    }
+        else if (error_code != ER_SM_INVALID_METHOD_ENV)	/* FIXME: error possibly occured in builtin method, It should be handled at CAS */
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, top_on_stack->get_error_msg ().c_str ());
+    }
+  }
+
+  top_on_stack->end ();
   exit_server (*thread_p);
 
-  return success;
+  return error_code;
 #endif /* !CS_MODE */
 }
 
