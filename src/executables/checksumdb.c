@@ -1752,8 +1752,8 @@ chksum_need_skip_table (const char *table_name, CHKSUM_ARG * chksum_arg)
   dynamic_array *list = NULL;
   char table_in_list[SM_MAX_IDENTIFIER_LENGTH];
 
-  if (table_name == NULL || (pt_user_specified_name_compare (table_name, chksum_result_Table_name) == 0)
-      || (pt_user_specified_name_compare (table_name, chksum_schema_Table_name) == 0))
+  if (table_name == NULL || (strcasecmp (table_name, chksum_result_Table_name) == 0)
+      || (strcasecmp (table_name, chksum_schema_Table_name) == 0))
     {
       return true;
     }
