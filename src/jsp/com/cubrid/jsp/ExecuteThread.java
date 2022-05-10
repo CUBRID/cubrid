@@ -256,7 +256,14 @@ public class ExecuteThread extends Thread {
                     }
                     Server.log(throwable);
                     try {
-                        sendError(throwable.toString(), client);
+                        if (throwable instanceof SQLException)
+                        {
+                            sendError(throwable.getMessage(), client);
+                        }
+                        else
+                        {
+                            sendError(throwable.toString(), client);
+                        }
                     } catch (IOException e1) {
                         Server.log(e1);
                     }
