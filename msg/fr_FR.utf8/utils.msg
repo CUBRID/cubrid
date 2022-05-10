@@ -1242,7 +1242,7 @@ options valides:\n\
   -i, --include-class-file=FICHIER entrée FICHIER de noms des tables à inclure\n\
   -e, --exclude-class-file=FICHIER entrée FICHIER de noms des tables à exclure; seulement -i ou -e peuvent être utilisé, pas le deux\n\
   -t, --timeout=NUMÉRO             délai d'attente de requête en millisecondes; par défaut: 1000ms\n\
-  -n, --table-name=NOM             NOM de la table  pour enregistrer les résultats de somme de contrôle; par défaut: db_ha_checksum\n\
+  -n, --table-name=NOM             NOM de la table  pour enregistrer les résultats de somme de contrôle; par défaut: dba.db_ha_checksum\n\
   -r, --report-only                rapporter l'intégrité de la replication en se basant sur la calculation des sommes de contrôle\n\
                                    tous les options, avec l'exception de --table-name, seront ignorés\n\
       --resume                     reprendre la calculation des sommes de contrôle\n\

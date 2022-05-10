@@ -1226,7 +1226,7 @@ geçerli seçenekler:\n\
   -i, --include-class-file=FILE tablo adları giriş FILE dahil\n\
   -e, --exclude-class-file=FILE tablo adları giriş FILE dışlamak için; ya da -i ya -e ikisi birden kullanılabilir\n\
   -t, --timeout=NUMBER          milisaniye cinsinden sorgu zaman aşımı; varsayılan: 1000 ms\n\
-  -n, --table-name=NAME         tablo adı sağlama sonuçları kaydetmek; varsayılan: db_ha_checksum\n\
+  -n, --table-name=NAME         tablo adı sağlama sonuçları kaydetmek; varsayılan: dba.db_ha_checksum\n\
   -r, --report-only             checksum hesaplama dayalı rapor çoğaltma bütünlüğü\n\
                                 --table-name dışında herhangi bir seçenek göz ardı edilecektir\n\
       --resume                  checksum hesaplanması devam\n\

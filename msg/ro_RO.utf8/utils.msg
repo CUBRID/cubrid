@@ -1259,7 +1259,7 @@ opțiuni valide:\n\
   -t, --timeout=NUMĂR           numărul de milisecunde până la timeout;\n\
                                 implicit: 1000 ms\n\
   -n, --table-name=NUME         numele tabelului unude vor fi salvate rezultatele;\n\
-                                implicit: db_ha_checksum\n\
+                                implicit: dba.db_ha_checksum\n\
   -r, --report-only             raportare informații rezultate în urma checksum\n\
                                 toate opțiunile diferite de --table-name sunt ignorate\n\
       --resume                  reluare checksum\n\

@@ -1233,7 +1233,7 @@ valid options:\n\
   -i, --include-class-file=FILE input FILE of table names to include\n\
   -e, --exclude-class-file=FILE input FILE of table names to exclude; either -i or -e can be used, not both\n\
   -t, --timeout=NUMBER          query timeout in milliseconds; default: 1000 ms\n\
-  -n, --table-name=NAME         table name to save checksum results; default: db_ha_checksum\n\
+  -n, --table-name=NAME         table name to save checksum results; default: dba.db_ha_checksum\n\
   -r, --report-only             report replication integrity based on checksum calculation\n\
                                 any options except --table-name will be ignored\n\
       --resume                  resume calculating checksum\n\
