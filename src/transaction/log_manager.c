@@ -14315,7 +14315,7 @@ static int
 cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 {
   LOG_LSA process_lsa;
-  LOG_LSA cur_log_rec_lsa;
+  LOG_LSA current_lsa;
 
   LOG_RECORD_HEADER *log_rec_header;
   LOG_PAGE *log_page_p = NULL;
@@ -14352,7 +14352,7 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
     {
       log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
 
-      LSA_COPY (&cur_log_rec_lsa, &process_lsa);
+      LSA_COPY (&current_lsa, &process_lsa);
       LSA_COPY (&forw_lsa, &log_rec_header->forw_lsa);
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_page_p);
@@ -14365,7 +14365,7 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
 	    {
 	      *time = donetime->at_time;
 
-	      LSA_COPY (start_lsa, &cur_log_rec_lsa);
+	      LSA_COPY (start_lsa, &current_lsa);
 
 	      return NO_ERROR;
 	    }
@@ -14382,7 +14382,7 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
 	    {
 	      *time = dummy->at_time;
 
-	      LSA_COPY (start_lsa, &cur_log_rec_lsa);
+	      LSA_COPY (start_lsa, &current_lsa);
 
 	      return NO_ERROR;
 	    }
