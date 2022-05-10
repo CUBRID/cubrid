@@ -1231,7 +1231,7 @@ opzioni valide:\n\
   -i, --include-class-file=FILE input FILE di nomi di tabella da includere\n\
   -e, --exclude-class-file=FILE input FILE di nomi di tabella da escludere; o -i o -e può essere utilizzato, non entrambi\n\
   -t, --timeout=NUMBER          query di timeout in millisecondi; predefinito: 1000 ms\n\
-  -n, --table-name=NAME         nome della tabella per salvare i risultati di controllo; predefinito: db_ha_checksums\n\
+  -n, --table-name=NAME         nome della tabella per salvare i risultati di controllo; predefinito: dba.db_ha_checksum\n\
   -r, --report-only             apporto di integrità di replica basata su calcolo del checksum\n\
                                 tutte le opzioni tranne --table-name saranno ignorati\n\
       --resume                  riprendere il calcolo del checksum\n\
