@@ -5447,6 +5447,7 @@ sm_find_synonym (const char *name)
 
   if (sm_check_system_class_by_name (name))
     {
+      ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_NOT_EXIST, name);
       return NULL;
     }
 
