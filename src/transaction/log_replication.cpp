@@ -253,7 +253,9 @@ namespace cublog
 	    break;
 	  case LOG_TRANTABLE_SNAPSHOT:
 	    // save the LSA of the last transaction table snapshot that can be found in the log
-	    // only needed on the passive transaction server
+	    // transaction table snapshots are added to the transactional log by the active transaction server
+	    // the LSA of the most recent is saved/bookkept by the page server (this section)
+	    // and, finally, this LSA is retrieved and used by a booting up passive transaction server
 	    m_most_recent_trantable_snapshot_lsa.store (m_redo_lsa);
 	    break;
 	  case LOG_MVCC_UNDO_DATA:

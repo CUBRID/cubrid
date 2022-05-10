@@ -23,8 +23,8 @@
 namespace cublog
 {
 
-  atomic_replicator::atomic_replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode)
-    : replicator (start_redo_lsa, page_fetch_mode, 0)
+  atomic_replicator::atomic_replicator (const log_lsa &start_redo_lsa)
+    : replicator (start_redo_lsa, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, 0)
   {
 
   }
@@ -58,29 +58,29 @@ namespace cublog
 	switch (header.type)
 	  {
 	  case LOG_REDO_DATA:
-	    read_and_redo_record_with_atomic_consideration<log_rec_redo> (thread_entry, header.type, header.back_lsa, m_redo_lsa,
-		header.trid);
+	    read_and_redo_record<log_rec_redo> (thread_entry, header.type, header.back_lsa, m_redo_lsa,
+						header.trid);
 	    break;
 	  case LOG_MVCC_REDO_DATA:
-	    read_and_redo_record_with_atomic_consideration<log_rec_mvcc_redo> (thread_entry, header.type, header.back_lsa,
+	    read_and_redo_record<log_rec_mvcc_redo> (thread_entry, header.type, header.back_lsa,
 		m_redo_lsa, header.trid);
 	    break;
 	  case LOG_UNDOREDO_DATA:
 	  case LOG_DIFF_UNDOREDO_DATA:
-	    read_and_redo_record_with_atomic_consideration<log_rec_undoredo> (thread_entry, header.type, header.back_lsa,
-		m_redo_lsa, header.trid);
+	    read_and_redo_record<log_rec_undoredo> (thread_entry, header.type, header.back_lsa,
+						    m_redo_lsa, header.trid);
 	    break;
 	  case LOG_MVCC_UNDOREDO_DATA:
 	  case LOG_MVCC_DIFF_UNDOREDO_DATA:
-	    read_and_redo_record_with_atomic_consideration<log_rec_mvcc_undoredo> (thread_entry, header.type, header.back_lsa,
+	    read_and_redo_record<log_rec_mvcc_undoredo> (thread_entry, header.type, header.back_lsa,
 		m_redo_lsa, header.trid);
 	    break;
 	  case LOG_RUN_POSTPONE:
-	    read_and_redo_record_with_atomic_consideration<log_rec_run_postpone> (thread_entry, header.type, header.back_lsa,
+	    read_and_redo_record<log_rec_run_postpone> (thread_entry, header.type, header.back_lsa,
 		m_redo_lsa, header.trid);
 	    break;
 	  case LOG_COMPENSATE:
-	    read_and_redo_record_with_atomic_consideration<log_rec_compensate> (thread_entry, header.type, header.back_lsa,
+	    read_and_redo_record<log_rec_compensate> (thread_entry, header.type, header.back_lsa,
 		m_redo_lsa, header.trid);
 	    break;
 	  case LOG_DBEXTERN_REDO_DATA:
@@ -144,7 +144,7 @@ namespace cublog
 
   template <typename T>
   void
-  atomic_replicator::read_and_redo_record_with_atomic_consideration (cubthread::entry &thread_entry, LOG_RECTYPE rectype,
+  atomic_replicator::read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype,
       const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa, TRANID trid)
   {
     m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
@@ -171,7 +171,7 @@ namespace cublog
 	m_atomic_helper.add_atomic_replication_unit (&thread_entry, trid, rec_lsa, rcvindex, log_vpid, m_redo_context,
 	    record_info);
       }
-    else if (rcvindex != RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)
+    else
       {
 	log_rv_redo_record_sync_or_dispatch_async (&thread_entry, m_redo_context, record_info,
 	    m_parallel_replication_redo, *m_reusable_jobs.get (), m_perf_stat_idle);

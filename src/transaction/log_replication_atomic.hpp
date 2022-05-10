@@ -32,12 +32,12 @@ namespace cublog
   class atomic_replicator : public replicator
   {
     public:
-      atomic_replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode);
+      atomic_replicator (const log_lsa &start_redo_lsa);
 
       atomic_replicator (const atomic_replicator &) = delete;
       atomic_replicator (atomic_replicator &&) = delete;
 
-      ~atomic_replicator ();
+      ~atomic_replicator () override;
 
       atomic_replicator &operator= (const atomic_replicator &) = delete;
       atomic_replicator &operator= (atomic_replicator &&) = delete;
@@ -46,8 +46,8 @@ namespace cublog
       void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa) override;
       // TODO: change name
       template <typename T>
-      void read_and_redo_record_with_atomic_consideration (cubthread::entry &thread_entry, LOG_RECTYPE rectype,
-	  const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa, TRANID trid);
+      void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype,
+				 const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa, TRANID trid);
       void process_end_sysop (cubthread::entry &thread_entry, TRANID trid);
 
     private:
