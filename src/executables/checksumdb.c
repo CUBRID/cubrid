@@ -53,6 +53,7 @@
 
 #define CHKSUM_DEFAULT_LIST_SIZE	10
 #define CHKSUM_MIN_CHUNK_SIZE		100
+#define CHKSUM_DEFAULT_TABLE_OWNER_NAME	"dba"
 #define CHKSUM_DEFAULT_TABLE_NAME	"db_ha_checksum"
 #define CHKSUM_SCHEMA_TABLE_SUFFIX	"_schema"
 
@@ -2125,7 +2126,8 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s", CHKSUM_DEFAULT_TABLE_NAME);
+      snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", CHKSUM_DEFAULT_TABLE_OWNER_NAME,
+		CHKSUM_DEFAULT_TABLE_NAME);
     }
 
   if (snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH - 1, "%s%s", chksum_result_Table_name,
