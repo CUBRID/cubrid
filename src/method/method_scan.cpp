@@ -126,13 +126,14 @@ namespace cubscan
 
       scan_code = get_single_tuple ();
 
+      int error = NO_ERROR;
       std::vector<std::reference_wrapper<DB_VALUE>> arg_wrapper (m_arg_vector.begin(), m_arg_vector.end());
-      if (scan_code == S_SUCCESS && m_method_group->prepare (arg_wrapper) != NO_ERROR)
+      if (scan_code == S_SUCCESS && (error = m_method_group->prepare (arg_wrapper)) != NO_ERROR)
 	{
 	  scan_code = S_ERROR;
 	}
 
-      if (scan_code == S_SUCCESS && m_method_group->execute (arg_wrapper) != NO_ERROR)
+      if (scan_code == S_SUCCESS && (error = m_method_group->execute (arg_wrapper)) != NO_ERROR)
 	{
 	  scan_code = S_ERROR;
 	}
@@ -167,7 +168,8 @@ namespace cubscan
 	    {
 	      rctx->set_local_error_for_interrupt ();
 	    }
-	  else
+	  else if (error !=
+		   ER_SM_INVALID_METHOD_ENV) /* FIXME: error possibly occured in builtin method, It should be handled at CAS */
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, m_method_group->get_error_msg ());
 	    }
