@@ -410,12 +410,26 @@ chksum_report_summary (FILE * fp)
   CHKSUM_PRINT_AND_LOG (fp,
 			"-------------------------------------------------" "-------------------------------------\n");
 
+  // *INDENT-OFF*
   snprintf (query_buf, sizeof (query_buf),
-	    "SELECT " CHKSUM_TABLE_CLASS_NAME_COL ", " "COUNT (*), " "COUNT(CASE WHEN " CHKSUM_TABLE_MASTER_CHEKSUM_COL
-	    " <> " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " OR " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " IS NULL THEN 1 END), "
-	    " SUM (" CHKSUM_TABLE_ELAPSED_TIME_COL "), " " MIN (" CHKSUM_TABLE_ELAPSED_TIME_COL "), " " MAX ("
-	    CHKSUM_TABLE_ELAPSED_TIME_COL ") " "FROM %s GROUP BY " CHKSUM_TABLE_CLASS_NAME_COL,
-	    chksum_result_Table_name);
+        "SELECT "
+          CHKSUM_TABLE_CLASS_NAME_COL ", "
+          "CAST (COUNT (*) AS INTEGER), "
+          "CAST (COUNT ("
+              "CASE WHEN " CHKSUM_TABLE_MASTER_CHEKSUM_COL " <> " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " "
+                         "OR " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " IS NULL "
+                         "THEN 1 "
+              "END"
+            ") AS INTEGER), "
+          "SUM (" CHKSUM_TABLE_ELAPSED_TIME_COL "), "
+          "MIN (" CHKSUM_TABLE_ELAPSED_TIME_COL "), "
+          "MAX (" CHKSUM_TABLE_ELAPSED_TIME_COL ") "
+        "FROM "
+          "%s "
+        "GROUP BY "
+          CHKSUM_TABLE_CLASS_NAME_COL,
+        chksum_result_Table_name);
+  // *INDENT-ON*
 
   res = db_execute (query_buf, &query_result, &query_error);
   if (res > 0)
@@ -1738,8 +1752,8 @@ chksum_need_skip_table (const char *table_name, CHKSUM_ARG * chksum_arg)
   dynamic_array *list = NULL;
   char table_in_list[SM_MAX_IDENTIFIER_LENGTH];
 
-  if (table_name == NULL || (strcasecmp (table_name, chksum_result_Table_name) == 0)
-      || (strcasecmp (table_name, chksum_schema_Table_name) == 0))
+  if (table_name == NULL || (pt_user_specified_name_compare (table_name, chksum_result_Table_name) == 0)
+      || (pt_user_specified_name_compare (table_name, chksum_schema_Table_name) == 0))
     {
       return true;
     }

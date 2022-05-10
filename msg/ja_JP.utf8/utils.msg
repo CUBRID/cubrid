@@ -1234,7 +1234,7 @@ checksumdb: レプリケーションの整合性を確認します。\n\
   -i, --include-class-file=FILE FILE内のテーブル名が含まれます。\n\
   -e, --exclude-class-file=FILE FILE内のテーブル名が除外されます。-iまたは-eを使用することができますが、どちらか一方。\n\
   -t, --timeout=NUMBER          ミリ秒単位のクエリタイムアウト; デフォルト: 1000 ms\n\
-  -n, --table-name=NAME         チェックサムの結果を格納するテーブル名; デフォルト: db_ha_checksums\n\
+  -n, --table-name=NAME         チェックサムの結果を格納するテーブル名; デフォルト: db_ha_checksum\n\
   -r, --report-only             チェックサムの計算に基づいたレプリケーションの整合性を報告します。\n\
                                 --table-name以外のすべてのオプションは無視されます。\n\
       --resume                  チェックサムの計算を再開\n\

@@ -1221,7 +1221,7 @@ checksumdb: 检查复制完整性.\n\
   -i, --include-class-file=FILE 指定要包含的表名的文件\n\
   -e, --exclude-class-file=FILE 指定要排除的表名的文件; -i 或者 -e 只能用其一, 不能同时使用.\n\
   -t, --timeout=NUMBER          查询超时(毫秒计); 默认: 1000 毫秒\n\
-  -n, --table-name=NAME         保存校验和结果的表名; 默认: db_ha_checksums\n\
+  -n, --table-name=NAME         保存校验和结果的表名; 默认: db_ha_checksum\n\
   -r, --report-only             报告基于校验和计算的复制完整性\n\
                                 除--table-name之外的其它选项将被忽略\n\
       --resume                  重新开始计算校验和\n\
