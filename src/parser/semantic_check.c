@@ -4741,7 +4741,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
     }
 
   /* We cannot change the schema of a class by using synonym names. */
-  if (db_find_synonym (cls_nam))
+  if (db_find_synonym (cls_nam) != NULL)
     {
       PT_ERRORmf (parser, alter->info.alter.entity_name, MSGCAT_SET_PARSER_SEMANTIC,
 		  MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
@@ -4750,9 +4750,16 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   else
     {
       /* db_find_synonym () == NULL */
+      ASSERT_ERROR ();
+
       if (er_errid () == ER_SYNONYM_NOT_EXIST)
 	{
 	  er_clear ();
+	}
+      else
+	{
+	  PT_ERRORc (parser, alter, er_msg ());
+	  return;
 	}
     }
 
@@ -8401,7 +8408,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   name = node->info.create_entity.entity_name;
 
   /* We cannot use an existing synonym name as a class name. */
-  if (db_find_synonym (name->info.name.original))
+  if (db_find_synonym (name->info.name.original) != NULL)
     {
       PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_EXISTS, name->info.name.original);
       return;
@@ -8409,9 +8416,16 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   else
     {
       /* db_find_synonym () == NULL */
+      ASSERT_ERROR ();
+
       if (er_errid () == ER_SYNONYM_NOT_EXIST)
 	{
 	  er_clear ();
+	}
+      else
+	{
+	  PT_ERRORc (parser, node, er_msg ());
+	  return;
 	}
     }
 
@@ -8670,7 +8684,7 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
   name = node->info.index.indexed_class->info.spec.entity_name;
 
   /* We cannot create index of a class by using synonym names. */
-  if (db_find_synonym (name->info.name.original))
+  if (db_find_synonym (name->info.name.original) != NULL)
     {
       PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A_CLASS, name->info.name.original);
       return;
@@ -8678,9 +8692,16 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
   else
     {
       /* db_find_synonym () == NULL */
+      ASSERT_ERROR ();
+
       if (er_errid () == ER_SYNONYM_NOT_EXIST)
 	{
 	  er_clear ();
+	}
+      else
+	{
+	  PT_ERRORc (parser, node, er_msg ());
+	  return;
 	}
     }
 
@@ -8858,7 +8879,7 @@ pt_check_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
   /* synonym_owner_name */
   owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_OWNER_NAME (node));
   assert (owner_name != NULL && *owner_name != '\0');
-  owner_obj = au_find_user (owner_name);
+  owner_obj = db_find_user (owner_name);
   if (owner_obj == NULL)
     {
       PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
@@ -8875,14 +8896,26 @@ pt_check_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
   synonym_obj = db_find_synonym (name);
   if (synonym_obj == NULL)
     {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_EXIST, name);
+      ASSERT_ERROR ();
+
+      if (er_errid () == ER_SYNONYM_NOT_EXIST)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_EXIST, name);
+	}
+      else
+	{
+	  PT_ERRORc (parser, node, er_msg ());
+	}
+
       return;
     }
+
+  /* synonym_obj != NULL */
 
   /* target_owner_name */
   owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (node));
   assert (owner_name != NULL && *owner_name != '\0');
-  owner_obj = au_find_user (owner_name);
+  owner_obj = db_find_user (owner_name);
   if (owner_obj == NULL)
     {
       PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
@@ -8920,7 +8953,7 @@ pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
   /* synonym_owner_name */
   owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_OWNER_NAME (node));
   assert (owner_name != NULL && *owner_name != '\0');
-  owner_obj = au_find_user (owner_name);
+  owner_obj = db_find_user (owner_name);
   if (owner_obj == NULL)
     {
       PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
@@ -8945,18 +8978,49 @@ pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   else
     {
+      /* synonym_obj == NULL */
+      ASSERT_ERROR ();
+
+      if (er_errid () == ER_SYNONYM_NOT_EXIST)
+	{
+	  er_clear ();
+	}
+      else
+	{
+	  PT_ERRORc (parser, node, er_msg ());
+	  return;
+	}
+
       /* Check if class exists by name. */
       if (db_find_class (name) != NULL)
 	{
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_EXISTS, name);
 	  return;
 	}
+      else
+	{
+	  /* db_find_class () == NULL */
+	  ASSERT_ERROR ();
+
+	  if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
+	    {
+	      er_clear ();
+	    }
+	  else
+	    {
+	      PT_ERRORc (parser, node, er_msg ());
+	      return;
+	    }
+	}
     }
+
+  /* (synonym_obj != NULL && PT_SYNONYM_OR_REPLACE () == TRUE)
+   * || (synonym_obj == NULL && db_find_class () == NULL && er_errid () == ER_LC_UNKNOWN_CLASSNAME) */
 
   /* target_owner_name */
   owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (node));
   assert (owner_name != NULL && *owner_name != '\0');
-  owner_obj = au_find_user (owner_name);
+  owner_obj = db_find_user (owner_name);
   if (owner_obj == NULL)
     {
       PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
@@ -8994,7 +9058,7 @@ pt_check_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
   /* synonym_owner_name */
   owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_OWNER_NAME (node));
   assert (owner_name != NULL && *owner_name != '\0');
-  owner_obj = au_find_user (owner_name);
+  owner_obj = db_find_user (owner_name);
   if (owner_obj == NULL)
     {
       PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
@@ -9011,12 +9075,24 @@ pt_check_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
   synonym_obj = db_find_synonym (name);
   if (synonym_obj == NULL)
     {
+      ASSERT_ERROR ();
+
+      if (er_errid () != ER_SYNONYM_NOT_EXIST)
+	{
+	  PT_ERRORc (parser, node, er_msg ());
+	  return;
+	}
+
       if (PT_SYNONYM_IF_EXISTS (node) == FALSE)
 	{
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_EXIST, name);
 	  return;
 	}
+
+      er_clear ();
     }
+
+  /* (synonym_obj != NULL) || (synonym_obj == NULL && PT_SYNONYM_IF_EXISTS () == TRUE) */
 }
 
 static void
@@ -9053,7 +9129,7 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
   /* old_synonym_owner_name */
   old_owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_OLD_OWNER_NAME (node));
   assert (old_owner_name != NULL && *old_owner_name != '\0');
-  old_owner_obj = au_find_user (old_owner_name);
+  old_owner_obj = db_find_user (old_owner_name);
   if (old_owner_obj == NULL)
     {
       PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, old_owner_name);
@@ -9069,9 +9145,21 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
   old_synonym_obj = db_find_synonym (old_name);
   if (old_synonym_obj == NULL)
     {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_EXIST, old_name);
+      ASSERT_ERROR ();
+
+      if (er_errid () == ER_SYNONYM_NOT_EXIST)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_EXIST, old_name);
+	}
+      else
+	{
+	  PT_ERRORc (parser, node, er_msg ());
+	}
+
       return;
     }
+
+  /* old_synonym_obj != NULL */
 
   /* new_synonym_name */
   new_name = PT_NAME_ORIGINAL (PT_SYNONYM_NEW_NAME (node));
@@ -9085,7 +9173,7 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
   /* new_synonym_owner_name */
   new_owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_NEW_OWNER_NAME (node));
   assert (new_owner_name != NULL && *new_owner_name != '\0');
-  new_owner_obj = au_find_user (new_owner_name);
+  new_owner_obj = db_find_user (new_owner_name);
   if (new_owner_obj == NULL)
     {
       PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, new_owner_name);
@@ -9108,16 +9196,46 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
 
       PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_ALREADY_EXIST, new_name);
+      return;
     }
   else
     {
+      /* new_synonym_obj == NULL */
+      ASSERT_ERROR ();
+
+      if (er_errid () == ER_SYNONYM_NOT_EXIST)
+	{
+	  er_clear ();
+	}
+      else
+	{
+	  PT_ERRORc (parser, node, er_msg ());
+	  return;
+	}
+
       /* Check if class exists by name. */
       if (db_find_class (new_name) != NULL)
 	{
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_EXISTS, new_name);
 	  return;
 	}
+      else
+	{
+	  ASSERT_ERROR ();
+
+	  if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
+	    {
+	      er_clear ();
+	    }
+	  else
+	    {
+	      PT_ERRORc (parser, node, er_msg ());
+	      return;
+	    }
+	}
     }
+
+  /* old_synonym_obj != NULL && new_synonym_obj == NULL && er_errid () == ER_LC_UNKNOWN_CLASSNAME */
 }
 
 /*
@@ -9154,9 +9272,16 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 	      /* We cannot change the schema of a class by using synonym names. */
 	      if (db_find_synonym (cls_name) == NULL)
 		{
+		  ASSERT_ERROR ();
+
 		  if (er_errid () == ER_SYNONYM_NOT_EXIST)
 		    {
 		      er_clear ();
+		    }
+		  else
+		    {
+		      PT_ERRORc (parser, node, er_msg ());
+		      return;
 		    }
 
 		  if ((db_obj = db_find_class_with_purpose (cls_name, true)) != NULL)
@@ -9280,7 +9405,7 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 	      && (cls_nam = name->info.name.original) != NULL)
 	    {
 	      /* We cannot change the schema of a class by using synonym names. */
-	      if (db_find_synonym (cls_nam))
+	      if (db_find_synonym (cls_nam) != NULL)
 		{
 		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
 		  return;
@@ -9288,9 +9413,16 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 	      else
 		{
 		  /* db_find_synonym () == NULL */
+		  ASSERT_ERROR ();
+
 		  if (er_errid () == ER_SYNONYM_NOT_EXIST)
 		    {
 		      er_clear ();
+		    }
+		  else
+		    {
+		      PT_ERRORc (parser, node, er_msg ());
+		      return;
 		    }
 		}
 
@@ -9542,7 +9674,7 @@ pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node)
 	  && (cls_nam = name->info.name.original) != NULL)
 	{
 	  /* We cannot change the schema of a class by using synonym names. */
-	  if (db_find_synonym (cls_nam))
+	  if (db_find_synonym (cls_nam) != NULL)
 	    {
 	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
 	      return;
@@ -9550,9 +9682,16 @@ pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node)
 	  else
 	    {
 	      /* db_find_synonym () == NULL */
+	      ASSERT_ERROR ();
+
 	      if (er_errid () == ER_SYNONYM_NOT_EXIST)
 		{
 		  er_clear ();
+		}
+	      else
+		{
+		  PT_ERRORc (parser, node, er_msg ());
+		  return;
 		}
 	    }
 

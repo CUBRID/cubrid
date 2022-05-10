@@ -690,6 +690,7 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
   char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *class_name = NULL;
   int len = 0;
+  int error = NO_ERROR;
 
   if (lcks->num_classes >= lcks->allocated_count)
     {
@@ -748,10 +749,18 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
     }
   else
     {
-      /* db_find_synonym () == NULL */
-      if (er_errid () == ER_SYNONYM_NOT_EXIST)
+      /* synonym_mop == NULL */
+      ASSERT_ERROR_AND_SET (error);
+
+      if (error == ER_SYNONYM_NOT_EXIST)
 	{
 	  er_clear ();
+	  error = NO_ERROR;
+	}
+      else
+	{
+	  PT_ERRORc (parser, spec, er_msg ());
+	  return error;
 	}
     }
 
