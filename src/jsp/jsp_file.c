@@ -37,6 +37,57 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#if defined(WINDOWS)
+#define SLEEP_SEC(X)                    Sleep((X) * 1000)
+#define SLEEP_MILISEC(sec, msec)        Sleep((sec) * 1000 + (msec))
+#else
+#define SLEEP_SEC(X)                    sleep(X)
+#define SLEEP_MILISEC(sec, msec)        \
+	do {            \
+		struct timeval sleep_time_val;                \
+		sleep_time_val.tv_sec = sec;                  \
+		sleep_time_val.tv_usec = (msec) * 1000;       \
+		select(0, 0, 0, 0, &sleep_time_val);          \
+	} while(0)
+#endif
+
+static FILE *fopen_and_lock (const char *path, const char *mode);
+
+/*
+ * fopen_and_lock ()
+ * path (in) :
+ *
+ */
+static FILE *
+fopen_and_lock (const char *path, const char *mode)
+{
+#define MAX_RETRY_COUNT 10
+
+  int retry_count = 0;
+  FILE *fp;
+
+retry:
+  fp = fopen (path, mode);
+  if (fp != NULL)
+    {
+      if (lockf (fileno (fp), F_TLOCK, 0) < 0)
+	{
+	  fclose (fp);
+
+	  if (retry_count < MAX_RETRY_COUNT)
+	    {
+	      SLEEP_MILISEC (0, 100);
+	      retry_count++;
+	      goto retry;
+	    }
+
+	  return NULL;
+	}
+    }
+
+  return fp;
+}
+
 bool
 javasp_open_info_dir ()
 {
@@ -71,15 +122,13 @@ javasp_open_info_dir ()
 FILE *
 javasp_open_info (const char *db_name, const char *mode)
 {
-  FILE *fp = NULL;
   char file_name[PATH_MAX] = { 0 };
   char file_path[PATH_MAX] = { 0 };
 
   snprintf (file_name, PATH_MAX, "javasp/javasp_%s.info", db_name);
   envvar_vardir_file (file_path, PATH_MAX, file_name);
 
-  fp = fopen (file_path, mode);
-
+  FILE *fp = fopen_and_lock (file_path, mode);
   return fp;
 }
 
