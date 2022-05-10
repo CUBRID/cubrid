@@ -8383,7 +8383,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* check if the class can be created with the specified owner. */
   owner_name = pt_get_qualifier_name (parser, node->info.create_entity.entity_name);
-  if (!ws_is_same_object (db_find_user (owner_name), Au_user) && !au_is_dba_group_member (Au_user))
+  if (owner_name && !ws_is_same_object (db_find_user (owner_name), Au_user) && !au_is_dba_group_member (Au_user))
     {
       PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CREATE_TABLE_VIEW_NOT_OWNER);
       return;
