@@ -335,7 +335,7 @@ typedef enum
 } FLASHBACK_PACK_FUNC_TYPE;
 
 static int
-flashback_process_column_data (char **data, char **sql, int *max_sql_size, DB_TYPE type)
+flashback_process_column_data (char **data, char **sql, int *max_sql_size, DB_TYPE type, bool is_condition_column)
 {
   char *ptr = *data;
 
@@ -414,7 +414,33 @@ flashback_process_column_data (char **data, char **sql, int *max_sql_size, DB_TY
     case PACK_STRING:
       ptr = or_unpack_string_nocopy (ptr, &s_data);
 
-      if (IS_STRING_TYPE (type))
+      if (s_data == NULL)
+	{
+	  if (is_condition_column == true)
+	    {
+	      /* Add the length of the string 'is null' and substract the length of '= ' */
+	      error = flashback_check_and_resize_sql_memory (sql, sql_length + 5, max_sql_size);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+
+	      /* To remove the '= ' string which was attached by the caller */
+	      sprintf (*sql + sql_length - 2, "is null");
+	    }
+	  else
+	    {
+	      /* Add the length of the string 'null' */
+	      error = flashback_check_and_resize_sql_memory (sql, sql_length + 4, max_sql_size);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+
+	      strcat (*sql, "null");
+	    }
+	}
+      else if (IS_STRING_TYPE (type))
 	{
 	  int result_length = 0;
 	  char *result_string = NULL;
@@ -557,7 +583,7 @@ flashback_print_update (char **loginfo, int trid, char *user, const char *classn
 
       sprintf (cond_sql + strlen (cond_sql), "[%s] = ", attr->header.name);
 
-      flashback_process_column_data (&ptr, &cond_sql, &max_cond_sql_size, attr->type->id);
+      flashback_process_column_data (&ptr, &cond_sql, &max_cond_sql_size, attr->type->id, true);
       if (i != num_change_col - 1)
 	{
 	  strcat (cond_sql, " and ");
@@ -590,7 +616,7 @@ flashback_print_update (char **loginfo, int trid, char *user, const char *classn
 
       sprintf (sql + strlen (sql), "[%s] = ", attr->header.name);
 
-      flashback_process_column_data (&ptr, &sql, &max_sql_size, attr->type->id);
+      flashback_process_column_data (&ptr, &sql, &max_sql_size, attr->type->id, false);
       if (i != num_cond_col - 1)
 	{
 	  strcat (sql, ", ");
@@ -643,7 +669,7 @@ flashback_print_update (char **loginfo, int trid, char *user, const char *classn
 
 	  sprintf (original_sql + strlen (original_sql), "[%s] = ", attr->header.name);
 
-	  flashback_process_column_data (&ptr, &original_sql, &max_original_size, attr->type->id);
+	  flashback_process_column_data (&ptr, &original_sql, &max_original_size, attr->type->id, false);
 	  if (i != num_change_col - 1)
 	    {
 	      strcat (original_sql, ", ");
@@ -684,7 +710,7 @@ flashback_print_update (char **loginfo, int trid, char *user, const char *classn
 
 	  sprintf (original_sql + strlen (original_sql), "[%s] = ", attr->header.name);
 
-	  flashback_process_column_data (&ptr, &original_sql, &max_original_size, attr->type->id);
+	  flashback_process_column_data (&ptr, &original_sql, &max_original_size, attr->type->id, true);
 	  if (i != num_cond_col - 1)
 	    {
 	      strcat (original_sql, " and ");
@@ -800,7 +826,7 @@ flashback_print_delete (char **loginfo, int trid, char *user, const char *classn
 	  goto error;
 	}
 
-      flashback_process_column_data (&ptr, &sql, &max_sql_size, attr->type->id);
+      flashback_process_column_data (&ptr, &sql, &max_sql_size, attr->type->id, false);
       if (i != num_cond_col - 1)
 	{
 	  strcat (sql, ", ");
@@ -849,7 +875,7 @@ flashback_print_delete (char **loginfo, int trid, char *user, const char *classn
 
 	  sprintf (original_sql + strlen (original_sql), "[%s] = ", attr->header.name);
 
-	  flashback_process_column_data (&ptr, &original_sql, &max_original_size, attr->type->id);
+	  flashback_process_column_data (&ptr, &original_sql, &max_original_size, attr->type->id, true);
 
 	  if (i != num_cond_col - 1)
 	    {
@@ -960,7 +986,7 @@ flashback_print_insert (char **loginfo, int trid, char *user, const char *classn
 
       sprintf (sql + strlen (sql), "[%s] = ", attr->header.name);
 
-      flashback_process_column_data (&ptr, &sql, &max_sql_size, attr->type->id);
+      flashback_process_column_data (&ptr, &sql, &max_sql_size, attr->type->id, true);
       if (i != num_change_col - 1)
 	{
 	  strcat (sql, " and ");
@@ -1004,7 +1030,7 @@ flashback_print_insert (char **loginfo, int trid, char *user, const char *classn
 	      goto error;
 	    }
 
-	  flashback_process_column_data (&ptr, &original_sql, &max_original_size, attr->type->id);
+	  flashback_process_column_data (&ptr, &original_sql, &max_original_size, attr->type->id, false);
 	  if (i != num_change_col - 1)
 	    {
 	      strcat (original_sql, ", ");
