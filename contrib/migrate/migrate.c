@@ -565,6 +565,24 @@ migrate_initialize ()
       error = -1;
     }
 
+  cub_Au_disable = dlsym (dl_handle, "Au_disable");
+  if (cub_Au_disable == NULL)
+    {
+      PRINT_LOG ("%s", dlerror ());
+      error = -1;
+    }
+
+  cub_Au_sysadm = dlsym (dl_handle, "Au_sysadm");
+  if (cub_Au_disable == NULL)
+    {
+      PRINT_LOG ("%s", dlerror ());
+      error = -1;
+    }
+
+  /* Au - disable and sysadm mode */
+  *cub_Au_disable = 1;
+  *cub_Au_sysadm = 1;
+
   return error;
 }
 

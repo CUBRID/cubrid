@@ -24,21 +24,15 @@
 
 #define PRINT_LOG(fmt, ...) print_log (fmt "\tin %s () from %s:%d", __VA_ARGS__, __func__, __FILE__, __LINE__)
 
-// global variable
+/* global variable */
 const char *PRO_NAME = NULL;
 const char *CUBRID_ENV = NULL;
-const int RETRY_COUNT = 3;
 
-int log_file_fd = -1;
 void *dl_handle = NULL;
 
-// CUBRID function pointer
-void (*cub_au_disable_passwords) (void);
+/* CUBRID function pointer */
 int (*cub_db_restart_ex) (const char *, const char *, const char *, const char *, const char *, int);
 int (*cub_er_errid) (void);
-/*
-int (*cub_db_execute_query) (const char *, DB_QUERY_RESULT **);
-*/
 DB_SESSION *(*cub_db_open_buffer) (const char *);
 int (*cub_db_compile_statement) (DB_SESSION *);
 int (*cub_db_execute_statement_local) (DB_SESSION *, int, DB_QUERY_RESULT **);
@@ -53,8 +47,8 @@ char *(*cub_db_get_database_version) (void);
 int (*cub_db_shutdown) (void);
 const char *(*cub_db_error_string) (int);
 
-// function
-int initialize (void);
-void finalize (void);
-int execute_ddl (const char *db_name, const char *table_name);
+/* CUBRID global variable */
+int *cub_Au_disable;
+bool *cub_Au_sysadm;
+
 #endif
