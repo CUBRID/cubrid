@@ -24155,12 +24155,12 @@ opt_access_modifier
     ;
 
 /*
- * To prevent the change of the error message below,
- * the rules of opt_or_replace and opt_access_modifier are combined into opt_create_synonym and used.
+ * In order not to output the error message of AS-IS,
+ * opt_or_replace and opt_access_modifier are used in combination with opt_create_synonym.
  * 
  * Query: CREATE PARTITION TABLE;
- * - AS-IS: Syntax error: unexpected 'partition', expecting CLASS or TABLE
- * - TO-BE: Syntax error: unexpected 'partition', expecting SYNONYM
+ * - AS-IS: Syntax error: unexpected 'partition', expecting SYNONYM
+ * - TO-BE: Syntax error: unexpected 'partition', expecting CLASS or TABLE
  *
  */
 opt_create_synonym
