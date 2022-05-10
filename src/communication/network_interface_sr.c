@@ -10409,19 +10409,15 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
     }
   else
     {
-      std::string err_msg;
-      if (top_on_stack)
-	{
-	  err_msg.assign (top_on_stack->get_error_msg ());
-	}
       if (rctx->is_interrupted ())
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, rctx->get_interrupt_reason (), 0);
+	  rctx->set_local_error_for_interrupt ();
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg.c_str ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, top_on_stack->get_error_msg ());
 	}
+      std::string err_msg (er_msg ()? er_msg () : "");
       packer.set_buffer_and_pack_all (eb, err_msg);
       (void) return_error_to_client (thread_p, rid);
     }

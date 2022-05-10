@@ -160,6 +160,18 @@ namespace cubscan
 
 	  m_method_group->reset (false);
 	}
+      if (scan_code == S_ERROR)
+	{
+	  cubmethod::runtime_context *rctx = m_method_group->get_runtime_context ();
+	  if (rctx->is_interrupted ())
+	    {
+	      rctx->set_local_error_for_interrupt ();
+	    }
+	  else
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, m_method_group->get_error_msg ());
+	    }
+	}
 
       // clear
       pr_clear_value_vector (m_arg_vector);
