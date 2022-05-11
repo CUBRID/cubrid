@@ -3174,7 +3174,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
     }
 
   check_applied_info_temp = check_applied_info = check_copied_info_temp = check_copied_info = false;
-  check_replica_info = check_applied_info_temp = check_applied_info = false;
+  check_replica_info = check_master_info_temp = check_master_info = false;
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
@@ -3407,7 +3407,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
       check_copied_info_temp = check_copied_info;
       check_applied_info_temp = check_applied_info;
-      check_applied_info_temp = check_applied_info;
+      check_master_info_temp = check_master_info;
 
       sleep (interval);
     }
