@@ -245,7 +245,7 @@ ODBC_ERROR:
 }
 
 int
-cgw_row_data (SQLHSTMT hstmt, int cursor_pos)
+cgw_row_data (SQLHSTMT hstmt)
 {
   SQLRETURN err_code;
   int no_data = 0;
@@ -295,6 +295,31 @@ cgw_cursor_close (T_SRV_HANDLE * srv_handle)
 
 ODBC_ERROR:
   return ER_FAILED;
+}
+
+int
+cgw_copy_tuple (T_COL_BINDER * src_col_binding, T_COL_BINDER * dst_col_binding)
+{
+  SQLRETURN err_code = 0;
+  T_COL_BINDER *src_binder;
+  T_COL_BINDER *dst_binder;
+
+  if (src_col_binding == NULL || dst_col_binding == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NULL_COL_BINDER, 0);
+      return ER_FAILED;
+    }
+
+  dst_binder = dst_col_binding;
+  for (src_binder = src_col_binding; src_binder; src_binder = src_binder->next)
+    {
+      memcpy (dst_binder->data_buffer, src_binder->data_buffer, src_binder->col_size);
+      dst_binder->indPtr = src_binder->indPtr;
+      dst_binder->is_exist_col_data = true;
+      dst_binder = dst_binder->next;
+    }
+
+  return err_code;
 }
 
 int
@@ -891,11 +916,12 @@ ODBC_ERROR:
 
 
 int
-cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_binding)
+cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_binding, T_COL_BINDER ** col_binding_buff)
 {
   SQLRETURN err_code;
   SQLSMALLINT col;
   T_COL_BINDER *this_col_binding, *last_col_binding = NULL;
+  T_COL_BINDER *this_col_binding_buff, *last_col_binding_buff = NULL;
   SQLSMALLINT col_name_len;
   SQLSMALLINT col_data_type, col_decimal_digits, nullable;
   SQLULEN col_size, bind_col_size;
@@ -918,17 +944,28 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 	  goto ODBC_ERROR;
 	}
 
+      this_col_binding_buff = (T_COL_BINDER *) (MALLOC (sizeof (T_COL_BINDER)));
+      if (!(this_col_binding_buff))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
+	  goto ODBC_ERROR;
+	}
+
       memset (this_col_binding, 0x0, sizeof (T_COL_BINDER));
+      memset (this_col_binding_buff, 0x0, sizeof (T_COL_BINDER));
 
       if (col == 1)
 	{
 	  *col_binding = this_col_binding;
+	  *col_binding_buff = this_col_binding_buff;
 	}
       else
 	{
 	  last_col_binding->next = this_col_binding;
+	  last_col_binding_buff->next = this_col_binding_buff;
 	}
       last_col_binding = this_col_binding;
+      last_col_binding_buff = this_col_binding_buff;
 
       SQL_CHK_ERR (hstmt,
 		   SQL_HANDLE_STMT,
@@ -948,6 +985,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 		   err_code = SQLColAttribute (hstmt, col, SQL_DESC_UNSIGNED, NULL, 0, NULL, &col_unsigned_type));
 
       this_col_binding->col_unsigned_type = col_unsigned_type;
+      this_col_binding_buff->col_unsigned_type = col_unsigned_type;
 
       if (col_unsigned_type)
 	{
@@ -964,8 +1002,20 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 	  this_col_binding->col_size = bind_col_size;
 	  this_col_binding->next = NULL;
 
+	  this_col_binding_buff->col_data_type = col_data_type;
+	  this_col_binding_buff->col_size = bind_col_size;
+	  this_col_binding_buff->next = NULL;
+	  this_col_binding_buff->is_exist_col_data = false;
+
 	  this_col_binding->data_buffer = MALLOC (bind_col_size);
 	  if (!(this_col_binding->data_buffer))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
+	      goto ODBC_ERROR;
+	    }
+
+	  this_col_binding_buff->data_buffer = MALLOC (bind_col_size);
+	  if (!(this_col_binding_buff->data_buffer))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
 	      goto ODBC_ERROR;

@@ -1404,7 +1404,7 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1328 Invalid Descriptor handle.
 1329 Not supported dbms.
 1330 Unable to allocate an environment handle.
-1331 Error reserved for dblink development.
+1331 A null column binder was referenced.
 
 1332 Il volume del registro attivo (%1$s) è troppo sano per essere ricreato. Se rimuovi il registro attivo, potrebbe causare un problema imprevisto e irreversibile.
 

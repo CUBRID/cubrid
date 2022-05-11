@@ -1404,7 +1404,7 @@ $ LOADDB
 1328 Invalid Descriptor handle.
 1329 Not supported dbms.
 1330 Unable to allocate an environment handle.
-1331 Error reserved for dblink development.
+1331 A null column binder was referenced.
 
 1332 Das aktive Protokollvolumen (%1$s) ist zu normal, um es neu zu erstellen. Wenn Sie das aktive Protokoll entfernen, kann dies zu einem unerwarteten und irreversiblen Problem führen.
 
