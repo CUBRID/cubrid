@@ -1405,7 +1405,7 @@ $ LOADDB
 1328 Invalid Descriptor handle.
 1329 Not supported dbms.
 1330 Unable to allocate an environment handle.
-1331 Error reserved for dblink development.
+1331 A null column binder was referenced.
 
 1332 活动日志卷 (%1$s) 过于健全，无法重新创建。 如果删除活动日志，可能会导致意外且不可逆转的问题。
 
