@@ -5162,7 +5162,10 @@ pgbuf_is_temporary_volume (VOLID volid)
    * as such, the disk cache bookkeeping seems to "lag" behind;
    * in replication context, on the page server, prefer to just skip the check and consider
    * all volumes as permanent because page server does not deal with temporary volumes anyway */
-  if (cubthread::get_entry ().type == TT_REPLICATION)
+  /* Later edit: replication threads are also being present on passive transaction server - which has
+   * to deal with temporary volumes. Thus, restrict the test to page server context only and leave
+   * original answer for all transaction servers */
+  if (is_page_server () && cubthread::get_entry ().type == TT_REPLICATION)
     {
       return false;
     }
