@@ -3143,8 +3143,8 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   const char *master_node_name;
   char local_database_name[CUB_MAXHOSTNAMELEN];
   char master_database_name[CUB_MAXHOSTNAMELEN];
-  bool check_applied_info, check_copied_info;
-  bool check_master_info, check_replica_info;
+  bool check_applied_info, check_applied_info_temp, check_copied_info, check_copied_info_temp;
+  bool check_master_info, check_master_info_temp, check_replica_info;
   bool verbose;
   const char *log_path;
   char log_path_buf[PATH_MAX];
@@ -3173,8 +3173,8 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       goto print_applyinfo_usage;
     }
 
-  check_applied_info = check_copied_info = false;
-  check_replica_info = check_master_info = false;
+  check_applied_info_temp = check_applied_info = check_copied_info_temp = check_copied_info = false;
+  check_replica_info = check_applied_info_temp = check_applied_info = false;
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
@@ -3192,14 +3192,14 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   master_node_name = utility_get_option_string_value (arg_map, APPLYINFO_REMOTE_NAME_S, 0);
   if (master_node_name != NULL)
     {
-      check_master_info = true;
+      check_master_info_temp = check_master_info = true;
     }
 
-  check_applied_info = utility_get_option_bool_value (arg_map, APPLYINFO_APPLIED_INFO_S);
+  check_applied_info_temp = check_applied_info = utility_get_option_bool_value (arg_map, APPLYINFO_APPLIED_INFO_S);
   log_path = utility_get_option_string_value (arg_map, APPLYINFO_COPIED_LOG_PATH_S, 0);
   if (log_path != NULL)
     {
-      check_copied_info = true;
+      check_copied_info_temp = check_copied_info = true;
     }
 
   if (!check_copied_info && !check_master_info)
@@ -3259,7 +3259,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       strcpy (local_database_name, database_name);
       strcat (local_database_name, "@localhost");
 
-      if (check_applied_info)
+      if (check_applied_info_temp)
 	{
 	  db_clear_host_connected ();
 
@@ -3283,7 +3283,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
 	  if (HA_DISABLED ())
 	    {
-	      check_applied_info = false;
+	      check_applied_info_temp = false;
 	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO,
 						     APPLYINFO_MSG_NOT_HA_MODE));
 	      goto check_applied_info_end;
@@ -3292,7 +3292,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  error = la_get_applied_log_info (database_name, log_path, check_replica_info, verbose, &applied_final_lsa);
 	  if (error != NO_ERROR)
 	    {
-	      check_applied_info = false;
+	      check_applied_info_temp = false;
 	      error = NO_ERROR;
 	    }
 	}
@@ -3302,17 +3302,17 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       if (error != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  check_applied_info = false;
+	  check_applied_info_temp = false;
 	  error = NO_ERROR;
 	}
 
-      if (check_copied_info)
+      if (check_copied_info_temp)
 	{
 	  error =
 	    la_get_copied_log_info (database_name, log_path, pageid, verbose, &copied_eof_lsa, &copied_append_lsa);
 	  if (error != NO_ERROR)
 	    {
-	      check_copied_info = false;
+	      check_copied_info_temp = false;
 	      error = NO_ERROR;
 	    }
 	}
@@ -3322,7 +3322,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  (void) db_shutdown ();
 	}
 
-      if (check_master_info)
+      if (check_master_info_temp)
 	{
 	  printf ("\n ***  Active Info. *** \n");
 	  memset (master_database_name, 0x00, CUB_MAXHOSTNAMELEN);
@@ -3360,7 +3360,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       if (error != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  check_master_info = false;
+	  check_master_info_temp = false;
 	  error = NO_ERROR;
 	}
 
@@ -3371,7 +3371,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
       /* print delay info */
       cur_time = time (NULL);
-      if (check_copied_info && check_master_info)
+      if (check_copied_info_temp && check_master_info_temp)
 	{
 	  if (!LSA_ISNULL (&initial_copied_append_lsa))
 	    {
@@ -3388,7 +3388,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  la_print_delay_info (copied_append_lsa, master_eof_lsa, process_rate);
 	}
 
-      if (check_applied_info)
+      if (check_applied_info_temp)
 	{
 	  if (!LSA_ISNULL (&initial_applied_final_lsa))
 	    {
@@ -3404,6 +3404,10 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  printf ("\n *** Delay in Applying Copied Log *** \n");
 	  la_print_delay_info (applied_final_lsa, copied_eof_lsa, process_rate);
 	}
+
+      check_copied_info_temp = check_copied_info;
+      check_applied_info_temp = check_applied_info;
+      check_applied_info_temp = check_applied_info;
 
       sleep (interval);
     }
