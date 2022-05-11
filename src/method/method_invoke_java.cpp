@@ -84,7 +84,7 @@ namespace cubmethod
 	    cubmethod::runtime_context *rctx = cubmethod::get_rctx (thread_p);
 	    if (rctx && rctx->is_interrupted ())
 	      {
-		return rctx->get_interrupt_reason ();
+		return rctx->get_interrupt_id ();
 	      }
 
 	    nbytes = jsp_readn (m_group->get_socket(), (char *) &start_code, (int) sizeof (int));
@@ -152,7 +152,7 @@ namespace cubmethod
 	cubmethod::runtime_context *rctx = cubmethod::get_rctx (thread_p);
 	if (rctx && rctx->is_interrupted ())
 	  {
-	    return rctx->get_interrupt_reason ();
+	    return rctx->get_interrupt_id ();
 	  }
 
 	nbytes = jsp_readn (m_group->get_socket(), (char *) &res_size, (int) sizeof (int));

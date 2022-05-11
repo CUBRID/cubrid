@@ -21,6 +21,7 @@
 #include "boot_sr.h"
 #include "jsp_sr.h" /* jsp_server_port(), jsp_connect_server() */
 #include "jsp_comm.h" /* jsp_disconnect_server (), jsp_ping () */
+#include "jsp_file.h" /* javasp_read_info() */
 
 #if defined (SERVER_MODE)
 #include "server_support.h"
@@ -142,6 +143,21 @@ namespace cubmethod
   connection::get_socket ()
   {
     return m_socket;
+  }
+
+  bool
+  connection::is_jvm_running ()
+  {
+    JAVASP_SERVER_INFO info;
+    javasp_read_info (boot_db_name (), info);
+    if (info.pid == -1)
+      {
+	return false;
+      }
+    else
+      {
+	return true;
+      }
   }
 
 } // namespace cubmethod

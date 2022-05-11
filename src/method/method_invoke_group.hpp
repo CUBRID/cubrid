@@ -85,6 +85,7 @@ namespace cubmethod
       SOCKET get_socket () const;
       cubthread::entry *get_thread_entry () const;
       std::queue<cubmem::extensible_block> &get_data_queue ();
+      cubmethod::runtime_context *get_runtime_context ();
 
       bool is_running () const;
       bool is_for_scan () const;
