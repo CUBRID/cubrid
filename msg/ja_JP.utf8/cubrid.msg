@@ -1379,7 +1379,7 @@ $ LOADDB
 1305 dblink - server "%1$s" not found.
 1306 dblink - server "%1$s" already exists.
 1307 dblink - Cannot update server object.
-1308 dblink - unsupported type.
+1308 dblink - not supported type %1$s.
 1309 dblink - invalid bind param.
 1310 dblink - password length exceeds max size.
 1311 dblink - encrypted password length is incorrect.

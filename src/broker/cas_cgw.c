@@ -2226,96 +2226,96 @@ cgw_datatype_to_string (SQLLEN type)
   switch (type)
     {
     case SQL_UNKNOWN_TYPE:
-      return "SQL_UNKNOWN_TYPE";
+      return (char *) "SQL_UNKNOWN_TYPE";
       break;
     case SQL_CHAR:
-      return "SQL_CHAR";
+      return (char *) "SQL_CHAR";
       break;
     case SQL_NUMERIC:
-      return "SQL_NUMERIC";
+      return (char *) "SQL_NUMERIC";
       break;
     case SQL_DECIMAL:
-      return "SQL_DECIMAL";
+      return (char *) "SQL_DECIMAL";
       break;
     case SQL_INTEGER:
-      return "SQL_INTEGER";
+      return (char *) "SQL_INTEGER";
       break;
     case SQL_SMALLINT:
-      return "SQL_SMALLINT";
+      return (char *) "SQL_SMALLINT";
       break;
     case SQL_FLOAT:
-      return "SQL_FLOAT";
+      return (char *) "SQL_FLOAT";
       break;
     case SQL_REAL:
-      return "SQL_REAL";
+      return (char *) "SQL_REAL";
       break;
     case SQL_DOUBLE:
-      return "SQL_DOUBLE";
+      return (char *) "SQL_DOUBLE";
       break;
 #if (ODBCVER >= 0x0300)
     case SQL_DATETIME:
-      return "SQL_DATETIME";
+      return (char *) "SQL_DATETIME";
       break;
 #else
     case SQL_DATE:
-      return "SQL_DATE";
+      return (char *) "SQL_DATE";
       break;
 #endif
     case SQL_VARCHAR:
-      return "SQL_VARCHAR";
+      return (char *) "SQL_VARCHAR";
       break;
 #if (ODBCVER >= 0x0300)
     case SQL_TYPE_DATE:
-      return "SQL_TYPE_DATE";
+      return (char *) "SQL_TYPE_DATE";
       break;
     case SQL_TYPE_TIME:
-      return "SQL_TYPE_TIME";
+      return (char *) "SQL_TYPE_TIME";
       break;
     case SQL_TYPE_TIMESTAMP:
-      return "SQL_TYPE_TIMESTAMP";
+      return (char *) "SQL_TYPE_TIMESTAMP";
       break;
 #endif
 
 #if (ODBCVER >= 0x0300)
     case SQL_INTERVAL:
-      return "SQL_INTERVAL";
+      return (char *) "SQL_INTERVAL";
       break;
 #else
     case SQL_TIME:
-      return "SQL_TIME";
+      return (char *) "SQL_TIME";
       break;
 #endif
     case SQL_TIMESTAMP:
-      return "SQL_TIMESTAMP";
+      return (char *) "SQL_TIMESTAMP";
       break;
     case SQL_LONGVARCHAR:
-      return "SQL_LONGVARCHAR";
+      return (char *) "SQL_LONGVARCHAR";
       break;
     case SQL_BINARY:
-      return "SQL_BINARY";
+      return (char *) "SQL_BINARY";
       break;
     case SQL_VARBINARY:
-      return "SQL_VARBINARY";
+      return (char *) "SQL_VARBINARY";
       break;
     case SQL_LONGVARBINARY:
-      return "SQL_LONGVARBINARY";
+      return (char *) "SQL_LONGVARBINARY";
       break;
     case SQL_BIGINT:
-      return "SQL_BIGINT";
+      return (char *) "SQL_BIGINT";
       break;
     case SQL_TINYINT:
-      return "SQL_TINYINT";
+      return (char *) "SQL_TINYINT";
       break;
     case SQL_BIT:
-      return "SQL_BIT";
+      return (char *) "SQL_BIT";
       break;
 #if (ODBCVER >= 0x0350)
     case SQL_GUID:
-      return "SQL_GUID";
+      return (char *) "SQL_GUID";
       break;
 #endif
     default:
-      return "";
+      return (char *) "";
     }
 }
 
@@ -2325,66 +2325,66 @@ cgw_utype_to_string (int type)
   switch (type)
     {
     case CCI_U_TYPE_CHAR:
-      return "char";
+      return (char *) "char";
     case CCI_U_TYPE_STRING:
-      return "char";
+      return (char *) "char";
     case CCI_U_TYPE_NCHAR:
-      return "nchar";
+      return (char *) "nchar";
     case CCI_U_TYPE_VARNCHAR:
-      return "nchar varying";
+      return (char *) "nchar varying";
     case CCI_U_TYPE_NUMERIC:
-      return "numeric";
+      return (char *) "numeric";
     case CCI_U_TYPE_BIGINT:
-      return "bigint";
+      return (char *) "bigint";
     case CCI_U_TYPE_INT:
-      return "integer";
+      return (char *) "integer";
     case CCI_U_TYPE_SHORT:
-      return "smallint";
+      return (char *) "smallint";
     case CCI_U_TYPE_FLOAT:
-      return "float";
+      return (char *) "float";
     case CCI_U_TYPE_DOUBLE:
-      return "double";
+      return (char *) "double";
     case CCI_U_TYPE_DATE:
-      return "date";
+      return (char *) "date";
     case CCI_U_TYPE_TIME:
-      return "time";
+      return (char *) "time";
     case CCI_U_TYPE_TIMESTAMP:
-      return "timestamp";
+      return (char *) "timestamp";
     case CCI_U_TYPE_DATETIME:
-      return "datetime";
+      return (char *) "datetime";
     case CCI_U_TYPE_NULL:
-      return "null";
+      return (char *) "null";
     case CCI_U_TYPE_BIT:
-      return "bit";
+      return (char *) "bit";
     case CCI_U_TYPE_VARBIT:
-      return "bit varying";
+      return (char *) "bit varying";
     case CCI_U_TYPE_MONETARY:
-      return "monetary";
+      return (char *) "monetary";
     case CCI_U_TYPE_SET:
-      return "set";
+      return (char *) "set";
     case CCI_U_TYPE_MULTISET:
-      return "multiset";
+      return (char *) "multiset";
     case CCI_U_TYPE_SEQUENCE:
-      return "sequence";
+      return (char *) "sequence";
     case CCI_U_TYPE_OBJECT:
-      return "object";
+      return (char *) "object";
     case CCI_U_TYPE_BLOB:
-      return "blob";
+      return (char *) "blob";
     case CCI_U_TYPE_CLOB:
-      return "clob";
+      return (char *) "clob";
     case CCI_U_TYPE_JSON:
-      return "json";
+      return (char *) "json";
     case CCI_U_TYPE_ENUM:
-      return "enum";
+      return (char *) "enum";
     case CCI_U_TYPE_DATETIMELTZ:
-      return "datetimeltz";
+      return (char *) "datetimeltz";
     case CCI_U_TYPE_DATETIMETZ:
-      return "datetimetz";
+      return (char *) "datetimetz";
     case CCI_U_TYPE_TIMESTAMPTZ:
-      return "timestamptz";
+      return (char *) "timestamptz";
     case CCI_U_TYPE_TIMESTAMPLTZ:
-      return "timestampltz";
+      return (char *) "timestampltz";
     default:
-      return "";
+      return (char *) "";
     }
 }
