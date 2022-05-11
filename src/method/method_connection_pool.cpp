@@ -72,6 +72,7 @@ namespace cubmethod
 	// test socket
 	if (conn->is_valid() == false)
 	  {
+	    jsp_disconnect_server (conn->m_socket); // disconnect connecting with ExecuteThread in invalid state
 	    conn->m_socket = jsp_connect_server (boot_db_name (), jsp_server_port ());
 	  }
 
