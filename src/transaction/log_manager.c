@@ -3983,13 +3983,22 @@ log_sysop_start (THREAD_ENTRY * thread_p)
 
   /* NOTE if tdes->topops.last >= 0, there is an already defined top system operation. */
   tdes->topops.last++;
+  // TODO: vague idea: do not copy a newwer tail_lsa as a [atomic] sysop last parent lsa if the stack
+  // already contains one non-null such last parent lsa; this, to allow nested atomic sysop's
   LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, &tdes->tail_lsa);
   LSA_COPY (&tdes->topop_lsa, &tdes->tail_lsa);
 
   LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
 
-  er_print_callstack (ARG_FILE_LINE, "CRSDBG: log_sysop_start after topops_last++ trid=%d topops_last=%d"
-		      " tdes_tail_lsa=(%lld|%d)\n", tdes->trid, tdes->topops.last, LSA_AS_ARGS (&tdes->tail_lsa));
+  er_print_callstack (ARG_FILE_LINE,
+		      "CRSDBG: log_sysop_start after topops_last++ tdes_trid=%d tdes_topops_last=%d tdes_tail_lsa=(%lld|%d)\n",
+		      tdes->trid, tdes->topops.last, LSA_AS_ARGS (&tdes->tail_lsa));
+  for (int topop_index = 0; topop_index <= tdes->topops.last; ++topop_index)
+    {
+      _er_log_debug ("iterate", 0, "CRSDBG: topop_index=%d lastparent_lsa=(%lld|%d), posp_lsa=(%lld|%d)\n",
+		     topop_index, LSA_AS_ARGS (&tdes->topops.stack[topop_index].lastparent_lsa),
+		     LSA_AS_ARGS (&tdes->topops.stack[topop_index].posp_lsa));
+    }
   log_dump_log_rcv_tdes (tdes->rcv, "called from log_sysop_start");
 
   perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_START_TOPOPS);
@@ -4020,13 +4029,6 @@ log_sysop_start_atomic (THREAD_ENTRY * thread_p)
     {
       er_print_callstack (ARG_FILE_LINE, "CRSDBG: log_sysop_start_atomic IF trid=%d topops_last=%d\n",
 			  tdes->trid, tdes->topops.last);
-      for (int topop_index = 0; topop_index <= tdes->topops.last; ++topop_index)
-	{
-	  _er_log_debug ("iterate", 0, "CRSDBG: log_sysop_start_atomic IF\n"
-			 " topop_index=%d lastparent_lsa=(%lld|%d), posp_lsa=(%lld|%d)\n",
-			 topop_index, LSA_AS_ARGS (&tdes->topops.stack[topop_index].lastparent_lsa),
-			 LSA_AS_ARGS (&tdes->topops.stack[topop_index].posp_lsa));
-	}
       log_dump_log_rcv_tdes (tdes->rcv, "from log_sysop_start_atomic IF");
 
       LOG_PRIOR_NODE *node =
@@ -4048,13 +4050,6 @@ log_sysop_start_atomic (THREAD_ENTRY * thread_p)
       er_print_callstack (ARG_FILE_LINE, "CRSDBG: log_sysop_start_atomic ELSE trid=%d\n"
 			  " current_sysop_start_lsa=(%lld|%d) topops_last=%d\n",
 			  tdes->trid, LSA_AS_ARGS (&current_sysop_start_lsa), tdes->topops.last);
-      for (int topop_index = 0; topop_index <= tdes->topops.last; ++topop_index)
-	{
-	  _er_log_debug ("iterate", 0, "CRSDBG: log_sysop_start_atomic ELSE\n"
-			 " topop_index=%d lastparent_lsa=(%lld|%d), posp_lsa=(%lld|%d)\n",
-			 topop_index, LSA_AS_ARGS (&tdes->topops.stack[topop_index].lastparent_lsa),
-			 LSA_AS_ARGS (&tdes->topops.stack[topop_index].posp_lsa));
-	}
       log_dump_log_rcv_tdes (tdes->rcv, "from log_sysop_start_atomic ELSE");
 
       /* this must be a nested atomic system operation. If parent is atomic, we'll be atomic too. */
@@ -4131,6 +4126,12 @@ log_sysop_end_unstack (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     }
   er_print_callstack (ARG_FILE_LINE, "CRSDBG: log_sysop_end_unstack after topops_last-- trid=%d topops_last=%d\n",
 		      tdes->trid, tdes->topops.last);
+  for (int topop_index = 0; topop_index <= tdes->topops.last; ++topop_index)
+    {
+      _er_log_debug ("iterate", 0, "CRSDBG: topop_index=%d lastparent_lsa=(%lld|%d), posp_lsa=(%lld|%d)\n",
+		     topop_index, LSA_AS_ARGS (&tdes->topops.stack[topop_index].lastparent_lsa),
+		     LSA_AS_ARGS (&tdes->topops.stack[topop_index].posp_lsa));
+    }
   log_dump_log_rcv_tdes (tdes->rcv, "called from log_sysop_end_unstack");
 }
 
