@@ -197,9 +197,9 @@ static const int LOG_REC_UNDO_MAX_ATTEMPTS = 3;
 /* true: Skip logging, false: Don't skip logging */
 static bool log_No_logging = false;
 
-#define LOG_TDES_LAST_SYSOP(tdes) (&(tdes)->topops.stack[(tdes)->topops.last])
-#define LOG_TDES_LAST_SYSOP_PARENT_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->lastparent_lsa)
-#define LOG_TDES_LAST_SYSOP_POSP_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->posp_lsa)
+//#define LOG_TDES_LAST_SYSOP(tdes) (&(tdes)->topops.stack[(tdes)->topops.last])
+//#define LOG_TDES_LAST_SYSOP_PARENT_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->lastparent_lsa)
+//#define LOG_TDES_LAST_SYSOP_POSP_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->posp_lsa)
 
 #if defined (SERVER_MODE)
 /* Current time in milliseconds */
@@ -4123,7 +4123,7 @@ log_sysop_end_unstack (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->topops.last--;
   if (tdes->topops.last >= 0)
     {
-      LSA_COPY (&tdes->topop_lsa, &LOG_TDES_LAST_SYSOP (tdes)->lastparent_lsa);
+      LSA_COPY (&tdes->topop_lsa, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
     }
   else
     {
@@ -4216,11 +4216,11 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
       return;
     }
 
-  if ((LSA_ISNULL (&tdes->tail_lsa) || LSA_LE (&tdes->tail_lsa, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes)))
+  if ((LSA_ISNULL (&tdes->tail_lsa) || LSA_LE (&tdes->tail_lsa, &tdes->topops.stack[tdes->topops.last].lastparent_lsa))
       && log_record->type == LOG_SYSOP_END_COMMIT)
     {
       /* No change. */
-      assert (LSA_ISNULL (&LOG_TDES_LAST_SYSOP (tdes)->posp_lsa));
+      assert (LSA_ISNULL (&tdes->topops.stack[tdes->topops.last].posp_lsa));
     }
   else
     {
@@ -4228,7 +4228,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
        * we don't actually allow empty logical system operation because it might hide a logic flaw. however, there are
        * unusual cases when a logical operation does not really require logging (see RVPGBUF_FLUSH_PAGE). if you create
        * such a case, you should add a dummy log record to trick this assert. */
-      assert (!LSA_ISNULL (&tdes->tail_lsa) && LSA_GT (&tdes->tail_lsa, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes)));
+      assert (!LSA_ISNULL (&tdes->tail_lsa) && LSA_GT (&tdes->tail_lsa, &tdes->topops.stack[tdes->topops.last].lastparent_lsa));
 
       /* now that we have access to tdes, we can do some updates on log record and sanity checks */
       if (log_record->type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
@@ -4267,7 +4267,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	  log_append_repl_info (thread_p, tdes, false);
 	}
 
-      log_record->lastparent_lsa = *LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes);
+      log_record->lastparent_lsa = tdes->topops.stack[tdes->topops.last].lastparent_lsa;
       log_record->prv_topresult_lsa = tdes->tail_topresult_lsa;
 
       /* do postpone */
@@ -4426,7 +4426,7 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
       return;
     }
 
-  if (LSA_ISNULL (&tdes->tail_lsa) || LSA_LE (&tdes->tail_lsa, &LOG_TDES_LAST_SYSOP (tdes)->lastparent_lsa))
+  if (LSA_ISNULL (&tdes->tail_lsa) || LSA_LE (&tdes->tail_lsa, &tdes->topops.stack[tdes->topops.last].lastparent_lsa))
     {
       /* No change. */
     }
@@ -4437,7 +4437,7 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
 	  && log_does_allow_replication () == true)
 	{
-	  repl_log_abort_after_lsa (tdes, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
+	  repl_log_abort_after_lsa (tdes, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
 	}
 
       /* Abort changes in system op. */
@@ -4445,12 +4445,12 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
       tdes->state = TRAN_UNACTIVE_ABORTED;
 
       /* Rollback changes. */
-      log_rollback (thread_p, tdes, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
-      tdes->m_modified_classes.decache_heap_repr (*LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
+      log_rollback (thread_p, tdes, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
+      tdes->m_modified_classes.decache_heap_repr (tdes->topops.stack[tdes->topops.last].lastparent_lsa);
 
       /* Log abort system operation. */
       sysop_end.type = LOG_SYSOP_END_ABORT;
-      sysop_end.lastparent_lsa = *LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes);
+      sysop_end.lastparent_lsa = tdes->topops.stack[tdes->topops.last].lastparent_lsa;
       sysop_end.prv_topresult_lsa = tdes->tail_topresult_lsa;
       log_append_sysop_end (thread_p, tdes, &sysop_end, 0, NULL);
 
@@ -8489,7 +8489,7 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
   LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
   TRAN_STATE save_state = tdes->state;
 
-  if (LSA_ISNULL (LOG_TDES_LAST_SYSOP_POSP_LSA (tdes)))
+  if (LSA_ISNULL (&tdes->topops.stack[tdes->topops.last].posp_lsa))
     {
       /* nothing to postpone */
       return;
@@ -8501,10 +8501,10 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
   assert (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE);
 
   sysop_start_postpone.sysop_end = *sysop_end;
-  sysop_start_postpone.posp_lsa = *LOG_TDES_LAST_SYSOP_POSP_LSA (tdes);
+  sysop_start_postpone.posp_lsa = tdes->topops.stack[tdes->topops.last].posp_lsa;
   log_append_sysop_start_postpone (thread_p, tdes, &sysop_start_postpone, data_size, data);
 
-  if (tdes->m_log_postpone_cache.do_postpone (*thread_p, *(LOG_TDES_LAST_SYSOP_POSP_LSA (tdes))))
+  if (tdes->m_log_postpone_cache.do_postpone (*thread_p, tdes->topops.stack[tdes->topops.last].posp_lsa))
     {
       /* Do postpone was run from cached postpone entries. */
       tdes->state = save_state;
@@ -8513,7 +8513,7 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
     }
   perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_TOPOP_PPCACHE_MISS);
 
-  log_do_postpone (thread_p, tdes, LOG_TDES_LAST_SYSOP_POSP_LSA (tdes));
+  log_do_postpone (thread_p, tdes, &tdes->topops.stack[tdes->topops.last].posp_lsa);
 
   tdes->state = save_state;
 }
