@@ -4518,7 +4518,7 @@ log_sysop_attach_to_outer (THREAD_ENTRY * thread_p)
       //  which)
       // - similar logic to this exists in 'log_sysop_commit_internal'
       // TODO: this might be a workaround for an issue whose root cause is elsewhere
-      tdes->rcv.set_atomic_sysop_start_lsa (NULL_LSA);
+      //tdes->rcv.set_atomic_sysop_start_lsa (NULL_LSA);
     }
 
   log_sysop_end_final (thread_p, tdes);
