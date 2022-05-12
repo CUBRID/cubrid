@@ -70,8 +70,8 @@ static int prior_lsa_copy_redo_crumbs_to_node (LOG_PRIOR_NODE *node, int num_cru
 static void prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes);
 static void prior_lsa_end_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node);
 static void prior_lsa_append_data (int length);
-STATIC_INLINE void prior_extract_vacuum_info_from_prior_node (const LOG_PRIOR_NODE *node,
-    LOG_VACUUM_INFO *&dest_vacuum_info, MVCCID &mvccid);
+//STATIC_INLINE void prior_extract_vacuum_info_from_prior_node (const LOG_PRIOR_NODE *node,
+//    LOG_VACUUM_INFO *&dest_vacuum_info, MVCCID &mvccid);
 static LOG_LSA prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes,
     int with_lock);
 static void prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid);
@@ -1452,40 +1452,40 @@ prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid)
   log_Gl.hdr.does_block_need_vacuum = true;
 }
 
-STATIC_INLINE void
-prior_extract_vacuum_info_from_prior_node (const LOG_PRIOR_NODE *node, LOG_VACUUM_INFO *&dest_vacuum_info,
-    MVCCID &mvccid)
-{
-  dest_vacuum_info = nullptr;
-  mvccid = MVCCID_NULL;
+//STATIC_INLINE void
+//prior_extract_vacuum_info_from_prior_node (const LOG_PRIOR_NODE *node, LOG_VACUUM_INFO *&dest_vacuum_info,
+//    MVCCID &mvccid)
+//{
+//  dest_vacuum_info = nullptr;
+//  mvccid = MVCCID_NULL;
 
-  if (node->log_header.type == LOG_MVCC_UNDO_DATA)
-    {
-      /* Read from mvcc_undo structure */
-      LOG_REC_MVCC_UNDO *const mvcc_undo = (LOG_REC_MVCC_UNDO *) node->data_header;
-      dest_vacuum_info = &mvcc_undo->vacuum_info;
-      mvccid = mvcc_undo->mvccid;
-    }
-  else if (node->log_header.type == LOG_MVCC_UNDOREDO_DATA || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA)
-    {
-      /* Read for mvcc_undoredo structure */
-      LOG_REC_MVCC_UNDOREDO *const mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) node->data_header;
-      dest_vacuum_info = &mvcc_undoredo->vacuum_info;
-      mvccid = mvcc_undoredo->mvccid;
-    }
-  else if (node->log_header.type == LOG_SYSOP_END
-	   && ((LOG_REC_SYSOP_END *)node->data_header)->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
-    {
-      /* Read from mvcc_undo structure */
-      LOG_REC_MVCC_UNDO *const mvcc_undo = & ((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo;
-      dest_vacuum_info = &mvcc_undo->vacuum_info;
-      mvccid = mvcc_undo->mvccid;
-    }
-  else
-    {
-      assert ("not an mvcc prior node" == nullptr);
-    }
-}
+//  if (node->log_header.type == LOG_MVCC_UNDO_DATA)
+//    {
+//      /* Read from mvcc_undo structure */
+//      LOG_REC_MVCC_UNDO *const mvcc_undo = (LOG_REC_MVCC_UNDO *) node->data_header;
+//      dest_vacuum_info = &mvcc_undo->vacuum_info;
+//      mvccid = mvcc_undo->mvccid;
+//    }
+//  else if (node->log_header.type == LOG_MVCC_UNDOREDO_DATA || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA)
+//    {
+//      /* Read for mvcc_undoredo structure */
+//      LOG_REC_MVCC_UNDOREDO *const mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) node->data_header;
+//      dest_vacuum_info = &mvcc_undoredo->vacuum_info;
+//      mvccid = mvcc_undoredo->mvccid;
+//    }
+//  else if (node->log_header.type == LOG_SYSOP_END
+//	   && ((LOG_REC_SYSOP_END *)node->data_header)->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
+//    {
+//      /* Read from mvcc_undo structure */
+//      LOG_REC_MVCC_UNDO *const mvcc_undo = & ((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo;
+//      dest_vacuum_info = &mvcc_undo->vacuum_info;
+//      mvccid = mvcc_undo->mvccid;
+//    }
+//  else
+//    {
+//      assert ("not an mvcc prior node" == nullptr);
+//    }
+//}
 
 /*
  * prior_lsa_next_record_internal -
@@ -1535,7 +1535,57 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
     {
       /* Link the log record to previous MVCC delete/update log record */
       /* Will be used by vacuum */
-      prior_extract_vacuum_info_from_prior_node (node, vacuum_info, mvccid);
+      if (node->log_header.type == LOG_MVCC_UNDO_DATA)
+	{
+	  /* Read from mvcc_undo structure */
+	  mvcc_undo = (LOG_REC_MVCC_UNDO *) node->data_header;
+	  vacuum_info = &mvcc_undo->vacuum_info;
+	  mvccid = mvcc_undo->mvccid;
+	}
+      else if (node->log_header.type == LOG_SYSOP_END)
+	{
+	  const LOG_REC_SYSOP_END *const sysop_end = (const LOG_REC_SYSOP_END *)node->data_header;
+	  assert (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO);
+
+	  /* Read from mvcc_undo structure */
+	  mvcc_undo = & ((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo;
+	  vacuum_info = &mvcc_undo->vacuum_info;
+	  mvccid = mvcc_undo->mvccid;
+
+	  const LOG_LSA &atomic_sysop_start_lsa = tdes->rcv.get_atomic_sysop_start_lsa ();
+	  if (!LSA_ISNULL (&atomic_sysop_start_lsa) && LSA_LT (&sysop_end->lastparent_lsa, &atomic_sysop_start_lsa))
+	    {
+	      /* atomic system operation finished */
+	      tdes->rcv.set_atomic_sysop_start_lsa (NULL_LSA);
+	    }
+	  else
+	    {
+	      _er_log_debug (ARG_FILE_LINE,
+			     "CRSDBG: prior_lsa_next_record_internal LOG_SYSOP_END__LOG_SYSOP_END_LOGICAL_MVCC_UNDO ELSE_NOT\n"
+			     " sysop_end->lastparent_lsa=(%lld|%d)\n"
+			     " tdes->rcv.get_atomic_sysop_start_lsa=(%lld|%d)\n",
+			     LSA_AS_ARGS (&sysop_end->lastparent_lsa),
+			     LSA_AS_ARGS (&atomic_sysop_start_lsa));
+	    }
+
+
+	  if (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa)
+	      && LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.sysop_start_postpone_lsa))
+	    {
+	      /* atomic system operation finished */
+	      LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
+	    }
+	}
+      else
+	{
+	  /* Read for mvcc_undoredo structure */
+	  assert (node->log_header.type == LOG_MVCC_UNDOREDO_DATA
+		  || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA);
+
+	  mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) node->data_header;
+	  vacuum_info = &mvcc_undoredo->vacuum_info;
+	  mvccid = mvcc_undoredo->mvccid;
+	}
       assert (vacuum_info != nullptr);
       assert (mvccid != MVCCID_NULL);
 
@@ -1574,14 +1624,14 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 	  tdes->rcv.set_atomic_sysop_start_lsa (NULL_LSA);
 	}
       else
-        {
+	{
 	  _er_log_debug (ARG_FILE_LINE,
 			 "CRSDBG: prior_lsa_next_record_internal LOG_SYSOP_START_POSTPONE ELSE_NOT\n"
 			 " sysop_start_postpone->sysop_end.lastparent_lsa=(%lld|%d)\n"
 			 " tdes->rcv.get_atomic_sysop_start_lsa=(%lld|%d)\n",
 			 LSA_AS_ARGS (&sysop_start_postpone->sysop_end.lastparent_lsa),
 			 LSA_AS_ARGS (&tdes->rcv.get_atomic_sysop_start_lsa ()));
-        }
+	}
 
       /* for correct checkpoint, this state change must be done under the protection of prior_lsa_mutex */
       tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
@@ -1601,14 +1651,14 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 	  tdes->rcv.set_atomic_sysop_start_lsa (NULL_LSA);
 	}
       else
-        {
+	{
 	  _er_log_debug (ARG_FILE_LINE,
 			 "CRSDBG: prior_lsa_next_record_internal LOG_SYSOP_END ELSE_NOT\n"
 			 " sysop_end->lastparent_lsa=(%lld|%d)\n"
 			 " tdes->rcv.get_atomic_sysop_start_lsa=(%lld|%d)\n",
 			 LSA_AS_ARGS (&sysop_end->lastparent_lsa),
 			 LSA_AS_ARGS (&tdes->rcv.get_atomic_sysop_start_lsa ()));
-        }
+	}
       if (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa)
 	  && LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.sysop_start_postpone_lsa))
 	{
