@@ -38,6 +38,8 @@
 #include "tz_support.h"
 #include <cas_cci.h>
 
+#include <db_json.hpp>
+
 #define MAX_LEN_CONNECTION_URL    512
 
 // *INDENT-OFF*
@@ -143,6 +145,38 @@ dblink_get_basic_utype (T_CCI_U_EXT_TYPE u_ext_type)
   else
     {
       return (T_CCI_U_TYPE) CCI_GET_COLLECTION_DOMAIN (u_ext_type);
+    }
+}
+
+static char *
+print_utype_to_string (int type)
+{
+  switch (type)
+    {
+    case CCI_U_TYPE_BIT:
+      return (char *) "bit";
+    case CCI_U_TYPE_VARBIT:
+      return (char *) "varbit";
+    case CCI_U_TYPE_NULL:
+      return (char *) "null";
+    case CCI_U_TYPE_SET:
+      return (char *) "set";
+    case CCI_U_TYPE_MULTISET:
+      return (char *) "multiset";
+    case CCI_U_TYPE_SEQUENCE:
+      return (char *) "sequence";
+    case CCI_U_TYPE_OBJECT:
+      return (char *) "object";
+    case CCI_U_TYPE_BLOB:
+      return (char *) "blob";
+    case CCI_U_TYPE_CLOB:
+      return (char *) "clob";
+    case CCI_U_TYPE_JSON:
+      return (char *) "json";
+    case CCI_U_TYPE_ENUM:
+      return (char *) "enum";
+    default:
+      return (char *) "";
     }
 }
 
@@ -358,6 +392,8 @@ dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd, DBLINK_HOST_VAR
   DB_DATE date;
   DB_TIME time;
   T_CCI_DATE cci_date;
+  T_CCI_BIT cci_bit;
+  int num_size;
   char num_str[40];
 
   unsigned char type;
@@ -369,6 +405,25 @@ dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd, DBLINK_HOST_VAR
       type = vd->dbval_ptr[i].domain.general_info.type;
       switch (type)
 	{
+	case DB_TYPE_BIT:
+	  a_type = CCI_A_TYPE_BIT;
+	  u_type = CCI_U_TYPE_BIT;
+	  value = (void *) &cci_bit;
+	  cci_bit.buf = (char *) db_get_bit (&vd->dbval_ptr[i], &num_size);
+	  cci_bit.size = QSTR_NUM_BYTES (num_size);
+	  break;
+	case DB_TYPE_VARBIT:
+	  a_type = CCI_A_TYPE_BIT;
+	  u_type = CCI_U_TYPE_VARBIT;
+	  value = (void *) &cci_bit;
+	  cci_bit.buf = (char *) db_get_bit (&vd->dbval_ptr[i], &num_size);
+	  cci_bit.size = QSTR_NUM_BYTES (num_size);
+	  break;
+	case DB_TYPE_JSON:
+	  a_type = CCI_A_TYPE_STR;
+	  u_type = CCI_U_TYPE_JSON;
+	  value = (void *) db_get_json_raw_body (&vd->dbval_ptr[i]);
+	  break;
 	case DB_TYPE_SHORT:
 	  a_type = CCI_A_TYPE_INT;
 	  u_type = CCI_U_TYPE_SHORT;
@@ -397,7 +452,7 @@ dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd, DBLINK_HOST_VAR
 	case DB_TYPE_NCHAR:
 	  a_type = CCI_A_TYPE_STR;
 	  u_type = CCI_U_TYPE_STRING;
-	  value = (void *) vd->dbval_ptr[i].data.ch.medium.buf;
+	  value = (void *) db_get_string (&vd->dbval_ptr[i]);
 	  break;
 	case DB_TYPE_DATE:
 	  a_type = CCI_A_TYPE_DATE;
@@ -779,7 +834,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	  error = dblink_make_date_time_tz (utype, &cci_value, &date_time_tz);
 	  break;
 	default:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_UNSUPPORTED_TYPE, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_UNSUPPORTED_TYPE, 1, print_utype_to_string (utype));
 	  return S_ERROR;
 	}
       if (ind == -1)
@@ -790,18 +845,13 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	{
 	  TP_DOMAIN dom;
 
-	  tp_domain_init (&dom, (DB_TYPE) valptrp->val->domain.general_info.type);
-	  if (TP_IS_CHAR_TYPE (dom.type->id))
-	    {
-	      dom.precision = valptrp->val->domain.char_info.length;
-	      dom.collation_id = valptrp->val->domain.char_info.collation_id;
-	      dom.codeset = valptrp->val->data.ch.medium.codeset;
-	    }
-	  else
-	    {
-	      dom.precision = valptrp->val->domain.numeric_info.precision;
-	      dom.scale = valptrp->val->domain.numeric_info.scale;
-	    }
+	  tp_domain_init (&dom, (DB_TYPE) db_value_domain_type (valptrp->val));
+
+	  dom.precision = db_value_precision (valptrp->val);
+	  dom.collation_id = db_get_string_collation (valptrp->val);
+	  dom.codeset = db_get_string_codeset (valptrp->val);
+	  dom.scale = db_value_scale (valptrp->val);
+
 	  if (db_value_coerce (&cci_value, valptrp->val, &dom) != DOMAIN_COMPATIBLE)
 	    {
 	      return S_ERROR;
