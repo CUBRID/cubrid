@@ -22,6 +22,7 @@
 #include "query_manager.h"
 #include "session.h"
 #include "xserver_interface.h"
+#include "thread_manager.hpp"
 
 namespace cubmethod
 {
