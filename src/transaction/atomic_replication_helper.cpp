@@ -18,6 +18,7 @@
 
 #include "atomic_replication_helper.hpp"
 
+#include "log_recovery.h"
 #include "log_recovery_redo.hpp"
 #include "page_buffer.h"
 #include "system_parameter.h"
@@ -143,8 +144,13 @@ namespace cublog
       {
 	rcv.pgptr = m_watcher.pgptr;
       }
-    rcv.reference_lsa = m_record_lsa;
-    log_rv_redo_record_sync_apply (thread_p,redo_context, record_info, m_vpid, rcv);
+
+    if (log_rv_fix_page_and_check_redo_is_needed (thread_p, m_vpid, rcv.pgptr, record_info.m_start_lsa,
+	redo_context.m_end_redo_lsa, redo_context.m_page_fetch_mode))
+      {
+	rcv.reference_lsa = m_record_lsa;
+	log_rv_redo_record_sync_apply (thread_p,redo_context, record_info, m_vpid, rcv);
+      }
   }
 
   int atomic_replication_helper::atomic_replication_unit::fix_page (THREAD_ENTRY *thread_p)

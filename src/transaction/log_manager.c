@@ -1684,6 +1684,10 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
       return;
     }
 
+  // not other purpose on passive transaction server than to conform various checks that rely on the recovery state
+  // one such example: the check for "is temporary volume" in page buffer
+  log_Gl.rcv_phase = LOG_RESTARTED;
+
   logpb_initialize_logging_statistics ();
 
   er_log_debug (ARG_FILE_LINE, "log_initialize_passive_tran_server: end of log initializaton, append_lsa = (%lld|%d)\n",
