@@ -9373,7 +9373,7 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   /* Swap operation must use system op. */
   save_system_op_started = delete_helper->is_system_op_started;
-  log_sysop_start (thread_p);
+  log_sysop_start_atomic (thread_p);
   is_sytem_op_started = true;
   delete_helper->is_system_op_started = true;
 
