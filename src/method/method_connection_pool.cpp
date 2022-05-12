@@ -31,6 +31,7 @@ namespace cubmethod
 {
   connection_pool::connection_pool (int pool_size)
     : m_pool_size (pool_size)
+    , m_queue ()
     , m_mutex ()
   {
     //
@@ -38,7 +39,6 @@ namespace cubmethod
 
   connection_pool::~connection_pool ()
   {
-    std::unique_lock<std::mutex> ulock (m_mutex);
     while (!m_queue.empty ())
       {
 	connection *conn = m_queue.front ();
@@ -122,13 +122,14 @@ namespace cubmethod
 
   connection::~connection ()
   {
+    m_pool = nullptr;
     jsp_disconnect_server (m_socket);
   }
 
   bool
   connection::is_valid ()
   {
-    return (jsp_ping (m_socket) == NO_ERROR);
+    return (m_socket != INVALID_SOCKET) && (jsp_ping (m_socket) == NO_ERROR);
   }
 
   SOCKET
