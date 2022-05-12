@@ -448,16 +448,16 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
  *  - passive transaction server replication
  */
 bool
-log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, log_rcv & rcv,
+log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, PAGE_PTR & pgptr,
 					  const log_lsa & rcv_lsa, const LOG_LSA & end_redo_lsa,
 					  PAGE_FETCH_MODE page_fetch_mode)
 {
-  assert (rcv.pgptr == nullptr);
+  assert (pgptr == nullptr);
 
   if (!VPID_ISNULL (&page_vpid))
     {
-      rcv.pgptr = log_rv_redo_fix_page (thread_p, &page_vpid, page_fetch_mode);
-      if (rcv.pgptr == nullptr)
+      pgptr = log_rv_redo_fix_page (thread_p, &page_vpid, page_fetch_mode);
+      if (pgptr == nullptr)
 	{
 	  /* page being null after fix attempt is:
 	   *  - acceptable during recovery: the page was changed and also deallocated in the meantime, no need to
@@ -475,10 +475,10 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
 	}
     }
 
-  if (rcv.pgptr != nullptr)
+  if (pgptr != nullptr)
     {
       /* LSA of fixed data page */
-      const log_lsa *const fixed_page_lsa = pgbuf_get_lsa (rcv.pgptr);
+      const log_lsa *const fixed_page_lsa = pgbuf_get_lsa (pgptr);
       /*
        * Do we need to execute the redo operation ?
        * If page_lsa >= lsa... already updated. In this case make sure
@@ -497,7 +497,7 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
 	   *          code is executed on PTS is for replication)
 	   * make sure to unfix the page */
 	  assert (log_is_in_crash_recovery () || is_passive_transaction_server ());
-	  pgbuf_unfix_and_init (thread_p, rcv.pgptr);
+	  pgbuf_unfix_and_init (thread_p, pgptr);
 	  return false;
 	}
     }
