@@ -4011,7 +4011,8 @@ log_sysop_start_atomic (THREAD_ENTRY * thread_p)
   // the function asserts for null tdes
 
   // in case there are no active sysops (atomic or not), the marker LSA for atomic sysops must be clear
-  // this means that a previous [nested] [atomic] sysop sequence cleared its bookkeeping upon finishing
+  // this means that a previous [nested] [atomic] sysop sequence cleared its bookkeeping upon finishing;
+  // this check goes hand in hand with cleaning code in prior_lsa_next_record_internal
   if (tdes->topops.last < 0)
     {
       assert (LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa));
@@ -4483,14 +4484,6 @@ log_sysop_attach_to_outer (THREAD_ENTRY * thread_p)
 	{
 	  LSA_COPY (&tdes->posp_nxlsa, &tdes->topops.stack[tdes->topops.last].posp_lsa);
 	}
-
-      // - if the last sysop has been assigned to the parent transaction, meaning that, effectively
-      //  there are no sysop's present in the transaction anymore; clean traces of atomic sysops as well;
-      // - this occurs when there are nested non-atomic sysops and atomic sysops (in whichever order, not sure
-      //  which)
-      // - similar logic to this exists in 'log_sysop_commit_internal'
-      // TODO: this might be a workaround for an issue whose root cause is elsewhere
-      //LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
     }
 
   log_sysop_end_final (thread_p, tdes);
