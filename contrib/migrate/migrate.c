@@ -1,6 +1,23 @@
+/*
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
 #include "migrate.h"
 
-#define VERSION_INFO 		68
+#define VERSION_INFO 		72
 #define DATABASES_ENVNAME 	"CUBRID_DATABASES"
 #define DATABASES_FILENAME 	"databases.txt"
 #define PATH_MAX		256
@@ -18,6 +35,7 @@ static const char *catalog_query[] = {
   "alter table db_trigger add column unique_name varchar after owner",
   "delete from _db_attribute where class_of.class_name = 'db_trigger' and rownum % 2 = 1 and attr_name <> 'unique_name'",
 
+  /* alter catalog to modify _db_index_key */
   "alter table _db_index_key modify column func varchar(1023)",
   "delete from _db_attribute where class_of.class_name = '_db_index_key' and rownum % 2 = 1",
 
@@ -124,25 +142,38 @@ static char *rename_query = "select \
    from  _db_class \
    where is_system_class % 8 = 0";
 
+static char *update_unique_name =
+  "update _db_class set class_name = substring_index (class_name, '.', -1), unique_name = class_name where is_system_class % 8 = 0";
+
 static char *serial_query = {
   "select \
-      'call change_serial_owner (''' || name || ''', ''' || substring_index (name, '.', 1) || ''') on class db_serial' as q1, \
-      'update db_serial set name = ''' || substring_index (name, '.', -1) || ''', unique_name = ''' || name || ''' where name = ''' || name || ''' ' as q2 \
+      'call change_serial_owner (''' || name || ''', ''' || substring_index (name, '.', 1) || ''') on class db_serial' as q \
    from db_serial \
    where class_name is not null and instr (name, '.') > 0"
 };
 
+static char *update_serial[] = {
+  "update db_serial set name = substring_index (name, '.', -1)",
+  "update db_serial set unique_name = lower (owner.name) || '.' || name"
+};
+
+static char *update_trigger = "update db_trigger set unique_name = lower (owner.name) || '.' || name";
+
 static char *index_query[] = {
-  "create unique index u_db_serial_unique_name ON db_serial (unique_name)",
   "create unique index u_db_serial_name_owner ON db_serial (name, owner)",
   "alter table db_serial drop constraint pk_db_serial_name",
+  "alter table db_serial add constraint pk_db_serial_unique_name primary key (unique_name)",
+
   "alter table db_serial modify column name varchar not null",
   "alter table db_serial modify column unique_name varchar not null",
+
   "create index i__db_class_unique_name on _db_class (unique_name)",
   "create index i__db_class_class_name_owner on _db_class (class_name, owner)",
-  "update _db_class set unique_name = class_name where is_system_class % 8 = 1",
+
   "drop index i__db_class_class_name on _db_class"
 };
+
+static char *update_db_class = "update db_trigger set unique_name = lower (owner.name) || '.' || name";
 
 static void
 print_errmsg (const char *err_msg)
@@ -295,6 +326,15 @@ get_db_path (char *dbname, char **pathname)
   return 0;
 }
 
+static void
+migrate_get_db_path (char *dbname, char *db_path)
+{
+  char *path;
+
+  get_db_path (dbname, &path);
+  sprintf (db_path, "%s/%s_lgat", path, dbname);
+}
+
 static int
 migrate_check_log_volume (char *dbname)
 {
@@ -306,9 +346,9 @@ migrate_check_log_volume (char *dbname)
 
   if (version)
     {
-      if ((strncmp (version, "11.0", 4) == 0 || strncmp (version, "11.1", 4) == 0))
+      if ((strncmp (version + 16, "11.0", 4) == 0 || strncmp (version + 16, "11.1", 4) == 0))
 	{
-	  printf ("CUBRID version should be 11.0.x or 11.1.x\n");
+	  printf ("CUBRID version %s, should be 11.0.x or 11.1.x\n", version);
 	  return -1;
 	}
 
@@ -320,8 +360,8 @@ migrate_check_log_volume (char *dbname)
       return -1;
     }
 
-  get_db_path (dbname, &path);
-  sprintf (db_path, "%s/%s_lgat", path, dbname);
+  migrate_get_db_path (dbname, db_path);
+  printf ("%s reading\n", db_path);
 
   fd = open (db_path, O_RDONLY);
 
@@ -347,7 +387,7 @@ migrate_check_log_volume (char *dbname)
 
   if (log_ver < 11.0 || log_ver >= 11.2)
     {
-      printf ("migrate: the database volume is not a migratable version\n");
+      printf ("migrate: the database volume %f is not a migratable version\n", log_ver);
       close (fd);
       return -1;
     }
@@ -358,11 +398,16 @@ migrate_check_log_volume (char *dbname)
 }
 
 static void
-migrate_log_volume ()
+migrate_update_log_volume (char *dbname)
 {
   char db_path[PATH_MAX];
   float version = 11.2;
-  int fd = open (db_path, O_RDWR);
+  int fd;
+
+  migrate_get_db_path (dbname, db_path);
+  printf ("%s reading\n", db_path);
+
+  fd = open (db_path, O_RDWR);
 
   if (fd < 0)
     {
@@ -445,7 +490,7 @@ migrate_initialize ()
       error = -1;
     }
 
-  snprintf (libcubridsa_path, BUF_LEN, "%s/lib/libcubridsa.so", CUBRID_ENV);
+  snprintf (libcubridsa_path, BUF_LEN, "%s/lib/libcubridsa.so.11.0", CUBRID_ENV);
 
   /* dynamic loading (libcubridsa.so) */
   dl_handle = dlopen (libcubridsa_path, RTLD_LAZY);
@@ -572,18 +617,23 @@ migrate_initialize ()
       error = -1;
     }
 
-  cub_Au_sysadm = dlsym (dl_handle, "Au_sysadm");
-  if (cub_Au_disable == NULL)
-    {
-      PRINT_LOG ("%s", dlerror ());
-      error = -1;
-    }
-
-  /* Au - disable and sysadm mode */
-  *cub_Au_disable = 1;
-  *cub_Au_sysadm = 1;
-
   return error;
+}
+
+static int
+migrate_execute_query (const char *query)
+{
+  DB_QUERY_RESULT *result;
+  int error;
+
+  error = cub_db_execute_query (query, &result);
+  printf ("migrate: execute query: %s\n", query);
+  if (error < 0)
+    {
+      printf ("migrate: execute query failed \"%s\"\n", query);
+      return -1;
+    }
+  cub_db_query_end (result);
 }
 
 static int
@@ -621,14 +671,11 @@ migrate_generated (const char *generated, int col_num)
 	      query = value.data.ch.medium.buf;
 
 	      /* from generated result */
-	      error = cub_db_execute_query (query, &result);
+	      error = migrate_execute_query (query);
 	      if (error < 0)
 		{
-		  printf ("generated: can not get a tuple for \"%s\"\n", query);
-		  return -1;
+		  return error;
 		}
-
-	      cub_db_query_end (result);
 	    }
 	  error = cub_db_query_next_tuple (gen_result);
 	}
@@ -661,13 +708,11 @@ migrate_queries ()
   /* catalog query */
   for (i = 0; i < sizeof (catalog_query) / sizeof (const char *); i++)
     {
-      error = cub_db_execute_query (catalog_query[i], &result);
+      error = migrate_execute_query (catalog_query[i]);
       if (error < 0)
 	{
-	  printf ("migrate: execute query failed \"%s\"\n", catalog_query[i]);
 	  return -1;
 	}
-      cub_db_query_end (result);
     }
 
   /* generated query */
@@ -678,23 +723,48 @@ migrate_queries ()
       return -1;
     }
 
-  error = migrate_generated (serial_query, 2);
+  error = migrate_execute_query (update_unique_name);
+  if (error < 0)
+    {
+      return -1;
+    }
+
+  error = migrate_generated (serial_query, 1);
   if (error < 0)
     {
       printf ("migrate: execute query failed \"%s\"\n", serial_query);
       return -1;
     }
 
+  for (i = 0; i < sizeof (update_serial) / sizeof (const char *); i++)
+    {
+      error = migrate_execute_query (update_serial[i]);
+      if (error < 0)
+	{
+	  return -1;
+	}
+    }
+
+  error = migrate_execute_query (update_trigger);
+  if (error < 0)
+    {
+      return -1;
+    }
+
   /* index query */
   for (i = 0; i < sizeof (index_query) / sizeof (const char *); i++)
     {
-      error = cub_db_execute_query (index_query[i], &result);
+      error = migrate_execute_query (index_query[i]);
       if (error < 0)
 	{
-	  printf ("migrate: execute query failed \"%s\"\n", index_query[i]);
 	  return -1;
 	}
-      cub_db_query_end (result);
+    }
+
+  error = migrate_execute_query (update_db_class);
+  if (error < 0)
+    {
+      return -1;
     }
 
   return 0;
@@ -737,6 +807,8 @@ main (int argc, char *argv[])
       return -1;
     }
 
+  *cub_Au_disable = 1;
+
   error = migrate_queries ();
   if (error < 0)
     {
@@ -753,9 +825,15 @@ main (int argc, char *argv[])
       return -1;
     }
 
-#if 0
-  migrate_update_log_volume ();
-#endif
+  error = cub_db_shutdown ();
+  if (error < 0)
+    {
+      printf ("migrate: error encountered while shutdown db\n");
+      cub_db_abort_transaction ();
+      return -1;
+    }
+
+  migrate_update_log_volume (argv[1]);
 
   return 0;
 }
