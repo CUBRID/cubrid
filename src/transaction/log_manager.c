@@ -3486,7 +3486,7 @@ log_pack_log_boot_info (THREAD_ENTRY &thread_r, std::string &payload_in_out,
   log_lsa append_lsa;
   log_lsa prev_lsa;
   log_lsa most_recent_trantable_snapshot_lsa;
-  
+
   {
     LOG_CS_ENTER_READ_MODE (&thread_r);
     scope_exit log_cs_exit_ftor ([&thread_r] { LOG_CS_EXIT (&thread_r); });
@@ -4490,7 +4490,7 @@ log_sysop_attach_to_outer (THREAD_ENTRY * thread_p)
       //  which)
       // - similar logic to this exists in 'log_sysop_commit_internal'
       // TODO: this might be a workaround for an issue whose root cause is elsewhere
-      LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+      //LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
     }
 
   log_sysop_end_final (thread_p, tdes);
@@ -12867,7 +12867,7 @@ cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *n
 
   for (int i = 0; i < rep->n_indexes; i++)
     {
-      index = rep->indexes + i;	//REVIEW : array? 
+      index = rep->indexes + i;	//REVIEW : array?
       if (index->type == BTREE_PRIMARY_KEY)
 	{
 	  has_pk = 1;
@@ -12931,7 +12931,7 @@ cdc_make_error_loginfo (int trid, char *user, CDC_DML_TYPE dml_type, OID classoi
     }
 
   ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
-  ptr = or_pack_int (ptr, 0);	//dummy for log info length 
+  ptr = or_pack_int (ptr, 0);	//dummy for log info length
   ptr = or_pack_int (ptr, trid);
   ptr = or_pack_string (ptr, user);
   ptr = or_pack_int (ptr, dataitem_type);
@@ -13229,7 +13229,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	    {
 	      if (cdc_compare_undoredo_dbvalue (&new_values[i], &old_values[i]) > 0)
 		{
-		  changed_col_idx[cnt++] = i;	//TODO: replace i with def_order to reduce memory alloc and copy 
+		  changed_col_idx[cnt++] = i;	//TODO: replace i with def_order to reduce memory alloc and copy
 		}
 	    }
 
