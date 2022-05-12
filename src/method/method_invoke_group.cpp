@@ -85,7 +85,6 @@ namespace cubmethod
 
   method_invoke_group::~method_invoke_group ()
   {
-    end ();
     for (method_invoke *method: m_method_vector)
       {
 	delete method;
@@ -138,6 +137,12 @@ namespace cubmethod
   method_invoke_group::get_runtime_context ()
   {
     return m_rctx;
+  }
+
+  connection_pool &
+  method_invoke_group::get_connection_pool ()
+  {
+    return get_runtime_context ()->get_connection_pool ();
   }
 
   bool
@@ -245,7 +250,7 @@ namespace cubmethod
       {
 	if (m_connection == nullptr)
 	  {
-	    m_connection = get_connection_pool ()->claim();
+	    m_connection = get_connection_pool ().claim();
 	  }
 
 	// check javasp server's status
@@ -292,7 +297,7 @@ namespace cubmethod
 
     // FIXME: The connection is closed to prevent Java thread from entering an unexpected state.
     bool kill = (m_rctx->is_interrupted());
-    get_connection_pool ()->retire (m_connection, kill);
+    get_connection_pool ().retire (m_connection, kill);
     m_connection = nullptr;
 
     m_rctx->pop_stack (m_thread_p, this);

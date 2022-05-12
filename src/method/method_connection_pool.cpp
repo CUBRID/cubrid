@@ -29,23 +29,9 @@
 
 namespace cubmethod
 {
-
-#if defined (SERVER_MODE)
-  const std::size_t MAX_POOLABLE = css_get_max_workers ();
-#else
-  const std::size_t MAX_POOLABLE = 15;
-#endif
-
-  static connection_pool g_conn_pool (MAX_POOLABLE);
-
-  connection_pool *
-  get_connection_pool (void)
-  {
-    return &g_conn_pool;
-  }
-
   connection_pool::connection_pool (int pool_size)
-    : m_pool_size (pool_size), m_mutex ()
+    : m_pool_size (pool_size)
+    , m_mutex ()
   {
     //
   }
@@ -65,10 +51,12 @@ namespace cubmethod
   connection_pool::claim ()
   {
     std::unique_lock<std::mutex> ulock (m_mutex);
-    while (!m_queue.empty ())
+
+    if (!m_queue.empty ())
       {
 	connection *conn = m_queue.front ();
 	m_queue.pop ();
+	ulock.unlock ();
 
 	// test socket
 	if (conn->is_valid() == false)
@@ -86,32 +74,36 @@ namespace cubmethod
   }
 
   void
-  connection_pool::retire (connection *claimed, bool kill)
+  connection_pool::retire (connection *&claimed, bool kill)
   {
+    std::unique_lock<std::mutex> ulock (m_mutex);
     if (claimed == nullptr)
       {
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_mutex);
-
-    if (kill)
-      {
-	delete claimed;
-	return;
-      }
-
     // test connection
-    if (claimed->is_valid () == true)
+    if (kill == false && claimed->is_valid () == true)
       {
 	if ((int) m_queue.size () < m_pool_size)
 	  {
 	    m_queue.push (claimed);
+	    return;
 	  }
 	else
 	  {
 	    // overflow
+	    kill = true;
+	  }
+      }
+
+    if (kill)
+      {
+	assert (claimed != nullptr);
+	if (claimed)
+	  {
 	    delete claimed;
+	    claimed = nullptr;
 	  }
       }
   }

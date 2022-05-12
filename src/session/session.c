@@ -3218,7 +3218,7 @@ session_stop_attached_threads (void *session_arg)
 
   if (session->method_rctx_p != NULL)
     {
-      session->method_rctx_p->set_interrupt (ER_NET_SERVER_SHUTDOWN);
+      session->method_rctx_p->set_interrupt (er_errid ());
       session->method_rctx_p->wait_for_interrupt ();
 
       delete session->method_rctx_p;

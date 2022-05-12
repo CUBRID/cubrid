@@ -86,6 +86,7 @@ namespace cubmethod
       cubthread::entry *get_thread_entry () const;
       std::queue<cubmem::extensible_block> &get_data_queue ();
       cubmethod::runtime_context *get_runtime_context ();
+      connection_pool &get_connection_pool ();
 
       bool is_running () const;
       bool is_for_scan () const;

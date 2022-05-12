@@ -85,6 +85,8 @@ namespace cubmethod
 
       bool is_running ();
 
+      connection_pool &get_connection_pool ();
+
     private:
       void destroy_all_groups ();
       void destroy_all_cursors ();
@@ -99,6 +101,8 @@ namespace cubmethod
       std::unordered_map <QUERY_ID, query_cursor *> m_cursor_map; // server-side cursor storage
 
       std::deque <METHOD_GROUP_ID> m_deferred_free_stack;
+
+      connection_pool m_conn_pool;
 
       bool m_is_interrupted;
       int m_interrupt_id;
