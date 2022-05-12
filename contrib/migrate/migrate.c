@@ -405,7 +405,7 @@ migrate_update_log_volume (char *dbname)
   int fd;
 
   migrate_get_db_path (dbname, db_path);
-  printf ("%s reading\n", db_path);
+  printf ("%s version updating\n", db_path);
 
   fd = open (db_path, O_RDWR);
 
@@ -432,6 +432,8 @@ migrate_update_log_volume (char *dbname)
   fsync (fd);
 
   close (fd);
+
+  printf ("migration done\n");
 }
 
 static int
