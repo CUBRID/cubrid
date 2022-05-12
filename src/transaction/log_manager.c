@@ -311,6 +311,7 @@ static void log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDE
 					    PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data,
 					    LOG_TDES * tdes, const LOG_LSA * undo_nxlsa);
 
+static void log_sysop_start_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 STATIC_INLINE void log_sysop_end_random_exit (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void log_sysop_end_begin (THREAD_ENTRY * thread_p, int *tran_index_out, LOG_TDES ** tdes_out)
   __attribute__ ((ALWAYS_INLINE));
@@ -3939,22 +3940,36 @@ log_dump_log_rcv_tdes (const log_rcv_tdes & rcv_tdes, const char *message)
 void
 log_sysop_start (THREAD_ENTRY * thread_p)
 {
-  LOG_TDES *tdes = NULL;
-  int tran_index;
-
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
+  const int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LOG_TDES *const tdes = LOG_FIND_TDES (tran_index);
   if (tdes == NULL)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      assert_release (false);
       return;
     }
 
+  log_sysop_start_internal (thread_p, tdes);
+}
+
+/*
+ * log_sysop_start () - Start a new system operation implementation.
+ *            This can also be nested in another system operation.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * tdes(in)      : transaction descriptor
+ */
+void
+log_sysop_start_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  assert (thread_p != nullptr);
+  assert (tdes != nullptr);
   assert (tdes->is_allowed_sysop ());
 
   tdes->lock_topop ();
@@ -3987,8 +4002,6 @@ log_sysop_start (THREAD_ENTRY * thread_p)
 
   /* NOTE if tdes->topops.last >= 0, there is an already defined top system operation. */
   tdes->topops.last++;
-  // TODO: vague idea: do not copy a newwer tail_lsa as a [atomic] sysop last parent lsa if the stack
-  // already contains one non-null such last parent lsa; this, to allow nested atomic sysop's
   LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, &tdes->tail_lsa);
   LSA_COPY (&tdes->topop_lsa, &tdes->tail_lsa);
 
@@ -4019,11 +4032,22 @@ void
 log_sysop_start_atomic (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes = NULL;
-  int tran_index;
+  int tran_index = -1;
 
-  log_sysop_start (thread_p);
   log_sysop_get_tran_index_and_tdes (thread_p, &tran_index, &tdes);
-  if (tdes == NULL || tdes->topops.last < 0)
+  // the function asserts for null tdes
+
+  // in case there are no active sysops (atomic or not), the marker LSA for atomic sysops must be clear
+  // this means that a previous [nested] [atomic] sysop sequence cleared its bookkeeping upon finishing;
+  // this check goes hand in hand with cleaning code in prior_lsa_next_record_internal
+  if (tdes->topops.last < 0)
+    {
+      assert (LSA_ISNULL (&tdes->rcv.get_atomic_sysop_start_lsa ()));
+    }
+  assert ((tdes->topops.last < 0 && LSA_ISNULL (&tdes->rcv.get_atomic_sysop_start_lsa ())) || tdes->topops.last >= 0);
+
+  log_sysop_start_internal (thread_p, tdes);
+  if (tdes->topops.last < 0)
     {
       /* not a good context. must be in a system operation */
       assert_release (false);
