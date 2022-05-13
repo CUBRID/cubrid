@@ -3031,6 +3031,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   BTREE_SCAN *BTS;
   int coverage_enabled;
   int func_index_col_id;
+  static bool oracle_style_empty_string = prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING);
 
   /* scan type is INDEX SCAN */
   scan_id->type = S_INDX_SCAN;
@@ -3116,7 +3117,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->num_vstr = 0;
   isidp->vstr_ids = NULL;
 
-  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
+  if (oracle_style_empty_string)
     {
       isidp->num_vstr = isidp->bt_num_attrs;	/* init to maximum */
       isidp->vstr_ids = (ATTR_ID *) db_private_alloc (thread_p, isidp->num_vstr * sizeof (ATTR_ID));
@@ -3390,6 +3391,7 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   BTREE_SCAN *bts = NULL;
   int func_index_col_id;
   DB_TYPE single_node_type = DB_TYPE_NULL;
+  static bool oracle_style_empty_string = prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING);
 
   scan_id->type = S_INDX_KEY_INFO_SCAN;
 
@@ -3460,7 +3462,7 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->num_vstr = 0;
   isidp->vstr_ids = NULL;
 
-  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
+  if (oracle_style_empty_string)
     {
       isidp->num_vstr = isidp->bt_num_attrs;	/* init to maximum */
       isidp->vstr_ids = (ATTR_ID *) db_private_alloc (thread_p, isidp->num_vstr * sizeof (ATTR_ID));
@@ -8354,7 +8356,7 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
   int build_cnt;
   regu_variable_list_node *build, *probe;
   DB_TYPE vtype1, vtype2;
-  UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+  static UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
 
   assert (hash_list_scan_yn == 0 || hash_list_scan_yn == 1);
   /* no_hash_list_scan sql hint check */
