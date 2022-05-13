@@ -2622,6 +2622,7 @@ do_rename (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       const char *old_name = current_rename->info.rename.old_name->info.name.original;
       const char *new_name = current_rename->info.rename.new_name->info.name.original;
+      const char *new_name_only = NULL;
 
       /* We cannot change the schema of a class by using synonym names. */
       if (db_find_synonym (old_name) != NULL)
@@ -2653,6 +2654,13 @@ do_rename (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  && intl_identifier_casecmp (old_qualifier_name, new_qualifier_name) != 0)
 	{
 	  ERROR_SET_ERROR (error, ER_SM_RENAME_CANT_ALTER_OWNER);
+	  goto error_exit;
+	}
+
+      new_name_only = pt_get_name_with_qualifier_removed (new_name);
+      if (sm_check_system_class_by_name (new_name_only) == true)
+	{
+	  ERROR_SET_ERROR_1ARG (error, ER_LC_CLASSNAME_EXIST, new_name_only);
 	  goto error_exit;
 	}
 
