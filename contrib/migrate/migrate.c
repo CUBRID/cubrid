@@ -292,6 +292,8 @@ get_directory_path (char *buffer)
 	  sprintf (buffer, "%s/%s", env_name, DATABASES_FILENAME);
 	}
     }
+
+  return 0;
 }
 
 static int
@@ -317,12 +319,9 @@ get_db_path (char *dbname, char **pathname)
       str = next_char (line);
       if (*str != '\0' && *str != '#')
 	{
-	  str = get_token (str, &name);	// need to free memory
-	  str = get_token (str, &vol_path);	// need to free memory
-	  str = get_token (str, &host);	// need to free memory
-
-	  free (name);		/* db-name */
-	  free (host);		/* db-host */
+	  str = get_token (str, &name);
+	  str = get_token (str, &vol_path);
+	  str = get_token (str, &host);
 
 	  if (vol_path == NULL)
 	    {
@@ -340,14 +339,10 @@ get_db_path (char *dbname, char **pathname)
 		    {
 		      *pathname = vol_path;
 		    }
-		  else
-		    {
-		      free (vol_path);
-		    }
 
 		  fclose (file_p);
 
-		  return 1;
+		  return 0;
 		}
 	    }
 	}
@@ -355,15 +350,24 @@ get_db_path (char *dbname, char **pathname)
 
   fclose (file_p);
 
-  return 0;
+  printf ("migrate: can not find database, %s\n", dbname);
+
+  return -1;
 }
 
-static void
+static int
 migrate_get_db_path (char *dbname, char *db_path)
 {
   char *path;
+  int error;
 
-  get_db_path (dbname, &path);
+  error = get_db_path (dbname, &path);
+
+  if (error < 0)
+    {
+      return -1;
+    }
+
   sprintf (db_path, "%s/%s_lgat", path, dbname);
 }
 
@@ -392,7 +396,12 @@ migrate_check_log_volume (char *dbname)
       return -1;
     }
 
-  migrate_get_db_path (dbname, db_path);
+  if (migrate_get_db_path (dbname, db_path) < 0)
+    {
+      printf ("migrate: exit with error\n");
+      return -1;
+    }
+
   printf ("%s reading\n", db_path);
 
   fd = open (db_path, O_RDONLY);
