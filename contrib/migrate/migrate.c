@@ -138,11 +138,19 @@ static const char *catalog_query[] = {
 };
 
 static char *rename_query = "select \
-  	'rename table ' || class_name || ' to [' || lower (owner.name) || '.' || class_name || '] ' as q \
-   from  _db_class \
-   where is_system_class % 8 = 0";
+     case \
+       when class_type = 0 then \
+      'rename table [' || class_name || '] to [' || lower (owner.name) || '.' || class_name || '] ' \
+     else \
+      'rename view [' || class_name || '] to [' || lower (owner.name) || '.' || class_name || '] ' \
+     end as q \
+   from \
+     _db_class \
+   where \
+     is_system_class % 8 = 0";
 
-static char *update_unique_name =
+/* update class_name and unique_name except for system classes. */
+static char *update_db_class_not_for_system_classes =
   "update _db_class set class_name = substring_index (class_name, '.', -1), unique_name = class_name where is_system_class % 8 = 0";
 
 static char *serial_query = {
@@ -164,16 +172,15 @@ static char *index_query[] = {
   "alter table db_serial drop constraint pk_db_serial_name",
   "alter table db_serial add constraint pk_db_serial_unique_name primary key (unique_name)",
 
-  "alter table db_serial modify column name varchar not null",
-  "alter table db_serial modify column unique_name varchar not null",
-
   "create index i__db_class_unique_name on _db_class (unique_name)",
   "create index i__db_class_class_name_owner on _db_class (class_name, owner)",
 
   "drop index i__db_class_class_name on _db_class"
 };
 
-static char *update_db_class = "update db_trigger set unique_name = lower (owner.name) || '.' || name";
+/* only system classes update unique_name. */
+static char *update_db_class_for_system_classes =
+  "update _db_class set unique_name = class_name where is_system_class % 8 != 0";
 
 static void
 print_errmsg (const char *err_msg)
@@ -757,7 +764,7 @@ migrate_queries ()
 	}
     }
 
-  error = migrate_execute_query (update_unique_name);
+  error = migrate_execute_query (update_db_class_not_for_system_classes);
   if (error < 0)
     {
       return -1;
@@ -795,7 +802,7 @@ migrate_queries ()
 	}
     }
 
-  error = migrate_execute_query (update_db_class);
+  error = migrate_execute_query (update_db_class_for_system_classes);
   if (error < 0)
     {
       return -1;
