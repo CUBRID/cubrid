@@ -53,6 +53,7 @@
 
 #define CHKSUM_DEFAULT_LIST_SIZE	10
 #define CHKSUM_MIN_CHUNK_SIZE		100
+#define CHKSUM_DEFAULT_TABLE_OWNER_NAME	"dba"
 #define CHKSUM_DEFAULT_TABLE_NAME	"db_ha_checksum"
 #define CHKSUM_SCHEMA_TABLE_SUFFIX	"_schema"
 
@@ -410,12 +411,26 @@ chksum_report_summary (FILE * fp)
   CHKSUM_PRINT_AND_LOG (fp,
 			"-------------------------------------------------" "-------------------------------------\n");
 
+  // *INDENT-OFF*
   snprintf (query_buf, sizeof (query_buf),
-	    "SELECT " CHKSUM_TABLE_CLASS_NAME_COL ", " "COUNT (*), " "COUNT(CASE WHEN " CHKSUM_TABLE_MASTER_CHEKSUM_COL
-	    " <> " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " OR " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " IS NULL THEN 1 END), "
-	    " SUM (" CHKSUM_TABLE_ELAPSED_TIME_COL "), " " MIN (" CHKSUM_TABLE_ELAPSED_TIME_COL "), " " MAX ("
-	    CHKSUM_TABLE_ELAPSED_TIME_COL ") " "FROM %s GROUP BY " CHKSUM_TABLE_CLASS_NAME_COL,
-	    chksum_result_Table_name);
+        "SELECT "
+          CHKSUM_TABLE_CLASS_NAME_COL ", "
+          "CAST (COUNT (*) AS INTEGER), "
+          "CAST (COUNT ("
+              "CASE WHEN " CHKSUM_TABLE_MASTER_CHEKSUM_COL " <> " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " "
+                         "OR " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " IS NULL "
+                         "THEN 1 "
+              "END"
+            ") AS INTEGER), "
+          "SUM (" CHKSUM_TABLE_ELAPSED_TIME_COL "), "
+          "MIN (" CHKSUM_TABLE_ELAPSED_TIME_COL "), "
+          "MAX (" CHKSUM_TABLE_ELAPSED_TIME_COL ") "
+        "FROM "
+          "%s "
+        "GROUP BY "
+          CHKSUM_TABLE_CLASS_NAME_COL,
+        chksum_result_Table_name);
+  // *INDENT-ON*
 
   res = db_execute (query_buf, &query_result, &query_error);
   if (res > 0)
@@ -2111,7 +2126,8 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s", CHKSUM_DEFAULT_TABLE_NAME);
+      snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", CHKSUM_DEFAULT_TABLE_OWNER_NAME,
+		CHKSUM_DEFAULT_TABLE_NAME);
     }
 
   if (snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH - 1, "%s%s", chksum_result_Table_name,

@@ -1220,7 +1220,7 @@ valid options:\n\
   -i, --include-class-file=FILE 포함시킬 테이블을 지정하는 입력 파일\n\
   -e, --exclude-class-file=FILE 제외시킬 테이블을 지정하는 입력 파일; -i 또는 -e 하나만 명시 가능, 동시 지정 불가\n\
   -t, --timeout=NUMBER          밀리초 단위 쿼리 타임 아웃; 기본값: 1000 ms\n\
-  -n, --table-name=NAME         체크섬 결과를 저장할 테이블 이름; 기본값: db_ha_checksums\n\
+  -n, --table-name=NAME         체크섬 결과를 저장할 테이블 이름; 기본값: dba.db_ha_checksum\n\
   -r, --report-only             체크섬 계산을 기반하여 복제 일관성 상태 보고\n\
                                 --table-name 옵션 외에 다른 옵션은 모두 무시됨\n\
       --resume                  체크섬 계산 복귀\n\

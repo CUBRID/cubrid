@@ -47,7 +47,7 @@ namespace cubmethod
     , m_group_map {}
     , m_cursor_map {}
     , m_is_interrupted (false)
-    , m_interrupt_reason (NO_ERROR)
+    , m_interrupt_id (NO_ERROR)
     , m_is_running (false)
   {
     //
@@ -121,7 +121,7 @@ namespace cubmethod
       {
 	// reset interrupt state
 	m_is_interrupted = false;
-	m_interrupt_reason = NO_ERROR;
+	m_interrupt_id = NO_ERROR;
 	m_is_running = false;
 
 	// notify m_group_stack becomes empty ();
@@ -152,15 +152,52 @@ namespace cubmethod
   }
 
   void
-  runtime_context::set_interrupt_by_reason (int reason)
+  runtime_context::set_interrupt (int reason, std::string msg)
   {
     switch (reason)
       {
+      /* no arg */
       case ER_INTERRUPTED:
       case ER_SP_TOO_MANY_NESTED_CALL:
       case ER_NET_SERVER_SHUTDOWN:
+      case ER_SP_NOT_RUNNING_JVM:
 	m_is_interrupted = true;
-	m_interrupt_reason = reason;
+	m_interrupt_id = reason;
+	m_interrupt_msg.assign ("");
+	break;
+
+      /* 1 arg */
+      case ER_SP_CANNOT_CONNECT_JVM:
+      case ER_SP_NETWORK_ERROR:
+      case ER_OUT_OF_VIRTUAL_MEMORY:
+	m_is_interrupted = true;
+	m_interrupt_id = reason;
+	m_interrupt_msg.assign (msg);
+	break;
+      default:
+	/* do nothing */
+	break;
+      }
+  }
+
+  void
+  runtime_context::set_local_error_for_interrupt ()
+  {
+    switch (get_interrupt_id ())
+      {
+      /* no arg */
+      case ER_INTERRUPTED:
+      case ER_SP_TOO_MANY_NESTED_CALL:
+      case ER_NET_SERVER_SHUTDOWN:
+      case ER_SP_NOT_RUNNING_JVM:
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, get_interrupt_id (), 0);
+	break;
+
+      /* 1 arg */
+      case ER_SP_CANNOT_CONNECT_JVM:
+      case ER_SP_NETWORK_ERROR:
+      case ER_OUT_OF_VIRTUAL_MEMORY:
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, get_interrupt_id (), 1, get_interrupt_msg ().c_str ());
 	break;
       default:
 	/* do nothing */
@@ -175,9 +212,15 @@ namespace cubmethod
   }
 
   int
-  runtime_context::get_interrupt_reason ()
+  runtime_context::get_interrupt_id ()
   {
-    return m_interrupt_reason;
+    return m_interrupt_id;
+  }
+
+  std::string
+  runtime_context::get_interrupt_msg ()
+  {
+    return m_interrupt_msg;
   }
 
   void

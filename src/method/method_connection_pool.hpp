@@ -78,6 +78,7 @@ namespace cubmethod
 
       bool is_valid ();
       SOCKET get_socket ();
+      bool is_jvm_running ();
 
     private:
       explicit connection (connection_pool *pool, SOCKET socket);
