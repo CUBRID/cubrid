@@ -28,6 +28,7 @@
 #include "thread_compat.hpp"
 
 PAGE_PTR log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, PAGE_FETCH_MODE page_fetch_mode);
+bool log_rv_check_redo_is_needed (const PAGE_PTR & pgptr, const LOG_LSA & rcv_lsa, const LOG_LSA & end_redo_lsa);
 bool log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, PAGE_PTR & pgptr,
 					       const log_lsa & rcv_lsa, const LOG_LSA & end_redo_lsa,
 					       PAGE_FETCH_MODE page_fetch_mode);
