@@ -48,6 +48,7 @@ const char *CUBRID_ENV = NULL;
 void *dl_handle = NULL;
 
 /* CUBRID function pointer */
+void (*cub_au_disable_passwords) (void);
 int (*cub_db_restart_ex) (const char *, const char *, const char *, const char *, const char *, int);
 int (*cub_er_errid) (void);
 DB_SESSION *(*cub_db_open_buffer) (const char *);

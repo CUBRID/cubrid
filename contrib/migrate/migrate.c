@@ -263,7 +263,7 @@ get_token (char *str_p, char **token_p)
   return (end);
 }
 
-static void
+static int
 get_directory_path (char *buffer)
 {
   const char *env_name;
@@ -271,6 +271,8 @@ get_directory_path (char *buffer)
   env_name = getenv (DATABASES_ENVNAME);
   if (env_name == NULL || strlen (env_name) == 0)
     {
+      printf ("migrate: env variable %s is not set\n", DATABASES_ENVNAME);
+      return -1;
     }
   else
     {
@@ -291,28 +293,52 @@ get_db_path (char *dbname, char **pathname)
   FILE *file_p = NULL;
   char line[MAX_LINE];
   char filename[PATH_MAX];
-  char *name;
-  char *host;
-  char *str;
+  char *vol_path = NULL;
+  char *name = NULL;
+  char *host = NULL;
+  char *str = NULL;
 
-  get_directory_path (filename);
+  if (get_directory_path (filename) < 0)
+    {
+      return -1;
+    }
 
   file_p = fopen (filename, "r");
 
   while (fgets (line, MAX_LINE - 1, file_p) != NULL)
     {
+      pathname = NULL;
       str = next_char (line);
       if (*str != '\0' && *str != '#')
 	{
-	  str = get_token (str, &name);
-	  str = get_token (str, pathname);
-	  str = get_token (str, &host);
+	  str = get_token (str, &name);	// need to free memory
+	  str = get_token (str, &vol_path);	// need to free memory
+	  str = get_token (str, &host);	// need to free memory
+
+	  free (name);		/* db-name */
+	  free (host);		/* db-host */
+
+	  if (vol_path == NULL)
+	    {
+	      fclose (file_p);
+	      printf ("migrate: %s is invalid for %s\n", filename, dbname);
+	      return -1;
+	    }
 
 	  if (strcmp (host, "localhost") == 0)
 	    {
 	      if (strcmp (name, dbname) == 0)
 		{
-		  str = get_token (str, pathname);	// log path
+		  str = get_token (str, pathname);
+		  if (pathname == NULL || *pathname == (char *) '\0')
+		    {
+		      *pathname = vol_path;
+		    }
+		  else
+		    {
+		      free (vol_path);
+		    }
+
 		  fclose (file_p);
 
 		  return 1;
@@ -346,7 +372,7 @@ migrate_check_log_volume (char *dbname)
 
   if (version)
     {
-      if ((strncmp (version + 16, "11.0", 4) == 0 || strncmp (version + 16, "11.1", 4) == 0))
+      if ((strncmp (version, "11.0", 4) != 0 && strncmp (version, "11.1", 4) != 0))	// build number여서 11.X.X-XXXX 로 표시됨 
 	{
 	  printf ("CUBRID version %s, should be 11.0.x or 11.1.x\n", version);
 	  return -1;
@@ -385,7 +411,7 @@ migrate_check_log_volume (char *dbname)
       return -1;
     }
 
-  if (log_ver < 11.0 || log_ver >= 11.2)
+  if (log_ver < 11.0f || log_ver >= 11.2f)
     {
       printf ("migrate: the database volume %f is not a migratable version\n", log_ver);
       close (fd);
@@ -492,7 +518,7 @@ migrate_initialize ()
       error = -1;
     }
 
-  snprintf (libcubridsa_path, BUF_LEN, "%s/lib/libcubridsa.so.11.0", CUBRID_ENV);
+  snprintf (libcubridsa_path, BUF_LEN, "%s/lib/libcubridsa.so", CUBRID_ENV);
 
   /* dynamic loading (libcubridsa.so) */
   dl_handle = dlopen (libcubridsa_path, RTLD_LAZY);
@@ -507,6 +533,17 @@ migrate_initialize ()
     {
       PRINT_LOG ("%s", dlerror ());
       error = -1;
+    }
+
+  cub_au_disable_passwords = dlsym (dl_handle, "au_disable_passwords");
+  if (cub_au_disable_passwords == NULL)
+    {
+      cub_au_disable_passwords = dlsym (dl_handle, "_Z20au_disable_passwordsv");
+      if (cub_au_disable_passwords == NULL)
+	{
+	  PRINT_LOG ("%s", dlerror ());
+	  error = -1;
+	}
     }
 
   cub_db_restart_ex = dlsym (dl_handle, "db_restart_ex");
@@ -653,7 +690,7 @@ migrate_generated (const char *generated, int col_num)
       return -1;
     }
 
-  if (cub_db_query_first_tuple (gen_result) == DB_CURSOR_SUCCESS)
+  if ((error = cub_db_query_first_tuple (gen_result)) == DB_CURSOR_SUCCESS)
     {
       do
 	{
@@ -682,14 +719,9 @@ migrate_generated (const char *generated, int col_num)
 	  error = cub_db_query_next_tuple (gen_result);
 	}
       while (error != DB_CURSOR_END && error != DB_CURSOR_ERROR);
+    }
 
-      cub_db_query_end (gen_result);
-    }
-  else
-    {
-      printf ("generated: can not get first tuple for \"%s\"\n", generated);
-      return -1;
-    }
+  cub_db_query_end (gen_result);
 
   if (error < 0)
     {
@@ -707,6 +739,14 @@ migrate_queries ()
   DB_VALUE value;
   int i, error;
 
+  /* generated query */
+  error = migrate_generated (rename_query, 1);
+  if (error < 0)
+    {
+      printf ("migrate: execute query failed \"%s\"\n", rename_query);
+      return -1;
+    }
+
   /* catalog query */
   for (i = 0; i < sizeof (catalog_query) / sizeof (const char *); i++)
     {
@@ -715,14 +755,6 @@ migrate_queries ()
 	{
 	  return -1;
 	}
-    }
-
-  /* generated query */
-  error = migrate_generated (rename_query, 1);
-  if (error < 0)
-    {
-      printf ("migrate: execute query failed \"%s\"\n", rename_query);
-      return -1;
     }
 
   error = migrate_execute_query (update_unique_name);
@@ -776,13 +808,18 @@ int
 main (int argc, char *argv[])
 {
   int status, error;
-  char *password = "";
+  char *dbname;
 
-  if (argc < 3 || argc > 4)
+  if (argc != 2)
     {
-      printf ("usage: migrate db-name db-user password\n");
+      printf ("usage: %s db-name\n", argv[0]);
       return -1;
     }
+  else
+    {
+      dbname = argv[1];
+    }
+
 
   error = migrate_initialize ();
   if (error < 0)
@@ -791,18 +828,16 @@ main (int argc, char *argv[])
       return -1;
     }
 
-  status = migrate_check_log_volume (argv[1]);
+  status = migrate_check_log_volume (dbname);
+
   if (status < 0)
     {
       return -1;
     }
 
-  if (argc > 3)
-    {
-      password = argv[3];
-    }
+  cub_au_disable_passwords ();
 
-  error = cub_db_restart_ex ("migrate", argv[1], argv[2], password, NULL, DB_CLIENT_TYPE_ADMIN_UTILITY);
+  error = cub_db_restart_ex ("migrate", dbname, "DBA", NULL, NULL, DB_CLIENT_TYPE_ADMIN_UTILITY);
   if (error)
     {
       PRINT_LOG ("migrate: db_restart_ex () call failed [err_code: %d, err_msg: %s]", error, cub_db_error_string (1));
@@ -815,27 +850,33 @@ main (int argc, char *argv[])
   if (error < 0)
     {
       printf ("migrate: error encountered while executing quries\n");
-      cub_db_abort_transaction ();
-      return -1;
+      error = cub_db_abort_transaction ();
+      if (error < 0)
+	{
+	  printf ("migrate: error encountered while aborting\n");
+	}
+      error = cub_db_shutdown ();
+      goto end;
     }
 
   error = cub_db_commit_transaction ();
   if (error < 0)
     {
       printf ("migrate: error encountered while committing\n");
-      cub_db_abort_transaction ();
-      return -1;
+      error = cub_db_shutdown ();
+      goto end;
     }
 
   error = cub_db_shutdown ();
+
+end:
   if (error < 0)
     {
       printf ("migrate: error encountered while shutdown db\n");
-      cub_db_abort_transaction ();
       return -1;
     }
 
-  migrate_update_log_volume (argv[1]);
+  migrate_update_log_volume (dbname);
 
   return 0;
 }
