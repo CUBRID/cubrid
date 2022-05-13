@@ -314,7 +314,6 @@ get_db_path (char *dbname, char **pathname)
 
   while (fgets (line, MAX_LINE - 1, file_p) != NULL)
     {
-      pathname = NULL;
       str = next_char (line);
       if (*str != '\0' && *str != '#')
 	{
@@ -337,7 +336,7 @@ get_db_path (char *dbname, char **pathname)
 	      if (strcmp (name, dbname) == 0)
 		{
 		  str = get_token (str, pathname);
-		  if (pathname == NULL || *pathname == (char *) '\0')
+		  if (*pathname == NULL || *pathname == (char *) '\0')
 		    {
 		      *pathname = vol_path;
 		    }
