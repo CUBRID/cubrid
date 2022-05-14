@@ -279,6 +279,8 @@ Available command:\n\
     off         gateway-name\n\
     reset       gateway-name\n\
     acl         <status|reload> [gateway-name]\n\
+46 La longitud de nombre_propietario debe ser inferior a %1$d y la longitud de nombre_clase debe ser inferior a %2$d bytes.\n
+47 Formato no válido para nombre_propietario.nombre_clase ('%1$s').\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 ADVERTENCIA: -t opcion es ignorada en modo de ejecucion independiente.\n
@@ -1275,9 +1277,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 El ID de transacción debe ingresarse en %1$d segundos. El tiempo de espera se puede ajustar a través de la configuración de 'flashback_timeout' en 'cubrid.conf'.\n
 13 Flashback ya se está ejecutando. Dos procesos no pueden ejecutar Flashback.\n
 14 Flashback no se puede ejecutar como modo independiente.\n
-15 La longitud de nombre_propietario debe ser inferior a %1$d y la longitud de nombre_clase debe ser inferior a %2$d bytes.\n
-16 Formato no válido para nombre_propietario.nombre_clase ('%1$s').\n
-17 La clase de catálogo del sistema (%1$s) no se admite en flashback.\n
+15 La clase de catálogo del sistema (%1$s) no se admite en flashback.\n
 60 \
 flashback: proporciona declaraciones para retroceder una transacción específica.\n\
 uso: %1$s flashback [OPCIÓN] database-name owner_name.class_name1 [owner_name.class_name2 ...]\n\

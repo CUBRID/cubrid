@@ -279,6 +279,8 @@ Available command:\n\
     off         gateway-name\n\
     reset       gateway-name\n\
     acl         <status|reload> [gateway-name]\n\
+46 Lungimea numelui_proprietarului trebuie să fie mai mică de %1$d, iar lungimea numelui_clasei trebuie să fie mai mică de %2$d octeți.\n
+47 Format nevalid pentru proprietar_name.class_name ('%1$s').\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 AVERTIESMENT: opţiunea -t este ignorată în modul de execuţie independent.\n
@@ -1302,9 +1304,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 ID-ul tranzacției trebuie introdus în %1$d secunde. Timeout-ul poate fi ajustat prin setarea „flashback_timeout” din „cubrid.conf”.\n
 13 Flashback rulează deja. Flashback nu poate fi rulat de două procese.\n
 14 Flashback nu poate rula ca mod independent.\n
-15 Lungimea numelui_proprietarului trebuie să fie mai mică de %1$d, iar lungimea numelui_clasei trebuie să fie mai mică de %2$d octeți.\n
-16 Format nevalid pentru proprietar_name.class_name ('%1$s').\n
-17 Clasa de catalog de sistem (%1$s) nu este acceptată în flashback.\n
+15 Clasa de catalog de sistem (%1$s) nu este acceptată în flashback.\n
 60 \
 flashback: furnizează declarații pentru a flashback o anumită tranzacție.\n\
 utilizare: %1$s flashback [OPȚIUNE] bază de date proprietar_name.nume_clasă1 [proprietar_name.nume_clasă2 ...]\n\

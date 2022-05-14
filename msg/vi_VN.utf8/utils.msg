@@ -279,6 +279,8 @@ Available command:\n\
     off         gateway-name\n\
     reset       gateway-name\n\
     acl         <status|reload> [gateway-name]\n\
+46 The length of owner_name is required to be less than %1$d and the length of class_name is required to be less than %2$d bytes.\n
+47 Invalid format for owner_name.class_name ('%1$s').\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: -t option is ignored in stand-alone mode execution.\n
@@ -1276,9 +1278,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 Transaction ID should be entered in %1$d seconds. The timeout can be adjusted through the 'flashback_timeout' setting in 'cubrid.conf'.\n
 13 Flashback is already running. Flashback cannot be run by two processes.\n
 14 Flashback cannot run as standalone mode.\n
-15 The length of owner_name is required to be less than %1$d and the length of class_name is required to be less than %2$d bytes.\n
-16 Invalid format for owner_name.class_name ('%1$s').\n
-17 The system catalog class (%1$s) is not supported in flashback.\n
+15 The system catalog class (%1$s) is not supported in flashback.\n
 60 \
 flashback: Provides statements to flashback a specific transaction.\n\
 usage: %1$s flashback [OPTION] database-name owner_name.class_name1 [owner_name.class_name2 ...]\n\
