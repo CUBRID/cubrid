@@ -1220,6 +1220,7 @@ gültigen Optionen:\n\
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Fehler beim Tabellennamen in %1$s zu laden.\n
 2 checksumdb muss auf einem HA-Server ausführen aktiven. %1$s (aktuellen Status: %2$s)\n
+3 Der Eigentümer der Tabelle zum Speichern des Prüfsummenergebnisses muss DBA sein.\n
 58 HA Feature ist um dieser Plattform nich unterstützt.\n
 59 checksumdb kann nicht laufen als Standalone-Modus.\n
 60 \

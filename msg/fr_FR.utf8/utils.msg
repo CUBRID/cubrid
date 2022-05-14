@@ -1231,6 +1231,7 @@ options valides:\n\
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Impossible de charger les noms de table dans %1$s.\n
 2 checksumdb doit être exécuté sur un serveur HA actif. %1$s (état courant: %2$s)\n
+3 Le propriétaire de la table pour enregistrer le résultat de la somme de contrôle doit être DBA.\n
 58 Fonctionnalité HA est pas supporté sur cette plate-forme.\n
 59 checksumdb ne peut pas être exécuté dans le mode autonome.\n
 60 \

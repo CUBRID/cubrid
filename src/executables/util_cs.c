@@ -4038,7 +4038,7 @@ check_table_name (const char *table_name)
   if (table_name == NULL || table_name[0] == '\0')
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_GENERIC_MSG, MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT));
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC, MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT));
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
       return ER_FAILED;
     }
@@ -4048,7 +4048,7 @@ check_table_name (const char *table_name)
   if (table_name_len >= SM_MAX_IDENTIFIER_LENGTH)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_GENERIC_MSG,
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
 			      MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH), SM_MAX_USER_LENGTH,
 			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH);
@@ -4060,7 +4060,7 @@ check_table_name (const char *table_name)
     {
       /* owner name or class name is not specified */
       PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_GENERIC_MSG,
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
 			      MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT), table_name);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT);
       return ER_FAILED;
@@ -4072,7 +4072,7 @@ check_table_name (const char *table_name)
     {
       /* owner name is not specified (e.g. '.table') */
       PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_GENERIC_MSG,
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
 			      MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT), table_name);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT);
       return ER_FAILED;
@@ -4081,7 +4081,7 @@ check_table_name (const char *table_name)
   if (sub_len >= SM_MAX_USER_LENGTH)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_GENERIC_MSG,
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
 			      MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH), SM_MAX_USER_LENGTH,
 			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH);
@@ -4094,7 +4094,7 @@ check_table_name (const char *table_name)
     {
       /* class name is not specified (e.g. 'dba.') */
       PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_GENERIC_MSG,
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
 			      MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT), table_name);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT);
       return ER_FAILED;
@@ -4103,7 +4103,7 @@ check_table_name (const char *table_name)
   if (sub_len >= SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_GENERIC_MSG,
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
 			      MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH), SM_MAX_USER_LENGTH,
 			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH);

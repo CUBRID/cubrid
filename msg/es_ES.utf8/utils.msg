@@ -1221,6 +1221,7 @@ opciones validas:\n\
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Fallo al cargar los nombres de tablas en %1$s.\n
 2 checksumdb tiene que ejecutar en un servidor de HA activo. %1$s (estado actual: %2$s)\n
+3 El propietario de la tabla para guardar el resultado de la suma de comprobación debe ser DBA.\n
 58 Caracteristica HA no soportada en esta plataforma.\n
 59 checksumdb no puede ejecutar como modo stand-alone.\n
 60 \

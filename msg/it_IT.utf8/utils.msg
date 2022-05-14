@@ -1220,6 +1220,7 @@ opzioni valide:\n\
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Impossibile caricare nomi di tabella in %1$s.\n
 2 checksumdb deve essere eseguito su un server attivo HA. %1$s (stato attuale: %2$s)\n
+3 Il proprietario della tabella per salvare il risultato del checksum deve essere DBA.\n
 58 HA non è supportato in questa piattaforma.\n
 59 checksumdb non può funzionare come modalità standalone.\n
 60 \

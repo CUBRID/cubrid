@@ -1222,6 +1222,7 @@ valid options:\n\
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Failed to load table names in %1$s.\n
 2 checksumdb must run on an HA active server. %1$s (current state: %2$s)\n
+3 The owner of the table to save the checksum result must be DBA.\n
 58 HA feature is not supported in this platform.\n
 59 checksumdb cannot run as standalone mode.\n
 60 \

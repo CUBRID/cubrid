@@ -1210,6 +1210,7 @@ vacuumdb: 清空(vacuum)数据库中的死记录.\n\
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 在 %1$s 中装载表名字失败.\n
 2 checksumdb 必须运行在一个HA活动服务器上. %1$s (当前状态: %2$s)\n
+3 保存校验和结果的表的所有者必须是 DBA。\n
 58 HA 特性在这个平台上不被支持.\n
 59 checksumdb 无法以单机模式运行.\n
 60 \

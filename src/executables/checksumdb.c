@@ -2094,6 +2094,8 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name = NULL;
   CHKSUM_ARG chksum_arg;
+  dynamic_array *list = NULL;
+  char table_in_list[SM_MAX_IDENTIFIER_LENGTH];
   char *incl_class_file = NULL;
   char *excl_class_file = NULL;
   char *checksum_table = NULL;
@@ -2122,6 +2124,20 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
   checksum_table = utility_get_option_string_value (arg_map, CHECKSUM_TABLE_NAME_S, 0);
   if (sm_check_name (checksum_table) > 0)
     {
+      if (check_table_name (checksum_table) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      /* The owner of checksum_table must be a DBA. */
+      if (strncasecmp (checksum_table, "dba.", 4) != 0)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKSUMDB, CHECKSUMDB_MSG_INVALID_OWNER));
+	  util_log_write_errid (CHECKSUMDB_MSG_INVALID_OWNER);
+	  goto error_exit;
+	}
+
       snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s", checksum_table);
     }
   else
@@ -2162,6 +2178,16 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
 				 incl_class_file);
 	  goto error_exit;
 	}
+
+      list = chksum_arg.include_list;
+      for (i = 0; i < da_size (list); i++)
+	{
+	  da_get (list, i, table_in_list);
+	  if (check_table_name (table_in_list) != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
     }
 
   if (excl_class_file != NULL)
@@ -2173,6 +2199,16 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
 				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKSUMDB, CHECKSUMDB_MSG_INVALID_INPUT_FILE),
 				 excl_class_file);
 	  goto error_exit;
+	}
+
+      list = chksum_arg.exclude_list;
+      for (i = 0; i < da_size (list); i++)
+	{
+	  da_get (list, i, table_in_list);
+	  if (check_table_name (table_in_list) != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
 	}
     }
 

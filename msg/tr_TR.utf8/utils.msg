@@ -1215,6 +1215,7 @@ geçerli seçenekler:\n\
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 %1$s içinde tablo adlarını yüklenemedi.\n
 2 checksumdb bir HA aktif sunucu üzerinde çalıştırmak gerekir. %1$s (güncel durum: %2$s)\n
+3 Sağlama toplamı sonucunu kaydetmek için tablonun sahibi DBA olmalıdır.\n
 58 HA özelliği bu platformda desteklenmiyor.\n
 59 checksumdb stand-alone modu olarak çalıştıramazsınız.\n
 60 \

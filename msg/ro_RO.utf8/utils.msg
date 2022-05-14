@@ -1243,6 +1243,7 @@ opțiuni valide:\n\
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Încărcarea numelor tabelelor nu a reușit în %1$s.\n
 2 checksumdb poate fi rulat doar pe un server activ HA. %1$s (status curent: %2$s)\n
+3 Proprietarul tabelului pentru a salva rezultatul sumei de control trebuie să fie DBA.\n
 58 opțiunea HA nu este disponibilă pe această platformă.\n
 59 checksumdb nu poate fi rulat în modul stand-alone.\n
 60 \

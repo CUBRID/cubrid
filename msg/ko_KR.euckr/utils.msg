@@ -1209,6 +1209,7 @@ valid options:\n\
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 %1$s으로부터 테이블 이름 로딩 실패.\n
 2 checksumdb는 반드시 HA active 서버에서 실행해야 합니다. %1$s (현재 상태: %2$s)\n
+3 체크섬 결과를 저장할 테이블의 소유자는 DBA여야 합니다.\n
 58 HA 기능이 제공되지 않는 플랫폼입니다.\n
 59 checksumdb는 독립 모드로 실행할 수 없습니다.\n
 60 \
