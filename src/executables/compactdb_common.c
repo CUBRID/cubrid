@@ -122,29 +122,8 @@ get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_c
 	  goto error;
 	}
 
-      dot = strchr (class_names[i], '.');
-      if (dot)
+      if (check_table_name (class_names[i]) != NO_ERROR)
 	{
-	  /* user specified name */
-
-	  /* user name of user specified name */
-	  len = STATIC_CAST (int, dot - class_names[i]);
-	  if (len >= DB_MAX_USER_LENGTH)
-	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB,
-						     UNLOADDB_MSG_EXCEED_MAX_USER_LEN), DB_MAX_USER_LENGTH - 1);
-	      goto error;
-	    }
-
-	  /* class name of user specified name */
-	  len = STATIC_CAST (int, strlen (dot + 1));
-	}
-
-      if (len >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
-	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB,
-						 UNLOADDB_MSG_EXCEED_MAX_LEN),
-				 DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH - 1);
 	  goto error;
 	}
 
@@ -248,30 +227,8 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
 	  goto end;
 	}
 
-      dot = strchr (buffer, '.');
-      if (dot)
+      if (check_table_name (buffer) != NO_ERROR)
 	{
-	  /* user specified name */
-
-	  /* user name of user specified name */
-	  sub_len = STATIC_CAST (int, dot - buffer);
-	  if (sub_len >= DB_MAX_USER_LENGTH)
-	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB,
-						     COMPACTDB_MSG_EXCEED_MAX_USER_LEN), DB_MAX_USER_LENGTH - 1);
-	      status = ER_FAILED;
-	      goto end;
-	    }
-
-	  /* class name of user specified name */
-	  sub_len = STATIC_CAST (int, strlen (dot + 1));
-	}
-
-      if (sub_len >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
-	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB,
-						 COMPACTDB_MSG_EXCEED_MAX_LEN),
-				 DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH - 1);
 	  status = ER_FAILED;
 	  goto end;
 	}
