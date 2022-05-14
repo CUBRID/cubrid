@@ -1244,6 +1244,14 @@ util_get_table_list_from_file (char *fname, dynamic_array * darray)
 	  if (p != 0)
 	    {
 	      name[p] = '\0';
+
+	      if (check_table_name (table_name) != NO_ERROR)
+		{
+		  fclose (fp);
+		  /* util_log_write_errid() is called inside check_table_name(). */
+		  return ER_GENERIC_ERROR;
+		}
+
 	      if (da_add (darray, name) != NO_ERROR)
 		{
 		  fclose (fp);
