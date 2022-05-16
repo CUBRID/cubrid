@@ -330,21 +330,29 @@ get_db_path (char *dbname, char **pathname)
 	      return -1;
 	    }
 
-	  if (strcmp (host, "localhost") == 0)
+	  if (strcmp (host, "localhost") == 0 && strcmp (name, dbname) == 0)
 	    {
-	      if (strcmp (name, dbname) == 0)
+	      str = get_token (str, pathname);
+	      if (*pathname == NULL || *pathname == (char *) '\0')
 		{
-		  str = get_token (str, pathname);
-		  if (*pathname == NULL || *pathname == (char *) '\0')
-		    {
-		      *pathname = vol_path;
-		    }
-
-		  fclose (file_p);
-
-		  return 0;
+		  *pathname = vol_path;
 		}
+	      else
+		{
+		  free (vol_path);
+		}
+
+	      free (name);
+	      free (host);
+
+	      fclose (file_p);
+
+	      return 0;
 	    }
+
+	  free (vol_path);
+	  free (name);
+	  free (host);
 	}
     }
 
@@ -428,7 +436,7 @@ migrate_check_log_volume (char *dbname)
 
   if (log_ver < 11.0f || log_ver >= 11.2f)
     {
-      printf ("migrate: the database volume %f is not a migratable version\n", log_ver);
+      printf ("migrate: the database volume %2.1f is not a migratable version\n", log_ver);
       close (fd);
       return -1;
     }
