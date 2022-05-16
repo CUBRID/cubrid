@@ -31,6 +31,7 @@
 #include <unordered_set>
 #include <deque>
 #include <condition_variable>
+#include <string>
 
 #include "method_connection_pool.hpp"
 #include "method_def.hpp"
@@ -74,10 +75,14 @@ namespace cubmethod
       void pop_stack (cubthread::entry *thread_p, method_invoke_group *claimed);
       method_invoke_group *top_stack ();
 
-      void set_interrupt_by_reason (int reason);
+      void set_interrupt (int reason, std::string msg = "");
       bool is_interrupted ();
-      int get_interrupt_reason ();
+      int get_interrupt_id ();
+      std::string get_interrupt_msg ();
+
       void wait_for_interrupt ();
+      void set_local_error_for_interrupt (); // set interrupt on thread local error manager
+
       bool is_running ();
 
     private:
@@ -96,7 +101,9 @@ namespace cubmethod
       std::deque <METHOD_GROUP_ID> m_deferred_free_stack;
 
       bool m_is_interrupted;
-      int m_interrupt_reason;
+      int m_interrupt_id;
+      std::string m_interrupt_msg;
+
       bool m_is_running;
   };
 

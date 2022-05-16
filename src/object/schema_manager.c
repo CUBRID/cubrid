@@ -5418,9 +5418,10 @@ sm_find_class_with_purpose (const char *name, bool for_update)
       else
 	{
 	  /* synonym_mop == NULL */
-	  if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+	  ASSERT_ERROR ();
+
+	  if (er_errid () == ER_SYNONYM_NOT_EXIST)
 	    {
-	      er_clear ();
 	      ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, realname);
 	    }
 	}
@@ -5446,6 +5447,7 @@ sm_find_synonym (const char *name)
 
   if (sm_check_system_class_by_name (name))
     {
+      ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_NOT_EXIST, name);
       return NULL;
     }
 
@@ -5460,8 +5462,19 @@ sm_find_synonym (const char *name)
   db_make_string (&value, realname);
 
   AU_DISABLE (save);
-  synonym_obj = obj_find_unique (synonym_class_obj, "unique_name", &value, AU_FETCH_READ);
+  synonym_obj = db_find_unique (synonym_class_obj, "unique_name", &value);
   AU_ENABLE (save);
+
+  if (synonym_obj == NULL)
+    {
+      ASSERT_ERROR ();
+
+      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_clear ();
+	  ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_NOT_EXIST, realname);
+	}
+    }
 
   return synonym_obj;
 }

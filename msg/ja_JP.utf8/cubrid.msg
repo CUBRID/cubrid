@@ -1379,7 +1379,7 @@ $ LOADDB
 1305 dblink - server "%1$s" not found.
 1306 dblink - server "%1$s" already exists.
 1307 dblink - Cannot update server object.
-1308 dblink - unsupported type.
+1308 dblink - not supported type %1$s.
 1309 dblink - invalid bind param.
 1310 dblink - password length exceeds max size.
 1311 dblink - encrypted password length is incorrect.
@@ -1404,7 +1404,7 @@ $ LOADDB
 1328 Invalid Descriptor handle.
 1329 Not supported dbms.
 1330 Unable to allocate an environment handle.
-1331 Error reserved for dblink development.
+1331 A null column binder was referenced.
 
 1332 アクティブなログボリューム（%1$s）が正常すぎて、再作成できません。 アクティブなログを削除すると、予期しない不可逆的な問題が発生する可能性があります。
 

@@ -134,6 +134,12 @@ namespace cubmethod
     return m_data_queue;
   }
 
+  cubmethod::runtime_context *
+  method_invoke_group::get_runtime_context ()
+  {
+    return m_rctx;
+  }
+
   bool
   method_invoke_group::is_running () const
   {
@@ -208,13 +214,13 @@ namespace cubmethod
 	error = m_method_vector[i]->get_return (m_thread_p, arg_base, m_result_vector[i]);
 	if (m_rctx->is_interrupted ())
 	  {
-	    error = m_rctx->get_interrupt_reason ();
+	    error = m_rctx->get_interrupt_id ();
 	  }
 
 	if (error != NO_ERROR)
 	  {
 	    // if error is not interrupt reason, interrupt is not set
-	    m_rctx->set_interrupt_by_reason (error);
+	    m_rctx->set_interrupt (error, (er_has_error () && er_msg ()) ? er_msg () : "");
 	    break;
 	  }
       }
@@ -240,6 +246,19 @@ namespace cubmethod
 	if (m_connection == nullptr)
 	  {
 	    m_connection = get_connection_pool ()->claim();
+	  }
+
+	// check javasp server's status
+	if (m_connection->get_socket () == INVALID_SOCKET)
+	  {
+	    if (m_connection->is_jvm_running ())
+	      {
+		m_rctx->set_interrupt (ER_SP_CANNOT_CONNECT_JVM, "connect ()");
+	      }
+	    else
+	      {
+		m_rctx->set_interrupt (ER_SP_NOT_RUNNING_JVM);
+	      }
 	  }
       }
 
