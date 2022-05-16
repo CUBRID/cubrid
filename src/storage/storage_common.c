@@ -38,14 +38,14 @@
 #include "db_date.h"
 #include "dbtype.h"
 
-static PGLENGTH find_valid_page_size (PGLENGTH page_size);
-
 /* RESERVED_SIZE_IN_PAGE should be aligned */
-#define RESERVED_SIZE_IN_PAGE   sizeof (FILEIO_PAGE_RESERVED) + sizeof (FILEIO_PAGE_WATERMARK)
+#define RESERVED_SIZE_IN_PAGE   (sizeof (FILEIO_PAGE_RESERVED) + sizeof (FILEIO_PAGE_WATERMARK))
 
 PGLENGTH db_Io_page_size = IO_DEFAULT_PAGE_SIZE;
 PGLENGTH db_Log_page_size = IO_DEFAULT_PAGE_SIZE;
 PGLENGTH db_User_page_size = IO_DEFAULT_PAGE_SIZE - RESERVED_SIZE_IN_PAGE;
+
+static PGLENGTH find_valid_page_size (PGLENGTH page_size);
 
 /*
  * db_set_page_size(): set the page size of system.
