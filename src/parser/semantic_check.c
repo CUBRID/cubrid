@@ -8408,7 +8408,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return;
 	}
 
-      if (!ws_is_same_object (owner, Au_user))
+      if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
 	{
 	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CREATE_TABLE_VIEW_NOT_OWNER);
 	  return;
