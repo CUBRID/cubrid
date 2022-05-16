@@ -20,7 +20,6 @@
 #define VERSION_INFO 		72
 #define DATABASES_ENVNAME 	"CUBRID_DATABASES"
 #define DATABASES_FILENAME 	"databases.txt"
-#define PATH_MAX		256
 #define MAX_LINE		4096
 #define ENV_VAR_MAX		255
 
@@ -51,7 +50,7 @@ static const char *catalog_query[] = {
   	[owner] [db_user] not null, \
   	[comment] character varying(1024), \
   	constraint [pk__db_server_link_name_owner] primary key ([link_name], [owner]) \
-  ) dont_reuse_oid, collate utf8_bin",
+  ) dont_reuse_oid",
 
   "create view [db_server] ( \
   	[link_name] character varying(255), \
@@ -100,9 +99,9 @@ static const char *catalog_query[] = {
   	[target_unique_name] CHARACTER VARYING(255) NOT NULL, \
   	[target_name] CHARACTER VARYING(255) NOT NULL, \
   	[target_owner] [db_user] NOT NULL, [comment] CHARACTER VARYING(2048), \
-  	CONSTRAINT [pk__db_synonym_unique_name] PRIMARY KEY  ([unique_name]), \
+  	CONSTRAINT [pk__db_synonym_unique_name] PRIMARY KEY ([unique_name]), \
   	INDEX [i__db_synonym_name_owner_is_public] ([name], [owner], [is_public]) \
-  ) DONT_REUSE_OID, COLLATE utf8_bin",
+  ) DONT_REUSE_OID",
 
   "create view [db_synonym] ( \
   	[synonym_name] CHARACTER VARYING(255), \
@@ -155,9 +154,10 @@ static char *update_db_class_not_for_system_classes =
 
 static char *serial_query = {
   "select \
-      'call change_serial_owner (''' || name || ''', ''' || substring_index (name, '.', 1) || ''') on class db_serial' as q \
-   from db_serial \
-   where class_name is not null and instr (name, '.') > 0"
+       'call change_serial_owner (''' || lower (b.owner.name) || '.' || a.name || ''', ''' || lower (b.owner.name) || ''') \
+          on class db_serial' as q \
+   from db_serial a left outer join _db_class b on a.class_name = b.class_name \
+   where a.class_name is not null"
 };
 
 static char *update_serial[] = {
@@ -447,17 +447,57 @@ migrate_check_log_volume (char *dbname)
 }
 
 static void
-migrate_update_log_volume (char *dbname)
+migrate_backup_log_volume (char *dbname)
 {
   char db_path[PATH_MAX];
   char backup_path[PATH_MAX];
-  float version = 11.2;
-  int fd, backup;
-  off_t copied;
+  int fd;
+
+  int backup;
+  off_t copied = 0;
   struct stat fileinfo = { 0 };
 
   migrate_get_db_path (dbname, db_path);
   printf ("%s version updating\n", db_path);
+
+  fd = open (db_path, O_RDWR);
+
+  /* open log volume file and seek version info */
+  if (fd < 0)
+    {
+      printf ("migrate: can not open the log file for upgrade\n");
+      return;
+    }
+
+  /* creating backup log file */
+  sprintf (backup_path, "%s.bak", db_path);
+  backup = open (backup_path, O_RDWR | O_CREAT | O_TRUNC, 0666);
+  if (backup < 0)
+    {
+      printf ("migrate: encountered error while creating backup log file, %s\n", backup_path);
+      close (fd);
+      return;
+    }
+
+  /* copying to backup log file */
+  fstat (fd, &fileinfo);
+  ssize_t bytes = sendfile (backup, fd, &copied, fileinfo.st_size);
+
+  if (bytes != copied)
+    {
+      printf ("migrate: encountered error while copying backup log file\n");
+    }
+
+  close (fd);
+  close (backup);
+}
+
+static void
+migrate_update_log_volume (char *dbname)
+{
+  char db_path[PATH_MAX];
+  float version = 11.2;
+  int fd;
 
   fd = open (db_path, O_RDWR);
 
@@ -474,28 +514,6 @@ migrate_update_log_volume (char *dbname)
       close (fd);
       return;
     }
-
-  /* creating backup log file */
-  sprintf (backup_path, "%s.bak", db_path);
-  backup = open (backup_path, O_RDWR);
-  if (backup < 0)
-    {
-      printf ("migrate: encountered error while creating backup log file\n");
-      close (fd);
-      return;
-    }
-
-  /* copying to backup log file */
-  fstat (fd, &fileinfo);
-  if (sendfile (backup, fd, &copied, fileinfo.st_size) < 0)
-    {
-      printf ("migrate: encountered error while copying backup log file\n");
-      close (fd);
-      close (backup);
-      return;
-    }
-
-  close (backup);
 
   /* updating volumne info. */
   if (write (fd, &version, 4) < 0)
@@ -885,6 +903,9 @@ main (int argc, char *argv[])
       return -1;
     }
 
+  /* backup first before upating catalog */
+  migrate_backup_log_volume (dbname);
+
   cub_au_disable_passwords ();
 
   error = cub_db_restart_ex ("migrate", dbname, "DBA", NULL, NULL, DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -926,6 +947,7 @@ end:
       return -1;
     }
 
+  /* finalizing: update volume info. to 11.2 */
   migrate_update_log_volume (dbname);
 
   return 0;

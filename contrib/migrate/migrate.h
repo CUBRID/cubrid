@@ -26,6 +26,7 @@
 #include <sys/sendfile.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <limits.h>
 #include <time.h>
 #include <termios.h>
 #include <string.h>
