@@ -1232,7 +1232,7 @@ opciones validas:\n\
   -i, --include-class-file=FILE archivo de entrada de los nombres de tabla a ser incluidos\n\
   -e, --exclude-class-file=FILE archivo de entrada de los nombres de tabla a ser excluidos; o -i o -e pueden ser utilizados, no ambos\n\
   -t, --timeout=NUMBER          tiempo de expera de la consulta (query) en milisegundos; default: 1000 ms\n\
-  -n, --table-name=NAME         nombre de tabla para guardar los resultados de la checksum; default: db_ha_checksums\n\
+  -n, --table-name=NAME         nombre de tabla para guardar los resultados de la checksum; default: dba.db_ha_checksum\n\
   -r, --report-only             reportar integridad de la replicacion en base al calculo de checksum\n\
                                 cualquier opcion excepto a --table-name va a ser ignorada\n\
       --resume                  reanudar calculo de checksum\n\

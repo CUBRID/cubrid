@@ -1232,7 +1232,7 @@ gültigen Optionen:\n\
   -e, --exclude-class-file=FILE Eingabedatei der Tabellennamen, um auszuschließen; entweder -i oder -e,\n\
                                 verwendet werden, jedoch nicht beides\n\
   -t, --timeout=NUMBER          Abfrage-Timeout in Millisekunden; Standard: 1000 ms\n\
-  -n, --table-name=NAME         Tabellennamen, um Prüfsumme Ergebnisse zu speichern; Standard: db_ha_checksums\n\
+  -n, --table-name=NAME         Tabellennamen, um Prüfsumme Ergebnisse zu speichern; Standard: dba.db_ha_checksum\n\
   -r, --report-only             Bericht Replikationsintegrität auf der Grundlage Prüfsummenberechnung\n\
                                 alle Optionen außer --table-name werden ignoriert\n\
       --resume                  Wiederaufnahme der Berechnung Prüfsumme\n\

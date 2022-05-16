@@ -1379,7 +1379,7 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1305 dblink - server "%1$s" not found.
 1306 dblink - server "%1$s" already exists.
 1307 dblink - Cannot update server object.
-1308 dblink - unsupported type.
+1308 dblink - not supported type %1$s.
 1309 dblink - invalid bind param.
 1310 dblink - password length exceeds max size.
 1311 dblink - encrypted password length is incorrect.
@@ -1404,7 +1404,7 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1328 Invalid Descriptor handle.
 1329 Not supported dbms.
 1330 Unable to allocate an environment handle.
-1331 Error reserved for dblink development.
+1331 A null column binder was referenced.
 
 1332 El volumen de registro activo (%1$s) está demasiado sano para volver a crearlo. Si elimina el registro activo, podría causar un problema inesperado e irreversible.
 

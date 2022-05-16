@@ -187,6 +187,11 @@ struct t_attr_table
   const char *comment;
 };
 
+#if defined(CAS_FOR_CGW)
+T_COL_BINDER *col_binding = NULL;
+T_COL_BINDER *col_binding_buff = NULL;
+#endif
+
 extern void histo_print (FILE * stream);
 extern void histo_clear (void);
 
@@ -5724,7 +5729,6 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
   int net_buf_size;
   char fetch_end_flag = 0;
   SQLSMALLINT num_cols;
-  T_COL_BINDER *first_col_binding = NULL;
   SQLLEN total_row_count = 0;
   T_BROKER_VERSION client_version = req_info->client_version;
 
@@ -5770,12 +5774,20 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
       goto fetch_error;
     }
 
-  err_code = cgw_col_bindings (srv_handle->cgw_handle->hstmt, num_cols, &first_col_binding);
-
-  if (err_code < 0)
+  if (col_binding == NULL)
     {
-      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-      goto fetch_error;
+      if (col_binding_buff)
+	{
+	  cgw_cleanup_binder (col_binding_buff);
+	  col_binding_buff = NULL;
+	}
+
+      err_code = cgw_col_bindings (srv_handle->cgw_handle->hstmt, num_cols, &col_binding, &col_binding_buff);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto fetch_error;
+	}
     }
 
   if (cas_shard_flag == ON)
@@ -5793,36 +5805,60 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 
   while (CHECK_NET_BUF_SIZE (net_buf, net_buf_size))
     {				/* currently, don't check fetch_count */
-      err_code = cgw_row_data (srv_handle->cgw_handle->hstmt, cursor_pos);
-      if (err_code < 0)
+
+      if (col_binding_buff->is_exist_col_data)
 	{
-	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-	  goto fetch_error;
+	  err_code = cgw_cur_tuple (net_buf, col_binding_buff, cursor_pos);
+	  if (err_code < 0)
+	    {
+	      goto fetch_error;
+	    }
 	}
-
-      if (err_code == SQL_NO_DATA_FOUND)
+      else
 	{
-	  fetch_end_flag = 1;
-
-	  err_code = cgw_cursor_close (srv_handle);
+	  err_code = cgw_row_data (srv_handle->cgw_handle->hstmt);
 	  if (err_code < 0)
 	    {
 	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	      goto fetch_error;
 	    }
 
-
-	  if (check_auto_commit_after_getting_result (srv_handle) == true)
+	  if (err_code == SQL_NO_DATA_FOUND)
 	    {
-	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
-	    }
-	  break;
-	}
+	      fetch_end_flag = 1;
 
-      err_code = cgw_cur_tuple (net_buf, first_col_binding, cursor_pos);
-      if (err_code < 0)
-	{
-	  goto fetch_error;
+	      if (col_binding)
+		{
+		  cgw_cleanup_binder (col_binding);
+		  col_binding = NULL;
+		}
+
+	      if (col_binding_buff)
+		{
+		  cgw_cleanup_binder (col_binding_buff);
+		  col_binding_buff = NULL;
+		}
+
+	      err_code = cgw_cursor_close (srv_handle);
+	      if (err_code < 0)
+		{
+		  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+		  goto fetch_error;
+		}
+
+
+	      if (check_auto_commit_after_getting_result (srv_handle) == true)
+		{
+		  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+		}
+	      break;
+	    }
+
+	  err_code = cgw_cur_tuple (net_buf, col_binding, cursor_pos);
+	  if (err_code < 0)
+	    {
+	      goto fetch_error;
+	    }
 	}
 
       num_tuple++;
@@ -5841,6 +5877,50 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	    }
 	  break;
 	}
+
+      err_code = cgw_row_data (srv_handle->cgw_handle->hstmt);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto fetch_error;
+	}
+
+      if (err_code == SQL_NO_DATA_FOUND)
+	{
+	  fetch_end_flag = 1;
+
+	  if (col_binding)
+	    {
+	      cgw_cleanup_binder (col_binding);
+	      col_binding = NULL;
+	    }
+
+	  if (col_binding_buff)
+	    {
+	      cgw_cleanup_binder (col_binding_buff);
+	      col_binding_buff = NULL;
+	    }
+
+	  err_code = cgw_cursor_close (srv_handle);
+	  if (err_code < 0)
+	    {
+	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	      goto fetch_error;
+	    }
+
+	  if (check_auto_commit_after_getting_result (srv_handle) == true)
+	    {
+	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+	    }
+	  break;
+	}
+
+      err_code = cgw_copy_tuple (col_binding, col_binding_buff);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto fetch_error;
+	}
     }
 
   /* Be sure that cursor is closed, if query executed with commit and not holdable. */
@@ -5855,12 +5935,20 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 
   srv_handle->cursor_pos = cursor_pos;
 
-  cgw_cleanup_binder (first_col_binding);
-
   return 0;
 
 fetch_error:
-  cgw_cleanup_binder (first_col_binding);
+  if (col_binding)
+    {
+      cgw_cleanup_binder (col_binding);
+      col_binding = NULL;
+    }
+
+  if (col_binding_buff)
+    {
+      cgw_cleanup_binder (col_binding_buff);
+      col_binding_buff = NULL;
+    }
 
   return err_code;
 }
