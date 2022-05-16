@@ -8405,6 +8405,14 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       if (owner == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
+	  if (er_errid () == ER_AU_INVALID_USER)
+	    {
+	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
+	    }
+	  else
+	    {
+	      PT_ERRORc (parser, node, er_msg ());
+	    }
 	  return;
 	}
 
