@@ -278,7 +278,7 @@ cubrid 管理工具，版本 %1$s\n\
     on          gateway-name\n\
     off         gateway-name\n\
     reset       gateway-name\n\
-    acl         <status|reload> [gateway-name]\n\
+    acl         <status|reload> [gateway-name]\n
 46 owner_name 的长度要求小于 %1$d，class_name 的长度要求小于 %2$d 个字节。\n
 47 owner_name.class_name ('%1$s') 的格式无效。\n
 

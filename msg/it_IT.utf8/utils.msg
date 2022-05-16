@@ -278,7 +278,7 @@ Available command:\n\
     on          gateway-name\n\
     off         gateway-name\n\
     reset       gateway-name\n\
-    acl         <status|reload> [gateway-name]\n\
+    acl         <status|reload> [gateway-name]\n
 46 La lunghezza di nome_proprietario deve essere inferiore a %1$d e la lunghezza di nome_classe deve essere inferiore a %2$d byte.\n
 47 Formato non valido per nome_proprietario.nome_classe ('%1$s').\n
 

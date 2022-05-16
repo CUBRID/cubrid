@@ -278,7 +278,7 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     on          <ゲートウェイ名>\n\
     off         <ゲートウェイ名>\n\
     reset       <ゲートウェイ名>\n\
-    acl         <status|reload> [ゲートウェイ名]\n\
+    acl         <status|reload> [ゲートウェイ名]\n
 46 owner_nameの長さは%1$d未満である必要があり、class_nameの長さは%2$dバイト未満である必要があります。\n
 47 owner_name.class_name（'%1$s'）の形式が無効です。\n
 

@@ -278,7 +278,7 @@ Available command:\n\
     on          gateway-name\n\
     off         gateway-name\n\
     reset       gateway-name\n\
-    acl         <status|reload> [gateway-name]\n\
+    acl         <status|reload> [gateway-name]\n
 46 Lungimea numelui_proprietarului trebuie să fie mai mică de %1$d, iar lungimea numelui_clasei trebuie să fie mai mică de %2$d octeți.\n
 47 Format nevalid pentru proprietar_name.class_name ('%1$s').\n
 

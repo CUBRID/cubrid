@@ -278,7 +278,7 @@ Available command:\n\
     on          gateway-name\n\
     off         gateway-name\n\
     reset       gateway-name\n\
-    acl         <status|reload> [gateway-name]\n\
+    acl         <status|reload> [gateway-name]\n
 46 Sahip_adı uzunluğunun %1$d'den az olması ve sınıf_adı uzunluğunun %2$d bayttan az olması gerekir.\n
 47 sahibi_adı.sınıf_adı ('%1$s') için geçersiz biçim.\n
 

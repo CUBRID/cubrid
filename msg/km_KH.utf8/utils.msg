@@ -278,7 +278,7 @@ Available command:\n\
     on          gateway-name\n\
     off         gateway-name\n\
     reset       gateway-name\n\
-    acl         <status|reload> [gateway-name]\n\
+    acl         <status|reload> [gateway-name]\n
 46 The length of owner_name is required to be less than %1$d and the length of class_name is required to be less than %2$d bytes.\n
 47 Invalid format for owner_name.class_name ('%1$s').\n
 

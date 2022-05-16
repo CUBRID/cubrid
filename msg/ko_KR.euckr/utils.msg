@@ -278,7 +278,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     on          <게이트웨이 이름>\n\
     off         <게이트웨이 이름>\n\
     reset       <게이트웨이 이름>\n\
-    acl         <status|reload> [게이트웨이 이름]\n\
+    acl         <status|reload> [게이트웨이 이름]\n
 46 owner_name의 길이는 %1$d 미만이어야 하고 class_name의 길이는 %2$d 바이트 미만이어야 합니다.\n
 47 테이블 이름('%1$s')을 owner_name.class_name 형식으로 입력하십시오.\n
 
