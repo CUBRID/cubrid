@@ -3335,7 +3335,7 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
 
   check_count_lru = (int) (cfg_check_cnt * lru_dynamic_flush_adj);
   /* limit the checked BCBs to equivalent of 200 M */
-  check_count_lru = MIN (check_count_lru, (200 * 1024 * 1024) / db_page_size ());
+  check_count_lru = MIN (check_count_lru, (200 * 1024 * 1024) / DB_PAGESIZE);
 
 #if !defined (NDEBUG) && defined (SERVER_MODE)
   empty_flushed_bcb_queue = pgbuf_Pool.flushed_bcbs->is_empty ();
