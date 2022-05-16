@@ -2017,24 +2017,6 @@ boot_define_class (MOP class_mop)
       return error_code;
     }
 
-  error_code = db_constrain_non_null (class_mop, "class_of", 0, 1);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_constrain_non_null (class_mop, "unique_name", 0, 1);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_constrain_non_null (class_mop, "class_name", 0, 1);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
   if (locator_has_heap (class_mop) == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -3436,12 +3418,6 @@ boot_define_serial (MOP class_mop)
 
   /* add index */
   error_code = db_add_constraint (class_mop, DB_CONSTRAINT_UNIQUE, NULL, index2_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_constrain_non_null (class_mop, "name", 0, 1);
   if (error_code != NO_ERROR)
     {
       return error_code;
