@@ -2140,18 +2140,42 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
 	}
 
       snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s", checksum_table);
+
+      /* Check the length when "_schema" is added. */
+      if (snprintf (NULL, 0, "%s%s", chksum_result_Table_name, CHKSUM_SCHEMA_TABLE_SUFFIX) >= SM_MAX_IDENTIFIER_LENGTH)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
+				  MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH), SM_MAX_USER_LENGTH,
+				 SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH);
+	  return ER_FAILED;
+	  goto error_exit;
+	}
+
+      if (snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH - 1, "%s%s", chksum_result_Table_name,
+		    CHKSUM_SCHEMA_TABLE_SUFFIX) < 0)
+	{
+	  assert (false);
+	  goto error_exit;
+	}
+
+      if (utility_check_class_name (chksum_schema_Table_name) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
     }
   else
     {
       snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", CHKSUM_DEFAULT_TABLE_OWNER_NAME,
 		CHKSUM_DEFAULT_TABLE_NAME);
-    }
 
-  if (snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH - 1, "%s%s", chksum_result_Table_name,
-		CHKSUM_SCHEMA_TABLE_SUFFIX) < 0)
-    {
-      assert (false);
-      goto error_exit;
+      if (snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH - 1, "%s%s", chksum_result_Table_name,
+		    CHKSUM_SCHEMA_TABLE_SUFFIX) < 0)
+	{
+	  assert (false);
+	  goto error_exit;
+	}
     }
 
   report_only = utility_get_option_bool_value (arg_map, CHECKSUM_REPORT_ONLY_S);
