@@ -734,12 +734,12 @@ checkdb (UTIL_FUNCTION_ARG * arg)
       for (i = 0; i < num_tables; i++)
 	{
 	  class_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i + 1);
-	  if (p == NULL)
+	  if (class_name == NULL)
 	    {
 	      continue;
 	    }
 
-	  if (check_table_name (table_name) != NO_ERROR)
+	  if (utility_check_class_name (class_name) != NO_ERROR)
 	    {
 	      goto error_exit;
 	    }
@@ -4028,91 +4028,6 @@ error_exit:
   return EXIT_FAILURE;
 }
 
-static int
-check_table_name (const char *table_name)
-{
-  int table_name_len = 0;
-  int sub_len = 0;
-  const char *dot = NULL;
-
-  if (table_name == NULL || table_name[0] == '\0')
-    {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC, MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT));
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
-      return ER_FAILED;
-    }
-
-  table_name_len = STATIC_CAST (int, strlen (table_name));
-
-  if (table_name_len >= SM_MAX_IDENTIFIER_LENGTH)
-    {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
-			      MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH), SM_MAX_USER_LENGTH,
-			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH);
-      return ER_FAILED;
-    }
-
-  dot = strchr (table_name, '.');
-  if (dot == NULL)
-    {
-      /* owner name or class name is not specified */
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
-			      MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT), table_name);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT);
-      return ER_FAILED;
-    }
-
-  /* check length of owner name */
-  sub_len = STATIC_CAST (int, dot - table_name);
-  if (sub_len < 1)
-    {
-      /* owner name is not specified (e.g. '.table') */
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
-			      MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT), table_name);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT);
-      return ER_FAILED;
-    }
-
-  if (sub_len >= SM_MAX_USER_LENGTH)
-    {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
-			      MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH), SM_MAX_USER_LENGTH,
-			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH);
-      return ER_FAILED;
-    }
-
-  /* check length of class name */
-  sub_len = STATIC_CAST (int, strlen (dot + 1));
-  if (sub_len < 1)
-    {
-      /* class name is not specified (e.g. 'dba.') */
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
-			      MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT), table_name);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT);
-      return ER_FAILED;
-    }
-
-  if (sub_len >= SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH)
-    {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
-			      MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH), SM_MAX_USER_LENGTH,
-			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH);
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
 static void
 clean_stdin ()
 {
@@ -4405,7 +4320,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	  goto error_exit;
 	}
 
-      if (check_table_name (table_name) != NO_ERROR)
+      if (utility_check_class_name (table_name) != NO_ERROR)
 	{
 	  goto error_exit;
 	}

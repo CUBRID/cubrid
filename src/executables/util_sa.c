@@ -1393,7 +1393,7 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
 
   if (class_name != NULL && class_name[0] != 0)
     {
-      if (check_table_name (table_name) != NO_ERROR)
+      if (utility_check_class_name (class_name) != NO_ERROR)
 	{
 	  db_shutdown ();
 	  goto error_exit;

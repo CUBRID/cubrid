@@ -122,7 +122,7 @@ get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_c
 	  goto error;
 	}
 
-      if (check_table_name (class_names[i]) != NO_ERROR)
+      if (utility_check_class_name (class_names[i]) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -227,7 +227,7 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
 	  goto end;
 	}
 
-      if (check_table_name (buffer) != NO_ERROR)
+      if (utility_check_class_name (buffer) != NO_ERROR)
 	{
 	  status = ER_FAILED;
 	  goto end;

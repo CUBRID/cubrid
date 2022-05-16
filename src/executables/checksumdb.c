@@ -2102,6 +2102,7 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
   bool report_only = false;
   HA_SERVER_STATE ha_state = HA_SERVER_STATE_NA;
   int error = NO_ERROR;
+  int i = 0;
 
   memset (&chksum_arg, 0, sizeof (CHKSUM_ARG));
 
@@ -2124,7 +2125,7 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
   checksum_table = utility_get_option_string_value (arg_map, CHECKSUM_TABLE_NAME_S, 0);
   if (sm_check_name (checksum_table) > 0)
     {
-      if (check_table_name (checksum_table) != NO_ERROR)
+      if (utility_check_class_name (checksum_table) != NO_ERROR)
 	{
 	  goto error_exit;
 	}
@@ -2183,7 +2184,7 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
       for (i = 0; i < da_size (list); i++)
 	{
 	  da_get (list, i, table_in_list);
-	  if (check_table_name (table_in_list) != NO_ERROR)
+	  if (utility_check_class_name (table_in_list) != NO_ERROR)
 	    {
 	      goto error_exit;
 	    }
@@ -2205,7 +2206,7 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
       for (i = 0; i < da_size (list); i++)
 	{
 	  da_get (list, i, table_in_list);
-	  if (check_table_name (table_in_list) != NO_ERROR)
+	  if (utility_check_class_name (table_in_list) != NO_ERROR)
 	    {
 	      goto error_exit;
 	    }
