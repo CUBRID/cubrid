@@ -563,6 +563,10 @@ util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_na
 
   for (i = 0; i < num_tables; i++)
     {
+      const char *class_name_p = NULL;
+      const char *class_name_only = NULL;
+      char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+
       if (da_get (darray, i, table) != NO_ERROR)
 	{
 	  free (oids);
@@ -575,7 +579,18 @@ util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_na
 	  continue;
 	}
 
-      sm_user_specified_name (table, name, SM_MAX_IDENTIFIER_LENGTH);
+      sm_qualifier_name (table, owner_name, DB_MAX_USER_LENGTH);
+      class_name_only = sm_remove_qualifier_name (table);
+      if (strcasecmp (owner_name, "dba") == 0 && sm_check_system_class_by_name (class_name_only))
+	{
+	  class_name_p = class_name_only;
+	}
+      else
+	{
+	  class_name_p = table;
+	}
+
+      sm_user_specified_name (class_name_p, name, SM_MAX_IDENTIFIER_LENGTH);
       cls_mop = locator_find_class (name);
 
       obj = (MOBJ *) & cls_sm;

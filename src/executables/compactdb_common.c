@@ -117,6 +117,10 @@ get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_c
 
   for (i = 0; i < num_class; i++)
     {
+      const char *class_name_p = NULL;
+      const char *class_name_only = NULL;
+      char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+
       if (class_names[i] == NULL || (len = STATIC_CAST (int, strlen (class_names[i]))) == 0)
 	{
 	  goto error;
@@ -127,7 +131,18 @@ get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_c
 	  goto error;
 	}
 
-      sm_user_specified_name (class_names[i], downcase_class_name, SM_MAX_IDENTIFIER_LENGTH);
+      sm_qualifier_name (class_names[i], owner_name, DB_MAX_USER_LENGTH);
+      class_name_only = sm_remove_qualifier_name (class_names[i]);
+      if (strcasecmp (owner_name, "dba") == 0 && sm_check_system_class_by_name (class_name_only))
+	{
+	  class_name_p = class_name_only;
+	}
+      else
+	{
+	  class_name_p = class_names[i];
+	}
+
+      sm_user_specified_name (class_name_p, downcase_class_name, SM_MAX_IDENTIFIER_LENGTH);
 
       class_ = locator_find_class (downcase_class_name);
       if (class_ != NULL)

@@ -1360,9 +1360,12 @@ util_get_table_list_from_file (char *fname, dynamic_array * darray)
       if (p == SM_MAX_IDENTIFIER_LENGTH)
 	{
 	  /* too long table name */
-	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
-	  fclose (fp);
-	  return ER_GENERIC_ERROR;
+	  if (utility_check_class_name (name) != NO_ERROR)
+	    {
+	      fclose (fp);
+	      /* The util_log_write_errid function is called inside the utility_check_class_name function. */
+	      return ER_GENERIC_ERROR;
+	    }
 	}
     }
   fclose (fp);

@@ -1393,13 +1393,28 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
 
   if (class_name != NULL && class_name[0] != 0)
     {
+      const char *class_name_p = NULL;
+      const char *class_name_only = NULL;
+      char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+
       if (utility_check_class_name (class_name) != NO_ERROR)
 	{
 	  db_shutdown ();
 	  goto error_exit;
 	}
 
-      if ((class_mop = db_find_class (class_name)) == NULL
+      sm_qualifier_name (class_name, owner_name, DB_MAX_USER_LENGTH);
+      class_name_only = sm_remove_qualifier_name (class_name);
+      if (strcasecmp (owner_name, "dba") == 0 && sm_check_system_class_by_name (class_name_only))
+	{
+	  class_name_p = class_name_only;
+	}
+      else
+	{
+	  class_name_p = class_name;
+	}
+
+      if ((class_mop = db_find_class (class_name_p)) == NULL
 	  || sm_update_statistics (class_mop, STATS_WITH_SAMPLING) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
