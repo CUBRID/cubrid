@@ -450,14 +450,18 @@ static void
 migrate_update_log_volume (char *dbname)
 {
   char db_path[PATH_MAX];
+  char backup_path[PATH_MAX];
   float version = 11.2;
-  int fd;
+  int fd, backup;
+  off_t copied;
+  struct stat fileinfo = { 0 };
 
   migrate_get_db_path (dbname, db_path);
   printf ("%s version updating\n", db_path);
 
   fd = open (db_path, O_RDWR);
 
+  /* open log volume file and seek version info */
   if (fd < 0)
     {
       printf ("migrate: can not open the log file for upgrade\n");
@@ -471,6 +475,29 @@ migrate_update_log_volume (char *dbname)
       return;
     }
 
+  /* creating backup log file */
+  sprintf (backup_path, "%s.bak", db_path);
+  backup = open (backup_path, O_RDWR);
+  if (backup < 0)
+    {
+      printf ("migrate: encountered error while creating backup log file\n");
+      close (fd);
+      return;
+    }
+
+  /* copying to backup log file */
+  fstat (fd, &fileinfo);
+  if (sendfile (backup, fd, &copied, fileinfo.st_size) < 0)
+    {
+      printf ("migrate: encountered error while copying backup log file\n");
+      close (fd);
+      close (backup);
+      return;
+    }
+
+  close (backup);
+
+  /* updating volumne info. */
   if (write (fd, &version, 4) < 0)
     {
       printf ("migrate: can not write the version info. for upgrade\n");
