@@ -4109,7 +4109,9 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 	  pgptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 	  if (pgptr != NULL)
 	    {
+	      #if !defined (NDEBUG)
 	      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_AREA);
+	      #endif /* !NDEBUG */
 
 	      memcpy (area, (char *) pgptr + start_offset, length);
 	      pgbuf_unfix_and_init (thread_p, pgptr);
@@ -4150,7 +4152,9 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
       /* the caller is holding only bufptr->mutex. */
       CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
 
+      #if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_AREA);
+      #endif /* !NDEBUG */
 
       memcpy (area, (char *) pgptr + start_offset, length);
 
@@ -12089,8 +12093,10 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 	  pgbuf_bcb_unregister_avoid_deallocation (bufptr);
 
+	  #if !defined (NDEBUG)
 	  /* page after re-fix should have the same type as before unfix */
 	  (void) pgbuf_check_page_ptype (thread_p, pgptr, ordered_holders_info[i].ptype);
+	  #endif /* !NDEBUG */
 
 #if defined(PGBUF_ORDERED_DEBUG)
 	  _er_log_debug (__FILE__, __LINE__,

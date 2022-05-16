@@ -3073,7 +3073,7 @@ disk_verify_volume_header (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   DISK_VOLUME_HEADER *vhdr;
 
   assert (pgptr != NULL);
-  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_VOLHEADER);
+  /* (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_VOLHEADER); */
   vhdr = (DISK_VOLUME_HEADER *) pgptr;
 
   assert (vhdr->sect_npgs == DISK_SECTOR_NPAGES);
@@ -3803,7 +3803,9 @@ disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       return ER_FAILED;
     }
 
+  #if !defined (NDEBUG)
   pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_VOLBITMAP);
+  #endif /* !NDEBUG */
 
   stab_unit = ((DISK_STAB_UNIT *) rcv->pgptr) + rcv->offset;
   assert (((*stab_unit) & rv_unit) == 0);
@@ -3884,7 +3886,9 @@ disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       return ER_FAILED;
     }
 
+  #if !defined (NDEBUG)
   pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_VOLBITMAP);
+  #endif /* !NDEBUG */
 
   stab_unit = ((DISK_STAB_UNIT *) rcv->pgptr) + rcv->offset;
   assert (((*stab_unit) & rv_unit) == rv_unit);

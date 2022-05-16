@@ -1642,7 +1642,9 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	}
     }
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, helper.home_page, PAGE_HEAP);
+  #endif /* !NDEBUG */
 
   helper.initial_home_free_space = spage_get_free_space_without_saving (thread_p, helper.home_page, NULL);
 
@@ -1856,7 +1858,9 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 				   helper.home_vpid.volid, helper.home_vpid.pageid);
 	      goto end;
 	    }
+	  #if !defined (NDEBUG)
 	  (void) pgbuf_check_page_ptype (thread_p, helper.home_page, PAGE_HEAP);
+	  #endif /* !NDEBUG */
 	}
       /* Continue to next object. */
     }

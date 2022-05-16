@@ -3052,7 +3052,9 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       return ER_FAILED;
     }
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, Root, PAGE_BTREE);
+  #endif /* !NDEBUG */
 
   root_header = btree_get_root_header (thread_p, Root);
   if (root_header == NULL)

@@ -664,7 +664,9 @@ catalog_get_new_page (THREAD_ENTRY * thread_p, VPID * page_id_p, bool is_overflo
       log_sysop_abort (thread_p);
       return NULL;
     }
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
+  #endif /* !NDEBUG */
   log_sysop_commit (thread_p);
 
   return page_p;
@@ -688,7 +690,9 @@ catalog_file_map_find_optimal_page (THREAD_ENTRY * thread_p, PAGE_PTR * page, bo
   RECDES record;
   int dir_count;
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, *page, PAGE_CATALOG);
+  #endif /* !NDEBUG */
 
   if (spage_get_record (thread_p, *page, CATALOG_HEADER_SLOT, &record, PEEK) != S_SUCCESS)
     {
@@ -1349,7 +1353,9 @@ catalog_get_record_from_page (THREAD_ENTRY * thread_p, CATALOG_RECORD * catalog_
       return ER_FAILED;
     }
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, catalog_record_p->page_p, PAGE_CATALOG);
+  #endif /* !NDEBUG */
 
   if (spage_get_record (thread_p, catalog_record_p->page_p, catalog_record_p->slotid, &catalog_record_p->recdes, PEEK)
       != S_SUCCESS)
@@ -1526,7 +1532,9 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p, BTREE_STATS * btree_sta
       return ER_FAILED;
     }
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, root_page_p, PAGE_BTREE);
+  #endif /* !NDEBUG */
 
   root_header = btree_get_root_header (thread_p, root_page_p);
   if (root_header == NULL)
@@ -1584,7 +1592,9 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VP
   RECDES record = { 0, -1, REC_HOME, NULL };
   int error_code;
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
+  #endif /* !NDEBUG */
 
   if (recdes_allocate_data_area (&record, DB_PAGESIZE) != NO_ERROR)
     {
@@ -1644,7 +1654,9 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VP
 	  return ER_FAILED;
 	}
 
+      #if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, overflow_page_p, PAGE_CATALOG);
+      #endif /* !NDEBUG */
 
       spage_get_record (thread_p, overflow_page_p, CATALOG_HEADER_SLOT, &record, PEEK);
       new_overflow_vpid.pageid = CATALOG_GET_PGHEADER_OVFL_PGID_PAGEID (record.data);
@@ -1686,7 +1698,9 @@ catalog_drop_disk_representation_from_page (THREAD_ENTRY * thread_p, VPID * page
       return ER_FAILED;
     }
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
+  #endif /* !NDEBUG */
 
   if (catalog_drop_representation_helper (thread_p, page_p, page_id_p, slot_id) != NO_ERROR)
     {
@@ -1772,7 +1786,9 @@ catalog_drop_representation_class_from_page (THREAD_ENTRY * thread_p, VPID * dir
 	    }
 	}
 
+      #if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
+      #endif /* !NDEBUG */
     }
 
   if (catalog_drop_representation_helper (thread_p, page_p, page_id_p, slot_id) != NO_ERROR)
@@ -1828,7 +1844,9 @@ catalog_get_rep_dir (THREAD_ENTRY * thread_p, OID * class_oid_p, OID * rep_dir_p
 	  return error_code;
 	}
 
+      #if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
+      #endif /* !NDEBUG */
 
       if (spage_get_record (thread_p, page_p, repr_item.slot_id, &record, PEEK) != S_SUCCESS)
 	{
@@ -1899,7 +1917,9 @@ catalog_get_representation_record (THREAD_ENTRY * thread_p, OID * rep_dir_p, REC
       return NULL;
     }
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
+  #endif /* !NDEBUG */
 
   if (spage_get_record (thread_p, page_p, rep_dir_p->slotid, record_p, is_peek) != S_SUCCESS)
     {
@@ -1938,7 +1958,9 @@ catalog_get_representation_record_after_search (THREAD_ENTRY * thread_p, OID * c
 static int
 catalog_adjust_directory_count (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_p, int delta)
 {
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
+  #endif /* !NDEBUG */
 
   spage_get_record (thread_p, page_p, CATALOG_HEADER_SLOT, record_p, COPY);
 
@@ -2622,7 +2644,9 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p)
     }
   catalog_id_p->hpgid = first_page_vpid.pageid;
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
+  #endif /* !NDEBUG */
 
   if (catalog_is_header_initialized == false)
     {
@@ -2660,7 +2684,9 @@ static int
 catalog_file_map_is_empty (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool * stop, void *args)
 {
   CATALOG_PAGE_COLLECTOR *collector = (CATALOG_PAGE_COLLECTOR *) args;
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, *page, PAGE_CATALOG);
+  #endif /* !NDEBUG */
 
   if (spage_number_of_records (*page) <= 1)
     {
@@ -3180,7 +3206,9 @@ catalog_update_class_info (THREAD_ENTRY * thread_p, OID * class_id_p, CLS_INFO *
       return NULL;
     }
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
+  #endif /* !NDEBUG */
 
   recdes_set_data_area (&record, aligned_data, CATALOG_CLS_INFO_SIZE);
   if (spage_get_record (thread_p, page_p, repr_item.slot_id, &record, COPY) != S_SUCCESS)
@@ -4144,7 +4172,9 @@ start:
       return NULL;
     }
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
+  #endif /* !NDEBUG */
 
   recdes_set_data_area (&record, aligned_data, CATALOG_CLS_INFO_SIZE);
   if (spage_get_record (thread_p, page_p, repr_item.slot_id, &record, COPY) != S_SUCCESS)
@@ -4631,7 +4661,9 @@ catalog_check_class_consistency (THREAD_ENTRY * thread_p, OID * class_oid_p)
 	  return DISK_ERROR;
 	}
 
+      #if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, repr_page_p, PAGE_CATALOG);
+      #endif /* !NDEBUG */
 
       if (spage_get_record (thread_p, repr_page_p, repr_item.slot_id, &record, PEEK) != S_SUCCESS)
 	{

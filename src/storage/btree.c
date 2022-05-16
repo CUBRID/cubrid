@@ -2497,7 +2497,9 @@ btree_get_num_visible_oids_from_all_ovf (THREAD_ENTRY * thread_p, BTID_INT * bti
 	  goto error;
 	}
 
+      #if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, ovfl_page, PAGE_BTREE);
+      #endif /* !NDEBUG */
 
       if (spage_get_record (thread_p, ovfl_page, 1, &ovfl_copy_rec, COPY) != S_SUCCESS)
 	{
@@ -4953,7 +4955,9 @@ btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, VPID 
       assert_release (false);
       return NULL;
     }
+  #if !defined (NDEBUG)
   pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
+  #endif /* !NDEBUG */
 
   return page_ptr;
 }
@@ -5606,7 +5610,9 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
       ASSERT_ERROR ();
       goto error;
     }
+  #if !defined (NDEBUG)
   pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
+  #endif /* !NDEBUG */
 
   /* form the root header information */
   root_header->node.split_info.pivot = 0.0f;
@@ -5710,7 +5716,9 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
       return ret;
     }
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, P, PAGE_BTREE);
+  #endif /* !NDEBUG */
 
   /* read the header record */
   root_header = btree_get_root_header (thread_p, P);
@@ -6133,7 +6141,9 @@ xbtree_get_unique_pk (THREAD_ENTRY * thread_p, BTID * btid)
       return 0;
     }
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+  #endif /* !NDEBUG */
 
   root_header = btree_get_root_header (thread_p, root);
   if (root_header == NULL)
@@ -6205,7 +6215,9 @@ btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid, long long *oi
       return (((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret);
     }
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+  #endif /* !NDEBUG */
 
   root_header = btree_get_root_header (thread_p, root);
   if (root_header == NULL)
@@ -6290,7 +6302,9 @@ btree_get_subtree_stats (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page
 	      goto exit_on_error;
 	    }
 
+	  #if !defined (NDEBUG)
 	  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
+	  #endif /* !NDEBUG */
 
 	  ret = btree_get_subtree_stats (thread_p, btid, page, stats_env);
 	  if (ret != NO_ERROR)
@@ -7015,7 +7029,9 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
       goto exit_on_error;
     }
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, root_page_ptr, PAGE_BTREE);
+  #endif /* !NDEBUG */
 
   root_header = btree_get_root_header (thread_p, root_page_ptr);
   if (root_header == NULL)
@@ -7512,7 +7528,9 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT
 	      goto error;
 	    }
 
+	  #if !defined (NDEBUG)
 	  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
+	  #endif /* !NDEBUG */
 
 	  valid = btree_verify_subtree (thread_p, class_oid_p, btid, btname, page, &page_vpid, &INFO2);
 	  if (valid != DISK_VALID)
@@ -7581,7 +7599,9 @@ btree_verify_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT * 
       goto error;
     }
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+  #endif /* !NDEBUG */
 
   /* traverse the tree and store the statistical data in the INFO structure */
   valid = btree_verify_subtree (thread_p, class_oid_p, btid_int, btname, root, &p_vpid, &INFO);
@@ -7677,7 +7697,9 @@ btree_check_pages (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, VP
 	      goto error;
 	    }
 
+	  #if !defined (NDEBUG)
 	  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
+	  #endif /* !NDEBUG */
 
 	  vld = btree_check_pages (thread_p, btid, page, &page_vpid);
 	  if (vld != DISK_VALID)
@@ -7726,7 +7748,9 @@ btree_check_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID * btid,
       goto error;
     }
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, r_pgptr, PAGE_BTREE);
+  #endif /* !NDEBUG */
 
   root_header = btree_get_root_header (thread_p, r_pgptr);
   if (root_header == NULL)
@@ -7978,7 +8002,9 @@ btree_repair_prev_link_by_btid (THREAD_ENTRY * thread_p, BTID * btid, bool repai
       goto exit_repair;
     }
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, root_pgptr, PAGE_BTREE);
+  #endif /* !NDEBUG */
 
 retry_repair:
   if (retry_count >= retry_max)
@@ -8012,7 +8038,9 @@ retry_repair:
 	  goto retry_repair;
 	}
 
+      #if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, current_pgptr, PAGE_BTREE);
+      #endif /* !NDEBUG */
 
       header = btree_get_node_header (thread_p, current_pgptr);
       if (header == NULL)
@@ -8056,7 +8084,9 @@ retry_repair:
 	  goto retry_repair;
 	}
 
+      #if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, next_pgptr, PAGE_BTREE);
+      #endif /* !NDEBUG */
 
       header = btree_get_node_header (thread_p, next_pgptr);
       if (header == NULL)
@@ -8542,7 +8572,9 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	      goto exit_on_error;
 	    }
 
+	  #if !defined (NDEBUG)
 	  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
+	  #endif /* !NDEBUG */
 
 	  ret = btree_get_subtree_capacity (thread_p, btid, page, &cpc2);
 	  if (ret != NO_ERROR)
@@ -8615,7 +8647,9 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 		      goto exit_on_error;
 		    }
 
+		  #if !defined (NDEBUG)
 		  (void) pgbuf_check_page_ptype (thread_p, ovfp, PAGE_BTREE);
+		  #endif /* !NDEBUG */
 
 		  btree_get_next_overflow_vpid (thread_p, ovfp, &ovfl_vpid);
 
@@ -8687,7 +8721,9 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
       goto exit_on_error;
     }
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+  #endif /* !NDEBUG */
 
   root_header = btree_get_root_header (thread_p, root);
   if (root_header == NULL)
@@ -9091,7 +9127,9 @@ btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid)
       return NULL;
     }
 
+  #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+  #endif /* !NDEBUG */
 
   root_header = btree_get_root_header (thread_p, root);
   if (root_header == NULL)
@@ -24112,32 +24150,13 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 
   if (logtb_find_current_isolation (thread_p) >= TRAN_REP_READ || (find_unique_helper.lock_mode >= S_LOCK))
     {
-      bool need_skip_mvcc_snapshot = false;
-
-      /*
-       * In Repeatable Read, the MVCC snapshot is created when the SELECT query is executed.
-       * Even if the SELCET query is not explicitly executed, the MVCC snapshot is created when the index is scanned.
-       * MVCC snapshots are created when looking up a user, getting the current username, and looking up a Synonym.
-       * Creating an MVCC snapshot when executing an internal query on the system may not be the intended result
-       * of the user. Therefore, in case of index scan of the db_user and _db_synonym system tables,
-       * do not create an MVCC snapshot so that it does not differ from the previous answer in the isolation test case.
-       */
-      if (oid_check_cached_class_oid (OID_CACHE_USER_CLASS_ID, class_oid)
-	  || oid_check_cached_class_oid (OID_CACHE_SYNONYM_CLASS_ID, class_oid))
-	{
-	  need_skip_mvcc_snapshot = true;
-	}
-
       /*
        * Acquire snapshot in RR if not already acquired. This is needed since
        * the transaction need to know the actual visible objects - before
        * instance locking. In this way future commands of current transaction
        * may correctly detect visible objects.
        */
-      if (!need_skip_mvcc_snapshot)
-	{
-	  (void) logtb_get_mvcc_snapshot (thread_p);
-	}
+      (void) logtb_get_mvcc_snapshot (thread_p);
     }
 
   /* Find unique key and object. */
