@@ -10286,18 +10286,25 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
    * 2. common_class_name && common_user_name ->  common_user_name.common_class_name
    * 3. common_class_name &&    dba_user_name ->     dba_user_name.common_class_name
    * 4. system_class_name &&             NULL ->                   system_class_name
-   * 5. system_class_name && common_user_name ->  common_user_name.system_class_name
+   * 5. system_class_name && common_user_name ->  common_user_name.system_class_name -> error
    * 6. system_class_name &&    dba_user_name ->                   system_class_name
    * 
    * In case 5, raises an error to inform the user of an incorrect customization.
    */
   if (!PT_IS_SERIAL (node->info.expr.op) && sm_check_system_class_by_name (original_name))
     {
-      /* Skip in case 4, 6 */
-      if (resolved_name == NULL || resolved_name[0] == '\0' || intl_identifier_casecmp (resolved_name, "DBA") == 0)
+      /* In case 5 */
+      if (resolved_name != NULL)
 	{
+	  PT_ERROR (parser, node, "It is not allowed to specify an owner in the system class name.");
+	  *continue_walk = PT_STOP_WALK;
 	  return node;
 	}
+
+      /* resolved_name == NULL */
+
+      /* Skip in case 4, 6 */
+      return node;
     }
 
   if (resolved_name == NULL || resolved_name[0] == '\0')
@@ -10314,7 +10321,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 
   intl_identifier_lower (resolved_name, downcase_resolved_name);
 
-  /* In case 1, 2, 3, 5 */
+  /* In case 1, 2, 3 */
   user_specified_name = pt_append_string (parser, downcase_resolved_name, ".");
   user_specified_name = pt_append_string (parser, user_specified_name, original_name);
 

@@ -8396,16 +8396,18 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
+  name = node->info.create_entity.entity_name;
+
   /* check if the class can be created with the specified owner. */
-  owner_name = pt_get_qualifier_name (parser, node->info.create_entity.entity_name);
-  if (!ws_is_same_object (db_find_user (owner_name), Au_user) && !au_is_dba_group_member (Au_user))
+  owner_name = pt_get_qualifier_name (parser, name);
+  if (owner_name && !ws_is_same_object (db_find_user (owner_name), Au_user) && !au_is_dba_group_member (Au_user))
     {
       PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CREATE_TABLE_VIEW_NOT_OWNER);
       return;
     }
 
-  /* check name doesn't already exist as a class */
-  name = node->info.create_entity.entity_name;
+  /* In system class names, owner name can be NULL. Otherwise, owner name must not be NULL. */
+  assert (owner_name != NULL || sm_check_system_class_by_name (name->info.name.original));
 
   /* We cannot use an existing synonym name as a class name. */
   if (db_find_synonym (name->info.name.original) != NULL)
@@ -8429,6 +8431,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
+  /* check name doesn't already exist as a class */
   existing_entity = pt_find_class (parser, name, false);
   if (existing_entity != NULL)
     {
