@@ -8229,6 +8229,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *tbl_opt = NULL;
   PT_MISC_TYPE entity_type;
   DB_OBJECT *db_obj, *existing_entity;
+  DB_OBJECT *owner = NULL;
   const char *owner_name = NULL;
   int found, partition_status = DB_NOT_PARTITIONED_CLASS;
   int collation_id, charset;
@@ -8397,17 +8398,28 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   name = node->info.create_entity.entity_name;
-
-  /* check if the class can be created with the specified owner. */
   owner_name = pt_get_qualifier_name (parser, name);
-  if (owner_name && !ws_is_same_object (db_find_user (owner_name), Au_user) && !au_is_dba_group_member (Au_user))
+  if (owner_name)
     {
-      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CREATE_TABLE_VIEW_NOT_OWNER);
-      return;
-    }
+      owner = db_find_user (owner_name);
+      if (owner == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return;
+	}
 
-  /* In system class names, owner name can be NULL. Otherwise, owner name must not be NULL. */
-  assert (owner_name != NULL || sm_check_system_class_by_name (name->info.name.original));
+      if (!ws_is_same_object (owner, Au_user))
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CREATE_TABLE_VIEW_NOT_OWNER);
+	  return;
+	}
+    }
+  else
+    {
+      /* In system class names, owner name can be NULL. Otherwise, owner name must not be NULL. */
+      assert (au_is_dba_group_member (Au_user));
+      assert (sm_check_system_class_by_name (PT_NAME_ORIGINAL (name)));
+    }
 
   /* We cannot use an existing synonym name as a class name. */
   if (db_find_synonym (name->info.name.original) != NULL)
