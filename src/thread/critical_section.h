@@ -61,6 +61,7 @@ enum
   CSECT_LOCATOR_SR_CLASSNAME_TABLE,	/* Latch for classname to classOID entries */
   CSECT_QPROC_QUERY_TABLE,	/* Latch for query manager table */
   CSECT_QPROC_LIST_CACHE,	/* Latch for query result(list file) cache (mht) */
+  CSECT_QPROC_QUERY_ENTRY,	/* Latch for query entry */
   CSECT_DISK_CHECK,		/* Block changes on disk cache during check */
   CSECT_CNV_FMT_LEXER,		/* Latch for value/string format translation lexer */
   CSECT_HEAP_CHNGUESS,		/* Latch for schema change */

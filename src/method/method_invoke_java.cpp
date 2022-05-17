@@ -60,7 +60,7 @@ namespace cubmethod
   {
     int error = NO_ERROR;
 
-    cubmethod::header header (SP_CODE_INVOKE /* default */, m_group->get_id());
+    cubmethod::header header (SP_CODE_INVOKE /* default */, static_cast <uint64_t> (m_group->get_id()));
     cubmethod::invoke_java arg (m_method_sig);
     error = mcon_send_data_to_java (m_group->get_socket (), header, arg);
 
@@ -374,7 +374,8 @@ namespace cubmethod
       }
     else
       {
-	error = mcon_send_data_to_java (m_group->get_socket(), METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error");
+	error = mcon_send_data_to_java (m_group->get_socket(), METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+					ARG_FILE_LINE);
       }
     return error;
   }
@@ -390,10 +391,31 @@ namespace cubmethod
     unpacker.unpack_all (sql, flag);
 
     error = method_send_data_to_client (&thread_ref, *m_header, code, sql, flag);
-    if (error == NO_ERROR)
+    if (error != NO_ERROR)
       {
-	error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
+	return ER_FAILED;
       }
+
+    auto get_prepare_info = [&] (cubmem::block & b)
+    {
+      packing_unpacker unpacker (b.ptr, (size_t) b.dim);
+
+      int res_code;
+      unpacker.unpack_int (res_code);
+
+      if (res_code == METHOD_RESPONSE_SUCCESS)
+	{
+	  prepare_info info;
+	  info.unpack (unpacker);
+
+	  m_group->register_client_handler (info.handle_id);
+	}
+
+      error = mcon_send_buffer_to_java (m_group->get_socket(), b);
+      return error;
+    };
+
+    error = xs_receive (&thread_ref, get_prepare_info);
     return error;
   }
 
@@ -439,7 +461,10 @@ namespace cubmethod
       return error;
     };
 
-    error = xs_receive (&thread_ref, get_execute_info);
+    if (error == NO_ERROR)
+      {
+	error = xs_receive (&thread_ref, get_execute_info);
+      }
     return error;
   }
 
@@ -459,7 +484,9 @@ namespace cubmethod
     query_cursor *cursor = m_group->get_cursor (qid);
     if (cursor == nullptr)
       {
-	error = mcon_send_data_to_java (m_group->get_socket (), METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error");
+	assert (false);
+	error = mcon_send_data_to_java (m_group->get_socket (), METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+					ARG_FILE_LINE);
 	return error;
       }
 
@@ -612,6 +639,7 @@ namespace cubmethod
 	}
       else
 	{
+	  assert (false);
 	  return ER_FAILED;
 	}
     };
