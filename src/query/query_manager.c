@@ -275,6 +275,12 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
 
   static_assert (QMGR_MAX_QUERY_ENTRY_PER_TRAN < SHRT_MAX, "Bad query entry count");
 
+  /* enter critical section, this prevents another to perform malloc/init */
+  if (csect_enter (thread_p, CSECT_QPROC_QUERY_ENTRY, INF_WAIT) != NO_ERROR)
+    {
+      return NULL;
+    }
+
   query_p = tran_entry_p->free_query_entry_list_p;
 
   if (query_p)
@@ -283,6 +289,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
     }
   else if (QMGR_MAX_QUERY_ENTRY_PER_TRAN < tran_entry_p->num_query_entries)
     {
+      csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
       assert (QMGR_MAX_QUERY_ENTRY_PER_TRAN >= tran_entry_p->num_query_entries);
       return NULL;
     }
@@ -291,6 +298,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
       query_p = (QMGR_QUERY_ENTRY *) malloc (sizeof (QMGR_QUERY_ENTRY));
       if (query_p == NULL)
 	{
+	  csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QMGR_QUERY_ENTRY));
 	  return NULL;
 	}
@@ -347,10 +355,13 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
   /* just a safe guard for a release build. I don't expect it will be hit. */
   if (usable == false)
     {
+      csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
       qmgr_free_query_entry (thread_p, tran_entry_p, query_p);
       return NULL;
     }
 #endif /* NDEBUG */
+
+  csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
 
   return query_p;
 }
@@ -453,6 +464,12 @@ qmgr_add_query_entry (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * query_p, int t
 {
   QMGR_TRAN_ENTRY *tran_entry_p;
 
+  /* enter critical section, this prevents another to perform malloc/init */
+  if (csect_enter (thread_p, CSECT_QPROC_QUERY_ENTRY, INF_WAIT) != NO_ERROR)
+    {
+      return;
+    }
+
   if (tran_index == NULL_TRAN_INDEX)
     {
       tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -469,6 +486,8 @@ qmgr_add_query_entry (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * query_p, int t
       query_p->next = tran_entry_p->query_entry_list_p;
       tran_entry_p->query_entry_list_p = query_p;
     }
+
+  csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
 }
 
 static QMGR_QUERY_ENTRY *
@@ -517,9 +536,16 @@ qmgr_get_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_index
 
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
+  /* enter critical section, this prevents another to perform malloc/init */
+  if (csect_enter (thread_p, CSECT_QPROC_QUERY_ENTRY, INF_WAIT) != NO_ERROR)
+    {
+      return NULL;
+    }
+
   query_p = qmgr_find_query_entry (tran_entry_p->query_entry_list_p, query_id);
   if (query_p != NULL)
     {
+      csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
       return query_p;
     }
 
@@ -529,6 +555,7 @@ qmgr_get_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_index
   query_p = qmgr_allocate_query_entry (thread_p, tran_entry_p);
   if (query_p == NULL)
     {
+      csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
       return NULL;
     }
 
@@ -538,11 +565,14 @@ qmgr_get_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_index
       qmgr_free_query_entry (thread_p, tran_entry_p, query_p);
       query_p = NULL;
 
+      csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
       return NULL;
     }
 
   /* add it to this transaction also */
   qmgr_add_query_entry (thread_p, query_p, tran_index);
+
+  csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
 
   return query_p;
 }
@@ -574,6 +604,12 @@ qmgr_delete_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_in
 
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
+  /* enter critical section, this prevents another to perform malloc/init */
+  if (csect_enter (thread_p, CSECT_QPROC_QUERY_ENTRY, INF_WAIT) != NO_ERROR)
+    {
+      return;
+    }
+
   prev_query_p = NULL;
   query_p = tran_entry_p->query_entry_list_p;
 
@@ -585,6 +621,7 @@ qmgr_delete_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_in
 
   if (query_p == NULL)
     {
+      csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
       return;
     }
 
@@ -604,6 +641,7 @@ qmgr_delete_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_in
     }
 
   qmgr_free_query_entry (thread_p, tran_entry_p, query_p);
+  csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
 }
 
 static void
@@ -1764,7 +1802,13 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
   list_id_p = NULL;
 
   dbvals_p = NULL;
+
+#if defined (SERVER_MODE)
   assert (thread_get_recursion_depth (thread_p) == 0);
+#elif defined (SA_MODE)
+  assert (thread_get_recursion_depth (thread_p) == 0 || IS_IN_METHOD_OR_JSP_CALL ());
+#endif
+
 
 #if defined (SERVER_MODE)
   data = (char *) dbval_p;
@@ -1978,11 +2022,18 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
+  /* enter critical section, this prevents another to perform malloc/init */
+  if (csect_enter (thread_p, CSECT_QPROC_QUERY_ENTRY, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
   query_p = qmgr_find_query_entry (tran_entry_p->query_entry_list_p, query_id);
   if (query_p == NULL)
     {
       /* maybe this is a holdable result and we'll find it in the session state object */
       xsession_remove_query_entry_info (thread_p, query_id);
+      csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
       return NO_ERROR;
     }
 
@@ -2011,8 +2062,9 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
     }
 
   XASL_ID_SET_NULL (&query_p->xasl_id);
-  qmgr_delete_query_entry (thread_p, query_p->query_id, tran_index);
+  csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
 
+  qmgr_delete_query_entry (thread_p, query_p->query_id, tran_index);
   return rc;
 }
 
@@ -2686,6 +2738,12 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
+  /* enter critical section, this prevents another to perform malloc/init */
+  if (csect_enter (thread_p, CSECT_QPROC_QUERY_ENTRY, INF_WAIT) != NO_ERROR)
+    {
+      return NULL;
+    }
+
   /* find query entry */
   if (qmgr_Query_table.tran_entries_p != NULL)
     {
@@ -2696,10 +2754,13 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
       query_p = NULL;
     }
 
+  csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
+
   if (query_p == NULL)
     {
       free_and_init (tfile_vfid_p);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
+      csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
       return NULL;
     }
 
@@ -2779,6 +2840,12 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &(qmgr_Query_table.tran_entries_p[tran_index]);
 
+  /* enter critical section, this prevents another to perform malloc/init */
+  if (csect_enter (thread_p, CSECT_QPROC_QUERY_ENTRY, INF_WAIT) != NO_ERROR)
+    {
+      return NULL;
+    }
+
   /* find the query entry */
   if (qmgr_Query_table.tran_entries_p != NULL)
     {
@@ -2789,12 +2856,15 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
       query_p = NULL;
     }
 
+  csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
+
   if (query_p == NULL)
     {
       /* query entry is not found */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
       file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
       free_and_init (tfile_vfid_p);
+      csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
       return NULL;
     }
 
@@ -2808,6 +2878,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
     {
       file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
       free_and_init (tfile_vfid_p);
+      csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
       return NULL;
     }
 
@@ -2986,6 +3057,12 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
+  /* enter critical section, this prevents another to perform malloc/init */
+  if (csect_enter (thread_p, CSECT_QPROC_QUERY_ENTRY, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
   if (qmgr_Query_table.tran_entries_p != NULL)
     {
       query_p = qmgr_find_query_entry (tran_entry_p->query_entry_list_p, query_id);
@@ -2994,6 +3071,8 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
     {
       query_p = NULL;
     }
+
+  csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
 
   if (query_p == NULL)
     {
@@ -3076,12 +3155,21 @@ qmgr_is_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
+  /* enter critical section, this prevents another to perform malloc/init */
+  if (csect_enter (thread_p, CSECT_QPROC_QUERY_ENTRY, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
   query_p = qmgr_find_query_entry (tran_entry_p->query_entry_list_p, query_id);
   if (query_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
+      csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
       return true;
     }
+
+  csect_exit (thread_p, CSECT_QPROC_QUERY_ENTRY);
 
   return (logtb_get_check_interrupt (thread_p) && logtb_is_interrupted_tran (thread_p, true, &dummy, tran_index));
 }

@@ -10417,7 +10417,22 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, top_on_stack->get_error_msg ().c_str ());
 	}
-      std::string err_msg (er_msg ()? er_msg () : "");
+      std::string err_msg;
+
+      if (er_errid () == ER_SP_EXECUTE_ERROR)
+	{
+	  err_msg.assign (top_on_stack->get_error_msg ());
+	}
+      else if (er_msg ())
+	{
+	  err_msg.assign (er_msg ());
+	}
+
+      if (er_has_error ())
+	{
+	  error_code = er_errid ();
+	}
+
       packer.set_buffer_and_pack_all (eb, err_msg);
       (void) return_error_to_client (thread_p, rid);
     }
@@ -10431,13 +10446,19 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
   ptr = or_pack_int (ptr, reply_data_size);
   ptr = or_pack_int (ptr, error_code);
 
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_data,
-				     reply_data_size);
-
   // clear
   if (top_on_stack)
     {
+      top_on_stack->reset (true);
       top_on_stack->end ();
+    }
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_data,
+				     reply_data_size);
+
+  if (top_on_stack)
+    {
+      rctx->pop_stack (thread_p, top_on_stack);
     }
 
   pr_clear_value_vector (args);

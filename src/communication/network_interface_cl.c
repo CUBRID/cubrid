@@ -73,6 +73,7 @@
 #include "xasl.h"
 #include "lob_locator.hpp"
 #include "crypt_opfunc.h"
+
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
  */
@@ -10672,9 +10673,11 @@ cleanup:
 	}
     }
 
+  top_on_stack->reset (true);
   top_on_stack->end ();
-  exit_server (*thread_p);
+  rctx->pop_stack (thread_p, top_on_stack);
 
+  exit_server (*thread_p);
   return error_code;
 #endif /* !CS_MODE */
 }
