@@ -1515,13 +1515,18 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 	  vacuum_info = &mvcc_undo->vacuum_info;
 	  mvccid = mvcc_undo->mvccid;
 
-	  /* reset tdes->rcv.sysop_start_postpone_lsa and tdes->rcv.atomic_sysop_start_lsa, if this system op is not nested.
-	   * we'll use lastparent_lsa to check if system op is nested or not. */
-	  /* TODO:
-	   *  - what if the atomic sysop is nested in another atomic sysop?
-	   *  - this will erase atomic bookkeeping from transaction descriptor;
-	   *  - should, instead of null lsa, a value from the sysop stack be used to replace on tdes recovery
-	   *    info (a value which is not kept yet) */
+	  /* Reset
+	   *  - tdes->rcv.sysop_start_postpone_lsa
+	   *  - tdes->rcv.atomic_sysop_start_lsa
+	   * if this system op is not nested.
+	   * We'll use lastparent_lsa to check if system op is nested or not. */
+	  /* Atomic sysop's can also be nested. This is a scenario that was also possible before but it was
+	   * effectively introduced with the scalability project where, as an example, many btree sysops were
+	   * transformed in atomic sysops for the purpose of using the atomic sysop log records to achieve
+	   * functional atomic replication on passive transaction server.
+	   * As such the atomic sysop start lsa flag is only cleared when the outermost atomic sysop is
+	   * ended with a commit (LOG_SYSOP_END - LOG_SYSOP_END_COMMIT) or abort (LOG_SYSOP_END - LOG_SYSOP_END_ABORT).
+	   */
 	  if (!LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)
 	      && LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.atomic_sysop_start_lsa))
 	    {
@@ -1589,13 +1594,18 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
     }
   else if (node->log_header.type == LOG_SYSOP_END)
     {
-      /* reset tdes->rcv.sysop_start_postpone_lsa and tdes->rcv.atomic_sysop_start_lsa, if this system op is not nested.
-       * we'll use lastparent_lsa to check if system op is nested or not. */
-      /* TODO:
-       *  - what if the atomic sysop is nested in another atomic sysop?
-       *  - this will erase atomic bookkeeping from transaction descriptor;
-       *  - should, instead of null lsa, a value from the sysop stack be used to replace on tdes recovery
-       *    info (a value which is not kept yet) */
+      /* Reset
+       *  - tdes->rcv.sysop_start_postpone_lsa
+       *  - tdes->rcv.atomic_sysop_start_lsa
+       * if this system op is not nested.
+       * We'll use lastparent_lsa to check if system op is nested or not. */
+      /* Atomic sysop's can also be nested. This is a scenario that was also possible before but it was
+       * effectively introduced with the scalability project where, as an example, many btree sysops were
+       * transformed in atomic sysops for the purpose of using the atomic sysop log records to achieve
+       * functional atomic replication on passive transaction server.
+       * As such the atomic sysop start lsa flag is only cleared when the outermost atomic sysop is
+       * ended with a commit (LOG_SYSOP_END - LOG_SYSOP_END_COMMIT) or abort (LOG_SYSOP_END - LOG_SYSOP_END_ABORT).
+       */
       const LOG_REC_SYSOP_END *const sysop_end = (const LOG_REC_SYSOP_END *)node->data_header;
       if (!LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)
 	  && LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.atomic_sysop_start_lsa))
