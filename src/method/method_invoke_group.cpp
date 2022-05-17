@@ -234,6 +234,12 @@ namespace cubmethod
 	  }
       }
 
+    if (error != NO_ERROR)
+      {
+	get_connection_pool ().retire (m_connection, true);
+	m_connection = nullptr;
+      }
+
     return error;
   }
 
@@ -305,9 +311,12 @@ namespace cubmethod
       }
 
     // FIXME: The connection is closed to prevent Java thread from entering an unexpected state.
-    bool kill = (m_rctx->is_interrupted());
-    get_connection_pool ().retire (m_connection, kill);
-    m_connection = nullptr;
+    if (m_connection)
+      {
+	bool kill = (m_rctx->is_interrupted());
+	get_connection_pool ().retire (m_connection, kill);
+	m_connection = nullptr;
+      }
 
     // FIXME
     // m_rctx->pop_stack (m_thread_p, this);
