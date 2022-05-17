@@ -77,7 +77,6 @@ static const char *csect_Names[] = {
   "LOCATOR_CLASSNAME_TABLE",
   "QPROC_QUERY_TABLE",
   "QPROC_LIST_CACHE",
-  "QPROC_QUERY_ENTRY",
   "DISK_CHECK",
   "CNV_FMT_LEXER",
   "HEAP_CHNGUESS",
