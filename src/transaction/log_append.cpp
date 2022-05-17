@@ -1524,7 +1524,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 	   * effectively introduced with the scalability project where, as an example, many btree sysops were
 	   * transformed in atomic sysops for the purpose of using the atomic sysop log records to achieve
 	   * functional atomic replication on passive transaction server.
-	   * As such the
+	   * As such the atomic sysop start lsa flag is only cleared when the outermost atomic sysop is
+	   * ended with a commit (LOG_SYSOP_END - LOG_SYSOP_END_COMMIT) or abort (LOG_SYSOP_END - LOG_SYSOP_END_ABORT).
 	   */
 	  if (!LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)
 	      && LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.atomic_sysop_start_lsa))
@@ -1602,7 +1603,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
        * effectively introduced with the scalability project where, as an example, many btree sysops were
        * transformed in atomic sysops for the purpose of using the atomic sysop log records to achieve
        * functional atomic replication on passive transaction server.
-       * As such the
+       * As such the atomic sysop start lsa flag is only cleared when the outermost atomic sysop is
+       * ended with a commit (LOG_SYSOP_END - LOG_SYSOP_END_COMMIT) or abort (LOG_SYSOP_END - LOG_SYSOP_END_ABORT).
        */
       const LOG_REC_SYSOP_END *const sysop_end = (const LOG_REC_SYSOP_END *)node->data_header;
       if (!LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)

@@ -4164,7 +4164,8 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 /*
  * log_sysop_commit_internal () - Commit system operation. This can be used just to guarantee atomicity or permanence of
  *				  all changes in system operation. Or it can be extended to also act as an undo,
- *				  compensate or run postpone log record. The type is decided using log_record argument.
+ *				  compensate or run postpone log record. The type is decided using log_record.type
+ *				  argument.
  *
  * return	              : Void.
  * thread_p (in)              : Thread entry.
