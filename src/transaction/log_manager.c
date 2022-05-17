@@ -4013,10 +4013,6 @@ log_sysop_start_atomic (THREAD_ENTRY * thread_p)
   // in case there are no active sysops (atomic or not), the marker LSA for atomic sysops must be clear
   // this means that a previous [nested] [atomic] sysop sequence cleared its bookkeeping upon finishing;
   // this check goes hand in hand with cleaning code in prior_lsa_next_record_internal
-  if (tdes->topops.last < 0)
-    {
-      assert (LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa));
-    }
   assert ((tdes->topops.last < 0 && LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)) || tdes->topops.last >= 0);
 
   log_sysop_start_internal (thread_p, tdes);
@@ -4039,7 +4035,12 @@ log_sysop_start_atomic (THREAD_ENTRY * thread_p)
     }
   else
     {
-      /* this must be a nested atomic system operation. If parent is atomic, we'll be atomic too. */
+      /* This must be a nested atomic system operation. If parent is atomic, we'll be atomic too.
+       * But, a new sysop atomic start is not added.
+       * Only the internal bookeeping in the stack is increased - via the call to sysop start - to keep
+       * the balance between sysop starts and ends (sysop attach to outer, sysop commit, sysop abort).
+       * Clean-up of the atomic sysop start lsa happens when the outermost sysop - which was started
+       * as atomic - is ended (see prior_lsa_next_record_internal). */
       assert (tdes->topops.last > 0);
 
       /* oh, and please tell me this is not a nested system operation during postpone of system operation nested to
