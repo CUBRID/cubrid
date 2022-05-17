@@ -12503,7 +12503,7 @@ cdc_get_attribute_size (DB_VALUE * value)
       {
 	/* size of the data converted into bit string include "X''"
 	 * e.g. 17 = B'10001' = X'11' */
-	size = ((db_get_string_length (value) + 3) / 4) + 4;
+	size = ((db_get_string_length (value) + 3) / 4) + 3;
 	break;
       }
     case DB_TYPE_CHAR:
@@ -12514,7 +12514,7 @@ cdc_get_attribute_size (DB_VALUE * value)
     case DB_TYPE_VARNCHAR:
       /* size of string "N''" is 4
        * e.g. N'string' */
-      size = db_get_string_size (value) + 4;
+      size = db_get_string_size (value) + 3;
       break;
     case DB_TYPE_TIME:
       /* precision in data types related to DATE/TIME means the size the string converted from the date/time data */
@@ -12575,14 +12575,7 @@ cdc_get_attribute_size (DB_VALUE * value)
 	DB_ELO *elo;
 	elo = db_get_elo (value);
 
-	if (elo != NULL)
-	  {
-	    size = (int) strlen (elo->locator);
-	  }
-	else
-	  {
-	    size = 0;
-	  }
+	size = elo == NULL ? 0 : (int) strlen (elo->locator);
       }
       break;
     case DB_TYPE_NULL:
