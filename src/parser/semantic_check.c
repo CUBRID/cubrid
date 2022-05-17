@@ -8229,6 +8229,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *tbl_opt = NULL;
   PT_MISC_TYPE entity_type;
   DB_OBJECT *db_obj, *existing_entity;
+  DB_OBJECT *owner = NULL;
   const char *owner_name = NULL;
   int found, partition_status = DB_NOT_PARTITIONED_CLASS;
   int collation_id, charset;
@@ -8396,16 +8397,37 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
-  /* check if the class can be created with the specified owner. */
-  owner_name = pt_get_qualifier_name (parser, node->info.create_entity.entity_name);
-  if (!ws_is_same_object (db_find_user (owner_name), Au_user) && !au_is_dba_group_member (Au_user))
-    {
-      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CREATE_TABLE_VIEW_NOT_OWNER);
-      return;
-    }
-
-  /* check name doesn't already exist as a class */
   name = node->info.create_entity.entity_name;
+  owner_name = pt_get_qualifier_name (parser, name);
+  if (owner_name)
+    {
+      owner = db_find_user (owner_name);
+      if (owner == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  if (er_errid () == ER_AU_INVALID_USER)
+	    {
+	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
+	    }
+	  else
+	    {
+	      PT_ERRORc (parser, node, er_msg ());
+	    }
+	  return;
+	}
+
+      if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CREATE_TABLE_VIEW_NOT_OWNER);
+	  return;
+	}
+    }
+  else
+    {
+      /* In system class names, owner name can be NULL. Otherwise, owner name must not be NULL. */
+      assert (au_is_dba_group_member (Au_user));
+      assert (sm_check_system_class_by_name (PT_NAME_ORIGINAL (name)));
+    }
 
   /* We cannot use an existing synonym name as a class name. */
   if (db_find_synonym (name->info.name.original) != NULL)
@@ -8429,6 +8451,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
+  /* check name doesn't already exist as a class */
   existing_entity = pt_find_class (parser, name, false);
   if (existing_entity != NULL)
     {
