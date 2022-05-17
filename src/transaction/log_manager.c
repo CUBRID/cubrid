@@ -12471,6 +12471,137 @@ cdc_check_if_schema_changed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
   return or_rep_id (recdes) != attr_info->last_classrepr->id;
 }
 
+static int
+cdc_get_attribute_size (DB_VALUE * value)
+{
+  assert (!DB_IS_NULL (value));
+
+  int size = 0;
+
+  switch (DB_VALUE_TYPE (value))
+    {
+    case DB_TYPE_INTEGER:
+      size = sizeof (DB_C_INT);
+      break;
+    case DB_TYPE_BIGINT:
+      size = sizeof (DB_C_BIGINT);
+      break;
+    case DB_TYPE_SHORT:
+      size = sizeof (DB_C_SHORT);
+      break;
+    case DB_TYPE_FLOAT:
+      size = sizeof (DB_C_FLOAT);
+      break;
+    case DB_TYPE_DOUBLE:
+      size = sizeof (DB_C_DOUBLE);
+      break;
+    case DB_TYPE_NUMERIC:
+      size = DB_NUMERIC_BUF_SIZE;
+      break;
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+      {
+	/* size of the data converted into bit string include "X''"
+	 * e.g. 17 = B'10001' = X'11' */
+	size = ((db_get_string_length (value) + 3) / 4) + 3;
+	break;
+      }
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+      size = db_get_string_size (value);
+      break;
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
+      /* size of string "N''" is 4
+       * e.g. N'string' */
+      size = db_get_string_size (value) + 3;
+      break;
+    case DB_TYPE_TIME:
+      /* precision in data types related to DATE/TIME means the size the string converted from the date/time data */
+      size = DB_TIME_PRECISION;
+      break;
+    case DB_TYPE_TIMESTAMP:
+      size = DB_TIMESTAMP_PRECISION;
+      break;
+    case DB_TYPE_DATETIME:
+      size = DB_DATETIME_PRECISION;
+      break;
+    case DB_TYPE_TIMESTAMPTZ:
+    case DB_TYPE_TIMESTAMPLTZ:
+      size = DB_TIMESTAMPTZ_PRECISION;
+      break;
+    case DB_TYPE_DATETIMETZ:
+    case DB_TYPE_DATETIMELTZ:
+      size = DB_DATETIMETZ_PRECISION;
+      break;
+    case DB_TYPE_DATE:
+      size = DB_DATE_PRECISION;
+      break;
+    case DB_TYPE_MONETARY:
+      {
+	DB_MONETARY *money_p = db_get_monetary (value);
+	const char *currency_symbol = lang_currency_symbol (money_p->type);
+
+	/* monetary contains double value, and size of the string converted from double value can not exceeds 23 bytes
+	 * maximum value : 1.7976931348623157E+308
+	 * 15bytes significant number + '.' + 'e+308' = 23 bytes */
+	const int maximum_double_buffer_size = 23;
+
+	size = strlen (currency_symbol) + maximum_double_buffer_size;
+      }
+      break;
+    case DB_TYPE_ENUMERATION:
+      if (db_get_enum_string (value) == NULL && db_get_enum_short (value) != 0)
+	{
+	  size = sizeof (DB_C_SHORT);
+	}
+      else
+	{
+	  DB_VALUE varchar_val;
+	  /* print enumerations as strings */
+	  if (tp_enumeration_to_varchar (value, &varchar_val) == NO_ERROR)
+	    {
+	      size = db_get_string_size (&varchar_val);
+	    }
+	  else
+	    {
+	      assert (false);
+	    }
+	}
+      break;
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+      {
+	DB_ELO *elo;
+	elo = db_get_elo (value);
+
+	size = elo == NULL ? 0 : (int) strlen (elo->locator);
+      }
+      break;
+    case DB_TYPE_NULL:
+    case DB_TYPE_VARIABLE:
+    case DB_TYPE_SUB:
+    case DB_TYPE_DB_VALUE:
+    case DB_TYPE_OBJECT:
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+    case DB_TYPE_ELO:
+    case DB_TYPE_JSON:
+    case DB_TYPE_POINTER:
+    case DB_TYPE_ERROR:
+      /* Not supported */
+      size = 0;
+      break;
+    default:
+      assert (false);
+      break;
+    }
+
+  return size;
+
+}
+
 int
 cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYPE dml_type,
 		      OID classoid, RECDES * undo_recdes, RECDES * redo_recdes, CDC_LOGINFO_ENTRY * dml_entry,
@@ -12595,9 +12726,9 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	  oldval_deforder = heap_value->read_attrepr->def_order;
 
 	  memcpy (&old_values[oldval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
-	}
 
-      record_length += undo_recdes->length;
+	  record_length += cdc_get_attribute_size (&heap_value->dbvalue);
+	}
     }
 
   if (redo_recdes != NULL)
@@ -12636,9 +12767,9 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	  newval_deforder = heap_value->read_attrepr->def_order;
 
 	  memcpy (&new_values[newval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
-	}
 
-      record_length += redo_recdes->length;
+	  record_length += cdc_get_attribute_size (&heap_value->dbvalue);
+	}
     }
 
   if ((cdc_Gl.producer.all_in_cond == 0) && dml_type != CDC_INSERT && !is_flashback)
