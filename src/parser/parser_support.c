@@ -10196,6 +10196,11 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       return NULL;
     }
 
+  if (pt_has_error (parser))
+    {
+      return node;
+    }
+
   switch (node->node_type)
     {
     case PT_NAME:
@@ -10222,14 +10227,15 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	      original_name = name->info.name.original;
 	      resolved_name = owner->info.name.original;
 	    }
-	  else
+	  else if (PT_IS_NAME_NODE (node->info.expr.arg1))
 	    {
-	      assert (PT_IS_NAME_NODE (node->info.expr.arg1));
-
 	      PT_NODE *name = node->info.expr.arg1;
 
 	      original_name = name->info.name.original;
-	      resolved_name = name->info.name.resolved;
+	    }
+	  else
+	    {
+	      return node;
 	    }
 	}
       else
@@ -10240,6 +10246,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
     case PT_ALTER_SYNONYM:
     case PT_CREATE_SYNONYM:
       {
+	assert (pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)) != NULL);
 	PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)));
 	if (pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)) == NULL
 	    && sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
@@ -10248,6 +10255,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	  }
 	else
 	  {
+	    assert (pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)) != NULL);
 	    PT_SYNONYM_TARGET_OWNER_NAME (node) =
 	      pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)));
 	  }
@@ -10256,10 +10264,13 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       }
       // break;
     case PT_DROP_SYNONYM:
+      assert (pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)) != NULL);
       PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)));
       return node;
       // break;
     case PT_RENAME_SYNONYM:
+      assert (pt_get_qualifier_name (parser, PT_SYNONYM_OLD_NAME (node)) != NULL);
+      assert (pt_get_qualifier_name (parser, PT_SYNONYM_NEW_NAME (node)) != NULL);
       PT_SYNONYM_OLD_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_OLD_NAME (node)));
       PT_SYNONYM_NEW_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NEW_NAME (node)));
       return node;
