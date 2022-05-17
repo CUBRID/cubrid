@@ -694,7 +694,8 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	}
       else
 	{
-	  goto error_exit;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  goto close_exit;
 	}
     }
 
@@ -703,7 +704,8 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 
   if ((error = cci_fetch (scan_info->stmt_handle, &err_buf)) < 0)
     {
-      goto error_exit;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      goto close_exit;
     }
 
   assert (col_info);
@@ -740,7 +742,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	case CCI_U_TYPE_FLOAT:
 	case CCI_U_TYPE_DOUBLE:
 	case CCI_U_TYPE_MONETARY:
-	  if (cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], value, &ind) < 0)
+	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], value, &ind)) < 0)
 	    {
 	      goto error_exit;
 	    }
@@ -749,7 +751,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	  break;
 
 	case CCI_U_TYPE_NUMERIC:
-	  if (cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &value, &ind) < 0)
+	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &value, &ind)) < 0)
 	    {
 	      goto error_exit;
 	    }
@@ -762,7 +764,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	case CCI_U_TYPE_CHAR:
 	case CCI_U_TYPE_NCHAR:
 	case CCI_U_TYPE_JSON:
-	  if (cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &value, &ind) < 0)
+	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &value, &ind)) < 0)
 	    {
 	      goto error_exit;
 	    }
@@ -784,7 +786,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 
 	case CCI_U_TYPE_BIT:
 	case CCI_U_TYPE_VARBIT:
-	  if (cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &bit_val, &ind) < 0)
+	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &bit_val, &ind)) < 0)
 	    {
 	      goto error_exit;
 	    }
@@ -805,7 +807,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	case CCI_U_TYPE_TIME:
 	case CCI_U_TYPE_TIMESTAMP:
 	case CCI_U_TYPE_DATETIME:
-	  if (cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &date_time, &ind) < 0)
+	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &date_time, &ind)) < 0)
 	    {
 	      goto error_exit;
 	    }
@@ -817,7 +819,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	case CCI_U_TYPE_DATETIMELTZ:
 	case CCI_U_TYPE_TIMESTAMPTZ:
 	case CCI_U_TYPE_TIMESTAMPLTZ:
-	  if (cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &date_time_tz, &ind) < 0)
+	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &date_time_tz, &ind)) < 0)
 	    {
 	      goto error_exit;
 	    }
