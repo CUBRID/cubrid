@@ -533,7 +533,6 @@ else(UNIX)
 endif(UNIX)
 # for dblink
 target_link_libraries(cubrid cascci)
-target_link_libraries(cubrid cubridcs)
 
 add_dependencies(cubrid ${EP_TARGETS} gen_loader_grammar gen_loader_lexer)
 

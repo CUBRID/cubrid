@@ -769,14 +769,17 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	      goto error_exit;
 	    }
 	  NULL_CHECK (ind);
-
 	  if (utype == CCI_U_TYPE_JSON)
 	    {
-	      if (db_json_val_from_str ((char *) value, ind, &cci_value) < 0)
+	      JSON_DOC *json_doc = NULL;
+
+	      error = db_json_get_json_from_str ((char *) value, json_doc, ind);
+	      if (error != NO_ERROR)
 		{
-		  /* er_set is already set in db_json_val_from_str */
 		  goto close_exit;
 		}
+
+	      (void) db_make_json (&cci_value, json_doc, true);
 	    }
 	  else
 	    {
