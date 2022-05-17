@@ -677,6 +677,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
   T_CCI_DATE date_time;		/* for date or time type */
   T_CCI_DATE_TZ date_time_tz;	/* for date or time with zone */
   void *value;			/* for any other type */
+  DB_VALUE cci_value = { 0 };	/* from cci interface */
   QPROC_DB_VALUE_LIST valptrp;
   T_CCI_COL_INFO *col_info = (T_CCI_COL_INFO *) scan_info->col_info;
 
@@ -719,7 +720,6 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 
   for (valptrp = val_list->valp, col_no = 1; col_no <= col_cnt; col_no++, valptrp = valptrp->next)
     {
-      DB_VALUE cci_value;
       DB_DATA cci_data;
       int prec = col_info[col_no - 1].precision;
 
@@ -856,6 +856,12 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	      goto close_exit;
 	    }
 	}
+
+      if (cci_value.need_clear)
+	{
+	  pr_clear_value (&cci_value);
+	}
+
     }
 
   if (error != NO_ERROR)
@@ -870,6 +876,10 @@ error_exit:
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
 
 close_exit:
+  if (cci_value.need_clear)
+    {
+      pr_clear_value (&cci_value);
+    }
   dblink_close_scan (scan_info);
 
   return S_ERROR;
