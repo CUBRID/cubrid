@@ -575,22 +575,23 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
     {
       scan_info->stmt_handle = -1;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-      return ER_DBLINK;
+      goto error_exit;
     }
   else
     {
-      cci_set_autocommit (scan_info->conn_handle, CCI_AUTOCOMMIT_FALSE);
+      cci_set_autocommit (scan_info->conn_handle, CCI_AUTOCOMMIT_TRUE);
       scan_info->stmt_handle = cci_prepare (scan_info->conn_handle, sql_text, 0, &err_buf);
       if (scan_info->stmt_handle < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  return ER_DBLINK;
+	  goto error_exit;
 	}
 
       if (host_vars->count > 0)
 	{
 	  if ((ret = dblink_bind_param (scan_info, vd, host_vars)) < 0)
 	    {
+	      dblink_close_scan (scan_info);
 	      return ret;
 	    }
 	}
@@ -599,7 +600,7 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
       if (ret < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  return ER_DBLINK;
+	  goto error_exit;
 	}
       else
 	{
@@ -610,13 +611,18 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 	    {
 	      /* this can not be reached, something wrong */
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "unknown error");
-	      return ER_DBLINK;
+	      goto error_exit;
 	    }
 	  scan_info->cursor = CCI_CURSOR_FIRST;
 	}
     }
 
   return NO_ERROR;
+
+error_exit:
+  dblink_close_scan (scan_info);
+
+  return ER_DBLINK;
 }
 
 /*
@@ -671,6 +677,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
   T_CCI_DATE date_time;		/* for date or time type */
   T_CCI_DATE_TZ date_time_tz;	/* for date or time with zone */
   void *value;			/* for any other type */
+  DB_VALUE cci_value = { 0 };	/* from cci interface */
   QPROC_DB_VALUE_LIST valptrp;
   T_CCI_COL_INFO *col_info = (T_CCI_COL_INFO *) scan_info->col_info;
 
@@ -689,7 +696,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
       else
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  return S_ERROR;
+	  goto close_exit;
 	}
     }
 
@@ -699,7 +706,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
   if ((error = cci_fetch (scan_info->stmt_handle, &err_buf)) < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-      return S_ERROR;
+      goto close_exit;
     }
 
   assert (col_info);
@@ -708,12 +715,11 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
   if (val_list->val_cnt != col_cnt)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_INVALID_COLUMNS_SPECIFIED, 0);
-      return S_ERROR;
+      goto close_exit;
     }
 
   for (valptrp = val_list->valp, col_no = 1; col_no <= col_cnt; col_no++, valptrp = valptrp->next)
     {
-      DB_VALUE cci_value;
       DB_DATA cci_data;
       int prec = col_info[col_no - 1].precision;
 
@@ -738,20 +744,16 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	case CCI_U_TYPE_MONETARY:
 	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], value, &ind)) < 0)
 	    {
-	      cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	      return S_ERROR;
+	      goto error_exit;
 	    }
 	  NULL_CHECK (ind);
-	  error = dblink_make_cci_value (&cci_value, utype, value, prec, ind, codeset);
+	  (void) dblink_make_cci_value (&cci_value, utype, value, prec, ind, codeset);
 	  break;
 
 	case CCI_U_TYPE_NUMERIC:
 	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &value, &ind)) < 0)
 	    {
-	      cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	      return S_ERROR;
+	      goto error_exit;
 	    }
 	  NULL_CHECK (ind);
 	  error = numeric_coerce_string_to_num ((char *) value, ind, (INTL_CODESET) codeset, &cci_value);
@@ -764,23 +766,21 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	case CCI_U_TYPE_JSON:
 	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &value, &ind)) < 0)
 	    {
-	      cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	      return S_ERROR;
+	      goto error_exit;
 	    }
 	  NULL_CHECK (ind);
 
 	  if (utype == CCI_U_TYPE_JSON)
 	    {
-	      if ((error = db_json_val_from_str ((char *) value, ind, &cci_value)) < 0)
+	      if (db_json_val_from_str ((char *) value, ind, &cci_value) < 0)
 		{
 		  /* er_set is already set in db_json_val_from_str */
-		  return S_ERROR;
+		  goto close_exit;
 		}
 	    }
 	  else
 	    {
-	      error = dblink_make_cci_value (&cci_value, utype, value, prec, ind, codeset);
+	      (void) dblink_make_cci_value (&cci_value, utype, value, prec, ind, codeset);
 	    }
 	  break;
 
@@ -788,20 +788,18 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	case CCI_U_TYPE_VARBIT:
 	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &bit_val, &ind)) < 0)
 	    {
-	      cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	      return S_ERROR;
+	      goto error_exit;
 	    }
 	  NULL_CHECK (ind);
 	  if (utype == CCI_U_TYPE_BIT)
 	    {
 	      /* bit_val.size * 8 : bit length for the value */
-	      error = db_make_bit (&cci_value, bit_val.size * 8, bit_val.buf, prec);
+	      (void) db_make_bit (&cci_value, bit_val.size * 8, bit_val.buf, prec);
 	    }
 	  else
 	    {
 	      /* bit_val.size * 8 : bit length for the value */
-	      error = db_make_varbit (&cci_value, bit_val.size * 8, bit_val.buf, prec);
+	      (void) db_make_varbit (&cci_value, bit_val.size * 8, bit_val.buf, prec);
 	    }
 	  break;
 
@@ -811,9 +809,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	case CCI_U_TYPE_DATETIME:
 	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &date_time, &ind)) < 0)
 	    {
-	      cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	      return S_ERROR;
+	      goto error_exit;
 	    }
 	  NULL_CHECK (ind);
 	  error = dblink_make_date_time (utype, &cci_value, &date_time);
@@ -825,18 +821,21 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	case CCI_U_TYPE_TIMESTAMPLTZ:
 	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &date_time_tz, &ind)) < 0)
 	    {
-	      cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	      return S_ERROR;
-	      break;
+	      goto error_exit;
 	    }
 	  NULL_CHECK (ind);
 	  error = dblink_make_date_time_tz (utype, &cci_value, &date_time_tz);
 	  break;
 	default:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_UNSUPPORTED_TYPE, 1, print_utype_to_string (utype));
-	  return S_ERROR;
+	  goto close_exit;
 	}
+
+      if (error < 0)
+	{
+	  break;
+	}
+
       if (ind == -1)
 	{
 	  valptrp->val->domain.general_info.is_null = 1;
@@ -854,17 +853,36 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 
 	  if (db_value_coerce (&cci_value, valptrp->val, &dom) != DOMAIN_COMPATIBLE)
 	    {
-	      return S_ERROR;
+	      goto close_exit;
 	    }
 	}
+
+      if (cci_value.need_clear)
+	{
+	  pr_clear_value (&cci_value);
+	}
+
     }
 
   if (error != NO_ERROR)
     {
-      return S_ERROR;
+      goto close_exit;
     }
 
   return S_SUCCESS;
+
+error_exit:
+  cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+
+close_exit:
+  if (cci_value.need_clear)
+    {
+      pr_clear_value (&cci_value);
+    }
+  dblink_close_scan (scan_info);
+
+  return S_ERROR;
 }
 
 /*
