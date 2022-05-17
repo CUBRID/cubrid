@@ -129,7 +129,7 @@ namespace cubmethod
   bool
   connection::is_valid ()
   {
-    return (m_socket != INVALID_SOCKET) && (jsp_ping (m_socket) == NO_ERROR);
+    return (m_socket != INVALID_SOCKET);
   }
 
   SOCKET
