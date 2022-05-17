@@ -57,7 +57,6 @@ namespace cubmethod
 
   runtime_context::~runtime_context ()
   {
-    destroy_all_cursors ();
     destroy_all_groups ();
   }
 
@@ -109,12 +108,14 @@ namespace cubmethod
 
     if (pred ())
       {
+	destroy_group (m_group_stack.back ());
 	m_group_stack.pop_back ();
       }
 
     // should be freed for all XASL structure
     while (m_deferred_free_stack.empty () == false && m_deferred_free_stack.back () == m_group_stack.back())
       {
+	destroy_group (m_group_stack.back ());
 	m_group_stack.pop_back ();
 	m_deferred_free_stack.pop_back ();
       }
@@ -356,11 +357,10 @@ namespace cubmethod
 	return;
       }
 
-    m_returning_cursors.insert (query_id);
+    std::unique_lock<std::mutex> ulock (m_mutex);
 
-    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-    QMGR_QUERY_ENTRY *query_entry_p = qmgr_get_query_entry (thread_p, query_id, tran_index);
-    xsession_store_query_entry_info (thread_p, query_entry_p);
+    m_returning_cursors.insert (query_id);
+    // m_cursor_map.erase (query_id);
   }
 
   void
@@ -372,8 +372,28 @@ namespace cubmethod
 	return;
       }
 
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
     m_returning_cursors.erase (query_id);
-    xsession_remove_query_entry_info (thread_p, query_id);
+  }
+
+  void
+  runtime_context::destroy_group (METHOD_GROUP_ID id)
+  {
+    // assume that lock is already acquired
+    // std::unique_lock<std::mutex> ulock (m_mutex);
+
+    // find in map
+    auto search = m_group_map.find (id);
+    if (search != m_group_map.end ())
+      {
+	method_invoke_group *group = search->second;
+	if (group)
+	  {
+	    delete group;
+	  }
+	m_group_map.erase (search);
+      }
   }
 
   void
@@ -396,12 +416,12 @@ namespace cubmethod
     std::unique_lock<std::mutex> ulock (m_mutex);
     for (auto &it : m_cursor_map)
       {
-#if defined (SERVER_MODE)
+	/*
 	if (cubthread::get_manager () != NULL)
 	  {
 	    destroy_cursor (&cubthread::get_entry (), it.first);
 	  }
-#endif // SERVER_MODE
+	*/
 	if (it.second)
 	  {
 	    delete it.second;

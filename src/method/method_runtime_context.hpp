@@ -59,6 +59,12 @@ namespace cubmethod
       runtime_context ();
       ~runtime_context ();
 
+      using invoke_group_map_type = std::unordered_map <METHOD_GROUP_ID, method_invoke_group *>;
+      using invoke_group_stack_type = std::deque <METHOD_GROUP_ID>;
+      using invoke_group_iter = std::unordered_map <METHOD_GROUP_ID, method_invoke_group *>::iterator;
+      using cursor_map_type = std::unordered_map <QUERY_ID, query_cursor *>;
+      using cursor_iter = std::unordered_map <QUERY_ID, query_cursor *>::iterator;
+
       query_cursor *create_cursor (cubthread::entry *thread_p, QUERY_ID query_id, bool oid_included = false);
       query_cursor *get_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
       void destroy_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
@@ -88,19 +94,21 @@ namespace cubmethod
       connection_pool &get_connection_pool ();
 
     private:
+      void destroy_group (METHOD_GROUP_ID id);
+
       void destroy_all_groups ();
       void destroy_all_cursors ();
 
       std::mutex m_mutex;
       std::condition_variable m_cond_var;
 
-      std::deque <METHOD_GROUP_ID> m_group_stack; // runtime stack
+      invoke_group_stack_type m_group_stack; // runtime stack
       std::unordered_set <QUERY_ID> m_returning_cursors;
 
-      std::unordered_map <METHOD_GROUP_ID, method_invoke_group *> m_group_map; // method executor storage
-      std::unordered_map <QUERY_ID, query_cursor *> m_cursor_map; // server-side cursor storage
+      invoke_group_map_type m_group_map; // method executor storage
+      cursor_map_type m_cursor_map; // server-side cursor storage
 
-      std::deque <METHOD_GROUP_ID> m_deferred_free_stack;
+      invoke_group_stack_type m_deferred_free_stack;
 
       connection_pool m_conn_pool;
 

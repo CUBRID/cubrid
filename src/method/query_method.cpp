@@ -220,8 +220,15 @@ method_dispatch_internal (packing_unpacker &unpacker)
 	  AU_RESTORE (save_auth);
 	  break;
 	case METHOD_REQUEST_END:
-	  cubmethod::get_callback_handler()->free_query_handle_all (false);
-	  break;
+	{
+	  std::vector <int> handlers;
+	  unpacker.unpack_int_vector (handlers);
+	  for (int i = 0; i < handlers.size (); i++)
+	    {
+	      cubmethod::get_callback_handler()->free_query_handle (handlers[i], false);
+	    }
+	}
+	break;
 	default:
 	  assert (false); // the other callbacks are disabled now
 	  return ER_FAILED;
