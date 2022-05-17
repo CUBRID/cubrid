@@ -10560,12 +10560,14 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
 static int
 cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENTRY * log_info_entry)
 {
-  LOG_LSA cur_log_rec_lsa, next_log_rec_lsa;
+  LOG_LSA cur_log_rec_lsa = LSA_INITIALIZER;
+  LOG_LSA next_log_rec_lsa = LSA_INITIALIZER;
 
   LOG_PAGE *log_page_p = NULL;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
-  LOG_RECORD_HEADER *log_rec_header, *nx_rec_header;
+  LOG_RECORD_HEADER *log_rec_header = NULL;
+  LOG_RECORD_HEADER *nx_rec_header = NULL;
 
   char *tran_user = NULL;
   int trid;
@@ -10601,7 +10603,6 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
       error = ER_CDC_NULL_EXTRACTION_LSA;
       goto error;
     }
-
 
   log_type = log_rec_header->type;
   trid = log_rec_header->trid;
@@ -10678,7 +10679,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	/*supplemental log info types : time, tran_user, undo image */
 	LOG_REC_SUPPLEMENT *supplement;
 	int supplement_length;
-	SUPPLEMENT_REC_TYPE rec_type;
+	SUPPLEMENT_REC_TYPE rec_type = LOG_SUPPLEMENT_LARGER_REC_TYPE;
 
 	bool is_zip_supplement = false;
 	bool is_unzip_supplement = false;
@@ -10965,9 +10966,9 @@ error:
 static void
 cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 {
-  LOG_LSA cur_log_rec_lsa;
-  LOG_LSA process_lsa;
-  LOG_LSA nxio_lsa;
+  LOG_LSA cur_log_rec_lsa = LSA_INITIALIZER;
+  LOG_LSA process_lsa = LSA_INITIALIZER;
+  LOG_LSA nxio_lsa = LSA_INITIALIZER;
 
   CDC_LOGINFO_ENTRY log_info_entry;
 
@@ -11191,9 +11192,9 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
   char *log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *log_page_p = NULL;
 
-  LOG_LSA process_lsa;
-  LOG_LSA current_logrec_lsa;
-  LOG_LSA prev_lsa;
+  LOG_LSA process_lsa = LSA_INITIALIZER;
+  LOG_LSA current_logrec_lsa = LSA_INITIALIZER;
+  LOG_LSA prev_lsa = LSA_INITIALIZER;
 
   LOG_RECTYPE log_type;
 
@@ -11516,7 +11517,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		redo_recdes->length = redo_length - sizeof (INT16);
 
 		tmp_ptr = (char *) redo_data + sizeof (redo_recdes->type);
-		redo_recdes->length += OR_HEADER_SIZE (tmp_ptr) - OR_CHN_OFFSET;
+		redo_recdes->length += OR_HEADER_SIZE (tmp_ptr);
 
 		redo_recdes->data = (char *) malloc (redo_recdes->length + MAX_ALIGNMENT);
 		if (redo_recdes->data == NULL)
