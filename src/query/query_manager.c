@@ -384,8 +384,10 @@ qmgr_free_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry_p, 
 
   query_p->next = NULL;
 
+  pthread_mutex_lock (&tran_entry_p->mutex);
   query_p->next = tran_entry_p->free_query_entry_list_p;
   tran_entry_p->free_query_entry_list_p = query_p;
+  pthread_mutex_unlock (&tran_entry_p->mutex);
 }
 
 /*
@@ -595,7 +597,6 @@ qmgr_delete_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_in
 
   if (query_p == NULL)
     {
-      pthread_mutex_unlock (&tran_entry_p->mutex);
       return;
     }
 
@@ -614,8 +615,9 @@ qmgr_delete_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_in
       prev_query_p->next = query_p->next;
     }
 
-  qmgr_free_query_entry (thread_p, tran_entry_p, query_p);
   pthread_mutex_unlock (&tran_entry_p->mutex);
+
+  qmgr_free_query_entry (thread_p, tran_entry_p, query_p);
 }
 
 static void
