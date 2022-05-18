@@ -12647,6 +12647,8 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   int length = 0;
 
   int record_length = 0;
+  int metadata_length = 0;
+  int buffer_size = 0;
 
   char *loginfo_buf = NULL;
   OID partitioned_classoid = OID_INITIALIZER;
@@ -12792,7 +12794,17 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	}
     }
 
-  loginfo_buf = (char *) malloc (record_length * 5 + MAX_ALIGNMENT);
+  /* metadata for CDC loginfo :
+   * loginfo length (int) + trid (int) + user name (32) + data item type (int) + dml_type (int) + classoid (int64)
+   * + number of changed column (int) + changed column index (int * number of column)
+   * + number of condition column + condition column index (int * number of column) */
+
+  metadata_length = OR_INT_SIZE + OR_INT_SIZE + DB_MAX_USER_LENGTH + OR_INT_SIZE + OR_INT_SIZE + OR_BIGINT_SIZE +
+    OR_INT_SIZE + (attr_info.num_values * OR_INT_SIZE) + OR_INT_SIZE + (attr_info.num_values * OR_INT_SIZE);
+
+  buffer_size = (metadata_length + record_length) * 2;
+
+  loginfo_buf = (char *) malloc (buffer_size);
   if (loginfo_buf == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
