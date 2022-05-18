@@ -23,6 +23,7 @@
 #include "session.h"
 #include "xserver_interface.h"
 #include "thread_manager.hpp"
+#include "method_error.hpp"
 
 namespace cubmethod
 {
@@ -187,27 +188,7 @@ namespace cubmethod
   void
   runtime_context::set_local_error_for_interrupt ()
   {
-    switch (get_interrupt_id ())
-      {
-      /* no arg */
-      case ER_INTERRUPTED:
-      case ER_SP_TOO_MANY_NESTED_CALL:
-      case ER_NET_SERVER_SHUTDOWN:
-      case ER_SP_NOT_RUNNING_JVM:
-      case ER_SES_SESSION_EXPIRED:
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, get_interrupt_id (), 0);
-	break;
-
-      /* 1 arg */
-      case ER_SP_CANNOT_CONNECT_JVM:
-      case ER_SP_NETWORK_ERROR:
-      case ER_OUT_OF_VIRTUAL_MEMORY:
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, get_interrupt_id (), 1, get_interrupt_msg ().c_str ());
-	break;
-      default:
-	/* do nothing */
-	break;
-      }
+    handle_method_error (get_interrupt_id (), get_interrupt_msg ());
   }
 
   bool

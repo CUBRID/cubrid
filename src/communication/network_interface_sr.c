@@ -10442,6 +10442,12 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, top_on_stack->get_error_msg ().c_str ());
 	}
+      else
+	{
+	  // error is already set
+	  assert (er_errid () != NO_ERROR);
+	}
+
       std::string err_msg;
 
       if (er_errid () == ER_SP_EXECUTE_ERROR)
@@ -10458,7 +10464,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 	  error_code = er_errid ();
 	}
 
-      packer.set_buffer_and_pack_all (eb, err_msg);
+      packer.set_buffer_and_pack_all (eb, er_errid (), err_msg);
       (void) return_error_to_client (thread_p, rid);
     }
 
