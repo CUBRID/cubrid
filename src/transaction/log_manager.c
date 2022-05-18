@@ -12649,6 +12649,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   int record_length = 0;
   int metadata_length = 0;
   int buffer_size = 0;
+  int align_size = 0;
 
   char *loginfo_buf = NULL;
   OID partitioned_classoid = OID_INITIALIZER;
@@ -12802,9 +12803,12 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   metadata_length = OR_INT_SIZE + OR_INT_SIZE + DB_MAX_USER_LENGTH + OR_INT_SIZE + OR_INT_SIZE + OR_BIGINT_SIZE +
     OR_INT_SIZE + (attr_info.num_values * OR_INT_SIZE) + OR_INT_SIZE + (attr_info.num_values * OR_INT_SIZE);
 
-  buffer_size = (metadata_length + record_length) * 2;
+  /* sum of the pad size through aligning the attributes (changed column, cond column) */
+  align_size = INT_ALIGNMENT * attr_info.num_values * 2;
 
-  loginfo_buf = (char *) malloc (buffer_size);
+  buffer_size = metadata_length + record_length + align_size;
+
+  loginfo_buf = (char *) malloc (buffer_size + MAX_ALIGNMENT);
   if (loginfo_buf == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
