@@ -314,7 +314,7 @@ extern int db_Disable_modifications;
   do \
     { \
       if (cdc_Gl.producer.temp_logbuf[(process_lsa)->pageid % 2].log_page_p->hdr.logical_pageid \
-          == (process_lsa)->pageid) \
+          != (process_lsa)->pageid) \
       { \
         if (logpb_fetch_page ((thread_p), (process_lsa), LOG_CS_FORCE_USE, (log_page_p)) \
             != NO_ERROR) \
