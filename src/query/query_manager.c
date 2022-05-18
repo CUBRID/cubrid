@@ -276,17 +276,17 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
 
   static_assert (QMGR_MAX_QUERY_ENTRY_PER_TRAN < SHRT_MAX, "Bad query entry count");
 
-  pthread_mutex_lock (&tran_entry_p->mutex);
-
   query_p = tran_entry_p->free_query_entry_list_p;
 
   if (query_p)
     {
+      pthread_mutex_lock (&tran_entry_p->mutex);
       tran_entry_p->free_query_entry_list_p = query_p->next;
+      pthread_mutex_unlock (&tran_entry_p->mutex);
     }
   else if (QMGR_MAX_QUERY_ENTRY_PER_TRAN < tran_entry_p->num_query_entries)
     {
-      pthread_mutex_unlock (&tran_entry_p->mutex);
+
       assert (QMGR_MAX_QUERY_ENTRY_PER_TRAN >= tran_entry_p->num_query_entries);
       return NULL;
     }
@@ -295,7 +295,6 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
       query_p = (QMGR_QUERY_ENTRY *) malloc (sizeof (QMGR_QUERY_ENTRY));
       if (query_p == NULL)
 	{
-	  pthread_mutex_unlock (&tran_entry_p->mutex);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QMGR_QUERY_ENTRY));
 	  return NULL;
 	}
@@ -352,13 +351,10 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
   /* just a safe guard for a release build. I don't expect it will be hit. */
   if (usable == false)
     {
-      pthread_mutex_unlock (&tran_entry_p->mutex);
       qmgr_free_query_entry (thread_p, tran_entry_p, query_p);
       return NULL;
     }
 #endif /* NDEBUG */
-
-  pthread_mutex_unlock (&tran_entry_p->mutex);
 
   return query_p;
 }
