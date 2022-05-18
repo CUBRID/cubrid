@@ -243,7 +243,6 @@ get_token (char *str_p, char **token_p)
   char *p, *end, *token = NULL;
   int length;
 
-  token = NULL;
   p = str_p;
   while (char_isspace ((int) *p) && *p != '\0')
     {
