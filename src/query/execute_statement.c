@@ -17815,7 +17815,11 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
 	}
     }
 
-  sm_get_synonym_target_name (instance_obj, old_target_name, DB_MAX_IDENTIFIER_LENGTH);
+  if (sm_get_synonym_target_name (instance_obj, old_target_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
   old_target_obj = locator_find_class_with_purpose (old_target_name, false);
   old_target_obj_id = ws_identifier (old_target_obj);
 
@@ -18233,7 +18237,11 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
 	}
     }
 
-  sm_get_synonym_target_name (instance_obj, old_target_name, DB_MAX_IDENTIFIER_LENGTH);
+  if (sm_get_synonym_target_name (instance_obj, old_target_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
   old_target_obj = locator_find_class_with_purpose (old_target_name, false);
   old_target_obj_id = ws_identifier (old_target_obj);
 
@@ -18413,7 +18421,11 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
       goto end;
     }
 
-  sm_get_synonym_target_name (instance_obj, old_target_name, DB_MAX_IDENTIFIER_LENGTH);
+  if (sm_get_synonym_target_name (instance_obj, old_target_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
   old_target_obj = locator_find_class_with_purpose (old_target_name, false);
   old_target_obj_id = ws_identifier (old_target_obj);
 

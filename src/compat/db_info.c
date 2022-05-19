@@ -176,7 +176,7 @@ db_find_synonym (const char *name)
 
 /*
  * db_get_synonym_target_name() - get target_name.
- *   return: output buffer pointer
+ *   return: output buffer pointer or NULL on error
  *   synonym(in): synonym object
  *   buf(out): output buffer
  *   buf_size(in): output buffer length
