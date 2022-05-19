@@ -393,7 +393,7 @@ namespace cubmethod
     error = method_send_data_to_client (&thread_ref, *m_header, code, sql, flag);
     if (error != NO_ERROR)
       {
-	return ER_FAILED;
+	return error;
       }
 
     auto get_prepare_info = [&] (cubmem::block & b)
@@ -538,7 +538,7 @@ namespace cubmethod
     error = method_send_data_to_client (&thread_ref, *m_header, code, request);
     if (error != NO_ERROR)
       {
-	return ER_FAILED;
+	return error;
       }
 
     error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
@@ -558,7 +558,7 @@ namespace cubmethod
     error = method_send_data_to_client (&thread_ref, *m_header, code, request);
     if (error != NO_ERROR)
       {
-	return ER_FAILED;
+	return error;
       }
 
     error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
@@ -577,7 +577,7 @@ namespace cubmethod
     error = method_send_data_to_client (&thread_ref, *m_header, code, command, oid);
     if (error != NO_ERROR)
       {
-	return ER_FAILED;
+	return error;
       }
 
     error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
@@ -600,7 +600,7 @@ namespace cubmethod
     error = method_send_data_to_client (&thread_ref, *m_header, code, request);
     if (error != NO_ERROR)
       {
-	return ER_FAILED;
+	return error;
       }
 
     error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
@@ -619,7 +619,7 @@ namespace cubmethod
     error = method_send_data_to_client (&thread_ref, *m_header, code, query_id);
     if (error != NO_ERROR)
       {
-	return ER_FAILED;
+	return error;
       }
 
     auto get_make_outresult_info = [&] (cubmem::block & b)
@@ -659,7 +659,7 @@ namespace cubmethod
     error = method_send_data_to_client (&thread_ref, *m_header, code, handler_id);
     if (error != NO_ERROR)
       {
-	return ER_FAILED;
+	return error;
       }
 
     error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
