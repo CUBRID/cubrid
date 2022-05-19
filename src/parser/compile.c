@@ -748,7 +748,7 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
     {
       class_name = db_get_synonym_target_name (synonym_mop, target_name, DB_MAX_IDENTIFIER_LENGTH);
       if (class_name == NULL)
-        {
+	{
 	  ASSERT_ERROR_AND_SET (error);
 	  return error;
 	}
