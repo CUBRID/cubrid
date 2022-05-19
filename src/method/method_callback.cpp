@@ -109,19 +109,15 @@ namespace cubmethod
     unpacker.unpack_all (sql, flag);
 
     /* find in m_sql_handler_map */
-    prepare_info info;
     query_handler *handler = get_query_handler_by_sql (sql);
-
-    bool is_cache_used = false;
     if (handler != nullptr)
       {
-	handler->get_prepare_info (info);
+	/* found in statement handler cache */
 	handler->set_is_occupied (true);
-	is_cache_used = true;
       }
     else
       {
-	/* not found in statement handler */
+	/* not found in statement handler cache */
 	handler = new_query_handler ();
 	if (handler == nullptr)
 	  {
@@ -130,13 +126,17 @@ namespace cubmethod
 	  }
 	else
 	  {
-	    info = handler->prepare (sql, flag);
+	    if (handler->prepare (sql, flag) == NO_ERROR)
+	      {
+		// add to statement handler cache
+		m_sql_handler_map.emplace (sql, handler->get_id ());
+	      }
 	  }
       }
 
     /* DDL audit */
     logddl_set_sql_text ((char *) sql.c_str (), sql.size ());
-    logddl_set_stmt_type (info.stmt_type);
+    logddl_set_stmt_type (handler ? handler->get_statement_type () : CUBRID_STMT_NONE);
     logddl_set_err_code (m_error_ctx.get_error ());
 
     if (m_error_ctx.has_error())
@@ -145,14 +145,7 @@ namespace cubmethod
       }
     else
       {
-	// add to statement handler cache
-	if (is_cache_used == false)
-	  {
-	    m_sql_handler_map.emplace (sql, info.handle_id);
-	  }
-	info.handle_id = handler->get_id ();
-
-	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, handler->get_prepare_info ());
       }
   }
 
@@ -169,15 +162,18 @@ namespace cubmethod
 	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
 	return ER_FAILED;
       }
-
-    execute_info info = handler->execute (request);
-
-    /* register query_id for out resultset */
-    const cubmethod::query_result &qresult = handler->get_result();
-    if (qresult.stmt_type == CUBRID_STMT_SELECT)
+    else
       {
-	uint64_t qid = (uint64_t) info.qresult_info.query_id;
-	m_qid_handler_map[qid] = request.handler_id;
+	if (handler->execute (request) == NO_ERROR)
+	  {
+	    /* register query_id for out resultset */
+	    const cubmethod::query_result &qresult = handler->get_result();
+	    if (qresult.stmt_type == CUBRID_STMT_SELECT)
+	      {
+		uint64_t qid = (uint64_t) handler->get_execute_info ().qresult_info.query_id;
+		m_qid_handler_map[qid] = request.handler_id;
+	      }
+	  }
       }
 
     /* DDL audit */
@@ -189,7 +185,7 @@ namespace cubmethod
       }
     else
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, handler->get_execute_info ());
       }
   }
 
@@ -202,7 +198,7 @@ namespace cubmethod
     cubmethod::query_handler *query_handler = get_query_handler_by_query_id (query_id);
     if (query_handler)
       {
-	const cubmethod::query_result &qresult = query_handler->get_result();
+	const query_result &qresult = query_handler->get_result();
 
 	make_outresult_info info;
 	query_handler->set_prepare_column_list_info (info.column_infos);

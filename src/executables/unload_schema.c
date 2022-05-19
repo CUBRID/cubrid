@@ -876,105 +876,109 @@ export_synonym (print_output & output_ctx)
 
   is_dba_group_member = au_is_dba_group_member (Au_user);
 
-  output_ctx ("\n\n");
-
-  while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+  if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
     {
-      for (i = 0; i < SYNONYM_VALUE_INDEX_MAX; i++)
+      output_ctx ("\n\n");
+
+      do
 	{
-	  error = db_query_get_tuple_value (query_result, i, &values[i]);
-	  if (error != NO_ERROR)
+	  for (i = 0; i < SYNONYM_VALUE_INDEX_MAX; i++)
 	    {
-	      ASSERT_ERROR ();
-	      goto end;
+	      error = db_query_get_tuple_value (query_result, i, &values[i]);
+	      if (error != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto end;
+		}
+
+	      /* Validation of the result value */
+	      switch (i)
+		{
+		case SYNONYM_NAME:
+		case SYNONYM_OWNER_NAME:
+		case SYNONYM_TARGET_NAME:
+		case SYNONYM_TARGET_OWNER_NAME:
+		  {
+		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		      {
+			ERROR_SET_ERROR (error, ER_SYNONYM_INVALID_VALUE);
+			goto end;
+		      }
+		  }
+		  break;
+
+		case SYNONYM_OWNER:
+		  {
+		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_OBJECT)
+		      {
+			ERROR_SET_ERROR (error, ER_SYNONYM_INVALID_VALUE);
+			goto end;
+		      }
+		  }
+		  break;
+
+		case SYNONYM_IS_PUBLIC:
+		  {
+		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_INTEGER)
+		      {
+			ERROR_SET_ERROR (error, ER_SYNONYM_INVALID_VALUE);
+			goto end;
+		      }
+		  }
+		  break;
+
+		case SYNONYM_COMMENT:
+		  {
+		    if (DB_IS_NULL (&values[i]) == false && DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		      {
+			ERROR_SET_ERROR (error, ER_SYNONYM_INVALID_VALUE);
+			goto end;
+		      }
+		  }
+		  break;
+
+		default:
+		  ERROR_SET_ERROR (error, ER_SYNONYM_INVALID_VALUE);
+		  goto end;
+		}
 	    }
 
-	  /* Validation of the result value */
-	  switch (i)
+	  synonym_name = db_get_string (&values[SYNONYM_NAME]);
+	  synonym_owner = db_get_object (&values[SYNONYM_OWNER]);
+	  synonym_owner_name = db_get_string (&values[SYNONYM_OWNER_NAME]);
+	  is_public = db_get_int (&values[SYNONYM_IS_PUBLIC]);
+	  target_name = db_get_string (&values[SYNONYM_TARGET_NAME]);
+	  target_owner_name = db_get_string (&values[SYNONYM_TARGET_OWNER_NAME]);
+
+	  if (!is_dba_group_member && !ws_is_same_object (Au_user, synonym_owner))
 	    {
-	    case SYNONYM_NAME:
-	    case SYNONYM_OWNER_NAME:
-	    case SYNONYM_TARGET_NAME:
-	    case SYNONYM_TARGET_OWNER_NAME:
-	      {
-		if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
-		  {
-		    ERROR_SET_ERROR (error, ER_SYNONYM_INVALID_VALUE);
-		    goto end;
-		  }
-	      }
-	      break;
+	      continue;
+	    }
 
-	    case SYNONYM_OWNER:
-	      {
-		if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_OBJECT)
-		  {
-		    ERROR_SET_ERROR (error, ER_SYNONYM_INVALID_VALUE);
-		    goto end;
-		  }
-	      }
-	      break;
+	  if (is_public == 1)
+	    {
+	      output_ctx ("CREATE PUBLIC");
+	    }
+	  else
+	    {
+	      output_ctx ("CREATE PRIVATE");
+	    }
+	  output_ctx (" SYNONYM %s%s%s.%s%s%s FOR %s%s%s.%s%s%s", PRINT_IDENTIFIER (synonym_owner_name),
+		      PRINT_IDENTIFIER (synonym_name), PRINT_IDENTIFIER (target_owner_name),
+		      PRINT_IDENTIFIER (target_name));
+	  if (DB_IS_NULL (&values[SYNONYM_COMMENT]) == false)
+	    {
+	      output_ctx (" COMMENT ");
+	      desc_value_print (output_ctx, &values[SYNONYM_COMMENT]);
+	    }
+	  output_ctx (";\n");
 
-	    case SYNONYM_IS_PUBLIC:
-	      {
-		if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_INTEGER)
-		  {
-		    ERROR_SET_ERROR (error, ER_SYNONYM_INVALID_VALUE);
-		    goto end;
-		  }
-	      }
-	      break;
-
-	    case SYNONYM_COMMENT:
-	      {
-		if (DB_IS_NULL (&values[i]) == false && DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
-		  {
-		    ERROR_SET_ERROR (error, ER_SYNONYM_INVALID_VALUE);
-		    goto end;
-		  }
-	      }
-	      break;
-
-	    default:
-	      ERROR_SET_ERROR (error, ER_SYNONYM_INVALID_VALUE);
-	      goto end;
+	  for (i = 0; i < SYNONYM_VALUE_INDEX_MAX; i++)
+	    {
+	      db_value_clear (&values[i]);
 	    }
 	}
-
-      synonym_name = db_get_string (&values[SYNONYM_NAME]);
-      synonym_owner = db_get_object (&values[SYNONYM_OWNER]);
-      synonym_owner_name = db_get_string (&values[SYNONYM_OWNER_NAME]);
-      is_public = db_get_int (&values[SYNONYM_IS_PUBLIC]);
-      target_name = db_get_string (&values[SYNONYM_TARGET_NAME]);
-      target_owner_name = db_get_string (&values[SYNONYM_TARGET_OWNER_NAME]);
-
-      if (!is_dba_group_member && !ws_is_same_object (Au_user, synonym_owner))
-	{
-	  continue;
-	}
-
-      if (is_public == 1)
-	{
-	  output_ctx ("create public");
-	}
-      else
-	{
-	  output_ctx ("create private");
-	}
-      output_ctx (" synonym %s%s%s.%s%s%s for %s%s%s.%s%s%s", PRINT_IDENTIFIER (synonym_owner_name),
-		  PRINT_IDENTIFIER (synonym_name), PRINT_IDENTIFIER (target_owner_name),
-		  PRINT_IDENTIFIER (target_name));
-      if (DB_IS_NULL (&values[SYNONYM_COMMENT]) == false)
-	{
-	  output_ctx (" comment ");
-	  desc_value_print (output_ctx, &values[SYNONYM_COMMENT]);
-	}
-      output_ctx (";\n");
-
-      for (i = 0; i < SYNONYM_VALUE_INDEX_MAX; i++)
-	{
-	  db_value_clear (&values[i]);
-	}
+      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
     }
 
 end:

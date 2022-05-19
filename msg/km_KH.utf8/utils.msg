@@ -278,7 +278,9 @@ Available command:\n\
     on          gateway-name\n\
     off         gateway-name\n\
     reset       gateway-name\n\
-    acl         <status|reload> [gateway-name]\n\
+    acl         <status|reload> [gateway-name]\n
+46 The length of owner_name is required to be less than %1$d and the length of class_name is required to be less than %2$d bytes.\n
+47 Invalid format for owner_name.class_name ('%1$s').\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: -t option is ignored in stand-alone mode execution.\n
@@ -1220,6 +1222,7 @@ valid options:\n\
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Failed to load table names in %1$s.\n
 2 checksumdb must run on an HA active server. %1$s (current state: %2$s)\n
+3 The owner of the table to save the checksum result must be DBA.\n
 58 HA feature is not supported in this platform.\n
 59 checksumdb cannot run as standalone mode.\n
 60 \
@@ -1233,7 +1236,7 @@ valid options:\n\
   -i, --include-class-file=FILE input FILE of table names to include\n\
   -e, --exclude-class-file=FILE input FILE of table names to exclude; either -i or -e can be used, not both\n\
   -t, --timeout=NUMBER          query timeout in milliseconds; default: 1000 ms\n\
-  -n, --table-name=NAME         table name to save checksum results; default: db_ha_checksums\n\
+  -n, --table-name=NAME         table name to save checksum results; default: dba.db_ha_checksum\n\
   -r, --report-only             report replication integrity based on checksum calculation\n\
                                 any options except --table-name will be ignored\n\
       --resume                  resume calculating checksum\n\
@@ -1276,9 +1279,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 Transaction ID should be entered in %1$d seconds. The timeout can be adjusted through the 'flashback_timeout' setting in 'cubrid.conf'.\n
 13 Flashback is already running. Flashback cannot be run by two processes.\n
 14 Flashback cannot run as standalone mode.\n
-15 The length of owner_name is required to be less than %1$d and the length of class_name is required to be less than %2$d bytes.\n
-16 Invalid format for owner_name.class_name ('%1$s').\n
-17 The system catalog class (%1$s) is not supported in flashback.\n
+15 The system catalog class (%1$s) is not supported in flashback.\n
 60 \
 flashback: Provides statements to flashback a specific transaction.\n\
 usage: %1$s flashback [OPTION] database-name owner_name.class_name1 [owner_name.class_name2 ...]\n\

@@ -297,11 +297,6 @@ jsp_connect_server_tcp (int server_port)
       return sockfd;		/* INVALID_SOCKET (-1) */
     }
 
-#if defined(CS_MODE)
-  /* check for remote host */
-  server_host = net_client_get_server_host ();
-#endif
-
   inaddr = inet_addr (server_host);
   memset ((void *) &tcp_srv_addr, 0, sizeof (tcp_srv_addr));
   tcp_srv_addr.sin_family = AF_INET;

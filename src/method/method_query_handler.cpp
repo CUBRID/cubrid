@@ -32,19 +32,24 @@ extern void jsp_unset_prepare_call ();
 namespace cubmethod
 {
   query_handler::query_handler (error_context &ctx, int id)
-    : m_id (id), m_error_ctx (ctx)
+    : m_id (id)
+    , m_error_ctx (ctx)
+    , m_sql_stmt ()
+    , m_stmt_type (CUBRID_STMT_NONE)
+    , m_prepare_flag (0x00)
+    , m_session (nullptr)
+    , m_is_prepared (false)
+    , m_use_plan_cache (false)
+    , m_num_markers (-1)
+    , m_max_col_size (-1)
+    , m_has_result_set (false)
+    , m_is_occupied (false)
+    , m_prepare_info ()
+    , m_execute_info ()
+    , m_prepare_call_info ()
+    , m_query_result ()
   {
-    m_is_prepared = false;
-    m_use_plan_cache = false;
-    m_is_occupied = false;
-
-    m_session = nullptr;
-
-    m_num_markers = -1;
-    m_max_col_size = -1;
-    m_max_row = -1;
-
-    m_has_result_set = false;
+    //
   }
 
   query_handler::~query_handler ()
@@ -58,7 +63,6 @@ namespace cubmethod
   {
     end_qresult ();
     m_is_occupied = false;
-    m_prepare_call_info.clear ();
   }
 
   query_result::query_result ()
@@ -74,9 +78,22 @@ namespace cubmethod
     include_oid = false;
   }
 
-  int query_handler::get_id ()
+  int
+  query_handler::get_id () const
   {
     return m_id;
+  }
+
+  std::string
+  query_handler::get_sql_stmt () const
+  {
+    return m_sql_stmt;
+  }
+
+  int
+  query_handler::get_statement_type () const
+  {
+    return m_stmt_type;
   }
 
   int
@@ -90,7 +107,7 @@ namespace cubmethod
     return m_num_markers;
   }
 
-  bool query_handler::is_prepared ()
+  bool query_handler::is_prepared () const
   {
     return m_is_prepared;
   }
@@ -105,16 +122,16 @@ namespace cubmethod
     m_is_occupied = flag;
   }
 
-  bool query_handler::get_prepare_info (prepare_info &info)
+  prepare_info &
+  query_handler::get_prepare_info ()
   {
-    if (is_prepared())
-      {
-	info.stmt_type = m_query_result.stmt_type;
-	info.num_markers = get_num_markers ();
-	set_prepare_column_list_info (info.column_infos);
-	return true;
-      }
-    return false;
+    return m_prepare_info;
+  }
+
+  execute_info &
+  query_handler::get_execute_info ()
+  {
+    return m_execute_info;
   }
 
   DB_SESSION *
@@ -139,90 +156,74 @@ namespace cubmethod
     return m_query_result;
   }
 
-  prepare_info
+  int
   query_handler::prepare (std::string sql, int flag)
   {
-    m_sql_stmt = sql;
-    m_query_info_flag = (flag & PREPARE_QUERY_INFO) ? true : false;
-    m_is_updatable = (flag & PREPARE_UPDATABLE) ? true : false;
+    m_sql_stmt.assign (sql);
+    m_prepare_flag = flag;
 
     int error = NO_ERROR;
-    prepare_info info;
-    if (flag & PREPARE_CALL)
+    if (m_prepare_flag & PREPARE_CALL)
       {
-	error = prepare_call (info, flag);
+	error = prepare_call ();
       }
     else
       {
-	error = prepare_query (info, flag);
+	error = prepare_query ();
       }
 
     if (error == NO_ERROR)
       {
-	info.handle_id = get_id ();
-	info.stmt_type = m_query_result.stmt_type;
-	info.num_markers = get_num_markers ();
-	set_prepare_column_list_info (info.column_infos);
+	m_prepare_info.handle_id = get_id ();
+	m_prepare_info.stmt_type = m_query_result.stmt_type;
+	m_prepare_info.num_markers = get_num_markers ();
+	set_prepare_column_list_info (m_prepare_info.column_infos);
 
 	m_is_occupied = true;
       }
     else
       {
+	// error handling
 	close_and_free_session ();
       }
 
-    return info;
+    return error;
   }
 
-  execute_info
+  int
   query_handler::execute (const execute_request &request)
   {
     int error = NO_ERROR;
 
     int flag = request.execute_flag;
     int max_col_size = request.max_field;
-    int max_row = -1; // TODO
     const std::vector<DB_VALUE> &bind_values = request.param_values;
+    int max_row = -1; // TODO
 
     // 0) clear qresult
     end_qresult ();
 
-    execute_info info;
     if (m_prepare_flag & PREPARE_CALL)
       {
-	error = execute_internal_call (info, flag, max_col_size, max_row, bind_values);
-	if (error == NO_ERROR)
-	  {
-	    assert (m_prepare_call_info.param_modes.size() == request.param_modes.size());
-	    for (int i = 0; i < (int) m_prepare_call_info.param_modes.size(); i++)
-	      {
-		m_prepare_call_info.param_modes[i] = request.param_modes[i];
-	      }
-	    info.call_info = &m_prepare_call_info;
-	  }
+	error = execute_internal_call (flag, max_col_size, max_row, bind_values, request.param_modes);
       }
     else
       {
-	error = execute_internal (info, flag, max_col_size, max_row, bind_values);
+	error = execute_internal (flag, max_col_size, max_row, bind_values);
       }
 
     if (error == NO_ERROR)
       {
 	/* set max_col_size */
-	if (m_max_row == -1)
-	  {
-	    m_max_row = max_row;
-	  }
 	m_max_col_size = max_col_size;
-
-	info.handle_id = get_id ();
+	m_execute_info.handle_id = get_id ();
 
 	/* include column info? */
 	if (db_check_single_query (m_session) != NO_ERROR) /* ER_IT_MULTIPLE_STATEMENT */
 	  {
-	    info.stmt_type = m_query_result.stmt_type;
-	    info.num_markers = get_num_markers ();
-	    set_prepare_column_list_info (info.column_infos);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_MULTIPLE_STATEMENT, 0);
+	    m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	    return ER_FAILED;
 	  }
       }
     else
@@ -234,7 +235,7 @@ namespace cubmethod
 	  }
       }
 
-    return info;
+    return error;
   }
 
   get_generated_keys_info
@@ -510,15 +511,16 @@ namespace cubmethod
   }
 
   int
-  query_handler::execute_internal_call (execute_info &info, int flag, int max_col_size, int max_row,
-					const std::vector<DB_VALUE> &bind_values)
+  query_handler::execute_internal_call (int flag, int max_col_size, int max_row,
+					const std::vector<DB_VALUE> &bind_values, const std::vector<int> &param_modes)
   {
     int error = NO_ERROR;
 
-    prepare_call_info &call_info = m_prepare_call_info;
-
     int num_bind = get_num_markers ();
     assert (num_bind == (int) bind_values.size ());
+
+    prepare_call_info &call_info = m_prepare_call_info;
+    // set host variables
     if (num_bind > 0)
       {
 	if (call_info.is_first_out)
@@ -570,7 +572,7 @@ namespace cubmethod
 	call_info.dbval_args[i] = out_vals[j];
       }
 
-    info.num_affected = n;
+    m_execute_info.num_affected = n;
 
     m_has_result_set = true;
 
@@ -578,7 +580,19 @@ namespace cubmethod
     m_query_result.result = result;
     m_query_result.tuple_count = n;
 
-    error = set_qresult_info (info.qresult_info);
+    error = set_qresult_info (m_execute_info.qresult_info);
+
+    // set prepare call info
+    if (error == NO_ERROR)
+      {
+	assert (call_info.param_modes.size() == param_modes.size());
+	for (int i = 0; i < (int) call_info.param_modes.size(); i++)
+	  {
+	    call_info.param_modes[i] = param_modes[i];
+	  }
+	m_execute_info.call_info = &call_info;
+      }
+
     return error;
   }
 
@@ -603,33 +617,14 @@ namespace cubmethod
   }
 
   int
-  query_handler::execute_internal (execute_info &info, int flag, int max_col_size, int max_row,
+  query_handler::execute_internal (int flag, int max_col_size, int max_row,
 				   const std::vector<DB_VALUE> &bind_values)
   {
     int error = NO_ERROR;
 
-    int stmt_id;
-    bool recompile = false;
+    assert (is_prepared ());
 
-    // 1) check is prepared
-    if (m_is_prepared == true && m_query_info_flag == false && (flag & EXEC_QUERY_INFO))
-      {
-	m_is_prepared = false;
-	recompile = true;
-      }
-
-    if (m_is_prepared == false)
-      {
-	close_and_free_session ();
-	m_session = db_open_buffer (m_sql_stmt.c_str ());
-	if (!m_session)
-	  {
-	    m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
-	    return ER_FAILED;
-	  }
-      }
-
-    // 2) bind host variables
+    // bind host variables
     int num_bind = get_num_markers ();
     assert (num_bind == (int) bind_values.size ());
     if (num_bind > 0)
@@ -650,28 +645,19 @@ namespace cubmethod
 	db_session_set_return_generated_keys ((DB_SESSION *) m_session, false);
       }
 
+    int stmt_id = -1;
+
+    // check unexpected behavior trying to execute query handler un-prepared
     if (m_is_prepared == false)
       {
-	if (m_prepare_flag & PREPARE_XASL_CACHE_PINNED)
-	  {
-	    db_session_set_xasl_cache_pinned (m_session, true, recompile);
-	  }
-
-	stmt_id = db_compile_statement (m_session);
-	if (stmt_id < 0)
-	  {
-	    m_error_ctx.set_error (stmt_id, NULL, __FILE__, __LINE__);
-	    return ER_FAILED;
-	  }
+	assert (false); // something wrong
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_STMT_POOLING, NULL, __FILE__, __LINE__);
+	return ER_FAILED;
       }
     else
       {
 	stmt_id = m_query_result.stmt_id;
       }
-
-    /* no holdable */
-    // db_session_set_holdable ((DB_SESSION *) srv_handle->session, srv_handle->is_holdable);
-    // srv_handle->is_from_current_transaction = true;
 
     DB_QUERY_RESULT *result = NULL;
     int n = db_execute_and_keep_statement (m_session, stmt_id, &result);
@@ -691,7 +677,7 @@ namespace cubmethod
 	// TODO: max_row?
       }
 
-    info.num_affected = n;
+    m_execute_info.num_affected = n;
 
     if (m_prepare_flag & PREPARE_XASL_CACHE_PINNED)
       {
@@ -710,7 +696,7 @@ namespace cubmethod
 	m_has_result_set = true;
       }
 
-    error = set_qresult_info (info.qresult_info);
+    error = set_qresult_info (m_execute_info.qresult_info);
 
     return error;
   }
@@ -734,8 +720,10 @@ namespace cubmethod
   }
 
   int
-  query_handler::prepare_query (prepare_info &info, int &flag)
+  query_handler::prepare_query ()
   {
+    int &flag = m_prepare_flag;
+
     m_session = db_open_buffer (m_sql_stmt.c_str());
     if (!m_session)
       {
@@ -747,8 +735,7 @@ namespace cubmethod
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_MULTIPLE_STATEMENT, 0);
 	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
-	er_clear ();
-	return ER_IT_MULTIPLE_STATEMENT;
+	return ER_FAILED;
       }
 
     flag |= (flag & PREPARE_UPDATABLE) ? PREPARE_INCLUDE_OID : 0;
@@ -762,26 +749,25 @@ namespace cubmethod
 	db_session_set_xasl_cache_pinned (m_session, true, false);
       }
 
-    char stmt_type = CUBRID_STMT_NONE;
-    int num_markers = 0;
+    m_stmt_type = CUBRID_STMT_NONE;
     int stmt_id = db_compile_statement (m_session);
     if (stmt_id < 0)
       {
-	stmt_type = get_stmt_type (m_sql_stmt);
-	if (stmt_id == ER_PT_SEMANTIC && stmt_type != CUBRID_MAX_STMT_TYPE)
+	m_stmt_type = get_stmt_type (m_sql_stmt);
+	if (stmt_id == ER_PT_SEMANTIC && m_stmt_type != CUBRID_STMT_SELECT && m_stmt_type != CUBRID_MAX_STMT_TYPE)
 	  {
 	    close_and_free_session ();
 	  }
 	else
 	  {
 	    m_error_ctx.set_error (stmt_id, db_error_string (1), __FILE__, __LINE__);
-	    return ER_FAILED;
 	  }
 	m_is_prepared = false;
+	return ER_FAILED;
       }
     else
       {
-	stmt_type = db_get_statement_type (m_session, stmt_id);
+	m_stmt_type = db_get_statement_type (m_session, stmt_id);
 	m_is_prepared = true;
       }
 
@@ -789,28 +775,27 @@ namespace cubmethod
 
     /* prepare result set */
     m_num_markers = get_num_markers ();
-    m_prepare_flag = flag;
 
     query_result &q_result = m_query_result;
-    q_result.stmt_type = stmt_type;
+    q_result.stmt_type = m_stmt_type;
     q_result.stmt_id = stmt_id;
 
     return NO_ERROR;
   }
 
   int
-  query_handler::prepare_call (prepare_info &info, int &flag)
+  query_handler::prepare_call ()
   {
     std::string sql_stmt_copy = m_sql_stmt;
     int error = m_prepare_call_info.set_is_first_out (sql_stmt_copy);
     if (error != NO_ERROR)
       {
 	m_error_ctx.set_error (METHOD_CALLBACK_ER_INVALID_CALL_STMT, NULL, __FILE__, __LINE__);
-	return error;
+	return ER_FAILED;
       }
 
     str_trim (sql_stmt_copy);
-    char stmt_type = get_stmt_type (sql_stmt_copy);
+    int stmt_type = get_stmt_type (sql_stmt_copy);
     if (stmt_type != CUBRID_STMT_CALL)
       {
 	m_error_ctx.set_error (METHOD_CALLBACK_ER_INVALID_CALL_STMT, NULL, __FILE__, __LINE__);
@@ -829,7 +814,7 @@ namespace cubmethod
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_MULTIPLE_STATEMENT, 0);
 	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
 	er_clear ();
-	return ER_IT_MULTIPLE_STATEMENT;
+	return ER_FAILED;
       }
 
     int stmt_id = db_compile_statement (m_session);
@@ -839,19 +824,17 @@ namespace cubmethod
 	return ER_FAILED;
       }
 
-    int num_markers = get_num_markers ();
-    stmt_type = CUBRID_STMT_CALL_SP;
     m_is_prepared = true;
-    m_prepare_call_info.set_prepare_call_info (num_markers);
 
     db_get_cacheinfo (m_session, stmt_id, &m_use_plan_cache, NULL);
 
     /* prepare result set */
-    m_num_markers = num_markers;
-    m_prepare_flag = flag;
+    m_stmt_type = CUBRID_STMT_CALL_SP;
+    m_num_markers = get_num_markers ();
+    m_prepare_call_info.set_prepare_call_info (m_num_markers);
 
     query_result &q_result = m_query_result;
-    q_result.stmt_type = stmt_type;
+    q_result.stmt_type = m_stmt_type;
     q_result.stmt_id = stmt_id;
 
     return NO_ERROR;

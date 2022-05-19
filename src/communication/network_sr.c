@@ -684,6 +684,11 @@ net_server_init (void)
   req_p->processing_function = sserial_decache;
   req_p->name = "NET_SERVER_SERIAL_DECACHE";
 
+  req_p = &net_Requests[NET_SERVER_SYNONYM_REMOVE_XASL_BY_OID];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = ssynonym_remove_xasl_by_oid;
+  req_p->name = "NET_SERVER_SYNONYM_REMOVE_XASL_BY_OID";
+
   req_p = &net_Requests[NET_SERVER_QPROC_GET_SERVER_INFO];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sqp_get_server_info;

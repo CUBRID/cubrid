@@ -47,6 +47,7 @@
 #include "network_interface_cl.h"
 #include "transform.h"
 #include "dbtype.h"
+#include "optimizer.h"		/* qo_need_skip_execution () */
 
 /* associates labels with DB_VALUES */
 static MHT_TABLE *pt_Label_table = NULL;
@@ -1355,7 +1356,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
       break;
 
     case PT_METHOD_CALL:
-      if (prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL) == 514)
+      if (qo_need_skip_execution ())
 	{
 	  // It is for the get_query_info.
 	  // Do not call method by constant folding

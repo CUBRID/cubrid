@@ -563,6 +563,10 @@ util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_na
 
   for (i = 0; i < num_tables; i++)
     {
+      const char *class_name_p = NULL;
+      const char *class_name_only = NULL;
+      char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+
       if (da_get (darray, i, table) != NO_ERROR)
 	{
 	  free (oids);
@@ -575,7 +579,18 @@ util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_na
 	  continue;
 	}
 
-      sm_user_specified_name (table, name, SM_MAX_IDENTIFIER_LENGTH);
+      sm_qualifier_name (table, owner_name, DB_MAX_USER_LENGTH);
+      class_name_only = sm_remove_qualifier_name (table);
+      if (strcasecmp (owner_name, "dba") == 0 && sm_check_system_class_by_name (class_name_only))
+	{
+	  class_name_p = class_name_only;
+	}
+      else
+	{
+	  class_name_p = table;
+	}
+
+      sm_user_specified_name (class_name_p, name, SM_MAX_IDENTIFIER_LENGTH);
       cls_mop = locator_find_class (name);
 
       obj = (MOBJ *) & cls_sm;
@@ -728,18 +743,25 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 
   if (num_tables > 0)
     {
-      char n[SM_MAX_IDENTIFIER_LENGTH];
-      char *p;
+      char class_name_buf[SM_MAX_IDENTIFIER_LENGTH];
+      char *class_name;
 
       for (i = 0; i < num_tables; i++)
 	{
-	  p = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i + 1);
-	  if (p == NULL)
+	  class_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i + 1);
+	  if (class_name == NULL)
 	    {
 	      continue;
 	    }
-	  strncpy_bufsize (n, p);
-	  if (da_add (darray, n) != NO_ERROR)
+
+	  if (utility_check_class_name (class_name) != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
+	  strncpy_bufsize (class_name_buf, class_name);
+
+	  if (da_add (darray, class_name_buf) != NO_ERROR)
 	    {
 	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
 	      perror ("calloc");
@@ -3143,8 +3165,8 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   const char *master_node_name;
   char local_database_name[CUB_MAXHOSTNAMELEN];
   char master_database_name[CUB_MAXHOSTNAMELEN];
-  bool check_applied_info, check_copied_info;
-  bool check_master_info, check_replica_info;
+  bool check_applied_info, check_applied_info_temp, check_copied_info, check_copied_info_temp;
+  bool check_master_info, check_master_info_temp, check_replica_info;
   bool verbose;
   const char *log_path;
   char log_path_buf[PATH_MAX];
@@ -3173,8 +3195,8 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       goto print_applyinfo_usage;
     }
 
-  check_applied_info = check_copied_info = false;
-  check_replica_info = check_master_info = false;
+  check_applied_info_temp = check_applied_info = check_copied_info_temp = check_copied_info = false;
+  check_replica_info = check_master_info_temp = check_master_info = false;
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
@@ -3192,14 +3214,14 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   master_node_name = utility_get_option_string_value (arg_map, APPLYINFO_REMOTE_NAME_S, 0);
   if (master_node_name != NULL)
     {
-      check_master_info = true;
+      check_master_info_temp = check_master_info = true;
     }
 
-  check_applied_info = utility_get_option_bool_value (arg_map, APPLYINFO_APPLIED_INFO_S);
+  check_applied_info_temp = check_applied_info = utility_get_option_bool_value (arg_map, APPLYINFO_APPLIED_INFO_S);
   log_path = utility_get_option_string_value (arg_map, APPLYINFO_COPIED_LOG_PATH_S, 0);
   if (log_path != NULL)
     {
-      check_copied_info = true;
+      check_copied_info_temp = check_copied_info = true;
     }
 
   if (!check_copied_info && !check_master_info)
@@ -3259,7 +3281,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       strcpy (local_database_name, database_name);
       strcat (local_database_name, "@localhost");
 
-      if (check_applied_info)
+      if (check_applied_info_temp)
 	{
 	  db_clear_host_connected ();
 
@@ -3283,7 +3305,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
 	  if (HA_DISABLED ())
 	    {
-	      check_applied_info = false;
+	      check_applied_info_temp = false;
 	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO,
 						     APPLYINFO_MSG_NOT_HA_MODE));
 	      goto check_applied_info_end;
@@ -3292,7 +3314,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  error = la_get_applied_log_info (database_name, log_path, check_replica_info, verbose, &applied_final_lsa);
 	  if (error != NO_ERROR)
 	    {
-	      check_applied_info = false;
+	      check_applied_info_temp = false;
 	      error = NO_ERROR;
 	    }
 	}
@@ -3302,17 +3324,17 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       if (error != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  check_applied_info = false;
+	  check_applied_info_temp = false;
 	  error = NO_ERROR;
 	}
 
-      if (check_copied_info)
+      if (check_copied_info_temp)
 	{
 	  error =
 	    la_get_copied_log_info (database_name, log_path, pageid, verbose, &copied_eof_lsa, &copied_append_lsa);
 	  if (error != NO_ERROR)
 	    {
-	      check_copied_info = false;
+	      check_copied_info_temp = false;
 	      error = NO_ERROR;
 	    }
 	}
@@ -3322,7 +3344,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  (void) db_shutdown ();
 	}
 
-      if (check_master_info)
+      if (check_master_info_temp)
 	{
 	  printf ("\n ***  Active Info. *** \n");
 	  memset (master_database_name, 0x00, CUB_MAXHOSTNAMELEN);
@@ -3360,7 +3382,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       if (error != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  check_master_info = false;
+	  check_master_info_temp = false;
 	  error = NO_ERROR;
 	}
 
@@ -3371,7 +3393,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
       /* print delay info */
       cur_time = time (NULL);
-      if (check_copied_info && check_master_info)
+      if (check_copied_info_temp && check_master_info_temp)
 	{
 	  if (!LSA_ISNULL (&initial_copied_append_lsa))
 	    {
@@ -3388,7 +3410,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  la_print_delay_info (copied_append_lsa, master_eof_lsa, process_rate);
 	}
 
-      if (check_applied_info)
+      if (check_applied_info_temp)
 	{
 	  if (!LSA_ISNULL (&initial_applied_final_lsa))
 	    {
@@ -3404,6 +3426,10 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  printf ("\n *** Delay in Applying Copied Log *** \n");
 	  la_print_delay_info (applied_final_lsa, copied_eof_lsa, process_rate);
 	}
+
+      check_copied_info_temp = check_copied_info;
+      check_applied_info_temp = check_applied_info;
+      check_master_info_temp = check_master_info;
 
       sleep (interval);
     }
@@ -4017,81 +4043,6 @@ error_exit:
   return EXIT_FAILURE;
 }
 
-static int
-check_table_name (const char *table_name)
-{
-  int table_name_len = STATIC_CAST (int, strlen (table_name));
-  int sub_len = 0;
-  const char *dot = NULL;
-
-  if (table_name_len >= SM_MAX_IDENTIFIER_LENGTH)
-    {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
-			      FLASHBACK_MSG_EXCEED_MAX_CLASSNAME_LENGTH), SM_MAX_USER_LENGTH,
-			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
-
-      return ER_FAILED;
-    }
-
-  dot = strchr (table_name, '.');
-  if (dot == NULL)
-    {
-      /* owner name or class name is not specified */
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_CLASSNAME_FORMAT),
-			     table_name);
-
-      return ER_FAILED;
-    }
-
-  /* check length of owner name */
-  sub_len = STATIC_CAST (int, dot - table_name);
-  if (sub_len < 1)
-    {
-      /* owner name is not specified (e.g. '.table') */
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_CLASSNAME_FORMAT),
-			     table_name);
-
-      return ER_FAILED;
-    }
-
-  if (sub_len >= SM_MAX_USER_LENGTH)
-    {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
-			      FLASHBACK_MSG_EXCEED_MAX_CLASSNAME_LENGTH), SM_MAX_USER_LENGTH,
-			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
-
-      return ER_FAILED;
-    }
-
-  /* check length of class name */
-  sub_len = STATIC_CAST (int, strlen (dot + 1));
-  if (sub_len < 1)
-    {
-      /* class name is not specified (e.g. 'dba.') */
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_CLASSNAME_FORMAT),
-			     table_name);
-
-      return ER_FAILED;
-    }
-
-  if (sub_len >= SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH)
-    {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
-			      FLASHBACK_MSG_EXCEED_MAX_CLASSNAME_LENGTH), SM_MAX_USER_LENGTH,
-			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
-
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
 static void
 clean_stdin ()
 {
@@ -4384,7 +4335,7 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	  goto error_exit;
 	}
 
-      if (check_table_name (table_name) != NO_ERROR)
+      if (utility_check_class_name (table_name) != NO_ERROR)
 	{
 	  goto error_exit;
 	}

@@ -9460,11 +9460,13 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * node)
       owner_name = node->info.dot.arg1->info.name.original;
       serial_name = node->info.dot.arg2->info.name.original;
     }
+  else if (PT_IS_NAME_NODE (node))
+    {
+      serial_name = node->info.name.original;
+    }
   else
     {
-      assert (PT_IS_NAME_NODE (node));
-
-      serial_name = node->info.name.original;
+      return NULL;
     }
 
   if (serial_name == NULL || serial_name[0] == '\0')

@@ -51,7 +51,7 @@ namespace cubmethod
       connection_pool &operator= (const connection_pool &copy) = delete; // Not CopyAssignable
 
       connection *claim ();
-      void retire (connection *claimed, bool kill);
+      void retire (connection *&claimed, bool kill);
 
       int max_size () const;
 
@@ -78,6 +78,7 @@ namespace cubmethod
 
       bool is_valid ();
       SOCKET get_socket ();
+      bool is_jvm_running ();
 
     private:
       explicit connection (connection_pool *pool, SOCKET socket);
@@ -85,8 +86,6 @@ namespace cubmethod
       connection_pool *m_pool;
       SOCKET m_socket;
   };
-
-  connection_pool *get_connection_pool (void);
 } // namespace cubmethod
 
 #endif // _METHOD_CONNECTION_POOL_HPP_

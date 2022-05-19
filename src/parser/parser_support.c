@@ -10196,70 +10196,117 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       return NULL;
     }
 
-  if (PT_IS_NAME_NODE (node) && PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED))
+  if (pt_has_error (parser))
     {
-      original_name = node->info.name.original;
-      resolved_name = node->info.name.resolved;
+      return node;
     }
-  else if (PT_IS_EXPR_NODE (node) && PT_IS_SERIAL (node->info.expr.op))
-    {
-      if (PT_IS_DOT_NODE (node->info.expr.arg1)
-	  && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg1)
-	  && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg2))
-	{
-	  PT_NODE *owner = node->info.expr.arg1->info.dot.arg1;
-	  PT_NODE *name = node->info.expr.arg1->info.dot.arg2;
 
-	  original_name = name->info.name.original;
-	  resolved_name = owner->info.name.original;
+  switch (node->node_type)
+    {
+    case PT_NAME:
+      if (PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED))
+	{
+	  original_name = node->info.name.original;
+	  resolved_name = node->info.name.resolved;
 	}
       else
 	{
-	  assert (PT_IS_NAME_NODE (node->info.expr.arg1));
-
-	  PT_NODE *name = node->info.expr.arg1;
-
-	  original_name = name->info.name.original;
-	  resolved_name = name->info.name.resolved;
+	  return node;
 	}
-    }
-  else if (PT_IS_SYNONYM_NODE (node))
-    {
-      if (node->node_type == PT_ALTER_SYNONYM || node->node_type == PT_CREATE_SYNONYM)
+      break;
+    case PT_EXPR:
+      if (PT_IS_SERIAL (node->info.expr.op))
 	{
-	  PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)));
-	  if (pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)) == NULL
-	      && sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
+	  if (PT_IS_DOT_NODE (node->info.expr.arg1)
+	      && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg1)
+	      && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg2))
 	    {
-	      PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, "dba");
+	      PT_NODE *owner = node->info.expr.arg1->info.dot.arg1;
+	      PT_NODE *name = node->info.expr.arg1->info.dot.arg2;
+
+	      original_name = name->info.name.original;
+	      resolved_name = owner->info.name.original;
+	    }
+	  else if (PT_IS_NAME_NODE (node->info.expr.arg1))
+	    {
+	      PT_NODE *name = node->info.expr.arg1;
+
+	      original_name = name->info.name.original;
 	    }
 	  else
 	    {
-	      PT_SYNONYM_TARGET_OWNER_NAME (node) =
-		pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)));
+	      return node;
 	    }
-	}
-      else if (node->node_type == PT_DROP_SYNONYM)
-	{
-	  PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)));
 	}
       else
 	{
-	  assert (node->node_type == PT_RENAME_SYNONYM);
-
-	  PT_SYNONYM_OLD_OWNER_NAME (node) =
-	    pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_OLD_NAME (node)));
-	  PT_SYNONYM_NEW_OWNER_NAME (node) =
-	    pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NEW_NAME (node)));
+	  return node;
 	}
+      break;
+    case PT_ALTER_SYNONYM:
+    case PT_CREATE_SYNONYM:
+      {
+	assert (pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)) != NULL);
+	PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)));
+	if (pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)) == NULL
+	    && sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
+	  {
+	    PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, "dba");
+	  }
+	else
+	  {
+	    assert (pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)) != NULL);
+	    PT_SYNONYM_TARGET_OWNER_NAME (node) =
+	      pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)));
+	  }
 
+	return node;
+      }
+      // break;
+    case PT_DROP_SYNONYM:
+      assert (pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)) != NULL);
+      PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)));
+      return node;
+      // break;
+    case PT_RENAME_SYNONYM:
+      assert (pt_get_qualifier_name (parser, PT_SYNONYM_OLD_NAME (node)) != NULL);
+      assert (pt_get_qualifier_name (parser, PT_SYNONYM_NEW_NAME (node)) != NULL);
+      PT_SYNONYM_OLD_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_OLD_NAME (node)));
+      PT_SYNONYM_NEW_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NEW_NAME (node)));
+      return node;
+      // break;
+    case PT_CREATE_ENTITY:
+      {
+	bool is_dba_group_member = au_is_dba_group_member (Au_user);
+	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_CREATE_ENTITY_NAME (node))) && !is_dba_group_member)
+	  {
+	    int error = NO_ERROR;
+	    ERROR_SET_ERROR_1ARG (error, ER_AU_DBA_ONLY, "create system class/vclass");
+	    PT_ERRORc (parser, node, er_msg ());
+	    *continue_walk = PT_STOP_WALK;
+	  }
+
+	return node;
+      }
+      // break;
+    case PT_RENAME:
+      {
+	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_RENAME_NEW_NAME (node))))
+	  {
+	    PT_ERROR (parser, node, "It is not allowed to be renamed to the system class name.");
+	    *continue_walk = PT_STOP_WALK;
+	  }
+	return node;
+      }
+      // break;
+    default:
       return node;
     }
-  else
-    {
-      return node;
-    }
 
+  // *INDENT-OFF*
+  assert ((node->node_type == PT_NAME && PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED))
+          || (node->node_type == PT_EXPR && PT_IS_SERIAL (node->info.expr.op)));
+  // *INDENT-ON*
   assert (original_name && original_name[0] != '\0');
 
   if (strchr (original_name, '.'))
@@ -10286,18 +10333,25 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
    * 2. common_class_name && common_user_name ->  common_user_name.common_class_name
    * 3. common_class_name &&    dba_user_name ->     dba_user_name.common_class_name
    * 4. system_class_name &&             NULL ->                   system_class_name
-   * 5. system_class_name && common_user_name ->  common_user_name.system_class_name
+   * 5. system_class_name && common_user_name ->  common_user_name.system_class_name -> error
    * 6. system_class_name &&    dba_user_name ->                   system_class_name
    * 
    * In case 5, raises an error to inform the user of an incorrect customization.
    */
   if (!PT_IS_SERIAL (node->info.expr.op) && sm_check_system_class_by_name (original_name))
     {
-      /* Skip in case 4, 6 */
-      if (resolved_name == NULL || resolved_name[0] == '\0' || intl_identifier_casecmp (resolved_name, "DBA") == 0)
+      /* In case 5 */
+      if (resolved_name != NULL)
 	{
+	  PT_ERROR (parser, node, "It is not allowed to specify an owner in the system class name.");
+	  *continue_walk = PT_STOP_WALK;
 	  return node;
 	}
+
+      /* resolved_name == NULL */
+
+      /* Skip in case 4, 6 */
+      return node;
     }
 
   if (resolved_name == NULL || resolved_name[0] == '\0')
@@ -10314,7 +10368,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 
   intl_identifier_lower (resolved_name, downcase_resolved_name);
 
-  /* In case 1, 2, 3, 5 */
+  /* In case 1, 2, 3 */
   user_specified_name = pt_append_string (parser, downcase_resolved_name, ".");
   user_specified_name = pt_append_string (parser, user_specified_name, original_name);
 
