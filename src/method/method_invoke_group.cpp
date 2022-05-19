@@ -278,14 +278,15 @@ namespace cubmethod
   {
     int error = NO_ERROR;
 
-    destroy_resources ();
-
-    if (is_end_query)
+    if (!is_end_query)
       {
 	cubmethod::header header (METHOD_REQUEST_END, get_id());
 	std::vector<int> handler_vec (m_handler_set.begin (), m_handler_set.end ());
 	error = method_send_data_to_client (m_thread_p, header, handler_vec);
+	m_handler_set.clear ();
       }
+
+    destroy_resources ();
 
     return error;
   }
@@ -325,8 +326,6 @@ namespace cubmethod
 
     // destroy cursors used in this group
     destory_all_cursors ();
-
-    m_handler_set.clear ();
   }
 
   query_cursor *
