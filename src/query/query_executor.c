@@ -6786,62 +6786,64 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
     }
 
   /* monitoring */
-  switch (curr_spec->type)
+  if (perfmon_is_perf_tracking ())
     {
-    case TARGET_CLASS:
-      if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-	  || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
+      switch (curr_spec->type)
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SSCANS);
+	case TARGET_CLASS:
+	  if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
+	      || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SSCANS);
+	    }
+	  else if (IS_ANY_INDEX_ACCESS (curr_spec->access))
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
+	    }
+
+	  if (curr_spec->parts != NULL)
+	    {
+	      /* reset pruning info */
+	      db_private_free (thread_p, curr_spec->parts);
+	      curr_spec->parts = NULL;
+	      curr_spec->curent = NULL;
+	      curr_spec->pruned = false;
+	    }
+	  break;
+
+	case TARGET_CLASS_ATTR:
+	  break;
+
+	case TARGET_LIST:
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_LSCANS);
+	  break;
+
+	case TARGET_SHOWSTMT:
+	  /* do nothing */
+	  break;
+
+	case TARGET_REGUVAL_LIST:
+	  /* currently do nothing */
+	  break;
+
+	case TARGET_SET:
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SETSCANS);
+	  break;
+
+	case TARGET_JSON_TABLE:
+	  /* currently do nothing
+	     todo: check if here need to add something
+	   */
+	  break;
+
+	case TARGET_METHOD:
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_METHSCANS);
+	  break;
+
+	case TARGET_DBLINK:
+	  break;
 	}
-      else if (IS_ANY_INDEX_ACCESS (curr_spec->access))
-	{
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
-	}
-
-      if (curr_spec->parts != NULL)
-	{
-	  /* reset pruning info */
-	  db_private_free (thread_p, curr_spec->parts);
-	  curr_spec->parts = NULL;
-	  curr_spec->curent = NULL;
-	  curr_spec->pruned = false;
-	}
-      break;
-
-    case TARGET_CLASS_ATTR:
-      break;
-
-    case TARGET_LIST:
-      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_LSCANS);
-      break;
-
-    case TARGET_SHOWSTMT:
-      /* do nothing */
-      break;
-
-    case TARGET_REGUVAL_LIST:
-      /* currently do nothing */
-      break;
-
-    case TARGET_SET:
-      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SETSCANS);
-      break;
-
-    case TARGET_JSON_TABLE:
-      /* currently do nothing
-         todo: check if here need to add something
-       */
-      break;
-
-    case TARGET_METHOD:
-      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_METHSCANS);
-      break;
-
-    case TARGET_DBLINK:
-      break;
     }
-
   scan_close_scan (thread_p, &curr_spec->s_id);
 }
 
@@ -23980,7 +23982,7 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
 
   /* At any time, we will handle at most ubound tuples */
   estimated_size *= ubound;
-  max_size = (UINT64) sr_nbuffers * IO_PAGESIZE;
+  max_size = (UINT64) sr_nbuffers *IO_PAGESIZE;
   if (estimated_size > max_size)
     {
       /* Do not use more than the sort buffer size. Using the entire sort buffer is possible because this is the only
