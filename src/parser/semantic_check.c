@@ -4758,7 +4758,6 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	}
       else
 	{
-	  PT_ERRORc (parser, alter, er_msg ());
 	  return;
 	}
     }
@@ -8405,14 +8404,12 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       if (owner == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
+
 	  if (er_errid () == ER_AU_INVALID_USER)
 	    {
 	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
 	    }
-	  else
-	    {
-	      PT_ERRORc (parser, node, er_msg ());
-	    }
+
 	  return;
 	}
 
@@ -8446,7 +8443,6 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       else
 	{
-	  PT_ERRORc (parser, node, er_msg ());
 	  return;
 	}
     }
@@ -8723,7 +8719,6 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       else
 	{
-	  PT_ERRORc (parser, node, er_msg ());
 	  return;
 	}
     }
@@ -8925,10 +8920,6 @@ pt_check_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_EXIST, name);
 	}
-      else
-	{
-	  PT_ERRORc (parser, node, er_msg ());
-	}
 
       return;
     }
@@ -9010,7 +9001,6 @@ pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       else
 	{
-	  PT_ERRORc (parser, node, er_msg ());
 	  return;
 	}
 
@@ -9031,7 +9021,6 @@ pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  else
 	    {
-	      PT_ERRORc (parser, node, er_msg ());
 	      return;
 	    }
 	}
@@ -9102,7 +9091,6 @@ pt_check_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 
       if (er_errid () != ER_SYNONYM_NOT_EXIST)
 	{
-	  PT_ERRORc (parser, node, er_msg ());
 	  return;
 	}
 
@@ -9174,10 +9162,6 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_EXIST, old_name);
 	}
-      else
-	{
-	  PT_ERRORc (parser, node, er_msg ());
-	}
 
       return;
     }
@@ -9232,7 +9216,6 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       else
 	{
-	  PT_ERRORc (parser, node, er_msg ());
 	  return;
 	}
 
@@ -9252,7 +9235,6 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  else
 	    {
-	      PT_ERRORc (parser, node, er_msg ());
 	      return;
 	    }
 	}
@@ -9303,7 +9285,6 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 		    }
 		  else
 		    {
-		      PT_ERRORc (parser, node, er_msg ());
 		      return;
 		    }
 
@@ -9444,7 +9425,6 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 		    }
 		  else
 		    {
-		      PT_ERRORc (parser, node, er_msg ());
 		      return;
 		    }
 		}
@@ -9713,7 +9693,6 @@ pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node)
 		}
 	      else
 		{
-		  PT_ERRORc (parser, node, er_msg ());
 		  return;
 		}
 	    }

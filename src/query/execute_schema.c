@@ -2641,7 +2641,6 @@ do_rename (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
-	      PT_ERRORc (parser, statement, er_msg ());
 	      goto error_exit;
 	    }
 	}

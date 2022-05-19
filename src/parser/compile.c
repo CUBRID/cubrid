@@ -759,7 +759,6 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
 	}
       else
 	{
-	  PT_ERRORc (parser, spec, er_msg ());
 	  return error;
 	}
     }
