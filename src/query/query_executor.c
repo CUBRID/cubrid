@@ -3723,7 +3723,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   AGGREGATE_HASH_KEY *key = context->temp_key;
   AGGREGATE_HASH_VALUE *value;
   HENTRY_PTR hentry;
-  UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_AGG_HASH_SIZE);
+  static UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_AGG_HASH_SIZE);
   int rc = NO_ERROR;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
@@ -7829,6 +7829,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
   int recursive_iterations = 0;
   bool max_recursive_iterations_reached = false;
   bool cte_start_new_iteration = false;
+  static bool enable_agg_optimization = prm_get_bool_value (PRM_ID_OPTIMIZER_ENABLE_AGGREGATE_OPTIMIZATION);
 
   if (xasl->type == BUILDVALUE_PROC)
     {
@@ -7847,7 +7848,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 		}
 	    }
 
-	  if (prm_get_bool_value (PRM_ID_OPTIMIZER_ENABLE_AGGREGATE_OPTIMIZATION) == false)
+	  if (enable_agg_optimization == false)
 	    {
 	      is_scan_needed = true;
 	    }
@@ -13555,11 +13556,12 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state *
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 old_fetches = 0, old_ioreads = 0;
+  static int max_recursion_sql_depth = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
 
-  if (thread_get_recursion_depth (thread_p) > prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH))
+  if (thread_get_recursion_depth (thread_p) > max_recursion_sql_depth)
     {
       error = ER_MAX_RECURSION_SQL_DEPTH;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, max_recursion_sql_depth);
       return error;
     }
   thread_inc_recursion_depth (thread_p);
@@ -23873,6 +23875,7 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
   TOPN_TUPLES *top_n = NULL;
   int error = NO_ERROR, ubound = 0, count = 0;
   UINT64 estimated_size = 0, max_size = 0;
+  static int sr_nbuffers = prm_get_integer_value (PRM_ID_SR_NBUFFERS);
 
   if (xasl->type != BUILDLIST_PROC)
     {
@@ -23977,7 +23980,7 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
 
   /* At any time, we will handle at most ubound tuples */
   estimated_size *= ubound;
-  max_size = (UINT64) prm_get_integer_value (PRM_ID_SR_NBUFFERS) * IO_PAGESIZE;
+  max_size = (UINT64) sr_nbuffers * IO_PAGESIZE;
   if (estimated_size > max_size)
     {
       /* Do not use more than the sort buffer size. Using the entire sort buffer is possible because this is the only
