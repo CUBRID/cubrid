@@ -11836,6 +11836,7 @@ btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * key2, DB_VAL
       return ER_FAILED;
     }
 
+#if !defined(NDEBUG)
   c = btree_compare_key ((DB_VALUE *) key1, prefix_key, key_domain, 1, 1, NULL);
 
   if (c != DB_LT)
@@ -11851,6 +11852,7 @@ btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * key2, DB_VAL
       assert_release (false);
       return ER_FAILED;
     }
+#endif
 
   return err;
 }
