@@ -311,8 +311,6 @@ public class ExecuteThread extends Thread {
         }
 
         readArguments(unpacker, arguments);
-
-        setContextClassLoader(new StoredProcedureClassLoader());
     }
 
     private void processStoredProcedure() throws Exception {
