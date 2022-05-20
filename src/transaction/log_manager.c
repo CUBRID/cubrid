@@ -12475,8 +12475,6 @@ cdc_check_if_schema_changed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
 static int
 cdc_get_attribute_size (DB_VALUE * value)
 {
-  assert (!DB_IS_NULL (value));
-
   int size = 0;
 
   switch (DB_VALUE_TYPE (value))
