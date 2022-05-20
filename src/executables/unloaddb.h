@@ -68,7 +68,7 @@ extern int lo_count;
 #define SPLIT_USER_SPECIFIED_NAME(name, owner_name, class_name) \
 	do \
 	  { \
-	    assert (strlen ((name)) < sizeof ((owner_name))); \
+	    assert (strlen ((name)) < STATIC_CAST (int, sizeof ((owner_name)))); \
 	    strcpy ((owner_name), (name)); \
 	    (class_name) = strchr ((owner_name), '.'); \
 	    *(class_name)++ = '\0'; \
