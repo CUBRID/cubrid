@@ -75,6 +75,8 @@ enum log_rectype
                                  *   usually affects more than one page). end system operation also includes undo data that
                                  *   is processed during rollback or undo.
                                  *
+                                 * - LOG_SYSOP_END_LOGICAL_MVCC_UNDO: TODO:
+                                 *
                                  * - LOG_SYSOP_END_LOGICAL_COMPENSATE: system operation is used for complex logical operation
                                  *   that has the purpose of compensating a change on undo or rollback. end system operation
                                  *   also includes the LSA of previous undo log record.

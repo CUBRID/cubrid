@@ -20,6 +20,7 @@
 #include "log_replication_mvcc.hpp"
 
 #include "log_impl.h"
+#include "system_parameter.h"
 #include "thread_entry.hpp"
 
 namespace cublog
@@ -36,6 +37,13 @@ namespace cublog
     assert (m_mapped_mvccids.find (tranid) == m_mapped_mvccids.cend ());
 
     m_mapped_mvccids.emplace (tranid, mvccid);
+
+    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+      {
+	_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] new_assigned_mvccid tranid=%d mvccid=%lld\n",
+		       tranid, (long long)mvccid);
+	dump_map ();
+      }
   }
 
   void
@@ -48,7 +56,39 @@ namespace cublog
 	const MVCCID found_mvccid = found_it->second;
 	log_Gl.mvcc_table.complete_mvcc (tranid, found_mvccid, committed);
 	m_mapped_mvccids.erase (found_it);
+
+	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+	  {
+	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] complete_mvcc FOUND tranid=%d mvccid=%lld %s\n",
+			   tranid, (long long)found_mvccid, (committed ? "COMMITED" : "ABORTED"));
+	    dump_map ();
+	  }
       }
-    // if not found, it means the transaction contains proper MVCC log records
+    else
+      {
+        // if not found:
+        //  - if the transaction has no sub-transaction
+        // , it means the transaction contains proper MVCC log records
+	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+	  {
+	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] complete_mvcc NOT_FOUND tranid=%d %s\n",
+			   tranid, (committed ? "COMMITED" : "ABORTED"));
+	    dump_map ();
+	  }
+      }
+  }
+
+  void
+  replicator_mvcc::dump_map () const
+  {
+#if !defined (NDEBUG)
+    int index = 1;
+    for (const auto &pair: m_mapped_mvccids)
+      {
+	_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] index=%d/%d tranid=%d mvccid=%lld\n",
+		       index, m_mapped_mvccids.size (), pair.first, (long long)pair.second);
+	++index;
+      }
+#endif /* !NDEBUG */
   }
 }

@@ -16,7 +16,7 @@ namespace cublog
   {
     public:
       static constexpr bool COMMITTED = true;
-      static constexpr bool ROLLEDBACK = false;
+      static constexpr bool ABORTED = false;
 
     public:
       replicator_mvcc () = default;
@@ -31,6 +31,9 @@ namespace cublog
 
       void new_assigned_mvccid (TRANID tranid, MVCCID mvccid);
       void complete_mvcc (TRANID tranid, bool committed);
+
+    private:
+      void dump_map () const;
 
     private:
       using map_type = std::map<TRANID, MVCCID>;

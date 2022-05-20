@@ -257,7 +257,7 @@ namespace cublog
 	  case LOG_ABORT:
 	    if (m_replicate_mvcc)
 	      {
-		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::ROLLEDBACK);
+		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::ABORTED);
 	      }
 	    calculate_replication_delay_or_dispatch_async<log_rec_donetime> (
 		    thread_entry, m_redo_lsa);
@@ -276,7 +276,19 @@ namespace cublog
 	    break;
 	  case LOG_SYSOP_END:
 	    read_and_bookkeep_mvcc_vacuum<log_rec_sysop_end> (header.type, header.back_lsa, m_redo_lsa, false);
+	    if (m_replicate_mvcc)
+	      {
+		replicate_sysop_end<log_rec_sysop_end> (header.trid, m_redo_lsa);
+	      }
 	    break;
+#if !defined (NDEBUG)
+	  case LOG_SYSOP_START_POSTPONE:
+	    if (m_replicate_mvcc)
+	      {
+		replicate_sysop_start_postpone<log_rec_sysop_start_postpone> (header.trid, m_redo_lsa);
+	      }
+	    break;
+#endif /* !NDEBUG */
 	  case LOG_ASSIGNED_MVCCID:
 	    if (m_replicate_mvcc)
 	      {
@@ -398,6 +410,7 @@ namespace cublog
   void replicator::calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
       const log_lsa &rec_lsa)
   {
+    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
     const T log_rec = m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ();
     // at_time, expressed in milliseconds rather than seconds
     const time_msec_t start_time_msec = log_rec.at_time;
@@ -421,12 +434,75 @@ namespace cublog
   template <typename T>
   void replicator::register_assigned_mvccid (TRANID tranid)
   {
+    static_assert (sizeof (T) == sizeof (LOG_REC_ASSIGNED_MVCCID), "");
     assert (m_replicate_mvcc);
 
-    const LOG_REC_ASSIGNED_MVCCID log_rec = m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ();
+    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
+    const T log_rec = m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ();
 
     m_replicator_mvccid->new_assigned_mvccid (tranid, log_rec.mvccid);
   }
+
+  template <typename T>
+  void replicator::replicate_sysop_end (TRANID tranid, const log_lsa &rec_lsa)
+  {
+    static_assert (sizeof (T) == sizeof (LOG_REC_SYSOP_END), "");
+    assert (m_replicate_mvcc);
+
+    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
+    const T log_rec = m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ();
+
+    LOG_SYSOP_END_TYPE_CHECK (log_rec.type);
+    assert (!LSA_ISNULL (&log_rec.lastparent_lsa));
+    assert (LSA_LT (&log_rec.lastparent_lsa, &rec_lsa));
+
+    if (log_rec.type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
+      {
+	// subtransaction mvccid might be valid or not
+	if (MVCCID_IS_VALID (log_rec.mvcc_undo.mvccid))
+	  {
+	    // TODO: the mvccid replicator uses a one transaction id to one mvccid mapping, thus:
+	    //
+	    //  - if there is a transaction for which there is also a manually assigned mvccid (as in
+	    //    LOG_ASSIGNED_MVCCID) and a mvcc sub-transaction (sysop)
+	    //
+	    //  - if there is a transaction which has more than one sub-transaction which are nested - as
+	    //    allowed by the structure MVCC_INFO.sub_ids
+	    //
+	    //  this invariant will be violated and a one transaction to multiple mvccid mapping is needed
+	    m_replicator_mvccid->new_assigned_mvccid (tranid, log_rec.mvcc_undo.mvccid);
+	  }
+      }
+    else if (log_rec.type == LOG_SYSOP_END_COMMIT)
+      {
+	m_replicator_mvccid->complete_mvcc (tranid, replicator_mvcc::COMMITTED);
+      }
+    else if (log_rec.type == LOG_SYSOP_END_ABORT)
+      {
+	m_replicator_mvccid->complete_mvcc (tranid, replicator_mvcc::ABORTED);
+      }
+    else
+      {
+	// nothing
+      }
+  }
+
+#if !defined (NDEBUG)
+  template <typename T>
+  void replicator::replicate_sysop_start_postpone (TRANID tranid, const log_lsa &rec_lsa)
+  {
+    static_assert (sizeof (T) == sizeof (LOG_REC_SYSOP_START_POSTPONE), "");
+    assert (m_replicate_mvcc);
+
+    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SYSOP_START_POSTPONE));
+    const LOG_REC_SYSOP_START_POSTPONE log_rec = m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ();
+
+    LOG_SYSOP_END_TYPE_CHECK (log_rec.sysop_end.type);
+    assert (!LSA_ISNULL (&log_rec.sysop_end.lastparent_lsa));
+    assert (LSA_LT (&log_rec.sysop_end.lastparent_lsa, &rec_lsa));
+    assert (log_rec.sysop_end.type != LOG_SYSOP_END_LOGICAL_MVCC_UNDO);
+  }
+#endif /* !NDEBUG */
 
   void
   replicator::wait_replication_finish_during_shutdown () const

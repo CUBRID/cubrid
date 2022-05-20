@@ -94,6 +94,12 @@ namespace cublog
 	  const log_lsa &rec_lsa);
       template <typename T>
       void register_assigned_mvccid (TRANID tranid);
+      template <typename T>
+      void replicate_sysop_end (TRANID tranid, const log_lsa &rec_lsa);
+#if !defined (NDEBUG)
+      template <typename T>
+      void replicate_sysop_start_postpone (TRANID tranid, const log_lsa &rec_lsa);
+#endif /* !NDEBUG */
 
     private:
       const bool m_bookkeep_mvcc_vacuum_info;
