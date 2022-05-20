@@ -12799,13 +12799,15 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   /* metadata for CDC loginfo :
    * loginfo length (int) + trid (int) + user name (32) + data item type (int) + dml_type (int) + classoid (int64)
    * + number of changed column (int) + changed column index (int * number of column)
-   * + number of condition column + condition column index (int * number of column) */
+   * + number of condition column + condition column index (int * number of column)
+   * + function type (int) * number of column * 2 */
 
   metadata_length = OR_INT_SIZE + OR_INT_SIZE + DB_MAX_USER_LENGTH + OR_INT_SIZE + OR_INT_SIZE + OR_BIGINT_SIZE +
-    OR_INT_SIZE + (attr_info.num_values * OR_INT_SIZE) + OR_INT_SIZE + (attr_info.num_values * OR_INT_SIZE);
+    OR_INT_SIZE + (attr_info.num_values * OR_INT_SIZE) + OR_INT_SIZE + (attr_info.num_values * OR_INT_SIZE) +
+    attr_info.num_values * OR_INT_SIZE * 2;
 
   /* sum of the pad size through aligning the attributes (changed column, cond column) */
-  align_size = INT_ALIGNMENT * attr_info.num_values * 2;
+  align_size = MAX_ALIGNMENT * attr_info.num_values * 2;
 
   buffer_size = metadata_length + record_length + align_size;
 
