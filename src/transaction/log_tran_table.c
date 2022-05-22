@@ -3883,11 +3883,8 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
 #endif /* SA_MODE */
   assert (tdes != NULL && curr_mvcc_info != NULL);
 
-  // TODO: this looks like a workaround/last resort initialization
-  // there is code elsewhere that makes sure this does not happen
   if (MVCCID_IS_VALID (curr_mvcc_info->id) == false)
     {
-      assert ("logtb_get_current_mvccid transaction does not have an valid mvccid" == nullptr);
       curr_mvcc_info->id = log_Gl.mvcc_table.get_new_mvccid ();
     }
 
