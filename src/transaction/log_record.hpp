@@ -229,6 +229,7 @@ struct log_rec_mvcc_undo
 {
   LOG_REC_UNDO undo;		/* Undo information */
   MVCCID mvccid;		/* MVCC Identifier for transaction */
+  //MVCCID debug_parent_mvccid;
   LOG_VACUUM_INFO vacuum_info;	/* Info required for vacuum */
 };
 
