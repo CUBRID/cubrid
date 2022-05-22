@@ -216,29 +216,29 @@ namespace cublog
 	switch (header.type)
 	  {
 	  case LOG_REDO_DATA:
-	    read_and_redo_record<log_rec_redo> (thread_entry, header, m_redo_lsa);
+	    read_and_redo_record<LOG_REC_REDO> (thread_entry, header, m_redo_lsa);
 	    break;
 	  case LOG_MVCC_REDO_DATA:
-	    read_and_redo_record<log_rec_mvcc_redo> (thread_entry, header, m_redo_lsa);
+	    read_and_redo_record<LOG_REC_MVCC_REDO> (thread_entry, header, m_redo_lsa);
 	    break;
 	  case LOG_UNDOREDO_DATA:
 	  case LOG_DIFF_UNDOREDO_DATA:
-	    read_and_redo_record<log_rec_undoredo> (thread_entry, header, m_redo_lsa);
+	    read_and_redo_record<LOG_REC_UNDOREDO> (thread_entry, header, m_redo_lsa);
 	    break;
 	  case LOG_MVCC_UNDOREDO_DATA:
 	  case LOG_MVCC_DIFF_UNDOREDO_DATA:
-	    read_and_redo_record<log_rec_mvcc_undoredo> (thread_entry, header, m_redo_lsa);
+	    read_and_redo_record<LOG_REC_MVCC_UNDOREDO> (thread_entry, header, m_redo_lsa);
 	    break;
 	  case LOG_RUN_POSTPONE:
-	    read_and_redo_record<log_rec_run_postpone> (thread_entry, header, m_redo_lsa);
+	    read_and_redo_record<LOG_REC_RUN_POSTPONE> (thread_entry, header, m_redo_lsa);
 	    break;
 	  case LOG_COMPENSATE:
-	    read_and_redo_record<log_rec_compensate> (thread_entry, header, m_redo_lsa);
+	    read_and_redo_record<LOG_REC_COMPENSATE> (thread_entry, header, m_redo_lsa);
 	    break;
 	  case LOG_DBEXTERN_REDO_DATA:
 	  {
-	    const log_rec_dbout_redo dbout_redo =
-		    m_redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_dbout_redo> ();
+	    const LOG_REC_DBOUT_REDO dbout_redo =
+		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_DBOUT_REDO> ();
 	    log_rcv rcv;
 	    rcv.length = dbout_redo.length;
 
@@ -251,7 +251,7 @@ namespace cublog
 	      {
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::COMMITTED);
 	      }
-	    calculate_replication_delay_or_dispatch_async<log_rec_donetime> (
+	    calculate_replication_delay_or_dispatch_async<LOG_REC_DONETIME> (
 		    thread_entry, m_redo_lsa);
 	    break;
 	  case LOG_ABORT:
@@ -259,11 +259,11 @@ namespace cublog
 	      {
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::ABORTED);
 	      }
-	    calculate_replication_delay_or_dispatch_async<log_rec_donetime> (
+	    calculate_replication_delay_or_dispatch_async<LOG_REC_DONETIME> (
 		    thread_entry, m_redo_lsa);
 	    break;
 	  case LOG_DUMMY_HA_SERVER_STATE:
-	    calculate_replication_delay_or_dispatch_async<log_rec_ha_server_state> (
+	    calculate_replication_delay_or_dispatch_async<LOG_REC_HA_SERVER_STATE> (
 		    thread_entry, m_redo_lsa);
 	    break;
 	  case LOG_TRANTABLE_SNAPSHOT:
@@ -272,15 +272,15 @@ namespace cublog
 	    m_most_recent_trantable_snapshot_lsa.store (m_redo_lsa);
 	    break;
 	  case LOG_MVCC_UNDO_DATA:
-	    read_and_bookkeep_mvcc_vacuum<log_rec_mvcc_undo> (header.type, header.back_lsa, m_redo_lsa, true);
+	    read_and_bookkeep_mvcc_vacuum<LOG_REC_MVCC_UNDO> (header.type, header.back_lsa, m_redo_lsa, true);
 	    break;
 	  case LOG_SYSOP_END:
-	    read_and_bookkeep_mvcc_vacuum<log_rec_sysop_end> (header.type, header.back_lsa, m_redo_lsa, false);
+	    read_and_bookkeep_mvcc_vacuum<LOG_REC_SYSOP_END> (header.type, header.back_lsa, m_redo_lsa, false);
 	    break;
 	  case LOG_ASSIGNED_MVCCID:
 	    if (m_replicate_mvcc)
 	      {
-		register_assigned_mvccid<log_rec_assigned_mvccid> (header.trid);
+		register_assigned_mvccid<LOG_REC_ASSIGNED_MVCCID> (header.trid);
 	      }
 	    break;
 	  default:
