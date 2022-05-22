@@ -16,7 +16,7 @@ namespace cublog
   {
     public:
       static constexpr bool COMMITTED = true;
-      static constexpr bool ROLLEDBACK = false;
+      static constexpr bool ABORTED = false;
 
     public:
       replicator_mvcc () = default;
