@@ -182,6 +182,9 @@ static char *update_db_class_for_system_classes =
 
 static char db_path[PATH_MAX];
 
+FILE *out = NULL;
+int verbose = 0;
+
 static void
 print_errmsg (const char *err_msg)
 {
@@ -277,7 +280,7 @@ get_directory_path (char *buffer)
   env_name = getenv (DATABASES_ENVNAME);
   if (env_name == NULL || strlen (env_name) == 0)
     {
-      printf ("migrate: env variable %s is not set\n", DATABASES_ENVNAME);
+      fprintf (out, "migrate: env variable %s is not set\n", DATABASES_ENVNAME);
       return -1;
     }
   else
@@ -325,7 +328,7 @@ get_db_path (char *dbname, char **pathname)
 	  if (vol_path == NULL)
 	    {
 	      fclose (file_p);
-	      printf ("migrate: %s is invalid for %s\n", filename, dbname);
+	      fprintf (out, "migrate: %s is invalid for %s\n", filename, dbname);
 	      return -1;
 	    }
 
@@ -357,7 +360,7 @@ get_db_path (char *dbname, char **pathname)
 
   fclose (file_p);
 
-  printf ("migrate: can not find database, %s\n", dbname);
+  fprintf (out, "migrate: can not find database, %s\n", dbname);
 
   return -1;
 }
@@ -390,15 +393,15 @@ migrate_check_log_volume (char *dbname)
     {
       if ((strncmp (version, "11.0", 4) != 0 && strncmp (version, "11.1", 4) != 0))	// build number여서 11.X.X-XXXX 로 표시됨 
 	{
-	  printf ("CUBRID version %s, should be 11.0.x or 11.1.x\n", version);
+	  fprintf (out, "CUBRID version %s, should be 11.0.x or 11.1.x\n", version);
 	  return -1;
 	}
 
-      printf ("%s\n", version);
+      fprintf (out, "%s\n", version);
     }
   else
     {
-      printf ("migrate: can not get version info.\n");
+      fprintf (out, "migrate: can not get version info.\n");
       return -1;
     }
 
@@ -406,27 +409,27 @@ migrate_check_log_volume (char *dbname)
 
   if (fd < 0)
     {
-      printf ("migrate: can not open the log file\n");
+      fprintf (out, "migrate: can not open the log file\n");
       return -1;
     }
 
   if (lseek (fd, VERSION_INFO, SEEK_SET) < 0)
     {
-      printf ("migrate: can not seek the version info.\n");
+      fprintf (out, "migrate: can not seek the version info.\n");
       close (fd);
       return -1;
     }
 
   if (read (fd, &log_ver, 4) < 0)
     {
-      printf ("migrate: can not read the version info.\n");
+      fprintf (out, "migrate: can not read the version info.\n");
       close (fd);
       return -1;
     }
 
   if (log_ver < 11.0f || log_ver >= 11.2f)
     {
-      printf ("migrate: the database volume %2.1f is not a migratable version\n", log_ver);
+      fprintf (out, "migrate: the database volume %2.1f is not a migratable version\n", log_ver);
       close (fd);
       return -1;
     }
@@ -436,7 +439,7 @@ migrate_check_log_volume (char *dbname)
   return 0;
 }
 
-static void
+static int
 migrate_backup_log_volume (char *dbname)
 {
   char backup_path[PATH_MAX];
@@ -451,8 +454,8 @@ migrate_backup_log_volume (char *dbname)
   /* open log volume file and seek version info */
   if (fd < 0)
     {
-      printf ("migrate: can not open the log file for upgrade\n");
-      return;
+      fprintf (out, "migrate: can not open the log file for upgrade\n");
+      return -1;
     }
 
   /* creating backup log file */
@@ -460,9 +463,9 @@ migrate_backup_log_volume (char *dbname)
   backup = open (backup_path, O_RDWR | O_CREAT | O_TRUNC, 0666);
   if (backup < 0)
     {
-      printf ("migrate: encountered error while creating backup log file, %s\n", backup_path);
+      fprintf (out, "migrate: can not create backup log file, %s\n", backup_path);
       close (fd);
-      return;
+      return -1;
     }
 
   /* copying to backup log file */
@@ -471,13 +474,18 @@ migrate_backup_log_volume (char *dbname)
 
   if (bytes != copied)
     {
-      printf ("migrate: encountered error while copying backup log file\n");
+      fprintf (out, "migrate: cant not copy the backup log file\n");
+      close (fd);
+      close (backup);
+      return -1;
     }
 
-  printf ("%s created\n", backup_path);
+  fprintf (out, "\tbackup volume, %s created\n", backup_path);
 
   close (fd);
   close (backup);
+
+  return 0;
 }
 
 static void
@@ -491,13 +499,13 @@ migrate_update_log_volume (char *dbname)
   /* open log volume file and seek version info */
   if (fd < 0)
     {
-      printf ("migrate: can not open the log file for upgrade\n");
+      fprintf (out, "migrate: can not open the log file for upgrade\n");
       return;
     }
 
   if (lseek (fd, VERSION_INFO, SEEK_SET) < 0)
     {
-      printf ("migrate: can not seek the version info. for upgrade\n");
+      fprintf (out, "migrate: can not seek the version info. for upgrade\n");
       close (fd);
       return;
     }
@@ -505,7 +513,7 @@ migrate_update_log_volume (char *dbname)
   /* updating volumne info. */
   if (write (fd, &version, 4) < 0)
     {
-      printf ("migrate: can not write the version info. for upgrade\n");
+      fprintf (out, "migrate: can not write the version info. for upgrade\n");
       close (fd);
       return;
     }
@@ -514,7 +522,7 @@ migrate_update_log_volume (char *dbname)
 
   close (fd);
 
-  printf ("migration done\n");
+  fprintf (out, "migration done\n");
 }
 
 static int
@@ -580,7 +588,7 @@ migrate_initialize (char *dbname)
       return -1;
     }
 
-  printf ("%s reading\n", db_path);
+  fprintf (out, "%s reading\n", db_path);
 
   /* dynamic loading (libcubridsa.so) */
   dl_handle = dlopen (libcubridsa_path, RTLD_LAZY);
@@ -728,10 +736,15 @@ migrate_execute_query (const char *query)
   int error;
 
   error = cub_db_execute_query (query, &result);
-  printf ("\tmigrate: execute query: %s\n", query);
+
+  if (verbose)
+    {
+      fprintf (out, "\tmigrate: execute query: %s\n", query);
+    }
+
   if (error < 0)
     {
-      printf ("migrate: execute query failed \"%s\"\n", query);
+      fprintf (out, "migrate: execute query failed \"%s\"\n", query);
       return -1;
     }
   cub_db_query_end (result);
@@ -748,7 +761,7 @@ migrate_generated (const char *generated, int col_num)
   error = cub_db_execute_query (generated, &gen_result);
   if (error < 0)
     {
-      printf ("generated: execute query failed\n \"%s\"\n", generated);
+      fprintf (out, "generated: execute query failed\n \"%s\"\n", generated);
       return -1;
     }
 
@@ -765,7 +778,7 @@ migrate_generated (const char *generated, int col_num)
 	      error = cub_db_query_get_tuple_value (gen_result, i, &value);
 	      if (error < 0)
 		{
-		  printf ("generated: can not get a tuple for \"%s\"\n", generated);
+		  fprintf (out, "generated: can not get a tuple for \"%s\"\n", generated);
 		  return -1;
 		}
 
@@ -792,7 +805,7 @@ end:
 
   if (error < 0)
     {
-      printf ("generated: can not get a next tuple for \"%s\"\n", generated);
+      fprintf (out, "generated: can not get a next tuple for \"%s\"\n", generated);
       return -1;
     }
 
@@ -810,7 +823,7 @@ migrate_queries ()
   error = migrate_generated (rename_query, 1);
   if (error < 0)
     {
-      printf ("migrate: execute query failed \"%s\"\n", rename_query);
+      fprintf (out, "migrate: execute query failed \"%s\"\n", rename_query);
       return -1;
     }
 
@@ -833,7 +846,7 @@ migrate_queries ()
   error = migrate_generated (serial_query, 1);
   if (error < 0)
     {
-      printf ("migrate: execute query failed \"%s\"\n", serial_query);
+      fprintf (out, "migrate: execute query failed \"%s\"\n", serial_query);
       return -1;
     }
 
@@ -871,20 +884,102 @@ migrate_queries ()
   return 0;
 }
 
+static void
+print_usage (void)
+{
+  printf ("usage: migrate [options] db-name\n\n");
+  printf ("valid options\n");
+  printf ("  -v:\t\tverbose detailed\n");
+  printf ("  -o FILE:\tredirect output to FILE\n");
+}
+
+static char *
+parse_args (int argc, char *argv[])
+{
+  int i;
+  char *dbname = NULL;
+  char *outfile = { 0 };
+
+  out = stdout;
+
+  for (i = 1; i < argc; i++)
+    {
+      if (argv[i][0] == '-')
+	{
+	  switch (argv[i][1])
+	    {
+	    case 'v':
+	      verbose = 1;
+	      break;
+	    case 'o':
+	      if (argc > i + 1)
+		{
+		  outfile = argv[++i];
+		  if (*outfile == '-')
+		    {
+		      printf ("error: missing output file\n\n");
+		      goto error_exit;
+		    }
+		  else
+		    {
+		      out = fopen (outfile, "w");
+		      if (out == NULL)
+			{
+			  printf ("error: can not open out file\n\n");
+			  goto error_exit;
+			}
+		    }
+		}
+	      else
+		{
+		  printf ("error: missing out file\n\n");
+		  goto error_exit;
+		}
+	      break;
+	    default:
+	      printf ("error: no such option\n\n");
+	      goto error_exit;
+	    }
+	}
+      else
+	{
+	  if (dbname == NULL)
+	    {
+	      dbname = argv[i];
+	    }
+	  else
+	    {
+	      perror ("Error: not allowed multi DB\n\n");
+	      goto error_exit;
+	    }
+	}
+    }
+
+  return dbname;
+
+error_exit:
+  print_usage ();
+  return NULL;
+}
+
 int
 main (int argc, char *argv[])
 {
   int status, error;
   char *dbname;
 
-  if (argc != 2)
+  if (argc < 2)
     {
-      printf ("usage: %s db-name\n", argv[0]);
+      print_usage ();
       return -1;
     }
   else
     {
-      dbname = argv[1];
+      dbname = parse_args (argc, argv);
+      if (dbname == NULL)
+	{
+	  return -1;
+	}
     }
 
   printf ("\n");
@@ -893,7 +988,7 @@ main (int argc, char *argv[])
   error = migrate_initialize (dbname);
   if (error < 0)
     {
-      printf ("migrate: error encountered while initializing\n");
+      fprintf (out, "migrate: error encountered while initializing\n");
       return -1;
     }
 
@@ -904,6 +999,7 @@ main (int argc, char *argv[])
 
   if (status < 0)
     {
+      printf ("migrate: encountered error while checking the log volume\n");
       return -1;
     }
 
@@ -911,7 +1007,11 @@ main (int argc, char *argv[])
   printf ("Phase 3: Backup the log volume\n");
 
   /* backup first before upating catalog */
-  migrate_backup_log_volume (dbname);
+  if (migrate_backup_log_volume (dbname) < 0)
+    {
+      printf ("migrate: encountered error while backup the log volume\n");
+      return -1;
+    }
 
   printf ("\n");
   printf ("Phase 4: Executing the mirgate queries\n");
