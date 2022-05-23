@@ -949,10 +949,16 @@ parse_args (int argc, char *argv[])
 	    }
 	  else
 	    {
-	      perror ("Error: not allowed multi DB\n\n");
+	      printf ("error: not allowed multi DB\n\n");
 	      goto error_exit;
 	    }
 	}
+    }
+
+  if (dbname == NULL)
+    {
+      printf ("error: missing db-name\n\n");
+      goto error_exit;
     }
 
   return dbname;
