@@ -220,6 +220,7 @@ struct log_rec_mvcc_undoredo
 {
   LOG_REC_UNDOREDO undoredo;	/* Undoredo information */
   MVCCID mvccid;		/* MVCC Identifier for transaction */
+  //MVCCID parent_mvccid_dbg;
   LOG_VACUUM_INFO vacuum_info;	/* Info required for vacuum */
 };
 
@@ -229,7 +230,10 @@ struct log_rec_mvcc_undo
 {
   LOG_REC_UNDO undo;		/* Undo information */
   MVCCID mvccid;		/* MVCC Identifier for transaction */
-  //MVCCID debug_parent_mvccid;
+  //MVCCID parent_mvccid_dbg;     /* If transaction has an mvccid allocated by a sub-transaction, this field will
+				 * contain the transaction's "main" mvccid (which, as indicated in implementations
+				 * in logtb_get_new_subtransaction_mvccid and logtb_get_current_mvccid, must
+				 * be valid */
   LOG_VACUUM_INFO vacuum_info;	/* Info required for vacuum */
 };
 
@@ -239,6 +243,7 @@ struct log_rec_mvcc_redo
 {
   LOG_REC_REDO redo;		/* Location of recovery data */
   MVCCID mvccid;		/* MVCC Identifier for transaction */
+  //MVCCID parent_mvccid_dbg;
 };
 
 /* replication log structure */
@@ -406,6 +411,7 @@ typedef struct log_rec_assigned_mvccid LOG_REC_ASSIGNED_MVCCID;
 struct log_rec_assigned_mvccid
 {
   MVCCID mvccid;
+  // TODO: MVCCID parent_mvccid_dbg; ???
 };
 
 typedef enum supplement_rec_type

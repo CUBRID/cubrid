@@ -1012,6 +1012,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 	    {
 	      *mvccid_p = tdes->mvccinfo.id;
 	    }
+	  // TODO: assign child parent distinctly here
 	}
     }
 
