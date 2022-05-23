@@ -82,8 +82,8 @@ namespace cublog
       void redo_upto_nxio_lsa (cubthread::entry &thread_entry);
       void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa);
       template <typename T>
-      void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype,
-				 const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa);
+      void read_and_redo_record (cubthread::entry &thread_entry, const LOG_RECORD_HEADER &rec_header,
+				 const log_lsa &rec_lsa);
       template <typename T>
       void read_and_bookkeep_mvcc_vacuum (LOG_RECTYPE rectype, const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa,
 					  bool assert_mvccid_non_null);
