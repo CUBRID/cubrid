@@ -152,13 +152,11 @@ static char *rename_query = "select \
 static char *update_db_class_not_for_system_classes =
   "update _db_class set class_name = substring_index (class_name, '.', -1), unique_name = class_name where is_system_class % 8 = 0";
 
-static char *serial_query = {
-  "select \
-       'call change_serial_owner (''' || lower (b.owner.name) || '.' || a.name || ''', ''' || lower (b.owner.name) || ''') \
+static char *serial_query = "select \
+       'call change_serial_owner (''' || name || ''', ''' || substring_index (class_name, '.', 1) || ''') \
           on class db_serial' as q \
-   from db_serial a left outer join _db_class b on a.class_name = b.class_name \
-   where a.class_name is not null"
-};
+  from db_serial \
+  where class_name is not null";
 
 static char *update_serial[] = {
   "update db_serial set name = substring_index (name, '.', -1)",
@@ -181,6 +179,8 @@ static char *index_query[] = {
 /* only system classes update unique_name. */
 static char *update_db_class_for_system_classes =
   "update _db_class set unique_name = class_name where is_system_class % 8 != 0";
+
+static char db_path[PATH_MAX];
 
 static void
 print_errmsg (const char *err_msg)
@@ -363,7 +363,7 @@ get_db_path (char *dbname, char **pathname)
 }
 
 static int
-migrate_get_db_path (char *dbname, char *db_path)
+migrate_get_db_path (char *dbname)
 {
   char *path;
   int error;
@@ -381,7 +381,6 @@ migrate_get_db_path (char *dbname, char *db_path)
 static int
 migrate_check_log_volume (char *dbname)
 {
-  char db_path[PATH_MAX];
   char *version = cub_db_get_database_version ();
   char *path;
   int fd;
@@ -402,14 +401,6 @@ migrate_check_log_volume (char *dbname)
       printf ("migrate: can not get version info.\n");
       return -1;
     }
-
-  if (migrate_get_db_path (dbname, db_path) < 0)
-    {
-      printf ("migrate: exit with error\n");
-      return -1;
-    }
-
-  printf ("%s reading\n", db_path);
 
   fd = open (db_path, O_RDONLY);
 
@@ -448,16 +439,12 @@ migrate_check_log_volume (char *dbname)
 static void
 migrate_backup_log_volume (char *dbname)
 {
-  char db_path[PATH_MAX];
   char backup_path[PATH_MAX];
   int fd;
 
   int backup;
   off_t copied = 0;
   struct stat fileinfo = { 0 };
-
-  migrate_get_db_path (dbname, db_path);
-  printf ("%s version updating\n", db_path);
 
   fd = open (db_path, O_RDWR);
 
@@ -487,6 +474,8 @@ migrate_backup_log_volume (char *dbname)
       printf ("migrate: encountered error while copying backup log file\n");
     }
 
+  printf ("%s created\n", backup_path);
+
   close (fd);
   close (backup);
 }
@@ -494,7 +483,6 @@ migrate_backup_log_volume (char *dbname)
 static void
 migrate_update_log_volume (char *dbname)
 {
-  char db_path[PATH_MAX];
   float version = 11.2;
   int fd;
 
@@ -566,8 +554,8 @@ exit:
   return error;
 }
 
-int
-migrate_initialize ()
+static int
+migrate_initialize (char *dbname)
 {
   char libcubridsa_path[BUF_LEN];
   int error = 0;
@@ -586,6 +574,13 @@ migrate_initialize ()
     }
 
   snprintf (libcubridsa_path, BUF_LEN, "%s/lib/libcubridsa.so", CUBRID_ENV);
+
+  if (migrate_get_db_path (dbname) < 0)
+    {
+      return -1;
+    }
+
+  printf ("%s reading\n", db_path);
 
   /* dynamic loading (libcubridsa.so) */
   dl_handle = dlopen (libcubridsa_path, RTLD_LAZY);
@@ -733,7 +728,7 @@ migrate_execute_query (const char *query)
   int error;
 
   error = cub_db_execute_query (query, &result);
-  printf ("migrate: execute query: %s\n", query);
+  printf ("\tmigrate: execute query: %s\n", query);
   if (error < 0)
     {
       printf ("migrate: execute query failed \"%s\"\n", query);
@@ -775,6 +770,10 @@ migrate_generated (const char *generated, int col_num)
 		}
 
 	      query = value.data.ch.medium.buf;
+	      if (query == NULL)
+		{
+		  goto end;
+		}
 
 	      /* from generated result */
 	      error = migrate_execute_query (query);
@@ -788,6 +787,7 @@ migrate_generated (const char *generated, int col_num)
       while (error != DB_CURSOR_END && error != DB_CURSOR_ERROR);
     }
 
+end:
   cub_db_query_end (gen_result);
 
   if (error < 0)
@@ -887,13 +887,18 @@ main (int argc, char *argv[])
       dbname = argv[1];
     }
 
+  printf ("\n");
+  printf ("Phase 1: Initializing\n");
 
-  error = migrate_initialize ();
+  error = migrate_initialize (dbname);
   if (error < 0)
     {
       printf ("migrate: error encountered while initializing\n");
       return -1;
     }
+
+  printf ("\n");
+  printf ("Phase 2: Checking log volume\n");
 
   status = migrate_check_log_volume (dbname);
 
@@ -902,8 +907,14 @@ main (int argc, char *argv[])
       return -1;
     }
 
+  printf ("\n");
+  printf ("Phase 3: Backup the log volume\n");
+
   /* backup first before upating catalog */
   migrate_backup_log_volume (dbname);
+
+  printf ("\n");
+  printf ("Phase 4: Executing the mirgate queries\n");
 
   cub_au_disable_passwords ();
 
@@ -945,6 +956,9 @@ end:
       printf ("migrate: error encountered while shutdown db\n");
       return -1;
     }
+
+  printf ("\n");
+  printf ("Phase 5: Updating version info for log volume\n");
 
   /* finalizing: update volume info. to 11.2 */
   migrate_update_log_volume (dbname);
