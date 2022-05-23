@@ -124,7 +124,11 @@ typedef enum
   MSGCAT_UTIL_GENERIC_INVALID_CMD = 40,
   MSGCAT_UTIL_GENERIC_MANAGER_NOT_INSTALLED = 41,
   MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT = 42,
-  MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR = 43
+  MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR = 43,
+  /* javasp usage = 44 ? */
+  /* gateway usage = 45 ? */
+  MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH = 46,
+  MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT = 47
 } MSGCAT_UTIL_GENERIC_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_DELETEDB */
@@ -591,6 +595,7 @@ typedef enum
 {
   APPLYINFO_MSG_DBA_PASSWORD = 21,
   APPLYINFO_MSG_NOT_HA_MODE = 22,
+  APPLYINFO_MSG_NO_QUERY_RESULTS = 57,
   APPLYINFO_MSG_HA_NOT_SUPPORT = 58,
   APPLYINFO_MSG_NOT_IN_STANDALONE = 59,
   APPLYINFO_MSG_USAGE = 60
@@ -693,6 +698,7 @@ typedef enum
 {
   CHECKSUMDB_MSG_INVALID_INPUT_FILE = 1,
   CHECKSUMDB_MSG_MUST_RUN_ON_ACTIVE = 2,
+  CHECKSUMDB_MSG_INVALID_OWNER = 3,
   CHECKSUMDB_MSG_HA_NOT_SUPPORT = 58,
   CHECKSUMDB_MSG_NOT_IN_STANDALONE = 59,
   CHECKSUMDB_MSG_USAGE = 60
@@ -728,6 +734,7 @@ typedef enum
   FLASHBACK_MSG_TIMEOUT = 12,
   FLASHBACK_MSG_DUPLICATED_REQUEST = 13,
   FLASHBACK_MSG_NOT_IN_STANDALONE = 14,
+  FLASHBACK_MSG_SYSTEM_CLASS_NOT_SUPPORTED = 15,
   FLASHBACK_MSG_USAGE = 60
 } MSGCAT_FLASHBACK_MSG;
 
@@ -1713,6 +1720,7 @@ extern "C"
   extern char *utility_get_option_string_value (UTIL_ARG_MAP * arg_map, int arg_ch, int index);
   extern INT64 utility_get_option_bigint_value (UTIL_ARG_MAP * arg_map, int arg_ch);
   extern int utility_get_option_string_table_size (UTIL_ARG_MAP * arg_map);
+  extern int utility_check_class_name (const char *class_name);
 
   extern FILE *fopen_ex (const char *filename, const char *type);
 

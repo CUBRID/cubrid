@@ -3062,6 +3062,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		  node1 = pt_resolve_method (parser, node, bind_arg);
 		}
 
+	      if (node1 == NULL)
+		{
+		  break;	// FIXME: something wrong
+		}
+
 	      if (node1->node_type == PT_METHOD_CALL)
 		{
 		  PT_NODE_INIT_OUTERLINK (node);
@@ -6023,9 +6028,14 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_
 
 	  if (au_fetch_class (classop, &class_, fetchmode, type) == NO_ERROR)
 	    {
-	      if (intl_identifier_casecmp (class_name, class_->header.ch_name))
+	      /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
+	      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY
+		  && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
 		{
-		  name->info.name.original = pt_append_string (parser, NULL, class_->header.ch_name);
+		  if (intl_identifier_casecmp (class_name, class_->header.ch_name) != 0)
+		    {
+		      name->info.name.original = pt_append_string (parser, NULL, class_->header.ch_name);
+		    }
 		}
 
 	      if (class_->partition != NULL)
@@ -9450,11 +9460,13 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * node)
       owner_name = node->info.dot.arg1->info.name.original;
       serial_name = node->info.dot.arg2->info.name.original;
     }
+  else if (PT_IS_NAME_NODE (node))
+    {
+      serial_name = node->info.name.original;
+    }
   else
     {
-      assert (PT_IS_NAME_NODE (node));
-
-      serial_name = node->info.name.original;
+      return NULL;
     }
 
   if (serial_name == NULL || serial_name[0] == '\0')

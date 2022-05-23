@@ -18,8 +18,36 @@
 
 #include "method_error.hpp"
 
+#include "error_manager.h"
+
 namespace cubmethod
 {
+  void handle_method_error (int err_id, const std::string &err_msg)
+  {
+    switch (err_id)
+      {
+      /* no arg */
+      case ER_INTERRUPTED:
+      case ER_SP_TOO_MANY_NESTED_CALL:
+      case ER_NET_SERVER_SHUTDOWN:
+      case ER_SP_NOT_RUNNING_JVM:
+      case ER_SES_SESSION_EXPIRED:
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_id, 0);
+	break;
+
+      /* 1 arg */
+      case ER_SP_CANNOT_CONNECT_JVM:
+      case ER_SP_NETWORK_ERROR:
+      case ER_OUT_OF_VIRTUAL_MEMORY:
+      case ER_SP_EXECUTE_ERROR:
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_id, 1, err_msg.c_str ());
+	break;
+      default:
+	/* do nothing */
+	break;
+      }
+  }
+
   error_context::error_context ()
   {
     clear ();

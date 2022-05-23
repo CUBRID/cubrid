@@ -132,14 +132,7 @@ end:
 DB_OBJECT *
 db_find_class (const char *name)
 {
-  DB_OBJECT *retval;
-
-  CHECK_CONNECT_NULL ();
-  CHECK_1ARG_NULL (name);
-
-  retval = sm_find_class (name);
-
-  return retval;
+  return db_find_class_with_purpose (name, false);
 }
 
 /*
@@ -160,6 +153,41 @@ db_find_class_with_purpose (const char *name, bool for_update)
   retval = sm_find_class_with_purpose (name, for_update);
 
   return retval;
+}
+
+/*
+ * db_find_synonym()- This function search for a synonym in the database
+ *     with a given name
+ * return : synonym object
+ * name(in): synonym name
+ */
+DB_OBJECT *
+db_find_synonym (const char *name)
+{
+  DB_OBJECT *retval;
+
+  CHECK_CONNECT_NULL ();
+  CHECK_1ARG_NULL (name);
+
+  retval = sm_find_synonym (name);
+
+  return retval;
+}
+
+/*
+ * db_get_synonym_target_name() - get target_name.
+ *   return: output buffer pointer or NULL on error
+ *   synonym(in): synonym object
+ *   buf(out): output buffer
+ *   buf_size(in): output buffer length
+ */
+char *
+db_get_synonym_target_name (MOP synonym, char *buf, int buf_size)
+{
+  CHECK_CONNECT_NULL ();
+  CHECK_1ARG_NULL (synonym);
+
+  return sm_get_synonym_target_name (synonym, buf, buf_size);
 }
 
 /*

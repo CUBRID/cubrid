@@ -24112,13 +24112,32 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 
   if (logtb_find_current_isolation (thread_p) >= TRAN_REP_READ || (find_unique_helper.lock_mode >= S_LOCK))
     {
+      bool need_skip_mvcc_snapshot = false;
+
+      /*
+       * In Repeatable Read, the MVCC snapshot is created when the SELECT query is executed.
+       * Even if the SELCET query is not explicitly executed, the MVCC snapshot is created when the index is scanned.
+       * MVCC snapshots are created when looking up a user, getting the current username, and looking up a Synonym.
+       * Creating an MVCC snapshot when executing an internal query on the system may not be the intended result
+       * of the user. Therefore, in case of index scan of the db_user and _db_synonym system tables,
+       * do not create an MVCC snapshot so that it does not differ from the previous answer in the isolation test case.
+       */
+      if (oid_check_cached_class_oid (OID_CACHE_USER_CLASS_ID, class_oid)
+	  || oid_check_cached_class_oid (OID_CACHE_SYNONYM_CLASS_ID, class_oid))
+	{
+	  need_skip_mvcc_snapshot = true;
+	}
+
       /*
        * Acquire snapshot in RR if not already acquired. This is needed since
        * the transaction need to know the actual visible objects - before
        * instance locking. In this way future commands of current transaction
        * may correctly detect visible objects.
        */
-      (void) logtb_get_mvcc_snapshot (thread_p);
+      if (!need_skip_mvcc_snapshot)
+	{
+	  (void) logtb_get_mvcc_snapshot (thread_p);
+	}
     }
 
   /* Find unique key and object. */

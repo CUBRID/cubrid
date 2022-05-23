@@ -904,7 +904,7 @@ $ LOADDB
 834 Il ya quelques incohérences entre la chaîne source "%1$s" et la chaîne de format "%2$s" donnée dans to_number().
 835 Objet de statistique pas defini.
 836 LATCH ON PAGE(%1$d|%2$d) a expiré.
-837 Impossible de supprimer l'utilisateur qui possède des objets de base de données(classe/gâchette/serial/serveur etc).
+837 Impossible de supprimer l'utilisateur qui possède des objets de base de données(classe/gâchette/serial/serveur/synonym etc).
 838  Impossible d'ouvrir plus de %1$d analyses d'index simultanément.
 839 "%1$s": Paramètre de système inconnu ou mauvaise valeur.
 840 Impossible de modifier le paramètres de système "%1$s".
@@ -1379,7 +1379,7 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1305 dblink - server "%1$s" not found.
 1306 dblink - server "%1$s" already exists.
 1307 dblink - Cannot update server object.
-1308 dblink - unsupported type.
+1308 dblink - not supported type %1$s.
 1309 dblink - invalid bind param.
 1310 dblink - password length exceeds max size.
 1311 dblink - encrypted password length is incorrect.
@@ -1391,20 +1391,20 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1317 dblink - Not allowed "%1$s" Server.
 
 1318 [%1$5.5s][%2$d] %3$s
-1319 dblink - Parameter binding error.
-1320 dblink - Invalid ODBC handle.
-1321 dblink - Type conversion error.
-1322 dblink - not supported type %1$s(%2$d).
-1323 dblink - Invalid Statement handle.
-1324 dblink - Invalid db connection handle.
-1325 dblink - Link server connection url do not exist.
-1326 dblink - Invalid numeric value.
-1327 dblink - Invalid precision value of "%1$s" column.
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 not supported type %1$s(%2$d).
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
 
-1328 dblink - Invalid Descriptor handle.
-1329 dblink - Not supported dbms.
-1330 dblink - Unable to allocate an environment handle.
-1331 Error reserved for dblink development.
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
+1330 Unable to allocate an environment handle.
+1331 A null column binder was referenced.
 
 1332 Le volume de journal actif (%1$s) est trop sain pour être recréé. Si vous supprimez le journal actif, cela peut provoquer un problème inattendu et irréversible.
 
@@ -1424,7 +1424,15 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
 1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
 
-1346 Dernière erreur
+1346 Public synonym "%1$s" already exists.
+1347 Public synonym "%1$s" does not exist.
+1348 Synonym "%1$s" already exists.
+1349 Synonym "%1$s" does not exist.
+1350 Invalid synonym value.
+
+1351 The maximum length of the function expression string must be %1$d.
+
+1352 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
@@ -1583,6 +1591,10 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 128 Nombre d'arguments non valide pour JSON_OBJECTAGG
 129 L'argument de compte PARALLELE doit être compris entre %1$d et %2$d.
 130 dblink - Server name cannot contain periods.
+131 Invalid alter synonym.\n  ALTER [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+132 Invalid create synonym.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+133 Invalid drop synonym.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
+134 Invalid rename synonym.\n  RENAME [PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Mémoire épuisée.
@@ -1893,6 +1905,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 306 dblink - Les informations requises sont manquantes.
 307 dblink - not supported type %1$s.
 308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
+309 Invalid synonym name "%1$s".\n  The system class/vclass name cannot be a synonym name.
+310 DBA, members of DBA group, and owner can perform %1$s.
+311 Public synonym "%1$s" already exists.
+312 Public synonym "%1$s" does not exist.
+313 Synonym "%1$s" already exists.
+314 Synonym "%1$s" does not exist.
+315 Rename cannot change owner.
+316 Rename cannot be changed to the same name.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Mémoire virtuelle épuisée: impossible d'allouer %1$d octets.

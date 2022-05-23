@@ -220,8 +220,16 @@ method_dispatch_internal (packing_unpacker &unpacker)
 	  AU_RESTORE (save_auth);
 	  break;
 	case METHOD_REQUEST_END:
-	  cubmethod::get_callback_handler()->free_query_handle_all (false);
-	  break;
+	{
+	  uint64_t id;
+	  std::vector <int> handlers;
+	  unpacker.unpack_all (id, handlers);
+	  for (int i = 0; i < handlers.size (); i++)
+	    {
+	      cubmethod::get_callback_handler()->free_query_handle (handlers[i], false);
+	    }
+	}
+	break;
 	default:
 	  assert (false); // the other callbacks are disabled now
 	  return ER_FAILED;
@@ -598,7 +606,8 @@ int xmethod_invoke_fold_constants (THREAD_ENTRY *thread_p, const method_sig_list
 				   DB_VALUE &result)
 {
   int error_code = NO_ERROR;
-  cubmethod::method_invoke_group *method_group = cubmethod::get_rctx (thread_p)->create_invoke_group (thread_p, sig_list);
+  cubmethod::method_invoke_group *method_group = cubmethod::get_rctx (thread_p)->create_invoke_group (thread_p, sig_list,
+      false);
   method_group->begin ();
   error_code = method_group->prepare (args);
   if (error_code != NO_ERROR)

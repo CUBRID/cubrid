@@ -971,12 +971,6 @@ css_reestablish_connection_to_master (void)
   return 0;
 }
 
-static void
-css_push_method_server_task (cubthread::entry & thread_ref, CSS_CONN_ENTRY & conn)
-{
-  (void) css_internal_request_handler (thread_ref, conn);
-}
-
 /*
  * css_connection_handler_thread () - Accept/process request from one client
  *   return:
@@ -1108,24 +1102,11 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	    }
 	  else
 	    {
-
 	      /* if new command request has arrived, make new job and add it to job queue */
 	      if (type == COMMAND_TYPE)
 		{
-		  if (conn->in_method == false)
-		    {
-		      // push new task
-		      css_push_server_task (*conn);
-		    }
-		  else
-		    {
-		      // push new task for method
-		      // *INDENT-OFF*
-		      cubthread::entry_callable_task * task =
-		        new cubthread::entry_callable_task (std::bind (css_push_method_server_task, std::placeholders::_1, std::ref (*conn)));
-		      css_push_external_task (conn, task);
-		      // *INDENT-ON*
-		    }
+		  // push new task
+		  css_push_server_task (*conn);
 		}
 	    }
 	}
@@ -1339,9 +1320,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 #endif /* WINDOWS */
 
   // initialize worker pool for server requests
-  const std::size_t MAX_WORKERS = css_get_max_workers ();
-  const std::size_t MAX_TASK_COUNT = css_get_max_task_count ();
-  const std::size_t MAX_CONNECTIONS = css_get_max_connections ();
+#define MAX_WORKERS css_get_max_workers ()
+#define MAX_TASK_COUNT css_get_max_task_count ()
+#define MAX_CONNECTIONS css_get_max_connections ()
 
   // create request worker pool
   css_Server_request_worker_pool =
@@ -2752,8 +2733,9 @@ css_push_server_task (CSS_CONN_ENTRY &conn_ref)
   //       consequence, lock waiters may wait longer or even indefinitely if we are really unlucky.
   //
   conn_ref.add_pending_request ();
+
   thread_get_manager ()->push_task_on_core (css_Server_request_worker_pool, new css_server_task (conn_ref),
-                                            static_cast<size_t> (conn_ref.idx));
+                                            static_cast<size_t> (conn_ref.idx), conn_ref.in_method);
 }
 
 void

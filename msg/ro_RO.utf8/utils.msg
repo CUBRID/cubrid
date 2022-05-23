@@ -274,10 +274,13 @@ Available command:\n\
     stop\n\
     restart\n\
     info\n\
-    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-c] [-u] [<expr>]\n\
     on          gateway-name\n\
     off         gateway-name\n\
     reset       gateway-name\n\
+    acl         <status|reload> [gateway-name]\n
+46 Lungimea numelui_proprietarului trebuie să fie mai mică de %1$d, iar lungimea numelui_clasei trebuie să fie mai mică de %2$d octeți.\n
+47 Format nevalid pentru proprietar_name.class_name ('%1$s').\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 AVERTIESMENT: opţiunea -t este ignorată în modul de execuţie independent.\n
@@ -1009,6 +1012,7 @@ opţiuni valide:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Introduceţi parola de administrator (DBA):
 22 Serverul nu a fost configurat pentru HA.\n
+57 Nu se pot genera informațiile aplicate din cauza unei căi nevalide a opțiunii -L sau a lipsei informațiilor asociate din tabelul de catalog db_ha_apply_info.\n
 58 Funcţionalitatea HA nu este suportată pe această platformă.\n
 59 applyinfo nu poate fi executat în modul independent.\n
 60 \
@@ -1239,6 +1243,7 @@ opțiuni valide:\n\
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Încărcarea numelor tabelelor nu a reușit în %1$s.\n
 2 checksumdb poate fi rulat doar pe un server activ HA. %1$s (status curent: %2$s)\n
+3 Proprietarul tabelului pentru a salva rezultatul sumei de control trebuie să fie DBA.\n
 58 opțiunea HA nu este disponibilă pe această platformă.\n
 59 checksumdb nu poate fi rulat în modul stand-alone.\n
 60 \
@@ -1257,7 +1262,7 @@ opțiuni valide:\n\
   -t, --timeout=NUMĂR           numărul de milisecunde până la timeout;\n\
                                 implicit: 1000 ms\n\
   -n, --table-name=NUME         numele tabelului unude vor fi salvate rezultatele;\n\
-                                implicit: db_ha_checksums\n\
+                                implicit: dba.db_ha_checksum\n\
   -r, --report-only             raportare informații rezultate în urma checksum\n\
                                 toate opțiunile diferite de --table-name sunt ignorate\n\
       --resume                  reluare checksum\n\
@@ -1300,9 +1305,10 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 ID-ul tranzacției trebuie introdus în %1$d secunde. Timeout-ul poate fi ajustat prin setarea „flashback_timeout” din „cubrid.conf”.\n
 13 Flashback rulează deja. Flashback nu poate fi rulat de două procese.\n
 14 Flashback nu poate rula ca mod independent.\n
+15 Clasa de catalog de sistem (%1$s) nu este acceptată în flashback.\n
 60 \
 flashback: furnizează declarații pentru a flashback o anumită tranzacție.\n\
-utilizare: %1$s flashback [OPȚIUNE] bază de date nume_clasă1 [nume_clasă2 ...]\n\
+utilizare: %1$s flashback [OPȚIUNE] bază de date proprietar_name.nume_clasă1 [proprietar_name.nume_clasă2 ...]\n\
 \n\
 opțiuni valide:\n\
     -o, --output-file=FILE        redirecționează mesajul de ieșire către FILE; implicit: niciunul.\n\

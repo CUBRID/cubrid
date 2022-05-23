@@ -93,6 +93,7 @@ extern int tran_get_query_timeout (void);
 
 extern void tran_begin_libcas_function (void);
 extern void tran_end_libcas_function (void);
+extern void tran_reset_libcas_function (void);
 extern bool tran_is_in_libcas (void);
 extern int tran_get_libcas_depth (void);
 

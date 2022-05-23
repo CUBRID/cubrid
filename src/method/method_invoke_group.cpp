@@ -40,8 +40,13 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 // Method Group to invoke together
 //////////////////////////////////////////////////////////////////////////
-  method_invoke_group::method_invoke_group (cubthread::entry *thread_p, const method_sig_list &sig_list)
-    : m_id ((std::uint64_t) this), m_thread_p (thread_p), m_connection (nullptr)
+  method_invoke_group::method_invoke_group (cubthread::entry *thread_p, const method_sig_list &sig_list,
+      bool is_for_scan = false)
+    : m_id ((std::uint64_t) this)
+    , m_thread_p (thread_p)
+    , m_connection (nullptr)
+    , m_cursor_set ()
+    , m_handler_set ()
   {
     assert (sig_list.num_methods > 0);
 
@@ -79,11 +84,11 @@ namespace cubmethod
     m_result_vector.resize (sig_list.num_methods, v);
     m_is_running = false;
     m_parameter_info = nullptr;
+    m_is_for_scan = is_for_scan;
   }
 
   method_invoke_group::~method_invoke_group ()
   {
-    end ();
     for (method_invoke *method: m_method_vector)
       {
 	delete method;
@@ -132,10 +137,28 @@ namespace cubmethod
     return m_data_queue;
   }
 
+  cubmethod::runtime_context *
+  method_invoke_group::get_runtime_context ()
+  {
+    return m_rctx;
+  }
+
+  connection_pool &
+  method_invoke_group::get_connection_pool ()
+  {
+    return get_runtime_context ()->get_connection_pool ();
+  }
+
   bool
   method_invoke_group::is_running () const
   {
     return m_is_running;
+  }
+
+  bool
+  method_invoke_group::is_for_scan () const
+  {
+    return m_is_for_scan;
   }
 
   db_parameter_info *
@@ -198,8 +221,15 @@ namespace cubmethod
 	  }
 
 	error = m_method_vector[i]->get_return (m_thread_p, arg_base, m_result_vector[i]);
+	if (m_rctx->is_interrupted ())
+	  {
+	    error = m_rctx->get_interrupt_id ();
+	  }
+
 	if (error != NO_ERROR)
 	  {
+	    // if error is not interrupt reason, interrupt is not set
+	    m_rctx->set_interrupt (error, (er_has_error () && er_msg ()) ? er_msg () : "");
 	    break;
 	  }
       }
@@ -224,7 +254,20 @@ namespace cubmethod
       {
 	if (m_connection == nullptr)
 	  {
-	    m_connection = get_connection_pool ()->claim();
+	    m_connection = get_connection_pool ().claim();
+	  }
+
+	// check javasp server's status
+	if (m_connection->get_socket () == INVALID_SOCKET)
+	  {
+	    if (m_connection->is_jvm_running ())
+	      {
+		m_rctx->set_interrupt (ER_SP_CANNOT_CONNECT_JVM, "connect ()");
+	      }
+	    else
+	      {
+		m_rctx->set_interrupt (ER_SP_NOT_RUNNING_JVM);
+	      }
 	  }
       }
 
@@ -235,15 +278,23 @@ namespace cubmethod
   {
     int error = NO_ERROR;
 
-    pr_clear_value_vector (m_result_vector);
+    if (!is_end_query)
+      {
+	cubmethod::header header (METHOD_REQUEST_END, get_id());
+	std::vector<int> handler_vec (m_handler_set.begin (), m_handler_set.end ());
+	error = method_send_data_to_client (m_thread_p, header, handler_vec);
+	m_handler_set.clear ();
+      }
 
-    // destroy cursors used in this group
-    destory_all_cursors ();
-
-    cubmethod::header header (METHOD_REQUEST_END, get_id());
-    error = method_send_data_to_client (m_thread_p, header);
+    destroy_resources ();
 
     return error;
+  }
+
+  void
+  method_invoke_group::register_client_handler (int handler_id)
+  {
+    m_handler_set.insert (handler_id);
   }
 
   void
@@ -254,13 +305,27 @@ namespace cubmethod
 	return;
       }
 
-    reset (true);
+    // FIXME: The connection is closed to prevent Java thread from entering an unexpected state.
+    if (m_connection)
+      {
+	bool kill = (m_rctx->is_interrupted() || er_has_error ());
+	get_connection_pool ().retire (m_connection, kill);
+	m_connection = nullptr;
+      }
 
-    get_connection_pool ()->retire (m_connection);
-    m_connection = nullptr;
+    // FIXME
+    // m_rctx->pop_stack (m_thread_p, this);
 
-    m_rctx->pop_stack (m_thread_p);
     m_is_running = false;
+  }
+
+  void
+  method_invoke_group::destroy_resources ()
+  {
+    pr_clear_value_vector (m_result_vector);
+
+    // destroy cursors used in this group
+    destory_all_cursors ();
   }
 
   query_cursor *
@@ -288,12 +353,13 @@ namespace cubmethod
   {
     for (auto &cursor_it : m_cursor_set)
       {
-	m_rctx->destroy_cursor (m_thread_p, cursor_it);
-
 	// If the cursor is received from the child function and is not returned to the parent function, the cursor remains in m_cursor_set.
 	// So here trying to find the cursor Id in the global returning cursor storage and remove it if exists.
 	m_rctx->deregister_returning_cursor (m_thread_p, cursor_it);
+
+	m_rctx->destroy_cursor (m_thread_p, cursor_it);
       }
+
     m_cursor_set.clear ();
   }
 
