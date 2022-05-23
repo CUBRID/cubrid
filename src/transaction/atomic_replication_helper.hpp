@@ -101,7 +101,7 @@ namespace cublog
 	      int fix_page (THREAD_ENTRY *thread_p);
 	      void unfix_page (THREAD_ENTRY *thread_p);
 	      PAGE_PTR get_page_ptr ();
-	      void set_page_ptr (PAGE_PTR &ptr);
+	      void set_page_ptr (const PAGE_PTR &ptr);
 
 	      VPID m_vpid;
 	    private:
@@ -111,14 +111,16 @@ namespace cublog
 	      LOG_RCVINDEX m_record_index;
 	  };
 
-	  std::vector<atomic_replication_unit> m_atomic_replication_unit_vector;
-	  std::map<VPID, PAGE_PTR> m_atomic_sequence_pages_map;
+	  using atomic_unit_vector = std::vector<atomic_replication_unit>;
+	  atomic_unit_vector m_units;
+	  using vpid_to_page_ptr_map = std::map<VPID, PAGE_PTR>;
+	  vpid_to_page_ptr_map m_page_map;
       };
 
-      std::map<TRANID, atomic_replication_sequence> m_atomic_sequences_map;
+      std::map<TRANID, atomic_replication_sequence> m_sequences_map;
 #if !defined (NDEBUG)
       using vpid_set_type = std::set<VPID>;
-      std::map<TRANID, vpid_set_type> m_atomic_sequences_vpids_map;
+      std::map<TRANID, vpid_set_type> m_vpid_sets_map;
 #endif
   };
 }

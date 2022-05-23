@@ -40,11 +40,11 @@ namespace cublog
 	// the page is no longer relevant
 	assert (false);
       }
-    vpid_set_type &vpids = m_atomic_sequences_vpids_map[tranid];
+    vpid_set_type &vpids = m_vpid_sets_map[tranid];
     vpids.insert (vpid);
 #endif
 
-    int error_code = m_atomic_sequences_map[tranid].add_atomic_replication_unit (thread_p, record_lsa, rcvindex, vpid,
+    int error_code = m_sequences_map[tranid].add_atomic_replication_unit (thread_p, record_lsa, rcvindex, vpid,
 		     redo_context, record_info);
     if (error_code != NO_ERROR)
       {
@@ -57,7 +57,7 @@ namespace cublog
 #if !defined (NDEBUG)
   bool atomic_replication_helper::check_for_page_validity (VPID vpid, TRANID tranid) const
   {
-    for (auto const &vpid_sets_iterator : m_atomic_sequences_vpids_map)
+    for (auto const &vpid_sets_iterator : m_vpid_sets_map)
       {
 	if (vpid_sets_iterator.first != tranid)
 	  {
@@ -78,8 +78,8 @@ namespace cublog
 
   bool atomic_replication_helper::is_part_of_atomic_replication (TRANID tranid) const
   {
-    const auto iterator = m_atomic_sequences_map.find (tranid);
-    if (iterator == m_atomic_sequences_map.cend ())
+    const auto iterator = m_sequences_map.find (tranid);
+    if (iterator == m_sequences_map.cend ())
       {
 	return false;
       }
@@ -89,18 +89,18 @@ namespace cublog
 
   void atomic_replication_helper::unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, TRANID tranid)
   {
-    auto iterator = m_atomic_sequences_map.find (tranid);
-    if (iterator == m_atomic_sequences_map.end ())
+    auto iterator = m_sequences_map.find (tranid);
+    if (iterator == m_sequences_map.end ())
       {
 	assert (false);
 	return;
       }
 
     iterator->second.unfix_sequence (thread_p);
-    m_atomic_sequences_map.erase (iterator);
+    m_sequences_map.erase (iterator);
 
 #if !defined (NDEBUG)
-    m_atomic_sequences_vpids_map.erase (tranid);
+    m_vpid_sets_map.erase (tranid);
 #endif
   }
   /****************************************************************************
@@ -111,34 +111,34 @@ namespace cublog
       log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid, log_rv_redo_context &redo_context,
       const log_rv_redo_rec_info<T> &record_info)
   {
-    m_atomic_replication_unit_vector.emplace_back (record_lsa, vpid, rcvindex);
-    auto iterator = m_atomic_sequence_pages_map.find (vpid);
-    if (iterator == m_atomic_sequence_pages_map.cend ())
+    m_units.emplace_back (record_lsa, vpid, rcvindex);
+    auto iterator = m_page_map.find (vpid);
+    if (iterator == m_page_map.cend ())
       {
-	int error_code = m_atomic_replication_unit_vector.back ().fix_page (thread_p);
+	int error_code = m_units.back ().fix_page (thread_p);
 	if (error_code != NO_ERROR)
 	  {
 	    return error_code;
 	  }
-	m_atomic_sequence_pages_map.emplace (vpid,  m_atomic_replication_unit_vector.back ().get_page_ptr ());
+	m_page_map.emplace (vpid,  m_units.back ().get_page_ptr ());
       }
     else
       {
-	m_atomic_replication_unit_vector.back ().set_page_ptr (iterator->second ());
+	m_units.back ().set_page_ptr (iterator->second ());
       }
-    m_atomic_replication_unit_vector.back ().apply_log_redo (thread_p, redo_context, record_info);
+    m_units.back ().apply_log_redo (thread_p, redo_context, record_info);
     return NO_ERROR;
   }
 
   void atomic_replication_helper::atomic_replication_sequence::unfix_sequence (THREAD_ENTRY *thread_p)
   {
-    for (size_t i = 0; i < m_atomic_replication_unit_vector.size (); i++)
+    for (size_t i = 0; i < m_units.size (); i++)
       {
-	auto iterator = m_atomic_sequence_pages_map.find (m_atomic_replication_unit_vector[i].m_vpid);
-	if (iterator != m_atomic_sequence_pages_map.end ())
+	auto iterator = m_page_map.find (m_units[i].m_vpid);
+	if (iterator != m_page_map.end ())
 	  {
-	    m_atomic_replication_unit_vector[i].unfix_page (thread_p);
-	    m_atomic_sequence_pages_map.erase (iterator);
+	    m_units[i].unfix_page (thread_p);
+	    m_page_map.erase (iterator);
 	  }
       }
   }
@@ -260,7 +260,7 @@ namespace cublog
     return m_watcher.pgptr;
   }
 
-  void atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::set_page_ptr (PAGE_PTR &ptr)
+  void atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::set_page_ptr (const PAGE_PTR &ptr)
   {
     m_page_ptr = ptr;
   }
