@@ -10888,7 +10888,7 @@ log_daemons_destroy ()
   cubthread::get_manager ()->destroy_daemon (log_Remove_log_archive_daemon);
   cubthread::get_manager ()->destroy_daemon (log_Checkpoint_daemon);
   cubthread::get_manager ()->destroy_daemon (log_Checkpoint_trantable_daemon);
-  //cubthread::get_manager ()->destroy_daemon (log_Check_ha_delay_info_daemon);
+  cubthread::get_manager ()->destroy_daemon (log_Check_ha_delay_info_daemon);
   cubthread::get_manager ()->destroy_daemon (log_Clock_daemon);
   cubthread::get_manager ()->destroy_daemon (log_Flush_daemon);
 }
