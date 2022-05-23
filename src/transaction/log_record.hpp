@@ -230,7 +230,8 @@ struct log_rec_mvcc_undo
 {
   LOG_REC_UNDO undo;		/* Undo information */
   MVCCID mvccid;		/* MVCC Identifier for transaction */
-  //MVCCID parent_mvccid_dbg;     /* If transaction has an mvccid allocated by a sub-transaction, this field will
+  //MVCCID parent_mvccid_dbg;
+                                /* If transaction has an mvccid allocated by a sub-transaction, this field will
 				 * contain the transaction's "main" mvccid (which, as indicated in implementations
 				 * in logtb_get_new_subtransaction_mvccid and logtb_get_current_mvccid, must
 				 * be valid */

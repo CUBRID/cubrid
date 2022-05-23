@@ -1190,6 +1190,9 @@ extern void logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_I
 
 extern MVCCID logtb_find_current_mvccid (THREAD_ENTRY * thread_p);
 extern MVCCID logtb_get_current_mvccid (THREAD_ENTRY * thread_p);
+//extern void logtb_get_current_mvccid_and_parent_mvccid_dbg (THREAD_ENTRY * thread_p,
+//							    MVCCID &mvccid, MVCCID &parent_mvccid_dbg);
+
 extern int logtb_invalidate_snapshot_data (THREAD_ENTRY * thread_p);
 extern int xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 

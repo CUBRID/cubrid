@@ -1464,6 +1464,7 @@ logtb_free_tran_mvcc_info (LOG_TDES * tdes)
   MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
 
   curr_mvcc_info->snapshot.m_active_mvccs.finalize ();
+  assert (curr_mvcc_info->sub_ids.size () <= 1);
   curr_mvcc_info->sub_ids.clear ();
 }
 
@@ -3852,6 +3853,7 @@ logtb_find_current_mvccid (THREAD_ENTRY * thread_p)
     {
       if (!tdes->mvccinfo.sub_ids.empty ())
 	{
+	  assert (tdes->mvccinfo.sub_ids.size () == 1);
 	  id = tdes->mvccinfo.sub_ids.back ();
 	}
       else
@@ -3890,11 +3892,42 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
 
   if (!tdes->mvccinfo.sub_ids.empty ())
     {
+      assert (tdes->mvccinfo.sub_ids.size () == 1);
       return tdes->mvccinfo.sub_ids.back ();
     }
 
   return curr_mvcc_info->id;
 }
+
+//void
+//logtb_get_current_mvccid_and_parent_mvccid_dbg (THREAD_ENTRY * thread_p, MVCCID &mvccid, MVCCID &parent_mvccid_dbg)
+//{
+//  LOG_TDES *const tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+//  MVCC_INFO *const curr_mvcc_info = &tdes->mvccinfo;
+
+//#if defined (SA_MODE)
+//  /* We shouldn't be here */
+//  assert (false);
+//#endif /* SA_MODE */
+//  assert (tdes != nullptr && curr_mvcc_info != nullptr);
+
+//  if (MVCCID_IS_VALID (curr_mvcc_info->id) == false)
+//    {
+//      curr_mvcc_info->id = log_Gl.mvcc_table.get_new_mvccid ();
+//    }
+
+//  if (!curr_mvcc_info.sub_ids.empty ())
+//    {
+//      assert (curr_mvcc_info.sub_ids.size () == 1);
+//      mvccid = curr_mvcc_info.sub_ids.back ();
+//      parent_mvccid_dbg = curr_mvcc_info.id;
+//    }
+//  else
+//    {
+//      mvccid = curr_mvcc_info->id;
+//      parent_mvccid_dbg = MVCCID_NULL;
+//    }
+//}
 
 /*
  * logtb_is_current_mvccid - check whether given mvccid is current mvccid
@@ -3919,6 +3952,7 @@ logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
     }
   else if (curr_mvcc_info->sub_ids.size () > 0)
     {
+      assert (curr_mvcc_info->sub_ids.size () == 1);
       for (size_t i = 0; i < curr_mvcc_info->sub_ids.size (); i++)
 	{
 	  if (curr_mvcc_info->sub_ids[i] == mvccid)
@@ -4508,6 +4542,7 @@ logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mv
 {
   assert (curr_mvcc_info != NULL);
   assert (MVCCID_IS_VALID (curr_mvcc_info->id));
+  assert (curr_mvcc_info->sub_ids.size () == 0);
   curr_mvcc_info->sub_ids.push_back (mvcc_subid);
 }
 
@@ -4532,6 +4567,7 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   mvcc_table->complete_sub_mvcc (mvcc_sub_id);
   curr_mvcc_info->sub_ids.pop_back ();
+  assert (curr_mvcc_info->sub_ids.size () == 0);
 
   if (tdes->mvccinfo.snapshot.valid)
     {
