@@ -16,7 +16,6 @@
  *
  */
 
-
 #include "log_replication_mvcc.hpp"
 
 #include "log_impl.h"
@@ -34,9 +33,20 @@ namespace cublog
   void
   replicator_mvcc::new_assigned_mvccid (TRANID tranid, MVCCID mvccid)
   {
-    assert (m_mapped_mvccids.find (tranid) == m_mapped_mvccids.cend ());
+    assert (MVCCID_IS_NORMAL (mvccid));
+    //assert (m_mapped_mvccids.find (tranid) == m_mapped_mvccids.cend ());
 
-    m_mapped_mvccids.emplace (tranid, mvccid);
+    const auto found_it = m_mapped_mvccids.find (tranid);
+    if (found_it == m_mapped_mvccids.cend ())
+      {
+	m_mapped_mvccids.emplace (tranid, mvccid);
+      }
+    else
+      {
+	// only one mvccid per transaction is assumed
+	// sub-transaction mvccid's are not implemented yet
+	assert (found_it->second == mvccid);
+      }
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
       {
@@ -66,7 +76,8 @@ namespace cublog
       }
     else
       {
-        // if not found:
+        // if not found the transaction never assigned an mvccid
+        // TODO: if not found:
         //  - if the transaction has no sub-transaction
         // , it means the transaction contains proper MVCC log records
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
