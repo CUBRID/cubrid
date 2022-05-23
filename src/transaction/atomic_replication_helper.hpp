@@ -28,6 +28,7 @@
 #include "log_recovery_redo.hpp"
 #include "page_buffer.h"
 #include "thread_entry.hpp"
+#include "vpid_utilities.hpp"
 
 namespace cublog
 {
@@ -57,43 +58,69 @@ namespace cublog
 #endif
 
     private:
-      /*
-       * Atomic replication unit holds the log record information necessary for recovery redo
-       */
-      class atomic_replication_unit
+
+      class atomic_replication_sequence
       {
 	public:
-	  atomic_replication_unit () = delete;
-	  atomic_replication_unit (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex);
+	  atomic_replication_sequence () = default;
 
-	  atomic_replication_unit (const atomic_replication_unit &) = delete;
-	  atomic_replication_unit (atomic_replication_unit &&) = delete;
+	  atomic_replication_sequence (const atomic_replication_sequence &) = delete;
+	  atomic_replication_sequence (atomic_replication_sequence &&) = delete;
 
-	  ~atomic_replication_unit ();
+	  ~atomic_replication_sequence () = default;
 
-	  atomic_replication_unit &operator= (const atomic_replication_unit &) = delete;
-	  atomic_replication_unit &operator= (atomic_replication_unit &&) = delete;
+	  atomic_replication_sequence &operator= (const atomic_replication_sequence &) = delete;
+	  atomic_replication_sequence &operator= (atomic_replication_sequence &&) = delete;
 
-	  template <typename T>
-	  void apply_log_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
-			       const log_rv_redo_rec_info<T> &record_info);
-	  int fix_page (THREAD_ENTRY *thread_p);
-	  void unfix_page (THREAD_ENTRY *thread_p);
-
-	  VPID m_vpid;
+	  void unfix_sequence (THREAD_ENTRY *thread_p);
 	private:
-	  log_lsa m_record_lsa;
-	  PAGE_PTR m_page_ptr;
-	  PGBUF_WATCHER m_watcher;
-	  LOG_RCVINDEX m_record_index;
+	  template <typename T>
+	  int add_atomic_replication_unit (THREAD_ENTRY *thread_p, log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid,
+					   log_rv_redo_context &redo_context, const log_rv_redo_rec_info<T> &record_info);
+
+	  /*
+	   * Atomic replication unit holds the log record information necessary for recovery redo
+	   */
+	  class atomic_replication_unit
+	  {
+	    public:
+	      atomic_replication_unit () = delete;
+	      atomic_replication_unit (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex);
+
+	      atomic_replication_unit (const atomic_replication_unit &) = delete;
+	      atomic_replication_unit (atomic_replication_unit &&) = delete;
+
+	      ~atomic_replication_unit ();
+
+	      atomic_replication_unit &operator= (const atomic_replication_unit &) = delete;
+	      atomic_replication_unit &operator= (atomic_replication_unit &&) = delete;
+
+	      template <typename T>
+	      void apply_log_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
+				   const log_rv_redo_rec_info<T> &record_info);
+	      int fix_page (THREAD_ENTRY *thread_p);
+	      void unfix_page (THREAD_ENTRY *thread_p);
+	      PAGE_PTR get_page_ptr ();
+	      void set_page_ptr (const PAGE_PTR &ptr);
+
+	      VPID m_vpid;
+	    private:
+	      log_lsa m_record_lsa;
+	      PAGE_PTR m_page_ptr;
+	      PGBUF_WATCHER m_watcher;
+	      LOG_RCVINDEX m_record_index;
+	  };
+
+	  using atomic_unit_vector = std::vector<atomic_replication_unit>;
+	  atomic_unit_vector m_units;
+	  using vpid_to_page_ptr_map = std::map<VPID, PAGE_PTR>;
+	  vpid_to_page_ptr_map m_page_map;
       };
 
-      using atomic_replication_sequence_type = std::vector<atomic_replication_unit>;
-      std::map<TRANID, atomic_replication_sequence_type> m_atomic_sequences_map;
-
+      std::map<TRANID, atomic_replication_sequence> m_sequences_map;
 #if !defined (NDEBUG)
       using vpid_set_type = std::set<VPID>;
-      std::map<TRANID, vpid_set_type> m_atomic_sequences_vpids_map;
+      std::map<TRANID, vpid_set_type> m_vpid_sets_map;
 #endif
   };
 }
