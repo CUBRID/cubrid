@@ -1,7 +1,7 @@
 defaults: &defaults
   working_directory: /home
   docker:
-    - image: cubridci/cubridci:develop
+    - image: cubridci/cubridci:11.2
     
 oraclelinux: &oraclelinux
   working_directory: /home
