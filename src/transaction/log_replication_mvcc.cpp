@@ -32,7 +32,7 @@ namespace cublog
   void
   replicator_mvcc::new_assigned_mvccid (TRANID tranid, MVCCID mvccid)
   {
-    MVCCID_IS_NORMAL (mvccid);
+    assert (MVCCID_IS_NORMAL (mvccid));
 
     const auto found_it = m_mapped_mvccids.find (tranid);
     if (found_it == m_mapped_mvccids.cend ())
