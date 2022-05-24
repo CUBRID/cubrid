@@ -608,10 +608,7 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
 
   reason = ntohl (*(int *) recv_data);
 
-  if (recv_data != NULL)
-    {
-      free_and_init (recv_data);
-    }
+  free_and_init (recv_data);
 
 #if defined (WINDOWS)
   if (reason == SERVER_CONNECTED_NEW)
