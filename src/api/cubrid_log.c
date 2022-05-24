@@ -663,15 +663,15 @@ cubrid_log_error:
       free_and_init (recv_data);
     }
 
-  queue_entry = css_find_queue_entry (g_conn_entry->buffer_queue, rid);
-  if (queue_entry != NULL)
-    {
-      queue_entry->buffer = NULL;
-      css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
-    }
-
   if (g_conn_entry != NULL)
     {
+      queue_entry = css_find_queue_entry (g_conn_entry->buffer_queue, rid);
+      if (queue_entry != NULL)
+	{
+	  queue_entry->buffer = NULL;
+	  css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
+	}
+
       css_free_conn (g_conn_entry);
       g_conn_entry = NULL;
     }
@@ -1896,15 +1896,15 @@ cubrid_log_error:
       free_and_init (recv_data);
     }
 
-  queue_entry = css_find_queue_entry (g_conn_entry->buffer_queue, rid);
-  if (queue_entry != NULL)
-    {
-      queue_entry->buffer = NULL;
-      css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
-    }
-
   if (g_conn_entry != NULL)
     {
+      queue_entry = css_find_queue_entry (g_conn_entry->buffer_queue, rid);
+      if (queue_entry != NULL)
+	{
+	  queue_entry->buffer = NULL;
+	  css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
+	}
+
       css_free_conn (g_conn_entry);
       g_conn_entry = NULL;
     }
