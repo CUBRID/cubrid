@@ -660,6 +660,7 @@ int g_original_buffer_len;
 %type <node> serial_name
 %type <node> synonym_name_without_dot
 %type <node> synonym_name
+%type <node> opt_synonym_for
 %type <node> opt_identifier
 %type <node> normal_or_class_attr_list_with_commas
 %type <node> normal_or_class_attr
@@ -3974,9 +3975,8 @@ alter_stmt
 	  SYNONYM			/* 3 */
 		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_ALTER); }	/* 4 */
 	  synonym_name			/* 5 */
-	  For				/* 6 */
-	  class_name			/* 7 */
-	  opt_comment_spec		/* 8 */
+	  opt_synonym_for		/* 6 */
+	  opt_comment_spec		/* 7 */
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER opt_access_modifier SYNONYM synonym_name For class_name opt_comment_spec);
 
@@ -3987,8 +3987,8 @@ alter_stmt
 			  {
 			    PT_SYNONYM_ACCESS_MODIFIER (node) = $2;
 			    PT_SYNONYM_NAME (node) = $5;
-			    PT_SYNONYM_TARGET_NAME (node) = $7;
-			    PT_SYNONYM_COMMENT (node) = $8;
+			    PT_SYNONYM_TARGET_NAME (node) = $6;
+			    PT_SYNONYM_COMMENT (node) = $7;
 			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 
 			    if (synonym_access_modifier == PT_PUBLIC)
@@ -5571,6 +5571,22 @@ synonym_name
 		{ DBG_TRACE_GRAMMAR(synonym_name, : user_specified_name);
 			$$ = $1;
 		}
+	;
+
+opt_synonym_for
+	: /* empty */
+		{{ DBG_TRACE_GRAMMAR(opt_synonym_for, : );
+	
+			$$ = NULL;
+
+		}}
+	| For class_name
+		{{ DBG_TRACE_GRAMMAR(opt_synonym_for, | For class_name);
+
+			$$ = $2;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	;
 
 opt_partition_spec

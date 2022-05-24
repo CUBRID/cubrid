@@ -10248,16 +10248,20 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       {
 	assert (pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)) != NULL);
 	PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)));
-	if (pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)) == NULL
-	    && sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
+
+	if (PT_SYNONYM_TARGET_NAME (node))
 	  {
-	    PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, "dba");
-	  }
-	else
-	  {
-	    assert (pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)) != NULL);
-	    PT_SYNONYM_TARGET_OWNER_NAME (node) =
-	      pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)));
+	    if (pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)) == NULL
+		&& sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
+	      {
+		PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, "dba");
+	      }
+	    else
+	      {
+		assert (pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)) != NULL);
+		PT_SYNONYM_TARGET_OWNER_NAME (node) =
+		  pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)));
+	      }
 	  }
 
 	return node;

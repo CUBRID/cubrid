@@ -17690,15 +17690,19 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* synonym_name */
   sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_NAME (statement)), synonym_name, DB_MAX_IDENTIFIER_LENGTH);
 
-  /* target_name */
-  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name, DB_MAX_IDENTIFIER_LENGTH);
-
-  /* target_owner */
-  target_owner_obj = db_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
-  if (target_owner_obj == NULL)
+  if (PT_SYNONYM_TARGET_NAME (statement))
     {
-      ASSERT_ERROR_AND_SET (error);
-      return error;
+      /* target_name */
+      sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name,
+			      DB_MAX_IDENTIFIER_LENGTH);
+
+      /* target_owner */
+      target_owner_obj = db_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
+      if (target_owner_obj == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
     }
 
   /* comment */
@@ -17772,34 +17776,37 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
       goto end;
     }
 
-  /* target_unique_name */
-  db_make_string (&value, target_name);
-  error = dbt_put_internal (obj_tmpl, "target_unique_name", &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
+  if (target_name[0] != '\0')
     {
-      ASSERT_ERROR ();
-      goto end;
-    }
+      /* target_unique_name */
+      db_make_string (&value, target_name);
+      error = dbt_put_internal (obj_tmpl, "target_unique_name", &value);
+      pr_clear_value (&value);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
 
-  /* target_name */
-  db_make_string (&value, sm_remove_qualifier_name (target_name));
-  error = dbt_put_internal (obj_tmpl, "target_name", &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto end;
-    }
+      /* target_name */
+      db_make_string (&value, sm_remove_qualifier_name (target_name));
+      error = dbt_put_internal (obj_tmpl, "target_name", &value);
+      pr_clear_value (&value);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
 
-  /* target_owner */
-  db_make_object (&value, target_owner);
-  error = dbt_put_internal (obj_tmpl, "target_owner", &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto end;
+      /* target_owner */
+      db_make_object (&value, target_owner);
+      error = dbt_put_internal (obj_tmpl, "target_owner", &value);
+      pr_clear_value (&value);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
     }
 
   /* comment */
