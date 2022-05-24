@@ -615,12 +615,12 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
       if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_connection_timeout * 1000) != NO_ERRORS)
 	{
 	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
-				     "Failed to receive data while making new connection with server.\n");
+				     "Failed to receive the server port id from the master.\n");
 	}
 
       if (recv_data != NULL && recv_data_size == sizeof (int))
 	{
-	  int port id = ntohl (*((int *) recv_data));
+	  int port_id = ntohl (*((int *) recv_data));
 	  css_close_conn (g_conn_entry);
 
 	  if (recv_data != (char *) &reason)
