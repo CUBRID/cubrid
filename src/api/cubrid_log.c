@@ -572,7 +572,10 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
   int err_code;
 
 #if defined (WINDOWS)
-  (void) css_windows_startup ();
+  if (css_windows_startup () < 0)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, "Failed to startup Windows socket\n");
+    }
 #endif
 
   g_conn_entry = css_make_conn (INVALID_SOCKET);
@@ -1978,7 +1981,7 @@ cubrid_log_finalize (void)
     }
 
 #if defined (WINDOWS)
-  (void) css_windows_startup ();
+  (void) css_windows_shutdown ();
 #endif
 
   (void) cubrid_log_reset_globals ();
