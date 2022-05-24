@@ -593,8 +593,6 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
 				 host, dbname, port, g_connection_timeout);
     }
 
-  css_queue_user_data_buffer (g_conn_entry, rid, sizeof (int), (char *) &reason);
-
   if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_connection_timeout * 1000) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, "Failed to receive data from server. (timeout : %d sec)\n",
@@ -610,26 +608,27 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
 
   reason = ntohl (*(int *) recv_data);
 
+  if (recv_data != NULL)
+    {
+      free_and_init (recv_data);
+    }
+
 #if defined (WINDOWS)
   if (reason == SERVER_CONNECTED_NEW)
     {
-      css_queue_user_data_buffer (g_conn_entry, rid, sizeof (int), (char *) &reason);
-
       if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_connection_timeout * 1000) != NO_ERRORS)
 	{
 	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
 				     "Failed to receive the server port id from the master.\n");
 	}
 
-      if (recv_data != NULL && recv_data_size == sizeof (int))
+      if (recv_data != NULL)
 	{
-	  int port_id = ntohl (*((int *) recv_data));
-	  css_close_conn (g_conn_entry);
+	  assert (recv_data_size == sizeof (int));
 
-	  if (recv_data != (char *) &reason)
-	    {
-	      free_and_init (recv_data);
-	    }
+	  int port_id = ntohl (*((int *) recv_data));
+
+	  css_close_conn (g_conn_entry);
 
 	  g_conn_entry = css_server_connect_part_two (host, g_conn_entry, port_id, &rid);
 	  if (g_conn_entry == NULL)
@@ -637,6 +636,8 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
 	      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
 					 "Failed to connect to the server with new port id (%d)\n", port_id);
 	    }
+
+	  free_and_init (recv_data);
 	}
       else
 	{
@@ -656,16 +657,11 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
     }
 #endif
 
-  if (recv_data != NULL && recv_data != (char *) &reason)
-    {
-      free_and_init (recv_data);
-    }
-
   return CUBRID_LOG_SUCCESS;
 
 cubrid_log_error:
 
-  if (recv_data != NULL && recv_data != (char *) &reason)
+  if (recv_data != NULL)
     {
       free_and_init (recv_data);
     }
