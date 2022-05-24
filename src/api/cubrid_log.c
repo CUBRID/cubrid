@@ -638,6 +638,12 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
 					 "Failed to connect to the server with new port id (%d)\n", port_id);
 	    }
 	}
+      else
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
+				     "Failed to get server port id (recv_data = %s , recv_data_size = %d) \n",
+				     recv_data, recv_data_size);
+	}
     }
   else
     {
