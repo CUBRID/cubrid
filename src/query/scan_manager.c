@@ -3306,7 +3306,7 @@ exit_on_error:
 
   if (isidp->key_vals)
     {
-      db_private_free_and_init (thread_p, isidp->key_vals);
+      isidp->key_vals = NULL;
     }
   if (isidp->fetched_values)
     {
@@ -3523,7 +3523,7 @@ exit_on_error:
 
   if (isidp->key_vals)
     {
-      db_private_free_and_init (thread_p, isidp->key_vals);
+      isidp->key_vals = NULL;
     }
   if (isidp->bt_attr_ids)
     {
@@ -4789,7 +4789,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       isidp = &scan_id->s.isid;
       if (isidp->key_vals)
 	{
-	  db_private_free_and_init (thread_p, isidp->key_vals);
+	  isidp->key_vals = NULL;
 	}
       if (isidp->fetched_values)
 	{
