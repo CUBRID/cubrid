@@ -278,7 +278,9 @@ cubrid 管理工具，版本 %1$s\n\
     on          gateway-name\n\
     off         gateway-name\n\
     reset       gateway-name\n\
-    acl         <status|reload> [gateway-name]\n\
+    acl         <status|reload> [gateway-name]\n
+46 owner_name 的长度要求小于 %1$d，class_name 的长度要求小于 %2$d 个字节。\n
+47 owner_name.class_name ('%1$s') 的格式无效。\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: 在单机模式下 -t 选项将被忽略.\n
@@ -1208,6 +1210,7 @@ vacuumdb: 清空(vacuum)数据库中的死记录.\n\
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 在 %1$s 中装载表名字失败.\n
 2 checksumdb 必须运行在一个HA活动服务器上. %1$s (当前状态: %2$s)\n
+3 保存校验和结果的表的所有者必须是 DBA。\n
 58 HA 特性在这个平台上不被支持.\n
 59 checksumdb 无法以单机模式运行.\n
 60 \
@@ -1264,9 +1267,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 事务 ID 应在 %1$d 秒内输入。可以通过“cubrid.conf”中的“flashback_timeout”设置来调整超时。\n
 13 闪回已在运行。闪回不能由两个进程运行。\n
 14 闪回不能作为独立模式运行。\n
-15 owner_name 的长度要求小于 %1$d，class_name 的长度要求小于 %2$d 个字节。\n
-16 owner_name.class_name ('%1$s') 的格式无效。\n
-17 闪回不支持系统目录类 (%1$s)。\n
+15 闪回不支持系统目录类 (%1$s)。\n
 60 \
 flashback：提供用于闪回特定事务的语句。\n\
 用法：%1$s flashback [OPTION] 数据库名称 owner_name.class_name1 [owner_name.class_name2 ...]\n\

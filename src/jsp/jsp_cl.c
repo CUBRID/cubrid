@@ -1324,6 +1324,13 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 
   METHOD_SIG *sig = nullptr;
 
+  db_make_null (&method);
+  db_make_null (&param_cnt_val);
+  db_make_null (&mode);
+  db_make_null (&arg_type);
+  db_make_null (&temp);
+  db_make_null (&result_type);
+
   {
     char *parsed_method_name = (char *) node->info.method_call.method_name->info.name.original;
     DB_OBJECT *mop_p = jsp_find_stored_procedure (parsed_method_name);

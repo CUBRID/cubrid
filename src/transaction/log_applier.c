@@ -5488,6 +5488,7 @@ la_apply_statement_log (LA_ITEM * item)
   DB_OBJECT *user = NULL, *save_user = NULL;
   char sql_log_err[LINE_MAX];
   bool is_ddl = false;
+  bool need_set_user = true;
   int res;
 
   error = la_flush_repl_items (true);
@@ -5557,17 +5558,24 @@ la_apply_statement_log (LA_ITEM * item)
 	  return NO_ERROR;
 	}
 
+      // *INDENT-OFF*
+      if (item->item_type == CUBRID_STMT_ALTER_STORED_PROCEDURE
+	   || item->item_type == CUBRID_STMT_DROP_STORED_PROCEDURE
+	   || item->item_type == CUBRID_STMT_CREATE_USER
+	   || item->item_type == CUBRID_STMT_ALTER_USER
+	   || item->item_type == CUBRID_STMT_DROP_USER)
+	{
+	  need_set_user = false;
+	}
+      // *INDENT-ON*
+
       /*
        * When we create the schema objects, the object's owner must be changed
        * to the appropriate owner.
        * Special alter statement, non partitioned -> partitioned is the same.
        * Also, the result of statement-based DML replication may be affected by user
        */
-      if ((item->item_type == CUBRID_STMT_CREATE_CLASS || item->item_type == CUBRID_STMT_CREATE_SERIAL
-	   || item->item_type == CUBRID_STMT_CREATE_STORED_PROCEDURE || item->item_type == CUBRID_STMT_CREATE_TRIGGER
-	   || item->item_type == CUBRID_STMT_ALTER_CLASS || item->item_type == CUBRID_STMT_INSERT
-	   || item->item_type == CUBRID_STMT_DELETE || item->item_type == CUBRID_STMT_UPDATE)
-	  && (item->db_user != NULL && item->db_user[0] != '\0'))
+      if (need_set_user && (item->db_user != NULL && item->db_user[0] != '\0'))
 	{
 	  user = au_find_user (item->db_user);
 	  if (user == NULL)

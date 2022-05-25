@@ -731,6 +731,12 @@ struct json_t;
 #define PT_NAME_ORIGINAL(n)		((n)->info.name.original)
 #define PT_NAME_RESOLVED(n)		((n)->info.name.resolved)
 
+/* PT_CREATE_ENTITY */
+#define PT_CREATE_ENTITY_NAME(n)	((n)->info.create_entity.entity_name)
+
+/* PT_RENAME */
+#define PT_RENAME_NEW_NAME(n)		((n)->info.rename.new_name)
+
 /* PT_SYNONYM_INFO */
 #define PT_SYNONYM_NAME(n)		((n)->info.synonym.synonym_name)
 #define PT_SYNONYM_OWNER_NAME(n)	((n)->info.synonym.synonym_owner_name)

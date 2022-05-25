@@ -76,6 +76,7 @@ namespace cubmethod
       int prepare (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base);
       int execute (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base);
       int reset (bool is_end_query);
+      void destroy_resources ();
       void end ();
 
       DB_VALUE &get_return_value (int index);
@@ -86,6 +87,7 @@ namespace cubmethod
       cubthread::entry *get_thread_entry () const;
       std::queue<cubmem::extensible_block> &get_data_queue ();
       cubmethod::runtime_context *get_runtime_context ();
+      connection_pool &get_connection_pool ();
 
       bool is_running () const;
       bool is_for_scan () const;
@@ -95,6 +97,9 @@ namespace cubmethod
       query_cursor *get_cursor (QUERY_ID query_id);
       void register_returning_cursor (QUERY_ID query_id);
       void deregister_returning_cursor (QUERY_ID query_id);
+
+      // client handelr
+      void register_client_handler (int handler_id);
 
       // error
       std::string get_error_msg ();
@@ -114,6 +119,8 @@ namespace cubmethod
       std::queue<cubmem::extensible_block> m_data_queue;
 
       std::unordered_set <std::uint64_t> m_cursor_set;
+      std::unordered_set <int> m_handler_set;
+
       std::string m_err_msg;
 
       METHOD_GROUP_ID m_id;

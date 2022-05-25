@@ -164,7 +164,7 @@ method_dispatch (packing_unpacker &unpacker)
 
   tran_begin_libcas_function ();
   int depth = tran_get_libcas_depth ();
-  if (depth >= METHOD_MAX_RECURSION_DEPTH)
+  if (depth > METHOD_MAX_RECURSION_DEPTH)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_NESTED_CALL, 0);
       error = ER_SP_TOO_MANY_NESTED_CALL;
@@ -220,8 +220,16 @@ method_dispatch_internal (packing_unpacker &unpacker)
 	  AU_RESTORE (save_auth);
 	  break;
 	case METHOD_REQUEST_END:
-	  cubmethod::get_callback_handler()->free_query_handle_all (false);
-	  break;
+	{
+	  uint64_t id;
+	  std::vector <int> handlers;
+	  unpacker.unpack_all (id, handlers);
+	  for (int i = 0; i < handlers.size (); i++)
+	    {
+	      cubmethod::get_callback_handler()->free_query_handle (handlers[i], false);
+	    }
+	}
+	break;
 	default:
 	  assert (false); // the other callbacks are disabled now
 	  return ER_FAILED;

@@ -76,6 +76,8 @@ namespace cubmethod
       std::string err_file;
       int err_line;
   };
+
+  void handle_method_error (int err_id, const std::string &err_msg);
 }
 
 #endif
