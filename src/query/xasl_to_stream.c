@@ -2714,6 +2714,32 @@ xts_save_key_range_array (const KEY_RANGE * key_range_array, int nelements)
   return offset;
 }
 
+static int
+xts_save_key_val_array (const KEY_VAL_RANGE * key_val_array, int nelements)
+{
+  int offset, i;
+  char *ptr;
+
+  if (key_val_array == NULL)
+    {
+      return 0;
+    }
+
+  offset = xts_reserve_location_in_stream (sizeof (KEY_VAL_RANGE) * nelements);
+  if (offset == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+
+  ptr = &xts_Stream_buffer[offset];
+  for (i = 0; i < nelements; ++i)
+    {
+      ptr = or_pack_key_val_range (ptr, &key_val_array[i]);
+    }
+
+  return offset;
+}
+
 /*
  * xts_process_xasl_header () - Pack XASL node header in buffer.
  *
@@ -4517,6 +4543,20 @@ xts_process_key_info (char *ptr, const KEY_INFO * key_info)
   if (key_info->key_cnt > 0)
     {
       offset = xts_save_key_range_array (key_info->key_ranges, key_info->key_cnt);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+  else
+    {
+      ptr = or_pack_int (ptr, 0);
+    }
+
+  if (key_info->key_cnt > 0)
+    {
+      offset = xts_save_key_val_array (key_info->key_vals, key_info->key_cnt);
       if (offset == ER_FAILED)
 	{
 	  return NULL;

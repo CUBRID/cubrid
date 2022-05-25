@@ -12096,7 +12096,7 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
 
       indx_infop->range_type = R_RANGE;
 
-      return indx_infop;
+      goto end;
     }
 
   /* scan range spec and index key information */
@@ -12169,6 +12169,16 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
 	}
     }
 
+end:
+  if (key_infop->key_cnt > 0)
+    {
+      regu_array_alloc (&key_infop->key_vals, key_infop->key_cnt);
+      if (key_infop->key_vals == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "index plan generation - memory alloc");
+	  return NULL;
+	}
+    }
   return indx_infop;
 }
 

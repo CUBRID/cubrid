@@ -3212,7 +3212,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     {
       bool need_copy_buf;
 
-      isidp->key_vals = (KEY_VAL_RANGE *) db_private_alloc (thread_p, isidp->key_cnt * sizeof (KEY_VAL_RANGE));
+      isidp->key_vals = indx_info->key_info.key_vals;
       if (isidp->key_vals == NULL)
 	{
 	  goto exit_on_error;

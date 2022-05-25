@@ -73,6 +73,7 @@ typedef struct key_info KEY_INFO;
 struct key_info
 {
   key_range *key_ranges;	/* a list of key ranges */
+  KEY_VAL_RANGE *key_vals;	/* a list of key values */
   int key_cnt;			/* key count */
   bool is_constant;		/* every key value is a constant */
   bool key_limit_reset;		/* should key limit reset at each range */
