@@ -6738,6 +6738,7 @@ xts_sizeof_key_info (const KEY_INFO * key_info)
 
   size += (OR_INT_SIZE		/* key_cnt */
 	   + PTR_SIZE		/* key_ranges */
+	   + PTR_SIZE		/* key_vals */
 	   + OR_INT_SIZE	/* is_constant */
 	   + OR_INT_SIZE	/* key_limit_reset */
 	   + OR_INT_SIZE	/* is_user_given_keylimit */
