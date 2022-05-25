@@ -527,9 +527,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   /* login */
   if (!args.user_name.empty () || !dba_mode)
     {
-      if (strcasecmp (args.user_name.c_str (), "DBA") == 0)
+      if (strcasecmp (args.user_name.c_str (), "DBA") == 0 && args.no_user_specified_name)
 	{
-	  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+	  db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT);
 	}
       (void) db_login (args.user_name.c_str (), args.password.c_str ());
       error = db_restart (arg->command_name, true, args.volume.c_str ());
@@ -547,11 +547,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	      (void) db_login (args.user_name.c_str (), passwd);
 	      error = db_restart (arg->command_name, true, args.volume.c_str ());
 	    }
-	}
-
-      if (args.no_user_specified_name)
-	{
-	  prm_set_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME, true);
 	}
     }
   else
