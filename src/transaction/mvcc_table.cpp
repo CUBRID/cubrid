@@ -550,7 +550,7 @@ mvcctable::complete_sub_mvcc (MVCCID mvccid)
   // update current trans status
   m_current_trans_status.m_active_mvccs.set_inactive_mvccid (mvccid);
   m_current_trans_status.m_last_completed_mvccid = mvccid;
-  m_current_trans_status.m_last_completed_mvccid = mvcc_trans_status::SUBTRAN;
+  m_current_trans_status.m_event_type = mvcc_trans_status::SUBTRAN;
 
   // finish next trans status
   next_tran_status_finish (next_status, next_index);
