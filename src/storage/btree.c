@@ -1839,7 +1839,7 @@ btree_fix_root_with_info (THREAD_ENTRY * thread_p, BTID * btid, PGBUF_LATCH_MODE
     {
       /* Get b-tree info. */
       btid_int_p->sys_btid = btid;
-      if (btree_glean_root_header_info (thread_p, root_header, btid_int_p) != NO_ERROR)
+      if (btree_glean_root_header_info (thread_p, root_header, btid_int_p, true) != NO_ERROR)
 	{
 	  assert (false);
 	  pgbuf_unfix (thread_p, root_page);
@@ -5793,7 +5793,7 @@ btree_generate_prefix_domain (BTID_INT * btid)
  * Note: This captures the interesting header info into the BTID_INT structure.
  */
 int
-btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_header, BTID_INT * btid)
+btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_header, BTID_INT * btid, bool is_key_type)
 {
   int rc;
   OR_BUF buf;
@@ -5802,8 +5802,11 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_
 
   btid->unique_pk = root_header->unique_pk;
 
-  or_init (&buf, root_header->packed_key_domain, -1);
-  btid->key_type = or_get_domain (&buf, NULL, NULL);
+  if (is_key_type)
+    {
+      or_init (&buf, root_header->packed_key_domain, -1);
+      btid->key_type = or_get_domain (&buf, NULL, NULL);
+    }
 
   COPY_OID (&btid->topclass_oid, &root_header->topclass_oid);
 
@@ -5817,8 +5820,11 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_
   btid->copy_buf = NULL;
   btid->copy_buf_len = 0;
 
-  /* this must be discovered after the Btree key_type */
-  btid->nonleaf_key_type = btree_generate_prefix_domain (btid);
+  if (is_key_type)
+    {
+      /* this must be discovered after the Btree key_type */
+      btid->nonleaf_key_type = btree_generate_prefix_domain (btid);
+    }
 
   btid->rev_level = root_header->rev_level;
 
@@ -7039,7 +7045,7 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
       goto exit_on_error;
     }
 
-  ret = btree_glean_root_header_info (thread_p, root_header, &(env->btree_scan.btid_int));
+  ret = btree_glean_root_header_info (thread_p, root_header, &(env->btree_scan.btid_int), true);
   if (ret != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, root_page_ptr);
@@ -7760,7 +7766,7 @@ btree_check_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID * btid,
     }
 
   btid_int.sys_btid = btid;
-  if (btree_glean_root_header_info (thread_p, root_header, &btid_int) != NO_ERROR)
+  if (btree_glean_root_header_info (thread_p, root_header, &btid_int, true) != NO_ERROR)
     {
       valid = DISK_ERROR;
       goto error;
@@ -8732,7 +8738,7 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
     }
 
   btid_int.sys_btid = btid;
-  ret = btree_glean_root_header_info (thread_p, root_header, &btid_int);
+  ret = btree_glean_root_header_info (thread_p, root_header, &btid_int, true);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -9084,7 +9090,7 @@ btree_dump (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid, int level)
     }
 
   btid_int.sys_btid = btid;
-  if (btree_glean_root_header_info (thread_p, root_header, &btid_int) != NO_ERROR)
+  if (btree_glean_root_header_info (thread_p, root_header, &btid_int, true) != NO_ERROR)
     {
       goto end;			/* do nothing */
     }
@@ -16372,7 +16378,7 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       goto exit_on_error;
     }
 
-  ret = btree_glean_root_header_info (thread_p, root_header, &BTS->btid_int);
+  ret = btree_glean_root_header_info (thread_p, root_header, &BTS->btid_int, true);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -17581,7 +17587,7 @@ btree_rv_read_keyval_info_nocopy (THREAD_ENTRY * thread_p, char *datap, int data
       goto error;
     }
 
-  error_code = btree_glean_root_header_info (thread_p, root_header, btid);
+  error_code = btree_glean_root_header_info (thread_p, root_header, btid, true);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -18372,7 +18378,7 @@ btree_find_key (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, DB_VALUE * key,
     }
 
   btid_int.sys_btid = btid;
-  btree_glean_root_header_info (thread_p, root_header, &btid_int);
+  btree_glean_root_header_info (thread_p, root_header, &btid_int, true);
   status = btree_find_key_from_page (thread_p, &btid_int, root, oid, key, clear_key);
 
 end:
@@ -18517,7 +18523,7 @@ btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid, int col_idx, int *asc_
 
   btid_int.sys_btid = btid;
 
-  ret = btree_glean_root_header_info (thread_p, root_header, &btid_int);
+  ret = btree_glean_root_header_info (thread_p, root_header, &btid_int, true);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -19380,7 +19386,7 @@ btree_fix_ovfl_oid_pages_tree (THREAD_ENTRY * thread_p, BTID * btid, char *btnam
     }
 
   btid_int.sys_btid = btid;
-  if (btree_glean_root_header_info (thread_p, root_header, &btid_int) != NO_ERROR)
+  if (btree_glean_root_header_info (thread_p, root_header, &btid_int, true) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, pgptr);
       return ER_FAILED;

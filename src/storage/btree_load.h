@@ -279,7 +279,7 @@ extern int btree_change_root_header_delta (THREAD_ENTRY * thread_p, VFID * vfid,
 
 extern int btree_get_disk_size_of_key (DB_VALUE *);
 extern TP_DOMAIN *btree_generate_prefix_domain (BTID_INT * btid);
-extern int btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_header, BTID_INT * btid);
+extern int btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_header, BTID_INT * btid, bool is_key_type);
 extern DISK_ISVALID btree_verify_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT * btid,
 				       const char *btname);
 extern int btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * key2, DB_VALUE * prefix_key,

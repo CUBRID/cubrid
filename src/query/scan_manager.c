@@ -3091,8 +3091,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* construct BTID_INT structure */
   BTS->btid_int.sys_btid = btid;
-
-  if (btree_glean_root_header_info (thread_p, root_header, &BTS->btid_int) != NO_ERROR)
+  if (btree_glean_root_header_info (thread_p, root_header, &BTS->btid_int, !BTS->is_btid_int_valid) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, Root);
       goto exit_on_error;
@@ -3447,7 +3446,7 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* construct BTID_INT structure */
   bts->btid_int.sys_btid = btid;
-  if (btree_glean_root_header_info (thread_p, root_header, &bts->btid_int) != NO_ERROR)
+  if (btree_glean_root_header_info (thread_p, root_header, &bts->btid_int, !bts->is_btid_int_valid) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -3626,7 +3625,7 @@ scan_open_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* construct BTID_INT structure */
   idx_nsid_p->btns.btid_int.sys_btid = btid;
-  if (btree_glean_root_header_info (thread_p, root_header, &idx_nsid_p->btns.btid_int) != NO_ERROR)
+  if (btree_glean_root_header_info (thread_p, root_header, &idx_nsid_p->btns.btid_int, true) != NO_ERROR)
     {
       return ER_FAILED;
     }

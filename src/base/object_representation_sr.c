@@ -352,7 +352,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 
 	      /* construct BTID_INT structure */
 	      btid_int.sys_btid = &bt_statsp->btid;
-	      if (btree_glean_root_header_info (thread_p, root_header, &btid_int) != NO_ERROR)
+	      if (btree_glean_root_header_info (thread_p, root_header, &btid_int, true) != NO_ERROR)
 		{
 		  pgbuf_unfix_and_init (thread_p, root);
 		  goto error;
