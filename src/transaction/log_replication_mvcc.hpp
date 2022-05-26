@@ -7,6 +7,7 @@
 #include "storage_common.h"
 
 #include <map>
+#include <vector>
 
 namespace cublog
 {
@@ -30,13 +31,40 @@ namespace cublog
       replicator_mvcc &operator = (replicator_mvcc &&) = delete;
 
       void new_assigned_mvccid (TRANID tranid, MVCCID mvccid);
+      void new_assigned_sub_mvccid (TRANID tranid, MVCCID sub_mvccid, MVCCID mvccid);
+
+      void complete_sub_mvcc (TRANID tranid, bool committed);
       void complete_mvcc (TRANID tranid, bool committed);
 
     private:
       void dump_map () const;
 
     private:
-      using map_type = std::map<TRANID, MVCCID>;
+      struct tran_mvccid_info
+      {
+	using mvccid_vec_type = std::vector<MVCCID>;
+
+	MVCCID id;
+	mvccid_vec_type sub_ids;
+
+	explicit tran_mvccid_info (MVCCID mvccid)
+	  : id { mvccid }
+	{
+	}
+
+	tran_mvccid_info (tran_mvccid_info const &) = delete;
+	tran_mvccid_info (tran_mvccid_info &&that)
+	  : id { that.id }
+	{
+	  // move only allowed right after initialization
+	  assert (that.sub_ids.empty ());
+	}
+
+	tran_mvccid_info &operator = (tran_mvccid_info const &) = delete;
+	tran_mvccid_info &operator = (tran_mvccid_info &&) = delete;
+      };
+
+      using map_type = std::map<TRANID, tran_mvccid_info>;
 
       map_type m_mapped_mvccids;
   };

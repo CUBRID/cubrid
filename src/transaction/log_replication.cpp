@@ -272,27 +272,39 @@ namespace cublog
 	    m_most_recent_trantable_snapshot_lsa.store (m_redo_lsa);
 	    break;
 	  case LOG_MVCC_UNDO_DATA:
-	    read_and_bookkeep_mvcc_vacuum<LOG_REC_MVCC_UNDO> (header.type, header.back_lsa, m_redo_lsa, true);
+	  {
+	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_MVCC_UNDO));
+	    const LOG_REC_MVCC_UNDO log_rec =
+		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_MVCC_UNDO> ();
+
+	    read_and_bookkeep_mvcc_vacuum<LOG_REC_MVCC_UNDO> (header.back_lsa, m_redo_lsa, log_rec, true);
 	    break;
+	  }
 	  case LOG_SYSOP_END:
-	    read_and_bookkeep_mvcc_vacuum<LOG_REC_SYSOP_END> (header.type, header.back_lsa, m_redo_lsa, false);
+	  {
+	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SYSOP_END));
+	    const LOG_REC_SYSOP_END log_rec =
+		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SYSOP_END> ();
+
+	    read_and_bookkeep_mvcc_vacuum<LOG_REC_SYSOP_END> (header.back_lsa, m_redo_lsa, log_rec, false);
 	    if (m_replicate_mvcc)
 	      {
-		replicate_sysop_end<LOG_REC_SYSOP_END> (header.trid, m_redo_lsa);
+		replicate_sysop_end (header.trid, m_redo_lsa, log_rec);
 	      }
 	    break;
+	  }
 #if !defined (NDEBUG)
 	  case LOG_SYSOP_START_POSTPONE:
 	    if (m_replicate_mvcc)
 	      {
-		replicate_sysop_start_postpone<LOG_REC_SYSOP_START_POSTPONE> (header.trid, m_redo_lsa);
+		replicate_sysop_start_postpone (m_redo_lsa);
 	      }
 	    break;
 #endif /* !NDEBUG */
 	  case LOG_ASSIGNED_MVCCID:
 	    if (m_replicate_mvcc)
 	      {
-		register_assigned_mvccid<LOG_REC_ASSIGNED_MVCCID> (header.trid);
+		register_assigned_mvccid (header.trid);
 	      }
 	    break;
 	  default:
@@ -374,6 +386,7 @@ namespace cublog
 
     // only mvccids that pertain to redo's are processed here
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
+    // TODO: superfluous call
     assert_correct_mvccid (record_info.m_logrec, mvccid);
     log_replication_update_header_mvcc_vacuum_info (mvccid, rec_header.back_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
     if (m_replicate_mvcc && MVCCID_IS_NORMAL (mvccid))
@@ -397,16 +410,12 @@ namespace cublog
 
   template <typename T>
   void
-  replicator::read_and_bookkeep_mvcc_vacuum (LOG_RECTYPE rectype, const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa,
-      bool assert_mvccid_non_null)
+  replicator::read_and_bookkeep_mvcc_vacuum (const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa,
+      const T &log_rec, bool assert_mvccid_non_null)
   {
-    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
-    const log_rv_redo_rec_info<T> record_info (rec_lsa, rectype,
-	m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ());
-
-    // mvccids that pertain to undo's are processed here
-    const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
-    assert_correct_mvccid (record_info.m_logrec, mvccid);
+    const MVCCID mvccid = log_rv_get_log_rec_mvccid (log_rec);
+    // TODO: superfluous call
+    assert_correct_mvccid (log_rec, mvccid);
     log_replication_update_header_mvcc_vacuum_info (mvccid, prev_rec_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
   }
 
@@ -435,71 +444,78 @@ namespace cublog
       }
   }
 
-  template <typename T>
   void replicator::register_assigned_mvccid (TRANID tranid)
   {
-    static_assert (sizeof (T) == sizeof (LOG_REC_ASSIGNED_MVCCID), "");
     assert (m_replicate_mvcc);
 
-    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
-    const T log_rec = m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ();
+    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_ASSIGNED_MVCCID));
+    const LOG_REC_ASSIGNED_MVCCID log_rec =
+	    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_ASSIGNED_MVCCID> ();
 
     m_replicator_mvccid->new_assigned_mvccid (tranid, log_rec.mvccid);
   }
 
-  template <typename T>
-  void replicator::replicate_sysop_end (TRANID tranid, const log_lsa &rec_lsa)
+  void replicator::replicate_sysop_end (TRANID tranid, const log_lsa &rec_lsa, const LOG_REC_SYSOP_END &log_rec)
   {
-    static_assert (sizeof (T) == sizeof (LOG_REC_SYSOP_END), "");
     assert (m_replicate_mvcc);
 
-    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
-    const T log_rec = m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ();
-
     LOG_SYSOP_END_TYPE_CHECK (log_rec.type);
-    assert (!LSA_ISNULL (&log_rec.lastparent_lsa));
-    assert (LSA_LT (&log_rec.lastparent_lsa, &rec_lsa));
+    // TODO: according to implementation in log_sysop_commit_internal, these asserts should hold
+    // for other than sysop commit
+    //assert (!LSA_ISNULL (&log_rec.lastparent_lsa));
+    //assert (LSA_LT (&log_rec.lastparent_lsa, &rec_lsa));
 
     if (log_rec.type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
       {
 	// subtransaction mvccid might be valid or not
 	if (MVCCID_IS_VALID (log_rec.mvcc_undo.mvccid))
 	  {
-	    // TODO: the mvccid replicator uses a one transaction id to one mvccid mapping, thus:
-	    //
-	    //  - if there is a transaction for which there is also a manually assigned mvccid (as in
-	    //    LOG_ASSIGNED_MVCCID) and a mvcc sub-transaction (sysop)
-	    //
-	    //  - if there is a transaction which has more than one sub-transaction which are nested - as
-	    //    allowed by the structure MVCC_INFO.sub_ids
-	    //
-	    //  this invariant will be violated and a one transaction to multiple mvccid mapping is needed
-	    m_replicator_mvccid->new_assigned_mvccid (tranid, log_rec.mvcc_undo.mvccid);
+	    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+	      {
+		_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] LOG_SYSOP_END_LOGICAL_MVCC_UNDO"
+			       " tranid=%d MVCCID=%llu parent_MVCCID=%llu\n",
+			       (int)tranid, (unsigned long long)log_rec.mvcc_undo.mvccid,
+			       (unsigned long long)log_rec.mvcc_undo.parent_mvccid);
+	      }
+	    m_replicator_mvccid->new_assigned_sub_mvccid (tranid, log_rec.mvcc_undo.mvccid,
+		log_rec.mvcc_undo.parent_mvccid);
 	  }
       }
     else if (log_rec.type == LOG_SYSOP_END_COMMIT)
       {
-	m_replicator_mvccid->complete_mvcc (tranid, replicator_mvcc::COMMITTED);
+	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+	  {
+	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] LOG_SYSOP_END_COMMIT tranid=%d\n", tranid);
+	  }
+	m_replicator_mvccid->complete_sub_mvcc (tranid, replicator_mvcc::COMMITTED);
       }
     else if (log_rec.type == LOG_SYSOP_END_ABORT)
       {
-	m_replicator_mvccid->complete_mvcc (tranid, replicator_mvcc::ABORTED);
+	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+	  {
+	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] LOG_SYSOP_END_ABORT tranid=%d\n", tranid);
+	  }
+	m_replicator_mvccid->complete_sub_mvcc (tranid, replicator_mvcc::ABORTED);
       }
     else
       {
 	// nothing
+	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+	  {
+	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] %s tranid=%d\n",
+			   log_sysop_end_type_string (log_rec.type), tranid);
+	  }
       }
   }
 
 #if !defined (NDEBUG)
-  template <typename T>
-  void replicator::replicate_sysop_start_postpone (TRANID tranid, const log_lsa &rec_lsa)
+  void replicator::replicate_sysop_start_postpone (const log_lsa &rec_lsa)
   {
-    static_assert (sizeof (T) == sizeof (LOG_REC_SYSOP_START_POSTPONE), "");
     assert (m_replicate_mvcc);
 
     m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SYSOP_START_POSTPONE));
-    const LOG_REC_SYSOP_START_POSTPONE log_rec = m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ();
+    const LOG_REC_SYSOP_START_POSTPONE log_rec =
+	    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SYSOP_START_POSTPONE> ();
 
     LOG_SYSOP_END_TYPE_CHECK (log_rec.sysop_end.type);
     assert (!LSA_ISNULL (&log_rec.sysop_end.lastparent_lsa));
