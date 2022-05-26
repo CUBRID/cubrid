@@ -1166,14 +1166,22 @@ qfile_finalize (void)
  */
 QFILE_LIST_ID *
 qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, SORT_LIST * sort_list_p,
-		 QUERY_ID query_id, int flag)
+		 QUERY_ID query_id, int flag, QFILE_LIST_ID * existing_list_id)
 {
   QFILE_LIST_ID *list_id_p;
   int len, i;
   SORT_LIST *src_sort_list_p, *dest_sort_list_p;
   size_t type_list_size;
 
-  list_id_p = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
+  if (existing_list_id != NULL)
+    {
+      list_id_p = existing_list_id;
+    }
+  else
+    {
+      list_id_p = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
+    }
+
   if (list_id_p == NULL)
     {
       return NULL;
@@ -2680,7 +2688,7 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p, QFI
       rhs_scan_p = &rhs_scan_id;
     }
 
-  dest_list_id_p = qfile_open_list (thread_p, &lhs_file_p->type_list, NULL, lhs_file_p->query_id, flag);
+  dest_list_id_p = qfile_open_list (thread_p, &lhs_file_p->type_list, NULL, lhs_file_p->query_id, flag, NULL);
   if (dest_list_id_p == NULL)
     {
       goto error;
@@ -3956,7 +3964,7 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
   int sort_result, estimated_pages;
   SORT_DUP_OPTION dup_option;
 
-  srlist_id = qfile_open_list (thread_p, &list_id_p->type_list, sort_list_p, list_id_p->query_id, flag);
+  srlist_id = qfile_open_list (thread_p, &list_id_p->type_list, sort_list_p, list_id_p->query_id, flag, NULL);
   if (srlist_id == NULL)
     {
       return NULL;
@@ -4211,7 +4219,7 @@ qfile_duplicate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, int fl
 {
   QFILE_LIST_ID *dup_list_id_p;
 
-  dup_list_id_p = qfile_open_list (thread_p, &list_id_p->type_list, NULL, list_id_p->query_id, flag);
+  dup_list_id_p = qfile_open_list (thread_p, &list_id_p->type_list, NULL, list_id_p->query_id, flag, NULL);
   if (dup_list_id_p == NULL)
     {
       return NULL;

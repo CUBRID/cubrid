@@ -4471,7 +4471,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       }
 
     output_list_id =
-      qfile_open_list (thread_p, &output_type_list, buildlist->after_groupby_list, xasl_state->query_id, ls_flag);
+      qfile_open_list (thread_p, &output_type_list, buildlist->after_groupby_list, xasl_state->query_id, ls_flag, NULL);
     if (output_list_id == NULL)
       {
 	if (output_type_list.domp)
@@ -5299,7 +5299,7 @@ qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE
     }
 
   /* open the result list file; same query id with outer(inner) list file */
-  list_idp = qfile_open_list (thread_p, &type_list, NULL, outer_list_idp->query_id, ls_flag);
+  list_idp = qfile_open_list (thread_p, &type_list, NULL, outer_list_idp->query_id, ls_flag, NULL);
   if (list_idp == NULL)
     {
       goto exit_on_error;
@@ -5734,7 +5734,7 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * 
     }
 
   /* open the result list file; same query id with outer(inner) list file */
-  list_idp = qfile_open_list (thread_p, &type_list, NULL, outer_list_idp->query_id, ls_flag);
+  list_idp = qfile_open_list (thread_p, &type_list, NULL, outer_list_idp->query_id, ls_flag, NULL);
   if (list_idp == NULL)
     {
       goto exit_on_error;
@@ -12965,31 +12965,19 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, xasl_node * xasl, xas
 	      }
 
 	    QFILE_SET_FLAG (ls_flag, QFILE_FLAG_ALL);
-	    t_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, ls_flag);
-	    if (t_list_id == NULL)
+	    xasl->list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, ls_flag, xasl->list_id);
+	    if (xasl->list_id == NULL)
 	      {
 		if (type_list.domp)
 		  {
 		    db_private_free_and_init (thread_p, type_list.domp);
 		  }
-		if (t_list_id)
-		  {
-		    QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
-		  }
 		GOTO_EXIT_ON_ERROR;
 	      }
-
 	    if (type_list.domp)
 	      {
 		db_private_free_and_init (thread_p, type_list.domp);
 	      }
-
-	    if (qfile_copy_list_id (xasl->list_id, t_list_id, true) != NO_ERROR)
-	      {
-		QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
-		GOTO_EXIT_ON_ERROR;
-	      }			/* if */
-	    QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
 	  }
       }
       break;
@@ -13038,32 +13026,19 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, xasl_node * xasl, xas
 		QFILE_SET_FLAG (ls_flag, QFILE_FLAG_RESULT_FILE);
 	      }
 
-	    t_list_id = qfile_open_list (thread_p, &type_list, xasl->after_iscan_list, xasl_state->query_id, ls_flag);
-	    if (t_list_id == NULL)
+	    xasl->list_id = qfile_open_list (thread_p, &type_list, xasl->after_iscan_list, xasl_state->query_id, ls_flag, xasl->list_id);
+	    if (xasl->list_id == NULL)
 	      {
 		if (type_list.domp)
 		  {
 		    db_private_free_and_init (thread_p, type_list.domp);
 		  }
-		if (t_list_id)
-		  {
-		    QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
-		  }
 		GOTO_EXIT_ON_ERROR;
 	      }
-
 	    if (type_list.domp)
 	      {
 		db_private_free_and_init (thread_p, type_list.domp);
 	      }
-
-	    if (qfile_copy_list_id (xasl->list_id, t_list_id, true) != NO_ERROR)
-	      {
-		QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
-		GOTO_EXIT_ON_ERROR;
-	      }			/* if */
-
-	    QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
 
 	    if (xasl->orderby_list != NULL)
 	      {
@@ -13090,32 +13065,19 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, xasl_node * xasl, xas
 	      }
 
 	    QFILE_SET_FLAG (ls_flag, QFILE_FLAG_ALL);
-	    t_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, ls_flag);
-	    if (t_list_id == NULL)
+	    xasl->list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, ls_flag, xasl->list_id);
+	    if (xasl->list_id == NULL)
 	      {
 		if (type_list.domp)
 		  {
 		    db_private_free_and_init (thread_p, type_list.domp);
 		  }
-		if (t_list_id)
-		  {
-		    qfile_free_list_id (t_list_id);
-		  }
 		GOTO_EXIT_ON_ERROR;
 	      }
-
 	    if (type_list.domp)
 	      {
 		db_private_free_and_init (thread_p, type_list.domp);
 	      }
-
-	    if (qfile_copy_list_id (xasl->list_id, t_list_id, true) != NO_ERROR)
-	      {
-		qfile_free_list_id (t_list_id);
-		GOTO_EXIT_ON_ERROR;
-	      }			/* if */
-
-	    qfile_free_list_id (t_list_id);
 	  }
 
 	qexec_clear_regu_list (thread_p, xasl, xasl->outptr_list->valptrp, true);
@@ -13259,7 +13221,7 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     {
       QFILE_SET_FLAG (ls_flag, QFILE_FLAG_RESULT_FILE);
     }
-  t_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, ls_flag);
+  t_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, ls_flag, NULL);
   if (t_list_id == NULL)
     {
       if (type_list.domp)
@@ -15229,7 +15191,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     }
 
   /* listfile2: current children list */
-  listfile2 = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0);
+  listfile2 = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
   if (listfile2 == NULL)
     {
       GOTO_EXIT_ON_ERROR;
@@ -15238,7 +15200,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   if (has_order_siblings_by)
     {
       /* listfile2_tmp: current children list temporary (to apply order siblings by) */
-      listfile2_tmp = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0);
+      listfile2_tmp = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
       if (listfile2_tmp == NULL)
 	{
 	  GOTO_EXIT_ON_ERROR;
@@ -15632,7 +15594,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	      qfile_destroy_list (thread_p, listfile2_tmp);
 	      QFILE_FREE_AND_INIT_LIST_ID (listfile2_tmp);
 
-	      listfile2_tmp = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0);
+	      listfile2_tmp = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
 	    }
 	}
 
@@ -15651,7 +15613,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	}
       listfile1 = listfile2;
 
-      listfile2 = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0);
+      listfile2 = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
     }
 
   qexec_end_scan (thread_p, xasl->spec_list);
@@ -17064,7 +17026,7 @@ qexec_start_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
 
   if (connect_by->start_with_list_id->type_list.type_cnt == 0)
     {
-      t_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0);
+      t_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
       if (t_list_id == NULL)
 	{
 	  goto exit_on_error;
@@ -17080,7 +17042,7 @@ qexec_start_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
 
   if (connect_by->input_list_id->type_list.type_cnt == 0)
     {
-      t_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0);
+      t_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
       if (t_list_id == NULL)
 	{
 	  goto exit_on_error;
@@ -18913,7 +18875,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
     QFILE_SET_FLAG (ls_flag, QFILE_FLAG_ALL);
 
     output_list_id =
-      qfile_open_list (thread_p, &output_type_list, buildlist->after_groupby_list, xasl_state->query_id, ls_flag);
+      qfile_open_list (thread_p, &output_type_list, buildlist->after_groupby_list, xasl_state->query_id, ls_flag, NULL);
 
     if (output_type_list.domp)
       {
@@ -19357,7 +19319,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 	GOTO_EXIT_ON_ERROR;
       }
 
-    interm_list_id = qfile_open_list (thread_p, &interm_type_list, NULL, xasl_state->query_id, ls_flag);
+    interm_list_id = qfile_open_list (thread_p, &interm_type_list, NULL, xasl_state->query_id, ls_flag, NULL);
 
     if (interm_type_list.domp)
       {
@@ -19389,7 +19351,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 	GOTO_EXIT_ON_ERROR;
       }
 
-    output_list_id = qfile_open_list (thread_p, &output_type_list, NULL, xasl_state->query_id, ls_flag);
+    output_list_id = qfile_open_list (thread_p, &output_type_list, NULL, xasl_state->query_id, ls_flag, NULL);
 
     if (output_type_list.domp)
       {
@@ -19591,7 +19553,7 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
   group_type_list.domp[0] = &tp_Integer_domain;
   group_type_list.domp[1] = &tp_Integer_domain;
 
-  func_state->group_list_id = qfile_open_list (thread_p, &group_type_list, NULL, xasl_state->query_id, 0);
+  func_state->group_list_id = qfile_open_list (thread_p, &group_type_list, NULL, xasl_state->query_id, 0, NULL);
 
   db_private_free_and_init (thread_p, group_type_list.domp);
 
@@ -19625,7 +19587,7 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
   value_type_list.domp[0] = &tp_Integer_domain;
   value_type_list.domp[1] = func_state->func_p->domain;
 
-  func_state->value_list_id = qfile_open_list (thread_p, &value_type_list, NULL, xasl_state->query_id, 0);
+  func_state->value_list_id = qfile_open_list (thread_p, &value_type_list, NULL, xasl_state->query_id, 0, NULL);
 
   db_private_free_and_init (thread_p, value_type_list.domp);
 
@@ -24883,8 +24845,8 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   proc->agg_hash_context->sort_key.nkeys = 0;
 
   /* create list files */
-  proc->agg_hash_context->part_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0);
-  proc->agg_hash_context->sorted_part_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0);
+  proc->agg_hash_context->part_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
+  proc->agg_hash_context->sorted_part_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
 
   /* create tuple descriptor for partial list files */
   proc->agg_hash_context->part_list_id->tpl_descr.f_cnt = type_list.type_cnt;
