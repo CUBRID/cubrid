@@ -252,7 +252,7 @@ inline void assert_correct_mvccid<LOG_REC_UNDOREDO> (const LOG_REC_UNDOREDO &, M
 template <>
 inline void assert_correct_mvccid<LOG_REC_MVCC_UNDOREDO> (const LOG_REC_MVCC_UNDOREDO &, MVCCID mvccid)
 {
-  assert (mvccid != MVCCID_NULL);
+  assert (MVCCID_IS_NORMAL (mvccid));
 }
 
 template <>
@@ -270,13 +270,13 @@ inline void assert_correct_mvccid<LOG_REC_COMPENSATE> (const LOG_REC_COMPENSATE 
 template <>
 inline void assert_correct_mvccid<LOG_REC_MVCC_UNDO> (const LOG_REC_MVCC_UNDO &, MVCCID mvccid)
 {
-  assert (mvccid != MVCCID_NULL);
+  assert (MVCCID_IS_NORMAL (mvccid));
 }
 
 template <>
 inline void assert_correct_mvccid<LOG_REC_SYSOP_END> (const LOG_REC_SYSOP_END &log_rec, MVCCID mvccid)
 {
-  assert (log_rec.type != LOG_SYSOP_END_LOGICAL_MVCC_UNDO || mvccid != MVCCID_NULL);
+  assert (log_rec.type != LOG_SYSOP_END_LOGICAL_MVCC_UNDO || MVCCID_IS_NORMAL (mvccid));
 }
 
 template <typename T>
