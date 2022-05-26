@@ -718,7 +718,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
   int ulength, rlength, *data_header_ulength_p = NULL, *data_header_rlength_p = NULL;
   int total_length;
   MVCCID *mvccid_p = NULL;
-  //MVCCID *parent_mvccid_dbg_p = NULL;
+  MVCCID *parent_mvccid_p = NULL;
   LOG_TDES *tdes = NULL;
   char *data_ptr = NULL, *tmp_ptr = NULL;
   char *undo_data = NULL, *redo_data = NULL;
@@ -919,7 +919,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 
       /* Must also fill MVCCID field */
       mvccid_p = &mvcc_undo_p->mvccid;
-      //parent_mvccid_dbg_p = &mvcc_undo_p->parent_mvccid_dbg;
+      parent_mvccid_p = &mvcc_undo_p->parent_mvccid;
 
     /* Fall through */
     case LOG_UNDO_DATA:
@@ -935,7 +935,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 
       /* Must also fill MVCCID field */
       mvccid_p = &mvcc_redo_p->mvccid;
-      //parent_mvccid_dbg_p = &mvcc_redo_p->parent_mvccid_dbg;
+      parent_mvccid_p = &mvcc_redo_p->parent_mvccid;
 
     /* Fall through */
     case LOG_REDO_DATA:
@@ -955,7 +955,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 
       /* Must also fill MVCCID field */
       mvccid_p = &mvcc_undoredo_p->mvccid;
-      //parent_mvccid_dbg_p = &mvcc_undoredo_p->parent_mvccid_dbg;
+      parent_mvccid_p = &mvcc_undoredo_p->parent_mvccid;
 
     /* Fall through */
     case LOG_UNDOREDO_DATA:
@@ -993,7 +993,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 
   if (mvccid_p != NULL)
     {
-      //assert (parent_mvccid_dbg_p != nullptr);
+      assert (parent_mvccid_p != nullptr);
       /* Fill mvccid field */
 
       /* Must be an MVCC operation */
@@ -1014,14 +1014,13 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 	      assert (tdes->mvccinfo.sub_ids.size () == 1);
 	      *mvccid_p = tdes->mvccinfo.sub_ids.back ();
 	      assert (MVCCID_IS_VALID (tdes->mvccinfo.id));
-	      //*parent_mvccid_dbg_p = tdes->mvccinfo.id;
+	      *parent_mvccid_p = tdes->mvccinfo.id;
 	    }
 	  else
 	    {
 	      *mvccid_p = tdes->mvccinfo.id;
-	      //*parent_mvccid_dbg_p = MVCCID_NULL;
+	      *parent_mvccid_p = MVCCID_NULL;
 	    }
-	  // TODO: assign child parent distinctly here
 	}
     }
 
