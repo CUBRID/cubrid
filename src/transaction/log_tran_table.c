@@ -3899,35 +3899,46 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
   return curr_mvcc_info->id;
 }
 
-//void
-//logtb_get_current_mvccid_and_parent_mvccid_dbg (THREAD_ENTRY * thread_p, MVCCID &mvccid, MVCCID &parent_mvccid_dbg)
-//{
-//  LOG_TDES *const tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-//  MVCC_INFO *const curr_mvcc_info = &tdes->mvccinfo;
+/*
+ * logtb_get_current_mvccid_and_parent_mvccid - return current transaction MVCC id; if the current
+ *                            transaction MVCC id is in fact a sub-transaction MVCC id, also retrieve the "main"
+ *                            transaction MVCC id. If the transaction does not have a "main" MVCC id assign a new one.
+ *
+ * return: voud
+ *
+ * thread_p(in):
+ * mvccid (out): sub-transaction or transaction MVCC id
+ * parent_mvccid (out): transaction MVCC id if a sub-transaction MVCC id is present
+ */
+void
+logtb_get_current_mvccid_and_parent_mvccid (THREAD_ENTRY * thread_p, MVCCID & mvccid, MVCCID & parent_mvccid)
+{
+  LOG_TDES *const tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  MVCC_INFO *const curr_mvcc_info = &tdes->mvccinfo;
 
-//#if defined (SA_MODE)
-//  /* We shouldn't be here */
-//  assert (false);
-//#endif /* SA_MODE */
-//  assert (tdes != nullptr && curr_mvcc_info != nullptr);
+#if defined (SA_MODE)
+  /* We shouldn't be here */
+  assert (false);
+#endif /* SA_MODE */
+  assert (tdes != nullptr && curr_mvcc_info != nullptr);
 
-//  if (MVCCID_IS_VALID (curr_mvcc_info->id) == false)
-//    {
-//      curr_mvcc_info->id = log_Gl.mvcc_table.get_new_mvccid ();
-//    }
+  if (MVCCID_IS_VALID (curr_mvcc_info->id) == false)
+    {
+      curr_mvcc_info->id = log_Gl.mvcc_table.get_new_mvccid ();
+    }
 
-//  if (!curr_mvcc_info.sub_ids.empty ())
-//    {
-//      assert (curr_mvcc_info.sub_ids.size () == 1);
-//      mvccid = curr_mvcc_info.sub_ids.back ();
-//      parent_mvccid_dbg = curr_mvcc_info.id;
-//    }
-//  else
-//    {
-//      mvccid = curr_mvcc_info->id;
-//      parent_mvccid_dbg = MVCCID_NULL;
-//    }
-//}
+  if (!curr_mvcc_info->sub_ids.empty ())
+    {
+      assert (curr_mvcc_info->sub_ids.size () == 1);
+      mvccid = curr_mvcc_info->sub_ids.back ();
+      parent_mvccid = curr_mvcc_info->id;
+    }
+  else
+    {
+      mvccid = curr_mvcc_info->id;
+      parent_mvccid = MVCCID_NULL;
+    }
+}
 
 /*
  * logtb_is_current_mvccid - check whether given mvccid is current mvccid
