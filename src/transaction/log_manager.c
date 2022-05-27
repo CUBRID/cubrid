@@ -4306,11 +4306,12 @@ log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, cons
       log_record.mvcc_undo.undo.data.pageid = NULL_PAGEID;
       log_record.mvcc_undo.undo.data.rcvindex = rcvindex;
       log_record.mvcc_undo.undo.length = undo_size;
-      //log_record.mvcc_undo.mvccid = logtb_get_current_mvccid (thread_p);
+
       MVCCID temp_id = MVCCID_NULL, temp_parent_id = MVCCID_NULL;
       logtb_get_current_mvccid_and_parent_mvccid (thread_p, temp_id, temp_parent_id);
       log_record.mvcc_undo.mvccid = temp_id;
       log_record.mvcc_undo.parent_mvccid = temp_parent_id;
+
       log_record.mvcc_undo.vacuum_info.vfid = *vfid;
       LSA_SET_NULL (&log_record.mvcc_undo.vacuum_info.prev_mvcc_op_log_lsa);
     }

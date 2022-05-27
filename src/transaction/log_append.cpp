@@ -1431,6 +1431,13 @@ log_replication_update_header_mvcc_vacuum_info (const MVCCID &mvccid, const log_
     }
 }
 
+/*
+ * prior_update_header_mvcc_info - update vacuum information for the currect vacuum block (the vacuum
+ *              block that is currently being populated)
+ *
+ *   record_lsa(in): lsa of mvcc log record
+ *   mvccid(in): mvccid of mvcc log record
+ */
 static void
 prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid)
 {
@@ -1571,6 +1578,10 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 		     LSA_AS_ARGS (&node->start_lsa), LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa));
 
       prior_update_header_mvcc_info (start_lsa, mvccid);
+      /* If this is actually a sub-mvccid, the transaction must also have an 'main' mvccid.
+       * The 'main' mvccid will either:
+       *  - appear (or has already appeared) on its own log record
+       *  - will not be part of any log record, and thus will not matter with regard to vacuum */
 
       // Also set the transaction last MVCC lsa.
       tdes->last_mvcc_lsa = node->start_lsa;
