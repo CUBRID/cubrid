@@ -311,6 +311,7 @@ static void log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDE
 					    PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data,
 					    LOG_TDES * tdes, const LOG_LSA * undo_nxlsa);
 
+static void log_sysop_start_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 STATIC_INLINE void log_sysop_end_random_exit (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void log_sysop_end_begin (THREAD_ENTRY * thread_p, int *tran_index_out, LOG_TDES ** tdes_out)
   __attribute__ ((ALWAYS_INLINE));
@@ -3485,7 +3486,7 @@ log_pack_log_boot_info (THREAD_ENTRY &thread_r, std::string &payload_in_out,
   log_lsa append_lsa;
   log_lsa prev_lsa;
   log_lsa most_recent_trantable_snapshot_lsa;
-  
+
   {
     LOG_CS_ENTER_READ_MODE (&thread_r);
     scope_exit log_cs_exit_ftor ([&thread_r] { LOG_CS_EXIT (&thread_r); });
@@ -3923,22 +3924,36 @@ log_sysop_end_type_string (LOG_SYSOP_END_TYPE end_type)
 void
 log_sysop_start (THREAD_ENTRY * thread_p)
 {
-  LOG_TDES *tdes = NULL;
-  int tran_index;
-
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
+  const int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LOG_TDES *const tdes = LOG_FIND_TDES (tran_index);
   if (tdes == NULL)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      assert_release (false);
       return;
     }
 
+  log_sysop_start_internal (thread_p, tdes);
+}
+
+/*
+ * log_sysop_start () - Start a new system operation implementation.
+ *            This can also be nested in another system operation.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * tdes(in)      : transaction descriptor
+ */
+void
+log_sysop_start_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  assert (thread_p != nullptr);
+  assert (tdes != nullptr);
   assert (tdes->is_allowed_sysop ());
 
   tdes->lock_topop ();
@@ -3990,11 +4005,18 @@ void
 log_sysop_start_atomic (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes = NULL;
-  int tran_index;
+  int tran_index = -1;
 
-  log_sysop_start (thread_p);
   log_sysop_get_tran_index_and_tdes (thread_p, &tran_index, &tdes);
-  if (tdes == NULL || tdes->topops.last < 0)
+  // the function asserts for null tdes
+
+  // in case there are no active sysops (atomic or not), the marker LSA for atomic sysops must be clear
+  // this means that a previous [nested] [atomic] sysop sequence cleared its bookkeeping upon finishing;
+  // this check goes hand in hand with cleaning code in prior_lsa_next_record_internal
+  assert ((tdes->topops.last < 0 && LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)) || tdes->topops.last >= 0);
+
+  log_sysop_start_internal (thread_p, tdes);
+  if (tdes->topops.last < 0)
     {
       /* not a good context. must be in a system operation */
       assert_release (false);
@@ -4013,7 +4035,12 @@ log_sysop_start_atomic (THREAD_ENTRY * thread_p)
     }
   else
     {
-      /* this must be a nested atomic system operation. If parent is atomic, we'll be atomic too. */
+      /* This must be a nested atomic system operation. If parent is atomic, we'll be atomic too.
+       * But, a new sysop atomic start is not added.
+       * Only the internal bookeeping in the stack is increased - via the call to sysop start - to keep
+       * the balance between sysop starts and ends (sysop attach to outer, sysop commit, sysop abort).
+       * Clean-up of the atomic sysop start lsa happens when the outermost sysop - which was started
+       * as atomic - is ended (see prior_lsa_next_record_internal). */
       assert (tdes->topops.last > 0);
 
       /* oh, and please tell me this is not a nested system operation during postpone of system operation nested to
@@ -4137,7 +4164,8 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 /*
  * log_sysop_commit_internal () - Commit system operation. This can be used just to guarantee atomicity or permanence of
  *				  all changes in system operation. Or it can be extended to also act as an undo,
- *				  compensate or run postpone log record. The type is decided using log_record argument.
+ *				  compensate or run postpone log record. The type is decided using log_record.type
+ *				  argument.
  *
  * return	              : Void.
  * thread_p (in)              : Thread entry.
@@ -4443,6 +4471,7 @@ log_sysop_attach_to_outer (THREAD_ENTRY * thread_p)
   /* Attach to outer: transfer postpone LSA. Not much to do really :) */
   if (tdes->topops.last - 1 >= 0)
     {
+      /* At least one more outer sysop */
       if (LSA_ISNULL (&tdes->topops.stack[tdes->topops.last - 1].posp_lsa))
 	{
 	  LSA_COPY (&tdes->topops.stack[tdes->topops.last - 1].posp_lsa,
@@ -4451,6 +4480,8 @@ log_sysop_attach_to_outer (THREAD_ENTRY * thread_p)
     }
   else
     {
+      /* No outer sysop present */
+      assert (tdes->topops.last == 0);
       if (LSA_ISNULL (&tdes->posp_nxlsa))
 	{
 	  LSA_COPY (&tdes->posp_nxlsa, &tdes->topops.stack[tdes->topops.last].posp_lsa);
@@ -4497,6 +4528,7 @@ log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, int *tran_index_out,
   *tdes_out = LOG_FIND_TDES (*tran_index_out);
   if (*tdes_out == NULL)
     {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, *tran_index_out);
       assert_release (false);
       return;
     }
@@ -12830,7 +12862,7 @@ cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *n
 
   for (int i = 0; i < rep->n_indexes; i++)
     {
-      index = rep->indexes + i;	//REVIEW : array? 
+      index = rep->indexes + i;	//REVIEW : array?
       if (index->type == BTREE_PRIMARY_KEY)
 	{
 	  has_pk = 1;
@@ -12894,7 +12926,7 @@ cdc_make_error_loginfo (int trid, char *user, CDC_DML_TYPE dml_type, OID classoi
     }
 
   ptr = start_ptr = PTR_ALIGN (loginfo_buf, MAX_ALIGNMENT);
-  ptr = or_pack_int (ptr, 0);	//dummy for log info length 
+  ptr = or_pack_int (ptr, 0);	//dummy for log info length
   ptr = or_pack_int (ptr, trid);
   ptr = or_pack_string (ptr, user);
   ptr = or_pack_int (ptr, dataitem_type);
@@ -13192,7 +13224,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	    {
 	      if (cdc_compare_undoredo_dbvalue (&new_values[i], &old_values[i]) > 0)
 		{
-		  changed_col_idx[cnt++] = i;	//TODO: replace i with def_order to reduce memory alloc and copy 
+		  changed_col_idx[cnt++] = i;	//TODO: replace i with def_order to reduce memory alloc and copy
 		}
 	    }
 

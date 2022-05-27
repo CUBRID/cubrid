@@ -292,10 +292,11 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
       break;
 
     case LOG_RESULT_TOPOP_ATTACH_TO_OUTER:
-    default:
       log_sysop_attach_to_outer (thread_p);
       state = tdes->state;
       break;
+    default:
+      assert ("other LOG_RESULT_TOPOP not implemented" == nullptr);
     }
 
   er_stack_pop ();

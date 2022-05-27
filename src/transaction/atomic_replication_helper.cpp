@@ -241,8 +241,6 @@ namespace cublog
     if (log_rv_fix_page_and_check_redo_is_needed (thread_p, m_vpid, rcv.pgptr, record_info.m_start_lsa,
 	redo_context.m_end_redo_lsa, redo_context.m_page_fetch_mode))
       {
-	// Align reader
-	// look at log_replication from redo_upto
 	rcv.reference_lsa = m_record_lsa;
 	log_rv_redo_record_sync_apply (thread_p, redo_context, record_info, m_vpid, rcv);
       }

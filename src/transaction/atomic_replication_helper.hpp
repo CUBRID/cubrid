@@ -58,6 +58,7 @@ namespace cublog
 #endif
 
     private:
+
       class atomic_replication_sequence
       {
 	public:

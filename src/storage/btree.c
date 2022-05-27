@@ -9373,7 +9373,7 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   /* Swap operation must use system op. */
   save_system_op_started = delete_helper->is_system_op_started;
-  log_sysop_start (thread_p);
+  log_sysop_start_atomic (thread_p);
   is_sytem_op_started = true;
   delete_helper->is_system_op_started = true;
 
@@ -10844,7 +10844,7 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
   save_sysop_started = insert_helper->is_system_op_started;
   if (!insert_helper->is_system_op_started)
     {
-      log_sysop_start (thread_p);
+      log_sysop_start_atomic (thread_p);
       insert_helper->is_system_op_started = true;
     }
   assert (log_check_system_op_is_started (thread_p));
@@ -10892,7 +10892,7 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
 
   if (!save_sysop_started)
     {
-      /* End system operation. */
+      /* End system operation if started in this context. If not, it is the calle's responsibility. */
       btree_insert_sysop_end (thread_p, insert_helper);
     }
 
@@ -27751,7 +27751,7 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
     {
       key_type = BTREE_OVERFLOW_KEY;
 
-      log_sysop_start (thread_p);
+      log_sysop_start_atomic (thread_p);
       insert_helper->is_system_op_started = true;
     }
   else
@@ -28598,7 +28598,7 @@ btree_key_relocate_last_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   assert (offset_to_last_object > 0);
 
   /* We need to change leaf page and at least one overflow page. Start a system operation. */
-  log_sysop_start (thread_p);
+  log_sysop_start_atomic (thread_p);
   insert_helper->is_system_op_started = true;
 
   /* Copy last object into an overflow page. */
@@ -28693,7 +28693,7 @@ exit:
 }
 
 /*
- * btree_key_relocate_last_into_ovf () - Append a new object in overflow OID's pages.
+ * btree_key_append_object_into_ovf () - Append a new object in overflow OID's pages.
  *
  * return		 : Error code.
  * thread_p (in)	 : Thread entry.
@@ -31335,7 +31335,6 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       BTREE_RV_REDO_SET_DEBUG_INFO (&delete_helper->leaf_addr, rv_redo_data_ptr, btid_int,
 				    BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD);
 #endif /* !NDEBUG */
-      LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
 
       /* Remove record from leaf. */
       btree_record_remove_object_internal (thread_p, btid_int, &leaf_record, BTREE_LEAF_NODE, offset_to_second_object,
@@ -31344,17 +31343,9 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
   else
     {
       /* Leaf and overflow OID's page are going to be changed. A system operation and undo logging is required. */
-      log_sysop_start (thread_p);
+      assert (!delete_helper->is_system_op_started);
+      log_sysop_start_atomic (thread_p);
       delete_helper->is_system_op_started = true;
-
-      error_code =
-	btree_overflow_remove_object (thread_p, key, btid_int, delete_helper, &found_page, prev_found_page, *leaf_page,
-				      &leaf_record, search_key, offset_to_second_object);
-      if (error_code != NO_ERROR)
-	{
-	  assert_release (false);
-	  goto exit;
-	}
 
       rv_undo_data_ptr = rv_undo_data;
       rv_redo_data_ptr = rv_redo_data;
@@ -31366,8 +31357,8 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       BTREE_RV_UNDOREDO_SET_DEBUG_INFO (&delete_helper->leaf_addr, rv_redo_data_ptr, rv_undo_data_ptr, btid_int,
 					BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD);
 #endif /* !NDEBUG */
-      LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
     }
+  LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
 
   /* Replace inserted object with second visible object. */
   btree_leaf_change_first_object (thread_p, &leaf_record, btid_int, &delete_helper->second_object_info.oid,
@@ -31398,6 +31389,19 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
 					     delete_helper->leaf_addr.offset, *leaf_page, rv_redo_data_length,
 					     rv_redo_data, LOG_FIND_CURRENT_TDES (thread_p),
 					     &delete_helper->reference_lsa);
+    }
+
+  if (delete_helper->is_system_op_started)
+    {
+      /* Update overflow OID page */
+      error_code =
+	btree_overflow_remove_object (thread_p, key, btid_int, delete_helper, &found_page, prev_found_page, *leaf_page,
+				      &leaf_record, search_key, offset_to_second_object);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  goto exit;
+	}
     }
 
   /* Success. */
@@ -31887,6 +31891,8 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
   return NO_ERROR;
 
 error:
+  /* End system operation. Only if started in current context.
+   * If started in a parent context, it is up to the parent context to end it */
   if (delete_helper->is_system_op_started && !save_system_op_started)
     {
       assert (delete_helper->purpose != BTREE_OP_DELETE_UNDO_INSERT
