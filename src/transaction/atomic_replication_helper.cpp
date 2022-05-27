@@ -29,10 +29,13 @@ namespace cublog
   /*********************************************************************
    * atomic_replication_helper function definitions                    *
    *********************************************************************/
+  void atomic_replication_helper::add_atomic_replication_sequence (TRANID trid, log_rv_redo_context redo_context)
+  {
+    m_sequences_map.emplace (trid, redo_context);
+  }
 
-  template <typename T>
   int atomic_replication_helper::add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa,
-      LOG_RCVINDEX rcvindex, VPID vpid, log_rv_redo_context &redo_context, const log_rv_redo_rec_info<T> &record_info)
+      LOG_RCVINDEX rcvindex, VPID vpid)
   {
 #if !defined (NDEBUG)
     if (!VPID_ISNULL (&vpid) && !check_for_page_validity (vpid, tranid))
@@ -44,8 +47,13 @@ namespace cublog
     vpids.insert (vpid);
 #endif
 
-    int error_code = m_sequences_map[tranid].add_atomic_replication_unit (thread_p, record_lsa, rcvindex, vpid,
-		     redo_context, record_info);
+    auto iterator = m_sequences_map.find (tranid);
+    if (iterator == m_sequences_map.cend ())
+      {
+	return ER_FAILED;
+      }
+
+    int error_code = iterator->second.add_atomic_replication_unit (thread_p, record_lsa, rcvindex, vpid);
     if (error_code != NO_ERROR)
       {
 	return error_code;
@@ -103,13 +111,17 @@ namespace cublog
     m_vpid_sets_map.erase (tranid);
 #endif
   }
-  /****************************************************************************
-   * atomic_replication_helper::atomic_replication_unit function definitions  *
-   ****************************************************************************/
-  template <typename T>
+  /********************************************************************************
+   * atomic_replication_helper::atomic_replication_sequence function definitions  *
+   ********************************************************************************/
+  atomic_replication_helper::atomic_replication_sequence::atomic_replication_sequence (log_rv_redo_context redo_cotext)
+    : m_redo_context { redo_cotext }
+  {
+
+  }
+
   int atomic_replication_helper::atomic_replication_sequence::add_atomic_replication_unit (THREAD_ENTRY *thread_p,
-      log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid, log_rv_redo_context &redo_context,
-      const log_rv_redo_rec_info<T> &record_info)
+      log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid)
   {
     m_units.emplace_back (record_lsa, vpid, rcvindex);
     auto iterator = m_page_map.find (vpid);
@@ -124,14 +136,24 @@ namespace cublog
       }
     else
       {
-	m_units.back ().set_page_ptr (iterator->second ());
+	m_units.back ().set_page_ptr (iterator->second);
       }
-    m_units.back ().apply_log_redo (thread_p, redo_context, record_info);
     return NO_ERROR;
+  }
+
+  void atomic_replication_helper::atomic_replication_sequence::apply_all_log_redos (THREAD_ENTRY *thread_p)
+  {
+    for (size_t i = 0; i < m_units.size (); i++)
+      {
+	m_units[i].apply_log_redo (thread_p, m_redo_context);
+      }
   }
 
   void atomic_replication_helper::atomic_replication_sequence::unfix_sequence (THREAD_ENTRY *thread_p)
   {
+    // sequenceally apply each log redo of the sequence before unfixing
+    apply_all_log_redos (thread_p);
+
     for (size_t i = 0; i < m_units.size (); i++)
       {
 	auto iterator = m_page_map.find (m_units[i].m_vpid);
@@ -144,9 +166,9 @@ namespace cublog
   }
 
 
-  /****************************************************************************
-   * atomic_replication_helper::atomic_replication_unit function definitions  *
-   ****************************************************************************/
+  /*********************************************************************************************************
+   * atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit function definitions  *
+   *********************************************************************************************************/
 
   atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::atomic_replication_unit (log_lsa lsa,
       VPID vpid, LOG_RCVINDEX rcvindex)
@@ -165,9 +187,43 @@ namespace cublog
     PGBUF_CLEAR_WATCHER (&m_watcher);
   }
 
+  void
+  atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::apply_log_redo (THREAD_ENTRY *thread_p,
+      log_rv_redo_context &redo_context)
+  {
+    redo_context.m_reader.set_lsa_and_fetch_page (m_record_lsa, log_reader::fetch_mode::FORCE);
+    const log_rec_header header = redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_header> ();
+
+    switch (header.type)
+      {
+      case LOG_REDO_DATA:
+	apply_log_by_type<log_rec_redo> (thread_p, redo_context, header.type);
+	break;
+      case LOG_MVCC_REDO_DATA:
+	apply_log_by_type<log_rec_mvcc_redo> (thread_p, redo_context, header.type);
+	break;
+      case LOG_UNDOREDO_DATA:
+      case LOG_DIFF_UNDOREDO_DATA:
+	apply_log_by_type<log_rec_undoredo> (thread_p, redo_context, header.type);
+	break;
+      case LOG_MVCC_UNDOREDO_DATA:
+      case LOG_MVCC_DIFF_UNDOREDO_DATA:
+	apply_log_by_type<log_rec_mvcc_undoredo> (thread_p, redo_context, header.type);
+	break;
+      case LOG_RUN_POSTPONE:
+	apply_log_by_type<log_rec_run_postpone> (thread_p, redo_context, header.type);
+	break;
+      case LOG_COMPENSATE:
+	apply_log_by_type<log_rec_compensate> (thread_p, redo_context, header.type);
+	break;
+      default:
+	break;
+      }
+  }
+
   template <typename T>
-  void atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::apply_log_redo (
-	  THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context, const log_rv_redo_rec_info<T> &record_info)
+  void atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::apply_log_by_type (
+	  THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context, LOG_RECTYPE rectype)
   {
     LOG_RCV rcv;
     if (m_page_ptr != nullptr)
@@ -179,11 +235,16 @@ namespace cublog
 	rcv.pgptr = m_watcher.pgptr;
       }
 
+    redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
+    const log_rv_redo_rec_info<T> record_info (m_record_lsa, rectype,
+	redo_context.m_reader.reinterpret_copy_and_add_align<T> ());
     if (log_rv_fix_page_and_check_redo_is_needed (thread_p, m_vpid, rcv.pgptr, record_info.m_start_lsa,
 	redo_context.m_end_redo_lsa, redo_context.m_page_fetch_mode))
       {
+	// Align reader
+	// look at log_replication from redo_upto
 	rcv.reference_lsa = m_record_lsa;
-	log_rv_redo_record_sync_apply (thread_p,redo_context, record_info, m_vpid, rcv);
+	log_rv_redo_record_sync_apply (thread_p, redo_context, record_info, m_vpid, rcv);
       }
   }
 
