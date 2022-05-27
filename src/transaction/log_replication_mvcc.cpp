@@ -56,28 +56,41 @@ namespace cublog
   }
 
   void
-  replicator_mvcc::new_assigned_sub_mvccid (TRANID tranid, MVCCID sub_mvccid, MVCCID mvccid)
+  replicator_mvcc::new_assigned_mvccid (TRANID tranid, MVCCID mvccid, MVCCID parent_mvccid)
   {
-    const auto found_it = m_mapped_mvccids.find (tranid);
-    assert (found_it == m_mapped_mvccids.cend ());
+    assert (MVCCID_IS_NORMAL (mvccid));
 
-    if (found_it != m_mapped_mvccids.cend ())
+    if (MVCCID_IS_VALID (parent_mvccid))
       {
-	assert (found_it->second.id == mvccid);
-	assert (found_it->second.sub_ids.empty ());
-	found_it->second.sub_ids.push_back (sub_mvccid);
+	// mvccid is a sub-id, as it has a valid parent mvccid
+	assert (MVCCID_IS_NORMAL (parent_mvccid));
+
+	const auto found_it = m_mapped_mvccids.find (tranid);
+	assert (found_it == m_mapped_mvccids.cend ());
+
+	if (found_it != m_mapped_mvccids.cend ())
+	  {
+	    assert (found_it->second.id == mvccid);
+	    assert (found_it->second.sub_ids.empty ());
+	    found_it->second.sub_ids.push_back (mvccid);
+	  }
+	else
+	  {
+	    assert_release (false);
+	  }
+
+	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+	  {
+	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] new_assigned_sub_mvccid tranid=%d"
+			   " mvccid=%llu parent_mvccid=%llu\n",
+			   tranid, (unsigned long long)mvccid, (unsigned long long)parent_mvccid);
+	    dump_map ();
+	  }
       }
     else
       {
-	assert_release (false);
-      }
-
-    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
-      {
-	_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] new_assigned_sub_mvccid tranid=%d"
-		       " sub_mvccid=%llu mvccid=%llu\n",
-		       tranid, (unsigned long long)sub_mvccid, (unsigned long long)mvccid);
-	dump_map ();
+	// mvccid is not a sub-id, as no valid parent mvccid
+	new_assigned_mvccid (tranid, mvccid);
       }
   }
 
@@ -114,26 +127,39 @@ namespace cublog
   }
 
   void
-  replicator_mvcc::complete_sub_mvcc (TRANID tranid, bool committed)
+  replicator_mvcc::complete_sub_mvcc (TRANID tranid)
   {
     const auto found_it = m_mapped_mvccids.find (tranid);
     assert (found_it == m_mapped_mvccids.cend ());
 
+    // transaction might not have had an mvccid yet
     if (found_it != m_mapped_mvccids.cend ())
       {
-	assert (found_it->second.sub_ids.size () == 1);
-	log_Gl.mvcc_table.complete_sub_mvcc (found_it->second.sub_ids.back ());
-
-	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+	// even if transaction does have an mvccid, it might not have a sub-id
+	if (!found_it->second.sub_ids.empty ())
 	  {
-	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] complete_sub_mvcc FOUND tranid=%d mvccid=%llu %s\n",
-			   tranid, (unsigned long long)found_it->second.sub_ids.back (),
-			   (committed ? "COMMITED" : "ABORTED"));
-	    dump_map ();
-	  }
+	    assert (found_it->second.sub_ids.size () == 1);
+	    log_Gl.mvcc_table.complete_sub_mvcc (found_it->second.sub_ids.back ());
 
-	// when completing the "main" mvccid, it is expected that all sub-ids have already been completed
-	found_it->second.sub_ids.pop_back ();
+	    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+	      {
+		_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] complete_sub_mvcc FOUND tranid=%d mvccid=%llu\n",
+			       tranid, (unsigned long long)found_it->second.sub_ids.back ());
+		dump_map ();
+	      }
+
+	    // when completing the "main" mvccid, it is expected that all sub-ids have already been completed
+	    found_it->second.sub_ids.pop_back ();
+	  }
+	else
+	  {
+	    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+	      {
+		_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] complete_sub_mvcc NOT_FOUND sub_id tranid=%d\n",
+			       tranid);
+		dump_map ();
+	      }
+	  }
       }
     else
       {
@@ -153,17 +179,17 @@ namespace cublog
     int index = 1;
     for (const auto &info_pair: m_mapped_mvccids)
       {
-	_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] index=%d/%d tranid=%d mvccid=%llu\n",
+	_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] dump_map index=%d/%d tranid=%d mvccid=%llu\n",
 		       index, m_mapped_mvccids.size (), info_pair.first, (unsigned long long)info_pair.second.id);
 	if (info_pair.second.sub_ids.empty ())
 	  {
-	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] sub_ids: EMPTY\n");
+	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] dump_map sub_ids: EMPTY\n");
 	  }
 	else
 	  {
 	    for (const auto &sub_id: info_pair.second.sub_ids)
 	      {
-		_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] sub_ids: sub_id=%llu\n",
+		_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] dump_map sub_ids: sub_id=%llu\n",
 			       (unsigned long long)sub_id);
 	      }
 	  }

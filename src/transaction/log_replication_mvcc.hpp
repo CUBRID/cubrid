@@ -31,10 +31,10 @@ namespace cublog
       replicator_mvcc &operator = (replicator_mvcc &&) = delete;
 
       void new_assigned_mvccid (TRANID tranid, MVCCID mvccid);
-      void new_assigned_sub_mvccid (TRANID tranid, MVCCID sub_mvccid, MVCCID mvccid);
+      void new_assigned_mvccid (TRANID tranid, MVCCID mvccid, MVCCID parent_mvccid);
 
-      void complete_sub_mvcc (TRANID tranid, bool committed);
       void complete_mvcc (TRANID tranid, bool committed);
+      void complete_sub_mvcc (TRANID tranid);
 
     private:
       void dump_map () const;

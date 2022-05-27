@@ -467,7 +467,7 @@ namespace cublog
 
     if (log_rec.type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
       {
-	// subtransaction mvccid might be valid or not
+	// mvccid might be valid or not
 	if (MVCCID_IS_VALID (log_rec.mvcc_undo.mvccid))
 	  {
 	    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
@@ -477,7 +477,7 @@ namespace cublog
 			       (int)tranid, (unsigned long long)log_rec.mvcc_undo.mvccid,
 			       (unsigned long long)log_rec.mvcc_undo.parent_mvccid);
 	      }
-	    m_replicator_mvccid->new_assigned_sub_mvccid (tranid, log_rec.mvcc_undo.mvccid,
+	    m_replicator_mvccid->new_assigned_mvccid (tranid, log_rec.mvcc_undo.mvccid,
 		log_rec.mvcc_undo.parent_mvccid);
 	  }
       }
@@ -487,7 +487,8 @@ namespace cublog
 	  {
 	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] LOG_SYSOP_END_COMMIT tranid=%d\n", tranid);
 	  }
-	m_replicator_mvccid->complete_sub_mvcc (tranid, replicator_mvcc::COMMITTED);
+	// only complete sub-ids, if found
+	m_replicator_mvccid->complete_sub_mvcc (tranid);
       }
     else if (log_rec.type == LOG_SYSOP_END_ABORT)
       {
@@ -495,7 +496,8 @@ namespace cublog
 	  {
 	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] LOG_SYSOP_END_ABORT tranid=%d\n", tranid);
 	  }
-	m_replicator_mvccid->complete_sub_mvcc (tranid, replicator_mvcc::ABORTED);
+	// only complete sub-ids, if found
+	m_replicator_mvccid->complete_sub_mvcc (tranid);
       }
     else
       {
