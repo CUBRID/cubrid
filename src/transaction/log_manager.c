@@ -4306,7 +4306,12 @@ log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, cons
       log_record.mvcc_undo.undo.data.pageid = NULL_PAGEID;
       log_record.mvcc_undo.undo.data.rcvindex = rcvindex;
       log_record.mvcc_undo.undo.length = undo_size;
-      log_record.mvcc_undo.mvccid = logtb_get_current_mvccid (thread_p);
+
+      MVCCID temp_id = MVCCID_NULL, temp_parent_id = MVCCID_NULL;
+      logtb_get_current_mvccid_and_parent_mvccid (thread_p, temp_id, temp_parent_id);
+      log_record.mvcc_undo.mvccid = temp_id;
+      log_record.mvcc_undo.parent_mvccid = temp_parent_id;
+
       log_record.mvcc_undo.vacuum_info.vfid = *vfid;
       LSA_SET_NULL (&log_record.mvcc_undo.vacuum_info.prev_mvcc_op_log_lsa);
     }
@@ -6689,8 +6694,9 @@ log_dump_record_mvcc_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA *
 	   "     Volid = %d Pageid = %d Offset = %d,\n     Undo(Before) length = %d, Redo(After) length = %d,\n",
 	   mvcc_undoredo->undoredo.data.volid, mvcc_undoredo->undoredo.data.pageid, mvcc_undoredo->undoredo.data.offset,
 	   (int) GET_ZIP_LEN (mvcc_undoredo->undoredo.ulength), (int) GET_ZIP_LEN (mvcc_undoredo->undoredo.rlength));
-  fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)\n",
-	   (long long int) mvcc_undoredo->mvccid,
+  fprintf (out_fp,
+	   "     MVCCID = %llu, parent_MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)\n",
+	   (unsigned long long int) mvcc_undoredo->mvccid, (unsigned long long) mvcc_undoredo->parent_mvccid,
 	   (long long int) mvcc_undoredo->vacuum_info.prev_mvcc_op_log_lsa.pageid,
 	   (int) mvcc_undoredo->vacuum_info.prev_mvcc_op_log_lsa.offset, mvcc_undoredo->vacuum_info.vfid.volid,
 	   mvcc_undoredo->vacuum_info.vfid.fileid);
@@ -6726,8 +6732,10 @@ log_dump_record_mvcc_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
   fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Undo (Before) length = %d,\n",
 	   mvcc_undo->undo.data.volid, mvcc_undo->undo.data.pageid, mvcc_undo->undo.data.offset,
 	   (int) GET_ZIP_LEN (mvcc_undo->undo.length));
-  fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)\n",
-	   (long long int) mvcc_undo->mvccid, (long long int) mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa.pageid,
+  fprintf (out_fp,
+	   "     MVCCID = %llu, parent_MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)\n",
+	   (unsigned long long int) mvcc_undo->mvccid, (unsigned long long) mvcc_undo->parent_mvccid,
+	   (long long int) mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa.pageid,
 	   (int) mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa.offset, mvcc_undo->vacuum_info.vfid.volid,
 	   mvcc_undo->vacuum_info.vfid.fileid);
 
@@ -6758,7 +6766,8 @@ log_dump_record_mvcc_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
   fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Redo (After) length = %d,\n",
 	   mvcc_redo->redo.data.volid, mvcc_redo->redo.data.pageid, mvcc_redo->redo.data.offset,
 	   (int) GET_ZIP_LEN (mvcc_redo->redo.length));
-  fprintf (out_fp, "     MVCCID = %llu, \n", (long long int) mvcc_redo->mvccid);
+  fprintf (out_fp, "     MVCCID = %llu, parent_MVCCID = %llu,\n",
+	   (unsigned long long int) mvcc_redo->mvccid, (unsigned long long) mvcc_redo->parent_mvccid);
 
   redo_length = mvcc_redo->redo.length;
   rcvindex = mvcc_redo->redo.data.rcvindex;
@@ -7010,8 +7019,10 @@ log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END *
       fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Undo (Before) length = %d,\n",
 	       sysop_end->mvcc_undo.undo.data.volid, sysop_end->mvcc_undo.undo.data.pageid,
 	       sysop_end->mvcc_undo.undo.data.offset, (int) GET_ZIP_LEN (sysop_end->mvcc_undo.undo.length));
-      fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)",
+      fprintf (out_fp,
+	       "     MVCCID = %llu, parent_MVCCID = %llu,\n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)",
 	       (unsigned long long int) sysop_end->mvcc_undo.mvccid,
+	       (unsigned long long) sysop_end->mvcc_undo.parent_mvccid,
 	       LSA_AS_ARGS (&sysop_end->mvcc_undo.vacuum_info.prev_mvcc_op_log_lsa),
 	       VFID_AS_ARGS (&sysop_end->mvcc_undo.vacuum_info.vfid));
 

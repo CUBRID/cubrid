@@ -718,6 +718,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
   int ulength, rlength, *data_header_ulength_p = NULL, *data_header_rlength_p = NULL;
   int total_length;
   MVCCID *mvccid_p = NULL;
+  MVCCID *parent_mvccid_p = NULL;
   LOG_TDES *tdes = NULL;
   char *data_ptr = NULL, *tmp_ptr = NULL;
   char *undo_data = NULL, *redo_data = NULL;
@@ -918,6 +919,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 
       /* Must also fill MVCCID field */
       mvccid_p = &mvcc_undo_p->mvccid;
+      parent_mvccid_p = &mvcc_undo_p->parent_mvccid;
 
     /* Fall through */
     case LOG_UNDO_DATA:
@@ -933,6 +935,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 
       /* Must also fill MVCCID field */
       mvccid_p = &mvcc_redo_p->mvccid;
+      parent_mvccid_p = &mvcc_redo_p->parent_mvccid;
 
     /* Fall through */
     case LOG_REDO_DATA:
@@ -952,6 +955,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 
       /* Must also fill MVCCID field */
       mvccid_p = &mvcc_undoredo_p->mvccid;
+      parent_mvccid_p = &mvcc_undoredo_p->parent_mvccid;
 
     /* Fall through */
     case LOG_UNDOREDO_DATA:
@@ -989,6 +993,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 
   if (mvccid_p != NULL)
     {
+      assert (parent_mvccid_p != nullptr);
       /* Fill mvccid field */
 
       /* Must be an MVCC operation */
@@ -1007,10 +1012,13 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 	  if (!tdes->mvccinfo.sub_ids.empty ())
 	    {
 	      *mvccid_p = tdes->mvccinfo.sub_ids.back ();
+	      assert (MVCCID_IS_VALID (tdes->mvccinfo.id));
+	      *parent_mvccid_p = tdes->mvccinfo.id;
 	    }
 	  else
 	    {
 	      *mvccid_p = tdes->mvccinfo.id;
+	      *parent_mvccid_p = MVCCID_NULL;
 	    }
 	}
     }
@@ -1422,6 +1430,13 @@ log_replication_update_header_mvcc_vacuum_info (const MVCCID &mvccid, const log_
     }
 }
 
+/*
+ * prior_update_header_mvcc_info - update vacuum information for the currect vacuum block (the vacuum
+ *              block that is currently being populated)
+ *
+ *   record_lsa(in): lsa of mvcc log record
+ *   mvccid(in): mvccid of mvcc log record
+ */
 static void
 prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid)
 {
@@ -1562,6 +1577,10 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 		     LSA_AS_ARGS (&node->start_lsa), LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa));
 
       prior_update_header_mvcc_info (start_lsa, mvccid);
+      /* If this is actually a sub-mvccid, the transaction must also have an 'main' mvccid.
+       * The 'main' mvccid will either:
+       *  - appear (or has already appeared) on its own log record
+       *  - will not be part of any log record, and thus will not matter with regard to vacuum */
 
       // Also set the transaction last MVCC lsa.
       tdes->last_mvcc_lsa = node->start_lsa;
