@@ -1006,6 +1006,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 	{
 	  if (!tdes->mvccinfo.sub_ids.empty ())
 	    {
+	      assert (tdes->mvccinfo.sub_ids.size () == 1);
 	      *mvccid_p = tdes->mvccinfo.sub_ids.back ();
 	    }
 	  else

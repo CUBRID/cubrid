@@ -1464,6 +1464,7 @@ logtb_free_tran_mvcc_info (LOG_TDES * tdes)
   MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
 
   curr_mvcc_info->snapshot.m_active_mvccs.finalize ();
+  assert (curr_mvcc_info->sub_ids.size () <= 1);
   curr_mvcc_info->sub_ids.clear ();
 }
 
@@ -3852,6 +3853,7 @@ logtb_find_current_mvccid (THREAD_ENTRY * thread_p)
     {
       if (!tdes->mvccinfo.sub_ids.empty ())
 	{
+	  assert (tdes->mvccinfo.sub_ids.size () == 1);
 	  id = tdes->mvccinfo.sub_ids.back ();
 	}
       else
@@ -3890,6 +3892,7 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
 
   if (!tdes->mvccinfo.sub_ids.empty ())
     {
+      assert (tdes->mvccinfo.sub_ids.size () == 1);
       return tdes->mvccinfo.sub_ids.back ();
     }
 
@@ -3919,6 +3922,7 @@ logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
     }
   else if (curr_mvcc_info->sub_ids.size () > 0)
     {
+      assert (curr_mvcc_info->sub_ids.size () == 1);
       for (size_t i = 0; i < curr_mvcc_info->sub_ids.size (); i++)
 	{
 	  if (curr_mvcc_info->sub_ids[i] == mvccid)
@@ -4508,6 +4512,7 @@ logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mv
 {
   assert (curr_mvcc_info != NULL);
   assert (MVCCID_IS_VALID (curr_mvcc_info->id));
+  assert (curr_mvcc_info->sub_ids.size () == 0);
   curr_mvcc_info->sub_ids.push_back (mvcc_subid);
 }
 
@@ -4532,6 +4537,7 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   mvcc_table->complete_sub_mvcc (mvcc_sub_id);
   curr_mvcc_info->sub_ids.pop_back ();
+  assert (curr_mvcc_info->sub_ids.size () == 0);
 
   if (tdes->mvccinfo.snapshot.valid)
     {
