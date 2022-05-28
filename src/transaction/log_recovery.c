@@ -2823,7 +2823,6 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    }
 	  if (LSA_EQ (end_redo_lsa, &lsa))
 	    {
-	      assert_release (!LSA_EQ (end_redo_lsa, &lsa));
 	      LSA_SET_NULL (&lsa);
 	      break;
 	    }
