@@ -718,7 +718,6 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
   int ulength, rlength, *data_header_ulength_p = NULL, *data_header_rlength_p = NULL;
   int total_length;
   MVCCID *mvccid_p = NULL;
-  MVCCID *parent_mvccid_p = NULL;
   LOG_TDES *tdes = NULL;
   char *data_ptr = NULL, *tmp_ptr = NULL;
   char *undo_data = NULL, *redo_data = NULL;
@@ -919,7 +918,6 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 
       /* Must also fill MVCCID field */
       mvccid_p = &mvcc_undo_p->mvccid;
-      parent_mvccid_p = &mvcc_undo_p->parent_mvccid;
 
     /* Fall through */
     case LOG_UNDO_DATA:
@@ -935,7 +933,6 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 
       /* Must also fill MVCCID field */
       mvccid_p = &mvcc_redo_p->mvccid;
-      parent_mvccid_p = &mvcc_redo_p->parent_mvccid;
 
     /* Fall through */
     case LOG_REDO_DATA:
@@ -955,7 +952,6 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 
       /* Must also fill MVCCID field */
       mvccid_p = &mvcc_undoredo_p->mvccid;
-      parent_mvccid_p = &mvcc_undoredo_p->parent_mvccid;
 
     /* Fall through */
     case LOG_UNDOREDO_DATA:
@@ -993,7 +989,6 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 
   if (mvccid_p != NULL)
     {
-      assert (parent_mvccid_p != nullptr);
       /* Fill mvccid field */
 
       /* Must be an MVCC operation */
@@ -1014,12 +1009,10 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 	      assert (tdes->mvccinfo.sub_ids.size () == 1);
 	      *mvccid_p = tdes->mvccinfo.sub_ids.back ();
 	      assert (MVCCID_IS_VALID (tdes->mvccinfo.id));
-	      *parent_mvccid_p = tdes->mvccinfo.id;
 	    }
 	  else
 	    {
 	      *mvccid_p = tdes->mvccinfo.id;
-	      *parent_mvccid_p = MVCCID_NULL;
 	    }
 	}
     }
@@ -1527,8 +1520,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 	  assert (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO);
 
 	  /* Read from mvcc_undo structure */
-	  mvcc_undo = & ((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo;
-	  vacuum_info = &mvcc_undo->vacuum_info;
+	  mvcc_undo = & ((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo_info.mvcc_undo;
+	  vacuum_info = &mvcc_undo ->vacuum_info;
 	  mvccid = mvcc_undo->mvccid;
 
 	  /* Reset

@@ -4301,19 +4301,19 @@ log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, cons
   if (LOG_IS_MVCC_OPERATION (rcvindex))
     {
       log_record.type = LOG_SYSOP_END_LOGICAL_MVCC_UNDO;
-      log_record.mvcc_undo.undo.data.offset = NULL_OFFSET;
-      log_record.mvcc_undo.undo.data.volid = NULL_VOLID;
-      log_record.mvcc_undo.undo.data.pageid = NULL_PAGEID;
-      log_record.mvcc_undo.undo.data.rcvindex = rcvindex;
-      log_record.mvcc_undo.undo.length = undo_size;
+      log_record.mvcc_undo_info.mvcc_undo.undo.data.offset = NULL_OFFSET;
+      log_record.mvcc_undo_info.mvcc_undo.undo.data.volid = NULL_VOLID;
+      log_record.mvcc_undo_info.mvcc_undo.undo.data.pageid = NULL_PAGEID;
+      log_record.mvcc_undo_info.mvcc_undo.undo.data.rcvindex = rcvindex;
+      log_record.mvcc_undo_info.mvcc_undo.undo.length = undo_size;
 
-      MVCCID temp_id = MVCCID_NULL, temp_parent_id = MVCCID_NULL;
-      logtb_get_current_mvccid_and_parent_mvccid (thread_p, temp_id, temp_parent_id);
-      log_record.mvcc_undo.mvccid = temp_id;
-      log_record.mvcc_undo.parent_mvccid = temp_parent_id;
+      MVCCID temp_mvccid = MVCCID_NULL, temp_parent_mvccid = MVCCID_NULL;
+      logtb_get_current_mvccid_and_parent_mvccid (thread_p, temp_mvccid, temp_parent_mvccid);
+      log_record.mvcc_undo_info.mvcc_undo.mvccid = temp_mvccid;
+      log_record.mvcc_undo_info.parent_mvccid = temp_parent_mvccid;
 
-      log_record.mvcc_undo.vacuum_info.vfid = *vfid;
-      LSA_SET_NULL (&log_record.mvcc_undo.vacuum_info.prev_mvcc_op_log_lsa);
+      log_record.mvcc_undo_info.mvcc_undo.vacuum_info.vfid = *vfid;
+      LSA_SET_NULL (&log_record.mvcc_undo_info.mvcc_undo.vacuum_info.prev_mvcc_op_log_lsa);
     }
   else
     {
@@ -4834,7 +4834,7 @@ log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_EN
 	}
       else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 	{
-	  rcvindex = sysop_end->mvcc_undo.undo.data.rcvindex;
+	  rcvindex = sysop_end->mvcc_undo_info.mvcc_undo.undo.data.rcvindex;
 	}
 
       if (LOG_MAY_CONTAIN_USER_DATA (rcvindex))
@@ -6694,9 +6694,8 @@ log_dump_record_mvcc_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA *
 	   "     Volid = %d Pageid = %d Offset = %d,\n     Undo(Before) length = %d, Redo(After) length = %d,\n",
 	   mvcc_undoredo->undoredo.data.volid, mvcc_undoredo->undoredo.data.pageid, mvcc_undoredo->undoredo.data.offset,
 	   (int) GET_ZIP_LEN (mvcc_undoredo->undoredo.ulength), (int) GET_ZIP_LEN (mvcc_undoredo->undoredo.rlength));
-  fprintf (out_fp,
-	   "     MVCCID = %llu, parent_MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)\n",
-	   (unsigned long long int) mvcc_undoredo->mvccid, (unsigned long long) mvcc_undoredo->parent_mvccid,
+  fprintf (out_fp, "     MVCCID = %llu,\n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)\n",
+	   (unsigned long long int) mvcc_undoredo->mvccid,
 	   (long long int) mvcc_undoredo->vacuum_info.prev_mvcc_op_log_lsa.pageid,
 	   (int) mvcc_undoredo->vacuum_info.prev_mvcc_op_log_lsa.offset, mvcc_undoredo->vacuum_info.vfid.volid,
 	   mvcc_undoredo->vacuum_info.vfid.fileid);
@@ -6732,9 +6731,8 @@ log_dump_record_mvcc_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
   fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Undo (Before) length = %d,\n",
 	   mvcc_undo->undo.data.volid, mvcc_undo->undo.data.pageid, mvcc_undo->undo.data.offset,
 	   (int) GET_ZIP_LEN (mvcc_undo->undo.length));
-  fprintf (out_fp,
-	   "     MVCCID = %llu, parent_MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)\n",
-	   (unsigned long long int) mvcc_undo->mvccid, (unsigned long long) mvcc_undo->parent_mvccid,
+  fprintf (out_fp, "     MVCCID = %llu,\n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)\n",
+	   (unsigned long long int) mvcc_undo->mvccid,
 	   (long long int) mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa.pageid,
 	   (int) mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa.offset, mvcc_undo->vacuum_info.vfid.volid,
 	   mvcc_undo->vacuum_info.vfid.fileid);
@@ -6766,8 +6764,7 @@ log_dump_record_mvcc_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
   fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Redo (After) length = %d,\n",
 	   mvcc_redo->redo.data.volid, mvcc_redo->redo.data.pageid, mvcc_redo->redo.data.offset,
 	   (int) GET_ZIP_LEN (mvcc_redo->redo.length));
-  fprintf (out_fp, "     MVCCID = %llu, parent_MVCCID = %llu,\n",
-	   (unsigned long long int) mvcc_redo->mvccid, (unsigned long long) mvcc_redo->parent_mvccid);
+  fprintf (out_fp, "     MVCCID = %llu,\n", (unsigned long long int) mvcc_redo->mvccid);
 
   redo_length = mvcc_redo->redo.length;
   rcvindex = mvcc_redo->redo.data.rcvindex;
@@ -7015,19 +7012,22 @@ log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END *
     case LOG_SYSOP_END_LOGICAL_MVCC_UNDO:
       assert (log_lsa != NULL && log_page_p != NULL && log_zip_p != NULL);
 
-      fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (sysop_end->mvcc_undo.undo.data.rcvindex));
+      fprintf (out_fp, ", Recv_index = %s,\n",
+	       rv_rcvindex_string (sysop_end->mvcc_undo_info.mvcc_undo.undo.data.rcvindex));
       fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Undo (Before) length = %d,\n",
-	       sysop_end->mvcc_undo.undo.data.volid, sysop_end->mvcc_undo.undo.data.pageid,
-	       sysop_end->mvcc_undo.undo.data.offset, (int) GET_ZIP_LEN (sysop_end->mvcc_undo.undo.length));
-      fprintf (out_fp,
-	       "     MVCCID = %llu, parent_MVCCID = %llu,\n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)",
-	       (unsigned long long int) sysop_end->mvcc_undo.mvccid,
-	       (unsigned long long) sysop_end->mvcc_undo.parent_mvccid,
-	       LSA_AS_ARGS (&sysop_end->mvcc_undo.vacuum_info.prev_mvcc_op_log_lsa),
-	       VFID_AS_ARGS (&sysop_end->mvcc_undo.vacuum_info.vfid));
+	       sysop_end->mvcc_undo_info.mvcc_undo.undo.data.volid,
+	       sysop_end->mvcc_undo_info.mvcc_undo.undo.data.pageid,
+	       sysop_end->mvcc_undo_info.mvcc_undo.undo.data.offset,
+	       (int) GET_ZIP_LEN (sysop_end->mvcc_undo_info.mvcc_undo.undo.length));
+      fprintf (out_fp, "     MVCCID = %llu, parent_MVCCID = %llu,\n"
+	       "     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)",
+	       (unsigned long long) sysop_end->mvcc_undo_info.mvcc_undo.mvccid,
+	       (unsigned long long) sysop_end->mvcc_undo_info.parent_mvccid,
+	       LSA_AS_ARGS (&sysop_end->mvcc_undo_info.mvcc_undo.vacuum_info.prev_mvcc_op_log_lsa),
+	       VFID_AS_ARGS (&sysop_end->mvcc_undo_info.mvcc_undo.vacuum_info.vfid));
 
-      undo_length = sysop_end->mvcc_undo.undo.length;
-      rcvindex = sysop_end->mvcc_undo.undo.data.rcvindex;
+      undo_length = sysop_end->mvcc_undo_info.mvcc_undo.undo.length;
+      rcvindex = sysop_end->mvcc_undo_info.mvcc_undo.undo.data.rcvindex;
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), log_lsa, log_page_p);
       log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
       break;
@@ -8178,12 +8178,12 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 		}
 	      else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 		{
-		  rcvindex = sysop_end->mvcc_undo.undo.data.rcvindex;
-		  rcv.offset = sysop_end->mvcc_undo.undo.data.offset;
-		  rcv_vpid.volid = sysop_end->mvcc_undo.undo.data.volid;
-		  rcv_vpid.pageid = sysop_end->mvcc_undo.undo.data.pageid;
-		  rcv.length = sysop_end->mvcc_undo.undo.length;
-		  rcv.mvcc_id = sysop_end->mvcc_undo.mvccid;
+		  rcvindex = sysop_end->mvcc_undo_info.mvcc_undo.undo.data.rcvindex;
+		  rcv.offset = sysop_end->mvcc_undo_info.mvcc_undo.undo.data.offset;
+		  rcv_vpid.volid = sysop_end->mvcc_undo_info.mvcc_undo.undo.data.volid;
+		  rcv_vpid.pageid = sysop_end->mvcc_undo_info.mvcc_undo.undo.data.pageid;
+		  rcv.length = sysop_end->mvcc_undo_info.mvcc_undo.undo.length;
+		  rcv.mvcc_id = sysop_end->mvcc_undo_info.mvcc_undo.mvccid;
 
 		  /* will jump to parent LSA. save it now before advancing to undo data */
 		  LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
@@ -10302,7 +10302,7 @@ log_read_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_P
   else
     {
       assert (sysop_start_postpone->sysop_end.type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO);
-      *undo_size = sysop_start_postpone->sysop_end.mvcc_undo.undo.length;
+      *undo_size = sysop_start_postpone->sysop_end.mvcc_undo_info.mvcc_undo.undo.length;
     }
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_START_POSTPONE), log_lsa, log_page);
