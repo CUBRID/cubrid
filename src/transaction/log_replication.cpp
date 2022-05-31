@@ -467,25 +467,29 @@ namespace cublog
 
     if (log_rec.type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
       {
+	assert (!LSA_ISNULL (&log_rec.lastparent_lsa));
+	assert (LSA_LT (&log_rec.lastparent_lsa, &rec_lsa));
+
 	// mvccid might be valid or not
-	if (MVCCID_IS_VALID (log_rec.mvcc_undo.mvccid))
+	if (MVCCID_IS_VALID (log_rec.mvcc_undo_info.mvcc_undo.mvccid))
 	  {
 	    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
 	      {
-		_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] LOG_SYSOP_END_LOGICAL_MVCC_UNDO"
-			       " tranid=%d MVCCID=%llu parent_MVCCID=%llu\n",
-			       (int)tranid, (unsigned long long)log_rec.mvcc_undo.mvccid,
-			       (unsigned long long)log_rec.mvcc_undo.parent_mvccid);
+		_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] %s tranid=%d MVCCID=%llu parent_MVCCID=%llu\n",
+			       log_sysop_end_type_string (log_rec.type), (int)tranid,
+			       (unsigned long long)log_rec.mvcc_undo_info.mvcc_undo.mvccid,
+			       (unsigned long long)log_rec.mvcc_undo_info.parent_mvccid);
 	      }
-	    m_replicator_mvccid->new_assigned_mvccid (tranid, log_rec.mvcc_undo.mvccid,
-		log_rec.mvcc_undo.parent_mvccid);
+	    m_replicator_mvccid->new_assigned_mvccid (tranid, log_rec.mvcc_undo_info.mvcc_undo.mvccid,
+		log_rec.mvcc_undo_info.parent_mvccid);
 	  }
       }
     else if (log_rec.type == LOG_SYSOP_END_COMMIT)
       {
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
 	  {
-	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] LOG_SYSOP_END_COMMIT tranid=%d\n", tranid);
+	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] %s tranid=%d\n",
+			   log_sysop_end_type_string (log_rec.type), tranid);
 	  }
 	// only complete sub-ids, if found
 	m_replicator_mvccid->complete_sub_mvcc (tranid);
@@ -494,7 +498,8 @@ namespace cublog
       {
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
 	  {
-	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] LOG_SYSOP_END_ABORT tranid=%d\n", tranid);
+	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] %s tranid=%d\n",
+			   log_sysop_end_type_string (log_rec.type), tranid);
 	  }
 	// only complete sub-ids, if found
 	m_replicator_mvccid->complete_sub_mvcc (tranid);
@@ -504,7 +509,7 @@ namespace cublog
 	// nothing
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
 	  {
-	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] %s tranid=%d\n",
+	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] %s tranid=%d not handled\n",
 			   log_sysop_end_type_string (log_rec.type), tranid);
 	  }
       }
@@ -520,7 +525,10 @@ namespace cublog
 	    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SYSOP_START_POSTPONE> ();
 
     LOG_SYSOP_END_TYPE_CHECK (log_rec.sysop_end.type);
-    assert (!LSA_ISNULL (&log_rec.sysop_end.lastparent_lsa));
+    // TODO: this assert does not hold, to repro:
+    //  - execute the scenario from http://jira.cubrid.org/browse/LETS-289
+    //  - wait some time - probabil for the vacuum to be executed - which will end up here
+    //assert (!LSA_ISNULL (&log_rec.sysop_end.lastparent_lsa));
     assert (LSA_LT (&log_rec.sysop_end.lastparent_lsa, &rec_lsa));
     assert (log_rec.sysop_end.type != LOG_SYSOP_END_LOGICAL_MVCC_UNDO);
   }

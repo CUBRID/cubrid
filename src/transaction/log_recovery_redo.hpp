@@ -214,7 +214,7 @@ inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_SYSOP_END> (const LOG_REC_SYSOP_
 {
   if (log_rec.type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
     {
-      return log_rec.mvcc_undo.mvccid;
+      return log_rec.mvcc_undo_info.mvcc_undo.mvccid;
     }
   return MVCCID_NULL;
 }

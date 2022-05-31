@@ -66,7 +66,23 @@ namespace cublog
 	assert (MVCCID_IS_NORMAL (parent_mvccid));
 
 	const auto found_it = m_mapped_mvccids.find (tranid);
-	assert (found_it == m_mapped_mvccids.cend ());
+
+	//assert (found_it == m_mapped_mvccids.cend ());
+	if (found_it == m_mapped_mvccids.cend ())
+	  {
+	    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+	      {
+		_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] new_assigned_sub_mvccid"
+			       " WARNING sudden new parent_mvccid tranid=%d parent_mvccid=%llu\n",
+			       tranid, (unsigned long long)parent_mvccid);
+		dump_map ();
+	      }
+
+	    // TODO: a new parent mvccid appeared out of the blue;
+	    // not sure whether this is a valid scenario
+	    // however, it will be commited/aborted at the end of the transaction
+	    new_assigned_mvccid (tranid, parent_mvccid);
+	  }
 
 	if (found_it != m_mapped_mvccids.cend ())
 	  {
@@ -130,7 +146,7 @@ namespace cublog
   replicator_mvcc::complete_sub_mvcc (TRANID tranid)
   {
     const auto found_it = m_mapped_mvccids.find (tranid);
-    assert (found_it == m_mapped_mvccids.cend ());
+    //assert (found_it != m_mapped_mvccids.cend ());
 
     // transaction might not have had an mvccid yet
     if (found_it != m_mapped_mvccids.cend ())
