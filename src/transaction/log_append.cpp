@@ -1521,7 +1521,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 
 	  /* Read from mvcc_undo structure */
 	  mvcc_undo = & ((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo_info.mvcc_undo;
-	  vacuum_info = &mvcc_undo ->vacuum_info;
+	  vacuum_info = &mvcc_undo->vacuum_info;
 	  mvccid = mvcc_undo->mvccid;
 
 	  /* Reset
