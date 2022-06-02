@@ -25,10 +25,10 @@
 
 namespace cublog
 {
-
   /*********************************************************************
    * atomic_replication_helper function definitions                    *
    *********************************************************************/
+
   void atomic_replication_helper::add_atomic_replication_sequence (TRANID trid, log_rv_redo_context redo_context)
   {
     m_sequences_map.emplace (trid, redo_context);
@@ -111,11 +111,13 @@ namespace cublog
     m_vpid_sets_map.erase (tranid);
 #endif
   }
+
   /********************************************************************************
    * atomic_replication_helper::atomic_replication_sequence function definitions  *
    ********************************************************************************/
-  atomic_replication_helper::atomic_replication_sequence::atomic_replication_sequence (log_rv_redo_context redo_cotext)
-    : m_redo_context { redo_cotext }
+
+  atomic_replication_helper::atomic_replication_sequence::atomic_replication_sequence (log_rv_redo_context redo_context)
+    : m_redo_context { redo_context }
   {
 
   }
@@ -149,7 +151,7 @@ namespace cublog
       }
   }
 
-  void atomic_replication_helper::atomic_replication_sequence::unfix_sequence (THREAD_ENTRY *thread_p)
+  void atomic_replication_helper::atomic_replication_sequence::apply_and_unfix_sequence (THREAD_ENTRY *thread_p)
   {
     // sequenceally apply each log redo of the sequence before unfixing
     apply_all_log_redos (thread_p);
@@ -164,7 +166,6 @@ namespace cublog
 	  }
       }
   }
-
 
   /*********************************************************************************************************
    * atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit function definitions  *
@@ -197,24 +198,24 @@ namespace cublog
     switch (header.type)
       {
       case LOG_REDO_DATA:
-	apply_log_by_type<log_rec_redo> (thread_p, redo_context, header.type);
+	apply_log_by_type<LOG_REC_REDO> (thread_p, redo_context, header.type);
 	break;
       case LOG_MVCC_REDO_DATA:
-	apply_log_by_type<log_rec_mvcc_redo> (thread_p, redo_context, header.type);
+	apply_log_by_type<LOG_REC_MVCC_REDO> (thread_p, redo_context, header.type);
 	break;
       case LOG_UNDOREDO_DATA:
       case LOG_DIFF_UNDOREDO_DATA:
-	apply_log_by_type<log_rec_undoredo> (thread_p, redo_context, header.type);
+	apply_log_by_type<LOG_REC_UNDOREDO> (thread_p, redo_context, header.type);
 	break;
       case LOG_MVCC_UNDOREDO_DATA:
       case LOG_MVCC_DIFF_UNDOREDO_DATA:
-	apply_log_by_type<log_rec_mvcc_undoredo> (thread_p, redo_context, header.type);
+	apply_log_by_type<LOG_REC_MVCC_UNDOREDO> (thread_p, redo_context, header.type);
 	break;
       case LOG_RUN_POSTPONE:
-	apply_log_by_type<log_rec_run_postpone> (thread_p, redo_context, header.type);
+	apply_log_by_type<LOG_REC_RUN_POSTPONE> (thread_p, redo_context, header.type);
 	break;
       case LOG_COMPENSATE:
-	apply_log_by_type<log_rec_compensate> (thread_p, redo_context, header.type);
+	apply_log_by_type<LOG_REC_COMPENSATE> (thread_p, redo_context, header.type);
 	break;
       default:
 	break;

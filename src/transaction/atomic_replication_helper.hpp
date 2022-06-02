@@ -63,7 +63,7 @@ namespace cublog
       {
 	public:
 	  atomic_replication_sequence () = delete;
-	  atomic_replication_sequence (log_rv_redo_context redo_cotext);
+	  atomic_replication_sequence (log_rv_redo_context redo_context);
 
 	  atomic_replication_sequence (const atomic_replication_sequence &) = delete;
 	  atomic_replication_sequence (atomic_replication_sequence &&) = delete;
@@ -73,7 +73,7 @@ namespace cublog
 	  atomic_replication_sequence &operator= (const atomic_replication_sequence &) = delete;
 	  atomic_replication_sequence &operator= (atomic_replication_sequence &&) = delete;
 
-	  void unfix_sequence (THREAD_ENTRY *thread_p);
+	  void apply_and_unfix_sequence (THREAD_ENTRY *thread_p);
 	  int add_atomic_replication_unit (THREAD_ENTRY *thread_p, log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid);
 	private:
 	  void apply_all_log_redos (THREAD_ENTRY *thread_p);
