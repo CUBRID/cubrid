@@ -340,11 +340,12 @@ struct log_rec_sysop_end
       MVCCID parent_mvccid;	/* If transaction has an mvccid allocated by a sub-transaction, this field will
 				 * contain the transaction's "main" mvccid (which, as indicated in implementations
 				 * in logtb_get_new_subtransaction_mvccid and logtb_get_current_mvccid, must
-				 * be valid). Otherwise, null.
-				 * The purpose of this field is twofold across transactional log replication (mainly
-				 * on passive transaction server):
+				 * be valid) while the mvcc_undo.mvccid will contain the mvccid of the subtransaction.
+				 * Otherwise, null.
+				 * The purpose of this field is twofold across transactional log replication boundary
+				 * (currently only on passive transaction server):
 				 *  - to discerne the nature of the mvccid as either 'main' mvccid or sub-mvccid
-				 *  - and to allow proper completion of both mvccid and sub-mvccid */
+				 *  - and to allow proper completion of either[both] mvccid or[and] sub-mvccid */
     } mvcc_undo_info;
     LOG_LSA compensate_lsa;	/* compensate lsa for logical compensate */
     struct

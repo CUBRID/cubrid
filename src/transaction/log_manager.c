@@ -4307,7 +4307,8 @@ log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, cons
       log_record.mvcc_undo_info.mvcc_undo.undo.data.rcvindex = rcvindex;
       log_record.mvcc_undo_info.mvcc_undo.undo.length = undo_size;
 
-      MVCCID temp_mvccid = MVCCID_NULL, temp_parent_mvccid = MVCCID_NULL;
+      MVCCID temp_mvccid = MVCCID_NULL;
+      MVCCID temp_parent_mvccid = MVCCID_NULL;
       logtb_get_current_mvccid_and_parent_mvccid (thread_p, temp_mvccid, temp_parent_mvccid);
       log_record.mvcc_undo_info.mvcc_undo.mvccid = temp_mvccid;
       log_record.mvcc_undo_info.parent_mvccid = temp_parent_mvccid;
