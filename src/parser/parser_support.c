@@ -5828,7 +5828,8 @@ pt_make_collation_expr_node (PARSER_CONTEXT * parser)
  *    IF( (SELECT count(*)
  *	      FROM db_serial S
  *	      WHERE S.att_name = A.attr_name AND
- *		    S.class_name =  C.class_name
+ *		    S.class_name = C.class_name AND
+ *		    S.owner.name = C.owner_name
  *	    ) >= 1 ,
  *	  'auto_increment',
  *	  '' )
@@ -5841,6 +5842,7 @@ pt_make_field_extra_expr_node (PARSER_CONTEXT * parser)
 {
   PT_NODE *where_item1 = NULL;
   PT_NODE *where_item2 = NULL;
+  PT_NODE *where_item3 = NULL;
   PT_NODE *from_item = NULL;
   PT_NODE *query = NULL;
   PT_NODE *extra_node = NULL;
@@ -5860,9 +5862,12 @@ pt_make_field_extra_expr_node (PARSER_CONTEXT * parser)
   where_item1 = pt_make_pred_with_identifiers (parser, PT_EQ, "S.att_name", "A.attr_name");
   /* S.class_name = C.class_name */
   where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ, "S.class_name", "C.class_name");
+  /* S.owner.name = C.owner_name */
+  where_item3 = pt_make_pred_with_identifiers (parser, PT_EQ, "S.owner.name", "C.owner_name");
 
   /* item1 = item2 AND item2 */
   where_item1 = parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
+  where_item1 = parser_make_expression (parser, PT_AND, where_item1, where_item3, NULL);
   query->info.query.q.select.where = parser_append_node (where_item1, query->info.query.q.select.where);
 
   /* IF ( SELECT (..) >=1 , 'auto_increment' , '' ) */
@@ -5911,7 +5916,7 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
   {
     /* pri_key_count : (SELECT count (*) FROM (SELECT IK.key_attr_name ATTR, I.is_primary_key PRI_KEY FROM
      * _db_index_key IK , _db_index I WHERE IK IN I.key_attrs AND IK.key_attr_name = A.attr_name AND I.class_of =
-     * A.class_of AND A.class_of.class_name=C.class_name) constraints_pri_key WHERE PRI_KEY=1) */
+     * A.class_of AND A.class_of.unique_name=C.unique_name) constraints_pri_key WHERE PRI_KEY=1) */
     PT_NODE *sub_query = NULL;
     PT_NODE *from_item = NULL;
     PT_NODE *where_item1 = NULL;
@@ -5919,8 +5924,8 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
     PT_NODE *alias_subquery = NULL;
 
     /* SELECT IK.key_attr_name ATTR, I.is_primary_key PRI_KEY FROM _db_index_key IK , _db_index I WHERE IK IN
-     * I.key_attrs AND IK.key_attr_name = A.attr_name AND I.class_of = A.class_of AND A.class_of.class_name =
-     * C.class_name */
+     * I.key_attrs AND IK.key_attr_name = A.attr_name AND I.class_of = A.class_of AND A.class_of.unique_name =
+     * C.unique_name */
     sub_query = parser_new_node (parser, PT_SELECT);
     if (sub_query == NULL)
       {
@@ -5942,7 +5947,7 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
     where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ, "I.class_of", "A.class_of");
     where_item1 = parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
 
-    where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ, "A.class_of.class_name", "C.class_name");
+    where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ, "A.class_of.unique_name", "C.unique_name");
     where_item1 = parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
 
     /* WHERE clause should be empty */
@@ -5986,7 +5991,7 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
     PT_NODE *alias_subquery = NULL;
 
     /* SELECT IK.key_attr_name ATTR, I.is_unique UNI_KEY FROM _db_index_key IK , _db_index I WHERE IK IN I.key_attrs
-     * AND IK.key_attr_name = A.attr_name AND I.class_of = A.class_of AND A.class_of.class_name = C.class_name */
+     * AND IK.key_attr_name = A.attr_name AND I.class_of = A.class_of AND A.class_of.unique_name = C.unique_name */
     sub_query = parser_new_node (parser, PT_SELECT);
     if (sub_query == NULL)
       {
@@ -6008,7 +6013,7 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
     where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ, "I.class_of", "A.class_of");
     where_item1 = parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
 
-    where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ, "A.class_of.class_name", "C.class_name");
+    where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ, "A.class_of.unique_name", "C.unique_name");
     where_item1 = parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
 
     /* where should be empty */
@@ -6044,8 +6049,8 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
 
   {
     /* mul_count : (SELECT count (*) FROM (SELECT IK.key_attr_name ATTR FROM _db_index_key IK , _db_index I WHERE IK IN
-     * I.key_attrs AND IK.key_attr_name = A.attr_name AND I.class_of = A.class_of AND A.class_of.class_name =
-     * C.class_name AND IK.key_order = 0) constraints_no_index ) */
+     * I.key_attrs AND IK.key_attr_name = A.attr_name AND I.class_of = A.class_of AND A.class_of.unique_name =
+     * C.unique_name AND IK.key_order = 0) constraints_no_index ) */
     PT_NODE *sub_query = NULL;
     PT_NODE *from_item = NULL;
     PT_NODE *where_item1 = NULL;
@@ -6053,7 +6058,7 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
     PT_NODE *alias_subquery = NULL;
 
     /* SELECT IK.key_attr_name ATTR FROM _db_index_key IK , _db_index I WHERE IK IN I.key_attrs AND IK.key_attr_name =
-     * A.attr_name AND I.class_of = A.class_of AND A.class_of.class_name = C.class_name AND IK.key_order = 0 */
+     * A.attr_name AND I.class_of = A.class_of AND A.class_of.unique_name = C.unique_name AND IK.key_order = 0 */
     sub_query = parser_new_node (parser, PT_SELECT);
     if (sub_query == NULL)
       {
@@ -6074,7 +6079,7 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
     where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ, "I.class_of", "A.class_of");
     where_item1 = parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
 
-    where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ, "A.class_of.class_name", "C.class_name");
+    where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ, "A.class_of.unique_name", "C.unique_name");
     where_item1 = parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
 
     where_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "IK.key_order", 0);
@@ -6237,7 +6242,7 @@ pt_make_sort_spec_with_number (PARSER_CONTEXT * parser, const int number_pos, PT
  *		  GROUP_CONCAT( TT.type_name ORDER BY 1 SEPARATOR ',')
  *			Composed_types
  *	     FROM _db_attribute AA, _db_domain DD , _db_data_type TT
- *	     WHERE AA.class_of.class_name = '<table_name>' AND
+ *	     WHERE AA.class_of.unique_name = '<table_name>' AND
  *		   DD.data_type = TT.type_id AND
  *		   DD.object_of IN AA.domains
  *	     GROUP BY AA.attr_name)
@@ -6307,8 +6312,8 @@ pt_make_collection_type_subquery_node (PARSER_CONTEXT * parser, const char *tabl
   from_item = pt_add_table_name_to_from_list (parser, query, "_db_data_type", "TT", DB_AUTH_SELECT);
 
   /* WHERE : */
-  /* AA.class_of.class_name = '<table_name>' */
-  where_item1 = pt_make_pred_name_string_val (parser, PT_EQ, "AA.class_of.class_name", table_name);
+  /* AA.class_of.unique_name = '<table_name>' */
+  where_item1 = pt_make_pred_name_string_val (parser, PT_EQ, "AA.class_of.unique_name", table_name);
   /* DD.data_type = TT.type_id */
   where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ, "DD.data_type", "TT.type_id");
   /* item1 = item2 AND item2 */
@@ -7566,7 +7571,7 @@ pt_make_query_show_grants_curr_usr (PARSER_CONTEXT * parser)
  *	 	       '')
  *		 ) AS GRANTS
  *   FROM db_class C, _db_auth AU
- *   WHERE AU.class_of.class_name = C.class_name AND
+ *   WHERE AU.class_of.unique_name = C.unique_name AND
  *	    C.is_system_class='NO' AND
  *	    ( AU.grantee.name=<user_name> OR
  *	      SET{ AU.grantee.name} SUBSETEQ (
@@ -7708,17 +7713,17 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
 
   /* ------ SELECT ... WHERE ------- */
   /*
-   * WHERE AU.class_of.class_name = C.class_name AND
+   * WHERE AU.class_of.unique_name = C.unique_name AND
    *    C.is_system_class='NO' AND
    *    ( AU.grantee.name=<user_name> OR
    *      SET{ AU.grantee.name} SUBSETEQ (  <query_user_groups> )
    *           )
    */
   {
-    /* AU.class_of.class_name = C.class_name */
+    /* AU.class_of.unique_name = C.unique_name */
     PT_NODE *where_item = NULL;
 
-    where_item = pt_make_pred_with_identifiers (parser, PT_EQ, "AU.class_of.class_name", "C.class_name");
+    where_item = pt_make_pred_with_identifiers (parser, PT_EQ, "AU.class_of.unique_name", "C.unique_name");
     where_expr = where_item;
   }
   {
@@ -10334,13 +10339,13 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
    * 3. common_class_name &&    dba_user_name ->     dba_user_name.common_class_name
    * 4. system_class_name &&             NULL ->                   system_class_name
    * 5. system_class_name && common_user_name ->  common_user_name.system_class_name -> error
-   * 6. system_class_name &&    dba_user_name ->                   system_class_name
+   * 6. system_class_name &&    dba_user_name ->     dba_user_name.system_class_name -> error
    * 
    * In case 5, raises an error to inform the user of an incorrect customization.
    */
   if (!PT_IS_SERIAL (node->info.expr.op) && sm_check_system_class_by_name (original_name))
     {
-      /* In case 5 */
+      /* In case 5, 6 */
       if (resolved_name != NULL)
 	{
 	  PT_ERROR (parser, node, "It is not allowed to specify an owner in the system class name.");
@@ -10350,7 +10355,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 
       /* resolved_name == NULL */
 
-      /* Skip in case 4, 6 */
+      /* Skip in case 4 */
       return node;
     }
 

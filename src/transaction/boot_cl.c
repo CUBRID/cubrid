@@ -4400,6 +4400,7 @@ boot_define_view_class (void)
 {
   MOP class_mop;
   COLUMN columns[] = {
+    {"unique_name", "varchar(255)"},
     {"class_name", "varchar(255)"},
     {"owner_name", "varchar(255)"},
     {"class_type", "varchar(6)"},
@@ -4433,7 +4434,7 @@ boot_define_view_class (void)
     }
 
   sprintf (stmt,
-	   "SELECT [c].[class_name], CAST([c].[owner].[name] AS VARCHAR(255)),"
+	   "SELECT [c].[unique_name], [c].[class_name], CAST([c].[owner].[name] AS VARCHAR(255)),"
 	   " CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOW' END,"
 	   " CASE WHEN MOD([c].[is_system_class], 2) = 1 THEN 'YES' ELSE 'NO' END,"
 	   " CASE [c].[tde_algorithm] WHEN 0 THEN 'NONE' WHEN 1 THEN 'AES' WHEN 2 THEN 'ARIA' END,"
@@ -4481,8 +4482,12 @@ boot_define_view_super_class (void)
 {
   MOP class_mop;
   COLUMN columns[] = {
+    {"unique_name", "varchar(255)"},
     {"class_name", "varchar(255)"},
-    {"super_class_name", "varchar(255)"}
+    {"owner_name", "varchar(255)"},
+    {"super_unique_name", "varchar(255)"},
+    {"super_class_name", "varchar(255)"},
+    {"super_owner_name", "varchar(255)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -4507,7 +4512,7 @@ boot_define_view_super_class (void)
     }
 
   sprintf (stmt,
-	   "SELECT [c].[class_name], [s].[class_name] FROM [%s] [c], TABLE([c].[super_classes]) AS [t]([s])"
+	   "SELECT [c].[unique_name], [c].[class_name], [c].[owner].[name], [s].[unique_name], [s].[class_name], [s].[owner].[name] FROM [%s] [c], TABLE([c].[super_classes]) AS [t]([s])"
 	   " WHERE CURRENT_USER = 'DBA' OR {[c].[owner].[name]} SUBSETEQ ("
 	   " SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
 	   " FROM [%s] [u], TABLE([groups]) AS t([g]) WHERE [u].[name] = CURRENT_USER) OR {[c]} SUBSETEQ ("
@@ -4547,7 +4552,9 @@ boot_define_view_vclass (void)
 {
   MOP class_mop;
   COLUMN columns[] = {
+    {"unique_name", "varchar(255)"},
     {"vclass_name", "varchar(255)"},
+    {"owner_name", "varchar(255)"},
     {"vclass_def", "varchar(4096)"},
     {"comment", "varchar(2048)"}
   };
@@ -4574,7 +4581,7 @@ boot_define_view_vclass (void)
     }
 
   sprintf (stmt,
-	   "SELECT [q].[class_of].[class_name], [q].[spec], [c].[comment] FROM [%s] [q], [%s] [c]"
+	   "SELECT [q].[class_of].[unique_name], [q].[class_of].[class_name], [q].[class_of].[owner].[name], [q].[spec], [c].[comment] FROM [%s] [q], [%s] [c]"
 	   " WHERE ([q].[class_of].[class_name] = [c].[class_name]) AND (CURRENT_USER = 'DBA' OR"
 	   " {[q].[class_of].[owner].[name]} SUBSETEQ ("
 	   " SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
@@ -4618,17 +4625,23 @@ boot_define_view_attribute (void)
   MOP class_mop;
   COLUMN columns[] = {
     {"attr_name", "varchar(255)"},
+    {"unique_name", "varchar(255)"},
     {"class_name", "varchar(255)"},
+    {"owner_name", "varchar(255)"},
     {"attr_type", "varchar(8)"},
     {"def_order", "integer"},
+    {"from_unique_name", "varchar(255)"},
     {"from_class_name", "varchar(255)"},
+    {"from_owner_name", "varchar(255)"},
     {"from_attr_name", "varchar(255)"},
     {"data_type", "varchar(9)"},
     {"prec", "integer"},
     {"scale", "integer"},
     {"charset", "varchar(32)"},
     {"collation", "varchar(32)"},
+    {"domain_unique_name", "varchar(255)"},
     {"domain_class_name", "varchar(255)"},
+    {"domain_owner_name", "varchar(255)"},
     {"default_value", "varchar(255)"},
     {"is_nullable", "varchar(3)"},
     {"comment", "varchar(1024)"}
@@ -4656,15 +4669,15 @@ boot_define_view_attribute (void)
     }
 
   sprintf (stmt,
-	   "SELECT [a].[attr_name], [c].[class_name], CASE WHEN [a].[attr_type] = 0 THEN 'INSTANCE'"
+	   "SELECT [a].[attr_name], [c].[unique_name], [c].[class_name], [c].[owner].[name], CASE WHEN [a].[attr_type] = 0 THEN 'INSTANCE'"
 	   " WHEN [a].[attr_type] = 1 THEN 'CLASS' ELSE 'SHARED' END,"
-	   " [a].[def_order], [a].[from_class_of].[class_name],"
+	   " [a].[def_order], [a].[from_class_of].[unique_name], [a].[from_class_of].[class_name], [a].[from_class_of].[owner].[name],"
 	   " [a].[from_attr_name], [t].[type_name], [d].[prec], [d].[scale],"
 	   " IF ([a].[data_type] IN (4, 25, 26, 27, 35), (SELECT [ch].[charset_name] FROM [%s] [ch]"
 	   " WHERE [d].[code_set] = [ch].[charset_id]), 'Not applicable'), "
 	   " IF ([a].[data_type] IN (4, 25, 26, 27, 35), (SELECT [coll].[coll_name]"
 	   " FROM [%s] [coll] WHERE [d].[collation_id] = [coll].[coll_id]), 'Not applicable'), "
-	   " [d].[class_of].[class_name], [a].[default_value],"
+	   " [d].[class_of].[unique_name], [d].[class_of].[class_name], [d].[class_of].[owner].[name], [a].[default_value],"
 	   " CASE WHEN [a].[is_nullable] = 1 THEN 'YES' ELSE 'NO' END, [a].[comment]"
 	   " FROM [%s] [c], [%s] [a], [%s] [d], [%s] [t]"
 	   " WHERE [a].[class_of] = [c] AND [d].[object_of] = [a] AND [d].[data_type] = [t].[type_id] AND"
@@ -4710,13 +4723,17 @@ boot_define_view_attribute_set_domain (void)
   MOP class_mop;
   COLUMN columns[] = {
     {"attr_name", "varchar(255)"},
+    {"unique_name", "varchar(255)"},
     {"class_name", "varchar(255)"},
+    {"owner_name", "varchar(255)"},
     {"attr_type", "varchar(8)"},
     {"data_type", "varchar(9)"},
     {"prec", "integer"},
     {"scale", "integer"},
     {"code_set", "integer"},
-    {"domain_class_name", "varchar(255)"}
+    {"domain_unique_name", "varchar(255)"},
+    {"domain_class_name", "varchar(255)"},
+    {"domain_owner_name", "varchar(255)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -4741,9 +4758,9 @@ boot_define_view_attribute_set_domain (void)
     }
 
   sprintf (stmt,
-	   "SELECT [a].[attr_name], [c].[class_name], CASE WHEN [a].[attr_type] = 0 THEN 'INSTANCE'"
+	   "SELECT [a].[attr_name], [c].[unique_name], [c].[class_name], [c].[owner].[name], CASE WHEN [a].[attr_type] = 0 THEN 'INSTANCE'"
 	   " WHEN [a].[attr_type] = 1 THEN 'CLASS' ELSE 'SHARED' END,"
-	   " [et].[type_name], [e].[prec], [e].[scale], [e].[code_set], [e].[class_of].[class_name]"
+	   " [et].[type_name], [e].[prec], [e].[scale], [e].[code_set], [e].[class_of].[unique_name], [e].[class_of].[class_name], [e].[class_of].[owner].[name]"
 	   " FROM [%s] [c], [%s] [a], [%s] [d], TABLE([d].[set_domains]) AS [t]([e]), [%s] [et]"
 	   " WHERE [a].[class_of] = [c] AND [d].[object_of] = [a] AND [e].[data_type] = [et].[type_id] AND"
 	   " (CURRENT_USER = 'DBA' OR {[c].[owner].[name]} SUBSETEQ ("
@@ -4788,9 +4805,13 @@ boot_define_view_method (void)
   MOP class_mop;
   COLUMN columns[] = {
     {"meth_name", "varchar(255)"},
+    {"unique_name", "varchar(255)"},
     {"class_name", "varchar(255)"},
+    {"owner_name", "varchar(255)"},
     {"meth_type", "varchar(8)"},
+    {"from_unique_name", "varchar(255)"},
     {"from_class_name", "varchar(255)"},
+    {"from_owner_name", "varchar(255)"},
     {"from_meth_name", "varchar(255)"},
     {"func_name", "varchar(255)"}
   };
@@ -4817,9 +4838,9 @@ boot_define_view_method (void)
     }
 
   sprintf (stmt,
-	   "SELECT [m].[meth_name], [m].[class_of].[class_name],"
+	   "SELECT [m].[meth_name], [m].[class_of].[unique_name], [m].[class_of].[class_name], [m].[class_of].[owner].[name],"
 	   " CASE WHEN [m].[meth_type] = 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
-	   " [m].[from_class_of].[class_name], [m].[from_meth_name], [s].[func_name] FROM [%s] [m], [%s] [s]"
+	   " [m].[from_class_of].[unique_name], [m].[from_class_of].[class_name], [m].[from_class_of].[owner].[name], [m].[from_meth_name], [s].[func_name] FROM [%s] [m], [%s] [s]"
 	   " WHERE [s].[meth_of] = [m] AND (CURRENT_USER = 'DBA' OR {[m].[class_of].[owner].[name]} SUBSETEQ ("
 	   " SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
 	   " FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER) OR"
@@ -4862,14 +4883,18 @@ boot_define_view_method_argument (void)
   MOP class_mop;
   COLUMN columns[] = {
     {"meth_name", "varchar(255)"},
+    {"unique_name", "varchar(255)"},
     {"class_name", "varchar(255)"},
+    {"owner_name", "varchar(255)"},
     {"meth_type", "varchar(8)"},
     {"index_of", "integer"},
     {"data_type", "varchar(9)"},
     {"prec", "integer"},
     {"scale", "integer"},
     {"code_set", "integer"},
-    {"domain_class_name", "varchar(255)"}
+    {"domain_unique_name", "varchar(255)"},
+    {"domain_class_name", "varchar(255)"},
+    {"domain_owner_name", "varchar(255)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -4894,9 +4919,9 @@ boot_define_view_method_argument (void)
     }
 
   sprintf (stmt,
-	   "SELECT [s].[meth_of].[meth_name], [s].[meth_of].[class_of].[class_name],"
+	   "SELECT [s].[meth_of].[meth_name], [s].[meth_of].[class_of].[unique_name], [s].[meth_of].[class_of].[class_name], [s].[meth_of].[class_of].[owner].[name],"
 	   " CASE WHEN [s].[meth_of].[meth_type] = 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
-	   " [a].[index_of], [t].[type_name], [d].[prec], [d].[scale], [d].[code_set], [d].[class_of].[class_name]"
+	   " [a].[index_of], [t].[type_name], [d].[prec], [d].[scale], [d].[code_set], [d].[class_of].[unique_name], [d].[class_of].[class_name], [d].[class_of].[owner].[name]"
 	   " FROM [%s] [s], [%s] [a], [%s] [d], [%s] [t]"
 	   " WHERE [a].[meth_sig_of] = [s] AND [d].[object_of] = [a] AND [d].[data_type] = [t].[type_id] AND"
 	   " (CURRENT_USER = 'DBA' OR {[s].[meth_of].[class_of].[owner].[name]} SUBSETEQ ("
@@ -4944,14 +4969,18 @@ boot_define_view_method_argument_set_domain (void)
   MOP class_mop;
   COLUMN columns[] = {
     {"meth_name", "varchar(255)"},
+    {"unique_name", "varchar(255)"},
     {"class_name", "varchar(255)"},
+    {"owner_name", "varchar(255)"},
     {"meth_type", "varchar(8)"},
     {"index_of", "integer"},
     {"data_type", "varchar(9)"},
     {"prec", "integer"},
     {"scale", "integer"},
     {"code_set", "integer"},
-    {"domain_class_name", "varchar(255)"}
+    {"domain_unique_name", "varchar(255)"},
+    {"domain_class_name", "varchar(255)"},
+    {"domain_owner_name", "varchar(255)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -4976,9 +5005,9 @@ boot_define_view_method_argument_set_domain (void)
     }
 
   sprintf (stmt,
-	   "SELECT [s].[meth_of].[meth_name], [s].[meth_of].[class_of].[class_name],"
+	   "SELECT [s].[meth_of].[meth_name], [s].[meth_of].[class_of].[unique_name], [s].[meth_of].[class_of].[class_name], [s].[meth_of].[class_of].[owner].[name],"
 	   " CASE WHEN [s].[meth_of].[meth_type] = 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
-	   " [a].[index_of], [et].[type_name], [e].[prec], [e].[scale], [e].[code_set], [e].[class_of].[class_name]"
+	   " [a].[index_of], [et].[type_name], [e].[prec], [e].[scale], [e].[code_set], [e].[class_of].[unique_name], [e].[class_of].[class_name], [e].[class_of].[owner].[name]"
 	   " FROM [%s] [s], [%s] [a], [%s] [d], TABLE([d].[set_domains]) AS [t]([e]), [%s] [et]"
 	   " WHERE [a].[meth_sig_of] = [s] AND [d].[object_of] = [a] AND [e].[data_type] = [et].[type_id] AND"
 	   " (CURRENT_USER = 'DBA' OR {[s].[meth_of].[class_of].[owner].[name]} SUBSETEQ ("
@@ -5022,9 +5051,13 @@ boot_define_view_method_file (void)
 {
   MOP class_mop;
   COLUMN columns[] = {
+    {"unique_name", "varchar(255)"},
     {"class_name", "varchar(255)"},
+    {"owner_name", "varchar(255)"},
     {"path_name", "varchar(255)"},
-    {"from_class_name", "varchar(255)"}
+    {"from_unique_name", "varchar(255)"},
+    {"from_class_name", "varchar(255)"},
+    {"from_owner_name", "varchar(255)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -5049,7 +5082,7 @@ boot_define_view_method_file (void)
     }
 
   sprintf (stmt,
-	   "SELECT [f].[class_of].[class_name], [f].[path_name], [f].[from_class_of].[class_name] FROM [%s] [f]"
+	   "SELECT [f].[class_of].[unique_name], [f].[class_of].[class_name], [f].[class_of].[owner].[name], [f].[path_name], [f].[from_class_of].[unique_name], [f].[from_class_of].[class_name], [f].[from_class_of].[owner].[name] FROM [%s] [f]"
 	   " WHERE CURRENT_USER = 'DBA' OR {[f].[class_of].[owner].[name]} SUBSETEQ ("
 	   " SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
 	   " FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER) OR"
@@ -5094,7 +5127,9 @@ boot_define_view_index (void)
     {"index_name", "varchar(255)"},
     {"is_unique", "varchar(3)"},
     {"is_reverse", "varchar(3)"},
+    {"unique_name", "varchar(255)"},
     {"class_name", "varchar(255)"},
+    {"owner_name", "varchar(255)"},
     {"key_count", "integer"},
     {"is_primary_key", "varchar(3)"},
     {"is_foreign_key", "varchar(3)"},
@@ -5127,7 +5162,7 @@ boot_define_view_index (void)
 
   sprintf (stmt,
 	   "SELECT [i].[index_name], CASE WHEN [i].[is_unique] = 0 THEN 'NO' ELSE 'YES' END,"
-	   " CASE WHEN [i].[is_reverse] = 0 THEN 'NO' ELSE 'YES' END, [i].[class_of].[class_name], [i].[key_count],"
+	   " CASE WHEN [i].[is_reverse] = 0 THEN 'NO' ELSE 'YES' END, [i].[class_of].[unique_name], [i].[class_of].[class_name], [i].[class_of].[owner].[name], [i].[key_count],"
 	   " CASE WHEN [i].[is_primary_key] = 0 THEN 'NO' ELSE 'YES' END,"
 	   " CASE WHEN [i].[is_foreign_key] = 0 THEN 'NO' ELSE 'YES' END, [i].[filter_expression],"
 	   " CASE WHEN [i].[have_function] = 0 THEN 'NO' ELSE 'YES' END, [i].[comment],"
@@ -5178,12 +5213,14 @@ boot_define_view_index_key (void)
   MOP class_mop;
   COLUMN columns[] = {
     {"index_name", "varchar(255)"},
+    {"unique_name", "varchar(255)"},
     {"class_name", "varchar(255)"},
+    {"owner_name", "varchar(255)"},
     {"key_attr_name", "varchar(255)"},
     {"key_order", "integer"},
     {"asc_desc", "varchar(4)"},
     {"key_prefix_length", "integer"},
-    {"func", "varchar(255)"}
+    {"func", "varchar(1023)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -5208,7 +5245,7 @@ boot_define_view_index_key (void)
     }
 
   sprintf (stmt,
-	   "SELECT [k].[index_of].[index_name], [k].[index_of].[class_of].[class_name],"
+	   "SELECT [k].[index_of].[index_name], [k].[index_of].[class_of].[unique_name], [k].[index_of].[class_of].[class_name], [k].[index_of].[class_of].[owner].[name],"
 	   " [k].[key_attr_name], [k].[key_order], CASE [k].[asc_desc] WHEN 0 THEN 'ASC' WHEN 1 THEN 'DESC'"
 	   " ELSE 'UNKN' END, [k].[key_prefix_length], [k].[func] FROM [%s] [k]"
 	   " WHERE CURRENT_USER = 'DBA' OR {[k].[index_of].[class_of].[owner].[name]} SUBSETEQ ("
@@ -5254,7 +5291,9 @@ boot_define_view_authorization (void)
   COLUMN columns[] = {
     {"grantor_name", "varchar(255)"},
     {"grantee_name", "varchar(255)"},
+    {"unique_name", "varchar(255)"},
     {"class_name", "varchar(255)"},
+    {"owner_name", "varchar(255)"},
     {"auth_type", "varchar(7)"},
     {"is_grantable", "varchar(3)"}
   };
@@ -5282,7 +5321,7 @@ boot_define_view_authorization (void)
 
   sprintf (stmt,
 	   "SELECT CAST([a].[grantor].[name] AS VARCHAR(255)),"
-	   " CAST([a].[grantee].[name] AS VARCHAR(255)), [a].[class_of].[class_name], [a].[auth_type],"
+	   " CAST([a].[grantee].[name] AS VARCHAR(255)), [a].[class_of].[unique_name], [a].[class_of].[class_name], [a].[class_of].[owner].[name], [a].[auth_type],"
 	   " CASE WHEN [a].[is_grantable] = 0 THEN 'NO' ELSE 'YES' END FROM [%s] [a]"
 	   " WHERE CURRENT_USER = 'DBA' OR {[a].[class_of].[owner].[name]} SUBSETEQ ("
 	   " SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
@@ -5325,8 +5364,12 @@ boot_define_view_trigger (void)
 {
   MOP class_mop;
   COLUMN columns[] = {
+    {"unique_name", "varchar(255)"},
     {"trigger_name", "varchar(255)"},
+    {"owner_name", "varchar(255)"},
+    {"target_unique_name", "varchar(255)"},
     {"target_class_name", "varchar(255)"},
+    {"target_owner_name", "varchar(255)"},
     {"target_attr_name", "varchar(255)"},
     {"target_attr_type", "varchar(8)"},
     {"action_type", "integer"},
@@ -5358,7 +5401,7 @@ boot_define_view_trigger (void)
   /* Why? {[c]} SUBSETEQ (SELECT SUM(SET{[au].[class_of]}) FROM ... */
   /* {[c]} -> {[t].[target_class]} ? */
   sprintf (stmt,
-	   "SELECT CAST([t].[name] AS VARCHAR(255)), [c].[class_name], CAST([t].[target_attribute] AS VARCHAR(255)),"
+	   "SELECT CAST([t].[unique_name] AS VARCHAR(255)), CAST([t].[name] AS VARCHAR(255)), [t].[owner].[name], [c].[unique_name], [c].[class_name], [c].[owner].[name], CAST([t].[target_attribute] AS VARCHAR(255)),"
 	   " CASE [t].[target_class_attribute] WHEN 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
 	   " [t].[action_type], [t].[action_time], [t].[comment]"
 	   " FROM [%s] [t] LEFT OUTER JOIN [%s] [c] ON [t].[target_class] = [c].[class_of]"
@@ -5401,7 +5444,9 @@ boot_define_view_partition (void)
 {
   MOP class_mop;
   COLUMN columns[] = {
+    {"unique_name", "varchar(255)"},
     {"class_name", "varchar(255)"},
+    {"owner_name", "varchar(255)"},
     {"partition_name", "varchar(255)"},
     {"partition_class_name", "varchar(255)"},
     {"partition_type", "varchar(32)"},
@@ -5431,28 +5476,85 @@ boot_define_view_partition (void)
 	}
     }
 
+  // *INDENT-OFF*
   sprintf (stmt,
-	   "SELECT [pp].[super_class_name] AS [class_name], [p].[pname] AS [partition_name],"
-	   " CONCAT([pp].[super_class_name], '__p__', [p].[pname]) AS [partition_class_name],"
-	   " CASE WHEN [p].[ptype] = 0 THEN 'HASH'"
-	   " WHEN [p].[ptype] = 1 THEN 'RANGE' ELSE 'LIST' END AS [partition_type],"
-	   " TRIM(SUBSTRING([pi].[pexpr] FROM 8 FOR (POSITION(' FROM ' IN [pi].[pexpr])-8)))"
-	   " AS [partition_expression], [p].[pvalues] AS [partition_values], [p].[comment] AS [comment]"
-	   " FROM [%s] [p],"
-	   " (SELECT * FROM [%s] [sc], [%s] [sp] WHERE [sc].[class_name] = [sp].[class_of].[class_name]) [pp],"
-	   " (SELECT [tt].[ss].[pexpr] AS [pexpr], [ss].[class_name] AS [class_name]"
-	   " FROM [%s] [ss], TABLE ([ss].[partition]) AS [tt]([ss])) [pi]"
-	   " WHERE [pp].[class_name] = [p].[class_of].[class_name] AND"
-	   " [pi].[class_name] = [pp].[super_class_name] AND (CURRENT_USER = 'DBA' OR"
-	   " {[p].[class_of].[owner].[name]} SUBSETEQ ("
-	   " SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
-	   " FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER) OR"
-	   " {[p].[class_of]} SUBSETEQ (SELECT SUM(SET{[au].[class_of]}) FROM [%s] [au]"
-	   " WHERE {[au].[grantee].[name]} SUBSETEQ ("
-	   " SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
-	   " FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER) AND"
-	   " [au].[auth_type] = 'SELECT'))", CT_PARTITION_NAME, CTV_SUPER_CLASS_NAME, CT_PARTITION_NAME, CT_CLASS_NAME,
-	   AU_USER_CLASS_NAME, CT_CLASSAUTH_NAME, AU_USER_CLASS_NAME);
+	"SELECT "
+	  "[pp].[super_unique_name] AS [unique_name], "
+	  "[pp].[super_class_name] AS [class_name], "
+	  "[pp].[super_owner_name] AS [owner_name], "
+	  "[p].[pname] AS [partition_name], "
+	  "CONCAT ([pp].[super_class_name], '__p__', [p].[pname]) AS [partition_class_name], "
+	  "CASE "
+	      "WHEN [p].[ptype] = 0 THEN 'HASH' "
+	      "WHEN [p].[ptype] = 1 THEN 'RANGE' "
+	      "ELSE 'LIST' "
+	      "END AS [partition_type], "
+	   "TRIM (SUBSTRING ([pi].[pexpr] FROM 8 FOR (POSITION (' FROM ' IN [pi].[pexpr]) - 8))) AS [partition_expr], "
+	   "[p].[pvalues] AS [partition_values], "
+	   "[p].[comment] AS [comment] "
+	"FROM "
+	  /* CT_PARTITION_NAME */
+	  "[%s] [p], "
+	  "( "
+	    "SELECT "
+	      "* "
+	    "FROM "
+	      /* CTV_SUPER_CLASS_NAME */
+	      "[%s] [sc], "
+	      /* CT_PARTITION_NAME */
+	      "[%s] [sp] "
+	    "WHERE "
+	      "[sc].[unique_name] = [sp].[class_of].[unique_name] "
+	  ") [pp], "
+	  "( "
+	    "SELECT "
+	      "[tt].[ss].[pexpr] AS [pexpr], "
+	      "[ss].[unique_name] AS [unique_name] "
+	    "FROM "
+	      /* CT_CLASS_NAME */
+	      "[%s] [ss], TABLE ([ss].[partition]) AS [tt] ([ss]) "
+	  ") [pi] "
+	"WHERE "
+	  "[pp].[unique_name] = [p].[class_of].[unique_name] "
+	  "AND [pi].[unique_name] = [pp].[super_unique_name] "
+	  "AND ( "
+	      "CURRENT_USER = 'DBA' "
+	      "OR {[p].[class_of].[owner].[name]} SUBSETEQ ( "
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET{[t].[g].[name]}), SET{})"
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] [u], TABLE ([groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER "
+		") "
+	      "OR {[p].[class_of]} SUBSETEQ ( "
+		  "SELECT "
+		    "SUM (SET {[au].[class_of]}) "
+		  "FROM "
+		    /* CT_CLASSAUTH_NAME */
+		    "[%s] [au] "
+		  "WHERE "
+		    "{[au].[grantee].[name]} SUBSETEQ ( "
+			"SELECT "
+			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET{})"
+			"FROM "
+			  /* AU_USER_CLASS_NAME */
+			  "[%s] [u], TABLE ([groups]) AS [t] ([g]) "
+			"WHERE "
+			  "[u].[name] = CURRENT_USER "
+		      ") "
+		    "AND [au].[auth_type] = 'SELECT' "
+		") "
+	  ")",
+	CT_PARTITION_NAME,
+	CTV_SUPER_CLASS_NAME,
+	CT_PARTITION_NAME,
+	CT_CLASS_NAME,
+	AU_USER_CLASS_NAME,
+	CT_CLASSAUTH_NAME,
+	AU_USER_CLASS_NAME);
+  // *INDENT-ON*
 
   error_code = db_add_query_spec (class_mop, stmt);
   if (error_code != NO_ERROR)
