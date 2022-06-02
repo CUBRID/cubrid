@@ -104,7 +104,7 @@ namespace cublog
 	return;
       }
 
-    iterator->second.unfix_sequence (thread_p);
+    iterator->second.apply_and_unfix_sequence (thread_p);
     m_sequences_map.erase (iterator);
 
 #if !defined (NDEBUG)
