@@ -4432,7 +4432,6 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	  if (indx_cov_p->list_id != NULL)
 	    {
 	      qfile_destroy_list (thread_p, indx_cov_p->list_id);
-	      QFILE_FREE_AND_INIT_LIST_ID (indx_cov_p->list_id);
 
 	      indx_cov_p->list_id = qfile_open_list (thread_p, indx_cov_p->type_list, NULL, indx_cov_p->query_id, 0, NULL);
 	      if (indx_cov_p->list_id == NULL)
