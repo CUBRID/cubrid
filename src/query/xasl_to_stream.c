@@ -6717,6 +6717,7 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
   size = OR_BTID_ALIGNED_SIZE;	/* btid */
 
   size += (OR_INT_SIZE		/* coverage */
+	   + PTR_SIZE 		/* coverage list id */
 	   + OR_INT_SIZE);	/* range_type */
 
   tmp_size = xts_sizeof_key_info (&indx_info->key_info);
