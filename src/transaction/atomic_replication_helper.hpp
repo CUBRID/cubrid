@@ -63,7 +63,7 @@ namespace cublog
       {
 	public:
 	  atomic_replication_sequence () = delete;
-	  atomic_replication_sequence (log_rv_redo_context redo_context);
+	  explicit atomic_replication_sequence (log_rv_redo_context redo_context);
 
 	  atomic_replication_sequence (const atomic_replication_sequence &) = delete;
 	  atomic_replication_sequence (atomic_replication_sequence &&) = delete;

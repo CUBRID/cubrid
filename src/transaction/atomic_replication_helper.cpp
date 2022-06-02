@@ -229,10 +229,12 @@ namespace cublog
     LOG_RCV rcv;
     if (m_page_ptr != nullptr)
       {
+	assert (m_page_ptr != nullptr && m_watcher.pgptr == nullptr);
 	rcv.pgptr = m_page_ptr;
       }
     else
       {
+	assert (m_page_ptr == nullptr && m_watcher.pgptr != nullptr);
 	rcv.pgptr = m_watcher.pgptr;
       }
 
