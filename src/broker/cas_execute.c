@@ -8283,8 +8283,10 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v
   int num_result;
   const char *case_stmt;
   const char *where_vclass;
+  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-  ut_tolower (class_name);
+  sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
+  class_name = realname;
 
   if (cas_client_type == CAS_CLIENT_CCI)
     {
@@ -8300,14 +8302,14 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v
     }
   where_vclass = "class_type = 'VCLASS'";
 
-  STRING_APPEND (sql_p, avail_size, "SELECT class_name, CAST(%s AS short), comment FROM db_class ", case_stmt);
+  STRING_APPEND (sql_p, avail_size, "SELECT unique_name, CAST(%s AS short), comment FROM db_class ", case_stmt);
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
       if (v_class_flag)
 	{
 	  if (class_name)
 	    {
-	      STRING_APPEND (sql_p, avail_size, "WHERE class_name LIKE '%s' ESCAPE '%s' AND %s", class_name,
+	      STRING_APPEND (sql_p, avail_size, "WHERE unique_name LIKE '%s' ESCAPE '%s' AND %s", class_name,
 			     get_backslash_escape_string (), where_vclass);
 	    }
 	  else
@@ -8319,7 +8321,7 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v
 	{
 	  if (class_name)
 	    {
-	      STRING_APPEND (sql_p, avail_size, "WHERE class_name LIKE '%s' ESCAPE '%s' ", class_name,
+	      STRING_APPEND (sql_p, avail_size, "WHERE unique_name LIKE '%s' ESCAPE '%s' ", class_name,
 			     get_backslash_escape_string ());
 	    }
 	}
@@ -8333,11 +8335,11 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v
 
       if (v_class_flag)
 	{
-	  STRING_APPEND (sql_p, avail_size, "WHERE class_name = '%s' AND %s", class_name, where_vclass);
+	  STRING_APPEND (sql_p, avail_size, "WHERE unique_name = '%s' AND %s", class_name, where_vclass);
 	}
       else
 	{
-	  STRING_APPEND (sql_p, avail_size, "WHERE class_name = '%s'", class_name);
+	  STRING_APPEND (sql_p, avail_size, "WHERE unique_name = '%s'", class_name);
 	}
     }
 
@@ -8360,11 +8362,14 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
   char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
   int avail_size = sizeof (sql_stmt) - 1;
   int num_result;
+  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-  ut_tolower (class_name);
+  sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
+  class_name = realname;
+
   ut_tolower (attr_name);
 
-  STRING_APPEND (sql_p, avail_size, "SELECT class_name, attr_name FROM db_attribute WHERE ");
+  STRING_APPEND (sql_p, avail_size, "SELECT unique_name, attr_name FROM db_attribute WHERE ");
 
   if (class_attr_flag)
     {
@@ -8379,7 +8384,7 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
     {
       if (class_name)
 	{
-	  STRING_APPEND (sql_p, avail_size, " AND class_name LIKE '%s' ESCAPE '%s' ", class_name,
+	  STRING_APPEND (sql_p, avail_size, " AND unique_name LIKE '%s' ESCAPE '%s' ", class_name,
 			 get_backslash_escape_string ());
 	}
     }
@@ -8389,7 +8394,7 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
 	{
 	  class_name = (char *) "";
 	}
-      STRING_APPEND (sql_p, avail_size, " AND class_name = '%s' ", class_name);
+      STRING_APPEND (sql_p, avail_size, " AND unique_name = '%s' ", class_name);
     }
 
   if (pattern_flag & CCI_ATTR_NAME_PATTERN_MATCH)
@@ -8408,7 +8413,7 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
 	}
       STRING_APPEND (sql_p, avail_size, " AND attr_name = '%s' ", attr_name);
     }
-  STRING_APPEND (sql_p, avail_size, " ORDER BY class_name, def_order");
+  STRING_APPEND (sql_p, avail_size, " ORDER BY unique_name, def_order");
 
   num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
   if (num_result < 0)
@@ -8427,12 +8432,15 @@ sch_queryspec (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handle)
 {
   char sql_stmt[1024];
   int num_result;
+  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   if (class_name == NULL)
     class_name = (char *) "";
-  ut_tolower (class_name);
 
-  sprintf (sql_stmt, "SELECT vclass_def FROM db_vclass WHERE vclass_name = '%s'", class_name);
+  sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
+  class_name = realname;
+
+  sprintf (sql_stmt, "SELECT vclass_def FROM db_vclass WHERE unique_name = '%s'", class_name);
 
   num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
   if (num_result < 0)
@@ -8626,6 +8634,11 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
     }
   else
     {
+      char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
+      sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
+      class_name = realname;
+
       for (tmp_t = tmp_trigger; tmp_t; tmp_t = tmp_t->next)
 	{
 	  tmp_obj = tmp_t->op;
@@ -8731,6 +8744,10 @@ sch_class_priv (T_NET_BUF * net_buf, char *class_name, char pat_flag, T_SRV_HAND
   else
     {
       DB_OBJLIST *obj_list, *obj_tmp;
+      char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
+      sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
+      class_name = realname;
 
       obj_list = db_get_all_classes ();
 
@@ -9092,16 +9109,18 @@ sch_direct_super_class (T_NET_BUF * net_buf, char *class_name, int pattern_flag,
   int num_result = 0;
   char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
   int avail_size = sizeof (sql_stmt) - 1;
+  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-  ut_tolower (class_name);
+  sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
+  class_name = realname;
 
-  STRING_APPEND (sql_p, avail_size, "SELECT class_name, super_class_name \
+  STRING_APPEND (sql_p, avail_size, "SELECT unique_name, super_unique_name \
 		    FROM db_direct_super_class ");
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
       if (class_name)
 	{
-	  STRING_APPEND (sql_p, avail_size, "WHERE class_name LIKE '%s' ESCAPE '%s' ", class_name,
+	  STRING_APPEND (sql_p, avail_size, "WHERE unique_name LIKE '%s' ESCAPE '%s' ", class_name,
 			 get_backslash_escape_string ());
 	}
     }
@@ -9111,7 +9130,7 @@ sch_direct_super_class (T_NET_BUF * net_buf, char *class_name, int pattern_flag,
 	{
 	  class_name = (char *) "";
 	}
-      STRING_APPEND (sql_p, avail_size, "WHERE class_name = '%s'", class_name);
+      STRING_APPEND (sql_p, avail_size, "WHERE unique_name = '%s'", class_name);
     }
 
   num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
@@ -9133,8 +9152,10 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
   int avail_size = sizeof (sql_stmt) - 1;
   int num_result;
   DB_OBJECT *class_object;
+  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-  ut_tolower (class_name);
+  sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
+  class_name = realname;
 
   /* is it existing class? */
   class_object = db_find_class (class_name);
@@ -9145,12 +9166,12 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
       return 0;
     }
 
-  STRING_APPEND (sql_p, avail_size, "SELECT a.class_name, b.key_attr_name, b.key_order+1, a.index_name");
+  STRING_APPEND (sql_p, avail_size, "SELECT a.unique_name, b.key_attr_name, b.key_order+1, a.index_name");
   STRING_APPEND (sql_p, avail_size, " FROM db_index a, db_index_key b WHERE ");
-  STRING_APPEND (sql_p, avail_size, " a.class_name = b.class_name ");
+  STRING_APPEND (sql_p, avail_size, " a.unique_name = b.unique_name ");
   STRING_APPEND (sql_p, avail_size, " AND a.index_name = b.index_name ");
   STRING_APPEND (sql_p, avail_size, " AND a.is_primary_key = 'YES' ");
-  STRING_APPEND (sql_p, avail_size, " AND a.class_name = '%s'", class_name);
+  STRING_APPEND (sql_p, avail_size, " AND a.unique_name = '%s'", class_name);
   STRING_APPEND (sql_p, avail_size, " ORDER BY b.key_attr_name");
 
   if ((num_result = sch_query_execute (srv_handle, sql_stmt, net_buf)) < 0)

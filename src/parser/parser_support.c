@@ -137,12 +137,16 @@ static PT_NODE *pt_make_outer_select_for_show_stmt (PARSER_CONTEXT * parser, PT_
 						    const char *select_alias);
 static PT_NODE *pt_make_field_type_expr_node (PARSER_CONTEXT * parser);
 static PT_NODE *pt_make_select_count_star (PARSER_CONTEXT * parser);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_make_field_extra_expr_node (PARSER_CONTEXT * parser);
 static PT_NODE *pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser);
+#endif
 static PT_NODE *pt_make_sort_spec_with_identifier (PARSER_CONTEXT * parser, const char *identifier,
 						   PT_MISC_TYPE sort_mode);
 static PT_NODE *pt_make_sort_spec_with_number (PARSER_CONTEXT * parser, const int number_pos, PT_MISC_TYPE sort_mode);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_make_collection_type_subquery_node (PARSER_CONTEXT * parser, const char *table_name);
+#endif
 static PT_NODE *pt_make_dummy_query_check_table (PARSER_CONTEXT * parser, const char *table_name);
 static PT_NODE *pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *user_name);
 static void pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name, string_buffer & strbuf);
@@ -5818,6 +5822,7 @@ pt_make_collation_expr_node (PARSER_CONTEXT * parser)
   return if_node;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * pt_make_field_extra_expr_node() - builds the 'Extra' field for the
  *				SHOW COLUMNS statment
@@ -5874,7 +5879,9 @@ pt_make_field_extra_expr_node (PARSER_CONTEXT * parser)
 
   return extra_node;
 }
+#endif
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * pt_make_field_key_type_expr_node() - builds the 'Key' field for the
  *				SHOW COLUMNS statment
@@ -6155,6 +6162,7 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
   }
   return key_node;
 }
+#endif
 
 /*
  * pt_make_sort_spec_with_identifier() - builds a SORT_SPEC for GROUP BY or
@@ -6225,6 +6233,7 @@ pt_make_sort_spec_with_number (PARSER_CONTEXT * parser, const int number_pos, PT
   return sort_spec_node;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * pt_make_collection_type_subquery_node() - builds a SELECT subquery used
  *					construct the string to display
@@ -6334,6 +6343,7 @@ pt_make_collection_type_subquery_node (PARSER_CONTEXT * parser, const char *tabl
 
   return query;
 }
+#endif
 
 /*
  * pt_make_dummy_query_check_table() - builds a SELECT subquery used check
@@ -7566,7 +7576,7 @@ pt_make_query_show_grants_curr_usr (PARSER_CONTEXT * parser)
  *	 	       '')
  *		 ) AS GRANTS
  *   FROM db_class C, _db_auth AU
- *   WHERE AU.class_of.class_name = C.class_name AND
+ *   WHERE AU.class_of.unique_name = C.unique_name AND
  *	    C.is_system_class='NO' AND
  *	    ( AU.grantee.name=<user_name> OR
  *	      SET{ AU.grantee.name} SUBSETEQ (
@@ -7619,7 +7629,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
    *      CONCAT ( 'GRANT ',
    *                GROUP_CONCAT(AU.auth_type ORDER BY 1 SEPARATOR ', '),
    *                ' ON ' ,
-   *                AU.class_of.class_name,
+   *                AU.class_of.unique_name,
    *                ' TO ',
    *                AU.grantee.name ,
    *                IF (AU.is_grantable=1,
@@ -7665,7 +7675,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
     concat_arg = pt_make_string_value (parser, " ON ");
     concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
 
-    concat_arg = pt_make_dotted_identifier (parser, "AU.class_of.class_name");
+    concat_arg = pt_make_dotted_identifier (parser, "AU.class_of.unique_name");
     concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
 
     concat_arg = pt_make_string_value (parser, " TO ");
@@ -7708,17 +7718,17 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
 
   /* ------ SELECT ... WHERE ------- */
   /*
-   * WHERE AU.class_of.class_name = C.class_name AND
+   * WHERE AU.class_of.unique_name = C.unique_name AND
    *    C.is_system_class='NO' AND
    *    ( AU.grantee.name=<user_name> OR
    *      SET{ AU.grantee.name} SUBSETEQ (  <query_user_groups> )
    *           )
    */
   {
-    /* AU.class_of.class_name = C.class_name */
+    /* AU.class_of.unique_name = C.unique_name */
     PT_NODE *where_item = NULL;
 
-    where_item = pt_make_pred_with_identifiers (parser, PT_EQ, "AU.class_of.class_name", "C.class_name");
+    where_item = pt_make_pred_with_identifiers (parser, PT_EQ, "AU.class_of.unique_name", "C.unique_name");
     where_expr = where_item;
   }
   {
@@ -10334,13 +10344,13 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
    * 3. common_class_name &&    dba_user_name ->     dba_user_name.common_class_name
    * 4. system_class_name &&             NULL ->                   system_class_name
    * 5. system_class_name && common_user_name ->  common_user_name.system_class_name -> error
-   * 6. system_class_name &&    dba_user_name ->                   system_class_name
+   * 6. system_class_name &&    dba_user_name ->     dba_user_name.system_class_name -> error
    * 
    * In case 5, raises an error to inform the user of an incorrect customization.
    */
   if (!PT_IS_SERIAL (node->info.expr.op) && sm_check_system_class_by_name (original_name))
     {
-      /* In case 5 */
+      /* In case 5, 6 */
       if (resolved_name != NULL)
 	{
 	  PT_ERROR (parser, node, "It is not allowed to specify an owner in the system class name.");
@@ -10350,7 +10360,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 
       /* resolved_name == NULL */
 
-      /* Skip in case 4, 6 */
+      /* Skip in case 4 */
       return node;
     }
 
