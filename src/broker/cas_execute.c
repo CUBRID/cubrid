@@ -8285,7 +8285,7 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v
   const char *where_vclass;
   char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-  sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
+  db_get_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
   class_name = realname;
 
   if (cas_client_type == CAS_CLIENT_CCI)
@@ -8364,7 +8364,7 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
   int num_result;
   char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-  sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
+  db_get_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
   class_name = realname;
 
   ut_tolower (attr_name);
@@ -8437,7 +8437,7 @@ sch_queryspec (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handle)
   if (class_name == NULL)
     class_name = (char *) "";
 
-  sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
+  db_get_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
   class_name = realname;
 
   sprintf (sql_stmt, "SELECT vclass_def FROM db_vclass WHERE unique_name = '%s'", class_name);
@@ -8636,7 +8636,7 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
     {
       char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-      sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
+      db_get_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
       class_name = realname;
 
       for (tmp_t = tmp_trigger; tmp_t; tmp_t = tmp_t->next)
@@ -8746,7 +8746,7 @@ sch_class_priv (T_NET_BUF * net_buf, char *class_name, char pat_flag, T_SRV_HAND
       DB_OBJLIST *obj_list, *obj_tmp;
       char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-      sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
+      db_get_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
       class_name = realname;
 
       obj_list = db_get_all_classes ();
@@ -9111,7 +9111,7 @@ sch_direct_super_class (T_NET_BUF * net_buf, char *class_name, int pattern_flag,
   int avail_size = sizeof (sql_stmt) - 1;
   char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-  sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
+  db_get_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
   class_name = realname;
 
   STRING_APPEND (sql_p, avail_size, "SELECT unique_name, super_unique_name \
@@ -9154,7 +9154,7 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
   DB_OBJECT *class_object;
   char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-  sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
+  db_get_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
   class_name = realname;
 
   /* is it existing class? */
