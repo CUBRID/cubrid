@@ -1008,6 +1008,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 	    {
 	      assert (tdes->mvccinfo.sub_ids.size () == 1);
 	      *mvccid_p = tdes->mvccinfo.sub_ids.back ();
+	      assert (MVCCID_IS_NORMAL (tdes->mvccinfo.id));
 	    }
 	  else
 	    {
@@ -1423,6 +1424,13 @@ log_replication_update_header_mvcc_vacuum_info (const MVCCID &mvccid, const log_
     }
 }
 
+/*
+ * prior_update_header_mvcc_info - update vacuum information for the currect vacuum block (the vacuum
+ *              block that is currently being populated)
+ *
+ *   record_lsa(in): lsa of mvcc log record
+ *   mvccid(in): mvccid of mvcc log record
+ */
 static void
 prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid)
 {
@@ -1512,7 +1520,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 	  assert (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO);
 
 	  /* Read from mvcc_undo structure */
-	  mvcc_undo = & ((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo;
+	  mvcc_undo = & ((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo_info.mvcc_undo;
 	  vacuum_info = &mvcc_undo->vacuum_info;
 	  mvccid = mvcc_undo->mvccid;
 
@@ -1563,6 +1571,10 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 		     LSA_AS_ARGS (&node->start_lsa), LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa));
 
       prior_update_header_mvcc_info (start_lsa, mvccid);
+      /* If this is actually a sub-mvccid, the transaction must also have an 'main' mvccid.
+       * The 'main' mvccid will either:
+       *  - appear (or has already appeared) on its own log record
+       *  - will not be part of any log record, and thus will not matter with regard to vacuum */
 
       // Also set the transaction last MVCC lsa.
       tdes->last_mvcc_lsa = node->start_lsa;

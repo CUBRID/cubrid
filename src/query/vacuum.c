@@ -3906,7 +3906,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
 	  return ER_FAILED;
 	}
 
-      mvcc_undo = &sysop_end->mvcc_undo;
+      mvcc_undo = &sysop_end->mvcc_undo_info.mvcc_undo;
 
       /* Get MVCCID */
       *mvccid = mvcc_undo->mvccid;
