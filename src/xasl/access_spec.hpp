@@ -25,6 +25,7 @@
 
 #include "dbtype_def.h"
 #include "storage_common.h"
+#include "query_list.h"
 
 // forward definitions
 class regu_variable_node;
@@ -87,6 +88,7 @@ struct indx_info
 {
   BTID btid;			/* index identifier */
   int coverage;			/* index coverage state */
+  QFILE_LIST_ID *cov_list_id;	/* list file id for index coverage */
   OID class_oid;
   RANGE_TYPE range_type;	/* range type */
   KEY_INFO key_info;		/* key information */

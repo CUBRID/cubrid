@@ -12007,8 +12007,14 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
       if (indx_infop->coverage)
 	{
 	  qo_check_coll_optimization (index_entryp, &collation_opt);
-
 	  indx_infop->coverage = collation_opt.allow_index_opt;
+	  /* alloc list file id for covering index */
+	  regu_alloc (indx_infop->cov_list_id);
+	  if (indx_infop == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "index plan generation - memory alloc");
+	      return NULL;
+	    }
 	}
     }
 

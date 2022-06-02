@@ -4482,6 +4482,8 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
 static char *
 xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
 {
+  int offset;
+
   ptr = or_pack_btid (ptr, &indx_info->btid);
 
   ptr = or_pack_int (ptr, indx_info->coverage);
@@ -4506,10 +4508,22 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
 
   ptr = or_pack_int (ptr, indx_info->func_idx_col_id);
 
+  if (indx_info->cov_list_id == NULL)
+    {
+      ptr = or_pack_int (ptr, 0);
+    }
+  else
+    {
+      offset = xts_save_list_id (indx_info->cov_list_id);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+
   if (indx_info->use_iss)
     {
-      int offset;
-
       ptr = or_pack_int (ptr, (int) indx_info->iss_range.range);
 
       offset = xts_save_regu_variable (indx_info->iss_range.key1);

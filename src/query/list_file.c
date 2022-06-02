@@ -1208,7 +1208,10 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
 
   if (list_id_p->tfile_vfid == NULL)
     {
-      free_and_init (list_id_p);
+      if (existing_list_id == NULL)
+	{
+	  free_and_init (list_id_p);
+	}
       return NULL;
     }
 
@@ -1221,7 +1224,10 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
       list_id_p->type_list.domp = (TP_DOMAIN **) malloc (type_list_size);
       if (list_id_p->type_list.domp == NULL)
 	{
-	  free_and_init (list_id_p);
+	  if (existing_list_id == NULL)
+	    {
+	      free_and_init (list_id_p);
+	    }
 	  return NULL;
 	}
 
@@ -1238,7 +1244,10 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
 	  if (dest_sort_list_p == NULL)
 	    {
 	      free_and_init (list_id_p->type_list.domp);
-	      free_and_init (list_id_p);
+	      if (existing_list_id == NULL)
+		{
+		  free_and_init (list_id_p);
+		}
 	      return NULL;
 	    }
 
@@ -1260,7 +1269,10 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
 	  if (dest_sort_list_p == NULL)
 	    {
 	      free_and_init (list_id_p->type_list.domp);
-	      free_and_init (list_id_p);
+	      if (existing_list_id == NULL)
+		{
+		  free_and_init (list_id_p);
+		}
 	      return NULL;
 	    }
 

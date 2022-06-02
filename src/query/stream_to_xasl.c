@@ -4501,6 +4501,20 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
 
   ptr = or_unpack_int (ptr, &indx_info->func_idx_col_id);
 
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      indx_info->cov_list_id = NULL;
+    }
+  else
+    {
+      indx_info->cov_list_id = stx_restore_list_id (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (indx_info->cov_list_id == NULL)
+	{
+	  return NULL;
+	}
+    }
+
   if (indx_info->use_iss)
     {
       ptr = or_unpack_int (ptr, &tmp);

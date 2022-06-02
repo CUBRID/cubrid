@@ -740,7 +740,7 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
    * the list file allocates PRM_INDEX_SCAN_KEY_BUFFER_PAGES pages memory
    * for its memory buffer, which is generally larger than prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES).
    */
-  indx_cov->list_id = qfile_open_list (thread_p, indx_cov->type_list, NULL, query_id, QFILE_FLAG_USE_KEY_BUFFER, NULL);
+  indx_cov->list_id = qfile_open_list (thread_p, indx_cov->type_list, NULL, query_id, QFILE_FLAG_USE_KEY_BUFFER, indx_cov->list_id);
   if (indx_cov->list_id == NULL)
     {
       err = ER_FAILED;
@@ -3080,7 +3080,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->key_vals = NULL;
 
   isidp->indx_cov.type_list = NULL;
-  isidp->indx_cov.list_id = NULL;
+  isidp->indx_cov.list_id = indx_info->cov_list_id;
   isidp->indx_cov.tplrec = NULL;
   isidp->indx_cov.lsid = NULL;
   isidp->fetched_values = NULL;
@@ -3335,10 +3335,6 @@ exit_on_error:
 	  db_private_free_and_init (thread_p, isidp->indx_cov.type_list->domp);
 	}
       db_private_free_and_init (thread_p, isidp->indx_cov.type_list);
-    }
-  if (isidp->indx_cov.list_id != NULL)
-    {
-      QFILE_FREE_AND_INIT_LIST_ID (isidp->indx_cov.list_id);
     }
   if (isidp->indx_cov.tplrec != NULL)
     {
@@ -4834,7 +4830,6 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  qfile_close_list (thread_p, isidp->indx_cov.list_id);
 	  qfile_destroy_list (thread_p, isidp->indx_cov.list_id);
-	  QFILE_FREE_AND_INIT_LIST_ID (isidp->indx_cov.list_id);
 	}
       if (isidp->indx_cov.type_list != NULL)
 	{
@@ -5912,9 +5907,8 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			  /* close current list and start a new one */
 			  qfile_close_scan (thread_p, isidp->indx_cov.lsid);
 			  qfile_destroy_list (thread_p, isidp->indx_cov.list_id);
-			  QFILE_FREE_AND_INIT_LIST_ID (isidp->indx_cov.list_id);
 			  isidp->indx_cov.list_id =
-			    qfile_open_list (thread_p, isidp->indx_cov.type_list, NULL, isidp->indx_cov.query_id, 0, NULL);
+			    qfile_open_list (thread_p, isidp->indx_cov.type_list, NULL, isidp->indx_cov.query_id, 0, isidp->indx_cov.list_id);
 			  if (isidp->indx_cov.list_id == NULL)
 			    {
 			      return S_ERROR;
