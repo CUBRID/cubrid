@@ -1008,7 +1008,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 	    {
 	      assert (tdes->mvccinfo.sub_ids.size () == 1);
 	      *mvccid_p = tdes->mvccinfo.sub_ids.back ();
-	      assert (MVCCID_IS_VALID (tdes->mvccinfo.id));
+	      assert (MVCCID_IS_NORMAL (tdes->mvccinfo.id));
 	    }
 	  else
 	    {
@@ -1521,7 +1521,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 
 	  /* Read from mvcc_undo structure */
 	  mvcc_undo = & ((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo_info.mvcc_undo;
-	  vacuum_info = &mvcc_undo ->vacuum_info;
+	  vacuum_info = &mvcc_undo->vacuum_info;
 	  mvccid = mvcc_undo->mvccid;
 
 	  /* Reset

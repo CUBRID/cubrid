@@ -219,10 +219,7 @@ typedef struct log_rec_mvcc_undoredo LOG_REC_MVCC_UNDOREDO;
 struct log_rec_mvcc_undoredo
 {
   LOG_REC_UNDOREDO undoredo;	/* Undoredo information */
-  MVCCID mvccid;		/* MVCC Identifier for transaction. If log record is for a sub-transaction, the
-				 * mvccid is that of the sub-transaction. If the subtransaction does have a valid
-				 * mvccid, the transaction must also have a valid mvccid.
-				 * The reciprocal is not true. */
+  MVCCID mvccid;		/* MVCC Identifier for transaction */
   LOG_VACUUM_INFO vacuum_info;	/* Info required for vacuum */
 };
 
@@ -231,10 +228,7 @@ typedef struct log_rec_mvcc_undo LOG_REC_MVCC_UNDO;
 struct log_rec_mvcc_undo
 {
   LOG_REC_UNDO undo;		/* Undo information */
-  MVCCID mvccid;		/* MVCC Identifier for transaction. If log record is for a sub-transaction, the
-				 * mvccid is that of the sub-transaction. If the subtransaction does have a valid
-				 * mvccid, the transaction must also have a valid mvccid.
-				 * The reciprocal is not true. */
+  MVCCID mvccid;		/* MVCC Identifier for transaction */
   LOG_VACUUM_INFO vacuum_info;	/* Info required for vacuum */
 };
 
@@ -243,10 +237,7 @@ typedef struct log_rec_mvcc_redo LOG_REC_MVCC_REDO;
 struct log_rec_mvcc_redo
 {
   LOG_REC_REDO redo;		/* Location of recovery data */
-  MVCCID mvccid;		/* MVCC Identifier for transaction. If log record is for a sub-transaction, the
-				 * mvccid is that of the sub-transaction. If the subtransaction does have a valid
-				 * mvccid, the transaction must also have a valid mvccid.
-				 * The reciprocal is not true. */
+  MVCCID mvccid;		/* MVCC Identifier for transaction */
 };
 
 /* replication log structure */
@@ -340,11 +331,12 @@ struct log_rec_sysop_end
       MVCCID parent_mvccid;	/* If transaction has an mvccid allocated by a sub-transaction, this field will
 				 * contain the transaction's "main" mvccid (which, as indicated in implementations
 				 * in logtb_get_new_subtransaction_mvccid and logtb_get_current_mvccid, must
-				 * be valid). Otherwise, null.
-				 * The purpose of this field is twofold across transactional log replication (mainly
-				 * on passive transaction server):
+				 * be valid) while the mvcc_undo.mvccid will contain the mvccid of the subtransaction.
+				 * Otherwise, null.
+				 * The purpose of this field is twofold across transactional log replication boundary
+				 * (currently only on passive transaction server):
 				 *  - to discerne the nature of the mvccid as either 'main' mvccid or sub-mvccid
-				 *  - and to allow proper completion of both mvccid and sub-mvccid */
+				 *  - and to allow proper completion of either[both] mvccid or[and] sub-mvccid */
     } mvcc_undo_info;
     LOG_LSA compensate_lsa;	/* compensate lsa for logical compensate */
     struct
