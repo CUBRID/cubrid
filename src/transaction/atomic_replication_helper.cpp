@@ -238,8 +238,7 @@ namespace cublog
     redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
     const log_rv_redo_rec_info<T> record_info (m_record_lsa, rectype,
 	redo_context.m_reader.reinterpret_copy_and_add_align<T> ());
-    if (log_rv_fix_page_and_check_redo_is_needed (thread_p, m_vpid, rcv.pgptr, record_info.m_start_lsa,
-	redo_context.m_end_redo_lsa, redo_context.m_page_fetch_mode))
+    if (log_rv_check_redo_is_needed (rcv.pgptr, record_info.m_start_lsa, redo_context.m_end_redo_lsa))
       {
 	rcv.reference_lsa = m_record_lsa;
 	log_rv_redo_record_sync_apply (thread_p, redo_context, record_info, m_vpid, rcv);
