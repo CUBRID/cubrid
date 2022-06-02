@@ -88,7 +88,7 @@ namespace cublog
 	      atomic_replication_unit (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex);
 
 	      atomic_replication_unit (const atomic_replication_unit &) = default;
-	      atomic_replication_unit (atomic_replication_unit &&) = delete;
+	      atomic_replication_unit (atomic_replication_unit &&) = default;
 
 	      ~atomic_replication_unit ();
 
