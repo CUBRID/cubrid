@@ -8369,7 +8369,7 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v
 	}
     }
 
-  if (schema_name)
+  if (*schema_name)
     {
       STRING_APPEND (sql_p, avail_size, "AND owner_name = UPPER ('%s') ", schema_name);
     }
@@ -8468,7 +8468,7 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
       STRING_APPEND (sql_p, avail_size, "AND attr_name = '%s' ", attr_name);
     }
 
-  if (schema_name)
+  if (*schema_name)
     {
       STRING_APPEND (sql_p, avail_size, "AND owner_name = UPPER ('%s') ", schema_name);
     }
@@ -8519,7 +8519,7 @@ sch_queryspec (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handle)
 
   STRING_APPEND (sql_p, avail_size, "SELECT vclass_def FROM db_vclass WHERE vclass_name = '%s' ", class_name);
 
-  if (schema_name)
+  if (*schema_name)
     {
       STRING_APPEND (sql_p, avail_size, "AND owner_name = UPPER ('%s') ", schema_name);
     }
@@ -9318,7 +9318,7 @@ sch_direct_super_class (T_NET_BUF * net_buf, char *class_name, int pattern_flag,
       STRING_APPEND (sql_p, avail_size, "WHERE class_name = '%s'", class_name);
     }
 
-  if (schema_name)
+  if (*schema_name)
     {
       STRING_APPEND (sql_p, avail_size, "AND owner_name = UPPER ('%s') ", schema_name);
     }
@@ -9387,7 +9387,7 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
 		 "AMD a.owner_name = b.owner_name "
 		 "AND a.is_primary_key = 'YES' " "AND a.class_name = '%s' ", class_name);
 
-  if (schema_name)
+  if (*schema_name)
     {
       STRING_APPEND (sql_p, avail_size, "AND a.owner_name = UPPER ('%s') ", schema_name);
     }
