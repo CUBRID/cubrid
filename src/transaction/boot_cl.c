@@ -4549,8 +4549,8 @@ boot_define_view_vclass (void)
 {
   MOP class_mop;
   COLUMN columns[] = {
-    {"owner_name", "varchar(255)"},
     {"vclass_name", "varchar(255)"},
+    {"owner_name", "varchar(255)"},
     {"vclass_def", "varchar(4096)"},
     {"comment", "varchar(2048)"}
   };
@@ -4577,7 +4577,7 @@ boot_define_view_vclass (void)
     }
 
   sprintf (stmt,
-	   "SELECT [q].[class_of].[owner].[name], [q].[class_of].[class_name], [q].[spec], [c].[comment] FROM [%s] [q], [%s] [c]"
+	   "SELECT [q].[class_of].[class_name], [q].[class_of].[owner].[name], [q].[spec], [c].[comment] FROM [%s] [q], [%s] [c]"
 	   " WHERE ([q].[class_of].[class_name] = [c].[class_name]) AND (CURRENT_USER = 'DBA' OR"
 	   " {[q].[class_of].[owner].[name]} SUBSETEQ ("
 	   " SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
@@ -5487,7 +5487,7 @@ boot_define_view_partition (void)
 	    "SELECT "
 	      "[tt].[ss].[pexpr] AS [pexpr], "
 	      "[ss].[class_name] AS [class_name], "
-	      "[ss].[owner_name] AS [owner_name] "
+	      "[ss].[owner].[name] AS [owner_name] "
 	    "FROM "
 	      /* CT_CLASS_NAME */
 	      "[%s] [ss], TABLE ([ss].[partition]) AS [tt] ([ss]) "
