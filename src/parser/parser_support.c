@@ -7669,14 +7669,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
     concat_arg = pt_make_string_value (parser, " ON ");
     concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
 
-    lower_arg = pt_make_dotted_identifier (parser, "AU.class_of.owner.name");
-    concat_arg = parser_make_expression (parser, PT_LOWER, lower_arg, NULL, NULL);
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
-    concat_arg = pt_make_string_value (parser, ".");
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
-    concat_arg = pt_make_dotted_identifier (parser, "AU.class_of.class_name");
+    concat_arg = pt_make_dotted_identifier (parser, "AU.class_of.unique_name");
     concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
 
     concat_arg = pt_make_string_value (parser, " TO ");
@@ -7720,7 +7713,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
   /* ------ SELECT ... WHERE ------- */
   /*
    * WHERE AU.class_of.class_name = C.class_name AND
-   *    AU.class_of.owner.name = C.owner_name AND
+   *    AU.class_of.owner.name = C.owner.name AND
    *    C.is_system_class='NO' AND
    *    ( AU.grantee.name=<user_name> OR
    *      SET{ AU.grantee.name} SUBSETEQ (  <query_user_groups> )
