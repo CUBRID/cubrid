@@ -8321,7 +8321,10 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v
   // *INDENT-OFF*
   STRING_APPEND (sql_p, avail_size,
 	"SELECT "
-	  "LOWER (owner_name) || '.' || class_name AS unique_name, "
+	  "CASE "
+	    "WHEN c.is_system_class = 'YES' THEN LOWER (owner_name) || '.' || class_name "
+	    "ELSE class_name "
+	    "END AS unique_name, "
 	  "CAST (%s AS SHORT), "
 	  "comment "
 	"FROM "
@@ -8418,27 +8421,33 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
   // *INDENT-OFF*
   STRING_APPEND (sql_p, avail_size,
 	"SELECT "
-	  "LOWER (owner_name) || '.' || class_name AS unique_name, "
-	  "attr_name "
+	  "CASE "
+	    "WHEN ("
+		"SELECT b.is_system_class "
+		"FROM db_class b "
+		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
+	      ") = 'YES' THEN LOWER (a.owner_name) || '.' || a.class_name "
+	    "ELSE a.class_name "
+	    "END AS unique_name, "
+	  "a.attr_name "
 	"FROM "
-	  "db_attribute "
-	"WHERE ");
+	  "db_attribute a ");
   // *INDENT-ON*
 
   if (class_attr_flag)
     {
-      STRING_APPEND (sql_p, avail_size, "attr_type = 'CLASS' ");
+      STRING_APPEND (sql_p, avail_size, "a.attr_type = 'CLASS' ");
     }
   else
     {
-      STRING_APPEND (sql_p, avail_size, "attr_type in {'INSTANCE', 'SHARED'} ");
+      STRING_APPEND (sql_p, avail_size, "a.attr_type in {'INSTANCE', 'SHARED'} ");
     }
 
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
       if (class_name)
 	{
-	  STRING_APPEND (sql_p, avail_size, "AND class_name LIKE '%s' ESCAPE '%s' ", class_name,
+	  STRING_APPEND (sql_p, avail_size, "AND a.class_name LIKE '%s' ESCAPE '%s' ", class_name,
 			 get_backslash_escape_string ());
 	}
     }
@@ -8448,14 +8457,14 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
 	{
 	  class_name = (char *) "";
 	}
-      STRING_APPEND (sql_p, avail_size, "AND class_name = '%s' ", class_name);
+      STRING_APPEND (sql_p, avail_size, "AND a.class_name = '%s' ", class_name);
     }
 
   if (pattern_flag & CCI_ATTR_NAME_PATTERN_MATCH)
     {
       if (attr_name)
 	{
-	  STRING_APPEND (sql_p, avail_size, "AND attr_name LIKE '%s' ESCAPE '%s' ", attr_name,
+	  STRING_APPEND (sql_p, avail_size, "AND a.attr_name LIKE '%s' ESCAPE '%s' ", attr_name,
 			 get_backslash_escape_string ());
 	}
     }
@@ -8465,15 +8474,15 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
 	{
 	  attr_name = (char *) "";
 	}
-      STRING_APPEND (sql_p, avail_size, "AND attr_name = '%s' ", attr_name);
+      STRING_APPEND (sql_p, avail_size, "AND a.attr_name = '%s' ", attr_name);
     }
 
   if (*schema_name)
     {
-      STRING_APPEND (sql_p, avail_size, "AND owner_name = UPPER ('%s') ", schema_name);
+      STRING_APPEND (sql_p, avail_size, "AND a.owner_name = UPPER ('%s') ", schema_name);
     }
 
-  STRING_APPEND (sql_p, avail_size, "ORDER BY class_name, def_order ");
+  STRING_APPEND (sql_p, avail_size, "ORDER BY a.class_name, a.def_order ");
 
   num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
   if (num_result < 0)
@@ -9295,17 +9304,31 @@ sch_direct_super_class (T_NET_BUF * net_buf, char *class_name, int pattern_flag,
   // *INDENT-OFF*
   STRING_APPEND (sql_p, avail_size,
 	"SELECT "
-	  "LOWER (owner_name) || '.' || class_name AS unique_name, "
-	  "LOWER (super_owner_name) || '.' || super_class_name AS super_unique_name "
+	  "CASE "
+	    "WHEN ("
+		"SELECT b.is_system_class "
+		"FROM db_class b "
+		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
+	      ") = 'YES' THEN LOWER (a.owner_name) || '.' || a.class_name "
+	    "ELSE a.class_name "
+	    "END AS unique_name, "
+	  "CASE "
+	    "WHEN ("
+		"SELECT b.is_system_class "
+		"FROM db_class b "
+		"WHERE b.class_name = a.super_class_name AND b.owner_name = a.super_owner_name "
+	      ") = 'YES' THEN LOWER (a.super_owner_name) || '.' || a.super_class_name "
+	    "ELSE a.super_class_name "
+	    "END AS super_unique_name, "
 	"FROM "
-	  "db_direct_super_class ");
+	  "db_direct_super_class a ");
   // *INDENT-ON*
 
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
       if (class_name)
 	{
-	  STRING_APPEND (sql_p, avail_size, "WHERE class_name LIKE '%s' ESCAPE '%s' ", class_name,
+	  STRING_APPEND (sql_p, avail_size, "WHERE a.class_name LIKE '%s' ESCAPE '%s' ", class_name,
 			 get_backslash_escape_string ());
 	}
     }
@@ -9315,12 +9338,12 @@ sch_direct_super_class (T_NET_BUF * net_buf, char *class_name, int pattern_flag,
 	{
 	  class_name = (char *) "";
 	}
-      STRING_APPEND (sql_p, avail_size, "WHERE class_name = '%s'", class_name);
+      STRING_APPEND (sql_p, avail_size, "WHERE a.class_name = '%s'", class_name);
     }
 
   if (*schema_name)
     {
-      STRING_APPEND (sql_p, avail_size, "AND owner_name = UPPER ('%s') ", schema_name);
+      STRING_APPEND (sql_p, avail_size, "AND a.owner_name = UPPER ('%s') ", schema_name);
     }
 
   num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
@@ -9372,20 +9395,31 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
       return 0;
     }
 
+  // *INDENT-OFF*
   STRING_APPEND (sql_p, avail_size,
-		 "SELECT "
-		 "LOWER (owner_name) || '.' || class_name AS unique_name, "
-		 "b.key_attr_name, "
-		 "b.key_order + 1, "
-		 "a.index_name "
-		 "FROM "
-		 "db_index a, "
-		 "db_index_key b "
-		 "WHERE "
-		 "a.index_name = b.index_name "
-		 "AND a.class_name = b.class_name "
-		 "AMD a.owner_name = b.owner_name "
-		 "AND a.is_primary_key = 'YES' " "AND a.class_name = '%s' ", class_name);
+	"SELECT "
+	  "CASE "
+	    "WHEN ("
+		"SELECT c.is_system_class "
+		"FROM db_class c "
+		"WHERE c.class_name = a.class_name AND c.owner_name = a.owner_name "
+	      ") = 'YES' THEN LOWER (a.owner_name) || '.' || a.class_name "
+	    "ELSE a.class_name "
+	    "END AS unique_name, "
+	  "b.key_attr_name, "
+	  "b.key_order + 1, "
+	  "a.index_name "
+	"FROM "
+	  "db_index a, "
+	  "db_index_key b "
+	"WHERE "
+	  "a.index_name = b.index_name "
+	  "AND a.class_name = b.class_name "
+	  "AMD a.owner_name = b.owner_name "
+	  "AND a.is_primary_key = 'YES' "
+	  "AND a.class_name = '%s' ",
+	class_name);
+  // *INDENT-ON*
 
   if (*schema_name)
     {
