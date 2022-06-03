@@ -8693,6 +8693,7 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
   MOP tmp_obj;
   DB_OBJECT *obj_trigger_target = NULL;
   const char *name_trigger_target = NULL;
+  const char *name_only_trigger_target = NULL;
   TR_TRIGGER *trigger = NULL;
   int error = NO_ERROR;
   bool is_pattern_match;
@@ -8716,6 +8717,31 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
     }
   else
     {
+      char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
+      DB_OBJECT *owner = NULL;
+
+      {
+	char *dot = NULL;
+	int len = 0;
+
+	dot = strchr (class_name, '.');
+	if (dot)
+	  {
+	    len = STATIC_CAST (int, dot - class_name);
+	    if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+	      {
+		memcpy (schema_name, class_name, len);
+		schema_name[len] = '\0';
+
+		owner = db_find_user (schema_name);
+		if (owner != NULL)
+		  {
+		    class_name = dot + 1;
+		  }
+	      }
+	  }
+      }
+
       for (tmp_t = tmp_trigger; tmp_t; tmp_t = tmp_t->next)
 	{
 	  tmp_obj = tmp_t->op;
@@ -8740,9 +8766,28 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 	      break;
 	    }
 
+	  name_only_trigger_target = name_trigger_target;
+	  if (owner)
+	    {
+	      name_only_trigger_target = strchr (name_trigger_target, '.');
+	      if (name_only_trigger_target)
+		{
+		  name_only_trigger_target = name_only_trigger_target + 1;
+		}
+	      else
+		{
+		  assert (false);
+		}
+
+	      if (ws_is_same_object (db_get_owner (tmp_obj), owner) != 0)
+		{
+		  continue;
+		}
+	    }
+
 	  if (is_pattern_match)
 	    {
-	      if (str_like ((char *) name_trigger_target, class_name, '\\') == 1)
+	      if (str_like ((char *) name_only_trigger_target, class_name, '\\') == 1)
 		{
 		  error = ml_ext_add (&all_trigger, tmp_obj, NULL);
 		  if (error != NO_ERROR)
@@ -8754,7 +8799,7 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 	    }
 	  else
 	    {
-	      if (strcmp (class_name, name_trigger_target) == 0)
+	      if (strcmp (class_name, name_only_trigger_target) == 0)
 		{
 		  error = ml_ext_add (&all_trigger, tmp_obj, NULL);
 		  if (error != NO_ERROR)
@@ -8868,7 +8913,7 @@ sch_class_priv (T_NET_BUF * net_buf, char *class_name, char pat_flag, T_SRV_HAND
 		{
 		  assert (false);
 		}
-	
+
 	      if (ws_is_same_object (db_get_owner (obj_tmp->op), owner) != 0)
 		{
 		  continue;
@@ -9328,21 +9373,19 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
     }
 
   STRING_APPEND (sql_p, avail_size,
-	"SELECT "
-	  "LOWER (owner_name) || '.' || class_name AS unique_name, "
-	  "b.key_attr_name, "
-	  "b.key_order + 1, "
-	  "a.index_name "
-	"FROM "
-	  "db_index a, "
-	  "db_index_key b "
-	"WHERE "
-	  "a.index_name = b.index_name "
-	  "AND a.class_name = b.class_name "
-	  "AMD a.owner_name = b.owner_name "
-	  "AND a.is_primary_key = 'YES' "
-	  "AND a.class_name = '%s' ",
-	class_name);
+		 "SELECT "
+		 "LOWER (owner_name) || '.' || class_name AS unique_name, "
+		 "b.key_attr_name, "
+		 "b.key_order + 1, "
+		 "a.index_name "
+		 "FROM "
+		 "db_index a, "
+		 "db_index_key b "
+		 "WHERE "
+		 "a.index_name = b.index_name "
+		 "AND a.class_name = b.class_name "
+		 "AMD a.owner_name = b.owner_name "
+		 "AND a.is_primary_key = 'YES' " "AND a.class_name = '%s' ", class_name);
 
   if (schema_name)
     {
