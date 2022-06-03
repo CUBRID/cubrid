@@ -7620,9 +7620,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
    *      CONCAT ( 'GRANT ',
    *                GROUP_CONCAT(AU.auth_type ORDER BY 1 SEPARATOR ', '),
    *                ' ON ' ,
-   *                LOWNER (AU.class_of.owner.name),
-   *                '.'
-   *                AU.class_of.class_name,
+   *                AU.class_of.unique_name,
    *                ' TO ',
    *                AU.grantee.name ,
    *                IF (AU.is_grantable=1,
@@ -7633,7 +7631,6 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
   {
     PT_NODE *concat_arg_list = NULL;
     PT_NODE *concat_arg = NULL;
-    PT_NODE *lower_arg = NULL;
 
     concat_arg = pt_make_string_value (parser, "GRANT ");
     concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
@@ -7713,7 +7710,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
   /* ------ SELECT ... WHERE ------- */
   /*
    * WHERE AU.class_of.class_name = C.class_name AND
-   *    AU.class_of.owner.name = C.owner.name AND
+   *    AU.class_of.owner.name = C.owner_name AND
    *    C.is_system_class='NO' AND
    *    ( AU.grantee.name=<user_name> OR
    *      SET{ AU.grantee.name} SUBSETEQ (  <query_user_groups> )

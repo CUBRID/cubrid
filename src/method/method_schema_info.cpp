@@ -176,58 +176,76 @@ namespace cubmethod
   schema_info_handler::sch_class_info (schema_info &info, std::string &class_name,
 				       int pattern_flag, int v_class_flag)
   {
-    std::transform (class_name.begin(), class_name.end(), class_name.begin(), ::tolower);
-    std::string case_stmt = "CASE WHEN is_system_class = 'YES' THEN 0 \
-		      WHEN class_type = 'CLASS' THEN 2 \
-		      ELSE 1 END";
-    std::string where_vclass = "class_type = 'VCLASS'";
+    std::string schema_name;
+    std::string class_name_only;
+    std::size_t found;
 
-    std::string sql = "SELECT unique_name, CAST(%s AS short), comment FROM db_class ";
-    sql.append (case_stmt);
+    std::transform (class_name.begin(), class_name.end(), class_name.begin(), ::tolower);
+
+    class_name_only = class_name;
+    found = class_name.find ('.');
+    if (found != std::string::npos)
+      {
+	/* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	if (found > 0 && found < DB_MAX_SCHEMA_LENGTH)
+	  {
+	    schema_name = class_name.substr (0, found);
+	    class_name_only = class_name.substr (found + 1);
+	  }
+      }
+
+    // *INDENT-OFF*
+    std::string sql = ""
+	"SELECT "
+	  "CASE "
+	    "WHEN is_system_class = 'NO' THEN LOWER (owner_name) || '.' || class_name "
+	    "ELSE class_name "
+	    "END AS unique_name, "
+	  "CAST ( "
+	      "CASE "
+		"WHEN is_system_class = 'YES' THEN 0 "
+		"WHEN class_type = 'CLASS' THEN 2 "
+		"ELSE 1 "
+		"END "
+	      "AS SHORT "
+	    "), "
+	  "comment "
+	"FROM "
+	  "db_class "
+	"WHERE 1 = 1 ";
+    // *INDENT-ON*
+
+    if (v_class_flag)
+      {
+	sql.append ("AND class_type = 'VCLASS' ");
+      }
+
     if (pattern_flag & CLASS_NAME_PATTERN_MATCH)
       {
-	if (v_class_flag)
+	if (!class_name_only.empty())
 	  {
-	    if (!class_name.empty())
-	      {
-		sql.append ("WHERE unique_name LIKE '");
-		sql.append (class_name);
-		sql.append ("' ESCAPE '");
-		sql.append (get_backslash_escape_string ());
-		sql.append ("' AND ");
-		sql.append (where_vclass);
-	      }
-	    else
-	      {
-		sql.append ("WHERE ");
-		sql.append (where_vclass);
-	      }
-	  }
-	else
-	  {
-	    if (!class_name.empty())
-	      {
-		sql.append ("WHERE unique_name LIKE '");
-		sql.append (class_name);
-		sql.append ("' ESCAPE '");
-		sql.append (get_backslash_escape_string ());
-		sql.append ("'");
-	      }
+	    /* AND class_name LIKE '%s' ESCAPE '%s' */
+	    sql.append ("AND class_name LIKE '");
+	    sql.append (class_name_only);
+	    sql.append ("' ESCAPE '");
+	    sql.append (get_backslash_escape_string ());
+	    sql.append ("' ");
 	  }
       }
     else
       {
-	sql.append ("WHERE unique_name = '");
-	sql.append (class_name);
-	if (v_class_flag)
-	  {
-	    sql.append ("' AND ");
-	    sql.append (where_vclass);
-	  }
-	else
-	  {
-	    sql.append ("'");
-	  }
+	/* AND class_name = '%s' */
+	sql.append ("AND class_name = '");
+	sql.append (class_name_only);
+	sql.append ("' ");
+      }
+
+    if (!schema_name.empty())
+      {
+	/* AND owner_name = UPPER ('%s') */
+	sql.append ("AND owner_name = UPPER ('");
+	sql.append (schema_name);
+	sql.append ("') ");
       }
 
     int num_result = execute_schema_info_query (sql);
@@ -245,18 +263,143 @@ namespace cubmethod
 				      std::string &attr_name, int pattern_flag,
 				      int class_attr_flag)
   {
-    // TODO: not implemented yet
+    std::string schema_name;
+    std::string class_name_only;
+    std::size_t found;
+
+    std::transform (class_name.begin(), class_name.end(), class_name.begin(), ::tolower);
+    std::transform (attr_name.begin(), attr_name.end(), attr_name.begin(), ::tolower);
+
+    class_name_only = class_name;
+    found = class_name.find ('.');
+    if (found != std::string::npos)
+      {
+	/* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	if (found > 0 && found < DB_MAX_SCHEMA_LENGTH)
+	  {
+	    schema_name = class_name.substr (0, found);
+	    class_name_only = class_name.substr (found + 1);
+	  }
+      }
+
+    // *INDENT-OFF*
+    std::string sql = ""
+	"SELECT "
+	  "CASE "
+	    "WHEN ( "
+		"SELECT b.is_system_class "
+		"FROM db_class b "
+		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
+	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
+	    "ELSE a.class_name "
+	    "END AS unique_name, "
+	  "a.attr_name "
+	"FROM "
+	  "db_attribute a "
+	"WHERE 1 = 1 ";
+    // *INDENT-ON*
+
+    if (class_attr_flag)
+      {
+	sql.append ("AND a.attr_type = 'CLASS' ");
+      }
+    else
+      {
+	sql.append ("AND a.attr_type in {'INSTANCE', 'SHARED'} ");
+      }
+
+    if (pattern_flag & CLASS_NAME_PATTERN_MATCH)
+      {
+	if (!class_name_only.empty())
+	  {
+	    /* AND class_name LIKE '%s' ESCAPE '%s' */
+	    sql.append ("AND a.class_name LIKE '");
+	    sql.append (class_name_only);
+	    sql.append ("' ESCAPE '");
+	    sql.append (get_backslash_escape_string ());
+	    sql.append ("' ");
+	  }
+      }
+    else
+      {
+	/* AND class_name = '%s' */
+	sql.append ("AND a.class_name = '");
+	sql.append (class_name_only);
+	sql.append ("' ");
+      }
+
+    if (pattern_flag & ATTR_NAME_PATTERN_MATCH)
+      {
+	if (!attr_name.empty())
+	  {
+	    /* AND a.attr_name LIKE '%s' ESCAPE '%s' */
+	    sql.append ("AND a.attr_name LIKE '");
+	    sql.append (attr_name);
+	    sql.append ("' ESCAPE '");
+	    sql.append (get_backslash_escape_string ());
+	    sql.append ("' ");
+	  }
+      }
+    else
+      {
+	/* AND a.attr_name = '%s' */
+	sql.append ("AND a.class_name = '");
+	sql.append (attr_name);
+	sql.append ("' ");
+      }
+
+    if (!schema_name.empty())
+      {
+	/* AND owner_name = UPPER ('%s') */
+	sql.append ("AND a.owner_name = UPPER ('");
+	sql.append (schema_name);
+	sql.append ("') ");
+      }
+
+    sql.append ("ORDER BY a.class_name, a.def_order ");
+
+    int num_result = execute_schema_info_query (sql);
+    if (num_result < 0)
+      {
+	return num_result;
+      }
+
+    info.num_result = num_result;
     return NO_ERROR;
   }
 
   int
   schema_info_handler::sch_queryspec (schema_info &info, std::string &class_name)
   {
+    std::string schema_name;
+    std::string class_name_only;
+    std::size_t found;
+
     std::transform (class_name.begin(), class_name.end(), class_name.begin(), ::tolower);
 
+    class_name_only = class_name;
+    found = class_name.find ('.');
+    if (found != std::string::npos)
+      {
+	/* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	if (found > 0 && found < DB_MAX_SCHEMA_LENGTH)
+	  {
+	    schema_name = class_name.substr (0, found);
+	    class_name_only = class_name.substr (found + 1);
+	  }
+      }
+
     std::string sql = "SELECT vclass_def FROM db_vclass WHERE unique_name = '";
-    sql.append (class_name);
-    sql.append ("'");
+    sql.append (class_name_only);
+    sql.append ("' ");
+
+    if (!schema_name.empty())
+      {
+	/* AND owner_name = UPPER ('%s') */
+	sql.append ("AND owner_name = UPPER ('");
+	sql.append (schema_name);
+	sql.append ("') ");
+      }
 
     int num_result = execute_schema_info_query (sql);
     if (num_result < 0)
@@ -403,6 +546,27 @@ namespace cubmethod
       }
     else
       {
+	std::string schema_name;
+	DB_OBJECT *owner = NULL;
+
+	std::string class_name_only = class_name;
+	std::size_t found = class_name.find ('.');
+	if (found != std::string::npos)
+	  {
+	    /* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	    if (found > 0 && found < DB_MAX_SCHEMA_LENGTH)
+	      {
+		schema_name = class_name.substr (0, found);
+
+		/* If the user does not exist, compare the entire class_name. */
+		owner = db_find_user (schema_name.c_str ());
+		if (owner != NULL)
+		  {
+		    class_name_only = class_name.substr (found + 1);
+		  }
+	      }
+	  }
+
 	DB_OBJLIST *tmp = NULL;
 	for (tmp = tmp_trigger; tmp; tmp = tmp->next)
 	  {
@@ -428,9 +592,30 @@ namespace cubmethod
 		break;
 	      }
 
+	    const char *only_name_trigger_target = name_trigger_target;
+	    /* If the user does not exist, compare the entire class_name. */
+	    if (owner)
+	      {
+		only_name_trigger_target = strchr (name_trigger_target, '.');
+		if (only_name_trigger_target)
+		  {
+		    only_name_trigger_target = only_name_trigger_target + 1;
+		  }
+		else
+		  {
+		    assert (false);
+		  }
+
+		/* If the owner is different from the specified owner, skip it. */
+		if (db_get_owner (tmp_obj) != owner)
+		  {
+		    continue;
+		  }
+	      }
+
 	    if (is_pattern_match)
 	      {
-		if (str_like (std::string (name_trigger_target), class_name.c_str (), '\\') == 1)
+		if (str_like (std::string (name_trigger_target), class_name_only.c_str (), '\\') == 1)
 		  {
 		    error = ml_ext_add (&all_trigger, tmp_obj, NULL);
 		    if (error != NO_ERROR)
@@ -442,7 +627,7 @@ namespace cubmethod
 	      }
 	    else
 	      {
-		if (strcmp (class_name.c_str (), name_trigger_target) == 0)
+		if (strcmp (class_name_only.c_str (), name_trigger_target) == 0)
 		  {
 		    error = ml_ext_add (&all_trigger, tmp_obj, NULL);
 		    if (error != NO_ERROR)
@@ -494,11 +679,53 @@ namespace cubmethod
       }
     else
       {
+	std::string schema_name;
+	DB_OBJECT *owner = NULL;
+
+	std::string class_name_only = class_name;
+	std::size_t found = class_name.find ('.');
+	if (found != std::string::npos)
+	  {
+	    /* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	    if (found > 0 && found < DB_MAX_SCHEMA_LENGTH)
+	      {
+		schema_name = class_name.substr (0, found);
+
+		/* If the user does not exist, compare the entire class_name. */
+		owner = db_find_user (schema_name.c_str ());
+		if (owner != NULL)
+		  {
+		    class_name_only = class_name.substr (found + 1);
+		  }
+	      }
+	  }
+
 	DB_OBJLIST *obj_list = db_get_all_classes ();
 	for (DB_OBJLIST *tmp = obj_list; tmp; tmp = tmp->next)
 	  {
 	    char *p = (char *) db_get_class_name (tmp->op);
-	    if (!class_name.empty() && str_like (std::string (p), class_name.c_str(), '\\') < 1)
+	    char *q = p;
+	    /* If the user does not exist, compare the entire class_name. */
+	    if (owner && db_is_system_class (tmp->op) == FALSE)
+	      {
+		/* p: unique_name, q: class_name */
+		q = strchr (p, '.');
+		if (q)
+		  {
+		    q = q + 1;
+		  }
+		else
+		  {
+		    assert (false);
+		  }
+
+		/* If the owner is different from the specified owner, skip it. */
+		if (db_get_owner (tmp->op) != owner)
+		  {
+		    continue;
+		  }
+	      }
+	    if (!class_name.empty() && str_like (std::string (q), class_name.c_str(), '\\') < 1)
 	      {
 		continue;
 	      }
@@ -563,26 +790,74 @@ namespace cubmethod
   schema_info_handler::sch_direct_super_class (schema_info &info, std::string &class_name,
       int pattern_flag)
   {
+    std::string schema_name;
+    std::string class_name_only;
+    std::size_t found;
+
     std::transform (class_name.begin(), class_name.end(), class_name.begin(), ::tolower);
 
-    std::string sql = "SELECT unique_name, super_class_name FROM db_direct_super_class ";
+    class_name_only = class_name;
+    found = class_name.find ('.');
+    if (found != std::string::npos)
+      {
+	/* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	if (found > 0 && found < DB_MAX_SCHEMA_LENGTH)
+	  {
+	    schema_name = class_name.substr (0, found);
+	    class_name_only = class_name.substr (found + 1);
+	  }
+      }
+
+    // *INDENT-OFF*
+    std::string sql = ""
+	"SELECT "
+	  "CASE "
+	    "WHEN ( "
+		"SELECT b.is_system_class "
+		"FROM db_class b "
+		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
+	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
+	    "ELSE a.class_name "
+	    "END AS unique_name, "
+	  "CASE "
+	    "WHEN ( "
+		"SELECT b.is_system_class "
+		"FROM db_class b "
+		"WHERE b.class_name = a.super_class_name AND b.owner_name = a.super_owner_name "
+	      ") = 'NO' THEN LOWER (a.super_owner_name) || '.' || a.super_class_name "
+	    "ELSE a.super_class_name "
+	    "END AS super_unique_name "
+	"FROM "
+	  "db_direct_super_class a "
+	"WHERE 1 = 1 ";
+    // *INDENT-ON*
 
     if (pattern_flag & CLASS_NAME_PATTERN_MATCH)
       {
-	if (!class_name.empty())
+	if (!class_name_only.empty())
 	  {
-	    sql.append ("WHERE unique_name LIKE '");
-	    sql.append (class_name);
+	    /* AND class_name LIKE '%s' ESCAPE '%s' */
+	    sql.append ("AND class_name LIKE '");
+	    sql.append (class_name_only);
 	    sql.append ("' ESCAPE '");
 	    sql.append (get_backslash_escape_string ());
-	    sql.append ("'");
+	    sql.append ("' ");
 	  }
       }
     else
       {
-	sql.append ("WHERE unique_name = '");
-	sql.append (class_name);
-	sql.append ("'");
+	/* AND class_name = '%s' */
+	sql.append ("AND class_name = '");
+	sql.append (class_name_only);
+	sql.append ("' ");
+      }
+
+    if (!schema_name.empty())
+      {
+	/* AND owner_name = UPPER ('%s') */
+	sql.append ("AND owner_name = UPPER ('");
+	sql.append (schema_name);
+	sql.append ("') ");
       }
 
     int num_result = execute_schema_info_query (sql);
@@ -597,20 +872,65 @@ namespace cubmethod
 
   int schema_info_handler::sch_primary_key (schema_info &info, std::string &class_name)
   {
-    int i, num_result = 0;
+    std::string schema_name;
+    std::string class_name_only;
+    std::size_t found;
+    int num_result;
+    int i;
 
     std::transform (class_name.begin(), class_name.end(), class_name.begin(), ::tolower);
-    DB_OBJECT *class_object =  db_find_class (class_name.c_str ());
+
+    class_name_only = class_name;
+    found = class_name.find ('.');
+    if (found != std::string::npos)
+      {
+	/* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	if (found > 0 && found < DB_MAX_SCHEMA_LENGTH)
+	  {
+	    schema_name = class_name.substr (0, found);
+	    class_name_only = class_name.substr (found + 1);
+	  }
+      }
+
+    DB_OBJECT *class_object = db_find_class (class_name.c_str ());
     if (class_object != NULL)
       {
-	std::string sql = "SELECT a.unique_name, b.key_attr_name, b.key_order+1, a.index_name \
-       FROM db_index a, db_index_key b WHERE \
-       a.unique_name = b.unique_name \
-       AND a.index_name = b.index_name \
-       AND a.is_primary_key = 'YES' \
-       AND a.unique_name = '";
-	sql.append (class_name);
-	sql.append ("' ORDER BY b.key_attr_name");
+	// *INDENT-OFF*
+	std::string sql = ""
+		"SELECT "
+		  "CASE "
+		    "WHEN ( "
+			"SELECT c.is_system_class "
+			"FROM db_class c "
+			"WHERE c.class_name = a.class_name AND c.owner_name = a.owner_name "
+		      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
+		    "ELSE a.class_name "
+		    "END AS unique_name, "
+		  "b.key_attr_name, "
+		  "b.key_order + 1, "
+		  "a.index_name "
+		"FROM "
+		  "db_index a, "
+		  "db_index_key b "
+		"WHERE "
+		  "a.index_name = b.index_name "
+		  "AND a.class_name = b.class_name "
+		  "AMD a.owner_name = b.owner_name "
+		  "AND a.is_primary_key = 'YES' "
+		  "AND a.class_name = '";
+	sql.append (class_name_only);
+	sql.append ("' ");
+	// *INDENT-ON*
+
+	if (!schema_name.empty())
+	  {
+	    /* AND owner_name = UPPER ('%s') */
+	    sql.append ("AND owner_name = UPPER ('");
+	    sql.append (schema_name);
+	    sql.append ("') ");
+	  }
+
+	sql.append ("ORDER BY b.key_attr_name");
 
 	num_result = execute_schema_info_query (sql);
 	if (num_result < 0)
