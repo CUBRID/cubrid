@@ -142,6 +142,7 @@ EXPORTS
     db_set_statement_auto_commit
     db_find_all_triggers
     db_find_class
+    db_get_user_specified_name
     db_find_user
     db_find_user_to_drop
     db_get
