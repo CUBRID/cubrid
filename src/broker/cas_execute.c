@@ -9320,7 +9320,7 @@ sch_direct_super_class (T_NET_BUF * net_buf, char *class_name, int pattern_flag,
 		"WHERE b.class_name = a.super_class_name AND b.owner_name = a.super_owner_name "
 	      ") = 'NO' THEN LOWER (a.super_owner_name) || '.' || a.super_class_name "
 	    "ELSE a.super_class_name "
-	    "END AS super_unique_name, "
+	    "END AS super_unique_name "
 	"FROM "
 	  "db_direct_super_class a ");
   // *INDENT-ON*
