@@ -182,7 +182,7 @@ namespace cubmethod
 		      ELSE 1 END";
     std::string where_vclass = "class_type = 'VCLASS'";
 
-    std::string sql = "SELECT unique_name, CAST(%s AS short), comment FROM db_class ";
+    std::string sql = "SELECT class_name, CAST(%s AS short), comment FROM db_class ";
     sql.append (case_stmt);
     if (pattern_flag & CLASS_NAME_PATTERN_MATCH)
       {
@@ -190,7 +190,7 @@ namespace cubmethod
 	  {
 	    if (!class_name.empty())
 	      {
-		sql.append ("WHERE unique_name LIKE '");
+		sql.append ("WHERE class_name LIKE '");
 		sql.append (class_name);
 		sql.append ("' ESCAPE '");
 		sql.append (get_backslash_escape_string ());
@@ -207,7 +207,7 @@ namespace cubmethod
 	  {
 	    if (!class_name.empty())
 	      {
-		sql.append ("WHERE unique_name LIKE '");
+		sql.append ("WHERE class_name LIKE '");
 		sql.append (class_name);
 		sql.append ("' ESCAPE '");
 		sql.append (get_backslash_escape_string ());
@@ -217,7 +217,7 @@ namespace cubmethod
       }
     else
       {
-	sql.append ("WHERE unique_name = '");
+	sql.append ("WHERE class_name = '");
 	sql.append (class_name);
 	if (v_class_flag)
 	  {
@@ -254,7 +254,7 @@ namespace cubmethod
   {
     std::transform (class_name.begin(), class_name.end(), class_name.begin(), ::tolower);
 
-    std::string sql = "SELECT vclass_def FROM db_vclass WHERE unique_name = '";
+    std::string sql = "SELECT vclass_def FROM db_vclass WHERE vclass_name = '";
     sql.append (class_name);
     sql.append ("'");
 
@@ -565,13 +565,13 @@ namespace cubmethod
   {
     std::transform (class_name.begin(), class_name.end(), class_name.begin(), ::tolower);
 
-    std::string sql = "SELECT unique_name, super_class_name FROM db_direct_super_class ";
+    std::string sql = "SELECT class_name, super_class_name FROM db_direct_super_class ";
 
     if (pattern_flag & CLASS_NAME_PATTERN_MATCH)
       {
 	if (!class_name.empty())
 	  {
-	    sql.append ("WHERE unique_name LIKE '");
+	    sql.append ("WHERE class_name LIKE '");
 	    sql.append (class_name);
 	    sql.append ("' ESCAPE '");
 	    sql.append (get_backslash_escape_string ());
@@ -580,7 +580,7 @@ namespace cubmethod
       }
     else
       {
-	sql.append ("WHERE unique_name = '");
+	sql.append ("WHERE class_name = '");
 	sql.append (class_name);
 	sql.append ("'");
       }
@@ -603,12 +603,12 @@ namespace cubmethod
     DB_OBJECT *class_object =  db_find_class (class_name.c_str ());
     if (class_object != NULL)
       {
-	std::string sql = "SELECT a.unique_name, b.key_attr_name, b.key_order+1, a.index_name \
+	std::string sql = "SELECT a.class_name, b.key_attr_name, b.key_order+1, a.index_name \
        FROM db_index a, db_index_key b WHERE \
-       a.unique_name = b.unique_name \
+       a.class_name = b.class_name \
        AND a.index_name = b.index_name \
        AND a.is_primary_key = 'YES' \
-       AND a.unique_name = '";
+       AND a.class_name = '";
 	sql.append (class_name);
 	sql.append ("' ORDER BY b.key_attr_name");
 

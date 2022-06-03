@@ -8283,10 +8283,26 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v
   int num_result;
   const char *case_stmt;
   const char *where_vclass;
-  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
 
-  db_get_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
-  class_name = realname;
+  ut_tolower (class_name);
+
+  {
+    char *dot = NULL;
+    int len = 0;
+
+    dot = strchr (class_name, '.');
+    if (dot)
+      {
+	len = STATIC_CAST (int, dot - class_name);
+	if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+	  {
+	    memcpy (schema_name, class_name, len);
+	    schema_name[len] = '\0';
+	    class_name = dot + 1;
+	  }
+      }
+  }
 
   if (cas_client_type == CAS_CLIENT_CCI)
     {
@@ -8302,14 +8318,24 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v
     }
   where_vclass = "class_type = 'VCLASS'";
 
-  STRING_APPEND (sql_p, avail_size, "SELECT unique_name, CAST(%s AS short), comment FROM db_class ", case_stmt);
+  // *INDENT-OFF*
+  STRING_APPEND (sql_p, avail_size,
+	"SELECT "
+	  "LOWER (owner_name) || '.' || class_name AS unique_name, "
+	  "CAST (%s AS SHORT), "
+	  "comment "
+	"FROM "
+	  "db_class ",
+	case_stmt);
+  // *INDENT-ON*
+
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
       if (v_class_flag)
 	{
 	  if (class_name)
 	    {
-	      STRING_APPEND (sql_p, avail_size, "WHERE unique_name LIKE '%s' ESCAPE '%s' AND %s", class_name,
+	      STRING_APPEND (sql_p, avail_size, "WHERE class_name LIKE '%s' ESCAPE '%s' AND %s ", class_name,
 			     get_backslash_escape_string (), where_vclass);
 	    }
 	  else
@@ -8321,7 +8347,7 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v
 	{
 	  if (class_name)
 	    {
-	      STRING_APPEND (sql_p, avail_size, "WHERE unique_name LIKE '%s' ESCAPE '%s' ", class_name,
+	      STRING_APPEND (sql_p, avail_size, "WHERE class_name LIKE '%s' ESCAPE '%s' ", class_name,
 			     get_backslash_escape_string ());
 	    }
 	}
@@ -8335,12 +8361,17 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v
 
       if (v_class_flag)
 	{
-	  STRING_APPEND (sql_p, avail_size, "WHERE unique_name = '%s' AND %s", class_name, where_vclass);
+	  STRING_APPEND (sql_p, avail_size, "WHERE class_name = '%s' AND %s ", class_name, where_vclass);
 	}
       else
 	{
-	  STRING_APPEND (sql_p, avail_size, "WHERE unique_name = '%s'", class_name);
+	  STRING_APPEND (sql_p, avail_size, "WHERE class_name = '%s' ", class_name);
 	}
+    }
+
+  if (schema_name)
+    {
+      STRING_APPEND (sql_p, avail_size, "AND owner_name = UPPER ('%s') ", schema_name);
     }
 
   num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
@@ -8362,29 +8393,52 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
   char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
   int avail_size = sizeof (sql_stmt) - 1;
   int num_result;
-  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
 
-  db_get_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
-  class_name = realname;
-
+  ut_tolower (class_name);
   ut_tolower (attr_name);
 
-  STRING_APPEND (sql_p, avail_size, "SELECT unique_name, attr_name FROM db_attribute WHERE ");
+  {
+    char *dot = NULL;
+    int len = 0;
+
+    dot = strchr (class_name, '.');
+    if (dot)
+      {
+	len = STATIC_CAST (int, dot - class_name);
+	if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+	  {
+	    memcpy (schema_name, class_name, len);
+	    schema_name[len] = '\0';
+	    class_name = dot + 1;
+	  }
+      }
+  }
+
+  // *INDENT-OFF*
+  STRING_APPEND (sql_p, avail_size,
+	"SELECT "
+	  "LOWER (owner_name) || '.' || class_name AS unique_name, "
+	  "attr_name "
+	"FROM "
+	  "db_attribute "
+	"WHERE ");
+  // *INDENT-ON*
 
   if (class_attr_flag)
     {
-      STRING_APPEND (sql_p, avail_size, " attr_type = 'CLASS' ");
+      STRING_APPEND (sql_p, avail_size, "attr_type = 'CLASS' ");
     }
   else
     {
-      STRING_APPEND (sql_p, avail_size, " attr_type in {'INSTANCE', 'SHARED'} ");
+      STRING_APPEND (sql_p, avail_size, "attr_type in {'INSTANCE', 'SHARED'} ");
     }
 
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
       if (class_name)
 	{
-	  STRING_APPEND (sql_p, avail_size, " AND unique_name LIKE '%s' ESCAPE '%s' ", class_name,
+	  STRING_APPEND (sql_p, avail_size, "AND class_name LIKE '%s' ESCAPE '%s' ", class_name,
 			 get_backslash_escape_string ());
 	}
     }
@@ -8394,14 +8448,14 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
 	{
 	  class_name = (char *) "";
 	}
-      STRING_APPEND (sql_p, avail_size, " AND unique_name = '%s' ", class_name);
+      STRING_APPEND (sql_p, avail_size, "AND class_name = '%s' ", class_name);
     }
 
   if (pattern_flag & CCI_ATTR_NAME_PATTERN_MATCH)
     {
       if (attr_name)
 	{
-	  STRING_APPEND (sql_p, avail_size, " AND attr_name LIKE '%s' ESCAPE '%s' ", attr_name,
+	  STRING_APPEND (sql_p, avail_size, "AND attr_name LIKE '%s' ESCAPE '%s' ", attr_name,
 			 get_backslash_escape_string ());
 	}
     }
@@ -8411,9 +8465,15 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
 	{
 	  attr_name = (char *) "";
 	}
-      STRING_APPEND (sql_p, avail_size, " AND attr_name = '%s' ", attr_name);
+      STRING_APPEND (sql_p, avail_size, "AND attr_name = '%s' ", attr_name);
     }
-  STRING_APPEND (sql_p, avail_size, " ORDER BY unique_name, def_order");
+
+  if (schema_name)
+    {
+      STRING_APPEND (sql_p, avail_size, "AND owner_name = UPPER ('%s') ", schema_name);
+    }
+
+  STRING_APPEND (sql_p, avail_size, "ORDER BY class_name, def_order ");
 
   num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
   if (num_result < 0)
@@ -8430,17 +8490,39 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
 static int
 sch_queryspec (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handle)
 {
-  char sql_stmt[1024];
+  char sql_stmt[1024], *sql_p = sql_stmt;
+  int avail_size = sizeof (sql_stmt) - 1;
   int num_result;
-  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
 
   if (class_name == NULL)
     class_name = (char *) "";
 
-  db_get_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
-  class_name = realname;
+  ut_tolower (class_name);
 
-  sprintf (sql_stmt, "SELECT vclass_def FROM db_vclass WHERE unique_name = '%s'", class_name);
+  {
+    char *dot = NULL;
+    int len = 0;
+
+    dot = strchr (class_name, '.');
+    if (dot)
+      {
+	len = STATIC_CAST (int, dot - class_name);
+	if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+	  {
+	    memcpy (schema_name, class_name, len);
+	    schema_name[len] = '\0';
+	    class_name = dot + 1;
+	  }
+      }
+  }
+
+  STRING_APPEND (sql_p, avail_size, "SELECT vclass_def FROM db_vclass WHERE vclass_name = '%s' ", class_name);
+
+  if (schema_name)
+    {
+      STRING_APPEND (sql_p, avail_size, "AND owner_name = UPPER ('%s') ", schema_name);
+    }
 
   num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
   if (num_result < 0)
@@ -8634,11 +8716,6 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
     }
   else
     {
-      char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-
-      db_get_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
-      class_name = realname;
-
       for (tmp_t = tmp_trigger; tmp_t; tmp_t = tmp_t->next)
 	{
 	  tmp_obj = tmp_t->op;
@@ -8744,20 +8821,60 @@ sch_class_priv (T_NET_BUF * net_buf, char *class_name, char pat_flag, T_SRV_HAND
   else
     {
       DB_OBJLIST *obj_list, *obj_tmp;
-      char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+      char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
+      DB_OBJECT *owner = NULL;
 
-      db_get_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
-      class_name = realname;
+      {
+	char *dot = NULL;
+	int len = 0;
+
+	dot = strchr (class_name, '.');
+	if (dot)
+	  {
+	    len = STATIC_CAST (int, dot - class_name);
+	    if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+	      {
+		memcpy (schema_name, class_name, len);
+		schema_name[len] = '\0';
+
+		owner = db_find_user (schema_name);
+		if (owner != NULL)
+		  {
+		    class_name = dot + 1;
+		  }
+	      }
+	  }
+      }
 
       obj_list = db_get_all_classes ();
 
       num_tuple = 0;
       for (obj_tmp = obj_list; obj_tmp; obj_tmp = obj_tmp->next)
 	{
-	  char *p;
+	  char *p, *q;
 
-	  p = (char *) db_get_class_name (obj_tmp->op);
-	  if (class_name != NULL && str_like (p, class_name, '\\') < 1)
+	  p = CONST_CAST (char *, db_get_class_name (obj_tmp->op));
+	  q = p;
+	  /* If the user does not exist, the entire class_name string is searched. */
+	  if (owner && db_is_system_class (obj_tmp->op) == FALSE)
+	    {
+	      /* p: unique_name, q: class_name */
+	      q = strchr (p, '.');
+	      if (q)
+		{
+		  q = q + 1;
+		}
+	      else
+		{
+		  assert (false);
+		}
+	
+	      if (ws_is_same_object (db_get_owner (obj_tmp->op), owner) != 0)
+		{
+		  continue;
+		}
+	    }
+	  if (class_name != NULL && str_like (q, class_name, '\\') < 1)
 	    {
 	      continue;
 	    }
@@ -9109,18 +9226,41 @@ sch_direct_super_class (T_NET_BUF * net_buf, char *class_name, int pattern_flag,
   int num_result = 0;
   char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
   int avail_size = sizeof (sql_stmt) - 1;
-  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
 
-  db_get_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
-  class_name = realname;
+  ut_tolower (class_name);
 
-  STRING_APPEND (sql_p, avail_size, "SELECT unique_name, super_unique_name \
-		    FROM db_direct_super_class ");
+  {
+    char *dot = NULL;
+    int len = 0;
+
+    dot = strchr (class_name, '.');
+    if (dot)
+      {
+	len = STATIC_CAST (int, dot - class_name);
+	if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+	  {
+	    memcpy (schema_name, class_name, len);
+	    schema_name[len] = '\0';
+	    class_name = dot + 1;
+	  }
+      }
+  }
+
+  // *INDENT-OFF*
+  STRING_APPEND (sql_p, avail_size,
+	"SELECT "
+	  "LOWER (owner_name) || '.' || class_name AS unique_name, "
+	  "LOWER (super_owner_name) || '.' || super_class_name AS super_unique_name "
+	"FROM "
+	  "db_direct_super_class ");
+  // *INDENT-ON*
+
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
       if (class_name)
 	{
-	  STRING_APPEND (sql_p, avail_size, "WHERE unique_name LIKE '%s' ESCAPE '%s' ", class_name,
+	  STRING_APPEND (sql_p, avail_size, "WHERE class_name LIKE '%s' ESCAPE '%s' ", class_name,
 			 get_backslash_escape_string ());
 	}
     }
@@ -9130,7 +9270,12 @@ sch_direct_super_class (T_NET_BUF * net_buf, char *class_name, int pattern_flag,
 	{
 	  class_name = (char *) "";
 	}
-      STRING_APPEND (sql_p, avail_size, "WHERE unique_name = '%s'", class_name);
+      STRING_APPEND (sql_p, avail_size, "WHERE class_name = '%s'", class_name);
+    }
+
+  if (schema_name)
+    {
+      STRING_APPEND (sql_p, avail_size, "AND owner_name = UPPER ('%s') ", schema_name);
     }
 
   num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
@@ -9152,10 +9297,26 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
   int avail_size = sizeof (sql_stmt) - 1;
   int num_result;
   DB_OBJECT *class_object;
-  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
 
-  db_get_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
-  class_name = realname;
+  ut_tolower (class_name);
+
+  {
+    char *dot = NULL;
+    int len = 0;
+
+    dot = strchr (class_name, '.');
+    if (dot)
+      {
+	len = STATIC_CAST (int, dot - class_name);
+	if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+	  {
+	    memcpy (schema_name, class_name, len);
+	    schema_name[len] = '\0';
+	    class_name = dot + 1;
+	  }
+      }
+  }
 
   /* is it existing class? */
   class_object = db_find_class (class_name);
@@ -9166,13 +9327,29 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
       return 0;
     }
 
-  STRING_APPEND (sql_p, avail_size, "SELECT a.unique_name, b.key_attr_name, b.key_order+1, a.index_name");
-  STRING_APPEND (sql_p, avail_size, " FROM db_index a, db_index_key b WHERE ");
-  STRING_APPEND (sql_p, avail_size, " a.unique_name = b.unique_name ");
-  STRING_APPEND (sql_p, avail_size, " AND a.index_name = b.index_name ");
-  STRING_APPEND (sql_p, avail_size, " AND a.is_primary_key = 'YES' ");
-  STRING_APPEND (sql_p, avail_size, " AND a.unique_name = '%s'", class_name);
-  STRING_APPEND (sql_p, avail_size, " ORDER BY b.key_attr_name");
+  STRING_APPEND (sql_p, avail_size,
+	"SELECT "
+	  "LOWER (owner_name) || '.' || class_name AS unique_name, "
+	  "b.key_attr_name, "
+	  "b.key_order + 1, "
+	  "a.index_name "
+	"FROM "
+	  "db_index a, "
+	  "db_index_key b "
+	"WHERE "
+	  "a.index_name = b.index_name "
+	  "AND a.class_name = b.class_name "
+	  "AMD a.owner_name = b.owner_name "
+	  "AND a.is_primary_key = 'YES' "
+	  "AND a.class_name = '%s' ",
+	class_name);
+
+  if (schema_name)
+    {
+      STRING_APPEND (sql_p, avail_size, "AND a.owner_name = UPPER ('%s') ", schema_name);
+    }
+
+  STRING_APPEND (sql_p, avail_size, " ORDER BY b.key_attr_name ");
 
   if ((num_result = sch_query_execute (srv_handle, sql_stmt, net_buf)) < 0)
     {
