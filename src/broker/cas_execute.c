@@ -8789,7 +8789,7 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 		  assert (false);
 		}
 
-	      if (ws_is_same_object (db_get_owner (tmp_obj), owner) != 0)
+	      if (db_get_owner (tmp_obj) == owner)
 		{
 		  continue;
 		}
@@ -8924,7 +8924,7 @@ sch_class_priv (T_NET_BUF * net_buf, char *class_name, char pat_flag, T_SRV_HAND
 		  assert (false);
 		}
 
-	      if (ws_is_same_object (db_get_owner (obj_tmp->op), owner) != 0)
+	      if (db_get_owner (obj_tmp->op) == owner)
 		{
 		  continue;
 		}
