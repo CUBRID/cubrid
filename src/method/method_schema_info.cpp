@@ -875,7 +875,7 @@ namespace cubmethod
     std::string schema_name;
     std::string class_name_only;
     std::size_t found;
-    int num_result;
+    int num_result = 0;
     int i;
 
     std::transform (class_name.begin(), class_name.end(), class_name.begin(), ::tolower);
