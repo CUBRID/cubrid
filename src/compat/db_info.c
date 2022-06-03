@@ -191,22 +191,6 @@ db_get_synonym_target_name (MOP synonym, char *buf, int buf_size)
 }
 
 /*
- * db_get_user_specified_name() - Make the name a user-specified name.
- *   return: output buffer pointer or NULL on error
- *   name(in): user-specified name or object name
- *   buf(out): output buffer
- *   buf_size(in): output buffer length
- */
-char *
-db_get_user_specified_name (const char *name, char *buf, int buf_size)
-{
-  CHECK_CONNECT_NULL ();
-  CHECK_1ARG_NULL (name);
-
-  return sm_user_specified_name (name, buf, buf_size);
-}
-
-/*
  * db_fetch_all_objects() - This function fetches all objects fo given class
  *    for given purpose.
  * return : list of objects

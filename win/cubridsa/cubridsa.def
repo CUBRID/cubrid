@@ -373,7 +373,6 @@ EXPORTS
     db_fetch_seq
     db_fetch_set
     db_find_class
-    db_get_user_specified_name
     db_find_class_of_index
     db_find_event_triggers
     db_find_multi_unique
