@@ -7720,7 +7720,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
   /* ------ SELECT ... WHERE ------- */
   /*
    * WHERE AU.class_of.class_name = C.class_name AND
-   *    AU.class_of.owner.name = C.owner.name AND
+   *    AU.class_of.owner.name = C.owner_name AND
    *    C.is_system_class='NO' AND
    *    ( AU.grantee.name=<user_name> OR
    *      SET{ AU.grantee.name} SUBSETEQ (  <query_user_groups> )
@@ -7734,10 +7734,10 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
     where_expr = where_item;
   }
   {
-    /* AU.class_of.owner.name = C.owner.name */
+    /* AU.class_of.owner.name = C.owner_name */
     PT_NODE *where_item = NULL;
 
-    where_item = pt_make_pred_with_identifiers (parser, PT_EQ, "AU.class_of.owner.name", "C.owner.name");
+    where_item = pt_make_pred_with_identifiers (parser, PT_EQ, "AU.class_of.owner.name", "C.owner_name");
     /* <where_expr> = <where_expr> AND <where_item> */
     where_expr = parser_make_expression (parser, PT_AND, where_expr, where_item, NULL);
   }
