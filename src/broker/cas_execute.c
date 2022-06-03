@@ -8431,7 +8431,8 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
 	    "END AS unique_name, "
 	  "a.attr_name "
 	"FROM "
-	  "db_attribute a ");
+	  "db_attribute a "
+	"WHERE ");
   // *INDENT-ON*
 
   if (class_attr_flag)
