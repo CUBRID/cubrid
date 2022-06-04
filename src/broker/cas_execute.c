@@ -8281,42 +8281,30 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v
   char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
   int avail_size = sizeof (sql_stmt) - 1;
   int num_result;
-  const char *case_stmt;
-  const char *where_vclass;
   char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
+  char *class_name_only = NULL;
 
   ut_tolower (class_name);
 
-  {
-    char *dot = NULL;
-    int len = 0;
-
-    dot = strchr (class_name, '.');
-    if (dot)
-      {
-	len = STATIC_CAST (int, dot - class_name);
-	if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
-	  {
-	    memcpy (schema_name, class_name, len);
-	    schema_name[len] = '\0';
-	    class_name = dot + 1;
-	  }
-      }
-  }
-
-  if (cas_client_type == CAS_CLIENT_CCI)
+  if (class_name)
     {
-      case_stmt = "CASE WHEN is_system_class = 'YES' THEN 0 \
-		      WHEN class_type = 'CLASS' THEN 2 \
-		      ELSE 1 END";
+      char *dot = NULL;
+      int len = 0;
+
+      class_name_only = class_name;
+      dot = strchr (class_name, '.');
+      if (dot)
+	{
+	  len = STATIC_CAST (int, dot - class_name);
+	  /* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	  if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+	    {
+	      memcpy (schema_name, class_name, len);
+	      schema_name[len] = '\0';
+	      class_name_only = dot + 1;
+	    }
+	}
     }
-  else
-    {
-      case_stmt = "CASE WHEN is_system_class = 'YES' THEN 0 \
-		      WHEN class_type = 'CLASS' THEN 2 \
-		      ELSE 1 END";
-    }
-  where_vclass = "class_type = 'VCLASS'";
 
   // *INDENT-OFF*
   STRING_APPEND (sql_p, avail_size,
@@ -8325,51 +8313,40 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v
 	    "WHEN is_system_class = 'NO' THEN LOWER (owner_name) || '.' || class_name "
 	    "ELSE class_name "
 	    "END AS unique_name, "
-	  "CAST (%s AS SHORT), "
+	  "CAST ( "
+	      "CASE "
+		"WHEN is_system_class = 'YES' THEN 0 "
+		"WHEN class_type = 'CLASS' THEN 2 "
+		"ELSE 1 "
+		"END "
+	      "AS SHORT "
+	    "), "
 	  "comment "
 	"FROM "
-	  "db_class ",
-	case_stmt);
+	  "db_class "
+	"WHERE 1 = 1 ");
   // *INDENT-ON*
+
+  if (v_class_flag)
+    {
+      STRING_APPEND (sql_p, avail_size, "AND class_type = 'VCLASS' ");
+    }
 
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
-      if (v_class_flag)
+      if (class_name_only)
 	{
-	  if (class_name)
-	    {
-	      STRING_APPEND (sql_p, avail_size, "WHERE class_name LIKE '%s' ESCAPE '%s' AND %s ", class_name,
-			     get_backslash_escape_string (), where_vclass);
-	    }
-	  else
-	    {
-	      STRING_APPEND (sql_p, avail_size, "WHERE %s", where_vclass);
-	    }
-	}
-      else
-	{
-	  if (class_name)
-	    {
-	      STRING_APPEND (sql_p, avail_size, "WHERE class_name LIKE '%s' ESCAPE '%s' ", class_name,
-			     get_backslash_escape_string ());
-	    }
+	  STRING_APPEND (sql_p, avail_size, "AND class_name LIKE '%s' ESCAPE '%s' ", class_name_only,
+			 get_backslash_escape_string ());
 	}
     }
   else
     {
-      if (class_name == NULL)
+      if (class_name_only == NULL)
 	{
-	  class_name = (char *) "";
+	  class_name_only = CONST_CAST (char *, "");
 	}
-
-      if (v_class_flag)
-	{
-	  STRING_APPEND (sql_p, avail_size, "WHERE class_name = '%s' AND %s ", class_name, where_vclass);
-	}
-      else
-	{
-	  STRING_APPEND (sql_p, avail_size, "WHERE class_name = '%s' ", class_name);
-	}
+      STRING_APPEND (sql_p, avail_size, "AND class_name = '%s' ", class_name_only);
     }
 
   if (*schema_name)
@@ -8397,32 +8374,36 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
   int avail_size = sizeof (sql_stmt) - 1;
   int num_result;
   char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
+  char *class_name_only = NULL;
 
   ut_tolower (class_name);
   ut_tolower (attr_name);
 
-  {
-    char *dot = NULL;
-    int len = 0;
+  if (class_name)
+    {
+      char *dot = NULL;
+      int len = 0;
 
-    dot = strchr (class_name, '.');
-    if (dot)
-      {
-	len = STATIC_CAST (int, dot - class_name);
-	if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
-	  {
-	    memcpy (schema_name, class_name, len);
-	    schema_name[len] = '\0';
-	    class_name = dot + 1;
-	  }
-      }
-  }
+      class_name_only = class_name;
+      dot = strchr (class_name, '.');
+      if (dot)
+	{
+	  len = STATIC_CAST (int, dot - class_name);
+	  /* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	  if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+	    {
+	      memcpy (schema_name, class_name, len);
+	      schema_name[len] = '\0';
+	      class_name_only = dot + 1;
+	    }
+	}
+    }
 
   // *INDENT-OFF*
   STRING_APPEND (sql_p, avail_size,
 	"SELECT "
 	  "CASE "
-	    "WHEN ("
+	    "WHEN ( "
 		"SELECT b.is_system_class "
 		"FROM db_class b "
 		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
@@ -8432,33 +8413,33 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
 	  "a.attr_name "
 	"FROM "
 	  "db_attribute a "
-	"WHERE ");
+	"WHERE 1 = 1 ");
   // *INDENT-ON*
 
   if (class_attr_flag)
     {
-      STRING_APPEND (sql_p, avail_size, "a.attr_type = 'CLASS' ");
+      STRING_APPEND (sql_p, avail_size, "AND a.attr_type = 'CLASS' ");
     }
   else
     {
-      STRING_APPEND (sql_p, avail_size, "a.attr_type in {'INSTANCE', 'SHARED'} ");
+      STRING_APPEND (sql_p, avail_size, "AND a.attr_type in {'INSTANCE', 'SHARED'} ");
     }
 
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
-      if (class_name)
+      if (class_name_only)
 	{
-	  STRING_APPEND (sql_p, avail_size, "AND a.class_name LIKE '%s' ESCAPE '%s' ", class_name,
+	  STRING_APPEND (sql_p, avail_size, "AND a.class_name LIKE '%s' ESCAPE '%s' ", class_name_only,
 			 get_backslash_escape_string ());
 	}
     }
   else
     {
-      if (class_name == NULL)
+      if (class_name_only == NULL)
 	{
-	  class_name = (char *) "";
+	  class_name_only = CONST_CAST (char *, "");
 	}
-      STRING_APPEND (sql_p, avail_size, "AND a.class_name = '%s' ", class_name);
+      STRING_APPEND (sql_p, avail_size, "AND a.class_name = '%s' ", class_name_only);
     }
 
   if (pattern_flag & CCI_ATTR_NAME_PATTERN_MATCH)
@@ -8473,7 +8454,7 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
     {
       if (attr_name == NULL)
 	{
-	  attr_name = (char *) "";
+	  attr_name = CONST_CAST (char *, "");
 	}
       STRING_APPEND (sql_p, avail_size, "AND a.attr_name = '%s' ", attr_name);
     }
@@ -8504,30 +8485,35 @@ sch_queryspec (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handle)
   int avail_size = sizeof (sql_stmt) - 1;
   int num_result;
   char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
-
-  if (class_name == NULL)
-    class_name = (char *) "";
+  const char *class_name_only = NULL;
 
   ut_tolower (class_name);
 
-  {
-    char *dot = NULL;
-    int len = 0;
+  if (class_name)
+    {
+      char *dot = NULL;
+      int len = 0;
 
-    dot = strchr (class_name, '.');
-    if (dot)
-      {
-	len = STATIC_CAST (int, dot - class_name);
-	if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
-	  {
-	    memcpy (schema_name, class_name, len);
-	    schema_name[len] = '\0';
-	    class_name = dot + 1;
-	  }
-      }
-  }
+      class_name_only = class_name;
+      dot = strchr (class_name, '.');
+      if (dot)
+	{
+	  len = STATIC_CAST (int, dot - class_name);
+	  /* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	  if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+	    {
+	      memcpy (schema_name, class_name, len);
+	      schema_name[len] = '\0';
+	      class_name_only = dot + 1;
+	    }
+	}
+    }
+  else
+    {
+      class_name_only = CONST_CAST (char *, "");
+    }
 
-  STRING_APPEND (sql_p, avail_size, "SELECT vclass_def FROM db_vclass WHERE vclass_name = '%s' ", class_name);
+  STRING_APPEND (sql_p, avail_size, "SELECT vclass_def FROM db_vclass WHERE vclass_name = '%s' ", class_name_only);
 
   if (*schema_name)
     {
@@ -8703,7 +8689,7 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
   MOP tmp_obj;
   DB_OBJECT *obj_trigger_target = NULL;
   const char *name_trigger_target = NULL;
-  const char *name_only_trigger_target = NULL;
+  const char *only_name_trigger_target = NULL;
   TR_TRIGGER *trigger = NULL;
   int error = NO_ERROR;
   bool is_pattern_match;
@@ -8728,25 +8714,29 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
   else
     {
       char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
+      char *class_name_only = NULL;
       DB_OBJECT *owner = NULL;
 
       {
 	char *dot = NULL;
 	int len = 0;
 
+	class_name_only = class_name;
 	dot = strchr (class_name, '.');
 	if (dot)
 	  {
 	    len = STATIC_CAST (int, dot - class_name);
+	    /* If the length is not correct, the username is invalid, so compare the entire class_name. */
 	    if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
 	      {
 		memcpy (schema_name, class_name, len);
 		schema_name[len] = '\0';
 
+		/* If the user does not exist, compare the entire class_name. */
 		owner = db_find_user (schema_name);
 		if (owner != NULL)
 		  {
-		    class_name = dot + 1;
+		    class_name_only = dot + 1;
 		  }
 	      }
 	  }
@@ -8776,20 +8766,22 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 	      break;
 	    }
 
-	  name_only_trigger_target = name_trigger_target;
+	  only_name_trigger_target = name_trigger_target;
+	  /* If the user does not exist, compare the entire class_name. */
 	  if (owner)
 	    {
-	      name_only_trigger_target = strchr (name_trigger_target, '.');
-	      if (name_only_trigger_target)
+	      only_name_trigger_target = strchr (name_trigger_target, '.');
+	      if (only_name_trigger_target)
 		{
-		  name_only_trigger_target = name_only_trigger_target + 1;
+		  only_name_trigger_target = only_name_trigger_target + 1;
 		}
 	      else
 		{
 		  assert (false);
 		}
 
-	      if (db_get_owner (tmp_obj) == owner)
+	      /* If the owner is different from the specified owner, skip it. */
+	      if (db_get_owner (tmp_obj) != owner)
 		{
 		  continue;
 		}
@@ -8797,7 +8789,7 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 
 	  if (is_pattern_match)
 	    {
-	      if (str_like ((char *) name_only_trigger_target, class_name, '\\') == 1)
+	      if (str_like (CONST_CAST (char *, only_name_trigger_target), class_name_only, '\\') == 1)
 		{
 		  error = ml_ext_add (&all_trigger, tmp_obj, NULL);
 		  if (error != NO_ERROR)
@@ -8809,7 +8801,7 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 	    }
 	  else
 	    {
-	      if (strcmp (class_name, name_only_trigger_target) == 0)
+	      if (strcmp (class_name_only, only_name_trigger_target) == 0)
 		{
 		  error = ml_ext_add (&all_trigger, tmp_obj, NULL);
 		  if (error != NO_ERROR)
@@ -8877,29 +8869,34 @@ sch_class_priv (T_NET_BUF * net_buf, char *class_name, char pat_flag, T_SRV_HAND
     {
       DB_OBJLIST *obj_list, *obj_tmp;
       char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
+      char *class_name_only = NULL;
       DB_OBJECT *owner = NULL;
 
-      {
-	char *dot = NULL;
-	int len = 0;
+      if (class_name)
+	{
+	  char *dot = NULL;
+	  int len = 0;
 
-	dot = strchr (class_name, '.');
-	if (dot)
-	  {
-	    len = STATIC_CAST (int, dot - class_name);
-	    if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
-	      {
-		memcpy (schema_name, class_name, len);
-		schema_name[len] = '\0';
+	  class_name_only = class_name;
+	  dot = strchr (class_name, '.');
+	  if (dot)
+	    {
+	      len = STATIC_CAST (int, dot - class_name);
+	      /* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	      if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+		{
+		  memcpy (schema_name, class_name, len);
+		  schema_name[len] = '\0';
 
-		owner = db_find_user (schema_name);
-		if (owner != NULL)
-		  {
-		    class_name = dot + 1;
-		  }
-	      }
-	  }
-      }
+		  owner = db_find_user (schema_name);
+		  /* If the user does not exist, compare the entire class_name. */
+		  if (owner != NULL)
+		    {
+		      class_name_only = dot + 1;
+		    }
+		}
+	    }
+	}
 
       obj_list = db_get_all_classes ();
 
@@ -8910,7 +8907,7 @@ sch_class_priv (T_NET_BUF * net_buf, char *class_name, char pat_flag, T_SRV_HAND
 
 	  p = CONST_CAST (char *, db_get_class_name (obj_tmp->op));
 	  q = p;
-	  /* If the user does not exist, the entire class_name string is searched. */
+	  /* If the user does not exist, compare the entire class_name. */
 	  if (owner && db_is_system_class (obj_tmp->op) == FALSE)
 	    {
 	      /* p: unique_name, q: class_name */
@@ -8924,12 +8921,13 @@ sch_class_priv (T_NET_BUF * net_buf, char *class_name, char pat_flag, T_SRV_HAND
 		  assert (false);
 		}
 
-	      if (db_get_owner (obj_tmp->op) == owner)
+	      /* If the owner is different from the specified owner, skip it. */
+	      if (db_get_owner (obj_tmp->op) != owner)
 		{
 		  continue;
 		}
 	    }
-	  if (class_name != NULL && str_like (q, class_name, '\\') < 1)
+	  if (class_name_only != NULL && str_like (q, class_name_only, '\\') < 1)
 	    {
 	      continue;
 	    }
@@ -9282,31 +9280,35 @@ sch_direct_super_class (T_NET_BUF * net_buf, char *class_name, int pattern_flag,
   char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
   int avail_size = sizeof (sql_stmt) - 1;
   char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
+  char *class_name_only = NULL;
 
   ut_tolower (class_name);
 
-  {
-    char *dot = NULL;
-    int len = 0;
+  if (class_name)
+    {
+      char *dot = NULL;
+      int len = 0;
 
-    dot = strchr (class_name, '.');
-    if (dot)
-      {
-	len = STATIC_CAST (int, dot - class_name);
-	if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
-	  {
-	    memcpy (schema_name, class_name, len);
-	    schema_name[len] = '\0';
-	    class_name = dot + 1;
-	  }
-      }
-  }
+      class_name_only = class_name;
+      dot = strchr (class_name, '.');
+      if (dot)
+	{
+	  len = STATIC_CAST (int, dot - class_name);
+	  /* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	  if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+	    {
+	      memcpy (schema_name, class_name, len);
+	      schema_name[len] = '\0';
+	      class_name_only = dot + 1;
+	    }
+	}
+    }
 
   // *INDENT-OFF*
   STRING_APPEND (sql_p, avail_size,
 	"SELECT "
 	  "CASE "
-	    "WHEN ("
+	    "WHEN ( "
 		"SELECT b.is_system_class "
 		"FROM db_class b "
 		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
@@ -9314,7 +9316,7 @@ sch_direct_super_class (T_NET_BUF * net_buf, char *class_name, int pattern_flag,
 	    "ELSE a.class_name "
 	    "END AS unique_name, "
 	  "CASE "
-	    "WHEN ("
+	    "WHEN ( "
 		"SELECT b.is_system_class "
 		"FROM db_class b "
 		"WHERE b.class_name = a.super_class_name AND b.owner_name = a.super_owner_name "
@@ -9322,24 +9324,25 @@ sch_direct_super_class (T_NET_BUF * net_buf, char *class_name, int pattern_flag,
 	    "ELSE a.super_class_name "
 	    "END AS super_unique_name "
 	"FROM "
-	  "db_direct_super_class a ");
+	  "db_direct_super_class a "
+	"WHERE 1 = 1 ");
   // *INDENT-ON*
 
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
-      if (class_name)
+      if (class_name_only)
 	{
-	  STRING_APPEND (sql_p, avail_size, "WHERE a.class_name LIKE '%s' ESCAPE '%s' ", class_name,
+	  STRING_APPEND (sql_p, avail_size, "AND a.class_name LIKE '%s' ESCAPE '%s' ", class_name_only,
 			 get_backslash_escape_string ());
 	}
     }
   else
     {
-      if (class_name == NULL)
+      if (class_name_only == NULL)
 	{
-	  class_name = (char *) "";
+	  class_name_only = CONST_CAST (char *, "");
 	}
-      STRING_APPEND (sql_p, avail_size, "WHERE a.class_name = '%s'", class_name);
+      STRING_APPEND (sql_p, avail_size, "AND a.class_name = '%s' ", class_name_only);
     }
 
   if (*schema_name)
@@ -9367,25 +9370,29 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
   int num_result;
   DB_OBJECT *class_object;
   char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
+  char *class_name_only = NULL;
 
   ut_tolower (class_name);
 
-  {
-    char *dot = NULL;
-    int len = 0;
+  if (class_name)
+    {
+      char *dot = NULL;
+      int len = 0;
 
-    dot = strchr (class_name, '.');
-    if (dot)
-      {
-	len = STATIC_CAST (int, dot - class_name);
-	if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
-	  {
-	    memcpy (schema_name, class_name, len);
-	    schema_name[len] = '\0';
-	    class_name = dot + 1;
-	  }
-      }
-  }
+      class_name_only = class_name;
+      dot = strchr (class_name, '.');
+      if (dot)
+	{
+	  len = STATIC_CAST (int, dot - class_name);
+	  /* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	  if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+	    {
+	      memcpy (schema_name, class_name, len);
+	      schema_name[len] = '\0';
+	      class_name_only = dot + 1;
+	    }
+	}
+    }
 
   /* is it existing class? */
   class_object = db_find_class (class_name);
@@ -9400,7 +9407,7 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
   STRING_APPEND (sql_p, avail_size,
 	"SELECT "
 	  "CASE "
-	    "WHEN ("
+	    "WHEN ( "
 		"SELECT c.is_system_class "
 		"FROM db_class c "
 		"WHERE c.class_name = a.class_name AND c.owner_name = a.owner_name "
@@ -9419,7 +9426,7 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
 	  "AMD a.owner_name = b.owner_name "
 	  "AND a.is_primary_key = 'YES' "
 	  "AND a.class_name = '%s' ",
-	class_name);
+	class_name_only);
   // *INDENT-ON*
 
   if (*schema_name)
