@@ -9423,7 +9423,7 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
 	"WHERE "
 	  "a.index_name = b.index_name "
 	  "AND a.class_name = b.class_name "
-	  "AMD a.owner_name = b.owner_name "
+	  "AND a.owner_name = b.owner_name "
 	  "AND a.is_primary_key = 'YES' "
 	  "AND a.class_name = '%s' ",
 	class_name_only);
@@ -9434,7 +9434,7 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
       STRING_APPEND (sql_p, avail_size, "AND a.owner_name = UPPER ('%s') ", schema_name);
     }
 
-  STRING_APPEND (sql_p, avail_size, " ORDER BY b.key_attr_name ");
+  STRING_APPEND (sql_p, avail_size, "ORDER BY b.key_attr_name ");
 
   if ((num_result = sch_query_execute (srv_handle, sql_stmt, net_buf)) < 0)
     {
