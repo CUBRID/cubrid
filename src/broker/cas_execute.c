@@ -8781,7 +8781,7 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 		}
 
 	      /* If the owner is different from the specified owner, skip it. */
-	      if (db_get_owner (tmp_obj) != owner)
+	      if (trigger->owner != owner)
 		{
 		  continue;
 		}
