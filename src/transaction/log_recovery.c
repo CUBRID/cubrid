@@ -2771,12 +2771,12 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 		    {
 		      /* execute undo */
-		      rcvindex = sysop_end->mvcc_undo.undo.data.rcvindex;
-		      rcv.length = sysop_end->mvcc_undo.undo.length;
-		      rcv.offset = sysop_end->mvcc_undo.undo.data.offset;
-		      rcv_vpid.volid = sysop_end->mvcc_undo.undo.data.volid;
-		      rcv_vpid.pageid = sysop_end->mvcc_undo.undo.data.pageid;
-		      rcv.mvcc_id = sysop_end->mvcc_undo.mvccid;
+		      rcvindex = sysop_end->mvcc_undo_info.mvcc_undo.undo.data.rcvindex;
+		      rcv.length = sysop_end->mvcc_undo_info.mvcc_undo.undo.length;
+		      rcv.offset = sysop_end->mvcc_undo_info.mvcc_undo.undo.data.offset;
+		      rcv_vpid.volid = sysop_end->mvcc_undo_info.mvcc_undo.undo.data.volid;
+		      rcv_vpid.pageid = sysop_end->mvcc_undo_info.mvcc_undo.undo.data.pageid;
+		      rcv.mvcc_id = sysop_end->mvcc_undo_info.mvcc_undo.mvccid;
 
 		      /* will jump to parent LSA. save it now before advancing to undo data */
 		      LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
@@ -3265,7 +3265,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 	  }
 	else if (sysop_start_postpone->sysop_end.type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 	  {
-	    undo_size = sysop_start_postpone->sysop_end.mvcc_undo.undo.length;
+	    undo_size = sysop_start_postpone->sysop_end.mvcc_undo_info.mvcc_undo.undo.length;
 	  }
 	LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_START_POSTPONE), &log_lsa, log_pgptr);
 	LOG_READ_ADD_ALIGN (thread_p, undo_size, &log_lsa, log_pgptr);
@@ -3288,7 +3288,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 	  }
 	else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 	  {
-	    undo_size = sysop_end->mvcc_undo.undo.length;
+	    undo_size = sysop_end->mvcc_undo_info.mvcc_undo.undo.length;
 	  }
 	LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_END), &log_lsa, log_pgptr);
       }

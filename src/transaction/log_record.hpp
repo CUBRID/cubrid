@@ -75,6 +75,8 @@ enum log_rectype
                                  *   usually affects more than one page). end system operation also includes undo data that
                                  *   is processed during rollback or undo.
                                  *
+                                 * - LOG_SYSOP_END_LOGICAL_MVCC_UNDO: TODO:
+                                 *
                                  * - LOG_SYSOP_END_LOGICAL_COMPENSATE: system operation is used for complex logical operation
                                  *   that has the purpose of compensating a change on undo or rollback. end system operation
                                  *   also includes the LSA of previous undo log record.
@@ -323,7 +325,19 @@ struct log_rec_sysop_end
   union				/* other info based on type */
   {
     LOG_REC_UNDO undo;		/* undo data for logical undo */
-    LOG_REC_MVCC_UNDO mvcc_undo;	/* undo data for logical undo of MVCC operation */
+    struct
+    {
+      LOG_REC_MVCC_UNDO mvcc_undo;	/* undo data for logical undo of MVCC operation */
+      MVCCID parent_mvccid;	/* If transaction has an mvccid allocated by a sub-transaction, this field will
+				 * contain the transaction's "main" mvccid (which, as indicated in implementations
+				 * in logtb_get_new_subtransaction_mvccid and logtb_get_current_mvccid, must
+				 * be valid) while the mvcc_undo.mvccid will contain the mvccid of the subtransaction.
+				 * Otherwise, null.
+				 * The purpose of this field is twofold across transactional log replication boundary
+				 * (currently only on passive transaction server):
+				 *  - to discerne the nature of the mvccid as either 'main' mvccid or sub-mvccid
+				 *  - and to allow proper completion of either[both] mvccid or[and] sub-mvccid */
+    } mvcc_undo_info;
     LOG_LSA compensate_lsa;	/* compensate lsa for logical compensate */
     struct
     {
