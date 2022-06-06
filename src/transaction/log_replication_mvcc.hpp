@@ -11,7 +11,15 @@
 
 namespace cublog
 {
-  /*
+  /* Implements mvccid/sub-mvccid registration & completion during passive transaction
+   * server replication. Mimics the structure of:
+   *  - [at most] one main mvccid per transaction
+   *  - [at most] one sub-mvccid per transaction
+   * that is also present in the structure LOG_TDES and associated logic.
+   *
+   * NOTE: even if implementation supports more than one sub-mvccid per transaction, currently
+   * this is not implemented/supported in practice; hence, there are asserts to make sure that at most
+   * one sub-mvccid is present
    * */
   class replicator_mvcc
   {
@@ -31,7 +39,7 @@ namespace cublog
       replicator_mvcc &operator = (replicator_mvcc &&) = delete;
 
       void new_assigned_mvccid (TRANID tranid, MVCCID mvccid);
-      void new_assigned_mvccid (TRANID tranid, MVCCID mvccid, MVCCID parent_mvccid);
+      void new_assigned_sub_mvccid_or_mvccid (TRANID tranid, MVCCID mvccid, MVCCID parent_mvccid);
 
       void complete_mvcc (TRANID tranid, bool committed);
       void complete_sub_mvcc (TRANID tranid);

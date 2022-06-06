@@ -56,7 +56,7 @@ namespace cublog
   }
 
   void
-  replicator_mvcc::new_assigned_mvccid (TRANID tranid, MVCCID mvccid, MVCCID parent_mvccid)
+  replicator_mvcc::new_assigned_sub_mvccid_or_mvccid (TRANID tranid, MVCCID mvccid, MVCCID parent_mvccid)
   {
     assert (MVCCID_IS_NORMAL (mvccid));
 
@@ -65,7 +65,7 @@ namespace cublog
 	// mvccid is a sub-id, as it has a valid parent mvccid
 	assert (MVCCID_IS_NORMAL (parent_mvccid));
 
-	const auto found_it = m_mapped_mvccids.find (tranid);
+	auto found_it = m_mapped_mvccids.find (tranid);
 
 	//assert (found_it == m_mapped_mvccids.cend ());
 	if (found_it == m_mapped_mvccids.cend ())
@@ -82,11 +82,13 @@ namespace cublog
 	    // not sure whether this is a valid scenario
 	    // however, it will be commited/aborted at the end of the transaction
 	    new_assigned_mvccid (tranid, parent_mvccid);
+	    found_it = m_mapped_mvccids.find (tranid);
+	    assert (found_it != m_mapped_mvccids.cend ());
 	  }
 
 	if (found_it != m_mapped_mvccids.cend ())
 	  {
-	    assert (found_it->second.id == mvccid);
+	    assert (found_it->second.id == parent_mvccid);
 	    assert (found_it->second.sub_ids.empty ());
 	    found_it->second.sub_ids.push_back (mvccid);
 	  }

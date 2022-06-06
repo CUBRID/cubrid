@@ -237,6 +237,7 @@ namespace cublog
 	    break;
 	  case LOG_DBEXTERN_REDO_DATA:
 	  {
+	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_DBOUT_REDO));
 	    const LOG_REC_DBOUT_REDO dbout_redo =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_DBOUT_REDO> ();
 	    log_rcv rcv;
@@ -386,7 +387,7 @@ namespace cublog
 
     // only mvccids that pertain to redo's are processed here
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
-    // TODO: superfluous call
+    // TODO: superfluous call; can be consolidated in previous call
     assert_correct_mvccid (record_info.m_logrec, mvccid);
     log_replication_update_header_mvcc_vacuum_info (mvccid, rec_header.back_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
     if (m_replicate_mvcc && MVCCID_IS_NORMAL (mvccid))
@@ -414,7 +415,7 @@ namespace cublog
       const T &log_rec, bool assert_mvccid_non_null)
   {
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (log_rec);
-    // TODO: superfluous call
+    // TODO: superfluous call; can be consolidated in previous call
     assert_correct_mvccid (log_rec, mvccid);
     log_replication_update_header_mvcc_vacuum_info (mvccid, prev_rec_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
   }
@@ -471,7 +472,7 @@ namespace cublog
 	assert (LSA_LT (&log_rec.lastparent_lsa, &rec_lsa));
 
 	// mvccid might be valid or not
-	if (MVCCID_IS_VALID (log_rec.mvcc_undo_info.mvcc_undo.mvccid))
+	if (MVCCID_IS_NORMAL (log_rec.mvcc_undo_info.mvcc_undo.mvccid))
 	  {
 	    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
 	      {
@@ -480,7 +481,7 @@ namespace cublog
 			       (unsigned long long)log_rec.mvcc_undo_info.mvcc_undo.mvccid,
 			       (unsigned long long)log_rec.mvcc_undo_info.parent_mvccid);
 	      }
-	    m_replicator_mvccid->new_assigned_mvccid (tranid, log_rec.mvcc_undo_info.mvcc_undo.mvccid,
+	    m_replicator_mvccid->new_assigned_sub_mvccid_or_mvccid (tranid, log_rec.mvcc_undo_info.mvcc_undo.mvccid,
 		log_rec.mvcc_undo_info.parent_mvccid);
 	  }
       }
