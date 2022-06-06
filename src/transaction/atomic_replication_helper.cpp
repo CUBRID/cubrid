@@ -119,7 +119,6 @@ namespace cublog
   atomic_replication_helper::atomic_replication_sequence::atomic_replication_sequence (log_rv_redo_context redo_context)
     : m_redo_context { redo_context }
   {
-
   }
 
   int atomic_replication_helper::atomic_replication_sequence::add_atomic_replication_unit (THREAD_ENTRY *thread_p,
@@ -153,7 +152,10 @@ namespace cublog
 
   void atomic_replication_helper::atomic_replication_sequence::apply_and_unfix_sequence (THREAD_ENTRY *thread_p)
   {
-    // sequenceally apply each log redo of the sequence before unfixing
+    // Applying the log right after the fix could lead to problems as the records are fixed one by one as
+    // they come to be read by the PTS and some might be unfixed and refixed after the apply procedure
+    // leading to inconsistency. To avoid this situation we sequentially apply each log redo of the sequence
+    // when the end sequence log appears and the entire sequence is fixed
     apply_all_log_redos (thread_p);
 
     for (size_t i = 0; i < m_units.size (); i++)
@@ -218,6 +220,7 @@ namespace cublog
 	apply_log_by_type<LOG_REC_COMPENSATE> (thread_p, redo_context, header.type);
 	break;
       default:
+	assert (false);
 	break;
       }
   }
@@ -229,13 +232,17 @@ namespace cublog
     LOG_RCV rcv;
     if (m_page_ptr != nullptr)
       {
-	assert (m_page_ptr != nullptr && m_watcher.pgptr == nullptr);
+	assert (m_watcher.pgptr == nullptr);
 	rcv.pgptr = m_page_ptr;
+      }
+    else if (m_watcher.pgptr != nullptr)
+      {
+	assert (m_page_ptr == nullptr);
+	rcv.pgptr = m_watcher.pgptr;
       }
     else
       {
-	assert (m_page_ptr == nullptr && m_watcher.pgptr != nullptr);
-	rcv.pgptr = m_watcher.pgptr;
+	assert_release (false);
       }
 
     redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
