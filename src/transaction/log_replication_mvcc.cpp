@@ -42,9 +42,22 @@ namespace cublog
       }
     else
       {
-	// only one mvccid per transaction is assumed
-	// sub-transaction mvccid's are not implemented yet
-	assert (found_it->second.id == mvccid);
+        // assert that main mvccid and sub-mvccid are consistent;
+        // this is the consequence of the following scenario which includes selupd operations
+        // (see qexec_execute_selupd_list function):
+        //  - both a new main mvccid and sub-mvccid are allocated at the same time (see implementation
+        //    of logtb_get_new_subtransaction_mvccid function)
+        //  - during the selupd implementation and transaction logging, first the sub-mvccid appears
+        //    as part of log records and it is registered as such
+        //  - at some point both the main mvccid and the sub-mvccid appear as part of a
+        //    LOG_SYSOP_END_LOGICAL_MVCC_UNDO record; in which case we re-assign the - previously thought -
+        //    main mvccid as sub-mvccid and the new main mvccid as proper main
+        //  - subsequently, MVCC log records are replicated with the sub-mvccid figuring as 'main' again
+        //
+        // TODO: might this situation actually be a transactional logging bug?
+	assert (found_it->second.id == mvccid
+		|| (found_it->second.sub_ids.size () == 1
+		    && found_it->second.sub_ids[0] == mvccid));
       }
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
@@ -68,27 +81,47 @@ namespace cublog
 	auto found_it = m_mapped_mvccids.find (tranid);
 
 	//assert (found_it == m_mapped_mvccids.cend ());
-	if (found_it == m_mapped_mvccids.cend ())
-	  {
-	    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
-	      {
-		_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] new_assigned_sub_mvccid"
-			       " WARNING sudden new parent_mvccid tranid=%d parent_mvccid=%llu\n",
-			       tranid, (unsigned long long)parent_mvccid);
-		dump_map ();
-	      }
+//	if (found_it == m_mapped_mvccids.cend ())
+//	  {
+//	    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+//	      {
+//		_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] new_assigned_sub_mvccid_or_mvccid\n"
+//			       " WARNING sudden new parent_mvccid\n"
+//			       " tranid=%d parent_mvccid=%llu\n",
+//			       tranid, (unsigned long long)parent_mvccid);
+//		dump_map ();
+//	      }
 
-	    // TODO: a new parent mvccid appeared out of the blue;
-	    // not sure whether this is a valid scenario
-	    // however, it will be commited/aborted at the end of the transaction
-	    new_assigned_mvccid (tranid, parent_mvccid);
-	    found_it = m_mapped_mvccids.find (tranid);
-	    assert (found_it != m_mapped_mvccids.cend ());
-	  }
+//	    // TODO: a new parent mvccid appeared out of the blue;
+//	    // not sure whether this is a valid scenario
+//	    // however, it will be commited/aborted at the end of the transaction
+//	    new_assigned_mvccid (tranid, parent_mvccid);
+//	    found_it = m_mapped_mvccids.find (tranid);
+//	    assert (found_it != m_mapped_mvccids.cend ());
+//	  }
 
 	if (found_it != m_mapped_mvccids.cend ())
 	  {
-	    assert (found_it->second.id == parent_mvccid);
+	    if (found_it->second.id == parent_mvccid)
+	      {
+		// all good, previously seen mvccid is an actual proper parent/main transaction mvccid
+	      }
+	    else
+	      {
+		// previosly seen, "main" mvccid, appears now as a sub-mvccid
+		// see comment above, before assert in new_assigned_mvccid function
+		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+		  {
+		    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] new_assigned_sub_mvccid_or_mvccid"
+				   " WARNING previosly seen main mvccid, appears now as a sub-mvccid"
+				   " tranid=%d parent_mvccid=%llu\n",
+				   tranid, (unsigned long long)parent_mvccid);
+		    dump_map ();
+		  }
+		assert (found_it->second.id == mvccid);
+		found_it->second.id = parent_mvccid;
+
+	      }
 	    assert (found_it->second.sub_ids.empty ());
 	    found_it->second.sub_ids.push_back (mvccid);
 	  }
@@ -99,7 +132,7 @@ namespace cublog
 
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
 	  {
-	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] new_assigned_sub_mvccid tranid=%d"
+	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] new_assigned_sub_mvccid_or_mvccid tranid=%d"
 			   " mvccid=%llu parent_mvccid=%llu\n",
 			   tranid, (unsigned long long)mvccid, (unsigned long long)parent_mvccid);
 	    dump_map ();
