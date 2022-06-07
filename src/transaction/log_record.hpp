@@ -219,10 +219,7 @@ typedef struct log_rec_mvcc_undoredo LOG_REC_MVCC_UNDOREDO;
 struct log_rec_mvcc_undoredo
 {
   LOG_REC_UNDOREDO undoredo;	/* Undoredo information */
-  MVCCID mvccid;		/* MVCC Identifier for transaction. If log record is for a sub-transaction, the
-				 * mvccid is that of the sub-transaction. If the subtransaction does have a valid
-				 * mvccid, the transaction must also have a valid mvccid.
-				 * The reciprocal is not true. */
+  MVCCID mvccid;		/* MVCC Identifier for transaction */
   LOG_VACUUM_INFO vacuum_info;	/* Info required for vacuum */
 };
 
@@ -231,10 +228,7 @@ typedef struct log_rec_mvcc_undo LOG_REC_MVCC_UNDO;
 struct log_rec_mvcc_undo
 {
   LOG_REC_UNDO undo;		/* Undo information */
-  MVCCID mvccid;		/* MVCC Identifier for transaction. If log record is for a sub-transaction, the
-				 * mvccid is that of the sub-transaction. If the subtransaction does have a valid
-				 * mvccid, the transaction must also have a valid mvccid.
-				 * The reciprocal is not true. */
+  MVCCID mvccid;		/* MVCC Identifier for transaction */
   LOG_VACUUM_INFO vacuum_info;	/* Info required for vacuum */
 };
 
@@ -243,10 +237,7 @@ typedef struct log_rec_mvcc_redo LOG_REC_MVCC_REDO;
 struct log_rec_mvcc_redo
 {
   LOG_REC_REDO redo;		/* Location of recovery data */
-  MVCCID mvccid;		/* MVCC Identifier for transaction. If log record is for a sub-transaction, the
-				 * mvccid is that of the sub-transaction. If the subtransaction does have a valid
-				 * mvccid, the transaction must also have a valid mvccid.
-				 * The reciprocal is not true. */
+  MVCCID mvccid;		/* MVCC Identifier for transaction */
 };
 
 /* replication log structure */
