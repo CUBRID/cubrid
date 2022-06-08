@@ -18,6 +18,7 @@
 
 #include "atomic_replication_helper.hpp"
 
+#include "log_recovery.h"
 #include "log_recovery_redo.hpp"
 #include "page_buffer.h"
 #include "system_parameter.h"
@@ -29,21 +30,43 @@ namespace cublog
    * atomic_replication_helper function definitions                    *
    *********************************************************************/
 
-  void atomic_replication_helper::start_new_atomic_replication_sequence (TRANID tranid, LOG_LSA lsa)
+  void atomic_replication_helper::add_atomic_replication_sequence (TRANID trid, log_rv_redo_context redo_context)
   {
-    if (tranid == NULL_TRANID)
+    m_sequences_map.emplace (trid, redo_context);
+  }
+
+  int atomic_replication_helper::add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa,
+      LOG_RCVINDEX rcvindex, VPID vpid)
+  {
+#if !defined (NDEBUG)
+    if (!VPID_ISNULL (&vpid) && !check_for_page_validity (vpid, tranid))
       {
+	// the page is no longer relevant
 	assert (false);
       }
-    // the start log record is an empty log record and we only want to know its lsa
-    m_atomic_sequences_map.emplace (tranid, atomic_replication_sequence_type ());
-    m_atomic_sequences_map[tranid].emplace_back (atomic_replication_unit (lsa, vpid_Null_vpid, RV_NOT_DEFINED));
+    vpid_set_type &vpids = m_vpid_sets_map[tranid];
+    vpids.insert (vpid);
+#endif
+
+    auto iterator = m_sequences_map.find (tranid);
+    if (iterator == m_sequences_map.cend ())
+      {
+	return ER_FAILED;
+      }
+
+    int error_code = iterator->second.add_atomic_replication_unit (thread_p, record_lsa, rcvindex, vpid);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
+
+    return NO_ERROR;
   }
 
 #if !defined (NDEBUG)
   bool atomic_replication_helper::check_for_page_validity (VPID vpid, TRANID tranid) const
   {
-    for (auto const &vpid_sets_iterator : m_atomic_sequences_vpids_map)
+    for (auto const &vpid_sets_iterator : m_vpid_sets_map)
       {
 	if (vpid_sets_iterator.first != tranid)
 	  {
@@ -64,8 +87,8 @@ namespace cublog
 
   bool atomic_replication_helper::is_part_of_atomic_replication (TRANID tranid) const
   {
-    const auto iterator = m_atomic_sequences_map.find (tranid);
-    if (iterator == m_atomic_sequences_map.cend ())
+    const auto iterator = m_sequences_map.find (tranid);
+    if (iterator == m_sequences_map.cend ())
       {
 	return false;
       }
@@ -73,46 +96,86 @@ namespace cublog
     return true;
   }
 
-  bool atomic_replication_helper::check_for_sysop_end (TRANID tranid, LOG_LSA parent_lsa) const
-  {
-    const auto iterator = m_atomic_sequences_map.find (tranid);
-    if (iterator == m_atomic_sequences_map.cend ())
-      {
-	return false;
-      }
-
-    // if the atomic replication sequence start lsa is higher or equal to the parent lsa of the LOG_SYSOP_END
-    // then the sequence can end
-    return iterator->second[0].get_lsa () >= parent_lsa;
-  }
-
   void atomic_replication_helper::unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, TRANID tranid)
   {
-    auto iterator = m_atomic_sequences_map.find (tranid);
-    if (iterator == m_atomic_sequences_map.end ())
+    auto iterator = m_sequences_map.find (tranid);
+    if (iterator == m_sequences_map.end ())
       {
 	assert (false);
 	return;
       }
 
-    for (size_t i = 1; i < iterator->second.size (); i++)
-      {
-	iterator->second[i].unfix_page (thread_p);
-      }
-    iterator->second.clear ();
-    m_atomic_sequences_map.erase (iterator);
+    iterator->second.apply_and_unfix_sequence (thread_p);
+    m_sequences_map.erase (iterator);
 
 #if !defined (NDEBUG)
-    m_atomic_sequences_vpids_map.erase (tranid);
+    m_vpid_sets_map.erase (tranid);
 #endif
   }
 
-  /****************************************************************************
-   * atomic_replication_helper::atomic_replication_unit function definitions  *
-   ****************************************************************************/
+  /********************************************************************************
+   * atomic_replication_helper::atomic_replication_sequence function definitions  *
+   ********************************************************************************/
 
-  atomic_replication_helper::atomic_replication_unit::atomic_replication_unit (log_lsa lsa, VPID vpid,
-      LOG_RCVINDEX rcvindex)
+  atomic_replication_helper::atomic_replication_sequence::atomic_replication_sequence (log_rv_redo_context redo_context)
+    : m_redo_context { redo_context }
+  {
+  }
+
+  int atomic_replication_helper::atomic_replication_sequence::add_atomic_replication_unit (THREAD_ENTRY *thread_p,
+      log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid)
+  {
+    m_units.emplace_back (record_lsa, vpid, rcvindex);
+    auto iterator = m_page_map.find (vpid);
+    if (iterator == m_page_map.cend ())
+      {
+	int error_code = m_units.back ().fix_page (thread_p);
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
+	m_page_map.emplace (vpid,  m_units.back ().get_page_ptr ());
+      }
+    else
+      {
+	m_units.back ().set_page_ptr (iterator->second);
+      }
+    return NO_ERROR;
+  }
+
+  void atomic_replication_helper::atomic_replication_sequence::apply_all_log_redos (THREAD_ENTRY *thread_p)
+  {
+    for (size_t i = 0; i < m_units.size (); i++)
+      {
+	m_units[i].apply_log_redo (thread_p, m_redo_context);
+      }
+  }
+
+  void atomic_replication_helper::atomic_replication_sequence::apply_and_unfix_sequence (THREAD_ENTRY *thread_p)
+  {
+    // Applying the log right after the fix could lead to problems as the records are fixed one by one as
+    // they come to be read by the PTS and some might be unfixed and refixed after the apply procedure
+    // leading to inconsistency. To avoid this situation we sequentially apply each log redo of the sequence
+    // when the end sequence log appears and the entire sequence is fixed
+    apply_all_log_redos (thread_p);
+
+    for (size_t i = 0; i < m_units.size (); i++)
+      {
+	auto iterator = m_page_map.find (m_units[i].m_vpid);
+	if (iterator != m_page_map.end ())
+	  {
+	    m_units[i].unfix_page (thread_p);
+	    m_page_map.erase (iterator);
+	  }
+      }
+  }
+
+  /*********************************************************************************************************
+   * atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit function definitions  *
+   *********************************************************************************************************/
+
+  atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::atomic_replication_unit (log_lsa lsa,
+      VPID vpid, LOG_RCVINDEX rcvindex)
     : m_record_lsa { lsa }
     , m_vpid { vpid }
     , m_record_index { rcvindex }
@@ -123,23 +186,76 @@ namespace cublog
     PGBUF_INIT_WATCHER (&m_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
   }
 
-  atomic_replication_helper::atomic_replication_unit::atomic_replication_unit (
-	  atomic_replication_helper::atomic_replication_unit &&that)
-    : m_record_lsa {std::move (that.m_record_lsa)}
-    , m_vpid {std::move (that.m_vpid)}
-    , m_record_index {std::move (that.m_record_index)}
-  {
-    // ctor only used during construction; not allowed while operation is in progress
-    assert (m_page_ptr == nullptr);
-    assert (PGBUF_IS_CLEAN_WATCHER (&m_watcher));
-  }
-
-  atomic_replication_helper::atomic_replication_unit::~atomic_replication_unit ()
+  atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::~atomic_replication_unit ()
   {
     PGBUF_CLEAR_WATCHER (&m_watcher);
   }
 
-  int atomic_replication_helper::atomic_replication_unit::fix_page (THREAD_ENTRY *thread_p)
+  void
+  atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::apply_log_redo (THREAD_ENTRY *thread_p,
+      log_rv_redo_context &redo_context)
+  {
+    redo_context.m_reader.set_lsa_and_fetch_page (m_record_lsa, log_reader::fetch_mode::FORCE);
+    const log_rec_header header = redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_header> ();
+
+    switch (header.type)
+      {
+      case LOG_REDO_DATA:
+	apply_log_by_type<LOG_REC_REDO> (thread_p, redo_context, header.type);
+	break;
+      case LOG_MVCC_REDO_DATA:
+	apply_log_by_type<LOG_REC_MVCC_REDO> (thread_p, redo_context, header.type);
+	break;
+      case LOG_UNDOREDO_DATA:
+      case LOG_DIFF_UNDOREDO_DATA:
+	apply_log_by_type<LOG_REC_UNDOREDO> (thread_p, redo_context, header.type);
+	break;
+      case LOG_MVCC_UNDOREDO_DATA:
+      case LOG_MVCC_DIFF_UNDOREDO_DATA:
+	apply_log_by_type<LOG_REC_MVCC_UNDOREDO> (thread_p, redo_context, header.type);
+	break;
+      case LOG_RUN_POSTPONE:
+	apply_log_by_type<LOG_REC_RUN_POSTPONE> (thread_p, redo_context, header.type);
+	break;
+      case LOG_COMPENSATE:
+	apply_log_by_type<LOG_REC_COMPENSATE> (thread_p, redo_context, header.type);
+	break;
+      default:
+	assert (false);
+	break;
+      }
+  }
+
+  template <typename T>
+  void atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::apply_log_by_type (
+	  THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context, LOG_RECTYPE rectype)
+  {
+    LOG_RCV rcv;
+    if (m_page_ptr != nullptr)
+      {
+	assert (m_watcher.pgptr == nullptr);
+	rcv.pgptr = m_page_ptr;
+      }
+    else if (m_watcher.pgptr != nullptr)
+      {
+	assert (m_page_ptr == nullptr);
+	rcv.pgptr = m_watcher.pgptr;
+      }
+    else
+      {
+	assert_release (false);
+      }
+
+    redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
+    const log_rv_redo_rec_info<T> record_info (m_record_lsa, rectype, *redo_context.m_reader.reinterpret_cptr<T> ());
+    if (log_rv_check_redo_is_needed (rcv.pgptr, record_info.m_start_lsa, redo_context.m_end_redo_lsa))
+      {
+	rcv.reference_lsa = m_record_lsa;
+	log_rv_redo_record_sync_apply (thread_p, redo_context, record_info, m_vpid, rcv);
+      }
+  }
+
+  int atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::fix_page (THREAD_ENTRY *thread_p)
   {
     switch (m_record_index)
       {
@@ -180,7 +296,8 @@ namespace cublog
     return NO_ERROR;
   }
 
-  void atomic_replication_helper::atomic_replication_unit::unfix_page (THREAD_ENTRY *thread_p)
+  void atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::unfix_page (
+	  THREAD_ENTRY *thread_p)
   {
     switch (m_record_index)
       {
@@ -200,6 +317,20 @@ namespace cublog
 	pgbuf_unfix (thread_p, m_page_ptr);
 	break;
       }
+  }
+
+  PAGE_PTR atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::get_page_ptr ()
+  {
+    if (m_page_ptr != nullptr)
+      {
+	return m_page_ptr;
+      }
+    return m_watcher.pgptr;
+  }
+
+  void atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::set_page_ptr (const PAGE_PTR &ptr)
+  {
+    m_page_ptr = ptr;
   }
 
   LOG_LSA atomic_replication_helper::atomic_replication_unit::get_lsa () const

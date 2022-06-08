@@ -25,7 +25,6 @@
 
 #include "log_lsa.hpp"
 #include "log_record.hpp"
-#include "log_recovery.h"
 #include "log_recovery_redo.hpp"
 #include "page_buffer.h"
 #include "thread_entry.hpp"
@@ -49,107 +48,82 @@ namespace cublog
       atomic_replication_helper &operator= (const atomic_replication_helper &) = delete;
       atomic_replication_helper &operator= (atomic_replication_helper &&) = delete;
 
-      void start_new_atomic_replication_sequence (TRANID tranid, LOG_LSA lsa);
-      template <typename T>
+      void add_atomic_replication_sequence (TRANID trid, log_rv_redo_context redo_context);
       int add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa, LOG_RCVINDEX rcvindex,
-				       VPID vpid, log_rv_redo_context &redo_context, const log_rv_redo_rec_info<T> &record_info);
+				       VPID vpid);
       void unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, TRANID tranid);
       bool is_part_of_atomic_replication (TRANID tranid) const;
-      bool check_for_sysop_end (TRANID tranid, LOG_LSA lsa) const;
 #if !defined (NDEBUG)
       bool check_for_page_validity (VPID vpid, TRANID tranid) const;
 #endif
 
     private:
-      /*
-       * Atomic replication unit holds the log record information necessary for recovery redo
-       */
-      class atomic_replication_unit
+
+      class atomic_replication_sequence
       {
 	public:
-	  atomic_replication_unit () = delete;
-	  atomic_replication_unit (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex);
+	  atomic_replication_sequence () = delete;
+	  explicit atomic_replication_sequence (log_rv_redo_context redo_context);
 
-	  atomic_replication_unit (const atomic_replication_unit &) = delete;
-	  atomic_replication_unit (atomic_replication_unit &&that);
+	  atomic_replication_sequence (const atomic_replication_sequence &) = delete;
+	  atomic_replication_sequence (atomic_replication_sequence &&) = delete;
 
-	  ~atomic_replication_unit ();
+	  ~atomic_replication_sequence () = default;
 
-	  atomic_replication_unit &operator= (const atomic_replication_unit &) = delete;
-	  atomic_replication_unit &operator= (atomic_replication_unit &&) = delete;
+	  atomic_replication_sequence &operator= (const atomic_replication_sequence &) = delete;
+	  atomic_replication_sequence &operator= (atomic_replication_sequence &&) = delete;
 
-	  template <typename T>
-	  void apply_log_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
-			       const log_rv_redo_rec_info<T> &record_info);
-	  int fix_page (THREAD_ENTRY *thread_p);
-	  void unfix_page (THREAD_ENTRY *thread_p);
-	  LOG_LSA get_lsa () const;
-
+	  void apply_and_unfix_sequence (THREAD_ENTRY *thread_p);
+	  int add_atomic_replication_unit (THREAD_ENTRY *thread_p, log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid);
 	private:
-	  const VPID m_vpid;
-	  const log_lsa m_record_lsa;
-	  const LOG_RCVINDEX m_record_index;
+	  void apply_all_log_redos (THREAD_ENTRY *thread_p);
 
-	  PAGE_PTR m_page_ptr;
-	  PGBUF_WATCHER m_watcher;
+	  /*
+	   * Atomic replication unit holds the log record information necessary for recovery redo
+	   */
+	  class atomic_replication_unit
+	  {
+	    public:
+	      atomic_replication_unit () = delete;
+	      atomic_replication_unit (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex);
+
+	      atomic_replication_unit (const atomic_replication_unit &) = default;
+	      atomic_replication_unit (atomic_replication_unit &&) = default;
+
+	      ~atomic_replication_unit ();
+
+	      atomic_replication_unit &operator= (const atomic_replication_unit &) = delete;
+	      atomic_replication_unit &operator= (atomic_replication_unit &&) = delete;
+
+	      void apply_log_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context);
+	      template <typename T>
+	      void apply_log_by_type (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context, LOG_RECTYPE rectype);
+	      int fix_page (THREAD_ENTRY *thread_p);
+	      void unfix_page (THREAD_ENTRY *thread_p);
+	      PAGE_PTR get_page_ptr ();
+	      void set_page_ptr (const PAGE_PTR &ptr);
+
+	      VPID m_vpid;
+	    private:
+	      log_lsa m_record_lsa;
+	      PAGE_PTR m_page_ptr;
+	      PGBUF_WATCHER m_watcher;
+	      LOG_RCVINDEX m_record_index;
+	  };
+
+	  log_rv_redo_context m_redo_context;
+	  using atomic_unit_vector = std::vector<atomic_replication_unit>;
+	  atomic_unit_vector m_units;
+	  using vpid_to_page_ptr_map = std::map<VPID, PAGE_PTR>;
+	  vpid_to_page_ptr_map m_page_map;
       };
 
-      using atomic_replication_sequence_type = std::vector<atomic_replication_unit>;
-      std::map<TRANID, atomic_replication_sequence_type> m_atomic_sequences_map;
-
+      std::map<TRANID, atomic_replication_sequence> m_sequences_map;
 #if !defined (NDEBUG)
       using vpid_set_type = std::set<VPID>;
-      std::map<TRANID, vpid_set_type> m_atomic_sequences_vpids_map;
+      std::map<TRANID, vpid_set_type> m_vpid_sets_map;
 #endif
   };
-
-  template <typename T>
-  int atomic_replication_helper::add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa,
-      LOG_RCVINDEX rcvindex, VPID vpid, log_rv_redo_context &redo_context, const log_rv_redo_rec_info<T> &record_info)
-  {
-#if !defined (NDEBUG)
-    if (!VPID_ISNULL (&vpid) && !check_for_page_validity (vpid, tranid))
-      {
-	// the page is no longer relevant
-	return ER_FAILED;
-      }
-    vpid_set_type &vpids = m_atomic_sequences_vpids_map[tranid];
-    vpids.insert (vpid);
-#endif
-
-    m_atomic_sequences_map[tranid].emplace_back (atomic_replication_unit (record_lsa, vpid, rcvindex));
-    int error_code = m_atomic_sequences_map[tranid].back ().fix_page (thread_p);
-    if (error_code != NO_ERROR)
-      {
-	return error_code;
-      }
-
-    m_atomic_sequences_map[tranid].back ().apply_log_redo (thread_p, redo_context, record_info);
-    return NO_ERROR;
-  }
-
-  template <typename T>
-  void atomic_replication_helper::atomic_replication_unit::apply_log_redo (THREAD_ENTRY *thread_p,
-      log_rv_redo_context &redo_context, const log_rv_redo_rec_info<T> &record_info)
-  {
-    LOG_RCV rcv;
-    if (m_page_ptr != nullptr)
-      {
-	rcv.pgptr = m_page_ptr;
-      }
-    else
-      {
-	assert (m_watcher.page_was_unfixed == 0);
-	rcv.pgptr = m_watcher.pgptr;
-      }
-
-    if (log_rv_check_redo_is_needed (rcv.pgptr, record_info.m_start_lsa, redo_context.m_end_redo_lsa))
-      {
-	rcv.reference_lsa = m_record_lsa;
-	log_rv_redo_record_sync_apply (thread_p,redo_context, record_info, m_vpid, rcv);
-      }
-  }
-
 }
 
 #endif // _ATOMIC_REPLICATION_HELPER_HPP_

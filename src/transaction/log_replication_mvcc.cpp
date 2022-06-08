@@ -16,7 +16,6 @@
  *
  */
 
-
 #include "log_replication_mvcc.hpp"
 
 #include "log_impl.h"
@@ -33,9 +32,19 @@ namespace cublog
   void
   replicator_mvcc::new_assigned_mvccid (TRANID tranid, MVCCID mvccid)
   {
-    assert (m_mapped_mvccids.find (tranid) == m_mapped_mvccids.cend ());
+    assert (MVCCID_IS_NORMAL (mvccid));
 
-    m_mapped_mvccids.emplace (tranid, mvccid);
+    const auto found_it = m_mapped_mvccids.find (tranid);
+    if (found_it == m_mapped_mvccids.cend ())
+      {
+	m_mapped_mvccids.emplace (tranid, mvccid);
+      }
+    else
+      {
+	// only one mvccid per transaction is assumed
+	// sub-transaction mvccid's are not implemented yet
+	assert (found_it->second == mvccid);
+      }
   }
 
   void
@@ -49,6 +58,6 @@ namespace cublog
 	log_Gl.mvcc_table.complete_mvcc (tranid, found_mvccid, committed);
 	m_mapped_mvccids.erase (found_it);
       }
-    // if not found, it means the transaction contains proper MVCC log records
+    // if not found the transaction never assigned an mvccid
   }
 }

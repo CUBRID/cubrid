@@ -89,11 +89,6 @@ MVCCID log_rv_get_log_rec_mvccid (const T &log_rec);
 /*
  */
 template <typename T>
-void assert_correct_mvccid (const T &log_rec, MVCCID mvccid);
-
-/*
- */
-template <typename T>
 VPID log_rv_get_log_rec_vpid (const T &log_rec);
 
 /*
@@ -176,6 +171,7 @@ inline MVCCID log_rv_get_log_rec_mvccid (const T &)
 template <>
 inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_MVCC_UNDOREDO> (const LOG_REC_MVCC_UNDOREDO &log_rec)
 {
+  assert (MVCCID_IS_NORMAL (log_rec.mvccid));
   return log_rec.mvccid;
 }
 
@@ -188,6 +184,7 @@ inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_UNDOREDO> (const LOG_REC_UNDORED
 template <>
 inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_MVCC_REDO> (const LOG_REC_MVCC_REDO &log_rec)
 {
+  assert (log_rec.mvccid == MVCCID_NULL);
   return log_rec.mvccid;
 }
 
@@ -214,7 +211,8 @@ inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_SYSOP_END> (const LOG_REC_SYSOP_
 {
   if (log_rec.type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
     {
-      return log_rec.mvcc_undo.mvccid;
+      assert (MVCCID_IS_NORMAL (log_rec.mvcc_undo_info.mvcc_undo.mvccid));
+      return log_rec.mvcc_undo_info.mvcc_undo.mvccid;
     }
   return MVCCID_NULL;
 }
@@ -222,61 +220,8 @@ inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_SYSOP_END> (const LOG_REC_SYSOP_
 template <>
 inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_MVCC_UNDO> (const LOG_REC_MVCC_UNDO &log_rec)
 {
+  assert (MVCCID_IS_NORMAL (log_rec.mvccid));
   return log_rec.mvccid;
-}
-
-template <typename T>
-inline void assert_correct_mvccid (const T &, MVCCID)
-{
-  static_assert (sizeof (T) == 0, "purposefully not implemented");
-}
-
-template <>
-inline void assert_correct_mvccid<LOG_REC_REDO> (const LOG_REC_REDO &, MVCCID mvccid)
-{
-  assert (mvccid == MVCCID_NULL);
-}
-
-template <>
-inline void assert_correct_mvccid<LOG_REC_MVCC_REDO> (const LOG_REC_MVCC_REDO &, MVCCID mvccid)
-{
-  assert (mvccid == MVCCID_NULL);
-}
-
-template <>
-inline void assert_correct_mvccid<LOG_REC_UNDOREDO> (const LOG_REC_UNDOREDO &, MVCCID mvccid)
-{
-  assert (mvccid == MVCCID_NULL);
-}
-
-template <>
-inline void assert_correct_mvccid<LOG_REC_MVCC_UNDOREDO> (const LOG_REC_MVCC_UNDOREDO &, MVCCID mvccid)
-{
-  assert (mvccid != MVCCID_NULL);
-}
-
-template <>
-inline void assert_correct_mvccid<LOG_REC_RUN_POSTPONE> (const LOG_REC_RUN_POSTPONE &, MVCCID mvccid)
-{
-  assert (mvccid == MVCCID_NULL);
-}
-
-template <>
-inline void assert_correct_mvccid<LOG_REC_COMPENSATE> (const LOG_REC_COMPENSATE &, MVCCID mvccid)
-{
-  assert (mvccid == MVCCID_NULL);
-}
-
-template <>
-inline void assert_correct_mvccid<LOG_REC_MVCC_UNDO> (const LOG_REC_MVCC_UNDO &, MVCCID mvccid)
-{
-  assert (mvccid != MVCCID_NULL);
-}
-
-template <>
-inline void assert_correct_mvccid<LOG_REC_SYSOP_END> (const LOG_REC_SYSOP_END &log_rec, MVCCID mvccid)
-{
-  assert (log_rec.type != LOG_SYSOP_END_LOGICAL_MVCC_UNDO || mvccid != MVCCID_NULL);
 }
 
 template <typename T>
