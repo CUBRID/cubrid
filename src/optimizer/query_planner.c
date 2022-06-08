@@ -8670,7 +8670,7 @@ qo_search_partition_join (QO_PLANNER * planner, QO_PARTITION * partition, BITSET
 			}
 		    }
 
-		  if (!found_f_edge || found_other_edge)
+		  if (!found_r_edge || found_other_edge)
 		    {
 		      continue;	/* do not skip out having other edge or non-inner index scan */
 		    }
