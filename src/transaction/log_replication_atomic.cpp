@@ -95,9 +95,24 @@ namespace cublog
 	    break;
 	  }
 	  case LOG_COMMIT:
+	    if (m_replicate_mvcc)
+	      {
+		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::COMMITTED);
+	      }
+	    calculate_replication_delay_or_dispatch_async<LOG_REC_DONETIME> (
+		    thread_entry, m_redo_lsa);
+	    break;
 	  case LOG_ABORT:
+	    if (m_replicate_mvcc)
+	      {
+		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::ABORTED);
+	      }
+	    calculate_replication_delay_or_dispatch_async<LOG_REC_DONETIME> (
+		    thread_entry, m_redo_lsa);
+	    break;
 	  case LOG_DUMMY_HA_SERVER_STATE:
-	    calculate_replication_delay_demux (thread_entry, header.type, header.trid);
+	    calculate_replication_delay_or_dispatch_async<LOG_REC_HA_SERVER_STATE> (
+		    thread_entry, m_redo_lsa);
 	    break;
 	  case LOG_TRANTABLE_SNAPSHOT:
 	    break;
@@ -108,7 +123,7 @@ namespace cublog
 		// nested atomic replication
 		assert (false);
 	      }
-	    m_atomic_helper.start_new_atomic_replication_sequence (header.trid, header.back_lsa);
+	    m_atomic_helper.add_atomic_replication_sequence (header.trid, m_redo_context);
 	    break;
 	  case LOG_END_ATOMIC_REPL:
 	    if (!m_atomic_helper.is_part_of_atomic_replication (header.trid))
@@ -153,7 +168,6 @@ namespace cublog
 
     // only mvccids that pertain to redo's are processed here
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
-    assert_correct_mvccid (record_info.m_logrec, mvccid);
     log_replication_update_header_mvcc_vacuum_info (mvccid, prev_rec_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
 
     // Redo b-tree stats differs from what the recovery usually does. Get the recovery index before deciding how to
@@ -168,8 +182,7 @@ namespace cublog
 
     if (m_atomic_helper.is_part_of_atomic_replication (trid))
       {
-	m_atomic_helper.add_atomic_replication_unit (&thread_entry, trid, rec_lsa, rcvindex, log_vpid, m_redo_context,
-	    record_info);
+	m_atomic_helper.add_atomic_replication_unit (&thread_entry, trid, rec_lsa, rcvindex, log_vpid);
       }
     else
       {

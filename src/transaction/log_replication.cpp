@@ -25,7 +25,6 @@
 #include "log_recovery.h"
 #include "log_recovery_redo.hpp"
 #include "log_recovery_redo_parallel.hpp"
-#include "log_replication_mvcc.hpp"
 #include "object_representation.h"
 #include "page_buffer.h"
 #include "recovery.h"
@@ -407,7 +406,8 @@ namespace cublog
   }
 
   template <typename T>
-  void replicator::calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry)
+  void replicator::calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
+      const log_lsa &rec_lsa)
   {
     m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
     const T log_rec = m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ();

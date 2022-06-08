@@ -26,6 +26,7 @@
 #include "log_record.hpp"
 #include "log_recovery_redo.hpp"
 #include "log_recovery_redo_perf.hpp"
+#include "log_replication_mvcc.hpp"
 #include "thread_entry_task.hpp"
 #include "perf_monitor_trackers.hpp"
 
@@ -81,8 +82,8 @@ namespace cublog
     protected:
       virtual void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa);
       template <typename T>
-      void calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry);
-      void calculate_replication_delay_demux (cubthread::entry &thread_entry, LOG_RECTYPE record_type, TRANID trid);
+      void calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
+	  const log_lsa &rec_lsa);
       template <typename T>
       void read_and_redo_record (cubthread::entry &thread_entry, const LOG_RECORD_HEADER &rec_header,
 				 const log_lsa &rec_lsa);
@@ -94,13 +95,10 @@ namespace cublog
 
     private:
       void redo_upto_nxio_lsa (cubthread::entry &thread_entry);
-      template <typename T>
-      void calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
-	  const log_lsa &rec_lsa);
-      template <typename T>
       void register_assigned_mvccid (TRANID tranid);
 
     protected:
+      const bool m_replicate_mvcc;
       log_lsa m_redo_lsa = NULL_LSA;
       log_rv_redo_context m_redo_context;
       mutable bool m_replication_active;
@@ -123,16 +121,14 @@ namespace cublog
       /* does not record anything; needed just to please reused recovery infrastructure
        */
       perf_stats m_perf_stat_idle;
+      std::unique_ptr<cublog::replicator_mvcc> m_replicator_mvccid;
 
     private:
-      const bool m_replicate_mvcc;
-
       /*
        */
       std::atomic<log_lsa> m_most_recent_trantable_snapshot_lsa;
       std::unique_ptr<cubthread::entry_manager> m_daemon_context_manager;
       cubthread::daemon *m_daemon = nullptr;
-      std::unique_ptr<cublog::replicator_mvcc> m_replicator_mvccid;
   };
 }
 

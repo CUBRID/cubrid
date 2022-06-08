@@ -56,6 +56,7 @@ namespace cublog
 #if !defined (NDEBUG)
       bool check_for_page_validity (VPID vpid, TRANID tranid) const;
 #endif
+      bool check_for_sysop_end (TRANID tranid, LOG_LSA parent_lsa) const;
 
     private:
 
@@ -75,6 +76,7 @@ namespace cublog
 
 	  void apply_and_unfix_sequence (THREAD_ENTRY *thread_p);
 	  int add_atomic_replication_unit (THREAD_ENTRY *thread_p, log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid);
+	  bool get_first_unit_lsa (LOG_LSA parent_lsa) const;
 	private:
 	  void apply_all_log_redos (THREAD_ENTRY *thread_p);
 
@@ -102,6 +104,7 @@ namespace cublog
 	      void unfix_page (THREAD_ENTRY *thread_p);
 	      PAGE_PTR get_page_ptr ();
 	      void set_page_ptr (const PAGE_PTR &ptr);
+	      LOG_LSA get_lsa () const;
 
 	      VPID m_vpid;
 	    private:
@@ -124,6 +127,35 @@ namespace cublog
       std::map<TRANID, vpid_set_type> m_vpid_sets_map;
 #endif
   };
+
+  template <typename T>
+  void atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::apply_log_by_type (
+	  THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context, LOG_RECTYPE rectype)
+  {
+    LOG_RCV rcv;
+    if (m_page_ptr != nullptr)
+      {
+	assert (m_watcher.pgptr == nullptr);
+	rcv.pgptr = m_page_ptr;
+      }
+    else if (m_watcher.pgptr != nullptr)
+      {
+	assert (m_page_ptr == nullptr);
+	rcv.pgptr = m_watcher.pgptr;
+      }
+    else
+      {
+	assert_release (false);
+      }
+
+    redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
+    const log_rv_redo_rec_info<T> record_info (m_record_lsa, rectype, *redo_context.m_reader.reinterpret_cptr<T> ());
+    if (log_rv_check_redo_is_needed (rcv.pgptr, record_info.m_start_lsa, redo_context.m_end_redo_lsa))
+      {
+	rcv.reference_lsa = m_record_lsa;
+	log_rv_redo_record_sync_apply (thread_p, redo_context, record_info, m_vpid, rcv);
+      }
+  }
 }
 
 #endif // _ATOMIC_REPLICATION_HELPER_HPP_

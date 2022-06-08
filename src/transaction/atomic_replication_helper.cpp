@@ -113,6 +113,19 @@ namespace cublog
 #endif
   }
 
+  bool atomic_replication_helper::check_for_sysop_end (TRANID tranid, LOG_LSA parent_lsa) const
+  {
+    const auto iterator = m_sequences_map.find (tranid);
+    if (iterator == m_sequences_map.cend ())
+      {
+	return false;
+      }
+
+    // if the atomic replication sequence start lsa is higher or equal to the parent lsa of the LOG_SYSOP_END
+    // then the sequence can end
+    return iterator->second.get_first_unit_lsa (parent_lsa);
+  }
+
   /********************************************************************************
    * atomic_replication_helper::atomic_replication_sequence function definitions  *
    ********************************************************************************/
@@ -170,6 +183,16 @@ namespace cublog
       }
   }
 
+  bool atomic_replication_helper::atomic_replication_sequence::get_first_unit_lsa (LOG_LSA parent_lsa) const
+  {
+    if (m_units.empty ())
+      {
+	return false;
+      }
+
+    return m_units[0].get_lsa () >= parent_lsa;
+  }
+
   /*********************************************************************************************************
    * atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit function definitions  *
    *********************************************************************************************************/
@@ -223,35 +246,6 @@ namespace cublog
       default:
 	assert (false);
 	break;
-      }
-  }
-
-  template <typename T>
-  void atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::apply_log_by_type (
-	  THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context, LOG_RECTYPE rectype)
-  {
-    LOG_RCV rcv;
-    if (m_page_ptr != nullptr)
-      {
-	assert (m_watcher.pgptr == nullptr);
-	rcv.pgptr = m_page_ptr;
-      }
-    else if (m_watcher.pgptr != nullptr)
-      {
-	assert (m_page_ptr == nullptr);
-	rcv.pgptr = m_watcher.pgptr;
-      }
-    else
-      {
-	assert_release (false);
-      }
-
-    redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
-    const log_rv_redo_rec_info<T> record_info (m_record_lsa, rectype, *redo_context.m_reader.reinterpret_cptr<T> ());
-    if (log_rv_check_redo_is_needed (rcv.pgptr, record_info.m_start_lsa, redo_context.m_end_redo_lsa))
-      {
-	rcv.reference_lsa = m_record_lsa;
-	log_rv_redo_record_sync_apply (thread_p, redo_context, record_info, m_vpid, rcv);
       }
   }
 
@@ -333,7 +327,7 @@ namespace cublog
     m_page_ptr = ptr;
   }
 
-  LOG_LSA atomic_replication_helper::atomic_replication_unit::get_lsa () const
+  LOG_LSA atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::get_lsa () const
   {
     return m_record_lsa;
   }
