@@ -85,14 +85,13 @@ namespace cublog
       void read_and_redo_record (cubthread::entry &thread_entry, const LOG_RECORD_HEADER &rec_header,
 				 const log_lsa &rec_lsa);
       template <typename T>
-      void read_and_bookkeep_mvcc_vacuum (LOG_RECTYPE rectype, const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa,
-					  bool assert_mvccid_non_null);
+      void read_and_bookkeep_mvcc_vacuum (const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa,
+					  const T &log_rec, bool assert_mvccid_non_null);
       template <typename T>
       void read_and_redo_btree_stats (cubthread::entry &thread_entry, const log_rv_redo_rec_info<T> &record_info);
       template <typename T>
       void calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
 	  const log_lsa &rec_lsa);
-      template <typename T>
       void register_assigned_mvccid (TRANID tranid);
 
     private:

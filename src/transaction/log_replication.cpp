@@ -237,6 +237,7 @@ namespace cublog
 	    break;
 	  case LOG_DBEXTERN_REDO_DATA:
 	  {
+	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_DBOUT_REDO));
 	    const LOG_REC_DBOUT_REDO dbout_redo =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_DBOUT_REDO> ();
 	    log_rcv rcv;
@@ -272,15 +273,27 @@ namespace cublog
 	    m_most_recent_trantable_snapshot_lsa.store (m_redo_lsa);
 	    break;
 	  case LOG_MVCC_UNDO_DATA:
-	    read_and_bookkeep_mvcc_vacuum<LOG_REC_MVCC_UNDO> (header.type, header.back_lsa, m_redo_lsa, true);
+	  {
+	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_MVCC_UNDO));
+	    const LOG_REC_MVCC_UNDO log_rec =
+		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_MVCC_UNDO> ();
+
+	    read_and_bookkeep_mvcc_vacuum<LOG_REC_MVCC_UNDO> (header.back_lsa, m_redo_lsa, log_rec, true);
 	    break;
+	  }
 	  case LOG_SYSOP_END:
-	    read_and_bookkeep_mvcc_vacuum<LOG_REC_SYSOP_END> (header.type, header.back_lsa, m_redo_lsa, false);
+	  {
+	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SYSOP_END));
+	    const LOG_REC_SYSOP_END log_rec =
+		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SYSOP_END> ();
+
+	    read_and_bookkeep_mvcc_vacuum<LOG_REC_SYSOP_END> (header.back_lsa, m_redo_lsa, log_rec, false);
 	    break;
+	  }
 	  case LOG_ASSIGNED_MVCCID:
 	    if (m_replicate_mvcc)
 	      {
-		register_assigned_mvccid<LOG_REC_ASSIGNED_MVCCID> (header.trid);
+		register_assigned_mvccid (header.trid);
 	      }
 	    break;
 	  default:
@@ -362,7 +375,6 @@ namespace cublog
 
     // only mvccids that pertain to redo's are processed here
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
-    assert_correct_mvccid (record_info.m_logrec, mvccid);
     log_replication_update_header_mvcc_vacuum_info (mvccid, rec_header.back_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
     if (m_replicate_mvcc && MVCCID_IS_NORMAL (mvccid))
       {
@@ -385,16 +397,10 @@ namespace cublog
 
   template <typename T>
   void
-  replicator::read_and_bookkeep_mvcc_vacuum (LOG_RECTYPE rectype, const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa,
-      bool assert_mvccid_non_null)
+  replicator::read_and_bookkeep_mvcc_vacuum (const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa,
+      const T &log_rec, bool assert_mvccid_non_null)
   {
-    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
-    const log_rv_redo_rec_info<T> record_info (rec_lsa, rectype,
-	m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ());
-
-    // mvccids that pertain to undo's are processed here
-    const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
-    assert_correct_mvccid (record_info.m_logrec, mvccid);
+    const MVCCID mvccid = log_rv_get_log_rec_mvccid (log_rec);
     log_replication_update_header_mvcc_vacuum_info (mvccid, prev_rec_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
   }
 
@@ -402,6 +408,7 @@ namespace cublog
   void replicator::calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
       const log_lsa &rec_lsa)
   {
+    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
     const T log_rec = m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ();
     // at_time, expressed in milliseconds rather than seconds
     const time_msec_t start_time_msec = log_rec.at_time;
@@ -422,12 +429,13 @@ namespace cublog
       }
   }
 
-  template <typename T>
   void replicator::register_assigned_mvccid (TRANID tranid)
   {
     assert (m_replicate_mvcc);
 
-    const LOG_REC_ASSIGNED_MVCCID log_rec = m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ();
+    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_ASSIGNED_MVCCID));
+    const LOG_REC_ASSIGNED_MVCCID log_rec =
+	    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_ASSIGNED_MVCCID> ();
 
     m_replicator_mvccid->new_assigned_mvccid (tranid, log_rec.mvccid);
   }
