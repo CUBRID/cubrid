@@ -429,6 +429,43 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
     }
 }
 
+/*
+ * log_rv_check_redo_is_needed - check if the lsa has already been applied
+ *
+ * return: boolean
+ *
+ * pgptr(in):
+ * rcv_lsa(in):
+ * end_redo_lsa(in):
+ */
+bool
+log_rv_check_redo_is_needed (const PAGE_PTR & pgptr, const LOG_LSA & rcv_lsa, const LOG_LSA & end_redo_lsa)
+{
+  /* LSA of fixed data page */
+  const log_lsa *const fixed_page_lsa = pgbuf_get_lsa (pgptr);
+  /*
+   * Do we need to execute the redo operation ?
+   * If page_lsa >= lsa... already updated. In this case make sure
+   * that the redo is not far from the end_redo_lsa (TODO: how to ensure this last bit?)
+   */
+  assert (fixed_page_lsa != nullptr);
+  assert (end_redo_lsa.is_null () || *fixed_page_lsa <= end_redo_lsa);
+  if (rcv_lsa <= *fixed_page_lsa)
+    {
+      /* page having a higher LSA than the current log record's LSA is:
+       *  - acceptable during recovery: already applied
+       *  - not acceptable for page server replication
+       *  - acceptable for passive transaction server replication: the page might have already been downloaded
+       *    from the page server with this log record applied
+       *    Note: passive transaction servers do not perform recovery, therefore the only context this
+       *          code is executed on PTS is for replication)
+       * make sure to unfix the page */
+      assert (log_is_in_crash_recovery () || is_passive_transaction_server ());
+      return false;
+    }
+  return true;
+}
+
 /* log_rv_fix_page_and_check_redo_is_needed - check if page still exists and, if yes, whether the lsa has not
  *                    already been applied
  *
@@ -477,26 +514,8 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
 
   if (pgptr != nullptr)
     {
-      /* LSA of fixed data page */
-      const log_lsa *const fixed_page_lsa = pgbuf_get_lsa (pgptr);
-      /*
-       * Do we need to execute the redo operation ?
-       * If page_lsa >= lsa... already updated. In this case make sure
-       * that the redo is not far from the end_redo_lsa (TODO: how to ensure this last bit?)
-       */
-      assert (fixed_page_lsa != nullptr);
-      assert (end_redo_lsa.is_null () || *fixed_page_lsa <= end_redo_lsa);
-      if (rcv_lsa <= *fixed_page_lsa)
+      if (log_rv_check_redo_is_needed (pgptr, rcv_lsa, end_redo_lsa) == false)
 	{
-	  /* page having a higher LSA than the current log record's LSA is:
-	   *  - acceptable during recovery: already applied
-	   *  - not acceptable for page server replication
-	   *  - acceptable for passive transaction server replication: the page might have already been downloaded
-	   *    from the page server with this log record applied
-	   *    Note: passive transaction servers do not perform recovery, therefore the only context this
-	   *          code is executed on PTS is for replication)
-	   * make sure to unfix the page */
-	  assert (log_is_in_crash_recovery () || is_passive_transaction_server ());
 	  pgbuf_unfix_and_init (thread_p, pgptr);
 	  return false;
 	}

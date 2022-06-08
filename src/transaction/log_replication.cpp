@@ -387,8 +387,6 @@ namespace cublog
 
     // only mvccids that pertain to redo's are processed here
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
-    // TODO: superfluous call; can be consolidated in previous call
-    assert_correct_mvccid (record_info.m_logrec, mvccid);
     log_replication_update_header_mvcc_vacuum_info (mvccid, rec_header.back_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
     if (m_replicate_mvcc && MVCCID_IS_NORMAL (mvccid))
       {
@@ -415,8 +413,6 @@ namespace cublog
       const T &log_rec, bool assert_mvccid_non_null)
   {
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (log_rec);
-    // TODO: superfluous call; can be consolidated in previous call
-    assert_correct_mvccid (log_rec, mvccid);
     log_replication_update_header_mvcc_vacuum_info (mvccid, prev_rec_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
   }
 
