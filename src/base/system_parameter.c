@@ -10582,7 +10582,6 @@ prm_tune_parameters (void)
   query_cache_size_in_pages_prm = prm_find (PRM_NAME_LIST_MAX_QUERY_CACHE_PAGES, NULL);
   test_mode_prm = prm_find (PRM_NAME_TEST_MODE, NULL);
   tz_leap_second_support_prm = prm_find (PRM_NAME_TZ_LEAP_SECOND_SUPPORT, NULL);
-  thread_core_count_prm = prm_find (PRM_NAME_THREAD_CORE_COUNT, NULL);
 
   /* disable AOUT list until we fix CBRD-20741 */
   if (pb_aout_ratio_prm != NULL)
@@ -10629,6 +10628,7 @@ prm_tune_parameters (void)
 	}
 
 #if defined (SERVER_MODE)
+      thread_core_count_prm = prm_find (PRM_NAME_THREAD_CORE_COUNT, NULL);
       int safe_core_count = (css_get_max_workers () / 3);
       int system_cpu_count = cubthread::system_core_count ();
       int core_upper_limit = MIN (safe_core_count, system_cpu_count);

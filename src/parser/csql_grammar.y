@@ -971,13 +971,8 @@ int g_original_buffer_len;
 %type <node> dblink_expr
 %type <node> dblink_conn
 %type <node> dblink_conn_str
-%type <c2> dblink_identifier_col_attrs  
 %type <node> dblink_column_definition_list
 %type <node> dblink_column_definition
-%type <c10> connect_info
-%type <c2>  connect_item
-%type <c10> alter_server_list
-%type <c2>  alter_server_item
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -992,6 +987,8 @@ int g_original_buffer_len;
 /*{{{*/
 %type <c10> opt_serial_option_list
 %type <c10> serial_option_list
+%type <c10> connect_info
+%type <c10> alter_server_list
 
 %type <c4> isolation_level_spec
 %type <c4> opt_constraint_attr_list
@@ -1022,6 +1019,10 @@ int g_original_buffer_len;
 %type <c2> insert_assignment_list
 %type <c2> expression_queue
 %type <c2> of_cast_data_type
+%type <c2> dblink_identifier_col_attrs
+%type <c2> connect_item
+%type <c2> alter_server_item
+%type <c2> opt_create_synonym
 /*}}}*/
 
 /* define rule type (json_table_column_behavior) */
@@ -2942,8 +2943,8 @@ create_stmt
 		DBG_PRINT}}
 	| CREATE					/* 1 */
 	  opt_or_replace                		/* 2 */
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE); }	/* 3 */
-	  PROCEDURE					/* 4 */
+	  PROCEDURE					/* 3 */
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE); }	/* 4 */
 	  identifier '(' opt_sp_param_list  ')'		/* 5, 6, 7, 8 */
 	  opt_of_is_as LANGUAGE JAVA			/* 9, 10, 11 */
 	  NAME char_string_literal			/* 12, 13 */
@@ -2969,8 +2970,8 @@ create_stmt
 		DBG_PRINT}}
 	| CREATE                        		/* 1 */
 	  opt_or_replace                		/* 2 */
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION); }	/* 3 */
-	  FUNCTION					/* 4 */
+	  FUNCTION					/* 3 */
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION); }	/* 4 */
 	  identifier '('  opt_sp_param_list  ')'	/* 5, 6, 7, 8 */
 	  RETURN opt_of_data_type_cursor		/* 9, 10 */
 	  opt_of_is_as LANGUAGE JAVA			/* 11, 12, 13 */
@@ -3119,14 +3120,13 @@ create_stmt
 
 		DBG_PRINT}}
 	| CREATE			/* 1 */
-	  opt_or_replace		/* 2 */
-	  	{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_CREATE); }	/* 3 */
-	  opt_access_modifier		/* 4 */
-	  SYNONYM			/* 5 */
-	  synonym_name_without_dot	/* 6 */
-	  For				/* 7 */
-	  class_name			/* 8 */
-	  opt_comment_spec		/* 9 */
+	  opt_create_synonym		/* 2 */
+	  SYNONYM			/* 3 */
+	  	{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_CREATE); }	/* 4 */
+	  synonym_name_without_dot	/* 5 */
+	  For				/* 6 */
+	  class_name			/* 7 */
+	  opt_comment_spec		/* 8 */
 	  	{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace opt_access_modifier SYNONYM synonym_name_without_dot For class_name opt_comment_spec);
 
@@ -3135,11 +3135,11 @@ create_stmt
 
 			if (node)
 			  {
-			    PT_SYNONYM_OR_REPLACE (node) = $2;
-			    PT_SYNONYM_ACCESS_MODIFIER (node) = $4;
-			    PT_SYNONYM_NAME (node) = $6;
-			    PT_SYNONYM_TARGET_NAME (node) = $8;
-			    PT_SYNONYM_COMMENT (node) = $9;
+			    PT_SYNONYM_OR_REPLACE (node) = TO_NUMBER (CONTAINER_AT_0 ($2));
+			    PT_SYNONYM_ACCESS_MODIFIER (node) = TO_NUMBER (CONTAINER_AT_1 ($2));
+			    PT_SYNONYM_NAME (node) = $5;
+			    PT_SYNONYM_TARGET_NAME (node) = $7;
+			    PT_SYNONYM_COMMENT (node) = $8;
 			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 
 			    if (synonym_access_modifier == PT_PUBLIC)
@@ -3970,9 +3970,9 @@ alter_stmt
 
 		DBG_PRINT}}
 	| ALTER				/* 1 */
-		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_ALTER); }	/* 2 */
-	  opt_access_modifier		/* 3 */
-	  SYNONYM			/* 4 */
+	  opt_access_modifier		/* 2 */
+	  SYNONYM			/* 3 */
+		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_ALTER); }	/* 4 */
 	  synonym_name			/* 5 */
 	  For				/* 6 */
 	  class_name			/* 7 */
@@ -3985,7 +3985,7 @@ alter_stmt
 
 			if (node)
 			  {
-			    PT_SYNONYM_ACCESS_MODIFIER (node) = $3;
+			    PT_SYNONYM_ACCESS_MODIFIER (node) = $2;
 			    PT_SYNONYM_NAME (node) = $5;
 			    PT_SYNONYM_TARGET_NAME (node) = $7;
 			    PT_SYNONYM_COMMENT (node) = $8;
@@ -4096,9 +4096,9 @@ rename_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	| RENAME			/* 1 */
-		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_RENAME); }	/* 2 */
-	  opt_access_modifier		/* 3 */
-	  SYNONYM			/* 4 */
+	  opt_access_modifier		/* 2 */
+	  SYNONYM			/* 3 */
+		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_RENAME); }	/* 4 */
 	  synonym_name			/* 5 */
 	  as_or_to			/* 6 */
 	  synonym_name_without_dot	/* 7 */
@@ -4110,7 +4110,7 @@ rename_stmt
 
 			if (node)
 			  {
-			    PT_SYNONYM_ACCESS_MODIFIER (node) = $3;
+			    PT_SYNONYM_ACCESS_MODIFIER (node) = $2;
 			    PT_SYNONYM_OLD_NAME (node) = $5;
 			    PT_SYNONYM_NEW_NAME (node) = $7;
 			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
@@ -4446,9 +4446,9 @@ drop_stmt
 
 		DBG_PRINT}}
 	| DROP				/* 1 */
-		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_DROP); }	/* 2 */
-	  opt_access_modifier		/* 3 */
-	  SYNONYM			/* 4 */
+	  opt_access_modifier		/* 2 */
+	  SYNONYM			/* 3 */
+		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_DROP); }	/* 4 */
 	  opt_if_exists			/* 5 */
 	  synonym_name			/* 6 */
 	  	{ pop_msg(); }
@@ -4460,7 +4460,7 @@ drop_stmt
 
 			if (node)
 			  {
-			    PT_SYNONYM_ACCESS_MODIFIER (node) = $3;
+			    PT_SYNONYM_ACCESS_MODIFIER (node) = $2;
 			    PT_SYNONYM_IF_EXISTS (node) = $5;
 			    PT_SYNONYM_NAME (node) = $6;
 			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
@@ -13999,7 +13999,9 @@ opt_select_param_list
 
 opt_hint_list
 	: /* empty */
+		{ DBG_TRACE_GRAMMAR(opt_hint_list, : ); }
 	| hint_list
+		{ DBG_TRACE_GRAMMAR(opt_hint_list, : hint_list); }
 	;
 
 hint_list
@@ -24133,24 +24135,84 @@ dblink_column_definition
 
 opt_access_modifier
     : /*empty*/
-      {{
+      {{ DBG_TRACE_GRAMMAR(opt_access_modifier, : );
 
 	$$ = PT_PRIVATE;
 
       DBG_PRINT}}
     | PRIVATE
-      {{
+      {{ DBG_TRACE_GRAMMAR(opt_access_modifier, | PRIVATE);
 
 	$$ = PT_PRIVATE;
 
       DBG_PRINT}}
     | PUBLIC
-      {{
+      {{ DBG_TRACE_GRAMMAR(opt_access_modifier, | PUBLIC);
 
 	$$ = PT_PUBLIC;
 
       DBG_PRINT}}
     ;
+
+/*
+ * In order not to output the error message of AS-IS,
+ * opt_or_replace and opt_access_modifier are used in combination with opt_create_synonym.
+ * 
+ * Query: CREATE PARTITION TABLE;
+ * - AS-IS: Syntax error: unexpected 'partition', expecting SYNONYM
+ * - TO-BE: Syntax error: unexpected 'partition', expecting CLASS or TABLE
+ *
+ */
+opt_create_synonym
+	: /*empty*/
+		{{ DBG_TRACE_GRAMMAR(opt_create_synonym, : );
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (0), FROM_NUMBER (PT_PRIVATE));
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| PRIVATE
+		{{ DBG_TRACE_GRAMMAR(opt_create_synonym, : PRIVATE);
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (0), FROM_NUMBER (PT_PRIVATE));
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| PUBLIC
+		{{ DBG_TRACE_GRAMMAR(opt_create_synonym, : PUBLIC);
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (0), FROM_NUMBER (PT_PUBLIC));
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| OR REPLACE
+		{{ DBG_TRACE_GRAMMAR(opt_create_synonym, : OR REPLACE);
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (1), FROM_NUMBER (PT_PRIVATE));
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| OR REPLACE PRIVATE
+		{{ DBG_TRACE_GRAMMAR(opt_create_synonym, : OR REPLACE PRIVATE);
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (1), FROM_NUMBER (PT_PRIVATE));
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| OR REPLACE PUBLIC
+		{{ DBG_TRACE_GRAMMAR(opt_create_synonym, : OR REPLACE PUBLIC);
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (1), FROM_NUMBER (PT_PUBLIC));
+			$$ = ctn;
+
+		DBG_PRINT}}
+	;
 
 %%
 

@@ -5395,7 +5395,7 @@ sm_find_class_with_purpose (const char *name, bool for_update)
   char realname[SM_MAX_IDENTIFIER_LENGTH];
   MOP class_mop = NULL;
   MOP synonym_mop = NULL;
-  const char *target_name = NULL;
+  int error = NO_ERROR;
 
   sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
@@ -5405,11 +5405,26 @@ sm_find_class_with_purpose (const char *name, bool for_update)
       return class_mop;
     }
 
-  synonym_mop = sm_find_synonym (realname);
-  if (synonym_mop)
+  /* class_mop == NULL */
+  if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
     {
-      target_name = sm_get_synonym_target_name (synonym_mop);
-      class_mop = locator_find_class_with_purpose (target_name, for_update);
+      synonym_mop = sm_find_synonym (realname);
+      if (synonym_mop)
+	{
+	  char target_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+	  sm_get_synonym_target_name (synonym_mop, target_name, SM_MAX_IDENTIFIER_LENGTH);
+	  class_mop = locator_find_class_with_purpose (target_name, for_update);
+	}
+      else
+	{
+	  /* synonym_mop == NULL */
+	  ASSERT_ERROR ();
+
+	  if (er_errid () == ER_SYNONYM_NOT_EXIST)
+	    {
+	      ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, realname);
+	    }
+	}
     }
 
   return class_mop;
@@ -5432,6 +5447,7 @@ sm_find_synonym (const char *name)
 
   if (sm_check_system_class_by_name (name))
     {
+      ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_NOT_EXIST, name);
       return NULL;
     }
 
@@ -5446,17 +5462,18 @@ sm_find_synonym (const char *name)
   db_make_string (&value, realname);
 
   AU_DISABLE (save);
-  synonym_obj = obj_find_unique (synonym_class_obj, "unique_name", &value, AU_FETCH_READ);
+  synonym_obj = db_find_unique (synonym_class_obj, "unique_name", &value);
   AU_ENABLE (save);
+
   if (synonym_obj == NULL)
     {
-      ASSERT_ERROR_AND_SET (error);
+      ASSERT_ERROR ();
+
       if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
 	{
 	  er_clear ();
-	  ERROR_SET_ERROR_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
+	  ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_NOT_EXIST, realname);
 	}
-      return NULL;
     }
 
   return synonym_obj;
@@ -5464,29 +5481,44 @@ sm_find_synonym (const char *name)
 
 /*
  * sm_get_synonym_target_name() - get target_name.
- *   return: target_name
+ *   return: output buffer pointer or NULL on error
  *   synonym(in): synonym object
+ *   buf(out): output buffer
+ *   buf_size(in): output buffer length
  */
-const char *
-sm_get_synonym_target_name (MOP synonym)
+char *
+sm_get_synonym_target_name (MOP synonym, char *buf, int buf_size)
 {
-  const char *target_name = NULL;
   DB_VALUE value;
+  const char *target_name = NULL;
+  int len = 0;
   int save = 0;
+  int error = NO_ERROR;
 
   if (synonym == NULL)
     {
+      ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
       return NULL;
     }
+
+  assert (buf != NULL);
+  assert (buf_size > 0);
 
   AU_DISABLE (save);
   db_get (synonym, "target_unique_name", &value);
   AU_ENABLE (save);
 
   target_name = db_get_string (&value);
-  assert (target_name && target_name[0] != '\0');
+  len = db_get_string_size (&value);
 
-  return target_name;
+  assert (target_name && target_name[0] != '\0');
+  assert (len < buf_size);
+  assert (len < SM_MAX_IDENTIFIER_LENGTH);
+
+  memcpy (buf, target_name, len);
+  buf[len] = '\0';
+
+  return buf;
 }
 
 /*

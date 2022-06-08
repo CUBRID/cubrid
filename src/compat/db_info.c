@@ -176,21 +176,18 @@ db_find_synonym (const char *name)
 
 /*
  * db_get_synonym_target_name() - get target_name.
- *   return: target_name
+ *   return: output buffer pointer or NULL on error
  *   synonym(in): synonym object
+ *   buf(out): output buffer
+ *   buf_size(in): output buffer length
  */
-const char *
-db_get_synonym_target_name (MOP synonym)
+char *
+db_get_synonym_target_name (MOP synonym, char *buf, int buf_size)
 {
-  DB_OBJECT *retval;
-  const char *target_name = NULL;
-
   CHECK_CONNECT_NULL ();
   CHECK_1ARG_NULL (synonym);
 
-  target_name = sm_get_synonym_target_name (synonym);
-
-  return target_name;
+  return sm_get_synonym_target_name (synonym, buf, buf_size);
 }
 
 /*

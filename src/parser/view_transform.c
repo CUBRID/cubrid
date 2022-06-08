@@ -3770,7 +3770,7 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 
       parser->custom_print = save_custom;
 
-#if !defined (NDEBUG)
+#if 0
       printf ("===> rewriting query = %s\n", (char *) rewritten->bytes);
 #endif
       break;

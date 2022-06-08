@@ -256,7 +256,14 @@ public class ExecuteThread extends Thread {
                     }
                     Server.log(throwable);
                     try {
-                        sendError(throwable.getMessage(), client);
+                        if (throwable instanceof SQLException)
+                        {
+                            sendError(throwable.getMessage(), client);
+                        }
+                        else
+                        {
+                            sendError(throwable.toString(), client);
+                        }
                     } catch (IOException e1) {
                         Server.log(e1);
                     }
@@ -304,8 +311,6 @@ public class ExecuteThread extends Thread {
         }
 
         readArguments(unpacker, arguments);
-
-        setContextClassLoader(new StoredProcedureClassLoader());
     }
 
     private void processStoredProcedure() throws Exception {

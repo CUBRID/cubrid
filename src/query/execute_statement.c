@@ -14950,6 +14950,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
   OID *classoid = NULL;
   OID *classoid_list[1024];
   OID *oid = NULL;
+  OID null_oid = OID_INITIALIZER;
+
   int stmt_length = 0;
 
   bool supp_appended = false;
@@ -15297,25 +15299,34 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       break;
 
     case PT_CREATE_USER:
+      ddl_type = CDC_CREATE;
+      objtype = CDC_USER;
       break;
 
     case PT_ALTER_USER:
+      ddl_type = CDC_ALTER;
+      objtype = CDC_USER;
       break;
 
     case PT_DROP_USER:
-      break;
-
-    case PT_GRANT:
-      break;
-
-    case PT_REVOKE:
+      ddl_type = CDC_DROP;
+      objtype = CDC_USER;
       break;
 
     case PT_CREATE_TRIGGER:
       target = PT_NODE_TR_TARGET (statement);
-      classname = target->info.event_target.class_name->info.name.original;
 
-      classoid = ws_oid (sm_find_class (classname));
+      if (target)
+	{
+	  classname = target->info.event_target.class_name->info.name.original;
+
+	  classoid = ws_oid (sm_find_class (classname));
+	}
+      else
+	{
+	  /* Trigger that does not have target (e.g. create trigger.. execute print.. ) */
+	  classoid = &null_oid;
+	}
 
       ddl_type = CDC_CREATE;
       objtype = CDC_TRIGGER;
@@ -17683,7 +17694,7 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name, DB_MAX_IDENTIFIER_LENGTH);
 
   /* target_owner */
-  target_owner_obj = au_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
+  target_owner_obj = db_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
   if (target_owner_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -17721,33 +17732,43 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
 {
   DB_OBJECT *class_obj = NULL;
   DB_OBJECT *instance_obj = NULL;
-  DB_OBJECT *owner_obj = NULL;
-  DB_IDENTIFIER instance_obj_id = OID_INITIALIZER;
   DB_OTMPL *obj_tmpl = NULL;
   DB_VALUE value;
+  char old_target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  DB_OBJECT *old_target_obj = NULL;
+  DB_IDENTIFIER *old_target_obj_id = NULL;
   int error = NO_ERROR;
   int save = 0;
 
   AU_DISABLE (save);
 
-  class_obj = sm_find_class (CT_SYNONYM_NAME);
+  class_obj = db_find_class (CT_SYNONYM_NAME);
   if (class_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       goto end;
     }
 
-  instance_obj = do_get_obj_id (&instance_obj_id, class_obj, synonym_name, "unique_name");
+  db_make_string (&value, synonym_name);
+  instance_obj = db_find_unique (class_obj, "unique_name", &value);
   if (instance_obj == NULL)
     {
-      ERROR_SET_ERROR_1ARG (error, ER_SYNONYM_NOT_EXIST, synonym_name);
+      ASSERT_ERROR_AND_SET (error);
+
+      if (error == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_clear ();
+	  ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_NOT_EXIST, synonym_name);
+	}
+
       goto end;
     }
 
+  /* instance_obj != NULL */
   obj_tmpl = dbt_edit_object (instance_obj);
   if (obj_tmpl == NULL)
     {
-      ASSERT_ERROR ();
+      ASSERT_ERROR_AND_SET (error);
       goto end;
     }
 
@@ -17794,10 +17815,31 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
 	}
     }
 
+  if (sm_get_synonym_target_name (instance_obj, old_target_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+  old_target_obj = locator_find_class_with_purpose (old_target_name, false);
+  old_target_obj_id = ws_identifier (old_target_obj);
+
   instance_obj = dbt_finish_object (obj_tmpl);
   if (instance_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+  obj_tmpl = NULL;
+
+  error = locator_flush_instance (instance_obj);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+
+  if (intl_identifier_casecmp (old_target_name, target_name) != 0)
+    {
+      synonym_remove_xasl_by_oid (old_target_obj_id);
     }
 
 end:
@@ -17898,7 +17940,6 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
 {
   DB_OBJECT *class_obj = NULL;
   DB_OBJECT *instance_obj = NULL;
-  DB_IDENTIFIER instance_obj_id = OID_INITIALIZER;
   DB_OTMPL *obj_tmpl = NULL;
   DB_VALUE value;
   int error = NO_ERROR;
@@ -17914,37 +17955,64 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
       goto end;
     }
 
-  instance_obj = do_get_obj_id (&instance_obj_id, class_obj, synonym_name, "unique_name");
+  db_make_string (&value, synonym_name);
+  instance_obj = db_find_unique (class_obj, "unique_name", &value);
   if (instance_obj != NULL)
     {
-      if (or_replace == TRUE)
+      if (or_replace == FALSE)
 	{
-	  error = do_drop_synonym_internal (synonym_name, FALSE, FALSE, class_obj, instance_obj);
-	  if (error != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return error;
-	    }
-
-	  instance_obj = NULL;
-	}
-      else
-	{
-	  assert (or_replace == FALSE);
 	  ERROR_SET_ERROR_1ARG (error, ER_SYNONYM_ALREADY_EXIST, synonym_name);
+	  goto end;
+	}
+
+      /* or_replace == TRUE */
+      error = do_drop_synonym_internal (synonym_name, FALSE, FALSE, class_obj, instance_obj);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
 	  goto end;
 	}
     }
   else
     {
+      /* instance_obj == NULL */
+      ASSERT_ERROR_AND_SET (error);
+
+      if (error == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_clear ();
+	  error = NO_ERROR;
+	}
+      else
+	{
+	  goto end;
+	}
+
       /* Check if class exists by name. */
       if (db_find_class (synonym_name) != NULL)
 	{
 	  ERROR_SET_ERROR_1ARG (error, ER_LC_CLASSNAME_EXIST, synonym_name);
 	  goto end;
 	}
+      else
+	{
+	  /* db_find_class () == NULL */
+	  ASSERT_ERROR_AND_SET (error);
+
+	  if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
+	    {
+	      er_clear ();
+	      error = NO_ERROR;
+	    }
+	  else
+	    {
+	      goto end;
+	    }
+	}
     }
 
+  /* (instance_obj != NULL && or_replace == TRUE)
+   * || (instance_obj == NULL && db_find_class () == NULL && er_errid () == ER_LC_UNKNOWN_CLASSNAME) */
   obj_tmpl = dbt_create_object (class_obj);
   if (obj_tmpl == NULL)
     {
@@ -18040,6 +18108,14 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
   if (instance_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+  obj_tmpl = NULL;
+
+  error = locator_flush_instance (instance_obj);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
     }
 
 end:
@@ -18105,8 +18181,9 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
 {
   DB_OBJECT *class_obj = NULL;
   DB_OBJECT *instance_obj = NULL;
-  DB_OBJECT *owner_obj = NULL;
-  DB_IDENTIFIER instance_obj_id = OID_INITIALIZER;
+  char old_target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  DB_OBJECT *old_target_obj = NULL;
+  DB_IDENTIFIER *old_target_obj_id = NULL;
   DB_VALUE value;
   int error = NO_ERROR;
   int save = 0;
@@ -18119,6 +18196,7 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
     }
   else
     {
+      /* synonym_class_obj == NULL */
       class_obj = sm_find_class (CT_SYNONYM_NAME);
       if (class_obj == NULL)
 	{
@@ -18133,29 +18211,54 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
     }
   else
     {
-      instance_obj = do_get_obj_id (&instance_obj_id, class_obj, synonym_name, "unique_name");
+      /* synonym_obj == NULL */
+      db_make_string (&value, synonym_name);
+      instance_obj = db_find_unique (class_obj, "unique_name", &value);
       if (instance_obj == NULL)
 	{
-	  if (if_exists == TRUE)
+	  ASSERT_ERROR_AND_SET (error);
+
+	  if (error == ER_OBJ_OBJECT_NOT_FOUND)
 	    {
-	      error = NO_ERROR;
 	      er_clear ();
-	      goto end;
+	      error = NO_ERROR;
 	    }
 	  else
 	    {
-	      assert (if_exists == FALSE);
-	      ERROR_SET_ERROR_1ARG (error, ER_SYNONYM_NOT_EXIST, synonym_name);
 	      goto end;
 	    }
+
+	  if (if_exists == FALSE)
+	    {
+	      ERROR_SET_ERROR_1ARG (error, ER_SYNONYM_NOT_EXIST, synonym_name);
+	    }
+
+	  goto end;
 	}
     }
+
+  if (sm_get_synonym_target_name (instance_obj, old_target_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+  old_target_obj = locator_find_class_with_purpose (old_target_name, false);
+  old_target_obj_id = ws_identifier (old_target_obj);
 
   error = db_drop (instance_obj);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
+      goto end;
     }
+
+  error = locator_flush_instance (instance_obj);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+
+  synonym_remove_xasl_by_oid (old_target_obj_id);
 
 end:
   AU_ENABLE (save);
@@ -18213,9 +18316,11 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
   DB_OBJECT *class_obj = NULL;
   DB_OBJECT *instance_obj = NULL;
   DB_OBJECT *new_instance_obj = NULL;
-  DB_IDENTIFIER instance_obj_id = OID_INITIALIZER;
   DB_OTMPL *obj_tmpl = NULL;
   DB_VALUE value;
+  char old_target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  DB_OBJECT *old_target_obj = NULL;
+  DB_IDENTIFIER *old_target_obj_id = NULL;
   int error = NO_ERROR;
   int save = 0;
 
@@ -18228,14 +18333,24 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
       goto end;
     }
 
-  instance_obj = do_get_obj_id (&instance_obj_id, class_obj, old_synonym_name, "unique_name");
+  db_make_string (&value, old_synonym_name);
+  instance_obj = db_find_unique (class_obj, "unique_name", &value);
   if (instance_obj == NULL)
     {
-      ERROR_SET_ERROR_1ARG (error, ER_SYNONYM_NOT_EXIST, old_synonym_name);
+      ASSERT_ERROR_AND_SET (error);
+
+      if (error == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_clear ();
+	  ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_NOT_EXIST, old_synonym_name);
+	}
+
       goto end;
     }
 
-  new_instance_obj = do_get_obj_id (&instance_obj_id, class_obj, new_synonym_name, "unique_name");
+  /* instance_obj != NULL */
+  db_make_string (&value, new_synonym_name);
+  new_instance_obj = db_find_unique (class_obj, "unique_name", &value);
   if (new_instance_obj != NULL)
     {
       ERROR_SET_ERROR_1ARG (error, ER_SYNONYM_ALREADY_EXIST, new_synonym_name);
@@ -18243,18 +18358,46 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
     }
   else
     {
+      /* new_instance_obj == NULL */
+      ASSERT_ERROR_AND_SET (error);
+
+      if (error == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_clear ();
+	  error = NO_ERROR;
+	}
+      else
+	{
+	  goto end;
+	}
+
       /* Check if class exists by name. */
       if (db_find_class (new_synonym_name) != NULL)
 	{
 	  ERROR_SET_ERROR_1ARG (error, ER_LC_CLASSNAME_EXIST, new_synonym_name);
 	  goto end;
 	}
+      else
+	{
+	  ASSERT_ERROR_AND_SET (error);
+
+	  if (error == ER_LC_UNKNOWN_CLASSNAME)
+	    {
+	      er_clear ();
+	      error = NO_ERROR;
+	    }
+	  else
+	    {
+	      goto end;
+	    }
+	}
     }
 
+  /* instance_obj != NULL && new_instance_obj == NULL && er_errid () == ER_LC_UNKNOWN_CLASSNAME */
   obj_tmpl = dbt_edit_object (instance_obj);
   if (obj_tmpl == NULL)
     {
-      ASSERT_ERROR ();
+      ASSERT_ERROR_AND_SET (error);
       goto end;
     }
 
@@ -18278,11 +18421,29 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
       goto end;
     }
 
+  if (sm_get_synonym_target_name (instance_obj, old_target_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+  old_target_obj = locator_find_class_with_purpose (old_target_name, false);
+  old_target_obj_id = ws_identifier (old_target_obj);
+
   instance_obj = dbt_finish_object (obj_tmpl);
   if (instance_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
+      goto end;
     }
+  obj_tmpl = NULL;
+
+  error = locator_flush_instance (instance_obj);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+
+  synonym_remove_xasl_by_oid (old_target_obj_id);
 
 end:
   if (obj_tmpl != NULL && instance_obj == NULL)

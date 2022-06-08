@@ -53,6 +53,7 @@
 
 #define CHKSUM_DEFAULT_LIST_SIZE	10
 #define CHKSUM_MIN_CHUNK_SIZE		100
+#define CHKSUM_DEFAULT_TABLE_OWNER_NAME	"dba"
 #define CHKSUM_DEFAULT_TABLE_NAME	"db_ha_checksum"
 #define CHKSUM_SCHEMA_TABLE_SUFFIX	"_schema"
 
@@ -410,12 +411,26 @@ chksum_report_summary (FILE * fp)
   CHKSUM_PRINT_AND_LOG (fp,
 			"-------------------------------------------------" "-------------------------------------\n");
 
+  // *INDENT-OFF*
   snprintf (query_buf, sizeof (query_buf),
-	    "SELECT " CHKSUM_TABLE_CLASS_NAME_COL ", " "COUNT (*), " "COUNT(CASE WHEN " CHKSUM_TABLE_MASTER_CHEKSUM_COL
-	    " <> " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " OR " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " IS NULL THEN 1 END), "
-	    " SUM (" CHKSUM_TABLE_ELAPSED_TIME_COL "), " " MIN (" CHKSUM_TABLE_ELAPSED_TIME_COL "), " " MAX ("
-	    CHKSUM_TABLE_ELAPSED_TIME_COL ") " "FROM %s GROUP BY " CHKSUM_TABLE_CLASS_NAME_COL,
-	    chksum_result_Table_name);
+        "SELECT "
+          CHKSUM_TABLE_CLASS_NAME_COL ", "
+          "CAST (COUNT (*) AS INTEGER), "
+          "CAST (COUNT ("
+              "CASE WHEN " CHKSUM_TABLE_MASTER_CHEKSUM_COL " <> " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " "
+                         "OR " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " IS NULL "
+                         "THEN 1 "
+              "END"
+            ") AS INTEGER), "
+          "SUM (" CHKSUM_TABLE_ELAPSED_TIME_COL "), "
+          "MIN (" CHKSUM_TABLE_ELAPSED_TIME_COL "), "
+          "MAX (" CHKSUM_TABLE_ELAPSED_TIME_COL ") "
+        "FROM "
+          "%s "
+        "GROUP BY "
+          CHKSUM_TABLE_CLASS_NAME_COL,
+        chksum_result_Table_name);
+  // *INDENT-ON*
 
   res = db_execute (query_buf, &query_result, &query_error);
   if (res > 0)
@@ -2079,12 +2094,15 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name = NULL;
   CHKSUM_ARG chksum_arg;
+  dynamic_array *list = NULL;
+  char table_in_list[SM_MAX_IDENTIFIER_LENGTH];
   char *incl_class_file = NULL;
   char *excl_class_file = NULL;
   char *checksum_table = NULL;
   bool report_only = false;
   HA_SERVER_STATE ha_state = HA_SERVER_STATE_NA;
   int error = NO_ERROR;
+  int i = 0;
 
   memset (&chksum_arg, 0, sizeof (CHKSUM_ARG));
 
@@ -2107,18 +2125,57 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
   checksum_table = utility_get_option_string_value (arg_map, CHECKSUM_TABLE_NAME_S, 0);
   if (sm_check_name (checksum_table) > 0)
     {
+      if (utility_check_class_name (checksum_table) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      /* The owner of checksum_table must be a DBA. */
+      if (strncasecmp (checksum_table, "dba.", 4) != 0)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKSUMDB, CHECKSUMDB_MSG_INVALID_OWNER));
+	  util_log_write_errid (CHECKSUMDB_MSG_INVALID_OWNER);
+	  goto error_exit;
+	}
+
       snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s", checksum_table);
+
+      /* Check the length when "_schema" is added. */
+      if (snprintf (NULL, 0, "%s%s", chksum_result_Table_name, CHKSUM_SCHEMA_TABLE_SUFFIX) >= SM_MAX_IDENTIFIER_LENGTH)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
+				  MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH), SM_MAX_USER_LENGTH,
+				 SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH);
+	  return ER_FAILED;
+	  goto error_exit;
+	}
+
+      if (snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH - 1, "%s%s", chksum_result_Table_name,
+		    CHKSUM_SCHEMA_TABLE_SUFFIX) < 0)
+	{
+	  assert (false);
+	  goto error_exit;
+	}
+
+      if (utility_check_class_name (chksum_schema_Table_name) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
     }
   else
     {
-      snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s", CHKSUM_DEFAULT_TABLE_NAME);
-    }
+      snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", CHKSUM_DEFAULT_TABLE_OWNER_NAME,
+		CHKSUM_DEFAULT_TABLE_NAME);
 
-  if (snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH - 1, "%s%s", chksum_result_Table_name,
-		CHKSUM_SCHEMA_TABLE_SUFFIX) < 0)
-    {
-      assert (false);
-      goto error_exit;
+      if (snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH - 1, "%s%s", chksum_result_Table_name,
+		    CHKSUM_SCHEMA_TABLE_SUFFIX) < 0)
+	{
+	  assert (false);
+	  goto error_exit;
+	}
     }
 
   report_only = utility_get_option_bool_value (arg_map, CHECKSUM_REPORT_ONLY_S);
@@ -2146,6 +2203,16 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
 				 incl_class_file);
 	  goto error_exit;
 	}
+
+      list = chksum_arg.include_list;
+      for (i = 0; i < da_size (list); i++)
+	{
+	  da_get (list, i, table_in_list);
+	  if (utility_check_class_name (table_in_list) != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
     }
 
   if (excl_class_file != NULL)
@@ -2157,6 +2224,16 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
 				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKSUMDB, CHECKSUMDB_MSG_INVALID_INPUT_FILE),
 				 excl_class_file);
 	  goto error_exit;
+	}
+
+      list = chksum_arg.exclude_list;
+      for (i = 0; i < da_size (list); i++)
+	{
+	  da_get (list, i, table_in_list);
+	  if (utility_check_class_name (table_in_list) != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
 	}
     }
 
