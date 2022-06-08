@@ -48,9 +48,9 @@ namespace cublog
       atomic_replication_helper &operator= (const atomic_replication_helper &) = delete;
       atomic_replication_helper &operator= (atomic_replication_helper &&) = delete;
 
-      template <typename T>
+      void add_atomic_replication_sequence (TRANID trid, log_rv_redo_context redo_context);
       int add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa, LOG_RCVINDEX rcvindex,
-				       VPID vpid, log_rv_redo_context &redo_context, const log_rv_redo_rec_info<T> &record_info);
+				       VPID vpid);
       void unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, TRANID tranid);
       bool is_part_of_atomic_replication (TRANID tranid) const;
 #if !defined (NDEBUG)
@@ -62,7 +62,8 @@ namespace cublog
       class atomic_replication_sequence
       {
 	public:
-	  atomic_replication_sequence () = default;
+	  atomic_replication_sequence () = delete;
+	  explicit atomic_replication_sequence (log_rv_redo_context redo_context);
 
 	  atomic_replication_sequence (const atomic_replication_sequence &) = delete;
 	  atomic_replication_sequence (atomic_replication_sequence &&) = delete;
@@ -72,11 +73,10 @@ namespace cublog
 	  atomic_replication_sequence &operator= (const atomic_replication_sequence &) = delete;
 	  atomic_replication_sequence &operator= (atomic_replication_sequence &&) = delete;
 
-	  void unfix_sequence (THREAD_ENTRY *thread_p);
+	  void apply_and_unfix_sequence (THREAD_ENTRY *thread_p);
+	  int add_atomic_replication_unit (THREAD_ENTRY *thread_p, log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid);
 	private:
-	  template <typename T>
-	  int add_atomic_replication_unit (THREAD_ENTRY *thread_p, log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid,
-					   log_rv_redo_context &redo_context, const log_rv_redo_rec_info<T> &record_info);
+	  void apply_all_log_redos (THREAD_ENTRY *thread_p);
 
 	  /*
 	   * Atomic replication unit holds the log record information necessary for recovery redo
@@ -87,17 +87,17 @@ namespace cublog
 	      atomic_replication_unit () = delete;
 	      atomic_replication_unit (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex);
 
-	      atomic_replication_unit (const atomic_replication_unit &) = delete;
-	      atomic_replication_unit (atomic_replication_unit &&) = delete;
+	      atomic_replication_unit (const atomic_replication_unit &) = default;
+	      atomic_replication_unit (atomic_replication_unit &&) = default;
 
 	      ~atomic_replication_unit ();
 
 	      atomic_replication_unit &operator= (const atomic_replication_unit &) = delete;
 	      atomic_replication_unit &operator= (atomic_replication_unit &&) = delete;
 
+	      void apply_log_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context);
 	      template <typename T>
-	      void apply_log_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
-				   const log_rv_redo_rec_info<T> &record_info);
+	      void apply_log_by_type (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context, LOG_RECTYPE rectype);
 	      int fix_page (THREAD_ENTRY *thread_p);
 	      void unfix_page (THREAD_ENTRY *thread_p);
 	      PAGE_PTR get_page_ptr ();
@@ -111,6 +111,7 @@ namespace cublog
 	      LOG_RCVINDEX m_record_index;
 	  };
 
+	  log_rv_redo_context m_redo_context;
 	  using atomic_unit_vector = std::vector<atomic_replication_unit>;
 	  atomic_unit_vector m_units;
 	  using vpid_to_page_ptr_map = std::map<VPID, PAGE_PTR>;
