@@ -462,6 +462,23 @@ mvcctable::next_tran_status_finish (mvcc_trans_status &next_trans_status, size_t
 void
 mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
 {
+  assert (tran_index != NULL_TRAN_INDEX);
+  complete_mvcc_internal (tran_index, mvccid, committed);
+}
+
+void
+mvcctable::complete_mvcc (MVCCID mvccid, bool committed)
+{
+  // TODO: supplying null transaction index avoids updating transaction level
+  // mvccid info in the internal function;
+  // this function is supposed to be called from the transactional log replication logic
+  // executing on passive transaction server
+  complete_mvcc_internal (NULL_TRAN_INDEX, mvccid, committed);
+}
+
+void
+mvcctable::complete_mvcc_internal (int tran_index, MVCCID mvccid, bool committed)
+{
   assert (MVCCID_IS_VALID (mvccid));
 
   // only one can change status at a time
@@ -485,28 +502,32 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
   // finish next trans status
   next_tran_status_finish (next_status, next_index);
 
-  if (committed)
+  if (tran_index != NULL_TRAN_INDEX)
     {
-      /* be sure that transaction modifications can't be vacuumed up to LOG_COMMIT. Otherwise, the following
-       * scenario will corrupt the database:
-       * - transaction set its lowest_active_mvccid to MVCCID_NULL
-       * - VACUUM clean up transaction modifications
-       * - the system crash before LOG_COMMIT of current transaction
-       *
-       * It will be set to NULL after LOG_COMMIT
-       */
-      MVCCID tran_lowest_active = oldest_active_get (m_transaction_lowest_visible_mvccids[tran_index], tran_index,
-				  oldest_active_event::COMPLETE_MVCC);
-      if (tran_lowest_active == MVCCID_NULL || MVCC_ID_PRECEDES (tran_lowest_active, mvccid))
+      if (committed)
 	{
-	  oldest_active_set (m_transaction_lowest_visible_mvccids[tran_index], tran_index, mvccid,
+	  /* be sure that transaction modifications can't be vacuumed up to LOG_COMMIT. Otherwise, the following
+	   * scenario will corrupt the database:
+	   * - transaction set its lowest_active_mvccid to MVCCID_NULL
+	   * - VACUUM clean up transaction modifications
+	   * - the system crash before LOG_COMMIT of current transaction
+	   *
+	   * It will be set to NULL after LOG_COMMIT
+	   */
+	  assert (tran_index < m_transaction_lowest_visible_mvccids_size);
+	  MVCCID tran_lowest_active = oldest_active_get (m_transaction_lowest_visible_mvccids[tran_index], tran_index,
+				      oldest_active_event::COMPLETE_MVCC);
+	  if (tran_lowest_active == MVCCID_NULL || MVCC_ID_PRECEDES (tran_lowest_active, mvccid))
+	    {
+	      oldest_active_set (m_transaction_lowest_visible_mvccids[tran_index], tran_index, mvccid,
+				 oldest_active_event::COMPLETE_MVCC);
+	    }
+	}
+      else
+	{
+	  oldest_active_set (m_transaction_lowest_visible_mvccids[tran_index], tran_index, MVCCID_NULL,
 			     oldest_active_event::COMPLETE_MVCC);
 	}
-    }
-  else
-    {
-      oldest_active_set (m_transaction_lowest_visible_mvccids[tran_index], tran_index, MVCCID_NULL,
-			 oldest_active_event::COMPLETE_MVCC);
     }
 
   ulock.unlock ();
@@ -517,7 +538,7 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
   // so we try to limit recalculation when mvccid matches current global_lowest_active; since we are not locked, it is
   // not guaranteed to be always updated; therefore we add the second condition to go below trans status
   // bit area starting MVCCID; the recalculation will happen on each iteration if there are long transactions.
-  MVCCID global_lowest_active = m_current_status_lowest_active_mvccid;
+  MVCCID global_lowest_active = m_current_status_lowest_active_mvccid.load ();
   if (global_lowest_active == mvccid
       || MVCC_ID_PRECEDES (mvccid, next_status.m_active_mvccs.get_bit_area_start_mvccid ()))
     {

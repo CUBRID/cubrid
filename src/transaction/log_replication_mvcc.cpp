@@ -42,19 +42,19 @@ namespace cublog
       }
     else
       {
-        // assert that main mvccid and sub-mvccid are consistent;
-        // this is the consequence of the following scenario which includes selupd operations
-        // (see qexec_execute_selupd_list function):
-        //  - both a new main mvccid and sub-mvccid are allocated at the same time (see implementation
-        //    of logtb_get_new_subtransaction_mvccid function)
-        //  - during the selupd implementation and transaction logging, first the sub-mvccid appears
-        //    as part of log records and it is registered as such
-        //  - at some point both the main mvccid and the sub-mvccid appear as part of a
-        //    LOG_SYSOP_END_LOGICAL_MVCC_UNDO record; in which case we re-assign the - previously thought -
-        //    main mvccid as sub-mvccid and the new main mvccid as proper main
-        //  - subsequently, MVCC log records are replicated with the sub-mvccid figuring as 'main' again
-        //
-        // TODO: might this situation actually be a transactional logging bug?
+	// assert that main mvccid and sub-mvccid are consistent;
+	// this is the consequence of the following scenario which includes selupd operations
+	// (see qexec_execute_selupd_list function):
+	//  - both a new main mvccid and sub-mvccid are allocated at the same time (see implementation
+	//    of logtb_get_new_subtransaction_mvccid function)
+	//  - during the selupd implementation and transaction logging, first the sub-mvccid appears
+	//    as part of log records and it is registered as such
+	//  - at some point both the main mvccid and the sub-mvccid appear as part of a
+	//    LOG_SYSOP_END_LOGICAL_MVCC_UNDO record; in which case we re-assign the - previously thought -
+	//    main mvccid as sub-mvccid and the new main mvccid as proper main
+	//  - subsequently, MVCC log records are replicated with the sub-mvccid figuring as 'main' again
+	//
+	// TODO: might this situation actually be a transactional logging bug?
 	assert (found_it->second.id == mvccid
 		|| (found_it->second.sub_ids.size () == 1
 		    && found_it->second.sub_ids[0] == mvccid));
@@ -152,7 +152,7 @@ namespace cublog
 
     if (found_it != m_mapped_mvccids.cend ())
       {
-	log_Gl.mvcc_table.complete_mvcc (tranid, found_it->second.id, committed);
+	log_Gl.mvcc_table.complete_mvcc (found_it->second.id, committed);
 
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
 	  {
