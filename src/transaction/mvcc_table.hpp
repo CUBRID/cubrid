@@ -78,6 +78,7 @@ class mvcctable
     // mvcc_snapshot/mvcc_info functions
     void build_mvcc_info (log_tdes &tdes);
     void complete_mvcc (int tran_index, MVCCID mvccid, bool committed);
+    void complete_mvcc (MVCCID mvccid, bool committed);
     void complete_sub_mvcc (MVCCID mvccid);
     MVCCID get_new_mvccid ();
     void get_two_new_mvccid (MVCCID &first, MVCCID &second);
@@ -93,9 +94,11 @@ class mvcctable
     bool is_global_oldest_visible_locked () const;
 
   private:
+    void complete_mvcc_internal (int tran_index, MVCCID mvccid, bool committed);
 
-    static const size_t HISTORY_MAX_SIZE = 2048;  // must be a power of 2
-    static const size_t HISTORY_INDEX_MASK = HISTORY_MAX_SIZE - 1;
+  private:
+    static constexpr size_t HISTORY_MAX_SIZE = 2048;  // must be a power of 2
+    static constexpr size_t HISTORY_INDEX_MASK = HISTORY_MAX_SIZE - 1;
 
     /* lowest active MVCCIDs - array of size NUM_TOTAL_TRAN_INDICES */
     lowest_active_mvccid_type *m_transaction_lowest_visible_mvccids;

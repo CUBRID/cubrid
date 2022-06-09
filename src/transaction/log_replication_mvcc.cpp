@@ -55,7 +55,7 @@ namespace cublog
     if (found_it != m_mapped_mvccids.cend ())
       {
 	const MVCCID found_mvccid = found_it->second;
-	log_Gl.mvcc_table.complete_mvcc (tranid, found_mvccid, committed);
+	log_Gl.mvcc_table.complete_mvcc (found_mvccid, committed);
 	m_mapped_mvccids.erase (found_it);
       }
     // if not found the transaction never assigned an mvccid
