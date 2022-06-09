@@ -19,7 +19,7 @@ namespace cublog
       static constexpr bool ABORTED = false;
 
     public:
-      replicator_mvcc () = default;
+      replicator_mvcc ();
 
       replicator_mvcc (const replicator_mvcc &) = delete;
       replicator_mvcc (replicator_mvcc &&) = delete;
