@@ -26,6 +26,7 @@
 #include "log_impl.h"
 #include "mvcc.h"
 #include "perf_monitor.h"
+#include "server_type.hpp"
 #include "thread_manager.hpp"
 
 #include <cassert>
@@ -469,10 +470,11 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
 void
 mvcctable::complete_mvcc (MVCCID mvccid, bool committed)
 {
-  // TODO: supplying null transaction index avoids updating transaction level
-  // mvccid info in the internal function;
-  // this function is supposed to be called from the transactional log replication logic
-  // executing on passive transaction server
+  // supplying null transaction index avoids updating transaction level mvccid info in the internal
+  // function's implementation;
+  // supposed to be called only from the transactional log replication logic executing on passive transaction server
+  assert (is_passive_transaction_server ());
+
   complete_mvcc_internal (NULL_TRAN_INDEX, mvccid, committed);
 }
 

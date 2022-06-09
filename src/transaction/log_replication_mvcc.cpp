@@ -19,11 +19,17 @@
 #include "log_replication_mvcc.hpp"
 
 #include "log_impl.h"
+#include "server_type.hpp"
 #include "system_parameter.h"
 #include "thread_entry.hpp"
 
 namespace cublog
 {
+  replicator_mvcc::replicator_mvcc ()
+  {
+    assert (is_passive_transaction_server ());
+  }
+
   replicator_mvcc::~replicator_mvcc ()
   {
     // passive transaction server can be shutdown at any moment, in any replication state
