@@ -2162,11 +2162,12 @@ try_again:
 	  break;
 
 	case OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT:
-	  /* page was allocated; was present in passive transaction server's page buffer;
+	  /* page was allocated and present in passive transaction server's page buffer;
 	   * was deallocated (by replication) and is now requested to be allocated again (also
-	   * by replication); hence the assert */
+	   * by replication); hence the assert for write access */
+	  assert (is_passive_transaction_server ());
 	  assert (request_mode == PGBUF_LATCH_WRITE);
-	  /* fixing deallocated page is expected. fall through to return it. */
+	  /* fall through to return it. */
 	  break;
 
 	case OLD_PAGE:
