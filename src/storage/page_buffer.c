@@ -2160,16 +2160,6 @@ try_again:
 	case RECOVERY_PAGE:
 	  /* fixing deallocated page is expected. fall through to return it. */
 	  break;
-
-	case OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT:
-	  /* page was allocated and present in passive transaction server's page buffer;
-	   * was deallocated (by replication) and is now requested to be allocated again (also
-	   * by replication); hence the assert for write access */
-	  assert (is_passive_transaction_server ());
-	  assert (request_mode == PGBUF_LATCH_WRITE);
-	  /* fall through to return it. */
-	  break;
-
 	case OLD_PAGE:
 	case OLD_PAGE_PREVENT_DEALLOC:
 	default:
@@ -2181,6 +2171,18 @@ try_again:
 	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	  pgbuf_unfix (thread_p, pgptr);
 	  return NULL;
+
+	case OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT:
+	  /* - page was allocated and present in passive transaction server's page buffer
+	   * - was deallocated (by replication)
+	   * - is now requested to be allocated again (also by replication) - hence the
+	   *    assert for write access
+	   * returning null means the page will be skipped from selective passive transaction
+	   * server replication */
+	  assert (is_passive_transaction_server ());
+	  assert (request_mode == PGBUF_LATCH_WRITE);
+	  /* fallthrough to return null */
+
 	case OLD_PAGE_MAYBE_DEALLOCATED:
 	  /* OLD_PAGE_MAYBE_DEALLOCATED is called when deallocated page may be fixed. The caller wants the page only if
 	   * it is not deallocated. However, if it is deallocated, no error is required. */
