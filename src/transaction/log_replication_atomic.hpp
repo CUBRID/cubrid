@@ -46,9 +46,9 @@ namespace cublog
       void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa) override;
       // TODO: change name
       template <typename T>
-      void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype,
-				 const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa, TRANID trid);
-      void process_end_sysop (cubthread::entry &thread_entry, TRANID trid);
+      void read_and_redo_record (cubthread::entry &thread_entry, const LOG_RECORD_HEADER &rec_header,
+				 const log_lsa &rec_lsa);
+//      void process_end_sysop (cubthread::entry &thread_entry, TRANID trid);
 
     private:
       atomic_replication_helper m_atomic_helper;

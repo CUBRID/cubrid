@@ -92,10 +92,10 @@ namespace cublog
 					  const T &log_rec, bool assert_mvccid_non_null);
       template <typename T>
       void read_and_redo_btree_stats (cubthread::entry &thread_entry, const log_rv_redo_rec_info<T> &record_info);
+      void register_assigned_mvccid (TRANID tranid);
 
     private:
       void redo_upto_nxio_lsa (cubthread::entry &thread_entry);
-      void register_assigned_mvccid (TRANID tranid);
 
     protected:
       const bool m_replicate_mvcc;

@@ -38,7 +38,8 @@ namespace cublog
      */
   }
 
-  void atomic_replicator::redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa)
+  void
+  atomic_replicator::redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa)
   {
     assert (m_redo_lsa < end_redo_lsa);
 
@@ -53,40 +54,35 @@ namespace cublog
 	// read and redo a record
 	(void) m_redo_context.m_reader.set_lsa_and_fetch_page (m_redo_lsa);
 
-	const log_rec_header header = m_redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_header> ();
+	const LOG_RECORD_HEADER header = m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_RECORD_HEADER> ();
 
 	switch (header.type)
 	  {
 	  case LOG_REDO_DATA:
-	    read_and_redo_record<log_rec_redo> (thread_entry, header.type, header.back_lsa, m_redo_lsa,
-						header.trid);
+	    read_and_redo_record<LOG_REC_REDO> (thread_entry, header, m_redo_lsa);
 	    break;
 	  case LOG_MVCC_REDO_DATA:
-	    read_and_redo_record<log_rec_mvcc_redo> (thread_entry, header.type, header.back_lsa,
-		m_redo_lsa, header.trid);
+	    read_and_redo_record<LOG_REC_MVCC_REDO> (thread_entry, header, m_redo_lsa);
 	    break;
 	  case LOG_UNDOREDO_DATA:
 	  case LOG_DIFF_UNDOREDO_DATA:
-	    read_and_redo_record<log_rec_undoredo> (thread_entry, header.type, header.back_lsa,
-						    m_redo_lsa, header.trid);
+	    read_and_redo_record<LOG_REC_UNDOREDO> (thread_entry, header, m_redo_lsa);
 	    break;
 	  case LOG_MVCC_UNDOREDO_DATA:
 	  case LOG_MVCC_DIFF_UNDOREDO_DATA:
-	    read_and_redo_record<log_rec_mvcc_undoredo> (thread_entry, header.type, header.back_lsa,
-		m_redo_lsa, header.trid);
+	    read_and_redo_record<LOG_REC_MVCC_UNDOREDO> (thread_entry, header, m_redo_lsa);
 	    break;
 	  case LOG_RUN_POSTPONE:
-	    read_and_redo_record<log_rec_run_postpone> (thread_entry, header.type, header.back_lsa,
-		m_redo_lsa, header.trid);
+	    read_and_redo_record<LOG_REC_RUN_POSTPONE> (thread_entry, header, m_redo_lsa);
 	    break;
 	  case LOG_COMPENSATE:
-	    read_and_redo_record<log_rec_compensate> (thread_entry, header.type, header.back_lsa,
-		m_redo_lsa, header.trid);
+	    read_and_redo_record<LOG_REC_COMPENSATE> (thread_entry, header, m_redo_lsa);
 	    break;
 	  case LOG_DBEXTERN_REDO_DATA:
 	  {
-	    const log_rec_dbout_redo dbout_redo =
-		    m_redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_dbout_redo> ();
+	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_DBOUT_REDO));
+	    const LOG_REC_DBOUT_REDO dbout_redo =
+		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_DBOUT_REDO> ();
 	    log_rcv rcv;
 	    rcv.length = dbout_redo.length;
 
@@ -114,8 +110,6 @@ namespace cublog
 	    calculate_replication_delay_or_dispatch_async<LOG_REC_HA_SERVER_STATE> (
 		    thread_entry, m_redo_lsa);
 	    break;
-	  case LOG_TRANTABLE_SNAPSHOT:
-	    break;
 	  case LOG_START_ATOMIC_REPL:
 	  case LOG_SYSOP_ATOMIC_START:
 	    if (m_atomic_helper.is_part_of_atomic_replication (header.trid))
@@ -133,8 +127,39 @@ namespace cublog
 	      }
 	    m_atomic_helper.unfix_atomic_replication_sequence (&thread_entry, header.trid);
 	    break;
+	  case LOG_MVCC_UNDO_DATA:
+	  {
+	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_MVCC_UNDO));
+	    const LOG_REC_MVCC_UNDO log_rec =
+		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_MVCC_UNDO> ();
+
+	    read_and_bookkeep_mvcc_vacuum<LOG_REC_MVCC_UNDO> (header.back_lsa, m_redo_lsa, log_rec, true);
+	    break;
+	  }
 	  case LOG_SYSOP_END:
-	    process_end_sysop (thread_entry, header.trid);
+	  {
+	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SYSOP_END));
+	    const LOG_REC_SYSOP_END log_rec =
+		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SYSOP_END> ();
+
+	    if (log_rec.type == LOG_SYSOP_END_COMMIT || log_rec.type == LOG_SYSOP_END_ABORT)
+	      {
+		// check to see if it can close an atomic replication sequence
+		if (m_atomic_helper.check_for_sysop_end (header.trid, log_rec.lastparent_lsa))
+		  {
+		    m_atomic_helper.unfix_atomic_replication_sequence (&thread_entry, header.trid);
+		  }
+	      }
+
+	    read_and_bookkeep_mvcc_vacuum<LOG_REC_SYSOP_END> (header.back_lsa, m_redo_lsa, log_rec, false);
+	    break;
+	  }
+	  case LOG_ASSIGNED_MVCCID:
+	    if (m_replicate_mvcc)
+	      {
+		register_assigned_mvccid (header.trid);
+	      }
+	    break;
 	  default:
 	    // do nothing
 	    break;
@@ -159,53 +184,59 @@ namespace cublog
 
   template <typename T>
   void
-  atomic_replicator::read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype,
-      const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa, TRANID trid)
+  atomic_replicator::read_and_redo_record (cubthread::entry &thread_entry, const LOG_RECORD_HEADER &rec_header,
+      const log_lsa &rec_lsa)
   {
     m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
-    const log_rv_redo_rec_info<T> record_info (rec_lsa, rectype,
+    const log_rv_redo_rec_info<T> record_info (rec_lsa, rec_header.type,
 	m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ());
 
     // only mvccids that pertain to redo's are processed here
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
-    log_replication_update_header_mvcc_vacuum_info (mvccid, prev_rec_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
+    log_replication_update_header_mvcc_vacuum_info (mvccid, rec_header.back_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
+    if (m_replicate_mvcc && MVCCID_IS_NORMAL (mvccid))
+      {
+	m_replicator_mvccid->new_assigned_mvccid (rec_header.trid, mvccid);
+      }
 
     // Redo b-tree stats differs from what the recovery usually does. Get the recovery index before deciding how to
     // proceed.
     const LOG_RCVINDEX rcvindex = log_rv_get_log_rec_data (record_info.m_logrec).rcvindex;
-    const VPID log_vpid = log_rv_get_log_rec_vpid<T> (record_info.m_logrec);
-
     if (rcvindex == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)
       {
 	read_and_redo_btree_stats (thread_entry, record_info);
       }
-
-    if (m_atomic_helper.is_part_of_atomic_replication (trid))
-      {
-	m_atomic_helper.add_atomic_replication_unit (&thread_entry, trid, rec_lsa, rcvindex, log_vpid);
-      }
     else
       {
-	log_rv_redo_record_sync_or_dispatch_async (&thread_entry, m_redo_context, record_info,
-	    m_parallel_replication_redo, *m_reusable_jobs.get (), m_perf_stat_idle);
+	if (m_atomic_helper.is_part_of_atomic_replication (rec_header.trid))
+	  {
+	    const VPID log_vpid = log_rv_get_log_rec_vpid<T> (record_info.m_logrec);
+	    m_atomic_helper.add_atomic_replication_unit (&thread_entry, rec_header.trid, rec_lsa, rcvindex, log_vpid);
+	  }
+	else
+	  {
+	    log_rv_redo_record_sync_or_dispatch_async (&thread_entry, m_redo_context, record_info,
+		m_parallel_replication_redo, *m_reusable_jobs.get (), m_perf_stat_idle);
+	  }
       }
   }
 
-  void atomic_replicator::process_end_sysop (cubthread::entry &thread_entry, TRANID trid)
-  {
-    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SYSOP_END));
-    /* Result of top system op */
-    const LOG_REC_SYSOP_END *sysop_end = m_redo_context.m_reader.reinterpret_cptr<LOG_REC_SYSOP_END> ();
+//  void atomic_replicator::process_end_sysop (cubthread::entry &thread_entry, TRANID trid)
+//  {
+//    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SYSOP_END));
+//    /* Result of top system op */
+//    const LOG_REC_SYSOP_END *const sysop_end = m_redo_context.m_reader.reinterpret_cptr<LOG_REC_SYSOP_END> ();
 
-    if (! (sysop_end->type == LOG_SYSOP_END_COMMIT || sysop_end->type == LOG_SYSOP_END_ABORT))
-      {
-	return;
-      }
+//    if (! (sysop_end->type == LOG_SYSOP_END_COMMIT || sysop_end->type == LOG_SYSOP_END_ABORT))
+//      {
+//	return;
+//      }
 
-    // check to see if it can close an atomic replication sequence
-    if (m_atomic_helper.check_for_sysop_end (trid, sysop_end->lastparent_lsa))
-      {
-	m_atomic_helper.unfix_atomic_replication_sequence (&thread_entry, trid);
-      }
-  }
+//    // check to see if it can close an atomic replication sequence
+//    if (m_atomic_helper.check_for_sysop_end (trid, sysop_end->lastparent_lsa))
+//      {
+//	m_atomic_helper.unfix_atomic_replication_sequence (&thread_entry, trid);
+//      }
+//    m_redo_context.m_reader.add_align (sizeof (LOG_REC_SYSOP_END));
+//  }
 }
