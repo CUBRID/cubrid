@@ -78,4 +78,7 @@ extern int css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short reques
 				    int *rc);
 extern void css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn);
 extern int css_read_one_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, int *buffer_size);
+extern void css_close_conn (CSS_CONN_ENTRY * conn);
+extern CSS_CONN_ENTRY *css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn, int port_id,
+						    unsigned short *rid);
 #endif /* _CONNECTION_CL_H_ */

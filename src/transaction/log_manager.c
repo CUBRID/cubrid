@@ -10219,10 +10219,6 @@ log_clock_execute (cubthread::entry & thread_ref)
 static void
 log_check_ha_delay_info_execute (cubthread::entry &thread_ref)
 {
-#if defined(WINDOWS)
-  return;
-#endif /* WINDOWS */
-
   if (!BO_IS_SERVER_RESTARTED ())
     {
       // wait for boot to finish

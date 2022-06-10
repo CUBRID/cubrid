@@ -493,6 +493,7 @@ EXPORTS
     acldb
     vacuumdb
     tde
+    flashback
 ;
 ; libesql reference's functions
 ;
