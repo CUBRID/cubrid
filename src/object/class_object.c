@@ -4120,6 +4120,13 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 			  continue;
 			}
 		    }
+		  else
+		    {
+		      if (cons->filter_predicate)
+			{
+			  continue;
+			}
+		    }
 
 		  return cons;
 		}
