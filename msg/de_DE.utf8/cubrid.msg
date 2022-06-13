@@ -988,7 +988,7 @@ $ LOADDB
 918 Die Klasse '%1$s', referenziert von einer Fremdschlüssel, existiert nicht.
 919 Die Klasse '%1$s', referenziert von einer Fremdschlüssel, hat keinen Primärschlüssel.
 920 Der Fremdschlüssel '%1$s' beinhaltet nicht den Primärschlüssel-Mitglied '%2$s'.
-921 Das Domain der Fremdschlüssel-Mitglied '%1$s' ist unterschiedlich von dem des Primärschlüssel-Mitglieds '%2$s'.
+921 Das Domain der Fremdschlüssel-Mitglied '%1$s'(%2$s) ist unterschiedlich von dem des Primärschlüssel-Mitglieds '%3$s'(%4$s).
 922 The Einschränkung des Fremdschlüssels '%1$s' ist wegen dem Wert '%2$s' ungültig.
 923 Der Primärschlüssel '%1$s', referenziert vom einem Fremdschlüssel '%2$s' soll nicht gelöscht werden.
 924 Update/Delete Operationen werden durch dem Fremdschlüssel '%1$s' beschränkt.

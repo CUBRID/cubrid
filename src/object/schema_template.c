@@ -1573,6 +1573,35 @@ end:
   return error;
 }
 
+
+static int
+smt_check_type_collation_match_4_fk (SM_ATTRIBUTE * attr1, SM_ATTRIBUTE * attr2)
+{
+  int error = NO_ERROR;
+
+  if (attr1->type->id != attr2->type->id
+      || (TP_TYPE_HAS_COLLATION (attr1->type->id)
+	  && TP_DOMAIN_COLLATION (attr1->domain) != TP_DOMAIN_COLLATION (attr2->domain)))
+    {
+      char *tp_col_nm1, *tp_col_nm2;
+      if (attr1->type->id != attr2->type->id)
+	{
+	  tp_col_nm1 = (char *) pr_type_from_id (attr1->type->id)->get_name ();
+	  tp_col_nm2 = (char *) pr_type_from_id (attr2->type->id)->get_name ();
+	}
+      else
+	{
+	  tp_col_nm1 = lang_get_collation (attr1->domain->collation_id)->coll.coll_name;
+	  tp_col_nm2 = lang_get_collation (attr2->domain->collation_id)->coll.coll_name;
+	}
+
+      ERROR4 (error, ER_FK_HAS_DEFFERENT_TYPE_WITH_PK, attr1->header.name, tp_col_nm1, attr2->header.name, tp_col_nm2);
+    }
+
+  return error;
+}
+
+
 /*
  * smt_check_foreign_key()
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -1709,11 +1738,8 @@ smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_
 	      goto err;
 	    }
 
-	  if (ref_attr->type->id != atts[j]->type->id
-	      || (TP_TYPE_HAS_COLLATION (ref_attr->type->id)
-		  && TP_DOMAIN_COLLATION (ref_attr->domain) != TP_DOMAIN_COLLATION (atts[j]->domain)))
+	  if ((error = smt_check_type_collation_match_4_fk (atts[j], ref_attr)) != NO_ERROR)
 	    {
-	      ERROR2 (error, ER_FK_HAS_DEFFERENT_TYPE_WITH_PK, atts[j]->header.name, ref_attr->header.name);
 	      goto err;
 	    }
 
@@ -1727,15 +1753,16 @@ smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_
 	      fk_info->ref_attrs[i] = fk_info->ref_attrs[j];
 	      fk_info->ref_attrs[j] = tmp;
 	    }
-
 	}
       else
 	{
-	  if (pk->attributes[i]->type->id != atts[i]->type->id
-	      || (TP_TYPE_HAS_COLLATION (atts[i]->type->id)
-		  && TP_DOMAIN_COLLATION (pk->attributes[i]->domain) != TP_DOMAIN_COLLATION (atts[i]->domain)))
+	  /*  This is the case where there is only a referenced table name and a specific column name is omitted.
+	   **  ex) create table tbl (id char(3) not null  PRIMARY KEY);
+	   **      create table tf_tbl (f_id int references tbl); 
+	   **  In this case, the PK column name is used.
+	   */
+	  if ((error = smt_check_type_collation_match_4_fk (atts[i], pk->attributes[i])) != NO_ERROR)
 	    {
-	      ERROR2 (error, ER_FK_HAS_DEFFERENT_TYPE_WITH_PK, atts[i]->header.name, pk->attributes[i]->header.name);
 	      goto err;
 	    }
 	}
