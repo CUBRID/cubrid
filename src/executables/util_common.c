@@ -339,7 +339,8 @@ utility_check_class_name (const char *class_name)
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
 			      MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH), SM_MAX_USER_LENGTH,
 			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH, SM_MAX_USER_LENGTH,
+			    SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
       return ER_FAILED;
     }
 
@@ -350,7 +351,7 @@ utility_check_class_name (const char *class_name)
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
 			      MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT), class_name);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT, class_name);
       return ER_FAILED;
     }
 
@@ -362,7 +363,7 @@ utility_check_class_name (const char *class_name)
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
 			      MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT), class_name);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT, class_name);
       return ER_FAILED;
     }
 
@@ -372,7 +373,8 @@ utility_check_class_name (const char *class_name)
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
 			      MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH), SM_MAX_USER_LENGTH,
 			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH, SM_MAX_USER_LENGTH,
+			    SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
       return ER_FAILED;
     }
 
@@ -384,7 +386,7 @@ utility_check_class_name (const char *class_name)
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
 			      MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT), class_name);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT, class_name);
       return ER_FAILED;
     }
 
@@ -394,7 +396,8 @@ utility_check_class_name (const char *class_name)
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
 			      MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH), SM_MAX_USER_LENGTH,
 			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH, SM_MAX_USER_LENGTH,
+			    SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
       return ER_FAILED;
     }
 
