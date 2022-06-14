@@ -1,9 +1,7 @@
 pipeline {
   agent none
 
-  triggers {
-    pollSCM('H 21 * * 1,2,4,5,7')
-  }
+
 
   environment {
     OUTPUT_DIR = 'packages'
@@ -16,7 +14,7 @@ pipeline {
         stage('Linux Release') {
           agent {
             docker {
-              image 'cubridci/cubridci:develop'
+              image 'cubridci/cubridci:11.2'
               label 'linux'
               alwaysPull true
             }
@@ -49,7 +47,7 @@ pipeline {
         stage('Linux Debug') {
           agent {
             docker {
-              image 'cubridci/cubridci:develop'
+              image 'cubridci/cubridci:11.2'
               label 'linux'
               alwaysPull true
             }
