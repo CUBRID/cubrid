@@ -14,7 +14,7 @@ pipeline {
         stage('Linux Release') {
           agent {
             docker {
-              image 'cubridci/cubridci:11.2'
+              image 'cubridci/cubridci:develop'
               label 'linux'
               alwaysPull true
             }
@@ -47,7 +47,7 @@ pipeline {
         stage('Linux Debug') {
           agent {
             docker {
-              image 'cubridci/cubridci:11.2'
+              image 'cubridci/cubridci:develop'
               label 'linux'
               alwaysPull true
             }
