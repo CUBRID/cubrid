@@ -740,7 +740,8 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
    * the list file allocates PRM_INDEX_SCAN_KEY_BUFFER_PAGES pages memory
    * for its memory buffer, which is generally larger than prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES).
    */
-  indx_cov->list_id = qfile_open_list (thread_p, indx_cov->type_list, NULL, query_id, QFILE_FLAG_USE_KEY_BUFFER, indx_cov->list_id);
+  indx_cov->list_id =
+    qfile_open_list (thread_p, indx_cov->type_list, NULL, query_id, QFILE_FLAG_USE_KEY_BUFFER, indx_cov->list_id);
   if (indx_cov->list_id == NULL)
     {
       err = ER_FAILED;
@@ -3052,9 +3053,9 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       return ER_FAILED;
     }
 
-  #if !defined (NDEBUG)
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, Root, PAGE_BTREE);
-  #endif /* !NDEBUG */
+#endif /* !NDEBUG */
 
   root_header = btree_get_root_header (thread_p, Root);
   if (root_header == NULL)
@@ -3091,7 +3092,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* construct BTID_INT structure */
   BTS->btid_int.sys_btid = btid;
-  if (btree_glean_root_header_info (thread_p, root_header, &BTS->btid_int, BTS->btid_int.key_type == NULL ? true : false) != NO_ERROR)
+  if (btree_glean_root_header_info
+      (thread_p, root_header, &BTS->btid_int, BTS->btid_int.key_type == NULL ? true : false) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, Root);
       goto exit_on_error;
@@ -3442,7 +3444,8 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* construct BTID_INT structure */
   bts->btid_int.sys_btid = btid;
-  if (btree_glean_root_header_info (thread_p, root_header, &bts->btid_int, bts->btid_int.key_type == NULL ? true : false) != NO_ERROR)
+  if (btree_glean_root_header_info
+      (thread_p, root_header, &bts->btid_int, bts->btid_int.key_type == NULL ? true : false) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -4433,7 +4436,8 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	    {
 	      qfile_destroy_list (thread_p, indx_cov_p->list_id);
 
-	      indx_cov_p->list_id = qfile_open_list (thread_p, indx_cov_p->type_list, NULL, indx_cov_p->query_id, 0, NULL);
+	      indx_cov_p->list_id =
+		qfile_open_list (thread_p, indx_cov_p->type_list, NULL, indx_cov_p->query_id, 0, NULL);
 	      if (indx_cov_p->list_id == NULL)
 		{
 		  status = S_ERROR;
@@ -5907,7 +5911,8 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			  qfile_close_scan (thread_p, isidp->indx_cov.lsid);
 			  qfile_destroy_list (thread_p, isidp->indx_cov.list_id);
 			  isidp->indx_cov.list_id =
-			    qfile_open_list (thread_p, isidp->indx_cov.type_list, NULL, isidp->indx_cov.query_id, 0, isidp->indx_cov.list_id);
+			    qfile_open_list (thread_p, isidp->indx_cov.type_list, NULL, isidp->indx_cov.query_id, 0,
+					     isidp->indx_cov.list_id);
 			  if (isidp->indx_cov.list_id == NULL)
 			    {
 			      return S_ERROR;

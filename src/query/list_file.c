@@ -1372,9 +1372,9 @@ qfile_reopen_list_as_append_mode (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_
 	  return ER_FAILED;
 	}
 
-      #if !defined (NDEBUG)
+#if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, last_page_ptr, PAGE_QRESULT);
-      #endif /* !NDEBUG */
+#endif /* !NDEBUG */
 
     }
 

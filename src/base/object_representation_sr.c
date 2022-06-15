@@ -339,9 +339,9 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 		  goto error;
 		}
 
-	      #if !defined (NDEBUG)
+#if !defined (NDEBUG)
 	      (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
-	      #endif /* !NDEBUG */
+#endif /* !NDEBUG */
 
 	      root_header = btree_get_root_header (thread_p, root);
 	      if (root_header == NULL)

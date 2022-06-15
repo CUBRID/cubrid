@@ -2430,9 +2430,9 @@ qmgr_get_old_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
 
       if (page_p != NULL)
 	{
-	  #if !defined (NDEBUG)
+#if !defined (NDEBUG)
 	  (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_QRESULT);
-	  #endif /* !NDEBUG */
+#endif /* !NDEBUG */
 	}
     }
 

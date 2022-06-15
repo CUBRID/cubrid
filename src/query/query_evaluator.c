@@ -1665,8 +1665,7 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
 
   if (thread_get_recursion_depth (thread_p) > max_recursion_sql_depth)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MAX_RECURSION_SQL_DEPTH, 1,
-	      max_recursion_sql_depth);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MAX_RECURSION_SQL_DEPTH, 1, max_recursion_sql_depth);
 
       return V_ERROR;
     }

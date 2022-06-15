@@ -11568,9 +11568,9 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
 	  goto exit;
 	}
 
-      #if !defined (NDEBUG)
+#if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, root_page, PAGE_BTREE);
-      #endif /* !NDEBUG */
+#endif /* !NDEBUG */
 
       root_header = btree_get_root_header (thread_p, root_page);
       if (root_header == NULL)
