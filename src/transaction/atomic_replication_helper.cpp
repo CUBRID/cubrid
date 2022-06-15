@@ -30,13 +30,20 @@ namespace cublog
    * atomic_replication_helper function definitions                    *
    *********************************************************************/
 
-  void atomic_replication_helper::add_atomic_replication_sequence (TRANID trid, const log_rv_redo_context &redo_context)
+  void atomic_replication_helper::add_atomic_replication_sequence (TRANID trid, LOG_LSA start_lsa,
+      const log_rv_redo_context &redo_context)
   {
-    m_sequences_map.emplace (trid, redo_context);
+    const std::pair<sequence_map_type::iterator, bool> emplace_res = m_sequences_map.emplace (trid, redo_context);
+    assert (emplace_res.second);
+
+    atomic_replication_sequence &emplaced_seq = emplace_res.first->second;
+    // workaround call to allow constructing an atomic_replication_sequence in-place above; otherwise,
+    // it would need to double construct an internal redo context instance (which is expensive)
+    emplaced_seq.set_start_lsa (start_lsa);
   }
 
-  int atomic_replication_helper::add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa,
-      LOG_RCVINDEX rcvindex, VPID vpid)
+  int atomic_replication_helper::add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid,
+      log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid)
   {
 #if !defined (NDEBUG)
     if (!VPID_ISNULL (&vpid) && !check_for_page_validity (vpid, tranid))
@@ -113,7 +120,7 @@ namespace cublog
 #endif
   }
 
-  bool atomic_replication_helper::check_for_sysop_end (TRANID tranid, LOG_LSA parent_lsa) const
+  bool atomic_replication_helper::can_end_atomic_sequence (TRANID tranid, LOG_LSA sysop_parent_lsa) const
   {
     const auto iterator = m_sequences_map.find (tranid);
     if (iterator == m_sequences_map.cend ())
@@ -121,9 +128,8 @@ namespace cublog
 	return false;
       }
 
-    // if the atomic replication sequence start lsa is higher or equal to the parent lsa of the LOG_SYSOP_END
-    // then the sequence can end
-    return iterator->second.get_first_unit_lsa (parent_lsa);
+    const atomic_replication_sequence &atomic_sequence =  iterator->second;
+    return atomic_sequence.can_end_atomic_sequence (sysop_parent_lsa);
   }
 
   /********************************************************************************
@@ -132,8 +138,15 @@ namespace cublog
 
   atomic_replication_helper::atomic_replication_sequence::atomic_replication_sequence (
 	  const log_rv_redo_context &redo_context)
-    : m_redo_context { redo_context }
+    : m_start_lsa { NULL_LSA }
+    , m_redo_context { redo_context }
   {
+  }
+
+  void atomic_replication_helper::atomic_replication_sequence::set_start_lsa (LOG_LSA start_lsa)
+  {
+    assert (!LSA_ISNULL (&start_lsa));
+    m_start_lsa = start_lsa;
   }
 
   int atomic_replication_helper::atomic_replication_sequence::add_atomic_replication_unit (THREAD_ENTRY *thread_p,
@@ -184,14 +197,12 @@ namespace cublog
       }
   }
 
-  bool atomic_replication_helper::atomic_replication_sequence::get_first_unit_lsa (LOG_LSA parent_lsa) const
+  bool atomic_replication_helper::atomic_replication_sequence::can_end_atomic_sequence (LOG_LSA sysop_parent_lsa) const
   {
-    if (m_units.empty ())
-      {
-	return false;
-      }
+    assert (!LSA_ISNULL (&m_start_lsa));
+    assert (!LSA_ISNULL (&sysop_parent_lsa));
 
-    return m_units[0].get_lsa () >= parent_lsa;
+    return m_start_lsa >= sysop_parent_lsa;
   }
 
   /*********************************************************************************************************
