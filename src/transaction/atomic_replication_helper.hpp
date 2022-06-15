@@ -48,7 +48,7 @@ namespace cublog
       atomic_replication_helper &operator= (const atomic_replication_helper &) = delete;
       atomic_replication_helper &operator= (atomic_replication_helper &&) = delete;
 
-      void add_atomic_replication_sequence (TRANID trid, log_rv_redo_context redo_context);
+      void add_atomic_replication_sequence (TRANID trid, const log_rv_redo_context &redo_context);
       int add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa, LOG_RCVINDEX rcvindex,
 				       VPID vpid);
       void unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, TRANID tranid);
@@ -64,7 +64,7 @@ namespace cublog
       {
 	public:
 	  atomic_replication_sequence () = delete;
-	  explicit atomic_replication_sequence (log_rv_redo_context redo_context);
+	  explicit atomic_replication_sequence (const log_rv_redo_context &redo_context);
 
 	  atomic_replication_sequence (const atomic_replication_sequence &) = delete;
 	  atomic_replication_sequence (atomic_replication_sequence &&) = delete;

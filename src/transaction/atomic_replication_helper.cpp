@@ -30,7 +30,7 @@ namespace cublog
    * atomic_replication_helper function definitions                    *
    *********************************************************************/
 
-  void atomic_replication_helper::add_atomic_replication_sequence (TRANID trid, log_rv_redo_context redo_context)
+  void atomic_replication_helper::add_atomic_replication_sequence (TRANID trid, const log_rv_redo_context &redo_context)
   {
     m_sequences_map.emplace (trid, redo_context);
   }
@@ -130,7 +130,8 @@ namespace cublog
    * atomic_replication_helper::atomic_replication_sequence function definitions  *
    ********************************************************************************/
 
-  atomic_replication_helper::atomic_replication_sequence::atomic_replication_sequence (log_rv_redo_context redo_context)
+  atomic_replication_helper::atomic_replication_sequence::atomic_replication_sequence (
+	  const log_rv_redo_context &redo_context)
     : m_redo_context { redo_context }
   {
   }
