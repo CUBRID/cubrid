@@ -1536,9 +1536,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	  goto end;
 	}
 
-      #if !defined (NDEBUG)
+#if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, load_args->leaf.pgptr, PAGE_BTREE);
-      #endif /* !NDEBUG */
+#endif /* !NDEBUG */
 
       key_cnt = btree_node_number_of_keys (thread_p, load_args->leaf.pgptr);
       assert (key_cnt > 0);
@@ -1743,9 +1743,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	      goto end;
 	    }
 
-	  #if !defined (NDEBUG)
+#if !defined (NDEBUG)
 	  (void) pgbuf_check_page_ptype (thread_p, cur_nleafpgptr, PAGE_BTREE);
-	  #endif /* !NDEBUG */
+#endif /* !NDEBUG */
 
 	  /* obtain the header information for the current non-leaf page */
 	  header = btree_get_node_header (thread_p, cur_nleafpgptr);
@@ -1848,9 +1848,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
       ASSERT_ERROR_AND_SET (ret);
       goto end;
     }
-  #if !defined (NDEBUG)
+#if !defined (NDEBUG)
   pgbuf_check_page_ptype (thread_p, load_args->nleaf.pgptr, PAGE_BTREE);
-  #endif /* !NDEBUG */
+#endif /* !NDEBUG */
 
   /* Prepare the root header by using the last leaf node header */
   root_header->node.max_key_len = load_args->nleaf.hdr.max_key_len;
@@ -2023,9 +2023,9 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
       error_code = ER_FAILED;
       goto end;
     }
-  #if !defined (NDEBUG)
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, *page_new, PAGE_BTREE);
-  #endif /* !NDEBUG */
+#endif /* !NDEBUG */
 
   if (header)
     {				/* This is going to be a leaf or non-leaf page */

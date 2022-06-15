@@ -13026,7 +13026,9 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, xasl_node * xasl, xas
 		QFILE_SET_FLAG (ls_flag, QFILE_FLAG_RESULT_FILE);
 	      }
 
-	    xasl->list_id = qfile_open_list (thread_p, &type_list, xasl->after_iscan_list, xasl_state->query_id, ls_flag, xasl->list_id);
+	    xasl->list_id =
+	      qfile_open_list (thread_p, &type_list, xasl->after_iscan_list, xasl_state->query_id, ls_flag,
+			       xasl->list_id);
 	    if (xasl->list_id == NULL)
 	      {
 		if (type_list.domp)
@@ -24846,7 +24848,8 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
 
   /* create list files */
   proc->agg_hash_context->part_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
-  proc->agg_hash_context->sorted_part_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
+  proc->agg_hash_context->sorted_part_list_id =
+    qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0, NULL);
 
   /* create tuple descriptor for partial list files */
   proc->agg_hash_context->part_list_id->tpl_descr.f_cnt = type_list.type_cnt;
