@@ -709,8 +709,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
 
-#define PRM_NAME_NO_USER_SPECIFIED_NAME "no_user_specified_name"
-
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -2406,10 +2404,6 @@ static int prm_flashback_max_transaction_default = INT_MAX;
 static int prm_flashback_max_transaction_lower = 1;
 static int prm_flashback_max_transaction_upper = INT_MAX;
 static unsigned int prm_flashback_max_transaction_flag = 0;
-
-bool PRM_NO_USER_SPECIFIED_NAME = false;
-static const bool prm_no_user_specified_name_default = false;
-static unsigned int prm_no_user_specified_name_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6196,18 +6190,6 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_FLASHBACK_MAX_TRANSACTION,
    (void *) &prm_flashback_max_transaction_upper,
    (void *) &prm_flashback_max_transaction_lower,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_NO_USER_SPECIFIED_NAME,
-   PRM_NAME_NO_USER_SPECIFIED_NAME,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
-   PRM_BOOLEAN,
-   &prm_no_user_specified_name_flag,
-   (void *) &prm_no_user_specified_name_default,
-   (void *) &PRM_NO_USER_SPECIFIED_NAME,
-   (void *) NULL,
-   (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
