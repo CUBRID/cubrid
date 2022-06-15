@@ -287,4 +287,11 @@ extern int btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * k
 
 extern int btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid, int col_idx, int *asc_desc);
 
+#if 0				// ctshim
+#define my_debug_msg(...)  fprintf(stdout, ##__VA_ARGS__)
+#else
+#define my_debug_msg(...)
+#endif
+#define my_debug_msg2(...) fprintf(stdout, ##__VA_ARGS__)
+
 #endif /* _BTREE_LOAD_H_ */

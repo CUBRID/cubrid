@@ -55,7 +55,7 @@ enum
 
 /* Slotted page header flags */
 #define SPAGE_HEADER_FLAG_NONE		0x0	/* No flags */
-#define SPAGE_HEADER_FLAG_ALL_VISIBLE	0x1	/* All records are visible */
+#define SPAGE_HEADER_FLAG_ALL_VISIBLE	0x1	/* All records are visible */	/* unused */
 
 typedef struct spage_header SPAGE_HEADER;
 struct spage_header
@@ -69,7 +69,7 @@ struct spage_header
   int cont_free;		/* Contiguous free space on page */
   int offset_to_free_area;	/* Byte offset from the beginning of the page to the first free byte area on the page. */
   int reserved1;
-  int flags;			/* Page flags */
+  int flags;			/* Page flags *//* Always SPAGE_HEADER_FLAG_NONE */// ctshim
   unsigned int is_saving:1;	/* True if saving is need for recovery (undo) */
   unsigned int need_update_best_hint:1;	/* True if we should update best pages hint for this page. See
 					 * heap_stats_update. */

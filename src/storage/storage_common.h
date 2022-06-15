@@ -218,7 +218,7 @@ struct recdes
   int area_size;		/* Length of the allocated area. It includes only the data field. The value is negative
 				 * if data is inside buffer. For example, peeking in a slotted page. */
   int length;			/* Length of the data. Does not include the length and type fields */
-  INT16 type;			/* Type of record */
+  INT16 type;			/* Type of record (REC_HOME, REC_NEWHOME,... ) */
   char *data;			/* The data */
 };
 /* Replace existing data in record at offset_to_data and size old_data_size
@@ -345,6 +345,7 @@ typedef int TRANID;		/* Transaction identifier */
     } \
   while (0)
 
+#if 0				// not used
 /* back up MVCC ID */
 #define MVCCID_BACKWARD(id) \
   do \
@@ -352,7 +353,7 @@ typedef int TRANID;		/* Transaction identifier */
       (id)--; \
     } \
   while ((id) < MVCCID_FIRST)
-
+#endif
 
 #define COMPOSITE_LOCK(scan_op_type)	(scan_op_type != S_SELECT)
 #define READONLY_SCAN(scan_op_type)	(scan_op_type == S_SELECT)

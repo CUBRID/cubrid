@@ -2203,7 +2203,36 @@ btree_first_oid (THREAD_ENTRY * thread_p, DB_VALUE * this_key, OID * class_oid, 
   pr_clear_value (&load_args->current_key);	/* clear previous value */
   load_args->cur_key_len = key_len;
 
+#if 0				// ctshim
   return pr_clone_value (this_key, &load_args->current_key);
+#else
+  error = pr_clone_value (this_key, &load_args->current_key);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (MVCC_IS_HEADER_DELID_VALID (p_mvcc_rec_header))
+    {
+      /* Object is deleted, initialize curr_non_del_obj_count as 0 */
+      load_args->curr_non_del_obj_count = 0;
+    }
+  else
+    {
+      /* Object was not deleted, increment curr_non_del_obj_count */
+      load_args->curr_non_del_obj_count = 1;
+      /* Increment the key counter if object is not deleted */
+      (load_args->n_keys)++;
+    }
+
+  load_args->curr_rec_max_obj_count = BTREE_MAX_OIDCOUNT_IN_LEAF_RECORD (load_args->btid);
+  load_args->curr_rec_obj_count = 1;
+
+#if !defined (NDEBUG)
+  btree_check_valid_record (thread_p, load_args->btid, load_args->out_recdes, BTREE_LEAF_NODE, NULL);
+#endif
+  return NO_ERROR;
+#endif
 }
 
 /*
@@ -2288,6 +2317,14 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 
       assert (buf.ptr == PTR_ALIGN (buf.ptr, INT_ALIGNMENT));
 
+#if 1				// ctshim : class_oid -> oid
+      /* Get OID */
+      ret = or_get_oid (&buf, &this_oid);
+      if (ret != NO_ERROR)
+	{
+	  goto error;
+	}
+#endif
       /* Instance level uniqueness checking */
       if (BTREE_IS_UNIQUE (load_args->btid->unique_pk))
 	{			/* unique index */
@@ -2298,13 +2335,14 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 	      goto error;
 	    }
 	}
-
+#if 0				// ctshim : class_oid -> oid
       /* Get OID */
       ret = or_get_oid (&buf, &this_oid);
       if (ret != NO_ERROR)
 	{
 	  goto error;
 	}
+#endif
 
       /* Create MVCC header */
       BTREE_INIT_MVCC_HEADER (&mvcc_header);
@@ -2410,7 +2448,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 	    {
 	      goto error;
 	    }
-
+#if 0				// ctshim  btree_first_oid()
 	  if (!MVCC_IS_HEADER_DELID_VALID (&mvcc_header))
 	    {
 	      /* Object was not deleted, increment curr_non_del_obj_count */
@@ -2430,6 +2468,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 
 #if !defined (NDEBUG)
 	  btree_check_valid_record (thread_p, load_args->btid, load_args->out_recdes, BTREE_LEAF_NODE, NULL);
+#endif
 #endif
 	}
       else
@@ -2464,6 +2503,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 		{
 		  /* TODO: Rewrite btree_construct_leafs. It's almost impossible to follow. */
 		  load_args->curr_non_del_obj_count++;
+#if 0				// ctshim
 		  if (load_args->curr_non_del_obj_count > 1 && BTREE_IS_UNIQUE (load_args->btid->unique_pk))
 		    {
 		      /* Unique constrain violation - more than one visible records for this key. */
@@ -2472,6 +2512,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 		      ret = ER_BTREE_UNIQUE_FAILED;
 		      goto error;
 		    }
+#endif
 		  if (load_args->curr_non_del_obj_count == 1)
 		    {
 		      /* When first non-deleted object is found, we must increment that number of keys for statistics. */
@@ -2520,6 +2561,16 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 			  btree_mvcc_info_to_heap_mvcc_header (&first_mvcc_info, &mvcc_header);
 			}
 		    }
+#if 1				// ctshim
+		  else if (load_args->curr_non_del_obj_count > 1 && BTREE_IS_UNIQUE (load_args->btid->unique_pk))
+		    {
+		      /* Unique constrain violation - more than one visible records for this key. */
+		      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, &this_key, &this_oid, &this_class_oid,
+							load_args->btid->sys_btid, load_args->bt_name);
+		      ret = ER_BTREE_UNIQUE_FAILED;
+		      goto error;
+		    }
+#endif
 		}
 
 	      /* Check if there is space in the memory record for the new OID. If not dump the current record and
@@ -2722,7 +2773,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 		{
 		  goto error;
 		}
-
+#if 0				// ctshim  btree_first_oid()
 	      if (!MVCC_IS_HEADER_DELID_VALID (&mvcc_header))
 		{
 		  /* Object was not deleted, increment curr_non_del_obj_count. */
@@ -2740,6 +2791,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 
 #if !defined (NDEBUG)
 	      btree_check_valid_record (thread_p, load_args->btid, load_args->out_recdes, BTREE_LEAF_NODE, NULL);
+#endif
 #endif
 	    }			/* different key */
 	}
@@ -3277,6 +3329,12 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	  or_advance (&buf, (OR_INT_SIZE - OR_BYTE_SIZE));
 	  assert (buf.ptr == PTR_ALIGN (buf.ptr, INT_ALIGNMENT));
 
+#if 1				// ctshim: fix cur_oid, class_ids
+	  if (or_put_oid (&buf, &sort_args->cur_oid) != NO_ERROR)
+	    {
+	      goto nofit;
+	    }
+#endif
 	  if (BTREE_IS_UNIQUE (sort_args->unique_pk))
 	    {
 	      if (or_put_oid (&buf, &sort_args->class_ids[cur_class]) != NO_ERROR)
@@ -3284,12 +3342,12 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 		  goto nofit;
 		}
 	    }
-
+#if 0				// ctshim: fix cur_oid, class_ids
 	  if (or_put_oid (&buf, &sort_args->cur_oid) != NO_ERROR)
 	    {
 	      goto nofit;
 	    }
-
+#endif
 	  /* Pack insert and delete MVCCID's */
 	  if (MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (&mvcc_header))
 	    {
@@ -3393,6 +3451,7 @@ compare_driver (const void *first, const void *second, void *arg)
   int has_null;
   SORT_ARGS *sort_args;
   TP_DOMAIN *key_type;
+  char *oidptr1, *oidptr2;
   int c = DB_UNK;
 
   sort_args = (SORT_ARGS *) arg;
@@ -3415,6 +3474,9 @@ compare_driver (const void *first, const void *second, void *arg)
 
   assert (PTR_ALIGN (mem1, INT_ALIGNMENT) == mem1);
   assert (PTR_ALIGN (mem2, INT_ALIGNMENT) == mem2);
+
+  oidptr1 = mem1;
+  oidptr2 = mem2;
 
   /* Skip the oids */
   if (BTREE_IS_UNIQUE (sort_args->unique_pk))
@@ -3552,37 +3614,11 @@ compare_driver (const void *first, const void *second, void *arg)
     {
       OID first_oid, second_oid;
 
-      mem1 = *(char **) first;
-      mem2 = *(char **) second;
-
-      /* Skip next link */
-      mem1 += sizeof (char *);
-      mem2 += sizeof (char *);
-
-      /* Skip value_has_null */
-      mem1 += OR_INT_SIZE;
-      mem2 += OR_INT_SIZE;
-
-      if (BTREE_IS_UNIQUE (sort_args->unique_pk))
-	{
-	  /* Skip class OID */
-	  mem1 += OR_OID_SIZE;
-	  mem2 += OR_OID_SIZE;
-	}
-
-      OR_GET_OID (mem1, &first_oid);
-      OR_GET_OID (mem2, &second_oid);
+      OR_GET_OID (oidptr1, &first_oid);
+      OR_GET_OID (oidptr2, &second_oid);
 
       assert_release (!OID_EQ (&first_oid, &second_oid));
-
-      if (OID_LT (&first_oid, &second_oid))
-	{
-	  c = DB_LT;
-	}
-      else
-	{
-	  c = DB_GT;
-	}
+      return (OID_LT (&first_oid, &second_oid) ? DB_LT : DB_GT);
     }
 
   return c;
