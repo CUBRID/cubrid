@@ -476,7 +476,7 @@ struct json_t;
            (n)->info.expr.op == PT_LE || \
            (n)->info.expr.op == PT_GT_INF || \
            (n)->info.expr.op == PT_LT_INF || \
-           (n)->info.expr.op ==PT_RANGE ))
+           (n)->info.expr.op == PT_RANGE ))
 
 #define PT_IS_EXPR_WITH_PRIOR_ARG(x) (PT_IS_EXPR_NODE (x) && \
 		PT_IS_EXPR_NODE_WITH_OPERATOR ((x)->info.expr.arg1, PT_PRIOR))
