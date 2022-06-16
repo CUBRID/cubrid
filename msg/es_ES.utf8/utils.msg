@@ -278,7 +278,9 @@ Available command:\n\
     on          gateway-name\n\
     off         gateway-name\n\
     reset       gateway-name\n\
-    acl         <status|reload> [gateway-name]\n\
+    acl         <status|reload> [gateway-name]\n
+46 La longitud de nombre_propietario debe ser inferior a %1$d y la longitud de nombre_clase debe ser inferior a %2$d bytes.\n
+47 Formato no válido para nombre_propietario.nombre_clase ('%1$s').\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 ADVERTENCIA: -t opcion es ignorada en modo de ejecucion independiente.\n
@@ -1219,6 +1221,7 @@ opciones validas:\n\
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Fallo al cargar los nombres de tablas en %1$s.\n
 2 checksumdb tiene que ejecutar en un servidor de HA activo. %1$s (estado actual: %2$s)\n
+3 El propietario de la tabla para guardar el resultado de la suma de comprobación debe ser DBA.\n
 58 Caracteristica HA no soportada en esta plataforma.\n
 59 checksumdb no puede ejecutar como modo stand-alone.\n
 60 \
@@ -1275,9 +1278,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 El ID de transacción debe ingresarse en %1$d segundos. El tiempo de espera se puede ajustar a través de la configuración de 'flashback_timeout' en 'cubrid.conf'.\n
 13 Flashback ya se está ejecutando. Dos procesos no pueden ejecutar Flashback.\n
 14 Flashback no se puede ejecutar como modo independiente.\n
-15 La longitud de nombre_propietario debe ser inferior a %1$d y la longitud de nombre_clase debe ser inferior a %2$d bytes.\n
-16 Formato no válido para nombre_propietario.nombre_clase ('%1$s').\n
-17 La clase de catálogo del sistema (%1$s) no se admite en flashback.\n
+15 La clase de catálogo del sistema (%1$s) no se admite en flashback.\n
 60 \
 flashback: proporciona declaraciones para retroceder una transacción específica.\n\
 uso: %1$s flashback [OPCIÓN] database-name owner_name.class_name1 [owner_name.class_name2 ...]\n\

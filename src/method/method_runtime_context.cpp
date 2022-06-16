@@ -22,6 +22,8 @@
 #include "query_manager.h"
 #include "session.h"
 #include "xserver_interface.h"
+#include "thread_manager.hpp"
+#include "method_error.hpp"
 
 namespace cubmethod
 {
@@ -49,13 +51,13 @@ namespace cubmethod
     , m_is_interrupted (false)
     , m_interrupt_id (NO_ERROR)
     , m_is_running (false)
+    , m_conn_pool (METHOD_MAX_RECURSION_DEPTH + 1)
   {
     //
   }
 
   runtime_context::~runtime_context ()
   {
-    destroy_all_cursors ();
     destroy_all_groups ();
   }
 
@@ -105,14 +107,16 @@ namespace cubmethod
     // Guaranteed to be removed from the topmost element
     m_cond_var.wait (ulock, pred);
 
-    if (m_group_stack.back() == claimed->get_id ())
+    if (pred ())
       {
+	destroy_group (m_group_stack.back ());
 	m_group_stack.pop_back ();
       }
 
     // should be freed for all XASL structure
     while (m_deferred_free_stack.empty () == false && m_deferred_free_stack.back () == m_group_stack.back())
       {
+	destroy_group (m_group_stack.back ());
 	m_group_stack.pop_back ();
 	m_deferred_free_stack.pop_back ();
       }
@@ -161,6 +165,7 @@ namespace cubmethod
       case ER_SP_TOO_MANY_NESTED_CALL:
       case ER_NET_SERVER_SHUTDOWN:
       case ER_SP_NOT_RUNNING_JVM:
+      case ER_SES_SESSION_EXPIRED:
 	m_is_interrupted = true;
 	m_interrupt_id = reason;
 	m_interrupt_msg.assign ("");
@@ -183,26 +188,7 @@ namespace cubmethod
   void
   runtime_context::set_local_error_for_interrupt ()
   {
-    switch (get_interrupt_id ())
-      {
-      /* no arg */
-      case ER_INTERRUPTED:
-      case ER_SP_TOO_MANY_NESTED_CALL:
-      case ER_NET_SERVER_SHUTDOWN:
-      case ER_SP_NOT_RUNNING_JVM:
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, get_interrupt_id (), 0);
-	break;
-
-      /* 1 arg */
-      case ER_SP_CANNOT_CONNECT_JVM:
-      case ER_SP_NETWORK_ERROR:
-      case ER_OUT_OF_VIRTUAL_MEMORY:
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, get_interrupt_id (), 1, get_interrupt_msg ().c_str ());
-	break;
-      default:
-	/* do nothing */
-	break;
-      }
+    handle_method_error (get_interrupt_id (), get_interrupt_msg ());
   }
 
   bool
@@ -255,6 +241,8 @@ namespace cubmethod
 	return nullptr;
       }
 
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
     // find in map
     auto search = m_cursor_map.find (query_id);
     if (search != m_cursor_map.end ())
@@ -276,6 +264,7 @@ namespace cubmethod
 	return nullptr;
       }
 
+    std::unique_lock<std::mutex> ulock (m_mutex);
     query_cursor *cursor = nullptr;
 
     // find in map
@@ -319,6 +308,8 @@ namespace cubmethod
 	return;
       }
 
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
     // find in map
     auto search = m_cursor_map.find (query_id);
     if (search != m_cursor_map.end ())
@@ -327,7 +318,10 @@ namespace cubmethod
 	if (cursor)
 	  {
 	    cursor->close ();
-	    xqmgr_end_query (thread_p, query_id);
+	    if (query_id > 0)
+	      {
+		(void) xqmgr_end_query (thread_p, query_id);
+	      }
 	    delete cursor;
 	  }
 
@@ -344,7 +338,10 @@ namespace cubmethod
 	return;
       }
 
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
     m_returning_cursors.insert (query_id);
+    // m_cursor_map.erase (query_id);
   }
 
   void
@@ -356,12 +353,34 @@ namespace cubmethod
 	return;
       }
 
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
     m_returning_cursors.erase (query_id);
+  }
+
+  void
+  runtime_context::destroy_group (METHOD_GROUP_ID id)
+  {
+    // assume that lock is already acquired
+    // std::unique_lock<std::mutex> ulock (m_mutex);
+
+    // find in map
+    auto search = m_group_map.find (id);
+    if (search != m_group_map.end ())
+      {
+	method_invoke_group *group = search->second;
+	if (group)
+	  {
+	    delete group;
+	  }
+	m_group_map.erase (search);
+      }
   }
 
   void
   runtime_context::destroy_all_groups ()
   {
+    std::unique_lock<std::mutex> ulock (m_mutex);
     for (auto &it : m_group_map)
       {
 	if (it.second)
@@ -375,8 +394,15 @@ namespace cubmethod
   void
   runtime_context::destroy_all_cursors ()
   {
+    std::unique_lock<std::mutex> ulock (m_mutex);
     for (auto &it : m_cursor_map)
       {
+	/*
+	if (cubthread::get_manager () != NULL)
+	  {
+	    destroy_cursor (&cubthread::get_entry (), it.first);
+	  }
+	*/
 	if (it.second)
 	  {
 	    delete it.second;
@@ -385,4 +411,11 @@ namespace cubmethod
     m_cursor_map.clear ();
     m_returning_cursors.clear ();
   }
+
+  connection_pool &
+  runtime_context::get_connection_pool ()
+  {
+    return m_conn_pool;
+  }
+
 } // cubmethod

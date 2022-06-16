@@ -42,7 +42,11 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
   method_invoke_group::method_invoke_group (cubthread::entry *thread_p, const method_sig_list &sig_list,
       bool is_for_scan = false)
-    : m_id ((std::uint64_t) this), m_thread_p (thread_p), m_connection (nullptr)
+    : m_id ((std::uint64_t) this)
+    , m_thread_p (thread_p)
+    , m_connection (nullptr)
+    , m_cursor_set ()
+    , m_handler_set ()
   {
     assert (sig_list.num_methods > 0);
 
@@ -85,7 +89,6 @@ namespace cubmethod
 
   method_invoke_group::~method_invoke_group ()
   {
-    end ();
     for (method_invoke *method: m_method_vector)
       {
 	delete method;
@@ -138,6 +141,12 @@ namespace cubmethod
   method_invoke_group::get_runtime_context ()
   {
     return m_rctx;
+  }
+
+  connection_pool &
+  method_invoke_group::get_connection_pool ()
+  {
+    return get_runtime_context ()->get_connection_pool ();
   }
 
   bool
@@ -245,7 +254,7 @@ namespace cubmethod
       {
 	if (m_connection == nullptr)
 	  {
-	    m_connection = get_connection_pool ()->claim();
+	    m_connection = get_connection_pool ().claim();
 	  }
 
 	// check javasp server's status
@@ -269,15 +278,23 @@ namespace cubmethod
   {
     int error = NO_ERROR;
 
-    pr_clear_value_vector (m_result_vector);
+    if (!is_end_query)
+      {
+	cubmethod::header header (METHOD_REQUEST_END, get_id());
+	std::vector<int> handler_vec (m_handler_set.begin (), m_handler_set.end ());
+	error = method_send_data_to_client (m_thread_p, header, handler_vec);
+	m_handler_set.clear ();
+      }
 
-    // destroy cursors used in this group
-    destory_all_cursors ();
-
-    cubmethod::header header (METHOD_REQUEST_END, get_id());
-    error = method_send_data_to_client (m_thread_p, header);
+    destroy_resources ();
 
     return error;
+  }
+
+  void
+  method_invoke_group::register_client_handler (int handler_id)
+  {
+    m_handler_set.insert (handler_id);
   }
 
   void
@@ -288,15 +305,27 @@ namespace cubmethod
 	return;
       }
 
-    reset (true);
-
     // FIXME: The connection is closed to prevent Java thread from entering an unexpected state.
-    bool kill = (m_rctx->is_interrupted());
-    get_connection_pool ()->retire (m_connection, kill);
-    m_connection = nullptr;
+    if (m_connection)
+      {
+	bool kill = (m_rctx->is_interrupted() || er_has_error ());
+	get_connection_pool ().retire (m_connection, kill);
+	m_connection = nullptr;
+      }
 
-    m_rctx->pop_stack (m_thread_p, this);
+    // FIXME
+    // m_rctx->pop_stack (m_thread_p, this);
+
     m_is_running = false;
+  }
+
+  void
+  method_invoke_group::destroy_resources ()
+  {
+    pr_clear_value_vector (m_result_vector);
+
+    // destroy cursors used in this group
+    destory_all_cursors ();
   }
 
   query_cursor *
@@ -324,12 +353,13 @@ namespace cubmethod
   {
     for (auto &cursor_it : m_cursor_set)
       {
-	m_rctx->destroy_cursor (m_thread_p, cursor_it);
-
 	// If the cursor is received from the child function and is not returned to the parent function, the cursor remains in m_cursor_set.
 	// So here trying to find the cursor Id in the global returning cursor storage and remove it if exists.
 	m_rctx->deregister_returning_cursor (m_thread_p, cursor_it);
+
+	m_rctx->destroy_cursor (m_thread_p, cursor_it);
       }
+
     m_cursor_set.clear ();
   }
 

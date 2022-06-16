@@ -13898,3 +13898,9 @@ has_errors_filtered_for_insert (std::vector<int> error_filter_array)
   return false;
 }
 // *INDENT-ON*
+
+void
+xsynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, OID * oidp)
+{
+  xcache_remove_by_oid (thread_p, oidp);
+}

@@ -484,7 +484,7 @@ namespace cubmethod
   }
 
 #if !defined(SERVER_MODE)
-  char
+  int
   get_stmt_type (std::string sql)
   {
     char *stmt = sql.data ();
@@ -515,7 +515,7 @@ namespace cubmethod
   }
 
   int
-  calculate_num_markers (const std::string sql)
+  calculate_num_markers (const std::string &sql)
   {
     if (sql.empty())
       {

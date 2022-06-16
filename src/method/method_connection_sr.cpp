@@ -50,6 +50,11 @@ namespace cubmethod
     memset (ptr, 0, OR_ALIGNED_BUF_SIZE (a_reply) - (ptr - reply));
 #endif
 
+    if (thread_p == NULL || thread_p->conn_entry == NULL)
+      {
+	return ER_FAILED;
+      }
+
     /* send */
     unsigned int rid = css_get_comm_request_id (thread_p);
     return css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),

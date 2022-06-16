@@ -278,7 +278,9 @@ Available command:\n\
     on          gateway-name\n\
     off         gateway-name\n\
     reset       gateway-name\n\
-    acl         <status|reload> [gateway-name]\n\
+    acl         <status|reload> [gateway-name]\n
+46 Sahip_adı uzunluğunun %1$d'den az olması ve sınıf_adı uzunluğunun %2$d bayttan az olması gerekir.\n
+47 sahibi_adı.sınıf_adı ('%1$s') için geçersiz biçim.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 UYARI: -t seçeneği stand-alone modu yürütülmesine göz ardı edilir.\n
@@ -1213,6 +1215,7 @@ geçerli seçenekler:\n\
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 %1$s içinde tablo adlarını yüklenemedi.\n
 2 checksumdb bir HA aktif sunucu üzerinde çalıştırmak gerekir. %1$s (güncel durum: %2$s)\n
+3 Sağlama toplamı sonucunu kaydetmek için tablonun sahibi DBA olmalıdır.\n
 58 HA özelliği bu platformda desteklenmiyor.\n
 59 checksumdb stand-alone modu olarak çalıştıramazsınız.\n
 60 \
@@ -1269,9 +1272,7 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 İşlem Kimliği %1$d saniye içinde girilmelidir. Zaman aşımı, 'cubrid.conf' içindeki 'flashback_timeout' ayarı ile ayarlanabilir.\n
 13 Flashback zaten çalışıyor. Flashback iki işlem tarafından çalıştırılamaz.\n
 14 Flashback bağımsız mod olarak çalıştırılamaz.\n
-15 Sahip_adı uzunluğunun %1$d'den az olması ve sınıf_adı uzunluğunun %2$d bayttan az olması gerekir.\n
-16 sahibi_adı.sınıf_adı ('%1$s') için geçersiz biçim.\n
-17 Sistem kataloğu sınıfı (%1$s) flashback'te desteklenmiyor.\n
+15 Sistem kataloğu sınıfı (%1$s) flashback'te desteklenmiyor.\n
 60 \
 flashback: Belirli bir işlemi flashback yapmak için ifadeler sağlar.\n\
 kullanım: %1$s flashback [SEÇENEK] veritabanı adı sahibi_adı.sınıf_adı1 [sahibi_adı.sınıf_adı2 ...]\n\

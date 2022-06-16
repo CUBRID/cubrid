@@ -1309,7 +1309,7 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mo
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
     {
       char other_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
 
@@ -17734,6 +17734,9 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
   DB_OBJECT *instance_obj = NULL;
   DB_OTMPL *obj_tmpl = NULL;
   DB_VALUE value;
+  char old_target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  DB_OBJECT *old_target_obj = NULL;
+  DB_IDENTIFIER *old_target_obj_id = NULL;
   int error = NO_ERROR;
   int save = 0;
 
@@ -17812,6 +17815,14 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
 	}
     }
 
+  if (sm_get_synonym_target_name (instance_obj, old_target_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+  old_target_obj = locator_find_class_with_purpose (old_target_name, false);
+  old_target_obj_id = ws_identifier (old_target_obj);
+
   instance_obj = dbt_finish_object (obj_tmpl);
   if (instance_obj == NULL)
     {
@@ -17824,6 +17835,11 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
+    }
+
+  if (intl_identifier_casecmp (old_target_name, target_name) != 0)
+    {
+      synonym_remove_xasl_by_oid (old_target_obj_id);
     }
 
 end:
@@ -18092,6 +18108,7 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
   if (instance_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
+      goto end;
     }
   obj_tmpl = NULL;
 
@@ -18164,6 +18181,9 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
 {
   DB_OBJECT *class_obj = NULL;
   DB_OBJECT *instance_obj = NULL;
+  char old_target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  DB_OBJECT *old_target_obj = NULL;
+  DB_IDENTIFIER *old_target_obj_id = NULL;
   DB_VALUE value;
   int error = NO_ERROR;
   int save = 0;
@@ -18217,7 +18237,14 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
 	}
     }
 
-  /* instance_obj != NULL */
+  if (sm_get_synonym_target_name (instance_obj, old_target_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+  old_target_obj = locator_find_class_with_purpose (old_target_name, false);
+  old_target_obj_id = ws_identifier (old_target_obj);
+
   error = db_drop (instance_obj);
   if (error != NO_ERROR)
     {
@@ -18230,6 +18257,8 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
     {
       ASSERT_ERROR ();
     }
+
+  synonym_remove_xasl_by_oid (old_target_obj_id);
 
 end:
   AU_ENABLE (save);
@@ -18289,6 +18318,9 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
   DB_OBJECT *new_instance_obj = NULL;
   DB_OTMPL *obj_tmpl = NULL;
   DB_VALUE value;
+  char old_target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  DB_OBJECT *old_target_obj = NULL;
+  DB_IDENTIFIER *old_target_obj_id = NULL;
   int error = NO_ERROR;
   int save = 0;
 
@@ -18389,6 +18421,14 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
       goto end;
     }
 
+  if (sm_get_synonym_target_name (instance_obj, old_target_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+  old_target_obj = locator_find_class_with_purpose (old_target_name, false);
+  old_target_obj_id = ws_identifier (old_target_obj);
+
   instance_obj = dbt_finish_object (obj_tmpl);
   if (instance_obj == NULL)
     {
@@ -18402,6 +18442,8 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
     {
       ASSERT_ERROR ();
     }
+
+  synonym_remove_xasl_by_oid (old_target_obj_id);
 
 end:
   if (obj_tmpl != NULL && instance_obj == NULL)

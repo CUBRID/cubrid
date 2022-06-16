@@ -271,7 +271,7 @@ extern "C"
   extern DB_OBJECT *db_find_class (const char *name);
   extern DB_OBJECT *db_find_class_with_purpose (const char *name, bool for_update);
   extern DB_OBJECT *db_find_synonym (const char *name);
-  extern const char *db_get_synonym_target_name (MOP synonym);
+  extern char *db_get_synonym_target_name (MOP synonym, char *buf, int buf_size);
   extern DB_OBJECT *db_get_class (DB_OBJECT * obj);
   extern DB_OBJLIST *db_get_all_objects (DB_OBJECT * classobj);
   extern DB_OBJLIST *db_get_all_classes (void);

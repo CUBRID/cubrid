@@ -1364,7 +1364,7 @@ pt_check_user_owns_class (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
     {
       return result;
     }
@@ -4758,7 +4758,6 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	}
       else
 	{
-	  PT_ERRORc (parser, alter, er_msg ());
 	  return;
 	}
     }
@@ -8229,6 +8228,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *tbl_opt = NULL;
   PT_MISC_TYPE entity_type;
   DB_OBJECT *db_obj, *existing_entity;
+  DB_OBJECT *owner = NULL;
   const char *owner_name = NULL;
   int found, partition_status = DB_NOT_PARTITIONED_CLASS;
   int collation_id, charset;
@@ -8396,16 +8396,35 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
-  /* check if the class can be created with the specified owner. */
-  owner_name = pt_get_qualifier_name (parser, node->info.create_entity.entity_name);
-  if (!ws_is_same_object (db_find_user (owner_name), Au_user) && !au_is_dba_group_member (Au_user))
-    {
-      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CREATE_TABLE_VIEW_NOT_OWNER);
-      return;
-    }
-
-  /* check name doesn't already exist as a class */
   name = node->info.create_entity.entity_name;
+  owner_name = pt_get_qualifier_name (parser, name);
+  if (owner_name)
+    {
+      owner = db_find_user (owner_name);
+      if (owner == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+
+	  if (er_errid () == ER_AU_INVALID_USER)
+	    {
+	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
+	    }
+
+	  return;
+	}
+
+      if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CREATE_TABLE_VIEW_NOT_OWNER);
+	  return;
+	}
+    }
+  else
+    {
+      /* In system class names, owner name can be NULL. Otherwise, owner name must not be NULL. */
+      assert (au_is_dba_group_member (Au_user));
+      assert (sm_check_system_class_by_name (PT_NAME_ORIGINAL (name)));
+    }
 
   /* We cannot use an existing synonym name as a class name. */
   if (db_find_synonym (name->info.name.original) != NULL)
@@ -8424,11 +8443,11 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       else
 	{
-	  PT_ERRORc (parser, node, er_msg ());
 	  return;
 	}
     }
 
+  /* check name doesn't already exist as a class */
   existing_entity = pt_find_class (parser, name, false);
   if (existing_entity != NULL)
     {
@@ -8700,7 +8719,6 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       else
 	{
-	  PT_ERRORc (parser, node, er_msg ());
 	  return;
 	}
     }
@@ -8902,10 +8920,6 @@ pt_check_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_EXIST, name);
 	}
-      else
-	{
-	  PT_ERRORc (parser, node, er_msg ());
-	}
 
       return;
     }
@@ -8987,7 +9001,6 @@ pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       else
 	{
-	  PT_ERRORc (parser, node, er_msg ());
 	  return;
 	}
 
@@ -9008,7 +9021,6 @@ pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  else
 	    {
-	      PT_ERRORc (parser, node, er_msg ());
 	      return;
 	    }
 	}
@@ -9079,7 +9091,6 @@ pt_check_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 
       if (er_errid () != ER_SYNONYM_NOT_EXIST)
 	{
-	  PT_ERRORc (parser, node, er_msg ());
 	  return;
 	}
 
@@ -9151,10 +9162,6 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_EXIST, old_name);
 	}
-      else
-	{
-	  PT_ERRORc (parser, node, er_msg ());
-	}
 
       return;
     }
@@ -9209,7 +9216,6 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       else
 	{
-	  PT_ERRORc (parser, node, er_msg ());
 	  return;
 	}
 
@@ -9229,7 +9235,6 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  else
 	    {
-	      PT_ERRORc (parser, node, er_msg ());
 	      return;
 	    }
 	}
@@ -9280,7 +9285,6 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 		    }
 		  else
 		    {
-		      PT_ERRORc (parser, node, er_msg ());
 		      return;
 		    }
 
@@ -9421,7 +9425,6 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 		    }
 		  else
 		    {
-		      PT_ERRORc (parser, node, er_msg ());
 		      return;
 		    }
 		}
@@ -9690,7 +9693,6 @@ pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node)
 		}
 	      else
 		{
-		  PT_ERRORc (parser, node, er_msg ());
 		  return;
 		}
 	    }
