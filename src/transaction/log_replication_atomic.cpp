@@ -142,15 +142,10 @@ namespace cublog
 	    const LOG_REC_SYSOP_END log_rec =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SYSOP_END> ();
 
-	    //if (log_rec.type == LOG_SYSOP_END_COMMIT || log_rec.type == LOG_SYSOP_END_ABORT)
-	    //  {
-		// if the atomic replication sequence start lsa is higher or equal to the sysop
-		// end parent lsa, then the atomic sequence can be ended (commited & released)
-		if (m_atomic_helper.can_end_atomic_sequence (header.trid, log_rec.lastparent_lsa))
-		  {
-		    m_atomic_helper.unfix_atomic_replication_sequence (&thread_entry, header.trid);
-		  }
-	    //  }
+	    if (m_atomic_helper.can_end_atomic_sequence (header.trid, log_rec.lastparent_lsa))
+	      {
+		m_atomic_helper.unfix_atomic_replication_sequence (&thread_entry, header.trid);
+	      }
 
 	    read_and_bookkeep_mvcc_vacuum<LOG_REC_SYSOP_END> (header.back_lsa, m_redo_lsa, log_rec, false);
 	    break;
@@ -221,23 +216,4 @@ namespace cublog
 	  }
       }
   }
-
-//  void atomic_replicator::process_end_sysop (cubthread::entry &thread_entry, TRANID trid)
-//  {
-//    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SYSOP_END));
-//    /* Result of top system op */
-//    const LOG_REC_SYSOP_END *const sysop_end = m_redo_context.m_reader.reinterpret_cptr<LOG_REC_SYSOP_END> ();
-
-//    if (! (sysop_end->type == LOG_SYSOP_END_COMMIT || sysop_end->type == LOG_SYSOP_END_ABORT))
-//      {
-//	return;
-//      }
-
-//    // check to see if it can close an atomic replication sequence
-//    if (m_atomic_helper.can_end_atomic_sequence (trid, sysop_end->lastparent_lsa))
-//      {
-//	m_atomic_helper.unfix_atomic_replication_sequence (&thread_entry, trid);
-//      }
-//    m_redo_context.m_reader.add_align (sizeof (LOG_REC_SYSOP_END));
-//  }
 }
