@@ -124,9 +124,9 @@ namespace cubload
 	return found;
       }
 
+#if defined(SERVER_MODE)
     /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-    if (thread_ref.conn_entry->client_type == DB_CLIENT_TYPE_ADMIN_UTILITY
-	&& prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+    if (thread_ref.conn_entry->client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
       {
 	found_again = locate_class_for_all_users (class_name, class_oid);
 	if (found_again == LC_CLASSNAME_EXIST)
@@ -134,6 +134,7 @@ namespace cubload
 	    return found_again;
 	  }
       }
+#endif
 
     return found;
   }

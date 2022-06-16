@@ -2204,40 +2204,6 @@ catalog_put_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CATA
 	      log_append_redo_recdes2 (thread_p, RVCT_UPDATE, &catalog_Id.vfid, page_p, rep_dir_p->slotid, &record);
 	      pgbuf_set_dirty (thread_p, page_p, FREE);
 	    }
-#if 0				/* TODO - dead code; do not delete me for future use */
-	  else if (success == SP_DOESNT_FIT)
-	    {
-	      assert (false);	/* is impossible */
-
-	      /* the directory needs to be deleted from the current page and moved to another page. */
-
-	      ehash_delete (thread_p, &catalog_Id.xhid, key);
-	      log_append_undoredo_recdes2 (thread_p, RVCT_DELETE, &catalog_Id.vfid, page_p, rep_dir_p->slotid,
-					   &tmp_record, NULL);
-	      recdes_free_data_area (&tmp_record);
-
-	      spage_delete (thread_p, page_p, rep_dir_p->slotid);
-	      new_space = spage_max_space_for_new_record (thread_p, page_p);
-
-	      recdes_set_data_area (&tmp_record, aligned_page_header_data, CATALOG_PAGE_HEADER_SIZE);
-
-	      if (catalog_adjust_directory_count (thread_p, page_p, &tmp_record, -1) != NO_ERROR)
-		{
-		  pgbuf_unfix_and_init (thread_p, page_p);
-		  recdes_free_data_area (&record);
-		  return ER_FAILED;
-		}
-
-	      pgbuf_set_dirty (thread_p, page_p, FREE);
-	      catalog_update_max_space (&page_id, new_space);
-
-	      if (catalog_insert_representation_item (thread_p, &record, rep_dir_p) != NO_ERROR)
-		{
-		  recdes_free_data_area (&record);
-		  return ER_FAILED;
-		}
-	    }
-#endif
 	  else
 	    {
 	      assert (false);	/* is impossible */
@@ -2561,8 +2527,6 @@ catalog_initialize (CTID * catalog_id_p)
   // protect against repeated hashmap initializations
   catalog_Hashmap.destroy ();
 
-  VFID_COPY (&catalog_Id.xhid, &catalog_id_p->xhid);
-  catalog_Id.xhid.pageid = catalog_id_p->xhid.pageid;
   catalog_Id.vfid.fileid = catalog_id_p->vfid.fileid;
   catalog_Id.vfid.volid = catalog_id_p->vfid.volid;
   catalog_Id.hpgid = catalog_id_p->hpgid;
@@ -2614,11 +2578,6 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p)
 
   log_sysop_start (thread_p);
 
-  if (xehash_create (thread_p, &catalog_id_p->xhid, DB_TYPE_OBJECT, 1, oid_Root_class_oid, -1, false) == NULL)
-    {
-      ASSERT_ERROR ();
-      goto error;
-    }
 
   if (file_create_with_npages (thread_p, FILE_CATALOG, 1, NULL, &catalog_id_p->vfid) != NO_ERROR)
     {

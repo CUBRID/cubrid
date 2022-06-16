@@ -272,7 +272,10 @@ end:
     {
       for (i = 0; i < num_class; i++)
 	{
-	  free_and_init (class_names[i]);
+	  if (class_names[i])
+	    {
+	      free_and_init (class_names[i]);
+	    }
 	}
 
       free (class_names);
