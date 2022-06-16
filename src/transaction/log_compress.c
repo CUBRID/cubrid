@@ -259,6 +259,8 @@ log_zip_free_data (LOG_ZIP & log_zip)
   if (log_zip.log_data != nullptr)
     {
       free_and_init (log_zip.log_data);
+      log_zip.data_length = 0;
+      log_zip.buf_size = 0;
     }
 }
 
