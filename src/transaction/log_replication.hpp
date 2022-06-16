@@ -26,6 +26,7 @@
 #include "log_record.hpp"
 #include "log_recovery_redo.hpp"
 #include "log_recovery_redo_perf.hpp"
+#include "log_replication_mvcc.hpp"
 #include "thread_entry_task.hpp"
 #include "perf_monitor_trackers.hpp"
 
@@ -60,7 +61,7 @@ namespace cublog
       replicator (const replicator &) = delete;
       replicator (replicator &&) = delete;
 
-      ~replicator ();
+      virtual ~replicator ();
 
       replicator &operator= (const replicator &) = delete;
       replicator &operator= (replicator &&) = delete;
@@ -80,26 +81,30 @@ namespace cublog
 
     private:
       void redo_upto_nxio_lsa (cubthread::entry &thread_entry);
-      void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa);
+
+    protected:
+      virtual void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa);
       template <typename T>
       void read_and_redo_record (cubthread::entry &thread_entry, const LOG_RECORD_HEADER &rec_header,
 				 const log_lsa &rec_lsa);
       template <typename T>
-      void read_and_bookkeep_mvcc_vacuum (const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa,
-					  const T &log_rec, bool assert_mvccid_non_null);
+      void read_and_bookkeep_mvcc_vacuum (const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa, const T &log_rec,
+					  bool assert_mvccid_non_null);
       template <typename T>
       void read_and_redo_btree_stats (cubthread::entry &thread_entry, const log_rv_redo_rec_info<T> &record_info);
       template <typename T>
-      void calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
-	  const log_lsa &rec_lsa);
+      void calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry, const log_lsa &rec_lsa);
       void register_assigned_mvccid (TRANID tranid);
 
-    private:
+    protected:
       const bool m_bookkeep_mvcc_vacuum_info;
       const bool m_replicate_mvcc;
+
+    private:
       std::unique_ptr<cubthread::entry_manager> m_daemon_context_manager;
       cubthread::daemon *m_daemon = nullptr;
 
+    protected:
       log_lsa m_redo_lsa = NULL_LSA;
       mutable bool m_replication_active;
       mutable std::mutex m_redo_lsa_mutex;
@@ -118,15 +123,19 @@ namespace cublog
        */
       perfmon_counter_timer_tracker m_perfmon_redo_sync;
 
+    private:
       /*
        */
       std::atomic<log_lsa> m_most_recent_trantable_snapshot_lsa;
 
+    protected:
       /* does not record anything; needed just to please reused recovery infrastructure
        */
       perf_stats m_perf_stat_idle;
 
       std::unique_ptr<cublog::replicator_mvcc> m_replicator_mvccid;
+
+
   };
 }
 

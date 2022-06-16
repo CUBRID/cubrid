@@ -48,7 +48,7 @@ namespace cublog
       atomic_replication_helper &operator= (const atomic_replication_helper &) = delete;
       atomic_replication_helper &operator= (atomic_replication_helper &&) = delete;
 
-      void add_atomic_replication_sequence (TRANID trid, log_rv_redo_context redo_context);
+      void add_atomic_replication_sequence (TRANID trid, LOG_LSA start_lsa, const log_rv_redo_context &redo_context);
       int add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa, LOG_RCVINDEX rcvindex,
 				       VPID vpid);
       void unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, TRANID tranid);
@@ -56,6 +56,7 @@ namespace cublog
 #if !defined (NDEBUG)
       bool check_for_page_validity (VPID vpid, TRANID tranid) const;
 #endif
+      bool can_end_atomic_sequence (TRANID tranid, LOG_LSA sysop_parent_lsa) const;
 
     private:
 
@@ -63,7 +64,7 @@ namespace cublog
       {
 	public:
 	  atomic_replication_sequence () = delete;
-	  explicit atomic_replication_sequence (log_rv_redo_context redo_context);
+	  explicit atomic_replication_sequence (const log_rv_redo_context &redo_context);
 
 	  atomic_replication_sequence (const atomic_replication_sequence &) = delete;
 	  atomic_replication_sequence (atomic_replication_sequence &&) = delete;
@@ -73,8 +74,13 @@ namespace cublog
 	  atomic_replication_sequence &operator= (const atomic_replication_sequence &) = delete;
 	  atomic_replication_sequence &operator= (atomic_replication_sequence &&) = delete;
 
+	  // technical: function is needed to avoid double constructing a redo_context - which is expensive -
+	  // upon constructing a sequence
+	  void set_start_lsa (LOG_LSA start_lsa);
+
 	  void apply_and_unfix_sequence (THREAD_ENTRY *thread_p);
 	  int add_atomic_replication_unit (THREAD_ENTRY *thread_p, log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid);
+	  bool can_end_atomic_sequence (LOG_LSA sysop_parent_lsa) const;
 	private:
 	  void apply_all_log_redos (THREAD_ENTRY *thread_p);
 
@@ -102,6 +108,7 @@ namespace cublog
 	      void unfix_page (THREAD_ENTRY *thread_p);
 	      PAGE_PTR get_page_ptr ();
 	      void set_page_ptr (const PAGE_PTR &ptr);
+	      LOG_LSA get_lsa () const;
 
 	      VPID m_vpid;
 	    private:
@@ -111,19 +118,57 @@ namespace cublog
 	      LOG_RCVINDEX m_record_index;
 	  };
 
+	  /* The LSA of the log record which started this atomic sequence.
+	   * It is used for comparison to see whether a sysop end operation can close an
+	   * atomic replication sequence. */
+	  LOG_LSA m_start_lsa;
+
+	  using atomic_unit_vector_type = std::vector<atomic_replication_unit>;
+	  using vpid_to_page_ptr_map_type = std::map<VPID, PAGE_PTR>;
+
 	  log_rv_redo_context m_redo_context;
-	  using atomic_unit_vector = std::vector<atomic_replication_unit>;
-	  atomic_unit_vector m_units;
-	  using vpid_to_page_ptr_map = std::map<VPID, PAGE_PTR>;
-	  vpid_to_page_ptr_map m_page_map;
+	  atomic_unit_vector_type m_units;
+	  vpid_to_page_ptr_map_type m_page_map;
       };
 
-      std::map<TRANID, atomic_replication_sequence> m_sequences_map;
+    private:
+      using sequence_map_type = std::map<TRANID, atomic_replication_sequence>;
+
+      sequence_map_type m_sequences_map;
 #if !defined (NDEBUG)
       using vpid_set_type = std::set<VPID>;
+
       std::map<TRANID, vpid_set_type> m_vpid_sets_map;
 #endif
   };
+
+  template <typename T>
+  void atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::apply_log_by_type (
+	  THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context, LOG_RECTYPE rectype)
+  {
+    LOG_RCV rcv;
+    if (m_page_ptr != nullptr)
+      {
+	assert (m_watcher.pgptr == nullptr);
+	rcv.pgptr = m_page_ptr;
+      }
+    else if (m_watcher.pgptr != nullptr)
+      {
+	rcv.pgptr = m_watcher.pgptr;
+      }
+    else
+      {
+	assert_release (false);
+      }
+
+    redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
+    const log_rv_redo_rec_info<T> record_info (m_record_lsa, rectype, *redo_context.m_reader.reinterpret_cptr<T> ());
+    if (log_rv_check_redo_is_needed (rcv.pgptr, record_info.m_start_lsa, redo_context.m_end_redo_lsa))
+      {
+	rcv.reference_lsa = m_record_lsa;
+	log_rv_redo_record_sync_apply (thread_p, redo_context, record_info, m_vpid, rcv);
+      }
+  }
 }
 
 #endif // _ATOMIC_REPLICATION_HELPER_HPP_
