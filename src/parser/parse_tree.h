@@ -738,6 +738,38 @@ struct json_t;
           ( (n)->info.method_call.method_type == PT_SP_PROCEDURE || \
             (n)->info.method_call.method_type == PT_SP_FUNCTION) )
 
+/* PT_NAME_INFO */
+#define PT_NAME_ORIGINAL(n)		((n)->info.name.original)
+#define PT_NAME_RESOLVED(n)		((n)->info.name.resolved)
+
+/* PT_CREATE_ENTITY */
+#define PT_CREATE_ENTITY_NAME(n)	((n)->info.create_entity.entity_name)
+
+/* PT_RENAME */
+#define PT_RENAME_NEW_NAME(n)		((n)->info.rename.new_name)
+
+/* PT_SYNONYM_INFO */
+#define PT_SYNONYM_NAME(n)		((n)->info.synonym.synonym_name)
+#define PT_SYNONYM_OWNER_NAME(n)	((n)->info.synonym.synonym_owner_name)
+#define PT_SYNONYM_OLD_NAME(n)		((n)->info.synonym.old_synonym_name)
+#define PT_SYNONYM_OLD_OWNER_NAME(n)	((n)->info.synonym.old_synonym_owner_name)
+#define PT_SYNONYM_NEW_NAME(n)		((n)->info.synonym.new_synonym_name)
+#define PT_SYNONYM_NEW_OWNER_NAME(n)	((n)->info.synonym.new_synonym_owner_name)
+#define PT_SYNONYM_TARGET_NAME(n)	((n)->info.synonym.target_name)
+#define PT_SYNONYM_TARGET_OWNER_NAME(n)	((n)->info.synonym.target_owner_name)
+#define PT_SYNONYM_COMMENT(n)		((n)->info.synonym.comment)
+#define PT_SYNONYM_COMMENT_STR(n)	((n)->info.synonym.comment->info.value.data_value.str)
+#define PT_SYNONYM_COMMENT_BYTES(n)	((n)->info.synonym.comment->info.value.data_value.str->bytes)
+#define PT_SYNONYM_ACCESS_MODIFIER(n)	((n)->info.synonym.access_modifier)
+#define PT_SYNONYM_OR_REPLACE(n)	((n)->info.synonym.or_replace)
+#define PT_SYNONYM_IF_EXISTS(n)		((n)->info.synonym.if_exists)
+
+#define PT_IS_SYNONYM_NODE(n) \
+	( (n)->node_type == PT_ALTER_SYNONYM || \
+	  (n)->node_type == PT_CREATE_SYNONYM || \
+	  (n)->node_type == PT_DROP_SYNONYM || \
+	  (n)->node_type == PT_RENAME_SYNONYM )
+
 /*
  Enumerated types of parse tree statements
   WARNING ------ WARNING ----- WARNING
@@ -888,6 +920,11 @@ enum pt_node_type
   PT_DROP_SERVER = CUBRID_STMT_DROP_SERVER,
   PT_RENAME_SERVER = CUBRID_STMT_RENAME_SERVER,
   PT_ALTER_SERVER = CUBRID_STMT_ALTER_SERVER,
+
+  PT_ALTER_SYNONYM = CUBRID_STMT_ALTER_SYNONYM,
+  PT_CREATE_SYNONYM = CUBRID_STMT_CREATE_SYNONYM,
+  PT_DROP_SYNONYM = CUBRID_STMT_DROP_SYNONYM,
+  PT_RENAME_SYNONYM = CUBRID_STMT_RENAME_SYNONYM,
 
   PT_DIFFERENCE = CUBRID_MAX_STMT_TYPE,	/* these enumerations must be distinct from statements */
   PT_INTERSECTION,		/* difference intersection and union are reported as CUBRID_STMT_SELECT. */
@@ -1185,8 +1222,13 @@ typedef enum
   PT_IS_CTE_NON_REC_SUBQUERY,
 
   PT_DERIVED_JSON_TABLE,	// json table spec derivation
+
   PT_DERIVED_DBLINK_TABLE,	// dblink table spec derivation
-  // todo: separate into relevant enumerations
+
+  PT_PRIVATE,
+  PT_PUBLIC,
+  PT_SYNONYM
+    // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 
 /* Enumerated join type */
@@ -1721,6 +1763,8 @@ typedef struct pt_flat_spec_info PT_FLAT_SPEC_INFO;
 typedef struct pt_json_table_info PT_JSON_TABLE_INFO;
 typedef struct pt_json_table_node_info PT_JSON_TABLE_NODE_INFO;
 typedef struct pt_json_table_column_info PT_JSON_TABLE_COLUMN_INFO;
+
+typedef struct pt_synonym_info PT_SYNONYM_INFO;
 
 typedef PT_NODE *(*PT_NODE_WALK_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree, void *arg, int *continue_walk);
 
@@ -3371,6 +3415,22 @@ typedef struct pt_rename_server_info
   PT_NODE *new_name;		/* PT_NAME */
 } PT_RENAME_SERVER_INFO;
 
+struct pt_synonym_info
+{
+  PT_NODE *synonym_name;	/* PT_NAME */
+  PT_NODE *synonym_owner_name;	/* PT_NAME */
+  PT_NODE *old_synonym_name;	/* PT_NAME */
+  PT_NODE *old_synonym_owner_name;	/* PT_NAME */
+  PT_NODE *new_synonym_name;	/* PT_NAME */
+  PT_NODE *new_synonym_owner_name;	/* PT_NAME */
+  PT_NODE *target_name;		/* PT_NAME */
+  PT_NODE *target_owner_name;	/* PT_NAME */
+  PT_MISC_TYPE access_modifier;	/* PT_MISC_TYPE */
+  PT_NODE *comment;		/* PT_VALUE */
+  unsigned or_replace:1;	/* OR REPLACE clause for CREATE SYNONYM */
+  unsigned if_exists:1;		/* IF EXISTS clause for DROP SYNONYM */
+};
+
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
   struct PT_XYZ_INFO xyz;
@@ -3464,6 +3524,7 @@ union pt_statement_info
   PT_STORED_PROC_INFO sp;
   PT_STORED_PROC_PARAM_INFO sp_param;
   PT_SPEC_INFO spec;
+  PT_SYNONYM_INFO synonym;
   PT_TABLE_OPTION_INFO table_option;
   PT_TIMEOUT_INFO timeout;
   PT_TRIGGER_ACTION_INFO trigger_action;
@@ -3827,8 +3888,7 @@ enum cdc_ddl_type
   CDC_ALTER,
   CDC_DROP,
   CDC_RENAME,
-  CDC_TRUNCATE,
-  CDC_TRUNCATE_CASCADE
+  CDC_TRUNCATE
 };
 typedef enum cdc_ddl_type CDC_DDL_TYPE;
 
@@ -3840,7 +3900,8 @@ enum cdc_ddl_object_type
   CDC_VIEW,
   CDC_FUNCTION,
   CDC_PROCEDURE,
-  CDC_TRIGGER
+  CDC_TRIGGER,
+  CDC_USER
 };
 typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
 

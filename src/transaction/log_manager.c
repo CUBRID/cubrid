@@ -10219,10 +10219,6 @@ log_clock_execute (cubthread::entry & thread_ref)
 static void
 log_check_ha_delay_info_execute (cubthread::entry &thread_ref)
 {
-#if defined(WINDOWS)
-  return;
-#endif /* WINDOWS */
-
   if (!BO_IS_SERVER_RESTARTED ())
     {
       // wait for boot to finish
@@ -10560,12 +10556,14 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
 static int
 cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENTRY * log_info_entry)
 {
-  LOG_LSA cur_log_rec_lsa, next_log_rec_lsa;
+  LOG_LSA cur_log_rec_lsa = LSA_INITIALIZER;
+  LOG_LSA next_log_rec_lsa = LSA_INITIALIZER;
 
   LOG_PAGE *log_page_p = NULL;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
-  LOG_RECORD_HEADER *log_rec_header, *nx_rec_header;
+  LOG_RECORD_HEADER *log_rec_header = NULL;
+  LOG_RECORD_HEADER *nx_rec_header = NULL;
 
   char *tran_user = NULL;
   int trid;
@@ -10601,7 +10599,6 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
       error = ER_CDC_NULL_EXTRACTION_LSA;
       goto error;
     }
-
 
   log_type = log_rec_header->type;
   trid = log_rec_header->trid;
@@ -10678,7 +10675,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	/*supplemental log info types : time, tran_user, undo image */
 	LOG_REC_SUPPLEMENT *supplement;
 	int supplement_length;
-	SUPPLEMENT_REC_TYPE rec_type;
+	SUPPLEMENT_REC_TYPE rec_type = LOG_SUPPLEMENT_LARGER_REC_TYPE;
 
 	bool is_zip_supplement = false;
 	bool is_unzip_supplement = false;
@@ -10965,9 +10962,9 @@ error:
 static void
 cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 {
-  LOG_LSA cur_log_rec_lsa;
-  LOG_LSA process_lsa;
-  LOG_LSA nxio_lsa;
+  LOG_LSA cur_log_rec_lsa = LSA_INITIALIZER;
+  LOG_LSA process_lsa = LSA_INITIALIZER;
+  LOG_LSA nxio_lsa = LSA_INITIALIZER;
 
   CDC_LOGINFO_ENTRY log_info_entry;
 
@@ -11191,9 +11188,9 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
   char *log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *log_page_p = NULL;
 
-  LOG_LSA process_lsa;
-  LOG_LSA current_logrec_lsa;
-  LOG_LSA prev_lsa;
+  LOG_LSA process_lsa = LSA_INITIALIZER;
+  LOG_LSA current_logrec_lsa = LSA_INITIALIZER;
+  LOG_LSA prev_lsa = LSA_INITIALIZER;
 
   LOG_RECTYPE log_type;
 
@@ -11516,7 +11513,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		redo_recdes->length = redo_length - sizeof (INT16);
 
 		tmp_ptr = (char *) redo_data + sizeof (redo_recdes->type);
-		redo_recdes->length += OR_HEADER_SIZE (tmp_ptr) - OR_CHN_OFFSET;
+		redo_recdes->length += OR_HEADER_SIZE (tmp_ptr);
 
 		redo_recdes->data = (char *) malloc (redo_recdes->length + MAX_ALIGNMENT);
 		if (redo_recdes->data == NULL)
@@ -12449,6 +12446,157 @@ error:
     } \
   while (0)
 
+/*
+ * cdc_check_if_schema_changed - compare the representation in record descriptor with latest representation,
+ *                               then check if they have different representation ID
+ *
+ * return: TRUE if schema has been changed
+ *
+ * recdes (in) : the instance record descriptor
+ * attr_info (in) : attribute information structure which contains last class representation
+ *
+ * NOTE: This function is called in making log info entry for CDC and Flashback.
+ *       CDC cannot support schema-changed tables because CDC can interpret tables with schemas pre-fetched through JDBC.
+ *       Also, since the old representation does not contain information necessary to construct SQL,
+ *       such as def_order, CDC and Flashback have design issue that cannot support tables whose schema has been changed.
+ *       So this function is used to check if the schema has changed.
+ */
+static bool
+cdc_check_if_schema_changed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
+{
+  /* schema has been changed */
+  return or_rep_id (recdes) != attr_info->last_classrepr->id;
+}
+
+static int
+cdc_get_attribute_size (DB_VALUE * value)
+{
+  int size = 0;
+
+  switch (DB_VALUE_TYPE (value))
+    {
+    case DB_TYPE_INTEGER:
+      size = sizeof (DB_C_INT);
+      break;
+    case DB_TYPE_BIGINT:
+      size = sizeof (DB_C_BIGINT);
+      break;
+    case DB_TYPE_SHORT:
+      size = sizeof (DB_C_SHORT);
+      break;
+    case DB_TYPE_FLOAT:
+      size = sizeof (DB_C_FLOAT);
+      break;
+    case DB_TYPE_DOUBLE:
+      size = sizeof (DB_C_DOUBLE);
+      break;
+    case DB_TYPE_NUMERIC:
+      size = DB_NUMERIC_BUF_SIZE;
+      break;
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+      {
+	/* size of the data converted into bit string include "X''"
+	 * e.g. 17 = B'10001' = X'11' */
+	size = ((db_get_string_length (value) + 3) / 4) + 3;
+	break;
+      }
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+      size = db_get_string_size (value);
+      break;
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
+      /* size of string "N''" is 4
+       * e.g. N'string' */
+      size = db_get_string_size (value) + 3;
+      break;
+    case DB_TYPE_TIME:
+      /* precision in data types related to DATE/TIME means the size the string converted from the date/time data */
+      size = DB_TIME_PRECISION;
+      break;
+    case DB_TYPE_TIMESTAMP:
+      size = DB_TIMESTAMP_PRECISION;
+      break;
+    case DB_TYPE_DATETIME:
+      size = DB_DATETIME_PRECISION;
+      break;
+    case DB_TYPE_TIMESTAMPTZ:
+    case DB_TYPE_TIMESTAMPLTZ:
+      size = DB_TIMESTAMPTZ_PRECISION;
+      break;
+    case DB_TYPE_DATETIMETZ:
+    case DB_TYPE_DATETIMELTZ:
+      size = DB_DATETIMETZ_PRECISION;
+      break;
+    case DB_TYPE_DATE:
+      size = DB_DATE_PRECISION;
+      break;
+    case DB_TYPE_MONETARY:
+      {
+	DB_MONETARY *money_p = db_get_monetary (value);
+	const char *currency_symbol = lang_currency_symbol (money_p->type);
+
+	/* monetary contains double value, and size of the string converted from double value can not exceeds 23 bytes
+	 * maximum value : 1.7976931348623157E+308
+	 * 15bytes significant number + '.' + 'e+308' = 23 bytes */
+	const int maximum_double_buffer_size = 23;
+
+	size = strlen (currency_symbol) + maximum_double_buffer_size;
+      }
+      break;
+    case DB_TYPE_ENUMERATION:
+      if (db_get_enum_string (value) == NULL && db_get_enum_short (value) != 0)
+	{
+	  size = sizeof (DB_C_SHORT);
+	}
+      else
+	{
+	  DB_VALUE varchar_val;
+	  /* print enumerations as strings */
+	  if (tp_enumeration_to_varchar (value, &varchar_val) == NO_ERROR)
+	    {
+	      size = db_get_string_size (&varchar_val);
+	    }
+	  else
+	    {
+	      assert (false);
+	    }
+	}
+      break;
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+      {
+	DB_ELO *elo;
+	elo = db_get_elo (value);
+
+	size = elo == NULL ? 0 : (int) strlen (elo->locator);
+      }
+      break;
+    case DB_TYPE_NULL:
+    case DB_TYPE_VARIABLE:
+    case DB_TYPE_SUB:
+    case DB_TYPE_DB_VALUE:
+    case DB_TYPE_OBJECT:
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+    case DB_TYPE_ELO:
+    case DB_TYPE_JSON:
+    case DB_TYPE_POINTER:
+    case DB_TYPE_ERROR:
+      /* Not supported */
+      size = 0;
+      break;
+    default:
+      assert (false);
+      break;
+    }
+
+  return size;
+
+}
+
 int
 cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYPE dml_type,
 		      OID classoid, RECDES * undo_recdes, RECDES * redo_recdes, CDC_LOGINFO_ENTRY * dml_entry,
@@ -12494,6 +12642,9 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   int length = 0;
 
   int record_length = 0;
+  int metadata_length = 0;
+  int buffer_size = 0;
+  int align_size = 0;
 
   char *loginfo_buf = NULL;
   OID partitioned_classoid = OID_INITIALIZER;
@@ -12540,6 +12691,16 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
   if (undo_recdes != NULL)
     {
+      if (cdc_check_if_schema_changed (undo_recdes, &attr_info))
+	{
+	  FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED, classoid, classname);
+
+	  error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
+	  cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
+
+	  goto exit;
+	}
+
       if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, undo_recdes, NULL, &attr_info)) != NO_ERROR)
 	{
 	  goto exit;
@@ -12557,25 +12718,29 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       for (i = 0; i < attr_info.num_values; i++)
 	{
 	  heap_value = &attr_info.values[i];
-	  if (heap_value->read_attrepr == NULL)
-	    {
-	      FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED, classoid, classname);
 
-	      error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
-	      cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
-
-	      goto exit;
-	    }
+	  assert (heap_value->read_attrepr != NULL);
 
 	  oldval_deforder = heap_value->read_attrepr->def_order;
-	  memcpy (&old_values[oldval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
-	}
 
-      record_length += undo_recdes->length;
+	  memcpy (&old_values[oldval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
+
+	  record_length += cdc_get_attribute_size (&heap_value->dbvalue);
+	}
     }
 
   if (redo_recdes != NULL)
     {
+      if (cdc_check_if_schema_changed (redo_recdes, &attr_info))
+	{
+	  FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED, classoid, classname);
+
+	  error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
+	  cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
+
+	  goto exit;
+	}
+
       if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, redo_recdes, NULL, &attr_info)) != NO_ERROR)
 	{
 	  goto exit;
@@ -12594,21 +12759,15 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
       for (i = 0; i < attr_info.num_values; i++)
 	{
 	  heap_value = &attr_info.values[i];
-	  if (heap_value->read_attrepr == NULL)
-	    {
-	      FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED, classoid, classname);
 
-	      error_code = cdc_make_error_loginfo (trid, user, dml_type, classoid, dml_entry);
-	      cdc_log ("cdc_make_dml_loginfo : failed to find class old representation ");
-
-	      goto exit;
-	    }
+	  assert (heap_value->read_attrepr != NULL);
 
 	  newval_deforder = heap_value->read_attrepr->def_order;
-	  memcpy (&new_values[newval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
-	}
 
-      record_length += redo_recdes->length;
+	  memcpy (&new_values[newval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
+
+	  record_length += cdc_get_attribute_size (&heap_value->dbvalue);
+	}
     }
 
   if ((cdc_Gl.producer.all_in_cond == 0) && dml_type != CDC_INSERT && !is_flashback)
@@ -12631,7 +12790,22 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	}
     }
 
-  loginfo_buf = (char *) malloc (record_length * 5 + MAX_ALIGNMENT);
+  /* metadata for CDC loginfo :
+   * loginfo length (int) + trid (int) + user name (32) + data item type (int) + dml_type (int) + classoid (int64)
+   * + number of changed column (int) + changed column index (int * number of column)
+   * + number of condition column + condition column index (int * number of column)
+   * + function type (int) * number of column * 2 */
+
+  metadata_length = OR_INT_SIZE + OR_INT_SIZE + DB_MAX_USER_LENGTH + OR_INT_SIZE + OR_INT_SIZE + OR_BIGINT_SIZE +
+    OR_INT_SIZE + (attr_info.num_values * OR_INT_SIZE) + OR_INT_SIZE + (attr_info.num_values * OR_INT_SIZE) +
+    attr_info.num_values * OR_INT_SIZE * 2;
+
+  /* sum of the pad size through aligning the attributes (changed column, cond column) */
+  align_size = MAX_ALIGNMENT * attr_info.num_values * 2;
+
+  buffer_size = metadata_length + record_length + align_size;
+
+  loginfo_buf = (char *) malloc (buffer_size + MAX_ALIGNMENT);
   if (loginfo_buf == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -13495,6 +13669,15 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 
       break;
     case DB_TYPE_MONETARY:
+      {
+	valcnv_convert_value_to_string (new_value);
+
+	func_type = 7;
+	ptr = or_pack_int (ptr, func_type);
+	ptr = or_pack_string (ptr, db_get_string (new_value));
+
+	db_value_clear (new_value);
+      }
       break;
     case DB_TYPE_NULL:
       /* Can't get here because the DB_IS_NULL test covers DB_TYPE_NULL */
@@ -14276,6 +14459,7 @@ static int
 cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa)
 {
   LOG_LSA process_lsa;
+  LOG_LSA current_lsa;
 
   LOG_RECORD_HEADER *log_rec_header;
   LOG_PAGE *log_page_p = NULL;
@@ -14311,6 +14495,8 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
   while (!LSA_ISNULL (&process_lsa))
     {
       log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
+
+      LSA_COPY (&current_lsa, &process_lsa);
       LSA_COPY (&forw_lsa, &log_rec_header->forw_lsa);
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_page_p);
@@ -14322,9 +14508,12 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
 	  if (donetime->at_time >= *time)
 	    {
 	      *time = donetime->at_time;
-	      LSA_COPY (start_lsa, &forw_lsa);
+
+	      LSA_COPY (start_lsa, &current_lsa);
+
 	      return NO_ERROR;
 	    }
+
 	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*donetime), &process_lsa, log_page_p);
 	}
 
@@ -14336,9 +14525,12 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
 	  if (dummy->at_time >= *time)
 	    {
 	      *time = dummy->at_time;
-	      LSA_COPY (start_lsa, &forw_lsa);
+
+	      LSA_COPY (start_lsa, &current_lsa);
+
 	      return NO_ERROR;
 	    }
+
 	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*dummy), &process_lsa, log_page_p);
 	}
 

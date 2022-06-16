@@ -1314,6 +1314,7 @@ static int
 jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_list & sig_list)
 {
   int error = NO_ERROR;
+  int save;
   DB_VALUE method, param_cnt_val, mode, arg_type, temp, result_type;
 
   int sig_num_args = pt_length_of_list (node->info.method_call.arg_list);
@@ -1323,9 +1324,17 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 
   METHOD_SIG *sig = nullptr;
 
+  db_make_null (&method);
+  db_make_null (&param_cnt_val);
+  db_make_null (&mode);
+  db_make_null (&arg_type);
+  db_make_null (&temp);
+  db_make_null (&result_type);
+
   {
     char *parsed_method_name = (char *) node->info.method_call.method_name->info.name.original;
     DB_OBJECT *mop_p = jsp_find_stored_procedure (parsed_method_name);
+    AU_DISABLE (save);
     if (mop_p)
       {
 	/* check java stored prcedure target */
@@ -1485,7 +1494,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
   }
 
 end:
-
+  AU_ENABLE (save);
   if (error != NO_ERROR)
     {
       if (sig)

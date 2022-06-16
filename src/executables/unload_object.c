@@ -98,14 +98,14 @@ static char *class_processed = NULL;
 static OID null_oid;
 
 static const char *prohibited_classes[] = {
-  "db_authorizations",		/* old name for db_root */
-  "db_root",
-  "db_user",
-  "db_authorization",
-  "db_password",
-  "db_trigger",
-  "db_serial",
-  "db_ha_apply_info",
+  CT_AUTHORIZATIONS_NAME,	/* old name for db_root */
+  CT_ROOT_NAME,
+  CT_USER_NAME,
+  CT_AUTHORIZATION_NAME,
+  CT_PASSWORD_NAME,
+  CT_TRIGGER_NAME,
+  CT_SERIAL_NAME,
+  CT_HA_APPLY_INFO_NAME,
   /* catalog classes */
   CT_CLASS_NAME,
   CT_ATTRIBUTE_NAME,
@@ -127,6 +127,7 @@ static const char *prohibited_classes[] = {
   CT_CHARSET_NAME,
   CT_DUAL_NAME,
   CT_DB_SERVER_NAME,
+  CT_SYNONYM_NAME,
   /* catalog vclasses */
   CTV_CLASS_NAME,
   CTV_SUPER_CLASS_NAME,
@@ -147,6 +148,7 @@ static const char *prohibited_classes[] = {
   CTV_DB_COLLATION_NAME,
   CTV_DB_CHARSET_NAME,
   CTV_DB_SERVER_NAME,
+  CTV_SYNONYM_NAME,
   NULL
 };
 
@@ -834,8 +836,10 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 
   /*
    * Lock all unloaded classes with IS_LOCK
+   *   - If there is only view, num_unload_classes can be 0.
    */
-  if (locator_fetch_set (num_unload_classes, unload_class_table, DB_FETCH_READ, DB_FETCH_READ, true) == NULL)
+  if (num_unload_classes
+      && locator_fetch_set (num_unload_classes, unload_class_table, DB_FETCH_READ, DB_FETCH_READ, true) == NULL)
     {
       status = 1;
       goto end;

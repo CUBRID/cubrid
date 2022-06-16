@@ -11503,8 +11503,8 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
 
   /* Try early out: check first oid */
   BTREE_GET_OID (ovf_record.data, &inst_oid);
-  assert ((inst_oid.slotid & BTREE_LEAF_RECORD_MASK) == 0);
-  assert ((inst_oid.volid & BTREE_OID_MVCC_FLAGS_MASK) == 0);
+  assert (BTREE_OID_GET_RECORD_FLAGS (&inst_oid) == 0);
+  assert (BTREE_OID_GET_MVCC_FLAGS (&inst_oid) == 0);
 
   if (OID_LT (oid, &inst_oid))
     {
@@ -11544,8 +11544,8 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
   /* Get last object. */
   oid_ptr = ovf_record.data + (ovf_record.length - size);
   BTREE_GET_OID (oid_ptr, &inst_oid);
-  assert ((inst_oid.slotid & BTREE_LEAF_RECORD_MASK) == 0);
-  assert ((inst_oid.volid & BTREE_OID_MVCC_FLAGS_MASK) == 0);
+  assert (BTREE_OID_GET_RECORD_FLAGS (&inst_oid) == 0);
+  assert (BTREE_OID_GET_MVCC_FLAGS (&inst_oid) == 0);
 
   if (OID_GT (oid, &inst_oid))
     {
@@ -11590,8 +11590,8 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
       mid = (min + max) / 2;
       oid_ptr = ovf_record.data + (size * mid);
       BTREE_GET_OID (oid_ptr, &inst_oid);
-      assert ((inst_oid.slotid & BTREE_LEAF_RECORD_MASK) == 0);
-      assert ((inst_oid.volid & BTREE_OID_MVCC_FLAGS_MASK) == 0);
+      assert (BTREE_OID_GET_RECORD_FLAGS (&inst_oid) == 0);
+      assert (BTREE_OID_GET_MVCC_FLAGS (&inst_oid) == 0);
 
       /* Check OID. */
       if (OID_EQ (oid, &inst_oid))
@@ -11659,8 +11659,8 @@ btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID 
   while (oid_ptr >= oid_ptr_lower_bound)
     {
       BTREE_GET_OID (oid_ptr, &inst_oid);
-      assert ((inst_oid.slotid & BTREE_LEAF_RECORD_MASK) == 0);
-      assert ((inst_oid.volid & BTREE_OID_MVCC_FLAGS_MASK) == 0);
+      assert (BTREE_OID_GET_RECORD_FLAGS (&inst_oid) == 0);
+      assert (BTREE_OID_GET_MVCC_FLAGS (&inst_oid) == 0);
 
       /* Check OID. */
       if (!OID_EQ (oid, &inst_oid))
@@ -11700,8 +11700,8 @@ btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID 
   while (oid_ptr <= oid_ptr_upper_bound)
     {
       BTREE_GET_OID (oid_ptr, &inst_oid);
-      assert ((inst_oid.slotid & BTREE_LEAF_RECORD_MASK) == 0);
-      assert ((inst_oid.volid & BTREE_OID_MVCC_FLAGS_MASK) == 0);
+      assert (BTREE_OID_GET_RECORD_FLAGS (&inst_oid) == 0);
+      assert (BTREE_OID_GET_MVCC_FLAGS (&inst_oid) == 0);
 
       /* Check OID. */
       if (!OID_EQ (oid, &inst_oid))
@@ -19254,6 +19254,7 @@ btree_iss_set_key (BTREE_SCAN * bts, INDEX_SKIP_SCAN * iss)
   return NO_ERROR;
 }
 
+#if 0
 /*****************************************************************************/
 /* For migrate_90beta_to_91                                                  */
 /*****************************************************************************/
@@ -19498,6 +19499,7 @@ btree_compare_oid (const void *oid_mem1, const void *oid_mem2)
   return oid_compare (&oid1, &oid2);
 }
 #endif /* MIGRATE_90BETA_TO_91 */
+#endif // #if 0
 
 #if !defined(NDEBUG)
 static int
@@ -19851,7 +19853,7 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR p
 	  {
 	    mvcc_flags = btree_record_object_get_mvcc_flags (buf.ptr);
 	    or_get_oid (&buf, &oid);
-	    oid.volid = oid.volid & ~BTREE_OID_MVCC_FLAGS_MASK;
+	    BTREE_OID_CLEAR_MVCC_FLAGS (&oid);
 
 	    if (BTREE_IS_UNIQUE (btid_int->unique_pk))
 	      {
@@ -21798,7 +21800,7 @@ btree_set_mvcc_flags_into_oid (MVCC_REC_HEADER * p_mvcc_header, OID * oid)
 void
 btree_clear_mvcc_flags_from_oid (OID * oid)
 {
-  oid->volid &= ~BTREE_OID_MVCC_FLAGS_MASK;
+  BTREE_OID_CLEAR_MVCC_FLAGS (oid);
 }
 
 /*
@@ -24112,13 +24114,32 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 
   if (logtb_find_current_isolation (thread_p) >= TRAN_REP_READ || (find_unique_helper.lock_mode >= S_LOCK))
     {
+      bool need_skip_mvcc_snapshot = false;
+
+      /*
+       * In Repeatable Read, the MVCC snapshot is created when the SELECT query is executed.
+       * Even if the SELCET query is not explicitly executed, the MVCC snapshot is created when the index is scanned.
+       * MVCC snapshots are created when looking up a user, getting the current username, and looking up a Synonym.
+       * Creating an MVCC snapshot when executing an internal query on the system may not be the intended result
+       * of the user. Therefore, in case of index scan of the db_user and _db_synonym system tables,
+       * do not create an MVCC snapshot so that it does not differ from the previous answer in the isolation test case.
+       */
+      if (oid_check_cached_class_oid (OID_CACHE_USER_CLASS_ID, class_oid)
+	  || oid_check_cached_class_oid (OID_CACHE_SYNONYM_CLASS_ID, class_oid))
+	{
+	  need_skip_mvcc_snapshot = true;
+	}
+
       /*
        * Acquire snapshot in RR if not already acquired. This is needed since
        * the transaction need to know the actual visible objects - before
        * instance locking. In this way future commands of current transaction
        * may correctly detect visible objects.
        */
-      (void) logtb_get_mvcc_snapshot (thread_p);
+      if (!need_skip_mvcc_snapshot)
+	{
+	  (void) logtb_get_mvcc_snapshot (thread_p);
+	}
     }
 
   /* Find unique key and object. */

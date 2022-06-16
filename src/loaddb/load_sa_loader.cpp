@@ -1448,7 +1448,7 @@ ldr_find_class (const char *class_name)
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type() == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+  if (db_get_client_type() == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
     {
       char other_class_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
@@ -1539,7 +1539,7 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
 
   if (!DB_IS_NULL (&value))
     {
-      assert (strlen (db_get_string (&value)) < buf_size);
+      assert (STATIC_CAST (int, strlen (db_get_string (&value))) < buf_size);
       strncpy (buf, db_get_string (&value), buf_size);
     }
   else

@@ -69,6 +69,7 @@ int g_msg[1024];
 int msg_ptr;
 
 int yybuffer_pos;
+int is_dblink_query_string = 0;
 %}
 
 %option yylineno
@@ -742,12 +743,18 @@ int yybuffer_pos;
 [pP][rR][iI][oO][rR][iI][tT][yY]					{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return PRIORITY; }
+[pP][rR][iI][vV][aA][tT][eE]						{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return PRIVATE; }
 [pP][rR][iI][vV][iI][lL][eE][gG][eE][sS]				{ begin_token(yytext);   return PRIVILEGES; }
 [pP][rR][oO][cC][eE][dD][uU][rR][eE]					{ begin_token(yytext);   return PROCEDURE; }
 [pP][rR][oO][mM][oO][tT][eE]							{ begin_token(yytext);   return PROMOTE; }
 [pP][rR][oO][pP][eE][rR][tT][iI][eE][sS]				{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return PROPERTIES; }
+[pP][uU][bB][lL][iI][cC]						{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return PUBLIC; }
 [qQ][uU][aA][rR][tT][eE][rR]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return QUARTER; }
@@ -921,6 +928,9 @@ int yybuffer_pos;
 [sS][uU][pP][eE][rR][cC][lL][aA][sS][sS]				{ begin_token(yytext);   return SUPERCLASS; }
 [sS][uU][pP][eE][rR][sS][eE][tT]					{ begin_token(yytext);   return SUPERSET; }
 [sS][uU][pP][eE][rR][sS][eE][tT][eE][qQ]				{ begin_token(yytext);   return SUPERSETEQ; }
+[sS][yY][nN][oO][nN][yY][mM]						{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return SYNONYM; }
 [sS][yY][sS][_][cC][oO][nN][nN][eE][cC][tT][_][bB][yY][_][pP][aA][tT][hH]	{ begin_token(yytext);   return SYS_CONNECT_BY_PATH; }
 [sS][yY][sS]_[dD][aA][tT][eE]						{ begin_token(yytext);   return SYS_DATE; }
 [sS][yY][sS][dD][aA][tT][eE]						{ begin_token(yytext);   return SYS_DATE; }
@@ -1233,7 +1243,7 @@ _[uU][tT][fF]8[']		{
 				}
 
 ["] 				{
-					if (prm_get_bool_value (PRM_ID_ANSI_QUOTES))
+					if (prm_get_bool_value (PRM_ID_ANSI_QUOTES) && (is_dblink_query_string == 0))
 					  {
 					    BEGIN(DELIMITED_ID_NAME);
 					  }
