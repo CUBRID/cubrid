@@ -142,6 +142,8 @@ namespace cublog
 	    const LOG_REC_SYSOP_END log_rec =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SYSOP_END> ();
 
+	    // if the atomic replication sequence start lsa is higher or equal to the sysop
+	    // end parent lsa, then the atomic sequence can be ended (commited & released)
 	    if (m_atomic_helper.can_end_atomic_sequence (header.trid, log_rec.lastparent_lsa))
 	      {
 		m_atomic_helper.unfix_atomic_replication_sequence (&thread_entry, header.trid);
