@@ -158,7 +158,10 @@ namespace cublog
 
     if (found_it != m_mapped_mvccids.cend ())
       {
-	log_Gl.mvcc_table.complete_mvcc (found_it->second.id, committed);
+	// all sub-ids should have already been completed
+	assert (found_it->second.sub_ids.empty ());
+
+	log_Gl.mvcc_table.complete_mvcc (LOG_SYSTEM_TRAN_INDEX, found_it->second.id, committed);
 
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
 	  {
@@ -167,8 +170,6 @@ namespace cublog
 	    dump_map ();
 	  }
 
-	// all sub-ids should have already been completed
-	assert (found_it->second.sub_ids.empty ());
 	m_mapped_mvccids.erase (found_it);
       }
     else

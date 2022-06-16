@@ -467,16 +467,16 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
   complete_mvcc_internal (tran_index, mvccid, committed);
 }
 
-void
-mvcctable::complete_mvcc (MVCCID mvccid, bool committed)
-{
-  // supplying null transaction index avoids updating transaction level mvccid info in the internal
-  // function's implementation;
-  // supposed to be called only from the transactional log replication logic executing on passive transaction server
-  assert (is_passive_transaction_server ());
+//void
+//mvcctable::complete_mvcc (MVCCID mvccid, bool committed)
+//{
+//  // supplying null transaction index avoids updating transaction level mvccid info in the internal
+//  // function's implementation;
+//  // supposed to be called only from the transactional log replication logic executing on passive transaction server
+//  assert (is_passive_transaction_server ());
 
-  complete_mvcc_internal (NULL_TRAN_INDEX, mvccid, committed);
-}
+//  complete_mvcc_internal (NULL_TRAN_INDEX, mvccid, committed);
+//}
 
 void
 mvcctable::complete_mvcc_internal (int tran_index, MVCCID mvccid, bool committed)
