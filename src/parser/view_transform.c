@@ -359,7 +359,6 @@ static const char *get_authorization_name (DB_AUTH auth);
 static PT_NODE *mq_add_dummy_from_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec,
 				    PT_NODE * class_, PT_NODE * derived_spec);
-static PT_NODE *mq_update_orderby_for (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 static bool mq_is_order_dependent_node (PT_NODE * node);
 
@@ -2195,50 +2194,6 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 }
 
 /*
- * mq_update_orderby_for() - if set to PT_EXPR_INFO_ROWNUM_ONLY, replace rownum to order_num on orderby_for
- *   return: PT_NODE *
- *
- *   Note:
- */
-static PT_NODE *
-mq_update_orderby_for (PARSER_CONTEXT * parser, PT_NODE * statement)
-{
-  PT_NODE *orderby_for;
-
-  if (!pt_is_select (statement))
-    {
-      return statement;
-    }
-
-  orderby_for = statement->info.query.orderby_for;
-
-  if (orderby_for != NULL && PT_EXPR_INFO_IS_FLAGED (orderby_for, PT_EXPR_INFO_ROWNUM_ONLY))
-    {
-      /* replace orderby_num() to inst_num() */
-      PT_NODE *ord_num = NULL, *ins_num = NULL;
-
-      /* generate orderby_num(), inst_num() */
-      if (!(ord_num = parser_new_node (parser, PT_EXPR)) || !(ins_num = parser_new_node (parser, PT_EXPR)))
-	{
-	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	  return NULL;
-	}
-
-      ord_num->type_enum = PT_TYPE_BIGINT;
-      ord_num->info.expr.op = PT_ORDERBY_NUM;
-      PT_EXPR_INFO_SET_FLAG (ord_num, PT_EXPR_INFO_ORDERBYNUM_C);
-
-      ins_num->type_enum = PT_TYPE_BIGINT;
-      ins_num->info.expr.op = PT_INST_NUM;
-      PT_EXPR_INFO_SET_FLAG (ins_num, PT_EXPR_INFO_INSTNUM_C);
-
-      orderby_for = pt_lambda_with_arg (parser, orderby_for, ins_num, ord_num, false, 0, false);
-    }
-
-  return statement;
-}
-
-/*
  * mq_substitute_inline_view_in_statement() - This takes a subquery expansion of
  *      a class_, in the form of a select, or union of selects,
  *      and a parse tree containing references to the class and its attributes,
@@ -2339,7 +2294,6 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
 	    }
 	}
       result = mq_substitute_select_for_inline_view (parser, tmp_result, subquery, derived_spec);
-      /* result = mq_update_orderby_for (parser, result);  need to remove */
     }
 
   /* set query id # */
