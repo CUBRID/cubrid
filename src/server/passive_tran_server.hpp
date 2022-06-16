@@ -19,7 +19,7 @@
 #ifndef _PASSIVE_TRAN_SERVER_HPP_
 #define _PASSIVE_TRAN_SERVER_HPP_
 
-#include "log_replication_atomic.hpp"
+#include "log_replication.hpp"
 #include "tran_server.hpp"
 
 class passive_tran_server : public tran_server

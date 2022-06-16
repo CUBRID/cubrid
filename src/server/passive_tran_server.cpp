@@ -17,6 +17,7 @@
  */
 
 #include "log_impl.h"
+#include "log_replication_atomic.hpp"
 #include "passive_tran_server.hpp"
 #include "server_type.hpp"
 #include "system_parameter.h"
