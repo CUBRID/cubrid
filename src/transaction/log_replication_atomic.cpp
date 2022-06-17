@@ -16,7 +16,9 @@
  *
  */
 
+#include "log_replication.cpp.hpp"
 #include "log_replication_atomic.hpp"
+#include "log_replication_jobs.hpp"
 
 #include "log_recovery_redo_parallel.hpp"
 

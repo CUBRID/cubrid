@@ -16,7 +16,6 @@
  *
  */
 
-
 #ifndef _LOG_REPLICATION_HPP_
 #define _LOG_REPLICATION_HPP_
 
@@ -138,8 +137,6 @@ namespace cublog
       perf_stats m_perf_stat_idle;
 
       std::unique_ptr<cublog::replicator_mvcc> m_replicator_mvccid;
-
-
   };
 }
 
