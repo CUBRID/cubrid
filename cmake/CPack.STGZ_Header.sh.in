@@ -245,8 +245,14 @@ else
         user_sh=$(basename $SHELL)
 fi
 
+bash_exist=1
 if [ $user_sh = "bash" ];then
 	sh_profile=$HOME/.bash_profile
+	if [ ! -f $sh_profile ];then
+	  bash_exist=0
+	  touch $sh_profile
+	fi
+
 	append_profile=$(grep "${PRODUCT_NAME} environment" $sh_profile)
 
 	if [ -z "$append_profile" ];then
@@ -260,6 +266,9 @@ if [ $user_sh = "bash" ];then
 	    echo 'if [ -f $HOME/.cubrid.sh ];then'                                                  >> $sh_profile
 	    echo '. $HOME/.cubrid.sh'                                                               >> $sh_profile
 	    echo 'fi'                                                                               >> $sh_profile
+	    if [ $bash_exist -eq 0 ];then
+	      echo "Notification: $sh_profile is created"
+	    fi
 	  fi
 	fi
 else
