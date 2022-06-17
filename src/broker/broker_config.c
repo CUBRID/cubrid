@@ -645,12 +645,12 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 #endif
       INI_GETSTR_CHK (s, ini, sec_name, "APPL_SERVER", DEFAULT_APPL_SERVER, &lineno);
       br_info[num_brs].appl_server = get_conf_value (s, tbl_appl_server);
+
       if (br_info[num_brs].appl_server < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
-
       br_info[num_brs].appl_server_min_num =
 	ini_getuint (ini, sec_name, "MIN_NUM_APPL_SERVER", DEFAULT_AS_MIN_NUM, &lineno);
       br_info[num_brs].appl_server_num = br_info[num_brs].appl_server_min_num;
@@ -662,7 +662,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 
       br_info[num_brs].appl_server_max_num =
 	ini_getuint (ini, sec_name, "MAX_NUM_APPL_SERVER", DEFAULT_AS_MAX_NUM, &lineno);
-      if (br_info[num_brs].appl_server_max_num > APPL_SERVER_NUM_LIMIT)
+      if (br_info[num_brs].appl_server_max_num > APPL_SERVER_NUM_LIMIT ||
+	  br_info[num_brs].appl_server_max_num < br_info[num_brs].appl_server_min_num )
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
