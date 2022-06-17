@@ -17,7 +17,7 @@
 #
 
 function get_cubrid_dir() {
-  cubrid_str=/CUBRID/
+  cubrid_str=/CUBRID
   cubrid_str_len=${#cubrid_str}
   current_dir="`pwd`"
 
@@ -81,7 +81,7 @@ setenv SHLIB_PATH $LD_LIBRARY_PATH
 setenv LIBPATH $LD_LIBRARY_PATH
 set path=($CUBRID/bin $path)
 
-set LIB=$CUBRID/lib:$CUBRID/cci/lib
+set LIB=$CUBRID/lib
 
 if (-f "/etc/redhat-release" ) then
   set OS=(`cat /etc/system-release-cpe | cut -d':' -f'3-3'`)
@@ -142,7 +142,7 @@ export SHLIB_PATH
 export LIBPATH
 export PATH
 
-LIB=$CUBRID/lib:$CUBRID/cci/lib
+LIB=$CUBRID/lib
 
 if [ -f /etc/redhat-release ];then
         OS=$(cat /etc/system-release-cpe | cut -d':' -f'3-3')
