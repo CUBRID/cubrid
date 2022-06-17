@@ -4437,7 +4437,7 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	      qfile_destroy_list (thread_p, indx_cov_p->list_id);
 
 	      indx_cov_p->list_id =
-		qfile_open_list (thread_p, indx_cov_p->type_list, NULL, indx_cov_p->query_id, 0, NULL);
+		qfile_open_list (thread_p, indx_cov_p->type_list, NULL, indx_cov_p->query_id, 0, indx_cov_p->list_id);
 	      if (indx_cov_p->list_id == NULL)
 		{
 		  status = S_ERROR;

@@ -4576,7 +4576,7 @@ stx_build_key_info (THREAD_ENTRY * thread_p, char *ptr, KEY_INFO * key_info)
     {
       key_info->key_vals =
 	stx_restore_key_val_array (thread_p, &xasl_unpack_info->packed_xasl[offset], key_info->key_cnt);
-      if (key_info->key_ranges == NULL)
+      if (key_info->key_vals == NULL)
 	{
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;

@@ -279,11 +279,10 @@ btree_get_node_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
 
   assert (page_ptr != NULL);
 
-/*
 #if !defined(NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
 #endif
-*/
+
   if (spage_get_record (thread_p, page_ptr, HEADER, &header_record, PEEK) != S_SUCCESS)
     {
       assert_release (false);
