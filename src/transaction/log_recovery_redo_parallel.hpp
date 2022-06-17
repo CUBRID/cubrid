@@ -21,7 +21,6 @@
 
 #include "log_reader.hpp"
 #include "log_recovery_redo.hpp"
-#include "log_replication.hpp"
 #include "log_recovery_redo_perf.hpp"
 
 #if defined (SERVER_MODE)
