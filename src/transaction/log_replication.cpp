@@ -458,11 +458,6 @@ namespace cublog
     assert (m_replicate_mvcc);
 
     LOG_SYSOP_END_TYPE_CHECK (log_rec.type);
-    // TODO: according to implementation in log_sysop_commit_internal, these asserts should hold
-    // for other than sysop commit
-    //assert (!LSA_ISNULL (&log_rec.lastparent_lsa));
-    //assert (LSA_LT (&log_rec.lastparent_lsa, &rec_lsa));
-
     if (log_rec.type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
       {
 	assert (!LSA_ISNULL (&log_rec.lastparent_lsa));
