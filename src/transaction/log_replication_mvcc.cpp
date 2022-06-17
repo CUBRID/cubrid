@@ -86,26 +86,7 @@ namespace cublog
 
 	auto found_it = m_mapped_mvccids.find (tranid);
 
-	//assert (found_it == m_mapped_mvccids.cend ());
-//	if (found_it == m_mapped_mvccids.cend ())
-//	  {
-//	    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
-//	      {
-//		_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] new_assigned_sub_mvccid_or_mvccid\n"
-//			       " WARNING sudden new parent_mvccid\n"
-//			       " tranid=%d parent_mvccid=%llu\n",
-//			       tranid, (unsigned long long)parent_mvccid);
-//		dump_map ();
-//	      }
-
-//	    // TODO: a new parent mvccid appeared out of the blue;
-//	    // not sure whether this is a valid scenario
-//	    // however, it will be commited/aborted at the end of the transaction
-//	    new_assigned_mvccid (tranid, parent_mvccid);
-//	    found_it = m_mapped_mvccids.find (tranid);
-//	    assert (found_it != m_mapped_mvccids.cend ());
-//	  }
-
+	assert_release (found_it != m_mapped_mvccids.cend ());
 	if (found_it != m_mapped_mvccids.cend ())
 	  {
 	    if (found_it->second.id == parent_mvccid)
@@ -130,10 +111,6 @@ namespace cublog
 	      }
 	    assert (found_it->second.sub_ids.empty ());
 	    found_it->second.sub_ids.push_back (mvccid);
-	  }
-	else
-	  {
-	    assert_release (false);
 	  }
 
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
@@ -161,6 +138,11 @@ namespace cublog
 	// all sub-ids should have already been completed
 	assert (found_it->second.sub_ids.empty ());
 
+	// TODO: temporary using system transaction to complete MVCC; if this proves to be incorrect
+	// another solution is to reserve an extra transaction in the transaction table (eg: transaction
+	// at index 1) and use that specifically for transactional log replication MVCC completion;
+	// also, this relates to the transaction index used in the replicator thread (see function
+	// replicator::redo_upto_nxio_lsa
 	log_Gl.mvcc_table.complete_mvcc (LOG_SYSTEM_TRAN_INDEX, found_it->second.id, committed);
 
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
