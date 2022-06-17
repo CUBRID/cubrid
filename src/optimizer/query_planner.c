@@ -4213,6 +4213,10 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 
 cost_cmp:
 
+  if (a == b || (af == bf && aa == ba))
+    {
+      return PLAN_COMP_EQ;
+    }
   if (af + aa <= bf + ba)
     {
       QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
