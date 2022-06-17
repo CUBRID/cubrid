@@ -1584,18 +1584,22 @@ smt_check_type_collation_match_4_fk (SM_ATTRIBUTE * attr1, SM_ATTRIBUTE * attr2)
 	  && TP_DOMAIN_COLLATION (attr1->domain) != TP_DOMAIN_COLLATION (attr2->domain)))
     {
       char *tp_col_nm1, *tp_col_nm2;
+      char *ekind;
       if (attr1->type->id != attr2->type->id)
 	{
 	  tp_col_nm1 = (char *) pr_type_from_id (attr1->type->id)->get_name ();
 	  tp_col_nm2 = (char *) pr_type_from_id (attr2->type->id)->get_name ();
+	  ekind = (char *) "data type";
 	}
       else
 	{
 	  tp_col_nm1 = lang_get_collation (attr1->domain->collation_id)->coll.coll_name;
 	  tp_col_nm2 = lang_get_collation (attr2->domain->collation_id)->coll.coll_name;
+	  ekind = (char *) "collation";
 	}
 
-      ERROR4 (error, ER_FK_HAS_DEFFERENT_TYPE_WITH_PK, attr1->header.name, tp_col_nm1, attr2->header.name, tp_col_nm2);
+      ERROR5 (error, ER_FK_HAS_DEFFERENT_TYPE_WITH_PK, attr1->header.name, attr2->header.name, ekind, tp_col_nm1,
+	      tp_col_nm2);
     }
 
   return error;

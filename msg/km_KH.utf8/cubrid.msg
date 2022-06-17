@@ -988,7 +988,7 @@ $ LOADDB
 918 The class '%1$s' referred by the foreign key does not exist.
 919 The class '%1$s' referred by the foreign key does not have the primary key.
 920 The foreign key '%1$s' does not include the primary key member '%2$s'.
-921 The domain of the foreign key member '%1$s'(%2$s) is different from that of the primary key member '%3$s'(%4$s).
+921 The domain of the foreign key member '%1$s' is different from that of the primary key member '%2$s'. (%3$s: %4$s vs. %5$s)
 922 The constraint of the foreign key '%1$s' is invalid, due to value '%2$s'.
 923 The primary key '%1$s' referred by a foreign key '%2$s' is not supposed to be dropped.
 924 Update/Delete operations are restricted by the foreign key '%1$s'.

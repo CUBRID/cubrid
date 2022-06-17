@@ -988,7 +988,7 @@ $ LOADDB
 918 La classe '%1$s' refferencée par la clé étrangère n'existe pas.
 919 La classe '%1$s' refferencée par la clé étrangère ne possède pas la clé primaire.
 920 La clé étrangère '%1$s' ne comprend pas le membre de clé primaire '%2$s'.
-921 Le domaine de l'élément '%1$s'(%2$s) de clé étrangère est différente de celui de l'élément '%3$s'(%4$s) de clé primaire.
+921 Le domaine de l'élément '%1$s' de clé étrangère est différente de celui de l'élément '%2$s' de clé primaire. (%3$s: %4$s vs. %5$s)
 922 La contrainte de la clé étrangère '%1$s' est invalide, en raison de la valeur de '%2$s'.
 923 La clé primaire '%1$s' référencée par une clé étrangère '%2$s' n'est pas censé à être supprimé.
 924 Opérations de UPDATE/DELETE sont limitées par la clé étrangère '%1$s'.

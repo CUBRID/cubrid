@@ -988,7 +988,7 @@ $ LOADDB
 918 Clasa '%1$s' referenţiată de cheia externă nu există.
 919 Clasa '%1$s' referenţiată de cheia externă nu conţine o cheie primară.
 920 Cheia externă '%1$s' nu include membrul cheii primare '%2$s'.
-921 Domeniul membrului cheie straină '%1$s'(%2$s) este diferit de cel al membrului cheie primară '%3$s'(%4$s).
+921 Domeniul membrului cheie straină '%1$s' este diferit de cel al membrului cheie primară '%2$s'. (%3$s: %4$s vs. %5$s)
 922 Constrângerea de cheie primară '%1$s' este invalidă datorită valorii '%2$s'.
 923 Cheia primară '%1$s' referenţiată de o cheie externă '%2$s' nu trebuie ştearsă.
 924 Operaţiile de actualizare/ştergere (update/delete) sunt restricţionate de cheia externă '%1$s'.
