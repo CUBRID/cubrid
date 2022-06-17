@@ -57,7 +57,6 @@ namespace cublog
 	log_rpl_calculate_replication_delay (&thread_entry, start_time_msec);
       }
   }
-
 }
 
 #endif // _LOG_REPLICATION_CPP_HPP_

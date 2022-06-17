@@ -54,7 +54,6 @@ namespace cublog
     private:
       const time_msec_t m_start_time_msec;
   };
-
 }
 
 #endif // _LOG_REPLICATION_JOBS_HPP_

@@ -20,7 +20,6 @@
 #include "util_func.h"
 
 namespace cublog
-
 {
   redo_job_replication_delay_impl::redo_job_replication_delay_impl (
 	  const log_lsa &a_rcv_lsa, time_msec_t a_start_time_msec)
