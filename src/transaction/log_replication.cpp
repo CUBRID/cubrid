@@ -16,18 +16,11 @@
  *
  */
 
+#include "log_replication.cpp.hpp"
 #include "log_replication.hpp"
+#include "log_replication_jobs.hpp"
 
-#include "btree_load.h"
-#include "log_append.hpp"
-#include "log_impl.h"
-#include "log_reader.hpp"
-#include "log_recovery.h"
-#include "log_recovery_redo.hpp"
-#include "log_recovery_redo_parallel.hpp"
-#include "object_representation.h"
-#include "page_buffer.h"
-#include "recovery.h"
+#include "btree.h"
 #include "server_type.hpp"
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
@@ -40,40 +33,6 @@
 
 namespace cublog
 {
-  /*********************************************************************
-   * replication delay calculation - declaration
-   *********************************************************************/
-  static int log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time_msec);
-
-  /* job implementation that performs log replication delay calculation
-   * using log records that register creation time
-   */
-  class redo_job_replication_delay_impl final : public redo_parallel::redo_job_base
-  {
-      /* sentinel VPID value needed for the internal mechanics of the parallel log recovery/replication
-       * internally, such a VPID is needed to maintain absolute order of the processing
-       * of the log records with respect to their order in the global log record
-       */
-      static constexpr vpid SENTINEL_VPID = { -2, -2 };
-
-    public:
-      redo_job_replication_delay_impl (const log_lsa &a_rcv_lsa, time_msec_t a_start_time_msec);
-
-      redo_job_replication_delay_impl (redo_job_replication_delay_impl const &) = delete;
-      redo_job_replication_delay_impl (redo_job_replication_delay_impl &&) = delete;
-
-      ~redo_job_replication_delay_impl () override = default;
-
-      redo_job_replication_delay_impl &operator = (redo_job_replication_delay_impl const &) = delete;
-      redo_job_replication_delay_impl &operator = (redo_job_replication_delay_impl &&) = delete;
-
-      int execute (THREAD_ENTRY *thread_p, log_rv_redo_context &) override;
-      void retire (std::size_t a_task_idx) override;
-
-    private:
-      const time_msec_t m_start_time_msec;
-  };
-
   /*********************************************************************
    * replication b-tree unique statistics - declaration
    *********************************************************************/
@@ -396,40 +355,6 @@ namespace cublog
       }
   }
 
-  template <typename T>
-  void
-  replicator::read_and_bookkeep_mvcc_vacuum (const log_lsa &prev_rec_lsa, const log_lsa &rec_lsa,
-      const T &log_rec, bool assert_mvccid_non_null)
-  {
-    const MVCCID mvccid = log_rv_get_log_rec_mvccid (log_rec);
-    log_replication_update_header_mvcc_vacuum_info (mvccid, prev_rec_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
-  }
-
-  template <typename T>
-  void replicator::calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
-      const log_lsa &rec_lsa)
-  {
-    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
-    const T log_rec = m_redo_context.m_reader.reinterpret_copy_and_add_align<T> ();
-    // at_time, expressed in milliseconds rather than seconds
-    const time_msec_t start_time_msec = log_rec.at_time;
-    if (m_parallel_replication_redo != nullptr)
-      {
-	// dispatch a job; the time difference will be calculated when the job is actually
-	// picked up for completion by a task; this will give an accurate estimate of the actual
-	// delay between log generation on the page server and log recovery on the page server
-	cublog::redo_job_replication_delay_impl *replication_delay_job =
-		new cublog::redo_job_replication_delay_impl (m_redo_lsa, start_time_msec);
-	// ownership of raw pointer remains with the job instance which will delete itself upon retire
-	m_parallel_replication_redo->add (replication_delay_job);
-      }
-    else
-      {
-	// calculate the time difference synchronously
-	log_rpl_calculate_replication_delay (&thread_entry, start_time_msec);
-      }
-  }
-
   void replicator::register_assigned_mvccid (TRANID tranid)
   {
     assert (m_replicate_mvcc);
@@ -508,65 +433,6 @@ namespace cublog
     // a different value will return from here when the atomic replicator is added
     // for now this part should not be reached
     assert (false);
-  }
-
-  /*********************************************************************
-   * replication delay calculation - definition
-   *********************************************************************/
-
-  redo_job_replication_delay_impl::redo_job_replication_delay_impl (
-	  const log_lsa &a_rcv_lsa, time_msec_t a_start_time_msec)
-    : redo_parallel::redo_job_base (SENTINEL_VPID, a_rcv_lsa)
-    , m_start_time_msec (a_start_time_msec)
-  {
-  }
-
-  int
-  redo_job_replication_delay_impl::execute (THREAD_ENTRY *thread_p, log_rv_redo_context &)
-  {
-    const int res = log_rpl_calculate_replication_delay (thread_p, m_start_time_msec);
-    return res;
-  }
-
-  void
-  redo_job_replication_delay_impl::retire (std::size_t)
-  {
-    delete this;
-  }
-
-  /* log_rpl_calculate_replication_delay - calculate delay based on a given start time value
-   *        and the current time and log to the perfmon infrastructure; all calculations are
-   *        done in milliseconds as that is the relevant scale needed
-   */
-  int
-  log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_msec_t a_start_time_msec)
-  {
-    // skip calculation if bogus input (sometimes, it is -1);
-    // TODO: fix bogus input at the source if at all possible (debugging revealed that
-    // it happens for LOG_COMMIT messages only and there is no point at the source where the 'at_time'
-    // is not filled in)
-    if (a_start_time_msec > 0)
-      {
-	const int64_t end_time_msec = util_get_time_as_ms_since_epoch ();
-	const int64_t time_diff_msec = end_time_msec - a_start_time_msec;
-	assert (time_diff_msec >= 0);
-
-	perfmon_set_stat (thread_p, PSTAT_REDO_REPL_DELAY, static_cast<int> (time_diff_msec), false);
-
-	if (prm_get_bool_value (PRM_ID_ER_LOG_CALC_REPL_DELAY))
-	  {
-	    _er_log_debug (ARG_FILE_LINE, "[CALC_REPL_DELAY]: %9lld msec", time_diff_msec);
-	  }
-
-	return NO_ERROR;
-      }
-    else
-      {
-	er_log_debug (ARG_FILE_LINE, "log_rpl_calculate_replication_delay: "
-		      "encountered negative start time value: %lld milliseconds",
-		      a_start_time_msec);
-	return ER_FAILED;
-      }
   }
 
   /*********************************************************************
