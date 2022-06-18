@@ -237,7 +237,7 @@ if [ -z "$SHELL" ];then
       user_sh="bash"
    else
       user_name=$(id -nu)
-      user_sh=$(egrep "^$user_name" /etc/passwd | cut -d':' -f7-7)
+      user_sh=$(egrep -w "^$user_name" /etc/passwd | cut -d':' -f7-7)
       user_sh=${user_sh:-none}
       user_sh=$(basename $user_sh)
    fi
