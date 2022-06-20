@@ -212,12 +212,12 @@ namespace cubcomm
 	     *  - change the application protocol for each message to have an associated ACK response.
 	     *  - implement a polling mechanism that, also based on ACK, detects the disconnect earlier.
 	     * */
-	    if (queue_front.m_error_handler != nullptr)
+	    if (queue_front.m_error_handler)
 	      {
 		// if present, invoke custom/specific handler first
 		queue_front.m_error_handler (err_code, m_abort_further_processing);
 	      }
-	    else if (m_error_handler != nullptr)
+	    else if (m_error_handler)
 	      {
 		// if present, invoke generic (fail-back) handler
 		m_error_handler (err_code, m_abort_further_processing);
