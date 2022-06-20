@@ -156,7 +156,7 @@ namespace cubcomm
     assert (a_incoming_request_handlers.size () > 0);
     for (const auto &pair: a_incoming_request_handlers)
       {
-	assert (pair.second);
+	assert (static_cast<bool> (pair.second));
 	register_handler (pair.first, pair.second);
       }
     // Add the handler for responses
