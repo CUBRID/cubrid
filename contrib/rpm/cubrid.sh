@@ -62,4 +62,7 @@ case $OS in
 			ln -s /usr/lib/x86_64-linux-gnu/libform.so.6 $LIB/libform.so.5
 		fi
 		;;
+	*)
+		echo "CUBRID requires the ncurses package. Make sure the ncurses package is installed"
+		;;
 esac
