@@ -61,9 +61,9 @@ namespace cublog
 	//  - subsequently, MVCC log records are replicated with the sub-mvccid figuring as 'main' again
 	//
 	// TODO: might this situation actually be a transactional logging bug?
-	assert (found_it->second.id == mvccid
-		|| (found_it->second.sub_ids.size () == 1
-		    && found_it->second.sub_ids[0] == mvccid));
+	assert (found_it->second.m_id == mvccid
+		|| (found_it->second.m_sub_ids.size () == 1
+		    && found_it->second.m_sub_ids[0] == mvccid));
       }
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
@@ -84,14 +84,14 @@ namespace cublog
 	// mvccid is a sub-id, as it has a valid parent mvccid
 	assert (MVCCID_IS_NORMAL (parent_mvccid));
 
-	auto found_it = m_mapped_mvccids.find (tranid);
-
+        const auto found_it = m_mapped_mvccids.find (tranid);
 	assert_release (found_it != m_mapped_mvccids.cend ());
 	if (found_it != m_mapped_mvccids.cend ())
 	  {
-	    if (found_it->second.id == parent_mvccid)
+	    if (found_it->second.m_id == parent_mvccid)
 	      {
 		// all good, previously seen mvccid is an actual proper parent/main transaction mvccid
+		// fall through to assign the sub-mvccid
 	      }
 	    else
 	      {
@@ -105,12 +105,13 @@ namespace cublog
 				   tranid, (unsigned long long)parent_mvccid);
 		    dump_map ();
 		  }
-		assert (found_it->second.id == mvccid);
-		found_it->second.id = parent_mvccid;
-
+		// re-assign previosly seen "main"
+		assert (found_it->second.m_id == mvccid);
+		found_it->second.m_id = parent_mvccid;
 	      }
-	    assert (found_it->second.sub_ids.empty ());
-	    found_it->second.sub_ids.push_back (mvccid);
+
+	    assert (found_it->second.m_sub_ids.empty ());
+	    found_it->second.m_sub_ids.push_back (mvccid);
 	  }
 
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
@@ -123,7 +124,7 @@ namespace cublog
       }
     else
       {
-	// mvccid is not a sub-id, as no valid parent mvccid
+	// mvccid is not a sub-id, as no valid parent mvccid exists
 	new_assigned_mvccid (tranid, mvccid);
       }
   }
@@ -136,19 +137,19 @@ namespace cublog
     if (found_it != m_mapped_mvccids.cend ())
       {
 	// all sub-ids should have already been completed
-	assert (found_it->second.sub_ids.empty ());
+	assert (found_it->second.m_sub_ids.empty ());
 
 	// TODO: temporary using system transaction to complete MVCC; if this proves to be incorrect
 	// another solution is to reserve an extra transaction in the transaction table (eg: transaction
 	// at index 1) and use that specifically for transactional log replication MVCC completion;
 	// also, this relates to the transaction index used in the replicator thread (see function
 	// replicator::redo_upto_nxio_lsa
-	log_Gl.mvcc_table.complete_mvcc (LOG_SYSTEM_TRAN_INDEX, found_it->second.id, committed);
+	log_Gl.mvcc_table.complete_mvcc (LOG_SYSTEM_TRAN_INDEX, found_it->second.m_id, committed);
 
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
 	  {
 	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] complete_mvcc FOUND tranid=%d mvccid=%llu %s\n",
-			   tranid, (unsigned long long)found_it->second.id, (committed ? "COMMITED" : "ABORTED"));
+			   tranid, (unsigned long long)found_it->second.m_id, (committed ? "COMMITED" : "ABORTED"));
 	    dump_map ();
 	  }
 
@@ -176,20 +177,20 @@ namespace cublog
     if (found_it != m_mapped_mvccids.cend ())
       {
 	// even if transaction does have an mvccid, it might not have a sub-id
-	if (!found_it->second.sub_ids.empty ())
+	if (!found_it->second.m_sub_ids.empty ())
 	  {
-	    assert (found_it->second.sub_ids.size () == 1);
-	    log_Gl.mvcc_table.complete_sub_mvcc (found_it->second.sub_ids.back ());
+	    assert (found_it->second.m_sub_ids.size () == 1);
+	    log_Gl.mvcc_table.complete_sub_mvcc (found_it->second.m_sub_ids.back ());
 
 	    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
 	      {
 		_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] complete_sub_mvcc FOUND tranid=%d mvccid=%llu\n",
-			       tranid, (unsigned long long)found_it->second.sub_ids.back ());
+			       tranid, (unsigned long long)found_it->second.m_sub_ids.back ());
 		dump_map ();
 	      }
 
 	    // when completing the "main" mvccid, it is expected that all sub-ids have already been completed
-	    found_it->second.sub_ids.pop_back ();
+	    found_it->second.m_sub_ids.pop_back ();
 	  }
 	else
 	  {
@@ -220,14 +221,14 @@ namespace cublog
     for (const auto &info_pair: m_mapped_mvccids)
       {
 	_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] dump_map index=%d/%d tranid=%d mvccid=%llu\n",
-		       index, m_mapped_mvccids.size (), info_pair.first, (unsigned long long)info_pair.second.id);
-	if (info_pair.second.sub_ids.empty ())
+		       index, m_mapped_mvccids.size (), info_pair.first, (unsigned long long)info_pair.second.m_id);
+	if (info_pair.second.m_sub_ids.empty ())
 	  {
 	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] dump_map sub_ids: EMPTY\n");
 	  }
 	else
 	  {
-	    for (const auto &sub_id: info_pair.second.sub_ids)
+	    for (const auto &sub_id: info_pair.second.m_sub_ids)
 	      {
 		_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] dump_map sub_ids: sub_id=%llu\n",
 			       (unsigned long long)sub_id);

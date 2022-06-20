@@ -52,20 +52,20 @@ namespace cublog
       {
 	using mvccid_vec_type = std::vector<MVCCID>;
 
-	MVCCID id;
-	mvccid_vec_type sub_ids;
+	MVCCID m_id;
+	mvccid_vec_type m_sub_ids;
 
 	explicit tran_mvccid_info (MVCCID mvccid)
-	  : id { mvccid }
+	  : m_id { mvccid }
 	{
 	}
 
 	tran_mvccid_info (tran_mvccid_info const &) = delete;
 	tran_mvccid_info (tran_mvccid_info &&that)
-	  : id { that.id }
+	  : m_id { that.m_id }
 	{
 	  // move only allowed right after initialization
-	  assert (that.sub_ids.empty ());
+	  assert (that.m_sub_ids.empty ());
 	}
 
 	tran_mvccid_info &operator = (tran_mvccid_info const &) = delete;
