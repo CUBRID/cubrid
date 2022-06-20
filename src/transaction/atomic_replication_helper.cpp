@@ -25,17 +25,25 @@
 
 namespace cublog
 {
+
   /*********************************************************************
    * atomic_replication_helper function definitions                    *
    *********************************************************************/
 
-  void atomic_replication_helper::add_atomic_replication_sequence (TRANID trid, log_rv_redo_context redo_context)
+  void atomic_replication_helper::add_atomic_replication_sequence (TRANID trid, LOG_LSA start_lsa,
+      const log_rv_redo_context &redo_context)
   {
-    m_sequences_map.emplace (trid, redo_context);
+    const std::pair<sequence_map_type::iterator, bool> emplace_res = m_sequences_map.emplace (trid, redo_context);
+    assert (emplace_res.second);
+
+    atomic_replication_sequence &emplaced_seq = emplace_res.first->second;
+    // workaround call to allow constructing an atomic_replication_sequence in-place above; otherwise,
+    // it would need to double construct an internal redo context instance (which is expensive)
+    emplaced_seq.set_start_lsa (start_lsa);
   }
 
-  int atomic_replication_helper::add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa,
-      LOG_RCVINDEX rcvindex, VPID vpid)
+  int atomic_replication_helper::add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid,
+      log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid)
   {
 #if !defined (NDEBUG)
     if (!VPID_ISNULL (&vpid) && !check_for_page_validity (vpid, tranid))
@@ -112,13 +120,33 @@ namespace cublog
 #endif
   }
 
+  bool atomic_replication_helper::can_end_atomic_sequence (TRANID tranid, LOG_LSA sysop_parent_lsa) const
+  {
+    const auto iterator = m_sequences_map.find (tranid);
+    if (iterator == m_sequences_map.cend ())
+      {
+	return false;
+      }
+
+    const atomic_replication_sequence &atomic_sequence =  iterator->second;
+    return atomic_sequence.can_end_atomic_sequence (sysop_parent_lsa);
+  }
+
   /********************************************************************************
    * atomic_replication_helper::atomic_replication_sequence function definitions  *
    ********************************************************************************/
 
-  atomic_replication_helper::atomic_replication_sequence::atomic_replication_sequence (log_rv_redo_context redo_context)
-    : m_redo_context { redo_context }
+  atomic_replication_helper::atomic_replication_sequence::atomic_replication_sequence (
+	  const log_rv_redo_context &redo_context)
+    : m_start_lsa { NULL_LSA }
+    , m_redo_context { redo_context }
   {
+  }
+
+  void atomic_replication_helper::atomic_replication_sequence::set_start_lsa (LOG_LSA start_lsa)
+  {
+    assert (!LSA_ISNULL (&start_lsa));
+    m_start_lsa = start_lsa;
   }
 
   int atomic_replication_helper::atomic_replication_sequence::add_atomic_replication_unit (THREAD_ENTRY *thread_p,
@@ -167,6 +195,14 @@ namespace cublog
 	    m_page_map.erase (iterator);
 	  }
       }
+  }
+
+  bool atomic_replication_helper::atomic_replication_sequence::can_end_atomic_sequence (LOG_LSA sysop_parent_lsa) const
+  {
+    assert (!LSA_ISNULL (&m_start_lsa));
+    assert (!LSA_ISNULL (&sysop_parent_lsa));
+
+    return m_start_lsa >= sysop_parent_lsa;
   }
 
   /*********************************************************************************************************
@@ -222,35 +258,6 @@ namespace cublog
       default:
 	assert (false);
 	break;
-      }
-  }
-
-  template <typename T>
-  void atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::apply_log_by_type (
-	  THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context, LOG_RECTYPE rectype)
-  {
-    LOG_RCV rcv;
-    if (m_page_ptr != nullptr)
-      {
-	assert (m_watcher.pgptr == nullptr);
-	rcv.pgptr = m_page_ptr;
-      }
-    else if (m_watcher.pgptr != nullptr)
-      {
-	assert (m_page_ptr == nullptr);
-	rcv.pgptr = m_watcher.pgptr;
-      }
-    else
-      {
-	assert_release (false);
-      }
-
-    redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
-    const log_rv_redo_rec_info<T> record_info (m_record_lsa, rectype, *redo_context.m_reader.reinterpret_cptr<T> ());
-    if (log_rv_check_redo_is_needed (rcv.pgptr, record_info.m_start_lsa, redo_context.m_end_redo_lsa))
-      {
-	rcv.reference_lsa = m_record_lsa;
-	log_rv_redo_record_sync_apply (thread_p, redo_context, record_info, m_vpid, rcv);
       }
   }
 
@@ -330,5 +337,10 @@ namespace cublog
   void atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::set_page_ptr (const PAGE_PTR &ptr)
   {
     m_page_ptr = ptr;
+  }
+
+  LOG_LSA atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::get_lsa () const
+  {
+    return m_record_lsa;
   }
 }

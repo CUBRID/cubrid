@@ -44,7 +44,7 @@ struct log_rv_redo_context
 		       log_reader::fetch_mode reader_fetch_page_mode);
   ~log_rv_redo_context ();
 
-  log_rv_redo_context (const log_rv_redo_context &);
+  log_rv_redo_context (const log_rv_redo_context &that);
   log_rv_redo_context (log_rv_redo_context &&) = delete;
 
   log_rv_redo_context &operator= (const log_rv_redo_context &) = delete;
