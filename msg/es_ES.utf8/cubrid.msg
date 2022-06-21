@@ -1431,8 +1431,9 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1350 Invalid synonym value.
 
 1351 The maximum length of the function expression string must be %1$d.
+1352 Invalid hint: %1$s
 
-1352 Ultimo error
+1353 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

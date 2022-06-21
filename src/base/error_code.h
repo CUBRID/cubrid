@@ -1725,8 +1725,9 @@
 #define ER_SYNONYM_INVALID_VALUE                    -1350
 
 #define ER_SM_INVALID_FUNCTION_EXPRESSION_LENGTH    -1351
+#define ER_USING_INDEX_HINT_IGNORE                  -1352
 
-#define ER_LAST_ERROR                               -1352
+#define ER_LAST_ERROR                               -1353
 
 /*
  * CAUTION!

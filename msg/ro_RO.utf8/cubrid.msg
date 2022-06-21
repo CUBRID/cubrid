@@ -1431,8 +1431,9 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1350 Invalid synonym value.
 
 1351 The maximum length of the function expression string must be %1$d.
+1352 Invalid hint: %1$s
 
-1352 Ultima eroare
+1353 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):

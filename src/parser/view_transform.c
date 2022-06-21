@@ -5567,7 +5567,7 @@ mq_translate_local (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg
 {
   int line, column;
   PT_NODE *next;
-  PT_NODE *indexp, *spec, *using_index;
+  PT_NODE *indexp, *spec, **using_index;
   bool aggregate_rewrote_as_derived = false;
 
   if (statement == NULL)
@@ -5662,22 +5662,22 @@ mq_translate_local (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg
 	    {
 	      PT_NODE *derived_table = spec->info.spec.derived_table;
 	      assert (PT_SPEC_IS_DERIVED (spec));
-	      using_index = derived_table->info.query.q.select.using_index;
+	      using_index = &derived_table->info.query.q.select.using_index;
 	      spec = derived_table->info.query.q.select.from;
 	    }
 	  else
 	    {
-	      using_index = statement->info.query.q.select.using_index;
+	      using_index = &statement->info.query.q.select.using_index;
 	    }
 	  break;
 
 	case PT_UPDATE:
-	  using_index = statement->info.update.using_index;
+	  using_index = &statement->info.update.using_index;
 	  spec = statement->info.update.spec;
 	  break;
 
 	case PT_DELETE:
-	  using_index = statement->info.delete_.using_index;
+	  using_index = &statement->info.delete_.using_index;
 	  spec = statement->info.delete_.spec;
 	  break;
 
@@ -5687,14 +5687,41 @@ mq_translate_local (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg
     }
 
   /* resolve using index */
-  indexp = using_index;
+  indexp = using_index ? *using_index : NULL;
   if (indexp != NULL && spec != NULL)
     {
-      for (; indexp; indexp = indexp->next)
+      bool is_ignore = false;
+      PT_NODE *prev = NULL;
+      while (indexp)
 	{
-	  if (pt_resolve_using_index (parser, indexp, spec) == NULL)
+	  if (pt_resolve_using_index (parser, indexp, spec, &is_ignore))
+	    {
+	      prev = indexp;
+	      indexp = indexp->next;
+	    }
+	  else if (is_ignore == false)
 	    {
 	      return NULL;
+	    }
+	  else
+	    {
+	      // clear error
+	      er_clearid ();
+	      pt_reset_error (parser);
+
+	      PT_NODE *tmp = indexp;
+	      if (*using_index == indexp)
+		{
+		  indexp = indexp->next;
+		  *using_index = indexp;
+		}
+	      else
+		{
+		  prev->next = indexp->next;
+		  indexp = indexp->next;
+		}
+	      tmp->next = NULL;
+	      parser_free_tree (parser, tmp);
 	    }
 	}
     }
@@ -5702,7 +5729,7 @@ mq_translate_local (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg
   /* semantic check on using index */
   if (using_index != NULL)
     {
-      if (mq_check_using_index (parser, using_index) != NO_ERROR)
+      if (mq_check_using_index (parser, *using_index) != NO_ERROR)
 	{
 	  return NULL;
 	}
