@@ -1287,10 +1287,12 @@ heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_pt
 #endif /* !NDEBUG */
     }
 
+#if !defined (NDEBUG)
   if (pgptr != NULL)
     {
       (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
     }
+#endif /* !NDEBUG */
 
   return pgptr;
 }
@@ -3014,7 +3016,9 @@ heap_stats_update_internal (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * l
       goto exit_on_error;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
   /*
    * Peek the header record to find statistics for insertion.
@@ -3535,7 +3539,9 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
     }
   assert (hdr_page_watcher.pgptr != NULL);
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, hdr_page_watcher.pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
   if (spage_get_record (thread_p, hdr_page_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes, PEEK) != S_SUCCESS)
     {
@@ -3859,7 +3865,9 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
 	    {
 	      break;
 	    }
+#if !defined (NDEBUG)
 	  (void) pgbuf_check_page_ptype (thread_p, pg_watcher.pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
 	  if (old_pg_watcher.pgptr != NULL)
 	    {
@@ -5011,7 +5019,9 @@ heap_vpid_next (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr, VPID
   RECDES recdes;		/* Record descriptor to page header */
   int ret = NO_ERROR;
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
   /* Get either the heap header or chain record */
   if (spage_get_record (thread_p, pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
@@ -5055,7 +5065,9 @@ heap_vpid_prev (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr, VPID
   RECDES recdes;		/* Record descriptor to page header */
   int ret = NO_ERROR;
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
   /* Get either the header or chain record */
   if (spage_get_record (thread_p, pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
@@ -5552,7 +5564,9 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
       return NULL;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
   /*
    * Start scanning every page of the heap and removing the objects.
@@ -5579,7 +5593,9 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
 	  goto error;
 	}
 
+#if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
       is_header_page = (hdr_pgptr == pgptr) ? 1 : 0;
 
@@ -6011,7 +6027,9 @@ heap_flush (THREAD_ENTRY * thread_p, const OID * oid)
       return;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
   type = spage_get_record_type (pgptr, oid->slotid);
   if (type == REC_UNKNOWN)
@@ -6057,7 +6075,9 @@ heap_flush (THREAD_ENTRY * thread_p, const OID * oid)
 	  return;
 	}
 
+#if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
       (void) pgbuf_flush_with_wal (thread_p, pgptr);
       break;
@@ -6161,7 +6181,9 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
       goto exit_on_error;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, hdr_page_watcher.pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
   hdr_recdes.data = (char *) &heap_hdr;
   hdr_recdes.area_size = sizeof (heap_hdr);
@@ -6218,7 +6240,9 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
 	  goto exit_on_error;
 	}
 
+#if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, curr_page_watcher.pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
       if (heap_vpid_prev (thread_p, hfid, curr_page_watcher.pgptr, &prv_vpid) != NO_ERROR)
 	{
@@ -6384,7 +6408,9 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
       return NULL;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, addr_hdr.pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
   /* Peek the header record */
 
@@ -8969,7 +8995,9 @@ heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, i
       return ER_FAILED;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, hdr_pg_watcher.pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
   if (spage_get_record (thread_p, hdr_pg_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes, PEEK) != S_SUCCESS)
     {
@@ -9034,7 +9062,9 @@ heap_estimate (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, int *nob
       return ER_FAILED;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
   if (spage_get_record (thread_p, hdr_pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes, PEEK) != S_SUCCESS)
     {
@@ -13878,7 +13908,9 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
 	  return DISK_ERROR;
 	}
 
+#if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
       if (spage_get_record (thread_p, pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes, PEEK) != S_SUCCESS)
 	{
@@ -15500,7 +15532,9 @@ heap_rv_undoredo_pagehdr (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   RECDES recdes;
   int sp_success;
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
   recdes.area_size = recdes.length = rcv->length;
   recdes.type = REC_HOME;
@@ -16291,7 +16325,9 @@ heap_rv_redo_reuse_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   int sp_success;
   const bool is_header_page = ((rcv->offset != 0) ? true : false);
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
   vpid.volid = pgbuf_get_volume_id (rcv->pgptr);
   vpid.pageid = pgbuf_get_page_id (rcv->pgptr);
@@ -16810,7 +16846,9 @@ heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid)
       goto exit_on_error;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, pg_watcher.pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
   lock_unlock_object (thread_p, class_oid, oid_Root_class_oid, IS_LOCK, true);
 
@@ -19610,8 +19648,10 @@ heap_fix_header_page (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       return rc;
     }
 
+#if !defined (NDEBUG)
   /* check page type */
   (void) pgbuf_check_page_ptype (thread_p, context->header_page_watcher_p->pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
   /* all ok */
   return NO_ERROR;
@@ -19672,7 +19712,9 @@ heap_fix_forward_page (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context
 	}
       return ER_FAILED;
     }
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, context->forward_page_watcher_p->pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
 #if defined(CUBRID_DEBUG)
   if (spage_get_record_type (context->forward_page_watcher_p->pgptr, forward_oid.slotid) != REC_NEWHOME)
@@ -20242,7 +20284,9 @@ heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATI
 #endif
 
   assert (context->home_page_watcher_p->pgptr != NULL);
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, context->home_page_watcher_p->pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
   sp_success =
     spage_insert (thread_p, context->home_page_watcher_p->pgptr, context->recdes_p, &context->res_oid.slotid);
@@ -20630,8 +20674,10 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  return rc;
 	}
 
+#if !defined (NDEBUG)
       /* check overflow page type */
       (void) pgbuf_check_page_ptype (thread_p, context->overflow_page_watcher_p->pgptr, PAGE_OVERFLOW);
+#endif /* !NDEBUG */
 
       /* fetch header from overflow */
       if (heap_get_mvcc_rec_header_from_overflow (context->overflow_page_watcher_p->pgptr, &overflow_header, NULL) !=
@@ -23626,7 +23672,9 @@ heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache
 	  goto exit;
 	}
 
+#if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, pg_watcher.pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
 
       if (old_pg_watcher.pgptr != NULL)
 	{

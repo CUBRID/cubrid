@@ -177,7 +177,8 @@ extern void qfile_clear_list_id (QFILE_LIST_ID * list_id);
 
 extern void qfile_load_xasl_node_header (THREAD_ENTRY * thread_p, char *xasl_stream, xasl_node_header * xasl_header_p);
 extern QFILE_LIST_ID *qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
-				       SORT_LIST * sort_list, QUERY_ID query_id, int flag);
+				       SORT_LIST * sort_list, QUERY_ID query_id, int flag,
+				       QFILE_LIST_ID * existing_list_id);
 extern int qfile_reopen_list_as_append_mode (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p);
 extern int qfile_save_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, QFILE_TUPLE_TYPE tuple_type, char *page_p,
 			     int *tuple_length_p);
