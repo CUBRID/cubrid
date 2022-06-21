@@ -7048,7 +7048,9 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 	  return index;
 	}
 
-      return NULL;
+      // in case "identifier.NONE"
+      assert (index->info.name.resolved != NULL);
+      assert (index->etc == (void *) PT_IDX_HINT_CLASS_NONE);
     }
 
   if (index->info.name.spec_id != 0)	/* already resolved */
@@ -7092,13 +7094,16 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 		  *is_ignore = false;
 		  return NULL;
 		}
-	      cons = classobj_find_class_index (class_, index->info.name.original);
-	      if (cons == NULL || (cons->index_status != SM_NORMAL_INDEX))
+	      if (index->info.name.original != NULL)
 		{
-		  /* error; the index is not for the specified class or unusable index */
-		  pt_write_warning (parser, index, __LINE__, MSGCAT_SET_PARSER_SEMANTIC,
-				    MSGCAT_SEMANTIC_USING_INDEX_ERR_1);
-		  return NULL;
+		  cons = classobj_find_class_index (class_, index->info.name.original);
+		  if (cons == NULL || (cons->index_status != SM_NORMAL_INDEX))
+		    {
+		      /* error; the index is not for the specified class or unusable index */
+		      pt_write_warning (parser, index, __LINE__, MSGCAT_SET_PARSER_SEMANTIC,
+					MSGCAT_SEMANTIC_USING_INDEX_ERR_1);
+		      return NULL;
+		    }
 		}
 
 	      index->info.name.spec_id = spec->info.spec.id;
