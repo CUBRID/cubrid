@@ -12946,7 +12946,6 @@ int
 qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xasl_state)
 {
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
-  QFILE_LIST_ID *t_list_id = NULL;
   int ls_flag = 0;
 
   switch (xasl->type)
