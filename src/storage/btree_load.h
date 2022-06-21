@@ -92,9 +92,9 @@
 
 /* compare two object identifiers */
 #define OIDCMP(n1, n2) \
-  ((n1).volid == (n2).volid \
-   && (n1).pageid == (n2).pageid \
-   && (n1).slotid == (n2).slotid)
+  ((n1).pageid == (n2).pageid \
+   && (n1).slotid == (n2).slotid \
+   && (n1).volid == (n2).volid)
 
 /* Header (Oth) record of the page */
 #define HEADER 0

@@ -291,11 +291,13 @@ struct recset_header
   INT16 first_slotid;		/* first slot id */
 };
 
+#if 0				/* not used */
 typedef enum
 {
   LEAF_RECORD_REGULAR = 1,
   LEAF_RECORD_OVERFLOW
 } LEAF_RECORD_TYPE;
+#endif
 
 typedef enum
 {
@@ -310,6 +312,7 @@ typedef enum
   BTREE_MERGE_FORCE,
 } BTREE_MERGE_STATUS;
 
+#if 0				/* not used */
 /* RECINS_STRUCT - redo b-tree insert recovery structure.
  */
 typedef struct recins_struct RECINS_STRUCT;
@@ -324,6 +327,7 @@ struct recins_struct
 };
 #define RECINS_STRUCT_INITIALIZER \
   { OID_INITIALIZER, OID_INITIALIZER, VPID_INITIALIZER, 0 }
+#endif
 
 /* Redo recovery of insert delete MVCCID */
 #define BTID_DOMAIN_CHECK_MAX_SIZE 1024
@@ -349,6 +353,7 @@ struct btree_stats_env
   DB_VALUE pkeys_val[BTREE_STATS_PKEYS_NUM];	/* partial key-value */
 };
 
+#if 0				/* not used */
 /* Structure used by btree_range_search to initialize and handle variables
  * needed throughout the process.
  */
@@ -396,6 +401,7 @@ struct btree_range_search_helper
   bool current_lock_request;	/* Current key needs locking */
   bool read_prev_key;		/* Previous key is read */
 };
+#endif
 
 typedef struct show_index_scan_ctx SHOW_INDEX_SCAN_CTX;
 struct show_index_scan_ctx
@@ -1780,6 +1786,11 @@ static bool btree_is_single_object_key (THREAD_ENTRY * thread_p, BTID_INT * btid
 
 static bool btree_check_locking_for_insert_unique (THREAD_ENTRY * thread_p, const BTREE_INSERT_HELPER * insert_helper);
 static bool btree_check_locking_for_delete_unique (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER * delete_helper);
+
+static DISK_ISVALID btree_check_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID * btid,
+				      const char *btname);
+static DISK_ISVALID btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid);
+static char *btree_unpack_mvccinfo (char *ptr, BTREE_MVCC_INFO * mvcc_info, short btree_mvcc_flags);
 
 /*
  * btree_fix_root_with_info () - Fix b-tree root page and output its VPID, header and b-tree info if requested.
@@ -7707,7 +7718,7 @@ error:
  *
  * Note: Verify that all the pages of the specified index are valid.
  */
-DISK_ISVALID
+static DISK_ISVALID
 btree_check_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID * btid, const char *btname)
 {
   DISK_ISVALID valid = DISK_ERROR;
@@ -7769,7 +7780,7 @@ error:
  *
  * Note: Verify that all pages of a btree indices are valid.
  */
-DISK_ISVALID
+static DISK_ISVALID
 btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
 {
   DISK_ISVALID valid = DISK_ERROR;
@@ -21372,7 +21383,7 @@ btree_set_mvcc_header_ids_for_update (THREAD_ENTRY * thread_p, bool do_delete_on
  * mvcc_info (out)	 : Outputs MVCC info.
  * btree_mvcc_flags (in) : Flags that describe the packed MVCC info.
  */
-char *
+static char *
 btree_unpack_mvccinfo (char *ptr, BTREE_MVCC_INFO * mvcc_info, short btree_mvcc_flags)
 {
   assert (mvcc_info != NULL && ptr != NULL);
