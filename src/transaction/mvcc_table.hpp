@@ -93,9 +93,8 @@ class mvcctable
     bool is_global_oldest_visible_locked () const;
 
   private:
-
-    static const size_t HISTORY_MAX_SIZE = 2048;  // must be a power of 2
-    static const size_t HISTORY_INDEX_MASK = HISTORY_MAX_SIZE - 1;
+    static constexpr size_t HISTORY_MAX_SIZE = 2048;  // must be a power of 2
+    static constexpr size_t HISTORY_INDEX_MASK = HISTORY_MAX_SIZE - 1;
 
     /* lowest active MVCCIDs - array of size NUM_TOTAL_TRAN_INDICES */
     lowest_active_mvccid_type *m_transaction_lowest_visible_mvccids;
