@@ -485,6 +485,7 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
   // finish next trans status
   next_tran_status_finish (next_status, next_index);
 
+  assert (tran_index < m_transaction_lowest_visible_mvccids_size);
   if (committed)
     {
       /* be sure that transaction modifications can't be vacuumed up to LOG_COMMIT. Otherwise, the following
@@ -517,7 +518,7 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
   // so we try to limit recalculation when mvccid matches current global_lowest_active; since we are not locked, it is
   // not guaranteed to be always updated; therefore we add the second condition to go below trans status
   // bit area starting MVCCID; the recalculation will happen on each iteration if there are long transactions.
-  MVCCID global_lowest_active = m_current_status_lowest_active_mvccid;
+  MVCCID global_lowest_active = m_current_status_lowest_active_mvccid.load ();
   if (global_lowest_active == mvccid
       || MVCC_ID_PRECEDES (mvccid, next_status.m_active_mvccs.get_bit_area_start_mvccid ()))
     {
@@ -590,6 +591,7 @@ mvcctable::get_two_new_mvccid (MVCCID &first, MVCCID &second)
 void
 mvcctable::reset_transaction_lowest_active (int tran_index)
 {
+  assert (tran_index < m_transaction_lowest_visible_mvccids_size);
   oldest_active_set (m_transaction_lowest_visible_mvccids[tran_index], tran_index, MVCCID_NULL,
 		     oldest_active_event::RESET);
 }
