@@ -338,6 +338,7 @@ namespace cublog
     log_replication_update_header_mvcc_vacuum_info (mvccid, rec_header.back_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
     if (m_replicate_mvcc && MVCCID_IS_NORMAL (mvccid))
       {
+	log_Gl.mvcc_table.set_mvccid_from_active_transaction_server (mvccid);
 	m_replicator_mvccid->new_assigned_mvccid (rec_header.trid, mvccid);
       }
 
