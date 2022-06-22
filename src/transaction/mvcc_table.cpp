@@ -596,9 +596,10 @@ mvcctable::set_mvccid_from_active_transaction_server (MVCCID id)
   assert (is_page_server ());
   m_new_mvccid_lock.lock ();
   // only incremental, never backwards
-  if (id >= log_Gl.hdr.mvcc_next_id)
+  if (id > log_Gl.hdr.mvcc_next_id)
     {
-      log_Gl.hdr.mvcc_next_id = id + 1;
+      log_Gl.hdr.mvcc_next_id = id;
+      MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
     }
   m_new_mvccid_lock.unlock ();
 }

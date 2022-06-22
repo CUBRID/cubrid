@@ -70,7 +70,7 @@ namespace cublog
    *********************************************************************/
 
   replicator::replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode, int parallel_count)
-    : m_bookkeep_mvcc_vacuum_info { is_page_server () }
+    : m_bookkeep_mvcc { is_page_server () }
     , m_replicate_mvcc { is_passive_transaction_server () }
     , m_redo_lsa { start_redo_lsa }
     , m_replication_active { true }
@@ -335,11 +335,16 @@ namespace cublog
 
     // only mvccids that pertain to redo's are processed here
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
-    log_replication_update_header_mvcc_vacuum_info (mvccid, rec_header.back_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
+    log_replication_update_header_mvcc_vacuum_info (mvccid, rec_header.back_lsa, rec_lsa, m_bookkeep_mvcc);
+
+    if (m_bookkeep_mvcc)
+      {
+	m_replicator_mvccid->new_assigned_mvccid (rec_header.trid, mvccid);
+      }
+
     if (m_replicate_mvcc && MVCCID_IS_NORMAL (mvccid))
       {
 	log_Gl.mvcc_table.set_mvccid_from_active_transaction_server (mvccid);
-	m_replicator_mvccid->new_assigned_mvccid (rec_header.trid, mvccid);
       }
 
     // Redo b-tree stats differs from what the recovery usually does. Get the recovery index before deciding how to
