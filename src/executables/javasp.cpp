@@ -112,6 +112,7 @@ main (int argc, char *argv[])
     {
       return ER_GENERIC_ERROR;
     }
+
 #endif /* WINDOWS */
   {
     /*
@@ -177,15 +178,29 @@ main (int argc, char *argv[])
 	    return ER_GENERIC_ERROR;
 	  }
 
+	// check process is running
+	if (jsp_info.pid == -1 || javasp_is_terminated_process (jsp_info.pid) == true)
+	  {
+	    // NO_CONNECTION
+	    javasp_reset_info (db_name.c_str ());
+	    goto exit;
+	  }
+
 	char buffer[JAVASP_PING_LEN] = {0};
-	if ((status = javasp_ping_server (jsp_info.port, db_name.c_str (), buffer)) == NO_ERROR)
+	if (status == NO_ERROR)
+	  {
+	    status = javasp_ping_server (jsp_info.port, db_name.c_str (), buffer);
+	  }
+
+	if (status == NO_ERROR)
 	  {
 	    fprintf (stdout, "%s", buffer);
 	  }
 	else
 	  {
-	    fprintf (stdout, "NO_CONNECTION");
+	    goto exit;
 	  }
+
 	return status;
       }
 
@@ -210,10 +225,11 @@ main (int argc, char *argv[])
 	status = javasp_start_server (jsp_info, db_name, pathname);
 	if (status == NO_ERROR)
 	  {
-	    while (true)
+	    do
 	      {
 		SLEEP_MILISEC (0, 100);
 	      }
+	    while (true);
 	  }
       }
     else if (command.compare ("stop") == 0)
@@ -292,7 +308,7 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
     {
 #if !defined(WINDOWS)
       /* create a new session */
-      setsid ();
+      setsid();
 #endif
       er_clear (); // clear error before string JVM
       status = jsp_start_server (db_name.c_str (), path.c_str (), prm_port);
@@ -301,7 +317,8 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
 	{
 	  JAVASP_SERVER_INFO jsp_new_info { getpid(), jsp_server_port () };
 
-	  if ((javasp_open_info_dir () && javasp_write_info (db_name.c_str (), jsp_new_info)))
+	  javasp_unlink_info (db_name.c_str ());
+	  if ((javasp_open_info_dir () && javasp_write_info (db_name.c_str (), jsp_new_info, true)))
 	    {
 	      /* succeed */
 	    }
@@ -344,14 +361,13 @@ javasp_stop_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_nam
 	  status = er_errid ();
 	}
 
+      javasp_reset_info (db_name.c_str ());
       jsp_disconnect_server (socket);
 
-      if (!javasp_is_terminated_process (jsp_info.pid))
+      if (jsp_info.pid != -1 && !javasp_is_terminated_process (jsp_info.pid))
 	{
 	  javasp_terminate_process (jsp_info.pid);
 	}
-
-      javasp_reset_info (db_name.c_str ());
     }
 
   return status;
