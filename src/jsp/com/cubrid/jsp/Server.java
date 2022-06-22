@@ -80,9 +80,8 @@ public class Server {
             }
 
             try {
-                AFUNIXServerSocket udsServerSocket = AFUNIXServerSocket.newInstance();
                 AFUNIXSocketAddress sockAddr = AFUNIXSocketAddress.of(socketFile);
-                udsServerSocket.bind(sockAddr);
+                AFUNIXServerSocket udsServerSocket = AFUNIXServerSocket.bindOn (sockAddr);
                 udsSocketListener = new ListenerThread(udsServerSocket);
             } catch (Exception e) {
                 log(e);
