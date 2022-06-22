@@ -23,9 +23,6 @@
 #include "btree.h"
 #include "server_type.hpp"
 #include "thread_looper.hpp"
-#include "thread_manager.hpp"
-#include "transaction_global.hpp"
-#include "util_func.h"
 
 #include <cassert>
 #include <chrono>
@@ -248,8 +245,20 @@ namespace cublog
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SYSOP_END> ();
 
 	    read_and_bookkeep_mvcc_vacuum<LOG_REC_SYSOP_END> (header.back_lsa, m_redo_lsa, log_rec, false);
+	    if (m_replicate_mvcc)
+	      {
+		replicate_sysop_end (header.trid, m_redo_lsa, log_rec);
+	      }
 	    break;
 	  }
+#if !defined (NDEBUG)
+	  case LOG_SYSOP_START_POSTPONE:
+	    if (m_replicate_mvcc)
+	      {
+		replicate_sysop_start_postpone (m_redo_lsa);
+	      }
+	    break;
+#endif /* !NDEBUG */
 	  case LOG_ASSIGNED_MVCCID:
 	    if (m_replicate_mvcc)
 	      {
@@ -365,6 +374,80 @@ namespace cublog
 
     m_replicator_mvccid->new_assigned_mvccid (tranid, log_rec.mvccid);
   }
+
+  void replicator::replicate_sysop_end (TRANID tranid, const log_lsa &rec_lsa, const LOG_REC_SYSOP_END &log_rec)
+  {
+    assert (m_replicate_mvcc);
+
+    LOG_SYSOP_END_TYPE_CHECK (log_rec.type);
+    if (log_rec.type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
+      {
+	assert (!LSA_ISNULL (&log_rec.lastparent_lsa));
+	assert (LSA_LT (&log_rec.lastparent_lsa, &rec_lsa));
+
+	// mvccid might be valid or not
+	if (MVCCID_IS_NORMAL (log_rec.mvcc_undo_info.mvcc_undo.mvccid))
+	  {
+	    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+	      {
+		_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] %s tranid=%d MVCCID=%llu parent_MVCCID=%llu\n",
+			       log_sysop_end_type_string (log_rec.type), (int)tranid,
+			       (unsigned long long)log_rec.mvcc_undo_info.mvcc_undo.mvccid,
+			       (unsigned long long)log_rec.mvcc_undo_info.parent_mvccid);
+	      }
+	    m_replicator_mvccid->new_assigned_sub_mvccid_or_mvccid (tranid, log_rec.mvcc_undo_info.mvcc_undo.mvccid,
+		log_rec.mvcc_undo_info.parent_mvccid);
+	  }
+      }
+    else if (log_rec.type == LOG_SYSOP_END_COMMIT)
+      {
+	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+	  {
+	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] %s tranid=%d\n",
+			   log_sysop_end_type_string (log_rec.type), tranid);
+	  }
+	// only complete sub-ids, if found
+	m_replicator_mvccid->complete_sub_mvcc (tranid);
+      }
+    else if (log_rec.type == LOG_SYSOP_END_ABORT)
+      {
+	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+	  {
+	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] %s tranid=%d\n",
+			   log_sysop_end_type_string (log_rec.type), tranid);
+	  }
+	// only complete sub-ids, if found
+	m_replicator_mvccid->complete_sub_mvcc (tranid);
+      }
+    else
+      {
+	// nothing
+	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+	  {
+	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] %s tranid=%d not handled\n",
+			   log_sysop_end_type_string (log_rec.type), tranid);
+	  }
+      }
+  }
+
+#if !defined (NDEBUG)
+  void replicator::replicate_sysop_start_postpone (const log_lsa &rec_lsa)
+  {
+    assert (m_replicate_mvcc);
+
+    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SYSOP_START_POSTPONE));
+    const LOG_REC_SYSOP_START_POSTPONE log_rec =
+	    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SYSOP_START_POSTPONE> ();
+
+    LOG_SYSOP_END_TYPE_CHECK (log_rec.sysop_end.type);
+    // TODO: this assert does not hold, to repro:
+    //  - execute the scenario from http://jira.cubrid.org/browse/LETS-289
+    //  - wait some time - probabil for the vacuum to be executed - which will end up here
+    //assert (!LSA_ISNULL (&log_rec.sysop_end.lastparent_lsa));
+    assert (LSA_LT (&log_rec.sysop_end.lastparent_lsa, &rec_lsa));
+    assert (log_rec.sysop_end.type != LOG_SYSOP_END_LOGICAL_MVCC_UNDO);
+  }
+#endif /* !NDEBUG */
 
   void
   replicator::wait_replication_finish_during_shutdown () const

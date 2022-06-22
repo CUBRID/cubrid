@@ -203,8 +203,10 @@ struct mvcc_info
 
   // *INDENT-OFF*
   std::vector<MVCCID> sub_ids;		/* MVCC sub-transaction ID array. Even if the implementation supports more than
-                                         * one transaction mvcc sub-id, in practice the scenario is never encountered and
-                                         * asserts are present everywhere in this regard. */
+					 * one transaction mvcc sub-id, in practice the scenario is never encountered
+					 * and asserts are present everywhere in this regard.
+					 * NOTE: the same structure & logic is implemented for scalability passive
+					 * transaction server replication with the class cublog::replicator_mvcc */
   // *INDENT-ON*
   bool is_sub_active;		/* true in case that sub-transaction is running */
 
