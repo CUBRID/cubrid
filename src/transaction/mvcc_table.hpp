@@ -81,7 +81,6 @@ class mvcctable
     void complete_sub_mvcc (MVCCID mvccid);
     MVCCID get_new_mvccid ();
     void get_two_new_mvccid (MVCCID &first, MVCCID &second);
-    void set_mvccid_from_active_transaction_server (MVCCID id);
 
     bool is_active (MVCCID mvccid) const;
 
