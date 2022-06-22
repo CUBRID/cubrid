@@ -251,11 +251,20 @@ namespace cublog
 	    break;
 	  }
 	  case LOG_ASSIGNED_MVCCID:
+	  {
+	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_ASSIGNED_MVCCID));
+	    const LOG_REC_ASSIGNED_MVCCID log_rec =
+		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_ASSIGNED_MVCCID> ();
+	    if (m_bookkeep_mvcc)
+	      {
+		log_Gl.mvcc_table.set_mvccid_from_active_transaction_server (log_rec.mvccid);
+	      }
 	    if (m_replicate_mvcc)
 	      {
-		register_assigned_mvccid (header.trid);
+		m_replicator_mvccid->new_assigned_mvccid (header.trid, log_rec.mvccid);
 	      }
 	    break;
+	  }
 	  default:
 	    // do nothing
 	    break;
@@ -339,12 +348,12 @@ namespace cublog
 
     if (m_bookkeep_mvcc)
       {
-	m_replicator_mvccid->new_assigned_mvccid (rec_header.trid, mvccid);
+	log_Gl.mvcc_table.set_mvccid_from_active_transaction_server (mvccid);
       }
 
     if (m_replicate_mvcc && MVCCID_IS_NORMAL (mvccid))
       {
-	log_Gl.mvcc_table.set_mvccid_from_active_transaction_server (mvccid);
+	m_replicator_mvccid->new_assigned_mvccid (rec_header.trid, mvccid);
       }
 
     // Redo b-tree stats differs from what the recovery usually does. Get the recovery index before deciding how to
