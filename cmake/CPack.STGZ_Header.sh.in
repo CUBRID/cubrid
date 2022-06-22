@@ -165,6 +165,45 @@ endif
 setenv SHLIB_PATH $LD_LIBRARY_PATH
 setenv LIBPATH $LD_LIBRARY_PATH
 set path=($CUBRID/bin $path)
+
+set LIB=$CUBRID/lib
+
+if ( -f /etc/redhat-release ) then
+        set OS=`cat /etc/system-release-cpe | cut -d':' -f'3-3'`
+else if ( -f /etc/os-release ) then
+        set OS=`cat /etc/os-release | egrep "^ID=" | cut -d'=' -f2-2`
+     endif
+endif
+
+switch ($OS)
+  case "fedoraproject":
+  case "centos":
+  case "redhat":
+  case "rocky":
+    if ( ! -f /lib64/libncurses.so.5 && ! -f $LIB/libncurses.so.5 ) then
+        ln -s /lib64/libncurses.so.6 $LIB/libncurses.so.5
+        ln -s /lib64/libform.so.6 $LIB/libform.so.5
+        ln -s /lib64/libtinfo.so.6 $LIB/libtinfo.so.5
+    endif
+    breaksw
+  case "ubuntu":
+    if ( ! -f /lib/x86_64-linux-gnu/libncurses.so.5 && ! -f $LIB/libncurses.so.5 ) then
+      ln -s /lib/x86_64-linux-gnu/libncurses.so.6 $LIB/libncurses.so.5
+      ln -s /lib/x86_64-linux-gnu/libform.so.6 $LIB/libform.so.5
+      ln -s /lib/x86_64-linux-gnu/libtinfo.so.6 $LIB/libtinfo.so.5
+    endif
+    breaksw
+  case "debian":
+    if ( ! -f /lib/x86_64-linux-gnu/libncurses.so.5 && ! -f $LIB/libncurses.so.5 ) then
+            ln -s /lib/x86_64-linux-gnu/libncurses.so.6 $LIB/libncurses.so.5
+            ln -s /lib/x86_64-linux-gnu/libtinfo.so.6 $LIB/libtinfo.so.5
+            ln -s /usr/lib/x86_64-linux-gnu/libform.so.6 $LIB/libform.so.5
+    endif
+    breaksw
+  default:
+    echo "CUBRID requires the ncurses package. Make sure the ncurses package is installed"
+    breaksw
+endsw
 ____cubrid__here_doc____
 # environment variables for *sh
 cubrid_sh_envfile="$HOME/.cubrid.sh"
@@ -245,37 +284,66 @@ if [ -z "$SHELL" ];then
       user_sh=$(basename $user_sh)
    fi
 else
-        user_sh=$(basename $SHELL)
+  user_sh=$(basename $SHELL)
 fi
 
 bash_exist=1
-if [ $user_sh = "bash" ];then
-	sh_profile=$HOME/.bash_profile
-	if [ ! -f $sh_profile ];then
-	  bash_exist=0
-	  touch $sh_profile
-	fi
+case $user_sh in
+	zsh)
+		sh_profile=$HOME/.zshrc
+		;;
+	bash)
+		sh_profile=$HOME/.bash_profile
+		;;
+	sh)
+		sh_profile=$HOME/.profile
+		;;
+	csh | tcsh)
+		sh_profile=$HOME/.cshrc
+		;;
+esac
 
-	append_profile=$(grep "${PRODUCT_NAME} environment" $sh_profile)
+if [ ! -f $sh_profile ];then
+  bash_exist=0
+  touch $sh_profile
+fi
 
-	if [ -z "$append_profile" ];then
-	  echo '#-------------------------------------------------------------------------------' >> $sh_profile
-	  if [ $? -ne 0 ];then
-	    CUBRID_SH_INSTALLED=0
-	    echo "Please check your permission for file $sh_profile"
-	  else
-	    echo '# set '${PRODUCT_NAME}' environment variables'                                    >> $sh_profile
-	    echo '#-------------------------------------------------------------------------------' >> $sh_profile
-	    echo 'if [ -f $HOME/.cubrid.sh ];then'                                                  >> $sh_profile
-	    echo '. $HOME/.cubrid.sh'                                                               >> $sh_profile
-	    echo 'fi'                                                                               >> $sh_profile
-	    if [ $bash_exist -eq 0 ];then
-	      echo "Notification: $sh_profile is created"
-	    fi
-	  fi
-	fi
-else
-  CUBRID_SH_INSTALLED=0
+append_profile=$(grep "${PRODUCT_NAME} environment" $sh_profile)
+
+if [ -z "$append_profile" ];then
+  echo '#-------------------------------------------------------------------------------' >> $sh_profile
+  if [ $? -ne 0 ];then
+    CUBRID_SH_INSTALLED=0
+    echo "Please check your permission for file $sh_profile"
+  else
+    echo '# set '${PRODUCT_NAME}' environment variables'                                    >> $sh_profile
+    echo '#-------------------------------------------------------------------------------' >> $sh_profile
+
+    case $user_sh in
+      bash | sh)
+        echo 'if [ -f $HOME/.cubrid.sh ];then'                                              >> $sh_profile
+        echo '. $HOME/.cubrid.sh'                                                           >> $sh_profile
+        echo 'fi'                                                                           >> $sh_profile
+        ;;
+      csh | tcsh)
+        echo 'if ( -f ~/.cubrid.csh ) then' 		>> $sh_profile
+        echo '  source ~/.cubrid.csh' 			>> $sh_profile
+        echo 'endif' 					>> $sh_profile
+        ;;
+      zsh)
+        echo 'if [ -f $HOME/.cubrid.sh ];then'                                              >> $sh_profile
+        echo '  source $HOME/.cubrid.sh'                                                    >> $sh_profile
+        echo 'fi'                                                                           >> $sh_profile
+        ;;
+      *)
+        CUBRID_SH_INSTALLED=0
+        ;;
+    esac
+  fi	# $? - ne 0
+fi	# -z "$append_profile"
+
+if [ $CUBRID_SH_INSTALLED -eq 1 ] && [ $bash_exist -eq 0 ];then
+  echo "Notification: $sh_profile is created"
 fi
 
 # create a demo db
@@ -295,8 +363,11 @@ if [ $CUBRID_SH_INSTALLED -eq 0 ];then
 	echo "(or you can add the command into your current shell profile file to set permanently)"
 fi
 case "$SHELL" in
-  */csh | */tcsh )
+  */csh | */tcsh)
     echo "  $ source $cubrid_csh_envfile"
+    ;;
+  */zsh)
+    echo "  $ source $cubrid_sh_envfile"
     ;;
   *)
     echo "  $ . $cubrid_sh_envfile"
