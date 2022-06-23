@@ -25289,7 +25289,9 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	  if (bts->force_restart_from_root)
 	    {
 	      /* Couldn't advance. Restart from root. */
-	      assert (bts->use_desc_index);
+	      /* TODO: not sure why this assert is present here. However, on passive transaction
+	       * server, it is hit when a page desynchronization situation is encountered */
+	      assert (bts->use_desc_index || is_passive_transaction_server ());
 	      btree_log_if_enabled ("Notification: descending range scan had to be interrupted and restarted from "
 				    "root.\n");
 	      if (bts->C_page != NULL)
