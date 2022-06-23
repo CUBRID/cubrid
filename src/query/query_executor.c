@@ -11413,7 +11413,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
-		  xasl->list_id->tuple_cnt += removed_count;
 		}
 
 	      if (odku_assignments && insert->has_uniques)
@@ -11584,7 +11583,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-	      xasl->list_id->tuple_cnt += removed_count;
 	    }
 
 	  force_count = 0;
@@ -11602,7 +11600,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      if (force_count)
 		{
 		  assert (force_count == 1);
-		  xasl->list_id->tuple_cnt += force_count * 2;
+		  xasl->list_id->tuple_cnt += force_count;
 		}
 	    }
 
