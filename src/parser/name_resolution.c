@@ -51,8 +51,6 @@
 #include "locator_cl.h"
 #include "db_json.hpp"
 
-#include "dbtype.h"
-
 extern "C"
 {
   extern int parser_function_code;
@@ -6995,27 +6993,28 @@ exit_on_error:
   return ER_FAILED;
 }
 
+
 static void
-pt_write_warning (PARSER_CONTEXT * parser, PT_NODE * index, int line_no, int er_set_no, int msg_no)
+pt_write_semantic_warning (PARSER_CONTEXT * parser, PT_NODE * name, int line_no, int er_set_no, int msg_no)
 {
   char *buf = NULL;
   char *fmt = msgcat_message (MSGCAT_CATALOG_CUBRID, er_set_no, msg_no);
 
-  if (index->info.name.meta_class != PT_INDEX_NAME)
+  if (name->info.name.meta_class != PT_INDEX_NAME)
     {
-      asprintf (&buf, fmt, pt_print_bytes (parser, index)->bytes);
+      asprintf (&buf, fmt, pt_print_bytes (parser, name)->bytes);
     }
   else
     {
-      void *ptr = index->etc;
-      index->etc = (void *) PT_IDX_HINT_NONE;	// for remove (+)/(-)
-      asprintf (&buf, fmt, pt_print_bytes (parser, index)->bytes);
-      index->etc = (void *) ptr;
+      void *ptr = name->etc;
+      name->etc = (void *) PT_IDX_HINT_NONE;	// for remove (+)/(-)
+      asprintf (&buf, fmt, pt_print_bytes (parser, name)->bytes);
+      name->etc = (void *) ptr;
     }
 
   if (buf)
     {
-      er_set (ER_WARNING_SEVERITY, __FILE__, line_no, ER_USING_INDEX_HINT_IGNORE, 1, buf);
+      er_set (ER_WARNING_SEVERITY, __FILE__, line_no, ER_PT_SEMANTIC, 2, buf, "");
       free (buf);
     }
 }
@@ -7100,8 +7099,8 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 		  if (cons == NULL || (cons->index_status != SM_NORMAL_INDEX))
 		    {
 		      /* error; the index is not for the specified class or unusable index */
-		      pt_write_warning (parser, index, __LINE__, MSGCAT_SET_PARSER_SEMANTIC,
-					MSGCAT_SEMANTIC_USING_INDEX_ERR_1);
+		      pt_write_semantic_warning (parser, index, __LINE__, MSGCAT_SET_PARSER_SEMANTIC,
+						 MSGCAT_SEMANTIC_USING_INDEX_ERR_1);
 		      return NULL;
 		    }
 		}
@@ -7114,7 +7113,8 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 	}
 
       /* the specified class in "class.index" does not exist in spec list */
-      pt_write_warning (parser, index, __LINE__, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USING_INDEX_ERR_2);
+      pt_write_semantic_warning (parser, index, __LINE__, MSGCAT_SET_PARSER_SEMANTIC,
+				 MSGCAT_SEMANTIC_USING_INDEX_ERR_2);
       return NULL;
     }
 
@@ -7172,14 +7172,16 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
   if (found == 0)
     {
       /* error; can not find the class of the index */
-      pt_write_warning (parser, index, __LINE__, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USING_INDEX_ERR_1);
+      pt_write_semantic_warning (parser, index, __LINE__, MSGCAT_SET_PARSER_SEMANTIC,
+				 MSGCAT_SEMANTIC_USING_INDEX_ERR_1);
       return NULL;
     }
   else if (found > 1)
     {
       index->info.name.resolved = NULL;
       /* we found more than one classes which have index of the same name */
-      pt_write_warning (parser, index, __LINE__, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USING_INDEX_ERR_3);
+      pt_write_semantic_warning (parser, index, __LINE__, MSGCAT_SET_PARSER_SEMANTIC,
+				 MSGCAT_SEMANTIC_USING_INDEX_ERR_3);
       return NULL;
     }
 

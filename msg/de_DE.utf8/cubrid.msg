@@ -1431,9 +1431,8 @@ $ LOADDB
 1350 Invalid synonym value.
 
 1351 The maximum length of the function expression string must be %1$d.
-1352 Invalid hint: %1$s
 
-1353 Letzter Fehler
+1352 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
