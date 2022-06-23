@@ -5279,6 +5279,11 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
       pt_try_remove_order_by (parser, arg2);
 
       arg2_list = pt_get_select_list (parser, arg2);
+      if (arg2_list == NULL)
+	{
+	  return NULL;
+	}
+
       if (PT_IS_COLLECTION_TYPE (arg2_list->type_enum) && arg2_list->node_type == PT_FUNCTION)
 	{
 	  expr->type_enum = PT_TYPE_LOGICAL;
