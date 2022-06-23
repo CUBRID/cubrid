@@ -30,7 +30,7 @@ namespace cublog
       const T &log_rec, bool assert_mvccid_non_null)
   {
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (log_rec);
-    log_replication_update_header_mvcc_vacuum_info (mvccid, prev_rec_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
+    log_replication_update_header_mvcc_vacuum_info (mvccid, prev_rec_lsa, rec_lsa, m_bookkeep_mvcc);
   }
 
   template <typename T>
