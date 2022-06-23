@@ -6996,10 +6996,10 @@ exit_on_error:
 }
 
 static void
-pt_write_warning (PARSER_CONTEXT * parser, PT_NODE * index, int lineNo, int erSetNo, int msgNo)
+pt_write_warning (PARSER_CONTEXT * parser, PT_NODE * index, int line_no, int er_set_no, int msg_no)
 {
   char *buf = NULL;
-  char *fmt = msgcat_message (MSGCAT_CATALOG_CUBRID, erSetNo, msgNo /*MSGCAT_SEMANTIC_USING_INDEX_ERR_1 */ );
+  char *fmt = msgcat_message (MSGCAT_CATALOG_CUBRID, er_set_no, msg_no);
 
   if (index->info.name.meta_class != PT_INDEX_NAME)
     {
@@ -7015,7 +7015,7 @@ pt_write_warning (PARSER_CONTEXT * parser, PT_NODE * index, int lineNo, int erSe
 
   if (buf)
     {
-      er_set (ER_WARNING_SEVERITY, __FILE__, lineNo, ER_USING_INDEX_HINT_IGNORE, 1, buf);
+      er_set (ER_WARNING_SEVERITY, __FILE__, line_no, ER_USING_INDEX_HINT_IGNORE, 1, buf);
       free (buf);
     }
 }
