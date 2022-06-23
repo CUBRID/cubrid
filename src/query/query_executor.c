@@ -11432,7 +11432,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    {
 		      assert (force_count == 1);
 
-		      xasl->list_id->tuple_cnt += force_count * 2;
+		      xasl->list_id->tuple_cnt += force_count;
 		      continue;
 		    }
 		}
