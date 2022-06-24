@@ -193,7 +193,7 @@ namespace cublog
 
     // only mvccids that pertain to redo's are processed here
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
-    log_replication_update_header_mvcc_vacuum_info (mvccid, rec_header.back_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
+    log_replication_update_header_mvcc_vacuum_info (mvccid, rec_header.back_lsa, rec_lsa, m_bookkeep_mvcc);
     if (m_replicate_mvcc && MVCCID_IS_NORMAL (mvccid))
       {
 	m_replicator_mvccid->new_assigned_mvccid (rec_header.trid, mvccid);

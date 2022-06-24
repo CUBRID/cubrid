@@ -100,7 +100,7 @@ namespace cublog
 #endif /* !NDEBUG */
 
     protected:
-      const bool m_bookkeep_mvcc_vacuum_info;
+      const bool m_bookkeep_mvcc;
       const bool m_replicate_mvcc;
 
     private:

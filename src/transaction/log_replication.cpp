@@ -67,7 +67,7 @@ namespace cublog
    *********************************************************************/
 
   replicator::replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode, int parallel_count)
-    : m_bookkeep_mvcc_vacuum_info { is_page_server () }
+    : m_bookkeep_mvcc { is_page_server () }
     , m_replicate_mvcc { is_passive_transaction_server () }
     , m_redo_lsa { start_redo_lsa }
     , m_replication_active { true }
@@ -260,11 +260,20 @@ namespace cublog
 	    break;
 #endif /* !NDEBUG */
 	  case LOG_ASSIGNED_MVCCID:
+	  {
+	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_ASSIGNED_MVCCID));
+	    const LOG_REC_ASSIGNED_MVCCID log_rec =
+		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_ASSIGNED_MVCCID> ();
+	    if (m_bookkeep_mvcc)
+	      {
+		log_Gl.mvcc_table.set_mvccid_from_active_transaction_server (log_rec.mvccid);
+	      }
 	    if (m_replicate_mvcc)
 	      {
-		register_assigned_mvccid (header.trid);
+		m_replicator_mvccid->new_assigned_mvccid (header.trid, log_rec.mvccid);
 	      }
 	    break;
+	  }
 	  default:
 	    // do nothing
 	    break;
@@ -344,7 +353,13 @@ namespace cublog
 
     // only mvccids that pertain to redo's are processed here
     const MVCCID mvccid = log_rv_get_log_rec_mvccid (record_info.m_logrec);
-    log_replication_update_header_mvcc_vacuum_info (mvccid, rec_header.back_lsa, rec_lsa, m_bookkeep_mvcc_vacuum_info);
+    log_replication_update_header_mvcc_vacuum_info (mvccid, rec_header.back_lsa, rec_lsa, m_bookkeep_mvcc);
+
+    if (m_bookkeep_mvcc)
+      {
+	log_Gl.mvcc_table.set_mvccid_from_active_transaction_server (mvccid);
+      }
+
     if (m_replicate_mvcc && MVCCID_IS_NORMAL (mvccid))
       {
 	m_replicator_mvccid->new_assigned_mvccid (rec_header.trid, mvccid);
