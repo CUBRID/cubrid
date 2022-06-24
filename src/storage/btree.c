@@ -18905,10 +18905,10 @@ btree_compare_individual_key_value (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN 
     }
 
   /* both are not null values */
-  /* 
+  /*
    * for do_coercion = 2, we need to process key comparing as char-type
    * in case that one of two arguments has varchar-type
-   * if the other argument has char-type 
+   * if the other argument has char-type
    */
   c = key_domain->type->cmpval (key1, key2, 2, 1, NULL, key_domain->collation_id);
 
@@ -20972,7 +20972,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
     }
   else
     {
-      /* the statistics values is always same as initial (-1) 
+      /* the statistics values is always same as initial (-1)
        * so, it's not necessary to extend 64 bit */
       num_oids = root_header->num_oids;
       num_nulls = root_header->num_oids;
@@ -25082,8 +25082,8 @@ btree_range_scan_handle_page_ahead_repl_error (THREAD_ENTRY * thread_p, btree_sc
   tdes->page_desync_lsa.set_null ();
   er_clear ();
 
-  btree_log_if_enabled ("Btree scan force restart from root requested. Page desync LSA = %lld|%d",
-			LSA_AS_ARGS (&tdes->page_desync_lsa));
+  btree_log_if_enabled ("Btree scan force restart from root requested. page_desync_lsa=%lld|%d",
+			LSA_AS_ARGS (&bts.page_desync_lsa));
   bts.force_restart_from_root = true;
 
   // If there are objects selected, end this iteration and maybe replication will catch-up in the meantime.
@@ -25289,8 +25289,12 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	  if (bts->force_restart_from_root)
 	    {
 	      /* Couldn't advance. Restart from root. */
-	      /* TODO: not sure why this assert is present here. However, on passive transaction
-	       * server, it is hit when a page desynchronization situation is encountered */
+	      /* Up until the introduction of transactional log replication-based scalability architecture,
+	       * it was possible to encounter a forced restart from root only when the descending
+	       * index use was in effect. Afterwards, it is possible to also encounter it when a page
+	       * desync happens (ie: a btree page requested from page server is served with a newer state
+	       * than the passive transaction's server replication progress. Therefore, assert the correct
+	       * state when in the latter case. */
 	      assert (bts->use_desc_index || is_passive_transaction_server ());
 	      btree_log_if_enabled ("Notification: descending range scan had to be interrupted and restarted from "
 				    "root.\n");
@@ -33231,11 +33235,11 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
   error_code = heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo);
   if (error_code == NO_ERROR)
     {
-      /* 
+      /*
        * It can happen to fail to get the class record.
        * For example, a class record that is assigned but not updated poperly yet.
        * In this case, Setting tde flag is just skipped and it is expected to be done later.
-       * see file_apply_tde_to_class_files() 
+       * see file_apply_tde_to_class_files()
        */
       error_code = file_apply_tde_algorithm (thread_p, &btid->vfid, tde_algo);
       if (error_code != NO_ERROR)
