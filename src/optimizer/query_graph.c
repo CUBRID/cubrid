@@ -1313,6 +1313,10 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
 		    }
 		}
 	      break;
+	    case PT_DBLINK_TABLE:
+	      QO_NODE_NCARD (node) = 1000;	/* just guess for dblink */
+	      QO_NODE_TCARD (node) = 100;	/* just guess for dblink */
+
 	    default:
 	      break;
 	    }

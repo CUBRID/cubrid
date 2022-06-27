@@ -9293,7 +9293,7 @@ file_tempcache_put (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
   /* lock temporary cache */
   file_tempcache_lock ();
 
-  if (file_Tempcache->ncached_not_numerable + file_Tempcache->ncached_numerable <= file_Tempcache->ncached_max)
+  if (file_Tempcache->ncached_not_numerable + file_Tempcache->ncached_numerable < file_Tempcache->ncached_max)
     {
       /* cache not full */
       assert ((file_Tempcache->cached_not_numerable == NULL) == (file_Tempcache->ncached_not_numerable == 0));
@@ -11568,7 +11568,9 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
 	  goto exit;
 	}
 
+#if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, root_page, PAGE_BTREE);
+#endif /* !NDEBUG */
 
       root_header = btree_get_root_header (thread_p, root_page);
       if (root_header == NULL)

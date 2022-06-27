@@ -1659,6 +1659,7 @@
 #define ER_CDC_NULL_EXTRACTION_LSA                  -1293
 #define ER_CDC_LOGINFO_ENTRY_GENERATED              -1294
 #define ER_CDC_IGNORE_LOG_INFO                      -1295
+
 #define ER_LOG_RECOVERY_ANALYSIS_STARTED            -1296
 #define ER_LOG_RECOVERY_REDO_STARTED                -1297
 #define ER_LOG_RECOVERY_UNDO_STARTED                -1298
@@ -1697,7 +1698,7 @@
 #define ER_CGW_INVALID_DESC_HANDLE                  -1328
 #define ER_CGW_NOT_SUPPORTED_DBMS                   -1329
 #define ER_CGW_NOT_ALLOCATE_ENV_HANDLE              -1330
-#define ER_DBLINK_DEV_RESERVED_ERROR31              -1331
+#define ER_CGW_NULL_COL_BINDER                      -1331
 
 #define ER_LOG_TOO_SANE_TO_RECREATE                 -1332
 
@@ -1717,7 +1718,16 @@
 #define ER_QPROC_CREATE_SERIAL_NOT_OWNER            -1344
 #define ER_TR_CREATE_NOT_ALLOWED                    -1345
 
-#define ER_LAST_ERROR                               -1346
+#define ER_SYNONYM_PUBLIC_ALREADY_EXIST             -1346
+#define ER_SYNONYM_PUBLIC_NOT_EXIST                 -1347
+#define ER_SYNONYM_ALREADY_EXIST                    -1348
+#define ER_SYNONYM_NOT_EXIST                        -1349
+#define ER_SYNONYM_INVALID_VALUE                    -1350
+
+#define ER_SM_INVALID_FUNCTION_EXPRESSION_LENGTH    -1351
+
+#define ER_LAST_ERROR                               -1352
+
 /*
  * CAUTION!
  *

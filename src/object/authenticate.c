@@ -177,6 +177,7 @@ const char *AU_DBA_USER_NAME = "DBA";
          strcmp(name, CT_AUTHORIZATIONS_NAME) == 0 || \
 	 strcmp(name, CT_CHARSET_NAME) == 0 || \
          strcmp(name, CT_DB_SERVER_NAME) == 0 || \
+	 strcmp(name, CT_SYNONYM_NAME) == 0 || \
 	 strcmp(name, CT_DUAL_NAME) == 0)
 
 enum fetch_by
@@ -1179,6 +1180,23 @@ au_find_user (const char *user_name)
     {
       return NULL;
     }
+
+  {
+    /*
+     * To reduce unnecessary code execution,
+     * the current schema name can be used instead of the current user name.
+     * 
+     * Returns the current user object when the user name is the same as the current schema name.
+     * 
+     * Au_user_name cannot be used because it does not always store the current user name.
+     * When au_login_method () is called, Au_user_name is not changed.
+     */
+    const char *sc_name = sc_current_schema_name ();
+    if (Au_user && sc_name && sc_name[0] != '\0' && intl_identifier_casecmp (sc_name, user_name) == 0)
+      {
+	return Au_user;
+      }
+  }
 
   /* disable checking of internal authorization object access */
   AU_DISABLE (save);
@@ -3433,12 +3451,12 @@ au_drop_user (MOP user)
   DB_SET *new_groups, *direct_groups;
   int g, gcard, i;
   DB_VALUE name;
-  const char *class_name[] = {
+  static const char *class_name[] = {
     /*
      * drop user command can be called only by DBA group,
      * so we can use query for _db_class directly
      */
-    "_db_class", "db_trigger", "db_serial", "_db_server", NULL
+    "_db_class", "db_trigger", "db_serial", "_db_server", "_db_synonym", NULL
   };
   char query_buf[1024];
 
@@ -3467,7 +3485,7 @@ au_drop_user (MOP user)
       goto error;
     }
 
-  /* check if user owns class/vclass/trigger/serial */
+  /* check if user owns class/vclass/trigger/serial/synonym */
   for (i = 0; class_name[i] != NULL; i++)
     {
       sprintf (query_buf, "select count(*) from [%s] where [owner] = ?;", class_name[i]);
@@ -6282,6 +6300,21 @@ au_user_name (void)
     {
       int save;
 
+      /*
+       * To reduce unnecessary code execution,
+       * the current schema name can be used instead of the current user name.
+       * 
+       * Au_user_name cannot be used because it does not always store the current user name.
+       * When au_login_method () is called, Au_user_name is not changed.
+       */
+      const char *sc_name = sc_current_schema_name ();
+      char upper_sc_name[DB_MAX_USER_LENGTH];
+      if (sc_name && sc_name[0] != '\0')
+	{
+	  intl_identifier_upper (sc_name, upper_sc_name);
+	  return ws_copy_string (upper_sc_name);
+	}
+
       AU_DISABLE (save);
 
       if (obj_get (Au_user, "name", &value) == NO_ERROR)
@@ -7416,6 +7449,32 @@ au_get_user_name (MOP obj)
   DB_VALUE value;
   db_make_null (&value);
   char *name = NULL;
+
+  {
+    MOP sc_owner;
+    const char *sc_name;
+    char upper_sc_name[DB_MAX_USER_LENGTH];
+
+    /*
+     * To reduce unnecessary code execution,
+     * the current schema name can be used instead of the current user name.
+     * 
+     * Returns the current schema name if the user object is the same as the current user object.
+     * 
+     * Au_user_name cannot be used because it does not always store the current user name.
+     * When au_login_method () is called, Au_user_name is not changed.
+     */
+    sc_owner = sc_current_schema_owner ();
+    if (sc_owner && ws_is_same_object (sc_owner, obj))
+      {
+	sc_name = sc_current_schema_name ();
+	if (sc_name && sc_name[0] != '\0')
+	  {
+	    intl_identifier_upper (sc_name, upper_sc_name);
+	    return ws_copy_string (upper_sc_name);
+	  }
+      }
+  }
 
   int error = obj_get (obj, "name", &value);
   if (error == NO_ERROR)
@@ -9223,10 +9282,12 @@ au_check_serial_authorization (MOP serial_object)
   int ret_val;
 
   ret_val = db_get (serial_object, "owner", &creator_val);
-  if (ret_val != NO_ERROR || DB_IS_NULL (&creator_val))
+  if (ret_val != NO_ERROR)
     {
       return ret_val;
     }
+
+  assert (!DB_IS_NULL (&creator_val));
 
   ret_val = au_check_owner (&creator_val);
   if (ret_val != NO_ERROR)

@@ -274,10 +274,13 @@ Available command:\n\
     stop\n\
     restart\n\
     info\n\
-    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-c] [-u] [<expr>]\n\
     on          gateway-name\n\
     off         gateway-name\n\
     reset       gateway-name\n\
+    acl         <status|reload> [gateway-name]\n
+46 La longueur de owner_name doit être inférieure à %1$d et la longueur de class_name doit être inférieure à %2$d octets.\n
+47 Format non valide pour nom_propriétaire.nom_classe ('%1$s').\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 AVERTISSEMENT: l'option -t est ignoré dans le mode d'exécution autonome.\n
@@ -995,6 +998,7 @@ options valids:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Entrez mot de passe DBA:
 22 Le serveur n'a pas été configuré pour HA.\n
+57 Impossible de générer les informations appliquées en raison d'un chemin non valide de l'option -L ou de l'absence d'informations associées dans la table de catalogue db_ha_apply_info.\n
 58 HA fonctionnalité n'est pas supportée par cette plate-forme.\n
 59 applyinfo ne peut pas fonctionner en mode autonome.\n
 60 \
@@ -1227,6 +1231,7 @@ options valides:\n\
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Impossible de charger les noms de table dans %1$s.\n
 2 checksumdb doit être exécuté sur un serveur HA actif. %1$s (état courant: %2$s)\n
+3 Le propriétaire de la table pour enregistrer le résultat de la somme de contrôle doit être DBA.\n
 58 Fonctionnalité HA est pas supporté sur cette plate-forme.\n
 59 checksumdb ne peut pas être exécuté dans le mode autonome.\n
 60 \
@@ -1240,7 +1245,7 @@ options valides:\n\
   -i, --include-class-file=FICHIER entrée FICHIER de noms des tables à inclure\n\
   -e, --exclude-class-file=FICHIER entrée FICHIER de noms des tables à exclure; seulement -i ou -e peuvent être utilisé, pas le deux\n\
   -t, --timeout=NUMÉRO             délai d'attente de requête en millisecondes; par défaut: 1000ms\n\
-  -n, --table-name=NOM             NOM de la table  pour enregistrer les résultats de somme de contrôle; par défaut: db_ha_checksums\n\
+  -n, --table-name=NOM             NOM de la table  pour enregistrer les résultats de somme de contrôle; par défaut: dba.db_ha_checksum\n\
   -r, --report-only                rapporter l'intégrité de la replication en se basant sur la calculation des sommes de contrôle\n\
                                    tous les options, avec l'exception de --table-name, seront ignorés\n\
       --resume                     reprendre la calculation des sommes de contrôle\n\
@@ -1283,9 +1288,10 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 L'ID de transaction doit être saisi dans %1$d secondes. Le délai peut être ajusté via le paramètre 'flashback_timeout' dans 'cubrid.conf'.\n
 13 Flashback est déjà en cours d'exécution. Flashback ne peut pas être exécuté par deux processus.\n
 14 Flashback ne peut pas s'exécuter en mode autonome.\n
+15 La classe de catalogue système (%1$s) n'est pas prise en charge dans Flashback.\n
 60 \
 flashback : fournit des instructions pour revenir en arrière sur une transaction spécifique.\n\
-utilisation : %1$s flashback [OPTION] nom-base de données nom_classe1 [nom_classe2 ...]\n\
+utilisation : %1$s flashback [OPTION] nom-base de données nom_propriétaire.nom_classe1 [nom_propriétaire.nom_classe2 ...]\n\
 \n\
 options valides :\n\
     -o, --output-file=FILE        redirige le message de sortie vers FILE ; par défaut : aucun.\n\

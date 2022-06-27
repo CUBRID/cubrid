@@ -80,7 +80,7 @@ qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_
 	}
       type_list.domp[0] = func_p->operand.domain;
 
-      list_id_p = qfile_open_list (thread_p, &type_list, NULL, query_id, QFILE_FLAG_DISTINCT);
+      list_id_p = qfile_open_list (thread_p, &type_list, NULL, query_id, QFILE_FLAG_DISTINCT, NULL);
       if (list_id_p == NULL)
 	{
 	  db_private_free_and_init (thread_p, type_list.domp);

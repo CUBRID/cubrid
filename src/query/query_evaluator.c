@@ -1657,15 +1657,15 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
   int regexp_res;
   const PRED_EXPR *t_pr;
   QFILE_SORTED_LIST_ID *srlist_id;
+  static int max_recursion_sql_depth = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
 
   peek_val1 = NULL;
   peek_val2 = NULL;
   peek_val3 = NULL;
 
-  if (thread_get_recursion_depth (thread_p) > prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH))
+  if (thread_get_recursion_depth (thread_p) > max_recursion_sql_depth)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MAX_RECURSION_SQL_DEPTH, 1,
-	      prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MAX_RECURSION_SQL_DEPTH, 1, max_recursion_sql_depth);
 
       return V_ERROR;
     }
@@ -2782,6 +2782,7 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
   DB_VALUE *valp;
   int prev_j_index;
   char *prev_j_ptr;
+  static bool oracle_style_empty_string = prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING);
 
   if (value == NULL)
     {
@@ -2858,7 +2859,7 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 		    }
 
 		  found_empty_str = false;
-		  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) && db_value_is_null (valp))
+		  if (oracle_style_empty_string && db_value_is_null (valp))
 		    {
 		      if (valp->need_clear)
 			{
@@ -2925,7 +2926,7 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 	    }
 
 	  found_empty_str = false;
-	  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) && db_value_is_null (valp))
+	  if (oracle_style_empty_string && db_value_is_null (valp))
 	    {
 	      if (valp->need_clear)
 		{

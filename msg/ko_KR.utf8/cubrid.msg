@@ -904,7 +904,7 @@ $ LOADDB
 834 to_number() 함수에 주어진 source 문자열 "%1$s"과 format 문자열 "%2$s"이 매칭되지 않습니다.
 835 정의되지 않은 통계 아이템입니다.
 836 페이지(%1$d|%2$d)에 대한 래치 획득 요청이 시간을 초과하였습니다.
-837 데이터베이스 객체(클래스/뷰/트리거/serial/server 등)을 소유한 사용자는 삭제할 수 없습니다.
+837 데이터베이스 객체(클래스/뷰/트리거/serial/server/synonym 등)을 소유한 사용자는 삭제할 수 없습니다.
 838 동시에 %1$d개를 초과하는 인덱스 스캔을 열 수 없습니다.
 839 "%1$s": 알 수 없는 시스템 파라미터 이거나 값이 잘못되었습니다.
 840 시스템 파라미터 "%1$s"를 바꿀 수 없습니다.
@@ -988,7 +988,7 @@ $ LOADDB
 918 외래키가 참조하는 클래스 '%1$s'가 존재하지 않습니다.
 919 외래키가 참조하는 클래스 '%1$s'가 기본키를 가지고 있지 않습니다.
 920 외래키 '%1$s'에 기본키 멤버 '%2$s'가 포함되어 있지 않습니다.
-921 외래키 멤버 '%1$s'의 도메인이 기본키 멤버 '%2$s'의 도메인과 다릅니다.
+921 외래키 멤버 '%1$s'의 도메인이 기본키 멤버 '%2$s'의 도메인과 다릅니다. (%3$s: %4$s vs. %5$s)
 922 외래키 '%1$s'는 제약조건에 위배되었습니다. 위배된 값 '%2$s'.
 923 외래키 '%2$s'에 참조되는 기본키 '%1$s'는 삭제할 수 없습니다.
 924 수정/삭제 연산이 외래키 '%1$s'에 의해 제약되었습니다.
@@ -1379,7 +1379,7 @@ $ LOADDB
 1305 dblink - "%1$s" 서버를 찾을 수 없습니다.
 1306 dblink - "%1$s" 서버는 이미 존재합니다.
 1307 dblink - 서버 객체에 대한 소유권이 없습니다.
-1308 dblink - 지원하지 않는 유형입니다.
+1308 dblink - %1$s 타입은 지원하지 않습니다.
 1309 dblink - 유효하지 않은 바인드 파라메터입니다.
 1310 dblink - 암호화할 비밀번호의 길이가 최댓값을 넘어섰습니다.
 1311 dblink - 암호화된 비밀번호의 길이가 올바르지 않습니다.
@@ -1391,20 +1391,20 @@ $ LOADDB
 1317 dblink - 소유권을 갖는 "%1$s" 서버가 없습니다. 
 
 1318 [%1$5.5s][%2$d] %3$s
-1319 dblink - 매개 변수 바인딩 오류.
-1320 dblink - 잘못된 ODBC Handle 입니다.
-1321 dblink - 데이터 형식 변환 오류.
-1322 dblink - %1$s(%2$d) 타입은 지원하지 않습니다.
-1323 dblink - 잘못된 Statement Handle 입니다.
-1324 dblink - Connection Handle이 잘못되었습니다.
-1325 dblink - Connection URL이 존재하지 않습니다.
-1326 dblink - 유효하지 않은 Numeric 값입니다.
-1327 dblink - "%1$s" 열의 정밀도 값이 잘못되었습니다.
+1319 매개 변수 바인딩 오류.
+1320 잘못된 ODBC Handle 입니다.
+1321 데이터 형식 변환 오류.
+1322 %1$s(%2$d) 타입은 지원하지 않습니다.
+1323 잘못된 Statement Handle 입니다.
+1324 Connection Handle이 잘못되었습니다.
+1325 Connection URL이 존재하지 않습니다.
+1326 유효하지 않은 Numeric 값입니다.
+1327 "%1$s" 열의 정밀도 값이 잘못되었습니다.
 
-1328 dblink - 잘못된 Descriptor Handle 입니다.
-1329 dblink - 지원하지 않는 DBMS 입니다.
-1330 dblink - 환경 핸들을 할당할 수 없습니다.
-1331 Error reserved for dblink development.
+1328 잘못된 Descriptor Handle 입니다.
+1329 지원하지 않는 DBMS 입니다.
+1330 환경 핸들을 할당할 수 없습니다.
+1331 NULL 열 바인더가 참조되었습니다.
 
 1332 액티브 로그 볼륨 (%1$s)에서 문제를 발견할 수 없어 재생성할 수 없습니다. 액티브 로그 볼륨을 제거할 경우에 예측할 수 없는 문제가 발생할 수 있으며, 되돌릴 수 없습니다.
 
@@ -1424,7 +1424,15 @@ $ LOADDB
 1344 DBA, DBA 그룹의 구성원 및 소유자가 CREATE SERIAL을 수행할 수 있습니다.
 1345 DBA, DBA 그룹의 구성원 및 소유자가 CREATE TRIGGER를 수행할 수 있습니다.
 
-1346 마지막 에러
+1346 공개 동의어 "%1$s"이(가) 이미 존재합니다.
+1347 공개 동의어 "%1$s"이(가) 존재하지 않습니다.
+1348 동의어 "%1$s"이(가) 이미 존재합니다.
+1349 동의어 "%1$s"이(가) 존재하지 않습니다.
+1350 잘못된 Synonym 값입니다.
+
+1351 함수 표현식 문자열의 최대 길이는 %1$d이어야 합니다.
+
+1352 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1582,7 +1590,11 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 127 커맨트의 최대 길이는 %1$d 바이트입니다.
 128 JSON_OBJECTAGG 인자의 갯수가 잘못되었습니다.
 129 PARALLEL 인자 값은 %1$d에서 %2$d까지 허용됩니다.
-130 dblink - 서버명은 점(.)을 포함할 수 없습니다.
+130 dblink - Server name cannot contain periods.
+131 잘못된 형식의 alter synonym 구문입니다.\n  ALTER [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+132 잘못된 형식의 create synonym 구문입니다.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+133 잘못된 형식의 drop synonym 구문입니다.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
+134 잘못된 형식의 rename synonym 구문입니다.\n  RENAME [PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -1893,6 +1905,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 306 dblink - 필수 정보가 누락되었습니다.
 307 dblink - %1$s 타입은 지원하지 않습니다.
 308 DBA, DBA 그룹의 구성원 및 소유자가 CREATE TABLE/VIEW를 수행할 수 있습니다.
+309 잘못된 동의어 이름 "%1$s".\n  시스템 클래스/뷰 이름은 동의어 이름이 될 수 없습니다.
+310 DBA, DBA 그룹의 구성원 및 소유자가 %1$s을(를) 수행할 수 있습니다.
+311 공개 동의어 "%1$s"이(가) 이미 존재합니다.
+312 공개 동의어 "%1$s"이(가) 존재하지 않습니다.
+313 동의어 "%1$s"이(가) 이미 존재합니다.
+314 동의어 "%1$s"이(가) 존재하지 않습니다.
+315 이름 바꾸기는 소유자를 변경할 수 없습니다.
+316 이름 바꾸기는 같은 이름으로 변경할 수 없습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

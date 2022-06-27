@@ -904,7 +904,7 @@ $ LOADDB
 834 Kaynak dizesi arasında bazı uyumsuzluklar "%1$s" ve verilen "%2$s" biçim dizesi vardır to_number() .
 835 Tanımlanmamış istatistikler öğesi.
 836 SAYFASINDA LATCH (%1$d|%2$d) ZAMAN AŞIMI.
-837 Veritabanı nesneleri (sınıf / tetik / seri / sunucu vb) sahibi olan kullanıcılara aittir iptal edemezsiniz..
+837 Veritabanı nesneleri (sınıf / tetik / seri / sunucu / synonym vb) sahibi olan kullanıcılara aittir iptal edemezsiniz..
 838 Eşzamanlı olarak taranan indeksi %1$d den daha fazla açılamaz .
 839 "%1$s": Bilinmeyen sistem parametresi veya bozuk bir değer.
 840 Sistem parametresi değiştiremezsiniz "%1$s".
@@ -988,7 +988,7 @@ $ LOADDB
 918 Yabancı anahtar tarafından yönlendirilen sınıf '%1$s' bulunmamaktadır.
 919 Yabancı anahtarının tarafından yönlendirilen birincil anahtarın sınıf '%1$s' bulunmamaktadır.
 920 Yabancı anahtar '%1$s' birincil anahtar üye '%2$s' içermez.
-921 Yabancı anahtar üye '%1$s' alanı birincil anahtar üye '%2$s' farklıdır.
+921 Yabancı anahtar üye '%1$s' alanı birincil anahtar üye '%2$s' farklıdır. (%3$s: %4$s vs. %5$s)
 922 Dış anahtar kelime: '%1$s' değeri nedeniyle, '%2$s' sınırı geçersiz.
 923 Birincil anahtar '%1$s' yabancı anahtar '%2$s' tarafından yönlendirilen iptal olması gerekmiyor.
 924 Güncelle/Sil işlemleri yabancı anahtar '%1$s' tarafından kısıtlanmıştır.
@@ -1379,7 +1379,7 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1305 dblink - server "%1$s" not found.
 1306 dblink - server "%1$s" already exists.
 1307 dblink - Cannot update server object.
-1308 dblink - unsupported type.
+1308 dblink - not supported type %1$s.
 1309 dblink - invalid bind param.
 1310 dblink - password length exceeds max size.
 1311 dblink - encrypted password length is incorrect.
@@ -1391,20 +1391,20 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1317 dblink - Not allowed "%1$s" Server.
 
 1318 [%1$5.5s][%2$d] %3$s
-1319 dblink - Parameter binding error.
-1320 dblink - Invalid ODBC handle.
-1321 dblink - Type conversion error.
-1322 dblink - not supported type %1$s(%2$d).
-1323 dblink - Invalid Statement handle.
-1324 dblink - Invalid db connection handle.
-1325 dblink - Link server connection url do not exist.
-1326 dblink - Invalid numeric value.
-1327 dblink - Invalid precision value of "%1$s" column.
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 not supported type %1$s(%2$d).
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
 
-1328 dblink - Invalid Descriptor handle.
-1329 dblink - Not supported dbms.
-1330 dblink - Unable to allocate an environment handle.
-1331 Error reserved for dblink development.
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
+1330 Unable to allocate an environment handle.
+1331 A null column binder was referenced.
 
 1332 Etkin günlük hacmi (%1$s) yeniden oluşturulamayacak kadar makul. Etkin günlüğü kaldırırsanız, beklenmeyen ve geri dönüşü olmayan bir soruna neden olabilir.
 
@@ -1424,7 +1424,15 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
 1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
 
-1346 Son Hata
+1346 Public synonym "%1$s" already exists.
+1347 Public synonym "%1$s" does not exist.
+1348 Synonym "%1$s" already exists.
+1349 Synonym "%1$s" does not exist.
+1350 Invalid synonym value.
+
+1351 The maximum length of the function expression string must be %1$d.
+
+1352 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
@@ -1583,6 +1591,10 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 128 JSON_OBJECTAGG için bağımsız değişken sayısı geçersiz
 129 PARALLEL count argümanı %1$d ve %2$d arasında olmalıdır.
 130 dblink - Server name cannot contain periods.
+131 Invalid alter synonym.\n  ALTER [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+132 Invalid create synonym.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
+133 Invalid drop synonym.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
+134 Invalid rename synonym.\n  RENAME [PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Bellek yetersiz.
@@ -1893,6 +1905,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 306 dblink - Gerekli bilgiler eksik.
 307 dblink - not supported type %1$s.
 308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
+309 Invalid synonym name "%1$s".\n  The system class/vclass name cannot be a synonym name.
+310 DBA, members of DBA group, and owner can perform %1$s.
+311 Public synonym "%1$s" already exists.
+312 Public synonym "%1$s" does not exist.
+313 Synonym "%1$s" already exists.
+314 Synonym "%1$s" does not exist.
+315 Rename cannot change owner.
+316 Rename cannot be changed to the same name.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.

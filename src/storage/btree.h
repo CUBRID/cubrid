@@ -653,11 +653,7 @@ extern int btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid, lo
 					long long *key_cnt);
 extern int btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p, BTID * btid, long long *oid_cnt,
 						  long long *null_cnt, long long *key_cnt);
-
 extern int btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_fullscan);
-extern DISK_ISVALID btree_check_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID * btid,
-				      const char *btname);
-extern DISK_ISVALID btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid);
 extern int btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * pkey_btid);
 extern DISK_ISVALID btree_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * idx_btid);
 extern DISK_ISVALID btree_check_all (THREAD_ENTRY * thread_p);
@@ -778,7 +774,6 @@ extern void btree_set_mvcc_header_ids_for_update (THREAD_ENTRY * thread_p, bool 
 
 extern int btree_compare_btids (void *mem_btid1, void *mem_btid2);
 
-extern char *btree_unpack_mvccinfo (char *ptr, BTREE_MVCC_INFO * mvcc_info, short btree_mvcc_flags);
 extern char *btree_pack_mvccinfo (char *ptr, BTREE_MVCC_INFO * mvcc_info);
 extern int btree_packed_mvccinfo_size (BTREE_MVCC_INFO * mvcc_info);
 

@@ -5488,6 +5488,7 @@ la_apply_statement_log (LA_ITEM * item)
   DB_OBJECT *user = NULL, *save_user = NULL;
   char sql_log_err[LINE_MAX];
   bool is_ddl = false;
+  bool need_set_user = true;
   int res;
 
   error = la_flush_repl_items (true);
@@ -5523,6 +5524,11 @@ la_apply_statement_log (LA_ITEM * item)
     case CUBRID_STMT_RENAME_SERVER:
     case CUBRID_STMT_ALTER_SERVER:
 
+    case CUBRID_STMT_ALTER_SYNONYM:
+    case CUBRID_STMT_CREATE_SYNONYM:
+    case CUBRID_STMT_DROP_SYNONYM:
+    case CUBRID_STMT_RENAME_SYNONYM:
+
     case CUBRID_STMT_TRUNCATE:
 
       /* TODO: check it */
@@ -5552,17 +5558,24 @@ la_apply_statement_log (LA_ITEM * item)
 	  return NO_ERROR;
 	}
 
+      // *INDENT-OFF*
+      if (item->item_type == CUBRID_STMT_ALTER_STORED_PROCEDURE
+	   || item->item_type == CUBRID_STMT_DROP_STORED_PROCEDURE
+	   || item->item_type == CUBRID_STMT_CREATE_USER
+	   || item->item_type == CUBRID_STMT_ALTER_USER
+	   || item->item_type == CUBRID_STMT_DROP_USER)
+	{
+	  need_set_user = false;
+	}
+      // *INDENT-ON*
+
       /*
        * When we create the schema objects, the object's owner must be changed
        * to the appropriate owner.
        * Special alter statement, non partitioned -> partitioned is the same.
        * Also, the result of statement-based DML replication may be affected by user
        */
-      if ((item->item_type == CUBRID_STMT_CREATE_CLASS || item->item_type == CUBRID_STMT_CREATE_SERIAL
-	   || item->item_type == CUBRID_STMT_CREATE_STORED_PROCEDURE || item->item_type == CUBRID_STMT_CREATE_TRIGGER
-	   || item->item_type == CUBRID_STMT_ALTER_CLASS || item->item_type == CUBRID_STMT_INSERT
-	   || item->item_type == CUBRID_STMT_DELETE || item->item_type == CUBRID_STMT_UPDATE)
-	  && (item->db_user != NULL && item->db_user[0] != '\0'))
+      if (need_set_user && (item->db_user != NULL && item->db_user[0] != '\0'))
 	{
 	  user = au_find_user (item->db_user);
 	  if (user == NULL)
@@ -7113,141 +7126,175 @@ la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool v
 }
 
 /*
- * la_log_page_check() - test the transaction log
- *   return: void
- *   log_path: log path
- *   page_num: test page number
+ * la_get_applied_log_info() - when applyinfo utility is executed with -a option, this fuction will try to get applied log information.
+ *   return: NO_ERROR or error code
+ *   database_name(in): db name
+ *   log_path(in): real path of log file
+ *   check_replica_info(in): whether replica node execute applyinfo utility
+ *   verbose(in): applyinfo -v option
+ *   applied_final_lsa(in/out): information for delayed applying copied log
+ *
  */
 int
-la_log_page_check (const char *database_name, const char *log_path, INT64 page_num, bool check_applied_info,
-		   bool check_copied_info, bool check_replica_info, bool verbose, LOG_LSA * copied_eof_lsa,
-		   LOG_LSA * copied_append_lsa, LOG_LSA * applied_final_lsa)
+la_get_applied_log_info (const char *database_name, const char *log_path, bool check_replica_info,
+			 bool verbose, LOG_LSA * applied_final_lsa)
 {
   int error = NO_ERROR;
   int res;
-  char *atchar;
-  char active_log_path[PATH_MAX];
   char *replica_time_bound_str;
+  char log_path_buf[PATH_MAX];
 
   assert (database_name != NULL);
   assert (log_path != NULL);
 
-  atchar = (char *) strchr (database_name, '@');
-  if (atchar)
+  LA_HA_APPLY_INFO ha_apply_info;
+  char timebuf[1024];
+
+  if (realpath (log_path, log_path_buf) != NULL)
     {
-      *atchar = '\0';
+      log_path = log_path_buf;
     }
 
+  la_init_ha_apply_info (&ha_apply_info);
+
+  res = la_get_ha_apply_info (log_path, database_name, &ha_apply_info);
+  if ((res <= 0) || (ha_apply_info.creation_time.date == 0 && ha_apply_info.creation_time.time == 0))
+    {
+      if (res < 0)
+	{
+	  error = res;
+	  printf ("%s\n\n", db_error_string (3));
+	}
+      else
+	{
+	  error = ER_FAILED;
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO, APPLYINFO_MSG_NO_QUERY_RESULTS));
+	}
+      goto check_applied_info_end;
+    }
+
+  *applied_final_lsa = ha_apply_info.final_lsa;
+
+  if (verbose)
+    {
+      db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.creation_time);
+      printf ("%-30s : %s\n", "DB creation time", timebuf);
+
+      printf ("%-30s : %lld | %d\n", "Last committed LSA", LSA_AS_ARGS (&ha_apply_info.committed_lsa));
+      printf ("%-30s : %lld | %d\n", "Last committed replog LSA", LSA_AS_ARGS (&ha_apply_info.committed_rep_lsa));
+      printf ("%-30s : %lld | %d\n", "Last append LSA", LSA_AS_ARGS (&ha_apply_info.append_lsa));
+      printf ("%-30s : %lld | %d\n", "Last EOF LSA", LSA_AS_ARGS (&ha_apply_info.eof_lsa));
+      printf ("%-30s : %lld | %d\n", "Final LSA", LSA_AS_ARGS (&ha_apply_info.final_lsa));
+      printf ("%-30s : %lld | %d\n", "Required LSA", LSA_AS_ARGS (&ha_apply_info.required_lsa));
+
+      db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.log_record_time);
+      printf ("%-30s : %s\n", "Log record time", timebuf);
+
+      db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.log_commit_time);
+      printf ("%-30s : %s\n", "Log committed time", timebuf);
+
+      db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.last_access_time);
+      printf ("%-30s : %s\n", "Last access time", timebuf);
+    }
+
+  printf ("%-30s : %ld\n", "Insert count", ha_apply_info.insert_counter);
+  printf ("%-30s : %ld\n", "Update count", ha_apply_info.update_counter);
+  printf ("%-30s : %ld\n", "Delete count", ha_apply_info.delete_counter);
+  printf ("%-30s : %ld\n", "Schema count", ha_apply_info.schema_counter);
+  printf ("%-30s : %ld\n", "Commit count", ha_apply_info.commit_counter);
+  printf ("%-30s : %ld\n", "Fail count", ha_apply_info.fail_counter);
+
+  if (verbose)
+    {
+      db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.start_time);
+      printf ("%-30s : %s\n", "Start time", timebuf);
+    }
+
+  if (check_replica_info)
+    {
+      replica_time_bound_str = prm_get_string_value (PRM_ID_HA_REPLICA_TIME_BOUND);
+      db_datetime_to_string2 ((char *) timebuf, 1024, &ha_apply_info.log_record_time);
+
+      printf ("\n *** Replica-specific Info. *** \n");
+      if (replica_time_bound_str == NULL)
+	{
+	  printf ("%-30s : %d second(s)\n", "Deliberate lag", prm_get_integer_value (PRM_ID_HA_REPLICA_DELAY_IN_SECS));
+	}
+
+      printf ("%-30s : %s\n", "Last applied log record time", timebuf);
+      if (replica_time_bound_str != NULL)
+	{
+	  printf ("%-30s : %s\n", "Will apply log records up to", replica_time_bound_str);
+	}
+    }
+
+check_applied_info_end:
+
+  return error;
+}
+
+/*
+ * la_get_copied_log_info() - when applyinfo utility is executed with -L or -p option, this fuction will try to get copied log or copied log page information.
+ *   return: NO_ERROR or error code
+ *   database_name(in): db name
+ *   log_path(in): real path of log file
+ *   page_num(in): the number of log page 
+ *   verbose(in): applyinfo -v option
+ *   copied_eof_lsa(in/out): inforamtion for delayed log count
+ *   copied_append_lsa(in/out): current append location
+ */
+int
+la_get_copied_log_info (const char *database_name, const char *log_path, INT64 page_num, bool verbose,
+			LOG_LSA * copied_eof_lsa, LOG_LSA * copied_append_lsa)
+{
+  int error = NO_ERROR;
+  char active_log_path[PATH_MAX];
+  char log_path_buf[PATH_MAX];
+
+  assert (database_name != NULL);
+  assert (log_path != NULL);
+
+  if (realpath (log_path, log_path_buf) != NULL)
+    {
+      log_path = log_path_buf;
+    }
+
+  memset (active_log_path, 0, PATH_MAX);
   /* init la_Info */
   la_init (log_path, 0);
 
-  if (check_applied_info)
+  printf ("\n *** Copied Active Info. *** \n");
+
+  fileio_make_log_active_name ((char *) active_log_path, la_Info.log_path, database_name);
+  if (!fileio_is_volume_exist ((const char *) active_log_path))
     {
-      LA_HA_APPLY_INFO ha_apply_info;
-      char timebuf[1024];
-
-      la_init_ha_apply_info (&ha_apply_info);
-
-      res = la_get_ha_apply_info (log_path, database_name, &ha_apply_info);
-      if ((res <= 0) || (ha_apply_info.creation_time.date == 0 && ha_apply_info.creation_time.time == 0))
-	{
-	  error = res;
-
-	  goto check_applied_info_end;
-	}
-
-      *applied_final_lsa = ha_apply_info.final_lsa;
-
-      printf ("\n *** Applied Info. *** \n");
-
-      if (verbose)
-	{
-	  db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.creation_time);
-	  printf ("%-30s : %s\n", "DB creation time", timebuf);
-
-	  printf ("%-30s : %lld | %d\n", "Last committed LSA", LSA_AS_ARGS (&ha_apply_info.committed_lsa));
-	  printf ("%-30s : %lld | %d\n", "Last committed replog LSA", LSA_AS_ARGS (&ha_apply_info.committed_rep_lsa));
-	  printf ("%-30s : %lld | %d\n", "Last append LSA", LSA_AS_ARGS (&ha_apply_info.append_lsa));
-	  printf ("%-30s : %lld | %d\n", "Last EOF LSA", LSA_AS_ARGS (&ha_apply_info.eof_lsa));
-	  printf ("%-30s : %lld | %d\n", "Final LSA", LSA_AS_ARGS (&ha_apply_info.final_lsa));
-	  printf ("%-30s : %lld | %d\n", "Required LSA", LSA_AS_ARGS (&ha_apply_info.required_lsa));
-
-	  db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.log_record_time);
-	  printf ("%-30s : %s\n", "Log record time", timebuf);
-
-	  db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.log_commit_time);
-	  printf ("%-30s : %s\n", "Log committed time", timebuf);
-
-	  db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.last_access_time);
-	  printf ("%-30s : %s\n", "Last access time", timebuf);
-	}
-
-      printf ("%-30s : %ld\n", "Insert count", ha_apply_info.insert_counter);
-      printf ("%-30s : %ld\n", "Update count", ha_apply_info.update_counter);
-      printf ("%-30s : %ld\n", "Delete count", ha_apply_info.delete_counter);
-      printf ("%-30s : %ld\n", "Schema count", ha_apply_info.schema_counter);
-      printf ("%-30s : %ld\n", "Commit count", ha_apply_info.commit_counter);
-      printf ("%-30s : %ld\n", "Fail count", ha_apply_info.fail_counter);
-
-      if (verbose)
-	{
-	  db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.start_time);
-	  printf ("%-30s : %s\n", "Start time", timebuf);
-	}
-
-      if (check_replica_info)
-	{
-	  replica_time_bound_str = prm_get_string_value (PRM_ID_HA_REPLICA_TIME_BOUND);
-	  db_datetime_to_string2 ((char *) timebuf, 1024, &ha_apply_info.log_record_time);
-
-	  printf ("\n *** Replica-specific Info. *** \n");
-	  if (replica_time_bound_str == NULL)
-	    {
-	      printf ("%-30s : %d second(s)\n", "Deliberate lag",
-		      prm_get_integer_value (PRM_ID_HA_REPLICA_DELAY_IN_SECS));
-	    }
-
-	  printf ("%-30s : %s\n", "Last applied log record time", timebuf);
-	  if (replica_time_bound_str != NULL)
-	    {
-	      printf ("%-30s : %s\n", "Will apply log records up to", replica_time_bound_str);
-	    }
-	}
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, active_log_path);
+      error = ER_LOG_MOUNT_FAIL;
+      goto check_copied_log_volume_info_end;
     }
-check_applied_info_end:
+
+  /* read copied active page */
+  error = la_find_log_pagesize (&la_Info.act_log, la_Info.log_path, database_name, false);
+  if (error != NO_ERROR)
+    {
+      goto check_copied_log_volume_info_end;
+    }
+
+  *copied_eof_lsa = la_Info.act_log.log_hdr->eof_lsa;
+  *copied_append_lsa = la_Info.act_log.log_hdr->append_lsa;
+
+  la_print_log_header (database_name, la_Info.act_log.log_hdr, verbose);
+
+check_copied_log_volume_info_end:
   if (error != NO_ERROR)
     {
       printf ("%s\n", db_error_string (3));
-    }
-  error = NO_ERROR;
-
-  if (check_copied_info)
-    {
-      /* check active log file */
-      memset (active_log_path, 0, PATH_MAX);
-      fileio_make_log_active_name ((char *) active_log_path, la_Info.log_path, database_name);
-      if (!fileio_is_volume_exist ((const char *) active_log_path))
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, active_log_path);
-	  error = ER_LOG_MOUNT_FAIL;
-	  goto check_copied_info_end;
-	}
-
-      /* read copied active page */
-      error = la_find_log_pagesize (&la_Info.act_log, la_Info.log_path, database_name, false);
-      if (error != NO_ERROR)
-	{
-	  goto check_copied_info_end;
-	}
-
-      *copied_eof_lsa = la_Info.act_log.log_hdr->eof_lsa;
-      *copied_append_lsa = la_Info.act_log.log_hdr->append_lsa;
-
-      printf ("\n *** Copied Active Info. *** \n");
-      la_print_log_header (database_name, la_Info.act_log.log_hdr, verbose);
+      /* If error occured about the -L option, it is not necessary to check log page information. So, fuction is end here */
+      return error;
     }
 
-  if (check_copied_info && (page_num > 1))
+  if (page_num >= 0)
     {
       LOG_PAGE *logpage;
 
@@ -7262,7 +7309,7 @@ check_applied_info_end:
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, la_Info.act_log.db_iopagesize);
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto check_copied_info_end;
+	  goto check_copied_log_page_info_end;
 	}
 
       logpage = (LOG_PAGE *) la_Info.log_data;
@@ -7286,7 +7333,7 @@ check_applied_info_end:
 	      error = tde_decrypt_log_page (logpage, logwr_get_tde_algorithm (logpage), logpage);
 	      if (error != NO_ERROR)
 		{
-		  goto check_copied_info_end;
+		  goto check_copied_log_page_info_end;
 		}
 	    }
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
@@ -7294,7 +7341,7 @@ check_applied_info_end:
 
       if (error != NO_ERROR)
 	{
-	  goto check_copied_info_end;
+	  goto check_copied_log_page_info_end;
 	}
       else
 	{
@@ -7313,7 +7360,7 @@ check_applied_info_end:
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Invalid pageid");
 	      error = ER_HA_GENERIC_ERROR;
-	      goto check_copied_info_end;
+	      goto check_copied_log_page_info_end;
 	    }
 
 	  lsa.pageid = logpage->hdr.logical_pageid;
@@ -7332,12 +7379,12 @@ check_applied_info_end:
       free_and_init (la_Info.log_data);
     }				/* check_copied_info */
 
-check_copied_info_end:
+check_copied_log_page_info_end:
   if (error != NO_ERROR)
     {
       printf ("%s\n", db_error_string (3));
     }
-
+  /* The -p option does not affect any results in the applyinfo utility. So, here returns the NO_ERROR */
   return NO_ERROR;
 }
 
@@ -7639,16 +7686,16 @@ la_need_filter_out (LA_ITEM * item)
 
   if (filter->type == REPL_FILTER_NONE
       || (item->log_type == LOG_REPLICATION_STATEMENT && item->item_type != CUBRID_STMT_TRUNCATE)
-      || strcasecmp (item->class_name, CT_SERIAL_NAME) == 0)
+      || strcasecmp (class_name, CT_SERIAL_NAME) == 0)
     {
       return false;
     }
 
-  assert (item != NULL && item->class_name != NULL);
+  assert (item != NULL && class_name != NULL);
 
   for (i = 0; i < filter->num_filters; i++)
     {
-      if (strcasecmp (filter->list[i], item->class_name) == 0)
+      if (strcasecmp (filter->list[i], class_name) == 0)
 	{
 	  filter_found = true;
 	  break;

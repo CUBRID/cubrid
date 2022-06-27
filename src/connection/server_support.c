@@ -1320,9 +1320,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 #endif /* WINDOWS */
 
   // initialize worker pool for server requests
-  const std::size_t MAX_WORKERS = css_get_max_workers ();
-  const std::size_t MAX_TASK_COUNT = css_get_max_task_count ();
-  const std::size_t MAX_CONNECTIONS = css_get_max_connections ();
+#define MAX_WORKERS css_get_max_workers ()
+#define MAX_TASK_COUNT css_get_max_task_count ()
+#define MAX_CONNECTIONS css_get_max_connections ()
 
   // create request worker pool
   css_Server_request_worker_pool =

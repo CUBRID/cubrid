@@ -77,7 +77,7 @@
 #define DISK_PAGE_BITS  (DB_PAGESIZE * CHAR_BIT)	/* Num of bits per page */
 
 #define BTREE_NODE_MAX_SPLIT_SIZE(thread_p, page_ptr) \
-  (db_page_size() - spage_header_size() - spage_get_space_for_record(thread_p, (page_ptr), HEADER))
+  (DB_PAGESIZE - spage_header_size() - spage_get_space_for_record(thread_p, (page_ptr), HEADER))
 
 #define OID_MSG_BUF_SIZE 64
 
@@ -291,11 +291,13 @@ struct recset_header
   INT16 first_slotid;		/* first slot id */
 };
 
+#if 0				/* not used */
 typedef enum
 {
   LEAF_RECORD_REGULAR = 1,
   LEAF_RECORD_OVERFLOW
 } LEAF_RECORD_TYPE;
+#endif
 
 typedef enum
 {
@@ -310,6 +312,7 @@ typedef enum
   BTREE_MERGE_FORCE,
 } BTREE_MERGE_STATUS;
 
+#if 0				/* not used */
 /* RECINS_STRUCT - redo b-tree insert recovery structure.
  */
 typedef struct recins_struct RECINS_STRUCT;
@@ -324,6 +327,7 @@ struct recins_struct
 };
 #define RECINS_STRUCT_INITIALIZER \
   { OID_INITIALIZER, OID_INITIALIZER, VPID_INITIALIZER, 0 }
+#endif
 
 /* Redo recovery of insert delete MVCCID */
 #define BTID_DOMAIN_CHECK_MAX_SIZE 1024
@@ -349,6 +353,7 @@ struct btree_stats_env
   DB_VALUE pkeys_val[BTREE_STATS_PKEYS_NUM];	/* partial key-value */
 };
 
+#if 0				/* not used */
 /* Structure used by btree_range_search to initialize and handle variables
  * needed throughout the process.
  */
@@ -396,6 +401,7 @@ struct btree_range_search_helper
   bool current_lock_request;	/* Current key needs locking */
   bool read_prev_key;		/* Previous key is read */
 };
+#endif
 
 typedef struct show_index_scan_ctx SHOW_INDEX_SCAN_CTX;
 struct show_index_scan_ctx
@@ -1781,6 +1787,11 @@ static bool btree_is_single_object_key (THREAD_ENTRY * thread_p, BTID_INT * btid
 static bool btree_check_locking_for_insert_unique (THREAD_ENTRY * thread_p, const BTREE_INSERT_HELPER * insert_helper);
 static bool btree_check_locking_for_delete_unique (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER * delete_helper);
 
+static DISK_ISVALID btree_check_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID * btid,
+				      const char *btname);
+static DISK_ISVALID btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid);
+static char *btree_unpack_mvccinfo (char *ptr, BTREE_MVCC_INFO * mvcc_info, short btree_mvcc_flags);
+
 /*
  * btree_fix_root_with_info () - Fix b-tree root page and output its VPID, header and b-tree info if requested.
  *
@@ -1839,7 +1850,7 @@ btree_fix_root_with_info (THREAD_ENTRY * thread_p, BTID * btid, PGBUF_LATCH_MODE
     {
       /* Get b-tree info. */
       btid_int_p->sys_btid = btid;
-      if (btree_glean_root_header_info (thread_p, root_header, btid_int_p) != NO_ERROR)
+      if (btree_glean_root_header_info (thread_p, root_header, btid_int_p, true) != NO_ERROR)
 	{
 	  assert (false);
 	  pgbuf_unfix (thread_p, root_page);
@@ -2497,7 +2508,9 @@ btree_get_num_visible_oids_from_all_ovf (THREAD_ENTRY * thread_p, BTID_INT * bti
 	  goto error;
 	}
 
+#if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, ovfl_page, PAGE_BTREE);
+#endif /* !NDEBUG */
 
       if (spage_get_record (thread_p, ovfl_page, 1, &ovfl_copy_rec, COPY) != S_SUCCESS)
 	{
@@ -4953,7 +4966,9 @@ btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, VPID 
       assert_release (false);
       return NULL;
     }
+#if !defined (NDEBUG)
   pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
+#endif /* !NDEBUG */
 
   return page_ptr;
 }
@@ -5606,7 +5621,9 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
       ASSERT_ERROR ();
       goto error;
     }
+#if !defined (NDEBUG)
   pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
+#endif /* !NDEBUG */
 
   /* form the root header information */
   root_header->node.split_info.pivot = 0.0f;
@@ -5710,7 +5727,9 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
       return ret;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, P, PAGE_BTREE);
+#endif /* !NDEBUG */
 
   /* read the header record */
   root_header = btree_get_root_header (thread_p, P);
@@ -5785,7 +5804,8 @@ btree_generate_prefix_domain (BTID_INT * btid)
  * Note: This captures the interesting header info into the BTID_INT structure.
  */
 int
-btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_header, BTID_INT * btid)
+btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_header, BTID_INT * btid,
+			      bool is_key_type)
 {
   int rc;
   OR_BUF buf;
@@ -5794,8 +5814,11 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_
 
   btid->unique_pk = root_header->unique_pk;
 
-  or_init (&buf, root_header->packed_key_domain, -1);
-  btid->key_type = or_get_domain (&buf, NULL, NULL);
+  if (is_key_type)
+    {
+      or_init (&buf, root_header->packed_key_domain, -1);
+      btid->key_type = or_get_domain (&buf, NULL, NULL);
+    }
 
   COPY_OID (&btid->topclass_oid, &root_header->topclass_oid);
 
@@ -5809,8 +5832,11 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_
   btid->copy_buf = NULL;
   btid->copy_buf_len = 0;
 
-  /* this must be discovered after the Btree key_type */
-  btid->nonleaf_key_type = btree_generate_prefix_domain (btid);
+  if (is_key_type)
+    {
+      /* this must be discovered after the Btree key_type */
+      btid->nonleaf_key_type = btree_generate_prefix_domain (btid);
+    }
 
   btid->rev_level = root_header->rev_level;
 
@@ -6133,7 +6159,9 @@ xbtree_get_unique_pk (THREAD_ENTRY * thread_p, BTID * btid)
       return 0;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+#endif /* !NDEBUG */
 
   root_header = btree_get_root_header (thread_p, root);
   if (root_header == NULL)
@@ -6205,7 +6233,9 @@ btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid, long long *oi
       return (((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret);
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+#endif /* !NDEBUG */
 
   root_header = btree_get_root_header (thread_p, root);
   if (root_header == NULL)
@@ -6290,7 +6320,9 @@ btree_get_subtree_stats (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page
 	      goto exit_on_error;
 	    }
 
+#if !defined (NDEBUG)
 	  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
+#endif /* !NDEBUG */
 
 	  ret = btree_get_subtree_stats (thread_p, btid, page, stats_env);
 	  if (ret != NO_ERROR)
@@ -7015,7 +7047,9 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
       goto exit_on_error;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, root_page_ptr, PAGE_BTREE);
+#endif /* !NDEBUG */
 
   root_header = btree_get_root_header (thread_p, root_page_ptr);
   if (root_header == NULL)
@@ -7023,7 +7057,7 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
       goto exit_on_error;
     }
 
-  ret = btree_glean_root_header_info (thread_p, root_header, &(env->btree_scan.btid_int));
+  ret = btree_glean_root_header_info (thread_p, root_header, &(env->btree_scan.btid_int), true);
   if (ret != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, root_page_ptr);
@@ -7512,7 +7546,9 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT
 	      goto error;
 	    }
 
+#if !defined (NDEBUG)
 	  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
+#endif /* !NDEBUG */
 
 	  valid = btree_verify_subtree (thread_p, class_oid_p, btid, btname, page, &page_vpid, &INFO2);
 	  if (valid != DISK_VALID)
@@ -7581,7 +7617,9 @@ btree_verify_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT * 
       goto error;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+#endif /* !NDEBUG */
 
   /* traverse the tree and store the statistical data in the INFO structure */
   valid = btree_verify_subtree (thread_p, class_oid_p, btid_int, btname, root, &p_vpid, &INFO);
@@ -7677,7 +7715,9 @@ btree_check_pages (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, VP
 	      goto error;
 	    }
 
+#if !defined (NDEBUG)
 	  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
+#endif /* !NDEBUG */
 
 	  vld = btree_check_pages (thread_p, btid, page, &page_vpid);
 	  if (vld != DISK_VALID)
@@ -7707,7 +7747,7 @@ error:
  *
  * Note: Verify that all the pages of the specified index are valid.
  */
-DISK_ISVALID
+static DISK_ISVALID
 btree_check_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID * btid, const char *btname)
 {
   DISK_ISVALID valid = DISK_ERROR;
@@ -7726,7 +7766,9 @@ btree_check_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID * btid,
       goto error;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, r_pgptr, PAGE_BTREE);
+#endif /* !NDEBUG */
 
   root_header = btree_get_root_header (thread_p, r_pgptr);
   if (root_header == NULL)
@@ -7736,7 +7778,7 @@ btree_check_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID * btid,
     }
 
   btid_int.sys_btid = btid;
-  if (btree_glean_root_header_info (thread_p, root_header, &btid_int) != NO_ERROR)
+  if (btree_glean_root_header_info (thread_p, root_header, &btid_int, true) != NO_ERROR)
     {
       valid = DISK_ERROR;
       goto error;
@@ -7769,7 +7811,7 @@ error:
  *
  * Note: Verify that all pages of a btree indices are valid.
  */
-DISK_ISVALID
+static DISK_ISVALID
 btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
 {
   DISK_ISVALID valid = DISK_ERROR;
@@ -7978,7 +8020,9 @@ btree_repair_prev_link_by_btid (THREAD_ENTRY * thread_p, BTID * btid, bool repai
       goto exit_repair;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, root_pgptr, PAGE_BTREE);
+#endif /* !NDEBUG */
 
 retry_repair:
   if (retry_count >= retry_max)
@@ -8012,7 +8056,9 @@ retry_repair:
 	  goto retry_repair;
 	}
 
+#if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, current_pgptr, PAGE_BTREE);
+#endif /* !NDEBUG */
 
       header = btree_get_node_header (thread_p, current_pgptr);
       if (header == NULL)
@@ -8056,7 +8102,9 @@ retry_repair:
 	  goto retry_repair;
 	}
 
+#if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, next_pgptr, PAGE_BTREE);
+#endif /* !NDEBUG */
 
       header = btree_get_node_header (thread_p, next_pgptr);
       if (header == NULL)
@@ -8542,7 +8590,9 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	      goto exit_on_error;
 	    }
 
+#if !defined (NDEBUG)
 	  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
+#endif /* !NDEBUG */
 
 	  ret = btree_get_subtree_capacity (thread_p, btid, page, &cpc2);
 	  if (ret != NO_ERROR)
@@ -8615,7 +8665,9 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 		      goto exit_on_error;
 		    }
 
+#if !defined (NDEBUG)
 		  (void) pgbuf_check_page_ptype (thread_p, ovfp, PAGE_BTREE);
+#endif /* !NDEBUG */
 
 		  btree_get_next_overflow_vpid (thread_p, ovfp, &ovfl_vpid);
 
@@ -8687,7 +8739,9 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
       goto exit_on_error;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+#endif /* !NDEBUG */
 
   root_header = btree_get_root_header (thread_p, root);
   if (root_header == NULL)
@@ -8696,7 +8750,7 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
     }
 
   btid_int.sys_btid = btid;
-  ret = btree_glean_root_header_info (thread_p, root_header, &btid_int);
+  ret = btree_glean_root_header_info (thread_p, root_header, &btid_int, true);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -9048,7 +9102,7 @@ btree_dump (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid, int level)
     }
 
   btid_int.sys_btid = btid;
-  if (btree_glean_root_header_info (thread_p, root_header, &btid_int) != NO_ERROR)
+  if (btree_glean_root_header_info (thread_p, root_header, &btid_int, true) != NO_ERROR)
     {
       goto end;			/* do nothing */
     }
@@ -9091,7 +9145,9 @@ btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid)
       return NULL;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+#endif /* !NDEBUG */
 
   root_header = btree_get_root_header (thread_p, root);
   if (root_header == NULL)
@@ -11503,8 +11559,8 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
 
   /* Try early out: check first oid */
   BTREE_GET_OID (ovf_record.data, &inst_oid);
-  assert ((inst_oid.slotid & BTREE_LEAF_RECORD_MASK) == 0);
-  assert ((inst_oid.volid & BTREE_OID_MVCC_FLAGS_MASK) == 0);
+  assert (BTREE_OID_GET_RECORD_FLAGS (&inst_oid) == 0);
+  assert (BTREE_OID_GET_MVCC_FLAGS (&inst_oid) == 0);
 
   if (OID_LT (oid, &inst_oid))
     {
@@ -11544,8 +11600,8 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
   /* Get last object. */
   oid_ptr = ovf_record.data + (ovf_record.length - size);
   BTREE_GET_OID (oid_ptr, &inst_oid);
-  assert ((inst_oid.slotid & BTREE_LEAF_RECORD_MASK) == 0);
-  assert ((inst_oid.volid & BTREE_OID_MVCC_FLAGS_MASK) == 0);
+  assert (BTREE_OID_GET_RECORD_FLAGS (&inst_oid) == 0);
+  assert (BTREE_OID_GET_MVCC_FLAGS (&inst_oid) == 0);
 
   if (OID_GT (oid, &inst_oid))
     {
@@ -11590,8 +11646,8 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
       mid = (min + max) / 2;
       oid_ptr = ovf_record.data + (size * mid);
       BTREE_GET_OID (oid_ptr, &inst_oid);
-      assert ((inst_oid.slotid & BTREE_LEAF_RECORD_MASK) == 0);
-      assert ((inst_oid.volid & BTREE_OID_MVCC_FLAGS_MASK) == 0);
+      assert (BTREE_OID_GET_RECORD_FLAGS (&inst_oid) == 0);
+      assert (BTREE_OID_GET_MVCC_FLAGS (&inst_oid) == 0);
 
       /* Check OID. */
       if (OID_EQ (oid, &inst_oid))
@@ -11659,8 +11715,8 @@ btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID 
   while (oid_ptr >= oid_ptr_lower_bound)
     {
       BTREE_GET_OID (oid_ptr, &inst_oid);
-      assert ((inst_oid.slotid & BTREE_LEAF_RECORD_MASK) == 0);
-      assert ((inst_oid.volid & BTREE_OID_MVCC_FLAGS_MASK) == 0);
+      assert (BTREE_OID_GET_RECORD_FLAGS (&inst_oid) == 0);
+      assert (BTREE_OID_GET_MVCC_FLAGS (&inst_oid) == 0);
 
       /* Check OID. */
       if (!OID_EQ (oid, &inst_oid))
@@ -11700,8 +11756,8 @@ btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID 
   while (oid_ptr <= oid_ptr_upper_bound)
     {
       BTREE_GET_OID (oid_ptr, &inst_oid);
-      assert ((inst_oid.slotid & BTREE_LEAF_RECORD_MASK) == 0);
-      assert ((inst_oid.volid & BTREE_OID_MVCC_FLAGS_MASK) == 0);
+      assert (BTREE_OID_GET_RECORD_FLAGS (&inst_oid) == 0);
+      assert (BTREE_OID_GET_MVCC_FLAGS (&inst_oid) == 0);
 
       /* Check OID. */
       if (!OID_EQ (oid, &inst_oid))
@@ -11798,6 +11854,7 @@ btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * key2, DB_VAL
       return ER_FAILED;
     }
 
+#if !defined(NDEBUG)
   c = btree_compare_key ((DB_VALUE *) key1, prefix_key, key_domain, 1, 1, NULL);
 
   if (c != DB_LT)
@@ -11813,6 +11870,7 @@ btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * key2, DB_VAL
       assert_release (false);
       return ER_FAILED;
     }
+#endif
 
   return err;
 }
@@ -16332,7 +16390,7 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       goto exit_on_error;
     }
 
-  ret = btree_glean_root_header_info (thread_p, root_header, &BTS->btid_int);
+  ret = btree_glean_root_header_info (thread_p, root_header, &BTS->btid_int, true);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -17541,7 +17599,7 @@ btree_rv_read_keyval_info_nocopy (THREAD_ENTRY * thread_p, char *datap, int data
       goto error;
     }
 
-  error_code = btree_glean_root_header_info (thread_p, root_header, btid);
+  error_code = btree_glean_root_header_info (thread_p, root_header, btid, true);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -18332,7 +18390,7 @@ btree_find_key (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, DB_VALUE * key,
     }
 
   btid_int.sys_btid = btid;
-  btree_glean_root_header_info (thread_p, root_header, &btid_int);
+  btree_glean_root_header_info (thread_p, root_header, &btid_int, true);
   status = btree_find_key_from_page (thread_p, &btid_int, root, oid, key, clear_key);
 
 end:
@@ -18477,7 +18535,7 @@ btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid, int col_idx, int *asc_
 
   btid_int.sys_btid = btid;
 
-  ret = btree_glean_root_header_info (thread_p, root_header, &btid_int);
+  ret = btree_glean_root_header_info (thread_p, root_header, &btid_int, true);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -19254,6 +19312,7 @@ btree_iss_set_key (BTREE_SCAN * bts, INDEX_SKIP_SCAN * iss)
   return NO_ERROR;
 }
 
+#if 0
 /*****************************************************************************/
 /* For migrate_90beta_to_91                                                  */
 /*****************************************************************************/
@@ -19340,7 +19399,7 @@ btree_fix_ovfl_oid_pages_tree (THREAD_ENTRY * thread_p, BTID * btid, char *btnam
     }
 
   btid_int.sys_btid = btid;
-  if (btree_glean_root_header_info (thread_p, root_header, &btid_int) != NO_ERROR)
+  if (btree_glean_root_header_info (thread_p, root_header, &btid_int, true) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, pgptr);
       return ER_FAILED;
@@ -19498,6 +19557,7 @@ btree_compare_oid (const void *oid_mem1, const void *oid_mem2)
   return oid_compare (&oid1, &oid2);
 }
 #endif /* MIGRATE_90BETA_TO_91 */
+#endif // #if 0
 
 #if !defined(NDEBUG)
 static int
@@ -19851,7 +19911,7 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR p
 	  {
 	    mvcc_flags = btree_record_object_get_mvcc_flags (buf.ptr);
 	    or_get_oid (&buf, &oid);
-	    oid.volid = oid.volid & ~BTREE_OID_MVCC_FLAGS_MASK;
+	    BTREE_OID_CLEAR_MVCC_FLAGS (&oid);
 
 	    if (BTREE_IS_UNIQUE (btid_int->unique_pk))
 	      {
@@ -21370,7 +21430,7 @@ btree_set_mvcc_header_ids_for_update (THREAD_ENTRY * thread_p, bool do_delete_on
  * mvcc_info (out)	 : Outputs MVCC info.
  * btree_mvcc_flags (in) : Flags that describe the packed MVCC info.
  */
-char *
+static char *
 btree_unpack_mvccinfo (char *ptr, BTREE_MVCC_INFO * mvcc_info, short btree_mvcc_flags)
 {
   assert (mvcc_info != NULL && ptr != NULL);
@@ -21798,7 +21858,7 @@ btree_set_mvcc_flags_into_oid (MVCC_REC_HEADER * p_mvcc_header, OID * oid)
 void
 btree_clear_mvcc_flags_from_oid (OID * oid)
 {
-  oid->volid &= ~BTREE_OID_MVCC_FLAGS_MASK;
+  BTREE_OID_CLEAR_MVCC_FLAGS (oid);
 }
 
 /*
@@ -24112,13 +24172,32 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 
   if (logtb_find_current_isolation (thread_p) >= TRAN_REP_READ || (find_unique_helper.lock_mode >= S_LOCK))
     {
+      bool need_skip_mvcc_snapshot = false;
+
+      /*
+       * In Repeatable Read, the MVCC snapshot is created when the SELECT query is executed.
+       * Even if the SELCET query is not explicitly executed, the MVCC snapshot is created when the index is scanned.
+       * MVCC snapshots are created when looking up a user, getting the current username, and looking up a Synonym.
+       * Creating an MVCC snapshot when executing an internal query on the system may not be the intended result
+       * of the user. Therefore, in case of index scan of the db_user and _db_synonym system tables,
+       * do not create an MVCC snapshot so that it does not differ from the previous answer in the isolation test case.
+       */
+      if (oid_check_cached_class_oid (OID_CACHE_USER_CLASS_ID, class_oid)
+	  || oid_check_cached_class_oid (OID_CACHE_SYNONYM_CLASS_ID, class_oid))
+	{
+	  need_skip_mvcc_snapshot = true;
+	}
+
       /*
        * Acquire snapshot in RR if not already acquired. This is needed since
        * the transaction need to know the actual visible objects - before
        * instance locking. In this way future commands of current transaction
        * may correctly detect visible objects.
        */
-      (void) logtb_get_mvcc_snapshot (thread_p);
+      if (!need_skip_mvcc_snapshot)
+	{
+	  (void) logtb_get_mvcc_snapshot (thread_p);
+	}
     }
 
   /* Find unique key and object. */

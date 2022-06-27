@@ -274,10 +274,13 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     stop\n\
     restart\n\
     info\n\
-    status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-c] [-u] [<expr>]\n\
     on          <ゲートウェイ名>\n\
     off         <ゲートウェイ名>\n\
     reset       <ゲートウェイ名>\n\
+    acl         <status|reload> [ゲートウェイ名]\n
+46 owner_nameの長さは%1$d未満である必要があり、class_nameの長さは%2$dバイト未満である必要があります。\n
+47 owner_name.class_name（'%1$s'）の形式が無効です。\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: -tオプションは独立実行モードでは無視されます。\n
@@ -992,6 +995,7 @@ valid options:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBAパスワードを入力してください。:
 22 サーバーがHAモードで設定されていません。\n
+57 -Lオプションのパスが無効であるか、db_ha_apply_infoカタログ表に関連情報がないため、適用された情報を生成できません。\n
 58 HA機能を支援しないプラットホームです。\n
 59 applyinfoはスタンドアロンモードで実行できません。\n
 60 \
@@ -1219,6 +1223,7 @@ vacuumdb: データベースから死亡レコードを掃除。\n\
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 %1$sからテーブル名の読み込みに失敗しました。\n
 2 checksumdbはHAアクティブなサーバー上で実行する必要があります。 %1$s (現在の状態: %2$s)\n
+3 チェックサム結果を保存するテーブルの所有者はDBAである必要があります。\n
 58 HA機能はこのプラットフォームではサポートされません。\n
 59 checksumdbはスタンドアロンモードで実行することはできません。\n
 60 \
@@ -1232,7 +1237,7 @@ checksumdb: レプリケーションの整合性を確認します。\n\
   -i, --include-class-file=FILE FILE内のテーブル名が含まれます。\n\
   -e, --exclude-class-file=FILE FILE内のテーブル名が除外されます。-iまたは-eを使用することができますが、どちらか一方。\n\
   -t, --timeout=NUMBER          ミリ秒単位のクエリタイムアウト; デフォルト: 1000 ms\n\
-  -n, --table-name=NAME         チェックサムの結果を格納するテーブル名; デフォルト: db_ha_checksums\n\
+  -n, --table-name=NAME         チェックサムの結果を格納するテーブル名; デフォルト: dba.db_ha_checksum\n\
   -r, --report-only             チェックサムの計算に基づいたレプリケーションの整合性を報告します。\n\
                                 --table-name以外のすべてのオプションは無視されます。\n\
       --resume                  チェックサムの計算を再開\n\
@@ -1275,9 +1280,10 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 トランザクションIDは%1$d秒で入力する必要があります。タイムアウトは、「cubrid.conf」の「flashback_timeout」設定で調整できます。\n
 13 フラッシュバックはすでに実行されています。フラッシュバックは2つのプロセスで実行できません。\n
 14 フラッシュバックをスタンドアロンモードとして実行することはできません。\n
+15 システムカタログクラス（%1$s）はフラッシュバックではサポートされていません。\n
 60 \
 flashback：特定のトランザクションをフラッシュバックするステートメントを提供します。\n\
-使用法：%1$s flashback [オプション] データベース名class_name1[class_name2...] \n\
+使用法：%1$s flashback [オプション] データベース名owner_name.class_name1[owner_name.class_name2...] \n\
 \n\
 有効なオプション：\n\
     -o、--output-file=FILE        出力メッセージをFILEにリダイレクトします。デフォルト：なし。\n\
