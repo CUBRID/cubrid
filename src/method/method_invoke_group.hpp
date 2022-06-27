@@ -62,7 +62,7 @@ namespace cubmethod
   {
     public:
       method_invoke_group () = delete; // Not DefaultConstructible
-      method_invoke_group (cubthread::entry *thread_p, const method_sig_list &sigs);
+      method_invoke_group (cubthread::entry *thread_p, const method_sig_list &sigs, bool is_for_scan);
 
       method_invoke_group (method_invoke_group &&other) = delete; // Not MoveConstructible
       method_invoke_group (const method_invoke_group &copy) = delete; // Not CopyConstructible
@@ -76,6 +76,7 @@ namespace cubmethod
       int prepare (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base);
       int execute (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base);
       int reset (bool is_end_query);
+      void destroy_resources ();
       void end ();
 
       DB_VALUE &get_return_value (int index);
@@ -85,14 +86,20 @@ namespace cubmethod
       SOCKET get_socket () const;
       cubthread::entry *get_thread_entry () const;
       std::queue<cubmem::extensible_block> &get_data_queue ();
+      cubmethod::runtime_context *get_runtime_context ();
+      connection_pool &get_connection_pool ();
 
       bool is_running () const;
+      bool is_for_scan () const;
 
       // cursor interface for method_invoke
       query_cursor *create_cursor (QUERY_ID query_id, bool oid_included);
       query_cursor *get_cursor (QUERY_ID query_id);
       void register_returning_cursor (QUERY_ID query_id);
       void deregister_returning_cursor (QUERY_ID query_id);
+
+      // client handelr
+      void register_client_handler (int handler_id);
 
       // error
       std::string get_error_msg ();
@@ -106,11 +113,14 @@ namespace cubmethod
 
       runtime_context *m_rctx;
       bool m_is_running;
+      bool m_is_for_scan;
 
       connection *m_connection;
       std::queue<cubmem::extensible_block> m_data_queue;
 
       std::unordered_set <std::uint64_t> m_cursor_set;
+      std::unordered_set <int> m_handler_set;
+
       std::string m_err_msg;
 
       METHOD_GROUP_ID m_id;

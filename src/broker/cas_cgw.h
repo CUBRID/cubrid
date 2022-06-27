@@ -77,6 +77,7 @@ struct t_col_binder
   SQLLEN col_data_type;		/* type of column   */
   SQLULEN col_size;
   SQLLEN col_unsigned_type;
+  bool is_exist_col_data;
   struct t_col_binder *next;	/* linked list      */
 };
 
@@ -138,7 +139,8 @@ extern void test_log (char *fmt, ...);
 
 extern int cgw_init ();
 extern void cgw_cleanup ();
-extern int cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_binding);
+extern int cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_binding,
+			     T_COL_BINDER ** col_binding_buff);
 extern void cgw_cleanup_binder (T_COL_BINDER * first_col_binding);
 
 extern int cgw_init_odbc_handle (void);
@@ -165,9 +167,10 @@ extern int cgw_make_bind_value (T_CGW_HANDLE * handle, int num_bind, int argc, v
 
 // Resultset funtions
 extern int cgw_cursor_close (T_SRV_HANDLE * srv_handle);
-extern int cgw_row_data (SQLHSTMT hstmt, int cursor_pos);
+extern int cgw_row_data (SQLHSTMT hstmt);
 extern int cgw_set_stmt_attr (SQLHSTMT hstmt, SQLINTEGER attr, SQLPOINTER val, SQLINTEGER len);
 extern int cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor_pos);
+extern int cgw_copy_tuple (T_COL_BINDER * src_col_binding, T_COL_BINDER * dst_col_binding);
 
 extern int cgw_endtran (SQLHDBC hdbc, int tran_type);
 extern SUPPORTED_DBMS_TYPE cgw_is_supported_dbms (char *dbms);

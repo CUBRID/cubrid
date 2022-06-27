@@ -1625,7 +1625,6 @@ logwr_copy_log_header_check (const char *db_name, bool verbose, LOG_LSA * master
 
       *master_eof_lsa = hdr.eof_lsa;
 
-      printf ("\n ***  Active Info. *** \n");
       la_print_log_header (db_name, &hdr, verbose);
 
       free_and_init (logpg_area);

@@ -141,11 +141,11 @@ int
 method_error (unsigned int rc, int error_id)
 {
   int error = NO_ERROR;
-  tran_begin_libcas_function ();
+  tran_begin_libcas_function();
   int depth = tran_get_libcas_depth ();
   cubmethod::mcon_set_connection_info (depth - 1, rc);
   error = cubmethod::mcon_send_data_to_server (METHOD_ERROR, error_id);
-  tran_end_libcas_function ();
+  tran_end_libcas_function();
   return error;
 }
 #elif defined (SA_MODE)
@@ -216,12 +216,20 @@ method_dispatch_internal (packing_unpacker &unpacker)
 	  break;
 	case METHOD_REQUEST_CALLBACK:
 	  AU_SAVE_AND_ENABLE (save_auth);
-	  error = cubmethod::get_callback_handler ()->callback_dispatch (unpacker);
+	  error = cubmethod::get_callback_handler()->callback_dispatch (unpacker);
 	  AU_RESTORE (save_auth);
 	  break;
 	case METHOD_REQUEST_END:
-	  cubmethod::get_callback_handler ()->free_query_handle_all (false);
-	  break;
+	{
+	  uint64_t id;
+	  std::vector <int> handlers;
+	  unpacker.unpack_all (id, handlers);
+	  for (int i = 0; i < handlers.size (); i++)
+	    {
+	      cubmethod::get_callback_handler()->free_query_handle (handlers[i], false);
+	    }
+	}
+	break;
 	default:
 	  assert (false); // the other callbacks are disabled now
 	  return ER_FAILED;
@@ -249,7 +257,7 @@ method_invoke_builtin (packing_unpacker &unpacker, DB_VALUE &result)
   sig.unpack (unpacker);
 
   auto search = runtime_args.find (id);
-  if (search != runtime_args.end ())
+  if (search != runtime_args.end())
     {
       std::vector<DB_VALUE> &args = search->second;
       error = method_invoke_builtin_internal (result, args, &sig);
@@ -297,7 +305,7 @@ void
 method_erase_runtime_arguments (UINT64 id)
 {
   auto search = runtime_args.find (id);
-  if (search != runtime_args.end ())
+  if (search != runtime_args.end())
     {
       std::vector<DB_VALUE> &prev_args = search->second;
       pr_clear_value_vector (prev_args);
@@ -598,7 +606,8 @@ int xmethod_invoke_fold_constants (THREAD_ENTRY *thread_p, const method_sig_list
 				   DB_VALUE &result)
 {
   int error_code = NO_ERROR;
-  cubmethod::method_invoke_group *method_group = cubmethod::get_rctx (thread_p)->create_invoke_group (thread_p, sig_list);
+  cubmethod::method_invoke_group *method_group = cubmethod::get_rctx (thread_p)->create_invoke_group (thread_p, sig_list,
+      false);
   method_group->begin ();
   error_code = method_group->prepare (args);
   if (error_code != NO_ERROR)

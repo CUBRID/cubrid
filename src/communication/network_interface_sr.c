@@ -6333,6 +6333,31 @@ sserial_decache (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
 }
 
 /*
+ * ssynonym_remove_xasl_by_oid -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+ssynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OID oid;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  (void) or_unpack_oid (request, &oid);
+  xsynonym_remove_xasl_by_oid (thread_p, &oid);
+
+  (void) or_pack_int (reply, NO_ERROR);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
  * smnt_server_start_stats -
  *
  * return:
@@ -10376,7 +10401,20 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
   db_make_null (&ret_value);
   int error_code = xmethod_invoke_fold_constants (thread_p, sig_list, ref_args, ret_value);
 
-  cubmethod::method_invoke_group * top_on_stack = cubmethod::get_rctx (thread_p)->top_stack ();
+  cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
+  cubmethod::method_invoke_group * top_on_stack = NULL;
+  if (rctx)
+    {
+      top_on_stack = rctx->top_stack ();
+    }
+
+  if (rctx == NULL || top_on_stack == NULL)
+    {
+      /* might be interrupted and session is already freed */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+      error_code = ER_INTERRUPTED;
+      assert (false);		// oops
+    }
 
   packing_packer packer;
   cubmem::extensible_block eb;
@@ -10404,13 +10442,37 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
     }
   else
     {
-      if (er_has_error () == false)
+      if (rctx->is_interrupted ())
 	{
-	  std::string err_msg = top_on_stack->get_error_msg ();
-	  packer.set_buffer_and_pack_all (eb, err_msg);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg.c_str ());
+	  rctx->set_local_error_for_interrupt ();
+	}
+      else if (error_code != ER_SM_INVALID_METHOD_ENV)	/* FIXME: error possibly occured in builtin method, It should be handled at CAS */
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, top_on_stack->get_error_msg ().c_str ());
+	}
+      else
+	{
+	  // error is already set
+	  assert (er_errid () != NO_ERROR);
 	}
 
+      std::string err_msg;
+
+      if (er_errid () == ER_SP_EXECUTE_ERROR)
+	{
+	  err_msg.assign (top_on_stack->get_error_msg ());
+	}
+      else if (er_msg ())
+	{
+	  err_msg.assign (er_msg ());
+	}
+
+      if (er_has_error ())
+	{
+	  error_code = er_errid ();
+	}
+
+      packer.set_buffer_and_pack_all (eb, er_errid (), err_msg);
       (void) return_error_to_client (thread_p, rid);
     }
 
@@ -10423,14 +10485,23 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
   ptr = or_pack_int (ptr, reply_data_size);
   ptr = or_pack_int (ptr, error_code);
 
+  // clear
+  if (top_on_stack)
+    {
+      top_on_stack->reset (true);
+      top_on_stack->end ();
+    }
+
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_data,
 				     reply_data_size);
 
-  // clear
-  top_on_stack->end ();
+  if (top_on_stack)
+    {
+      rctx->pop_stack (thread_p, top_on_stack);
+    }
+
   pr_clear_value_vector (args);
   db_value_clear (&ret_value);
-
   sig_list.freemem ();
 }
 

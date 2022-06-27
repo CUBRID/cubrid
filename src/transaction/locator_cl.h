@@ -124,6 +124,8 @@ extern LIST_MOPS *locator_get_all_nested_mops (MOP mop, int prune_level, DB_FETC
 extern void locator_free_list_mops (LIST_MOPS * mops);
 extern void locator_synch_isolation_incons (void);
 extern void locator_set_sig_interrupt (int set);
+extern int locator_get_sig_interrupt ();
+
 extern MOBJ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid);
 extern MOBJ locator_has_heap (MOP class_mop);
 

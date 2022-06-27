@@ -19,6 +19,9 @@
 #include "method_callback.hpp"
 
 #include "dbi.h"
+
+#include "ddl_log.h"
+
 #include "method_def.hpp"
 #include "method_query_util.hpp"
 #include "method_struct_oid_info.hpp"
@@ -106,19 +109,15 @@ namespace cubmethod
     unpacker.unpack_all (sql, flag);
 
     /* find in m_sql_handler_map */
-    prepare_info info;
     query_handler *handler = get_query_handler_by_sql (sql);
-
-    bool is_cache_used = false;
     if (handler != nullptr)
       {
-	handler->get_prepare_info (info);
+	/* found in statement handler cache */
 	handler->set_is_occupied (true);
-	is_cache_used = true;
       }
     else
       {
-	/* not found in statement handler */
+	/* not found in statement handler cache */
 	handler = new_query_handler ();
 	if (handler == nullptr)
 	  {
@@ -127,24 +126,26 @@ namespace cubmethod
 	  }
 	else
 	  {
-	    info = handler->prepare (sql, flag);
+	    if (handler->prepare (sql, flag) == NO_ERROR)
+	      {
+		// add to statement handler cache
+		m_sql_handler_map.emplace (sql, handler->get_id ());
+	      }
 	  }
       }
 
-    if (m_error_ctx.has_error ())
+    /* DDL audit */
+    logddl_set_sql_text ((char *) sql.c_str (), sql.size ());
+    logddl_set_stmt_type (handler ? handler->get_statement_type () : CUBRID_STMT_NONE);
+    logddl_set_err_code (m_error_ctx.get_error ());
+
+    if (m_error_ctx.has_error())
       {
 	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
     else
       {
-	// add to statement handler cache
-	if (is_cache_used == false)
-	  {
-	    m_sql_handler_map.emplace (sql, info.handle_id);
-	  }
-	info.handle_id = handler->get_id ();
-
-	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, handler->get_prepare_info ());
       }
   }
 
@@ -161,24 +162,30 @@ namespace cubmethod
 	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
 	return ER_FAILED;
       }
-
-    execute_info info = handler->execute (request);
-
-    /* register query_id for out resultset */
-    const cubmethod::query_result &qresult = handler->get_result ();
-    if (qresult.stmt_type == CUBRID_STMT_SELECT)
+    else
       {
-	uint64_t qid = (uint64_t) info.qresult_info.query_id;
-	m_qid_handler_map[qid] = request.handler_id;
+	if (handler->execute (request) == NO_ERROR)
+	  {
+	    /* register query_id for out resultset */
+	    const cubmethod::query_result &qresult = handler->get_result();
+	    if (qresult.stmt_type == CUBRID_STMT_SELECT)
+	      {
+		uint64_t qid = (uint64_t) handler->get_execute_info ().qresult_info.query_id;
+		m_qid_handler_map[qid] = request.handler_id;
+	      }
+	  }
       }
 
-    if (m_error_ctx.has_error ())
+    /* DDL audit */
+    logddl_write_end ();
+
+    if (m_error_ctx.has_error())
       {
 	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
     else
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, handler->get_execute_info ());
       }
   }
 
@@ -191,7 +198,7 @@ namespace cubmethod
     cubmethod::query_handler *query_handler = get_query_handler_by_query_id (query_id);
     if (query_handler)
       {
-	const cubmethod::query_result &qresult = query_handler->get_result ();
+	const query_result &qresult = query_handler->get_result();
 
 	make_outresult_info info;
 	query_handler->set_prepare_column_list_info (info.column_infos);
@@ -219,7 +226,7 @@ namespace cubmethod
       }
 
     get_generated_keys_info info = handler->generated_keys ();
-    if (m_error_ctx.has_error ())
+    if (m_error_ctx.has_error())
       {
 	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
@@ -257,8 +264,8 @@ namespace cubmethod
     oid_get_request request;
     request.unpack (unpacker);
 
-    oid_get_info info = get_oid_handler ()->oid_get (request.oid, request.attr_names);
-    if (m_error_ctx.has_error ())
+    oid_get_info info = get_oid_handler()->oid_get (request.oid, request.attr_names);
+    if (m_error_ctx.has_error())
       {
 	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
@@ -274,8 +281,8 @@ namespace cubmethod
     oid_put_request request;
     request.unpack (unpacker);
 
-    int result = get_oid_handler ()->oid_put (request.oid, request.attr_names, request.db_values);
-    if (m_error_ctx.has_error ())
+    int result = get_oid_handler()->oid_put (request.oid, request.attr_names, request.db_values);
+    if (m_error_ctx.has_error())
       {
 	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
@@ -296,8 +303,8 @@ namespace cubmethod
 
     std::string res; // result for OID_CLASS_NAME
 
-    int res_code = get_oid_handler ()->oid_cmd (oid, cmd, res);
-    if (m_error_ctx.has_error ())
+    int res_code = get_oid_handler()->oid_cmd (oid, cmd, res);
+    if (m_error_ctx.has_error())
       {
 	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
@@ -321,7 +328,7 @@ namespace cubmethod
     int result = m_oid_handler->collection_cmd (request.oid, request.command, request.index, request.attr_name,
 		 request.value);
 
-    if (m_error_ctx.has_error ())
+    if (m_error_ctx.has_error())
       {
 	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
@@ -339,7 +346,7 @@ namespace cubmethod
   callback_handler::new_query_handler ()
   {
     int idx = 0;
-    int handler_size = m_query_handlers.size ();
+    int handler_size = m_query_handlers.size();
     for (; idx < handler_size; idx++)
       {
 	if (m_query_handlers[idx] == nullptr)
@@ -370,7 +377,7 @@ namespace cubmethod
   query_handler *
   callback_handler::get_query_handler_by_id (const int id)
   {
-    if (id < 0 || id >= (int) m_query_handlers.size ())
+    if (id < 0 || id >= (int) m_query_handlers.size())
       {
 	return nullptr;
       }
@@ -381,7 +388,7 @@ namespace cubmethod
   void
   callback_handler::free_query_handle (int id, bool is_free)
   {
-    if (id < 0 || id >= (int) m_query_handlers.size ())
+    if (id < 0 || id >= (int) m_query_handlers.size())
       {
 	return;
       }
@@ -403,7 +410,7 @@ namespace cubmethod
   void
   callback_handler::free_query_handle_all (bool is_free)
   {
-    for (int i = 0; i < (int) m_query_handlers.size (); i++)
+    for (int i = 0; i < (int) m_query_handlers.size(); i++)
       {
 	free_query_handle (i, is_free);
       }
@@ -413,7 +420,7 @@ namespace cubmethod
   callback_handler::get_query_handler_by_query_id (const uint64_t qid)
   {
     const auto &iter = m_qid_handler_map.find (qid);
-    if (iter == m_qid_handler_map.end () )
+    if (iter == m_qid_handler_map.end() )
       {
 	return nullptr;
       }
@@ -429,7 +436,7 @@ namespace cubmethod
     for (auto it = m_sql_handler_map.lower_bound (sql); it != m_sql_handler_map.upper_bound (sql); it++)
       {
 	query_handler *handler = get_query_handler_by_id (it->second);
-	if (handler != nullptr && handler->get_is_occupied () == false)
+	if (handler != nullptr && handler->get_is_occupied() == false)
 	  {
 	    /* found */
 	    return handler;
@@ -458,9 +465,9 @@ method_make_out_rs (DB_BIGINT query_id)
 
   if (query_handler != nullptr)
     {
-      const cubmethod::query_result &qresult = query_handler->get_result ();
+      const cubmethod::query_result &qresult = query_handler->get_result();
 
-      DB_QUERY_TYPE *column_info = db_get_query_type_list (query_handler->get_db_session (), qresult.stmt_id);
+      DB_QUERY_TYPE *column_info = db_get_query_type_list (query_handler->get_db_session(), qresult.stmt_id);
       return ux_create_srv_handle_with_method_query_result (
 		     qresult.result,
 		     qresult.stmt_type,

@@ -117,38 +117,32 @@ get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_c
 
   for (i = 0; i < num_class; i++)
     {
+      const char *class_name_p = NULL;
+      const char *class_name_only = NULL;
+      char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+
       if (class_names[i] == NULL || (len = STATIC_CAST (int, strlen (class_names[i]))) == 0)
 	{
 	  goto error;
 	}
 
-      dot = strchr (class_names[i], '.');
-      if (dot)
+      if (utility_check_class_name (class_names[i]) != NO_ERROR)
 	{
-	  /* user specified name */
-
-	  /* user name of user specified name */
-	  len = STATIC_CAST (int, dot - class_names[i]);
-	  if (len >= DB_MAX_USER_LENGTH)
-	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB,
-						     UNLOADDB_MSG_EXCEED_MAX_USER_LEN), DB_MAX_USER_LENGTH - 1);
-	      goto error;
-	    }
-
-	  /* class name of user specified name */
-	  len = STATIC_CAST (int, strlen (dot + 1));
-	}
-
-      if (len >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
-	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB,
-						 UNLOADDB_MSG_EXCEED_MAX_LEN),
-				 DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH - 1);
 	  goto error;
 	}
 
-      sm_user_specified_name (class_names[i], downcase_class_name, SM_MAX_IDENTIFIER_LENGTH);
+      sm_qualifier_name (class_names[i], owner_name, DB_MAX_USER_LENGTH);
+      class_name_only = sm_remove_qualifier_name (class_names[i]);
+      if (strcasecmp (owner_name, "dba") == 0 && sm_check_system_class_by_name (class_name_only))
+	{
+	  class_name_p = class_name_only;
+	}
+      else
+	{
+	  class_name_p = class_names[i];
+	}
+
+      sm_user_specified_name (class_name_p, downcase_class_name, SM_MAX_IDENTIFIER_LENGTH);
 
       class_ = locator_find_class (downcase_class_name);
       if (class_ != NULL)
@@ -248,30 +242,8 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
 	  goto end;
 	}
 
-      dot = strchr (buffer, '.');
-      if (dot)
+      if (utility_check_class_name (buffer) != NO_ERROR)
 	{
-	  /* user specified name */
-
-	  /* user name of user specified name */
-	  sub_len = STATIC_CAST (int, dot - buffer);
-	  if (sub_len >= DB_MAX_USER_LENGTH)
-	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB,
-						     COMPACTDB_MSG_EXCEED_MAX_USER_LEN), DB_MAX_USER_LENGTH - 1);
-	      status = ER_FAILED;
-	      goto end;
-	    }
-
-	  /* class name of user specified name */
-	  sub_len = STATIC_CAST (int, strlen (dot + 1));
-	}
-
-      if (sub_len >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
-	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB,
-						 COMPACTDB_MSG_EXCEED_MAX_LEN),
-				 DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH - 1);
 	  status = ER_FAILED;
 	  goto end;
 	}
@@ -300,7 +272,10 @@ end:
     {
       for (i = 0; i < num_class; i++)
 	{
-	  free_and_init (class_names[i]);
+	  if (class_names[i])
+	    {
+	      free_and_init (class_names[i]);
+	    }
 	}
 
       free (class_names);

@@ -95,7 +95,11 @@ main (int argc, char **argv)
   err = broker_config_read (NULL, br_info, &num_broker, &master_shm_id, admin_log_file, 0, &acl_flag, acl_file, NULL);
   if (err < 0)
     {
+#if defined (FOR_ODBC_GATEWAY)
+      util_log_write_errstr ("gateway config read error.\n");
+#else
       util_log_write_errstr ("broker config read error.\n");
+#endif
       return -1;
     }
 
@@ -297,7 +301,11 @@ main (int argc, char **argv)
 
       if (argc < 3)
 	{
+#if defined (FOR_ODBC_GATEWAY)
+	  PRINT_AND_LOG_ERR_MSG ("%s acl <reload|status> <gateway-name>\n", argv[0]);
+#else
 	  PRINT_AND_LOG_ERR_MSG ("%s acl <reload|status> <broker-name>\n", argv[0]);
+#endif
 	  return -1;
 	}
 
@@ -316,7 +324,11 @@ main (int argc, char **argv)
 	}
       else
 	{
+#if defined (FOR_ODBC_GATEWAY)
+	  PRINT_AND_LOG_ERR_MSG ("%s acl <reload|status> <gateway-name>\n", argv[0]);
+#else
 	  PRINT_AND_LOG_ERR_MSG ("%s acl <reload|status> <broker-name>\n", argv[0]);
+#endif
 	  return -1;
 	}
       if (err_code < 0)

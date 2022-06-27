@@ -65,8 +65,6 @@
 #include "cas_cgw.h"
 #endif
 
-extern void set_plan_include_hint (bool is_include);
-
 static FN_RETURN fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 				      int *ret_srv_h_id);
 static FN_RETURN fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
@@ -634,7 +632,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #endif /* !CAS_FOR_CGW */
     {
 #if defined(CAS_FOR_CGW)
-      exec_func_name = "ux_cgw_execute";
+      exec_func_name = "execute";
       ux_exec_func = ux_cgw_execute;
 #else
       exec_func_name = "execute";
@@ -709,10 +707,18 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	}
     }
 
+#if defined(CAS_FOR_CGW)
+  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s %s%d tuple %d time %d.%03d%s%s%s", exec_func_name,
+		 (ret_code < 0) ? "error:" : "", err_number_execute,
+		 (get_tuple_count (srv_handle) == INT_MAX) ? -1 : get_tuple_count (srv_handle), elapsed_sec,
+		 elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
+		 (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
+#else
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s %s%d tuple %d time %d.%03d%s%s%s", exec_func_name,
 		 (ret_code < 0) ? "error:" : "", err_number_execute, get_tuple_count (srv_handle), elapsed_sec,
 		 elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
 		 (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
+#endif
 
 #if !defined (CAS_FOR_CGW)
   if (strcmp (exec_func_name, "execute_call") != 0)
@@ -752,11 +758,20 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	      bind_value_log (&query_start_time, bind_value_index, argc, argv, param_mode_size, param_mode,
 			      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true);
 	    }
+#if defined(CAS_FOR_CGW)
+	  cas_slow_log_write (NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+			      "%s %s%d tuple %d time %d.%03d%s%s%s\n", exec_func_name, (ret_code < 0) ? "error:" : "",
+			      err_number_execute,
+			      (get_tuple_count (srv_handle) == INT_MAX) ? -1 : get_tuple_count (srv_handle),
+			      elapsed_sec, elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
+			      (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
+#else
 	  cas_slow_log_write (NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 			      "%s %s%d tuple %d time %d.%03d%s%s%s\n", exec_func_name, (ret_code < 0) ? "error:" : "",
 			      err_number_execute, get_tuple_count (srv_handle), elapsed_sec, elapsed_msec,
 			      (client_cache_reusable == TRUE) ? " (CC)" : "",
 			      (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
+#endif
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) || !defined(CAS_FOR_CGW)
 	  if (plan != NULL && plan[0] != '\0')
@@ -1930,7 +1945,6 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
       cas_log_query_info_init (srv_h_id, TRUE);
       srv_handle->query_info_flag = TRUE;
 
-      set_plan_include_hint (true);
       session = db_open_buffer (sql_stmt);
       if (!session)
 	{
@@ -1972,7 +1986,6 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
   ux_get_query_info (srv_h_id, info_type, net_buf);
 
 end:
-  set_plan_include_hint (false);
   if (sql_stmt != NULL)
     {
       reset_optimization_level_as_saved ();

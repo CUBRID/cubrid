@@ -174,7 +174,9 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit_on_error;
 	}
+#if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
+#endif /* !NDEBUG */
 
       /* Is this the first page ? */
       if (i == 0)
@@ -312,7 +314,9 @@ overflow_traverse (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * 
 	  goto exit_on_error;
 	}
 
+#if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_OVERFLOW);
+#endif /* !NDEBUG */
 
       vpid = next_vpid;
       overflow_next_vpid (ovf_vpid, &next_vpid, pgptr);
@@ -408,7 +412,9 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit_on_error;
 	}
+#if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
+#endif /* !NDEBUG */
 
       addr_vpid_ptr = pgbuf_get_vpid_ptr (addr.pgptr);
 
@@ -561,7 +567,9 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 		  goto exit_on_error;
 		}
 
+#if !defined (NDEBUG)
 	      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
+#endif /* !NDEBUG */
 
 	      tmp_vpid = next_vpid;
 	      rest_parts = (OVERFLOW_REST_PART *) addr.pgptr;
@@ -696,7 +704,9 @@ overflow_get_length (THREAD_ENTRY * thread_p, const VPID * ovf_vpid)
       return -1;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_OVERFLOW);
+#endif /* !NDEBUG */
 
   length = ((OVERFLOW_FIRST_PART *) pgptr)->length;
 
@@ -749,7 +759,9 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, RECDES * re
       return S_ERROR;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_OVERFLOW);
+#endif /* !NDEBUG */
 
   first_part = (OVERFLOW_FIRST_PART *) pgptr;
   if (mvcc_snapshot != NULL)
@@ -871,7 +883,9 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, RECDES * re
 	      return S_ERROR;
 	    }
 
+#if !defined (NDEBUG)
 	  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_OVERFLOW);
+#endif /* !NDEBUG */
 
 	  rest_parts = (OVERFLOW_REST_PART *) pgptr;
 	  copyfrom = (char *) rest_parts->data;
@@ -942,7 +956,9 @@ overflow_get_capacity (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, int *ovf_
       return ER_FAILED;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_OVERFLOW);
+#endif /* !NDEBUG */
 
   first_part = (OVERFLOW_FIRST_PART *) pgptr;
   remain_length = first_part->length;
@@ -988,7 +1004,9 @@ overflow_get_capacity (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, int *ovf_
 	      goto exit_on_error;
 	    }
 
+#if !defined (NDEBUG)
 	  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_OVERFLOW);
+#endif /* !NDEBUG */
 
 	  rest_parts = (OVERFLOW_REST_PART *) pgptr;
 	  hdr_length = offsetof (OVERFLOW_REST_PART, data);

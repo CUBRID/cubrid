@@ -21,6 +21,7 @@
 #include "boot_sr.h"
 #include "jsp_sr.h" /* jsp_server_port(), jsp_connect_server() */
 #include "jsp_comm.h" /* jsp_disconnect_server (), jsp_ping () */
+#include "jsp_file.h" /* javasp_read_info() */
 
 #if defined (SERVER_MODE)
 #include "server_support.h"
@@ -28,30 +29,16 @@
 
 namespace cubmethod
 {
-
-#if defined (SERVER_MODE)
-  const std::size_t MAX_POOLABLE = css_get_max_workers ();
-#else
-  const std::size_t MAX_POOLABLE = 15;
-#endif
-
-  static connection_pool g_conn_pool (MAX_POOLABLE);
-
-  connection_pool *
-  get_connection_pool (void)
-  {
-    return &g_conn_pool;
-  }
-
   connection_pool::connection_pool (int pool_size)
-    : m_pool_size (pool_size), m_mutex ()
+    : m_pool_size (pool_size)
+    , m_queue ()
+    , m_mutex ()
   {
     //
   }
 
   connection_pool::~connection_pool ()
   {
-    std::unique_lock<std::mutex> ulock (m_mutex);
     while (!m_queue.empty ())
       {
 	connection *conn = m_queue.front ();
@@ -64,14 +51,17 @@ namespace cubmethod
   connection_pool::claim ()
   {
     std::unique_lock<std::mutex> ulock (m_mutex);
-    while (!m_queue.empty ())
+
+    if (!m_queue.empty ())
       {
 	connection *conn = m_queue.front ();
 	m_queue.pop ();
+	ulock.unlock ();
 
 	// test socket
 	if (conn->is_valid () == false)
 	  {
+	    jsp_disconnect_server (conn->m_socket); // disconnect connecting with ExecuteThread in invalid state
 	    conn->m_socket = jsp_connect_server (boot_db_name (), jsp_server_port ());
 	  }
 
@@ -84,26 +74,36 @@ namespace cubmethod
   }
 
   void
-  connection_pool::retire (connection *claimed)
+  connection_pool::retire (connection *&claimed, bool kill)
   {
+    std::unique_lock<std::mutex> ulock (m_mutex);
     if (claimed == nullptr)
       {
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_mutex);
-
     // test connection
-    if (claimed->is_valid () == true)
+    if (kill == false && claimed->is_valid () == true)
       {
 	if ((int) m_queue.size () < m_pool_size)
 	  {
 	    m_queue.push (claimed);
+	    return;
 	  }
 	else
 	  {
 	    // overflow
+	    kill = true;
+	  }
+      }
+
+    if (kill)
+      {
+	assert (claimed != nullptr);
+	if (claimed)
+	  {
 	    delete claimed;
+	    claimed = nullptr;
 	  }
       }
   }
@@ -122,19 +122,35 @@ namespace cubmethod
 
   connection::~connection ()
   {
+    m_pool = nullptr;
     jsp_disconnect_server (m_socket);
   }
 
   bool
   connection::is_valid ()
   {
-    return (jsp_ping (m_socket) == NO_ERROR);
+    return (m_socket != INVALID_SOCKET);
   }
 
   SOCKET
   connection::get_socket ()
   {
     return m_socket;
+  }
+
+  bool
+  connection::is_jvm_running ()
+  {
+    JAVASP_SERVER_INFO info;
+    javasp_read_info (boot_db_name (), info);
+    if (info.pid == -1)
+      {
+	return false;
+      }
+    else
+      {
+	return true;
+      }
   }
 
 } // namespace cubmethod

@@ -385,6 +385,8 @@ tran_commit (bool retain_lock)
 
   tran_reset_latest_query_status ();
 
+  tran_reset_libcas_function ();
+
   return error_code;
 }
 
@@ -498,6 +500,8 @@ tran_abort (void)
   tm_Tran_rep_read_lock = NULL_LOCK;
 
   tran_reset_latest_query_status ();
+
+  tran_reset_libcas_function ();
 
   return error_code;
 }
@@ -1326,6 +1330,16 @@ tran_end_libcas_function (void)
 {
   tm_libcas_depth--;
   assert (tm_libcas_depth >= 0);
+}
+
+/*
+ * tran_reset_libcas_function() -
+ *   return: void
+ */
+void
+tran_reset_libcas_function (void)
+{
+  tm_libcas_depth = 0;
 }
 
 /*
