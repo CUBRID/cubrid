@@ -38,48 +38,14 @@
 #include "db_date.h"
 #include "dbtype.h"
 
-
 /* RESERVED_SIZE_IN_PAGE should be aligned */
 #define RESERVED_SIZE_IN_PAGE   (sizeof (FILEIO_PAGE_RESERVED) + sizeof (FILEIO_PAGE_WATERMARK))
 
-static PGLENGTH db_Io_page_size = IO_DEFAULT_PAGE_SIZE;
-static PGLENGTH db_Log_page_size = IO_DEFAULT_PAGE_SIZE;
-static PGLENGTH db_User_page_size = IO_DEFAULT_PAGE_SIZE - RESERVED_SIZE_IN_PAGE;
+PGLENGTH db_Io_page_size = IO_DEFAULT_PAGE_SIZE;
+PGLENGTH db_Log_page_size = IO_DEFAULT_PAGE_SIZE;
+PGLENGTH db_User_page_size = IO_DEFAULT_PAGE_SIZE - RESERVED_SIZE_IN_PAGE;
 
 static PGLENGTH find_valid_page_size (PGLENGTH page_size);
-
-/*
- * db_page_size(): returns the user page size
- *
- *   returns: user page size
- */
-PGLENGTH
-db_page_size (void)
-{
-  return db_User_page_size;
-}
-
-/*
- * db_io_page_size(): returns the IO page size
- *
- *   returns: IO page size
- */
-PGLENGTH
-db_io_page_size (void)
-{
-  return db_Io_page_size;
-}
-
-/*
- * db_log_page_size(): returns the log page size
- *
- *   returns: log page size
- */
-PGLENGTH
-db_log_page_size (void)
-{
-  return db_Log_page_size;
-}
 
 /*
  * db_set_page_size(): set the page size of system.
