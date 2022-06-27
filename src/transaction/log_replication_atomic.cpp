@@ -119,6 +119,7 @@ namespace cublog
 		// nested atomic replication
 		assert (false);
 	      }
+	    m_lowest_unapplied_lsa = m_redo_lsa;
 	    m_atomic_helper.add_atomic_replication_sequence (header.trid, m_redo_lsa, m_redo_context);
 	    break;
 	  case LOG_END_ATOMIC_REPL:
@@ -128,6 +129,7 @@ namespace cublog
 		assert (false);
 	      }
 	    m_atomic_helper.unfix_atomic_replication_sequence (&thread_entry, header.trid);
+	    m_lowest_unapplied_lsa = m_redo_lsa;
 	    break;
 	  case LOG_MVCC_UNDO_DATA:
 	  {
@@ -150,16 +152,38 @@ namespace cublog
 	      {
 		m_atomic_helper.unfix_atomic_replication_sequence (&thread_entry, header.trid);
 	      }
+	    m_lowest_unapplied_lsa = m_redo_lsa;
 
 	    read_and_bookkeep_mvcc_vacuum<LOG_REC_SYSOP_END> (header.back_lsa, m_redo_lsa, log_rec, false);
-	    break;
-	  }
-	  case LOG_ASSIGNED_MVCCID:
 	    if (m_replicate_mvcc)
 	      {
-		register_assigned_mvccid (header.trid);
+		replicate_sysop_end (header.trid, m_redo_lsa, log_rec);
 	      }
 	    break;
+	  }
+#if !defined (NDEBUG)
+	  case LOG_SYSOP_START_POSTPONE:
+	    if (m_replicate_mvcc)
+	      {
+		replicate_sysop_start_postpone (m_redo_lsa);
+	      }
+	    break;
+#endif /* !NDEBUG */
+	  case LOG_ASSIGNED_MVCCID:
+	  {
+	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_ASSIGNED_MVCCID));
+	    const LOG_REC_ASSIGNED_MVCCID log_rec =
+		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_ASSIGNED_MVCCID> ();
+	    if (m_bookkeep_mvcc)
+	      {
+		log_Gl.mvcc_table.set_mvccid_from_active_transaction_server (log_rec.mvccid);
+	      }
+	    if (m_replicate_mvcc)
+	      {
+		m_replicator_mvccid->new_assigned_mvccid (header.trid, log_rec.mvccid);
+	      }
+	    break;
+	  }
 	  default:
 	    // do nothing
 	    break;
@@ -219,5 +243,11 @@ namespace cublog
 		m_parallel_replication_redo, *m_reusable_jobs.get (), m_perf_stat_idle);
 	  }
       }
+  }
+
+  log_lsa
+  atomic_replicator::get_lowest_unapplied_lsa () const
+  {
+    return m_lowest_unapplied_lsa;
   }
 }

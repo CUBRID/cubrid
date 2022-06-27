@@ -42,6 +42,8 @@ namespace cublog
       atomic_replicator &operator= (const atomic_replicator &) = delete;
       atomic_replicator &operator= (atomic_replicator &&) = delete;
 
+      /* return the lowest value lsa that was not applied, the next in line lsa */
+      log_lsa get_lowest_unapplied_lsa () const override;
     private:
       void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa) override;
       template <typename T>
@@ -50,6 +52,7 @@ namespace cublog
 
     private:
       atomic_replication_helper m_atomic_helper;
+      log_lsa m_lowest_unapplied_lsa;
   };
 }
 
