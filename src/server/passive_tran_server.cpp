@@ -82,7 +82,7 @@ passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
 
   assert (!log_boot_info.empty ());
 
-  const int log_page_size = db_log_page_size ();
+  const int log_page_size = LOG_PAGESIZE;
   const char *message_buf = log_boot_info.c_str ();
 
   // log header, copy and initialize header

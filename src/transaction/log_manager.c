@@ -3494,7 +3494,7 @@ log_pack_log_boot_info (THREAD_ENTRY &thread_r, std::string &payload_in_out,
 
     // log append
     assert (log_Gl.append.log_pgptr != nullptr);
-    const int log_page_size = db_log_page_size ();
+    const int log_page_size = LOG_PAGESIZE;
     payload_in_out.append (reinterpret_cast<const char*> (log_Gl.append.log_pgptr), log_page_size);
 
     // prev lsa

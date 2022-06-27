@@ -8175,7 +8175,7 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
       if (read_from_local)
 	{
 	  // *INDENT-OFF*
-	  const size_t io_page_size = static_cast<size_t> (db_io_page_size ());
+	  const size_t io_page_size = static_cast<size_t> (IO_PAGESIZE);
 	  std::unique_ptr<char []> buffer_uptr = std::make_unique<char []> (io_page_size);
 	  FILEIO_PAGE *second_io_page = reinterpret_cast<FILEIO_PAGE *> (buffer_uptr.get ());
 	  // *INDENT-ON*
@@ -8390,8 +8390,8 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
   else
     {
       // We have a page.
-      std::memcpy (io_page, message_buf, db_io_page_size ());
-      message_buf += db_io_page_size ();
+      std::memcpy (io_page, message_buf, IO_PAGESIZE);
+      message_buf += IO_PAGESIZE;
 
       if (perform_logging)
 	{
@@ -8468,7 +8468,7 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
 
       // add io_page
-      payload_in_out.append (reinterpret_cast<const char *> (io_pgptr), (size_t) db_io_page_size ());
+      payload_in_out.append (reinterpret_cast<const char *> (io_pgptr), (size_t) IO_PAGESIZE);
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
