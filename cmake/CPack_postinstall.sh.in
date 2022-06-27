@@ -28,7 +28,8 @@ if [ -z "$append_profile" ];then
   fi
 fi
 
-cp $RPM_INSTALL_PREFIX/share/rpm/cubrid.sh $RPM_INSTALL_PREFIX/.cubrid.sh
+echo "export CUBRID=$RPM_INSTALL_PREFIX" > $RPM_INSTALL_PREFIX/.cubrid.sh
+cat $RPM_INSTALL_PREFIX/share/scripts/cubrid.sh >> $RPM_INSTALL_PREFIX/.cubrid.sh
 
-. $RPM_INSTALL_PREFIX/share/rpm/cubrid.sh
+. $RPM_INSTALL_PREFIX/.cubrid.sh
 chown cubrid:cubrid -R $RPM_INSTALL_PREFIX

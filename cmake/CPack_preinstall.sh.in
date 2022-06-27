@@ -5,8 +5,13 @@ getent passwd cubrid >/dev/null || useradd -g cubrid -d /opt/cubrid -M -s /bin/b
 # this is a hack for installing addtional files
 install -d "$RPM_BUILD_ROOT/../tmpBBroot"/etc/{profile.d,init.d}
 install -d "$RPM_BUILD_ROOT/../tmpBBroot"/opt/cubrid/databases
-install -c -m 644 "$RPM_BUILD_ROOT/../tmpBBroot"/opt/cubrid/share/rpm/cubrid.sh "$RPM_BUILD_ROOT/../tmpBBroot"/etc/profile.d/cubrid.sh
-install -c -m 644 "$RPM_BUILD_ROOT/../tmpBBroot"/opt/cubrid/share/rpm/cubrid.csh "$RPM_BUILD_ROOT/../tmpBBroot"/etc/profile.d/cubrid.csh
+# setup cubrid.sh/cubrid.sh to /etc/profile.d
+echo "CUBRID=/opt/cubrid" > "$RPM_BUILD_ROOT/../tmpBBroot"/etc/profile.d/cubrid.sh
+cat "$RPM_BUILD_ROOT/../tmpBBroot"/opt/cubrid/share/scripts/cubrid.sh >> "$RPM_BUILD_ROOT/../tmpBBroot"/etc/profile.d/cubrid.sh
+#
+echo "setenv CUBRID /opt/cubrid" > "$RPM_BUILD_ROOT/../tmpBBroot"/etc/profile.d/cubrid.csh
+cat "$RPM_BUILD_ROOT/../tmpBBroot"/opt/cubrid/share/scripts/cubrid.csh >> "$RPM_BUILD_ROOT/../tmpBBroot"/etc/profile.d/cubrid.csh
+#
 install -c -m 755 "$RPM_BUILD_ROOT/../tmpBBroot"/opt/cubrid/share/init.d/cubrid "$RPM_BUILD_ROOT/../tmpBBroot"/etc/init.d/cubrid
 install -c -m 755 "$RPM_BUILD_ROOT/../tmpBBroot"/opt/cubrid/share/init.d/cubrid-ha "$RPM_BUILD_ROOT/../tmpBBroot"/etc/init.d/cubrid-ha
 
