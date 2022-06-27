@@ -1,4 +1,3 @@
-setenv CUBRID SET_YOUR_CUBRID_HOME_HERE
 setenv CUBRID_DATABASES $CUBRID/databases
 
 if ( ${?LD_LIBRARY_PATH} ) then
