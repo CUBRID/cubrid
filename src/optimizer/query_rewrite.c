@@ -3438,6 +3438,7 @@ qo_reduce_outer_joined_tables (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
     {
       /* remove unnecessary table spec */
       /* find previous spec */
+      prev_spec = NULL;
       tmp_spec = query->info.query.q.select.from;
       while (tmp_spec && tmp_spec->info.spec.id != spec->info.spec.id)
 	{

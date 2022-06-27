@@ -2714,6 +2714,32 @@ xts_save_key_range_array (const KEY_RANGE * key_range_array, int nelements)
   return offset;
 }
 
+static int
+xts_save_key_val_array (const KEY_VAL_RANGE * key_val_array, int nelements)
+{
+  int offset, i;
+  char *ptr;
+
+  if (key_val_array == NULL)
+    {
+      return 0;
+    }
+
+  offset = xts_reserve_location_in_stream (sizeof (KEY_VAL_RANGE) * nelements);
+  if (offset == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+
+  ptr = &xts_Stream_buffer[offset];
+  for (i = 0; i < nelements; ++i)
+    {
+      ptr = or_pack_key_val_range (ptr, &key_val_array[i]);
+    }
+
+  return offset;
+}
+
 /*
  * xts_process_xasl_header () - Pack XASL node header in buffer.
  *
@@ -4456,6 +4482,8 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
 static char *
 xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
 {
+  int offset;
+
   ptr = or_pack_btid (ptr, &indx_info->btid);
 
   ptr = or_pack_int (ptr, indx_info->coverage);
@@ -4480,10 +4508,22 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
 
   ptr = or_pack_int (ptr, indx_info->func_idx_col_id);
 
+  if (indx_info->cov_list_id == NULL)
+    {
+      ptr = or_pack_int (ptr, 0);
+    }
+  else
+    {
+      offset = xts_save_list_id (indx_info->cov_list_id);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+
   if (indx_info->use_iss)
     {
-      int offset;
-
       ptr = or_pack_int (ptr, (int) indx_info->iss_range.range);
 
       offset = xts_save_regu_variable (indx_info->iss_range.key1);
@@ -4517,6 +4557,20 @@ xts_process_key_info (char *ptr, const KEY_INFO * key_info)
   if (key_info->key_cnt > 0)
     {
       offset = xts_save_key_range_array (key_info->key_ranges, key_info->key_cnt);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+  else
+    {
+      ptr = or_pack_int (ptr, 0);
+    }
+
+  if (key_info->key_cnt > 0)
+    {
+      offset = xts_save_key_val_array (key_info->key_vals, key_info->key_cnt);
       if (offset == ER_FAILED)
 	{
 	  return NULL;
@@ -6663,6 +6717,7 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
   size = OR_BTID_ALIGNED_SIZE;	/* btid */
 
   size += (OR_INT_SIZE		/* coverage */
+	   + PTR_SIZE		/* coverage list id */
 	   + OR_INT_SIZE);	/* range_type */
 
   tmp_size = xts_sizeof_key_info (&indx_info->key_info);
@@ -6698,6 +6753,7 @@ xts_sizeof_key_info (const KEY_INFO * key_info)
 
   size += (OR_INT_SIZE		/* key_cnt */
 	   + PTR_SIZE		/* key_ranges */
+	   + PTR_SIZE		/* key_vals */
 	   + OR_INT_SIZE	/* is_constant */
 	   + OR_INT_SIZE	/* key_limit_reset */
 	   + OR_INT_SIZE	/* is_user_given_keylimit */

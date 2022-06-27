@@ -44,6 +44,7 @@
 #include "porting_inline.hpp"
 #include "query_list.h"
 #include "set_object.h"
+#include "access_spec.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -6879,6 +6880,56 @@ or_pack_method_sig (char *ptr, void *method_sig_ptr)
     {
       ptr = or_pack_int (ptr, method_sig->method_arg_pos[n]);
     }
+
+  return ptr;
+}
+
+/*
+ * or_pack_key_val_range - packs a KEY VALUE RANGE.
+ *    return: advanced buffer pointer
+ *    ptr(out): starting pointer
+ *    key_val_range(in):  key value range pointer
+ */
+char *
+or_pack_key_val_range (char *ptr, const void *key_val_range_ptr)
+{
+  KEY_VAL_RANGE *key_val_range = (KEY_VAL_RANGE *) key_val_range_ptr;
+
+  if (key_val_range == NULL)
+    {
+      return ptr;
+    }
+
+  ptr = or_pack_int (ptr, (int) key_val_range->range);
+  ptr = or_pack_int (ptr, key_val_range->num_index_term);
+  ptr = or_pack_int (ptr, (int) key_val_range->is_truncated);
+  ptr = or_pack_db_value (ptr, &key_val_range->key1);
+  ptr = or_pack_db_value (ptr, &key_val_range->key2);
+
+  return ptr;
+}
+
+/*
+ * or_unpack_key_val_array - unpacks a KEY_VAL_RANGE descriptor from a buffer.
+ *    return: advanced buffer pointer
+ *    ptr(in): starting pointer
+ *    n(in):
+ */
+char *
+or_unpack_key_val_range (char *ptr, void *key_val_range_ptr)
+{
+  KEY_VAL_RANGE *key_val_range = (KEY_VAL_RANGE *) key_val_range_ptr;
+
+  if (key_val_range == (KEY_VAL_RANGE *) 0)
+    {
+      return NULL;
+    }
+
+  ptr = or_unpack_int (ptr, (int *) &key_val_range->range);
+  ptr = or_unpack_int (ptr, &key_val_range->num_index_term);
+  ptr = or_unpack_int (ptr, (int *) &key_val_range->is_truncated);
+  ptr = or_unpack_db_value (ptr, &key_val_range->key1);
+  ptr = or_unpack_db_value (ptr, &key_val_range->key2);
 
   return ptr;
 }

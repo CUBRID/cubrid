@@ -988,7 +988,7 @@ $ LOADDB
 918 La classe '%1$s' referita dalla chiave esterna non esiste.
 919 La classe '%1$s' referita dalla chiave esterna non ha la chiave primaria.
 920 La chiave esterna '%1$s' non comprende il membro '%2$s' del chiave primaria.
-921 Il dominio del membro '%1$s' della chiave esterna è diverso dal quello del membro '%2$s' della chiave primaria.
+921 Il dominio del membro '%1$s' della chiave esterna è diverso dal quello del membro '%2$s' della chiave primaria. (%3$s: %4$s vs. %5$s)
 922 Il vincolo della chiave esterna '%1$s' non è valido, a causa di valore '%2$s'.
 923 La chiave primaria '%1$s' referita dal una chiave esterna '%2$s' non dovrebbe essere eliminata.
 924 Operazioni di UPDATE/DELETE sono limitate dalla chiave esterna '%1$s'.

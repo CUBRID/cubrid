@@ -988,7 +988,7 @@ $ LOADDB
 918 Yabancı anahtar tarafından yönlendirilen sınıf '%1$s' bulunmamaktadır.
 919 Yabancı anahtarının tarafından yönlendirilen birincil anahtarın sınıf '%1$s' bulunmamaktadır.
 920 Yabancı anahtar '%1$s' birincil anahtar üye '%2$s' içermez.
-921 Yabancı anahtar üye '%1$s' alanı birincil anahtar üye '%2$s' farklıdır.
+921 Yabancı anahtar üye '%1$s' alanı birincil anahtar üye '%2$s' farklıdır. (%3$s: %4$s vs. %5$s)
 922 Dış anahtar kelime: '%1$s' değeri nedeniyle, '%2$s' sınırı geçersiz.
 923 Birincil anahtar '%1$s' yabancı anahtar '%2$s' tarafından yönlendirilen iptal olması gerekmiyor.
 924 Güncelle/Sil işlemleri yabancı anahtar '%1$s' tarafından kısıtlanmıştır.
