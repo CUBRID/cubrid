@@ -1277,6 +1277,9 @@ static int btree_load_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, VP
 				    BTREE_NODE_TYPE node_type);
 static int btree_delete_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, INT16 slot_id,
 				      BTREE_NODE_TYPE node_type);
+static int btree_get_first_overflow_key_page_vpid (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE_PTR page_ptr,
+						   INT16 slot_id, BTREE_NODE_TYPE node_type, VPID & out_page_vpid);
+
 static void btree_write_fixed_portion_of_non_leaf_record (RECDES * rec, NON_LEAF_REC * nlf_rec);
 static void btree_read_fixed_portion_of_non_leaf_record (RECDES * rec, NON_LEAF_REC * nlf_rec);
 static void btree_write_fixed_portion_of_non_leaf_record_to_orbuf (OR_BUF * buf, NON_LEAF_REC * nlf_rec);
@@ -1835,7 +1838,6 @@ btree_fix_root_with_info (THREAD_ENTRY * thread_p, BTID * btid, PGBUF_LATCH_MODE
 
   /* Fix root page. */
   root_page = pgbuf_fix_old_and_check_repl_desync (thread_p, *root_vpid_p, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
-
   if (root_page == NULL)
     {
       /* Failed fixing root page. */
@@ -2190,24 +2192,17 @@ exit_on_error:
 }
 
 /*
- * btree_delete_overflow_key () -
- *   return: NO_ERROR
- *   btid(in): B+tree index identifier
- *   page_ptr(in): Page that contains the overflow key
- *   slot_id(in): Slot that contains the overflow key
- *   node_type(in): Leaf or NonLeaf page
- *
- * Note: The overflow key is deleted. This routine will not delete the btree slot containing the key.
+ * btree_get_first_overflow_key_page_vpid - extract the vpid of the first overflow key page;
+ *                         the leaf page ptr supplied is assumed to be a leaf page with overflow
  */
 static int
-btree_delete_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, INT16 slot_id,
-			   BTREE_NODE_TYPE node_type)
+btree_get_first_overflow_key_page_vpid (THREAD_ENTRY * thread_p, const BTID_INT * btid, PAGE_PTR page_ptr,
+					INT16 slot_id, BTREE_NODE_TYPE node_type, VPID & out_page_vpid)
 {
-  RECDES rec;
-  VPID page_vpid;
+  int error_code = NO_ERROR;
+  RECDES rec RECDES_INITIALIZER;
   char *start_ptr;
   OR_BUF buf;
-  int rc = NO_ERROR;
 
   assert (slot_id > 0);
 
@@ -2216,7 +2211,9 @@ btree_delete_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
   /* first read the record to get first page identifier */
   if (spage_get_record (thread_p, page_ptr, slot_id, &rec, PEEK) != S_SUCCESS)
     {
-      goto exit_on_error;
+      ASSERT_ERROR ();
+      error_code = er_errid ();
+      return (error_code == NO_ERROR) ? ER_FAILED : error_code;
     }
 
   /* get first page identifier */
@@ -2251,11 +2248,35 @@ btree_delete_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 
   or_init (&buf, start_ptr, DISK_VPID_SIZE);
 
-  page_vpid.pageid = or_get_int (&buf, &rc);
-  if (rc == NO_ERROR)
+  out_page_vpid.pageid = or_get_int (&buf, &error_code);
+  if (error_code == NO_ERROR)
     {
-      page_vpid.volid = or_get_short (&buf, &rc);
+      out_page_vpid.volid = or_get_short (&buf, &error_code);
     }
+
+  return error_code;
+}
+
+/*
+ * btree_delete_overflow_key () - from leaf page, get the vpid of the first overflow page
+ *                        for a key/record/slot; delete all overflow pages in the chain;
+ *                        it is assumed that the key has overflow
+ *   return: NO_ERROR
+ *   btid(in): B+tree index identifier
+ *   page_ptr(in): Page that contains the overflow key
+ *   slot_id(in): Slot that contains the overflow key
+ *   node_type(in): Leaf or NonLeaf page
+ *
+ * Note: The overflow key is deleted. This routine will not delete the btree slot containing the key.
+ */
+static int
+btree_delete_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, INT16 slot_id,
+			   BTREE_NODE_TYPE node_type)
+{
+  VPID page_vpid;
+  int rc = NO_ERROR;
+
+  rc = btree_get_first_overflow_key_page_vpid (thread_p, btid, page_ptr, slot_id, node_type, page_vpid);
   if (rc != NO_ERROR)
     {
       goto exit_on_error;
@@ -2263,13 +2284,13 @@ btree_delete_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 
   if (overflow_delete (thread_p, &(btid->ovfid), &page_vpid) == NULL)
     {
+      ASSERT_ERROR ();
       goto exit_on_error;
     }
 
   return NO_ERROR;
 
 exit_on_error:
-
   return (rc == NO_ERROR && (rc = er_errid ()) == NO_ERROR) ? ER_FAILED : rc;
 }
 
@@ -9196,7 +9217,8 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
   BTREE_NODE_HEADER *header = NULL;	/* Node header. */
   LOG_LSA prev_lsa;
   char leaf_record_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
-  RECDES leaf_record = RECDES_INITIALIZER;
+  RECDES leaf_record RECDES_INITIALIZER;
+  VPID first_overflow_page_vpid VPID_INITIALIZER;
 
   assert (delete_helper->is_system_op_started == false);
   assert (delete_helper->purpose != BTREE_OP_INSERT_MVCC_DELID
@@ -9207,17 +9229,19 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
   if (leafrec_pnt->key_len < 0)
     {
       assert (delete_helper->purpose != BTREE_OP_DELETE_VACUUM_OBJECT || VACUUM_IS_THREAD_VACUUM_WORKER (thread_p));
-      log_sysop_start (thread_p);
+      log_sysop_start_atomic (thread_p);
       delete_helper->is_system_op_started = true;
 
-      /* Delete overflow key. */
-      ret = btree_delete_overflow_key (thread_p, btid, leaf_pg, search_key->slotid, BTREE_LEAF_NODE);
+      /* Do not delete overflow key here, do it after deleting leaf record to ensure
+       * consistent top-down replication.
+       * Only extract the first overflow page vpid before deleting the leaf entry. */
+      ret = btree_get_first_overflow_key_page_vpid (thread_p, btid, leaf_pg, search_key->slotid,
+						    BTREE_LEAF_NODE, first_overflow_page_vpid);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit_on_error;
 	}
-      /* Overflow key deleted. */
     }
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
@@ -9281,6 +9305,15 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
 
   if (delete_helper->is_system_op_started)
     {
+      /* Delete overflow key pages chain starting with first one. */
+      assert (leafrec_pnt->key_len < 0);
+      if (overflow_delete (thread_p, &(btid->ovfid), &first_overflow_page_vpid) == nullptr)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
+      /* Overflow key deleted. */
+
       btree_delete_sysop_end (thread_p, delete_helper);
     }
 
@@ -9396,7 +9429,7 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   /* Swap operation must use system op. */
   save_system_op_started = delete_helper->is_system_op_started;
-  log_sysop_start (thread_p);
+  log_sysop_start_atomic (thread_p);
   is_sytem_op_started = true;
   delete_helper->is_system_op_started = true;
 
@@ -10867,7 +10900,7 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
   save_sysop_started = insert_helper->is_system_op_started;
   if (!insert_helper->is_system_op_started)
     {
-      log_sysop_start (thread_p);
+      log_sysop_start_atomic (thread_p);
       insert_helper->is_system_op_started = true;
     }
   assert (log_check_system_op_is_started (thread_p));
@@ -10915,7 +10948,7 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
 
   if (!save_sysop_started)
     {
-      /* End system operation. */
+      /* End system operation if started in this context. If not, it is the calle's responsibility. */
       btree_insert_sysop_end (thread_p, insert_helper);
     }
 
@@ -14446,9 +14479,7 @@ btree_find_boundary_leaf_with_repl_desync_check (THREAD_ENTRY * thread_p, const 
   int root_level = 0, depth = 0;
 
   desync_occured = false;
-  // TODO: temporary change to identify problem
-  const int temp_error_code = er_errid ();
-  ASSERT_NO_ERROR ();
+  ASSERT_NOT_ERROR (ER_PAGE_AHEAD_OF_REPLICATION);
 
   VPID_SET_NULL (pg_vpid);
 
@@ -18932,10 +18963,10 @@ btree_compare_individual_key_value (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN 
     }
 
   /* both are not null values */
-  /* 
+  /*
    * for do_coercion = 2, we need to process key comparing as char-type
    * in case that one of two arguments has varchar-type
-   * if the other argument has char-type 
+   * if the other argument has char-type
    */
   c = key_domain->type->cmpval (key1, key2, 2, 1, NULL, key_domain->collation_id);
 
@@ -21001,7 +21032,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
     }
   else
     {
-      /* the statistics values is always same as initial (-1) 
+      /* the statistics values is always same as initial (-1)
        * so, it's not necessary to extend 64 bit */
       num_oids = root_header->num_oids;
       num_nulls = root_header->num_oids;
@@ -22852,6 +22883,7 @@ btree_get_root_with_key (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_i
   assert (root_page != NULL && *root_page == NULL);
   assert (is_leaf != NULL);
   assert (search_key != NULL);
+  ASSERT_NOT_ERROR (ER_PAGE_AHEAD_OF_REPLICATION);
 
   bool reuse_btid_int = other_args ? *((bool *) other_args) : false;
 
@@ -22926,6 +22958,7 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
   assert (crt_page != NULL && *crt_page != NULL);
   assert (advance_to_page != NULL && *advance_to_page == NULL);
   assert (search_key != NULL);
+  ASSERT_NOT_ERROR (ER_PAGE_AHEAD_OF_REPLICATION);
 
   /* Get node header. */
   node_header = btree_get_node_header (thread_p, *crt_page);
@@ -24886,6 +24919,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   assert (bts != NULL && bts->use_desc_index == true);
   assert (key_count != NULL);
   assert (next_vpid != NULL);
+  ASSERT_NOT_ERROR (ER_PAGE_AHEAD_OF_REPLICATION);
 
   VPID_COPY (&prev_leaf_vpid, next_vpid);
 
@@ -25127,8 +25161,8 @@ btree_range_scan_handle_page_ahead_repl_error (THREAD_ENTRY * thread_p, btree_sc
   tdes->page_desync_lsa.set_null ();
   er_clear ();
 
-  btree_log_if_enabled ("Btree scan force restart from root requested. Page desync LSA = %lld|%d",
-			LSA_AS_ARGS (&tdes->page_desync_lsa));
+  btree_log_if_enabled ("Btree scan force restart from root requested. page_desync_lsa=%lld|%d",
+			LSA_AS_ARGS (&bts.page_desync_lsa));
   bts.force_restart_from_root = true;
 
   // If there are objects selected, end this iteration and maybe replication will catch-up in the meantime.
@@ -25334,7 +25368,13 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	  if (bts->force_restart_from_root)
 	    {
 	      /* Couldn't advance. Restart from root. */
-	      assert (bts->use_desc_index);
+	      /* Up until the introduction of transactional log replication-based scalability architecture,
+	       * it was possible to encounter a forced restart from root only when the descending
+	       * index use was in effect. Afterwards, it is possible to also encounter it when a page
+	       * desync happens (ie: a btree page requested from page server is served with a newer state
+	       * than the passive transaction's server replication progress. Therefore, assert the correct
+	       * state when in the latter case. */
+	      assert (bts->use_desc_index || is_passive_transaction_server ());
 	      btree_log_if_enabled ("Notification: descending range scan had to be interrupted and restarted from "
 				    "root.\n");
 	      if (bts->C_page != NULL)
@@ -25452,6 +25492,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   assert (bts->C_page != NULL);
   /* MRO optimization are not compatible with bts->need_count_only. */
   assert (!BTS_NEED_COUNT_ONLY (bts) || !BTS_IS_INDEX_MRO (bts));
+  ASSERT_NOT_ERROR (ER_PAGE_AHEAD_OF_REPLICATION);
 
   /* Index skip scan optimization has an early out when a new key is found: */
   if (BTS_IS_INDEX_ISS (bts)
@@ -27795,7 +27836,7 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
     {
       key_type = BTREE_OVERFLOW_KEY;
 
-      log_sysop_start (thread_p);
+      log_sysop_start_atomic (thread_p);
       insert_helper->is_system_op_started = true;
     }
   else
@@ -28642,7 +28683,7 @@ btree_key_relocate_last_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   assert (offset_to_last_object > 0);
 
   /* We need to change leaf page and at least one overflow page. Start a system operation. */
-  log_sysop_start (thread_p);
+  log_sysop_start_atomic (thread_p);
   insert_helper->is_system_op_started = true;
 
   /* Copy last object into an overflow page. */
@@ -28737,7 +28778,7 @@ exit:
 }
 
 /*
- * btree_key_relocate_last_into_ovf () - Append a new object in overflow OID's pages.
+ * btree_key_append_object_into_ovf () - Append a new object in overflow OID's pages.
  *
  * return		 : Error code.
  * thread_p (in)	 : Thread entry.
@@ -31379,7 +31420,6 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       BTREE_RV_REDO_SET_DEBUG_INFO (&delete_helper->leaf_addr, rv_redo_data_ptr, btid_int,
 				    BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD);
 #endif /* !NDEBUG */
-      LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
 
       /* Remove record from leaf. */
       btree_record_remove_object_internal (thread_p, btid_int, &leaf_record, BTREE_LEAF_NODE, offset_to_second_object,
@@ -31388,17 +31428,9 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
   else
     {
       /* Leaf and overflow OID's page are going to be changed. A system operation and undo logging is required. */
-      log_sysop_start (thread_p);
+      assert (!delete_helper->is_system_op_started);
+      log_sysop_start_atomic (thread_p);
       delete_helper->is_system_op_started = true;
-
-      error_code =
-	btree_overflow_remove_object (thread_p, key, btid_int, delete_helper, &found_page, prev_found_page, *leaf_page,
-				      &leaf_record, search_key, offset_to_second_object);
-      if (error_code != NO_ERROR)
-	{
-	  assert_release (false);
-	  goto exit;
-	}
 
       rv_undo_data_ptr = rv_undo_data;
       rv_redo_data_ptr = rv_redo_data;
@@ -31410,8 +31442,8 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       BTREE_RV_UNDOREDO_SET_DEBUG_INFO (&delete_helper->leaf_addr, rv_redo_data_ptr, rv_undo_data_ptr, btid_int,
 					BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD);
 #endif /* !NDEBUG */
-      LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
     }
+  LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
 
   /* Replace inserted object with second visible object. */
   btree_leaf_change_first_object (thread_p, &leaf_record, btid_int, &delete_helper->second_object_info.oid,
@@ -31442,6 +31474,19 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
 					     delete_helper->leaf_addr.offset, *leaf_page, rv_redo_data_length,
 					     rv_redo_data, LOG_FIND_CURRENT_TDES (thread_p),
 					     &delete_helper->reference_lsa);
+    }
+
+  if (delete_helper->is_system_op_started)
+    {
+      /* Update overflow OID page */
+      error_code =
+	btree_overflow_remove_object (thread_p, key, btid_int, delete_helper, &found_page, prev_found_page, *leaf_page,
+				      &leaf_record, search_key, offset_to_second_object);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  goto exit;
+	}
     }
 
   /* Success. */
@@ -31791,7 +31836,7 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
 			      int offset_to_object)
 {
   int error_code = NO_ERROR;	/* Error code. */
-  OID *notification_class_oid;
+  const OID *notification_class_oid;
   RECDES overflow_record;	/* Overflow record. */
   /* Buffer to copy overflow record data. */
   char overflow_record_data_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
@@ -31848,32 +31893,9 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
       /* we need system op to deallocate pages. */
       if (!delete_helper->is_system_op_started)
 	{
-	  log_sysop_start (thread_p);
+	  log_sysop_start_atomic (thread_p);
 	  delete_helper->is_system_op_started = true;
 	}
-
-      /* todo: we always need a system operation to deallocate page. otherwise the page may be "leaked" on rollback.
-       * fixme when replacing the old system operation system */
-      /* Deallocate page. */
-      error_code = file_dealloc (thread_p, &btid_int->sys_btid->vfid, &overflow_vpid, FILE_BTREE);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto error;
-	}
-      /* Notification. */
-      if (!OID_ISNULL (BTREE_DELETE_CLASS_OID (delete_helper)))
-	{
-	  notification_class_oid = BTREE_DELETE_CLASS_OID (delete_helper);
-	}
-      else
-	{
-	  notification_class_oid = &btid_int->topclass_oid;
-	}
-      BTREE_SET_DELETED_OVERFLOW_PAGE_NOTIFICATION (thread_p, key, BTREE_DELETE_OID (delete_helper),
-						    notification_class_oid, btid_int->sys_btid);
-
-      FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
       /* Update previous page link. */
       if (prev_page == leaf_page)
@@ -31901,7 +31923,31 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
 
       FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
-      /* End system operation. */
+      /* todo: we always need a system operation to deallocate page. otherwise the page may be "leaked" on rollback.
+       * fixme when replacing the old system operation system */
+      /* Deallocate page. */
+      error_code = file_dealloc (thread_p, &btid_int->sys_btid->vfid, &overflow_vpid, FILE_BTREE);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+      /* Notification. */
+      if (!OID_ISNULL (BTREE_DELETE_CLASS_OID (delete_helper)))
+	{
+	  notification_class_oid = BTREE_DELETE_CLASS_OID (delete_helper);
+	}
+      else
+	{
+	  notification_class_oid = &btid_int->topclass_oid;
+	}
+      BTREE_SET_DELETED_OVERFLOW_PAGE_NOTIFICATION (thread_p, key, BTREE_DELETE_OID (delete_helper),
+						    notification_class_oid, btid_int->sys_btid);
+
+      FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
+
+      /* End system operation. Only if started in current context.
+       * If started in a parent context, it is up to the parent context to end it */
       if (delete_helper->is_system_op_started && !save_system_op_started)
 	{
 	  btree_delete_sysop_end (thread_p, delete_helper);
@@ -31930,6 +31976,8 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
   return NO_ERROR;
 
 error:
+  /* End system operation. Only if started in current context.
+   * If started in a parent context, it is up to the parent context to end it */
   if (delete_helper->is_system_op_started && !save_system_op_started)
     {
       assert (delete_helper->purpose != BTREE_OP_DELETE_UNDO_INSERT
@@ -33266,11 +33314,11 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
   error_code = heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo);
   if (error_code == NO_ERROR)
     {
-      /* 
+      /*
        * It can happen to fail to get the class record.
        * For example, a class record that is assigned but not updated poperly yet.
        * In this case, Setting tde flag is just skipped and it is expected to be done later.
-       * see file_apply_tde_to_class_files() 
+       * see file_apply_tde_to_class_files()
        */
       error_code = file_apply_tde_algorithm (thread_p, &btid->vfid, tde_algo);
       if (error_code != NO_ERROR)

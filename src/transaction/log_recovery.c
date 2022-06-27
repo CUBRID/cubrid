@@ -429,6 +429,43 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
     }
 }
 
+/*
+ * log_rv_check_redo_is_needed - check if the lsa has already been applied
+ *
+ * return: boolean
+ *
+ * pgptr(in):
+ * rcv_lsa(in):
+ * end_redo_lsa(in):
+ */
+bool
+log_rv_check_redo_is_needed (const PAGE_PTR & pgptr, const LOG_LSA & rcv_lsa, const LOG_LSA & end_redo_lsa)
+{
+  /* LSA of fixed data page */
+  const log_lsa *const fixed_page_lsa = pgbuf_get_lsa (pgptr);
+  /*
+   * Do we need to execute the redo operation ?
+   * If page_lsa >= lsa... already updated. In this case make sure
+   * that the redo is not far from the end_redo_lsa (TODO: how to ensure this last bit?)
+   */
+  assert (fixed_page_lsa != nullptr);
+  assert (end_redo_lsa.is_null () || *fixed_page_lsa <= end_redo_lsa);
+  if (rcv_lsa <= *fixed_page_lsa)
+    {
+      /* page having a higher LSA than the current log record's LSA is:
+       *  - acceptable during recovery: already applied
+       *  - not acceptable for page server replication
+       *  - acceptable for passive transaction server replication: the page might have already been downloaded
+       *    from the page server with this log record applied
+       *    Note: passive transaction servers do not perform recovery, therefore the only context this
+       *          code is executed on PTS is for replication)
+       * make sure to unfix the page */
+      assert (log_is_in_crash_recovery () || is_passive_transaction_server ());
+      return false;
+    }
+  return true;
+}
+
 /* log_rv_fix_page_and_check_redo_is_needed - check if page still exists and, if yes, whether the lsa has not
  *                    already been applied
  *
@@ -448,16 +485,16 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
  *  - passive transaction server replication
  */
 bool
-log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, log_rcv & rcv,
+log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, PAGE_PTR & pgptr,
 					  const log_lsa & rcv_lsa, const LOG_LSA & end_redo_lsa,
 					  PAGE_FETCH_MODE page_fetch_mode)
 {
-  assert (rcv.pgptr == nullptr);
+  assert (pgptr == nullptr);
 
   if (!VPID_ISNULL (&page_vpid))
     {
-      rcv.pgptr = log_rv_redo_fix_page (thread_p, &page_vpid, page_fetch_mode);
-      if (rcv.pgptr == nullptr)
+      pgptr = log_rv_redo_fix_page (thread_p, &page_vpid, page_fetch_mode);
+      if (pgptr == nullptr)
 	{
 	  /* page being null after fix attempt is:
 	   *  - acceptable during recovery: the page was changed and also deallocated in the meantime, no need to
@@ -475,29 +512,11 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
 	}
     }
 
-  if (rcv.pgptr != nullptr)
+  if (pgptr != nullptr)
     {
-      /* LSA of fixed data page */
-      const log_lsa *const fixed_page_lsa = pgbuf_get_lsa (rcv.pgptr);
-      /*
-       * Do we need to execute the redo operation ?
-       * If page_lsa >= lsa... already updated. In this case make sure
-       * that the redo is not far from the end_redo_lsa (TODO: how to ensure this last bit?)
-       */
-      assert (fixed_page_lsa != nullptr);
-      assert (end_redo_lsa.is_null () || *fixed_page_lsa <= end_redo_lsa);
-      if (rcv_lsa <= *fixed_page_lsa)
+      if (log_rv_check_redo_is_needed (pgptr, rcv_lsa, end_redo_lsa) == false)
 	{
-	  /* page having a higher LSA than the current log record's LSA is:
-	   *  - acceptable during recovery: already applied
-	   *  - not acceptable for page server replication
-	   *  - acceptable for passive transaction server replication: the page might have already been downloaded
-	   *    from the page server with this log record applied
-	   *    Note: passive transaction servers do not perform recovery, therefore the only context this
-	   *          code is executed on PTS is for replication)
-	   * make sure to unfix the page */
-	  assert (log_is_in_crash_recovery () || is_passive_transaction_server ());
-	  pgbuf_unfix_and_init (thread_p, rcv.pgptr);
+	  pgbuf_unfix_and_init (thread_p, pgptr);
 	  return false;
 	}
     }
@@ -2752,12 +2771,12 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 		    {
 		      /* execute undo */
-		      rcvindex = sysop_end->mvcc_undo.undo.data.rcvindex;
-		      rcv.length = sysop_end->mvcc_undo.undo.length;
-		      rcv.offset = sysop_end->mvcc_undo.undo.data.offset;
-		      rcv_vpid.volid = sysop_end->mvcc_undo.undo.data.volid;
-		      rcv_vpid.pageid = sysop_end->mvcc_undo.undo.data.pageid;
-		      rcv.mvcc_id = sysop_end->mvcc_undo.mvccid;
+		      rcvindex = sysop_end->mvcc_undo_info.mvcc_undo.undo.data.rcvindex;
+		      rcv.length = sysop_end->mvcc_undo_info.mvcc_undo.undo.length;
+		      rcv.offset = sysop_end->mvcc_undo_info.mvcc_undo.undo.data.offset;
+		      rcv_vpid.volid = sysop_end->mvcc_undo_info.mvcc_undo.undo.data.volid;
+		      rcv_vpid.pageid = sysop_end->mvcc_undo_info.mvcc_undo.undo.data.pageid;
+		      rcv.mvcc_id = sysop_end->mvcc_undo_info.mvcc_undo.mvccid;
 
 		      /* will jump to parent LSA. save it now before advancing to undo data */
 		      LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
@@ -3246,7 +3265,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 	  }
 	else if (sysop_start_postpone->sysop_end.type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 	  {
-	    undo_size = sysop_start_postpone->sysop_end.mvcc_undo.undo.length;
+	    undo_size = sysop_start_postpone->sysop_end.mvcc_undo_info.mvcc_undo.undo.length;
 	  }
 	LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_START_POSTPONE), &log_lsa, log_pgptr);
 	LOG_READ_ADD_ALIGN (thread_p, undo_size, &log_lsa, log_pgptr);
@@ -3269,7 +3288,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 	  }
 	else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 	  {
-	    undo_size = sysop_end->mvcc_undo.undo.length;
+	    undo_size = sysop_end->mvcc_undo_info.mvcc_undo.undo.length;
 	  }
 	LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_END), &log_lsa, log_pgptr);
       }

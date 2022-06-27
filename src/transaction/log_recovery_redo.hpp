@@ -44,7 +44,7 @@ struct log_rv_redo_context
 		       log_reader::fetch_mode reader_fetch_page_mode);
   ~log_rv_redo_context ();
 
-  log_rv_redo_context (const log_rv_redo_context &);
+  log_rv_redo_context (const log_rv_redo_context &that);
   log_rv_redo_context (log_rv_redo_context &&) = delete;
 
   log_rv_redo_context &operator= (const log_rv_redo_context &) = delete;
@@ -85,11 +85,6 @@ const LOG_DATA &log_rv_get_log_rec_data (const T &log_rec);
  */
 template <typename T>
 MVCCID log_rv_get_log_rec_mvccid (const T &log_rec);
-
-/*
- */
-template <typename T>
-void assert_correct_mvccid (const T &log_rec, MVCCID mvccid);
 
 /*
  */
@@ -176,6 +171,7 @@ inline MVCCID log_rv_get_log_rec_mvccid (const T &)
 template <>
 inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_MVCC_UNDOREDO> (const LOG_REC_MVCC_UNDOREDO &log_rec)
 {
+  assert (MVCCID_IS_NORMAL (log_rec.mvccid));
   return log_rec.mvccid;
 }
 
@@ -188,6 +184,7 @@ inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_UNDOREDO> (const LOG_REC_UNDORED
 template <>
 inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_MVCC_REDO> (const LOG_REC_MVCC_REDO &log_rec)
 {
+  assert (log_rec.mvccid == MVCCID_NULL);
   return log_rec.mvccid;
 }
 
@@ -214,7 +211,8 @@ inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_SYSOP_END> (const LOG_REC_SYSOP_
 {
   if (log_rec.type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
     {
-      return log_rec.mvcc_undo.mvccid;
+      assert (MVCCID_IS_NORMAL (log_rec.mvcc_undo_info.mvcc_undo.mvccid));
+      return log_rec.mvcc_undo_info.mvcc_undo.mvccid;
     }
   return MVCCID_NULL;
 }
@@ -222,61 +220,8 @@ inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_SYSOP_END> (const LOG_REC_SYSOP_
 template <>
 inline MVCCID log_rv_get_log_rec_mvccid<LOG_REC_MVCC_UNDO> (const LOG_REC_MVCC_UNDO &log_rec)
 {
+  assert (MVCCID_IS_NORMAL (log_rec.mvccid));
   return log_rec.mvccid;
-}
-
-template <typename T>
-inline void assert_correct_mvccid (const T &, MVCCID)
-{
-  static_assert (sizeof (T) == 0, "purposefully not implemented");
-}
-
-template <>
-inline void assert_correct_mvccid<LOG_REC_REDO> (const LOG_REC_REDO &, MVCCID mvccid)
-{
-  assert (mvccid == MVCCID_NULL);
-}
-
-template <>
-inline void assert_correct_mvccid<LOG_REC_MVCC_REDO> (const LOG_REC_MVCC_REDO &, MVCCID mvccid)
-{
-  assert (mvccid == MVCCID_NULL);
-}
-
-template <>
-inline void assert_correct_mvccid<LOG_REC_UNDOREDO> (const LOG_REC_UNDOREDO &, MVCCID mvccid)
-{
-  assert (mvccid == MVCCID_NULL);
-}
-
-template <>
-inline void assert_correct_mvccid<LOG_REC_MVCC_UNDOREDO> (const LOG_REC_MVCC_UNDOREDO &, MVCCID mvccid)
-{
-  assert (mvccid != MVCCID_NULL);
-}
-
-template <>
-inline void assert_correct_mvccid<LOG_REC_RUN_POSTPONE> (const LOG_REC_RUN_POSTPONE &, MVCCID mvccid)
-{
-  assert (mvccid == MVCCID_NULL);
-}
-
-template <>
-inline void assert_correct_mvccid<LOG_REC_COMPENSATE> (const LOG_REC_COMPENSATE &, MVCCID mvccid)
-{
-  assert (mvccid == MVCCID_NULL);
-}
-
-template <>
-inline void assert_correct_mvccid<LOG_REC_MVCC_UNDO> (const LOG_REC_MVCC_UNDO &, MVCCID mvccid)
-{
-  assert (mvccid != MVCCID_NULL);
-}
-
-template <>
-inline void assert_correct_mvccid<LOG_REC_SYSOP_END> (const LOG_REC_SYSOP_END &log_rec, MVCCID mvccid)
-{
-  assert (log_rec.type != LOG_SYSOP_END_LOGICAL_MVCC_UNDO || mvccid != MVCCID_NULL);
 }
 
 template <typename T>
@@ -661,18 +606,9 @@ extern vpid_lsa_consistency_check log_Gl_recovery_redo_consistency_check;
 #endif
 
 template <typename T>
-void log_rv_redo_record_sync_fix_and_apply (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
-    const log_rv_redo_rec_info<T> &record_info, const VPID &rcv_vpid, LOG_RCV &rcv)
+void log_rv_redo_record_sync_apply (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
+				    const log_rv_redo_rec_info<T> &record_info, const VPID &rcv_vpid, LOG_RCV &rcv)
 {
-  if (!log_rv_fix_page_and_check_redo_is_needed (thread_p, rcv_vpid, rcv, record_info.m_start_lsa,
-      redo_context.m_end_redo_lsa, redo_context.m_page_fetch_mode))
-    {
-      /* nothing else needs to be done, see explanation in function */
-      assert (rcv.pgptr == nullptr);
-      return;
-    }
-  // at this point, pgptr can be null or not
-
   rcv.length = log_rv_get_log_rec_redo_length<T> (record_info.m_logrec);
   rcv.mvcc_id = log_rv_get_log_rec_mvccid<T> (record_info.m_logrec);
   rcv.offset = log_rv_get_log_rec_offset<T> (record_info.m_logrec);
@@ -702,7 +638,7 @@ void log_rv_redo_record_sync_fix_and_apply (THREAD_ENTRY *thread_p, log_rv_redo_
   if (err_func != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "log_rv_redo_record_sync: Error applying redo record at log_lsa=(%lld, %d), "
+			 "log_rv_redo_record_sync_apply: Error applying redo record at log_lsa=(%lld, %d), "
 			 "rcv = {mvccid=%llu, vpid=(%d, %d), offset = %d, data_length = %d}",
 			 LSA_AS_ARGS (&record_info.m_start_lsa), (long long int) rcv.mvcc_id,
 			 VPID_AS_ARGS (&rcv_vpid), (int) rcv.offset, (int) rcv.length);
@@ -713,7 +649,6 @@ void log_rv_redo_record_sync_fix_and_apply (THREAD_ENTRY *thread_p, log_rv_redo_
       pgbuf_set_lsa (thread_p, rcv.pgptr, &record_info.m_start_lsa);
       // rcv pgptr will be automatically unfixed at the end of the parent scope
     }
-
 }
 
 template <typename T>
@@ -740,8 +675,16 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
       }
   });
 
+  if (!log_rv_fix_page_and_check_redo_is_needed (thread_p, rcv_vpid, rcv.pgptr, record_info.m_start_lsa,
+      redo_context.m_end_redo_lsa, redo_context.m_page_fetch_mode))
+    {
+      /* nothing else needs to be done, see explanation in function */
+      assert (rcv.pgptr == nullptr);
+      return;
+    }
+
   // process the log record
-  log_rv_redo_record_sync_fix_and_apply (thread_p, redo_context, record_info, rcv_vpid, rcv);
+  log_rv_redo_record_sync_apply (thread_p, redo_context, record_info, rcv_vpid, rcv);
 }
 
 template <typename T>

@@ -111,7 +111,7 @@ typedef struct leaf_rec LEAF_REC;
 struct leaf_rec
 {
   VPID ovfl;			/* Overflow page pointer, for overflow OIDs */
-  short key_len;
+  short key_len;		/* Leaf key length. If -1, key overflows */
 };
 
 /* BTID_INT structure from btree_load.h */

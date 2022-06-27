@@ -70,8 +70,6 @@ static int prior_lsa_copy_redo_crumbs_to_node (LOG_PRIOR_NODE *node, int num_cru
 static void prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes);
 static void prior_lsa_end_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node);
 static void prior_lsa_append_data (int length);
-STATIC_INLINE void prior_extract_vacuum_info_from_prior_node (const LOG_PRIOR_NODE *node,
-    LOG_VACUUM_INFO *&dest_vacuum_info, MVCCID &mvccid);
 static LOG_LSA prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes,
     int with_lock);
 static void prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid);
@@ -1008,7 +1006,9 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
 	{
 	  if (!tdes->mvccinfo.sub_ids.empty ())
 	    {
+	      assert (tdes->mvccinfo.sub_ids.size () == 1);
 	      *mvccid_p = tdes->mvccinfo.sub_ids.back ();
+	      assert (MVCCID_IS_NORMAL (tdes->mvccinfo.id));
 	    }
 	  else
 	    {
@@ -1424,6 +1424,13 @@ log_replication_update_header_mvcc_vacuum_info (const MVCCID &mvccid, const log_
     }
 }
 
+/*
+ * prior_update_header_mvcc_info - update vacuum information for the currect vacuum block (the vacuum
+ *              block that is currently being populated)
+ *
+ *   record_lsa(in): lsa of mvcc log record
+ *   mvccid(in): mvccid of mvcc log record
+ */
 static void
 prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid)
 {
@@ -1450,41 +1457,6 @@ prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid)
     }
   log_Gl.hdr.mvcc_op_log_lsa = record_lsa;
   log_Gl.hdr.does_block_need_vacuum = true;
-}
-
-STATIC_INLINE void
-prior_extract_vacuum_info_from_prior_node (const LOG_PRIOR_NODE *node, LOG_VACUUM_INFO *&dest_vacuum_info,
-    MVCCID &mvccid)
-{
-  dest_vacuum_info = nullptr;
-  mvccid = MVCCID_NULL;
-
-  if (node->log_header.type == LOG_MVCC_UNDO_DATA)
-    {
-      /* Read from mvcc_undo structure */
-      LOG_REC_MVCC_UNDO *const mvcc_undo = (LOG_REC_MVCC_UNDO *) node->data_header;
-      dest_vacuum_info = &mvcc_undo->vacuum_info;
-      mvccid = mvcc_undo->mvccid;
-    }
-  else if (node->log_header.type == LOG_MVCC_UNDOREDO_DATA || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA)
-    {
-      /* Read for mvcc_undoredo structure */
-      LOG_REC_MVCC_UNDOREDO *const mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) node->data_header;
-      dest_vacuum_info = &mvcc_undoredo->vacuum_info;
-      mvccid = mvcc_undoredo->mvccid;
-    }
-  else if (node->log_header.type == LOG_SYSOP_END
-	   && ((LOG_REC_SYSOP_END *)node->data_header)->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
-    {
-      /* Read from mvcc_undo structure */
-      LOG_REC_MVCC_UNDO *const mvcc_undo = & ((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo;
-      dest_vacuum_info = &mvcc_undo->vacuum_info;
-      mvccid = mvcc_undo->mvccid;
-    }
-  else
-    {
-      assert ("not an mvcc prior node" == nullptr);
-    }
 }
 
 /*
@@ -1535,7 +1507,59 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
     {
       /* Link the log record to previous MVCC delete/update log record */
       /* Will be used by vacuum */
-      prior_extract_vacuum_info_from_prior_node (node, vacuum_info, mvccid);
+      if (node->log_header.type == LOG_MVCC_UNDO_DATA)
+	{
+	  /* Read from mvcc_undo structure */
+	  mvcc_undo = (LOG_REC_MVCC_UNDO *) node->data_header;
+	  vacuum_info = &mvcc_undo->vacuum_info;
+	  mvccid = mvcc_undo->mvccid;
+	}
+      else if (node->log_header.type == LOG_SYSOP_END)
+	{
+	  const LOG_REC_SYSOP_END *const sysop_end = (const LOG_REC_SYSOP_END *)node->data_header;
+	  assert (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO);
+
+	  /* Read from mvcc_undo structure */
+	  mvcc_undo = & ((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo_info.mvcc_undo;
+	  vacuum_info = &mvcc_undo->vacuum_info;
+	  mvccid = mvcc_undo->mvccid;
+
+	  /* Reset
+	   *  - tdes->rcv.sysop_start_postpone_lsa
+	   *  - tdes->rcv.atomic_sysop_start_lsa
+	   * if this system op is not nested.
+	   * We'll use lastparent_lsa to check if system op is nested or not. */
+	  /* Atomic sysop's can also be nested. This is a scenario that was also possible before but it was
+	   * effectively introduced with the scalability project where, as an example, many btree sysops were
+	   * transformed in atomic sysops for the purpose of using the atomic sysop log records to achieve
+	   * functional atomic replication on passive transaction server.
+	   * As such the atomic sysop start lsa flag is only cleared when the outermost atomic sysop is
+	   * ended with a commit (LOG_SYSOP_END - LOG_SYSOP_END_COMMIT) or abort (LOG_SYSOP_END - LOG_SYSOP_END_ABORT).
+	   */
+	  if (!LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)
+	      && LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.atomic_sysop_start_lsa))
+	    {
+	      /* atomic system operation finished */
+	      LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+	    }
+
+	  if (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa)
+	      && LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.sysop_start_postpone_lsa))
+	    {
+	      /* atomic system operation finished */
+	      LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
+	    }
+	}
+      else
+	{
+	  /* Read for mvcc_undoredo structure */
+	  assert (node->log_header.type == LOG_MVCC_UNDOREDO_DATA
+		  || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA);
+
+	  mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) node->data_header;
+	  vacuum_info = &mvcc_undoredo->vacuum_info;
+	  mvccid = mvcc_undoredo->mvccid;
+	}
       assert (vacuum_info != nullptr);
       assert (mvccid != MVCCID_NULL);
 
@@ -1547,6 +1571,10 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 		     LSA_AS_ARGS (&node->start_lsa), LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa));
 
       prior_update_header_mvcc_info (start_lsa, mvccid);
+      /* If this is actually a sub-mvccid, the transaction must also have an 'main' mvccid.
+       * The 'main' mvccid will either:
+       *  - appear (or has already appeared) on its own log record
+       *  - will not be part of any log record, and thus will not matter with regard to vacuum */
 
       // Also set the transaction last MVCC lsa.
       tdes->last_mvcc_lsa = node->start_lsa;
@@ -1579,11 +1607,19 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
     }
   else if (node->log_header.type == LOG_SYSOP_END)
     {
-      /* reset tdes->rcv.sysop_start_postpone_lsa and tdes->rcv.atomic_sysop_start_lsa, if this system op is not nested.
-       * we'll use lastparent_lsa to check if system op is nested or not. */
-      LOG_REC_SYSOP_END *sysop_end = NULL;
-
-      sysop_end = (LOG_REC_SYSOP_END *) node->data_header;
+      /* Reset
+       *  - tdes->rcv.sysop_start_postpone_lsa
+       *  - tdes->rcv.atomic_sysop_start_lsa
+       * if this system op is not nested.
+       * We'll use lastparent_lsa to check if system op is nested or not. */
+      /* Atomic sysop's can also be nested. This is a scenario that was also possible before but it was
+       * effectively introduced with the scalability project where, as an example, many btree sysops were
+       * transformed in atomic sysops for the purpose of using the atomic sysop log records to achieve
+       * functional atomic replication on passive transaction server.
+       * As such the atomic sysop start lsa flag is only cleared when the outermost atomic sysop is
+       * ended with a commit (LOG_SYSOP_END - LOG_SYSOP_END_COMMIT) or abort (LOG_SYSOP_END - LOG_SYSOP_END_ABORT).
+       */
+      const LOG_REC_SYSOP_END *const sysop_end = (const LOG_REC_SYSOP_END *)node->data_header;
       if (!LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)
 	  && LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.atomic_sysop_start_lsa))
 	{

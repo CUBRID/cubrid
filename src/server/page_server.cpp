@@ -172,7 +172,7 @@ page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_co
 {
   // empty request message
 
-  assert (m_prior_sender_sink_hook_func != nullptr);
+  assert (static_cast<bool> (m_prior_sender_sink_hook_func));
 
   remove_prior_sender_sink ();
 
@@ -276,7 +276,7 @@ page_server::connection_handler::remove_prior_sender_sink ()
 {
   std::lock_guard<std::mutex> lockg { m_prior_sender_sink_removal_mtx };
 
-  if (m_prior_sender_sink_hook_func != nullptr)
+  if (static_cast<bool> (m_prior_sender_sink_hook_func))
     {
       log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
       m_prior_sender_sink_hook_func = nullptr;

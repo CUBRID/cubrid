@@ -336,6 +336,7 @@ namespace cublog
 	tdes->mvccinfo.id = chkpt.mvcc_id;
 	if (chkpt.mvcc_sub_id != MVCCID_NULL)
 	  {
+	    assert (tdes->mvccinfo.sub_ids.size () == 0);
 	    tdes->mvccinfo.sub_ids.emplace_back (chkpt.mvcc_sub_id);
 	  }
 	tdes->client.set_system_internal_with_user (chkpt.user_name);

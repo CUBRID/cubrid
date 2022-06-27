@@ -1332,7 +1332,6 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1261 The first key (key index: %1$d, created time: %2$s) on the restored key file has been set.
 1262 The key file is full.
 1263 It fails to TDE-encrypt the log page (pageid: %1$lld). It won't be tried to encrypt this page any longer.
-
 1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
 1265 Error connecting with the page server at %s.
 1266 The high availability system is not compatible with the page server type.
@@ -1344,8 +1343,8 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1272 Error connecting with the active transaction server.
 1273 Invalid server type '%s', -t or --type should be followed either by 'transaction' or 'page'.
 1274 Invalid server option "%s".
-1275 Error reserved for scalability development.
-1276 Error reserved for scalability development.
+1275 Page %1d|%2d is ahead of replication. Page LSA is %3lld|%4d, replication LSA is %5lld|%6d.
+1276 Connected page server cannot be reached anymore.
 1277 Error reserved for scalability development.
 1278 Error reserved for scalability development.
 1279 Error reserved for scalability development.

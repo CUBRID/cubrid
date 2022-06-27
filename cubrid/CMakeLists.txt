@@ -309,6 +309,7 @@ set(METHOD_SOURCES
   )
 
 set(TRANSACTION_SOURCES
+  ${TRANSACTION_DIR}/atomic_replication_helper.cpp
   ${TRANSACTION_DIR}/boot_sr.c
   ${TRANSACTION_DIR}/client_credentials.cpp
   ${TRANSACTION_DIR}/locator.c
@@ -335,6 +336,9 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_recovery_redo.cpp
   ${TRANSACTION_DIR}/log_recovery_redo_parallel.cpp
   ${TRANSACTION_DIR}/log_replication.cpp
+  ${TRANSACTION_DIR}/log_replication_jobs.cpp
+  ${TRANSACTION_DIR}/log_replication_atomic.cpp
+  ${TRANSACTION_DIR}/log_replication_mvcc.cpp
   ${TRANSACTION_DIR}/log_storage.cpp
   ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
@@ -350,6 +354,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/flashback.c
   )
 set(TRANSACTION_HEADERS
+  ${TRANSACTION_DIR}/atomic_replication_helper.hpp
   ${TRANSACTION_DIR}/client_credentials.hpp
   ${TRANSACTION_DIR}/log_2pc.h
   ${TRANSACTION_DIR}/log_append.hpp
@@ -371,6 +376,10 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_recovery_redo.hpp
   ${TRANSACTION_DIR}/log_recovery_redo_parallel.hpp
   ${TRANSACTION_DIR}/log_replication.hpp
+  ${TRANSACTION_DIR}/log_replication_jobs.hpp
+  ${TRANSACTION_DIR}/log_replication.cpp.hpp
+  ${TRANSACTION_DIR}/log_replication_atomic.hpp
+  ${TRANSACTION_DIR}/log_replication_mvcc.hpp
   ${TRANSACTION_DIR}/log_storage.hpp
   ${TRANSACTION_DIR}/log_system_tran.hpp
   ${TRANSACTION_DIR}/log_volids.hpp
