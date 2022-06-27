@@ -211,6 +211,7 @@ regu_init (indx_info &ii)
 {
   OID_SET_NULL (&ii.class_oid);
   ii.coverage = 0;
+  ii.cov_list_id = NULL;
   ii.range_type = R_KEY;
   ii.key_info.key_cnt = 0;
   ii.key_info.key_ranges = NULL;
