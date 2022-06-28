@@ -69,7 +69,7 @@ struct spage_header
   int cont_free;		/* Contiguous free space on page */
   int offset_to_free_area;	/* Byte offset from the beginning of the page to the first free byte area on the page. */
   int reserved1;
-  int flags;			/* Page flags *//* Always SPAGE_HEADER_FLAG_NONE */// ctshim
+  int flags;			/* Page flags: Always SPAGE_HEADER_FLAG_NONE, not currently used */
   unsigned int is_saving:1;	/* True if saving is need for recovery (undo) */
   unsigned int need_update_best_hint:1;	/* True if we should update best pages hint for this page. See
 					 * heap_stats_update. */

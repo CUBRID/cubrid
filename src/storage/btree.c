@@ -32827,10 +32827,10 @@ btree_record_replace_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDE
   offset_to_replaced = *offset_to_replaced_inout;
   assert (offset_to_replaced >= 0 && offset_to_replaced < record->length);
 
-#if 1				// ctshim
-  // This function is called in only one place, and node_type is specified as BTREE_OVERFLOW_NODE.
+  /* This function is called only on btree_overflow_record_replace_object().
+   ** And node_type is fixed to BTREE_OVERflow_NODE. */
   assert (node_type == BTREE_OVERFLOW_NODE);
-#else
+#if 0				/* unreachable code */
   if (node_type == BTREE_LEAF_NODE)
     {
       if (offset_to_replaced == 0)
@@ -32892,7 +32892,7 @@ btree_record_replace_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDE
 #endif
     }
   else
-#endif
+#endif // #if 0 /* unreachable code */
     {
       /* Object must be fixed size. */
       int fixed_object_size = BTREE_OBJECT_FIXED_SIZE (btid_int);

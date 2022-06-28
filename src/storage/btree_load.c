@@ -54,6 +54,8 @@
 #include "xasl.h"
 #include "xasl_unpack_info.hpp"
 
+#define FIX_OID_CLASSOID_ORDER	// ctshim, Oids and classoids have the same storage order recorded in the index.
+
 typedef struct sort_args SORT_ARGS;
 struct sort_args
 {				/* Collection of information required for "sr_index_sort" */
@@ -116,10 +118,6 @@ struct load_args
 
   /* Variables for managing non-leaf, leaf & overflow pages */
   BTREE_PAGE nleaf;
-
-#if 0				/* TODO: currently not used */
-  VPID first_leafpgid;
-#endif
 
   BTREE_PAGE leaf;
 
@@ -2211,9 +2209,6 @@ btree_first_oid (THREAD_ENTRY * thread_p, DB_VALUE * this_key, OID * class_oid, 
   pr_clear_value (&load_args->current_key);	/* clear previous value */
   load_args->cur_key_len = key_len;
 
-#if 0				// ctshim
-  return pr_clone_value (this_key, &load_args->current_key);
-#else
   error = pr_clone_value (this_key, &load_args->current_key);
   if (error != NO_ERROR)
     {
@@ -2240,7 +2235,6 @@ btree_first_oid (THREAD_ENTRY * thread_p, DB_VALUE * this_key, OID * class_oid, 
   btree_check_valid_record (thread_p, load_args->btid, load_args->out_recdes, BTREE_LEAF_NODE, NULL);
 #endif
   return NO_ERROR;
-#endif
 }
 
 /*
@@ -2325,7 +2319,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 
       assert (buf.ptr == PTR_ALIGN (buf.ptr, INT_ALIGNMENT));
 
-#if 1				// ctshim : class_oid -> oid
+#if defined(FIX_OID_CLASSOID_ORDER)
       /* Get OID */
       ret = or_get_oid (&buf, &this_oid);
       if (ret != NO_ERROR)
@@ -2343,7 +2337,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 	      goto error;
 	    }
 	}
-#if 0				// ctshim : class_oid -> oid
+#if !defined(FIX_OID_CLASSOID_ORDER)
       /* Get OID */
       ret = or_get_oid (&buf, &this_oid);
       if (ret != NO_ERROR)
@@ -2442,10 +2436,6 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 	    }
 	  /* Save first leaf VPID. */
 	  load_args->vpid_first_leaf = load_args->leaf.vpid;
-
-#if 0				/* TODO: currently not used */
-	  load_args->first_leafpgid = load_args->leaf.vpid;
-#endif
 	  load_args->overflowing = false;
 	  assert (load_args->ovf.pgptr == NULL);
 
@@ -2456,28 +2446,6 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 	    {
 	      goto error;
 	    }
-#if 0				// ctshim  btree_first_oid()
-	  if (!MVCC_IS_HEADER_DELID_VALID (&mvcc_header))
-	    {
-	      /* Object was not deleted, increment curr_non_del_obj_count */
-	      load_args->curr_non_del_obj_count = 1;
-
-	      /* Increment the key counter if object is not deleted */
-	      (load_args->n_keys)++;
-	    }
-	  else
-	    {
-	      /* Object is deleted, initialize curr_non_del_obj_count as 0 */
-	      load_args->curr_non_del_obj_count = 0;
-	    }
-
-	  load_args->curr_rec_max_obj_count = BTREE_MAX_OIDCOUNT_IN_LEAF_RECORD (load_args->btid);
-	  load_args->curr_rec_obj_count = 1;
-
-#if !defined (NDEBUG)
-	  btree_check_valid_record (thread_p, load_args->btid, load_args->out_recdes, BTREE_LEAF_NODE, NULL);
-#endif
-#endif
 	}
       else
 	{			/* This is not the first call to this function */
@@ -2511,16 +2479,6 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 		{
 		  /* TODO: Rewrite btree_construct_leafs. It's almost impossible to follow. */
 		  load_args->curr_non_del_obj_count++;
-#if 0				// ctshim
-		  if (load_args->curr_non_del_obj_count > 1 && BTREE_IS_UNIQUE (load_args->btid->unique_pk))
-		    {
-		      /* Unique constrain violation - more than one visible records for this key. */
-		      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, &this_key, &this_oid, &this_class_oid,
-							load_args->btid->sys_btid, load_args->bt_name);
-		      ret = ER_BTREE_UNIQUE_FAILED;
-		      goto error;
-		    }
-#endif
 		  if (load_args->curr_non_del_obj_count == 1)
 		    {
 		      /* When first non-deleted object is found, we must increment that number of keys for statistics. */
@@ -2569,7 +2527,6 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 			  btree_mvcc_info_to_heap_mvcc_header (&first_mvcc_info, &mvcc_header);
 			}
 		    }
-#if 1				// ctshim
 		  else if (load_args->curr_non_del_obj_count > 1 && BTREE_IS_UNIQUE (load_args->btid->unique_pk))
 		    {
 		      /* Unique constrain violation - more than one visible records for this key. */
@@ -2578,7 +2535,6 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 		      ret = ER_BTREE_UNIQUE_FAILED;
 		      goto error;
 		    }
-#endif
 		}
 
 	      /* Check if there is space in the memory record for the new OID. If not dump the current record and
@@ -2781,26 +2737,6 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 		{
 		  goto error;
 		}
-#if 0				// ctshim  btree_first_oid()
-	      if (!MVCC_IS_HEADER_DELID_VALID (&mvcc_header))
-		{
-		  /* Object was not deleted, increment curr_non_del_obj_count. */
-		  load_args->curr_non_del_obj_count = 1;
-		  (load_args->n_keys)++;	/* Increment the key counter */
-		}
-	      else
-		{
-		  /* Object is deleted, initialize curr_non_del_obj_count as 0. */
-		  load_args->curr_non_del_obj_count = 0;
-		}
-
-	      load_args->curr_rec_max_obj_count = BTREE_MAX_OIDCOUNT_IN_LEAF_RECORD (load_args->btid);
-	      load_args->curr_rec_obj_count = 1;
-
-#if !defined (NDEBUG)
-	      btree_check_valid_record (thread_p, load_args->btid, load_args->out_recdes, BTREE_LEAF_NODE, NULL);
-#endif
-#endif
 	    }			/* different key */
 	}
 
@@ -3337,7 +3273,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	  or_advance (&buf, (OR_INT_SIZE - OR_BYTE_SIZE));
 	  assert (buf.ptr == PTR_ALIGN (buf.ptr, INT_ALIGNMENT));
 
-#if 1				// ctshim: fix cur_oid, class_ids
+#if defined(FIX_OID_CLASSOID_ORDER)
 	  if (or_put_oid (&buf, &sort_args->cur_oid) != NO_ERROR)
 	    {
 	      goto nofit;
@@ -3350,7 +3286,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 		  goto nofit;
 		}
 	    }
-#if 0				// ctshim: fix cur_oid, class_ids
+#if !defined(FIX_OID_CLASSOID_ORDER)
 	  if (or_put_oid (&buf, &sort_args->cur_oid) != NO_ERROR)
 	    {
 	      goto nofit;
