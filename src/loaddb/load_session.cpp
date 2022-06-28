@@ -551,11 +551,6 @@ namespace cubload
   {
     thread_ref.m_loaddb_driver = m_driver;
 
-    if (m_args.no_user_specified_name)
-      {
-	prm_set_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME, true);
-      }
-
     int error_code = NO_ERROR;
     bool parser_result = invoke_parser (m_driver, batch);
     const class_entry *cls_entry = get_class_registry ().get_class_entry (batch.get_class_id ());

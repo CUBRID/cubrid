@@ -66,7 +66,7 @@ static int rv;
 static PGLENGTH spage_User_page_size;
 
 #define SPAGE_DB_PAGESIZE \
-  (spage_User_page_size != 0 ? assert (spage_User_page_size == db_page_size ()), spage_User_page_size : db_page_size ())
+  (spage_User_page_size != 0 ? assert (spage_User_page_size == DB_PAGESIZE), spage_User_page_size : DB_PAGESIZE)
 
 #define SPAGE_VERIFY_HEADER(sphdr) 				\
   do {								\
@@ -800,7 +800,7 @@ spage_boot (THREAD_ENTRY * thread_p)
   assert (sizeof (SPAGE_HEADER) % DOUBLE_ALIGNMENT == 0);
   assert (sizeof (SPAGE_SLOT) == INT_ALIGNMENT);
 
-  spage_User_page_size = db_page_size ();
+  spage_User_page_size = DB_PAGESIZE;
 
   spage_Saving_hashmap.init (spage_saving_Ts, THREAD_TS_SPAGE_SAVING, 4547, 100, 100, spage_Saving_entry_descriptor);
 }

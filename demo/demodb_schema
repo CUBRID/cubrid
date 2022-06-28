@@ -66,6 +66,8 @@ ALTER CLASS code ADD ATTRIBUTE
        s_name character(1),
        f_name character varying(6);
 
+ALTER CLASS code ADD ATTRIBUTE
+       CONSTRAINT [pk_code] PRIMARY KEY(s_name);
 
 ALTER CLASS nation ADD ATTRIBUTE
        code character(3) NOT NULL,

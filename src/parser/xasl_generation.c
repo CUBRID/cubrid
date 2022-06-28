@@ -12007,8 +12007,14 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
       if (indx_infop->coverage)
 	{
 	  qo_check_coll_optimization (index_entryp, &collation_opt);
-
 	  indx_infop->coverage = collation_opt.allow_index_opt;
+	  /* alloc list file id for covering index */
+	  regu_alloc (indx_infop->cov_list_id);
+	  if (indx_infop->cov_list_id == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "index plan generation - memory alloc");
+	      return NULL;
+	    }
 	}
     }
 
@@ -12096,7 +12102,7 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
 
       indx_infop->range_type = R_RANGE;
 
-      return indx_infop;
+      goto end;
     }
 
   /* scan range spec and index key information */
@@ -12169,6 +12175,16 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
 	}
     }
 
+end:
+  if (key_infop->key_cnt > 0)
+    {
+      regu_array_alloc (&key_infop->key_vals, key_infop->key_cnt);
+      if (key_infop->key_vals == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "index plan generation - memory alloc");
+	  return NULL;
+	}
+    }
   return indx_infop;
 }
 
