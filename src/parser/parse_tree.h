@@ -467,6 +467,17 @@ struct json_t;
 #define PT_IS_EXPR_NODE_WITH_OPERATOR(n, op_type) \
         ( (PT_IS_EXPR_NODE (n)) && ((n)->info.expr.op == (op_type)) )
 
+#define PT_IS_EXPR_NODE_WITH_COMP_OP(n) \
+        ( (PT_IS_EXPR_NODE (n)) && \
+          ((n)->info.expr.op == PT_EQ || \
+           (n)->info.expr.op == PT_GE || \
+           (n)->info.expr.op == PT_GT || \
+           (n)->info.expr.op == PT_LT || \
+           (n)->info.expr.op == PT_LE || \
+           (n)->info.expr.op == PT_GT_INF || \
+           (n)->info.expr.op == PT_LT_INF || \
+           (n)->info.expr.op == PT_RANGE ))
+
 #define PT_IS_EXPR_WITH_PRIOR_ARG(x) (PT_IS_EXPR_NODE (x) && \
 		PT_IS_EXPR_NODE_WITH_OPERATOR ((x)->info.expr.arg1, PT_PRIOR))
 
@@ -2305,6 +2316,7 @@ struct pt_expr_info
 						 * statement */
 #define PT_EXPR_INFO_DO_NOT_AUTOPARAM 65536	/* don't auto parameterize expr at qo_do_auto_parameterize() */
 #define PT_EXPR_INFO_CAST_WRAP 	131072	/* 0x20000, CAST is wrapped by compiling */
+#define PT_EXPR_INFO_ROWNUM_ONLY 262144	/* 0x40000, rownum only predicate */
   int flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)

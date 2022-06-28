@@ -503,6 +503,7 @@ struct qo_segment
   /* The index of this segment in the corresponding Env's seg array. */
   int idx;
   bool is_function_index;
+  bool is_not_null;
 };
 
 #define QO_SEG_ENV(seg)			(seg)->env
@@ -522,6 +523,7 @@ struct qo_segment
 #define QO_SEG_IS_OID_SEG(seg)		(QO_NODE_OID_SEG(QO_SEG_HEAD(seg)) == seg)
 #define QO_SEG_INDEX_TERMS(seg)         (seg)->index_terms
 #define QO_SEG_FUNC_INDEX(seg)		(seg)->is_function_index
+#define QO_SEG_IS_NOT_NULL(seg)		(seg)->is_not_null
 #define OID_SEG_NAME                    "OID$"
 
 struct qo_eqclass
