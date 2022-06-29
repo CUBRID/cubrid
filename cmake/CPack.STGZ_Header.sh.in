@@ -199,6 +199,12 @@ case $user_sh in
 	csh | tcsh)
 		sh_profile=$HOME/.cshrc
 		;;
+	*)
+		# if $sh_profile is null install script will stop following grep
+		echo "$user_sh: unknown SHELL, force set to /bin/bash"
+		sh_profile=$HOME/.bash_profile
+		CUBRID_SH_INSTALLED=0
+		;;
 esac
 
 if [ ! -f $sh_profile ];then
