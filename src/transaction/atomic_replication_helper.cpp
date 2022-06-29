@@ -132,6 +132,25 @@ namespace cublog
     return atomic_sequence.can_end_atomic_sequence (sysop_parent_lsa);
   }
 
+  log_lsa atomic_replication_helper::get_the_lowest_start_lsa ()
+  {
+    log_lsa min_lsa = MAX_LSA;
+
+    for (auto const &sequence_map_iterator : m_sequences_map)
+      {
+	if (sequence_map_iterator.second.get_start_lsa () < min_lsa)
+	  {
+	    min_lsa = sequence_map_iterator.second.get_start_lsa ();
+	  }
+      }
+    return min_lsa;
+  }
+
+  bool atomic_replication_helper::is_any_atomic_sequence_open () const
+  {
+    return !m_sequences_map.empty ();
+  }
+
   /********************************************************************************
    * atomic_replication_helper::atomic_replication_sequence function definitions  *
    ********************************************************************************/
@@ -203,6 +222,11 @@ namespace cublog
     assert (!LSA_ISNULL (&sysop_parent_lsa));
 
     return m_start_lsa >= sysop_parent_lsa;
+  }
+
+  log_lsa atomic_replication_helper::atomic_replication_sequence::get_start_lsa () const
+  {
+    return m_start_lsa;
   }
 
   /*********************************************************************************************************

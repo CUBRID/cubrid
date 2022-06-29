@@ -49,10 +49,13 @@ namespace cublog
       template <typename T>
       void read_and_redo_record (cubthread::entry &thread_entry, const LOG_RECORD_HEADER &rec_header,
 				 const log_lsa &rec_lsa);
+      void set_lowest_unapplied_lsa (log_lsa value);
 
     private:
       atomic_replication_helper m_atomic_helper;
       log_lsa m_lowest_unapplied_lsa;
+      bool m_should_update_lowest_lsa = true;
+      mutable std::mutex m_lowest_unapplied_lsa_mutex;
   };
 }
 

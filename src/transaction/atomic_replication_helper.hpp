@@ -57,6 +57,8 @@ namespace cublog
       bool check_for_page_validity (VPID vpid, TRANID tranid) const;
 #endif
       bool can_end_atomic_sequence (TRANID tranid, LOG_LSA sysop_parent_lsa) const;
+      bool is_any_atomic_sequence_open () const;
+      log_lsa get_the_lowest_start_lsa ();
 
     private:
 
@@ -81,6 +83,7 @@ namespace cublog
 	  void apply_and_unfix_sequence (THREAD_ENTRY *thread_p);
 	  int add_atomic_replication_unit (THREAD_ENTRY *thread_p, log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid);
 	  bool can_end_atomic_sequence (LOG_LSA sysop_parent_lsa) const;
+	  log_lsa get_start_lsa () const;
 	private:
 	  void apply_all_log_redos (THREAD_ENTRY *thread_p);
 

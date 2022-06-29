@@ -522,6 +522,9 @@ namespace cublog
   log_lsa
   replicator::get_lowest_unapplied_lsa () const
   {
+    // this function should never be called,
+    // instead the implementation in the atomic_replicator should be used
+    assert (false);
     return get_highest_processed_lsa ();
   }
 
