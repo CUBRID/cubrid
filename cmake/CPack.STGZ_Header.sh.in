@@ -152,16 +152,14 @@ echo "Unpacking finished successfully"
 
 # environment variables for *csh
 cubrid_csh_envfile="$HOME/.cubrid.csh"
-cat << ____cubrid__here_doc____ > ${cubrid_csh_envfile}-@CPACK_PACKAGE_VERSION@
-setenv CUBRID ${toplevel}
-____cubrid__here_doc____
-cat ${toplevel}/share/scripts/cubrid.csh >>  ${cubrid_csh_envfile}-@CPACK_PACKAGE_VERSION@
+cp ${toplevel}/share/scripts/cubrid.csh ${cubrid_csh_envfile}-@CPACK_PACKAGE_VERSION@
+sed -i '/setenv CUBRID /d' ${cubrid_csh_envfile}-@CPACK_PACKAGE_VERSION@
+sed -i "/CUBRID_DATABASES/isetenv CUBRID $toplevel" ${cubrid_csh_envfile}-@CPACK_PACKAGE_VERSION@
 # environment variables for *sh
 cubrid_sh_envfile="$HOME/.cubrid.sh"
-cat << ____cubrid__here_doc____ > ${cubrid_sh_envfile}-@CPACK_PACKAGE_VERSION@
-CUBRID=${toplevel}
-____cubrid__here_doc____
-cat ${toplevel}/share/scripts/cubrid.sh >> ${cubrid_sh_envfile}-@CPACK_PACKAGE_VERSION@
+cp ${toplevel}/share/scripts/cubrid.sh ${cubrid_sh_envfile}-@CPACK_PACKAGE_VERSION@
+sed -i "/CUBRID=/d" ${cubrid_sh_envfile}-@CPACK_PACKAGE_VERSION@
+sed -i "/CUBRID_DATABASE/iCUBRID=${toplevel}" ${cubrid_sh_envfile}-@CPACK_PACKAGE_VERSION@
 
 for e in "$cubrid_csh_envfile" "$cubrid_sh_envfile"; do
   if [ -r "${e}" ]; then
