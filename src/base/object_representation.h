@@ -1214,6 +1214,8 @@ extern char *or_unpack_elo (char *ptr, void **elo_ptr);
 #endif
 extern char *or_pack_ptr (char *ptr, UINTPTR ptrval);
 extern char *or_unpack_ptr (char *ptr, UINTPTR * ptrval);
+extern char *or_pack_key_val_range (char *ptr, const void *key_val_range_ptr);
+extern char *or_unpack_key_val_range (char *ptr, void *key_val_range_ptr);
 
 extern char *or_pack_bool_array (char *ptr, const bool * bools, int size);
 extern char *or_unpack_bool_array (char *ptr, bool ** bools);
