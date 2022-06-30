@@ -41,7 +41,7 @@ elif [ -f /etc/os-release ];then
 fi
 
 case $OS in
-	fedoraproject | centos | redhat)
+	fedoraproject | centos | redhat | rocky)
 		if [ ! -h /lib64/libncurses.so.5 ] && [ ! -h $LIB/libncurses.so.5 ];then
 			ln -s /lib64/libncurses.so.6 $LIB/libncurses.so.5
 			ln -s /lib64/libform.so.6 $LIB/libform.so.5
@@ -61,5 +61,8 @@ case $OS in
 			ln -s /lib/x86_64-linux-gnu/libtinfo.so.6 $LIB/libtinfo.so.5
 			ln -s /usr/lib/x86_64-linux-gnu/libform.so.6 $LIB/libform.so.5
 		fi
+		;;
+	*)
+		echo "CUBRID requires the ncurses package. Make sure the ncurses package is installed"
 		;;
 esac

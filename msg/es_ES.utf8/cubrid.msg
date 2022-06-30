@@ -988,7 +988,7 @@ $ LOADDB
 918 La clase '%1$s' referida por la clave externa no existe.
 919 La clase '%1$s' referida por la clave externa no tiene la clave primaria.
 920 La clave externa '%1$s' no incluye el miembro de clave primaria '%2$s'.
-921 El dominio del miembro de clave primaria '%1$s' es otro que aquel de la clave primaria '%2$s'.
+921 El dominio del miembro de clave primaria '%1$s' es otro que aquel de la clave primaria '%2$s'. (%3$s: %4$s vs. %5$s)
 922 La restriccion de la clave externa '%1$s' no es valida, debido al valor '%2$s'.
 923 Se supone que la clave primaria '%1$s' referida por la clave externa '%2$s' no puede ser disminuida.
 924 La operaciones Actualizar/Eliminar son restringidas por la clave externa '%1$s'.
