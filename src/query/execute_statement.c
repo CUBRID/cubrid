@@ -17692,10 +17692,19 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_NAME (statement)), synonym_name, DB_MAX_IDENTIFIER_LENGTH);
 
   /* target_name */
-  if (PT_SYNONYM_TARGET_NAME (statement) != NULL)
+  if (PT_SYNONYM_TARGET_NAME (statement) == NULL)
     {
-      
-      sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name_buf, DB_MAX_IDENTIFIER_LENGTH);
+      /* If only the comment is changed, PT_SYNONYM_TARGET_NAME (statement) can be NULL.
+       * If both PT_SYNONYM_TARGET_NAME (statement) and PT_SYNONYM_COMMENT (statement) are NULL,
+       * an error occurred in yyparse() and it should not have come here. */
+      assert (PT_SYNONYM_COMMENT (statement) != NULL);
+    }
+  else
+    {
+      /* PT_SYNONYM_TARGET_NAME (statement) != NULL */
+
+      sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name_buf,
+			      DB_MAX_IDENTIFIER_LENGTH);
       target_name = target_name_buf;
 
       /* target_owner */
@@ -17705,15 +17714,6 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  ASSERT_ERROR_AND_SET (error);
 	  return error;
 	}
-    }
-  else
-    {
-      /* PT_SYNONYM_TARGET_NAME (statement) == NULL */
-
-      /* If only the comment is changed, PT_SYNONYM_TARGET_NAME (statement) can be NULL.
-       * If both PT_SYNONYM_TARGET_NAME (statement) and PT_SYNONYM_COMMENT (statement) are NULL,
-       * an error occurred in yyparse() and it should not have come here. */
-      assert (PT_SYNONYM_COMMENT (statement) != NULL);
     }
 
   /* comment */
@@ -17788,7 +17788,8 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
     }
 
   /* old_target_name */
-  if (target_name != NULL && sm_get_synonym_target_name (instance_obj, old_target_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+  if (target_name != NULL
+      && sm_get_synonym_target_name (instance_obj, old_target_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       goto end;
@@ -17848,7 +17849,7 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
 	  db_make_null (&value);
 	}
       else
-        {
+	{
 	  db_make_string (&value, comment);
 	}
       error = dbt_put_internal (obj_tmpl, "comment", &value);
