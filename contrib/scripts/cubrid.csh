@@ -18,8 +18,9 @@
 setenv CUBRID /opt/cubrid
 setenv CUBRID_DATABASES $CUBRID/databases
 
+set CUBRID_BASENAME=`basename $CUBRID`
 if ( ${?LD_LIBRARY_PATH} ) then
-	set LIB_PATH = `echo $LD_LIBRARY_PATH | grep -i cubrid`
+	set LIB_PATH = `echo $LD_LIBRARY_PATH | grep -i $CUBRID_BASENAME`
 	if ( $LIB_PATH == "" ) then
 		setenv LD_LIBRARY_PATH $CUBRID/lib:$CUBRID/cci/lib:$LD_LIBRARY_PATH
 	endif
@@ -27,10 +28,13 @@ else
 	setenv LD_LIBRARY_PATH $CUBRID/lib:$CUBRID/cci/lib
 endif
 
-set BIN_PATH = `echo $path | grep -i cubrid`
+set BIN_PATH = `echo $path | grep -i $CUBRID_BASENAME`
 if ( "$BIN_PATH" == "" ) then
 	set path=($CUBRID/bin $path)
 endif
+
+setenv SHLIB_PATH $LD_LIBRARY_PATH
+setenv LIBPATH $LD_LIBRARY_PATH
 
 set LIB=$CUBRID/lib
 
