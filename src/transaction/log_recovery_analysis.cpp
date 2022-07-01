@@ -2179,6 +2179,8 @@ log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
   assert (!most_recent_trantable_snapshot_lsa.is_null ());
 
   log_reader lr (LOG_CS_SAFE_READER);
+  _er_log_debug (ARG_FILE_LINE, "cdbg: log_recovery_analysis_load_trantable_snapshot lsa=(%lld|%d)\n",
+                 LSA_AS_ARGS (&most_recent_trantable_snapshot_lsa));
   int log_page_read_err = lr.set_lsa_and_fetch_page (most_recent_trantable_snapshot_lsa);
   if (log_page_read_err != NO_ERROR)
     {
@@ -2193,6 +2195,8 @@ log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
 
   lr.advance_when_does_not_fit (sizeof (log_rec_trantable_snapshot));
   const log_rec_trantable_snapshot log_rec = lr.reinterpret_copy_and_add_align<log_rec_trantable_snapshot> ();
+  _er_log_debug (ARG_FILE_LINE, "cdbg: log_recovery_analysis_load_trantable_snapshot snapshot_lsa=(%lld|%d) len=%u\n",
+                 LSA_AS_ARGS (&log_rec.snapshot_lsa), log_rec.length);
   std::unique_ptr<char []> snapshot_data_buf = std::make_unique<char []> (static_cast<size_t> (log_rec.length));
   lr.copy_from_log (snapshot_data_buf.get (), log_rec.length);
 
