@@ -159,7 +159,7 @@ sed -i "/CUBRID_DATABASES/isetenv CUBRID $toplevel" ${cubrid_csh_envfile}-@CPACK
 cubrid_sh_envfile="$HOME/.cubrid.sh"
 cp ${toplevel}/share/scripts/cubrid.sh ${cubrid_sh_envfile}-@CPACK_PACKAGE_VERSION@
 sed -i "/CUBRID=/d" ${cubrid_sh_envfile}-@CPACK_PACKAGE_VERSION@
-sed -i "/CUBRID_DATABASE/iCUBRID=${toplevel}" ${cubrid_sh_envfile}-@CPACK_PACKAGE_VERSION@
+sed -i "/CUBRID_DATABASE/iexport CUBRID=${toplevel}" ${cubrid_sh_envfile}-@CPACK_PACKAGE_VERSION@
 
 for e in "$cubrid_csh_envfile" "$cubrid_sh_envfile"; do
   if [ -r "${e}" ]; then
