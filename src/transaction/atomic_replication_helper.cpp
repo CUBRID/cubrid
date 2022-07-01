@@ -146,11 +146,6 @@ namespace cublog
     return min_lsa;
   }
 
-  bool atomic_replication_helper::is_any_atomic_sequence_open () const
-  {
-    return !m_sequences_map.empty ();
-  }
-
   /********************************************************************************
    * atomic_replication_helper::atomic_replication_sequence function definitions  *
    ********************************************************************************/
@@ -361,10 +356,5 @@ namespace cublog
   void atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::set_page_ptr (const PAGE_PTR &ptr)
   {
     m_page_ptr = ptr;
-  }
-
-  LOG_LSA atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::get_lsa () const
-  {
-    return m_record_lsa;
   }
 }

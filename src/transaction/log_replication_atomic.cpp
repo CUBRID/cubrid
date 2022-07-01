@@ -58,11 +58,7 @@ namespace cublog
 	(void) m_redo_context.m_reader.set_lsa_and_fetch_page (m_redo_lsa);
 
 	const LOG_RECORD_HEADER header = m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_RECORD_HEADER> ();
-
-	if (m_atomic_helper.is_any_atomic_sequence_open () == false)
-	  {
-	    set_lowest_unapplied_lsa (m_redo_lsa);
-	  }
+	set_lowest_unapplied_lsa ();
 
 	switch (header.type)
 	  {
@@ -126,7 +122,7 @@ namespace cublog
 		assert (false);
 	      }
 	    m_atomic_helper.add_atomic_replication_sequence (header.trid, m_redo_lsa, m_redo_context);
-	    set_lowest_unapplied_lsa (m_atomic_helper.get_the_lowest_start_lsa ());
+	    set_lowest_unapplied_lsa ();
 	    break;
 	  case LOG_END_ATOMIC_REPL:
 	    if (!m_atomic_helper.is_part_of_atomic_replication (header.trid))
@@ -135,7 +131,7 @@ namespace cublog
 		assert (false);
 	      }
 	    m_atomic_helper.unfix_atomic_replication_sequence (&thread_entry, header.trid);
-	    set_lowest_unapplied_lsa (m_atomic_helper.get_the_lowest_start_lsa ());
+	    set_lowest_unapplied_lsa ();
 	    break;
 	  case LOG_MVCC_UNDO_DATA:
 	  {
@@ -157,7 +153,7 @@ namespace cublog
 	    if (m_atomic_helper.can_end_atomic_sequence (header.trid, log_rec.lastparent_lsa))
 	      {
 		m_atomic_helper.unfix_atomic_replication_sequence (&thread_entry, header.trid);
-		set_lowest_unapplied_lsa (m_atomic_helper.get_the_lowest_start_lsa ());
+		set_lowest_unapplied_lsa ();
 	      }
 
 	    read_and_bookkeep_mvcc_vacuum<LOG_REC_SYSOP_END> (header.back_lsa, m_redo_lsa, log_rec, false);
@@ -259,9 +255,15 @@ namespace cublog
   }
 
   void
-  atomic_replicator::set_lowest_unapplied_lsa (log_lsa value)
+  atomic_replicator::set_lowest_unapplied_lsa ()
   {
-    std::lock_guard<std::mutex> lockg (m_lowest_unapplied_lsa_mutex);
-    m_lowest_unapplied_lsa = value;
+    assert (m_redo_lsa != NULL_LSA);
+    const LOG_LSA helper_lowest_unapplied_lsa = m_atomic_helper.get_the_lowest_start_lsa ();
+    const LOG_LSA value_to_change = std::min (m_redo_lsa, helper_lowest_unapplied_lsa);
+
+    {
+      std::lock_guard<std::mutex> lockg (m_lowest_unapplied_lsa_mutex);
+      m_lowest_unapplied_lsa = value_to_change;
+    }
   }
 }
