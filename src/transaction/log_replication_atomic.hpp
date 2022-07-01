@@ -54,7 +54,6 @@ namespace cublog
     private:
       atomic_replication_helper m_atomic_helper;
       log_lsa m_lowest_unapplied_lsa;
-      bool m_should_update_lowest_lsa = true;
       mutable std::mutex m_lowest_unapplied_lsa_mutex;
   };
 }

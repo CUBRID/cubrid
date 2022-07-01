@@ -257,10 +257,10 @@ namespace cublog
   void
   atomic_replicator::set_lowest_unapplied_lsa ()
   {
-    assert (m_redo_lsa != NULL_LSA);
+    assert (!LSA_ISNULL (&m_redo_lsa));
     const LOG_LSA helper_lowest_unapplied_lsa = m_atomic_helper.get_the_lowest_start_lsa ();
-    const LOG_LSA value_to_change = std::min (m_redo_lsa, helper_lowest_unapplied_lsa);
-
+    assert (!LSA_ISNULL (&helper_lowest_unapplied_lsa));
+    const LOG_LSA value_to_change = (m_redo_lsa < helper_lowest_unapplied_lsa) ? m_redo_lsa : helper_lowest_unapplied_lsa;
     {
       std::lock_guard<std::mutex> lockg (m_lowest_unapplied_lsa_mutex);
       m_lowest_unapplied_lsa = value_to_change;
