@@ -171,7 +171,9 @@ int
 tran_reset_wait_times (int wait_in_msecs)
 {
   /* change lock timeout parameter for a session */
-  sysprm_set_value_by_id (PRM_ID_LK_TIMEOUT, (SYSPRM_VALUE) { .i = wait_in_msecs / 1000 } );
+  sysprm_set_value_by_id (PRM_ID_LK_TIMEOUT, (SYSPRM_VALUE)
+			  {
+			  .i = wait_in_msecs / 1000});
   /* change lock timeout parameter for a transaction */
   tm_Tran_wait_msecs = wait_in_msecs;
   return log_reset_wait_msecs (tm_Tran_wait_msecs);
@@ -208,13 +210,16 @@ tran_reset_isolation (TRAN_ISOLATION isolation, bool async_ws)
     }
 
   if (tm_Tran_isolation != isolation)
-    { 
+    {
       error_code = log_reset_isolation (isolation);
       if (error_code == NO_ERROR)
 	{
-    /* change isolation level parameter for a session */
-    sysprm_set_value_by_id (PRM_ID_LOG_ISOLATION_LEVEL, (SYSPRM_VALUE) { .i = isolation } );
-    /* change isolation level parameter for a transaction */
+	  /* change isolation level parameter for a session */
+	  sysprm_set_value_by_id (PRM_ID_LOG_ISOLATION_LEVEL, (SYSPRM_VALUE)
+				  {
+				  .i = isolation}
+	  );
+	  /* change isolation level parameter for a transaction */
 	  tm_Tran_isolation = isolation;
 	}
     }

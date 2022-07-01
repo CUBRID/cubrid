@@ -8463,7 +8463,7 @@ sysprm_need_filtering_parameter (SYSPRM_ASSIGN_VALUE * assignments)
   bool filtered = true;
 
   switch (assignments->prm_id)
-  {
+    {
     case PRM_ID_LK_TIMEOUT:
       (void) tran_reset_wait_times (assignments->value.i * 1000);
       break;
@@ -8474,7 +8474,7 @@ sysprm_need_filtering_parameter (SYSPRM_ASSIGN_VALUE * assignments)
 
     default:
       filtered = false;
-  }
+    }
 
   return filtered;
 }
@@ -8491,39 +8491,39 @@ sysprm_need_filtering_parameter (SYSPRM_ASSIGN_VALUE * assignments)
 bool
 sysprm_filter_change_parameters (SYSPRM_ASSIGN_VALUE ** assignments_ptr)
 {
-  SYSPRM_ASSIGN_VALUE * prev_assignment = NULL;
-  SYSPRM_ASSIGN_VALUE * next_assignment;
-  SYSPRM_ASSIGN_VALUE * assignment;
+  SYSPRM_ASSIGN_VALUE *prev_assignment = NULL;
+  SYSPRM_ASSIGN_VALUE *next_assignment;
+  SYSPRM_ASSIGN_VALUE *assignment;
   bool empty = false;
 
   assignment = *assignments_ptr;
   while (assignment != NULL)
-  {
-    next_assignment = assignment->next;
-    if (sysprm_need_filtering_parameter (assignment) == true)
     {
-      if (*assignments_ptr == assignment)
-      {
-        *assignments_ptr = assignment->next;
-      }
+      next_assignment = assignment->next;
+      if (sysprm_need_filtering_parameter (assignment) == true)
+	{
+	  if (*assignments_ptr == assignment)
+	    {
+	      *assignments_ptr = assignment->next;
+	    }
+	  else
+	    {
+	      prev_assignment->next = assignment->next;
+	    }
+	  assignment->next = NULL;
+	  sysprm_free_assign_values (&assignment);
+	}
       else
-      {
-        prev_assignment->next = assignment->next;
-      }
-      assignment->next = NULL;
-      sysprm_free_assign_values (&assignment);
+	{
+	  prev_assignment = assignment;
+	}
+      assignment = next_assignment;
     }
-    else
-    {
-      prev_assignment = assignment;
-    }
-    assignment = next_assignment;
-  }
 
   if (!*assignments_ptr)
-  {
-    empty = true;
-  }
+    {
+      empty = true;
+    }
 
   return empty;
 }
