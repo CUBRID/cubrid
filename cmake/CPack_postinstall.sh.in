@@ -1,6 +1,34 @@
 # Make cubrid start/shutdown automatically.
+#
+PRODUCT_NAME="CUBRID"
+
 if [ -x /sbin/chkconfig ] ; then
   /sbin/chkconfig --add cubrid
 fi
-chown cubrid:cubrid -R $RPM_INSTALL_PREFIX
+#
+bash_exist=1
+sh_profile=$RPM_INSTALL_PREFIX/.bash_profile
+if [ ! -f $sh_profile ];then
+  bash_exist=0
+  touch $sh_profile
+fi
+
+append_profile=$(grep "${PRODUCT_NAME} environment" $sh_profile)
+
+if [ -z "$append_profile" ];then
+  echo '#-------------------------------------------------------------------------------' >> $sh_profile
+  echo '# set '${PRODUCT_NAME}' environment variables'                                    >> $sh_profile
+  echo '#-------------------------------------------------------------------------------' >> $sh_profile
+  echo 'if [ -f $HOME/.cubrid.sh ];then'                                                  >> $sh_profile
+  echo '. $HOME/.cubrid.sh'                                                               >> $sh_profile
+  echo 'fi'                                                                               >> $sh_profile
+
+  if [ $bash_exist -eq 0 ];then
+    echo "Notification: $sh_profile is created"
+  fi
+fi
+
+cp $RPM_INSTALL_PREFIX/share/rpm/cubrid.sh $RPM_INSTALL_PREFIX/.cubrid.sh
+
 . $RPM_INSTALL_PREFIX/share/rpm/cubrid.sh
+chown cubrid:cubrid -R $RPM_INSTALL_PREFIX

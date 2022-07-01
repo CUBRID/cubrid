@@ -326,13 +326,6 @@ qo_set_optimization_param (void *retval, QO_PARAM param, ...)
 	  *(int *) retval = prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL);
 	}
       prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, va_arg (args, int));
-
-      {
-	extern void set_plan_include_hint (bool is_include);
-
-	int level = prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL);
-	set_plan_include_hint ((bool) PLAN_DUMP_ENABLED (level));
-      }
       break;
 
     case QO_PARAM_COST:
@@ -616,7 +609,7 @@ qo_optimize_helper (QO_ENV * env)
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (plan && PLAN_DUMP_ENABLED (level) && DETAILED_DUMP (level) && env->plan_dump_enabled)
     {
-      qo_env_dump (env, query_Plan_dump_fp);
+      qo_env_dump (env, db_query_get_plan_dump_fp ());
     }
   if (plan == NULL)
     {
@@ -1320,6 +1313,10 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
 		    }
 		}
 	      break;
+	    case PT_DBLINK_TABLE:
+	      QO_NODE_NCARD (node) = 1000;	/* just guess for dblink */
+	      QO_NODE_TCARD (node) = 100;	/* just guess for dblink */
+
 	    default:
 	      break;
 	    }

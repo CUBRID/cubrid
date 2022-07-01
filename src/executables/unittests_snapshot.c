@@ -128,6 +128,7 @@ logtb_initialize_tdes_for_mvcc_testing (LOG_TDES * tdes, int tran_index)
 
   tdes->log_upd_stats.unique_stats_hash =
     mht_create ("Tran_unique_stats", 101, logtb_tran_btid_hash_func, logtb_tran_btid_hash_cmp_func);
+  tdes->log_upd_stats.classes_cos_hash = mht_create ("Tran_classes_cos", 101, oid_hash, oid_compare_equals);
 }
 
 

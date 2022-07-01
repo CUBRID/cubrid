@@ -45,9 +45,6 @@ typedef struct ctid CTID;
 struct ctid
 {
   VFID vfid;			/* catalog volume identifier */
-#if 1				/* TODO - not used */
-  EHID xhid;			/* extendible hash index identifier */
-#endif
   PAGEID hpgid;			/* catalog header page identifier */
 };				/* catalog identifier */
 

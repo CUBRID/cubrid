@@ -89,7 +89,7 @@ typedef enum
   MSGCAT_UTIL_SET_VACUUMDB = 55,
   MSGCAT_UTIL_SET_CHECKSUMDB = 56,
   MSGCAT_UTIL_SET_TDE = 57,
-  MSGCAT_UTIL_SET_FLASHBACK = 58,
+  MSGCAT_UTIL_SET_FLASHBACK = 58
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -124,7 +124,11 @@ typedef enum
   MSGCAT_UTIL_GENERIC_INVALID_CMD = 40,
   MSGCAT_UTIL_GENERIC_MANAGER_NOT_INSTALLED = 41,
   MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT = 42,
-  MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR = 43
+  MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR = 43,
+  /* javasp usage = 44 ? */
+  /* gateway usage = 45 ? */
+  MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH = 46,
+  MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT = 47
 } MSGCAT_UTIL_GENERIC_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_DELETEDB */
@@ -592,6 +596,7 @@ typedef enum
 {
   APPLYINFO_MSG_DBA_PASSWORD = 21,
   APPLYINFO_MSG_NOT_HA_MODE = 22,
+  APPLYINFO_MSG_NO_QUERY_RESULTS = 57,
   APPLYINFO_MSG_HA_NOT_SUPPORT = 58,
   APPLYINFO_MSG_NOT_IN_STANDALONE = 59,
   APPLYINFO_MSG_USAGE = 60
@@ -694,6 +699,7 @@ typedef enum
 {
   CHECKSUMDB_MSG_INVALID_INPUT_FILE = 1,
   CHECKSUMDB_MSG_MUST_RUN_ON_ACTIVE = 2,
+  CHECKSUMDB_MSG_INVALID_OWNER = 3,
   CHECKSUMDB_MSG_HA_NOT_SUPPORT = 58,
   CHECKSUMDB_MSG_NOT_IN_STANDALONE = 59,
   CHECKSUMDB_MSG_USAGE = 60
@@ -729,6 +735,7 @@ typedef enum
   FLASHBACK_MSG_TIMEOUT = 12,
   FLASHBACK_MSG_DUPLICATED_REQUEST = 13,
   FLASHBACK_MSG_NOT_IN_STANDALONE = 14,
+  FLASHBACK_MSG_SYSTEM_CLASS_NOT_SUPPORTED = 15,
   FLASHBACK_MSG_USAGE = 60
 } MSGCAT_FLASHBACK_MSG;
 
@@ -856,7 +863,9 @@ typedef struct _ha_config
 #define UTIL_COMMDB_NAME        "cub_commdb" UTIL_EXE_EXT
 #define UTIL_CUBRID_NAME        "cub_server" UTIL_EXE_EXT
 #define UTIL_BROKER_NAME        "cubrid_broker" UTIL_EXE_EXT
+#define UTIL_GATEWAY_NAME       "cubrid_gateway" UTIL_EXE_EXT
 #define UTIL_MONITOR_NAME       "broker_monitor" UTIL_EXE_EXT
+#define UTIL_GATEWAY_MONITOR_NAME       "gateway_monitor" UTIL_EXE_EXT
 #define UTIL_TESTER_NAME        "broker_tester" UTIL_EXE_EXT
 #define UTIL_CUB_MANAGER_NAME   "cub_manager" UTIL_EXE_EXT
 #define UTIL_ADMIN_NAME         "cub_admin" UTIL_EXE_EXT
@@ -879,6 +888,7 @@ typedef struct _ha_config
 #define PRINT_PAGE_SERVER_NAME          "cubrid page server"
 #define PRINT_TRANSACTION_SERVER_NAME   "cubrid transaction server"
 #define PRINT_BROKER_NAME               "cubrid broker"
+#define PRINT_GATEWAY_NAME      "cubrid gateway"
 #define PRINT_MANAGER_NAME              "cubrid manager server"
 #define PRINT_HEARTBEAT_NAME            "cubrid heartbeat"
 #define PRINT_JAVASP_NAME               "cubrid javasp"
@@ -886,6 +896,7 @@ typedef struct _ha_config
 
 #define PRINT_CMD_SERVICE       "service"
 #define PRINT_CMD_BROKER        "broker"
+#define PRINT_CMD_GATEWAY       "gateway"
 #define PRINT_CMD_MANAGER       "manager"
 #define PRINT_CMD_SERVER        "server"
 #define PRINT_CMD_JAVASP        "javasp"
@@ -941,6 +952,7 @@ typedef struct _ha_config
 #define MASK_SERVER             0x02
 #define MASK_BROKER             0x04
 #define MASK_MANAGER            0x08
+#define MASK_GATEWAY            0x10
 #define MASK_ADMIN              0x20
 #define MASK_HEARTBEAT          0x40
 #define MASK_JAVASP             0x80
@@ -1312,8 +1324,6 @@ typedef struct _ha_config
 #define LOAD_TABLE_NAME_L                       "table"
 #define LOAD_COMPARE_STORAGE_ORDER_S            11820
 #define LOAD_COMPARE_STORAGE_ORDER_L            "compare-storage-order"
-#define LOAD_CS_FORCE_LOAD_S                    11824
-#define LOAD_CS_FORCE_LOAD_L                    "force-load"
 #define LOAD_NO_USER_SPECIFIED_NAME_S           11825
 #define LOAD_NO_USER_SPECIFIED_NAME_L           "no-user-specified-name"
 
@@ -1725,6 +1735,7 @@ extern "C"
   extern char *utility_get_option_string_value (UTIL_ARG_MAP * arg_map, int arg_ch, int index);
   extern INT64 utility_get_option_bigint_value (UTIL_ARG_MAP * arg_map, int arg_ch);
   extern int utility_get_option_string_table_size (UTIL_ARG_MAP * arg_map);
+  extern int utility_check_class_name (const char *class_name);
 
   extern FILE *fopen_ex (const char *filename, const char *type);
 

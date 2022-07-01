@@ -3581,7 +3581,7 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
 
   check_count_lru = (int) (cfg_check_cnt * lru_dynamic_flush_adj);
   /* limit the checked BCBs to equivalent of 200 M */
-  check_count_lru = MIN (check_count_lru, (200 * 1024 * 1024) / db_page_size ());
+  check_count_lru = MIN (check_count_lru, (200 * 1024 * 1024) / DB_PAGESIZE);
 
 #if !defined (NDEBUG) && defined (SERVER_MODE)
   empty_flushed_bcb_queue = pgbuf_Pool.flushed_bcbs->is_empty ();
@@ -4358,7 +4358,9 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 	  pgptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 	  if (pgptr != NULL)
 	    {
+#if !defined (NDEBUG)
 	      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_AREA);
+#endif /* !NDEBUG */
 
 	      memcpy (area, (char *) pgptr + start_offset, length);
 	      pgbuf_unfix_and_init (thread_p, pgptr);
@@ -4399,7 +4401,9 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
       /* the caller is holding only bufptr->mutex. */
       CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
 
+#if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_AREA);
+#endif /* !NDEBUG */
 
       memcpy (area, (char *) pgptr + start_offset, length);
 
@@ -8184,7 +8188,7 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
       if (read_from_local)
 	{
 	  // *INDENT-OFF*
-	  const size_t io_page_size = static_cast<size_t> (db_io_page_size ());
+	  const size_t io_page_size = static_cast<size_t> (IO_PAGESIZE);
 	  std::unique_ptr<char []> buffer_uptr = std::make_unique<char []> (io_page_size);
 	  FILEIO_PAGE *second_io_page = reinterpret_cast<FILEIO_PAGE *> (buffer_uptr.get ());
 	  // *INDENT-ON*
@@ -8399,8 +8403,8 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
   else
     {
       // We have a page.
-      std::memcpy (io_page, message_buf, db_io_page_size ());
-      message_buf += db_io_page_size ();
+      std::memcpy (io_page, message_buf, IO_PAGESIZE);
+      message_buf += IO_PAGESIZE;
 
       if (perform_logging)
 	{
@@ -8477,7 +8481,7 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
 
       // add io_page
-      payload_in_out.append (reinterpret_cast<const char *> (io_pgptr), (size_t) db_io_page_size ());
+      payload_in_out.append (reinterpret_cast<const char *> (io_pgptr), (size_t) IO_PAGESIZE);
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
@@ -12753,8 +12757,10 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 	  pgbuf_bcb_unregister_avoid_deallocation (bufptr);
 
+#if !defined (NDEBUG)
 	  /* page after re-fix should have the same type as before unfix */
 	  (void) pgbuf_check_page_ptype (thread_p, pgptr, ordered_holders_info[i].ptype);
+#endif /* !NDEBUG */
 
 #if defined(PGBUF_ORDERED_DEBUG)
 	  _er_log_debug (__FILE__, __LINE__,

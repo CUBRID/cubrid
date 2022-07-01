@@ -116,9 +116,6 @@ struct boot_dbparm
   VFID trk_vfid;		/* Tracker of files */
   HFID hfid;			/* Heap file where this information is stored. It is only used for validation purposes */
   HFID rootclass_hfid;		/* Heap file where classes are stored */
-#if 1				/* TODO - not used */
-  EHID classname_table;		/* The hash file of class names */
-#endif
   CTID ctid;			/* The catalog file */
   /* NOTE: deleted; not used anymore; kept here only for backwards compatibility (alignment); can be recycled */
   INT32 dummy1;
@@ -5102,13 +5099,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   boot_Db_parm->trk_vfid.volid = LOG_DBFIRST_VOLID;
   boot_Db_parm->hfid.vfid.volid = LOG_DBFIRST_VOLID;
   boot_Db_parm->rootclass_hfid.vfid.volid = LOG_DBFIRST_VOLID;
-#if 1				/* TODO */
-  boot_Db_parm->classname_table.vfid.volid = LOG_DBFIRST_VOLID;
-#endif
   boot_Db_parm->ctid.vfid.volid = LOG_DBFIRST_VOLID;
-#if 1				/* TODO */
-  boot_Db_parm->ctid.xhid.vfid.volid = LOG_DBFIRST_VOLID;
-#endif
 
   (void) strncpy (boot_Db_parm->rootclass_name, ROOTCLASS_NAME, DB_SIZEOF (boot_Db_parm->rootclass_name));
   boot_Db_parm->nvols = 1;
@@ -5173,14 +5164,6 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       assert_release (false);
       goto error;
     }
-
-#if 1				/* TODO */
-  if (xehash_create (thread_p, &boot_Db_parm->classname_table, DB_TYPE_STRING, -1, &boot_Db_parm->rootclass_oid, -1,
-		     false) == NULL)
-    {
-      goto error;
-    }
-#endif
 
   /* Initialize structures for global unique statistics */
   error_code = logtb_initialize_global_unique_stats_table (thread_p);

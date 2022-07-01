@@ -125,6 +125,8 @@ namespace cubthread
     , clear_trace (false)
     , tran_entries ()
     , no_supplemental_log (false)
+    , trigger_involved (false)
+    , is_cdc_daemon (false)
 #if !defined (NDEBUG)
     , fi_test_array (NULL)
     , count_private_allocators (0)

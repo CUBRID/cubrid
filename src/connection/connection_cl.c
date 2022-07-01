@@ -101,14 +101,11 @@ static CSS_CONN_ENTRY *css_Conn_anchor = NULL;
 static int css_Client_id = 0;
 
 static void css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd);
-static void css_close_conn (CSS_CONN_ENTRY * conn);
 static void css_dealloc_conn (CSS_CONN_ENTRY * conn);
 
 static int css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header);
 static CSS_CONN_ENTRY *css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, const char *message,
 					   unsigned short *rid);
-static CSS_CONN_ENTRY *css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn, int port_id,
-						    unsigned short *rid);
 static int css_return_queued_data (CSS_CONN_ENTRY * conn, unsigned short request_id, char **buffer, int *buffer_size,
 				   int *rc);
 static int css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, int *buffer_size);
@@ -183,7 +180,7 @@ css_make_conn (SOCKET fd)
  *   return: void
  *   conn(in):
  */
-static void
+void
 css_close_conn (CSS_CONN_ENTRY * conn)
 {
   if (conn && !IS_INVALID_SOCKET (conn->fd))
@@ -769,7 +766,7 @@ css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, const char *message,
  *   port_id(in):
  *   rid(in):
  */
-static CSS_CONN_ENTRY *
+CSS_CONN_ENTRY *
 css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn, int port_id, unsigned short *rid)
 {
   int reason = -1, buffer_size;

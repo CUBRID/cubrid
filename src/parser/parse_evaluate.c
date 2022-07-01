@@ -47,6 +47,7 @@
 #include "network_interface_cl.h"
 #include "transform.h"
 #include "dbtype.h"
+#include "optimizer.h"		/* qo_need_skip_execution () */
 
 /* associates labels with DB_VALUES */
 static MHT_TABLE *pt_Label_table = NULL;
@@ -1355,7 +1356,17 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
       break;
 
     case PT_METHOD_CALL:
-      error = do_call_method (parser, tree);
+      if (qo_need_skip_execution ())
+	{
+	  // It is for the get_query_info.
+	  // Do not call method by constant folding
+	  db_make_null (db_values);
+	  error = NO_ERROR;
+	}
+      else
+	{
+	  error = do_call_method (parser, tree);
+	}
       if (error >= NO_ERROR)
 	{
 	  if ((val = (DB_VALUE *) (tree->etc)) != NULL)

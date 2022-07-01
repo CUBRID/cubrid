@@ -152,6 +152,7 @@ Utilidades de servicio disponible:\n\
     service\n\
     server\n\
     broker\n\
+    gateway\n\
     manager\n\
     heartbeat\n\
     javasp\n\
@@ -265,6 +266,21 @@ Comando disponible:\n\
     stop        [database-name]\n\
     restart     [database-name]\n\
     status      [database-name]\n
+45 cubrid utility, version %1$s\n\
+usage: %2$s gateway <command> [args]\n\
+\n\
+Available command:\n\
+    start\n\
+    stop\n\
+    restart\n\
+    info\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-c] [-u] [<expr>]\n\
+    on          gateway-name\n\
+    off         gateway-name\n\
+    reset       gateway-name\n\
+    acl         <status|reload> [gateway-name]\n
+46 La longitud de nombre_propietario debe ser inferior a %1$d y la longitud de nombre_clase debe ser inferior a %2$d bytes.\n
+47 Formato no válido para nombre_propietario.nombre_clase ('%1$s').\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 ADVERTENCIA: -t opcion es ignorada en modo de ejecucion independiente.\n
@@ -983,6 +999,7 @@ opciones validas:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Introducir contrasena DBA:
 22 El servidor no ha sido configurado para HA. \n
+57 No se puede generar la información aplicada debido a una ruta no válida de la opción -L o no hay información relacionada en la tabla de catálogo db_ha_apply_info.\n
 58 Caracteristica HA no es soportada en esta plataforma.\n
 59 applyinfo no puede ejecutar como modo independiente.\n
 60 \
@@ -1208,6 +1225,7 @@ opciones validas:\n\
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Fallo al cargar los nombres de tablas en %1$s.\n
 2 checksumdb tiene que ejecutar en un servidor de HA activo. %1$s (estado actual: %2$s)\n
+3 El propietario de la tabla para guardar el resultado de la suma de comprobación debe ser DBA.\n
 58 Caracteristica HA no soportada en esta plataforma.\n
 59 checksumdb no puede ejecutar como modo stand-alone.\n
 60 \
@@ -1221,7 +1239,7 @@ opciones validas:\n\
   -i, --include-class-file=FILE archivo de entrada de los nombres de tabla a ser incluidos\n\
   -e, --exclude-class-file=FILE archivo de entrada de los nombres de tabla a ser excluidos; o -i o -e pueden ser utilizados, no ambos\n\
   -t, --timeout=NUMBER          tiempo de expera de la consulta (query) en milisegundos; default: 1000 ms\n\
-  -n, --table-name=NAME         nombre de tabla para guardar los resultados de la checksum; default: db_ha_checksums\n\
+  -n, --table-name=NAME         nombre de tabla para guardar los resultados de la checksum; default: dba.db_ha_checksum\n\
   -r, --report-only             reportar integridad de la replicacion en base al calculo de checksum\n\
                                 cualquier opcion excepto a --table-name va a ser ignorada\n\
       --resume                  reanudar calculo de checksum\n\
@@ -1264,9 +1282,10 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 El ID de transacción debe ingresarse en %1$d segundos. El tiempo de espera se puede ajustar a través de la configuración de 'flashback_timeout' en 'cubrid.conf'.\n
 13 Flashback ya se está ejecutando. Dos procesos no pueden ejecutar Flashback.\n
 14 Flashback no se puede ejecutar como modo independiente.\n
+15 La clase de catálogo del sistema (%1$s) no se admite en flashback.\n
 60 \
 flashback: proporciona declaraciones para retroceder una transacción específica.\n\
-uso: %1$s flashback [OPCIÓN] database-name class_name1 [class_name2 ...]\n\
+uso: %1$s flashback [OPCIÓN] database-name owner_name.class_name1 [owner_name.class_name2 ...]\n\
 \n\
 opciones válidas:\n\
     -o, --output-file=ARCHIVO     redirige el mensaje de salida a ARCHIVO; predeterminado: ninguno.\n\

@@ -497,28 +497,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
   get_loaddb_args (arg_map, &args);
 
-  if (utility_get_option_int_value (arg_map, LOAD_CS_MODE_S) == true)
-    {
-      if (sysprm_load_and_init (args.volume.c_str (), NULL, SYSPRM_IGNORE_INTL_PARAMS) == NO_ERROR)
-	{
-	  if (prm_get_integer_value (PRM_ID_HA_MODE))
-	    {
-	      if (utility_get_option_bool_value (arg_map, LOAD_CS_FORCE_LOAD_S) != true)
-		{
-		  PRINT_AND_LOG_ERR_MSG ("loaddb: CS mode loaddb cannot be run in HA mode. Please turn off HA mode.\n");
-		  status = 1;
-		  goto error_return;
-		}
-	    }
-	}
-      else
-	{
-	  PRINT_AND_LOG_ERR_MSG ("loaddb: Cannot load system parameters.\n");
-	  status = 1;
-	  goto error_return;
-	}
-    }
-
   if (ldr_validate_object_file (arg->argv0, &args) != NO_ERROR)
     {
       status = 1;
@@ -549,9 +527,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   /* login */
   if (!args.user_name.empty () || !dba_mode)
     {
-      if (strcasecmp (args.user_name.c_str (), "DBA") == 0)
+      if (strcasecmp (args.user_name.c_str (), "DBA") == 0 && args.no_user_specified_name)
 	{
-	  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+	  db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT);
 	}
       (void) db_login (args.user_name.c_str (), args.password.c_str ());
       error = db_restart (arg->command_name, true, args.volume.c_str ());
@@ -569,11 +547,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	      (void) db_login (args.user_name.c_str (), passwd);
 	      error = db_restart (arg->command_name, true, args.volume.c_str ());
 	    }
-	}
-
-      if (args.no_user_specified_name)
-	{
-	  prm_set_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME, true);
 	}
     }
   else

@@ -270,6 +270,10 @@ static PT_NODE *pt_apply_create_server (PARSER_CONTEXT * parser, PT_NODE * p, vo
 static PT_NODE *pt_apply_drop_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_rename_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_alter_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
 
@@ -426,6 +430,10 @@ static PARSER_VARCHAR *pt_print_create_server (PARSER_CONTEXT * parser, PT_NODE 
 static PARSER_VARCHAR *pt_print_drop_server (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_rename_server (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_alter_server (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
@@ -3104,6 +3112,27 @@ parser_append_node (PT_NODE * node, PT_NODE * list)
 }
 
 /*
+ * parser_append_previous_node() -
+ *   return:
+ *   node(in):
+ *   list(in):
+ */
+PT_NODE *
+parser_append_previous_node (PT_NODE * node, PT_NODE * list)
+{
+  if (list)
+    {
+      node->next = list;
+      list = node;
+    }
+  else
+    {
+      list = node;
+    }
+  return list;
+}
+
+/*
  * parser_append_node_or() -
  *   return:
  *   node(in/out):
@@ -3354,6 +3383,12 @@ pt_show_misc_type (PT_MISC_TYPE p)
       return "text";
     case PT_TRACE_FORMAT_JSON:
       return "json";
+    case PT_PRIVATE:
+      return "private";
+    case PT_PUBLIC:
+      return "public";
+    case PT_SYNONYM:
+      return "synonym";
     default:
       return "MISC_TYPE: type unknown";
     }
@@ -4953,6 +4988,10 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_DROP_SERVER] = pt_apply_drop_server;
   pt_apply_func_array[PT_RENAME_SERVER] = pt_apply_rename_server;
   pt_apply_func_array[PT_ALTER_SERVER] = pt_apply_alter_server;
+  pt_apply_func_array[PT_ALTER_SYNONYM] = pt_apply_alter_synonym;
+  pt_apply_func_array[PT_CREATE_SYNONYM] = pt_apply_create_synonym;
+  pt_apply_func_array[PT_DROP_SYNONYM] = pt_apply_drop_synonym;
+  pt_apply_func_array[PT_RENAME_SYNONYM] = pt_apply_rename_synonym;
 
   pt_apply_f = pt_apply_func_array;
 }
@@ -5082,6 +5121,10 @@ pt_init_init_f (void)
   pt_init_func_array[PT_DROP_SERVER] = pt_init_func_null_function;
   pt_init_func_array[PT_RENAME_SERVER] = pt_init_func_null_function;
   pt_init_func_array[PT_ALTER_SERVER] = pt_init_func_null_function;
+  pt_init_func_array[PT_ALTER_SYNONYM] = pt_init_func_null_function;
+  pt_init_func_array[PT_CREATE_SYNONYM] = pt_init_func_null_function;
+  pt_init_func_array[PT_DROP_SYNONYM] = pt_init_func_null_function;
+  pt_init_func_array[PT_RENAME_SYNONYM] = pt_init_func_null_function;
 
   pt_init_f = pt_init_func_array;
 }
@@ -5204,6 +5247,10 @@ pt_init_print_f (void)
   pt_print_func_array[PT_DROP_SERVER] = pt_print_drop_server;
   pt_print_func_array[PT_RENAME_SERVER] = pt_print_rename_server;
   pt_print_func_array[PT_ALTER_SERVER] = pt_print_alter_server;
+  pt_print_func_array[PT_ALTER_SYNONYM] = pt_print_alter_synonym;
+  pt_print_func_array[PT_CREATE_SYNONYM] = pt_print_create_synonym;
+  pt_print_func_array[PT_DROP_SYNONYM] = pt_print_drop_synonym;
+  pt_print_func_array[PT_RENAME_SYNONYM] = pt_print_rename_synonym;
 
   pt_print_f = pt_print_func_array;
 }
@@ -18484,7 +18531,6 @@ pt_move_node (REFPTR (PT_NODE, destp), REFPTR (PT_NODE, srcp))
   srcp = NULL;
 }
 
-
 static PT_NODE *
 pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
@@ -18889,6 +18935,205 @@ pt_print_alter_server (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_varchar (parser, q, r);
 	}
     }
+
+  return q;
+}
+
+static PT_NODE *
+pt_apply_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, PT_SYNONYM_NAME (p), arg);
+  PT_APPLY_WALK (parser, PT_SYNONYM_TARGET_NAME (p), arg);
+  return p;
+}
+
+static PT_NODE *
+pt_apply_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, PT_SYNONYM_NAME (p), arg);
+  PT_APPLY_WALK (parser, PT_SYNONYM_TARGET_NAME (p), arg);
+  return p;
+}
+
+static PT_NODE *
+pt_apply_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, PT_SYNONYM_NAME (p), arg);
+  return p;
+}
+
+static PT_NODE *
+pt_apply_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, PT_SYNONYM_OLD_NAME (p), arg);
+  PT_APPLY_WALK (parser, PT_SYNONYM_NEW_NAME (p), arg);
+  return p;
+}
+
+static PARSER_VARCHAR *
+pt_print_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r1;
+  unsigned int save_custom;
+
+  save_custom = parser->custom_print;
+  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
+
+  q = pt_append_nulstring (parser, q, "alters ");
+
+  /* private is not printed because PT_PRIVATE is the default. */
+  if (PT_SYNONYM_ACCESS_MODIFIER (p) == PT_PUBLIC)
+    {
+      q = pt_append_nulstring (parser, q, "public ");
+    }
+
+  q = pt_append_nulstring (parser, q, "synonym ");
+
+  r1 = pt_print_bytes (parser, PT_SYNONYM_OWNER_NAME (p));
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, ".");
+  r1 = pt_print_bytes (parser, PT_SYNONYM_NAME (p));
+  q = pt_append_varchar (parser, q, r1);
+
+  q = pt_append_nulstring (parser, q, " for ");
+
+  r1 = pt_print_bytes (parser, PT_SYNONYM_TARGET_OWNER_NAME (p));
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, ".");
+  r1 = pt_print_bytes (parser, PT_SYNONYM_TARGET_NAME (p));
+  q = pt_append_varchar (parser, q, r1);
+
+  if (PT_SYNONYM_COMMENT (p))
+    {
+      r1 = pt_print_bytes (parser, PT_SYNONYM_COMMENT (p));
+      q = pt_append_nulstring (parser, q, " comment ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+
+  parser->custom_print = save_custom;
+
+  return q;
+}
+
+static PARSER_VARCHAR *
+pt_print_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r1;
+  unsigned int save_custom;
+
+  save_custom = parser->custom_print;
+  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
+
+  q = pt_append_nulstring (parser, q, "create ");
+
+  if (PT_SYNONYM_OR_REPLACE (p))
+    {
+      q = pt_append_nulstring (parser, q, "or replace ");
+    }
+
+  /* PT_PRIVATE is not printed because PT_PRIVATE is the default. */
+  if (PT_SYNONYM_ACCESS_MODIFIER (p) == PT_PUBLIC)
+    {
+      q = pt_append_nulstring (parser, q, "public ");
+    }
+
+  q = pt_append_nulstring (parser, q, "synonym ");
+
+  r1 = pt_print_bytes (parser, PT_SYNONYM_OWNER_NAME (p));
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, ".");
+  r1 = pt_print_bytes (parser, PT_SYNONYM_NAME (p));
+  q = pt_append_varchar (parser, q, r1);
+
+  q = pt_append_nulstring (parser, q, " for ");
+
+  r1 = pt_print_bytes (parser, PT_SYNONYM_TARGET_OWNER_NAME (p));
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, ".");
+  r1 = pt_print_bytes (parser, PT_SYNONYM_TARGET_NAME (p));
+  q = pt_append_varchar (parser, q, r1);
+
+  if (PT_SYNONYM_COMMENT (p))
+    {
+      r1 = pt_print_bytes (parser, PT_SYNONYM_COMMENT (p));
+      q = pt_append_nulstring (parser, q, " comment ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+
+  parser->custom_print = save_custom;
+
+  return q;
+}
+
+static PARSER_VARCHAR *
+pt_print_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r1;
+  unsigned int save_custom;
+
+  save_custom = parser->custom_print;
+  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
+
+  q = pt_append_nulstring (parser, q, "drop ");
+
+  /* private is not printed because PT_PRIVATE is the default. */
+  if (PT_SYNONYM_ACCESS_MODIFIER (p) == PT_PUBLIC)
+    {
+      q = pt_append_nulstring (parser, q, "public ");
+    }
+
+  q = pt_append_nulstring (parser, q, "synonym ");
+
+  if (PT_SYNONYM_IF_EXISTS (p))
+    {
+      q = pt_append_nulstring (parser, q, "if exists ");
+    }
+
+  r1 = pt_print_bytes (parser, PT_SYNONYM_OWNER_NAME (p));
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, ".");
+  r1 = pt_print_bytes (parser, PT_SYNONYM_NAME (p));
+  q = pt_append_varchar (parser, q, r1);
+
+  parser->custom_print = save_custom;
+
+  return q;
+}
+
+static PARSER_VARCHAR *
+pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r1;
+  unsigned int save_custom;
+
+  save_custom = parser->custom_print;
+  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
+
+  q = pt_append_nulstring (parser, q, "rename ");
+
+  /* private is not printed because PT_PRIVATE is the default. */
+  if (PT_SYNONYM_ACCESS_MODIFIER (p) == PT_PUBLIC)
+    {
+      q = pt_append_nulstring (parser, q, "public ");
+    }
+
+  q = pt_append_nulstring (parser, q, "synonym ");
+
+  r1 = pt_print_bytes (parser, PT_SYNONYM_OWNER_NAME (p));
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, ".");
+  r1 = pt_print_bytes (parser, PT_SYNONYM_OLD_NAME (p));
+  q = pt_append_varchar (parser, q, r1);
+
+  q = pt_append_nulstring (parser, q, " to ");
+
+  r1 = pt_print_bytes (parser, PT_SYNONYM_OWNER_NAME (p));
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, ".");
+  r1 = pt_print_bytes (parser, PT_SYNONYM_NEW_NAME (p));
+  q = pt_append_varchar (parser, q, r1);
+
+  parser->custom_print = save_custom;
 
   return q;
 }

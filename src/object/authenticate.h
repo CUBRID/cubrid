@@ -146,7 +146,7 @@ MOP au_get_dba_user (void);
 #define SPLIT_USER_SPECIFIED_NAME(name, owner_name, class_name) \
 	do \
 	  { \
-	    assert (strlen ((name)) < sizeof ((owner_name))); \
+	    assert (strlen ((name)) < STATIC_CAST (int, sizeof ((owner_name)))); \
 	    strcpy ((owner_name), (name)); \
 	    (class_name) = strchr ((owner_name), '.'); \
 	    *(class_name)++ = '\0'; \
@@ -202,7 +202,6 @@ extern int au_drop_user (MOP user);
 extern int au_set_password (MOP user, const char *password);
 extern int au_set_user_comment (MOP user, const char *comment);
 
-extern char *au_current_user_name (char *buf, int buf_size);
 extern const char *au_user_name (void);
 extern char *au_user_name_dup (void);
 extern bool au_has_user_name (void);

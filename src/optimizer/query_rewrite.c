@@ -50,6 +50,15 @@ struct spec_id_info
   bool nullable;
 };
 
+typedef struct spec_cnt_info SPEC_CNT_INFO;
+struct spec_cnt_info
+{
+  PT_NODE *spec;
+  int my_spec_cnt;
+  int other_spec_cnt;
+  PT_NODE *my_spec_node;
+};
+
 typedef struct to_dot_info TO_DOT_INFO;
 struct to_dot_info
 {
@@ -101,6 +110,11 @@ static PT_NODE *qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, vo
 static void qo_do_auto_parameterize_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
 static void qo_do_auto_parameterize_keylimit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *qo_get_name_cnt_by_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *qo_collect_name_with_eq_const (PARSER_CONTEXT * parser, PT_NODE * on_cond, PT_NODE * spec);
+static PT_NODE *qo_reduce_outer_joined_tables (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query);
+
+
 
 #define QO_CHECK_AND_REDUCE_EQUALITY_TERMS(parser, node, where) \
   do { \
@@ -3072,6 +3086,417 @@ qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	    }
 	}
     }
+}
+
+/*
+ * qo_get_name_cnt_by_spec () - looks for a name with a matching id
+ *   return: PT_NODE *
+ *   parser(in): parser environment
+ *   spec(in):
+ *   arg(in): info of spec and result
+ *   continue_walk(in):
+ */
+static PT_NODE *
+qo_get_name_cnt_by_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  SPEC_CNT_INFO *info = (SPEC_CNT_INFO *) arg;
+
+  if (node->node_type == PT_NAME)
+    {
+      if (node->info.name.spec_id == info->spec->info.spec.id)
+	{
+	  info->my_spec_cnt++;
+	  info->my_spec_node = node;
+	}
+      else
+	{
+	  info->other_spec_cnt++;
+	}
+    }
+
+  if (info->my_spec_cnt >= 2 || (info->my_spec_cnt == 1 && info->other_spec_cnt >= 1))
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * qo_get_name_cnt_by_spec_without_oncond () - looks for a name with a matching id
+ *   return: PT_NODE *
+ *   parser(in): parser environment
+ *   spec(in):
+ *   arg(in): info of spec and result
+ *   continue_walk(in):
+ */
+static PT_NODE *
+qo_get_name_cnt_by_spec_without_oncond (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  SPEC_CNT_INFO *info = (SPEC_CNT_INFO *) arg;
+  *continue_walk = PT_CONTINUE_WALK;
+
+  /* ignore on_cond of my spec */
+  if ((pt_is_expr_node (node) && node->info.expr.location == info->spec->info.spec.location)
+      || (pt_is_value_node (node) && node->info.value.location == info->spec->info.spec.location)
+      || (node->node_type == PT_SPEC && node->info.spec.id == info->spec->info.spec.id))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  if (node->node_type == PT_NAME)
+    {
+      if (node->info.name.spec_id == info->spec->info.spec.id)
+	{
+	  info->my_spec_cnt++;
+	  info->my_spec_node = node;
+	}
+      else
+	{
+	  info->other_spec_cnt++;
+	}
+    }
+
+  if (info->my_spec_cnt >= 1)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * qo_collect_name_with_eq_const () - collect name node with equal OP and constant value
+ *   return: node_list
+ *   parser(in):
+ *   on_cond(in):
+ *   spec(in):
+ *
+ * Note:
+ * collect name nodes with following conditions
+ *                arg1            op             arg2
+ *     only have one of my spec   '='    not have my spec node
+ * e.g.)      col(my spec)         =     2 (constant)
+ *            a.col(my spec)       =     b.col
+ *            a.col(my spec)       =     b.col + c.col
+ */
+static PT_NODE *
+qo_collect_name_with_eq_const (PARSER_CONTEXT * parser, PT_NODE * on_cond, PT_NODE * spec)
+{
+  PT_NODE *pred, *arg1, *arg2;
+  PT_NODE *point, *s_name, *point_list = NULL;
+  SPEC_CNT_INFO info1, info2;
+
+  info1.spec = spec;
+  info2.spec = spec;
+
+  pred = on_cond;
+  while (pred != NULL)
+    {
+      if (pred->or_next != NULL)
+	{
+	  pred = pred->next;
+	  continue;
+	}
+      if (!PT_IS_EXPR_NODE_WITH_OPERATOR (pred, PT_EQ))
+	{
+	  pred = pred->next;
+	  continue;
+	}
+      /* check on_cond predicate */
+      if (spec->info.spec.location != pred->info.expr.location)
+	{
+	  pred = pred->next;
+	  continue;
+	}
+
+      arg1 = pred->info.expr.arg1;
+      arg2 = pred->info.expr.arg2;
+      /* find name with spec id */
+      info1.my_spec_cnt = 0;
+      info1.other_spec_cnt = 0;
+      info2.my_spec_cnt = 0;
+      info2.other_spec_cnt = 0;
+      parser_walk_tree (parser, arg1, qo_get_name_cnt_by_spec, &info1, NULL, NULL);
+      parser_walk_tree (parser, arg2, qo_get_name_cnt_by_spec, &info2, NULL, NULL);
+
+      /* col1(my spec) = const */
+      if (info1.my_spec_cnt == 1 && info1.other_spec_cnt == 0)
+	{
+	  /* const */
+	  if (info2.my_spec_cnt == 0)
+	    {
+	      point_list = parser_append_node (pt_point (parser, info1.my_spec_node), point_list);
+	    }
+	}
+      /* const = col(my spec) */
+      else if (info2.my_spec_cnt == 1 && info2.other_spec_cnt == 0)
+	{
+	  /* const */
+	  if (info1.my_spec_cnt == 0)
+	    {
+	      point_list = parser_append_node (pt_point (parser, info2.my_spec_node), point_list);
+	    }
+	}
+      pred = pred->next;
+    }
+  return point_list;
+}
+
+/*
+ * qo_modify_location () -
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in):
+ */
+static PT_NODE *
+qo_modify_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  RESET_LOCATION_INFO *infop = (RESET_LOCATION_INFO *) arg;
+
+  if (node->node_type == PT_EXPR && node->info.expr.location == infop->start)
+    {
+      node->info.expr.location = infop->end;
+    }
+
+  if (node->node_type == PT_NAME && node->info.name.location == infop->start)
+    {
+      node->info.name.location = infop->end;
+    }
+
+  if (node->node_type == PT_VALUE && node->info.value.location == infop->start)
+    {
+      node->info.value.location = infop->end;
+    }
+
+  return node;
+}
+
+/*
+ * qo_reset_spec_location () - reset location of spec
+ *   return: node_list
+ *   parser(in):
+ *   on_cond(in):
+ *   spec(in):
+ *
+ * Note:
+ */
+static void
+qo_reset_spec_location (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query)
+{
+  short curr_loc, after_loc;
+  PT_NODE *where;
+  RESET_LOCATION_INFO locate_info;
+
+  while (spec != NULL)
+    {
+      curr_loc = spec->info.spec.location;
+      after_loc = curr_loc - 1;
+
+      if (curr_loc <= 0 || after_loc <= 0)
+	{
+	  spec = spec->next;
+	  continue;
+	}
+
+      /* reset location of spec */
+      spec->info.spec.location = after_loc;
+
+      /* reset location of predicate */
+      locate_info.start = curr_loc;
+      locate_info.end = after_loc;
+      where = query->info.query.q.select.where;
+      (void) parser_walk_tree (parser, where, qo_modify_location, &locate_info, NULL, NULL);
+
+      spec = spec->next;
+    }
+}
+
+/*
+ * qo_reduce_outer_joined_tables () - reduce outer joined tables with unique join predicates
+ *   return:
+ *   parser(in):
+ *   spec(in):
+ *   query(in):
+ *
+ * Note:
+ * 	examples:
+ *  	          select count(*)
+ *                  from tbl1 a left outer join tbl2 b on a.pk = b.pk <== outer joined table with unique join columns
+ *                ==>
+ *                select count(*)
+ *                  from tbl1 a
+ */
+static PT_NODE *
+qo_reduce_outer_joined_tables (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query)
+{
+  MOP cls;
+  SM_CLASS_CONSTRAINT *consp;
+  SM_ATTRIBUTE *attrp;
+  PT_NODE *point_list = NULL, *point, *where, *col, *tmp_spec, *prev_spec, *pred, *prev_pred, *next_pred;
+  PT_NODE *next_spec;
+  SPEC_CNT_INFO info;
+  bool all_unique_col_match = false;
+  int i;
+
+  /* check left outer join */
+  /* TO_DO : for right outer join */
+  if (spec == NULL || spec->info.spec.join_type != PT_JOIN_LEFT_OUTER)
+    {
+      return query;
+    }
+
+  /* check query */
+  if (!PT_IS_SELECT (query))
+    {
+      return query;
+    }
+
+  /* check Inheritance of spec */
+  if (spec->info.spec.only_all == PT_ALL)
+    {
+      return query;
+    }
+
+  /* check no_merge sql hint */
+  if (query->info.query.q.select.hint & PT_HINT_NO_MERGE)
+    {
+      return query;
+    }
+
+  /* check referenced columns except on_cond */
+  info.spec = spec;
+  info.my_spec_cnt = 0;
+  info.other_spec_cnt = 0;
+  parser_walk_tree (parser, query, qo_get_name_cnt_by_spec_without_oncond, &info, NULL, NULL);
+  if (info.my_spec_cnt >= 1)
+    {
+      /* Except for on_cond, the referenced columns exist. */
+      return query;
+    }
+
+  where = query->info.query.q.select.where;
+  /* get columns with equal op and constant in on_cond */
+  point_list = qo_collect_name_with_eq_const (parser, where, spec);
+  if (point_list == NULL)
+    {
+      return query;
+    }
+
+  /* get class info */
+  cls = sm_find_class (spec->info.spec.flat_entity_list->info.name.original);
+  if (cls == NULL)
+    {
+      goto end;
+    }
+
+  /* get index info of spec */
+  consp = sm_class_constraints (cls);
+  while (consp != NULL)
+    {
+      if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (consp->type))
+	{
+	  consp = consp->next;
+	  continue;
+	}
+
+      /* check columns on this constraint */
+      for (i = 0; consp->attributes[i]; i++)
+	{
+	  attrp = consp->attributes[i];
+	  point = point_list;
+	  col = point;
+	  CAST_POINTER_TO_NODE (col);
+	  while (col != NULL)
+	    {
+	      if (intl_identifier_casecmp (col->info.name.original, attrp->header.name) == 0)
+		{
+		  break;
+		}
+	      point = point->next;
+	      col = point;
+	      CAST_POINTER_TO_NODE (col);
+	    }
+	  /* not find */
+	  if (col == NULL)
+	    {
+	      break;
+	    }
+	}
+      /* matche all columns of the unique index */
+      if (consp->attributes[i] == NULL)
+	{
+	  all_unique_col_match = true;
+	  break;
+	}
+
+      consp = consp->next;
+    }
+
+  if (all_unique_col_match)
+    {
+      /* remove unnecessary table spec */
+      /* find previous spec */
+      prev_spec = NULL;
+      tmp_spec = query->info.query.q.select.from;
+      while (tmp_spec && tmp_spec->info.spec.id != spec->info.spec.id)
+	{
+	  prev_spec = tmp_spec;
+	  tmp_spec = tmp_spec->next;
+	}
+      if (tmp_spec == NULL || prev_spec == NULL)
+	{
+	  goto end;
+	}
+
+      /* cut off unnecessary spec */
+      prev_spec->next = next_spec = spec->next;
+      spec->next = NULL;
+
+      /* remove on_cond predicate */
+      prev_pred = NULL;
+      pred = query->info.query.q.select.where;
+      while (pred != NULL)
+	{
+	  next_pred = pred->next;
+	  if ((pt_is_expr_node (pred) && pred->info.expr.location == spec->info.spec.location)
+	      || (pt_is_value_node (pred) && pred->info.value.location == spec->info.spec.location))
+	    {
+	      if (prev_pred == NULL)
+		{
+		  /* first time */
+		  query->info.query.q.select.where = next_pred;
+		  pred->next = NULL;
+		  parser_free_tree (parser, pred);
+		}
+	      else
+		{
+		  prev_pred->next = next_pred;
+		  pred->next = NULL;
+		  parser_free_tree (parser, pred);
+		}
+	    }
+	  else
+	    {
+	      prev_pred = pred;
+	    }
+	  pred = next_pred;
+	}
+
+      /* reset location */
+      qo_reset_spec_location (parser, next_spec, query);
+
+      /* free spec */
+      parser_free_tree (parser, spec);
+    }
+
+end:
+  if (point_list != NULL)
+    {
+      parser_free_tree (parser, point_list);
+    }
+  return query;
 }
 
 /*
@@ -7432,8 +7857,10 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	      return node;	/* give up */
 	    }
 
-	  /* predicate push */
+	  PT_NODE *point_list = NULL;
+	  PT_NODE *point, *tmp_spec;
 	  spec = node->info.query.q.select.from;
+	  /* predicate push */
 	  while (spec)
 	    {
 	      if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY
@@ -7441,7 +7868,27 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 		{
 		  (void) mq_copypush_sargable_terms (parser, node, spec);
 		}
+	      else
+		{
+		  point_list = parser_append_previous_node (pt_point (parser, spec), point_list);
+		}
 	      spec = spec->next;
+	    }
+	  /* reduce unnecessary tables */
+	  point = point_list;
+	  while (point)
+	    {
+	      tmp_spec = point;
+	      CAST_POINTER_TO_NODE (tmp_spec);
+	      if (mq_is_outer_join_spec (parser, tmp_spec) && !PT_SPEC_IS_CTE (tmp_spec))
+		{
+		  node = qo_reduce_outer_joined_tables (parser, tmp_spec, node);
+		}
+	      point = point->next;
+	    }
+	  if (point_list != NULL)
+	    {
+	      parser_free_tree (parser, point_list);
 	    }
 	}
 

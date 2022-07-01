@@ -2037,13 +2037,15 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 
   prev_order = NULL;
   /* update the position number of order by clause */
-  for (order = order_by; order != NULL; order = order->next)
+  order = order_by;
+  while (order != NULL)
     {
       assert (order->node_type == PT_SORT_SPEC);
 
       val = order->info.sort_spec.expr;
       assert (val->node_type == PT_VALUE);
 
+      save_next = order->next;
       if (attr_count < val->info.value.data_value.i)
 	{
 	  /* order by is a hidden column and not in attribute list, in this case, we need append a hidden column at the
@@ -2099,17 +2101,15 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 	      /* remove unnecessary order */
 	      if (prev_order == NULL)
 		{
-		  statement->info.query.order_by = order->next;
+		  statement->info.query.order_by = save_next;
 		}
 	      else
 		{
-		  prev_order->next = order->next;
+		  prev_order->next = save_next;
 		}
 	      /* free order */
-	      save_next = order->next;
 	      order->next = NULL;
 	      free_node = parser_append_node (order, free_node);
-	      order->next = save_next;
 	    }
 	  else
 	    {
@@ -2129,13 +2129,15 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 	      val->info.value.db_value.data.i = i;
 	      val->info.value.text = NULL;
 	      order->info.sort_spec.pos_descr.pos_no = i;
-	    }
 
+	      prev_order = order;
+	    }
 	}
       else
 	{
 	  prev_order = order;
 	}
+      order = save_next;
     }
 
   statement->info.query.order_by = parser_append_node (order_by, statement->info.query.order_by);
@@ -3646,6 +3648,9 @@ static bool
 pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * infop)
 {
   bool is_correlated_with_agg = false;
+  bool is_correlated_with_dblink = false;
+  PT_NODE *derived;
+
   /* init output section */
   infop->out.found = false;
   infop->out.others_found = false;
@@ -3654,15 +3659,30 @@ pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * 
 
   parser_walk_leaves (parser, term, pt_find_only_name_id, infop, NULL, NULL);
 
-  if (infop->out.correlated_found && pt_has_aggregate (parser, infop->in.subquery))
+  if (infop->out.correlated_found)
     {
-      /* When a correlated term is pushed to a subquery that includes an aggregate function, */
-      /* group_by processing can be repeatedly performed. */
-      /* This may cause performance degradation. In this case, copypush is not performed. */
-      is_correlated_with_agg = true;
+      if (pt_has_aggregate (parser, infop->in.subquery))
+	{
+	  /* When a correlated term is pushed to a subquery that includes an aggregate function, */
+	  /* group_by processing can be repeatedly performed. */
+	  /* This may cause performance degradation. In this case, copypush is not performed. */
+	  is_correlated_with_agg = true;
+	}
+
+      if (infop->in.spec)
+	{
+	  derived = infop->in.spec->info.spec.derived_table;
+	  if (derived->node_type == PT_DBLINK_TABLE)
+	    {
+	      /* When a correlated term is pushed to a subquery that includes a dblink */
+	      /* the pushed predicated can be transferred to remote server */
+	      /* This may cause error because the remote's query could not process the correlated term */
+	      is_correlated_with_dblink = true;
+	    }
+	}
     }
 
-  return PT_PUSHABLE_TERM (infop) && !is_correlated_with_agg;
+  return PT_PUSHABLE_TERM (infop) && !is_correlated_with_agg && !is_correlated_with_dblink;
 }
 
 /*
@@ -3750,7 +3770,7 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 
       parser->custom_print = save_custom;
 
-#if !defined (NDEBUG)
+#if 0
       printf ("===> rewriting query = %s\n", (char *) rewritten->bytes);
 #endif
       break;

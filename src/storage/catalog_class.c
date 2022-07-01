@@ -982,6 +982,8 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
   int size;
   OR_VALUE *resolution_p = NULL;
   OID class_oid;
+  const char *dot = NULL;
+  const char *class_name = NULL;
   int error = NO_ERROR;
 
   error = catcls_expand_or_value_by_def (value_p, &ct_Class);
@@ -1045,13 +1047,18 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
 
   /* unique_name */
   attr_val_p = &attrs[11].value;
-  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_UNIQUE_NAME_INDEX].length, true, NULL, 0);
+  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_NAME_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 
   /* class_name */
-  attr_val_p = &attrs[12].value;
-  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_NAME_INDEX].length, true, NULL, 0);
-  db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
+  class_name = db_get_string (attr_val_p);
+  assert (class_name != NULL);
+  dot = strchr (class_name, '.');
+  if (dot)
+    {
+      class_name = dot + 1;
+    }
+  db_make_string (&attrs[12].value, class_name);
 
   /* (class_of) */
   if (catcls_find_class_oid_by_class_name (thread_p, db_get_string (&attrs[11].value), &class_oid) != NO_ERROR)

@@ -152,6 +152,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     service\n\
     server\n\
     broker\n\
+    gateway\n\
     manager\n\
     heartbeat\n\
     javasp\n\
@@ -265,6 +266,21 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     stop        [데이터베이스 이름]\n\
     restart     [데이터베이스 이름]\n\
     status      [데이터베이스 이름]\n
+45 cubrid 유틸리티, 버전 %1$s\n\
+사용법: %2$s gateway <명령어> [인자]\n\
+\n\
+가용한 명령어:\n\
+    start\n\
+    stop\n\
+    restart\n\
+    info\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-c] [-u] [<expr>]\n\
+    on          <게이트웨이 이름>\n\
+    off         <게이트웨이 이름>\n\
+    reset       <게이트웨이 이름>\n\
+    acl         <status|reload> [게이트웨이 이름]\n
+46 owner_name의 길이는 %1$d 미만이어야 하고 class_name의 길이는 %2$d 바이트 미만이어야 합니다.\n
+47 테이블 이름('%1$s')을 owner_name.class_name 형식으로 입력하십시오.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 경고: -t 옵션은 독립 실행 모드에서는 무시 됩니다.\n
@@ -983,6 +999,7 @@ valid options:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBA 암호 입력:
 22 서버가 HA 모드로 설정되지 않았습니다.\n
+57 -L 옵션의 경로가 잘못되었거나 db_ha_apply_info 카탈로그 테이블에 관련 정보가 없기 때문에 복제 반영 정보를 생성할 수 없습니다.\n
 58 HA 기능이 지원되지 않는 플랫폼입니다.\n
 59 applyinfo는 독립 모드에서 실행할 수 없습니다.\n
 60 \
@@ -1196,6 +1213,7 @@ valid options:\n\
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 %1$s으로부터 테이블 이름 로딩 실패.\n
 2 checksumdb는 반드시 HA active 서버에서 실행해야 합니다. %1$s (현재 상태: %2$s)\n
+3 체크섬 결과를 저장할 테이블의 소유자는 DBA여야 합니다.\n
 58 HA 기능이 제공되지 않는 플랫폼입니다.\n
 59 checksumdb는 독립 모드로 실행할 수 없습니다.\n
 60 \
@@ -1209,7 +1227,7 @@ valid options:\n\
   -i, --include-class-file=FILE 포함시킬 테이블을 지정하는 입력 파일\n\
   -e, --exclude-class-file=FILE 제외시킬 테이블을 지정하는 입력 파일; -i 또는 -e 하나만 명시 가능, 동시 지정 불가\n\
   -t, --timeout=NUMBER          밀리초 단위 쿼리 타임 아웃; 기본값: 1000 ms\n\
-  -n, --table-name=NAME         체크섬 결과를 저장할 테이블 이름; 기본값: db_ha_checksums\n\
+  -n, --table-name=NAME         체크섬 결과를 저장할 테이블 이름; 기본값: dba.db_ha_checksum\n\
   -r, --report-only             체크섬 계산을 기반하여 복제 일관성 상태 보고\n\
                                 --table-name 옵션 외에 다른 옵션은 모두 무시됨\n\
       --resume                  체크섬 계산 복귀\n\
@@ -1252,9 +1270,10 @@ $set 58 MSGCAT_UTIL_SET_FLASHBACK
 12 트랜잭션 ID는 %1$d초 안에 입력해야 합니다. 'cubrid.conf'의 'flashback_timeout' 설정을 통해 시간 값을 조정할 수 있습니다. \n
 13 플래시백이 이미 실행 중입니다. 플래시백은 두 개 이상의 프로세스에서 실행할 수 없습니다.\n
 14 플래시백은 독립 모드에서 실행할 수 없습니다.\n
+15 시스템 카탈로그 클래스(%1$s)에 대하여 플래시백을 지원하지 않습니다.\n
 60 \
 flashback: 특정 트랜잭션을 플래시백하는 명령문을 제공합니다.\n\
-사용법: %1$s flashback [OPTION] 데이터베이스 이름 class_name1 [class_name2 ...]\n\
+사용법: %1$s flashback [OPTION] 데이터베이스 이름 owner_name.class_name1 [owner_name.class_name2 ...]\n\
 \n\
 유효한 옵션:\n\
     -o, --output-file=FILE      출력 메시지를 FILE로 리디렉션합니다. 기본값: 없음.\n\

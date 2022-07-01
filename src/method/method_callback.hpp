@@ -69,6 +69,8 @@ namespace cubmethod
 
       /* main functions */
       int callback_dispatch (packing_unpacker &unpacker);
+
+      void free_query_handle (int id, bool is_free);
       void free_query_handle_all (bool is_free);
 
       /* find query handler */
@@ -93,7 +95,6 @@ namespace cubmethod
 
       /* ported from cas_handle */
       query_handler *new_query_handler ();
-      void free_query_handle (int id, bool is_free);
 
       std::multimap <std::string, int> m_sql_handler_map;
       std::unordered_map <uint64_t, int> m_qid_handler_map;

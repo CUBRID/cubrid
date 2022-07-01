@@ -83,6 +83,7 @@
 
 #define QUERY_MAX_SIZE	1024 * 1024
 #define MAX_FILTER_PREDICATE_STRING_LENGTH 255
+#define MAX_FUNCTION_EXPRESSION_STRING_LENGTH 1024
 
 typedef enum
 {
@@ -2622,6 +2623,28 @@ do_rename (PARSER_CONTEXT * parser, PT_NODE * statement)
       const char *old_name = current_rename->info.rename.old_name->info.name.original;
       const char *new_name = current_rename->info.rename.new_name->info.name.original;
 
+      /* We cannot change the schema of a class by using synonym names. */
+      if (db_find_synonym (old_name) != NULL)
+	{
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, old_name);
+	  goto error_exit;
+	}
+      else
+	{
+	  /* db_find_synonym () == NULL */
+	  ASSERT_ERROR_AND_SET (error);
+
+	  if (er_errid () == ER_SYNONYM_NOT_EXIST)
+	    {
+	      er_clear ();
+	      error = NO_ERROR;
+	    }
+	  else
+	    {
+	      goto error_exit;
+	    }
+	}
+
       const char *old_qualifier_name = pt_get_qualifier_name (parser, current_rename->info.rename.old_name);
       const char *new_qualifier_name = pt_get_qualifier_name (parser, current_rename->info.rename.new_name);
 
@@ -4585,6 +4608,8 @@ do_rename_partition (MOP old_class, const char *newname)
   int newlen;
   int error;
   char new_subname[PARTITION_VARCHAR_LEN + 1], *ptr;
+  char expr[DB_MAX_PARTITION_EXPR_LENGTH] = { '\0' };
+  char *expr_ptr = NULL;
 
   if (!old_class || !newname)
     {
@@ -4593,11 +4618,21 @@ do_rename_partition (MOP old_class, const char *newname)
 
   newlen = strlen (newname);
 
-  error = au_fetch_class (old_class, &smclass, AU_FETCH_READ, AU_SELECT);
+  error = au_fetch_class (old_class, &smclass, AU_FETCH_UPDATE, AU_ALTER);
   if (error != NO_ERROR)
     {
       goto end_rename;
     }
+
+  /* The pexpr format is defined in the function pt_node_to_partition_info. */
+  strncpy (expr, smclass->partition->expr, DB_MAX_PARTITION_EXPR_LENGTH);
+  expr_ptr = strchr (expr, ']');	// skip select list
+  expr_ptr = strchr (expr_ptr + 1, '[');	// find table name
+  sprintf (expr_ptr, "[%s]", newname);
+
+  ws_free_string (smclass->partition->expr);
+  smclass->partition->expr = ws_copy_string (expr);
+  sm_flush_objects (old_class);
 
   for (objs = smclass->users; objs; objs = objs->next)
     {
@@ -14314,6 +14349,7 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * no
   char *expr_str = NULL;
   TP_DOMAIN *d = NULL;
   unsigned int save_custom;
+  int error = NO_ERROR;
 
   if (node->node_type == PT_SORT_SPEC)
     {
@@ -14356,6 +14392,14 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * no
   expr_str = parser_print_tree_with_quotes (parser, expr);
   parser->custom_print = save_custom;
   assert (expr_str != NULL);
+
+  if (expr_str && (strlen (expr_str) >= MAX_FUNCTION_EXPRESSION_STRING_LENGTH))
+    {
+      error = ER_SM_INVALID_FILTER_PREDICATE_LENGTH;
+      PT_ERRORmf ((PARSER_CONTEXT *) parser, node, MSGCAT_SET_ERROR, -(ER_SM_INVALID_FUNCTION_EXPRESSION_LENGTH),
+		  MAX_FUNCTION_EXPRESSION_STRING_LENGTH);
+      goto error_exit;
+    }
 
   func_index_info->expr_str = strdup (expr_str);
   if (func_index_info->expr_str == NULL)

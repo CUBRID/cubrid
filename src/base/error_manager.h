@@ -86,6 +86,14 @@
     } \
   while (0)
 
+#define ERROR5(error, code, arg1, arg2, arg3, arg4, arg5) \
+  do \
+    { \
+      error = code; \
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 5, arg1, arg2, arg3, arg4, arg5); \
+    } \
+  while (0)
+
 #define ERROR_SET_WARNING(error, code) \
   do \
     { \

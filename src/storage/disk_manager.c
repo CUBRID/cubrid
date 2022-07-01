@@ -3875,7 +3875,9 @@ disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
       return ER_FAILED;
     }
 
+#if !defined (NDEBUG)
   pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_VOLBITMAP);
+#endif /* !NDEBUG */
 
   stab_unit = ((DISK_STAB_UNIT *) rcv->pgptr) + rcv->offset;
   assert (((*stab_unit) & rv_unit) == 0);
@@ -3962,7 +3964,9 @@ disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
       return ER_FAILED;
     }
 
+#if !defined (NDEBUG)
   pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_VOLBITMAP);
+#endif /* !NDEBUG */
 
   stab_unit = ((DISK_STAB_UNIT *) rcv->pgptr) + rcv->offset;
   assert (((*stab_unit) & rv_unit) == rv_unit);

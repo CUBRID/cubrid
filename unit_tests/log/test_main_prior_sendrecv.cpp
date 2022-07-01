@@ -251,6 +251,9 @@ test_env::require_prior_list_match () const
 #include "log_manager.h"
 #include "system_parameter.h"
 
+PGLENGTH db_Io_page_size = IO_DEFAULT_PAGE_SIZE;
+PGLENGTH db_Log_page_size = IO_DEFAULT_PAGE_SIZE;
+
 log_prior_lsa_info::log_prior_lsa_info () = default;
 
 void

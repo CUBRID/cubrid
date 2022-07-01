@@ -131,9 +131,91 @@ typedef struct schema_def
 
 static SCHEMA_DEF Current_Schema = { {'\0'}, NULL, NULL, NULL, NULL };
 
+typedef struct system_class_def
+{
+  const char *name;
+  int len;
+} SYSTEM_CLASS_DEF;
 
+// *INDENT-OFF*
+static SYSTEM_CLASS_DEF system_classes[] = {
+  {ROOTCLASS_NAME, strlen (ROOTCLASS_NAME)},			// "Rootclass"
+  {CT_DUAL_NAME, strlen (CT_DUAL_NAME)},			// "dual"
 
+  /*
+   * authorization classes
+   *
+   * AU_ROOT_CLASS_NAME     = CT_ROOT_NAME
+   * AU_OLD_ROOT_CLASS_NAME = CT_AUTHORIZATIONS_NAME
+   * AU_USER_CLASS_NAME     = CT_USER_NAME
+   * AU_PASSWORD_CLASS_NAME = CT_PASSWORD_NAME
+   * AU_AUTH_CLASS_NAME     = CT_AUTHORIZATION_NAME
+   * AU_GRANT_CLASS_NAME
+   */
+  {AU_ROOT_CLASS_NAME, strlen (AU_ROOT_CLASS_NAME)},		// "db_root"
+  {AU_USER_CLASS_NAME, strlen (AU_USER_CLASS_NAME)},		// "db_user"
+  {AU_PASSWORD_CLASS_NAME, strlen (AU_PASSWORD_CLASS_NAME)},	// "db_password"
+  {AU_AUTH_CLASS_NAME, strlen (AU_AUTH_CLASS_NAME)},		// "db_authorization"
+  {AU_OLD_ROOT_CLASS_NAME, strlen (AU_OLD_ROOT_CLASS_NAME)},	// "db_authorizations"
 
+  /* currently, not implemented */
+  {AU_GRANT_CLASS_NAME, strlen (AU_GRANT_CLASS_NAME)},		// "db_grant"
+
+  /* 
+   * catalog classes
+   */
+  {CT_CLASS_NAME, strlen (CT_CLASS_NAME)},			// "_db_class"
+  {CT_ATTRIBUTE_NAME, strlen (CT_ATTRIBUTE_NAME)}, 		// "_db_attribute"
+  {CT_DOMAIN_NAME, strlen (CT_DOMAIN_NAME)},			// "_db_domain"
+  {CT_METHOD_NAME, strlen (CT_METHOD_NAME)},			// "_db_method"
+  {CT_METHSIG_NAME, strlen (CT_METHSIG_NAME)},			// "_db_meth_sig"
+  {CT_METHARG_NAME, strlen (CT_METHARG_NAME)},			// "_db_meth_arg"
+  {CT_METHFILE_NAME, strlen (CT_METHFILE_NAME)},		// "_db_meth_file"
+  {CT_QUERYSPEC_NAME, strlen (CT_QUERYSPEC_NAME)},		// "_db_query_spec"
+  {CT_INDEX_NAME, strlen (CT_INDEX_NAME)},			// "_db_index"
+  {CT_INDEXKEY_NAME, strlen (CT_INDEXKEY_NAME)},		// "_db_index_key"
+  {CT_DATATYPE_NAME, strlen (CT_DATATYPE_NAME)},		// "_db_data_type"
+  {CT_CLASSAUTH_NAME, strlen (CT_CLASSAUTH_NAME)},		// "_db_auth"
+  {CT_PARTITION_NAME, strlen (CT_PARTITION_NAME)},		// "_db_partition"
+  {CT_STORED_PROC_NAME, strlen (CT_STORED_PROC_NAME)},		// "_db_stored_procedure"
+  {CT_STORED_PROC_ARGS_NAME, strlen (CT_STORED_PROC_ARGS_NAME)},	// "_db_stored_procedure_args"
+  {CT_SERIAL_NAME, strlen (CT_SERIAL_NAME)},			// "db_serial"
+  {CT_HA_APPLY_INFO_NAME, strlen (CT_HA_APPLY_INFO_NAME)},	// "db_ha_apply_info"
+  {CT_COLLATION_NAME, strlen (CT_COLLATION_NAME)},		// "_db_collation"
+  {CT_CHARSET_NAME, strlen (CT_CHARSET_NAME)},			// "_db_charset"
+  {CT_DB_SERVER_NAME, strlen (CT_DB_SERVER_NAME)},		// "_db_server"
+  {CT_SYNONYM_NAME, strlen (CT_SYNONYM_NAME)},			// "_db_synonym"
+
+  {CT_TRIGGER_NAME, strlen (CT_TRIGGER_NAME)},			// "db_trigger"
+
+  /* currently, not implemented */
+  {CT_RESOLUTION_NAME, strlen (CT_RESOLUTION_NAME)},		// "_db_resolution"
+
+  /*
+   * catalog vclasses
+   */
+  {CTV_CLASS_NAME, strlen (CTV_CLASS_NAME)},			// "db_class"
+  {CTV_SUPER_CLASS_NAME, strlen (CTV_SUPER_CLASS_NAME)},	// "db_direct_super_class"
+  {CTV_VCLASS_NAME, strlen (CTV_VCLASS_NAME)},			// "db_vclass"
+  {CTV_ATTRIBUTE_NAME, strlen (CTV_ATTRIBUTE_NAME)},		// "db_attribute"
+  {CTV_ATTR_SD_NAME, strlen (CTV_ATTR_SD_NAME)},		// "db_attr_setdomain_elm"
+  {CTV_METHOD_NAME, strlen (CTV_METHOD_NAME)},			// "db_method"
+  {CTV_METHARG_NAME, strlen (CTV_METHARG_NAME)},		// "db_meth_arg"
+  {CTV_METHARG_SD_NAME, strlen (CTV_METHARG_SD_NAME)},		// "db_meth_arg_setdomain_elm"
+  {CTV_METHFILE_NAME, strlen (CTV_METHFILE_NAME)},		// "db_meth_file"
+  {CTV_INDEX_NAME, strlen (CTV_INDEX_NAME)},			// "db_index"
+  {CTV_INDEXKEY_NAME, strlen (CTV_INDEXKEY_NAME)},		// "db_index_key"
+  {CTV_AUTH_NAME, strlen (CTV_AUTH_NAME)},			// "db_auth"
+  {CTV_TRIGGER_NAME, strlen (CTV_TRIGGER_NAME)},		// "db_trig"
+  {CTV_PARTITION_NAME, strlen (CTV_PARTITION_NAME)},		// "db_partition"
+  {CTV_STORED_PROC_NAME, strlen (CTV_STORED_PROC_NAME)},	// "db_stored_procedure"
+  {CTV_STORED_PROC_ARGS_NAME, strlen (CTV_STORED_PROC_ARGS_NAME)},	// "db_stored_procedure_args"
+  {CTV_DB_COLLATION_NAME, strlen (CTV_DB_COLLATION_NAME)},	// "db_collation"
+  {CTV_DB_CHARSET_NAME, strlen (CTV_DB_CHARSET_NAME)},		// "db_charset"
+  {CTV_DB_SERVER_NAME, strlen (CTV_DB_SERVER_NAME)},		// "db_server"
+  {CTV_SYNONYM_NAME, strlen (CTV_SYNONYM_NAME)}			// "db_synonym"
+};
+// *INDENT-ON*
 
 #define WC_PERIOD L'.'
 
@@ -472,14 +554,14 @@ sc_set_current_schema (MOP user)
   int error = ER_FAILED;
   char *wsp_user_name;
 
-  Current_Schema.name[0] = '\0';
-  Current_Schema.owner = user;
   wsp_user_name = au_get_user_name (user);
-
   if (wsp_user_name == NULL)
     {
       return error;
     }
+
+  Current_Schema.name[0] = '\0';
+  Current_Schema.owner = user;
 
   /* As near as I can tell, this is the most generalized */
   /* case conversion function on our system.  If it's not */
@@ -497,7 +579,6 @@ sc_set_current_schema (MOP user)
   return error;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * sc_current_schema_name() - Returns current schema name which is
  *                            the default qualifier for otherwise
@@ -505,13 +586,23 @@ sc_set_current_schema (MOP user)
  *      return: pointer to current schema name
  *
  */
-
-static const char *
+const char *
 sc_current_schema_name (void)
 {
   return (const char *) &(Current_Schema.name);
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
+
+/*
+ * sc_current_schema_owner() - Returns current schema owner
+ *      return: current schema owner object
+ *
+ */
+MOP
+sc_current_schema_owner (void)
+{
+  return Current_Schema.owner;
+}
+
 
 /*
  * sm_add_static_method() - Adds an element to the static link table.
@@ -2184,7 +2275,7 @@ char *
 sm_user_specified_name (const char *name, char *buf, int buf_size)
 {
   char user_specified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char current_user_name[SM_MAX_USER_LENGTH] = { '\0' };
+  const char *current_schema_name = NULL;
   const char *dot = NULL;
   int error = NO_ERROR;
 
@@ -2217,21 +2308,16 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
       return sm_downcase_name (name, buf, buf_size);
     }
 
-  /* Appends the current username, making it a user-specified name. */
-  if (db_get_current_user_name (current_user_name, SM_MAX_USER_LENGTH) == NULL)
-    {
-      ASSERT_ERROR ();
-      return NULL;
-    }
+  current_schema_name = sc_current_schema_name ();
 
-  assert (snprintf (NULL, 0, "%s.%s", current_user_name, name) < buf_size);
-  assert (snprintf (NULL, 0, "%s.%s", current_user_name, name) < SM_MAX_IDENTIFIER_LENGTH);
+  assert (snprintf (NULL, 0, "%s.%s", current_schema_name, name) < buf_size);
+  assert (snprintf (NULL, 0, "%s.%s", current_schema_name, name) < SM_MAX_IDENTIFIER_LENGTH);
 
   /*
    * e.g.   name: object_name
    *      return: current_user_name.object_name
    */
-  snprintf (user_specified_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", current_user_name, name);
+  snprintf (user_specified_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", current_schema_name, name);
   return sm_downcase_name (user_specified_name, buf, buf_size);
 }
 
@@ -2755,20 +2841,29 @@ sm_rename_class (MOP class_mop, const char *new_name)
   SM_CLASS *class_ = NULL;
   SM_ATTRIBUTE *att = NULL;
   MOBJ obj = NULL;
-  DB_VALUE value;
   char *class_old_name = NULL;
   char *class_new_name = NULL;
-  const char *class_name_of_serial = NULL;
   char buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int is_partition = 0;
-  bool has_savepoint = false;
+  bool need_free_old_name = false;
+  bool need_free_new_name = false;
   int error = NO_ERROR;
-
-  db_make_null (&value);
 
   er_clear ();
 
+  if (new_name == NULL || new_name[0] == '\0')
+    {
+      ERROR_SET_WARNING_1ARG (error, ER_SM_INVALID_NAME, new_name);
+      return error;
+    }
+
   error = sm_partitioned_class_type (class_mop, &is_partition, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+
   if (is_partition == DB_PARTITIONED_CLASS)
     {
       error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_RENAME);
@@ -2777,14 +2872,6 @@ sm_rename_class (MOP class_mop, const char *new_name)
 	  ASSERT_ERROR ();
 	  return error;
 	}
-
-      has_savepoint = true;
-    }
-
-  if (new_name == NULL || new_name[0] == '\0')
-    {
-      ERROR_SET_WARNING_1ARG (error, ER_SM_INVALID_NAME, new_name);
-      return error;
     }
 
   error = au_fetch_class (class_mop, &class_, AU_FETCH_UPDATE, AU_ALTER);
@@ -2796,6 +2883,7 @@ sm_rename_class (MOP class_mop, const char *new_name)
 
   /* We need to go ahead and copy the string since prepare_rename uses the address of the string in the hash table. */
   class_old_name = CONST_CAST (char *, sm_ch_name ((MOBJ) class_));
+  assert (class_old_name != NULL);
 
   /* make sure this gets into the server table with no capitalization */
   sm_user_specified_name (new_name, buf, SM_MAX_IDENTIFIER_LENGTH);
@@ -2806,6 +2894,8 @@ sm_rename_class (MOP class_mop, const char *new_name)
       return error;
     }
 
+  need_free_new_name = true;
+
   obj = locator_prepare_rename_class (class_mop, class_old_name, class_new_name);
   if (obj == NULL)
     {
@@ -2815,10 +2905,13 @@ sm_rename_class (MOP class_mop, const char *new_name)
 
   class_->header.ch_name = class_new_name;
 
+  need_free_old_name = true;
+  need_free_new_name = false;
+
   error = sm_flush_objects (class_mop);
-  if (obj == NULL)
+  if (error != NO_ERROR)
     {
-      ASSERT_ERROR_AND_SET (error);
+      ASSERT_ERROR ();
       goto end;
     }
 
@@ -2827,6 +2920,9 @@ sm_rename_class (MOP class_mop, const char *new_name)
     {
       if (att->auto_increment != NULL)
 	{
+	  DB_VALUE value;
+	  const char *class_name_of_serial = NULL;
+
 	  error = db_get (att->auto_increment, SERIAL_ATTR_CLASS_NAME, &value);
 	  if (error != NO_ERROR)
 	    {
@@ -2871,15 +2967,13 @@ sm_rename_class (MOP class_mop, const char *new_name)
 	}
     }
 
-  if (class_old_name)
+end:
+  if (need_free_old_name && class_old_name != NULL)
     {
       db_private_free_and_init (NULL, class_old_name);
     }
 
-  class_new_name = NULL;
-
-end:
-  if (class_new_name)
+  if (need_free_new_name && class_new_name != NULL)
     {
       db_private_free_and_init (NULL, class_new_name);
     }
@@ -3189,6 +3283,20 @@ sm_is_system_class (MOP op)
   return sm_get_class_flag (op, SM_CLASSFLAG_SYSTEM);
 }
 
+static int
+system_class_def_compare (const void *a, const void *b)
+{
+  const SYSTEM_CLASS_DEF *sa = STATIC_CAST (const SYSTEM_CLASS_DEF *, a);
+  const SYSTEM_CLASS_DEF *sb = STATIC_CAST (const SYSTEM_CLASS_DEF *, b);
+
+  if (sa->len != sb->len)
+    {
+      return sa->len - sb->len;
+    }
+
+  return strcmp (sa->name, sb->name);
+}
+
 /*
  * sm_check_system_class_by_name () - Checks whether the class name is
  *    the same as the system class name.
@@ -3198,95 +3306,24 @@ sm_is_system_class (MOP op)
 bool
 sm_check_system_class_by_name (const char *name)
 {
-  // *INDENT-OFF*
-  static
-  struct system_class_list
-  {
-    const char *name;
-    int len;
-  }
-  system_classes[] =
-  {
-    /* 
-     * authorization classes
-     *
-     * AU_ROOT_CLASS_NAME     = CT_ROOT_NAME
-     * AU_OLD_ROOT_CLASS_NAME = CT_AUTHORIZATIONS_NAME
-     * AU_USER_CLASS_NAME     = CT_USER_NAME
-     * AU_PASSWORD_CLASS_NAME = CT_PASSWORD_NAME
-     * AU_AUTH_CLASS_NAME     = CT_AUTHORIZATION_NAME
-     * AU_GRANT_CLASS_NAME
-     */
-    {AU_ROOT_CLASS_NAME, strlen (AU_ROOT_CLASS_NAME)},		// "db_root"
-    {AU_USER_CLASS_NAME, strlen (AU_USER_CLASS_NAME)},		// "db_user"
-    {AU_PASSWORD_CLASS_NAME, strlen (AU_PASSWORD_CLASS_NAME)},	// "db_password"
-    {AU_AUTH_CLASS_NAME, strlen (AU_AUTH_CLASS_NAME)},		// "db_authorization"
-    {AU_OLD_ROOT_CLASS_NAME, strlen (AU_OLD_ROOT_CLASS_NAME)},	// "db_authorizations"
+  static int was_initialized = FALSE;
+  static int count = sizeof (system_classes) / sizeof (system_classes[0]);
 
-    /* currently, not implemented */
-    {AU_GRANT_CLASS_NAME, strlen (AU_GRANT_CLASS_NAME)},	// "db_grant"
-
-    /* 
-     * catalog classes
-     */
-    {CT_CLASS_NAME, strlen (CT_CLASS_NAME)},			// "_db_class"
-    {CT_ATTRIBUTE_NAME, strlen (CT_ATTRIBUTE_NAME)}, 		// "_db_attribute"
-    {CT_DOMAIN_NAME, strlen (CT_DOMAIN_NAME)},			// "_db_domain"
-    {CT_METHOD_NAME, strlen (CT_METHOD_NAME)},			// "_db_method"
-    {CT_METHSIG_NAME, strlen (CT_METHSIG_NAME)},		// "_db_meth_sig"
-    {CT_METHARG_NAME, strlen (CT_METHARG_NAME)},		// "_db_meth_arg"
-    {CT_METHFILE_NAME, strlen (CT_METHFILE_NAME)},		// "_db_meth_file"
-    {CT_QUERYSPEC_NAME, strlen (CT_QUERYSPEC_NAME)},		// "_db_query_spec"
-    {CT_INDEX_NAME, strlen (CT_INDEX_NAME)},			// "_db_index"
-    {CT_INDEXKEY_NAME, strlen (CT_INDEXKEY_NAME)},		// "_db_index_key"
-    {CT_DATATYPE_NAME, strlen (CT_DATATYPE_NAME)},		// "_db_data_type"
-    {CT_CLASSAUTH_NAME, strlen (CT_CLASSAUTH_NAME)},		// "_db_auth"
-    {CT_PARTITION_NAME, strlen (CT_PARTITION_NAME)},		// "_db_partition"
-    {CT_STORED_PROC_NAME, strlen (CT_STORED_PROC_NAME)},	// "_db_stored_procedure"
-    {CT_STORED_PROC_ARGS_NAME, strlen (CT_STORED_PROC_ARGS_NAME)},	// "_db_stored_procedure_args"
-    {CT_SERIAL_NAME, strlen (CT_SERIAL_NAME)},			// "db_serial"
-    {CT_HA_APPLY_INFO_NAME, strlen (CT_HA_APPLY_INFO_NAME)},	// "db_ha_apply_info"
-    {CT_COLLATION_NAME, strlen (CT_COLLATION_NAME)},		// "_db_collation"
-    {CT_CHARSET_NAME, strlen (CT_CHARSET_NAME)},		// "_db_charset"
-    {CT_DB_SERVER_NAME, strlen (CT_DB_SERVER_NAME)},		// "_db_server"
-
-    {CT_TRIGGER_NAME, strlen (CT_TRIGGER_NAME)},		// "db_trigger"
-
-    /* currently, not implemented */
-    {CT_RESOLUTION_NAME, strlen (CT_RESOLUTION_NAME)},		// "_db_resolution"
-
-    /*
-     * catalog vclasses
-     */
-    {CTV_CLASS_NAME, strlen (CTV_CLASS_NAME)},			// "db_class"
-    {CTV_SUPER_CLASS_NAME, strlen (CTV_SUPER_CLASS_NAME)},	// "db_direct_super_class"
-    {CTV_VCLASS_NAME, strlen (CTV_VCLASS_NAME)},		// "db_vclass"
-    {CTV_ATTRIBUTE_NAME, strlen (CTV_ATTRIBUTE_NAME)},		// "db_attribute"
-    {CTV_ATTR_SD_NAME, strlen (CTV_ATTR_SD_NAME)},		// "db_attr_setdomain_elm"
-    {CTV_METHOD_NAME, strlen (CTV_METHOD_NAME)},		// "db_method"
-    {CTV_METHARG_NAME, strlen (CTV_METHARG_NAME)},		// "db_meth_arg"
-    {CTV_METHARG_SD_NAME, strlen (CTV_METHARG_SD_NAME)},	// "db_meth_arg_setdomain_elm"
-    {CTV_METHFILE_NAME, strlen (CTV_METHFILE_NAME)},		// "db_meth_file"
-    {CTV_INDEX_NAME, strlen (CTV_INDEX_NAME)},			// "db_index"
-    {CTV_INDEXKEY_NAME, strlen (CTV_INDEXKEY_NAME)},		// "db_index_key"
-    {CTV_AUTH_NAME, strlen (CTV_AUTH_NAME)},			// "db_auth"
-    {CTV_TRIGGER_NAME, strlen (CTV_TRIGGER_NAME)},		// "db_trig"
-    {CTV_PARTITION_NAME, strlen (CTV_PARTITION_NAME)},		// "db_partition"
-    {CTV_STORED_PROC_NAME, strlen (CTV_STORED_PROC_NAME)},	// "db_stored_procedure"
-    {CTV_STORED_PROC_ARGS_NAME, strlen (CTV_STORED_PROC_ARGS_NAME)},	// "db_stored_procedure_args"
-    {CTV_DB_COLLATION_NAME, strlen (CTV_DB_COLLATION_NAME)},	// "db_collation"
-    {CTV_DB_CHARSET_NAME, strlen (CTV_DB_CHARSET_NAME)},	// "db_charset"
-    {CTV_DB_SERVER_NAME, strlen (CTV_DB_SERVER_NAME)}		// "db_server"
-  };
-  // *INDENT-ON*
-
+  SYSTEM_CLASS_DEF sa;
   char downcase_name[SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH] = { '\0' };
-  int count = 0;
+  int len = 0;
+  int cmp = 0;
   int i = 0;
 
   if (name == NULL || name[0] == '\0')
     {
       return false;
+    }
+
+  if (!was_initialized)
+    {
+      qsort (system_classes, count, sizeof (system_classes[0]), system_class_def_compare);
+      was_initialized = TRUE;
     }
 
   /* The user-specified name is not a system class name. */
@@ -3296,28 +3333,20 @@ sm_check_system_class_by_name (const char *name)
     }
 
   sm_downcase_name (name, downcase_name, SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+  sa.name = downcase_name;
+  sa.len = strlen (downcase_name);
 
-  if (strncmp (downcase_name, ROOTCLASS_NAME, strlen (ROOTCLASS_NAME)) == 0)
-    {
-      return true;
-    }
-
-  if (strncmp (downcase_name, CT_DUAL_NAME, strlen (CT_DUAL_NAME)) == 0)
-    {
-      return true;
-    }
-
-  if (strncmp (downcase_name, "_db_", 4) != 0 && strncmp (downcase_name, "db_", 3) != 0)
+  if (sa.len > system_classes[count - 1].len)
     {
       return false;
     }
 
-  count = sizeof (system_classes) / sizeof (system_classes[0]);
   for (i = 0; i < count; i++)
     {
-      if (strncmp (downcase_name, system_classes[i].name, system_classes[i].len) == 0)
+      cmp = system_class_def_compare (&sa, system_classes + i);
+      if (cmp <= 0)
 	{
-	  return true;
+	  return (cmp == 0);
 	}
     }
 
@@ -4343,7 +4372,8 @@ sm_update_all_catalog_statistics (bool with_fullscan)
     CT_METHOD_NAME, CT_METHSIG_NAME, CT_METHARG_NAME,
     CT_METHFILE_NAME, CT_QUERYSPEC_NAME, CT_INDEX_NAME,
     CT_INDEXKEY_NAME, CT_CLASSAUTH_NAME, CT_DATATYPE_NAME,
-    CT_COLLATION_NAME, CT_CHARSET_NAME, NULL
+    CT_COLLATION_NAME, CT_CHARSET_NAME, CT_SYNONYM_NAME,
+    NULL
   };
 
   for (i = 0; classes[i] != NULL && error == NO_ERROR; i++)
@@ -5347,11 +5377,7 @@ sm_class_constraints (MOP classop)
 MOP
 sm_find_class (const char *name)
 {
-  char realname[SM_MAX_IDENTIFIER_LENGTH];
-
-  sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
-
-  return (locator_find_class (realname));
+  return sm_find_class_with_purpose (name, false);
 }
 
 /*
@@ -5367,10 +5393,132 @@ MOP
 sm_find_class_with_purpose (const char *name, bool for_update)
 {
   char realname[SM_MAX_IDENTIFIER_LENGTH];
+  MOP class_mop = NULL;
+  MOP synonym_mop = NULL;
+  int error = NO_ERROR;
 
   sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
-  return (locator_find_class_with_purpose (realname, for_update));
+  class_mop = locator_find_class_with_purpose (realname, for_update);
+  if (class_mop)
+    {
+      return class_mop;
+    }
+
+  /* class_mop == NULL */
+  if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
+    {
+      synonym_mop = sm_find_synonym (realname);
+      if (synonym_mop)
+	{
+	  char target_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+	  sm_get_synonym_target_name (synonym_mop, target_name, SM_MAX_IDENTIFIER_LENGTH);
+	  class_mop = locator_find_class_with_purpose (target_name, for_update);
+	}
+      else
+	{
+	  /* synonym_mop == NULL */
+	  ASSERT_ERROR ();
+
+	  if (er_errid () == ER_SYNONYM_NOT_EXIST)
+	    {
+	      ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, realname);
+	    }
+	}
+    }
+
+  return class_mop;
+}
+
+/*
+ * sm_find_synonym() - find synonyms.
+ *   return: synonym object
+ *   name(in): synonym name
+ */
+MOP
+sm_find_synonym (const char *name)
+{
+  DB_OBJECT *synonym_class_obj = NULL;
+  DB_OBJECT *synonym_obj = NULL;
+  DB_VALUE value;
+  char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  int error = NO_ERROR;
+  int save = 0;
+
+  if (sm_check_system_class_by_name (name))
+    {
+      ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_NOT_EXIST, name);
+      return NULL;
+    }
+
+  synonym_class_obj = locator_find_class_with_purpose (CT_SYNONYM_NAME, false);
+  if (synonym_class_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return NULL;
+    }
+
+  sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
+  db_make_string (&value, realname);
+
+  AU_DISABLE (save);
+  synonym_obj = db_find_unique (synonym_class_obj, "unique_name", &value);
+  AU_ENABLE (save);
+
+  if (synonym_obj == NULL)
+    {
+      ASSERT_ERROR ();
+
+      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_clear ();
+	  ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_NOT_EXIST, realname);
+	}
+    }
+
+  return synonym_obj;
+}
+
+/*
+ * sm_get_synonym_target_name() - get target_name.
+ *   return: output buffer pointer or NULL on error
+ *   synonym(in): synonym object
+ *   buf(out): output buffer
+ *   buf_size(in): output buffer length
+ */
+char *
+sm_get_synonym_target_name (MOP synonym, char *buf, int buf_size)
+{
+  DB_VALUE value;
+  const char *target_name = NULL;
+  int len = 0;
+  int save = 0;
+  int error = NO_ERROR;
+
+  if (synonym == NULL)
+    {
+      ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
+      return NULL;
+    }
+
+  assert (buf != NULL);
+  assert (buf_size > 0);
+
+  AU_DISABLE (save);
+  db_get (synonym, "target_unique_name", &value);
+  AU_ENABLE (save);
+
+  target_name = db_get_string (&value);
+  len = db_get_string_size (&value);
+
+  assert (target_name && target_name[0] != '\0');
+  assert (len < buf_size);
+  assert (len < SM_MAX_IDENTIFIER_LENGTH);
+
+  memcpy (buf, target_name, len);
+  buf[len] = '\0';
+
+  return buf;
 }
 
 /*

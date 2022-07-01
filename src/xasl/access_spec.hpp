@@ -25,6 +25,7 @@
 
 #include "dbtype_def.h"
 #include "storage_common.h"
+#include "query_list.h"
 
 // forward definitions
 class regu_variable_node;
@@ -73,6 +74,7 @@ typedef struct key_info KEY_INFO;
 struct key_info
 {
   key_range *key_ranges;	/* a list of key ranges */
+  KEY_VAL_RANGE *key_vals;	/* a list of key values */
   int key_cnt;			/* key count */
   bool is_constant;		/* every key value is a constant */
   bool key_limit_reset;		/* should key limit reset at each range */
@@ -86,6 +88,7 @@ struct indx_info
 {
   BTID btid;			/* index identifier */
   int coverage;			/* index coverage state */
+  QFILE_LIST_ID *cov_list_id;	/* list file id for index coverage */
   OID class_oid;
   RANGE_TYPE range_type;	/* range type */
   KEY_INFO key_info;		/* key information */

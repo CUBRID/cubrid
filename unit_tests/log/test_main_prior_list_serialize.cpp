@@ -316,6 +316,9 @@ log_global log_Gl;
 pstat_global pstat_Global;
 pstat_metadata pstat_Metadata[1];
 
+PGLENGTH db_Io_page_size = IO_DEFAULT_PAGE_SIZE;
+PGLENGTH db_Log_page_size = IO_DEFAULT_PAGE_SIZE;
+
 PGLENGTH
 db_io_page_size ()
 {

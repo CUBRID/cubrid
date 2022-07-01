@@ -291,6 +291,7 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_connection_sr.cpp
   ${METHOD_DIR}/method_connection_pool.cpp
   ${METHOD_DIR}/method_def.cpp
+  ${METHOD_DIR}/method_error.cpp
   ${METHOD_DIR}/method_invoke_builtin.cpp
   ${METHOD_DIR}/method_invoke_group.cpp
   ${METHOD_DIR}/method_invoke_java.cpp
@@ -615,7 +616,6 @@ else(UNIX)
 endif(UNIX)
 # for dblink
 target_link_libraries(cubrid cascci)
-target_link_libraries(cubrid cubridcs)
 
 add_dependencies(cubrid ${EP_TARGETS} gen_loader_grammar gen_loader_lexer)
 
