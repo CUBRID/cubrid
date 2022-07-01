@@ -574,6 +574,8 @@ extern "C"
   extern void xsysprm_dump_server_parameters (FILE * fp);
 #endif				/* !CS_MODE */
 
+  extern int sysprm_set_value_by_id (PARAM_ID prm_id, SYSPRM_VALUE value);
+
   extern int sysprm_set_force (const char *pname, const char *pvalue);
   extern int sysprm_set_to_default (const char *pname, bool set_to_force);
   extern int sysprm_check_range (const char *pname, void *value);
@@ -588,6 +590,7 @@ extern "C"
   extern int sysprm_packed_assign_values_length (const SYSPRM_ASSIGN_VALUE * assign_values, int offset);
   extern char *sysprm_unpack_assign_values (char *ptr, SYSPRM_ASSIGN_VALUE ** assign_values_ptr);
   extern void sysprm_free_assign_values (SYSPRM_ASSIGN_VALUE ** assign_values_ptr);
+  extern bool sysprm_filter_change_parameters (SYSPRM_ASSIGN_VALUE ** assignments_ptr);
   extern void sysprm_change_parameter_values (const SYSPRM_ASSIGN_VALUE * assignments, bool check, bool set_flag);
 
 #if defined (SERVER_MODE)

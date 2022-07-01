@@ -2715,7 +2715,7 @@ db_set_system_parameters (const char *data)
   SYSPRM_ASSIGN_VALUE *assignments = NULL;
 
   /* validate changes */
-  rc = sysprm_validate_change_parameters (data, true, &assignments);
+  rc = sysprm_validate_change_parameters (data, true, &assignments); 
   /* If a server parameter is changed, user must belong to DBA group */
   if (rc == PRM_ERR_NOT_FOR_CLIENT && Au_dba_user != NULL && !au_is_dba_group_member (Au_user))
     {
@@ -2723,6 +2723,14 @@ db_set_system_parameters (const char *data)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "db_set_system_parameters");
       error = ER_AU_DBA_ONLY;
       goto cleanup;
+    }
+  if (rc == PRM_ERR_NOT_FOR_CLIENT || rc == PRM_ERR_NOT_FOR_CLIENT_NO_AUTH || rc == PRM_ERR_NO_ERROR)
+    {
+      /* filter out specific parameters (i.e. lock_timeout) */
+      if (sysprm_filter_change_parameters (&assignments) == true) 
+      {
+        rc = PRM_ERR_NO_ERROR;
+      }
     }
   if (rc == PRM_ERR_NOT_FOR_CLIENT || rc == PRM_ERR_NOT_FOR_CLIENT_NO_AUTH)
     {

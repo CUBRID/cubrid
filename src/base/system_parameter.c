@@ -10270,6 +10270,24 @@ prm_find (const char *pname, const char *section)
 }
 
 /*
+ * sysprm_set_value_by_id () - change a parameter value in prm_Def by id.
+ *
+ * return	  : SYSPRM_ERR code
+ * prm_id (in)    : system parameter id that will have its value changed.
+ * value (in)     : new values as sysprm_value
+ */
+int
+sysprm_set_value_by_id (PARAM_ID prm_id, SYSPRM_VALUE value)
+{
+  SYSPRM_PARAM *prm = NULL;
+
+  assert (prm_id >= PRM_FIRST_ID && prm_id <= PRM_LAST_ID);
+
+  prm = GET_PRM (prm_id);
+  return sysprm_set_value (prm, value, true, true);
+}
+
+/*
  * sysprm_set_force -
  *   return: NO_ERROR or error code
  *   pname(in): parameter name to set
