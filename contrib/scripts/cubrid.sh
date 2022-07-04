@@ -18,21 +18,12 @@
 export CUBRID=/opt/cubrid
 export CUBRID_DATABASES=$CUBRID/databases
 
-CUBRID_BASENAME=$(basename $CUBRID)
-LIB_PATH=`echo $LD_LIBRARY_PATH | grep -i $CUBRID_BASENAME`
-if [ "$LIB_PATH" = "" ];
-then
-	export LD_LIBRARY_PATH=$CUBRID/lib:$CUBRID/cci/lib:$LD_LIBRARY_PATH
-fi
+export LD_LIBRARY_PATH=$CUBRID/lib:$CUBRID/cci/lib:$LD_LIBRARY_PATH
+export PATH=$CUBRID/bin:$PATH
 
 export SHLIB_PATH=$LD_LIBRARY_PATH
 export LIBPATH=$LD_LIBRARY_PATH
 
-BIN_PATH=`echo $PATH | grep -i $CUBRID_BASENAME`
-if [ "$BIN_PATH" = "" ];
-then
-	PATH=$CUBRID/bin:$PATH
-fi
 
 LIB=$CUBRID/lib
 
