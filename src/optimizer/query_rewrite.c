@@ -3507,8 +3507,12 @@ end:
 static bool
 pt_is_ascii_string_value_node (const PT_NODE * const node)
 {
+#if defined(USE_NCHAR_PT_TYPE)
   return (PT_IS_VALUE_NODE (node) && PT_IS_CHAR_STRING_TYPE (node->type_enum)
 	  && !PT_IS_NATIONAL_CHAR_STRING_TYPE (node->type_enum));
+#else
+  return (PT_IS_VALUE_NODE (node) && PT_IS_CHAR_STRING_TYPE (node->type_enum));
+#endif
 }
 
 /*
@@ -4190,7 +4194,7 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 		  escape_type = pt_db_to_type_enum (TP_DOMAIN_TYPE (escape->expected_domain));
 		}
 	    }
-
+#if defined(USE_NCHAR_PT_TYPE)
 	  if (PT_IS_NATIONAL_CHAR_STRING_TYPE (pattern_type)
 	      || (escape != NULL && PT_IS_NATIONAL_CHAR_STRING_TYPE (escape_type)))
 	    {
@@ -4200,6 +4204,7 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 	       * through national character strings. */
 	      continue;
 	    }
+#endif
 
 	  if (pt_is_ascii_string_value_node (pattern)
 	      && (escape == NULL || PT_IS_NULL_NODE (escape) || pt_is_ascii_string_value_node (escape)))

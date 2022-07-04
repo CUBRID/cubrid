@@ -545,6 +545,7 @@ extern "C"
 /* The maximum precision that can be specified for a CHARACTER VARYING domain.*/
 #define DB_MAX_VARCHAR_PRECISION DB_MAX_STRING_LENGTH
 
+// ctshim #if defined(USE_NCHAR)
 /* The maximum precision that can be specified for a NATIONAL CHAR(n) domain. This probably isn't restrictive enough.
  * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
  */
@@ -554,6 +555,7 @@ extern "C"
  * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
  */
 #define DB_MAX_VARNCHAR_PRECISION DB_MAX_NCHAR_PRECISION
+// ctshim  #endif
 
 /* The maximum precision that can be specified for a BIT domain. */
 #define DB_MAX_BIT_PRECISION DB_MAX_BIT_LENGTH

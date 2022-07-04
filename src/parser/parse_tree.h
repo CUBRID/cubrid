@@ -145,6 +145,12 @@ struct json_t;
 	  ((t) == PT_TYPE_MULTISET)  || \
 	  ((t) == PT_TYPE_SEQUENCE))
 
+//#define USE_NCHAR
+#ifdef USE_NCHAR
+#define USE_NCHAR_PT_TYPE
+#endif
+
+#if defined(USE_NCHAR_PT_TYPE)
 #define PT_IS_STRING_TYPE(t) \
         ( ((t) == PT_TYPE_CHAR)     || \
 	  ((t) == PT_TYPE_VARCHAR)  || \
@@ -157,20 +163,27 @@ struct json_t;
         ( ((t) == PT_TYPE_NCHAR)      || \
 	  ((t) == PT_TYPE_VARNCHAR))
 
-#define PT_IS_SIMPLE_CHAR_STRING_TYPE(t) \
-        ( ((t) == PT_TYPE_CHAR)      || \
-	  ((t) == PT_TYPE_VARCHAR))
-
 #define PT_IS_CHAR_STRING_TYPE(t) \
         ( ((t) == PT_TYPE_CHAR)      || \
 	  ((t) == PT_TYPE_VARCHAR)   || \
 	  ((t) == PT_TYPE_NCHAR)     || \
 	  ((t) == PT_TYPE_VARNCHAR))
+#else // #if defined(USE_NCHAR_PT_TYPE)
+#define PT_IS_STRING_TYPE(t) \
+        ( (t) == PT_TYPE_CHAR || (t) == PT_TYPE_VARCHAR || (t) == PT_TYPE_BIT  || (t) == PT_TYPE_VARBIT )
+
+#define PT_IS_CHAR_STRING_TYPE(t)  ((t) == PT_TYPE_CHAR || (t) == PT_TYPE_VARCHAR)
+#endif // #if defined(USE_NCHAR_PT_TYPE)
+
+#define PT_IS_SIMPLE_CHAR_STRING_TYPE(t) \
+        ( ((t) == PT_TYPE_CHAR)      || \
+	  ((t) == PT_TYPE_VARCHAR))
 
 #define PT_IS_BIT_STRING_TYPE(t) \
         ( ((t) == PT_TYPE_BIT)      || \
 	  ((t) == PT_TYPE_VARBIT))
 
+#if defined(USE_NCHAR_PT_TYPE)
 #define PT_IS_COMPLEX_TYPE(t) \
         ( ((t) == PT_TYPE_MONETARY)  || \
 	  ((t) == PT_TYPE_NUMERIC)   || \
@@ -185,6 +198,20 @@ struct json_t;
 	  ((t) == PT_TYPE_MULTISET)  || \
 	  ((t) == PT_TYPE_SEQUENCE)  || \
 	  ((t) == PT_TYPE_ENUMERATION))
+#else
+#define PT_IS_COMPLEX_TYPE(t) \
+        ( ((t) == PT_TYPE_MONETARY)  || \
+	  ((t) == PT_TYPE_NUMERIC)   || \
+	  ((t) == PT_TYPE_CHAR)      || \
+	  ((t) == PT_TYPE_VARCHAR)   || \
+	  ((t) == PT_TYPE_BIT)       || \
+	  ((t) == PT_TYPE_VARBIT)    || \
+	  ((t) == PT_TYPE_OBJECT)    || \
+	  ((t) == PT_TYPE_SET)       || \
+	  ((t) == PT_TYPE_MULTISET)  || \
+	  ((t) == PT_TYPE_SEQUENCE)  || \
+	  ((t) == PT_TYPE_ENUMERATION))
+#endif
 
 #define PT_IS_DATE_TIME_WITH_TZ_TYPE(t) \
         ( (t) == PT_TYPE_TIMESTAMPTZ  || \
@@ -226,6 +253,7 @@ struct json_t;
 #define PT_IS_PRIMITIVE_TYPE(t) \
         ( ((t) != PT_TYPE_OBJECT) && ((t) != PT_TYPE_NONE))
 
+#if defined(USE_NCHAR_PT_TYPE)
 #define PT_IS_PARAMETERIZED_TYPE(t) \
         ( ((t) == PT_TYPE_NUMERIC)  || \
 	  ((t) == PT_TYPE_VARCHAR)  || \
@@ -246,6 +274,24 @@ struct json_t;
 	  ((t) == PT_TYPE_NCHAR)    || \
 	  ((t) == PT_TYPE_VARNCHAR) || \
 	  ((t) == PT_TYPE_ENUMERATION))
+#else // #if defined(USE_NCHAR_PT_TYPE)
+#define PT_IS_PARAMETERIZED_TYPE(t) \
+        ( ((t) == PT_TYPE_NUMERIC)  || \
+	  ((t) == PT_TYPE_VARCHAR)  || \
+	  ((t) == PT_TYPE_CHAR)     || \
+	  ((t) == PT_TYPE_VARBIT)   || \
+	  ((t) == PT_TYPE_BIT)	    || \
+	  ((t) == PT_TYPE_ENUMERATION))
+
+#define PT_IS_LOB_TYPE(t) \
+        ( ((t) == PT_TYPE_BLOB)  || \
+	  ((t) == PT_TYPE_CLOB))
+
+#define PT_HAS_COLLATION(t) \
+        ( ((t) == PT_TYPE_CHAR)     || \
+	  ((t) == PT_TYPE_VARCHAR)  || \
+	  ((t) == PT_TYPE_ENUMERATION))
+#endif // #if defined(USE_NCHAR_PT_TYPE)
 
 #define PT_VALUE_GET_BYTES(node) \
   ((node) == NULL ? NULL : \
@@ -1002,8 +1048,10 @@ enum pt_type_enum
   PT_TYPE_NUMERIC,
   PT_TYPE_CHAR,
   PT_TYPE_VARCHAR,
+#if defined(USE_NCHAR_PT_TYPE)
   PT_TYPE_NCHAR,
   PT_TYPE_VARNCHAR,
+#endif
   PT_TYPE_BIT,
   PT_TYPE_VARBIT,
   PT_TYPE_LOGICAL,

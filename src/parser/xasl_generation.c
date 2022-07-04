@@ -1889,11 +1889,13 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 		  }
 		else if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER))
 		  {
+#if defined(USE_NCHAR_PT_TYPE)
 		    PT_NODE *arg1 = node->info.expr.arg1;
+#endif
 		    PT_NODE *node = pt_make_string_value (parser, "\\");
 
 		    assert (!prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES));
-
+#if defined(USE_NCHAR_PT_TYPE)
 		    switch (arg1->type_enum)
 		      {
 		      case PT_TYPE_MAYBE:
@@ -1910,6 +1912,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 		      default:
 			break;
 		      }
+#endif
 
 		    regu_escape = pt_to_regu_variable (parser, node, UNBOX_AS_VALUE);
 		    parser_free_node (parser, node);
@@ -3279,11 +3282,15 @@ pt_to_index_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, QO_XASL_IND
 
 	      /* need to check zero-length empty string */
 	      if (ref_node != NULL
+#if defined(USE_NCHAR_PT_TYPE)
 		  && (ref_node->type_enum == PT_TYPE_VARCHAR || ref_node->type_enum == PT_TYPE_VARNCHAR
 		      || ref_node->type_enum == PT_TYPE_VARBIT))
-		{
-		  pred_nodes = parser_append_node (ref_node, pred_nodes);
-		}
+#else
+		  && (ref_node->type_enum == PT_TYPE_VARCHAR || ref_node->type_enum == PT_TYPE_VARBIT))
+#endif
+	      {
+		pred_nodes = parser_append_node (ref_node, pred_nodes);
+	      }
 
 	      /* restore node link */
 	      node->next = save_next;
@@ -7347,17 +7354,21 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
       dt->info.data_type.precision = DB_MAX_CHAR_PRECISION;
       break;
 
+#if defined(USE_NCHAR_PT_TYPE)
     case PT_TYPE_NCHAR:
       dt->info.data_type.precision = DB_MAX_NCHAR_PRECISION;
       break;
+#endif
 
     case PT_TYPE_VARCHAR:
       dt->info.data_type.precision = DB_MAX_VARCHAR_PRECISION;
       break;
 
+#if defined(USE_NCHAR_PT_TYPE)
     case PT_TYPE_VARNCHAR:
       dt->info.data_type.precision = DB_MAX_VARNCHAR_PRECISION;
       break;
+#endif
 
     case PT_TYPE_BIT:
       dt->info.data_type.precision = DB_MAX_BIT_PRECISION;

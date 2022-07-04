@@ -4066,8 +4066,10 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
     case PT_TYPE_VARBIT:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
+#if defined(USE_NCHAR_PT_TYPE)
     case PT_TYPE_NCHAR:
     case PT_TYPE_VARNCHAR:
+#endif
       result = parser_new_node (parser, PT_DATA_TYPE);
       if (result == NULL)
 	{
@@ -4615,8 +4617,10 @@ pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * at
     case PT_TYPE_VARBIT:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
+#if defined(USE_NCHAR_PT_TYPE)
     case PT_TYPE_NCHAR:
     case PT_TYPE_VARNCHAR:
+#endif
     case PT_TYPE_ENUMERATION:
     case PT_TYPE_JSON:
       attr->data_type = pt_domain_to_data_type (parser, dom);
@@ -9126,8 +9130,10 @@ pt_resolve_method_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_TYPE_VARBIT:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
+#if defined(USE_NCHAR_PT_TYPE)
     case PT_TYPE_NCHAR:
     case PT_TYPE_VARNCHAR:
+#endif
       node->data_type = pt_domain_to_data_type (parser, dom);
       break;
     default:

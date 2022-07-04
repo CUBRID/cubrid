@@ -285,7 +285,11 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs, PT_NODE ** se
 			}
 		    }
 		  /* PR) core dumped & deficient character related with CONST CHAR & CHAR in set.  */
+#if defined(USE_NCHAR_PT_TYPE)
 		  else if (typ == PT_TYPE_CHAR || typ == PT_TYPE_NCHAR || typ == PT_TYPE_BIT)
+#else
+		  else if (typ == PT_TYPE_CHAR || typ == PT_TYPE_BIT)
+#endif
 		    {
 		      if (s->info.data_type.precision != typs->data_type->info.data_type.precision)
 			{
@@ -1108,10 +1112,8 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
       if (db_value)
 	{
 	  if (value->type_enum != PT_TYPE_NONE && value->type_enum != PT_TYPE_NULL && value->type_enum != PT_TYPE_MAYBE
-	      && value->type_enum != PT_TYPE_NUMERIC && value->type_enum != PT_TYPE_CHAR
-	      && value->type_enum != PT_TYPE_NCHAR && value->type_enum != PT_TYPE_BIT
-	      && value->type_enum != PT_TYPE_VARCHAR && value->type_enum != PT_TYPE_VARNCHAR
-	      && value->type_enum != PT_TYPE_VARBIT && (hv_dom = pt_node_to_db_domain (parser, value, NULL)) != NULL)
+	      && value->type_enum != PT_TYPE_NUMERIC && !PT_IS_STRING_TYPE (value->type_enum)
+	      && (hv_dom = pt_node_to_db_domain (parser, value, NULL)) != NULL)
 	    {
 	      /* host_var node "value" has a useful domain for itself so that check compatibility between the "value"
 	       * and the host variable provided by the user */
@@ -1508,13 +1510,14 @@ pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t)
     case PT_TYPE_SEQUENCE:
       name = "sequence";
       break;
-
+#if defined(USE_NCHAR_PT_TYPE)
     case PT_TYPE_NCHAR:
       name = "nchar";
       break;
     case PT_TYPE_VARNCHAR:
       name = "nchar varying";
       break;
+#endif
     case PT_TYPE_BIT:
       name = "bit";
       break;
@@ -2403,12 +2406,14 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
     case PT_TYPE_NUMERIC:
       db_type = DB_TYPE_NUMERIC;
       break;
+#if defined(USE_NCHAR_PT_TYPE)
     case PT_TYPE_NCHAR:
       db_type = DB_TYPE_NCHAR;
       break;
     case PT_TYPE_VARNCHAR:
       db_type = DB_TYPE_VARNCHAR;
       break;
+#endif
     case PT_TYPE_BIT:
       db_type = DB_TYPE_BIT;
       break;
@@ -2675,12 +2680,20 @@ pt_db_to_type_enum (const DB_TYPE t)
     case DB_TYPE_STRING:
       pt_type = PT_TYPE_VARCHAR;
       break;
+#if defined(USE_NCHAR_PT_TYPE)
     case DB_TYPE_NCHAR:
       pt_type = PT_TYPE_NCHAR;
       break;
     case DB_TYPE_VARNCHAR:
       pt_type = PT_TYPE_VARNCHAR;
       break;
+#else // ctshim
+      // we will remove below 4 lines.
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
+      pt_type = PT_TYPE_NONE;
+      break;
+#endif
     case DB_TYPE_BIT:
       pt_type = PT_TYPE_BIT;
       break;
@@ -3414,7 +3427,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       db_make_monetary (db_value, (DB_CURRENCY) value->info.value.data_value.money.type,
 			value->info.value.data_value.money.amount);
       break;
-
+#if defined(USE_NCHAR_PT_TYPE)
     case PT_TYPE_NCHAR:
       /* for constants, set the precision to TP_FLOATING_PRECISION_VALUE */
       db_make_nchar (db_value, TP_FLOATING_PRECISION_VALUE,
@@ -3432,7 +3445,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       value->info.value.db_value_is_in_workspace = false;
       *more_type_info_needed = (value->data_type == NULL);
       break;
-
+#endif
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
       if (value->info.value.string_type == 'B')
