@@ -278,7 +278,7 @@ page_server::connection_handler::remove_prior_sender_sink ()
 
   if (static_cast<bool> (m_prior_sender_sink_hook_func))
     {
-      log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
+      log_Gl.m_prior_sender->remove_sink (m_prior_sender_sink_hook_func);
       m_prior_sender_sink_hook_func = nullptr;
     }
 }

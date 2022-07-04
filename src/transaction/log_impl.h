@@ -714,8 +714,8 @@ struct log_global
 
   // *INDENT-OFF*
   cublog::meta m_metainfo;
-  cublog::prior_sender m_prior_sender;
 #if defined (SERVER_MODE)
+  std::unique_ptr<cublog::prior_sender> m_prior_sender = nullptr;
   std::unique_ptr<cublog::prior_recver> m_prior_recver = nullptr;
 #endif // SERVER_MODE = !SA_MODE
 

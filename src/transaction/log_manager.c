@@ -3512,7 +3512,11 @@ log_pack_log_boot_info (THREAD_ENTRY &thread_r, std::string &payload_in_out,
 			  sizeof (log_lsa));
 
     // within the same locks, initialize log prior dispatch to the newly connected passive transaction server
-    log_Gl.m_prior_sender.add_sink (log_prior_sender_sink);
+    if (log_Gl.m_prior_sender == nullptr)
+      {
+        log_Gl.m_prior_sender = std::make_unique<cublog::prior_sender> ();
+      }
+    log_Gl.m_prior_sender->add_sink (log_prior_sender_sink);
     // TODO: in the future, this needs to be made explicit:
     //  - as passive transaction servers (PTS) go on/off-line at a random pace
     //  - and, as each PTS has the list of available page servers (PS) it can connect to
