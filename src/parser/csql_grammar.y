@@ -26,6 +26,14 @@
 #include "json_table_def.h"
 #include "parser.h"
 
+#if defined(USE_NCHAR) && defined(USE_NCHAR_PT_TYPE) && defined(USE_NCHAR_IN_GRAMMAR)
+#    define PT_TYPE_VARNCHAR_CHANGE   PT_TYPE_VARNCHAR
+#    define PT_TYPE_NCHAR_CHANGE      PT_TYPE_NCHAR
+#else
+#    define PT_TYPE_VARNCHAR_CHANGE   PT_TYPE_VARCHAR
+#    define PT_TYPE_NCHAR_CHANGE      PT_TYPE_CHAR
+#endif
+
 /*
  * The default YYLTYPE structure is extended so that locations can hold
  * context information
@@ -20141,13 +20149,13 @@ negative_prec_cast_type
 	| NATIONAL CHAR_
 		{{ DBG_TRACE_GRAMMAR(negative_prec_cast_type, |  NATIONAL CHAR_);
 
-			$$ = PT_TYPE_NCHAR;
+			$$ = PT_TYPE_NCHAR_CHANGE;
 
 		DBG_PRINT}}
 	| NCHAR
 		{{ DBG_TRACE_GRAMMAR(negative_prec_cast_type, | NCHAR);
 
-			$$ = PT_TYPE_NCHAR;
+			$$ = PT_TYPE_NCHAR_CHANGE;
 
 		DBG_PRINT}}
 	;
@@ -20178,12 +20186,15 @@ of_cast_data_type
 
 			if (l != -1)
 			  {
+#if defined(USE_NCHAR_PT_TYPE)
 			    int maxlen = (typ == PT_TYPE_NCHAR)
 			      ? DB_MAX_NCHAR_PRECISION : DB_MAX_CHAR_PRECISION;
-			    PT_ERRORmf3 (this_parser, len,
-					 MSGCAT_SET_PARSER_SEMANTIC,
-					 MSGCAT_SEMANTIC_INV_PREC,
-					 l, -1, maxlen);
+			    PT_ERRORmf3 (this_parser, len, MSGCAT_SET_PARSER_SEMANTIC,
+					 MSGCAT_SEMANTIC_INV_PREC, l, -1, maxlen);
+#else
+			    PT_ERRORmf3 (this_parser, len, MSGCAT_SET_PARSER_SEMANTIC, 
+                                         MSGCAT_SEMANTIC_INV_PREC, l, -1, DB_MAX_CHAR_PRECISION);
+#endif
 			  }
 
 			dt = parser_new_node (this_parser, PT_DATA_TYPE);
@@ -20193,6 +20204,7 @@ of_cast_data_type
 
 			    dt->type_enum = typ;
 			    dt->info.data_type.precision = l;
+#if defined(USE_NCHAR_PT_TYPE)
 			    switch (typ)
 			      {
 			      case PT_TYPE_CHAR:
@@ -20213,6 +20225,22 @@ of_cast_data_type
 			      default:
 				break;
 			      }
+#else
+			    if (typ == PT_TYPE_CHAR)
+                              {			      
+				if (pt_check_grammar_charset_collation
+				    (this_parser, charset_node, coll_node, &charset, &coll_id) == NO_ERROR)
+				  {
+				    dt->info.data_type.units = charset;
+				    dt->info.data_type.collation_id = coll_id;
+				  }
+				 else
+				  {
+				    dt->info.data_type.units = -1;
+				    dt->info.data_type.collation_id = -1;
+				  }
+			      }
+#endif
 			  }
 
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
@@ -20427,18 +20455,18 @@ char_bit_type
 		{{ DBG_TRACE_GRAMMAR(char_bit_type, | NATIONAL CHAR_ opt_varying);
 
 			if ($3)
-			  $$ = PT_TYPE_VARNCHAR;
+			  $$ = PT_TYPE_VARNCHAR_CHANGE;
 			else
-			  $$ = PT_TYPE_NCHAR;
+			  $$ = PT_TYPE_NCHAR_CHANGE;
 
 		DBG_PRINT}}
 	| NCHAR	opt_varying
 		{{ DBG_TRACE_GRAMMAR(char_bit_type, | NCHAR	opt_varying);
 
 			if ($2)
-			  $$ = PT_TYPE_VARNCHAR;
+			  $$ = PT_TYPE_VARNCHAR_CHANGE;
 			else
-			  $$ = PT_TYPE_NCHAR;
+			  $$ = PT_TYPE_NCHAR_CHANGE;
 
 		DBG_PRINT}}
 	| BIT opt_varying
@@ -20792,7 +20820,7 @@ primitive_type
 			      case PT_TYPE_VARCHAR:
 				maxlen = DB_MAX_VARCHAR_PRECISION;
 				break;
-
+#if defined(USE_NCHAR_PT_TYPE) 
 			      case PT_TYPE_NCHAR:
 				maxlen = DB_MAX_NCHAR_PRECISION;
 				break;
@@ -20800,7 +20828,7 @@ primitive_type
 			      case PT_TYPE_VARNCHAR:
 				maxlen = DB_MAX_VARNCHAR_PRECISION;
 				break;
-
+#endif
 			      case PT_TYPE_BIT:
 				maxlen = DB_MAX_BIT_PRECISION;
 				break;
@@ -20834,7 +20862,9 @@ primitive_type
 			    switch (typ)
 			      {
 			      case PT_TYPE_CHAR:
+#if defined(USE_NCHAR_PT_TYPE)
 			      case PT_TYPE_NCHAR:
+#endif
 			      case PT_TYPE_BIT:
 				l = 1;
 				break;
@@ -20842,11 +20872,11 @@ primitive_type
 			      case PT_TYPE_VARCHAR:
 				l = DB_MAX_VARCHAR_PRECISION;
 				break;
-
+#if defined(USE_NCHAR_PT_TYPE) 
 			      case PT_TYPE_VARNCHAR:
 				l = DB_MAX_VARNCHAR_PRECISION;
 				break;
-
+#endif
 			      case PT_TYPE_VARBIT:
 				l = DB_MAX_VARBIT_PRECISION;
 				break;
@@ -20867,8 +20897,10 @@ primitive_type
 			      {
 			      case PT_TYPE_CHAR:
 			      case PT_TYPE_VARCHAR:
+#if defined(USE_NCHAR_PT_TYPE)
 			      case PT_TYPE_NCHAR:
 			      case PT_TYPE_VARNCHAR:
+#endif
 				if (pt_check_grammar_charset_collation
 				      (this_parser, charset_node,
 				       coll_node, &charset, &coll_id) == NO_ERROR)
@@ -22433,7 +22465,7 @@ char_string
 			  }
 
 			node = pt_create_char_string_literal (this_parser,
-							      PT_TYPE_NCHAR,
+							      PT_TYPE_NCHAR_CHANGE,
 							      $1, charset);
 
 			if (node && lang_get_parser_use_client_charset ())
@@ -25291,8 +25323,11 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
       if (date_lang)
 	{
 	  date_lang->type_enum = PT_TYPE_INTEGER;
-	  if (arg3->type_enum != PT_TYPE_CHAR
-	      && arg3->type_enum != PT_TYPE_NCHAR)
+#if defined(USE_NCHAR_PT_TYPE)
+	  if (arg3->type_enum != PT_TYPE_CHAR && arg3->type_enum != PT_TYPE_NCHAR)
+#else
+          if (arg3->type_enum != PT_TYPE_CHAR)
+#endif
 	    {
 	      PT_ERROR (this_parser, arg3,
 			"argument 3 must be character string");
@@ -26050,10 +26085,11 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	{
 	  PT_NODE *node = args->next;
 	  if (node->node_type != PT_VALUE ||
-	      (node->type_enum != PT_TYPE_CHAR &&
-	       node->type_enum != PT_TYPE_VARCHAR &&
-	       node->type_enum != PT_TYPE_NCHAR &&
-	       node->type_enum != PT_TYPE_VARNCHAR))
+	      (node->type_enum != PT_TYPE_CHAR && node->type_enum != PT_TYPE_VARCHAR
+#if defined(USE_NCHAR_PT_TYPE) 
+                && node->type_enum != PT_TYPE_NCHAR && node->type_enum != PT_TYPE_VARNCHAR
+#endif
+                ))
 	    {
 	      push_msg (MSGCAT_SYNTAX_INVALID_TO_NUMBER);
 	      csql_yyerror_explicit (10, 10);
@@ -26893,7 +26929,7 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
         length = node->info.value.data_value.str->length;
 
         node->type_enum = char_type;
-
+#if defined(USE_NCHAR_PT_TYPE) 
         if (char_type == PT_TYPE_NCHAR)
           {
             node->info.value.string_type = 'N';
@@ -26902,6 +26938,9 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
           {
             node->info.value.string_type = ' ';
           }
+#else
+        node->info.value.string_type = ' ';
+#endif
 
         PT_NODE_PRINT_VALUE_TO_TEXT (parser, node);
       }
