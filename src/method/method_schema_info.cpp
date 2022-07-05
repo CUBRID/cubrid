@@ -124,7 +124,7 @@ namespace cubmethod
   {
     lang_set_parser_use_client_charset (false);
 
-    m_session = db_open_buffer (sql_stmt.c_str ());
+    m_session = db_open_buffer (sql_stmt.c_str());
     if (!m_session)
       {
 	lang_set_parser_use_client_charset (true);
@@ -176,58 +176,76 @@ namespace cubmethod
   schema_info_handler::sch_class_info (schema_info &info, std::string &class_name,
 				       int pattern_flag, int v_class_flag)
   {
-    std::transform (class_name.begin (), class_name.end (), class_name.begin (), ::tolower);
-    std::string case_stmt = "CASE WHEN is_system_class = 'YES' THEN 0 \
-		      WHEN class_type = 'CLASS' THEN 2 \
-		      ELSE 1 END";
-    std::string where_vclass = "class_type = 'VCLASS'";
+    std::string schema_name;
+    std::string class_name_only;
+    std::size_t found;
 
-    std::string sql = "SELECT class_name, CAST(%s AS short), comment FROM db_class ";
-    sql.append (case_stmt);
+    std::transform (class_name.begin(), class_name.end(), class_name.begin(), ::tolower);
+
+    class_name_only = class_name;
+    found = class_name.find ('.');
+    if (found != std::string::npos)
+      {
+	/* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	if (found > 0 && found < DB_MAX_SCHEMA_LENGTH)
+	  {
+	    schema_name = class_name.substr (0, found);
+	    class_name_only = class_name.substr (found + 1);
+	  }
+      }
+
+    // *INDENT-OFF*
+    std::string sql = ""
+	"SELECT "
+	  "CASE "
+	    "WHEN is_system_class = 'NO' THEN LOWER (owner_name) || '.' || class_name "
+	    "ELSE class_name "
+	    "END AS unique_name, "
+	  "CAST ( "
+	      "CASE "
+		"WHEN is_system_class = 'YES' THEN 0 "
+		"WHEN class_type = 'CLASS' THEN 2 "
+		"ELSE 1 "
+		"END "
+	      "AS SHORT "
+	    "), "
+	  "comment "
+	"FROM "
+	  "db_class "
+	"WHERE 1 = 1 ";
+    // *INDENT-ON*
+
+    if (v_class_flag)
+      {
+	sql.append ("AND class_type = 'VCLASS' ");
+      }
+
     if (pattern_flag & CLASS_NAME_PATTERN_MATCH)
       {
-	if (v_class_flag)
+	if (!class_name_only.empty())
 	  {
-	    if (!class_name.empty ())
-	      {
-		sql.append ("WHERE class_name LIKE '");
-		sql.append (class_name);
-		sql.append ("' ESCAPE '");
-		sql.append (get_backslash_escape_string ());
-		sql.append ("' AND ");
-		sql.append (where_vclass);
-	      }
-	    else
-	      {
-		sql.append ("WHERE ");
-		sql.append (where_vclass);
-	      }
-	  }
-	else
-	  {
-	    if (!class_name.empty ())
-	      {
-		sql.append ("WHERE class_name LIKE '");
-		sql.append (class_name);
-		sql.append ("' ESCAPE '");
-		sql.append (get_backslash_escape_string ());
-		sql.append ("'");
-	      }
+	    /* AND class_name LIKE '%s' ESCAPE '%s' */
+	    sql.append ("AND class_name LIKE '");
+	    sql.append (class_name_only);
+	    sql.append ("' ESCAPE '");
+	    sql.append (get_backslash_escape_string ());
+	    sql.append ("' ");
 	  }
       }
     else
       {
-	sql.append ("WHERE class_name = '");
-	sql.append (class_name);
-	if (v_class_flag)
-	  {
-	    sql.append ("' AND ");
-	    sql.append (where_vclass);
-	  }
-	else
-	  {
-	    sql.append ("'");
-	  }
+	/* AND class_name = '%s' */
+	sql.append ("AND class_name = '");
+	sql.append (class_name_only);
+	sql.append ("' ");
+      }
+
+    if (!schema_name.empty())
+      {
+	/* AND owner_name = UPPER ('%s') */
+	sql.append ("AND owner_name = UPPER ('");
+	sql.append (schema_name);
+	sql.append ("') ");
       }
 
     int num_result = execute_schema_info_query (sql);
@@ -245,18 +263,143 @@ namespace cubmethod
 				      std::string &attr_name, int pattern_flag,
 				      int class_attr_flag)
   {
-    // TODO: not implemented yet
+    std::string schema_name;
+    std::string class_name_only;
+    std::size_t found;
+
+    std::transform (class_name.begin(), class_name.end(), class_name.begin(), ::tolower);
+    std::transform (attr_name.begin(), attr_name.end(), attr_name.begin(), ::tolower);
+
+    class_name_only = class_name;
+    found = class_name.find ('.');
+    if (found != std::string::npos)
+      {
+	/* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	if (found > 0 && found < DB_MAX_SCHEMA_LENGTH)
+	  {
+	    schema_name = class_name.substr (0, found);
+	    class_name_only = class_name.substr (found + 1);
+	  }
+      }
+
+    // *INDENT-OFF*
+    std::string sql = ""
+	"SELECT "
+	  "CASE "
+	    "WHEN ( "
+		"SELECT b.is_system_class "
+		"FROM db_class b "
+		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
+	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
+	    "ELSE a.class_name "
+	    "END AS unique_name, "
+	  "a.attr_name "
+	"FROM "
+	  "db_attribute a "
+	"WHERE 1 = 1 ";
+    // *INDENT-ON*
+
+    if (class_attr_flag)
+      {
+	sql.append ("AND a.attr_type = 'CLASS' ");
+      }
+    else
+      {
+	sql.append ("AND a.attr_type in {'INSTANCE', 'SHARED'} ");
+      }
+
+    if (pattern_flag & CLASS_NAME_PATTERN_MATCH)
+      {
+	if (!class_name_only.empty())
+	  {
+	    /* AND class_name LIKE '%s' ESCAPE '%s' */
+	    sql.append ("AND a.class_name LIKE '");
+	    sql.append (class_name_only);
+	    sql.append ("' ESCAPE '");
+	    sql.append (get_backslash_escape_string ());
+	    sql.append ("' ");
+	  }
+      }
+    else
+      {
+	/* AND class_name = '%s' */
+	sql.append ("AND a.class_name = '");
+	sql.append (class_name_only);
+	sql.append ("' ");
+      }
+
+    if (pattern_flag & ATTR_NAME_PATTERN_MATCH)
+      {
+	if (!attr_name.empty())
+	  {
+	    /* AND a.attr_name LIKE '%s' ESCAPE '%s' */
+	    sql.append ("AND a.attr_name LIKE '");
+	    sql.append (attr_name);
+	    sql.append ("' ESCAPE '");
+	    sql.append (get_backslash_escape_string ());
+	    sql.append ("' ");
+	  }
+      }
+    else
+      {
+	/* AND a.attr_name = '%s' */
+	sql.append ("AND a.class_name = '");
+	sql.append (attr_name);
+	sql.append ("' ");
+      }
+
+    if (!schema_name.empty())
+      {
+	/* AND owner_name = UPPER ('%s') */
+	sql.append ("AND a.owner_name = UPPER ('");
+	sql.append (schema_name);
+	sql.append ("') ");
+      }
+
+    sql.append ("ORDER BY a.class_name, a.def_order ");
+
+    int num_result = execute_schema_info_query (sql);
+    if (num_result < 0)
+      {
+	return num_result;
+      }
+
+    info.num_result = num_result;
     return NO_ERROR;
   }
 
   int
   schema_info_handler::sch_queryspec (schema_info &info, std::string &class_name)
   {
-    std::transform (class_name.begin (), class_name.end (), class_name.begin (), ::tolower);
+    std::string schema_name;
+    std::string class_name_only;
+    std::size_t found;
 
-    std::string sql = "SELECT vclass_def FROM db_vclass WHERE vclass_name = '";
-    sql.append (class_name);
-    sql.append ("'");
+    std::transform (class_name.begin(), class_name.end(), class_name.begin(), ::tolower);
+
+    class_name_only = class_name;
+    found = class_name.find ('.');
+    if (found != std::string::npos)
+      {
+	/* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	if (found > 0 && found < DB_MAX_SCHEMA_LENGTH)
+	  {
+	    schema_name = class_name.substr (0, found);
+	    class_name_only = class_name.substr (found + 1);
+	  }
+      }
+
+    std::string sql = "SELECT vclass_def FROM db_vclass WHERE unique_name = '";
+    sql.append (class_name_only);
+    sql.append ("' ");
+
+    if (!schema_name.empty())
+      {
+	/* AND owner_name = UPPER ('%s') */
+	sql.append ("AND owner_name = UPPER ('");
+	sql.append (schema_name);
+	sql.append ("') ");
+      }
 
     int num_result = execute_schema_info_query (sql);
     if (num_result < 0)
@@ -271,7 +414,7 @@ namespace cubmethod
   int
   schema_info_handler::sch_method_info (schema_info &info, std::string &class_name, int flag)
   {
-    DB_OBJECT *class_obj = db_find_class (class_name.c_str ());
+    DB_OBJECT *class_obj = db_find_class (class_name.c_str());
     DB_METHOD *method_list;
     if (flag)
       {
@@ -296,7 +439,7 @@ namespace cubmethod
   int
   schema_info_handler::sch_methfile_info (schema_info &info, std::string &class_name)
   {
-    DB_OBJECT *class_obj = db_find_class (class_name.c_str ());
+    DB_OBJECT *class_obj = db_find_class (class_name.c_str());
     DB_METHFILE *method_files = db_get_method_files (class_obj);
 
     int num_mf= 0;
@@ -313,7 +456,7 @@ namespace cubmethod
   schema_info_handler::sch_superclass (schema_info &info, std::string &class_name, int flag)
   {
     int error = NO_ERROR;
-    DB_OBJECT *class_obj = db_find_class (class_name.c_str ());
+    DB_OBJECT *class_obj = db_find_class (class_name.c_str());
     DB_OBJLIST *obj_list = NULL;
     if (flag)
       {
@@ -403,6 +546,27 @@ namespace cubmethod
       }
     else
       {
+	std::string schema_name;
+	DB_OBJECT *owner = NULL;
+
+	std::string class_name_only = class_name;
+	std::size_t found = class_name.find ('.');
+	if (found != std::string::npos)
+	  {
+	    /* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	    if (found > 0 && found < DB_MAX_SCHEMA_LENGTH)
+	      {
+		schema_name = class_name.substr (0, found);
+
+		/* If the user does not exist, compare the entire class_name. */
+		owner = db_find_user (schema_name.c_str ());
+		if (owner != NULL)
+		  {
+		    class_name_only = class_name.substr (found + 1);
+		  }
+	      }
+	  }
+
 	DB_OBJLIST *tmp = NULL;
 	for (tmp = tmp_trigger; tmp; tmp = tmp->next)
 	  {
@@ -428,9 +592,30 @@ namespace cubmethod
 		break;
 	      }
 
+	    const char *only_name_trigger_target = name_trigger_target;
+	    /* If the user does not exist, compare the entire class_name. */
+	    if (owner)
+	      {
+		only_name_trigger_target = strchr (name_trigger_target, '.');
+		if (only_name_trigger_target)
+		  {
+		    only_name_trigger_target = only_name_trigger_target + 1;
+		  }
+		else
+		  {
+		    assert (false);
+		  }
+
+		/* If the owner is different from the specified owner, skip it. */
+		if (db_get_owner (tmp_obj) != owner)
+		  {
+		    continue;
+		  }
+	      }
+
 	    if (is_pattern_match)
 	      {
-		if (str_like (std::string (name_trigger_target), class_name.c_str (), '\\') == 1)
+		if (str_like (std::string (name_trigger_target), class_name_only.c_str (), '\\') == 1)
 		  {
 		    error = ml_ext_add (&all_trigger, tmp_obj, NULL);
 		    if (error != NO_ERROR)
@@ -442,7 +627,7 @@ namespace cubmethod
 	      }
 	    else
 	      {
-		if (strcmp (class_name.c_str (), name_trigger_target) == 0)
+		if (strcmp (class_name_only.c_str (), name_trigger_target) == 0)
 		  {
 		    error = ml_ext_add (&all_trigger, tmp_obj, NULL);
 		    if (error != NO_ERROR)
@@ -480,7 +665,7 @@ namespace cubmethod
 
     if ((pat_flag & CLASS_NAME_PATTERN_MATCH) == 0)
       {
-	if (!class_name.empty ())
+	if (!class_name.empty())
 	  {
 	    DB_OBJECT *class_obj = db_find_class (class_name.c_str ());
 	    if (class_obj != NULL)
@@ -494,11 +679,53 @@ namespace cubmethod
       }
     else
       {
+	std::string schema_name;
+	DB_OBJECT *owner = NULL;
+
+	std::string class_name_only = class_name;
+	std::size_t found = class_name.find ('.');
+	if (found != std::string::npos)
+	  {
+	    /* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	    if (found > 0 && found < DB_MAX_SCHEMA_LENGTH)
+	      {
+		schema_name = class_name.substr (0, found);
+
+		/* If the user does not exist, compare the entire class_name. */
+		owner = db_find_user (schema_name.c_str ());
+		if (owner != NULL)
+		  {
+		    class_name_only = class_name.substr (found + 1);
+		  }
+	      }
+	  }
+
 	DB_OBJLIST *obj_list = db_get_all_classes ();
 	for (DB_OBJLIST *tmp = obj_list; tmp; tmp = tmp->next)
 	  {
 	    char *p = (char *) db_get_class_name (tmp->op);
-	    if (!class_name.empty () && str_like (std::string (p), class_name.c_str (), '\\') < 1)
+	    char *q = p;
+	    /* If the user does not exist, compare the entire class_name. */
+	    if (owner && db_is_system_class (tmp->op) == FALSE)
+	      {
+		/* p: unique_name, q: class_name */
+		q = strchr (p, '.');
+		if (q)
+		  {
+		    q = q + 1;
+		  }
+		else
+		  {
+		    assert (false);
+		  }
+
+		/* If the owner is different from the specified owner, skip it. */
+		if (db_get_owner (tmp->op) != owner)
+		  {
+		    continue;
+		  }
+	      }
+	    if (!class_name.empty() && str_like (std::string (q), class_name.c_str(), '\\') < 1)
 	      {
 		continue;
 	      }
@@ -538,14 +765,14 @@ namespace cubmethod
 	    char *attr_name = (char *) db_attribute_name (attr);
 	    if (pat_flag & ATTR_NAME_PATTERN_MATCH)
 	      {
-		if (attr_name_pat.empty () == false && str_like (std::string (attr_name), attr_name_pat.c_str (), '\\') < 1)
+		if (attr_name_pat.empty() == false && str_like (std::string (attr_name), attr_name_pat.c_str (), '\\') < 1)
 		  {
 		    continue;
 		  }
 	      }
 	    else
 	      {
-		if (attr_name_pat.empty () == true || strcmp (attr_name, attr_name_pat.c_str ()) != 0)
+		if (attr_name_pat.empty() == true || strcmp (attr_name, attr_name_pat.c_str ()) != 0)
 		  {
 		    continue;
 		  }
@@ -563,26 +790,74 @@ namespace cubmethod
   schema_info_handler::sch_direct_super_class (schema_info &info, std::string &class_name,
       int pattern_flag)
   {
-    std::transform (class_name.begin (), class_name.end (), class_name.begin (), ::tolower);
+    std::string schema_name;
+    std::string class_name_only;
+    std::size_t found;
 
-    std::string sql = "SELECT class_name, super_class_name FROM db_direct_super_class ";
+    std::transform (class_name.begin(), class_name.end(), class_name.begin(), ::tolower);
+
+    class_name_only = class_name;
+    found = class_name.find ('.');
+    if (found != std::string::npos)
+      {
+	/* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	if (found > 0 && found < DB_MAX_SCHEMA_LENGTH)
+	  {
+	    schema_name = class_name.substr (0, found);
+	    class_name_only = class_name.substr (found + 1);
+	  }
+      }
+
+    // *INDENT-OFF*
+    std::string sql = ""
+	"SELECT "
+	  "CASE "
+	    "WHEN ( "
+		"SELECT b.is_system_class "
+		"FROM db_class b "
+		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
+	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
+	    "ELSE a.class_name "
+	    "END AS unique_name, "
+	  "CASE "
+	    "WHEN ( "
+		"SELECT b.is_system_class "
+		"FROM db_class b "
+		"WHERE b.class_name = a.super_class_name AND b.owner_name = a.super_owner_name "
+	      ") = 'NO' THEN LOWER (a.super_owner_name) || '.' || a.super_class_name "
+	    "ELSE a.super_class_name "
+	    "END AS super_unique_name "
+	"FROM "
+	  "db_direct_super_class a "
+	"WHERE 1 = 1 ";
+    // *INDENT-ON*
 
     if (pattern_flag & CLASS_NAME_PATTERN_MATCH)
       {
-	if (!class_name.empty ())
+	if (!class_name_only.empty())
 	  {
-	    sql.append ("WHERE class_name LIKE '");
-	    sql.append (class_name);
+	    /* AND class_name LIKE '%s' ESCAPE '%s' */
+	    sql.append ("AND class_name LIKE '");
+	    sql.append (class_name_only);
 	    sql.append ("' ESCAPE '");
 	    sql.append (get_backslash_escape_string ());
-	    sql.append ("'");
+	    sql.append ("' ");
 	  }
       }
     else
       {
-	sql.append ("WHERE class_name = '");
-	sql.append (class_name);
-	sql.append ("'");
+	/* AND class_name = '%s' */
+	sql.append ("AND class_name = '");
+	sql.append (class_name_only);
+	sql.append ("' ");
+      }
+
+    if (!schema_name.empty())
+      {
+	/* AND owner_name = UPPER ('%s') */
+	sql.append ("AND owner_name = UPPER ('");
+	sql.append (schema_name);
+	sql.append ("') ");
       }
 
     int num_result = execute_schema_info_query (sql);
@@ -597,20 +872,65 @@ namespace cubmethod
 
   int schema_info_handler::sch_primary_key (schema_info &info, std::string &class_name)
   {
-    int i, num_result = 0;
+    std::string schema_name;
+    std::string class_name_only;
+    std::size_t found;
+    int num_result = 0;
+    int i;
 
-    std::transform (class_name.begin (), class_name.end (), class_name.begin (), ::tolower);
-    DB_OBJECT *class_object =  db_find_class (class_name.c_str ());
+    std::transform (class_name.begin(), class_name.end(), class_name.begin(), ::tolower);
+
+    class_name_only = class_name;
+    found = class_name.find ('.');
+    if (found != std::string::npos)
+      {
+	/* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	if (found > 0 && found < DB_MAX_SCHEMA_LENGTH)
+	  {
+	    schema_name = class_name.substr (0, found);
+	    class_name_only = class_name.substr (found + 1);
+	  }
+      }
+
+    DB_OBJECT *class_object = db_find_class (class_name.c_str ());
     if (class_object != NULL)
       {
-	std::string sql = "SELECT a.class_name, b.key_attr_name, b.key_order+1, a.index_name \
-       FROM db_index a, db_index_key b WHERE \
-       a.class_name = b.class_name \
-       AND a.index_name = b.index_name \
-       AND a.is_primary_key = 'YES' \
-       AND a.class_name = '";
-	sql.append (class_name);
-	sql.append ("' ORDER BY b.key_attr_name");
+	// *INDENT-OFF*
+	std::string sql = ""
+		"SELECT "
+		  "CASE "
+		    "WHEN ( "
+			"SELECT c.is_system_class "
+			"FROM db_class c "
+			"WHERE c.class_name = a.class_name AND c.owner_name = a.owner_name "
+		      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
+		    "ELSE a.class_name "
+		    "END AS unique_name, "
+		  "b.key_attr_name, "
+		  "b.key_order + 1, "
+		  "a.index_name "
+		"FROM "
+		  "db_index a, "
+		  "db_index_key b "
+		"WHERE "
+		  "a.index_name = b.index_name "
+		  "AND a.class_name = b.class_name "
+		  "AMD a.owner_name = b.owner_name "
+		  "AND a.is_primary_key = 'YES' "
+		  "AND a.class_name = '";
+	sql.append (class_name_only);
+	sql.append ("' ");
+	// *INDENT-ON*
+
+	if (!schema_name.empty())
+	  {
+	    /* AND owner_name = UPPER ('%s') */
+	    sql.append ("AND owner_name = UPPER ('");
+	    sql.append (schema_name);
+	    sql.append ("') ");
+	  }
+
+	sql.append ("ORDER BY b.key_attr_name");
 
 	num_result = execute_schema_info_query (sql);
 	if (num_result < 0)
@@ -808,121 +1128,121 @@ namespace cubmethod
   std::vector<column_info>
   get_schema_table_meta ()
   {
-    column_info name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "NAME");
-    column_info type (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset (), "TYPE");
-    column_info remarks (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_CLASS_COMMENT_LENGTH, lang_charset (), "REMARKS");
+    column_info name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "NAME");
+    column_info type (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset(), "TYPE");
+    column_info remarks (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_CLASS_COMMENT_LENGTH, lang_charset(), "REMARKS");
     return std::vector<column_info> {name, type, remarks};
   }
 
   std::vector<column_info>
   get_schema_query_spec_meta ()
   {
-    column_info query_spec (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "QUERY_SPEC");
+    column_info query_spec (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "QUERY_SPEC");
     return std::vector<column_info> {query_spec};
   }
 
   std::vector<column_info>
   get_schema_attr_meta ()
   {
-    column_info attr_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "ATTR_NAME");
-    column_info domain (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset (), "DOMAIN");
-    column_info scale (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset (), "SCALE");
-    column_info precision (DB_TYPE_INTEGER, DB_TYPE_NULL, 0, 0, lang_charset (), "PRECISION");
+    column_info attr_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "ATTR_NAME");
+    column_info domain (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset(), "DOMAIN");
+    column_info scale (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset(), "SCALE");
+    column_info precision (DB_TYPE_INTEGER, DB_TYPE_NULL, 0, 0, lang_charset(), "PRECISION");
 
-    column_info indexed (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset (), "INDEXED");
-    column_info non_null (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset (), "NON_NULL");
-    column_info shared (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset (), "SHARED");
-    column_info unique (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset (), "UNIQUE");
+    column_info indexed (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset(), "INDEXED");
+    column_info non_null (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset(), "NON_NULL");
+    column_info shared (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset(), "SHARED");
+    column_info unique (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset(), "UNIQUE");
 
-    column_info default_ (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "DEFAULT");
-    column_info attr_order (DB_TYPE_INTEGER, DB_TYPE_NULL, 0, 0, lang_charset (), "ATTR_ORDER");
+    column_info default_ (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "DEFAULT");
+    column_info attr_order (DB_TYPE_INTEGER, DB_TYPE_NULL, 0, 0, lang_charset(), "ATTR_ORDER");
 
-    column_info class_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "CLASS_NAME");
-    column_info source_class (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "SOURCE_CLASS");
-    column_info is_key (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset (), "IS_KEY");
-    column_info remarks (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_CLASS_COMMENT_LENGTH, lang_charset (), "REMARKS");
+    column_info class_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "CLASS_NAME");
+    column_info source_class (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "SOURCE_CLASS");
+    column_info is_key (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset(), "IS_KEY");
+    column_info remarks (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_CLASS_COMMENT_LENGTH, lang_charset(), "REMARKS");
     return std::vector<column_info> {attr_name, domain, scale, precision, indexed, non_null, shared, unique, default_, attr_order, class_name, source_class, is_key, remarks};
   }
 
   std::vector<column_info>
   get_schema_method_meta ()
   {
-    column_info name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "NAME");
-    column_info ret_domain (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset (), "RET_DOMAIN");
-    column_info arg_domain (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "ARG_DOMAIN");
+    column_info name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "NAME");
+    column_info ret_domain (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset(), "RET_DOMAIN");
+    column_info arg_domain (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "ARG_DOMAIN");
     return std::vector<column_info> {name, ret_domain, arg_domain};
   }
 
   std::vector<column_info>
   get_schema_methodfile_meta ()
   {
-    column_info met_file (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "METHOD_FILE");
+    column_info met_file (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "METHOD_FILE");
     return std::vector<column_info> {met_file};
   }
 
   std::vector<column_info>
   get_schema_superclasss_meta ()
   {
-    column_info class_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "CLASS_NAME");
-    column_info type (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset (), "TYPE");
+    column_info class_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "CLASS_NAME");
+    column_info type (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset(), "TYPE");
     return std::vector<column_info> {class_name, type};
   }
 
   std::vector<column_info>
   get_schema_constraint_meta ()
   {
-    column_info type (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset (), "TYPE");
-    column_info name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "NAME");
-    column_info attr_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "ATTR_NAME");
-    column_info num_pages (DB_TYPE_INTEGER, DB_TYPE_NULL, 0, 0, lang_charset (), "NUM_PAGES");
-    column_info num_keys (DB_TYPE_INTEGER, DB_TYPE_NULL, 0, 0, lang_charset (), "NUM_KEYS");
-    column_info primary_key (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset (), "PRIMARY_KEY");
-    column_info key_order (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset (), "KEY_ORDER");
-    column_info asc_desc (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "ASC_DESC");
+    column_info type (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset(), "TYPE");
+    column_info name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "NAME");
+    column_info attr_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "ATTR_NAME");
+    column_info num_pages (DB_TYPE_INTEGER, DB_TYPE_NULL, 0, 0, lang_charset(), "NUM_PAGES");
+    column_info num_keys (DB_TYPE_INTEGER, DB_TYPE_NULL, 0, 0, lang_charset(), "NUM_KEYS");
+    column_info primary_key (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset(), "PRIMARY_KEY");
+    column_info key_order (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset(), "KEY_ORDER");
+    column_info asc_desc (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "ASC_DESC");
     return std::vector<column_info> {type, name, attr_name, num_pages, num_keys, primary_key, key_order, asc_desc};
   }
 
   std::vector<column_info>
   get_schema_trigger_meta ()
   {
-    column_info name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "NAME");
-    column_info status (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "STATUS");
-    column_info event (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "EVENT");
-    column_info target_class (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "TARGET_CLASS");
-    column_info target_attr (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "TARGET_ATTR");
-    column_info action_time (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "ACTION_TIME");
-    column_info action (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "ACTION");
-    column_info priority (DB_TYPE_FLOAT, DB_TYPE_NULL, 0, 0, lang_charset (), "PRIORITY");
-    column_info condition_time (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (),
+    column_info name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "NAME");
+    column_info status (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "STATUS");
+    column_info event (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "EVENT");
+    column_info target_class (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "TARGET_CLASS");
+    column_info target_attr (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "TARGET_ATTR");
+    column_info action_time (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "ACTION_TIME");
+    column_info action (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "ACTION");
+    column_info priority (DB_TYPE_FLOAT, DB_TYPE_NULL, 0, 0, lang_charset(), "PRIORITY");
+    column_info condition_time (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(),
 				"CONDITION_TIME");
-    column_info condition (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "CONDITION");
-    column_info remarks (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_CLASS_COMMENT_LENGTH, lang_charset (), "REMARKS");
+    column_info condition (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "CONDITION");
+    column_info remarks (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_CLASS_COMMENT_LENGTH, lang_charset(), "REMARKS");
     return std::vector<column_info> {name, status, event, target_class, target_attr, action_time, action, priority, condition_time, condition, remarks};
 
   }
   std::vector<column_info>
   get_schema_classpriv_meta ()
   {
-    column_info class_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "CLASS_NAME");
-    column_info privilege (DB_TYPE_STRING, DB_TYPE_NULL, 0, 10, lang_charset (), "PRIVILEGE");
-    column_info grantable (DB_TYPE_STRING, DB_TYPE_NULL, 0, 5, lang_charset (), "GRANTABLE");
+    column_info class_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "CLASS_NAME");
+    column_info privilege (DB_TYPE_STRING, DB_TYPE_NULL, 0, 10, lang_charset(), "PRIVILEGE");
+    column_info grantable (DB_TYPE_STRING, DB_TYPE_NULL, 0, 5, lang_charset(), "GRANTABLE");
     return std::vector<column_info> {class_name, privilege, grantable};
   }
 
   std::vector<column_info>
   get_schema_attrpriv_meta ()
   {
-    column_info attr_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "ATTR_NAME");
-    column_info privilege (DB_TYPE_STRING, DB_TYPE_NULL, 0, 10, lang_charset (), "PRIVILEGE");
-    column_info grantable (DB_TYPE_STRING, DB_TYPE_NULL, 0, 5, lang_charset (), "GRANTABLE");
+    column_info attr_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "ATTR_NAME");
+    column_info privilege (DB_TYPE_STRING, DB_TYPE_NULL, 0, 10, lang_charset(), "PRIVILEGE");
+    column_info grantable (DB_TYPE_STRING, DB_TYPE_NULL, 0, 5, lang_charset(), "GRANTABLE");
     return std::vector<column_info> {attr_name, privilege, grantable};
   }
 
   std::vector<column_info>
   get_schema_directsuper_meta ()
   {
-    column_info class_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "CLASS_NAME");
-    column_info super_class_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (),
+    column_info class_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "CLASS_NAME");
+    column_info super_class_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(),
 				  "SUPER_CLASS_NAME");
     return std::vector<column_info> {class_name, super_class_name};
   }
@@ -930,25 +1250,25 @@ namespace cubmethod
   std::vector<column_info>
   get_schema_primarykey_meta ()
   {
-    column_info class_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "CLASS_NAME");
-    column_info attr_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "ATTR_NAME");
-    column_info num_keys (DB_TYPE_INTEGER, DB_TYPE_NULL, 0, 0, lang_charset (), "KEY_SEQ");
-    column_info key_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "KEY_NAME");
+    column_info class_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "CLASS_NAME");
+    column_info attr_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "ATTR_NAME");
+    column_info num_keys (DB_TYPE_INTEGER, DB_TYPE_NULL, 0, 0, lang_charset(), "KEY_SEQ");
+    column_info key_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "KEY_NAME");
     return std::vector<column_info> {class_name, attr_name, num_keys, key_name};
   }
 
   std::vector<column_info>
   get_schema_fk_info_meta ()
   {
-    column_info pktable_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "PKTABLE_NAME");
-    column_info pkcolumn_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "PKCOLUMN_NAME");
-    column_info fktable_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "FKTABLE_NAME");
-    column_info fkcolumn_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "FKCOLUMN_NAME");
-    column_info key_seq (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset (), "KEY_SEQ");
-    column_info update_rule (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset (), "UPDATE_RULE");
-    column_info delete_rule (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset (), "DELETE_RULE");
-    column_info fk_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "FK_NAME");
-    column_info pk_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset (), "PK_NAME");
+    column_info pktable_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "PKTABLE_NAME");
+    column_info pkcolumn_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "PKCOLUMN_NAME");
+    column_info fktable_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "FKTABLE_NAME");
+    column_info fkcolumn_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "FKCOLUMN_NAME");
+    column_info key_seq (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset(), "KEY_SEQ");
+    column_info update_rule (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset(), "UPDATE_RULE");
+    column_info delete_rule (DB_TYPE_SHORT, DB_TYPE_NULL, 0, 0, lang_charset(), "DELETE_RULE");
+    column_info fk_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "FK_NAME");
+    column_info pk_name (DB_TYPE_STRING, DB_TYPE_NULL, 0, DB_MAX_IDENTIFIER_LENGTH, lang_charset(), "PK_NAME");
     return std::vector<column_info> {pktable_name, pkcolumn_name, fktable_name, fkcolumn_name, key_seq, update_rule, delete_rule, fk_name, pk_name};
   }
 }

@@ -2130,8 +2130,8 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
 
   if (error_code == NO_ERROR)
     {
-      std::memcpy (log_pgptr, message_ptr, db_log_page_size ());
-      message_ptr += db_log_page_size ();
+      std::memcpy (log_pgptr, message_ptr, LOG_PAGESIZE);
+      message_ptr += LOG_PAGESIZE;
 
       if (perform_logging)
 	{
@@ -2195,7 +2195,7 @@ logpb_respond_fetch_log_page_request (THREAD_ENTRY &thread_r, std::string &paylo
   if (error == NO_ERROR)
     {
       // pack page data too
-      payload_in_out.append (reinterpret_cast<const char *> (lr.get_page ()), db_log_page_size ());
+      payload_in_out.append (reinterpret_cast<const char *> (lr.get_page ()), LOG_PAGESIZE);
     }
 }
 // *INDENT-ON*
@@ -2342,7 +2342,7 @@ logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pa
 	{
 	  // context 2)
 	  // *INDENT-OFF*
-	  const size_t log_page_size = static_cast<size_t> (db_log_page_size ());
+	  const size_t log_page_size = static_cast<size_t> (LOG_PAGESIZE);
 	  std::unique_ptr<char []> log_page_buffer_uptr = std::make_unique<char []> (log_page_size);
 	  auto second_log_page = (LOG_PAGE *) log_page_buffer_uptr.get ();
 

@@ -766,7 +766,8 @@ static const char *cas_client_type_str[] = {
   "JDBC",			/* CAS_CLIENT_JDBC */
   "PHP",			/* CAS_CLIENT_PHP */
   "OLEDB",			/* CAS_CLIENT_OLEDB */
-  "INTERNAL_JDBC"		/* CAS_CLIENT_SERVER_SIDE_JDBC */
+  "INTERNAL_JDBC",		/* CAS_CLIENT_SERVER_SIDE_JDBC */
+  "GATEWAY_CCI"			/* CAS_CLIENT_GATEWAY */
 };
 
 static THREAD_FUNC

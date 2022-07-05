@@ -583,7 +583,7 @@ db_compile_statement_local (DB_SESSION * session)
   pt_reset_error (parser);
 
   /* store user-specified-name in info.name.original. */
-  parser_walk_tree (parser, statement, pt_set_user_specified_name, NULL, NULL, NULL);
+  parser_walk_tree (parser, statement, NULL, NULL, pt_set_user_specified_name, NULL);
 
   /* get type list describing the output columns titles of the given query */
   cmd_type = pt_node_to_cmd_type (statement);

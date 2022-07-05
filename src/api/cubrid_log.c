@@ -54,6 +54,10 @@
 #include "dbtype_def.h"
 #include "porting.h"
 
+#if defined(WINDOWS)
+#include "wintcp.h"
+#endif
+
 #define CUBRID_LOG_WRITE_TRACELOG(msg, ...) \
   do\
     {\
@@ -571,6 +575,13 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
   // *INDENT-OFF*
   std::string msg;
   // *INDENT-ON*
+#if defined (WINDOWS)
+  if (css_windows_startup () < 0)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, "Failed to startup Windows socket\n");
+    }
+#endif
+
   g_conn_entry = css_make_conn (INVALID_SOCKET);
   if (g_conn_entry == NULL)
     {
@@ -588,8 +599,6 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
 				 host, dbname, port, g_connection_timeout);
     }
 
-  css_queue_user_data_buffer (g_conn_entry, rid, sizeof (int), (char *) &reason);
-
   if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_connection_timeout * 1000) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, "Failed to receive data from server. (timeout : %d sec)\n",
@@ -605,37 +614,77 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
 
   reason = ntohl (*(int *) recv_data);
 
+  free_and_init (recv_data);
+
+#if defined (WINDOWS)
+  if (reason == SERVER_CONNECTED_NEW)
+    {
+      if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_connection_timeout * 1000) != NO_ERRORS)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
+				     "Failed to receive the server port id from the master.\n");
+	}
+
+      if (recv_data != NULL)
+	{
+	  assert (recv_data_size == sizeof (int));
+
+	  int port_id = ntohl (*((int *) recv_data));
+
+	  css_close_conn (g_conn_entry);
+
+	  g_conn_entry = css_server_connect_part_two (host, g_conn_entry, port_id, &rid);
+	  if (g_conn_entry == NULL)
+	    {
+	      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
+					 "Failed to connect to the server with new port id (%d)\n", port_id);
+	    }
+
+	  free_and_init (recv_data);
+	}
+      else
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
+				     "Failed to get server port id (recv_data = %s , recv_data_size = %d) \n",
+				     recv_data, recv_data_size);
+	}
+    }
+  else
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, "Failed to connect to the server (reason : %d) \n", reason);
+    }
+#else
   if (reason != SERVER_CONNECTED)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, NULL);
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT, "Failed to connect to the server (reason : %d) \n", reason);
     }
-
-  if (recv_data != NULL && recv_data != (char *) &reason)
-    {
-      free_and_init (recv_data);
-    }
+#endif
 
   return CUBRID_LOG_SUCCESS;
 
 cubrid_log_error:
 
-  if (recv_data != NULL && recv_data != (char *) &reason)
+  if (recv_data != NULL)
     {
       free_and_init (recv_data);
     }
 
-  queue_entry = css_find_queue_entry (g_conn_entry->buffer_queue, rid);
-  if (queue_entry != NULL)
-    {
-      queue_entry->buffer = NULL;
-      css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
-    }
-
   if (g_conn_entry != NULL)
     {
+      queue_entry = css_find_queue_entry (g_conn_entry->buffer_queue, rid);
+      if (queue_entry != NULL)
+	{
+	  queue_entry->buffer = NULL;
+	  css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
+	}
+
       css_free_conn (g_conn_entry);
       g_conn_entry = NULL;
     }
+
+#if defined (WINDOWS)
+  (void) css_windows_shutdown ();
+#endif
 
   return err_code;
 }
@@ -1853,15 +1902,15 @@ cubrid_log_error:
       free_and_init (recv_data);
     }
 
-  queue_entry = css_find_queue_entry (g_conn_entry->buffer_queue, rid);
-  if (queue_entry != NULL)
-    {
-      queue_entry->buffer = NULL;
-      css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
-    }
-
   if (g_conn_entry != NULL)
     {
+      queue_entry = css_find_queue_entry (g_conn_entry->buffer_queue, rid);
+      if (queue_entry != NULL)
+	{
+	  queue_entry->buffer = NULL;
+	  css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
+	}
+
       css_free_conn (g_conn_entry);
       g_conn_entry = NULL;
     }
@@ -1936,6 +1985,10 @@ cubrid_log_finalize (void)
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DISCONNECT, NULL);
     }
 
+#if defined (WINDOWS)
+  (void) css_windows_shutdown ();
+#endif
+
   (void) cubrid_log_reset_globals ();
 
   g_stage = CUBRID_LOG_STAGE_CONFIGURATION;
@@ -1943,6 +1996,10 @@ cubrid_log_finalize (void)
   return CUBRID_LOG_SUCCESS;
 
 cubrid_log_error:
+
+#if defined (WINDOWS)
+  (void) css_windows_shutdown ();
+#endif
 
   (void) cubrid_log_reset_globals ();
 

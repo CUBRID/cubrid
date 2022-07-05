@@ -83,6 +83,7 @@ void csql_yyerror (const char *s);
 extern int g_msg[1024];
 extern int msg_ptr;
 extern int yybuffer_pos;
+extern int is_dblink_query_string;
 
 #if defined(SA_MODE)
      /*
@@ -612,6 +613,7 @@ int g_original_buffer_len;
 %type <boolean> opt_analytic_from_last
 %type <boolean> opt_analytic_ignore_nulls
 %type <number> opt_encrypt_algorithm
+%type <number> opt_access_modifier
 /*}}}*/
 
 /* define rule type (node) */
@@ -656,6 +658,8 @@ int g_original_buffer_len;
 %type <node> trigger_name_list
 %type <node> serial_name_without_dot
 %type <node> serial_name
+%type <node> synonym_name_without_dot
+%type <node> synonym_name
 %type <node> opt_identifier
 %type <node> normal_or_class_attr_list_with_commas
 %type <node> normal_or_class_attr
@@ -967,13 +971,8 @@ int g_original_buffer_len;
 %type <node> dblink_expr
 %type <node> dblink_conn
 %type <node> dblink_conn_str
-%type <c2> dblink_identifier_col_attrs  
 %type <node> dblink_column_definition_list
 %type <node> dblink_column_definition
-%type <c10> connect_info
-%type <c2>  connect_item
-%type <c10> alter_server_list
-%type <c2>  alter_server_item
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -988,6 +987,8 @@ int g_original_buffer_len;
 /*{{{*/
 %type <c10> opt_serial_option_list
 %type <c10> serial_option_list
+%type <c10> connect_info
+%type <c10> alter_server_list
 
 %type <c4> isolation_level_spec
 %type <c4> opt_constraint_attr_list
@@ -1018,6 +1019,10 @@ int g_original_buffer_len;
 %type <c2> insert_assignment_list
 %type <c2> expression_queue
 %type <c2> of_cast_data_type
+%type <c2> dblink_identifier_col_attrs
+%type <c2> connect_item
+%type <c2> alter_server_item
+%type <c2> opt_create_synonym
 /*}}}*/
 
 /* define rule type (json_table_column_behavior) */
@@ -1566,7 +1571,9 @@ int g_original_buffer_len;
 %token <cptr> PORT
 %token <cptr> PRINT
 %token <cptr> PRIORITY
+%token <cptr> PRIVATE
 %token <cptr> PROPERTIES
+%token <cptr> PUBLIC
 %token <cptr> QUARTER
 %token <cptr> QUEUES
 %token <cptr> RANGE_
@@ -1602,6 +1609,7 @@ int g_original_buffer_len;
 %token <cptr> STDDEV_SAMP
 %token <cptr> STR_TO_DATE
 %token <cptr> SUBDATE
+%token <cptr> SYNONYM
 %token <cptr> SYSTEM
 %token <cptr> TABLES
 %token <cptr> TEXT
@@ -2935,8 +2943,8 @@ create_stmt
 		DBG_PRINT}}
 	| CREATE					/* 1 */
 	  opt_or_replace                		/* 2 */
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE); }	/* 3 */
-	  PROCEDURE					/* 4 */
+	  PROCEDURE					/* 3 */
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE); }	/* 4 */
 	  identifier '(' opt_sp_param_list  ')'		/* 5, 6, 7, 8 */
 	  opt_of_is_as LANGUAGE JAVA			/* 9, 10, 11 */
 	  NAME char_string_literal			/* 12, 13 */
@@ -2962,8 +2970,8 @@ create_stmt
 		DBG_PRINT}}
 	| CREATE                        		/* 1 */
 	  opt_or_replace                		/* 2 */
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION); }	/* 3 */
-	  FUNCTION					/* 4 */
+	  FUNCTION					/* 3 */
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION); }	/* 4 */
 	  identifier '('  opt_sp_param_list  ')'	/* 5, 6, 7, 8 */
 	  RETURN opt_of_data_type_cursor		/* 9, 10 */
 	  opt_of_is_as LANGUAGE JAVA			/* 11, 12, 13 */
@@ -3051,7 +3059,6 @@ create_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-
 	| CREATE SERVER dblink_server_name '(' connect_info ')'
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE SERVER dblink_server_name '(' connect_info ')' );
                         PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SERVER);
@@ -3106,6 +3113,39 @@ create_stmt
                                   }
                                 si->prop = CONTAINER_AT_5($5);
                                 si->comment = CONTAINER_AT_6($5);
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| CREATE			/* 1 */
+	  opt_create_synonym		/* 2 */
+	  SYNONYM			/* 3 */
+	  	{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_CREATE); }	/* 4 */
+	  synonym_name_without_dot	/* 5 */
+	  For				/* 6 */
+	  class_name			/* 7 */
+	  opt_comment_spec		/* 8 */
+	  	{ pop_msg(); }
+		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace opt_access_modifier SYNONYM synonym_name_without_dot For class_name opt_comment_spec);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SYNONYM);
+			PT_MISC_TYPE synonym_access_modifier;
+
+			if (node)
+			  {
+			    PT_SYNONYM_OR_REPLACE (node) = TO_NUMBER (CONTAINER_AT_0 ($2));
+			    PT_SYNONYM_ACCESS_MODIFIER (node) = TO_NUMBER (CONTAINER_AT_1 ($2));
+			    PT_SYNONYM_NAME (node) = $5;
+			    PT_SYNONYM_TARGET_NAME (node) = $7;
+			    PT_SYNONYM_COMMENT (node) = $8;
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
+
+			    if (synonym_access_modifier == PT_PUBLIC)
+			      {
+				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
+			      }
 			  }
 
 			$$ = node;
@@ -3929,6 +3969,38 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| ALTER				/* 1 */
+	  opt_access_modifier		/* 2 */
+	  SYNONYM			/* 3 */
+		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_ALTER); }	/* 4 */
+	  synonym_name			/* 5 */
+	  For				/* 6 */
+	  class_name			/* 7 */
+	  opt_comment_spec		/* 8 */
+		{ pop_msg(); }
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER opt_access_modifier SYNONYM synonym_name For class_name opt_comment_spec);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SYNONYM);
+			PT_MISC_TYPE synonym_access_modifier;
+
+			if (node)
+			  {
+			    PT_SYNONYM_ACCESS_MODIFIER (node) = $2;
+			    PT_SYNONYM_NAME (node) = $5;
+			    PT_SYNONYM_TARGET_NAME (node) = $7;
+			    PT_SYNONYM_COMMENT (node) = $8;
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
+
+			    if (synonym_access_modifier == PT_PUBLIC)
+			      {
+				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	;
 
 view_or_vclass
@@ -4018,6 +4090,35 @@ rename_stmt
                             node->info.rename_server.owner_name = $3->next;
                             $3->next = NULL;
                             node->info.rename_server.new_name = $5;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+	| RENAME			/* 1 */
+	  opt_access_modifier		/* 2 */
+	  SYNONYM			/* 3 */
+		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_RENAME); }	/* 4 */
+	  synonym_name			/* 5 */
+	  as_or_to			/* 6 */
+	  synonym_name_without_dot	/* 7 */
+	  	{ pop_msg(); }
+		{{ DBG_TRACE_GRAMMAR(rename_stmt, | RENAME opt_access_modifier SYNONYM synonym_name as_or_to synonym_name_without_dot);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_RENAME_SYNONYM);
+			PT_MISC_TYPE synonym_access_modifier;
+
+			if (node)
+			  {
+			    PT_SYNONYM_ACCESS_MODIFIER (node) = $2;
+			    PT_SYNONYM_OLD_NAME (node) = $5;
+			    PT_SYNONYM_NEW_NAME (node) = $7;
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
+
+			    if (synonym_access_modifier == PT_PUBLIC)
+			      {
+				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
+			      }
 			  }
 
 			$$ = node;
@@ -4343,7 +4444,37 @@ drop_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}                
+		DBG_PRINT}}
+	| DROP				/* 1 */
+	  opt_access_modifier		/* 2 */
+	  SYNONYM			/* 3 */
+		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_DROP); }	/* 4 */
+	  opt_if_exists			/* 5 */
+	  synonym_name			/* 6 */
+	  	{ pop_msg(); }
+		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP SERVER opt_access_modifier SYNONYM opt_if_exists synonym_name);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_DROP_SYNONYM);
+			PT_MISC_TYPE synonym_access_modifier;
+			const char *synonym_owner_name = NULL;
+
+			if (node)
+			  {
+			    PT_SYNONYM_ACCESS_MODIFIER (node) = $2;
+			    PT_SYNONYM_IF_EXISTS (node) = $5;
+			    PT_SYNONYM_NAME (node) = $6;
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
+
+			    if (synonym_access_modifier == PT_PUBLIC)
+			      {
+				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| deallocate_or_drop PREPARE identifier
 		{{ DBG_TRACE_GRAMMAR(drop_stmt, | deallocate_or_drop PREPARE identifier);
 
@@ -5426,6 +5557,20 @@ serial_name_without_dot
 serial_name
 	: user_specified_name
 		{ $$ = $1; }
+	;
+
+synonym_name_without_dot
+	: user_specified_name_without_dot
+		{ DBG_TRACE_GRAMMAR(synonym_name_without_dot, : user_specified_name_without_dot);
+			$$ = $1;
+		}
+	;
+
+synonym_name
+	: user_specified_name
+		{ DBG_TRACE_GRAMMAR(synonym_name, : user_specified_name);
+			$$ = $1;
+		}
 	;
 
 opt_partition_spec
@@ -13854,7 +13999,9 @@ opt_select_param_list
 
 opt_hint_list
 	: /* empty */
+		{ DBG_TRACE_GRAMMAR(opt_hint_list, : ); }
 	| hint_list
+		{ DBG_TRACE_GRAMMAR(opt_hint_list, : hint_list); }
 	;
 
 hint_list
@@ -22095,7 +22242,9 @@ identifier
 	| PORT                   {{ DBG_TRACE_GRAMMAR(identifier, | PORT               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PRINT                  {{ DBG_TRACE_GRAMMAR(identifier, | PRINT              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PRIORITY               {{ DBG_TRACE_GRAMMAR(identifier, | PRIORITY           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PRIVATE                {{ DBG_TRACE_GRAMMAR(identifier, | PRIVATE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PROPERTIES             {{ DBG_TRACE_GRAMMAR(identifier, | PROPERTIES         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PUBLIC                 {{ DBG_TRACE_GRAMMAR(identifier, | PUBLIC             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| QUARTER                {{ DBG_TRACE_GRAMMAR(identifier, | QUARTER            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| QUEUES                 {{ DBG_TRACE_GRAMMAR(identifier, | QUEUES             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| RANGE_                 {{ DBG_TRACE_GRAMMAR(identifier, | RANGE_             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -22130,6 +22279,7 @@ identifier
 	| STDDEV_SAMP            {{ DBG_TRACE_GRAMMAR(identifier, | STDDEV_SAMP        ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| STR_TO_DATE            {{ DBG_TRACE_GRAMMAR(identifier, | STR_TO_DATE        ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SUBDATE                {{ DBG_TRACE_GRAMMAR(identifier, | SUBDATE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| SYNONYM                {{ DBG_TRACE_GRAMMAR(identifier, | SYNONYM            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SYSTEM                 {{ DBG_TRACE_GRAMMAR(identifier, | SYSTEM             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| TABLES                 {{ DBG_TRACE_GRAMMAR(identifier, | TABLES             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| TEXT                   {{ DBG_TRACE_GRAMMAR(identifier, | TEXT               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -23797,8 +23947,13 @@ server_identifier
                 DBG_PRINT}}
          ;
 dblink_expr
-        :   dblink_conn  ','  CHAR_STRING  
+        :   dblink_conn  ',' 
+            {
+                is_dblink_query_string = 1;
+            }
+         CHAR_STRING  
             {{ DBG_TRACE_GRAMMAR(dblink_expr, : dblink_conn  ','  CHAR_STRING);
+             is_dblink_query_string = 0;
              PT_NODE *ct = parser_new_node(this_parser, PT_DBLINK_TABLE) ;           
              if(ct)
              {
@@ -23807,7 +23962,7 @@ dblink_expr
 		  {                  
                         char err_msg[256]; 
                         
-                        if (pt_ct_check_select($3, err_msg) == false)
+                        if (pt_ct_check_select($4, err_msg) == false)
                         {
                              PT_ERROR (this_parser, val, err_msg);                                
                         }                        
@@ -23815,7 +23970,7 @@ dblink_expr
                         val->type_enum = PT_TYPE_CHAR;
                         val->info.value.string_type = ' ';
                         val->info.value.data_value.str =
-                                pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+                                pt_append_bytes (this_parser, NULL, $4, strlen ($4));
                         
                         PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
 		   }
@@ -23977,6 +24132,87 @@ dblink_column_definition
 
         DBG_PRINT}}
         ;
+
+opt_access_modifier
+    : /*empty*/
+      {{ DBG_TRACE_GRAMMAR(opt_access_modifier, : );
+
+	$$ = PT_PRIVATE;
+
+      DBG_PRINT}}
+    | PRIVATE
+      {{ DBG_TRACE_GRAMMAR(opt_access_modifier, | PRIVATE);
+
+	$$ = PT_PRIVATE;
+
+      DBG_PRINT}}
+    | PUBLIC
+      {{ DBG_TRACE_GRAMMAR(opt_access_modifier, | PUBLIC);
+
+	$$ = PT_PUBLIC;
+
+      DBG_PRINT}}
+    ;
+
+/*
+ * In order not to output the error message of AS-IS,
+ * opt_or_replace and opt_access_modifier are used in combination with opt_create_synonym.
+ * 
+ * Query: CREATE PARTITION TABLE;
+ * - AS-IS: Syntax error: unexpected 'partition', expecting SYNONYM
+ * - TO-BE: Syntax error: unexpected 'partition', expecting CLASS or TABLE
+ *
+ */
+opt_create_synonym
+	: /*empty*/
+		{{ DBG_TRACE_GRAMMAR(opt_create_synonym, : );
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (0), FROM_NUMBER (PT_PRIVATE));
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| PRIVATE
+		{{ DBG_TRACE_GRAMMAR(opt_create_synonym, : PRIVATE);
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (0), FROM_NUMBER (PT_PRIVATE));
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| PUBLIC
+		{{ DBG_TRACE_GRAMMAR(opt_create_synonym, : PUBLIC);
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (0), FROM_NUMBER (PT_PUBLIC));
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| OR REPLACE
+		{{ DBG_TRACE_GRAMMAR(opt_create_synonym, : OR REPLACE);
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (1), FROM_NUMBER (PT_PRIVATE));
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| OR REPLACE PRIVATE
+		{{ DBG_TRACE_GRAMMAR(opt_create_synonym, : OR REPLACE PRIVATE);
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (1), FROM_NUMBER (PT_PRIVATE));
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| OR REPLACE PUBLIC
+		{{ DBG_TRACE_GRAMMAR(opt_create_synonym, : OR REPLACE PUBLIC);
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (1), FROM_NUMBER (PT_PUBLIC));
+			$$ = ctn;
+
+		DBG_PRINT}}
+	;
 
 %%
 
@@ -25139,6 +25375,7 @@ parser_main (PARSER_CONTEXT * parser)
 
   yycolumn = yycolumn_end = 1;
   yybuffer_pos=0;
+  is_dblink_query_string = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;
@@ -25238,6 +25475,7 @@ parse_one_statement (int state)
   parser_yyinput_single_mode = 1;
 
   yybuffer_pos=0;
+  is_dblink_query_string = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;
@@ -26548,6 +26786,13 @@ pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str,
 {
   char *invalid_pos = NULL;
   int composed_size;
+
+  if (strchr (str, '[') || strchr (str, ']'))
+    {
+      PT_ERRORf (this_parser, p,
+		 "Identifier name \"%s\" not allowed. It cannot contain '[' or ']'.",
+		 str);
+    }
 
   if (intl_check_string ((char *) str, str_size, &invalid_pos, LANG_SYS_CODESET) == INTL_UTF8_INVALID)
     {

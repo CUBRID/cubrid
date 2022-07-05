@@ -133,7 +133,6 @@ extern "C"
 /* Authorization */
   extern DB_OBJECT *db_get_user (void);
   extern DB_OBJECT *db_get_owner (DB_OBJECT * classobj);
-  extern char *db_get_current_user_name (char *buf, int buf_size);
   extern char *db_get_user_name (void);
   extern char *db_get_user_and_host_name (void);
   extern DB_OBJECT *db_find_user (const char *name);
@@ -271,6 +270,8 @@ extern "C"
   extern DB_OBJECT *db_find_class_of_index (const char *const index, const DB_CONSTRAINT_TYPE type);
   extern DB_OBJECT *db_find_class (const char *name);
   extern DB_OBJECT *db_find_class_with_purpose (const char *name, bool for_update);
+  extern DB_OBJECT *db_find_synonym (const char *name);
+  extern char *db_get_synonym_target_name (MOP synonym, char *buf, int buf_size);
   extern DB_OBJECT *db_get_class (DB_OBJECT * obj);
   extern DB_OBJLIST *db_get_all_objects (DB_OBJECT * classobj);
   extern DB_OBJLIST *db_get_all_classes (void);
@@ -563,6 +564,11 @@ extern "C"
 
 /* query post-processing functions */
   extern int db_query_plan_dump_file (char *filename);
+  extern FILE *db_query_plan_dump_fp_open ();
+  extern void db_query_plan_dump_fp_close ();
+  extern FILE *db_query_get_plan_dump_fp ();
+  extern bool db_query_is_plan_dump_opened ();
+  extern char *db_query_get_plan_dump_file ();
 
 /* sql query routines */
   extern DB_SESSION *db_open_buffer (const char *buffer);

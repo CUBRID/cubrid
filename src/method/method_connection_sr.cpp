@@ -50,6 +50,11 @@ namespace cubmethod
     memset (ptr, 0, OR_ALIGNED_BUF_SIZE (a_reply) - (ptr - reply));
 #endif
 
+    if (thread_p == NULL || thread_p->conn_entry == NULL)
+      {
+	return ER_FAILED;
+      }
+
     /* send */
     unsigned int rid = css_get_comm_request_id (thread_p);
     return css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
@@ -61,9 +66,16 @@ namespace cubmethod
     cubmem::block buffer (0, nullptr);
 
     int error = xs_receive_data_from_client (thread_p, &buffer.ptr, (int *) &buffer.dim);
-    if (error == NO_ERROR)
+    if (error == NO_ERROR && er_errid () == NO_ERROR)
       {
 	error = func (buffer);
+      }
+    else
+      {
+	if (error == NO_ERROR)
+	  {
+	    error = er_errid (); // ER_SP_TOO_MANY_NESTED_CALL, ER_INTERRUPTED... (interrupt reasons)
+	  }
       }
 
     free_and_init (buffer.ptr);
@@ -75,9 +87,16 @@ namespace cubmethod
     cubmem::block buffer (0, nullptr);
 
     int error = xs_receive_data_from_client (thread_p, &buffer.ptr, (int *) &buffer.dim);
-    if (error == NO_ERROR)
+    if (error == NO_ERROR && er_errid () == NO_ERROR)
       {
 	error = func (socket, buffer);
+      }
+    else
+      {
+	if (error == NO_ERROR)
+	  {
+	    error = er_errid (); // ER_SP_TOO_MANY_NESTED_CALL, ER_INTERRUPTED... (interrupt reasons)
+	  }
       }
 
     free_and_init (buffer.ptr);

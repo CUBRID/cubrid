@@ -269,6 +269,8 @@ extern int serial_get_next_value (DB_VALUE * value, OID * oid_p, int cached_num,
 extern int serial_get_current_value (DB_VALUE * value, OID * oid_p, int cached_num);
 extern int serial_decache (OID * oid);
 
+extern int synonym_remove_xasl_by_oid (OID * oid);
+
 extern int perfmon_server_start_stats (void);
 extern int perfmon_server_stop_stats (void);
 extern int perfmon_server_copy_stats (UINT64 * to_stats);

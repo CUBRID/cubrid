@@ -50,7 +50,7 @@ namespace cubmethod
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
     int command;
-    int64_t id;
+    uint64_t id;
   };
 
   /*

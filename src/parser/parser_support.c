@@ -1486,6 +1486,10 @@ pt_is_ddl_statement (const PT_NODE * node)
 	case PT_RENAME_SERVER:
 	case PT_ALTER_SERVER:
 	case PT_TRUNCATE:
+	case PT_ALTER_SYNONYM:
+	case PT_CREATE_SYNONYM:
+	case PT_DROP_SYNONYM:
+	case PT_RENAME_SYNONYM:
 	  return true;
 	default:
 	  break;
@@ -6453,6 +6457,7 @@ pt_make_query_show_table (PARSER_CONTEXT * parser, bool is_full_syntax, int like
       /* add IF to SELECT list, list should not be empty at this point */
       assert (sub_query->info.query.q.select.list != NULL);
 
+      pt_add_name_col_to_sel_list (parser, sub_query, "C.owner_name", "Owner");
       sub_query->info.query.q.select.list = parser_append_node (if_node, sub_query->info.query.q.select.list);
     }
 
@@ -7561,7 +7566,8 @@ pt_make_query_show_grants_curr_usr (PARSER_CONTEXT * parser)
  *	 	       '')
  *		 ) AS GRANTS
  *   FROM db_class C, _db_auth AU
- *   WHERE AU.class_of.class_name = C.class_name AND
+ *   WHERE AU.class_of.unique_name = C.unique_name AND
+ *	    AU.class_of.owner.name = C.owner_name AND
  *	    C.is_system_class='NO' AND
  *	    ( AU.grantee.name=<user_name> OR
  *	      SET{ AU.grantee.name} SUBSETEQ (
@@ -7614,7 +7620,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
    *      CONCAT ( 'GRANT ',
    *                GROUP_CONCAT(AU.auth_type ORDER BY 1 SEPARATOR ', '),
    *                ' ON ' ,
-   *                AU.class_of.class_name,
+   *                AU.class_of.unique_name,
    *                ' TO ',
    *                AU.grantee.name ,
    *                IF (AU.is_grantable=1,
@@ -7660,7 +7666,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
     concat_arg = pt_make_string_value (parser, " ON ");
     concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
 
-    concat_arg = pt_make_dotted_identifier (parser, "AU.class_of.class_name");
+    concat_arg = pt_make_dotted_identifier (parser, "AU.class_of.unique_name");
     concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
 
     concat_arg = pt_make_string_value (parser, " TO ");
@@ -7704,6 +7710,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
   /* ------ SELECT ... WHERE ------- */
   /*
    * WHERE AU.class_of.class_name = C.class_name AND
+   *    AU.class_of.owner.name = C.owner_name AND
    *    C.is_system_class='NO' AND
    *    ( AU.grantee.name=<user_name> OR
    *      SET{ AU.grantee.name} SUBSETEQ (  <query_user_groups> )
@@ -7715,6 +7722,14 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
 
     where_item = pt_make_pred_with_identifiers (parser, PT_EQ, "AU.class_of.class_name", "C.class_name");
     where_expr = where_item;
+  }
+  {
+    /* AU.class_of.owner.name = C.owner_name */
+    PT_NODE *where_item = NULL;
+
+    where_item = pt_make_pred_with_identifiers (parser, PT_EQ, "AU.class_of.owner.name", "C.owner_name");
+    /* <where_expr> = <where_expr> AND <where_item> */
+    where_expr = parser_make_expression (parser, PT_AND, where_expr, where_item, NULL);
   }
   {
     /* C.is_system_class = 'NO' */
@@ -10183,7 +10198,6 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   const char *original_name = NULL;
   const char *resolved_name = NULL;
   char downcase_resolved_name[DB_MAX_USER_LENGTH] = { '\0' };
-  char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
   const char *user_specified_name = NULL;
 
   if (parser == NULL || node == NULL)
@@ -10192,38 +10206,117 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       return NULL;
     }
 
-  if (PT_IS_NAME_NODE (node) && PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED))
-    {
-      original_name = node->info.name.original;
-      resolved_name = node->info.name.resolved;
-    }
-  else if (PT_IS_EXPR_NODE (node) && PT_IS_SERIAL (node->info.expr.op))
-    {
-      if (PT_IS_DOT_NODE (node->info.expr.arg1)
-	  && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg1)
-	  && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg2))
-	{
-	  PT_NODE *owner = node->info.expr.arg1->info.dot.arg1;
-	  PT_NODE *name = node->info.expr.arg1->info.dot.arg2;
-
-	  original_name = name->info.name.original;
-	  resolved_name = owner->info.name.original;
-	}
-      else
-	{
-	  assert (PT_IS_NAME_NODE (node->info.expr.arg1));
-
-	  PT_NODE *name = node->info.expr.arg1;
-
-	  original_name = name->info.name.original;
-	  resolved_name = name->info.name.resolved;
-	}
-    }
-  else
+  if (pt_has_error (parser))
     {
       return node;
     }
 
+  switch (node->node_type)
+    {
+    case PT_NAME:
+      if (PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED))
+	{
+	  original_name = node->info.name.original;
+	  resolved_name = node->info.name.resolved;
+	}
+      else
+	{
+	  return node;
+	}
+      break;
+    case PT_EXPR:
+      if (PT_IS_SERIAL (node->info.expr.op))
+	{
+	  if (PT_IS_DOT_NODE (node->info.expr.arg1)
+	      && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg1)
+	      && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg2))
+	    {
+	      PT_NODE *owner = node->info.expr.arg1->info.dot.arg1;
+	      PT_NODE *name = node->info.expr.arg1->info.dot.arg2;
+
+	      original_name = name->info.name.original;
+	      resolved_name = owner->info.name.original;
+	    }
+	  else if (PT_IS_NAME_NODE (node->info.expr.arg1))
+	    {
+	      PT_NODE *name = node->info.expr.arg1;
+
+	      original_name = name->info.name.original;
+	    }
+	  else
+	    {
+	      return node;
+	    }
+	}
+      else
+	{
+	  return node;
+	}
+      break;
+    case PT_ALTER_SYNONYM:
+    case PT_CREATE_SYNONYM:
+      {
+	assert (pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)) != NULL);
+	PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)));
+	if (pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)) == NULL
+	    && sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
+	  {
+	    PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, "dba");
+	  }
+	else
+	  {
+	    assert (pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)) != NULL);
+	    PT_SYNONYM_TARGET_OWNER_NAME (node) =
+	      pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)));
+	  }
+
+	return node;
+      }
+      // break;
+    case PT_DROP_SYNONYM:
+      assert (pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)) != NULL);
+      PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)));
+      return node;
+      // break;
+    case PT_RENAME_SYNONYM:
+      assert (pt_get_qualifier_name (parser, PT_SYNONYM_OLD_NAME (node)) != NULL);
+      assert (pt_get_qualifier_name (parser, PT_SYNONYM_NEW_NAME (node)) != NULL);
+      PT_SYNONYM_OLD_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_OLD_NAME (node)));
+      PT_SYNONYM_NEW_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NEW_NAME (node)));
+      return node;
+      // break;
+    case PT_CREATE_ENTITY:
+      {
+	bool is_dba_group_member = au_is_dba_group_member (Au_user);
+	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_CREATE_ENTITY_NAME (node))) && !is_dba_group_member)
+	  {
+	    int error = NO_ERROR;
+	    ERROR_SET_ERROR_1ARG (error, ER_AU_DBA_ONLY, "create system class/vclass");
+	    PT_ERRORc (parser, node, er_msg ());
+	    *continue_walk = PT_STOP_WALK;
+	  }
+
+	return node;
+      }
+      // break;
+    case PT_RENAME:
+      {
+	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_RENAME_NEW_NAME (node))))
+	  {
+	    PT_ERROR (parser, node, "It is not allowed to be renamed to the system class name.");
+	    *continue_walk = PT_STOP_WALK;
+	  }
+	return node;
+      }
+      // break;
+    default:
+      return node;
+    }
+
+  // *INDENT-OFF*
+  assert ((node->node_type == PT_NAME && PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED))
+          || (node->node_type == PT_EXPR && PT_IS_SERIAL (node->info.expr.op)));
+  // *INDENT-ON*
   assert (original_name && original_name[0] != '\0');
 
   if (strchr (original_name, '.'))
@@ -10250,29 +10343,30 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
    * 2. common_class_name && common_user_name ->  common_user_name.common_class_name
    * 3. common_class_name &&    dba_user_name ->     dba_user_name.common_class_name
    * 4. system_class_name &&             NULL ->                   system_class_name
-   * 5. system_class_name && common_user_name ->  common_user_name.system_class_name
-   * 6. system_class_name &&    dba_user_name ->                   system_class_name
+   * 5. system_class_name && common_user_name ->  common_user_name.system_class_name -> error
+   * 6. system_class_name &&    dba_user_name ->     dba_user_name.system_class_name -> error
    * 
    * In case 5, raises an error to inform the user of an incorrect customization.
    */
   if (!PT_IS_SERIAL (node->info.expr.op) && sm_check_system_class_by_name (original_name))
     {
-      /* Skip in case 4, 6 */
-      if (resolved_name == NULL || resolved_name[0] == '\0' || intl_identifier_casecmp (resolved_name, "DBA") == 0)
+      /* In case 5, 6 */
+      if (resolved_name != NULL)
 	{
+	  PT_ERROR (parser, node, "It is not allowed to specify an owner in the system class name.");
+	  *continue_walk = PT_STOP_WALK;
 	  return node;
 	}
+
+      /* resolved_name == NULL */
+
+      /* Skip in case 4 */
+      return node;
     }
 
   if (resolved_name == NULL || resolved_name[0] == '\0')
     {
-      if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
-	{
-	  ASSERT_ERROR ();
-	  return node;
-	}
-
-      resolved_name = current_user_name;
+      resolved_name = sc_current_schema_name ();
     }
   else if (intl_identifier_lower_string_size (resolved_name) >= DB_MAX_USER_LENGTH)
     {
@@ -10284,7 +10378,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 
   intl_identifier_lower (resolved_name, downcase_resolved_name);
 
-  /* In case 1, 2, 3, 5 */
+  /* In case 1, 2, 3 */
   user_specified_name = pt_append_string (parser, downcase_resolved_name, ".");
   user_specified_name = pt_append_string (parser, user_specified_name, original_name);
 
@@ -10328,22 +10422,27 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 const char *
 pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * node)
 {
+  const char *name = NULL;
   char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
 
-  if (node == NULL || !PT_IS_NAME_NODE (node))
-    {
-      PT_ERROR (parser, node, "Invalid arguments.");
-      return NULL;
-    }
-
-  if (node->info.name.original == NULL || node->info.name.original[0] == '\0')
+  if (parser == NULL || node == NULL)
     {
       return NULL;
     }
 
-  if (sm_qualifier_name (node->info.name.original, qualifier_name, DB_MAX_USER_LENGTH) == NULL)
+  if (PT_IS_NAME_NODE (node) == false)
     {
-      return node->info.name.resolved;
+      return NULL;
+    }
+
+  if (PT_NAME_ORIGINAL (node) == NULL || (PT_NAME_ORIGINAL (node))[0] == '\0')
+    {
+      return NULL;
+    }
+
+  if (sm_qualifier_name (PT_NAME_ORIGINAL (node), qualifier_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      return PT_NAME_RESOLVED (node);
     }
 
   return pt_append_string (parser, NULL, qualifier_name);
@@ -10372,7 +10471,7 @@ pt_get_name_without_current_user_name (const char *name)
 {
   char *dot = NULL;
   char name_copy[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char current_user_name[DB_MAX_USER_LENGTH] = { '\0' };
+  const char *current_schema_name = NULL;
   const char *object_name = NULL;
   int error = NO_ERROR;
 
@@ -10396,18 +10495,14 @@ pt_get_name_without_current_user_name (const char *name)
       return name;
     }
 
-  if (db_get_current_user_name (current_user_name, DB_MAX_USER_LENGTH) == NULL)
-    {
-      ASSERT_ERROR ();
-      return name;
-    }
+  current_schema_name = sc_current_schema_name ();
 
   dot[0] = '\0';
 
-  if (intl_identifier_casecmp (name_copy, current_user_name) == 0)
+  if (intl_identifier_casecmp (name_copy, current_schema_name) == 0)
     {
       /*
-       * e.g.        name: current_user_name.object_name
+       * e.g.        name: current_schema_name.object_name
        *      object_name: object_name
        */
       object_name = strchr (name, '.') + 1;

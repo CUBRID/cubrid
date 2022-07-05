@@ -110,7 +110,6 @@ public class CUBRIDUnpacker {
 
     public byte[] unpackCStringByteArray() {
         int len = unpackStringSize();
-
         byte[] str = new byte[len];
         buffer.get(str);
         return str;
@@ -122,6 +121,11 @@ public class CUBRIDUnpacker {
             /* LARGE_STRING_CODE */
             len = buffer.getInt();
         }
+
+        if (len < 0) {
+            len = len & 0xff; // convert to unsigned
+        }
+
         return len;
     }
 

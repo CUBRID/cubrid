@@ -47,7 +47,7 @@ namespace cubscan
 
       if (m_method_group == nullptr) // signature is not initialized
 	{
-	  m_method_group = cubmethod::get_rctx (thread_p)->create_invoke_group (thread_p, *sig_list);
+	  m_method_group = cubmethod::get_rctx (thread_p)->create_invoke_group (thread_p, *sig_list, true);
 	}
 
       if (m_list_id == nullptr)
@@ -90,7 +90,12 @@ namespace cubscan
 
       if (is_final)
 	{
+	  m_method_group->reset (true);
 	  m_method_group->end ();
+
+	  cubmethod::runtime_context *rctx = m_method_group->get_runtime_context ();
+	  rctx->pop_stack (m_thread_p, m_method_group);
+
 	  m_method_group = nullptr; // will be destroyed by cubmethod::runtime_context
 	}
     }
@@ -126,13 +131,14 @@ namespace cubscan
 
       scan_code = get_single_tuple ();
 
-      std::vector<std::reference_wrapper<DB_VALUE>> arg_wrapper (m_arg_vector.begin (), m_arg_vector.end ());
-      if (scan_code == S_SUCCESS && m_method_group->prepare (arg_wrapper) != NO_ERROR)
+      int error = NO_ERROR;
+      std::vector<std::reference_wrapper<DB_VALUE>> arg_wrapper (m_arg_vector.begin(), m_arg_vector.end());
+      if (scan_code == S_SUCCESS && (error = m_method_group->prepare (arg_wrapper)) != NO_ERROR)
 	{
 	  scan_code = S_ERROR;
 	}
 
-      if (scan_code == S_SUCCESS && m_method_group->execute (arg_wrapper) != NO_ERROR)
+      if (scan_code == S_SUCCESS && (error = m_method_group->execute (arg_wrapper)) != NO_ERROR)
 	{
 	  scan_code = S_ERROR;
 	}
@@ -159,6 +165,19 @@ namespace cubscan
 	    }
 
 	  m_method_group->reset (false);
+	}
+      if (scan_code == S_ERROR)
+	{
+	  cubmethod::runtime_context *rctx = m_method_group->get_runtime_context ();
+	  if (rctx->is_interrupted ())
+	    {
+	      rctx->set_local_error_for_interrupt ();
+	    }
+	  else if (error !=
+		   ER_SM_INVALID_METHOD_ENV) /* FIXME: error possibly occured in builtin method, It should be handled at CAS */
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, m_method_group->get_error_msg ().c_str ());
+	    }
 	}
 
       // clear

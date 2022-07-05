@@ -431,7 +431,7 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
       sig_list.num_methods = 0;
 
       error = jsp_make_method_sig_list (parser, statement, sig_list);
-      if (error == NO_ERROR)
+      if (error == NO_ERROR && locator_get_sig_interrupt () == 0)
 	{
 	  error = method_invoke_fold_constants (sig_list, args, ret_value);
 	}
@@ -1314,6 +1314,7 @@ static int
 jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_list & sig_list)
 {
   int error = NO_ERROR;
+  int save;
   DB_VALUE method, param_cnt_val, mode, arg_type, temp, result_type;
 
   int sig_num_args = pt_length_of_list (node->info.method_call.arg_list);
@@ -1323,9 +1324,17 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 
   METHOD_SIG *sig = nullptr;
 
+  db_make_null (&method);
+  db_make_null (&param_cnt_val);
+  db_make_null (&mode);
+  db_make_null (&arg_type);
+  db_make_null (&temp);
+  db_make_null (&result_type);
+
   {
     char *parsed_method_name = (char *) node->info.method_call.method_name->info.name.original;
     DB_OBJECT *mop_p = jsp_find_stored_procedure (parsed_method_name);
+    AU_DISABLE (save);
     if (mop_p)
       {
 	/* check java stored prcedure target */
@@ -1365,12 +1374,18 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 	    DB_OBJECT *arg_mop_p = db_get_object (&temp);
 	    if (arg_mop_p)
 	      {
-		if (db_get (arg_mop_p, SP_ATTR_MODE, &mode) == NO_ERROR)
+		error = db_get (arg_mop_p, SP_ATTR_MODE, &mode);
+		if (error == NO_ERROR)
 		  {
 		    sig_arg_mode.push_back (db_get_int (&mode));
 		  }
+		else
+		  {
+		    goto end;
+		  }
 
-		if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
+		error = db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type);
+		if (error == NO_ERROR)
 		  {
 		    int type_val = db_get_int (&arg_type);
 		    if (type_val == DB_TYPE_RESULTSET && !jsp_is_prepare_call ())
@@ -1380,6 +1395,10 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 			goto end;
 		      }
 		    sig_arg_type.push_back (type_val);
+		  }
+		else
+		  {
+		    goto end;
 		  }
 
 		pr_clear_value (&mode);
@@ -1475,7 +1494,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
   }
 
 end:
-
+  AU_ENABLE (save);
   if (error != NO_ERROR)
     {
       if (sig)

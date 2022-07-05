@@ -77,4 +77,7 @@ extern int css_read_one_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int
 // *INDENT-OFF*
 extern std::string css_build_message_for_server_connection (const char *server_name, SERVER_TYPE server_type);
 // *INDENT-ON*
+extern void css_close_conn (CSS_CONN_ENTRY * conn);
+extern CSS_CONN_ENTRY *css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn, int port_id,
+						    unsigned short *rid);
 #endif /* _CONNECTION_CL_H_ */

@@ -50,6 +50,7 @@ elseif(CPACK_GENERATOR STREQUAL "RPM")
     "/etc/init.d/cubrid"
     "/etc/init.d/cubrid-ha"
     )
+  set(CPACK_RPM_PACKAGE_AUTOREQ " no")
 endif()
 
 # TODO: for windows package

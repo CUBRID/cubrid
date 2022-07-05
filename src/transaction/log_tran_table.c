@@ -78,6 +78,7 @@
 #include "thread_manager.hpp"
 #include "xasl.h"
 #include "xasl_cache.h"
+#include "method_runtime_context.hpp"
 
 #define RMUTEX_NAME_TDES_TOPOP "TDES_TOPOP"
 
@@ -2805,29 +2806,37 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
 	  *continue_checking = false;
 	}
     }
-  else if (interrupt == true && clear == true)
+  else if (interrupt == true)
     {
-      tdes->interrupt = false;
-
+      if (clear)
+	{
+	  tdes->interrupt = false;
 #if !defined (HAVE_ATOMIC_BUILTINS)
-      TR_TABLE_CS_ENTER (thread_p);
-      log_Gl.trantable.num_interrupts--;
+	  TR_TABLE_CS_ENTER (thread_p);
+	  log_Gl.trantable.num_interrupts--;
 #else
-      ATOMIC_INC_32 (&log_Gl.trantable.num_interrupts, -1);
+	  ATOMIC_INC_32 (&log_Gl.trantable.num_interrupts, -1);
 #endif
 
-      if (log_Gl.trantable.num_interrupts > 0)
-	{
-	  *continue_checking = true;
-	}
-      else
-	{
-	  *continue_checking = false;
-	}
+	  if (log_Gl.trantable.num_interrupts > 0)
+	    {
+	      *continue_checking = true;
+	    }
+	  else
+	    {
+	      *continue_checking = false;
+	    }
 
 #if !defined (HAVE_ATOMIC_BUILTINS)
-      TR_TABLE_CS_EXIT (thread_p);
+	  TR_TABLE_CS_EXIT (thread_p);
 #endif
+	}
+
+      cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
+      if (rctx)
+	{
+	  rctx->set_interrupt (ER_INTERRUPTED);
+	}
     }
   else if (interrupt == false && tdes->query_timeout > 0)
     {

@@ -38,7 +38,7 @@ log_hdrpage::operator== (const log_hdrpage &other) const
 
 log_page_owner::log_page_owner (const char *buffer)
 {
-  m_buffer = std::string (buffer, db_log_page_size ());
+  m_buffer = std::string (buffer, LOG_PAGESIZE);
 }
 
 log_page_owner::~log_page_owner ()
