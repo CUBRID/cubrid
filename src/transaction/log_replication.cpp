@@ -522,10 +522,16 @@ namespace cublog
   log_lsa
   replicator::get_lowest_unapplied_lsa () const
   {
-    // this function should never be called,
-    // instead the implementation in the atomic_replicator should be used
+    // TODO: needs to be refactored to work with the new replicators flavors
+    if (m_parallel_replication_redo == nullptr)
+      {
+	// sync
+	return get_highest_processed_lsa ();
+      }
+
+    // a different value will return from here when the atomic replicator is added
+    // for now this part should not be reached
     assert (false);
-    return get_highest_processed_lsa ();
   }
 
   /*********************************************************************
