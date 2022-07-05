@@ -249,7 +249,8 @@ namespace cublog
   atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::apply_log_redo (THREAD_ENTRY *thread_p,
       log_rv_redo_context &redo_context)
   {
-    redo_context.m_reader.set_lsa_and_fetch_page (m_record_lsa, log_reader::fetch_mode::FORCE);
+    const int error_code = redo_context.m_reader.set_lsa_and_fetch_page (m_record_lsa, log_reader::fetch_mode::FORCE);
+    assert (error_code == NO_ERROR);
     const log_rec_header header = redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_header> ();
 
     switch (header.type)
