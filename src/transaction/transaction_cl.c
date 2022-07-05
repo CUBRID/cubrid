@@ -170,10 +170,11 @@ tran_get_tran_settings (int *lock_wait_in_msecs, TRAN_ISOLATION * tran_isolation
 int
 tran_reset_wait_times (int wait_in_msecs)
 {
+  SYSPRM_VALUE value;
+
   /* change lock timeout parameter for a session */
-  sysprm_set_value_by_id (PRM_ID_LK_TIMEOUT, (SYSPRM_VALUE)
-			  {
-			  .i = wait_in_msecs / 1000});
+  value.i = wait_in_msecs / 1000;
+  sysprm_set_value_by_id (PRM_ID_LK_TIMEOUT, value);
   /* change lock timeout parameter for a transaction */
   tm_Tran_wait_msecs = wait_in_msecs;
   return log_reset_wait_msecs (tm_Tran_wait_msecs);
@@ -201,6 +202,7 @@ tran_reset_wait_times (int wait_in_msecs)
 int
 tran_reset_isolation (TRAN_ISOLATION isolation, bool async_ws)
 {
+  SYSPRM_VALUE value;
   int error_code = NO_ERROR;
 
   if (!IS_VALID_ISOLATION_LEVEL (isolation))
@@ -215,10 +217,8 @@ tran_reset_isolation (TRAN_ISOLATION isolation, bool async_ws)
       if (error_code == NO_ERROR)
 	{
 	  /* change isolation level parameter for a session */
-	  sysprm_set_value_by_id (PRM_ID_LOG_ISOLATION_LEVEL, (SYSPRM_VALUE)
-				  {
-				  .i = isolation}
-	  );
+	  value.i = isolation;
+	  sysprm_set_value_by_id (PRM_ID_LOG_ISOLATION_LEVEL, value);
 	  /* change isolation level parameter for a transaction */
 	  tm_Tran_isolation = isolation;
 	}
