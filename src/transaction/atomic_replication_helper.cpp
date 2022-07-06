@@ -132,6 +132,20 @@ namespace cublog
     return atomic_sequence.can_end_atomic_sequence (sysop_parent_lsa);
   }
 
+  log_lsa atomic_replication_helper::get_the_lowest_start_lsa ()
+  {
+    log_lsa min_lsa = MAX_LSA;
+
+    for (auto const &sequence_map_iterator : m_sequences_map)
+      {
+	if (sequence_map_iterator.second.get_start_lsa () < min_lsa)
+	  {
+	    min_lsa = sequence_map_iterator.second.get_start_lsa ();
+	  }
+      }
+    return min_lsa;
+  }
+
   /********************************************************************************
    * atomic_replication_helper::atomic_replication_sequence function definitions  *
    ********************************************************************************/
@@ -205,6 +219,11 @@ namespace cublog
     return m_start_lsa >= sysop_parent_lsa;
   }
 
+  log_lsa atomic_replication_helper::atomic_replication_sequence::get_start_lsa () const
+  {
+    return m_start_lsa;
+  }
+
   /*********************************************************************************************************
    * atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit function definitions  *
    *********************************************************************************************************/
@@ -230,7 +249,13 @@ namespace cublog
   atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::apply_log_redo (THREAD_ENTRY *thread_p,
       log_rv_redo_context &redo_context)
   {
-    redo_context.m_reader.set_lsa_and_fetch_page (m_record_lsa, log_reader::fetch_mode::FORCE);
+    const int error_code = redo_context.m_reader.set_lsa_and_fetch_page (m_record_lsa, log_reader::fetch_mode::FORCE);
+    if (error_code != NO_ERROR)
+      {
+	logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			   "atomic_replication_unit::apply_log_redo: error reading log page with VPID: %d|%d, LSA: %lld|%d and index %d.",
+			   VPID_AS_ARGS (&m_vpid), LSA_AS_ARGS (&m_record_lsa), m_record_index);
+      }
     const log_rec_header header = redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_header> ();
 
     switch (header.type)
@@ -337,10 +362,5 @@ namespace cublog
   void atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::set_page_ptr (const PAGE_PTR &ptr)
   {
     m_page_ptr = ptr;
-  }
-
-  LOG_LSA atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::get_lsa () const
-  {
-    return m_record_lsa;
   }
 }

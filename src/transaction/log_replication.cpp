@@ -519,7 +519,8 @@ namespace cublog
     return m_redo_lsa;
   }
 
-  log_lsa replicator::get_lowest_unapplied_lsa () const
+  log_lsa
+  replicator::get_lowest_unapplied_lsa () const
   {
     // TODO: needs to be refactored to work with the new replicators flavors
     if (m_parallel_replication_redo == nullptr)

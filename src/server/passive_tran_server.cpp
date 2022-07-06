@@ -17,6 +17,7 @@
  */
 
 #include "log_impl.h"
+#include "log_replication_atomic.hpp"
 #include "passive_tran_server.hpp"
 #include "server_type.hpp"
 #include "system_parameter.h"
@@ -130,7 +131,7 @@ void passive_tran_server::start_log_replicator (const log_lsa &start_lsa)
 
   // passive transaction server executes replication synchronously, for the time being, due to complexity of
   // executing it in parallel while also providing a consistent view of the data
-  m_replicator.reset (new cublog::replicator (start_lsa, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, 0));
+  m_replicator.reset (new cublog::atomic_replicator (start_lsa));
 }
 
 void passive_tran_server::send_and_receive_stop_log_prior_dispatch ()
