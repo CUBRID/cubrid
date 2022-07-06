@@ -379,9 +379,9 @@ event_log_sql_string (THREAD_ENTRY * thread_p, FILE * log_fp, XASL_ID * xasl_id,
       return;
     }
 
-  if (ent != NULL && ent->sql_info.sql_hash_text != NULL)
+  if (ent != NULL && ent->sql_info.sql_user_text != NULL)
     {
-      fprintf (log_fp, "%s\n", ent->sql_info.sql_hash_text);
+      fprintf (log_fp, "%s\n", ent->sql_info.sql_user_text);
     }
   else
     {

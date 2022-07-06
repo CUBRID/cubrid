@@ -2729,7 +2729,7 @@ parser_print_user (char *user_text, int len)
       return 0;
     }
 
-  return snprintf (p, len - 1, " {user=%d|%d|%d}", oid->volid, oid->pageid, oid->slotid);
+  return snprintf (p, len - 1, "user=%d|%d|%d", oid->volid, oid->pageid, oid->slotid);
 }
 
 /*
