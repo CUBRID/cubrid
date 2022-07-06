@@ -4217,18 +4217,17 @@ cost_cmp:
     {
       return PLAN_COMP_EQ;
     }
-  if (af <= bf && aa <= ba)
+  if (af + aa <= bf + ba)
     {
       QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
       return PLAN_COMP_LT;
     }
-  if (bf <= af && ba <= aa)
+  else
     {
       QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
       return PLAN_COMP_GT;
     }
 
-  return PLAN_COMP_UNK;
 #endif /* OLD_CODE */
 }
 

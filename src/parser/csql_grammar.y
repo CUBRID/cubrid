@@ -660,6 +660,7 @@ int g_original_buffer_len;
 %type <node> serial_name
 %type <node> synonym_name_without_dot
 %type <node> synonym_name
+%type <node> opt_alter_synonym
 %type <node> opt_identifier
 %type <node> normal_or_class_attr_list_with_commas
 %type <node> normal_or_class_attr
@@ -3140,8 +3141,8 @@ create_stmt
 			    PT_SYNONYM_NAME (node) = $5;
 			    PT_SYNONYM_TARGET_NAME (node) = $7;
 			    PT_SYNONYM_COMMENT (node) = $8;
-			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 			    if (synonym_access_modifier == PT_PUBLIC)
 			      {
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
@@ -3974,9 +3975,8 @@ alter_stmt
 	  SYNONYM			/* 3 */
 		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_ALTER); }	/* 4 */
 	  synonym_name			/* 5 */
-	  For				/* 6 */
-	  class_name			/* 7 */
-	  opt_comment_spec		/* 8 */
+	  opt_alter_synonym		/* 6 */
+	  opt_comment_spec		/* 7 */
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER opt_access_modifier SYNONYM synonym_name For class_name opt_comment_spec);
 
@@ -3987,10 +3987,15 @@ alter_stmt
 			  {
 			    PT_SYNONYM_ACCESS_MODIFIER (node) = $2;
 			    PT_SYNONYM_NAME (node) = $5;
-			    PT_SYNONYM_TARGET_NAME (node) = $7;
-			    PT_SYNONYM_COMMENT (node) = $8;
-			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
+			    PT_SYNONYM_TARGET_NAME (node) = $6;
+			    PT_SYNONYM_COMMENT (node) = $7;
 
+			    if (PT_SYNONYM_TARGET_NAME (node) == NULL && PT_SYNONYM_COMMENT (node) == NULL)
+			      {
+				PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_SYNONYM_ALTER_NO_OPTION);
+			      }
+
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 			    if (synonym_access_modifier == PT_PUBLIC)
 			      {
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
@@ -4113,8 +4118,8 @@ rename_stmt
 			    PT_SYNONYM_ACCESS_MODIFIER (node) = $2;
 			    PT_SYNONYM_OLD_NAME (node) = $5;
 			    PT_SYNONYM_NEW_NAME (node) = $7;
-			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 			    if (synonym_access_modifier == PT_PUBLIC)
 			      {
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
@@ -4463,8 +4468,8 @@ drop_stmt
 			    PT_SYNONYM_ACCESS_MODIFIER (node) = $2;
 			    PT_SYNONYM_IF_EXISTS (node) = $5;
 			    PT_SYNONYM_NAME (node) = $6;
-			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 			    if (synonym_access_modifier == PT_PUBLIC)
 			      {
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
@@ -24213,6 +24218,20 @@ opt_create_synonym
 
 		DBG_PRINT}}
 	;
+
+opt_alter_synonym
+	: /*empty*/
+		{{ DBG_TRACE_GRAMMAR(opt_alter_synonym, : );
+
+			$$ = NULL;
+
+		DBG_PRINT}}
+	| For class_name
+		{{ DBG_TRACE_GRAMMAR(opt_alter_syonnym, : For class_name);
+
+			$$ = $2;
+
+		DBG_PRINT}}
 
 %%
 

@@ -5757,6 +5757,108 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 }
 
 /*
+ * mq_resolve_n_check_using_index () - check and resolve the using index clause
+ *   return: PT_NODE *
+ *   parser(in): parser environment
+ *   aggregate_rewrote_as_derived(in): 
+ *   statement(in): 
+ */
+static PT_NODE *
+mq_resolve_n_check_using_index (PARSER_CONTEXT * parser, PT_NODE * statement, bool aggregate_rewrote_as_derived)
+{
+  PT_NODE *indexp, *spec = NULL;
+  PT_NODE **using_index = NULL;
+
+  assert (statement);
+
+  switch (statement->node_type)
+    {
+    case PT_SELECT:
+      spec = statement->info.query.q.select.from;
+      if (aggregate_rewrote_as_derived && spec != NULL)
+	{
+	  PT_NODE *derived_table = spec->info.spec.derived_table;
+	  assert (PT_SPEC_IS_DERIVED (spec));
+	  using_index = &derived_table->info.query.q.select.using_index;
+	  spec = derived_table->info.query.q.select.from;
+	}
+      else
+	{
+	  using_index = &statement->info.query.q.select.using_index;
+	}
+      break;
+
+    case PT_UPDATE:
+      using_index = &statement->info.update.using_index;
+      spec = statement->info.update.spec;
+      break;
+
+    case PT_DELETE:
+      using_index = &statement->info.delete_.using_index;
+      spec = statement->info.delete_.spec;
+      break;
+
+    default:
+      break;
+    }
+
+  /* resolve using index */
+  indexp = using_index ? *using_index : NULL;
+  if (indexp != NULL && spec != NULL)
+    {
+      bool is_ignore = false;
+      PT_NODE *prev = NULL;
+      while (indexp)
+	{
+	  /* 
+	   ** is_ignore will be set at pt_resolve_using_index().
+	   ** If is_ignore is true, ignore the error and remove the hint. 
+	   */
+	  if (pt_resolve_using_index (parser, indexp, spec, &is_ignore))
+	    {
+	      prev = indexp;
+	      indexp = indexp->next;
+	    }
+	  else if (is_ignore == false)
+	    {
+	      return NULL;
+	    }
+	  else
+	    {
+	      // clear error
+	      er_clearid ();
+	      pt_reset_error (parser);
+
+	      PT_NODE *tmp = indexp;
+	      if (*using_index == indexp)
+		{
+		  indexp = indexp->next;
+		  *using_index = indexp;
+		}
+	      else
+		{
+		  prev->next = indexp->next;
+		  indexp = indexp->next;
+		}
+	      tmp->next = NULL;
+	      parser_free_tree (parser, tmp);
+	    }
+	}
+    }
+
+  /* semantic check on using index */
+  if (using_index != NULL)
+    {
+      if (mq_check_using_index (parser, *using_index) != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
+
+  return statement;
+}
+
+/*
  * mq_translate_local() - recursively expands each query against a view or
  * 			  virtual class
  *   return:
@@ -5770,7 +5872,6 @@ mq_translate_local (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg
 {
   int line, column;
   PT_NODE *next;
-  PT_NODE *indexp, *spec, *using_index;
   bool aggregate_rewrote_as_derived = false;
 
   if (statement == NULL)
@@ -5850,64 +5951,11 @@ mq_translate_local (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg
        * to statement. (The number of bugs caused by this multipurpose use of node->next tells us it's not a good
        * idea.) */
       parser_append_node (next, statement);
-    }
 
-  /* resolving using index */
-  using_index = NULL;
-  spec = NULL;
-  if (!pt_has_error (parser) && statement)
-    {
-      switch (statement->node_type)
+      /* resolving using index */
+      if (!pt_has_error (parser))
 	{
-	case PT_SELECT:
-	  spec = statement->info.query.q.select.from;
-	  if (aggregate_rewrote_as_derived && spec != NULL)
-	    {
-	      PT_NODE *derived_table = spec->info.spec.derived_table;
-	      assert (PT_SPEC_IS_DERIVED (spec));
-	      using_index = derived_table->info.query.q.select.using_index;
-	      spec = derived_table->info.query.q.select.from;
-	    }
-	  else
-	    {
-	      using_index = statement->info.query.q.select.using_index;
-	    }
-	  break;
-
-	case PT_UPDATE:
-	  using_index = statement->info.update.using_index;
-	  spec = statement->info.update.spec;
-	  break;
-
-	case PT_DELETE:
-	  using_index = statement->info.delete_.using_index;
-	  spec = statement->info.delete_.spec;
-	  break;
-
-	default:
-	  break;
-	}
-    }
-
-  /* resolve using index */
-  indexp = using_index;
-  if (indexp != NULL && spec != NULL)
-    {
-      for (; indexp; indexp = indexp->next)
-	{
-	  if (pt_resolve_using_index (parser, indexp, spec) == NULL)
-	    {
-	      return NULL;
-	    }
-	}
-    }
-
-  /* semantic check on using index */
-  if (using_index != NULL)
-    {
-      if (mq_check_using_index (parser, using_index) != NO_ERROR)
-	{
-	  return NULL;
+	  return mq_resolve_n_check_using_index (parser, statement, aggregate_rewrote_as_derived);
 	}
     }
 
