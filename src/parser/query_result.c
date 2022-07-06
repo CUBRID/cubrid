@@ -484,10 +484,7 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 
 	  if (cnt1 != cnt2)
 	    {
-	      if (!pt_has_error (parser))
-		{
-		  PT_ERRORmf2 (parser, arg1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ARITY_MISMATCH, cnt1, cnt2);
-		}
+	      PT_ERRORmf2 (parser, arg1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ARITY_MISMATCH, cnt1, cnt2);
 	      return NULL;
 	    }
 
