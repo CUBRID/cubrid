@@ -253,7 +253,7 @@ namespace cublog
     if (error_code != NO_ERROR)
       {
 	logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			   "atomic_replication_unit::apply_log_redo: error reading log page with VPID: %d|%d, LSA: %d|%d and index %d.",
+			   "atomic_replication_unit::apply_log_redo: error reading log page with VPID: %d|%d, LSA: %lld|%d and index %d.",
 			   VPID_AS_ARGS (&m_vpid), LSA_AS_ARGS (&m_record_lsa), m_record_index);
       }
     const log_rec_header header = redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_header> ();
