@@ -1320,7 +1320,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	  LSA_COPY (&log_Gl.unique_stats_table.curr_rcv_rec_lsa, &lsa);
 
 	  /* both the page id and the offsset might have changed; page id is changed at the end of the loop */
-	  redo_context.m_reader.set_lsa_and_fetch_page (lsa);
+	  (void) redo_context.m_reader.set_lsa_and_fetch_page (lsa);
 	  rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_FETCH_PAGE);
 
 	  {
