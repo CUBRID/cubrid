@@ -1593,10 +1593,11 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 128 Numero di argomenti non valido per JSON_OBJECTAGG.
 129 L'argomento conteggio PARALLELO deve essere compreso tra %1$d e %2$d.
 130 dblink - Server name cannot contain periods.
-131 Invalid alter synonym.\n  ALTER [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-132 Invalid create synonym.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-133 Invalid drop synonym.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
-134 Invalid rename synonym.\n  RENAME [PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
+131 Uso non valido di ALTER SYNONYM.\n  ALTER [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> {FOR [<schema_name>.]<target_name> [COMMENT 'comment_string'] | COMMENT 'comment_string'}
+132 Uso non valido di CREATE SYNONYM.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> FOR [<schema_name>.]<target_name> [COMMENT 'comment_string']
+133 Uso non valido di DROP SYNONYM.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
+134 Uso non valido di RENAME SYNONYM.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
+135 Nessuna opzione specificata per ALTER SYNONYM.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memoria esaurita.

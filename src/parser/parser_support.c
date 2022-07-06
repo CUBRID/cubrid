@@ -10282,36 +10282,98 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	}
       break;
     case PT_ALTER_SYNONYM:
+      {
+	const char *synonym_owner_name = NULL;
+
+	assert (PT_SYNONYM_NAME (node) != NULL);
+
+	synonym_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node));
+	assert (synonym_owner_name != NULL);
+	PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, synonym_owner_name);
+
+	/* If only the comment is changed, PT_SYNONYM_TARGET_NAME (node) can be NULL. */
+	if (PT_SYNONYM_TARGET_NAME (node) != NULL)
+	  {
+	    const char *target_owner_name = NULL;
+
+	    /* When processing PT_NAME, resolved_name is prefixed to original_name.
+	     * If original_name is the name of a system class/vclass, resolved_name is not prefixed to original_name. */
+	    target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
+	    if (target_owner_name == NULL
+		&& sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
+	      {
+		PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, "dba");
+	      }
+	    else
+	      {
+		assert (target_owner_name != NULL);
+		PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, target_owner_name);
+	      }
+	  }
+
+	return node;
+      }
+      // break;
     case PT_CREATE_SYNONYM:
       {
-	assert (pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)) != NULL);
-	PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)));
-	if (pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)) == NULL
+	const char *synonym_owner_name = NULL;
+	const char *target_owner_name = NULL;
+
+	assert (PT_SYNONYM_NAME (node) != NULL);
+	assert (PT_SYNONYM_TARGET_NAME (node) != NULL);
+
+	synonym_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node));
+	assert (synonym_owner_name != NULL);
+	PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, synonym_owner_name);
+
+	/* When processing PT_NAME, resolved_name is prefixed to original_name.
+	 * If original_name is the name of a system class/vclass, resolved_name is not prefixed to original_name. */
+	target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
+	if (target_owner_name == NULL
 	    && sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
 	  {
 	    PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, "dba");
 	  }
 	else
 	  {
-	    assert (pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)) != NULL);
-	    PT_SYNONYM_TARGET_OWNER_NAME (node) =
-	      pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node)));
+	    assert (target_owner_name != NULL);
+	    PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, target_owner_name);
 	  }
 
 	return node;
       }
       // break;
     case PT_DROP_SYNONYM:
-      assert (pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)) != NULL);
-      PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node)));
-      return node;
+      {
+	const char *synonym_owner_name = NULL;
+
+	assert (PT_SYNONYM_NAME (node) != NULL);
+
+	synonym_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node));
+	assert (synonym_owner_name != NULL);
+	PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, synonym_owner_name);
+
+	return node;
+      }
       // break;
     case PT_RENAME_SYNONYM:
-      assert (pt_get_qualifier_name (parser, PT_SYNONYM_OLD_NAME (node)) != NULL);
-      assert (pt_get_qualifier_name (parser, PT_SYNONYM_NEW_NAME (node)) != NULL);
-      PT_SYNONYM_OLD_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_OLD_NAME (node)));
-      PT_SYNONYM_NEW_OWNER_NAME (node) = pt_name (parser, pt_get_qualifier_name (parser, PT_SYNONYM_NEW_NAME (node)));
-      return node;
+      {
+	const char *old_synonym_owner_name = NULL;
+	const char *new_synonym_owner_name = NULL;
+
+	assert (PT_SYNONYM_OLD_NAME (node) != NULL);
+	assert (PT_SYNONYM_NEW_NAME (node) != NULL);
+
+	old_synonym_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_OLD_NAME (node));
+	assert (old_synonym_owner_name != NULL);
+	PT_SYNONYM_OLD_OWNER_NAME (node) = pt_name (parser, old_synonym_owner_name);
+
+	new_synonym_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_NEW_NAME (node));
+	assert (new_synonym_owner_name != NULL);
+	PT_SYNONYM_NEW_OWNER_NAME (node) = pt_name (parser, new_synonym_owner_name);
+
+	return node;
+      }
       // break;
     case PT_CREATE_ENTITY:
       {
@@ -10377,7 +10439,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
    * 
    * In case 5, raises an error to inform the user of an incorrect customization.
    */
-  if (!PT_IS_SERIAL (node->info.expr.op) && sm_check_system_class_by_name (original_name))
+  if (node->node_type == PT_NAME && sm_check_system_class_by_name (original_name))
     {
       /* In case 5, 6 */
       if (resolved_name != NULL)
