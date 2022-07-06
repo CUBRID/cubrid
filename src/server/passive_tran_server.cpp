@@ -130,7 +130,6 @@ void passive_tran_server::start_log_replicator (const log_lsa &start_lsa)
 
   // passive transaction server executes replication synchronously, for the time being, due to complexity of
   // executing it in parallel while also providing a consistent view of the data
-  //m_replicator.reset (new cublog::replicator (start_lsa, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, 0));
   m_replicator.reset (new cublog::atomic_replicator (start_lsa));
 }
 

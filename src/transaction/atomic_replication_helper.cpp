@@ -188,7 +188,8 @@ namespace cublog
   {
     for (size_t i = 0; i < m_units.size (); i++)
       {
-	m_units[i].apply_log_redo (thread_p, m_redo_context);
+	int error_code = m_units[i].apply_log_redo (thread_p, m_redo_context);
+	assert (error_code != NO_ERROR);
       }
   }
 
@@ -245,12 +246,17 @@ namespace cublog
     PGBUF_CLEAR_WATCHER (&m_watcher);
   }
 
-  void
+  int
   atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::apply_log_redo (THREAD_ENTRY *thread_p,
       log_rv_redo_context &redo_context)
   {
     const int error_code = redo_context.m_reader.set_lsa_and_fetch_page (m_record_lsa, log_reader::fetch_mode::FORCE);
-    assert (error_code == NO_ERROR);
+    if (error_code != NO_ERROR)
+      {
+	logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			   "apply_log_redo: error reading redo log page");
+	return error_code;
+      }
     const log_rec_header header = redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_header> ();
 
     switch (header.type)

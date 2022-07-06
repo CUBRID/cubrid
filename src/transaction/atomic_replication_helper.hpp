@@ -103,7 +103,7 @@ namespace cublog
 	      atomic_replication_unit &operator= (const atomic_replication_unit &) = delete;
 	      atomic_replication_unit &operator= (atomic_replication_unit &&) = delete;
 
-	      void apply_log_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context);
+	      int apply_log_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context);
 	      template <typename T>
 	      void apply_log_by_type (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context, LOG_RECTYPE rectype);
 	      int fix_page (THREAD_ENTRY *thread_p);
