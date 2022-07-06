@@ -1480,6 +1480,10 @@ static QO_SEGMENT *
 qo_insert_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * node, QO_ENV * env, const char *expr_str)
 {
   QO_SEGMENT *seg = NULL;
+  PT_NODE *entity;
+  MOP cls;
+  SM_CLASS_CONSTRAINT *constraints;
+  SM_ATTRIBUTE *attrp;
 
   QO_ASSERT (env, head != NULL);
   QO_ASSERT (env, env->nsegs < env->Nsegs);
@@ -1521,6 +1525,42 @@ qo_insert_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * node, QO_ENV * env,
     }
 
   bitset_add (&(QO_NODE_SEGS (head)), QO_SEG_IDX (seg));
+
+  /* check is_not_null */
+  entity = QO_NODE_ENTITY_SPEC (head);
+  if (pt_is_name_node (node) && PT_SPEC_IS_ENTITY (entity))
+    {
+      int i;
+      bool found = false;
+      cls = sm_find_class (entity->info.spec.entity_name->info.name.original);
+      constraints = sm_class_constraints (cls);
+
+      while (constraints != NULL)
+	{
+	  if (!SM_IS_CONSTRAINT_NOT_NULL_FAMILY (constraints->type))
+	    {
+	      constraints = constraints->next;
+	      continue;
+	    }
+
+	  /* check columns on this constraint */
+	  for (i = 0; constraints->attributes[i]; i++)
+	    {
+	      attrp = constraints->attributes[i];
+	      if (intl_identifier_casecmp (node->info.name.original, attrp->header.name) == 0)
+		{
+		  QO_SEG_IS_NOT_NULL (seg) = true;
+		  found = true;
+		  break;
+		}
+	    }
+	  if (found)
+	    {
+	      break;
+	    }
+	  constraints = constraints->next;
+	}
+    }
 
   env->nsegs++;
 
@@ -8305,6 +8345,7 @@ qo_seg_clear (QO_ENV * env, int idx)
   QO_SEG_SHARED_ATTR (seg) = false;
   QO_SEG_IDX (seg) = idx;
   QO_SEG_FUNC_INDEX (seg) = false;
+  QO_SEG_IS_NOT_NULL (seg) = false;
   bitset_init (&(QO_SEG_INDEX_TERMS (seg)), env);
 }
 
@@ -8532,6 +8573,11 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
   bitset_init (&order_nodes, env);
   bitset_init (&QO_ENV_SORT_LIMIT_NODES (env), env);
 
+  if (pt_has_error (QO_ENV_PARSER (env)))
+    {
+      goto error;
+    }
+
   query = QO_ENV_PT_TREE (env);
   if (!PT_IS_SELECT (query))
     {
@@ -8703,6 +8749,14 @@ sort_limit_possible:
   return;
 
 abandon_stop_limit:
+  /* remove error which is occured in this function */
+  if (pt_has_error (QO_ENV_PARSER (env)))
+    {
+      pt_reset_error (QO_ENV_PARSER (env));
+      (QO_ENV_PARSER (env))->flag.has_internal_error = 0;
+    }
+
+error:
   bitset_delset (&order_nodes);
   bitset_delset (&QO_ENV_SORT_LIMIT_NODES (env));
   env->use_sort_limit = QO_SL_INVALID;
@@ -9598,6 +9652,12 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
 	{
 	  pk_seg = QO_TERM_INDEX_SEG (term, 0);
 	  fk_seg = QO_TERM_INDEX_SEG (term, 1);
+	}
+
+      /* fk must have the NOT_NULL constraint */
+      if (!QO_SEG_IS_NOT_NULL (fk_seg))
+	{
+	  return false;
 	}
 
       /* make sure pk_seg and fk_seg reference the same position in the two indexes */

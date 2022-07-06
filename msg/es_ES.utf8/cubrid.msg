@@ -988,7 +988,7 @@ $ LOADDB
 918 La clase '%1$s' referida por la clave externa no existe.
 919 La clase '%1$s' referida por la clave externa no tiene la clave primaria.
 920 La clave externa '%1$s' no incluye el miembro de clave primaria '%2$s'.
-921 El dominio del miembro de clave primaria '%1$s' es otro que aquel de la clave primaria '%2$s'.
+921 El dominio del miembro de clave primaria '%1$s' es otro que aquel de la clave primaria '%2$s'. (%3$s: %4$s vs. %5$s)
 922 La restriccion de la clave externa '%1$s' no es valida, debido al valor '%2$s'.
 923 Se supone que la clave primaria '%1$s' referida por la clave externa '%2$s' no puede ser disminuida.
 924 La operaciones Actualizar/Eliminar son restringidas por la clave externa '%1$s'.
@@ -1591,10 +1591,11 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 128 Número de argumentos no válidos para JSON_OBJECTAGG
 129 El argumento de conteo PARALLEL debe estar entre %1$d y %2$d.
 130 dblink - Server name cannot contain periods.
-131 Invalid alter synonym.\n  ALTER [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-132 Invalid create synonym.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-133 Invalid drop synonym.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
-134 Invalid rename synonym.\n  RENAME [PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
+131 Uso invalido de ALTER SYNONYM.\n  ALTER [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> {FOR [<schema_name>.]<target_name> [COMMENT 'comment_string'] | COMMENT 'comment_string'}
+132 Uso invalido de CREATE SYNONYM.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> FOR [<schema_name>.]<target_name> [COMMENT 'comment_string']
+133 Uso invalido de DROP SYNONYM.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
+134 Uso invalido de RENAME SYNONYM.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
+135 No se han especificado opciones para ALTER SYNONYM.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Sin memoria.

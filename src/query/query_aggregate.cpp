@@ -99,7 +99,7 @@ qdata_process_distinct_or_sort (cubthread::entry *thread_p, cubxasl::aggregate_l
     {
       ls_flag = QFILE_FLAG_ALL;
     }
-  list_id_p = qfile_open_list (thread_p, &type_list, NULL, query_id, ls_flag);
+  list_id_p = qfile_open_list (thread_p, &type_list, NULL, query_id, ls_flag, NULL);
 
   if (list_id_p == NULL)
     {

@@ -988,7 +988,7 @@ $ LOADDB
 918 외래키가 참조하는 클래스 '%1$s'가 존재하지 않습니다.
 919 외래키가 참조하는 클래스 '%1$s'가 기본키를 가지고 있지 않습니다.
 920 외래키 '%1$s'에 기본키 멤버 '%2$s'가 포함되어 있지 않습니다.
-921 외래키 멤버 '%1$s'의 도메인이 기본키 멤버 '%2$s'의 도메인과 다릅니다.
+921 외래키 멤버 '%1$s'의 도메인이 기본키 멤버 '%2$s'의 도메인과 다릅니다. (%3$s: %4$s vs. %5$s)
 922 외래키 '%1$s'는 제약조건에 위배되었습니다. 위배된 값 '%2$s'.
 923 외래키 '%2$s'에 참조되는 기본키 '%1$s'는 삭제할 수 없습니다.
 924 수정/삭제 연산이 외래키 '%1$s'에 의해 제약되었습니다.
@@ -1591,10 +1591,11 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 128 JSON_OBJECTAGG 인자의 갯수가 잘못되었습니다.
 129 PARALLEL 인자 값은 %1$d에서 %2$d까지 허용됩니다.
 130 dblink - Server name cannot contain periods.
-131 잘못된 형식의 alter synonym 구문입니다.\n  ALTER [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-132 잘못된 형식의 create synonym 구문입니다.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-133 잘못된 형식의 drop synonym 구문입니다.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
-134 잘못된 형식의 rename synonym 구문입니다.\n  RENAME [PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
+131 잘못된 형식의 alter synonym 구문입니다.\n  ALTER [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> {FOR [<schema_name>.]<target_name> [COMMENT 'comment_string'] | COMMENT 'comment_string'}
+132 잘못된 형식의 create synonym 구문입니다.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> FOR [<schema_name>.]<target_name> [COMMENT 'comment_string']
+133 잘못된 형식의 drop synonym 구문입니다.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
+134 잘못된 형식의 rename synonym 구문입니다.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
+135 ALTER SYNONYM에 대해 지정된 옵션이 없습니다.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다

@@ -988,7 +988,7 @@ $ LOADDB
 918 Yabancı anahtar tarafından yönlendirilen sınıf '%1$s' bulunmamaktadır.
 919 Yabancı anahtarının tarafından yönlendirilen birincil anahtarın sınıf '%1$s' bulunmamaktadır.
 920 Yabancı anahtar '%1$s' birincil anahtar üye '%2$s' içermez.
-921 Yabancı anahtar üye '%1$s' alanı birincil anahtar üye '%2$s' farklıdır.
+921 Yabancı anahtar üye '%1$s' alanı birincil anahtar üye '%2$s' farklıdır. (%3$s: %4$s vs. %5$s)
 922 Dış anahtar kelime: '%1$s' değeri nedeniyle, '%2$s' sınırı geçersiz.
 923 Birincil anahtar '%1$s' yabancı anahtar '%2$s' tarafından yönlendirilen iptal olması gerekmiyor.
 924 Güncelle/Sil işlemleri yabancı anahtar '%1$s' tarafından kısıtlanmıştır.
@@ -1591,10 +1591,11 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 128 JSON_OBJECTAGG için bağımsız değişken sayısı geçersiz
 129 PARALLEL count argümanı %1$d ve %2$d arasında olmalıdır.
 130 dblink - Server name cannot contain periods.
-131 Invalid alter synonym.\n  ALTER [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-132 Invalid create synonym.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-133 Invalid drop synonym.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
-134 Invalid rename synonym.\n  RENAME [PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
+131 ALTER SYNONYM geçersiz kullanımı.\n  ALTER [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> {FOR [<schema_name>.]<target_name> [COMMENT 'comment_string'] | COMMENT 'comment_string'}
+132 CREATE SYNONYM geçersiz kullanımı.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> FOR [<schema_name>.]<target_name> [COMMENT 'comment_string']
+133 DROP SYNONYM geçersiz kullanımı.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
+134 RENAME SYNONYM geçersiz kullanımı.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
+135 ALTER SYNONYM için herhangi bir seçenek belirtilmedi.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Bellek yetersiz.

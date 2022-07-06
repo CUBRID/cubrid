@@ -988,7 +988,7 @@ $ LOADDB
 918 Clasa '%1$s' referenţiată de cheia externă nu există.
 919 Clasa '%1$s' referenţiată de cheia externă nu conţine o cheie primară.
 920 Cheia externă '%1$s' nu include membrul cheii primare '%2$s'.
-921 Domeniul membrului cheie straină '%1$s' este diferit de cel al membrului cheie primară '%2$s'.
+921 Domeniul membrului cheie straină '%1$s' este diferit de cel al membrului cheie primară '%2$s'. (%3$s: %4$s vs. %5$s)
 922 Constrângerea de cheie primară '%1$s' este invalidă datorită valorii '%2$s'.
 923 Cheia primară '%1$s' referenţiată de o cheie externă '%2$s' nu trebuie ştearsă.
 924 Operaţiile de actualizare/ştergere (update/delete) sunt restricţionate de cheia externă '%1$s'.
@@ -1591,10 +1591,11 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 128 Număr invalid de argumente pentru JSON_OBJECTAGG
 129 Valoarea argumentului PARALLEL trebuie sa fie între %1$d and %2$d.
 130 dblink - Server name cannot contain periods.
-131 Invalid alter synonym.\n  ALTER [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-132 Invalid create synonym.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-133 Invalid drop synonym.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
-134 Invalid rename synonym.\n  RENAME [PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
+131 Utilizare invalidă a ALTER SYNONYM.\n  ALTER [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> {FOR [<schema_name>.]<target_name> [COMMENT 'comment_string'] | COMMENT 'comment_string'}
+132 Utilizare invalidă a CREATE SYNONYM.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> FOR [<schema_name>.]<target_name> [COMMENT 'comment_string']
+133 Utilizare invalidă a DROP SYNONYM.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
+134 Utilizare invalidă a RENAME SYNONYM.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
+135 Nu au fost specificate opțiuni pentru ALTER SYNONYM.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memorie epuizată.
