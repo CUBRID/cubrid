@@ -188,8 +188,7 @@ namespace cublog
   {
     for (size_t i = 0; i < m_units.size (); i++)
       {
-	int error_code = m_units[i].apply_log_redo (thread_p, m_redo_context);
-	assert (error_code != NO_ERROR);
+	m_units[i].apply_log_redo (thread_p, m_redo_context);
       }
   }
 
@@ -246,7 +245,7 @@ namespace cublog
     PGBUF_CLEAR_WATCHER (&m_watcher);
   }
 
-  int
+  void
   atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::apply_log_redo (THREAD_ENTRY *thread_p,
       log_rv_redo_context &redo_context)
   {
@@ -254,8 +253,8 @@ namespace cublog
     if (error_code != NO_ERROR)
       {
 	logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			   "apply_log_redo: error reading redo log page");
-	return error_code;
+			   "atomic_replication_unit::apply_log_redo: error reading log page with VPID: %d|%d, LSA: %d|%d and index %d.",
+			   VPID_AS_ARGS (&m_vpid), LSA_AS_ARGS (&m_record_lsa), m_record_index);
       }
     const log_rec_header header = redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_header> ();
 
