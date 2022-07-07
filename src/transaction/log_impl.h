@@ -728,7 +728,9 @@ struct log_global
 
 #if defined (SERVER_MODE)
   void initialize_log_prior_receiver ();
+  void initialize_log_prior_sender ();
   void finalize_log_prior_receiver ();
+  void finalize_log_prior_sender ();
   cublog::prior_recver &get_log_prior_receiver ();
 #endif // SERVER_MODE
 
