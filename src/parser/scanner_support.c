@@ -313,8 +313,8 @@ pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
 	  assert (toupper (*p) == *p);
 	}
 #endif
-      hint_table[i].is_hit = false;
-      hint_table[i].length = (int) strlen (hint_table[i].tokens);
+      //hint_table[i].is_hit = false;
+      //hint_table[i].length = (int) strlen (hint_table[i].tokens);
       hint_table_lead_offset[(unsigned char) (hint_table[i].tokens[0])]++;
     }
 
