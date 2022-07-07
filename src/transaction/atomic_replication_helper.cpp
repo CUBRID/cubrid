@@ -230,10 +230,10 @@ namespace cublog
 
   atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::atomic_replication_unit (log_lsa lsa,
       VPID vpid, LOG_RCVINDEX rcvindex)
-    : m_record_lsa { lsa }
-    , m_vpid { vpid }
-    , m_record_index { rcvindex }
+    : m_vpid { vpid }
+    , m_record_lsa { lsa }
     , m_page_ptr { nullptr }
+    , m_record_index { rcvindex }
   {
     assert (lsa != NULL_LSA);
     // using null hfid here as the watcher->group_id is initialized internally by pgbuf_ordered_fix at a cost
