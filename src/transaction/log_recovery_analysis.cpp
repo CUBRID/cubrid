@@ -2180,23 +2180,23 @@ log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
 
   log_reader lr (LOG_CS_SAFE_READER);
   _er_log_debug (ARG_FILE_LINE, "cdbg: log_recovery_analysis_load_trantable_snapshot lsa=(%lld|%d)\n",
-                 LSA_AS_ARGS (&most_recent_trantable_snapshot_lsa));
-  int log_page_read_err = lr.set_lsa_and_fetch_page (most_recent_trantable_snapshot_lsa);
-  if (log_page_read_err != NO_ERROR)
+		 LSA_AS_ARGS (&most_recent_trantable_snapshot_lsa));
+  const int error_code = lr.set_lsa_and_fetch_page (most_recent_trantable_snapshot_lsa);
+  if (error_code != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 			 "log_recovery_analysis_load_trantable_snapshot: error reading trantable snapshot log page");
-      return log_page_read_err;
+      return error_code;
     }
 
   // always copy because the next add might advance to the next log page
   const log_rec_header log_rec_hdr = lr.reinterpret_copy_and_add_align<log_rec_header> ();
   assert (log_rec_hdr.type == LOG_TRANTABLE_SNAPSHOT);
 
-  lr.advance_when_does_not_fit (sizeof (log_rec_trantable_snapshot));
-  const log_rec_trantable_snapshot log_rec = lr.reinterpret_copy_and_add_align<log_rec_trantable_snapshot> ();
+  lr.advance_when_does_not_fit (sizeof (LOG_REC_TRANTABLE_SNAPSHOT));
+  const LOG_REC_TRANTABLE_SNAPSHOT log_rec = lr.reinterpret_copy_and_add_align<LOG_REC_TRANTABLE_SNAPSHOT> ();
   _er_log_debug (ARG_FILE_LINE, "cdbg: log_recovery_analysis_load_trantable_snapshot snapshot_lsa=(%lld|%d) len=%u\n",
-                 LSA_AS_ARGS (&log_rec.snapshot_lsa), log_rec.length);
+		 LSA_AS_ARGS (&log_rec.snapshot_lsa), log_rec.length);
   std::unique_ptr<char []> snapshot_data_buf = std::make_unique<char []> (static_cast<size_t> (log_rec.length));
   lr.copy_from_log (snapshot_data_buf.get (), log_rec.length);
 
@@ -2207,7 +2207,7 @@ log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
 
   chkpt_info.unpack (unpacker);
 
-  return NO_ERROR;
+  return error_code;
 }
 
 /* log_recovery_build_mvcc_table_from_trantable - build mvcc table using transaction table
