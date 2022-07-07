@@ -157,9 +157,9 @@ int init_server_type (const char *db_name)
     }
   else if (g_server_type == SERVER_TYPE_PAGE)
     {
-      // page server needs a log prior receiver
-      log_Gl.initialize_log_prior_receiver ();
+      // page server needs a log prior sender and receiver
       log_Gl.initialize_log_prior_sender ();
+      log_Gl.initialize_log_prior_receiver ();
     }
   else
     {
@@ -205,12 +205,12 @@ void finalize_server_type ()
 	  assert (pts_Gl != nullptr);
 	  pts_Gl = nullptr;
 	}
-
-      ts_Gl->disconnect_page_server ();
       if (is_active_transaction_server ())
 	{
 	  log_Gl.finalize_log_prior_sender ();
 	}
+
+      ts_Gl->disconnect_page_server ();
       ts_Gl.reset (nullptr);
     }
   else if (get_server_type () == SERVER_TYPE_PAGE)

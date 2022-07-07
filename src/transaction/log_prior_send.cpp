@@ -70,4 +70,9 @@ namespace cublog
     assert (find_it != m_sink_hooks.end ());
     m_sink_hooks.erase (find_it);
   }
+  bool
+  prior_sender::is_empty () const
+  {
+    return m_sink_hooks.empty ();
+  }
 }

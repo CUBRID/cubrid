@@ -145,6 +145,7 @@ log_global::finalize_log_prior_receiver ()
 void
 log_global::finalize_log_prior_sender ()
 {
+  assert (m_prior_sender->is_empty ());
   m_prior_sender.reset (nullptr);
 }
 

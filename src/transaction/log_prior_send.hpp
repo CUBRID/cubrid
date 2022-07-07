@@ -50,6 +50,7 @@ namespace cublog
 
       void add_sink (const sink_hook_t &fun);                     // add a hook for a new sink
       void remove_sink (const sink_hook_t &fun);                  // add a hook for a new sink
+      bool is_empty () const;
 
     private:
       // non-owning pointers
