@@ -3435,10 +3435,6 @@ logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list)
   assert (log_Gl.prior_info.prior_flush_list_header == NULL);
   log_Gl.prior_info.prior_flush_list_header = list;
 #if defined(SERVER_MODE)
-  if (log_Gl.m_prior_sender == nullptr)
-    {
-      log_Gl.m_prior_sender = std::make_unique < cublog::prior_sender > ();
-    }
   log_Gl.m_prior_sender->send_list (list);
 #endif // SERVER_MODE
   /* append log buffer */

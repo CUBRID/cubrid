@@ -131,9 +131,21 @@ log_global::initialize_log_prior_receiver ()
 }
 
 void
+log_global::initialize_log_prior_sender ()
+{
+  m_prior_sender = std::make_unique<cublog::prior_sender> ();
+}
+
+void
 log_global::finalize_log_prior_receiver ()
 {
   m_prior_recver.reset (nullptr);
+}
+
+void
+log_global::finalize_log_prior_sender ()
+{
+  m_prior_sender.reset (nullptr);
 }
 
 cublog::prior_recver &

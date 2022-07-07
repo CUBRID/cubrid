@@ -137,6 +137,7 @@ int init_server_type (const char *db_name)
       if (is_active_transaction_server ())
 	{
 	  ts_Gl.reset (new active_tran_server ());
+	  log_Gl.initialize_log_prior_sender ();
 	}
       else if (is_passive_transaction_server ())
 	{
@@ -158,6 +159,7 @@ int init_server_type (const char *db_name)
     {
       // page server needs a log prior receiver
       log_Gl.initialize_log_prior_receiver ();
+      log_Gl.initialize_log_prior_sender ();
     }
   else
     {
@@ -203,12 +205,18 @@ void finalize_server_type ()
 	  assert (pts_Gl != nullptr);
 	  pts_Gl = nullptr;
 	}
+
       ts_Gl->disconnect_page_server ();
+      if (is_active_transaction_server ())
+	{
+	  log_Gl.finalize_log_prior_sender ();
+	}
       ts_Gl.reset (nullptr);
     }
   else if (get_server_type () == SERVER_TYPE_PAGE)
     {
       ps_Gl.disconnect_all_tran_server ();
+      log_Gl.finalize_log_prior_sender ();
     }
   else
     {

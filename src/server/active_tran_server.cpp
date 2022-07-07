@@ -71,11 +71,6 @@ active_tran_server::on_boot ()
   m_prior_sender_sink_hook_func =
 	  std::bind (&active_tran_server::push_request, std::ref (*this), tran_to_page_request::SEND_LOG_PRIOR_LIST,
 		     std::placeholders::_1);
-
-  if (log_Gl.m_prior_sender == nullptr)
-    {
-      log_Gl.m_prior_sender = std::make_unique<cublog::prior_sender> ();
-    }
   log_Gl.m_prior_sender->add_sink (m_prior_sender_sink_hook_func);
 }
 
