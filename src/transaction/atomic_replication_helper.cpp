@@ -230,10 +230,10 @@ namespace cublog
 
   atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::atomic_replication_unit (log_lsa lsa,
       VPID vpid, LOG_RCVINDEX rcvindex)
-    : m_record_lsa { lsa }
-    , m_vpid { vpid }
-    , m_record_index { rcvindex }
+    : m_vpid { vpid }
+    , m_record_lsa { lsa }
     , m_page_ptr { nullptr }
+    , m_record_index { rcvindex }
   {
     assert (lsa != NULL_LSA);
     // using null hfid here as the watcher->group_id is initialized internally by pgbuf_ordered_fix at a cost
@@ -249,7 +249,13 @@ namespace cublog
   atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::apply_log_redo (THREAD_ENTRY *thread_p,
       log_rv_redo_context &redo_context)
   {
-    redo_context.m_reader.set_lsa_and_fetch_page (m_record_lsa, log_reader::fetch_mode::FORCE);
+    const int error_code = redo_context.m_reader.set_lsa_and_fetch_page (m_record_lsa, log_reader::fetch_mode::FORCE);
+    if (error_code != NO_ERROR)
+      {
+	logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			   "atomic_replication_unit::apply_log_redo: error reading log page with VPID: %d|%d, LSA: %lld|%d and index %d.",
+			   VPID_AS_ARGS (&m_vpid), LSA_AS_ARGS (&m_record_lsa), m_record_index);
+      }
     const log_rec_header header = redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_header> ();
 
     switch (header.type)
