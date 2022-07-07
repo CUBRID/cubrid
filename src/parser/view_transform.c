@@ -217,7 +217,8 @@ static bool pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_
 static PT_NODE *pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * infop);
 static PUSHABLE_TYPE mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
-					      PT_NODE * class_spec, bool is_vclass);
+					      PT_NODE * class_spec, bool is_vclass, PT_NODE * order_by,
+					      PT_NODE * class_);
 static PUSHABLE_TYPE mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery);
 static void pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * term_list,
 			       FIND_ID_TYPE type);
@@ -393,6 +394,8 @@ static PT_NODE *mq_replace_virtual_oid_with_real_oid (PARSER_CONTEXT * parser, P
 
 static void mq_copy_view_error_msgs (PARSER_CONTEXT * parser, PARSER_CONTEXT * query_cache);
 static void mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_query);
+static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * order_by,
+					 PT_NODE * subquery, PT_NODE * class_);
 
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -1657,12 +1660,12 @@ mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, voi
  */
 static PUSHABLE_TYPE
 mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery, PT_NODE * class_spec,
-			 bool is_vclass)
+			 bool is_vclass, PT_NODE * order_by, PT_NODE * class_)
 {
-  PT_NODE *pred, *statement_spec = NULL;
+  PT_NODE *pred, *statement_spec = NULL, *orderby_for;
   CHECK_PUSHABLE_INFO cpi;
   bool is_pushable_query, is_outer_joined;
-  bool is_only_spec;
+  bool is_only_spec, is_rownum_only, is_orderby_for;
 
   /* check nulls */
   if (subquery == NULL)
@@ -1720,7 +1723,14 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     }
 
   /* determine if class_spec is the only spec in the statement */
-  is_only_spec = ((statement_spec->next == NULL && pred == NULL) ? true : false);
+  is_rownum_only = mq_is_rownum_only_predicate (parser, statement_spec, mainquery, order_by, subquery, class_);
+  is_only_spec = ((statement_spec->next == NULL && (pred == NULL || is_rownum_only)) ? true : false);
+
+  /* check if orderby_for set to PT_EXPR_INFO_ROWNUM_ONLY */
+  orderby_for = subquery->info.query.orderby_for;
+  is_orderby_for = orderby_for && (order_by
+				   || (orderby_for->node_type == PT_EXPR
+				       && !PT_EXPR_INFO_IS_FLAGED (orderby_for, PT_EXPR_INFO_ROWNUM_ONLY)));
 
   /* do not rewrite vclass_query as a derived table if spec belongs to an insert statement. */
   if (mainquery->node_type == PT_INSERT)
@@ -1768,7 +1778,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     }
   /* subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation */
   if (subquery->info.query.order_by
-      && (pt_has_inst_num (parser, pred) || pt_has_analytic (parser, mainquery)
+      && ((!is_rownum_only && pt_has_inst_num (parser, pred)) || pt_has_analytic (parser, mainquery)
 	  || pt_has_order_sensitive_agg (parser, mainquery)))
     {
       /* not pushable */
@@ -1845,7 +1855,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     }
 
   /* check for aggregate or orderby_for or analytic */
-  if (pt_has_aggregate (parser, subquery) || subquery->info.query.orderby_for || pt_has_analytic (parser, subquery))
+  if (pt_has_aggregate (parser, subquery) || is_orderby_for || pt_has_analytic (parser, subquery))
     {
       /* not pushable */
       return NON_PUSHABLE;
@@ -1998,7 +2008,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
   PT_NODE *order, *val;
   PT_NODE *attributes, *attr, *prev_order;
   PT_NODE *save_data_type, *node, *result, *order_by;
-  PT_NODE *free_node = NULL, *save_next;
+  PT_NODE *free_node = NULL, *save_next, *where;
   int attr_count;
   int i;
   UINTPTR spec_id;
@@ -2142,6 +2152,39 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 
   statement->info.query.order_by = parser_append_node (order_by, statement->info.query.order_by);
 
+  where = statement->info.query.q.select.where;
+  if (where != NULL && PT_EXPR_INFO_IS_FLAGED (where, PT_EXPR_INFO_ROWNUM_ONLY) && statement->info.query.order_by)
+    {
+      /* replace orderby_num() to inst_num() */
+      PT_NODE *ord_num = NULL, *ins_num = NULL, *prev_orderby_for;
+
+      /* generate orderby_num(), inst_num() */
+      if (!(ord_num = parser_new_node (parser, PT_EXPR)) || !(ins_num = parser_new_node (parser, PT_EXPR)))
+	{
+	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return NULL;
+	}
+
+      ord_num->type_enum = PT_TYPE_BIGINT;
+      ord_num->info.expr.op = PT_ORDERBY_NUM;
+      PT_EXPR_INFO_SET_FLAG (ord_num, PT_EXPR_INFO_ORDERBYNUM_C);
+
+      ins_num->type_enum = PT_TYPE_BIGINT;
+      ins_num->info.expr.op = PT_INST_NUM;
+      PT_EXPR_INFO_SET_FLAG (ins_num, PT_EXPR_INFO_INSTNUM_C);
+
+      where = pt_lambda_with_arg (parser, where, ins_num, ord_num, false, 0, false);
+      statement->info.query.q.select.list =
+	pt_lambda_with_arg (parser, statement->info.query.q.select.list, ins_num, ord_num, false, 0, false);
+
+      /* move prev orderby_for to orderby_for */
+      prev_orderby_for = parser_copy_tree (parser, query_spec->info.query.orderby_for);
+      statement->info.query.orderby_for = parser_append_node (prev_orderby_for, statement->info.query.orderby_for);
+      /* move rownum only predicate to orderby_for */
+      statement->info.query.orderby_for = parser_append_node (where, statement->info.query.orderby_for);
+      statement->info.query.q.select.where = NULL;
+    }
+
   if (free_node != NULL)
     {
       parser_free_tree (parser, free_node);
@@ -2206,7 +2249,7 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
   mq_reset_ids_in_methods (parser, tmp_result);
 
   /* check whether subquery is pushable */
-  is_mergeable = mq_is_pushable_subquery (parser, subquery, tmp_result, derived_spec, false);
+  is_mergeable = mq_is_pushable_subquery (parser, subquery, tmp_result, derived_spec, false, order_by, NULL);
   if (is_mergeable == HAS_ERROR)
     {
       goto exit_on_error;
@@ -2239,7 +2282,6 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
 
       if (tmp_result->node_type == PT_SELECT)
 	{
-	  assert (subquery->info.query.orderby_for == NULL);
 	  if (!order_by && subquery->info.query.order_by && !pt_has_aggregate (parser, tmp_result))
 	    {
 	      /* update the position number of order by clause and add a hidden column into the output list if
@@ -2251,7 +2293,6 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
 		}
 	    }
 	}
-
       result = mq_substitute_select_for_inline_view (parser, tmp_result, subquery, derived_spec);
     }
 
@@ -2404,7 +2445,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	}
 
       /* check whether subquery is pushable */
-      is_mergeable = mq_is_pushable_subquery (parser, query_spec, tmp_result, class_spec, true);
+      is_mergeable = mq_is_pushable_subquery (parser, query_spec, tmp_result, class_spec, true, order_by, class_);
       if (is_mergeable == HAS_ERROR)
 	{
 	  goto exit_on_error;
@@ -2487,7 +2528,6 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 
 	  if (tmp_result->node_type == PT_SELECT)
 	    {
-	      assert (query_spec->info.query.orderby_for == NULL);
 	      if (!order_by && query_spec->info.query.order_by && !pt_has_aggregate (parser, tmp_result))
 		{
 		  /* update the position number of order by clause and add a hidden column into the output list if
@@ -3787,6 +3827,169 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
     }				/* switch (query->node_type) */
 
   return;
+}
+
+/*
+ * mq_is_rownum_only_predicate () - check if predicates only have rownum
+ *   return: bool
+ *   parser(in):
+ *   spec(in):
+ *   node(in):
+ *
+ * Note:
+ *                arg1            op             arg2
+ *              rownum          '= > <'        no restriction
+ */
+bool
+mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * order_by,
+			     PT_NODE * subquery, PT_NODE * class_)
+{
+  PT_NODE *where, *from, *attributes, *query_spec_columns, *col, *attr, *pred;
+  PT_NODE *arg1, *arg2, *sub_where, *sub_sel_list, *sub_order_by, *save_next;
+  bool result;
+
+  if (!pt_is_select (node))
+    {
+      return false;
+    }
+
+  if (PT_IS_VALUE_QUERY (subquery))
+    {
+      return false;
+    }
+
+  /* check order by */
+  if (order_by)
+    {
+      return false;
+    }
+
+  /* check only spec */
+  if (spec->next != NULL)
+    {
+      return false;
+    }
+
+  /* check if select list of mainquery has expr of instnum */
+  col = node->info.query.q.select.list;
+  while (col)
+    {
+      /* cut off next */
+      save_next = col->next;
+      col->next = NULL;
+
+      if (!PT_IS_INSTNUM (col) && pt_has_inst_num (parser, col))
+	{
+	  col->next = save_next;
+	  return false;
+	}
+      col->next = save_next;
+      col = col->next;
+    }
+
+  /* subquery check */
+  if (!pt_is_select (subquery))
+    {
+      return false;
+    }
+
+  /* check instnum, order_by of subquery */
+  sub_where = subquery->info.query.q.select.where;
+  sub_sel_list = subquery->info.query.q.select.list;
+  sub_order_by = subquery->info.query.order_by;
+  if (sub_order_by && (pt_has_inst_num (parser, sub_where) || pt_has_inst_num (parser, sub_sel_list)))
+    {
+      return false;
+    }
+
+  /* get attr_list */
+  if (PT_SPEC_IS_DERIVED (spec))
+    {
+      attributes = spec->info.spec.as_attr_list;
+    }
+  else if (class_ != NULL)
+    {
+      attributes = mq_fetch_attributes (parser, class_);
+    }
+  else
+    {
+      return false;
+    }
+  query_spec_columns = subquery->info.query.q.select.list;
+
+  col = query_spec_columns;
+  attr = attributes;
+
+  for (; col && attr; col = col->next, attr = attr->next)
+    {
+      /* set spec_id */
+      attr->info.name.spec_id = spec->info.spec.id;
+    }
+
+  while (col)
+    {
+      if (col->flag.is_hidden_column)
+	{
+	  col = col->next;
+	  continue;
+	}
+      break;
+    }
+
+  if (col != NULL || attr != NULL)
+    {				/* error */
+      return false;
+    }
+
+  where = parser_copy_tree (parser, node->info.query.q.select.where);
+
+  /* substitute attributes for query_spec_columns in statement */
+  where = mq_lambda (parser, where, attributes, query_spec_columns);
+
+  result = true;
+  pred = where;
+  while (pred != NULL)
+    {
+      if (pred->or_next != NULL)
+	{
+	  result = false;
+	  break;
+	}
+      if (!PT_IS_EXPR_NODE_WITH_COMP_OP (pred))
+	{
+	  result = false;
+	  break;
+	}
+
+      arg1 = pred->info.expr.arg1;
+      arg2 = pred->info.expr.arg2;
+
+      /* check rownum and constant */
+      if (!(PT_IS_INSTNUM (arg1) || PT_IS_INSTNUM (arg2) || PT_IS_ORDERBYNUM (arg1) || PT_IS_ORDERBYNUM (arg2)))
+	{
+	  result = false;
+	  break;
+	}
+
+      pred = pred->next;
+    }
+
+  /* set PT_EXPR_INFO_ROWNUM_ONLY flag */
+  if (result)
+    {
+      pred = node->info.query.q.select.where;
+      while (pred != NULL)
+	{
+	  PT_EXPR_INFO_SET_FLAG (pred, PT_EXPR_INFO_ROWNUM_ONLY);
+	  pred = pred->next;
+	}
+    }
+
+  if (where != NULL)
+    {
+      parser_free_tree (parser, where);
+    }
+  return result;
 }
 
 #if 0
@@ -5554,6 +5757,108 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 }
 
 /*
+ * mq_resolve_n_check_using_index () - check and resolve the using index clause
+ *   return: PT_NODE *
+ *   parser(in): parser environment
+ *   aggregate_rewrote_as_derived(in): 
+ *   statement(in): 
+ */
+static PT_NODE *
+mq_resolve_n_check_using_index (PARSER_CONTEXT * parser, PT_NODE * statement, bool aggregate_rewrote_as_derived)
+{
+  PT_NODE *indexp, *spec = NULL;
+  PT_NODE **using_index = NULL;
+
+  assert (statement);
+
+  switch (statement->node_type)
+    {
+    case PT_SELECT:
+      spec = statement->info.query.q.select.from;
+      if (aggregate_rewrote_as_derived && spec != NULL)
+	{
+	  PT_NODE *derived_table = spec->info.spec.derived_table;
+	  assert (PT_SPEC_IS_DERIVED (spec));
+	  using_index = &derived_table->info.query.q.select.using_index;
+	  spec = derived_table->info.query.q.select.from;
+	}
+      else
+	{
+	  using_index = &statement->info.query.q.select.using_index;
+	}
+      break;
+
+    case PT_UPDATE:
+      using_index = &statement->info.update.using_index;
+      spec = statement->info.update.spec;
+      break;
+
+    case PT_DELETE:
+      using_index = &statement->info.delete_.using_index;
+      spec = statement->info.delete_.spec;
+      break;
+
+    default:
+      break;
+    }
+
+  /* resolve using index */
+  indexp = using_index ? *using_index : NULL;
+  if (indexp != NULL && spec != NULL)
+    {
+      bool is_ignore = false;
+      PT_NODE *prev = NULL;
+      while (indexp)
+	{
+	  /* 
+	   ** is_ignore will be set at pt_resolve_using_index().
+	   ** If is_ignore is true, ignore the error and remove the hint. 
+	   */
+	  if (pt_resolve_using_index (parser, indexp, spec, &is_ignore))
+	    {
+	      prev = indexp;
+	      indexp = indexp->next;
+	    }
+	  else if (is_ignore == false)
+	    {
+	      return NULL;
+	    }
+	  else
+	    {
+	      // clear error
+	      er_clearid ();
+	      pt_reset_error (parser);
+
+	      PT_NODE *tmp = indexp;
+	      if (*using_index == indexp)
+		{
+		  indexp = indexp->next;
+		  *using_index = indexp;
+		}
+	      else
+		{
+		  prev->next = indexp->next;
+		  indexp = indexp->next;
+		}
+	      tmp->next = NULL;
+	      parser_free_tree (parser, tmp);
+	    }
+	}
+    }
+
+  /* semantic check on using index */
+  if (using_index != NULL)
+    {
+      if (mq_check_using_index (parser, *using_index) != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
+
+  return statement;
+}
+
+/*
  * mq_translate_local() - recursively expands each query against a view or
  * 			  virtual class
  *   return:
@@ -5567,7 +5872,6 @@ mq_translate_local (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg
 {
   int line, column;
   PT_NODE *next;
-  PT_NODE *indexp, *spec, *using_index;
   bool aggregate_rewrote_as_derived = false;
 
   if (statement == NULL)
@@ -5647,64 +5951,11 @@ mq_translate_local (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg
        * to statement. (The number of bugs caused by this multipurpose use of node->next tells us it's not a good
        * idea.) */
       parser_append_node (next, statement);
-    }
 
-  /* resolving using index */
-  using_index = NULL;
-  spec = NULL;
-  if (!pt_has_error (parser) && statement)
-    {
-      switch (statement->node_type)
+      /* resolving using index */
+      if (!pt_has_error (parser))
 	{
-	case PT_SELECT:
-	  spec = statement->info.query.q.select.from;
-	  if (aggregate_rewrote_as_derived && spec != NULL)
-	    {
-	      PT_NODE *derived_table = spec->info.spec.derived_table;
-	      assert (PT_SPEC_IS_DERIVED (spec));
-	      using_index = derived_table->info.query.q.select.using_index;
-	      spec = derived_table->info.query.q.select.from;
-	    }
-	  else
-	    {
-	      using_index = statement->info.query.q.select.using_index;
-	    }
-	  break;
-
-	case PT_UPDATE:
-	  using_index = statement->info.update.using_index;
-	  spec = statement->info.update.spec;
-	  break;
-
-	case PT_DELETE:
-	  using_index = statement->info.delete_.using_index;
-	  spec = statement->info.delete_.spec;
-	  break;
-
-	default:
-	  break;
-	}
-    }
-
-  /* resolve using index */
-  indexp = using_index;
-  if (indexp != NULL && spec != NULL)
-    {
-      for (; indexp; indexp = indexp->next)
-	{
-	  if (pt_resolve_using_index (parser, indexp, spec) == NULL)
-	    {
-	      return NULL;
-	    }
-	}
-    }
-
-  /* semantic check on using index */
-  if (using_index != NULL)
-    {
-      if (mq_check_using_index (parser, using_index) != NO_ERROR)
-	{
-	  return NULL;
+	  return mq_resolve_n_check_using_index (parser, statement, aggregate_rewrote_as_derived);
 	}
     }
 

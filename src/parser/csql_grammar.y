@@ -660,6 +660,7 @@ int g_original_buffer_len;
 %type <node> serial_name
 %type <node> synonym_name_without_dot
 %type <node> synonym_name
+%type <node> opt_alter_synonym
 %type <node> opt_identifier
 %type <node> normal_or_class_attr_list_with_commas
 %type <node> normal_or_class_attr
@@ -3140,8 +3141,8 @@ create_stmt
 			    PT_SYNONYM_NAME (node) = $5;
 			    PT_SYNONYM_TARGET_NAME (node) = $7;
 			    PT_SYNONYM_COMMENT (node) = $8;
-			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 			    if (synonym_access_modifier == PT_PUBLIC)
 			      {
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
@@ -3974,9 +3975,8 @@ alter_stmt
 	  SYNONYM			/* 3 */
 		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_ALTER); }	/* 4 */
 	  synonym_name			/* 5 */
-	  For				/* 6 */
-	  class_name			/* 7 */
-	  opt_comment_spec		/* 8 */
+	  opt_alter_synonym		/* 6 */
+	  opt_comment_spec		/* 7 */
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER opt_access_modifier SYNONYM synonym_name For class_name opt_comment_spec);
 
@@ -3987,10 +3987,15 @@ alter_stmt
 			  {
 			    PT_SYNONYM_ACCESS_MODIFIER (node) = $2;
 			    PT_SYNONYM_NAME (node) = $5;
-			    PT_SYNONYM_TARGET_NAME (node) = $7;
-			    PT_SYNONYM_COMMENT (node) = $8;
-			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
+			    PT_SYNONYM_TARGET_NAME (node) = $6;
+			    PT_SYNONYM_COMMENT (node) = $7;
 
+			    if (PT_SYNONYM_TARGET_NAME (node) == NULL && PT_SYNONYM_COMMENT (node) == NULL)
+			      {
+				PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_SYNONYM_ALTER_NO_OPTION);
+			      }
+
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 			    if (synonym_access_modifier == PT_PUBLIC)
 			      {
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
@@ -4113,8 +4118,8 @@ rename_stmt
 			    PT_SYNONYM_ACCESS_MODIFIER (node) = $2;
 			    PT_SYNONYM_OLD_NAME (node) = $5;
 			    PT_SYNONYM_NEW_NAME (node) = $7;
-			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 			    if (synonym_access_modifier == PT_PUBLIC)
 			      {
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
@@ -4463,8 +4468,8 @@ drop_stmt
 			    PT_SYNONYM_ACCESS_MODIFIER (node) = $2;
 			    PT_SYNONYM_IF_EXISTS (node) = $5;
 			    PT_SYNONYM_NAME (node) = $6;
-			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 			    if (synonym_access_modifier == PT_PUBLIC)
 			      {
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
@@ -24214,6 +24219,20 @@ opt_create_synonym
 		DBG_PRINT}}
 	;
 
+opt_alter_synonym
+	: /*empty*/
+		{{ DBG_TRACE_GRAMMAR(opt_alter_synonym, : );
+
+			$$ = NULL;
+
+		DBG_PRINT}}
+	| For class_name
+		{{ DBG_TRACE_GRAMMAR(opt_alter_syonnym, : For class_name);
+
+			$$ = $2;
+
+		DBG_PRINT}}
+
 %%
 
 
@@ -25501,80 +25520,45 @@ parse_one_statement (int state)
   parser_hint_table.tokens must be written in uppercase.
   It must start with an English capital letter.
 */
+#define INIT_PT_HINT(key, type) {key, NULL, type, 0, false}
 PT_HINT parser_hint_table[] = {
-  {"ORDERED", NULL, PT_HINT_ORDERED}
-  ,
-  {"NO_INDEX_SS", NULL, PT_HINT_NO_INDEX_SS}
-  ,
-  {"INDEX_SS", NULL, PT_HINT_INDEX_SS}
-  ,
-  {"USE_NL", NULL, PT_HINT_USE_NL}
-  ,
-  {"USE_IDX", NULL, PT_HINT_USE_IDX}
-  ,
-  {"USE_MERGE", NULL, PT_HINT_USE_MERGE}
-  ,
-  {"RECOMPILE", NULL, PT_HINT_RECOMPILE}
-  ,
-  {"LOCK_TIMEOUT", NULL, PT_HINT_LK_TIMEOUT}
-  ,
-  {"NO_LOGGING", NULL, PT_HINT_NO_LOGGING}
-  ,
-  {"QUERY_CACHE", NULL, PT_HINT_QUERY_CACHE}
-  ,
-  {"SQL_CACHE", NULL, PT_HINT_QUERY_CACHE}
-    ,
-  {"QUERY_NO_CACHE", NULL, PT_HINT_QUERY_NO_CACHE}
-  ,
-  {"SQL_NO_CACHE", NULL, PT_HINT_QUERY_NO_CACHE}
-  ,
-  {"REEXECUTE", NULL, PT_HINT_REEXECUTE}
-  ,
-  {"JDBC_CACHE", NULL, PT_HINT_JDBC_CACHE}
-  ,
-  {"USE_DESC_IDX", NULL, PT_HINT_USE_IDX_DESC}
-  ,
-  {"NO_COVERING_IDX", NULL, PT_HINT_NO_COVERING_IDX}
-  ,
-  {"INSERT_EXECUTION_MODE", NULL, PT_HINT_INSERT_MODE}
-  ,
-  {"NO_DESC_IDX", NULL, PT_HINT_NO_IDX_DESC}
-  ,
-  {"NO_MULTI_RANGE_OPT", NULL, PT_HINT_NO_MULTI_RANGE_OPT}
-  ,
-  {"USE_UPDATE_IDX", NULL, PT_HINT_USE_UPDATE_IDX}
-  ,
-  {"USE_INSERT_IDX", NULL, PT_HINT_USE_INSERT_IDX}
-  ,
-  {"NO_SORT_LIMIT", NULL, PT_HINT_NO_SORT_LIMIT}
-  ,
-  {"NO_HASH_AGGREGATE", NULL, PT_HINT_NO_HASH_AGGREGATE}
-  ,
-  {"NO_HASH_LIST_SCAN", NULL, PT_HINT_NO_HASH_LIST_SCAN}
-  ,
-  {"NO_PUSH_PRED", NULL, PT_HINT_NO_PUSH_PRED}
-  ,
-  {"NO_MERGE", NULL, PT_HINT_NO_MERGE}
-  ,
-  {"SKIP_UPDATE_NULL", NULL, PT_HINT_SKIP_UPDATE_NULL}
-  ,
-  {"NO_INDEX_LS", NULL, PT_HINT_NO_INDEX_LS}
-  ,
-  {"INDEX_LS", NULL, PT_HINT_INDEX_LS}
-  ,
-  {"SELECT_RECORD_INFO", NULL, PT_HINT_SELECT_RECORD_INFO}
-  ,
-  {"SELECT_PAGE_INFO", NULL, PT_HINT_SELECT_PAGE_INFO}
-  ,
-  {"SELECT_KEY_INFO", NULL, PT_HINT_SELECT_KEY_INFO}
-  ,
-  {"SELECT_BTREE_NODE_INFO", NULL, PT_HINT_SELECT_BTREE_NODE_INFO}
-  ,
-  {"USE_SBR", NULL, PT_HINT_USE_SBR}
-  ,
-  {"NO_SUPPLEMENTAL_LOG", NULL, PT_HINT_NO_SUPPLEMENTAL_LOG}
-  ,
-  {NULL, NULL, -1}		/* mark as end */
+  INIT_PT_HINT("ORDERED", PT_HINT_ORDERED),
+  INIT_PT_HINT("NO_INDEX_SS", PT_HINT_NO_INDEX_SS),
+  INIT_PT_HINT("INDEX_SS", PT_HINT_INDEX_SS),
+  INIT_PT_HINT("USE_NL", PT_HINT_USE_NL),
+  INIT_PT_HINT("USE_IDX", PT_HINT_USE_IDX),
+  INIT_PT_HINT("USE_MERGE", PT_HINT_USE_MERGE),
+  INIT_PT_HINT("RECOMPILE", PT_HINT_RECOMPILE),
+  INIT_PT_HINT("LOCK_TIMEOUT", PT_HINT_LK_TIMEOUT),
+  INIT_PT_HINT("NO_LOGGING", PT_HINT_NO_LOGGING),
+  INIT_PT_HINT("QUERY_CACHE", PT_HINT_QUERY_CACHE),
+  INIT_PT_HINT("SQL_CACHE", PT_HINT_QUERY_CACHE),
+  INIT_PT_HINT("QUERY_NO_CACHE", PT_HINT_QUERY_NO_CACHE),
+  INIT_PT_HINT("SQL_NO_CACHE", PT_HINT_QUERY_NO_CACHE),
+  INIT_PT_HINT("REEXECUTE", PT_HINT_REEXECUTE),
+  INIT_PT_HINT("JDBC_CACHE", PT_HINT_JDBC_CACHE),
+  INIT_PT_HINT("USE_DESC_IDX", PT_HINT_USE_IDX_DESC),
+  INIT_PT_HINT("NO_COVERING_IDX", PT_HINT_NO_COVERING_IDX),
+  INIT_PT_HINT("INSERT_EXECUTION_MODE", PT_HINT_INSERT_MODE),
+  INIT_PT_HINT("NO_DESC_IDX", PT_HINT_NO_IDX_DESC),
+  INIT_PT_HINT("NO_MULTI_RANGE_OPT", PT_HINT_NO_MULTI_RANGE_OPT),
+  INIT_PT_HINT("USE_UPDATE_IDX", PT_HINT_USE_UPDATE_IDX),
+  INIT_PT_HINT("USE_INSERT_IDX", PT_HINT_USE_INSERT_IDX),
+  INIT_PT_HINT("NO_SORT_LIMIT", PT_HINT_NO_SORT_LIMIT),
+  INIT_PT_HINT("NO_HASH_AGGREGATE", PT_HINT_NO_HASH_AGGREGATE),
+  INIT_PT_HINT("NO_HASH_LIST_SCAN", PT_HINT_NO_HASH_LIST_SCAN),
+  INIT_PT_HINT("NO_PUSH_PRED", PT_HINT_NO_PUSH_PRED),
+  INIT_PT_HINT("NO_MERGE", PT_HINT_NO_MERGE),
+  INIT_PT_HINT("SKIP_UPDATE_NULL", PT_HINT_SKIP_UPDATE_NULL),
+  INIT_PT_HINT("NO_INDEX_LS", PT_HINT_NO_INDEX_LS),
+  INIT_PT_HINT("INDEX_LS", PT_HINT_INDEX_LS),
+  INIT_PT_HINT("SELECT_RECORD_INFO", PT_HINT_SELECT_RECORD_INFO),
+  INIT_PT_HINT("SELECT_PAGE_INFO", PT_HINT_SELECT_PAGE_INFO),
+  INIT_PT_HINT("SELECT_KEY_INFO", PT_HINT_SELECT_KEY_INFO),
+  INIT_PT_HINT("SELECT_BTREE_NODE_INFO", PT_HINT_SELECT_BTREE_NODE_INFO),
+  INIT_PT_HINT("USE_SBR", PT_HINT_USE_SBR),
+  INIT_PT_HINT("NO_SUPPLEMENTAL_LOG", PT_HINT_NO_SUPPLEMENTAL_LOG),
+  {NULL, NULL, -1, 0, false}		/* mark as end */
 };
 
 

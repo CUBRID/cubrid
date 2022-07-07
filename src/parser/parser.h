@@ -318,7 +318,7 @@ extern "C"
   extern PT_NODE *pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INFO * sc_info);
   extern PT_NODE *pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 
-  extern PT_NODE *pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from);
+  extern PT_NODE *pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from, bool * is_ignore);
 
   extern int pt_get_correlation_level (PT_NODE * node);
 
@@ -536,6 +536,7 @@ extern "C"
   extern bool pt_has_inst_or_orderby_num (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_inst_num (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_has_inst_or_orderby_num_in_where (PARSER_CONTEXT * parser, PT_NODE * node);
   extern void pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level);
   extern bool pt_has_nullable_term (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_define_vars (PARSER_CONTEXT * parser, PT_NODE * stmt);
