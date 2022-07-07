@@ -25520,7 +25520,7 @@ parse_one_statement (int state)
   parser_hint_table.tokens must be written in uppercase.
   It must start with an English capital letter.
 */
-#define INIT_PT_HINT(key, type) {key, NULL, type, (int)strlen(key), false}
+#define INIT_PT_HINT(key, type) {key, NULL, type, 0, false}
 PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("ORDERED", PT_HINT_ORDERED),
   INIT_PT_HINT("NO_INDEX_SS", PT_HINT_NO_INDEX_SS),
