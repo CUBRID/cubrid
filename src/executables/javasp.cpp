@@ -35,6 +35,7 @@
 #include <sys/types.h>
 #include <sys/param.h>
 #include <sys/socket.h>
+#include <sys/file.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
@@ -94,6 +95,25 @@ static int javasp_get_server_info (const std::string &db_name, JAVASP_SERVER_INF
 static int javasp_check_argument (int argc, char *argv[], std::string &command, std::string &db_name);
 static int javasp_check_database (const std::string &db_name, std::string &db_path);
 
+static JAVASP_SERVER_INFO current_jsp_info = {-1, -1};
+static FILE* locked_f = NULL;
+
+void
+jvm_cleanup (int sig)
+{
+  if (current_jsp_info.pid != -1 && !javasp_is_terminated_process (current_jsp_info.pid))
+	{
+	  javasp_terminate_process (current_jsp_info.pid);
+	}
+
+  if (locked_f)
+  {
+    fclose (locked_f);
+  }
+
+  exit (1);
+}
+
 /*
  * main() - javasp main function
  */
@@ -112,6 +132,14 @@ main (int argc, char *argv[])
     {
       return ER_GENERIC_ERROR;
     }
+
+    if (os_set_signal_handler (SIGABRT, jvm_cleanup) == SIG_ERR
+        || os_set_signal_handler (SIGINT, jvm_cleanup) == SIG_ERR
+        || os_set_signal_handler (SIGTERM, jvm_cleanup) == SIG_ERR)
+      {
+        return ER_GENERIC_ERROR;
+      }
+
 #endif /* WINDOWS */
   {
     /*
@@ -214,7 +242,7 @@ main (int argc, char *argv[])
 	      {
 		SLEEP_MILISEC (0, 100);
 	      }
-	    while (true);
+      while (true);
 	  }
       }
     else if (command.compare ("stop") == 0)
@@ -293,22 +321,27 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
     {
 #if !defined(WINDOWS)
       /* create a new session */
-      if (setsid() == -1)
-	{
-	  return ER_GENERIC_ERROR;
-	}
+      setsid();
 #endif
       er_clear (); // clear error before string JVM
       status = jsp_start_server (db_name.c_str (), path.c_str (), prm_port);
 
       if (status == NO_ERROR)
 	{
-	  JAVASP_SERVER_INFO jsp_new_info { getpid(), jsp_server_port () };
+    current_jsp_info.pid = getpid();
+    current_jsp_info.port = jsp_server_port ();
 
-	  javasp_unlink_info (db_name.c_str ());
-	  if ((javasp_open_info_dir () && javasp_write_info (db_name.c_str (), jsp_new_info, true)))
-	    {
+    javasp_unlink_info (db_name.c_str ());
+	  if ((javasp_open_info_dir () && javasp_write_info (db_name.c_str (), current_jsp_info, true)))
+	    { 
 	      /* succeed */
+
+        /*
+        locked_f = javasp_open_info (db_name.c_str (), "w+");
+        #if !defined (WINDOWS)
+        flock (fileno (locked_f), LOCK_SH);
+        #endif
+        */
 	    }
 	  else
 	    {
@@ -349,14 +382,13 @@ javasp_stop_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_nam
 	  status = er_errid ();
 	}
 
+      javasp_reset_info (db_name.c_str ());
       jsp_disconnect_server (socket);
 
-      if (!javasp_is_terminated_process (jsp_info.pid))
+      if (jsp_info.pid != -1 && !javasp_is_terminated_process (jsp_info.pid))
 	{
 	  javasp_terminate_process (jsp_info.pid);
 	}
-
-      javasp_reset_info (db_name.c_str ());
     }
 
   return status;
