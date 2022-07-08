@@ -87,6 +87,18 @@ javasp_open_info (const char *db_name, const char *mode)
   return fp;
 }
 
+void
+javasp_unlink_info (const char *db_name)
+{
+  char file_name[PATH_MAX] = { 0 };
+  char file_path[PATH_MAX] = { 0 };
+
+  snprintf (file_name, PATH_MAX, "javasp/javasp_%s.info", db_name);
+  envvar_vardir_file (file_path, PATH_MAX, file_name);
+
+  unlink (file_path);
+}
+
 bool
 javasp_get_info_file (char *buf, size_t len, const char *db_name)
 {

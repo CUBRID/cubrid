@@ -109,7 +109,6 @@
 #define BUF_SIZE        2048
 typedef jint (*CREATE_VM_FUNC) (JavaVM **, void **, void *);
 
-#ifdef __cplusplus
 #define JVM_GetEnv(JVM, ENV, VER)	\
 	(JVM)->GetEnv(ENV, VER)
 #define JVM_AttachCurrentThread(JVM, ENV, ARGS)	\
@@ -140,38 +139,8 @@ typedef jint (*CREATE_VM_FUNC) (JavaVM **, void **, void *);
 	(ENV)->ReleaseStringUTFChars(JSTRING, CSTRING)
 #define JVM_GetStringUTFLength(ENV, STRING)	\
 	(ENV)->GetStringUTFLength(STRING)
-#else
-#define JVM_GetEnv(JVM, ENV, VER)	\
-	(*JVM)->GetEnv(JVM, ENV, VER)
-#define JVM_AttachCurrentThread(JVM, ENV, ARGS)	\
-	(*JVM)->AttachCurrentThread(JVM, ENV, ARGS)
-#define JVM_DetachCurrentThread(JVM)	\
-	(*JVM)->DetachCurrentThread(JVM)
-#define JVM_ExceptionOccurred(ENV)	\
-	(*ENV)->ExceptionOccurred(ENV)
-#define JVM_FindClass(ENV, NAME)	\
-	(*ENV)->FindClass(ENV, NAME)
-#define JVM_GetStaticMethodID(ENV, CLAZZ, NAME, SIG)	\
-	(*ENV)->GetStaticMethodID(ENV, CLAZZ, NAME, SIG)
-#define JVM_NewStringUTF(ENV, BYTES)	\
-	(*ENV)->NewStringUTF(ENV, BYTES);
-#define JVM_NewObjectArray(ENV, LENGTH, ELEMENTCLASS, INITIALCLASS)	\
-	(*ENV)->NewObjectArray(ENV, LENGTH, ELEMENTCLASS, INITIALCLASS)
-#define JVM_SetObjectArrayElement(ENV, ARRAY, INDEX, VALUE)	\
-	(*ENV)->SetObjectArrayElement(ENV, ARRAY, INDEX, VALUE)
-#define JVM_CallStaticVoidMethod(ENV, CLAZZ, METHODID, ARGS)	\
-	(*ENV)->CallStaticVoidMethod(ENV, CLAZZ, METHODID, ARGS)
-#define JVM_CallStaticIntMethod(ENV, CLAZZ, METHODID, ARGS)	\
-	(*ENV)->CallStaticIntMethod(ENV, CLAZZ, METHODID, ARGS)
-#define JVM_CallStaticObjectMethod(ENV, CLAZZ, METHODID, ARGS)	\
-	(*ENV)->CallStaticObjectMethod(ENV, CLAZZ, METHODID, ARGS)
-#define JVM_GetStringUTF(ENV, STRING)	\
-	(*ENV)->GetStringUTFChars(ENV, STRING, NULL)
-#define JVM_ReleaseStringUTF(ENV, JSTRING, CSTRING)	\
-	(*ENV)->ReleaseStringUTFChars(ENV, JSTRING, CSTRING)
-#define JVM_GetStringUTFLength(ENV, STRING)	\
-	(*ENV)->GetStringUTFLength(ENV, STRING)
-#endif
+#define JVM_GetJavaVM(ENV, JVM)	\
+	(ENV)->GetJavaVM(JVM)
 
 static JavaVM *jvm = NULL;
 static jint sp_port = -1;
@@ -543,13 +512,12 @@ jsp_start_server (const char *db_name, const char *path, int port)
   jobjectArray args;
   JavaVMInitArgs vm_arguments;
   JavaVMOption *options;
-  int vm_n_options = 3;
+  int vm_n_options = 2;
   char classpath[PATH_MAX + 32] = { 0 };
   char logging_prop[PATH_MAX + 32] = { 0 };
   char option_debug[70];
   char debug_flag[] = "-Xdebug";
   char debug_jdwp[] = "-agentlib:jdwp=transport=dt_socket,server=y,address=%d,suspend=n";
-  char disable_sig_handle[] = "-Xrs";
   const char *envroot;
   const char *envtmp;
   char jsp_file_path[PATH_MAX];
@@ -594,16 +562,15 @@ jsp_start_server (const char *db_name, const char *path, int port)
 	goto error;
       }
 
-    int idx = 3;
+    int idx = 2;
     options[0].optionString = classpath;
     options[1].optionString = logging_prop;
-    options[2].optionString = disable_sig_handle;
     if (debug_port != -1)
       {
 	idx += 2;
 	snprintf (option_debug, sizeof (option_debug) - 1, debug_jdwp, debug_port);
-	options[3].optionString = debug_flag;
-	options[4].optionString = option_debug;
+	options[2].optionString = debug_flag;
+	options[3].optionString = option_debug;
       }
 
     for (auto it = opts.begin (); it != opts.end (); ++it)

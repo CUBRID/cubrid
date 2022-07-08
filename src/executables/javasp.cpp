@@ -214,7 +214,7 @@ main (int argc, char *argv[])
 	      {
 		SLEEP_MILISEC (0, 100);
 	      }
-      while (true);
+	    while (true);
 	  }
       }
     else if (command.compare ("stop") == 0)
@@ -293,7 +293,10 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
     {
 #if !defined(WINDOWS)
       /* create a new session */
-      setsid ();
+      if (setsid() == -1)
+	{
+	  return ER_GENERIC_ERROR;
+	}
 #endif
       er_clear (); // clear error before string JVM
       status = jsp_start_server (db_name.c_str (), path.c_str (), prm_port);
@@ -302,6 +305,7 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
 	{
 	  JAVASP_SERVER_INFO jsp_new_info { getpid(), jsp_server_port () };
 
+	  javasp_unlink_info (db_name.c_str ());
 	  if ((javasp_open_info_dir () && javasp_write_info (db_name.c_str (), jsp_new_info, true)))
 	    {
 	      /* succeed */
