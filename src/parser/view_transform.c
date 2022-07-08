@@ -3787,17 +3787,8 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
       query_str = query->info.dblink_table.qstr->info.value.data_value.str;
       rewritten = pt_append_varchar (parser, rewritten, query_str);
 
-      /* alias name : '_r' */
-      rewritten = pt_append_bytes (parser, rewritten, ") AS _r", 7);
-
-      if (query->info.dblink_table.cols != NULL)
-	{
-	  /* aliased column list */
-	  rewritten = pt_append_bytes (parser, rewritten, "(", 1);
-	  col_list = pt_print_bytes_l (parser, spec->info.spec.as_attr_list);
-	  rewritten = pt_append_varchar (parser, rewritten, col_list);
-	  rewritten = pt_append_bytes (parser, rewritten, ")", 1);
-	}
+      /* alias name : 'r' */
+      rewritten = pt_append_bytes (parser, rewritten, ") r", 3);
 
       if (pushed_pred != NULL)
 	{
