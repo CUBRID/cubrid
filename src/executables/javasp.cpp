@@ -210,10 +210,11 @@ main (int argc, char *argv[])
 	status = javasp_start_server (jsp_info, db_name, pathname);
 	if (status == NO_ERROR)
 	  {
-	    while (true)
+	    do
 	      {
 		SLEEP_MILISEC (0, 100);
 	      }
+      while (true);
 	  }
       }
     else if (command.compare ("stop") == 0)
@@ -301,7 +302,7 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
 	{
 	  JAVASP_SERVER_INFO jsp_new_info { getpid(), jsp_server_port () };
 
-	  if ((javasp_open_info_dir () && javasp_write_info (db_name.c_str (), jsp_new_info)))
+	  if ((javasp_open_info_dir () && javasp_write_info (db_name.c_str (), jsp_new_info, true)))
 	    {
 	      /* succeed */
 	    }

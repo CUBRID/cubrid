@@ -37,6 +37,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#if !defined (WINDOWS)
+#include <sys/file.h>
+#endif
+
 bool
 javasp_open_info_dir ()
 {
@@ -145,18 +149,26 @@ javasp_read_info (const char *db_name, JAVASP_SERVER_INFO & info)
 }
 
 bool
-javasp_write_info (const char *db_name, JAVASP_SERVER_INFO info)
+javasp_write_info (const char *db_name, JAVASP_SERVER_INFO info, bool claim_lock)
 {
+  bool result = false;
   FILE *fp = NULL;
 
-  fp = javasp_open_info (db_name, "w");
+  fp = javasp_open_info (db_name, "w+");
   if (fp)
     {
       fprintf (fp, "%d %d", info.pid, info.port);
+      if (claim_lock)
+      {
+#if !defined (WINDOWS)
+        result = (flock (fileno (fp), LOCK_SH) == 0);
+#else
+        result = true;
+#endif
+      }
       fclose (fp);
-      return true;
     }
-  return false;
+  return result;
 }
 
 bool
@@ -165,5 +177,5 @@ javasp_reset_info (const char *db_name)
 // *INDENT-OFF*
   JAVASP_SERVER_INFO reset_info {-1, -1};
 // *INDENT-ON*
-  return javasp_write_info (db_name, reset_info);
+  return javasp_write_info (db_name, reset_info, false);
 }
