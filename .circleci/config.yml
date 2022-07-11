@@ -6,7 +6,7 @@ defaults: &defaults
 oraclelinux: &oraclelinux
   working_directory: /home
   docker:
-    - image: cubridci/cubridci:ol7.8 
+    - image: cubridci/cubridci:ol7.8_11.2
 
 test_defaults: &test_defaults
   steps:
