@@ -68,6 +68,7 @@
 #include "dbtype.h"
 #if defined (SERVER_MODE)
 #include "server_support.h"
+#include "session.h"
 #endif // SERVER_MODE
 #include "string_buffer.hpp"
 #if defined (SA_MODE)
@@ -135,6 +136,7 @@ static int logtb_global_unique_stat_free (void *unique_stat);
 static int logtb_global_unique_stat_init (void *unique_stat);
 static int logtb_global_unique_stat_key_copy (void *src, void *dest);
 static void logtb_free_tran_mvcc_info (LOG_TDES * tdes);
+static void logtb_set_session_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 
 static void logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid);
 
@@ -1473,6 +1475,48 @@ logtb_free_tran_mvcc_info (LOG_TDES * tdes)
   curr_mvcc_info->sub_ids.clear ();
 }
 
+#if defined (SERVER_MODE)
+/*
+ * logtb_set_session_tdes - reflect the session to the transaction
+ *
+ * return: nothing
+ *
+ *   tdes(in/out): Transaction descriptor
+ */
+static void
+logtb_set_session_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  SESSION_PARAM *param;
+  int wait_msecs;
+
+  /* isolation level */
+  param = session_get_session_parameter (thread_p, PRM_ID_LOG_ISOLATION_LEVEL);
+  if (param)
+    {
+      tdes->isolation = (TRAN_ISOLATION) param->value.i;
+    }
+
+  /* lock timeout */
+  param = session_get_session_parameter (thread_p, PRM_ID_LK_TIMEOUT);
+  if (param)
+    {
+      wait_msecs = param->value.i;
+      if (wait_msecs > 0)
+	{
+	  tdes->wait_msecs = wait_msecs * 1000;
+	}
+      else if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_INFINITE_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
+	{
+	  tdes->wait_msecs = wait_msecs;
+	}
+      else
+	{
+	  assert_release (0);
+	}
+    }
+}
+#endif // SERVER_MODE
+
 /*
  * logtb_clear_tdes - clear the transaction descriptor
  *
@@ -1588,6 +1632,10 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
   LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_lsa);
   LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_start_lsa);
+
+#if defined (SERVER_MODE)
+  logtb_set_session_tdes (thread_p, tdes);
+#endif // SERVER_MODE
 }
 
 /*
