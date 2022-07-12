@@ -165,7 +165,7 @@ tran_get_tran_settings (int *lock_wait_in_msecs, TRAN_ISOLATION * tran_isolation
  *               deadlock.
  *               A value of zero means do not wait at all, timeout immediately
  *
- * NOTE: Reset the default waiting time for the client transactions and session.
+ * NOTE: Reset the default waiting time for the client transactions.
  */
 int
 tran_reset_wait_times (int wait_in_msecs)
