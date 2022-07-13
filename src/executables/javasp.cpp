@@ -493,7 +493,7 @@ javasp_ping_server (const int server_port, const char *db_name, char *buf)
       ptr = or_pack_int (request, OR_INT_SIZE);
       ptr = or_pack_int (ptr, SP_CODE_UTIL_TERMINATE_THREAD);
 
-      int nbytes = jsp_writen (socket, request, OR_INT_SIZE * 2);
+      nbytes = jsp_writen (socket, request, OR_INT_SIZE * 2);
       if (nbytes != OR_INT_SIZE * 2)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
