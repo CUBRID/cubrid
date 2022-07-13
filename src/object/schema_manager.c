@@ -12762,6 +12762,13 @@ error_return:
   assert (error != ER_HEAP_NODATA_NEWADDRESS);	/* TODO - */
 
   classobj_free_template (flat);
+
+  /* don't touch this class if we aborted ! */
+  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      class_->new_ = NULL;
+    }
+
   abort_subclasses (newsubs);
   if (error == ER_BTREE_UNIQUE_FAILED || error == ER_FK_INVALID || error == ER_SM_PRIMARY_KEY_EXISTS
       || error == ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE || error == ER_SM_INVALID_UNIQUE_IDX_PARTITION)
