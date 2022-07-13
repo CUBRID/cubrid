@@ -13308,6 +13308,13 @@ error_return:
   assert (error != ER_HEAP_NODATA_NEWADDRESS);	/* TODO - */
 
   classobj_free_template (flat);
+
+  /* don't touch this class if we aborted ! */
+  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      class_->new_ = NULL;
+    }
+
   abort_subclasses (newsubs);
 
   if (error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED && error != ER_LK_UNILATERALLY_ABORTED)
