@@ -1475,9 +1475,8 @@ logtb_free_tran_mvcc_info (LOG_TDES * tdes)
   curr_mvcc_info->sub_ids.clear ();
 }
 
-#if defined (SERVER_MODE)
 /*
- * logtb_set_session_tdes - reflect the session to the transaction
+ * logtb_set_session_tdes - reflect the session or system parameters to the transaction
  *
  * return: nothing
  *
@@ -1486,36 +1485,42 @@ logtb_free_tran_mvcc_info (LOG_TDES * tdes)
 static void
 logtb_set_session_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  SESSION_PARAM *param;
+#if defined (SERVER_MODE)
+  SESSION_PARAM *session_parameter;
+#endif
+  TRAN_ISOLATION isolation;
   int wait_msecs;
 
+#if defined (SERVER_MODE)
+  session_parameter = session_get_session_parameter (thread_p, PRM_ID_LOG_ISOLATION_LEVEL);
+  assert (session_parameter != NULL);
+  isolation = (TRAN_ISOLATION) session_parameter->value.i;
+
+  session_parameter = session_get_session_parameter (thread_p, PRM_ID_LK_TIMEOUT);
+  assert (session_parameter != NULL);
+  wait_msecs = session_parameter->value.i;
+#else /* SERVER_MODE */
+  isolation = (TRAN_ISOLATION) prm_get_integer_value (PRM_ID_LOG_ISOLATION_LEVEL);
+  wait_msecs = prm_get_integer_value (PRM_ID_LK_TIMEOUT);
+#endif /* !SERVER_MODE */
+
   /* isolation level */
-  param = session_get_session_parameter (thread_p, PRM_ID_LOG_ISOLATION_LEVEL);
-  if (param)
-    {
-      tdes->isolation = (TRAN_ISOLATION) param->value.i;
-    }
+  tdes->isolation = isolation;
 
   /* lock timeout */
-  param = session_get_session_parameter (thread_p, PRM_ID_LK_TIMEOUT);
-  if (param)
+  if (wait_msecs > 0)
     {
-      wait_msecs = param->value.i;
-      if (wait_msecs > 0)
-	{
-	  tdes->wait_msecs = wait_msecs * 1000;
-	}
-      else if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_INFINITE_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
-	{
-	  tdes->wait_msecs = wait_msecs;
-	}
-      else
-	{
-	  assert_release (0);
-	}
+      tdes->wait_msecs = wait_msecs * 1000;
+    }
+  else if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_INFINITE_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
+    {
+      tdes->wait_msecs = wait_msecs;
+    }
+  else
+    {
+      assert_release (0);
     }
 }
-#endif // SERVER_MODE
 
 /*
  * logtb_clear_tdes - clear the transaction descriptor
@@ -1633,9 +1638,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_lsa);
   LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_start_lsa);
 
-#if defined (SERVER_MODE)
   logtb_set_session_tdes (thread_p, tdes);
-#endif // SERVER_MODE
 }
 
 /*
