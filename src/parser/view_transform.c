@@ -3787,8 +3787,8 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
       query_str = query->info.dblink_table.qstr->info.value.data_value.str;
       rewritten = pt_append_varchar (parser, rewritten, query_str);
 
-      /* alias name : 'r' */
-      rewritten = pt_append_bytes (parser, rewritten, ") r", 3);
+      /* alias name: cublink */
+      rewritten = pt_append_bytes (parser, rewritten, ") cublink", 9);
 
       if (pushed_pred != NULL)
 	{
