@@ -10406,7 +10406,11 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	    int error = NO_ERROR;
 	    ERROR_SET_ERROR_1ARG (error, ER_AU_DBA_ONLY, "create system class/vclass");
 	    PT_ERRORc (parser, node, er_msg ());
-	    *continue_walk = PT_STOP_WALK;
+
+	    if (continue_walk != NULL)
+	      {
+		*continue_walk = PT_STOP_WALK;
+	      }
 	  }
 
 	return node;
@@ -10417,8 +10421,13 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_RENAME_NEW_NAME (node))))
 	  {
 	    PT_ERROR (parser, node, "It is not allowed to be renamed to the system class name.");
-	    *continue_walk = PT_STOP_WALK;
+
+	    if (continue_walk != NULL)
+	      {
+		*continue_walk = PT_STOP_WALK;
+	      }
 	  }
+
 	return node;
       }
       // break;
@@ -10443,7 +10452,12 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       PT_ERRORf2 (parser, node,
 		  "Object name [%s] not allowed. It cannot exceed %d bytes.",
 		  pt_short_print (parser, node), DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH);
-      *continue_walk = PT_STOP_WALK;
+
+      if (continue_walk != NULL)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	}
+
       return node;
     }
 
@@ -10467,7 +10481,12 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       if (resolved_name != NULL)
 	{
 	  PT_ERROR (parser, node, "It is not allowed to specify an owner in the system class name.");
-	  *continue_walk = PT_STOP_WALK;
+
+	  if (continue_walk != NULL)
+	    {
+	      *continue_walk = PT_STOP_WALK;
+	    }
+
 	  return node;
 	}
 
@@ -10485,7 +10504,12 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
     {
       PT_ERRORf2 (parser, node,
 		  "User name [%s] not allowed. It cannot exceed %d bytes.", resolved_name, DB_MAX_USER_LENGTH);
-      *continue_walk = PT_STOP_WALK;
+
+      if (continue_walk != NULL)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	}
+
       return node;
     }
 
