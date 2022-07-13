@@ -136,7 +136,6 @@ static int logtb_global_unique_stat_free (void *unique_stat);
 static int logtb_global_unique_stat_init (void *unique_stat);
 static int logtb_global_unique_stat_key_copy (void *src, void *dest);
 static void logtb_free_tran_mvcc_info (LOG_TDES * tdes);
-static void logtb_set_session_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 
 static void logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid);
 
@@ -1476,46 +1475,6 @@ logtb_free_tran_mvcc_info (LOG_TDES * tdes)
 }
 
 /*
- * logtb_set_session_tdes - reflect the session or system parameters to the transaction
- *
- * return: nothing
- *
- *   tdes(in/out): Transaction descriptor
- */
-static void
-logtb_set_session_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
-{
-#if defined (SERVER_MODE)
-  SESSION_PARAM *session_parameter;
-#endif
-  TRAN_ISOLATION isolation;
-  int wait_msecs;
-
-#if defined (SERVER_MODE)
-  session_parameter = session_get_session_parameter (thread_p, PRM_ID_LOG_ISOLATION_LEVEL);
-  assert (session_parameter != NULL);
-  isolation = (TRAN_ISOLATION) session_parameter->value.i;
-
-  session_parameter = session_get_session_parameter (thread_p, PRM_ID_LK_TIMEOUT);
-  assert (session_parameter != NULL);
-  wait_msecs = session_parameter->value.i;
-#else /* SERVER_MODE */
-  isolation = (TRAN_ISOLATION) prm_get_integer_value (PRM_ID_LOG_ISOLATION_LEVEL);
-  wait_msecs = prm_get_integer_value (PRM_ID_LK_TIMEOUT);
-#endif /* !SERVER_MODE */
-
-  /* isolation level */
-  tdes->isolation = isolation;
-
-  /* lock timeout */
-  tdes->wait_msecs = wait_msecs;
-  if (tdes->wait_msecs > 0)
-    {
-      tdes->wait_msecs = tdes->wait_msecs * 1000;
-    }
-}
-
-/*
  * logtb_clear_tdes - clear the transaction descriptor
  *
  * return: nothing..
@@ -1631,7 +1590,13 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_lsa);
   LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_start_lsa);
 
-  logtb_set_session_tdes (thread_p, tdes);
+  /* reflect the session (or prm_Def) */
+  tdes->isolation = (TRAN_ISOLATION) prm_get_integer_value (PRM_ID_LOG_ISOLATION_LEVEL);
+  tdes->wait_msecs = prm_get_integer_value (PRM_ID_LK_TIMEOUT);
+  if (tdes->wait_msecs > 0)
+    {
+      tdes->wait_msecs = tdes->wait_msecs * 1000;
+    }
 }
 
 /*
