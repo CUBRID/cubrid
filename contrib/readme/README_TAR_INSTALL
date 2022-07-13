@@ -11,13 +11,23 @@ Steps:
 1. Go to the directory where you untared (probably you already there)
 2. run setup.sh
 
-Example
-=======
+OR
+
+run setup.sh cubrid_home
+
+Example1
+========
 
 $ wget http://ftp.cubrid.org/CUBRID_Engine/11.2/CUBRID-11.2.0.0658-496c148-Linux.x86_64.tar.gz
 $ tar xvf CUBRID-11.2.0.0658-496c148-Linux.x86_64.tar.gz
 $ cd CUBRID
 $ sh share/scripts/setup.sh
+
+Example2
+========
+$ wget http://ftp.cubrid.org/CUBRID_Engine/11.2/CUBRID-11.2.0.0658-496c148-Linux.x86_64.tar.gz
+$ tar xvf CUBRID-11.2.0.0658-496c148-Linux.x86_64.tar.gz
+$ sh CUBRID/share/scripts/setup.sh CUBRID
 
 Then, depending on the shell you are using, either .cubrid.sh or .cubrid.csh will be
 created in your home directory. That scripts includes modification of PATH and LD_LIBRARY_PATH
