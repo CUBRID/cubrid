@@ -3791,6 +3791,15 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
       /* alias name: cublink */
       rewritten = pt_append_bytes (parser, rewritten, ") cublink", 9);
 
+      if (query->info.dblink_table.cols != NULL)
+	{
+	  /* aliased column list */
+	  rewritten = pt_append_bytes (parser, rewritten, "(", 1);
+	  col_list = pt_print_bytes_l (parser, spec->info.spec.as_attr_list);
+	  rewritten = pt_append_varchar (parser, rewritten, col_list);
+	  rewritten = pt_append_bytes (parser, rewritten, ")", 1);
+	}
+
       if (pushed_pred != NULL)
 	{
 	  /* where predicate */
