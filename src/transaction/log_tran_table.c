@@ -1508,7 +1508,7 @@ logtb_set_session_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->isolation = isolation;
 
   /* lock timeout */
-  tdes->wait_msecs = param->value.i;
+  tdes->wait_msecs = wait_msecs;
   if (tdes->wait_msecs > 0)
     {
       tdes->wait_msecs = tdes->wait_msecs * 1000;
