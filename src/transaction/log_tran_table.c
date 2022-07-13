@@ -1516,10 +1516,6 @@ logtb_set_session_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     {
       tdes->wait_msecs = wait_msecs;
     }
-  else
-    {
-      assert_release (0);
-    }
 }
 
 /*
