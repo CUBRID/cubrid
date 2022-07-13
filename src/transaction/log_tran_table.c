@@ -68,7 +68,6 @@
 #include "dbtype.h"
 #if defined (SERVER_MODE)
 #include "server_support.h"
-#include "session.h"
 #endif // SERVER_MODE
 #include "string_buffer.hpp"
 #if defined (SA_MODE)
