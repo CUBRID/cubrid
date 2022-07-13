@@ -8142,7 +8142,6 @@ pt_make_query_describe_w_identifier (PARSER_CONTEXT * parser, PT_NODE * original
 	}
     }
 
-  pt_set_user_specified_name (parser, original_cls_id, NULL, NULL);
   node = pt_make_query_show_columns (parser, original_cls_id, (where_node == NULL) ? 0 : 2, where_node, 0);
 
   return node;
