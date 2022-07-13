@@ -455,7 +455,7 @@ exit:
 static int
 javasp_ping_server (const int server_port, const char *db_name, char *buf)
 {
-  OR_ALIGNED_BUF (OR_INT_SIZE * 4) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_request;
   char *request = OR_ALIGNED_BUF_START (a_request);
   char *ptr = NULL;
   SOCKET socket = INVALID_SOCKET;
@@ -465,11 +465,9 @@ javasp_ping_server (const int server_port, const char *db_name, char *buf)
     {
       ptr = or_pack_int (request, OR_INT_SIZE);
       ptr = or_pack_int (ptr, SP_CODE_UTIL_PING);
-      ptr = or_pack_int (ptr, OR_INT_SIZE);
-      ptr = or_pack_int (ptr, SP_CODE_UTIL_TERMINATE_THREAD);
 
-      int nbytes = jsp_writen (socket, request, OR_INT_SIZE * 4);
-      if (nbytes != OR_INT_SIZE * 4)
+      int nbytes = jsp_writen (socket, request, OR_INT_SIZE * 2);
+      if (nbytes != OR_INT_SIZE * 2)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
 	  goto exit;
@@ -486,6 +484,17 @@ javasp_ping_server (const int server_port, const char *db_name, char *buf)
 
       nbytes = jsp_readn (socket, buf, res_size);
       if (nbytes != res_size)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+	  goto exit;
+	}
+
+      // ack
+      ptr = or_pack_int (request, OR_INT_SIZE);
+      ptr = or_pack_int (ptr, SP_CODE_UTIL_TERMINATE_THREAD);
+
+      int nbytes = jsp_writen (socket, request, OR_INT_SIZE * 2);
+      if (nbytes != OR_INT_SIZE * 2)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
 	  goto exit;
