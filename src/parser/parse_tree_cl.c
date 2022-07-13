@@ -11237,12 +11237,19 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       else
 	{
-	  r2 = pt_print_bytes (parser, p->info.expr.cast_type);
-	  q = pt_append_nulstring (parser, q, " cast(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, " as ");
-	  q = pt_append_varchar (parser, q, r2);
-	  q = pt_append_nulstring (parser, q, ")");
+	  if ((parser->custom_print & PT_PRINT_NO_CAST_WRAP) && (PT_EXPR_INFO_IS_FLAGED (p, PT_EXPR_INFO_CAST_WRAP)))
+	    {
+	      q = pt_append_varchar (parser, q, r1);
+	    }
+	  else
+	    {
+	      r2 = pt_print_bytes (parser, p->info.expr.cast_type);
+	      q = pt_append_nulstring (parser, q, " cast(");
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, " as ");
+	      q = pt_append_varchar (parser, q, r2);
+	      q = pt_append_nulstring (parser, q, ")");
+	    }
 	}
       break;
     case PT_CASE:
