@@ -1,4 +1,4 @@
-#!/bin/bash
+#
 #
 #  Copyright 2016 CUBRID Corporation
 #
@@ -17,7 +17,7 @@
 
 if [ $# -ne 0 ];then
   curr=$(pwd)
-  chdir $1
+  cd $1
 
   if [ $? -ne 0 ];then
     echo "$1: no such directory or pemission denied"
@@ -25,7 +25,7 @@ if [ $# -ne 0 ];then
   fi
 
   cubrid_home=$(pwd)
-  chdir $curr
+  cd $curr
 else
   cubrid_home=$(pwd)
 fi
