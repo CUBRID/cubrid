@@ -1,0 +1,27 @@
+Guide to setup CUBRID using setup.sh
+====================================
+
+IGNORE THIS IF YOU INSTALLED CUBRID FROM THE SHELL OR RPM DISTRIBUTION.
+
+------------------
+If you try to install CUBRID from a tar distribution, setup.sh can help you
+to set environment for normal CUBRID operations.
+
+Steps:
+1. Go to the directory where you untared (probably you already there)
+2. run setup.sh
+
+Example
+=======
+
+$ wget http://ftp.cubrid.org/CUBRID_Engine/11.2/CUBRID-11.2.0.0658-496c148-Linux.x86_64.tar.gz
+$ tar xvf CUBRID-11.2.0.0658-496c148-Linux.x86_64.tar.gz
+$ cd CUBRID
+$ sh share/scripts/setup.sh
+
+Then, depending on the shell you are using, either .cubrid.sh or .cubrid.csh will be
+created in your home directory. That scripts includes modification of PATH and LD_LIBRARY_PATH
+environment variables required for the CUBRID.
+
+Futhermore, to execute the cubrid shell script (.cubrid.sh or .cubrid.csh) at the login time,
+one of .bash_profile, .profile, .cshrc, and .zshrc will be modified.
