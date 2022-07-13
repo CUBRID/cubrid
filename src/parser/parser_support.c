@@ -6668,13 +6668,14 @@ pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_
 
       if (arg_infos[i].type == AVT_IDENTIFIER)
 	{
-	  /* replace identifier node with string value node */
-	  pt_set_user_specified_name (parser, arg, NULL, NULL);
+	  /* store user-specified-name in info.name.original. */
+	  parser_walk_tree (parser, arg, NULL, NULL, pt_set_user_specified_name, NULL);
 	  if (pt_has_error (parser))
 	    {
 	      goto error;
 	    }
 
+	  /* replace identifier node with string value node */
 	  id_string = pt_make_string_value (parser, arg->info.name.original);
 	  if (id_string == NULL)
 	    {
@@ -7044,7 +7045,8 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser, PT_NODE * original_cls_id, 
       PT_SELECT_INFO_SET_FLAG (sub_query, PT_SELECT_INFO_COLS_SCHEMA);
     }
 
-  pt_set_user_specified_name (parser, original_cls_id, NULL, NULL);
+  /* store user-specified-name in info.name.original. */
+  parser_walk_tree (parser, original_cls_id, NULL, NULL, pt_set_user_specified_name, NULL);
   if (pt_has_error (parser))
     {
       return NULL;
@@ -7230,7 +7232,8 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   parser_block_allocator alloc (parser);
   string_buffer strbuf (alloc);
 
-  pt_set_user_specified_name (parser, table_name, NULL, NULL);
+  /* store user-specified-name in info.name.original. */
+  parser_walk_tree (parser, table_name, NULL, NULL, pt_set_user_specified_name, NULL);
   if (pt_has_error (parser))
     {
       return NULL;
@@ -7301,7 +7304,8 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
   assert (view_identifier != NULL);
   assert (view_identifier->node_type == PT_NAME);
 
-  pt_set_user_specified_name (parser, view_identifier, NULL, NULL);
+  /* store user-specified-name in info.name.original. */
+  parser_walk_tree (parser, view_identifier, NULL, NULL, pt_set_user_specified_name, NULL);
   if (pt_has_error (parser))
     {
       return NULL;
@@ -8211,7 +8215,8 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   assert (original_cls_id != NULL);
   assert (original_cls_id->node_type == PT_NAME);
 
-  pt_set_user_specified_name (parser, original_cls_id, NULL, NULL);
+  /* store user-specified-name in info.name.original. */
+  parser_walk_tree (parser, original_cls_id, NULL, NULL, pt_set_user_specified_name, NULL);
   if (pt_has_error (parser))
     {
       return NULL;
@@ -10272,6 +10277,8 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   char downcase_resolved_name[DB_MAX_USER_LENGTH] = { '\0' };
   const char *user_specified_name = NULL;
 
+  assert (continue_walk != NULL);
+
   if (parser == NULL || node == NULL)
     {
       PT_ERROR (parser, node, "Invalid arguments.");
@@ -10427,7 +10434,6 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	    int error = NO_ERROR;
 	    ERROR_SET_ERROR_1ARG (error, ER_AU_DBA_ONLY, "create system class/vclass");
 	    PT_ERRORc (parser, node, er_msg ());
-	    assert (continue_walk != NULL);
 	    *continue_walk = PT_STOP_WALK;
 	  }
 
@@ -10439,7 +10445,6 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_RENAME_NEW_NAME (node))))
 	  {
 	    PT_ERROR (parser, node, "It is not allowed to be renamed to the system class name.");
-	    assert (continue_walk != NULL);
 	    *continue_walk = PT_STOP_WALK;
 	  }
 
@@ -10467,12 +10472,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       PT_ERRORf2 (parser, node,
 		  "Object name [%s] not allowed. It cannot exceed %d bytes.",
 		  pt_short_print (parser, node), DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH);
-
-      if (continue_walk != NULL)
-	{
-	  *continue_walk = PT_STOP_WALK;
-	}
-
+      *continue_walk = PT_STOP_WALK;
       return node;
     }
 
@@ -10496,12 +10496,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       if (resolved_name != NULL)
 	{
 	  PT_ERROR (parser, node, "It is not allowed to specify an owner in the system class name.");
-
-	  if (continue_walk != NULL)
-	    {
-	      *continue_walk = PT_STOP_WALK;
-	    }
-
+	  *continue_walk = PT_STOP_WALK;
 	  return node;
 	}
 
@@ -10519,12 +10514,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
     {
       PT_ERRORf2 (parser, node,
 		  "User name [%s] not allowed. It cannot exceed %d bytes.", resolved_name, DB_MAX_USER_LENGTH);
-
-      if (continue_walk != NULL)
-	{
-	  *continue_walk = PT_STOP_WALK;
-	}
-
+      *continue_walk = PT_STOP_WALK;
       return node;
     }
 
