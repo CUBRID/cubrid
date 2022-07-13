@@ -425,7 +425,7 @@ javasp_status_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_n
 	}
 
       // send terminate thread
-      ptr = or_pack_int (ptr, OR_INT_SIZE);
+      ptr = or_pack_int (request, OR_INT_SIZE);
       ptr = or_pack_int (ptr, SP_CODE_UTIL_TERMINATE_THREAD);
 
       nbytes = jsp_writen (socket, request, OR_INT_SIZE * 2);
