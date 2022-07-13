@@ -385,16 +385,14 @@ javasp_status_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_n
   if (socket != INVALID_SOCKET)
     {
       char *ptr = NULL;
-      OR_ALIGNED_BUF (OR_INT_SIZE * 4) a_request;
+      OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_request;
       char *request = OR_ALIGNED_BUF_START (a_request);
 
       ptr = or_pack_int (request, OR_INT_SIZE);
       ptr = or_pack_int (ptr, SP_CODE_UTIL_STATUS);
-      ptr = or_pack_int (ptr, OR_INT_SIZE);
-      ptr = or_pack_int (ptr, SP_CODE_UTIL_TERMINATE_THREAD);
 
-      int nbytes = jsp_writen (socket, request, OR_INT_SIZE * 4);
-      if (nbytes != OR_INT_SIZE * 4)
+      int nbytes = jsp_writen (socket, request, OR_INT_SIZE * 2);
+      if (nbytes != OR_INT_SIZE * 2)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
 	  status = er_errid ();
@@ -426,6 +424,18 @@ javasp_status_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_n
 	  goto exit;
 	}
 
+      // send terminate thread
+      ptr = or_pack_int (ptr, OR_INT_SIZE);
+      ptr = or_pack_int (ptr, SP_CODE_UTIL_TERMINATE_THREAD);
+
+      nbytes = jsp_writen (socket, request, OR_INT_SIZE * 2);
+      if (nbytes != OR_INT_SIZE * 2)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+	  status = er_errid ();
+	  goto exit;
+	}
+
       int num_args = 0;
       JAVASP_STATUS_INFO status_info;
 
@@ -439,11 +449,13 @@ javasp_status_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_n
 	  ptr = or_unpack_string_nocopy (ptr, &arg);
 	  status_info.vm_args.push_back (std::string (arg));
 	}
-      jsp_disconnect_server (socket);
+
       javasp_dump_status (stdout, status_info);
     }
 
 exit:
+  jsp_disconnect_server (socket);
+
   if (buffer)
     {
       free_and_init (buffer);
