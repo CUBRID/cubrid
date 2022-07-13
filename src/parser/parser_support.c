@@ -6670,6 +6670,11 @@ pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_
 	{
 	  /* replace identifier node with string value node */
 	  pt_set_user_specified_name (parser, arg, NULL, NULL);
+	  if (pt_has_error (parser))
+	    {
+	      goto error;
+	    }
+
 	  id_string = pt_make_string_value (parser, arg->info.name.original);
 	  if (id_string == NULL)
 	    {
@@ -7040,6 +7045,11 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser, PT_NODE * original_cls_id, 
     }
 
   pt_set_user_specified_name (parser, original_cls_id, NULL, NULL);
+  if (pt_has_error (parser))
+    {
+      return NULL;
+    }
+
   intl_identifier_lower (original_cls_id->info.name.original, lower_table_name);
 
   db_make_int (db_valuep + 0, 0);
@@ -7221,6 +7231,10 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   string_buffer strbuf (alloc);
 
   pt_set_user_specified_name (parser, table_name, NULL, NULL);
+  if (pt_has_error (parser))
+    {
+      return NULL;
+    }
 
   pt_help_show_create_table (parser, table_name, strbuf);
   if (strbuf.len () == 0)
@@ -7288,6 +7302,10 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
   assert (view_identifier->node_type == PT_NAME);
 
   pt_set_user_specified_name (parser, view_identifier, NULL, NULL);
+  if (pt_has_error (parser))
+    {
+      return NULL;
+    }
 
   node = parser_new_node (parser, PT_SELECT);
   if (node == NULL)
@@ -8194,6 +8212,10 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   assert (original_cls_id->node_type == PT_NAME);
 
   pt_set_user_specified_name (parser, original_cls_id, NULL, NULL);
+  if (pt_has_error (parser))
+    {
+      return NULL;
+    }
 
   query = parser_new_node (parser, PT_SELECT);
   if (query == NULL)
