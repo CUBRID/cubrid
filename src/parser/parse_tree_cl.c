@@ -139,6 +139,7 @@ static PT_NODE *pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tr
 					   int *continue_walk);
 static PT_NODE *pt_lambda_node (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg, int *continue_walk);
 static PT_NODE *pt_find_id_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *continue_walk);
+static PT_NODE *copy_node_in_term_dblink (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, int *continue_walk);
 static PT_NODE *copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, int *continue_walk);
 static PT_NODE *copy_node_in_tree_post (PARSER_CONTEXT * parser, PT_NODE * new_node, void *arg, int *continue_walk);
 static PT_NODE *free_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -744,6 +745,48 @@ pt_find_id_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *c
 }
 
 /*
+ * copy_node_in_term_dblink () - copies exactly a term node excluding cast node for dblink,
+     and returns a pointer to the copy. It is eligible for a walk "pre" function
+ *   return:
+ *   parser(in):
+ *   old_node(in):
+ *   arg(in):
+ *   continue_walk(in):
+ */
+static PT_NODE *
+copy_node_in_term_dblink (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, int *continue_walk)
+{
+  PT_NODE *new_node = NULL;
+
+  if (old_node->node_type == PT_EXPR)
+    {
+      if (old_node->info.expr.op == PT_CAST && PT_EXPR_INFO_IS_FLAGED (old_node, PT_EXPR_INFO_CAST_WRAP))
+	{
+	  new_node = parser_new_node (parser, old_node->info.expr.arg1->node_type);
+	  if (new_node == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+	  *new_node = *old_node->info.expr.arg1;
+	}
+    }
+
+  if (new_node == NULL)
+    {
+      new_node = parser_new_node (parser, old_node->node_type);
+      if (new_node == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return NULL;
+	}
+      *new_node = *old_node;
+    }
+
+  return new_node;
+}
+
+/*
  * copy_node_in_tree_pre () - copies exactly a node passed to it, and returns
  * 	a pointer to the copy. It is eligible for a walk "pre" function
  *   return:
@@ -1205,6 +1248,24 @@ parser_copy_tree (PARSER_CONTEXT * parser, const PT_NODE * tree)
     }
 
   return copy;
+}
+
+/*
+ * parser_copy_term_dblink () - copies a term for dblink.
+ * 		  It includes the rest of the list pointed to by tree
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ */
+PT_NODE *
+parser_copy_term_dblink (PARSER_CONTEXT * parser, PT_NODE * tree)
+{
+  if (tree)
+    {
+      tree = parser_walk_tree (parser, tree, copy_node_in_term_dblink, NULL, copy_node_in_tree_post, NULL);
+    }
+
+  return tree;
 }
 
 /*
@@ -11253,19 +11314,12 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       else
 	{
-	  if ((parser->custom_print & PT_PRINT_NO_CAST_WRAP) && (PT_EXPR_INFO_IS_FLAGED (p, PT_EXPR_INFO_CAST_WRAP)))
-	    {
-	      q = pt_append_varchar (parser, q, r1);
-	    }
-	  else
-	    {
-	      r2 = pt_print_bytes (parser, p->info.expr.cast_type);
-	      q = pt_append_nulstring (parser, q, " cast(");
-	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, " as ");
-	      q = pt_append_varchar (parser, q, r2);
-	      q = pt_append_nulstring (parser, q, ")");
-	    }
+	  r2 = pt_print_bytes (parser, p->info.expr.cast_type);
+	  q = pt_append_nulstring (parser, q, " cast(");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, " as ");
+	  q = pt_append_varchar (parser, q, r2);
+	  q = pt_append_nulstring (parser, q, ")");
 	}
       break;
     case PT_CASE:

@@ -850,10 +850,7 @@ enum pt_custom_print
   /* Both PT_PRINT_NO_SPECIFIED_USER_NAME and PT_PRINT_NO_CURRENT_USER_NAME can be set.
    * Check PT_PRINT_NO_SPECIFIED_USER_NAME before PT_PRINT_NO_CURRENT_USER_NAME to set implicit priority. */
   PT_PRINT_NO_SPECIFIED_USER_NAME = (0x1 << 23),
-  PT_PRINT_NO_CURRENT_USER_NAME = (0x1 << 24),
-
-  /* for dblink: no print cast op wrapped */
-  PT_PRINT_NO_CAST_WRAP = (0x1 << 25)
+  PT_PRINT_NO_CURRENT_USER_NAME = (0x1 << 24)
 };
 
 /* all statement node types should be assigned their API statement enumeration */
