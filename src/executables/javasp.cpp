@@ -436,6 +436,8 @@ javasp_status_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_n
 	  goto exit;
 	}
 
+      jsp_disconnect_server (socket);
+
       int num_args = 0;
       JAVASP_STATUS_INFO status_info;
 
