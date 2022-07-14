@@ -798,33 +798,17 @@ copy_node_in_term_dblink (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg
 static PT_NODE *
 copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, int *continue_walk)
 {
-  PT_NODE *new_node = NULL;
+  PT_NODE *new_node;
   PT_TREE_COPY_INFO *tree_copy_info = (PT_TREE_COPY_INFO *) arg;
 
-  if (old_node->node_type == PT_EXPR)
-    {
-      if (old_node->info.expr.op == PT_CAST && PT_EXPR_INFO_IS_FLAGED (old_node, PT_EXPR_INFO_CAST_WRAP))
-	{
-	  new_node = parser_new_node (parser, old_node->info.expr.arg1->node_type);
-	  if (new_node == NULL)
-	    {
-	      PT_INTERNAL_ERROR (parser, "allocate new node");
-	      return NULL;
-	    }
-	  *new_node = *old_node->info.expr.arg1;
-	}
-    }
-
+  new_node = parser_new_node (parser, old_node->node_type);
   if (new_node == NULL)
     {
-      new_node = parser_new_node (parser, old_node->node_type);
-      if (new_node == NULL)
-	{
-	  PT_INTERNAL_ERROR (parser, "allocate new node");
-	  return NULL;
-	}
-      *new_node = *old_node;
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
     }
+
+  *new_node = *old_node;
 
   /* if node is copied from another parser context, deepcopy string contents */
   if (old_node->parser_id != parser->id)
