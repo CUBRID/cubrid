@@ -20,7 +20,7 @@ if [ $# -ne 0 ];then
   cd $1
 
   if [ $? -ne 0 ];then
-    echo "$1: no such directory or pemission denied"
+    echo "$1: no such directory or permission denied"
     exit
   fi
 
