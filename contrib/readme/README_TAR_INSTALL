@@ -9,11 +9,8 @@ to set environment for normal CUBRID operations.
 
 Steps:
 1. Go to the directory where you untared (probably you already there)
-2. run setup.sh
+2. run setup.sh [cubrid_home]
 
-OR
-
-run setup.sh cubrid_home
 
 Example1
 ========
