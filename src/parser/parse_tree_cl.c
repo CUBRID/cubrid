@@ -1246,7 +1246,7 @@ parser_copy_term_dblink (PARSER_CONTEXT * parser, PT_NODE * tree)
 {
   if (tree)
     {
-      tree = parser_walk_tree (parser, tree, copy_node_in_term_dblink, NULL, copy_node_in_tree_post, NULL);
+      tree = parser_walk_tree (parser, tree, copy_node_in_term_dblink, NULL, NULL, NULL);
     }
 
   return tree;
