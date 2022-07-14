@@ -15,22 +15,15 @@
 #   limitations under the License.
 #
 
-CUBRID=/opt/cubrid
-CUBRID_DATABASES=$CUBRID/databases
+export CUBRID=/opt/cubrid
+export CUBRID_DATABASES=$CUBRID/databases
 
-LIB_PATH=`echo $LD_LIBRARY_PATH | grep -i cubrid`
-if [ "$LIB_PATH" = "" ];
-then
-	LD_LIBRARY_PATH=$CUBRID/lib:$CUBRID/cci/lib:$LD_LIBRARY_PATH
-fi
+LD_LIBRARY_PATH=$CUBRID/lib:$CUBRID/cci/lib:$LD_LIBRARY_PATH
+SHLIB_PATH=$LD_LIBRARY_PATH
+LIBPATH=$LD_LIBRARY_PATH
+PATH=$CUBRID/bin:$PATH
+export LD_LIBRARY_PATH SHLIB_PATH LIBPATH PATH
 
-BIN_PATH=`echo $PATH | grep -i cubrid`
-if [ "$BIN_PATH" = "" ];
-then
-	PATH=$CUBRID/bin:$PATH
-fi
-
-export CUBRID CUBRID_DATABASES LD_LIBRARY_PATH PATH
 
 LIB=$CUBRID/lib
 
