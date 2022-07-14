@@ -89,11 +89,11 @@ if(WIN32)
     DESTINATION ${CUBRID_DATADIR}/windows_scripts/)
 endif(WIN32)
 
-# scripts for installation
+# scripts for setup
 if(UNIX)
   install(PROGRAMS
-    ${CMAKE_SOURCE_DIR}/contrib/install/install.sh
-    DESTINATION ${CUBRID_DATADIR}/install/)
+    ${CMAKE_SOURCE_DIR}/contrib/scripts/setup.sh
+    DESTINATION ${CUBRID_DATADIR}/scripts/)
 endif(UNIX)
 
 # cubrid scripts
