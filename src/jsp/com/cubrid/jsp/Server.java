@@ -74,12 +74,15 @@ public class Server {
         if (OSValidator.IS_UNIX) {
             String socketName = rootPath + tmpPath + "/junixsocket-" + name + ".sock";
             final File socketFile = new File(socketName);
+
             try {
-                AFUNIXServerSocket udsServerSocket = AFUNIXServerSocket.newInstance();
-                udsServerSocket.bind(AFUNIXSocketAddress.of(socketFile));
+                AFUNIXSocketAddress sockAddr = AFUNIXSocketAddress.of(socketFile);
+                AFUNIXServerSocket udsServerSocket = AFUNIXServerSocket.bindOn (sockAddr);
                 udsSocketListener = new ListenerThread(udsServerSocket);
             } catch (Exception e) {
                 log(e);
+                e.printStackTrace();
+                System.exit(1);
             }
         }
 
@@ -91,6 +94,7 @@ public class Server {
         } catch (Exception e) {
             log(e);
             e.printStackTrace();
+            System.exit(1);
         }
 
         Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
