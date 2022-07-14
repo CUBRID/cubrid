@@ -174,6 +174,7 @@ echo ""
 echo "If you want to use CUBRID, run the following command to set required environment variables."
 if [ $CUBRID_SH_INSTALLED -eq 0 ];then
         echo "(or you can add the command into your current shell profile file to set permanently)"
+        exit
 fi
 case "$SHELL" in
   */csh | */tcsh )
