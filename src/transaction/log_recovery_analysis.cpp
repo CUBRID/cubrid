@@ -75,8 +75,7 @@ static void log_recovery_resetlog (THREAD_ENTRY *thread_p, const LOG_LSA *new_ap
 				   const LOG_LSA *new_prev_lsa);
 static void log_recovery_notpartof_archives (THREAD_ENTRY *thread_p, int start_arv_num, const char *info_reason);
 static int log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
-    log_lsa most_recent_trantable_snapshot_lsa,
-    cublog::checkpoint_info chkpt_info, log_lsa &snapshot_lsa);
+    const log_lsa &most_recent_trantable_snapshot_lsa, cublog::checkpoint_info &chkpt_info, log_lsa &snapshot_lsa);
 static void log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p);
 
 class corruption_checker
@@ -2174,7 +2173,7 @@ corruption_checker::check_log_record (const log_lsa &record_lsa, const log_rec_h
  */
 static int
 log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
-    log_lsa most_recent_trantable_snapshot_lsa, cublog::checkpoint_info chkpt_info, log_lsa &snapshot_lsa)
+    const log_lsa &most_recent_trantable_snapshot_lsa, cublog::checkpoint_info &chkpt_info, log_lsa &snapshot_lsa)
 {
   assert (!most_recent_trantable_snapshot_lsa.is_null ());
 
@@ -2242,6 +2241,8 @@ log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p)
     }
   log_Gl.hdr.mvcc_next_id = smallest_mvccid;
   log_Gl.mvcc_table.reset_start_mvccid ();
+  // TODO: what if there is no active trasaction on ATS; PTS will have no way of knowing where the
+  // MVCCID is at
 
   if (!present_mvccids.empty ())
     {

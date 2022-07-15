@@ -46,8 +46,12 @@ namespace cublog
     public:
       checkpoint_info () = default;
       checkpoint_info (checkpoint_info &&) = default;
-      checkpoint_info (const checkpoint_info &) = default;
+      checkpoint_info (const checkpoint_info &) = delete;
+
       ~checkpoint_info () override = default;
+
+      checkpoint_info &operator = (checkpoint_info &&) = delete;
+      checkpoint_info &operator = (const checkpoint_info &) = delete;
 
       void pack (cubpacking::packer &serializator) const override;
       void unpack (cubpacking::unpacker &deserializator) override;
