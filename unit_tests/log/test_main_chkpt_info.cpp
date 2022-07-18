@@ -63,7 +63,7 @@ class test_env_chkpt
     void generate_tran_table ();
 
     static constexpr int MAX_RAND = 32700;
-    static void require_equal (checkpoint_info before, checkpoint_info after);
+    static void require_equal (const checkpoint_info &before, const checkpoint_info &after);
 
     LOG_TDES *find_or_insert_recovery_tdes (TRANID trid);
     void increment_recovery_2pc ();
@@ -456,7 +456,7 @@ test_env_chkpt::generate_log_lsa ()
 }
 
 void
-test_env_chkpt::require_equal (checkpoint_info before, checkpoint_info after)
+test_env_chkpt::require_equal (const checkpoint_info &before, const checkpoint_info &after)
 {
   REQUIRE (before.m_start_redo_lsa == after.m_start_redo_lsa);
   REQUIRE (before.m_snapshot_lsa == after.m_snapshot_lsa);

@@ -48,7 +48,6 @@ namespace cublog
       const checkpoint_info *get_checkpoint_info (const log_lsa &checkpoint_lsa) const;
       std::tuple<log_lsa,  const checkpoint_info *> get_highest_lsa_checkpoint_info () const;
       void add_checkpoint_info (const log_lsa &chkpt_lsa, checkpoint_info &&chkpt_info);
-      void add_checkpoint_info (const log_lsa &chkpt_lsa, const checkpoint_info &chkpt_info);
       size_t remove_checkpoint_info_before_lsa (const log_lsa &target_lsa);
       size_t get_checkpoint_count () const;
 

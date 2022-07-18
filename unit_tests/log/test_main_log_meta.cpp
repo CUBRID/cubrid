@@ -85,51 +85,63 @@ TEST_CASE ("Test checkpoint_info functions", "")
 {
   cublog::meta meta_log;
 
-  test_chkpt_lsa_and_info_t keyval1 = create_chkpt_lsa_and_info (1);
-  test_chkpt_lsa_and_info_t keyval2 = create_chkpt_lsa_and_info (2);
-  test_chkpt_lsa_and_info_t keyval3 = create_chkpt_lsa_and_info (3);
+  const log_lsa key1 = { 1, 1 };
+  const log_lsa key2 = { 2, 2 };
+  const log_lsa key3 = { 3, 3 };
 
-  // Add keyval1
-  meta_log.add_checkpoint_info (keyval1.first, keyval1.second);
+  // Add key1,val1
+  {
+    test_chkpt_lsa_and_info_t keyval1 = create_chkpt_lsa_and_info (1);
+    meta_log.add_checkpoint_info (keyval1.first, std::move (keyval1.second));
+  }
   REQUIRE (meta_log.get_checkpoint_count () == 1);
-  // key of keyval1 exists and its value matches
-  REQUIRE (meta_log.get_checkpoint_info (keyval1.first) != nullptr);
-  match_checkpoint_info (meta_log.get_checkpoint_info (keyval1.first), &keyval1.second);
-  // key of keyval2 does not exist
-  REQUIRE (meta_log.get_checkpoint_info (keyval2.first) == nullptr);
+  // key1 exists and its value matches
+  REQUIRE (meta_log.get_checkpoint_info (key1) != nullptr);
+  const cublog::checkpoint_info *val1 = meta_log.get_checkpoint_info (key1);
+  match_checkpoint_info (meta_log.get_checkpoint_info (key1), val1);
+  // val2 of key2 does not exist
+  REQUIRE (meta_log.get_checkpoint_info (key2) == nullptr);
 
-  // Add keyval2
-  meta_log.add_checkpoint_info (keyval2.first, keyval2.second);
+  // Add key2,val2
+  {
+    test_chkpt_lsa_and_info_t keyval2 = create_chkpt_lsa_and_info (2);
+    meta_log.add_checkpoint_info (keyval2.first, std::move (keyval2.second));
+  }
   REQUIRE (meta_log.get_checkpoint_count () == 2);
-  // Both keyval1 and keyval2 exist and values are matching
-  REQUIRE (meta_log.get_checkpoint_info (keyval1.first) != nullptr);
-  match_checkpoint_info (meta_log.get_checkpoint_info (keyval1.first), &keyval1.second);
-  REQUIRE (meta_log.get_checkpoint_info (keyval2.first) != nullptr);
-  match_checkpoint_info (meta_log.get_checkpoint_info (keyval2.first), &keyval2.second);
+  // Both key1,val1 and key2,val2 exist and values are matching
+  REQUIRE (meta_log.get_checkpoint_info (key1) != nullptr);
+  match_checkpoint_info (meta_log.get_checkpoint_info (key1), val1);
+  REQUIRE (meta_log.get_checkpoint_info (key2) != nullptr);
+  const cublog::checkpoint_info *val2 = meta_log.get_checkpoint_info (key2);
+  match_checkpoint_info (meta_log.get_checkpoint_info (key2), val2);
 
-  // Erase all before keyval2's key. That's keyval1.
-  REQUIRE (meta_log.remove_checkpoint_info_before_lsa (keyval2.first) == 1);
+  // Erase all before key2. That's key1.
+  REQUIRE (meta_log.remove_checkpoint_info_before_lsa (key2) == 1);
   REQUIRE (meta_log.get_checkpoint_count () == 1);
-  // Keyval2 exists, keyval1 no longer
-  REQUIRE (meta_log.get_checkpoint_info (keyval1.first) == nullptr);
-  REQUIRE (meta_log.get_checkpoint_info (keyval2.first) != nullptr);
-  match_checkpoint_info (meta_log.get_checkpoint_info (keyval2.first), &keyval2.second);
+  // key2,val2 exists, key1,val1 no longer
+  REQUIRE (meta_log.get_checkpoint_info (key1) == nullptr);
+  REQUIRE (meta_log.get_checkpoint_info (key2) != nullptr);
+  match_checkpoint_info (meta_log.get_checkpoint_info (key2), val2);
 
-  // Add keyval3
-  meta_log.add_checkpoint_info (keyval3.first, keyval3.second);
+  // Add key3,val3
+  {
+    test_chkpt_lsa_and_info_t keyval3 = create_chkpt_lsa_and_info (3);
+    meta_log.add_checkpoint_info (keyval3.first, std::move (keyval3.second));
+  }
   REQUIRE (meta_log.get_checkpoint_count () == 2);
-  // Keyval2 and keyval3 exist
-  REQUIRE (meta_log.get_checkpoint_info (keyval2.first) != nullptr);
-  match_checkpoint_info (meta_log.get_checkpoint_info (keyval2.first), &keyval2.second);
-  REQUIRE (meta_log.get_checkpoint_info (keyval3.first) != nullptr);
-  match_checkpoint_info (meta_log.get_checkpoint_info (keyval3.first), &keyval3.second);
+  // key2,val2 and key3,val3 exist
+  REQUIRE (meta_log.get_checkpoint_info (key2) != nullptr);
+  match_checkpoint_info (meta_log.get_checkpoint_info (key2), val2);
+  REQUIRE (meta_log.get_checkpoint_info (key3) != nullptr);
+  const cublog::checkpoint_info *val3 = meta_log.get_checkpoint_info (key3);
+  match_checkpoint_info (meta_log.get_checkpoint_info (key3), val3);
 
   // Remove all
   REQUIRE (meta_log.remove_checkpoint_info_before_lsa (MAX_UT_LSA) == 2);
   // No keys exist
   REQUIRE (meta_log.get_checkpoint_count () == 0);
-  REQUIRE (meta_log.get_checkpoint_info (keyval2.first) == nullptr);
-  REQUIRE (meta_log.get_checkpoint_info (keyval3.first) == nullptr);
+  REQUIRE (meta_log.get_checkpoint_info (key2) == nullptr);
+  REQUIRE (meta_log.get_checkpoint_info (key3) == nullptr);
 }
 
 meta_file::meta_file ()
@@ -199,7 +211,7 @@ create_chkpt_lsa_and_info (std::int16_t value)
   log_lsa chk_lsa = { value, value };
   cublog::checkpoint_info chk_info;
   chk_info.set_start_redo_lsa (chk_lsa);
-  return std::make_pair (chk_lsa, chk_info);
+  return std::make_pair (chk_lsa, std::move (chk_info));
 }
 
 bool
