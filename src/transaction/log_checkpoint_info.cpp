@@ -461,7 +461,7 @@ namespace cublog
     fprintf (out_fp, "  start_redo_lsa = %lld|%d  snapshot_lsa = %lld|%d  has_2pc = %d\n",
 	     LSA_AS_ARGS (&m_start_redo_lsa), LSA_AS_ARGS (&m_snapshot_lsa), (int)m_has_2pc);
 
-    fprintf (out_fp, "  transaction_count = %u :\n", m_trans.size ());
+    fprintf (out_fp, "  transaction_count = %u :\n", (unsigned) m_trans.size ());
     int index = 0;
     for (const auto &ti : m_trans)
       {
@@ -483,7 +483,7 @@ namespace cublog
 	++index;
       }
 
-    fprintf (out_fp, "  sysop_count = %d :\n", m_sysops.size ());
+    fprintf (out_fp, "  sysop_count = %u :\n", (unsigned) m_sysops.size ());
     index = 0;
     for (const auto &si : m_sysops)
       {
