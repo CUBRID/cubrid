@@ -97,7 +97,6 @@ extern "C"
   extern PT_NODE *pt_top (PARSER_CONTEXT * parser);
 
   extern PT_NODE *parser_copy_tree (PARSER_CONTEXT * parser, const PT_NODE * tree);
-  extern PT_NODE *parser_copy_term_dblink (PARSER_CONTEXT * parser, PT_NODE * tree);
   extern PT_NODE *parser_copy_tree_list (PARSER_CONTEXT * parser, PT_NODE * tree);
   extern PT_NODE *parser_get_tree_list_diff (PARSER_CONTEXT * parser, PT_NODE * list1, PT_NODE * list2);
   extern PT_NODE *parser_append_node (PT_NODE * node, PT_NODE * list);
