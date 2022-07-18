@@ -48,7 +48,7 @@ namespace cublog
     for (const auto &chkinfo : m_checkpoints)
       {
 	serializer.pack_bigint (chkinfo.first.pageid);
-	serializer.pack_int (chkinfo.first.offset);
+	serializer.pack_short (chkinfo.first.offset);
 	serializer.pack_overloaded (chkinfo.second);
       }
   }
@@ -64,11 +64,10 @@ namespace cublog
       {
 	log_lsa chkpt_lsa;
 	std::int64_t upk_bigint;
-	int upk_int;
+	short upk_short;
 	deserializer.unpack_bigint (upk_bigint);
-	deserializer.unpack_int (upk_int);
-	assert (upk_int <= INT16_MAX);
-	chkpt_lsa = { upk_bigint, static_cast<std::int16_t> (upk_int) };
+	deserializer.unpack_short (upk_short);
+	chkpt_lsa = { upk_bigint, static_cast<std::int16_t> (upk_short) };
 
 	checkpoint_info chkinfo;
 	deserializer.unpack_overloaded (chkinfo);
