@@ -7170,12 +7170,27 @@ log_dump_record_ha_server_state (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
 static LOG_PAGE *
 log_dump_record_trantable_snapshot (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  const LOG_REC_TRANTABLE_SNAPSHOT *trantable_snapshot = nullptr;
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*trantable_snapshot), log_lsa, log_page_p);
-  trantable_snapshot = (LOG_REC_TRANTABLE_SNAPSHOT *) (log_page_p->area + log_lsa->offset);
+  constexpr size_t size_of_log_rec = sizeof (LOG_REC_TRANTABLE_SNAPSHOT);
 
-  fprintf (out_fp, " Snapshot_LSA = %lld|%d, length =%zu", LSA_AS_ARGS (&trantable_snapshot->snapshot_lsa),
-	   trantable_snapshot->length);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, size_of_log_rec, log_lsa, log_page_p);
+
+  const LOG_REC_TRANTABLE_SNAPSHOT *const trantable_snapshot
+    = (LOG_REC_TRANTABLE_SNAPSHOT *) (log_page_p->area + log_lsa->offset);
+  // copy value from mapped log record before advancing the log [possibly] to a new log page
+  const size_t trantable_snapshot_len = trantable_snapshot->length;
+  fprintf (out_fp, " Snapshot_LSA = %lld|%d, length =%u\n", LSA_AS_ARGS (&trantable_snapshot->snapshot_lsa),
+	   (unsigned) trantable_snapshot_len);
+  LOG_READ_ADD_ALIGN (thread_p, size_of_log_rec, log_lsa, log_page_p);
+
+  cublog::checkpoint_info checkpoint_info;
+  {
+    std::unique_ptr < char[] > data_buf = std::make_unique < char[] > (static_cast < size_t > (trantable_snapshot_len));
+    logpb_copy_from_log (thread_p, data_buf.get (), static_cast < int >(trantable_snapshot_len), log_lsa, log_page_p);
+    cubpacking::unpacker unpacker;
+    unpacker.set_buffer (data_buf.get (), trantable_snapshot_len);
+    checkpoint_info.unpack (unpacker);
+  }
+  checkpoint_info.dump (out_fp);
 
   return log_page_p;
 }
