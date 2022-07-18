@@ -17837,7 +17837,7 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
       ASSERT_ERROR ();
     }
 
-  if (intl_identifier_casecmp (old_target_name, target_name) != 0)
+  if (old_target_obj_id != NULL && intl_identifier_casecmp (old_target_name, target_name) != 0)
     {
       synonym_remove_xasl_by_oid (old_target_obj_id);
     }
@@ -18258,7 +18258,10 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
       ASSERT_ERROR ();
     }
 
-  synonym_remove_xasl_by_oid (old_target_obj_id);
+  if (old_target_obj_id != NULL)
+    {
+      synonym_remove_xasl_by_oid (old_target_obj_id);
+    }
 
 end:
   AU_ENABLE (save);
@@ -18443,7 +18446,10 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
       ASSERT_ERROR ();
     }
 
-  synonym_remove_xasl_by_oid (old_target_obj_id);
+  if (old_target_obj_id != NULL)
+    {
+      synonym_remove_xasl_by_oid (old_target_obj_id);
+    }
 
 end:
   if (obj_tmpl != NULL && instance_obj == NULL)
