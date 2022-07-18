@@ -220,6 +220,7 @@ static PUSHABLE_TYPE mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE *
 					      PT_NODE * class_spec, bool is_vclass, PT_NODE * order_by,
 					      PT_NODE * class_);
 static PUSHABLE_TYPE mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery);
+static PT_NODE *pt_copy_term_for_dblink (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, int *continue_walk);
 static void pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * term_list,
 			       FIND_ID_TYPE type);
 static int mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
@@ -3726,6 +3727,48 @@ pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * 
 }
 
 /*
+ * pt_copy_term_for_dblink () - copies exactly a term node excluding cast node for dblink,
+      and returns a pointer to the copy. It is eligible for a walk "pre" function
+ *   return:
+ *   parser(in):
+ *   old_node(in):
+ *   arg(in):
+ *   continue_walk(in):
+ */
+static PT_NODE *
+pt_copy_term_for_dblink (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, int *continue_walk)
+{
+  PT_NODE *new_node = NULL;
+
+  if (old_node->node_type == PT_EXPR)
+    {
+      if (old_node->info.expr.op == PT_CAST && PT_EXPR_INFO_IS_FLAGED (old_node, PT_EXPR_INFO_CAST_WRAP))
+	{
+	  new_node = parser_new_node (parser, old_node->info.expr.arg1->node_type);
+	  if (new_node == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+	  *new_node = *old_node->info.expr.arg1;
+	}
+    }
+
+  if (new_node == NULL)
+    {
+      new_node = parser_new_node (parser, old_node->node_type);
+      if (new_node == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return NULL;
+	}
+      *new_node = *old_node;
+    }
+
+  return new_node;
+}
+
+/*
  * pt_copypush_terms() - push sargable term into the derived subquery
  *   return:
  *   parser(in):
@@ -3777,7 +3820,8 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
       break;
     case PT_DBLINK_TABLE:
       /* copy terms */
-      query->info.dblink_table.pushed_pred = parser_copy_term_dblink (parser, term_list);
+      query->info.dblink_table.pushed_pred =
+	parser_walk_tree (parser, term_list, pt_copy_term_for_dblink, NULL, NULL, NULL);
       save_custom = parser->custom_print;
       parser->custom_print |= PT_CONVERT_RANGE | PT_SUPPRESS_RESOLVED | PT_PRINT_NO_HOST_VAR_INDEX;
       pushed_pred = pt_print_and_list (parser, query->info.dblink_table.pushed_pred);
