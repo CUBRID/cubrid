@@ -853,6 +853,11 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 
 	  if (db_value_coerce (&cci_value, valptrp->val, &dom) != DOMAIN_COMPATIBLE)
 	    {
+	      /*
+	         in repeated error case, in order to display correct error message,
+	         we need to reinitialize the domain of valptrp->val
+	       */
+	      db_value_domain_init (valptrp->val, (DB_TYPE) dom.type->id, dom.precision, dom.scale);
 	      goto close_exit;
 	    }
 	}
