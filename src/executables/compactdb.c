@@ -63,7 +63,7 @@ static void process_object (THREAD_ENTRY * thread_p, DESC_OBJ * desc_obj, OID * 
 static int process_set (THREAD_ENTRY * thread_p, DB_SET * set);
 static int process_value (THREAD_ENTRY * thread_p, DB_VALUE * value);
 static DB_OBJECT *is_class (OID * obj_oid, OID * class_oid);
-static int disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid);
+static int disk_update_instance (THREAD_ENTRY * thread_p, MOP classop, DESC_OBJ * obj, OID * oid);
 static RECDES *alloc_recdes (int length);
 static void free_recdes (RECDES * rec);
 static void disk_init (void);
@@ -523,7 +523,7 @@ process_object (THREAD_ENTRY * thread_p, DESC_OBJ * desc_obj, OID * obj_oid, boo
 	{
 	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_UPDATING));
 	}
-      disk_update_instance (desc_obj->classop, desc_obj, obj_oid);
+      disk_update_instance (thread_p, desc_obj->classop, desc_obj, obj_oid);
     }
 }
 
@@ -646,12 +646,13 @@ is_class (OID * obj_oid, OID * class_oid)
 /*
  * disk_update_instance - update object instance
  *    return: number of processed instance. 0 is error.
+ *    thread_p(in): thread entry
  *    classop(in): class object
  *    obj(in): object instance
  *    oid(in): oid
  */
 static int
-disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
+disk_update_instance (THREAD_ENTRY * thread_p, MOP classop, DESC_OBJ * obj, OID * oid)
 {
   HEAP_OPERATION_CONTEXT update_context;
   HFID *hfid;
@@ -700,7 +701,7 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
 
   heap_create_update_context (&update_context, hfid, oid, WS_OID (classop), Diskrec, NULL,
 			      UPDATE_INPLACE_CURRENT_MVCCID);
-  if (heap_update_logical (thread_get_thread_entry_info (), &update_context) != NO_ERROR)
+  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
     {
       printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_CANT_UPDATE));
       return (0);
