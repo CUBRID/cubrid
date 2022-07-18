@@ -3808,7 +3808,8 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
       query->info.dblink_table.pushed_pred = parser_copy_tree_list (parser, term_list);
       /* remove the cast wrap from pushed predicate */
       query->info.dblink_table.pushed_pred =
-	parser_walk_tree (parser, term_list, pt_remove_cast_wrap_for_dblink, NULL, NULL, NULL);
+	parser_walk_tree (parser, query->info.dblink_table.pushed_pred, pt_remove_cast_wrap_for_dblink, NULL, NULL,
+			  NULL);
       save_custom = parser->custom_print;
       parser->custom_print |= PT_CONVERT_RANGE | PT_SUPPRESS_RESOLVED | PT_PRINT_NO_HOST_VAR_INDEX;
       pushed_pred = pt_print_and_list (parser, query->info.dblink_table.pushed_pred);
