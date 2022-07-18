@@ -31,7 +31,7 @@ namespace cublog
 
     end_offset += serializer.get_packed_bool_size (end_offset); // is shutdown
     end_offset += serializer.get_packed_int_size (end_offset); // m_checkpoints.size ()
-    for (const auto chkinfo : m_checkpoints)
+    for (const auto &chkinfo : m_checkpoints)
       {
 	end_offset += serializer.get_packed_bigint_size (end_offset);
 	end_offset += serializer.get_packed_int_size (end_offset);
@@ -45,10 +45,10 @@ namespace cublog
   {
     serializer.pack_bool (m_clean_shutdown);
     serializer.pack_to_int (m_checkpoints.size ());
-    for (const auto chkinfo : m_checkpoints)
+    for (const auto &chkinfo : m_checkpoints)
       {
 	serializer.pack_bigint (chkinfo.first.pageid);
-	serializer.pack_int (chkinfo.first.offset);
+	serializer.pack_short (chkinfo.first.offset);
 	serializer.pack_overloaded (chkinfo.second);
       }
   }
@@ -64,11 +64,10 @@ namespace cublog
       {
 	log_lsa chkpt_lsa;
 	std::int64_t upk_bigint;
-	int upk_int;
+	short upk_short;
 	deserializer.unpack_bigint (upk_bigint);
-	deserializer.unpack_int (upk_int);
-	assert (upk_int <= INT16_MAX);
-	chkpt_lsa = { upk_bigint, static_cast<std::int16_t> (upk_int) };
+	deserializer.unpack_short (upk_short);
+	chkpt_lsa = { upk_bigint, static_cast<std::int16_t> (upk_short) };
 
 	checkpoint_info chkinfo;
 	deserializer.unpack_overloaded (chkinfo);
@@ -172,12 +171,6 @@ namespace cublog
   void
   meta::add_checkpoint_info (const log_lsa &chkpt_lsa, checkpoint_info &&chkpt_info)
   {
-    m_checkpoints.insert ({ chkpt_lsa, std::move (chkpt_info) });
-  }
-
-  void
-  meta::add_checkpoint_info (const log_lsa &chkpt_lsa, const checkpoint_info &chkpt_info)
-  {
     const checkpoint_container_t::const_iterator found_it = m_checkpoints.find (chkpt_lsa);
     if (found_it != m_checkpoints.cend ())
       {
@@ -186,7 +179,7 @@ namespace cublog
 	// added to the log for the purpose of being transferred to passive transaction servers
 	m_checkpoints.erase (found_it);
       }
-    m_checkpoints.insert ({ chkpt_lsa, chkpt_info });
+    m_checkpoints.insert ({chkpt_lsa, std::move (chkpt_info)});
   }
 
   size_t
