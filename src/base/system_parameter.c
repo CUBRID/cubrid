@@ -87,8 +87,10 @@
 #include "tde.h"
 #if defined (SERVER_MODE)
 #include "thread_worker_pool.hpp"	// for cubthread::system_core_count
-#include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#endif // SERVER_MODE || SA_MODE
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -2728,7 +2730,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_LK_TIMEOUT_SECS,
    PRM_NAME_LK_TIMEOUT_SECS,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_DEPRECATED),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_DEPRECATED),
    PRM_INTEGER,
    &prm_lk_timeout_secs_flag,
    (void *) &prm_lk_timeout_secs_default,
@@ -2739,7 +2741,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_LK_TIMEOUT,
    PRM_NAME_LK_TIMEOUT,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    &prm_lk_timeout_secs_flag,
    (void *) &prm_lk_timeout_secs_default,
@@ -2849,7 +2851,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_LOG_ISOLATION_LEVEL,
    PRM_NAME_LOG_ISOLATION_LEVEL,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_KEYWORD,
    &prm_log_isolation_level_flag,
    (void *) &prm_log_isolation_level_default,
@@ -8029,6 +8031,41 @@ sysprm_make_default_values (const char *data, char *default_val_buf, const int b
 }
 #endif /* !SERVER_MODE */
 
+#if !defined (CS_MODE)
+/*
+ * sysprm_change_parameter_extra () - handle if parameter require other handling.
+ *
+ * return : nothing.
+ * prm (in)       : system parameter that will have its value changed.
+ * value (in)     : new values as sysprm_value
+ *
+ * NOTE: Additional processing if parameter require extra handling.
+ */
+static void
+sysprm_change_parameter_extra (SYSPRM_PARAM * prm, SYSPRM_VALUE value)
+{
+  THREAD_ENTRY *thread_p;
+
+  thread_p = thread_get_thread_entry_info ();
+  assert (thread_p != NULL);
+
+  switch ((int) prm->id)
+    {
+    case PRM_ID_LK_TIMEOUT:
+      if (value.i > 0)
+	{
+	  value.i = value.i * 1000;
+	}
+      (void) xlogtb_reset_wait_msecs (thread_p, value.i);
+      break;
+
+    case PRM_ID_LOG_ISOLATION_LEVEL:
+      (void) xlogtb_reset_isolation (thread_p, (TRAN_ISOLATION) value.i);
+      break;
+    }
+}
+#endif /* !CS_MODE */
+
 /*
  * sysprm_change_parameter_values () - update system parameter values
  *
@@ -8069,6 +8106,9 @@ sysprm_change_parameter_values (const SYSPRM_ASSIGN_VALUE * assignments, bool ch
 	}
 #endif
       sysprm_set_value (prm, assignments->value, set_flag, true);
+#if !defined (CS_MODE)
+      sysprm_change_parameter_extra (prm, assignments->value);
+#endif
 #if defined (SERVER_MODE)
       if (sysprm_get_id (prm) == PRM_ID_ACCESS_IP_CONTROL)
 	{
