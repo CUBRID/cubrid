@@ -452,6 +452,50 @@ namespace cublog
     m_start_redo_lsa = start_redo_lsa;
   }
 
+  void
+  checkpoint_info::dump (FILE *out_fp)
+  {
+    assert (out_fp != nullptr);
+
+    fprintf (out_fp, "-->> Data:\n");
+    fprintf (out_fp, "  start_redo_lsa = %lld|%d  snapshot_lsa = %lld|%d  has_2pc = %d\n",
+	     LSA_AS_ARGS (&m_start_redo_lsa), LSA_AS_ARGS (&m_snapshot_lsa), (int)m_has_2pc);
+
+    fprintf (out_fp, "  transaction_count = %u :\n", m_trans.size ());
+    int index = 0;
+    for (const auto &ti : m_trans)
+      {
+	fprintf (out_fp,
+		 "%3d isloose_end = %d  trid = %d  state = %s\n"
+		 "    head_lsa = %lld|%d  tail_lsa = %lld|%d\n"
+		 "    undo_nxlsa = %lld|%d  posp_nxlsa = %lld|%d\n"
+		 "    savept_lsa = %lld|%d\n"
+		 "    tail_topresult_lsa = %lld|%d  start_postpone_lsa = %lld|%d\n"
+		 "    last_mvcc_lsa = %lld|%d  mvcc_id = %llu  mvcc_sub_id = %llu\n"
+		 "    user_name = %s\n",
+		 index, (int)ti.isloose_end, ti.trid, log_state_string (ti.state),
+		 LSA_AS_ARGS (&ti.head_lsa), LSA_AS_ARGS (&ti.tail_lsa),
+		 LSA_AS_ARGS (&ti.undo_nxlsa), LSA_AS_ARGS (&ti.posp_nxlsa),
+		 LSA_AS_ARGS (&ti.savept_lsa),
+		 LSA_AS_ARGS (&ti.tail_topresult_lsa), LSA_AS_ARGS (&ti.start_postpone_lsa),
+		 LSA_AS_ARGS (&ti.last_mvcc_lsa), (unsigned long long)ti.mvcc_id, (unsigned long long)ti.mvcc_sub_id,
+		 (ti.user_name != nullptr ? ti.user_name : "<NULL>"));
+	++index;
+      }
+
+    fprintf (out_fp, "  sysop_count = %d :\n", m_sysops.size ());
+    index = 0;
+    for (const auto &si : m_sysops)
+      {
+	fprintf (out_fp,
+		 "%3d trid = %d  sysop_start_postpone_lsa = %lld|%d\n"
+		 "    atomic_sysop_start_lsa = %lld|%d\n",
+		 index, si.trid, LSA_AS_ARGS (&si.sysop_start_postpone_lsa),
+		 LSA_AS_ARGS (&si.atomic_sysop_start_lsa));
+	++index;
+      }
+  }
+
   bool
   checkpoint_info::tran_info::operator== (const tran_info &other) const
   {

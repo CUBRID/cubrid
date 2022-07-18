@@ -68,6 +68,8 @@ namespace cublog
       size_t get_transaction_count () const;
       size_t get_sysop_count () const;
 
+      void dump (FILE *out_fp);
+
     private:
       void load_checkpoint_trans (log_tdes &tdes, LOG_LSA &smallest_lsa);
       void load_checkpoint_topop (log_tdes &tdes);
