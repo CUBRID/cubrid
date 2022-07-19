@@ -87,10 +87,8 @@
 #include "tde.h"
 #if defined (SERVER_MODE)
 #include "thread_worker_pool.hpp"	// for cubthread::system_core_count
-#endif // SERVER_MODE
-#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
-#endif // SERVER_MODE || SA_MODE
+#endif // SERVER_MODE
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -8031,41 +8029,6 @@ sysprm_make_default_values (const char *data, char *default_val_buf, const int b
 }
 #endif /* !SERVER_MODE */
 
-#if !defined (CS_MODE)
-/*
- * sysprm_change_parameter_extra () - handle if parameter require other handling.
- *
- * return : nothing.
- * prm (in)       : system parameter that will have its value changed.
- * value (in)     : new values as sysprm_value
- *
- * NOTE: Additional processing if parameter require extra handling.
- */
-static void
-sysprm_change_parameter_extra (SYSPRM_PARAM * prm, SYSPRM_VALUE value)
-{
-  THREAD_ENTRY *thread_p;
-
-  thread_p = thread_get_thread_entry_info ();
-  assert (thread_p != NULL);
-
-  switch ((int) prm->id)
-    {
-    case PRM_ID_LK_TIMEOUT:
-      if (value.i > 0)
-	{
-	  value.i = value.i * 1000;
-	}
-      (void) xlogtb_reset_wait_msecs (thread_p, value.i);
-      break;
-
-    case PRM_ID_LOG_ISOLATION_LEVEL:
-      (void) xlogtb_reset_isolation (thread_p, (TRAN_ISOLATION) value.i);
-      break;
-    }
-}
-#endif /* !CS_MODE */
-
 /*
  * sysprm_change_parameter_values () - update system parameter values
  *
@@ -8106,9 +8069,6 @@ sysprm_change_parameter_values (const SYSPRM_ASSIGN_VALUE * assignments, bool ch
 	}
 #endif
       sysprm_set_value (prm, assignments->value, set_flag, true);
-#if !defined (CS_MODE)
-      sysprm_change_parameter_extra (prm, assignments->value);
-#endif
 #if defined (SERVER_MODE)
       if (sysprm_get_id (prm) == PRM_ID_ACCESS_IP_CONTROL)
 	{
