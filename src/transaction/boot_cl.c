@@ -6317,14 +6317,42 @@ boot_define_view_db_collation (void)
 	}
     }
 
+  // *INDENT-OFF*
   sprintf (stmt,
-	   "SELECT [c].[coll_id], [c].[coll_name], [ch].[charset_name], CASE [c].[built_in] WHEN 0 THEN 'No'"
-	   " WHEN 1 THEN 'Yes' ELSE 'ERROR' END, CASE [c].[expansions] WHEN 0 THEN 'No'"
-	   " WHEN 1 THEN 'Yes' ELSE 'ERROR' END, [c].[contractions], CASE [c].[uca_strength]"
-	   " WHEN 0 THEN 'Not applicable' WHEN 1 THEN 'Primary' WHEN 2 THEN 'Secondary'"
-	   " WHEN 3 THEN 'Tertiary' WHEN 4 THEN 'Quaternary' WHEN 5 THEN 'Identity' ELSE 'Unknown' END"
-	   " FROM [%s] [c] JOIN [%s] [ch] ON [c].[charset_id] = [ch].[charset_id] ORDER BY [c].[coll_id]",
-	   CT_COLLATION_NAME, CT_CHARSET_NAME);
+	"SELECT "
+	  "[c].[coll_id] AS [coll_id], "
+	  "[c].[coll_name] AS [coll_name], "
+	  "[ch].[charset_name] AS [charset_name], "
+	  "CASE [c].[built_in] "
+	    "WHEN 0 THEN 'No' "
+	    "WHEN 1 THEN 'Yes' "
+	    "ELSE 'ERROR' "
+	    "END AS [is_builtin], "
+	  "CASE [c].[expansions] "
+	    "WHEN 0 THEN 'No' "
+	    "WHEN 1 THEN 'Yes' "
+	    "ELSE 'ERROR' "
+	    "END AS [has_expansions], "
+	  "[c].[contractions] AS [contractions], "
+	  "CASE [c].[uca_strength] "
+	    "WHEN 0 THEN 'Not applicable' "
+	    "WHEN 1 THEN 'Primary' "
+	    "WHEN 2 THEN 'Secondary' "
+	    "WHEN 3 THEN 'Tertiary' "
+	    "WHEN 4 THEN 'Quaternary' "
+	    "WHEN 5 THEN 'Identity' "
+	    "ELSE 'Unknown' "
+	    "END AS [uca_strength] "
+	"FROM "
+	  /* CT_COLLATION_NAME */
+	  "[%s] AS [c] "
+	  /* CT_CHARSET_NAME */
+	  "INNER JOIN [%s] AS [ch] ON [c].[charset_id] = [ch].[charset_id] "
+	"ORDER BY "
+	  "[c].[coll_id]",
+	CT_COLLATION_NAME,
+	CT_CHARSET_NAME);
+  // *INDENT-ON*
 
   error_code = db_add_query_spec (class_mop, stmt);
   if (error_code != NO_ERROR)
