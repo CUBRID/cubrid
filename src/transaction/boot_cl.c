@@ -6413,10 +6413,23 @@ boot_define_view_db_charset (void)
 	}
     }
 
+  // *INDENT-OFF*
   sprintf (stmt,
-	   "SELECT [ch].[charset_id], [ch].[charset_name], [coll].[coll_name], [ch].[char_size] "
-	   "FROM [%s] [ch] JOIN [%s] [coll] ON [ch].[default_collation] = [coll].[coll_id] "
-	   "ORDER BY [ch].[charset_id]", CT_CHARSET_NAME, CT_COLLATION_NAME);
+	"SELECT "
+	  "[ch].[charset_id] AS [charset_id], "
+	  "[ch].[charset_name] AS [charset_name], "
+	  "[coll].[coll_name] AS [default_collation], "
+	  "[ch].[char_size] AS [char_size] " 
+	"FROM "
+	  /* CT_CHARSET_NAME */
+	  "[%s] AS [ch] "
+	  /* CT_COLLATION_NAME */
+	  "INNER JOIN [%s] AS [coll] ON [ch].[default_collation] = [coll].[coll_id] "
+	"ORDER BY "
+	  "[ch].[charset_id]",
+	CT_CHARSET_NAME,
+	CT_COLLATION_NAME);
+  // *INDENT-ON*
 
   error_code = db_add_query_spec (class_mop, stmt);
   if (error_code != NO_ERROR)
