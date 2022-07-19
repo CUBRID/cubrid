@@ -5518,26 +5518,64 @@ boot_define_view_index (void)
 	}
     }
 
+  // *INDENT-OFF*
   sprintf (stmt,
-	   "SELECT [i].[index_name], CASE WHEN [i].[is_unique] = 0 THEN 'NO' ELSE 'YES' END,"
-	   " CASE WHEN [i].[is_reverse] = 0 THEN 'NO' ELSE 'YES' END, [i].[class_of].[class_name], [i].[class_of].[owner].[name], [i].[key_count],"
-	   " CASE WHEN [i].[is_primary_key] = 0 THEN 'NO' ELSE 'YES' END,"
-	   " CASE WHEN [i].[is_foreign_key] = 0 THEN 'NO' ELSE 'YES' END, [i].[filter_expression],"
-	   " CASE WHEN [i].[have_function] = 0 THEN 'NO' ELSE 'YES' END, [i].[comment],"
-	   " CASE WHEN [i].[status] = 0 THEN 'NO_INDEX' "
-	   " WHEN [i].[status] = 1 THEN 'NORMAL INDEX' "
-	   " WHEN [i].[status] = 2 THEN 'INVISIBLE INDEX'"
-	   " WHEN [i].[status] = 3 THEN 'INDEX IS IN ONLINE BUILDING' "
-	   " ELSE 'NULL' END "
-	   " FROM [%s] [i]"
-	   " WHERE CURRENT_USER = 'DBA' OR {[i].[class_of].[owner].[name]} SUBSETEQ ("
-	   " SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
-	   " FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER) OR"
-	   " {[i].[class_of]} SUBSETEQ (SELECT SUM(SET{[au].[class_of]}) FROM [%s] [au]"
-	   " WHERE {[au].[grantee].[name]} SUBSETEQ ("
-	   " SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
-	   " FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER) AND"
-	   " [au].[auth_type] = 'SELECT')", CT_INDEX_NAME, AU_USER_CLASS_NAME, CT_CLASSAUTH_NAME, AU_USER_CLASS_NAME);
+	"SELECT "
+	  "[i].[index_name] AS [index_name], "
+	  "CASE WHEN [i].[is_unique] = 0 THEN 'NO' ELSE 'YES' END AS [is_unique], "
+	  "CASE WHEN [i].[is_reverse] = 0 THEN 'NO' ELSE 'YES' END AS [is_reverse], "
+	  "[i].[class_of].[class_name] AS [class_name], "
+	  "[i].[class_of].[owner].[name] AS [owner_name], "
+	  "[i].[key_count] AS [key_count], "
+	  "CASE WHEN [i].[is_primary_key] = 0 THEN 'NO' ELSE 'YES' END AS [is_primary_key], "
+	  "CASE WHEN [i].[is_foreign_key] = 0 THEN 'NO' ELSE 'YES' END AS [is_foreign_key], "
+	  "[i].[filter_expression] AS [filter_expression], "
+	  "CASE WHEN [i].[have_function] = 0 THEN 'NO' ELSE 'YES' END AS [have_function], "
+	  "[i].[comment] AS [comment], "
+	  "CASE "
+	    "WHEN [i].[status] = 0 THEN 'NO_INDEX' "
+	    "WHEN [i].[status] = 1 THEN 'NORMAL INDEX' "
+	    "WHEN [i].[status] = 2 THEN 'INVISIBLE INDEX' "
+	    "WHEN [i].[status] = 3 THEN 'INDEX IS IN ONLINE BUILDING' "
+	    "ELSE 'NULL' "
+	    "END AS [status] "
+	"FROM "
+	  /* CT_INDEX_NAME */
+	  "[%s] AS [i] "
+	"WHERE "
+	  "CURRENT_USER = 'DBA' "
+	  "OR {[i].[class_of].[owner].[name]} SUBSETEQ ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") "
+	  "OR {[i].[class_of]} SUBSETEQ ("
+	      "SELECT "
+		"SUM (SET {[au].[class_of]}) "
+	      "FROM "
+		/* CT_CLASSAUTH_NAME */
+		"[%s] AS [au] "
+	      "WHERE "
+		"{[au].[grantee].[name]} SUBSETEQ ("
+		    "SELECT "
+		      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		    "FROM "
+		      /* AU_USER_CLASS_NAME */
+		      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		    "WHERE "
+		      "[u].[name] = CURRENT_USER"
+		  ") "
+		"AND [au].[auth_type] = 'SELECT'"
+	    ")",
+	CT_INDEX_NAME,
+	AU_USER_CLASS_NAME,
+	CT_CLASSAUTH_NAME,
+	AU_USER_CLASS_NAME);
+  // *INDENT-ON*
 
   error_code = db_add_query_spec (class_mop, stmt);
   if (error_code != NO_ERROR)
