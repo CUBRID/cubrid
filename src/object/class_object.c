@@ -4069,6 +4069,39 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
   const char **namep;
   int i, len, order;
 
+  /* for foreign key, need to check redundancy first */
+  if (new_cons == SM_CONSTRAINT_FOREIGN_KEY)
+    {
+      for (cons = cons_list; cons; cons = cons->next)
+	{
+	  /* check foreign key only */
+	  if (new_cons != cons->type)
+	    {
+	      continue;
+	    }
+
+	  attp = cons->attributes;
+	  namep = att_names;
+	  if (!attp || !namep)
+	    {
+	      continue;
+	    }
+
+	  len = 0;
+	  while (*attp && *namep && !intl_identifier_casecmp ((*attp)->header.name, *namep))
+	    {
+	      attp++;
+	      namep++;
+	    }
+
+	  /* not allowed redundant one */
+	  if (!*attp && !*namep)
+	    {
+	      return cons;
+	    }
+	}
+    }
+
   for (cons = cons_list; cons; cons = cons->next)
     {
       if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type))
@@ -7984,15 +8017,6 @@ classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints, const DB_
       if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type))
 	{
 	  ret = SM_CREATE_NEW_INDEX;
-	  return ret;
-	}
-      else if (SM_IS_SHARE_WITH_FOREIGN_KEY (existing_con->type))
-	{
-	  ret = SM_SHARE_INDEX;
-	  if (existing_con->filter_predicate != NULL || existing_con->func_index_info != NULL)
-	    {
-	      ret = SM_CREATE_NEW_INDEX;
-	    }
 	  return ret;
 	}
     }
