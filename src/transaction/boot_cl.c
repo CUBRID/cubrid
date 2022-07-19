@@ -6128,12 +6128,38 @@ boot_define_view_stored_procedure (void)
 	}
     }
 
+  // *INDENT-OFF*
   sprintf (stmt,
-	   "SELECT [sp].[sp_name], CASE [sp].[sp_type] WHEN 1 THEN 'PROCEDURE' ELSE 'FUNCTION' END,"
-	   " CASE WHEN [sp].[return_type] = 0 THEN 'void' WHEN [sp].[return_type] = 28 THEN 'CURSOR'"
-	   " ELSE (SELECT [dt].[type_name] FROM [%s] [dt] WHERE [sp].[return_type] = [dt].[type_id]) END,"
-	   " [sp].[arg_count], CASE [sp].[lang] WHEN 1 THEN 'JAVA' ELSE '' END,"
-	   " [sp].[target], [sp].[owner].[name], [sp].[comment] FROM [%s] [sp]", CT_DATATYPE_NAME, CT_STORED_PROC_NAME);
+	"SELECT "
+	  "[sp].[sp_name] AS [sp_name], "
+	  "CASE "
+	    "WHEN [sp].[sp_type] = 1 THEN 'PROCEDURE' "
+	    "ELSE 'FUNCTION' "
+	    "END AS [sp_type], "
+	  "CASE "
+	    "WHEN [sp].[return_type] = 0 THEN 'void' "
+	    "WHEN [sp].[return_type] = 28 THEN 'CURSOR' "
+	    "ELSE ("
+		"SELECT "
+		  "[dt].[type_name] "
+		"FROM "
+		  /* CT_DATATYPE_NAME */
+		  "[%s] AS [dt] "
+		"WHERE "
+		  "[sp].[return_type] = [dt].[type_id]"
+	      ") "
+	    "END AS [return_type], "
+	  "[sp].[arg_count] AS [arg_count], "
+	  "CASE WHEN [sp].[lang] = 1 THEN 'JAVA' ELSE '' END AS [lang], "
+	  "[sp].[target] AS [target], "
+	  "[sp].[owner].[name] AS [owner], "
+	  "[sp].[comment] AS [comment] "
+	"FROM "
+	  /* CT_STORED_PROC_NAME */
+	  "[%s] AS [sp]",
+	CT_DATATYPE_NAME,
+	CT_STORED_PROC_NAME);
+  // *INDENT-ON*
 
   error_code = db_add_query_spec (class_mop, stmt);
   if (error_code != NO_ERROR)
