@@ -4436,7 +4436,7 @@ boot_define_view_class (void)
   sprintf (stmt,
 	"SELECT "
 	  "[c].[class_name] AS [class_name], "
-	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], "
+	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOW' END AS [class_type], "
 	  "CASE WHEN MOD([c].[is_system_class], 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_system_class], "
 	  "CASE [c].[tde_algorithm] WHEN 0 THEN 'NONE' WHEN 1 THEN 'AES' WHEN 2 THEN 'ARIA' END AS [tde_algorithm], "
@@ -4450,37 +4450,40 @@ boot_define_view_class (void)
 	  "[c].[comment] AS [comment] "
 	"FROM "
 	  /* CT_CLASS_NAME */
-	  "[%s] AS [c] "
+	  "[%s] AS [c], "
 	  /* CT_COLLATION_NAME */
-	  "INNER JOIN [%s] AS [coll] ON [c].[collation_id] = [coll].[coll_id] "
+	  "[%s] AS [coll] "
 	"WHERE "
-	  "CURRENT_USER = 'DBA' "
-	  "OR {[c].[owner].[name]} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[c]} SUBSETEQ ("
-	      "SELECT "
-		"SUM (SET {[au].[class_of]}) "
-	      "FROM "
-		/* CT_CLASSAUTH_NAME */
-		"[%s] AS [au] "
-	      "WHERE "
-		"{[au].[grantee].[name]} SUBSETEQ ("
-		    "SELECT "
-		      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		    "FROM "
-		      /* AU_USER_CLASS_NAME */
-		      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		    "WHERE "
-		      "[u].[name] = CURRENT_USER"
-		  ") "
-		"AND [au].[auth_type] = 'SELECT'"
+	  "[c].[collation_id] = [coll].[coll_id] "
+	  "AND ("
+	      "CURRENT_USER = 'DBA' "
+	      "OR {[c].[owner].[name]} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
+	      "OR {[c]} SUBSETEQ ("
+		  "SELECT "
+		    "SUM (SET {[au].[class_of]}) "
+		  "FROM "
+		    /* CT_CLASSAUTH_NAME */
+		    "[%s] AS [au] "
+		  "WHERE "
+		    "{[au].[grantee].[name]} SUBSETEQ ("
+			"SELECT "
+			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+			"FROM "
+			  /* AU_USER_CLASS_NAME */
+			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+			"WHERE "
+			  "[u].[name] = CURRENT_USER"
+		      ") "
+		    "AND [au].[auth_type] = 'SELECT'"
+		")"
 	    ")",
 	CT_PARTITION_NAME,
 	CT_CLASS_NAME,
@@ -4552,9 +4555,9 @@ boot_define_view_super_class (void)
   sprintf (stmt,
 	"SELECT "
 	  "[c].[class_name] AS [class_name], "
-	  "[c].[owner].[name] AS [owner_name], "
+	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "[s].[class_name] AS [super_class_name], "
-	  "[s].[owner].[name] AS [super_owner_name] "
+	  "CAST ([s].[owner].[name] AS VARCHAR(255)) AS [super_owner_name] " /* string -> varchar(255) */
 	"FROM "
 	  /* CT_CLASS_NAME */
 	  "[%s] AS [c], TABLE ([c].[super_classes]) AS [t] ([s]) "
@@ -4655,8 +4658,8 @@ boot_define_view_vclass (void)
   sprintf (stmt,
 	"SELECT "
 	  "[q].[class_of].[class_name] AS [vclass_name], "
-	  "[q].[class_of].[owner].[name] AS [owner_name], "
-	  "[q].[spec] AS [vclass_def], "
+	  "CAST ([q].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
+	  "CAST ([q].[spec] AS VARCHAR(4096)) AS [vclass_def], " /* varchar(1073741823) -> varchar(4096) */
 	  "[c].[comment] AS [comment] "
 	"FROM "
 	  /* CT_QUERYSPEC_NAME */
@@ -4664,7 +4667,7 @@ boot_define_view_vclass (void)
 	  /* CT_CLASS_NAME */
 	  "[%s] AS [c] "
 	"WHERE "
-	  "[q].[class_of].[unique_name] = [c].[unique_name] "
+	  "[q].[class_of] = [c] "
 	  "AND ("
 	      "CURRENT_USER = 'DBA' "
 	      "OR {[q].[class_of].[owner].[name]} SUBSETEQ ("
@@ -4779,15 +4782,11 @@ boot_define_view_attribute (void)
 	"SELECT "
 	  "[a].[attr_name] AS [attr_name], "
 	  "[c].[class_name] AS [class_name], "
-	  "[c].[owner].[name] AS [owner_name], "
-	  "CASE "
-	    "WHEN [a].[attr_type] = 0 THEN 'INSTANCE' "
-	    "WHEN [a].[attr_type] = 1 THEN 'CLASS' "
-	    "ELSE 'SHARED' "
-	    "END AS [attr_type], "
+	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
+	  "CASE [a].[attr_type] WHEN 0 THEN 'INSTANCE' WHEN 1 THEN 'CLASS' ELSE 'SHARED' END AS [attr_type], "
 	  "[a].[def_order] AS [def_order], "
 	  "[a].[from_class_of].[class_name] AS [from_class_name], "
-	  "[a].[from_class_of].[owner].[name] AS [from_owner_name], "
+	  "CAST ([a].[from_class_of].[owner].[name] AS VARCHAR(255)) AS [from_owner_name], " /* string -> varchar(255) */
 	  "[a].[from_attr_name] AS [from_attr_name], "
 	  "[t].[type_name] AS [data_type], "
 	  "[d].[prec] AS [prec], "
@@ -4805,7 +4804,7 @@ boot_define_view_attribute (void)
 	      "'Not applicable'"
 	    ") AS [collation], "
 	  "[d].[class_of].[class_name] AS [domain_class_name], "
-	  "[d].[class_of].[owner].[name] AS [domain_owner_name], "
+	  "CAST ([d].[class_of].[owner].[name] AS VARCHAR(255)) AS [domain_owner_name], " /* string -> varchar(255) */
 	  "[a].[default_value] AS [default_value], "
 	  "CASE WHEN [a].[is_nullable] = 1 THEN 'YES' ELSE 'NO' END AS [is_nullable], "
 	  "[a].[comment] AS [comment] "
@@ -4932,18 +4931,14 @@ boot_define_view_attribute_set_domain (void)
 	"SELECT "
 	  "[a].[attr_name] AS [attr_name], "
 	  "[c].[class_name] AS [class_name], "
-	  "[c].[owner].[name] AS [owner_name], "
-	  "CASE "
-	    "WHEN [a].[attr_type] = 0 THEN 'INSTANCE' "
-	    "WHEN [a].[attr_type] = 1 THEN 'CLASS' "
-	    "ELSE 'SHARED' "
-	    "END AS [attr_type], "
+	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
+	  "CASE [a].[attr_type] WHEN 0 THEN 'INSTANCE' WHEN 1 THEN 'CLASS' ELSE 'SHARED' END AS [attr_type], "
 	  "[et].[type_name] AS [data_type], "
 	  "[e].[prec] AS [prec], "
 	  "[e].[scale] AS [scale], "
 	  "[e].[code_set] AS [code_set], "
 	  "[e].[class_of].[class_name] AS [domain_class_name], "
-	  "[e].[class_of].[owner].[name] AS [domain_owner_name] "
+	  "CAST ([e].[class_of].[owner].[name] AS VARCHAR(255)) AS [domain_owner_name] " /* string -> varchar(255) */
 	"FROM "
 	  /* CT_CLASS_NAME */
 	  "[%s] AS [c], "
@@ -5063,13 +5058,10 @@ boot_define_view_method (void)
 	"SELECT "
 	  "[m].[meth_name] AS [meth_name], "
 	  "[m].[class_of].[class_name] AS [class_name], "
-	  "[m].[class_of].[owner].[name] AS [owner_name], "
-	  "CASE "
-	    "WHEN [m].[meth_type] = 0 THEN 'INSTANCE' "
-	    "ELSE 'CLASS' "
-	    "END AS [meth_type], "
+	  "CAST ([m].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
+	  "CASE [m].[meth_type] WHEN 0 THEN 'INSTANCE' ELSE 'CLASS' END AS [meth_type], "
 	  "[m].[from_class_of].[class_name] AS [from_class_name], "
-	  "[m].[from_class_of].[owner].[name] AS [from_owner_name], "
+	  "CAST ([m].[from_class_of].[owner].[name] AS VARCHAR(255)) AS [from_owner_name], " /* string -> varchar(255) */
 	  "[m].[from_meth_name] AS [from_meth_name], "
 	  "[s].[func_name] AS [func_name] "
 	"FROM "
@@ -5186,18 +5178,15 @@ boot_define_view_method_argument (void)
 	"SELECT "
 	  "[s].[meth_of].[meth_name] AS [meth_name], "
 	  "[s].[meth_of].[class_of].[class_name] AS [class_name], "
-	  "[s].[meth_of].[class_of].[owner].[name] AS [owner_name], "
-	  "CASE "
-	    "WHEN [s].[meth_of].[meth_type] = 0 THEN 'INSTANCE' "
-	    "ELSE 'CLASS' "
-	    "END AS [meth_type], "
+	  "CAST ([s].[meth_of].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
+	  "CASE [s].[meth_of].[meth_type] WHEN 0 THEN 'INSTANCE' ELSE 'CLASS' END AS [meth_type], "
 	  "[a].[index_of] AS [index_of], "
 	  "[t].[type_name] AS [data_type], "
 	  "[d].[prec] AS [prec], "
 	  "[d].[scale] AS [scale], "
 	  "[d].[code_set] AS [code_set], "
 	  "[d].[class_of].[class_name] AS [domain_class_name], "
-	  "[d].[class_of].[owner].[name] AS [domain_owner_name] "
+	  "CAST ([d].[class_of].[owner].[name] AS VARCHAR(255)) AS [domain_owner_name] " /* string -> varchar(255) */
 	"FROM "
 	  /* CT_METHSIG_NAME */
 	  "[%s] AS [s], "
@@ -5323,18 +5312,15 @@ boot_define_view_method_argument_set_domain (void)
 	"SELECT "
 	  "[s].[meth_of].[meth_name] AS [meth_name], "
 	  "[s].[meth_of].[class_of].[class_name] AS [class_name], "
-	  "[s].[meth_of].[class_of].[owner].[name] AS [owner_name], "
-	  "CASE "
-	    "WHEN [s].[meth_of].[meth_type] = 0 THEN 'INSTANCE' "
-	    "ELSE 'CLASS' "
-	    "END AS [meth_type], "
+	  "CAST ([s].[meth_of].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
+	  "CASE [s].[meth_of].[meth_type] WHEN 0 THEN 'INSTANCE' ELSE 'CLASS' END AS [meth_type], "
 	  "[a].[index_of] AS [index_of], "
 	  "[et].[type_name] AS [data_type], "
 	  "[e].[prec] AS [prec], "
 	  "[e].[scale] AS [scale], "
 	  "[e].[code_set] AS [code_set], "
 	  "[e].[class_of].[class_name] AS [domain_class_name], "
-	  "[e].[class_of].[owner].[name] AS [domain_owner_name] "
+	  "CAST ([e].[class_of].[owner].[name] AS VARCHAR(255)) AS [domain_owner_name] " /* string -> varchar(255) */
 	"FROM "
 	  /* CT_METHSIG_NAME */
 	  "[%s] AS [s], "
@@ -5450,10 +5436,10 @@ boot_define_view_method_file (void)
   sprintf (stmt,
 	"SELECT "
 	  "[f].[class_of].[class_name] AS [class_name], "
-	  "[f].[class_of].[owner].[name] AS [owner_name], "
+	  "CAST ([f].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "[f].[path_name] AS [path_name], "
 	  "[f].[from_class_of].[class_name] AS [from_class_name], "
-	  "[f].[from_class_of].[owner].[name] AS [from_owner_name] "
+	  "CAST ([f].[from_class_of].[owner].[name] AS VARCHAR(255)) AS [from_owner_name] " /* string -> varchar(255) */
 	"FROM "
 	  /* CT_METHFILE_NAME */
 	  "[%s] AS [f] "
@@ -5562,21 +5548,21 @@ boot_define_view_index (void)
   sprintf (stmt,
 	"SELECT "
 	  "[i].[index_name] AS [index_name], "
-	  "CASE WHEN [i].[is_unique] = 0 THEN 'NO' ELSE 'YES' END AS [is_unique], "
-	  "CASE WHEN [i].[is_reverse] = 0 THEN 'NO' ELSE 'YES' END AS [is_reverse], "
+	  "CASE [i].[is_unique] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_unique], "
+	  "CASE [i].[is_reverse] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_reverse], "
 	  "[i].[class_of].[class_name] AS [class_name], "
-	  "[i].[class_of].[owner].[name] AS [owner_name], "
+	  "CAST ([i].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "[i].[key_count] AS [key_count], "
-	  "CASE WHEN [i].[is_primary_key] = 0 THEN 'NO' ELSE 'YES' END AS [is_primary_key], "
-	  "CASE WHEN [i].[is_foreign_key] = 0 THEN 'NO' ELSE 'YES' END AS [is_foreign_key], "
+	  "CASE [i].[is_primary_key] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_primary_key], "
+	  "CASE [i].[is_foreign_key] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_foreign_key], "
 	  "[i].[filter_expression] AS [filter_expression], "
-	  "CASE WHEN [i].[have_function] = 0 THEN 'NO' ELSE 'YES' END AS [have_function], "
+	  "CASE [i].[have_function] WHEN 0 THEN 'NO' ELSE 'YES' END AS [have_function], "
 	  "[i].[comment] AS [comment], "
-	  "CASE "
-	    "WHEN [i].[status] = 0 THEN 'NO_INDEX' "
-	    "WHEN [i].[status] = 1 THEN 'NORMAL INDEX' "
-	    "WHEN [i].[status] = 2 THEN 'INVISIBLE INDEX' "
-	    "WHEN [i].[status] = 3 THEN 'INDEX IS IN ONLINE BUILDING' "
+	  "CASE [i].[status] "
+	    "WHEN 0 THEN 'NO_INDEX' "
+	    "WHEN 1 THEN 'NORMAL INDEX' "
+	    "WHEN 2 THEN 'INVISIBLE INDEX' "
+	    "WHEN 3 THEN 'INDEX IS IN ONLINE BUILDING' "
 	    "ELSE 'NULL' "
 	    "END AS [status] "
 	"FROM "
@@ -5684,14 +5670,10 @@ boot_define_view_index_key (void)
 	"SELECT "
 	  "[k].[index_of].[index_name] AS [index_name], "
 	  "[k].[index_of].[class_of].[class_name] AS [class_name], "
-	  "[k].[index_of].[class_of].[owner].[name] AS [owner_name], "
+	  "CAST ([k].[index_of].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "[k].[key_attr_name] AS [key_attr_name], "
 	  "[k].[key_order] AS [key_order], "
-	  "CASE "
-	    "WHEN [k].[asc_desc] = 0 THEN 'ASC' "
-	    "WHEN [k].[asc_desc] = 1 THEN 'DESC' "
-	    "ELSE 'UNKN' "
-	    "END AS [asc_desc], "
+	  "CASE [k].[asc_desc] WHEN 0 THEN 'ASC' WHEN 1 THEN 'DESC' ELSE 'UNKN' END AS [asc_desc], "
 	  "[k].[key_prefix_length] AS [key_prefix_length], "
 	  "[k].[func] AS [func] "
 	"FROM "
@@ -5795,12 +5777,12 @@ boot_define_view_authorization (void)
   // *INDENT-OFF*
   sprintf (stmt,
 	"SELECT "
-	  "CAST ([a].[grantor].[name] AS VARCHAR (255)) AS [grantor_name], "
-	  "CAST ([a].[grantee].[name] AS VARCHAR (255)) AS [grantee_name], "
+	  "CAST ([a].[grantor].[name] AS VARCHAR(255)) AS [grantor_name], " /* string -> varchar(255) */
+	  "CAST ([a].[grantee].[name] AS VARCHAR(255)) AS [grantee_name], " /* string -> varchar(255) */
 	  "[a].[class_of].[class_name] AS [class_name], "
-	  "[a].[class_of].[owner].[name] AS [owner_name], "
+	  "CAST ([a].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "[a].[auth_type] AS [auth_type], "
-	  "CASE WHEN [a].[is_grantable] = 0 THEN 'NO' ELSE 'YES' END AS [is_grantable] "
+	  "CASE [a].[is_grantable] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_grantable] "
 	"FROM "
 	  /* CT_CLASSAUTH_NAME */
 	  "[%s] AS [a] "
@@ -5908,15 +5890,12 @@ boot_define_view_trigger (void)
   // *INDENT-OFF*
   sprintf (stmt,
 	"SELECT "
-	  "CAST ([t].[name] AS VARCHAR (255)) AS [trigger_name], "
-	  "[t].[owner].[name] AS [owner_name], "
+	  "CAST ([t].[name] AS VARCHAR (255)) AS [trigger_name], " /* string -> varchar(255) */
+	  "CAST ([t].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "[c].[class_name] AS [target_class_name], "
-	  "[c].[owner].[name] AS [target_owner_name], "
-	  "CAST ([t].[target_attribute] AS VARCHAR (255)) AS [target_attr_name], "
-	  "CASE "
-	    "WHEN [t].[target_class_attribute] = 0 THEN 'INSTANCE' "
-	    "ELSE 'CLASS' "
-	    "END AS [target_attr_type], "
+	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [target_owner_name], " /* string -> varchar(255) */
+	  "CAST ([t].[target_attribute] AS VARCHAR (255)) AS [target_attr_name], " /* string -> varchar(255) */
+	  "CASE [t].[target_class_attribute] WHEN 0 THEN 'INSTANCE' ELSE 'CLASS' END AS [target_attr_type], "
 	  "[t].[action_type] AS [action_type], "
 	  "[t].[action_time] AS [action_time], "
 	  "[t].[comment] AS [comment] "
@@ -6026,47 +6005,24 @@ boot_define_view_partition (void)
   // *INDENT-OFF*
   sprintf (stmt,
 	"SELECT "
-	  "[pp].[super_class_name] AS [class_name], "
-	  "[pp].[super_owner_name] AS [owner_name], "
+	  "[s].[class_name] AS [class_name], "
+	  "CAST ([s].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "[p].[pname] AS [partition_name], "
-	  "CONCAT ([pp].[super_class_name], '__p__', [p].[pname]) AS [partition_class_name], "
-	  "CASE "
-	      "WHEN [p].[ptype] = 0 THEN 'HASH' "
-	      "WHEN [p].[ptype] = 1 THEN 'RANGE' "
-	      "ELSE 'LIST' "
-	      "END AS [partition_type], "
-	   "TRIM (SUBSTRING ([pi].[pexpr] FROM 8 FOR (POSITION (' FROM ' IN [pi].[pexpr]) - 8))) AS [partition_expr], "
-	   "[p].[pvalues] AS [partition_values], "
-	   "[p].[comment] AS [comment] "
+	  "CONCAT ([s].[class_name], '__p__', [p].[pname]) AS [partition_class_name], " /* It can exceed varchar(255). */
+	  "CASE [p].[ptype] WHEN 0 THEN 'HASH' WHEN 1 THEN 'RANGE' ELSE 'LIST' END AS [partition_type], "
+	  "TRIM (SUBSTRING ([pp].[pexpr] FROM 8 FOR (POSITION (' FROM ' IN [pp].[pexpr]) - 8))) AS [partition_expr], "
+	  "[p].[pvalues] AS [partition_values], "
+	  "[p].[comment] AS [comment] "
 	"FROM "
 	  /* CT_PARTITION_NAME */
 	  "[%s] AS [p], "
-	  "("
-	    "SELECT "
-	      "* "
-	    "FROM "
-	      /* CTV_SUPER_CLASS_NAME */
-	      "[%s] AS [sc], "
-	      /* CT_PARTITION_NAME */
-	      "[%s] AS [sp] "
-	    "WHERE "
-	      "[sc].[class_name] = [sp].[class_of].[class_name] "
-	      "AND [sc].[owner_name] = [sp].[class_of].[owner].[name]"
-	  ") AS [pp], "
-	  "("
-	    "SELECT "
-	      "[tt].[ss].[pexpr] AS [pexpr], "
-	      "[ss].[class_name] AS [class_name], "
-	      "[ss].[owner].[name] AS [owner_name] "
-	    "FROM "
-	      /* CT_CLASS_NAME */
-	      "[%s] AS [ss], TABLE ([ss].[partition]) AS [tt] ([ss])"
-	  ") AS [pi] "
+	  /* CT_CLASS_NAME */
+	  "[%s] AS [c], TABLE ([c].[super_classes]) AS [t] ([s]), "
+	  /* CT_CLASS_NAME */
+	  "[%s] AS [cc], TABLE ([cc].[partition]) AS [tt] ([pp]) "
 	"WHERE "
-	  "[pp].[class_name] = [p].[class_of].[class_name] "
-	  "AND [pp].[owner_name] = [p].[class_of].[owner].[name] "
-	  "AND [pi].[class_name] = [pp].[super_class_name] "
-	  "AND [pi].[owner_name] = [pp].[super_owner_name] "
+	  "[p].[class_of] = [c] "
+	  "AND [s] = [cc] "
 	  "AND ("
 	      "CURRENT_USER = 'DBA' "
 	      "OR {[p].[class_of].[owner].[name]} SUBSETEQ ("
@@ -6098,8 +6054,7 @@ boot_define_view_partition (void)
 		")"
 	    ")",
 	CT_PARTITION_NAME,
-	CTV_SUPER_CLASS_NAME,
-	CT_PARTITION_NAME,
+	CT_CLASS_NAME,
 	CT_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
@@ -6172,27 +6127,17 @@ boot_define_view_stored_procedure (void)
   sprintf (stmt,
 	"SELECT "
 	  "[sp].[sp_name] AS [sp_name], "
-	  "CASE "
-	    "WHEN [sp].[sp_type] = 1 THEN 'PROCEDURE' "
-	    "ELSE 'FUNCTION' "
-	    "END AS [sp_type], "
-	  "CASE "
-	    "WHEN [sp].[return_type] = 0 THEN 'void' "
-	    "WHEN [sp].[return_type] = 28 THEN 'CURSOR' "
-	    "ELSE ("
-		"SELECT "
-		  "[dt].[type_name] "
-		"FROM "
-		  /* CT_DATATYPE_NAME */
-		  "[%s] AS [dt] "
-		"WHERE "
-		  "[sp].[return_type] = [dt].[type_id]"
-	      ") "
+	  "CASE [sp].[sp_type] WHEN 1 THEN 'PROCEDURE' ELSE 'FUNCTION' END AS [sp_type], "
+	  "CASE [sp].[return_type] "
+	    "WHEN 0 THEN 'void' "
+	    "WHEN 28 THEN 'CURSOR' "
+	    /* CT_DATATYPE_NAME */
+	    "ELSE (SELECT [t].[type_name] FROM [%s] AS [t] WHERE [sp].[return_type] = [t].[type_id]) "
 	    "END AS [return_type], "
 	  "[sp].[arg_count] AS [arg_count], "
-	  "CASE WHEN [sp].[lang] = 1 THEN 'JAVA' ELSE '' END AS [lang], "
+	  "CASE [sp].[lang] WHEN 1 THEN 'JAVA' ELSE '' END AS [lang], "
 	  "[sp].[target] AS [target], "
-	  "[sp].[owner].[name] AS [owner], "
+	  "CAST ([sp].[owner].[name] AS VARCHAR(255)) AS [owner], " /* string -> varchar(255) */
 	  "[sp].[comment] AS [comment] "
 	"FROM "
 	  /* CT_STORED_PROC_NAME */
@@ -6234,7 +6179,7 @@ boot_define_view_stored_procedure_arguments (void)
   COLUMN columns[] = {
     {"sp_name", "varchar(255)"},
     {"index_of", "integer"},
-    {"arg_name", "varchar(256)"},
+    {"arg_name", "varchar(255)"},
     {"data_type", "varchar(16)"},
     {"mode", "varchar(6)"},
     {"comment", "varchar(1024)"}
@@ -6267,28 +6212,17 @@ boot_define_view_stored_procedure_arguments (void)
 	  "[sp].[sp_name] AS [sp_name], "
 	  "[sp].[index_of] AS [index_of], "
 	  "[sp].[arg_name] AS [arg_name], "
-	  "CASE "
-	    "WHEN [sp].[data_type] = 28 THEN 'CURSOR' "
-	    "ELSE ("
-		"SELECT "
-		  "[dt].[type_name] "
-		"FROM "
-		  /* CT_DATATYPE_NAME */
-		  "[%s] AS [dt] "
-		"WHERE "
-		  "[sp].[data_type] = [dt].[type_id]"
-	      ") "
+	  "CASE [sp].[data_type] "
+	    "WHEN 28 THEN 'CURSOR' "
+	    /* CT_DATATYPE_NAME */
+	    "ELSE (SELECT [t].[type_name] FROM [%s] AS [t] WHERE [sp].[data_type] = [t].[type_id]) "
 	    "END AS [data_type], "
-	  "CASE "
-	    "WHEN [sp].[mode] = 1 THEN 'IN' "
-	    "WHEN [sp].[mode] = 2 THEN 'OUT' "
-	    "ELSE 'INOUT' "
-	    "END AS [mode], "
+	  "CASE [sp].[mode] WHEN 1 THEN 'IN' WHEN 2 THEN 'OUT' ELSE 'INOUT' END AS [mode], "
 	  "[sp].[comment] AS [comment] "
 	"FROM "
 	  /* CT_STORED_PROC_ARGS_NAME */
 	  "[%s] AS [sp] "
-	"ORDER BY "
+	"ORDER BY " /* Is it possible to remove ORDER BY? */
 	  "[sp].[sp_name], "
 	  "[sp].[index_of]",
 	CT_DATATYPE_NAME,
@@ -6327,8 +6261,8 @@ boot_define_view_db_collation (void)
   MOP class_mop;
   COLUMN columns[] = {
     {"coll_id", "integer"},
-    {"coll_name", "varchar(255)"},
-    {"charset_name", "varchar(255)"},
+    {"coll_name", "varchar(32)"},
+    {"charset_name", "varchar(32)"},
     {"is_builtin", "varchar(3)"},
     {"has_expansions", "varchar(3)"},
     {"contractions", "integer"},
@@ -6360,21 +6294,13 @@ boot_define_view_db_collation (void)
   // *INDENT-OFF*
   sprintf (stmt,
 	"SELECT "
-	  "[c].[coll_id] AS [coll_id], "
-	  "[c].[coll_name] AS [coll_name], "
+	  "[coll].[coll_id] AS [coll_id], "
+	  "[coll].[coll_name] AS [coll_name], "
 	  "[ch].[charset_name] AS [charset_name], "
-	  "CASE [c].[built_in] "
-	    "WHEN 0 THEN 'No' "
-	    "WHEN 1 THEN 'Yes' "
-	    "ELSE 'ERROR' "
-	    "END AS [is_builtin], "
-	  "CASE [c].[expansions] "
-	    "WHEN 0 THEN 'No' "
-	    "WHEN 1 THEN 'Yes' "
-	    "ELSE 'ERROR' "
-	    "END AS [has_expansions], "
-	  "[c].[contractions] AS [contractions], "
-	  "CASE [c].[uca_strength] "
+	  "CASE [coll].[built_in] WHEN 0 THEN 'No' WHEN 1 THEN 'Yes' ELSE 'ERROR' END AS [is_builtin], "
+	  "CASE [coll].[expansions] WHEN 0 THEN 'No' WHEN 1 THEN 'Yes' ELSE 'ERROR' END AS [has_expansions], "
+	  "[coll].[contractions] AS [contractions], "
+	  "CASE [coll].[uca_strength] "
 	    "WHEN 0 THEN 'Not applicable' "
 	    "WHEN 1 THEN 'Primary' "
 	    "WHEN 2 THEN 'Secondary' "
@@ -6385,11 +6311,11 @@ boot_define_view_db_collation (void)
 	    "END AS [uca_strength] "
 	"FROM "
 	  /* CT_COLLATION_NAME */
-	  "[%s] AS [c] "
+	  "[%s] AS [coll] "
 	  /* CT_CHARSET_NAME */
-	  "INNER JOIN [%s] AS [ch] ON [c].[charset_id] = [ch].[charset_id] "
-	"ORDER BY "
-	  "[c].[coll_id]",
+	  "INNER JOIN [%s] AS [ch] ON [coll].[charset_id] = [ch].[charset_id] "
+	"ORDER BY " /* Is it possible to remove ORDER BY? */
+	  "[coll].[coll_id]",
 	CT_COLLATION_NAME,
 	CT_CHARSET_NAME);
   // *INDENT-ON*
@@ -6462,10 +6388,12 @@ boot_define_view_db_charset (void)
 	  "[ch].[char_size] AS [char_size] " 
 	"FROM "
 	  /* CT_CHARSET_NAME */
-	  "[%s] AS [ch] "
+	  "[%s] AS [ch], "
 	  /* CT_COLLATION_NAME */
-	  "INNER JOIN [%s] AS [coll] ON [ch].[default_collation] = [coll].[coll_id] "
-	"ORDER BY "
+	  "[%s] AS [coll] "
+	"WHERE "
+	  "[ch].[default_collation] = [coll].[coll_id] "
+	"ORDER BY " /* Is it possible to remove ORDER BY? */
 	  "[ch].[charset_id]",
 	CT_CHARSET_NAME,
 	CT_COLLATION_NAME);
@@ -6534,10 +6462,10 @@ boot_define_view_synonym (void)
   sprintf (stmt,
 	"SELECT "
 	  "[s].[name] AS [synonym_name], "
-	  "CAST ([s].[owner].[name] AS VARCHAR(255)) AS [synonym_owner_name], "
+	  "CAST ([s].[owner].[name] AS VARCHAR(255)) AS [synonym_owner_name], " /* string -> varchar(255) */
 	  "CASE [s].[is_public] WHEN 1 THEN 'YES' ELSE 'NO' END AS [is_public_synonym], "
 	  "[s].[target_name] AS [target_name], "
-	  "CAST ([s].[target_owner].[name] AS VARCHAR(255)) AS [target_owner_name], "
+	  "CAST ([s].[target_owner].[name] AS VARCHAR(255)) AS [target_owner_name], " /* string -> varchar(255) */
 	  "[s].[comment] AS [comment] "
 	"FROM "
 	  /* CT_SYNONYM_NAME */
@@ -6599,7 +6527,7 @@ boot_define_view_db_server (void)
     {"user_name", "varchar(255)"},
     // {"password", "varchar(256)"}
     {"properties", "varchar(2048)"},
-    {"owner", "varchar(256)"},
+    {"owner", "varchar(255)"},
     {"comment", "varchar(1024)"}
 
   };
@@ -6635,7 +6563,7 @@ boot_define_view_db_server (void)
 	  "[ds].[db_name] AS [db_name], "
 	  "[ds].[user_name] AS [user_name], "
 	  "[ds].[properties] AS [properties], "
-	  "[ds].[owner].[name] AS [owner], "
+	  "CAST ([ds].[owner].[name] AS VARCHAR(255)) AS [owner], " /* string -> varchar(255) */
 	  "[ds].[comment] AS [comment] "
 	"FROM "
 	  /* CT_DB_SERVER_NAME */
