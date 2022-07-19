@@ -5884,7 +5884,7 @@ boot_define_view_trigger (void)
 	  /* TR_CLASS_NAME */
 	  "[%s] AS [t] "
 	  /* CT_CLASS_NAME */
-	  "LEFT OUTER JOIN [%s] [c] ON [t].[target_class] = [c].[class_of] "
+	  "LEFT OUTER JOIN [%s] AS [c] ON [t].[target_class] = [c].[class_of] "
 	"WHERE "
 	  "CURRENT_USER = 'DBA' "
 	  "OR {[t].[owner].[name]} SUBSETEQ ("
