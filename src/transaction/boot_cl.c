@@ -6495,28 +6495,28 @@ boot_define_view_synonym (void)
 	"SELECT "
 	  "[s].[name] AS [synonym_name], "
 	  "CAST ([s].[owner].[name] AS VARCHAR(255)) AS [synonym_owner_name], "
-	  "CASE WHEN [s].[is_public] = 1 THEN 'YES' ELSE 'NO' END AS [is_public_synonym], "
+	  "CASE [s].[is_public] WHEN 1 THEN 'YES' ELSE 'NO' END AS [is_public_synonym], "
 	  "[s].[target_name] AS [target_name], "
 	  "CAST ([s].[target_owner].[name] AS VARCHAR(255)) AS [target_owner_name], "
 	  "[s].[comment] AS [comment] "
 	"FROM "
 	  /* CT_SYNONYM_NAME */
-	  "[%s] [s] "
+	  "[%s] AS [s] "
 	"WHERE "
 	  "CURRENT_USER = 'DBA' "
 	  "OR [s].[is_public] = 1 "
-	  "OR ( "
+	  "OR ("
 	      "[s].[is_public] = 0 "
-	      "AND {[s].[owner].[name]} SUBSETEQ ( "
+	      "AND {[s].[owner].[name]} SUBSETEQ ("
 		  "SELECT "
 		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
 		  "FROM "
 		    /* AU_USER_CLASS_NAME */
-		    "[%s] [u], TABLE([groups]) AS [t]([g]) "
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
 		  "WHERE "
-		    "[u].[name] = CURRENT_USER "
-		") "
-	    ") ",
+		    "[u].[name] = CURRENT_USER"
+		")"
+	    ")",
 	CT_SYNONYM_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
