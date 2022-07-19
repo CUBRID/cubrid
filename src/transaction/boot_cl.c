@@ -4629,7 +4629,7 @@ boot_define_view_vclass (void)
   COLUMN columns[] = {
     {"vclass_name", "varchar(255)"},
     {"owner_name", "varchar(255)"},
-    {"vclass_def", "varchar(4096)"},
+    {"vclass_def", "varchar(1073741823)"},
     {"comment", "varchar(2048)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
@@ -4659,7 +4659,7 @@ boot_define_view_vclass (void)
 	"SELECT "
 	  "[q].[class_of].[class_name] AS [vclass_name], "
 	  "CAST ([q].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
-	  "CAST ([q].[spec] AS VARCHAR(4096)) AS [vclass_def], " /* varchar(1073741823) -> varchar(4096) */
+	  "[q].[spec] AS [vclass_def], "
 	  "[c].[comment] AS [comment] "
 	"FROM "
 	  /* CT_QUERYSPEC_NAME */
