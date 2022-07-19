@@ -75,6 +75,10 @@ public class Server {
             String socketName = rootPath + tmpPath + "/junixsocket-" + name + ".sock";
             final File socketFile = new File(socketName);
 
+            if (socketFile.exists()) {
+                socketFile.delete();
+            }
+
             try {
                 AFUNIXSocketAddress sockAddr = AFUNIXSocketAddress.of(socketFile);
                 AFUNIXServerSocket udsServerSocket = AFUNIXServerSocket.bindOn (sockAddr);
