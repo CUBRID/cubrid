@@ -6221,13 +6221,39 @@ boot_define_view_stored_procedure_arguments (void)
 	}
     }
 
+  // *INDENT-OFF*
   sprintf (stmt,
-	   "SELECT [sp].[sp_name], [sp].[index_of], [sp].[arg_name], CASE [sp].[data_type]"
-	   " WHEN 28 THEN 'CURSOR'"
-	   " ELSE (SELECT [dt].[type_name] FROM [%s] [dt] WHERE [sp].[data_type] = [dt].[type_id]) END, CASE"
-	   " WHEN [sp].[mode] = 1 THEN 'IN' WHEN [sp].[mode] = 2 THEN 'OUT' ELSE 'INOUT' END,"
-	   " [sp].[comment] FROM [%s] [sp] ORDER BY [sp].[sp_name], [sp].[index_of]", CT_DATATYPE_NAME,
-	   CT_STORED_PROC_ARGS_NAME);
+	"SELECT "
+	  "[sp].[sp_name] AS [sp_name], "
+	  "[sp].[index_of] AS [index_of], "
+	  "[sp].[arg_name] AS [arg_name], "
+	  "CASE "
+	    "WHEN [sp].[data_type] = 28 THEN 'CURSOR' "
+	    "ELSE ("
+		"SELECT "
+		  "[dt].[type_name] "
+		"FROM "
+		  /* CT_DATATYPE_NAME */
+		  "[%s] AS [dt] "
+		"WHERE "
+		  "[sp].[data_type] = [dt].[type_id]"
+	      ") "
+	    "END AS [data_type], "
+	  "CASE "
+	    "WHEN [sp].[mode] = 1 THEN 'IN' "
+	    "WHEN [sp].[mode] = 2 THEN 'OUT' "
+	    "ELSE 'INOUT' "
+	    "END AS [mode], "
+	  "[sp].[comment] AS [comment] "
+	"FROM "
+	  /* CT_STORED_PROC_ARGS_NAME */
+	  "[%s] AS [sp] "
+	"ORDER BY "
+	  "[sp].[sp_name], "
+	  "[sp].[index_of]",
+	CT_DATATYPE_NAME,
+	CT_STORED_PROC_ARGS_NAME);
+  // *INDENT-ON*
 
   error_code = db_add_query_spec (class_mop, stmt);
   if (error_code != NO_ERROR)
