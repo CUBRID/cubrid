@@ -5141,21 +5141,74 @@ boot_define_view_method_argument (void)
 	}
     }
 
+  // *INDENT-OFF*
   sprintf (stmt,
-	   "SELECT [s].[meth_of].[meth_name], [s].[meth_of].[class_of].[class_name], [s].[meth_of].[class_of].[owner].[name],"
-	   " CASE WHEN [s].[meth_of].[meth_type] = 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
-	   " [a].[index_of], [t].[type_name], [d].[prec], [d].[scale], [d].[code_set], [d].[class_of].[class_name], [d].[class_of].[owner].[name]"
-	   " FROM [%s] [s], [%s] [a], [%s] [d], [%s] [t]"
-	   " WHERE [a].[meth_sig_of] = [s] AND [d].[object_of] = [a] AND [d].[data_type] = [t].[type_id] AND"
-	   " (CURRENT_USER = 'DBA' OR {[s].[meth_of].[class_of].[owner].[name]} SUBSETEQ ("
-	   " SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
-	   " FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER) OR"
-	   " {[s].[meth_of].[class_of]} SUBSETEQ (SELECT sum(set{[au].[class_of]}) FROM [%s] [au]"
-	   " WHERE {[au].[grantee].[name]} SUBSETEQ ("
-	   " SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
-	   " FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER) AND"
-	   " [au].[auth_type] = 'SELECT'))", CT_METHSIG_NAME, CT_METHARG_NAME, CT_DOMAIN_NAME, CT_DATATYPE_NAME,
-	   AU_USER_CLASS_NAME, CT_CLASSAUTH_NAME, AU_USER_CLASS_NAME);
+	"SELECT "
+	  "[s].[meth_of].[meth_name] AS [meth_name], "
+	  "[s].[meth_of].[class_of].[class_name] AS [class_name], "
+	  "[s].[meth_of].[class_of].[owner].[name] AS [owner_name], "
+	  "CASE "
+	    "WHEN [s].[meth_of].[meth_type] = 0 THEN 'INSTANCE' "
+	    "ELSE 'CLASS' "
+	    "END AS [meth_type], "
+	  "[a].[index_of] AS [index_of], "
+	  "[t].[type_name] AS [data_type], "
+	  "[d].[prec] AS [prec], "
+	  "[d].[scale] AS [scale], "
+	  "[d].[code_set] AS [code_set], "
+	  "[d].[class_of].[class_name] AS [domain_class_name], "
+	  "[d].[class_of].[owner].[name] AS [domain_owner_name] "
+	"FROM "
+	  /* CT_METHSIG_NAME */
+	  "[%s] AS [s], "
+	  /* CT_METHARG_NAME */
+	  "[%s] AS [a], "
+	  /* CT_DOMAIN_NAME */
+	  "[%s] AS [d], "
+	  /* CT_DATATYPE_NAME */
+	  "[%s] AS [t] "
+	"WHERE "
+	  "[a].[meth_sig_of] = [s] "
+	  "AND [d].[object_of] = [a] "
+	  "AND [d].[data_type] = [t].[type_id] "
+	  "AND ("
+	      "CURRENT_USER = 'DBA' "
+	      "OR {[s].[meth_of].[class_of].[owner].[name]} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
+	      "OR {[s].[meth_of].[class_of]} SUBSETEQ ("
+		  "SELECT "
+		    "SUM (SET {[au].[class_of]}) "
+		  "FROM "
+		    /* CT_CLASSAUTH_NAME */
+		    "[%s] AS [au] "
+		  "WHERE "
+		    "{[au].[grantee].[name]} SUBSETEQ ("
+			"SELECT "
+			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+			"FROM "
+			  /* AU_USER_CLASS_NAME */
+			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+			"WHERE "
+			  "[u].[name] = CURRENT_USER"
+		      ") "
+		    "AND [au].[auth_type] = 'SELECT'"
+		")"
+	    ")",
+	CT_METHSIG_NAME,
+	CT_METHARG_NAME,
+	CT_DOMAIN_NAME,
+	CT_DATATYPE_NAME,
+	AU_USER_CLASS_NAME,
+	CT_CLASSAUTH_NAME,
+	AU_USER_CLASS_NAME);
+  // *INDENT-ON*
 
   error_code = db_add_query_spec (class_mop, stmt);
   if (error_code != NO_ERROR)
