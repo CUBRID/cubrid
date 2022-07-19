@@ -220,6 +220,9 @@ public class ExecuteThread extends Thread {
                         }
                     case REQ_CODE_UTIL_TERMINATE_THREAD:
                         {
+                            // hacky way.. If thread is terminated and socket is closed immediately,
+                            // "ping" or "status" command does not work properly
+                            sleep(100);
                             Thread.currentThread().interrupt();
                             break;
                         }
@@ -256,12 +259,9 @@ public class ExecuteThread extends Thread {
                     }
                     Server.log(throwable);
                     try {
-                        if (throwable instanceof SQLException)
-                        {
+                        if (throwable instanceof SQLException) {
                             sendError(throwable.getMessage(), client);
-                        }
-                        else
-                        {
+                        } else {
                             sendError(throwable.toString(), client);
                         }
                     } catch (IOException e1) {
