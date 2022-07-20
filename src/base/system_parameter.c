@@ -1042,6 +1042,7 @@ static unsigned int prm_lk_rollback_on_lock_escalation_flag = 0;
 
 int PRM_LK_TIMEOUT_SECS = -1;
 static int prm_lk_timeout_secs_default = -1;	/* Infinite */
+static int prm_lk_timeout_secs_upper = INT_MAX / 1000;
 static int prm_lk_timeout_secs_lower = -1;
 static unsigned int prm_lk_timeout_secs_flag = 0;
 
@@ -2733,7 +2734,7 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_lk_timeout_secs_flag,
    (void *) &prm_lk_timeout_secs_default,
    (void *) &PRM_LK_TIMEOUT_SECS,
-   (void *) NULL, (void *) &prm_lk_timeout_secs_lower,
+   (void *) &prm_lk_timeout_secs_upper, (void *) &prm_lk_timeout_secs_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -2744,7 +2745,7 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_lk_timeout_secs_flag,
    (void *) &prm_lk_timeout_secs_default,
    (void *) &PRM_LK_TIMEOUT_SECS,
-   (void *) NULL, (void *) &prm_lk_timeout_secs_lower,
+   (void *) &prm_lk_timeout_secs_upper, (void *) &prm_lk_timeout_secs_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) prm_msec_to_sec,
    (DUP_PRM_FUNC) prm_sec_to_msec},
