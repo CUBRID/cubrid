@@ -1069,3 +1069,10 @@ basename_r (const char *path, char *pathbuf, size_t buflen)
 {
   return 1;
 }
+
+const char *
+log_state_string (TRAN_STATE)
+{
+  assert (false);
+  return nullptr;
+}
