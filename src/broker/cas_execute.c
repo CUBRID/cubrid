@@ -1081,12 +1081,14 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
 	{
 	  char *rewrite_sql = NULL;
 	  rewrite_sql = cgw_rewrite_query (sql_stmt);
-	  if (rewrite_sql == NULL)
+	  if (rewrite_sql != NULL)
 	    {
-	      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-	      goto prepare_error;
+	      srv_handle->sql_stmt = rewrite_sql;
 	    }
-	  srv_handle->sql_stmt = rewrite_sql;
+	  else
+	    {
+	      ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
+	    }
 	}
       else
 	{
