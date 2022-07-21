@@ -16,7 +16,7 @@
 # 
 #
 
-file(GLOB conf_files "${CMAKE_SOURCE_DIR}/conf/cubrid*.conf*" "${CMAKE_SOURCE_DIR}/conf/shard*.txt")
+file(GLOB conf_files "${CMAKE_SOURCE_DIR}/conf/cubrid*.conf*" "${CMAKE_SOURCE_DIR}/conf/shard*.txt" "${CMAKE_SOURCE_DIR}/conf/hosts*.conf*")
 file(GLOB locale_files "${CMAKE_SOURCE_DIR}/conf/cubrid*.txt")
 file(GLOB cas_certs "${CMAKE_SOURCE_DIR}/conf/cas_ssl*.*")
 

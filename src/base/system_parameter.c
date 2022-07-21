@@ -705,6 +705,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_FLASHBACK_TIMEOUT "flashback_timeout"
 #define PRM_NAME_FLASHBACK_MAX_TRANSACTION "flashback_max_transaction"
 #define PRM_NAME_FLASHBACK_WIN_SIZE "flashback_win_size"
+#define PRM_NAME_HOSTS_CONF "hosts_conf"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2411,6 +2412,10 @@ static int prm_flashback_win_size_default = 0;
 static int prm_flashback_win_size_lower = 0;
 static int prm_flashback_win_size_upper = INT_MAX;
 static unsigned int prm_flashback_win_size_flag = 0;
+
+bool PRM_HOSTS_CONF = false;
+static bool prm_hosts_default = false;
+static unsigned int prm_hosts_conf_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6209,6 +6214,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_FLASHBACK_WIN_SIZE,
    (void *) &prm_flashback_win_size_upper,
    (void *) &prm_flashback_win_size_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HOSTS_CONF,
+   PRM_NAME_HOSTS_CONF,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   PRM_BOOLEAN,
+   &prm_hosts_conf_flag,
+   (void *) &prm_hosts_default,
+   (void *) &PRM_HOSTS_CONF,
+   (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}

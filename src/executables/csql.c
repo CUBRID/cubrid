@@ -69,6 +69,7 @@
 #include "cas_log.h"
 #include "ddl_log.h"
 #include "network_histogram.hpp"
+#include "host_lookup.h"
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */
@@ -3290,7 +3291,7 @@ get_host_ip (unsigned char *ip_addr)
     {
       return -1;
     }
-  if ((hp = gethostbyname (hostname)) == NULL)
+  if ((hp = gethostbyname_uhost (hostname)) == NULL)
     {
       return -1;
     }
