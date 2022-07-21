@@ -4390,6 +4390,35 @@ end:
 }
 
 /*
+ * Please follow the rules below when writing query specifications for system virtual classes.
+ *
+ *  1. First indent 1 tab, then 2 spaces.
+ *     - The CASE statement indents 2 spaces until the END.
+ *  2. All lines do not start with a space.
+ *  3. All lines end with a space. However, the following case does not end with a space.
+ *     - If the current line ends with "(", it ends without a space.
+ *     - If the next line starts with ")", the current line ends without a space.
+ *  4. Add a space before "(" and after ")". Remove spaces after "(" and before ")".
+ *  5. Add a space before "{" and after "}". Remove spaces after "{" and before "}".
+ *  6. Add a space before and after "+" and "=" operators.
+ *  7. Change the line.
+ *     - In the SELECT, FROM, WHERE, and ORDER BY clauses, change the line.
+ *     - After the SELECT, FROM, WHERE, and ORDER BY keywords, change the line.
+ *     - In the AND and OR clauses, change the line.
+ *     - In more than one TABLE expression, change the line.
+ *  8. Do not change the line.
+ *     - If the expression length is less than 120 characters, write it on one line.
+ *     - In the CASE statement, write the WHEN and THEN clauses on one line.
+ *     - In the FROM clause, write a TABLE expression and related tables on one line.
+ *  9. In the SELECT and FROM clauses, use the AS keyword before alias.
+ * 10. If the CAST function is used, write a comment about the data type being changed.
+ * 11. If column are compared without changing in the CASE statement, write the column name after the CASE keyword.
+ * 12. If %s (Format Specifier) is used in the FROM clause, write a comment about the value to be used.
+ * 13. Because path expression cannot be used in ANSI style, write a join condition in the WHERE clause.
+ * 
+ */
+
+/*
  * boot_define_view_class :
  *
  * returns : NO_ERROR if all OK, ER_ status otherwise
