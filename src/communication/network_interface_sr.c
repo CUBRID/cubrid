@@ -5591,7 +5591,8 @@ event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, 
     }
 
   event_log_print_client_info (tran_index, indent);
-  fprintf (log_fp, "%*csql: %s\n", indent, ' ', info->sql_user_text ? info->sql_user_text : "(UNKNOWN USER_TEXT)");
+  event_log_sql_without_user_oid (log_fp, "%*csql: %s\n", indent,
+				  info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {
@@ -5637,7 +5638,8 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time
     }
 
   event_log_print_client_info (tran_index, indent);
-  fprintf (log_fp, "%*csql: %s\n", indent, ' ', info->sql_user_text ? info->sql_user_text : "(UNKNOWN USER_TEXT)");
+  event_log_sql_without_user_oid (log_fp, "%*csql: %s\n", indent,
+				  info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {
@@ -5677,7 +5679,8 @@ event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
     }
 
   event_log_print_client_info (tran_index, indent);
-  fprintf (log_fp, "%*csql: %s\n", indent, ' ', info->sql_user_text ? info->sql_user_text : "(UNKNOWN USER_TEXT)");
+  event_log_sql_without_user_oid (log_fp, "%*csql: %s\n", indent,
+				  info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {
