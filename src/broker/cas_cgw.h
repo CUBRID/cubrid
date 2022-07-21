@@ -69,9 +69,12 @@
 #define MYSQL_CONNECT_URL_FORMAT    "DRIVER={%s};SERVER=%s;Port=%s;DATABASE=%s;USER=%s;PASSWORD=%s;%s"
 #define ORACLE_CONNECT_URL_FORMAT    "DRIVER={%s};DBQ=%s;Server=%s/%s;Uid=%s;Pwd=%s;%s"
 
-#define REWRITE_DELIMITER_CUBLINK     ") cublink("
-#define REWRITE_DELIMITER_FROM        " FROM "
-#define REWRITE_DELIMITER_WHERE       "WHERE "
+#define REWRITE_DELIMITER_CUBLINK        ") cublink("
+#define REWRITE_DELIMITER_FROM           " FROM "
+#define REWRITE_DELIMITER_WHERE          "WHERE "
+#define REWRITE_DELIMITER_CUBLINK_LEN    strlen (REWRITE_DELIMITER_CUBLINK)
+#define REWRITE_DELIMITER_FROM_LEN       strlen (REWRITE_DELIMITER_FROM)
+#define REWRITE_DELIMITER_WHERE_LEN      strlen (REWRITE_DELIMITER_WHERE)
 
 typedef struct t_col_binder T_COL_BINDER;
 struct t_col_binder

@@ -2488,7 +2488,7 @@ cgw_rewrite_query (char *src_query)
       goto REWRITE_ERROR;
     }
 
-  str_size = ((start + strlen (REWRITE_DELIMITER_FROM)) - src_query);
+  str_size = ((start + REWRITE_DELIMITER_FROM_LEN) - src_query);
   select_from = (char *) MALLOC (str_size + 1);
   strncpy (select_from, src_query, str_size);
   select_from[str_size] = '\0';
@@ -2500,9 +2500,9 @@ cgw_rewrite_query (char *src_query)
       goto REWRITE_ERROR;
     }
 
-  str_size = (end + strlen (") ")) - (start + strlen (REWRITE_DELIMITER_FROM));
+  str_size = (end + strlen (") ")) - (start + REWRITE_DELIMITER_FROM_LEN);
   inline_view = (char *) MALLOC (str_size + 1);
-  strncpy (inline_view, start + strlen (REWRITE_DELIMITER_FROM), str_size);
+  strncpy (inline_view, start + REWRITE_DELIMITER_FROM_LEN, str_size);
   inline_view[str_size] = '\0';
 
   start = strstr (src_query, REWRITE_DELIMITER_CUBLINK);
@@ -2524,9 +2524,9 @@ cgw_rewrite_query (char *src_query)
   strncpy (cublink, (start + strlen (") ")), str_size);
   cublink[str_size] = '\0';
 
-  str_size = end - (start + strlen (REWRITE_DELIMITER_CUBLINK));
+  str_size = end - (start + REWRITE_DELIMITER_CUBLINK_LEN);
   cols_type = (char *) MALLOC (str_size + 1);
-  strncpy (cols_type, (start + strlen (REWRITE_DELIMITER_CUBLINK)), str_size);
+  strncpy (cols_type, (start + REWRITE_DELIMITER_CUBLINK_LEN), str_size);
   cols_type[str_size] = '\0';
 
   cgw_eliminate (cols_type, '(');
