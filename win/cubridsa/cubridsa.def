@@ -148,6 +148,7 @@ EXPORTS
     javasp_read_info
     javasp_reset_info
     javasp_write_info
+    javasp_unlink_info
 ;
 ; utility functions
 ;
