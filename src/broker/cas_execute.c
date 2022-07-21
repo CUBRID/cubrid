@@ -1075,7 +1075,29 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
   srv_handle->schema_type = -1;
   srv_handle->auto_commit_mode = auto_commit_mode;
 
-  ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
+  if (cgw_get_dbms_type () == SUPPORTED_DBMS_ORACLE)
+    {
+      if (strstr (sql_stmt, REWRITE_DELIMITER_CUBLINK) != NULL)
+	{
+	  char *rewrite_sql = NULL;
+	  rewrite_sql = cgw_rewrite_query (sql_stmt);
+	  if (rewrite_sql == NULL)
+	    {
+	      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+	      goto prepare_error;
+	    }
+	  srv_handle->sql_stmt = rewrite_sql;
+	}
+      else
+        {
+          ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
+        }
+    }
+  else
+    {
+      ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
+    }
+
   if (srv_handle->sql_stmt == NULL)
     {
       err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
@@ -7721,7 +7743,7 @@ cgw_prepare_column_list_info_set (SQLHSTMT hstmt, char prepare_flag, char stmt_t
 
       for (i = 1; i <= num_cols; i++)
 	{
-	  err_code = cgw_get_col_info (hstmt, net_buf, i, &col_info);
+	  err_code = cgw_get_col_info (hstmt, i, &col_info);
 	  if (err_code < 0)
 	    {
 	      return ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
