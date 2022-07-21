@@ -5803,6 +5803,10 @@ boot_define_view_authorization (void)
 	}
     }
 
+  /* When a user is granted SELECT privilege,
+   * that user can also view the list of privileges that other users have been granted.
+   * Is this no problem? */
+
   // *INDENT-OFF*
   sprintf (stmt,
 	"SELECT "
@@ -5913,9 +5917,6 @@ boot_define_view_trigger (void)
 	}
     }
 
-  /* Why? {[c]} SUBSETEQ (SELECT SUM(SET{[au].[class_of]}) FROM ... */
-  /* {[c]} -> {[t].[target_class]} ? */
-
   // *INDENT-OFF*
   sprintf (stmt,
 	"SELECT "
@@ -5944,7 +5945,7 @@ boot_define_view_trigger (void)
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
 	    ") "
-	  "OR {[c]} SUBSETEQ ("
+	  "OR {[c]} SUBSETEQ (" /* Why [c] and not [t].[target_class]? */
 	      "SELECT "
 		"SUM (SET {[au].[class_of]}) "
 	      "FROM "
