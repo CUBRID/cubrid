@@ -2583,7 +2583,7 @@ cgw_rewrite_query (char *src_query)
 	}
 
       cgw_strcat_with_realloc (&new_inline_view, col_name);
-      cgw_strcat_with_realloc (&new_inline_view, REWRITE_DELIMITER_AS);
+      cgw_strcat_with_realloc (&new_inline_view, " AS ");
       cgw_strcat_with_realloc (&new_inline_view, cols_list[i - 1]);
 
       if (i <= num_cols - 1)
@@ -2592,7 +2592,7 @@ cgw_rewrite_query (char *src_query)
 	}
       else
 	{
-	  cgw_strcat_with_realloc (&new_inline_view, REWRITE_DELIMITER_FROM);
+	  cgw_strcat_with_realloc (&new_inline_view, " FROM ");
 	  cgw_strcat_with_realloc (&new_inline_view, inline_view);
 	  cgw_strcat_with_realloc (&new_inline_view, ")");
 	}

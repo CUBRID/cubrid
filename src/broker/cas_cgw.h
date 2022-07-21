@@ -72,7 +72,6 @@
 #define REWRITE_DELIMITER_CUBLINK     ") cublink("
 #define REWRITE_DELIMITER_FROM        " FROM "
 #define REWRITE_DELIMITER_WHERE       "WHERE "
-#define REWRITE_DELIMITER_AS          " AS "
 
 typedef struct t_col_binder T_COL_BINDER;
 struct t_col_binder
