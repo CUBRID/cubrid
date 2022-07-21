@@ -184,5 +184,5 @@ extern int cgw_endtran (SQLHDBC hdbc, int tran_type);
 extern SUPPORTED_DBMS_TYPE cgw_is_supported_dbms (char *dbms);
 extern void cgw_set_dbms_type (SUPPORTED_DBMS_TYPE dbms_type);
 extern int cgw_get_dbms_type ();
-extern char *cgw_rewrite_query (char *src_query);
+extern char *cgw_rewrite_query (char *src_query, char *cublink_pos);
 #endif /* _CAS_CGW_H_ */
