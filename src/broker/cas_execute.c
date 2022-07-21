@@ -1077,10 +1077,12 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
 
   if (cgw_get_dbms_type () == SUPPORTED_DBMS_ORACLE)
     {
-      if (strstr (sql_stmt, REWRITE_DELIMITER_CUBLINK) != NULL)
+      char *cublink_pos = NULL;
+      cublink_pos = strstr (sql_stmt, REWRITE_DELIMITER_CUBLINK);
+      if (cublink_pos != NULL)
 	{
 	  char *rewrite_sql = NULL;
-	  rewrite_sql = cgw_rewrite_query (sql_stmt);
+	  rewrite_sql = cgw_rewrite_query (sql_stmt, cublink_pos);
 	  if (rewrite_sql != NULL)
 	    {
 	      srv_handle->sql_stmt = rewrite_sql;
