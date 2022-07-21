@@ -1089,9 +1089,9 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
 	  srv_handle->sql_stmt = rewrite_sql;
 	}
       else
-        {
-          ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
-        }
+	{
+	  ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
+	}
     }
   else
     {
