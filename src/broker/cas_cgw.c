@@ -2481,12 +2481,6 @@ cgw_rewrite_query (char *src_query)
   SQLSMALLINT col_name_length = 0;
   SQLHSTMT hstmt;
 
-  if (strstr (src_query, REWRITE_DELIMITER_CUBLINK) == NULL)
-    {
-      is_rewrite_error = true;
-      goto REWRITE_ERROR;
-    }
-
   start = strstr (src_query, REWRITE_DELIMITER_FROM);
   if (start == NULL)
     {
