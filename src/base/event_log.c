@@ -369,7 +369,7 @@ event_log_sql_without_user_oid (FILE * fp, const char *format, int indent, const
 	  *k = 0;
 	  if (format)
 	    {
-	      fprintf (fp, "%*csql: %s\n", indent, ' ', hash_text);
+	      fprintf (fp, format, indent, ' ', hash_text);
 	    }
 	  else
 	    {
