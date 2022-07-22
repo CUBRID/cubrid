@@ -78,13 +78,13 @@ hostent_compose (char *hostname)
   for (hostent_list_index = 0; hostent_list_index < host_conf_element_Count; hostent_list_index++)
     {
       if (!strcmp (hostname, hostent_List[hostent_list_index].hostname))
-	{ 
-          find_index = hostent_list_index;
+	{
+	  find_index = hostent_list_index;
 	  break;
 	}
     }
   strcpy (addr_transform_buf, hostent_List[find_index].addr);
-  inet_pton(hp.h_addrtype,addr_transform_buf,hp.h_addr_list[0]);
+  inet_pton (hp.h_addrtype, addr_transform_buf, hp.h_addr_list[0]);
 
   return &hp;
 }
