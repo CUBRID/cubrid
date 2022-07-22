@@ -359,25 +359,33 @@ event_log_print_client_info (int tran_index, int indent)
 void
 event_log_sql_without_user_oid (FILE * fp, const char *format, int indent, const char *hash_text)
 {
-  int i, len = strlen (hash_text);
+  /* start from user=0|0|0, length = 10 */
+  int i, start = strlen (hash_text) - 10;
   char *k;
 
-  for (i = len - 5; i >= 0; i--)
+  for (i = start; i >= 0; i--)
     {
       if ((k = strstr ((char *) hash_text, "user=")) != NULL)
 	{
+	  /* cut the hash_text to exclude "user=" */
 	  *k = 0;
-	  if (format)
-	    {
-	      fprintf (fp, format, indent, ' ', hash_text);
-	    }
-	  else
-	    {
-	      fprintf (fp, "%s\n", hash_text);
-	    }
-	  *k = 'u';
-	  return;
+	  break;
 	}
+    }
+
+  if (format)
+    {
+      fprintf (fp, format, indent, ' ', hash_text);
+    }
+  else
+    {
+      fprintf (fp, "%s\n", hash_text);
+    }
+
+  /* if "user=" was found then restore it */
+  if (k != NULL)
+    {
+      *k = 'u';
     }
 }
 
