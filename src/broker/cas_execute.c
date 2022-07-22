@@ -1077,19 +1077,24 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
 
   if (cgw_get_dbms_type () == SUPPORTED_DBMS_ORACLE)
     {
-      char *cublink_pos = NULL;
-      cublink_pos = strstr (sql_stmt, REWRITE_DELIMITER_CUBLINK);
-      if (cublink_pos != NULL)
+      char *is_cublink = NULL;
+      is_cublink = strstr (sql_stmt, REWRITE_DELIMITER_CUBLINK);
+      if (is_cublink != NULL)
 	{
 	  char *rewrite_sql = NULL;
-	  rewrite_sql = cgw_rewrite_query (sql_stmt, cublink_pos);
-	  if (rewrite_sql != NULL)
+	  err_code = cgw_rewrite_query (sql_stmt, &rewrite_sql);
+	  if (err_code == -1)
 	    {
-	      srv_handle->sql_stmt = rewrite_sql;
+	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	      goto prepare_error;
+	    }
+	  else if (err_code == -2)
+	    {
+	      ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
 	    }
 	  else
 	    {
-	      ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
+	      srv_handle->sql_stmt = rewrite_sql;
 	    }
 	}
       else

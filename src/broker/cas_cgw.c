@@ -42,6 +42,8 @@
                                 } \
                             }
 
+#define REWRITE_FAILED    -2
+
 typedef struct t_supported_dbms T_SUPPORTED_DBMS;
 struct t_supported_dbms
 {
@@ -80,9 +82,8 @@ static SQLSMALLINT get_c_type (SQLSMALLINT s_type, SQLLEN is_unsigned_type);
 static SQLULEN get_datatype_size (SQLSMALLINT s_type, SQLULEN chars, SQLLEN precision, SQLLEN scale);
 static char *cgw_datatype_to_string (SQLLEN type);
 static char *cgw_utype_to_string (int type);
-static void cgw_eliminate (char *str, char ch);
 static void cgw_free_string_array (char **array);
-static char **cgw_split_string (const char *str, const char *delim);
+static char **cgw_split_string (const char *str, const char *delim, int *num);
 
 static INTL_CODESET client_charset = INTL_CODESET_UTF8;
 
@@ -2456,14 +2457,14 @@ cgw_utype_to_string (int type)
     }
 }
 
-char *
-cgw_rewrite_query (char *src_query, char *cublink_pos)
+int
+cgw_rewrite_query (char *src_query, char **rewrite_sql)
 {
+  char *source = NULL;
   char *rewrite_query = NULL;
   char *select_from = NULL;
   char *inline_view = NULL;
   char *new_inline_view = NULL;
-  char *cublink = NULL;
   char *cols_type = NULL;
   char **cols_list = NULL;
   char *where = NULL;
@@ -2471,132 +2472,135 @@ cgw_rewrite_query (char *src_query, char *cublink_pos)
   char *start = NULL;
   char *end = NULL;
 
-  size_t str_size = 0;
-  SQLSMALLINT num_cols = 0;
-  bool is_rewrite_error = false;
+  SQLSMALLINT odbc_num_cols = 0;
+  int src_num_cols = 0;
   int err_code = 0;
 
-  int cublink_col_list_len = 0;
-  int where_len = 0;
-  int inline_view_len = 0;
-  int new_inline_view_len = 0;
+  size_t select_from_len = 0;
+  size_t inline_view_len = 0;
+  size_t new_inline_view_len = 0;
+  size_t cols_type_len = 0;
+  size_t where_len = 0;
 
   char col_name[COL_NAME_LEN + 1];
   SQLSMALLINT col_name_length = 0;
-  SQLHSTMT hstmt;
+  SQLHSTMT hstmt = NULL;
 
-  start = strstr (src_query, REWRITE_DELIMITER_FROM);
-  if (start == NULL)
-    {
-      is_rewrite_error = true;
-      goto REWRITE_ERROR;
-    }
+  ALLOC_COPY (source, src_query);
 
-  str_size = ((start + REWRITE_DELIMITER_FROM_LEN) - src_query);
-  select_from = (char *) MALLOC (str_size + 1);
-  strncpy (select_from, src_query, str_size);
-  select_from[str_size] = '\0';
-
-  end = cublink_pos;
-  if (cublink_pos == NULL)
-    {
-      is_rewrite_error = true;
-      goto REWRITE_ERROR;
-    }
-
-  inline_view_len = (end + strlen (") ")) - (start + REWRITE_DELIMITER_FROM_LEN) + 1;
-  inline_view = (char *) MALLOC (inline_view_len);
-  strncpy (inline_view, start + REWRITE_DELIMITER_FROM_LEN, inline_view_len - 1);
-  inline_view[inline_view_len - 1] = '\0';
-
-  start = cublink_pos;
-  if (start == NULL)
-    {
-      is_rewrite_error = true;
-      goto REWRITE_ERROR;
-    }
-
-  end = strstr (start, REWRITE_DELIMITER_WHERE);
+  end = strstr (source, REWRITE_DELIMITER_FROM);
   if (end == NULL)
     {
-      is_rewrite_error = true;
-      goto REWRITE_ERROR;
+      err_code = REWRITE_FAILED;
+      goto ODBC_ERROR;
     }
 
-  str_size = end - (start + strlen (") "));
-  cublink = (char *) MALLOC (str_size + 1);
-  strncpy (cublink, (start + strlen (") ")), str_size);
-  cublink[str_size] = '\0';
+  select_from = source;
+  select_from_len = (end + REWRITE_DELIMITER_FROM_LEN) - source;
+  start = end + REWRITE_DELIMITER_FROM_LEN + 1;
 
-  cublink_col_list_len = end - (start + REWRITE_DELIMITER_CUBLINK_LEN) + 1;
-  cols_type = (char *) MALLOC (cublink_col_list_len);
-  strncpy (cols_type, (start + REWRITE_DELIMITER_CUBLINK_LEN), cublink_col_list_len - 1);
-  cols_type[cublink_col_list_len - 1] = '\0';
 
-  cgw_eliminate (cols_type, '(');
-  cgw_eliminate (cols_type, ')');
-  cols_list = cgw_split_string (cols_type, ",");
+  end = strstr (source, REWRITE_DELIMITER_CUBLINK);
+  if (end == NULL)
+    {
+      err_code = REWRITE_FAILED;
+      goto ODBC_ERROR;
+    }
 
-  where_len = strlen (end) + 1;
-  where = (char *) MALLOC (where_len);
-  strcpy (where, end);
+  inline_view = select_from + select_from_len + 1;
+  inline_view_len = (end + 1) - (start);
+  start = end + REWRITE_DELIMITER_CUBLINK_LEN + 3;
 
-  err_code = SQLAllocHandle (SQL_HANDLE_STMT, local_odbc_handle->hdbc, &hstmt);
+  end = strstr (source, "WHERE");
+  if (end == NULL)
+    {
+      err_code = REWRITE_FAILED;
+      goto ODBC_ERROR;
+    }
+
+  where = end;
+  where_len = strlen (end);
+
+  cols_type = inline_view + inline_view_len + REWRITE_DELIMITER_CUBLINK_LEN + 2;
+  cols_type_len = (end - 2) - (start);
+  *(cols_type + cols_type_len) = '\0';
+
+  cols_list = cgw_split_string (cols_type, ",", &src_num_cols);
+
+  if (src_num_cols == 0)
+    {
+      err_code = REWRITE_FAILED;
+      goto ODBC_ERROR;
+    }
+
+  SQL_CHK_ERR (local_odbc_handle->hdbc,
+	       SQL_HANDLE_DBC, err_code = SQLAllocHandle (SQL_HANDLE_STMT, local_odbc_handle->hdbc, &hstmt));
+
+  *(inline_view + inline_view_len) = '\0';
+
+  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLPrepare (hstmt, (SQLCHAR *) inline_view, SQL_NTS));
+
+  err_code = cgw_get_num_cols (hstmt, &odbc_num_cols);
   if (err_code < 0)
     {
-      is_rewrite_error = true;
-      goto REWRITE_ERROR;
+      err_code = ER_FAILED;
+      goto ODBC_ERROR;
     }
 
-  err_code = SQLPrepare (hstmt, (SQLCHAR *) inline_view, SQL_NTS);
-  if (err_code < 0)
+  if (odbc_num_cols == 0)
     {
-      is_rewrite_error = true;
-      goto REWRITE_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_SEMANTIC, 2, "Invalid column.", "");
+      err_code = ER_FAILED;
+      goto ODBC_ERROR;
     }
 
-  err_code = cgw_get_num_cols (hstmt, &num_cols);
-  if (err_code < 0)
+  if (src_num_cols != odbc_num_cols)
     {
-      is_rewrite_error = true;
-      goto REWRITE_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_COLUMNS_SPECIFIED, 0);
+      err_code = ER_FAILED;
+      goto ODBC_ERROR;
     }
 
-  new_inline_view_len += REWRITE_SELECT_FROM_LEN;
-  new_inline_view_len += strlen (" AS ") * num_cols;
+  new_inline_view_len += REWRITE_SELECT_LEN;
+  new_inline_view_len += (int) (strlen (" AS ") * odbc_num_cols);
   new_inline_view_len += inline_view_len;
-  new_inline_view_len += cublink_col_list_len;
+  new_inline_view_len += cols_type_len;
+  new_inline_view_len += odbc_num_cols;
+  new_inline_view_len += REWRITE_FROM_LEN;
 
-  for (int i = 1; i <= num_cols; i++)
+  for (int col_num = 1; col_num <= odbc_num_cols; col_num++)
     {
-      err_code = SQLColAttribute (hstmt, i, SQL_DESC_NAME, col_name, sizeof (col_name), &col_name_length, NULL);
+      SQL_CHK_ERR (hstmt,
+		   SQL_HANDLE_STMT,
+		   err_code = SQLColAttribute (hstmt,
+					       col_num,
+					       SQL_DESC_NAME, col_name, sizeof (col_name), &col_name_length, NULL));
+
       new_inline_view_len += col_name_length;
     }
 
   new_inline_view = (char *) MALLOC (new_inline_view_len + 1);
   strcpy (new_inline_view, "(SELECT ");
 
-  for (int i = 1; i <= num_cols; i++)
+  for (int col_num = 1; col_num <= odbc_num_cols; col_num++)
     {
-      err_code = SQLColAttribute (hstmt, i, SQL_DESC_NAME, col_name, sizeof (col_name), &col_name_length, NULL);
+      SQL_CHK_ERR (hstmt,
+		   SQL_HANDLE_STMT,
+		   err_code = SQLColAttribute (hstmt,
+					       col_num,
+					       SQL_DESC_NAME, col_name, sizeof (col_name), &col_name_length, NULL));
 
-      if (err_code < 0)
+      if (cols_list[col_num - 1] == NULL || strcmp (cols_list[col_num - 1], "") == 0)
 	{
-	  is_rewrite_error = true;
-	  goto REWRITE_ERROR;
-	}
-
-      if (cols_list[i - 1] == NULL || strcmp (cols_list[i - 1], "") == 0)
-	{
-	  is_rewrite_error = true;
-	  goto REWRITE_ERROR;
+	  err_code = REWRITE_FAILED;
+	  goto ODBC_ERROR;
 	}
 
       strcat (new_inline_view, col_name);
       strcat (new_inline_view, " AS ");
-      strcat (new_inline_view, cols_list[i - 1]);
+      strcat (new_inline_view, cols_list[col_num - 1]);
 
-      if (i <= num_cols - 1)
+      if (col_num <= odbc_num_cols - 1)
 	{
 	  strcat (new_inline_view, ", ");
 	}
@@ -2608,69 +2612,48 @@ cgw_rewrite_query (char *src_query, char *cublink_pos)
 	}
     }
 
-  rewrite_query = (char *) MALLOC (REWRITE_SELECT_FROM_LEN + new_inline_view_len + where_len);
-  memset (rewrite_query, 0x0, REWRITE_SELECT_FROM_LEN + new_inline_view_len + where_len);
+  rewrite_query = (char *) MALLOC (REWRITE_SELECT_FROM_LEN + new_inline_view_len + where_len + 1);
+  memset (rewrite_query, 0x0, REWRITE_SELECT_FROM_LEN + new_inline_view_len + where_len + 1);
 
-  strcat (rewrite_query, select_from);
+  strncpy (rewrite_query, select_from, select_from_len);
   strcat (rewrite_query, " ");
   strcat (rewrite_query, new_inline_view);
   strcat (rewrite_query, " ");
   strcat (rewrite_query, where);
 
-REWRITE_ERROR:
-  SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
+  *rewrite_sql = rewrite_query;
 
-  if (select_from != NULL)
+  if (hstmt)
     {
-      FREE_MEM (select_from);
+      SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
     }
 
-  if (inline_view != NULL)
-    {
-      FREE_MEM (inline_view);
-    }
+  FREE_MEM (source);
 
-  if (cublink != NULL)
-    {
-      FREE_MEM (cublink);
-    }
-
-  if (cols_type != NULL)
-    {
-      FREE_MEM (cols_type);
-    }
-
-  if (cols_list != NULL)
+  if (cols_list)
     {
       cgw_free_string_array (cols_list);
     }
 
-  if (where != NULL)
+  return err_code;
+
+ODBC_ERROR:
+  if (hstmt)
     {
-      FREE_MEM (where);
+      SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
     }
 
-  if (rewrite_query != NULL && is_rewrite_error == TRUE)
+  FREE_MEM (source);
+
+  if (cols_list)
     {
-      FREE_MEM (rewrite_query);
-      rewrite_query = NULL;
+      cgw_free_string_array (cols_list);
     }
 
-  return rewrite_query;
-}
 
-static void
-cgw_eliminate (char *str, char ch)
-{
-  size_t len = strlen (str) + 1;
-  for (; *str != '\0'; str++, len--)
-    {
-      if (*str == ch || *str == ' ')
-	{
-	  strncpy (str, str + 1, len);
-	  str--;
-	}
-    }
+  FREE_MEM (rewrite_query);
+
+  return err_code;
 }
 
 static void
@@ -2686,7 +2669,7 @@ cgw_free_string_array (char **array)
 }
 
 static char **
-cgw_split_string (const char *str, const char *delim)
+cgw_split_string (const char *str, const char *delim, int *num)
 {
   char *t, *o;
   char *v;
@@ -2726,6 +2709,7 @@ cgw_split_string (const char *str, const char *delim)
       count++;
     }
 
+  *num = (count - 1);
   FREE_MEM (o);
   return r;
 }

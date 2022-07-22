@@ -70,12 +70,13 @@
 #define ORACLE_CONNECT_URL_FORMAT    "DRIVER={%s};DBQ=%s;Server=%s/%s;Uid=%s;Pwd=%s;%s"
 
 #define REWRITE_DELIMITER_CUBLINK        ") cublink("
-#define REWRITE_DELIMITER_FROM           " FROM "
-#define REWRITE_DELIMITER_WHERE          "WHERE "
-#define REWRITE_DELIMITER_CUBLINK_LEN    10
-#define REWRITE_DELIMITER_FROM_LEN        6
-#define REWRITE_DELIMITER_WHERE_LEN       6
-#define REWRITE_SELECT_FROM_LEN          17
+#define REWRITE_DELIMITER_FROM           "FROM"
+#define REWRITE_DELIMITER_WHERE          "WHERE"
+#define REWRITE_DELIMITER_CUBLINK_LEN    7	// "cublink"
+#define REWRITE_DELIMITER_FROM_LEN       4
+#define REWRITE_SELECT_FROM_LEN          14	// "SELECT * FROM "
+#define REWRITE_SELECT_LEN               8	// "(SELECT "
+#define REWRITE_FROM_LEN                 7	// " FROM )"
 
 typedef struct t_col_binder T_COL_BINDER;
 struct t_col_binder
@@ -184,5 +185,5 @@ extern int cgw_endtran (SQLHDBC hdbc, int tran_type);
 extern SUPPORTED_DBMS_TYPE cgw_is_supported_dbms (char *dbms);
 extern void cgw_set_dbms_type (SUPPORTED_DBMS_TYPE dbms_type);
 extern int cgw_get_dbms_type ();
-extern char *cgw_rewrite_query (char *src_query, char *cublink_pos);
+extern int cgw_rewrite_query (char *src_query, char **rewrite_sql);
 #endif /* _CAS_CGW_H_ */
