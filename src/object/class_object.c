@@ -4082,8 +4082,6 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 
 	  attp = cons->attributes;
 	  namep = att_names;
-
-	  len = 0;
 	  while (*attp && *namep && !intl_identifier_casecmp ((*attp)->header.name, *namep))
 	    {
 	      attp++;
