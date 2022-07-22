@@ -26,6 +26,7 @@
 #include <string.h>
 #include <netdb.h>
 #include <limits.h>
+#include <arpa/inet.h>
 
 #include "system_parameter.h"
 #include "environment_variable.h"
@@ -61,7 +62,8 @@ static hostent *
 hostent_compose (char *hostname)
 {
   static hostent hp;
-  int index;
+  int hostent_list_index, find_index;
+  char addr_transform_buf[17];
   hp.h_addrtype = AF_INET;
   hp.h_length = 4;
   hp.h_name = (char *) malloc (sizeof (char *));
@@ -73,14 +75,16 @@ hostent_compose (char *hostname)
   strcpy (hp.h_name, hostname);
   strcpy (hp.h_aliases[0], hostname);
 
-  for (index = 0; index < host_conf_element_Count; index++)
+  for (hostent_list_index = 0; hostent_list_index < host_conf_element_Count; hostent_list_index++)
     {
-      if (!strcmp (hostname, hostent_List[index].hostname))
-	{
+      if (!strcmp (hostname, hostent_List[hostent_list_index].hostname))
+	{ 
+          find_index = hostent_list_index;
 	  break;
 	}
     }
-  strcpy (hp.h_addr_list[0], hostent_List[index].hostname);
+  strcpy (addr_transform_buf, hostent_List[find_index].addr);
+  inet_pton(hp.h_addrtype,addr_transform_buf,hp.h_addr_list[0]);
 
   return &hp;
 }
