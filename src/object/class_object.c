@@ -4075,17 +4075,13 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
       for (cons = cons_list; cons; cons = cons->next)
 	{
 	  /* check foreign key only */
-	  if (new_cons != cons->type)
+	  if (new_cons != cons->type || !cons->attributes || !namep)
 	    {
 	      continue;
 	    }
 
 	  attp = cons->attributes;
 	  namep = att_names;
-	  if (!attp || !namep)
-	    {
-	      continue;
-	    }
 
 	  len = 0;
 	  while (*attp && *namep && !intl_identifier_casecmp ((*attp)->header.name, *namep))
