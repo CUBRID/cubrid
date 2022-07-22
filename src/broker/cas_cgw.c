@@ -2527,7 +2527,7 @@ cgw_rewrite_query (char *src_query, char **rewrite_sql)
 
   cols_list = cgw_split_string (cols_type, ",", &src_num_cols);
 
-  if (src_num_cols == 0)
+  if (cols_list == NULL || src_num_cols == 0)
     {
       err_code = REWRITE_FAILED;
       goto ODBC_ERROR;
