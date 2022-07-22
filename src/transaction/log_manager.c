@@ -7174,13 +7174,12 @@ log_dump_record_trantable_snapshot (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_
 
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, size_of_log_rec, log_lsa, log_page_p);
 
-  //
   const LOG_REC_TRANTABLE_SNAPSHOT *const trantable_snapshot
     = (LOG_REC_TRANTABLE_SNAPSHOT *) (log_page_p->area + log_lsa->offset);
-  // use log record immediately before advancing the log which might also advance to a new page
+  // copy value from mapped log record before advancing the log [possibly] to a new log page
   const size_t trantable_snapshot_len = trantable_snapshot->length;
-  fprintf (out_fp, " Snapshot_LSA = %lld|%d, length =%zu\n", LSA_AS_ARGS (&trantable_snapshot->snapshot_lsa),
-	   trantable_snapshot_len);
+  fprintf (out_fp, " Snapshot_LSA = %lld|%d, length =%u\n", LSA_AS_ARGS (&trantable_snapshot->snapshot_lsa),
+	   (unsigned) trantable_snapshot_len);
   LOG_READ_ADD_ALIGN (thread_p, size_of_log_rec, log_lsa, log_page_p);
 
   cublog::checkpoint_info checkpoint_info;

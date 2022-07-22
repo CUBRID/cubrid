@@ -2225,8 +2225,11 @@ log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p)
       if (i != LOG_SYSTEM_TRAN_INDEX)
 	{
 	  const log_tdes *const tdes = log_Gl.trantable.all_tdes[i];
+	  // TODO: use same condition as in checkpoint_info::load_checkpoint_trans (for that,
+	  // tdes.commit_abort_lsa must be relayed)
 	  if (tdes != nullptr && tdes->trid != NULL_TRANID)
 	    {
+	      // TODO: any test for the validity of tdes->mvccinfo.id?
 	      if (tdes->mvccinfo.id < smallest_mvccid)
 		{
 		  smallest_mvccid = tdes->mvccinfo.id;
@@ -2273,8 +2276,7 @@ log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p)
  *                                to construct an actual starting transaction table
  */
 void
-log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p,
-    log_lsa most_recent_trantable_snapshot_lsa)
+log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p, log_lsa most_recent_trantable_snapshot_lsa)
 {
   assert (is_passive_transaction_server ());
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
@@ -2320,5 +2322,6 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p,
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, sys_tran_index);
 
+  // TODO: chkpt_info.m_mvcc_next_id
   log_recovery_build_mvcc_table_from_trantable (thread_p);
 }
