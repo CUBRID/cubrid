@@ -8614,10 +8614,6 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
     }
   else
     {				/* a leaf page */
-      int free_space_ovfl = 0;
-      int oid_cnt_ovfl = 0;
-      int pg_cnt_per_key = 0;
-
       /* form the cpc structure for a leaf node page */
       cpc->dis_key_cnt = key_cnt;
       cpc->leaf_pg_cnt = 1;
@@ -8645,10 +8641,11 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	  ovfl_vpid = leaf_pnt.ovfl;
 	  if (!VPID_ISNULL (&ovfl_vpid))
 	    {			/* overflow pages exist */
-	      oid_cnt_ovfl = 0;
-	      cpc->ovfl_oid_pg.dis_key_cnt += 1;
-	      pg_cnt_per_key = 0;
+	      int free_space_ovfl, oid_cnt_ovfl, pg_cnt_per_key;
 
+	      oid_cnt_ovfl = 0;
+	      pg_cnt_per_key = 0;
+	      cpc->ovfl_oid_pg.dis_key_cnt += 1;
 	      do
 		{
 		  ovfp = pgbuf_fix (thread_p, &ovfl_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
