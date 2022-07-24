@@ -2635,6 +2635,11 @@ cgw_rewrite_query (char *src_query, char **rewrite_sql)
       cgw_free_string_array (cols_list);
     }
 
+  if (new_inline_view)
+    {
+      FREE_MEM (new_inline_view);
+    }
+
   return err_code;
 
 ODBC_ERROR:
@@ -2648,6 +2653,11 @@ ODBC_ERROR:
   if (cols_list)
     {
       cgw_free_string_array (cols_list);
+    }
+
+  if (new_inline_view)
+    {
+      FREE_MEM (new_inline_view);
     }
 
 
