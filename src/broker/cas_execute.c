@@ -1083,12 +1083,12 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
 	{
 	  char *rewrite_sql = NULL;
 	  err_code = cgw_rewrite_query (sql_stmt, &rewrite_sql);
-	  if (err_code == -1)
+	  if (err_code == ER_FAILED)
 	    {
 	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	      goto prepare_error;
 	    }
-	  else if (err_code == -2)
+	  else if (err_code == ERR_REWRITE_FAILED)
 	    {
 	      ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
 	    }

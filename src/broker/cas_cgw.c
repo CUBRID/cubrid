@@ -42,7 +42,6 @@
                                 } \
                             }
 
-#define REWRITE_FAILED    -2
 
 typedef struct t_supported_dbms T_SUPPORTED_DBMS;
 struct t_supported_dbms
@@ -2484,7 +2483,7 @@ cgw_rewrite_query (char *src_query, char **sql)
   end = strstr (source, REWRITE_DELIMITER_FROM);
   if (end == NULL)
     {
-      err_code = REWRITE_FAILED;
+      err_code = ERR_REWRITE_FAILED;
       goto ODBC_ERROR;
     }
 
@@ -2496,7 +2495,7 @@ cgw_rewrite_query (char *src_query, char **sql)
   end = strstr (source, REWRITE_DELIMITER_CUBLINK);
   if (end == NULL)
     {
-      err_code = REWRITE_FAILED;
+      err_code = ERR_REWRITE_FAILED;
       goto ODBC_ERROR;
     }
 
@@ -2507,7 +2506,7 @@ cgw_rewrite_query (char *src_query, char **sql)
   end = strstr (source, "WHERE");
   if (end == NULL)
     {
-      err_code = REWRITE_FAILED;
+      err_code = ERR_REWRITE_FAILED;
       goto ODBC_ERROR;
     }
 
@@ -2522,7 +2521,7 @@ cgw_rewrite_query (char *src_query, char **sql)
 
   if (cols_list == NULL || src_num_cols == 0)
     {
-      err_code = REWRITE_FAILED;
+      err_code = ERR_REWRITE_FAILED;
       goto ODBC_ERROR;
     }
 
@@ -2585,7 +2584,7 @@ cgw_rewrite_query (char *src_query, char **sql)
 
       if (cols_list[col_num - 1] == NULL || strcmp (cols_list[col_num - 1], "") == 0)
 	{
-	  err_code = REWRITE_FAILED;
+	  err_code = ERR_REWRITE_FAILED;
 	  goto ODBC_ERROR;
 	}
 

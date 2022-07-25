@@ -78,6 +78,8 @@
 #define REWRITE_SELECT_LEN               8	// "(SELECT "
 #define REWRITE_FROM_LEN                 7	// " FROM )"
 
+#define ERR_REWRITE_FAILED               -2
+
 typedef struct t_col_binder T_COL_BINDER;
 struct t_col_binder
 {
