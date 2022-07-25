@@ -569,13 +569,6 @@ cgw_get_col_info (SQLHSTMT hstmt, int col_num, T_ODBC_COL_INFO * col_info)
 
   memset (col_info, 0x0, sizeof (T_ODBC_COL_INFO));
 
-  col_info->is_unique_key = 0;
-  col_info->is_primary_key = 0;
-  col_info->is_reverse_index = 0;
-  col_info->is_reverse_unique = 0;
-  col_info->is_foreign_key = 0;
-  col_info->is_shared = 0;
-
   if (hstmt == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_STMT_HANDLE, 0);
