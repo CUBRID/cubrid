@@ -1432,7 +1432,7 @@ $ LOADDB
 
 1351 함수 표현식 문자열의 최대 길이는 %1$d이어야 합니다.
 
-1352 Invalid number of columns specified.
+1352 명시된 열의 개수가 올바르지 않습니다.
 
 1353 마지막 에러
 
