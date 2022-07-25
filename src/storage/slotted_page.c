@@ -819,6 +819,7 @@ spage_finalize (THREAD_ENTRY * thread_p)
   spage_Saving_hashmap.destroy ();
 }
 
+#if 0				// Changed to Macro.
 /*
  * spage_slot_size () - Find the overhead used to store one slotted record
  *   return: overhead of slot
@@ -838,7 +839,7 @@ spage_header_size (void)
 {
   return sizeof (SPAGE_HEADER);
 }
-
+#endif
 /*
  * spage_max_record_size () - Find the maximum record length that can be stored in
  *                       a slotted page

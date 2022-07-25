@@ -92,8 +92,13 @@ struct spage_slot
 extern void spage_boot (THREAD_ENTRY * thread_p);
 extern void spage_finalize (THREAD_ENTRY * thread_p);
 extern void spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry);
+#if 0				// Changed to Macro.
 extern int spage_slot_size (void);
 extern int spage_header_size (void);
+#else
+#define spage_slot_size()   (sizeof(SPAGE_SLOT))
+#define spage_header_size() (sizeof(SPAGE_HEADER))
+#endif
 extern int spage_get_free_space (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern int spage_get_free_space_without_saving (THREAD_ENTRY * thread_p, PAGE_PTR page_p, bool * need_update);
 extern void spage_set_need_update_best_hint (THREAD_ENTRY * thread_p, PAGE_PTR page_p, bool need_update);
