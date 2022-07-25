@@ -2374,8 +2374,14 @@ cgw_datatype_to_string (SQLLEN type)
       return (char *) "SQL_GUID";
       break;
 #endif
+    case SQL_WCHAR:
+      return (char *) "SQL_WCHAR";
+    case SQL_WVARCHAR:
+      return (char *) "SQL_WVARCHAR";
+    case SQL_WLONGVARCHAR:
+      return (char *) "SQL_WLONGVARCHAR";
     default:
-      return (char *) "";
+      return (char *) "Unknown type";
     }
 }
 
