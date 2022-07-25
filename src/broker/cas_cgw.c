@@ -42,6 +42,7 @@
                                 } \
                             }
 
+
 typedef struct t_supported_dbms T_SUPPORTED_DBMS;
 struct t_supported_dbms
 {
@@ -80,6 +81,9 @@ static SQLSMALLINT get_c_type (SQLSMALLINT s_type, SQLLEN is_unsigned_type);
 static SQLULEN get_datatype_size (SQLSMALLINT s_type, SQLULEN chars, SQLLEN precision, SQLLEN scale);
 static char *cgw_datatype_to_string (SQLLEN type);
 static char *cgw_utype_to_string (int type);
+static void cgw_free_string_array (char **array);
+static char **cgw_split_string (const char *str, const char *delim, int *num);
+
 static INTL_CODESET client_charset = INTL_CODESET_UTF8;
 
 
@@ -554,7 +558,7 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor
 }
 
 int
-cgw_get_col_info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int col_num, T_ODBC_COL_INFO * col_info)
+cgw_get_col_info (SQLHSTMT hstmt, int col_num, T_ODBC_COL_INFO * col_info)
 {
   SQLRETURN err_code;
   SQLSMALLINT col_name_length = 0;
@@ -563,13 +567,6 @@ cgw_get_col_info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int col_num, T_ODBC_COL_I
   SQLLEN col_unsigned_type = 0;
 
   memset (col_info, 0x0, sizeof (T_ODBC_COL_INFO));
-
-  col_info->is_unique_key = 0;
-  col_info->is_primary_key = 0;
-  col_info->is_reverse_index = 0;
-  col_info->is_reverse_unique = 0;
-  col_info->is_foreign_key = 0;
-  col_info->is_shared = 0;
 
   if (hstmt == NULL)
     {
@@ -1578,6 +1575,13 @@ cgw_sql_prepare (SQLCHAR * sql_stmt)
 {
   SQLRETURN err_code;
 
+  if (local_odbc_handle->hstmt == NULL)
+    {
+      SQL_CHK_ERR (local_odbc_handle->hdbc,
+		   SQL_HANDLE_DBC,
+		   err_code = SQLAllocHandle (SQL_HANDLE_STMT, local_odbc_handle->hdbc, &local_odbc_handle->hstmt));
+    }
+
   SQL_CHK_ERR (local_odbc_handle->hstmt, SQL_HANDLE_STMT, err_code =
 	       SQLPrepare (local_odbc_handle->hstmt, sql_stmt, SQL_NTS));
 
@@ -2270,6 +2274,12 @@ cgw_set_dbms_type (SUPPORTED_DBMS_TYPE dbms_type)
   curr_dbms_type = dbms_type;
 }
 
+int
+cgw_get_dbms_type ()
+{
+  return curr_dbms_type;
+}
+
 static char *
 cgw_datatype_to_string (SQLLEN type)
 {
@@ -2437,4 +2447,276 @@ cgw_utype_to_string (int type)
     default:
       return (char *) "";
     }
+}
+
+int
+cgw_rewrite_query (char *src_query, char **sql)
+{
+  char *source = NULL;
+  char *rewrite_query = NULL;
+  char *select_from = NULL;
+  char *inline_view = NULL;
+  char *new_inline_view = NULL;
+  char *cols_type = NULL;
+  char **cols_list = NULL;
+  char *where = NULL;
+
+  char *start = NULL;
+  char *end = NULL;
+
+  SQLSMALLINT odbc_num_cols = 0;
+  int src_num_cols = 0;
+  int err_code = 0;
+
+  size_t select_from_len = 0;
+  size_t inline_view_len = 0;
+  size_t new_inline_view_len = 0;
+  size_t cols_type_len = 0;
+  size_t where_len = 0;
+
+  char col_name[COL_NAME_LEN + 1];
+  SQLSMALLINT col_name_length = 0;
+  SQLHSTMT hstmt = NULL;
+
+  ALLOC_COPY (source, src_query);
+
+  end = strstr (source, REWRITE_DELIMITER_FROM);
+  if (end == NULL)
+    {
+      err_code = ERR_REWRITE_FAILED;
+      goto ODBC_ERROR;
+    }
+
+  select_from = source;
+  select_from_len = (end + REWRITE_DELIMITER_FROM_LEN) - source;
+  start = end + REWRITE_DELIMITER_FROM_LEN + 1;
+
+
+  end = strstr (source, REWRITE_DELIMITER_CUBLINK);
+  if (end == NULL)
+    {
+      err_code = ERR_REWRITE_FAILED;
+      goto ODBC_ERROR;
+    }
+
+  inline_view = select_from + select_from_len + 1;
+  inline_view_len = (end + 1) - (start);
+  start = end + REWRITE_DELIMITER_CUBLINK_LEN + 3;
+
+  end = strstr (source, "WHERE");
+  if (end == NULL)
+    {
+      err_code = ERR_REWRITE_FAILED;
+      goto ODBC_ERROR;
+    }
+
+  where = end;
+  where_len = strlen (end);
+
+  cols_type = inline_view + inline_view_len + REWRITE_DELIMITER_CUBLINK_LEN + 2;
+  cols_type_len = (end - 2) - (start);
+  *(cols_type + cols_type_len) = '\0';
+
+  cols_list = cgw_split_string (cols_type, ",", &src_num_cols);
+
+  if (cols_list == NULL || src_num_cols == 0)
+    {
+      err_code = ERR_REWRITE_FAILED;
+      goto ODBC_ERROR;
+    }
+
+  SQL_CHK_ERR (local_odbc_handle->hdbc,
+	       SQL_HANDLE_DBC, err_code = SQLAllocHandle (SQL_HANDLE_STMT, local_odbc_handle->hdbc, &hstmt));
+
+  *(inline_view + inline_view_len) = '\0';
+
+  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLPrepare (hstmt, (SQLCHAR *) inline_view, SQL_NTS));
+
+  err_code = cgw_get_num_cols (hstmt, &odbc_num_cols);
+  if (err_code < 0)
+    {
+      err_code = ER_FAILED;
+      goto ODBC_ERROR;
+    }
+
+  if (odbc_num_cols == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_SEMANTIC, 2, "Invalid column name.", "");
+      err_code = ER_FAILED;
+      goto ODBC_ERROR;
+    }
+
+  if (src_num_cols != odbc_num_cols)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_COLUMNS_SPECIFIED, 0);
+      err_code = ER_FAILED;
+      goto ODBC_ERROR;
+    }
+
+  new_inline_view_len += REWRITE_SELECT_LEN;
+  new_inline_view_len += (int) (strlen (" AS ") * odbc_num_cols);
+  new_inline_view_len += inline_view_len;
+  new_inline_view_len += cols_type_len;
+  new_inline_view_len += odbc_num_cols;
+  new_inline_view_len += REWRITE_FROM_LEN;
+
+  for (int col_num = 1; col_num <= odbc_num_cols; col_num++)
+    {
+      SQL_CHK_ERR (hstmt,
+		   SQL_HANDLE_STMT,
+		   err_code = SQLColAttribute (hstmt,
+					       col_num,
+					       SQL_DESC_NAME, col_name, sizeof (col_name), &col_name_length, NULL));
+
+      new_inline_view_len += col_name_length;
+    }
+
+  new_inline_view = (char *) MALLOC (new_inline_view_len + 1);
+  strcpy (new_inline_view, "(SELECT ");
+
+  for (int col_num = 1; col_num <= odbc_num_cols; col_num++)
+    {
+      SQL_CHK_ERR (hstmt,
+		   SQL_HANDLE_STMT,
+		   err_code = SQLColAttribute (hstmt,
+					       col_num,
+					       SQL_DESC_NAME, col_name, sizeof (col_name), &col_name_length, NULL));
+
+      if (cols_list[col_num - 1] == NULL || strcmp (cols_list[col_num - 1], "") == 0)
+	{
+	  err_code = ERR_REWRITE_FAILED;
+	  goto ODBC_ERROR;
+	}
+
+      strcat (new_inline_view, col_name);
+      strcat (new_inline_view, " AS ");
+      strcat (new_inline_view, cols_list[col_num - 1]);
+
+      if (col_num <= odbc_num_cols - 1)
+	{
+	  strcat (new_inline_view, ", ");
+	}
+      else
+	{
+	  strcat (new_inline_view, " FROM ");
+	  strcat (new_inline_view, inline_view);
+	  strcat (new_inline_view, ")");
+	}
+    }
+
+  rewrite_query = (char *) MALLOC (REWRITE_SELECT_FROM_LEN + new_inline_view_len + where_len + 1);
+  memset (rewrite_query, 0x0, REWRITE_SELECT_FROM_LEN + new_inline_view_len + where_len + 1);
+
+  strncpy (rewrite_query, select_from, select_from_len);
+  strcat (rewrite_query, " ");
+  strcat (rewrite_query, new_inline_view);
+  strcat (rewrite_query, " ");
+  strcat (rewrite_query, where);
+
+  *sql = rewrite_query;
+
+  if (hstmt)
+    {
+      SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
+    }
+
+  FREE_MEM (source);
+
+  if (cols_list)
+    {
+      cgw_free_string_array (cols_list);
+    }
+
+  if (new_inline_view)
+    {
+      FREE_MEM (new_inline_view);
+    }
+
+  return err_code;
+
+ODBC_ERROR:
+  if (hstmt)
+    {
+      SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
+    }
+
+  FREE_MEM (source);
+
+  if (cols_list)
+    {
+      cgw_free_string_array (cols_list);
+    }
+
+  if (new_inline_view)
+    {
+      FREE_MEM (new_inline_view);
+    }
+
+  FREE_MEM (rewrite_query);
+
+  if (err_code == SQL_INVALID_HANDLE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_HANDLE, 0);
+      err_code = ER_FAILED;
+    }
+
+  return err_code;
+}
+
+static void
+cgw_free_string_array (char **array)
+{
+  int i;
+
+  for (i = 0; array[i] != NULL; i++)
+    {
+      FREE_MEM (array[i]);
+    }
+  FREE_MEM (array);
+}
+
+static char **
+cgw_split_string (const char *str, const char *delim, int *num)
+{
+  char *t, *o;
+  char *v;
+  char **r = NULL;
+  int count = 1;
+
+  if (str == NULL)
+    {
+      return NULL;
+    }
+
+  o = strdup (str);
+  if (o == NULL)
+    {
+      return NULL;
+    }
+
+  for (t = o;; t = NULL)
+    {
+      v = strtok (t, delim);
+      if (v == NULL)
+	{
+	  break;
+	}
+      char **const realloc_r = (char **) realloc (r, sizeof (char *) * (count + 1));
+      if (realloc_r == NULL)
+	{
+	  FREE_MEM (o);
+	  return NULL;
+	}
+      else
+	{
+	  r = realloc_r;
+	}
+      r[count - 1] = strdup (v);
+      r[count] = NULL;
+      count++;
+    }
+
+  *num = (count - 1);
+  FREE_MEM (o);
+  return r;
 }
