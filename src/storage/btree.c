@@ -1791,6 +1791,11 @@ static DISK_ISVALID btree_check_tree (THREAD_ENTRY * thread_p, const OID * class
 				      const char *btname);
 static DISK_ISVALID btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid);
 static char *btree_unpack_mvccinfo (char *ptr, BTREE_MVCC_INFO * mvcc_info, short btree_mvcc_flags);
+static int btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE * key,
+						      BTREE_OBJECT_INFO * first_version,
+						      BTREE_OBJECT_INFO * second_version, BTREE_OP_PURPOSE purpose,
+						      char *preallocated_buffer, char **data, int *capacity,
+						      int *length);
 
 /*
  * btree_fix_root_with_info () - Fix b-tree root page and output its VPID, header and b-tree info if requested.
@@ -16776,7 +16781,7 @@ btree_rv_save_keyval_for_undo (BTID_INT * btid, DB_VALUE * key, OID * cls_oid, O
  * capacity (in)	    : Capacity of data buffer.
  * length (in)		    : Length of undo data.
  */
-int
+static int
 btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE * key, BTREE_OBJECT_INFO * first_version,
 					   BTREE_OBJECT_INFO * second_version, BTREE_OP_PURPOSE purpose,
 					   char *preallocated_buffer, char **data, int *capacity, int *length)
