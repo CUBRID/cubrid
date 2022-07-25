@@ -9193,9 +9193,13 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser, const char *co
       return NO_ERROR;
     }
 
+  /* We can come here by renaming a view. If there are no constraints, NO_ERROR is returned before.
+   * However, views can have shared columns with the not null constraint. Renaming does not affect
+   * the not null constraint. So, even if the view has a not null constraint, change it so that an error
+   * does not occur here. Change the return value from ER_OBJ_NOT_A_CLASS to NO_ERROR. (In CBRD-24435) */
   if (class_->class_type != SM_CLASS_CT)
     {
-      return ER_OBJ_NOT_A_CLASS;
+      return NO_ERROR;
     }
 
   for (c = class_->constraints; c; c = c->next)
