@@ -2458,7 +2458,7 @@ cgw_utype_to_string (int type)
 }
 
 int
-cgw_rewrite_query (char *src_query, char **rewrite_sql)
+cgw_rewrite_query (char *src_query, char **sql)
 {
   char *source = NULL;
   char *rewrite_query = NULL;
@@ -2549,7 +2549,7 @@ cgw_rewrite_query (char *src_query, char **rewrite_sql)
 
   if (odbc_num_cols == 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_SEMANTIC, 2, "Invalid column.", "");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_SEMANTIC, 2, "Invalid column name.", "");
       err_code = ER_FAILED;
       goto ODBC_ERROR;
     }
@@ -2621,7 +2621,7 @@ cgw_rewrite_query (char *src_query, char **rewrite_sql)
   strcat (rewrite_query, " ");
   strcat (rewrite_query, where);
 
-  *rewrite_sql = rewrite_query;
+  *sql = rewrite_query;
 
   if (hstmt)
     {
@@ -2660,8 +2660,13 @@ ODBC_ERROR:
       FREE_MEM (new_inline_view);
     }
 
-
   FREE_MEM (rewrite_query);
+
+  if (err_code == SQL_INVALID_HANDLE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_HANDLE, 0);
+      err_code = ER_FAILED;
+    }
 
   return err_code;
 }
