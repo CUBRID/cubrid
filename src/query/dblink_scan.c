@@ -843,6 +843,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
       else
 	{
 	  TP_DOMAIN dom;
+	  TP_DOMAIN_STATUS status;
 
 	  tp_domain_init (&dom, (DB_TYPE) db_value_domain_type (valptrp->val));
 
@@ -851,8 +852,10 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	  dom.codeset = db_get_string_codeset (valptrp->val);
 	  dom.scale = db_value_scale (valptrp->val);
 
-	  if (db_value_coerce (&cci_value, valptrp->val, &dom) != DOMAIN_COMPATIBLE)
+	  if ((status =
+	       tp_value_cast_preserve_domain (&cci_value, valptrp->val, &dom, false, true)) != DOMAIN_COMPATIBLE)
 	    {
+	      (void) tp_domain_status_er_set (status, ARG_FILE_LINE, &cci_value, &dom);
 	      goto close_exit;
 	    }
 	}

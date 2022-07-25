@@ -1309,7 +1309,7 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mo
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
     {
       char other_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
 
@@ -17837,7 +17837,7 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
       ASSERT_ERROR ();
     }
 
-  if (intl_identifier_casecmp (old_target_name, target_name) != 0)
+  if (old_target_obj_id != NULL && intl_identifier_casecmp (old_target_name, target_name) != 0)
     {
       synonym_remove_xasl_by_oid (old_target_obj_id);
     }
@@ -18258,7 +18258,10 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
       ASSERT_ERROR ();
     }
 
-  synonym_remove_xasl_by_oid (old_target_obj_id);
+  if (old_target_obj_id != NULL)
+    {
+      synonym_remove_xasl_by_oid (old_target_obj_id);
+    }
 
 end:
   AU_ENABLE (save);
@@ -18443,7 +18446,10 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
       ASSERT_ERROR ();
     }
 
-  synonym_remove_xasl_by_oid (old_target_obj_id);
+  if (old_target_obj_id != NULL)
+    {
+      synonym_remove_xasl_by_oid (old_target_obj_id);
+    }
 
 end:
   if (obj_tmpl != NULL && instance_obj == NULL)

@@ -42,9 +42,10 @@ enum db_client_type
   DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY = 12,
   DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY = 13,
   DB_CLIENT_TYPE_ADMIN_CSQL_WOS = 14,	/* admin csql that can write on standby */
-  DB_CLIENT_TYPE_SKIP_VACUUM_CSQL = 15,	
-  DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL = 16,	
+  DB_CLIENT_TYPE_SKIP_VACUUM_CSQL = 15,
+  DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL = 16,
   DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS = 17, /* admin compactdb that can run on standby */
+  DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT = 18, /* loaddb with --no-user-specified-name option */
 
   DB_CLIENT_TYPE_MAX
 };
