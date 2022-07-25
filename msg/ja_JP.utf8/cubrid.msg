@@ -1432,7 +1432,9 @@ $ LOADDB
 
 1351 The maximum length of the function expression string must be %1$d.
 
-1352 ラストエラー
+1352 Invalid number of columns specified.
+
+1353 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
