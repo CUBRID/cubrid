@@ -4205,6 +4205,19 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		  aggregate_list->flag_agg_optimize = true;
 		}
 	    }
+	  else
+	    {
+	      if (tree->info.function.arg_list->node_type == PT_NAME)
+		{
+		  (void) sm_find_index (classop,
+					(char **) &tree->info.function.arg_list->info.name.original,
+					1, need_unique_index, true, &aggregate_list->btid);
+		  if (!BTID_IS_NULL (&aggregate_list->btid))
+		    {
+		      aggregate_list->flag_agg_optimize = true;
+		    }
+		}
+	    }
 	}
 
       if (aggregate_list->function != PT_COUNT_STAR && aggregate_list->function != PT_GROUPBY_NUM)
