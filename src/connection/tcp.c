@@ -76,6 +76,7 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "tcp.h"
+#include "host_lookup.h"
 
 #ifndef HAVE_GETHOSTBYNAME_R
 #include <pthread.h>
@@ -330,11 +331,9 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
     {
 #ifdef HAVE_GETHOSTBYNAME_R
 #if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
-      struct hostent *hp, hent;
-      int herr;
-      char buf[1024];
+      struct hostent hent;
 
-      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
+      if (gethostbyname_r_uhost (host, &hent) != 0 || &hent == NULL)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return INVALID_SOCKET;
@@ -342,10 +341,8 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr, hent.h_length);
 #elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
       struct hostent hent;
-      int herr;
-      char buf[1024];
 
-      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &herr) == NULL)
+      if (gethostbyname_r_uhost (host, &hent) == NULL)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return INVALID_SOCKET;
@@ -353,9 +350,8 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr, hent.h_length);
 #elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
       struct hostent hent;
-      struct hostent_data ht_data;
 
-      if (gethostbyname_r (host, &hent, &ht_data) == -1)
+      if (gethostbyname_r_uhost (host, &hent) == -1)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return INVALID_SOCKET;
@@ -369,7 +365,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
       int r;
 
       r = pthread_mutex_lock (&gethostbyname_lock);
-      hp = gethostbyname (host);
+      hp = gethostbyname_uhost (host);
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);

@@ -31,6 +31,12 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 
+#ifndef HAVE_GETHOSTBYNAME_R
+#include <pthread.h>
+static pthread_mutex_t gethostbyname_lock = PTHREAD_MUTEX_INITIALIZER;
+#endif /* HAVE_GETHOSTBYNAME_R */
+
+
 #define HOSTNAME_BUF_SIZE              (256)
 
 struct cub_hostent
@@ -38,14 +44,6 @@ struct cub_hostent
   char addr[17];
   char hostname[HOSTNAME_BUF_SIZE + 1];
 };
-/*
-typedef enum
-{
-  GETHOSTBYNAME = 1,
-  GETHOSTBYNAME_R,
-  GETADDRINFO
-} LOOKUP_FUNC_NAME;
-*/
 
 typedef struct cub_hostent CUB_HOSTENT;
 static CUB_HOSTENT hostent_List[256];	/* "etc/hosts" file maximum line */
@@ -56,14 +54,33 @@ static int host_conf_element_Count = 0;
 static int host_conf_Use = -1;
 
 static int host_conf_load ();
-static hostent *hostent_compose (char *hostname);
+static hostent *hostent_compose (const char *hostname);
 
 static hostent *
-hostent_compose (char *hostname)
+hostent_compose (const char *hostname)
 {
   static hostent hp;
-  int hostent_list_index, find_index;
+  int hostent_list_index, find_index, ret;
   char addr_transform_buf[17];
+
+  for (hostent_list_index = 0; hostent_list_index < host_conf_element_Count; hostent_list_index++)
+    {
+      if (!strcmp (hostname, hostent_List[hostent_list_index].hostname))
+	{
+	  find_index = hostent_list_index;
+	  break;
+	}
+    }
+  if (hostent_list_index == host_conf_element_Count)
+    {
+      return NULL;
+//this should be set to error message
+    }
+  if (inet_pton (AF_INET, hostent_List[find_index].addr, addr_transform_buf) < 1)
+    {
+      return NULL;
+    }
+
   hp.h_addrtype = AF_INET;
   hp.h_length = 4;
   hp.h_name = (char *) malloc (sizeof (char *));
@@ -74,17 +91,7 @@ hostent_compose (char *hostname)
 
   strcpy (hp.h_name, hostname);
   strcpy (hp.h_aliases[0], hostname);
-
-  for (hostent_list_index = 0; hostent_list_index < host_conf_element_Count; hostent_list_index++)
-    {
-      if (!strcmp (hostname, hostent_List[hostent_list_index].hostname))
-	{
-	  find_index = hostent_list_index;
-	  break;
-	}
-    }
-  strcpy (addr_transform_buf, hostent_List[find_index].addr);
-  inet_pton (hp.h_addrtype, addr_transform_buf, hp.h_addr_list[0]);
+  strcpy (hp.h_addr_list[0], addr_transform_buf);
 
   return &hp;
 }
@@ -124,6 +131,8 @@ host_conf_load ()		//set hash table to discover error
 	continue;
       if (file_line[0] == ' ')
 	continue;
+      if (file_line[0] == '\n')
+	continue;
 
       token = strtok_r (file_line, delim, &save_ptr);
       flag = false;
@@ -151,7 +160,7 @@ host_conf_load ()		//set hash table to discover error
 }
 
 /*
- * gethostbyname_uhost () - Do same job with gethostbyname (), using by the user defined 'hosts.conf' file.
+ * gethostbyname_uhost () - Do same job with gethostbyname (), using by the 'user' defined 'hosts.conf' file.
  * 
  * return   : the hostent pointer.
  * hostname (in) : the hostname.
@@ -161,13 +170,12 @@ hostent *
 gethostbyname_uhost (char *hostname)
 {
   hostent *hp;
-  char *hostname_buf;
   bool host_conf;
   int index;
 
   if (host_conf_Use < 0)
     {
-      host_conf_Use = prm_get_bool_value (PRM_ID_HOSTS_CONF);
+      host_conf_Use = prm_get_bool_value (PRM_ID_USE_USER_HOSTS);
     }
 
   if (!host_conf_Use)
@@ -185,6 +193,70 @@ gethostbyname_uhost (char *hostname)
     }
 
   hp = hostent_compose (hostname);
-
+  //hp null case error 
   return hp;
+}
+
+int
+gethostbyname_r_uhost (const char *hostname, struct hostent *out_hp)
+{
+  struct hostent *hp_memcpy;
+  bool host_conf;
+  int ret;
+
+  if (host_conf_Use < 0)
+    {
+      host_conf_Use = prm_get_bool_value (PRM_ID_USE_USER_HOSTS);
+    }
+
+  if (!host_conf_Use)
+    {
+//err also modified by callee
+#ifdef HAVE_GETHOSTBYNAME_R
+#if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
+      struct hostent *hp, hent;
+      int herr;
+      char buf[1024];
+
+      ret = gethostbyname_r (hostname, &hent, buf, sizeof (buf), &hp, &herr);
+#elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
+      struct hostent hent;
+      int herr;
+      char buf[1024];
+
+      ret = gethostbyname_r (hostname, &hent, buf, sizeof (buf), &herr);
+#elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
+      struct hostent hent;
+      struct hostent_data ht_data;
+
+      ret = gethostbyname_r (hostname, &hent, &ht_data);
+#else
+#error "HAVE_GETHOSTBYNAME_R"
+#endif
+#else /* HAVE_GETHOSTBYNAME_R */
+      struct hostent *hent;
+      int r;
+
+      r = pthread_mutex_lock (&gethostbyname_lock);
+      hent = gethostbyname (hostname);
+      if (hent == NULL)
+#endif /* !HAVE_GETHOSTBYNAME_R */
+	memcpy (out_hp, &hent, sizeof (hent));
+      out_hp = &hent;
+      return ret;
+    }
+
+  if (!host_conf_element_Count)
+    {
+      host_conf_element_Count = host_conf_load ();
+      if (host_conf_element_Count <= 0)
+	{
+	  return NULL;
+	}
+    }
+
+  hp_memcpy = hostent_compose (hostname);
+  memcpy (out_hp, hp_memcpy, sizeof (*hp_memcpy));
+  //out_hp NULL case
+  return 0;
 }
