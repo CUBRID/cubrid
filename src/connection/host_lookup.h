@@ -25,6 +25,6 @@
 
 #ident "$Id$"
 extern hostent *gethostbyname_uhost (char *hostname);
-extern hostent *gethostbyname_r_uhost (const char *hostname, struct hostent * out_hp);
+extern hostent *gethostbyname_r_uhost (const char *hostname, struct hostent *out_hp);
 
 #endif /* _HOST_LOOKUP_H_ */
