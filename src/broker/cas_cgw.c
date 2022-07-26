@@ -2509,7 +2509,7 @@ cgw_rewrite_query (char *src_query, char **sql)
   inline_view_len = (end + 1) - (start);
   start = end + REWRITE_DELIMITER_CUBLINK_LEN + 3;
 
-  end = strstr (source, "WHERE");
+  end = strstr (inline_view + inline_view_len, "WHERE");
   if (end == NULL)
     {
       err_code = ERR_REWRITE_FAILED;
