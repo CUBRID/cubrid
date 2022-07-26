@@ -16430,7 +16430,7 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   LEAF_REC leaf_pnt;
   BTREE_SCAN btree_scan, *BTS;
   int ret = NO_ERROR;
-  int next, slot, key_cnt;
+  int slot, key_cnt;
   MVCC_SNAPSHOT *mvcc_snapshot;
 
   if (key == NULL)
@@ -16485,12 +16485,10 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   if (find_min_key)
     {
       BTS->use_desc_index = 0;
-      next = 1;
     }
   else
     {
       BTS->use_desc_index = 1;
-      next = -1;
     }
 
   ret = btree_find_lower_bound_leaf (thread_p, BTS, NULL);
