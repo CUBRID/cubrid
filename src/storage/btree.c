@@ -16426,7 +16426,7 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   DB_VALUE key_value;
   BTREE_ROOT_HEADER *root_header = NULL;
   BTREE_SCAN btree_scan, *BTS;
-  int slot, ret = NO_ERROR;
+  int ret = NO_ERROR;
   MVCC_SNAPSHOT *mvcc_snapshot;
 
   if (key == NULL)
