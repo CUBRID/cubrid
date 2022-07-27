@@ -1334,7 +1334,7 @@ static int btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR 
 static int btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR Q, PAGE_PTR R,
 			     VPID * P_vpid, VPID * Q_vpid, VPID * R_vpid, BTREE_NODE_TYPE node_type, DB_VALUE * key,
 			     BTREE_INSERT_HELPER * helper, VPID * child_vpid);
-static int btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS, BTREE_STATS * stat_info_p);
+static int btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS, BTREE_STATS * stat_info_p, int *cnt);
 static PAGE_PTR btree_find_leftmost_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
 					  BTREE_STATS * stat_info_p);
 static PAGE_PTR btree_find_rightmost_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
@@ -6941,7 +6941,7 @@ btree_get_stats_with_fullscan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env)
   BTS = &(env->btree_scan);
   BTS->use_desc_index = 0;	/* get the left-most leaf page */
 
-  ret = btree_find_lower_bound_leaf (thread_p, BTS, env->stat_info);
+  ret = btree_find_lower_bound_leaf (thread_p, BTS, env->stat_info, NULL);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -14340,7 +14340,7 @@ btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, 
  * Note: Find the first/last leaf page of the B+tree index.
  */
 static int
-btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_STATS * stat_info_p)
+btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_STATS * stat_info_p, int *cnt)
 {
   int key_cnt;
   int ret = NO_ERROR;
@@ -14365,6 +14365,10 @@ btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_ST
 
   /* get header information (key_cnt) */
   key_cnt = btree_node_number_of_keys (thread_p, bts->C_page);
+  if (cnt != NULL)
+    {
+      *cnt = key_cnt;
+    }
 
   header = btree_get_node_header (thread_p, bts->C_page);
   if (header == NULL)
@@ -16491,14 +16495,11 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       BTS->use_desc_index = 1;
     }
 
-  ret = btree_find_lower_bound_leaf (thread_p, BTS, NULL);
+  ret = btree_find_lower_bound_leaf (thread_p, BTS, NULL, &key_cnt);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
     }
-
-  /* get header information (key_cnt) */
-  key_cnt = btree_node_number_of_keys (thread_p, BTS->C_page);
 
   mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
   mvcc_snapshot->snapshot_fnc = mvcc_satisfies_snapshot;
@@ -24424,7 +24425,7 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   if (bts->key_range.lower_key == NULL)
     {
       /* No lower limit. Just find lowest key in index. */
-      error_code = btree_find_lower_bound_leaf (thread_p, bts, NULL);
+      error_code = btree_find_lower_bound_leaf (thread_p, bts, NULL, NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
