@@ -16419,7 +16419,7 @@ error:
 int
 btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, int find_min_key)
 {
-  VPID root_vpid, C_vpid;
+  VPID root_vpid;
   PAGE_PTR root_page_ptr = NULL;
   bool clear_key = false;
   bool is_visible = false;
@@ -16495,8 +16495,6 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
   mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
   mvcc_snapshot->snapshot_fnc = mvcc_satisfies_snapshot;
-
-  VPID_SET_NULL (&C_vpid);
 
   while (!BTREE_END_OF_SCAN (BTS) && !is_visible)
     {
