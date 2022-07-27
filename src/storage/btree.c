@@ -22285,12 +22285,15 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
     }
 
   /* scan index capacity into out_values */
+  /* Refer to metadata_of_index_capacity for the order of out_values */
+
   // {"Table_name", "varchar(256)"}
   error = db_make_string_copy (out_values[idx++], class_name);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
+
   // {"Index_name", "varchar(256)"}
   error = db_make_string_copy (out_values[idx++], index_p->btname);
   if (error != NO_ERROR)
@@ -22308,24 +22311,34 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
 
   // {"Num_distinct_key", "int"}
   db_make_int (out_values[idx++], cpc.dis_key_cnt);
+
   // {"Total_value", "bigint"}
   db_make_bigint (out_values[idx++], cpc.tot_val_cnt);
+
   // {"Avg_num_value_per_key", "int"}
   db_make_int (out_values[idx++], cpc.avg_val_per_key);
+
   // {"Num_leaf_page", "int"}
   db_make_int (out_values[idx++], cpc.leaf_pg_cnt);
+
   // {"Num_Ovfl_page", "int"}
   db_make_int (out_values[idx++], cpc.ovfl_oid_pg.tot_pg_cnt);
+
   // {"Num_non_leaf_page", "int"}
   db_make_int (out_values[idx++], cpc.nleaf_pg_cnt);
+
   // {"Num_total_page", "int"}
   db_make_int (out_values[idx++], cpc.tot_pg_cnt + cpc.ovfl_oid_pg.tot_pg_cnt);
+
   // {"Height", "int"}
   db_make_int (out_values[idx++], cpc.height);
+
   // {"Avg_key_len", "int"}
   db_make_int (out_values[idx++], cpc.avg_key_len);
+
   // {"Avg_rec_len", "int"}
   db_make_int (out_values[idx++], cpc.avg_rec_len);
+
   // {"Total_space", "varchar(64)"}
   (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_space));
   error = db_make_string_copy (out_values[idx++], buf);
@@ -22333,6 +22346,7 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
     {
       goto cleanup;
     }
+
   // {"Total_used_space", "varchar(64)"}
   (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_used_space));
   error = db_make_string_copy (out_values[idx++], buf);
@@ -22364,12 +22378,15 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
   db_make_int (out_values[idx++],
 	       (cpc.ovfl_oid_pg.tot_space > 0) ?
 	       (int) ((cpc.ovfl_oid_pg.tot_free_space / cpc.ovfl_oid_pg.tot_space) * 100) : 0);
+
   // {"Average_free_space_per_Ovfl_page", "int"}
   db_make_int (out_values[idx++], (int) cpc.ovfl_oid_pg.avg_pg_free_sp);
+
   // {"Average_Ovfl_page_count_per_key", "int"}
   db_make_int (out_values[idx++],
 	       (cpc.ovfl_oid_pg.dis_key_cnt > 0) ?
 	       (int) (cpc.ovfl_oid_pg.tot_pg_cnt / cpc.ovfl_oid_pg.dis_key_cnt) : 0);
+
   // {"Max_Ovfl_page_count_in_a_key", "int"}
   db_make_int (out_values[idx++], cpc.ovfl_oid_pg.max_pg_cnt_per_key);
 
