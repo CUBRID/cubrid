@@ -8854,7 +8854,7 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
   fprintf (fp, "Total Page Count: %d\n", cpc.tot_pg_cnt + cpc.ovfl_oid_pg.tot_pg_cnt);
   fprintf (fp, "Leaf Page Count: %d\n", cpc.leaf_pg_cnt);
   fprintf (fp, "NonLeaf Page Count: %d\n", cpc.nleaf_pg_cnt);
-  fprintf (fp, "Overflow Page Count: %lld\n", cpc.ovfl_oid_pg.tot_pg_cnt);
+  fprintf (fp, "Overflow Page Count: %d\n", cpc.ovfl_oid_pg.tot_pg_cnt);
   fprintf (fp, "Height: %d\n", cpc.height);
   fprintf (fp, "Average Key Length: %d\n", cpc.avg_key_len);
   fprintf (fp, "Average Record Length: %d\n", cpc.avg_rec_len);
@@ -8869,7 +8869,7 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
   fprintf (fp, "Average Overflow Free Space per Page: %d bytes\n", (int) cpc.ovfl_oid_pg.avg_pg_free_sp);
   fprintf (fp, "Average Overflow Page Count Per Key: %d\n",
 	   (cpc.ovfl_oid_pg.dis_key_cnt > 0) ? (int) (cpc.ovfl_oid_pg.tot_pg_cnt / cpc.ovfl_oid_pg.dis_key_cnt) : 0);
-  fprintf (fp, "Max Overflow Page Count in a Key: %lld\n", cpc.ovfl_oid_pg.max_pg_cnt_per_key);
+  fprintf (fp, "Max Overflow Page Count in a Key: %d\n", cpc.ovfl_oid_pg.max_pg_cnt_per_key);
   fprintf (fp, "-------------------------------------------------------------\n");
 
 exit:
@@ -22285,108 +22285,93 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
     }
 
   /* scan index capacity into out_values */
-  error = db_make_string_copy (out_values[idx], class_name);
-  idx++;
+  // {"Table_name", "varchar(256)"}
+  error = db_make_string_copy (out_values[idx++], class_name);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  // {"Index_name", "varchar(256)"}
+  error = db_make_string_copy (out_values[idx++], index_p->btname);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
 
-  error = db_make_string_copy (out_values[idx], index_p->btname);
-  idx++;
-  if (error != NO_ERROR)
-    {
-      goto cleanup;
-    }
-
+  // {"Btid", "varchar(64)"}
   (void) btid_to_string (buf, sizeof (buf), btid_p);
-  error = db_make_string_copy (out_values[idx], buf);
-  idx++;
+  error = db_make_string_copy (out_values[idx++], buf);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
 
-  db_make_int (out_values[idx], cpc.dis_key_cnt);
-  idx++;
-
-  db_make_bigint (out_values[idx], cpc.tot_val_cnt);
-  idx++;
-
-  db_make_int (out_values[idx], cpc.avg_val_per_key);
-  idx++;
-
-  db_make_int (out_values[idx], cpc.leaf_pg_cnt);
-  idx++;
-
-  db_make_bigint (out_values[idx], cpc.ovfl_oid_pg.tot_pg_cnt);
-  idx++;
-
-  db_make_int (out_values[idx], cpc.nleaf_pg_cnt);
-  idx++;
-
-  db_make_int (out_values[idx], cpc.tot_pg_cnt + cpc.ovfl_oid_pg.tot_pg_cnt);
-  idx++;
-
-  db_make_int (out_values[idx], cpc.height);
-  idx++;
-
-  db_make_int (out_values[idx], cpc.avg_key_len);
-  idx++;
-
-  db_make_int (out_values[idx], cpc.avg_rec_len);
-  idx++;
-
+  // {"Num_distinct_key", "int"}
+  db_make_int (out_values[idx++], cpc.dis_key_cnt);
+  // {"Total_value", "bigint"}
+  db_make_bigint (out_values[idx++], cpc.tot_val_cnt);
+  // {"Avg_num_value_per_key", "int"}
+  db_make_int (out_values[idx++], cpc.avg_val_per_key);
+  // {"Num_leaf_page", "int"}
+  db_make_int (out_values[idx++], cpc.leaf_pg_cnt);
+  // {"Num_Ovfl_page", "int"}
+  db_make_int (out_values[idx++], cpc.ovfl_oid_pg.tot_pg_cnt);
+  // {"Num_non_leaf_page", "int"}
+  db_make_int (out_values[idx++], cpc.nleaf_pg_cnt);
+  // {"Num_total_page", "int"}
+  db_make_int (out_values[idx++], cpc.tot_pg_cnt + cpc.ovfl_oid_pg.tot_pg_cnt);
+  // {"Height", "int"}
+  db_make_int (out_values[idx++], cpc.height);
+  // {"Avg_key_len", "int"}
+  db_make_int (out_values[idx++], cpc.avg_key_len);
+  // {"Avg_rec_len", "int"}
+  db_make_int (out_values[idx++], cpc.avg_rec_len);
+  // {"Total_space", "varchar(64)"}
   (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_space));
-  error = db_make_string_copy (out_values[idx], buf);
-  idx++;
+  error = db_make_string_copy (out_values[idx++], buf);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
-
+  // {"Total_used_space", "varchar(64)"}
   (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_used_space));
-  error = db_make_string_copy (out_values[idx], buf);
-  idx++;
+  error = db_make_string_copy (out_values[idx++], buf);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
 
+  // {"Total_free_space", "varchar(64)"}
   (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_free_space));
-  error = db_make_string_copy (out_values[idx], buf);
-  idx++;
+  error = db_make_string_copy (out_values[idx++], buf);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
 
-  db_make_int (out_values[idx], cpc.avg_pg_key_cnt);
-  idx++;
+  // {"Avg_num_page_key", "int"}
+  db_make_int (out_values[idx++], cpc.avg_pg_key_cnt);
 
+  // {"Avg_page_free_space", "varchar(64)"}
   (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.avg_pg_free_sp));
-  error = db_make_string_copy (out_values[idx], buf);
-  idx++;
+  error = db_make_string_copy (out_values[idx++], buf);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
 
-  db_make_int (out_values[idx],
+  // {"Percentage_free_space_Ovfl_page", "int"}
+  db_make_int (out_values[idx++],
 	       (cpc.ovfl_oid_pg.tot_space > 0) ?
 	       (int) ((cpc.ovfl_oid_pg.tot_free_space / cpc.ovfl_oid_pg.tot_space) * 100) : 0);
-  idx++;
-
-  db_make_int (out_values[idx], (int) cpc.ovfl_oid_pg.avg_pg_free_sp);
-  idx++;
-
-  db_make_int (out_values[idx],
+  // {"Average_free_space_per_Ovfl_page", "int"}
+  db_make_int (out_values[idx++], (int) cpc.ovfl_oid_pg.avg_pg_free_sp);
+  // {"Average_Ovfl_page_count_per_key", "int"}
+  db_make_int (out_values[idx++],
 	       (cpc.ovfl_oid_pg.dis_key_cnt > 0) ?
 	       (int) (cpc.ovfl_oid_pg.tot_pg_cnt / cpc.ovfl_oid_pg.dis_key_cnt) : 0);
-  idx++;
-
-  db_make_bigint (out_values[idx], cpc.ovfl_oid_pg.max_pg_cnt_per_key);
-  idx++;
+  // {"Max_Ovfl_page_count_in_a_key", "int"}
+  db_make_int (out_values[idx++], cpc.ovfl_oid_pg.max_pg_cnt_per_key);
 
   assert (idx == out_cnt);
 

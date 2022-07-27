@@ -447,7 +447,7 @@ metadata_of_index_capacity (SHOW_ONLY_ALL flag)
     {"Total_value", "bigint"},
     {"Avg_num_value_per_key", "int"},
     {"Num_leaf_page", "int"},
-    {"Num_Ovfl_page", "bigint"},
+    {"Num_Ovfl_page", "int"},
     {"Num_non_leaf_page", "int"},
     {"Num_total_page", "int"},
     {"Height", "int"},
@@ -461,7 +461,7 @@ metadata_of_index_capacity (SHOW_ONLY_ALL flag)
     {"Percentage_free_space_Ovfl_page", "int"},
     {"Average_free_space_per_Ovfl_page", "int"},
     {"Average_Ovfl_page_count_per_key", "int"},
-    {"Max_Ovfl_page_count_in_a_key", "bigint"}
+    {"Max_Ovfl_page_count_in_a_key", "int"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
