@@ -12821,7 +12821,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   assert (leftcnt <= key_cnt && leftcnt >= 0);
 
   /* make fence record */
-  if (node_type == BTREE_LEAF_NODE)
+  if (node_type == BTREE_LEAF_NODE && prm_get_bool_value (PRM_ID_USE_BTREE_FENCE_KEY))
     {
       PR_TYPE *pr_type = btid->key_type->type;
       sep_key_len = pr_type->get_index_size_of_value (sep_key);
@@ -12846,11 +12846,6 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 	  /* do not insert fence key if sep_key is overflow key */
 	  flag_fence_insert = false;
 	}
-    }
-
-  if (prm_get_bool_value (PRM_ID_USE_BTREE_FENCE_KEY) == false)
-    {
-      flag_fence_insert = false;
     }
 
   rightcnt = key_cnt - leftcnt;
@@ -13658,7 +13653,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   assert (leftcnt <= key_cnt && leftcnt >= 0);
 
   /* make fence record */
-  if (node_type == BTREE_LEAF_NODE)
+  if (node_type == BTREE_LEAF_NODE && prm_get_bool_value (PRM_ID_USE_BTREE_FENCE_KEY))
     {
       PR_TYPE *pr_type;
 
@@ -13684,11 +13679,6 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 	  /* do not insert fence key if sep_key is overflow key */
 	  flag_fence_insert = false;
 	}
-    }
-
-  if (prm_get_bool_value (PRM_ID_USE_BTREE_FENCE_KEY) == false)
-    {
-      flag_fence_insert = false;
     }
 
   /* neg-inf key is dummy key which is not used in comparison so set it as sep_key */
