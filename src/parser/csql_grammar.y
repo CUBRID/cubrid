@@ -26,6 +26,15 @@
 #include "json_table_def.h"
 #include "parser.h"
 
+//#define USE_NCHAR_IN_GRAMMAR
+#if defined(USE_NCHAR) && defined(USE_NCHAR_PT_TYPE) && defined(USE_NCHAR_IN_GRAMMAR)
+#    define PT_TYPE_VARNCHAR_CHANGE   PT_TYPE_VARNCHAR
+#    define PT_TYPE_NCHAR_CHANGE      PT_TYPE_NCHAR
+#else
+#    define PT_TYPE_VARNCHAR_CHANGE   PT_TYPE_VARCHAR
+#    define PT_TYPE_NCHAR_CHANGE      PT_TYPE_CHAR
+#endif
+
 /*
  * The default YYLTYPE structure is extended so that locations can hold
  * context information
@@ -20146,13 +20155,13 @@ negative_prec_cast_type
 	| NATIONAL CHAR_
 		{{ DBG_TRACE_GRAMMAR(negative_prec_cast_type, |  NATIONAL CHAR_);
 
-			$$ = PT_TYPE_NCHAR;
+			$$ = PT_TYPE_NCHAR_CHANGE;
 
 		DBG_PRINT}}
 	| NCHAR
 		{{ DBG_TRACE_GRAMMAR(negative_prec_cast_type, | NCHAR);
 
-			$$ = PT_TYPE_NCHAR;
+			$$ = PT_TYPE_NCHAR_CHANGE;
 
 		DBG_PRINT}}
 	;
@@ -20432,18 +20441,18 @@ char_bit_type
 		{{ DBG_TRACE_GRAMMAR(char_bit_type, | NATIONAL CHAR_ opt_varying);
 
 			if ($3)
-			  $$ = PT_TYPE_VARNCHAR;
+			  $$ = PT_TYPE_VARNCHAR_CHANGE;
 			else
-			  $$ = PT_TYPE_NCHAR;
+			  $$ = PT_TYPE_NCHAR_CHANGE;
 
 		DBG_PRINT}}
 	| NCHAR	opt_varying
 		{{ DBG_TRACE_GRAMMAR(char_bit_type, | NCHAR	opt_varying);
 
 			if ($2)
-			  $$ = PT_TYPE_VARNCHAR;
+			  $$ = PT_TYPE_VARNCHAR_CHANGE;
 			else
-			  $$ = PT_TYPE_NCHAR;
+			  $$ = PT_TYPE_NCHAR_CHANGE;
 
 		DBG_PRINT}}
 	| BIT opt_varying
@@ -22438,7 +22447,7 @@ char_string
 			  }
 
 			node = pt_create_char_string_literal (this_parser,
-							      PT_TYPE_NCHAR,
+							      PT_TYPE_NCHAR_CHANGE,
 							      $1, charset);
 
 			if (node && lang_get_parser_use_client_charset ())
