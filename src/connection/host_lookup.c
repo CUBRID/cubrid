@@ -54,18 +54,44 @@ static int host_conf_element_Count = 0;
 static int host_conf_Use = -1;
 
 static int host_conf_load ();
-static hostent *hostent_compose (const char *hostname);
+static hostent *hostent_compose (const char *hostname, struct sockaddr *saddr);
 
 static hostent *
-hostent_compose (const char *hostname)
+hostent_compose (const char *hostname, struct sockaddr *saddr)
 {
   static hostent hp;
-  int hostent_list_index, find_index, ret;
+  int hostent_list_index, find_index, ret, cmp_ret = 1;
   char addr_transform_buf[17];
+  char addr_transform_buf2[17];
+  struct sockaddr_in *addr_trans;
+
+  addr_trans = (struct sockaddr_in *) saddr;
+  //sin_addr
+  assert (((hostname != NULL) && (saddr == NULL)) || ((hostname == NULL) && (saddr != NULL)));
+
+  if (saddr != NULL)
+    {
+      if (inet_ntop (AF_INET, &addr_trans->sin_addr, addr_transform_buf, sizeof (addr_transform_buf) + 1) == NULL)
+	{
+	  return NULL;
+	}
+
+    }
 
   for (hostent_list_index = 0; hostent_list_index < host_conf_element_Count; hostent_list_index++)
     {
-      if (!strcmp (hostname, hostent_List[hostent_list_index].hostname))
+      if (hostname != NULL)
+	{
+	  cmp_ret = strcmp (hostname, hostent_List[hostent_list_index].hostname);
+
+	}
+      else if (saddr != NULL)
+	{
+	  //saddr must be transformed
+	  cmp_ret = strcmp (addr_transform_buf, hostent_List[hostent_list_index].addr);
+
+	}
+      if (!cmp_ret)
 	{
 	  find_index = hostent_list_index;
 	  break;
@@ -76,7 +102,7 @@ hostent_compose (const char *hostname)
       return NULL;
 //this should be set to error message
     }
-  if (inet_pton (AF_INET, hostent_List[find_index].addr, addr_transform_buf) < 1)
+  if (inet_pton (AF_INET, hostent_List[find_index].addr, addr_transform_buf2) < 1)
     {
       return NULL;
     }
@@ -89,9 +115,9 @@ hostent_compose (const char *hostname)
   hp.h_addr_list = (char **) malloc (sizeof (char **));
   hp.h_addr_list[0] = (char *) malloc (sizeof (char *));
 
-  strcpy (hp.h_name, hostname);
-  strcpy (hp.h_aliases[0], hostname);
-  strcpy (hp.h_addr_list[0], addr_transform_buf);
+  strcpy (hp.h_name, hostent_List[hostent_list_index].hostname);
+  strcpy (hp.h_aliases[0], hostent_List[hostent_list_index].hostname);
+  strcpy (hp.h_addr_list[0], addr_transform_buf2);
 
   return &hp;
 }
@@ -108,7 +134,8 @@ host_conf_load ()		//set hash table to discover error
   char *save_ptr;
   char *delim = " \t\n";	/*delimiter */
   int host_count = 0, last = 0, line_no = 0;
-  bool flag = 0;		//it should be changed -> temp
+/*False, if hostent_List[index].hostname is set*/
+  bool storage_flag = 0;
 
   memset (file_line, 0, HOSTNAME_BUF_SIZE + 1);
   memset (line_buf, 0, HOSTNAME_BUF_SIZE + 1);
@@ -135,7 +162,7 @@ host_conf_load ()		//set hash table to discover error
 	continue;
 
       token = strtok_r (file_line, delim, &save_ptr);
-      flag = false;
+      storage_flag = false;
 
       do
 	{
@@ -143,10 +170,10 @@ host_conf_load ()		//set hash table to discover error
 	    {
 	      break;
 	    }
-	  if (!flag)
+	  if (!storage_flag)
 	    {
 	      strcpy (hostent_List[host_count].addr, token);
-	      flag = true;
+	      storage_flag = true;
 	    }
 	  else
 	    {
@@ -192,7 +219,7 @@ gethostbyname_uhost (char *hostname)
 	}
     }
 
-  hp = hostent_compose (hostname);
+  hp = hostent_compose (hostname, NULL);
   //hp null case error 
   return hp;
 }
@@ -255,8 +282,40 @@ gethostbyname_r_uhost (const char *hostname, struct hostent *out_hp)
 	}
     }
 
-  hp_memcpy = hostent_compose (hostname);
+  hp_memcpy = hostent_compose (hostname, NULL);
   memcpy (out_hp, hp_memcpy, sizeof (*hp_memcpy));
   //out_hp NULL case
+  return 0;
+}
+
+int
+getnameinfo_uhost (struct sockaddr *saddr, socklen_t saddr_len, char *hostname, size_t host_len, char *servname,
+		   size_t serv_len, int flags)
+{
+
+  struct hostent *hp;
+  if (host_conf_Use < 0)
+    {
+      host_conf_Use = prm_get_bool_value (PRM_ID_USE_USER_HOSTS);
+    }
+
+  if (!host_conf_Use)
+    {
+      return getnameinfo (saddr, saddr_len, hostname, host_len, NULL, 0, NI_NOFQDN);
+    }
+
+  if (!host_conf_element_Count)
+    {
+      host_conf_element_Count = host_conf_load ();
+      if (host_conf_element_Count <= 0)
+	{
+	  return NULL;
+	}
+    }
+
+  hp = hostent_compose (NULL, saddr);
+  //hp null case error
+  //  return hp;
+  strcpy (hostname, hp->h_name);
   return 0;
 }
