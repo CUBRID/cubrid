@@ -51,8 +51,6 @@
 #include "locator_cl.h"
 #include "db_json.hpp"
 
-#include "dbtype.h"
-
 extern "C"
 {
   extern int parser_function_code;
@@ -6029,8 +6027,7 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_
 	  if (au_fetch_class (classop, &class_, fetchmode, type) == NO_ERROR)
 	    {
 	      /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-	      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY
-		  && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+	      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
 		{
 		  if (intl_identifier_casecmp (class_name, class_->header.ch_name) != 0)
 		    {
@@ -6996,6 +6993,32 @@ exit_on_error:
   return ER_FAILED;
 }
 
+
+static void
+pt_write_semantic_warning (PARSER_CONTEXT * parser, PT_NODE * name, int line_no, int er_set_no, int msg_no)
+{
+  char *buf = NULL;
+  char *fmt = msgcat_message (MSGCAT_CATALOG_CUBRID, er_set_no, msg_no);
+
+  if (name->info.name.meta_class != PT_INDEX_NAME)
+    {
+      asprintf (&buf, fmt, pt_print_bytes (parser, name)->bytes);
+    }
+  else
+    {
+      void *ptr = name->etc;
+      name->etc = (void *) PT_IDX_HINT_NONE;	// for remove (+)/(-)
+      asprintf (&buf, fmt, pt_print_bytes (parser, name)->bytes);
+      name->etc = (void *) ptr;
+    }
+
+  if (buf)
+    {
+      er_set (ER_WARNING_SEVERITY, __FILE__, line_no, ER_PT_SEMANTIC, 2, buf, "");
+      free (buf);
+    }
+}
+
 /*
  * pt_resolve_using_index () -
  *   return:
@@ -7004,7 +7027,7 @@ exit_on_error:
  *   from(in):
  */
 PT_NODE *
-pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from)
+pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from, bool * is_ignore)
 {
   PT_NODE *spec, *range, *entity;
   DB_OBJECT *classop;
@@ -7013,21 +7036,27 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
   int found = 0;
   int errid;
 
-  if (index == NULL || index->info.name.original == NULL)
+  assert (index != NULL);
+
+  *is_ignore = true;
+  if (index->info.name.original == NULL)
     {
       if (index->etc != (void *) PT_IDX_HINT_CLASS_NONE)
 	{
 	  /* the case of USING INDEX NONE */
 	  return index;
 	}
-    }
 
-  assert (index != NULL);
+      // in case "identifier.NONE"
+      assert (index->info.name.resolved != NULL);
+      assert (index->etc == (void *) PT_IDX_HINT_CLASS_NONE);
+    }
 
   if (index->info.name.spec_id != 0)	/* already resolved */
     {
       return index;
     }
+
   if (index->info.name.resolved != NULL)
     {
       /* index name is specified by class name as "class.index" */
@@ -7038,6 +7067,7 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 	  if (spec->node_type != PT_SPEC)
 	    {
 	      PT_INTERNAL_ERROR (parser, "resolution");
+	      *is_ignore = false;
 	      return NULL;
 	    }
 
@@ -7060,26 +7090,21 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 		      PT_INTERNAL_ERROR (parser, "resolution");
 		    }
 
+		  *is_ignore = false;
 		  return NULL;
 		}
 	      if (index->info.name.original != NULL)
 		{
 		  cons = classobj_find_class_index (class_, index->info.name.original);
-		  if (cons == NULL)
+		  if (cons == NULL || (cons->index_status != SM_NORMAL_INDEX))
 		    {
-		      /* error; the index is not for the specified class */
-		      PT_ERRORmf (parser, index, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USING_INDEX_ERR_1,
-				  pt_short_print (parser, index));
+		      /* error; the index is not for the specified class or unusable index */
+		      pt_write_semantic_warning (parser, index, __LINE__, MSGCAT_SET_PARSER_SEMANTIC,
+						 MSGCAT_SEMANTIC_USING_INDEX_ERR_1);
 		      return NULL;
 		    }
-		  else if (cons->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS
-			   || cons->index_status == SM_INVISIBLE_INDEX)
-		    {
-		      PT_ERRORmf (parser, index, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USING_INDEX_ERR_1,
-				  pt_short_print (parser, index));
-		      return NULL;	// unusable index
-		    }
 		}
+
 	      index->info.name.spec_id = spec->info.spec.id;
 	      index->info.name.meta_class = PT_INDEX_NAME;
 	      /* "class.index" is valid */
@@ -7088,76 +7113,76 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 	}
 
       /* the specified class in "class.index" does not exist in spec list */
-      PT_ERRORmf (parser, index, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USING_INDEX_ERR_2,
-		  pt_short_print (parser, index));
+      pt_write_semantic_warning (parser, index, __LINE__, MSGCAT_SET_PARSER_SEMANTIC,
+				 MSGCAT_SEMANTIC_USING_INDEX_ERR_2);
       return NULL;
     }
-  else
-    {				/* if (index->info.name.resolved != NULL) */
-      /* index name without class name specification */
 
-      /* find the class of the index from spec list */
-      for (spec = from; spec; spec = spec->next)
+  /* case (index->info.name.resolved == NULL) */
+  /* index name without class name specification */
+
+  /* find the class of the index from spec list */
+  for (spec = from; spec; spec = spec->next)
+    {
+      if (spec->node_type != PT_SPEC)
 	{
-	  if (spec->node_type != PT_SPEC)
+	  PT_INTERNAL_ERROR (parser, "resolution");
+	  *is_ignore = false;
+	  return NULL;
+	}
+
+      range = spec->info.spec.range_var;
+      entity = spec->info.spec.entity_name;
+      if (range != NULL && entity != NULL && entity->info.name.original != NULL)
+	{
+	  classop = db_find_class (entity->info.name.original);
+	  if (classop == NULL)
 	    {
-	      PT_INTERNAL_ERROR (parser, "resolution");
+	      continue;
+	    }
+	  if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      errid = er_errid ();
+	      if (errid == ER_AU_SELECT_FAILURE || errid == ER_AU_AUTHORIZATION_FAILURE)
+		{
+		  PT_ERRORc (parser, entity, er_msg ());
+		}
+	      else
+		{
+		  PT_INTERNAL_ERROR (parser, "resolution");
+		}
+
+	      *is_ignore = false;
 	      return NULL;
 	    }
-
-	  range = spec->info.spec.range_var;
-	  entity = spec->info.spec.entity_name;
-	  if (range != NULL && entity != NULL && entity->info.name.original != NULL)
+	  cons = classobj_find_class_index (class_, index->info.name.original);
+	  if (cons != NULL && (cons->index_status == SM_NORMAL_INDEX))
 	    {
-	      classop = db_find_class (entity->info.name.original);
-	      if (classop == NULL)
-		{
-		  break;
-		}
-	      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
-		{
-		  assert (er_errid () != NO_ERROR);
-		  errid = er_errid ();
-		  if (errid == ER_AU_SELECT_FAILURE || errid == ER_AU_AUTHORIZATION_FAILURE)
-		    {
-		      PT_ERRORc (parser, entity, er_msg ());
-		    }
-		  else
-		    {
-		      PT_INTERNAL_ERROR (parser, "resolution");
-		    }
-
-		  return NULL;
-		}
-	      cons = classobj_find_class_index (class_, index->info.name.original);
-	      if (cons != NULL && (cons->index_status == SM_NORMAL_INDEX))
-		{
-		  /* found the class; resolve index name */
-		  found++;
-		  index->info.name.resolved = range->info.name.original;
-		  index->info.name.spec_id = spec->info.spec.id;
-		  index->info.name.meta_class = PT_INDEX_NAME;
-		}
-	      // TODO: raise an error for such indexes??
+	      /* found the class; resolve index name */
+	      found++;
+	      index->info.name.resolved = range->info.name.original;
+	      index->info.name.spec_id = spec->info.spec.id;
+	      index->info.name.meta_class = PT_INDEX_NAME;
 	    }
+	  // TODO: raise an error for such indexes??
 	}
+    }
 
-      if (found == 0)
-	{
-	  /* error; can not find the class of the index */
-	  PT_ERRORmf (parser, index, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USING_INDEX_ERR_1,
-		      pt_short_print (parser, index));
-	  return NULL;
-	}
-      else if (found > 1)
-	{
-	  index->info.name.resolved = NULL;
-	  /* we found more than one classes which have index of the same name */
-	  PT_ERRORmf (parser, index, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USING_INDEX_ERR_3,
-		      pt_short_print (parser, index));
-	  return NULL;
-	}
-
+  if (found == 0)
+    {
+      /* error; can not find the class of the index */
+      pt_write_semantic_warning (parser, index, __LINE__, MSGCAT_SET_PARSER_SEMANTIC,
+				 MSGCAT_SEMANTIC_USING_INDEX_ERR_1);
+      return NULL;
+    }
+  else if (found > 1)
+    {
+      index->info.name.resolved = NULL;
+      /* we found more than one classes which have index of the same name */
+      pt_write_semantic_warning (parser, index, __LINE__, MSGCAT_SET_PARSER_SEMANTIC,
+				 MSGCAT_SEMANTIC_USING_INDEX_ERR_3);
+      return NULL;
     }
 
   return index;

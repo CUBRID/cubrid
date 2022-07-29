@@ -1364,7 +1364,7 @@ pt_check_user_owns_class (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
     {
       return result;
     }
@@ -8926,14 +8926,26 @@ pt_check_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* synonym_obj != NULL */
 
-  /* target_owner_name */
-  owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (node));
-  assert (owner_name != NULL && *owner_name != '\0');
-  owner_obj = db_find_user (owner_name);
-  if (owner_obj == NULL)
+  if (PT_SYNONYM_TARGET_NAME (node) == NULL)
     {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
-      return;
+      /* If only the comment is changed, PT_SYNONYM_TARGET_NAME (node) can be NULL.
+       * If both PT_SYNONYM_TARGET_NAME (node) and PT_SYNONYM_COMMENT (node) are NULL,
+       * an error occurred in yyparse() and it should not have come here. */
+      assert (PT_SYNONYM_COMMENT (node) != NULL);
+    }
+  else
+    {
+      /* PT_SYNONYM_TARGET_NAME (node) != NULL */
+
+      /* target_owner_name */
+      owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (node));
+      assert (owner_name != NULL && *owner_name != '\0');
+      owner_obj = db_find_user (owner_name);
+      if (owner_obj == NULL)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
+	  return;
+	}
     }
 }
 

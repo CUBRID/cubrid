@@ -988,7 +988,7 @@ $ LOADDB
 918 La classe '%1$s' referita dalla chiave esterna non esiste.
 919 La classe '%1$s' referita dalla chiave esterna non ha la chiave primaria.
 920 La chiave esterna '%1$s' non comprende il membro '%2$s' del chiave primaria.
-921 Il dominio del membro '%1$s' della chiave esterna è diverso dal quello del membro '%2$s' della chiave primaria.
+921 Il dominio del membro '%1$s' della chiave esterna è diverso dal quello del membro '%2$s' della chiave primaria. (%3$s: %4$s vs. %5$s)
 922 Il vincolo della chiave esterna '%1$s' non è valido, a causa di valore '%2$s'.
 923 La chiave primaria '%1$s' referita dal una chiave esterna '%2$s' non dovrebbe essere eliminata.
 924 Operazioni di UPDATE/DELETE sono limitate dalla chiave esterna '%1$s'.
@@ -1432,7 +1432,9 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 
 1351 The maximum length of the function expression string must be %1$d.
 
-1352 Ultimo errore
+1352 Invalid number of columns specified.
+
+1353 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
@@ -1591,10 +1593,11 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 128 Numero di argomenti non valido per JSON_OBJECTAGG.
 129 L'argomento conteggio PARALLELO deve essere compreso tra %1$d e %2$d.
 130 dblink - Server name cannot contain periods.
-131 Invalid alter synonym.\n  ALTER [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-132 Invalid create synonym.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-133 Invalid drop synonym.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
-134 Invalid rename synonym.\n  RENAME [PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
+131 Uso non valido di ALTER SYNONYM.\n  ALTER [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> {FOR [<schema_name>.]<target_name> [COMMENT 'comment_string'] | COMMENT 'comment_string'}
+132 Uso non valido di CREATE SYNONYM.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> FOR [<schema_name>.]<target_name> [COMMENT 'comment_string']
+133 Uso non valido di DROP SYNONYM.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
+134 Uso non valido di RENAME SYNONYM.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
+135 Nessuna opzione specificata per ALTER SYNONYM.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memoria esaurita.

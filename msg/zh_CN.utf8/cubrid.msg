@@ -988,7 +988,7 @@ $ LOADDB
 918 被外键引用的类 '%1$s' 不存在.
 919 被外键引用的类 '%1$s' 没有主键.
 920 外键 '%1$s' 不包含主键成员 '%2$s'.
-921 外键成员 '%1$s' 的domain不同于主键成员 '%2$s'.
+921 外键成员 '%1$s' 的domain不同于主键成员 '%2$s'. (%3$s: %4$s vs. %5$s)
 922 外键 '%1$s' 的约束是无效的, 基于值 '%2$s'.
 923 主键 '%1$s' 被外键 '%2$s' 所引用, 不支持被删除.
 924 Update/Delete 操作被外键 '%1$s' 限制.
@@ -1433,7 +1433,9 @@ $ LOADDB
 
 1351 The maximum length of the function expression string must be %1$d.
 
-1352 最后一个错误.
+1352 Invalid number of columns specified.
+
+1353 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
@@ -1592,10 +1594,11 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 128 JSON_OBJECTAGG参数个数不匹配.
 129 PARALLEL数必须在 %1$d 和 %2$d 之间.
 130 dblink - Server name cannot contain periods.
-131 Invalid alter synonym.\n  ALTER [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-132 Invalid create synonym.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-133 Invalid drop synonym.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
-134 Invalid rename synonym.\n  RENAME [PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
+131 ALTER SYNONYM 的使用无效.\n  ALTER [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> {FOR [<schema_name>.]<target_name> [COMMENT 'comment_string'] | COMMENT 'comment_string'}
+132 CREATE SYNONYM 的使用无效.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> FOR [<schema_name>.]<target_name> [COMMENT 'comment_string']
+133 DROP SYNONYM 的使用无效.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
+134 RENAME SYNONYM 的使用无效.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
+135 没有为 ALTER SYNONYM 指定选项。
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 内存耗尽.

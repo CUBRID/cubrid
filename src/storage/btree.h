@@ -351,11 +351,22 @@ struct btree_checkscan
   BTREE_ISCAN_OID_LIST oid_list;	/* Data area to store OIDs */
 };				/* B+tree <key-oid> check scan structure */
 
+struct btree_ovfl_oid_capacity
+{
+  int max_pg_cnt_per_key;	/* Distinct key count with overflow oid page) */
+  int dis_key_cnt;		/* Distinct key count (with ovfl pages) */
+  int64_t tot_val_cnt;		/* Total number of values stored in overflow oid pages */
+  int tot_pg_cnt;		/* Total overflow oid page count */
+  float tot_free_space;		/* Total free space in overflow oid pages */
+  float tot_space;		/* Total space occupied by overflow oid pages */
+  float avg_pg_free_sp;		/* Average free space on the occupied overflowoid page */
+};
+
 typedef struct btree_capacity BTREE_CAPACITY;
 struct btree_capacity
 {
   int dis_key_cnt;		/* Distinct key count (in leaf pages) */
-  int tot_val_cnt;		/* Total number of values stored in tree */
+  int64_t tot_val_cnt;		/* Total number of values stored in tree */
   int avg_val_per_key;		/* Average number of values (OIDs) per key */
   int leaf_pg_cnt;		/* Leaf page count */
   int nleaf_pg_cnt;		/* NonLeaf page count */
@@ -370,6 +381,7 @@ struct btree_capacity
   float tot_used_space;		/* Total used space in index */
   int avg_pg_key_cnt;		/* Average page key count (in leaf pages) */
   float avg_pg_free_sp;		/* Average page free space */
+  struct btree_ovfl_oid_capacity ovfl_oid_pg;	/* For overflow OID page */
 };
 
 /*
@@ -653,11 +665,7 @@ extern int btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid, lo
 					long long *key_cnt);
 extern int btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p, BTID * btid, long long *oid_cnt,
 						  long long *null_cnt, long long *key_cnt);
-
 extern int btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_fullscan);
-extern DISK_ISVALID btree_check_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID * btid,
-				      const char *btname);
-extern DISK_ISVALID btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid);
 extern int btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * pkey_btid);
 extern DISK_ISVALID btree_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * idx_btid);
 extern DISK_ISVALID btree_check_all (THREAD_ENTRY * thread_p);
@@ -778,7 +786,6 @@ extern void btree_set_mvcc_header_ids_for_update (THREAD_ENTRY * thread_p, bool 
 
 extern int btree_compare_btids (void *mem_btid1, void *mem_btid2);
 
-extern char *btree_unpack_mvccinfo (char *ptr, BTREE_MVCC_INFO * mvcc_info, short btree_mvcc_flags);
 extern char *btree_pack_mvccinfo (char *ptr, BTREE_MVCC_INFO * mvcc_info);
 extern int btree_packed_mvccinfo_size (BTREE_MVCC_INFO * mvcc_info);
 

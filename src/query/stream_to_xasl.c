@@ -1385,6 +1385,26 @@ stx_restore_OID_array (THREAD_ENTRY * thread_p, char *ptr, int nelements)
   return oid_array;
 }
 
+static KEY_VAL_RANGE *
+stx_restore_key_val_array (THREAD_ENTRY * thread_p, char *ptr, int nelements)
+{
+  KEY_VAL_RANGE *key_val_array;
+  int i;
+
+  key_val_array = (KEY_VAL_RANGE *) stx_alloc_struct (thread_p, sizeof (KEY_VAL_RANGE) * nelements);
+  if (key_val_array == NULL)
+    {
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+      return NULL;
+    }
+  for (i = 0; i < nelements; i++)
+    {
+      ptr = or_unpack_key_val_range (ptr, &key_val_array[i]);
+    }
+
+  return key_val_array;
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 static char *
 stx_restore_input_vals (THREAD_ENTRY * thread_p, char *ptr, int nelements)
@@ -4481,6 +4501,20 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
 
   ptr = or_unpack_int (ptr, &indx_info->func_idx_col_id);
 
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      indx_info->cov_list_id = NULL;
+    }
+  else
+    {
+      indx_info->cov_list_id = stx_restore_list_id (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (indx_info->cov_list_id == NULL)
+	{
+	  return NULL;
+	}
+    }
+
   if (indx_info->use_iss)
     {
       ptr = or_unpack_int (ptr, &tmp);
@@ -4527,6 +4561,22 @@ stx_build_key_info (THREAD_ENTRY * thread_p, char *ptr, KEY_INFO * key_info)
       key_info->key_ranges =
 	stx_restore_key_range_array (thread_p, &xasl_unpack_info->packed_xasl[offset], key_info->key_cnt);
       if (key_info->key_ranges == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0 || key_info->key_cnt == 0)
+    {
+      key_info->key_vals = NULL;
+    }
+  else
+    {
+      key_info->key_vals =
+	stx_restore_key_val_array (thread_p, &xasl_unpack_info->packed_xasl[offset], key_info->key_cnt);
+      if (key_info->key_vals == NULL)
 	{
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;

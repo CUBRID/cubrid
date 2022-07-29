@@ -118,7 +118,7 @@ option(USE_CUBRID_ENV "Use CUBRID environment variables" ON)
 option(WITH_JDBC "Build with JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
-option(WITH_CCI "Build with CCI driver" OFF)
+option(WITH_CCI "Build with CCI driver" ON)
 
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)
 # expat library sources URL
@@ -811,6 +811,8 @@ if(USE_CUBRID_ENV)
   set(CUBRID_DEMODIR demo)
   set(CUBRID_COMPATDIR compat)
   set(CUBRID_CCIDIR cci)
+  set(CUBRID_DATABASES databases)
+  set(CUBRID_SOCK CUBRID_SOCK)
 else(USE_CUBRID_ENV)
   message(WARNING "This build does not use CUBRID environment variables")
   list(APPEND COMMON_DEFS DO_NOT_USE_CUBRIDENV)
@@ -913,6 +915,8 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
   if(UNIX)
     externalproject_add(${LIBEXPAT_TARGET}
       URL                  ${WITH_LIBEXPAT_URL}
+      LOG_BUILD            TRUE
+      LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
@@ -958,6 +962,8 @@ if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
   if(UNIX)
     externalproject_add(${LIBJANSSON_TARGET}
       URL                  ${WITH_LIBJANSSON_URL}
+      LOG_BUILD            TRUE
+      LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
@@ -1034,6 +1040,8 @@ if(UNIX)
     set(LIBEDIT_TARGET libedit)
     externalproject_add(${LIBEDIT_TARGET}
       URL                  ${WITH_LIBEDIT_URL}
+      LOG_BUILD            TRUE
+      LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    "LDFLAGS=-L${CMAKE_CURRENT_BINARY_DIR}/external/lib" ${DEFAULT_CONFIGURE_OPTS}
@@ -1102,6 +1110,9 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
     #e.g. https://www.openssl.org/source/openssl-1.1.1f.tar.gz
     externalproject_add(${LIBOPENSSL_TARGET}
       URL                  ${WITH_LIBOPENSSL_URL}
+      LOG_CONFIGURE        TRUE
+      LOG_BUILD            TRUE
+      LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${CMAKE_CURRENT_BINARY_DIR}/external no-shared # ${DEFAULT_CONFIGURE_OPTS}
@@ -1140,6 +1151,9 @@ if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
     #e.g. http://www.unixodbc.org/unixODBC-2.3.9.tar.gz
     externalproject_add(${LIBUNIXODBC_TARGET}
       URL                  ${WITH_LIBUNIXODBC_URL}
+      LOG_CONFIGURE        TRUE
+      LOG_BUILD            TRUE
+      LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external # ${DEFAULT_CONFIGURE_OPTS}
@@ -1170,6 +1184,9 @@ set(RAPIDJSON_TARGET rapidjson)
 externalproject_add(${RAPIDJSON_TARGET}
   # tried URL but archive gets downloaded every time. URL_MD5 may help
   URL                  ${WITH_RAPIDJSON_URL}
+  LOG_CONFIGURE        TRUE
+  LOG_BUILD            TRUE
+  LOG_INSTALL          TRUE
   TIMEOUT              600
   DOWNLOAD_NO_PROGRESS 1
   # don't install
@@ -1242,6 +1259,8 @@ if(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/serve
   if(UNIX)
     set(CMS_DEPENDS cubridcs cascci cmstat cmdep)
     externalproject_add(cubridmanager
+      LOG_CONFIGURE        TRUE
+      LOG_BUILD            TRUE
       DEPENDS pre_cubridmanager ${CMS_DEPENDS}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cubridmanager/server
       CONFIGURE_COMMAND sh <SOURCE_DIR>/autogen.sh
@@ -1253,6 +1272,8 @@ if(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/serve
     set(CMS_DEPENDS cascci cmstat cmdep)
     externalproject_add(cubridmanager
       DEPENDS pre_cubridmanager ${CMS_DEPENDS}
+      LOG_CONFIGURE        TRUE
+      LOG_BUILD            TRUE
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cubridmanager/server
       CONFIGURE_COMMAND ""
       BUILD_COMMAND cmd /c build.bat --prefix <INSTALL_DIR> --with-cubrid-libdir <TMP_DIR> --with-cubrid-includedir <TMP_DIR> ${CMS_CONFIGURE_OPTS}
@@ -1281,12 +1302,26 @@ endif(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/se
 install(DIRECTORY DESTINATION ${CUBRID_LOGDIR})
 install(DIRECTORY DESTINATION ${CUBRID_VARDIR})
 install(DIRECTORY DESTINATION ${CUBRID_TMPDIR})
+install(DIRECTORY DESTINATION ${CUBRID_DATABASES})
+install(DIRECTORY DESTINATION "${CUBRID_VARDIR}/${CUBRID_SOCK}")
 if(USE_CUBRID_ENV)
   install(FILES
     ${CMAKE_SOURCE_DIR}/COPYING
     ${CMAKE_SOURCE_DIR}/CREDITS
     ${CMAKE_SOURCE_DIR}/README
+    ${CMAKE_SOURCE_DIR}/contrib/readme/README_TAR_INSTALL
     DESTINATION ${CUBRID_PREFIXDIR})
+  install(FILES
+    ${CMAKE_SOURCE_DIR}/contrib/readme/databases.txt
+    DESTINATION ${CUBRID_DATABASES})
+  install(FILES
+    ${CMAKE_SOURCE_DIR}/contrib/readme/README_SOCK.txt
+    DESTINATION ${CUBRID_VARDIR}/${CUBRID_SOCK}
+    RENAME README.txt)
+  install(FILES
+    ${CMAKE_SOURCE_DIR}/contrib/readme/README_TMP.txt
+    DESTINATION ${CUBRID_TMPDIR}
+    RENAME README.txt)
 endif(USE_CUBRID_ENV)
 
 if(WITH_SOURCES)

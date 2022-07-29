@@ -3184,7 +3184,7 @@ locator_find_class_with_purpose (const char *classname, bool for_update)
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
     {
       char other_class_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 

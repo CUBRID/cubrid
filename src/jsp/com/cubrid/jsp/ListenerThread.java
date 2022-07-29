@@ -56,6 +56,7 @@ public class ListenerThread extends Thread {
                 execThread.start();
             } catch (IOException e) {
                 Server.log(e);
+                break;
             }
         }
 
