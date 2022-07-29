@@ -103,8 +103,7 @@ static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 				   bool * did_incom_recovery, INT64 * num_redo_log_records);
 static bool log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, LOG_RECTYPE log_rtype,
 						  LOG_RCVINDEX rcv_index, const LOG_LSA * lsa);
-static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa,
-			       time_t * stopat);
+static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa);
 static void log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 						  const LOG_LSA * postpone_start_lsa);
 static void log_recovery_finish_sysop_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
@@ -775,7 +774,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_REDO_STARTED, 2,
 	  log_cnt_pages_containing_lsa (&start_redolsa, &end_redo_lsa), num_redo_log_records);
 
-  log_recovery_redo (thread_p, &start_redolsa, &end_redo_lsa, stopat);
+  log_recovery_redo (thread_p, &start_redolsa, &end_redo_lsa);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "REDO");
 
@@ -3001,7 +3000,6 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
  *
  *   start_redolsa(in): Starting address for recovery redo phase
  *   end_redo_lsa(in):
- *   stopat(in):
  *
  * NOTE:In the redo phase, updates that are not reflected in the
  *              database are repeated for not only the committed transaction
@@ -3024,8 +3022,7 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
  *              respective compensating log records.
  */
 static void
-log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa,
-		   time_t * stopat)
+log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa)
 {
   LOG_LSA lsa;			/* LSA of log record to redo */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
@@ -3042,7 +3039,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_REC_RUN_POSTPONE *run_posp = NULL;	/* A run postpone action */
   LOG_REC_2PC_START *start_2pc = NULL;	/* Start 2PC commit log record */
   LOG_REC_2PC_PARTICP_ACK *received_ack = NULL;	/* A 2PC participant ack */
-  LOG_REC_DONETIME *donetime = NULL;
   LOG_REC_SYSOP_END *sysop_end;	/* Result of top system op */
   LOG_RCV rcv;			/* Recovery structure */
   VPID rcv_vpid;		/* VPID of data to recover */
