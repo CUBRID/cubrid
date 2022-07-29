@@ -4749,8 +4749,6 @@ pt_fixup_column_type (PT_NODE * col)
       switch (col->type_enum)
 	{
 	  /* for NCHAR(3) type column, we reserve only 3bytes. precision and length for NCHAR(n) type is n */
-	case PT_TYPE_NCHAR:
-	case PT_TYPE_VARNCHAR:
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
 	  if (col->info.value.data_value.str != NULL)
@@ -4800,18 +4798,13 @@ pt_fixup_column_type (PT_NODE * col)
     }
 
   /* Convert char(max) to varchar(max), nchar(max) to varnchar(max), bit(max) to varbit(max) */
-  if ((col->type_enum == PT_TYPE_CHAR || col->type_enum == PT_TYPE_NCHAR || col->type_enum == PT_TYPE_BIT)
+  if ((col->type_enum == PT_TYPE_CHAR || col->type_enum == PT_TYPE_BIT)
       && col->data_type != NULL && (col->data_type->info.data_type.precision == TP_FLOATING_PRECISION_VALUE))
     {
       if (col->type_enum == PT_TYPE_CHAR)
 	{
 	  col->type_enum = PT_TYPE_VARCHAR;
 	  col->data_type->type_enum = PT_TYPE_VARCHAR;
-	}
-      else if (col->type_enum == PT_TYPE_NCHAR)
-	{
-	  col->type_enum = PT_TYPE_VARNCHAR;
-	  col->data_type->type_enum = PT_TYPE_VARNCHAR;
 	}
       else
 	{

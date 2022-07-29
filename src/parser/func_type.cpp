@@ -162,27 +162,20 @@ func_all_signatures sig_ret_type0_arg_nr_or_str_discrete =
 func_all_signatures sig_of_group_concat =
 {
   {PT_TYPE_VARCHAR, {PT_TYPE_ENUMERATION, PT_GENERIC_TYPE_CHAR}, {}}, //needed because pt_are_equivalent_types(PT_GENERIC_TYPE_CHAR, PT_TYPE_ENUMERATION) and casting to VCHR will affect order
-  {PT_TYPE_VARCHAR, {PT_TYPE_ENUMERATION, PT_GENERIC_TYPE_NCHAR}, {}},
-
 //normal cases
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_CHAR, PT_GENERIC_TYPE_CHAR}, {}},
-  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_NCHAR, PT_GENERIC_TYPE_NCHAR}, {}},
   {PT_TYPE_VARBIT, {PT_GENERIC_TYPE_BIT, PT_GENERIC_TYPE_BIT}, {}},
 
 #if 0 //anything else should be casted to separator's type (if possible! makes sense to detect incompatible types when detecting/applying signatures?); NOTE: casting affects the order!!!
   {PT_TYPE_VARCHAR, {1, PT_GENERIC_TYPE_CHAR  }, {}},                          //test
-  {PT_TYPE_VARNCHAR, {1, PT_GENERIC_TYPE_NCHAR }, {}},                         //test
 #else //anything else should be left untouched (like in the original code), maybe it will be casted later?
 #if 0 //it allows group_concat(SET) but it should not!
 //{PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_ANY      , PT_GENERIC_TYPE_CHAR  }, {}},
-//{PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_ANY      , PT_GENERIC_TYPE_NCHAR }, {}},
 #else //OK to keep the order but it allows cast (n)char -> number and it should not because group_concat(n'123', ', ') should be rejected?!
 //like that it allows group_concat(n'123', ', ') or group_concat(<nchar field>, ', ') when <nchar field> can be casted to double (acceptable for me)
 //but solved in preprocess for compatibility to original behaviour
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_NUMBER, PT_GENERIC_TYPE_CHAR}, {}},
-  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_NUMBER, PT_GENERIC_TYPE_NCHAR}, {}},
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_DATETIME, PT_GENERIC_TYPE_CHAR}, {}},
-  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_DATETIME, PT_GENERIC_TYPE_NCHAR}, {}},
 #endif
 #endif
 };
@@ -199,16 +192,12 @@ func_all_signatures sig_of_lead_lag =
 func_all_signatures sig_of_elt =
 {
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARCHAR}}, //get_current_result() expects args to be VCHAR, not just equivalent
-  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARNCHAR}}, //get_current_result() expects args to be VNCHAR, not just equivalent
   {PT_TYPE_NULL, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
 };
 
 func_all_signatures sig_of_insert_substring =
 {
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_CHAR}, {}},
-  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_NCHAR, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_TYPE_VARNCHAR}, {}},
-
-  //{0, {3, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_NCHAR}, {}}, //for insert(?, i, i, n'nchar')
   //{0, {3, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_STRING}, {}}, //for insert(?, i, i, 'char or anything else')
 };
 
@@ -369,10 +358,6 @@ func_all_signatures sig_of_regexp_replace =
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER}, {}},
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER}, {}},
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_STRING}, {}},
-  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}},
-  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER}, {}},
-  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER}, {}},
-  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_STRING}, {}},
 };
 
 func_all_signatures sig_of_regexp_substr =
@@ -382,10 +367,6 @@ func_all_signatures sig_of_regexp_substr =
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER}, {}},
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER}, {}},
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_CHAR}, {}},
-  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}},
-  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER}, {}},
-  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER}, {}},
-  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_CHAR}, {}},
 };
 
 func_all_signatures *
@@ -635,7 +616,6 @@ namespace func_type
 	return arg_sig.val.generic_type == PT_GENERIC_TYPE_STRING
 	       || arg_sig.val.generic_type == PT_GENERIC_TYPE_STRING_VARYING
 	       || arg_sig.val.generic_type == PT_GENERIC_TYPE_CHAR
-	       || arg_sig.val.generic_type == PT_GENERIC_TYPE_NCHAR
 	       || arg_sig.val.generic_type == PT_GENERIC_TYPE_PRIMITIVE
 	       || arg_sig.val.generic_type == PT_GENERIC_TYPE_ANY
 	       || arg_sig.val.generic_type == PT_GENERIC_TYPE_SCALAR;
@@ -675,11 +655,7 @@ namespace func_type
 	  case PT_TYPE_BIGINT:
 	    return (PT_IS_DISCRETE_NUMBER_TYPE (type_enum));
 	  case PT_TYPE_VARCHAR:
-	    return (PT_IS_SIMPLE_CHAR_STRING_TYPE (type_enum) || PT_IS_NUMERIC_TYPE (type_enum)
-		    || PT_IS_DATE_TIME_TYPE (type_enum) || PT_IS_BIT_STRING_TYPE (type_enum)
-		    || type_enum == PT_TYPE_ENUMERATION); //monetary should be here???
-	  case PT_TYPE_VARNCHAR:
-	    return (PT_IS_NATIONAL_CHAR_STRING_TYPE (type_enum) || PT_IS_NUMERIC_TYPE (type_enum)
+	    return (PT_IS_CHAR_STRING_TYPE (type_enum) || PT_IS_NUMERIC_TYPE (type_enum)
 		    || PT_IS_DATE_TIME_TYPE (type_enum) || PT_IS_BIT_STRING_TYPE (type_enum)
 		    || type_enum == PT_TYPE_ENUMERATION); //monetary should be here???
 	  default:
@@ -705,11 +681,7 @@ namespace func_type
 	return !PT_IS_COLLECTION_TYPE (type_enum);
 
       case PT_GENERIC_TYPE_CHAR:
-	return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE (type_enum)
-		|| PT_IS_DATE_TIME_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
-
-      case PT_GENERIC_TYPE_NCHAR:
-	return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_NATIONAL_CHAR_STRING_TYPE (type_enum)
+	return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_CHAR_STRING_TYPE (type_enum)
 		|| PT_IS_DATE_TIME_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
 
       case PT_GENERIC_TYPE_DATE:
@@ -855,27 +827,7 @@ namespace func_type
 	m_node->type_enum = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
 	return false; //no need to continue with generic code
       case PT_GROUP_CONCAT: //ToDo: try without this!
-      {
-	auto arg1 = m_node->info.function.arg_list;
-	if (arg1 != NULL)
-	  {
-	    auto arg2 = arg1->next;
-	    if (arg2 != NULL)
-	      {
-		if ((PT_IS_SIMPLE_CHAR_STRING_TYPE (arg1->type_enum) && PT_IS_NATIONAL_CHAR_STRING_TYPE (arg2->type_enum))
-		    || (PT_IS_SIMPLE_CHAR_STRING_TYPE (arg2->type_enum)
-			&& PT_IS_NATIONAL_CHAR_STRING_TYPE (arg1->type_enum)))
-		  {
-		    pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-				  fcode_get_lowercase_name (PT_GROUP_CONCAT), pt_show_type_enum (arg1->type_enum),
-				  pt_show_type_enum (arg2->type_enum));
-		    m_node->type_enum = PT_TYPE_VARCHAR;
-		    return false;
-		  }
-	      }
-	  }
 	break;
-      }
       default:
 	;
       }
@@ -1071,8 +1023,7 @@ namespace func_type
 	    m_node->data_type = pt_make_prim_data_type (m_parser, m_node->type_enum);
 	    if (m_node->data_type)
 	      {
-		m_node->data_type->info.data_type.precision =
-			(m_node->type_enum == PT_TYPE_VARNCHAR ? DB_MAX_VARNCHAR_PRECISION : DB_MAX_VARCHAR_PRECISION);
+		m_node->data_type->info.data_type.precision = DB_MAX_VARCHAR_PRECISION;
 		m_node->data_type->info.data_type.dec_precision = 0;
 	      }
 	    break;
@@ -1417,14 +1368,6 @@ pt_are_equivalent_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type)
 	}
       break;
 
-    case PT_GENERIC_TYPE_NCHAR:
-      if (op_type == PT_TYPE_NCHAR || op_type == PT_TYPE_VARNCHAR)
-	{
-	  /* NCHAR and VARNCHAR are equivalent to PT_GENERIC_TYPE_NCHAR */
-	  return true;
-	}
-      break;
-
     case PT_GENERIC_TYPE_BIT:
       if (PT_IS_BIT_STRING_TYPE (op_type))
 	{
@@ -1547,9 +1490,6 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
     case PT_GENERIC_TYPE_STRING:
     case PT_GENERIC_TYPE_STRING_VARYING:
       return PT_TYPE_VARCHAR;
-
-    case PT_GENERIC_TYPE_NCHAR:
-      return PT_TYPE_VARNCHAR;
 
     case PT_GENERIC_TYPE_BIT:
       return PT_TYPE_VARBIT;

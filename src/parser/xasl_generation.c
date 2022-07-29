@@ -1894,23 +1894,6 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 
 		    assert (!prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES));
 
-		    switch (arg1->type_enum)
-		      {
-		      case PT_TYPE_MAYBE:
-			if (!PT_IS_NATIONAL_CHAR_STRING_TYPE (arg2->type_enum))
-			  {
-			    break;
-			  }
-			/* FALLTHRU */
-		      case PT_TYPE_NCHAR:
-		      case PT_TYPE_VARNCHAR:
-			node->type_enum = PT_TYPE_NCHAR;
-			node->info.value.string_type = 'N';
-			break;
-		      default:
-			break;
-		      }
-
 		    regu_escape = pt_to_regu_variable (parser, node, UNBOX_AS_VALUE);
 		    parser_free_node (parser, node);
 		  }
@@ -3278,9 +3261,7 @@ pt_to_index_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, QO_XASL_IND
 	      assert (ref_node != NULL);
 
 	      /* need to check zero-length empty string */
-	      if (ref_node != NULL
-		  && (ref_node->type_enum == PT_TYPE_VARCHAR || ref_node->type_enum == PT_TYPE_VARNCHAR
-		      || ref_node->type_enum == PT_TYPE_VARBIT))
+	      if (ref_node != NULL && (ref_node->type_enum == PT_TYPE_VARCHAR || ref_node->type_enum == PT_TYPE_VARBIT))
 		{
 		  pred_nodes = parser_append_node (ref_node, pred_nodes);
 		}
@@ -7347,16 +7328,8 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
       dt->info.data_type.precision = DB_MAX_CHAR_PRECISION;
       break;
 
-    case PT_TYPE_NCHAR:
-      dt->info.data_type.precision = DB_MAX_NCHAR_PRECISION;
-      break;
-
     case PT_TYPE_VARCHAR:
       dt->info.data_type.precision = DB_MAX_VARCHAR_PRECISION;
-      break;
-
-    case PT_TYPE_VARNCHAR:
-      dt->info.data_type.precision = DB_MAX_VARNCHAR_PRECISION;
       break;
 
     case PT_TYPE_BIT:

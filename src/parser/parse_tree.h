@@ -145,39 +145,15 @@ struct json_t;
 	  ((t) == PT_TYPE_MULTISET)  || \
 	  ((t) == PT_TYPE_SEQUENCE))
 
-#define PT_IS_STRING_TYPE(t) \
-        ( ((t) == PT_TYPE_CHAR)     || \
-	  ((t) == PT_TYPE_VARCHAR)  || \
-	  ((t) == PT_TYPE_NCHAR)    || \
-	  ((t) == PT_TYPE_VARNCHAR) || \
-	  ((t) == PT_TYPE_BIT)      || \
-	  ((t) == PT_TYPE_VARBIT))
-
-#define PT_IS_NATIONAL_CHAR_STRING_TYPE(t) \
-        ( ((t) == PT_TYPE_NCHAR)      || \
-	  ((t) == PT_TYPE_VARNCHAR))
-
-#define PT_IS_SIMPLE_CHAR_STRING_TYPE(t) \
-        ( ((t) == PT_TYPE_CHAR)      || \
-	  ((t) == PT_TYPE_VARCHAR))
-
-#define PT_IS_CHAR_STRING_TYPE(t) \
-        ( ((t) == PT_TYPE_CHAR)      || \
-	  ((t) == PT_TYPE_VARCHAR)   || \
-	  ((t) == PT_TYPE_NCHAR)     || \
-	  ((t) == PT_TYPE_VARNCHAR))
-
-#define PT_IS_BIT_STRING_TYPE(t) \
-        ( ((t) == PT_TYPE_BIT)      || \
-	  ((t) == PT_TYPE_VARBIT))
+#define PT_IS_CHAR_STRING_TYPE(t)  (((t) == PT_TYPE_CHAR) || ((t) == PT_TYPE_VARCHAR))
+#define PT_IS_BIT_STRING_TYPE(t)   (((t) == PT_TYPE_BIT)  || ((t) == PT_TYPE_VARBIT))
+#define PT_IS_STRING_TYPE(t)       (PT_IS_BIT_STRING_TYPE(t) || PT_IS_CHAR_STRING_TYPE(t))
 
 #define PT_IS_COMPLEX_TYPE(t) \
         ( ((t) == PT_TYPE_MONETARY)  || \
 	  ((t) == PT_TYPE_NUMERIC)   || \
 	  ((t) == PT_TYPE_CHAR)      || \
 	  ((t) == PT_TYPE_VARCHAR)   || \
-	  ((t) == PT_TYPE_NCHAR)     || \
-	  ((t) == PT_TYPE_VARNCHAR)  || \
 	  ((t) == PT_TYPE_BIT)       || \
 	  ((t) == PT_TYPE_VARBIT)    || \
 	  ((t) == PT_TYPE_OBJECT)    || \
@@ -230,8 +206,6 @@ struct json_t;
         ( ((t) == PT_TYPE_NUMERIC)  || \
 	  ((t) == PT_TYPE_VARCHAR)  || \
 	  ((t) == PT_TYPE_CHAR)     || \
-	  ((t) == PT_TYPE_VARNCHAR) || \
-	  ((t) == PT_TYPE_NCHAR)    || \
 	  ((t) == PT_TYPE_VARBIT)   || \
 	  ((t) == PT_TYPE_BIT)	    || \
 	  ((t) == PT_TYPE_ENUMERATION))
@@ -243,8 +217,6 @@ struct json_t;
 #define PT_HAS_COLLATION(t) \
         ( ((t) == PT_TYPE_CHAR)     || \
 	  ((t) == PT_TYPE_VARCHAR)  || \
-	  ((t) == PT_TYPE_NCHAR)    || \
-	  ((t) == PT_TYPE_VARNCHAR) || \
 	  ((t) == PT_TYPE_ENUMERATION))
 
 #define PT_VALUE_GET_BYTES(node) \
@@ -1002,8 +974,6 @@ enum pt_type_enum
   PT_TYPE_NUMERIC,
   PT_TYPE_CHAR,
   PT_TYPE_VARCHAR,
-  PT_TYPE_NCHAR,
-  PT_TYPE_VARNCHAR,
   PT_TYPE_BIT,
   PT_TYPE_VARBIT,
   PT_TYPE_LOGICAL,

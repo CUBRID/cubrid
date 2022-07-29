@@ -734,8 +734,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       p = alter->info.alter.alter_clause.attr_mthd.mthd_file_list;
       for (;
 	   p && p->node_type == PT_FILE_PATH && (path = p->info.file_path.string) != NULL && path->node_type == PT_VALUE
-	   && (path->type_enum == PT_TYPE_VARCHAR || path->type_enum == PT_TYPE_CHAR || path->type_enum == PT_TYPE_NCHAR
-	       || path->type_enum == PT_TYPE_VARNCHAR); p = p->next)
+	   && (path->type_enum == PT_TYPE_VARCHAR || path->type_enum == PT_TYPE_CHAR); p = p->next)
 	{
 	  mthd_file = (char *) path->info.value.data_value.str->bytes;
 	  error = dbt_drop_method_file (ctemplate, mthd_file);
@@ -1730,11 +1729,7 @@ error_exit:
  */
 
 #define IS_NAME(n)      ((n)->node_type == PT_NAME)
-#define IS_STRING(n)    ((n)->node_type == PT_VALUE &&          \
-                         ((n)->type_enum == PT_TYPE_VARCHAR  || \
-                          (n)->type_enum == PT_TYPE_CHAR     || \
-                          (n)->type_enum == PT_TYPE_VARNCHAR || \
-                          (n)->type_enum == PT_TYPE_NCHAR))
+#define IS_STRING(n)    ((n)->node_type == PT_VALUE && ((n)->type_enum == PT_TYPE_VARCHAR  || (n)->type_enum == PT_TYPE_CHAR))
 #define GET_NAME(n)     ((char *) (n)->info.name.original)
 #define GET_STRING(n)   ((char *) (n)->info.value.data_value.str->bytes)
 
@@ -6962,30 +6957,12 @@ validate_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attribute, const b
 		    }
 		  break;
 
-		case PT_TYPE_NCHAR:
-		  if (p != DB_DEFAULT_PRECISION
-		      && (p < 0 || (p == 0 && check_zero_precision) || p > DB_MAX_NCHAR_PRECISION))
-		    {
-		      PT_ERRORmf3 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC, p, 0,
-				   DB_MAX_NCHAR_PRECISION);
-		    }
-		  break;
-
 		case PT_TYPE_VARCHAR:
 		  if (p != DB_DEFAULT_PRECISION
 		      && (p < 0 || (p == 0 && check_zero_precision) || p > DB_MAX_VARCHAR_PRECISION))
 		    {
 		      PT_ERRORmf3 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC, p, 0,
 				   DB_MAX_VARCHAR_PRECISION);
-		    }
-		  break;
-
-		case PT_TYPE_VARNCHAR:
-		  if (p != DB_DEFAULT_PRECISION
-		      && (p < 0 || (p == 0 && check_zero_precision) || p > DB_MAX_VARNCHAR_PRECISION))
-		    {
-		      PT_ERRORmf3 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC, p, 0,
-				   DB_MAX_VARNCHAR_PRECISION);
 		    }
 		  break;
 
@@ -8110,9 +8087,7 @@ do_add_method_files (const PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
   for (mf = method_files; mf && error == NO_ERROR; mf = mf->next)
     {
-      if (mf->node_type == PT_FILE_PATH && (path = mf->info.file_path.string) != NULL && path->node_type == PT_VALUE
-	  && (path->type_enum == PT_TYPE_VARCHAR || path->type_enum == PT_TYPE_CHAR || path->type_enum == PT_TYPE_NCHAR
-	      || path->type_enum == PT_TYPE_VARNCHAR))
+      if (mf->node_type == PT_FILE_PATH && (path = mf->info.file_path.string) != NULL && IS_STRING (path))
 	{
 	  method_file_name = (char *) path->info.value.data_value.str->bytes;
 	  error = dbt_add_method_file (ctemplate, method_file_name);
@@ -13088,7 +13063,6 @@ get_hard_default_for_type (PT_TYPE_ENUM type)
 {
   static const char *zero = "0";
   static const char *empty_str = "''";
-  static const char *empty_n_str = "N''";
   static const char *empty_bit = "b'0'";
   static const char *empty_date = "DATE '01/01/0001'";
   static const char *empty_time = "TIME '00:00'";
@@ -13137,10 +13111,6 @@ get_hard_default_for_type (PT_TYPE_ENUM type)
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
       return empty_str;
-
-    case PT_TYPE_VARNCHAR:
-    case PT_TYPE_NCHAR:
-      return empty_n_str;
 
     case PT_TYPE_SET:
     case PT_TYPE_MULTISET:
