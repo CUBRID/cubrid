@@ -732,6 +732,19 @@ cleanup (int signo)
   exit (0);
 }
 
+#define IS_SET_BIT(C,B)	(((C) & (B)) == (B))
+
+static bool
+di_understand_renewed_error_code (const char *driver_info)
+{
+  if (!IS_SET_BIT (driver_info[SRV_CON_MSG_IDX_PROTO_VERSION], CAS_PROTO_INDICATOR))
+    {
+      return false;
+    }
+
+  return IS_SET_BIT (driver_info[DRIVER_INFO_FUNCTION_FLAG], BROKER_RENEWED_ERROR_CODE);
+}
+
 static void
 send_error_to_driver (int sock, int error, char *driver_info)
 {
@@ -746,7 +759,7 @@ send_error_to_driver (int sock, int error, char *driver_info)
     }
   else
     {
-      if (driver_version == CAS_PROTO_MAKE_VER (PROTOCOL_V2) || cas_di_understand_renewed_error_code (driver_info))
+      if (driver_version == CAS_PROTO_MAKE_VER (PROTOCOL_V2) || di_understand_renewed_error_code (driver_info))
 	{
 	  write_val = htonl (error);
 	}

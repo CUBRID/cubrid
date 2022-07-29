@@ -1215,7 +1215,6 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
 endif()
 
 # include subdirectories
-add_subdirectory(cas)
 add_subdirectory(sa)
 add_subdirectory(cs)
 add_subdirectory(cubrid)
