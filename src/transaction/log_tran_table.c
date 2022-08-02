@@ -372,7 +372,12 @@ logtb_define_trantable (THREAD_ENTRY * thread_p, int num_expected_tran_indices, 
       logpb_finalize_pool (thread_p);
     }
 
-  (void) logtb_define_trantable_log_latch (thread_p, num_expected_tran_indices);
+  const int err_code = logtb_define_trantable_log_latch (thread_p, num_expected_tran_indices);
+  if (err_code != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logtb_define_trantable: error defining transaction table");
+      return;
+    }
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 
@@ -1311,14 +1316,18 @@ logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes)
 	   "Tran_index = %2d, Trid = %d,\n    State = %s,\n    Isolation = %s,\n"
 	   "    Wait_msecs = %d, isloose_end = %d,\n    Head_lsa = %lld|%d, Tail_lsa = %lld|%d,"
 	   " Postpone_lsa = %lld|%d,\n    SaveLSA = %lld|%d, UndoNextLSA = %lld|%d,\n"
+	   "    mvcc_id = %llu sub_id = %llu last_mvcc_lsa = %lld|%d\n"
 	   "    Client_User: (Type = %d, User = %s, Program = %s, Login = %s, Host = %s, Pid = %d)\n",
 	   tdes->tran_index, tdes->trid, log_state_string (tdes->state), log_isolation_string (tdes->isolation),
 	   tdes->wait_msecs, tdes->isloose_end, (long long int) tdes->head_lsa.pageid, (int) tdes->head_lsa.offset,
 	   (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset, (long long int) tdes->posp_nxlsa.pageid,
 	   (int) tdes->posp_nxlsa.offset, (long long int) tdes->savept_lsa.pageid, (int) tdes->savept_lsa.offset,
-	   (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset, tdes->client.client_type,
-	   tdes->client.get_db_user (), tdes->client.get_program_name (), tdes->client.get_login_name (),
-	   tdes->client.get_host_name (), tdes->client.process_id);
+	   (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset,
+	   (unsigned long long) tdes->mvccinfo.id,
+	   (unsigned long long) (tdes->mvccinfo.sub_ids.empty ()? -1 : tdes->mvccinfo.sub_ids[0]),
+	   LSA_AS_ARGS (&tdes->last_mvcc_lsa),
+	   tdes->client.client_type, tdes->client.get_db_user (), tdes->client.get_program_name (),
+	   tdes->client.get_login_name (), tdes->client.get_host_name (), tdes->client.process_id);
 
   if (tdes->topops.max != 0 && tdes->topops.last >= 0)
     {

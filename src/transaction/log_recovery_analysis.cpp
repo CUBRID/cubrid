@@ -36,6 +36,8 @@
 
 #include <set>
 
+static void log_recovery_analysis_internal (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records,
+    log_recovery_context &context, bool reset_mvcc_table);
 static void log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY *thread_p, log_recovery_context &context,
     LOG_PAGE *log_page_p, const LOG_RECORD_HEADER *log_rec,
     const log_lsa &prev_lsa, const log_lsa &prev_prev_lsa);
@@ -76,7 +78,7 @@ static void log_recovery_resetlog (THREAD_ENTRY *thread_p, const LOG_LSA *new_ap
 static void log_recovery_notpartof_archives (THREAD_ENTRY *thread_p, int start_arv_num, const char *info_reason);
 static int log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
     const log_lsa &most_recent_trantable_snapshot_lsa, cublog::checkpoint_info &chkpt_info, log_lsa &snapshot_lsa);
-static void log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p);
+static void log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p, MVCCID replicated_mvcc_next_id);
 
 class corruption_checker
 {
@@ -146,6 +148,13 @@ log_rv_analysis_check_page_corruption (THREAD_ENTRY *thread_p, LOG_PAGEID pageid
 
 void
 log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_recovery_context &context)
+{
+  log_recovery_analysis_internal (thread_p, num_redo_log_records, context, true);
+}
+
+void
+log_recovery_analysis_internal (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_recovery_context &context,
+				bool reset_mvcc_table)
 {
   // Navigation LSA's
   LOG_LSA record_nav_lsa = NULL_LSA;		/* LSA used to navigate from one record to the next */
@@ -444,7 +453,10 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
       chkpt_infop->recovery_2pc_analysis (thread_p);
     }
 
-  log_Gl.mvcc_table.reset_start_mvccid ();
+  if (reset_mvcc_table)
+    {
+      log_Gl.mvcc_table.reset_start_mvccid ();
+    }
 
   if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
     {
@@ -2178,7 +2190,7 @@ log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
   assert (!most_recent_trantable_snapshot_lsa.is_null ());
 
   log_reader lr (LOG_CS_SAFE_READER);
-  _er_log_debug (ARG_FILE_LINE, "cdbg: log_recovery_analysis_load_trantable_snapshot lsa=(%lld|%d)\n",
+  _er_log_debug (ARG_FILE_LINE, "crsdbg: log_recovery_analysis_load_trantable_snapshot lsa=(%lld|%d)\n",
 		 LSA_AS_ARGS (&most_recent_trantable_snapshot_lsa));
   const int error_code = lr.set_lsa_and_fetch_page (most_recent_trantable_snapshot_lsa);
   if (error_code != NO_ERROR)
@@ -2194,7 +2206,7 @@ log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
 
   lr.advance_when_does_not_fit (sizeof (LOG_REC_TRANTABLE_SNAPSHOT));
   const LOG_REC_TRANTABLE_SNAPSHOT log_rec = lr.reinterpret_copy_and_add_align<LOG_REC_TRANTABLE_SNAPSHOT> ();
-  _er_log_debug (ARG_FILE_LINE, "cdbg: log_recovery_analysis_load_trantable_snapshot snapshot_lsa=(%lld|%d) len=%u\n",
+  _er_log_debug (ARG_FILE_LINE, "crsdbg: log_recovery_analysis_load_trantable_snapshot snapshot_lsa=(%lld|%d) len=%u\n",
 		 LSA_AS_ARGS (&log_rec.snapshot_lsa), log_rec.length);
   std::unique_ptr<char []> snapshot_data_buf = std::make_unique<char []> (static_cast<size_t> (log_rec.length));
   lr.copy_from_log (snapshot_data_buf.get (), log_rec.length);
@@ -2212,24 +2224,28 @@ log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
 /* log_recovery_build_mvcc_table_from_trantable - build mvcc table using transaction table
  */
 static void
-log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p)
+log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p, MVCCID replicated_mvcc_next_id)
 {
   assert (is_passive_transaction_server ());
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  MVCCID smallest_mvccid = std::numeric_limits<MVCCID>::max ();
-  MVCCID largest_mvccid = std::numeric_limits<MVCCID>::min ();
+  constexpr MVCCID max_possible_mvccid = std::numeric_limits<MVCCID>::max ();
+  constexpr MVCCID min_possible_mvccid = std::numeric_limits<MVCCID>::min ();
+
+  MVCCID smallest_mvccid = max_possible_mvccid;
+  MVCCID largest_mvccid = min_possible_mvccid;
   std::set<MVCCID> present_mvccids;
   for (int i = 0; i < log_Gl.trantable.num_total_indices; ++i)
     {
       if (i != LOG_SYSTEM_TRAN_INDEX)
 	{
 	  const log_tdes *const tdes = log_Gl.trantable.all_tdes[i];
-	  // TODO: use same condition as in checkpoint_info::load_checkpoint_trans (for that,
-	  // tdes.commit_abort_lsa must be relayed)
-	  if (tdes != nullptr && tdes->trid != NULL_TRANID)
+	  // transaction's info relayed from the active transaction server is
+	  // artificially transferred here (see checkpoint_info::recovery_analysis); therefore
+	  // the same condition as where the transaction is relayed (checkpoint_info::load_checkpoint_trans)
+	  // cannot be used
+	  if (tdes != nullptr && tdes->trid != NULL_TRANID && MVCCID_IS_VALID (tdes->mvccinfo.id))
 	    {
-	      // TODO: any test for the validity of tdes->mvccinfo.id?
 	      if (tdes->mvccinfo.id < smallest_mvccid)
 		{
 		  smallest_mvccid = tdes->mvccinfo.id;
@@ -2239,32 +2255,54 @@ log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p)
 		  largest_mvccid = tdes->mvccinfo.id;
 		}
 	      present_mvccids.insert (tdes->mvccinfo.id);
+
+	      // TODO: for later, mvcc sub ids
+	      assert (tdes->mvccinfo.sub_ids.empty ());
 	    }
 	}
     }
-  log_Gl.hdr.mvcc_next_id = smallest_mvccid;
-  log_Gl.mvcc_table.reset_start_mvccid ();
-  // TODO: what if there is no active trasaction on ATS; PTS will have no way of knowing where the
-  // MVCCID is at
 
-  if (!present_mvccids.empty ())
+  if (smallest_mvccid == max_possible_mvccid && largest_mvccid == min_possible_mvccid)
     {
-      // complete each mvccid between the smallest and the highest, that is missing from the table
-      std::set<MVCCID>::const_iterator present_mvccids_it = present_mvccids.cbegin ();
-      MVCCID prev_mvccid = *present_mvccids_it;
-      ++present_mvccids_it;
-      for (; present_mvccids_it != present_mvccids.cend (); ++present_mvccids_it)
+      // either:
+      //  - no transaction was active on the active transaction server when the trantable snapshot was taken
+      //  - or, transactions were active but none of them had a valid mvccid assigned
+      assert (MVCCID_IS_VALID (replicated_mvcc_next_id));
+      assert (present_mvccids.empty ());
+
+      log_Gl.hdr.mvcc_next_id = replicated_mvcc_next_id;
+      log_Gl.mvcc_table.reset_start_mvccid ();
+    }
+  else
+    {
+      assert (!MVCCID_IS_VALID (replicated_mvcc_next_id));
+
+      // at least one transaction was active on the active transaction server when the snapshot was taken
+      log_Gl.hdr.mvcc_next_id = smallest_mvccid;
+      log_Gl.mvcc_table.reset_start_mvccid ();
+
+      if (!present_mvccids.empty ())
 	{
-	  const MVCCID curr_mvccid = *present_mvccids_it;
-	  for (MVCCID missing_mvccid = prev_mvccid + 1; missing_mvccid < curr_mvccid; ++missing_mvccid)
+	  // complete each mvccid between the smallest and the highest, that is missing from the table
+	  std::set<MVCCID>::const_iterator present_mvccids_it = present_mvccids.cbegin ();
+	  MVCCID prev_mvccid = *present_mvccids_it;
+	  ++present_mvccids_it;
+	  for (; present_mvccids_it != present_mvccids.cend (); ++present_mvccids_it)
 	    {
-	      log_Gl.mvcc_table.complete_mvcc (LOG_SYSTEM_TRAN_INDEX, missing_mvccid, true);
+	      const MVCCID curr_mvccid = *present_mvccids_it;
+	      for (MVCCID missing_mvccid = prev_mvccid + 1; missing_mvccid < curr_mvccid; ++missing_mvccid)
+		{
+		  log_Gl.mvcc_table.complete_mvcc (LOG_SYSTEM_TRAN_INDEX, missing_mvccid, true);
+		}
+	      prev_mvccid = curr_mvccid;
 	    }
-	  prev_mvccid = curr_mvccid;
 	}
+
+      log_Gl.hdr.mvcc_next_id = largest_mvccid + 1;
     }
 
-  log_Gl.hdr.mvcc_next_id = largest_mvccid + 1;
+  const MVCCID oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
+  _er_log_debug (ARG_FILE_LINE, "crsdbg: after reset oldest_visible_mvccid = %llu\n", oldest_visible_mvccid);
 }
 
 /* log_recovery_analysis_from_trantable_snapshot - perform recovery for a passive transaction server
@@ -2305,13 +2343,28 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p, log_lsa m
   log_rcv_context.set_start_redo_lsa (NULL_LSA);
   log_rcv_context.set_end_redo_lsa (NULL_LSA);
 
+  //FILE *const trantable_bef_fp = fopen ("/home/qa/tt_bef.log", "w");
+  //xlogtb_dump_trantable (thread_p, trantable_bef_fp);
+  //fclose (trantable_bef_fp);
+
   // passive transaction server needs to analyze up to the point its replication will pick-up things;
   // that means until the append_lsa; incidentally, end of log record should be found at the current append_lsa, so
   // analysis should stop there
-
   INT64 dummy_redo_log_record_count = 0LL;
-  log_recovery_analysis (thread_p, &dummy_redo_log_record_count, log_rcv_context);
+  // it is assumed that the analysis does not touch the mvcc table anymore
+  // it has already been initialized from the information relayed over via the trantable checkpoint
+  constexpr bool reset_mvcc_table = false;
+  log_recovery_analysis_internal (thread_p, &dummy_redo_log_record_count, log_rcv_context, reset_mvcc_table);
   assert (!log_rcv_context.is_restore_incomplete ());
+
+  {
+    const MVCCID oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
+    _er_log_debug (ARG_FILE_LINE, "crsdbg: after recovery analysis oldest_visible_mvccid = %llu\n", oldest_visible_mvccid);
+  }
+
+  //FILE *const trantable_aft_fp = fopen ("/home/qa/tt_aft.log", "w");
+  //xlogtb_dump_trantable (thread_p, trantable_aft_fp);
+  //fclose (trantable_aft_fp);
 
   // on passive transaction server, the recovery analysis has only the role of bringing the
   // transaction table up to date because it is relevant in read-only results
@@ -2320,8 +2373,12 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p, log_lsa m
     return true;
   });
 
+  {
+    const MVCCID oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
+    _er_log_debug (ARG_FILE_LINE, "crsdbg: after delete all tdes oldest_visible_mvccid = %llu\n", oldest_visible_mvccid);
+  }
+
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, sys_tran_index);
 
-  // TODO: chkpt_info.m_mvcc_next_id
-  log_recovery_build_mvcc_table_from_trantable (thread_p);
+  log_recovery_build_mvcc_table_from_trantable (thread_p, chkpt_info.get_mvcc_next_id ());
 }

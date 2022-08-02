@@ -172,7 +172,7 @@ namespace cublog
 
   void
   checkpoint_info::load_checkpoint_trans (log_tdes &tdes, LOG_LSA &smallest_lsa,
-					  bool &at_least_one_active_transaction_has_mvccid)
+					  bool &at_least_one_active_transaction_has_valid_mvccid)
   {
     // TODO: commit_abort_lsa is not relayed; it is impossible to make the same decision where the checkpoint is used
     if (tdes.trid != NULL_TRANID && !tdes.tail_lsa.is_null () && tdes.commit_abort_lsa.is_null ())
@@ -185,6 +185,8 @@ namespace cublog
 	chkpt_tran.state = tdes.state;
 	chkpt_tran.mvcc_id = tdes.mvccinfo.id;
 
+	at_least_one_active_transaction_has_valid_mvccid =
+		at_least_one_active_transaction_has_valid_mvccid || MVCCID_IS_NORMAL (tdes.mvccinfo.id);
 	if (tdes.mvccinfo.sub_ids.size () == 0)
 	  {
 	    chkpt_tran.mvcc_sub_id = MVCCID_NULL;
@@ -193,6 +195,8 @@ namespace cublog
 	  {
 	    assert (tdes.mvccinfo.sub_ids.size () == 1);
 	    chkpt_tran.mvcc_sub_id = tdes.mvccinfo.sub_ids[0];
+	    at_least_one_active_transaction_has_valid_mvccid =
+		    at_least_one_active_transaction_has_valid_mvccid || MVCCID_IS_NORMAL (tdes.mvccinfo.sub_ids[0]);
 	  }
 
 	LSA_COPY (&chkpt_tran.head_lsa, &tdes.head_lsa);
@@ -218,8 +222,8 @@ namespace cublog
 	LSA_COPY (&chkpt_tran.tail_topresult_lsa, &tdes.tail_topresult_lsa);
 	LSA_COPY (&chkpt_tran.start_postpone_lsa, &tdes.rcv.tran_start_postpone_lsa);
 	chkpt_tran.last_mvcc_lsa = tdes.last_mvcc_lsa;
-	at_least_one_active_transaction_has_mvccid =
-		at_least_one_active_transaction_has_mvccid || (!tdes.last_mvcc_lsa.is_null ());
+//	at_least_one_active_transaction_has_mvccid =
+//		at_least_one_active_transaction_has_mvccid || tdes.mvccinfo.id; // (!tdes.last_mvcc_lsa.is_null ());
 	std::strncpy (chkpt_tran.user_name, tdes.client.get_db_user (), LOG_USERNAME_MAX);
 
 	if (LSA_ISNULL (&smallest_lsa) || LSA_GT (&smallest_lsa, &tdes.head_lsa))
@@ -266,7 +270,7 @@ namespace cublog
     });
 
     // CHECKPOINT THE TRANSACTION TABLE
-    bool at_least_one_active_transaction_has_mvccid = false;
+    bool at_least_one_active_transaction_has_valid_mvccid = false;
     LSA_SET_NULL (&smallest_lsa);
     for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
       {
@@ -280,7 +284,7 @@ namespace cublog
 	  }
 	LOG_TDES *act_tdes = LOG_FIND_TDES (i);
 	assert (act_tdes != nullptr);
-	load_checkpoint_trans (*act_tdes, smallest_lsa, at_least_one_active_transaction_has_mvccid);
+	load_checkpoint_trans (*act_tdes, smallest_lsa, at_least_one_active_transaction_has_valid_mvccid);
 	load_checkpoint_topop (*act_tdes);
 	if (LOG_ISTRAN_2PC (act_tdes))
 	  {
@@ -301,7 +305,7 @@ namespace cublog
 
     // either no active transaction present or none of the active transactions has an active mvccid;
     // it is needed to relay most recent mvccid as part of the
-    if (!at_least_one_active_transaction_has_mvccid)
+    if (!at_least_one_active_transaction_has_valid_mvccid)
       {
 	// TODO: is any lock needed to ensure consistency of reading the mvccid
 	// a client transaction can acquire a new mvccid while not being blocked by the prior lock currently held
@@ -473,6 +477,13 @@ namespace cublog
   checkpoint_info::set_start_redo_lsa (const log_lsa &start_redo_lsa)
   {
     m_start_redo_lsa = start_redo_lsa;
+  }
+
+
+  MVCCID
+  checkpoint_info::get_mvcc_next_id () const
+  {
+    return m_mvcc_next_id;
   }
 
   void

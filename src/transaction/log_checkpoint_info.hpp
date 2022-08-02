@@ -72,11 +72,13 @@ namespace cublog
       size_t get_transaction_count () const;
       size_t get_sysop_count () const;
 
+      MVCCID get_mvcc_next_id () const;
+
       void dump (FILE *out_fp);
 
     private:
       void load_checkpoint_trans (log_tdes &tdes, LOG_LSA &smallest_lsa,
-				  bool &at_least_one_active_transaction_has_mvccid);
+				  bool &at_least_one_active_transaction_has_valid_mvccid);
       void load_checkpoint_topop (log_tdes &tdes);
 
       struct tran_info;
@@ -87,7 +89,7 @@ namespace cublog
       std::vector<tran_info> m_trans;
       std::vector<sysop_info> m_sysops;
       bool m_has_2pc = false;				      // true if any LOG_ISTRAN_2PC (tdes) is true
-      MVCCID m_mvcc_next_id; // only filled if no transaction with valid mvccid info is present
+      MVCCID m_mvcc_next_id = MVCCID_NULL; // only filled if no transaction with valid mvccid info is present
   };
 
   struct checkpoint_info::tran_info

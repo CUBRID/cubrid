@@ -1577,6 +1577,8 @@ error:
  *
  * return: nothing
  *
+ * NOTE: this function assumes that the trantable is initialized (as of now, it is done in the function
+ *  caling this one)
  */
 void
 log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
@@ -1676,13 +1678,8 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
 
   pts_ptr->start_log_replicator (replication_start_redo_lsa);
 
-  err_code = logtb_define_trantable_log_latch (thread_p, -1);
-  if (err_code != NO_ERROR)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "log_initialize_passive_tran_server: error initializing transaction table");
-      return;
-    }
+  // NOTE: do not re-define trantable here; already called in boot_restart_server
+  // calling again here, will reset all info in already initialized transaction table
 
   // not other purpose on passive transaction server than to conform various checks that rely on the recovery state
   // one such example: the check for "is temporary volume" in page buffer
