@@ -85,9 +85,6 @@ class log_reader final
     template <typename T>
     inline T reinterpret_copy_and_add_align ();
 
-    template <typename T>
-    inline void reinterpret_copy_and_add_align (T &t);
-
     /* equivalent to LOG_READ_ALIGN
      */
     inline void align ();
@@ -120,6 +117,9 @@ class log_reader final
     inline int skip (size_t size);
 
   private:
+    template <typename T>
+    inline void reinterpret_copy_and_add_align (T &t);
+
     inline const char *get_cptr () const;
 
     inline int fetch_page (THREAD_ENTRY *const thread_p);
