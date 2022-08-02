@@ -5800,6 +5800,12 @@ sm_find_key_index (MOP classop, char *att_name, BTID * btid)
 	  continue;
 	}
 
+      /* exclude prefix index */
+      if (con->attrs_prefix_length && con->attrs_prefix_length[0] > 0)
+	{
+	  continue;
+	}
+
       att1 = con->attributes[0];
       if (att1 == NULL)
 	{
