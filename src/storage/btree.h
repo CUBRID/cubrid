@@ -351,11 +351,22 @@ struct btree_checkscan
   BTREE_ISCAN_OID_LIST oid_list;	/* Data area to store OIDs */
 };				/* B+tree <key-oid> check scan structure */
 
+struct btree_ovfl_oid_capacity
+{
+  int max_pg_cnt_per_key;	/* Distinct key count with overflow oid page) */
+  int dis_key_cnt;		/* Distinct key count (with ovfl pages) */
+  int64_t tot_val_cnt;		/* Total number of values stored in overflow oid pages */
+  int tot_pg_cnt;		/* Total overflow oid page count */
+  float tot_free_space;		/* Total free space in overflow oid pages */
+  float tot_space;		/* Total space occupied by overflow oid pages */
+  float avg_pg_free_sp;		/* Average free space on the occupied overflowoid page */
+};
+
 typedef struct btree_capacity BTREE_CAPACITY;
 struct btree_capacity
 {
   int dis_key_cnt;		/* Distinct key count (in leaf pages) */
-  int tot_val_cnt;		/* Total number of values stored in tree */
+  int64_t tot_val_cnt;		/* Total number of values stored in tree */
   int avg_val_per_key;		/* Average number of values (OIDs) per key */
   int leaf_pg_cnt;		/* Leaf page count */
   int nleaf_pg_cnt;		/* NonLeaf page count */
@@ -370,6 +381,7 @@ struct btree_capacity
   float tot_used_space;		/* Total used space in index */
   int avg_pg_key_cnt;		/* Average page key count (in leaf pages) */
   float avg_pg_free_sp;		/* Average page free space */
+  struct btree_ovfl_oid_capacity ovfl_oid_pg;	/* For overflow OID page */
 };
 
 /*

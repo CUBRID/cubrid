@@ -137,12 +137,16 @@ static PT_NODE *pt_make_outer_select_for_show_stmt (PARSER_CONTEXT * parser, PT_
 						    const char *select_alias);
 static PT_NODE *pt_make_field_type_expr_node (PARSER_CONTEXT * parser);
 static PT_NODE *pt_make_select_count_star (PARSER_CONTEXT * parser);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_make_field_extra_expr_node (PARSER_CONTEXT * parser);
 static PT_NODE *pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static PT_NODE *pt_make_sort_spec_with_identifier (PARSER_CONTEXT * parser, const char *identifier,
 						   PT_MISC_TYPE sort_mode);
 static PT_NODE *pt_make_sort_spec_with_number (PARSER_CONTEXT * parser, const int number_pos, PT_MISC_TYPE sort_mode);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_make_collection_type_subquery_node (PARSER_CONTEXT * parser, const char *table_name);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static PT_NODE *pt_make_dummy_query_check_table (PARSER_CONTEXT * parser, const char *table_name);
 static PT_NODE *pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *user_name);
 static void pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name, string_buffer & strbuf);
@@ -5869,6 +5873,7 @@ pt_make_collation_expr_node (PARSER_CONTEXT * parser)
   return if_node;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * pt_make_field_extra_expr_node() - builds the 'Extra' field for the
  *				SHOW COLUMNS statment
@@ -5925,7 +5930,9 @@ pt_make_field_extra_expr_node (PARSER_CONTEXT * parser)
 
   return extra_node;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * pt_make_field_key_type_expr_node() - builds the 'Key' field for the
  *				SHOW COLUMNS statment
@@ -6206,6 +6213,7 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
   }
   return key_node;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * pt_make_sort_spec_with_identifier() - builds a SORT_SPEC for GROUP BY or
@@ -6276,6 +6284,7 @@ pt_make_sort_spec_with_number (PARSER_CONTEXT * parser, const int number_pos, PT
   return sort_spec_node;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * pt_make_collection_type_subquery_node() - builds a SELECT subquery used
  *					construct the string to display
@@ -6385,6 +6394,7 @@ pt_make_collection_type_subquery_node (PARSER_CONTEXT * parser, const char *tabl
 
   return query;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * pt_make_dummy_query_check_table() - builds a SELECT subquery used check

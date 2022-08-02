@@ -1432,7 +1432,9 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 
 1351 The maximum length of the function expression string must be %1$d.
 
-1352 Ultimo errore
+1352 Invalid number of columns specified.
+
+1353 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
