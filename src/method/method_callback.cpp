@@ -456,31 +456,3 @@ namespace cubmethod
     return &handler;
   }
 }
-
-int
-method_make_out_rs (DB_BIGINT query_id)
-{
-  cubmethod::callback_handler *callback_handler = cubmethod::get_callback_handler ();
-  cubmethod::query_handler *query_handler = callback_handler->get_query_handler_by_query_id (query_id);
-
-  if (query_handler != nullptr)
-    {
-      const cubmethod::query_result &qresult = query_handler->get_result();
-
-      DB_QUERY_TYPE *column_info = db_get_query_type_list (query_handler->get_db_session(), qresult.stmt_id);
-      /*
-      return ux_create_srv_handle_with_method_query_result (
-      	     qresult.result,
-      	     qresult.stmt_type,
-      	     qresult.num_column,
-      	     column_info,
-      	     true
-           );
-       */
-      return 0;
-    }
-  else
-    {
-      return -1;
-    }
-}

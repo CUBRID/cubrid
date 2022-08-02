@@ -83,7 +83,7 @@ int
 net_buf_cp_post_send_file (T_NET_BUF * net_buf, int size, char *filename)
 {
   FREE_MEM (net_buf->post_send_file);
-  ALLOC_COPY (net_buf->post_send_file, filename);
+  ALLOC_COPY_STRLEN (net_buf->post_send_file, filename);
   if (net_buf->post_send_file == NULL)
     {
       net_buf->err_code = CAS_ER_NO_MORE_MEMORY;
@@ -403,7 +403,7 @@ net_buf_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec, ch
     {
       char *tmp_str;
 
-      ALLOC_COPY (tmp_str, name);
+      ALLOC_COPY_STRLEN (tmp_str, name);
       if (tmp_str == NULL)
 	{
 	  net_buf_cp_int (net_buf, 1, NULL);

@@ -113,6 +113,4 @@ namespace cubmethod
 
 } // namespace cubmethod
 
-extern int method_make_out_rs (DB_BIGINT query_id);
-
 #endif // _METHOD_CALLBACK_HPP_

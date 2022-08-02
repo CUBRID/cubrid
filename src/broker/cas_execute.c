@@ -78,6 +78,7 @@
 #include "ddl_log.h"
 #include "parse_tree.h"
 #include "api_compat.h"
+#include "method_callback.hpp"
 
 #if defined (CAS_FOR_CGW)
 #include "cas_cgw.h"
@@ -191,9 +192,6 @@ struct t_attr_table
 T_COL_BINDER *col_binding = NULL;
 T_COL_BINDER *col_binding_buff = NULL;
 #endif
-
-extern void histo_print (FILE * stream);
-extern void histo_clear (void);
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
 extern void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
@@ -812,7 +810,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
   srv_handle->schema_type = -1;
   srv_handle->auto_commit_mode = auto_commit_mode;
 
-  ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
+  ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
   if (srv_handle->sql_stmt == NULL)
     {
       err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
@@ -1086,7 +1084,7 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
 	    }
 	  else if (err_code == ERR_REWRITE_FAILED)
 	    {
-	      ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
+	      ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
 	    }
 	  else
 	    {
@@ -1095,12 +1093,12 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
 	}
       else
 	{
-	  ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
+	  ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
 	}
     }
   else
     {
-      ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
+      ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
     }
 
   if (srv_handle->sql_stmt == NULL)
@@ -7870,8 +7868,8 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 		  col_update_info[num_cols].updatable = FALSE;
 		  if (db_query_format_col_type (col) == DB_COL_NAME)
 		    {
-		      ALLOC_COPY (col_update_info[num_cols].attr_name, attr_name);
-		      ALLOC_COPY (col_update_info[num_cols].class_name, class_name);
+		      ALLOC_COPY_STRLEN (col_update_info[num_cols].attr_name, attr_name);
+		      ALLOC_COPY_STRLEN (col_update_info[num_cols].class_name, class_name);
 		      if (col_update_info[num_cols].attr_name != NULL && col_update_info[num_cols].class_name != NULL)
 			{
 			  col_update_info[num_cols].updatable = TRUE;
@@ -10085,8 +10083,8 @@ int
 ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT * result, int stmt_type, int num_column,
 					       DB_QUERY_TYPE * column_info, bool is_holdable)
 {
-  int srv_h_id;
-  int err_code = 0;
+  int srv_h_id = -1;
+  int err_code = NO_ERROR;
   T_SRV_HANDLE *srv_handle = NULL;
   T_QUERY_RESULT *q_result = NULL;
 
@@ -10446,8 +10444,6 @@ ux_get_generated_keys_error:
   return err_code;
 }
 
-extern int method_make_out_rs (DB_BIGINT query_id);
-
 int
 ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -10460,7 +10456,17 @@ ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   int new_handle_id = 0;
   T_BROKER_VERSION client_version = req_info->client_version;
 
-  new_handle_id = method_make_out_rs (query_id);
+  cubmethod::callback_handler * callback_handler = cubmethod::get_callback_handler ();
+  cubmethod::query_handler * query_handler = callback_handler->get_query_handler_by_query_id (query_id);
+  if (query_handler != nullptr)
+    {
+      const cubmethod::query_result & qresult = query_handler->get_result ();
+      DB_QUERY_TYPE *column_info = db_get_query_type_list (query_handler->get_db_session (), qresult.stmt_id);
+      new_handle_id = ux_create_srv_handle_with_method_query_result (qresult.result,
+								     qresult.stmt_type,
+								     qresult.num_column, column_info, true);
+    }
+
   srv_handle = hm_find_srv_handle (new_handle_id);
 
   if (srv_handle == NULL || srv_handle->cur_result == NULL)
