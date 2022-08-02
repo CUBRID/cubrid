@@ -131,7 +131,7 @@ css_gethostname (char *name, size_t namelen)
   hostname[namelen_ - 1] = '\0';
   gethostname (hostname, namelen_);
 
-  int gai_error = getaddrinfo (hostname, NULL, &hints, &result);
+  int gai_error = getaddrinfo_uhost (hostname, NULL, &hints, &result);
   if (gai_error != 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GAI_ERROR, 1, hostname);

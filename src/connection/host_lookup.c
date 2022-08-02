@@ -63,7 +63,7 @@ hostent_compose (const char *hostname, struct sockaddr *saddr)
   int hostent_list_index, find_index, ret, cmp_ret = 1;
   char addr_transform_buf[17];
   char addr_transform_buf2[17];
-  struct sockaddr_in *addr_trans;
+  struct sockaddr_in *addr_trans = NULL;
 
   addr_trans = (struct sockaddr_in *) saddr;
   //sin_addr
@@ -89,8 +89,8 @@ hostent_compose (const char *hostname, struct sockaddr *saddr)
 	{
 	  //saddr must be transformed
 	  cmp_ret = strcmp (addr_transform_buf, hostent_List[hostent_list_index].addr);
-
 	}
+
       if (!cmp_ret)
 	{
 	  find_index = hostent_list_index;
@@ -109,15 +109,15 @@ hostent_compose (const char *hostname, struct sockaddr *saddr)
 
   hp.h_addrtype = AF_INET;
   hp.h_length = 4;
-  hp.h_name = (char *) malloc (sizeof (char *));
-  hp.h_aliases = (char **) malloc (sizeof (char **));
-  hp.h_aliases[0] = (char *) malloc (sizeof (char *));
-  hp.h_addr_list = (char **) malloc (sizeof (char **));
-  hp.h_addr_list[0] = (char *) malloc (sizeof (char *));
+  hp.h_name = (char *) malloc (sizeof (char) * HOSTNAME_BUF_SIZE);
+  hp.h_aliases = (char **) malloc (sizeof (char *));
+  hp.h_aliases[0] = (char *) malloc (sizeof (char) * HOSTNAME_BUF_SIZE);
+  hp.h_addr_list = (char **) malloc (sizeof (char *) * HOSTNAME_BUF_SIZE);
+  hp.h_addr_list[0] = (char *) malloc (sizeof (char) * 17);
 
   strcpy (hp.h_name, hostent_List[hostent_list_index].hostname);
   strcpy (hp.h_aliases[0], hostent_List[hostent_list_index].hostname);
-  strcpy (hp.h_addr_list[0], addr_transform_buf2);
+  memcpy (hp.h_addr_list[0], addr_transform_buf2, sizeof (hp.h_addr_list[0]));
 
   return &hp;
 }
@@ -156,8 +156,6 @@ host_conf_load ()		//set hash table to discover error
 //verifying duplicated hostname will be implemented soon
       if (file_line[0] == '#')
 	continue;
-      if (file_line[0] == ' ')
-	continue;
       if (file_line[0] == '\n')
 	continue;
 
@@ -181,6 +179,9 @@ host_conf_load ()		//set hash table to discover error
 	    }
 	}
       while (token = strtok_r (NULL, delim, &save_ptr));
+//pair is not complete issu
+//naming rule check, detailed rule, error set
+//if hostent_List[host_count].hostname is empty, set error
       host_count++;
     }
   return host_count;
@@ -204,7 +205,7 @@ gethostbyname_uhost (char *hostname)
     {
       host_conf_Use = prm_get_bool_value (PRM_ID_USE_USER_HOSTS);
     }
-
+//! expression check, readable
   if (!host_conf_Use)
     {
       return gethostbyname (hostname);
@@ -227,7 +228,7 @@ gethostbyname_uhost (char *hostname)
 int
 gethostbyname_r_uhost (const char *hostname, struct hostent *out_hp)
 {
-  struct hostent *hp_memcpy;
+  struct hostent *hp_memcpy = NULL;
   bool host_conf;
   int ret;
 
@@ -267,8 +268,9 @@ gethostbyname_r_uhost (const char *hostname, struct hostent *out_hp)
       r = pthread_mutex_lock (&gethostbyname_lock);
       hent = gethostbyname (hostname);
       if (hent == NULL)
+	pthread_mutex_unlock (&gethostbyname_lock);
 #endif /* !HAVE_GETHOSTBYNAME_R */
-	memcpy (out_hp, &hent, sizeof (hent));
+      memcpy (out_hp, &hent, sizeof (hent));
       out_hp = &hent;
       return ret;
     }
@@ -283,7 +285,7 @@ gethostbyname_r_uhost (const char *hostname, struct hostent *out_hp)
     }
 
   hp_memcpy = hostent_compose (hostname, NULL);
-  memcpy (out_hp, hp_memcpy, sizeof (*hp_memcpy));
+  memcpy ((void *) out_hp, (void *) hp_memcpy, sizeof (struct hostent));
   //out_hp NULL case
   return 0;
 }
@@ -317,5 +319,59 @@ getnameinfo_uhost (struct sockaddr *saddr, socklen_t saddr_len, char *hostname, 
   //hp null case error
   //  return hp;
   strcpy (hostname, hp->h_name);
+  return 0;
+}
+
+int
+getaddrinfo_uhost (char *hostname, char *servname, struct addrinfo *hints, struct addrinfo **results)
+{
+
+  struct hostent *hp = NULL;
+  struct addrinfo results_out;
+  struct sockaddr_in addr_convert;
+  struct in_addr *in_addr_buf = (struct in_addr *) malloc (sizeof (struct in_addr));
+
+  memset (&results_out, 0, sizeof (results_out));
+
+  if (host_conf_Use < 0)
+    {
+      host_conf_Use = prm_get_bool_value (PRM_ID_USE_USER_HOSTS);
+    }
+
+  if (!host_conf_Use)
+    {
+      return getaddrinfo (hostname, NULL, hints, results);
+    }
+
+  if (!host_conf_element_Count)
+    {
+      host_conf_element_Count = host_conf_load ();
+      if (host_conf_element_Count <= 0)
+	{
+	  return NULL;
+	}
+    }
+
+  hp = hostent_compose (hostname, NULL);
+
+  *results = (struct addrinfo *) malloc (sizeof (struct addrinfo));
+/*Constitute struct addrinfo for the out parameter results*/
+  results_out.ai_flags = hints->ai_flags;
+  results_out.ai_family = hints->ai_family;
+  results_out.ai_socktype = hints->ai_socktype;
+  results_out.ai_protocol = IPPROTO_TCP;
+
+  memcpy (&in_addr_buf->s_addr, hp->h_addr_list[0], sizeof (in_addr_buf->s_addr));
+  memcpy (&addr_convert.sin_addr, &in_addr_buf->s_addr, sizeof (addr_convert.sin_addr));
+  results_out.ai_addr = (struct sockaddr *) malloc (sizeof (struct sockaddr));
+  memcpy (results_out.ai_addr, (struct sockaddr *) &addr_convert, sizeof (struct sockaddr));
+
+  results_out.ai_addrlen = sizeof (results_out.ai_addr);
+  results_out.ai_canonname = hp->h_name;
+  results_out.ai_next = NULL;
+  memmove (*results, &results_out, sizeof (struct addrinfo));
+
+  free (in_addr_buf);
+
   return 0;
 }
