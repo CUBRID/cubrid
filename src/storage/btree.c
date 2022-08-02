@@ -16517,7 +16517,12 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       goto exit_on_error;
     }
 
-  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if ((mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p)) == NULL)
+    {
+      ret = er_errid ();
+      goto exit_on_error;
+    }
+
   mvcc_snapshot->snapshot_fnc = mvcc_satisfies_snapshot;
 
   while (!BTREE_END_OF_SCAN (BTS))
