@@ -16449,7 +16449,7 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   PAGE_PTR root_page_ptr = NULL;
   bool clear_key = false;
   bool is_visible = false;
-  DB_VALUE key_value;
+  DB_VALUE key_value, *value_p = &key_value;
   BTREE_ROOT_HEADER *root_header = NULL;
   BTREE_SCAN btree_scan, *BTS;
   int ret = NO_ERROR;
@@ -16520,18 +16520,36 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
   mvcc_snapshot->snapshot_fnc = mvcc_satisfies_snapshot;
 
-  while (!BTREE_END_OF_SCAN (BTS) && !is_visible)
+  while (!BTREE_END_OF_SCAN (BTS))
     {
       /* get a visible key on mvcc */
       ret =
 	btree_is_key_visible (thread_p, &BTS->btid_int, BTS->C_page, mvcc_snapshot, BTS->slot_id, &is_visible,
 			      &key_value);
+
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
 
-      /* get the next index record */
+      if (is_visible)
+	{
+	  value_p = &key_value;
+	  if (key_value.domain.general_info.type == DB_TYPE_MIDXKEY)
+	    {
+	      DB_MIDXKEY *midxkey_val;
+
+	      midxkey_val = db_get_midxkey (&key_value);
+	      pr_midxkey_get_element_nocopy (midxkey_val, 0, value_p, NULL, NULL);
+	    }
+
+	  /* find only not null */
+	  if (db_value_is_null (value_p) == false)
+	    {
+	      break;
+	    }
+	}
+
       ret = btree_find_next_index_record (thread_p, BTS);
       if (ret != NO_ERROR)
 	{
@@ -16540,20 +16558,7 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	}
     }
 
-  if (key_value.domain.general_info.type == DB_TYPE_MIDXKEY)
-    {
-      DB_VALUE *value_p;
-      DB_MIDXKEY *midxkey_val;
-
-      midxkey_val = db_get_midxkey (&key_value);
-      pr_midxkey_get_element_nocopy (midxkey_val, 0, value_p, NULL, NULL);
-      (void) pr_clone_value (value_p, key);
-    }
-  else
-    {
-      (void) pr_clone_value (&key_value, key);
-    }
-
+  (void) pr_clone_value (value_p, key);
   btree_clear_key_value (&clear_key, &key_value);
 
 end:
