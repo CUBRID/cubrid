@@ -16467,8 +16467,6 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
   pgbuf_unfix_and_init (thread_p, root_page_ptr);
 
-  assert (tp_valid_indextype (TP_DOMAIN_TYPE (BTS->btid_int.key_type)));
-
   /*
    * in case of desc domain index,
    * we have to find the min/max key in opposite order.
@@ -16516,7 +16514,20 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	}
     }
 
-  (void) pr_clone_value (&key_value, key);
+  if (key_value.domain.general_info.type == DB_TYPE_MIDXKEY)
+    {
+      DB_VALUE *value_p;
+      DB_MIDXKEY *midxkey_val;
+
+      midxkey_val = db_get_midxkey (&key_value);
+      pr_midxkey_get_element_nocopy (midxkey_val, 0, value_p, NULL, NULL);
+      (void) pr_clone_value (value_p, key);
+    }
+  else
+    {
+      (void) pr_clone_value (&key_value, key);
+    }
+
   btree_clear_key_value (&clear_key, &key_value);
 
 end:

@@ -242,6 +242,7 @@ extern int sm_att_default_value (MOP classop, const char *name, DB_VALUE * value
 				 DB_DEFAULT_EXPR_TYPE ** on_update_expr);
 
 extern int sm_class_check_uniques (MOP classop);
+extern BTID *sm_find_key_index (MOP classop, char *att_name, BTID * btid);
 extern BTID *sm_find_index (MOP classop, char **att_names, int num_atts, bool unique_index_only,
 			    bool skip_prefix_length_index, BTID * btid);
 

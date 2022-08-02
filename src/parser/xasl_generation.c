@@ -4209,9 +4209,9 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	    {
 	      if (tree->info.function.arg_list->node_type == PT_NAME)
 		{
-		  (void) sm_find_index (classop,
-					(char **) &tree->info.function.arg_list->info.name.original,
-					1, need_unique_index, true, &aggregate_list->btid);
+		  /* need to get an index has the argument name as first attribute */
+		  (void) sm_find_key_index (classop, (char *) tree->info.function.arg_list->info.name.original,
+					    &aggregate_list->btid);
 		  if (!BTID_IS_NULL (&aggregate_list->btid))
 		    {
 		      aggregate_list->flag_agg_optimize = true;
