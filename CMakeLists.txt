@@ -341,7 +341,7 @@ endif(UNIX)
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
   set(TARGET_PLATFORM_BITS 64)
 else()
-  message(FATAL_ERROR "Target platform 32bit is no longer supported")
+  message(FATAL_ERROR "Target platform 32bit is no longer supported as of CUBRID 10.2")
 endif()
 
 # FIXME: remove unused checking rule
