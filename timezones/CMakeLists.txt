@@ -68,8 +68,13 @@ if(UNIX)
     tzlib/build_tz.sh
     DESTINATION ${CUBRID_TZDIR}/tzlib)
 else(UNIX)
-  set(MAKE_TZ_SCRIPT make_tz_x64.bat)
-  set(MAKE_TZLIB_DIR tzlib_win_x64)
+  if(TARGET_PLATFORM_BITS EQUAL 32)
+    set(MAKE_TZ_SCRIPT make_tz_Win32.bat)
+    set(MAKE_TZLIB_DIR tzlib_win_Win32)
+  else(TARGET_PLATFORM_BITS EQUAL 32)
+    set(MAKE_TZ_SCRIPT make_tz_x64.bat)
+    set(MAKE_TZLIB_DIR tzlib_win_x64)
+  endif(TARGET_PLATFORM_BITS EQUAL 32)
   install(PROGRAMS
     ${MAKE_TZ_SCRIPT}
     DESTINATION ${CUBRID_BINDIR}
