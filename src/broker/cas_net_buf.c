@@ -279,17 +279,18 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator, int err_code, cha
 #ifdef CAS_DEBUG
   char msg_buf[1024];
 #endif
-
+#ifndef LIBCAS_FOR_JSP
 #if defined(CAS_CUBRID) || defined(CAS_FOR_MYSQL) || defined(CAS_FOR_ORACLE)
   T_BROKER_VERSION ver;
 #endif /* CAS_CUBRID || CAS_FOR_MYSQL || CAS_FOR_ORACLE */
+#endif /* !LIBCAS_FOR_JSP */
   size_t err_msg_len = 0;
   char err_msg[ERR_MSG_LENGTH];
 
   assert (err_code != NO_ERROR);
 
   net_buf_clear (net_buf);
-
+#ifndef LIBCAS_FOR_JSP
 #if defined(CAS_CUBRID) || defined(CAS_FOR_MYSQL) || defined(CAS_FOR_ORACLE)
   ver = as_info->clt_version;
   if (ver >= CAS_MAKE_VER (8, 3, 0))
@@ -309,6 +310,9 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator, int err_code, cha
   /* shard_proxy do not use net_buf_error_msg_set. it is dummy code. */
   net_buf_cp_int (net_buf, err_indicator, NULL);
 #endif /* FOR SHARD_PROXY */
+#else /* !LIBCAS_FOR_JSP */
+  net_buf_cp_int (net_buf, err_indicator, NULL);
+#endif /* !LIBCAS_FOR_JSP */
   net_buf_cp_int (net_buf, err_code, NULL);
 
 #ifdef CAS_DEBUG
@@ -792,7 +796,7 @@ net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size)
 {
   assert (err_buf);
 
-#if !defined(CUB_PROXY)
+#if !defined(LIBCAS_FOR_JSP) && !defined(CUB_PROXY)
   if (cas_shard_flag == ON)
     {
       if (err_msg == NULL)
@@ -809,7 +813,7 @@ net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size)
 	}
     }
   else
-#endif /* !CUB_PROXY */
+#endif /* !LIBCAS_FOR_JSP && !CUB_PROXY */
     {
       if (err_msg == NULL)
 	{

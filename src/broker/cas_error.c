@@ -119,10 +119,12 @@ err_msg_set (T_NET_BUF * net_buf, const char *file, int line)
     }
 #endif /* CAS_FOR_MYSQL */
 #else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
+#ifndef LIBCAS_FOR_JSP
   if ((net_buf == NULL) && (err_info.err_number == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED))
     {
       set_server_aborted (true);
     }
+#endif
 
   switch (err_info.err_number)
     {
@@ -131,8 +133,10 @@ err_msg_set (T_NET_BUF * net_buf, const char *file, int line)
     case ER_OBJ_NO_CONNECT:
     case ER_BO_CONNECT_FAILED:
       /* case -581: *//* ER_DB_NO_MODIFICATIONS */
+#ifndef LIBCAS_FOR_JSP
       as_info->reset_flag = TRUE;
       cas_log_debug (ARG_FILE_LINE, "db_err_msg_set: set reset_flag");
+#endif
       break;
     }
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */

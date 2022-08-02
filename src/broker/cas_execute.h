@@ -75,12 +75,12 @@ struct t_fk_info_result
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 extern int ux_check_connection (void);
-
+#ifndef LIBCAS_FOR_JSP
 extern int ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_err_msg);
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern int ux_database_reconnect (void);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-
+#endif /* !LIBCAS_FOR_JSP */
 extern int ux_is_database_connected (void);
 #if defined(CAS_FOR_CGW)
 extern int ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
@@ -181,7 +181,6 @@ extern int ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO *
 extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT * result, int stmt_type, int num_column,
 							  DB_QUERY_TYPE * column_info, bool is_holdable);
 #endif /* !CAS_FOR_MYSQL */
-
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern int ux_get_generated_keys (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);

@@ -54,7 +54,9 @@ static void srv_handle_rm_tmp_file (int h_id, T_SRV_HANDLE * srv_handle);
 static T_SRV_HANDLE **srv_handle_table = NULL;
 static int max_srv_handle = 0;
 static int max_handle_id = 0;
+#if !defined(LIBCAS_FOR_JSP)
 static int current_handle_count = 0;
+#endif
 
 /* implemented in transaction_cl.c */
 extern bool tran_is_in_libcas (void);
@@ -70,11 +72,12 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   T_SRV_HANDLE **new_srv_handle_table = NULL;
   T_SRV_HANDLE *srv_handle;
 
+#if !defined(LIBCAS_FOR_JSP)
   if (cas_shard_flag == OFF && current_handle_count >= shm_appl->max_prepared_stmt_count)
     {
       return ERROR_INFO_SET (CAS_ER_MAX_PREPARED_STMT_COUNT_EXCEEDED, CAS_ERROR_INDICATOR);
     }
-
+#endif /* !LIBCAS_FOR_JSP */
 
   for (i = 0; i < max_srv_handle; i++)
     {
@@ -120,7 +123,9 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   srv_handle->send_metadata_before_execute = false;
   srv_handle->next_cursor_pos = 1;
 #endif
+#if !defined(LIBCAS_FOR_JSP)
   srv_handle->is_pooled = as_info->cur_statement_pooling;
+#endif
 
 #if defined(CAS_FOR_MYSQL)
   srv_handle->has_mysql_last_insert_id = false;
@@ -140,7 +145,9 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
       max_handle_id = new_handle_id;
     }
 
+#if !defined(LIBCAS_FOR_JSP)
   current_handle_count++;
+#endif
 
   return new_handle_id;
 }
@@ -186,7 +193,9 @@ hm_srv_handle_free (int h_id)
 
   FREE_MEM (srv_handle);
   srv_handle_table[h_id - 1] = NULL;
+#if !defined(LIBCAS_FOR_JSP)
   current_handle_count--;
+#endif
 }
 
 void
@@ -217,15 +226,19 @@ hm_srv_handle_free_all (bool free_holdable)
 #endif /* CAS_FOR_CGW */
       FREE_MEM (srv_handle);
       srv_handle_table[i] = NULL;
+#if !defined(LIBCAS_FOR_JSP)
       current_handle_count--;
+#endif
     }
 
   max_handle_id = new_max_handle_id;
+#if !defined(LIBCAS_FOR_JSP)
   if (free_holdable)
     {
       current_handle_count = 0;
       as_info->num_holdable_results = 0;
     }
+#endif
 }
 
 void
@@ -350,7 +363,9 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
 	      if (q_result[i].is_holdable == true)
 		{
 		  q_result[i].is_holdable = false;
+#if !defined(LIBCAS_FOR_JSP)
 		  as_info->num_holdable_results--;
+#endif
 		}
 	    }
 	  q_result[i].result = NULL;
@@ -497,7 +512,11 @@ srv_handle_rm_tmp_file (int h_id, T_SRV_HANDLE * srv_handle)
 int
 hm_srv_handle_get_current_count (void)
 {
+#if !defined(LIBCAS_FOR_JSP)
   return current_handle_count;
+#else
+  return 0;
+#endif
 }
 
 void
