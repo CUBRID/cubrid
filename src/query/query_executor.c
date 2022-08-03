@@ -23684,8 +23684,7 @@ qexec_evaluate_partition_aggregates (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE *
 	  continue;
 	}
 
-      if ((agg_ptr->function == PT_COUNT_STAR || agg_ptr->function == PT_MAX || agg_ptr->function == PT_MIN)
-	  && *is_scan_needed)
+      if (agg_ptr->function == PT_COUNT_STAR && *is_scan_needed)
 	{
 	  agg_ptr->flag_agg_optimize = false;
 	  i++;
@@ -23808,8 +23807,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
     {
       if (agg_ptr->flag_agg_optimize)
 	{
-	  if ((agg_ptr->function == PT_COUNT_STAR || agg_ptr->function == PT_MAX || agg_ptr->function == PT_MIN)
-	      && *is_scan_needed)
+	  if (agg_ptr->function == PT_COUNT_STAR && *is_scan_needed)
 	    {
 	      /* If scan is needed, do not optimize PT_COUNT_STAR. */
 	      agg_ptr->flag_agg_optimize = false;
