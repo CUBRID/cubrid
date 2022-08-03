@@ -16519,7 +16519,6 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
   if ((mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p)) == NULL)
     {
-      ret = er_errid ();
       goto exit_on_error;
     }
 

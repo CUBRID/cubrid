@@ -5767,74 +5767,6 @@ sm_att_info (MOP classop, const char *name, int *idp, TP_DOMAIN ** domainp, int 
   return error;
 }
 
-
-/*
- * sm_find_key_index()
- *   return: Pointer to B-tree ID variable
- *           has "att_name" as first key attribute.
- *   classop(in): class object
- *   att_names(in):
- *   btid(out):
- */
-
-BTID *
-sm_find_key_index (MOP classop, char *att_name, BTID * btid)
-{
-  int error = NO_ERROR;
-  SM_CLASS *class_;
-  SM_CLASS_CONSTRAINT *con;
-  SM_ATTRIBUTE *att1, *att2;
-  BTID *index = NULL;
-  bool found = false;
-
-  error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
-  if (error != NO_ERROR)
-    {
-      return NULL;
-    }
-
-  for (con = class_->constraints; con != NULL; con = con->next)
-    {
-      if (!SM_IS_CONSTRAINT_INDEX_FAMILY (con->type))
-	{
-	  continue;
-	}
-
-      /* exclude prefix index */
-      if (con->attrs_prefix_length && con->attrs_prefix_length[0] > 0)
-	{
-	  continue;
-	}
-
-      /* exclude filter or function index */
-      if (con->filter_predicate || con->func_index_info)
-	{
-	  continue;
-	}
-
-      att1 = con->attributes[0];
-      if (att1 == NULL)
-	{
-	  break;
-	}
-
-      att2 = classobj_find_attribute (class_, att_name, 0);
-      if (att2 != NULL && att1->id == att2->id)
-	{
-	  found = true;
-	  break;
-	}
-    }
-
-  if (found)
-    {
-      BTID_COPY (btid, &con->index_btid);
-      index = btid;
-    }
-
-  return (index);
-}
-
 /*
  * sm_find_index()
  *   return: Pointer to B-tree ID variable.
@@ -5856,6 +5788,7 @@ sm_find_index (MOP classop, char **att_names, int num_atts, bool unique_index_on
   SM_ATTRIBUTE *att1, *att2;
   BTID *index = NULL;
   bool force_local_index = false;
+  bool found = false;
   int is_global = 0;
 
   error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
@@ -5915,7 +5848,14 @@ sm_find_index (MOP classop, char **att_names, int num_atts, bool unique_index_on
       if (num_atts == 0)
 	{
 	  /* we don't care about attributes, any index is a good one */
+	  found = true;
 	  break;
+	}
+
+      /* exclude filter or function index */
+      if (con->filter_predicate || con->func_index_info)
+	{
+	  continue;
 	}
 
       for (i = 0; i < num_atts; i++)
@@ -5927,20 +5867,21 @@ sm_find_index (MOP classop, char **att_names, int num_atts, bool unique_index_on
 	    }
 
 	  att2 = classobj_find_attribute (class_, att_names[i], 0);
-	  if (att2 == NULL || att1->id != att2->id)
+	  if (att2 && att1->id == att2->id)
 	    {
+	      found = true;
 	      break;
 	    }
 	}
 
-      if ((i == num_atts) && con->attributes[i] == NULL)
+      if (found)
 	{
 	  /* found it */
 	  break;
 	}
     }
 
-  if (con)
+  if (found)
     {
       BTID_COPY (btid, &con->index_btid);
       index = btid;
