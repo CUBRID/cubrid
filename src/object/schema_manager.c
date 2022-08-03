@@ -5806,6 +5806,12 @@ sm_find_key_index (MOP classop, char *att_name, BTID * btid)
 	  continue;
 	}
 
+      /* exclude filter or function index */
+      if (con->filter_predicate || con->func_index_info)
+	{
+	  continue;
+	}
+
       att1 = con->attributes[0];
       if (att1 == NULL)
 	{
