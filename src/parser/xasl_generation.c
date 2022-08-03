@@ -4208,8 +4208,9 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	  else if (tree->info.function.arg_list->node_type == PT_NAME)
 	    {
 	      /* need to get an index has the argument name as first attribute */
+	      /* no prefix, no filter, no function */
 	      btid = sm_find_index (classop, (char **) &tree->info.function.arg_list->info.name.original,
-				    1, need_unique_index, false, &aggregate_list->btid);
+				    1, need_unique_index, true, &aggregate_list->btid);
 	      if (btid != NULL)
 		{
 		  /* If btree does not exist, optimize with heap in non-MVCC */
