@@ -3287,15 +3287,6 @@ get_host_ip (unsigned char *ip_addr)
   struct hostent *hp;
   char *ip;
 
-//test
-  struct sockaddr *saddr;
-  socklen_t saddr_len;
-  struct sockaddr_in sa;
-  char hostname2[256];
-  void *ptr;
-  saddr_len = sizeof (saddr);
-//test
-
   if (gethostname (hostname, sizeof (hostname)) < 0)
     {
       return -1;
@@ -3307,17 +3298,6 @@ get_host_ip (unsigned char *ip_addr)
 
   ip = inet_ntoa (*(struct in_addr *) *hp->h_addr_list);
   memcpy (ip_addr, ip, strlen (ip));
-
-//test
-  char ip2[20];
-  sa.sin_family = AF_INET;
-//ip2 = inet_ntoa (*(struct in_addr *)*hp->h_addr_list);
-  memcpy (&sa.sin_addr, hp->h_addr_list[0], sizeof (sa.sin_addr));
-  ptr = &sa.sin_addr;
-  inet_ntop (AF_INET, ptr, ip2, sizeof (ip2));
-
-  getnameinfo_uhost ((sockaddr *) & sa, sizeof (sa), hostname2, sizeof (hostname2), NULL, 0, NI_NOFQDN);
-//test
 
   return 0;
 }
