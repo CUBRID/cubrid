@@ -1819,14 +1819,9 @@ btree_is_key_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr,
   int max_visible_oids = 1;
   bool dummy_clear_key;
 
-  *is_visible = false;
+  assert (mvcc_snapshot != NULL);
 
-  if (mvcc_snapshot == NULL)
-    {
-      /* Early out. */
-      *is_visible = true;
-      return ret;
-    }
+  *is_visible = false;
 
   /* Get the record. */
   if (spage_get_record (thread_p, pg_ptr, slot_id, &record, PEEK) != S_SUCCESS)
