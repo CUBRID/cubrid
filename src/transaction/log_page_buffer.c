@@ -7616,21 +7616,23 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
   log_lsa trantable_checkpoint_lsa = NULL_LSA;
 
   LOG_CS_ENTER (thread_p);
-    // *INDENT-OFF*
-    scope_exit<std::function<void (void)>> unlock_log_cs_on_exit ([thread_p] ()
-    {
-      LOG_CS_EXIT (thread_p);
-    });
+  // *INDENT-OFF*
+  scope_exit<std::function<void (void)>> unlock_log_cs_on_exit ([thread_p] ()
+  {
+    LOG_CS_EXIT (thread_p);
+  });
 
-    cublog::checkpoint_info trantable_checkpoint_info;
-    // *INDENT-ON*
+  cublog::checkpoint_info trantable_checkpoint_info;
+  // *INDENT-ON*
 
   if (detailed_logging)
     {
       _er_log_debug (ARG_FILE_LINE, "checkpoint_trantable: started, loading trantable\n");
     }
-  LOG_LSA dummy_smallest_tran_lsa = NULL_LSA;
-  trantable_checkpoint_info.load_trantable_snapshot (thread_p, dummy_smallest_tran_lsa);
+  {
+    LOG_LSA dummy_smallest_tran_lsa = NULL_LSA;
+    trantable_checkpoint_info.load_trantable_snapshot (thread_p, dummy_smallest_tran_lsa);
+  }
 
   // Currently the transaction table snapshot is saved in two places:
   //
