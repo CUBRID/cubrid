@@ -55,7 +55,7 @@ namespace cubmethod
    *
    */
 
-  class callback_handler
+  class EXPORT_IMPORT callback_handler
   {
     public:
       callback_handler (int max_query_handler);
@@ -109,7 +109,7 @@ namespace cubmethod
   // global functions
   //////////////////////////////////////////////////////////////////////////
 
-  callback_handler *get_callback_handler (void);
+  EXPORT_IMPORT callback_handler *get_callback_handler (void);
 
 } // namespace cubmethod
 
