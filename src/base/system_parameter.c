@@ -1042,7 +1042,6 @@ static unsigned int prm_lk_rollback_on_lock_escalation_flag = 0;
 
 int PRM_LK_TIMEOUT_SECS = -1;
 static int prm_lk_timeout_secs_default = -1;	/* Infinite */
-static int prm_lk_timeout_secs_upper = INT_MAX / 1000;
 static int prm_lk_timeout_secs_lower = -1;
 static unsigned int prm_lk_timeout_secs_flag = 0;
 
@@ -2729,23 +2728,23 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_LK_TIMEOUT_SECS,
    PRM_NAME_LK_TIMEOUT_SECS,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_DEPRECATED),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_DEPRECATED),
    PRM_INTEGER,
    &prm_lk_timeout_secs_flag,
    (void *) &prm_lk_timeout_secs_default,
    (void *) &PRM_LK_TIMEOUT_SECS,
-   (void *) &prm_lk_timeout_secs_upper, (void *) &prm_lk_timeout_secs_lower,
+   (void *) NULL, (void *) &prm_lk_timeout_secs_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_LK_TIMEOUT,
    PRM_NAME_LK_TIMEOUT,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    &prm_lk_timeout_secs_flag,
    (void *) &prm_lk_timeout_secs_default,
    (void *) &PRM_LK_TIMEOUT_SECS,
-   (void *) &prm_lk_timeout_secs_upper, (void *) &prm_lk_timeout_secs_lower,
+   (void *) NULL, (void *) &prm_lk_timeout_secs_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) prm_msec_to_sec,
    (DUP_PRM_FUNC) prm_sec_to_msec},
@@ -2850,7 +2849,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_LOG_ISOLATION_LEVEL,
    PRM_NAME_LOG_ISOLATION_LEVEL,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_KEYWORD,
    &prm_log_isolation_level_flag,
    (void *) &prm_log_isolation_level_default,
