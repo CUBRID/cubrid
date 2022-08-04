@@ -1588,14 +1588,6 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
   LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_lsa);
   LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_start_lsa);
-
-  /* reflect the session (or prm_Def) */
-  tdes->isolation = (TRAN_ISOLATION) prm_get_integer_value (PRM_ID_LOG_ISOLATION_LEVEL);
-  tdes->wait_msecs = prm_get_integer_value (PRM_ID_LK_TIMEOUT);
-  if (tdes->wait_msecs > 0)
-    {
-      tdes->wait_msecs = tdes->wait_msecs * 1000;
-    }
 }
 
 /*
