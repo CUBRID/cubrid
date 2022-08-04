@@ -468,7 +468,7 @@ struct btree_node_scan
       MVCC_SET_DELID (p_mvcc_rec_header, MVCCID_NULL); \
       MVCC_SET_CHN (p_mvcc_rec_header, 0); \
       MVCC_SET_REPID (p_mvcc_rec_header, 0); \
-      LSA_SET_NULL (p_mvcc_rec_header.prev_version_lsa); \
+      LSA_SET_NULL (&((p_mvcc_rec_header)->prev_version_lsa)); \
     } \
   while (0)
 
