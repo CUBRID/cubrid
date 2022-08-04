@@ -522,6 +522,8 @@ if(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridcs LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
   target_link_libraries(cubridcs PUBLIC stdc++fs)
+else(UNIX)
+  target_link_libraries(cubridcs LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
 
 add_dependencies(cubridcs gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
