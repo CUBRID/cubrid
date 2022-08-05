@@ -43,14 +43,14 @@
 #endif
 
 #if defined (WINDOWS)
-#ifdef _EXPORTING  
-  #define EXPORT_IMPORT    __declspec(dllexport)  
-#else  
-  #define EXPORT_IMPORT    __declspec(dllimport)  
+#ifdef _EXPORTING
+#define EXPORT_IMPORT    __declspec(dllexport)
+#else
+#define EXPORT_IMPORT    __declspec(dllimport)
 #endif
 #else /* WINDOWS */
   // all symbols are exported by default
-  #define EXPORT_IMPORT
+#define EXPORT_IMPORT
 #endif /* WINDOWS */
 
 #if defined (WINDOWS)

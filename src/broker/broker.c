@@ -735,7 +735,7 @@ cleanup (int signo)
 static bool
 di_understand_renewed_error_code (const char *driver_info)
 {
-  #define IS_SET_BIT(C,B)	(((C) & (B)) == (B))
+#define IS_SET_BIT(C,B)	(((C) & (B)) == (B))
   if (!IS_SET_BIT (driver_info[SRV_CON_MSG_IDX_PROTO_VERSION], CAS_PROTO_INDICATOR))
     {
       return false;
