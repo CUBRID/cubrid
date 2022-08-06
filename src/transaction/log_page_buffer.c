@@ -7638,7 +7638,6 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
   {
     LOG_LSA dummy_smallest_tran_lsa = NULL_LSA;
     trantable_checkpoint_info.load_trantable_snapshot (thread_p, dummy_smallest_tran_lsa);
-    //assert (!dummy_smallest_tran_lsa.is_max ());
   }
 
   // Currently the transaction table snapshot is saved in two places:
