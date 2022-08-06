@@ -20,8 +20,28 @@
 #define _LOG_RECOVERY_CONTEXT_HPP_
 
 #include "log_lsa.hpp"
+//#include "storage_common.h"
 
+//#include <set>
 #include <time.h>
+
+//class log_recovery_context_mvcc
+//{
+//    log_recovery_context_mvcc () = default;
+//    log_recovery_context_mvcc (const log_recovery_context_mvcc &) = delete;
+//    log_recovery_context_mvcc (log_recovery_context_mvcc &&) = delete;
+
+//    log_recovery_context_mvcc &operator = (const log_recovery_context_mvcc &) = delete;
+//    log_recovery_context_mvcc &operator = (log_recovery_context_mvcc &&) = delete;
+
+//    void add (MVCCID id);
+//    bool empty () const;
+
+//    void complete_missing_mvccids ();
+
+//  private:
+//    std::set<MVCCID> m_present_mvccids;
+//};
 
 class log_recovery_context
 {

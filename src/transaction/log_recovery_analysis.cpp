@@ -41,7 +41,8 @@ static void log_recovery_analysis_internal (THREAD_ENTRY *thread_p, INT64 *num_r
 static void log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY *thread_p, log_recovery_context &context,
     LOG_PAGE *log_page_p, const LOG_RECORD_HEADER *log_rec,
     const log_lsa &prev_lsa, const log_lsa &prev_prev_lsa);
-static int log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa, bool is_mvcc);
+static int log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa, LOG_PAGE *log_page_p,
+				      LOG_RECTYPE log_type, bool is_mvcc);
 static int log_rv_analysis_dummy_head_postpone (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa);
 static int log_rv_analysis_postpone (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa);
 static int log_rv_analysis_run_postpone (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa,
@@ -139,8 +140,9 @@ log_rv_analysis_check_page_corruption (THREAD_ENTRY *thread_p, LOG_PAGEID pageid
       /* Found corrupted log page. */
       if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
 	{
-	  _er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld is corrupted due to partial flush.\n",
-			 (long long int) pageid);
+	  _er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld is corrupted due to partial flush"
+			 " (first_corrupted_rec_lsa = %lld|%d)\n",
+			 (long long int) pageid, LSA_AS_ARGS (&checker.get_first_corrupted_lsa ()));
 	}
     }
   return NO_ERROR;
@@ -541,7 +543,8 @@ log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY *thread_p, log_recovery_con
  * Note:
  */
 static int
-log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa, bool is_mvcc)
+log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa, LOG_PAGE *log_page_p,
+			   LOG_RECTYPE log_type, bool is_mvcc)
 {
   LOG_TDES *tdes;
 
@@ -566,6 +569,61 @@ log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa
   if (is_mvcc)
     {
       tdes->last_mvcc_lsa = *log_lsa;
+
+      // assign transaction mvccid from log record to transaction descriptor
+      assert (log_page_p != nullptr);
+
+      // move read pointer past the log header which is actually read upper in the stack
+      _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 01 trid = %d log_lsa = %llu\n",
+		     tran_id, LSA_AS_ARGS (log_lsa));
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
+      _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 02 trid = %d log_lsa = %llu\n",
+		     tran_id, LSA_AS_ARGS (log_lsa));
+      switch (log_type)
+	{
+	case LOG_MVCC_UNDOREDO_DATA:
+	case LOG_MVCC_DIFF_UNDOREDO_DATA:
+	{
+	  // align to read the specific record info
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_UNDOREDO), log_lsa, log_page_p);
+	  _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 03 trid = %d log_lsa = %llu\n",
+			 tran_id, LSA_AS_ARGS (log_lsa));
+	  const LOG_REC_MVCC_UNDOREDO *const log_rec
+	    = (const LOG_REC_MVCC_UNDOREDO *) ((char *)log_page_p->area + log_lsa->offset);
+	  tdes->mvccinfo.id = log_rec->mvccid;
+	  _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete trid = %d mvccid = %llu last_mvcc_lsa = %lld|%d\n",
+			 tran_id, (unsigned long long)log_rec->mvccid, LSA_AS_ARGS (&tdes->last_mvcc_lsa));
+	  break;
+	}
+	case LOG_MVCC_UNDO_DATA:
+	{
+	  // align to read the specific record info
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_UNDO), log_lsa, log_page_p);
+	  _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 04 trid = %d log_lsa = %llu\n",
+			 tran_id, LSA_AS_ARGS (log_lsa));
+	  const LOG_REC_MVCC_UNDO *const log_rec
+	    = (const LOG_REC_MVCC_UNDO *) ((char *)log_page_p->area + log_lsa->offset);
+	  tdes->mvccinfo.id = log_rec->mvccid;
+	  _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete trid = %d mvccid = %llu last_mvcc_lsa = %lld|%d\n",
+			 tran_id, (unsigned long long)log_rec->mvccid, LSA_AS_ARGS (&tdes->last_mvcc_lsa));
+	  break;
+	}
+	case LOG_MVCC_REDO_DATA:
+	{
+	  // align to read the specific record info
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_REDO), log_lsa, log_page_p);
+	  _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 05 trid = %d log_lsa = %llu\n",
+			 tran_id, LSA_AS_ARGS (log_lsa));
+	  const LOG_REC_MVCC_REDO *const log_rec
+	    = (const LOG_REC_MVCC_REDO *) ((char *)log_page_p->area + log_lsa->offset);
+	  tdes->mvccinfo.id = log_rec->mvccid;
+	  _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete trid = %d mvccid = %llu last_mvcc_lsa = %lld|%d\n",
+			 tran_id, (unsigned long long)log_rec->mvccid, LSA_AS_ARGS (&tdes->last_mvcc_lsa));
+	  break;
+	}
+	default:
+	  assert ("other log record not expected to have mvccid" == nullptr);
+	}
     }
 
   return NO_ERROR;
@@ -977,6 +1035,9 @@ log_rv_analysis_assigned_mvccid (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *l
 
   tdes->last_mvcc_lsa = *log_lsa;
 
+  // move read pointer past the log header which is actually read upper in the stack
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
+  // align to read the specific record info
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_ASSIGNED_MVCCID), log_lsa, log_page_p);
   auto rec = (const LOG_REC_ASSIGNED_MVCCID *) (log_page_p->area + log_lsa->offset);
   tdes->mvccinfo.id = rec->mvccid;
@@ -1010,8 +1071,21 @@ log_rv_analysis_complete (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa,
       // The transaction has been fully completed. Therefore, it was not active at the time of the crash.
       if (tran_index != NULL_TRAN_INDEX)
 	{
+	  // newer quick fix on top of older quick fix: mark the mvccid as completed
+	  LOG_TDES *const tdes = LOG_FIND_TDES (tran_index);
+	  if (is_passive_transaction_server ())
+	    {
+	      if (MVCCID_IS_VALID (tdes->mvccinfo.id))
+		{
+		  log_Gl.mvcc_table.complete_mvcc (tran_index, tdes->mvccinfo.id, true);
+		}
+	      else
+		{
+		  assert (LSA_ISNULL (&tdes->last_mvcc_lsa));
+		}
+	    }
 	  // quick fix: reset mvccid.
-	  LOG_FIND_TDES (tran_index)->mvccinfo.id = MVCCID_NULL;
+	  tdes->mvccinfo.id = MVCCID_NULL;
 	  logtb_free_tran_index (thread_p, tran_index);
 	}
       return NO_ERROR;
@@ -1057,8 +1131,21 @@ log_rv_analysis_complete (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa,
       // Transaction is completed.
       if (tran_index != NULL_TRAN_INDEX)
 	{
+	  // newer quick fix on top of older quick fix: mark the mvccid as completed
+	  LOG_TDES *const tdes = LOG_FIND_TDES (tran_index);
+	  if (is_passive_transaction_server ())
+	    {
+	      if (MVCCID_IS_VALID (tdes->mvccinfo.id))
+		{
+		  log_Gl.mvcc_table.complete_mvcc (tran_index, tdes->mvccinfo.id, true);
+		}
+	      else
+		{
+		  assert (LSA_ISNULL (&tdes->last_mvcc_lsa));
+		}
+	    }
 	  // quick fix: reset mvccid.
-	  LOG_FIND_TDES (tran_index)->mvccinfo.id = MVCCID_NULL;
+	  tdes->mvccinfo.id = MVCCID_NULL;
 	  logtb_free_tran_index (thread_p, tran_index);
 	}
       return NO_ERROR;
@@ -1636,14 +1723,15 @@ log_rv_analysis_record_on_tran_server (THREAD_ENTRY *thread_p, LOG_RECTYPE log_t
     case LOG_MVCC_DIFF_UNDOREDO_DATA:
     case LOG_MVCC_UNDO_DATA:
     case LOG_MVCC_REDO_DATA:
-      (void) log_rv_analysis_undo_redo (thread_p, tran_id, log_lsa, true);
+      (void) log_rv_analysis_undo_redo (thread_p, tran_id, log_lsa, log_page_p, log_type, true);
       break;
     case LOG_UNDOREDO_DATA:
     case LOG_DIFF_UNDOREDO_DATA:
     case LOG_UNDO_DATA:
     case LOG_REDO_DATA:
     case LOG_DBEXTERN_REDO_DATA:
-      (void) log_rv_analysis_undo_redo (thread_p, tran_id, log_lsa, false);
+      // sentinel value for log record type passes as an invalid value
+      (void) log_rv_analysis_undo_redo (thread_p, tran_id, log_lsa, nullptr, LOG_SMALLER_LOGREC_TYPE, false);
       break;
 
     case LOG_DUMMY_HEAD_POSTPONE:
@@ -2347,6 +2435,8 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p, log_lsa m
   //xlogtb_dump_trantable (thread_p, trantable_bef_fp);
   //fclose (trantable_bef_fp);
 
+  log_recovery_build_mvcc_table_from_trantable (thread_p, chkpt_info.get_mvcc_next_id ());
+
   // passive transaction server needs to analyze up to the point its replication will pick-up things;
   // that means until the append_lsa; incidentally, end of log record should be found at the current append_lsa, so
   // analysis should stop there
@@ -2379,6 +2469,4 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p, log_lsa m
   }
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, sys_tran_index);
-
-  log_recovery_build_mvcc_table_from_trantable (thread_p, chkpt_info.get_mvcc_next_id ());
 }
