@@ -37,7 +37,7 @@
 #include <set>
 
 static void log_recovery_analysis_internal (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records,
-    log_recovery_context &context, bool reset_mvcc_table);
+    log_recovery_context &context, bool reset_mvcc_table, const LOG_LSA *stop_before_lsa);
 static void log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY *thread_p, log_recovery_context &context,
     LOG_PAGE *log_page_p, const LOG_RECORD_HEADER *log_rec,
     const log_lsa &prev_lsa, const log_lsa &prev_prev_lsa);
@@ -151,12 +151,20 @@ log_rv_analysis_check_page_corruption (THREAD_ENTRY *thread_p, LOG_PAGEID pageid
 void
 log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_recovery_context &context)
 {
-  log_recovery_analysis_internal (thread_p, num_redo_log_records, context, true);
+  log_recovery_analysis_internal (thread_p, num_redo_log_records, context, true, nullptr);
 }
 
+/*
+ * log_recovery_analysis_internal () -
+ *
+ * num_redo_log_records (out)   : the number of redo log records to process (seemingly, no other use than reporting)
+ * context (in/out)             : context information for log recovery
+ * reset_mvcc_table (in)        : whether to reset mvcc table or not
+ * stop_before_lsa (in)         : if supplied, analysis will stop before processing the log record at this LSA
+ */
 void
 log_recovery_analysis_internal (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_recovery_context &context,
-				bool reset_mvcc_table)
+				bool reset_mvcc_table, const LOG_LSA *stop_before_lsa)
 {
   // Navigation LSA's
   LOG_LSA record_nav_lsa = NULL_LSA;		/* LSA used to navigate from one record to the next */
@@ -193,6 +201,10 @@ log_recovery_analysis_internal (THREAD_ENTRY *thread_p, INT64 *num_redo_log_reco
 
   // Start with the record at checkpoint LSA.
   record_nav_lsa = context.get_checkpoint_lsa ();
+  if (stop_before_lsa != nullptr)
+    {
+      assert (LSA_LE (&record_nav_lsa, stop_before_lsa));
+    }
 
   // If the recovery start matches a checkpoint, use the checkpoint information.
   const cublog::checkpoint_info *chkpt_infop = log_Gl.m_metainfo.get_checkpoint_info (record_nav_lsa);
@@ -200,6 +212,16 @@ log_recovery_analysis_internal (THREAD_ENTRY *thread_p, INT64 *num_redo_log_reco
   /* Check all log records in this phase */
   while (!LSA_ISNULL (&record_nav_lsa))
     {
+      if (stop_before_lsa != nullptr)
+	{
+	  assert (LSA_LE (&record_nav_lsa, stop_before_lsa));
+	  if (LSA_EQ (&record_nav_lsa, stop_before_lsa))
+	    {
+	      _er_log_debug (ARG_FILE_LINE, "crsdbg: log_recovery_analysis stop_before_lsa = %lld|%d\n",
+			     LSA_AS_ARGS (stop_before_lsa));
+	      break;
+	    }
+	}
       if (record_nav_lsa.pageid != log_nav_lsa.pageid)
 	{
 	  /* Fetch the page of record */
@@ -574,10 +596,10 @@ log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa
       assert (log_page_p != nullptr);
 
       // move read pointer past the log header which is actually read upper in the stack
-      _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 01 trid = %d log_lsa = %llu\n",
+      _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 01 trid = %d log_lsa = %lld|%d\n",
 		     tran_id, LSA_AS_ARGS (log_lsa));
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
-      _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 02 trid = %d log_lsa = %llu\n",
+      _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 02 trid = %d log_lsa = %lld|%d\n",
 		     tran_id, LSA_AS_ARGS (log_lsa));
       switch (log_type)
 	{
@@ -586,7 +608,7 @@ log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa
 	{
 	  // align to read the specific record info
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_UNDOREDO), log_lsa, log_page_p);
-	  _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 03 trid = %d log_lsa = %llu\n",
+	  _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 03 trid = %d log_lsa = %lld|%d\n",
 			 tran_id, LSA_AS_ARGS (log_lsa));
 	  const LOG_REC_MVCC_UNDOREDO *const log_rec
 	    = (const LOG_REC_MVCC_UNDOREDO *) ((char *)log_page_p->area + log_lsa->offset);
@@ -599,7 +621,7 @@ log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa
 	{
 	  // align to read the specific record info
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_UNDO), log_lsa, log_page_p);
-	  _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 04 trid = %d log_lsa = %llu\n",
+	  _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 04 trid = %d log_lsa = %lld|%d\n",
 			 tran_id, LSA_AS_ARGS (log_lsa));
 	  const LOG_REC_MVCC_UNDO *const log_rec
 	    = (const LOG_REC_MVCC_UNDO *) ((char *)log_page_p->area + log_lsa->offset);
@@ -612,7 +634,7 @@ log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa
 	{
 	  // align to read the specific record info
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_REDO), log_lsa, log_page_p);
-	  _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 05 trid = %d log_lsa = %llu\n",
+	  _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 05 trid = %d log_lsa = %lld|%d\n",
 			 tran_id, LSA_AS_ARGS (log_lsa));
 	  const LOG_REC_MVCC_REDO *const log_rec
 	    = (const LOG_REC_MVCC_REDO *) ((char *)log_page_p->area + log_lsa->offset);
@@ -2400,12 +2422,18 @@ log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p, MVCCID rep
  * most_recent_trantable_snapshot_lsa (in): the lsa where a record containing, as payload, the packed contents
  *                                of a recent transaction table snapshot; starting from that snapshot, analyze the log
  *                                to construct an actual starting transaction table
+ * stop_analysis_before_lsa (in): stop analysis before processing the log record entry at this LSA; replication will
+ *                                start processing with the log record at this LSA (see calling point for this function)
  */
 void
-log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p, log_lsa most_recent_trantable_snapshot_lsa)
+log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p,
+    const log_lsa &most_recent_trantable_snapshot_lsa,
+    const log_lsa &stop_analysis_before_lsa)
 {
   assert (is_passive_transaction_server ());
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+  assert (!LSA_ISNULL (&most_recent_trantable_snapshot_lsa));
+  assert (!LSA_ISNULL (&stop_analysis_before_lsa));
 
   // analysis changes the transaction index and leaves it in an indefinite state
   // therefore reset to system transaction index afterwards;
@@ -2426,6 +2454,9 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p, log_lsa m
   chkpt_info.recovery_analysis (thread_p, start_redo_lsa);
 
   log_recovery_context log_rcv_context;
+  // log recovery analysis must actually start at the log record following the snapshot LSA, but, since
+  // the LOG_TRANTABLE_SNAPSHOT log record is not processed in any way by recovery analysis, it is safe to
+  // just start there
   log_rcv_context.init_for_recovery (snapshot_lsa);
   // no recovery is done, start redo lsa may remain invalid
   log_rcv_context.set_start_redo_lsa (NULL_LSA);
@@ -2444,7 +2475,8 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p, log_lsa m
   // it is assumed that the analysis does not touch the mvcc table anymore
   // it has already been initialized from the information relayed over via the trantable checkpoint
   constexpr bool reset_mvcc_table = false;
-  log_recovery_analysis_internal (thread_p, &dummy_redo_log_record_count, log_rcv_context, reset_mvcc_table);
+  log_recovery_analysis_internal (thread_p, &dummy_redo_log_record_count, log_rcv_context, reset_mvcc_table,
+				  &stop_analysis_before_lsa);
   assert (!log_rcv_context.is_restore_incomplete ());
 
   {

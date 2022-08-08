@@ -1649,8 +1649,12 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
       // while still holding prior LSA lock, initialize passive transaction server replication
       // with a LSA that ensures that no record is lost (ie: while still holding the mutex)
       replication_start_redo_lsa = log_Gl.append.get_nxio_lsa ();
+      _er_log_debug (ARG_FILE_LINE, "crsdbg: replication_start_redo_lsa = %lld|%d\n",
+		     LSA_AS_ARGS (&replication_start_redo_lsa));
     }
     // prior lists from page server are being received now
+
+    assert (LSA_LE (&most_recent_trantable_snapshot_lsa, &replication_start_redo_lsa));
 
     // NOTE: following situations can happen with regard to most recent transaction table snapshot lsa:
     //  1. it is null here at destination on PTS:
@@ -1668,7 +1672,8 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
     //        - during log analysis, the PTS will ignore (skip) the newer transaction table snapshot log records
     //
     assert (!most_recent_trantable_snapshot_lsa.is_null ());
-    log_recovery_analysis_from_trantable_snapshot (thread_p, most_recent_trantable_snapshot_lsa);
+    log_recovery_analysis_from_trantable_snapshot (thread_p, most_recent_trantable_snapshot_lsa,
+						   replication_start_redo_lsa);
   }
   // prior lists are consumed and flushed to log pages
 
