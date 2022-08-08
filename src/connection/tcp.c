@@ -247,7 +247,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       int herr;
       char buf[1024];
 
-      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
+      if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
@@ -258,7 +258,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       int herr;
       char buf[1024];
 
-      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &herr) == NULL)
+      if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
@@ -268,7 +268,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       struct hostent hent;
       struct hostent_data ht_data;
 
-      if (gethostbyname_r (host, &hent, &ht_data) == -1)
+      if (gethostbyname_r_uhost (host, &hent, &ht_data) == -1)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
@@ -281,7 +281,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       struct hostent *hp;
 
       pthread_mutex_lock (&gethostbyname_lock);
-      hp = gethostbyname (host);
+      hp = gethostbyname_uhost (host);
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
