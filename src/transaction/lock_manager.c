@@ -1108,7 +1108,7 @@ lock_initialize_object_hash_table (void)
 
 #if defined(SERVER_MODE)
 /*
- * lockk_initialize_object_lock_entry_list - Initializes the object lock entry list
+ * lock_initialize_object_lock_entry_list - Initializes the object lock entry list
  *
  * return: error code
  *

@@ -5242,7 +5242,7 @@ check_timeout_value (PARSER_CONTEXT * parser, PT_NODE * statement, DB_VALUE * va
   if (db_value_coerce (val, val, &tp_Float_domain) == DOMAIN_COMPATIBLE)
     {
       timeout = db_get_float (val);
-      if ((timeout == -1) || (timeout >= 0 && timeout <= INT_MAX / 1000))
+      if ((timeout == -1) || (timeout >= 0))
 	{
 	  return NO_ERROR;
 	}

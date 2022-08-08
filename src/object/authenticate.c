@@ -7150,7 +7150,7 @@ au_perform_login (const char *name, const char *password, bool ignore_dba_privil
 			  || !match_password (dbpassword, db_get_string (&value)))
 			{
 			  error = ER_AU_INVALID_PASSWORD;
-			  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			}
 		    }
 		  else
@@ -7166,7 +7166,7 @@ au_perform_login (const char *name, const char *password, bool ignore_dba_privil
 		      if (dbpassword != NULL && strlen (dbpassword))
 			{
 			  error = ER_AU_INVALID_PASSWORD;
-			  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			}
 		    }
 		  if (pass != NULL)
