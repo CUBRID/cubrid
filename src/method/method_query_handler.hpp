@@ -69,7 +69,7 @@ namespace cubmethod
    * how to use
    *
    */
-  class query_handler
+  class EXPORT_IMPORT query_handler
   {
     public:
       query_handler (error_context &ctx, int id);
