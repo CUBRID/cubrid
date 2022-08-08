@@ -5782,13 +5782,12 @@ BTID *
 sm_find_index (MOP classop, char **att_names, int num_atts, bool unique_index_only, bool skip_prefix_index, BTID * btid)
 {
   int error = NO_ERROR;
-  int i;
+  int i = 0;
   SM_CLASS *class_;
   SM_CLASS_CONSTRAINT *con = NULL;
   SM_ATTRIBUTE *att1, *att2;
   BTID *index = NULL;
   bool force_local_index = false;
-  bool found = false;
   int is_global = 0;
 
   error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
@@ -5839,23 +5838,19 @@ sm_find_index (MOP classop, char **att_names, int num_atts, bool unique_index_on
 	    }
 	}
 
-      if (skip_prefix_index && num_atts > 0 && con->attributes[0] != NULL && con->attrs_prefix_length
-	  && con->attrs_prefix_length[0] > 0)
+      if (num_atts > 0)
 	{
-	  continue;
-	}
+	  if (skip_prefix_index && con->attributes[0] != NULL && con->attrs_prefix_length
+	      && con->attrs_prefix_length[0] > 0)
+	    {
+	      continue;
+	    }
 
-      if (num_atts == 0)
-	{
-	  /* we don't care about attributes, any index is a good one */
-	  found = true;
-	  break;
-	}
-
-      /* exclude filter or function index */
-      if (con->filter_predicate || con->func_index_info)
-	{
-	  continue;
+	  /* exclude filter or function index */
+	  if (con->filter_predicate || con->func_index_info)
+	    {
+	      continue;
+	    }
 	}
 
       for (i = 0; i < num_atts; i++)
@@ -5867,24 +5862,19 @@ sm_find_index (MOP classop, char **att_names, int num_atts, bool unique_index_on
 	    }
 
 	  att2 = classobj_find_attribute (class_, att_names[i], 0);
-	  if (att2 && att1->id == att2->id)
+	  if (att2 == NULL || att1->id != att2->id)
 	    {
-	      found = true;
 	      break;
 	    }
 	}
 
-      if (found)
+      if (i == num_atts)
 	{
 	  /* found it */
+	  BTID_COPY (btid, &con->index_btid);
+	  index = btid;
 	  break;
 	}
-    }
-
-  if (found)
-    {
-      BTID_COPY (btid, &con->index_btid);
-      index = btid;
     }
 
   return (index);
