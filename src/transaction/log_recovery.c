@@ -3122,7 +3122,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
       LSA_COPY (&log_lsa, &lsa);
       if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	{
-	  if (end_redo_lsa != NULL && (LSA_ISNULL (end_redo_lsa) || LSA_GE (&lsa, end_redo_lsa)))
+	  if (end_redo_lsa != NULL && (LSA_ISNULL (end_redo_lsa) || LSA_GT (&lsa, end_redo_lsa)))
 	    {
 	      goto exit;
 	    }
@@ -3163,7 +3163,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	  /*
 	   * Do we want to stop the recovery redo process at this time ?
 	   */
-	  if (end_redo_lsa != NULL && !LSA_ISNULL (end_redo_lsa) && LSA_GE (&lsa, end_redo_lsa))
+	  if (end_redo_lsa != NULL && !LSA_ISNULL (end_redo_lsa) && LSA_GT (&lsa, end_redo_lsa))
 	    {
 	      LSA_SET_NULL (&lsa);
 	      break;
@@ -3328,7 +3328,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		   * If page_lsa >= lsa... already updated. In this case make sure
 		   * that the redo is not far from the end_redo_lsa
 		   */
-		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa) || LSA_LT (rcv_page_lsaptr, end_redo_lsa));
+		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa) || LSA_LE (rcv_page_lsaptr, end_redo_lsa));
 		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr))
 		    {
 		      /* It is already done */
@@ -3512,7 +3512,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		   * Do we need to execute the redo operation ?
 		   * If page_lsa >= rcv_lsa... already updated
 		   */
-		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa) || LSA_LT (rcv_page_lsaptr, end_redo_lsa));
+		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa) || LSA_LE (rcv_page_lsaptr, end_redo_lsa));
 		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr))
 		    {
 		      /* It is already done */
@@ -3633,7 +3633,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		   * Do we need to execute the redo operation ?
 		   * If page_lsa >= rcv_lsa... already updated
 		   */
-		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa) || LSA_LT (rcv_page_lsaptr, end_redo_lsa));
+		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa) || LSA_LE (rcv_page_lsaptr, end_redo_lsa));
 		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr))
 		    {
 		      /* It is already done */
@@ -3719,7 +3719,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		   * Do we need to execute the redo operation ?
 		   * If page_lsa >= rcv_lsa... already updated
 		   */
-		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa) || LSA_LT (rcv_page_lsaptr, end_redo_lsa));
+		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa) || LSA_LE (rcv_page_lsaptr, end_redo_lsa));
 		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr))
 		    {
 		      /* It is already done */
