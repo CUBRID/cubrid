@@ -2257,8 +2257,8 @@ csql_print_database (void)
       sin.sin_addr.s_addr = inet_addr (host_name);
 
       res =
-	getnameinfo_uhost ((struct sockaddr *) &sin, sizeof (sin), converted_host_name, sizeof (converted_host_name), NULL, 0,
-		     NI_NAMEREQD);
+	getnameinfo_uhost ((struct sockaddr *) &sin, sizeof (sin), converted_host_name, sizeof (converted_host_name),
+			   NULL, 0, NI_NAMEREQD);
       /*
        * if it fails to resolves hostname,
        * it will use db_get_host_connected()'s result.
