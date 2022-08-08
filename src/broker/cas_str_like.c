@@ -75,8 +75,8 @@ str_like (char *src, char *pattern, char esc_char)
   char *low_src;
   char *low_pattern;
 
-  ALLOC_COPY (low_src, src);
-  ALLOC_COPY (low_pattern, pattern);
+  ALLOC_COPY_STRLEN (low_src, src);
+  ALLOC_COPY_STRLEN (low_pattern, pattern);
 
   if (low_src == NULL || low_pattern == NULL)
     {

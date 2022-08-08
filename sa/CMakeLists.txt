@@ -654,9 +654,6 @@ target_include_directories(cubridsa PRIVATE
   ${FLEX_INCLUDE_DIRS}
   ${JAVA_INC}
   )
-target_link_libraries(cubridsa LINK_PRIVATE
-    cas
-  )
 if(UNIX)
   # find out what this means:
   # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
