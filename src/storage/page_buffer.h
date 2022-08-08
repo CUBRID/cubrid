@@ -60,6 +60,13 @@ extern const VPID vpid_Null_vpid;
 #define PGBUF_PAGE_MODIFY_ARGS(pg, prev_lsa) \
   PGBUF_PAGE_VPID_AS_ARGS (pg), LSA_AS_ARGS (prev_lsa), PGBUF_PAGE_LSA_AS_ARGS (pg)
 
+
+#define pgbuf_unfix_and_init_after_check(thread_p, pgptr) \
+  if((pgptr)) { \
+    pgbuf_unfix ((thread_p), (pgptr)); \
+    (pgptr) = NULL; \
+  }
+
 #define pgbuf_unfix_and_init(thread_p, pgptr) \
   do { \
     pgbuf_unfix ((thread_p), (pgptr)); \
