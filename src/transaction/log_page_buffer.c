@@ -158,14 +158,14 @@ static int rv;
 inline bool
 LOGPB_IS_ARCHIVE_PAGE (LOG_PAGEID pageid)
 {
-  if (!is_tran_server_with_remote_storage ())
-    {
+  //if (!is_tran_server_with_remote_storage ())
+  //  {
       return pageid != LOGPB_HEADER_PAGE_ID && pageid < LOGPB_NEXT_ARCHIVE_PAGE_ID;
-    }
-  else
-    {
-      return false;
-    }
+  //  }
+  //else
+  //  {
+  //    return false;
+  //  }
 }
 
 inline bool

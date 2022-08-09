@@ -16,55 +16,10 @@
  *
  */
 
-//#include "log_impl.h"
 #include "log_recovery_context.hpp"
 
 #include "server_type.hpp"
 #include "thread_manager.hpp"
-
-//void
-//log_recovery_context_mvcc::add (MVCCID id)
-//{
-//  m_present_mvccids.insert (id);
-//}
-
-//bool
-//log_recovery_context_mvcc::empty () const
-//{
-//  return m_present_mvccids.empty();
-//}
-
-//void
-//log_recovery_context_mvcc::complete_missing_mvccids ()
-//{
-//  assert (!m_present_mvccids.empty());
-
-//  if (m_present_mvccids.size() > 1)
-//    {
-//      auto it = m_present_mvccids.cbegin();
-//      MVCCID prev_mvccid = *it;
-//      ++it;
-//      const MVCCID smallest_mvccid = *m_present_mvccids.cbegin();
-//      const MVCCID largest_mvccid = *m_present_mvccids.crbegin();
-//      assert (smallest_mvccid <= largest_mvccid);
-
-//      log_Gl.hdr.mvcc_next_id = smallest_mvccid;
-//      log_Gl.mvcc_table.reset_start_mvccid ();
-
-//      for (; it != m_present_mvccids.cend (); ++it)
-//        {
-//          const MVCCID curr_mvccid = *it;
-//          for (MVCCID missing_mvccid = prev_mvccid + 1; missing_mvccid < curr_mvccid; ++missing_mvccid)
-//            {
-//              log_Gl.mvcc_table.complete_mvcc (LOG_SYSTEM_TRAN_INDEX, missing_mvccid, true);
-//            }
-//          prev_mvccid = curr_mvccid;
-//        }
-
-//      log_Gl.hdr.mvcc_next_id = largest_mvccid + 1;
-//      log_Gl.mvcc_table.reset_start_mvccid ();
-//    }
-//}
 
 log_recovery_context::log_recovery_context ()
 {

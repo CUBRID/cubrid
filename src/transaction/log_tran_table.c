@@ -1477,7 +1477,6 @@ logtb_free_tran_mvcc_info (LOG_TDES * tdes)
   MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
 
   curr_mvcc_info->snapshot.m_active_mvccs.finalize ();
-  // TODO: why is this not zero?
   assert (curr_mvcc_info->sub_ids.size () <= 1);
   curr_mvcc_info->sub_ids.clear ();
 }

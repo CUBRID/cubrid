@@ -222,8 +222,6 @@ namespace cublog
 	LSA_COPY (&chkpt_tran.tail_topresult_lsa, &tdes.tail_topresult_lsa);
 	LSA_COPY (&chkpt_tran.start_postpone_lsa, &tdes.rcv.tran_start_postpone_lsa);
 	chkpt_tran.last_mvcc_lsa = tdes.last_mvcc_lsa;
-//	at_least_one_active_transaction_has_mvccid =
-//		at_least_one_active_transaction_has_mvccid || tdes.mvccinfo.id; // (!tdes.last_mvcc_lsa.is_null ());
 	std::strncpy (chkpt_tran.user_name, tdes.client.get_db_user (), LOG_USERNAME_MAX);
 
 	if (LSA_ISNULL (&smallest_lsa) || LSA_GT (&smallest_lsa, &tdes.head_lsa))
