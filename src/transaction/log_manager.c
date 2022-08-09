@@ -1305,7 +1305,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
    * Create the transaction table and make sure that data volumes and log
    * volumes belong to the same database
    */
-#if 1
+
   /*
    * for XA support: there is prepared transaction after recovery.
    *                 so, can not recreate transaction description
@@ -1320,13 +1320,6 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       goto error;
     }
-#else
-  error_code = logtb_define_trantable_log_latch (log_Gl.hdr.avg_ntrans);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-#endif
 
   if (log_Gl.append.vdes != NULL_VOLDES)
     {
@@ -2484,41 +2477,6 @@ log_append_undoredo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, con
   addr.pgptr = pgptr;
   addr.offset = offset;
 
-#if 0
-  if (rcvindex == RVHF_UPDATE)
-    {
-      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-      if (tdes && tdes->null_log.is_set && undo_recdes && redo_recdes)
-	{
-	  tdes->null_log.recdes = malloc (sizeof (RECDES));
-	  if (tdes == NULL)
-	    {
-	      return;		/* error */
-	    }
-	  *(tdes->null_log.recdes) = *undo_recdes;
-	  tdes->null_log.recdes->data = malloc (undo_recdes->length);
-	  if (tdes->null_log.recdes->data == NULL)
-	    {
-	      free_and_init (tdes->null_log.recdes);
-	      return;		/* error */
-	    }
-	  (void) memcpy (tdes->null_log.recdes->data, undo_recdes->data, undo_recdes->length);
-	}
-      undo_crumbs[0].length = sizeof (undo_recdes->type);
-      undo_crumbs[0].data = (char *) &undo_recdes->type;
-      undo_crumbs[1].length = 0;
-      undo_crumbs[1].data = NULL;
-      num_undo_crumbs = 2;
-      redo_crumbs[0].length = sizeof (redo_recdes->type);
-      redo_crumbs[0].data = (char *) &redo_recdes->type;
-      redo_crumbs[1].length = 0;
-      redo_crumbs[1].data = NULL;
-      num_redo_crumbs = 2;
-      log_append_undoredo_crumbs (rcvindex, addr, num_undo_crumbs, num_redo_crumbs, undo_crumbs, redo_crumbs);
-      return;
-    }
-#endif
-
   if (undo_recdes != NULL)
     {
       undo_crumbs[0].length = sizeof (undo_recdes->type);
@@ -3275,16 +3233,6 @@ log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 void
 log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 {
-#if 0
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  LOG_LSA *page_lsa;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-  int tran_index;
-  int error_code = NO_ERROR;
-#endif
-
 #if defined(CUBRID_DEBUG)
   if (addr->pgptr == NULL)
     {
@@ -3293,60 +3241,6 @@ log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
       return;
     }
 #endif /* CUBRID_DEBUG */
-
-  return;
-
-#if 0
-  if (!pgbuf_is_lsa_temporary (addr->pgptr))
-    {
-      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      tdes = LOG_FIND_TDES (tran_index);
-      if (tdes == NULL)
-	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
-	  error_code = ER_LOG_UNKNOWN_TRANINDEX;
-	  return;
-	}
-
-      /*
-       * If the page LSA has not been changed since the lsa checkpoint record,
-       * change it to either the checkpoint record or the restart LSA.
-       */
-
-      page_lsa = pgbuf_get_lsa (addr->pgptr);
-
-      if (!LSA_ISNULL (&log_Gl.rcv_phase_lsa))
-	{
-	  if (LSA_GE (&log_Gl.rcv_phase_lsa, page_lsa))
-	    {
-	      LOG_LSA chkpt_lsa;
-
-	      rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
-	      LSA_COPY (&chkpt_lsa, &log_Gl.hdr.chkpt_lsa);
-	      pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
-
-	      if (LSA_GT (&chkpt_lsa, &log_Gl.rcv_phase_lsa))
-		{
-		  (void) pgbuf_set_lsa (thread_p, addr->pgptr, &chkpt_lsa);
-		}
-	      else
-		{
-		  (void) pgbuf_set_lsa (thread_p, addr->pgptr, &log_Gl.rcv_phase_lsa);
-		}
-	    }
-	}
-      else
-	{
-	  /*
-	   * Likely the system is not restarted
-	   */
-	  if (LSA_GT (&tdes->tail_lsa, page_lsa))
-	    {
-	      (void) pgbuf_set_lsa (thread_p, addr->pgptr, &tdes->tail_lsa);
-	    }
-	}
-    }
-#endif
 }
 
 /*

@@ -117,10 +117,6 @@ struct load_args
   /* Variables for managing non-leaf, leaf & overflow pages */
   BTREE_PAGE nleaf;
 
-#if 0				/* TODO: currently not used */
-  VPID first_leafpgid;
-#endif
-
   BTREE_PAGE leaf;
 
   BTREE_PAGE ovf;
@@ -2404,10 +2400,6 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 	    }
 	  /* Save first leaf VPID. */
 	  load_args->vpid_first_leaf = load_args->leaf.vpid;
-
-#if 0				/* TODO: currently not used */
-	  load_args->first_leafpgid = load_args->leaf.vpid;
-#endif
 	  load_args->overflowing = false;
 	  assert (load_args->ovf.pgptr == NULL);
 

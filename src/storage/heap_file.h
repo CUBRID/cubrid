@@ -230,18 +230,6 @@ struct func_pred_unpack_info
   xasl_unpack_info *unpack_info;
 };
 
-#if 0				/* TODO: check not use - ksseo */
-typedef struct heap_spacecache HEAP_SPACECACHE;
-struct heap_spacecache
-{				/* Define an alter space cache for heap file */
-
-  float remain_sumlen;		/* Total new length of records that it is predicted for the rest of space cache. If it
-				 * is unknown -1 is stored. This value is used to estimate the number of pages to
-				 * allocate at a particular time in space cache. If the value is < pagesize, only one
-				 * page at a time is allocated. */
-};
-#endif
-
 typedef struct heap_idx_elements_info HEAP_IDX_ELEMENTS_INFO;
 struct heap_idx_elements_info
 {

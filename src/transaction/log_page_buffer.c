@@ -5826,13 +5826,6 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   /* Flush the log header to reflect the archive */
   logpb_flush_header (thread_p);
 
-#if 0
-  if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) != 0)
-    {
-      fileio_synchronize (thread_p, log_Gl.append.vdes, FILEIO_SYNC_ONLY);
-    }
-#endif
-
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_ARCHIVE_CREATED, 3, arv_name, arvhdr->fpageid, last_pageid);
 
   /* Cast the archive information. May be used again */
@@ -7333,11 +7326,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   LOG_CS_EXIT (thread_p);
 
-#if 0
-  /* have to sync log vol, data vol */
-  fileio_synchronize_all (thread_p, true /* include_log */ );
-#endif
-
   perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_END_CHECKPOINTS);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_FINISHED, 3, log_Gl.hdr.chkpt_lsa.pageid,
@@ -7540,10 +7528,6 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   FILEIO_BACKUP_SESSION session;
   const char *from_vlabel;	/* Name of volume to backup (FROM) */
   char vol_backup[PATH_MAX];	/* Name of the backup volume (TO) */
-#if 0
-  /* Not used */
-  char real_pathbuf[PATH_MAX];	/* Real path */
-#endif
   VOLID volid;			/* Current volume to backup */
   LOG_LSA bkup_start_lsa;	/* Start point of backup */
   LOG_LSA chkpt_lsa;		/* Checkpoint address where the backup process starts */
@@ -7606,13 +7590,6 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
     {
       allbackup_path = log_Path;
     }
-#if 0
-  /* Removed because it causes problems with deliberate symlinks, i.e. solaris tape device names. */
-  else if (realpath (allbackup_path, real_pathbuf) != NULL)
-    {
-      allbackup_path = real_pathbuf;
-    }
-#endif
 
   /* tde key file has to be mounted to access exclusively with TDE Utility if it exists */
   tde_make_keys_file_fullname (mk_path, log_Db_fullname, false);

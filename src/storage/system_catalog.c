@@ -414,9 +414,8 @@ catalog_put_disk_representation (char *rec_p, DISK_REPR * disk_repr_p)
   OR_PUT_INT (rec_p + CATALOG_DISK_REPR_FIXED_LENGTH_OFF, disk_repr_p->fixed_length);
   OR_PUT_INT (rec_p + CATALOG_DISK_REPR_N_VARIABLE_OFF, disk_repr_p->n_variable);
 
-#if 1				/* reserved for future use */
+  /* reserved for future use */
   OR_PUT_INT (rec_p + CATALOG_DISK_REPR_RESERVED_1_OFF, 0);
-#endif
 }
 
 static void
@@ -488,12 +487,11 @@ catalog_put_btree_statistics (char *rec_p, BTREE_STATS * stat_p)
       OR_PUT_INT (rec_p + CATALOG_BT_STATS_PKEYS_OFF + (OR_INT_SIZE * i), stat_p->pkeys[i]);
     }
 
-#if 1				/* reserved for future use */
+  /* reserved for future use */
   for (i = 0; i < BTREE_STATS_RESERVED_NUM; i++)
     {
       OR_PUT_INT (rec_p + CATALOG_BT_STATS_RESERVED_OFF + (OR_INT_SIZE * i), 0);
     }
-#endif
 }
 
 static void
@@ -4123,16 +4121,9 @@ catalog_get_class_info (THREAD_ENTRY * thread_p, OID * class_id_p, CATALOG_ACCES
   CATALOG_REPR_ITEM repr_item = CATALOG_REPR_ITEM_INITIALIZER;
   CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
   OID dir_oid;
-#if 0
-  int retry = 0;
-#endif
   bool do_end_access = false;
 
   aligned_data = PTR_ALIGN (data, MAX_ALIGNMENT);
-
-#if 0
-start:
-#endif
 
   if (catalog_access_info_p == NULL)
     {
@@ -4194,19 +4185,6 @@ start:
       if (er_errid () == ER_SP_UNKNOWN_SLOTID)
 	{
 	  assert (false);
-#if 0
-	  pgbuf_unfix_and_init (thread_p, page_p);
-
-	  if ((catalog_fixup_missing_class_info (thread_p, class_id_p) == NO_ERROR) && retry++ == 0)
-	    {
-	      goto start;
-	    }
-	  else
-	    {
-	      assert (0);
-	      return NULL;
-	    }
-#endif
 	}
 
       pgbuf_unfix_and_init (thread_p, page_p);

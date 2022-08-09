@@ -7930,43 +7930,6 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	  assert (er_errid () != NO_ERROR);
 	  goto error;
 	}
-
-#if 0
-      if (key_ins_del != NULL && !DB_IS_NULL (key_dbvalue) && !btree_multicol_key_is_null (key_dbvalue))
-	{
-	  BTREE_CHECKSCAN bt_checkscan;
-	  DISK_ISVALID isvalid = DISK_VALID;
-
-	  /* start a check-scan on index */
-	  if (btree_keyoid_checkscan_start (thread_p, &btid, &bt_checkscan) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-
-	  isvalid = btree_keyoid_checkscan_check (thread_p, &bt_checkscan, class_oid, key_dbvalue, inst_oid);
-
-	  if (er_errid () == ER_INTERRUPTED)
-	    {
-	      /* in case of user interrupt */
-	      ;			/* do not check isvalid */
-	    }
-	  else
-	    {
-	      if (is_insert)
-		{
-		  assert (isvalid == DISK_VALID);	/* found */
-		}
-	      else
-		{
-		  assert (isvalid == DISK_INVALID);	/* not found */
-		}
-	    }
-
-	  /* close the index check-scan */
-	  btree_keyoid_checkscan_end (thread_p, &bt_checkscan);
-	}
-#endif
-
       if (key_dbvalue == &dbvalue)
 	{
 	  pr_clear_value (&dbvalue);
@@ -8666,52 +8629,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		  LSA_COPY (&tdes->repl_insert_lsa, &preserved_repl_lsa);
 		}
 	    }
-
-#if 0
-	  {
-	    BTREE_CHECKSCAN bt_checkscan;
-	    DISK_ISVALID isvalid = DISK_VALID;
-
-	    /* start a check-scan on index */
-	    if (btree_keyoid_checkscan_start (thread_p, &old_btid, &bt_checkscan) != NO_ERROR)
-	      {
-		goto error;
-	      }
-
-	    if (!do_insert_only && !DB_IS_NULL (old_key) && !btree_multicol_key_is_null (old_key))
-	      {
-		isvalid = btree_keyoid_checkscan_check (thread_p, &bt_checkscan, class_oid, old_key, old_oid);
-
-		if (er_errid () == ER_INTERRUPTED)
-		  {
-		    /* in case of user interrupt */
-		    ;		/* do not check isvalid */
-		  }
-		else
-		  {
-		    assert (isvalid == DISK_INVALID);	/* not found */
-		  }
-	      }
-
-	    if (!do_delete_only && !DB_IS_NULL (new_key) && !btree_multicol_key_is_null (new_key))
-	      {
-
-		isvalid = btree_keyoid_checkscan_check (thread_p, &bt_checkscan, class_oid, new_key, new_oid);
-		if (er_errid () == ER_INTERRUPTED)
-		  {
-		    /* in case of user interrupt */
-		    ;		/* do not check isvalid */
-		  }
-		else
-		  {
-		    assert (isvalid == DISK_VALID);	/* found */
-		  }
-	      }
-
-	    /* close the index check-scan */
-	    btree_keyoid_checkscan_end (thread_p, &bt_checkscan);
-	  }
-#endif
 	}
 
       if (pk_btid_index == i && repl_old_key == NULL)
