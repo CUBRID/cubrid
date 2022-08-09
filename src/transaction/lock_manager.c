@@ -1053,9 +1053,7 @@ lock_initialize_tran_lock_table (void)
   lk_Gl.tran_lock_table = (LK_TRAN_LOCK *) malloc (SIZEOF_LK_TRAN_LOCK * lk_Gl.num_trans);
   if (lk_Gl.tran_lock_table == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (size_t) (SIZEOF_LK_TRAN_LOCK * lk_Gl.num_trans));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit_on_error;
     }
 
   /* initialize all the entries of transaction lock table */
@@ -1069,6 +1067,10 @@ lock_initialize_tran_lock_table (void)
       for (j = 0; j < LOCK_TRAN_LOCAL_POOL_MAX_SIZE; j++)
 	{
 	  entry = (LK_ENTRY *) malloc (sizeof (LK_ENTRY));
+	  if (entry == NULL)
+	    {
+	      goto exit_on_error;
+	    }
 	  lock_initialize_entry (entry);
 	  entry->next = tran_lock->lk_entry_pool;
 	  tran_lock->lk_entry_pool = entry;
@@ -1077,6 +1079,33 @@ lock_initialize_tran_lock_table (void)
     }
 
   return NO_ERROR;
+
+exit_on_error:
+  if (lk_Gl.tran_lock_table == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) (SIZEOF_LK_TRAN_LOCK * lk_Gl.num_trans));
+
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  free_and_init (lk_Gl.tran_lock_table);
+  for (int k = 0; k <= i; k++)
+    {
+      tran_lock = &lk_Gl.tran_lock_table[k];
+      pthread_mutex_destroy (&tran_lock->hold_mutex);
+      pthread_mutex_destroy (&tran_lock->non2pl_mutex);
+
+      for (int l = 0; l <= (k == i ? j : LOCK_TRAN_LOCAL_POOL_MAX_SIZE); l++)
+	{
+	  entry = tran_lock->lk_entry_pool->next;
+	  free_and_init (tran_lock->lk_entry_pool);
+	  tran_lock->lk_entry_pool = entry;
+	}
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (sizeof (LK_ENTRY)));
+
+  return ER_OUT_OF_VIRTUAL_MEMORY;
 }
 #endif /* SERVER_MODE */
 
