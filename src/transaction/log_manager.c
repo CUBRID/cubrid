@@ -1577,6 +1577,8 @@ error:
  *
  * return: nothing
  *
+ * NOTE: this function assumes that the trantable is initialized (as of now, it is done in the function
+ *  caling this one)
  */
 void
 log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
@@ -1649,6 +1651,8 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
       replication_start_redo_lsa = log_Gl.append.get_nxio_lsa ();
     }
     // prior lists from page server are being received now
+
+    assert (LSA_LE (&most_recent_trantable_snapshot_lsa, &replication_start_redo_lsa));
 
     // NOTE: following situations can happen with regard to most recent transaction table snapshot lsa:
     //  1. it is null here at destination on PTS:

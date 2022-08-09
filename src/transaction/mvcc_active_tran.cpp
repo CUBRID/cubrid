@@ -438,8 +438,9 @@ mvcc_active_tran::set_bitarea_mvccid (MVCCID mvccid)
   if (m_bit_area_length > CLEANUP_THRESHOLD)
     {
       // trim all committed units from bit_area
-      size_t first_not_all_committed;
-      for (first_not_all_committed = 0; first_not_all_committed < get_area_size (); first_not_all_committed++)
+      size_t first_not_all_committed = 0;
+      const size_t area_size = get_area_size ();
+      for (; first_not_all_committed < area_size; first_not_all_committed++)
 	{
 	  if (m_bit_area[first_not_all_committed] != ALL_COMMITTED)
 	    {
