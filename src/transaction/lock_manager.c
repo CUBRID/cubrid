@@ -483,7 +483,7 @@ static void lock_initialize_object_hash_table (void);
 static int lock_initialize_object_lock_entry_list (void);
 static int lock_initialize_deadlock_detection (void);
 static int lock_remove_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
-static void lock_finalize_tran_lock_table (void);
+static void lock_finalize_tran_lock_table (int index);
 static void lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index);
 static int lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index);
 static void lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index);
@@ -1072,7 +1072,7 @@ lock_initialize_tran_lock_table (void)
 	  entry = (LK_ENTRY *) malloc (sizeof (LK_ENTRY));
 	  if (entry == NULL)
 	    {
-	      lock_finalize_tran_lock_table ();
+	      lock_finalize_tran_lock_table (i);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (sizeof (LK_ENTRY)));
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
@@ -5679,19 +5679,25 @@ error:
  * lock_finalize_tran_lock_table - Remove lock table resource
  *
  * return: nothing
+ *   index(in): The allocated index. Ignore if index is -1.
  *
  * NOTE: This function deallocates memory space for transaction lock table.
  */
 static void
-lock_finalize_tran_lock_table (void)
+lock_finalize_tran_lock_table (int index)
 {
   LK_TRAN_LOCK *tran_lock;
   int i;
 
+  /* index is not used */
+  if (index == -1)
+    {
+      index = lk_Gl.num_trans - 1;
+    }
   /* remove resources */
   if (lk_Gl.tran_lock_table != NULL)
     {
-      for (i = 0; i < lk_Gl.num_trans; i++)
+      for (i = 0; i <= index; i++)
 	{
 	  tran_lock = &lk_Gl.tran_lock_table[i];
 	  pthread_mutex_destroy (&tran_lock->hold_mutex);
@@ -5853,7 +5859,7 @@ lock_finalize (void)
     }
 
   /* transaction lock information table */
-  lock_finalize_tran_lock_table ();
+  lock_finalize_tran_lock_table (-1);
   pthread_mutex_destroy (&lk_Gl.DL_detection_mutex);
 
   /* reset max number of object locks */
