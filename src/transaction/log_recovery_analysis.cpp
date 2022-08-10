@@ -39,7 +39,8 @@
 static void log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY *thread_p, log_recovery_context &context,
     LOG_PAGE *log_page_p, const LOG_RECORD_HEADER *log_rec,
     const log_lsa &prev_lsa, const log_lsa &prev_prev_lsa);
-static int log_rv_analysis_undo_redo_internal (THREAD_ENTRY *thread_p, int tran_id, const LOG_LSA *log_lsa, LOG_TDES *&tdes);
+static int log_rv_analysis_undo_redo_internal (THREAD_ENTRY *thread_p, int tran_id, const LOG_LSA *log_lsa,
+    LOG_TDES *&tdes);
 static int log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, const LOG_LSA *log_lsa);
 static int log_rv_analysis_mvcc_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa, LOG_PAGE *log_page_p,
     LOG_RECTYPE log_type);
@@ -53,6 +54,7 @@ static int log_rv_analysis_commit_with_postpone (THREAD_ENTRY *thread_p, int tra
 static int log_rv_analysis_sysop_start_postpone (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa,
     LOG_PAGE *log_page_p);
 static int log_rv_analysis_atomic_sysop_start (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa);
+static void log_rv_analysis_complete_mvccid (int tran_index, const LOG_TDES *tdes);
 static int log_rv_analysis_complete (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa, LOG_PAGE *log_page_p,
 				     LOG_LSA *prev_lsa, log_recovery_context &context);
 static int log_rv_analysis_sysop_end (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa, LOG_PAGE *log_page_p);
@@ -1048,6 +1050,23 @@ log_rv_analysis_assigned_mvccid (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *l
   return NO_ERROR;
 }
 
+static void
+log_rv_analysis_complete_mvccid (int tran_index, const LOG_TDES *tdes)
+{
+  if (is_passive_transaction_server ())
+    {
+      if (MVCCID_IS_VALID (tdes->mvccinfo.id))
+	{
+	  assert (!LSA_ISNULL (&tdes->last_mvcc_lsa));
+	  log_Gl.mvcc_table.complete_mvcc (tran_index, tdes->mvccinfo.id, true);
+	}
+      else
+	{
+	  assert (LSA_ISNULL (&tdes->last_mvcc_lsa));
+	}
+    }
+}
+
 /*
  * log_rv_analysis_complete -
  *
@@ -1074,19 +1093,10 @@ log_rv_analysis_complete (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa,
       // The transaction has been fully completed. Therefore, it was not active at the time of the crash.
       if (tran_index != NULL_TRAN_INDEX)
 	{
-	  // newer quick fix on top of older quick fix: mark the mvccid as completed
 	  LOG_TDES *const tdes = LOG_FIND_TDES (tran_index);
-	  if (is_passive_transaction_server ())
-	    {
-	      if (MVCCID_IS_VALID (tdes->mvccinfo.id))
-		{
-		  log_Gl.mvcc_table.complete_mvcc (tran_index, tdes->mvccinfo.id, true);
-		}
-	      else
-		{
-		  assert (LSA_ISNULL (&tdes->last_mvcc_lsa));
-		}
-	    }
+	  // newer quick fix on top of older quick fix: mark the mvccid as completed
+	  log_rv_analysis_complete_mvccid (tran_index, tdes);
+
 	  // quick fix: reset mvccid.
 	  tdes->mvccinfo.id = MVCCID_NULL;
 	  logtb_free_tran_index (thread_p, tran_index);
@@ -1134,19 +1144,10 @@ log_rv_analysis_complete (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa,
       // Transaction is completed.
       if (tran_index != NULL_TRAN_INDEX)
 	{
-	  // newer quick fix on top of older quick fix: mark the mvccid as completed
 	  LOG_TDES *const tdes = LOG_FIND_TDES (tran_index);
-	  if (is_passive_transaction_server ())
-	    {
-	      if (MVCCID_IS_VALID (tdes->mvccinfo.id))
-		{
-		  log_Gl.mvcc_table.complete_mvcc (tran_index, tdes->mvccinfo.id, true);
-		}
-	      else
-		{
-		  assert (LSA_ISNULL (&tdes->last_mvcc_lsa));
-		}
-	    }
+	  // newer quick fix on top of older quick fix: mark the mvccid as completed
+	  log_rv_analysis_complete_mvccid (tran_index, tdes);
+
 	  // quick fix: reset mvccid.
 	  tdes->mvccinfo.id = MVCCID_NULL;
 	  logtb_free_tran_index (thread_p, tran_index);
