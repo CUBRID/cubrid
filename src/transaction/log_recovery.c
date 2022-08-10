@@ -3063,7 +3063,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   TSC_TICKS info_logging_start_time, info_logging_check_time;
   TSCTIMEVAL info_logging_elapsed_time;
   int info_logging_interval_in_secs = 0;
-  UINT64 total_page_cnt = log_cnt_pages_containing_lsa (start_redolsa, end_redo_lsa);
+
+  assert (end_redo_lsa != nullptr && !end_redo_lsa->is_null ());
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
@@ -3141,6 +3142,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	  if (info_logging_elapsed_time.tv_sec >= info_logging_interval_in_secs)
 	    {
 	      UINT64 done_page_cnt = log_lsa.pageid - start_redolsa->pageid;
+	      UINT64 total_page_cnt = log_cnt_pages_containing_lsa (start_redolsa, end_redo_lsa);
 
 	      double elapsed_time;
 	      double progress = double (done_page_cnt) / (total_page_cnt);
