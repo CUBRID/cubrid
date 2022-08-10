@@ -629,7 +629,11 @@ log_rv_analysis_mvcc_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *lo
   assert (log_page_p != nullptr);
 
   // move read pointer past the log header which is actually read upper in the stack
+  _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 01 trid = %d log_lsa = %lld|%d\n",
+		 tran_id, LSA_AS_ARGS (log_lsa));
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
+  _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 02 trid = %d log_lsa = %lld|%d\n",
+		 tran_id, LSA_AS_ARGS (log_lsa));
   switch (log_type)
     {
     case LOG_MVCC_UNDOREDO_DATA:
@@ -637,27 +641,39 @@ log_rv_analysis_mvcc_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *lo
     {
       // align to read the specific record info
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_UNDOREDO), log_lsa, log_page_p);
+      _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 03 trid = %d log_lsa = %lld|%d\n",
+		     tran_id, LSA_AS_ARGS (log_lsa));
       const LOG_REC_MVCC_UNDOREDO *const log_rec
 	= (const LOG_REC_MVCC_UNDOREDO *) ((char *)log_page_p->area + log_lsa->offset);
       tdes->mvccinfo.id = log_rec->mvccid;
+      _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete trid = %d mvccid = %llu last_mvcc_lsa = %lld|%d\n",
+		     tran_id, (unsigned long long)log_rec->mvccid, LSA_AS_ARGS (&tdes->last_mvcc_lsa));
       break;
     }
     case LOG_MVCC_UNDO_DATA:
     {
       // align to read the specific record info
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_UNDO), log_lsa, log_page_p);
+      _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 04 trid = %d log_lsa = %lld|%d\n",
+		     tran_id, LSA_AS_ARGS (log_lsa));
       const LOG_REC_MVCC_UNDO *const log_rec
 	= (const LOG_REC_MVCC_UNDO *) ((char *)log_page_p->area + log_lsa->offset);
       tdes->mvccinfo.id = log_rec->mvccid;
+      _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete trid = %d mvccid = %llu last_mvcc_lsa = %lld|%d\n",
+		     tran_id, (unsigned long long)log_rec->mvccid, LSA_AS_ARGS (&tdes->last_mvcc_lsa));
       break;
     }
     case LOG_MVCC_REDO_DATA:
     {
       // align to read the specific record info
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_REDO), log_lsa, log_page_p);
+      _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete 05 trid = %d log_lsa = %lld|%d\n",
+		     tran_id, LSA_AS_ARGS (log_lsa));
       const LOG_REC_MVCC_REDO *const log_rec
 	= (const LOG_REC_MVCC_REDO *) ((char *)log_page_p->area + log_lsa->offset);
       tdes->mvccinfo.id = log_rec->mvccid;
+      _er_log_debug (ARG_FILE_LINE, "crsdbg: an_mvcc_complete trid = %d mvccid = %llu last_mvcc_lsa = %lld|%d\n",
+		     tran_id, (unsigned long long)log_rec->mvccid, LSA_AS_ARGS (&tdes->last_mvcc_lsa));
       break;
     }
     default:
