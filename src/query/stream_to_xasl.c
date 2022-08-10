@@ -2197,8 +2197,6 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
       return NULL;
     }
 
-  ptr = or_unpack_double (ptr, (double *) &xasl->cardinality);
-
   ptr = or_unpack_int (ptr, &tmp);
   xasl->iscan_oid_order = (bool) tmp;
 

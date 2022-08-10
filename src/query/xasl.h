@@ -1047,8 +1047,6 @@ struct xasl_node
     CTE_PROC_NODE cte;		/* CTE_PROC */
   } proc;
 
-  double cardinality;		/* estimated cardinality of result */
-
   /* XASL cache related information */
   OID creator_oid;		/* OID of the user who created this XASL */
   int n_oid_list;		/* size of the referenced OID list */
@@ -1061,6 +1059,7 @@ struct xasl_node
 
 #if defined (CS_MODE) || defined (SA_MODE)
   int projected_size;		/* # of bytes per result tuple */
+  double cardinality;		/* estimated cardinality of result */
 #endif
 
 #if defined (SERVER_MODE) || defined (SA_MODE)

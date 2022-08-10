@@ -3106,8 +3106,6 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
       return NULL;
     }
 
-  ptr = or_pack_double (ptr, xasl->cardinality);
-
   ptr = or_pack_int (ptr, (int) xasl->iscan_oid_order);
 
   if (xasl->query_alias)
