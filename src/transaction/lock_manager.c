@@ -483,6 +483,7 @@ static void lock_initialize_object_hash_table (void);
 static int lock_initialize_object_lock_entry_list (void);
 static int lock_initialize_deadlock_detection (void);
 static int lock_remove_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
+static void lock_finalize_tran_lock_table (void);
 static void lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index);
 static int lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index);
 static void lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index);
@@ -1053,7 +1054,9 @@ lock_initialize_tran_lock_table (void)
   lk_Gl.tran_lock_table = (LK_TRAN_LOCK *) malloc (SIZEOF_LK_TRAN_LOCK * lk_Gl.num_trans);
   if (lk_Gl.tran_lock_table == NULL)
     {
-      goto exit_on_error;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) (SIZEOF_LK_TRAN_LOCK * lk_Gl.num_trans));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   /* initialize all the entries of transaction lock table */
@@ -1069,7 +1072,9 @@ lock_initialize_tran_lock_table (void)
 	  entry = (LK_ENTRY *) malloc (sizeof (LK_ENTRY));
 	  if (entry == NULL)
 	    {
-	      goto exit_on_error;
+	      lock_finalize_tran_lock_table ();
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (sizeof (LK_ENTRY)));
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 	  lock_initialize_entry (entry);
 	  entry->next = tran_lock->lk_entry_pool;
@@ -1079,33 +1084,6 @@ lock_initialize_tran_lock_table (void)
     }
 
   return NO_ERROR;
-
-exit_on_error:
-  if (lk_Gl.tran_lock_table == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (size_t) (SIZEOF_LK_TRAN_LOCK * lk_Gl.num_trans));
-
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  free_and_init (lk_Gl.tran_lock_table);
-  for (int k = 0; k <= i; k++)
-    {
-      tran_lock = &lk_Gl.tran_lock_table[k];
-      pthread_mutex_destroy (&tran_lock->hold_mutex);
-      pthread_mutex_destroy (&tran_lock->non2pl_mutex);
-
-      for (int l = 0; l <= (k == i ? j : LOCK_TRAN_LOCAL_POOL_MAX_SIZE); l++)
-	{
-	  entry = tran_lock->lk_entry_pool->next;
-	  free_and_init (tran_lock->lk_entry_pool);
-	  tran_lock->lk_entry_pool = entry;
-	}
-    }
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (sizeof (LK_ENTRY)));
-
-  return ER_OUT_OF_VIRTUAL_MEMORY;
 }
 #endif /* SERVER_MODE */
 
@@ -5696,6 +5674,43 @@ error:
 #endif /* !SERVER_MODE */
 }
 
+#if defined(SERVER_MODE)
+/*
+ * lock_finalize_tran_lock_table - Remove lock table resource
+ *
+ * return: nothing
+ *
+ * NOTE: This function deallocates memory space for transaction lock table.
+ */
+static void
+lock_finalize_tran_lock_table (void)
+{
+  LK_TRAN_LOCK *tran_lock;
+  int i;
+
+  /* remove resources */
+  if (lk_Gl.tran_lock_table != NULL)
+    {
+      for (i = 0; i < lk_Gl.num_trans; i++)
+	{
+	  tran_lock = &lk_Gl.tran_lock_table[i];
+	  pthread_mutex_destroy (&tran_lock->hold_mutex);
+	  pthread_mutex_destroy (&tran_lock->non2pl_mutex);
+	  while (tran_lock->lk_entry_pool != NULL)
+	    {
+	      LK_ENTRY *entry = tran_lock->lk_entry_pool;
+	      tran_lock->lk_entry_pool = tran_lock->lk_entry_pool->next;
+	      free (entry);
+	    }
+	}
+      free_and_init (lk_Gl.tran_lock_table);
+    }
+
+  /* reset the number of transactions */
+  lk_Gl.num_trans = 0;
+}
+#endif /* SERVER_MODE */
+
 // *INDENT-OFF*
 #if defined(SERVER_MODE)
 
@@ -5828,9 +5843,6 @@ lock_finalize (void)
 #if !defined (SERVER_MODE)
   lk_Standalone_has_xlock = false;
 #else /* !SERVER_MODE */
-  LK_TRAN_LOCK *tran_lock;
-  int i;
-
   /* Release all the locks and awake all transactions */
   /* TODO: Why ? */
   /* transaction deadlock information table */
@@ -5841,25 +5853,7 @@ lock_finalize (void)
     }
 
   /* transaction lock information table */
-  /* deallocate memory space for transaction lock table */
-  if (lk_Gl.tran_lock_table != NULL)
-    {
-      for (i = 0; i < lk_Gl.num_trans; i++)
-	{
-	  tran_lock = &lk_Gl.tran_lock_table[i];
-	  pthread_mutex_destroy (&tran_lock->hold_mutex);
-	  pthread_mutex_destroy (&tran_lock->non2pl_mutex);
-	  while (tran_lock->lk_entry_pool != NULL)
-	    {
-	      LK_ENTRY *entry = tran_lock->lk_entry_pool;
-	      tran_lock->lk_entry_pool = tran_lock->lk_entry_pool->next;
-	      free (entry);
-	    }
-	}
-      free_and_init (lk_Gl.tran_lock_table);
-    }
-  /* reset the number of transactions */
-  lk_Gl.num_trans = 0;
+  lock_finalize_tran_lock_table ();
   pthread_mutex_destroy (&lk_Gl.DL_detection_mutex);
 
   /* reset max number of object locks */
