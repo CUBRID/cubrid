@@ -54,8 +54,6 @@
 #include "xasl.h"
 #include "xasl_unpack_info.hpp"
 
-#define FIX_OID_CLASSOID_ORDER	// ctshim, Oids and classoids have the same storage order recorded in the index.
-
 typedef struct sort_args SORT_ARGS;
 struct sort_args
 {				/* Collection of information required for "sr_index_sort" */
@@ -2317,12 +2315,11 @@ put_buf_to_record (RECDES * recdes, SORT_ARGS * sort_args, int value_has_null, i
   or_advance (&buf, (OR_INT_SIZE - OR_BYTE_SIZE));
   assert (buf.ptr == PTR_ALIGN (buf.ptr, INT_ALIGNMENT));
 
-#if defined(FIX_OID_CLASSOID_ORDER)
   if (or_put_oid (&buf, &sort_args->cur_oid) != NO_ERROR)
     {
       return ER_FAILED;
     }
-#endif
+
   if (BTREE_IS_UNIQUE (sort_args->unique_pk))
     {
       if (or_put_oid (&buf, &sort_args->class_ids[cur_class]) != NO_ERROR)
@@ -2330,12 +2327,7 @@ put_buf_to_record (RECDES * recdes, SORT_ARGS * sort_args, int value_has_null, i
 	  return ER_FAILED;
 	}
     }
-#if !defined(FIX_OID_CLASSOID_ORDER)
-  if (or_put_oid (&buf, &sort_args->cur_oid) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-#endif
+
   /* Pack insert and delete MVCCID's */
   if (MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (mvcc_header))
     {
@@ -2410,14 +2402,13 @@ get_buf_from_record (OR_BUF * buf, RECDES * recdes, LOAD_ARGS * load_args, S_PAR
 
   assert (buf->ptr == PTR_ALIGN (buf->ptr, INT_ALIGNMENT));
 
-#if defined(FIX_OID_CLASSOID_ORDER)
   /* Get OID */
   ret = or_get_oid (buf, &pparam->rec_oid);
   if (ret != NO_ERROR)
     {
       return ret;
     }
-#endif
+
   /* Instance level uniqueness checking */
   if (BTREE_IS_UNIQUE (load_args->btid->unique_pk))
     {				/* unique index */
@@ -2428,14 +2419,6 @@ get_buf_from_record (OR_BUF * buf, RECDES * recdes, LOAD_ARGS * load_args, S_PAR
 	  return ret;
 	}
     }
-#if !defined(FIX_OID_CLASSOID_ORDER)
-  /* Get OID */
-  ret = or_get_oid (buf, &pparam->rec_oid);
-  if (ret != NO_ERROR)
-    {
-      return ret;
-    }
-#endif
 
   /* Create MVCC header */
   BTREE_INIT_MVCC_HEADER (&pparam->mvcc_header);
