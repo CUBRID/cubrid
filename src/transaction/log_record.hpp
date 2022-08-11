@@ -267,6 +267,14 @@ struct log_rec_compensate
 };
 
 /* This entry is included during commit */
+typedef struct log_rec_start_postpone LOG_REC_START_POSTPONE;
+struct log_rec_start_postpone
+{
+  LOG_LSA posp_lsa;
+  INT64 at_time;		/* donetime. For the time-specific recovery */
+};
+
+/* This entry is included during commit. Obsolete. See the comment of LOG_COMMIT_WITH_POSTPONE_OBSOLETE. */
 typedef struct log_rec_start_postpone_obsolete LOG_REC_START_POSTPONE_OBSOLETE;
 struct log_rec_start_postpone_obsolete
 {
