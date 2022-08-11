@@ -205,10 +205,7 @@ log_recovery_analysis_internal (THREAD_ENTRY *thread_p, INT64 *num_redo_log_reco
 
   // Start with the record at checkpoint LSA.
   record_nav_lsa = context.get_checkpoint_lsa ();
-  if (stop_before_lsa != nullptr)
-    {
-      assert (LSA_LE (&record_nav_lsa, stop_before_lsa));
-    }
+  assert ((stop_before_lsa == nullptr) || LSA_LE (&record_nav_lsa, stop_before_lsa));
 
   // If the recovery start matches a checkpoint, use the checkpoint information.
   const cublog::checkpoint_info *chkpt_infop = log_Gl.m_metainfo.get_checkpoint_info (record_nav_lsa);
