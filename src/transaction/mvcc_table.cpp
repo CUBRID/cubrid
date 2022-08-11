@@ -479,6 +479,11 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
     }
 
   // update current trans status
+  if (is_passive_transaction_server ())
+    {
+      // sanity check that an mvccid is never double-completed during PTS replication
+      assert (m_current_trans_status.m_active_mvccs.is_active (mvccid));
+    }
   m_current_trans_status.m_active_mvccs.set_inactive_mvccid (mvccid);
   m_current_trans_status.m_last_completed_mvccid = mvccid;
   m_current_trans_status.m_event_type = committed ? mvcc_trans_status::COMMIT : mvcc_trans_status::ROLLBACK;
