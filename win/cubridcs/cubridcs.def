@@ -971,3 +971,4 @@ EXPORTS
   setobj_type
   db_get_json_raw_body
   db_json_val_from_str
+  gethostbyname_uhost
