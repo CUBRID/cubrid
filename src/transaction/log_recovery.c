@@ -71,6 +71,8 @@ static int log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, L
 static int log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p);
 static int log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
 						 LOG_PAGE * log_page_p);
+static int log_rv_analysis_commit_with_postpone_obsolete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
+						 LOG_PAGE * log_page_p);
 static int log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
 						 LOG_PAGE * log_page_p);
 static int log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
@@ -1135,10 +1137,10 @@ log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_
  * Note:
  */
 static int
-log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+log_rv_analysis_commit_with_postpone_obsolete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   LOG_TDES *tdes;
-  LOG_REC_START_POSTPONE *start_posp;
+  LOG_REC_START_POSTPONE_OBSOLETE *start_posp;
 
   /*
    * If this is the first time, the transaction is seen. Assign a new
@@ -1164,9 +1166,9 @@ log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
    * of the transaction
    */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_START_POSTPONE), log_lsa, log_page_p);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_START_POSTPONE_OBSOLETE), log_lsa, log_page_p);
 
-  start_posp = (LOG_REC_START_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset);
+  start_posp = (LOG_REC_START_POSTPONE_OBSOLETE *) ((char *) log_page_p->area + log_lsa->offset);
   LSA_COPY (&tdes->posp_nxlsa, &start_posp->posp_lsa);
 
   return NO_ERROR;
@@ -2231,12 +2233,12 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
       (void) log_rv_analysis_compensate (thread_p, tran_id, log_lsa, log_page_p);
       break;
 
-    case LOG_COMMIT_WITH_POSTPONE:
-      (void) log_rv_analysis_commit_with_postpone (thread_p, tran_id, log_lsa, log_page_p);
-      break;
-
     case LOG_SYSOP_START_POSTPONE:
       (void) log_rv_analysis_sysop_start_postpone (thread_p, tran_id, log_lsa, log_page_p);
+      break;
+    
+    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
+      (void) log_rv_analysis_commit_with_postpone_obsolete (thread_p, tran_id, log_lsa, log_page_p);
       break;
 
     case LOG_COMMIT:
@@ -3947,6 +3949,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_DUMMY_HEAD_POSTPONE:
 	    case LOG_POSTPONE:
 	    case LOG_COMMIT_WITH_POSTPONE:
+	    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
 	    case LOG_SYSOP_START_POSTPONE:
 	    case LOG_START_CHKPT:
 	    case LOG_END_CHKPT:
@@ -4112,7 +4115,7 @@ log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, 
       else
 	{
 	  /* safe-guard: we do not expect postpone starts */
-	  assert (logrec_head.type != LOG_COMMIT_WITH_POSTPONE && logrec_head.type != LOG_SYSOP_START_POSTPONE);
+	  assert (logrec_head.type != LOG_COMMIT_WITH_POSTPONE_OBSOLETE && logrec_head.type != LOG_COMMIT_WITH_POSTPONE && logrec_head.type != LOG_SYSOP_START_POSTPONE);
 
 	  /* move to previous */
 	  prev_lsa = logrec_head.prev_tranlsa;
@@ -4920,6 +4923,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		case LOG_RUN_POSTPONE:
 		case LOG_COMMIT_WITH_POSTPONE:
+		case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
 		case LOG_COMMIT:
 		case LOG_SYSOP_START_POSTPONE:
 		case LOG_ABORT:
@@ -5662,9 +5666,16 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
     case LOG_COMMIT_WITH_POSTPONE:
       /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_START_POSTPONE), &log_lsa, log_pgptr);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_START_POSTPONE_OBSOLETE), &log_lsa, log_pgptr);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_START_POSTPONE), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_START_POSTPONE_OBSOLETE), &log_lsa, log_pgptr);
+      break;
+
+    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
+      /* Read the DATA HEADER */
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_START_POSTPONE_OBSOLETE), &log_lsa, log_pgptr);
+
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_START_POSTPONE_OBSOLETE), &log_lsa, log_pgptr);
       break;
 
     case LOG_COMMIT:

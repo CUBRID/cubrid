@@ -420,6 +420,9 @@ log_to_string (LOG_RECTYPE type)
     case LOG_COMMIT_WITH_POSTPONE:
       return "LOG_COMMIT_WITH_POSTPONE";
 
+    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
+      return "LOG_COMMIT_WITH_POSTPONE_OBSOLETE";
+
     case LOG_COMMIT:
       return "LOG_COMMIT";
 
@@ -4394,7 +4397,7 @@ log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, 
 static void
 log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa)
 {
-  LOG_REC_START_POSTPONE *start_posp;	/* Start postpone actions */
+  LOG_REC_START_POSTPONE_OBSOLETE *start_posp;	/* Start postpone actions */
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
 
@@ -4404,7 +4407,7 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * 
       return;
     }
 
-  start_posp = (LOG_REC_START_POSTPONE *) node->data_header;
+  start_posp = (LOG_REC_START_POSTPONE_OBSOLETE *) node->data_header;
   LSA_COPY (&start_posp->posp_lsa, start_postpone_lsa);
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
@@ -6495,11 +6498,11 @@ log_dump_record_compensate (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
 static LOG_PAGE *
 log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  LOG_REC_START_POSTPONE *start_posp;
+  LOG_REC_START_POSTPONE_OBSOLETE *start_posp;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_posp), log_lsa, log_page_p);
-  start_posp = (LOG_REC_START_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset);
+  start_posp = (LOG_REC_START_POSTPONE_OBSOLETE *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", First postpone record at before or after Page = %lld and offset = %d\n",
 	   LSA_AS_ARGS (&start_posp->posp_lsa));
 
@@ -6917,6 +6920,10 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
       break;
 
     case LOG_COMMIT_WITH_POSTPONE:
+      log_page_p = log_dump_record_commit_postpone (thread_p, out_fp, log_lsa, log_page_p);
+      break;
+
+    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
       log_page_p = log_dump_record_commit_postpone (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
@@ -7895,6 +7902,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 
 	    case LOG_RUN_POSTPONE:
 	    case LOG_COMMIT_WITH_POSTPONE:
+	    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
 	    case LOG_SYSOP_START_POSTPONE:
 	      /* Undo of run postpone system operation. End here. */
 	      assert (!LOG_ISRESTARTED ());
@@ -8340,6 +8348,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		      break;
 
 		    case LOG_COMMIT_WITH_POSTPONE:
+		    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
 		    case LOG_SYSOP_START_POSTPONE:
 		    case LOG_2PC_PREPARE:
 		    case LOG_2PC_START:
