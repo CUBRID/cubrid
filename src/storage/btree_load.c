@@ -4485,7 +4485,12 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   int old_wait_msec;
   bool old_check_intr;
   SORT_ARGS tmp_args;
+
   memset (&tmp_args, 0x00, sizeof (SORT_ARGS));
+  tmp_args.n_attrs = n_attrs;
+  tmp_args.class_ids = class_oids;
+  tmp_args.attr_ids = attr_ids;
+  tmp_args.hfids = hfids;
 
   func_index_info.expr = NULL;
 
@@ -4589,10 +4594,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 
       /* Start scancache */
       tmp_args.cur_class = cur_class;
-      tmp_args.n_attrs = n_attrs;
-      tmp_args.attr_ids = attr_ids;
-      tmp_args.hfids = hfids;
-      tmp_args.class_ids = class_oids;
       tmp_args.filter = filter_pred;
       tmp_args.func_index_info = &func_index_info;
 
