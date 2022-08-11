@@ -6548,7 +6548,7 @@ log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
   (void) ctime_r (&tmp_time, time_val);
   fprintf (out_fp, ", First postpone record at before or after Page = %lld and offset = %d\n",
 	   LSA_AS_ARGS (&start_posp->posp_lsa));
-  fprintf (out_fp, ",       Transaction finish time at = %s\n", time_val);
+  fprintf (out_fp, "     Transaction finish time at = %s\n", time_val);
 
   return log_page_p;
 }
