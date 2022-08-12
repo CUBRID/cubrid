@@ -1464,7 +1464,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 	  LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
 	}
     }
-  else if (node->log_header.type == LOG_COMMIT_WITH_POSTPONE || node->log_header.type == LOG_COMMIT_WITH_POSTPONE_OBSOLETE)
+  else if (node->log_header.type == LOG_COMMIT_WITH_POSTPONE
+	   || node->log_header.type == LOG_COMMIT_WITH_POSTPONE_OBSOLETE)
     {
       /* we need the commit with postpone LSA for recovery. we have to save it under prior_lsa_mutex protection */
       tdes->rcv.tran_start_postpone_lsa = start_lsa;

@@ -215,7 +215,8 @@ static bool log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcv
 				       LOG_DATA_ADDR * addr);
 static bool log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, LOG_DATA_ADDR * addr);
 static void log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa);
-static void log_append_commit_postpone_obsolete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa);
+static void log_append_commit_postpone_obsolete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+						 LOG_LSA * start_postpone_lsa);
 static void log_append_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 					     LOG_REC_SYSOP_START_POSTPONE * sysop_start_postpone, int data_size,
 					     const char *data);
@@ -4439,7 +4440,8 @@ log_append_commit_postpone_obsolete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
 
-  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_COMMIT_WITH_POSTPONE_OBSOLETE, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+  node =
+    prior_lsa_alloc_and_copy_data (thread_p, LOG_COMMIT_WITH_POSTPONE_OBSOLETE, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
   if (node == NULL)
     {
       return;
@@ -6554,7 +6556,8 @@ log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
 }
 
 static LOG_PAGE *
-log_dump_record_commit_postpone_obsolete (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+log_dump_record_commit_postpone_obsolete (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+					  LOG_PAGE * log_page_p)
 {
   LOG_REC_START_POSTPONE_OBSOLETE *start_posp;
 
