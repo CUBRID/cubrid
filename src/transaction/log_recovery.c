@@ -1132,8 +1132,12 @@ log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_
  * return: error code
  *
  *   tran_id(in):
- *   lsa(in/out):
+ *   log_lsa(in/out):
  *   log_page_p(in/out):
+ *   lsa(in/out):
+ *   is_media_crash(in):
+ *   stop_at(in):
+ *   did_incom_recovery(in/out):
  *
  * Note:
  */
