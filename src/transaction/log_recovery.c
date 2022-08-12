@@ -2313,17 +2313,18 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
     case LOG_COMPENSATE:
       (void) log_rv_analysis_compensate (thread_p, tran_id, log_lsa, log_page_p);
       break;
-
-    case LOG_SYSOP_START_POSTPONE:
-      (void) log_rv_analysis_sysop_start_postpone (thread_p, tran_id, log_lsa, log_page_p);
-      break;
-
+    
     case LOG_COMMIT_WITH_POSTPONE:
       (void) log_rv_analysis_commit_with_postpone (thread_p, tran_id, log_lsa, log_page_p, prev_lsa, is_media_crash, stop_at, did_incom_recovery);
       break;
     
     case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
       (void) log_rv_analysis_commit_with_postpone_obsolete (thread_p, tran_id, log_lsa, log_page_p);
+      break;
+
+
+    case LOG_SYSOP_START_POSTPONE:
+      (void) log_rv_analysis_sysop_start_postpone (thread_p, tran_id, log_lsa, log_page_p);
       break;
 
     case LOG_COMMIT:
@@ -4200,7 +4201,7 @@ log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, 
       else
 	{
 	  /* safe-guard: we do not expect postpone starts */
-	  assert (logrec_head.type != LOG_COMMIT_WITH_POSTPONE_OBSOLETE && logrec_head.type != LOG_COMMIT_WITH_POSTPONE && logrec_head.type != LOG_SYSOP_START_POSTPONE);
+	  assert (logrec_head.type != LOG_COMMIT_WITH_POSTPONE && logrec_head.type != LOG_COMMIT_WITH_POSTPONE_OBSOLETE && logrec_head.type != LOG_SYSOP_START_POSTPONE);
 
 	  /* move to previous */
 	  prev_lsa = logrec_head.prev_tranlsa;
