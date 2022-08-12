@@ -290,7 +290,9 @@ static int notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_P
 			     char **notify_vacuum_rv_data, char *notify_vacuum_rv_data_bufalign);
 static int heap_scancache_and_attrinfo_start (THREAD_ENTRY * thread_p, SORT_ARGS * args, HEAP_SCANCACHE * scan_cache,
 					      HEAP_CACHE_ATTRINFO * attr_info, int save_cache_last_fix_page);
-
+static void heap_scancache_and_attrinfo_end (THREAD_ENTRY * thread_p, SORT_ARGS * args, HEAP_SCANCACHE * scan_cache,
+					     HEAP_CACHE_ATTRINFO * attr_info);
+static void clear_pred_and_unpack (THREAD_ENTRY * thread_p, SORT_ARGS * args, XASL_UNPACK_INFO * func_unpack_info);
 
 /*
  * btree_get_node_header () -
@@ -758,7 +760,7 @@ heap_scancache_and_attrinfo_start (THREAD_ENTRY * thread_p, SORT_ARGS * args, HE
 	}
     }
 
-  if (args->func_index_info && args->func_index_info->expr != NULL)
+  if (args->func_index_info && args->func_index_info->expr)
     {
       if (heap_attrinfo_start (thread_p, &args->class_ids[args->cur_class], args->n_attrs,
 			       &args->attr_ids[attr_offset], args->func_index_info->expr->cache_attrinfo) != NO_ERROR)
@@ -768,6 +770,67 @@ heap_scancache_and_attrinfo_start (THREAD_ENTRY * thread_p, SORT_ARGS * args, HE
     }
 
   return NO_ERROR;
+}
+
+static void
+heap_scancache_and_attrinfo_end (THREAD_ENTRY * thread_p, SORT_ARGS * args, HEAP_SCANCACHE * scan_cache,
+				 HEAP_CACHE_ATTRINFO * attr_info)
+{
+  if (scan_cache == NULL)
+    {
+      scan_cache = &args->hfscan_cache;
+    }
+  if (attr_info == NULL)
+    {
+      attr_info = &args->attr_info;
+    }
+
+  if (args->attrinfo_inited)
+    {
+      heap_attrinfo_end (thread_p, attr_info);
+      if (args->filter)
+	{
+	  heap_attrinfo_end (thread_p, args->filter->cache_pred);
+	}
+      if (args->func_index_info && args->func_index_info->expr)
+	{
+	  heap_attrinfo_end (thread_p, args->func_index_info->expr->cache_attrinfo);
+	}
+      args->attrinfo_inited = false;
+    }
+
+  if (args->scancache_inited)
+    {
+      (void) heap_scancache_end (thread_p, scan_cache);
+      args->scancache_inited = false;
+    }
+}
+
+static void
+clear_pred_and_unpack (THREAD_ENTRY * thread_p, SORT_ARGS * args, XASL_UNPACK_INFO * func_unpack_info)
+{
+  if (args->filter != NULL)
+    {
+      /* to clear db values from dbvalue regu variable */
+      qexec_clear_pred_context (thread_p, args->filter, true);
+
+      if (args->filter->unpack_info != NULL)
+	{
+	  free_xasl_unpack_info (thread_p, args->filter->unpack_info);
+	}
+      db_private_free_and_init (thread_p, args->filter);
+    }
+
+  if (args->func_index_info && args->func_index_info->expr != NULL)
+    {
+      (void) qexec_clear_func_pred (thread_p, args->func_index_info->expr);
+      args->func_index_info->expr = NULL;
+    }
+
+  if (func_unpack_info != NULL)
+    {
+      free_xasl_unpack_info (thread_p, func_unpack_info);
+    }
 }
 
 /*
@@ -1009,25 +1072,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 		     "load %d keys.", sort_args->n_classes, sort_args->n_nulls, sort_args->n_oids, load_args->n_keys);
     }
 
-  if (sort_args->attrinfo_inited)
-    {
-      heap_attrinfo_end (thread_p, &sort_args->attr_info);
-      if (sort_args->filter)
-	{
-	  heap_attrinfo_end (thread_p, sort_args->filter->cache_pred);
-	}
-      if (sort_args->func_index_info)
-	{
-	  heap_attrinfo_end (thread_p, sort_args->func_index_info->expr->cache_attrinfo);
-	}
-      sort_args->attrinfo_inited = false;
-    }
-
-  if (sort_args->scancache_inited)
-    {
-      (void) heap_scancache_end (thread_p, &sort_args->hfscan_cache);
-      sort_args->scancache_inited = false;
-    }
+  heap_scancache_and_attrinfo_end (thread_p, sort_args, NULL, NULL);
 
   /* Just to make sure that there were entries to put into the tree */
   if (load_args->leaf.pgptr != NULL)
@@ -1115,27 +1160,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       BTREE_SET_CREATED_OVERFLOW_KEY_NOTIFICATION (thread_p, NULL, NULL, notification_class_oid, btid, bt_name);
     }
 
-  if (sort_args->filter)
-    {
-      /* to clear db values from dbvalue regu variable */
-      qexec_clear_pred_context (thread_p, sort_args->filter, true);
-    }
-  if (filter_pred != NULL)
-    {
-      if (filter_pred->unpack_info != NULL)
-	{
-	  free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
-	}
-      db_private_free_and_init (thread_p, filter_pred);
-    }
-  if (sort_args->func_index_info && sort_args->func_index_info->expr)
-    {
-      (void) qexec_clear_func_pred (thread_p, sort_args->func_index_info->expr);
-    }
-  if (func_unpack_info)
-    {
-      free_xasl_unpack_info (thread_p, func_unpack_info);
-    }
+  clear_pred_and_unpack (thread_p, sort_args, func_unpack_info);
 
   thread_p->pop_resource_tracks ();
 
@@ -1177,22 +1202,8 @@ error:
       logtb_delete_global_unique_stats (thread_p, &btid_global_stats);
     }
 
-  if (sort_args->scancache_inited)
-    {
-      (void) heap_scancache_end (thread_p, &sort_args->hfscan_cache);
-    }
-  if (sort_args->attrinfo_inited)
-    {
-      heap_attrinfo_end (thread_p, &sort_args->attr_info);
-      if (sort_args->filter)
-	{
-	  heap_attrinfo_end (thread_p, sort_args->filter->cache_pred);
-	}
-      if (sort_args->func_index_info && sort_args->func_index_info->expr)
-	{
-	  heap_attrinfo_end (thread_p, sort_args->func_index_info->expr->cache_attrinfo);
-	}
-    }
+  heap_scancache_and_attrinfo_end (thread_p, sort_args, NULL, NULL);
+
   VFID_SET_NULL (&btid->vfid);
   btid->root_pageid = NULL_PAGEID;
   if (load_args->leaf_nleaf_recdes.data)
@@ -1220,27 +1231,7 @@ error:
       load_args->pop_list = NULL;
     }
 
-  if (sort_args->filter)
-    {
-      /* to clear db values from dbvalue regu variable */
-      qexec_clear_pred_context (thread_p, sort_args->filter, true);
-    }
-  if (filter_pred != NULL)
-    {
-      if (filter_pred->unpack_info != NULL)
-	{
-	  free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
-	}
-      db_private_free_and_init (thread_p, filter_pred);
-    }
-  if (sort_args->func_index_info && sort_args->func_index_info->expr)
-    {
-      (void) qexec_clear_func_pred (thread_p, sort_args->func_index_info->expr);
-    }
-  if (func_unpack_info)
-    {
-      free_xasl_unpack_info (thread_p, func_unpack_info);
-    }
+  clear_pred_and_unpack (thread_p, sort_args, func_unpack_info);
 
   thread_p->pop_resource_tracks ();
 
@@ -3204,26 +3195,8 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	{
 	case S_END:
 	  /* No more objects in this heap, finish the current scan */
-	  if (sort_args->attrinfo_inited)
-	    {
-	      heap_attrinfo_end (thread_p, &sort_args->attr_info);
-	      if (sort_args->filter)
-		{
-		  heap_attrinfo_end (thread_p, sort_args->filter->cache_pred);
-		}
-	      if (sort_args->func_index_info && sort_args->func_index_info->expr)
-		{
-		  heap_attrinfo_end (thread_p, sort_args->func_index_info->expr->cache_attrinfo);
-		}
-	      sort_args->attrinfo_inited = false;
-	    }
-
 	  save_cache_last_fix_page = sort_args->hfscan_cache.cache_last_fix_page;
-	  if (sort_args->scancache_inited)
-	    {
-	      (void) heap_scancache_end (thread_p, &sort_args->hfscan_cache);
-	      sort_args->scancache_inited = false;
-	    }
+	  heap_scancache_and_attrinfo_end (thread_p, sort_args, NULL, NULL);
 
 	  /* Are we through with all the non-null heaps? */
 	  sort_args->cur_class++;
@@ -3357,8 +3330,6 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
       value_has_null = 0;	/* init */
       if (DB_IS_NULL (dbvalue_ptr) || btree_multicol_key_has_null (dbvalue_ptr))
 	{
-	  value_has_null = 1;	/* found null columns */
-
 	  if (sort_args->not_null_flag && snapshot_dirty_satisfied == SNAPSHOT_SATISFIED)
 	    {
 	      if (dbvalue_ptr == &dbvalue || dbvalue_ptr->need_clear == true)
@@ -3369,6 +3340,8 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE, 0);
 	      return SORT_ERROR_OCCURRED;
 	    }
+
+	  value_has_null = 1;	/* found null columns */
 	}
 
       if (DB_IS_NULL (dbvalue_ptr) || btree_multicol_key_is_null (dbvalue_ptr))
@@ -4491,6 +4464,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   tmp_args.class_ids = class_oids;
   tmp_args.attr_ids = attr_ids;
   tmp_args.hfids = hfids;
+  tmp_args.func_index_info = &func_index_info;
 
   func_index_info.expr = NULL;
 
@@ -4577,6 +4551,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	      goto error;
 	    }
 	}
+      tmp_args.filter = filter_pred;
 
       if (func_pred_stream && func_pred_stream_size > 0)
 	{
@@ -4594,9 +4569,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 
       /* Start scancache */
       tmp_args.cur_class = cur_class;
-      tmp_args.filter = filter_pred;
-      tmp_args.func_index_info = &func_index_info;
-
       ret = heap_scancache_and_attrinfo_start (thread_p, &tmp_args, &scan_cache, &attr_info, true);
       if (ret != NO_ERROR)
 	{
@@ -4636,50 +4608,9 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	  break;
 	}
 
-      if (tmp_args.attrinfo_inited)
-	{
-	  heap_attrinfo_end (thread_p, &attr_info);
-
-	  if (filter_pred)
-	    {
-	      heap_attrinfo_end (thread_p, filter_pred->cache_pred);
-	    }
-	  if (func_index_info.expr)
-	    {
-	      heap_attrinfo_end (thread_p, func_index_info.expr->cache_attrinfo);
-	    }
-
-	  tmp_args.attrinfo_inited = false;
-	}
-
-      if (tmp_args.scancache_inited)
-	{
-	  heap_scancache_end (thread_p, &scan_cache);
-	  tmp_args.scancache_inited = false;
-	}
-
-      if (filter_pred != NULL)
-	{
-	  /* to clear db values from dbvalue regu variable */
-	  qexec_clear_pred_context (thread_p, filter_pred, true);
-
-	  if (filter_pred->unpack_info != NULL)
-	    {
-	      free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
-	    }
-	  db_private_free_and_init (thread_p, filter_pred);
-	}
-
-      if (func_index_info.expr != NULL)
-	{
-	  (void) qexec_clear_func_pred (thread_p, func_index_info.expr);
-	  func_index_info.expr = NULL;
-	}
-
-      if (func_unpack_info != NULL)
-	{
-	  free_xasl_unpack_info (thread_p, func_unpack_info);
-	}
+      heap_scancache_and_attrinfo_end (thread_p, &tmp_args, &scan_cache, &attr_info);
+      clear_pred_and_unpack (thread_p, &tmp_args, func_unpack_info);
+      tmp_args.filter = filter_pred = NULL;
     }
 
   // We should recover the lock regardless of return code from online_index_builder.
@@ -4774,46 +4705,8 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   return btid;
 
 error:
-  if (tmp_args.attrinfo_inited)
-    {
-      heap_attrinfo_end (thread_p, &attr_info);
-
-      if (filter_pred)
-	{
-	  heap_attrinfo_end (thread_p, filter_pred->cache_pred);
-	}
-      if (func_index_info.expr)
-	{
-	  heap_attrinfo_end (thread_p, func_index_info.expr->cache_attrinfo);
-	}
-    }
-
-  if (tmp_args.scancache_inited)
-    {
-      heap_scancache_end (thread_p, &scan_cache);
-    }
-
-  if (filter_pred != NULL)
-    {
-      /* to clear db values from dbvalue regu variable */
-      qexec_clear_pred_context (thread_p, filter_pred, true);
-
-      if (filter_pred->unpack_info != NULL)
-	{
-	  free_xasl_unpack_info (thread_p, filter_pred->unpack_info);
-	}
-      db_private_free_and_init (thread_p, filter_pred);
-    }
-
-  if (func_index_info.expr != NULL)
-    {
-      (void) qexec_clear_func_pred (thread_p, func_index_info.expr);
-    }
-
-  if (func_unpack_info != NULL)
-    {
-      free_xasl_unpack_info (thread_p, func_unpack_info);
-    }
+  heap_scancache_and_attrinfo_end (thread_p, &tmp_args, &scan_cache, &attr_info);
+  clear_pred_and_unpack (thread_p, &tmp_args, func_unpack_info);
 
   if (list_btid != NULL)
     {
@@ -4884,6 +4777,8 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
   PERF_UTIME_TRACKER_START (thread_p, &time_online_index);
 
+  p_prefix_length = (attrs_prefix_length) ?  &(attrs_prefix_length[0]) : NULL;	
+
   /* Start extracting from heap. */
   for (;;)
     {
@@ -4949,12 +4844,6 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	    {
 	      break;
 	    }
-	}
-
-      p_prefix_length = NULL;
-      if (attrs_prefix_length)
-	{
-	  p_prefix_length = &(attrs_prefix_length[0]);
 	}
 
       /* Generate the key : provide key_type domain - needed for compares during sort */
