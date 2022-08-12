@@ -491,7 +491,7 @@ extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thre
 extern DB_VALUE *heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, int *atts_prefix_length,
 					     HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, DB_VALUE * dbvalue,
 					     char *buf, FUNCTION_INDEX_INFO * func_index_info,
-					     TP_DOMAIN * midxkey_domain);
+					     TP_DOMAIN * midxkey_domain, OID * cur_oid);
 extern int heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * class_recdes,
 					   HEAP_CACHE_ATTRINFO * attr_info, HEAP_IDX_ELEMENTS_INFO * idx_info);
 extern int heap_attrinfo_start_with_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid,

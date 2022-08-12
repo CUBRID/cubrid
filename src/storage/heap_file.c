@@ -12704,7 +12704,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 DB_VALUE *
 heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, int *atts_prefix_length,
 			    HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, DB_VALUE * db_valuep, char *buf,
-			    FUNCTION_INDEX_INFO * func_index_info, TP_DOMAIN * midxkey_domain)
+			    FUNCTION_INDEX_INFO * func_index_info, TP_DOMAIN * midxkey_domain, OID * cur_oid)
 {
   DB_VALUE *ret_valp;
   DB_VALUE *fi_res = NULL;
@@ -12715,6 +12715,17 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 
   if (func_index_info)
     {
+#if 1				// ctshim
+      if (func_index_info->expr)
+	{
+	  if (heap_attrinfo_read_dbvalues (thread_p, cur_oid, recdes, NULL,
+					   func_index_info->expr->cache_attrinfo) != NO_ERROR)
+	    {
+	      return NULL;
+	    }
+	}
+#endif
+
       fi_attr_index_start = func_index_info->attr_index_start;
       fi_col_id = func_index_info->col_id;
       if (heap_eval_function_index (thread_p, func_index_info, n_atts, att_ids, attr_info, recdes, -1, db_valuep,
@@ -12724,6 +12735,17 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 	}
       fi_res = db_valuep;
     }
+
+#if 1				// ctshim
+  if (n_atts == 1)
+    {
+      /* Single column index. */
+      if (heap_attrinfo_read_dbvalues (thread_p, cur_oid, recdes, NULL, attr_info) != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
+#endif
 
   /*
    *  Multi-column index.  The key is a sequence of the attribute values.
