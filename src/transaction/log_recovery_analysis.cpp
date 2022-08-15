@@ -2379,6 +2379,8 @@ log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p, MVCCID rep
 	    }
 	}
     }
+  assert ((max_possible_mvccid == smallest_mvccid && min_possible_mvccid == largest_mvccid)
+	  || (max_possible_mvccid != smallest_mvccid && min_possible_mvccid != largest_mvccid));
 
   if (smallest_mvccid == max_possible_mvccid && largest_mvccid == min_possible_mvccid)
     {
@@ -2418,8 +2420,6 @@ log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p, MVCCID rep
 
       log_Gl.hdr.mvcc_next_id = largest_mvccid + 1;
     }
-
-  const MVCCID oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
 }
 
 /* log_recovery_analysis_from_trantable_snapshot - perform recovery for a passive transaction server
