@@ -39,7 +39,11 @@
 static void log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY *thread_p, log_recovery_context &context,
     LOG_PAGE *log_page_p, const LOG_RECORD_HEADER *log_rec,
     const log_lsa &prev_lsa, const log_lsa &prev_prev_lsa);
-static int log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa, bool is_mvcc);
+static int log_rv_analysis_undo_redo_internal (THREAD_ENTRY *thread_p, int tran_id, const LOG_LSA *log_lsa,
+    LOG_TDES *&tdes);
+static int log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, const LOG_LSA *log_lsa);
+static int log_rv_analysis_mvcc_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa, LOG_PAGE *log_page_p,
+    LOG_RECTYPE log_type);
 static int log_rv_analysis_dummy_head_postpone (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa);
 static int log_rv_analysis_postpone (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa);
 static int log_rv_analysis_run_postpone (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa,
@@ -50,6 +54,7 @@ static int log_rv_analysis_commit_with_postpone (THREAD_ENTRY *thread_p, int tra
 static int log_rv_analysis_sysop_start_postpone (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa,
     LOG_PAGE *log_page_p);
 static int log_rv_analysis_atomic_sysop_start (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa);
+static void log_rv_analysis_complete_mvccid (int tran_index, const LOG_TDES *tdes);
 static int log_rv_analysis_complete (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa, LOG_PAGE *log_page_p,
 				     LOG_LSA *prev_lsa, log_recovery_context &context);
 static int log_rv_analysis_sysop_end (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa, LOG_PAGE *log_page_p);
@@ -137,8 +142,9 @@ log_rv_analysis_check_page_corruption (THREAD_ENTRY *thread_p, LOG_PAGEID pageid
       /* Found corrupted log page. */
       if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
 	{
-	  _er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld is corrupted due to partial flush.\n",
-			 (long long int) pageid);
+	  _er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld is corrupted due to partial flush"
+			 " (first_corrupted_rec_lsa = %lld|%d)\n",
+			 (long long int) pageid, LSA_AS_ARGS (&checker.get_first_corrupted_lsa ()));
 	}
     }
   return NO_ERROR;
@@ -519,19 +525,10 @@ log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY *thread_p, log_recovery_con
     }
 }
 
-/*
- * log_rv_analysis_undo_redo -
- *
- * return: error code
- *
- *   tran_id(in):
- *   lsa(in/out):
- * Note:
- */
 static int
-log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa, bool is_mvcc)
+log_rv_analysis_undo_redo_internal (THREAD_ENTRY *thread_p, int tran_id, const LOG_LSA *log_lsa, LOG_TDES *&tdes)
 {
-  LOG_TDES *tdes;
+  assert (tdes == nullptr);
 
   /*
    * If this is the first time, the transaction is seen. Assign a new
@@ -551,12 +548,90 @@ log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa
   LSA_COPY (&tdes->tail_lsa, log_lsa);
   LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
 
-  if (is_mvcc)
+  return NO_ERROR;
+}
+
+/*
+ * log_rv_analysis_undo_redo - recovery analysis for [diff] undo and/or redo log records
+ *
+ * return: error code
+ *
+ *   tran_id(in):
+ *   lsa(in/out):
+ * Note:
+ */
+static int
+log_rv_analysis_undo_redo (THREAD_ENTRY *thread_p, int tran_id, const LOG_LSA *log_lsa)
+{
+  LOG_TDES *tdes = nullptr;
+  return log_rv_analysis_undo_redo_internal (thread_p, tran_id, log_lsa, tdes);
+}
+
+/*
+ * log_rv_analysis_mvcc_undo_redo - recovery analysis for mvcc [diff] undo and/or redo log records
+ *
+ * return: error code
+ *
+ *   tran_id(in):
+ *   lsa(in/out):
+ * Note:
+ */
+static int
+log_rv_analysis_mvcc_undo_redo (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa, LOG_PAGE *log_page_p,
+				LOG_RECTYPE log_type)
+{
+  LOG_TDES *tdes = nullptr;
+  int error_code = log_rv_analysis_undo_redo_internal (thread_p, tran_id, log_lsa, tdes);
+  if (error_code != NO_ERROR)
     {
-      tdes->last_mvcc_lsa = *log_lsa;
+      return error_code;
+    }
+  assert (tdes != nullptr);
+
+  // MVCC handling
+  tdes->last_mvcc_lsa = *log_lsa;
+
+  // assign transaction mvccid from log record to transaction descriptor
+  assert (log_page_p != nullptr);
+
+  // move read pointer past the log header which is actually read upper in the stack
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
+  switch (log_type)
+    {
+    case LOG_MVCC_UNDOREDO_DATA:
+    case LOG_MVCC_DIFF_UNDOREDO_DATA:
+    {
+      // align to read the specific record info
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_UNDOREDO), log_lsa, log_page_p);
+      const LOG_REC_MVCC_UNDOREDO *const log_rec
+	= (const LOG_REC_MVCC_UNDOREDO *) ((char *)log_page_p->area + log_lsa->offset);
+      tdes->mvccinfo.id = log_rec->mvccid;
+      break;
+    }
+    case LOG_MVCC_UNDO_DATA:
+    {
+      // align to read the specific record info
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_UNDO), log_lsa, log_page_p);
+      const LOG_REC_MVCC_UNDO *const log_rec
+	= (const LOG_REC_MVCC_UNDO *) ((char *)log_page_p->area + log_lsa->offset);
+      tdes->mvccinfo.id = log_rec->mvccid;
+      break;
+    }
+    case LOG_MVCC_REDO_DATA:
+    {
+      // align to read the specific record info
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_REDO), log_lsa, log_page_p);
+      const LOG_REC_MVCC_REDO *const log_rec
+	= (const LOG_REC_MVCC_REDO *) ((char *)log_page_p->area + log_lsa->offset);
+      tdes->mvccinfo.id = log_rec->mvccid;
+      break;
+    }
+    default:
+      assert ("other log record not expected to be handled here" == nullptr);
+      error_code = ER_FAILED;
     }
 
-  return NO_ERROR;
+  return error_code;
 }
 
 /*
@@ -965,11 +1040,31 @@ log_rv_analysis_assigned_mvccid (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *l
 
   tdes->last_mvcc_lsa = *log_lsa;
 
+  // move read pointer past the log header which is actually read upper in the stack
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
+  // align to read the specific record info
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_ASSIGNED_MVCCID), log_lsa, log_page_p);
   auto rec = (const LOG_REC_ASSIGNED_MVCCID *) (log_page_p->area + log_lsa->offset);
   tdes->mvccinfo.id = rec->mvccid;
 
   return NO_ERROR;
+}
+
+static void
+log_rv_analysis_complete_mvccid (int tran_index, const LOG_TDES *tdes)
+{
+  if (is_passive_transaction_server ())
+    {
+      if (MVCCID_IS_VALID (tdes->mvccinfo.id))
+	{
+	  assert (!LSA_ISNULL (&tdes->last_mvcc_lsa));
+	  log_Gl.mvcc_table.complete_mvcc (tran_index, tdes->mvccinfo.id, true);
+	}
+      else
+	{
+	  assert (LSA_ISNULL (&tdes->last_mvcc_lsa));
+	}
+    }
 }
 
 /*
@@ -998,8 +1093,12 @@ log_rv_analysis_complete (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa,
       // The transaction has been fully completed. Therefore, it was not active at the time of the crash.
       if (tran_index != NULL_TRAN_INDEX)
 	{
+	  LOG_TDES *const tdes = LOG_FIND_TDES (tran_index);
+	  // newer quick fix on top of older quick fix: mark the mvccid as completed
+	  log_rv_analysis_complete_mvccid (tran_index, tdes);
+
 	  // quick fix: reset mvccid.
-	  LOG_FIND_TDES (tran_index)->mvccinfo.id = MVCCID_NULL;
+	  tdes->mvccinfo.id = MVCCID_NULL;
 	  logtb_free_tran_index (thread_p, tran_index);
 	}
       return NO_ERROR;
@@ -1045,8 +1144,12 @@ log_rv_analysis_complete (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa,
       // Transaction is completed.
       if (tran_index != NULL_TRAN_INDEX)
 	{
+	  LOG_TDES *const tdes = LOG_FIND_TDES (tran_index);
+	  // newer quick fix on top of older quick fix: mark the mvccid as completed
+	  log_rv_analysis_complete_mvccid (tran_index, tdes);
+
 	  // quick fix: reset mvccid.
-	  LOG_FIND_TDES (tran_index)->mvccinfo.id = MVCCID_NULL;
+	  tdes->mvccinfo.id = MVCCID_NULL;
 	  logtb_free_tran_index (thread_p, tran_index);
 	}
       return NO_ERROR;
@@ -1624,14 +1727,14 @@ log_rv_analysis_record_on_tran_server (THREAD_ENTRY *thread_p, LOG_RECTYPE log_t
     case LOG_MVCC_DIFF_UNDOREDO_DATA:
     case LOG_MVCC_UNDO_DATA:
     case LOG_MVCC_REDO_DATA:
-      (void) log_rv_analysis_undo_redo (thread_p, tran_id, log_lsa, true);
+      (void) log_rv_analysis_mvcc_undo_redo (thread_p, tran_id, log_lsa, log_page_p, log_type);
       break;
     case LOG_UNDOREDO_DATA:
     case LOG_DIFF_UNDOREDO_DATA:
     case LOG_UNDO_DATA:
     case LOG_REDO_DATA:
     case LOG_DBEXTERN_REDO_DATA:
-      (void) log_rv_analysis_undo_redo (thread_p, tran_id, log_lsa, false);
+      (void) log_rv_analysis_undo_redo (thread_p, tran_id, log_lsa);
       break;
 
     case LOG_DUMMY_HEAD_POSTPONE:

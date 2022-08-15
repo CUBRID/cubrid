@@ -84,7 +84,7 @@ namespace cublog
 	// mvccid is a sub-id, as it has a valid parent mvccid
 	assert (MVCCID_IS_NORMAL (parent_mvccid));
 
-        const auto found_it = m_mapped_mvccids.find (tranid);
+	const auto found_it = m_mapped_mvccids.find (tranid);
 	assert_release (found_it != m_mapped_mvccids.cend ());
 	if (found_it != m_mapped_mvccids.cend ())
 	  {
@@ -139,19 +139,19 @@ namespace cublog
 	// all sub-ids should have already been completed
 	assert (found_it->second.m_sub_ids.empty ());
 
-	// TODO: temporary using system transaction to complete MVCC; if this proves to be incorrect
-	// another solution is to reserve an extra transaction in the transaction table (eg: transaction
-	// at index 1) and use that specifically for transactional log replication MVCC completion;
-	// also, this relates to the transaction index used in the replicator thread (see function
-	// replicator::redo_upto_nxio_lsa
-	log_Gl.mvcc_table.complete_mvcc (LOG_SYSTEM_TRAN_INDEX, found_it->second.m_id, committed);
-
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
 	  {
 	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] complete_mvcc FOUND tranid=%d mvccid=%llu %s\n",
 			   tranid, (unsigned long long)found_it->second.m_id, (committed ? "COMMITED" : "ABORTED"));
 	    dump_map ();
 	  }
+
+	// TODO: temporary using system transaction to complete MVCC; if this proves to be incorrect
+	// another solution is to reserve an extra transaction in the transaction table (eg: transaction
+	// at index 1) and use that specifically for transactional log replication MVCC completion;
+	// also, this relates to the transaction index used in the replicator thread (see function
+	// replicator::redo_upto_nxio_lsa
+	log_Gl.mvcc_table.complete_mvcc (LOG_SYSTEM_TRAN_INDEX, found_it->second.m_id, committed);
 
 	m_mapped_mvccids.erase (found_it);
       }

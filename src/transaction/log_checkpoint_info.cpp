@@ -72,6 +72,7 @@ namespace cublog
       }
 
     serializator.pack_bool (m_has_2pc);
+    serializator.pack_bigint (m_mvcc_next_id);
   }
 
   void
@@ -122,6 +123,7 @@ namespace cublog
       }
 
     deserializator.unpack_bool (m_has_2pc);
+    deserializator.unpack_bigint (m_mvcc_next_id);
   }
 
   size_t
@@ -163,12 +165,14 @@ namespace cublog
       }
 
     size += serializator.get_packed_bool_size (start_offset + size);
+    size += serializator.get_packed_bigint_size (start_offset + size);
 
     return size;
   }
 
   void
-  checkpoint_info::load_checkpoint_trans (log_tdes &tdes, LOG_LSA &smallest_lsa)
+  checkpoint_info::load_checkpoint_trans (log_tdes &tdes, LOG_LSA &smallest_lsa,
+					  bool &at_least_one_active_transaction_has_valid_mvccid)
   {
     if (tdes.trid != NULL_TRANID && !tdes.tail_lsa.is_null () && tdes.commit_abort_lsa.is_null ())
       {
@@ -180,6 +184,8 @@ namespace cublog
 	chkpt_tran.state = tdes.state;
 	chkpt_tran.mvcc_id = tdes.mvccinfo.id;
 
+	at_least_one_active_transaction_has_valid_mvccid =
+		at_least_one_active_transaction_has_valid_mvccid || MVCCID_IS_NORMAL (tdes.mvccinfo.id);
 	if (tdes.mvccinfo.sub_ids.size () == 0)
 	  {
 	    chkpt_tran.mvcc_sub_id = MVCCID_NULL;
@@ -188,6 +194,8 @@ namespace cublog
 	  {
 	    assert (tdes.mvccinfo.sub_ids.size () == 1);
 	    chkpt_tran.mvcc_sub_id = tdes.mvccinfo.sub_ids[0];
+	    at_least_one_active_transaction_has_valid_mvccid =
+		    at_least_one_active_transaction_has_valid_mvccid || MVCCID_IS_NORMAL (tdes.mvccinfo.sub_ids[0]);
 	  }
 
 	LSA_COPY (&chkpt_tran.head_lsa, &tdes.head_lsa);
@@ -225,6 +233,9 @@ namespace cublog
   void
   checkpoint_info::load_checkpoint_topop (log_tdes &tdes)
   {
+    // TODO:
+    //  - do the sysops/topops occur only in the context of an active transactions?
+    //  - if yes, then does the condition here implies the complete condition in load_checkpoint_trans?
     if (tdes.trid != NULL_TRANID && (!LSA_ISNULL (&tdes.rcv.sysop_start_postpone_lsa)
 				     || !LSA_ISNULL (&tdes.rcv.atomic_sysop_start_lsa)))
       {
@@ -245,7 +256,7 @@ namespace cublog
   void
   checkpoint_info::load_trantable_snapshot (THREAD_ENTRY *thread_p, LOG_LSA &smallest_lsa)
   {
-    //ENTER the critical section
+    // ENTER the critical section
     TR_TABLE_CS_ENTER (thread_p);
     log_Gl.prior_info.prior_lsa_mutex.lock ();
 
@@ -255,7 +266,8 @@ namespace cublog
       TR_TABLE_CS_EXIT (thread_p);
     });
 
-    /* CHECKPOINT THE TRANSACTION TABLE */
+    // CHECKPOINT THE TRANSACTION TABLE
+    bool at_least_one_active_transaction_has_valid_mvccid = false;
     LSA_SET_NULL (&smallest_lsa);
     for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
       {
@@ -269,13 +281,15 @@ namespace cublog
 	  }
 	LOG_TDES *act_tdes = LOG_FIND_TDES (i);
 	assert (act_tdes != nullptr);
-	load_checkpoint_trans (*act_tdes, smallest_lsa);
+	load_checkpoint_trans (*act_tdes, smallest_lsa, at_least_one_active_transaction_has_valid_mvccid);
 	load_checkpoint_topop (*act_tdes);
 	if (LOG_ISTRAN_2PC (act_tdes))
 	  {
 	    m_has_2pc = true;
 	  }
       }
+    assert ((m_trans.size () > 0 && m_sysops.size () <= m_trans.size ())
+	    || (m_trans.empty () && m_sysops.empty ()));
 
     // Checkpoint system transactions' topops
     log_system_tdes::map_func mapper = [this] (log_tdes &tdes)
@@ -285,6 +299,16 @@ namespace cublog
     log_system_tdes::map_all_tdes (mapper);
 
     m_snapshot_lsa = log_Gl.prior_info.prev_lsa;
+
+    // either no active transaction present or none of the active transactions has an active mvccid;
+    // it is needed to relay most recent mvccid as part of the
+    if (!at_least_one_active_transaction_has_valid_mvccid)
+      {
+	// TODO: is any lock needed to ensure consistency of reading the mvccid
+	// a client transaction can acquire a new mvccid while not being blocked by the prior lock currently held
+	m_mvcc_next_id = log_Gl.hdr.mvcc_next_id;
+	assert (MVCCID_IS_VALID (m_mvcc_next_id));
+      }
   }
 
   void
@@ -452,14 +476,23 @@ namespace cublog
     m_start_redo_lsa = start_redo_lsa;
   }
 
+
+  MVCCID
+  checkpoint_info::get_mvcc_next_id () const
+  {
+    return m_mvcc_next_id;
+  }
+
   void
   checkpoint_info::dump (FILE *out_fp)
   {
     assert (out_fp != nullptr);
 
     fprintf (out_fp, "-->> Data:\n");
-    fprintf (out_fp, "  start_redo_lsa = %lld|%d  snapshot_lsa = %lld|%d  has_2pc = %d\n",
-	     LSA_AS_ARGS (&m_start_redo_lsa), LSA_AS_ARGS (&m_snapshot_lsa), (int)m_has_2pc);
+    fprintf (out_fp, "  start_redo_lsa = %lld|%d  snapshot_lsa = %lld|%d  has_2pc = %d\n"
+	     "  mvcc_next_id = %llu\n",
+	     LSA_AS_ARGS (&m_start_redo_lsa), LSA_AS_ARGS (&m_snapshot_lsa), (int)m_has_2pc,
+	     (unsigned long long)m_mvcc_next_id);
 
     fprintf (out_fp, "  transaction_count = %u :\n", (unsigned) m_trans.size ());
     int index = 0;
