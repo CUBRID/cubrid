@@ -2799,7 +2799,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log
 	    }
 
 	  logpb_finalize_pool (thread_p);
-	  error_code = logtb_define_trantable_log_latch (thread_p, log_Gl.trantable.num_total_indices);
+	  error_code = logtb_define_trantable_log_latch (thread_p, log_Gl.trantable.num_total_indices, true);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -8858,7 +8858,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 		  goto error;
 		}
 
-	      error_code = logtb_define_trantable_log_latch (thread_p, -1);
+	      error_code = logtb_define_trantable_log_latch (thread_p, -1, true);
 	      if (error_code != NO_ERROR)
 		{
 		  LOG_CS_EXIT (thread_p);
@@ -10581,7 +10581,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 		}
 	      else
 		{
-		  error_code = logtb_define_trantable_log_latch (thread_p, -1);
+		  error_code = logtb_define_trantable_log_latch (thread_p, -1, true);
 		  if (error_code != NO_ERROR)
 		    {
 		      return error_code;
@@ -10732,7 +10732,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
     {
       logpb_finalize_pool (thread_p);
       (void) pgbuf_invalidate_all (thread_p, NULL_VOLID);
-      logtb_undefine_trantable (thread_p);
+      logtb_undefine_trantable (thread_p, true);
       if (log_Gl.append.vdes != NULL_VOLDES)
 	{
 	  fileio_dismount (thread_p, log_Gl.append.vdes);

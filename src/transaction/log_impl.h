@@ -1091,8 +1091,9 @@ extern void logpb_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgp
 
 extern void *logtb_realloc_topops_stack (LOG_TDES * tdes, int num_elms);
 extern void logtb_define_trantable (THREAD_ENTRY * thread_p, int num_expected_tran_indices, int num_expected_locks);
-extern int logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran_indices);
-extern void logtb_undefine_trantable (THREAD_ENTRY * thread_p);
+extern int logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran_indices,
+					     bool affect_mvcc_table);
+extern void logtb_undefine_trantable (THREAD_ENTRY * thread_p, bool affect_mvcc_table);
 extern int logtb_get_number_assigned_tran_indices (void);
 extern int logtb_get_number_of_total_tran_indices (void);
 #if defined(ENABLE_UNUSED_FUNCTION)

@@ -1269,7 +1269,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
       LOG_CS_EXIT (thread_p);
 
-      error_code = logtb_define_trantable_log_latch (thread_p, log_Gl.trantable.num_total_indices);
+      error_code = logtb_define_trantable_log_latch (thread_p, log_Gl.trantable.num_total_indices, true);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -1365,7 +1365,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
    * Total number of transaction descriptor is set to the value of
    * max_clients+1
    */
-  error_code = logtb_define_trantable_log_latch (thread_p, -1);
+  error_code = logtb_define_trantable_log_latch (thread_p, -1, true);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -1385,7 +1385,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 			      &log_Gl.hdr.db_creation) != true)
 	{
 	  /* The log does not belong to the given database */
-	  logtb_undefine_trantable (thread_p);
+	  logtb_undefine_trantable (thread_p, true);
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_DOESNT_CORRESPOND_TO_DATABASE, 1, log_Name_active);
 	  error_code = ER_LOG_DOESNT_CORRESPOND_TO_DATABASE;
 	  goto error;
@@ -1685,6 +1685,15 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
 
   // NOTE: do not re-define trantable here; already called in boot_restart_server
   // calling again here, will reset all info in already initialized transaction table
+  //TODO: re-define transaction table making sure not to touch mvcc table
+  constexpr bool affect_mvcc_table = false;
+  err_code = logtb_define_trantable_log_latch (thread_p, -1, affect_mvcc_table);
+  if (err_code != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_initialize_passive_tran_server: error initializing transaction table");
+      return;
+    }
 
   // not other purpose on passive transaction server than to conform various checks that rely on the recovery state
   // one such example: the check for "is temporary volume" in page buffer
@@ -1918,7 +1927,7 @@ log_final (THREAD_ENTRY * thread_p)
 
   if (!logpb_is_pool_initialized ())
     {
-      logtb_undefine_trantable (thread_p);
+      logtb_undefine_trantable (thread_p, true);
       LOG_CS_EXIT (thread_p);
       return;
     }
@@ -1926,7 +1935,7 @@ log_final (THREAD_ENTRY * thread_p)
   if (!log_Log_header_initialized)
     {
       logpb_finalize_pool (thread_p);
-      logtb_undefine_trantable (thread_p);
+      logtb_undefine_trantable (thread_p, true);
       LOG_CS_EXIT (thread_p);
       return;
     }
@@ -2005,7 +2014,7 @@ log_final (THREAD_ENTRY * thread_p)
 
   log_Gl.m_metainfo.clear ();
 
-  logtb_undefine_trantable (thread_p);
+  logtb_undefine_trantable (thread_p, true);
 
   if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
@@ -9302,7 +9311,7 @@ log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fullname, const ch
 		  return db_iopagesize;
 		}
 
-	      if (logtb_define_trantable_log_latch (thread_p, log_Gl.trantable.num_total_indices) != NO_ERROR)
+	      if (logtb_define_trantable_log_latch (thread_p, log_Gl.trantable.num_total_indices, true) != NO_ERROR)
 		{
 		  LOG_CS_EXIT (thread_p);
 		  return -1;

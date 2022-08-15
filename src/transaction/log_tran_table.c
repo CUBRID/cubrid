@@ -372,7 +372,7 @@ logtb_define_trantable (THREAD_ENTRY * thread_p, int num_expected_tran_indices, 
       logpb_finalize_pool (thread_p);
     }
 
-  const int err_code = logtb_define_trantable_log_latch (thread_p, num_expected_tran_indices);
+  const int err_code = logtb_define_trantable_log_latch (thread_p, num_expected_tran_indices, true);
   if (err_code != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logtb_define_trantable: error defining transaction table");
@@ -399,7 +399,7 @@ logtb_define_trantable (THREAD_ENTRY * thread_p, int num_expected_tran_indices, 
  *              other uses).
  */
 int
-logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran_indices)
+logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran_indices, bool affect_mvcc_table)
 {
   int error_code = NO_ERROR;
 
@@ -420,7 +420,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
   /* If there is an already defined table, free such a table */
   if (log_Gl.trantable.area != NULL)
     {
-      logtb_undefine_trantable (thread_p);
+      logtb_undefine_trantable (thread_p, affect_mvcc_table);
     }
   else
     {
@@ -432,6 +432,9 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
    * Create an area to keep the number of desired transaction descriptors
    */
 
+  // TODO: (crsdbg) this will call:
+  //  - log_Gl.mvcc_table.alloc_transaction_lowest_active
+  // but will not change mvcctable current transaction status
   error_code = logtb_expand_trantable (thread_p, num_expected_tran_indices);
   if (error_code != NO_ERROR)
     {
@@ -442,7 +445,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
        */
       if (log_Gl.trantable.area != NULL)
 	{
-	  logtb_undefine_trantable (thread_p);
+	  logtb_undefine_trantable (thread_p, affect_mvcc_table);
 	}
 
 #if defined(SERVER_MODE)
@@ -457,7 +460,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
 	}
       else
 	{
-	  error_code = logtb_define_trantable_log_latch (thread_p, LOG_ESTIMATE_NACTIVE_TRANS);
+	  error_code = logtb_define_trantable_log_latch (thread_p, LOG_ESTIMATE_NACTIVE_TRANS, affect_mvcc_table);
 	  return error_code;
 	}
     }
@@ -478,7 +481,10 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 
-  log_Gl.mvcc_table.initialize ();
+  if (affect_mvcc_table)
+    {
+      log_Gl.mvcc_table.initialize ();
+    }
 
   /* Initialize the lock manager and the page buffer pool */
   error_code = lock_initialize ();
@@ -494,7 +500,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
   return error_code;
 
 error:
-  logtb_undefine_trantable (thread_p);
+  logtb_undefine_trantable (thread_p, true);
   logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_def_trantable");
 
   return error_code;
@@ -566,13 +572,16 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
  * Note: Undefine and free the transaction table space.
  */
 void
-logtb_undefine_trantable (THREAD_ENTRY * thread_p)
+logtb_undefine_trantable (THREAD_ENTRY * thread_p, bool affect_mvcc_table)
 {
   LOG_ADDR_TDESAREA *area;
   LOG_TDES *tdes;		/* Transaction descriptor */
   int i;
 
-  log_Gl.mvcc_table.finalize ();
+  if (affect_mvcc_table)
+    {
+      log_Gl.mvcc_table.finalize ();
+    }
   lock_finalize ();
   file_manager_final ();
 
@@ -1477,6 +1486,7 @@ logtb_free_tran_mvcc_info (LOG_TDES * tdes)
   MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
 
   curr_mvcc_info->snapshot.m_active_mvccs.finalize ();
+  // TODO: why is this not zero here? shouldn't these mvccid's have already been cleaned/completed?
   assert (curr_mvcc_info->sub_ids.size () <= 1);
   curr_mvcc_info->sub_ids.clear ();
 }
