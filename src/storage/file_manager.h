@@ -132,7 +132,7 @@ union file_descriptors
   FILE_HEAP_DES heap;
   FILE_OVF_HEAP_DES heap_overflow;
   FILE_BTREE_DES btree;
-  FILE_OVF_BTREE_DES btree_key_overflow;	/* TODO: rename FILE_OVF_BTREE_DES */
+  FILE_OVF_BTREE_DES btree_key_overflow;
   FILE_EHASH_DES ehash;
   FILE_VACUUM_DATA_DES vacuum_data;
   char dummy_align[FILE_DESCRIPTORS_SIZE];
