@@ -5396,6 +5396,8 @@ end:
 
   assert (error_code == NO_ERROR);
 
+  log_append_undo_data (thread_p, RVHF_CREATE_HEAP, &addr_hdr, sizeof (HFID), hfid);
+
   log_sysop_attach_to_outer (thread_p);
   vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
@@ -25712,6 +25714,34 @@ heap_rv_dump_append_pages_to_heap (FILE * fp, int length, void *data)
   strbuf ("\n");
 
   fprintf (fp, "%s", strbuf.get_buffer ());
+}
+
+int
+heap_rv_undo_create_heap (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  int error_code = NO_ERROR;
+  HFID *hfid = nullptr;
+  VFID ovf_vfid = VFID_INITIALIZER;
+
+  assert (sizeof (HFID) == rcv->length);
+
+  hfid = (HFID *) rcv->data;
+
+  if (heap_ovf_find_vfid (thread_p, hfid, &ovf_vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
+    {
+      log_sysop_start (thread_p);
+      error_code = file_destroy (thread_p, &ovf_vfid, false);
+      if (error_code != NO_ERROR)
+       {
+         /* Not acceptable. */
+         assert_release (false);
+         log_sysop_abort (thread_p);
+         return error_code;
+       }
+      log_sysop_end_logical_compensate (thread_p, &rcv->reference_lsa);
+    }
+
+  return error_code;  
 }
 
 static int

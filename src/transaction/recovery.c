@@ -830,6 +830,18 @@ struct rvfun RV_fun[] = {
    file_rv_set_tde_algorithm,
    NULL,
    NULL},
+  {RVHF_CREATE_HEAP,
+   "RVHF_CREATE_HEAP",
+   heap_rv_undo_create_heap,
+   NULL,
+   NULL,
+   NULL},
+  {RVBT_CREATE_BTREE,
+   "RVHF_CREATE_HEAP",
+   btree_rv_undo_create_btree,
+   NULL,
+   NULL,
+   NULL},
 };
 
 /*

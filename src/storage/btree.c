@@ -33142,6 +33142,7 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
   FILE_DESCRIPTORS des;
   VPID vpid_root;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+  LOG_DATA_ADDR addr_hdr = LOG_DATA_ADDR_INITIALIZER;
 
   int error_code = NO_ERROR;
 
@@ -33197,6 +33198,9 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
   btid->root_pageid = vpid_root.pageid;
 
   log_sysop_commit (thread_p);
+
+  log_append_undo_data (thread_p, RVBT_CREATE_BTREE, &addr_hdr, sizeof (BTID), btid);
+
   return NO_ERROR;
 }
 
@@ -35435,6 +35439,40 @@ btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV 
   pr_clear_value (&key);
 
   return NO_ERROR;
+}
+
+int
+btree_rv_undo_create_btree (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  int error_code = NO_ERROR;
+  BTID *btid = nullptr;
+  BTREE_ROOT_HEADER *root_header = NULL;
+  PAGE_PTR root_page;
+
+  assert (sizeof (BTID) == rcv->length);
+
+  btid = (BTID *) rcv->data;
+
+  root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, &root_header, NULL);
+
+  if (!VFID_ISNULL (&root_header->ovfid))
+    {
+      log_sysop_start (thread_p);
+      error_code = file_destroy (thread_p, &root_header->ovfid, false);
+      if (error_code != NO_ERROR)
+	{
+	  /* Not acceptable. */
+	  assert_release (false);
+	  pgbuf_unfix (thread_p, root_page);
+	  log_sysop_abort (thread_p);
+	  return error_code;
+	}
+      log_sysop_end_logical_compensate (thread_p, &rcv->reference_lsa);
+    }
+
+  pgbuf_unfix (thread_p, root_page);
+
+  return error_code;
 }
 
 void
