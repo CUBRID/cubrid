@@ -35461,6 +35461,13 @@ btree_rv_undo_create_btree (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   btid = (BTID *) rcv->data;
 
   root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, &root_header, NULL);
+  if (root_page == NULL)
+    {
+      /* Not acceptable. */
+      assert_release (false);
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
 
   if (!VFID_ISNULL (&root_header->ovfid))
     {
