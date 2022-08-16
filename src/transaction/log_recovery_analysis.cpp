@@ -219,8 +219,6 @@ log_recovery_analysis_internal (THREAD_ENTRY *thread_p, INT64 *num_redo_log_reco
 	  assert (LSA_LE (&record_nav_lsa, stop_before_lsa));
 	  if (LSA_EQ (&record_nav_lsa, stop_before_lsa))
 	    {
-	      _er_log_debug (ARG_FILE_LINE, "crsdbg: log_recovery_analysis stop_before_lsa = %lld|%d\n",
-			     LSA_AS_ARGS (stop_before_lsa));
 	      break;
 	    }
 	}
