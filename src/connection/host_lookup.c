@@ -285,10 +285,13 @@ gethostbyname_r_uhost (const char *name, struct hostent *ret, char *buf, size_t 
 int
 gethostbyname_r_uhost (const char *name, struct hostent *ret, struct hostent_data *ht_data)
 #else
+struct hostent *
+gethostbyname (const char *name)
 #error "HAVE_GETHOSTBYNAME_R"
-#endif /* HAVE_GETHOSTBYNAME_R_GLIBC */
-#endif /* HAVE_GETHOSTBYNAME_R */
+#endif				/* HAVE_GETHOSTBYNAME_R_GLIBC */
+#endif				/* HAVE_GETHOSTBYNAME_R */
 {
+
   struct hostent *hp_memcpy = NULL;
 
   if (host_conf_Use < 0)
@@ -307,6 +310,7 @@ gethostbyname_r_uhost (const char *name, struct hostent *ret, struct hostent_dat
 #elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
       return gethostbyname_r (name, ret, &ht_data);
 #else
+      return gethostbyname (name);
 #error "HAVE_GETHOSTBYNAME_R"
 #endif
 #endif /* !HAVE_GETHOSTBYNAME_R */
