@@ -1685,7 +1685,18 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
 
   // NOTE: do not re-define trantable here; already called in boot_restart_server
   // calling again here, will reset all info in already initialized transaction table
-  //TODO: re-define transaction table making sure not to touch mvcc table
+  // TODO: re-define transaction table making sure not to touch mvcc table
+  // TODO: before that, reset all mvccids from all transactions in the table; the clear tdes function expects these
+  //  ids to be null, and we do not want to affect that invariant because it guards otehr valid cases
+  static_assert (LOG_SYSTEM_TRAN_INDEX == 0, "");
+  for (int tr_idx = LOG_SYSTEM_TRAN_INDEX + 1; tr_idx < log_Gl.trantable.num_total_indices; ++tr_idx)
+    {
+      log_tdes *const tdes = log_Gl.trantable.all_tdes[tr_idx];
+      if (tdes != nullptr && MVCCID_IS_VALID (tdes->mvccinfo.id))
+	{
+	  tdes->mvccinfo.id = MVCCID_NULL;
+	}
+    }
   constexpr bool affect_mvcc_table = false;
   err_code = logtb_define_trantable_log_latch (thread_p, -1, affect_mvcc_table);
   if (err_code != NO_ERROR)
