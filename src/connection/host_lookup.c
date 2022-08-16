@@ -26,10 +26,16 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <netdb.h>
 #include <limits.h>
-#include <arpa/inet.h>
 #include <errno.h>
+
+#if defined (WINDOWS)
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <arpa/inet.h>
+#include <netdb.h>
+#endif
 
 #include "system_parameter.h"
 #include "environment_variable.h"
