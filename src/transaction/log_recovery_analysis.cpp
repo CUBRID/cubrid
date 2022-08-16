@@ -83,7 +83,8 @@ static void log_recovery_resetlog (THREAD_ENTRY *thread_p, const LOG_LSA *new_ap
 static void log_recovery_notpartof_archives (THREAD_ENTRY *thread_p, int start_arv_num, const char *info_reason);
 static int log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
     const log_lsa &most_recent_trantable_snapshot_lsa, cublog::checkpoint_info &chkpt_info, log_lsa &snapshot_lsa);
-static void log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p, MVCCID replicated_mvcc_next_id);
+static void log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p,
+    MVCCID replicated_mvcc_next_id, std::set<MVCCID> &in_gaps_mvccids);
 
 class corruption_checker
 {
@@ -2342,10 +2343,14 @@ log_recovery_analysis_load_trantable_snapshot (THREAD_ENTRY *thread_p,
 /* log_recovery_build_mvcc_table_from_trantable - build mvcc table using transaction table
  */
 static void
-log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p, MVCCID replicated_mvcc_next_id)
+log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p, MVCCID replicated_mvcc_next_id,
+    std::set<MVCCID> &in_gaps_mvccids)
 {
   assert (is_passive_transaction_server ());
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  assert (in_gaps_mvccids.empty ());
+  in_gaps_mvccids.clear ();
 
   constexpr MVCCID max_possible_mvccid = std::numeric_limits<MVCCID>::max ();
   constexpr MVCCID min_possible_mvccid = std::numeric_limits<MVCCID>::min ();
@@ -2392,30 +2397,49 @@ log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p, MVCCID rep
 
       log_Gl.hdr.mvcc_next_id = replicated_mvcc_next_id;
       log_Gl.mvcc_table.reset_start_mvccid ();
+
+      // no mvccid in gaps inbetween present mvccid because there are no mvccids present as part of
+      // active transactions in the transaction table snapshot
     }
   else
     {
       assert (!MVCCID_IS_VALID (replicated_mvcc_next_id));
+      assert ((present_mvccids.size () == 1 && MVCCID_IS_VALID (smallest_mvccid)
+	       && smallest_mvccid == largest_mvccid)
+	      || (present_mvccids.size () > 1 && MVCCID_IS_VALID (smallest_mvccid)
+		  && MVCCID_IS_VALID (largest_mvccid) && smallest_mvccid < largest_mvccid));
 
       // at least one transaction was active on the active transaction server when the snapshot was taken
       log_Gl.hdr.mvcc_next_id = smallest_mvccid;
       log_Gl.mvcc_table.reset_start_mvccid ();
 
-      if (!present_mvccids.empty ())
+      // NOTE:
+      //  - do not complete missing mvccids here as it is possible that some of the mvccids in the gaps
+      //    between those present will appear later when log-recovery-analysing the transactional log;
+      //  - we will register these mvccids and only complete them if they do not appear after the
+      //    call to log_recovery_analysis_internal;
+      //  - there is still a fair chance that, even in that case, some mvccid that we have completed
+      //    will still appear as part of longer transactions (ie: on active transaction server, where
+      //    log and all mvccids are generated, the mvccid has been created (reserved) earlier on, but
+      //    only later added on a log record
+      //  - for example, see how LOG_ASSIGNED_MVCCID works - thus, even this effort is not error-proof
+      //    but the chance of this happening is considerably lower; it will be reduced to only long
+      //    transactions - tens of seconds, considering that a transaction table snapshot
+      //    is - currently - taken every 60 seconds
+      //
+
+      // fill with each mvccid between the smallest and the highest, that is missing from the table
+      std::set<MVCCID>::const_iterator present_mvccids_it = present_mvccids.cbegin ();
+      MVCCID prev_mvccid = *present_mvccids_it;
+      ++present_mvccids_it;
+      for (; present_mvccids_it != present_mvccids.cend (); ++present_mvccids_it)
 	{
-	  // complete each mvccid between the smallest and the highest, that is missing from the table
-	  std::set<MVCCID>::const_iterator present_mvccids_it = present_mvccids.cbegin ();
-	  MVCCID prev_mvccid = *present_mvccids_it;
-	  ++present_mvccids_it;
-	  for (; present_mvccids_it != present_mvccids.cend (); ++present_mvccids_it)
+	  const MVCCID curr_mvccid = *present_mvccids_it;
+	  for (MVCCID missing_mvccid = prev_mvccid + 1; missing_mvccid < curr_mvccid; ++missing_mvccid)
 	    {
-	      const MVCCID curr_mvccid = *present_mvccids_it;
-	      for (MVCCID missing_mvccid = prev_mvccid + 1; missing_mvccid < curr_mvccid; ++missing_mvccid)
-		{
-		  log_Gl.mvcc_table.complete_mvcc (LOG_SYSTEM_TRAN_INDEX, missing_mvccid, true);
-		}
-	      prev_mvccid = curr_mvccid;
+	      in_gaps_mvccids.insert (missing_mvccid);
 	    }
+	  prev_mvccid = curr_mvccid;
 	}
 
       log_Gl.hdr.mvcc_next_id = largest_mvccid + 1;
@@ -2469,7 +2493,8 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p,
   log_rcv_context.set_start_redo_lsa (NULL_LSA);
   log_rcv_context.set_end_redo_lsa (NULL_LSA);
 
-  log_recovery_build_mvcc_table_from_trantable (thread_p, chkpt_info.get_mvcc_next_id ());
+  std::set<MVCCID> in_gaps_mvccids;
+  log_recovery_build_mvcc_table_from_trantable (thread_p, chkpt_info.get_mvcc_next_id (), in_gaps_mvccids);
 
   // passive transaction server needs to analyze up to the point its replication will pick-up things;
   // that means until the append_lsa; incidentally, end of log record should be found at the current append_lsa, so
@@ -2488,6 +2513,8 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p,
   {
     return true;
   });
+
+  log_Gl.mvcc_table.complete_mvccids_if_still_active (LOG_SYSTEM_TRAN_INDEX, in_gaps_mvccids, true);
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, sys_tran_index);
 }

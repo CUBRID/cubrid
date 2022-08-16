@@ -567,6 +567,25 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
 }
 
 void
+mvcctable::complete_mvccids_if_still_active (int tran_index, const std::set<MVCCID> &mvccids, bool committed)
+{
+  assert (is_passive_transaction_server ());
+
+  for (const auto mvccid: mvccids)
+    {
+      bool is_active = false;
+      {
+	std::lock_guard<std::mutex> lockg { m_active_trans_mutex };
+	is_active = m_current_trans_status.m_active_mvccs.is_active (mvccid);
+      }
+      if (is_active)
+	{
+	  complete_mvcc (tran_index, mvccid, committed);
+	}
+    }
+}
+
+void
 mvcctable::complete_sub_mvcc (MVCCID mvccid)
 {
   assert (MVCCID_IS_VALID (mvccid));
