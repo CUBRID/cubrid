@@ -3296,7 +3296,6 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	    }
 	}
 
-#if 1				// ctshim
       if (sort_args->func_index_info && sort_args->func_index_info->expr)
 	{
 	  if (snapshot_dirty_satisfied != SNAPSHOT_SATISFIED)
@@ -3311,37 +3310,6 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	heap_attrinfo_generate_key (thread_p, sort_args->n_attrs, &sort_args->attr_ids[attr_offset], prefix_lengthp,
 				    &sort_args->attr_info, &sort_args->in_recdes, &dbvalue, aligned_midxkey_buf,
 				    sort_args->func_index_info, NULL, &sort_args->cur_oid);
-#else
-      if (sort_args->func_index_info && sort_args->func_index_info->expr)
-	{
-	  if (snapshot_dirty_satisfied != SNAPSHOT_SATISFIED)
-	    {
-	      /* Check snapshot before key generation. Key generation may leads to errors when a function is involved. */
-	      continue;
-	    }
-
-	  if (heap_attrinfo_read_dbvalues (thread_p, &sort_args->cur_oid, &sort_args->in_recdes, NULL,
-					   sort_args->func_index_info->expr->cache_attrinfo) != NO_ERROR)
-	    {
-	      return SORT_ERROR_OCCURRED;
-	    }
-	}
-
-      if (sort_args->n_attrs == 1)
-	{			/* single-column index */
-	  if (heap_attrinfo_read_dbvalues (thread_p, &sort_args->cur_oid, &sort_args->in_recdes, NULL,
-					   &sort_args->attr_info) != NO_ERROR)
-	    {
-	      return SORT_ERROR_OCCURRED;
-	    }
-	}
-
-      prefix_lengthp = (sort_args->attrs_prefix_length) ? &(sort_args->attrs_prefix_length[0]) : NULL;
-      dbvalue_ptr =
-	heap_attrinfo_generate_key (thread_p, sort_args->n_attrs, &sort_args->attr_ids[attr_offset], prefix_lengthp,
-				    &sort_args->attr_info, &sort_args->in_recdes, &dbvalue, aligned_midxkey_buf,
-				    sort_args->func_index_info, NULL);
-#endif
       if (dbvalue_ptr == NULL)
 	{
 	  return SORT_ERROR_OCCURRED;
@@ -4849,35 +4817,9 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	    }
 	}
 
-#if 1  // ctshim 
 /* Generate the key : provide key_type domain - needed for compares during sort */
       p_dbvalue = heap_attrinfo_generate_key (thread_p, n_attrs, &attrids[attr_offset], p_prefix_length, attr_info,
 					      &cur_record, &dbvalue, aligned_midxkey_buf, p_func_idx_info, key_type, &cur_oid);
-#else
-      if (p_func_idx_info && p_func_idx_info->expr)
-	{
-	  ret = heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &cur_record, NULL,
-					     p_func_idx_info->expr->cache_attrinfo);
-	  if (ret != NO_ERROR)
-	    {
-	      break;
-	    }
-	}
-
-      if (n_attrs == 1)
-	{
-	  /* Single column index. */
-	  ret = heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &cur_record, NULL, attr_info);
-	  if (ret != NO_ERROR)
-	    {
-	      break;
-	    }
-	}
-
-      /* Generate the key : provide key_type domain - needed for compares during sort */
-      p_dbvalue = heap_attrinfo_generate_key (thread_p, n_attrs, &attrids[attr_offset], p_prefix_length, attr_info,
-					      &cur_record, &dbvalue, aligned_midxkey_buf, p_func_idx_info, key_type);
-#endif                                              
       if (p_dbvalue == NULL)
 	{
 	  ret = ER_FAILED;

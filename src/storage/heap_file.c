@@ -12715,7 +12715,6 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 
   if (func_index_info)
     {
-#if 1				// ctshim
       if (func_index_info->expr)
 	{
 	  if (heap_attrinfo_read_dbvalues (thread_p, cur_oid, recdes, NULL,
@@ -12724,7 +12723,6 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 	      return NULL;
 	    }
 	}
-#endif
 
       fi_attr_index_start = func_index_info->attr_index_start;
       fi_col_id = func_index_info->col_id;
@@ -12736,7 +12734,6 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
       fi_res = db_valuep;
     }
 
-#if 1				// ctshim
   if (n_atts == 1)
     {
       /* Single column index. */
@@ -12745,7 +12742,6 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 	  return NULL;
 	}
     }
-#endif
 
   /*
    *  Multi-column index.  The key is a sequence of the attribute values.

@@ -11760,25 +11760,9 @@ xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
   copy_recdes.data = NULL;
   while (heap_next (thread_p, hfid, NULL, &oid, &copy_recdes, &scan_cache, COPY) == S_SUCCESS)
     {
-#if 1				// ctshim
       key_val =
 	heap_attrinfo_generate_key (thread_p, n_attrs, attr_ids, NULL, &attr_info, &copy_recdes, &tmpval,
 				    aligned_midxkey_buf, NULL, NULL, &oid);
-#else
-      if (n_attrs == 1)
-	{
-	  error_code = heap_attrinfo_read_dbvalues (thread_p, &oid, &copy_recdes, NULL, &attr_info);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto end;
-	    }
-	}
-
-      key_val =
-	heap_attrinfo_generate_key (thread_p, n_attrs, attr_ids, NULL, &attr_info, &copy_recdes, &tmpval,
-				    aligned_midxkey_buf, NULL, NULL);
-#endif
-
       if (key_val == NULL)
 	{
 	  error_code = ER_FAILED;
