@@ -62,10 +62,13 @@ extern const VPID vpid_Null_vpid;
 
 
 #define pgbuf_unfix_and_init_after_check(thread_p, pgptr) \
-  if((pgptr)) { \
-    pgbuf_unfix ((thread_p), (pgptr)); \
-    (pgptr) = NULL; \
-  }
+  do { \
+    if((pgptr)) \
+      { \
+        pgbuf_unfix ((thread_p), (pgptr)); \
+        (pgptr) = NULL; \
+      } \
+  } while(0)
 
 #define pgbuf_unfix_and_init(thread_p, pgptr) \
   do { \
