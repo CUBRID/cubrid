@@ -25716,6 +25716,13 @@ heap_rv_dump_append_pages_to_heap (FILE * fp, int length, void *data)
   fprintf (fp, "%s", strbuf.get_buffer ());
 }
 
+/*
+ * heap_rv_undo_create_heap - do logical jobs for undoing a heap creation.
+ *
+ * return	: int
+ * thread_p (in): Thread entry.
+ * rcv (in)     : Recovery structure.
+ */
 int
 heap_rv_undo_create_heap (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
@@ -25741,7 +25748,7 @@ heap_rv_undo_create_heap (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       log_sysop_end_logical_compensate (thread_p, &rcv->reference_lsa);
     }
 
-  return error_code;  
+  return error_code; 
 }
 
 static int

@@ -35441,6 +35441,13 @@ btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV 
   return NO_ERROR;
 }
 
+/*
+ * heap_rv_undo_create_btree - do logical jobs for undoing a btree creation.
+ *
+ * return	: int
+ * thread_p (in): Thread entry.
+ * rcv (in)     : Recovery structure.
+ */
 int
 btree_rv_undo_create_btree (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
