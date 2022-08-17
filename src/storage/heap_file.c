@@ -10375,7 +10375,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
  */
 int
 heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
-			     HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info)
+			     HEAP_CACHE_ATTRINFO * attr_info)
 {
   int i;
   REPR_ID reprid;		/* The disk representation of the object */
@@ -12717,8 +12717,8 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
     {
       if (func_index_info->expr)
 	{
-	  if (heap_attrinfo_read_dbvalues (thread_p, cur_oid, recdes, NULL,
-					   func_index_info->expr->cache_attrinfo) != NO_ERROR)
+	  if (heap_attrinfo_read_dbvalues (thread_p, cur_oid, recdes, func_index_info->expr->cache_attrinfo) !=
+	      NO_ERROR)
 	    {
 	      return NULL;
 	    }
@@ -12737,7 +12737,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
   if (n_atts == 1)
     {
       /* Single column index. */
-      if (heap_attrinfo_read_dbvalues (thread_p, cur_oid, recdes, NULL, attr_info) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, cur_oid, recdes, attr_info) != NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -13375,7 +13375,7 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
     }
 
   if ((heap_attrinfo_start_refoids (thread_p, class_oid, &attr_info) != NO_ERROR)
-      || heap_attrinfo_read_dbvalues (thread_p, obj_oid, recdes, NULL, &attr_info) != NO_ERROR)
+      || heap_attrinfo_read_dbvalues (thread_p, obj_oid, recdes, &attr_info) != NO_ERROR)
     {
       goto error;
     }
@@ -14303,7 +14303,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
 	      fprintf (fp, "Object-OID = %2d|%4d|%2d,\n  Length on disk = %d,\n", oid.volid, oid.pageid, oid.slotid,
 		       peek_recdes.length);
 
-	      if (heap_attrinfo_read_dbvalues (thread_p, &oid, &peek_recdes, NULL, &attr_info) != NO_ERROR)
+	      if (heap_attrinfo_read_dbvalues (thread_p, &oid, &peek_recdes, &attr_info) != NO_ERROR)
 		{
 		  fprintf (fp, "  Error ... continue\n");
 		  continue;
@@ -17496,7 +17496,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
 	  attrinfo_end = true;
 	}
 
-      if (heap_attrinfo_read_dbvalues (thread_p, &attr_info->inst_oid, recdes, NULL, cache_attr_info) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, &attr_info->inst_oid, recdes, cache_attr_info) != NO_ERROR)
 	{
 	  error = ER_FAILED;
 	  goto end;

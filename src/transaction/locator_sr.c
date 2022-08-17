@@ -4049,7 +4049,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 
   if (idx_info.has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, NULL, &index_attrinfo);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, &index_attrinfo);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -7715,7 +7715,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
    */
   if (idx_info.has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, NULL, &index_attrinfo);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, &index_attrinfo);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -8123,7 +8123,7 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICAT
 
   for (i = 0; i < num_insts; i++)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oids[i], recs[i], NULL, pred_filter->cache_pred);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oids[i], recs[i], pred_filter->cache_pred);
       if (error_code != NO_ERROR)
 	{
 	  goto end;
@@ -8300,12 +8300,12 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   new_attrinfo = &space_attrinfo[0];
   old_attrinfo = &space_attrinfo[1];
 
-  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, new_recdes, NULL, new_attrinfo);
+  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, new_recdes, new_attrinfo);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
-  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, old_recdes, NULL, old_attrinfo);
+  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, old_recdes, old_attrinfo);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -8970,7 +8970,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 	  continue;
 	}
 
-      error_code = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &copy_rec, NULL, &index_attrinfo);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &copy_rec, &index_attrinfo);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -9427,7 +9427,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 	}
 
       /* Make sure that the index entry exist */
-      if ((n_attr_ids == 1 && heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &record, NULL, &attr_info) != NO_ERROR)
+      if ((n_attr_ids == 1 && heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &record, &attr_info) != NO_ERROR)
 	  || (key = heap_attrvalue_get_key (thread_p, index_id, &attr_info, &record, &btid_info, &dbvalue, aligned_buf,
 					    NULL, NULL)) == NULL)
 	{
@@ -9876,7 +9876,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 	    }
 
 	  /* Make sure that the index entry exists */
-	  if ((heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &peek, NULL, &attr_info) != NO_ERROR)
+	  if ((heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &peek, &attr_info) != NO_ERROR)
 	      ||
 	      ((key =
 		heap_attrvalue_get_key (thread_p, index_id, &attr_info, &peek, btid, &dbvalue, aligned_buf, NULL,
@@ -12198,7 +12198,7 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
 	      goto error_exit;
 	    }
 
-	  error = heap_attrinfo_read_dbvalues (thread_p, &obj->oid, &recdes, NULL, &attr_info);
+	  error = heap_attrinfo_read_dbvalues (thread_p, &obj->oid, &recdes, &attr_info);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -13578,7 +13578,7 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
 
   if (mvcc_cond_reeval->rest_attrs->num_attrs != 0)
     {
-      if (heap_attrinfo_read_dbvalues (thread_p, oid_inst, recdesp, NULL, mvcc_cond_reeval->rest_attrs->attr_cache) !=
+      if (heap_attrinfo_read_dbvalues (thread_p, oid_inst, recdesp, mvcc_cond_reeval->rest_attrs->attr_cache) !=
 	  NO_ERROR)
 	{
 	  ev_res = V_ERROR;
@@ -13629,7 +13629,7 @@ locator_mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * 
   filter = mvcc_reev_data->range_filter;
   if (filter != NULL && filter->scan_pred != NULL && filter->scan_pred->pred_expr != NULL)
     {
-      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, NULL, filter->scan_attrs->attr_cache) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, filter->scan_attrs->attr_cache) != NO_ERROR)
 	{
 	  return V_ERROR;
 	}
@@ -13645,7 +13645,7 @@ locator_mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * 
   filter = mvcc_reev_data->key_filter;
   if (filter != NULL && filter->scan_pred != NULL && filter->scan_pred->pred_expr != NULL)
     {
-      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, NULL, filter->scan_attrs->attr_cache) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, filter->scan_attrs->attr_cache) != NO_ERROR)
 	{
 	  return V_ERROR;
 	}

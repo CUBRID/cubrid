@@ -190,7 +190,7 @@ namespace cubload
 	scan_code = heap_next (&thread_ref, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK);
 	if (scan_code == S_SUCCESS)
 	  {
-	    error = heap_attrinfo_read_dbvalues (&thread_ref, &inst_oid, &recdes, NULL, &attr_info);
+	    error = heap_attrinfo_read_dbvalues (&thread_ref, &inst_oid, &recdes, &attr_info);
 	    if (error != NO_ERROR)
 	      {
 		ASSERT_ERROR ();

@@ -3369,8 +3369,8 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
       if (sort_args->filter)
 	{
-	  if (heap_attrinfo_read_dbvalues (thread_p, &sort_args->cur_oid, &sort_args->in_recdes, NULL,
-					   sort_args->filter->cache_pred) != NO_ERROR)
+	  if (heap_attrinfo_read_dbvalues
+	      (thread_p, &sort_args->cur_oid, &sort_args->in_recdes, sort_args->filter->cache_pred) != NO_ERROR)
 	    {
 	      return SORT_ERROR_OCCURRED;
 	    }
@@ -4889,7 +4889,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
       if (filter_pred)
 	{
-	  ret = heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &cur_record, NULL, filter_pred->cache_pred);
+	  ret = heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &cur_record, filter_pred->cache_pred);
 	  if (ret != NO_ERROR)
 	    {
 	      break;
