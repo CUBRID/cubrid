@@ -329,6 +329,7 @@ namespace cublog
 	 * unilaterally aborted. The truth of this statement will be find
 	 * reading the rest of the log
 	 */
+	// TODO: tail_lsa & commit_abort_lsa condition; symmetric with load_checkpoint_trans
 	tdes = logtb_rv_find_allocate_tran_index (thread_p, chkpt.trid, &NULL_LSA);
 	if (tdes == NULL)
 	  {
