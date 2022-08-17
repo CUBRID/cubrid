@@ -275,24 +275,28 @@ typedef struct
   MVCC_REC_HEADER orig_mvcc_header;
 } S_PARAM_ST;
 
-static int put_buf_to_record (RECDES * recdes, SORT_ARGS * sort_args, int value_has_null, int key_len,
-			      OID * prev_oid, MVCC_REC_HEADER * mvcc_header, DB_VALUE * dbvalue_ptr, int cur_class,
-			      bool is_btree_ops_log);
-static int get_buf_from_record (OR_BUF * buf, RECDES * recdes, LOAD_ARGS * load_args, S_PARAM_ST * pparam, bool copy);
-static int first_leaf_page_and_init_args (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam);
+static int bt_load_put_buf_to_record (RECDES * recdes, SORT_ARGS * sort_args, int value_has_null, int key_len,
+				      OID * prev_oid, MVCC_REC_HEADER * mvcc_header, DB_VALUE * dbvalue_ptr,
+				      int cur_class, bool is_btree_ops_log);
+static int bt_load_get_buf_from_record (OR_BUF * buf, RECDES * recdes, LOAD_ARGS * load_args, S_PARAM_ST * pparam,
+					bool copy);
+static int bt_load_get_first_leaf_page_and_init_args (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
+						      S_PARAM_ST * pparam);
 static int make_new_record_on_leaf_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam,
 					 int *sp_success);
-static int mvcc_delid_invalid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam);
-static int nospace_for_new_oid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int *sp_success);
-static int add_same_key_to_record (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam,
-				   int *sp_success);
-static int notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam,
-			     char **notify_vacuum_rv_data, char *notify_vacuum_rv_data_bufalign);
-static int heap_scancache_and_attrinfo_start (THREAD_ENTRY * thread_p, SORT_ARGS * args, HEAP_SCANCACHE * scan_cache,
-					      HEAP_CACHE_ATTRINFO * attr_info, int save_cache_last_fix_page);
-static void heap_scancache_and_attrinfo_end (THREAD_ENTRY * thread_p, SORT_ARGS * args, HEAP_SCANCACHE * scan_cache,
-					     HEAP_CACHE_ATTRINFO * attr_info);
-static void clear_pred_and_unpack (THREAD_ENTRY * thread_p, SORT_ARGS * args, XASL_UNPACK_INFO * func_unpack_info);
+static int bt_load_invalidate_mvcc_del_id (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam);
+static int bt_load_nospace_for_new_oid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int *sp_success);
+static int bt_load_add_same_key_to_record (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam,
+					   int *sp_success);
+static int bt_load_notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam,
+				     char **notify_vacuum_rv_data, char *notify_vacuum_rv_data_bufalign);
+static int bt_load_heap_scancache_start_for_attrinfo (THREAD_ENTRY * thread_p, SORT_ARGS * args,
+						      HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info,
+						      int save_cache_last_fix_page);
+static void bt_load_heap_scancache_end_for_attrinfo (THREAD_ENTRY * thread_p, SORT_ARGS * args,
+						     HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info);
+static void bt_load_clear_pred_and_unpack (THREAD_ENTRY * thread_p, SORT_ARGS * args,
+					   XASL_UNPACK_INFO * func_unpack_info);
 
 /*
  * btree_get_node_header () -
@@ -722,8 +726,8 @@ btree_get_next_overflow_vpid (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, VPID *
 }
 
 static int
-heap_scancache_and_attrinfo_start (THREAD_ENTRY * thread_p, SORT_ARGS * args, HEAP_SCANCACHE * scan_cache,
-				   HEAP_CACHE_ATTRINFO * attr_info, int save_cache_last_fix_page)
+bt_load_heap_scancache_start_for_attrinfo (THREAD_ENTRY * thread_p, SORT_ARGS * args, HEAP_SCANCACHE * scan_cache,
+					   HEAP_CACHE_ATTRINFO * attr_info, int save_cache_last_fix_page)
 {
   int attr_offset = args->cur_class * args->n_attrs;
 
@@ -773,8 +777,8 @@ heap_scancache_and_attrinfo_start (THREAD_ENTRY * thread_p, SORT_ARGS * args, HE
 }
 
 static void
-heap_scancache_and_attrinfo_end (THREAD_ENTRY * thread_p, SORT_ARGS * args, HEAP_SCANCACHE * scan_cache,
-				 HEAP_CACHE_ATTRINFO * attr_info)
+bt_load_heap_scancache_end_for_attrinfo (THREAD_ENTRY * thread_p, SORT_ARGS * args, HEAP_SCANCACHE * scan_cache,
+					 HEAP_CACHE_ATTRINFO * attr_info)
 {
   if (scan_cache == NULL)
     {
@@ -807,7 +811,7 @@ heap_scancache_and_attrinfo_end (THREAD_ENTRY * thread_p, SORT_ARGS * args, HEAP
 }
 
 static void
-clear_pred_and_unpack (THREAD_ENTRY * thread_p, SORT_ARGS * args, XASL_UNPACK_INFO * func_unpack_info)
+bt_load_clear_pred_and_unpack (THREAD_ENTRY * thread_p, SORT_ARGS * args, XASL_UNPACK_INFO * func_unpack_info)
 {
   if (args->filter != NULL)
     {
@@ -999,7 +1003,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   /* Start scancache */
   has_fk = (fk_refcls_oid != NULL && !OID_ISNULL (fk_refcls_oid));
 
-  if (heap_scancache_and_attrinfo_start (thread_p, sort_args, NULL, NULL, !has_fk) != NO_ERROR)
+  if (bt_load_heap_scancache_start_for_attrinfo (thread_p, sort_args, NULL, NULL, !has_fk) != NO_ERROR)
     {
       goto error;
     }
@@ -1072,7 +1076,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 		     "load %d keys.", sort_args->n_classes, sort_args->n_nulls, sort_args->n_oids, load_args->n_keys);
     }
 
-  heap_scancache_and_attrinfo_end (thread_p, sort_args, NULL, NULL);
+  bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args, NULL, NULL);
 
   /* Just to make sure that there were entries to put into the tree */
   if (load_args->leaf.pgptr != NULL)
@@ -1160,7 +1164,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       BTREE_SET_CREATED_OVERFLOW_KEY_NOTIFICATION (thread_p, NULL, NULL, notification_class_oid, btid, bt_name);
     }
 
-  clear_pred_and_unpack (thread_p, sort_args, func_unpack_info);
+  bt_load_clear_pred_and_unpack (thread_p, sort_args, func_unpack_info);
 
   thread_p->pop_resource_tracks ();
 
@@ -1202,7 +1206,7 @@ error:
       logtb_delete_global_unique_stats (thread_p, &btid_global_stats);
     }
 
-  heap_scancache_and_attrinfo_end (thread_p, sort_args, NULL, NULL);
+  bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args, NULL, NULL);
 
   VFID_SET_NULL (&btid->vfid);
   btid->root_pageid = NULL_PAGEID;
@@ -1231,7 +1235,7 @@ error:
       load_args->pop_list = NULL;
     }
 
-  clear_pred_and_unpack (thread_p, sort_args, func_unpack_info);
+  bt_load_clear_pred_and_unpack (thread_p, sort_args, func_unpack_info);
 
   thread_p->pop_resource_tracks ();
 
@@ -2255,9 +2259,9 @@ btree_first_oid (THREAD_ENTRY * thread_p, DB_VALUE * this_key, OID * class_oid, 
 }
 
 static int
-put_buf_to_record (RECDES * recdes, SORT_ARGS * sort_args, int value_has_null, int key_len,
-		   OID * prev_oid, MVCC_REC_HEADER * mvcc_header, DB_VALUE * dbvalue_ptr, int cur_class,
-		   bool is_btree_ops_log)
+bt_load_put_buf_to_record (RECDES * recdes, SORT_ARGS * sort_args, int value_has_null, int key_len,
+			   OID * prev_oid, MVCC_REC_HEADER * mvcc_header, DB_VALUE * dbvalue_ptr, int cur_class,
+			   bool is_btree_ops_log)
 {
   int next_size;
   int record_size;
@@ -2379,7 +2383,7 @@ put_buf_to_record (RECDES * recdes, SORT_ARGS * sort_args, int value_has_null, i
 }
 
 static int
-get_buf_from_record (OR_BUF * buf, RECDES * recdes, LOAD_ARGS * load_args, S_PARAM_ST * pparam, bool copy)
+bt_load_get_buf_from_record (OR_BUF * buf, RECDES * recdes, LOAD_ARGS * load_args, S_PARAM_ST * pparam, bool copy)
 {
   int ret;
   int next_size = sizeof (char *);
@@ -2486,7 +2490,7 @@ get_buf_from_record (OR_BUF * buf, RECDES * recdes, LOAD_ARGS * load_args, S_PAR
 }
 
 static int
-first_leaf_page_and_init_args (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam)
+bt_load_get_first_leaf_page_and_init_args (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam)
 {
   /* Allocate the first page for the index */
   int ret = btree_load_new_page (thread_p, load_args->btid->sys_btid, &load_args->leaf.hdr, 1, &load_args->leaf.vpid,
@@ -2596,7 +2600,7 @@ make_new_record_on_leaf_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_
 }
 
 static int
-mvcc_delid_invalid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam)
+bt_load_invalidate_mvcc_del_id (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam)
 {
   int ret;
 
@@ -2662,7 +2666,7 @@ mvcc_delid_invalid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST *
 }
 
 static int
-nospace_for_new_oid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int *sp_success)
+bt_load_nospace_for_new_oid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int *sp_success)
 {
   int ret;
   PAGE_PTR new_ovfpgptr = NULL;
@@ -2762,7 +2766,7 @@ nospace_for_new_oid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int *sp_suc
 }
 
 static int
-add_same_key_to_record (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam, int *sp_success)
+bt_load_add_same_key_to_record (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam, int *sp_success)
 {
   int ret;
 
@@ -2772,7 +2776,7 @@ add_same_key_to_record (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_
   load_args->curr_rec_obj_count++;
   if (!MVCC_IS_HEADER_DELID_VALID (&pparam->mvcc_header))
     {
-      ret = mvcc_delid_invalid (thread_p, load_args, pparam);
+      ret = bt_load_invalidate_mvcc_del_id (thread_p, load_args, pparam);
       if (ret != NO_ERROR)
 	{
 	  return ret;
@@ -2783,7 +2787,7 @@ add_same_key_to_record (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_
    * create a new record. */
   if (load_args->curr_rec_obj_count > load_args->curr_rec_max_obj_count)
     {				/* no space for the new OID */
-      ret = nospace_for_new_oid (thread_p, load_args, sp_success);
+      ret = bt_load_nospace_for_new_oid (thread_p, load_args, sp_success);
       if (ret != NO_ERROR || *sp_success != SP_SUCCESS)
 	{
 	  return ret;
@@ -2826,8 +2830,8 @@ add_same_key_to_record (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_
 }
 
 static int
-notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam, char **notify_vacuum_rv_data,
-		  char *notify_vacuum_rv_data_bufalign)
+bt_load_notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam,
+			  char **notify_vacuum_rv_data, char *notify_vacuum_rv_data_bufalign)
 {
   int ret;
 
@@ -2935,7 +2939,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
   for (;;)
     {				/* Infinite loop; will exit with break statement */
       next = *(char **) recdes->data;	/* save forward link */
-      if ((ret = get_buf_from_record (&buf, recdes, load_args, &sparam, copy)) != NO_ERROR)
+      if ((ret = bt_load_get_buf_from_record (&buf, recdes, load_args, &sparam, copy)) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -2943,7 +2947,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
       if (VPID_ISNULL (&(load_args->leaf.vpid)))	/* Find out if this is the first call to this function */
 	{
 	  /* This is the first call to this function; so, initialize some fields in the LOAD_ARGS structure */
-	  if ((ret = first_leaf_page_and_init_args (thread_p, load_args, &sparam)) != NO_ERROR)
+	  if ((ret = bt_load_get_first_leaf_page_and_init_args (thread_p, load_args, &sparam)) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -2963,7 +2967,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 	    }
 	  else if (c == DB_EQ)
 	    {			/* This key (retrieved key) is the same with the current one. */
-	      ret = add_same_key_to_record (thread_p, load_args, &sparam, &sp_success);
+	      ret = bt_load_add_same_key_to_record (thread_p, load_args, &sparam, &sp_success);
 	    }
 	  else
 	    {
@@ -2977,7 +2981,8 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 	    }
 	}
 
-      ret = notify_to_vacuum (thread_p, load_args, &sparam, &notify_vacuum_rv_data, notify_vacuum_rv_data_bufalign);
+      ret =
+	bt_load_notify_to_vacuum (thread_p, load_args, &sparam, &notify_vacuum_rv_data, notify_vacuum_rv_data_bufalign);
       if (ret != NO_ERROR)
 	{
 	  goto error;
@@ -3199,7 +3204,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	case S_END:
 	  /* No more objects in this heap, finish the current scan */
 	  save_cache_last_fix_page = sort_args->hfscan_cache.cache_last_fix_page;
-	  heap_scancache_and_attrinfo_end (thread_p, sort_args, NULL, NULL);
+	  bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args, NULL, NULL);
 
 	  /* Are we through with all the non-null heaps? */
 	  sort_args->cur_class++;
@@ -3223,8 +3228,8 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	      cur_class = sort_args->cur_class;
 	      attr_offset = cur_class * sort_args->n_attrs;
 
-	      if (heap_scancache_and_attrinfo_start (thread_p, sort_args, NULL, NULL, save_cache_last_fix_page) !=
-		  NO_ERROR)
+	      if (bt_load_heap_scancache_start_for_attrinfo (thread_p, sort_args, NULL, NULL, save_cache_last_fix_page)
+		  != NO_ERROR)
 		{
 		  return SORT_ERROR_OCCURRED;
 		}
@@ -3362,8 +3367,8 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
       key_len = sort_args->key_type->type->get_disk_size_of_value (dbvalue_ptr);
       if (key_len > 0)
 	{
-	  result = put_buf_to_record (temp_recdes, sort_args, value_has_null, key_len, &prev_oid, &mvcc_header,
-				      dbvalue_ptr, cur_class, is_btree_ops_log);
+	  result = bt_load_put_buf_to_record (temp_recdes, sort_args, value_has_null, key_len, &prev_oid, &mvcc_header,
+					      dbvalue_ptr, cur_class, is_btree_ops_log);
 	  if (result != NO_ERROR)
 	    {
 	      goto nofit;
@@ -4557,7 +4562,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 
       /* Start scancache */
       tmp_args.cur_class = cur_class;
-      ret = heap_scancache_and_attrinfo_start (thread_p, &tmp_args, &scan_cache, &attr_info, true);
+      ret = bt_load_heap_scancache_start_for_attrinfo (thread_p, &tmp_args, &scan_cache, &attr_info, true);
       if (ret != NO_ERROR)
 	{
 	  goto error;
@@ -4596,8 +4601,8 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	  break;
 	}
 
-      heap_scancache_and_attrinfo_end (thread_p, &tmp_args, &scan_cache, &attr_info);
-      clear_pred_and_unpack (thread_p, &tmp_args, func_unpack_info);
+      bt_load_heap_scancache_end_for_attrinfo (thread_p, &tmp_args, &scan_cache, &attr_info);
+      bt_load_clear_pred_and_unpack (thread_p, &tmp_args, func_unpack_info);
       tmp_args.filter = filter_pred = NULL;
     }
 
@@ -4693,8 +4698,8 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   return btid;
 
 error:
-  heap_scancache_and_attrinfo_end (thread_p, &tmp_args, &scan_cache, &attr_info);
-  clear_pred_and_unpack (thread_p, &tmp_args, func_unpack_info);
+  bt_load_heap_scancache_end_for_attrinfo (thread_p, &tmp_args, &scan_cache, &attr_info);
+  bt_load_clear_pred_and_unpack (thread_p, &tmp_args, func_unpack_info);
 
   if (list_btid != NULL)
     {
