@@ -480,30 +480,58 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
 
   if (is_passive_transaction_server ())
     {
-      // sanity check that an mvccid is never double-completed either during PTS initialization or PTS replication
+      // sanity check that an mvccid is never double-completed neither during PTS initialization nor
+      // afterwards, during log replication
       //
-      // TODO: this addresses the following scenario, which is difficult to catch during testing:
-      //  - when PTS initializes there are actually 3 phases that are executed to reach to an up to date
-      //    MVCC table (see function log_recovery_analysis_from_trantable_snapshot)
-      //  - 1. start with a transaction table snapshot, from which a transaction table is initialized; this
-      //      transaction table contains the transactions that were active at the moment the snapshot was taken on
-      //      the active transaction server (ATS)
-      //  - 2. after this, the current transaction table is parsed to obtain a correct mvcc table by initializing the
-      //      start MVCCID in the MVCC table and then completing the missing MVCCID's in the gaps between the smallest
-      //      present MVCCID and the largest present MVCCID that are encountered; these missing MVCCID are "assumed"
-      //      to belong to transactions that have already concluded (by either committing or aborting);
-      //      however, in reality, these MVCCID's might be in one of the following states:
-      //        - belonging to transactions (existing on ATS at the time the snapshot has been taken) that
-      //          have acquired the id but did not yet get to add a log record in the transactional log with
-      //          the MVCCID (see also the LOG_ASSIGNED_MVCCID log record which actually annotates the
-      //          transactional log record of a transaction with the acquired MVCCID that the transaction
-      //          actually never logged to a proper log record)
-      //            - these will be the problematic transactions, that, once they add a log record with the
-      //              missing MVCCID at some point after completion on PTS, will trigger the following assert
-      //        - belonging to transactions that have committed at the time the snapshot was taken
-      //            - these will not pose problems as log records from them - containing the already completed
-      //              mvccid - will not appear anymore in the transactional log
+      // TODO: this addresses the following scenario:
+      //  - when passive transaction server (PTS) initializes there are actually 3 phases that are
+      //    executed to reach to an up to date MVCC table (see function
+      //    log_recovery_analysis_from_trantable_snapshot)
+      //    - 1. decode, load and parse a transaction table snapshot (this contains description
+      //      for the transactions that were active on active transaction server at the moment the
+      //      snapshot was taken):
+      //      - to find out known (and unknown) MVCCISs
+      //      - initialize the mvcc table with the known MVCCIDs;
+      //      - actually, the present MVCCIDs are considered still active, yet to be completed by
+      //        subsequent steps
+      //      - keep missing MVCCIDs (those nothing is known about, see Remark1 below) in a list
+      //        for later
+      //    - 2. analyze the transactional log:
+      //      - up to a point (up to the point where the transactional log replication will pick up)
+      //      - anlysing will process found MVCCIDs (ie: complete MVCCIDs when LOG_COMMIT/LOG_ABORT
+      //        log records are found)
+      //      - this might also complete some of the missing/unknown MVCCIDs found in the
+      //        previous step
+      //    - 3. after analysing the log:
+      //      - complete the remaining unknown MVCCIDs (found in step 1)
+      //      - thus, considering that those transactions, to which these unknown MVCCIDs belong,
+      //        must have been completed somewhere in the past (ie: before the transaction table
+      //        snapshot was taken)
+      //
+      //  - Remark1: explanation about missing/unknown MVCCIDs
+      //    - say the following MVCCIDs are found in the transaction table:
+      //        42 45 49 50
+      //    - these mvccids belong to transactions that are to be completed via transactional log records
+      //      which will be subsequently processed
+      //    - there are also the "missing" MVCCIDs:
+      //        ..<=41, 43, 44, 46, 47, 48, >=51..
+      //    - nothing is known about these:
+      //      - either they belong to transactions that have been commited
+      //      - or they belong to transactions that have acquired them but did not yet add an
+      //        MVCC log record to the transactional log (due to the multhreading aspect of the
+      //        transaction system, any out-of-order situation is possible really)
+      //      - one rule of thumb might work in this case, the "older" the MVCCIDs are the greater the
+      //        chance that transactions that acquired them have already concluded and, thus, the changes
+      //        that these mvccids (or, rather, the transactions that used them) introduce are reflected
+      //        in the heap pages
+      //      - by delaying the moment at which these "missing" MVCCIDs are completed until after having
+      //        analyzed the log, the risk to accidentally complete an MVCCID that is NOT actually completed
+      //        is minimised but not completely eliminated
+      //      - another possible mitigation is to - somehow - atomically acquire an MVCCID and register it
+      //        with the transaction descriptor
+      //
       // for the short term, this assert will guard against such situations, but a proper solution is needed
+      //
       assert (m_current_trans_status.m_active_mvccs.is_active (mvccid));
     }
 
