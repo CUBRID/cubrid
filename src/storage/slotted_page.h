@@ -57,6 +57,9 @@ enum
 #define SPAGE_HEADER_FLAG_NONE		0x0	/* No flags */
 #define SPAGE_HEADER_FLAG_ALL_VISIBLE	0x1	/* All records are visible */	/* unused */
 
+#define spage_slot_size()   (sizeof(SPAGE_SLOT))
+#define spage_header_size() (sizeof(SPAGE_HEADER))
+
 typedef struct spage_header SPAGE_HEADER;
 struct spage_header
 {
@@ -92,9 +95,6 @@ struct spage_slot
 extern void spage_boot (THREAD_ENTRY * thread_p);
 extern void spage_finalize (THREAD_ENTRY * thread_p);
 extern void spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry);
-
-#define spage_slot_size()   (sizeof(SPAGE_SLOT))
-#define spage_header_size() (sizeof(SPAGE_HEADER))
 
 extern int spage_get_free_space (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern int spage_get_free_space_without_saving (THREAD_ENTRY * thread_p, PAGE_PTR page_p, bool * need_update);
