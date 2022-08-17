@@ -35489,6 +35489,26 @@ btree_rv_undo_create_btree (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   return error_code;
 }
 
+/*
+ * btree_rv_dump_undo_create_btree () - Dump recovery information
+ *   return: int
+ *   length(in): Length of Recovery Data
+ *   data(in): The data being logged
+ *
+ */
+void
+btree_rv_dump_undo_create_btree (FILE * fp, int length, void *data)
+{
+  BTID *btid = nullptr;
+
+  assert (sizeof (BTID) == length);
+
+  btid = (BTID *) data;
+
+  fprintf (fp, "Logical cleanup jobs for destoying the btree file (%d, %d|%d)\n", BTID_AS_ARGS (btid));
+  fprintf (fp, "- Destroy the overflow file for it if exists\n");
+}
+
 void
 btree_insert_helper_to_delete_helper (BTREE_INSERT_HELPER * insert_helper, BTREE_DELETE_HELPER * delete_helper)
 {

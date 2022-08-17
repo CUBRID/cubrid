@@ -699,4 +699,5 @@ extern void heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const 
 						 const std::vector<VPID> &heap_pages_array);
 // *INDENT-ON*
 extern int heap_rv_undo_create_heap (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern void heap_rv_dump_undo_create_heap (FILE * fp, int length, void *data);
 #endif /* _HEAP_FILE_H_ */

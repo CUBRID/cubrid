@@ -25751,6 +25751,26 @@ heap_rv_undo_create_heap (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   return error_code; 
 }
 
+/*
+ * heap_rv_dump_undo_create_heap () - Dump recovery information
+ *   return: int
+ *   length(in): Length of Recovery Data
+ *   data(in): The data being logged
+ *
+ */
+void
+heap_rv_dump_undo_create_heap (FILE * fp, int length, void *data)
+{
+  HFID *hfid = nullptr;
+
+  assert (sizeof (HFID) == length);
+
+  hfid = (HFID *) data;
+
+  fprintf (fp, "Logical cleanup jobs for destoying the heap file (%d|%d|%d)\n",  HFID_AS_ARGS (hfid)); 
+  fprintf (fp, "- Destroy the ovefrlow file for it if exists\n");
+}
+
 static int
 heap_get_page_with_watcher (THREAD_ENTRY * thread_p, const VPID *page_vpid, PGBUF_WATCHER * pg_watcher)
 {

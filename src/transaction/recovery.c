@@ -834,13 +834,13 @@ struct rvfun RV_fun[] = {
    "RVHF_CREATE_HEAP",
    heap_rv_undo_create_heap,
    NULL,
-   NULL,
+   heap_rv_dump_undo_create_heap,
    NULL},
   {RVBT_CREATE_BTREE,
-   "RVHF_CREATE_HEAP",
+   "RVBT_CREATE_BTREE",
    btree_rv_undo_create_btree,
    NULL,
-   NULL,
+   btree_rv_dump_undo_create_btree,
    NULL},
 };
 
