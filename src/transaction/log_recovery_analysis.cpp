@@ -2550,7 +2550,56 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p,
     return true;
   });
 
-  log_Gl.mvcc_table.complete_mvccids_if_still_active (LOG_SYSTEM_TRAN_INDEX, in_gaps_mvccids, true);
+  // TODO: this addresses the following scenario:
+  //  - when passive transaction server (PTS) initializes there are actually 3 phases that are
+  //    executed to reach to an up to date MVCC table
+  //    - 1. decode, load and parse a transaction table snapshot (this contains description
+  //      for the transactions that were active on active transaction server at the moment the
+  //      snapshot was taken):
+  //      - to find out known (and unknown) MVCCISs
+  //      - initialize the mvcc table with the known MVCCIDs;
+  //      - actually, the present MVCCIDs are considered still active, yet to be completed by
+  //        subsequent steps
+  //      - keep missing MVCCIDs (those nothing is known about, see Remark1 below) in a list
+  //        for later
+  //    - 2. analyze the transactional log:
+  //      - up to a point (up to the point where the transactional log replication will pick up)
+  //      - anlysing will process found MVCCIDs (ie: complete MVCCIDs when LOG_COMMIT/LOG_ABORT
+  //        log records are found)
+  //      - this might also complete some of the missing/unknown MVCCIDs found in the
+  //        previous step
+  //    - 3. after analysing the log:
+  //      - complete the remaining unknown MVCCIDs (found in step 1)
+  //      - thus, considering that those transactions, to which these unknown MVCCIDs belong,
+  //        must have been completed somewhere in the past (ie: before the transaction table
+  //        snapshot was taken)
+  //
+  //  - Remark1: explanation about missing/unknown MVCCIDs
+  //    - say the following MVCCIDs are found in the transaction table:
+  //        42 45 49 50
+  //    - these mvccids belong to transactions that are to be completed via transactional log records
+  //      which will be subsequently processed
+  //    - there are also the "missing" MVCCIDs:
+  //        ..<=41, 43, 44, 46, 47, 48, >=51..
+  //    - nothing is known about these:
+  //      - either they belong to transactions that have been commited
+  //      - or they belong to transactions that have acquired them but did not yet add an
+  //        MVCC log record to the transactional log (due to the multhreading aspect of the
+  //        transaction system, any out-of-order situation is possible really)
+  //      - one rule of thumb might work in this case, the "older" the MVCCIDs are the greater the
+  //        chance that transactions that acquired them have already concluded and, thus, the changes
+  //        that these mvccids (or, rather, the transactions that used them) introduce are reflected
+  //        in the heap pages
+  //      - by delaying the moment at which these "missing" MVCCIDs are completed until after having
+  //        analyzed the log, the risk to accidentally complete an MVCCID that is NOT actually completed
+  //        is minimised but not completely eliminated
+  //      - another possible mitigation is to - somehow - atomically acquire an MVCCID and register it
+  //        with the transaction descriptor
+  //
+  // for the short term, there is an assert in mvcctable::complete_mvcc that will guard against
+  // such situations, but a proper solution is needed
+  //
+  log_Gl.mvcc_table.complete_mvccids_if_still_active (LOG_SYSTEM_TRAN_INDEX, in_gaps_mvccids, false);
 
   {
     const MVCCID oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
