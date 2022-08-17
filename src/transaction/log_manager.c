@@ -1577,6 +1577,8 @@ error:
  *
  * return: nothing
  *
+ * NOTE: this function assumes that the trantable is initialized (as of now, it is done in the function
+ *  caling this one)
  */
 void
 log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
@@ -1650,6 +1652,8 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
     }
     // prior lists from page server are being received now
 
+    assert (LSA_LE (&most_recent_trantable_snapshot_lsa, &replication_start_redo_lsa));
+
     // NOTE: following situations can happen with regard to most recent transaction table snapshot lsa:
     //  1. it is null here at destination on PTS:
     //    1.1. the PTS has been started too fast after the ATS and did not get to generate and relay at least
@@ -1666,7 +1670,8 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
     //        - during log analysis, the PTS will ignore (skip) the newer transaction table snapshot log records
     //
     assert (!most_recent_trantable_snapshot_lsa.is_null ());
-    log_recovery_analysis_from_trantable_snapshot (thread_p, most_recent_trantable_snapshot_lsa);
+    log_recovery_analysis_from_trantable_snapshot (thread_p, most_recent_trantable_snapshot_lsa,
+						   replication_start_redo_lsa);
   }
   // prior lists are consumed and flushed to log pages
 
@@ -1676,13 +1681,8 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
 
   pts_ptr->start_log_replicator (replication_start_redo_lsa);
 
-  err_code = logtb_define_trantable_log_latch (thread_p, -1);
-  if (err_code != NO_ERROR)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "log_initialize_passive_tran_server: error initializing transaction table");
-      return;
-    }
+  // NOTE: do not re-define trantable here; already called in boot_restart_server
+  // calling again here, will reset all info in already initialized transaction table
 
   // not other purpose on passive transaction server than to conform various checks that rely on the recovery state
   // one such example: the check for "is temporary volume" in page buffer

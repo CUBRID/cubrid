@@ -105,7 +105,7 @@ mvcc_is_id_in_snapshot (THREAD_ENTRY * thread_p, MVCCID mvcc_id, MVCC_SNAPSHOT *
  *
  * Note: Check whether an active transaction is active by searching transactions
  *  status into current history position. The data from current history position
- *  is atomically checked (See logtb_get_mvcc_snapshot_data comments).
+ *  is atomically checked (See logtb_get_mvcc_snapshot comments).
  */
 STATIC_INLINE bool
 mvcc_is_active_id (THREAD_ENTRY * thread_p, MVCCID mvccid)

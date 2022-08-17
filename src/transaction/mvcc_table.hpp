@@ -32,6 +32,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <set>
 
 // forward declarations
 struct log_tdes;
@@ -79,6 +80,7 @@ class mvcctable
     void build_mvcc_info (log_tdes &tdes);
     void complete_mvcc (int tran_index, MVCCID mvccid, bool committed);
     void complete_sub_mvcc (MVCCID mvccid);
+    void complete_mvccids_if_still_active (int tran_index, const std::set<MVCCID> &mvccids, bool committed);
     MVCCID get_new_mvccid ();
     void get_two_new_mvccid (MVCCID &first, MVCCID &second);
     // update next_mvcc_id value with one received from ATS if it's larger than the current one
