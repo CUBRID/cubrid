@@ -1624,13 +1624,13 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VP
 
   spage_get_record (thread_p, page_p, CATALOG_HEADER_SLOT, &record, COPY);
 
-  log_append_undo_recdes2 (thread_p, RVCT_UPDATE, &catalog_Id.vfid, page_p, CATALOG_HEADER_SLOT, &record);
-
   overflow_vpid.pageid = CATALOG_GET_PGHEADER_OVFL_PGID_PAGEID (record.data);
   overflow_vpid.volid = CATALOG_GET_PGHEADER_OVFL_PGID_VOLID (record.data);
 
   if (overflow_vpid.pageid != NULL_PAGEID)
     {
+      log_append_undo_recdes2 (thread_p, RVCT_UPDATE, &catalog_Id.vfid, page_p, CATALOG_HEADER_SLOT, &record);
+
       CATALOG_PUT_PGHEADER_OVFL_PGID_PAGEID (record.data, NULL_PAGEID);
       CATALOG_PUT_PGHEADER_OVFL_PGID_VOLID (record.data, NULL_VOLID);
 
@@ -1641,36 +1641,43 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VP
 	}
 
       log_append_redo_recdes2 (thread_p, RVCT_UPDATE, &catalog_Id.vfid, page_p, CATALOG_HEADER_SLOT, &record);
-    }
 
-  recdes_free_data_area (&record);
+      // free data because it is used only for peeking below
+      recdes_free_data_area (&record);
 
-  while (overflow_vpid.pageid != NULL_PAGEID)
-    {
-      /* delete the records in the overflow pages, if any */
-      overflow_page_p = pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (overflow_page_p == NULL)
+      do
 	{
-	  return ER_FAILED;
-	}
+	  /* delete the records in the overflow pages, if any */
+	  overflow_page_p =
+	    pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  if (overflow_page_p == NULL)
+	    {
+	      return ER_FAILED;
+	    }
 
 #if !defined (NDEBUG)
-      (void) pgbuf_check_page_ptype (thread_p, overflow_page_p, PAGE_CATALOG);
+	  (void) pgbuf_check_page_ptype (thread_p, overflow_page_p, PAGE_CATALOG);
 #endif /* !NDEBUG */
 
-      spage_get_record (thread_p, overflow_page_p, CATALOG_HEADER_SLOT, &record, PEEK);
-      new_overflow_vpid.pageid = CATALOG_GET_PGHEADER_OVFL_PGID_PAGEID (record.data);
-      new_overflow_vpid.volid = CATALOG_GET_PGHEADER_OVFL_PGID_VOLID (record.data);
+	  spage_get_record (thread_p, overflow_page_p, CATALOG_HEADER_SLOT, &record, PEEK);
+	  new_overflow_vpid.pageid = CATALOG_GET_PGHEADER_OVFL_PGID_PAGEID (record.data);
+	  new_overflow_vpid.volid = CATALOG_GET_PGHEADER_OVFL_PGID_VOLID (record.data);
 
-      pgbuf_unfix_and_init (thread_p, overflow_page_p);
+	  pgbuf_unfix_and_init (thread_p, overflow_page_p);
 
-      error_code = file_dealloc (thread_p, &catalog_Id.vfid, &overflow_vpid, FILE_CATALOG);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return error_code;
+	  error_code = file_dealloc (thread_p, &catalog_Id.vfid, &overflow_vpid, FILE_CATALOG);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	  overflow_vpid = new_overflow_vpid;
 	}
-      overflow_vpid = new_overflow_vpid;
+      while (overflow_vpid.pageid != NULL_PAGEID);
+    }
+  else
+    {
+      recdes_free_data_area (&record);
     }
 
   return NO_ERROR;
