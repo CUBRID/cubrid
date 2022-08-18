@@ -303,12 +303,12 @@ gethostbyname_r_uhost (const char *name, struct hostent *ret, struct hostent_dat
 #else /* WINDOWS */
 int
 gethostbyname_r_uhost (const char *name,
-                       struct hostent *ret, char *buf, size_t buflen, struct hostent **result, int *h_errnop)
-#endif /* HAVE_GETHOSTBYNAME_R */
+		       struct hostent *ret, char *buf, size_t buflen, struct hostent **result, int *h_errnop)
+#endif				/* HAVE_GETHOSTBYNAME_R */
 {
-  #if defined (WINDOWS)
+#if defined (WINDOWS)
   return 0;
-  #endif
+#endif
 
   struct hostent *hp_buf = NULL;
 
