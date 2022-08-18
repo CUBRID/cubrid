@@ -300,7 +300,16 @@ gethostbyname_r_uhost (const char *name, struct hostent *ret, struct hostent_dat
 #else
 #error "HAVE_GETHOSTBYNAME_R"
 #endif /* HAVE_GETHOSTBYNAME_R_GLIBC */
+#else /* WINDOWS */
+int
+gethostbyname_r_uhost (const char *name,
+                       struct hostent *ret, char *buf, size_t buflen, struct hostent **result, int *h_errnop)
+#endif /* HAVE_GETHOSTBYNAME_R */
 {
+  #if defined (WINDOWS)
+  return 0;
+  #endif
+
   struct hostent *hp_buf = NULL;
 
   if (host_conf_Use < 0)
@@ -320,6 +329,7 @@ gethostbyname_r_uhost (const char *name, struct hostent *ret, struct hostent_dat
       return gethostbyname_r (name, ret, &ht_data);
 #else
 #error "HAVE_GETHOSTBYNAME_R"
+#endif
 #endif
     }
   else
@@ -356,7 +366,6 @@ gethostbyname_r_uhost (const char *name, struct hostent *ret, struct hostent_dat
 #endif /* HAVE_GETHOSTBYNAME_R_GLIBC */
 #endif /* HAVE_GETHOSTBYNAME_R */
 }
-#endif /* HAVE_GETHOSTBYNAME_R */
 
 int
 getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *host, size_t hostlen, char *serv, size_t servlen,
