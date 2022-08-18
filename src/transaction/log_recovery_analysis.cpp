@@ -2464,7 +2464,6 @@ log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY *thread_p, MVCCID rep
 
       log_Gl.hdr.mvcc_next_id = largest_mvccid + 1;
     }
-}
 
   const MVCCID oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
   _er_log_debug (ARG_FILE_LINE, "crsdbg: after reset oldest_visible_mvccid = %llu\n", oldest_visible_mvccid);
