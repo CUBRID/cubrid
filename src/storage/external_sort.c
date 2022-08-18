@@ -1580,8 +1580,9 @@ sort_validate (char **vector, long size, SORT_CMP_FUNC * compare, void *comp_arg
   assert (size >= 1);
   assert (compare != NULL);
 
-  /* TODO - for QAF, do not delete me */
+#if 1 /* TODO - for QAF, do not delete me */
   return NO_ERROR;
+#endif
 
   for (k = 0; k < size - 1; k++)
     {
