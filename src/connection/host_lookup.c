@@ -22,12 +22,11 @@
 
 #ident "$Id$"
 
-#include <unordered_map>
-
 #include <stdio.h>
 #include <string.h>
 #include <limits.h>
 #include <errno.h>
+#include <unordered_map>
 
 #if defined (WINDOWS)
 #include <winsock2.h>
@@ -44,8 +43,8 @@
 #define MAX_HOSTS_LINE_NUM       (256)
 #define IPADDR_LEN              (17)
 
-#define IPADDR_STORE 0x0
-#define HOSTNAME_STORE 0x1
+#define INSERT_IPADDR 0x0
+#define INSERT_HOSTNAME 0x1
 
 typedef enum
 {
@@ -89,6 +88,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
       host_conf_element_Count = host_conf_load ();
       if (host_conf_element_Count <= 0)
 	{
+//err_msg : load fail
 	  return NULL;
 	}
     }
@@ -99,8 +99,9 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 
   if (lookup_case == IPADDR_TO_HOSTNAME)
     {
-      if (inet_ntop (AF_INET, &addr_trans->sin_addr, addr_transform_buf, sizeof (addr_transform_buf) + 1) == NULL)
+      if (inet_ntop (AF_INET, &addr_trans->sin_addr, addr_transform_buf, sizeof (addr_transform_buf)) == NULL)
 	{
+//err_msg : convert binary to text fail
 	  return NULL;
 	}
 
@@ -125,20 +126,21 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
   if (find_index < 0)
     {
       return NULL;
-//this should be set to error message
+//err_msg : hosts.conf has no info
     }
 
   if (inet_pton (AF_INET, hostent_List[find_index].ipaddr, addr_transform_buf2) < 1)
     {
+//err_msg : convert binary to text fail -> reverse
       return NULL;
     }
 
   /*set the hostent struct for the return value */
   hp.h_addrtype = AF_INET;
   hp.h_length = 4;
-  hp.h_name = (char *) malloc (sizeof (char) * HOSTNAME_BUF_SIZE);
+  hp.h_name = (char *) malloc (sizeof (char) * (HOSTNAME_BUF_SIZE + 1));
   hp.h_aliases = (char **) malloc (sizeof (char *));
-  hp.h_aliases[0] = (char *) malloc (sizeof (char) * HOSTNAME_BUF_SIZE);
+  hp.h_aliases[0] = (char *) malloc (sizeof (char) * (HOSTNAME_BUF_SIZE + 1));
   hp.h_addr_list = (char **) malloc (sizeof (char *) * HOSTNAME_BUF_SIZE);
   hp.h_addr_list[0] = (char *) malloc (sizeof (char) * IPADDR_LEN);
 
@@ -166,23 +168,21 @@ host_conf_load ()		//set hash table to discover error
   int host_count = 0;
 
   /*False, if hostent_List[index].hostname is set */
-  bool storage_flag = IPADDR_STORE;
+  bool hostent_flag = INSERT_IPADDR;
 
   memset (file_line, 0, HOSTNAME_BUF_SIZE + 1);
   memset (line_buf, 0, HOSTNAME_BUF_SIZE + 1);
-
-  host_count = host_conf_element_Count;
-  assert (!host_count);
 
   hosts_conf_dir = envvar_confdir_file (host_conf_file_full_path, PATH_MAX, "hosts.conf");
   fp = fopen (hosts_conf_dir, "r");
   if (fp == NULL)
     {
+//err_msg : file open fail
       return -1;
       //error msg-> temp
     }
 
-  while (fgets (file_line, HOSTNAME_BUF_SIZE, fp) != NULL)
+  while (fgets (file_line, HOSTNAME_BUF_SIZE + 1, fp) != NULL)
     {
 //verifying duplicated hostname will be implemented soon
       if (file_line[0] == '#')
@@ -191,10 +191,10 @@ host_conf_load ()		//set hash table to discover error
 	continue;
 
       token = strtok_r (file_line, delim, &save_ptr_strtok);
-      storage_flag = IPADDR_STORE;
+      hostent_flag = INSERT_IPADDR;
 
-      char map_ipaddr[HOSTNAME_BUF_SIZE];
-      char map_hostname[HOSTNAME_BUF_SIZE];
+      char map_ipaddr[IPADDR_LEN];
+      char map_hostname[HOSTNAME_BUF_SIZE + 1];
 
       do
 	{
@@ -202,15 +202,26 @@ host_conf_load ()		//set hash table to discover error
 	    {
 	      break;
 	    }
-	  if (!storage_flag)
+	  if (!hostent_flag)
 	    {
+	      if (sizeof (token) > HOSTNAME_BUF_SIZE + 1)
+		{
+//err_msg 
+		  return NULL;
+		}
 	      strcpy (hostent_List[host_count].ipaddr, token);
 	      strcpy (map_ipaddr, token);
 
-	      storage_flag = HOSTNAME_STORE;
+	      hostent_flag = INSERT_HOSTNAME;
 	    }
 	  else
 	    {
+	      if (sizeof (token) > IPADDR_LEN)
+		{
+//err_msg 
+		  return NULL;
+		}
+
 	      strcpy (hostent_List[host_count].hostname, token);
 	      strcpy (map_hostname, token);
 	    }
@@ -232,6 +243,7 @@ host_conf_load ()		//set hash table to discover error
 	  else
 	    {
 /*duplicated hostname but different ip address*/
+//err_msg : duplicated 
 	      return NULL;
 	    }
 	  host_count++;
@@ -261,8 +273,10 @@ gethostbyname_uhost (char *name)
     {
       return gethostbyname (name);
     }
-
-  hp = host_lookup_internal (name, NULL, HOSTNAME_TO_IPADDR);
+  else
+    {
+      hp = host_lookup_internal (name, NULL, HOSTNAME_TO_IPADDR);
+    }
 
   if (hp == NULL)
     {
@@ -272,7 +286,6 @@ gethostbyname_uhost (char *name)
   return hp;
 }
 
-//gethostbyname_r_uhost (const char *hostname, struct hostent *out_hp)
 #ifdef HAVE_GETHOSTBYNAME_R
 #if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
 int
@@ -285,14 +298,11 @@ gethostbyname_r_uhost (const char *name, struct hostent *ret, char *buf, size_t 
 int
 gethostbyname_r_uhost (const char *name, struct hostent *ret, struct hostent_data *ht_data)
 #else
-struct hostent *
-gethostbyname (const char *name)
 #error "HAVE_GETHOSTBYNAME_R"
-#endif				/* HAVE_GETHOSTBYNAME_R_GLIBC */
-#endif				/* HAVE_GETHOSTBYNAME_R */
+#endif /* HAVE_GETHOSTBYNAME_R_GLIBC */
+#endif /* HAVE_GETHOSTBYNAME_R */
 {
-
-  struct hostent *hp_memcpy = NULL;
+  struct hostent *hp_buf = NULL;
 
   if (host_conf_Use < 0)
     {
@@ -310,14 +320,14 @@ gethostbyname (const char *name)
 #elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
       return gethostbyname_r (name, ret, &ht_data);
 #else
-      return gethostbyname (name);
 #error "HAVE_GETHOSTBYNAME_R"
 #endif
-#endif /* !HAVE_GETHOSTBYNAME_R */
     }
-
-  hp_memcpy = host_lookup_internal (name, NULL, HOSTNAME_TO_IPADDR);
-  memcpy ((void *) ret, (void *) hp_memcpy, sizeof (struct hostent));
+  else
+    {
+      hp_buf = host_lookup_internal (name, NULL, HOSTNAME_TO_IPADDR);
+      memcpy ((void *) ret, (void *) hp_buf, sizeof (struct hostent));
+    }
 
 #ifdef HAVE_GETHOSTBYNAME_R
 #if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
@@ -326,19 +336,19 @@ gethostbyname (const char *name)
       return EFAULT;
     }
   (*result) = (struct hostent *) malloc (sizeof (struct hostent));
-  memcpy ((void *) *result, (void *) hp_memcpy, sizeof (struct hostent));
+  memcpy ((void *) *result, (void *) hp_buf, sizeof (struct hostent));
   return 0;
 #elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
   if (ret == NULL)
     {
-      return EFAULT;
+      return NULL;
     }
 
   return ret;
 #elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
   if (ret == NULL)
     {
-      return EFAULT;
+      return -1;
     }
 
   return 0;
@@ -347,6 +357,7 @@ gethostbyname (const char *name)
 #endif /* HAVE_GETHOSTBYNAME_R_GLIBC */
 #endif /* HAVE_GETHOSTBYNAME_R */
 }
+#endif /* HAVE_GETHOSTBYNAME_R */
 
 int
 getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *host, size_t hostlen, char *serv, size_t servlen,
@@ -363,15 +374,19 @@ getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *host, size_t 
     {
       return getnameinfo (addr, addrlen, host, hostlen, NULL, 0, NI_NOFQDN);
     }
-
-  hp = host_lookup_internal (NULL, addr, IPADDR_TO_HOSTNAME);
+  else
+    {
+      hp = host_lookup_internal (NULL, addr, IPADDR_TO_HOSTNAME);
+    }
 
   if (hp == NULL)
     {
-      return EAI_NODATA;
+      return EAI_NONAME;
     }
 
-  strcpy (host, hp->h_name);
+  strncpy (host, hp->h_name, hostlen);
+  host[CUB_MAXHOSTNAMELEN - 1] = '\0';
+
   return 0;
 }
 
@@ -393,21 +408,21 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
     {
       return getaddrinfo (node, NULL, hints, res);
     }
-
-  memset (&results_out, 0, sizeof (results_out));
-
-  in_addr_buf = (struct in_addr *) malloc (sizeof (struct in_addr));
-
-  hp = host_lookup_internal (node, NULL, HOSTNAME_TO_IPADDR);
+  else
+    {
+      hp = host_lookup_internal (node, NULL, HOSTNAME_TO_IPADDR);
+    }
 
   if (hp == NULL)
     {
-      free (in_addr_buf);
       return EAI_NODATA;
     }
 
+  in_addr_buf = (struct in_addr *) malloc (sizeof (struct in_addr));
+
   /*Constitute struct addrinfo for the out parameter res */
   *res = (struct addrinfo *) malloc (sizeof (struct addrinfo));
+  memset (&results_out, 0, sizeof (results_out));
   results_out.ai_flags = hints->ai_flags;
 
   results_out.ai_family = hints->ai_family;
@@ -430,6 +445,7 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
   memmove (*res, &results_out, sizeof (struct addrinfo));
 
   free (in_addr_buf);
+  free (results_out.ai_addr);
 
   return 0;
 }
