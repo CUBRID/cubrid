@@ -8038,7 +8038,7 @@ final_:
 
 /*
  * lk_global_deadlock_detection: RUN THE GLOBAL DEADLOCK DETECTION
-  * arguments:
+ * arguments:
  * returns/side-effects: nothing
  * Note: Run the deadlock detection. For every cycle either timeout or
  *              abort a transaction. The timeout option is always preferred
