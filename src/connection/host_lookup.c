@@ -300,7 +300,6 @@ gethostbyname_r_uhost (const char *name, struct hostent *ret, struct hostent_dat
 #else
 #error "HAVE_GETHOSTBYNAME_R"
 #endif /* HAVE_GETHOSTBYNAME_R_GLIBC */
-#endif /* HAVE_GETHOSTBYNAME_R */
 {
   struct hostent *hp_buf = NULL;
 
