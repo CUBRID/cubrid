@@ -53,6 +53,7 @@ class test_env_chkpt
     ~test_env_chkpt ();
 
     LOG_LSA generate_log_lsa ();
+    MVCCID generate_mvccid ();
     LOG_TDES *generate_tdes (int index);
     LOG_2PC_GTRINFO generate_2pc_gtrinfo ();
     LOG_2PC_COORDINATOR *generate_2pc_coordinator ();
@@ -60,6 +61,7 @@ class test_env_chkpt
     checkpoint_info::tran_info generate_log_info_chkpt_trans ();
     checkpoint_info::sysop_info generate_log_info_chkpt_sysop ();
     std::vector<LOG_LSA> used_logs;
+    void generate_empty_tran_table ();
     void generate_tran_table ();
 
     static constexpr int MAX_RAND = 32700;
@@ -168,23 +170,11 @@ TEST_CASE ("Test load and recovery on empty tran table", "")
   LOG_LSA star_lsa;
   THREAD_ENTRY thd;
 
+  env.generate_empty_tran_table ();
   env.get_after ()->load_trantable_snapshot (&thd, smallest_lsa);
-  env.get_after ()->recovery_analysis (&thd, star_lsa);
+  env.get_after ()->recovery_analysis (&thd, star_lsa, false);
   env.get_after ()->recovery_2pc_analysis (&thd);
   REQUIRE (env.get_after_tran_count () == 0);
-}
-
-int
-search_for_id (TRANID id)
-{
-  for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
-    {
-      if (log_Gl.trantable.all_tdes[i]->trid == id)
-	{
-	  return 1;
-	}
-    }
-  return 0;
 }
 
 void
@@ -358,10 +348,9 @@ TEST_CASE ("Test load and recovery on every tran table entry ", "")
 
   env.generate_tran_table ();
   env.get_after ()->load_trantable_snapshot (&thd, smallest_lsa);
-  env.get_after ()->recovery_analysis (&thd, start_lsa);
+  env.get_after ()->recovery_analysis (&thd, start_lsa, false);
   env.get_after ()->recovery_2pc_analysis (&thd);
   env.check_recovery ();
-
 }
 
 test_env_chkpt::test_env_chkpt ()
@@ -453,6 +442,12 @@ LOG_LSA
 test_env_chkpt::generate_log_lsa ()
 {
   return log_lsa (std::rand () % MAX_RAND, std::rand () % MAX_RAND);
+}
+
+MVCCID
+test_env_chkpt::generate_mvccid ()
+{
+  return (MVCCID) (std::rand () % MAX_RAND);
 }
 
 void
@@ -548,7 +543,7 @@ test_env_chkpt::generate_tdes (int index)
   tdes->repl_insert_lsa          = generate_log_lsa ();
   tdes->repl_update_lsa          = generate_log_lsa ();
 
-  tdes->mvccinfo.id = std::rand () % MAX_RAND;
+  tdes->mvccinfo.id = generate_mvccid ();
 
   if (std::rand () % 2 == 0)
     {
@@ -564,6 +559,15 @@ test_env_chkpt::generate_tdes (int index)
   tdes->coord   = generate_2pc_coordinator ();
 
   return tdes;
+}
+
+void
+test_env_chkpt::generate_empty_tran_table ()
+{
+  // transaction table already empty
+
+  // needed by the logic when there are no transactions in the table
+  log_Gl.hdr.mvcc_next_id = generate_mvccid ();
 }
 
 void

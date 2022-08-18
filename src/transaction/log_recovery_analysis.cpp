@@ -430,7 +430,8 @@ log_recovery_analysis_internal (THREAD_ENTRY *thread_p, INT64 *num_redo_log_reco
 	  // The transaction table snapshot was taken before the next log record was logged.
 	  // Rebuild the transaction table image based on checkpoint information
 	  LOG_LSA start_redo_lsa = NULL_LSA;
-	  chkpt_infop->recovery_analysis (thread_p, start_redo_lsa);
+	  const bool recover_empty_transactions = is_passive_transaction_server ();
+	  chkpt_infop->recovery_analysis (thread_p, start_redo_lsa, recover_empty_transactions);
 	  assert (is_tran_server_with_remote_storage () || !start_redo_lsa.is_null ());
 	  context.set_start_redo_lsa (start_redo_lsa);
 	}
@@ -2480,7 +2481,7 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p,
     }
 
   log_lsa start_redo_lsa;
-  chkpt_info.recovery_analysis (thread_p, start_redo_lsa);
+  chkpt_info.recovery_analysis (thread_p, start_redo_lsa, true);
 
   log_recovery_context log_rcv_context;
   // log recovery analysis must actually start at the log record following the snapshot LSA, but, since
