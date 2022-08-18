@@ -6507,7 +6507,7 @@ log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length, LOG_LSA * log
       dumpfun = log_hexa_dump;
     }
 
-  if (dumpfun == log_hexa_dump)
+  if (log_hexa_dump == dumpfun || log_rv_dump_hexa == dumpfun || log_rv_dump_char == dumpfun)
     {
       fprintf (out_fp, "  crsdbg: dump skipped\n");
       return;
