@@ -33144,7 +33144,6 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
   FILE_DESCRIPTORS des;
   VPID vpid_root;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
-  LOG_DATA_ADDR addr_hdr = LOG_DATA_ADDR_INITIALIZER;
 
   int error_code = NO_ERROR;
 
@@ -33200,7 +33199,6 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
   btid->root_pageid = vpid_root.pageid;
 
   log_sysop_commit (thread_p);
-
   return NO_ERROR;
 }
 
