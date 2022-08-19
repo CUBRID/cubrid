@@ -1688,23 +1688,24 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
   // TODO: re-define transaction table making sure not to touch mvcc table
   // TODO: before that, reset all mvccids from all transactions in the table; the clear tdes function expects these
   //  ids to be null, and we do not want to affect that invariant because it guards otehr valid cases
-  static_assert (LOG_SYSTEM_TRAN_INDEX == 0, "");
-  for (int tr_idx = LOG_SYSTEM_TRAN_INDEX + 1; tr_idx < log_Gl.trantable.num_total_indices; ++tr_idx)
-    {
-      log_tdes *const tdes = log_Gl.trantable.all_tdes[tr_idx];
-      if (tdes != nullptr && MVCCID_IS_VALID (tdes->mvccinfo.id))
-	{
-	  tdes->mvccinfo.id = MVCCID_NULL;
-	}
-    }
-  constexpr bool affect_mvcc_table = false;
-  err_code = logtb_define_trantable_log_latch (thread_p, -1, affect_mvcc_table);
-  if (err_code != NO_ERROR)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "log_initialize_passive_tran_server: error initializing transaction table");
-      return;
-    }
+  //
+  //static_assert (LOG_SYSTEM_TRAN_INDEX == 0, "");
+  //for (int tr_idx = LOG_SYSTEM_TRAN_INDEX + 1; tr_idx < log_Gl.trantable.num_total_indices; ++tr_idx)
+  //  {
+  //    log_tdes *const tdes = log_Gl.trantable.all_tdes[tr_idx];
+  //    if (tdes != nullptr && MVCCID_IS_VALID (tdes->mvccinfo.id))
+  //      {
+  //        tdes->mvccinfo.id = MVCCID_NULL;
+  //      }
+  //  }
+  //constexpr bool affect_mvcc_table = false;
+  //err_code = logtb_define_trantable_log_latch (thread_p, -1, affect_mvcc_table);
+  //if (err_code != NO_ERROR)
+  //  {
+  //    logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+  //                       "log_initialize_passive_tran_server: error initializing transaction table");
+  //    return;
+  //  }
 
   // not other purpose on passive transaction server than to conform various checks that rely on the recovery state
   // one such example: the check for "is temporary volume" in page buffer
