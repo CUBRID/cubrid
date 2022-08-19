@@ -5396,7 +5396,7 @@ end:
 
   assert (error_code == NO_ERROR);
 
-  log_append_undo_data (thread_p, RVHF_CREATE_HEAP, &addr_hdr, sizeof (HFID), hfid);
+  log_append_undo_data2 (thread_p, RVHF_CREATE_HEAP, NULL, NULL, NULL_OFFSET, sizeof (HFID), hfid);
 
   log_sysop_attach_to_outer (thread_p);
   vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
