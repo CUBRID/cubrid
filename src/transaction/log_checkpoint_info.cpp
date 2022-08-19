@@ -179,12 +179,12 @@ namespace cublog
     // - this helps cover a scenario for the initialization of a passive transaction server:
     //    - a passive transaction server needs a consistent MVCC table when it starts
     //    - an active transaction might request an MVCCID but might not have yet added a log record
-    //      registering that MVCCID (but that MVCCID is in the transaction descriptor already)
-    //    - thus, when initializing a passive transaction server that - still "ghost" - MVCCID (but
-    //      which will appear later in the log records registered by the transaction) will be
-    //      taken into calculation of the MVCC table (see explanation in function
-    //      log_recovery_analysis_from_trantable_snapshot)
-    // - however, this should also be taken into account when using the transaction table snapshot to
+    //      containing that MVCCID (but that MVCCID is already reserverd and in the transaction
+    //      descriptor already and will also be present later in a log record)
+    //    - thus, when initializing a passive transaction server that - still "ghost" - MVCCID
+    //      will be taken into account for the initialization of the MVCC table (see explanation
+    //      in function log_recovery_analysis_from_trantable_snapshot)
+    // - however, this must also be taken into account when using the transaction table snapshot to
     //    initialize a crashed active transaction server (see recovery_analysis function below)
     //
     if (tdes.trid != NULL_TRANID && tdes.commit_abort_lsa.is_null ())
@@ -326,32 +326,30 @@ namespace cublog
 
   void
   checkpoint_info::recovery_analysis (THREAD_ENTRY *thread_p, log_lsa &start_redo_lsa,
-				      bool recover_empty_transactions) const
+				      bool skip_empty_transactions) const
   {
     start_redo_lsa = m_start_redo_lsa;
 
     /* Add the transactions to the transaction table */
     for (const auto &chkpt : m_trans)
       {
-	// if tail LSA is missing, the transaction is present in the transaction table
-	// but did not yet got to adding a log record; we either need to recover these
-	// transaction or not:
-	//  - on a passive transaction server, we need these transactions because they might contain
-	//    valid MVCCID's already registered with them which are used in constructing a consistent
-	//    MVCC table
-	//  - on an active transaction server, upon recovery, these transactions offer no useful
-	//    information, and can thus be sckipped
 	if (chkpt.tail_lsa.is_null ())
 	  {
-	    if (recover_empty_transactions)
-	      {
-		// fall through to recover/register empty transactions
-	      }
-	    else
+	    // if tail LSA is missing, the transaction is present in the transaction table
+	    // but did not yet get to add a log record; it is either needed or not to recover
+	    // this transaction depending on context:
+	    //  - on a passive transaction server, the transaction is needed because it might already
+	    //    contain a valid MVCCID already in its descriptor which will be used in constructing
+	    //    a consistent MVCC table
+	    //  - on an active transaction server, upon recovery, such a transaction offers no useful
+	    //    information (because it added no log record), and can thus be skipped
+	    // since the function is used in both context, the argument is used to differentiate
+	    if (skip_empty_transactions)
 	      {
 		// do not recover/register empty transaction
 		continue;
 	      }
+            // else, fall through to recover/register empty transactions
 	  }
 
 	/*
