@@ -1792,6 +1792,71 @@ static DISK_ISVALID btree_check_tree (THREAD_ENTRY * thread_p, const OID * class
 static DISK_ISVALID btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid);
 static char *btree_unpack_mvccinfo (char *ptr, BTREE_MVCC_INFO * mvcc_info, short btree_mvcc_flags);
 
+static int btree_is_key_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr,
+				 MVCC_SNAPSHOT * mvcc_snapshot, int slot_id, bool * is_visible, DB_VALUE * key_value);
+
+/*
+ *  btree_is_key_visible(): States if current key is visible or not.
+ *
+ *  thread_p(in): Thread entry.
+ *  btid(in): B-tree info.
+ *  pg_ptr(in):	Page pointer.
+ *  mvcc_snapshot(in): The MVCC snapshot.
+ *  slot_id(in) : Slot id to be looked for.
+ *  is_visible(out): True or False
+ *
+ *  return: error code if any error occurs.
+ */
+static int
+btree_is_key_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, MVCC_SNAPSHOT * mvcc_snapshot,
+		      int slot_id, bool * is_visible, DB_VALUE * key_value)
+{
+  RECDES record;
+  LEAF_REC leaf;
+  int num_visible = 0;
+  int key_offset = 0;
+  int ret = NO_ERROR;
+  int max_visible_oids = 1;
+  bool dummy_clear_key;
+
+  assert (mvcc_snapshot != NULL);
+
+  *is_visible = false;
+
+  /* Get the record. */
+  if (spage_get_record (thread_p, pg_ptr, slot_id, &record, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      ret = ER_FAILED;
+      return ret;
+    }
+
+  /* Read the record. - no need of actual key value */
+  ret = btree_read_record (thread_p, btid, pg_ptr, &record, key_value, &leaf, BTREE_LEAF_NODE, &dummy_clear_key,
+			   &key_offset, PEEK_KEY_VALUE, NULL);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return ret;
+    }
+
+  /* Get the number of visible items. */
+  ret =
+    btree_get_num_visible_from_leaf_and_ovf (thread_p, btid, &record, key_offset, &leaf, &max_visible_oids,
+					     mvcc_snapshot, &num_visible);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  if (num_visible > 0)
+    {
+      *is_visible = true;
+    }
+
+  return ret;
+}
+
 /*
  * btree_fix_root_with_info () - Fix b-tree root page and output its VPID, header and b-tree info if requested.
  *
@@ -8542,22 +8607,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
   btree_init_temp_key_value (&clear_key, &key1);
 
   /* initialize capacity structure */
-  cpc->dis_key_cnt = 0;
-  cpc->tot_val_cnt = 0;
-  cpc->avg_val_per_key = 0;
-  cpc->leaf_pg_cnt = 0;
-  cpc->nleaf_pg_cnt = 0;
-  cpc->tot_pg_cnt = 0;
-  cpc->height = 0;
-  cpc->sum_rec_len = 0;
-  cpc->sum_key_len = 0;
-  cpc->avg_key_len = 0;
-  cpc->avg_rec_len = 0;
-  cpc->tot_free_space = 0;
-  cpc->tot_space = 0;
-  cpc->tot_used_space = 0;
-  cpc->avg_pg_key_cnt = 0;
-  cpc->avg_pg_free_sp = 0;
+  memset (cpc, 0x00, sizeof (BTREE_CAPACITY));
 
   free_space = spage_get_free_space (thread_p, pg_ptr);
 
@@ -8574,6 +8624,8 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
   if (node_type == BTREE_NON_LEAF_NODE)
     {				/* a non-leaf page */
       BTREE_CAPACITY cpc2;
+
+      cpc->nleaf_pg_cnt += 1;
 
       /* traverse all the subtrees of this non_leaf page and accumulate the statistical data in the cpc structure */
       for (i = 1; i <= key_cnt; i++)
@@ -8595,6 +8647,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 #endif /* !NDEBUG */
 
 	  ret = btree_get_subtree_capacity (thread_p, btid, page, &cpc2);
+	  pgbuf_unfix_and_init (thread_p, page);
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -8612,27 +8665,23 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	  cpc->tot_free_space += cpc2.tot_free_space;
 	  cpc->tot_space += cpc2.tot_space;
 	  cpc->tot_used_space += cpc2.tot_used_space;
-	  pgbuf_unfix_and_init (thread_p, page);
+
+	  cpc->ovfl_oid_pg.tot_free_space += cpc2.ovfl_oid_pg.tot_free_space;
+	  cpc->ovfl_oid_pg.tot_pg_cnt += cpc2.ovfl_oid_pg.tot_pg_cnt;
+	  cpc->ovfl_oid_pg.tot_space += cpc2.ovfl_oid_pg.tot_space;
+	  cpc->ovfl_oid_pg.dis_key_cnt += cpc2.ovfl_oid_pg.dis_key_cnt;
+	  cpc->ovfl_oid_pg.tot_val_cnt += cpc2.ovfl_oid_pg.tot_val_cnt;
+	  if (cpc->ovfl_oid_pg.max_pg_cnt_per_key < cpc2.ovfl_oid_pg.max_pg_cnt_per_key)
+	    {
+	      cpc->ovfl_oid_pg.max_pg_cnt_per_key = cpc2.ovfl_oid_pg.max_pg_cnt_per_key;
+	    }
 	}			/* for */
-      cpc->avg_val_per_key = ((cpc->dis_key_cnt > 0) ? (cpc->tot_val_cnt / cpc->dis_key_cnt) : 0);
-      cpc->nleaf_pg_cnt += 1;
-      cpc->tot_pg_cnt += 1;
-      cpc->tot_free_space += free_space;
-      cpc->tot_space += DB_PAGESIZE;
-      cpc->tot_used_space += (DB_PAGESIZE - free_space);
-      cpc->avg_key_len = ((cpc->dis_key_cnt > 0) ? ((int) (cpc->sum_key_len / cpc->dis_key_cnt)) : 0);
-      cpc->avg_rec_len = ((cpc->dis_key_cnt > 0) ? ((int) (cpc->sum_rec_len / cpc->dis_key_cnt)) : 0);
-      cpc->avg_pg_key_cnt = ((cpc->leaf_pg_cnt > 0) ? ((int) (cpc->dis_key_cnt / cpc->leaf_pg_cnt)) : 0);
-      cpc->avg_pg_free_sp = ((cpc->tot_pg_cnt > 0) ? (cpc->tot_free_space / cpc->tot_pg_cnt) : 0);
     }
   else
     {				/* a leaf page */
-
       /* form the cpc structure for a leaf node page */
       cpc->dis_key_cnt = key_cnt;
       cpc->leaf_pg_cnt = 1;
-      cpc->nleaf_pg_cnt = 0;
-      cpc->tot_pg_cnt = 1;
       cpc->height = 1;
       for (i = 1; i <= cpc->dis_key_cnt; i++)
 	{
@@ -8657,6 +8706,11 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	  ovfl_vpid = leaf_pnt.ovfl;
 	  if (!VPID_ISNULL (&ovfl_vpid))
 	    {			/* overflow pages exist */
+	      int free_space_ovfl, oid_cnt_ovfl, pg_cnt_per_key;
+
+	      oid_cnt_ovfl = 0;
+	      pg_cnt_per_key = 0;
+	      cpc->ovfl_oid_pg.dis_key_cnt += 1;
 	      do
 		{
 		  ovfp = pgbuf_fix (thread_p, &ovfl_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
@@ -8669,6 +8723,8 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 		  (void) pgbuf_check_page_ptype (thread_p, ovfp, PAGE_BTREE);
 #endif /* !NDEBUG */
 
+		  free_space_ovfl = spage_get_free_space (thread_p, ovfp);
+
 		  btree_get_next_overflow_vpid (thread_p, ovfp, &ovfl_vpid);
 
 		  if (spage_get_record (thread_p, ovfp, 1, &orec, PEEK) != S_SUCCESS)
@@ -8676,24 +8732,51 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 		      goto exit_on_error;
 		    }
 
-		  oid_cnt += btree_record_get_num_oids (thread_p, btid, &orec, 0, BTREE_OVERFLOW_NODE);
+		  oid_cnt_ovfl += btree_record_get_num_oids (thread_p, btid, &orec, 0, BTREE_OVERFLOW_NODE);
 		  pgbuf_unfix_and_init (thread_p, ovfp);
+
+		  cpc->ovfl_oid_pg.tot_free_space += free_space_ovfl;
+		  cpc->ovfl_oid_pg.tot_space += DB_PAGESIZE;
+
+		  cpc->ovfl_oid_pg.tot_pg_cnt += 1;
+		  pg_cnt_per_key++;
 		}
 	      while (!VPID_ISNULL (&ovfl_vpid));
+
+	      if (cpc->ovfl_oid_pg.max_pg_cnt_per_key < pg_cnt_per_key)
+		{
+		  cpc->ovfl_oid_pg.max_pg_cnt_per_key = pg_cnt_per_key;
+		}
+
+	      cpc->ovfl_oid_pg.tot_val_cnt += oid_cnt_ovfl;
+	      oid_cnt += oid_cnt_ovfl;
 	    }			/* if */
+
 	  cpc->tot_val_cnt += oid_cnt;
-
 	}			/* for */
-      cpc->avg_val_per_key = ((cpc->dis_key_cnt > 0) ? (cpc->tot_val_cnt / cpc->dis_key_cnt) : 0);
-      cpc->avg_key_len = ((cpc->dis_key_cnt > 0) ? ((int) (cpc->sum_key_len / cpc->dis_key_cnt)) : 0);
-      cpc->avg_rec_len = ((cpc->dis_key_cnt > 0) ? ((int) (cpc->sum_rec_len / cpc->dis_key_cnt)) : 0);
-      cpc->tot_free_space = (float) free_space;
-      cpc->tot_space = DB_PAGESIZE;
-      cpc->tot_used_space = (cpc->tot_space - cpc->tot_free_space);
-      cpc->avg_pg_key_cnt = ((cpc->leaf_pg_cnt > 0) ? (cpc->dis_key_cnt / cpc->leaf_pg_cnt) : 0);
-      cpc->avg_pg_free_sp = ((cpc->tot_pg_cnt > 0) ? (cpc->tot_free_space / cpc->tot_pg_cnt) : 0);
-
     }				/* if-else */
+
+  cpc->tot_pg_cnt += 1;
+  cpc->tot_free_space += (float) free_space;
+  cpc->tot_space += DB_PAGESIZE;
+  cpc->tot_used_space = (cpc->tot_space - cpc->tot_free_space);
+
+  if (cpc->dis_key_cnt > 0)
+    {
+      cpc->avg_val_per_key = (int) (cpc->tot_val_cnt / cpc->dis_key_cnt);
+      cpc->avg_key_len = (int) (cpc->sum_key_len / cpc->dis_key_cnt);
+      cpc->avg_rec_len = (int) (cpc->sum_rec_len / cpc->dis_key_cnt);
+    }
+  if (cpc->leaf_pg_cnt > 0)
+    {
+      cpc->avg_pg_key_cnt = (int) (cpc->dis_key_cnt / cpc->leaf_pg_cnt);
+    }
+
+  cpc->avg_pg_free_sp = cpc->tot_free_space / cpc->tot_pg_cnt;
+  if (cpc->ovfl_oid_pg.tot_pg_cnt > 0)
+    {
+      cpc->ovfl_oid_pg.avg_pg_free_sp = cpc->ovfl_oid_pg.tot_free_space / cpc->ovfl_oid_pg.tot_pg_cnt;
+    }
 
   return ret;
 
@@ -8831,11 +8914,12 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
 
   /* dump the capacity information */
   fprintf (fp, "\nDistinct Key Count: %d\n", cpc.dis_key_cnt);
-  fprintf (fp, "Total Value Count: %d\n", cpc.tot_val_cnt);
+  fprintf (fp, "Total Value Count: %lld\n", cpc.tot_val_cnt);
   fprintf (fp, "Average Value Count Per Key: %d\n", cpc.avg_val_per_key);
-  fprintf (fp, "Total Page Count: %d\n", cpc.tot_pg_cnt);
+  fprintf (fp, "Total Page Count: %d\n", cpc.tot_pg_cnt + cpc.ovfl_oid_pg.tot_pg_cnt);
   fprintf (fp, "Leaf Page Count: %d\n", cpc.leaf_pg_cnt);
   fprintf (fp, "NonLeaf Page Count: %d\n", cpc.nleaf_pg_cnt);
+  fprintf (fp, "Overflow Page Count: %d\n", cpc.ovfl_oid_pg.tot_pg_cnt);
   fprintf (fp, "Height: %d\n", cpc.height);
   fprintf (fp, "Average Key Length: %d\n", cpc.avg_key_len);
   fprintf (fp, "Average Record Length: %d\n", cpc.avg_rec_len);
@@ -8844,6 +8928,13 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
   fprintf (fp, "Free Index Space: %.0f bytes\n", cpc.tot_free_space);
   fprintf (fp, "Average Page Free Space: %.0f bytes\n", cpc.avg_pg_free_sp);
   fprintf (fp, "Average Page Key Count: %d\n", cpc.avg_pg_key_cnt);
+  fprintf (fp, "Percentage of Free Space on Overflow Page: %d \n",
+	   (cpc.ovfl_oid_pg.tot_space > 0) ?
+	   (int) ((cpc.ovfl_oid_pg.tot_free_space / cpc.ovfl_oid_pg.tot_space) * 100) : 0);
+  fprintf (fp, "Average Overflow Free Space per Page: %d bytes\n", (int) cpc.ovfl_oid_pg.avg_pg_free_sp);
+  fprintf (fp, "Average Overflow Page Count Per Key: %d\n",
+	   (cpc.ovfl_oid_pg.dis_key_cnt > 0) ? (int) (cpc.ovfl_oid_pg.tot_pg_cnt / cpc.ovfl_oid_pg.dis_key_cnt) : 0);
+  fprintf (fp, "Max Overflow Page Count in a Key: %d\n", cpc.ovfl_oid_pg.max_pg_cnt_per_key);
   fprintf (fp, "-------------------------------------------------------------\n");
 
 exit:
@@ -16351,14 +16442,13 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 {
   VPID root_vpid;
   PAGE_PTR root_page_ptr = NULL;
-  int offset;
   bool clear_key = false;
-  DB_VALUE key_value;
+  bool is_visible = false;
+  DB_VALUE key_value, *value_p = &key_value;
   BTREE_ROOT_HEADER *root_header = NULL;
-  RECDES rec;
-  LEAF_REC leaf_pnt;
   BTREE_SCAN btree_scan, *BTS;
   int ret = NO_ERROR;
+  MVCC_SNAPSHOT *mvcc_snapshot;
 
   if (key == NULL)
     {
@@ -16398,8 +16488,6 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
   pgbuf_unfix_and_init (thread_p, root_page_ptr);
 
-  assert (tp_valid_indextype (TP_DOMAIN_TYPE (BTS->btid_int.key_type)));
-
   /*
    * in case of desc domain index,
    * we have to find the min/max key in opposite order.
@@ -16424,24 +16512,53 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       goto exit_on_error;
     }
 
-  if (!BTREE_END_OF_SCAN (BTS))
+  if ((mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p)) == NULL)
     {
-      assert (BTS->slot_id > 0);
-      if (spage_get_record (thread_p, BTS->C_page, BTS->slot_id, &rec, PEEK) != S_SUCCESS)
-	{
-	  goto exit_on_error;
-	}
-
-      if (btree_read_record (thread_p, &BTS->btid_int, BTS->C_page, &rec, &key_value, (void *) &leaf_pnt,
-			     BTREE_LEAF_NODE, &clear_key, &offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-
-      (void) pr_clone_value (&key_value, key);
-
-      btree_clear_key_value (&clear_key, &key_value);
+      goto exit_on_error;
     }
+
+  mvcc_snapshot->snapshot_fnc = mvcc_satisfies_snapshot;
+
+  while (!BTREE_END_OF_SCAN (BTS))
+    {
+      /* get a visible key on mvcc */
+      ret =
+	btree_is_key_visible (thread_p, &BTS->btid_int, BTS->C_page, mvcc_snapshot, BTS->slot_id, &is_visible,
+			      &key_value);
+
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      if (is_visible)
+	{
+	  value_p = &key_value;
+	  if (key_value.domain.general_info.type == DB_TYPE_MIDXKEY)
+	    {
+	      DB_MIDXKEY *midxkey_val;
+
+	      midxkey_val = db_get_midxkey (&key_value);
+	      pr_midxkey_get_element_nocopy (midxkey_val, 0, value_p, NULL, NULL);
+	    }
+
+	  /* find only not null */
+	  if (db_value_is_null (value_p) == false)
+	    {
+	      break;
+	    }
+	}
+
+      ret = btree_find_next_index_record (thread_p, BTS);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
+    }
+
+  (void) pr_clone_value (value_p, key);
+  btree_clear_key_value (&clear_key, &key_value);
 
 end:
 
@@ -22259,89 +22376,110 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
     }
 
   /* scan index capacity into out_values */
-  error = db_make_string_copy (out_values[idx], class_name);
-  idx++;
+  /* Refer to metadata_of_index_capacity for the order of out_values */
+
+  // {"Table_name", "varchar(256)"}
+  error = db_make_string_copy (out_values[idx++], class_name);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
 
-  error = db_make_string_copy (out_values[idx], index_p->btname);
-  idx++;
+  // {"Index_name", "varchar(256)"}
+  error = db_make_string_copy (out_values[idx++], index_p->btname);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
 
+  // {"Btid", "varchar(64)"}
   (void) btid_to_string (buf, sizeof (buf), btid_p);
-  error = db_make_string_copy (out_values[idx], buf);
-  idx++;
+  error = db_make_string_copy (out_values[idx++], buf);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
 
-  db_make_int (out_values[idx], cpc.dis_key_cnt);
-  idx++;
+  // {"Num_distinct_key", "int"}
+  db_make_int (out_values[idx++], cpc.dis_key_cnt);
 
-  db_make_int (out_values[idx], cpc.tot_val_cnt);
-  idx++;
+  // {"Total_value", "bigint"}
+  db_make_bigint (out_values[idx++], cpc.tot_val_cnt);
 
-  db_make_int (out_values[idx], cpc.avg_val_per_key);
-  idx++;
+  // {"Avg_num_value_per_key", "int"}
+  db_make_int (out_values[idx++], cpc.avg_val_per_key);
 
-  db_make_int (out_values[idx], cpc.leaf_pg_cnt);
-  idx++;
+  // {"Num_leaf_page", "int"}
+  db_make_int (out_values[idx++], cpc.leaf_pg_cnt);
 
-  db_make_int (out_values[idx], cpc.nleaf_pg_cnt);
-  idx++;
+  // {"Num_Ovfl_page", "int"}
+  db_make_int (out_values[idx++], cpc.ovfl_oid_pg.tot_pg_cnt);
 
-  db_make_int (out_values[idx], cpc.tot_pg_cnt);
-  idx++;
+  // {"Num_non_leaf_page", "int"}
+  db_make_int (out_values[idx++], cpc.nleaf_pg_cnt);
 
-  db_make_int (out_values[idx], cpc.height);
-  idx++;
+  // {"Num_total_page", "int"}
+  db_make_int (out_values[idx++], cpc.tot_pg_cnt + cpc.ovfl_oid_pg.tot_pg_cnt);
 
-  db_make_int (out_values[idx], cpc.avg_key_len);
-  idx++;
+  // {"Height", "int"}
+  db_make_int (out_values[idx++], cpc.height);
 
-  db_make_int (out_values[idx], cpc.avg_rec_len);
-  idx++;
+  // {"Avg_key_len", "int"}
+  db_make_int (out_values[idx++], cpc.avg_key_len);
 
+  // {"Avg_rec_len", "int"}
+  db_make_int (out_values[idx++], cpc.avg_rec_len);
+
+  // {"Total_space", "varchar(64)"}
   (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_space));
-  error = db_make_string_copy (out_values[idx], buf);
-  idx++;
+  error = db_make_string_copy (out_values[idx++], buf);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
 
+  // {"Total_used_space", "varchar(64)"}
   (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_used_space));
-  error = db_make_string_copy (out_values[idx], buf);
-  idx++;
+  error = db_make_string_copy (out_values[idx++], buf);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
 
+  // {"Total_free_space", "varchar(64)"}
   (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_free_space));
-  error = db_make_string_copy (out_values[idx], buf);
-  idx++;
+  error = db_make_string_copy (out_values[idx++], buf);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
 
-  db_make_int (out_values[idx], cpc.avg_pg_key_cnt);
-  idx++;
+  // {"Avg_num_page_key", "int"}
+  db_make_int (out_values[idx++], cpc.avg_pg_key_cnt);
 
+  // {"Avg_page_free_space", "varchar(64)"}
   (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.avg_pg_free_sp));
-  error = db_make_string_copy (out_values[idx], buf);
-  idx++;
+  error = db_make_string_copy (out_values[idx++], buf);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
+
+  // {"Percentage_free_space_Ovfl_page", "int"}
+  db_make_int (out_values[idx++],
+	       (cpc.ovfl_oid_pg.tot_space > 0) ?
+	       (int) ((cpc.ovfl_oid_pg.tot_free_space / cpc.ovfl_oid_pg.tot_space) * 100) : 0);
+
+  // {"Average_free_space_per_Ovfl_page", "int"}
+  db_make_int (out_values[idx++], (int) cpc.ovfl_oid_pg.avg_pg_free_sp);
+
+  // {"Average_Ovfl_page_count_per_key", "int"}
+  db_make_int (out_values[idx++],
+	       (cpc.ovfl_oid_pg.dis_key_cnt > 0) ?
+	       (int) (cpc.ovfl_oid_pg.tot_pg_cnt / cpc.ovfl_oid_pg.dis_key_cnt) : 0);
+
+  // {"Max_Ovfl_page_count_in_a_key", "int"}
+  db_make_int (out_values[idx++], cpc.ovfl_oid_pg.max_pg_cnt_per_key);
 
   assert (idx == out_cnt);
 
