@@ -6539,13 +6539,14 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
   char update_query[QUERY_BUF_MAX_SIZE];
   char where_query[QUERY_BUF_MAX_SIZE];
   DB_QUERY_RESULT *result1, *result2, *result3;
-  DB_VALUE value1, value2, value3;
+  DB_VALUE value1, value2, value3, value4;
   int error = NO_ERROR;
   DB_INFO *dir = NULL;
   DB_INFO *db_info_p = NULL;
   bool need_db_shutdown = false;
   const char *program_name = "extend";
   const char *table_name = NULL;
+  const char *owner_name = NULL;
   bool is_first_column = true;
   bool has_timezone_column;
 
@@ -6584,7 +6585,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
       printf ("Updating database %s...\n", db_info_p->name);
 
       memset (query_buf, 0, sizeof (query_buf));
-      strcat (query_buf, "show tables");
+      strcat (query_buf, "show full tables");
 
       error = execute_query (query_buf, &result1);
       if (error < 0)
@@ -6605,37 +6606,50 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 	      goto exit;
 	    }
 
+	  error = db_query_get_tuple_value (result1, 1, &value2);
+	  if (error != NO_ERROR)
+	    {
+	      db_query_end (result1);
+	      need_db_shutdown = true;
+	      goto exit;
+	    }
+
 	  if (error == NO_ERROR)
 	    {
-	      if (DB_IS_NULL (&value1))
+	      if (DB_IS_NULL (&value1) || DB_IS_NULL (&value2))
 		{
 		  need_db_shutdown = true;
 		  goto exit;
 		}
 	      else
 		{
-		  char table_name_buf[TABLE_NAME_MAX_SIZE];
-
 		  /* First get the name of the table */
 		  table_name = db_get_string (&value1);
+		  owner_name = db_get_string (&value2);
 
 		  memset (query_buf, 0, sizeof (query_buf));
-		  memset (table_name_buf, 0, sizeof (table_name_buf));
-		  strcat (table_name_buf, "'");
-		  strcat (table_name_buf, table_name);
-		  strcat (table_name_buf, "'");
-
+		  // *INDENT-OFF*
 		  snprintf (query_buf, sizeof (query_buf) - 1,
-			    "select attr_name, data_type from _db_attribute where class_of.class_name = %s",
-			    table_name_buf);
+			"SELECT "
+			  "[a].[attr_name] AS [attr_name], "
+			  "[a].[data_type] AS [data_type] "
+			"FROM "
+			  "[_db_attribute] AS [a] "
+			"WHERE "
+			  "[a].[class_of].[class_name] = '%s' "
+			  "AND [a].[class_of].[owner].[name] = '%s'",
+			table_name,
+			owner_name);
+		  // *INDENT-ON*
+
 		  error = execute_query (query_buf, &result2);
 		  if (error < 0)
 		    {
-		      printf ("Error while listing column names and types for table %s\n", table_name);
+		      printf ("Error while listing column names and types for table %s.%s\n", owner_name, table_name);
 		      need_db_shutdown = true;
 		      goto exit;
 		    }
-		  printf ("Updating table %s...\n", table_name);
+		  printf ("Updating table %s.%s...\n", owner_name, table_name);
 
 		  /* We are going to make an update query for each table which includes a timezone column like:
 		   *  UPDATE [t] SET [tzc1] = CONV_TZ([tzc1]), [tzc2] = CONV_TZ([tzc2]) ...
@@ -6646,6 +6660,8 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 		  memset (where_query, 0, sizeof (where_query));
 
 		  strcpy (update_query, "UPDATE [");
+		  strcat (update_query, owner_name);
+		  strcat (update_query, "].[");
 		  strcat (update_query, table_name);
 		  strcat (update_query, "] SET ");
 		  strcpy (where_query, " WHERE ");
@@ -6660,7 +6676,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 		      int column_type = 0;
 
 		      /* Get the column name */
-		      error = db_query_get_tuple_value (result2, 0, &value2);
+		      error = db_query_get_tuple_value (result2, 0, &value3);
 		      if (error != NO_ERROR)
 			{
 			  db_query_end (result2);
@@ -6669,7 +6685,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 			}
 
 		      /* Get the column type */
-		      error = db_query_get_tuple_value (result2, 1, &value3);
+		      error = db_query_get_tuple_value (result2, 1, &value4);
 		      if (error != NO_ERROR)
 			{
 			  db_query_end (result2);
@@ -6677,10 +6693,10 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 			  goto exit;
 			}
 
-		      assert (DB_VALUE_TYPE (&value2) == DB_TYPE_STRING);
-		      assert (DB_VALUE_TYPE (&value3) == DB_TYPE_INTEGER);
-		      column_name = db_get_string (&value2);
-		      column_type = db_get_int (&value3);
+		      assert (DB_VALUE_TYPE (&value3) == DB_TYPE_STRING);
+		      assert (DB_VALUE_TYPE (&value4) == DB_TYPE_INTEGER);
+		      column_name = db_get_string (&value3);
+		      column_type = db_get_int (&value4);
 
 		      /* Now do the update if the datatype is of timezone type */
 		      if (column_type == DB_TYPE_DATETIMETZ || column_type == DB_TYPE_DATETIMELTZ
@@ -6729,14 +6745,14 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 		      error = execute_query (query_buf, &result3);
 		      if (error < 0)
 			{
-			  printf ("Error while updating table %s\n", table_name);
+			  printf ("Error while updating table %s.%s\n", owner_name, table_name);
 			  db_abort_transaction ();
 			  need_db_shutdown = true;
 			  goto exit;
 			}
 		      db_query_end (result3);
 		    }
-		  printf ("Finished updating table %s\n", table_name);
+		  printf ("Finished updating table %s.%s\n", owner_name, table_name);
 		}
 	    }
 	}
