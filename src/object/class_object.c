@@ -7963,7 +7963,7 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj, SM_COMPONENT * com
  * | n | /UK(asc): |          |           |         |          |           |
  * | e +-----------+----------+-----------+---------+----------+-----------+
  * | w |  PK(desc) |          |           |         |          |           |
- * |   | /UK(desc) | new idx  |   error   | new idx | new idx  |   error   |
+ * |   | /UK(desc) | new idx  |   share   | new idx | new idx  |   error   |
  * | i |    /R-UK: |          |           |         |          |           |
  * | n +-----------+----------+-----------+---------+----------+-----------+
  * | d |       FK: | new idx  |  new idx  |  error  |  share   |   share   |
@@ -7996,7 +7996,7 @@ classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints, const DB_
 
   if (existing_con == NULL)
     {
-      return SM_SHARE_INDEX;
+      return SM_CREATE_NEW_INDEX;
     }
 
   if (DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type) && SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type))
