@@ -4070,12 +4070,12 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
   int i, len, order;
 
   /* for foreign key, need to check redundancy first */
-  if (new_cons == SM_CONSTRAINT_FOREIGN_KEY)
+  if (new_cons == DB_CONSTRAINT_FOREIGN_KEY)
     {
       for (cons = cons_list; cons; cons = cons->next)
 	{
 	  /* check foreign key only */
-	  if (new_cons != cons->type || !cons->attributes || !namep)
+	  if (!cons->attributes || cons->type != SM_CONSTRAINT_FOREIGN_KEY)
 	    {
 	      continue;
 	    }
@@ -4091,9 +4091,12 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	  /* not allowed redundant one */
 	  if (!*attp && !*namep)
 	    {
-	      return cons;
+	      break;
 	    }
 	}
+
+      /* if not found existing foreign key, return NULL */
+      return cons;
     }
 
   for (cons = cons_list; cons; cons = cons->next)
@@ -7966,7 +7969,7 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj, SM_COMPONENT * com
  * |   | /UK(desc) | new idx  |   share   | new idx | new idx  |   error   |
  * | i |    /R-UK: |          |           |         |          |           |
  * | n +-----------+----------+-----------+---------+----------+-----------+
- * | d |       FK: | new idx  |  new idx  |  share  |  share   |   share   |
+ * | d |       FK: | new idx  |  new idx  |  error  |  share   |   share   |
  * | e +-----------+----------+-----------+---------+----------+-----------+
  * | x | idx(asc): |  error   |  new idx  |  share  |  error   |  new idx  |
  * |   +-----------+----------+-----------+---------+----------+-----------+
@@ -7999,20 +8002,16 @@ classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints, const DB_
       return SM_CREATE_NEW_INDEX;
     }
 
+  if (constraint_type == DB_CONSTRAINT_FOREIGN_KEY)
+    {
+      return SM_NOT_SHARE_INDEX_AND_WARNING;
+    }
+
   assert (existing_con != NULL);
   if (DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type) && SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type))
     {
       ret = SM_SHARE_INDEX;
       goto check_filter_function;
-    }
-
-  if (constraint_type == DB_CONSTRAINT_FOREIGN_KEY)
-    {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type))
-	{
-	  ret = SM_CREATE_NEW_INDEX;
-	  return ret;
-	}
     }
 
   if (constraint_type == DB_CONSTRAINT_INDEX && existing_con->type == SM_CONSTRAINT_FOREIGN_KEY)
