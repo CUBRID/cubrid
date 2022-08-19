@@ -52,6 +52,12 @@ typedef enum
   IPADDR_TO_HOSTNAME = 1,
 } LOOKUP_TYPE;
 
+typedef enum
+{
+  USE_GLIBC_HOSTS = 0,
+  USE_USER_DEFINED_HOSTS = 1,
+} HOST_LOOKUP_TYPE;
+
 struct cub_hostent
 {
   char ipaddr[IPADDR_LEN];
@@ -64,7 +70,6 @@ static CUB_HOSTENT hostent_List[MAX_HOSTS_LINE_NUM];	/* "etc/hosts" file maximum
 static const char user_defined_hostfile_Name[] = "hosts.conf";
 
 static int host_conf_element_Count = 0;
-static int host_conf_Use = -1;	/* -1 is unknown, 0 is not using user hosts, 1 is using user hosts */
 
 // *INDENT-OFF*
 static std::unordered_map <std::string, std::string> user_host_Map;
@@ -264,12 +269,7 @@ gethostbyname_uhost (char *name)
 {
   struct hostent *hp;
 
-  if (host_conf_Use < 0)
-    {
-      host_conf_Use = prm_get_bool_value (PRM_ID_USE_USER_HOSTS);
-    }
-
-  if (host_conf_Use == 0)
+  if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
     {
       return gethostbyname (name);
     }
@@ -312,12 +312,7 @@ gethostbyname_r_uhost (const char *name,
 
   struct hostent *hp_buf = NULL;
 
-  if (host_conf_Use < 0)
-    {
-      host_conf_Use = prm_get_bool_value (PRM_ID_USE_USER_HOSTS);
-    }
-
-  if (host_conf_Use == 0)
+  if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
     {
 //err also modified by callee
 #ifdef HAVE_GETHOSTBYNAME_R
@@ -373,12 +368,8 @@ getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *host, size_t 
 {
   struct hostent *hp;
 
-  if (host_conf_Use < 0)
-    {
-      host_conf_Use = prm_get_bool_value (PRM_ID_USE_USER_HOSTS);
-    }
 
-  if (host_conf_Use == 0)
+  if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
     {
       return getnameinfo (addr, addrlen, host, hostlen, NULL, 0, NI_NOFQDN);
     }
@@ -401,18 +392,12 @@ getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *host, size_t 
 int
 getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct addrinfo **res)
 {
-
   struct hostent *hp = NULL;
   struct addrinfo results_out;
   struct sockaddr_in addr_convert;
   struct in_addr *in_addr_buf;
 
-  if (host_conf_Use < 0)
-    {
-      host_conf_Use = prm_get_bool_value (PRM_ID_USE_USER_HOSTS);
-    }
-
-  if (host_conf_Use == 0)
+  if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
     {
       return getaddrinfo (node, NULL, hints, res);
     }
