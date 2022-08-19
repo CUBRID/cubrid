@@ -174,7 +174,20 @@ namespace cublog
   checkpoint_info::load_checkpoint_trans (log_tdes &tdes, LOG_LSA &smallest_lsa,
 					  bool &at_least_one_active_transaction_has_valid_mvccid)
   {
-    if (tdes.trid != NULL_TRANID && !tdes.tail_lsa.is_null () && tdes.commit_abort_lsa.is_null ())
+    // - snapshot even transactions that do not have a valid tail LSA (ie: transactions that
+    //    did not add a log record yet);
+    // - this helps cover a scenario for the initialization of a passive transaction server:
+    //    - a passive transaction server needs a consistent MVCC table when it starts
+    //    - an active transaction might request an MVCCID but might not have yet added a log record
+    //      containing that MVCCID (but that MVCCID is already reserverd and in the transaction
+    //      descriptor already and will also be present later in a log record)
+    //    - thus, when initializing a passive transaction server that - still "ghost" - MVCCID
+    //      will be taken into account for the initialization of the MVCC table (see explanation
+    //      in function log_recovery_analysis_from_trantable_snapshot)
+    // - however, this must also be taken into account when using the transaction table snapshot to
+    //    initialize a crashed active transaction server (see recovery_analysis function below)
+    //
+    if (tdes.trid != NULL_TRANID && tdes.commit_abort_lsa.is_null ())
       {
 	m_trans.emplace_back ();
 	tran_info &chkpt_tran = m_trans.back ();
@@ -312,15 +325,33 @@ namespace cublog
   }
 
   void
-  checkpoint_info::recovery_analysis (THREAD_ENTRY *thread_p, log_lsa &start_redo_lsa) const
+  checkpoint_info::recovery_analysis (THREAD_ENTRY *thread_p, log_lsa &start_redo_lsa,
+				      bool skip_empty_transactions) const
   {
-    LOG_TDES *tdes = nullptr;
-
     start_redo_lsa = m_start_redo_lsa;
 
     /* Add the transactions to the transaction table */
     for (const auto &chkpt : m_trans)
       {
+	if (chkpt.tail_lsa.is_null ())
+	  {
+	    // if tail LSA is missing, the transaction is present in the transaction table
+	    // but did not yet get to add a log record; it is either needed or not to recover
+	    // this transaction depending on context:
+	    //  - on a passive transaction server, the transaction is needed because it might already
+	    //    contain a valid MVCCID already in its descriptor which will be used in constructing
+	    //    a consistent MVCC table
+	    //  - on an active transaction server, upon recovery, such a transaction offers no useful
+	    //    information (because it added no log record), and can thus be skipped
+	    // since the function is used in both context, the argument is used to differentiate
+	    if (skip_empty_transactions)
+	      {
+		// do not recover/register empty transaction
+		continue;
+	      }
+            // else, fall through to recover/register empty transactions
+	  }
+
 	/*
 	 * If this is the first time, the transaction is seen. Assign a
 	 * new index to describe it and assume that the transaction was
@@ -328,7 +359,7 @@ namespace cublog
 	 * unilaterally aborted. The truth of this statement will be find
 	 * reading the rest of the log
 	 */
-	tdes = logtb_rv_find_allocate_tran_index (thread_p, chkpt.trid, &NULL_LSA);
+	LOG_TDES *const tdes = logtb_rv_find_allocate_tran_index (thread_p, chkpt.trid, &NULL_LSA);
 	if (tdes == NULL)
 	  {
 	    logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
@@ -377,7 +408,7 @@ namespace cublog
 
     for (const auto &sysop : m_sysops)
       {
-	tdes = logtb_rv_find_allocate_tran_index (thread_p, sysop.trid, &NULL_LSA);
+	LOG_TDES *const tdes = logtb_rv_find_allocate_tran_index (thread_p, sysop.trid, &NULL_LSA);
 	if (tdes == NULL)
 	  {
 	    logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
