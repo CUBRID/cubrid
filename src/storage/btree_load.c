@@ -1025,6 +1025,9 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 			 btid_int.sys_btid->root_pageid, btid_int.sys_btid->vfid.volid, btid_int.sys_btid->vfid.fileid);
 	}
 
+      /* This has to be appended after the root header record inserted. (in btree_build_nleafs() above) */
+      log_append_undo_data2 (thread_p, RVBT_CREATE_BTREE, NULL, NULL, NULL_OFFSET, sizeof (BTID), btid);
+
 #if !defined(NDEBUG)
       (void) btree_verify_tree (thread_p, &class_oids[0], &btid_int, bt_name);
 #endif

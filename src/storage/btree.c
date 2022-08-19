@@ -5741,6 +5741,8 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
   pgbuf_set_dirty (thread_p, page_ptr, FREE);
   page_ptr = NULL;
 
+  log_append_undo_data2 (thread_p, RVBT_CREATE_BTREE, NULL, NULL, NULL_OFFSET, sizeof (BTID), btid);
+
   log_sysop_attach_to_outer (thread_p);
   vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
   if (unique_pk)
@@ -33198,8 +33200,6 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
   btid->root_pageid = vpid_root.pageid;
 
   log_sysop_commit (thread_p);
-
-  log_append_undo_data (thread_p, RVBT_CREATE_BTREE, &addr_hdr, sizeof (BTID), btid);
 
   return NO_ERROR;
 }
