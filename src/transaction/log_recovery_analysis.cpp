@@ -2518,10 +2518,6 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p,
   log_rcv_context.set_start_redo_lsa (NULL_LSA);
   log_rcv_context.set_end_redo_lsa (NULL_LSA);
 
-  //FILE *const trantable_bef_fp = fopen ("/home/qa/tt_bef.log", "w");
-  //xlogtb_dump_trantable (thread_p, trantable_bef_fp);
-  //fclose (trantable_bef_fp);
-
   std::set<MVCCID> in_gaps_mvccids;
   log_recovery_build_mvcc_table_from_trantable (thread_p, chkpt_info.get_mvcc_next_id (), in_gaps_mvccids);
 
@@ -2540,10 +2536,6 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY *thread_p,
     const MVCCID oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
     _er_log_debug (ARG_FILE_LINE, "crsdbg: after recovery analysis oldest_visible_mvccid = %llu\n", oldest_visible_mvccid);
   }
-
-  //FILE *const trantable_aft_fp = fopen ("/home/qa/tt_aft.log", "w");
-  //xlogtb_dump_trantable (thread_p, trantable_aft_fp);
-  //fclose (trantable_aft_fp);
 
   // on passive transaction server, the recovery analysis has only the role of bringing the
   // transaction table up to date because it is relevant in read-only results
