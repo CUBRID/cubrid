@@ -4091,7 +4091,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	  /* not allowed redundant one */
 	  if (!*attp && !*namep)
 	    {
-	      continue;
+	      return cons;
 	    }
 	}
     }
