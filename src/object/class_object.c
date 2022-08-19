@@ -8011,7 +8011,7 @@ classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints, const DB_
 	{
 	  return SM_CREATE_NEW_INDEX;
 	}
-      else if (SM_IS_SHARE_WITH_FOREIGN_KEY (existing_con->type))
+      else if (existing_con->type == SM_CONSTRAINT_INDEX)
 	{
 	  ret = SM_SHARE_INDEX;
 	  if (existing_con->filter_predicate != NULL || existing_con->func_index_info != NULL)
