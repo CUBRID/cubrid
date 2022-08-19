@@ -62,7 +62,7 @@ namespace cublog
 
       // restore transaction table based on checkpoint info
       void recovery_analysis (THREAD_ENTRY *thread_p, log_lsa &start_redo_lsa,
-			      bool recover_empty_transactions) const;
+			      bool skip_empty_transactions) const;
       // if m_has_2pc, also do 2pc analysis
       void recovery_2pc_analysis (THREAD_ENTRY *thread_p) const;
 
