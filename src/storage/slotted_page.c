@@ -3958,8 +3958,7 @@ spage_get_space_for_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID s
       return -1;
     }
 
-  return (slot_p->record_length + DB_WASTED_ALIGN (slot_p->record_length, page_header_p->alignment) +
-	  spage_slot_size ());
+  return (slot_p->record_length + DB_WASTED_ALIGN (slot_p->record_length, page_header_p->alignment) + SPAGE_SLOT_SIZE);
 }
 
 /*

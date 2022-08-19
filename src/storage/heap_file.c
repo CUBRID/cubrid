@@ -5110,7 +5110,7 @@ heap_manager_initialize (void)
 #define HEAP_MAX_FIRSTSLOTID_LENGTH (sizeof (HEAP_HDR_STATS))
 
   heap_Maxslotted_reclength = (spage_max_record_size () - HEAP_MAX_FIRSTSLOTID_LENGTH);
-  heap_Slotted_overhead = spage_slot_size ();
+  heap_Slotted_overhead = SPAGE_SLOT_SIZE;
 
   /* Initialize the class representation cache */
   ret = heap_chnguess_initialize ();
@@ -9212,7 +9212,7 @@ heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs,
 
       *num_pages += 1;
       sum_freespace += last_freespace;
-      sum_overhead += j * spage_slot_size ();
+      sum_overhead += j * SPAGE_SLOT_SIZE;
 
       while ((j--) > 0)
 	{

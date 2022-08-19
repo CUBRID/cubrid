@@ -77,7 +77,7 @@
 #define DISK_PAGE_BITS  (DB_PAGESIZE * CHAR_BIT)	/* Num of bits per page */
 
 #define BTREE_NODE_MAX_SPLIT_SIZE(thread_p, page_ptr) \
-  (DB_PAGESIZE - spage_header_size() - spage_get_space_for_record(thread_p, (page_ptr), HEADER))
+  (DB_PAGESIZE - SPAGE_HEADER_SIZE - spage_get_space_for_record(thread_p, (page_ptr), HEADER))
 
 #define OID_MSG_BUF_SIZE 64
 
@@ -12052,7 +12052,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
       /* TODO: Fences currently optimize only midxkey key types. Save storage by not using fence keys when they are not
        * required. */
       max_key_len = MAX (key_len, header->max_key_len);
-      new_fence_size = LEAF_FENCE_MAX_SIZE (max_key_len) + spage_slot_size ();
+      new_fence_size = LEAF_FENCE_MAX_SIZE (max_key_len) + SPAGE_SLOT_SIZE;
 
       /* Adjust maximum size for both leaves. */
       left_max_size -= new_fence_size;
@@ -14672,7 +14672,7 @@ btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpi
   root_level = root_header->node.node_level;
   node_type = (root_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
 
-  est_page_size = (int) (DB_PAGESIZE - (spage_header_size () + sizeof (BTREE_NODE_HEADER) + spage_slot_size ()));
+  est_page_size = (int) (DB_PAGESIZE - (SPAGE_HEADER_SIZE + sizeof (BTREE_NODE_HEADER) + SPAGE_SLOT_SIZE));
   assert (est_page_size > 0);
 
   while (node_type == BTREE_NON_LEAF_NODE)
@@ -26692,7 +26692,7 @@ btree_get_max_new_data_size (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_
 
   if (node_type == BTREE_NON_LEAF_NODE)
     {
-      return NON_LEAF_ENTRY_MAX_SIZE (key_len) + spage_slot_size ();
+      return NON_LEAF_ENTRY_MAX_SIZE (key_len) + SPAGE_SLOT_SIZE;
     }
 
   /* TODO: We can always know if key is found for leaf nodes. */
@@ -26714,7 +26714,7 @@ btree_get_max_new_data_size (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_
       else
 	{
 	  /* A new entry max size (including new slot). */
-	  return LEAF_ENTRY_MAX_SIZE (key_len) + spage_slot_size ();
+	  return LEAF_ENTRY_MAX_SIZE (key_len) + SPAGE_SLOT_SIZE;
 	}
 
     case BTREE_OP_INSERT_MVCC_DELID:

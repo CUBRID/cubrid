@@ -13752,7 +13752,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   std::vector<VPID> heap_pages_array;
   RECDES local_record;
   bool has_BU_lock = lock_has_lock_on_object (class_oid, oid_Root_class_oid, BU_LOCK);
-  size_t record_overhead = spage_slot_size ();
+  size_t record_overhead = SPAGE_SLOT_SIZE;
 
   // Early-out
   if (recdes.size () == 0)

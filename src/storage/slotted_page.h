@@ -57,8 +57,8 @@ enum
 #define SPAGE_HEADER_FLAG_NONE		0x0	/* No flags */
 #define SPAGE_HEADER_FLAG_ALL_VISIBLE	0x1	/* All records are visible */	/* unused */
 
-#define spage_slot_size()   (sizeof(SPAGE_SLOT))
-#define spage_header_size() (sizeof(SPAGE_HEADER))
+#define SPAGE_SLOT_SIZE   (sizeof(SPAGE_SLOT))
+#define SPAGE_HEADER_SIZE (sizeof(SPAGE_HEADER))
 
 typedef struct spage_header SPAGE_HEADER;
 struct spage_header

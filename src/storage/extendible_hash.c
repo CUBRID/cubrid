@@ -4611,7 +4611,7 @@ eh_capacity (THREAD_ENTRY * thread_p, EHID * ehid, int *num_recs, int *avg_recle
 
       num_slots = spage_number_of_records (buc_pgptr);
       *avg_freespace_per_page += spage_get_free_space (buc_pgptr);
-      *avg_overhead_per_page += num_slots * spage_slot_size ();
+      *avg_overhead_per_page += num_slots * SPAGE_SLOT_SIZE;
 
       for (slotid = 0; slotid < num_slots; slotid++)
 	{
