@@ -3362,6 +3362,10 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
       node->data_header_length = sizeof (LOG_REC_START_POSTPONE);
       break;
 
+    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
+      node->data_header_length = sizeof (LOG_REC_START_POSTPONE_OBSOLETE);
+      break;
+
     case LOG_SYSOP_START_POSTPONE:
       node->data_header_length = sizeof (LOG_REC_SYSOP_START_POSTPONE);
       break;
@@ -3496,6 +3500,7 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type, LO
     case LOG_2PC_COMMIT_DECISION:
     case TRAN_UNACTIVE_2PC_ABORT_DECISION:
     case LOG_COMMIT_WITH_POSTPONE:
+    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
     case LOG_SYSOP_START_POSTPONE:
     case LOG_COMMIT:
     case LOG_ABORT:
@@ -3768,7 +3773,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 	  LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
 	}
     }
-  else if (node->log_header.type == LOG_COMMIT_WITH_POSTPONE)
+  else if (node->log_header.type == LOG_COMMIT_WITH_POSTPONE
+	   || node->log_header.type == LOG_COMMIT_WITH_POSTPONE_OBSOLETE)
     {
       /* we need the commit with postpone LSA for recovery. we have to save it under prior_lsa_mutex protection */
       tdes->rcv.tran_start_postpone_lsa = start_lsa;
