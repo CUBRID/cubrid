@@ -43,14 +43,17 @@
 #define MAX_HOSTS_LINE_NUM       (256)
 #define IPADDR_LEN              (17)
 
-#define INSERT_IPADDR 0x0
-#define INSERT_HOSTNAME 0x1
-
 typedef enum
 {
   HOSTNAME_TO_IPADDR = 0,
   IPADDR_TO_HOSTNAME = 1,
 } LOOKUP_TYPE;
+
+typedef enum
+{
+  INSERT_IPADDR = 0,
+  INSERT_HOSTNAME = 1,
+} HOSTENT_INSERT_TYPE;
 
 typedef enum
 {
@@ -82,6 +85,7 @@ static struct hostent *
 host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_case)
 {
   static struct hostent hp;
+  //HOSTENT_INSERT_TYPE hostent_insert_Type;
   int i, find_index = -1;
 
   char addr_transform_buf[IPADDR_LEN];
@@ -93,7 +97,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
       host_conf_element_Count = host_conf_load ();
       if (host_conf_element_Count <= 0)
 	{
-//err_msg : load fail
+//err_set : load fail
 	  return NULL;
 	}
     }
@@ -136,7 +140,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 
   if (inet_pton (AF_INET, hostent_List[find_index].ipaddr, addr_transform_buf2) < 1)
     {
-//err_msg : convert binary to text fail -> reverse
+//err_set : convert binary to text fail -> reverse
       return NULL;
     }
 
@@ -173,7 +177,8 @@ host_conf_load ()		//set hash table to discover error
   int host_count = 0;
 
   /*False, if hostent_List[index].hostname is set */
-  bool hostent_flag = INSERT_IPADDR;
+  bool hostent_flag;
+  HOSTENT_INSERT_TYPE hostent_insert_Type;
 
   memset (file_line, 0, HOSTNAME_BUF_SIZE + 1);
   memset (line_buf, 0, HOSTNAME_BUF_SIZE + 1);
@@ -183,8 +188,9 @@ host_conf_load ()		//set hash table to discover error
   if (fp == NULL)
     {
 //err_msg : file open fail
+//er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, host_conf_file_full_path);
+//fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_IO_MOUNT_FAIL));
       return -1;
-      //error msg-> temp
     }
 
   while (fgets (file_line, HOSTNAME_BUF_SIZE + 1, fp) != NULL)
@@ -196,7 +202,7 @@ host_conf_load ()		//set hash table to discover error
 	continue;
 
       token = strtok_r (file_line, delim, &save_ptr_strtok);
-      hostent_flag = INSERT_IPADDR;
+      hostent_flag = INSERT_HOSTNAME;
 
       char map_ipaddr[IPADDR_LEN];
       char map_hostname[HOSTNAME_BUF_SIZE + 1];
@@ -207,23 +213,27 @@ host_conf_load ()		//set hash table to discover error
 	    {
 	      break;
 	    }
-	  if (!hostent_flag)
+	  if (hostent_flag == INSERT_HOSTNAME)
 	    {
 	      if (sizeof (token) > HOSTNAME_BUF_SIZE + 1)
 		{
 //err_msg 
+//er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ?, 1, token);
+//ex) Hostname "%1$s" is too long, it should be less than or equal 256
 		  return NULL;
 		}
 	      strcpy (hostent_List[host_count].ipaddr, token);
 	      strcpy (map_ipaddr, token);
 
-	      hostent_flag = INSERT_HOSTNAME;
+	      hostent_flag = INSERT_IPADDR;
 	    }
 	  else
 	    {
 	      if (sizeof (token) > IPADDR_LEN)
 		{
 //err_msg 
+//er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ?2, 1, token);
+//ex) IP address "%1$s" is too long, it should be less than or equal 256
 		  return NULL;
 		}
 
@@ -249,6 +259,8 @@ host_conf_load ()		//set hash table to discover error
 	    {
 /*duplicated hostname but different ip address*/
 //err_msg : duplicated 
+//er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ?2, 1, token);
+//ex) Hostname "%1$s" already exists, a hostname cannot be duplicated with other IP addresses
 	      return NULL;
 	    }
 	  host_count++;
@@ -267,7 +279,6 @@ host_conf_load ()		//set hash table to discover error
 struct hostent *
 gethostbyname_uhost (char *name)
 {
-  struct hostent *hp;
 
   if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
     {
@@ -275,15 +286,9 @@ gethostbyname_uhost (char *name)
     }
   else
     {
-      hp = host_lookup_internal (name, NULL, HOSTNAME_TO_IPADDR);
+      return host_lookup_internal (name, NULL, HOSTNAME_TO_IPADDR);
     }
 
-  if (hp == NULL)
-    {
-      return NULL;
-    }
-
-  return hp;
 }
 
 #ifdef HAVE_GETHOSTBYNAME_R
@@ -330,30 +335,39 @@ gethostbyname_r_uhost (const char *name,
   else
     {
       hp_buf = host_lookup_internal (name, NULL, HOSTNAME_TO_IPADDR);
-      memcpy ((void *) ret, (void *) hp_buf, sizeof (struct hostent));
     }
 
 #ifdef HAVE_GETHOSTBYNAME_R
 #if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
-  if (ret == NULL)
+  if (hp_buf == NULL)
     {
+//err_print fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_FAILED));
       return EFAULT;
     }
+
+  memcpy ((void *) ret, (void *) hp_buf, sizeof (struct hostent));
   (*result) = (struct hostent *) malloc (sizeof (struct hostent));
   memcpy ((void *) *result, (void *) hp_buf, sizeof (struct hostent));
+
   return 0;
 #elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
-  if (ret == NULL)
+  if (hp_buf == NULL)
     {
+//err_print fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_FAILED));
       return NULL;
     }
 
+  memcpy ((void *) ret, (void *) hp_buf, sizeof (struct hostent));
+
   return ret;
 #elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
-  if (ret == NULL)
+  if (hp_buf == NULL)
     {
+//err_print fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_FAILED));
       return -1;
     }
+
+  memcpy ((void *) ret, (void *) hp_buf, sizeof (struct hostent));
 
   return 0;
 #else
@@ -366,8 +380,7 @@ int
 getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *host, size_t hostlen, char *serv, size_t servlen,
 		   int flags)
 {
-  struct hostent *hp;
-
+  struct hostent *hp = NULL;
 
   if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
     {
@@ -375,18 +388,17 @@ getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *host, size_t 
     }
   else
     {
-      hp = host_lookup_internal (NULL, addr, IPADDR_TO_HOSTNAME);
+      if ((hp = host_lookup_internal (NULL, addr, IPADDR_TO_HOSTNAME)) != NULL)
+	{
+	  strncpy (host, hp->h_name, hostlen);
+	  host[CUB_MAXHOSTNAMELEN - 1] = '\0';
+
+	  return 0;
+	}
+
+      return EINVAL;
     }
 
-  if (hp == NULL)
-    {
-      return EAI_NONAME;
-    }
-
-  strncpy (host, hp->h_name, hostlen);
-  host[CUB_MAXHOSTNAMELEN - 1] = '\0';
-
-  return 0;
 }
 
 int
@@ -408,6 +420,7 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
 
   if (hp == NULL)
     {
+//err_print fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_FAILED));
       return EAI_NODATA;
     }
 
