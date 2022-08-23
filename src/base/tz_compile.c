@@ -6585,7 +6585,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
       printf ("Updating database %s...\n", db_info_p->name);
 
       memset (query_buf, 0, sizeof (query_buf));
-      strcat (query_buf, "show full tables");
+      strcpy (query_buf, "SHOW FULL TABLES");
 
       error = execute_query (query_buf, &result1);
       if (error < 0)
