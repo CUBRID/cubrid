@@ -2868,7 +2868,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 		  "[c].[class_type] AS [class_type] "
 		"FROM "
 		  "[_db_class] AS [c] "
-		  "LEFT OUTER JOIN [_db_partition] AS [p] ON [p].[class_of] = [c] "
+		  "LEFT OUTER JOIN [_db_partition] AS [p] ON [p].[class_of] = [c] AND [p].[pname] IS NOT NULL "
 		"WHERE "
 		  "[c].[collation_id] = %d "
 		  "AND [p].[pname] IS NULL",
@@ -2937,8 +2937,9 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 		"FROM "
 		  "[_db_attribute] AS [a] "
 		  "INNER JOIN [_db_domain] AS [d] ON [d].[object_of] = [a] "
-		  "INNER JOIN [_db_index] AS [i] ON [i].[class_of] = [a].[class_of]"
-		  "LEFT OUTER JOIN [_db_partition] AS [p] ON [p].[class_of] = [a].[class_of] "
+		  "INNER JOIN [_db_index] AS [i] ON [i].[class_of] = [a].[class_of] "
+		  "LEFT OUTER JOIN [_db_partition] AS [p] "
+		    "ON [p].[class_of] = [a].[class_of] AND [p].[pname] IS NOT NULL "
 		"WHERE "
 		  "[d].[collation_id] = %d "
 		  "AND [i].[is_foreign_key] = 1 "
@@ -3033,7 +3034,8 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 		  "[d].[collation_id] = %d "
 		  "AND [p].[pname] IS NULL "
 		"ORDER BY "
-		  "[a].[class_of].[unique_name]",
+		  "[a].[class_of].[unique_name], "
+		  "[a].[attr_name]",
 		db_coll->coll_id);
 	  // *INDENT-ON*
 
@@ -3340,7 +3342,8 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 		"FROM "
 		  "[_db_index] AS [i] "
 		  "INNER JOIN [_db_index_key] AS [k] ON [k].[index_of] = [i] "
-		  "LEFT OUTER JOIN [_db_partition] AS [p] ON [p].[class_of] = [i].[class_of] "
+		  "LEFT OUTER JOIN [_db_partition] AS [p] "
+		    "ON [p].[class_of] = [i].[class_of] AND [p].[pname] IS NOT NULL "
 		"WHERE "
 		  "LOCATE ('%s', [k].[func]) > 0 " /* Why not 'collate %s'? */
 		  "AND [p].[pname] IS NULL",
