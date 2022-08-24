@@ -330,7 +330,7 @@ static int cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr
 static int cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOGINFO_ENTRY * ddl_entry);
 static int cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LOGINFO_ENTRY * dcl_entry);
 static int cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY * timer_entry);
-static int cdc_find_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA lsa, int trid, char **user);
+static int cdc_find_user (THREAD_ENTRY * thread_p, LOG_LSA lsa, int trid, char **user);
 static int cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * old_value);
 static int cdc_put_value_to_loginfo (db_value * new_value, char **ptr);
 
@@ -10797,7 +10797,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	  {
 	    if (cdc_Gl.producer.tran_user.count (trid) == 0)
 	      {
-		if ((error = cdc_find_user (thread_p, log_page_p, cur_log_rec_lsa, trid, &tran_user)) == NO_ERROR)
+		if ((error = cdc_find_user (thread_p, cur_log_rec_lsa, trid, &tran_user)) == NO_ERROR)
 		  {
 		    cdc_Gl.producer.tran_user.insert (std::make_pair (trid, tran_user));
 		  }
@@ -13359,7 +13359,7 @@ error:
 }
 
 static int
-cdc_find_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA process_lsa, int trid, char **user)
+cdc_find_user (THREAD_ENTRY * thread_p, LOG_LSA process_lsa, int trid, char **user)
 {
   /*find tran user at the end of the transaction  */
   LOG_PAGE *log_page_p = NULL;
@@ -13370,8 +13370,28 @@ cdc_find_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA process_lsa
   LOG_REC_SUPPLEMENT *supplement;
   char *data;
 
+  int tran_index = logtb_find_tran_index (thread_p, trid);
+  if (tran_index != NULL_TRAN_INDEX)
+    {
+      LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+
+      /* if transaction is active or aborted, it can not find the user information.
+       * because transaction user is logged right before commit record */
+
+      if (LOG_ISTRAN_ACTIVE (tdes) || LOG_ISTRAN_ABORTED (tdes))
+	{
+	  /* TODO: set appropriate error and return */
+	  return ER_FAILED;
+	}
+    }
+
+  /* if a transaction is committed, then the log record for transaction user is appended and flushed to the disk */
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-  memcpy (log_page_p, log_page, IO_MAX_PAGE_SIZE);
+  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "cdc_find_user");
+      return ER_FAILED;
+    }
 
   while (!LSA_ISNULL (&process_lsa))
     {
@@ -13404,6 +13424,9 @@ cdc_find_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA process_lsa
 	  return ER_CDC_IGNORE_TRANSACTION;
 	}
 
+      /* transaction user information should be logged before commit */
+      assert (!(log_rec_hdr->type == LOG_COMMIT && log_rec_hdr->trid == trid));
+
       if (process_lsa.pageid != forw_lsa.pageid)
 	{
 	  if (LSA_ISNULL (&forw_lsa))
@@ -13413,6 +13436,7 @@ cdc_find_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA process_lsa
 
 	  if (logpb_fetch_page (thread_p, &forw_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
 	    {
+	      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "cdc_find_user");
 	      return ER_FAILED;
 	    }
 	}
