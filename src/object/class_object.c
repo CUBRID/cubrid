@@ -7959,7 +7959,7 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj, SM_COMPONENT * com
  * |               | /UK(asc) | /UK(desc) |         |          |  /R-Idx   |
  * |               |          |   /R-UK   |         |          |           |
  * +---+-----------+----------+-----------+---------+----------+-----------+
- * |   |   PK(asc) |  error   |  new idx  |  error  |  error   |  new idx  |
+ * |   |   PK(asc) |  share   |  new idx  |  error  |  error   |  new idx  |
  * | n | /UK(asc): |          |           |         |          |           |
  * | e +-----------+----------+-----------+---------+----------+-----------+
  * | w |  PK(desc) |          |           |         |          |           |
