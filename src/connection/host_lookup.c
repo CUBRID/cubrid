@@ -93,10 +93,10 @@ hostent_init (struct hostent *hp)
     {
       free (hp);
       free (hp->h_name);
-      free (hp->h_aliases);
       free (hp->h_aliases[0]);
-      free (hp->h_addr_list);
+      free (hp->h_aliases);
       free (hp->h_addr_list[0]);
+      free (hp->h_addr_list);
 
       return NULL;
     }
