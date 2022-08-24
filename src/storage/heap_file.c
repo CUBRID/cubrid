@@ -5110,7 +5110,7 @@ heap_manager_initialize (void)
 #define HEAP_MAX_FIRSTSLOTID_LENGTH (sizeof (HEAP_HDR_STATS))
 
   heap_Maxslotted_reclength = (spage_max_record_size () - HEAP_MAX_FIRSTSLOTID_LENGTH);
-  heap_Slotted_overhead = spage_slot_size ();
+  heap_Slotted_overhead = SPAGE_SLOT_SIZE;
 
   /* Initialize the class representation cache */
   ret = heap_chnguess_initialize ();
@@ -9212,7 +9212,7 @@ heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs,
 
       *num_pages += 1;
       sum_freespace += last_freespace;
-      sum_overhead += j * spage_slot_size ();
+      sum_overhead += j * SPAGE_SLOT_SIZE;
 
       while ((j--) > 0)
 	{
@@ -10375,7 +10375,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
  */
 int
 heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
-			     HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info)
+			     HEAP_CACHE_ATTRINFO * attr_info)
 {
   int i;
   REPR_ID reprid;		/* The disk representation of the object */
@@ -12704,7 +12704,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 DB_VALUE *
 heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, int *atts_prefix_length,
 			    HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, DB_VALUE * db_valuep, char *buf,
-			    FUNCTION_INDEX_INFO * func_index_info, TP_DOMAIN * midxkey_domain)
+			    FUNCTION_INDEX_INFO * func_index_info, TP_DOMAIN * midxkey_domain, OID * cur_oid)
 {
   DB_VALUE *ret_valp;
   DB_VALUE *fi_res = NULL;
@@ -12715,6 +12715,15 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 
   if (func_index_info)
     {
+      if (func_index_info->expr)
+	{
+	  if (heap_attrinfo_read_dbvalues (thread_p, cur_oid, recdes, func_index_info->expr->cache_attrinfo) !=
+	      NO_ERROR)
+	    {
+	      return NULL;
+	    }
+	}
+
       fi_attr_index_start = func_index_info->attr_index_start;
       fi_col_id = func_index_info->col_id;
       if (heap_eval_function_index (thread_p, func_index_info, n_atts, att_ids, attr_info, recdes, -1, db_valuep,
@@ -12723,6 +12732,15 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 	  return NULL;
 	}
       fi_res = db_valuep;
+    }
+
+  if (n_atts == 1)
+    {
+      /* Single column index. */
+      if (heap_attrinfo_read_dbvalues (thread_p, cur_oid, recdes, attr_info) != NO_ERROR)
+	{
+	  return NULL;
+	}
     }
 
   /*
@@ -13357,7 +13375,7 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
     }
 
   if ((heap_attrinfo_start_refoids (thread_p, class_oid, &attr_info) != NO_ERROR)
-      || heap_attrinfo_read_dbvalues (thread_p, obj_oid, recdes, NULL, &attr_info) != NO_ERROR)
+      || heap_attrinfo_read_dbvalues (thread_p, obj_oid, recdes, &attr_info) != NO_ERROR)
     {
       goto error;
     }
@@ -14285,7 +14303,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
 	      fprintf (fp, "Object-OID = %2d|%4d|%2d,\n  Length on disk = %d,\n", oid.volid, oid.pageid, oid.slotid,
 		       peek_recdes.length);
 
-	      if (heap_attrinfo_read_dbvalues (thread_p, &oid, &peek_recdes, NULL, &attr_info) != NO_ERROR)
+	      if (heap_attrinfo_read_dbvalues (thread_p, &oid, &peek_recdes, &attr_info) != NO_ERROR)
 		{
 		  fprintf (fp, "  Error ... continue\n");
 		  continue;
@@ -17478,7 +17496,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
 	  attrinfo_end = true;
 	}
 
-      if (heap_attrinfo_read_dbvalues (thread_p, &attr_info->inst_oid, recdes, NULL, cache_attr_info) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, &attr_info->inst_oid, recdes, cache_attr_info) != NO_ERROR)
 	{
 	  error = ER_FAILED;
 	  goto end;

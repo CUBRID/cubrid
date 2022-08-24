@@ -12771,7 +12771,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	  goto exit;
 	}
 
-      if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, undo_recdes, NULL, &attr_info)) != NO_ERROR)
+      if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, undo_recdes, &attr_info)) != NO_ERROR)
 	{
 	  goto exit;
 	}
@@ -12811,7 +12811,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	  goto exit;
 	}
 
-      if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, redo_recdes, NULL, &attr_info)) != NO_ERROR)
+      if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, redo_recdes, &attr_info)) != NO_ERROR)
 	{
 	  goto exit;
 	}
