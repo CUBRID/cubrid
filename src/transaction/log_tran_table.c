@@ -1492,6 +1492,25 @@ logtb_free_tran_mvcc_info (LOG_TDES * tdes)
 }
 
 /*
+ * logtb_free_all_tran_mvcc_id - free mvccid for all transactions in the table that have one
+ *
+ * return: nothing
+ */
+void
+logtb_clear_all_tran_mvccids ()
+{
+  static_assert (LOG_SYSTEM_TRAN_INDEX == 0, "");
+  for (int tr_idx = LOG_SYSTEM_TRAN_INDEX + 1; tr_idx < log_Gl.trantable.num_total_indices; ++tr_idx)
+    {
+      log_tdes *const tdes = log_Gl.trantable.all_tdes[tr_idx];
+      if (tdes != nullptr && MVCCID_IS_VALID (tdes->mvccinfo.id))
+	{
+	  tdes->mvccinfo.id = MVCCID_NULL;
+	}
+    }
+}
+
+/*
  * logtb_clear_tdes - clear the transaction descriptor
  *
  * return: nothing..
