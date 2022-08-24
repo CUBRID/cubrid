@@ -69,7 +69,6 @@ struct cub_hostent
 
 typedef struct cub_hostent CUB_HOSTENT;
 static CUB_HOSTENT hostent_List[MAX_HOSTS_LINE_NUM];	/* "etc/hosts" file maximum line */
-//should I need to allocate all 256 element??
 static const char user_defined_hostfile_Name[] = "hosts.conf";
 
 static int host_conf_element_Count = 0;
@@ -78,14 +77,39 @@ static int host_conf_element_Count = 0;
 static std::unordered_map <std::string, std::string> user_host_Map;
 // *INDENT-ON*
 
+static struct hostent *hostent_init ();
 static int host_conf_load ();
 static struct hostent *host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_case);
 
 static struct hostent *
+hostent_init (struct hostent *hp)
+{
+  if ((hp = (struct hostent *) malloc (sizeof (struct hostent))) == NULL
+      || (hp->h_name = (char *) malloc (sizeof (char) * (HOSTNAME_BUF_SIZE + 1))) == NULL
+      || (hp->h_aliases = (char **) malloc (sizeof (char *))) == NULL
+      || (hp->h_aliases[0] = (char *) malloc (sizeof (char) * (HOSTNAME_BUF_SIZE + 1))) == NULL
+      || (hp->h_addr_list = (char **) malloc (sizeof (char *) * HOSTNAME_BUF_SIZE)) == NULL
+      || (hp->h_addr_list[0] = (char *) malloc (sizeof (char) * IPADDR_LEN)) == NULL)
+    {
+      free (hp);
+      free (hp->h_name);
+      free (hp->h_aliases);
+      free (hp->h_aliases[0]);
+      free (hp->h_addr_list);
+      free (hp->h_addr_list[0]);
+
+      return NULL;
+    }
+  hp->h_addrtype = AF_INET;
+  hp->h_length = 4;
+
+  return hp;
+}
+
+static struct hostent *
 host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_case)
 {
-  static struct hostent hp;
-  //HOSTENT_INSERT_TYPE hostent_insert_Type;
+  static struct hostent *hp;
   int i, find_index = -1;
 
   char addr_transform_buf[IPADDR_LEN];
@@ -145,23 +169,20 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
     }
 
   /*set the hostent struct for the return value */
-  hp.h_addrtype = AF_INET;
-  hp.h_length = 4;
-  hp.h_name = (char *) malloc (sizeof (char) * (HOSTNAME_BUF_SIZE + 1));
-  hp.h_aliases = (char **) malloc (sizeof (char *));
-  hp.h_aliases[0] = (char *) malloc (sizeof (char) * (HOSTNAME_BUF_SIZE + 1));
-  hp.h_addr_list = (char **) malloc (sizeof (char *) * HOSTNAME_BUF_SIZE);
-  hp.h_addr_list[0] = (char *) malloc (sizeof (char) * IPADDR_LEN);
+  if ((hp = hostent_init (hp)) == NULL)
+    {
+      return NULL;
+    }
 
-  strcpy (hp.h_name, hostent_List[find_index].hostname);
-  strcpy (hp.h_aliases[0], hostent_List[find_index].hostname);
-  memcpy (hp.h_addr_list[0], addr_transform_buf2, sizeof (hp.h_addr_list[0]));
+  strcpy (hp->h_name, hostent_List[find_index].hostname);
+  strcpy (hp->h_aliases[0], hostent_List[find_index].hostname);
+  memcpy (hp->h_addr_list[0], addr_transform_buf2, sizeof (hp->h_addr_list[0]));
 
-  return &hp;
+  return hp;
 }
 
 static int
-host_conf_load ()		//set hash table to discover error
+host_conf_load ()
 {
   FILE *fp;
   char file_line[HOSTNAME_BUF_SIZE + 1];
@@ -195,7 +216,6 @@ host_conf_load ()		//set hash table to discover error
 
   while (fgets (file_line, HOSTNAME_BUF_SIZE + 1, fp) != NULL)
     {
-//verifying duplicated hostname will be implemented soon
       if (file_line[0] == '#')
 	continue;
       if (file_line[0] == '\n')
@@ -279,16 +299,18 @@ host_conf_load ()		//set hash table to discover error
 struct hostent *
 gethostbyname_uhost (char *name)
 {
+  struct hostent *hp;
 
   if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
     {
-      return gethostbyname (name);
+      hp = gethostbyname (name);
     }
   else
     {
-      return host_lookup_internal (name, NULL, HOSTNAME_TO_IPADDR);
+      hp = host_lookup_internal (name, NULL, HOSTNAME_TO_IPADDR);
     }
 
+  return hp;
 }
 
 #ifdef HAVE_GETHOSTBYNAME_R
@@ -319,7 +341,6 @@ gethostbyname_r_uhost (const char *name,
 
   if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
     {
-//err also modified by callee
 #ifdef HAVE_GETHOSTBYNAME_R
 #if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
       return gethostbyname_r (name, ret, buf, buflen, result, h_errnop);
