@@ -13378,7 +13378,7 @@ cdc_find_user (THREAD_ENTRY * thread_p, LOG_LSA process_lsa, int trid, char **us
       /* if transaction is active or aborted, it can not find the user information.
        * because transaction user is logged right before commit record */
 
-      if (LOG_ISTRAN_ACTIVE (tdes) || LOG_ISTRAN_ABORTED (tdes))
+      if (!LOG_ISTRAN_COMMITTED (tdes))
 	{
 	  /* TODO: set appropriate error and return */
 	  return ER_FAILED;
