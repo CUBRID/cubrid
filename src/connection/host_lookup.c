@@ -61,16 +61,6 @@ typedef enum
   USE_USER_DEFINED_HOSTS = 1,
 } HOST_LOOKUP_TYPE;
 
-typedef enum
-{
-  HP = 0,
-  H_NAME,
-  H_ALIASES,
-  H_ADDR_LIST,
-  H_ALIASES0,
-  H_ADDR_LIST0,
-} HOSTENT_ELEMENT;
-
 struct cub_hostent
 {
   char ipaddr[IPADDR_LEN];
@@ -95,65 +85,48 @@ static struct hostent *
 hostent_init ()
 {
   struct hostent *hp;
-  HOSTENT_ELEMENT hostent_element;
-  int hostent_alloc_order;
+
+  hp = NULL;
 
   if ((hp = (struct hostent *) malloc (sizeof (struct hostent))) == NULL)
     {
-      hostent_alloc_order = HP;
-      goto FREE_;
+      return NULL;
     }
-  if ((hp->h_name = (char *) malloc (sizeof (char) * (HOSTNAME_BUF_SIZE + 1))) == NULL)
+
+  hp->h_name = NULL;
+  hp->h_aliases = NULL;
+  hp->h_addr_list = NULL;
+
+  if ((hp->h_name = (char *) malloc (sizeof (char) * (HOSTNAME_BUF_SIZE + 1))) == NULL
+      || (hp->h_aliases = (char **) malloc (sizeof (char *))) == NULL
+      || (hp->h_addr_list = (char **) malloc (sizeof (char *) * HOSTNAME_BUF_SIZE)) == NULL)
     {
-      hostent_alloc_order = H_NAME;
-      goto FREE_;
+      free (hp->h_addr_list);
+      free (hp->h_aliases);
+      free (hp->h_name);
+      free (hp);
+      return NULL;
     }
-  if ((hp->h_aliases = (char **) malloc (sizeof (char *))) == NULL)
+
+  hp->h_aliases[0] = NULL;
+  hp->h_addr_list[0] = NULL;
+
+  if ((hp->h_aliases[0] = (char *) malloc (sizeof (char) * (HOSTNAME_BUF_SIZE + 1))) == NULL
+      || (hp->h_addr_list[0] = (char *) malloc (sizeof (char) * IPADDR_LEN)) == NULL)
     {
-      hostent_alloc_order = H_ALIASES;
-      goto FREE_;
+      free (hp->h_aliases[0]);
+      free (hp->h_addr_list[0]);
+      free (hp->h_addr_list);
+      free (hp->h_aliases);
+      free (hp->h_name);
+      free (hp);
+      return NULL;
     }
-  if ((hp->h_addr_list = (char **) malloc (sizeof (char *) * HOSTNAME_BUF_SIZE)) == NULL)
-    {
-      hostent_alloc_order = H_ADDR_LIST;
-      goto FREE_;
-    }
-  if ((hp->h_aliases[0] = (char *) malloc (sizeof (char) * (HOSTNAME_BUF_SIZE + 1))) == NULL)
-    {
-      hostent_alloc_order = H_ALIASES0;
-      goto FREE_;
-    }
-  if ((hp->h_addr_list[0] = (char *) malloc (sizeof (char) * IPADDR_LEN)) == NULL)
-    {
-      hostent_alloc_order = H_ADDR_LIST0;
-      goto FREE_;
-    }
+
   hp->h_addrtype = AF_INET;
   hp->h_length = 4;
 
   return hp;
-
-FREE_:
-  switch (hostent_alloc_order)
-    {
-    case H_ADDR_LIST0:
-      free (hp->h_aliases[0]);
-
-    case H_ALIASES0:
-      free (hp->h_addr_list);
-
-    case H_ADDR_LIST:
-      free (hp->h_aliases);
-
-    case H_ALIASES:
-      free (hp->h_name);
-
-    case H_NAME:
-      free (hp);
-
-    }
-
-  return NULL;
 }
 
 static struct hostent *
