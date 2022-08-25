@@ -3233,6 +3233,16 @@ log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 void
 log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 {
+#if 0
+  LOG_TDES *tdes;		/* Transaction descriptor */
+  LOG_LSA *page_lsa;
+#if defined(SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
+  int tran_index;
+  int error_code = NO_ERROR;
+#endif
+
 #if defined(CUBRID_DEBUG)
   if (addr->pgptr == NULL)
     {
@@ -3241,6 +3251,60 @@ log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
       return;
     }
 #endif /* CUBRID_DEBUG */
+
+  return;
+
+#if 0
+  if (!pgbuf_is_lsa_temporary (addr->pgptr))
+    {
+      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      tdes = LOG_FIND_TDES (tran_index);
+      if (tdes == NULL)
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+	  error_code = ER_LOG_UNKNOWN_TRANINDEX;
+	  return;
+	}
+
+      /*
+       * If the page LSA has not been changed since the lsa checkpoint record,
+       * change it to either the checkpoint record or the restart LSA.
+       */
+
+      page_lsa = pgbuf_get_lsa (addr->pgptr);
+
+      if (!LSA_ISNULL (&log_Gl.rcv_phase_lsa))
+	{
+	  if (LSA_GE (&log_Gl.rcv_phase_lsa, page_lsa))
+	    {
+	      LOG_LSA chkpt_lsa;
+
+	      rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
+	      LSA_COPY (&chkpt_lsa, &log_Gl.hdr.chkpt_lsa);
+	      pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
+
+	      if (LSA_GT (&chkpt_lsa, &log_Gl.rcv_phase_lsa))
+		{
+		  (void) pgbuf_set_lsa (thread_p, addr->pgptr, &chkpt_lsa);
+		}
+	      else
+		{
+		  (void) pgbuf_set_lsa (thread_p, addr->pgptr, &log_Gl.rcv_phase_lsa);
+		}
+	    }
+	}
+      else
+	{
+	  /*
+	   * Likely the system is not restarted
+	   */
+	  if (LSA_GT (&tdes->tail_lsa, page_lsa))
+	    {
+	      (void) pgbuf_set_lsa (thread_p, addr->pgptr, &tdes->tail_lsa);
+	    }
+	}
+    }
+#endif
 }
 
 /*
