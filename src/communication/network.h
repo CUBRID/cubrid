@@ -30,7 +30,6 @@
 #include "locator.h"
 #include "log_comm.h"
 
-
 /* Server statistics structure size, used to make sure the pack/unpack
    routines follow the current structure definition.
    This must be the byte size of the structure
@@ -41,6 +40,7 @@
 #define EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE  512
 
 /* These define the requests that the server will respond to */
+/* WARNING: should sync with net_server_request_name in network_common.cpp */
 enum net_server_request
 {
   NET_SERVER_REQUEST_START = 0,
@@ -288,7 +288,7 @@ enum net_server_request
 #define NET_CAP_REMOTE_DISABLED         0x00000080
 #define NET_CAP_HA_REPL_DELAY           0x00000008
 #define NET_CAP_HA_REPLICA              0x00000004
-#define NET_CAP_HA_IGNORE_REPL_DELAY	0x00000002
+#define NET_CAP_HA_IGNORE_REPL_DELAY	 0x00000002
 
 typedef enum
 {				/* Responses to a query */
@@ -302,6 +302,9 @@ typedef enum
 
 /* Server startup */
 extern int net_server_start (const char *name);
-extern const char *net_server_request_name (int request);
+
+/* Misc */
+extern const char *get_capability_string (int cap, int cap_type);
+extern const char *get_net_request_name (int request);
 
 #endif /* _NETWORK_H_ */
