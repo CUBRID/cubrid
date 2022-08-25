@@ -38,10 +38,19 @@
 
 #include "system_parameter.h"
 #include "environment_variable.h"
+#include "cci_common.h"
 
 #define HOSTNAME_BUF_SIZE              (256)
 #define MAX_HOSTS_LINE_NUM       (256)
 #define IPADDR_LEN              (17)
+
+#define FREE_MEM(PTR)           \
+        do {                    \
+          if (PTR) {            \
+            free(PTR);          \
+            PTR = 0;    \
+          }                     \
+        } while (0)
 
 typedef enum
 {
@@ -81,6 +90,12 @@ static struct hostent *hostent_init ();
 static int host_conf_load ();
 static struct hostent *host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_case);
 
+/*
+ * hostent_init () - Allocate memory hostent structure.
+ * 
+ * return   : the hostent pointer.
+ *
+ */
 static struct hostent *
 hostent_init ()
 {
@@ -101,10 +116,10 @@ hostent_init ()
       || (hp->h_aliases = (char **) malloc (sizeof (char *))) == NULL
       || (hp->h_addr_list = (char **) malloc (sizeof (char *) * HOSTNAME_BUF_SIZE)) == NULL)
     {
-      free (hp->h_addr_list);
-      free (hp->h_aliases);
-      free (hp->h_name);
-      free (hp);
+      FREE_MEM (hp->h_addr_list);
+      FREE_MEM (hp->h_aliases);
+      FREE_MEM (hp->h_name);
+      FREE_MEM (hp);
       return NULL;
     }
 
@@ -114,12 +129,13 @@ hostent_init ()
   if ((hp->h_aliases[0] = (char *) malloc (sizeof (char) * (HOSTNAME_BUF_SIZE + 1))) == NULL
       || (hp->h_addr_list[0] = (char *) malloc (sizeof (char) * IPADDR_LEN)) == NULL)
     {
-      free (hp->h_aliases[0]);
-      free (hp->h_addr_list[0]);
-      free (hp->h_addr_list);
-      free (hp->h_aliases);
-      free (hp->h_name);
-      free (hp);
+      FREE_MEM (hp->h_aliases[0]);
+      FREE_MEM (hp->h_addr_list[0]);
+      FREE_MEM (hp->h_addr_list);
+      FREE_MEM (hp->h_aliases);
+      FREE_MEM (hp->h_name);
+      FREE_MEM (hp);
+
       return NULL;
     }
 
@@ -494,8 +510,8 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
 
   memmove (*res, &results_out, sizeof (struct addrinfo));
 
-  free (in_addr_buf);
-  free (results_out.ai_addr);
+  FREE_MEM (in_addr_buf);
+  FREE_MEM (results_out.ai_addr);
 
   return 0;
 }
