@@ -88,6 +88,7 @@
 #define MAX_NUM_CACHED_BROKER_FILES	4
 #define IS_FILE_MATCH_CONF_CACHE(cid, file)	(strcmp (br_conf_info[cid].conf_file, file) == 0)
 
+
 typedef struct t_conf_table T_CONF_TABLE;
 struct t_conf_table
 {
@@ -110,7 +111,8 @@ struct br_conf_info
 enum
 { PARAM_NO_ERROR = 0, PARAM_INVAL_SEC = 1,
   PARAM_BAD_VALUE = 2, PARAM_BAD_RANGE = 3,
-  SECTION_NAME_TOO_LONG = 4, PARAM_RUN_TIME_ERROR = 5
+  SECTION_NAME_TOO_LONG = 4, PARAM_RUN_TIME_ERROR = 5,
+  PARAM_BAD_MAX_APPL_SERVER = 6
 };
 
 static void conf_file_has_been_loaded (const char *conf_path);
@@ -192,7 +194,8 @@ static const char *tbl_conf_err_msg[] = {
   "Value type does not match parameter type.",
   "Value is out of range.",
   "Section name is too long. Section name must be less than 64.",
-  "Temporary runtime error."
+  "Temporary runtime error.",
+  "the value of MAX_NUM_APPL_SERVER must be greater than MIN_NUM_APPL_SERVER"
 };
 
 static bool is_first_br_conf_read = true;
@@ -651,27 +654,22 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      if (ini_getint (ini, sec_name, "MIN_NUM_APPL_SERVER", DEFAULT_AS_MIN_NUM, &lineno) < 1)
+      br_info[num_brs].appl_server_min_num =
+	ini_getint (ini, sec_name, "MIN_NUM_APPL_SERVER", DEFAULT_AS_MIN_NUM, &lineno);
+      if (br_info[num_brs].appl_server_min_num < 1)
 	{
-	  errcode = PARAM_BAD_VALUE;
+	  errcode = PARAM_BAD_RANGE;
 	  goto conf_error;
 	}
 
-      br_info[num_brs].appl_server_min_num =
-	ini_getuint (ini, sec_name, "MIN_NUM_APPL_SERVER", DEFAULT_AS_MIN_NUM, &lineno);
       br_info[num_brs].appl_server_num = br_info[num_brs].appl_server_min_num;
-      if (br_info[num_brs].appl_server_min_num > APPL_SERVER_NUM_LIMIT)
-	{
-	  errcode = PARAM_BAD_VALUE;
-	  goto conf_error;
-	}
 
       br_info[num_brs].appl_server_max_num =
-	ini_getuint (ini, sec_name, "MAX_NUM_APPL_SERVER", DEFAULT_AS_MAX_NUM, &lineno);
+	ini_getint (ini, sec_name, "MAX_NUM_APPL_SERVER", DEFAULT_AS_MAX_NUM, &lineno);
       if (br_info[num_brs].appl_server_max_num > APPL_SERVER_NUM_LIMIT ||
 	  br_info[num_brs].appl_server_max_num < br_info[num_brs].appl_server_min_num)
 	{
-	  errcode = PARAM_BAD_VALUE;
+	  errcode = PARAM_BAD_MAX_APPL_SERVER;
 	  goto conf_error;
 	}
 
