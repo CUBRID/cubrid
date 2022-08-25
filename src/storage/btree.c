@@ -77,7 +77,7 @@
 #define DISK_PAGE_BITS  (DB_PAGESIZE * CHAR_BIT)	/* Num of bits per page */
 
 #define BTREE_NODE_MAX_SPLIT_SIZE(thread_p, page_ptr) \
-  (DB_PAGESIZE - spage_header_size() - spage_get_space_for_record(thread_p, (page_ptr), HEADER))
+  (DB_PAGESIZE - SPAGE_HEADER_SIZE - spage_get_space_for_record(thread_p, (page_ptr), HEADER))
 
 #define OID_MSG_BUF_SIZE 64
 
@@ -1716,6 +1716,11 @@ static DISK_ISVALID btree_check_tree (THREAD_ENTRY * thread_p, const OID * class
 				      const char *btname);
 static DISK_ISVALID btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid);
 static char *btree_unpack_mvccinfo (char *ptr, BTREE_MVCC_INFO * mvcc_info, short btree_mvcc_flags);
+static int btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE * key,
+						      BTREE_OBJECT_INFO * first_version,
+						      BTREE_OBJECT_INFO * second_version, BTREE_OP_PURPOSE purpose,
+						      char *preallocated_buffer, char **data, int *capacity,
+						      int *length);
 
 static int btree_is_key_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr,
 				 MVCC_SNAPSHOT * mvcc_snapshot, int slot_id, bool * is_visible, DB_VALUE * key_value);
@@ -12037,7 +12042,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
       /* TODO: Fences currently optimize only midxkey key types. Save storage by not using fence keys when they are not
        * required. */
       max_key_len = MAX (key_len, header->max_key_len);
-      new_fence_size = LEAF_FENCE_MAX_SIZE (max_key_len) + spage_slot_size ();
+      new_fence_size = LEAF_FENCE_MAX_SIZE (max_key_len) + SPAGE_SLOT_SIZE;
 
       /* Adjust maximum size for both leaves. */
       left_max_size -= new_fence_size;
@@ -14657,7 +14662,7 @@ btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpi
   root_level = root_header->node.node_level;
   node_type = (root_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
 
-  est_page_size = (int) (DB_PAGESIZE - (spage_header_size () + sizeof (BTREE_NODE_HEADER) + spage_slot_size ()));
+  est_page_size = (int) (DB_PAGESIZE - (SPAGE_HEADER_SIZE + sizeof (BTREE_NODE_HEADER) + SPAGE_SLOT_SIZE));
   assert (est_page_size > 0);
 
   while (node_type == BTREE_NON_LEAF_NODE)
@@ -16818,7 +16823,7 @@ btree_rv_save_keyval_for_undo (BTID_INT * btid, DB_VALUE * key, OID * cls_oid, O
  * capacity (in)	    : Capacity of data buffer.
  * length (in)		    : Length of undo data.
  */
-int
+static int
 btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE * key, BTREE_OBJECT_INFO * first_version,
 					   BTREE_OBJECT_INFO * second_version, BTREE_OP_PURPOSE purpose,
 					   char *preallocated_buffer, char **data, int *capacity, int *length)
@@ -26456,7 +26461,7 @@ btree_get_max_new_data_size (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_
 
   if (node_type == BTREE_NON_LEAF_NODE)
     {
-      return NON_LEAF_ENTRY_MAX_SIZE (key_len) + spage_slot_size ();
+      return NON_LEAF_ENTRY_MAX_SIZE (key_len) + SPAGE_SLOT_SIZE;
     }
 
   /* TODO: We can always know if key is found for leaf nodes. */
@@ -26478,7 +26483,7 @@ btree_get_max_new_data_size (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_
       else
 	{
 	  /* A new entry max size (including new slot). */
-	  return LEAF_ENTRY_MAX_SIZE (key_len) + spage_slot_size ();
+	  return LEAF_ENTRY_MAX_SIZE (key_len) + SPAGE_SLOT_SIZE;
 	}
 
     case BTREE_OP_INSERT_MVCC_DELID:
@@ -32643,6 +32648,10 @@ btree_record_replace_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDE
   offset_to_replaced = *offset_to_replaced_inout;
   assert (offset_to_replaced >= 0 && offset_to_replaced < record->length);
 
+  /* This function is called only on btree_overflow_record_replace_object().
+   ** And node_type is fixed to BTREE_OVERflow_NODE. */
+  assert (node_type == BTREE_OVERFLOW_NODE);
+#if 0				/* unreachable code */
   if (node_type == BTREE_LEAF_NODE)
     {
       if (offset_to_replaced == 0)
@@ -32704,6 +32713,7 @@ btree_record_replace_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDE
 #endif
     }
   else
+#endif // #if 0 /* unreachable code */
     {
       /* Object must be fixed size. */
       int fixed_object_size = BTREE_OBJECT_FIXED_SIZE (btid_int);

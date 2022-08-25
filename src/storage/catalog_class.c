@@ -4610,7 +4610,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
     {
       HEAP_ATTRVALUE *heap_value = NULL;
 
-      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, NULL, &attr_info) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info) != NO_ERROR)
 	{
 	  error = ER_FAILED;
 	  goto exit;
@@ -5063,7 +5063,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
       HEAP_ATTRVALUE *heap_value = NULL;
       LANG_COLL_COMPAT *curr_coll;
 
-      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, NULL, &attr_info) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info) != NO_ERROR)
 	{
 	  error = ER_FAILED;
 	  goto exit;
@@ -5273,7 +5273,7 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_rec
     {
       HEAP_ATTRVALUE *heap_value = NULL;
 
-      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, NULL, &attr_info) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info) != NO_ERROR)
 	{
 	  error = ER_FAILED;
 	  goto exit;

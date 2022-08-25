@@ -820,26 +820,6 @@ spage_finalize (THREAD_ENTRY * thread_p)
 }
 
 /*
- * spage_slot_size () - Find the overhead used to store one slotted record
- *   return: overhead of slot
- */
-int
-spage_slot_size (void)
-{
-  return sizeof (SPAGE_SLOT);
-}
-
-/*
- * spage_header_size () - Find the overhead used by the page header
- *   return: overhead of slot
- */
-int
-spage_header_size (void)
-{
-  return sizeof (SPAGE_HEADER);
-}
-
-/*
  * spage_max_record_size () - Find the maximum record length that can be stored in
  *                       a slotted page
  *   return: Max length for a new record
@@ -3978,8 +3958,7 @@ spage_get_space_for_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID s
       return -1;
     }
 
-  return (slot_p->record_length + DB_WASTED_ALIGN (slot_p->record_length, page_header_p->alignment) +
-	  spage_slot_size ());
+  return (slot_p->record_length + DB_WASTED_ALIGN (slot_p->record_length, page_header_p->alignment) + SPAGE_SLOT_SIZE);
 }
 
 /*

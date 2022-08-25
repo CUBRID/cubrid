@@ -215,6 +215,8 @@ static bool log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcv
 				       LOG_DATA_ADDR * addr);
 static bool log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, LOG_DATA_ADDR * addr);
 static void log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa);
+static void log_append_commit_postpone_obsolete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+						 LOG_LSA * start_postpone_lsa);
 static void log_append_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 					     LOG_REC_SYSOP_START_POSTPONE * sysop_start_postpone, int data_size,
 					     const char *data);
@@ -419,6 +421,9 @@ log_to_string (LOG_RECTYPE type)
 
     case LOG_COMMIT_WITH_POSTPONE:
       return "LOG_COMMIT_WITH_POSTPONE";
+
+    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
+      return "LOG_COMMIT_WITH_POSTPONE_OBSOLETE";
 
     case LOG_COMMIT:
       return "LOG_COMMIT";
@@ -4364,6 +4369,44 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * 
 
   start_posp = (LOG_REC_START_POSTPONE *) node->data_header;
   LSA_COPY (&start_posp->posp_lsa, start_postpone_lsa);
+  start_posp->at_time = time (NULL);
+
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+
+  tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+
+  logpb_flush_pages (thread_p, &start_lsa);
+}
+
+/*
+ * log_append_commit_postpone_obsolete - APPEND COMMIT WITH POSTPONE
+ *
+ * return: nothing
+ *
+ *   tdes(in/out): State structure of transaction being committed
+ *   start_posplsa(in): Address where the first postpone log record start
+ *
+ * NOTE: The transaction is declared as committed with postpone actions.
+ *       The transaction is not fully committed until all postpone actions are executed.
+ *
+ *       The postpone operations are not invoked by this function.
+ */
+static void
+log_append_commit_postpone_obsolete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa)
+{
+  LOG_REC_START_POSTPONE_OBSOLETE *start_posp;	/* Start postpone actions */
+  LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
+
+  node =
+    prior_lsa_alloc_and_copy_data (thread_p, LOG_COMMIT_WITH_POSTPONE_OBSOLETE, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      return;
+    }
+
+  start_posp = (LOG_REC_START_POSTPONE_OBSOLETE *) node->data_header;
+  LSA_COPY (&start_posp->posp_lsa, start_postpone_lsa);
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
@@ -6454,10 +6497,31 @@ static LOG_PAGE *
 log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   LOG_REC_START_POSTPONE *start_posp;
+  LOG_REC_DONETIME *donetime;
+  time_t tmp_time;
+  char time_val[CTIME_MAX];
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_posp), log_lsa, log_page_p);
   start_posp = (LOG_REC_START_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset);
+  tmp_time = (time_t) start_posp->at_time;
+  (void) ctime_r (&tmp_time, time_val);
+  fprintf (out_fp, ", First postpone record at before or after Page = %lld and offset = %d\n",
+	   LSA_AS_ARGS (&start_posp->posp_lsa));
+  fprintf (out_fp, "     Transaction finish time at = %s\n", time_val);
+
+  return log_page_p;
+}
+
+static LOG_PAGE *
+log_dump_record_commit_postpone_obsolete (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+					  LOG_PAGE * log_page_p)
+{
+  LOG_REC_START_POSTPONE_OBSOLETE *start_posp;
+
+  /* Read the DATA HEADER */
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_posp), log_lsa, log_page_p);
+  start_posp = (LOG_REC_START_POSTPONE_OBSOLETE *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", First postpone record at before or after Page = %lld and offset = %d\n",
 	   LSA_AS_ARGS (&start_posp->posp_lsa));
 
@@ -6876,6 +6940,10 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
 
     case LOG_COMMIT_WITH_POSTPONE:
       log_page_p = log_dump_record_commit_postpone (thread_p, out_fp, log_lsa, log_page_p);
+      break;
+
+    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
+      log_page_p = log_dump_record_commit_postpone_obsolete (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
     case LOG_COMMIT:
@@ -7853,6 +7921,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 
 	    case LOG_RUN_POSTPONE:
 	    case LOG_COMMIT_WITH_POSTPONE:
+	    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
 	    case LOG_SYSOP_START_POSTPONE:
 	      /* Undo of run postpone system operation. End here. */
 	      assert (!LOG_ISRESTARTED ());
@@ -8298,6 +8367,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		      break;
 
 		    case LOG_COMMIT_WITH_POSTPONE:
+		    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
 		    case LOG_SYSOP_START_POSTPONE:
 		    case LOG_2PC_PREPARE:
 		    case LOG_2PC_START:
@@ -12659,7 +12729,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	  goto exit;
 	}
 
-      if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, undo_recdes, NULL, &attr_info)) != NO_ERROR)
+      if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, undo_recdes, &attr_info)) != NO_ERROR)
 	{
 	  goto exit;
 	}
@@ -12699,7 +12769,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	  goto exit;
 	}
 
-      if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, redo_recdes, NULL, &attr_info)) != NO_ERROR)
+      if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, redo_recdes, &attr_info)) != NO_ERROR)
 	{
 	  goto exit;
 	}
