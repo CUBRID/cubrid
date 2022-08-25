@@ -288,7 +288,7 @@ enum net_server_request
 #define NET_CAP_REMOTE_DISABLED         0x00000080
 #define NET_CAP_HA_REPL_DELAY           0x00000008
 #define NET_CAP_HA_REPLICA              0x00000004
-#define NET_CAP_HA_IGNORE_REPL_DELAY	 0x00000002
+#define NET_CAP_HA_IGNORE_REPL_DELAY	0x00000002
 
 typedef enum
 {				/* Responses to a query */
