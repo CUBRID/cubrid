@@ -244,7 +244,8 @@ admin_isstarted_cmd (int master_shm_id)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 int
-admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool acl_flag, char *acl_file, char *admin_log_file)
+admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool acl_flag, char *acl_file,
+		 char *admin_log_file)
 {
   int i;
   int res = 0;
@@ -275,7 +276,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
   if (admin_log_file != NULL)
     {
       admin_log2 = strdup (admin_log_file);
-      broker_create_dir (dirname(admin_log2));
+      broker_create_dir (dirname (admin_log2));
     }
 
 #if !defined(WINDOWS)
