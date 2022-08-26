@@ -30,6 +30,7 @@
 #include "locator.h"
 #include "log_comm.h"
 
+
 /* Server statistics structure size, used to make sure the pack/unpack
    routines follow the current structure definition.
    This must be the byte size of the structure
