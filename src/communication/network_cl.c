@@ -429,7 +429,7 @@ net_client_request_no_reply (int request, char *argbuf, int argsize)
       return error;
     }
 
-  if (histo_is_supported ())
+  if (histo_is_collecting ())
     {
       histo_add_request (request, argsize);
     }
@@ -504,7 +504,7 @@ net_client_request_internal (int request, char *argbuf, int argsize, char *reply
       return error;
     }
 
-  if (histo_is_supported ())
+  if (histo_is_collecting ())
     {
       histo_add_request (request, argsize + datasize);
     }
@@ -548,7 +548,7 @@ net_client_request_internal (int request, char *argbuf, int argsize, char *reply
 	}
     }
 
-  if (histo_is_supported ())
+  if (histo_is_collecting ())
     {
       histo_finish_request (request, replysize + replydatasize);
     }
@@ -831,7 +831,7 @@ net_client_request2 (int request, char *argbuf, int argsize, char *replybuf, int
       return error;
     }
 
-  if (histo_is_supported ())
+  if (histo_is_collecting ())
     {
       histo_add_request (request, argsize + datasize);
     }
@@ -886,7 +886,7 @@ net_client_request2 (int request, char *argbuf, int argsize, char *replybuf, int
 	}
     }
 
-  if (histo_is_supported ())
+  if (histo_is_collecting ())
     {
       histo_finish_request (request, replysize + *replydatasize_ptr);
     }
@@ -937,7 +937,7 @@ net_client_request2_no_malloc (int request, char *argbuf, int argsize, char *rep
   else
     {
 
-      if (histo_is_supported ())
+      if (histo_is_collecting ())
 	{
 	  histo_add_request (request, argsize + datasize);
 	}
@@ -979,7 +979,7 @@ net_client_request2_no_malloc (int request, char *argbuf, int argsize, char *rep
 	  *replydatasize_ptr = size;
 	}
 
-      if (histo_is_supported ())
+      if (histo_is_collecting ())
 	{
 	  histo_finish_request (request, replysize + *replydatasize_ptr);
 	}
@@ -1033,7 +1033,7 @@ net_client_request_3_data (int request, char *argbuf, int argsize, char *databuf
   else
     {
 
-      if (histo_is_supported ())
+      if (histo_is_collecting ())
 	{
 	  histo_add_request (request, argsize + datasize1 + datasize2);
 	}
@@ -1096,7 +1096,7 @@ net_client_request_3_data (int request, char *argbuf, int argsize, char *databuf
 	    }
 	}
 
-      if (histo_is_supported ())
+      if (histo_is_collecting ())
 	{
 	  histo_finish_request (request, replysize1 + replysize2);
 	}
@@ -1168,7 +1168,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
     }
   else
     {
-      if (histo_is_supported ())
+      if (histo_is_collecting ())
 	{
 	  histo_add_request (request, argsize + datasize1 + datasize2);
 	}
@@ -1712,7 +1712,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	}
       while (server_request != END_CALLBACK && server_request != QUERY_END);
 
-      if (histo_is_supported ())
+      if (histo_is_collecting ())
 	{
 	  histo_finish_request (request, replysize + *replydatasize_listid + *replydatasize_page + *replydatasize_plan);
 	}
@@ -1744,7 +1744,7 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
     }
   else
     {
-      if (histo_is_supported ())
+      if (histo_is_collecting ())
 	{
 	  histo_add_request (request, argsize);
 	}
@@ -1902,7 +1902,7 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
     }
   while (server_request != END_CALLBACK);
 
-  if (histo_is_supported ())
+  if (histo_is_collecting ())
     {
       histo_finish_request (request, replysize + *replydatasize_ptr);
     }
@@ -1937,7 +1937,7 @@ net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf, int argsize,
     }
   else
     {
-      if (histo_is_supported ())
+      if (histo_is_collecting ())
 	{
 	  histo_add_request (request, argsize);
 	}
@@ -2026,7 +2026,7 @@ net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf, int argsize,
 	}
     }
 
-  if (histo_is_supported ())
+  if (histo_is_collecting ())
     {
       histo_finish_request (request, replysize);
     }
@@ -2068,7 +2068,7 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, cha
     }
   else
     {
-      if (histo_is_supported ())
+      if (histo_is_collecting ())
 	{
 	  histo_add_request (request, argsize + datasize1 + datasize2);
 	}
@@ -2182,7 +2182,7 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, cha
 	}
       while (do_read /* server_request != END_CALLBACK */ );
 
-      if (histo_is_supported ())
+      if (histo_is_collecting ())
 	{
 	  histo_finish_request (request, replysize + *replydatasize_ptr1 + *replydatasize_ptr2);
 	}
@@ -2314,7 +2314,7 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
       return ER_FAILED;
     }
 
-  if (histo_is_supported ())
+  if (histo_is_collecting ())
     {
       histo_add_request (request, argsize);
     }
@@ -2447,7 +2447,7 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
       net_consume_expected_packets (rc, num_packets);
     }
 
-  if (histo_is_supported ())
+  if (histo_is_collecting ())
     {
       histo_finish_request (request, replysize + content_size + packed_desc_size);
     }
@@ -2497,7 +2497,7 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
       return ER_FAILED;
     }
 
-  if (histo_is_supported ())
+  if (histo_is_collecting ())
     {
       histo_add_request (request, argsize + datasize);
     }
@@ -2679,7 +2679,7 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
       net_consume_expected_packets (rc, num_packets);
     }
 
-  if (histo_is_supported ())
+  if (histo_is_collecting ())
     {
       histo_finish_request (request, replysize + recvbuffer_size + content_size + packed_desc_size);
     }
@@ -2730,7 +2730,7 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
       return ER_FAILED;
     }
 
-  if (histo_is_supported ())
+  if (histo_is_collecting ())
     {
       histo_add_request (request, argsize + datasize1 + datasize2);
     }
@@ -2843,7 +2843,7 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
       net_consume_expected_packets (rid, num_packets);
     }
 
-  if (histo_is_supported ())
+  if (histo_is_collecting ())
     {
       histo_finish_request (request, replysize + content_size + packed_desc_size);
     }
@@ -2887,7 +2887,7 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
       return ER_FAILED;
     }
 
-  if (histo_is_supported ())
+  if (histo_is_collecting ())
     {
       histo_add_request (request, 0);
     }
@@ -3059,7 +3059,7 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
       net_consume_expected_packets (rc, num_packets);
     }
 
-  if (histo_is_supported ())
+  if (histo_is_collecting ())
     {
       histo_finish_request (request, replysize + recvbuffer_size + content_size + packed_desc_size);
     }
@@ -3111,7 +3111,7 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
       return ER_FAILED;
     }
 
-  if (histo_is_supported ())
+  if (histo_is_collecting ())
     {
       histo_add_request (request, argsize + datasize);
     }
@@ -3252,7 +3252,7 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
       net_consume_expected_packets (rc, num_packets);
     }
 
-  if (histo_is_supported ())
+  if (histo_is_collecting ())
     {
       histo_finish_request (request, replysize + *recvbuffer_size + content_size + packed_desc_size);
     }
@@ -3331,7 +3331,7 @@ net_client_request_recv_stream (int request, char *argbuf, int argsize, char *re
       return error;
     }
 
-  if (histo_is_supported ())
+  if (histo_is_collecting ())
     {
       histo_add_request (request, send_argsize + datasize);
     }
@@ -3364,7 +3364,7 @@ net_client_request_recv_stream (int request, char *argbuf, int argsize, char *re
       memcpy (replybuf, recv_replybuf + OR_INT_SIZE, recv_replybuf_size - OR_INT_SIZE);
     }
 
-  if (histo_is_supported ())
+  if (histo_is_collecting ())
     {
       histo_finish_request (request, recv_replybuf_size + file_size);
     }

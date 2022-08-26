@@ -43,6 +43,12 @@ net_histo_ctx::net_histo_ctx ()
   //
 }
 
+bool
+net_histo_ctx::is_started ()
+{
+  return is_collecting;
+}
+
 void
 net_histo_ctx::clear ()
 {
@@ -238,6 +244,16 @@ net_histo_ctx::print_histogram (FILE *stream)
   return err;
 }
 #endif
+
+bool
+histo_is_collecting (void)
+{
+#if defined(CS_MODE)
+  return net_histo_context.is_started ();
+#else
+  return true;
+#endif
+}
 
 bool
 histo_is_supported (void)

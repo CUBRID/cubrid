@@ -50,6 +50,7 @@ class net_histo_ctx
 
     net_histo_ctx ();
 
+    bool is_started ();
     void clear (void);
 
     int start_collect (bool for_all_trans);
@@ -72,6 +73,7 @@ class net_histo_ctx
 #endif
 
 /* common histogram API (CS/SA) */
+extern bool histo_is_collecting (void);
 extern bool histo_is_supported (void);
 extern int histo_start (bool for_all_trans);
 extern int histo_stop (void);
