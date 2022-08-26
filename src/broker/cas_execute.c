@@ -78,6 +78,7 @@
 #include "ddl_log.h"
 #include "parse_tree.h"
 #include "api_compat.h"
+#include "method_callback.hpp"
 
 #if defined (CAS_FOR_CGW)
 #include "cas_cgw.h"
@@ -192,12 +193,9 @@ T_COL_BINDER *col_binding = NULL;
 T_COL_BINDER *col_binding_buff = NULL;
 #endif
 
-extern void histo_print (FILE * stream);
-extern void histo_clear (void);
-
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
 extern void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
-#endif /* !LIBCAS_FOR_JSP */
+#endif
 
 static int netval_to_dbval (void *type, void *value, DB_VALUE * db_val, T_NET_BUF * net_buf, char desired_type);
 static int cur_tuple (T_QUERY_RESULT * q_result, int max_col_size, char sensitive_flag, DB_OBJECT * obj,
@@ -454,7 +452,6 @@ ux_check_connection (void)
   return cgw_is_database_connected ();
 #endif
 
-#ifndef LIBCAS_FOR_JSP
   if (ux_is_database_connected ())
     {
       if (db_ping_server (0, NULL) < 0)
@@ -489,11 +486,9 @@ ux_check_connection (void)
     {
       return -1;
     }
-#endif /* !LIBCAS_FOR_JSP */
   return 0;
 }
 
-#ifndef LIBCAS_FOR_JSP
 SESSION_ID
 ux_get_session_id (void)
 {
@@ -665,7 +660,6 @@ connect_error:
 
   return ERROR_INFO_SET_WITH_MSG (err_code, DBMS_ERROR_INDICATOR, p);
 }
-#endif /* !LIBCAS_FOR_JSP */
 
 int
 ux_is_database_connected (void)
@@ -764,13 +758,13 @@ ux_database_shutdown ()
 #if !defined(CAS_FOR_CGW)
   db_shutdown ();
   cas_log_debug (ARG_FILE_LINE, "ux_database_shutdown: db_shutdown()");
-#ifndef LIBCAS_FOR_JSP
+
   as_info->database_name[0] = '\0';
   as_info->database_host[0] = '\0';
   as_info->database_user[0] = '\0';
   as_info->database_passwd[0] = '\0';
   as_info->last_connect_time = 0;
-#endif /* !LIBCAS_FOR_JSP */
+
   memset (database_name, 0, sizeof (database_name));
   memset (database_user, 0, sizeof (database_user));
   memset (database_passwd, 0, sizeof (database_passwd));
@@ -816,7 +810,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
   srv_handle->schema_type = -1;
   srv_handle->auto_commit_mode = auto_commit_mode;
 
-  ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
+  ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
   if (srv_handle->sql_stmt == NULL)
     {
       err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
@@ -1075,7 +1069,38 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
   srv_handle->schema_type = -1;
   srv_handle->auto_commit_mode = auto_commit_mode;
 
-  ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
+  if (cgw_get_dbms_type () == SUPPORTED_DBMS_ORACLE)
+    {
+      char *is_cublink = NULL;
+      is_cublink = strstr (sql_stmt, REWRITE_DELIMITER_CUBLINK);
+      if (is_cublink != NULL)
+	{
+	  char *rewrite_sql = NULL;
+	  err_code = cgw_rewrite_query (sql_stmt, &rewrite_sql);
+	  if (err_code == ER_FAILED)
+	    {
+	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	      goto prepare_error;
+	    }
+	  else if (err_code == ERR_REWRITE_FAILED)
+	    {
+	      ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
+	    }
+	  else
+	    {
+	      srv_handle->sql_stmt = rewrite_sql;
+	    }
+	}
+      else
+	{
+	  ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
+	}
+    }
+  else
+    {
+      ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
+    }
+
   if (srv_handle->sql_stmt == NULL)
     {
       err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
@@ -1171,7 +1196,7 @@ ux_end_tran (int tran_type, bool reset_con_status)
 {
   int err_code = 0;
 
-#ifndef LIBCAS_FOR_JSP
+
   if (!as_info->cur_statement_pooling)
     {
       if (tran_type == CCI_TRAN_COMMIT)
@@ -1197,9 +1222,7 @@ ux_end_tran (int tran_type, bool reset_con_status)
 	}
     }
 
-#else /* !LIBCAS_FOR_JSP */
-  hm_srv_handle_free_all (true);
-#endif /* !LIBCAS_FOR_JSP */
+
 
 #if !defined (CAS_FOR_CGW)
   if (tran_type == CCI_TRAN_COMMIT)
@@ -1228,27 +1251,27 @@ ux_end_tran (int tran_type, bool reset_con_status)
   if (err_code >= 0)
     {
       unset_xa_prepare_flag ();
-#ifndef LIBCAS_FOR_JSP
+
       if (reset_con_status)
 	{
 	  assert_release (as_info->con_status == CON_STATUS_IN_TRAN || as_info->con_status == CON_STATUS_OUT_TRAN);
 	  as_info->con_status = CON_STATUS_OUT_TRAN;
 	  as_info->transaction_start_time = (time_t) 0;
 	}
-#endif /* !LIBCAS_FOR_JSP */
+
     }
   else
     {
       errors_in_transaction++;
     }
 
-#ifndef LIBCAS_FOR_JSP
+
   if (cas_get_db_connect_status () == -1	/* DB_CONNECTION_STATUS_RESET */
       || need_reconnect_on_rctime ())
     {
       as_info->reset_flag = TRUE;
     }
-#endif /* !LIBCAS_FOR_JSP */
+
 
 #endif /* CAS_FOR_CGW */
 
@@ -1483,9 +1506,9 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
   DB_SESSION *session;
   T_BROKER_VERSION client_version = req_info->client_version;
   bool recompile = false;
-#ifndef LIBCAS_FOR_JSP
+
   char stmt_type;
-#endif /* !LIBCAS_FOR_JSP */
+
 
   hm_qresult_end (srv_handle, FALSE);
 
@@ -1587,23 +1610,23 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
       db_set_client_cache_time (session, stmt_id, clt_cache_time);
     }
 
-#if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
   err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
   if (err_code != NO_ERROR)
     {
       err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
       goto execute_error;
     }
-#endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL  && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL  && !CAS_FOR_CGW */
 
   hm_set_current_srv_handle (srv_handle->id);
   n = db_execute_and_keep_statement (session, stmt_id, &result);
   hm_set_current_srv_handle (-1);
 
-#ifndef LIBCAS_FOR_JSP
+
   stmt_type = db_get_statement_type (session, stmt_id);
   update_query_execution_count (as_info, stmt_type);
-#endif /* !LIBCAS_FOR_JSP */
+
 
   if (n < 0)
     {
@@ -1681,9 +1704,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
       if (srv_handle->is_holdable == true)
 	{
 	  srv_handle->q_result->is_holdable = true;
-#if !defined(LIBCAS_FOR_JSP)
 	  as_info->num_holdable_results++;
-#endif
 	}
     }
 
@@ -1904,23 +1925,23 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	  db_set_client_cache_time (session, stmt_id, clt_cache_time);
 	}
 
-#if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
       err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
       if (err_code != NO_ERROR)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	  goto execute_all_error;
 	}
-#endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
       hm_set_current_srv_handle (srv_handle->id);
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       n = db_execute_and_keep_statement (session, stmt_id, &result);
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, n);
       hm_set_current_srv_handle (-1);
 
-#ifndef LIBCAS_FOR_JSP
+
       update_query_execution_count (as_info, stmt_type);
-#endif /* !LIBCAS_FOR_JSP */
+
 
       if (n < 0)
 	{
@@ -2002,9 +2023,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	  if (srv_handle->is_holdable == true)
 	    {
 	      q_result->is_holdable = true;
-#if !defined(LIBCAS_FOR_JSP)
 	      as_info->num_holdable_results++;
-#endif
 	    }
 	}
     }
@@ -2138,9 +2157,9 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
   DB_SESSION *session;
   T_BROKER_VERSION client_version = req_info->client_version;
   T_PREPARE_CALL_INFO *call_info;
-#ifndef LIBCAS_FOR_JSP
+
   char stmt_type;
-#endif /* !LIBCAS_FOR_JSP */
+
 
   call_info = srv_handle->prepare_call_info;
   srv_handle->query_info_flag = FALSE;
@@ -2179,10 +2198,10 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
   jsp_unset_prepare_call ();
   hm_set_current_srv_handle (-1);
 
-#ifndef LIBCAS_FOR_JSP
+
   stmt_type = db_get_statement_type (session, stmt_id);
   update_query_execution_count (as_info, stmt_type);
-#endif /* !LIBCAS_FOR_JSP */
+
 
   if (n < 0)
     {
@@ -2226,9 +2245,7 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
   if (srv_handle->is_holdable == true)
     {
       srv_handle->q_result->is_holdable = true;
-#if !defined(LIBCAS_FOR_JSP)
       as_info->num_holdable_results++;
-#endif
     }
 
   if (value_list)
@@ -2430,20 +2447,20 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       db_get_cacheinfo (session, stmt_id, &use_plan_cache, &use_query_cache);
       cas_log_write2_nonl (" %s\n", use_plan_cache ? "(PC)" : "");
 
-#if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
       if (db_set_statement_auto_commit (session, auto_commit_mode) != NO_ERROR)
 	{
 	  cas_log_write2 ("");
 	  goto batch_error;
 	}
-#endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL  && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL  && !CAS_FOR_CGW */
 
       res_count = db_execute_statement (session, stmt_id, &result);
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, res_count);
 
-#ifndef LIBCAS_FOR_JSP
+
       update_query_execution_count (as_info, stmt_type);
-#endif /* LIBCAS_FOR_JSP */
+
 
       if (res_count < 0)
 	{
@@ -2670,14 +2687,14 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	    }
 	}
 
-#if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
       err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
       if (err_code != NO_ERROR)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	  goto exec_db_error;
 	}
-#endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL  && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL  && !CAS_FOR_CGW */
 
       hm_set_current_srv_handle (srv_handle->id);
 
@@ -2691,9 +2708,9 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	{
 	  stmt_type = db_get_statement_type (session, stmt_id);
 	}
-#ifndef LIBCAS_FOR_JSP
+
       update_query_execution_count (as_info, stmt_type);
-#endif /* LIBCAS_FOR_JSP */
+
 
       if (res_count < 0)
 	{
@@ -2900,7 +2917,6 @@ ux_set_lock_timeout (int lock_timeout)
 void
 ux_set_cas_change_mode (int mode, T_NET_BUF * net_buf)
 {
-#if !defined(LIBCAS_FOR_JSP)
   int prev_mode;
 
   prev_mode = as_info->cas_change_mode;
@@ -2908,10 +2924,6 @@ ux_set_cas_change_mode (int mode, T_NET_BUF * net_buf)
 
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
   net_buf_cp_int (net_buf, prev_mode, NULL);	/* result msg */
-#else
-  net_buf_cp_int (net_buf, 0, NULL);	/* result code */
-  net_buf_cp_int (net_buf, CAS_CHANGE_MODE_UNKNOWN, NULL);	/* result msg */
-#endif
 }
 
 int
@@ -3212,9 +3224,7 @@ ux_cursor_close (T_SRV_HANDLE * srv_handle)
   if (srv_handle->q_result[idx].is_holdable == true)
     {
       srv_handle->q_result[idx].is_holdable = false;
-#if !defined(LIBCAS_FOR_JSP)
       as_info->num_holdable_results--;
-#endif
     }
 #endif /* CAS_FOR_CGW */
 }
@@ -7721,7 +7731,7 @@ cgw_prepare_column_list_info_set (SQLHSTMT hstmt, char prepare_flag, char stmt_t
 
       for (i = 1; i <= num_cols; i++)
 	{
-	  err_code = cgw_get_col_info (hstmt, net_buf, i, &col_info);
+	  err_code = cgw_get_col_info (hstmt, i, &col_info);
 	  if (err_code < 0)
 	    {
 	      return ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -7858,8 +7868,8 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 		  col_update_info[num_cols].updatable = FALSE;
 		  if (db_query_format_col_type (col) == DB_COL_NAME)
 		    {
-		      ALLOC_COPY (col_update_info[num_cols].attr_name, attr_name);
-		      ALLOC_COPY (col_update_info[num_cols].class_name, class_name);
+		      ALLOC_COPY_STRLEN (col_update_info[num_cols].attr_name, attr_name);
+		      ALLOC_COPY_STRLEN (col_update_info[num_cols].class_name, class_name);
 		      if (col_update_info[num_cols].attr_name != NULL && col_update_info[num_cols].class_name != NULL)
 			{
 			  col_update_info[num_cols].updatable = TRUE;
@@ -7902,7 +7912,7 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 	   * if (cas_type == CCI_U_TYPE_CHAR && precision < 0)
 	   *   precision = 0;
 	   */
-#ifndef LIBCAS_FOR_JSP
+
 	  if (shm_appl->max_string_length >= 0)
 	    {
 	      if (precision < 0 || precision > shm_appl->max_string_length)
@@ -7910,9 +7920,7 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 		  precision = shm_appl->max_string_length;
 		}
 	    }
-#else /* !LIBCAS_FOR_JSP */
-	  /* precision = DB_MAX_STRING_LENGTH; */
-#endif /* !LIBCAS_FOR_JSP */
+
 
 	  set_column_info (net_buf, cas_type, scale, precision, charset, col_name, attr_name, class_name,
 			   (char) db_query_format_is_non_null (col), client_version);
@@ -9231,9 +9239,9 @@ sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt, T_NET_BUF * net_bu
   num_result = db_execute_statement (session, stmt_id, &result);
   lang_set_parser_use_client_charset (true);
 
-#ifndef LIBCAS_FOR_JSP
+
   update_query_execution_count (as_info, stmt_type);
-#endif /* !LIBCAS_FOR_JSP */
+
 
   if (num_result < 0)
     {
@@ -10075,8 +10083,8 @@ int
 ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT * result, int stmt_type, int num_column,
 					       DB_QUERY_TYPE * column_info, bool is_holdable)
 {
-  int srv_h_id;
-  int err_code = 0;
+  int srv_h_id = -1;
+  int err_code = NO_ERROR;
   T_SRV_HANDLE *srv_handle = NULL;
   T_QUERY_RESULT *q_result = NULL;
 
@@ -10436,8 +10444,6 @@ ux_get_generated_keys_error:
   return err_code;
 }
 
-extern int method_make_out_rs (DB_BIGINT query_id);
-
 int
 ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -10450,7 +10456,17 @@ ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   int new_handle_id = 0;
   T_BROKER_VERSION client_version = req_info->client_version;
 
-  new_handle_id = method_make_out_rs (query_id);
+  cubmethod::callback_handler * callback_handler = cubmethod::get_callback_handler ();
+  cubmethod::query_handler * query_handler = callback_handler->get_query_handler_by_query_id (query_id);
+  if (query_handler != nullptr)
+    {
+      const cubmethod::query_result & qresult = query_handler->get_result ();
+      DB_QUERY_TYPE *column_info = db_get_query_type_list (query_handler->get_db_session (), qresult.stmt_id);
+      new_handle_id = ux_create_srv_handle_with_method_query_result (qresult.result,
+								     qresult.stmt_type,
+								     qresult.num_column, column_info, true);
+    }
+
   srv_handle = hm_find_srv_handle (new_handle_id);
 
   if (srv_handle == NULL || srv_handle->cur_result == NULL)
@@ -10539,7 +10555,7 @@ ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	  q_result->null_type_column[i] = 1;
 	}
 
-#ifndef LIBCAS_FOR_JSP
+
       if (shm_appl->max_string_length >= 0)
 	{
 	  if (precision < 0 || precision > shm_appl->max_string_length)
@@ -10547,9 +10563,7 @@ ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	      precision = shm_appl->max_string_length;
 	    }
 	}
-#else /* !LIBCAS_FOR_JSP */
-      /* precision = DB_MAX_STRING_LENGTH; */
-#endif /* !LIBCAS_FOR_JSP */
+
 
       set_column_info (net_buf, cas_type, scale, precision, charset, col_name, attr_name, class_name,
 		       (char) db_query_format_is_non_null (col), client_version);
@@ -10564,10 +10578,6 @@ ux_make_out_rs_error:
 static int
 get_client_result_cache_lifetime (DB_SESSION * session, int stmt_id)
 {
-#ifdef LIBCAS_FOR_JSP
-  return -1;
-#else /* !LIBCAS_FOR_JSP */
-
   bool jdbc_cache_is_hint;
   int jdbc_cache_life_time = shm_appl->jdbc_cache_life_time;
 
@@ -10585,14 +10595,13 @@ get_client_result_cache_lifetime (DB_SESSION * session, int stmt_id)
     }
 
   return jdbc_cache_life_time;
-#endif
 }
 
 int
 ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
 
-#ifndef LIBCAS_FOR_JSP
+
   int err_code;
   int elapsed_sec = 0, elapsed_msec = 0;
 
@@ -10655,7 +10664,7 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   query_timeout = 0;
 
   return err_code;
-#endif /* !LIBCAS_FOR_JSP */
+
 
   return -1;
 }
@@ -11129,7 +11138,6 @@ update_query_execution_count (T_APPL_SERVER_INFO * as_info_p, char stmt_type)
 static bool
 need_reconnect_on_rctime (void)
 {
-#if !defined(LIBCAS_FOR_JSP)
   if (shm_appl->cas_rctime > 0 && db_need_reconnect ())
     {
       if ((time (NULL) - as_info->last_connect_time) > shm_appl->cas_rctime)
@@ -11137,14 +11145,13 @@ need_reconnect_on_rctime (void)
 	  return true;
 	}
     }
-#endif /* !LIBCAS_FOR_JSP */
+
   return false;
 }
 
 static void
 report_abnormal_host_status (int err_code)
 {
-#if !defined(LIBCAS_FOR_JSP)
   bool reset_after_endtran = false;
   char *hostlist[MAX_NUM_DB_HOSTS * 2 + 1];
   char **hostlist_p;
@@ -11246,7 +11253,7 @@ report_abnormal_host_status (int err_code)
 				 shm_appl->cas_rctime);
 	}
     }
-#endif /* !LIBCAS_FOR_JSP */
+
 }
 
 /*

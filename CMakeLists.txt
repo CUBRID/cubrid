@@ -118,7 +118,7 @@ option(USE_CUBRID_ENV "Use CUBRID environment variables" ON)
 option(WITH_JDBC "Build with JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
-option(WITH_CCI "Build with CCI driver" OFF)
+option(WITH_CCI "Build with CCI driver" ON)
 
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)
 # expat library sources URL
@@ -341,7 +341,7 @@ endif(UNIX)
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
   set(TARGET_PLATFORM_BITS 64)
 else()
-  message(FATAL_ERROR "Target platform 32bit is no longer supported")
+  message(FATAL_ERROR "Target platform 32bit is no longer supported as of CUBRID 10.2")
 endif()
 
 # FIXME: remove unused checking rule
@@ -733,9 +733,7 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "AIX")
   endif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
 elseif(CMAKE_SYSTEM_NAME MATCHES "Windows")
   add_definitions(-DWIN -DWINDOWS -D_CRT_SECURE_NO_WARNINGS /wd4274 /wd4996)
-  if(TARGET_PLATFORM_BITS EQUAL 64)
-    string(REPLACE "/DWIN32" "/D_WIN64" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
-  endif(TARGET_PLATFORM_BITS EQUAL 64)
+  string(REPLACE "/DWIN32" "/D_WIN64" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
   if(MSVC_VERSION GREATER 1400)
     # experimental option (it can lead the build system to a halt or creating a bad object files)
     set(PARALLEL_JOBS "0" CACHE STRING "Specifies the number of jots to build parallel. 0 means OFF")
@@ -811,6 +809,8 @@ if(USE_CUBRID_ENV)
   set(CUBRID_DEMODIR demo)
   set(CUBRID_COMPATDIR compat)
   set(CUBRID_CCIDIR cci)
+  set(CUBRID_DATABASES databases)
+  set(CUBRID_SOCK CUBRID_SOCK)
 else(USE_CUBRID_ENV)
   message(WARNING "This build does not use CUBRID environment variables")
   list(APPEND COMMON_DEFS DO_NOT_USE_CUBRIDENV)
@@ -913,6 +913,8 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
   if(UNIX)
     externalproject_add(${LIBEXPAT_TARGET}
       URL                  ${WITH_LIBEXPAT_URL}
+      LOG_BUILD            TRUE
+      LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
@@ -958,6 +960,8 @@ if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
   if(UNIX)
     externalproject_add(${LIBJANSSON_TARGET}
       URL                  ${WITH_LIBJANSSON_URL}
+      LOG_BUILD            TRUE
+      LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
@@ -1034,6 +1038,8 @@ if(UNIX)
     set(LIBEDIT_TARGET libedit)
     externalproject_add(${LIBEDIT_TARGET}
       URL                  ${WITH_LIBEDIT_URL}
+      LOG_BUILD            TRUE
+      LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    "LDFLAGS=-L${CMAKE_CURRENT_BINARY_DIR}/external/lib" ${DEFAULT_CONFIGURE_OPTS}
@@ -1102,6 +1108,9 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
     #e.g. https://www.openssl.org/source/openssl-1.1.1f.tar.gz
     externalproject_add(${LIBOPENSSL_TARGET}
       URL                  ${WITH_LIBOPENSSL_URL}
+      LOG_CONFIGURE        TRUE
+      LOG_BUILD            TRUE
+      LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${CMAKE_CURRENT_BINARY_DIR}/external no-shared # ${DEFAULT_CONFIGURE_OPTS}
@@ -1140,6 +1149,9 @@ if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
     #e.g. http://www.unixodbc.org/unixODBC-2.3.9.tar.gz
     externalproject_add(${LIBUNIXODBC_TARGET}
       URL                  ${WITH_LIBUNIXODBC_URL}
+      LOG_CONFIGURE        TRUE
+      LOG_BUILD            TRUE
+      LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external # ${DEFAULT_CONFIGURE_OPTS}
@@ -1157,11 +1169,7 @@ list(APPEND EP_INCLUDES ${LIBUNIXODBC_INCLUDES})
 
 # For JVM libraries
 if(WIN32)
-  if(TARGET_PLATFORM_BITS EQUAL 32)
-    set(JVM_LIBS ${JAVA_JVM_LIBRARY})
-  else(TARGET_PLATFORM_BITS EQUAL 32)
     set(JVM_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/jvm.lib)
-  endif(TARGET_PLATFORM_BITS EQUAL 32)
   list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
 endif(WIN32)
 
@@ -1170,6 +1178,9 @@ set(RAPIDJSON_TARGET rapidjson)
 externalproject_add(${RAPIDJSON_TARGET}
   # tried URL but archive gets downloaded every time. URL_MD5 may help
   URL                  ${WITH_RAPIDJSON_URL}
+  LOG_CONFIGURE        TRUE
+  LOG_BUILD            TRUE
+  LOG_INSTALL          TRUE
   TIMEOUT              600
   DOWNLOAD_NO_PROGRESS 1
   # don't install
@@ -1204,7 +1215,6 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
 endif()
 
 # include subdirectories
-add_subdirectory(cas)
 add_subdirectory(sa)
 add_subdirectory(cs)
 add_subdirectory(cubrid)
@@ -1233,15 +1243,13 @@ if(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/serve
   get_target_property(CCI_PUBLIC_HEADERS cascci PUBLIC_HEADER)
   get_target_property(CMDEP_PUBLIC_HEADERS cmdep PUBLIC_HEADER)
   get_target_property(CMSTAT_PUBLIC_HEADERS cmstat PUBLIC_HEADER)
-  if(TARGET_PLATFORM_BITS EQUAL 64)
-    list(APPEND CMS_CONFIGURE_OPTS --enable-64bit)
-  else(TARGET_PLATFORM_BITS EQUAL 64)
-    list(APPEND CMS_CONFIGURE_OPTS --disable-64bit)
-  endif(TARGET_PLATFORM_BITS EQUAL 64)
+  list(APPEND CMS_CONFIGURE_OPTS --enable-64bit)
   add_custom_target(pre_cubridmanager)
   if(UNIX)
     set(CMS_DEPENDS cubridcs cascci cmstat cmdep)
     externalproject_add(cubridmanager
+      LOG_CONFIGURE        TRUE
+      LOG_BUILD            TRUE
       DEPENDS pre_cubridmanager ${CMS_DEPENDS}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cubridmanager/server
       CONFIGURE_COMMAND sh <SOURCE_DIR>/autogen.sh
@@ -1253,6 +1261,8 @@ if(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/serve
     set(CMS_DEPENDS cascci cmstat cmdep)
     externalproject_add(cubridmanager
       DEPENDS pre_cubridmanager ${CMS_DEPENDS}
+      LOG_CONFIGURE        TRUE
+      LOG_BUILD            TRUE
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cubridmanager/server
       CONFIGURE_COMMAND ""
       BUILD_COMMAND cmd /c build.bat --prefix <INSTALL_DIR> --with-cubrid-libdir <TMP_DIR> --with-cubrid-includedir <TMP_DIR> ${CMS_CONFIGURE_OPTS}
@@ -1281,12 +1291,26 @@ endif(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/se
 install(DIRECTORY DESTINATION ${CUBRID_LOGDIR})
 install(DIRECTORY DESTINATION ${CUBRID_VARDIR})
 install(DIRECTORY DESTINATION ${CUBRID_TMPDIR})
+install(DIRECTORY DESTINATION ${CUBRID_DATABASES})
+install(DIRECTORY DESTINATION "${CUBRID_VARDIR}/${CUBRID_SOCK}")
 if(USE_CUBRID_ENV)
   install(FILES
     ${CMAKE_SOURCE_DIR}/COPYING
     ${CMAKE_SOURCE_DIR}/CREDITS
     ${CMAKE_SOURCE_DIR}/README
+    ${CMAKE_SOURCE_DIR}/contrib/readme/README_TAR_INSTALL
     DESTINATION ${CUBRID_PREFIXDIR})
+  install(FILES
+    ${CMAKE_SOURCE_DIR}/contrib/readme/databases.txt
+    DESTINATION ${CUBRID_DATABASES})
+  install(FILES
+    ${CMAKE_SOURCE_DIR}/contrib/readme/README_SOCK.txt
+    DESTINATION ${CUBRID_VARDIR}/${CUBRID_SOCK}
+    RENAME README.txt)
+  install(FILES
+    ${CMAKE_SOURCE_DIR}/contrib/readme/README_TMP.txt
+    DESTINATION ${CUBRID_TMPDIR}
+    RENAME README.txt)
 endif(USE_CUBRID_ENV)
 
 if(WITH_SOURCES)
@@ -1336,13 +1360,8 @@ else(CMAKE_BUILD_TYPE MATCHES "Debug")
   set(CUBRID_PACKAGE_FILE_SUFFIX "")
 endif(CMAKE_BUILD_TYPE MATCHES "Debug")
 if(WIN32)
-  if(TARGET_PLATFORM_BITS EQUAL 32)
-    set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${CMAKE_SYSTEM_NAME}-x86-${CUBRID_VERSION}${CUBRID_PACKAGE_FILE_SUFFIX}")
-    set(CCI_PACKAGE_FILE_NAME "${PROJECT_NAME}-CCI-${CMAKE_SYSTEM_NAME}-x86-${CCI_VERSION}${CUBRID_PACKAGE_FILE_SUFFIX}")
-  else(TARGET_PLATFORM_BITS EQUAL 32)
-    set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${CMAKE_SYSTEM_NAME}-x64-${CUBRID_VERSION}${CUBRID_PACKAGE_FILE_SUFFIX}")
-    set(CCI_PACKAGE_FILE_NAME "${PROJECT_NAME}-CCI-${CMAKE_SYSTEM_NAME}-x64-${CCI_VERSION}${CUBRID_PACKAGE_FILE_SUFFIX}")
-  endif(TARGET_PLATFORM_BITS EQUAL 32)
+  set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${CMAKE_SYSTEM_NAME}-x64-${CUBRID_VERSION}${CUBRID_PACKAGE_FILE_SUFFIX}")
+  set(CCI_PACKAGE_FILE_NAME "${PROJECT_NAME}-CCI-${CMAKE_SYSTEM_NAME}-x64-${CCI_VERSION}${CUBRID_PACKAGE_FILE_SUFFIX}")
 else(WIN32)
   set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${CUBRID_VERSION}-${CMAKE_SYSTEM_NAME}.${CMAKE_HOST_SYSTEM_PROCESSOR}${CUBRID_PACKAGE_FILE_SUFFIX}")
   set(CCI_PACKAGE_FILE_NAME "${PROJECT_NAME}-CCI-${CCI_VERSION}-${CMAKE_SYSTEM_NAME}.${CMAKE_HOST_SYSTEM_PROCESSOR}${CUBRID_PACKAGE_FILE_SUFFIX}")
@@ -1355,39 +1374,21 @@ configure_file(cmake/CPackOptions.cmake.in CPackOptions.cmake)
 set(CPACK_PROJECT_CONFIG_FILE "${CMAKE_BINARY_DIR}/CPackOptions.cmake")
 
 if(WIN32)
-  if(TARGET_PLATFORM_BITS EQUAL 32)
-    set(WIX_PROGRAMFILESFOLDER ProgramFilesFolder)
-    set(WIX_SUPPORTED_PLATFORM 32bit)
-    set(WIX_SUPPORTED_PLATFORM_CONDITION "Not VersionNT64")
-    if(MSVC90)
-      set(WIX_VCREDIST_MSM Microsoft_VC90_CRT_x86.msm)
-      set(WIX_VCREDIST_MFC_MSM Microsoft_VC90_MFC_x86.msm)
-    elseif(MSVC10)
-      set(WIX_VCREDIST_MSM Microsoft_VC100_CRT_x86.msm)
-      set(WIX_VCREDIST_MFC_MSM Microsoft_VC100_MFC_x86.msm)
-    elseif(MSVC_VERSION GREATER_EQUAL 1910)
-      set(WIX_VCREDIST_MSM Microsoft_VC141_CRT_x86.msm)
-      set(WIX_VCREDIST_MFC_MSM Microsoft_VC141_MFC_x86.msm)
-    else()
-      message(WARNING "Cannot generate MSI installer with unsupported compiler version")
-    endif()
-  else(TARGET_PLATFORM_BITS EQUAL 32)
-    set(WIX_PROGRAMFILESFOLDER ProgramFiles64Folder)
-    set(WIX_SUPPORTED_PLATFORM 64bit)
-    set(WIX_SUPPORTED_PLATFORM_CONDITION "VersionNT64")
-    if(MSVC90)
-      set(WIX_VCREDIST_MSM Microsoft_VC90_CRT_x86_x64.msm)
-      set(WIX_VCREDIST_MFC_MSM Microsoft_VC90_MFC_x86_x64.msm)
-    elseif(MSVC10)
-      set(WIX_VCREDIST_MSM Microsoft_VC100_CRT_x64.msm)
-      set(WIX_VCREDIST_MFC_MSM Microsoft_VC100_MFC_x64.msm)
-    elseif(MSVC_VERSION GREATER_EQUAL 1910) # ref. https://cmake.org/cmake/help/v3.9/variable/MSVC_VERSION.html
-      set(WIX_VCREDIST_MSM Microsoft_VC141_CRT_x64.msm)
-      set(WIX_VCREDIST_MFC_MSM Microsoft_VC141_MFC_x64.msm)
-    else()
-      message(WARNING "Cannot generate MSI installer with unsupported compiler version")
-    endif()
-  endif(TARGET_PLATFORM_BITS EQUAL 32)
+  set(WIX_PROGRAMFILESFOLDER ProgramFiles64Folder)
+  set(WIX_SUPPORTED_PLATFORM 64bit)
+  set(WIX_SUPPORTED_PLATFORM_CONDITION "VersionNT64")
+  if(MSVC90)
+    set(WIX_VCREDIST_MSM Microsoft_VC90_CRT_x86_x64.msm)
+    set(WIX_VCREDIST_MFC_MSM Microsoft_VC90_MFC_x86_x64.msm)
+  elseif(MSVC10)
+    set(WIX_VCREDIST_MSM Microsoft_VC100_CRT_x64.msm)
+    set(WIX_VCREDIST_MFC_MSM Microsoft_VC100_MFC_x64.msm)
+  elseif(MSVC_VERSION GREATER_EQUAL 1910) # ref. https://cmake.org/cmake/help/v3.9/variable/MSVC_VERSION.html
+    set(WIX_VCREDIST_MSM Microsoft_VC141_CRT_x64.msm)
+    set(WIX_VCREDIST_MFC_MSM Microsoft_VC141_MFC_x64.msm)
+  else()
+    message(WARNING "Cannot generate MSI installer with unsupported compiler version")
+  endif()
   if(CMAKE_VERSION VERSION_GREATER "3.1")
     set_property(INSTALL "${CUBRID_BINDIR}/$<TARGET_FILE_NAME:cubridtray>"
       PROPERTY CPACK_START_MENU_SHORTCUTS "CUBRID Service Tray")

@@ -109,7 +109,6 @@
 #define BUF_SIZE        2048
 typedef jint (*CREATE_VM_FUNC) (JavaVM **, void **, void *);
 
-#ifdef __cplusplus
 #define JVM_GetEnv(JVM, ENV, VER)	\
 	(JVM)->GetEnv(ENV, VER)
 #define JVM_AttachCurrentThread(JVM, ENV, ARGS)	\
@@ -140,38 +139,6 @@ typedef jint (*CREATE_VM_FUNC) (JavaVM **, void **, void *);
 	(ENV)->ReleaseStringUTFChars(JSTRING, CSTRING)
 #define JVM_GetStringUTFLength(ENV, STRING)	\
 	(ENV)->GetStringUTFLength(STRING)
-#else
-#define JVM_GetEnv(JVM, ENV, VER)	\
-	(*JVM)->GetEnv(JVM, ENV, VER)
-#define JVM_AttachCurrentThread(JVM, ENV, ARGS)	\
-	(*JVM)->AttachCurrentThread(JVM, ENV, ARGS)
-#define JVM_DetachCurrentThread(JVM)	\
-	(*JVM)->DetachCurrentThread(JVM)
-#define JVM_ExceptionOccurred(ENV)	\
-	(*ENV)->ExceptionOccurred(ENV)
-#define JVM_FindClass(ENV, NAME)	\
-	(*ENV)->FindClass(ENV, NAME)
-#define JVM_GetStaticMethodID(ENV, CLAZZ, NAME, SIG)	\
-	(*ENV)->GetStaticMethodID(ENV, CLAZZ, NAME, SIG)
-#define JVM_NewStringUTF(ENV, BYTES)	\
-	(*ENV)->NewStringUTF(ENV, BYTES);
-#define JVM_NewObjectArray(ENV, LENGTH, ELEMENTCLASS, INITIALCLASS)	\
-	(*ENV)->NewObjectArray(ENV, LENGTH, ELEMENTCLASS, INITIALCLASS)
-#define JVM_SetObjectArrayElement(ENV, ARRAY, INDEX, VALUE)	\
-	(*ENV)->SetObjectArrayElement(ENV, ARRAY, INDEX, VALUE)
-#define JVM_CallStaticVoidMethod(ENV, CLAZZ, METHODID, ARGS)	\
-	(*ENV)->CallStaticVoidMethod(ENV, CLAZZ, METHODID, ARGS)
-#define JVM_CallStaticIntMethod(ENV, CLAZZ, METHODID, ARGS)	\
-	(*ENV)->CallStaticIntMethod(ENV, CLAZZ, METHODID, ARGS)
-#define JVM_CallStaticObjectMethod(ENV, CLAZZ, METHODID, ARGS)	\
-	(*ENV)->CallStaticObjectMethod(ENV, CLAZZ, METHODID, ARGS)
-#define JVM_GetStringUTF(ENV, STRING)	\
-	(*ENV)->GetStringUTFChars(ENV, STRING, NULL)
-#define JVM_ReleaseStringUTF(ENV, JSTRING, CSTRING)	\
-	(*ENV)->ReleaseStringUTFChars(ENV, JSTRING, CSTRING)
-#define JVM_GetStringUTFLength(ENV, STRING)	\
-	(*ENV)->GetStringUTFLength(ENV, STRING)
-#endif
 
 static JavaVM *jvm = NULL;
 static jint sp_port = -1;

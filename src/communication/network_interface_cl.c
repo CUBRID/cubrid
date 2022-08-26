@@ -7477,6 +7477,7 @@ synonym_remove_xasl_by_oid (OID * oid)
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
+  assert (oid != NULL);
   or_pack_oid (request, oid);
 
   req_error =
@@ -7491,6 +7492,7 @@ synonym_remove_xasl_by_oid (OID * oid)
 #else /* CS_MODE */
   THREAD_ENTRY *thread_p = enter_server ();
 
+  assert (oid != NULL);
   xsynonym_remove_xasl_by_oid (thread_p, oid);
 
   exit_server (*thread_p);

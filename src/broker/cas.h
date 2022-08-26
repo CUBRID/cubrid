@@ -91,7 +91,7 @@ struct t_error_info
 extern int cas_shard_flag;
 extern int shm_shard_id;
 
-#ifndef LIBCAS_FOR_JSP
+
 extern int restart_is_needed (void);
 
 extern const char *program_name;
@@ -109,7 +109,6 @@ extern int tran_timeout;
 extern int query_timeout;
 extern INT64 query_cancel_time;
 extern char query_cancel_flag;
-#endif
 
 extern int errors_in_transaction;
 extern char stripped_column_name;

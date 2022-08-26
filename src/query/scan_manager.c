@@ -740,7 +740,8 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
    * the list file allocates PRM_INDEX_SCAN_KEY_BUFFER_PAGES pages memory
    * for its memory buffer, which is generally larger than prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES).
    */
-  indx_cov->list_id = qfile_open_list (thread_p, indx_cov->type_list, NULL, query_id, QFILE_FLAG_USE_KEY_BUFFER);
+  indx_cov->list_id =
+    qfile_open_list (thread_p, indx_cov->type_list, NULL, query_id, QFILE_FLAG_USE_KEY_BUFFER, indx_cov->list_id);
   if (indx_cov->list_id == NULL)
     {
       err = ER_FAILED;
@@ -3031,6 +3032,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   BTREE_SCAN *BTS;
   int coverage_enabled;
   int func_index_col_id;
+  static bool oracle_style_empty_string = prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING);
 
   /* scan type is INDEX SCAN */
   scan_id->type = S_INDX_SCAN;
@@ -3051,7 +3053,9 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       return ER_FAILED;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, Root, PAGE_BTREE);
+#endif /* !NDEBUG */
 
   root_header = btree_get_root_header (thread_p, Root);
   if (root_header == NULL)
@@ -3077,7 +3081,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->key_vals = NULL;
 
   isidp->indx_cov.type_list = NULL;
-  isidp->indx_cov.list_id = NULL;
+  isidp->indx_cov.list_id = indx_info->cov_list_id;
   isidp->indx_cov.tplrec = NULL;
   isidp->indx_cov.lsid = NULL;
   isidp->fetched_values = NULL;
@@ -3088,8 +3092,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* construct BTID_INT structure */
   BTS->btid_int.sys_btid = btid;
-
-  if (btree_glean_root_header_info (thread_p, root_header, &BTS->btid_int) != NO_ERROR)
+  if (btree_glean_root_header_info
+      (thread_p, root_header, &BTS->btid_int, BTS->btid_int.key_type == NULL ? true : false) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, Root);
       goto exit_on_error;
@@ -3116,7 +3120,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->num_vstr = 0;
   isidp->vstr_ids = NULL;
 
-  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
+  if (oracle_style_empty_string)
     {
       isidp->num_vstr = isidp->bt_num_attrs;	/* init to maximum */
       isidp->vstr_ids = (ATTR_ID *) db_private_alloc (thread_p, isidp->num_vstr * sizeof (ATTR_ID));
@@ -3209,7 +3213,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     {
       bool need_copy_buf;
 
-      isidp->key_vals = (KEY_VAL_RANGE *) db_private_alloc (thread_p, isidp->key_cnt * sizeof (KEY_VAL_RANGE));
+      isidp->key_vals = indx_info->key_info.key_vals;
       if (isidp->key_vals == NULL)
 	{
 	  goto exit_on_error;
@@ -3303,7 +3307,7 @@ exit_on_error:
 
   if (isidp->key_vals)
     {
-      db_private_free_and_init (thread_p, isidp->key_vals);
+      isidp->key_vals = NULL;
     }
   if (isidp->fetched_values)
     {
@@ -3333,10 +3337,6 @@ exit_on_error:
 	  db_private_free_and_init (thread_p, isidp->indx_cov.type_list->domp);
 	}
       db_private_free_and_init (thread_p, isidp->indx_cov.type_list);
-    }
-  if (isidp->indx_cov.list_id != NULL)
-    {
-      QFILE_FREE_AND_INIT_LIST_ID (isidp->indx_cov.list_id);
     }
   if (isidp->indx_cov.tplrec != NULL)
     {
@@ -3390,6 +3390,7 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   BTREE_SCAN *bts = NULL;
   int func_index_col_id;
   DB_TYPE single_node_type = DB_TYPE_NULL;
+  static bool oracle_style_empty_string = prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING);
 
   scan_id->type = S_INDX_KEY_INFO_SCAN;
 
@@ -3443,7 +3444,8 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* construct BTID_INT structure */
   bts->btid_int.sys_btid = btid;
-  if (btree_glean_root_header_info (thread_p, root_header, &bts->btid_int) != NO_ERROR)
+  if (btree_glean_root_header_info
+      (thread_p, root_header, &bts->btid_int, bts->btid_int.key_type == NULL ? true : false) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -3460,7 +3462,7 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->num_vstr = 0;
   isidp->vstr_ids = NULL;
 
-  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
+  if (oracle_style_empty_string)
     {
       isidp->num_vstr = isidp->bt_num_attrs;	/* init to maximum */
       isidp->vstr_ids = (ATTR_ID *) db_private_alloc (thread_p, isidp->num_vstr * sizeof (ATTR_ID));
@@ -3519,7 +3521,7 @@ exit_on_error:
 
   if (isidp->key_vals)
     {
-      db_private_free_and_init (thread_p, isidp->key_vals);
+      isidp->key_vals = NULL;
     }
   if (isidp->bt_attr_ids)
     {
@@ -3622,7 +3624,7 @@ scan_open_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* construct BTID_INT structure */
   idx_nsid_p->btns.btid_int.sys_btid = btid;
-  if (btree_glean_root_header_info (thread_p, root_header, &idx_nsid_p->btns.btid_int) != NO_ERROR)
+  if (btree_glean_root_header_info (thread_p, root_header, &idx_nsid_p->btns.btid_int, true) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -4433,9 +4435,9 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	  if (indx_cov_p->list_id != NULL)
 	    {
 	      qfile_destroy_list (thread_p, indx_cov_p->list_id);
-	      QFILE_FREE_AND_INIT_LIST_ID (indx_cov_p->list_id);
 
-	      indx_cov_p->list_id = qfile_open_list (thread_p, indx_cov_p->type_list, NULL, indx_cov_p->query_id, 0);
+	      indx_cov_p->list_id =
+		qfile_open_list (thread_p, indx_cov_p->type_list, NULL, indx_cov_p->query_id, 0, indx_cov_p->list_id);
 	      if (indx_cov_p->list_id == NULL)
 		{
 		  status = S_ERROR;
@@ -4785,7 +4787,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       isidp = &scan_id->s.isid;
       if (isidp->key_vals)
 	{
-	  db_private_free_and_init (thread_p, isidp->key_vals);
+	  isidp->key_vals = NULL;
 	}
       if (isidp->fetched_values)
 	{
@@ -4831,7 +4833,6 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  qfile_close_list (thread_p, isidp->indx_cov.list_id);
 	  qfile_destroy_list (thread_p, isidp->indx_cov.list_id);
-	  QFILE_FREE_AND_INIT_LIST_ID (isidp->indx_cov.list_id);
 	}
       if (isidp->indx_cov.type_list != NULL)
 	{
@@ -5482,8 +5483,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (hsidp->rest_regu_list)
 	{
 	  /* read the rest of the values from the heap into the attribute cache */
-	  if (heap_attrinfo_read_dbvalues (thread_p, p_current_oid, &recdes, &hsidp->scan_cache,
-					   hsidp->rest_attrs.attr_cache) != NO_ERROR)
+	  if (heap_attrinfo_read_dbvalues (thread_p, p_current_oid, &recdes, hsidp->rest_attrs.attr_cache) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -5683,7 +5683,7 @@ scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (hsidp->rest_regu_list)
 	{
 	  /* read the rest of the values from the heap into the attribute cache */
-	  if (heap_attrinfo_read_dbvalues (thread_p, NULL, NULL, NULL, hsidp->rest_attrs.attr_cache) != NO_ERROR)
+	  if (heap_attrinfo_read_dbvalues (thread_p, NULL, NULL, hsidp->rest_attrs.attr_cache) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -5909,9 +5909,9 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			  /* close current list and start a new one */
 			  qfile_close_scan (thread_p, isidp->indx_cov.lsid);
 			  qfile_destroy_list (thread_p, isidp->indx_cov.list_id);
-			  QFILE_FREE_AND_INIT_LIST_ID (isidp->indx_cov.list_id);
 			  isidp->indx_cov.list_id =
-			    qfile_open_list (thread_p, isidp->indx_cov.type_list, NULL, isidp->indx_cov.query_id, 0);
+			    qfile_open_list (thread_p, isidp->indx_cov.type_list, NULL, isidp->indx_cov.query_id, 0,
+					     isidp->indx_cov.list_id);
 			  if (isidp->indx_cov.list_id == NULL)
 			    {
 			      return S_ERROR;
@@ -6283,8 +6283,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
   if (isidp->rest_regu_list)
     {
       /* read the rest of the values from the heap into the attribute cache */
-      if (heap_attrinfo_read_dbvalues (thread_p, isidp->curr_oidp, &recdes, &isidp->scan_cache,
-				       isidp->rest_attrs.attr_cache) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, isidp->curr_oidp, &recdes, isidp->rest_attrs.attr_cache) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}

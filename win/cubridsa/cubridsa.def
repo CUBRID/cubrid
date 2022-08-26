@@ -38,13 +38,10 @@ EXPORTS
     db_get_set
     db_get_string
     db_get_superclasses
-    db_io_page_size
     db_is_system_class
     db_is_vclass
     db_login
-    db_log_page_size
     db_objlist_free
-    db_page_size
     db_put_internal
     db_restart
     db_restart_ex
@@ -151,6 +148,7 @@ EXPORTS
     javasp_read_info
     javasp_reset_info
     javasp_write_info
+    javasp_unlink_info
 ;
 ; utility functions
 ;

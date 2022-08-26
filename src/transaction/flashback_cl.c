@@ -42,6 +42,7 @@
 #include "authenticate.h"
 #include "utility.h"
 #include "csql.h"
+#include "system_parameter.h"
 
 typedef enum
 {
@@ -56,9 +57,19 @@ flashback_util_get_winsize ()
 {
   CONSOLE_SCREEN_BUFFER_INFO csbi;
 
-  GetConsoleScreenBufferInfo (GetStdHandle (STD_OUTPUT_HANDLE), &csbi);
+  /* if window size is set for the test purpose, then use it */
 
-  return csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
+  int window_size = prm_get_integer_value (PRM_ID_FLASHBACK_WIN_SIZE);
+  if (window_size > 0)
+    {
+      return window_size;
+    }
+  else
+    {
+      GetConsoleScreenBufferInfo (GetStdHandle (STD_OUTPUT_HANDLE), &csbi);
+
+      return csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
+    }
 }
 
 static char
@@ -95,9 +106,19 @@ flashback_util_get_winsize ()
 {
   struct winsize w;
 
-  ioctl (STDOUT_FILENO, TIOCGWINSZ, &w);
+  /* if window size is set for test purpose, then use it */
 
-  return w.ws_row;
+  int window_size = prm_get_integer_value (PRM_ID_FLASHBACK_WIN_SIZE);
+  if (window_size > 0)
+    {
+      return window_size;
+    }
+  else
+    {
+      ioctl (STDOUT_FILENO, TIOCGWINSZ, &w);
+
+      return w.ws_row;
+    }
 }
 #endif
 

@@ -92,9 +92,9 @@
 
 /* compare two object identifiers */
 #define OIDCMP(n1, n2) \
-  ((n1).volid == (n2).volid \
-   && (n1).pageid == (n2).pageid \
-   && (n1).slotid == (n2).slotid)
+  ((n1).pageid == (n2).pageid \
+   && (n1).slotid == (n2).slotid \
+   && (n1).volid == (n2).volid)
 
 /* Header (Oth) record of the page */
 #define HEADER 0
@@ -144,7 +144,7 @@
   (BTREE_MAX_OIDCOUNT_IN_SIZE (btid, BTREE_MAX_OIDLEN_INPAGE))
 
 #define BTREE_MAX_OVERFLOW_RECORD_SIZE \
-  (DB_PAGESIZE - DB_ALIGN (spage_header_size (), BTREE_MAX_ALIGN) \
+  (DB_PAGESIZE - DB_ALIGN (SPAGE_HEADER_SIZE, BTREE_MAX_ALIGN) \
    - DB_ALIGN (sizeof (BTREE_OVERFLOW_HEADER), BTREE_MAX_ALIGN))
 #define BTREE_MAX_OIDCOUNT_IN_OVERFLOW_RECORD(btid) \
   (BTREE_MAX_OIDCOUNT_IN_SIZE (btid, BTREE_MAX_OVERFLOW_RECORD_SIZE))
@@ -279,7 +279,8 @@ extern int btree_change_root_header_delta (THREAD_ENTRY * thread_p, VFID * vfid,
 
 extern int btree_get_disk_size_of_key (DB_VALUE *);
 extern TP_DOMAIN *btree_generate_prefix_domain (BTID_INT * btid);
-extern int btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_header, BTID_INT * btid);
+extern int btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_header, BTID_INT * btid,
+					 bool is_key_type);
 extern DISK_ISVALID btree_verify_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT * btid,
 				       const char *btname);
 extern int btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * key2, DB_VALUE * prefix_key,

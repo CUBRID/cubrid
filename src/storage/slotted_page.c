@@ -66,7 +66,7 @@ static int rv;
 static PGLENGTH spage_User_page_size;
 
 #define SPAGE_DB_PAGESIZE \
-  (spage_User_page_size != 0 ? assert (spage_User_page_size == db_page_size ()), spage_User_page_size : db_page_size ())
+  (spage_User_page_size != 0 ? assert (spage_User_page_size == DB_PAGESIZE), spage_User_page_size : DB_PAGESIZE)
 
 #define SPAGE_VERIFY_HEADER(sphdr) 				\
   do {								\
@@ -800,7 +800,7 @@ spage_boot (THREAD_ENTRY * thread_p)
   assert (sizeof (SPAGE_HEADER) % DOUBLE_ALIGNMENT == 0);
   assert (sizeof (SPAGE_SLOT) == INT_ALIGNMENT);
 
-  spage_User_page_size = db_page_size ();
+  spage_User_page_size = DB_PAGESIZE;
 
   spage_Saving_hashmap.init (spage_saving_Ts, THREAD_TS_SPAGE_SAVING, 4547, 100, 100, spage_Saving_entry_descriptor);
 }
@@ -817,26 +817,6 @@ spage_finalize (THREAD_ENTRY * thread_p)
 {
   /* destroy everything */
   spage_Saving_hashmap.destroy ();
-}
-
-/*
- * spage_slot_size () - Find the overhead used to store one slotted record
- *   return: overhead of slot
- */
-int
-spage_slot_size (void)
-{
-  return sizeof (SPAGE_SLOT);
-}
-
-/*
- * spage_header_size () - Find the overhead used by the page header
- *   return: overhead of slot
- */
-int
-spage_header_size (void)
-{
-  return sizeof (SPAGE_HEADER);
 }
 
 /*
@@ -3978,8 +3958,7 @@ spage_get_space_for_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID s
       return -1;
     }
 
-  return (slot_p->record_length + DB_WASTED_ALIGN (slot_p->record_length, page_header_p->alignment) +
-	  spage_slot_size ());
+  return (slot_p->record_length + DB_WASTED_ALIGN (slot_p->record_length, page_header_p->alignment) + SPAGE_SLOT_SIZE);
 }
 
 /*

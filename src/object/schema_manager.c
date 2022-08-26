@@ -5782,15 +5782,13 @@ BTID *
 sm_find_index (MOP classop, char **att_names, int num_atts, bool unique_index_only, bool skip_prefix_index, BTID * btid)
 {
   int error = NO_ERROR;
-  int i;
+  int i = 0;
   SM_CLASS *class_;
   SM_CLASS_CONSTRAINT *con = NULL;
   SM_ATTRIBUTE *att1, *att2;
   BTID *index = NULL;
   bool force_local_index = false;
   int is_global = 0;
-
-  index = NULL;
 
   error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
   if (error != NO_ERROR)
@@ -5840,16 +5838,19 @@ sm_find_index (MOP classop, char **att_names, int num_atts, bool unique_index_on
 	    }
 	}
 
-      if (skip_prefix_index && num_atts > 0 && con->attributes[0] != NULL && con->attrs_prefix_length
-	  && con->attrs_prefix_length[0] > 0)
+      if (num_atts > 0)
 	{
-	  continue;
-	}
+	  if (skip_prefix_index && con->attributes[0] != NULL && con->attrs_prefix_length
+	      && con->attrs_prefix_length[0] > 0)
+	    {
+	      continue;
+	    }
 
-      if (num_atts == 0)
-	{
-	  /* we don't care about attributes, any index is a good one */
-	  break;
+	  /* exclude filter or function index */
+	  if (con->filter_predicate || con->func_index_info)
+	    {
+	      continue;
+	    }
 	}
 
       for (i = 0; i < num_atts; i++)
@@ -5867,17 +5868,13 @@ sm_find_index (MOP classop, char **att_names, int num_atts, bool unique_index_on
 	    }
 	}
 
-      if ((i == num_atts) && con->attributes[i] == NULL)
+      if (i == num_atts)
 	{
 	  /* found it */
+	  BTID_COPY (btid, &con->index_btid);
+	  index = btid;
 	  break;
 	}
-    }
-
-  if (con)
-    {
-      BTID_COPY (btid, &con->index_btid);
-      index = btid;
     }
 
   return (index);
@@ -13308,6 +13305,13 @@ error_return:
   assert (error != ER_HEAP_NODATA_NEWADDRESS);	/* TODO - */
 
   classobj_free_template (flat);
+
+  /* don't touch this class if we aborted ! */
+  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      class_->new_ = NULL;
+    }
+
   abort_subclasses (newsubs);
 
   if (error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED && error != ER_LK_UNILATERALLY_ABORTED)

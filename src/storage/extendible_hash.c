@@ -1094,7 +1094,9 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
       assert_release (false);
       goto exit_on_error;
     }
+#if !defined (NDEBUG)
   pgbuf_check_page_ptype (thread_p, dir_page_p, PAGE_EHASH);
+#endif /* !NDEBUG */
 
   dir_header_p = (EHASH_DIR_HEADER *) dir_page_p;
 
@@ -1197,7 +1199,9 @@ ehash_fix_old_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, const VPID * v
       return NULL;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_EHASH);
+#endif /* !NDEBUG */
 
   return page_p;
 }
@@ -1504,7 +1508,9 @@ ehash_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAG
       log_sysop_abort (thread_p);
       return ER_FAILED;
     }
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, bucket_page_p, PAGE_EHASH);
+#endif /* !NDEBUG */
 
   if (ehash_connect_bucket (thread_p, ehid_p, bucket_header.local_depth, hash_key, bucket_vpid_p, is_temp) != NO_ERROR)
     {
@@ -4605,7 +4611,7 @@ eh_capacity (THREAD_ENTRY * thread_p, EHID * ehid, int *num_recs, int *avg_recle
 
       num_slots = spage_number_of_records (buc_pgptr);
       *avg_freespace_per_page += spage_get_free_space (buc_pgptr);
-      *avg_overhead_per_page += num_slots * spage_slot_size ();
+      *avg_overhead_per_page += num_slots * SPAGE_SLOT_SIZE;
 
       for (slotid = 0; slotid < num_slots; slotid++)
 	{

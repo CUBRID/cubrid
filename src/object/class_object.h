@@ -114,6 +114,11 @@ struct pr_type;
 	  (c) == SM_CONSTRAINT_REVERSE_UNIQUE)    \
           ? true : false )
 
+#define SM_IS_CONSTRAINT_NOT_NULL_FAMILY(c) \
+        (((c) == SM_CONSTRAINT_NOT_NULL        || \
+	  (c) == SM_CONSTRAINT_PRIMARY_KEY)	  \
+          ? true : false )
+
 #define SM_IS_CONSTRAINT_INDEX_FAMILY(c) \
         ((SM_IS_CONSTRAINT_UNIQUE_FAMILY(c)    || \
 	 (c) == SM_CONSTRAINT_FOREIGN_KEY      || \
