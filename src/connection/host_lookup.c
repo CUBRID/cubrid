@@ -274,12 +274,12 @@ host_conf_load ()
 	    }
 	  if (hostent_flag == INSERT_HOSTNAME)
 	    {
-	      if (sizeof (token) > HOSTNAME_BUF_SIZE + 1)
+	      if (strlen (token) > HOSTNAME_BUF_SIZE + 1)
 		{
 //err_msg 
 //er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ?, 1, token);
 //ex) Hostname "%1$s" is too long, it should be less than or equal 256
-		  return NULL;
+		  return -1;
 		}
 	      strcpy (hostent_List[host_count].ipaddr, token);
 	      strcpy (map_ipaddr, token);
@@ -288,12 +288,12 @@ host_conf_load ()
 	    }
 	  else
 	    {
-	      if (sizeof (token) > IPADDR_LEN)
+	      if (strlen (token) > IPADDR_LEN)
 		{
 //err_msg 
 //er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ?2, 1, token);
 //ex) IP address "%1$s" is too long, it should be less than or equal 256
-		  return NULL;
+		  return -1;
 		}
 
 	      strcpy (hostent_List[host_count].hostname, token);
@@ -320,7 +320,7 @@ host_conf_load ()
 //err_msg : duplicated 
 //er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ?2, 1, token);
 //ex) Hostname "%1$s" already exists, a hostname cannot be duplicated with other IP addresses
-	      return NULL;
+	      return -1;
 	    }
 	  host_count++;
 	}
