@@ -784,9 +784,6 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
       return_error_to_client (thread_p, rid);
       goto end;
     }
-#if defined(CUBRID_DEBUG)
-  net_server_histo_add_entry (request, size);
-#endif /* CUBRID_DEBUG */
   conn = thread_p->conn_entry;
   assert (conn != NULL);
   /* check if the conn is valid */
@@ -1164,10 +1161,6 @@ net_server_start (const char *server_name)
 	{
 	  (void) xboot_shutdown_server (thread_p, ER_THREAD_FINAL);
 	}
-
-#if defined(CUBRID_DEBUG)
-      net_server_histo_print ();
-#endif /* CUBRID_DEBUG */
 
       css_final_conn_list ();
       css_free_user_access_status ();
