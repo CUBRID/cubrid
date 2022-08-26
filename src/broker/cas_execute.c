@@ -79,7 +79,6 @@
 #include "parse_tree.h"
 #include "api_compat.h"
 #include "method_callback.hpp"
-#include "network_histogram.hpp"
 
 #if defined (CAS_FOR_CGW)
 #include "cas_cgw.h"
