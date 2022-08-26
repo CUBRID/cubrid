@@ -405,8 +405,11 @@ gethostbyname_r_uhost (const char *name,
       return EFAULT;
     }
 
+  if (((*result) = (struct hostent *) malloc (sizeof (struct hostent))) == NULL)
+    {
+      return NULL;
+    }
   memcpy ((void *) ret, (void *) hp_buf, sizeof (struct hostent));
-  (*result) = (struct hostent *) malloc (sizeof (struct hostent));
   memcpy ((void *) *result, (void *) hp_buf, sizeof (struct hostent));
 
   return 0;
@@ -467,11 +470,11 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
   struct hostent *hp = NULL;
   struct addrinfo results_out;
   struct sockaddr_in addr_convert;
-  struct in_addr *in_addr_buf;
+  struct in_addr *in_addr_buf = NULL;
 
   if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
     {
-      return getaddrinfo (node, NULL, hints, res);
+      return getaddrinfo (node, service, hints, res);
     }
   else
     {
@@ -484,11 +487,33 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
       return EAI_NODATA;
     }
 
-  in_addr_buf = (struct in_addr *) malloc (sizeof (struct in_addr));
+  if ((in_addr_buf = (struct in_addr *) malloc (sizeof (struct in_addr))) == NULL)
+    {
+      free (hp);
+//er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct in_addr));
+      return EAI_MEMORY;
+    }
 
   /*Constitute struct addrinfo for the out parameter res */
-  *res = (struct addrinfo *) malloc (sizeof (struct addrinfo));
+  if (((*res) = (struct addrinfo *) malloc (sizeof (struct addrinfo))) == NULL)
+    {
+      free (hp);
+      free (in_addr_buf);
+//er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct in_addr));
+      return EAI_MEMORY;
+    }
+
   memset (&results_out, 0, sizeof (results_out));
+  if ((results_out.ai_addr = (struct sockaddr *) malloc (sizeof (struct sockaddr))) == NULL)
+    {
+      free (hp);
+      free (in_addr_buf);
+      freeaddrinfo (*res);
+      freeaddrinfo (&results_out);
+//er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct in_addr));
+      return EAI_MEMORY;
+
+    }
   results_out.ai_flags = hints->ai_flags;
 
   results_out.ai_family = hints->ai_family;
@@ -499,7 +524,6 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
 
   memcpy (&in_addr_buf->s_addr, hp->h_addr_list[0], sizeof (in_addr_buf->s_addr));
   memcpy (&addr_convert.sin_addr, &in_addr_buf->s_addr, sizeof (addr_convert.sin_addr));
-  results_out.ai_addr = (struct sockaddr *) malloc (sizeof (struct sockaddr));
   memcpy (results_out.ai_addr, (struct sockaddr *) &addr_convert, sizeof (struct sockaddr));
 
   results_out.ai_addrlen = sizeof (results_out.ai_addr);
