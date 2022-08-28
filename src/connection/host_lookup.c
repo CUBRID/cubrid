@@ -447,7 +447,7 @@ getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *host, size_t 
 
   if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
     {
-      return getnameinfo (addr, addrlen, host, hostlen, NULL, 0, NI_NOFQDN);
+      return getnameinfo (addr, addrlen, host, hostlen, serv, servlen, flags);
     }
   else
     {
