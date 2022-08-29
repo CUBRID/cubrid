@@ -1478,9 +1478,8 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   sort_param->px_height_max = 0;	/* init */
   sort_param->px_array_size = 1;	/* init */
 
-#if 1				/* TODO - currently, disable parallelism */
+  /* TODO - currently, disable parallelism */
   prm_enable_sort_parallel = false;
-#endif
 
   tde_er_log ("sort_listfile(): tde_encrypted = %d\n", sort_param->tde_encrypted);
 
@@ -1931,10 +1930,7 @@ px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
 	    }
 
 	  pthread_mutex_unlock (&(sort_param->px_mtx));
-
-#if 1				/* TODO */
 	  thread_sleep (10);	/* 10 msec */
-#endif
 	}
       while (1);
 
@@ -1980,7 +1976,6 @@ px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
 
       i = j = k = 0;
 
-#if 1
       /* STEP 2: check CON conditions if (left_max < right_min) do FORWARD-CON. we use '<' instead of '<=' */
       cmp = (*(sort_param->cmp_fn)) (&(left_vector[left_vector_size - 1]), &(right_vector[0]), sort_param->cmp_arg);
 
@@ -2034,7 +2029,6 @@ px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
 	    }
 	  else
 	    {
-#endif
 	      /* STEP 4: do the actual merge */
 	      while (i < left_vector_size && j < right_vector_size)
 		{
@@ -2078,10 +2072,8 @@ px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
 		{
 		  result[k++] = right_vector[j++];
 		}
-#if 1
 	    }			/* else */
 	}			/* else */
-#endif
 
       assert_release (result_size >= k);
 

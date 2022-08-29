@@ -4457,12 +4457,7 @@ spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
       int other_saved_spaces = 0;
       int total_saved = spage_get_saved_spaces (thread_p, page_header_p, page_p,
 						&other_saved_spaces);
-#if 1
       if (other_saved_spaces < 0)
-#else
-      if (other_saved_spaces < 0 || total_saved > page_header_p->total_free)
-#endif
-
 	{
 	  snprintf (err_msg, sizeof (err_msg),
 		    "spage_check: Other savings of %d is inconsistent in page = %d of volume = %s.\n",

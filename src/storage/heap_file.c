@@ -675,9 +675,6 @@ static int heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid,
 static int heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs, INT64 * num_recs_relocated,
 			      INT64 * num_recs_inovf, INT64 * num_pages, int *avg_freespace, int *avg_freespace_nolast,
 			      int *avg_reclength, int *avg_overhead);
-#if 0				/* TODO: remove unused */
-static int heap_moreattr_attrinfo (int attrid, HEAP_CACHE_ATTRINFO * attr_info);
-#endif
 
 static int heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_reset);
 static int heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRINFO * attr_info);
@@ -9600,103 +9597,6 @@ exit_on_error:
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
-
-#if 0				/* TODO: remove unused */
-/*
- * heap_moreattr_attrinfo () - Add another attribute to the attribute information
- *                           cache
- *   return: NO_ERROR
- *   attrid(in): The information of the attribute that will be needed
- *   attr_info(in/out): The attribute information structure
- *
- * Note: The given attribute is included as part of the reading or
- * transformation process.
- */
-static int
-heap_moreattr_attrinfo (int attrid, HEAP_CACHE_ATTRINFO * attr_info)
-{
-  HEAP_ATTRVALUE *new_values;	/* The new value attribute array */
-  HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
-  int i;
-  int ret = NO_ERROR;
-
-  /*
-   * If we get an empty HEAP_CACHE_ATTRINFO, this is an error.  We can
-   * not add more attributes to an improperly initialized HEAP_CACHE_ATTRINFO
-   * structure.
-   */
-  if (attr_info->num_values == -1)
-    {
-      return ER_FAILED;
-    }
-
-  /*
-   * Make sure that the attribute is not already included
-   */
-  for (i = 0; i < attr_info->num_values; i++)
-    {
-      value = &attr_info->values[i];
-      if (value != NULL && value->attrid == attrid)
-	{
-	  return NO_ERROR;
-	}
-    }
-
-  /*
-   * Resize the value attribute array and set the attribute identifier as
-   * as part of the desired attribute list
-   */
-  i = (attr_info->num_values + 1) * sizeof (*(attr_info->values));
-
-  new_values = (HEAP_ATTRVALUE *) db_private_realloc (NULL, attr_info->values, i);
-  if (new_values == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  attr_info->values = new_values;
-
-  value = &attr_info->values[attr_info->num_values];
-  value->attrid = attrid;
-  value->state = HEAP_UNINIT_ATTRVALUE;
-  value->last_attrepr = NULL;
-  value->read_attrepr = NULL;
-  attr_info->num_values++;
-
-  /*
-   * Recache attribute representation and get default value specifications
-   * for new attribute. The default values are located on the last
-   * representation
-   */
-
-  if (heap_attrinfo_recache_attrepr (attr_info, true) != NO_ERROR
-      || db_value_domain_init (&value->dbvalue, value->read_attrepr->type, value->read_attrepr->domain->precision,
-			       value->read_attrepr->domain->scale) != NO_ERROR)
-    {
-      attr_info->num_values--;
-      value->attrid = -1;
-      goto exit_on_error;
-    }
-
-end:
-
-  return ret;
-
-exit_on_error:
-
-  assert (ret != NO_ERROR);
-  if (ret == NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
-}
-#endif
 
 /*
  * heap_attrinfo_recache_attrepr () - Recache attribute information for given attrinfo for
