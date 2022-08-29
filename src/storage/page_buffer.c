@@ -4920,7 +4920,7 @@ pgbuf_is_temporary_volume (VOLID volid)
     {
       return false;
     }
-  return (LOG_DBFIRST_VOLID <= volid && xdisk_get_purpose (NULL, volid) == DB_TEMPORARY_DATA_PURPOSE);
+  return xdisk_get_purpose (NULL, volid) == DB_TEMPORARY_DATA_PURPOSE;
 }
 
 /*
@@ -10370,13 +10370,12 @@ pgbuf_check_page_ptype_internal (PAGE_PTR pgptr, PAGE_TYPE ptype, bool no_error)
       return false;
     }
 
-#if 1				/* TODO - do not delete me */
+/* TODO - do not delete me */
 #if defined(NDEBUG)
   if (log_is_in_crash_recovery ())
     {
       return true;
     }
-#endif
 #endif
 
   if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_ALL))

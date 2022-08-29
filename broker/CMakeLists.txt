@@ -254,6 +254,7 @@ set(CUB_CAS_SOURCES
   ${BROKER_DIR}/broker_acl.c
   ${BROKER_DIR}/cas_meta.c
   ${BROKER_DIR}/cas_ssl.c
+  ${BROKER_DIR}/cas_util.c
   ${BASE_DIR}/ddl_log.c
   )
 
@@ -317,6 +318,7 @@ set(CUB_CAS_CGW_SOURCES
   ${BROKER_DIR}/cas_meta.c
   ${BROKER_DIR}/cas_ssl.c
   ${BROKER_DIR}/cas_cgw.c
+  ${BROKER_DIR}/cas_util.c
   ${BASE_DIR}/ddl_log.c
   )
 
@@ -365,6 +367,7 @@ set(CUB_PROXY_SOURCES
   ${BROKER_DIR}/shard_proxy_function.c
   ${BROKER_DIR}/broker_process_size.c
   ${BROKER_DIR}/broker_shm.c
+  ${BROKER_DIR}/broker_filename.c
   ${BROKER_DIR}/broker_error.c
   ${BROKER_DIR}/broker_util.c
   ${BROKER_DIR}/shard_metadata.c
@@ -465,6 +468,8 @@ if(WITH_CCI)
     ${BROKER_DIR}/broker_config.c
     ${BROKER_DIR}/broker_shm.c
     ${BROKER_DIR}/broker_error.c
+    ${BROKER_DIR}/broker_util.c
+    ${BROKER_DIR}/broker_filename.c
     ${BROKER_DIR}/shard_metadata.c
     ${BROKER_DIR}/shard_shm.c
     )

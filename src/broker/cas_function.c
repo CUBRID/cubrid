@@ -73,10 +73,10 @@ static const char *get_schema_type_str (int schema_type);
 static const char *get_tran_type_str (int tran_type);
 static void bind_value_print (char type, void *net_value, bool slow_log);
 static char *get_error_log_eids (int err);
-#ifndef LIBCAS_FOR_JSP
+
 static void bind_value_log (struct timeval *log_time, int start, int argc, void **argv, int param_size,
 			    char *param_mode, unsigned int query_seq_num, bool slow_log);
-#endif /* !LIBCAS_FOR_JSP */
+
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #if !defined(CAS_FOR_CGW)
 void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
@@ -160,9 +160,9 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
   int err_code;
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval end_tran_begin, end_tran_end;
-#ifndef LIBCAS_FOR_JSP
+
   int timeout;
-#endif /* !LIBCAS_FOR_JSP */
+
 
   if (argc < 1)
     {
@@ -211,7 +211,7 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
       req_info->need_rollback = FALSE;
     }
 
-#ifndef LIBCAS_FOR_JSP
+
   timeout =
     ut_check_timeout (&tran_start_time, &end_tran_end, shm_appl->long_transaction_time, &elapsed_sec, &elapsed_msec);
   if (timeout >= 0)
@@ -278,7 +278,7 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
       return FN_KEEP_SESS;
     }
   return FN_KEEP_CONN;
-#endif /* !LIBCAS_FOR_JSP */
+
 
   return FN_CLOSE_CONN;
 }
@@ -364,15 +364,15 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   ut_trim (sql_stmt);
 #endif
 
-#ifndef LIBCAS_FOR_JSP
+
   gettimeofday (&query_start_time, NULL);
   query_timeout = 0;
-#endif /* !LIBCAS_FOR_JSP */
+
 
   cas_log_write_nonl (query_seq_num_next_value (), false, "prepare %d ", flag);
   cas_log_write_query_string (sql_stmt, sql_size - 1);
 
-#ifndef LIBCAS_FOR_JSP
+
   SQL_LOG2_COMPILE_BEGIN (as_info->cur_sql_log2, ((const char *) sql_stmt));
 
   /* append query string to as_info->log_msg */
@@ -393,7 +393,6 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	}
       *s = '\0';
     }
-#endif
 
 #if defined(CAS_FOR_CGW)
   srv_h_id = ux_cgw_prepare (sql_stmt, flag, auto_commit_mode, net_buf, req_info, query_seq_num_current_value ());
@@ -415,12 +414,12 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		 get_error_log_eids (err_info.err_number));
   logddl_set_err_code (err_info.err_number);
 
-#ifndef LIBCAS_FOR_JSP
+
   if (srv_h_id < 0)
     {
       update_error_query_count (as_info, &err_info);
     }
-#endif /* !LIBCAS_FOR_JSP */
+
 
   return FN_KEEP_CONN;
 }
@@ -465,10 +464,9 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   char stmt_type = -1;
 #endif
 
-#ifndef LIBCAS_FOR_JSP
+
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) || !defined(CAS_FOR_CGW)
   char *plan = NULL;
-#endif
 #endif
 
   bind_value_index = 9;
@@ -595,13 +593,13 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       app_query_timeout = 0;
     }
 
-#ifndef LIBCAS_FOR_JSP
+
   if (shm_appl->max_string_length >= 0)
     {
       if (max_col_size <= 0 || max_col_size > shm_appl->max_string_length)
 	max_col_size = shm_appl->max_string_length;
     }
-#endif /* LIBCAS_FOR_JSP */
+
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
   set_query_timeout (srv_handle, app_query_timeout);
@@ -640,13 +638,13 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #endif /* CAS_FOR_CGW */
     }
 
-#ifndef LIBCAS_FOR_JSP
+
   if (srv_handle->is_pooled)
     {
       gettimeofday (&query_start_time, NULL);
       query_timeout = 0;
     }
-#endif /* !LIBCAS_FOR_JSP */
+
 
   cas_log_write_nonl (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s srv_h_id %d ", exec_func_name, srv_h_id);
   if (srv_handle->sql_stmt != NULL)
@@ -657,15 +655,15 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   cas_log_debug (ARG_FILE_LINE, "%s%s", auto_commit_mode ? "auto_commit_mode " : "",
 		 forward_only_cursor ? "forward_only_cursor " : "");
 
-#ifndef LIBCAS_FOR_JSP
+
   if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
       bind_value_log (NULL, bind_value_index, argc, argv, param_mode_size, param_mode,
 		      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false);
     }
-#endif /* !LIBCAS_FOR_JSP */
 
-#ifndef LIBCAS_FOR_JSP
+
+
   /* append query string to as_info->log_msg */
   if (srv_handle->sql_stmt)
     {
@@ -684,7 +682,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	}
       *s = '\0';
     }
-#endif /* !LIBCAS_FOR_JSP */
+
 
   gettimeofday (&exec_begin, NULL);
 
@@ -728,7 +726,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
 #endif /* CAS_FOR_CGW */
 
-#ifndef LIBCAS_FOR_JSP
+
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) || !defined(CAS_FOR_CGW)
   plan = db_get_execution_plan ();
 #endif
@@ -782,9 +780,9 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	  cas_slow_log_end ();
 	}
     }
-#endif /* !LIBCAS_FOR_JSP */
 
-#ifndef LIBCAS_FOR_JSP
+
+
   /* set is_pooled */
   if (as_info->cur_statement_pooling)
     {
@@ -801,7 +799,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
 #endif
 
-#endif /* !LIBCAS_FOR_JSP */
+
 
   return FN_KEEP_CONN;
 }
@@ -894,11 +892,8 @@ fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
   else if (param_name == CCI_PARAM_MAX_STRING_LENGTH)
     {
-#ifndef LIBCAS_FOR_JSP
+
       int max_str_len = shm_appl->max_string_length;
-#else /* !LIBCAS_FOR_JSP */
-      int max_str_len = DB_MAX_STRING_LENGTH;
-#endif /* !LIBCAS_FOR_JSP */
 
       net_buf_cp_int (net_buf, 0, NULL);
       if (max_str_len <= 0 || max_str_len > DB_MAX_STRING_LENGTH)
@@ -999,14 +994,14 @@ fn_set_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
       net_arg_get_int (&auto_commit, argv[1]);
 
-#ifndef LIBCAS_FOR_JSP
+
       if (auto_commit)
 	as_info->auto_commit_mode = TRUE;
       else
 	as_info->auto_commit_mode = FALSE;
 
       cas_log_write (0, true, "set_db_parameter auto_commit %d", auto_commit);
-#endif /* !LIBCAS_FOR_JSP */
+
 
       net_buf_cp_int (net_buf, 0, NULL);
     }
@@ -1070,16 +1065,12 @@ fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       net_arg_get_char (auto_commit_mode, argv[1]);
     }
 
-#ifndef LIBCAS_FOR_JSP
+
   srv_handle = hm_find_srv_handle (srv_h_id);
   if (auto_commit_mode == TRUE)
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
-
-#else /* !LIBCAS_FOR_JSP */
-  srv_handle = NULL;
-#endif /* !LIBCAS_FOR_JSP */
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "close_req_handle srv_h_id %d", srv_h_id);
 
@@ -1257,12 +1248,12 @@ fn_get_db_version (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
 
   ux_get_db_version (net_buf, req_info);
 
-#ifndef LIBCAS_FOR_JSP
+
   if (auto_commit_mode == TRUE)
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
-#endif /* !LIBCAS_FOR_JSP */
+
 
   return FN_KEEP_CONN;
 }
@@ -1726,13 +1717,13 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
       return FN_KEEP_CONN;
     }
 
-#ifndef LIBCAS_FOR_JSP
+
   if (srv_handle->is_pooled)
     {
       gettimeofday (&query_start_time, NULL);
       query_timeout = 0;
     }
-#endif /* !LIBCAS_FOR_JSP */
+
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version, PROTOCOL_V4))
     {
       net_arg_get_int (&driver_query_timeout, argv[arg_index]);
@@ -1764,12 +1755,12 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
       cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
       logddl_set_sql_text (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
     }
-#ifndef LIBCAS_FOR_JSP
+
   if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
       bind_value_log (NULL, arg_index, argc - 1, argv, 0, NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false);
     }
-#endif /* !LIBCAS_FOR_JSP */
+
 
   gettimeofday (&exec_begin, NULL);
 
@@ -1783,7 +1774,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 		 (ret_code < 0) ? "error:" : "", err_info.err_number, get_tuple_count (srv_handle), elapsed_sec,
 		 elapsed_msec, "", (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
 
-#ifndef LIBCAS_FOR_JSP
+
   query_timeout =
     ut_check_timeout (&query_start_time, &exec_end, shm_appl->long_query_time, &elapsed_sec, &elapsed_msec);
 
@@ -1829,7 +1820,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 	  cas_slow_log_end ();
 	}
     }
-#endif /* !LIBCAS_FOR_JSP */
+
 
   return FN_KEEP_CONN;
 }
@@ -2195,7 +2186,7 @@ get_tran_type_str (int tran_type)
   return (tran_type_str[tran_type - 1]);
 }
 
-#ifndef LIBCAS_FOR_JSP
+
 static void
 bind_value_log (struct timeval *log_time, int start, int argc, void **argv, int param_size, char *param_mode,
 		unsigned int query_seq_num, bool slow_log)
@@ -2256,7 +2247,7 @@ bind_value_log (struct timeval *log_time, int start, int argc, void **argv, int 
       write2_func ("\n");
     }
 }
-#endif /* !LIBCAS_FOR_JSP */
+
 
 static void
 bind_value_print (char type, void *net_value, bool slow_log)
@@ -2695,7 +2686,6 @@ fn_not_supported (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 void
 set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 {
-#ifndef LIBCAS_FOR_JSP
   int broker_timeout_in_millis = shm_appl->query_timeout * 1000;
 
   if (tran_is_in_libcas () == false)
@@ -2727,9 +2717,6 @@ set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 			 query_timeout);
 	}
     }
-#else
-  tran_set_query_timeout (-1);
-#endif
 }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
 

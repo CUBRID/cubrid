@@ -69,6 +69,17 @@
 #define MYSQL_CONNECT_URL_FORMAT    "DRIVER={%s};SERVER=%s;Port=%s;DATABASE=%s;USER=%s;PASSWORD=%s;%s"
 #define ORACLE_CONNECT_URL_FORMAT    "DRIVER={%s};DBQ=%s;Server=%s/%s;Uid=%s;Pwd=%s;%s"
 
+#define REWRITE_DELIMITER_CUBLINK        ") cublink("
+#define REWRITE_DELIMITER_FROM           "FROM"
+#define REWRITE_DELIMITER_WHERE          "WHERE"
+#define REWRITE_DELIMITER_CUBLINK_LEN    7	// "cublink"
+#define REWRITE_DELIMITER_FROM_LEN       4
+#define REWRITE_SELECT_FROM_LEN          14	// "SELECT * FROM "
+#define REWRITE_SELECT_LEN               8	// "(SELECT "
+#define REWRITE_FROM_LEN                 7	// " FROM )"
+
+#define ERR_REWRITE_FAILED               -2
+
 typedef struct t_col_binder T_COL_BINDER;
 struct t_col_binder
 {
@@ -157,7 +168,7 @@ extern int cgw_is_database_connected (void);
 // Prepare funtions
 extern int cgw_sql_prepare (SQLCHAR * sql_stmt);
 extern int cgw_get_num_cols (SQLHSTMT hstmt, SQLSMALLINT * num_cols);
-extern int cgw_get_col_info (SQLHSTMT hstmt, T_NET_BUF * net_buf, int col_num, T_ODBC_COL_INFO * col_info);
+extern int cgw_get_col_info (SQLHSTMT hstmt, int col_num, T_ODBC_COL_INFO * col_info);
 
 // Execute funtions
 extern int cgw_set_commit_mode (SQLHDBC hdbc, bool auto_commit);
@@ -175,4 +186,6 @@ extern int cgw_copy_tuple (T_COL_BINDER * src_col_binding, T_COL_BINDER * dst_co
 extern int cgw_endtran (SQLHDBC hdbc, int tran_type);
 extern SUPPORTED_DBMS_TYPE cgw_is_supported_dbms (char *dbms);
 extern void cgw_set_dbms_type (SUPPORTED_DBMS_TYPE dbms_type);
+extern int cgw_get_dbms_type ();
+extern int cgw_rewrite_query (char *src_query, char **sql);
 #endif /* _CAS_CGW_H_ */

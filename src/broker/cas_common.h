@@ -63,16 +63,22 @@
 	  }			\
 	} while (0)
 
-#define ALLOC_COPY(PTR, STR)			\
+#define ALLOC_N_COPY(PTR, STR, SIZE)		\
 	do {					\
 	  if (STR == NULL)			\
 	    PTR = NULL;				\
 	  else {				\
-	    PTR = (char *) MALLOC(strlen(STR) + 1);	\
+	    PTR = (char *) MALLOC(SIZE);			\
 	    if (PTR) {				\
-	      strcpy(PTR, STR);			\
+	      strncpy(PTR, STR, SIZE);		\
+	      PTR[SIZE - 1] = '\0';		\
 	    }					\
 	  }					\
+	} while (0)
+
+#define ALLOC_COPY_STRLEN(PTR, STR)			\
+	do {					\
+	  ALLOC_N_COPY(PTR, STR, strlen(STR) + 1); \
 	} while (0)
 
 #if defined(WINDOWS)
@@ -88,19 +94,6 @@
 	  (X) = INVALID_SOCKET;	\
 	} while (0)
 #endif
-
-#define ALLOC_N_COPY(PTR, STR, SIZE)		\
-	do {					\
-	  if (STR == NULL)			\
-	    PTR = NULL;				\
-	  else {				\
-	    PTR = MALLOC(SIZE);			\
-	    if (PTR) {				\
-	      strncpy(PTR, STR, SIZE);		\
-	      PTR[SIZE - 1] = '\0';		\
-	    }					\
-	  }					\
-	} while (0)
 
 #if defined(WINDOWS)
 #define SLEEP_SEC(X)                    Sleep((X) * 1000)

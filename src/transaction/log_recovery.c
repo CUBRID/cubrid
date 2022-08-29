@@ -70,7 +70,10 @@ static int log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, L
 					 LOG_LSA * check_point);
 static int log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p);
 static int log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
-						 LOG_PAGE * log_page_p);
+						 LOG_PAGE * log_page_p, LOG_LSA * prev_lsa, bool is_media_crash,
+						 time_t * stop_at, bool * did_incom_recovery);
+static int log_rv_analysis_commit_with_postpone_obsolete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
+							  LOG_PAGE * log_page_p);
 static int log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
 						 LOG_PAGE * log_page_p);
 static int log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
@@ -103,8 +106,7 @@ static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 				   bool * did_incom_recovery, INT64 * num_redo_log_records);
 static bool log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, LOG_RECTYPE log_rtype,
 						  LOG_RCVINDEX rcv_index, const LOG_LSA * lsa);
-static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa,
-			       time_t * stopat);
+static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa);
 static void log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 						  const LOG_LSA * postpone_start_lsa);
 static void log_recovery_finish_sysop_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
@@ -775,7 +777,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_REDO_STARTED, 2,
 	  log_cnt_pages_containing_lsa (&start_redolsa, &end_redo_lsa), num_redo_log_records);
 
-  log_recovery_redo (thread_p, &start_redolsa, &end_redo_lsa, stopat);
+  log_recovery_redo (thread_p, &start_redolsa, &end_redo_lsa);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "REDO");
 
@@ -1130,16 +1132,25 @@ log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_
  * return: error code
  *
  *   tran_id(in):
- *   lsa(in/out):
+ *   log_lsa(in/out):
  *   log_page_p(in/out):
+ *   lsa(in/out):
+ *   is_media_crash(in):
+ *   stop_at(in):
+ *   did_incom_recovery(in/out):
  *
  * Note:
  */
 static int
-log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+				      LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at,
+				      bool * did_incom_recovery)
 {
   LOG_TDES *tdes;
   LOG_REC_START_POSTPONE *start_posp;
+  time_t last_at_time;
+  char time_val[CTIME_MAX];
+  LOG_LSA record_header_lsa;
 
   /*
    * If this is the first time, the transaction is seen. Assign a new
@@ -1150,6 +1161,87 @@ log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
   if (tdes == NULL)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_commit_with_postpone");
+      return ER_FAILED;
+    }
+
+  LSA_COPY (&record_header_lsa, log_lsa);
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_START_POSTPONE), log_lsa, log_page_p);
+  start_posp = (LOG_REC_START_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset);
+
+  if (is_media_crash)
+    {
+      last_at_time = (time_t) start_posp->at_time;
+      if (stop_at != NULL && *stop_at != (time_t) (-1) && difftime (*stop_at, last_at_time) < 0)
+	{
+#if !defined(NDEBUG)
+	  if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
+	    {
+	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+	      (void) ctime_r (&last_at_time, time_val);
+	      fprintf (stdout,
+		       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_INCOMPLTE_MEDIA_RECOVERY),
+		       record_header_lsa.pageid, record_header_lsa.offset, time_val);
+	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+	      fflush (stdout);
+	    }
+#endif /* !NDEBUG */
+	  /*
+	   * Reset the log active and stop the recovery process at this
+	   * point. Before reseting the log, make sure that we are not
+	   * holding a page.
+	   */
+	  log_lsa->pageid = NULL_PAGEID;
+	  log_recovery_resetlog (thread_p, &record_header_lsa, prev_lsa);
+	  *did_incom_recovery = true;
+	}
+    }
+  else
+    {
+      /*
+       * Need to read the start postpone record to set the postpone address
+       * of the transaction
+       */
+      tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+
+      /* Nothing to undo */
+      LSA_SET_NULL (&tdes->undo_nxlsa);
+      LSA_COPY (&tdes->tail_lsa, log_lsa);
+      tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
+
+      LSA_COPY (&tdes->posp_nxlsa, &start_posp->posp_lsa);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * log_rv_analysis_commit_with_postpone_obsolete-
+ *
+ * return: error code
+ *
+ *   tran_id(in):
+ *   lsa(in/out):
+ *   log_page_p(in/out):
+ *
+ * Note:
+ */
+static int
+log_rv_analysis_commit_with_postpone_obsolete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
+					       LOG_PAGE * log_page_p)
+{
+  LOG_TDES *tdes;
+  LOG_REC_START_POSTPONE_OBSOLETE *start_posp;
+
+  /*
+   * If this is the first time, the transaction is seen. Assign a new
+   * index to describe it. The transaction was in the process of
+   * getting committed at this point.
+   */
+  tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
+  if (tdes == NULL)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_commit_with_postpone_obsolete");
       return ER_FAILED;
     }
 
@@ -1165,9 +1257,9 @@ log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
    * of the transaction
    */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_START_POSTPONE), log_lsa, log_page_p);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_START_POSTPONE_OBSOLETE), log_lsa, log_page_p);
 
-  start_posp = (LOG_REC_START_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset);
+  start_posp = (LOG_REC_START_POSTPONE_OBSOLETE *) ((char *) log_page_p->area + log_lsa->offset);
   LSA_COPY (&tdes->posp_nxlsa, &start_posp->posp_lsa);
 
   return NO_ERROR;
@@ -2233,7 +2325,12 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
       break;
 
     case LOG_COMMIT_WITH_POSTPONE:
-      (void) log_rv_analysis_commit_with_postpone (thread_p, tran_id, log_lsa, log_page_p);
+      (void) log_rv_analysis_commit_with_postpone (thread_p, tran_id, log_lsa, log_page_p, prev_lsa, is_media_crash,
+						   stop_at, did_incom_recovery);
+      break;
+
+    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
+      (void) log_rv_analysis_commit_with_postpone_obsolete (thread_p, tran_id, log_lsa, log_page_p);
       break;
 
     case LOG_SYSOP_START_POSTPONE:
@@ -3001,7 +3098,6 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
  *
  *   start_redolsa(in): Starting address for recovery redo phase
  *   end_redo_lsa(in):
- *   stopat(in):
  *
  * NOTE:In the redo phase, updates that are not reflected in the
  *              database are repeated for not only the committed transaction
@@ -3024,8 +3120,7 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
  *              respective compensating log records.
  */
 static void
-log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa,
-		   time_t * stopat)
+log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa)
 {
   LOG_LSA lsa;			/* LSA of log record to redo */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
@@ -3042,7 +3137,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_REC_RUN_POSTPONE *run_posp = NULL;	/* A run postpone action */
   LOG_REC_2PC_START *start_2pc = NULL;	/* Start 2PC commit log record */
   LOG_REC_2PC_PARTICP_ACK *received_ack = NULL;	/* A 2PC participant ack */
-  LOG_REC_DONETIME *donetime = NULL;
   LOG_REC_SYSOP_END *sysop_end;	/* Result of top system op */
   LOG_RCV rcv;			/* Recovery structure */
   VPID rcv_vpid;		/* VPID of data to recover */
@@ -3067,7 +3161,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   TSC_TICKS info_logging_start_time, info_logging_check_time;
   TSCTIMEVAL info_logging_elapsed_time;
   int info_logging_interval_in_secs = 0;
-  UINT64 total_page_cnt = log_cnt_pages_containing_lsa (start_redolsa, end_redo_lsa);
+
+  assert (end_redo_lsa != nullptr && !end_redo_lsa->is_null ());
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
@@ -3126,7 +3221,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
       LSA_COPY (&log_lsa, &lsa);
       if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	{
-	  if (end_redo_lsa != NULL && (LSA_ISNULL (end_redo_lsa) || LSA_GT (&lsa, end_redo_lsa)))
+	  if (LSA_GT (&lsa, end_redo_lsa))
 	    {
 	      goto exit;
 	    }
@@ -3145,6 +3240,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	  if (info_logging_elapsed_time.tv_sec >= info_logging_interval_in_secs)
 	    {
 	      UINT64 done_page_cnt = log_lsa.pageid - start_redolsa->pageid;
+	      UINT64 total_page_cnt = log_cnt_pages_containing_lsa (start_redolsa, end_redo_lsa);
 
 	      double elapsed_time;
 	      double progress = double (done_page_cnt) / (total_page_cnt);
@@ -3167,7 +3263,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	  /*
 	   * Do we want to stop the recovery redo process at this time ?
 	   */
-	  if (end_redo_lsa != NULL && !LSA_ISNULL (end_redo_lsa) && LSA_GT (&lsa, end_redo_lsa))
+	  if (LSA_GT (&lsa, end_redo_lsa))
 	    {
 	      LSA_SET_NULL (&lsa);
 	      break;
@@ -3332,7 +3428,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		   * If page_lsa >= lsa... already updated. In this case make sure
 		   * that the redo is not far from the end_redo_lsa
 		   */
-		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa) || LSA_LE (rcv_page_lsaptr, end_redo_lsa));
+		  assert (LSA_LE (rcv_page_lsaptr, end_redo_lsa));
 		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr))
 		    {
 		      /* It is already done */
@@ -3516,7 +3612,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		   * Do we need to execute the redo operation ?
 		   * If page_lsa >= rcv_lsa... already updated
 		   */
-		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa) || LSA_LE (rcv_page_lsaptr, end_redo_lsa));
+		  assert (LSA_LE (rcv_page_lsaptr, end_redo_lsa));
 		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr))
 		    {
 		      /* It is already done */
@@ -3637,7 +3733,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		   * Do we need to execute the redo operation ?
 		   * If page_lsa >= rcv_lsa... already updated
 		   */
-		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa) || LSA_LE (rcv_page_lsaptr, end_redo_lsa));
+		  assert (LSA_LE (rcv_page_lsaptr, end_redo_lsa));
 		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr))
 		    {
 		      /* It is already done */
@@ -3723,7 +3819,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		   * Do we need to execute the redo operation ?
 		   * If page_lsa >= rcv_lsa... already updated
 		   */
-		  assert (end_redo_lsa == NULL || LSA_ISNULL (end_redo_lsa) || LSA_LE (rcv_page_lsaptr, end_redo_lsa));
+		  assert (LSA_LE (rcv_page_lsaptr, end_redo_lsa));
 		  if (LSA_LE (&rcv_lsa, rcv_page_lsaptr))
 		    {
 		      /* It is already done */
@@ -3921,55 +4017,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		}
 	      break;
 
-	    case LOG_COMMIT:
-	    case LOG_ABORT:
-	      {
-		if (stopat != NULL && *stopat != -1)
-		  {
-		    tran_index = logtb_find_tran_index (thread_p, tran_id);
-		    if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
-		      {
-			tdes = LOG_FIND_TDES (tran_index);
-			assert (tdes && tdes->state != TRAN_ACTIVE);
-		      }
-
-		    /*
-		     * Need to read the donetime record to find out if we need to stop
-		     * the recovery at this point.
-		     */
-		    LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
-		    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DONETIME), &log_lsa, log_pgptr);
-		    donetime = (LOG_REC_DONETIME *) ((char *) log_pgptr->area + log_lsa.offset);
-
-		    if (difftime (*stopat, (time_t) donetime->at_time) < 0)
-		      {
-			/*
-			 * Stop the recovery process at this point
-			 */
-			LSA_SET_NULL (&lsa);
-
-			/* Commit/abort record was recorded after the stopat recovery time. The transaction needs to
-			 * undo all its changes (log_recovery_undo), so transaction descriptor needs to be kept,
-			 * and transaction state should be changed to aborted. The undo process starts from this
-			 * record's LSA and undoes all previous changes of the transaction
-			 * (See log_find_unilaterally_largest_undo_lsa usage from log_recovery_undo) */
-			if (tdes != NULL)
-			  {
-			    tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
-			  }
-		      }
-		  }
-		else
-		  {
-		    /* completed transactions should have already been cleared from the transaction table
-		     * in the analysis step (see: log_rv_analysis_complete)
-		     */
-		    assert (logtb_find_tran_index (thread_p, tran_id) == NULL_TRAN_INDEX);
-		  }
-	      }
-
-	      break;
-
 	    case LOG_MVCC_UNDO_DATA:
 	      /* Must detect MVCC operations and recover vacuum data buffer. The found operation is not actually
 	       * redone/undone, but it has information that can be used for vacuum. */
@@ -3998,6 +4045,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_DUMMY_HEAD_POSTPONE:
 	    case LOG_POSTPONE:
 	    case LOG_COMMIT_WITH_POSTPONE:
+	    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
 	    case LOG_SYSOP_START_POSTPONE:
 	    case LOG_START_CHKPT:
 	    case LOG_END_CHKPT:
@@ -4015,6 +4063,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_SUPPLEMENTAL_INFO:
 	    case LOG_END_OF_LOG:
 	    case LOG_SYSOP_ATOMIC_START:
+	    case LOG_COMMIT:
+	    case LOG_ABORT:
 	      break;
 
 	    case LOG_SYSOP_END:
@@ -4161,7 +4211,8 @@ log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, 
       else
 	{
 	  /* safe-guard: we do not expect postpone starts */
-	  assert (logrec_head.type != LOG_COMMIT_WITH_POSTPONE && logrec_head.type != LOG_SYSOP_START_POSTPONE);
+	  assert (logrec_head.type != LOG_COMMIT_WITH_POSTPONE && logrec_head.type != LOG_COMMIT_WITH_POSTPONE_OBSOLETE
+		  && logrec_head.type != LOG_SYSOP_START_POSTPONE);
 
 	  /* move to previous */
 	  prev_lsa = logrec_head.prev_tranlsa;
@@ -4969,6 +5020,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		case LOG_RUN_POSTPONE:
 		case LOG_COMMIT_WITH_POSTPONE:
+		case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
 		case LOG_COMMIT:
 		case LOG_SYSOP_START_POSTPONE:
 		case LOG_ABORT:
@@ -5714,6 +5766,13 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_START_POSTPONE), &log_lsa, log_pgptr);
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_START_POSTPONE), &log_lsa, log_pgptr);
+      break;
+
+    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
+      /* Read the DATA HEADER */
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_START_POSTPONE_OBSOLETE), &log_lsa, log_pgptr);
+
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_START_POSTPONE_OBSOLETE), &log_lsa, log_pgptr);
       break;
 
     case LOG_COMMIT:
