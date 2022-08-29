@@ -195,7 +195,7 @@ static const char *tbl_conf_err_msg[] = {
   "Value is out of range.",
   "Section name is too long. Section name must be less than 64.",
   "Temporary runtime error.",
-  "the value of MAX_NUM_APPL_SERVER must be greater than MIN_NUM_APPL_SERVER"
+  "Value is out of range (MAX_NUM_APPL_SERVER must be greater than MIN_NUM_APPL_SERVER)."
 };
 
 static bool is_first_br_conf_read = true;
@@ -666,8 +666,12 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 
       br_info[num_brs].appl_server_max_num =
 	ini_getint (ini, sec_name, "MAX_NUM_APPL_SERVER", DEFAULT_AS_MAX_NUM, &lineno);
-      if (br_info[num_brs].appl_server_max_num > APPL_SERVER_NUM_LIMIT ||
-	  br_info[num_brs].appl_server_max_num < br_info[num_brs].appl_server_min_num)
+      if (br_info[num_brs].appl_server_max_num > APPL_SERVER_NUM_LIMIT || br_info[num_brs].appl_server_max_num < 1)
+	{
+	  errcode = PARAM_BAD_RANGE;
+	  goto conf_error;
+	}
+      if (br_info[num_brs].appl_server_max_num < br_info[num_brs].appl_server_min_num)
 	{
 	  errcode = PARAM_BAD_MAX_APPL_SERVER;
 	  goto conf_error;
