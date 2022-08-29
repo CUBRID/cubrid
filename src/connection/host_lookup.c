@@ -52,6 +52,18 @@
           }                     \
         } while (0)
 
+#define FREE_HOSTENT_MEM(PTR)        \
+        do {                    \
+          if (PTR) {            \
+            FREE_MEM (PTR->h_aliases[0]);       \
+            FREE_MEM (PTR->h_addr_list[0]);     \
+            FREE_MEM (PTR->h_addr_list);                \
+            FREE_MEM (PTR->h_aliases);          \
+            FREE_MEM (PTR->h_name);             \
+            FREE_MEM (PTR);                     \
+           }                                    \
+        }while(0)
+
 typedef enum
 {
   HOSTNAME_TO_IPADDR = 0,
@@ -489,7 +501,7 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
 
   if ((in_addr_buf = (struct in_addr *) malloc (sizeof (struct in_addr))) == NULL)
     {
-      free (hp);
+      FREE_HOSTENT_MEM (hp);
 //er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct in_addr));
       return EAI_MEMORY;
     }
@@ -497,7 +509,7 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
   /*Constitute struct addrinfo for the out parameter res */
   if (((*res) = (struct addrinfo *) malloc (sizeof (struct addrinfo))) == NULL)
     {
-      free (hp);
+      FREE_HOSTENT_MEM (hp);
       free (in_addr_buf);
 //er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct in_addr));
       return EAI_MEMORY;
@@ -506,10 +518,10 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
   memset (&results_out, 0, sizeof (results_out));
   if ((results_out.ai_addr = (struct sockaddr *) malloc (sizeof (struct sockaddr))) == NULL)
     {
-      free (hp);
+      FREE_HOSTENT_MEM (hp);
       free (in_addr_buf);
       freeaddrinfo (*res);
-      freeaddrinfo (&results_out);
+      free (results_out.ai_addr);
 //er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct in_addr));
       return EAI_MEMORY;
 
