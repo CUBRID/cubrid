@@ -5812,14 +5812,13 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		  return ret;
 		}
 
+	      scan_id->position = S_ON;
+	      isidp->curr_oidno = 0;	/* first oid number */
 	      if (isidp->need_count_only == true)
 		{
 		  /* no more scan is needed. just return */
 		  return S_SUCCESS;
 		}
-
-	      scan_id->position = S_ON;
-	      isidp->curr_oidno = 0;	/* first oid number */
 
 	      if (SCAN_IS_INDEX_COVERED (isidp))
 		{
@@ -5857,6 +5856,12 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      if (isidp->curr_oidno < oids_cnt - 1)
 		{
 		  isidp->curr_oidno++;
+		  if (isidp->need_count_only == true)
+		    {
+		      /* no more scan is needed. just return */
+		      return S_SUCCESS;
+		    }
+
 		  if (!SCAN_IS_INDEX_COVERED (isidp))
 		    {
 		      if (isidp->multi_range_opt.use)
@@ -5927,13 +5932,13 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			  return ret;
 			}
 
+		      isidp->curr_oidno = 0;	/* first oid number */
 		      if (isidp->need_count_only == true)
 			{
 			  /* no more scan is needed. just return */
 			  return S_SUCCESS;
 			}
 
-		      isidp->curr_oidno = 0;	/* first oid number */
 		      if (SCAN_IS_INDEX_COVERED (isidp))
 			{
 			  qfile_close_list (thread_p, isidp->indx_cov.list_id);

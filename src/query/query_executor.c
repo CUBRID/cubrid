@@ -7958,8 +7958,10 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 	  if (count_star_with_iscan_opt)
 	    {
+	      /* count only query without join can skip iteration for index keys */
+	      xasl->curr_spec->s_id.position = S_BEFORE;
 	      xasl->proc.buildvalue.agg_list->accumulator.curr_cnt += (&xasl->curr_spec->s_id)->s.isid.oids_count;
-	      /* may have more scan ranges */
+	      /* may have more OIDs */
 	      continue;
 	    }
 	  /* set scan item as qualified */
