@@ -7864,7 +7864,6 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	  /* check only one count(*) function
 	   * TO_DO : this routine can be moved to XASL generator */
 	  if (!xasl->fptr_list	/* no path expressions */
-	      && !xasl->if_pred	/* no if predicates */
 	      && !xasl->instnum_pred	/* no instnum predicate */
 	      && agg_ptr->next == NULL	/* no other aggregate functions */
 	      && agg_ptr->function == PT_COUNT_STAR)
@@ -7883,7 +7882,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	      /* count(*) query will scan an index but does not have a data-filter */
 	      if (specp->next == NULL && specp->access == ACCESS_METHOD_INDEX
 		  && specp->s.cls_node.cls_regu_list_pred == NULL && specp->where_pred == NULL
-		  && !specp->indexptr->use_iss && !SCAN_IS_INDEX_MRO (&specp->s_id.s.isid))
+		  && !specp->indexptr->use_iss && !SCAN_IS_INDEX_MRO (&specp->s_id.s.isid)
+		  && !xptr->if_pred	/* no if predicates */)
 		{
 		  /* there are two optimization for query having count() only
 		   * 1. Skip saving data to temporary files.
