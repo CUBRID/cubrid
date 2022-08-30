@@ -6677,7 +6677,7 @@ tzc_update_internal (const char *database_name)
 	    case DB_TYPE_TIMESTAMPTZ:
 	    case DB_TYPE_TIMESTAMPLTZ:
 	      has_timezone_column = true;
-		  
+
 	      /* We are going to make an update query for each table which includes a timezone column like:
 	       *  UPDATE [t] SET [tzc1] = CONV_TZ([tzc1]), [tzc2] = CONV_TZ([tzc2]) ...
 	       *  WHERE [tzc1] != CONV_TZ([tzc1]) OR [tzc2] != CONV_TZ([tzc2]) ... ;
@@ -6704,7 +6704,8 @@ tzc_update_internal (const char *database_name)
 		  update_where_buf_len = QUERY_BUF_INIT_SIZE;
 		  update_where_len = 0;
 
-		  len = sprintf (update_set, "UPDATE [%s] SET [%s] = conv_tz ([%s])", table_name, column_name, column_name);
+		  len =
+		    sprintf (update_set, "UPDATE [%s] SET [%s] = conv_tz ([%s])", table_name, column_name, column_name);
 		  update_set += len;
 		  update_set_len = len;
 
@@ -6720,7 +6721,10 @@ tzc_update_internal (const char *database_name)
 		  if ((update_set_len + len) > update_set_buf_len)
 		    {
 		      backup_buf = update_set_buf;
-		      update_set_buf = STATIC_CAST (char *, realloc (update_set_buf, (update_set_buf_len + QUERY_BUF_UNIT_SIZE) * sizeof (char)));
+		      update_set_buf =
+			STATIC_CAST (char *,
+				     realloc (update_set_buf,
+					      (update_set_buf_len + QUERY_BUF_UNIT_SIZE) * sizeof (char)));
 		      if (update_set_buf == NULL)
 			{
 			  printf ("Failed to allocate memory for update query of table %s\n", table_name);
@@ -6735,7 +6739,10 @@ tzc_update_internal (const char *database_name)
 		  if ((update_where_len + len) > update_where_buf_len)
 		    {
 		      backup_buf = update_where_buf;
-		      update_where_buf = STATIC_CAST (char *, realloc (update_where_buf, (update_where_buf_len + QUERY_BUF_UNIT_SIZE) * sizeof (char)));
+		      update_where_buf =
+			STATIC_CAST (char *,
+				     realloc (update_where_buf,
+					      (update_where_buf_len + QUERY_BUF_UNIT_SIZE) * sizeof (char)));
 		      if (update_set_buf == NULL)
 			{
 			  printf ("Failed to allocate memory for update query of table %s\n", table_name);
