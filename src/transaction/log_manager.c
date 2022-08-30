@@ -13368,14 +13368,16 @@ error:
  * trid (in)        : identifier of the transaction performed by the user
  * user (out)       : transaction user name
  *
- * NOTE: The log storing transaction user is logged at the begin and end of the transaction.
+ * NOTE: The log storing transaction user (LOG_SUPPLEMENT_TRAN_USER) is logged at the begin
+ *       and end of the transaction.
  *       e.g) trx1 : BEGIN - LOG_SUPPLEMENT_TRAN_USER - LOG_SUPPLEMENT_INSERT/UDPATE/DELETE/..
  *       - LOG_SUPPLEMENT_TRAN_USER - LOG_COMMIT
  *
  *       This function is called only when the TRAN_USER logged at the begin of the transaction
  *       cannot be found while traversing the log records logged in one transaction.
- *       So, This function is to find the TRAN_USER information left before commit.
- *       e.g) If the TRAN_USER log is truncated at the time of performing CDC
+ *       So, This function is to find the TRAN_USER log left before commit.
+ *       e.g) If the TRAN_USER log at the begin of the transaction is truncated at the time of
+ *            performing CDC
  *
  *       if specified transaction is aborted or active, there will be no TRAN_USER to find.
  */
