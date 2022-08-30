@@ -470,6 +470,7 @@ static int init_tz_name (TZ_NAME * dst, TZ_NAME * src);
 #if defined(SA_MODE)
 static int tzc_extend (TZ_DATA * tzd);
 static int tzc_update (TZ_DATA * tzd, const char *database_name);
+static int tzc_update_internal (const char *database_name);
 #endif
 static int tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type);
 static int get_day_of_week_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year);
@@ -6532,25 +6533,12 @@ exit:
 static int
 tzc_update (TZ_DATA * tzd, const char *database_name)
 {
-#define TABLE_NAME_MAX_SIZE 256
-#define QUERY_BUF_MAX_SIZE 4096
-
-  char query_buf[2 * QUERY_BUF_MAX_SIZE];
-  char update_query[QUERY_BUF_MAX_SIZE];
-  char where_query[QUERY_BUF_MAX_SIZE];
-  DB_QUERY_RESULT *result1, *result2, *result3;
-  DB_VALUE value1, value2, value3, value4;
+  DB_INFO *db_info_list = NULL;
+  DB_INFO *db_info = NULL;
   int error = NO_ERROR;
-  DB_INFO *dir = NULL;
-  DB_INFO *db_info_p = NULL;
-  bool need_db_shutdown = false;
-  const char *program_name = "extend";
-  const char *table_name = NULL;
-  const char *owner_name = NULL;
-  bool is_first_column = true;
-  bool has_timezone_column;
 
   tz_set_new_timezone_data (tzd);
+
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
@@ -6559,229 +6547,282 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
   tz_Compare_timestamptz_tz_id = true;
 
   /* Read the directory with the databases names */
-  error = cfg_read_directory (&dir, false);
+  error = cfg_read_directory (&db_info_list, false);
   if (error != NO_ERROR)
     {
       goto exit;
     }
 
   /* Iterate through all the databases */
-  for (db_info_p = dir; db_info_p != NULL; db_info_p = db_info_p->next)
+  for (db_info = db_info_list; db_info != NULL; db_info = db_info->next)
     {
-      if (database_name != NULL && strcmp (db_info_p->name, database_name) != 0)
+      if (database_name != NULL && strcmp (database_name, db_info->name) != 0)
 	{
 	  continue;
 	}
 
-      printf ("Opening database %s\n", db_info_p->name);
-      /* Open the database */
-      error = db_restart (program_name, TRUE, db_info_p->name);
+      error = tzc_update_internal (database_name);
       if (error != NO_ERROR)
 	{
-	  printf ("Error while opening database %s\n", db_info_p->name);
-	  need_db_shutdown = true;
 	  goto exit;
 	}
-      printf ("Updating database %s...\n", db_info_p->name);
-
-      memset (query_buf, 0, sizeof (query_buf));
-      strcpy (query_buf, "SHOW FULL TABLES");
-
-      error = execute_query (query_buf, &result1);
-      if (error < 0)
-	{
-	  printf ("Error while executing show tables query\n");
-	  need_db_shutdown = true;
-	  goto exit;
-	}
-
-      /* First get the names for the tables in the database */
-      while (db_query_next_tuple (result1) == DB_CURSOR_SUCCESS)
-	{
-	  error = db_query_get_tuple_value (result1, 0, &value1);
-	  if (error != NO_ERROR)
-	    {
-	      db_query_end (result1);
-	      need_db_shutdown = true;
-	      goto exit;
-	    }
-
-	  error = db_query_get_tuple_value (result1, 1, &value2);
-	  if (error != NO_ERROR)
-	    {
-	      db_query_end (result1);
-	      need_db_shutdown = true;
-	      goto exit;
-	    }
-
-	  if (error == NO_ERROR)
-	    {
-	      if (DB_IS_NULL (&value1) || DB_IS_NULL (&value2))
-		{
-		  need_db_shutdown = true;
-		  goto exit;
-		}
-	      else
-		{
-		  /* First get the name of the table */
-		  table_name = db_get_string (&value1);
-		  owner_name = db_get_string (&value2);
-
-		  memset (query_buf, 0, sizeof (query_buf));
-		  // *INDENT-OFF*
-		  snprintf (query_buf, sizeof (query_buf) - 1,
-			"SELECT "
-			  "[a].[attr_name] AS [attr_name], "
-			  "[a].[data_type] AS [data_type] "
-			"FROM "
-			  "[_db_attribute] AS [a] "
-			"WHERE "
-			  "[a].[class_of].[class_name] = '%s' "
-			  "AND [a].[class_of].[owner].[name] = '%s'",
-			table_name,
-			owner_name);
-		  // *INDENT-ON*
-
-		  error = execute_query (query_buf, &result2);
-		  if (error < 0)
-		    {
-		      printf ("Error while listing column names and types for table %s.%s\n", owner_name, table_name);
-		      need_db_shutdown = true;
-		      goto exit;
-		    }
-		  printf ("Updating table %s.%s...\n", owner_name, table_name);
-
-		  /* We are going to make an update query for each table which includes a timezone column like:
-		   *  UPDATE [t] SET [tzc1] = CONV_TZ([tzc1]), [tzc2] = CONV_TZ([tzc2]) ...
-		   *  WHERE [tzc1] != CONV_TZ([tzc1]) OR [tzc2] != CONV_TZ([tzc2]) ... ;
-		   */
-		  memset (query_buf, 0, sizeof (query_buf));
-		  memset (update_query, 0, sizeof (update_query));
-		  memset (where_query, 0, sizeof (where_query));
-
-		  strcpy (update_query, "UPDATE [");
-		  strcat (update_query, owner_name);
-		  strcat (update_query, "].[");
-		  strcat (update_query, table_name);
-		  strcat (update_query, "] SET ");
-		  strcpy (where_query, " WHERE ");
-
-		  is_first_column = true;
-		  has_timezone_column = false;
-
-		  printf ("We will update the following columns:\n");
-		  while (db_query_next_tuple (result2) == DB_CURSOR_SUCCESS)
-		    {
-		      const char *column_name = NULL;
-		      int column_type = 0;
-
-		      /* Get the column name */
-		      error = db_query_get_tuple_value (result2, 0, &value3);
-		      if (error != NO_ERROR)
-			{
-			  db_query_end (result2);
-			  need_db_shutdown = true;
-			  goto exit;
-			}
-
-		      /* Get the column type */
-		      error = db_query_get_tuple_value (result2, 1, &value4);
-		      if (error != NO_ERROR)
-			{
-			  db_query_end (result2);
-			  need_db_shutdown = true;
-			  goto exit;
-			}
-
-		      assert (DB_VALUE_TYPE (&value3) == DB_TYPE_STRING);
-		      assert (DB_VALUE_TYPE (&value4) == DB_TYPE_INTEGER);
-		      column_name = db_get_string (&value3);
-		      column_type = db_get_int (&value4);
-
-		      /* Now do the update if the datatype is of timezone type */
-		      if (column_type == DB_TYPE_DATETIMETZ || column_type == DB_TYPE_DATETIMELTZ
-			  || column_type == DB_TYPE_TIMESTAMPTZ || column_type == DB_TYPE_TIMESTAMPLTZ)
-			{
-			  has_timezone_column = true;
-
-			  if (is_first_column == true)
-			    {
-			      is_first_column = false;
-			    }
-			  else
-			    {
-			      strcat (update_query, ", ");
-			      strcat (where_query, " OR ");
-			    }
-
-			  strcat (update_query, "[");
-			  strcat (update_query, column_name);
-			  strcat (update_query, "]");
-			  strcat (update_query, "=");
-			  strcat (update_query, "conv_tz([");
-			  strcat (update_query, column_name);
-			  strcat (update_query, "])");
-
-			  strcat (where_query, "[");
-			  strcat (where_query, column_name);
-			  strcat (where_query, "]");
-			  strcat (where_query, "!=");
-			  strcat (where_query, "conv_tz([");
-			  strcat (where_query, column_name);
-			  strcat (where_query, "])");
-
-			  printf ("%s ", column_name);
-			}
-		    }
-		  printf ("\n");
-		  db_query_end (result2);
-
-		  /* If we have at least a column that is of timezone data type then execute the query */
-		  if (has_timezone_column == true)
-		    {
-		      strcpy (query_buf, update_query);
-		      strcat (query_buf, where_query);
-
-		      error = execute_query (query_buf, &result3);
-		      if (error < 0)
-			{
-			  printf ("Error while updating table %s.%s\n", owner_name, table_name);
-			  db_abort_transaction ();
-			  need_db_shutdown = true;
-			  goto exit;
-			}
-		      db_query_end (result3);
-		    }
-		  printf ("Finished updating table %s.%s\n", owner_name, table_name);
-		}
-	    }
-	}
-      db_query_end (result1);
-
-      db_commit_transaction ();
-      printf ("Finished updating database %s\n", db_info_p->name);
-      printf ("Shutting down database %s...\n", db_info_p->name);
-      db_shutdown ();
     }
-
-  error = NO_ERROR;
 
 exit:
-  if (dir != NULL)
-    {
-      cfg_free_directory (dir);
-    }
-  if (need_db_shutdown == true)
-    {
-      db_shutdown ();
-    }
+  cfg_free_directory (db_info_list);
 
   tz_Compare_datetimetz_tz_id = false;
   tz_Compare_timestamptz_tz_id = false;
 
   return error;
+}
 
-#undef TABLE_NAME_MAX_SIZE
-#undef QUERY_BUF_MAX_SIZE
+/*
+ * tzc_update_internal() - Do a data migration in case that tzc_extend fails
+ *
+ * Returns: error or no error
+ * database_name(in): Database name for which to do data migration
+ */
+static int
+tzc_update_internal (const char *database_name)
+{
+#define QUERY_BUF_INIT_SIZE 4096
+#define QUERY_BUF_UNIT_SIZE 1024
+
+  const char *program_name = "extend";
+  DB_OBJLIST *table_list = NULL, *table = NULL;
+  char *update_query_buf = NULL;
+  DB_QUERY_RESULT *result = NULL;
+  char *update_set_buf = NULL;
+  char *update_set = NULL;
+  int update_set_buf_len = 0;
+  int update_set_len = 0;
+  int update_where_buf_len = 0;
+  char *update_where_buf = NULL;
+  char *update_where = NULL;
+  int update_where_len = 0;
+  char *backup_buf = NULL;
+  bool is_first_column = true;
+  bool has_timezone_column = false;
+  int error = NO_ERROR;
+
+  assert (database_name != NULL);
+
+  printf ("Opening database %s\n", database_name);
+
+  /* Open the database */
+  error = db_restart (program_name, TRUE, database_name);
+  if (error != NO_ERROR)
+    {
+      printf ("Error while opening database %s\n", database_name);
+      goto exit_on_error;
+    }
+
+  printf ("Updating database %s...\n", database_name);
+
+  table_list = db_get_all_classes ();
+  if (table_list == NULL)
+    {
+      error = db_error_code ();
+      if (error != NO_ERROR)
+	{
+	  printf ("Error while listing tables for database %s\n", database_name);
+	  goto free_resource_1;
+	}
+    }
+
+  /* First get the names for the tables in the database */
+  for (table = table_list; table != NULL; table = table->next)
+    {
+      const char *table_name = NULL;
+      DB_ATTRIBUTE *column_list = NULL, *column = NULL;
+
+      if (db_is_system_class (table->op) == TRUE)
+	{
+	  continue;
+	}
+
+      table_name = db_get_class_name (table->op);	/* owner_name.table_name */
+
+      printf ("Updating table %s...\n", table_name);
+
+      column_list = db_get_attributes (table->op);
+      if (column_list == NULL)
+	{
+	  error = db_error_code ();
+	  if (error != NO_ERROR)
+	    {
+	      printf ("Error while listing columns for table %s\n", table_name);
+	      goto free_resource_2;
+	    }
+	}
+
+      printf ("We will update the following columns:\n");
+
+      is_first_column = true;
+      has_timezone_column = false;
+
+      for (column = column_list; column != NULL; column = db_attribute_next (column))
+	{
+	  const char *column_name = db_attribute_name (column);
+	  DB_DOMAIN *column_domain = db_attribute_domain (column);
+	  DB_TYPE column_type = db_domain_type (column_domain);
+	  int len = 0;
+
+	  /* Now do the update if the datatype is of timezone type */
+	  switch (column_type)
+	    {
+	    case DB_TYPE_DATETIMETZ:
+	    case DB_TYPE_DATETIMELTZ:
+	    case DB_TYPE_TIMESTAMPTZ:
+	    case DB_TYPE_TIMESTAMPLTZ:
+	      has_timezone_column = true;
+		  
+	      /* We are going to make an update query for each table which includes a timezone column like:
+	       *  UPDATE [t] SET [tzc1] = CONV_TZ([tzc1]), [tzc2] = CONV_TZ([tzc2]) ...
+	       *  WHERE [tzc1] != CONV_TZ([tzc1]) OR [tzc2] != CONV_TZ([tzc2]) ... ;
+	       */
+	      if (is_first_column == true)
+		{
+		  update_set_buf = STATIC_CAST (char *, malloc (QUERY_BUF_INIT_SIZE * sizeof (char)));
+		  if (update_set_buf == NULL)
+		    {
+		      printf ("Failed to allocate memory for update query of table %s\n", table_name);
+		      goto free_resource_2;
+		    }
+		  update_set = update_set_buf;
+		  update_set_buf_len = QUERY_BUF_INIT_SIZE;
+		  update_set_len = 0;
+
+		  update_where_buf = STATIC_CAST (char *, malloc (QUERY_BUF_INIT_SIZE * sizeof (char)));
+		  if (update_where_buf == NULL)
+		    {
+		      printf ("Failed to allocate memory for update query of table %s\n", table_name);
+		      goto free_resource_3;
+		    }
+		  update_where = update_where_buf;
+		  update_where_buf_len = QUERY_BUF_INIT_SIZE;
+		  update_where_len = 0;
+
+		  len = sprintf (update_set, "UPDATE [%s] SET [%s] = conv_tz ([%s])", table_name, column_name, column_name);
+		  update_set += len;
+		  update_set_len = len;
+
+		  len = sprintf (update_where, " WHERE [%s] != conv_tz ([%s])", column_name, column_name);
+		  update_where += len;
+		  update_where_len = len;
+
+		  is_first_column = false;
+		}
+	      else
+		{
+		  len += snprintf (NULL, 0, ", [%s] = conv_tz ([%s])", column_name, column_name);
+		  if ((update_set_len + len) > update_set_buf_len)
+		    {
+		      backup_buf = update_set_buf;
+		      update_set_buf = STATIC_CAST (char *, realloc (update_set_buf, (update_set_buf_len + QUERY_BUF_UNIT_SIZE) * sizeof (char)));
+		      if (update_set_buf == NULL)
+			{
+			  printf ("Failed to allocate memory for update query of table %s\n", table_name);
+			  free_and_init (backup_buf);
+			  goto free_resource_4;
+			}
+		      update_set = update_set_buf + update_set_len;
+		      update_set_buf_len += QUERY_BUF_UNIT_SIZE;
+		    }
+
+		  len += snprintf (NULL, 0, " OR [%s] != conv_tz ([%s])", column_name, column_name);
+		  if ((update_where_len + len) > update_where_buf_len)
+		    {
+		      backup_buf = update_where_buf;
+		      update_where_buf = STATIC_CAST (char *, realloc (update_where_buf, (update_where_buf_len + QUERY_BUF_UNIT_SIZE) * sizeof (char)));
+		      if (update_set_buf == NULL)
+			{
+			  printf ("Failed to allocate memory for update query of table %s\n", table_name);
+			  free_and_init (backup_buf);
+			  goto free_resource_4;
+			}
+		      update_where = update_where_buf + update_where_len;
+		      update_where_buf_len += QUERY_BUF_UNIT_SIZE;
+		    }
+
+		  len = sprintf (update_set, ", [%s] = conv_tz ([%s])", column_name, column_name);
+		  update_set += len;
+		  update_set_len += len;
+
+		  len = sprintf (update_where, " OR [%s] != conv_tz ([%s])", column_name, column_name);
+		  update_where += len;
+		  update_where_len += len;
+		}
+	      printf ("%s ", column_name);
+	      break;
+
+	    default:
+	      continue;
+	    }
+	}
+      printf ("\n");
+
+      /* If we have at least a column that is of timezone data type then execute the query */
+      if (has_timezone_column == true)
+	{
+	  update_query_buf = STATIC_CAST (char *, malloc ((update_set_len + update_where_len) * sizeof (char)));
+	  if (update_query_buf == NULL)
+	    {
+	      printf ("Failed to allocate memory for update query of table %s\n", table_name);
+	      goto free_resource_4;
+	    }
+	  strcpy (update_query_buf, update_set_buf);
+	  strcpy (update_query_buf + update_set_len, update_where_buf);
+	  free_and_init (update_set_buf);
+	  free_and_init (update_where_buf);
+
+	  error = execute_query (update_query_buf, &result);
+	  if (error < 0)
+	    {
+	      printf ("Error while updating table %s\n", table_name);
+	      db_abort_transaction ();
+	      goto free_resource_5;
+	    }
+	  db_query_end (result);
+	  free_and_init (update_query_buf);
+	}
+
+      printf ("Finished updating table %s\n", table_name);
+    }
+
+  db_objlist_free (table_list);
+  table_list = NULL;
+
+  db_commit_transaction ();
+  printf ("Finished updating database %s\n", database_name);
+
+  printf ("Shutting down database %s...\n", database_name);
+  db_shutdown ();
+
+  return NO_ERROR;
+
+/* The following frees resources before returning an error. */
+free_resource_5:
+  free_and_init (update_query_buf);
+
+free_resource_4:
+  free_and_init (update_where_buf);
+
+free_resource_3:
+  free_and_init (update_set_buf);
+
+free_resource_2:
+  db_objlist_free (table_list);
+  table_list = NULL;
+
+free_resource_1:
+  db_shutdown ();
+
+exit_on_error:
+  return error;
+
+#undef QUERY_BUF_INIT_SIZE
+#undef QUERY_BUF_UNIT_SIZE
 }
 #endif
