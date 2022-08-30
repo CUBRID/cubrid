@@ -61,7 +61,6 @@
 #include "tcp.h"
 #include "db.h"
 #include "parser.h"
-#include "network_interface_cl.h"
 #include "utility.h"
 #include "tsc_timer.h"
 #include "dbtype.h"
@@ -69,6 +68,7 @@
 #include "api_compat.h"
 #include "cas_log.h"
 #include "ddl_log.h"
+#include "network_histogram.hpp"
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */
