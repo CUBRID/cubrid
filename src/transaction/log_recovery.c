@@ -804,6 +804,18 @@ log_recovery (THREAD_ENTRY * thread_p, bool is_media_crash, time_t * stopat)
 
   log_recovery_analysis (thread_p, &num_redo_log_records, context);
 
+  /* during analysis, the mvccid are loaded from log records into the created transaction descriptors;
+   * these mvccids are needed for the specific needs of initializing a passive transaction server (see
+   * function log_recovery_analysis_from_trantable_snapshot); as a side effect, this also happens in
+   * all other cases, where that MVCCID is not needed (eg: recovery of a monolithic server); when
+   * analysis finishes, some of those transactions - those that have not yet committed and will be
+   * aborted anyway - still have those valid mvccids set; when transactions descriptors will be
+   * cleaned, there's a sane assert that the mvccid must be null;
+   * since the mvccid is only needed for the analysis step of the passive transaction server, for
+   * all other cases we clean-up those mvccids after the analysis step, before redo
+   */
+  logtb_clear_all_tran_mvccids ();
+
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "ANALYSIS");
 
   log_Gl.chkpt_redo_lsa = context.get_start_redo_lsa ();
