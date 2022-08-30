@@ -17,7 +17,7 @@
  */
 
 /*
- * network_histogram..hpp - Add instrumentations to the client side to get histogram of network requests
+ * network_histogram.hpp - Add instrumentations to the client side to get histogram of network requests
  */
 
 #ifndef _NETWORK_HISTOGRAM_HPP_

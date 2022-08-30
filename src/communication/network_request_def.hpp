@@ -16,14 +16,18 @@
  *
  */
 
+/*
+ * network_request_def.hpp - Defines net_request structure
+ */
+
 #ifndef _NETWORK_REQUEST_DEF_HPP_
 #define _NETWORK_REQUEST_DEF_HPP_
 
 #include "thread_compat.hpp" /* THREAD_ENTRY */
 
-#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#if !defined (SERVER_MODE)
 #error Belongs to server module
-#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+#endif /* !defined (SERVER_MODE) */
 
 enum net_req_act
 {
