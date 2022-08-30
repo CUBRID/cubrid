@@ -585,6 +585,7 @@ extern int heap_rv_redo_reuse_page_reuse_oid (THREAD_ENTRY * thread_p, const LOG
 extern void heap_rv_dump_reuse_page (FILE * fp, int ignore_length, void *data);
 extern int heap_rv_mark_deleted_on_undo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern int heap_rv_mark_deleted_on_postpone (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int heap_rv_set_prev_version_lsa (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 
 extern int heap_get_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out,
 				FILE_TYPE * ftype_out, char **classname_out);
