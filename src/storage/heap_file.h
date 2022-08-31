@@ -230,18 +230,6 @@ struct func_pred_unpack_info
   xasl_unpack_info *unpack_info;
 };
 
-#if 0				/* TODO: check not use - ksseo */
-typedef struct heap_spacecache HEAP_SPACECACHE;
-struct heap_spacecache
-{				/* Define an alter space cache for heap file */
-
-  float remain_sumlen;		/* Total new length of records that it is predicted for the rest of space cache. If it
-				 * is unknown -1 is stored. This value is used to estimate the number of pages to
-				 * allocate at a particular time in space cache. If the value is < pagesize, only one
-				 * page at a time is allocated. */
-};
-#endif
-
 typedef struct heap_idx_elements_info HEAP_IDX_ELEMENTS_INFO;
 struct heap_idx_elements_info
 {
@@ -476,7 +464,7 @@ extern int heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, 
 extern void heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
-					HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info);
+					HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info);
@@ -491,7 +479,7 @@ extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thre
 extern DB_VALUE *heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, int *atts_prefix_length,
 					     HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, DB_VALUE * dbvalue,
 					     char *buf, FUNCTION_INDEX_INFO * func_index_info,
-					     TP_DOMAIN * midxkey_domain);
+					     TP_DOMAIN * midxkey_domain, OID * cur_oid);
 extern int heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * class_recdes,
 					   HEAP_CACHE_ATTRINFO * attr_info, HEAP_IDX_ELEMENTS_INFO * idx_info);
 extern int heap_attrinfo_start_with_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid,

@@ -673,14 +673,7 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock, LC_FETCH_VERSION_TYPE fetc
   cache_lock.isolation = TM_TRAN_ISOLATION ();
   if (ws_get_lock (mop) != NULL_LOCK)
     {
-#if 0
-      /* Normally, use current version since the object was already locked. However, for safety reason when promote
-       * S_LOCK to X_LOCK is better to use dirty version. This is needed to protect against wrong cached S-locks on
-       * client (the server release S-lock and the S-lock is not decached on client side). */
-      if (lock == X_LOCK && ws_get_lock (mop) == S_LOCK && isclass == LC_INSTANCE)
-#else
       if (isclass == LC_INSTANCE)
-#endif
 	{
 	  fetch_version_type = LC_FETCH_DIRTY_VERSION;
 	}

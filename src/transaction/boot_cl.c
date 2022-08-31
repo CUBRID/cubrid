@@ -441,17 +441,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   /* If a host was not given, assume the current host */
   if (db_path_info->db_host == NULL)
     {
-#if 0				/* use Unix-domain socket for localhost */
-      if (GETHOSTNAME (db_host_buf, CUB_MAXHOSTNAMELEN) != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, db_host_buf);
-	  error_code = ER_BO_UNABLE_TO_FIND_HOSTNAME;
-	  goto error_exit;
-	}
-      db_host_buf[CUB_MAXHOSTNAMELEN] = '\0';
-#else
       strcpy (boot_Db_host_buf, "localhost");
-#endif
       db_path_info->db_host = boot_Db_host_buf;
     }
 

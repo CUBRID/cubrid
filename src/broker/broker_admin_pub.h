@@ -38,7 +38,7 @@
 int admin_isstarted_cmd (int);
 #endif
 
-int admin_start_cmd (T_BROKER_INFO *, int, int, bool, char *);
+int admin_start_cmd (T_BROKER_INFO *, int, int, bool, char *, char *);
 int admin_stop_cmd (int);
 int admin_add_cmd (int, const char *);
 int admin_restart_cmd (int, const char *, int);
