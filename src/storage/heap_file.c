@@ -24942,6 +24942,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 
   assert (scan_cache != NULL);
   assert (scan_cache->mvcc_snapshot != NULL);
+  assert (!previous_version_lsa->is_null());
 
   if (recdes == NULL)
     {
