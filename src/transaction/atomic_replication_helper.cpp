@@ -310,10 +310,6 @@ namespace cublog
 	  }
 	break;
       }
-      case RVHF_UPDATE_NOTIFY_VACUUM:
-	er_log_debug (ARG_FILE_LINE, "[ATOMIC REPLICATION] Unnable to fix RVHF_UPDATE_NOTIFY_VACUUM.");
-	assert (false);
-	break;
       default:
 	m_page_ptr = pgbuf_fix (thread_p, &m_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	if (m_page_ptr == nullptr)

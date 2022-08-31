@@ -22454,6 +22454,13 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
    */
   if (update_old_home)
     {
+      /* Updating home record and setting prev_version_lsa have to be atomic. */
+      if (!atomic_replication_flag && is_mvcc_op)
+      {
+        log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
+        atomic_replication_flag = true;
+      }
+
       /* log operation */
       heap_log_update_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
 				&context->home_recdes, &new_home_recdes,
@@ -22531,6 +22538,16 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
    */
   if (update_old_forward)
     {
+      /* 
+       * Updating forward record and setting prev_version_lsa have to be atomic
+       * if the home record (REC_RELOCATION) is not updated.
+       */
+      if (!atomic_replication_flag && is_mvcc_op)
+      {
+        log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
+        atomic_replication_flag = true;
+      }
+
       /* log operation */
       heap_log_update_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
 				&forward_recdes, context->recdes_p, RVHF_UPDATE);
@@ -22671,7 +22688,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
   if (heap_is_big_length (context->recdes_p->length))
     {
-      /* record will be converted to a bigone and more pages will be afected */
+      /* record will be converted to a bigone and more pages will be affected */
       log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
       atomic_replication_flag = true;
       /* fix header page */
@@ -22781,6 +22798,17 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	}
       HEAP_PERF_TRACK_PREPARE (thread_p, context);
     }
+
+  /* 
+   * Updating home record and setting prev_version_lsa have to be atomic.
+   * The prev_version_lsa could be updated on the forward record,
+   * but it can't be seen until the home record is updated.
+   */
+  if (!atomic_replication_flag && is_mvcc_op)
+  {
+    log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
+    atomic_replication_flag = true;
+  }
 
   /* log home update */
   heap_log_update_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
