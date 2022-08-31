@@ -16722,6 +16722,8 @@ heap_rv_set_prev_version_lsa (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
       return error_code;
     }
 
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
   return NO_ERROR;
 }
 
@@ -22129,7 +22131,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
       /* set prev version lsa */
       or_mvcc_set_log_lsa_to_record (context->recdes_p, logtb_find_current_tran_lsa (thread_p));
-      /* we don't need to write RVHF_SET_PREV_VERSION_LSA here since the record already have the prev_version_lsa in it. */
+      /* we don't need to write RVHF_SET_PREV_VERSION_LSA here since the redo record already have the prev_version_lsa in it. */
     }
 
   /* Proceed with the update. the new record is prepared and for mvcc it should have the prev version lsa set */
