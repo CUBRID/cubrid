@@ -25291,7 +25291,7 @@ exit:
  *
  * return	       : error code or NO_ERROR
  * thread_p (in)       : Thread entry.
- * hfid (in)	   : Heap file identifier
+ * hfid (in)	       : Heap file identifier
  * oid (in)            : Object identifier of the updated record
  * home_pg_watcher (in): Home page watcher; must be
  * fwd_pg_watcher (in) : Forward page watcher
