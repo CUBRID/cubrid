@@ -8883,7 +8883,7 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
 
   fprintf (fp, "Average Page Count per Key(Overflow): %d\n",
 	   (cpc.ovfl_oid_pg.dis_key_cnt > 0) ? (int) (cpc.ovfl_oid_pg.tot_pg_cnt / cpc.ovfl_oid_pg.dis_key_cnt) : 0);
-  fprintf (fp, "Max Overflow Page Count a Key: %d\n", cpc.ovfl_oid_pg.max_pg_cnt_per_key);
+  fprintf (fp, "Max Page Count on a Key(Overflow): %d\n", cpc.ovfl_oid_pg.max_pg_cnt_per_key);
   fprintf (fp, "-------------------------------------------------------------\n");
 
 exit:
