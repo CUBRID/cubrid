@@ -21,6 +21,7 @@ on:
       - develop
       - 'release/11.**'
       - 'feature/**'
+      - 'scalability_dev**'
 jobs:
   license:
     name: license
