@@ -13385,11 +13385,12 @@ error:
 static int
 cdc_find_user (THREAD_ENTRY * thread_p, LOG_LSA process_lsa, int trid, char **user)
 {
-  /*find tran user at the end of the transaction  */
   LOG_PAGE *log_page_p = NULL;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
   LOG_LSA forw_lsa;
+  LOG_LSA latest_lsa;		// latest appended log LSA at the time log page is copied into local buffer
+
   LOG_RECORD_HEADER *log_rec_hdr = NULL;
   LOG_REC_SUPPLEMENT *supplement;
   char *data;
@@ -13410,6 +13411,8 @@ cdc_find_user (THREAD_ENTRY * thread_p, LOG_LSA process_lsa, int trid, char **us
     }
 
   /* if a transaction is committed, then the log record for transaction user is appended and flushed to the disk */
+  LSA_COPY (&latest_lsa, &log_Gl.append.prev_lsa);
+
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
     {
@@ -13417,8 +13420,11 @@ cdc_find_user (THREAD_ENTRY * thread_p, LOG_LSA process_lsa, int trid, char **us
       return ER_FAILED;
     }
 
-  while (!LSA_ISNULL (&process_lsa))
+  while (!LSA_ISNULL (&process_lsa) && LSA_LE (&process_lsa, &latest_lsa))
     {
+      /* If there is no commit log after traversing up to the most recently appended log,
+       * there is no need to traverse any more. */
+
       log_rec_hdr = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
       LSA_COPY (&forw_lsa, &log_rec_hdr->forw_lsa);
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_hdr), &process_lsa, log_page_p);
@@ -13451,13 +13457,8 @@ cdc_find_user (THREAD_ENTRY * thread_p, LOG_LSA process_lsa, int trid, char **us
       /* transaction user information should be logged before commit */
       assert (!(log_rec_hdr->type == LOG_COMMIT && log_rec_hdr->trid == trid));
 
-      if (process_lsa.pageid != forw_lsa.pageid)
+      if (process_lsa.pageid != forw_lsa.pageid && !LSA_ISNULL (&forw_lsa))
 	{
-	  if (LSA_ISNULL (&forw_lsa))
-	    {
-	      return ER_FAILED;
-	    }
-
 	  if (logpb_fetch_page (thread_p, &forw_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
 	    {
 	      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "cdc_find_user");
