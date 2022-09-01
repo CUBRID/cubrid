@@ -869,7 +869,7 @@ static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, REC
 						    int has_chn);
 static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const HFID * vfid, const OID * oid,
 					 PGBUF_WATCHER * home_pg_watcher, PGBUF_WATCHER * fwd_pg_watcher,
-					 LOG_LSA * prev_version_lsa);
+					 const LOG_LSA * prev_version_lsa);
 static int heap_scan_cache_allocate_recdes_data (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p,
 						 RECDES * recdes_p, int size);
 
@@ -16693,7 +16693,7 @@ int
 heap_rv_set_prev_version_lsa (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   RECDES recdes;
-  LOG_LSA *prev_version_lsa;
+  const LOG_LSA *prev_version_lsa;
   int error_code = NO_ERROR;
 
   assert (rcv->length == sizeof (LOG_LSA));
