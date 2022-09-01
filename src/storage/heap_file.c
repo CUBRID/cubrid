@@ -25308,7 +25308,7 @@ exit:
 static int
 heap_update_set_prev_version (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * oid,
 			      PGBUF_WATCHER * home_pg_watcher, PGBUF_WATCHER * fwd_pg_watcher,
-			      LOG_LSA * prev_version_lsa)
+			      const LOG_LSA * prev_version_lsa)
 {
   int error_code = NO_ERROR;
   RECDES recdes, forward_recdes;
