@@ -16701,7 +16701,7 @@ heap_rv_set_prev_version_lsa (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
   prev_version_lsa = (LOG_LSA *) rcv->data;
 
   /* REC_HOME, REC_NEWHOME */
-  if (rcv->offset >= 0)
+  if (rcv->offset > NULL_OFFSET)
     {
       if (spage_get_record (thread_p, rcv->pgptr, rcv->offset, &recdes, PEEK) != S_SUCCESS)
 	{
@@ -25395,7 +25395,7 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const HFID * hfid, const 
 	  goto end;
 	}
 
-      log_append_redo_data2 (thread_p, RVHF_SET_PREV_VERSION_LSA, &ovf_vfid, overflow_pg_watcher.pgptr, -1,
+      log_append_redo_data2 (thread_p, RVHF_SET_PREV_VERSION_LSA, &ovf_vfid, overflow_pg_watcher.pgptr, NULL_OFFSET,
 			     sizeof (LOG_LSA), prev_version_lsa);
 
       /* unfix overflow page; it is used only locally */
