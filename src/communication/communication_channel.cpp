@@ -113,7 +113,7 @@ namespace cubcomm
     total_len = (int) (sizeof (int) + length);
 
     rc = css_send_io_vector_with_socket (m_socket, iov, total_len, vector_length, m_max_timeout_in_ms);
-    er_log_chn_debug ("[%s] Send buffer of size = %zu, result = %d.\n", get_channel_id ().c_str (), length);
+    er_log_chn_debug ("[%s] Send buffer of size = %zu, result = %d.\n", get_channel_id ().c_str (), length, rc);
     return (css_error_code) rc;
   }
 
