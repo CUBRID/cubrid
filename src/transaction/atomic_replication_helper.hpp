@@ -60,7 +60,6 @@ namespace cublog
       log_lsa get_the_lowest_start_lsa ();
 
     private:
-
       class atomic_replication_sequence
       {
 	public:
@@ -138,6 +137,11 @@ namespace cublog
 
       sequence_map_type m_sequences_map;
 #if !defined (NDEBUG)
+      // check validity of atomic sequences
+      // one page can only be accessed by one atomic sequence within one transaction
+      // this check makes sense because, on active transaction server, there is no
+      // notion of an "atomic" sequence and, hence, it is totally possible that
+      // another transaction might access the same page
       using vpid_set_type = std::set<VPID>;
 
       std::map<TRANID, vpid_set_type> m_vpid_sets_map;
