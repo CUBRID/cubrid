@@ -536,6 +536,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_USE_BTREE_FENCE_KEY "use_btree_fence_key"
 
+#define PRM_NAME_FIRST_LOG_PAGEID "first_log_pageid"
+
 #define PRM_NAME_OPTIMIZER_ENABLE_MERGE_JOIN "optimizer_enable_merge_join"
 #define PRM_NAME_OPTIMIZER_RESERVE_01 "optimizer_reserve_01"
 #define PRM_NAME_OPTIMIZER_RESERVE_02 "optimizer_reserve_02"
@@ -2097,6 +2099,12 @@ static int prm_cte_max_recursions_default = 2000;
 static int prm_cte_max_recursions_upper = 1000000;
 static int prm_cte_max_recursions_lower = 2;
 static unsigned int prm_cte_max_recursions_flag = 0;
+
+UINT64 PRM_FIRST_LOG_PAGEID = 0LL;
+static UINT64 prm_first_log_pageid_default = 0LL;
+static UINT64 prm_first_log_pageid_lower = 0LL;
+static UINT64 prm_first_log_pageid_upper = LOGPAGEID_MAX;
+static unsigned int prm_first_log_pageid_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5350,6 +5358,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_CTE_MAX_RECURSIONS,
    (void *) &prm_cte_max_recursions_upper,
    (void *) &prm_cte_max_recursions_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_FIRST_LOG_PAGEID,	/* Except for QA or TEST purposes, never use it. */
+   PRM_NAME_FIRST_LOG_PAGEID,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BIGINT,
+   &prm_first_log_pageid_flag,
+   (void *) &prm_first_log_pageid_default,
+   (void *) &PRM_FIRST_LOG_PAGEID,
+   (void *) &prm_first_log_pageid_upper,
+   (void *) &prm_first_log_pageid_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
