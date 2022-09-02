@@ -8955,8 +8955,19 @@ call_stmt
 			PT_NODE *node = $3;
 			if (node)
 			  {
-			    node->info.method_call.call_or_expr = PT_IS_CALL_STMT;
-			    node->info.method_call.to_return_var = $4;
+			    if (node->node_type == PT_METHOD_CALL)
+			      {
+			        node->info.method_call.call_or_expr = PT_IS_CALL_STMT;
+			        node->info.method_call.to_return_var = $4;
+			      }
+			    else
+			      {
+			        // assuming that node is PT_EXPR or PT_FUNCTION
+			        assert (node->node_type == PT_EXPR || node->node_type == PT_FUNCTION);
+
+			        PT_ERRORmf2 (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A,
+			          parser_print_tree (this_parser, node), pt_show_misc_type (PT_SP_PROCEDURE));
+			      }
 			  }
 
 			parser_cannot_prepare = true;
@@ -18683,8 +18694,11 @@ generic_function
 		{{ DBG_TRACE_GRAMMAR(generic_function, : identifier '(' opt_expression_list ')' opt_on_target );
 
 			PT_NODE *node = NULL;
+
 			if ($6 == NULL)
-			   node = parser_keyword_func ($1->info.name.original, $4);
+			  {
+			    node = parser_keyword_func ($1->info.name.original, $4);
+			  }
 
 			if (node == NULL)
 			  {

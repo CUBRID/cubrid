@@ -359,6 +359,7 @@ struct btree_ovfl_oid_capacity
   int tot_pg_cnt;		/* Total overflow oid page count */
   float tot_free_space;		/* Total free space in overflow oid pages */
   float tot_space;		/* Total space occupied by overflow oid pages */
+  float tot_used_space;		/* Total used space in  overflow oid pages */
   float avg_pg_free_sp;		/* Average free space on the occupied overflowoid page */
 };
 
@@ -468,7 +469,7 @@ struct btree_node_scan
       MVCC_SET_DELID (p_mvcc_rec_header, MVCCID_NULL); \
       MVCC_SET_CHN (p_mvcc_rec_header, 0); \
       MVCC_SET_REPID (p_mvcc_rec_header, 0); \
-      LSA_SET_NULL (p_mvcc_rec_header.prev_version_lsa); \
+      LSA_SET_NULL (&((p_mvcc_rec_header)->prev_version_lsa)); \
     } \
   while (0)
 
@@ -726,11 +727,6 @@ extern int btree_rv_newpage_redo_init (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int btree_rv_save_keyval_for_undo (BTID_INT * btid, DB_VALUE * key, OID * cls_oid, OID * oid,
 					  BTREE_MVCC_INFO * mvcc_info, BTREE_OP_PURPOSE purpose,
 					  char *preallocated_buffer, char **data, int *capacity, int *length);
-extern int btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE * key,
-						      BTREE_OBJECT_INFO * first_version,
-						      BTREE_OBJECT_INFO * second_version, BTREE_OP_PURPOSE purpose,
-						      char *preallocated_buffer, char **data, int *capacity,
-						      int *length);
 extern int btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int btree_rv_keyval_undo_insert_unique (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int btree_rv_keyval_undo_insert_mvcc_delid (THREAD_ENTRY * thread_p, LOG_RCV * recv);

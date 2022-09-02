@@ -179,6 +179,7 @@ set(CONNECTION_SOURCES
 
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_cl.c
+  ${COMMUNICATION_DIR}/network_histogram.cpp
   )
 
 set(MONITOR_SOURCES

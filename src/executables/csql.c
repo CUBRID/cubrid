@@ -61,7 +61,6 @@
 #include "tcp.h"
 #include "db.h"
 #include "parser.h"
-#include "network_interface_cl.h"
 #include "utility.h"
 #include "tsc_timer.h"
 #include "dbtype.h"
@@ -69,6 +68,7 @@
 #include "api_compat.h"
 #include "cas_log.h"
 #include "ddl_log.h"
+#include "network_histogram.hpp"
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */
@@ -2797,6 +2797,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       csql_Error_code = CSQL_ERR_OS_ERROR;
       goto error;
     }
+  er_set_print_property (ER_PRINT_TO_CONSOLE);
 
   /*
    * login and restart database
@@ -2855,7 +2856,6 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 	  goto error;
 	}
     }
-  er_set_print_property (ER_PRINT_TO_CONSOLE);
 
   logddl_init ();
   logddl_set_logging_enabled (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG));

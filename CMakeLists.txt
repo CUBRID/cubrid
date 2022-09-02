@@ -1301,7 +1301,7 @@ if(USE_CUBRID_ENV)
     ${CMAKE_SOURCE_DIR}/contrib/readme/README_TAR_INSTALL
     DESTINATION ${CUBRID_PREFIXDIR})
   install(FILES
-    ${CMAKE_SOURCE_DIR}/contrib/readme/databases.txt
+    ${CMAKE_SOURCE_DIR}/contrib/readme/databases.txt.sample
     DESTINATION ${CUBRID_DATABASES})
   install(FILES
     ${CMAKE_SOURCE_DIR}/contrib/readme/README_SOCK.txt
