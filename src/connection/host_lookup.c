@@ -82,6 +82,13 @@ typedef enum
   USE_USER_DEFINED_HOSTS = 1,
 } HOST_LOOKUP_TYPE;
 
+typedef enum
+{
+  LOAD_FAIL = -1,
+  LOAD_INIT,
+  LOAD_SUCCESS,
+} HOSTS_CONF_LOAD_STATUS;
+
 struct cub_hostent
 {
   char ipaddr[IPADDR_LEN];
@@ -89,11 +96,11 @@ struct cub_hostent
 };
 
 typedef struct cub_hostent CUB_HOSTENT;
-static CUB_HOSTENT hostent_List[MAX_HOSTS_LINE_NUM];	/* "etc/hosts" file maximum line */
 static const char user_defined_hostfile_Name[] = "hosts.conf";
 
-static int host_conf_element_Count = 0;
+static int hosts_conf_file_Load = 0;
 
+/*Hostname and IP address are both stored in the user_host_Map to search both of them*/
 // *INDENT-OFF*
 static std::unordered_map <std::string, std::string> user_host_Map;
 // *INDENT-ON*
@@ -163,14 +170,16 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
   static struct hostent *hp;
   int i, find_index = -1;
 
-  char addr_transform_buf[IPADDR_LEN];
-  char addr_transform_buf2[IPADDR_LEN];
+  char addr_trans_ch_buf[IPADDR_LEN];
+  char addr_trans_bi_buf[IPADDR_LEN];
+  char hostname_buf[HOSTNAME_BUF_SIZE + 1];
+  char ipaddr_buf[IPADDR_LEN];
   struct sockaddr_in *addr_trans = NULL;
 
-  if (host_conf_element_Count == 0)
+  if (hosts_conf_file_Load == LOAD_INIT)
     {
-      host_conf_element_Count = host_conf_load ();
-      if (host_conf_element_Count <= 0)
+      hosts_conf_file_Load = host_conf_load ();
+      if (hosts_conf_file_Load == LOAD_INIT || hosts_conf_file_Load == LOAD_FAIL)
 	{
 //err_set : load fail
 	  return NULL;
@@ -183,7 +192,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 
   if (lookup_case == IPADDR_TO_HOSTNAME)
     {
-      if (inet_ntop (AF_INET, &addr_trans->sin_addr, addr_transform_buf, sizeof (addr_transform_buf)) == NULL)
+      if (inet_ntop (AF_INET, &addr_trans->sin_addr, addr_trans_ch_buf, sizeof (addr_trans_ch_buf)) == NULL)
 	{
 //err_msg : convert binary to text fail
 	  return NULL;
@@ -191,31 +200,26 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 
     }
 
-/*Look up in the hostent_List*/
-  for (i = 0; i < host_conf_element_Count; i++)
+  /*Look up in the user_host_Map */
+  if ((lookup_case == HOSTNAME_TO_IPADDR) && (user_host_Map.find (hostname) != user_host_Map.end ()))
     {
-      if ((lookup_case == HOSTNAME_TO_IPADDR) && (strcmp (hostname, hostent_List[i].hostname) == 0))
-	{
-	  find_index = i;
-	  break;
-	}
-
-      if ((lookup_case == IPADDR_TO_HOSTNAME) && (strcmp (addr_transform_buf, hostent_List[i].ipaddr) == 0))
-	{
-	  find_index = i;
-	  break;
-	}
+      strcpy (ipaddr_buf, user_host_Map.find (hostname)->second.c_str ());
+      strcpy (hostname_buf, hostname);
     }
-
-  if (find_index < 0)
+  else if ((lookup_case == IPADDR_TO_HOSTNAME) && (user_host_Map.find (addr_trans_ch_buf) != user_host_Map.end ()))
     {
-      return NULL;
+      strcpy (hostname_buf, user_host_Map.find (addr_trans_ch_buf)->second.c_str ());
+      strcpy (ipaddr_buf, addr_trans_ch_buf);
+    }
+  else
+    {
 //err_msg : hosts.conf has no info
+      return NULL;
     }
 
-  if (inet_pton (AF_INET, hostent_List[find_index].ipaddr, addr_transform_buf2) < 1)
+  if (inet_pton (AF_INET, ipaddr_buf, addr_trans_bi_buf) < 1)
     {
-//err_set : convert binary to text fail -> reverse
+//err_set : convert text to binary fail -> reverse
       return NULL;
     }
 
@@ -225,9 +229,9 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
       return NULL;
     }
 
-  strcpy (hp->h_name, hostent_List[find_index].hostname);
-  strcpy (hp->h_aliases[0], hostent_List[find_index].hostname);
-  memcpy (hp->h_addr_list[0], addr_transform_buf2, sizeof (hp->h_addr_list[0]));
+  strcpy (hp->h_name, hostname_buf);
+  strcpy (hp->h_aliases[0], hostname_buf);
+  memcpy (hp->h_addr_list[0], addr_trans_bi_buf, sizeof (hp->h_addr_list[0]));
 
   return hp;
 }
@@ -245,10 +249,10 @@ host_conf_load ()
   char *save_ptr_strtok;
   /*delimiter */
   char *delim = " \t\n";
+  char map_ipaddr[IPADDR_LEN];
+  char map_hostname[HOSTNAME_BUF_SIZE + 1];
 
-  int host_count = 0;
-
-  /*False, if hostent_List[index].hostname is set */
+  /*True, when the string token has hostname, otherwise, string token has IP address */
   bool hostent_flag;
   HOSTENT_INSERT_TYPE hostent_insert_Type;
 
@@ -262,7 +266,7 @@ host_conf_load ()
 //err_msg : file open fail
 //er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, host_conf_file_full_path);
 //fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_IO_MOUNT_FAIL));
-      return -1;
+      return LOAD_FAIL;
     }
 
   while (fgets (file_line, HOSTNAME_BUF_SIZE + 1, fp) != NULL)
@@ -273,7 +277,7 @@ host_conf_load ()
 	continue;
 
       token = strtok_r (file_line, delim, &save_ptr_strtok);
-      hostent_flag = INSERT_HOSTNAME;
+      hostent_flag = INSERT_IPADDR;
 
       char map_ipaddr[IPADDR_LEN];
       char map_hostname[HOSTNAME_BUF_SIZE + 1];
@@ -284,60 +288,64 @@ host_conf_load ()
 	    {
 	      break;
 	    }
-	  if (hostent_flag == INSERT_HOSTNAME)
-	    {
-	      if (strlen (token) > HOSTNAME_BUF_SIZE + 1)
-		{
-//err_msg 
-//er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ?, 1, token);
-//ex) Hostname "%1$s" is too long, it should be less than or equal 256
-		  return -1;
-		}
-	      strcpy (hostent_List[host_count].ipaddr, token);
-	      strcpy (map_ipaddr, token);
-
-	      hostent_flag = INSERT_IPADDR;
-	    }
-	  else
+	  if (hostent_flag == INSERT_IPADDR)
 	    {
 	      if (strlen (token) > IPADDR_LEN)
 		{
 //err_msg 
 //er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ?2, 1, token);
 //ex) IP address "%1$s" is too long, it should be less than or equal 256
-		  return -1;
+		  return LOAD_FAIL;
 		}
+	      strcpy (map_ipaddr, token);
 
-	      strcpy (hostent_List[host_count].hostname, token);
+	      hostent_flag = INSERT_HOSTNAME;
+	    }
+	  else
+	    {
+	      if (strlen (token) > HOSTNAME_BUF_SIZE + 1)
+		{
+//err_msg 
+//er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ?, 1, token);
+//ex) Hostname "%1$s" is too long, it should be less than or equal 256
+		  return LOAD_FAIL;
+		}
 	      strcpy (map_hostname, token);
 	    }
 	}
       while (token = strtok_r (NULL, delim, &save_ptr_strtok));
 //naming rule check, detailed rule, error set
-//if hostent_List[host_count].hostname is empty, set error
-      if (hostent_List[host_count].hostname != NULL)
+//if string token of hostname is empty, set error
+      if (strcmp ("\0", map_hostname) && strcmp ("\0", map_ipaddr))
 	{
+/*not duplicated hostname*/
 	  if ((user_host_Map.find (map_hostname) == user_host_Map.end ()))
 	    {
 	      user_host_Map[map_hostname] = map_ipaddr;
+	      user_host_Map[map_ipaddr] = map_hostname;
 	    }
 /*duplicated hostname*/
-	  else if (!strcmp (user_host_Map.find (map_hostname)->second.c_str (), hostent_List[host_count].ipaddr))
-	    {
-/*duplicated hostname and ip address both*/
-	    }
 	  else
 	    {
+	      if (strcmp (user_host_Map.find (map_hostname)->second.c_str (), map_ipaddr))
+		{
 /*duplicated hostname but different ip address*/
-//err_msg : duplicated 
+//err_msg : duplicated
 //er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ?2, 1, token);
 //ex) Hostname "%1$s" already exists, a hostname cannot be duplicated with other IP addresses
-	      return -1;
+		  return LOAD_FAIL;
+
+		}
 	    }
-	  host_count++;
+	}
+      else
+	{
+//er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ?, 2, map_ipaddr, map_hostname);
+//err_msg : This IP address "%1$s" or hostname "%1$s" must be completed.
+	  return LOAD_FAIL;
 	}
     }
-  return host_count;
+  return LOAD_SUCCESS;
 }
 
 /*
