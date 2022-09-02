@@ -83,10 +83,9 @@ static unsigned char isSpace[0x100] =
 	    }                                   \
    } while(0)
 
-#define SET_PWD_LENGTH_N_COMMA(s, e, add_comma)  ((add_comma) ? ((0x01 << 31) | ((e) - (s))) : ((e) - (s)))
+#define SET_PWD_LENGTH_N_COMMA(s, e, add_comma)  ((add_comma) ? ((0x01 << 30) | ((e) - (s))) : ((e) - (s)))
+#define IS_PWD_NEED_COMMA(offset_ptr)   ((offset_ptr)[1] >> 30)
 #define GET_END_PWD_OFFSET(offset_ptr)  ((offset_ptr)[0] + ((offset_ptr)[1] & 0x7FFFFFFF))
-#define IS_PWD_NEED_COMMA(offset_ptr)  ((offset_ptr)[1] >> 31)
-
 
 class CHidePassword
 {
