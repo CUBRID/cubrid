@@ -279,9 +279,6 @@ host_conf_load ()
       token = strtok_r (file_line, delim, &save_ptr_strtok);
       hostent_flag = INSERT_IPADDR;
 
-      char map_ipaddr[IPADDR_LEN];
-      char map_hostname[HOSTNAME_BUF_SIZE + 1];
-
       do
 	{
 	  if (*token == '\0' || *token == '#')
@@ -422,7 +419,7 @@ gethostbyname_r_uhost (const char *name,
   if (hp_buf == NULL)
     {
 //err_print fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_FAILED));
-      return EFAULT;
+      return EINVAL;
     }
 
   if (((*result) = (struct hostent *) malloc (sizeof (struct hostent))) == NULL)
