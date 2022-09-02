@@ -394,20 +394,32 @@ gethostbyname_r_uhost (const char *name,
 #endif
 
   struct hostent *hp_buf = NULL;
+#ifdef HAVE_GETHOSTBYNAME_R
+#if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
+  int ret_val = 0;
+#elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
+  struct hostent *ret_val = NULL;
+#elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
+  int ret_val = 0;
+#else
+#error "HAVE_GETHOSTBYNAME_R"
+#endif
+#endif
 
   if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
     {
 #ifdef HAVE_GETHOSTBYNAME_R
 #if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
-      return gethostbyname_r (name, ret, buf, buflen, result, h_errnop);
+      ret_val = gethostbyname_r (name, ret, buf, buflen, result, h_errnop);
 #elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
-      return gethostbyname_r (name, ret, buf, buflen, h_errnop);
+      ret_val = gethostbyname_r (name, ret, buf, buflen, h_errnop);
 #elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
-      return gethostbyname_r (name, ret, &ht_data);
+      ret_val = gethostbyname_r (name, ret, &ht_data);
 #else
 #error "HAVE_GETHOSTBYNAME_R"
 #endif
 #endif
+      goto return_phase;
     }
   else
     {
@@ -419,52 +431,64 @@ gethostbyname_r_uhost (const char *name,
   if (hp_buf == NULL)
     {
 //err_print fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_FAILED));
-      return EINVAL;
-    }
+      ret_val = EINVAL;
 
+      goto return_phase;
+    }
   if (((*result) = (struct hostent *) malloc (sizeof (struct hostent))) == NULL)
     {
-      return NULL;
+      ret_val = ENOMEM;
+
+      goto return_phase;
     }
   memcpy ((void *) ret, (void *) hp_buf, sizeof (struct hostent));
   memcpy ((void *) *result, (void *) hp_buf, sizeof (struct hostent));
 
-  return 0;
+  ret_val = 0;
 #elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
   if (hp_buf == NULL)
     {
 //err_print fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_FAILED));
-      return NULL;
+      ret_val = NULL;
+
+      goto return_phase;
     }
 
   memcpy ((void *) ret, (void *) hp_buf, sizeof (struct hostent));
 
-  return ret;
+  ret_val = ret;
 #elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
   if (hp_buf == NULL)
     {
 //err_print fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_FAILED));
-      return -1;
+      ret_val = -1;
+
+      goto return_phase;
     }
 
   memcpy ((void *) ret, (void *) hp_buf, sizeof (struct hostent));
 
-  return 0;
+  ret_val = 0;
 #else
 #error "HAVE_GETHOSTBYNAME_R"
 #endif /* HAVE_GETHOSTBYNAME_R_GLIBC */
 #endif /* HAVE_GETHOSTBYNAME_R */
+
+return_phase:
+  return ret_val;
 }
+
 
 int
 getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *host, size_t hostlen, char *serv, size_t servlen,
 		   int flags)
 {
+  int ret;
   struct hostent *hp = NULL;
 
   if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
     {
-      return getnameinfo (addr, addrlen, host, hostlen, serv, servlen, flags);
+      ret = getnameinfo (addr, addrlen, host, hostlen, serv, servlen, flags);
     }
   else
     {
@@ -473,17 +497,20 @@ getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *host, size_t 
 	  strncpy (host, hp->h_name, hostlen);
 	  host[CUB_MAXHOSTNAMELEN - 1] = '\0';
 
-	  return 0;
+	  ret = 0;
 	}
-
-      return EINVAL;
+      else
+	{
+	  ret = EINVAL;
+	}
     }
-
+  return ret;
 }
 
 int
 getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct addrinfo **res)
 {
+  int ret = 0;
   struct hostent *hp = NULL;
   struct addrinfo results_out;
   struct sockaddr_in addr_convert;
@@ -491,7 +518,8 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
 
   if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
     {
-      return getaddrinfo (node, service, hints, res);
+      ret = getaddrinfo (node, service, hints, res);
+      goto return_phase;
     }
   else
     {
@@ -501,14 +529,16 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
   if (hp == NULL)
     {
 //err_print fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_FAILED));
-      return EAI_NODATA;
+      ret = EAI_NODATA;
+      goto return_phase;
     }
 
   if ((in_addr_buf = (struct in_addr *) malloc (sizeof (struct in_addr))) == NULL)
     {
       FREE_HOSTENT_MEM (hp);
 //er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct in_addr));
-      return EAI_MEMORY;
+      ret = EAI_MEMORY;
+      goto return_phase;
     }
 
   /*Constitute struct addrinfo for the out parameter res */
@@ -517,7 +547,8 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
       FREE_HOSTENT_MEM (hp);
       free (in_addr_buf);
 //er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct in_addr));
-      return EAI_MEMORY;
+      ret = EAI_MEMORY;
+      goto return_phase;
     }
 
   memset (&results_out, 0, sizeof (results_out));
@@ -528,8 +559,8 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
       freeaddrinfo (*res);
       free (results_out.ai_addr);
 //er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct in_addr));
-      return EAI_MEMORY;
-
+      ret = EAI_MEMORY;
+      goto return_phase;
     }
   results_out.ai_flags = hints->ai_flags;
 
@@ -554,5 +585,7 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
   FREE_MEM (in_addr_buf);
   FREE_MEM (results_out.ai_addr);
 
-  return 0;
+return_phase:
+
+  return ret;
 }
