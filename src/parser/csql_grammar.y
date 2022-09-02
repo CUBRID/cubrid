@@ -187,7 +187,12 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 
 static int parser_groupby_exception = 0;
 
-
+static int parser_call_check = 0;
+static int method_arg_idx = 0;
+static int method_password_arg_idx = -1;
+static int pwd_start_offset = -1;
+static int pwd_end_offset = -1;
+static int pwd_comma_offset = -1;
 
 
 /* xxxnum_check: 0 not allowed, no compatibility check
@@ -1718,6 +1723,12 @@ stmt
 	:
 		{{ DBG_TRACE_GRAMMAR(stmt, : );
 			msg_ptr = 0;
+
+                        pwd_start_offset = -1;
+                        pwd_end_offset = -1;
+                        pwd_comma_offset = -1;
+                        parser_call_check = 0;
+                        method_arg_idx = 0;
 
 			if (this_parser->original_buffer)
 			  {
@@ -8870,14 +8881,21 @@ opt_password
 		{{ DBG_TRACE_GRAMMAR(opt_password, : );
 
 			$$ = NULL;
+                        pwd_start_offset = (@$.buffer_pos);
+                        pwd_end_offset = (@$.buffer_pos);
+                        pt_add_password_offset(pwd_start_offset, pwd_end_offset, false);
 
 		DBG_PRINT}}
 	| PASSWORD
-		{ push_msg(MSGCAT_SYNTAX_INVALID_PASSWORD); }
+		{ push_msg(MSGCAT_SYNTAX_INVALID_PASSWORD); 
+                  pwd_start_offset = (@$.buffer_pos);
+                }
 	  char_string_literal
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(opt_password, | PASSWORD char_string_literal);
 
+                        pwd_end_offset = (@$.buffer_pos);
+                        pt_add_password_offset(pwd_start_offset, pwd_end_offset, false);
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -8923,14 +8941,22 @@ opt_members
 	;
 
 call_stmt
-	: CALL generic_function into_clause_opt
+	: CALL
+                {{
+                    pwd_comma_offset = -1;
+                    parser_call_check = 1;
+                    method_arg_idx = 0;                
+                    method_password_arg_idx = -1;
+                }}
+         generic_function into_clause_opt
 		{{ DBG_TRACE_GRAMMAR(call_stmt, : CALL generic_function into_clause_opt);
 
-			PT_NODE *node = $2;
+                        parser_call_check = 0;
+			PT_NODE *node = $3;
 			if (node)
 			  {
 			    node->info.method_call.call_or_expr = PT_IS_CALL_STMT;
-			    node->info.method_call.to_return_var = $3;
+			    node->info.method_call.to_return_var = $4;
 			  }
 
 			parser_cannot_prepare = true;
@@ -14242,26 +14268,56 @@ expression_list
 	;
 
 expression_queue
-	: expression_queue  ',' expression_
+	: expression_queue  ','
+            {{
+                if(parser_call_check)
+                  {                           
+                     if(++method_arg_idx == method_password_arg_idx)
+                       {
+                         pwd_start_offset = (@$.buffer_pos);
+                       }
+                  }
+            }}
+          expression_
 		{{ DBG_TRACE_GRAMMAR(expression_queue, : expression_queue  ',' expression_);
 			container_2 new_q;
 
+                        if(parser_call_check && (method_arg_idx == method_password_arg_idx))
+                           {
+                              pwd_end_offset = (@$.buffer_pos);
+                           }
+
 			PT_NODE* q_head = CONTAINER_AT_0($1);
 			PT_NODE* q_tail = CONTAINER_AT_1($1);
-			q_tail->next = $3;
+			q_tail->next = $4;
 
-			SET_CONTAINER_2(new_q, q_head, $3);
+			SET_CONTAINER_2(new_q, q_head, $4);
 			$$ = new_q;
 			PARSER_SAVE_ERR_CONTEXT (q_head, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| expression_
+	| 
+           {{ 
+                if(parser_call_check)
+                  {     
+                     if(++method_arg_idx == method_password_arg_idx)
+                       {
+                          pwd_start_offset = (@$.buffer_pos);;
+                       }
+                  }
+           }}
+           expression_
 		{{ DBG_TRACE_GRAMMAR(expression_queue, | expression_);
 			container_2 new_q;
 
-			SET_CONTAINER_2(new_q, $1, $1);
+                        if(parser_call_check && (method_arg_idx  == method_password_arg_idx))
+                           {
+                              pwd_end_offset = (@$.buffer_pos);
+                           }
+
+			SET_CONTAINER_2(new_q, $2, $2);
 			$$ = new_q;
-			PARSER_SAVE_ERR_CONTEXT ($1, @$.buffer_pos)
+			PARSER_SAVE_ERR_CONTEXT ($2, @$.buffer_pos)
 
 		DBG_PRINT}}
 	;
@@ -18609,12 +18665,26 @@ opt_on_target
 	;
 
 generic_function
-	: identifier '(' opt_expression_list ')' opt_on_target
+	: identifier 
+        {
+            if(parser_call_check)
+            {                
+                if(strcasecmp($1->info.name.original, "set_password")==0)
+                    method_password_arg_idx = 1;
+                else if(strcasecmp($1->info.name.original, "add_user")==0)    
+                   method_password_arg_idx = 2;
+                else if(strcasecmp($1->info.name.original, "login")==0)    
+                    method_password_arg_idx = 2;
+                else
+                    method_password_arg_idx = 0;
+            }
+        }
+        '(' opt_expression_list ')' opt_on_target
 		{{ DBG_TRACE_GRAMMAR(generic_function, : identifier '(' opt_expression_list ')' opt_on_target );
 
 			PT_NODE *node = NULL;
-			if ($5 == NULL)
-			  node = parser_keyword_func ($1->info.name.original, $3);
+			if ($6 == NULL)
+			   node = parser_keyword_func ($1->info.name.original, $4);
 
 			if (node == NULL)
 			  {
@@ -18623,10 +18693,12 @@ generic_function
 			    if (node)
 			      {
 				node->info.method_call.method_name = $1;
-				node->info.method_call.arg_list = $3;
-				node->info.method_call.on_call_target = $5;
+				node->info.method_call.arg_list = $4;
+				node->info.method_call.on_call_target = $6;
 				node->info.method_call.call_or_expr = PT_IS_MTHD_EXPR;
 			      }
+
+                              pt_add_password_offset(pwd_start_offset, pwd_end_offset, (pwd_comma_offset != -1));
 			  }
 
 			$$ = node;
@@ -18686,6 +18758,13 @@ opt_expression_list
 		DBG_PRINT}}
 	| expression_list
 		{{ DBG_TRACE_GRAMMAR(opt_expression_list, | expression_list );
+                        
+                         if((method_password_arg_idx == 2) && (pwd_start_offset == -1 && pwd_end_offset == -1))
+                         {
+                            pwd_comma_offset = (@$.buffer_pos);
+                            pwd_start_offset = pwd_comma_offset;
+                            pwd_end_offset = pwd_comma_offset;
+                         }
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -23803,6 +23882,11 @@ connect_item
         | PASSWORD '=' 
           {{ DBG_TRACE_GRAMMAR(connect_item,   | PASSWORD '='  );
                container_2 ctn;
+
+               pwd_start_offset = (@$.buffer_pos);
+               pwd_end_offset = (@$.buffer_pos);
+               pt_add_password_offset(pwd_start_offset, pwd_end_offset, false);
+
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
 		  {
@@ -23822,9 +23906,16 @@ connect_item
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PASSWORD), val);
                  $$ = ctn;
            DBG_PRINT}}
-        | PASSWORD '=' CHAR_STRING
+        | PASSWORD '=' 
+          {
+                pwd_start_offset = (@$.buffer_pos);
+          }
+          CHAR_STRING
           {{ DBG_TRACE_GRAMMAR(connect_item, | PASSWORD '=' CHAR_STRING );
                 container_2 ctn;
+                
+                pwd_end_offset = (@$.buffer_pos);
+                pt_add_password_offset(pwd_start_offset, pwd_end_offset, false);
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
 		  {
@@ -23833,7 +23924,7 @@ connect_item
                         val->type_enum = PT_TYPE_CHAR;
                         val->info.value.string_type = ' ';
 
-                        if (pt_check_dblink_password(this_parser, $3, cipher, sizeof(cipher)) == NO_ERROR)
+                        if (pt_check_dblink_password(this_parser, $4, cipher, sizeof(cipher)) == NO_ERROR)
                           {                             
                              val->info.value.data_value.str =
                                 pt_append_bytes (this_parser, NULL, cipher, strlen (cipher));

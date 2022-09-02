@@ -37,6 +37,7 @@
 #include "parser.h"
 #include "jansson.h"
 #include "memory_alloc.h"
+#include "password_log.h"
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"
@@ -1182,6 +1183,8 @@ parser_create_parser (void)
       return NULL;
     }
 
+  INIT_PASSWORD_OFFSET (parser->pwd_offset, parser->pwd_offset_ptr, DEFAULT_PWD_OFFSET_CNT);
+
 #if !defined (SERVER_MODE)
   parser_init_func_vectors ();
 #endif /* !SERVER_MODE */
@@ -1243,6 +1246,8 @@ parser_free_parser (PARSER_CONTEXT * parser)
   int i;
 
   assert (parser != NULL);
+
+  QUIT_PASSWORD_OFFSET (parser->pwd_offset, parser->pwd_offset_ptr, DEFAULT_PWD_OFFSET_CNT);
 
   /* free string blocks */
   pt_free_string_blocks (parser);

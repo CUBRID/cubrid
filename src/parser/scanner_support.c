@@ -1382,3 +1382,30 @@ pt_check_hostname (char *p)
 
   return true;
 }
+
+#include "password_log.h"
+/*
+ * pt_add_password_offset () - 
+ *   parser(in/out): 
+ *   return: 
+ */
+int
+pt_add_password_offset (int start, int end, bool is_add_comma)
+{
+  char *qry = (char *) this_parser->original_buffer + start;
+
+  // adjust start offset
+  while (*qry && (start < end))
+    {
+      if (*qry != ' ' && *qry != '\t' && *qry != '\r' && *qry != '\n')
+	{
+	  break;
+	}
+
+      qry++;
+      start++;
+    }
+
+  assert (this_parser->pwd_offset_ptr != NULL);
+  return add_offset_password (this_parser->pwd_offset, &(this_parser->pwd_offset_ptr), start, end, is_add_comma);
+}

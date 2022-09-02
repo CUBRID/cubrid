@@ -49,6 +49,7 @@
 #include "environment_variable.h"
 #include "broker_config.h"
 #include "util_func.h"
+#include "password_log.h"
 
 #define DDL_LOG_MSG 	            (256)
 #define DDL_LOG_PATH    	    "log/ddl_audit"
@@ -101,7 +102,7 @@ static void logddl_backup (const char *path);
 static void unix_style_path (char *path);
 #endif /* WINDOWS */
 static int logddl_create_dir (const char *new_dir);
-static int logddl_create_log_msg (char *msg);
+static int logddl_create_log_msg (char *msg, int *pwd_offset_ptr);
 static int logddl_get_current_date_time_string (char *buf, size_t size);
 static int logddl_file_copy (char *src_file, char *dest_file);
 static void logddl_remove_char (char *string, char ch);
@@ -781,7 +782,7 @@ logddl_write ()
 	  logddl_file_copy (ddl_audit_handle->load_filename, ddl_audit_handle->copy_fullpath);
 	}
 
-      len = logddl_create_log_msg (buf);
+      len = logddl_create_log_msg (buf, NULL /* pwd_offset_ptr */ );
       if (len < 0 || fwrite (buf, sizeof (char), len, fp) != (size_t) len)
 	{
 	  goto write_error;
@@ -967,7 +968,7 @@ logddl_write_end_for_csql_fileinput (const char *fmt, ...)
 	}
       logddl_file_copy (ddl_audit_handle->load_filename, ddl_audit_handle->copy_fullpath);
 
-      len = logddl_create_log_msg (buf);
+      len = logddl_create_log_msg (buf, NULL);
       if (len < 0 || fwrite (buf, sizeof (char), len, fp) != (size_t) len)
 	{
 	  goto write_error;
@@ -998,7 +999,7 @@ logddl_set_logging_enabled (bool enable)
 }
 
 static int
-logddl_create_log_msg (char *msg)
+logddl_create_log_msg (char *msg, int *pwd_offset_ptr)
 {
   int retval = 0;
   char result[20] = { 0 };
@@ -1079,12 +1080,22 @@ logddl_create_log_msg (char *msg)
 	      strcpy (result, "OK");
 	    }
 
-	  retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s|%s\n",
+	  retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s|",
 			     ddl_audit_handle->str_qry_exec_begin_time,
 			     ddl_audit_handle->pid,
 			     ddl_audit_handle->user_name,
-			     result, ddl_audit_handle->elapsed_time, ddl_audit_handle->msg, ddl_audit_handle->sql_text);
+			     result, ddl_audit_handle->elapsed_time, ddl_audit_handle->msg);
 
+	  // ctshim 
+	  int printed_len =
+	    snprint_password (msg + retval, DDL_LOG_BUFFER_SIZE - retval, ddl_audit_handle->sql_text, pwd_offset_ptr);
+
+	  assert (printed_len >= 0);
+	  retval += printed_len;
+	  if (retval < DDL_LOG_BUFFER_SIZE)
+	    {
+	      msg[retval] = '\0';
+	    }
 	}
     }
   else
@@ -1103,17 +1114,27 @@ logddl_create_log_msg (char *msg)
 	  snprintf (ddl_audit_handle->elapsed_time, sizeof (ddl_audit_handle->elapsed_time), "elapsed time 0.000");
 	}
 
-      retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %s|%s|%s|%s|%s|%s\n",
+      // ctshim 
+      retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %s|%s|%s|%s|%s|",
 			 ddl_audit_handle->str_qry_exec_begin_time,
 			 ddl_audit_handle->ip_addr,
-			 ddl_audit_handle->user_name,
-			 result, ddl_audit_handle->elapsed_time, ddl_audit_handle->msg, ddl_audit_handle->sql_text);
+			 ddl_audit_handle->user_name, result, ddl_audit_handle->elapsed_time, ddl_audit_handle->msg);
 
+      int printed_len =
+	snprint_password (msg + retval, DDL_LOG_BUFFER_SIZE - retval, ddl_audit_handle->sql_text, pwd_offset_ptr);
+      assert (printed_len >= 0);
+
+      retval += printed_len;
+      if (retval < DDL_LOG_BUFFER_SIZE)
+	{
+	  msg[retval] = '\0';
+	}
     }
 
-  if (retval >= DDL_LOG_BUFFER_SIZE)
+  if (retval >= (DDL_LOG_BUFFER_SIZE - 1))
     {
       msg[DDL_LOG_BUFFER_SIZE - 2] = '\n';
+      msg[DDL_LOG_BUFFER_SIZE - 1] = '\0';
       retval = DDL_LOG_BUFFER_SIZE;
     }
   return retval;

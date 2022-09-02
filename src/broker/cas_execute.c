@@ -2415,16 +2415,28 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       cas_log_write_nonl (0, false, "batch %d : ", query_index + 1);
       if (sql_stmt != NULL)
 	{
+#if 0				// ctshim
 	  cas_log_write_query_string_nonl (sql_stmt, strlen (sql_stmt));
+#endif
 	  logddl_set_sql_text (sql_stmt, (int) strlen (sql_stmt));
 	}
 
       session = db_open_buffer (sql_stmt);
       if (!session)
 	{
+#if 1				// ctshim
+	  cas_log_write_query_string_nonl (sql_stmt, strlen (sql_stmt), NULL);
+#endif
 	  cas_log_write2 ("");
 	  goto batch_error;
 	}
+#if 1				// ctshim
+      else
+	{
+	  assert (session->parser);
+	  cas_log_write_query_string_nonl (sql_stmt, strlen (sql_stmt), session->parser->pwd_offset_ptr);
+	}
+#endif
 
       SQL_LOG2_COMPILE_BEGIN (as_info->cur_sql_log2, sql_stmt);
 
@@ -11449,3 +11461,181 @@ recompile_statement (T_SRV_HANDLE * srv_handle)
 
   return err_code;
 }
+
+#if 0
+int
+check_have_password (T_SRV_HANDLE * srv_handle, int **password_stmt_idx, int *size)
+{
+  DB_SESSION *session = (DB_SESSION *) srv_handle->session;
+  PARSER_CONTEXT *parser;
+  PT_NODE *node;
+  bool flag = false;
+  int count = 0;
+  int *idx_ptr = *password_stmt_idx;
+
+  if (srv_handle->session == NULL)
+    {
+      return -1;
+    }
+
+  parser = ((DB_SESSION *) srv_handle->session)->parser;
+
+  fprintf (stdout, "[input_buffer_length=%d, input_buffer_position=%d]\n", parser->input_buffer_length,
+	   parser->input_buffer_position);
+  fprintf (stdout, "[%s]\n", parser->original_buffer);
+  fflush (stdout);
+
+  char *bufptr = (char *) parser->original_buffer;
+  char *tmp = bufptr;
+  char chbk;
+  int pos;
+
+  fprintf (stdout, "\n[", tmp);
+  for (int x = 0; x < parser->statement_number; x++)
+    {
+      node = parser->statements[x];
+      if (node->buffer_pos_pwd[0] != -1)
+	{
+
+	  pos = node->buffer_pos_pwd[0];
+	  while (bufptr[pos])
+	    {
+	      if (bufptr[pos] == ' ' || bufptr[pos] == '\t')
+		pos++;
+	      else
+		break;
+	    }
+
+	  chbk = bufptr[pos];
+	  bufptr[pos] = '\0';
+	  fprintf (stdout, "%s", tmp);
+	  bufptr[pos] = chbk;
+	  fprintf (stdout, "'****'");
+	  tmp = bufptr + node->buffer_pos_pwd[1];
+	}
+    }
+
+  if (*tmp)
+    fprintf (stdout, "%s", tmp);
+
+  fprintf (stdout, "]\n", tmp);
+
+  return -1;
+
+  //for(int x = 0; x < session->dimension; x++)
+  for (int x = 0; x < parser->statement_number; x++)
+    {
+      //node = session->statements[x];
+      node = parser->statements[x];
+
+      fprintf (stdout, "**[%s]\n", parser->original_buffer + node->column_number);
+
+      char chbk = node->sql_user_text[node->sql_user_text_len];
+      node->sql_user_text[node->sql_user_text_len] = '\0';
+      fprintf (stdout, "[%s]\n", node->sql_user_text);
+      fprintf (stdout, "[column_number=%d, buffer_pos=%d]\n", node->column_number, node->buffer_pos);
+      node->sql_user_text[node->sql_user_text_len] = chbk;
+
+      fprintf (stdout, "##[%s]\n", parser->original_buffer + node->buffer_pos);
+
+      fflush (stdout);
+
+      switch (node->node_type)
+	{
+	case PT_CREATE_SERVER:
+	  flag = true;
+	  break;
+	case PT_ALTER_SERVER:
+	  if (node->info.alter_server.xbits.bit_pwd == 1)
+	    {
+	      flag = true;
+	    }
+	  break;
+	case PT_CREATE_USER:
+	case PT_ALTER_USER:
+	  flag = true;
+	  break;
+	case PT_METHOD_CALL:
+	  // node->info.method_call.call_or_expr = PT_IS_CALL_STMT;
+	  flag = true;
+	  break;
+	default:
+	  break;
+	}
+
+      if (flag)
+	{
+	  if (*size <= count)
+	    {
+	      int *tp = (int *) malloc ((count * 2) * sizeof (int));
+	      assert (tp);
+	      memcpy (tp, idx_ptr, count * sizeof (int));
+	      if (idx_ptr != *password_stmt_idx)
+		{
+		  free (idx_ptr);
+		}
+	      idx_ptr = tp;
+	    }
+
+	  idx_ptr[count++] = x;
+	  flag = false;
+	}
+
+    }
+
+  *password_stmt_idx = idx_ptr;
+  return count;
+}
+#endif
+
+#if 0
+int
+check_have_password (T_SRV_HANDLE * srv_handle)
+{
+  DB_SESSION *session = (DB_SESSION *) srv_handle->session;
+  PARSER_CONTEXT *parser;
+  PT_NODE *node;
+  bool flag = false;
+  int count = 0;
+
+  if (srv_handle->session == NULL)
+    {
+      return -1;
+    }
+
+  parser = ((DB_SESSION *) srv_handle->session)->parser;
+
+  fprintf (stdout, "ORIGINAL [%s]\n", parser->original_buffer);
+  fflush (stdout);
+
+  char *bufptr = (char *) parser->original_buffer;
+  int *offset_ptr = parser->pwd_offset_ptr;
+  char *tmp = bufptr;
+  char chbk;
+  int pos;
+
+  fprintf (stdout, "PASSWORD[");
+
+  for (int x = 2; x < offset_ptr[1]; x += 2)
+    {
+      pos = offset_ptr[x];
+      chbk = bufptr[pos];
+      bufptr[pos] = '\0';
+      fprintf (stdout, "%s", tmp);
+      bufptr[pos] = chbk;
+
+      if (offset_ptr[x + 1] >> 31)
+	fprintf (stdout, ", '****'");
+      else
+	fprintf (stdout, "'****'");
+
+      tmp = bufptr + (offset_ptr[x] + (offset_ptr[x + 1] & 0x7FFFFFFF));
+    }
+
+  if (*tmp)
+    fprintf (stdout, "%s", tmp);
+
+  fprintf (stdout, "]\n");
+  return 0;
+}
+#endif

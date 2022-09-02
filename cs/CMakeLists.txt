@@ -110,6 +110,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/misc_string.c
   ${BASE_DIR}/mprec.c
   ${BASE_DIR}/packer.cpp
+  ${BASE_DIR}/password_log.cpp
   ${BASE_DIR}/get_clock_freq.c
   ${BASE_DIR}/perf.cpp
   ${BASE_DIR}/perf_monitor.c

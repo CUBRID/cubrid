@@ -58,6 +58,9 @@
 #include "broker_filename.h"
 #include "cas_sql_log2.h"
 #include "dbtype.h"
+#include "parse_tree.h"
+#include "api_compat.h"
+
 #include "object_primitive.h"
 #include "ddl_log.h"
 
@@ -370,8 +373,9 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
 
   cas_log_write_nonl (query_seq_num_next_value (), false, "prepare %d ", flag);
+#if 0				// ctshim
   cas_log_write_query_string (sql_stmt, sql_size - 1);
-
+#endif
 
   SQL_LOG2_COMPILE_BEGIN (as_info->cur_sql_log2, ((const char *) sql_stmt));
 
@@ -407,6 +411,21 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
 
   srv_handle = hm_find_srv_handle (srv_h_id);
+
+#if 1				// ctshim
+  if (srv_handle)
+    {
+      assert (srv_handle->session);
+      assert (((DB_SESSION *) srv_handle->session)->parser);
+      PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
+
+      cas_log_write_query_string (sql_stmt, sql_size - 1, psr->pwd_offset_ptr);
+    }
+  else
+    {
+      cas_log_write_query_string (sql_stmt, sql_size - 1, NULL);
+    }
+#endif
 
   cas_log_write (query_seq_num_current_value (), false, "prepare srv_h_id %s%d%s%s", (srv_h_id < 0) ? "error:" : "",
 		 (srv_h_id < 0) ? err_info.err_number : srv_h_id, (srv_handle != NULL
@@ -649,7 +668,11 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   cas_log_write_nonl (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s srv_h_id %d ", exec_func_name, srv_h_id);
   if (srv_handle->sql_stmt != NULL)
     {
-      cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
+      assert (srv_handle->session);
+      assert (((DB_SESSION *) srv_handle->session)->parser);
+      PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
+      // ctshim
+      cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), psr->pwd_offset_ptr);
       logddl_set_sql_text (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
     }
   cas_log_debug (ARG_FILE_LINE, "%s%s", auto_commit_mode ? "auto_commit_mode " : "",
@@ -752,7 +775,13 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 			      exec_func_name, srv_h_id);
 	  if (srv_handle->sql_stmt != NULL)
 	    {
-	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
+
+	      assert (srv_handle->session);
+	      assert (((DB_SESSION *) srv_handle->session)->parser);
+	      PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
+
+	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt),
+					       psr->pwd_offset_ptr);
 	      bind_value_log (&query_start_time, bind_value_index, argc, argv, param_mode_size, param_mode,
 			      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true);
 	    }
@@ -1752,7 +1781,11 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 		      (argc - arg_index) / 2);
   if (srv_handle->sql_stmt != NULL)
     {
-      cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
+      assert (srv_handle->session);
+      assert (((DB_SESSION *) srv_handle->session)->parser);
+      PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
+      //ctshim
+      cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), psr->pwd_offset_ptr);
       logddl_set_sql_text (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
     }
 
@@ -1797,7 +1830,12 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 			      "execute_array srv_h_id %d %d ", srv_h_id, (argc - 2) / 2);
 	  if (srv_handle->sql_stmt != NULL)
 	    {
-	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
+	      assert (srv_handle->session);
+	      assert (((DB_SESSION *) srv_handle->session)->parser);
+	      PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
+
+	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt),
+					       psr->pwd_offset_ptr);
 	      bind_value_log (&query_start_time, 2, argc - 1, argv, 0, NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle),
 			      true);
 	    }

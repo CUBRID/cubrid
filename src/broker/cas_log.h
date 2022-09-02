@@ -49,9 +49,9 @@ extern void cas_log_write_and_end (unsigned int seq_num, bool unit_start, const 
 extern void cas_log_write2_nonl (const char *fmt, ...);
 extern void cas_log_write2 (const char *fmt, ...);
 extern void cas_log_write_value_string (char *value, int size);
-extern void cas_log_write_query_string (char *query, int size);
+extern void cas_log_write_query_string (char *query, int size, int *pwd_offset_ptr);
 extern void cas_log_write_client_ip (const unsigned char *ip_addr);
-extern void cas_log_write_query_string_nonl (char *query, int size);
+extern void cas_log_write_query_string_nonl (char *query, int size, int *pwd_offset_ptr);
 
 #define ARG_FILE_LINE   __FILE__, __LINE__
 #if defined (NDEBUG)
@@ -72,5 +72,5 @@ extern void cas_slow_log_write_and_end (struct timeval *log_time, unsigned int s
 
 extern void cas_slow_log_write2 (const char *fmt, ...);
 extern void cas_slow_log_write_value_string (char *value, int size);
-extern void cas_slow_log_write_query_string (char *query, int size);
+extern void cas_slow_log_write_query_string (char *query, int size, int *pwd_offset_ptr);
 #endif /* _CAS_LOG_H_ */
