@@ -7861,22 +7861,38 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	    }
 
 	  agg_ptr = buildvalue->agg_list;
-	  if (!xasl->scan_ptr	/* no scan procedure */
-	      && !xasl->fptr_list	/* no path expressions */
-	      && !xasl->if_pred	/* no if predicates */
+	  /* check only one count(*) function
+	   * TO_DO : this routine can be moved to XASL generator */
+	  if (!xasl->fptr_list	/* no path expressions */
 	      && !xasl->instnum_pred	/* no instnum predicate */
 	      && agg_ptr->next == NULL	/* no other aggregate functions */
 	      && agg_ptr->function == PT_COUNT_STAR)
 	    {
-	      /* only one count(*) function */
-	      ACCESS_SPEC_TYPE *specp = xasl->spec_list;
+	      ACCESS_SPEC_TYPE *specp;
+	      bool is_scan_ptr = xasl->scan_ptr ? true : false;
+	      /* get last scan_ptr */
+	      xptr = xasl;
+	      while (xptr->scan_ptr)
+		{
+		  xptr = xptr->scan_ptr;
+		}
+	      specp = xptr->spec_list;
+	      assert (specp);
+
+	      /* count(*) query will scan an index but does not have a data-filter */
 	      if (specp->next == NULL && specp->access == ACCESS_METHOD_INDEX
 		  && specp->s.cls_node.cls_regu_list_pred == NULL && specp->where_pred == NULL
-		  && !specp->indexptr->use_iss && !SCAN_IS_INDEX_MRO (&specp->s_id.s.isid))
+		  && !specp->indexptr->use_iss && !SCAN_IS_INDEX_MRO (&specp->s_id.s.isid)
+		  && !xptr->if_pred /* no if predicates */ )
 		{
-		  /* count(*) query will scan an index but does not have a data-filter */
+		  /* there are two optimization for query having count() only
+		   * 1. Skip saving data to temporary files.
+		   * 2. Skip iteration for each index keys (no scan ptr only) */
 		  specp->s_id.s.isid.need_count_only = true;
-		  count_star_with_iscan_opt = true;
+		  if (!is_scan_ptr)
+		    {
+		      count_star_with_iscan_opt = true;
+		    }
 		}
 	    }
 	}
@@ -7942,8 +7958,10 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 	  if (count_star_with_iscan_opt)
 	    {
+	      /* count only query without join can skip iteration for index keys */
+	      xasl->curr_spec->s_id.position = S_BEFORE;
 	      xasl->proc.buildvalue.agg_list->accumulator.curr_cnt += (&xasl->curr_spec->s_id)->s.isid.oids_count;
-	      /* may have more scan ranges */
+	      /* may have more OIDs */
 	      continue;
 	    }
 	  /* set scan item as qualified */
