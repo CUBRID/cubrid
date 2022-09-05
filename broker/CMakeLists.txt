@@ -256,6 +256,7 @@ set(CUB_CAS_SOURCES
   ${BROKER_DIR}/cas_ssl.c
   ${BROKER_DIR}/cas_util.c
   ${BASE_DIR}/ddl_log.c
+  ${BASE_DIR}/password_log.cpp
   )
 
 if(UNIX)
