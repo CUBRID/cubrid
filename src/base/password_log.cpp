@@ -98,9 +98,7 @@ class CHidePassword
     char *get_passowrd_end_position (char *ps, bool is_server);
     char *skip_one_query (char *query);
     bool check_lead_string_in_query (char **query, char **method_name);
-
-    int fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf) (FILE *, const char *, ...));
-
+    void fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf) (FILE *, const char *, ...));
 
   public:
     CHidePassword ()
@@ -680,7 +678,7 @@ CHidePassword::snprint_password (char *msg, int size, char *query, int *offset_p
   return length;
 }
 
-int
+void
 CHidePassword::fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf) (FILE *, const char *, ...))
 {
   int offset;
