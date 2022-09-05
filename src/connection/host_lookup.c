@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -98,7 +98,7 @@ struct cub_hostent
 typedef struct cub_hostent CUB_HOSTENT;
 static const char user_defined_hostfile_Name[] = "hosts.conf";
 
-static int hosts_conf_file_Load = 0;
+static int hosts_conf_file_Load = LOAD_INIT;
 
 /*Hostname and IP address are both stored in the user_host_Map to search both of them*/
 // *INDENT-OFF*
@@ -179,7 +179,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
   if (hosts_conf_file_Load == LOAD_INIT)
     {
       hosts_conf_file_Load = host_conf_load ();
-      if (hosts_conf_file_Load == LOAD_INIT || hosts_conf_file_Load == LOAD_FAIL)
+      if ((hosts_conf_file_Load = host_conf_load ()) == LOAD_FAIL)
 	{
 //err_set : load fail
 	  return NULL;
@@ -281,7 +281,7 @@ host_conf_load ()
 
       do
 	{
-	  if (*token == '\0' || *token == '#')
+	  if (*token == NULL || *token == '#')
 	    {
 	      break;
 	    }
@@ -390,6 +390,7 @@ gethostbyname_r_uhost (const char *name,
 #endif				/* HAVE_GETHOSTBYNAME_R */
 {
 #if defined (WINDOWS)
+  int ret_val = 0;
   return 0;
 #endif
 
