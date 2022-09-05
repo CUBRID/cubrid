@@ -45,7 +45,7 @@
 #include "cas_common.h"
 #include "password_log.h"
 //#include "parse_tree.h"
-//#include "system_parameter.h"
+#include "system_parameter.h"
 //#include "environment_variable.h"
 //#include "broker_config.h"
 //#include "util_func.h"
@@ -100,9 +100,12 @@ class CHidePassword
     bool check_lead_string_in_query (char **query, char **method_name);
     void fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf) (FILE *, const char *, ...));
 
+    bool  use_backslash_escape;
+
   public:
     CHidePassword ()
     {
+      use_backslash_escape = ! prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES);
     };
     ~CHidePassword ()
     {
@@ -153,7 +156,11 @@ CHidePassword::get_quot_string (char *ps)
 
   for (ps++; *ps; ps++)
     {
-      if (*ps == quot_char)
+      if (*ps == '\\' && use_backslash_escape)
+	{
+	  ps++;
+	}
+      else if (*ps == quot_char)
 	{
 	  ps++;
 	  return ps;
@@ -173,20 +180,7 @@ CHidePassword::get_token (char *&in, int &len)
   ps = in;
   if (*in == '\'' || *in == '"')
     {
-#if 1
       in = get_quot_string (in);
-#else
-      check_char = *in;
-      in++;
-      while (*in && *in != check_char)
-	{
-	  in++;
-	}
-      if (*in)
-	{
-	  in++;
-	}
-#endif
       len = (int) (in - ps);
       return ps;
     }
@@ -310,19 +304,11 @@ CHidePassword::get_passowrd_start_position (char *query, bool *is_server)
   *is_server = false;
   while (*ps)
     {
-#if 0
-      if ((ps = stristr (ps, "password")) == NULL)
-	{
-	  return NULL;
-	}
-      ps += 8;			/* strlen("password") */
-#else
       token = get_token (ps, len);
       if (len != 8 || strncasecmp (token, "password", 8) != 0)
 	{
 	  continue;
 	}
-#endif
 
       SKIP_SPACE_CHARACTERS (ps);
       if (*ps == '=')
@@ -396,8 +382,11 @@ CHidePassword::get_passowrd_end_position (char *ps, bool is_server)
     {
       for (; *tp; tp++)
 	{
-	  // TODO: escape
-	  if (*tp == delimiter)
+	  if (*tp == '\\' && use_backslash_escape)
+	    {
+	      tp++;
+	    }
+	  else if (*tp == delimiter)
 	    {
 	      tp++;
 	      if (*tp != delimiter)
@@ -430,19 +419,7 @@ CHidePassword::skip_one_query (char *query)
     {
       if (*ps == '\'' || *ps == '"')
 	{
-#if 1
 	  ps = get_quot_string (ps);
-#else
-	  char delimiter = *ps;
-	  for (ps++; *ps; ps++)
-	    {
-	      if (*ps == delimiter)
-		{
-		  break;
-		}
-	    }
-#endif
-
 	  if (*ps == '\0')
 	    {
 	      break;
