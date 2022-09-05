@@ -1728,7 +1728,9 @@
 
 #define ER_CGW_INVALID_COLUMNS_SPECIFIED         -1352
 
-#define ER_LAST_ERROR                               -1353
+#define ER_UHOST_IP_ADDR_TOO_LONG         -1353
+
+#define ER_LAST_ERROR                               -1354
 
 /*
  * CAUTION!

@@ -39,6 +39,8 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "cci_common.h"
+#include "message_catalog.h"
+
 
 #define HOSTNAME_BUF_SIZE              (256)
 #define MAX_HOSTS_LINE_NUM       (256)
@@ -178,7 +180,6 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 
   if (hosts_conf_file_Load == LOAD_INIT)
     {
-      hosts_conf_file_Load = host_conf_load ();
       if ((hosts_conf_file_Load = host_conf_load ()) == LOAD_FAIL)
 	{
 //err_set : load fail
@@ -290,8 +291,10 @@ host_conf_load ()
 	      if (strlen (token) > IPADDR_LEN)
 		{
 //err_msg 
-//er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ?2, 1, token);
-//ex) IP address "%1$s" is too long, it should be less than or equal 256
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_IP_ADDR_TOO_LONG, 1, token);
+		  fprintf (stdout, "%s\n", er_msg ());	//fix needed
+		  user_host_Map.clear ();
+//ex) IP address "%1$s" is too long, it should be less than or equal 16
 		  return LOAD_FAIL;
 		}
 	      strcpy (map_ipaddr, token);
