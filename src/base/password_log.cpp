@@ -85,7 +85,7 @@ static unsigned char isSpace[0x100] =
 
 #define SET_PWD_LENGTH_N_COMMA(s, e, add_comma)  ((add_comma) ? ((0x01 << 30) | ((e) - (s))) : ((e) - (s)))
 #define IS_PWD_NEED_COMMA(offset_ptr)   ((offset_ptr)[1] >> 30)
-#define GET_END_PWD_OFFSET(offset_ptr)  ((offset_ptr)[0] + ((offset_ptr)[1] & 0x7FFFFFFF))
+#define GET_END_PWD_OFFSET(offset_ptr)  ((offset_ptr)[0] + ((offset_ptr)[1] & 0x0FFFFFFF))
 
 class CHidePassword
 {
@@ -838,7 +838,7 @@ add_offset_password (int *fixed_array, int **pwd_offset_ptr, int start, int end,
 
   alloc_szie = offset_ptr[0];
   used_size = offset_ptr[1];
-  assert (used_size >= 4);
+  assert (used_size >= 2);
 
   if (alloc_szie < (used_size + 2))
     {

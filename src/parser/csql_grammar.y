@@ -18712,7 +18712,10 @@ generic_function
 				node->info.method_call.call_or_expr = PT_IS_MTHD_EXPR;
 			      }
 
-                              pt_add_password_offset(pwd_start_offset, pwd_end_offset, (pwd_comma_offset != -1));
+                              if ($6 != NULL && parser_call_check && method_password_arg_idx != 0)
+                              {
+                                 pt_add_password_offset(pwd_start_offset, pwd_end_offset, (pwd_comma_offset != -1));
+                              }
 			  }
 
 			$$ = node;
