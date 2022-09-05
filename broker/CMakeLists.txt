@@ -320,6 +320,7 @@ set(CUB_CAS_CGW_SOURCES
   ${BROKER_DIR}/cas_cgw.c
   ${BROKER_DIR}/cas_util.c
   ${BASE_DIR}/ddl_log.c
+  ${BASE_DIR}/password_log.cpp
   )
 
 if(UNIX)
