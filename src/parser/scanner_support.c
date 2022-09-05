@@ -1389,26 +1389,28 @@ pt_check_hostname (char *p)
  *   parser(in/out): 
  *   return: 
  */
-int
+void
 pt_add_password_offset (int start, int end, bool is_add_comma)
 {
-  if (start > 0)
+  if (start < 0 || end < 0)
     {
-      char *qry = (char *) this_parser->original_buffer + start;
+      return;
+    }
 
-      // adjust start offset
-      while (*qry && (start < end))
+  char *qry = (char *) this_parser->original_buffer + start;
+
+  // adjust start offset
+  while (*qry && (start < end))
+    {
+      if (*qry != ' ' && *qry != '\t' && *qry != '\r' && *qry != '\n')
 	{
-	  if (*qry != ' ' && *qry != '\t' && *qry != '\r' && *qry != '\n')
-	    {
-	      break;
-	    }
-
-	  qry++;
-	  start++;
+	  break;
 	}
+
+      qry++;
+      start++;
     }
 
   assert (this_parser->pwd_offset_ptr != NULL);
-  return add_offset_password (this_parser->pwd_offset, &(this_parser->pwd_offset_ptr), start, end, is_add_comma);
+  (void) add_offset_password (this_parser->pwd_offset, &(this_parser->pwd_offset_ptr), start, end, is_add_comma);
 }
