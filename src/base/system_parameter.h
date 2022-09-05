@@ -405,9 +405,10 @@ enum param_id
   PRM_ID_PB_MONITOR_LOCKS,
 
   PRM_ID_CTE_MAX_RECURSIONS,
+  PRM_ID_FIRST_LOG_PAGEID,	/* Except for QA or TEST purposes, never use it. */
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_CTE_MAX_RECURSIONS
+  PRM_LAST_ID = PRM_ID_FIRST_LOG_PAGEID
 };
 
 /*
