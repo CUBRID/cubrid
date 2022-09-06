@@ -121,7 +121,7 @@ namespace cublog
 	    set_lowest_unapplied_lsa ();
 	    break;
 	  case LOG_END_ATOMIC_REPL:
-	    assert (!m_atomic_helper.is_part_of_atomic_replication (header.trid));
+	    assert (m_atomic_helper.is_part_of_atomic_replication (header.trid));
 	    // non-sysop and sysop atomic replication sequences cannot mix
 	    assert (!m_atomic_helper.can_end_sysop_sequence (header.trid));
 	    m_atomic_helper.unfix_sequence (&thread_entry, header.trid);
