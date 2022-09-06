@@ -4458,7 +4458,7 @@ exit_on_error:
  * lsa (in) : lsa to be set
  */
 int
-or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa)
+or_mvcc_set_log_lsa_to_record (RECDES * record, const LOG_LSA * lsa)
 {
   int mvcc_flags = or_mvcc_get_flag (record);
   int lsa_offset = -1;

@@ -479,7 +479,6 @@ namespace cublog
 	  }
 	break;
       }
-      //case RVBT_GET_NEWPAGE:
       default:
 	m_page_ptr = pgbuf_fix (thread_p, &m_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	if (m_page_ptr == nullptr)
