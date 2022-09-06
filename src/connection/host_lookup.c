@@ -42,8 +42,8 @@
 #include "message_catalog.h"
 
 
-#define HOSTNAME_BUF_SIZE              (256)
-#define MAX_HOSTS_LINE_NUM       (256)
+#define HOSTNAME_BUF_SIZE              (128)
+#define MAX_HOSTS_LINE_SIZE       (256)
 #define IPADDR_LEN              (17)
 
 #define FREE_MEM(PTR)           \
@@ -126,6 +126,7 @@ hostent_init ()
 
   if ((hp = (struct hostent *) malloc (sizeof (struct hostent))) == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct hostent));
       return NULL;
     }
 
@@ -141,6 +142,8 @@ hostent_init ()
       FREE_MEM (hp->h_aliases);
       FREE_MEM (hp->h_name);
       FREE_MEM (hp);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char) * (HOSTNAME_BUF_SIZE + 1));
       return NULL;
     }
 
@@ -157,6 +160,7 @@ hostent_init ()
       FREE_MEM (hp->h_name);
       FREE_MEM (hp);
 
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char) * (HOSTNAME_BUF_SIZE + 1));
       return NULL;
     }
 
@@ -195,7 +199,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
     {
       if (inet_ntop (AF_INET, &addr_trans->sin_addr, addr_trans_ch_buf, sizeof (addr_trans_ch_buf)) == NULL)
 	{
-//err_msg : convert binary to text fail
+	  fprintf (stderr, "Convertion IP address from binary form to text is failed");
 	  return NULL;
 	}
 
@@ -214,13 +218,22 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
     }
   else
     {
-//err_msg : hosts.conf has no info
+      if (lookup_case == HOSTNAME_TO_IPADDR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_CANT_LOOKUP_INFO, 1, hostname);
+	  fprintf (stdout, "%s\n", er_msg ());
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_CANT_LOOKUP_INFO, 1, addr_trans_ch_buf);
+	  fprintf (stdout, "%s\n", er_msg ());
+	}
       return NULL;
     }
 
   if (inet_pton (AF_INET, ipaddr_buf, addr_trans_bi_buf) < 1)
     {
-//err_set : convert text to binary fail -> reverse
+      fprintf (stderr, "Convertion IP address from text form to binary is failed");
       return NULL;
     }
 
@@ -241,8 +254,7 @@ static int
 host_conf_load ()
 {
   FILE *fp;
-  char file_line[HOSTNAME_BUF_SIZE + 1];
-  char line_buf[HOSTNAME_BUF_SIZE + 1];
+  char file_line[MAX_HOSTS_LINE_SIZE + 1];
   char host_conf_file_full_path[PATH_MAX];
   char *hosts_conf_dir;
 
@@ -257,20 +269,18 @@ host_conf_load ()
   bool hostent_flag;
   HOSTENT_INSERT_TYPE hostent_insert_Type;
 
-  memset (file_line, 0, HOSTNAME_BUF_SIZE + 1);
-  memset (line_buf, 0, HOSTNAME_BUF_SIZE + 1);
+  memset (file_line, 0, MAX_HOSTS_LINE_SIZE + 1);
 
   hosts_conf_dir = envvar_confdir_file (host_conf_file_full_path, PATH_MAX, "hosts.conf");
   fp = fopen (hosts_conf_dir, "r");
   if (fp == NULL)
     {
-//err_msg : file open fail
-//er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, host_conf_file_full_path);
-//fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_IO_MOUNT_FAIL));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, host_conf_file_full_path);
+      fprintf (stdout, "%s\n", er_msg ());
       return LOAD_FAIL;
     }
 
-  while (fgets (file_line, HOSTNAME_BUF_SIZE + 1, fp) != NULL)
+  while (fgets (file_line, MAX_HOSTS_LINE_SIZE + 1, fp) != NULL)
     {
       if (file_line[0] == '#')
 	continue;
@@ -290,11 +300,13 @@ host_conf_load ()
 	    {
 	      if (strlen (token) > IPADDR_LEN)
 		{
-//err_msg 
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_IP_ADDR_TOO_LONG, 1, token);
-		  fprintf (stdout, "%s\n", er_msg ());	//fix needed
+		  fprintf (stdout, "%s\n", er_msg ());
+
 		  user_host_Map.clear ();
-//ex) IP address "%1$s" is too long, it should be less than or equal 16
+
+		  fclose (fp);
+
 		  return LOAD_FAIL;
 		}
 	      strcpy (map_ipaddr, token);
@@ -305,34 +317,41 @@ host_conf_load ()
 	    {
 	      if (strlen (token) > HOSTNAME_BUF_SIZE + 1)
 		{
-//err_msg 
-//er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ?, 1, token);
-//ex) Hostname "%1$s" is too long, it should be less than or equal 256
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_TOO_LONG, 1, token);
+		  fprintf (stdout, "%s\n", er_msg ());
+
+		  user_host_Map.clear ();
+
+		  fclose (fp);
+
 		  return LOAD_FAIL;
 		}
 	      strcpy (map_hostname, token);
 	    }
 	}
       while (token = strtok_r (NULL, delim, &save_ptr_strtok));
-//naming rule check, detailed rule, error set
-//if string token of hostname is empty, set error
+
       if (strcmp ("\0", map_hostname) && strcmp ("\0", map_ipaddr))
 	{
-/*not duplicated hostname*/
+	  /*not duplicated hostname */
 	  if ((user_host_Map.find (map_hostname) == user_host_Map.end ()))
 	    {
 	      user_host_Map[map_hostname] = map_ipaddr;
 	      user_host_Map[map_ipaddr] = map_hostname;
 	    }
-/*duplicated hostname*/
+	  /*duplicated hostname */
 	  else
 	    {
 	      if (strcmp (user_host_Map.find (map_hostname)->second.c_str (), map_ipaddr))
 		{
-/*duplicated hostname but different ip address*/
-//err_msg : duplicated
-//er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ?2, 1, token);
-//ex) Hostname "%1$s" already exists, a hostname cannot be duplicated with other IP addresses
+		  /*duplicated hostname but different ip address */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_ALREADY_EXIST, 1, map_hostname);
+		  fprintf (stdout, "%s\n", er_msg ());
+
+		  user_host_Map.clear ();
+
+		  fclose (fp);
+
 		  return LOAD_FAIL;
 
 		}
@@ -340,11 +359,18 @@ host_conf_load ()
 	}
       else
 	{
-//er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ?, 2, map_ipaddr, map_hostname);
-//err_msg : This IP address "%1$s" or hostname "%1$s" must be completed.
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_IP_ADDR_NOT_COMPLETE, 0);
+	  fprintf (stdout, "%s\n", er_msg ());
+
+	  user_host_Map.clear ();
+
+	  fclose (fp);
+
 	  return LOAD_FAIL;
 	}
     }
+  fclose (fp);
+
   return LOAD_SUCCESS;
 }
 
@@ -434,7 +460,6 @@ gethostbyname_r_uhost (const char *name,
 #if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
   if (hp_buf == NULL)
     {
-//err_print fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_FAILED));
       ret_val = EINVAL;
 
       goto return_phase;
@@ -442,6 +467,7 @@ gethostbyname_r_uhost (const char *name,
   if (((*result) = (struct hostent *) malloc (sizeof (struct hostent))) == NULL)
     {
       ret_val = ENOMEM;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct hostent));
 
       goto return_phase;
     }
@@ -532,7 +558,6 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
 
   if (hp == NULL)
     {
-//err_print fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_FAILED));
       ret = EAI_NODATA;
       goto return_phase;
     }
@@ -540,7 +565,7 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
   if ((in_addr_buf = (struct in_addr *) malloc (sizeof (struct in_addr))) == NULL)
     {
       FREE_HOSTENT_MEM (hp);
-//er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct in_addr));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct in_addr));
       ret = EAI_MEMORY;
       goto return_phase;
     }
@@ -550,7 +575,7 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
     {
       FREE_HOSTENT_MEM (hp);
       free (in_addr_buf);
-//er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct in_addr));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct addrinfo));
       ret = EAI_MEMORY;
       goto return_phase;
     }
@@ -562,7 +587,7 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
       free (in_addr_buf);
       freeaddrinfo (*res);
       free (results_out.ai_addr);
-//er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct in_addr));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct sockaddr));
       ret = EAI_MEMORY;
       goto return_phase;
     }
