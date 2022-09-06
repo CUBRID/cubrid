@@ -6957,7 +6957,7 @@ log_dump_record_sysop_start_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LO
 
   (void) log_dump_record_sysop_end_internal (thread_p, &sysop_start_postpone.sysop_end, log_lsa, log_page_p, log_zip_p,
 					     out_fp);
-  fprintf (out_fp, "     postpone_lsa = %lld|%d \n", LSA_AS_ARGS (&sysop_start_postpone.posp_lsa));
+  fprintf (out_fp, "     posp_lsa = %lld|%d \n", LSA_AS_ARGS (&sysop_start_postpone.posp_lsa));
 
   return log_page_p;
 }
@@ -6980,7 +6980,7 @@ log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END *
   int undo_length;
   LOG_RCVINDEX rcvindex;
 
-  fprintf (out_fp, ",\n     Prev parent LSA = %lld|%d, Prev_topresult_lsa = %lld|%d, %s \n",
+  fprintf (out_fp, ",\n     lastparent_lsa = %lld|%d, prv_topresult_lsa = %lld|%d, type = %s \n",
 	   LSA_AS_ARGS (&sysop_end->lastparent_lsa), LSA_AS_ARGS (&sysop_end->prv_topresult_lsa),
 	   log_sysop_end_type_string (sysop_end->type));
   switch (sysop_end->type)

@@ -26,8 +26,8 @@ namespace cublog
 {
 
   atomic_replicator::atomic_replicator (const log_lsa &start_redo_lsa)
-    : m_lowest_unapplied_lsa { start_redo_lsa }
-    , replicator (start_redo_lsa, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, 0)
+    : replicator (start_redo_lsa, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, 0)
+    , m_lowest_unapplied_lsa { start_redo_lsa }
   {
 
   }
@@ -115,23 +115,29 @@ namespace cublog
 		    thread_entry, m_redo_lsa);
 	    break;
 	  case LOG_START_ATOMIC_REPL:
-	  case LOG_SYSOP_ATOMIC_START:
-	    if (m_atomic_helper.is_part_of_atomic_replication (header.trid))
-	      {
-		// nested atomic replication
-		assert (false);
-	      }
-	    m_atomic_helper.add_atomic_replication_sequence (header.trid, m_redo_lsa, m_redo_context);
+            // nested atomic replication are not allowed
+	    assert (!m_atomic_helper.is_part_of_atomic_replication (header.trid));
+	    m_atomic_helper.start_sequence (header.trid, m_redo_lsa, m_redo_context);
 	    set_lowest_unapplied_lsa ();
 	    break;
 	  case LOG_END_ATOMIC_REPL:
-	    if (!m_atomic_helper.is_part_of_atomic_replication (header.trid))
-	      {
-		//log here for end without start
-		assert (false);
-	      }
-	    m_atomic_helper.unfix_atomic_replication_sequence (&thread_entry, header.trid);
+	    assert (!m_atomic_helper.is_part_of_atomic_replication (header.trid));
+	    // non-sysop and sysop atomic replication sequences cannot mix
+	    assert (!m_atomic_helper.can_end_sysop_sequence (header.trid));
+	    m_atomic_helper.unfix_sequence (&thread_entry, header.trid);
 	    set_lowest_unapplied_lsa ();
+	    break;
+	  case LOG_SYSOP_ATOMIC_START:
+	    if (m_atomic_helper.is_postpone_sequence_started (header.trid))
+	      {
+		// atomic sequence is part of a postpone sequence
+		// which is itself part of another, previosly started, atomic sequence
+	      }
+	    else
+	      {
+		m_atomic_helper.start_sysop_sequence (header.trid, m_redo_lsa, m_redo_context);
+		set_lowest_unapplied_lsa ();
+	      }
 	    break;
 	  case LOG_MVCC_UNDO_DATA:
 	  {
@@ -148,29 +154,68 @@ namespace cublog
 	    const LOG_REC_SYSOP_END log_rec =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SYSOP_END> ();
 
-	    // if the atomic replication sequence start lsa is higher or equal to the sysop
-	    // end parent lsa, then the atomic sequence can be ended (commited & released)
-	    if (m_atomic_helper.can_end_atomic_sequence (header.trid, log_rec.lastparent_lsa))
+	    if (log_rec.type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE
+		&& m_atomic_helper.is_postpone_sequence_started (header.trid))
 	      {
-		m_atomic_helper.unfix_atomic_replication_sequence (&thread_entry, header.trid);
-		set_lowest_unapplied_lsa ();
+		// this is one of, possibly, several sequences of logic run postpones
+		// which will be treated as a single atomic replication sequence
+
+		// mark that one logical run postpone has ended; helpful only as safe-guard check
+		m_atomic_helper.complete_one_postpone_sequence (header.trid);
+	      }
+	    else
+	      {
+		if (log_rec.type == LOG_SYSOP_END_COMMIT
+		    && m_atomic_helper.is_at_least_one_postpone_sequence_completed (header.trid))
+		  {
+		    // the entire atomic sequence - main and its postone(s) - can be completed
+		    m_atomic_helper.unfix_sequence (&thread_entry, header.trid);
+		    set_lowest_unapplied_lsa ();
+		  }
+		else if (log_rec.type == LOG_SYSOP_END_COMMIT
+			 && !LSA_ISNULL (&log_rec.lastparent_lsa)
+			 && m_atomic_helper.can_end_sysop_sequence (header.trid, log_rec.lastparent_lsa))
+		  {
+		    // atomic sequences performed by user transactions (ie: non-vacuum)
+		    m_atomic_helper.unfix_sequence (&thread_entry, header.trid);
+		    set_lowest_unapplied_lsa ();
+		  }
+		else if (log_rec.type == LOG_SYSOP_END_COMMIT
+			 && m_atomic_helper.can_end_sysop_sequence (header.trid))
+		  {
+		    // for vacuum transactions, the last parent lsa is not filled in
+		    assert (LSA_ISNULL (&log_rec.lastparent_lsa));
+
+		    m_atomic_helper.unfix_sequence (&thread_entry, header.trid);
+		    set_lowest_unapplied_lsa ();
+		  }
+		else
+		  {
+		    if (m_atomic_helper.can_end_sysop_sequence (header.trid, log_rec.lastparent_lsa))
+		      {
+			m_atomic_helper.unfix_sequence (&thread_entry, header.trid);
+			set_lowest_unapplied_lsa ();
+		      }
+		    else
+		      {
+			assert (!m_atomic_helper.is_part_of_atomic_replication (header.trid));
+		      }
+		  }
 	      }
 
 	    read_and_bookkeep_mvcc_vacuum<LOG_REC_SYSOP_END> (header.back_lsa, m_redo_lsa, log_rec, false);
 	    if (m_replicate_mvcc)
 	      {
-		replicate_sysop_end (header.trid, m_redo_lsa, log_rec);
+		replicate_sysop_end_mvcc (header.trid, m_redo_lsa, log_rec);
 	      }
 	    break;
 	  }
-#if !defined (NDEBUG)
 	  case LOG_SYSOP_START_POSTPONE:
 	    if (m_replicate_mvcc)
 	      {
-		replicate_sysop_start_postpone (m_redo_lsa);
+		replicate_sysop_start_postpone (header);
 	      }
 	    break;
-#endif /* !NDEBUG */
 	  case LOG_ASSIGNED_MVCCID:
 	  {
 	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_ASSIGNED_MVCCID));
@@ -237,7 +282,7 @@ namespace cublog
 	if (m_atomic_helper.is_part_of_atomic_replication (rec_header.trid))
 	  {
 	    const VPID log_vpid = log_rv_get_log_rec_vpid<T> (record_info.m_logrec);
-	    m_atomic_helper.add_atomic_replication_unit (&thread_entry, rec_header.trid, rec_lsa, rcvindex, log_vpid);
+	    (void) m_atomic_helper.add_unit (&thread_entry, rec_header.trid, rec_lsa, rcvindex, log_vpid);
 	  }
 	else
 	  {
@@ -265,5 +310,35 @@ namespace cublog
       std::lock_guard<std::mutex> lockg (m_lowest_unapplied_lsa_mutex);
       m_lowest_unapplied_lsa = value_to_change;
     }
+  }
+
+  void
+  atomic_replicator::replicate_sysop_start_postpone (const LOG_RECORD_HEADER &rec_header)
+  {
+    // - if type is LOG_SYSOP_END_COMMIT it starts a sequence of sysop postpones
+    // - after each sysop postpone, a LOG_SYSOP_END with LOG_SYSOP_END_LOGICAL_RUN_POSTPONE
+    //    occurs with run_postpone_lsa pointing to *the first* RUN_POSTPONE
+    // - at the end, there is another LOG_SYSOP_END with LOG_SYSOP_END_COMMIT
+
+    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SYSOP_START_POSTPONE));
+    const LOG_REC_SYSOP_START_POSTPONE log_rec =
+	    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SYSOP_START_POSTPONE> ();
+    LOG_SYSOP_END_TYPE_CHECK (log_rec.sysop_end.type);
+
+    if (log_rec.sysop_end.type == LOG_SYSOP_END_COMMIT)
+      {
+	if (m_atomic_helper.is_part_of_atomic_replication (rec_header.trid))
+	  {
+	    // only interprete LOG_SYSOP_START_POSTPONE if already part of an atomic replication sequence
+	    // in order to know that possible inner atomic replication sequences might appear
+	    m_atomic_helper.start_postpone_sequence (rec_header.trid);
+	  }
+	else
+	  {
+	    // not already part of an atomic replication sequence
+	    // if the postpone operation itself will contain a logical (compound) operation guarded
+	    // by an atomic sequence; that will be treated in a standalone fashion
+	  }
+      }
   }
 }
