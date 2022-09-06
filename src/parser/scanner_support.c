@@ -1392,6 +1392,13 @@ pt_check_hostname (char *p)
 void
 pt_add_password_offset (int start, int end, bool is_add_comma)
 {
+  if (this_parser->original_buffer == NULL)
+    {
+      // In the case of coming through the following three functions, original_buffer is null.
+      // db_open_file_name(), db_open_file(), db_make_session_for_one_statement_execution()
+      return;
+    }
+
   if (start < 0 || end < 0)
     {
       return;
