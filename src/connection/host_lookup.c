@@ -601,11 +601,12 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
     }
   else
     {
-      result_out.ai_flags = (AI_V4MAPPED | AI_ADDRCONFIG);
-      result_out.ai_family = AF_UNSPEC;
-      result_out.ai_socktype = 0;
-      result_out.ai_protocol = 0;
+      results_out.ai_flags = (AI_V4MAPPED | AI_ADDRCONFIG);
+      results_out.ai_family = AF_UNSPEC;
+      results_out.ai_socktype = 0;
+      results_out.ai_protocol = 0;
     }
+
 
   memcpy (&in_addr_buf->s_addr, hp->h_addr_list[0], sizeof (in_addr_buf->s_addr));
   memcpy (&addr_convert.sin_addr, &in_addr_buf->s_addr, sizeof (addr_convert.sin_addr));
