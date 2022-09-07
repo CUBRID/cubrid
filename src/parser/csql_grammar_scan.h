@@ -76,7 +76,7 @@ extern "C"
   extern bool pt_check_ipv4 (char *p);
   extern bool pt_check_hostname (char *p);
 
-  extern void pt_add_password_offset (int start, int end, bool is_add_comma);
+  extern void pt_add_password_offset (int start, int end, bool is_add_comma, bool is_add_pwd_string);
 
 #ifdef __cplusplus
 }

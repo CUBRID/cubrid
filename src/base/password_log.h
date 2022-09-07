@@ -48,7 +48,8 @@ extern "C"
         } while(0)
 
 
-  int add_offset_password (int *fixed_array, int **pwd_offset_ptr, int start, int end, bool is_add_comma);
+  int add_offset_password (int *fixed_array, int **pwd_offset_ptr, int start, int end, bool is_add_comma,
+			   bool is_add_pwd_string);
   void fprintf_password (FILE * fp, char *query, int *pwd_offset_ptr, int (*cas_fprintf) (FILE *, const char *, ...));
   int snprint_password (char *msg, int size, char *query, int *pwd_offset_ptr);
 

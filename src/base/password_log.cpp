@@ -83,8 +83,12 @@ static unsigned char isSpace[0x100] =
 	    }                                   \
    } while(0)
 
-#define SET_PWD_LENGTH_N_COMMA(s, e, add_comma)  ((add_comma) ? ((0x01 << 30) | ((e) - (s))) : ((e) - (s)))
-#define IS_PWD_NEED_COMMA(offset_ptr)   ((offset_ptr)[1] >> 30)
+#define SET_PWD_LENGTH(s, e)  ((e) - (s))
+#define SET_PWD_ADDINFO(comma, pwd)  \
+                 ((comma) ? ((0x01 << 30) | ((pwd) ? (0x01 << 29) : 0)) : ((pwd) ? (0x01 << 29) : 0 ))
+#define SET_PWD_LENGTH_N_ADDINFO(s, e, comma, pwd)  (SET_PWD_ADDINFO((comma), (pwd)) | SET_PWD_LENGTH((s), (e)))
+#define IS_PWD_NEED_COMMA(offset_ptr)    ((offset_ptr)[1] >> 30)
+#define IS_PWD_NEED_PASSWORD(offset_ptr) ((offset_ptr)[1] >> 29)
 #define GET_END_PWD_OFFSET(offset_ptr)  ((offset_ptr)[0] + ((offset_ptr)[1] & 0x0FFFFFFF))
 
 class CHidePassword
@@ -97,7 +101,7 @@ class CHidePassword
     char *get_passowrd_start_position (char *query, bool *is_server);
     char *get_passowrd_end_position (char *ps, bool is_server);
     char *skip_one_query (char *query);
-    bool check_lead_string_in_query (char **query, char **method_name);
+    bool check_lead_string_in_query (char **query, char **method_name, bool *is_create_user);
     void fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf) (FILE *, const char *, ...));
 
     bool  use_backslash_escape;
@@ -305,6 +309,11 @@ CHidePassword::get_passowrd_start_position (char *query, bool *is_server)
   while (*ps)
     {
       token = get_token (ps, len);
+      if (len == 1 && *token == ';')
+	{
+	  return ps -1;
+	}
+
       if (len != 8 || strncasecmp (token, "password", 8) != 0)
 	{
 	  continue;
@@ -449,34 +458,21 @@ CHidePassword::skip_one_query (char *query)
   return ps;
 }
 
-bool CHidePassword::check_lead_string_in_query (char **query, char **method_name)
+bool CHidePassword::check_lead_string_in_query (char **query, char **method_name, bool *is_create_user)
 {
-  char *
-  ps;
-  const char *
-  first_cmd_str[] = { "call", "create", "alter", NULL };
-  int
-  first_cmd_len[] = { 4, 6, 5, -1 };
-  const char *
-  second_cmd_str[] = { "server", "user", NULL };
-  int
-  second_cmd_len[] = { 6, 4, -1 };
-  static const char *
-  method_name_str[] = { "add_user", "set_password", "login", NULL };
-  int
-  method_name_len[] = { 8, 12, 5, -1 };
-  int *
-  len_ptr = NULL;
-  const char **
-  str_ptr = NULL;
-  bool
-  is_call_stmt = false;
+  char   *ps;
+  const char *first_cmd_str[] = { "call", "create", "alter", NULL };
+  int  first_cmd_len[] = { 4, 6, 5, -1 };
+  const char *second_cmd_str[] = { "server", "user", NULL };
+  int  second_cmd_len[] = { 6, 4, -1 };
+  static const char *method_name_str[] = { "add_user", "set_password", "login", NULL };
+  int method_name_len[] = { 8, 12, 5, -1 };
+  int *len_ptr = NULL;
+  const char **str_ptr = NULL;
+  bool  is_call_stmt = false;
 
-
-  char *
-  token;
-  int
-  len;
+  char *token;
+  int len;
 
   token = get_token (*query, len);
   if (!token)
@@ -491,6 +487,7 @@ bool CHidePassword::check_lead_string_in_query (char **query, char **method_name
       if (*len_ptr == len && strncasecmp (token, *str_ptr, *len_ptr) == 0)
 	{
 	  is_call_stmt = (str_ptr == first_cmd_str) ? true : false;
+	  *is_create_user = (str_ptr == &first_cmd_str[1]) ? true : false;
 	  break;
 	}
     }
@@ -519,6 +516,7 @@ bool CHidePassword::check_lead_string_in_query (char **query, char **method_name
 	  if (*len_ptr == len && strncasecmp (token, *str_ptr, *len_ptr) == 0)
 	    {
 	      *method_name = (char *) (is_call_stmt ? *str_ptr : NULL);
+	      *is_create_user = (*is_create_user && (str_ptr == &second_cmd_str[1])) ? true : false;
 	      return true;
 	    }
 	}
@@ -530,10 +528,11 @@ bool CHidePassword::check_lead_string_in_query (char **query, char **method_name
 int
 CHidePassword::find_password_positions (int **fixed_pwd_offset_ptr, char *query)
 {
-  int start, end, is_add_comma;
+  int start, end, is_add_comma, is_add_pwd_string = 0;
   int alloc_szie, used_size;
   int *offset_ptr;
   int *pwd_offset_ptr;
+  bool is_create_user;
   char *newptr = query;
 
   assert (fixed_pwd_offset_ptr != NULL);
@@ -551,7 +550,7 @@ CHidePassword::find_password_positions (int **fixed_pwd_offset_ptr, char *query)
       int password_len;
       char *method_name = NULL;
 
-      if (check_lead_string_in_query (&newptr, &method_name))
+      if (check_lead_string_in_query (&newptr, &method_name, &is_create_user))
 	{
 	  if (method_name)
 	    {
@@ -563,6 +562,7 @@ CHidePassword::find_password_positions (int **fixed_pwd_offset_ptr, char *query)
 	      start = (int) (ps - query);
 	      end = (int) (ps - query) + password_len;
 	      is_add_comma = ((password_len > 0) ? 0 : 1);
+	      is_add_pwd_string = 0;
 	      newptr = ps + password_len;
 	    }
 	  else
@@ -578,11 +578,13 @@ CHidePassword::find_password_positions (int **fixed_pwd_offset_ptr, char *query)
 		  tp = get_passowrd_end_position (ps, is_server);
 		  end = (int) (tp - query);
 		  newptr = (*tp == *ps) ? (tp + 1) : tp;
+		  is_add_pwd_string = 0;
 		}
 	      else
 		{
 		  end = (int) (ps - query);
 		  newptr = ps;
+		  is_add_pwd_string = (is_create_user ? 1 : 0);
 		}
 	      is_add_comma = 0;	// no add comma
 	    }
@@ -609,7 +611,7 @@ CHidePassword::find_password_positions (int **fixed_pwd_offset_ptr, char *query)
 	    }
 
 	  offset_ptr[used_size++] = start;
-	  offset_ptr[used_size++] = SET_PWD_LENGTH_N_COMMA (start, end, is_add_comma);
+	  offset_ptr[used_size++] = SET_PWD_LENGTH_N_ADDINFO (start, end, is_add_comma, is_add_pwd_string);
 	  offset_ptr[1] = used_size;
 	}
 
@@ -637,8 +639,16 @@ CHidePassword::snprint_password (char *msg, int size, char *query, int *offset_p
       length += snprintf (msg + length, size - length, "%s", qryptr);
       query[pos] = chbk;
 
-      length +=
-	      snprintf (msg + length, size - length, "%s", (IS_PWD_NEED_COMMA (offset_ptr + x) ? ", '****'" : "'****'"));
+      if (IS_PWD_NEED_PASSWORD (offset_ptr + x))
+	{
+	  length +=
+		  snprintf (msg + length, size - length, "%s", " PASSWORD '****'");
+	}
+      else
+	{
+	  length +=
+		  snprintf (msg + length, size - length, "%s", (IS_PWD_NEED_COMMA (offset_ptr + x) ? ", '****'" : "'****'"));
+	}
       qryptr = query + GET_END_PWD_OFFSET (offset_ptr + x);
     }
 
@@ -698,7 +708,14 @@ CHidePassword::fprintf_password (FILE *fp, char *query, int *offset_ptr,
       fprintf_replace_newline (fp, qryptr, cas_fprintf);
       query[pos] = chbk;
 
-      cas_fprintf (fp, "%s", (IS_PWD_NEED_COMMA (offset_ptr + x) ? ", '****'" : "'****'"));
+      if (IS_PWD_NEED_PASSWORD (offset_ptr + x))
+	{
+	  cas_fprintf (fp, "%s", " PASSWORD '****'");
+	}
+      else
+	{
+	  cas_fprintf (fp, "%s", (IS_PWD_NEED_COMMA (offset_ptr + x) ? ", '****'" : "'****'"));
+	}
       qryptr = query + GET_END_PWD_OFFSET (offset_ptr + x);
     }
 
@@ -731,7 +748,14 @@ check_have_password_func (char *query, int *pwd_offset_ptr)
       fprintf (stdout, "%s", tmp);
       bufptr[pos] = chbk;
 
-      fprintf (stdout, "%s", (IS_PWD_NEED_COMMA (offset_ptr + x) ? ", '****'" : "'****'"));
+      if (IS_PWD_NEED_PASSWORD (offset_ptr + x))
+	{
+	  fprintf (stdout, "%s", " PASSWORD '****'");
+	}
+      else
+	{
+	  fprintf (stdout, "%s", (IS_PWD_NEED_COMMA (offset_ptr + x) ? ", '****'" : "'****'"));
+	}
 
       tmp = bufptr + GET_END_PWD_OFFSET (offset_ptr + x);
     }
@@ -825,7 +849,8 @@ snprint_password (char *msg, int size, char *query, int *pwd_offset_ptr)
  */
 // count, {start offset, end offset, is_add_comma}, ...
 int
-add_offset_password (int *fixed_array, int **pwd_offset_ptr, int start, int end, bool is_add_comma)
+add_offset_password (int *fixed_array, int **pwd_offset_ptr, int start, int end, bool is_add_comma,
+		     bool is_add_pwd_string)
 {
   /* pwd_offset_ptr:
    * [0] : number of alloced.
@@ -862,7 +887,7 @@ add_offset_password (int *fixed_array, int **pwd_offset_ptr, int start, int end,
     }
 
   offset_ptr[used_size++] = start;
-  offset_ptr[used_size++] = SET_PWD_LENGTH_N_COMMA (start, end, is_add_comma);
+  offset_ptr[used_size++] = SET_PWD_LENGTH_N_ADDINFO (start, end, is_add_comma, is_add_pwd_string);
   offset_ptr[1] = used_size;
 
   return 0;
