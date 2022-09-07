@@ -591,13 +591,21 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
       ret = EAI_MEMORY;
       goto return_phase;
     }
-  results_out.ai_flags = hints->ai_flags;
 
-  results_out.ai_family = hints->ai_family;
-
-  results_out.ai_socktype = hints->ai_socktype;
-
-  results_out.ai_protocol = IPPROTO_TCP;
+  if (hints != NULL)
+    {
+      results_out.ai_flags = hints->ai_flags;
+      results_out.ai_family = hints->ai_family;
+      results_out.ai_socktype = hints->ai_socktype;
+      results_out.ai_protocol = IPPROTO_TCP;
+    }
+  else
+    {
+      result_out.ai_flags = (AI_V4MAPPED | AI_ADDRCONFIG);
+      result_out.ai_family = AF_UNSPEC;
+      result_out.ai_socktype = 0;
+      result_out.ai_protocol = 0;
+    }
 
   memcpy (&in_addr_buf->s_addr, hp->h_addr_list[0], sizeof (in_addr_buf->s_addr));
   memcpy (&addr_convert.sin_addr, &in_addr_buf->s_addr, sizeof (addr_convert.sin_addr));
