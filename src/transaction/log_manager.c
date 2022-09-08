@@ -384,9 +384,6 @@ log_to_string (LOG_RECTYPE type)
     case LOG_COMPENSATE:
       return "LOG_COMPENSATE";
 
-    case LOG_WILL_COMMIT:
-      return "LOG_WILL_COMMIT";
-
     case LOG_COMMIT_WITH_POSTPONE:
       return "LOG_COMMIT_WITH_POSTPONE";
 
@@ -6531,10 +6528,6 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
       log_page_p = log_dump_record_commit_postpone (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
-    case LOG_WILL_COMMIT:
-      fprintf (out_fp, "\n");
-      break;
-
     case LOG_COMMIT:
     case LOG_ABORT:
       log_page_p = log_dump_record_transaction_finish (thread_p, out_fp, log_lsa, log_page_p);
@@ -7511,7 +7504,6 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	      LSA_SET_NULL (&prev_tranlsa);
 	      break;
 
-	    case LOG_WILL_COMMIT:
 	    case LOG_COMMIT:
 	    case LOG_ABORT:
 	    case LOG_2PC_COMMIT_DECISION:
@@ -7949,7 +7941,6 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		      /* TODO: consider to add FI here */
 		      break;
 
-		    case LOG_WILL_COMMIT:
 		    case LOG_COMMIT_WITH_POSTPONE:
 		    case LOG_SYSOP_START_POSTPONE:
 		    case LOG_2PC_PREPARE:

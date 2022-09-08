@@ -70,7 +70,6 @@ static int log_rv_analysis_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_L
 static int log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 					 LOG_LSA * check_point);
 static int log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p);
-static int log_rv_analysis_will_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
 						 LOG_PAGE * log_page_p);
 static int log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
@@ -1105,42 +1104,6 @@ log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_
 
   compensate = (LOG_REC_COMPENSATE *) ((char *) log_page_p->area + log_lsa->offset);
   LSA_COPY (&tdes->undo_nxlsa, &compensate->undo_nxlsa);
-
-  return NO_ERROR;
-}
-
-/*
- * log_rv_analysis_will_commit -
- *
- * return: error code
- *
- *   tran_id(in):
- *   lsa(in/out):
- *
- * Note:
- */
-static int
-log_rv_analysis_will_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa)
-{
-  LOG_TDES *tdes;
-
-  /*
-   * If this is the first time, the transaction is seen. Assign a new
-   * index to describe it. The transaction was in the process of
-   * getting committed at this point.
-   */
-  tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
-  if (tdes == NULL)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_will_commit");
-      return ER_FAILED;
-    }
-
-  tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
-
-  /* Nothing to undo */
-  LSA_SET_NULL (&tdes->undo_nxlsa);
-  LSA_COPY (&tdes->tail_lsa, log_lsa);
 
   return NO_ERROR;
 }
@@ -2245,10 +2208,6 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
 
     case LOG_COMPENSATE:
       (void) log_rv_analysis_compensate (thread_p, tran_id, log_lsa, log_page_p);
-      break;
-
-    case LOG_WILL_COMMIT:
-      (void) log_rv_analysis_will_commit (thread_p, tran_id, log_lsa);
       break;
 
     case LOG_COMMIT_WITH_POSTPONE:
@@ -3973,7 +3932,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_UNDO_DATA:
 	    case LOG_DUMMY_HEAD_POSTPONE:
 	    case LOG_POSTPONE:
-	    case LOG_WILL_COMMIT:
 	    case LOG_COMMIT_WITH_POSTPONE:
 	    case LOG_SYSOP_START_POSTPONE:
 	    case LOG_START_CHKPT:
@@ -4868,7 +4826,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  break;
 
 		case LOG_RUN_POSTPONE:
-		case LOG_WILL_COMMIT:
 		case LOG_COMMIT_WITH_POSTPONE:
 		case LOG_COMMIT:
 		case LOG_SYSOP_START_POSTPONE:
@@ -5725,7 +5682,6 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_2PC_PARTICP_ACK), &log_lsa, log_pgptr);
       break;
 
-    case LOG_WILL_COMMIT:
     case LOG_START_CHKPT:
     case LOG_2PC_COMMIT_DECISION:
     case LOG_2PC_ABORT_DECISION:
