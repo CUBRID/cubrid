@@ -21107,7 +21107,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
   // *INDENT-OFF*
   // To ensure that, if started, the atomic replication area will also end.
-  scope_exit <std::function<void (void)>> log_on_exit ([&thread_p, atomic_replication_flag]()
+  scope_exit <std::function<void (void)>> log_on_exit ([&thread_p, &atomic_replication_flag]()
   {
     if (atomic_replication_flag == true)
      {
@@ -21634,7 +21634,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
   // *INDENT-OFF*
   // To ensure that, if started, the atomic replication area will also end.
-  scope_exit <std::function<void (void)>> log_on_exit ([&thread_p, atomic_replication_flag]()
+  scope_exit <std::function<void (void)>> log_on_exit ([&thread_p, &atomic_replication_flag]()
   {
     if (atomic_replication_flag == true)
      {
