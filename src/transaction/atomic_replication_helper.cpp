@@ -41,14 +41,15 @@ namespace cublog
   bool
   atomic_replication_helper::can_end_sysop_sequence (TRANID trid, LOG_LSA sysop_parent_lsa) const
   {
-    const auto iterator = m_sequences_map.find (trid);
-    if (iterator == m_sequences_map.cend ())
+    const auto sequence_it = m_sequences_map.find (trid);
+    if (sequence_it != m_sequences_map.cend ())
       {
-	return false;
+	const sequence &atomic_sequence =  sequence_it->second;
+
+	return atomic_sequence.can_end_sysop_sequence (sysop_parent_lsa);
       }
 
-    const sequence &atomic_sequence =  iterator->second;
-    return atomic_sequence.can_end_sysop_sequence (sysop_parent_lsa);
+    return false;
   }
 
   bool
@@ -57,14 +58,14 @@ namespace cublog
     const auto sequence_it = m_sequences_map.find (trid);
     if (sequence_it != m_sequences_map.cend ())
       {
-	const sequence &sequence = sequence_it->second;
+	const sequence &atomic_sequence = sequence_it->second;
 
 	// safeguard, if the atomic sequence contains a postpone [sub]sequence, that
 	// is more specific case and should have been checked upfront
-	assert (!sequence.is_postpone_sequence_started ());
-	assert (!sequence.is_at_least_one_postpone_sequence_completed ());
+	assert (!atomic_sequence.is_postpone_sequence_started ());
+	assert (!atomic_sequence.is_at_least_one_postpone_sequence_completed ());
 
-	return sequence.can_end_sysop_sequence ();
+	return atomic_sequence.can_end_sysop_sequence ();
       }
 
     return false;
@@ -82,10 +83,11 @@ namespace cublog
   atomic_replication_helper::start_sequence_internal (TRANID trid, LOG_LSA start_lsa,
       const log_rv_redo_context &redo_context, bool is_sysop)
   {
+    assert (m_sequences_map.find (trid) == m_sequences_map.cend ());
+
     const std::pair<sequence_map_type::iterator, bool> emplace_res = m_sequences_map.emplace (trid, redo_context);
     assert (emplace_res.second);
 
-    const TRANID &emplaced_trid = emplace_res.first->first;
     sequence &emplaced_seq = emplace_res.first->second;
     // workaround call to allow constructing a sequence in-place above; otherwise,
     // it would need to double construct an internal redo context instance (which is expensive)
@@ -105,13 +107,13 @@ namespace cublog
     vpids.insert (vpid);
 #endif
 
-    auto iterator = m_sequences_map.find (tranid);
-    if (iterator == m_sequences_map.cend ())
+    const auto sequence_it = m_sequences_map.find (tranid);
+    if (sequence_it == m_sequences_map.cend ())
       {
 	return ER_FAILED;
       }
 
-    int error_code = iterator->second.add_unit (thread_p, record_lsa, rcvindex, vpid);
+    int error_code = sequence_it->second.add_unit (thread_p, record_lsa, rcvindex, vpid);
     if (error_code != NO_ERROR)
       {
 	return error_code;
@@ -172,17 +174,19 @@ namespace cublog
   bool
   atomic_replication_helper::check_for_page_validity (VPID vpid, TRANID tranid) const
   {
-    for (auto const &vpid_sets_iterator : m_vpid_sets_map)
+    for (auto const &vpid_sets_it : m_vpid_sets_map)
       {
-	if (vpid_sets_iterator.first != tranid)
+	const TRANID &curr_tranid = vpid_sets_it.first;
+	if (curr_tranid != tranid)
 	  {
-	    const vpid_set_type::const_iterator find_it = vpid_sets_iterator.second.find (vpid);
-	    if (find_it != vpid_sets_iterator.second.cend ())
+	    const vpid_set_type &curr_vpid_set = vpid_sets_it.second;
+	    const vpid_set_type::const_iterator vpid_set_it = curr_vpid_set.find (vpid);
+	    if (vpid_set_it != curr_vpid_set.cend ())
 	      {
 		er_log_debug (ARG_FILE_LINE,
 			      "[ATOMIC_REPL] page %d|%d already part of sequence in trid %d;"
 			      " cannot be part of new sequence in trid %d",
-			      VPID_AS_ARGS (&vpid), vpid_sets_iterator.first, tranid);
+			      VPID_AS_ARGS (&vpid), curr_tranid, tranid);
 		return false;
 	      }
 	  }
@@ -195,8 +199,8 @@ namespace cublog
   bool
   atomic_replication_helper::is_part_of_atomic_replication (TRANID tranid) const
   {
-    const auto iterator = m_sequences_map.find (tranid);
-    if (iterator == m_sequences_map.cend ())
+    const auto sequence_it = m_sequences_map.find (tranid);
+    if (sequence_it == m_sequences_map.cend ())
       {
 	return false;
       }
@@ -207,15 +211,15 @@ namespace cublog
   void
   atomic_replication_helper::unfix_sequence (THREAD_ENTRY *thread_p, TRANID tranid)
   {
-    auto iterator = m_sequences_map.find (tranid);
-    if (iterator == m_sequences_map.end ())
+    const auto sequence_it = m_sequences_map.find (tranid);
+    if (sequence_it == m_sequences_map.end ())
       {
 	assert (false);
 	return;
       }
 
-    iterator->second.apply_and_unfix_sequence (thread_p);
-    m_sequences_map.erase (iterator);
+    sequence_it->second.apply_and_unfix_sequence (thread_p);
+    m_sequences_map.erase (sequence_it);
 
 #if !defined (NDEBUG)
     m_vpid_sets_map.erase (tranid);
@@ -264,8 +268,8 @@ namespace cublog
       log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid)
   {
     m_units.emplace_back (record_lsa, vpid, rcvindex);
-    auto iterator = m_page_map.find (vpid);
-    if (iterator == m_page_map.cend ())
+    const auto page_map_it = m_page_map.find (vpid);
+    if (page_map_it == m_page_map.cend ())
       {
 	int error_code = m_units.back ().fix_page (thread_p);
 	if (error_code != NO_ERROR)
@@ -289,7 +293,7 @@ namespace cublog
       }
     else
       {
-	m_units.back ().set_page_ptr (iterator->second);
+	m_units.back ().set_page_ptr (page_map_it->second);
       }
     return NO_ERROR;
   }
@@ -297,7 +301,7 @@ namespace cublog
   bool
   atomic_replication_helper::sequence::can_end_sysop_sequence (const LOG_LSA &sysop_parent_lsa) const
   {
-    if (m_is_sysop)
+    if (m_is_sysop && !LSA_ISNULL (&sysop_parent_lsa))
       {
 	assert (!m_units.empty ());
 	// if the atomic replication sequence start lsa is higher or equal to the sysop
@@ -377,11 +381,11 @@ namespace cublog
 
     for (size_t i = 0; i < m_units.size (); i++)
       {
-	auto iterator = m_page_map.find (m_units[i].m_vpid);
-	if (iterator != m_page_map.end ())
+	const auto page_map_it = m_page_map.find (m_units[i].m_vpid);
+	if (page_map_it != m_page_map.end ())
 	  {
 	    m_units[i].unfix_page (thread_p);
-	    m_page_map.erase (iterator);
+	    m_page_map.erase (page_map_it);
 	  }
       }
   }

@@ -115,7 +115,7 @@ namespace cublog
 		    thread_entry, m_redo_lsa);
 	    break;
 	  case LOG_START_ATOMIC_REPL:
-            // nested atomic replication are not allowed
+	    // nested atomic replication are not allowed
 	    assert (!m_atomic_helper.is_part_of_atomic_replication (header.trid));
 	    m_atomic_helper.start_sequence (header.trid, m_redo_lsa, m_redo_context);
 	    set_lowest_unapplied_lsa ();
@@ -154,54 +154,7 @@ namespace cublog
 	    const LOG_REC_SYSOP_END log_rec =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SYSOP_END> ();
 
-	    if (log_rec.type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE
-		&& m_atomic_helper.is_postpone_sequence_started (header.trid))
-	      {
-		// this is one of, possibly, several sequences of logic run postpones
-		// which will be treated as a single atomic replication sequence
-
-		// mark that one logical run postpone has ended; helpful only as safe-guard check
-		m_atomic_helper.complete_one_postpone_sequence (header.trid);
-	      }
-	    else
-	      {
-		if (log_rec.type == LOG_SYSOP_END_COMMIT
-		    && m_atomic_helper.is_at_least_one_postpone_sequence_completed (header.trid))
-		  {
-		    // the entire atomic sequence - main and its postone(s) - can be completed
-		    m_atomic_helper.unfix_sequence (&thread_entry, header.trid);
-		    set_lowest_unapplied_lsa ();
-		  }
-		else if (log_rec.type == LOG_SYSOP_END_COMMIT
-			 && !LSA_ISNULL (&log_rec.lastparent_lsa)
-			 && m_atomic_helper.can_end_sysop_sequence (header.trid, log_rec.lastparent_lsa))
-		  {
-		    // atomic sequences performed by user transactions (ie: non-vacuum)
-		    m_atomic_helper.unfix_sequence (&thread_entry, header.trid);
-		    set_lowest_unapplied_lsa ();
-		  }
-		else if (log_rec.type == LOG_SYSOP_END_COMMIT
-			 && m_atomic_helper.can_end_sysop_sequence (header.trid))
-		  {
-		    // for vacuum transactions, the last parent lsa is not filled in
-		    assert (LSA_ISNULL (&log_rec.lastparent_lsa));
-
-		    m_atomic_helper.unfix_sequence (&thread_entry, header.trid);
-		    set_lowest_unapplied_lsa ();
-		  }
-		else
-		  {
-		    if (m_atomic_helper.can_end_sysop_sequence (header.trid, log_rec.lastparent_lsa))
-		      {
-			m_atomic_helper.unfix_sequence (&thread_entry, header.trid);
-			set_lowest_unapplied_lsa ();
-		      }
-		    else
-		      {
-			assert (!m_atomic_helper.is_part_of_atomic_replication (header.trid));
-		      }
-		  }
-	      }
+	    replicate_sysop_end (thread_entry, header, log_rec);
 
 	    read_and_bookkeep_mvcc_vacuum<LOG_REC_SYSOP_END> (header.back_lsa, m_redo_lsa, log_rec, false);
 	    if (m_replicate_mvcc)
@@ -338,6 +291,60 @@ namespace cublog
 	    // not already part of an atomic replication sequence
 	    // if the postpone operation itself will contain a logical (compound) operation guarded
 	    // by an atomic sequence; that will be treated in a standalone fashion
+	  }
+      }
+  }
+
+  void
+  atomic_replicator::replicate_sysop_end (cubthread::entry &thread_entry, const LOG_RECORD_HEADER &log_header,
+					  const LOG_REC_SYSOP_END &log_rec)
+  {
+    if (log_rec.type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE
+	&& m_atomic_helper.is_postpone_sequence_started (log_header.trid))
+      {
+	// this is one of, possibly, several sequences of logic run postpones
+	// which will be treated as a single atomic replication sequence
+
+	// mark that one logical run postpone has ended; helpful only as safe-guard check
+	m_atomic_helper.complete_one_postpone_sequence (log_header.trid);
+      }
+    else
+      {
+	if (log_rec.type == LOG_SYSOP_END_COMMIT
+	    && m_atomic_helper.is_at_least_one_postpone_sequence_completed (log_header.trid))
+	  {
+	    // the entire atomic sequence - main and its postone(s) - can be completed
+	    m_atomic_helper.unfix_sequence (&thread_entry, log_header.trid);
+	    set_lowest_unapplied_lsa ();
+	  }
+	else if (log_rec.type == LOG_SYSOP_END_COMMIT
+		 && !LSA_ISNULL (&log_rec.lastparent_lsa)
+		 && m_atomic_helper.can_end_sysop_sequence (log_header.trid, log_rec.lastparent_lsa))
+	  {
+	    // atomic sequences performed by user transactions (ie: non-vacuum)
+	    m_atomic_helper.unfix_sequence (&thread_entry, log_header.trid);
+	    set_lowest_unapplied_lsa ();
+	  }
+	else if (log_rec.type == LOG_SYSOP_END_COMMIT
+		 && m_atomic_helper.can_end_sysop_sequence (log_header.trid))
+	  {
+	    // for vacuum transactions, the last parent lsa is not filled in
+	    assert (LSA_ISNULL (&log_rec.lastparent_lsa));
+
+	    m_atomic_helper.unfix_sequence (&thread_entry, log_header.trid);
+	    set_lowest_unapplied_lsa ();
+	  }
+	else
+	  {
+	    if (m_atomic_helper.can_end_sysop_sequence (log_header.trid, log_rec.lastparent_lsa))
+	      {
+		m_atomic_helper.unfix_sequence (&thread_entry, log_header.trid);
+		set_lowest_unapplied_lsa ();
+	      }
+	    else
+	      {
+		assert (!m_atomic_helper.is_part_of_atomic_replication (log_header.trid));
+	      }
 	  }
       }
   }
