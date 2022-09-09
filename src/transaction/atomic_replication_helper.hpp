@@ -40,40 +40,38 @@ namespace cublog
    * The following cases are covered by the implementation:
    *
    * 1.
-   *    ----------------------
    *    LOG_START_ATOMIC_REPL
-   *        (undo/redo/undoredo log records)+
+   *        (undo|redo|undoredo|..)+
    *    LOG_END_ATOMIC_REPL
-   *    ----------------------
    *
    * 2. standalone sysop atomic sequences whose ending condition is based on the sysop end's
    *    last parent LSA
-   *    ----------------------
+   *
    *    LOG_SYSOP_ATOMIC_START
-   *        (undo/redo/undoredo log records)+
+   *        (undo|redo|undoredo|..)+
    *    LOG_SYSOP_END
-   *    ----------------------
    *
    * 3. vacuum generated atomic sysops with nested postpone logical operations which, themselves,
    *    can contain atomic operations; these have the following layout:
-   *    ----------------------
+   *
    *    LOG_SYSOP_ATOMIC_START
-   *        some (undo/redo/undoredo log records)+
+   *        (undo|redo|undoredo|..)+
    *        ..
    *        LOG_POSTPONE 1 (eg: with RVFL_DEALLOC - logical or physical change)
-   *        more (undo/redo/undoredo log records)*
+   *        (undo|redo|undoredo|..)*
    *        ..
-   *        LOG_POSTPONE 2 (eg: with ...)
+   *        LOG_POSTPONE 2 (eg: other index)
+   *        (undo|redo|undoredo|..)*
    *        ..
    *    LOG_SYSOP_START_POSTPONE
-   *        log records for RVFL_DEALLOC 1 with postpone_lsa pointing to the LSA of LOG_POSTPONE 1
+   *        log records for LOG_POSTPONE 1 (RVFL_DEALLOC) with postpone_lsa pointing to the
+   *          LSA of LOG_POSTPONE 1
    *        LOG_SYSOP_END with LOG_SYSOP_END_LOGICAL_RUN_POSTPONE
-   *        log records for .. with postpone_lsa pointing to the LSA of LOG_POSTPONE 1 (yes, 1,
-   *            not 2; it points to the start of postpones, to allow recovery which, potentially,
-   *            needs to iterate and execute all postpones if not already executed)
+   *        log records for LOG_POSTPONE 2 (other index) with postpone_lsa pointing *still* to the
+   *          LSA of LOG_POSTPONE 1 (yes, it points to the start of all postpones, to allow recovery
+   *          which, potentially needs to iterate and execute all postpones if not already executed)
    *        LOG_SYSOP_END with LOG_SYSOP_END_LOGICAL_RUN_POSTPONE
    *    LOG_SYSOP_END with LOG_SYSOP_END_COMMIT
-   *    ----------------------
    */
   class atomic_replication_helper
   {
