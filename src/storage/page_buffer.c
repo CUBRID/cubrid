@@ -2164,11 +2164,6 @@ try_again:
 	case OLD_PAGE_PREVENT_DEALLOC:
 	default:
 	  /* caller does not expect any deallocated pages. this is an invalid page. */
-//	  if (is_page_server())
-//	    {
-//	      pgbuf_unfix (thread_p, pgptr);
-//	      return nullptr;
-//	    }
 	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
 		  fileio_get_volume_label_with_unknown (vpid->volid));
@@ -8360,7 +8355,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
   const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE);
   if (perform_logging)
     {
-      er_print_callstack (ARG_FILE_LINE, "[READ DATA] Send request for Page to Page Server."
+      _er_log_debug (ARG_FILE_LINE, "[READ DATA] Send request for Page to Page Server."
                                     " VPID: %d|%d, target repl LSA: %lld|%d\n",
                      VPID_AS_ARGS (vpid), LSA_AS_ARGS(&target_repl_lsa));
     }
