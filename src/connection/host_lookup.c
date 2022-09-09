@@ -120,54 +120,38 @@ static struct hostent *host_lookup_internal (const char *hostname, struct sockad
 static struct hostent *
 hostent_init ()
 {
-  struct hostent *hp;
+  static struct hostent hp;
+  static char addr_[IPADDR_LEN];
+  static char host_[HOSTNAME_BUF_SIZE + 1];
+  static char host_n[HOSTNAME_BUF_SIZE + 1];
 
-  hp = NULL;
 
-  if ((hp = (struct hostent *) malloc (sizeof (struct hostent))) == NULL)
+  hp.h_name = host_n;
+  hp.h_aliases = NULL;
+  hp.h_addr_list = NULL;
+
+  if ((hp.h_aliases = (char **) malloc (sizeof (char *))) == NULL
+      || (hp.h_addr_list = (char **) malloc (sizeof (char *) * HOSTNAME_BUF_SIZE)) == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct hostent));
-      return NULL;
-    }
-
-  hp->h_name = NULL;
-  hp->h_aliases = NULL;
-  hp->h_addr_list = NULL;
-
-  if ((hp->h_name = (char *) malloc (sizeof (char) * (HOSTNAME_BUF_SIZE + 1))) == NULL
-      || (hp->h_aliases = (char **) malloc (sizeof (char *))) == NULL
-      || (hp->h_addr_list = (char **) malloc (sizeof (char *) * HOSTNAME_BUF_SIZE)) == NULL)
-    {
-      FREE_MEM (hp->h_addr_list);
-      FREE_MEM (hp->h_aliases);
-      FREE_MEM (hp->h_name);
-      FREE_MEM (hp);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char) * (HOSTNAME_BUF_SIZE + 1));
       return NULL;
     }
 
-  hp->h_aliases[0] = NULL;
-  hp->h_addr_list[0] = NULL;
-
-  if ((hp->h_aliases[0] = (char *) malloc (sizeof (char) * (HOSTNAME_BUF_SIZE + 1))) == NULL
-      || (hp->h_addr_list[0] = (char *) malloc (sizeof (char) * IPADDR_LEN)) == NULL)
+  hp.h_aliases[0] = host_;
+  hp.h_addr_list[0] = addr_;
+/*
+  if ((hp.h_aliases[0] = (char *) malloc (sizeof (char) * (HOSTNAME_BUF_SIZE + 1))) == NULL
+      || (hp.h_addr_list[0] = (char *) malloc (sizeof (char) * IPADDR_LEN)) == NULL)
     {
-      FREE_MEM (hp->h_aliases[0]);
-      FREE_MEM (hp->h_addr_list[0]);
-      FREE_MEM (hp->h_addr_list);
-      FREE_MEM (hp->h_aliases);
-      FREE_MEM (hp->h_name);
-      FREE_MEM (hp);
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char) * (HOSTNAME_BUF_SIZE + 1));
       return NULL;
     }
+*/
+  hp.h_addrtype = AF_INET;
+  hp.h_length = 4;
 
-  hp->h_addrtype = AF_INET;
-  hp->h_length = 4;
+  return &hp;
 
-  return hp;
 }
 
 static struct hostent *
@@ -384,7 +368,7 @@ host_conf_load ()
 struct hostent *
 gethostbyname_uhost (char *name)
 {
-  struct hostent *hp;
+  static struct hostent *hp = NULL;
 
   if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
     {
@@ -564,7 +548,7 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
 
   if ((in_addr_buf = (struct in_addr *) malloc (sizeof (struct in_addr))) == NULL)
     {
-      FREE_HOSTENT_MEM (hp);
+      //FREE_HOSTENT_MEM (hp);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct in_addr));
       ret = EAI_MEMORY;
       goto return_phase;
@@ -573,7 +557,7 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
   /*Constitute struct addrinfo for the out parameter res */
   if (((*res) = (struct addrinfo *) malloc (sizeof (struct addrinfo))) == NULL)
     {
-      FREE_HOSTENT_MEM (hp);
+      //FREE_HOSTENT_MEM (hp);
       free (in_addr_buf);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct addrinfo));
       ret = EAI_MEMORY;
@@ -583,10 +567,9 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
   memset (&results_out, 0, sizeof (results_out));
   if ((results_out.ai_addr = (struct sockaddr *) malloc (sizeof (struct sockaddr))) == NULL)
     {
-      FREE_HOSTENT_MEM (hp);
+      //FREE_HOSTENT_MEM (hp);
       free (in_addr_buf);
       freeaddrinfo (*res);
-      free (results_out.ai_addr);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct sockaddr));
       ret = EAI_MEMORY;
       goto return_phase;
@@ -607,16 +590,24 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
       results_out.ai_protocol = 0;
     }
 
+  if ((results_out.ai_canonname = (char *) malloc (sizeof (char) * HOSTNAME_BUF_SIZE + 1)) == NULL)
+    {
+      free (in_addr_buf);
+      freeaddrinfo (*res);
+      free (results_out.ai_addr);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct sockaddr));
+      ret = EAI_MEMORY;
+      goto return_phase;
+    }
 
   memcpy (&in_addr_buf->s_addr, hp->h_addr_list[0], sizeof (in_addr_buf->s_addr));
   memcpy (&addr_convert.sin_addr, &in_addr_buf->s_addr, sizeof (addr_convert.sin_addr));
   memcpy (results_out.ai_addr, (struct sockaddr *) &addr_convert, sizeof (struct sockaddr));
 
   results_out.ai_addrlen = sizeof (results_out.ai_addr);
-
-  results_out.ai_canonname = hp->h_name;
-
   results_out.ai_next = NULL;
+
+  strcpy (results_out.ai_canonname, hp->h_name);
 
   memmove (*res, &results_out, sizeof (struct addrinfo));
 
