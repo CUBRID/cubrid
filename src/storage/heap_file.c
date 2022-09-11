@@ -25258,7 +25258,7 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
 	  const LOG_LSA *prev_lsa = &MVCC_GET_PREV_VERSION_LSA (&mvcc_header);
 	  if (prev_lsa->is_null ())
 	    {
-	      /* It means the record is newly inserted after the snapshot is taken. */
+	      /* The record is newly inserted after the snapshot is taken. */
 	      scan = S_DOESNT_EXIST;
 	      goto exit;
 	    }
