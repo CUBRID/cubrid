@@ -865,7 +865,7 @@ static void heap_page_rv_chain_update (THREAD_ENTRY * thread_p, PAGE_PTR heap_pa
 static int heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 					      OID * partition_oid);
 static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes,
-						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
+						    const LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
 						    int has_chn);
 static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const HFID * vfid, const OID * oid,
 					 PGBUF_WATCHER * home_pg_watcher, PGBUF_WATCHER * fwd_pg_watcher,
@@ -24957,7 +24957,7 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
  *   scan_cache(in): Heap scan cache.
  */
 static SCAN_CODE
-heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG_LSA * previous_version_lsa,
+heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, const LOG_LSA * previous_version_lsa,
 				   HEAP_SCANCACHE * scan_cache, int has_chn)
 {
   LOG_LSA process_lsa;
