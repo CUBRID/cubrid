@@ -24971,11 +24971,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, con
 
   assert (scan_cache != NULL);
   assert (scan_cache->mvcc_snapshot != NULL);
-
-  if (previous_version_lsa->is_null ())
-    {
-      return S_DOESNT_EXIST;
-    }
+  assert (!previous_version_lsa->is_null ());
 
   if (recdes == NULL)
     {
@@ -25259,10 +25255,18 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
       snapshot_res = mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot);
       if (snapshot_res == TOO_NEW_FOR_SNAPSHOT)
 	{
+	  const LOG_LSA *prev_lsa = &MVCC_GET_PREV_VERSION_LSA (&mvcc_header);
+	  if (prev_lsa->is_null ())
+	    {
+	      /* It means the record is newly inserted after the snapshot is taken. */
+	      scan = S_DOESNT_EXIST;
+	      goto exit;
+	    }
+
 	  /* current version is not visible, check previous versions from log and skip record get from heap */
 	  scan =
-	    heap_get_visible_version_from_log (thread_p, context->recdes_p, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header),
-					       context->scan_cache, context->old_chn);
+	    heap_get_visible_version_from_log (thread_p, context->recdes_p, prev_lsa, context->scan_cache,
+					       context->old_chn);
 	  goto exit;
 	}
       else if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)
