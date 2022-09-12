@@ -101,8 +101,8 @@ namespace cublog
 
       // add a new log record as part of an already existing atomic replication
       // sequence (be it sysop or non-sysop)
-      int add_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa,
-		    LOG_RCVINDEX rcvindex, VPID vpid);
+      int add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa,
+				       LOG_RCVINDEX rcvindex, VPID vpid);
 
       // mark the start of postpone sequence for a transaction; transaction must have
       // already started an atomic sequence; the postpone sequence can contain nested atomic
@@ -114,7 +114,7 @@ namespace cublog
       // but there should be at least one
       bool is_at_least_one_postpone_sequence_completed (TRANID trid) const;
 
-      void unfix_sequence (THREAD_ENTRY *thread_p, TRANID tranid);
+      void unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, TRANID tranid);
 
       bool is_part_of_atomic_replication (TRANID tranid) const;
 
@@ -127,7 +127,8 @@ namespace cublog
       bool check_for_page_validity (VPID vpid, TRANID tranid) const;
 #endif
 
-    private: // types
+    private:
+
       class atomic_replication_sequence
       {
 	public:
@@ -146,7 +147,7 @@ namespace cublog
 	  // upon constructing a sequence
 	  void initialize (LOG_LSA start_lsa, bool is_sysop);
 
-	  int add_unit (THREAD_ENTRY *thread_p, log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid);
+	  int add_atomic_replication_unit (THREAD_ENTRY *thread_p, log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid);
 
 	  bool can_end_sysop_sequence (const LOG_LSA &sysop_parent_lsa) const;
 	  bool can_end_sysop_sequence () const;
@@ -159,11 +160,9 @@ namespace cublog
 	  void apply_and_unfix_sequence (THREAD_ENTRY *thread_p);
 
 	  log_lsa get_start_lsa () const;
-
-	private: // methods
+	private:
 	  void apply_all_log_redos (THREAD_ENTRY *thread_p);
 
-	private: // types
 	  /*
 	   * Atomic replication unit holds the log record information necessary for recovery redo
 	   */
@@ -198,14 +197,14 @@ namespace cublog
 	      LOG_RCVINDEX m_record_index;
 	  };
 
-	  using atomic_unit_vector_type = std::vector<atomic_replication_unit>;
-	  using vpid_to_page_ptr_map_type = std::map<VPID, PAGE_PTR>;
-
-	private: // variables
 	  /* The LSA of the log record which started this atomic sequence.
 	   * It is used for comparison to see whether a sysop end operation can close an
 	   * atomic replication sequence. */
 	  LOG_LSA m_start_lsa;
+
+	  using atomic_unit_vector_type = std::vector<atomic_replication_unit>;
+	  using vpid_to_page_ptr_map_type = std::map<VPID, PAGE_PTR>;
+
 	  /* Separates the two types of atomic sequences:
 	   *  - sysop
 	   *  - non-sysop
@@ -215,13 +214,14 @@ namespace cublog
 	  int m_end_pospone_count = 0;
 
 	  log_rv_redo_context m_redo_context;
-
 	  atomic_unit_vector_type m_units;
 	  vpid_to_page_ptr_map_type m_page_map;
       };
 
+    private:
       using sequence_map_type = std::map<TRANID, atomic_replication_sequence>;
 
+      sequence_map_type m_sequences_map;
 #if !defined (NDEBUG)
       // check validity of atomic sequences
       // one page can only be accessed by one atomic sequence within one transaction
@@ -229,12 +229,7 @@ namespace cublog
       // notion of an "atomic" sequence and, hence, it is totally possible that
       // another transaction might access the same page
       using vpid_set_type = std::set<VPID>;
-#endif
 
-    private: // variables
-      sequence_map_type m_sequences_map;
-
-#if !defined (NDEBUG)
       std::map<TRANID, vpid_set_type> m_vpid_sets_map;
 #endif
   };
