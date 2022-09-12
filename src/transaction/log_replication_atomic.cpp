@@ -117,7 +117,7 @@ namespace cublog
 	  case LOG_START_ATOMIC_REPL:
 	    // nested atomic replication are not allowed
 	    assert (!m_atomic_helper.is_part_of_atomic_replication (header.trid));
-	    m_atomic_helper.start_sequence (header.trid, m_redo_lsa, m_redo_context);
+	    m_atomic_helper.add_atomic_replication_sequence (header.trid, m_redo_lsa, m_redo_context);
 	    set_lowest_unapplied_lsa ();
 	    break;
 	  case LOG_END_ATOMIC_REPL:

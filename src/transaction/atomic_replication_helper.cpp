@@ -30,6 +30,41 @@ namespace cublog
    * atomic_replication_helper function definitions                    *
    *********************************************************************/
 
+  void atomic_replication_helper::add_atomic_replication_sequence (TRANID trid, LOG_LSA start_lsa,
+      const log_rv_redo_context &redo_context)
+  {
+    constexpr bool is_sysop = false;
+    start_sequence_internal (trid, start_lsa, redo_context, is_sysop);
+  }
+
+  int atomic_replication_helper::add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid,
+      log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid)
+  {
+#if !defined (NDEBUG)
+    if (!VPID_ISNULL (&vpid) && !check_for_page_validity (vpid, tranid))
+      {
+	assert (false);
+      }
+    vpid_set_type &vpids = m_vpid_sets_map[tranid];
+    vpids.insert (vpid);
+#endif
+
+    auto iterator = m_sequences_map.find (tranid);
+    if (iterator == m_sequences_map.cend ())
+      {
+	return ER_FAILED;
+      }
+
+    int error_code = iterator->second.add_atomic_replication_unit (thread_p, record_lsa, rcvindex, vpid);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
+
+    return NO_ERROR;
+  }
+
+
   void atomic_replication_helper::start_sysop_sequence (TRANID trid, LOG_LSA start_lsa,
       const log_rv_redo_context &redo_context)
   {
@@ -68,12 +103,6 @@ namespace cublog
     return false;
   }
 
-  void atomic_replication_helper::start_sequence (TRANID trid, LOG_LSA start_lsa,
-      const log_rv_redo_context &redo_context)
-  {
-    constexpr bool is_sysop = false;
-    start_sequence_internal (trid, start_lsa, redo_context, is_sysop);
-  }
 
   void atomic_replication_helper::start_sequence_internal (TRANID trid, LOG_LSA start_lsa,
       const log_rv_redo_context &redo_context, bool is_sysop)
@@ -87,33 +116,6 @@ namespace cublog
     // workaround call to allow constructing a sequence in-place above; otherwise,
     // it would need to double construct an internal redo context instance (which is expensive)
     emplaced_seq.initialize (start_lsa, is_sysop);
-  }
-
-  int atomic_replication_helper::add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid,
-      log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid)
-  {
-#if !defined (NDEBUG)
-    if (!VPID_ISNULL (&vpid) && !check_for_page_validity (vpid, tranid))
-      {
-	assert (false);
-      }
-    vpid_set_type &vpids = m_vpid_sets_map[tranid];
-    vpids.insert (vpid);
-#endif
-
-    auto iterator = m_sequences_map.find (tranid);
-    if (iterator == m_sequences_map.cend ())
-      {
-	return ER_FAILED;
-      }
-
-    int error_code = iterator->second.add_atomic_replication_unit (thread_p, record_lsa, rcvindex, vpid);
-    if (error_code != NO_ERROR)
-      {
-	return error_code;
-      }
-
-    return NO_ERROR;
   }
 
   void atomic_replication_helper::start_postpone_sequence (TRANID trid)
@@ -165,17 +167,15 @@ namespace cublog
   {
     for (auto const &vpid_sets_iterator : m_vpid_sets_map)
       {
-	const TRANID &curr_tranid = vpid_sets_iterator.first;
-	if (curr_tranid != tranid)
+	if (vpid_sets_iterator.first != tranid)
 	  {
-	    const vpid_set_type &curr_vpid_set = vpid_sets_iterator.second;
-	    const vpid_set_type::const_iterator vpid_set_it = curr_vpid_set.find (vpid);
-	    if (vpid_set_it != curr_vpid_set.cend ())
+	    const vpid_set_type::const_iterator find_it = vpid_sets_iterator.second.find (vpid);
+	    if (find_it != vpid_sets_iterator.second.cend ())
 	      {
 		er_log_debug (ARG_FILE_LINE,
 			      "[ATOMIC_REPL] page %d|%d already part of sequence in trid %d;"
 			      " cannot be part of new sequence in trid %d",
-			      VPID_AS_ARGS (&vpid), curr_tranid, tranid);
+			      VPID_AS_ARGS (&vpid), vpid_sets_iterator.first, tranid);
 		return false;
 	      }
 	  }
@@ -402,7 +402,7 @@ namespace cublog
     if (error_code != NO_ERROR)
       {
 	logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			   "unit::apply_log_redo: error reading log page with VPID: %d|%d, LSA: %lld|%d and index %d.",
+			   "atomic_replication_unit::apply_log_redo: error reading log page with VPID: %d|%d, LSA: %lld|%d and index %d.",
 			   VPID_AS_ARGS (&m_vpid), LSA_AS_ARGS (&m_record_lsa), m_record_index);
       }
     const log_rec_header header = redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_header> ();

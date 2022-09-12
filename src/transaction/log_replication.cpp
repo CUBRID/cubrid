@@ -379,8 +379,7 @@ namespace cublog
       }
   }
 
-  void
-  replicator::register_assigned_mvccid (TRANID tranid)
+  void replicator::register_assigned_mvccid (TRANID tranid)
   {
     assert (m_replicate_mvcc);
 
@@ -391,8 +390,7 @@ namespace cublog
     m_replicator_mvccid->new_assigned_mvccid (tranid, log_rec.mvccid);
   }
 
-  void
-  replicator::replicate_sysop_end_mvcc (TRANID tranid, const log_lsa &rec_lsa, const LOG_REC_SYSOP_END &log_rec)
+  void replicator::replicate_sysop_end_mvcc (TRANID tranid, const log_lsa &rec_lsa, const LOG_REC_SYSOP_END &log_rec)
   {
     assert (m_replicate_mvcc);
 
@@ -448,8 +446,7 @@ namespace cublog
   }
 
 #if !defined (NDEBUG)
-  void
-  replicator::replicate_sysop_start_postpone (const log_lsa &rec_lsa)
+  void replicator::replicate_sysop_start_postpone (const log_lsa &rec_lsa)
   {
     assert (m_replicate_mvcc);
 
@@ -491,8 +488,7 @@ namespace cublog
       }
   }
 
-  void
-  replicator::wait_past_target_lsa (const log_lsa &a_target_lsa)
+  void replicator::wait_past_target_lsa (const log_lsa &a_target_lsa)
   {
     // TODO: needs to be refactored to work with the new replicators flavors
     if (m_parallel_replication_redo == nullptr)
@@ -517,8 +513,7 @@ namespace cublog
     return m_most_recent_trantable_snapshot_lsa.load ();
   }
 
-  log_lsa
-  replicator::get_highest_processed_lsa () const
+  log_lsa replicator::get_highest_processed_lsa () const
   {
     std::lock_guard<std::mutex> lockg (m_redo_lsa_mutex);
     return m_redo_lsa;

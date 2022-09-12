@@ -86,6 +86,14 @@ namespace cublog
       atomic_replication_helper &operator= (const atomic_replication_helper &) = delete;
       atomic_replication_helper &operator= (atomic_replication_helper &&) = delete;
 
+      // start a new non-sysop atomic replication sequence for a transaction;
+      // the transaction must not already have an atomic replication sequence started
+      void add_atomic_replication_sequence (TRANID trid, LOG_LSA start_lsa, const log_rv_redo_context &redo_context);
+      // add a new log record as part of an already existing atomic replication
+      // sequence (be it sysop or non-sysop)
+      int add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa, LOG_RCVINDEX rcvindex,
+				       VPID vpid);
+
       // start a new sysop atomic replication sequence for a transaction
       // the transaction must not already have an atomic replication sequence started
       void start_sysop_sequence (TRANID trid, LOG_LSA start_lsa,
@@ -93,16 +101,6 @@ namespace cublog
       // can a sysop-type atomic sequence be ended under the transaction
       bool can_end_sysop_sequence (TRANID trid, LOG_LSA sysop_parent_lsa) const;
       bool can_end_sysop_sequence (TRANID trid) const;
-
-      // start a new non-sysop atomic replication sequence for a transaction;
-      // the transaction must not already have an atomic replication sequence started
-      void start_sequence (TRANID trid, LOG_LSA start_lsa,
-			   const log_rv_redo_context &redo_context);
-
-      // add a new log record as part of an already existing atomic replication
-      // sequence (be it sysop or non-sysop)
-      int add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa,
-				       LOG_RCVINDEX rcvindex, VPID vpid);
 
       // mark the start of postpone sequence for a transaction; transaction must have
       // already started an atomic sequence; the postpone sequence can contain nested atomic
