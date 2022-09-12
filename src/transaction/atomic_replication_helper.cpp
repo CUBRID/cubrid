@@ -44,7 +44,7 @@ namespace cublog
     const auto sequence_it = m_sequences_map.find (trid);
     if (sequence_it != m_sequences_map.cend ())
       {
-	const sequence &atomic_sequence =  sequence_it->second;
+	const atomic_replication_sequence &atomic_sequence =  sequence_it->second;
 
 	return atomic_sequence.can_end_sysop_sequence (sysop_parent_lsa);
       }
@@ -58,7 +58,7 @@ namespace cublog
     const auto sequence_it = m_sequences_map.find (trid);
     if (sequence_it != m_sequences_map.cend ())
       {
-	const sequence &atomic_sequence = sequence_it->second;
+	const atomic_replication_sequence &atomic_sequence = sequence_it->second;
 
 	// safeguard, if the atomic sequence contains a postpone [sub]sequence, that
 	// is more specific case and should have been checked upfront
@@ -88,7 +88,7 @@ namespace cublog
     const std::pair<sequence_map_type::iterator, bool> emplace_res = m_sequences_map.emplace (trid, redo_context);
     assert (emplace_res.second);
 
-    sequence &emplaced_seq = emplace_res.first->second;
+    atomic_replication_sequence &emplaced_seq = emplace_res.first->second;
     // workaround call to allow constructing a sequence in-place above; otherwise,
     // it would need to double construct an internal redo context instance (which is expensive)
     emplaced_seq.initialize (start_lsa, is_sysop);
@@ -129,7 +129,7 @@ namespace cublog
     // call should have been checked/guarded upfront
     assert (sequence_it != m_sequences_map.cend ());
 
-    sequence &sequence = sequence_it->second;
+    atomic_replication_sequence &sequence = sequence_it->second;
     sequence.start_postpone_sequence ();
   }
 
@@ -139,7 +139,7 @@ namespace cublog
     const auto sequence_it = m_sequences_map.find (trid);
     if (sequence_it != m_sequences_map.cend ())
       {
-	const sequence &sequence = sequence_it->second;
+	const atomic_replication_sequence &sequence = sequence_it->second;
 	return sequence.is_postpone_sequence_started ();
       }
 
@@ -153,7 +153,7 @@ namespace cublog
     // call should have been checked/guarded upfront
     assert (sequence_it != m_sequences_map.cend ());
 
-    sequence &sequence = sequence_it->second;
+    atomic_replication_sequence &sequence = sequence_it->second;
     sequence.complete_one_postpone_sequence ();
   }
 
@@ -163,7 +163,7 @@ namespace cublog
     const auto sequence_it = m_sequences_map.find (trid);
     if (sequence_it != m_sequences_map.cend ())
       {
-	const sequence &sequence = sequence_it->second;
+	const atomic_replication_sequence &sequence = sequence_it->second;
 	return sequence.is_at_least_one_postpone_sequence_completed ();
       }
 
@@ -242,10 +242,10 @@ namespace cublog
   }
 
   /********************************************************************************
-   * atomic_replication_helper::sequence function definitions  *
+   * atomic_replication_helper::atomic_replication_sequence function definitions  *
    ********************************************************************************/
 
-  atomic_replication_helper::sequence::sequence (
+  atomic_replication_helper::atomic_replication_sequence::atomic_replication_sequence (
 	  const log_rv_redo_context &redo_context)
     : m_start_lsa { NULL_LSA }
     , m_is_sysop { false }
@@ -256,7 +256,7 @@ namespace cublog
   }
 
   void
-  atomic_replication_helper::sequence::initialize (LOG_LSA start_lsa, bool is_sysop)
+  atomic_replication_helper::atomic_replication_sequence::initialize (LOG_LSA start_lsa, bool is_sysop)
   {
     assert (!LSA_ISNULL (&start_lsa));
     m_start_lsa = start_lsa;
@@ -264,7 +264,7 @@ namespace cublog
   }
 
   int
-  atomic_replication_helper::sequence::add_unit (THREAD_ENTRY *thread_p,
+  atomic_replication_helper::atomic_replication_sequence::add_unit (THREAD_ENTRY *thread_p,
       log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid)
   {
     m_units.emplace_back (record_lsa, vpid, rcvindex);
@@ -299,7 +299,7 @@ namespace cublog
   }
 
   bool
-  atomic_replication_helper::sequence::can_end_sysop_sequence (const LOG_LSA &sysop_parent_lsa) const
+  atomic_replication_helper::atomic_replication_sequence::can_end_sysop_sequence (const LOG_LSA &sysop_parent_lsa) const
   {
     if (m_is_sysop && !LSA_ISNULL (&sysop_parent_lsa))
       {
@@ -312,7 +312,7 @@ namespace cublog
     return false;
   }
 
-  bool atomic_replication_helper::sequence::can_end_sysop_sequence () const
+  bool atomic_replication_helper::atomic_replication_sequence::can_end_sysop_sequence () const
   {
     if (m_is_sysop)
       {
@@ -323,7 +323,7 @@ namespace cublog
   }
 
   void
-  atomic_replication_helper::sequence::start_postpone_sequence ()
+  atomic_replication_helper::atomic_replication_sequence::start_postpone_sequence ()
   {
     assert (m_is_sysop);
     assert (!m_postpone_started);
@@ -332,7 +332,7 @@ namespace cublog
   }
 
   bool
-  atomic_replication_helper::sequence::is_postpone_sequence_started () const
+  atomic_replication_helper::atomic_replication_sequence::is_postpone_sequence_started () const
   {
     //assert ((m_postpone_started && m_is_sysop) || !m_is_sysop);
 
@@ -340,7 +340,7 @@ namespace cublog
   }
 
   void
-  atomic_replication_helper::sequence::complete_one_postpone_sequence ()
+  atomic_replication_helper::atomic_replication_sequence::complete_one_postpone_sequence ()
   {
     assert (m_is_sysop);
     assert (m_postpone_started);
@@ -349,7 +349,7 @@ namespace cublog
   }
 
   bool
-  atomic_replication_helper::sequence::is_at_least_one_postpone_sequence_completed () const
+  atomic_replication_helper::atomic_replication_sequence::is_at_least_one_postpone_sequence_completed () const
   {
     if (m_end_pospone_count > 0)
       {
@@ -362,7 +362,7 @@ namespace cublog
   }
 
   void
-  atomic_replication_helper::sequence::apply_all_log_redos (THREAD_ENTRY *thread_p)
+  atomic_replication_helper::atomic_replication_sequence::apply_all_log_redos (THREAD_ENTRY *thread_p)
   {
     for (size_t i = 0; i < m_units.size (); i++)
       {
@@ -371,7 +371,7 @@ namespace cublog
   }
 
   void
-  atomic_replication_helper::sequence::apply_and_unfix_sequence (THREAD_ENTRY *thread_p)
+  atomic_replication_helper::atomic_replication_sequence::apply_and_unfix_sequence (THREAD_ENTRY *thread_p)
   {
     // Applying the log right after the fix could lead to problems as the records are fixed one by one as
     // they come to be read by the PTS and some might be unfixed and refixed after the apply procedure
@@ -391,7 +391,7 @@ namespace cublog
   }
 
   log_lsa
-  atomic_replication_helper::sequence::get_start_lsa () const
+  atomic_replication_helper::atomic_replication_sequence::get_start_lsa () const
   {
     return m_start_lsa;
   }
@@ -400,7 +400,7 @@ namespace cublog
    * atomic_replication_helper::sequence::unit function definitions  *
    *********************************************************************************************************/
 
-  atomic_replication_helper::sequence::unit::unit (log_lsa lsa,
+  atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::atomic_replication_unit (log_lsa lsa,
       VPID vpid, LOG_RCVINDEX rcvindex)
     : m_vpid { vpid }
     , m_record_lsa { lsa }
@@ -412,13 +412,13 @@ namespace cublog
     PGBUF_INIT_WATCHER (&m_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
   }
 
-  atomic_replication_helper::sequence::unit::~unit ()
+  atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::~atomic_replication_unit ()
   {
     PGBUF_CLEAR_WATCHER (&m_watcher);
   }
 
   void
-  atomic_replication_helper::sequence::unit::apply_log_redo (THREAD_ENTRY *thread_p,
+  atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::apply_log_redo (THREAD_ENTRY *thread_p,
       log_rv_redo_context &redo_context)
   {
     const int error_code = redo_context.m_reader.set_lsa_and_fetch_page (m_record_lsa, log_reader::fetch_mode::FORCE);
@@ -459,7 +459,7 @@ namespace cublog
   }
 
   int
-  atomic_replication_helper::sequence::unit::fix_page (THREAD_ENTRY *thread_p)
+  atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::fix_page (THREAD_ENTRY *thread_p)
   {
     switch (m_record_index)
       {
@@ -498,7 +498,7 @@ namespace cublog
   }
 
   void
-  atomic_replication_helper::sequence::unit::unfix_page (
+  atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::unfix_page (
 	  THREAD_ENTRY *thread_p)
   {
     switch (m_record_index)
@@ -522,7 +522,7 @@ namespace cublog
   }
 
   PAGE_PTR
-  atomic_replication_helper::sequence::unit::get_page_ptr ()
+  atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::get_page_ptr ()
   {
     if (m_page_ptr != nullptr)
       {
@@ -532,7 +532,7 @@ namespace cublog
   }
 
   void
-  atomic_replication_helper::sequence::unit::set_page_ptr (const PAGE_PTR &ptr)
+  atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::set_page_ptr (const PAGE_PTR &ptr)
   {
     m_page_ptr = ptr;
   }

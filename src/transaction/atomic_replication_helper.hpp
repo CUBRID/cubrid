@@ -128,19 +128,19 @@ namespace cublog
 #endif
 
     private: // types
-      class sequence
+      class atomic_replication_sequence
       {
 	public:
-	  sequence () = delete;
-	  explicit sequence (const log_rv_redo_context &redo_context);
+	  atomic_replication_sequence () = delete;
+	  explicit atomic_replication_sequence (const log_rv_redo_context &redo_context);
 
-	  sequence (const sequence &) = delete;
-	  sequence (sequence &&) = delete;
+	  atomic_replication_sequence (const atomic_replication_sequence &) = delete;
+	  atomic_replication_sequence (atomic_replication_sequence &&) = delete;
 
-	  ~sequence () = default;
+	  ~atomic_replication_sequence () = default;
 
-	  sequence &operator= (const sequence &) = delete;
-	  sequence &operator= (sequence &&) = delete;
+	  atomic_replication_sequence &operator= (const atomic_replication_sequence &) = delete;
+	  atomic_replication_sequence &operator= (atomic_replication_sequence &&) = delete;
 
 	  // technical: function is needed to avoid double constructing a redo_context - which is expensive -
 	  // upon constructing a sequence
@@ -167,19 +167,19 @@ namespace cublog
 	  /*
 	   * Atomic replication unit holds the log record information necessary for recovery redo
 	   */
-	  class unit
+	  class atomic_replication_unit
 	  {
 	    public:
-	      unit () = delete;
-	      unit (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex);
+	      atomic_replication_unit () = delete;
+	      atomic_replication_unit (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex);
 
-	      unit (const unit &) = delete;
-	      unit (unit &&) = default;
+	      atomic_replication_unit (const atomic_replication_unit &) = delete;
+	      atomic_replication_unit (atomic_replication_unit &&) = default;
 
-	      ~unit ();
+	      ~atomic_replication_unit ();
 
-	      unit &operator= (const unit &) = delete;
-	      unit &operator= (unit &&) = delete;
+	      atomic_replication_unit &operator= (const atomic_replication_unit &) = delete;
+	      atomic_replication_unit &operator= (atomic_replication_unit &&) = delete;
 
 	      void apply_log_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context);
 	      template <typename T>
@@ -198,7 +198,7 @@ namespace cublog
 	      LOG_RCVINDEX m_record_index;
 	  };
 
-	  using atomic_unit_vector_type = std::vector<unit>;
+	  using atomic_unit_vector_type = std::vector<atomic_replication_unit>;
 	  using vpid_to_page_ptr_map_type = std::map<VPID, PAGE_PTR>;
 
 	private: // variables
@@ -220,7 +220,7 @@ namespace cublog
 	  vpid_to_page_ptr_map_type m_page_map;
       };
 
-      using sequence_map_type = std::map<TRANID, sequence>;
+      using sequence_map_type = std::map<TRANID, atomic_replication_sequence>;
 
 #if !defined (NDEBUG)
       // check validity of atomic sequences
@@ -240,7 +240,7 @@ namespace cublog
   };
 
   template <typename T>
-  void atomic_replication_helper::sequence::unit::apply_log_by_type (
+  void atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::apply_log_by_type (
 	  THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context, LOG_RECTYPE rectype)
   {
     LOG_RCV rcv;
@@ -268,7 +268,7 @@ namespace cublog
       }
   }
 
-  inline LOG_LSA atomic_replication_helper::sequence::unit::get_lsa () const
+  inline LOG_LSA atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::get_lsa () const
   {
     return m_record_lsa;
   }
