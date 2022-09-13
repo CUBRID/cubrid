@@ -6662,6 +6662,10 @@ tzc_update_internal (const char *database_name)
       is_first_column = true;
       has_timezone_column = false;
 
+      memset (&update_query, 0, sizeof (QUERY_BUF));
+      memset (&update_set, 0, sizeof (QUERY_BUF));
+      memset (&update_where, 0, sizeof (QUERY_BUF));
+
       for (column = column_list; column != NULL; column = db_attribute_next (column))
 	{
 	  const char *column_name = db_attribute_name (column);
@@ -6683,49 +6687,47 @@ tzc_update_internal (const char *database_name)
 	       */
 	      if (is_first_column == true)
 		{
-		  memset (&update_set, 0, sizeof (QUERY_BUF));
-		  memset (&update_where, 0, sizeof (QUERY_BUF));
-
 		  if (tz_write_query_string
 		      (&update_set, "UPDATE [%s] SET [%s] = conv_tz ([%s])", table_name, column_name,
 		       column_name) == NULL)
 		    {
-		      printf ("Failed to create a query to update the timezone of column %s in table %s.\n", table_name,
-			      column_name);
-		      goto free_resource_3;
+		      break;
 		    }
 
 		  if (tz_write_query_string (&update_where, " WHERE [%s] != conv_tz ([%s])", column_name, column_name)
 		      == NULL)
 		    {
-		      printf ("Failed to create a query to update the timezone of column %s in table %s.\n", table_name,
-			      column_name);
-		      goto free_resource_3;
+		      break;
 		    }
+
 		  is_first_column = false;
 		}
 	      else
 		{
 		  if (tz_write_query_string (&update_set, ", [%s] = conv_tz ([%s])", column_name, column_name) == NULL)
 		    {
-		      printf ("Failed to create a query to update the timezone of column %s in table %s.\n", table_name,
-			      column_name);
-		      goto free_resource_3;
+		      break;
 		    }
 
 		  if (tz_write_query_string (&update_where, " OR [%s] != conv_tz ([%s])", column_name, column_name) ==
 		      NULL)
 		    {
-		      printf ("Failed to create a query to update the timezone of column %s in table %s.\n", table_name,
-			      column_name);
-		      goto free_resource_3;
+		      break;
 		    }
 		}
 	      printf ("%s ", column_name);
-	      break;
+	      continue;
 
 	    default:
 	      continue;
+	    }
+
+	  /* If no error occurred, continue should have been executed before coming here. */
+	  if (column != NULL)
+	    {
+	      printf ("Failed to create a query to update the timezone of column %s in table %s.\n", column_name,
+		      table_name);
+	      goto free_resource_3;
 	    }
 	}
       printf ("\n");
@@ -6787,6 +6789,21 @@ exit_on_error:
   return error;
 }
 
+/*
+ * tz_write_query_string() - Write a dynamic query.
+ *
+ * Returns: A pointer to the QUERY_BUF passed when calling.
+ *          NULL If an error occurred.
+ * query(in): a pointer to QUERY_BUF.
+ * format(in): a format for writing a dynamic query.
+ * args(in): a va_list of arguments.
+ * 
+ * Note: It is assumed that the length of the first query does not exceed 4096.
+ *       This is because the length, including one table name and two column
+ *       names, does not exceed 1024. In the case of realloc, there is
+ *       an assumption of the same.If we want to use it anywhere other than
+ *       the tzc_update_internal() function, we need to change it.
+ */
 static QUERY_BUF *
 tz_write_query_string (QUERY_BUF * query, const char *format, ...)
 {
@@ -6803,7 +6820,7 @@ tz_write_query_string (QUERY_BUF * query, const char *format, ...)
       query->buf = (char *) malloc (QUERY_BUF_INIT_SIZE * sizeof (char));
       if (query->buf == NULL)
 	{
-	  printf ("Failed to allocate memory for query buffer.\n");
+	  printf ("\nFailed to allocate memory for query buffer.\n");
 	  return NULL;
 	}
       query->size = QUERY_BUF_INIT_SIZE;
@@ -6825,7 +6842,7 @@ tz_write_query_string (QUERY_BUF * query, const char *format, ...)
 	  query->buf = (char *) realloc (query->buf, (query->size + QUERY_BUF_UNIT_SIZE) * sizeof (char));
 	  if (query->buf == NULL)
 	    {
-	      printf ("Failed to allocate memory for query buffer.\n");
+	      printf ("\nFailed to allocate memory for query buffer.\n");
 	      query->buf = backup;
 	      return NULL;
 	    }
