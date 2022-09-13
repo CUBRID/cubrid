@@ -82,6 +82,7 @@ namespace cubmethod
 
     private:
       /* handle related to query */
+      int end_transaction (packing_unpacker &unpacker);
       int prepare (packing_unpacker &unpacker);
       int execute (packing_unpacker &unpacker);
       int make_out_resultset (packing_unpacker &unpacker);

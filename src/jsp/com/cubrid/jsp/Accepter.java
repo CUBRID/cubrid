@@ -1,5 +1,5 @@
 /*
- *
+ * Copyright (C) 2008 Search Solution Corporation.
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -29,64 +29,63 @@
  *
  */
 
-package com.cubrid.jsp.impl;
+package com.cubrid.jsp;
 
-/**
- * NOTE: This enumeration is ported from UFunctionCode in cubrid-jdbc. Only commands necessary for
- * Server-side JDBC are defined. If there is a command required for Server-side JDBC in the command
- * added in UFunctionCode, it should be added below.
- */
-public enum SUFunctionCode {
-    END_TRANSACTION(1),
-    PREPARE(2),
-    EXECUTE(3),
-    GET_DB_PARAMETER(4),
+import java.io.IOException;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
 
-    /**
-     * This command is not actually supported already It just returns tuple count that you can
-     * retrieve from the EXECUTE command
-     */
-    // CURSOR(7),
-    FETCH(8),
-    GET_SCHEMA_INFO(9),
-    GET_BY_OID(10),
-    PUT_BY_OID(11),
+public class Accepter implements Runnable {
 
-    /**
-     * The result of this command can be obtained from DB Server when starting the Java SP Server
-     */
-    // GET_DB_VERSION(15),
-    RELATED_TO_OID(17),
-    RELATED_TO_COLLECTION(18),
-    NEXT_RESULT(19),
-    EXECUTE_BATCH_STATEMENT(20),
-    EXECUTE_BATCH_PREPAREDSTATEMENT(21),
-    CURSOR_UPDATE(22),
-    MAKE_OUT_RS(33),
+    @Override
+    public void run() {
+    }
+    /*
+    private ServerSocketChannel channel = null;
+    private SocketAddress address = null;
+    private Selector selector = null;
 
-    GET_GENERATED_KEYS(34),
-
-    NEW_LOB(35),
-    WRITE_LOB(36),
-    READ_LOB(37),
-    PREPARE_AND_EXECUTE(41),
-
-    /** The CURSOR will manage at the DB Server */
-    // CURSOR_CLOSE(42),
-
-    LAST_FUNCTION_CODE(-1);
-
-    private int code;
-
-    SUFunctionCode(int code) {
-        this.code = code;
+    Acceptor(SocketAddress addr) {
+        this.address = addr;
     }
 
-    SUFunctionCode(SUFunctionCode code) {
-        this.code = code.getCode();
+    @Override
+    public void run() {
+        channel = ServerSocketChannel.open();
+        channel.bind(this.address);
+        channel.configureBlocking(false);
+
+        Selector selector = Selector.open ();
+        channel.register(selector, SelectionKey.OP_ACCEPT);
+    
+        Socket client = null;
+        while (true) {
+            selector.select ();
+
+
+            try {
+                client = serverSocket.accept();
+                client.setTcpNoDelay(true);
+                Thread execThread = new ExecuteThread(client);
+                execThread.setContextClassLoader(new StoredProcedureClassLoader());
+                execThread.start();
+            } catch (IOException e) {
+                Server.log(e);
+                break;
+            }
+        }
+
+        try {
+            serverSocket.close();
+        } catch (IOException e) {
+            // do nothing
+        }
+        serverSocket = null;
     }
 
-    public int getCode() {
-        return this.code;
+    public ServerSocket getServerSocket() {
+        return serverSocket;
     }
+    */
 }

@@ -312,6 +312,16 @@ public class SUConnection {
         return unpacker;
     }
 
+    // UFunctionCode.END_TRANSACTION
+    public void endTransaction (boolean type) throws IOException, SQLException {
+        CUBRIDPacker packer = new CUBRIDPacker(outputBuffer);
+        packer.packInt(SUFunctionCode.END_TRANSACTION.getCode());
+        packer.packInt((type == true) ? CUBRIDServerSideConstants.END_TRAN_COMMIT : CUBRIDServerSideConstants.END_TRAN_ROLLBACK);
+        CUBRIDUnpacker unpacker = request(outputBuffer);
+        unpacker.unpackInt();
+    }
+
+
     public void addElementToSet(CUBRIDOID oid, String attributeName, Object value)
             throws IOException, SQLException {
         collectionCmd(CUBRIDServerSideConstants.ADD_ELEMENT_TO_SET, oid, attributeName, value, -1);

@@ -260,7 +260,7 @@ public class ExecuteThread extends Thread {
                     Server.log(throwable);
                     try {
                         if (throwable instanceof SQLException) {
-                            sendError(throwable.getMessage(), client);
+                            sendError(throwable.toString(), client);
                         } else {
                             sendError(throwable.toString(), client);
                         }

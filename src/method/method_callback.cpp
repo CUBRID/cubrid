@@ -62,6 +62,9 @@ namespace cubmethod
     int error = NO_ERROR;
     switch (code)
       {
+      case METHOD_CALLBACK_END_TRANSACTION:
+  error = end_transaction (unpacker);
+  break;
       case METHOD_CALLBACK_QUERY_PREPARE:
 	error = prepare (unpacker);
 	break;
@@ -99,6 +102,41 @@ namespace cubmethod
 #endif
 
     return error;
+  }
+
+  int
+  callback_handler::end_transaction (packing_unpacker &unpacker)
+  {
+    int command; // commit : 1, abort : 2
+    unpacker.unpack_all (command);
+
+    if (command == 1)
+    {
+      db_commit_transaction ();
+    }
+    else if (command == 2)
+    {
+      db_abort_transaction ();
+    }
+    else
+    {
+      assert (false);
+      mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+      return ER_FAILED;
+    }
+
+    free_query_handle_all (true);
+
+    if (m_error_ctx.has_error())
+      {
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+      }
+    else
+      {
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, 1);
+      }
+
+    return NO_ERROR;
   }
 
   int

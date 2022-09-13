@@ -338,7 +338,9 @@ namespace cubmethod
       case METHOD_CALLBACK_GET_GENERATED_KEYS:
 	error = callback_get_generated_keys (thread_ref, unpacker);
 	break;
-
+      case METHOD_CALLBACK_END_TRANSACTION:
+  error = callback_end_transaction (thread_ref, unpacker);
+  break;
       default:
 	// TODO: not implemented yet, do we need error handling?
 	assert (false);
@@ -657,6 +659,24 @@ namespace cubmethod
     unpacker.unpack_all (handler_id);
 
     error = method_send_data_to_client (&thread_ref, *m_header, code, handler_id);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+
+    error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
+    return error;
+  }
+
+  int
+  method_invoke_java::callback_end_transaction (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_END_TRANSACTION;
+    int command; // commit or abort
+
+    unpacker.unpack_all (command);
+    error = method_send_data_to_client (&thread_ref, *m_header, code, command);
     if (error != NO_ERROR)
       {
 	return error;

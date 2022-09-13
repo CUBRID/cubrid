@@ -118,6 +118,7 @@ namespace cubmethod
       int callback_collection_cmd (cubthread::entry &thread_ref, packing_unpacker &unpacker);
       int callback_make_outresult (cubthread::entry &thread_ref, packing_unpacker &unpacker);
       int callback_get_generated_keys (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_end_transaction (cubthread::entry &thread_ref, packing_unpacker &unpacker);
 
       void erase_query_cursor (const std::uint64_t query_id);
 

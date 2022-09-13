@@ -159,7 +159,6 @@ set(BASE_HEADERS
   ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/semaphore.hpp
-  ${BASE_DIR}/ddl_log.h
 )
 
 set(HEAPLAYER_SOURCES
