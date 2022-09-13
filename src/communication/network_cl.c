@@ -888,7 +888,8 @@ net_client_request2 (int request, char *argbuf, int argsize, char *replybuf, int
 
   if (histo_is_collecting ())
     {
-      histo_finish_request (request, replysize + *replydatasize_ptr);
+      int recevied = replysize + (replydatasize_ptr ? *replydatasize_ptr : 0);
+      histo_finish_request (request, recevied);
     }
 
   return error;
@@ -981,7 +982,8 @@ net_client_request2_no_malloc (int request, char *argbuf, int argsize, char *rep
 
       if (histo_is_collecting ())
 	{
-	  histo_finish_request (request, replysize + *replydatasize_ptr);
+	  int recevied = replysize + (replydatasize_ptr ? *replydatasize_ptr : 0);
+	  histo_finish_request (request, recevied);
 	}
 
     }
@@ -1714,7 +1716,10 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 
       if (histo_is_collecting ())
 	{
-	  histo_finish_request (request, replysize + *replydatasize_listid + *replydatasize_page + *replydatasize_plan);
+	  int recevied = replysize
+	    + (replydatasize_listid ? *replydatasize_listid : 0)
+	    + (replydatasize_page ? *replydatasize_page : 0) + (replydatasize_plan ? *replydatasize_plan : 0);
+	  histo_finish_request (request, recevied);
 	}
 
     }
@@ -1904,7 +1909,8 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 
   if (histo_is_collecting ())
     {
-      histo_finish_request (request, replysize + *replydatasize_ptr);
+      int recevied = replysize + (replydatasize_ptr ? *replydatasize_ptr : 0);
+      histo_finish_request (request, recevied);
     }
 
   return error;
@@ -2184,7 +2190,9 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, cha
 
       if (histo_is_collecting ())
 	{
-	  histo_finish_request (request, replysize + *replydatasize_ptr1 + *replydatasize_ptr2);
+	  int recevied = replysize
+	    + (replydatasize_ptr1 ? *replydatasize_ptr1 : 0) + (replydatasize_ptr2 ? *replydatasize_ptr2 : 0);
+	  histo_finish_request (request, recevied);
 	}
     }
   return error;
@@ -3254,7 +3262,8 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
 
   if (histo_is_collecting ())
     {
-      histo_finish_request (request, replysize + *recvbuffer_size + content_size + packed_desc_size);
+      int recevied = replysize + (recvbuffer_size ? *recvbuffer_size : 0) + content_size + packed_desc_size;
+      histo_finish_request (request, recevied);
     }
 
   return error;
