@@ -235,6 +235,15 @@ struct offset_rule_interval
   int final_offset_rule_start;
 };
 
+typedef struct query_buf QUERY_BUF;
+struct query_buf
+{
+  char *buf;
+  char *last;
+  int size;
+  int len;
+};
+
 #define TZ_CAL_ABBREV_SIZE 4
 static const char MONTH_NAMES_ABBREV[TZ_MON_COUNT][TZ_CAL_ABBREV_SIZE] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
@@ -471,6 +480,7 @@ static int init_tz_name (TZ_NAME * dst, TZ_NAME * src);
 static int tzc_extend (TZ_DATA * tzd);
 static int tzc_update (TZ_DATA * tzd, const char *database_name);
 static int tzc_update_internal (const char *database_name);
+static QUERY_BUF *tz_write_query_string (QUERY_BUF * query, const char *format, ...);
 #endif
 static int tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type);
 static int get_day_of_week_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year);
@@ -6586,22 +6596,12 @@ exit:
 static int
 tzc_update_internal (const char *database_name)
 {
-#define QUERY_BUF_INIT_SIZE 4096
-#define QUERY_BUF_UNIT_SIZE 1024
-
   const char *program_name = "extend";
   DB_OBJLIST *table_list = NULL, *table = NULL;
-  char *update_query_buf = NULL;
   DB_QUERY_RESULT *result = NULL;
-  char *update_set_buf = NULL;
-  char *update_set = NULL;
-  int update_set_buf_len = 0;
-  int update_set_len = 0;
-  int update_where_buf_len = 0;
-  char *update_where_buf = NULL;
-  char *update_where = NULL;
-  int update_where_len = 0;
-  char *backup_buf = NULL;
+  QUERY_BUF update_query;
+  QUERY_BUF update_set;
+  QUERY_BUF update_where;
   bool is_first_column = true;
   bool has_timezone_column = false;
   int error = NO_ERROR;
@@ -6667,7 +6667,6 @@ tzc_update_internal (const char *database_name)
 	  const char *column_name = db_attribute_name (column);
 	  DB_DOMAIN *column_domain = db_attribute_domain (column);
 	  DB_TYPE column_type = db_domain_type (column_domain);
-	  int len = 0;
 
 	  /* Now do the update if the datatype is of timezone type */
 	  switch (column_type)
@@ -6684,82 +6683,43 @@ tzc_update_internal (const char *database_name)
 	       */
 	      if (is_first_column == true)
 		{
-		  update_set_buf = STATIC_CAST (char *, malloc (QUERY_BUF_INIT_SIZE * sizeof (char)));
-		  if (update_set_buf == NULL)
-		    {
-		      printf ("Failed to allocate memory for update query of table %s\n", table_name);
-		      goto free_resource_2;
-		    }
-		  update_set = update_set_buf;
-		  update_set_buf_len = QUERY_BUF_INIT_SIZE;
-		  update_set_len = 0;
+		  memset (&update_set, 0, sizeof (QUERY_BUF));
+		  memset (&update_where, 0, sizeof (QUERY_BUF));
 
-		  update_where_buf = STATIC_CAST (char *, malloc (QUERY_BUF_INIT_SIZE * sizeof (char)));
-		  if (update_where_buf == NULL)
+		  if (tz_write_query_string
+		      (&update_set, "UPDATE [%s] SET [%s] = conv_tz ([%s])", table_name, column_name,
+		       column_name) == NULL)
 		    {
-		      printf ("Failed to allocate memory for update query of table %s\n", table_name);
+		      printf ("Failed to create a query to update the timezone of column %s in table %s.\n", table_name,
+			      column_name);
 		      goto free_resource_3;
 		    }
-		  update_where = update_where_buf;
-		  update_where_buf_len = QUERY_BUF_INIT_SIZE;
-		  update_where_len = 0;
 
-		  len =
-		    sprintf (update_set, "UPDATE [%s] SET [%s] = conv_tz ([%s])", table_name, column_name, column_name);
-		  update_set += len;
-		  update_set_len = len;
-
-		  len = sprintf (update_where, " WHERE [%s] != conv_tz ([%s])", column_name, column_name);
-		  update_where += len;
-		  update_where_len = len;
-
+		  if (tz_write_query_string (&update_where, " WHERE [%s] != conv_tz ([%s])", column_name, column_name)
+		      == NULL)
+		    {
+		      printf ("Failed to create a query to update the timezone of column %s in table %s.\n", table_name,
+			      column_name);
+		      goto free_resource_3;
+		    }
 		  is_first_column = false;
 		}
 	      else
 		{
-		  len += snprintf (NULL, 0, ", [%s] = conv_tz ([%s])", column_name, column_name);
-		  if ((update_set_len + len) > update_set_buf_len)
+		  if (tz_write_query_string (&update_set, ", [%s] = conv_tz ([%s])", column_name, column_name) == NULL)
 		    {
-		      backup_buf = update_set_buf;
-		      update_set_buf =
-			STATIC_CAST (char *,
-				     realloc (update_set_buf,
-					      (update_set_buf_len + QUERY_BUF_UNIT_SIZE) * sizeof (char)));
-		      if (update_set_buf == NULL)
-			{
-			  printf ("Failed to allocate memory for update query of table %s\n", table_name);
-			  free_and_init (backup_buf);
-			  goto free_resource_4;
-			}
-		      update_set = update_set_buf + update_set_len;
-		      update_set_buf_len += QUERY_BUF_UNIT_SIZE;
+		      printf ("Failed to create a query to update the timezone of column %s in table %s.\n", table_name,
+			      column_name);
+		      goto free_resource_3;
 		    }
 
-		  len += snprintf (NULL, 0, " OR [%s] != conv_tz ([%s])", column_name, column_name);
-		  if ((update_where_len + len) > update_where_buf_len)
+		  if (tz_write_query_string (&update_where, " OR [%s] != conv_tz ([%s])", column_name, column_name) ==
+		      NULL)
 		    {
-		      backup_buf = update_where_buf;
-		      update_where_buf =
-			STATIC_CAST (char *,
-				     realloc (update_where_buf,
-					      (update_where_buf_len + QUERY_BUF_UNIT_SIZE) * sizeof (char)));
-		      if (update_set_buf == NULL)
-			{
-			  printf ("Failed to allocate memory for update query of table %s\n", table_name);
-			  free_and_init (backup_buf);
-			  goto free_resource_4;
-			}
-		      update_where = update_where_buf + update_where_len;
-		      update_where_buf_len += QUERY_BUF_UNIT_SIZE;
+		      printf ("Failed to create a query to update the timezone of column %s in table %s.\n", table_name,
+			      column_name);
+		      goto free_resource_3;
 		    }
-
-		  len = sprintf (update_set, ", [%s] = conv_tz ([%s])", column_name, column_name);
-		  update_set += len;
-		  update_set_len += len;
-
-		  len = sprintf (update_where, " OR [%s] != conv_tz ([%s])", column_name, column_name);
-		  update_where += len;
-		  update_where_len += len;
 		}
 	      printf ("%s ", column_name);
 	      break;
@@ -6773,26 +6733,26 @@ tzc_update_internal (const char *database_name)
       /* If we have at least a column that is of timezone data type then execute the query */
       if (has_timezone_column == true)
 	{
-	  update_query_buf = STATIC_CAST (char *, malloc ((update_set_len + update_where_len) * sizeof (char)));
-	  if (update_query_buf == NULL)
+	  update_query.buf = (char *) malloc ((update_set.len + update_where.len) * sizeof (char));
+	  if (update_query.buf == NULL)
 	    {
-	      printf ("Failed to allocate memory for update query of table %s\n", table_name);
-	      goto free_resource_4;
+	      printf ("Failed to allocate memory for query buffer.\n");
+	      goto free_resource_3;
 	    }
-	  strcpy (update_query_buf, update_set_buf);
-	  strcpy (update_query_buf + update_set_len, update_where_buf);
-	  free_and_init (update_set_buf);
-	  free_and_init (update_where_buf);
+	  strcpy (update_query.buf, update_set.buf);
+	  strcpy (update_query.buf + update_set.len, update_where.buf);
+	  free_and_init (update_set.buf);
+	  free_and_init (update_where.buf);
 
-	  error = execute_query (update_query_buf, &result);
+	  error = execute_query (update_query.buf, &result);
 	  if (error < 0)
 	    {
 	      printf ("Error while updating table %s\n", table_name);
 	      db_abort_transaction ();
-	      goto free_resource_5;
+	      goto free_resource_4;
 	    }
 	  db_query_end (result);
-	  free_and_init (update_query_buf);
+	  free_and_init (update_query.buf);
 	}
 
       printf ("Finished updating table %s\n", table_name);
@@ -6809,15 +6769,12 @@ tzc_update_internal (const char *database_name)
 
   return NO_ERROR;
 
-/* The following frees resources before returning an error. */
-free_resource_5:
-  free_and_init (update_query_buf);
-
 free_resource_4:
-  free_and_init (update_where_buf);
+  free_and_init (update_query.buf);
 
 free_resource_3:
-  free_and_init (update_set_buf);
+  free_and_init (update_set.buf);
+  free_and_init (update_where.buf);
 
 free_resource_2:
   db_objlist_free (table_list);
@@ -6828,6 +6785,62 @@ free_resource_1:
 
 exit_on_error:
   return error;
+}
+
+static QUERY_BUF *
+tz_write_query_string (QUERY_BUF * query, const char *format, ...)
+{
+#define QUERY_BUF_INIT_SIZE 4096
+#define QUERY_BUF_UNIT_SIZE 1024
+
+  char *backup = NULL;
+  int len;
+
+  va_list args;
+
+  if (query->buf == NULL)
+    {
+      query->buf = (char *) malloc (QUERY_BUF_INIT_SIZE * sizeof (char));
+      if (query->buf == NULL)
+	{
+	  printf ("Failed to allocate memory for query buffer.\n");
+	  return NULL;
+	}
+      query->size = QUERY_BUF_INIT_SIZE;
+
+      va_start (args, format);
+      len = vsprintf (query->buf, format, args);
+      va_end (args);
+      query->last = query->buf + len;
+      query->len = len;
+    }
+  else
+    {
+      va_start (args, format);
+      len = vsnprintf (NULL, 0, format, args);
+      va_end (args);
+      if ((query->len + len) > query->size)
+	{
+	  backup = query->buf;
+	  query->buf = (char *) realloc (query->buf, (query->size + QUERY_BUF_UNIT_SIZE) * sizeof (char));
+	  if (query->buf == NULL)
+	    {
+	      printf ("Failed to allocate memory for query buffer.\n");
+	      query->buf = backup;
+	      return NULL;
+	    }
+	  query->size += QUERY_BUF_UNIT_SIZE;
+	  query->last = query->buf + query->len;
+	}
+
+      va_start (args, format);
+      len = vsprintf (query->last, format, args);
+      va_end (args);
+      query->last += len;
+      query->len += len;
+    }
+
+  return query;
 
 #undef QUERY_BUF_INIT_SIZE
 #undef QUERY_BUF_UNIT_SIZE
