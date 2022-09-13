@@ -23,6 +23,8 @@
 #ident "$Id$"
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
 #include <string.h>
 #include <limits.h>
 #include <errno.h>
@@ -45,6 +47,7 @@
 #define HOSTNAME_BUF_SIZE              (128)
 #define MAX_HOSTS_LINE_SIZE       (256)
 #define IPADDR_LEN              (17)
+#define NUM_IPADDR_DOT              (3)
 
 #define FREE_MEM(PTR)           \
         do {                    \
@@ -108,6 +111,7 @@ static std::unordered_map <std::string, std::string> user_host_Map;
 // *INDENT-ON*
 
 static struct hostent *hostent_init ();
+static bool ip_format_check (char *ip_addr);
 static int host_conf_load ();
 static struct hostent *host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_case);
 
@@ -242,7 +246,7 @@ host_conf_load ()
   char host_conf_file_full_path[PATH_MAX];
   char *hosts_conf_dir;
 
-  char *token;
+  char *token, temp_token[HOSTNAME_BUF_SIZE];
   char *save_ptr_strtok;
   /*delimiter */
   char *delim = " \t\n";
@@ -282,9 +286,10 @@ host_conf_load ()
 	    }
 	  if (hostent_flag == INSERT_IPADDR)
 	    {
-	      if (strlen (token) > IPADDR_LEN)
+	      strcpy (temp_token, token);
+	      if (ip_format_check (temp_token) == false)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_IP_ADDR_TOO_LONG, 1, token);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_IP_ADDR_INVALID_FORMAT, 1, token);
 		  fprintf (stdout, "%s\n", er_msg ());
 
 		  user_host_Map.clear ();
@@ -356,6 +361,52 @@ host_conf_load ()
   fclose (fp);
 
   return LOAD_SUCCESS;
+}
+
+
+static bool
+ip_format_check (char *ip_addr)
+{
+
+  int dec_val;
+  bool ret = true;
+  int dot = -1;
+  char *token;
+  char *save_ptr_strtok;
+  char *delim = " .\n";
+
+  token = strtok_r (ip_addr, delim, &save_ptr_strtok);
+
+  do
+    {
+      dec_val = atoi (token);
+      if (dec_val < 0 || dec_val > 255)
+	{
+	  ret = false;
+	  break;
+	}
+      else if (dec_val == 0 && token[0] != 48)
+	{
+	  ret = false;
+	  break;
+	}
+      else if (dec_val != 0 && ((int) log10 (dec_val) + 1 != strlen (token)))
+	{
+	  ret = false;
+	  break;
+	}
+      else
+	{
+	  dot++;
+	}
+    }
+  while (token = strtok_r (NULL, delim, &save_ptr_strtok));
+  if (dot != NUM_IPADDR_DOT)
+    {
+      ret = false;
+    }
+
+  return ret;
 }
 
 /*

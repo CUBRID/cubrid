@@ -1435,7 +1435,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1352 Invalid number of columns specified.
 
-1353 IP address "%1$s" is too long, it should be less than or equal 16.
+1353 IP address "%1$s" is invalid format.
 1354 Hostname "%1$s" is too long, it should be less than or equal 256.
 1355 Hostname "%1$s" already exists, a hostname cannot be duplicated with other IP addresses.
 1356 The IP address and hostname must be written completely both of them.
