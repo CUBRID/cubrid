@@ -331,7 +331,7 @@ uc_start (char *err_msg)
       return -1;
     }
 
-  if (admin_start_cmd (br_info, num_broker, master_shm_id, acl_flag, acl_file) < 0)
+  if (admin_start_cmd (br_info, num_broker, master_shm_id, acl_flag, acl_file, admin_log_file) < 0)
     {
       CP_ADMIN_ERR_MSG (err_msg);
       return -1;
