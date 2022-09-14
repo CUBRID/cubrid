@@ -1170,9 +1170,9 @@ enum log_rectype
   LOG_CLIENT_USER_POSTPONE_DATA = 11,	/* Obsolete */
   LOG_RUN_NEXT_CLIENT_UNDO = 12,	/* Obsolete */
   LOG_RUN_NEXT_CLIENT_POSTPONE = 13,	/* Obsolete */
-  LOG_WILL_COMMIT = 14,		/* Obsolete */
 #endif
-  LOG_COMMIT_WITH_POSTPONE = 15,	/* Committing server postpone operations */
+  LOG_COMMIT_WITH_POSTPONE = 14,	/* Transaction will be committed */
+  LOG_COMMIT_WITH_POSTPONE_OBSOLETE = 15,	/* Obsolete. It was LOG_COMMIT_WITH_POSTPONE without the donetime. It remains only for the backward compatibility and will be removed with the next major release, maybe 12.0 */
 #if 0
   LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS = 16,	/* Obsolete */
 #endif
@@ -1430,6 +1430,14 @@ struct log_rec_compensate
 /* This entry is included during commit */
 typedef struct log_rec_start_postpone LOG_REC_START_POSTPONE;
 struct log_rec_start_postpone
+{
+  LOG_LSA posp_lsa;
+  INT64 at_time;		/* donetime. For the time-specific recovery */
+};
+
+/* This entry is included during commit. Obsolete. See the comment of LOG_COMMIT_WITH_POSTPONE_OBSOLETE. */
+typedef struct log_rec_start_postpone_obsolete LOG_REC_START_POSTPONE_OBSOLETE;
+struct log_rec_start_postpone_obsolete
 {
   LOG_LSA posp_lsa;
 };
