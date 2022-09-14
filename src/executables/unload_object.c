@@ -248,7 +248,7 @@ set_referenced_subclasses (DB_OBJECT * class_)
     }
   else
     {
-#if defined(CUBRID_DEBUG)
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
       fprintf (stdout, "cls_no_ptr is NULL\n");
 #endif /* CUBRID_DEBUG */
     }
@@ -454,6 +454,8 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 #endif
   LOG_LSA lsa;
   char unloadlog_filename[PATH_MAX];
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char *class_name = NULL;
 
   /* register new signal handlers */
   prev_intr_handler = os_set_signal_handler (SIGINT, extractobjects_term_handler);
@@ -593,7 +595,7 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
   /*
    * Total the number of objects & mark requested classes.
    */
-#if defined(CUBRID_DEBUG)
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
   fprintf (stdout, "----- all class dump -----\n");
 #endif /* CUBRID_DEBUG */
   for (i = 0; i < class_table->num; i++)
@@ -626,7 +628,7 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 	}
       if (*cptr == NULL)
 	{
-#if defined(CUBRID_DEBUG)
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
 	  fprintf (stdout, "%s%s%s\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
 #endif /* CUBRID_DEBUG */
 
@@ -659,9 +661,10 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 
 	  if (!datafile_per_class && (!required_class_only || IS_CLASS_REQUESTED (i)))
 	    {
+	      SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
 	      if (text_print
-		  (obj_out, NULL, 0, "%cid %s%s%s %d\n", '%', PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
-		   i) != NO_ERROR)
+		  (obj_out, NULL, 0, "%cid %s%s%s.%s%s%s %d\n", '%', PRINT_IDENTIFIER (owner_name),
+		   PRINT_IDENTIFIER (class_name), i) != NO_ERROR)
 		{
 		  status = 1;
 		  goto end;
@@ -680,9 +683,9 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 			  /* false -> don't set */
 			  if ((has_obj_ref = check_referenced_domain (attribute->domain, false, &num_cls_ref)) == true)
 			    {
-#if defined(CUBRID_DEBUG)
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
 			      fprintf (stdout, "found OBJECT domain: %s%s%s->%s\n",
-				       PRINT_IDENTIFIER (class_ptr->header.name), db_attribute_name (attribute));
+				       PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)), db_attribute_name (attribute));
 #endif /* CUBRID_DEBUG */
 			      break;
 			    }
@@ -697,9 +700,9 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 			  /* false -> don't set */
 			  if ((has_obj_ref = check_referenced_domain (attribute->domain, false, &num_cls_ref)) == true)
 			    {
-#if defined(CUBRID_DEBUG)
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
 			      fprintf (stdout, "found OBJECT domain: %s%s%s->%s\n",
-				       PRINT_IDENTIFIER (class_ptr->header.name), db_attribute_name (attribute));
+				       PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)), db_attribute_name (attribute));
 #endif /* CUBRID_DEBUG */
 			      break;
 			    }
@@ -719,9 +722,9 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 								 &num_cls_ref);
 			  if (has_obj_ref == true)
 			    {
-#if defined(CUBRID_DEBUG)
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
 			      fprintf (stdout, "found OBJECT domain: %s%s%s->%s\n",
-				       PRINT_IDENTIFIER (class_ptr->header.name), db_attribute_name (attribute));
+				       PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)), db_attribute_name (attribute));
 #endif /* CUBRID_DEBUG */
 			      break;
 			    }
@@ -746,7 +749,7 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 
   OR_PUT_NULL_OID (&null_oid);
 
-#if defined(CUBRID_DEBUG)
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
   fprintf (stdout, "has_obj_ref = %d, num_cls_ref = %d\n", has_obj_ref, num_cls_ref);
 #endif /* CUBRID_DEBUG */
 
@@ -795,7 +798,7 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 	{
 	  if (num_cls_ref != num_set)
 	    {
-#if defined(CUBRID_DEBUG)
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
 	      fprintf (stdout, "num_cls_ref = %d, num_set = %d\n", num_cls_ref, num_set);
 #endif /* CUBRID_DEBUG */
 	      status = 1;
@@ -804,7 +807,7 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 	}
     }
 
-#if defined(CUBRID_DEBUG)
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
   {
     int total_req_cls = 0;
     int total_ref_cls = 0;
@@ -825,7 +828,8 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 		status = 1;
 		goto end;
 	      }
-	    fprintf (stdout, "%s%s%s\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
+	    SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+	    fprintf (stdout, "%s%s%s.%s%s%s\n", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
 	    total_ref_cls++;
 	  }
       }
@@ -1043,6 +1047,8 @@ process_class (int cl_no)
   int i = 0;
   int v = 0;
   SM_CLASS *class_ptr;
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char *class_name = NULL;
   SM_ATTRIBUTE *attribute;
   LC_COPYAREA *fetch_area;	/* Area where objects are received */
   HFID *hfid;
@@ -1106,10 +1112,11 @@ process_class (int cl_no)
 	}
       if (v == 0)
 	{
+	  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
 	  CHECK_PRINT_ERROR (text_print
-			     (obj_out, NULL, 0, "%cclass %s%s%s shared (%s%s%s", '%',
-			      PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
-			      PRINT_IDENTIFIER (attribute->header.name)));
+			     (obj_out, NULL, 0, "%cclass %s%s%s.%s%s%s shared (%s%s%s", '%',
+			      PRINT_IDENTIFIER (owner_name),
+			      PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
 	}
       else
 	{
@@ -1157,10 +1164,11 @@ process_class (int cl_no)
 	}
       if (v == 0)
 	{
+	  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
 	  CHECK_PRINT_ERROR (text_print
-			     (obj_out, NULL, 0, "%cclass %s%s%s class (%s%s%s", '%',
-			      PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
-			      PRINT_IDENTIFIER (attribute->header.name)));
+			     (obj_out, NULL, 0, "%cclass %s%s%s.%s%s%s class (%s%s%s", '%',
+			      PRINT_IDENTIFIER (owner_name),
+			      PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
 	}
       else
 	{
@@ -1196,8 +1204,10 @@ process_class (int cl_no)
       ++v;
     }
 
-  CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, (v) ? "\n%cclass %s%s%s ("	/* new line */
-				 : "%cclass %s%s%s (", '%', PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr))));
+  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+  CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, (v) ? "\n%cclass %s%s%s.%s%s%s ("	/* new line */
+				 : "%cclass %s%s%s.%s%s%s (", '%', PRINT_IDENTIFIER (owner_name),
+				 PRINT_IDENTIFIER (class_name)));
 
   v = 0;
   attribute = class_ptr->ordered_attributes;

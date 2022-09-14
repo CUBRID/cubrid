@@ -141,6 +141,7 @@ namespace cubload
 %token <string> SQS_String_Body
 %token <string> DQS_String_Body
 %token COMMA
+%token DOT
 
 %type <int_val> attribute_list_type
 %type <cmd_spec> class_command_spec
@@ -249,15 +250,39 @@ command_line :
   ;
 
 id_command :
+  CMD_ID IDENTIFIER DOT IDENTIFIER INT_LIT
+  {
+    DBG_PRINT ("CMD_ID IDENTIFIER DOT IDENTIFIER INT_LIT");
+    std::string name;
+    name.reserve($2->size + sizeof (".") + $4->size);
+    name.append ($2->val).append (".").append ($4->val);
+    m_driver.get_class_installer ().check_class (name.c_str (), atoi ($5->val));
+  }
+  |
   CMD_ID IDENTIFIER INT_LIT
   {
+    DBG_PRINT ("CMD_ID IDENTIFIER INT_LIT");
     m_driver.get_class_installer ().check_class ($2->val, atoi ($3->val));
   }
   ;
 
 class_command :
+  CMD_CLASS IDENTIFIER DOT IDENTIFIER class_command_spec
+  {
+    DBG_PRINT ("CMD_CLASS IDENTIFIER DOT IDENTIFIER class_command_spec");
+    std::string name;
+    name.reserve($2->size + sizeof (".") + $4->size);
+    name.append ($2->val).append (".").append ($4->val);
+    string_type name_buf (const_cast<char *> (name.c_str ()), name.size (), false);
+    m_driver.get_class_installer ().install_class (&name_buf, $5);
+
+    delete $5;
+    $5 = NULL;
+  }
+  |
   CMD_CLASS IDENTIFIER class_command_spec
   {
+    DBG_PRINT ("CMD_CLASS IDENTIFIER class_command_spec");
     m_driver.get_class_installer ().install_class ($2, $3);
 
     delete $3;

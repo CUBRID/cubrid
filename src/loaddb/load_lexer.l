@@ -478,6 +478,11 @@ using token = cubload::parser::token;
     return token::COMMA;
 }
 
+"." {
+    PRINT ("DOT %s\n", yytext);
+    return token::DOT;
+}
+
 \/\/[^\r\n]*\r?\n {
     /* C++ comments */
 }
