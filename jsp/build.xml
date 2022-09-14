@@ -10,8 +10,11 @@
     <property name="src.dir" value="src/jsp"/>
     <property name="build.dir" value="bin"/>
     <property name="classes.dir" location="${build.dir}/classes"/>
+
+    <property name="test.src.path" value="com/cubrid/jsp/test"/>
     <property name="test.classes.dir" location="${build.dir}/test-classes"/>
     <property name="test.reports.dir" location="${build.dir}/test-reports"/>
+
     <property name="ivy.reports.dir"  location="${build.dir}/ivy-reports"/>
 
     <property name="external.dir" value="external"/>
@@ -61,7 +64,7 @@
         <ivy:retrieve pattern="${dist.lib}/[artifact]-[revision].[ext]" conf="runtime"/>
         <javac srcdir="${src.dir}" destdir="${classes.dir}" source="1.6" target="1.6" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="runtime.path">
             <include name="**/*.java"/>
-            <exclude name="com/cubrid/jsp/test/*.java"/>
+            <exclude name="${test.src.path}/*.java"/>
         </javac>
     </target>
 
@@ -80,7 +83,7 @@
     <target name="test" depends="compile">
         <ivy:retrieve pattern="${dist.lib}/[artifact]-[revision].[ext]" conf="test"/>
         <javac srcdir="${src.dir}" destdir="${test.classes.dir}" source="1.6" target="1.6" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="test.path">
-            <include name="com/cubrid/jsp/test/*.java"/>
+            <include name="${test.src.path}/*.java"/>
         </javac>
 
         <junit printsummary="yes" haltonfailure="yes">
@@ -92,7 +95,7 @@
             <formatter type="xml"/>
             <batchtest todir="${test.reports.dir}">
                 <fileset dir="${src.dir}">
-                    <include name="com/cubrid/jsp/test/*.java"/>
+                    <include name="${test.src.path}/*.java"/>
                 </fileset>
             </batchtest>
         </junit>
