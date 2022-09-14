@@ -6722,7 +6722,7 @@ tzc_update_internal (const char *database_name)
 	      continue;
 	    }
 
-	  /* If no error occurred, continue should have been executed before coming here. */
+	  /* If no error occurred, "continue;" should have been executed before coming here. */
 	  if (column != NULL)
 	    {
 	      printf ("Failed to create a query to update the timezone of column %s in table %s.\n", column_name,
