@@ -102,15 +102,16 @@ struct cub_hostent
 
 typedef struct cub_hostent CUB_HOSTENT;
 static const char user_defined_hostfile_Name[] = "hosts.conf";
+static struct hostent *hp_Arr[MAX_HOSTS_LINE_SIZE + 1];
 
 static int hosts_conf_file_Load = LOAD_INIT;
 
 /*Hostname and IP address are both stored in the user_host_Map to search both of them*/
 // *INDENT-OFF*
-static std::unordered_map <std::string, std::string> user_host_Map;
+static std::unordered_map <std::string, int> user_host_Map;
 // *INDENT-ON*
 
-static struct hostent *hostent_init ();
+static struct hostent *hostent_init (char *map_ipaddr, char *map_hostname);
 static bool ip_format_check (char *ip_addr);
 static int host_conf_load ();
 static struct hostent *host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_case);
@@ -122,7 +123,7 @@ static struct hostent *host_lookup_internal (const char *hostname, struct sockad
  *
  */
 static struct hostent *
-hostent_init ()
+hostent_init (char *map_ipaddr, char *map_hostname)
 {
   static struct hostent hp;
   static char addr_[IPADDR_LEN];
@@ -130,7 +131,17 @@ hostent_init ()
   static char host_alias[HOSTNAME_BUF_SIZE + 1];
   static char *host_alias_ptr[2];
   static char host_n[HOSTNAME_BUF_SIZE + 1];
+  char addr_trans_bi_buf[IPADDR_LEN];
 
+  if (inet_pton (AF_INET, map_ipaddr, addr_trans_bi_buf) < 1)
+    {
+      fprintf (stderr, "Convertion IP address from text form to binary is failed");
+      return NULL;
+    }
+
+  strcpy (addr_, addr_trans_bi_buf);
+  strcpy (host_n, map_hostname);
+  strcpy (host_alias, map_hostname);
 
   hp.h_name = host_n;
   hp.h_aliases = host_alias_ptr;
@@ -160,7 +171,6 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
     {
       if ((hosts_conf_file_Load = host_conf_load ()) == LOAD_FAIL)
 	{
-//err_set : load fail
 	  return NULL;
 	}
     }
@@ -182,13 +192,11 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
   /*Look up in the user_host_Map */
   if ((lookup_case == HOSTNAME_TO_IPADDR) && (user_host_Map.find (hostname) != user_host_Map.end ()))
     {
-      strcpy (ipaddr_buf, user_host_Map.find (hostname)->second.c_str ());
-      strcpy (hostname_buf, hostname);
+      hp = hp_Arr[user_host_Map.find (hostname)->second];
     }
   else if ((lookup_case == IPADDR_TO_HOSTNAME) && (user_host_Map.find (addr_trans_ch_buf) != user_host_Map.end ()))
     {
-      strcpy (hostname_buf, user_host_Map.find (addr_trans_ch_buf)->second.c_str ());
-      strcpy (ipaddr_buf, addr_trans_ch_buf);
+      hp = hp_Arr[user_host_Map.find (addr_trans_ch_buf)->second];
     }
   else
     {
@@ -204,22 +212,6 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 	}
       return NULL;
     }
-
-  if (inet_pton (AF_INET, ipaddr_buf, addr_trans_bi_buf) < 1)
-    {
-      fprintf (stderr, "Convertion IP address from text form to binary is failed");
-      return NULL;
-    }
-
-  /*set the hostent struct for the return value */
-  if ((hp = hostent_init ()) == NULL)
-    {
-      return NULL;
-    }
-
-  strcpy (hp->h_name, hostname_buf);
-  strcpy (hp->h_aliases[0], hostname_buf);
-  memcpy (hp->h_addr_list[0], addr_trans_bi_buf, sizeof (hp->h_addr_list[0]));
 
   return hp;
 }
@@ -238,6 +230,10 @@ host_conf_load ()
   char *delim = " \t\n";
   char map_ipaddr[IPADDR_LEN];
   char map_hostname[HOSTNAME_BUF_SIZE + 1];
+  int hp_arr_idx = 0, temp_idx;
+
+  char addr_trans_ch_buf[IPADDR_LEN];
+  struct in_addr *addr_trans;
 
   /*True, when the string token has hostname, otherwise, string token has IP address */
   bool hostent_flag;
@@ -311,15 +307,28 @@ host_conf_load ()
 	  /*not duplicated hostname */
 	  if ((user_host_Map.find (map_hostname) == user_host_Map.end ()))
 	    {
-	      user_host_Map[map_hostname] = map_ipaddr;
-	      user_host_Map[map_ipaddr] = map_hostname;
+	      user_host_Map[map_hostname] = hp_arr_idx;
+	      user_host_Map[map_ipaddr] = hp_arr_idx;
+	      hp_Arr[hp_arr_idx] = hostent_init (map_ipaddr, map_hostname);
+
+	      hp_arr_idx++;
 	    }
 	  /*duplicated hostname */
 	  else
 	    {
-	      if (strcmp (user_host_Map.find (map_hostname)->second.c_str (), map_ipaddr))
+	      /*duplicated hostname but different ip address */
+
+	      temp_idx = user_host_Map.find (map_hostname)->second;
+	      memcpy (&addr_trans->s_addr, hp_Arr[temp_idx]->h_addr_list[0], sizeof (addr_trans->s_addr));
+
+	      if (inet_ntop (AF_INET, addr_trans, addr_trans_ch_buf, sizeof (addr_trans_ch_buf)) == NULL)
 		{
-		  /*duplicated hostname but different ip address */
+		  fprintf (stderr, "Convertion IP address from binary form to text is failed");
+		  return NULL;
+		}
+
+	      if (strcmp (addr_trans_ch_buf, map_ipaddr))
+		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_ALREADY_EXIST, 1, map_hostname);
 		  fprintf (stdout, "%s\n", er_msg ());
 
@@ -330,6 +339,7 @@ host_conf_load ()
 		  return LOAD_FAIL;
 
 		}
+
 	    }
 	}
       else
@@ -486,15 +496,8 @@ gethostbyname_r_uhost (const char *name,
       goto return_phase;
     }
 
-  if (((*result) = (struct hostent *) malloc (sizeof (struct hostent))) == NULL)
-    {
-      ret_val = ENOMEM;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct hostent));
-
-      goto return_phase;
-    }
   memcpy ((void *) ret, (void *) hp_buf, sizeof (struct hostent));
-  memcpy ((void *) *result, (void *) hp_buf, sizeof (struct hostent));
+  *result = hp_buf;
 
   ret_val = 0;
 #elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
