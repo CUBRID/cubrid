@@ -1194,7 +1194,7 @@ log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
 	   * holding a page.
 	   */
 	  log_lsa->pageid = NULL_PAGEID;
-	  log_recovery_resetlog (thread_p, &record_header_lsa, prev_lsa);
+	  log_recovery_resetlog (thread_p, &record_header_lsa, false, prev_lsa);
 	  *did_incom_recovery = true;
 	}
     }
