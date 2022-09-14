@@ -247,7 +247,7 @@ namespace cublog
 	    read_and_bookkeep_mvcc_vacuum<LOG_REC_SYSOP_END> (header.back_lsa, m_redo_lsa, log_rec, false);
 	    if (m_replicate_mvcc)
 	      {
-		replicate_sysop_end (header.trid, m_redo_lsa, log_rec);
+		replicate_sysop_end_mvcc (header.trid, m_redo_lsa, log_rec);
 	      }
 	    break;
 	  }
@@ -390,7 +390,7 @@ namespace cublog
     m_replicator_mvccid->new_assigned_mvccid (tranid, log_rec.mvccid);
   }
 
-  void replicator::replicate_sysop_end (TRANID tranid, const log_lsa &rec_lsa, const LOG_REC_SYSOP_END &log_rec)
+  void replicator::replicate_sysop_end_mvcc (TRANID tranid, const log_lsa &rec_lsa, const LOG_REC_SYSOP_END &log_rec)
   {
     assert (m_replicate_mvcc);
 

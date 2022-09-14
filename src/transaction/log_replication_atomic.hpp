@@ -50,6 +50,9 @@ namespace cublog
       void read_and_redo_record (cubthread::entry &thread_entry, const LOG_RECORD_HEADER &rec_header,
 				 const log_lsa &rec_lsa);
       void set_lowest_unapplied_lsa ();
+      void replicate_sysop_start_postpone (const LOG_RECORD_HEADER &rec_header);
+      void replicate_sysop_end (cubthread::entry &thread_entry, const LOG_RECORD_HEADER &rec_header,
+				const LOG_REC_SYSOP_END &log_rec);
 
     private:
       atomic_replication_helper m_atomic_helper;
