@@ -126,31 +126,17 @@ hostent_init ()
 {
   static struct hostent hp;
   static char addr_[IPADDR_LEN];
-  static char host_[HOSTNAME_BUF_SIZE + 1];
+  static char *addr_ptr[2];
+  static char host_alias[HOSTNAME_BUF_SIZE + 1];
+  static char *host_alias_ptr[2];
   static char host_n[HOSTNAME_BUF_SIZE + 1];
 
 
   hp.h_name = host_n;
-  hp.h_aliases = NULL;
-  hp.h_addr_list = NULL;
-
-  if ((hp.h_aliases = (char **) malloc (sizeof (char *))) == NULL
-      || (hp.h_addr_list = (char **) malloc (sizeof (char *) * HOSTNAME_BUF_SIZE)) == NULL)
-    {
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char) * (HOSTNAME_BUF_SIZE + 1));
-      return NULL;
-    }
-
-  hp.h_aliases[0] = host_;
+  hp.h_aliases = host_alias_ptr;
+  hp.h_addr_list = addr_ptr;
+  hp.h_aliases[0] = host_alias;
   hp.h_addr_list[0] = addr_;
-/*
-  if ((hp.h_aliases[0] = (char *) malloc (sizeof (char) * (HOSTNAME_BUF_SIZE + 1))) == NULL
-      || (hp.h_addr_list[0] = (char *) malloc (sizeof (char) * IPADDR_LEN)) == NULL)
-    {
-      return NULL;
-    }
-*/
   hp.h_addrtype = AF_INET;
   hp.h_length = 4;
 
@@ -499,6 +485,7 @@ gethostbyname_r_uhost (const char *name,
 
       goto return_phase;
     }
+
   if (((*result) = (struct hostent *) malloc (sizeof (struct hostent))) == NULL)
     {
       ret_val = ENOMEM;
