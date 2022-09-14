@@ -80,7 +80,7 @@
         </delete>
     </target>
 
-    <target name="test" depends="compile">
+    <target name="test-junit" depends="compile">
         <ivy:retrieve pattern="${dist.lib}/[artifact]-[revision].[ext]" conf="test"/>
         <javac srcdir="${src.dir}" destdir="${test.classes.dir}" source="1.6" target="1.6" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="test.path">
             <include name="${test.src.path}/*.java"/>
@@ -108,7 +108,7 @@
         </junitreport>
     </target>
 
-    <target name="dist" depends="test">
+    <target name="dist" depends="test-junit">
         <manifestclasspath property="jar.classpath" jarfile="${dist.jar}">
             <classpath>
                 <fileset dir="${dist.lib}" includes="*.jar"/>
