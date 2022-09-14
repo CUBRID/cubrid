@@ -91,8 +91,8 @@ namespace cublog
       void add_atomic_replication_sequence (TRANID trid, LOG_LSA start_lsa, const log_rv_redo_context &redo_context);
       // add a new log record as part of an already existing atomic replication
       // sequence (be it sysop or non-sysop)
-      int add_atomic_replication_unit (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa, LOG_RCVINDEX rcvindex,
-				       VPID vpid);
+      int add_atomic_replication_log (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa, LOG_RCVINDEX rcvindex,
+				      VPID vpid);
 
       // start a new sysop atomic replication sequence for a transaction
       // the transaction must not already have an atomic replication sequence started
@@ -112,7 +112,7 @@ namespace cublog
       // but there should be at least one
       bool is_at_least_one_postpone_sequence_completed (TRANID trid) const;
 
-      void unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, TRANID tranid);
+      void apply_and_unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, TRANID tranid);
 
       bool is_part_of_atomic_replication (TRANID tranid) const;
 
@@ -127,25 +127,25 @@ namespace cublog
 
     private:
 
-      class atomic_replication_sequence
+      class atomic_replication_log_sequence
       {
 	public:
-	  atomic_replication_sequence () = delete;
-	  explicit atomic_replication_sequence (const log_rv_redo_context &redo_context);
+	  atomic_replication_log_sequence () = delete;
+	  explicit atomic_replication_log_sequence (const log_rv_redo_context &redo_context);
 
-	  atomic_replication_sequence (const atomic_replication_sequence &) = delete;
-	  atomic_replication_sequence (atomic_replication_sequence &&) = delete;
+	  atomic_replication_log_sequence (const atomic_replication_log_sequence &) = delete;
+	  atomic_replication_log_sequence (atomic_replication_log_sequence &&) = delete;
 
-	  ~atomic_replication_sequence () = default;
+	  ~atomic_replication_log_sequence () = default;
 
-	  atomic_replication_sequence &operator= (const atomic_replication_sequence &) = delete;
-	  atomic_replication_sequence &operator= (atomic_replication_sequence &&) = delete;
+	  atomic_replication_log_sequence &operator= (const atomic_replication_log_sequence &) = delete;
+	  atomic_replication_log_sequence &operator= (atomic_replication_log_sequence &&) = delete;
 
 	  // technical: function is needed to avoid double constructing a redo_context - which is expensive -
 	  // upon constructing a sequence
 	  void initialize (LOG_LSA start_lsa, bool is_sysop);
 
-	  int add_atomic_replication_unit (THREAD_ENTRY *thread_p, log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid);
+	  int add_atomic_replication_log (THREAD_ENTRY *thread_p, log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid);
 
 	  bool can_end_sysop_sequence (const LOG_LSA &sysop_parent_lsa) const;
 	  bool can_end_sysop_sequence () const;
@@ -162,21 +162,21 @@ namespace cublog
 	  void apply_all_log_redos (THREAD_ENTRY *thread_p);
 
 	  /*
-	   * Atomic replication unit holds the log record information necessary for recovery redo
+	   * Holds the log record information necessary for recovery redo
 	   */
-	  class atomic_replication_unit
+	  class atomic_replication_log_entry
 	  {
 	    public:
-	      atomic_replication_unit () = delete;
-	      atomic_replication_unit (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex);
+	      atomic_replication_log_entry () = delete;
+	      atomic_replication_log_entry (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex);
 
-	      atomic_replication_unit (const atomic_replication_unit &) = delete;
-	      atomic_replication_unit (atomic_replication_unit &&) = default;
+	      atomic_replication_log_entry (const atomic_replication_log_entry &) = delete;
+	      atomic_replication_log_entry (atomic_replication_log_entry &&) = default;
 
-	      ~atomic_replication_unit ();
+	      ~atomic_replication_log_entry ();
 
-	      atomic_replication_unit &operator= (const atomic_replication_unit &) = delete;
-	      atomic_replication_unit &operator= (atomic_replication_unit &&) = delete;
+	      atomic_replication_log_entry &operator= (const atomic_replication_log_entry &) = delete;
+	      atomic_replication_log_entry &operator= (atomic_replication_log_entry &&) = delete;
 
 	      void apply_log_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context);
 	      template <typename T>
@@ -200,7 +200,7 @@ namespace cublog
 	   * atomic replication sequence. */
 	  LOG_LSA m_start_lsa;
 
-	  using atomic_unit_vector_type = std::vector<atomic_replication_unit>;
+	  using atomic_log_entry_vector_type = std::vector<atomic_replication_log_entry>;
 	  using vpid_to_page_ptr_map_type = std::map<VPID, PAGE_PTR>;
 
 	  /* Separates the two types of atomic sequences:
@@ -212,12 +212,12 @@ namespace cublog
 	  int m_end_pospone_count = 0;
 
 	  log_rv_redo_context m_redo_context;
-	  atomic_unit_vector_type m_units;
+	  atomic_log_entry_vector_type m_log_vec;
 	  vpid_to_page_ptr_map_type m_page_map;
       };
 
     private:
-      using sequence_map_type = std::map<TRANID, atomic_replication_sequence>;
+      using sequence_map_type = std::map<TRANID, atomic_replication_log_sequence>;
 
       sequence_map_type m_sequences_map;
 #if !defined (NDEBUG)
@@ -233,7 +233,7 @@ namespace cublog
   };
 
   template <typename T>
-  void atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::apply_log_by_type (
+  void atomic_replication_helper::atomic_replication_log_sequence::atomic_replication_log_entry::apply_log_by_type (
 	  THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context, LOG_RECTYPE rectype)
   {
     LOG_RCV rcv;
@@ -261,7 +261,8 @@ namespace cublog
       }
   }
 
-  inline LOG_LSA atomic_replication_helper::atomic_replication_sequence::atomic_replication_unit::get_lsa () const
+  inline LOG_LSA atomic_replication_helper::atomic_replication_log_sequence::atomic_replication_log_entry::get_lsa ()
+  const
   {
     return m_record_lsa;
   }
