@@ -2860,10 +2860,20 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
       if (check_tables)
 	{
 	  /* get table names having collation; do not include partition sub-classes */
+
+	  // *INDENT-OFF*
 	  sprintf (query,
-		   "SELECT C.class_name, C.class_type " "FROM _db_class C " "WHERE C.collation_id = %d "
-		   "AND NOT (C.class_name IN " "(SELECT P.class_of.class_name " "FROM _db_partition P WHERE "
-		   "P.class_of.class_name " " = C.class_name AND P.pname IS NOT NULL))", db_coll->coll_id);
+		"SELECT "
+		  "[c].[unique_name] AS [class_name], "
+		  "[c].[class_type] AS [class_type] "
+		"FROM "
+		  "[_db_class] AS [c] "
+		  "LEFT OUTER JOIN [_db_partition] AS [p] ON [p].[class_of] = [c] AND [p].[pname] IS NOT NULL "
+		"WHERE "
+		  "[c].[collation_id] = %d "
+		  "AND [p].[pname] IS NULL",
+		db_coll->coll_id);
+	  // *INDENT-ON*
 
 	  db_status = db_compile_and_execute_local (query, &query_result, &query_error);
 
@@ -2918,15 +2928,27 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
       if (check_atts)
 	{
 	  /* first drop foreign keys on attributes using collation; do not include partition sub-classes */
-	  /* CLASS_NAME, INDEX_NAME */
 
+	  // *INDENT-OFF*
 	  sprintf (query,
-		   "SELECT A.class_of.class_name, I.index_name " "from _db_attribute A, _db_index I, "
-		   "_db_index_key IK, _db_domain D " "where D.object_of = A AND D.collation_id = %d AND "
-		   "NOT (A.class_of.class_name IN (SELECT " "P.class_of.class_name " "FROM _db_partition P WHERE "
-		   "P.class_of.class_name = " "A.class_of.class_name AND P.pname IS NOT NULL))"
-		   "AND A.attr_name = IK.key_attr_name AND IK in I.key_attrs "
-		   "AND I.is_foreign_key = 1 AND I.class_of = A.class_of", db_coll->coll_id);
+		"SELECT "
+		  "[a].[class_of].[unique_name] AS [class_name], "
+		  "[i].[index_name] AS [index_name] "
+		"FROM "
+		  "[_db_attribute] AS [a] "
+		  "INNER JOIN [_db_domain] AS [d] ON [d].[object_of] = [a] "
+		  "INNER JOIN [_db_index] AS [i] ON [i].[class_of] = [a].[class_of] "
+		  "LEFT OUTER JOIN [_db_partition] AS [p] "
+		    "ON [p].[class_of] = [a].[class_of] AND [p].[pname] IS NOT NULL "
+		"WHERE "
+		  "[d].[collation_id] = %d "
+		  "AND [i].[is_foreign_key] = 1 "
+		  "AND [p].[pname] IS NULL "
+		"GROUP BY "
+		  "[a].[class_of].[unique_name], "
+		  "[i].[index_name]",
+		db_coll->coll_id);
+	  // *INDENT-ON*
 
 	  db_status = db_compile_and_execute_local (query, &query_result, &query_error);
 
@@ -2969,26 +2991,53 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 	      query_result = NULL;
 	    }
 
-
 	  /* attributes having collation; do not include partition sub-classes */
-	  /* CLASS_NAME, CLASS_TYPE, ATTR_NAME, ATTR_FULL_TYPE */
-	  /* ATTR_FULL_TYPE = CHAR(20) */
-	  /* or ENUM ('a', 'b') */
 
+	  // *INDENT-OFF*
 	  sprintf (query,
-		   "SELECT A.class_of.class_name, " "A.class_of.class_type, A.attr_name, " "IF (D.data_type = 35,"
-		   "CONCAT ('ENUM (', " "(SELECT GROUP_CONCAT(concat('''',EV.a,'''')) "
-		   "FROM TABLE(D.enumeration) as EV(a)) ,  ')'), " "CONCAT (CASE D.data_type WHEN 4 THEN 'VARCHAR' "
-		   "WHEN 25 THEN 'CHAR' WHEN 27 THEN 'NCHAR VARYING' " "WHEN 26 THEN 'NCHAR' WHEN 35 THEN 'ENUM' END, "
-		   "IF (D.prec < 0 AND " "(D.data_type = 4 OR D.data_type = 27) ," "'', CONCAT ('(', D.prec,')')))), "
-		   "CASE WHEN A.class_of.sub_classes IS NULL THEN 0 " "ELSE NVL((SELECT 1 FROM _db_partition p "
-		   "WHERE p.class_of = A.class_of AND p.pname IS NULL AND "
-		   "LOCATE(A.attr_name, TRIM(SUBSTRING(p.pexpr FROM 8 FOR "
-		   "(POSITION(' FROM ' IN p.pexpr)-8)))) > 0 ), 0) " "END " "FROM _db_domain D,_db_attribute A "
-		   "WHERE D.object_of = A AND D.collation_id = %d " "AND NOT (A.class_of.class_name IN "
-		   "(SELECT P.class_of.class_name " "FROM _db_partition P WHERE " "P.class_of.class_name "
-		   " = A.class_of.class_name AND P.pname IS NOT NULL)) " "ORDER BY A.class_of.class_name",
-		   db_coll->coll_id);
+		"SELECT "
+		  "[a].[class_of].[unique_name] AS [class_name], "
+		  "[a].[class_of].[class_type] AS [class_type], "
+		  "[a].[attr_name] AS [attr_name], "
+		  "CASE [d].[data_type] "
+		    /* VARCHAR */
+		    "WHEN 4 THEN IF ([d].[prec] < 0, 'VARCHAR', CONCAT ('VARCHAR(', [d].[prec], ')')) "
+		    /* CHAR */
+		    "WHEN 25 THEN CONCAT ('CHAR(', [d].[prec], ')') "
+		    /* NCHAR */
+		    "WHEN 26 THEN CONCAT ('NCHAR(', [d].[prec], ')') "
+		    /* NCHAR VARYING */
+		    "WHEN 27 THEN IF ([d].[prec] < 0, 'NCHAR VARYING', CONCAT ('NCHAR VARYING(', [d].[prec], ')')) "
+		    /* ENUM */
+		    "WHEN 35 THEN ("
+			"SELECT "
+			  /* e.g. ENUM ('A','B','C',...,'Z') */
+			  "CONCAT ('ENUM (''', GROUP_CONCAT ([e].[t] SEPARATOR ''','''), ''')') "
+			"FROM "
+			  "TABLE ([d].[enumeration]) AS [e] ([t])"
+		      ") "
+		    "END AS [data_type], "
+		  "CASE "
+		    "WHEN LOCATE ("
+			"[a].[attr_name], "
+			/* 8 is the position after 'SELECT '. There is one empty string after 'SELECT'.
+			 * So the attribute name comes after at least position 8. */
+			"TRIM (SUBSTRING ([p].[pexpr] FROM 8 FOR (POSITION (' FROM ' IN [p].[pexpr]) - 8)))"
+		      ") > 0 THEN 1 "
+		    "ELSE 0 "
+		    "END AS [is_partitioning_key] "
+		"FROM "
+		  "[_db_attribute] AS [a] "
+		  "INNER JOIN [_db_domain] AS [d] ON [d].[object_of] = [a] "
+		  "LEFT OUTER JOIN [_db_partition] AS [p] ON [p].[class_of] = [a].[class_of] "
+		"WHERE "
+		  "[d].[collation_id] = %d "
+		  "AND [p].[pname] IS NULL "
+		"ORDER BY "
+		  "[a].[class_of].[unique_name], "
+		  "[a].[attr_name]",
+		db_coll->coll_id);
+	  // *INDENT-ON*
 
 	  db_status = db_compile_and_execute_local (query, &query_result, &query_error);
 
@@ -3133,9 +3182,17 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 
       if (check_views)
 	{
+	  // *INDENT-OFF*
 	  sprintf (query,
-		   "SELECT class_of.class_name, spec " "FROM _db_query_spec " "WHERE LOCATE ('collate %s', spec) > 0",
-		   db_coll->coll_name);
+		"SELECT "
+		  "[q].[class_of].[unique_name] AS [class_name], "
+		  "[q].[spec] AS [spec] "
+		"FROM "
+		  "[_db_query_spec] AS [q] "
+		"WHERE "
+		  "LOCATE ('collate %s', [q].[spec]) > 0",
+		db_coll->coll_name);
+	  // *INDENT-ON*
 
 	  db_status = db_compile_and_execute_local (query, &query_result, &query_error);
 
@@ -3211,8 +3268,17 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 
       if (check_triggers)
 	{
-	  sprintf (query, "SELECT name, condition FROM db_trigger " "WHERE LOCATE ('collate %s', condition) > 0",
-		   db_coll->coll_name);
+	  // *INDENT-OFF*
+	  sprintf (query,
+	  	"SELECT "
+		  "[t].[unique_name] AS [name], "
+		  "[t].[condition] AS [condition] "
+		"FROM "
+		  "[db_trigger] AS [t] "
+		"WHERE "
+		  "LOCATE ('collate %s', [t].[condition]) > 0",
+		db_coll->coll_name);
+	  // *INDENT-ON*
 
 	  db_status = db_compile_and_execute_local (query, &query_result, &query_error);
 
@@ -3263,12 +3329,26 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
       if (check_func_index)
 	{
 	  /* Function indexes using collation; do not include partition sub-classes */
-	  /* INDEX_NAME, FUNCTION_EXPRESSION, CLASS_NAME */
+
+	  /* The condition of "[p].[class_of] = [k].[index_of].[class_of]" cannot be used as a join condition
+	   * because a path expression is used. So, INNER JOIN of _db_index and _db_index_key is required. */
+
+	  // *INDENT-OFF*
 	  sprintf (query,
-		   "SELECT index_of.index_name, func, " "index_of.class_of.class_name FROM "
-		   "_db_index_key WHERE LOCATE ('%s', func) > 0 " "AND NOT (index_of.class_of.class_name IN "
-		   "(SELECT P.class_of.class_name " "FROM _db_partition P WHERE " "P.class_of.class_name "
-		   " = index_of.class_of.class_name " "AND P.pname IS NOT NULL)) ", db_coll->coll_name);
+		"SELECT "
+		  "[k].[index_of].[index_name] AS [index_name], "
+		  "[k].[func] AS [func], "
+		  "[k].[index_of].[class_of].[unique_name] "
+		"FROM "
+		  "[_db_index] AS [i] "
+		  "INNER JOIN [_db_index_key] AS [k] ON [k].[index_of] = [i] "
+		  "LEFT OUTER JOIN [_db_partition] AS [p] "
+		    "ON [p].[class_of] = [i].[class_of] AND [p].[pname] IS NOT NULL "
+		"WHERE "
+		  "LOCATE ('%s', [k].[func]) > 0 " /* Why not 'collate %s'? */
+		  "AND [p].[pname] IS NULL",
+		db_coll->coll_name);
+	  // *INDENT-ON*
 
 	  db_status = db_compile_and_execute_local (query, &query_result, &query_error);
 
