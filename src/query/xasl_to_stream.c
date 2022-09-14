@@ -5973,8 +5973,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
       return ER_FAILED;
     }
 
-  size += (OR_DOUBLE_ALIGNED_SIZE	/* cardinality */
-	   + OR_INT_SIZE	/* iscan_oid_order */
+  size += (OR_INT_SIZE		/* iscan_oid_order */
 	   + PTR_SIZE		/* query_alias */
 	   + PTR_SIZE);		/* next */
 
