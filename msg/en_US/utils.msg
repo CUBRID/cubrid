@@ -522,6 +522,8 @@ valid options:\n\
   -d, --data-only             dump objects only; default: schema and objects\n\
       --output-prefix=PREFIEX PREFIX for output files; default: the database name\n\
       --hash-file=FILE        FILE for hash; default: generate by tmpnam()\n\
+      --latest-image          when dumping objects, it dumps the latest image of objects in data volumes, not referring to log volumes (ignoring MVCC)\n\
+                              It could include uncommitted data and deleted data which is not vacuummed; default: disabled\n\
   -v, --verbose               enable verbose status messages; default: disabled\n\
       --use-delimiter         use '"' where an identifier begins and ends; default: don't use\n\
   -S, --SA-mode               stand-alone mode execution\n\
