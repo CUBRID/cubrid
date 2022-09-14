@@ -125,21 +125,20 @@ namespace cublog
       bool check_for_page_validity (VPID vpid, TRANID tranid) const;
 #endif
 
-    private:
-
-      class atomic_replication_log_sequence
+    private: // types
+      class atomic_log_sequence
       {
 	public:
-	  atomic_replication_log_sequence () = delete;
-	  explicit atomic_replication_log_sequence (const log_rv_redo_context &redo_context);
+	  atomic_log_sequence () = delete;
+	  explicit atomic_log_sequence (const log_rv_redo_context &redo_context);
 
-	  atomic_replication_log_sequence (const atomic_replication_log_sequence &) = delete;
-	  atomic_replication_log_sequence (atomic_replication_log_sequence &&) = delete;
+	  atomic_log_sequence (const atomic_log_sequence &) = delete;
+	  atomic_log_sequence (atomic_log_sequence &&) = delete;
 
-	  ~atomic_replication_log_sequence () = default;
+	  ~atomic_log_sequence () = default;
 
-	  atomic_replication_log_sequence &operator= (const atomic_replication_log_sequence &) = delete;
-	  atomic_replication_log_sequence &operator= (atomic_replication_log_sequence &&) = delete;
+	  atomic_log_sequence &operator= (const atomic_log_sequence &) = delete;
+	  atomic_log_sequence &operator= (atomic_log_sequence &&) = delete;
 
 	  // technical: function is needed to avoid double constructing a redo_context - which is expensive -
 	  // upon constructing a sequence
@@ -158,25 +157,27 @@ namespace cublog
 	  void apply_and_unfix_sequence (THREAD_ENTRY *thread_p);
 
 	  log_lsa get_start_lsa () const;
-	private:
+
+	private: // methods
 	  void apply_all_log_redos (THREAD_ENTRY *thread_p);
 
+	private: // types
 	  /*
 	   * Holds the log record information necessary for recovery redo
 	   */
-	  class atomic_replication_log_entry
+	  class atomic_log_entry
 	  {
 	    public:
-	      atomic_replication_log_entry () = delete;
-	      atomic_replication_log_entry (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex);
+	      atomic_log_entry () = delete;
+	      atomic_log_entry (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex);
 
-	      atomic_replication_log_entry (const atomic_replication_log_entry &) = delete;
-	      atomic_replication_log_entry (atomic_replication_log_entry &&) = default;
+	      atomic_log_entry (const atomic_log_entry &) = delete;
+	      atomic_log_entry (atomic_log_entry &&) = default;
 
-	      ~atomic_replication_log_entry ();
+	      ~atomic_log_entry ();
 
-	      atomic_replication_log_entry &operator= (const atomic_replication_log_entry &) = delete;
-	      atomic_replication_log_entry &operator= (atomic_replication_log_entry &&) = delete;
+	      atomic_log_entry &operator= (const atomic_log_entry &) = delete;
+	      atomic_log_entry &operator= (atomic_log_entry &&) = delete;
 
 	      void apply_log_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context);
 	      template <typename T>
@@ -187,22 +188,22 @@ namespace cublog
 	      void set_page_ptr (const PAGE_PTR &ptr);
 	      LOG_LSA get_lsa () const;
 
-	      VPID m_vpid;
+	      const VPID m_vpid;
 	    private:
-	      log_lsa m_record_lsa;
+	      const log_lsa m_record_lsa;
+	      const LOG_RCVINDEX m_record_index;
 	      PAGE_PTR m_page_ptr;
 	      PGBUF_WATCHER m_watcher;
-	      LOG_RCVINDEX m_record_index;
 	  };
 
+	  using atomic_log_entry_vector_type = std::vector<atomic_log_entry>;
+	  using vpid_to_page_ptr_map_type = std::map<VPID, PAGE_PTR>;
+
+	private: // variables
 	  /* The LSA of the log record which started this atomic sequence.
 	   * It is used for comparison to see whether a sysop end operation can close an
 	   * atomic replication sequence. */
 	  LOG_LSA m_start_lsa;
-
-	  using atomic_log_entry_vector_type = std::vector<atomic_replication_log_entry>;
-	  using vpid_to_page_ptr_map_type = std::map<VPID, PAGE_PTR>;
-
 	  /* Separates the two types of atomic sequences:
 	   *  - sysop
 	   *  - non-sysop
@@ -216,10 +217,8 @@ namespace cublog
 	  vpid_to_page_ptr_map_type m_page_map;
       };
 
-    private:
-      using sequence_map_type = std::map<TRANID, atomic_replication_log_sequence>;
+      using sequence_map_type = std::map<TRANID, atomic_log_sequence>;
 
-      sequence_map_type m_sequences_map;
 #if !defined (NDEBUG)
       // check validity of atomic sequences
       // one page can only be accessed by one atomic sequence within one transaction
@@ -227,13 +226,19 @@ namespace cublog
       // notion of an "atomic" sequence and, hence, it is totally possible that
       // another transaction might access the same page
       using vpid_set_type = std::set<VPID>;
+#endif
 
+    private: // variables
+      sequence_map_type m_sequences_map;
+
+#if !defined (NDEBUG)
       std::map<TRANID, vpid_set_type> m_vpid_sets_map;
 #endif
   };
 
   template <typename T>
-  void atomic_replication_helper::atomic_replication_log_sequence::atomic_replication_log_entry::apply_log_by_type (
+  void
+  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::apply_log_by_type (
 	  THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context, LOG_RECTYPE rectype)
   {
     LOG_RCV rcv;
@@ -261,8 +266,8 @@ namespace cublog
       }
   }
 
-  inline LOG_LSA atomic_replication_helper::atomic_replication_log_sequence::atomic_replication_log_entry::get_lsa ()
-  const
+  inline LOG_LSA
+  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::get_lsa () const
   {
     return m_record_lsa;
   }
