@@ -865,7 +865,7 @@ static void heap_page_rv_chain_update (THREAD_ENTRY * thread_p, PAGE_PTR heap_pa
 static int heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 					      OID * partition_oid);
 static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes,
-						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
+						    const LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
 						    int has_chn);
 static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const HFID * vfid, const OID * oid,
 					 PGBUF_WATCHER * home_pg_watcher, PGBUF_WATCHER * fwd_pg_watcher,
@@ -24957,7 +24957,7 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
  *   scan_cache(in): Heap scan cache.
  */
 static SCAN_CODE
-heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG_LSA * previous_version_lsa,
+heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, const LOG_LSA * previous_version_lsa,
 				   HEAP_SCANCACHE * scan_cache, int has_chn)
 {
   LOG_LSA process_lsa;
@@ -25255,10 +25255,18 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
       snapshot_res = mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot);
       if (snapshot_res == TOO_NEW_FOR_SNAPSHOT)
 	{
+	  const LOG_LSA *const prev_lsa = &MVCC_GET_PREV_VERSION_LSA (&mvcc_header);
+	  if (prev_lsa->is_null ())
+	    {
+	      /* The record is newly inserted after the snapshot is taken. */
+	      scan = S_DOESNT_EXIST;
+	      goto exit;
+	    }
+
 	  /* current version is not visible, check previous versions from log and skip record get from heap */
 	  scan =
-	    heap_get_visible_version_from_log (thread_p, context->recdes_p, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header),
-					       context->scan_cache, context->old_chn);
+	    heap_get_visible_version_from_log (thread_p, context->recdes_p, prev_lsa, context->scan_cache,
+					       context->old_chn);
 	  goto exit;
 	}
       else if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)
