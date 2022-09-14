@@ -492,6 +492,8 @@ opciones validas:\n\
   -d, --data-only             botar solo objetos; estandar: esquema y objetos\n\
       --output-prefix=PREFIEX PREFIJO para archivos de salida; estandar: el nombre de la base de datos\n\
       --hash-file=FILE        ARCHIVO para hash; estandar: generar por tmpnam()\n\
+      --latest-image          al volcar objetos, vuelca la última imagen de los objetos en los volúmenes de datos, sin hacer referencia a los volúmenes de registro (ignorando MVCC)\n\
+                              Podría incluir datos no confirmados y datos eliminados que no se vacían; predeterminado: deshabilitado\n\
   -v, --verbose               habilitar mensajes de estado verbose; estandar: inhabilitado\n\
       --use-delimiter         utilizar '"' donde un identificador empieza y acaba; estandar: no utilizar\n\
   -S, --SA-mode               modo de ejecucion independiente\n\
