@@ -608,7 +608,6 @@ mvcctable::complete_mvccids_if_still_active (int tran_index, const std::set<MVCC
       }
       if (is_active)
 	{
-	  //_er_log_debug (ARG_FILE_LINE, "crsdbg: complete_mvccids_if_still_active mvccid = %llu\n", mvccid);
 	  complete_mvcc (tran_index, mvccid, committed);
 	}
     }

@@ -23,7 +23,6 @@
 #include "mvcc_active_tran.hpp"
 
 #include "log_impl.h"
-//#include "server_type.hpp"
 
 #include <cstring>
 
@@ -306,11 +305,6 @@ mvcc_active_tran::copy_to (mvcc_active_tran &dest, copy_safety safety) const
 
   dest.m_bit_area_start_mvccid = m_bit_area_start_mvccid;
   dest.m_bit_area_length = m_bit_area_length;
-//  if (is_passive_transaction_server ())
-//    {
-//      _er_log_debug (ARG_FILE_LINE, "crsdbg: mvcc_active_tran::copy_to this = %p bit_area_length = %u\n",
-//		     (void *)this, m_bit_area_length);
-//    }
   dest.m_long_tran_mvccids_length = m_long_tran_mvccids_length;
 
   if (safety == copy_safety::THREAD_SAFE)
@@ -415,22 +409,6 @@ mvcc_active_tran::ltrim_area (size_t trim_size)
 }
 
 void
-mvcc_active_tran::dump (const char *const source) const
-{
-  const MVCCID first_long_tran_mvccid =
-	  (m_long_tran_mvccids_length > 0) ? m_long_tran_mvccids[0] : MVCCID_ALL_VISIBLE;
-  const MVCCID last_long_tran_mvccid =
-	  (m_long_tran_mvccids_length > 0 ? m_long_tran_mvccids[m_long_tran_mvccids_length - 1] : MVCCID_ALL_VISIBLE);
-  _er_log_debug (ARG_FILE_LINE, "crsdbg: mvcc_active_tran::%s this = %p\n"
-		 "bit_area_start_mvccid = %llu bit_area_length = %u\n"
-		 "long_tran_mvccids_length = %u long_tran_mvccid[first] = %llu long_tran_mvccid[last] = %llu\n",
-		 (source != nullptr ? source : "N/A"), (void *)this,
-		 (unsigned long long)m_bit_area_start_mvccid, m_bit_area_length,
-		 m_long_tran_mvccids_length, (unsigned long long)first_long_tran_mvccid,
-		 (unsigned long long)last_long_tran_mvccid);
-}
-
-void
 mvcc_active_tran::set_bitarea_mvccid (MVCCID mvccid)
 {
   const size_t CLEANUP_THRESHOLD = UNIT_BIT_COUNT;
@@ -440,11 +418,6 @@ mvcc_active_tran::set_bitarea_mvccid (MVCCID mvccid)
   size_t position = get_bit_offset (mvccid);
   if (position >= BITAREA_MAX_BITS)
     {
-//      if (is_passive_transaction_server ())
-//	{
-//	  _er_log_debug (ARG_FILE_LINE, "crsdbg: mvcc_active_tran 01 mvccid = %llu position = %u BITAREA_MAX_BITS = %u\n",
-//			 (unsigned long long)mvccid, position, BITAREA_MAX_BITS);
-//	}
       // force cleanup_migrate_to_long_transations
       cleanup_migrate_to_long_transations ();
       position = get_bit_offset (mvccid);
@@ -454,34 +427,14 @@ mvcc_active_tran::set_bitarea_mvccid (MVCCID mvccid)
     {
       // extend area size; it is enough to update bit_area_length since all data is already zero
       m_bit_area_length = position + 1;
-//      if (is_passive_transaction_server ())
-//	{
-//	  _er_log_debug (ARG_FILE_LINE, "crsdbg: mvcc_active_tran 02 mvccid = %llu position = %u m_bit_area_length = %u\n",
-//			 (unsigned long long)mvccid, position, m_bit_area_length);
-//	}
     }
 
   unit_type mask = get_mask_of (position);
   unit_type *p_area = get_unit_of (position);
-//  if (is_passive_transaction_server ())
-//    {
-//      _er_log_debug (ARG_FILE_LINE,
-//		     "crsdbg: mvcc_active_tran 03 mvccid = %llu position = %u mask = 0x%llx bit_area_offset = %u *p_area = 0x%llx\n",
-//		     (unsigned long long)mvccid, position, mask, (position / UNIT_BIT_COUNT), *p_area);
-//    }
   *p_area |= mask;
-//  if (is_passive_transaction_server ())
-//    {
-//      _er_log_debug (ARG_FILE_LINE, "crsdbg: mvcc_active_tran 03 mvccid = %llu *p_area = 0x%llx\n",
-//		     (unsigned long long)mvccid, *p_area);
-//    }
 
   check_valid ();
 
-//  if (is_passive_transaction_server ())
-//    {
-//      dump ("set_bitarea_mvccid dump before ltrim");
-//    }
   if (m_bit_area_length > CLEANUP_THRESHOLD)
     {
       // trim all committed units from bit_area
@@ -489,30 +442,14 @@ mvcc_active_tran::set_bitarea_mvccid (MVCCID mvccid)
       const size_t area_size = get_area_size ();
       for (; first_not_all_committed < area_size; first_not_all_committed++)
 	{
-//	  if (is_passive_transaction_server ())
-//	    {
-//	      _er_log_debug (ARG_FILE_LINE, "crsdbg: mvcc_active_tran 04 bit_area[%u] = 0x%llx ALL_COMMITTED = 0x%llx\n",
-//			     first_not_all_committed, m_bit_area[first_not_all_committed],
-//			     ALL_COMMITTED);
-//	    }
 	  if (m_bit_area[first_not_all_committed] != ALL_COMMITTED)
 	    {
 	      break;
 	    }
 	}
-//      if (is_passive_transaction_server ())
-//	{
-//	  _er_log_debug (ARG_FILE_LINE, "crsdbg: mvcc_active_tran 05 first_not_all_committed = %u\n"
-//			 "area_size = %u\n",
-//			 first_not_all_committed, area_size);
-//	}
       ltrim_area (first_not_all_committed);
       check_valid ();
     }
-//  if (is_passive_transaction_server ())
-//    {
-//      dump ("set_bitarea_mvccid dump after ltrim");
-//    }
 
   if (m_bit_area_length > LONG_TRAN_THRESHOLD)
     {
@@ -547,10 +484,6 @@ mvcc_active_tran::cleanup_migrate_to_long_transations ()
 	}
     }
   ltrim_area (delete_count);
-//  if (is_passive_transaction_server ())
-//    {
-//      dump ("cleanup_migrate_to_long_transations dump after ltrim");
-//    }
 
   check_valid ();
 }

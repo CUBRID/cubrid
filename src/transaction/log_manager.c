@@ -1649,8 +1649,6 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
       // while still holding prior LSA lock, initialize passive transaction server replication
       // with a LSA that ensures that no record is lost (ie: while still holding the mutex)
       replication_start_redo_lsa = log_Gl.append.get_nxio_lsa ();
-      _er_log_debug (ARG_FILE_LINE, "crsdbg: replication_start_redo_lsa = %lld|%d\n",
-		     LSA_AS_ARGS (&replication_start_redo_lsa));
     }
     // prior lists from page server are being received now
 
@@ -6508,11 +6506,11 @@ log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length, LOG_LSA * log
       dumpfun = log_hexa_dump;
     }
 
-  if (log_hexa_dump == dumpfun || log_rv_dump_hexa == dumpfun || log_rv_dump_char == dumpfun)
+  /*if (log_hexa_dump == dumpfun || log_rv_dump_hexa == dumpfun || log_rv_dump_char == dumpfun)
     {
       fprintf (out_fp, "  crsdbg: dump skipped\n");
       return;
-    }
+    }*/
 
   if (ZIP_CHECK (length))
     {

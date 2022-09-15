@@ -77,13 +77,13 @@ class log_reader final
      * where `DUMMY_TYPE` happens to be a reference
      */
     template <typename T>
-    inline const typename std::remove_reference<T>::type *reinterpret_cptr () const;
+    const typename std::remove_reference<T>::type *reinterpret_cptr () const;
 
     /* will copy the contents of the structure out of the log page and
      * advance and align afterwards
      */
     template <typename T>
-    inline T reinterpret_copy_and_add_align ();
+    T reinterpret_copy_and_add_align ();
 
     /* equivalent to LOG_READ_ALIGN
      */
@@ -117,9 +117,6 @@ class log_reader final
     inline int skip (size_t size);
 
   private:
-    template <typename T>
-    inline void reinterpret_copy_and_add_align (T &t);
-
     inline const char *get_cptr () const;
 
     inline int fetch_page (THREAD_ENTRY *const thread_p);
@@ -284,7 +281,7 @@ THREAD_ENTRY *log_reader::get_thread_entry ()
 }
 
 template <typename T>
-inline const typename std::remove_reference<T>::type *log_reader::reinterpret_cptr () const
+const typename std::remove_reference<T>::type *log_reader::reinterpret_cptr () const
 {
   using rem_ref_t = typename std::remove_reference<T>::type;
   const rem_ref_t *p = reinterpret_cast<const rem_ref_t *> (get_cptr ());
@@ -292,20 +289,14 @@ inline const typename std::remove_reference<T>::type *log_reader::reinterpret_cp
 }
 
 template <typename T>
-inline T log_reader::reinterpret_copy_and_add_align ()
+T log_reader::reinterpret_copy_and_add_align ()
 {
   T data;
-  reinterpret_copy_and_add_align (data);
+  constexpr auto size_of_t = sizeof (T);
+  std::memcpy (&data, get_cptr (), size_of_t);
+  add_align (size_of_t);
   // compiler's NRVO will hopefully kick in here and optimize this away
   return data;
-}
-
-template <typename T>
-inline void log_reader::reinterpret_copy_and_add_align (T &t)
-{
-  constexpr size_t size_of_t = sizeof (T);
-  std::memcpy (&t, get_cptr (), size_of_t);
-  add_align (size_of_t);
 }
 
 template <typename T>

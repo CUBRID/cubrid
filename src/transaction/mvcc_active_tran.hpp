@@ -59,8 +59,6 @@ struct mvcc_active_tran
     void reset_active_transactions ();
     void check_valid () const;
 
-    void dump (const char *const source) const;
-
   private:
     using unit_type = std::uint64_t;
 
