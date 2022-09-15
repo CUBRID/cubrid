@@ -116,7 +116,7 @@ static struct hostent *host_lookup_internal (const char *hostname, struct sockad
  *
  */
 static struct hostent *
-hostent_init (char *ipaddr, char *hostname)
+hostent_alloc (char *ipaddr, char *hostname)
 {
   struct hostent *hp;
   char addr_trans_bi_buf[IPADDR_LEN];
