@@ -40,14 +40,14 @@
 
 #include "system_parameter.h"
 #include "environment_variable.h"
-#include "cci_common.h"
 #include "message_catalog.h"
 
 
-#define HOSTNAME_BUF_SIZE              (128)
-#define MAX_HOSTS_LINE_SIZE       (256)
-#define IPADDR_LEN              (17)
-#define NUM_IPADDR_DOT              (3)
+#define HOSTNAME_BUF_SIZE            (128)
+#define MAX_NUM_HOSTS                (256)
+#define IPADDR_LEN                   (17)
+#define NUM_IPADDR_DOT               (3)
+#define IPv4_ADDR_LEN                (4)
 
 #define FREE_MEM(PTR)           \
         do {                    \
@@ -94,15 +94,8 @@ typedef enum
   LOAD_SUCCESS,
 } HOSTS_CONF_LOAD_STATUS;
 
-struct cub_hostent
-{
-  char ipaddr[IPADDR_LEN];
-  char hostname[HOSTNAME_BUF_SIZE + 1];
-};
-
-typedef struct cub_hostent CUB_HOSTENT;
 static const char user_defined_hostfile_Name[] = "hosts.conf";
-static struct hostent *hp_Arr[MAX_HOSTS_LINE_SIZE + 1];
+static struct hostent *hostent_Cache[MAX_NUM_HOSTS + 1];
 
 static int hosts_conf_file_Load = LOAD_INIT;
 
@@ -111,52 +104,64 @@ static int hosts_conf_file_Load = LOAD_INIT;
 static std::unordered_map <std::string, int> user_host_Map;
 // *INDENT-ON*
 
-static struct hostent *hostent_init (char *map_ipaddr, char *map_hostname);
+static struct hostent *hostent_alloc (char *ipaddr, char *hostname);
 static bool ip_format_check (char *ip_addr);
-static int host_conf_load ();
-static struct hostent *host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_case);
+static int load_hosts_file ();
+static struct hostent *host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_type);
 
 /*
- * hostent_init () - Allocate memory hostent structure.
+ * hostent_alloc () - Allocate memory hostent structure.
  * 
  * return   : the hostent pointer.
  *
  */
 static struct hostent *
-hostent_init (char *map_ipaddr, char *map_hostname)
+hostent_init (char *ipaddr, char *hostname)
 {
-  static struct hostent hp;
-  static char addr_[IPADDR_LEN];
-  static char *addr_ptr[2];
-  static char host_alias[HOSTNAME_BUF_SIZE + 1];
-  static char *host_alias_ptr[2];
-  static char host_n[HOSTNAME_BUF_SIZE + 1];
+  struct hostent *hp;
   char addr_trans_bi_buf[IPADDR_LEN];
 
-  if (inet_pton (AF_INET, map_ipaddr, addr_trans_bi_buf) < 1)
+  if ((hp = (struct hostent *) malloc (sizeof (struct hostent))) == NULL)
+    {
+      return NULL;
+    }
+
+  hp->h_addrtype = AF_INET;
+  hp->h_length = IPv4_ADDR_LEN;
+
+  if (inet_pton (AF_INET, ipaddr, addr_trans_bi_buf) < 1)
     {
       fprintf (stderr, "Convertion IP address from text form to binary is failed");
       return NULL;
     }
 
-  strcpy (addr_, addr_trans_bi_buf);
-  strcpy (host_n, map_hostname);
-  strcpy (host_alias, map_hostname);
+  hp->h_name = strdup (hostname);
+  hp->h_aliases = NULL;
 
-  hp.h_name = host_n;
-  hp.h_aliases = host_alias_ptr;
-  hp.h_addr_list = addr_ptr;
-  hp.h_aliases[0] = host_alias;
-  hp.h_addr_list[0] = addr_;
-  hp.h_addrtype = AF_INET;
-  hp.h_length = 4;
+  if ((hp->h_addr_list = (char **) malloc (sizeof (char *) * HOSTNAME_BUF_SIZE)) == NULL)
+    {
+      FREE_MEM (hp->h_name);
+      FREE_MEM (hp);
+      return NULL;
+    }
 
-  return &hp;
+  if ((hp->h_addr_list[0] = (char *) malloc (sizeof (char) * IPADDR_LEN)) == NULL)
+    {
+      FREE_MEM (hp->h_addr_list);
+      FREE_MEM (hp->h_name);
+      FREE_MEM (hp);
 
+      return NULL;
+    }
+
+  memcpy (hp->h_addr, addr_trans_bi_buf, 4);
+
+  return hp;
 }
 
+
 static struct hostent *
-host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_case)
+host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_type)
 {
   static struct hostent *hp;
   int i, find_index = -1;
@@ -169,7 +174,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 
   if (hosts_conf_file_Load == LOAD_INIT)
     {
-      if ((hosts_conf_file_Load = host_conf_load ()) == LOAD_FAIL)
+      if ((hosts_conf_file_Load = load_hosts_file ()) == LOAD_FAIL)
 	{
 	  return NULL;
 	}
@@ -179,7 +184,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 
   assert (((hostname != NULL) && (saddr == NULL)) || ((hostname == NULL) && (saddr != NULL)));
 
-  if (lookup_case == IPADDR_TO_HOSTNAME)
+  if (lookup_type == IPADDR_TO_HOSTNAME)
     {
       if (inet_ntop (AF_INET, &addr_trans->sin_addr, addr_trans_ch_buf, sizeof (addr_trans_ch_buf)) == NULL)
 	{
@@ -190,17 +195,17 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
     }
 
   /*Look up in the user_host_Map */
-  if ((lookup_case == HOSTNAME_TO_IPADDR) && (user_host_Map.find (hostname) != user_host_Map.end ()))
+  if ((lookup_type == HOSTNAME_TO_IPADDR) && (user_host_Map.find (hostname) != user_host_Map.end ()))
     {
-      hp = hp_Arr[user_host_Map.find (hostname)->second];
+      hp = hostent_Cache[user_host_Map.find (hostname)->second];
     }
-  else if ((lookup_case == IPADDR_TO_HOSTNAME) && (user_host_Map.find (addr_trans_ch_buf) != user_host_Map.end ()))
+  else if ((lookup_type == IPADDR_TO_HOSTNAME) && (user_host_Map.find (addr_trans_ch_buf) != user_host_Map.end ()))
     {
-      hp = hp_Arr[user_host_Map.find (addr_trans_ch_buf)->second];
+      hp = hostent_Cache[user_host_Map.find (addr_trans_ch_buf)->second];
     }
   else
     {
-      if (lookup_case == HOSTNAME_TO_IPADDR)
+      if (lookup_type == HOSTNAME_TO_IPADDR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_CANT_LOOKUP_INFO, 1, hostname);
 	  fprintf (stdout, "%s\n", er_msg ());
@@ -217,10 +222,10 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 }
 
 static int
-host_conf_load ()
+load_hosts_file ()
 {
   FILE *fp;
-  char file_line[MAX_HOSTS_LINE_SIZE + 1];
+  char file_line[MAX_NUM_HOSTS + 1];
   char host_conf_file_full_path[PATH_MAX];
   char *hosts_conf_dir;
 
@@ -228,8 +233,8 @@ host_conf_load ()
   char *save_ptr_strtok;
   /*delimiter */
   char *delim = " \t\n";
-  char map_ipaddr[IPADDR_LEN];
-  char map_hostname[HOSTNAME_BUF_SIZE + 1];
+  char ipaddr[IPADDR_LEN];
+  char hostname[HOSTNAME_BUF_SIZE + 1];
   int hp_arr_idx = 0, temp_idx;
 
   char addr_trans_ch_buf[IPADDR_LEN];
@@ -239,7 +244,7 @@ host_conf_load ()
   bool hostent_flag;
   HOSTENT_INSERT_TYPE hostent_insert_Type;
 
-  memset (file_line, 0, MAX_HOSTS_LINE_SIZE + 1);
+  memset (file_line, 0, MAX_NUM_HOSTS + 1);
 
   hosts_conf_dir = envvar_confdir_file (host_conf_file_full_path, PATH_MAX, "hosts.conf");
   fp = fopen (hosts_conf_dir, "r");
@@ -250,7 +255,7 @@ host_conf_load ()
       return LOAD_FAIL;
     }
 
-  while (fgets (file_line, MAX_HOSTS_LINE_SIZE + 1, fp) != NULL)
+  while (fgets (file_line, MAX_NUM_HOSTS + 1, fp) != NULL)
     {
       if (file_line[0] == '#')
 	continue;
@@ -280,7 +285,7 @@ host_conf_load ()
 
 		  return LOAD_FAIL;
 		}
-	      strcpy (map_ipaddr, token);
+	      strcpy (ipaddr, token);
 
 	      hostent_flag = INSERT_HOSTNAME;
 	    }
@@ -297,19 +302,19 @@ host_conf_load ()
 
 		  return LOAD_FAIL;
 		}
-	      strcpy (map_hostname, token);
+	      strcpy (hostname, token);
 	    }
 	}
       while (token = strtok_r (NULL, delim, &save_ptr_strtok));
 
-      if (strcmp ("\0", map_hostname) && strcmp ("\0", map_ipaddr))
+      if (strcmp ("\0", hostname) && strcmp ("\0", ipaddr))
 	{
 	  /*not duplicated hostname */
-	  if ((user_host_Map.find (map_hostname) == user_host_Map.end ()))
+	  if ((user_host_Map.find (hostname) == user_host_Map.end ()))
 	    {
-	      user_host_Map[map_hostname] = hp_arr_idx;
-	      user_host_Map[map_ipaddr] = hp_arr_idx;
-	      hp_Arr[hp_arr_idx] = hostent_init (map_ipaddr, map_hostname);
+	      user_host_Map[hostname] = hp_arr_idx;
+	      user_host_Map[ipaddr] = hp_arr_idx;
+	      hostent_Cache[hp_arr_idx] = hostent_alloc (ipaddr, hostname);
 
 	      hp_arr_idx++;
 	    }
@@ -318,8 +323,8 @@ host_conf_load ()
 	    {
 	      /*duplicated hostname but different ip address */
 
-	      temp_idx = user_host_Map.find (map_hostname)->second;
-	      memcpy (&addr_trans->s_addr, hp_Arr[temp_idx]->h_addr_list[0], sizeof (addr_trans->s_addr));
+	      temp_idx = user_host_Map.find (hostname)->second;
+	      memcpy (&addr_trans->s_addr, hostent_Cache[temp_idx]->h_addr_list[0], sizeof (addr_trans->s_addr));
 
 	      if (inet_ntop (AF_INET, addr_trans, addr_trans_ch_buf, sizeof (addr_trans_ch_buf)) == NULL)
 		{
@@ -327,9 +332,9 @@ host_conf_load ()
 		  return NULL;
 		}
 
-	      if (strcmp (addr_trans_ch_buf, map_ipaddr))
+	      if (strcmp (addr_trans_ch_buf, ipaddr))
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_ALREADY_EXIST, 1, map_hostname);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_ALREADY_EXIST, 1, hostname);
 		  fprintf (stdout, "%s\n", er_msg ());
 
 		  user_host_Map.clear ();
