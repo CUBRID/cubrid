@@ -86,7 +86,7 @@
             <include name="${test.src.path}/*.java"/>
         </javac>
 
-        <junit printsummary="yes" haltonfailure="yes">
+        <junit printsummary="yes" fork="yes" haltonfailure="yes">
             <classpath>
                 <path refid="test.path"/>
                 <pathelement path="${classes.dir}"/>
