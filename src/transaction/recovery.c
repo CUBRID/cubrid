@@ -850,6 +850,12 @@ struct rvfun RV_fun[] = {
    log_rv_nop,
    NULL,
    NULL},
+  {RVHF_SET_PREV_VERSION_LSA,
+   "RVHF_SET_PREV_VERSION_LSA",
+   NULL,
+   heap_rv_set_prev_version_lsa,
+   NULL,
+   NULL},
 };
 
 /*
