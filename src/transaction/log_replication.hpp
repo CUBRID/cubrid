@@ -94,7 +94,7 @@ namespace cublog
       template <typename T>
       void calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry, const log_lsa &rec_lsa);
       void register_assigned_mvccid (TRANID tranid);
-      void replicate_sysop_end (TRANID tranid, const log_lsa &rec_lsa, const LOG_REC_SYSOP_END &log_rec);
+      void replicate_sysop_end_mvcc (TRANID tranid, const log_lsa &rec_lsa, const LOG_REC_SYSOP_END &log_rec);
 #if !defined (NDEBUG)
       void replicate_sysop_start_postpone (const log_lsa &rec_lsa);
 #endif /* !NDEBUG */

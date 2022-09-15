@@ -302,7 +302,7 @@ TEST_CASE ("log recovery parallel test: extensive tests", "[long]")
 // Add mock definitions for used CUBRID stuff
 //
 
-PGLENGTH db_Log_page_size = IO_DEFAULT_PAGE_SIZE;
+//PGLENGTH db_Log_page_size = IO_DEFAULT_PAGE_SIZE;
 
 //void
 //pgbuf_unfix (THREAD_ENTRY *, PAGE_PTR)

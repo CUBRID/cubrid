@@ -69,7 +69,7 @@ class test_env_chkpt
 
     LOG_TDES *find_or_insert_recovery_tdes (TRANID trid);
     void increment_recovery_2pc ();
-    void check_recovery ();
+    void check_recovery (bool skip_empty_transactions);
 
     checkpoint_info *get_before ();
     checkpoint_info *get_after ();
@@ -225,7 +225,7 @@ test_env_chkpt::increment_recovery_2pc ()
 }
 
 void
-test_env_chkpt::check_recovery ()
+test_env_chkpt::check_recovery (bool skip_empty_transactions)
 {
   std::map<TRANID, log_tdes *>::iterator itr;
   for (itr = m_after_tdes_map.begin (); itr != m_after_tdes_map.end (); ++itr)
@@ -246,8 +246,19 @@ test_env_chkpt::check_recovery ()
 
       if (tdes->tail_lsa == NULL_LSA)
 	{
-	  REQUIRE (tdes_after_iter == m_after_tdes_map.end ());
-	  continue;
+	  if (skip_empty_transactions)
+	    {
+	      REQUIRE (tdes_after_iter == m_after_tdes_map.end ());
+	      continue;
+	    }
+	  else
+	    {
+	      REQUIRE (tdes_after_iter != m_after_tdes_map.end ());
+	    }
+	}
+      if (tdes->tail_lsa == NULL_LSA)
+	{
+	  REQUIRE (tdes->commit_abort_lsa == NULL_LSA);
 	}
       REQUIRE (tdes_after_iter != m_after_tdes_map.end ());
       log_tdes *const tdes_after = tdes_after_iter->second;
@@ -339,18 +350,36 @@ test_env_chkpt::number_of_2pc ()
   return count;
 }
 
-TEST_CASE ("Test load and recovery on every tran table entry ", "")
+TEST_CASE ("Test load and recovery on every tran table entry - not skipping empty transactions", "")
 {
   test_env_chkpt env;
   LOG_LSA smallest_lsa;
   LOG_LSA start_lsa;
   THREAD_ENTRY thd;
 
+  constexpr bool skip_empty_transactions = false;
+
   env.generate_tran_table ();
   env.get_after ()->load_trantable_snapshot (&thd, smallest_lsa);
-  env.get_after ()->recovery_analysis (&thd, start_lsa, false);
+  env.get_after ()->recovery_analysis (&thd, start_lsa, skip_empty_transactions);
   env.get_after ()->recovery_2pc_analysis (&thd);
-  env.check_recovery ();
+  env.check_recovery (skip_empty_transactions);
+}
+
+TEST_CASE ("Test load and recovery on every tran table entry - skipping empty transactions", "")
+{
+  test_env_chkpt env;
+  LOG_LSA smallest_lsa;
+  LOG_LSA start_lsa;
+  THREAD_ENTRY thd;
+
+  constexpr bool skip_empty_transactions = true;
+
+  env.generate_tran_table ();
+  env.get_after ()->load_trantable_snapshot (&thd, smallest_lsa);
+  env.get_after ()->recovery_analysis (&thd, start_lsa, skip_empty_transactions);
+  env.get_after ()->recovery_2pc_analysis (&thd);
+  env.check_recovery (skip_empty_transactions);
 }
 
 test_env_chkpt::test_env_chkpt ()
@@ -573,7 +602,7 @@ test_env_chkpt::generate_empty_tran_table ()
 void
 test_env_chkpt::generate_tran_table ()
 {
-  log_Gl.trantable.num_total_indices = 21;
+  log_Gl.trantable.num_total_indices = 22;
   int size = log_Gl.trantable.num_total_indices * sizeof (*log_Gl.trantable.all_tdes);
   log_Gl.trantable.all_tdes = (LOG_TDES **) malloc (size);
 
@@ -604,6 +633,7 @@ test_env_chkpt::generate_tran_table ()
 
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->state = TRAN_UNACTIVE_COMMITTED;
+  // will not be skipped by checkpoint
   tdes->commit_abort_lsa = NULL_LSA;
   ++tran_index;
 
@@ -623,6 +653,7 @@ test_env_chkpt::generate_tran_table ()
 
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->state = TRAN_UNACTIVE_ABORTED;
+  // will not be skipped by checkpoint
   tdes->commit_abort_lsa = NULL_LSA;
   ++tran_index;
 
@@ -658,6 +689,15 @@ test_env_chkpt::generate_tran_table ()
 
   log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
   tdes->state = TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS;
+  ++tran_index;
+
+  // transaction that generated an entry, reserved an mvccid, but did not
+  // yet get to add any log record
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->head_lsa = NULL_LSA;
+  tdes->tail_lsa = NULL_LSA;
+  tdes->rcv.atomic_sysop_start_lsa = NULL_LSA;
+  tdes->rcv.sysop_start_postpone_lsa = NULL_LSA;
   ++tran_index;
 
   // Generate topops
