@@ -832,3 +832,4 @@ EXPORTS
     windows_socket_startup
     windows_socket_shutdown
     gethostbyname_uhost
+    getnameinfo_uhost

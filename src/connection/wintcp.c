@@ -45,6 +45,7 @@
 #include "error_code.h"
 #include "connection_globals.h"
 #include "wintcp.h"
+#include "host_lookup.h"
 #include "porting.h"
 #include "system_parameter.h"
 #include "client_support.h"

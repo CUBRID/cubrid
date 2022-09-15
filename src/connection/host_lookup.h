@@ -24,7 +24,7 @@
 #define _HOST_LOOKUP_H_
 
 #ident "$Id$"
-extern struct hostent *gethostbyname_uhost (char *name);
+extern struct hostent *gethostbyname_uhost (const char *name);
 extern int getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *host, size_t hostlen,
 			      char *serv, size_t servlen, int flags);
 extern int getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct addrinfo **res);

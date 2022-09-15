@@ -42,13 +42,14 @@
 #include "environment_variable.h"
 #include "message_catalog.h"
 
-#define HOSTNAME_LEN                 (128)
+#define HOSTNAME_LEN                 (256)
 #define MAX_NUM_HOSTS                (256)
 #define LINE_BUF_SIZE                (512)
 #define IPADDR_LEN                   (17)
 #define NUM_IPADDR_DOT               (3)
 #define IPv4_ADDR_LEN                (4)
 
+#define NUM_DIGIT(VAL)              (int)(log10 (VAL) + 1)
 #define FREE_MEM(PTR)           \
         do {                    \
           if (PTR) {            \
@@ -94,7 +95,7 @@ typedef enum
   LOAD_SUCCESS,
 } HOSTS_CONF_LOAD_STATUS;
 
-static const char user_defined_hostfile_Name[] = "hosts.conf";
+static const char *user_hosts_File = "hosts.conf";
 static struct hostent *hostent_Cache[MAX_NUM_HOSTS];
 
 static int hosts_conf_file_Load = LOAD_INIT;
@@ -168,7 +169,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 
   char addr_trans_ch_buf[IPADDR_LEN];
   char addr_trans_bi_buf[IPADDR_LEN];
-  char hostname_buf[HOSTNAME_LEN + 1];
+  char hostname_buf[HOSTNAME_LEN];
   char ipaddr_buf[IPADDR_LEN];
   struct sockaddr_in *addr_trans = NULL;
 
@@ -225,27 +226,27 @@ static int
 load_hosts_file ()
 {
   FILE *fp;
-  char file_line[LINE_BUF_SIZE];
+  char file_line[LINE_BUF_SIZE + 1];
   char host_conf_file_full_path[PATH_MAX];
   char *hosts_conf_dir;
 
-  char *token, temp_token[HOSTNAME_LEN];
+  char *token, temp_token[LINE_BUF_SIZE + 1];
   char *save_ptr_strtok;
   /*delimiter */
-  char *delim = " \t\n";
+  const char *delim = " \t\n";
   char ipaddr[IPADDR_LEN];
-  char hostname[HOSTNAME_LEN + 1];
+  char hostname[HOSTNAME_LEN];
   int cache_idx = 0, temp_idx;
 
   char addr_trans_ch_buf[IPADDR_LEN];
-  struct in_addr *addr_trans;
+  struct in_addr addr_trans;
 
   /*True, when the string token has hostname, otherwise, string token has IP address */
   bool hostent_flag;
 
   memset (file_line, 0, LINE_BUF_SIZE);
 
-  hosts_conf_dir = envvar_confdir_file (host_conf_file_full_path, PATH_MAX, "hosts.conf");
+  hosts_conf_dir = envvar_confdir_file (host_conf_file_full_path, PATH_MAX, user_hosts_File);
   fp = fopen (hosts_conf_dir, "r");
   if (fp == NULL)
     {
@@ -266,7 +267,7 @@ load_hosts_file ()
 
       do
 	{
-	  if (*token == NULL || *token == '#')
+	  if (token == NULL || *token == '#')
 	    {
 	      break;
 	    }
@@ -284,13 +285,14 @@ load_hosts_file ()
 
 		  return LOAD_FAIL;
 		}
-	      strcpy (ipaddr, token);
+	      strncpy (ipaddr, token, IPADDR_LEN);
+	      ipaddr[IPADDR_LEN - 1] = '\0';
 
 	      hostent_flag = INSERT_HOSTNAME;
 	    }
 	  else
 	    {
-	      if (strlen (token) > HOSTNAME_LEN + 1)
+	      if (strlen (token) > HOSTNAME_LEN - 1)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_TOO_LONG, 1, token);
 		  fprintf (stdout, "%s\n", er_msg ());
@@ -304,7 +306,7 @@ load_hosts_file ()
 	      strcpy (hostname, token);
 	    }
 	}
-      while (token = strtok_r (NULL, delim, &save_ptr_strtok));
+      while ((token = strtok_r (NULL, delim, &save_ptr_strtok)) != NULL);
 
       if (strcmp ("\0", hostname) && strcmp ("\0", ipaddr))
 	{
@@ -323,12 +325,12 @@ load_hosts_file ()
 	      /*duplicated hostname but different ip address */
 
 	      temp_idx = user_host_Map.find (hostname)->second;
-	      memcpy (&addr_trans->s_addr, hostent_Cache[temp_idx]->h_addr_list[0], sizeof (addr_trans->s_addr));
+	      memcpy (&addr_trans.s_addr, hostent_Cache[temp_idx]->h_addr_list[0], sizeof (addr_trans.s_addr));
 
-	      if (inet_ntop (AF_INET, addr_trans, addr_trans_ch_buf, sizeof (addr_trans_ch_buf)) == NULL)
+	      if (inet_ntop (AF_INET, &addr_trans, addr_trans_ch_buf, sizeof (addr_trans_ch_buf)) == NULL)
 		{
 		  fprintf (stderr, "Convertion IP address from binary form to text is failed");
-		  return NULL;
+		  return LOAD_FAIL;
 		}
 
 	      if (strcmp (addr_trans_ch_buf, ipaddr))
@@ -373,9 +375,12 @@ ip_format_check (char *ip_addr)
   int dot = -1;
   char *token;
   char *save_ptr_strtok;
-  char *delim = " .\n";
+  const char *delim = " .\n";
 
-  token = strtok_r (ip_addr, delim, &save_ptr_strtok);
+  if ((token = strtok_r (ip_addr, delim, &save_ptr_strtok)) == NULL)
+    {
+      ret = false;
+    }
 
   do
     {
@@ -385,12 +390,12 @@ ip_format_check (char *ip_addr)
 	  ret = false;
 	  break;
 	}
-      else if (dec_val == 0 && token[0] != 48)
+      else if (dec_val == 0 && token[0] != '0')
 	{
 	  ret = false;
 	  break;
 	}
-      else if (dec_val != 0 && ((int) log10 (dec_val) + 1 != strlen (token)))
+      else if (dec_val != 0 && (NUM_DIGIT (dec_val) != strlen (token)))
 	{
 	  ret = false;
 	  break;
@@ -417,7 +422,7 @@ ip_format_check (char *ip_addr)
  *
  */
 struct hostent *
-gethostbyname_uhost (char *name)
+gethostbyname_uhost (const char *name)
 {
   static struct hostent *hp = NULL;
 
@@ -554,7 +559,7 @@ getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *host, size_t 
       if ((hp = host_lookup_internal (NULL, addr, IPADDR_TO_HOSTNAME)) != NULL)
 	{
 	  strncpy (host, hp->h_name, hostlen);
-	  host[HOSTNAME_LEN - 1] = '\0';
+	  host[hostlen] = '\0';
 
 	  ret = 0;
 	}
@@ -635,7 +640,7 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
       results_out.ai_protocol = 0;
     }
 
-  if ((results_out.ai_canonname = (char *) malloc (sizeof (char) * HOSTNAME_LEN + 1)) == NULL)
+  if ((results_out.ai_canonname = (char *) malloc (sizeof (char) * HOSTNAME_LEN)) == NULL)
     {
       free (in_addr_buf);
       freeaddrinfo (*res);
