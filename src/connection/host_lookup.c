@@ -236,7 +236,7 @@ load_hosts_file ()
   char *delim = " \t\n";
   char ipaddr[IPADDR_LEN];
   char hostname[HOSTNAME_BUF_SIZE + 1];
-  int hp_arr_idx = 0, temp_idx;
+  int cache_idx = 0, temp_idx;
 
   char addr_trans_ch_buf[IPADDR_LEN];
   struct in_addr *addr_trans;
@@ -313,11 +313,11 @@ load_hosts_file ()
 	  /*not duplicated hostname */
 	  if ((user_host_Map.find (hostname) == user_host_Map.end ()))
 	    {
-	      user_host_Map[hostname] = hp_arr_idx;
-	      user_host_Map[ipaddr] = hp_arr_idx;
-	      hostent_Cache[hp_arr_idx] = hostent_alloc (ipaddr, hostname);
+	      user_host_Map[hostname] = cache_idx;
+	      user_host_Map[ipaddr] = cache_idx;
+	      hostent_Cache[cache_idx] = hostent_alloc (ipaddr, hostname);
 
-	      hp_arr_idx++;
+	      cache_idx++;
 	    }
 	  /*duplicated hostname */
 	  else
