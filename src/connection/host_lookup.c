@@ -132,6 +132,7 @@ hostent_alloc (char *ipaddr, char *hostname)
   if (inet_pton (AF_INET, ipaddr, addr_trans_bi_buf) < 1)
     {
       fprintf (stderr, "Convertion IP address from text form to binary is failed");
+      FREE_MEM (hp);
       return NULL;
     }
 
