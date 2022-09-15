@@ -42,9 +42,9 @@
 #include "environment_variable.h"
 #include "message_catalog.h"
 
-
-#define HOSTNAME_BUF_SIZE            (128)
+#define HOSTNAME_LEN                 (128)
 #define MAX_NUM_HOSTS                (256)
+#define LINE_BUF_SIZE                (512)
 #define IPADDR_LEN                   (17)
 #define NUM_IPADDR_DOT               (3)
 #define IPv4_ADDR_LEN                (4)
@@ -95,11 +95,10 @@ typedef enum
 } HOSTS_CONF_LOAD_STATUS;
 
 static const char user_defined_hostfile_Name[] = "hosts.conf";
-static struct hostent *hostent_Cache[MAX_NUM_HOSTS + 1];
+static struct hostent *hostent_Cache[MAX_NUM_HOSTS];
 
 static int hosts_conf_file_Load = LOAD_INIT;
 
-/*Hostname and IP address are both stored in the user_host_Map to search both of them*/
 // *INDENT-OFF*
 static std::unordered_map <std::string, int> user_host_Map;
 // *INDENT-ON*
@@ -139,7 +138,7 @@ hostent_alloc (char *ipaddr, char *hostname)
   hp->h_name = strdup (hostname);
   hp->h_aliases = NULL;
 
-  if ((hp->h_addr_list = (char **) malloc (sizeof (char *) * HOSTNAME_BUF_SIZE)) == NULL)
+  if ((hp->h_addr_list = (char **) malloc (sizeof (char *) * HOSTNAME_LEN)) == NULL)
     {
       FREE_MEM (hp->h_name);
       FREE_MEM (hp);
@@ -169,7 +168,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 
   char addr_trans_ch_buf[IPADDR_LEN];
   char addr_trans_bi_buf[IPADDR_LEN];
-  char hostname_buf[HOSTNAME_BUF_SIZE + 1];
+  char hostname_buf[HOSTNAME_LEN + 1];
   char ipaddr_buf[IPADDR_LEN];
   struct sockaddr_in *addr_trans = NULL;
 
@@ -226,16 +225,16 @@ static int
 load_hosts_file ()
 {
   FILE *fp;
-  char file_line[MAX_NUM_HOSTS + 1];
+  char file_line[LINE_BUF_SIZE];
   char host_conf_file_full_path[PATH_MAX];
   char *hosts_conf_dir;
 
-  char *token, temp_token[HOSTNAME_BUF_SIZE];
+  char *token, temp_token[HOSTNAME_LEN];
   char *save_ptr_strtok;
   /*delimiter */
   char *delim = " \t\n";
   char ipaddr[IPADDR_LEN];
-  char hostname[HOSTNAME_BUF_SIZE + 1];
+  char hostname[HOSTNAME_LEN + 1];
   int cache_idx = 0, temp_idx;
 
   char addr_trans_ch_buf[IPADDR_LEN];
@@ -243,9 +242,8 @@ load_hosts_file ()
 
   /*True, when the string token has hostname, otherwise, string token has IP address */
   bool hostent_flag;
-  HOSTENT_INSERT_TYPE hostent_insert_Type;
 
-  memset (file_line, 0, MAX_NUM_HOSTS + 1);
+  memset (file_line, 0, LINE_BUF_SIZE);
 
   hosts_conf_dir = envvar_confdir_file (host_conf_file_full_path, PATH_MAX, "hosts.conf");
   fp = fopen (hosts_conf_dir, "r");
@@ -256,7 +254,7 @@ load_hosts_file ()
       return LOAD_FAIL;
     }
 
-  while (fgets (file_line, MAX_NUM_HOSTS + 1, fp) != NULL)
+  while (fgets (file_line, LINE_BUF_SIZE, fp) != NULL)
     {
       if (file_line[0] == '#')
 	continue;
@@ -292,7 +290,7 @@ load_hosts_file ()
 	    }
 	  else
 	    {
-	      if (strlen (token) > HOSTNAME_BUF_SIZE + 1)
+	      if (strlen (token) > HOSTNAME_LEN + 1)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_TOO_LONG, 1, token);
 		  fprintf (stdout, "%s\n", er_msg ());
@@ -556,7 +554,7 @@ getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *host, size_t 
       if ((hp = host_lookup_internal (NULL, addr, IPADDR_TO_HOSTNAME)) != NULL)
 	{
 	  strncpy (host, hp->h_name, hostlen);
-	  host[CUB_MAXHOSTNAMELEN - 1] = '\0';
+	  host[HOSTNAME_LEN - 1] = '\0';
 
 	  ret = 0;
 	}
@@ -637,7 +635,7 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
       results_out.ai_protocol = 0;
     }
 
-  if ((results_out.ai_canonname = (char *) malloc (sizeof (char) * HOSTNAME_BUF_SIZE + 1)) == NULL)
+  if ((results_out.ai_canonname = (char *) malloc (sizeof (char) * HOSTNAME_LEN + 1)) == NULL)
     {
       free (in_addr_buf);
       freeaddrinfo (*res);
