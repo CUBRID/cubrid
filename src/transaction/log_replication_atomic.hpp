@@ -28,6 +28,41 @@ namespace cublog
    * Replicator derived class responsible for handling the log redo only on Passive Transaction Servers
    * In addition to the standard replicator, the atomic variant also adds support for atomic log replication
    * with the help of the atomic_replication_helper class.
+   *
+   * Implementation details:
+   * - internally, a thread (daemon) is started which executes replicator::redo_upto_nxio_lsa
+   *    continuously in a loop
+   * - the thread executes everything synchronously down the path:
+   *    -> replicator::redo_upto_nxio_lsa
+   *      -> atomic_replicator::redo_upto (overridden function)
+   *        -> atomic_replicator::read_and_redo_record | calculate_replication_delay_or_dispatch_async
+   *            | m_atomic_helper | read_and_bookkeep_mvcc_vacuum | m_replicator_mvccid
+   *
+   * - there are two helper classes
+   *    - m_atomic_helper - to replication atomic sequences
+   *    - m_replicator_mvccid - to update the PTS's MVCC table according to processed log records
+   *      - (it is assumed that the MVCC table is correct when the replication is started)
+   *
+   * - atomic replication is implemented according to the description for the class atomic_replication_helper
+   *    by sequentially processing atomic replications markers in the transactional log
+   *
+   * - the instance also keeps two boundaries LSA's
+   *    - lowest_unapplied_lsa - the smallest LSA which is known to not have been applied
+   *    - highest_processed_lsa - the highest LSA which is has been processed by the replication
+   *    - diagram:
+   *
+   *                         - active atomic replication
+   *  all log records have     sequences                              no log records have
+   *  been applied           - some log records have already          been processed
+   *                        │  been applied (non-atomically)       │
+   *  ──────────────────────┼──────────────────────────────────────┼──────────────────────────►
+   *                        │                                      │                 TRANSACTIONAL
+   *                      lowest                               highest               LOG axis
+   *                      unapplied                            processed
+   *                      LSA                                  LSA
+   *
+   *    - the consequence of this is that, when there are no atomic replication sequences
+   *      the two values are equal
    */
   class atomic_replicator : public replicator
   {

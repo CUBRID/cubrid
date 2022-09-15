@@ -2307,7 +2307,7 @@ pgbuf_fix_old_and_check_repl_desync (THREAD_ENTRY * thread_p, const VPID & vpid,
   //
   // In case b) pgbuf_fix returns a null pointer and sets ER_PB_BAD_PAGEID error. Follow-up by fixing
   // with OLD_PAGE_DEALLOCATED fetch mode to force read the page LSA; replace ER_PB_BAD_PAGEID with
-  // ER_PTS_PAGE_DESYNC.
+  // ER_PAGE_AHEAD_OF_REPLICATION.
   //
 
   if (page == nullptr)

@@ -30,14 +30,16 @@ namespace cublog
    * atomic_replication_helper function definitions                    *
    *********************************************************************/
 
-  void atomic_replication_helper::add_atomic_replication_sequence (TRANID trid, LOG_LSA start_lsa,
+  void
+  atomic_replication_helper::add_atomic_replication_sequence (TRANID trid, LOG_LSA start_lsa,
       const log_rv_redo_context &redo_context)
   {
     constexpr bool is_sysop = false;
     start_sequence_internal (trid, start_lsa, redo_context, is_sysop);
   }
 
-  int atomic_replication_helper::add_atomic_replication_log (THREAD_ENTRY *thread_p, TRANID tranid,
+  int
+  atomic_replication_helper::add_atomic_replication_log (THREAD_ENTRY *thread_p, TRANID tranid,
       log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid)
   {
 #if !defined (NDEBUG)
@@ -49,13 +51,13 @@ namespace cublog
     vpids.insert (vpid);
 #endif
 
-    auto iterator = m_sequences_map.find (tranid);
-    if (iterator == m_sequences_map.cend ())
+    const auto sequence_it = m_sequences_map.find (tranid);
+    if (sequence_it == m_sequences_map.cend ())
       {
 	return ER_FAILED;
       }
 
-    int error_code = iterator->second.add_atomic_replication_log (thread_p, record_lsa, rcvindex, vpid);
+    int error_code = sequence_it->second.add_atomic_replication_log (thread_p, record_lsa, rcvindex, vpid);
     if (error_code != NO_ERROR)
       {
 	return error_code;
@@ -64,20 +66,21 @@ namespace cublog
     return NO_ERROR;
   }
 
-
-  void atomic_replication_helper::start_sysop_sequence (TRANID trid, LOG_LSA start_lsa,
+  void
+  atomic_replication_helper::start_sysop_sequence (TRANID trid, LOG_LSA start_lsa,
       const log_rv_redo_context &redo_context)
   {
     constexpr bool is_sysop = true;
     start_sequence_internal (trid, start_lsa, redo_context, is_sysop);
   }
 
-  bool atomic_replication_helper::can_end_sysop_sequence (TRANID trid, LOG_LSA sysop_parent_lsa) const
+  bool
+  atomic_replication_helper::can_end_sysop_sequence (TRANID trid, LOG_LSA sysop_parent_lsa) const
   {
-    auto iterator = m_sequences_map.find (trid);
-    if (iterator != m_sequences_map.cend ())
+    const auto sequence_it = m_sequences_map.find (trid);
+    if (sequence_it != m_sequences_map.cend ())
       {
-	const atomic_replication_log_sequence &atomic_sequence =  iterator->second;
+	const atomic_log_sequence &atomic_sequence =  sequence_it->second;
 
 	return atomic_sequence.can_end_sysop_sequence (sysop_parent_lsa);
       }
@@ -85,12 +88,13 @@ namespace cublog
     return false;
   }
 
-  bool atomic_replication_helper::can_end_sysop_sequence (TRANID trid) const
+  bool
+  atomic_replication_helper::can_end_sysop_sequence (TRANID trid) const
   {
     const auto sequence_it = m_sequences_map.find (trid);
     if (sequence_it != m_sequences_map.cend ())
       {
-	const atomic_replication_log_sequence &atomic_sequence = sequence_it->second;
+	const atomic_log_sequence &atomic_sequence = sequence_it->second;
 
 	// safeguard, if the atomic sequence contains a postpone [sub]sequence, that
 	// is more specific case and should have been checked upfront
@@ -104,7 +108,8 @@ namespace cublog
   }
 
 
-  void atomic_replication_helper::start_sequence_internal (TRANID trid, LOG_LSA start_lsa,
+  void
+  atomic_replication_helper::start_sequence_internal (TRANID trid, LOG_LSA start_lsa,
       const log_rv_redo_context &redo_context, bool is_sysop)
   {
     assert (m_sequences_map.find (trid) == m_sequences_map.cend ());
@@ -112,50 +117,54 @@ namespace cublog
     const std::pair<sequence_map_type::iterator, bool> emplace_res = m_sequences_map.emplace (trid, redo_context);
     assert (emplace_res.second);
 
-    atomic_replication_log_sequence &emplaced_seq = emplace_res.first->second;
+    atomic_log_sequence &emplaced_seq = emplace_res.first->second;
     // workaround call to allow constructing a sequence in-place above; otherwise,
     // it would need to double construct an internal redo context instance (which is expensive)
     emplaced_seq.initialize (start_lsa, is_sysop);
   }
 
-  void atomic_replication_helper::start_postpone_sequence (TRANID trid)
+  void
+  atomic_replication_helper::start_postpone_sequence (TRANID trid)
   {
     const auto sequence_it = m_sequences_map.find (trid);
     // call should have been checked/guarded upfront
     assert (sequence_it != m_sequences_map.cend ());
 
-    atomic_replication_log_sequence &sequence = sequence_it->second;
+    atomic_log_sequence &sequence = sequence_it->second;
     sequence.start_postpone_sequence ();
   }
 
-  bool atomic_replication_helper::is_postpone_sequence_started (TRANID trid) const
+  bool
+  atomic_replication_helper::is_postpone_sequence_started (TRANID trid) const
   {
     const auto sequence_it = m_sequences_map.find (trid);
     if (sequence_it != m_sequences_map.cend ())
       {
-	const atomic_replication_log_sequence &sequence = sequence_it->second;
+	const atomic_log_sequence &sequence = sequence_it->second;
 	return sequence.is_postpone_sequence_started ();
       }
 
     return false;
   }
 
-  void atomic_replication_helper::complete_one_postpone_sequence (TRANID trid)
+  void
+  atomic_replication_helper::complete_one_postpone_sequence (TRANID trid)
   {
     const auto sequence_it = m_sequences_map.find (trid);
     // call should have been checked/guarded upfront
     assert (sequence_it != m_sequences_map.cend ());
 
-    atomic_replication_log_sequence &sequence = sequence_it->second;
+    atomic_log_sequence &sequence = sequence_it->second;
     sequence.complete_one_postpone_sequence ();
   }
 
-  bool atomic_replication_helper::is_at_least_one_postpone_sequence_completed (TRANID trid) const
+  bool
+  atomic_replication_helper::is_at_least_one_postpone_sequence_completed (TRANID trid) const
   {
     const auto sequence_it = m_sequences_map.find (trid);
     if (sequence_it != m_sequences_map.cend ())
       {
-	const atomic_replication_log_sequence &sequence = sequence_it->second;
+	const atomic_log_sequence &sequence = sequence_it->second;
 	return sequence.is_at_least_one_postpone_sequence_completed ();
       }
 
@@ -163,19 +172,22 @@ namespace cublog
   }
 
 #if !defined (NDEBUG)
-  bool atomic_replication_helper::check_for_page_validity (VPID vpid, TRANID tranid) const
+  bool
+  atomic_replication_helper::check_for_page_validity (VPID vpid, TRANID tranid) const
   {
-    for (auto const &vpid_sets_iterator : m_vpid_sets_map)
+    for (auto const &vpid_sets_it : m_vpid_sets_map)
       {
-	if (vpid_sets_iterator.first != tranid)
+	const TRANID &curr_tranid = vpid_sets_it.first;
+	if (curr_tranid != tranid)
 	  {
-	    const vpid_set_type::const_iterator find_it = vpid_sets_iterator.second.find (vpid);
-	    if (find_it != vpid_sets_iterator.second.cend ())
+	    const vpid_set_type &curr_vpid_set = vpid_sets_it.second;
+	    const vpid_set_type::const_iterator vpid_set_it = curr_vpid_set.find (vpid);
+	    if (vpid_set_it != curr_vpid_set.cend ())
 	      {
 		er_log_debug (ARG_FILE_LINE,
 			      "[ATOMIC_REPL] page %d|%d already part of sequence in trid %d;"
 			      " cannot be part of new sequence in trid %d",
-			      VPID_AS_ARGS (&vpid), vpid_sets_iterator.first, tranid);
+			      VPID_AS_ARGS (&vpid), curr_tranid, tranid);
 		return false;
 	      }
 	  }
@@ -185,10 +197,11 @@ namespace cublog
   }
 #endif
 
-  bool atomic_replication_helper::is_part_of_atomic_replication (TRANID tranid) const
+  bool
+  atomic_replication_helper::is_part_of_atomic_replication (TRANID tranid) const
   {
-    const auto iterator = m_sequences_map.find (tranid);
-    if (iterator == m_sequences_map.cend ())
+    const auto sequence_it = m_sequences_map.find (tranid);
+    if (sequence_it == m_sequences_map.cend ())
       {
 	return false;
       }
@@ -196,24 +209,26 @@ namespace cublog
     return true;
   }
 
-  void atomic_replication_helper::apply_and_unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, TRANID tranid)
+  void
+  atomic_replication_helper::apply_and_unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, TRANID tranid)
   {
-    auto iterator = m_sequences_map.find (tranid);
-    if (iterator == m_sequences_map.end ())
+    const auto sequence_it = m_sequences_map.find (tranid);
+    if (sequence_it == m_sequences_map.end ())
       {
 	assert (false);
 	return;
       }
 
-    iterator->second.apply_and_unfix_sequence (thread_p);
-    m_sequences_map.erase (iterator);
+    sequence_it->second.apply_and_unfix_sequence (thread_p);
+    m_sequences_map.erase (sequence_it);
 
 #if !defined (NDEBUG)
     m_vpid_sets_map.erase (tranid);
 #endif
   }
 
-  log_lsa atomic_replication_helper::get_the_lowest_start_lsa () const
+  log_lsa
+  atomic_replication_helper::get_the_lowest_start_lsa () const
   {
     log_lsa min_lsa = MAX_LSA;
 
@@ -228,10 +243,10 @@ namespace cublog
   }
 
   /********************************************************************************
-   * atomic_replication_helper::atomic_replication_log_sequence function definitions  *
+   * atomic_replication_helper::atomic_log_sequence function definitions  *
    ********************************************************************************/
 
-  atomic_replication_helper::atomic_replication_log_sequence::atomic_replication_log_sequence (
+  atomic_replication_helper::atomic_log_sequence::atomic_log_sequence (
 	  const log_rv_redo_context &redo_context)
     : m_start_lsa { NULL_LSA }
     , m_is_sysop { false }
@@ -241,19 +256,21 @@ namespace cublog
   {
   }
 
-  void atomic_replication_helper::atomic_replication_log_sequence::initialize (LOG_LSA start_lsa, bool is_sysop)
+  void
+  atomic_replication_helper::atomic_log_sequence::initialize (LOG_LSA start_lsa, bool is_sysop)
   {
     assert (!LSA_ISNULL (&start_lsa));
     m_start_lsa = start_lsa;
     m_is_sysop = is_sysop;
   }
 
-  int atomic_replication_helper::atomic_replication_log_sequence::add_atomic_replication_log (THREAD_ENTRY *thread_p,
+  int
+  atomic_replication_helper::atomic_log_sequence::add_atomic_replication_log (THREAD_ENTRY *thread_p,
       log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid)
   {
     m_log_vec.emplace_back (record_lsa, vpid, rcvindex);
-    auto iterator = m_page_map.find (vpid);
-    if (iterator == m_page_map.cend ())
+    const auto page_map_it = m_page_map.find (vpid);
+    if (page_map_it == m_page_map.cend ())
       {
 	int error_code = m_log_vec.back ().fix_page (thread_p);
 	if (error_code != NO_ERROR)
@@ -277,13 +294,13 @@ namespace cublog
       }
     else
       {
-	m_log_vec.back ().set_page_ptr (iterator->second);
+	m_log_vec.back ().set_page_ptr (page_map_it->second);
       }
     return NO_ERROR;
   }
 
-  bool atomic_replication_helper::atomic_replication_log_sequence::can_end_sysop_sequence (
-	  const LOG_LSA &sysop_parent_lsa) const
+  bool
+  atomic_replication_helper::atomic_log_sequence::can_end_sysop_sequence (const LOG_LSA &sysop_parent_lsa) const
   {
     if (m_is_sysop && !LSA_ISNULL (&sysop_parent_lsa))
       {
@@ -296,7 +313,8 @@ namespace cublog
     return false;
   }
 
-  bool atomic_replication_helper::atomic_replication_log_sequence::can_end_sysop_sequence () const
+  bool
+  atomic_replication_helper::atomic_log_sequence::can_end_sysop_sequence () const
   {
     if (m_is_sysop)
       {
@@ -306,7 +324,8 @@ namespace cublog
     return false;
   }
 
-  void atomic_replication_helper::atomic_replication_log_sequence::start_postpone_sequence ()
+  void
+  atomic_replication_helper::atomic_log_sequence::start_postpone_sequence ()
   {
     assert (m_is_sysop);
     assert (!m_postpone_started);
@@ -314,14 +333,16 @@ namespace cublog
     m_postpone_started = true;
   }
 
-  bool atomic_replication_helper::atomic_replication_log_sequence::is_postpone_sequence_started () const
+  bool
+  atomic_replication_helper::atomic_log_sequence::is_postpone_sequence_started () const
   {
     //assert ((m_postpone_started && m_is_sysop) || !m_is_sysop);
 
     return m_postpone_started;
   }
 
-  void atomic_replication_helper::atomic_replication_log_sequence::complete_one_postpone_sequence ()
+  void
+  atomic_replication_helper::atomic_log_sequence::complete_one_postpone_sequence ()
   {
     assert (m_is_sysop);
     assert (m_postpone_started);
@@ -329,7 +350,8 @@ namespace cublog
     ++m_end_pospone_count;
   }
 
-  bool atomic_replication_helper::atomic_replication_log_sequence::is_at_least_one_postpone_sequence_completed () const
+  bool
+  atomic_replication_helper::atomic_log_sequence::is_at_least_one_postpone_sequence_completed () const
   {
     if (m_end_pospone_count > 0)
       {
@@ -341,7 +363,8 @@ namespace cublog
     return false;
   }
 
-  void atomic_replication_helper::atomic_replication_log_sequence::apply_all_log_redos (THREAD_ENTRY *thread_p)
+  void
+  atomic_replication_helper::atomic_log_sequence::apply_all_log_redos (THREAD_ENTRY *thread_p)
   {
     for (size_t i = 0; i < m_log_vec.size (); i++)
       {
@@ -349,7 +372,8 @@ namespace cublog
       }
   }
 
-  void atomic_replication_helper::atomic_replication_log_sequence::apply_and_unfix_sequence (THREAD_ENTRY *thread_p)
+  void
+  atomic_replication_helper::atomic_log_sequence::apply_and_unfix_sequence (THREAD_ENTRY *thread_p)
   {
     // Applying the log right after the fix could lead to problems as the records are fixed one by one as
     // they come to be read by the PTS and some might be unfixed and refixed after the apply procedure
@@ -359,52 +383,51 @@ namespace cublog
 
     for (size_t i = 0; i < m_log_vec.size (); i++)
       {
-	auto iterator = m_page_map.find (m_log_vec[i].m_vpid);
-	if (iterator != m_page_map.end ())
+	const auto page_map_it = m_page_map.find (m_log_vec[i].m_vpid);
+	if (page_map_it != m_page_map.end ())
 	  {
 	    m_log_vec[i].unfix_page (thread_p);
-	    m_page_map.erase (iterator);
+	    m_page_map.erase (page_map_it);
 	  }
       }
   }
 
-  log_lsa atomic_replication_helper::atomic_replication_log_sequence::get_start_lsa () const
+  log_lsa
+  atomic_replication_helper::atomic_log_sequence::get_start_lsa () const
   {
     return m_start_lsa;
   }
 
   /*********************************************************************************************************
-   * atomic_replication_helper::atomic_replication_log_sequence::atomic_replication_log_entry function definitions  *
+   * atomic_replication_helper::atomic_log_sequence::atomic_log_entry function definitions  *
    *********************************************************************************************************/
 
-  atomic_replication_helper::atomic_replication_log_sequence::atomic_replication_log_entry::atomic_replication_log_entry (
-	  log_lsa lsa,
-	  VPID vpid, LOG_RCVINDEX rcvindex)
+  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::atomic_log_entry (
+	  log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex)
     : m_vpid { vpid }
     , m_record_lsa { lsa }
-    , m_page_ptr { nullptr }
     , m_record_index { rcvindex }
+    , m_page_ptr { nullptr }
   {
     assert (lsa != NULL_LSA);
     // using null hfid here as the watcher->group_id is initialized internally by pgbuf_ordered_fix at a cost
     PGBUF_INIT_WATCHER (&m_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
   }
 
-  atomic_replication_helper::atomic_replication_log_sequence::atomic_replication_log_entry::~atomic_replication_log_entry ()
+  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::~atomic_log_entry ()
   {
     PGBUF_CLEAR_WATCHER (&m_watcher);
   }
 
   void
-  atomic_replication_helper::atomic_replication_log_sequence::atomic_replication_log_entry::apply_log_redo (
-	  THREAD_ENTRY *thread_p,
-	  log_rv_redo_context &redo_context)
+  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::apply_log_redo (
+	  THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context)
   {
     const int error_code = redo_context.m_reader.set_lsa_and_fetch_page (m_record_lsa, log_reader::fetch_mode::FORCE);
     if (error_code != NO_ERROR)
       {
 	logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			   "atomic_replication_log_entry::apply_log_redo: error reading log page with VPID: %d|%d, LSA: %lld|%d and index %d.",
+			   "atomic_log_entry::apply_log_redo: error reading log page with VPID: %d|%d, LSA: %lld|%d and index %d.",
 			   VPID_AS_ARGS (&m_vpid), LSA_AS_ARGS (&m_record_lsa), m_record_index);
       }
     const log_rec_header header = redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_header> ();
@@ -437,8 +460,8 @@ namespace cublog
       }
   }
 
-  int atomic_replication_helper::atomic_replication_log_sequence::atomic_replication_log_entry::fix_page (
-	  THREAD_ENTRY *thread_p)
+  int
+  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::fix_page (THREAD_ENTRY *thread_p)
   {
     switch (m_record_index)
       {
@@ -476,8 +499,8 @@ namespace cublog
     return NO_ERROR;
   }
 
-  void atomic_replication_helper::atomic_replication_log_sequence::atomic_replication_log_entry::unfix_page (
-	  THREAD_ENTRY *thread_p)
+  void
+  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::unfix_page (THREAD_ENTRY *thread_p)
   {
     switch (m_record_index)
       {
@@ -499,7 +522,8 @@ namespace cublog
       }
   }
 
-  PAGE_PTR atomic_replication_helper::atomic_replication_log_sequence::atomic_replication_log_entry::get_page_ptr ()
+  PAGE_PTR
+  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::get_page_ptr ()
   {
     if (m_page_ptr != nullptr)
       {
@@ -508,8 +532,8 @@ namespace cublog
     return m_watcher.pgptr;
   }
 
-  void atomic_replication_helper::atomic_replication_log_sequence::atomic_replication_log_entry::set_page_ptr (
-	  const PAGE_PTR &ptr)
+  void
+  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::set_page_ptr (const PAGE_PTR &ptr)
   {
     m_page_ptr = ptr;
   }
