@@ -1269,7 +1269,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
       LOG_CS_EXIT (thread_p);
 
-      error_code = logtb_define_trantable_log_latch (thread_p, log_Gl.trantable.num_total_indices, true);
+      error_code = logtb_define_trantable_log_latch (thread_p, log_Gl.trantable.num_total_indices);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -1365,7 +1365,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
    * Total number of transaction descriptor is set to the value of
    * max_clients+1
    */
-  error_code = logtb_define_trantable_log_latch (thread_p, -1, true);
+  error_code = logtb_define_trantable_log_latch (thread_p, -1);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -1385,7 +1385,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 			      &log_Gl.hdr.db_creation) != true)
 	{
 	  /* The log does not belong to the given database */
-	  logtb_undefine_trantable (thread_p, true);
+	  logtb_undefine_trantable (thread_p);
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_DOESNT_CORRESPOND_TO_DATABASE, 1, log_Name_active);
 	  error_code = ER_LOG_DOESNT_CORRESPOND_TO_DATABASE;
 	  goto error;
@@ -1681,29 +1681,21 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
 
   pts_ptr->start_log_replicator (replication_start_redo_lsa);
 
-  // NOTE: do not re-define trantable here; already called in boot_restart_server
-  // calling again here, will reset all info in already initialized transaction table
-  // TODO: re-define transaction table making sure not to touch mvcc table
-  // TODO: before that, reset all mvccids from all transactions in the table; the clear tdes function expects these
-  //  ids to be null, and we do not want to affect that invariant because it guards otehr valid cases
-  //
-  //static_assert (LOG_SYSTEM_TRAN_INDEX == 0, "");
-  //for (int tr_idx = LOG_SYSTEM_TRAN_INDEX + 1; tr_idx < log_Gl.trantable.num_total_indices; ++tr_idx)
-  //  {
-  //    log_tdes *const tdes = log_Gl.trantable.all_tdes[tr_idx];
-  //    if (tdes != nullptr && MVCCID_IS_VALID (tdes->mvccinfo.id))
-  //      {
-  //        tdes->mvccinfo.id = MVCCID_NULL;
-  //      }
-  //  }
-  //constexpr bool affect_mvcc_table = false;
-  //err_code = logtb_define_trantable_log_latch (thread_p, -1, affect_mvcc_table);
-  //if (err_code != NO_ERROR)
-  //  {
-  //    logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-  //                       "log_initialize_passive_tran_server: error initializing transaction table");
-  //    return;
-  //  }
+  // NOTE: make sure not to re-define trantable here; already defined in boot_restart_server
+  // re-defining trabtable here, will reset all transaction info (which is not needed, see below) together
+  // with all MVCC info (which is needed)
+
+  // at this moment, the transaction table contains left-over information of transactions that were
+  // active at the point in the transactional log where log recovery analysis stopped (see above);
+  // these transactions are not needed anymore on passive transaction server:
+  //  - PTS replication works at a level "below" the logic level of transactions; by replicating
+  //    the transactional log produces by transactions initialized on active transaction server
+  //  - user transactions initiated on PTS itself will, obviusly, have their own
+  //    transaction descriptors
+  // without cleaning transaction table at this point, the left-over transaction descriptors will
+  // linger on until the passive transaction server is stopped, at which point a verification will
+  // fail in log_abort_all_active_transaction
+  logtb_discard_all_tdes_data (thread_p);
 
   // not other purpose on passive transaction server than to conform various checks that rely on the recovery state
   // one such example: the check for "is temporary volume" in page buffer
@@ -1937,7 +1929,7 @@ log_final (THREAD_ENTRY * thread_p)
 
   if (!logpb_is_pool_initialized ())
     {
-      logtb_undefine_trantable (thread_p, true);
+      logtb_undefine_trantable (thread_p);
       LOG_CS_EXIT (thread_p);
       return;
     }
@@ -1945,7 +1937,7 @@ log_final (THREAD_ENTRY * thread_p)
   if (!log_Log_header_initialized)
     {
       logpb_finalize_pool (thread_p);
-      logtb_undefine_trantable (thread_p, true);
+      logtb_undefine_trantable (thread_p);
       LOG_CS_EXIT (thread_p);
       return;
     }
@@ -2024,7 +2016,7 @@ log_final (THREAD_ENTRY * thread_p)
 
   log_Gl.m_metainfo.clear ();
 
-  logtb_undefine_trantable (thread_p, true);
+  logtb_undefine_trantable (thread_p);
 
   if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
@@ -6506,12 +6498,6 @@ log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length, LOG_LSA * log
       dumpfun = log_hexa_dump;
     }
 
-  /*if (log_hexa_dump == dumpfun || log_rv_dump_hexa == dumpfun || log_rv_dump_char == dumpfun)
-    {
-      fprintf (out_fp, "  crsdbg: dump skipped\n");
-      return;
-    }*/
-
   if (ZIP_CHECK (length))
     {
       length = (int) GET_ZIP_LEN (length);
@@ -9327,7 +9313,7 @@ log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fullname, const ch
 		  return db_iopagesize;
 		}
 
-	      if (logtb_define_trantable_log_latch (thread_p, log_Gl.trantable.num_total_indices, true) != NO_ERROR)
+	      if (logtb_define_trantable_log_latch (thread_p, log_Gl.trantable.num_total_indices) != NO_ERROR)
 		{
 		  LOG_CS_EXIT (thread_p);
 		  return -1;

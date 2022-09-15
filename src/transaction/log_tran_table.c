@@ -105,6 +105,7 @@ static int logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN
 				      const BOOT_CLIENT_CREDENTIAL * client_credential, TRAN_STATE * current_state,
 				      int wait_msecs, TRAN_ISOLATION isolation);
 static LOG_ADDR_TDESAREA *logtb_allocate_tdes_area (int num_indices);
+static void logtb_discard_tdes_data (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void logtb_initialize_trantable (TRANTABLE * trantable_p);
 static int logtb_initialize_system_tdes (THREAD_ENTRY * thread_p);
 static void logtb_set_number_of_assigned_tran_indices (int num_trans);
@@ -372,7 +373,7 @@ logtb_define_trantable (THREAD_ENTRY * thread_p, int num_expected_tran_indices, 
       logpb_finalize_pool (thread_p);
     }
 
-  const int err_code = logtb_define_trantable_log_latch (thread_p, num_expected_tran_indices, true);
+  const int err_code = logtb_define_trantable_log_latch (thread_p, num_expected_tran_indices);
   if (err_code != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logtb_define_trantable: error defining transaction table");
@@ -399,7 +400,7 @@ logtb_define_trantable (THREAD_ENTRY * thread_p, int num_expected_tran_indices, 
  *              other uses).
  */
 int
-logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran_indices, bool affect_mvcc_table)
+logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran_indices)
 {
   int error_code = NO_ERROR;
 
@@ -420,7 +421,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
   /* If there is an already defined table, free such a table */
   if (log_Gl.trantable.area != NULL)
     {
-      logtb_undefine_trantable (thread_p, affect_mvcc_table);
+      logtb_undefine_trantable (thread_p);
     }
   else
     {
@@ -432,9 +433,6 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
    * Create an area to keep the number of desired transaction descriptors
    */
 
-  // TODO: (crsdbg) this will call:
-  //  - log_Gl.mvcc_table.alloc_transaction_lowest_active
-  // but will not change mvcctable current transaction status
   error_code = logtb_expand_trantable (thread_p, num_expected_tran_indices);
   if (error_code != NO_ERROR)
     {
@@ -445,7 +443,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
        */
       if (log_Gl.trantable.area != NULL)
 	{
-	  logtb_undefine_trantable (thread_p, affect_mvcc_table);
+	  logtb_undefine_trantable (thread_p);
 	}
 
 #if defined(SERVER_MODE)
@@ -460,7 +458,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
 	}
       else
 	{
-	  error_code = logtb_define_trantable_log_latch (thread_p, LOG_ESTIMATE_NACTIVE_TRANS, affect_mvcc_table);
+	  error_code = logtb_define_trantable_log_latch (thread_p, LOG_ESTIMATE_NACTIVE_TRANS);
 	  return error_code;
 	}
     }
@@ -481,10 +479,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 
-  if (affect_mvcc_table)
-    {
-      log_Gl.mvcc_table.initialize ();
-    }
+  log_Gl.mvcc_table.initialize ();
 
   /* Initialize the lock manager and the page buffer pool */
   error_code = lock_initialize ();
@@ -500,7 +495,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
   return error_code;
 
 error:
-  logtb_undefine_trantable (thread_p, true);
+  logtb_undefine_trantable (thread_p);
   logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_def_trantable");
 
   return error_code;
@@ -572,16 +567,13 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
  * Note: Undefine and free the transaction table space.
  */
 void
-logtb_undefine_trantable (THREAD_ENTRY * thread_p, bool affect_mvcc_table)
+logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 {
   LOG_ADDR_TDESAREA *area;
   LOG_TDES *tdes;		/* Transaction descriptor */
   int i;
 
-  if (affect_mvcc_table)
-    {
-      log_Gl.mvcc_table.finalize ();
-    }
+  log_Gl.mvcc_table.finalize ();
   lock_finalize ();
   file_manager_final ();
 
@@ -879,6 +871,7 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
   tdes->isolation = isolation;
   tdes->isloose_end = false;
   tdes->interrupt = false;
+  assert (tdes->topops.stack == nullptr);	// otherwise, memleak
   tdes->topops.stack = NULL;
   tdes->topops.max = 0;
   tdes->topops.last = -1;
@@ -1486,7 +1479,6 @@ logtb_free_tran_mvcc_info (LOG_TDES * tdes)
   MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
 
   curr_mvcc_info->snapshot.m_active_mvccs.finalize ();
-  // TODO: why is this not zero here? shouldn't these mvccid's have already been cleaned/completed?
   assert (curr_mvcc_info->sub_ids.size () <= 1);
   curr_mvcc_info->sub_ids.clear ();
 }
@@ -1627,6 +1619,48 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
   LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_lsa);
   LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_start_lsa);
+}
+
+/*
+ * logtb_discard_tdes_data - discard all data in a transaction descriptor
+ *
+ *  return: nothing
+ *
+ *  tdes(in/out): transaction descriptor
+ */
+static void
+logtb_discard_tdes_data (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  assert (!LOG_ISRESTARTED ());
+
+  // the clear function "consciously" expectes the MVCCID to be null
+  tdes->mvccinfo.id = MVCCID_NULL;
+
+  logtb_clear_tdes (thread_p, tdes);
+
+  tdes->trid = NULL_TRANID;
+}
+
+/*
+ * logtb_discard_all_tdes_data - discard all data in all transaction
+ *      descriptors in the transaction table
+ *
+ *  return: nothing
+ */
+void
+logtb_discard_all_tdes_data (THREAD_ENTRY * thread_p)
+{
+  assert (!LOG_ISRESTARTED ());
+
+  static_assert (LOG_SYSTEM_TRAN_INDEX == 0, "system transaction index expected to be 0");
+  for (int tr_idx = LOG_SYSTEM_TRAN_INDEX + 1; tr_idx < log_Gl.trantable.num_total_indices; ++tr_idx)
+    {
+      log_tdes *const tdes = log_Gl.trantable.all_tdes[tr_idx];
+      if (tdes != nullptr)
+	{
+	  logtb_discard_tdes_data (thread_p, tdes);
+	}
+    }
 }
 
 /*
