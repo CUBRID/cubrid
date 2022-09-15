@@ -938,7 +938,7 @@ cas_main (void)
   // init error manager with default arguments; should be reinitialized later
   er_init (NULL, ER_NEVER_EXIT);
 
-  logddl_init ();
+  logddl_init (APP_NAME_CAS);
 
 #if defined(CAS_FOR_CGW)
   if (cgw_init () < 0)
@@ -1358,8 +1358,7 @@ cas_main (void)
 
 	    FREE_MEM (db_err_msg);
 
-	    logddl_set_logging_enabled (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG));
-	    logddl_set_app_name (APP_NAME_CAS);
+	    logddl_check_ddl_audit_param ();
 	    logddl_set_br_name (shm_appl->broker_name);
 	    logddl_set_br_index (shm_as_index);
 	    logddl_set_db_name (db_name);

@@ -1820,7 +1820,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       total = MAX (total, 1);
     }
 
-  logddl_set_logging_enabled (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG));
   logddl_set_commit_mode (csql_is_auto_commit_requested (csql_arg));
 
   /* execute the statements one-by-one */
@@ -2857,9 +2856,8 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 	}
     }
 
-  logddl_init ();
-  logddl_set_logging_enabled (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG));
-  logddl_set_app_name (APP_NAME_CSQL);
+  logddl_init (APP_NAME_CSQL);
+  logddl_check_ddl_audit_param ();
   if (csql_arg->db_name != NULL)
     {
       logddl_set_db_name (csql_arg->db_name);
