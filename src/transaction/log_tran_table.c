@@ -105,6 +105,7 @@ static int logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN
 				      const BOOT_CLIENT_CREDENTIAL * client_credential, TRAN_STATE * current_state,
 				      int wait_msecs, TRAN_ISOLATION isolation);
 static LOG_ADDR_TDESAREA *logtb_allocate_tdes_area (int num_indices);
+static void logtb_discard_tdes_data (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void logtb_initialize_trantable (TRANTABLE * trantable_p);
 static int logtb_initialize_system_tdes (THREAD_ENTRY * thread_p);
 static void logtb_set_number_of_assigned_tran_indices (int num_trans);
@@ -870,6 +871,7 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
   tdes->isolation = isolation;
   tdes->isloose_end = false;
   tdes->interrupt = false;
+  assert (tdes->topops.stack == nullptr);	// otherwise, memleak
   tdes->topops.stack = NULL;
   tdes->topops.max = 0;
   tdes->topops.last = -1;
@@ -1617,6 +1619,48 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
   LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_lsa);
   LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_start_lsa);
+}
+
+/*
+ * logtb_discard_tdes_data - discard all data in a transaction descriptor
+ *
+ *  return: nothing
+ *
+ *  tdes(in/out): transaction descriptor
+ */
+static void
+logtb_discard_tdes_data (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  assert (!LOG_ISRESTARTED ());
+
+  // the clear function "consciously" expectes the MVCCID to be null
+  tdes->mvccinfo.id = MVCCID_NULL;
+
+  logtb_clear_tdes (thread_p, tdes);
+
+  tdes->trid = NULL_TRANID;
+}
+
+/*
+ * logtb_discard_all_tdes_data - discard all data in all transaction
+ *      descriptors in the transaction table
+ *
+ *  return: nothing
+ */
+void
+logtb_discard_all_tdes_data (THREAD_ENTRY * thread_p)
+{
+  assert (!LOG_ISRESTARTED ());
+
+  static_assert (LOG_SYSTEM_TRAN_INDEX == 0, "system transaction index expected to be 0");
+  for (int tr_idx = LOG_SYSTEM_TRAN_INDEX + 1; tr_idx < log_Gl.trantable.num_total_indices; ++tr_idx)
+    {
+      log_tdes *const tdes = log_Gl.trantable.all_tdes[tr_idx];
+      if (tdes != nullptr)
+	{
+	  logtb_discard_tdes_data (thread_p, tdes);
+	}
+    }
 }
 
 /*

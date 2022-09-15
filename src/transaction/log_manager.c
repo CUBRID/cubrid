@@ -1681,8 +1681,21 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
 
   pts_ptr->start_log_replicator (replication_start_redo_lsa);
 
-  // NOTE: do not re-define trantable here; already called in boot_restart_server
-  // calling again here, will reset all info in already initialized transaction table
+  // NOTE: make sure not to re-define trantable here; already defined in boot_restart_server
+  // re-defining trabtable here, will reset all transaction info (which is not needed, see below) together
+  // with all MVCC info (which is needed)
+
+  // at this moment, the transaction table contains left-over information of transactions that were
+  // active at the point in the transactional log where log recovery analysis stopped (see above);
+  // these transactions are not needed anymore on passive transaction server:
+  //  - PTS replication works at a level "below" the logic level of transactions; by replicating
+  //    the transactional log produces by transactions initialized on active transaction server
+  //  - user transactions initiated on PTS itself will, obviusly, have their own
+  //    transaction descriptors
+  // without cleaning transaction table at this point, the left-over transaction descriptors will
+  // linger on until the passive transaction server is stopped, at which point a verification will
+  // fail in log_abort_all_active_transaction
+  logtb_discard_all_tdes_data (thread_p);
 
   // not other purpose on passive transaction server than to conform various checks that rely on the recovery state
   // one such example: the check for "is temporary volume" in page buffer
