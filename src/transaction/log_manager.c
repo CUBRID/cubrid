@@ -330,7 +330,7 @@ static int cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr
 static int cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOGINFO_ENTRY * ddl_entry);
 static int cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LOGINFO_ENTRY * dcl_entry);
 static int cdc_make_timer_loginfo (time_t at_time, int trid, char *user, CDC_LOGINFO_ENTRY * timer_entry);
-static int cdc_find_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA lsa, int trid, char **user);
+static int cdc_find_user (THREAD_ENTRY * thread_p, LOG_LSA lsa, int trid, char **user);
 static int cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * old_value);
 static int cdc_put_value_to_loginfo (db_value * new_value, char **ptr);
 
@@ -10755,7 +10755,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	  {
 	    if (cdc_Gl.producer.tran_user.count (trid) == 0)
 	      {
-		if ((error = cdc_find_user (thread_p, log_page_p, cur_log_rec_lsa, trid, &tran_user)) == NO_ERROR)
+		if ((error = cdc_find_user (thread_p, cur_log_rec_lsa, trid, &tran_user)) == NO_ERROR)
 		  {
 		    cdc_Gl.producer.tran_user.insert (std::make_pair (trid, tran_user));
 		  }
@@ -13316,22 +13316,53 @@ error:
   return error_code;
 }
 
+/*
+ * cdc_find_user - find a user name who performed the specified transaction(trid).
+ *
+ * return: NO_ERROR if user name is found
+ *
+ * thread_p (in)    : cdc worker(log info producer) thread
+ * process_lsa (in) : log lsa from which to start traversal to find user information
+ * trid (in)        : identifier of the transaction performed by the user
+ * user (out)       : transaction user name
+ *
+ * NOTE: The log storing transaction user (LOG_SUPPLEMENT_TRAN_USER) is logged at the begin
+ *       and end of the transaction.
+ *       e.g) trx1 : BEGIN - LOG_SUPPLEMENT_TRAN_USER - LOG_SUPPLEMENT_INSERT/UDPATE/DELETE/..
+ *       - LOG_SUPPLEMENT_TRAN_USER - LOG_COMMIT
+ *
+ *       This function is called only when the TRAN_USER logged at the begin of the transaction
+ *       cannot be found while traversing the log records logged in one transaction.
+ *       So, This function is to find the TRAN_USER log left before commit.
+ *       e.g) If the TRAN_USER log at the begin of the transaction is truncated at the time of
+ *            performing CDC
+ *
+ *       if specified transaction is aborted or active, there will be no TRAN_USER to find.
+ */
+
 static int
-cdc_find_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA process_lsa, int trid, char **user)
+cdc_find_user (THREAD_ENTRY * thread_p, LOG_LSA process_lsa, int trid, char **user)
 {
-  /*find tran user at the end of the transaction  */
   LOG_PAGE *log_page_p = NULL;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
+  /* if the transaction is committed, then TRAN_USER log is appended and flushed to the disk.
+   * So, it is only necessary to traverse up to nxio_lsa (next LSA to be flushed to the disk) */
+  LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
   LOG_LSA forw_lsa;
+
   LOG_RECORD_HEADER *log_rec_hdr = NULL;
   LOG_REC_SUPPLEMENT *supplement;
   char *data;
 
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-  memcpy (log_page_p, log_page, IO_MAX_PAGE_SIZE);
+  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "cdc_find_user");
+      return ER_FAILED;
+    }
 
-  while (!LSA_ISNULL (&process_lsa))
+  while (!LSA_ISNULL (&process_lsa) && LSA_LT (&process_lsa, &nxio_lsa))
     {
       log_rec_hdr = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
       LSA_COPY (&forw_lsa, &log_rec_hdr->forw_lsa);
@@ -13362,15 +13393,14 @@ cdc_find_user (THREAD_ENTRY * thread_p, LOG_PAGE * log_page, LOG_LSA process_lsa
 	  return ER_CDC_IGNORE_TRANSACTION;
 	}
 
-      if (process_lsa.pageid != forw_lsa.pageid)
-	{
-	  if (LSA_ISNULL (&forw_lsa))
-	    {
-	      return ER_FAILED;
-	    }
+      /* transaction user information should be logged before commit */
+      assert (!(log_rec_hdr->type == LOG_COMMIT && log_rec_hdr->trid == trid));
 
+      if (process_lsa.pageid != forw_lsa.pageid && !LSA_ISNULL (&forw_lsa))
+	{
 	  if (logpb_fetch_page (thread_p, &forw_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
 	    {
+	      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "cdc_find_user");
 	      return ER_FAILED;
 	    }
 	}
