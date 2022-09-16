@@ -199,7 +199,7 @@ css_tcp_client_open_with_retry (const char *host_name, int port, bool will_retry
   if (remote_ip == INADDR_NONE)
     {
       /* then try a host name */
-      dest_host = gethostbyname (host_name);
+      dest_host = gethostbyname_uhost (host_name);
       if (dest_host == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME, 1, WSAGetLastError ());
@@ -415,7 +415,7 @@ css_gethostid (void)
 	}
       else
 	{
-	  hp = gethostbyname (hostname);
+	  hp = gethostbyname_uhost (hostname);
 	  if (hp != NULL)
 	    {
 	      retval = (*(unsigned int *) hp->h_addr);
@@ -781,7 +781,7 @@ css_get_peer_name (SOCKET sockfd, char *hostname, size_t len)
     {
       return WSAGetLastError ();
     }
-  return getnameinfo (saddr, saddr_len, hostname, (DWORD) len, NULL, 0, NI_NOFQDN);
+  return getnameinfo_uhost (saddr, saddr_len, hostname, (DWORD) len, NULL, 0, NI_NOFQDN);
 }
 
 /*
@@ -803,7 +803,7 @@ css_get_sock_name (SOCKET sockfd, char *hostname, size_t len)
     {
       return WSAGetLastError ();
     }
-  return getnameinfo (saddr, saddr_len, hostname, (DWORD) len, NULL, 0, NI_NOFQDN);
+  return getnameinfo_uhost (saddr, saddr_len, hostname, (DWORD) len, NULL, 0, NI_NOFQDN);
 }
 
 /*
@@ -827,7 +827,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
   /*
    * First try to convert to the host name as a dotted-decimal number.
-   * Only if that fails do we call gethostbyname.
+   * Only if that fails do we call gethostbyname_uhost.
    */
   in_addr = inet_addr (host);
   if (in_addr != INADDR_NONE)
@@ -838,7 +838,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
     {
       struct hostent *hp;
 
-      hp = gethostbyname (host);
+      hp = gethostbyname_uhost (host);
       if (hp == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME, 1, WSAGetLastError ());
