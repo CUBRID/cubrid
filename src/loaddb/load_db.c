@@ -578,7 +578,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   logddl_check_ddl_audit_param ();
   logddl_set_db_name (args.volume.c_str ());
   logddl_set_user_name (args.user_name.c_str ());
-  logddl_set_pid (getpid ());
 
   /* disable trigger actions to be fired */
   db_disable_trigger ();

@@ -1364,7 +1364,6 @@ cas_main (void)
 	    logddl_set_db_name (db_name);
 	    logddl_set_user_name (db_user);
 	    logddl_set_ip (client_ip_str);
-	    logddl_set_pid (getpid ());
 
 	    db_set_client_ip_addr (client_ip_str);
 
