@@ -49,7 +49,7 @@
 #define NUM_IPADDR_DOT               (3)
 #define IPv4_ADDR_LEN                (4)
 
-#define NUM_DIGIT(VAL)              (int)(log10 (VAL) + 1)
+#define NUM_DIGIT(VAL)              (size_t)(log10 (VAL) + 1)
 #define FREE_MEM(PTR)           \
         do {                    \
           if (PTR) {            \
@@ -327,7 +327,7 @@ load_hosts_file ()
 	      temp_idx = user_host_Map.find (hostname)->second;
 	      memcpy (&addr_trans.s_addr, hostent_Cache[temp_idx]->h_addr_list[0], sizeof (addr_trans.s_addr));
 
-	      if (inet_ntop (AF_INET, &addr_trans, addr_trans_ch_buf, sizeof (addr_trans_ch_buf)) == NULL)
+	      if (inet_ntop (AF_INET, &addr_trans.s_addr, addr_trans_ch_buf, sizeof (addr_trans_ch_buf)) == NULL)
 		{
 		  fprintf (stderr, "Convertion IP address from binary form to text is failed");
 		  return LOAD_FAIL;
