@@ -13355,20 +13355,6 @@ cdc_find_user (THREAD_ENTRY * thread_p, LOG_LSA process_lsa, int trid, char **us
   LOG_REC_SUPPLEMENT *supplement;
   char *data;
 
-  int tran_index = logtb_find_tran_index (thread_p, trid);
-  if (tran_index != NULL_TRAN_INDEX)
-    {
-      LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
-
-      /* if transaction is active or aborted, it can not find the user information.
-       * because transaction user is logged right before commit record */
-      if (!LOG_ISTRAN_COMMITTED (tdes))
-	{
-	  /* TODO: set appropriate error and return */
-	  return ER_FAILED;
-	}
-    }
-
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
     {
