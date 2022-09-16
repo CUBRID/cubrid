@@ -5483,8 +5483,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (hsidp->rest_regu_list)
 	{
 	  /* read the rest of the values from the heap into the attribute cache */
-	  if (heap_attrinfo_read_dbvalues (thread_p, p_current_oid, &recdes, &hsidp->scan_cache,
-					   hsidp->rest_attrs.attr_cache) != NO_ERROR)
+	  if (heap_attrinfo_read_dbvalues (thread_p, p_current_oid, &recdes, hsidp->rest_attrs.attr_cache) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -5684,7 +5683,7 @@ scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (hsidp->rest_regu_list)
 	{
 	  /* read the rest of the values from the heap into the attribute cache */
-	  if (heap_attrinfo_read_dbvalues (thread_p, NULL, NULL, NULL, hsidp->rest_attrs.attr_cache) != NO_ERROR)
+	  if (heap_attrinfo_read_dbvalues (thread_p, NULL, NULL, hsidp->rest_attrs.attr_cache) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -5813,14 +5812,13 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		  return ret;
 		}
 
+	      scan_id->position = S_ON;
+	      isidp->curr_oidno = 0;	/* first oid number */
 	      if (isidp->need_count_only == true)
 		{
 		  /* no more scan is needed. just return */
 		  return S_SUCCESS;
 		}
-
-	      scan_id->position = S_ON;
-	      isidp->curr_oidno = 0;	/* first oid number */
 
 	      if (SCAN_IS_INDEX_COVERED (isidp))
 		{
@@ -5858,6 +5856,12 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      if (isidp->curr_oidno < oids_cnt - 1)
 		{
 		  isidp->curr_oidno++;
+		  if (isidp->need_count_only == true)
+		    {
+		      /* no more scan is needed. just return */
+		      return S_SUCCESS;
+		    }
+
 		  if (!SCAN_IS_INDEX_COVERED (isidp))
 		    {
 		      if (isidp->multi_range_opt.use)
@@ -5928,13 +5932,13 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			  return ret;
 			}
 
+		      isidp->curr_oidno = 0;	/* first oid number */
 		      if (isidp->need_count_only == true)
 			{
 			  /* no more scan is needed. just return */
 			  return S_SUCCESS;
 			}
 
-		      isidp->curr_oidno = 0;	/* first oid number */
 		      if (SCAN_IS_INDEX_COVERED (isidp))
 			{
 			  qfile_close_list (thread_p, isidp->indx_cov.list_id);
@@ -6284,8 +6288,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
   if (isidp->rest_regu_list)
     {
       /* read the rest of the values from the heap into the attribute cache */
-      if (heap_attrinfo_read_dbvalues (thread_p, isidp->curr_oidp, &recdes, &isidp->scan_cache,
-				       isidp->rest_attrs.attr_cache) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, isidp->curr_oidp, &recdes, isidp->rest_attrs.attr_cache) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}

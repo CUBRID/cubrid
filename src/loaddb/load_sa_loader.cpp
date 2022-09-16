@@ -4878,12 +4878,12 @@ ldr_finish_context (LDR_CONTEXT *context)
   /* Reset the action function to deal with attributes */
   ldr_act = ldr_act_attr;
 
-#if defined(CUBRID_DEBUG)
-  if ((err == NO_ERROR) && (envvar_get ("LOADER_DEBUG") != NULL))
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
+  if (err == NO_ERROR)
     {
       if (context->inst_total)
 	{
-	  printf ("%d %s %s inserted in %d %s\n", context->inst_total, ldr_class_name (context),
+	  printf ("%ld %s %s inserted in %d %s\n", context->inst_total, ldr_class_name (context),
 		  context->inst_total == 1 ? "instance" : "instances", context->flush_total,
 		  context->flush_total == 1 ? "flush" : "flushes");
 	}

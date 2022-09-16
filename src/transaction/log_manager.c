@@ -1310,7 +1310,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
    * Create the transaction table and make sure that data volumes and log
    * volumes belong to the same database
    */
-#if 1
+
   /*
    * for XA support: there is prepared transaction after recovery.
    *                 so, can not recreate transaction description
@@ -1325,13 +1325,6 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       goto error;
     }
-#else
-  error_code = logtb_define_trantable_log_latch (log_Gl.hdr.avg_ntrans);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-#endif
 
   if (log_Gl.append.vdes != NULL_VOLDES)
     {
@@ -2488,41 +2481,6 @@ log_append_undoredo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, con
   addr.vfid = vfid;
   addr.pgptr = pgptr;
   addr.offset = offset;
-
-#if 0
-  if (rcvindex == RVHF_UPDATE)
-    {
-      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-      if (tdes && tdes->null_log.is_set && undo_recdes && redo_recdes)
-	{
-	  tdes->null_log.recdes = malloc (sizeof (RECDES));
-	  if (tdes == NULL)
-	    {
-	      return;		/* error */
-	    }
-	  *(tdes->null_log.recdes) = *undo_recdes;
-	  tdes->null_log.recdes->data = malloc (undo_recdes->length);
-	  if (tdes->null_log.recdes->data == NULL)
-	    {
-	      free_and_init (tdes->null_log.recdes);
-	      return;		/* error */
-	    }
-	  (void) memcpy (tdes->null_log.recdes->data, undo_recdes->data, undo_recdes->length);
-	}
-      undo_crumbs[0].length = sizeof (undo_recdes->type);
-      undo_crumbs[0].data = (char *) &undo_recdes->type;
-      undo_crumbs[1].length = 0;
-      undo_crumbs[1].data = NULL;
-      num_undo_crumbs = 2;
-      redo_crumbs[0].length = sizeof (redo_recdes->type);
-      redo_crumbs[0].data = (char *) &redo_recdes->type;
-      redo_crumbs[1].length = 0;
-      redo_crumbs[1].data = NULL;
-      num_redo_crumbs = 2;
-      log_append_undoredo_crumbs (rcvindex, addr, num_undo_crumbs, num_redo_crumbs, undo_crumbs, redo_crumbs);
-      return;
-    }
-#endif
 
   if (undo_recdes != NULL)
     {
@@ -12771,7 +12729,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	  goto exit;
 	}
 
-      if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, undo_recdes, NULL, &attr_info)) != NO_ERROR)
+      if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, undo_recdes, &attr_info)) != NO_ERROR)
 	{
 	  goto exit;
 	}
@@ -12811,7 +12769,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 	  goto exit;
 	}
 
-      if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, redo_recdes, NULL, &attr_info)) != NO_ERROR)
+      if ((error_code = heap_attrinfo_read_dbvalues (thread_p, &classoid, redo_recdes, &attr_info)) != NO_ERROR)
 	{
 	  goto exit;
 	}

@@ -64,6 +64,7 @@
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
+#include "network_histogram.hpp"
 
 #define PASSBUF_SIZE 12
 #define SPACEDB_NUM_VOL_PURPOSE 2
