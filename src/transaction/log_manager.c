@@ -13388,8 +13388,10 @@ cdc_find_user (THREAD_ENTRY * thread_p, LOG_LSA process_lsa, int trid, char **us
   LOG_PAGE *log_page_p = NULL;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
+  /* if the transaction is committed, then TRAN_USER log is appended and flushed to the disk.
+   * So, it is only necessary to traverse up to nxio_lsa (next LSA to be flushed to the disk) */
+  LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
   LOG_LSA forw_lsa;
-  LOG_LSA latest_lsa;		// latest appended log LSA at the time log page is copied into local buffer
 
   LOG_RECORD_HEADER *log_rec_hdr = NULL;
   LOG_REC_SUPPLEMENT *supplement;
@@ -13402,16 +13404,12 @@ cdc_find_user (THREAD_ENTRY * thread_p, LOG_LSA process_lsa, int trid, char **us
 
       /* if transaction is active or aborted, it can not find the user information.
        * because transaction user is logged right before commit record */
-
       if (!LOG_ISTRAN_COMMITTED (tdes))
 	{
 	  /* TODO: set appropriate error and return */
 	  return ER_FAILED;
 	}
     }
-
-  /* if a transaction is committed, then the log record for transaction user is appended and flushed to the disk */
-  LSA_COPY (&latest_lsa, &log_Gl.append.prev_lsa);
 
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
@@ -13420,11 +13418,8 @@ cdc_find_user (THREAD_ENTRY * thread_p, LOG_LSA process_lsa, int trid, char **us
       return ER_FAILED;
     }
 
-  while (!LSA_ISNULL (&process_lsa) && LSA_LE (&process_lsa, &latest_lsa))
+  while (!LSA_ISNULL (&process_lsa) && LSA_LT (&process_lsa, &nxio_lsa))
     {
-      /* If there is no commit log after traversing up to the most recently appended log,
-       * there is no need to traverse any more. */
-
       log_rec_hdr = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
       LSA_COPY (&forw_lsa, &log_rec_hdr->forw_lsa);
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_hdr), &process_lsa, log_page_p);
