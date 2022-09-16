@@ -172,7 +172,7 @@ namespace cublog
 	      atomic_log_entry (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex);
 
 	      atomic_log_entry (const atomic_log_entry &) = delete;
-	      atomic_log_entry (atomic_log_entry &&) = default;
+	      atomic_log_entry (atomic_log_entry &&that);
 
 	      ~atomic_log_entry ();
 
@@ -193,7 +193,8 @@ namespace cublog
 	      const log_lsa m_record_lsa;
 	      const LOG_RCVINDEX m_record_index;
 	      PAGE_PTR m_page_ptr;
-	      PGBUF_WATCHER m_watcher;
+
+	      std::unique_ptr<PGBUF_WATCHER> m_watcher_p;
 	  };
 
 	  using atomic_log_entry_vector_type = std::vector<atomic_log_entry>;
@@ -244,16 +245,13 @@ namespace cublog
     LOG_RCV rcv;
     if (m_page_ptr != nullptr)
       {
-	assert (m_watcher.pgptr == nullptr);
+	assert (m_watcher_p == nullptr);
 	rcv.pgptr = m_page_ptr;
-      }
-    else if (m_watcher.pgptr != nullptr)
-      {
-	rcv.pgptr = m_watcher.pgptr;
       }
     else
       {
-	assert_release (false);
+	assert (m_watcher_p != nullptr && m_watcher_p->pgptr != nullptr);
+	rcv.pgptr = m_watcher_p->pgptr;
       }
 
     redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
