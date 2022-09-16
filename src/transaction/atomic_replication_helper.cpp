@@ -408,15 +408,25 @@ namespace cublog
     , m_record_lsa { lsa }
     , m_record_index { rcvindex }
     , m_page_ptr { nullptr }
+    , m_watcher_p { nullptr }
   {
     assert (lsa != NULL_LSA);
-    // using null hfid here as the watcher->group_id is initialized internally by pgbuf_ordered_fix at a cost
-    PGBUF_INIT_WATCHER (&m_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+  }
+
+  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::atomic_log_entry (atomic_log_entry &&that)
+    : atomic_log_entry (that.m_record_lsa, that.m_vpid, that.m_record_index)
+  {
+    std::swap (m_page_ptr, that.m_page_ptr);
+    std::swap (m_watcher_p, that.m_watcher_p);
   }
 
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::~atomic_log_entry ()
   {
-    PGBUF_CLEAR_WATCHER (&m_watcher);
+    if (m_watcher_p != nullptr)
+      {
+	PGBUF_CLEAR_WATCHER (m_watcher_p.get ());
+	m_watcher_p.reset ();
+      }
   }
 
   void
@@ -427,7 +437,8 @@ namespace cublog
     if (error_code != NO_ERROR)
       {
 	logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			   "atomic_log_entry::apply_log_redo: error reading log page with VPID: %d|%d, LSA: %lld|%d and index %d.",
+			   "atomic_log_entry::apply_log_redo: error reading log page with"
+			   " VPID: %d|%d, LSA: %lld|%d and index %d",
 			   VPID_AS_ARGS (&m_vpid), LSA_AS_ARGS (&m_record_lsa), m_record_index);
       }
     const log_rec_header header = redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_header> ();
@@ -476,17 +487,25 @@ namespace cublog
       case RVHF_MVCC_UPDATE_OVERFLOW:
       case RVHF_INSERT_NEWHOME:
       {
-	const int error_code = pgbuf_ordered_fix (thread_p, &m_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE, &m_watcher);
+	assert (m_watcher_p == nullptr);
+	m_watcher_p.reset (new PGBUF_WATCHER ());
+	// using null hfid here as the watcher->group_id is initialized internally by pgbuf_ordered_fix at a cost
+	PGBUF_INIT_WATCHER (m_watcher_p.get (), PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+
+	const int error_code = pgbuf_ordered_fix (thread_p, &m_vpid, OLD_PAGE_MAYBE_DEALLOCATED,
+			       PGBUF_LATCH_WRITE, m_watcher_p.get ());
 	if (error_code != NO_ERROR)
 	  {
-	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unnable to ordered-fix on page %d|%d with OLD_PAGE_MAYBE_DEALLOCATED.",
+	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unnable to order-fix page %d|%d"
+			  " with OLD_PAGE_MAYBE_DEALLOCATED.",
 			  VPID_AS_ARGS (&m_vpid));
 	    return error_code;
 	  }
 	break;
       }
       default:
-	m_page_ptr = pgbuf_fix (thread_p, &m_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	m_page_ptr = pgbuf_fix (thread_p, &m_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE,
+				PGBUF_UNCONDITIONAL_LATCH);
 	if (m_page_ptr == nullptr)
 	  {
 	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unnable to fix on page %d|%d with OLD_PAGE_MAYBE_DEALLOCATED.",
@@ -514,9 +533,11 @@ namespace cublog
       case RVHF_UPDATE:
       case RVHF_MVCC_UPDATE_OVERFLOW:
       case RVHF_INSERT_NEWHOME:
-	pgbuf_ordered_unfix (thread_p, &m_watcher);
+	// sanity asserts inside the function
+	pgbuf_ordered_unfix (thread_p, m_watcher_p.get ());
 	break;
       default:
+	// sanity asserts inside the function
 	pgbuf_unfix (thread_p, m_page_ptr);
 	break;
       }
@@ -527,14 +548,17 @@ namespace cublog
   {
     if (m_page_ptr != nullptr)
       {
+	assert (m_watcher_p == nullptr);
 	return m_page_ptr;
       }
-    return m_watcher.pgptr;
+    assert (m_watcher_p != nullptr && m_watcher_p->pgptr != nullptr);
+    return m_watcher_p->pgptr;
   }
 
   void
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::set_page_ptr (const PAGE_PTR &ptr)
   {
+    assert (m_page_ptr == nullptr);
     m_page_ptr = ptr;
   }
 }
