@@ -285,10 +285,13 @@ load_hosts_file ()
 
 		  return LOAD_FAIL;
 		}
-	      strncpy (ipaddr, token, IPADDR_LEN);
-	      ipaddr[IPADDR_LEN - 1] = '\0';
+	      else
+		{
+		  strncpy (ipaddr, token, IPADDR_LEN);
+		  ipaddr[IPADDR_LEN - 1] = '\0';
 
-	      hostent_flag = INSERT_HOSTNAME;
+		  hostent_flag = INSERT_HOSTNAME;
+		}
 	    }
 	  else
 	    {
@@ -303,7 +306,10 @@ load_hosts_file ()
 
 		  return LOAD_FAIL;
 		}
-	      strcpy (hostname, token);
+	      else
+		{
+		  strcpy (hostname, token);
+		}
 	    }
 	}
       while ((token = strtok_r (NULL, delim, &save_ptr_strtok)) != NULL);
@@ -330,6 +336,8 @@ load_hosts_file ()
 	      if (inet_ntop (AF_INET, &addr_trans.s_addr, addr_trans_ch_buf, sizeof (addr_trans_ch_buf)) == NULL)
 		{
 		  fprintf (stderr, "Convertion IP address from binary form to text is failed");
+
+		  fclose (fp);
 		  return LOAD_FAIL;
 		}
 
@@ -598,7 +606,6 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
 
   if ((in_addr_buf = (struct in_addr *) malloc (sizeof (struct in_addr))) == NULL)
     {
-      //FREE_HOSTENT_MEM (hp);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct in_addr));
       ret = EAI_MEMORY;
       goto return_phase;
@@ -607,7 +614,6 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
   /*Constitute struct addrinfo for the out parameter res */
   if (((*res) = (struct addrinfo *) malloc (sizeof (struct addrinfo))) == NULL)
     {
-      //FREE_HOSTENT_MEM (hp);
       free (in_addr_buf);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct addrinfo));
       ret = EAI_MEMORY;
@@ -617,7 +623,6 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
   memset (&results_out, 0, sizeof (results_out));
   if ((results_out.ai_addr = (struct sockaddr *) malloc (sizeof (struct sockaddr))) == NULL)
     {
-      //FREE_HOSTENT_MEM (hp);
       free (in_addr_buf);
       freeaddrinfo (*res);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct sockaddr));
@@ -662,7 +667,6 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
   memmove (*res, &results_out, sizeof (struct addrinfo));
 
   FREE_MEM (in_addr_buf);
-  FREE_MEM (results_out.ai_addr);
 
 return_phase:
 
