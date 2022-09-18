@@ -401,7 +401,6 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_postpone_cache.cpp
   ${TRANSACTION_DIR}/log_prior_send.cpp
   ${TRANSACTION_DIR}/log_recovery.c
-  ${TRANSACTION_DIR}/log_recovery_analysis.cpp
   ${TRANSACTION_DIR}/log_recovery_context.cpp
   ${TRANSACTION_DIR}/log_recovery_redo.cpp
   ${TRANSACTION_DIR}/log_system_tran.cpp
@@ -432,7 +431,6 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_prior_send.hpp
   ${TRANSACTION_DIR}/log_reader.hpp
   ${TRANSACTION_DIR}/log_recovery.h
-  ${TRANSACTION_DIR}/log_recovery_analysis.hpp
   ${TRANSACTION_DIR}/log_recovery_context.hpp
   ${TRANSACTION_DIR}/log_recovery_redo_perf.hpp
   ${TRANSACTION_DIR}/log_recovery_redo.hpp

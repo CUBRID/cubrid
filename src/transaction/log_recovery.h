@@ -37,6 +37,9 @@ int log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_reader &
 int log_rv_get_unzip_and_diff_redo_log_data (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader, LOG_RCV * rcv,
 					     int undo_length, const char *undo_data, LOG_ZIP & redo_unzip);
 void log_recovery (THREAD_ENTRY * thread_p, bool is_media_crash, time_t * stopat);
+void log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY * thread_p,
+						    const log_lsa & most_recent_trantable_snapshot_lsa,
+						    const log_lsa & stop_analysis_before_lsa);
 LOG_LSA *log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr);
 int log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p, char *rcv_data, int rcv_data_length,
 					    RECDES * record, bool is_undo);
