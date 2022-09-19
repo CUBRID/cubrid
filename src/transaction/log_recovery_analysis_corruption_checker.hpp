@@ -75,12 +75,12 @@ void corruption_checker::find_first_corrupted_block (const LOG_PAGE *log_pgptr)
   m_first_corrupted_rec_lsa = NULL_LSA;
   for (size_t block_index = 0; block_index < m_blocks_in_page_count; ++block_index)
     {
-      if (std::memcmp (get_block_ptr (log_pgptr, block_index), m_null_block.get (), IO_MAX_PAGE_SIZE) == 0)
+      if (std::memcmp (get_block_ptr (log_pgptr, block_index), m_null_block.get (), IO_BLOCK_SIZE) == 0)
 	{
 	  // Found a block full of 0xFF
 	  m_first_corrupted_rec_lsa.pageid = log_pgptr->hdr.logical_pageid;
 	  m_first_corrupted_rec_lsa.offset =
-		  block_index == 0 ? 0 : block_index * IO_MAX_PAGE_SIZE - sizeof (LOG_HDRPAGE);
+		  (block_index == 0) ? 0 : (block_index * IO_BLOCK_SIZE - sizeof (LOG_HDRPAGE));
 	}
     }
 }
