@@ -1222,26 +1222,35 @@ int
 disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   DISK_VOLUME_HEADER *const vhdr = (DISK_VOLUME_HEADER *) rcv->data;
-  const char *const vol_fullname_other_config = disk_vhdr_get_vol_fullname (vhdr);
-
-  char buf_vol_full_name[PATH_MAX];
-  disk_adapt_volume_full_name_to_local_config (buf_vol_full_name, vol_fullname_other_config);
 
   if (is_tran_server_with_remote_storage () && is_passive_transaction_server ())
     {
+      /* Passive transaction server with remote storage should not do fileio_format(),
+       * and it only uses disk_Page_server_perm_volume_count to check if there is a permanent volume in page server.
+       * Since PTS do not have a disk header page for newly added volume,
+       * disk_rv_redo_format (), which requires disk header page and does update the disk_Page_server_perm_volume_count,
+       * is not called while replication.
+       * Therefore, disk_Page_server_perm_volume_count for PTS is updated here when the new volume is created.
+       */
+
       if (vhdr->type == DB_PERMANENT_VOLTYPE)
 	{
 	  disk_Page_server_perm_volume_count++;
 	}
-
-      return NO_ERROR;
     }
-
-  if (fileio_find_volume_descriptor_with_label (buf_vol_full_name) == NULL_VOLDES)
+  else
     {
-      (void) fileio_format (thread_p, NULL, buf_vol_full_name, vhdr->volid, DISK_SECTS_NPAGES (vhdr->nsect_total),
-			    vhdr->purpose != DB_TEMPORARY_DATA_PURPOSE, false, false, IO_PAGESIZE, 0, false);
-      (void) pgbuf_invalidate_all (thread_p, vhdr->volid);
+      const char *const vol_fullname_other_config = disk_vhdr_get_vol_fullname (vhdr);
+
+      char buf_vol_full_name[PATH_MAX];
+      disk_adapt_volume_full_name_to_local_config (buf_vol_full_name, vol_fullname_other_config);
+
+      if (fileio_find_volume_descriptor_with_label (buf_vol_full_name) == NULL_VOLDES)
+	{
+	  (void) fileio_format (thread_p, NULL, buf_vol_full_name, vhdr->volid, DISK_SECTS_NPAGES (vhdr->nsect_total),
+				vhdr->purpose != DB_TEMPORARY_DATA_PURPOSE, false, false, IO_PAGESIZE, 0, false);
+	  (void) pgbuf_invalidate_all (thread_p, vhdr->volid);
+	}
     }
 
   return NO_ERROR;
