@@ -93,11 +93,13 @@ static bool log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA
 static void log_recovery_analysis (THREAD_ENTRY * thread_p, INT64 * num_redo_log_records,
 				   log_recovery_context & context);
 static void log_recovery_analysis_internal (THREAD_ENTRY * thread_p, INT64 * num_redo_log_records,
+					    log_recovery_context & context, bool reset_mvcc_table,
+					    const LOG_LSA * stop_before_lsa);
+
 // *INDENT-OFF*
 class corruption_checker;
 // *INDENT-ON*
-//                                            log_recovery_context & context, bool reset_mvcc_table,
-					    const LOG_LSA * stop_before_lsa);
+
 static int log_rv_analysis_check_page_corruption (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 						  const LOG_PAGE * log_page_p, corruption_checker & checker);
 static void log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY * thread_p, log_recovery_context & context,
@@ -2649,7 +2651,7 @@ corruption_checker::check_log_record (const log_lsa &record_lsa, const log_rec_h
  * reset_mvcc_table (in)        : whether to reset mvcc table or not
  * stop_before_lsa (in)         : if supplied, analysis will stop before processing the log record at this LSA
  */
-void
+static void
 log_recovery_analysis_internal (THREAD_ENTRY * thread_p, INT64 * num_redo_log_records, log_recovery_context & context,
 				bool reset_mvcc_table, const LOG_LSA * stop_before_lsa)
 {
@@ -3284,8 +3286,7 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY * thread_p,
   // transaction table up to date because it is relevant in read-only results
   log_system_tdes::rv_delete_all_tdes_if ([](const log_tdes &)
 					  {
-					  return true;
-					  }
+					  return true;}
   );
 
   // TODO: this addresses the following scenario:
