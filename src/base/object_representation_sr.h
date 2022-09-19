@@ -278,5 +278,5 @@ extern int or_mvcc_get_header (const RECDES * record, MVCC_REC_HEADER * mvcc_rec
 extern int or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);
 extern int or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int bound_bit,
 			       int variable_offset_size);
-extern int or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa);
+extern int or_mvcc_set_log_lsa_to_record (RECDES * record, const LOG_LSA * lsa);
 #endif /* _OBJECT_REPRESENTATION_SR_H_ */

@@ -1681,8 +1681,21 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
 
   pts_ptr->start_log_replicator (replication_start_redo_lsa);
 
-  // NOTE: do not re-define trantable here; already called in boot_restart_server
-  // calling again here, will reset all info in already initialized transaction table
+  // NOTE: make sure not to re-define trantable here; already defined in boot_restart_server
+  // re-defining trabtable here, will reset all transaction info (which is not needed, see below) together
+  // with all MVCC info (which is needed)
+
+  // at this moment, the transaction table contains left-over information of transactions that were
+  // active at the point in the transactional log where log recovery analysis stopped (see above);
+  // these transactions are not needed anymore on passive transaction server:
+  //  - PTS replication works at a level "below" the logic level of transactions; by replicating
+  //    the transactional log produces by transactions initialized on active transaction server
+  //  - user transactions initiated on PTS itself will, obviusly, have their own
+  //    transaction descriptors
+  // without cleaning transaction table at this point, the left-over transaction descriptors will
+  // linger on until the passive transaction server is stopped, at which point a verification will
+  // fail in log_abort_all_active_transaction
+  logtb_discard_all_tdes_data (thread_p);
 
   // not other purpose on passive transaction server than to conform various checks that rely on the recovery state
   // one such example: the check for "is temporary volume" in page buffer
@@ -6957,7 +6970,7 @@ log_dump_record_sysop_start_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LO
 
   (void) log_dump_record_sysop_end_internal (thread_p, &sysop_start_postpone.sysop_end, log_lsa, log_page_p, log_zip_p,
 					     out_fp);
-  fprintf (out_fp, "     postpone_lsa = %lld|%d \n", LSA_AS_ARGS (&sysop_start_postpone.posp_lsa));
+  fprintf (out_fp, "     posp_lsa = %lld|%d \n", LSA_AS_ARGS (&sysop_start_postpone.posp_lsa));
 
   return log_page_p;
 }
@@ -6980,7 +6993,7 @@ log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END *
   int undo_length;
   LOG_RCVINDEX rcvindex;
 
-  fprintf (out_fp, ",\n     Prev parent LSA = %lld|%d, Prev_topresult_lsa = %lld|%d, %s \n",
+  fprintf (out_fp, ",\n     lastparent_lsa = %lld|%d, prv_topresult_lsa = %lld|%d, type = %s \n",
 	   LSA_AS_ARGS (&sysop_end->lastparent_lsa), LSA_AS_ARGS (&sysop_end->prv_topresult_lsa),
 	   log_sysop_end_type_string (sysop_end->type));
   switch (sysop_end->type)
