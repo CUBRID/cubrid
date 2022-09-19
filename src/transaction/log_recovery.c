@@ -3162,10 +3162,12 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY * thread_p,
 
   // on passive transaction server, the recovery analysis has only the role of bringing the
   // transaction table up to date because it is relevant in read-only results
-  log_system_tdes::rv_delete_all_tdes_if ([](const log_tdes &)
-					  {
-					  return true;}
-  );
+  // *INDENT-OFF*
+  const auto delete_if_func =[](const log_tdes &) {
+    return true;
+  };
+  log_system_tdes::rv_delete_all_tdes_if (delete_if_func);
+  // *INDENT-ON*
 
   // TODO: this addresses the following scenario:
   //  - when passive transaction server (PTS) initializes there are actually 3 phases that are
