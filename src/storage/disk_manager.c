@@ -1227,6 +1227,16 @@ disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
   char buf_vol_full_name[PATH_MAX];
   disk_adapt_volume_full_name_to_local_config (buf_vol_full_name, vol_fullname_other_config);
 
+  if (is_tran_server_with_remote_storage () && is_passive_transaction_server ())
+    {
+      if (vhdr->type == DB_PERMANENT_VOLTYPE)
+	{
+	  disk_Page_server_perm_volume_count++;
+	}
+
+      return NO_ERROR;
+    }
+
   if (fileio_find_volume_descriptor_with_label (buf_vol_full_name) == NULL_VOLDES)
     {
       (void) fileio_format (thread_p, NULL, buf_vol_full_name, vhdr->volid, DISK_SECTS_NPAGES (vhdr->nsect_total),

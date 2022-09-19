@@ -90,8 +90,16 @@ namespace cublog
 	    log_rcv rcv;
 	    rcv.length = dbout_redo.length;
 
-	    log_rv_redo_record (&thread_entry, m_redo_context.m_reader, RV_fun[dbout_redo.rcvindex].redofun, &rcv,
-				&m_redo_lsa, 0, nullptr, m_redo_context.m_redo_zip);
+	    /* Recovery functions for adding (RVDK_NEWVOL) or expanding (RVDK_EXPAND_VOLUME) a volume require fileio,
+	     * but those logs are not required to be replicated in passive transaction server with remote storage.
+	     * Only logs for RVDK_NEWVOL will be replicated to increase disk_Page_server_perm_volume_count.
+	     */
+	    if (dbout_redo.rcvindex == RVDK_NEWVOL)
+	      {
+		log_rv_redo_record (&thread_entry, m_redo_context.m_reader, RV_fun[dbout_redo.rcvindex].redofun, &rcv, &m_redo_lsa, 0,
+				    nullptr, m_redo_context.m_redo_zip);
+	      }
+
 	    break;
 	  }
 	  case LOG_COMMIT:
