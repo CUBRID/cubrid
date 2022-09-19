@@ -496,12 +496,7 @@ logddl_set_jsp_mode (bool mode)
 bool
 logddl_get_jsp_mode ()
 {
-  bool jsp_mode = false;
-  //if (ddl_audit_handle)
-  {
-    jsp_mode = ddl_audit_handle.jsp_mode;
-  }
-  return jsp_mode;
+  return ddl_audit_handle.jsp_mode;
 }
 
 static void
