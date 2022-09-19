@@ -211,11 +211,6 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_CANT_LOOKUP_INFO, 1, hostname);
 	  fprintf (stdout, "%s\n", er_msg ());
 	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_CANT_LOOKUP_INFO, 1, addr_trans_ch_buf);
-	  fprintf (stdout, "%s\n", er_msg ());
-	}
       return NULL;
     }
 
@@ -573,7 +568,7 @@ getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *host, size_t 
 	}
       else
 	{
-	  ret = EINVAL;
+	  ret = EAI_NONAME;
 	}
     }
   return ret;
