@@ -21892,7 +21892,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
       /* translate methods in queries to our internal form */
       if (node)
 	{
-	  /* node = meth_translate (parser, node); */
+	  node = meth_translate (parser, node);
 	}
 
       if (node)
