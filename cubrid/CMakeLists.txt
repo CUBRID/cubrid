@@ -369,6 +369,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_reader.hpp
   ${TRANSACTION_DIR}/log_record.hpp
   ${TRANSACTION_DIR}/log_recovery.h
+  ${TRANSACTION_DIR}/log_recovery_analysis_corruption_checker.hpp
   ${TRANSACTION_DIR}/log_recovery_redo_perf.hpp
   ${TRANSACTION_DIR}/log_recovery_redo.hpp
   ${TRANSACTION_DIR}/log_recovery_redo_parallel.hpp

@@ -32,6 +32,7 @@
 #include "log_manager.h"
 #include "log_meta.hpp"
 #include "log_reader.hpp"
+#include "log_recovery_analysis_corruption_checker.hpp"
 #include "log_recovery_context.hpp"
 #include "log_recovery_redo_perf.hpp"
 #include "log_recovery_redo_parallel.hpp"
@@ -95,11 +96,6 @@ static void log_recovery_analysis (THREAD_ENTRY * thread_p, INT64 * num_redo_log
 static void log_recovery_analysis_internal (THREAD_ENTRY * thread_p, INT64 * num_redo_log_records,
 					    log_recovery_context & context, bool reset_mvcc_table,
 					    const LOG_LSA * stop_before_lsa);
-
-// *INDENT-OFF*
-class corruption_checker;
-// *INDENT-ON*
-
 static int log_rv_analysis_check_page_corruption (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 						  const LOG_PAGE * log_page_p, corruption_checker & checker);
 static void log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY * thread_p, log_recovery_context & context,
@@ -121,8 +117,8 @@ static void log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p);
 static void log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p);
 static void log_recovery_undo (THREAD_ENTRY * thread_p);
-static void log_rv_undo_abort_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_rv_undo_end_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+static void log_rv_undo_abort_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_recovery_notpartof_archives (THREAD_ENTRY * thread_p, int start_arv_num, const char *info_reason);
 static bool log_unformat_ahead_volumes (THREAD_ENTRY * thread_p, VOLID volid, VOLID * start_volid);
 static void log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p);
@@ -2300,10 +2296,16 @@ log_rv_analysis_log_end (int tran_id, const LOG_LSA * log_lsa, const LOG_PAGE * 
 }
 
 /*
- * log_rv_analysis_record -
+ * log_rv_analysis_record - indirection function to analyze a log record
  *
  * return: error code
  *
+ *   log_type(in): log record type
+ *   tran_id(in): transaction id of the transaction that entered the log record in the transactional log
+ *   log_lsa(in/out): address of the log record (can be adavanced internally to actually read the record data)
+ *   log_page_p(in/out): log page pointer (can be adavanced internally to actually read the record data)
+ *   prev_lsa(in): ..
+ *   context(int/out): context information for log recovery analysis
  *
  * Note:
  */
@@ -2321,9 +2323,12 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
     }
 }
 
-//
-// log_rv_analysis_record_on_page_server - find the end of log
-//
+/*
+ * log_rv_analysis_record_on_page_server - find the end of log
+ *
+ * return: nothing
+ *
+ */
 static void
 log_rv_analysis_record_on_page_server (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_id,
 				       const LOG_LSA * log_lsa, const LOG_PAGE * log_page_p)
@@ -2334,9 +2339,12 @@ log_rv_analysis_record_on_page_server (THREAD_ENTRY * thread_p, LOG_RECTYPE log_
     }
 }
 
-//
-// log_rv_analysis_record_on_tran_server - rebuild the transaction table when the server stopped unexpectedly
-//
+/*
+ * log_rv_analysis_record_on_tran_server - rebuild the transaction table when the server stopped unexpectedly
+ *
+ * return: nothing
+ *
+ */
 static void
 log_rv_analysis_record_on_tran_server (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_id, LOG_LSA * log_lsa,
 				       LOG_PAGE * log_page_p, LOG_LSA * prev_lsa, log_recovery_context & context)
@@ -2512,136 +2520,6 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, INT64 * num_redo_log_records, lo
 {
   log_recovery_analysis_internal (thread_p, num_redo_log_records, context, true, nullptr);
 }
-
-// *INDENT-OFF*
-class corruption_checker
-{
-    //////////////////////////////////////////////////////////////////////////
-    // Does log data sanity checks and saves the results.
-    //////////////////////////////////////////////////////////////////////////
-
-  public:
-    static constexpr size_t IO_BLOCK_SIZE = 4 * ONE_K;   // 4k
-
-    corruption_checker ();
-
-    // Check if given page checksum is correct. Otherwise page is corrupted
-    void check_page_checksum (const LOG_PAGE *log_pgptr);
-    // Additional checks on log record:
-    void check_log_record (const log_lsa &record_lsa, const log_rec_header &record_header, const LOG_PAGE *log_page_p);
-    // Detect the address of first block having only 0xFF bytes
-    void find_first_corrupted_block (const LOG_PAGE *log_pgptr);
-
-    bool is_page_corrupted () const;		      // is last checked page corrupted?
-    const log_lsa &get_first_corrupted_lsa () const;  // get the address of first block full of 0xFF
-
-  private:
-
-    const char *get_block_ptr (const LOG_PAGE *page, size_t block_index) const;	  // the starting pointer of block
-
-    bool m_is_page_corrupted = false;		      // true if last checked page is corrupted, false otherwise
-    LOG_LSA m_first_corrupted_rec_lsa = NULL_LSA;     // set by last find_first_corrupted_block call
-    std::unique_ptr<char[]> m_null_block;	      // 4k of 0xFF for null block check
-    size_t m_blocks_in_page_count = 0;		      // number of blocks in a log page
-};
-
-corruption_checker::corruption_checker ()
-{
-  m_blocks_in_page_count = LOG_PAGESIZE / IO_BLOCK_SIZE;
-  m_null_block.reset (new char[IO_BLOCK_SIZE]);
-  std::memset (m_null_block.get (), LOG_PAGE_INIT_VALUE, IO_BLOCK_SIZE);
-}
-
-void
-corruption_checker::check_page_checksum (const LOG_PAGE *log_pgptr)
-{
-  m_is_page_corrupted = !logpb_page_has_valid_checksum (log_pgptr);
-}
-
-void corruption_checker::find_first_corrupted_block (const LOG_PAGE *log_pgptr)
-{
-  m_first_corrupted_rec_lsa = NULL_LSA;
-  for (size_t block_index = 0; block_index < m_blocks_in_page_count; ++block_index)
-    {
-      if (std::memcmp (get_block_ptr (log_pgptr, block_index), m_null_block.get (), IO_MAX_PAGE_SIZE) == 0)
-	{
-	  // Found a block full of 0xFF
-	  m_first_corrupted_rec_lsa.pageid = log_pgptr->hdr.logical_pageid;
-	  m_first_corrupted_rec_lsa.offset =
-		  block_index == 0 ? 0 : block_index * IO_MAX_PAGE_SIZE - sizeof (LOG_HDRPAGE);
-	}
-    }
-}
-
-bool
-corruption_checker::is_page_corrupted () const
-{
-  return m_is_page_corrupted;
-}
-
-const
-log_lsa &corruption_checker::get_first_corrupted_lsa () const
-{
-  return m_first_corrupted_rec_lsa;
-}
-
-const char *
-corruption_checker::get_block_ptr (const LOG_PAGE *page, size_t block_index) const
-{
-  return (reinterpret_cast<const char *> (page)) + block_index * IO_BLOCK_SIZE;
-}
-
-void
-corruption_checker::check_log_record (const log_lsa &record_lsa, const log_rec_header &record_header,
-				      const LOG_PAGE *log_page_p)
-{
-  if (m_is_page_corrupted)
-    {
-      // Already found corruption
-      return;
-    }
-
-  /* For safety reason. Normally, checksum must detect corrupted pages. */
-  if (LSA_ISNULL (&record_header.forw_lsa) && record_header.type != LOG_END_OF_LOG
-      && !logpb_is_page_in_archive (record_lsa.pageid))
-    {
-      /* Can't find the end of log. The next log is null. Consider the page corrupted. */
-      m_is_page_corrupted = true;
-      find_first_corrupted_block (log_page_p);
-
-      er_log_debug (ARG_FILE_LINE,
-		    "log_recovery_analysis: ** WARNING: An end of the log record was not found."
-		    "Latest log record at lsa = %lld|%d, first_corrupted_lsa = %lld|%d\n",
-		    LSA_AS_ARGS (&record_lsa), LSA_AS_ARGS (&m_first_corrupted_rec_lsa));
-    }
-  else if (record_header.forw_lsa.pageid == record_lsa.pageid)
-    {
-      /* Quick fix. Sometimes page corruption is not detected. Check whether the current log record
-       * is in corrupted block. If true, consider the page corrupted.
-       */
-      size_t start_block_index = (record_lsa.offset + sizeof (LOG_HDRPAGE) - 1) / IO_BLOCK_SIZE;
-      assert (start_block_index <= m_blocks_in_page_count);
-      size_t end_block_index = (record_header.forw_lsa.offset + sizeof (LOG_HDRPAGE) - 1) / IO_BLOCK_SIZE;
-      assert (end_block_index <= m_blocks_in_page_count);
-
-      if (start_block_index != end_block_index)
-	{
-	  assert (start_block_index < end_block_index);
-	  if (std::memcmp (get_block_ptr (log_page_p, end_block_index), m_null_block.get (), IO_BLOCK_SIZE) == 0)
-	    {
-	      /* The current record is corrupted - ends into a corrupted block. */
-	      m_first_corrupted_rec_lsa = record_lsa;
-	      m_is_page_corrupted = true;
-
-	      er_log_debug (ARG_FILE_LINE,
-			    "log_recovery_analysis: ** WARNING: An end of the log record was not found."
-			    "Latest log record at lsa = %lld|%d, first_corrupted_lsa = %lld|%d\n",
-			    LSA_AS_ARGS (&record_lsa), LSA_AS_ARGS (&m_first_corrupted_rec_lsa));
-	    }
-	}
-    }
-}
-// *INDENT-ON*
 
 /*
  * log_recovery_analysis_internal () -
@@ -3286,7 +3164,8 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY * thread_p,
   // transaction table up to date because it is relevant in read-only results
   log_system_tdes::rv_delete_all_tdes_if ([](const log_tdes &)
 					  {
-					  return true;}
+					  return true;
+					  }
   );
 
   // TODO: this addresses the following scenario:
