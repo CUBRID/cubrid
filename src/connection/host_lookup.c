@@ -595,7 +595,7 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
 
   if (hp == NULL)
     {
-      ret = EAI_NODATA;
+      ret = EAI_NONAME;
       goto return_phase;
     }
 
