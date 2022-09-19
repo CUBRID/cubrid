@@ -3164,8 +3164,7 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY * thread_p,
   // transaction table up to date because it is relevant in read-only results
   log_system_tdes::rv_delete_all_tdes_if ([](const log_tdes &)
 					  {
-					  return true;
-					  }
+					  return true;}
   );
 
   // TODO: this addresses the following scenario:
