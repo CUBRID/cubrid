@@ -597,7 +597,7 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
       goto return_phase;
     }
 
-  if ((addrp = (struct in_addr *) malloc (sizeof (struct in_addr))) == NULL)
+  if ((addrp = (struct addrinfo *) malloc (sizeof (struct addrinfo))) == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct addrinfo));
       ret = EAI_MEMORY;
