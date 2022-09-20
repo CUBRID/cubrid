@@ -2929,6 +2929,13 @@ log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY * thread_p, log_recovery_co
 	}
 
       assert (!prev_lsa.is_null ());
+      if (prev_lsa.is_null ())
+	{
+	  // this can happen if analysis fails to retrieve the page of the very first log record to be analyzed
+	  // (see first call to this function in log_recovery_analysis_internal)
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "reset log is impossible");
+	  return;
+	}
       if (logpb_fetch_page (thread_p, &prev_lsa, LOG_CS_FORCE_USE, log_page_p) != NO_ERROR)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "reset log is impossible");
