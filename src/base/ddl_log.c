@@ -316,11 +316,11 @@ logddl_set_sql_text (char *sql_text, int len)
 		{		/* It's a failure, but let's copy as much space as we can */
 		  memcpy (ddl_audit_handle.sql_text, sql_text, ddl_audit_handle.alloc_size);
 
-		  ddl_audit_handle.sql_text[ddl_audit_handle.alloc_size - 4] = ' ';
+		  ddl_audit_handle.sql_text[ddl_audit_handle.alloc_size - 5] = ' ';
+		  ddl_audit_handle.sql_text[ddl_audit_handle.alloc_size - 4] = '.';
 		  ddl_audit_handle.sql_text[ddl_audit_handle.alloc_size - 3] = '.';
 		  ddl_audit_handle.sql_text[ddl_audit_handle.alloc_size - 2] = '.';
-		  ddl_audit_handle.sql_text[ddl_audit_handle.alloc_size - 1] = '.';
-		  ddl_audit_handle.sql_text[ddl_audit_handle.alloc_size] = '\0';
+		  ddl_audit_handle.sql_text[ddl_audit_handle.alloc_size - 1] = '\0';
 		  return;
 		}
 

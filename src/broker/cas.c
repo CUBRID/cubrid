@@ -1359,8 +1359,7 @@ cas_main (void)
 	    FREE_MEM (db_err_msg);
 
 	    logddl_check_ddl_audit_param ();
-	    logddl_set_br_name (shm_appl->broker_name);
-	    logddl_set_br_index (shm_as_index);
+	    logddl_set_broker_info (shm_as_index, shm_appl->broker_name);
 	    logddl_set_db_name (db_name);
 	    logddl_set_user_name (db_user);
 	    logddl_set_ip (client_ip_str);
