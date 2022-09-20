@@ -25,8 +25,8 @@
 namespace cublog
 {
 
-  atomic_replicator::atomic_replicator (const log_lsa &start_redo_lsa)
-    : replicator (start_redo_lsa, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, 0)
+  atomic_replicator::atomic_replicator (const log_lsa &start_redo_lsa, const log_lsa &prev_redo_lsa)
+    : replicator (start_redo_lsa, prev_redo_lsa, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, 0)
     , m_lowest_unapplied_lsa { start_redo_lsa }
   {
 
@@ -196,6 +196,7 @@ namespace cublog
 	  // however, this would need one more mutex lock; therefore, suffice to do it here
 	  assert (m_replication_active);
 
+	  m_processed_lsa = m_redo_lsa;
 	  m_redo_lsa = header.forw_lsa;
 	}
 
