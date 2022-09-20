@@ -69,7 +69,6 @@
 #include "log_compress.h"
 #include "log_record.hpp"
 #include "log_recovery.h"
-#include "log_recovery_analysis.hpp"
 #include "log_replication.hpp"
 #include "log_system_tran.hpp"
 #include "log_volids.hpp"
