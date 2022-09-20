@@ -702,7 +702,7 @@ logddl_make_filename (char *filename_buf, size_t buf_size, T_APP_NAME app_name)
 
   if (filename_buf[0] != '\0')
     {
-      if (logddl_create_dir (ddl_audit_handle.log_filepath) < 0)
+      if (logddl_create_dir (filename_buf) < 0)
 	{
 	  filename_buf[0] = '\0';
 	}
@@ -712,20 +712,13 @@ logddl_make_filename (char *filename_buf, size_t buf_size, T_APP_NAME app_name)
 static FILE *
 logddl_open (T_APP_NAME app_name)
 {
-  FILE *fp = NULL;
-
   if (ddl_audit_handle.log_filepath[0] == '\0')
     {
-      goto file_error;
+      return NULL;
     }
 
   /* note: in "a+" mode, output is always appended */
-  fp = logddl_fopen_and_lock (ddl_audit_handle.log_filepath, "a+");
-
-  return fp;
-
-file_error:
-  return NULL;
+  return logddl_fopen_and_lock (ddl_audit_handle.log_filepath, "a+");
 }
 
 inline static bool
