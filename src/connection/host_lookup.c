@@ -46,8 +46,10 @@
 #define MAX_NUM_HOSTS                (256)
 #define LINE_BUF_SIZE                (512)
 #define IPADDR_LEN                   (17)
+#define IPADDR_BIN_LEN               (4)
 #define NUM_IPADDR_DOT               (3)
 #define IPv4_ADDR_LEN                (4)
+#define USER_HOSTS_FILE              "hosts.conf"
 
 #define NUM_DIGIT(VAL)              (size_t)(log10 (VAL) + 1)
 #define FREE_MEM(PTR)           \
@@ -57,18 +59,6 @@
             PTR = 0;    \
           }                     \
         } while (0)
-
-#define FREE_HOSTENT_MEM(PTR)        \
-        do {                    \
-          if (PTR) {            \
-            FREE_MEM (PTR->h_aliases[0]);       \
-            FREE_MEM (PTR->h_addr_list[0]);     \
-            FREE_MEM (PTR->h_addr_list);                \
-            FREE_MEM (PTR->h_aliases);          \
-            FREE_MEM (PTR->h_name);             \
-            FREE_MEM (PTR);                     \
-           }                                    \
-        }while(0)
 
 typedef enum
 {
@@ -119,7 +109,7 @@ static struct hostent *
 hostent_alloc (char *ipaddr, char *hostname)
 {
   struct hostent *hp;
-  char addr_trans_bi_buf[IPADDR_LEN];
+  char addr_trans_bi_buf[IPADDR_BIN_LEN];
 
   if ((hp = (struct hostent *) malloc (sizeof (struct hostent))) == NULL)
     {
@@ -167,7 +157,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
   int i, find_index = -1;
 
   char addr_trans_ch_buf[IPADDR_LEN];
-  char addr_trans_bi_buf[IPADDR_LEN];
+  char addr_trans_bi_buf[IPADDR_BIN_LEN];
   char hostname_buf[HOSTNAME_LEN];
   char ipaddr_buf[IPADDR_LEN];
   struct sockaddr_in *addr_trans = NULL;
@@ -239,7 +229,7 @@ load_hosts_file ()
 
   memset (file_line, 0, LINE_BUF_SIZE);
 
-  hosts_conf_dir = envvar_confdir_file (host_conf_file_full_path, PATH_MAX, user_hosts_File);
+  hosts_conf_dir = envvar_confdir_file (host_conf_file_full_path, PATH_MAX, USER_HOSTS_FILE);
   fp = fopen (hosts_conf_dir, "r");
   if (fp == NULL)
     {
