@@ -85,7 +85,6 @@ typedef enum
   LOAD_SUCCESS,
 } HOSTS_CONF_LOAD_STATUS;
 
-static const char *user_hosts_File = "hosts.conf";
 static struct hostent *hostent_Cache[MAX_NUM_HOSTS];
 
 static int hosts_conf_file_Load = LOAD_INIT;
@@ -157,7 +156,6 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
   int i, find_index = -1;
 
   char addr_trans_ch_buf[IPADDR_LEN];
-  char addr_trans_bi_buf[IPADDR_BIN_LEN];
   char hostname_buf[HOSTNAME_LEN];
   char ipaddr_buf[IPADDR_LEN];
   struct sockaddr_in *addr_trans = NULL;
@@ -297,7 +295,7 @@ load_hosts_file ()
 	}
       while ((token = strtok_r (NULL, delim, &save_ptr_strtok)) != NULL);
 
-      if (strcmp ("\0", hostname) && strcmp ("\0", ipaddr))
+      if (hostname[0] && ipaddr[0])
 	{
 	  /*not duplicated hostname */
 	  if ((user_host_Map.find (hostname) == user_host_Map.end ()))
