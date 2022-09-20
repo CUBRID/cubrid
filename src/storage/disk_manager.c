@@ -1388,6 +1388,12 @@ disk_rv_redo_format (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
   DKNSECTS nsect_diff;
   LOG_RCV copy_rcv = *rcv;
 
+  /* This redo recovery function is not called in either in ATS or PTS.
+   * - During recovery, REDO phase is skipped in ATS and no recovery process in PTS.
+   * - During replication, it is skipped in PTS because disk volume header page of newly
+   *   added volume is not loaded on PTS. */
+  assert (!(is_tran_server_with_remote_storage ()));
+
   copy_rcv.offset = 0;
   (void) pgbuf_set_page_ptype (thread_p, copy_rcv.pgptr, PAGE_VOLHEADER);
   error_code = log_rv_copy_char (thread_p, &copy_rcv);
@@ -1426,15 +1432,6 @@ disk_rv_redo_format (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 
       disk_Cache->perm_purpose_info.extend_info.nsect_total += volheader->nsect_total;
       disk_Cache->perm_purpose_info.extend_info.nsect_max += volheader->nsect_max;
-
-      if (is_tran_server_with_remote_storage ())
-	{
-	  // transaction servers with remote storage:
-	  //  - maintain a separate count of permanent volumes
-	  //  - have their own set of temporary volumes which they maintain using the disk Cache structures
-	  assert ((disk_Page_server_perm_volume_count + 1) == disk_Cache->nvols_perm);
-	  disk_Page_server_perm_volume_count++;
-	}
     }
 
   /* fix cache... */
