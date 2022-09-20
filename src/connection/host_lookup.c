@@ -579,9 +579,7 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
 {
   int ret = 0;
   struct hostent *hp = NULL;
-  struct addrinfo results_out;
-  struct sockaddr_in addr_convert;
-  struct in_addr *in_addr_buf = NULL;
+  struct addrinfo *addrp;
 
   if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
     {
@@ -599,27 +597,17 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
       goto return_phase;
     }
 
-  if ((in_addr_buf = (struct in_addr *) malloc (sizeof (struct in_addr))) == NULL)
+  if ((addrp = (struct in_addr *) malloc (sizeof (struct in_addr))) == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct in_addr));
-      ret = EAI_MEMORY;
-      goto return_phase;
-    }
-
-  /*Constitute struct addrinfo for the out parameter res */
-  if (((*res) = (struct addrinfo *) malloc (sizeof (struct addrinfo))) == NULL)
-    {
-      free (in_addr_buf);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct addrinfo));
       ret = EAI_MEMORY;
       goto return_phase;
     }
 
-  memset (&results_out, 0, sizeof (results_out));
-  if ((results_out.ai_addr = (struct sockaddr *) malloc (sizeof (struct sockaddr))) == NULL)
+  memset (addrp, 0, sizeof (addrinfo));
+  if ((addrp->ai_canonname = strdup (hp->h_name)) == NULL)
     {
-      free (in_addr_buf);
-      freeaddrinfo (*res);
+      freeaddrinfo (addrp);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct sockaddr));
       ret = EAI_MEMORY;
       goto return_phase;
@@ -627,41 +615,19 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
 
   if (hints != NULL)
     {
-      results_out.ai_flags = hints->ai_flags;
-      results_out.ai_family = hints->ai_family;
-      results_out.ai_socktype = hints->ai_socktype;
-      results_out.ai_protocol = IPPROTO_TCP;
+      addrp->ai_flags = hints->ai_flags;
+      addrp->ai_family = hints->ai_family;
+      addrp->ai_socktype = hints->ai_socktype;
+      addrp->ai_protocol = IPPROTO_TCP;
     }
   else
     {
-      results_out.ai_flags = (AI_V4MAPPED | AI_ADDRCONFIG);
-      results_out.ai_family = AF_UNSPEC;
-      results_out.ai_socktype = 0;
-      results_out.ai_protocol = 0;
+      addrp->ai_flags = (AI_V4MAPPED | AI_ADDRCONFIG);
+      addrp->ai_family = AF_UNSPEC;
     }
 
-  if ((results_out.ai_canonname = (char *) malloc (sizeof (char) * HOSTNAME_LEN)) == NULL)
-    {
-      free (in_addr_buf);
-      freeaddrinfo (*res);
-      free (results_out.ai_addr);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct sockaddr));
-      ret = EAI_MEMORY;
-      goto return_phase;
-    }
+  *res = addrp;
 
-  memcpy (&in_addr_buf->s_addr, hp->h_addr_list[0], sizeof (in_addr_buf->s_addr));
-  memcpy (&addr_convert.sin_addr, &in_addr_buf->s_addr, sizeof (addr_convert.sin_addr));
-  memcpy (results_out.ai_addr, (struct sockaddr *) &addr_convert, sizeof (struct sockaddr));
-
-  results_out.ai_addrlen = sizeof (results_out.ai_addr);
-  results_out.ai_next = NULL;
-
-  strcpy (results_out.ai_canonname, hp->h_name);
-
-  memmove (*res, &results_out, sizeof (struct addrinfo));
-
-  FREE_MEM (in_addr_buf);
 
 return_phase:
 
