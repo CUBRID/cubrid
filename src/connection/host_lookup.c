@@ -131,7 +131,6 @@ hostent_alloc (char *ipaddr, char *hostname)
 
   if (inet_pton (AF_INET, ipaddr, addr_trans_bi_buf) < 1)
     {
-      fprintf (stderr, "Convertion IP address from text form to binary is failed");
       FREE_MEM (hp);
       return NULL;
     }
@@ -139,7 +138,7 @@ hostent_alloc (char *ipaddr, char *hostname)
   hp->h_name = strdup (hostname);
   hp->h_aliases = NULL;
 
-  if ((hp->h_addr_list = (char **) malloc (sizeof (char *) * HOSTNAME_LEN)) == NULL)
+  if ((hp->h_addr_list = (char **) malloc (sizeof (char *) * MAX_NUM_HOSTS)) == NULL)
     {
       FREE_MEM (hp->h_name);
       FREE_MEM (hp);
@@ -189,7 +188,6 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
     {
       if (inet_ntop (AF_INET, &addr_trans->sin_addr, addr_trans_ch_buf, sizeof (addr_trans_ch_buf)) == NULL)
 	{
-	  fprintf (stderr, "Convertion IP address from binary form to text is failed");
 	  return NULL;
 	}
 
@@ -316,7 +314,11 @@ load_hosts_file ()
 	    {
 	      user_host_Map[hostname] = cache_idx;
 	      user_host_Map[ipaddr] = cache_idx;
-	      hostent_Cache[cache_idx] = hostent_alloc (ipaddr, hostname);
+	      if ((hostent_Cache[cache_idx] = hostent_alloc (ipaddr, hostname)) == NULL)
+		{
+		  fclose (fp);
+		  return LOAD_FAIL;
+		}
 
 	      cache_idx++;
 	    }
@@ -330,8 +332,6 @@ load_hosts_file ()
 
 	      if (inet_ntop (AF_INET, &addr_trans.s_addr, addr_trans_ch_buf, sizeof (addr_trans_ch_buf)) == NULL)
 		{
-		  fprintf (stderr, "Convertion IP address from binary form to text is failed");
-
 		  fclose (fp);
 		  return LOAD_FAIL;
 		}
