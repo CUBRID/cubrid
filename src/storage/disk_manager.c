@@ -1227,10 +1227,13 @@ disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
     {
       /* Passive transaction server with remote storage should not do fileio_format(),
        * and it only uses disk_Page_server_perm_volume_count to check if there is a permanent volume in page server.
-       * Since PTS do not have a disk header page for newly added volume,
+       * Since PTS do not have a disk header page for newly added volume at the time of replication,
        * disk_rv_redo_format (), which requires disk header page and does update the disk_Page_server_perm_volume_count,
-       * is not called while replication.
+       * is not called during replication.
        * Therefore, disk_Page_server_perm_volume_count for PTS is updated here when the new volume is created.
+       *
+       * NOTE : If it is decided to use disk_Cache in PTS, this part can be moved to disk_rv_redo_format ()
+       *        where disk_Cache is updated.
        */
 
       if (vhdr->type == DB_PERMANENT_VOLTYPE)
