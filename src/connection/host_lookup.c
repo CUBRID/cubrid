@@ -46,7 +46,6 @@
 #define MAX_NUM_HOSTS                (256)
 #define LINE_BUF_SIZE                (512)
 #define IPADDR_LEN                   (17)
-#define IPADDR_BIN_LEN               (4)
 #define NUM_IPADDR_DOT               (3)
 #define IPv4_ADDR_LEN                (4)
 #define USER_HOSTS_FILE              "hosts.conf"
@@ -108,7 +107,7 @@ static struct hostent *
 hostent_alloc (char *ipaddr, char *hostname)
 {
   struct hostent *hp;
-  char addr_trans_bi_buf[IPADDR_BIN_LEN];
+  char addr_trans_bi_buf[sizeof (struct in_addr)];
 
   if ((hp = (struct hostent *) malloc (sizeof (struct hostent))) == NULL)
     {
