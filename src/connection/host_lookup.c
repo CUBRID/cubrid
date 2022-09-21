@@ -224,7 +224,7 @@ load_hosts_file ()
   /*True, when the string token has hostname, otherwise, string token has IP address */
   bool hostent_flag;
 
-  memset (file_line, 0, LINE_BUF_SIZE);
+  memset (file_line, 0, LINE_BUF_SIZE + 1);
 
   hosts_conf_dir = envvar_confdir_file (host_conf_file_full_path, PATH_MAX, USER_HOSTS_FILE);
   fp = fopen (hosts_conf_dir, "r");
