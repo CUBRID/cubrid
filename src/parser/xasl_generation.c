@@ -4179,13 +4179,14 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
       aggregate_list->flag_agg_optimize = false;
       BTID_SET_NULL (&aggregate_list->btid);
       if (info->flag_agg_optimize
-	  && (aggregate_list->function == PT_COUNT_STAR || aggregate_list->function == PT_COUNT
+	  && (aggregate_list->function == PT_COUNT_STAR
 	      || aggregate_list->function == PT_MAX || aggregate_list->function == PT_MIN))
 	{
+	  BTID *btid = NULL;
 	  bool need_unique_index;
 
 	  classop = sm_find_class (info->class_name);
-	  if (aggregate_list->function == PT_COUNT_STAR || aggregate_list->function == PT_COUNT)
+	  if (aggregate_list->function == PT_COUNT_STAR)
 	    {
 	      need_unique_index = true;
 	    }
@@ -4197,8 +4198,19 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	  /* enable count optimization in MVCC if have unique index */
 	  if (aggregate_list->function == PT_COUNT_STAR)
 	    {
-	      BTID *btid = NULL;
 	      btid = sm_find_index (classop, NULL, 0, need_unique_index, false, &aggregate_list->btid);
+	      if (btid != NULL)
+		{
+		  /* If btree does not exist, optimize with heap in non-MVCC */
+		  aggregate_list->flag_agg_optimize = true;
+		}
+	    }
+	  else if (tree->info.function.arg_list->node_type == PT_NAME)
+	    {
+	      /* need to get an index has the argument name as first attribute */
+	      /* no prefix, no filter, no function */
+	      btid = sm_find_index (classop, (char **) &tree->info.function.arg_list->info.name.original,
+				    1, need_unique_index, true, &aggregate_list->btid);
 	      if (btid != NULL)
 		{
 		  /* If btree does not exist, optimize with heap in non-MVCC */

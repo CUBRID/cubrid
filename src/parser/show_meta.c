@@ -444,19 +444,25 @@ metadata_of_index_capacity (SHOW_ONLY_ALL flag)
     {"Index_name", "varchar(256)"},
     {"Btid", "varchar(64)"},
     {"Num_distinct_key", "int"},
-    {"Total_value", "int"},
+    {"Total_value", "bigint"},
     {"Avg_num_value_per_key", "int"},
     {"Num_leaf_page", "int"},
     {"Num_non_leaf_page", "int"},
+    {"Num_ovf_page", "int"},
     {"Num_total_page", "int"},
     {"Height", "int"},
     {"Avg_key_len", "int"},
     {"Avg_rec_len", "int"},
     {"Total_space", "varchar(64)"},
-    {"Total_used_space", "varchar(64)"},
-    {"Total_free_space", "varchar(64)"},
-    {"Avg_num_page_key", "int"},
-    {"Avg_page_free_space", "varchar(64)"}
+    {"Total_used_space_non_ovf", "varchar(64)"},
+    {"Total_free_space_non_ovf", "varchar(64)"},
+    {"Total_used_space_ovf", "varchar(64)"},
+    {"Total_free_space_ovf", "varchar(64)"},
+    {"Avg_num_key_per_page_non_ovf", "int"},
+    {"Avg_free_space_per_page_non_ovf", "varchar(64)"},
+    {"Avg_num_ovf_page_per_key", "int"},
+    {"Avg_free_space_per_page_ovf", "varchar(64)"},
+    {"Max_num_ovf_page_a_key", "int"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {

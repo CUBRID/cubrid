@@ -1726,7 +1726,9 @@
 
 #define ER_SM_INVALID_FUNCTION_EXPRESSION_LENGTH    -1351
 
-#define ER_LAST_ERROR                               -1352
+#define ER_CGW_INVALID_COLUMNS_SPECIFIED         -1352
+
+#define ER_LAST_ERROR                               -1353
 
 /*
  * CAUTION!

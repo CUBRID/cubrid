@@ -55,7 +55,10 @@ enum
 
 /* Slotted page header flags */
 #define SPAGE_HEADER_FLAG_NONE		0x0	/* No flags */
-#define SPAGE_HEADER_FLAG_ALL_VISIBLE	0x1	/* All records are visible */
+#define SPAGE_HEADER_FLAG_ALL_VISIBLE	0x1	/* All records are visible */	/* unused */
+
+#define SPAGE_SLOT_SIZE   (sizeof(SPAGE_SLOT))
+#define SPAGE_HEADER_SIZE (sizeof(SPAGE_HEADER))
 
 typedef struct spage_header SPAGE_HEADER;
 struct spage_header
@@ -69,7 +72,7 @@ struct spage_header
   int cont_free;		/* Contiguous free space on page */
   int offset_to_free_area;	/* Byte offset from the beginning of the page to the first free byte area on the page. */
   int reserved1;
-  int flags;			/* Page flags */
+  int flags;			/* Page flags: Always SPAGE_HEADER_FLAG_NONE, not currently used */
   unsigned int is_saving:1;	/* True if saving is need for recovery (undo) */
   unsigned int need_update_best_hint:1;	/* True if we should update best pages hint for this page. See
 					 * heap_stats_update. */
@@ -92,8 +95,7 @@ struct spage_slot
 extern void spage_boot (THREAD_ENTRY * thread_p);
 extern void spage_finalize (THREAD_ENTRY * thread_p);
 extern void spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry);
-extern int spage_slot_size (void);
-extern int spage_header_size (void);
+
 extern int spage_get_free_space (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern int spage_get_free_space_without_saving (THREAD_ENTRY * thread_p, PAGE_PTR page_p, bool * need_update);
 extern void spage_set_need_update_best_hint (THREAD_ENTRY * thread_p, PAGE_PTR page_p, bool need_update);

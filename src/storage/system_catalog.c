@@ -414,9 +414,8 @@ catalog_put_disk_representation (char *rec_p, DISK_REPR * disk_repr_p)
   OR_PUT_INT (rec_p + CATALOG_DISK_REPR_FIXED_LENGTH_OFF, disk_repr_p->fixed_length);
   OR_PUT_INT (rec_p + CATALOG_DISK_REPR_N_VARIABLE_OFF, disk_repr_p->n_variable);
 
-#if 1				/* reserved for future use */
+  /* reserved for future use */
   OR_PUT_INT (rec_p + CATALOG_DISK_REPR_RESERVED_1_OFF, 0);
-#endif
 }
 
 static void
@@ -488,12 +487,11 @@ catalog_put_btree_statistics (char *rec_p, BTREE_STATS * stat_p)
       OR_PUT_INT (rec_p + CATALOG_BT_STATS_PKEYS_OFF + (OR_INT_SIZE * i), stat_p->pkeys[i]);
     }
 
-#if 1				/* reserved for future use */
+  /* reserved for future use */
   for (i = 0; i < BTREE_STATS_RESERVED_NUM; i++)
     {
       OR_PUT_INT (rec_p + CATALOG_BT_STATS_RESERVED_OFF + (OR_INT_SIZE * i), 0);
     }
-#endif
 }
 
 static void
@@ -1629,18 +1627,24 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VP
 
   if (overflow_vpid.pageid != NULL_PAGEID)
     {
-      log_append_undo_recdes2 (thread_p, RVCT_UPDATE, &catalog_Id.vfid, page_p, CATALOG_HEADER_SLOT, &record);
+      /* For undo purpose, PEEK a record before update.
+       * Instead of allocating new space (heap or stack) and copying for undo records,
+       * PEEKing a record is simpler and cheaper */
+
+      RECDES undo_record = RECDES_INITIALIZER;
+      spage_get_record (thread_p, page_p, CATALOG_HEADER_SLOT, &undo_record, PEEK);
 
       CATALOG_PUT_PGHEADER_OVFL_PGID_PAGEID (record.data, NULL_PAGEID);
       CATALOG_PUT_PGHEADER_OVFL_PGID_VOLID (record.data, NULL_VOLID);
+
+      log_append_undoredo_recdes2 (thread_p, RVCT_UPDATE, &catalog_Id.vfid, page_p, CATALOG_HEADER_SLOT, &undo_record,
+				   &record);
 
       if (spage_update (thread_p, page_p, CATALOG_HEADER_SLOT, &record) != SP_SUCCESS)
 	{
 	  recdes_free_data_area (&record);
 	  return ER_FAILED;
 	}
-
-      log_append_redo_recdes2 (thread_p, RVCT_UPDATE, &catalog_Id.vfid, page_p, CATALOG_HEADER_SLOT, &record);
 
       // free data because it is used only for peeking below
       recdes_free_data_area (&record);
@@ -2211,6 +2215,40 @@ catalog_put_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CATA
 	      log_append_redo_recdes2 (thread_p, RVCT_UPDATE, &catalog_Id.vfid, page_p, rep_dir_p->slotid, &record);
 	      pgbuf_set_dirty (thread_p, page_p, FREE);
 	    }
+#if 0				/* TODO - dead code; do not delete me for future use */
+	  else if (success == SP_DOESNT_FIT)
+	    {
+	      assert (false);	/* is impossible */
+
+	      /* the directory needs to be deleted from the current page and moved to another page. */
+
+	      ehash_delete (thread_p, &catalog_Id.xhid, key);
+	      log_append_undoredo_recdes2 (thread_p, RVCT_DELETE, &catalog_Id.vfid, page_p, rep_dir_p->slotid,
+					   &tmp_record, NULL);
+	      recdes_free_data_area (&tmp_record);
+
+	      spage_delete (thread_p, page_p, rep_dir_p->slotid);
+	      new_space = spage_max_space_for_new_record (thread_p, page_p);
+
+	      recdes_set_data_area (&tmp_record, aligned_page_header_data, CATALOG_PAGE_HEADER_SIZE);
+
+	      if (catalog_adjust_directory_count (thread_p, page_p, &tmp_record, -1) != NO_ERROR)
+		{
+		  pgbuf_unfix_and_init (thread_p, page_p);
+		  recdes_free_data_area (&record);
+		  return ER_FAILED;
+		}
+
+	      pgbuf_set_dirty (thread_p, page_p, FREE);
+	      catalog_update_max_space (&page_id, new_space);
+
+	      if (catalog_insert_representation_item (thread_p, &record, rep_dir_p) != NO_ERROR)
+		{
+		  recdes_free_data_area (&record);
+		  return ER_FAILED;
+		}
+	    }
+#endif
 	  else
 	    {
 	      assert (false);	/* is impossible */
@@ -2534,6 +2572,8 @@ catalog_initialize (CTID * catalog_id_p)
   // protect against repeated hashmap initializations
   catalog_Hashmap.destroy ();
 
+  VFID_COPY (&catalog_Id.xhid, &catalog_id_p->xhid);
+  catalog_Id.xhid.pageid = catalog_id_p->xhid.pageid;
   catalog_Id.vfid.fileid = catalog_id_p->vfid.fileid;
   catalog_Id.vfid.volid = catalog_id_p->vfid.volid;
   catalog_Id.hpgid = catalog_id_p->hpgid;
@@ -2585,6 +2625,11 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p)
 
   log_sysop_start (thread_p);
 
+  if (xehash_create (thread_p, &catalog_id_p->xhid, DB_TYPE_OBJECT, 1, oid_Root_class_oid, -1, false) == NULL)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
 
   if (file_create_with_npages (thread_p, FILE_CATALOG, 1, NULL, &catalog_id_p->vfid) != NO_ERROR)
     {
@@ -4089,16 +4134,9 @@ catalog_get_class_info (THREAD_ENTRY * thread_p, OID * class_id_p, CATALOG_ACCES
   CATALOG_REPR_ITEM repr_item = CATALOG_REPR_ITEM_INITIALIZER;
   CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
   OID dir_oid;
-#if 0
-  int retry = 0;
-#endif
   bool do_end_access = false;
 
   aligned_data = PTR_ALIGN (data, MAX_ALIGNMENT);
-
-#if 0
-start:
-#endif
 
   if (catalog_access_info_p == NULL)
     {
@@ -4160,19 +4198,6 @@ start:
       if (er_errid () == ER_SP_UNKNOWN_SLOTID)
 	{
 	  assert (false);
-#if 0
-	  pgbuf_unfix_and_init (thread_p, page_p);
-
-	  if ((catalog_fixup_missing_class_info (thread_p, class_id_p) == NO_ERROR) && retry++ == 0)
-	    {
-	      goto start;
-	    }
-	  else
-	    {
-	      assert (0);
-	      return NULL;
-	    }
-#endif
 	}
 
       pgbuf_unfix_and_init (thread_p, page_p);

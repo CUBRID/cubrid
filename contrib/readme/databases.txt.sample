@@ -1,0 +1,4 @@
+# sample databases.txt for demodb
+#
+# db-name vol-path db-host log-path lob-base-path
+demodb /home/cubrid/CUBRID/demo localhost /home/cubrid/CUBRID/demo file:/home/cubrid/CUBRID/demo/lob

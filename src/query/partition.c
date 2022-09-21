@@ -2984,7 +2984,7 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_
   repr_id = or_rep_id (recdes);
   or_set_rep_id (recdes, pinfo->root_repr_id);
 
-  error = heap_attrinfo_read_dbvalues (pinfo->thread_p, &pinfo->attr_info.inst_oid, recdes, NULL, &pinfo->attr_info);
+  error = heap_attrinfo_read_dbvalues (pinfo->thread_p, &pinfo->attr_info.inst_oid, recdes, &pinfo->attr_info);
 
   or_set_rep_id (recdes, repr_id);
   if (error != NO_ERROR)

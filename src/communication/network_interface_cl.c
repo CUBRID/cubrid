@@ -7491,6 +7491,7 @@ synonym_remove_xasl_by_oid (OID * oid)
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
+  assert (oid != NULL);
   or_pack_oid (request, oid);
 
   req_error =
@@ -7505,6 +7506,7 @@ synonym_remove_xasl_by_oid (OID * oid)
 #else /* CS_MODE */
   THREAD_ENTRY *thread_p = enter_server ();
 
+  assert (oid != NULL);
   xsynonym_remove_xasl_by_oid (thread_p, oid);
 
   exit_server (*thread_p);
@@ -9104,70 +9106,6 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
 #else /* CS_MODE */
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "copylog database");
   return ER_NOT_IN_STANDALONE;
-#endif /* !CS_MODE */
-}
-
-bool
-histo_is_supported (void)
-{
-  return prm_get_bool_value (PRM_ID_ENABLE_HISTO);
-}
-
-int
-histo_start (bool for_all_trans)
-{
-#if defined (CS_MODE)
-  return net_histo_start (for_all_trans);
-#else /* CS_MODE */
-  return perfmon_start_stats (for_all_trans);
-#endif /* !CS_MODE */
-}
-
-int
-histo_stop (void)
-{
-#if defined (CS_MODE)
-  return net_histo_stop ();
-#else /* CS_MODE */
-  return perfmon_stop_stats ();
-#endif /* !CS_MODE */
-}
-
-int
-histo_print (FILE * stream)
-{
-  int err = NO_ERROR;
-
-#if defined (CS_MODE)
-  err = net_histo_print (stream);
-#else /* CS_MODE */
-  err = perfmon_print_stats (stream);
-#endif /* !CS_MODE */
-
-  return err;
-}
-
-int
-histo_print_global_stats (FILE * stream, bool cumulative, const char *substr)
-{
-  int err = NO_ERROR;
-
-#if defined (CS_MODE)
-  err = net_histo_print_global_stats (stream, cumulative, substr);
-#else /* CS_MODE */
-  err = perfmon_print_global_stats (stream, cumulative, substr);
-#endif /* !CS_MODE */
-
-  return err;
-}
-
-void
-histo_clear (void)
-{
-#if defined (CS_MODE)
-  net_histo_clear ();
-#else /* CS_MODE */
-  perfmon_reset_stats ();
 #endif /* !CS_MODE */
 }
 

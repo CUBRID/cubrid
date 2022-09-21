@@ -679,9 +679,6 @@ static int heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid,
 static int heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs, INT64 * num_recs_relocated,
 			      INT64 * num_recs_inovf, INT64 * num_pages, int *avg_freespace, int *avg_freespace_nolast,
 			      int *avg_reclength, int *avg_overhead);
-#if 0				/* TODO: remove unused */
-static int heap_moreattr_attrinfo (int attrid, HEAP_CACHE_ATTRINFO * attr_info);
-#endif
 
 static int heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_reset);
 static int heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRINFO * attr_info);
@@ -5132,7 +5129,7 @@ heap_manager_initialize (void)
 #define HEAP_MAX_FIRSTSLOTID_LENGTH (sizeof (HEAP_HDR_STATS))
 
   heap_Maxslotted_reclength = (spage_max_record_size () - HEAP_MAX_FIRSTSLOTID_LENGTH);
-  heap_Slotted_overhead = spage_slot_size ();
+  heap_Slotted_overhead = SPAGE_SLOT_SIZE;
 
   /* Initialize the class representation cache */
   ret = heap_chnguess_initialize ();
@@ -9289,7 +9286,7 @@ heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs,
 
       *num_pages += 1;
       sum_freespace += last_freespace;
-      sum_overhead += j * spage_slot_size ();
+      sum_overhead += j * SPAGE_SLOT_SIZE;
 
       while ((j--) > 0)
 	{
@@ -9677,103 +9674,6 @@ exit_on_error:
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
-
-#if 0				/* TODO: remove unused */
-/*
- * heap_moreattr_attrinfo () - Add another attribute to the attribute information
- *                           cache
- *   return: NO_ERROR
- *   attrid(in): The information of the attribute that will be needed
- *   attr_info(in/out): The attribute information structure
- *
- * Note: The given attribute is included as part of the reading or
- * transformation process.
- */
-static int
-heap_moreattr_attrinfo (int attrid, HEAP_CACHE_ATTRINFO * attr_info)
-{
-  HEAP_ATTRVALUE *new_values;	/* The new value attribute array */
-  HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
-  int i;
-  int ret = NO_ERROR;
-
-  /*
-   * If we get an empty HEAP_CACHE_ATTRINFO, this is an error.  We can
-   * not add more attributes to an improperly initialized HEAP_CACHE_ATTRINFO
-   * structure.
-   */
-  if (attr_info->num_values == -1)
-    {
-      return ER_FAILED;
-    }
-
-  /*
-   * Make sure that the attribute is not already included
-   */
-  for (i = 0; i < attr_info->num_values; i++)
-    {
-      value = &attr_info->values[i];
-      if (value != NULL && value->attrid == attrid)
-	{
-	  return NO_ERROR;
-	}
-    }
-
-  /*
-   * Resize the value attribute array and set the attribute identifier as
-   * as part of the desired attribute list
-   */
-  i = (attr_info->num_values + 1) * sizeof (*(attr_info->values));
-
-  new_values = (HEAP_ATTRVALUE *) db_private_realloc (NULL, attr_info->values, i);
-  if (new_values == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  attr_info->values = new_values;
-
-  value = &attr_info->values[attr_info->num_values];
-  value->attrid = attrid;
-  value->state = HEAP_UNINIT_ATTRVALUE;
-  value->last_attrepr = NULL;
-  value->read_attrepr = NULL;
-  attr_info->num_values++;
-
-  /*
-   * Recache attribute representation and get default value specifications
-   * for new attribute. The default values are located on the last
-   * representation
-   */
-
-  if (heap_attrinfo_recache_attrepr (attr_info, true) != NO_ERROR
-      || db_value_domain_init (&value->dbvalue, value->read_attrepr->type, value->read_attrepr->domain->precision,
-			       value->read_attrepr->domain->scale) != NO_ERROR)
-    {
-      attr_info->num_values--;
-      value->attrid = -1;
-      goto exit_on_error;
-    }
-
-end:
-
-  return ret;
-
-exit_on_error:
-
-  assert (ret != NO_ERROR);
-  if (ret == NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
-}
-#endif
 
 /*
  * heap_attrinfo_recache_attrepr () - Recache attribute information for given attrinfo for
@@ -10452,7 +10352,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
  */
 int
 heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
-			     HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info)
+			     HEAP_CACHE_ATTRINFO * attr_info)
 {
   int i;
   REPR_ID reprid;		/* The disk representation of the object */
@@ -12781,7 +12681,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 DB_VALUE *
 heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, int *atts_prefix_length,
 			    HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, DB_VALUE * db_valuep, char *buf,
-			    FUNCTION_INDEX_INFO * func_index_info, TP_DOMAIN * midxkey_domain)
+			    FUNCTION_INDEX_INFO * func_index_info, TP_DOMAIN * midxkey_domain, OID * cur_oid)
 {
   DB_VALUE *ret_valp;
   DB_VALUE *fi_res = NULL;
@@ -12792,6 +12692,15 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 
   if (func_index_info)
     {
+      if (func_index_info->expr)
+	{
+	  if (heap_attrinfo_read_dbvalues (thread_p, cur_oid, recdes, func_index_info->expr->cache_attrinfo) !=
+	      NO_ERROR)
+	    {
+	      return NULL;
+	    }
+	}
+
       fi_attr_index_start = func_index_info->attr_index_start;
       fi_col_id = func_index_info->col_id;
       if (heap_eval_function_index (thread_p, func_index_info, n_atts, att_ids, attr_info, recdes, -1, db_valuep,
@@ -12800,6 +12709,15 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 	  return NULL;
 	}
       fi_res = db_valuep;
+    }
+
+  if (n_atts == 1)
+    {
+      /* Single column index. */
+      if (heap_attrinfo_read_dbvalues (thread_p, cur_oid, recdes, attr_info) != NO_ERROR)
+	{
+	  return NULL;
+	}
     }
 
   /*
@@ -13434,7 +13352,7 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
     }
 
   if ((heap_attrinfo_start_refoids (thread_p, class_oid, &attr_info) != NO_ERROR)
-      || heap_attrinfo_read_dbvalues (thread_p, obj_oid, recdes, NULL, &attr_info) != NO_ERROR)
+      || heap_attrinfo_read_dbvalues (thread_p, obj_oid, recdes, &attr_info) != NO_ERROR)
     {
       goto error;
     }
@@ -14362,7 +14280,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
 	      fprintf (fp, "Object-OID = %2d|%4d|%2d,\n  Length on disk = %d,\n", oid.volid, oid.pageid, oid.slotid,
 		       peek_recdes.length);
 
-	      if (heap_attrinfo_read_dbvalues (thread_p, &oid, &peek_recdes, NULL, &attr_info) != NO_ERROR)
+	      if (heap_attrinfo_read_dbvalues (thread_p, &oid, &peek_recdes, &attr_info) != NO_ERROR)
 		{
 		  fprintf (fp, "  Error ... continue\n");
 		  continue;
@@ -17029,6 +16947,18 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 	  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
 	    {
 	      OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+
+	      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+	      assert (tdes != NULL);
+
+	      if (!tdes->has_supplemental_log)
+		{
+		  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER,
+						strlen (tdes->client.get_db_user ()), tdes->client.get_db_user ());
+		  tdes->has_supplemental_log = true;
+		}
+
 	      log_append_supplemental_serial (thread_p, serial_name, 1, &att->classoid, &serial_obj_oid);
 	      thread_p->no_supplemental_log = false;
 	    }
@@ -17782,7 +17712,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
 	  attrinfo_end = true;
 	}
 
-      if (heap_attrinfo_read_dbvalues (thread_p, &attr_info->inst_oid, recdes, NULL, cache_attr_info) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, &attr_info->inst_oid, recdes, cache_attr_info) != NO_ERROR)
 	{
 	  error = ER_FAILED;
 	  goto end;

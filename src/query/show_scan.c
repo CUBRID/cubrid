@@ -570,7 +570,7 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
   ival = thrd->net_request_index;
   if (ival != -1)
     {
-      db_make_string (&vals[idx], net_server_request_name (ival));
+      db_make_string (&vals[idx], get_net_request_name (ival));
     }
   else
     {

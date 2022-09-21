@@ -28,10 +28,10 @@
 
 #define SQL_LOG2_NONE		0
 #define SQL_LOG2_PLAN		1
-#define SQL_LOG2_HISTO		2
+#define SQL_LOG2_HISTO		2	/* obsolete */
 #define SQL_LOG2_MAX		(SQL_LOG2_PLAN | SQL_LOG2_HISTO)
 
-#if defined(WINDOWS) || defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL) || defined(LIBCAS_FOR_JSP)
+#if defined(WINDOWS) || defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 #define SQL_LOG2_EXEC_BEGIN(SQL_LOG2_VALUE, STMT_ID)
 #define SQL_LOG2_EXEC_END(SQL_LOG2_VALUE, STMT_ID, RES)
 #define SQL_LOG2_COMPILE_BEGIN(SQL_LOG2_VALUE, SQL_STMT)
@@ -44,9 +44,6 @@
 	      set_optimization_level(513);			\
 	    }							\
 	    sql_log2_write("execute %d", STMT_ID);		\
-	    if ((SQL_LOG2_VALUE) & SQL_LOG2_HISTO) {		\
-	      histo_clear();					\
-	    }							\
 	    sql_log2_dup_stdout();				\
 	  }							\
 	} while (0)
@@ -54,9 +51,6 @@
 #define SQL_LOG2_EXEC_END(SQL_LOG2_VALUE, STMT_ID, RES)		\
 	do {							\
 	  if (SQL_LOG2_VALUE) {					\
-	    if ((SQL_LOG2_VALUE) & SQL_LOG2_HISTO) {		\
-	      histo_print(NULL);				\
-	    }							\
 	    printf("\n");					\
 	    sql_log2_flush();					\
 	    sql_log2_restore_stdout();				\

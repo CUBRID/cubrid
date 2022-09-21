@@ -63,7 +63,10 @@ static int log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, L
 					 LOG_PAGE * log_page_p);
 static int log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p);
 static int log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
-						 LOG_PAGE * log_page_p);
+						 LOG_PAGE * log_page_p, LOG_LSA * prev_lsa,
+						 log_recovery_context & context);
+static int log_rv_analysis_commit_with_postpone_obsolete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
+							  LOG_PAGE * log_page_p);
 static int log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
 						 LOG_PAGE * log_page_p);
 static int log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
@@ -1461,16 +1464,22 @@ log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_
  * return: error code
  *
  *   tran_id(in):
- *   lsa(in/out):
+ *   log_lsa(in/out):
  *   log_page_p(in/out):
+ *   prev_lsa(in/out):
+ *   context(in/out):
  *
  * Note:
  */
 static int
-log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+				      LOG_LSA * prev_lsa, log_recovery_context & context)
 {
   LOG_TDES *tdes;
   LOG_REC_START_POSTPONE *start_posp;
+  time_t last_at_time;
+  char time_val[CTIME_MAX];
+  LOG_LSA record_header_lsa;
 
   /*
    * If this is the first time, the transaction is seen. Assign a new
@@ -1481,6 +1490,87 @@ log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
   if (tdes == NULL)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_commit_with_postpone");
+      return ER_FAILED;
+    }
+
+  LSA_COPY (&record_header_lsa, log_lsa);
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_START_POSTPONE), log_lsa, log_page_p);
+  start_posp = (LOG_REC_START_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset);
+
+  if (context.is_restore_from_backup ())
+    {
+      last_at_time = (time_t) start_posp->at_time;
+      if (context.does_restore_stop_before_time (last_at_time))
+	{
+#if !defined(NDEBUG)
+	  if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
+	    {
+	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+	      (void) ctime_r (&last_at_time, time_val);
+	      fprintf (stdout,
+		       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_INCOMPLTE_MEDIA_RECOVERY),
+		       record_header_lsa.pageid, record_header_lsa.offset, time_val);
+	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+	      fflush (stdout);
+	    }
+#endif /* !NDEBUG */
+	  /*
+	   * Reset the log active and stop the recovery process at this
+	   * point. Before reseting the log, make sure that we are not
+	   * holding a page.
+	   */
+	  log_lsa->pageid = NULL_PAGEID;
+	  log_recovery_resetlog (thread_p, &record_header_lsa, prev_lsa);
+	  context.set_forced_restore_stop ();
+	}
+    }
+  else
+    {
+      /*
+       * Need to read the start postpone record to set the postpone address
+       * of the transaction
+       */
+      tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+
+      /* Nothing to undo */
+      LSA_SET_NULL (&tdes->undo_nxlsa);
+      LSA_COPY (&tdes->tail_lsa, log_lsa);
+      tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
+
+      LSA_COPY (&tdes->posp_nxlsa, &start_posp->posp_lsa);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * log_rv_analysis_commit_with_postpone_obsolete-
+ *
+ * return: error code
+ *
+ *   tran_id(in):
+ *   lsa(in/out):
+ *   log_page_p(in/out):
+ *
+ * Note:
+ */
+static int
+log_rv_analysis_commit_with_postpone_obsolete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
+					       LOG_PAGE * log_page_p)
+{
+  LOG_TDES *tdes;
+  LOG_REC_START_POSTPONE_OBSOLETE *start_posp;
+
+  /*
+   * If this is the first time, the transaction is seen. Assign a new
+   * index to describe it. The transaction was in the process of
+   * getting committed at this point.
+   */
+  tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
+  if (tdes == NULL)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_commit_with_postpone_obsolete");
       return ER_FAILED;
     }
 
@@ -1496,9 +1586,9 @@ log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
    * of the transaction
    */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_START_POSTPONE), log_lsa, log_page_p);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_START_POSTPONE_OBSOLETE), log_lsa, log_page_p);
 
-  start_posp = (LOG_REC_START_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset);
+  start_posp = (LOG_REC_START_POSTPONE_OBSOLETE *) ((char *) log_page_p->area + log_lsa->offset);
   LSA_COPY (&tdes->posp_nxlsa, &start_posp->posp_lsa);
 
   return NO_ERROR;
@@ -1691,10 +1781,8 @@ log_rv_analysis_complete_mvccid (int tran_index, const LOG_TDES * tdes)
  *   tran_id(in):
  *   log_lsa(in/out):
  *   log_page_p(in/out):
- *   lsa(in/out):
- *   is_media_crash(in):
- *   stop_at(in):
- *   did_incom_recovery(in/out):
+ *   prev_lsa(in/out):
+ *   context(in/out):
  *
  * Note:
  */
@@ -2382,7 +2470,11 @@ log_rv_analysis_record_on_tran_server (THREAD_ENTRY * thread_p, LOG_RECTYPE log_
       break;
 
     case LOG_COMMIT_WITH_POSTPONE:
-      (void) log_rv_analysis_commit_with_postpone (thread_p, tran_id, log_lsa, log_page_p);
+      (void) log_rv_analysis_commit_with_postpone (thread_p, tran_id, log_lsa, log_page_p, prev_lsa, context);
+      break;
+
+    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
+      (void) log_rv_analysis_commit_with_postpone_obsolete (thread_p, tran_id, log_lsa, log_page_p);
       break;
 
     case LOG_SYSOP_START_POSTPONE:
@@ -3294,7 +3386,6 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
  *
  *   start_redolsa(in): Starting address for recovery redo phase
  *   end_redo_lsa(in):
- *   stopat(in):
  *
  * NOTE:In the redo phase, updates that are not reflected in the
  *              database are repeated for not only the committed transaction
@@ -3369,6 +3460,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   TSC_TICKS info_logging_start_time, info_logging_check_time;
   TSCTIMEVAL info_logging_elapsed_time;
   int info_logging_interval_in_secs = 0;
+
+  assert (!context.get_end_redo_lsa ().is_null ());
   UINT64 total_page_cnt = log_cnt_pages_containing_lsa (&context.get_start_redo_lsa (), &context.get_end_redo_lsa ());
 
   /*
@@ -3858,6 +3951,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 
 		    // stopat is provided in seconds
 		    const time_t log_at_time = util_msec_to_sec (donetime->at_time);
+
+		    // the mechanism to stop before a certain time point is not longer used at the redo log recovery stage
+		    // it is done previously
+		    assert (context.get_restore_stop_point () <= 0);
 		    if (context.does_restore_stop_before_time (log_at_time))
 		      {
 			/*
@@ -3915,6 +4012,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	    case LOG_DUMMY_HEAD_POSTPONE:
 	    case LOG_POSTPONE:
 	    case LOG_COMMIT_WITH_POSTPONE:
+	    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
 	    case LOG_SYSOP_START_POSTPONE:
 	    case LOG_SAVEPOINT:
 	    case LOG_2PC_COMMIT_DECISION:
@@ -4135,7 +4233,8 @@ log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, 
       else
 	{
 	  /* safe-guard: we do not expect postpone starts */
-	  assert (logrec_head.type != LOG_COMMIT_WITH_POSTPONE && logrec_head.type != LOG_SYSOP_START_POSTPONE);
+	  assert (logrec_head.type != LOG_COMMIT_WITH_POSTPONE && logrec_head.type != LOG_COMMIT_WITH_POSTPONE_OBSOLETE
+		  && logrec_head.type != LOG_SYSOP_START_POSTPONE);
 
 	  /* move to previous */
 	  prev_lsa = logrec_head.prev_tranlsa;
@@ -4960,6 +5059,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		case LOG_RUN_POSTPONE:
 		case LOG_COMMIT_WITH_POSTPONE:
+		case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
 		case LOG_COMMIT:
 		case LOG_SYSOP_START_POSTPONE:
 		case LOG_ABORT:
@@ -5686,6 +5786,13 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_START_POSTPONE), &log_lsa, log_pgptr);
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_START_POSTPONE), &log_lsa, log_pgptr);
+      break;
+
+    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
+      /* Read the DATA HEADER */
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_START_POSTPONE_OBSOLETE), &log_lsa, log_pgptr);
+
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_START_POSTPONE_OBSOLETE), &log_lsa, log_pgptr);
       break;
 
     case LOG_COMMIT:

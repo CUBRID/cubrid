@@ -303,19 +303,6 @@ extern int logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr);
 
 extern int log_supplement_statement (int ddl_type, int objtype, OID * classoid, OID * objoid, const char *stmt_text);
 
-extern bool histo_is_supported (void);
-extern int histo_start (bool for_all_trans);
-extern int histo_stop (void);
-extern int histo_print (FILE * stream);
-extern int histo_print_global_stats (FILE * stream, bool cumulative, const char *substr);
-extern void histo_clear (void);
-
-extern int net_histo_start (bool for_all_trans);
-extern int net_histo_stop (void);
-extern int net_histo_print (FILE * stream);
-extern int net_histo_print_global_stats (FILE * stream, bool cumulative, const char *substr);
-extern void net_histo_clear (void);
-
 extern int net_client_request_no_reply (int request, char *argbuf, int argsize);
 extern int net_client_request (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf,
 			       int datasize, char *replydata, int replydatasize);

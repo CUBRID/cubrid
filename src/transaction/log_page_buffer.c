@@ -7825,10 +7825,6 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   FILEIO_BACKUP_SESSION session;
   const char *from_vlabel;	/* Name of volume to backup (FROM) */
   char vol_backup[PATH_MAX];	/* Name of the backup volume (TO) */
-#if 0
-  /* Not used */
-  char real_pathbuf[PATH_MAX];	/* Real path */
-#endif
   VOLID volid;			/* Current volume to backup */
   LOG_LSA bkup_start_lsa;	/* Start point of backup */
   LOG_LSA chkpt_lsa;		/* Checkpoint address where the backup process starts */
@@ -7891,13 +7887,6 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
     {
       allbackup_path = log_Path;
     }
-#if 0
-  /* Removed because it causes problems with deliberate symlinks, i.e. solaris tape device names. */
-  else if (realpath (allbackup_path, real_pathbuf) != NULL)
-    {
-      allbackup_path = real_pathbuf;
-    }
-#endif
 
   /* tde key file has to be mounted to access exclusively with TDE Utility if it exists */
   tde_make_keys_file_fullname (mk_path, log_Db_fullname, false);

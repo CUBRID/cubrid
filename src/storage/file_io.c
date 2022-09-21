@@ -954,42 +954,6 @@ fileio_initialize_volume_info_cache (void)
   return 0;
 }
 
-/* TODO: check not use */
-#if 0
-/*
- * fileio_final_volinfo_cache () - Free volinfo_header.volinfo array
- *   return: void
- */
-void
-fileio_final_volinfo_cache (void)
-{
-  int i;
-#if defined(WINDOWS) && defined(SERVER_MODE)
-  int j;
-  FILEIO_VOLUME_INFO *vf;
-#endif /* WINDOWS && SERVER_MODE */
-  if (fileio_Vol_info_header.volinfo != NULL)
-    {
-      for (i = 0; i < fileio_Vol_info_header.num_volinfo_array; i++)
-	{
-#if defined(WINDOWS) && defined(SERVER_MODE)
-	  vf = fileio_Vol_info_header.volinfo[i];
-	  for (j = 0; j < FILEIO_VOLINFO_INCREMENT; j++)
-	    {
-	      if (vf[j].vol_mutex != NULL)
-		{
-		  pthread_mutex_destroy (&vf[j].vol_mutex);
-		}
-	    }
-#endif /* WINDOWS && SERVER_MODE */
-	  free_and_init (fileio_Vol_info_header.volinfo[i]);
-	}
-      free_and_init (fileio_Vol_info_header.volinfo);
-      fileio_Vol_info_header.num_volinfo_array = 0;
-    }
-}
-#endif
-
 static int
 fileio_allocate_and_initialize_volume_info (FILEIO_VOLUME_HEADER * header_p, int idx)
 {
@@ -2697,19 +2661,6 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	}
-    }
-
-  if (error_code != NO_ERROR && error_code != ER_INTERRUPTED)
-    {
-      /* I don't like below assumption, it can be misleading. From what I have seen, errors are already set. */
-#if 0
-      /* It is likely that we run of space. The partition where the volume was created has been used since we checked
-       * above.
-       */
-      max_npages = fileio_get_number_of_partition_free_pages (vol_label_p, IO_PAGESIZE);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_EXPAND_OUT_OF_SPACE, 5, vol_label_p, size_npages,
-	      last_offset / 1024, max_npages, FILEIO_GET_FILE_SIZE (IO_PAGESIZE / 1024, max_npages));
-#endif /* 0 */
     }
 
   db_private_free (thread_p, io_page_p);

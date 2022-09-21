@@ -7862,22 +7862,38 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	    }
 
 	  agg_ptr = buildvalue->agg_list;
-	  if (!xasl->scan_ptr	/* no scan procedure */
-	      && !xasl->fptr_list	/* no path expressions */
-	      && !xasl->if_pred	/* no if predicates */
+	  /* check only one count(*) function
+	   * TO_DO : this routine can be moved to XASL generator */
+	  if (!xasl->fptr_list	/* no path expressions */
 	      && !xasl->instnum_pred	/* no instnum predicate */
 	      && agg_ptr->next == NULL	/* no other aggregate functions */
 	      && agg_ptr->function == PT_COUNT_STAR)
 	    {
-	      /* only one count(*) function */
-	      ACCESS_SPEC_TYPE *specp = xasl->spec_list;
+	      ACCESS_SPEC_TYPE *specp;
+	      bool is_scan_ptr = xasl->scan_ptr ? true : false;
+	      /* get last scan_ptr */
+	      xptr = xasl;
+	      while (xptr->scan_ptr)
+		{
+		  xptr = xptr->scan_ptr;
+		}
+	      specp = xptr->spec_list;
+	      assert (specp);
+
+	      /* count(*) query will scan an index but does not have a data-filter */
 	      if (specp->next == NULL && specp->access == ACCESS_METHOD_INDEX
 		  && specp->s.cls_node.cls_regu_list_pred == NULL && specp->where_pred == NULL
-		  && !specp->indexptr->use_iss && !SCAN_IS_INDEX_MRO (&specp->s_id.s.isid))
+		  && !specp->indexptr->use_iss && !SCAN_IS_INDEX_MRO (&specp->s_id.s.isid)
+		  && !xptr->if_pred /* no if predicates */ )
 		{
-		  /* count(*) query will scan an index but does not have a data-filter */
+		  /* there are two optimization for query having count() only
+		   * 1. Skip saving data to temporary files.
+		   * 2. Skip iteration for each index keys (no scan ptr only) */
 		  specp->s_id.s.isid.need_count_only = true;
-		  count_star_with_iscan_opt = true;
+		  if (!is_scan_ptr)
+		    {
+		      count_star_with_iscan_opt = true;
+		    }
 		}
 	    }
 	}
@@ -7943,8 +7959,10 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 	  if (count_star_with_iscan_opt)
 	    {
+	      /* count only query without join can skip iteration for index keys */
+	      xasl->curr_spec->s_id.position = S_BEFORE;
 	      xasl->proc.buildvalue.agg_list->accumulator.curr_cnt += (&xasl->curr_spec->s_id)->s.isid.oids_count;
-	      /* may have more scan ranges */
+	      /* may have more OIDs */
 	      continue;
 	    }
 	  /* set scan item as qualified */
@@ -9117,8 +9135,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 			}
 		      if (scan_code == S_SUCCESS)
 			{
-			  error =
-			    heap_attrinfo_read_dbvalues (thread_p, oid, &recdes, NULL, &crt_del_lob_info->attr_info);
+			  error = heap_attrinfo_read_dbvalues (thread_p, oid, &recdes, &crt_del_lob_info->attr_info);
 			  if (error != NO_ERROR)
 			    {
 			      GOTO_EXIT_ON_ERROR;
@@ -9928,7 +9945,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    }
 		  if (scan_code == S_SUCCESS)
 		    {
-		      error = heap_attrinfo_read_dbvalues (thread_p, oid, &recdes, NULL, &crt_del_lob_info->attr_info);
+		      error = heap_attrinfo_read_dbvalues (thread_p, oid, &recdes, &crt_del_lob_info->attr_info);
 		      if (error != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
@@ -10313,7 +10330,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 
   if (idx_info->has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &new_recdes, NULL, index_attr_info);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &new_recdes, index_attr_info);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -10550,7 +10567,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 
   if (idx_info->has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &recdes, NULL, index_attr_info);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &recdes, index_attr_info);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -10775,7 +10792,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
       local_op_type = (BTREE_IS_MULTI_ROW_OP (op_type) ? MULTI_ROW_UPDATE : SINGLE_ROW_UPDATE);
     }
 
-  error = heap_attrinfo_read_dbvalues (thread_p, &unique_oid, &rec_descriptor, local_scan_cache, odku->attr_info);
+  error = heap_attrinfo_read_dbvalues (thread_p, &unique_oid, &rec_descriptor, odku->attr_info);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -12073,7 +12090,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  fetch_init_val_list (specp->s.cls_node.cls_regu_list_rest);
 
 	  /* read the predicate values from the heap into the scancache */
-	  status = heap_attrinfo_read_dbvalues (thread_p, &dbvaloid, &oRec, &scan_cache, specp->s.cls_node.cache_pred);
+	  status = heap_attrinfo_read_dbvalues (thread_p, &dbvaloid, &oRec, specp->s.cls_node.cache_pred);
 	  if (status != NO_ERROR)
 	    {
 	      goto wrapup;
@@ -12113,8 +12130,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	      /* the object is a qualified */
 	      fetch->fetch_res = true;
 	      /* read the rest of the values from the heap */
-	      status =
-		heap_attrinfo_read_dbvalues (thread_p, &dbvaloid, &oRec, &scan_cache, specp->s.cls_node.cache_rest);
+	      status = heap_attrinfo_read_dbvalues (thread_p, &dbvaloid, &oRec, specp->s.cls_node.cache_rest);
 	      if (status != NO_ERROR)
 		{
 		  goto wrapup;
@@ -24484,7 +24500,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
       op = pred->pe.m_eval_term.et.et_comp.rel_op;
       if (lhs->type != TYPE_CONSTANT)
 	{
-	  if (lhs->type != TYPE_POS_VALUE && lhs->type != TYPE_DBVAL)
+	  if (lhs->type != TYPE_POS_VALUE && lhs->type != TYPE_DBVAL && lhs->type != TYPE_INARITH)
 	    {
 	      goto cleanup;
 	    }
@@ -24515,7 +24531,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	      goto cleanup;
 	    }
 	}
-      if (rhs->type != TYPE_POS_VALUE && rhs->type != TYPE_DBVAL)
+      if (rhs->type != TYPE_POS_VALUE && rhs->type != TYPE_DBVAL && rhs->type != TYPE_INARITH)
 	{
 	  goto cleanup;
 	}

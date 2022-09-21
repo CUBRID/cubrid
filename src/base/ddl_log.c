@@ -354,7 +354,7 @@ logddl_set_err_msg (char *msg)
       FREE_MEM (ddl_audit_handle->err_msg);
     }
 
-  ALLOC_COPY (ddl_audit_handle->err_msg, msg);
+  ALLOC_COPY_STRLEN (ddl_audit_handle->err_msg, msg);
   logddl_remove_char (ddl_audit_handle->err_msg, '\n');
 }
 

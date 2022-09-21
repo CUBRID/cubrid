@@ -244,7 +244,8 @@ admin_isstarted_cmd (int master_shm_id)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 int
-admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool acl_flag, char *acl_file)
+admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool acl_flag, char *acl_file,
+		 char *admin_log_file)
 {
   int i;
   int res = 0;
@@ -253,6 +254,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
   T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
+  char *admin_log2;
 
   if (br_num <= 0)
     {
@@ -270,6 +272,17 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
   broker_create_dir (get_cubrid_file (FID_SQL_LOG_DIR, path, BROKER_PATH_MAX));
   broker_create_dir (get_cubrid_file (FID_SLOW_LOG_DIR, path, BROKER_PATH_MAX));
   broker_create_dir (get_cubrid_file (FID_CUBRID_ERR_DIR, path, BROKER_PATH_MAX));
+
+  if (admin_log_file != NULL)
+    {
+      admin_log2 = strdup (admin_log_file);
+      if (admin_log2)
+	{
+	  broker_create_dir (dirname (admin_log2));
+	  free (admin_log2);
+	}
+    }
+
 #if !defined(WINDOWS)
   broker_create_dir (get_cubrid_file (FID_SQL_LOG2_DIR, path, BROKER_PATH_MAX));
   broker_create_dir (get_cubrid_file (FID_SOCK_DIR, path, BROKER_PATH_MAX));

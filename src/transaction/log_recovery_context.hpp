@@ -84,11 +84,17 @@ class log_recovery_context
     // Restore related members
     // restore stop point; no stop point if the value is the sentinel value
     time_t m_restore_stop_point = RESTORE_STOP_POINT_NONE;
-    bool m_is_restore_from_backup = false;    // true if server is being restored restore from backup
-    // false if server is recovering after forced stop
-    bool m_is_restore_incomplete = false;     // true if restore is stopped before end of log
-    // false if full restore is executed
 
+    bool m_is_restore_from_backup = false;    /* true if server is being restored restore from backup;
+                                               * false if server is recovering after forced stop;
+                                               * before refactoring of the log recovery code to use this context
+                                               * object, the functionality was called "ismedia_crash" - or
+                                               * "is_media_crash" and was propagated downwards from outside
+                                               * the log recovery code (maybe as a user supplied argument)
+                                               */
+    bool m_is_restore_incomplete = false;     /* true if restore is stopped before end of log
+                                               * false if full restore is executed
+                                               */
     bool m_is_page_server = false;            // true for page server, false for transaction server
 
     log_lsa m_checkpoint_lsa = NULL_LSA;      // the initial checkpoint LSA, starting point for recovery analysis

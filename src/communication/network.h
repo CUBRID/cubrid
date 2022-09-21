@@ -41,6 +41,7 @@
 #define EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE  512
 
 /* These define the requests that the server will respond to */
+/* WARNING: should sync with net_server_request_name in network_common.cpp */
 enum net_server_request
 {
   NET_SERVER_REQUEST_START = 0,
@@ -302,6 +303,9 @@ typedef enum
 
 /* Server startup */
 extern int net_server_start (THREAD_ENTRY * thread_p, const char *server_name);
-extern const char *net_server_request_name (int request);
+
+/* Misc */
+extern const char *get_capability_string (int cap, int cap_type);
+extern const char *get_net_request_name (int request);
 
 #endif /* _NETWORK_H_ */

@@ -190,7 +190,7 @@ namespace cubload
 	scan_code = heap_next (&thread_ref, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK);
 	if (scan_code == S_SUCCESS)
 	  {
-	    error = heap_attrinfo_read_dbvalues (&thread_ref, &inst_oid, &recdes, NULL, &attr_info);
+	    error = heap_attrinfo_read_dbvalues (&thread_ref, &inst_oid, &recdes, &attr_info);
 	    if (error != NO_ERROR)
 	      {
 		ASSERT_ERROR ();
@@ -677,7 +677,7 @@ namespace cubload
 	return;
       }
 
-    insert_errors_filtered = has_errors_filtered_for_insert (m_session.get_args().m_ignored_errors);
+    insert_errors_filtered = has_errors_filtered_for_insert (m_session.get_args ().m_ignored_errors);
 
     if (insert_errors_filtered)
       {

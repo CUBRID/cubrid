@@ -190,6 +190,7 @@ set(CONNECTION_SOURCES
   )
 
 set(COMMUNICATION_SOURCES
+  ${COMMUNICATION_DIR}/network_common.cpp
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
   ${COMMUNICATION_DIR}/communication_channel.cpp
@@ -598,9 +599,6 @@ if(WIN32)
     ${LOADER_LEXER_OUTPUT}
     PROPERTIES COMPILE_FLAGS /WX-
   )
-  if(TARGET_PLATFORM_BITS EQUAL 32)
-    target_compile_definitions(cubrid PRIVATE _USE_32BIT_TIME_T)
-  endif(TARGET_PLATFORM_BITS EQUAL 32)
   target_link_libraries(cubrid LINK_PRIVATE ws2_32 ${JVM_LIBS})
   set_target_properties(cubrid PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/libcubrid/libcubrid.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)

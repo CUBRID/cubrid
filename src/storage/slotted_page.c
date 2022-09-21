@@ -824,26 +824,6 @@ spage_finalize (THREAD_ENTRY * thread_p)
 }
 
 /*
- * spage_slot_size () - Find the overhead used to store one slotted record
- *   return: overhead of slot
- */
-int
-spage_slot_size (void)
-{
-  return sizeof (SPAGE_SLOT);
-}
-
-/*
- * spage_header_size () - Find the overhead used by the page header
- *   return: overhead of slot
- */
-int
-spage_header_size (void)
-{
-  return sizeof (SPAGE_HEADER);
-}
-
-/*
  * spage_max_record_size () - Find the maximum record length that can be stored in
  *                       a slotted page
  *   return: Max length for a new record
@@ -3987,8 +3967,7 @@ spage_get_space_for_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID s
       return -1;
     }
 
-  return (slot_p->record_length + DB_WASTED_ALIGN (slot_p->record_length, page_header_p->alignment) +
-	  spage_slot_size ());
+  return (slot_p->record_length + DB_WASTED_ALIGN (slot_p->record_length, page_header_p->alignment) + SPAGE_SLOT_SIZE);
 }
 
 /*
@@ -4487,12 +4466,7 @@ spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
       int other_saved_spaces = 0;
       int total_saved = spage_get_saved_spaces (thread_p, page_header_p, page_p,
 						&other_saved_spaces);
-#if 1
       if (other_saved_spaces < 0)
-#else
-      if (other_saved_spaces < 0 || total_saved > page_header_p->total_free)
-#endif
-
 	{
 	  snprintf (err_msg, sizeof (err_msg),
 		    "spage_check: Other savings of %d is inconsistent in page = %d of volume = %s.\n",

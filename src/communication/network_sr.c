@@ -59,39 +59,13 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "session.h"
-
-enum net_req_act
-{
-  CHECK_DB_MODIFICATION = 0x0001,
-  CHECK_AUTHORIZATION = 0x0002,
-  SET_DIAGNOSTICS_INFO = 0x0004,
-  IN_TRANSACTION = 0x0008,
-  OUT_TRANSACTION = 0x0010,
-};
-typedef void (*net_server_func) (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
-struct net_request
-{
-  int action_attribute;
-  net_server_func processing_function;
-  const char *name;
-  int request_count;
-  int total_size_sent;
-  int total_size_received;
-  int elapsed_time;
-};
-static struct net_request net_Requests[NET_SERVER_REQUEST_END];
-
-static int net_Histo_call_count = 0;
-
-#if defined(CUBRID_DEBUG)
-static void net_server_histo_print (void);
-static void net_server_histo_add_entry (int request, int data_sent);
-#endif /* CUBRID_DEBUG */
+#include "network_request_def.hpp"
 
 static void net_server_init (void);
 static int net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int size, char *buffer);
 static int net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg);
 
+static struct net_request net_Requests[NET_SERVER_REQUEST_END];
 
 /*
  * net_server_init () -
@@ -101,924 +75,669 @@ static void
 net_server_init (void)
 {
   struct net_request *req_p;
-  unsigned int i;
-
-  net_Histo_call_count = 0;
-
-  for (i = 0; i < DIM (net_Requests); i++)
-    {
-      net_Requests[i].action_attribute = 0;
-      net_Requests[i].processing_function = NULL;
-      net_Requests[i].name = "";
-      net_Requests[i].request_count = 0;
-      net_Requests[i].total_size_sent = 0;
-      net_Requests[i].total_size_received = 0;
-      net_Requests[i].elapsed_time = 0;
-    }
 
   /* ping */
   req_p = &net_Requests[NET_SERVER_PING];
   req_p->processing_function = server_ping;
-  req_p->name = "NET_SERVER_PING";
 
   /* boot */
   req_p = &net_Requests[NET_SERVER_BO_INIT_SERVER];
   req_p->processing_function = sboot_initialize_server;
-  req_p->name = "NET_SERVER_BO_INIT_SERVER";
 
   req_p = &net_Requests[NET_SERVER_BO_REGISTER_CLIENT];
   req_p->processing_function = sboot_register_client;
-  req_p->name = "NET_SERVER_BO_REGISTER_CLIENT";
 
   req_p = &net_Requests[NET_SERVER_BO_UNREGISTER_CLIENT];
   req_p->processing_function = sboot_notify_unregister_client;
-  req_p->name = "NET_SERVER_BO_UNREGISTER_CLIENT";
 
   req_p = &net_Requests[NET_SERVER_BO_BACKUP];
   req_p->action_attribute = (CHECK_AUTHORIZATION | IN_TRANSACTION);
   req_p->processing_function = sboot_backup;
-  req_p->name = "NET_SERVER_BO_BACKUP";
 
   req_p = &net_Requests[NET_SERVER_BO_ADD_VOLEXT];
   req_p->action_attribute = (CHECK_AUTHORIZATION | IN_TRANSACTION);
   req_p->processing_function = sboot_add_volume_extension;
-  req_p->name = "NET_SERVER_BO_ADD_VOLEXT";
 
   req_p = &net_Requests[NET_SERVER_BO_CHECK_DBCONSISTENCY];
   req_p->action_attribute = (CHECK_AUTHORIZATION | IN_TRANSACTION);
   req_p->processing_function = sboot_check_db_consistency;
-  req_p->name = "NET_SERVER_BO_CHECK_DBCONSISTENCY";
 
   req_p = &net_Requests[NET_SERVER_BO_FIND_NPERM_VOLS];
   req_p->processing_function = sboot_find_number_permanent_volumes;
-  req_p->name = "NET_SERVER_BO_FIND_NPERM_VOLS";
 
   req_p = &net_Requests[NET_SERVER_BO_FIND_NTEMP_VOLS];
   req_p->processing_function = sboot_find_number_temp_volumes;
-  req_p->name = "NET_SERVER_BO_FIND_NTEMP_VOLS";
 
   req_p = &net_Requests[NET_SERVER_BO_FIND_LAST_PERM];
   req_p->processing_function = sboot_find_last_permanent;
-  req_p->name = "NET_SERVER_BO_FIND_LAST_PERM";
 
   req_p = &net_Requests[NET_SERVER_BO_FIND_LAST_TEMP];
   req_p->processing_function = sboot_find_last_temp;
-  req_p->name = "NET_SERVER_BO_FIND_LAST_TEMP";
 
   req_p = &net_Requests[NET_SERVER_BO_CHANGE_HA_MODE];
   req_p->action_attribute = CHECK_AUTHORIZATION;
   req_p->processing_function = sboot_change_ha_mode;
-  req_p->name = "NET_SERVER_BO_CHANGE_HA_MODE";
 
   req_p = &net_Requests[NET_SERVER_BO_NOTIFY_HA_LOG_APPLIER_STATE];
   req_p->action_attribute = CHECK_AUTHORIZATION;
   req_p->processing_function = sboot_notify_ha_log_applier_state;
-  req_p->name = "NET_SERVER_BO_NOTIFY_HA_LOG_APPLIER_STATE";
 
   req_p = &net_Requests[NET_SERVER_BO_COMPACT_DB];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | CHECK_AUTHORIZATION | IN_TRANSACTION);
   req_p->processing_function = sboot_compact_db;
-  req_p->name = "NET_SERVER_BO_COMPACT_DB";
 
   req_p = &net_Requests[NET_SERVER_BO_HEAP_COMPACT];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | CHECK_AUTHORIZATION | IN_TRANSACTION);
   req_p->processing_function = sboot_heap_compact;
-  req_p->name = "NET_SERVER_BO_HEAP_COMPACT";
 
   req_p = &net_Requests[NET_SERVER_BO_COMPACT_DB_START];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sboot_compact_start;
-  req_p->name = "NET_SERVER_BO_COMPACT_DB_START";
 
   req_p = &net_Requests[NET_SERVER_BO_COMPACT_DB_STOP];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sboot_compact_stop;
-  req_p->name = "NET_SERVER_BO_COMPACT_DB_STOP";
 
   req_p = &net_Requests[NET_SERVER_BO_GET_LOCALES_INFO];
   req_p->processing_function = sboot_get_locales_info;
-  req_p->name = "NET_SERVER_BO_GET_LOCALES_INFO";
 
   /* transaction */
   req_p = &net_Requests[NET_SERVER_TM_SERVER_COMMIT];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO | OUT_TRANSACTION);
   req_p->processing_function = stran_server_commit;
-  req_p->name = "NET_SERVER_TM_SERVER_COMMIT";
 
   req_p = &net_Requests[NET_SERVER_TM_SERVER_ABORT];
   req_p->action_attribute = (SET_DIAGNOSTICS_INFO | OUT_TRANSACTION);
   req_p->processing_function = stran_server_abort;
-  req_p->name = "NET_SERVER_TM_SERVER_ABORT";
 
   req_p = &net_Requests[NET_SERVER_TM_SERVER_START_TOPOP];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = stran_server_start_topop;
-  req_p->name = "NET_SERVER_TM_SERVER_START_TOPOP";
 
   req_p = &net_Requests[NET_SERVER_TM_SERVER_END_TOPOP];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = stran_server_end_topop;
-  req_p->name = "NET_SERVER_TM_SERVER_END_TOPOP";
 
   req_p = &net_Requests[NET_SERVER_TM_SERVER_SAVEPOINT];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = stran_server_savepoint;
-  req_p->name = "NET_SERVER_TM_SERVER_SAVEPOINT";
 
   req_p = &net_Requests[NET_SERVER_TM_SERVER_PARTIAL_ABORT];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = stran_server_partial_abort;
-  req_p->name = "NET_SERVER_TM_SERVER_PARTIAL_ABORT";
 
   req_p = &net_Requests[NET_SERVER_TM_SERVER_HAS_UPDATED];
   req_p->processing_function = stran_server_has_updated;
-  req_p->name = "NET_SERVER_TM_SERVER_HAS_UPDATED";
 
   req_p = &net_Requests[NET_SERVER_TM_SERVER_ISACTIVE_AND_HAS_UPDATED];
   req_p->processing_function = stran_server_is_active_and_has_updated;
-  req_p->name = "NET_SERVER_TM_SERVER_ISACTIVE_AND_HAS_UPDATED";
 
   req_p = &net_Requests[NET_SERVER_TM_ISBLOCKED];
   req_p->processing_function = stran_is_blocked;
-  req_p->name = "NET_SERVER_TM_ISBLOCKED";
 
   req_p = &net_Requests[NET_SERVER_TM_WAIT_SERVER_ACTIVE_TRANS];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = stran_wait_server_active_trans;
-  req_p->name = "NET_SERVER_TM_WAIT_SERVER_ACTIVE_TRANS";
 
   req_p = &net_Requests[NET_SERVER_TM_SERVER_GET_GTRINFO];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = stran_server_get_global_tran_info;
-  req_p->name = "NET_SERVER_TM_SERVER_GET_GTRINFO";
 
   req_p = &net_Requests[NET_SERVER_TM_SERVER_SET_GTRINFO];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = stran_server_set_global_tran_info;
-  req_p->name = "NET_SERVER_TM_SERVER_SET_GTRINFO";
 
   req_p = &net_Requests[NET_SERVER_TM_SERVER_2PC_START];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = stran_server_2pc_start;
-  req_p->name = "NET_SERVER_TM_SERVER_2PC_START";
 
   req_p = &net_Requests[NET_SERVER_TM_SERVER_2PC_PREPARE];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = stran_server_2pc_prepare;
-  req_p->name = "NET_SERVER_TM_SERVER_2PC_PREPARE";
 
   req_p = &net_Requests[NET_SERVER_TM_SERVER_2PC_RECOVERY_PREPARED];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = stran_server_2pc_recovery_prepared;
-  req_p->name = "NET_SERVER_TM_SERVER_2PC_RECOVERY_PREPARED";
 
   req_p = &net_Requests[NET_SERVER_TM_SERVER_2PC_ATTACH_GT];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = stran_server_2pc_attach_global_tran;
-  req_p->name = "NET_SERVER_TM_SERVER_2PC_ATTACH_GT";
 
   req_p = &net_Requests[NET_SERVER_TM_SERVER_2PC_PREPARE_GT];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = stran_server_2pc_prepare_global_tran;
-  req_p->name = "NET_SERVER_TM_SERVER_2PC_PREPARE_GT";
 
   req_p = &net_Requests[NET_SERVER_TM_LOCAL_TRANSACTION_ID];
   req_p->processing_function = stran_get_local_transaction_id;
-  req_p->name = "NET_SERVER_TM_LOCAL_TRANSACTION_ID";
 
   /* locator */
   req_p = &net_Requests[NET_SERVER_LC_FETCH];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_fetch;
-  req_p->name = "NET_SERVER_LC_FETCH";
 
   req_p = &net_Requests[NET_SERVER_LC_FETCHALL];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_fetch_all;
-  req_p->name = "NET_SERVER_LC_FETCHALL";
 
   req_p = &net_Requests[NET_SERVER_LC_FETCH_LOCKSET];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_fetch_lockset;
-  req_p->name = "NET_SERVER_LC_FETCH_LOCKSET";
 
   req_p = &net_Requests[NET_SERVER_LC_FETCH_ALLREFS_LOCKSET];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_fetch_all_reference_lockset;
-  req_p->name = "NET_SERVER_LC_FETCH_ALLREFS_LOCKSET";
 
   req_p = &net_Requests[NET_SERVER_LC_GET_CLASS];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_get_class;
-  req_p->name = "NET_SERVER_LC_GET_CLASS";
 
   req_p = &net_Requests[NET_SERVER_LC_FIND_CLASSOID];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_find_class_oid;
-  req_p->name = "NET_SERVER_LC_FIND_CLASSOID";
 
   req_p = &net_Requests[NET_SERVER_LC_DOESEXIST];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_does_exist;
-  req_p->name = "NET_SERVER_LC_DOESEXIST";
 
   req_p = &net_Requests[NET_SERVER_LC_FORCE];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
   req_p->processing_function = slocator_force;
-  req_p->name = "NET_SERVER_LC_FORCE";
 
   req_p = &net_Requests[NET_SERVER_LC_RESERVE_CLASSNAME];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = slocator_reserve_classnames;
-  req_p->name = "NET_SERVER_LC_RESERVE_CLASSNAME";
 
   req_p = &net_Requests[NET_SERVER_LC_RESERVE_CLASSNAME_GET_OID];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = slocator_get_reserved_class_name_oid;
-  req_p->name = "NET_SERVER_LC_RESERVE_CLASSNAME_GET_OID";
 
   req_p = &net_Requests[NET_SERVER_LC_DELETE_CLASSNAME];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = slocator_delete_class_name;
-  req_p->name = "NET_SERVER_LC_DELETE_CLASSNAME";
 
   req_p = &net_Requests[NET_SERVER_LC_RENAME_CLASSNAME];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = slocator_rename_class_name;
-  req_p->name = "NET_SERVER_LC_RENAME_CLASSNAME";
 
   req_p = &net_Requests[NET_SERVER_LC_ASSIGN_OID];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = slocator_assign_oid;
-  req_p->name = "NET_SERVER_LC_ASSIGN_OID";
 
   req_p = &net_Requests[NET_SERVER_LC_NOTIFY_ISOLATION_INCONS];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_notify_isolation_incons;
-  req_p->name = "NET_SERVER_LC_NOTIFY_ISOLATION_INCONS";
 
   req_p = &net_Requests[NET_SERVER_LC_FIND_LOCKHINT_CLASSOIDS];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_find_lockhint_class_oids;
-  req_p->name = "NET_SERVER_LC_FIND_LOCKHINT_CLASSOIDS";
 
   req_p = &net_Requests[NET_SERVER_LC_FETCH_LOCKHINT_CLASSES];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_fetch_lockhint_classes;
-  req_p->name = "NET_SERVER_LC_FETCH_LOCKHINT_CLASSES";
 
   req_p = &net_Requests[NET_SERVER_LC_ASSIGN_OID_BATCH];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = slocator_assign_oid_batch;
-  req_p->name = "NET_SERVER_LC_ASSIGN_OID_BATCH";
 
   req_p = &net_Requests[NET_SERVER_LC_CHECK_FK_VALIDITY];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = slocator_check_fk_validity;
-  req_p->name = "NET_SERVER_LC_CHECK_FK_VALIDITY";
 
   req_p = &net_Requests[NET_SERVER_LC_REM_CLASS_FROM_INDEX];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = slocator_remove_class_from_index;
-  req_p->name = "NET_SERVER_LC_REM_CLASS_FROM_INDEX";
 
   req_p = &net_Requests[NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = slocator_upgrade_instances_domain;
-  req_p->name = "NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN";
 
   req_p = &net_Requests[NET_SERVER_LC_REPL_FORCE];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
   req_p->processing_function = slocator_repl_force;
-  req_p->name = "NET_SERVER_LC_REPL_FORCE";
 
   /* redistribute partition data */
   req_p = &net_Requests[NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_redistribute_partition_data;
-  req_p->name = "NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA";
 
   req_p = &net_Requests[NET_SERVER_LC_DEMOTE_CLASS_LOCK];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_demote_class_lock;
-  req_p->name = "NET_SERVER_LC_DEMOTE_CLASS_LOCK";
 
   /* heap */
   req_p = &net_Requests[NET_SERVER_HEAP_CREATE];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = shf_create;
-  req_p->name = "NET_SERVER_HEAP_CREATE";
 
   req_p = &net_Requests[NET_SERVER_HEAP_DESTROY];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = shf_destroy;
-  req_p->name = "NET_SERVER_HEAP_DESTROY";
 
   req_p = &net_Requests[NET_SERVER_HEAP_DESTROY_WHEN_NEW];
   req_p->action_attribute = CHECK_DB_MODIFICATION | IN_TRANSACTION;
   req_p->processing_function = shf_destroy_when_new;
-  req_p->name = "NET_SERVER_HEAP_DESTROY_WHEN_NEW";
 
   req_p = &net_Requests[NET_SERVER_HEAP_GET_CLASS_NOBJS_AND_NPAGES];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = shf_get_class_num_objs_and_pages;
-  req_p->name = "NET_SERVER_HEAP_GET_CLASS_NOBJS_AND_NPAGES";
 
   req_p = &net_Requests[NET_SERVER_HEAP_HAS_INSTANCE];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = shf_has_instance;
-  req_p->name = "NET_SERVER_HEAP_HAS_INSTANCE";
 
   req_p = &net_Requests[NET_SERVER_HEAP_RECLAIM_ADDRESSES];
   req_p->action_attribute = (CHECK_AUTHORIZATION | CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = shf_heap_reclaim_addresses;
-  req_p->name = "NET_SERVER_HEAP_RECLAIM_ADDRESSES";
 
   /* file */
   req_p = &net_Requests[NET_SERVER_FILE_APPLY_TDE_TO_CLASS_FILES];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sfile_apply_tde_to_class_files;
-  req_p->name = "NET_SERVER_FILE_APPLY_TDE_TO_CLASS_FILES";
 
   /* dblink */
   req_p = &net_Requests[NET_SERVER_DBLINK_GET_CRYPT_KEY];
   req_p->processing_function = sdblink_get_crypt_keys;
-  req_p->name = "NET_SERVER_DBLINK_GET_CRYPT_KEY";
 
   /* tde */
   req_p = &net_Requests[NET_SERVER_TDE_IS_LOADED];
   req_p->processing_function = stde_is_loaded;
-  req_p->name = "NET_SERVER_TDE_IS_LOADED";
 
   req_p = &net_Requests[NET_SERVER_TDE_GET_DATA_KEYS];
   req_p->processing_function = stde_get_data_keys;
-  req_p->name = "NET_SERVER_TDE_GET_DATA_KEYS";
 
   req_p = &net_Requests[NET_SERVER_TDE_GET_MK_FILE_PATH];
   req_p->processing_function = stde_get_mk_file_path;
-  req_p->name = "NET_SERVER_TDE_GET_MK_FILE_PATH";
 
   req_p = &net_Requests[NET_SERVER_TDE_GET_MK_INFO];
   req_p->processing_function = stde_get_mk_info;
-  req_p->name = "NET_SERVER_TDE_GET_MK_INFO";
 
   req_p = &net_Requests[NET_SERVER_TDE_CHANGE_MK_ON_SERVER];
   req_p->processing_function = stde_change_mk_on_server;
-  req_p->name = "NET_SERVER_TDE_CHANGE_MK_ON_SERVER";
 
   /* log */
   req_p = &net_Requests[NET_SERVER_LOG_RESET_WAIT_MSECS];
   req_p->processing_function = slogtb_reset_wait_msecs;
-  req_p->name = "NET_SERVER_LOG_RESET_WAIT_MSECS";
 
   req_p = &net_Requests[NET_SERVER_LOG_RESET_ISOLATION];
   req_p->processing_function = slogtb_reset_isolation;
-  req_p->name = "NET_SERVER_LOG_RESET_ISOLATION";
 
   req_p = &net_Requests[NET_SERVER_LOG_SET_INTERRUPT];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slogtb_set_interrupt;
-  req_p->name = "NET_SERVER_LOG_SET_INTERRUPT";
 
   req_p = &net_Requests[NET_SERVER_LOG_DUMP_STAT];
   req_p->processing_function = slogpb_dump_stat;
-  req_p->name = "NET_SERVER_LOG_DUMP_STAT";
 
   req_p = &net_Requests[NET_SERVER_LOG_GETPACK_TRANTB];
   req_p->processing_function = slogtb_get_pack_tran_table;
-  req_p->name = "NET_SERVER_LOG_GETPACK_TRANTB";
 
   req_p = &net_Requests[NET_SERVER_LOG_DUMP_TRANTB];
   req_p->processing_function = slogtb_dump_trantable;
-  req_p->name = "NET_SERVER_LOG_DUMP_TRANTB";
 
   req_p = &net_Requests[NET_SERVER_LOG_FIND_LOB_LOCATOR];
   req_p->processing_function = slog_find_lob_locator;
-  req_p->name = "NET_SERVER_LOG_FIND_LOB_LOCATOR";
 
   req_p = &net_Requests[NET_SERVER_LOG_ADD_LOB_LOCATOR];
   req_p->processing_function = slog_add_lob_locator;
-  req_p->name = "NET_SERVER_LOG_ADD_LOB_LOCATOR";
 
   req_p = &net_Requests[NET_SERVER_LOG_CHANGE_STATE_OF_LOCATOR];
   req_p->processing_function = slog_change_state_of_locator;
-  req_p->name = "NET_SERVER_LOG_CHANGE_STATE_OF_LOCATOR";
 
   req_p = &net_Requests[NET_SERVER_LOG_DROP_LOB_LOCATOR];
   req_p->processing_function = slog_drop_lob_locator;
-  req_p->name = "NET_SERVER_LOG_DROP_LOB_LOCATOR";
 
   req_p = &net_Requests[NET_SERVER_LOG_CHECKPOINT];
   req_p->processing_function = slog_checkpoint;
-  req_p->name = "NET_SERVER_LOG_CHECKPOINT";
 
   req_p = &net_Requests[NET_SERVER_LOG_SET_SUPPRESS_REPL_ON_TRANSACTION];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slogtb_set_suppress_repl_on_transaction;
-  req_p->name = "NET_SERVER_LOG_SET_SUPPRESS_REPL_ON_TRANSACTION";
 
   /* lock */
   req_p = &net_Requests[NET_SERVER_LK_DUMP];
   req_p->processing_function = slock_dump;
-  req_p->name = "NET_SERVER_LK_DUMP";
 
   /* b-tree */
   req_p = &net_Requests[NET_SERVER_BTREE_ADDINDEX];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sbtree_add_index;
-  req_p->name = "NET_SERVER_BTREE_ADDINDEX";
 
   req_p = &net_Requests[NET_SERVER_BTREE_DELINDEX];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sbtree_delete_index;
-  req_p->name = "NET_SERVER_BTREE_DELINDEX";
 
   req_p = &net_Requests[NET_SERVER_BTREE_LOADINDEX];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sbtree_load_index;
-  req_p->name = "NET_SERVER_BTREE_LOADINDEX";
 
   req_p = &net_Requests[NET_SERVER_BTREE_FIND_UNIQUE];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sbtree_find_unique;
-  req_p->name = "NET_SERVER_BTREE_FIND_UNIQUE";
 
   req_p = &net_Requests[NET_SERVER_BTREE_CLASS_UNIQUE_TEST];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sbtree_class_test_unique;
-  req_p->name = "NET_SERVER_BTREE_CLASS_UNIQUE_TEST";
 
   req_p = &net_Requests[NET_SERVER_BTREE_GET_STATISTICS];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sbtree_get_statistics;
-  req_p->name = "NET_SERVER_BTREE_GET_STATISTICS";
 
   req_p = &net_Requests[NET_SERVER_BTREE_GET_KEY_TYPE];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sbtree_get_key_type;
-  req_p->name = "NET_SERVER_BTREE_GET_KEY_TYPE";
 
   /* disk */
   req_p = &net_Requests[NET_SERVER_DISK_TOTALPGS];
   req_p->processing_function = sdk_totalpgs;
-  req_p->name = "NET_SERVER_DISK_TOTALPGS";
 
   req_p = &net_Requests[NET_SERVER_DISK_FREEPGS];
   req_p->processing_function = sdk_freepgs;
-  req_p->name = "NET_SERVER_DISK_FREEPGS";
 
   req_p = &net_Requests[NET_SERVER_DISK_REMARKS];
   req_p->processing_function = sdk_remarks;
-  req_p->name = "NET_SERVER_DISK_REMARKS";
 
   req_p = &net_Requests[NET_SERVER_DISK_VLABEL];
   req_p->processing_function = sdk_vlabel;
-  req_p->name = "NET_SERVER_DISK_VLABEL";
 
   /* statistics */
   req_p = &net_Requests[NET_SERVER_QST_GET_STATISTICS];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sqst_server_get_statistics;
-  req_p->name = "NET_SERVER_QST_GET_STATISTICS";
 
   req_p = &net_Requests[NET_SERVER_QST_UPDATE_STATISTICS];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sqst_update_statistics;
-  req_p->name = "NET_SERVER_QST_UPDATE_STATISTICS";
 
   req_p = &net_Requests[NET_SERVER_QST_UPDATE_ALL_STATISTICS];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sqst_update_all_statistics;
-  req_p->name = "NET_SERVER_QST_UPDATE_ALL_STATISTICS";
 
   /* query manager */
   req_p = &net_Requests[NET_SERVER_QM_QUERY_PREPARE];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sqmgr_prepare_query;
-  req_p->name = "NET_SERVER_QM_QUERY_PREPARE";
 
   req_p = &net_Requests[NET_SERVER_QM_QUERY_EXECUTE];
   req_p->action_attribute = (SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
   req_p->processing_function = sqmgr_execute_query;
-  req_p->name = "NET_SERVER_QM_QUERY_EXECUTE";
 
   req_p = &net_Requests[NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE];
   req_p->action_attribute = (SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
   req_p->processing_function = sqmgr_prepare_and_execute_query;
-  req_p->name = "NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE";
 
   req_p = &net_Requests[NET_SERVER_QM_QUERY_END];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sqmgr_end_query;
-  req_p->name = "NET_SERVER_QM_QUERY_END";
 
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DROP_ALL_PLANS];
   req_p->processing_function = sqmgr_drop_all_query_plans;
-  req_p->name = "NET_SERVER_QM_QUERY_DROP_ALL_PLANS";
 
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DUMP_PLANS];
   req_p->processing_function = sqmgr_dump_query_plans;
-  req_p->name = "NET_SERVER_QM_QUERY_DUMP_PLANS";
 
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DUMP_CACHE];
   req_p->processing_function = sqmgr_dump_query_cache;
-  req_p->name = "NET_SERVER_QM_QUERY_DUMP_CACHE";
 
   /* query file */
   req_p = &net_Requests[NET_SERVER_LS_GET_LIST_FILE_PAGE];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sqfile_get_list_file_page;
-  req_p->name = "NET_SERVER_LS_GET_LIST_FILE_PAGE";
 
   /* monitor */
   req_p = &net_Requests[NET_SERVER_MNT_SERVER_START_STATS];
   req_p->action_attribute = CHECK_AUTHORIZATION;
   req_p->processing_function = smnt_server_start_stats;
-  req_p->name = "NET_SERVER_MNT_SERVER_START_STATS";
 
   req_p = &net_Requests[NET_SERVER_MNT_SERVER_STOP_STATS];
   req_p->action_attribute = CHECK_AUTHORIZATION;
   req_p->processing_function = smnt_server_stop_stats;
-  req_p->name = "NET_SERVER_MNT_SERVER_STOP_STATS";
 
   req_p = &net_Requests[NET_SERVER_MNT_SERVER_COPY_STATS];
   req_p->action_attribute = CHECK_AUTHORIZATION;
   req_p->processing_function = smnt_server_copy_stats;
-  req_p->name = "NET_SERVER_MNT_SERVER_COPY_STATS";
 
   /* catalog */
   req_p = &net_Requests[NET_SERVER_CT_CHECK_REP_DIR];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sct_check_rep_dir;
-  req_p->name = "NET_SERVER_CT_CHECK_REP_DIR";
 
   /* thread */
   req_p = &net_Requests[NET_SERVER_CSS_KILL_TRANSACTION];
   req_p->action_attribute = CHECK_AUTHORIZATION;
   req_p->processing_function = sthread_kill_tran_index;
-  req_p->name = "NET_SERVER_CSS_KILL_TRANSACTION";
 
   req_p = &net_Requests[NET_SERVER_CSS_DUMP_CS_STAT];
   req_p->action_attribute = CHECK_AUTHORIZATION;
   req_p->processing_function = sthread_dump_cs_stat;
-  req_p->name = "NET_SERVER_CSS_DUMP_CS_STAT";
 
   /* query processing */
   req_p = &net_Requests[NET_SERVER_QPROC_GET_SYS_TIMESTAMP];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sqp_get_sys_timestamp;
-  req_p->name = "NET_SERVER_QPROC_GET_SYS_TIMESTAMP";
 
   req_p = &net_Requests[NET_SERVER_QPROC_GET_CURRENT_VALUE];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sserial_get_current_value;
-  req_p->name = "NET_SERVER_QPROC_GET_CURRENT_VALUE";
 
   req_p = &net_Requests[NET_SERVER_QPROC_GET_NEXT_VALUE];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sserial_get_next_value;
-  req_p->name = "NET_SERVER_QPROC_GET_NEXT_VALUE";
 
   req_p = &net_Requests[NET_SERVER_SERIAL_DECACHE];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sserial_decache;
-  req_p->name = "NET_SERVER_SERIAL_DECACHE";
 
   req_p = &net_Requests[NET_SERVER_SYNONYM_REMOVE_XASL_BY_OID];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = ssynonym_remove_xasl_by_oid;
-  req_p->name = "NET_SERVER_SYNONYM_REMOVE_XASL_BY_OID";
 
   req_p = &net_Requests[NET_SERVER_QPROC_GET_SERVER_INFO];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sqp_get_server_info;
-  req_p->name = "NET_SERVER_QPROC_GET_SERVER_INFO";
 
   /* parameter */
   req_p = &net_Requests[NET_SERVER_PRM_SET_PARAMETERS];
   req_p->processing_function = sprm_server_change_parameters;
-  req_p->name = "NET_SERVER_PRM_SET_PARAMETERS";
 
   req_p = &net_Requests[NET_SERVER_PRM_GET_PARAMETERS];
   req_p->processing_function = sprm_server_obtain_parameters;
-  req_p->name = "NET_SERVER_PRM_GET_PARAMETERS";
 
   req_p = &net_Requests[NET_SERVER_PRM_GET_FORCE_PARAMETERS];
   req_p->processing_function = sprm_server_get_force_parameters;
-  req_p->name = "NET_SERVER_PRM_GET_FORCE_PARAMETERS";
 
   req_p = &net_Requests[NET_SERVER_PRM_DUMP_PARAMETERS];
   req_p->processing_function = sprm_server_dump_parameters;
-  req_p->name = "NET_SERVER_PRM_DUMP_PARAMETERS";
 
   /* JSP */
   req_p = &net_Requests[NET_SERVER_JSP_GET_SERVER_PORT];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sjsp_get_server_port;
-  req_p->name = "NET_SERVER_JSP_GET_SERVER_PORT";
 
   /* replication */
   req_p = &net_Requests[NET_SERVER_REPL_INFO];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = srepl_set_info;
-  req_p->name = "NET_SERVER_REPL_INFO";
 
   req_p = &net_Requests[NET_SERVER_REPL_LOG_GET_APPEND_LSA];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = srepl_log_get_append_lsa;
-  req_p->name = "NET_SERVER_REPL_LOG_GET_APPEND_LSA";
 
   /* log writer */
   req_p = &net_Requests[NET_SERVER_LOGWR_GET_LOG_PAGES];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slogwr_get_log_pages;
-  req_p->name = "NET_SERVER_LOGWR_GET_LOG_PAGES";
 
   /* shutdown */
   req_p = &net_Requests[NET_SERVER_SHUTDOWN];
   req_p->action_attribute = CHECK_AUTHORIZATION;
-  req_p->name = "NET_SERVER_SHUTDOWN";
 
   /* monitor */
   req_p = &net_Requests[NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS];
   req_p->action_attribute = CHECK_AUTHORIZATION;
   req_p->processing_function = smnt_server_copy_global_stats;
-  req_p->name = "NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS";
 
   /* esternal storage supports */
   req_p = &net_Requests[NET_SERVER_ES_CREATE_FILE];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = ses_posix_create_file;
-  req_p->name = "NET_SERVER_ES_CREATE_FILE";
 
   req_p = &net_Requests[NET_SERVER_ES_WRITE_FILE];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = ses_posix_write_file;
-  req_p->name = "NET_SERVER_ES_WRITE_FILE";
 
   req_p = &net_Requests[NET_SERVER_ES_READ_FILE];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = ses_posix_read_file;
-  req_p->name = "NET_SERVER_ES_READ_FILE";
 
   req_p = &net_Requests[NET_SERVER_ES_DELETE_FILE];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = ses_posix_delete_file;
-  req_p->name = "NET_SERVER_ES_DELETE_FILE";
 
   req_p = &net_Requests[NET_SERVER_ES_COPY_FILE];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = ses_posix_copy_file;
-  req_p->name = "NET_SERVER_ES_COPY_FILE";
 
   req_p = &net_Requests[NET_SERVER_ES_RENAME_FILE];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = ses_posix_rename_file;
-  req_p->name = "NET_SERVER_ES_RENAME_FILE";
 
   req_p = &net_Requests[NET_SERVER_ES_GET_FILE_SIZE];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = ses_posix_get_file_size;
-  req_p->name = "NET_SERVER_ES_GET_FILE_SIZE";
 
   /* session state */
   req_p = &net_Requests[NET_SERVER_SES_CHECK_SESSION];
   req_p->processing_function = ssession_find_or_create_session;
-  req_p->name = "NET_SERVER_SES_CHECK_SESSION";
 
   req_p = &net_Requests[NET_SERVER_SES_END_SESSION];
   req_p->processing_function = ssession_end_session;
-  req_p->name = "NET_SERVER_END_SESSION";
 
   req_p = &net_Requests[NET_SERVER_SES_SET_ROW_COUNT];
   req_p->processing_function = ssession_set_row_count;
-  req_p->name = "NET_SERVER_SET_ROW_COUNT";
 
   req_p = &net_Requests[NET_SERVER_SES_GET_ROW_COUNT];
   req_p->processing_function = ssession_get_row_count;
-  req_p->name = "NET_SERVER_GET_ROW_COUNT";
 
   req_p = &net_Requests[NET_SERVER_SES_GET_LAST_INSERT_ID];
   req_p->processing_function = ssession_get_last_insert_id;
-  req_p->name = "NET_SERVER_SES_GET_LAST_INSERT_ID";
 
   req_p = &net_Requests[NET_SERVER_SES_RESET_CUR_INSERT_ID];
   req_p->processing_function = ssession_reset_cur_insert_id;
-  req_p->name = "NET_SERVER_SES_RESET_CUR_INSERT_ID";
 
   req_p = &net_Requests[NET_SERVER_SES_CREATE_PREPARED_STATEMENT];
   req_p->processing_function = ssession_create_prepared_statement;
-  req_p->name = "NET_SERVER_SES_CREATE_PREPARED_STATEMENT";
 
   req_p = &net_Requests[NET_SERVER_SES_GET_PREPARED_STATEMENT];
   req_p->processing_function = ssession_get_prepared_statement;
-  req_p->name = "NET_SERVER_SES_GET_PREPARED_STATEMENT";
 
   req_p = &net_Requests[NET_SERVER_SES_DELETE_PREPARED_STATEMENT];
   req_p->processing_function = ssession_delete_prepared_statement;
-  req_p->name = "NET_SERVER_SES_DELETE_PREPARED_STATEMENT";
 
   req_p = &net_Requests[NET_SERVER_SES_SET_SESSION_VARIABLES];
   req_p->processing_function = ssession_set_session_variables;
-  req_p->name = "NET_SERVER_SES_SET_SESSION_VARIABLES";
 
   req_p = &net_Requests[NET_SERVER_SES_GET_SESSION_VARIABLE];
   req_p->processing_function = ssession_get_session_variable;
-  req_p->name = "NET_SERVER_SES_GET_SESSION_VARIABLE";
 
   req_p = &net_Requests[NET_SERVER_SES_DROP_SESSION_VARIABLES];
   req_p->processing_function = ssession_drop_session_variables;
-  req_p->name = "NET_SERVER_SES_DROP_SESSION_VARIABLES";
 
   /* ip control */
   req_p = &net_Requests[NET_SERVER_ACL_DUMP];
   req_p->processing_function = sacl_dump;
-  req_p->name = "NET_SERVER_ACL_DUMP";
 
   req_p = &net_Requests[NET_SERVER_ACL_RELOAD];
   req_p->processing_function = sacl_reload;
-  req_p->name = "NET_SERVER_ACL_RELOAD";
 
   req_p = &net_Requests[NET_SERVER_AU_LOGIN_USER];
   req_p->processing_function = slogin_user;
-  req_p->name = "NET_SERVER_SET_USERNAME";
 
   req_p = &net_Requests[NET_SERVER_BTREE_FIND_MULTI_UNIQUES];
   req_p->processing_function = sbtree_find_multi_uniques;
-  req_p->name = "NET_SERVER_FIND_MULTI_UNIQUES";
 
   req_p = &net_Requests[NET_SERVER_CSS_KILL_OR_INTERRUPT_TRANSACTION];
   req_p->processing_function = sthread_kill_or_interrupt_tran;
-  req_p->name = "NET_SERVER_CSS_KILL_OR_INTERRUPT_TRANSACTION";
 
   req_p = &net_Requests[NET_SERVER_VACUUM];
   req_p->processing_function = svacuum;
-  req_p->name = "NET_SERVER_VACUUM";
 
   req_p = &net_Requests[NET_SERVER_GET_MVCC_SNAPSHOT];
   req_p->processing_function = slogtb_get_mvcc_snapshot;
-  req_p->name = "NET_SERVER_GET_MVCC_SNAPSHOT";
 
   req_p = &net_Requests[NET_SERVER_LOCK_RR];
   req_p->processing_function = stran_lock_rep_read;
-  req_p->name = "NET_SERVER_LOCK_RR";
 
   req_p = &net_Requests[NET_SERVER_TZ_GET_CHECKSUM];
   req_p->processing_function = sboot_get_timezone_checksum;
-  req_p->name = "NET_SERVER_TZ_GET_CHECKSUM";
 
   req_p = &net_Requests[NET_SERVER_SPACEDB];
   req_p->processing_function = netsr_spacedb;
-  req_p->name = "NET_SERVER_SPACEDB";
 
   /* loaddb server requests */
   req_p = &net_Requests[NET_SERVER_LD_INIT];
   req_p->processing_function = sloaddb_init;
-  req_p->name = "NET_SERVER_LD_INIT";
 
   req_p = &net_Requests[NET_SERVER_LD_INSTALL_CLASS];
   req_p->processing_function = sloaddb_install_class;
-  req_p->name = "NET_SERVER_LD_INSTALL_CLASS";
 
   req_p = &net_Requests[NET_SERVER_LD_LOAD_BATCH];
   req_p->processing_function = sloaddb_load_batch;
-  req_p->name = "NET_SERVER_LD_LOAD_BATCH";
 
   req_p = &net_Requests[NET_SERVER_LD_FETCH_STATUS];
   req_p->processing_function = sloaddb_fetch_status;
-  req_p->name = "NET_SERVER_LD_FETCH_STATUS";
 
   req_p = &net_Requests[NET_SERVER_LD_DESTROY];
   req_p->processing_function = sloaddb_destroy;
-  req_p->name = "NET_SERVER_LD_DESTROY";
 
   req_p = &net_Requests[NET_SERVER_LD_INTERRUPT];
   req_p->processing_function = sloaddb_interrupt;
-  req_p->name = "NET_SERVER_LD_INTERRUPT";
 
   req_p = &net_Requests[NET_SERVER_LD_UPDATE_STATS];
   req_p->processing_function = sloaddb_update_stats;
-  req_p->name = "NET_SERVER_LD_UPDATE_STATS";
 
   /* checksumdb replication */
   req_p = &net_Requests[NET_SERVER_CHKSUM_REPL];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = schksum_insert_repl_log_and_demote_table_lock;
-  req_p->name = "NET_SERVER_CHKSM_REPL";
 
   /* check active user exist or not */
   req_p = &net_Requests[NET_SERVER_AU_DOES_ACTIVE_USER_EXIST];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slogtb_does_active_user_exist;
-  req_p->name = "NET_SERVER_AU_DOES_ACTIVE_USER_EXIST";
 
   req_p = &net_Requests[NET_SERVER_VACUUM_DUMP];
   req_p->processing_function = svacuum_dump;
-  req_p->name = "NET_SERVER_VACUUM_DUMP";
 
   req_p = &net_Requests[NET_SERVER_METHOD_FOLD_CONSTANTS];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = smethod_invoke_fold_constants;
-  req_p->name = "NET_SERVER_METHOD_FOLD_CONSTANTS";
 
   req_p = &net_Requests[NET_SERVER_SUPPLEMENT_STMT];
   req_p->processing_function = slog_supplement_statement;
-  req_p->name = "NET_SERVER_SUPPLEMENT_STMT";
 
   /* for CDC */
   req_p = &net_Requests[NET_SERVER_CDC_START_SESSION];
   req_p->processing_function = scdc_start_session;
-  req_p->name = "NET_SERVER_CDC_START_SESSION";
 
   req_p = &net_Requests[NET_SERVER_CDC_FIND_LSA];
   req_p->processing_function = scdc_find_lsa;
-  req_p->name = "NET_SERVER_CDC_FIND_LSA";
 
   req_p = &net_Requests[NET_SERVER_CDC_GET_LOGINFO_METADATA];
   req_p->processing_function = scdc_get_loginfo_metadata;
-  req_p->name = "NET_SERVER_CDC_GET_LOGINFO_METADATA";
 
   req_p = &net_Requests[NET_SERVER_CDC_GET_LOGINFO];
   req_p->processing_function = scdc_get_loginfo;
-  req_p->name = "NET_SERVER_CDC_GET_LOGINFO";
 
   req_p = &net_Requests[NET_SERVER_CDC_END_SESSION];
   req_p->processing_function = scdc_end_session;
-  req_p->name = "NET_SERVER_CDC_END_SESSION";
 
   /* flashback */
   req_p = &net_Requests[NET_SERVER_FLASHBACK_GET_SUMMARY];
   req_p->processing_function = sflashback_get_summary;
-  req_p->name = "NET_SERVER_FLASHBACK_GET_SUMMARY";
 
   req_p = &net_Requests[NET_SERVER_FLASHBACK_GET_LOGINFO];
   req_p->processing_function = sflashback_get_loginfo;
-  req_p->name = "NET_SERVER_FLASHBACK_GET_LOGINFO";
 }
-
-#if defined(CUBRID_DEBUG)
-/*
- * net_server_histo_print () -
- *   return:
- */
-static void
-net_server_histo_print (void)
-{
-  unsigned int i, found = 0, total_requests = 0, total_size_sent = 0;
-  int total_size_received = 0;
-  float server_time, total_server_time = 0;
-  float avg_response_time, avg_client_time;
-
-  fprintf (stdout, "\nHistogram of client requests:\n");
-  fprintf (stdout, "%-31s %6s  %10s %10s , %10s \n", "Name", "Rcount", "Sent size", "Recv size", "Server time");
-
-  for (i = 0; i < DIM (net_Requests); i++)
-    {
-      if (net_Requests[i].request_count)
-	{
-	  found = 1;
-	  server_time = ((float) net_Requests[i].elapsed_time / 1000000 / (float) (net_Requests[i].request_count));
-	  fprintf (stdout, "%-29s %6d X %10d+%10d b, %10.6f s\n", net_Requests[i].name, net_Requests[i].request_count,
-		   net_Requests[i].total_size_sent, net_Requests[i].total_size_received, server_time);
-	  total_requests += net_Requests[i].request_count;
-	  total_size_sent += net_Requests[i].total_size_sent;
-	  total_size_received += net_Requests[i].total_size_received;
-	  total_server_time += (server_time * net_Requests[i].request_count);
-	}
-    }
-
-  if (!found)
-    {
-      fprintf (stdout, " No server requests made\n");
-    }
-  else
-    {
-      fprintf (stdout, "-------------------------------------------------------------" "--------------\n");
-      fprintf (stdout, "Totals:                       %6d X %10d+%10d b  " "%10.6f s\n", total_requests,
-	       total_size_sent, total_size_received, total_server_time);
-      avg_response_time = total_server_time / total_requests;
-      avg_client_time = 0.0;
-      fprintf (stdout,
-	       "\n Average server response time = %6.6f secs \n"
-	       " Average time between client requests = %6.6f secs \n", avg_response_time, avg_client_time);
-    }
-}
-
-/*
- * net_server_histo_add_entry () -
- *   return:
- *   request(in):
- *   data_sent(in):
- */
-static void
-net_server_histo_add_entry (int request, int data_sent)
-{
-  net_Requests[request].request_count++;
-  net_Requests[request].total_size_sent += data_sent;
-
-  net_Histo_call_count++;
-}
-#endif /* CUBRID_DEBUG */
 
 /*
  * net_server_request () - The main server request dispatch handler
@@ -1065,9 +784,6 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
       return_error_to_client (thread_p, rid);
       goto end;
     }
-#if defined(CUBRID_DEBUG)
-  net_server_histo_add_entry (request, size);
-#endif /* CUBRID_DEBUG */
   conn = thread_p->conn_entry;
   assert (conn != NULL);
   /* check if the conn is valid */
@@ -1098,7 +814,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 	  if (error_code != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE, "net_server_request(): CHECK_DB_MODIFICATION error" " request %s\n",
-			    net_Requests[request].name);
+			    get_net_request_name (request));
 	      return_error_to_client (thread_p, rid);
 	      css_send_abort_to_client (conn, rid);
 	      goto end;
@@ -1110,7 +826,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
       if (!logtb_am_i_dba_client (thread_p))
 	{
 	  er_log_debug (ARG_FILE_LINE, "net_server_request(): CHECK_AUTHORIZATION error" " request %s\n",
-			net_Requests[request].name);
+			get_net_request_name (request));
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "");
 	  return_error_to_client (thread_p, rid);
 	  css_send_abort_to_client (conn, rid);
@@ -1133,7 +849,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
     {
       if (prm_get_bool_value (PRM_ID_TRACK_REQUESTS))
 	{
-	  _er_log_debug (ARG_FILE_LINE, "net_server_request(): request %s\n", net_Requests[request].name);
+	  _er_log_debug (ARG_FILE_LINE, "net_server_request(): request %s\n", get_net_request_name (request));
 	}
 
       thread_p->push_resource_tracks ();
@@ -1435,10 +1151,6 @@ net_server_start (THREAD_ENTRY * thread_p, const char *server_name)
 	  (void) xboot_shutdown_server (thread_p, ER_THREAD_FINAL);
 	}
 
-#if defined(CUBRID_DEBUG)
-      net_server_histo_print ();
-#endif /* CUBRID_DEBUG */
-
       css_final_conn_list ();
       css_free_user_access_status ();
     }
@@ -1469,27 +1181,4 @@ void
 net_cleanup_server_queues (unsigned int rid)
 {
   css_cleanup_server_queues (rid);
-}
-
-/*
- * net_server_request_name () - get the request name in net_Requests array
- *   return:
- *   request(in): the request index in net_Requests array.
- */
-const char *
-net_server_request_name (int request)
-{
-  if (NET_SERVER_REQUEST_START < request || request < NET_SERVER_REQUEST_END)
-    {
-      /* skip NET_SERVER_ */
-      return (net_Requests[request].name + sizeof ("NET_SERVER_") - 1);
-    }
-  else if (request == NET_SERVER_PING_WITH_HANDSHAKE)
-    {
-      return "PING_WITH_HANDSHAKE";
-    }
-  else
-    {
-      return "UNKNOWN";
-    }
 }

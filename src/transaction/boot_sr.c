@@ -116,6 +116,7 @@ struct boot_dbparm
   VFID trk_vfid;		/* Tracker of files */
   HFID hfid;			/* Heap file where this information is stored. It is only used for validation purposes */
   HFID rootclass_hfid;		/* Heap file where classes are stored */
+  EHID classname_table;		/* The hash file of class names */
   CTID ctid;			/* The catalog file */
   /* NOTE: deleted; not used anymore; kept here only for backwards compatibility (alignment); can be recycled */
   INT32 dummy1;
@@ -4233,18 +4234,7 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 
   if (new_db_server_host == NULL)
     {
-#if 0				/* use Unix-domain socket for localhost */
-/* *INDENT-OFF* */
-      if (GETHOSTNAME (new_db_server_host_buf, CUB_MAXHOSTNAMELEN) != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, new_db_server_host_buf);
-	  error_code = ER_BO_UNABLE_TO_FIND_HOSTNAME;
-	  goto error;
-	}
-/* *INDENT-ON* */
-#else
       strcpy (new_db_server_host_buf, "localhost");
-#endif
       new_db_server_host = new_db_server_host_buf;
     }
 
@@ -4593,18 +4583,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
 
   if (new_db_server_host == NULL)
     {
-#if 0				/* use Unix-domain socekt for localhost */
-/* *INDENT-OFF* */
-      if (GETHOSTNAME (new_db_server_host_buf, CUB_MAXHOSTNAMELEN) != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, new_db_server_host_buf);
-	  error_code = ER_BO_UNABLE_TO_FIND_HOSTNAME;
-	  goto end;
-	}
-/* *INDENT-ON* */
-#else
       strcpy (new_db_server_host_buf, "localhost");
-#endif
       new_db_server_host = new_db_server_host_buf;
     }
 
@@ -5099,7 +5078,9 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   boot_Db_parm->trk_vfid.volid = LOG_DBFIRST_VOLID;
   boot_Db_parm->hfid.vfid.volid = LOG_DBFIRST_VOLID;
   boot_Db_parm->rootclass_hfid.vfid.volid = LOG_DBFIRST_VOLID;
+  boot_Db_parm->classname_table.vfid.volid = LOG_DBFIRST_VOLID;
   boot_Db_parm->ctid.vfid.volid = LOG_DBFIRST_VOLID;
+  boot_Db_parm->ctid.xhid.vfid.volid = LOG_DBFIRST_VOLID;
 
   (void) strncpy (boot_Db_parm->rootclass_name, ROOTCLASS_NAME, DB_SIZEOF (boot_Db_parm->rootclass_name));
   boot_Db_parm->nvols = 1;
@@ -5162,6 +5143,12 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   if (error_code != NO_ERROR)
     {
       assert_release (false);
+      goto error;
+    }
+
+  if (xehash_create (thread_p, &boot_Db_parm->classname_table, DB_TYPE_STRING, -1, &boot_Db_parm->rootclass_oid, -1,
+		     false) == NULL)
+    {
       goto error;
     }
 

@@ -1448,7 +1448,7 @@ ldr_find_class (const char *class_name)
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type() == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
     {
       char other_class_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
@@ -1743,7 +1743,7 @@ display_error_line (int adjust)
   if (adjust != 0)
     {
       // In case of adjustment required, use the old behavior of using the scanner line.
-      lineno = ldr_Driver->get_scanner ().lineno() + adjust;
+      lineno = ldr_Driver->get_scanner ().lineno () + adjust;
     }
   else
     {
@@ -4878,12 +4878,12 @@ ldr_finish_context (LDR_CONTEXT *context)
   /* Reset the action function to deal with attributes */
   ldr_act = ldr_act_attr;
 
-#if defined(CUBRID_DEBUG)
-  if ((err == NO_ERROR) && (envvar_get ("LOADER_DEBUG") != NULL))
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
+  if (err == NO_ERROR)
     {
       if (context->inst_total)
 	{
-	  printf ("%d %s %s inserted in %d %s\n", context->inst_total, ldr_class_name (context),
+	  printf ("%ld %s %s inserted in %d %s\n", context->inst_total, ldr_class_name (context),
 		  context->inst_total == 1 ? "instance" : "instances", context->flush_total,
 		  context->flush_total == 1 ? "flush" : "flushes");
 	}

@@ -189,6 +189,7 @@ set(COMMUNICATION_HEADERS
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/communication_channel.cpp
   ${COMMUNICATION_DIR}/network_interface_cl.c
+  ${COMMUNICATION_DIR}/network_histogram.cpp
   )
 
 set(COMMUNICATION_HEADERS
@@ -674,9 +675,6 @@ if(WIN32)
   )
   set_source_files_properties(${BISON_csql_grammar_OUTPUTS} PROPERTIES COMPILE_FLAGS "${COMPILE_FLAGS} -Og-")
   target_compile_definitions(cubridsa PRIVATE YY_NO_UNISTD_H)
-  if(TARGET_PLATFORM_BITS EQUAL 32)
-    target_compile_definitions(cubridsa PRIVATE _USE_32BIT_TIME_T)
-  endif(TARGET_PLATFORM_BITS EQUAL 32)
   target_link_libraries(cubridsa LINK_PRIVATE ws2_32 ${JVM_LIBS})
   set_target_properties(cubridsa PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cubridsa/cubridsa.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
@@ -696,9 +694,6 @@ target_external_dependencies(cubridsa
 target_include_directories(cubridsa PRIVATE
   ${FLEX_INCLUDE_DIRS}
   ${JAVA_INC}
-  )
-target_link_libraries(cubridsa LINK_PRIVATE
-    cas
   )
 if(UNIX)
   # find out what this means:

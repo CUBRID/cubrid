@@ -1981,6 +1981,7 @@ log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE record_ty
     case LOG_COMPENSATE:
     case LOG_RUN_POSTPONE:
     case LOG_COMMIT_WITH_POSTPONE:
+    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
     case LOG_2PC_COMMIT_DECISION:
     case LOG_2PC_ABORT_DECISION:
     case LOG_2PC_COMMIT_INFORM_PARTICPS:

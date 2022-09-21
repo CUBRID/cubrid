@@ -22,12 +22,6 @@ if(UNIX)
     ${CMAKE_SOURCE_DIR}/contrib/init.d/cubrid-ha
     ${CMAKE_SOURCE_DIR}/contrib/init.d/cubrid
     DESTINATION ${CUBRID_DATADIR}/init.d)
-
-  # scripts for RPM
-  install(PROGRAMS
-    ${CMAKE_SOURCE_DIR}/contrib/rpm/cubrid.csh
-    ${CMAKE_SOURCE_DIR}/contrib/rpm/cubrid.sh
-    DESTINATION ${CUBRID_DATADIR}/rpm)
 endif(UNIX)
 
 
@@ -95,16 +89,18 @@ if(WIN32)
     DESTINATION ${CUBRID_DATADIR}/windows_scripts/)
 endif(WIN32)
 
-# scripts for installation
+# scripts for setup
 if(UNIX)
   install(PROGRAMS
-    ${CMAKE_SOURCE_DIR}/contrib/install/install.sh
-    DESTINATION ${CUBRID_DATADIR}/install/)
+    ${CMAKE_SOURCE_DIR}/contrib/scripts/setup.sh
+    DESTINATION ${CUBRID_DATADIR}/scripts/)
 endif(UNIX)
 
-# multi-process unloaddb scripts
+# cubrid scripts
 if(UNIX)
   install(PROGRAMS
+    ${CMAKE_SOURCE_DIR}/contrib/scripts/cubrid.sh
+    ${CMAKE_SOURCE_DIR}/contrib/scripts/cubrid.csh
     ${CMAKE_SOURCE_DIR}/contrib/scripts/unloaddb.sh
     DESTINATION ${CUBRID_DATADIR}/scripts/)
 endif(UNIX)
