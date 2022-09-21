@@ -42,12 +42,13 @@
 #include "environment_variable.h"
 #include "message_catalog.h"
 
+#define LINE_BUF_SIZE                (512)
 #define HOSTNAME_LEN                 (256)
 #define MAX_NUM_HOSTS                (256)
-#define LINE_BUF_SIZE                (512)
 #define IPADDR_LEN                   (17)
-#define NUM_IPADDR_DOT               (3)
 #define IPv4_ADDR_LEN                (4)
+#define NUM_IPADDR_DOT               (3)
+#define MAX_NUM_IPADDR_PER_HOST      (1)
 #define USER_HOSTS_FILE              "hosts.conf"
 
 #define NUM_DIGIT(VAL)              (size_t)(log10 (VAL) + 1)
@@ -126,14 +127,14 @@ hostent_alloc (char *ipaddr, char *hostname)
   hp->h_name = strdup (hostname);
   hp->h_aliases = NULL;
 
-  if ((hp->h_addr_list = (char **) malloc (sizeof (char *) * MAX_NUM_HOSTS)) == NULL)
+  if ((hp->h_addr_list = (char **) malloc (sizeof (char *) * MAX_NUM_IPADDR_PER_HOST)) == NULL)
     {
       FREE_MEM (hp->h_name);
       FREE_MEM (hp);
       return NULL;
     }
 
-  if ((hp->h_addr_list[0] = (char *) malloc (sizeof (char) * IPADDR_LEN)) == NULL)
+  if ((hp->h_addr_list[0] = (char *) malloc (sizeof (char) * IPv4_ADDR_LEN)) == NULL)
     {
       FREE_MEM (hp->h_addr_list);
       FREE_MEM (hp->h_name);
@@ -142,7 +143,7 @@ hostent_alloc (char *ipaddr, char *hostname)
       return NULL;
     }
 
-  memcpy (hp->h_addr, addr_trans_bi_buf, 4);
+  memcpy (hp->h_addr, addr_trans_bi_buf, IPv4_ADDR_LEN);
 
   return hp;
 }
@@ -152,7 +153,6 @@ static struct hostent *
 host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_type)
 {
   static struct hostent *hp;
-  int i, find_index = -1;
 
   char addr_trans_ch_buf[IPADDR_LEN];
   char hostname_buf[HOSTNAME_LEN];
@@ -602,14 +602,10 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
 
   if (hints != NULL)
     {
-      addrp->ai_flags = hints->ai_flags;
       addrp->ai_family = hints->ai_family;
-      addrp->ai_socktype = hints->ai_socktype;
-      addrp->ai_protocol = IPPROTO_TCP;
     }
   else
     {
-      addrp->ai_flags = (AI_V4MAPPED | AI_ADDRCONFIG);
       addrp->ai_family = AF_UNSPEC;
     }
 
