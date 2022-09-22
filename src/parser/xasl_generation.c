@@ -7694,12 +7694,12 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 	    case PT_METHOD_CALL:
 	      /*
-		 TODO : JSP containing column cannot be here because the query is rewritten in meth_translate().
-		 The index scan may not work because of the query rewrite in meth_translate().
-		 The method call should proceed in the same way as the internal function.
-		 pt_to_regu_variable() : generate regu_var for jsp function
-		 fetch_peek_dbval() : fetch regu_var for jsp function
-	      */
+	         TODO : JSP containing column cannot be here because the query is rewritten in meth_translate().
+	         The index scan may not work because of the query rewrite in meth_translate().
+	         The method call should proceed in the same way as the internal function.
+	         pt_to_regu_variable() : generate regu_var for jsp function
+	         fetch_peek_dbval() : fetch regu_var for jsp function
+	       */
 
 	      /* a method call that can be evaluated as a constant expression. */
 	      regu_alloc (val);
