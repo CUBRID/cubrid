@@ -533,6 +533,7 @@ namespace cublog
     // TODO: needs to be refactored to work with the new replicators flavors
     if (m_parallel_replication_redo == nullptr)
       {
+	std::lock_guard<std::mutex> lockg (m_redo_lsa_mutex);
 	// sync
 	return m_redo_lsa;
       }

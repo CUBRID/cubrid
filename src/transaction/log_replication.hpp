@@ -109,10 +109,10 @@ namespace cublog
       cubthread::daemon *m_daemon = nullptr;
 
     protected:
-      mutable bool m_replication_active;
       log_lsa m_redo_lsa = NULL_LSA;
       log_lsa m_processed_lsa = NULL_LSA; /* protected by m_redo_lsa_mutex with m_redo_lsa */
       mutable std::mutex m_redo_lsa_mutex;
+      mutable bool m_replication_active;
       mutable std::condition_variable m_redo_lsa_condvar;
       log_rv_redo_context m_redo_context;
 
