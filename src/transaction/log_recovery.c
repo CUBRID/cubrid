@@ -3933,53 +3933,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	    case LOG_ABORT:
 	      {
 		rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_READ_LOG);
-		if (context.is_restore_incomplete ())
-		  {
-		    int tran_index = logtb_find_tran_index (thread_p, tran_id);
-		    LOG_TDES *tdes = NULL;
-		    if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
-		      {
-			tdes = LOG_FIND_TDES (tran_index);
-			assert (tdes && tdes->state != TRAN_ACTIVE);
-		      }
-
-		    /* Need to read the donetime record to find out if we need to stop the recovery at this point. */
-		    redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_DONETIME));
-		    // *INDENT-OFF*
-		    const LOG_REC_DONETIME *donetime = redo_context.m_reader.reinterpret_cptr<LOG_REC_DONETIME> ();
-		    // *INDENT-ON*
-
-		    // stopat is provided in seconds
-		    const time_t log_at_time = util_msec_to_sec (donetime->at_time);
-
-		    // the mechanism to stop before a certain time point is not longer used at the redo log recovery stage
-		    // it is done previously
-		    assert (context.get_restore_stop_point () <= 0);
-		    if (context.does_restore_stop_before_time (log_at_time))
-		      {
-			/*
-			 * Stop the recovery process at this point
-			 */
-			LSA_SET_NULL (&lsa);
-
-			/* Commit/abort record was recorded after the stopat recovery time. The transaction needs to
-			 * undo all its changes (log_recovery_undo), so transaction descriptor needs to be kept,
-			 * and transaction state should be changed to aborted. The undo process starts from this
-			 * record's LSA and undoes all previous changes of the transaction
-			 * (See logtb_rv_read_only_map_undo_tdes usage from log_recovery_undo) */
-			if (tdes != NULL)
-			  {
-			    tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
-			  }
-		      }
-		  }
-		else
-		  {
-		    /* completed transactions should have already been cleared from the transaction table
-		     * in the analysis step (see: log_rv_analysis_complete)
-		     */
-		    assert (logtb_find_tran_index (thread_p, tran_id) == NULL_TRAN_INDEX);
-		  }
+		assert (!context.is_restore_incomplete ());
+		/* completed transactions should have already been cleared from the transaction table
+		 * in the analysis step (see: log_rv_analysis_complete)
+		 */
+		assert (logtb_find_tran_index (thread_p, tran_id) == NULL_TRAN_INDEX);
 		rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_COMMIT_ABORT);
 	      }
 
