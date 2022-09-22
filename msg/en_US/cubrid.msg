@@ -1435,10 +1435,10 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1352 Invalid number of columns specified.
 
-1353 IP address "%1$s" is invalid format.
-1354 Hostname "%1$s" is too long, it should be less than or equal 256.
-1355 Hostname "%1$s" already exists, a hostname cannot be duplicated with other IP addresses.
-1356 The IP address and hostname must be written completely both of them.
+1353 IP address "%1$s" is invalid format at line %2$d of the file "%3$s".
+1354 Hostname "%1$s" is too long, it should be less than or equal 256 at line %2$d of the file "%3$s".
+1355 Hostname "%1$s" already exists, a hostname cannot be duplicated with other IP addresses at line %2$d of the file "%3$s".
+1356 The IP address and hostname must be written completely both of them at line %1$d of the file "%2$s".
 1357 Unable to look up "%1$s" in the hosts.conf.
 
 1358 Last Error

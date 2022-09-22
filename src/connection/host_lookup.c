@@ -217,6 +217,8 @@ load_hosts_file ()
   char ipaddr[IPADDR_LEN];
   char hostname[HOSTNAME_LEN];
   int cache_idx = 0, temp_idx;
+  /*line muber of hosts.conf file */
+  int line_num = 0;
 
   char addr_trans_ch_buf[IPADDR_LEN];
   struct in_addr addr_trans;
@@ -237,6 +239,9 @@ load_hosts_file ()
 
   while (fgets (file_line, LINE_BUF_SIZE, fp) != NULL)
     {
+      line_num++;
+      hostname[0] = '\0';
+      ipaddr[0] = '\0';
       if (file_line[0] == '#')
 	continue;
       if (file_line[0] == '\n')
@@ -256,7 +261,8 @@ load_hosts_file ()
 	      strcpy (temp_token, token);
 	      if (ip_format_check (temp_token) == false)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_IP_ADDR_INVALID_FORMAT, 1, token);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_IP_ADDR_INVALID_FORMAT, 3, token, line_num,
+			  USER_HOSTS_FILE);
 		  fprintf (stdout, "%s\n", er_msg ());
 
 		  user_host_Map.clear ();
@@ -277,7 +283,8 @@ load_hosts_file ()
 	    {
 	      if (strlen (token) > HOSTNAME_LEN - 1)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_TOO_LONG, 1, token);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_TOO_LONG, 3, token, line_num,
+			  USER_HOSTS_FILE);
 		  fprintf (stdout, "%s\n", er_msg ());
 
 		  user_host_Map.clear ();
@@ -325,7 +332,8 @@ load_hosts_file ()
 
 	      if (strcmp (addr_trans_ch_buf, ipaddr))
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_ALREADY_EXIST, 1, hostname);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_ALREADY_EXIST, 3, hostname, line_num,
+			  USER_HOSTS_FILE);
 		  fprintf (stdout, "%s\n", er_msg ());
 
 		  user_host_Map.clear ();
@@ -340,7 +348,8 @@ load_hosts_file ()
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_IP_ADDR_NOT_COMPLETE, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_IP_ADDR_NOT_COMPLETE, 2, line_num,
+		  USER_HOSTS_FILE);
 	  fprintf (stdout, "%s\n", er_msg ());
 
 	  user_host_Map.clear ();
