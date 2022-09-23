@@ -19,6 +19,7 @@ message(STATUS "======== CMakeLists.txt")
 
 cmake_minimum_required(VERSION 2.8)
 
+set(CMAKE_VERBOSE_MAKEFILE ON)
 function(with_unit_tests res) # checks for -DUNIT_TESTS=ON or -DUNIT_TEST_???=ON
   get_cmake_property(vars VARIABLES)
   foreach(var ${vars})

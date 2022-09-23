@@ -29,7 +29,7 @@ if (EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   set(JDBC_DIR ${CMAKE_SOURCE_DIR}/cubrid-jdbc)
   set(JSP_LIB_DIR ${CMAKE_BINARY_DIR}/jsp/lib)
 
-  add_custom_command(TARGET jsp_build
+  add_custom_command(TARGET jsp_build_submodule
     COMMAND ${CMAKE_COMMAND} -E make_directory ${JSP_LIB_DIR}
     COMMAND ${CMAKE_COMMAND} -DJDBC_DIR=${JDBC_DIR} -DJSP_LIB_DIR=${JSP_LIB_DIR} -P ${CMAKE_SOURCE_DIR}/jsp/cmake/copy_submodule_jdbc.cmake
   )
