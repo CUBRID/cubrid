@@ -66,12 +66,11 @@ namespace cublog
    * replicator - definition
    *********************************************************************/
 
-  replicator::replicator (const log_lsa &start_redo_lsa, const log_lsa &prev_redo_lsa, PAGE_FETCH_MODE page_fetch_mode,
+  replicator::replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode,
 			  int parallel_count)
     : m_bookkeep_mvcc { is_page_server () }
     , m_replicate_mvcc { is_passive_transaction_server () }
     , m_redo_lsa { start_redo_lsa }
-    , m_processed_lsa { prev_redo_lsa }
     , m_replication_active { true }
     , m_redo_context { NULL_LSA, page_fetch_mode, log_reader::fetch_mode::FORCE }
     , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
@@ -288,7 +287,6 @@ namespace cublog
 	  // however, this would need one more mutex lock; therefore, suffice to do it here
 	  assert (m_replication_active);
 
-	  m_processed_lsa = m_redo_lsa;
 	  m_redo_lsa = header.forw_lsa;
 	}
 	if (m_parallel_replication_redo != nullptr)
@@ -523,8 +521,7 @@ namespace cublog
   log_lsa
   replicator::get_highest_processed_lsa () const
   {
-    std::lock_guard<std::mutex> lockg (m_redo_lsa_mutex);
-    return m_processed_lsa;
+    assert (false);
   }
 
   log_lsa

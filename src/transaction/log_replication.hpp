@@ -55,8 +55,7 @@ namespace cublog
   {
     public:
       replicator () = delete;
-      replicator (const log_lsa &start_redo_lsa, const log_lsa &prev_redo_lsa, PAGE_FETCH_MODE page_fetch_mode,
-		  int parallel_count);
+      replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode, int parallel_count);
 
       replicator (const replicator &) = delete;
       replicator (replicator &&) = delete;
@@ -73,7 +72,7 @@ namespace cublog
       /* wait until replication advances past the target lsa; blocking call */
       void wait_past_target_lsa (const log_lsa &a_target_lsa);
       /* return current progress of the replicator; non-blocking call */
-      log_lsa get_highest_processed_lsa () const;
+      virtual log_lsa get_highest_processed_lsa () const;
       /* return the lowest value lsa that was not applied, the next in line lsa */
       virtual log_lsa get_lowest_unapplied_lsa () const;
 
@@ -110,9 +109,8 @@ namespace cublog
 
     protected:
       log_lsa m_redo_lsa = NULL_LSA;
-      log_lsa m_processed_lsa = NULL_LSA; /* protected by m_redo_lsa_mutex with m_redo_lsa */
-      mutable std::mutex m_redo_lsa_mutex;
       mutable bool m_replication_active;
+      mutable std::mutex m_redo_lsa_mutex;
       mutable std::condition_variable m_redo_lsa_condvar;
       log_rv_redo_context m_redo_context;
 

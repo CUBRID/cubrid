@@ -95,7 +95,7 @@ class page_server
     void disconnect_all_tran_server ();
     void push_request_to_active_tran_server (page_to_tran_request reqid, std::string &&payload);
     cublog::replicator &get_replicator ();
-    void start_log_replicator (const log_lsa &start_lsa, const log_lsa &prev_lsa);
+    void start_log_replicator (const log_lsa &start_lsa);
     void finish_replication_during_shutdown (cubthread::entry &thread_entry);
 
     void init_request_responder ();
