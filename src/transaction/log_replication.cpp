@@ -66,8 +66,7 @@ namespace cublog
    * replicator - definition
    *********************************************************************/
 
-  replicator::replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode,
-			  int parallel_count)
+  replicator::replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode, int parallel_count)
     : m_bookkeep_mvcc { is_page_server () }
     , m_replicate_mvcc { is_passive_transaction_server () }
     , m_redo_lsa { start_redo_lsa }
