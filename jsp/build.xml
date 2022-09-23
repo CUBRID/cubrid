@@ -86,7 +86,7 @@
             <include name="${test.src.path}/*.java"/>
         </javac>
 
-        <junit printsummary="yes" fork="yes" haltonfailure="yes">
+        <junit printsummary="yes" haltonfailure="no">
             <classpath>
                 <path refid="test.path"/>
                 <pathelement path="${classes.dir}"/>
@@ -100,12 +100,14 @@
             </batchtest>
         </junit>
 
+        <!--
         <mkdir dir="${test.reports.dir}/html"/>
         <junitreport todir="${test.reports.dir}/html">
             <fileset dir="${test.reports.dir}">
                 <include name="TEST-*.xml"/>
             </fileset>
         </junitreport>
+        -->
     </target>
 
     <target name="dist" depends="test-junit">
