@@ -83,17 +83,11 @@ namespace cublog
 	    read_and_redo_record<LOG_REC_COMPENSATE> (thread_entry, header, m_redo_lsa);
 	    break;
 	  case LOG_DBEXTERN_REDO_DATA:
-	  {
-	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_DBOUT_REDO));
-	    const LOG_REC_DBOUT_REDO dbout_redo =
-		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_DBOUT_REDO> ();
-	    log_rcv rcv;
-	    rcv.length = dbout_redo.length;
-
-	    log_rv_redo_record (&thread_entry, m_redo_context.m_reader, RV_fun[dbout_redo.rcvindex].redofun, &rcv,
-				&m_redo_lsa, 0, nullptr, m_redo_context.m_redo_zip);
+            /* Recovery redo for RVDK_NEWVOL and RVDK_EXPAND_VOLUME will be called here,
+             * and fileIO operations are required for those redo function.
+             * However fileIO operations are not required in PTS, so it skip this logs
+             */
 	    break;
-	  }
 	  case LOG_COMMIT:
 	    if (m_replicate_mvcc)
 	      {

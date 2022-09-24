@@ -205,9 +205,6 @@ struct disk_cache
 };
 
 static DISK_CACHE *disk_Cache = NULL;
-static DKNVOLS disk_Page_server_perm_volume_count = 0;	// used for transaction server with remote storage
-							// must be maintained during replication on
-							// passive transaction server (with remote storage)
 
 static DKNSECTS disk_Temp_max_sects = -2;
 
@@ -1318,15 +1315,6 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 	  disk_Cache->perm_purpose_info.extend_info.volid_extend = NULL_VOLID;
 	}
 
-      if (is_tran_server_with_remote_storage ())
-	{
-	  // transaction servers with remote storage:
-	  //  - maintain a separate count of permanent volumes
-	  //  - have their own set of temporary volumes which they maintain using the disk Cache structures
-	  assert ((disk_Page_server_perm_volume_count - 1) == disk_Cache->nvols_perm);
-	  disk_Page_server_perm_volume_count--;
-	}
-
       disk_log ("disk_rv_undo_format", "remove volume %d from cache (free = %d, total = %d, max = %d).",
 		volid, free, total, max);
     }
@@ -1404,15 +1392,6 @@ disk_rv_redo_format (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 
       disk_Cache->perm_purpose_info.extend_info.nsect_total += volheader->nsect_total;
       disk_Cache->perm_purpose_info.extend_info.nsect_max += volheader->nsect_max;
-
-      if (is_tran_server_with_remote_storage ())
-	{
-	  // transaction servers with remote storage:
-	  //  - maintain a separate count of permanent volumes
-	  //  - have their own set of temporary volumes which they maintain using the disk Cache structures
-	  assert ((disk_Page_server_perm_volume_count + 1) == disk_Cache->nvols_perm);
-	  disk_Page_server_perm_volume_count++;
-	}
     }
 
   /* fix cache... */
@@ -2273,15 +2252,6 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
   if (extinfo->voltype == DB_PERMANENT_VOLTYPE)
     {
       disk_Cache->nvols_perm++;
-
-      if (is_tran_server_with_remote_storage ())
-	{
-	  // transaction servers with remote storage:
-	  //  - maintain a separate count of permanent volumes
-	  //  - have their own set of temporary volumes which they maintain using the disk Cache structures
-	  assert ((disk_Page_server_perm_volume_count + 1) == disk_Cache->nvols_perm);
-	  disk_Page_server_perm_volume_count++;
-	}
     }
   else
     {
@@ -2344,15 +2314,6 @@ exit:
       else
 	{
 	  disk_Cache->nvols_perm--;
-
-	  if (is_tran_server_with_remote_storage ())
-	    {
-	      // transaction servers with remote storage:
-	      //  - maintain a separate count of permanent volumes
-	      //  - have their own set of temporary volumes which they maintain using the disk Cache structures
-	      assert ((disk_Page_server_perm_volume_count - 1) == disk_Cache->nvols_perm);
-	      disk_Page_server_perm_volume_count--;
-	    }
 	}
     }
 
@@ -2699,8 +2660,10 @@ disk_cache_load_all_volumes (THREAD_ENTRY * thread_p)
   assert (disk_Cache != NULL);
   if (is_tran_server_with_remote_storage ())
     {
-      assert (disk_Page_server_perm_volume_count > 0);
-      for (VOLID volid = 0; volid < disk_Page_server_perm_volume_count; ++volid)
+      const DKNVOLS nvols_perm = xboot_find_number_permanent_volumes (thread_p);
+      assert (nvols_perm > 0);
+
+      for (VOLID volid = 0; volid < nvols_perm; ++volid)
 	{
 	  if (!disk_cache_load_volume (thread_p, volid, NULL))
 	    {
@@ -5922,15 +5885,21 @@ disk_is_valid_volid (VOLID volid)
   // which is updated when executing corresponding recovery replication functions
   // as part of the regular replication; this way, it is able to provide a valid
   // answer via this function
-  const bool is_valid_perm_volid = is_tran_server_with_remote_storage ()?
-    (volid < disk_Page_server_perm_volume_count) : (volid < disk_Cache->nvols_perm);
-  if (is_valid_perm_volid)
+  if (is_tran_server_with_remote_storage () && is_passive_transaction_server ())
     {
-      return is_valid_perm_volid;
+      return volid >= LOG_DBFIRST_VOLID && volid <= LOG_MAX_DBVOLID;
     }
+  else
+    {
+      const bool is_valid_perm_volid = (volid < disk_Cache->nvols_perm);
+      if (is_valid_perm_volid)
+	{
+	  return is_valid_perm_volid;
+	}
 
-  // a transaction server with remote storage has its own temporary volumes that it maintains
-  return volid > (LOG_MAX_DBVOLID - disk_Cache->nvols_temp);
+      // a transaction server with remote storage has its own temporary volumes that it maintains
+      return volid > (LOG_MAX_DBVOLID - disk_Cache->nvols_temp);
+    }
 }
 
 /*
@@ -6799,20 +6768,6 @@ disk_get_perm_volume_count ()
 {
   assert (disk_Cache != NULL);
   return disk_Cache->nvols_perm;
-}
-
-void
-disk_set_page_server_perm_volume_count (DKNVOLS nvols)
-{
-  assert (is_tran_server_with_remote_storage ());
-
-  // Set the number of permanent volumes for transaction server with remote storage.
-  // Disk manager is not initialized yet, so save the number to be used later when disk cache is loaded.
-  assert (disk_Page_server_perm_volume_count == 0);
-  disk_Page_server_perm_volume_count = nvols;
-  // TODO: in a number of places, there are checks that access the disk cache's number of permanent volumes
-  // if this happens on a transaction server with remote storage, the check must be adapted for both
-  // regular and transaction server with remote storage situation
 }
 
 /************************************************************************/

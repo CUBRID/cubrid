@@ -252,8 +252,6 @@ tran_server::get_boot_info_from_page_server ()
   DKNVOLS nvols_perm;
   std::memcpy (&nvols_perm, response_message.c_str (), sizeof (nvols_perm));
 
-  disk_set_page_server_perm_volume_count (nvols_perm);
-
   return NO_ERROR;
 }
 
