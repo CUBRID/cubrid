@@ -83,10 +83,10 @@ namespace cublog
 	    read_and_redo_record<LOG_REC_COMPENSATE> (thread_entry, header, m_redo_lsa);
 	    break;
 	  case LOG_DBEXTERN_REDO_DATA:
-            /* Recovery redo for RVDK_NEWVOL and RVDK_EXPAND_VOLUME will be called here,
-             * and fileIO operations are required for those redo function.
-             * However fileIO operations are not required in PTS, so it skip this logs
-             */
+	    /* Recovery redo for RVDK_NEWVOL and RVDK_EXPAND_VOLUME will be called here,
+	     * and fileIO operations are required for those redo function.
+	     * However fileIO operations are not required in PTS, so it skip this logs
+	     */
 	    break;
 	  case LOG_COMMIT:
 	    if (m_replicate_mvcc)
