@@ -99,14 +99,12 @@
             </batchtest>
         </junit>
 
-        <!--
         <mkdir dir="${test.reports.dir}/html"/>
         <junitreport todir="${test.reports.dir}/html">
             <fileset dir="${test.reports.dir}">
                 <include name="TEST-*.xml"/>
             </fileset>
         </junitreport>
-        -->
     </target>
 
     <target name="dist" depends="compile">
