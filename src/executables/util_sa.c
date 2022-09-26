@@ -2943,6 +2943,8 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 		  "[_db_attribute] AS [a] "
 		  "INNER JOIN [_db_domain] AS [d] ON [d].[object_of] = [a] "
 		  "INNER JOIN [_db_index] AS [i] ON [i].[class_of] = [a].[class_of] "
+		  "INNER JOIN [_db_index_key] AS [k] "
+		    "ON [k].[key_attr_name] = [a].[attr_name] AND [k].[index_of] = [i] "
 		  "LEFT OUTER JOIN [_db_partition] AS [p] "
 		    "ON [p].[class_of] = [a].[class_of] AND [p].[pname] IS NOT NULL "
 		"WHERE "
