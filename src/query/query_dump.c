@@ -2580,10 +2580,12 @@ qdump_print_xasl (xasl_node * xasl_p)
   fprintf (foutput, "-->current spec:");
   qdump_print_access_spec (xasl_p->curr_spec);
   fprintf (foutput, "\n");
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
   fprintf (foutput, "-->[next scan on=%d]", xasl_p->next_scan_on);
   fprintf (foutput, "[next scan block on=%d]", xasl_p->next_scan_block_on);
-  fprintf (foutput, "-->[cat fetched=%d]", xasl_p->cat_fetched);
   fprintf (foutput, "\n");
+#endif /* SERVER_MODE || SA_MODE */
 
   switch (xasl_p->type)
     {

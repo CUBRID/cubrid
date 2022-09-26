@@ -2115,12 +2115,6 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   xasl->curr_spec = stx_restore_access_spec_type (thread_p, &ptr, NULL);
 
-  ptr = or_unpack_int (ptr, &xasl->next_scan_on);
-
-  ptr = or_unpack_int (ptr, &xasl->next_scan_block_on);
-
-  ptr = or_unpack_int (ptr, &xasl->cat_fetched);
-
   ptr = or_unpack_int (ptr, &tmp);
   xasl->scan_op_type = (SCAN_OPERATION_TYPE) tmp;
 
@@ -2202,9 +2196,6 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
     {
       return NULL;
     }
-
-  ptr = or_unpack_int (ptr, (int *) &xasl->projected_size);
-  ptr = or_unpack_double (ptr, (double *) &xasl->cardinality);
 
   ptr = or_unpack_int (ptr, &tmp);
   xasl->iscan_oid_order = (bool) tmp;
