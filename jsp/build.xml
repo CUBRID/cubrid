@@ -82,14 +82,12 @@
 
     <target name="test-junit" depends="compile">
         <ivy:retrieve pattern="${dist.lib}/[artifact]-[revision].[ext]" conf="test"/>
-        <javac srcdir="${src.dir}" destdir="${test.classes.dir}" source="1.6" target="1.6" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="test.path">
+        <javac srcdir="${src.dir}" destdir="${test.classes.dir}" source="1.6" target="1.6" includeantruntime="no" encoding="UTF-8" classpathref="test.path">
             <include name="${test.src.path}/*.java"/>
         </javac>
 
-        <!--
         <junit printsummary="yes" haltonfailure="no">
             <classpath>
-                <path refid="test.path"/>
                 <pathelement path="${classes.dir}"/>
                 <pathelement path="${test.classes.dir}"/>
             </classpath>
@@ -100,8 +98,7 @@
                 </fileset>
             </batchtest>
         </junit>
-        -->
-        
+
         <!--
         <mkdir dir="${test.reports.dir}/html"/>
         <junitreport todir="${test.reports.dir}/html">
