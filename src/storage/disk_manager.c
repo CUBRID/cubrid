@@ -5880,26 +5880,23 @@ disk_dump_goodvol_all (THREAD_ENTRY * thread_p, INT16 volid, void *arg)
 STATIC_INLINE bool
 disk_is_valid_volid (VOLID volid)
 {
-  // a passive transaction server (which is, implicitly, a transaction server
-  // with remote storage) maintains a separate bookkeeping of permanent data volumes
-  // which is updated when executing corresponding recovery replication functions
-  // as part of the regular replication; this way, it is able to provide a valid
-  // answer via this function
   if (is_tran_server_with_remote_storage () && is_passive_transaction_server ())
     {
+      /* Since PTS do not have a disk header page for newly added volume at the time of replication,
+       * disk_rv_redo_format (), which requires disk header page and does update the disk_Cache,
+       * is not called during replication.
+       * Therefore, only the range of the volume ID is checked and the validity is checked by PS */
+
       return volid >= LOG_DBFIRST_VOLID && volid <= LOG_MAX_DBVOLID;
     }
-  else
-    {
-      const bool is_valid_perm_volid = (volid < disk_Cache->nvols_perm);
-      if (is_valid_perm_volid)
-	{
-	  return is_valid_perm_volid;
-	}
 
-      // a transaction server with remote storage has its own temporary volumes that it maintains
-      return volid > (LOG_MAX_DBVOLID - disk_Cache->nvols_temp);
+  const bool is_valid_perm_volid = (volid < disk_Cache->nvols_perm);
+  if (is_valid_perm_volid)
+    {
+      return is_valid_perm_volid;
     }
+
+  return volid > (LOG_MAX_DBVOLID - disk_Cache->nvols_temp);
 }
 
 /*
