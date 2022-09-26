@@ -86,6 +86,7 @@
             <include name="${test.src.path}/*.java"/>
         </javac>
 
+        <!--
         <junit printsummary="yes" haltonfailure="no">
             <classpath>
                 <path refid="test.path"/>
@@ -99,7 +100,8 @@
                 </fileset>
             </batchtest>
         </junit>
-
+        -->
+        
         <!--
         <mkdir dir="${test.reports.dir}/html"/>
         <junitreport todir="${test.reports.dir}/html">
