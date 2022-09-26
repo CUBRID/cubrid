@@ -29,7 +29,7 @@ if (EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   set(JDBC_DIR ${CMAKE_SOURCE_DIR}/cubrid-jdbc)
   set(JSP_LIB_DIR ${CMAKE_BINARY_DIR}/jsp/lib)
 
-  add_custom_command(TARGET jsp_build_submodule
+  add_custom_command(TARGET jsp_build
     COMMAND ${CMAKE_COMMAND} -E make_directory ${JSP_LIB_DIR}
     COMMAND ${CMAKE_COMMAND} -DJDBC_DIR=${JDBC_DIR} -DJSP_LIB_DIR=${JSP_LIB_DIR} -P ${CMAKE_SOURCE_DIR}/jsp/cmake/copy_submodule_jdbc.cmake
   )
@@ -55,10 +55,8 @@ add_custom_command(TARGET jsp_build
 
 add_custom_target(jsp_unittest)
 add_custom_command(TARGET jsp_unittest
-  COMMAND ${CMAKE_COMMAND} -E echo "Unit test"
-  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/jsp/ivy.xml ${CMAKE_BINARY_DIR}/jsp/ivy.xml
-  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/jsp/ivysettings.xml ${CMAKE_BINARY_DIR}/jsp/ivysettings.xml
   COMMAND ${ANT} test-junit -buildfile ${CMAKE_SOURCE_DIR}/jsp/build.xml -Dbasedir=. -Dversion=${BUILD_NUMBER} -Dsrc.dir=${JSP_DIR} -Divy.install.dir="${IVY_DIR}"
+  COMMENT "Unit Test Java SP Server with JUnit ..."
 )
 
 install(FILES
