@@ -87,10 +87,10 @@
         </javac>
 
         <junit printsummary="yes" haltonfailure="no">
-            <classpath>
-                <pathelement path="${classes.dir}"/>
-                <pathelement path="${test.classes.dir}"/>
-            </classpath>
+            <classpath refid="runtime.path" />
+            <classpath refid="test.path" />
+            <classpath path="${test.classes.dir}" />
+            <classpath path="${classes.dir}" />
             <formatter type="xml"/>
             <batchtest todir="${test.reports.dir}">
                 <fileset dir="${src.dir}">

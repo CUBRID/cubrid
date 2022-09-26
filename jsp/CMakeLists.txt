@@ -49,7 +49,7 @@ add_custom_command(TARGET jsp_build
   COMMAND ${CMAKE_COMMAND} -E echo "copying ivy.xml to ${CMAKE_BINARY_DIR}/jsp/ivy.xml"
   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/jsp/ivy.xml ${CMAKE_BINARY_DIR}/jsp/ivy.xml
   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/jsp/ivysettings.xml ${CMAKE_BINARY_DIR}/jsp/ivysettings.xml
-  COMMAND ${ANT} -verbose dist -buildfile ${CMAKE_SOURCE_DIR}/jsp/build.xml -Dbasedir=. -Dversion=${BUILD_NUMBER} -Dsrc.dir=${JSP_DIR} -Divy.install.dir="${IVY_DIR}"
+  COMMAND ${ANT} dist -buildfile ${CMAKE_SOURCE_DIR}/jsp/build.xml -Dbasedir=. -Dversion=${BUILD_NUMBER} -Dsrc.dir=${JSP_DIR} -Divy.install.dir="${IVY_DIR}"
   COMMENT "Build Java SP Server with Ant ..."
 )
 
