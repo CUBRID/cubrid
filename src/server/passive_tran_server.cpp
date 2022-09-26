@@ -125,13 +125,13 @@ passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
   return NO_ERROR;
 }
 
-void passive_tran_server::start_log_replicator (const log_lsa &start_lsa)
+void passive_tran_server::start_log_replicator (const log_lsa &start_lsa, const log_lsa &prev_lsa)
 {
   assert (m_replicator == nullptr);
 
   // passive transaction server executes replication synchronously, for the time being, due to complexity of
   // executing it in parallel while also providing a consistent view of the data
-  m_replicator.reset (new cublog::atomic_replicator (start_lsa));
+  m_replicator.reset (new cublog::atomic_replicator (start_lsa, prev_lsa));
 }
 
 void passive_tran_server::send_and_receive_stop_log_prior_dispatch ()
