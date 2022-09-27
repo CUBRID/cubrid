@@ -685,7 +685,7 @@ get_host_ip (unsigned char *ip_addr)
     {
       return -1;
     }
-  if ((hp = gethostbyname (hostname)) == NULL)
+  if ((hp = gethostbyname_uhost (hostname)) == NULL)
     {
       return -1;
     }

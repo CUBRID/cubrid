@@ -1632,5 +1632,5 @@ css_get_sock_name (SOCKET sockfd, char *hostname, size_t len)
     {
       return errno;
     }
-  return getnameinfo (saddr, saddr_len, hostname, len, NULL, 0, NI_NOFQDN);
+  return getnameinfo_uhost (saddr, saddr_len, hostname, len, NULL, 0, NI_NOFQDN);
 }
