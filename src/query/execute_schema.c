@@ -2777,7 +2777,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	  if (idx_info->column_names->info.sort_spec.expr)
 	    {
 	      char const *colname = idx_info->column_names->info.sort_spec.expr->info.name.original;
-	      if (sm_att_unique_constrained (obj, colname) || sm_att_fk_constrained (obj, colname))
+	      if (colname && (sm_att_unique_constrained (obj, colname) || sm_att_fk_constrained (obj, colname)))
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INDEX_PREFIX_LENGTH_ON_UNIQUE_FOREIGN, 0);
 		  return ER_SM_INDEX_PREFIX_LENGTH_ON_UNIQUE_FOREIGN;
