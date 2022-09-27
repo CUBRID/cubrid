@@ -5884,7 +5884,7 @@ disk_is_valid_volid (VOLID volid)
     {
       /* Since PTS do not have a disk header page for newly added volume at the time of replication,
        * disk_rv_redo_format (), which requires disk header page and does update the disk_Cache,
-       * is not called during replication.Thereefore, PTS knows only temporary volumes.
+       * is not called during replication. Thereefore, PTS knows only temporary volumes.
        * Only the temporary volume ID is checked, and if it is not a temporary volume, only the range of volume id is checked */
 
       const bool is_valid_temp_volid = (volid > (LOG_MAX_DBVOLID - disk_Cache->nvols_temp));
@@ -5896,13 +5896,7 @@ disk_is_valid_volid (VOLID volid)
       return volid >= LOG_DBFIRST_VOLID && volid <= LOG_MAX_DBVOLID;
     }
 
-  const bool is_valid_perm_volid = (volid < disk_Cache->nvols_perm);
-  if (is_valid_perm_volid)
-    {
-      return is_valid_perm_volid;
-    }
-
-  return volid > (LOG_MAX_DBVOLID - disk_Cache->nvols_temp);
+  return volid < disk_Cache->nvols_perm || volid > LOG_MAX_DBVOLID - disk_Cache->nvols_temp;
 }
 
 /*
