@@ -51,6 +51,7 @@
 #include "cas_execute.h"
 #include "error_code.h"
 #include "broker_util.h"
+#include "host_lookup.h"
 
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
