@@ -2886,7 +2886,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 	    {
 	      DB_VALUE class_name;
 	      DB_VALUE ct;
-	      char split_owner_name[DB_MAX_IDENTIFIER_LENGTH];
+	      char split_owner_name[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
 	      char *split_name = NULL;
 
 	      fprintf (stdout, "----------------------------------------\n");
@@ -2976,7 +2976,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 	    {
 	      DB_VALUE class_name;
 	      DB_VALUE index_name;
-	      char split_owner_name[DB_MAX_IDENTIFIER_LENGTH];
+	      char split_owner_name[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
 	      char *split_name = NULL;
 
 	      fprintf (stdout, "----------------------------------------\n");
@@ -3081,7 +3081,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 	      DB_VALUE ct;
 	      DB_VALUE attr_data_type;
 	      DB_VALUE has_part;
-	      char split_owner_name[DB_MAX_IDENTIFIER_LENGTH];
+	      char split_owner_name[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
 	      char *split_name = NULL;
 
 	      fprintf (stdout, "----------------------------------------\n");
@@ -3267,7 +3267,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 	    {
 	      DB_VALUE view;
 	      DB_VALUE query_spec;
-	      char split_owner_name[DB_MAX_IDENTIFIER_LENGTH];
+	      char split_owner_name[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
 	      char *split_name = NULL;
 
 	      fprintf (stdout, "----------------------------------------\n");
@@ -3365,7 +3365,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 	    {
 	      DB_VALUE trig_name;
 	      DB_VALUE trig_cond;
-	      char split_owner_name[DB_MAX_IDENTIFIER_LENGTH];
+	      char split_owner_name[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
 	      char *split_name = NULL;
 
 	      fprintf (stdout, "----------------------------------------\n");
@@ -3448,7 +3448,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 	      DB_VALUE index_name;
 	      DB_VALUE func_expr;
 	      DB_VALUE class_name;
-	      char split_owner_name[DB_MAX_IDENTIFIER_LENGTH];
+	      char split_owner_name[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
 	      char *split_name = NULL;
 
 	      fprintf (stdout, "----------------------------------------\n");
