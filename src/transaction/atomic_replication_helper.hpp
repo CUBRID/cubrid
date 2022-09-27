@@ -159,7 +159,9 @@ namespace cublog
 	  log_lsa get_start_lsa () const;
 
 	private: // methods
+#if (0)
 	  void apply_all_log_redos (THREAD_ENTRY *thread_p);
+#endif
 
 	private: // types
 	  /*
@@ -169,12 +171,14 @@ namespace cublog
 	  {
 	    public:
 	      atomic_log_entry () = delete;
-	      atomic_log_entry (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex);
+	      atomic_log_entry (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex, PAGE_PTR page_ptr);
 
 	      atomic_log_entry (const atomic_log_entry &) = delete;
 	      atomic_log_entry (atomic_log_entry &&that);
 
+#if (0)
 	      ~atomic_log_entry ();
+#endif
 
 	      atomic_log_entry &operator= (const atomic_log_entry &) = delete;
 	      atomic_log_entry &operator= (atomic_log_entry &&) = delete;
@@ -182,11 +186,13 @@ namespace cublog
 	      void apply_log_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context);
 	      template <typename T>
 	      void apply_log_by_type (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context, LOG_RECTYPE rectype);
+#if (0)
 	      int fix_page (THREAD_ENTRY *thread_p);
 	      void unfix_page (THREAD_ENTRY *thread_p);
 	      PAGE_PTR get_page_ptr ();
 	      void set_page_ptr (const PAGE_PTR &ptr);
 	      LOG_LSA get_lsa () const;
+#endif
 
 	      const VPID m_vpid;
 	    private:
@@ -194,11 +200,72 @@ namespace cublog
 	      const LOG_RCVINDEX m_record_index;
 	      PAGE_PTR m_page_ptr;
 
+#if (0)
 	      std::unique_ptr<PGBUF_WATCHER> m_watcher_p;
+#endif
+	  };
+
+	  using page_ptr_watcher_uptr_type = std::unique_ptr<PGBUF_WATCHER>;
+
+	  struct page_ptr_info_type
+	  {
+	    page_ptr_info_type () = default;
+
+	    page_ptr_info_type (const page_ptr_info_type &) = delete;
+	    page_ptr_info_type (page_ptr_info_type &&) = default;
+
+	    page_ptr_info_type &operator= (const page_ptr_info_type &) = delete;
+	    page_ptr_info_type &operator= (page_ptr_info_type &&) = delete;
+
+	    ~page_ptr_info_type ();
+
+	    VPID m_vpid = VPID_INITIALIZER;
+	    LOG_RCVINDEX m_rcv_index = RV_NOT_DEFINED;
+	    PAGE_PTR m_page_p = nullptr;
+	    page_ptr_watcher_uptr_type m_watcher_p;
+	    int m_ref_count = -1;
+	  };
+
+	  /*
+	   * Implements a RAII-like reference counted functionality to bokkeep page pointers for
+	   * a sequence of [possibly] nested atomic replication sub-sequences.
+	   * A page can be needed by multiple levels of a nested atomic replication sequence which
+	   * perfom changes on the page. Once the page is unfixed in a sequence at a certain
+	   * level, it can be:
+	   *  - either still kept fixed if a parent [sub]sequence did the fixing and still
+	   *    needs the page
+	   *  - or unfixed if there is no parent [sub]sequence which needs the page anymore (aka:
+	   *    the [sub]sequence which just requested the fix is the outer-most one that needed
+	   *    the page in the current overall sequence of possibly nested [sub]sequences
+	   */
+	  struct page_ptr_bookkeeping
+	  {
+	    public:
+	      page_ptr_bookkeeping () = default;
+	      ~page_ptr_bookkeeping ();
+
+	      page_ptr_bookkeeping (const page_ptr_bookkeeping &) = delete;
+	      page_ptr_bookkeeping (page_ptr_bookkeeping &&) = delete;
+
+	      page_ptr_bookkeeping &operator= (const page_ptr_bookkeeping &) = delete;
+	      page_ptr_bookkeeping &operator= (page_ptr_bookkeeping &&) = delete;
+
+	    public: // methods
+	      int fix_page (THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcv_index, PAGE_PTR &page_ptr_out);
+	      int unfix_page (THREAD_ENTRY *thread_p, VPID vpid);
+
+	    private: // types
+
+	      using page_ptr_info_map_type = std::map<VPID, page_ptr_info_type>;
+
+	    private: // variables
+	      page_ptr_info_map_type m_;
 	  };
 
 	  using atomic_log_entry_vector_type = std::vector<atomic_log_entry>;
+#if (0)
 	  using vpid_to_page_ptr_map_type = std::map<VPID, PAGE_PTR>;
+#endif
 
 	private: // variables
 	  /* The LSA of the log record which started this atomic sequence.
@@ -215,7 +282,10 @@ namespace cublog
 
 	  log_rv_redo_context m_redo_context;
 	  atomic_log_entry_vector_type m_log_vec;
+#if (0)
 	  vpid_to_page_ptr_map_type m_page_map;
+#endif
+	  page_ptr_bookkeeping m_page_ptr_bookkeeping;
       };
 
       using sequence_map_type = std::map<TRANID, atomic_log_sequence>;
@@ -237,12 +307,18 @@ namespace cublog
 #endif
   };
 
+  int pgbuf_fix_or_ordered_fix (THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcv_index,
+				std::unique_ptr<PGBUF_WATCHER> &watcher_up, PAGE_PTR &page_p);
+  void pgbuf_unfix_or_ordered_unfix (THREAD_ENTRY *thread_p, LOG_RCVINDEX rcv_index,
+				     std::unique_ptr<PGBUF_WATCHER> &watcher_up, PAGE_PTR &page_p);
+
   template <typename T>
   void
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::apply_log_by_type (
 	  THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context, LOG_RECTYPE rectype)
   {
     LOG_RCV rcv;
+#if (0)
     if (m_page_ptr != nullptr)
       {
 	assert (m_watcher_p == nullptr);
@@ -253,6 +329,9 @@ namespace cublog
 	assert (m_watcher_p != nullptr && m_watcher_p->pgptr != nullptr);
 	rcv.pgptr = m_watcher_p->pgptr;
       }
+#endif
+    assert (m_page_ptr != nullptr);
+    rcv.pgptr = m_page_ptr;
 
     redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
     const log_rv_redo_rec_info<T> record_info (m_record_lsa, rectype,
@@ -264,11 +343,13 @@ namespace cublog
       }
   }
 
+#if (0)
   inline LOG_LSA
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::get_lsa () const
   {
     return m_record_lsa;
   }
+#endif
 }
 
 #endif // _ATOMIC_REPLICATION_HELPER_HPP_

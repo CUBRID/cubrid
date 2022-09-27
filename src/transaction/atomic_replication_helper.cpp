@@ -268,6 +268,7 @@ namespace cublog
   atomic_replication_helper::atomic_log_sequence::add_atomic_replication_log (THREAD_ENTRY *thread_p,
       log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid)
   {
+#if (0)
     m_log_vec.emplace_back (record_lsa, vpid, rcvindex);
     const auto page_map_it = m_page_map.find (vpid);
     if (page_map_it == m_page_map.cend ())
@@ -297,6 +298,23 @@ namespace cublog
 	m_log_vec.back ().set_page_ptr (page_map_it->second);
       }
     return NO_ERROR;
+#endif
+    PAGE_PTR page_p = nullptr;
+    // bookkeeping fixes page, keeps all info regarding how the page was fixed (either
+    // regular fix or ordered fix) and only returns back the pointer to the page
+    const int err_code = m_page_ptr_bookkeeping.fix_page (thread_p, vpid, rcvindex, page_p);
+    if (err_code != NO_ERROR)
+      {
+	assert (page_p == nullptr);
+	return err_code;
+      }
+    assert (page_p != nullptr);
+
+    m_log_vec.emplace_back (record_lsa, vpid, rcvindex, page_p);
+    //atomic_log_entry &last = m_log_vec.back ();
+    //last.set_page_ptr (page_p);
+
+    return err_code;
   }
 
   bool
@@ -363,6 +381,7 @@ namespace cublog
     return false;
   }
 
+#if (0)
   void
   atomic_replication_helper::atomic_log_sequence::apply_all_log_redos (THREAD_ENTRY *thread_p)
   {
@@ -371,6 +390,7 @@ namespace cublog
 	m_log_vec[i].apply_log_redo (thread_p, m_redo_context);
       }
   }
+#endif
 
   void
   atomic_replication_helper::atomic_log_sequence::apply_and_unfix_sequence (THREAD_ENTRY *thread_p)
@@ -379,6 +399,7 @@ namespace cublog
     // they come to be read by the PTS and some might be unfixed and refixed after the apply procedure
     // leading to inconsistency. To avoid this situation we sequentially apply each log redo of the sequence
     // when the end sequence log appears and the entire sequence is fixed
+#if (0)
     apply_all_log_redos (thread_p);
 
     for (size_t i = 0; i < m_log_vec.size (); i++)
@@ -389,6 +410,13 @@ namespace cublog
 	    m_log_vec[i].unfix_page (thread_p);
 	    m_page_map.erase (page_map_it);
 	  }
+      }
+#endif
+    for (size_t i = 0; i < m_log_vec.size (); i++)
+      {
+	m_log_vec[i].apply_log_redo (thread_p, m_redo_context);
+	// bookkeeping actually either
+	m_page_ptr_bookkeeping.unfix_page (thread_p, m_log_vec[i].m_vpid);
       }
   }
 
@@ -403,23 +431,29 @@ namespace cublog
    *********************************************************************************************************/
 
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::atomic_log_entry (
-	  log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex)
+	  log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex, PAGE_PTR page_ptr)
     : m_vpid { vpid }
     , m_record_lsa { lsa }
     , m_record_index { rcvindex }
-    , m_page_ptr { nullptr }
+    , m_page_ptr { page_ptr }
+#if (0)
     , m_watcher_p { nullptr }
+#endif
   {
     assert (lsa != NULL_LSA);
   }
 
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::atomic_log_entry (atomic_log_entry &&that)
-    : atomic_log_entry (that.m_record_lsa, that.m_vpid, that.m_record_index)
+    : atomic_log_entry (that.m_record_lsa, that.m_vpid, that.m_record_index, that.m_page_ptr)
   {
+#if (0)
     std::swap (m_page_ptr, that.m_page_ptr);
     std::swap (m_watcher_p, that.m_watcher_p);
+#endif
+    that.m_page_ptr = nullptr;
   }
 
+#if (0)
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::~atomic_log_entry ()
   {
     if (m_watcher_p != nullptr)
@@ -428,6 +462,7 @@ namespace cublog
 	m_watcher_p.reset ();
       }
   }
+#endif
 
   void
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::apply_log_redo (
@@ -471,6 +506,7 @@ namespace cublog
       }
   }
 
+#if (0)
   int
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::fix_page (THREAD_ENTRY *thread_p)
   {
@@ -516,6 +552,7 @@ namespace cublog
       }
 
     return NO_ERROR;
+    //return pgbuf_fix_or_ordered_fix (thread_p, m_vpid, m_record_index, m_watcher_p, m_page_ptr);
   }
 
   void
@@ -541,6 +578,7 @@ namespace cublog
 	pgbuf_unfix (thread_p, m_page_ptr);
 	break;
       }
+    //pgbuf_unfix_or_ordered_unfix (thread_p, m_record_index, m_watcher_p, m_page_ptr);
   }
 
   PAGE_PTR
@@ -558,7 +596,196 @@ namespace cublog
   void
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::set_page_ptr (const PAGE_PTR &ptr)
   {
+    assert (ptr != nullptr);
     assert (m_page_ptr == nullptr);
     m_page_ptr = ptr;
+  }
+#endif
+
+  /*********************************************************************************************************
+   * atomic_replication_helper::atomic_log_sequence::page_ptr_info_type function definitions  *
+   *********************************************************************************************************/
+
+  atomic_replication_helper::atomic_log_sequence::page_ptr_info_type::~page_ptr_info_type ()
+  {
+    assert (m_page_p == nullptr);
+    assert (m_watcher_p == nullptr);
+  }
+
+  /*********************************************************************************************************
+   * atomic_replication_helper::atomic_log_sequence::page_ptr_bookkeeping function definitions  *
+   *********************************************************************************************************/
+
+  atomic_replication_helper::atomic_log_sequence::page_ptr_bookkeeping::~page_ptr_bookkeeping ()
+  {
+    assert (m_.empty ());
+  }
+
+  int
+  atomic_replication_helper::atomic_log_sequence::page_ptr_bookkeeping::fix_page (
+	  THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcv_index, PAGE_PTR &page_ptr_out)
+  {
+    assert (page_ptr_out == nullptr);
+
+    page_ptr_info_type *info_p = nullptr;
+
+    const auto find_it = m_.find (vpid);
+    if (find_it != m_.cend ())
+      {
+	info_p = &find_it->second;
+	//assert (info.m_page_p != nullptr);
+
+	++info_p->m_ref_count;
+
+	// TODO: assert that, if page was fixed with regular fix, new rcv index must not
+	// mandate ordered fix (or the other way around)
+      }
+    else
+      {
+	page_ptr_watcher_uptr_type page_watcher_up;
+	PAGE_PTR page_p { nullptr };
+	const int err_code = pgbuf_fix_or_ordered_fix (thread_p, vpid, rcv_index, page_watcher_up, page_p);
+	if (err_code != NO_ERROR)
+	  {
+	    return err_code;
+	  }
+
+	std::pair<page_ptr_info_map_type::iterator, bool> insert_res
+	  = m_.emplace (vpid, std::move (page_ptr_info_type ()));
+	assert (insert_res.second);
+
+	info_p = &insert_res.first->second;
+	info_p->m_vpid = vpid;
+	info_p->m_rcv_index = rcv_index;
+	info_p->m_page_p = page_p;
+	page_p = nullptr;
+	info_p->m_watcher_p.swap (page_watcher_up);
+
+	info_p->m_ref_count = 1;
+      }
+
+    if (info_p->m_page_p != nullptr)
+      {
+	assert (info_p->m_watcher_p == nullptr);
+	page_ptr_out = info_p->m_page_p;
+      }
+    else
+      {
+	assert (info_p->m_watcher_p != nullptr && info_p->m_watcher_p->pgptr != nullptr);
+	page_ptr_out = info_p->m_watcher_p->pgptr;
+      }
+
+    return NO_ERROR;
+  }
+
+  int
+  atomic_replication_helper::atomic_log_sequence::page_ptr_bookkeeping::unfix_page (
+	  THREAD_ENTRY *thread_p, VPID vpid)
+  {
+    const auto find_it = m_.find (vpid);
+    if (find_it != m_.cend ())
+      {
+	page_ptr_info_type &info = find_it->second;
+
+	--info.m_ref_count;
+	if (info.m_ref_count == 0)
+	  {
+	    pgbuf_unfix_or_ordered_unfix (thread_p, info.m_rcv_index, info.m_watcher_p, info.m_page_p);
+	    info.m_page_p = nullptr;
+	    if (info.m_watcher_p != nullptr)
+	      {
+		PGBUF_CLEAR_WATCHER (info.m_watcher_p.get ());
+		info.m_watcher_p.reset ();
+	      }
+
+	    m_.erase (find_it);
+	  }
+
+	return NO_ERROR;
+      }
+    else
+      {
+	assert (false);
+	return ER_FAILED;
+      }
+  }
+
+  int
+  pgbuf_fix_or_ordered_fix (THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcv_index,
+			    std::unique_ptr<PGBUF_WATCHER> &watcher_up, PAGE_PTR &page_p)
+  {
+    switch (rcv_index)
+      {
+      case RVHF_INSERT:
+      case RVHF_MVCC_INSERT:
+      case RVHF_DELETE:
+      case RVHF_MVCC_DELETE_REC_HOME:
+      case RVHF_MVCC_DELETE_OVERFLOW:
+      case RVHF_MVCC_DELETE_REC_NEWHOME:
+      case RVHF_MVCC_DELETE_MODIFY_HOME:
+      case RVHF_UPDATE:
+      case RVHF_MVCC_UPDATE_OVERFLOW:
+      case RVHF_INSERT_NEWHOME:
+      {
+	assert (watcher_up == nullptr);
+
+	watcher_up.reset (new PGBUF_WATCHER ());
+	// using null hfid here as the watcher->group_id is initialized internally by pgbuf_ordered_fix at a cost
+	PGBUF_INIT_WATCHER (watcher_up.get (), PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+
+	const int error_code = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED,
+			       PGBUF_LATCH_WRITE, watcher_up.get ());
+	if (error_code != NO_ERROR)
+	  {
+	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unnable to order-fix page %d|%d"
+			  " with OLD_PAGE_MAYBE_DEALLOCATED.",
+			  VPID_AS_ARGS (&vpid));
+	    return error_code;
+	  }
+	break;
+      }
+      default:
+	assert (page_p == nullptr);
+
+	page_p = pgbuf_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE,
+			    PGBUF_UNCONDITIONAL_LATCH);
+	if (page_p == nullptr)
+	  {
+	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unnable to fix on page %d|%d with OLD_PAGE_MAYBE_DEALLOCATED.",
+			  VPID_AS_ARGS (&vpid));
+	    return ER_FAILED;
+	  }
+	break;
+      }
+
+    return NO_ERROR;
+  }
+
+  void
+  pgbuf_unfix_or_ordered_unfix (THREAD_ENTRY *thread_p, LOG_RCVINDEX rcv_index,
+				std::unique_ptr<PGBUF_WATCHER> &watcher_up, PAGE_PTR &page_p)
+  {
+    switch (rcv_index)
+      {
+      case RVHF_INSERT:
+      case RVHF_MVCC_INSERT:
+      case RVHF_DELETE:
+      case RVHF_MVCC_DELETE_REC_HOME:
+      case RVHF_MVCC_DELETE_OVERFLOW:
+      case RVHF_MVCC_DELETE_REC_NEWHOME:
+      case RVHF_MVCC_DELETE_MODIFY_HOME:
+      case RVHF_UPDATE:
+      case RVHF_MVCC_UPDATE_OVERFLOW:
+      case RVHF_INSERT_NEWHOME:
+	assert (page_p == nullptr);
+	// other sanity asserts inside the function
+	pgbuf_ordered_unfix (thread_p, watcher_up.get ());
+	break;
+      default:
+	assert (watcher_up == nullptr);
+	// other sanity asserts inside the function
+	pgbuf_unfix (thread_p, page_p);
+	break;
+      }
   }
 }
