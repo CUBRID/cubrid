@@ -237,7 +237,6 @@ namespace cublog
 	      int unfix_page (THREAD_ENTRY *thread_p, VPID vpid);
 
 	    private: // types
-
 	      using page_ptr_info_map_type = std::map<VPID, page_ptr_info>;
 
 	    private: // variables
@@ -284,9 +283,13 @@ namespace cublog
   };
 
   int pgbuf_fix_or_ordered_fix (THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcv_index,
-				std::unique_ptr<PGBUF_WATCHER> &watcher_up, PAGE_PTR &page_p);
+				std::unique_ptr<PGBUF_WATCHER> &watcher_uptr, PAGE_PTR &page_ptr);
   void pgbuf_unfix_or_ordered_unfix (THREAD_ENTRY *thread_p, LOG_RCVINDEX rcv_index,
-				     std::unique_ptr<PGBUF_WATCHER> &watcher_up, PAGE_PTR &page_p);
+				     std::unique_ptr<PGBUF_WATCHER> &watcher_uptr, PAGE_PTR &page_ptr);
+
+  /*********************************************************************************************************
+   * template functions implementations
+   *********************************************************************************************************/
 
   template <typename T>
   void
