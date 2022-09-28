@@ -5880,7 +5880,7 @@ disk_dump_goodvol_all (THREAD_ENTRY * thread_p, INT16 volid, void *arg)
 STATIC_INLINE bool
 disk_is_valid_volid (VOLID volid)
 {
-  if (is_tran_server_with_remote_storage () && is_passive_transaction_server ())
+  if (is_passive_transaction_server ())
     {
       /* Since PTS do not have a disk header page for newly added volume at the time of replication,
        * disk_rv_redo_format (), which requires disk header page and does update the disk_Cache,
