@@ -238,6 +238,9 @@ tran_server::init_page_server_hosts (const char *db_name)
   return exit_code;
 }
 
+
+/* TODO: Remove this boot process because the only information received from PS is the number of permanent volumes.
+ *       The number of permanent volumes is also stored in boot_Db_parm. So this process can be removed */
 int
 tran_server::get_boot_info_from_page_server ()
 {

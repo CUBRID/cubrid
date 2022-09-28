@@ -2660,6 +2660,11 @@ disk_cache_load_all_volumes (THREAD_ENTRY * thread_p)
   assert (disk_Cache != NULL);
   if (is_tran_server_with_remote_storage ())
     {
+      /* TODO: disk_Cache is not required to be initialized on PTS.
+       *       if all the disk_Cache usage parts are blocked on PTS,
+       *       then disk_Cache initialization on PTS can be blocked too.
+       */
+
       const DKNVOLS nvols_perm = xboot_find_number_permanent_volumes (thread_p);
       assert (nvols_perm > 0);
 
@@ -5884,14 +5889,8 @@ disk_is_valid_volid (VOLID volid)
     {
       /* Since PTS do not have a disk header page for newly added volume at the time of replication,
        * disk_rv_redo_format (), which requires disk header page and does update the disk_Cache,
-       * is not called during replication. Thereefore, PTS knows only temporary volumes.
-       * Only the temporary volume ID is checked, and if it is not a temporary volume, only the range of volume id is checked */
-
-      const bool is_valid_temp_volid = (volid > (LOG_MAX_DBVOLID - disk_Cache->nvols_temp));
-      if (is_valid_temp_volid)
-	{
-	  return is_valid_temp_volid;
-	}
+       * is not called during replication. Therefore, PTS knows only temporary volumes.
+       * So, it will check only the range of the volume id on PTS */
 
       return volid >= LOG_DBFIRST_VOLID && volid <= LOG_MAX_DBVOLID;
     }
