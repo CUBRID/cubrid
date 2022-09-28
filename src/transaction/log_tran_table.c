@@ -4157,6 +4157,8 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 
+  tdes->last_mvcc_lsa.set_null ();
+
   if (is_perf_tracking)
     {
       tsc_getticks (&end_tick);
