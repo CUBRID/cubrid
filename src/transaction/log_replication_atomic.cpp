@@ -237,6 +237,8 @@ namespace cublog
 	if (m_atomic_helper.is_part_of_atomic_replication (rec_header.trid))
 	  {
 	    const VPID log_vpid = log_rv_get_log_rec_vpid<T> (record_info.m_logrec);
+	    // return code ignored because it refers to failure to fix heap page
+	    // this is expected in the context of passive transaction server
 	    (void) m_atomic_helper.add_atomic_replication_log (&thread_entry, rec_header.trid, rec_lsa, rcvindex, log_vpid);
 	  }
 	else
