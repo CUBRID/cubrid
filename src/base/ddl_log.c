@@ -699,14 +699,6 @@ logddl_make_filename (char *filename_buf, size_t buf_size, T_APP_NAME app_name)
     {
       filename_buf[0] = '\0';
     }
-
-  if (filename_buf[0] != '\0')
-    {
-      if (logddl_create_dir (filename_buf) < 0)
-	{
-	  filename_buf[0] = '\0';
-	}
-    }
 }
 
 static FILE *
@@ -714,6 +706,12 @@ logddl_open (T_APP_NAME app_name)
 {
   if (ddl_audit_handle.log_filepath[0] == '\0')
     {
+      return NULL;
+    }
+
+  if (logddl_create_dir (ddl_audit_handle.log_filepath) < 0)
+    {
+      ddl_audit_handle.log_filepath[0] = '\0';
       return NULL;
     }
 
@@ -1177,9 +1175,14 @@ logddl_create_dir (const char *new_dir)
   strcpy (path, new_dir);
   trim (path);
 
-
 #if defined(WINDOWS)
   unix_style_path (path);
+#else
+  if (access (dirname (path), F_OK) == 0)
+    {
+      return 0;
+    }
+  path[(int) strlen (path)] = '/';
 #endif /* WINDOWS */
 
   p = path;
