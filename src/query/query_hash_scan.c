@@ -2510,6 +2510,7 @@ fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID * next_b
   PAGE_PTR first_dk_bucket_page_p = NULL;
   PAGE_PTR last_dk_bucket_page_p = NULL;
   PAGE_PTR new_dk_bucket_page_p = NULL;
+  bool is_first_bucket = false;
 
   /* get last DK bucket page. */
   first_dk_bucket_page_p = fhs_fix_old_page (thread_p, &fhsid_p->bucket_file, next_bucket_vpid, PGBUF_LATCH_WRITE);
@@ -2528,6 +2529,7 @@ fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID * next_b
       /* first is last */
       last_dk_bucket_page_p = first_dk_bucket_page_p;
       last_dk_bucket_header_p = first_dk_bucket_header_p;
+      is_first_bucket = true;
     }
   else
     {
@@ -2582,7 +2584,7 @@ fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID * next_b
       goto error;
     }
 
-  if (last_dk_bucket_page_p == first_dk_bucket_page_p)
+  if (is_first_bucket)
     {
       last_dk_bucket_page_p = NULL;
     }
@@ -2607,7 +2609,7 @@ error:
     {
       fhs_free_recdes (thread_p, &bucket_recdes);
     }
-  if (last_dk_bucket_page_p == first_dk_bucket_page_p)
+  if (is_first_bucket)
     {
       last_dk_bucket_page_p = NULL;
     }
