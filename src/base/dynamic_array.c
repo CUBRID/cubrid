@@ -79,14 +79,14 @@ da_expand (dynamic_array * da, int max)
 }
 
 int
-da_add (dynamic_array * da, void *data)
+da_add (dynamic_array * da, const void *data)
 {
   int pos = da->max + 1;
   return da_put (da, pos, data);
 }
 
 int
-da_put (dynamic_array * da, int pos, void *data)
+da_put (dynamic_array * da, int pos, const void *data)
 {
   if (pos >= da->count && da_expand (da, pos) != NO_ERROR)
     {
