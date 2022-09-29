@@ -528,6 +528,7 @@ namespace cublog
      * Anyway, now get_highest_processed_lsa() is only used on PTS, so assert(false) here.
      */
     assert (false);
+    return MAX_LSA;
   }
 
   log_lsa
@@ -543,6 +544,7 @@ namespace cublog
     // a different value will return from here when the atomic replicator is added
     // for now this part should not be reached
     assert (false);
+    return MAX_LSA;
   }
 
   /*********************************************************************
