@@ -107,7 +107,7 @@
         </junitreport>
     </target>
 
-    <target name="dist" depends="compile, test-junit">
+    <target name="dist" depends="compile">
         <manifestclasspath property="jar.classpath" jarfile="${dist.jar}">
             <classpath>
                 <fileset dir="${dist.lib}" includes="*.jar"/>
