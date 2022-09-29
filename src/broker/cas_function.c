@@ -92,7 +92,7 @@ static void update_error_query_count (T_APPL_SERVER_INFO * as_info_p, const T_ER
 static const char *tran_type_str[] = { "COMMIT", "ROLLBACK" };
 
 #if !defined (CAS_FOR_CGW)
-static void logddl_is_exist_ddl_stmt (T_SRV_HANDLE * srv_handle);
+static void logddl_check_have_ddl_stmt (T_SRV_HANDLE * srv_handle);
 #endif
 
 static const char *schema_type_str[] = {
@@ -656,7 +656,6 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   if (srv_handle->sql_stmt != NULL)
     {
       cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
-      logddl_set_sql_text (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
     }
   cas_log_debug (ARG_FILE_LINE, "%s%s", auto_commit_mode ? "auto_commit_mode " : "",
 		 forward_only_cursor ? "forward_only_cursor " : "");
@@ -727,7 +726,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #if !defined (CAS_FOR_CGW)
   if (!is_execute_call)
     {
-      logddl_is_exist_ddl_stmt (srv_handle);
+      logddl_check_have_ddl_stmt (srv_handle);
     }
 #endif /* CAS_FOR_CGW */
 
@@ -2749,13 +2748,17 @@ update_error_query_count (T_APPL_SERVER_INFO * as_info_p, const T_ERROR_INFO * e
 
 #if !defined (CAS_FOR_CGW)
 static void
-logddl_is_exist_ddl_stmt (T_SRV_HANDLE * srv_handle)
+logddl_check_have_ddl_stmt (T_SRV_HANDLE * srv_handle)
 {
   for (int i = 0; i < srv_handle->num_q_result; i++)
     {
       if (logddl_is_ddl_type (srv_handle->q_result[i].stmt_type) == true)
 	{
 	  logddl_set_stmt_type (srv_handle->q_result[i].stmt_type);
+	  if (srv_handle->sql_stmt != NULL)
+	    {
+	      logddl_set_sql_text (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
+	    }
 	  return;
 	}
     }
