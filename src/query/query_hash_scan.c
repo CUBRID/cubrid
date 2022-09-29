@@ -2503,7 +2503,8 @@ static FHS_RESULT
 fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID * next_bucket_vpid, void *key_p,
 			 TFTID * value_p)
 {
-  RECDES bucket_recdes = RECDES_INITIALIZER, first_bucket_recdes = RECDES_INITIALIZER, last_bucket_recdes = RECDES_INITIALIZER;
+  RECDES bucket_recdes = RECDES_INITIALIZER, first_bucket_recdes = RECDES_INITIALIZER, last_bucket_recdes =
+    RECDES_INITIALIZER;
   PGSLOTID tmp_slot;
   int success;
   FHS_DK_BUCKET_HEADER *first_dk_bucket_header_p = NULL, *last_dk_bucket_header_p = NULL;
