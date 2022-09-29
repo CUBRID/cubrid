@@ -1388,7 +1388,6 @@ fhs_initialize_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *
 static int
 fhs_initialize_dk_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *args)
 {
-  VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
   FHS_DK_BUCKET_HEADER dk_bucket_header;
   RECDES bucket_recdes;
   PGSLOTID slot_id;
@@ -1410,8 +1409,8 @@ fhs_initialize_dk_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, voi
   spage_initialize (thread_p, page_p, UNANCHORED_KEEP_SEQUENCE, FHS_ALIGNMENT, DONT_SAFEGUARD_RVSPACE);
 
   /* Initialize the bucket header */
-  dk_bucket_header.next_bucket = null_vpid;
-  dk_bucket_header.last_bucket = null_vpid;
+  dk_bucket_header.next_bucket = VPID_INITIALIZER;
+  dk_bucket_header.last_bucket = VPID_INITIALIZER;
 
   /* Set the record descriptor to the Bucket header */
   bucket_recdes.data = (char *) &dk_bucket_header;
@@ -2004,7 +2003,7 @@ fhs_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPI
   FHS_BUCKET_HEADER bucket_header;
   char found_depth;
   char init_bucket_data;
-  VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
+  VPID null_vpid = VPID_INITIALIZER;
   FHS_RESULT ins_result;
 
   int error_code = NO_ERROR;
@@ -2344,7 +2343,6 @@ fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_
   VPID dk_bucket_vpid;
   PAGE_PTR dk_bucket_page_p = NULL;
   TFTID tmp_tftid;
-  VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
 
   /* Check if insertion is duplicate, or not */
   if (fhs_locate_slot (thread_p, bucket_page_p, key_p, &slot_no, true) == true)
@@ -2512,7 +2510,6 @@ fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID * next_b
   PAGE_PTR first_dk_bucket_page_p = NULL;
   PAGE_PTR last_dk_bucket_page_p = NULL;
   PAGE_PTR new_dk_bucket_page_p = NULL;
-  VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
 
   /* get last DK bucket page. */
   first_dk_bucket_page_p = fhs_fix_old_page (thread_p, &fhsid_p->bucket_file, next_bucket_vpid, PGBUF_LATCH_WRITE);
@@ -2635,7 +2632,7 @@ fhs_extend_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p,
 {
   VPID sibling_vpid;
   PAGE_PTR sibling_page_p = NULL;
-  VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
+  VPID null_vpid = VPID_INITIALIZER;
   int old_local_depth;
   int new_local_depth;
 
