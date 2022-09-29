@@ -8377,6 +8377,7 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
     {
       return HASH_METH_NOT_USE;
     }
+  return HASH_METH_HASH_FILE;
 
   build = llsidp->hlsid.build_regu_list;
   probe = llsidp->hlsid.probe_regu_list;
