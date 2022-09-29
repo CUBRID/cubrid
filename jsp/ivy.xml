@@ -10,7 +10,7 @@
         <dependency org="cubrid" name="cubrid-jdbc" rev="latest.integration" conf="runtime->default"/>
         <dependency org="com.kohlschutter.junixsocket" name="junixsocket-core" rev="2.4.0" conf="runtime->default"/>
         <dependency org="com.kohlschutter.junixsocket" name="junixsocket-server" rev="2.4.0" conf="runtime->default"/>
-        <dependency org="junit" name="junit" rev="4.11" conf="test->default"/>
+        <dependency org="junit" name="junit" rev="4.13.2" conf="test->default"/>
         <dependency org="org.apache.ant" name="ant-junit4" rev="1.10.12" conf="test->default"/>
     </dependencies>
 </ivy-module>
