@@ -3033,7 +3033,7 @@ synccoll_check_tables (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * n
 	"FROM "
 	  "[_db_class] AS [c] "
 	  "LEFT OUTER JOIN [_db_partition] AS [p] "
-	    "ON [p].[class_of].[unique_name] = [c].[unique_name] AND [p].[pname] IS NOT NULL "
+	    "ON [p].[class_of] = [c] AND [p].[pname] IS NOT NULL "
 	"WHERE "
 	  "[c].[collation_id] = %d "
 	  "AND [p].[pname] IS NULL",
