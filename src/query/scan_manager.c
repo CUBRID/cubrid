@@ -8418,14 +8418,14 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
     }
   else if ((UINT64) llsidp->list_id->page_cnt * DB_PAGESIZE <= mem_limit)
     {
-      return HASH_METH_HASH_FILE; //return HASH_METH_IN_MEM;
+      return HASH_METH_IN_MEM;
     }
   else if ((UINT64) llsidp->list_id->tuple_cnt * (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
     {
       /* bytes of 1 row = sizeof(HENTRY_HLS) + sizeof(QFILE_TUPLE_SIMPLE_POS) = 44 bytes (64bit) */
       /* HENTRY_HLS = pointer(8bytes) * 4 = 32 bytes */
       /* SIMPLE_POS = pageid(4bytes) + volid(2bytes) + padding(2bytes) + offset(4bytes) = 12 bytes */
-      return HASH_METH_HASH_FILE; //return HASH_METH_HYBRID;
+      return HASH_METH_HYBRID;
     }
   else
     {
