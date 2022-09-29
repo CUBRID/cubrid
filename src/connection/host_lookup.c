@@ -29,6 +29,7 @@
 #include <limits.h>
 #include <errno.h>
 #include <unordered_map>
+#include <pthread.h>
 
 #if defined (WINDOWS)
 #include <winsock2.h>
@@ -49,7 +50,7 @@
 #define IPv4_ADDR_LEN                (4)
 #define NUM_IPADDR_DOT               (3)
 #define MAX_NUM_IPADDR_PER_HOST      (1)
-#define USER_HOSTS_FILE              "hosts.conf"
+#define USER_HOSTS_FILE              "cubrid_hosts.conf"
 
 #define NUM_DIGIT(VAL)              (size_t)(log10 (VAL) + 1)
 #define FREE_MEM(PTR)           \
@@ -88,6 +89,8 @@ typedef enum
 static struct hostent *hostent_Cache[MAX_NUM_HOSTS];
 
 static int hosts_conf_file_Load = LOAD_INIT;
+
+static pthread_mutex_t load_hosts_file_lock = PTHREAD_MUTEX_INITIALIZER;
 
 // *INDENT-OFF*
 static std::unordered_map <std::string, int> user_host_Map;
@@ -159,6 +162,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
   char ipaddr_buf[IPADDR_LEN];
   struct sockaddr_in *addr_trans = NULL;
 
+  pthread_mutex_lock (&load_hosts_file_lock);
   if (hosts_conf_file_Load == LOAD_INIT)
     {
       if ((hosts_conf_file_Load = load_hosts_file ()) == LOAD_FAIL)
@@ -166,6 +170,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 	  return NULL;
 	}
     }
+  pthread_mutex_unlock (&load_hosts_file_lock);
 
   addr_trans = (struct sockaddr_in *) saddr;
 
@@ -217,7 +222,7 @@ load_hosts_file ()
   char ipaddr[IPADDR_LEN];
   char hostname[HOSTNAME_LEN];
   int cache_idx = 0, temp_idx;
-  /*line muber of hosts.conf file */
+  /*line muber of cubrid_hosts.conf file */
   int line_num = 0;
 
   char addr_trans_ch_buf[IPADDR_LEN];
@@ -414,7 +419,7 @@ ip_format_check (char *ip_addr)
 }
 
 /*
- * gethostbyname_uhost () - Do same job with gethostbyname (), using by the 'user' defined 'hosts.conf' file.
+ * gethostbyname_uhost () - Do same job with gethostbyname (), using by the 'user' defined 'cubrid_hosts.conf' file or glibc.
  * 
  * return   : the hostent pointer.
  * hostname (in) : the hostname.
