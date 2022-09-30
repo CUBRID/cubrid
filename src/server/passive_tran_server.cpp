@@ -158,7 +158,7 @@ void passive_tran_server::start_oldest_active_mvccid_sender ()
   /* Now 1s , but it would be a system parameter later to make it tunable. */
   cubthread::looper loop (std::chrono::milliseconds (1000));
   auto func_exec = std::bind (&passive_tran_server::send_oldest_active_mvccid, std::ref (*this), std::placeholders::_1);
-  auto sender_entry = new cubthread::entry_callable_task (std::move (func_exec)); /* delete on retire. See the constr */;
+  auto sender_entry = new cubthread::entry_callable_task (std::move (func_exec)); /* delete on retire. See the constr. */;
 
   m_oldest_active_mvccid_sender = cubthread::get_manager ()->create_daemon (loop, sender_entry,
 				  "passive_tran_server::oldest_active_mvccid_sender");
@@ -168,10 +168,16 @@ void passive_tran_server::start_oldest_active_mvccid_sender ()
 
 void passive_tran_server::send_oldest_active_mvccid (cubthread::entry &thread_entry)
 {
-  /* TODO dummy function. will be modified corretly. soon  */
   std::string request_message;
-  const MVCCID oldest_visible_mvccid = MVCCID_NULL;
-  request_message.append (reinterpret_cast<const char *> (&oldest_visible_mvccid), sizeof (oldest_visible_mvccid));
+
+  const auto new_oldest_active_mvccid = log_Gl.mvcc_table.update_global_oldest_visible();
+  if (new_oldest_active_mvccid == m_oldest_active_mvccid)
+    {
+      return;
+    }
+
+  m_oldest_active_mvccid = new_oldest_active_mvccid;
+  request_message.append (reinterpret_cast<const char *> (&m_oldest_active_mvccid), sizeof (m_oldest_active_mvccid));
   push_request (tran_to_page_request::SEND_OLDEST_ACTIVE_MVCCID, std::move (request_message));
 }
 

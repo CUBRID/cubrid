@@ -58,6 +58,8 @@ class passive_tran_server : public tran_server
   private:
     std::unique_ptr<cublog::replicator> m_replicator;
     cubthread::daemon *m_oldest_active_mvccid_sender = nullptr;
+    /* the oldest visible mvcc id considering the replicator and RO transactions */
+    MVCCID m_oldest_active_mvccid = MVCCID_NULL;
 };
 
 #endif // !_passive_tran_server_HPP_
