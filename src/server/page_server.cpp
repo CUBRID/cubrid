@@ -94,6 +94,10 @@ page_server::connection_handler::connection_handler (cubcomm::channel &chn, tran
       tran_to_page_request::SEND_STOP_LOG_PRIOR_DISPATCH,
       std::bind (&page_server::connection_handler::receive_stop_log_prior_dispatch, std::ref (*this),
 		 std::placeholders::_1)
+    },
+    {
+      tran_to_page_request::SEND_OLDEST_ACTIVE_MVCCID,
+      std::bind (&page_server::connection_handler::receive_oldest_active_mvccid, std::ref (*this), std::placeholders::_1)
     }
   },
   page_to_tran_request::RESPOND,
@@ -179,6 +183,13 @@ page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_co
   // empty response message, the round trip is synchronous
   a_sp.push_payload (std::string ());
   m_conn->respond (std::move (a_sp));
+}
+
+void
+page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_t::sequenced_payload &a_sp)
+{
+  const MVCCID oldest_mvccid = *reinterpret_cast<const MVCCID *const> (a_sp.pull_payload().c_str());
+  er_log_debug (ARG_FILE_LINE, "receive_oldest_active_mvccid(): %d\n", oldest_mvccid);
 }
 
 void
