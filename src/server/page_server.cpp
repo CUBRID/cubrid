@@ -237,6 +237,9 @@ page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code
     }
 }
 
+/* NOTE : Since TS don't need the information about the number of permanent volume during boot,
+ *        this message has no actual use currently. However, this mechanism will be reserved,
+ *        because it can be used in the future when multiple PS's are supported. */
 void
 page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::sequenced_payload &a_sp)
 {
