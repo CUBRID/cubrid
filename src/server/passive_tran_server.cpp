@@ -27,6 +27,8 @@
 passive_tran_server::~passive_tran_server ()
 {
   assert (m_replicator == nullptr);
+
+  cubthread::get_manager ()->destroy_daemon (m_oldest_active_mvccid_sender);
 }
 
 bool
@@ -163,7 +165,7 @@ void passive_tran_server::start_oldest_active_mvccid_sender ()
   m_oldest_active_mvccid_sender = cubthread::get_manager ()->create_daemon (loop, sender_entry,
 				  "passive_tran_server::oldest_active_mvccid_sender");
 
-  assert (m_oldest_active_mvccid_sender != nullptr);
+  assert (m_oldest_active_mvccid_sender != nullptr); // when create_daemon() fails
 }
 
 void passive_tran_server::send_oldest_active_mvccid (cubthread::entry &thread_entry)
