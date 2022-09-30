@@ -1703,6 +1703,8 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
 
   logpb_initialize_logging_statistics ();
 
+  pts_ptr->send_oldest_active_mvccid ();	/* TODO not here acutally, just for testing. will be removed soon */
+
   er_log_debug (ARG_FILE_LINE, "log_initialize_passive_tran_server: end of log initializaton, append_lsa = (%lld|%d)\n",
 		LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
 }
