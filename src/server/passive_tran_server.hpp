@@ -34,8 +34,9 @@ class passive_tran_server : public tran_server
     int send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
 					log_lsa &most_recent_trantable_snapshot_lsa);
     void start_log_replicator (const log_lsa &start_lsa, const log_lsa &prev_lsa);
+    void start_oldest_active_mvccid_sender ();
+
     void send_and_receive_stop_log_prior_dispatch ();
-    void send_oldest_active_mvccid ();
 
     /* highest processed lsa, to be used for retrieve pages from PS */
     log_lsa get_highest_processed_lsa () const;
@@ -45,6 +46,8 @@ class passive_tran_server : public tran_server
     void wait_replication_past_target_lsa (LOG_LSA lsa);
 
   private:
+    void send_oldest_active_mvccid (cubthread::entry &thread_entry);
+
     bool uses_remote_storage () const final override;
     bool get_remote_storage_config () final override;
     void on_boot () final override;
@@ -53,8 +56,8 @@ class passive_tran_server : public tran_server
     void receive_log_prior_list (page_server_conn_t::sequenced_payload &a_ip);
 
   private:
-
     std::unique_ptr<cublog::replicator> m_replicator;
+    cubthread::daemon *m_oldest_active_mvccid_sender = nullptr;
 };
 
 #endif // !_passive_tran_server_HPP_
