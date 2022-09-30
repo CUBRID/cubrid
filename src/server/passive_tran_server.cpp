@@ -152,6 +152,7 @@ void passive_tran_server::send_and_receive_stop_log_prior_dispatch ()
 
 void passive_tran_server::send_oldest_active_mvccid ()
 {
+  /* TODO dummy function. will be modified corretly. soon  */
   std::string request_message;
   const MVCCID oldest_visible_mvccid = MVCCID_NULL;
   request_message.append (reinterpret_cast<const char *> (&oldest_visible_mvccid), sizeof (oldest_visible_mvccid));

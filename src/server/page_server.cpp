@@ -188,6 +188,7 @@ page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_co
 void
 page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_t::sequenced_payload &a_sp)
 {
+  /* TODO dummy function. will be modified corretly. soon  */
   const MVCCID oldest_mvccid = *reinterpret_cast<const MVCCID *const> (a_sp.pull_payload().c_str());
   er_log_debug (ARG_FILE_LINE, "receive_oldest_active_mvccid(): %d\n", oldest_mvccid);
 }
