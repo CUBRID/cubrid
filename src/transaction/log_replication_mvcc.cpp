@@ -153,6 +153,12 @@ namespace cublog
 	// replicator::redo_upto_nxio_lsa
 	log_Gl.mvcc_table.complete_mvcc (LOG_SYSTEM_TRAN_INDEX, found_it->second.m_id, committed);
 
+	if (committed)
+	  {
+	    /* Reset the transaction local visible oldest mvccid set temporarily in log_Gl.mvcc_table.complete_mvcc() */
+	    log_Gl.mvcc_table.reset_transaction_lowest_active (LOG_SYSTEM_TRAN_INDEX);
+	  }
+
 	m_mapped_mvccids.erase (found_it);
       }
     else

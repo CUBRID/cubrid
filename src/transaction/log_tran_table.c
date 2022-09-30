@@ -4133,9 +4133,13 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 	  log_append_assigned_mvccid (thread_p, mvccid);
 	}
       mvcc_table->complete_mvcc (tran_index, mvccid, committed);
+
+      tdes->last_mvcc_lsa.set_null ();
     }
   else
     {
+      assert (tdes->last_mvcc_lsa.is_null ());
+
       if (committed && logtb_tran_update_all_global_unique_stats (thread_p) != NO_ERROR)
 	{
 	  assert (false);
