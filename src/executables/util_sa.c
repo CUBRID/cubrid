@@ -3729,7 +3729,7 @@ synccoll_check_views (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 	  "LOCATE ('collate %s', [q].[spec]) > 0 "
 	  /* This is to distinguish between "collate utf8_de_exp" and "collate utf8_de_exp_ai_ci".
 	   * This is just one example, other collations could be the target. */
-	  "AND LOCATE ('collate %s', [q].[spec]) != LOCATE ('collate %s_', [q].[spec]) ",
+	  "AND LOCATE ('collate %s', [q].[spec]) != LOCATE ('collate %s_', [q].[spec])",
 	db_coll->coll_id,
 	db_coll->coll_name,
 	db_coll->coll_name,
