@@ -8934,7 +8934,6 @@ file_tempcache_init (void)
   if (file_Tempcache.tran_files == NULL)
     {
       pthread_mutex_destroy (&file_Tempcache.mutex);
-      free_and_init (file_Tempcache);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
