@@ -184,7 +184,7 @@ namespace cublog
 	      const LOG_RCVINDEX m_record_index;
 	      // ownership of page pointer is with the bookkeeper in the owning class; this is just a
 	      // reference to allow applying the redo function when needed
-	      PAGE_PTR m_page_ptr;
+	      PAGE_PTR const m_page_ptr;
 	  };
 
 	  using page_ptr_watcher_uptr_type = std::unique_ptr<PGBUF_WATCHER>;

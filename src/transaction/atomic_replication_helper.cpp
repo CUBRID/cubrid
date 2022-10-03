@@ -54,10 +54,12 @@ namespace cublog
     const auto sequence_it = m_sequences_map.find (tranid);
     if (sequence_it == m_sequences_map.cend ())
       {
+	assert (false);
 	return ER_FAILED;
       }
 
-    int error_code = sequence_it->second.add_atomic_replication_log (thread_p, record_lsa, rcvindex, vpid);
+    atomic_log_sequence &sequence = sequence_it->second;
+    int error_code = sequence.add_atomic_replication_log (thread_p, record_lsa, rcvindex, vpid);
     if (error_code != NO_ERROR)
       {
 	return error_code;
@@ -106,7 +108,6 @@ namespace cublog
 
     return false;
   }
-
 
   void
   atomic_replication_helper::start_sequence_internal (TRANID trid, LOG_LSA start_lsa,
@@ -395,13 +396,15 @@ namespace cublog
     , m_record_index { rcvindex }
     , m_page_ptr { page_ptr }
   {
-    assert (lsa != NULL_LSA);
+    assert (!VPID_ISNULL (&m_vpid));
+    assert (m_record_lsa != NULL_LSA);
+    assert (0 <= m_record_index && m_record_index <= RV_LAST_LOGID);
+    assert (m_page_ptr != nullptr);
   }
 
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::atomic_log_entry (atomic_log_entry &&that)
     : atomic_log_entry (that.m_record_lsa, that.m_vpid, that.m_record_index, that.m_page_ptr)
   {
-    that.m_page_ptr = nullptr;
   }
 
   void
