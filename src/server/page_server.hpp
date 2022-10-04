@@ -210,6 +210,10 @@ class page_server
     connection_handler_uptr_t m_active_tran_server_conn;
     std::vector<connection_handler_uptr_t> m_passive_tran_server_conn;
 
+    std::unordered_map<std::string, MVCCID>
+    m_pts_oldest_active_mvccid; // <channel_id -> the oldest active mvccid of the PTS>. used by the vacuum on the ATS
+    std::mutex m_pts_oldest_active_mvccid_mtx;
+
     std::unique_ptr<cublog::replicator> m_replicator;
 
     std::unique_ptr<responder_t> m_responder;
