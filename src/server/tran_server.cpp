@@ -238,6 +238,9 @@ tran_server::init_page_server_hosts (const char *db_name)
   return exit_code;
 }
 
+/* NOTE : Since TS don't need the information about the number of permanent volume during boot,
+ *        this message has no actual use currently. However, this mechanism will be reserved,
+ *        because it can be used in the future when multiple PS's are supported. */
 int
 tran_server::get_boot_info_from_page_server ()
 {
@@ -252,7 +255,8 @@ tran_server::get_boot_info_from_page_server ()
   DKNVOLS nvols_perm;
   std::memcpy (&nvols_perm, response_message.c_str (), sizeof (nvols_perm));
 
-  disk_set_page_server_perm_volume_count (nvols_perm);
+  /* Check the dummay value whether the TS receives the message from PS (receive_boot_info_request) well. */
+  assert (nvols_perm == VOLID_MAX);
 
   return NO_ERROR;
 }
