@@ -371,12 +371,13 @@ namespace cublog
     // they come to be read by the PTS and some might be unfixed and refixed after the apply procedure
     // leading to inconsistency. To avoid this situation we sequentially apply each log redo of the sequence
     // when the end sequence log appears and the entire sequence is fixed
-    for (size_t i = 0; i < m_log_vec.size (); i++)
+    for (const auto &log_entry : m_log_vec)
       {
-	m_log_vec[i].apply_log_redo (thread_p, m_redo_context);
+	log_entry.apply_log_redo (thread_p, m_redo_context);
 	// bookkeeping actually will either unfix the page or just decrease its reference count
-	m_page_ptr_bookkeeping.unfix_page (thread_p, m_log_vec[i].m_vpid);
+	m_page_ptr_bookkeeping.unfix_page (thread_p, log_entry.m_vpid);
       }
+    m_log_vec.clear ();
   }
 
   log_lsa
@@ -409,7 +410,7 @@ namespace cublog
 
   void
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::apply_log_redo (
-	  THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context)
+	  THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context) const
   {
     const int error_code = redo_context.m_reader.set_lsa_and_fetch_page (m_record_lsa, log_reader::fetch_mode::FORCE);
     if (error_code != NO_ERROR)

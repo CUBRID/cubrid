@@ -174,9 +174,10 @@ namespace cublog
 	      atomic_log_entry &operator= (const atomic_log_entry &) = delete;
 	      atomic_log_entry &operator= (atomic_log_entry &&) = delete;
 
-	      void apply_log_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context);
+	      void apply_log_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context) const;
 	      template <typename T>
-	      void apply_log_by_type (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context, LOG_RECTYPE rectype);
+	      void apply_log_by_type (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
+				      LOG_RECTYPE rectype) const;
 
 	      const VPID m_vpid;
 	    private:
@@ -294,7 +295,7 @@ namespace cublog
   template <typename T>
   void
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::apply_log_by_type (
-	  THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context, LOG_RECTYPE rectype)
+	  THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context, LOG_RECTYPE rectype) const
   {
     LOG_RCV rcv;
     assert (m_page_ptr != nullptr);
