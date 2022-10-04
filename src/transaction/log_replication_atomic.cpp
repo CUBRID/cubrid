@@ -167,7 +167,7 @@ namespace cublog
 	  case LOG_SYSOP_START_POSTPONE:
 	    if (m_replicate_mvcc)
 	      {
-		replicate_sysop_start_postpone (header);
+		replicate_sysop_start_postpone (thread_entry, header);
 	      }
 	    break;
 	  case LOG_ASSIGNED_MVCCID:
@@ -277,7 +277,8 @@ namespace cublog
   }
 
   void
-  atomic_replicator::replicate_sysop_start_postpone (const LOG_RECORD_HEADER &rec_header)
+  atomic_replicator::replicate_sysop_start_postpone (cubthread::entry &thread_entry,
+      const LOG_RECORD_HEADER &rec_header)
   {
     // - if type is LOG_SYSOP_END_COMMIT it starts a sequence of sysop postpones
     // - after each sysop postpone, a LOG_SYSOP_END with LOG_SYSOP_END_LOGICAL_RUN_POSTPONE
@@ -295,7 +296,8 @@ namespace cublog
 	  {
 	    // only interprete LOG_SYSOP_START_POSTPONE if already part of an atomic replication sequence
 	    // in order to know that possible inner atomic replication sequences might appear
-	    m_atomic_helper.start_postpone_sequence (rec_header.trid);
+	    //m_atomic_helper.start_postpone_sequence (rec_header.trid);
+	    m_atomic_helper.apply_and_unfix_atomic_replication_sequence (&thread_entry, rec_header.trid);
 	  }
 	else
 	  {
