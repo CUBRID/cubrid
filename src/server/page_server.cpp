@@ -190,12 +190,13 @@ page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_
 {
   const MVCCID oldest_mvccid = *reinterpret_cast<const MVCCID *const> (a_sp.pull_payload().c_str());
 
-  assert (m_ps.m_pts_oldest_active_mvccid.find (get_channel_id()) != m_ps.m_pts_oldest_active_mvccid.end());
-  assert (m_ps.m_pts_oldest_active_mvccid[get_channel_id()] < oldest_mvccid);
+  const auto channel_id = get_channel_id ();
+  assert (m_ps.m_pts_oldest_active_mvccid.find (channel_id) != m_ps.m_pts_oldest_active_mvccid.end());
+  assert (m_ps.m_pts_oldest_active_mvccid[channel_id] < oldest_mvccid);
 
   /* The mutex is not needed since one entry is only updated by one PTS connection handler.
    * The mutex is only needed when the conatiner can be changed (eg. rehasing). i.e. when an entry is added or removed. */
-  m_ps.m_pts_oldest_active_mvccid[get_channel_id()] = oldest_mvccid;
+  m_ps.m_pts_oldest_active_mvccid[channel_id] = oldest_mvccid;
 }
 
 void
@@ -417,7 +418,7 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
 
   chn.set_channel_name ("PTS_PS_comm");
 
-  const auto channel_id = chn.get_channel_id ().c_str ();
+  const auto channel_id = chn.get_channel_id ();
 
   er_log_debug (ARG_FILE_LINE, "Passive transaction server connected to this page server. Channel id: %s.\n", channel_id);
 
