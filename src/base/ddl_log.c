@@ -745,12 +745,9 @@ logddl_write_end ()
       return;
     }
 
-  if (is_need_write ())
+  if (ddl_audit_handle.execute_type == LOGDDL_RUN_EXECUTE_FUNC)
     {
-      if (ddl_audit_handle.execute_type == LOGDDL_RUN_EXECUTE_FUNC)
-	{
-	  logddl_write ();
-	}
+      logddl_write ();
     }
 
 ddl_log_free:
