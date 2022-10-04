@@ -1679,6 +1679,8 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
 
   log_daemons_init ();
 
+  pts_ptr->start_oldest_active_mvccid_sender ();
+
   pts_ptr->start_log_replicator (replication_start_redo_lsa, replication_prev_redo_lsa);
 
   // NOTE: make sure not to re-define trantable here; already defined in boot_restart_server
@@ -1702,8 +1704,6 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
   log_Gl.rcv_phase = LOG_RESTARTED;
 
   logpb_initialize_logging_statistics ();
-
-  pts_ptr->send_oldest_active_mvccid ();	/* TODO not here acutally, just for testing. will be removed soon */
 
   er_log_debug (ARG_FILE_LINE, "log_initialize_passive_tran_server: end of log initializaton, append_lsa = (%lld|%d)\n",
 		LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
