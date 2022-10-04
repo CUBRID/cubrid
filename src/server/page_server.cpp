@@ -243,7 +243,8 @@ page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code
 void
 page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::sequenced_payload &a_sp)
 {
-  DKNVOLS nvols_perm = disk_get_perm_volume_count ();
+  /* It is simply a dummy value to check whether the TS (get_boot_info_from_page_server) receives the message well */
+  DKNVOLS nvols_perm = VOLID_MAX;
 
   std::string response_message;
   response_message.reserve (sizeof (nvols_perm));

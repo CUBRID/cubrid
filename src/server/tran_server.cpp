@@ -255,6 +255,9 @@ tran_server::get_boot_info_from_page_server ()
   DKNVOLS nvols_perm;
   std::memcpy (&nvols_perm, response_message.c_str (), sizeof (nvols_perm));
 
+  /* Check the dummay value whether the TS receives the message from PS (receive_boot_info_request) well. */
+  assert (nvols_perm == VOLID_MAX);
+
   return NO_ERROR;
 }
 
