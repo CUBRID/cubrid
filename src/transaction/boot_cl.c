@@ -5825,34 +5825,31 @@ boot_define_view_trigger (void)
 	  "[t].[comment] AS [comment] "
 	"FROM "
 	  /* TR_CLASS_NAME */
-	  "[%s] AS [t], "
+	  "[%s] AS [t] "
 	  /* CT_CLASS_NAME */
-	  "[%s] AS [c], "
-	  "("
-	    "SELECT "
-	      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) AS [groups] "
-	    "FROM "
-	      /* AU_USER_CLASS_NAME */
-	      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	    "WHERE "
-	      "[u].[name] = CURRENT_USER"
-	  ") AS [z] "
+	  "LEFT OUTER JOIN [%s] AS [c] ON [t].[target_class] = [c].[class_of] "
+	  "CROSS JOIN ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) AS [groups] "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") AS [z] "
 	"WHERE "
-	  "[t].[target_class] = [c].[class_of] "
-	  "AND ("
-	      "CURRENT_USER = 'DBA' "
-	      "OR 1 = 1 " /* It is added for backward compatibility. */
-	      "OR {[t].[owner].[name]} SUBSETEQ ([z].[groups]) "
-	      "OR {[c]} SUBSETEQ ("
-		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
-		  "FROM "
-		    /* CT_CLASSAUTH_NAME */
-		    "[%s] AS [au] "
-		  "WHERE "
-		    "{[au].[grantee].[name]} SUBSETEQ ([z].[groups]) "
-		    "AND [au].[auth_type] = 'SELECT'"
-		")"
+	  "CURRENT_USER = 'DBA' "
+	  "OR 1 = 1 " /* It is added for backward compatibility. */
+	  "OR {[t].[owner].[name]} SUBSETEQ ([z].[groups]) "
+	  "OR {[c]} SUBSETEQ ("
+	      "SELECT "
+		"SUM (SET {[au].[class_of]}) "
+	      "FROM "
+		/* CT_CLASSAUTH_NAME */
+		"[%s] AS [au] "
+	      "WHERE "
+		"{[au].[grantee].[name]} SUBSETEQ ([z].[groups]) "
+		"AND [au].[auth_type] = 'SELECT'"
 	    ")",
 	TR_CLASS_NAME,
 	CT_CLASS_NAME,
