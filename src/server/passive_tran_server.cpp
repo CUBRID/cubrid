@@ -168,7 +168,7 @@ void passive_tran_server::start_oldest_active_mvccid_sender ()
   assert (m_oldest_active_mvccid_sender != nullptr); // when create_daemon() fails
 }
 
-void passive_tran_server::send_oldest_active_mvccid (cubthread::entry &thread_entry)
+void passive_tran_server::send_oldest_active_mvccid (cubthread::entry &)
 {
   std::string request_message;
 
