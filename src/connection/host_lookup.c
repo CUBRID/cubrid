@@ -39,6 +39,7 @@
 #include <netdb.h>
 #endif
 
+#include "porting.h"
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "message_catalog.h"
