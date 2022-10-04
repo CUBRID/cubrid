@@ -29,7 +29,6 @@
 #include <limits.h>
 #include <errno.h>
 #include <unordered_map>
-#include <pthread.h>
 
 #if defined (WINDOWS)
 #include <winsock2.h>
@@ -37,6 +36,7 @@
 #else
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <pthread.h>
 #endif
 
 #include "porting.h"
