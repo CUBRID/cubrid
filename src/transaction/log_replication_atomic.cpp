@@ -88,6 +88,17 @@ namespace cublog
 	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_DBOUT_REDO));
 	    const LOG_REC_DBOUT_REDO dbout_redo =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_DBOUT_REDO> ();
+
+	    if (dbout_redo.rcvindex == RVDK_NEWVOL || dbout_redo.rcvindex == RVDK_EXPAND_VOLUME)
+	      {
+		/* Recovery redo for RVDK_NEWVOL and RVDK_EXPAND_VOLUME will not be replicated,
+		 * because fileIO operations are required for those redo functions.
+		 * However fileIO operations are not required in PTS, so it skip these logs
+		 */
+
+		break;
+	      }
+
 	    log_rcv rcv;
 	    rcv.length = dbout_redo.length;
 
