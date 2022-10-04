@@ -86,12 +86,6 @@ namespace cublog
       atomic_replication_helper &operator= (const atomic_replication_helper &) = delete;
       atomic_replication_helper &operator= (atomic_replication_helper &&) = delete;
 
-#if (0)
-      void start_sequence_or_append_to_existing (THREAD_ENTRY *thread_p, TRANID trid, LOG_LSA lsa,
-	  const log_rv_redo_context &redo_context,
-	  LOG_RECTYPE rec_type, LOG_RCVINDEX rcvindex, VPID vpid);
-#endif
-
       // start a new non-sysop atomic replication sequence for a transaction;
       // the transaction must not already have an atomic replication sequence started
       void add_atomic_replication_sequence (TRANID trid, LOG_LSA start_lsa, const log_rv_redo_context &redo_context);
@@ -112,7 +106,6 @@ namespace cublog
       // already started an atomic sequence; the postpone sequence can contain nested atomic
       // replication sequences which will be treated unioned with the main, already started, one
       void start_postpone_sequence (TRANID trid);
-//      void apply_all_before_start_postpone (THREAD_ENTRY *thread_p, TRANID trid);
       bool is_postpone_sequence_started (TRANID trid) const;
       void complete_one_postpone_sequence (TRANID trid);
       // there is no easy way of knowing how many postpone sequences are in the transaction
@@ -128,10 +121,6 @@ namespace cublog
     private: // methods
       void start_sequence_internal (TRANID trid, LOG_LSA start_lsa,
 				    const log_rv_redo_context &redo_context, bool is_sysop);
-#if (0)
-      void start_sequence_internal (TRANID trid, LOG_LSA start_lsa,
-				    const log_rv_redo_context &redo_context, LOG_RECTYPE rec_type);
-#endif
 #if !defined (NDEBUG)
       bool check_for_page_validity (VPID vpid, TRANID tranid) const;
 #endif
@@ -154,29 +143,18 @@ namespace cublog
 	  // technical: function is needed to avoid double constructing a redo_context - which is expensive -
 	  // upon constructing a sequence
 	  void initialize (LOG_LSA start_lsa, bool is_sysop);
-#if (0)
-	  void initialize (LOG_LSA start_lsa, LOG_RECTYPE rec_type);
-#endif
 
 	  int add_atomic_replication_log (THREAD_ENTRY *thread_p, log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid);
-#if (0)
-	  int handle_replication_log (THREAD_ENTRY *thread_p, log_lsa record_lsa,
-				      LOG_RECTYPE rec_type, LOG_RCVINDEX rcvindex, VPID vpid);
-#endif
 
 	  bool can_end_sysop_sequence (const LOG_LSA &sysop_parent_lsa) const;
 	  bool can_end_sysop_sequence () const;
 
 	  void start_postpone_sequence ();
-//	  void apply_all_before_start_postpone (THREAD_ENTRY *thread_p);
 	  bool is_postpone_sequence_started () const;
 	  void complete_one_postpone_sequence ();
 	  bool is_at_least_one_postpone_sequence_completed () const;
 
 	  void apply_and_unfix_sequence (THREAD_ENTRY *thread_p);
-#if (0)
-	  void apply_and_unfix (THREAD_ENTRY *thread_p, size_t first_index, size_t last_index);
-#endif
 
 	  log_lsa get_start_lsa () const;
 
@@ -186,17 +164,9 @@ namespace cublog
 	   */
 	  class atomic_log_entry
 	  {
-#if (0)
-	      static constexpr LOG_RECTYPE GUARD_REC_TYPE = LOG_LARGER_LOGREC_TYPE;
-	      static constexpr LOG_RCVINDEX GUARD_RCVINDEX = RV_LAST_LOGID;
-#endif
-
 	    public:
 	      atomic_log_entry () = delete;
 	      atomic_log_entry (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex, PAGE_PTR page_ptr);
-#if (0)
-	      atomic_log_entry (log_lsa lsa, LOG_RECTYPE rec_type);
-#endif
 
 	      atomic_log_entry (const atomic_log_entry &) = delete;
 	      atomic_log_entry (atomic_log_entry &&that);
@@ -209,16 +179,9 @@ namespace cublog
 	      void apply_log_by_type (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
 				      LOG_RECTYPE rectype) const;
 
-#if (0)
-	      bool is_payload_record () const;
-#endif
-
 	      const VPID m_vpid;
 	    private:
 	      const log_lsa m_record_lsa;
-#if (0)
-	      const LOG_RECTYPE m_rec_type;
-#endif
 	      const LOG_RCVINDEX m_record_index;
 	      // ownership of page pointer is with the bookkeeper in the owning class; this is just a
 	      // reference to allow applying the redo function when needed
