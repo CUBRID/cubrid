@@ -224,21 +224,21 @@ namespace cublog
 	   */
 	  struct page_ptr_bookkeeping
 	  {
-	      page_ptr_bookkeeping () = default;
-	      ~page_ptr_bookkeeping ();
+	    page_ptr_bookkeeping () = default;
+	    ~page_ptr_bookkeeping ();
 
-	      page_ptr_bookkeeping (const page_ptr_bookkeeping &) = delete;
-	      page_ptr_bookkeeping (page_ptr_bookkeeping &&) = delete;
+	    page_ptr_bookkeeping (const page_ptr_bookkeeping &) = delete;
+	    page_ptr_bookkeeping (page_ptr_bookkeeping &&) = delete;
 
-	      page_ptr_bookkeeping &operator= (const page_ptr_bookkeeping &) = delete;
-	      page_ptr_bookkeeping &operator= (page_ptr_bookkeeping &&) = delete;
+	    page_ptr_bookkeeping &operator= (const page_ptr_bookkeeping &) = delete;
+	    page_ptr_bookkeeping &operator= (page_ptr_bookkeeping &&) = delete;
 
-	      int fix_page (THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcv_index, PAGE_PTR &page_ptr_out);
-	      int unfix_page (THREAD_ENTRY *thread_p, VPID vpid);
+	    int fix_page (THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcv_index, PAGE_PTR &page_ptr_out);
+	    int unfix_page (THREAD_ENTRY *thread_p, VPID vpid);
 
-	      using page_ptr_info_map_type = std::map<VPID, page_ptr_info>;
+	    using page_ptr_info_map_type = std::map<VPID, page_ptr_info>;
 
-	      page_ptr_info_map_type m_;
+	    page_ptr_info_map_type m_page_ptr_info_map;
 	  };
 
 	  using atomic_log_entry_vector_type = std::vector<atomic_log_entry>;
