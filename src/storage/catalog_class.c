@@ -3262,7 +3262,7 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
   offset_size = OR_GET_OFFSET_SIZE (buf_p->ptr);
 
   /* header */
-  assert (offset_size >= SHORT_VAR_OFFSET_SIZE);
+  assert (offset_size == BIG_VAR_OFFSET_SIZE || offset_size == SHORT_VAR_OFFSET_SIZE);
 
   repr_id_bits = or_mvcc_get_repid_and_flags (buf_p, &rc);
   /* get bound_bits_flag and skip other MVCC header fields */
