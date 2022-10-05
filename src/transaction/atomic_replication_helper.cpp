@@ -466,7 +466,7 @@ namespace cublog
 
   atomic_replication_helper::atomic_log_sequence::page_ptr_bookkeeping::~page_ptr_bookkeeping ()
   {
-    assert (m_.empty ());
+    assert (m_page_ptr_info_map.empty ());
   }
 
   int
@@ -477,8 +477,8 @@ namespace cublog
 
     page_ptr_info *info_p = nullptr;
 
-    const auto find_it = m_.find (vpid);
-    if (find_it != m_.cend ())
+    const auto find_it = m_page_ptr_info_map.find (vpid);
+    if (find_it != m_page_ptr_info_map.cend ())
       {
 	info_p = &find_it->second;
 
@@ -498,7 +498,7 @@ namespace cublog
 	  }
 
 	std::pair<page_ptr_info_map_type::iterator, bool> insert_res
-	  = m_.emplace (vpid, std::move (page_ptr_info ()));
+	  = m_page_ptr_info_map.emplace (vpid, std::move (page_ptr_info ()));
 	assert (insert_res.second);
 
 	info_p = &insert_res.first->second;
@@ -529,8 +529,8 @@ namespace cublog
   atomic_replication_helper::atomic_log_sequence::page_ptr_bookkeeping::unfix_page (
 	  THREAD_ENTRY *thread_p, VPID vpid)
   {
-    const auto find_it = m_.find (vpid);
-    if (find_it != m_.cend ())
+    const auto find_it = m_page_ptr_info_map.find (vpid);
+    if (find_it != m_page_ptr_info_map.cend ())
       {
 	page_ptr_info &info = find_it->second;
 
@@ -545,7 +545,7 @@ namespace cublog
 		info.m_watcher_p.reset ();
 	      }
 
-	    m_.erase (find_it);
+	    m_page_ptr_info_map.erase (find_it);
 	  }
 
 	return NO_ERROR;
