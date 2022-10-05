@@ -432,7 +432,8 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
 
   const auto channel_id = chn.get_channel_id ();
 
-  er_log_debug (ARG_FILE_LINE, "Passive transaction server connected to this page server. Channel id: %s.\n", channel_id);
+  er_log_debug (ARG_FILE_LINE, "Passive transaction server connected to this page server. Channel id: %s.\n",
+		channel_id.c_str ());
 
   m_passive_tran_server_conn.emplace_back (new connection_handler (chn, transaction_server_type::PASSIVE, *this));
 
