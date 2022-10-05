@@ -188,9 +188,11 @@ page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_co
 void
 page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_t::sequenced_payload &a_sp)
 {
-  const auto oldest_mvccid = *reinterpret_cast<const MVCCID *const> (a_sp.pull_payload().c_str());
+  assert (m_server_type == transaction_server_type::PASSIVE);
 
+  const auto oldest_mvccid = *reinterpret_cast<const MVCCID *const> (a_sp.pull_payload().c_str());
   const auto channel_id = get_channel_id ();
+
   assert (m_ps.m_pts_oldest_active_mvccids.find (channel_id) != m_ps.m_pts_oldest_active_mvccids.end());
   assert (m_ps.m_pts_oldest_active_mvccids[channel_id] < oldest_mvccid);
 
