@@ -113,6 +113,7 @@ static PT_NODE *qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tre
 static PT_NODE *qo_get_name_cnt_by_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *qo_collect_name_with_eq_const (PARSER_CONTEXT * parser, PT_NODE * on_cond, PT_NODE * spec);
 static PT_NODE *qo_reduce_outer_joined_tables (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query);
+static void qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * node);
 
 
 
@@ -3497,6 +3498,457 @@ end:
       parser_free_tree (parser, point_list);
     }
   return query;
+}
+
+/*
+ * qo_reduce_joined_referenced_tables () - reduce referenced joined tables with not null constraint.
+ *   return:
+ *   parser(in):
+ *   spec(in):
+ *   query(in):
+ *
+ * Note:
+ * 	examples:
+ *  	          select c.a1, c.a2, c.a3
+ *                  from child c inner join parent p on c.fk = p.pk
+ *                 where c.a4 = ?
+ *            ==>
+ *                select c.a1, c.a2, c.a3
+ *                  from tbl1 a
+ *                 where c.a4 = ?
+ */
+static void
+qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  PT_NODE *child_spec = NULL;	/* with the FOREIGN KEY */
+  PT_NODE *parent_spec = NULL;	/* with the PRIMARY KEY referenced */
+  PT_NODE *child_entity_name = NULL;
+  PT_NODE *parent_entity_name = NULL;
+  PT_NODE *child_flat_entity_list = NULL;
+  PT_NODE *parent_flat_entity_list = NULL;
+  const char *child_name = NULL;
+  const char *parent_name = NULL;
+  MOP child_mop = NULL;
+  MOP parent_mop = NULL;
+  SM_CLASS_CONSTRAINT *child_cons = NULL;
+  SM_CLASS_CONSTRAINT *parent_cons = NULL;
+  SM_ATTRIBUTE *child_cons_attr = NULL;
+  SM_ATTRIBUTE *parent_cons_attr = NULL;
+  PT_NODE *child_attr = NULL;
+  PT_NODE *parent_attr = NULL;
+  PT_NODE *append_pred_list = NULL, *append_pred = NULL;
+  PT_NODE *prev_spec = NULL, *curr_spec = NULL;
+  PT_NODE *prev_pred = NULL, *curr_pred = NULL, *backup_pred = NULL;
+  PT_NODE *pred_point_list = NULL, *pred_point = NULL, *prev_pred_point = NULL, *pred = NULL;
+  bool is_skip_spec;
+  int i = 0;
+
+  /*
+   * 1. SELECT 쿼리를 대상을 한다.
+   *   - DDL, DML에 포함된 SELECT도 포함한다.
+   *   - CTE도 대상에 포함한다. ??
+   * 2. WHERE에서 or_next가 있는 경우는 제외해야 한다.
+   * 3. 아래 순서로 테이블 제거가 가능한지 판단한다.
+   *   2-1. 제거 대상은 테이블이기 때문에 사용하는 테이블 목록을 찾아봐야 한다.
+   *   2-2. FK가 있는지 확인한다.
+   *     - 테이블에 PK가 있는 경우가 대분이기 때문에 PK가 있다는 것으로 판단할 수 없다.
+   *       FK가 있는 경우는 드물기 때문에 판단할 수 있다.
+   *   2-3. FK가 있는 테이블을 찾았으면 FK와 관계가 있는 PK가 있는 테이블을 찾는다.
+   *     - 테이블에 PK가 있는 경우는 대부분이지만 FK와 관계가 있는 PK가 있는 경우는 드물다.
+   *   2-4. FK <-> PK 관계가 확인되면 WHERE에서 조인 조건을 찾아야 한다.
+   *        조인 조건을 찾기 전에 PK가 있는 테이블에 대한 레퍼런스가 있는 조건을 찾아야 한다.
+   *        제거할 테이블은 PK가 있는 테이블이기 때문에 이 테이블에 대한 레퍼런스가 있는 조건을 찾아야 한다.
+   *   2-5. 찾은 조건은 PK를 구성하는 컬럼이어야 한다.
+   *        그렇지 않다면 FK와 관련이 없기 때문에 PK가 있는 테이블에 대한 필터 조건이 있는 것이므로
+   *        PK가 있는 테이블을 제거할 수 없다.
+   *   2-6. FK <-> PK 관계만 확인하면 안 된다. 컬럼의 순서도 동일해야 한다.
+   *   2-7. 조인 조건에서 FK가 있는 컬럼의 테이블은 NOT NULL 제약조건이 있어야 한다.
+   *        만약 NOT NULL 제약조건이 없다면 이 컬럼에 대햔 IS NOT NULL 제약조건을 추가해야 한다.
+   *   2-8. FROM과 WHERE의 조인 조건을 제외하고, 제거할 테이블의 컬럼을 사용하는지 확인한다.
+   */
+
+  if (parser == NULL || query == NULL || query->node_type != PT_SELECT)
+    {
+      return;
+    }
+
+  if (query->info.query.q.select.hint & PT_HINT_NO_MERGE)
+    {
+      return;
+    }
+
+  if (query->info.query.q.select.where->or_next != NULL)
+    {
+      return;
+    }
+
+  child_spec = query->info.query.q.select.from;
+  for (; child_spec != NULL; child_spec = child_spec->next)
+    {
+      assert (PT_IS_SPEC (child_spec));
+
+      /* PT_ALL is not supported. */
+      if (child_spec->info.spec.only_all == PT_ALL)
+	{
+	  continue;
+	}
+
+      /* CTEs and derived tables are excluded. */
+      child_entity_name = PT_SPEC_ENTITY_NAME (child_spec);
+      if (child_entity_name == NULL)
+	{
+	  continue;
+	}
+
+      child_flat_entity_list = PT_SPEC_FLAT_ENTITY_LIST (child_spec);
+      if (child_flat_entity_list != NULL)
+	{
+	  child_mop = PT_NAME_DB_OBJECT (child_flat_entity_list);
+	}
+      else
+	{
+	  child_mop = PT_NAME_DB_OBJECT (child_entity_name);
+	}
+
+      if (child_mop == NULL)
+	{
+	  child_name = PT_NAME_ORIGINAL (child_entity_name);
+	  child_mop = sm_find_class (child_name);
+	  if (child_mop == NULL)
+	    {
+	      ASSERT_ERROR ();
+	      return;
+	    }
+	}
+
+      /* Find the foreign key in the child. */
+      child_cons = sm_class_constraints (child_mop);
+      for (; child_cons != NULL; child_cons = child_cons->next)
+	{
+	  if (child_cons->type == SM_CONSTRAINT_FOREIGN_KEY)
+	    {
+	      break;
+	    }
+	}
+
+      if (child_cons == NULL)
+	{
+	  /* There is no foreign key. */
+	  continue;
+	}
+
+      assert (child_mop != NULL && child_cons != NULL && child_cons->type == SM_CONSTRAINT_FOREIGN_KEY);
+
+      prev_spec = NULL;
+      parent_spec = query->info.query.q.select.from;
+      for (; parent_spec != NULL; prev_spec = parent_spec, parent_spec = parent_spec->next)
+	{
+	  assert (PT_IS_SPEC (parent_spec));
+
+	  if (parent_spec == child_spec)
+	    {
+	      continue;
+	    }
+
+	  /* PT_ALL is not supported. */
+	  if (parent_spec->info.spec.only_all == PT_ALL)
+	    {
+	      continue;
+	    }
+
+	  /* CTEs and derived tables are excluded. */
+	  parent_entity_name = PT_SPEC_ENTITY_NAME (parent_spec);
+	  if (parent_entity_name == NULL)
+	    {
+	      continue;
+	    }
+
+	  parent_flat_entity_list = PT_SPEC_FLAT_ENTITY_LIST (parent_spec);
+	  if (parent_flat_entity_list != NULL)
+	    {
+	      parent_mop = PT_NAME_DB_OBJECT (parent_flat_entity_list);
+	    }
+	  else
+	    {
+	      parent_mop = PT_NAME_DB_OBJECT (parent_entity_name);
+	    }
+
+	  if (parent_mop == NULL)
+	    {
+	      parent_name = PT_NAME_ORIGINAL (parent_entity_name);
+	      parent_mop = sm_find_class (parent_name);
+	      if (parent_mop == NULL)
+		{
+		  ASSERT_ERROR ();
+		  goto exit_on_error;
+		}
+	    }
+
+	  /* WS_OID or WS_REAL_OID ? */
+	  if (!OID_EQ (WS_REAL_OID (parent_mop), &child_cons->fk_info->ref_class_oid))
+	    {
+	      /* It is not the table referenced by the foreign key. */
+	      continue;
+	    }
+
+	  /* Find the primary key. */
+	  parent_cons = sm_class_constraints (parent_mop);
+	  for (; parent_cons != NULL; parent_cons = parent_cons->next)
+	    {
+	      if (parent_cons->type == SM_CONSTRAINT_PRIMARY_KEY)
+		{
+		  break;
+		}
+	    }
+
+	  if (parent_cons == NULL)
+	    {
+	      /* There is no primary key. */
+	      continue;
+	    }
+
+	  /* Checks if the primary key is referenced by the foreign key. */
+	  if (BTID_IS_EQUAL (&(parent_cons->index_btid), &(child_cons->fk_info->ref_class_pk_btid)))
+	    {
+	      break;
+	    }
+	}
+
+      if (parent_spec == NULL)
+	{
+	  /* There is no primary key. */
+	  continue;
+	}
+
+      assert (parent_cons != NULL && parent_cons->type == SM_CONSTRAINT_PRIMARY_KEY);
+
+      /* Add a predicate related to the parent to the list. */
+      pred_point_list = NULL;
+      pred = query->info.query.q.select.where;
+      for (; pred != NULL; pred = pred->next)
+	{
+	  SPEC_CNT_INFO info = { parent_spec, 0, 0, NULL };
+	  parser_walk_tree (parser, pred, qo_get_name_cnt_by_spec, &info, NULL, NULL);
+	  if (info.my_spec_cnt >= 1)
+	    {
+	      pred_point = pt_point (parser, pred);
+	      pred_point_list = parser_append_node (pred_point, pred_point_list);
+	    }
+	}
+
+      is_skip_spec = false;
+
+      for (pred_point = pred_point_list; pred_point != NULL && !is_skip_spec; pred_point = pred_point->next)
+	{
+	  pred = pred_point;
+	  CAST_POINTER_TO_NODE (pred);
+
+	  child_attr = NULL;
+	  parent_attr = NULL;
+	  if (pred->node_type == PT_EXPR && pred->info.expr.op == PT_EQ && pt_is_attr (pred->info.expr.arg1)
+	      && pt_is_attr (pred->info.expr.arg2))
+	    {
+	      PT_NODE *arg1 = pred->info.expr.arg1;
+	      PT_NODE *arg2 = pred->info.expr.arg2;
+
+	      if (arg1->info.name.spec_id == parent_spec->info.spec.id)
+		{
+		  parent_attr = pred->info.expr.arg1;
+
+		  if (arg2->info.name.spec_id == child_spec->info.spec.id)
+		    {
+		      child_attr = pred->info.expr.arg2;
+		    }
+		}
+	      else
+		{
+		  assert (arg2->info.name.spec_id == parent_spec->info.spec.id);
+		  parent_attr = pred->info.expr.arg2;
+
+		  if (arg1->info.name.spec_id == child_spec->info.spec.id)
+		    {
+		      child_attr = pred->info.expr.arg1;
+		    }
+		}
+	    }
+
+	  if (child_attr == NULL)
+	    {
+	      /* It is not a predicate for joins. There should be only predicates for joins. */
+	      is_skip_spec = true;
+	      break;
+	    }
+
+	  /* Check if the same column exists in the primary key and foreign key. The order of the columns must also be the same. */
+	  for (i = 0; child_cons->attributes[i] && parent_cons->attributes[i]; i++)
+	    {
+	      child_cons_attr = child_cons->attributes[i];
+	      parent_cons_attr = parent_cons->attributes[i];
+	      if (intl_identifier_casecmp (child_cons_attr->header.name, child_attr->info.name.original) == 0)
+		{
+		  if (intl_identifier_casecmp (parent_cons_attr->header.name, parent_attr->info.name.original) == 0)
+		    {
+		      /* found */
+
+		      if (child_cons_attr->flags & SM_ATTFLAG_NON_NULL)
+			{
+			  break;
+			}
+		      else
+			{
+			  PT_NODE *child_attr_node = parser_copy_tree (parser, child_attr);
+			  append_pred = parser_make_expression (parser, PT_IS_NOT_NULL, child_attr_node, NULL, NULL);
+
+			  if (append_pred_list != NULL)
+			    {
+			      append_pred_list =
+				parser_make_expression (parser, PT_AND, append_pred_list, append_pred, NULL);
+			    }
+			  else
+			    {
+			      append_pred_list = append_pred;
+			    }
+
+			  break;
+			}
+		    }
+		  else
+		    {
+		      /* The columns used in the predicate are in different order in the constraint. */
+		      is_skip_spec = true;
+		      break;
+		    }
+		}
+	    }
+
+	  if (child_cons->attributes[i] == NULL || parent_cons->attributes[i] == NULL)
+	    {
+	      /* The column used in the predicate does not exist in the primary key and the foreign key. */
+	      is_skip_spec = true;
+	      break;
+	    }
+	}
+
+      if (is_skip_spec)
+	{
+	  if (pred_point_list != NULL)
+	    {
+	      parser_free_tree (parser, pred_point_list);
+	      pred_point_list = NULL;
+	    }
+
+	  continue;
+	}
+
+      /* Except for the predicate, check if a column in the parent table is referenced. */
+      SPEC_CNT_INFO info = { parent_spec, 0, 0, NULL };
+      backup_pred = query->info.query.q.select.where;
+      query->info.query.q.select.where = NULL;
+      parser_walk_tree (parser, query, qo_get_name_cnt_by_spec_without_oncond, &info, NULL, NULL);
+      query->info.query.q.select.where = backup_pred;
+      if (info.my_spec_cnt >= 1)
+	{
+	  continue;
+	}
+
+      /* Remove unnecessary tables. */
+      prev_spec->next = parent_spec->next;
+      parent_spec->next = NULL;
+      parser_free_node (parser, parent_spec);
+      parent_spec = NULL;
+
+      /* Removes the predicate used for the removed table. */
+      prev_pred = NULL;
+      curr_pred = query->info.query.q.select.where;
+      while (curr_pred != NULL)
+	{
+	  pred = NULL;
+	  for (pred_point = pred_point_list; pred_point != NULL;
+	       prev_pred_point = pred_point, pred_point = pred_point->next)
+	    {
+	      pred = pred_point;
+	      CAST_POINTER_TO_NODE (pred);
+
+	      if (curr_pred == pred)
+		{
+		  break;
+		}
+	    }
+
+	  if (pred == NULL)
+	    {
+	      prev_pred = curr_pred;
+	      curr_pred = curr_pred->next;
+	      continue;
+	    }
+
+	  if (prev_pred == NULL)
+	    {
+	      query->info.query.q.select.where = curr_pred->next;
+	      curr_pred->next = NULL;
+	      parser_free_tree (parser, curr_pred);
+	      curr_pred = query->info.query.q.select.where;
+	    }
+	  else
+	    {
+	      prev_pred->next = curr_pred->next;
+	      curr_pred->next = NULL;
+	      parser_free_tree (parser, curr_pred);
+	      curr_pred = prev_pred->next;
+	    }
+
+	  if (prev_pred_point == NULL)
+	    {
+	      pred_point_list = pred_point->next;
+	    }
+	  else
+	    {
+	      prev_pred_point->next = pred_point->next;
+	    }
+
+	  pred_point->next = NULL;
+	  parser_free_tree (parser, pred_point);
+	  pred_point = pred_point->next;
+	}
+
+      if (append_pred_list != NULL)
+	{
+	  query->info.query.q.select.where =
+	    parser_make_expression (parser, PT_AND, query->info.query.q.select.where, append_pred_list, NULL);
+	}
+
+      /* reset location */
+      qo_reset_spec_location (parser, parent_spec, query);
+
+      /* free spec */
+      parser_free_tree (parser, parent_spec);
+
+      if (pred_point_list != NULL)
+	{
+	  parser_free_tree (parser, pred_point_list);
+	}
+    }
+
+  return;
+
+exit_on_error:
+  /* reset location */
+  qo_reset_spec_location (parser, parent_spec, query);
+
+  if (append_pred_list != NULL)
+    {
+      parser_free_tree (parser, append_pred_list);
+    }
+
+  /* free spec */
+  parser_free_tree (parser, parent_spec);
+
+  if (pred_point_list != NULL)
+    {
+      parser_free_tree (parser, pred_point_list);
+    }
+
+  return;
 }
 
 /*
@@ -8020,6 +8472,8 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	    {
 	      parser_free_tree (parser, point_list);
 	    }
+
+	  qo_reduce_joined_referenced_tables (parser, node);
 	}
 
       /* auto-parameterization is safe when it is done as the last step of rewrite optimization */

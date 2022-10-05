@@ -738,9 +738,24 @@ struct json_t;
           ( (n)->info.method_call.method_type == PT_SP_PROCEDURE || \
             (n)->info.method_call.method_type == PT_SP_FUNCTION) )
 
+/* We would like to redefine the above macros below. And we will solve the below ones.
+ *   - There is no need to repeat null checks for each macro.
+ *
+ * Be sure to do the following before using the macro below.
+ *   - Check if PT_NODE is NULL.
+ *   - Check the node_type for PT_NODE.
+ */
+
 /* PT_NAME_INFO */
 #define PT_NAME_ORIGINAL(n)		((n)->info.name.original)
 #define PT_NAME_RESOLVED(n)		((n)->info.name.resolved)
+#define PT_NAME_DB_OBJECT(n)		((n)->info.name.db_object)
+
+/* PT_SPEC_INFO */
+#define PT_SPEC_ENTITY_NAME(n)		((n)->info.spec.entity_name)
+#define PT_SPEC_CTE_POINTER(n)		((n)->info.spec.cte_pointer)
+#define PT_SPEC_DERIVED_TABLE(n)	((n)->info.spec.derived_table)
+#define PT_SPEC_FLAT_ENTITY_LIST(n)	((n)->info.spec.flat_entity_list)
 
 /* PT_CREATE_ENTITY */
 #define PT_CREATE_ENTITY_NAME(n)	((n)->info.create_entity.entity_name)
@@ -764,11 +779,13 @@ struct json_t;
 #define PT_SYNONYM_OR_REPLACE(n)	((n)->info.synonym.or_replace)
 #define PT_SYNONYM_IF_EXISTS(n)		((n)->info.synonym.if_exists)
 
-#define PT_IS_SYNONYM_NODE(n) \
-	( (n)->node_type == PT_ALTER_SYNONYM || \
-	  (n)->node_type == PT_CREATE_SYNONYM || \
-	  (n)->node_type == PT_DROP_SYNONYM || \
-	  (n)->node_type == PT_RENAME_SYNONYM )
+/* PT_SPEC_INFO */
+#define PT_IS_SPEC(n)			((n)->node_type == PT_SPEC)
+
+#define PT_IS_SYNONYM_NODE(n)		((n)->node_type == PT_ALTER_SYNONYM || \
+					 (n)->node_type == PT_CREATE_SYNONYM || \
+					 (n)->node_type == PT_DROP_SYNONYM || \
+					 (n)->node_type == PT_RENAME_SYNONYM)
 
 /*
  Enumerated types of parse tree statements
