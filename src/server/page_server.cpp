@@ -188,7 +188,7 @@ page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_co
 void
 page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_t::sequenced_payload &a_sp)
 {
-  const MVCCID oldest_mvccid = *reinterpret_cast<const MVCCID *const> (a_sp.pull_payload().c_str());
+  const auto oldest_mvccid = *reinterpret_cast<const MVCCID *const> (a_sp.pull_payload().c_str());
 
   const auto channel_id = get_channel_id ();
   assert (m_ps.m_pts_oldest_active_mvccid.find (channel_id) != m_ps.m_pts_oldest_active_mvccid.end());
@@ -197,6 +197,18 @@ page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_
   /* The mutex is not needed since one entry is only updated by one PTS connection handler.
    * The mutex is only needed when the conatiner can be changed (eg. rehasing). i.e. when an entry is added or removed. */
   m_ps.m_pts_oldest_active_mvccid[channel_id] = oldest_mvccid;
+
+#if !defined(NDEBUG)
+  std::string msg;
+  msg.append ("receive_oldest_active_mvccid: update the oldest active mvccid to " + std::to_string (
+		      oldest_mvccid) + " of " + channel_id);
+  msg.append ("\n oldest mvcc ids:");
+  for (const auto &it : m_ps.m_pts_oldest_active_mvccid)
+    {
+      msg.append (" " + std::to_string (it.second));
+    }
+  er_log_debug (ARG_FILE_LINE, msg.c_str());
+#endif
 }
 
 void
