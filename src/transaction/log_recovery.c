@@ -1182,7 +1182,7 @@ log_rv_analysis_mvcc_undo_redo (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * 
   assert (tdes != nullptr);
 
   // MVCC handling
-  tdes->last_mvcc_lsa = *log_lsa;
+  tdes->mvccinfo.last_mvcc_lsa = *log_lsa;
 
   // assign transaction mvccid from log record to transaction descriptor
   assert (log_page_p != nullptr);
@@ -1744,7 +1744,7 @@ log_rv_analysis_assigned_mvccid (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA *
       return ER_FAILED;
     }
 
-  tdes->last_mvcc_lsa = *log_lsa;
+  tdes->mvccinfo.last_mvcc_lsa = *log_lsa;
 
   // move read pointer past the log header which is actually read upper in the stack
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
@@ -1759,16 +1759,17 @@ log_rv_analysis_assigned_mvccid (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA *
 static void
 log_rv_analysis_complete_mvccid (int tran_index, const LOG_TDES * tdes)
 {
+  //TODO: if mvccinfo is reset in complete_mvcc, then move into it
   if (is_passive_transaction_server ())
     {
       if (MVCCID_IS_VALID (tdes->mvccinfo.id))
 	{
-	  assert (!LSA_ISNULL (&tdes->last_mvcc_lsa));
+	  assert (!LSA_ISNULL (&tdes->mvccinfo.last_mvcc_lsa));
 	  log_Gl.mvcc_table.complete_mvcc (tran_index, tdes->mvccinfo.id, true);
 	}
       else
 	{
-	  assert (LSA_ISNULL (&tdes->last_mvcc_lsa));
+	  assert (LSA_ISNULL (&tdes->mvccinfo.last_mvcc_lsa));
 	}
     }
 }
@@ -1935,7 +1936,7 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
       break;
 
     case LOG_SYSOP_END_LOGICAL_MVCC_UNDO:
-      tdes->last_mvcc_lsa = tdes->tail_lsa;
+      tdes->mvccinfo.last_mvcc_lsa = tdes->tail_lsa;
       // fall through
     case LOG_SYSOP_END_LOGICAL_UNDO:
       /* todo: I think it will be safer to save previous states in nested system operations, rather than rely on context
@@ -5113,7 +5114,7 @@ log_rv_undo_end_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 void
 log_rv_undo_abort_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  if (MVCCID_IS_VALID (tdes->mvccinfo.id) && tdes->last_mvcc_lsa.is_null ())
+  if (MVCCID_IS_VALID (tdes->mvccinfo.id) && tdes->mvccinfo.last_mvcc_lsa.is_null ())
     {
       log_append_assigned_mvccid (thread_p, tdes->mvccinfo.id);
     }
