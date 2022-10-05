@@ -568,15 +568,16 @@ namespace cublog
     switch (rcv_index)
       {
       case RVHF_INSERT:
-      case RVHF_MVCC_INSERT:
       case RVHF_DELETE:
+      case RVHF_UPDATE:
+      case RVHF_MVCC_INSERT:
       case RVHF_MVCC_DELETE_REC_HOME:
       case RVHF_MVCC_DELETE_OVERFLOW:
       case RVHF_MVCC_DELETE_REC_NEWHOME:
       case RVHF_MVCC_DELETE_MODIFY_HOME:
-      case RVHF_UPDATE:
-      case RVHF_MVCC_UPDATE_OVERFLOW:
+      case RVHF_UPDATE_NOTIFY_VACUUM:
       case RVHF_INSERT_NEWHOME:
+      case RVHF_MVCC_UPDATE_OVERFLOW:
       {
 	assert (watcher_uptr == nullptr);
 
@@ -619,15 +620,16 @@ namespace cublog
     switch (rcv_index)
       {
       case RVHF_INSERT:
-      case RVHF_MVCC_INSERT:
       case RVHF_DELETE:
+      case RVHF_UPDATE:
+      case RVHF_MVCC_INSERT:
       case RVHF_MVCC_DELETE_REC_HOME:
       case RVHF_MVCC_DELETE_OVERFLOW:
       case RVHF_MVCC_DELETE_REC_NEWHOME:
       case RVHF_MVCC_DELETE_MODIFY_HOME:
-      case RVHF_UPDATE:
-      case RVHF_MVCC_UPDATE_OVERFLOW:
+      case RVHF_UPDATE_NOTIFY_VACUUM:
       case RVHF_INSERT_NEWHOME:
+      case RVHF_MVCC_UPDATE_OVERFLOW:
 	assert (page_ptr == nullptr);
 	// other sanity asserts inside the function
 	pgbuf_ordered_unfix (thread_p, watcher_uptr.get ());
