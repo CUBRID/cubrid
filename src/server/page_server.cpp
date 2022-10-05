@@ -191,19 +191,19 @@ page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_
   const auto oldest_mvccid = *reinterpret_cast<const MVCCID *const> (a_sp.pull_payload().c_str());
 
   const auto channel_id = get_channel_id ();
-  assert (m_ps.m_pts_oldest_active_mvccid.find (channel_id) != m_ps.m_pts_oldest_active_mvccid.end());
-  assert (m_ps.m_pts_oldest_active_mvccid[channel_id] < oldest_mvccid);
+  assert (m_ps.m_pts_oldest_active_mvccids.find (channel_id) != m_ps.m_pts_oldest_active_mvccids.end());
+  assert (m_ps.m_pts_oldest_active_mvccids[channel_id] < oldest_mvccid);
 
   /* The mutex is not needed since one entry is only updated by one PTS connection handler.
    * The mutex is only needed when the conatiner can be changed (eg. rehasing). i.e. when an entry is added or removed. */
-  m_ps.m_pts_oldest_active_mvccid[channel_id] = oldest_mvccid;
+  m_ps.m_pts_oldest_active_mvccids[channel_id] = oldest_mvccid;
 
 #if !defined(NDEBUG)
   std::string msg;
   msg.append ("receive_oldest_active_mvccid: update the oldest active mvccid to " + std::to_string (
 		      oldest_mvccid) + " of " + channel_id);
   msg.append ("\n oldest mvcc ids:");
-  for (const auto &it : m_ps.m_pts_oldest_active_mvccid)
+  for (const auto &it : m_ps.m_pts_oldest_active_mvccids)
     {
       msg.append (" " + std::to_string (it.second));
     }
@@ -219,9 +219,9 @@ page_server::connection_handler::receive_disconnect_request (tran_server_conn_t:
   assert (m_prior_sender_sink_hook_func == nullptr);
 
   {
-    std::lock_guard<std::mutex> lockg { m_ps.m_pts_oldest_active_mvccid_mtx };
-    assert (m_ps.m_pts_oldest_active_mvccid.find (get_channel_id()) != m_ps.m_pts_oldest_active_mvccid.end());
-    m_ps.m_pts_oldest_active_mvccid.erase (get_channel_id());
+    std::lock_guard<std::mutex> lockg { m_ps.m_pts_oldest_active_mvccids_mtx };
+    assert (m_ps.m_pts_oldest_active_mvccids.find (get_channel_id()) != m_ps.m_pts_oldest_active_mvccids.end());
+    m_ps.m_pts_oldest_active_mvccids.erase (get_channel_id());
   }
 
   m_ps.disconnect_tran_server_async (this);
@@ -264,9 +264,9 @@ page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code
 	}
 
       {
-	std::lock_guard<std::mutex> lockg { m_ps.m_pts_oldest_active_mvccid_mtx };
-	assert (m_ps.m_pts_oldest_active_mvccid.find (get_channel_id()) != m_ps.m_pts_oldest_active_mvccid.end());
-	m_ps.m_pts_oldest_active_mvccid.erase (get_channel_id());
+	std::lock_guard<std::mutex> lockg { m_ps.m_pts_oldest_active_mvccids_mtx };
+	assert (m_ps.m_pts_oldest_active_mvccids.find (get_channel_id()) != m_ps.m_pts_oldest_active_mvccids.end());
+	m_ps.m_pts_oldest_active_mvccids.erase (get_channel_id());
       }
 
       m_ps.disconnect_tran_server_async (this);
@@ -438,10 +438,11 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
   m_passive_tran_server_conn.emplace_back (new connection_handler (chn, transaction_server_type::PASSIVE, *this));
 
   {
-    std::lock_guard<std::mutex> lockg { m_pts_oldest_active_mvccid_mtx };
-    assert (m_pts_oldest_active_mvccid.find (channel_id) == m_pts_oldest_active_mvccid.end());
-    m_pts_oldest_active_mvccid[channel_id] =
-	    MVCCID_ALL_VISIBLE; // MVCCID_ALL_VISIBLE means that it hasn't yet received. It will prevent the ATS run vacuum.
+    std::lock_guard<std::mutex> lockg { m_pts_oldest_active_mvccids_mtx };
+    assert (m_pts_oldest_active_mvccids.find (channel_id) == m_pts_oldest_active_mvccids.end());
+
+    /* MVCCID_ALL_VISIBLE means that it hasn't yet received. It will prevent the ATS run vacuum. */
+    m_pts_oldest_active_mvccids[channel_id] = MVCCID_ALL_VISIBLE;
   }
 }
 
