@@ -3551,7 +3551,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
       return;
     }
 
-  if (query->info.query.q.select.where->or_next != NULL)
+  if (query->info.query.q.select.where != NULL && query->info.query.q.select.where->or_next != NULL)
     {
       return;
     }
