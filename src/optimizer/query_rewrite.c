@@ -3535,7 +3535,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
   PT_NODE *backup_where = NULL;
   PT_NODE *pred_point_list = NULL, *prev_pred_point = NULL, *curr_pred_point = NULL;
   PT_NODE *parent_pred = NULL;
-  PT_NODE *prev_pred = NULL, *curr_pred = NULL;
+  PT_NODE *prev_pred = NULL, *curr_pred = NULL, *next_pred = NULL;
   PT_NODE *append_pred_list = NULL, *append_pred = NULL;
   bool is_skip = false;
   bool has_reduce = false;
@@ -3556,64 +3556,64 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
       return;
     }
 
-  child_spec = query->info.query.q.select.from;
-  for (; child_spec != NULL; child_spec = child_spec->next)
+  do
     {
-      assert (PT_IS_SPEC (child_spec));
+      has_reduce = false;
 
-      /* PT_ALL is not supported. */
-      if (child_spec->info.spec.only_all == PT_ALL)
+      child_spec = query->info.query.q.select.from;
+      for (; child_spec != NULL; child_spec = child_spec->next)
 	{
-	  continue;
-	}
+	  assert (PT_IS_SPEC (child_spec));
 
-      /* CTEs and derived tables are excluded. */
-      child_entity_name = PT_SPEC_ENTITY_NAME (child_spec);
-      if (child_entity_name == NULL)
-	{
-	  continue;
-	}
+	  /* PT_ALL is not supported. */
+	  if (child_spec->info.spec.only_all == PT_ALL)
+	    {
+	      continue;
+	    }
 
-      child_flat_entity_list = PT_SPEC_FLAT_ENTITY_LIST (child_spec);
-      if (child_flat_entity_list != NULL)
-	{
-	  child_mop = PT_NAME_DB_OBJECT (child_flat_entity_list);
-	}
-      else
-	{
-	  child_mop = PT_NAME_DB_OBJECT (child_entity_name);
-	}
+	  /* CTEs and derived tables are excluded. */
+	  child_entity_name = PT_SPEC_ENTITY_NAME (child_spec);
+	  if (child_entity_name == NULL)
+	    {
+	      continue;
+	    }
 
-      if (child_mop == NULL)
-	{
-	  child_mop = sm_find_class (PT_NAME_ORIGINAL (child_entity_name));
+	  child_flat_entity_list = PT_SPEC_FLAT_ENTITY_LIST (child_spec);
+	  if (child_flat_entity_list != NULL)
+	    {
+	      child_mop = PT_NAME_DB_OBJECT (child_flat_entity_list);
+	    }
+	  else
+	    {
+	      child_mop = PT_NAME_DB_OBJECT (child_entity_name);
+	    }
+
 	  if (child_mop == NULL)
 	    {
-	      ASSERT_ERROR ();
-	      goto exit;
+	      child_mop = sm_find_class (PT_NAME_ORIGINAL (child_entity_name));
+	      if (child_mop == NULL)
+		{
+		  ASSERT_ERROR ();
+		  goto exit;
+		}
 	    }
-	}
 
-      /* Find the foreign key in the child. */
-      child_cons = sm_class_constraints (child_mop);
-      for (; child_cons != NULL; child_cons = child_cons->next)
-	{
-	  if (child_cons->type == SM_CONSTRAINT_FOREIGN_KEY)
+	  /* Find the foreign key in the child. */
+	  child_cons = sm_class_constraints (child_mop);
+	  for (; child_cons != NULL; child_cons = child_cons->next)
 	    {
-	      /* Found the foreign key. */
-	      break;
+	      if (child_cons->type == SM_CONSTRAINT_FOREIGN_KEY)
+		{
+		  /* Found the foreign key. */
+		  break;
+		}
 	    }
-	}
-      if (child_cons == NULL)
-	{
-	  /* There is no foreign key. */
-	  continue;
-	}
-      assert (child_cons != NULL && child_cons->type == SM_CONSTRAINT_FOREIGN_KEY);
-
-      do
-	{
-	  has_reduce = false;
+	  if (child_cons == NULL)
+	    {
+	      /* There is no foreign key. */
+	      continue;
+	    }
+	  assert (child_cons != NULL && child_cons->type == SM_CONSTRAINT_FOREIGN_KEY);
 
 	  prev_parent_spec = NULL;
 	  parent_spec = query->info.query.q.select.from;
@@ -3694,10 +3694,16 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 	      curr_pred = query->info.query.q.select.where;
 	      for (; curr_pred != NULL; curr_pred = curr_pred->next)
 		{
+		  next_pred = curr_pred->next;
+		  curr_pred->next = NULL;
+
 		  // *INDENT-OFF*
 		  info = { parent_spec, 0, 0, NULL };
 		  // *INDENT-ON*
 		  parser_walk_tree (parser, curr_pred, qo_get_name_cnt_by_spec, &info, NULL, NULL);
+
+		  curr_pred->next = next_pred;
+
 		  if (info.my_spec_cnt >= 1)
 		    {
 		      pred_point_list = parser_append_node (pt_point (parser, curr_pred), pred_point_list);
@@ -3734,9 +3740,8 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 			      child_attr = parent_pred->info.expr.arg2;
 			    }
 			}
-		      else
+		      else if (arg2->info.name.spec_id == parent_spec->info.spec.id)
 			{
-			  assert (arg2->info.name.spec_id == parent_spec->info.spec.id);
 			  parent_attr = parent_pred->info.expr.arg2;
 
 			  if (arg1->info.name.spec_id == child_spec->info.spec.id)
@@ -3829,8 +3834,10 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 	      curr_pred = query->info.query.q.select.where;
 	      while (curr_pred != NULL)
 		{
+		  prev_pred_point = NULL;
+		  curr_pred_point = pred_point_list;
 		  parent_pred = NULL;
-		  for (curr_pred_point = pred_point_list; curr_pred_point != NULL;
+		  for (; curr_pred_point != NULL;
 		       prev_pred_point = curr_pred_point, curr_pred_point = curr_pred_point->next)
 		    {
 		      parent_pred = curr_pred_point;
@@ -3842,7 +3849,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 			  break;
 			}
 		    }
-		  if (parent_pred == NULL)
+		  if (curr_pred_point == NULL)
 		    {
 		      prev_pred = curr_pred;
 		      curr_pred = curr_pred->next;
@@ -3908,9 +3915,14 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 	      has_reduce = true;
 	      break;
 	    }
+
+	  if (has_reduce)
+	    {
+	      break;
+	    }
 	}
-      while (has_reduce);
     }
+  while (has_reduce);
 
 exit:
   return;
