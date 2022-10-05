@@ -3536,7 +3536,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
   PT_NODE *pred_point_list = NULL, *prev_pred_point = NULL, *curr_pred_point = NULL;
   PT_NODE *parent_pred = NULL;
   PT_NODE *prev_pred = NULL, *curr_pred = NULL, *next_pred = NULL;
-  PT_NODE *append_pred_list = NULL, *append_pred = NULL;
+  PT_NODE *append_pred_list = NULL, *prev_append_pred = NULL, *curr_append_pred = NULL;
   bool is_skip = false;
   bool has_reduce = false;
   int i = 0;
@@ -3776,18 +3776,9 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 			      else
 				{
 				  PT_NODE *copy_child_attr = parser_copy_tree (parser, child_attr);
-				  append_pred =
+				  PT_NODE *append_pred =
 				    parser_make_expression (parser, PT_IS_NOT_NULL, copy_child_attr, NULL, NULL);
-
-				  if (append_pred_list != NULL)
-				    {
-				      append_pred_list = parser_append_node (append_pred, append_pred_list);
-				    }
-				  else
-				    {
-				      append_pred_list = append_pred;
-				    }
-
+				  append_pred_list = parser_append_node (append_pred, append_pred_list);
 				  break;
 				}
 			    }
@@ -3807,6 +3798,12 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 
 	      if (is_skip)
 		{
+		  if (append_pred_list != NULL)
+		    {
+		      parser_free_tree (parser, append_pred_list);
+		      append_pred_list = NULL;
+		    }
+
 		  if (pred_point_list != NULL)
 		    {
 		      parser_free_tree (parser, pred_point_list);
@@ -3860,34 +3857,73 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 		  if (prev_pred == NULL)
 		    {
 		      query->info.query.q.select.where = curr_pred->next;
-		      curr_pred->next = NULL;
-		      parser_free_tree (parser, curr_pred);
+		      parser_free_node (parser, curr_pred);
 		      curr_pred = query->info.query.q.select.where;
 		    }
 		  else
 		    {
 		      prev_pred->next = curr_pred->next;
-		      curr_pred->next = NULL;
-		      parser_free_tree (parser, curr_pred);
+		      parser_free_node (parser, curr_pred);
 		      curr_pred = prev_pred->next;
 		    }
 
 		  if (prev_pred_point == NULL)
 		    {
 		      pred_point_list = curr_pred_point->next;
-		      curr_pred_point->next = NULL;
-		      parser_free_tree (parser, curr_pred_point);
+		      parser_free_node (parser, curr_pred_point);
 		      curr_pred_point = pred_point_list;
 		    }
 		  else
 		    {
 		      prev_pred_point->next = curr_pred_point->next;
-		      curr_pred_point->next = NULL;
-		      parser_free_tree (parser, curr_pred_point);
+		      parser_free_node (parser, curr_pred_point);
 		      curr_pred_point = prev_pred_point->next;
 		    }
 		}
 	      assert (pred_point_list == NULL);
+
+	      prev_append_pred = NULL;
+	      curr_append_pred = append_pred_list;
+	      while (curr_append_pred != NULL)
+		{
+		  assert (curr_append_pred->node_type == PT_EXPR);
+		  assert (curr_append_pred->info.expr.op == PT_IS_NOT_NULL);
+
+		  curr_pred = query->info.query.q.select.where;
+		  for (; curr_pred != NULL; curr_pred = curr_pred->next)
+		    {
+		      if (curr_pred->node_type == PT_EXPR && curr_pred->info.expr.op == PT_IS_NOT_NULL)
+			{
+			  PT_NODE *curr_append_pred_arg = curr_append_pred->info.expr.arg1;
+			  PT_NODE *curr_pred_arg = curr_pred->info.expr.arg1;
+			  if (intl_identifier_casecmp
+			      (curr_append_pred_arg->info.name.original, curr_pred_arg->info.name.original) == 0)
+			    {
+			      break;
+			    }
+			}
+		    }
+
+		  if (curr_pred == NULL)
+		    {
+		      prev_append_pred = curr_append_pred;
+		      curr_append_pred = curr_append_pred->next;
+		      continue;
+		    }
+
+		  if (prev_append_pred == NULL)
+		    {
+		      append_pred_list = curr_append_pred->next;
+		      parser_free_node (parser, curr_append_pred);
+		      curr_append_pred = append_pred_list;
+		    }
+		  else
+		    {
+		      prev_append_pred->next = curr_append_pred->next;
+		      parser_free_node (parser, curr_append_pred);
+		      curr_append_pred = prev_append_pred->next;
+		    }
+		}
 
 	      if (append_pred_list != NULL)
 		{
@@ -3900,8 +3936,14 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 	      qo_reset_spec_location (parser, parent_spec, query);
 
 	      /* free spec */
-	      prev_parent_spec->next = parent_spec->next;
-	      parent_spec->next = NULL;
+	      if (prev_parent_spec == NULL)
+		{
+		  query->info.query.q.select.from = parent_spec->next;
+		}
+	      else
+		{
+		  prev_parent_spec->next = parent_spec->next;
+		}
 	      parser_free_node (parser, parent_spec);
 	      parent_spec = NULL;
 
