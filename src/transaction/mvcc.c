@@ -678,6 +678,7 @@ mvcc_info::mvcc_info ()
   , id (MVCCID_NULL)
   , recent_snapshot_lowest_active_mvccid (MVCCID_NULL)
   , sub_ids ()
+  , last_mvcc_lsa (NULL_LSA)
 {
 }
 
@@ -694,5 +695,6 @@ mvcc_info::reset ()
   id = MVCCID_NULL;
   recent_snapshot_lowest_active_mvccid = MVCCID_NULL;
   sub_ids.clear ();
+  last_mvcc_lsa.set_null ();
 }
 // *INDENT-ON*
