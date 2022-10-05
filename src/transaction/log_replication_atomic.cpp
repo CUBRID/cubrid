@@ -107,6 +107,8 @@ namespace cublog
 	    break;
 	  }
 	  case LOG_COMMIT:
+	    assert (!m_atomic_helper.is_part_of_atomic_replication (header.trid));
+
 	    if (m_replicate_mvcc)
 	      {
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::COMMITTED);
@@ -115,6 +117,8 @@ namespace cublog
 		    thread_entry, m_redo_lsa);
 	    break;
 	  case LOG_ABORT:
+	    assert (!m_atomic_helper.is_part_of_atomic_replication (header.trid));
+
 	    if (m_replicate_mvcc)
 	      {
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::ABORTED);
@@ -140,12 +144,15 @@ namespace cublog
 	    set_lowest_unapplied_lsa ();
 	    break;
 	  case LOG_SYSOP_ATOMIC_START:
+	    assert (!m_atomic_helper.is_postpone_sequence_started (header.trid));
+#if (0)
 	    if (m_atomic_helper.is_postpone_sequence_started (header.trid))
 	      {
 		// atomic sequence is part of a postpone sequence
 		// which is itself part of another, previosly started, atomic sequence
 	      }
 	    else
+#endif
 	      {
 		m_atomic_helper.start_sysop_sequence (header.trid, m_redo_lsa, m_redo_context);
 		set_lowest_unapplied_lsa ();
@@ -326,6 +333,7 @@ namespace cublog
     if (log_rec.type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE
 	&& m_atomic_helper.is_postpone_sequence_started (log_header.trid))
       {
+	assert (false);
 	// this is one of, possibly, several sequences of logic run postpones
 	// which will be treated as a single atomic replication sequence
 
@@ -334,6 +342,7 @@ namespace cublog
       }
     else
       {
+#if (0)
 	if (log_rec.type == LOG_SYSOP_END_COMMIT
 	    && m_atomic_helper.is_at_least_one_postpone_sequence_completed (log_header.trid))
 	  {
@@ -342,6 +351,8 @@ namespace cublog
 	    set_lowest_unapplied_lsa ();
 	  }
 	else if (log_rec.type == LOG_SYSOP_END_COMMIT
+#endif
+	  if (log_rec.type == LOG_SYSOP_END_COMMIT
 		 && !LSA_ISNULL (&log_rec.lastparent_lsa)
 		 && m_atomic_helper.can_end_sysop_sequence (log_header.trid, log_rec.lastparent_lsa))
 	  {
@@ -354,6 +365,7 @@ namespace cublog
 	  {
 	    // for vacuum transactions, the last parent lsa is not filled in
 	    assert (LSA_ISNULL (&log_rec.lastparent_lsa));
+	    assert (false);
 
 	    m_atomic_helper.apply_and_unfix_atomic_replication_sequence (&thread_entry, log_header.trid);
 	    set_lowest_unapplied_lsa ();
@@ -363,7 +375,8 @@ namespace cublog
 	    // TODO: what about the rest of the sysop ends (ABORT, LOGICAL_UNDO, LOGICAL_COMPENSATE)
 	    // will be taken up upon the subsequent refactoring for http://jira.cubrid.org/browse/LETS-537
 	    //  - see also http://jira.cubrid.org/browse/LETS-541
-	    if (m_atomic_helper.can_end_sysop_sequence (log_header.trid, log_rec.lastparent_lsa))
+	    if (!LSA_ISNULL (&log_rec.lastparent_lsa)
+		&& m_atomic_helper.can_end_sysop_sequence (log_header.trid, log_rec.lastparent_lsa))
 	      {
 		m_atomic_helper.apply_and_unfix_atomic_replication_sequence (&thread_entry, log_header.trid);
 		set_lowest_unapplied_lsa ();

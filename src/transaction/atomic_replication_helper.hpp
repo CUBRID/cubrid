@@ -105,12 +105,16 @@ namespace cublog
       // mark the start of postpone sequence for a transaction; transaction must have
       // already started an atomic sequence; the postpone sequence can contain nested atomic
       // replication sequences which will be treated unioned with the main, already started, one
+#if (0)
       void start_postpone_sequence (TRANID trid);
+#endif
       bool is_postpone_sequence_started (TRANID trid) const;
       void complete_one_postpone_sequence (TRANID trid);
       // there is no easy way of knowing how many postpone sequences are in the transaction
       // but there should be at least one
+#if (0)
       bool is_at_least_one_postpone_sequence_completed (TRANID trid) const;
+#endif
 
       void apply_and_unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, TRANID tranid);
 
@@ -149,10 +153,14 @@ namespace cublog
 	  bool can_end_sysop_sequence (const LOG_LSA &sysop_parent_lsa) const;
 	  bool can_end_sysop_sequence () const;
 
+#if (0)
 	  void start_postpone_sequence ();
+#endif
 	  bool is_postpone_sequence_started () const;
 	  void complete_one_postpone_sequence ();
+#if (0)
 	  bool is_at_least_one_postpone_sequence_completed () const;
+#endif
 
 	  void apply_and_unfix_sequence (THREAD_ENTRY *thread_p);
 

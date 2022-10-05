@@ -101,7 +101,9 @@ namespace cublog
 	// safeguard, if the atomic sequence contains a postpone [sub]sequence, that
 	// is more specific case and should have been checked upfront
 	assert (!atomic_sequence.is_postpone_sequence_started ());
+#if (0)
 	assert (!atomic_sequence.is_at_least_one_postpone_sequence_completed ());
+#endif
 
 	return atomic_sequence.can_end_sysop_sequence ();
       }
@@ -124,6 +126,7 @@ namespace cublog
     emplaced_seq.initialize (start_lsa, is_sysop);
   }
 
+#if (0)
   void
   atomic_replication_helper::start_postpone_sequence (TRANID trid)
   {
@@ -134,6 +137,7 @@ namespace cublog
     atomic_log_sequence &sequence = sequence_it->second;
     sequence.start_postpone_sequence ();
   }
+#endif
 
   bool
   atomic_replication_helper::is_postpone_sequence_started (TRANID trid) const
@@ -159,6 +163,7 @@ namespace cublog
     sequence.complete_one_postpone_sequence ();
   }
 
+#if (0)
   bool
   atomic_replication_helper::is_at_least_one_postpone_sequence_completed (TRANID trid) const
   {
@@ -171,6 +176,7 @@ namespace cublog
 
     return false;
   }
+#endif
 
 #if !defined (NDEBUG)
   bool
@@ -326,6 +332,7 @@ namespace cublog
     return false;
   }
 
+#if (0)
   void
   atomic_replication_helper::atomic_log_sequence::start_postpone_sequence ()
   {
@@ -334,6 +341,7 @@ namespace cublog
 
     m_postpone_started = true;
   }
+#endif
 
   bool
   atomic_replication_helper::atomic_log_sequence::is_postpone_sequence_started () const
@@ -346,12 +354,15 @@ namespace cublog
   void
   atomic_replication_helper::atomic_log_sequence::complete_one_postpone_sequence ()
   {
+    assert (false);
+
     assert (m_is_sysop);
     assert (m_postpone_started);
 
     ++m_end_pospone_count;
   }
 
+#if (0)
   bool
   atomic_replication_helper::atomic_log_sequence::is_at_least_one_postpone_sequence_completed () const
   {
@@ -364,6 +375,7 @@ namespace cublog
 
     return false;
   }
+#endif
 
   void
   atomic_replication_helper::atomic_log_sequence::dump ()
