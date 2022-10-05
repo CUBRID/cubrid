@@ -36,6 +36,25 @@ active_tran_server::uses_remote_storage () const
   return m_uses_remote_storage;
 }
 
+MVCCID
+active_tran_server::get_oldeset_active_mvccid_from_page_server () const
+{
+  std::string response_message;
+  const int error_code = send_receive (tran_to_page_request::GET_OLDEST_ACTIVE_MVCCID, std::string (), response_message);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  MVCCID oldest_mvccid = MVCCID_NULL;
+  std::memcpy (&oldest_mvccid, response_message.c_str (), sizeof (oldest_mvccid));
+
+  assert (oldest_mvccid == MVCCID_NULL);
+
+  return oldest_mvccid;
+}
+
 bool
 active_tran_server::get_remote_storage_config ()
 {
