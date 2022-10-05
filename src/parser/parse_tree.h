@@ -746,22 +746,34 @@ struct json_t;
  *   - Check the node_type for PT_NODE.
  */
 
+#ifdef NDEBUG
+#define PT_ASSERT_NOT_NULL(n, t)	((void) 0)
+#define PT_ASSERT_NODE_TYPE(n, t)	((void) 0)
+#else
+#define PT_ASSERT_NOT_NULL(n)		(assert ((n) != NULL))
+#define PT_ASSERT_NODE_TYPE(n, t)	(assert ((n) != NULL && (n)->node_type == (t)))
+#endif
+
 /* PT_NAME_INFO */
-#define PT_NAME_ORIGINAL(n)		((n)->info.name.original)
-#define PT_NAME_RESOLVED(n)		((n)->info.name.resolved)
-#define PT_NAME_DB_OBJECT(n)		((n)->info.name.db_object)
+#define PT_NAME_ASSERT(n)		(PT_ASSERT_NODE_TYPE ((n), PT_NAME))
+#define PT_NAME_ORIGINAL(n)		(PT_NAME_ASSERT ((n)), (n)->info.name.original)
+#define PT_NAME_RESOLVED(n)		(PT_NAME_ASSERT ((n)), (n)->info.name.resolved)
+#define PT_NAME_DB_OBJECT(n)		(PT_NAME_ASSERT ((n)), (n)->info.name.db_object)
 
 /* PT_SPEC_INFO */
-#define PT_SPEC_ENTITY_NAME(n)		((n)->info.spec.entity_name)
-#define PT_SPEC_CTE_POINTER(n)		((n)->info.spec.cte_pointer)
-#define PT_SPEC_DERIVED_TABLE(n)	((n)->info.spec.derived_table)
-#define PT_SPEC_FLAT_ENTITY_LIST(n)	((n)->info.spec.flat_entity_list)
+#define PT_SPEC_ASSERT(n)		(PT_ASSERT_NODE_TYPE ((n), PT_SPEC))
+#define PT_SPEC_ENTITY_NAME(n)		(PT_SPEC_ASSERT ((n)), (n)->info.spec.entity_name)
+#define PT_SPEC_CTE_POINTER(n)		(PT_SPEC_ASSERT ((n)), (n)->info.spec.cte_pointer)
+#define PT_SPEC_DERIVED_TABLE(n)	(PT_SPEC_ASSERT ((n)), (n)->info.spec.derived_table)
+#define PT_SPEC_FLAT_ENTITY_LIST(n)	(PT_SPEC_ASSERT ((n)), (n)->info.spec.flat_entity_list)
 
 /* PT_CREATE_ENTITY */
-#define PT_CREATE_ENTITY_NAME(n)	((n)->info.create_entity.entity_name)
+#define PT_CREATE_ENTITY_ASSERT(n)	(PT_ASSERT_NODE_TYPE ((n), PT_CREATE_ENTITY))
+#define PT_CREATE_ENTITY_NAME(n)	(PT_CREATE_ENTITY_ASSERT ((n)), (n)->info.create_entity.entity_name)
 
 /* PT_RENAME */
-#define PT_RENAME_NEW_NAME(n)		((n)->info.rename.new_name)
+#define PT_RENAME_ASSERT(n)		(PT_ASSERT_NODE_TYPE ((n), PT_RENAME))
+#define PT_RENAME_NEW_NAME(n)		(PT_RENAME_ASSERT ((n)), (n)->info.rename.new_name)
 
 /* PT_SYNONYM_INFO */
 #define PT_SYNONYM_NAME(n)		((n)->info.synonym.synonym_name)
@@ -780,9 +792,10 @@ struct json_t;
 #define PT_SYNONYM_IF_EXISTS(n)		((n)->info.synonym.if_exists)
 
 /* PT_SPEC_INFO */
-#define PT_IS_SPEC(n)			((n)->node_type == PT_SPEC)
+#define PT_IS_SPEC(n)			(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_SPEC)
 
-#define PT_IS_SYNONYM_NODE(n)		((n)->node_type == PT_ALTER_SYNONYM || \
+#define PT_IS_SYNONYM_NODE(n)		(PT_ASSERT_NOT_NULL ((n)), \
+					 (n)->node_type == PT_ALTER_SYNONYM || \
 					 (n)->node_type == PT_CREATE_SYNONYM || \
 					 (n)->node_type == PT_DROP_SYNONYM || \
 					 (n)->node_type == PT_RENAME_SYNONYM)
