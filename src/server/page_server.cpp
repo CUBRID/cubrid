@@ -194,6 +194,11 @@ page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_
   const auto channel_id = get_channel_id ();
   std::lock_guard<std::mutex> lockg { m_ps.m_pts_oldest_active_mvccids_mtx };
 
+  /*
+   * 1. The entry is already created when ths PTS is connected.
+   * 2. It is updated by the PTS only when it move foward.
+   *    Without update, it is MVCCID_ALL_VISIBLE by default, which is lesser than any mvccid assigned.
+   */
   assert (m_ps.m_pts_oldest_active_mvccids.find (channel_id) != m_ps.m_pts_oldest_active_mvccids.end());
   assert (m_ps.m_pts_oldest_active_mvccids[channel_id] < oldest_mvccid);
 
@@ -221,6 +226,7 @@ page_server::connection_handler::receive_disconnect_request (tran_server_conn_t:
 
   {
     std::lock_guard<std::mutex> lockg { m_ps.m_pts_oldest_active_mvccids_mtx };
+    /* The entry is already created when ths PTS is connected. */
     assert (m_ps.m_pts_oldest_active_mvccids.find (get_channel_id()) != m_ps.m_pts_oldest_active_mvccids.end());
     m_ps.m_pts_oldest_active_mvccids.erase (get_channel_id());
   }
@@ -266,6 +272,7 @@ page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code
 
       {
 	std::lock_guard<std::mutex> lockg { m_ps.m_pts_oldest_active_mvccids_mtx };
+	/* The entry is already created when ths PTS is connected. */
 	assert (m_ps.m_pts_oldest_active_mvccids.find (get_channel_id()) != m_ps.m_pts_oldest_active_mvccids.end());
 	m_ps.m_pts_oldest_active_mvccids.erase (get_channel_id());
       }
@@ -440,6 +447,7 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
 
   {
     std::lock_guard<std::mutex> lockg { m_pts_oldest_active_mvccids_mtx };
+    /* The entry is already created when ths PTS is connected. */
     assert (m_pts_oldest_active_mvccids.find (channel_id) == m_pts_oldest_active_mvccids.end());
 
     /* MVCCID_ALL_VISIBLE means that it hasn't yet received. It will prevent the ATS run vacuum. */
