@@ -3776,8 +3776,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 
 				  if (append_pred_list != NULL)
 				    {
-				      append_pred_list =
-					parser_make_expression (parser, PT_AND, append_pred_list, append_pred, NULL);
+				      append_pred_list = parser_append_node (append_pred, append_pred_list);
 				    }
 				  else
 				    {
@@ -3886,7 +3885,8 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 	      if (append_pred_list != NULL)
 		{
 		  query->info.query.q.select.where =
-		    parser_make_expression (parser, PT_AND, query->info.query.q.select.where, append_pred_list, NULL);
+		    parser_append_node (append_pred_list, query->info.query.q.select.where);
+		  append_pred_list = NULL;
 		}
 
 	      /* reset location */
