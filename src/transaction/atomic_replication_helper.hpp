@@ -158,34 +158,35 @@ namespace cublog
 
 	  log_lsa get_start_lsa () const;
 
+	private:
+	  void dump ();
+
 	private: // types
 	  /*
 	   * Holds the log record information necessary for recovery redo
 	   */
-	  class atomic_log_entry
+	  struct atomic_log_entry
 	  {
-	    public:
-	      atomic_log_entry () = delete;
-	      atomic_log_entry (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex, PAGE_PTR page_ptr);
+	    atomic_log_entry () = delete;
+	    atomic_log_entry (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex, PAGE_PTR page_ptr);
 
-	      atomic_log_entry (const atomic_log_entry &) = delete;
-	      atomic_log_entry (atomic_log_entry &&that);
+	    atomic_log_entry (const atomic_log_entry &) = delete;
+	    atomic_log_entry (atomic_log_entry &&that);
 
-	      atomic_log_entry &operator= (const atomic_log_entry &) = delete;
-	      atomic_log_entry &operator= (atomic_log_entry &&) = delete;
+	    atomic_log_entry &operator= (const atomic_log_entry &) = delete;
+	    atomic_log_entry &operator= (atomic_log_entry &&) = delete;
 
-	      void apply_log_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context) const;
-	      template <typename T>
-	      void apply_log_by_type (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
-				      LOG_RECTYPE rectype) const;
+	    void apply_log_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context) const;
+	    template <typename T>
+	    void apply_log_by_type (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
+				    LOG_RECTYPE rectype) const;
 
-	      const VPID m_vpid;
-	    private:
-	      const log_lsa m_record_lsa;
-	      const LOG_RCVINDEX m_record_index;
-	      // ownership of page pointer is with the bookkeeper in the owning class; this is just a
-	      // reference to allow applying the redo function when needed
-	      PAGE_PTR const m_page_ptr;
+	    const VPID m_vpid;
+	    const log_lsa m_record_lsa;
+	    const LOG_RCVINDEX m_record_index;
+	    // ownership of page pointer is with the bookkeeper in the owning class; this is just a
+	    // reference to allow applying the redo function when needed
+	    PAGE_PTR const m_page_ptr;
 	  };
 
 	  using page_ptr_watcher_uptr_type = std::unique_ptr<PGBUF_WATCHER>;
@@ -223,7 +224,6 @@ namespace cublog
 	   */
 	  struct page_ptr_bookkeeping
 	  {
-	    public:
 	      page_ptr_bookkeeping () = default;
 	      ~page_ptr_bookkeeping ();
 
@@ -233,14 +233,11 @@ namespace cublog
 	      page_ptr_bookkeeping &operator= (const page_ptr_bookkeeping &) = delete;
 	      page_ptr_bookkeeping &operator= (page_ptr_bookkeeping &&) = delete;
 
-	    public: // methods
 	      int fix_page (THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcv_index, PAGE_PTR &page_ptr_out);
 	      int unfix_page (THREAD_ENTRY *thread_p, VPID vpid);
 
-	    private: // types
 	      using page_ptr_info_map_type = std::map<VPID, page_ptr_info>;
 
-	    private: // variables
 	      page_ptr_info_map_type m_;
 	  };
 

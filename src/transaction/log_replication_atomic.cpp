@@ -306,8 +306,7 @@ namespace cublog
 	if (m_atomic_helper.is_part_of_atomic_replication (rec_header.trid))
 	  {
 	    // only interprete LOG_SYSOP_START_POSTPONE if already part of an atomic replication sequence
-	    // in order to know that possible inner atomic replication sequences might appear
-	    //m_atomic_helper.start_postpone_sequence (rec_header.trid);
+	    // apply modifications for all log records which are already part of the sequence
 	    m_atomic_helper.apply_and_unfix_atomic_replication_sequence (&thread_entry, rec_header.trid);
 	  }
 	else

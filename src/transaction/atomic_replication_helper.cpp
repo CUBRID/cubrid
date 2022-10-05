@@ -220,7 +220,8 @@ namespace cublog
 	return;
       }
 
-    sequence_it->second.apply_and_unfix_sequence (thread_p);
+    atomic_log_sequence &sequence = sequence_it->second;
+    sequence.apply_and_unfix_sequence (thread_p);
     m_sequences_map.erase (sequence_it);
 
 #if !defined (NDEBUG)
@@ -365,18 +366,63 @@ namespace cublog
   }
 
   void
+  atomic_replication_helper::atomic_log_sequence::dump ()
+  {
+#if !defined (NDEBUG)
+    char buf[PATH_MAX];
+    char *buf_ptr = buf;
+    int written = 0;
+    int left = PATH_MAX;
+
+    written = snprintf (buf_ptr, (size_t)left, "[ATOMIC_REPL] start_lsa = %lld|%d  is_sysop = %d"
+			"  postpone_started = %d  end_pospone_count = %d\n",
+			LSA_AS_ARGS (&m_start_lsa), (int)m_is_sysop,
+			(int)m_postpone_started, m_end_pospone_count);
+    assert (written > 0);
+    buf_ptr += written;
+    assert (left >= written);
+    left -= written;
+
+    for (const atomic_log_entry &log_entry : m_log_vec)
+      {
+	written = snprintf (buf_ptr, (size_t)left, "  LSA = %lld|%d  vpid = %d|%d\n  rcvindex = %s\n",
+			    LSA_AS_ARGS (&log_entry.m_record_lsa),
+			    VPID_AS_ARGS (&log_entry.m_vpid),
+			    rv_rcvindex_string (log_entry.m_record_index));
+	assert (written > 0);
+	buf_ptr += written;
+	assert (left >= written);
+	left -= written;
+      }
+    _er_log_debug (ARG_FILE_LINE, buf);
+#endif
+  }
+
+  void
   atomic_replication_helper::atomic_log_sequence::apply_and_unfix_sequence (THREAD_ENTRY *thread_p)
   {
     // Applying the log right after the fix could lead to problems as the records are fixed one by one as
     // they come to be read by the PTS and some might be unfixed and refixed after the apply procedure
-    // leading to inconsistency. To avoid this situation we sequentially apply each log redo of the sequence
-    // when the end sequence log appears and the entire sequence is fixed
+    // leading to inconsistency.
+    // To avoid this situation each log redo of the sequence is applied when the end sequence log appears
+    // and the entire sequence is already fixed.
+    // Right after applying, unfix and ref-count-down each page. The bookkeeping mechanism will take care
+    // of either unfixing the page or retaining it for a subsequent unfix.
+
+    if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+      {
+	dump ();
+      }
+
     for (const auto &log_entry : m_log_vec)
       {
 	log_entry.apply_log_redo (thread_p, m_redo_context);
 	// bookkeeping actually will either unfix the page or just decrease its reference count
 	m_page_ptr_bookkeeping.unfix_page (thread_p, log_entry.m_vpid);
       }
+
+    // clear the vector of log records; page pts's might be, at this point, dangling pointers as the page ptr
+    // bookkeeping mechanims might have already unfixed the page
     m_log_vec.clear ();
   }
 
