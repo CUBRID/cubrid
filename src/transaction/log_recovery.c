@@ -1759,7 +1759,6 @@ log_rv_analysis_assigned_mvccid (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA *
 static void
 log_rv_analysis_complete_mvccid (int tran_index, const LOG_TDES * tdes)
 {
-  //TODO: if mvccinfo is reset in complete_mvcc, then move into it
   if (is_passive_transaction_server ())
     {
       if (MVCCID_IS_VALID (tdes->mvccinfo.id))
@@ -1802,8 +1801,8 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_ls
 	  // newer quick fix on top of older quick fix: mark the mvccid as completed
 	  log_rv_analysis_complete_mvccid (tran_index, tdes);
 
-	  // quick fix: reset mvccid.
-	  tdes->mvccinfo.id = MVCCID_NULL;
+	  // quick fix: reset mvcc.
+	  tdes->mvccinfo.reset ();
 	  logtb_free_tran_index (thread_p, tran_index);
 	}
       return NO_ERROR;
