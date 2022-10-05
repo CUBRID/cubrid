@@ -85,6 +85,10 @@ page_server::connection_handler::connection_handler (cubcomm::channel &chn, tran
       tran_to_page_request::SEND_LOG_PRIOR_LIST,
       std::bind (&page_server::connection_handler::receive_log_prior_list, std::ref (*this), std::placeholders::_1)
     },
+    {
+      tran_to_page_request::GET_OLDEST_ACTIVE_MVCCID,
+      std::bind (&page_server::connection_handler::receive_oldest_active_mvccid_request, std::ref (*this), std::placeholders::_1)
+    },
     // passive only
     {
       tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH,
@@ -161,6 +165,21 @@ void
 page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
 {
   push_async_response (&pgbuf_respond_data_fetch_page_request, std::move (a_sp));
+}
+
+void
+page_server::connection_handler::receive_oldest_active_mvccid_request (tran_server_conn_t::sequenced_payload &a_sp)
+{
+  assert (m_server_type == transaction_server_type::ACTIVE);
+  // 1. lockg
+  // 2. const auto oldest_mvccid = aggregate mvccids
+  const MVCCID oldest_mvccid = MVCCID_ALL_VISIBLE;
+
+  std::string response_message;
+  response_message.append (reinterpret_cast<const char *> (&oldest_mvccid), sizeof (oldest_mvccid));
+
+  a_sp.push_payload (std::move (response_message));
+  m_conn->respond (std::move (a_sp));
 }
 
 void
