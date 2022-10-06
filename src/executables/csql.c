@@ -1820,7 +1820,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       total = MAX (total, 1);
     }
 
-  logddl_set_logging_enabled (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG));
   logddl_set_commit_mode (csql_is_auto_commit_requested (csql_arg));
 
   /* execute the statements one-by-one */
@@ -1851,18 +1850,23 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  statement = session->statements[num_stmts];
 	  if (statement)
 	    {
-	      logddl_set_stmt_type (statement->node_type);
-	      logddl_set_file_line (statement->line_number);
-
-	      if (statement->sql_user_text && strlen (statement->sql_user_text) >= statement->sql_user_text_len)
+	      if (logddl_set_stmt_type (statement->node_type))
 		{
-		  logddl_set_sql_text (statement->sql_user_text, statement->sql_user_text_len);
+		  logddl_set_file_line (statement->line_number);
+		  if (statement->sql_user_text && statement->sql_user_text_len > 0)
+		    {
+		      logddl_set_sql_text (statement->sql_user_text, statement->sql_user_text_len);
+		    }
 		}
 	    }
 	}
 
-      if (stmt_id < 0)
+      if (stmt_id <= 0)
 	{
+	  if (stmt_id == 0)	/* done */
+	    {
+	      break;
+	    }
 	  /*
 	   * Transaction should be aborted if an error occurs during
 	   * compilation on auto commit mode.
@@ -1909,11 +1913,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	    }
 	}
 
-      if (stmt_id == 0)		/* done */
-	{
-	  break;
-	}
-
       if (line_no == -1)
 	{
 	  stmt_start_line_no = db_get_start_line (session, stmt_id);
@@ -1924,8 +1923,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	}
       attr_spec = db_get_query_type_list (session, stmt_id);
       stmt_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, stmt_id);
-      logddl_set_stmt_type (stmt_type);
-      logddl_set_file_line (stmt_start_line_no);
 
       if (db_set_statement_auto_commit (session, csql_is_auto_commit_requested (csql_arg)) != NO_ERROR)
 	{
@@ -2857,9 +2854,8 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 	}
     }
 
-  logddl_init ();
-  logddl_set_logging_enabled (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG));
-  logddl_set_app_name (APP_NAME_CSQL);
+  logddl_init (APP_NAME_CSQL);
+  logddl_check_ddl_audit_param ();
   if (csql_arg->db_name != NULL)
     {
       logddl_set_db_name (csql_arg->db_name);
@@ -2873,7 +2869,6 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       logddl_set_ip ((char *) ip_addr);
       db_set_client_ip_addr ((char *) ip_addr);
     }
-  logddl_set_pid (getpid ());
 
   if (csql_arg->trigger_action_flag == false)
     {

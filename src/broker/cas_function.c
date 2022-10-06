@@ -94,7 +94,9 @@ static void update_error_query_count (T_APPL_SERVER_INFO * as_info_p, const T_ER
 
 static const char *tran_type_str[] = { "COMMIT", "ROLLBACK" };
 
-static char logddl_is_exist_ddl_stmt (T_SRV_HANDLE * srv_handle);
+#if !defined (CAS_FOR_CGW)
+static void logddl_check_have_ddl_stmt (T_SRV_HANDLE * srv_handle);
+#endif
 
 static const char *schema_type_str[] = {
   "CLASS",
@@ -339,8 +341,6 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   net_arg_get_str (&sql_stmt, &sql_size, argv[0]);
 
-  logddl_set_sql_text (sql_stmt, (int) strlen (sql_stmt));
-
   net_arg_get_char (flag, argv[1]);
   if (argc > 2)
     {
@@ -467,6 +467,9 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   char *param_mode = NULL;
   T_SRV_HANDLE *srv_handle;
   const char *exec_func_name;
+#if !defined (CAS_FOR_CGW)
+  bool is_execute_call = false;
+#endif
   int argc_mod_2;
   int (*ux_exec_func) (T_SRV_HANDLE *, char, int, int, int, void **, T_NET_BUF *, T_REQ_INFO *, CACHE_TIME *, int *);
   char fetch_flag = 0;
@@ -633,6 +636,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     {
       exec_func_name = "execute_call";
       ux_exec_func = ux_execute_call;
+      is_execute_call = true;
 #if !defined(CAS_FOR_MYSQL)
       if (param_mode)
 	{
@@ -644,6 +648,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     {
       exec_func_name = "execute_all";
       ux_exec_func = ux_execute_all;
+      is_execute_call = false;
     }
   else
 #endif /* !CAS_FOR_CGW */
@@ -654,6 +659,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #else
       exec_func_name = "execute";
       ux_exec_func = ux_execute;
+      is_execute_call = false;
 #endif /* CAS_FOR_CGW */
     }
 
@@ -677,9 +683,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	  pwd_offset_ptr = psr->pwd_offset_ptr;
 	}
       // ctshim
-      cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), pwd_offset_ptr);
-
-      logddl_set_sql_text (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
+      cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), pwd_offset_ptr);      
     }
   cas_log_debug (ARG_FILE_LINE, "%s%s", auto_commit_mode ? "auto_commit_mode " : "",
 		 forward_only_cursor ? "forward_only_cursor " : "");
@@ -748,10 +752,9 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #endif
 
 #if !defined (CAS_FOR_CGW)
-  if (strcmp (exec_func_name, "execute_call") != 0)
+  if (!is_execute_call)
     {
-      stmt_type = logddl_is_exist_ddl_stmt (srv_handle);
-      logddl_set_stmt_type (stmt_type);
+      logddl_check_have_ddl_stmt (srv_handle);
     }
 #endif /* CAS_FOR_CGW */
 
@@ -2791,17 +2794,21 @@ update_error_query_count (T_APPL_SERVER_INFO * as_info_p, const T_ERROR_INFO * e
     }
 }
 
-static char
-logddl_is_exist_ddl_stmt (T_SRV_HANDLE * srv_handle)
+#if !defined (CAS_FOR_CGW)
+static void
+logddl_check_have_ddl_stmt (T_SRV_HANDLE * srv_handle)
 {
-  char stmt_type = -1;
   for (int i = 0; i < srv_handle->num_q_result; i++)
     {
       if (logddl_is_ddl_type (srv_handle->q_result[i].stmt_type) == true)
 	{
-	  stmt_type = srv_handle->q_result[i].stmt_type;
-	  break;
+	  logddl_set_stmt_type (srv_handle->q_result[i].stmt_type);
+	  if (srv_handle->sql_stmt != NULL)
+	    {
+	      logddl_set_sql_text (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
+	    }
+	  return;
 	}
     }
-  return stmt_type;
 }
+#endif

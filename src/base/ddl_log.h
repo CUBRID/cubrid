@@ -63,23 +63,20 @@ typedef enum
   APP_NAME_LOADDB
 } T_APP_NAME;
 
-extern void logddl_init ();
+extern void logddl_init (T_APP_NAME app_name);
 extern void logddl_free (bool all_free);
 extern void logddl_destroy ();
-extern void logddl_set_app_name (T_APP_NAME app_name);
+extern void logddl_check_ddl_audit_param ();
 extern void logddl_set_db_name (const char *db_name);
 extern void logddl_set_user_name (const char *user_name);
 extern void logddl_set_ip (const char *ip_addr);
-extern void logddl_set_pid (const int pid);
-extern void logddl_set_br_name (const char *br_name);
-extern void logddl_set_br_index (const int index);
+extern void logddl_set_broker_info (const int index, const char *br_name);
 extern void logddl_set_sql_text (char *sql_text, int len);
-extern void logddl_set_stmt_type (int stmt_type);
+extern bool logddl_set_stmt_type (int stmt_type);
 extern void logddl_set_loaddb_file_type (T_LOADDB_FILE_TYPE file_type);
 extern void logddl_set_csql_input_type (T_CSQL_INPUT_TYPE input_type);
 extern void logddl_set_load_filename (const char *load_filename);
 extern void logddl_set_file_line (int file_line);
-extern void logddl_set_err_msg (char *msg);
 extern void logddl_set_err_code (int err_number);
 extern void logddl_set_start_time (struct timeval *time_val);
 extern void logddl_set_msg (const char *fmt, ...);
@@ -91,7 +88,18 @@ extern bool logddl_is_ddl_type (int node_type);
 extern void logddl_set_commit_mode (bool mode);
 extern void logddl_write_tran_str (const char *fmt, ...);
 extern void logddl_write_end_for_csql_fileinput (const char *fmt, ...);
-extern void logddl_set_logging_enabled (bool enable);
 extern void logddl_set_jsp_mode (bool mode);
 extern bool logddl_get_jsp_mode ();
+
+/**
+ *  ddl_audit_handle.err_msg is set only and is not used anywhere.
+ *  To use, declare _USE_ERR_MSG_IN_LOGDDL_
+ *  If you're going to use it, it's better to make it a static arrangement by referring to SCRATCH_TEXT_LEN.
+*/
+#ifdef _USE_ERR_MSG_IN_LOGDDL_
+extern void logddl_set_err_msg (char *msg);
+#else
+#define logddl_set_err_msg(m)
+#endif
+
 #endif /* _DDL_LOG_H_ */

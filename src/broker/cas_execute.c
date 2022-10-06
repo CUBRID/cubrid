@@ -72,11 +72,11 @@
 
 #include "db_set_function.h"
 #include "dbi.h"
+#include "parse_tree.h"
 #include "dbtype.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
 #include "ddl_log.h"
-#include "parse_tree.h"
 #include "api_compat.h"
 #include "method_callback.hpp"
 
@@ -879,12 +879,12 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
 	  goto prepare_error;
 	}
 
-      if (session->statements != NULL)
+      if (session->statements && (statement = session->statements[0]))
 	{
-	  statement = session->statements[0];
-	  if (statement != NULL)
+	  if (logddl_set_stmt_type (statement->node_type) && session->parser->original_buffer)
 	    {
-	      logddl_set_stmt_type (statement->node_type);
+	      logddl_set_sql_text ((char *) session->parser->original_buffer,
+				   strlen (session->parser->original_buffer));
 	    }
 	}
 
@@ -919,7 +919,10 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
 
   if (session->statements && (statement = session->statements[0]))
     {
-      logddl_set_stmt_type (statement->node_type);
+      if (logddl_set_stmt_type (statement->node_type) && session->parser->original_buffer)
+	{
+	  logddl_set_sql_text ((char *) session->parser->original_buffer, strlen (session->parser->original_buffer));
+	}
     }
 
   updatable_flag = flag & CCI_PREPARE_UPDATABLE;
@@ -2418,7 +2421,6 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 #if 0				// ctshim
 	  cas_log_write_query_string_nonl (sql_stmt, strlen (sql_stmt));
 #endif
-	  logddl_set_sql_text (sql_stmt, (int) strlen (sql_stmt));
 	}
 
       session = db_open_buffer (sql_stmt);
@@ -2453,7 +2455,10 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	  cas_log_write2 ("");
 	  goto batch_error;
 	}
-      logddl_set_stmt_type (stmt_type);
+      if (logddl_set_stmt_type (stmt_type) && sql_stmt)
+	{
+	  logddl_set_sql_text (sql_stmt, sql_size /*(int) strlen (sql_stmt) */ );
+	}
 
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       db_get_cacheinfo (session, stmt_id, &use_plan_cache, &use_query_cache);
