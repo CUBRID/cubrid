@@ -89,6 +89,9 @@ class tran_server
     virtual bool get_remote_storage_config () = 0;
     virtual void on_boot () = 0;
 
+    // Before disconnecting page server, make sure no message is being sent to hte page server.
+    virtual void stop_outgoing_page_server_messages () = 0;
+
     virtual request_handlers_map_t get_request_handlers ();
 
   private:

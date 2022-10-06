@@ -55,6 +55,8 @@ class passive_tran_server : public tran_server
 
     void receive_log_prior_list (page_server_conn_t::sequenced_payload &a_ip);
 
+    void stop_outgoing_page_server_messages () final override;
+
   private:
     std::unique_ptr<cublog::replicator> m_replicator;
     cubthread::daemon *m_oldest_active_mvccid_sender = nullptr;

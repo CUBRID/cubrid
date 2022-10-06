@@ -26,9 +26,8 @@
 
 passive_tran_server::~passive_tran_server ()
 {
+  assert (m_oldest_active_mvccid_sender == nullptr);
   assert (m_replicator == nullptr);
-
-  cubthread::get_manager ()->destroy_daemon (m_oldest_active_mvccid_sender);
 }
 
 bool
@@ -68,6 +67,12 @@ passive_tran_server::receive_log_prior_list (page_server_conn_t::sequenced_paylo
 {
   std::string message = a_ip.pull_payload ();
   log_Gl.get_log_prior_receiver ().push_message (std::move (message));
+}
+
+void
+passive_tran_server::stop_outgoing_page_server_messages ()
+{
+  cubthread::get_manager ()->destroy_daemon (m_oldest_active_mvccid_sender);
 }
 
 int
