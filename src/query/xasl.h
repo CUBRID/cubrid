@@ -1021,12 +1021,6 @@ struct xasl_node
 
   ACCESS_SPEC_TYPE *curr_spec;	/* current spec. node */
   int instnum_flag;		/* stop or continue scan? */
-  int next_scan_on;		/* next scan is initiated ? */
-  int next_scan_block_on;	/* next scan block is initiated ? */
-
-  int cat_fetched;		/* catalog information fetched? */
-  int query_in_progress;	/* flag which tells if the query is currently executing.  Used by
-				 * qmgr_clear_trans_wakeup() to determine how much of the xasl tree to clean up. */
 
   SCAN_OPERATION_TYPE scan_op_type;	/* scan type */
   int upd_del_class_cnt;	/* number of classes affected by update or delete (used only in case of UPDATE or
@@ -1053,11 +1047,8 @@ struct xasl_node
     CTE_PROC_NODE cte;		/* CTE_PROC */
   } proc;
 
-  double cardinality;		/* estimated cardinality of result */
-
   /* XASL cache related information */
   OID creator_oid;		/* OID of the user who created this XASL */
-  int projected_size;		/* # of bytes per result tuple */
   int n_oid_list;		/* size of the referenced OID list */
   OID *class_oid_list;		/* list of class/serial OIDs referenced in the XASL */
   int *class_locks;		/* list of locks for class_oid_list. */
@@ -1066,7 +1057,10 @@ struct xasl_node
   int dbval_cnt;		/* number of host variables in this XASL */
   bool iscan_oid_order;
 
-  int max_iterations;		/* Number of maximum iterations (used during run-time for recursive CTE) */
+#if defined (CS_MODE) || defined (SA_MODE)
+  int projected_size;		/* # of bytes per result tuple */
+  double cardinality;		/* estimated cardinality of result */
+#endif
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
   ORDERBY_STATS orderby_stats;
@@ -1076,6 +1070,12 @@ struct xasl_node
   TOPN_TUPLES *topn_items;	/* top-n tuples for orderby limit */
 
   XASL_STATUS status;		/* current status */
+
+  int query_in_progress;	/* flag which tells if the query is currently executing.  Used by
+				 * qmgr_clear_trans_wakeup() to determine how much of the xasl tree to clean up. */
+  int next_scan_on;		/* next scan is initiated ? */
+  int next_scan_block_on;	/* next scan block is initiated ? */
+  int max_iterations;		/* Number of maximum iterations (used during run-time for recursive CTE) */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 

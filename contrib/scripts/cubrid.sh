@@ -34,11 +34,18 @@ elif [ -f /etc/os-release ];then
 fi
 
 case $OS in
-	fedoraproject | centos | redhat | rocky)
+	fedoraproject | centos | redhat | rocky | oracle)
 		if [ ! -h /lib64/libncurses.so.5 ] && [ ! -h $LIB/libncurses.so.5 ];then
 			ln -s /lib64/libncurses.so.6 $LIB/libncurses.so.5
 			ln -s /lib64/libform.so.6 $LIB/libform.so.5
 			ln -s /lib64/libtinfo.so.6 $LIB/libtinfo.so.5
+		fi
+		;;
+	prolinux)
+		if [ ! -h /usr/lib64/libncurses.so.5 ] && [ ! -h $LIB/libncurses.so.5 ];then
+			ln -s /usr/lib64/libncurses.so.6 $LIB/libncurses.so.5
+			ln -s /usr/lib64/libform.so.6 $LIB/libform.so.5
+			ln -s /usr/lib64/libtinfo.so.6 $LIB/libtinfo.so.5
 		fi
 		;;
 	ubuntu)

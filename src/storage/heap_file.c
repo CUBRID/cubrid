@@ -16643,6 +16643,18 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 	  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
 	    {
 	      OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+
+	      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+	      assert (tdes != NULL);
+
+	      if (!tdes->has_supplemental_log)
+		{
+		  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER,
+						strlen (tdes->client.get_db_user ()), tdes->client.get_db_user ());
+		  tdes->has_supplemental_log = true;
+		}
+
 	      log_append_supplemental_serial (thread_p, serial_name, 1, &att->classoid, &serial_obj_oid);
 	      thread_p->no_supplemental_log = false;
 	    }
