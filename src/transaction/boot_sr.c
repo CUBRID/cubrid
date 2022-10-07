@@ -3183,9 +3183,28 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
     {
       if (is_passive_transaction_server ())
 	{
-	  // proper shutdown order:
-	  //  - stop log prior dispatch from page server
-	  //  - stop log prior receiver on passive transaction server
+	  // shutdown order for Passive Transaction Server:
+	  //  - send and receive confirmation that Page Server(s) stop dispatching log prior messages
+	  //    - done in: shutdown server routine
+	  //  - stop log prior receiver on Passive Transaction Server
+	  //    - done in: shutdown server routine
+	  //  - wait for replication to finish and stop its infrastructure
+	  //    - done in: shutdown server routine
+	  //  - finalize log infrastructure
+	  //    - done in: shutdown server routine
+	  //  - stop sending messages to page server (eg: oldest MVCCID updates)
+	  //    - done in:
+	  //        shutdown server routine
+	  //          -> boot_server_all_finalize
+	  //            -> finalize_server_type
+	  //              -> and then polymorphically in the transaction server object
+	  //                disconnect_page_server routine right before sending
+	  //                the final disconnect message to Page Server(s)
+	  //  - send the final disconnect message to Page Server(s)
+	  //    - done in : tran_server::disconnect_page_server
+	  //  - delete the Passive Transaction Server object
+	  //    - done in: finalize_server_type
+
 	  passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
 	  pts_ptr->send_and_receive_stop_log_prior_dispatch ();
 
@@ -3198,6 +3217,23 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 	  // needs to be explicitly terminated gracefully before log infrastructure is finalized
 	  pts_ptr->finish_replication_during_shutdown (*thread_p);
 	}
+
+      // shutdown order for Active Transaction Server:
+      //  - finalize log infrastructure
+      //    - done in: shutdown server routine
+      //  - the log prior messages will stop being dispatched to the Page Server(s)
+      //    by virtue of the client transactions and other daemons being stopped
+      //    and, thus, no log will be produced anymore
+      //    - log prior messages are being dispatched from Active Transaction Server towards
+      //      Page Server(s) semi-synchronously via the prior_sender::send_list routine
+      //  - send the final disconnect message to Page Server(s)
+      //    - done in:
+      //        shutdown server routine
+      //          -> boot_server_all_finalize
+      //            -> finalize_server_type
+      //              -> tran_server::disconnect_page_server
+      //  - delete the Active Transaction Server object
+      //    - done in: finalize_server_type
     }
 #endif
 
