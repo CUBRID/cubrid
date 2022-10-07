@@ -747,7 +747,7 @@ struct json_t;
  */
 
 #ifdef NDEBUG
-#define PT_ASSERT_NOT_NULL(n, t)	((void) 0)
+#define PT_ASSERT_NOT_NULL(n)		((void) 0)
 #define PT_ASSERT_NODE_TYPE(n, t)	((void) 0)
 #else
 #define PT_ASSERT_NOT_NULL(n)		(assert ((n) != NULL))
