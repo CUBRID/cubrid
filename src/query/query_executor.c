@@ -13775,7 +13775,28 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
       old_no_logging = thread_p->no_logging;
 
-      error = qexec_execute_insert (thread_p, xasl, xasl_state, false);
+      if (xasl->spec_list)
+	{
+	  int res;
+	  DBLINK_HOST_VARS host_vars;
+
+	  host_vars.count = xasl->spec_list->s.dblink_node.host_var_count;
+	  host_vars.index = xasl->spec_list->s.dblink_node.host_var_index;
+
+	  res = dblink_execute_query (xasl->spec_list, &xasl_state->vd, &host_vars);
+	  if (res < 0)
+	    {
+	      error = res;
+	    }
+	  else
+	    {
+	      xasl->list_id->tuple_cnt = res;
+	    }
+	}
+      else
+	{
+	  error = qexec_execute_insert (thread_p, xasl, xasl_state, false);
+	}
 
       thread_p->no_logging = old_no_logging;
 

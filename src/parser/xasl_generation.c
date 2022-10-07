@@ -5435,7 +5435,7 @@ pt_make_cselect_access_spec (XASL_NODE * xasl, METHOD_SIG_LIST * method_sig_list
  *   access(in):
  *   attr_list(in):
  */
-static ACCESS_SPEC_TYPE *
+ACCESS_SPEC_TYPE *
 pt_make_dblink_access_spec (ACCESS_METHOD access,
 			    PRED_EXPR * where_pred,
 			    REGU_VARIABLE_LIST pred_list,
@@ -18461,6 +18461,32 @@ outofmem:
 
 }
 
+static XASL_NODE *
+pt_to_insert_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  assert (parser != NULL && statement != NULL);
+
+  XASL_NODE *xasl = regu_xasl_node_alloc (INSERT_PROC);
+  if (xasl == NULL)
+    {
+      return NULL;
+    }
+
+  char *url = "cci:CUBRID:192.168.2.193:33000:demodb:dba::";
+  char *user = "dba";
+  char *password = "";
+  char *sql = "insert into tt values (?, ?)";
+  int *index = (int *) parser_alloc (parser, 2 * sizeof (int));
+
+  index[0] = 0;
+  index[1] = 1;
+
+  xasl->spec_list =
+    pt_make_dblink_access_spec (ACCESS_METHOD_SEQUENTIAL, NULL, NULL, NULL, url, user, password, 2, index, sql);
+
+  return xasl;
+}
+
 /*
  * pt_to_insert_xasl () - Converts an insert parse tree to an XASL tree for insert server execution.
  *
@@ -18492,6 +18518,13 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement->info.insert.odku_assignments != NULL || statement->info.insert.do_replace)
     {
       statement = parser_walk_tree (parser, statement, pt_null_xasl, NULL, NULL, NULL);
+    }
+
+  char *name = (char *) statement->info.insert.spec->info.spec.entity_name->info.name.original;
+
+  if (strstr (name, "@"))
+    {
+      return pt_to_insert_xasl_for_dblink (parser, statement);
     }
 
   has_uniques = statement->info.insert.has_uniques;
