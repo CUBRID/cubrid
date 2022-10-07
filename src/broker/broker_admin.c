@@ -90,6 +90,8 @@ main (int argc, char **argv)
       return 0;
     }
 
+  er_init (NULL, ER_NEVER_EXIT);
+
   /* change the working directory to $CUBRID */
   ut_cd_root_dir ();
 
@@ -356,7 +358,7 @@ main (int argc, char **argv)
     {
       goto usage;
     }
-
+  er_final (ER_ALL_FINAL);
   return 0;
 
 usage:
