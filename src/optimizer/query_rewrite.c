@@ -3520,26 +3520,17 @@ end:
 static void
 qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 {
-  PT_NODE *child_spec = NULL;	/* with the FOREIGN KEY */
-  PT_NODE *parent_spec = NULL;	/* with the PRIMARY KEY referenced */
-  PT_NODE *prev_parent_spec = NULL;
-  PT_NODE *child_entity_name = NULL;
-  PT_NODE *parent_entity_name = NULL;
-  PT_NODE *child_flat_entity_list = NULL;
-  PT_NODE *parent_flat_entity_list = NULL;
-  MOP child_mop = NULL;
-  MOP parent_mop = NULL;
-  SM_CLASS_CONSTRAINT *child_cons = NULL;
-  SM_CLASS_CONSTRAINT *parent_cons = NULL;
+  PT_NODE *curr_pk_spec = NULL, *prev_pk_spec = NULL, *next_pk_spec = NULL;
+  PT_NODE *curr_fk_spec = NULL;
   SPEC_CNT_INFO info = { NULL, 0, 0, NULL };
   PT_NODE *backup_where = NULL;
-  PT_NODE *pred_point_list = NULL, *prev_pred_point = NULL, *curr_pred_point = NULL;
-  PT_NODE *parent_pred = NULL;
-  PT_NODE *prev_pred = NULL, *curr_pred = NULL, *next_pred = NULL;
-  PT_NODE *append_pred_list = NULL, *prev_append_pred = NULL, *curr_append_pred = NULL;
-  bool is_skip = false;
-  bool has_reduce = false;
-  int i = 0;
+  PT_NODE *curr_pred = NULL, *prev_pred = NULL, *next_pred = NULL, *parent_pred = NULL;
+  PT_NODE *exclude_spec_point_list = NULL, *exclude_spec_point = NULL, *exclude_spec = NULL;
+  PT_NODE *pred_point_list = NULL, *pred_point = NULL;
+  PT_NODE *curr_pred_point = NULL, *prev_pred_point = NULL, *next_pred_point = NULL;
+  PT_NODE *append_pred_list = NULL;
+  PT_NODE *curr_append_pred = NULL, *prev_append_pred = NULL, *next_append_pred = NULL;
+  int i;
 
   if (parser == NULL || query == NULL || query->node_type != PT_SELECT)
     {
@@ -3556,417 +3547,609 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
       return;
     }
 
-  do
+  while (true)
     {
-      has_reduce = false;
+      bool has_reduce = false;
 
-      child_spec = query->info.query.q.select.from;
-      for (; child_spec != NULL; child_spec = child_spec->next)
+      for (prev_pk_spec = NULL, curr_pk_spec = query->info.query.q.select.from; curr_pk_spec != NULL;
+	   prev_pk_spec = curr_pk_spec, curr_pk_spec = curr_pk_spec->next)
 	{
-	  assert (PT_IS_SPEC (child_spec));
+	  MOP curr_pk_mop = NULL;
+	  SM_CLASS_CONSTRAINT *curr_pk_cons = NULL;
+	  bool is_skip_pk_spec = false;
+	  bool is_reducible = false;
 
-	  /* PT_ALL is not supported. */
-	  if (child_spec->info.spec.only_all == PT_ALL)
-	    {
-	      continue;
-	    }
+	  assert (PT_NODE_IS_SPEC (curr_pk_spec));
 
-	  /* CTEs and derived tables are excluded. */
-	  child_entity_name = PT_SPEC_ENTITY_NAME (child_spec);
-	  if (child_entity_name == NULL)
+	  for (exclude_spec_point = exclude_spec_point_list; exclude_spec_point != NULL;
+	       exclude_spec_point = exclude_spec_point->next)
 	    {
-	      continue;
-	    }
+	      exclude_spec = exclude_spec_point;
+	      CAST_POINTER_TO_NODE (exclude_spec);
 
-	  child_flat_entity_list = PT_SPEC_FLAT_ENTITY_LIST (child_spec);
-	  if (child_flat_entity_list != NULL)
-	    {
-	      child_mop = PT_NAME_DB_OBJECT (child_flat_entity_list);
-	    }
-	  else
-	    {
-	      child_mop = PT_NAME_DB_OBJECT (child_entity_name);
-	    }
-
-	  if (child_mop == NULL)
-	    {
-	      child_mop = sm_find_class (PT_NAME_ORIGINAL (child_entity_name));
-	      if (child_mop == NULL)
+	      if (exclude_spec == curr_pk_spec)
 		{
-		  ASSERT_ERROR ();
-		  goto exit;
-		}
-	    }
-
-	  /* Find the foreign key in the child. */
-	  child_cons = sm_class_constraints (child_mop);
-	  for (; child_cons != NULL; child_cons = child_cons->next)
-	    {
-	      if (child_cons->type == SM_CONSTRAINT_FOREIGN_KEY)
-		{
-		  /* Found the foreign key. */
+		  is_skip_pk_spec = true;
 		  break;
 		}
 	    }
-	  if (child_cons == NULL)
+
+	  if (is_skip_pk_spec)
 	    {
-	      /* There is no foreign key. */
-	      continue;
+	      continue;		/* curr_pk_spec->next */
 	    }
-	  assert (child_cons != NULL && child_cons->type == SM_CONSTRAINT_FOREIGN_KEY);
 
-	  prev_parent_spec = NULL;
-	  parent_spec = query->info.query.q.select.from;
-	  for (; parent_spec != NULL; prev_parent_spec = parent_spec, parent_spec = parent_spec->next)
+	  /* PT_ALL is not supported. */
+	  if (curr_pk_spec->info.spec.only_all == PT_ALL)
 	    {
-	      assert (PT_IS_SPEC (parent_spec));
+	      continue;		/* curr_pk_spec->next */
+	    }
 
-	      if (parent_spec == child_spec)
+	  /* CTEs and derived tables are excluded. */
+	  if (PT_SPEC_ENTITY_NAME (curr_pk_spec) == NULL)
+	    {
+	      continue;		/* curr_pk_spec->next */
+	    }
+
+	  switch (curr_pk_spec->info.spec.join_type)
+	    {
+	    case PT_JOIN_NONE:
+	    case PT_JOIN_INNER:
+	    case PT_JOIN_NATURAL:
+	      break;
+
+	    case PT_JOIN_CROSS:
+	    case PT_JOIN_LEFT_OUTER:
+	    case PT_JOIN_RIGHT_OUTER:
+	    case PT_JOIN_FULL_OUTER:
+	    case PT_JOIN_UNION:
+	      continue;		/* curr_pk_spec->next */
+	    }
+
+	  PT_SPEC_GET_DB_OBJECT (curr_pk_spec, curr_pk_mop);
+	  if (curr_pk_mop == NULL)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit_on_error;
+	    }
+
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
+	  printf ("[debug] [parent] (1/7) table: %s\n", pt_print_alias (parser, curr_pk_spec));
+#endif
+
+	  for (curr_pk_cons = sm_class_constraints (curr_pk_mop); curr_pk_cons != NULL;
+	       curr_pk_cons = curr_pk_cons->next)
+	    {
+	      if (curr_pk_cons->type == SM_CONSTRAINT_PRIMARY_KEY)
 		{
-		  continue;
+		  break;
 		}
+	    }
 
-	      /* PT_ALL is not supported. */
-	      if (parent_spec->info.spec.only_all == PT_ALL)
+	  if (curr_pk_cons == NULL || curr_pk_cons->fk_info == NULL)
+	    {
+	      exclude_spec_point_list = parser_append_node (pt_point (parser, curr_pk_spec), exclude_spec_point_list);
+	      continue;		/* curr_pk_spec->next */
+	    }
+
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
+	  printf ("[debug] [parent] (2/7) referenced primary key: %s\n", curr_pk_cons->name);
+#endif
+
+	  assert (pred_point_list == NULL);
+
+	  /* There must be no non-join predicates. */
+	  for (curr_pred = query->info.query.q.select.where; curr_pred != NULL; curr_pred = curr_pred->next)
+	    {
+	      memset (&info, 0, sizeof (SPEC_CNT_INFO));
+	      info.spec = curr_pk_spec;
+
+	      next_pred = curr_pred->next;
+	      curr_pred->next = NULL;
+
+	      parser_walk_tree (parser, curr_pred, qo_get_name_cnt_by_spec, &info, NULL, NULL);
+
+	      curr_pred->next = next_pred;
+
+	      if (info.my_spec_cnt >= 1)
 		{
-		  continue;
-		}
-
-	      /* CTEs and derived tables are excluded. */
-	      parent_entity_name = PT_SPEC_ENTITY_NAME (parent_spec);
-	      if (parent_entity_name == NULL)
-		{
-		  continue;
-		}
-
-	      parent_flat_entity_list = PT_SPEC_FLAT_ENTITY_LIST (parent_spec);
-	      if (parent_flat_entity_list != NULL)
-		{
-		  parent_mop = PT_NAME_DB_OBJECT (parent_flat_entity_list);
-		}
-	      else
-		{
-		  parent_mop = PT_NAME_DB_OBJECT (parent_entity_name);
-		}
-
-	      if (parent_mop == NULL)
-		{
-		  parent_mop = sm_find_class (PT_NAME_ORIGINAL (parent_entity_name));
-		  if (parent_mop == NULL)
-		    {
-		      ASSERT_ERROR ();
-		      goto exit;
-		    }
-		}
-
-	      /* WS_OID or WS_REAL_OID, which one? */
-	      if (!OID_EQ (WS_REAL_OID (parent_mop), &child_cons->fk_info->ref_class_oid))
-		{
-		  /* The parent table is not referenced by the foreign key. */
-		  continue;
-		}
-
-	      /* Find the primary key. */
-	      parent_cons = sm_class_constraints (parent_mop);
-	      for (; parent_cons != NULL; parent_cons = parent_cons->next)
-		{
-		  if (parent_cons->type == SM_CONSTRAINT_PRIMARY_KEY)
-		    {
-		      /* Found the primary key. */
-		      break;
-		    }
-		}
-	      if (parent_cons == NULL)
-		{
-		  /* There is no primary key. */
-		  continue;
-		}
-	      assert (parent_cons != NULL && parent_cons->type == SM_CONSTRAINT_PRIMARY_KEY);
-
-	      if (!BTID_IS_EQUAL (&(parent_cons->index_btid), &(child_cons->fk_info->ref_class_pk_btid)))
-		{
-		  /* The primary key is not referenced by the foreign key. */
-		  continue;
-		}
-
-	      /* Add a predicate related to the parent to the list. */
-	      pred_point_list = NULL;
-	      curr_pred = query->info.query.q.select.where;
-	      for (; curr_pred != NULL; curr_pred = curr_pred->next)
-		{
-		  next_pred = curr_pred->next;
-		  curr_pred->next = NULL;
-
-		  // *INDENT-OFF*
-		  info = { parent_spec, 0, 0, NULL };
-		  // *INDENT-ON*
-		  parser_walk_tree (parser, curr_pred, qo_get_name_cnt_by_spec, &info, NULL, NULL);
-
-		  curr_pred->next = next_pred;
-
-		  if (info.my_spec_cnt >= 1)
+		  if (PT_NODE_IS_EXPR (curr_pred) && PT_EXPR_OP (curr_pred) == PT_EQ
+		      && pt_is_attr (PT_EXPR_ARG1 (curr_pred)) && pt_is_attr (PT_EXPR_ARG2 (curr_pred)))
 		    {
 		      pred_point_list = parser_append_node (pt_point (parser, curr_pred), pred_point_list);
 		    }
-		}
-
-	      /* Check the following.
-	       *   1. Check if it is a predicate for the join of the child table and the parent table.
-	       *   2. Check if the column is in the foreign key and the primary key constraint.
-	       *   3. Check if the order of columns in the foreign key and the primary key constraint is the same.
-	       */
-	      is_skip = false;
-	      for (curr_pred_point = pred_point_list; curr_pred_point != NULL && !is_skip;
-		   curr_pred_point = curr_pred_point->next)
-		{
-		  parent_pred = curr_pred_point;
-		  CAST_POINTER_TO_NODE (parent_pred);
-
-		  PT_NODE *child_attr = NULL;
-		  PT_NODE *parent_attr = NULL;
-
-		  if (parent_pred->node_type == PT_EXPR && parent_pred->info.expr.op == PT_EQ
-		      && pt_is_attr (parent_pred->info.expr.arg1) && pt_is_attr (parent_pred->info.expr.arg2))
+		  else
 		    {
-		      PT_NODE *arg1 = parent_pred->info.expr.arg1;
-		      PT_NODE *arg2 = parent_pred->info.expr.arg2;
-
-		      if (arg1->info.name.spec_id == parent_spec->info.spec.id)
-			{
-			  parent_attr = parent_pred->info.expr.arg1;
-
-			  if (arg2->info.name.spec_id == child_spec->info.spec.id)
-			    {
-			      child_attr = parent_pred->info.expr.arg2;
-			    }
-			}
-		      else if (arg2->info.name.spec_id == parent_spec->info.spec.id)
-			{
-			  parent_attr = parent_pred->info.expr.arg2;
-
-			  if (arg1->info.name.spec_id == child_spec->info.spec.id)
-			    {
-			      child_attr = parent_pred->info.expr.arg1;
-			    }
-			}
-		    }
-		  if (child_attr == NULL)
-		    {
-		      /* It is not a predicate for joins. */
-		      is_skip = true;
+		      is_skip_pk_spec = true;
 		      break;
 		    }
-
-		  for (i = 0; child_cons->attributes[i] && parent_cons->attributes[i] && !is_skip; i++)
-		    {
-		      SM_ATTRIBUTE *child_cons_attr = child_cons->attributes[i];
-		      SM_ATTRIBUTE *parent_cons_attr = parent_cons->attributes[i];
-
-		      if (intl_identifier_casecmp (child_cons_attr->header.name, child_attr->info.name.original) == 0)
-			{
-			  if (intl_identifier_casecmp (parent_cons_attr->header.name, parent_attr->info.name.original)
-			      == 0)
-			    {
-			      /* If there is no not null constraint on the column used for the foreign key
-			       * in the child table, add the IS NOT NULL predicate for the column. */
-			      if (child_cons_attr->flags & SM_ATTFLAG_NON_NULL)
-				{
-				  break;
-				}
-			      else
-				{
-				  PT_NODE *copy_child_attr = parser_copy_tree (parser, child_attr);
-				  PT_NODE *append_pred =
-				    parser_make_expression (parser, PT_IS_NOT_NULL, copy_child_attr, NULL, NULL);
-				  append_pred_list = parser_append_node (append_pred, append_pred_list);
-				  break;
-				}
-			    }
-			  else
-			    {
-			      /* The columns used in the predicate are in different order in the constraint.
-			       *   - e.g.  child: foreign key (c1, c2)
-			       *          parent: primary key (c1, c2)
-			       *           query: select c.* from child c, parent p where c.c1 = p.c2 and c.c2 = p c1;
-			       */
-			      is_skip = true;
-			      break;
-			    }
-			}
-		    }
 		}
+	    }
 
-	      if (is_skip)
+	  if (is_skip_pk_spec)
+	    {
+	      continue;		/* curr_pk_spec->next */
+	    }
+
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
+	  printf ("[debug] [parent] (3/7) predicates: %s\n", parser_print_tree_list (parser, pred_point_list));
+#endif
+
+	  /* The columns of join predicates must be in the primary key. */
+	  for (pred_point = pred_point_list; pred_point != NULL; pred_point = pred_point->next)
+	    {
+	      SM_ATTRIBUTE *pk_cons_attr = NULL;
+	      PT_NODE *pk_pred_attr = NULL;
+	      PT_NODE *arg1 = NULL, *arg2 = NULL;
+
+	      curr_pred = pred_point;
+	      CAST_POINTER_TO_NODE (curr_pred);
+
+	      assert (PT_NODE_IS_EXPR (curr_pred));
+	      assert (PT_EXPR_OP (curr_pred) == PT_EQ);
+	      assert (PT_NODE_IS_NAME (PT_EXPR_ARG1 (curr_pred)));
+	      assert (PT_NODE_IS_NAME (PT_EXPR_ARG2 (curr_pred)));
+
+	      arg1 = PT_EXPR_ARG1 (curr_pred);
+	      arg2 = PT_EXPR_ARG2 (curr_pred);
+
+	      if (PT_SPEC_ID (curr_pk_spec) == PT_NAME_SPEC_ID (arg1))
 		{
-		  if (append_pred_list != NULL)
-		    {
-		      parser_free_tree (parser, append_pred_list);
-		      append_pred_list = NULL;
-		    }
-
-		  if (pred_point_list != NULL)
-		    {
-		      parser_free_tree (parser, pred_point_list);
-		      pred_point_list = NULL;
-		    }
-
-		  continue;
+		  pk_pred_attr = PT_EXPR_ARG1 (curr_pred);
 		}
-
-	      /* Except for the predicate, check if a column in the parent table is referenced. */
-	      // *INDENT-OFF*
-	      info = { parent_spec, 0, 0, NULL };
-	      // *INDENT-ON*
-	      backup_where = query->info.query.q.select.where;
-	      query->info.query.q.select.where = NULL;
-	      parser_walk_tree (parser, query, qo_get_name_cnt_by_spec_without_oncond, &info, NULL, NULL);
-	      query->info.query.q.select.where = backup_where;
-	      if (info.my_spec_cnt >= 1)
+	      else if (PT_SPEC_ID (curr_pk_spec) == PT_NAME_SPEC_ID (arg2))
 		{
-		  continue;
-		}
-
-	      /* Removes the predicate used for the removed table. */
-	      prev_pred = NULL;
-	      curr_pred = query->info.query.q.select.where;
-	      while (curr_pred != NULL)
-		{
-		  prev_pred_point = NULL;
-		  curr_pred_point = pred_point_list;
-		  parent_pred = NULL;
-		  for (; curr_pred_point != NULL;
-		       prev_pred_point = curr_pred_point, curr_pred_point = curr_pred_point->next)
-		    {
-		      parent_pred = curr_pred_point;
-		      CAST_POINTER_TO_NODE (parent_pred);
-
-		      if (curr_pred == parent_pred)
-			{
-			  /* Found a predicate to remove. */
-			  break;
-			}
-		    }
-		  if (curr_pred_point == NULL)
-		    {
-		      prev_pred = curr_pred;
-		      curr_pred = curr_pred->next;
-		      continue;
-		    }
-		  assert (curr_pred == parent_pred);
-
-		  if (prev_pred == NULL)
-		    {
-		      query->info.query.q.select.where = curr_pred->next;
-		      parser_free_node (parser, curr_pred);
-		      curr_pred = query->info.query.q.select.where;
-		    }
-		  else
-		    {
-		      prev_pred->next = curr_pred->next;
-		      parser_free_node (parser, curr_pred);
-		      curr_pred = prev_pred->next;
-		    }
-
-		  if (prev_pred_point == NULL)
-		    {
-		      pred_point_list = curr_pred_point->next;
-		      parser_free_node (parser, curr_pred_point);
-		      curr_pred_point = pred_point_list;
-		    }
-		  else
-		    {
-		      prev_pred_point->next = curr_pred_point->next;
-		      parser_free_node (parser, curr_pred_point);
-		      curr_pred_point = prev_pred_point->next;
-		    }
-		}
-	      assert (pred_point_list == NULL);
-
-	      prev_append_pred = NULL;
-	      curr_append_pred = append_pred_list;
-	      while (curr_append_pred != NULL)
-		{
-		  assert (curr_append_pred->node_type == PT_EXPR);
-		  assert (curr_append_pred->info.expr.op == PT_IS_NOT_NULL);
-
-		  curr_pred = query->info.query.q.select.where;
-		  for (; curr_pred != NULL; curr_pred = curr_pred->next)
-		    {
-		      if (curr_pred->node_type == PT_EXPR && curr_pred->info.expr.op == PT_IS_NOT_NULL)
-			{
-			  PT_NODE *curr_append_pred_arg = curr_append_pred->info.expr.arg1;
-			  PT_NODE *curr_pred_arg = curr_pred->info.expr.arg1;
-			  if (intl_identifier_casecmp
-			      (curr_append_pred_arg->info.name.original, curr_pred_arg->info.name.original) == 0)
-			    {
-			      break;
-			    }
-			}
-		    }
-
-		  if (curr_pred == NULL)
-		    {
-		      prev_append_pred = curr_append_pred;
-		      curr_append_pred = curr_append_pred->next;
-		      continue;
-		    }
-
-		  if (prev_append_pred == NULL)
-		    {
-		      append_pred_list = curr_append_pred->next;
-		      parser_free_node (parser, curr_append_pred);
-		      curr_append_pred = append_pred_list;
-		    }
-		  else
-		    {
-		      prev_append_pred->next = curr_append_pred->next;
-		      parser_free_node (parser, curr_append_pred);
-		      curr_append_pred = prev_append_pred->next;
-		    }
-		}
-
-	      if (append_pred_list != NULL)
-		{
-		  query->info.query.q.select.where =
-		    parser_append_node (append_pred_list, query->info.query.q.select.where);
-		  append_pred_list = NULL;
-		}
-
-	      /* reset location */
-	      qo_reset_spec_location (parser, parent_spec, query);
-
-	      /* free spec */
-	      if (prev_parent_spec == NULL)
-		{
-		  query->info.query.q.select.from = parent_spec->next;
+		  pk_pred_attr = PT_EXPR_ARG2 (curr_pred);
 		}
 	      else
 		{
-		  prev_parent_spec->next = parent_spec->next;
+		  /* Already checked before. */
+		  assert (false);
+		  is_skip_pk_spec = true;
+		  break;
 		}
-	      parser_free_node (parser, parent_spec);
-	      parent_spec = NULL;
 
+	      for (i = 0; curr_pk_cons->attributes[i] != NULL; i++)
+		{
+		  if (intl_identifier_casecmp (curr_pk_cons->attributes[i]->header.name,
+					       PT_NAME_ORIGINAL (pk_pred_attr)) == 0)
+		    {
+		      pk_cons_attr = curr_pk_cons->attributes[i];
+		      break;
+		    }
+		}
+
+	      if (pk_cons_attr == NULL)
+		{
+		  is_skip_pk_spec = true;
+		  break;
+		}
+	    }
+
+	  if (is_skip_pk_spec)
+	    {
 	      if (pred_point_list != NULL)
 		{
-		  assert (false);
 		  parser_free_tree (parser, pred_point_list);
 		  pred_point_list = NULL;
 		}
 
-	      has_reduce = true;
+	      continue;		/* curr_pk_spec->next */
+	    }
+
+	  assert (pred_point == NULL);
+
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
+	  printf ("[debug] [parent] (4/7) predicates with only columns in the primary key.\n");
+#endif
+
+	  {
+	    memset (&info, 0, sizeof (SPEC_CNT_INFO));
+	    info.spec = curr_pk_spec;
+
+	    backup_where = query->info.query.q.select.where;
+	    query->info.query.q.select.where = NULL;
+
+	    parser_walk_tree (parser, query, qo_get_name_cnt_by_spec_without_oncond, &info, NULL, NULL);
+
+	    query->info.query.q.select.where = backup_where;
+
+	    if (info.my_spec_cnt >= 1)
+	      {
+		continue;	/* curr_pk_spec->next */
+	      }
+	  }
+
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
+	  printf ("[debug] [parent] (5/7) No references other than predicates.\n");
+#endif
+
+	  for (curr_fk_spec = query->info.query.q.select.from; curr_fk_spec != NULL; curr_fk_spec = curr_fk_spec->next)
+	    {
+	      MOP curr_fk_mop = NULL;
+	      SM_CLASS_CONSTRAINT *curr_fk_cons = NULL;
+	      bool is_skip_fk_spec = false;
+
+	      assert (PT_NODE_IS_SPEC (curr_fk_spec));
+
+	      if (curr_pk_spec == curr_fk_spec)
+		{
+		  continue;	/* curr_fk_spec->next */
+		}
+
+	      /* PT_ALL is not supported. */
+	      if (curr_fk_spec->info.spec.only_all == PT_ALL)
+		{
+		  continue;	/* curr_fk_spec->next */
+		}
+
+	      /* CTEs and derived tables are excluded. */
+	      if (PT_SPEC_ENTITY_NAME (curr_fk_spec) == NULL)
+		{
+		  continue;	/* curr_fk_spec->next */
+		}
+
+	      switch (curr_fk_spec->info.spec.join_type)
+		{
+		case PT_JOIN_NONE:
+		case PT_JOIN_INNER:
+		case PT_JOIN_NATURAL:
+		  break;
+
+		case PT_JOIN_CROSS:
+		case PT_JOIN_LEFT_OUTER:
+		case PT_JOIN_RIGHT_OUTER:
+		case PT_JOIN_FULL_OUTER:
+		case PT_JOIN_UNION:
+		  continue;	/* curr_fk_spec->next */
+		}
+
+	      PT_SPEC_GET_DB_OBJECT (curr_fk_spec, curr_fk_mop);
+	      if (curr_fk_mop == NULL)
+		{
+		  ASSERT_ERROR ();
+		  goto exit_on_error;
+		}
+
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
+	      printf ("[debug] [ child] (1/3) table: %s\n", pt_print_alias (parser, curr_fk_spec));
+#endif
+
+	      for (curr_fk_cons = sm_class_constraints (curr_fk_mop); curr_fk_cons != NULL;
+		   curr_fk_cons = curr_fk_cons->next)
+		{
+		  bool is_skip_fk_cons = false;
+
+		  if (curr_fk_cons->type != SM_CONSTRAINT_FOREIGN_KEY)
+		    {
+		      continue;	/* curr_fk_cons->next */
+		    }
+
+		  /* WS_OID or WS_REAL_OID, which one? */
+		  if (!OID_EQ (WS_REAL_OID (curr_pk_mop), &curr_fk_cons->fk_info->ref_class_oid))
+		    {
+		      continue;	/* curr_fk_cons->next */
+		    }
+
+		  if (!BTID_IS_EQUAL (&(curr_pk_cons->index_btid), &(curr_fk_cons->fk_info->ref_class_pk_btid)))
+		    {
+		      continue;	/* curr_fk_cons->next */
+		    }
+
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
+		  printf ("[debug] [ child] (2/3) foreign key: %s\n", curr_fk_cons->name);
+#endif
+
+		  assert (append_pred_list == NULL);
+
+		  for (pred_point = pred_point_list; pred_point != NULL; pred_point = pred_point->next)
+		    {
+		      SM_ATTRIBUTE *pk_cons_attr = NULL, *fk_cons_attr = NULL;
+		      PT_NODE *pk_pred_attr = NULL, *fk_pred_attr = NULL;
+		      PT_NODE *arg1 = NULL, *arg2 = NULL;
+
+		      curr_pred = pred_point;
+		      CAST_POINTER_TO_NODE (curr_pred);
+
+		      assert (PT_NODE_IS_EXPR (curr_pred));
+		      assert (PT_EXPR_OP (curr_pred) == PT_EQ);
+		      assert (PT_NODE_IS_NAME (PT_EXPR_ARG1 (curr_pred)));
+		      assert (PT_NODE_IS_NAME (PT_EXPR_ARG2 (curr_pred)));
+
+		      arg1 = PT_EXPR_ARG1 (curr_pred);
+		      arg2 = PT_EXPR_ARG2 (curr_pred);
+
+		      if (PT_SPEC_ID (curr_pk_spec) == PT_NAME_SPEC_ID (arg1))
+			{
+			  pk_pred_attr = PT_EXPR_ARG1 (curr_pred);
+			}
+		      else if (PT_SPEC_ID (curr_pk_spec) == PT_NAME_SPEC_ID (arg2))
+			{
+			  pk_pred_attr = PT_EXPR_ARG2 (curr_pred);
+			}
+		      else
+			{
+			  /* Already checked before. */
+			  assert (false);
+			  goto exit_on_error;
+			}
+
+		      if (PT_SPEC_ID (curr_fk_spec) == PT_NAME_SPEC_ID (arg1))
+			{
+			  fk_pred_attr = PT_EXPR_ARG1 (curr_pred);
+			}
+		      else if (PT_SPEC_ID (curr_fk_spec) == PT_NAME_SPEC_ID (arg2))
+			{
+			  fk_pred_attr = PT_EXPR_ARG2 (curr_pred);
+			}
+		      else
+			{
+			  is_skip_fk_spec = true;
+			  break;
+			}
+
+		      assert (pk_pred_attr != NULL);
+		      assert (fk_pred_attr != NULL);
+
+		      for (i = 0; curr_pk_cons->attributes[i] != NULL && curr_fk_cons->attributes[i] != NULL; i++)
+			{
+			  SM_ATTRIBUTE *pk_cons_attr = curr_pk_cons->attributes[i];
+			  SM_ATTRIBUTE *fk_cons_attr = curr_fk_cons->attributes[i];
+
+			  if (intl_identifier_casecmp (pk_cons_attr->header.name, PT_NAME_ORIGINAL (pk_pred_attr)) == 0)
+			    {
+			      if (intl_identifier_casecmp (fk_cons_attr->header.name,
+							   PT_NAME_ORIGINAL (fk_pred_attr)) == 0)
+				{
+				  /* If there is no not null constraint on the column used for the foreign key
+				   * in the child table, add the IS NOT NULL predicate for the column. */
+				  if (!(fk_cons_attr->flags & SM_ATTFLAG_NON_NULL))
+				    {
+				      PT_NODE *copy_fk_pred_attr = parser_copy_tree (parser, fk_pred_attr);
+				      PT_NODE *fk_not_null_pred =
+					parser_make_expression (parser, PT_IS_NOT_NULL, copy_fk_pred_attr, NULL, NULL);
+				      append_pred_list = parser_append_node (fk_not_null_pred, append_pred_list);
+				    }
+				}
+			      else
+				{
+				  /* It cannot be reduced in fk_child_c1_c2 but can be reduced in fk_child_c2_c1.
+				   *
+				   * e.g.
+				   *   drop if exists child, parent;
+				   *   create table parent (c1 int, c2 int, primary key (c1, c2));
+				   *   create table child (c1 int, c2 int);
+				   *   alter table child add constraint foreign key (c1, c2) references parent (c1, c2);
+				   *   alter table child add constraint foreign key (c2, c1) references parent (c1, c2);
+				   *   select c.* from child c, parent p where c.c1 = p.c2 and c.c2 = p.c1;
+				   */
+				  is_skip_fk_cons = true;
+				  break;
+				}
+			    }
+			}
+
+		      if (is_skip_fk_cons)
+			{
+			  break;
+			}
+		    }
+
+		  if (is_skip_fk_spec)
+		    {
+		      if (append_pred_list != NULL)
+			{
+			  parser_free_tree (parser, append_pred_list);
+			  append_pred_list = NULL;
+			}
+
+		      break;
+		    }
+
+		  if (is_skip_fk_cons)
+		    {
+		      if (append_pred_list != NULL)
+			{
+			  parser_free_tree (parser, append_pred_list);
+			  append_pred_list = NULL;
+			}
+
+		      continue;	/* curr_fk_cons->next */
+		    }
+
+		  assert (pred_point == NULL);
+
+		  is_reducible = true;
+		  break;
+		}
+
+	      if (is_skip_fk_spec)
+		{
+		  continue;	/* curr_fk_spec->next */
+		}
+
+	      if (curr_fk_cons == NULL)
+		{
+		  continue;	/* curr_fk_spec->next */
+		}
+
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
+	      printf ("[debug] [ child] (3/3) predicates with only columns in the foreign key.\n");
+#endif
+
+	      assert (is_reducible);
 	      break;
 	    }
 
-	  if (has_reduce)
+	  if (curr_fk_spec == NULL)
 	    {
-	      break;
+	      if (pred_point_list != NULL)
+		{
+		  parser_free_tree (parser, pred_point_list);
+		  pred_point_list = NULL;
+		}
+
+	      continue;		/* curr_pk_spec->next */
 	    }
+
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
+	  printf ("[debug] [parent] (6/7) table to reduce: %s\n", db_get_class_name (curr_pk_mop));
+#endif
+
+	  prev_pred = NULL;
+	  curr_pred = query->info.query.q.select.where;
+	  while (curr_pred != NULL)
+	    {
+	      for (parent_pred = NULL, prev_pred_point = NULL, curr_pred_point = pred_point_list;
+		   curr_pred_point != NULL; prev_pred_point = curr_pred_point, curr_pred_point = curr_pred_point->next)
+		{
+		  parent_pred = curr_pred_point;
+		  CAST_POINTER_TO_NODE (parent_pred);
+
+		  if (curr_pred == parent_pred)
+		    {
+		      break;
+		    }
+		}
+
+	      next_pred = curr_pred->next;
+
+	      if (curr_pred_point == NULL)
+		{
+		  prev_pred = curr_pred;
+		  curr_pred = next_pred;
+		  continue;
+		}
+
+	      if (prev_pred != NULL)
+		{
+		  prev_pred->next = next_pred;
+		}
+	      else
+		{
+		  query->info.query.q.select.where = next_pred;
+		}
+	      parser_free_node (parser, curr_pred);
+	      curr_pred = next_pred;
+
+	      next_pred_point = curr_pred_point->next;
+
+	      if (prev_pred_point != NULL)
+		{
+		  prev_pred_point->next = next_pred_point;
+		}
+	      else
+		{
+		  pred_point_list = next_pred_point;
+		}
+	      parser_free_node (parser, curr_pred_point);
+	      curr_pred_point = next_pred_point;
+	    }
+
+	  assert (pred_point_list == NULL);
+
+	  prev_append_pred = NULL;
+	  curr_append_pred = append_pred_list;
+	  while (curr_append_pred != NULL)
+	    {
+	      assert (PT_NODE_IS_EXPR (curr_append_pred));
+	      assert (PT_EXPR_OP (curr_append_pred) == PT_IS_NOT_NULL);
+	      assert (PT_NODE_IS_NAME (PT_EXPR_ARG1 (curr_append_pred)));
+
+	      for (curr_pred = query->info.query.q.select.where; curr_pred != NULL; curr_pred = curr_pred->next)
+		{
+		  if (PT_NODE_IS_EXPR (curr_pred) && PT_EXPR_OP (curr_pred) == PT_IS_NOT_NULL
+		      && PT_NODE_IS_NAME (PT_EXPR_ARG1 (curr_pred)))
+		    {
+		      PT_NODE *curr_pred_arg = PT_EXPR_ARG1 (curr_pred);
+		      PT_NODE *curr_append_pred_arg = PT_EXPR_ARG1 (curr_append_pred);
+
+		      if (intl_identifier_casecmp (PT_NAME_ORIGINAL (curr_pred_arg),
+						   PT_NAME_ORIGINAL (curr_append_pred_arg)) == 0)
+			{
+			  break;
+			}
+		    }
+		}
+
+	      next_append_pred = curr_append_pred->next;
+
+	      if (curr_pred == NULL)
+		{
+		  prev_append_pred = curr_append_pred;
+		  curr_append_pred = next_append_pred;
+		  continue;
+		}
+
+	      if (prev_append_pred != NULL)
+		{
+		  prev_append_pred->next = next_append_pred;
+		}
+	      else
+		{
+		  append_pred_list = next_append_pred;
+		}
+	      parser_free_node (parser, curr_append_pred);
+	      curr_append_pred = next_append_pred;
+	    }
+
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
+	  printf ("[debug] [parent] (7/7) predicates to add: %s\n", parser_print_tree_list (parser, append_pred_list));
+#endif
+
+	  if (append_pred_list != NULL)
+	    {
+	      query->info.query.q.select.where =
+		parser_append_node (append_pred_list, query->info.query.q.select.where);
+	      append_pred_list = NULL;
+	    }
+
+	  /* reset location */
+	  qo_reset_spec_location (parser, curr_pk_spec, query);
+
+	  next_pk_spec = curr_pk_spec->next;
+
+	  /* free spec */
+	  if (prev_pk_spec != NULL)
+	    {
+	      prev_pk_spec->next = next_pk_spec;
+	    }
+	  else
+	    {
+	      query->info.query.q.select.from = next_pk_spec;
+	    }
+	  parser_free_node (parser, curr_pk_spec);
+	  curr_pk_spec = next_pk_spec;
+
+	  has_reduce = true;
+	  break;
+	}
+
+      if (!has_reduce)
+	{
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
+	  printf ("[debug] [------] (-/-) has_reduce: false\n");
+#endif
+
+	  break;
 	}
     }
-  while (has_reduce);
 
-exit:
+  return;
+
+exit_on_error:
+  if (pred_point_list != NULL)
+    {
+      parser_free_tree (parser, pred_point_list);
+      pred_point_list = NULL;
+    }
+
+  if (append_pred_list != NULL)
+    {
+      parser_free_tree (parser, append_pred_list);
+      append_pred_list = NULL;
+    }
+
   return;
 }
 
