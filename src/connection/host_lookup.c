@@ -49,6 +49,7 @@
 #define HOSTNAME_LEN                 (256)
 #define MAX_NUM_HOSTS                (256)
 #define IPADDR_LEN                   (17)
+#define MTIME_DIGITS                 (10)
 #define IPv4_ADDR_LEN                (4)
 #define NUM_IPADDR_DOT               (3)
 #define MAX_NUM_IPADDR_PER_HOST      (1)
@@ -644,10 +645,8 @@ check_conf_file_consistency (char *conf_file)
 {
   struct stat sbuf;
   int ret_val = 1;
-  int mtime_digit = 10;
   FILE *fp;
-  const int time_len = mtime_digit + 1;
-  char latest_mtime[time_len];
+  char latest_mtime[MTIME_DIGITS + 1];
   ssize_t line_len;
   char dir_name[7] = "uhosts";
   char file_name[9] = "date.txt";
@@ -689,8 +688,8 @@ check_conf_file_consistency (char *conf_file)
 
   if (stat (conf_file, &sbuf) >= 0)
     {
-      fseek (fp, -time_len, SEEK_END);
-      line_len = read (fileno (fp), latest_mtime, time_len);
+      fseek (fp, -(MTIME_DIGITS + 1), SEEK_END);
+      line_len = read (fileno (fp), latest_mtime, MTIME_DIGITS + 1);
       latest_mtime[line_len - 1] = '\0';
       if ((atoi (latest_mtime) != sbuf.st_mtime) || (line_len == 0))
 	{
