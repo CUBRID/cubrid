@@ -403,7 +403,7 @@ void page_server::pts_mvcc_tracker::update_oldest_active_mvccid (const std::stri
   /*
    * 1. The entry is already created when ths PTS is connected.
    * 2. It is updated by the PTS only when it move foward.
-   *    Without update, it is MVCCID_ALL_VISIBLE by default, which is lesser than any mvccid assigned.
+   *    Without update, it is MVCCID_ALL_VISIBLE by default, which is lower than any mvccid assigned.
    */
   assert (m_pts_oldest_active_mvccids.find (pts_channel_id) != m_pts_oldest_active_mvccids.end());
   assert (m_pts_oldest_active_mvccids[pts_channel_id] < mvccid);
