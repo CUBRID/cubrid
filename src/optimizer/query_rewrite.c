@@ -3638,7 +3638,11 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 	  printf ("[debug] [parent] (2/7) referenced primary key: %s\n", curr_pk_cons->name);
 #endif
 
-	  assert (pred_point_list == NULL);
+	  if (pred_point_list != NULL)
+	    {
+	      parser_free_tree (parser, pred_point_list);
+	      pred_point_list = NULL;
+	    }
 
 	  /* There must be no non-join predicates. */
 	  for (curr_pred = query->info.query.q.select.where; curr_pred != NULL; curr_pred = curr_pred->next)
@@ -3730,12 +3734,6 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 
 	  if (is_skip_pk_spec)
 	    {
-	      if (pred_point_list != NULL)
-		{
-		  parser_free_tree (parser, pred_point_list);
-		  pred_point_list = NULL;
-		}
-
 	      continue;		/* curr_pk_spec->next */
 	    }
 
@@ -3842,7 +3840,11 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 		  printf ("[debug] [ child] (2/3) foreign key: %s\n", curr_fk_cons->name);
 #endif
 
-		  assert (append_pred_list == NULL);
+		  if (append_pred_list != NULL)
+		    {
+		      parser_free_tree (parser, append_pred_list);
+		      append_pred_list = NULL;
+		    }
 
 		  for (pred_point = pred_point_list; pred_point != NULL; pred_point = pred_point->next)
 		    {
@@ -3939,23 +3941,11 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 
 		  if (is_skip_fk_spec)
 		    {
-		      if (append_pred_list != NULL)
-			{
-			  parser_free_tree (parser, append_pred_list);
-			  append_pred_list = NULL;
-			}
-
 		      break;
 		    }
 
 		  if (is_skip_fk_cons)
 		    {
-		      if (append_pred_list != NULL)
-			{
-			  parser_free_tree (parser, append_pred_list);
-			  append_pred_list = NULL;
-			}
-
 		      continue;	/* curr_fk_cons->next */
 		    }
 
@@ -3985,12 +3975,6 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 
 	  if (curr_fk_spec == NULL)
 	    {
-	      if (pred_point_list != NULL)
-		{
-		  parser_free_tree (parser, pred_point_list);
-		  pred_point_list = NULL;
-		}
-
 	      continue;		/* curr_pk_spec->next */
 	    }
 
@@ -4108,10 +4092,6 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 
 	  next_pk_spec = curr_pk_spec->next;
 
-	  /* reset location */
-	  qo_reset_spec_location (parser, next_pk_spec, query);
-
-	  /* free spec */
 	  if (prev_pk_spec != NULL)
 	    {
 	      prev_pk_spec->next = next_pk_spec;
@@ -4120,6 +4100,10 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 	    {
 	      query->info.query.q.select.from = next_pk_spec;
 	    }
+
+	  /* reset location */
+	  qo_reset_spec_location (parser, next_pk_spec, query);
+
 	  parser_free_node (parser, curr_pk_spec);
 	  curr_pk_spec = next_pk_spec;
 
@@ -4136,8 +4120,6 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 	  break;
 	}
     }
-
-  return;
 
 exit_on_error:
   if (pred_point_list != NULL)
