@@ -2274,7 +2274,7 @@ sm_downcase_name (const char *name, char *buf, int buf_size)
 char *
 sm_user_specified_name (const char *name, char *buf, int buf_size)
 {
-  char user_specified_name[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+  char user_specified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *current_schema_name = NULL;
   const char *dot = NULL;
   int error = NO_ERROR;
@@ -2843,7 +2843,7 @@ sm_rename_class (MOP class_mop, const char *new_name)
   MOBJ obj = NULL;
   char *class_old_name = NULL;
   char *class_new_name = NULL;
-  char buf[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+  char buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int is_partition = 0;
   bool need_free_old_name = false;
   bool need_free_new_name = false;
@@ -5392,7 +5392,7 @@ sm_find_class (const char *name)
 MOP
 sm_find_class_with_purpose (const char *name, bool for_update)
 {
-  char realname[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+  char realname[SM_MAX_IDENTIFIER_LENGTH];
   MOP class_mop = NULL;
   MOP synonym_mop = NULL;
   int error = NO_ERROR;
@@ -5411,7 +5411,7 @@ sm_find_class_with_purpose (const char *name, bool for_update)
       synonym_mop = sm_find_synonym (realname);
       if (synonym_mop)
 	{
-	  char target_name[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+	  char target_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 	  sm_get_synonym_target_name (synonym_mop, target_name, SM_MAX_IDENTIFIER_LENGTH);
 	  class_mop = locator_find_class_with_purpose (target_name, for_update);
 	}
@@ -5441,7 +5441,7 @@ sm_find_synonym (const char *name)
   DB_OBJECT *synonym_class_obj = NULL;
   DB_OBJECT *synonym_obj = NULL;
   DB_VALUE value;
-  char realname[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+  char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   int save = 0;
 
