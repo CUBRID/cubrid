@@ -3588,7 +3588,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 	    }
 
 	  /* CTEs and derived tables are excluded. */
-	  if (PT_SPEC_ENTITY_NAME (curr_pk_spec) == NULL)
+	  if (PT_SPEC_ENTITY_NAME (curr_pk_spec) == NULL || !PT_NODE_IS_NAME (PT_SPEC_ENTITY_NAME (curr_pk_spec)))
 	    {
 	      continue;		/* curr_pk_spec->next */
 	    }
@@ -3786,7 +3786,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 		}
 
 	      /* CTEs and derived tables are excluded. */
-	      if (PT_SPEC_ENTITY_NAME (curr_fk_spec) == NULL)
+	      if (PT_SPEC_ENTITY_NAME (curr_fk_spec) == NULL || !PT_NODE_IS_NAME (PT_SPEC_ENTITY_NAME (curr_fk_spec)))
 		{
 		  continue;	/* curr_fk_spec->next */
 		}
