@@ -447,13 +447,19 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
 
   {
     std::lock_guard<std::mutex> lockg { m_pts_oldest_active_mvccids_mtx };
-    /* The entry must not already be present. If the same passive transaction server has been connected
+    /*
+     * The entry must not already be present. If the same passive transaction server has been connected
      * before, the entry must have been removed when the PTS disconnected or when the connection
      *  to the PTS was aborted.
      */
     assert (m_pts_oldest_active_mvccids.find (channel_id) == m_pts_oldest_active_mvccids.end());
 
-    /* MVCCID_ALL_VISIBLE means that it hasn't yet received. It will prevent the ATS run vacuum. */
+    /*
+     * MVCCID_ALL_VISIBLE means that it hasn't yet received. It will prevent the ATS to run vacuum.
+     * This is a guard for the window in which a PTS is connected but has't sent its oldest active mvccid.
+     * In this window, if we vaccum without considering the PTS, we possibly end up cleaning up the data
+     * a read-only transaction on the PTS see.
+     */
     m_pts_oldest_active_mvccids[channel_id] = MVCCID_ALL_VISIBLE;
   }
 }
