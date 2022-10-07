@@ -3501,23 +3501,29 @@ end:
 }
 
 /*
- * qo_reduce_joined_referenced_tables () - reduce joined referenced tables.
+ * qo_reduce_joined_referenced_tables () - Removes the table of the primary key from the join
+ *                                         with the table with the foreign key referencing it.
  *   return: void
  *   parser(in): parser context
  *   query(in): query to check
  *
- * Note:
- *   - e.g. drop if exists child, parent;
- *          create table parent (c1 int primary key, c2 int);
- *          create table child (c1 int, parent_c1 int references parent (c1), c2 int);
+ * Note: The table with the primary key can be removed from the join with the table with the foreign key referencing it
+ *       if there is no other reference than the joining purpose. This is because the relationship
+ *       between the primary key and the foreign key replaces the data filter of the join. If the join of the table
+ *       with the primary key is removed, predicates for IS NOT NULL must be added because it cannot be filtered
+ *       for NULL.
  *
- *          select c.* from child c inner join parent p on p.c1 = c.parent_c1 where c.c2 = 1;
- *          select c.* from child c, parent p where c.parent_c1 = p.c1 and c.c2 = 1;
- *          -> select c.* from child c where c.c2 = 1 and c.parent_c1 is not null;
- * 
- *          select c.* from child c inner join parent p on p.c1 = c.parent_c1 where p.c2 = 1;
- *          select c.* from child c, parent p where c.parent_c1 = p.c1 and p.c2 = 1;
- *          -> do not change.
+ *    e.g. drop if exists child, parent;
+ *         create table parent (c1 int primary key, c2 int);
+ *         create table child (c1 int, parent_c1 int references parent (c1), c2 int);
+ *
+ *         select c.* from child c inner join parent p on p.c1 = c.parent_c1 where c.c2 = 1;
+ *         select c.* from child c, parent p where c.parent_c1 = p.c1 and c.c2 = 1;
+ *           -> select c.* from child c where c.c2 = 1 and c.parent_c1 is not null;
+ *
+ *         select c.* from child c inner join parent p on p.c1 = c.parent_c1 where p.c2 = 1;
+ *         select c.* from child c, parent p where c.parent_c1 = p.c1 and p.c2 = 1;
+ *           -> do not change.
  */
 static void
 qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
@@ -3905,8 +3911,8 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 			      if (intl_identifier_casecmp (fk_cons_attr->header.name,
 							   PT_NAME_ORIGINAL (fk_pred_attr)) == 0)
 				{
-				  /* If there is no not null constraint on the column used for the foreign key
-				   * in the child table, add the IS NOT NULL predicate for the column. */
+				  /* If there is no not null constraint on a column of the table with the foreign key,
+				   * predicates for IS NOT NULL must be added. */
 				  if (!(fk_cons_attr->flags & SM_ATTFLAG_NON_NULL))
 				    {
 				      PT_NODE *copy_fk_pred_attr = parser_copy_tree (parser, fk_pred_attr);
@@ -3918,14 +3924,16 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 			      else
 				{
 				  /* It cannot be reduced in fk_child_c1_c2 but can be reduced in fk_child_c2_c1.
-				   *   - e.g. drop if exists child, parent;
-				   *          create table parent (c1 int, c2 int, primary key (c1, c2));
-				   *          create table child (c1 int, c2 int);
-				   *          alter table child add constraint
-				   *            foreign key (c1, c2) references parent (c1, c2);
-				   *          alter table child add constraint
-				   *            foreign key (c2, c1) references parent (c1, c2);
-				   *          select c.* from child c, parent p where c.c1 = p.c2 and c.c2 = p.c1;
+				   * 
+				   *   e.g. drop if exists child, parent;
+				   *        create table parent (c1 int, c2 int, primary key (c1, c2));
+				   *        create table child (c1 int, c2 int);
+				   *        alter table child add constraint
+				   *          foreign key (c1, c2) references parent (c1, c2);
+				   *        alter table child add constraint
+				   *          foreign key (c2, c1) references parent (c1, c2);
+				   *
+				   *        select c.* from child c, parent p where c.c1 = p.c2 and c.c2 = p.c1;
 				   */
 				  is_skip_fk_cons = true;
 				  break;
