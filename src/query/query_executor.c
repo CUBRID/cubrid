@@ -13775,7 +13775,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
       old_no_logging = thread_p->no_logging;
 
-      if (xasl->spec_list)
+      if (xasl->spec_list && xasl->spec_list->type == TARGET_DBLINK)
 	{
 	  int res;
 	  DBLINK_HOST_VARS host_vars;
