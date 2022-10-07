@@ -328,6 +328,7 @@ typedef int TRANID;		/* Transaction identifier */
 
 #define MVCCID_ALL_VISIBLE    ((MVCCID) 3)	/* visible for all transactions */
 #define MVCCID_FIRST	      ((MVCCID) 4)
+#define MVCCID_LAST	      ((MVCCID) -1)	/* UINT64 */
 
 /* is MVCC ID valid? */
 #define MVCCID_IS_VALID(id)	  ((id) != MVCCID_NULL)
