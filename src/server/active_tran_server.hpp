@@ -39,6 +39,8 @@ class active_tran_server : public tran_server
 
     void receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip);
 
+    void stop_outgoing_page_server_messages () final override;
+
   private:
     bool m_uses_remote_storage = false;
 

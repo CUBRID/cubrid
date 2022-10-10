@@ -89,3 +89,8 @@ active_tran_server::get_request_handlers ()
 
   return handlers_map;
 }
+
+void
+active_tran_server::stop_outgoing_page_server_messages ()
+{
+}
