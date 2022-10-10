@@ -377,10 +377,10 @@ namespace cublog
   }
 #endif
 
+#if !defined (NDEBUG)
   void
   atomic_replication_helper::atomic_log_sequence::dump ()
   {
-#if !defined (NDEBUG)
     char buf[PATH_MAX];
     char *buf_ptr = buf;
     int written = 0;
@@ -407,8 +407,8 @@ namespace cublog
 	left -= written;
       }
     _er_log_debug (ARG_FILE_LINE, buf);
-#endif
   }
+#endif
 
   void
   atomic_replication_helper::atomic_log_sequence::apply_and_unfix_sequence (THREAD_ENTRY *thread_p)
@@ -423,7 +423,9 @@ namespace cublog
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
       {
+#if !defined (NDEBUG)
 	dump ();
+#endif
       }
 
     for (const auto &log_entry : m_log_vec)

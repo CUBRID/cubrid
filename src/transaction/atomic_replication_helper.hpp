@@ -167,7 +167,9 @@ namespace cublog
 	  log_lsa get_start_lsa () const;
 
 	private:
+#if !defined (NDEBUG)
 	  void dump ();
+#endif
 
 	private: // types
 	  /*
