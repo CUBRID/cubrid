@@ -326,6 +326,9 @@ void
 tran_server::disconnect_page_server ()
 {
   assert_is_tran_server ();
+
+  stop_outgoing_page_server_messages ();
+
   const int payload = static_cast<int> (m_conn_type);
   std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
   er_log_debug (ARG_FILE_LINE, "Transaction server starts disconnecting from the page servers.");
