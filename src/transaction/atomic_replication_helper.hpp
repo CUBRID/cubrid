@@ -49,7 +49,7 @@ namespace cublog
    *
    *    LOG_SYSOP_ATOMIC_START
    *        (undo|redo|undoredo|..)+
-   *    LOG_SYSOP_END
+   *    LOG_SYSOP_END with LOG_SYSOP_END_COMMIT
    *
    * 3. vacuum generated atomic sysops with nested postpone logical operations which, themselves,
    *    can contain atomic operations; these have the following layout:
@@ -109,10 +109,10 @@ namespace cublog
       void start_postpone_sequence (TRANID trid);
 #endif
       bool is_postpone_sequence_started (TRANID trid) const;
+#if (0)
       void complete_one_postpone_sequence (TRANID trid);
       // there is no easy way of knowing how many postpone sequences are in the transaction
       // but there should be at least one
-#if (0)
       bool is_at_least_one_postpone_sequence_completed (TRANID trid) const;
 #endif
 
@@ -157,8 +157,8 @@ namespace cublog
 	  void start_postpone_sequence ();
 #endif
 	  bool is_postpone_sequence_started () const;
-	  void complete_one_postpone_sequence ();
 #if (0)
+	  void complete_one_postpone_sequence ();
 	  bool is_at_least_one_postpone_sequence_completed () const;
 #endif
 

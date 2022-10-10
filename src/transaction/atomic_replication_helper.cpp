@@ -152,6 +152,7 @@ namespace cublog
     return false;
   }
 
+#if (0)
   void
   atomic_replication_helper::complete_one_postpone_sequence (TRANID trid)
   {
@@ -163,7 +164,6 @@ namespace cublog
     sequence.complete_one_postpone_sequence ();
   }
 
-#if (0)
   bool
   atomic_replication_helper::is_at_least_one_postpone_sequence_completed (TRANID trid) const
   {
@@ -351,6 +351,7 @@ namespace cublog
     return m_postpone_started;
   }
 
+#if (0)
   void
   atomic_replication_helper::atomic_log_sequence::complete_one_postpone_sequence ()
   {
@@ -362,7 +363,6 @@ namespace cublog
     ++m_end_pospone_count;
   }
 
-#if (0)
   bool
   atomic_replication_helper::atomic_log_sequence::is_at_least_one_postpone_sequence_completed () const
   {

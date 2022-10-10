@@ -338,7 +338,9 @@ namespace cublog
 	// which will be treated as a single atomic replication sequence
 
 	// mark that one logical run postpone has ended; helpful only as safe-guard check
+#if (0)
 	m_atomic_helper.complete_one_postpone_sequence (log_header.trid);
+#endif
       }
     else
       {
@@ -350,22 +352,27 @@ namespace cublog
 	    m_atomic_helper.apply_and_unfix_atomic_replication_sequence (&thread_entry, log_header.trid);
 	    set_lowest_unapplied_lsa ();
 	  }
-	else if (log_rec.type == LOG_SYSOP_END_COMMIT
+	else if (log_rec.type == LOG_SYSOP_END_COMMIT);
 #endif
-	  if (log_rec.type == LOG_SYSOP_END_COMMIT
-		 && !LSA_ISNULL (&log_rec.lastparent_lsa)
-		 && m_atomic_helper.can_end_sysop_sequence (log_header.trid, log_rec.lastparent_lsa))
+	if (log_rec.type == LOG_SYSOP_END_COMMIT
+	    && !LSA_ISNULL (&log_rec.lastparent_lsa)
+	    && m_atomic_helper.can_end_sysop_sequence (log_header.trid, log_rec.lastparent_lsa))
 	  {
 	    // atomic sequences performed by user transactions (ie: non-vacuum)
 	    m_atomic_helper.apply_and_unfix_atomic_replication_sequence (&thread_entry, log_header.trid);
 	    set_lowest_unapplied_lsa ();
 	  }
 	else if (log_rec.type == LOG_SYSOP_END_COMMIT
+		 && LSA_ISNULL (&log_rec.lastparent_lsa)
 		 && m_atomic_helper.can_end_sysop_sequence (log_header.trid))
 	  {
-	    // for vacuum transactions, the last parent lsa is not filled in
-	    assert (LSA_ISNULL (&log_rec.lastparent_lsa));
-	    assert (false);
+	    // 1. vacuum transactions, a sysop end with sysop end commit where the last parent
+	    //    lsa is not filled in concludes an atomic sysop sequence
+	    // 2. for a transaction, a sysop end with sysop end commit where the last parent lsa
+	    //    is not filled in concludes the multiple postpone execution sequences (where each
+	    //    of these sequences can have had embedded atomic replication sequences - but which
+	    //    where processed as they occured); in this case however, there would not be
+	    //    any atomic sequence to conclude because all should have been concluded up to now
 
 	    m_atomic_helper.apply_and_unfix_atomic_replication_sequence (&thread_entry, log_header.trid);
 	    set_lowest_unapplied_lsa ();
