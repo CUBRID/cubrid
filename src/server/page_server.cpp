@@ -202,7 +202,10 @@ page_server::connection_handler::receive_disconnect_request (tran_server_conn_t:
   // passive transaction server - it should have been disconnected beforehand
   assert (m_prior_sender_sink_hook_func == nullptr);
 
-  m_ps.m_pts_mvcc_tracker.delete_oldest_active_mvccid (get_channel_id());
+  if (m_server_type == transaction_server_type::PASSIVE)
+    {
+      m_ps.m_pts_mvcc_tracker.delete_oldest_active_mvccid (get_channel_id());
+    }
 
   m_ps.disconnect_tran_server_async (this);
 }
@@ -236,14 +239,14 @@ page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code
 			(int)error_code);
 
 	  remove_prior_sender_sink ();
+
+	  m_ps.m_pts_mvcc_tracker.delete_oldest_active_mvccid (get_channel_id());
 	}
       else
 	{
 	  er_log_debug (ARG_FILE_LINE, "abnormal_tran_server_disconnect: ATS disconnected from PS. Error code: %d\n",
 			(int)error_code);
 	}
-
-      m_ps.m_pts_mvcc_tracker.delete_oldest_active_mvccid (get_channel_id());
 
       m_ps.disconnect_tran_server_async (this);
 
