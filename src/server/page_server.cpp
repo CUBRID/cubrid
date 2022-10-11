@@ -447,8 +447,8 @@ MVCCID page_server::pts_mvcc_tracker::get_global_oldest_active_mvccid ()
     }
 
   /* it can return either
-   * - MVCCID_LAST: no PTS is being trakced
-   * - or MVCCID_ALL_VISIBLE: some PTS are connected, but hasn't update
+   * - MVCCID_LAST: no PTS is being tracked
+   * - or MVCCID_ALL_VISIBLE: at least one PTS has connected, but hasn't updated yet
    * - or the computed oldest one */
   return oldest_mvccid;
 }
