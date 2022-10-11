@@ -5392,16 +5392,10 @@ sm_find_class (const char *name)
 MOP
 sm_find_class_with_purpose (const char *name, bool for_update)
 {
-  char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char realname[SM_MAX_IDENTIFIER_LENGTH];
   MOP class_mop = NULL;
   MOP synonym_mop = NULL;
   int error = NO_ERROR;
-
-  if (name == NULL || *name == '\0')
-    {
-      ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
-      return NULL;
-    }
 
   sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
@@ -5450,12 +5444,6 @@ sm_find_synonym (const char *name)
   char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   int save = 0;
-
-  if (name == NULL || *name == '\0')
-    {
-      ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
-      return NULL;
-    }
 
   if (sm_check_system_class_by_name (name))
     {
