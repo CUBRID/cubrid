@@ -166,15 +166,20 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
   char ipaddr_buf[IPADDR_LEN];
   struct sockaddr_in *addr_trans = NULL;
 
-  pthread_mutex_lock (&load_hosts_file_lock);
   if (hosts_conf_file_Load == LOAD_INIT)
     {
-      if ((hosts_conf_file_Load = load_hosts_file ()) == LOAD_FAIL)
+      pthread_mutex_lock (&load_hosts_file_lock);
+      if (hosts_conf_file_Load == LOAD_INIT)
 	{
-	  return NULL;
+	  hosts_conf_file_Load = load_hosts_file ();
+	  if (hosts_conf_file_Load == LOAD_FAIL)
+	    {
+	      pthread_mutex_unlock (&load_hosts_file_lock);
+	      return NULL;
+	    }
 	}
+      pthread_mutex_unlock (&load_hosts_file_lock);
     }
-  pthread_mutex_unlock (&load_hosts_file_lock);
 
   addr_trans = (struct sockaddr_in *) saddr;
 
