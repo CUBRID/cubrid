@@ -108,8 +108,9 @@ bool check_conf_file_consistency (char *conf_file);
 /*
  * hostent_alloc () - Allocate memory hostent structure.
  * 
- * return   : the hostent pointer.
- *
+ * return        : The hostent pointer.
+ * ipaddr (in)   : Elements of hostent.
+ * hostname (in) : Elements of hostent.
  */
 static struct hostent *
 hostent_alloc (char *ipaddr, char *hostname)
@@ -155,7 +156,16 @@ hostent_alloc (char *ipaddr, char *hostname)
   return hp;
 }
 
-
+/*
+ * host_lookup_internal () - Look up the hostname or ip address in the hostent_Cache.
+ * 
+ * return         : The hostent pointer.
+ * hostname(in)   : The host name to look up IP address.
+ * saddr(in)      : The IP address to look up host name.
+ * lookup_type(in): The macro to choose look up mode.
+ *  
+ *  Note: If lookup_type is HOSTNAME_TO_IPADDR, saddr is NULL. hostname is NULL otherwise.
+ */
 static struct hostent *
 host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_type)
 {
@@ -216,6 +226,11 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
   return hp;
 }
 
+/*
+ * load_hosts_file () - Load the cubrid_host.conf and be ready for using user_host_Map and hostent_Cache.
+ * 
+ * return   : The result of cubrid_host.conf loading.
+ */
 static int
 load_hosts_file ()
 {
@@ -384,7 +399,11 @@ load_hosts_file ()
   return LOAD_SUCCESS;
 }
 
-
+/*
+ * ip_format_check () - Check the ipv4 IP address format.
+ * 
+ * return   : true if IP address is valid format, false otherwise
+ */
 static bool
 ip_format_check (char *ip_addr)
 {
@@ -437,8 +456,8 @@ ip_format_check (char *ip_addr)
  * gethostbyname_uhost () - Do same job with gethostbyname (), using by the 'user' defined 'cubrid_hosts.conf' file or glibc.
  * 
  * return   : the hostent pointer.
- * hostname (in) : the hostname.
  *
+ *  Note: The parameters are same with glibc parameters.
  */
 struct hostent *
 gethostbyname_uhost (const char *name)
@@ -457,6 +476,11 @@ gethostbyname_uhost (const char *name)
   return hp;
 }
 
+/*
+ * gethostbyname_r_uhost () - Do same job with gethostbyname_r (), using by the 'user' defined 'cubrid_hosts.conf' file or glibc.
+ * 
+ *  Note: The parameters are same with glibc parameters.
+ */
 #ifdef HAVE_GETHOSTBYNAME_R
 #if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
 int
@@ -531,7 +555,6 @@ gethostbyname_r_uhost (const char *name,
 #elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
   if (hp_buf == NULL)
     {
-//err_print fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_FAILED));
       ret_val = NULL;
 
       goto return_phase;
@@ -543,7 +566,6 @@ gethostbyname_r_uhost (const char *name,
 #elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
   if (hp_buf == NULL)
     {
-//err_print fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_FAILED));
       ret_val = -1;
 
       goto return_phase;
@@ -561,7 +583,13 @@ return_phase:
   return ret_val;
 }
 
-
+/*
+ * getnameinfo_uhost () - Do same job with getnameinfo (), using by the 'user' defined 'cubrid_hosts.conf' file or glibc.
+ * 
+ * return   : 0, if successful, Error otherwise.
+ *
+ *  Note: The parameters are same with glibc parameters.
+ */
 int
 getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *host, size_t hostlen, char *serv, size_t servlen,
 		   int flags)
@@ -590,6 +618,13 @@ getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *host, size_t 
   return ret;
 }
 
+/*
+ * getaddrinfo_uhost () - Do same job with getaddrinfo (), using by the 'user' defined 'cubrid_hosts.conf' file or glibc.
+ * 
+ * return   : 0, if successful, Error otherwise.
+ *
+ *  Note: The parameters are same with glibc parameters.
+ */
 int
 getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct addrinfo **res)
 {
