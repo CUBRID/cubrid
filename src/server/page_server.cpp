@@ -414,14 +414,15 @@ void page_server::pts_mvcc_tracker::update_oldest_active_mvccid (const std::stri
 
 #if !defined(NDEBUG)
   std::string msg;
-  msg.append ("receive_oldest_active_mvccid: update the oldest active mvccid to " + std::to_string (
-		      mvccid) + " of " + pts_channel_id);
-  msg.append ("\n oldest mvcc ids:");
+  std::stringstream ss;
+  ss << "receive_oldest_active_mvccid: update the oldest active mvccid to " << mvccid << " of " << pts_channel_id <<
+     std::endl;
+  ss << "oldest mvcc ids:" ;
   for (const auto &it : m_pts_oldest_active_mvccids)
     {
-      msg.append (" " + std::to_string (it.second));
+      ss << " " << it.second;
     }
-  er_log_debug (ARG_FILE_LINE, msg.c_str());
+  er_log_debug (ARG_FILE_LINE, ss.str().c_str());
 #endif
 }
 void page_server::pts_mvcc_tracker::delete_oldest_active_mvccid (const std::string &pts_channel_id)
