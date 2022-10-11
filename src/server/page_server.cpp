@@ -398,6 +398,8 @@ void page_server::pts_mvcc_tracker::init_oldest_active_mvccid (const std::string
 
 void page_server::pts_mvcc_tracker::update_oldest_active_mvccid (const std::string &pts_channel_id, const MVCCID mvccid)
 {
+  assert (MVCCID_IS_NORMAL (mvccid));
+
   std::lock_guard<std::mutex> lockg { m_pts_oldest_active_mvccids_mtx };
 
   /*
