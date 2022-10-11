@@ -1801,8 +1801,8 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_ls
 	  // newer quick fix on top of older quick fix: mark the mvccid as completed
 	  log_rv_analysis_complete_mvccid (tran_index, tdes);
 
-	  // quick fix: reset mvcc.
-	  tdes->mvccinfo.reset ();
+	  // quick fix: reset mvccid.
+	  tdes->mvccinfo.id = MVCCID_NULL;
 	  logtb_free_tran_index (thread_p, tran_index);
 	}
       return NO_ERROR;

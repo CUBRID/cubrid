@@ -1600,6 +1600,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 
   assert (tdes->mvccinfo.id == MVCCID_NULL);
+  tdes->mvccinfo.reset ();
 
   if (BOOT_WRITE_ON_STANDY_CLIENT_TYPE (tdes->client.client_type))
     {
