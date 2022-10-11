@@ -5397,7 +5397,7 @@ sm_find_class_with_purpose (const char *name, bool for_update)
   MOP synonym_mop = NULL;
   int error = NO_ERROR;
 
-  if (name == NULL || name[0] == '\0')
+  if (name == NULL || *name == '\0')
     {
       ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
       return NULL;
@@ -5451,7 +5451,7 @@ sm_find_synonym (const char *name)
   int error = NO_ERROR;
   int save = 0;
 
-  if (name == NULL || name[0] == '\0')
+  if (name == NULL || *name == '\0')
     {
       ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
       return NULL;
