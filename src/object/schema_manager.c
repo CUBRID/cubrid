@@ -2251,6 +2251,9 @@ sm_downcase_name (const char *name, char *buf, int buf_size)
 {
   int error = NO_ERROR;
 
+  assert (buf != NULL);
+  assert (buf_size > 0);
+
   if (name == NULL || name[0] == '\0')
     {
       ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
@@ -2258,7 +2261,6 @@ sm_downcase_name (const char *name, char *buf, int buf_size)
       return NULL;
     }
 
-  assert (buf != NULL);
   assert (intl_identifier_lower_string_size (name) < buf_size);
   intl_identifier_lower (name, buf);
 
@@ -2279,6 +2281,9 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
   const char *current_schema_name = NULL;
   const char *dot = NULL;
   int error = NO_ERROR;
+
+  assert (buf != NULL);
+  assert (buf_size > 0);
 
   if (name == NULL || name[0] == '\0')
     {
