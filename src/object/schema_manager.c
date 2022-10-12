@@ -14782,7 +14782,6 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	      goto error_exit;
 	    }
 	}
-
       break;
 
     case DB_CONSTRAINT_NOT_NULL:

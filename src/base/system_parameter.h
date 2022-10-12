@@ -440,8 +440,10 @@ enum param_id
 
   PRM_ID_JAVA_STORED_PROCEDURE_JVM_OPTIONS,
   PRM_ID_FIRST_LOG_PAGEID,	/* Except for QA or TEST purposes, never use it. */
+  PRM_ID_USE_STAT_ESTIMATION,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_FIRST_LOG_PAGEID
+  PRM_LAST_ID = PRM_ID_USE_STAT_ESTIMATION
 };
 typedef enum param_id PARAM_ID;
 
