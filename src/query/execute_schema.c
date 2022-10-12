@@ -8616,28 +8616,28 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
       /* check for mis-creating string type with -1 precision */
       for (column = query_columns; column != NULL; column = db_query_format_next (column))
-        {
-          switch (column->domain->type->id)
-            {
-              case DB_TYPE_VARCHAR:
-                if (column->domain->precision == DB_DEFAULT_PRECISION)
-                  {
-                    column->domain->precision = DB_MAX_VARCHAR_PRECISION;
-                  }
-                break;
-              case DB_TYPE_VARNCHAR:
-                if (column->domain->precision == DB_DEFAULT_PRECISION)
-                  {
-                    column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
-                  }
-                else if (column->domain->precision > DB_MAX_VARNCHAR_PRECISION)
-                  {
-                    column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
-                  }
-                default:
-                break;
-            }
-        }
+	{
+	  switch (column->domain->type->id)
+	    {
+	    case DB_TYPE_VARCHAR:
+	      if (column->domain->precision == DB_DEFAULT_PRECISION)
+		{
+		  column->domain->precision = DB_MAX_VARCHAR_PRECISION;
+		}
+	      break;
+	    case DB_TYPE_VARNCHAR:
+	      if (column->domain->precision == DB_DEFAULT_PRECISION)
+		{
+		  column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
+		}
+	      else if (column->domain->precision > DB_MAX_VARNCHAR_PRECISION)
+		{
+		  column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
+		}
+	    default:
+	      break;
+	    }
+	}
     }
   assert (!(create_like != NULL && create_select != NULL));
 
