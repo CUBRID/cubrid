@@ -1582,11 +1582,11 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
        *  - will not be part of any log record, and thus will not matter with regard to vacuum */
 
       // Also set the transaction last MVCC lsa.
-      tdes->last_mvcc_lsa = node->start_lsa;
+      tdes->mvccinfo.last_mvcc_lsa = node->start_lsa;
     }
   else if (node->log_header.type == LOG_MVCC_REDO_DATA)
     {
-      tdes->last_mvcc_lsa = node->start_lsa;
+      tdes->mvccinfo.last_mvcc_lsa = node->start_lsa;
       // TODO: why isn't prior_update_header_mvcc_info called in this case as for the previous 'if' scope
       // as LOG_REC_MVCC_REDO does have mvccid?
     }
