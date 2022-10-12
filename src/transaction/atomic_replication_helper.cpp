@@ -54,10 +54,12 @@ namespace cublog
     const auto sequence_it = m_sequences_map.find (tranid);
     if (sequence_it == m_sequences_map.cend ())
       {
+	assert (false);
 	return ER_FAILED;
       }
 
-    int error_code = sequence_it->second.add_atomic_replication_log (thread_p, record_lsa, rcvindex, vpid);
+    atomic_log_sequence &sequence = sequence_it->second;
+    int error_code = sequence.add_atomic_replication_log (thread_p, record_lsa, rcvindex, vpid);
     if (error_code != NO_ERROR)
       {
 	return error_code;
@@ -106,7 +108,6 @@ namespace cublog
 
     return false;
   }
-
 
   void
   atomic_replication_helper::start_sequence_internal (TRANID trid, LOG_LSA start_lsa,
@@ -219,7 +220,8 @@ namespace cublog
 	return;
       }
 
-    sequence_it->second.apply_and_unfix_sequence (thread_p);
+    atomic_log_sequence &sequence = sequence_it->second;
+    sequence.apply_and_unfix_sequence (thread_p);
     m_sequences_map.erase (sequence_it);
 
 #if !defined (NDEBUG)
@@ -268,35 +270,35 @@ namespace cublog
   atomic_replication_helper::atomic_log_sequence::add_atomic_replication_log (THREAD_ENTRY *thread_p,
       log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid)
   {
-    m_log_vec.emplace_back (record_lsa, vpid, rcvindex);
-    const auto page_map_it = m_page_map.find (vpid);
-    if (page_map_it == m_page_map.cend ())
+    PAGE_PTR page_p = nullptr;
+    // bookkeeping fixes page, keeps all info regarding how the page was fixed (either
+    // regular fix or ordered fix) and only returns back the pointer to the page
+    const int err_code = m_page_ptr_bookkeeping.fix_page (thread_p, vpid, rcvindex, page_p);
+    if (err_code != NO_ERROR)
       {
-	int error_code = m_log_vec.back ().fix_page (thread_p);
-	if (error_code != NO_ERROR)
-	  {
-	    // failing to fix the page just leaves it unfixed and does not affect overall
-	    // functioning of the atomic replication sequence;
-	    // therefore, remove the log and move on
-	    m_log_vec.pop_back ();
+	// failing to fix the page just leaves it unfixed and does not affect overall
+	// functioning of the atomic replication sequence;
+	er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] heap page cannot be fixed, cannot add new log record"
+		      "with LSA %lld|%d to atomic sequences started at LSA %lld|%d\n",
+		      LSA_AS_ARGS (&record_lsa), LSA_AS_ARGS (&m_start_lsa));
 
-	    // TODO:
-	    //  - what happens if there is more than one log record pertaining to the same page
-	    //    in an atomic sequnce and, for example, for the first log record, the page fails
-	    //    to be fixed but succeeds for the second log record
-	    //  - what if, while the atomic sequence is in progress with a page having failed to
-	    //    be fixed, a client transactions manages to fix the page; IOW, how is the progress
-	    //    of the "highest processed LSA" working wrt atomic replication sequences
+	// TODO:
+	//  - what happens if there is more than one log record pertaining to the same page
+	//    in an atomic sequnce and, for example, for the first log record, the page fails
+	//    to be fixed but succeeds for the second log record
+	//  - what if, while the atomic sequence is in progress with a page having failed to
+	//    be fixed, a client transactions manages to fix the page; IOW, how is the progress
+	//    of the "highest processed LSA" working wrt atomic replication sequences
 
-	    return error_code;
-	  }
-	m_page_map.emplace (vpid,  m_log_vec.back ().get_page_ptr ());
+	assert (page_p == nullptr);
       }
     else
       {
-	m_log_vec.back ().set_page_ptr (page_map_it->second);
+	assert (page_p != nullptr);
+	m_log_vec.emplace_back (record_lsa, vpid, rcvindex, page_p);
       }
-    return NO_ERROR;
+
+    return err_code;
   }
 
   bool
@@ -364,32 +366,25 @@ namespace cublog
   }
 
   void
-  atomic_replication_helper::atomic_log_sequence::apply_all_log_redos (THREAD_ENTRY *thread_p)
-  {
-    for (size_t i = 0; i < m_log_vec.size (); i++)
-      {
-	m_log_vec[i].apply_log_redo (thread_p, m_redo_context);
-      }
-  }
-
-  void
   atomic_replication_helper::atomic_log_sequence::apply_and_unfix_sequence (THREAD_ENTRY *thread_p)
   {
     // Applying the log right after the fix could lead to problems as the records are fixed one by one as
     // they come to be read by the PTS and some might be unfixed and refixed after the apply procedure
-    // leading to inconsistency. To avoid this situation we sequentially apply each log redo of the sequence
-    // when the end sequence log appears and the entire sequence is fixed
-    apply_all_log_redos (thread_p);
-
-    for (size_t i = 0; i < m_log_vec.size (); i++)
+    // leading to inconsistency.
+    // To avoid this situation each log redo of the sequence is applied when the end sequence log appears
+    // and the entire sequence is already fixed.
+    // Right after applying, unfix and ref-count-down each page. The bookkeeping mechanism will take care
+    // of either unfixing the page or retaining it for a subsequent unfix.
+    for (const auto &log_entry : m_log_vec)
       {
-	const auto page_map_it = m_page_map.find (m_log_vec[i].m_vpid);
-	if (page_map_it != m_page_map.end ())
-	  {
-	    m_log_vec[i].unfix_page (thread_p);
-	    m_page_map.erase (page_map_it);
-	  }
+	log_entry.apply_log_redo (thread_p, m_redo_context);
+	// bookkeeping actually will either unfix the page or just decrease its reference count
+	m_page_ptr_bookkeeping.unfix_page (thread_p, log_entry.m_vpid);
       }
+
+    // clear the vector of log records; page pts's might be, at this point, dangling pointers as the page ptr
+    // bookkeeping mechanims might have already unfixed the page
+    m_log_vec.clear ();
   }
 
   log_lsa
@@ -403,35 +398,26 @@ namespace cublog
    *********************************************************************************************************/
 
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::atomic_log_entry (
-	  log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex)
+	  log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex, PAGE_PTR page_ptr)
     : m_vpid { vpid }
     , m_record_lsa { lsa }
     , m_record_index { rcvindex }
-    , m_page_ptr { nullptr }
-    , m_watcher_p { nullptr }
+    , m_page_ptr { page_ptr }
   {
-    assert (lsa != NULL_LSA);
+    assert (!VPID_ISNULL (&m_vpid));
+    assert (m_record_lsa != NULL_LSA);
+    assert (0 <= m_record_index && m_record_index <= RV_LAST_LOGID);
+    assert (m_page_ptr != nullptr);
   }
 
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::atomic_log_entry (atomic_log_entry &&that)
-    : atomic_log_entry (that.m_record_lsa, that.m_vpid, that.m_record_index)
+    : atomic_log_entry (that.m_record_lsa, that.m_vpid, that.m_record_index, that.m_page_ptr)
   {
-    std::swap (m_page_ptr, that.m_page_ptr);
-    std::swap (m_watcher_p, that.m_watcher_p);
-  }
-
-  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::~atomic_log_entry ()
-  {
-    if (m_watcher_p != nullptr)
-      {
-	PGBUF_CLEAR_WATCHER (m_watcher_p.get ());
-	m_watcher_p.reset ();
-      }
   }
 
   void
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::apply_log_redo (
-	  THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context)
+	  THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context) const
   {
     const int error_code = redo_context.m_reader.set_lsa_and_fetch_page (m_record_lsa, log_reader::fetch_mode::FORCE);
     if (error_code != NO_ERROR)
@@ -471,45 +457,161 @@ namespace cublog
       }
   }
 
-  int
-  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::fix_page (THREAD_ENTRY *thread_p)
+  /*********************************************************************************************************
+   * atomic_replication_helper::atomic_log_sequence::page_ptr_info function definitions  *
+   *********************************************************************************************************/
+
+  atomic_replication_helper::atomic_log_sequence::page_ptr_info::~page_ptr_info ()
   {
-    switch (m_record_index)
+    assert (m_page_p == nullptr);
+    assert (m_watcher_p == nullptr);
+  }
+
+  /*********************************************************************************************************
+   * atomic_replication_helper::atomic_log_sequence::page_ptr_bookkeeping function definitions  *
+   *********************************************************************************************************/
+
+  atomic_replication_helper::atomic_log_sequence::page_ptr_bookkeeping::~page_ptr_bookkeeping ()
+  {
+    assert (m_page_ptr_info_map.empty ());
+  }
+
+  int
+  atomic_replication_helper::atomic_log_sequence::page_ptr_bookkeeping::fix_page (
+	  THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcv_index, PAGE_PTR &page_ptr_out)
+  {
+    assert (page_ptr_out == nullptr);
+
+    page_ptr_info *info_p = nullptr;
+
+    const auto find_it = m_page_ptr_info_map.find (vpid);
+    if (find_it != m_page_ptr_info_map.cend ())
+      {
+	info_p = &find_it->second;
+
+	++info_p->m_ref_count;
+
+	// TODO: assert that, if page was fixed with regular fix, new rcv index must not
+	// mandate ordered fix (or the other way around)
+      }
+    else
+      {
+	page_ptr_watcher_uptr_type page_watcher_up;
+	PAGE_PTR page_p { nullptr };
+	const int err_code = pgbuf_fix_or_ordered_fix (thread_p, vpid, rcv_index, page_watcher_up, page_p);
+	if (err_code != NO_ERROR)
+	  {
+	    return err_code;
+	  }
+
+	std::pair<page_ptr_info_map_type::iterator, bool> insert_res
+	  = m_page_ptr_info_map.emplace (vpid, std::move (page_ptr_info ()));
+	assert (insert_res.second);
+
+	info_p = &insert_res.first->second;
+	info_p->m_vpid = vpid;
+	info_p->m_rcv_index = rcv_index;
+	info_p->m_page_p = page_p;
+	page_p = nullptr;
+	info_p->m_watcher_p.swap (page_watcher_up);
+
+	info_p->m_ref_count = 1;
+      }
+
+    if (info_p->m_page_p != nullptr)
+      {
+	assert (info_p->m_watcher_p == nullptr);
+	page_ptr_out = info_p->m_page_p;
+      }
+    else
+      {
+	assert (info_p->m_watcher_p != nullptr && info_p->m_watcher_p->pgptr != nullptr);
+	page_ptr_out = info_p->m_watcher_p->pgptr;
+      }
+
+    return NO_ERROR;
+  }
+
+  int
+  atomic_replication_helper::atomic_log_sequence::page_ptr_bookkeeping::unfix_page (
+	  THREAD_ENTRY *thread_p, VPID vpid)
+  {
+    const auto find_it = m_page_ptr_info_map.find (vpid);
+    if (find_it != m_page_ptr_info_map.cend ())
+      {
+	page_ptr_info &info = find_it->second;
+
+	--info.m_ref_count;
+	if (info.m_ref_count == 0)
+	  {
+	    pgbuf_unfix_or_ordered_unfix (thread_p, info.m_rcv_index, info.m_watcher_p, info.m_page_p);
+	    info.m_page_p = nullptr;
+	    if (info.m_watcher_p != nullptr)
+	      {
+		PGBUF_CLEAR_WATCHER (info.m_watcher_p.get ());
+		info.m_watcher_p.reset ();
+	      }
+
+	    m_page_ptr_info_map.erase (find_it);
+	  }
+
+	return NO_ERROR;
+      }
+    else
+      {
+	assert (false);
+	return ER_FAILED;
+      }
+  }
+
+  /*********************************************************************************************************
+   * standalone functions
+   *********************************************************************************************************/
+
+  int
+  pgbuf_fix_or_ordered_fix (THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcv_index,
+			    std::unique_ptr<PGBUF_WATCHER> &watcher_uptr, PAGE_PTR &page_ptr)
+  {
+    switch (rcv_index)
       {
       case RVHF_INSERT:
-      case RVHF_MVCC_INSERT:
       case RVHF_DELETE:
+      case RVHF_UPDATE:
+      case RVHF_MVCC_INSERT:
       case RVHF_MVCC_DELETE_REC_HOME:
       case RVHF_MVCC_DELETE_OVERFLOW:
       case RVHF_MVCC_DELETE_REC_NEWHOME:
       case RVHF_MVCC_DELETE_MODIFY_HOME:
-      case RVHF_UPDATE:
-      case RVHF_MVCC_UPDATE_OVERFLOW:
+      case RVHF_UPDATE_NOTIFY_VACUUM:
       case RVHF_INSERT_NEWHOME:
+      case RVHF_MVCC_UPDATE_OVERFLOW:
       {
-	assert (m_watcher_p == nullptr);
-	m_watcher_p.reset (new PGBUF_WATCHER ());
-	// using null hfid here as the watcher->group_id is initialized internally by pgbuf_ordered_fix at a cost
-	PGBUF_INIT_WATCHER (m_watcher_p.get (), PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+	assert (watcher_uptr == nullptr);
 
-	const int error_code = pgbuf_ordered_fix (thread_p, &m_vpid, OLD_PAGE_MAYBE_DEALLOCATED,
-			       PGBUF_LATCH_WRITE, m_watcher_p.get ());
+	watcher_uptr.reset (new PGBUF_WATCHER ());
+	// using null hfid here as the watcher->group_id is initialized internally by pgbuf_ordered_fix at a cost
+	PGBUF_INIT_WATCHER (watcher_uptr.get (), PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+
+	const int error_code = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED,
+			       PGBUF_LATCH_WRITE, watcher_uptr.get ());
 	if (error_code != NO_ERROR)
 	  {
-	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unnable to order-fix page %d|%d"
+	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unable to order-fix page %d|%d"
 			  " with OLD_PAGE_MAYBE_DEALLOCATED.",
-			  VPID_AS_ARGS (&m_vpid));
+			  VPID_AS_ARGS (&vpid));
 	    return error_code;
 	  }
 	break;
       }
       default:
-	m_page_ptr = pgbuf_fix (thread_p, &m_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE,
-				PGBUF_UNCONDITIONAL_LATCH);
-	if (m_page_ptr == nullptr)
+	assert (page_ptr == nullptr);
+
+	page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE,
+			      PGBUF_UNCONDITIONAL_LATCH);
+	if (page_ptr == nullptr)
 	  {
-	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unnable to fix on page %d|%d with OLD_PAGE_MAYBE_DEALLOCATED.",
-			  VPID_AS_ARGS (&m_vpid));
+	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unable to fix on page %d|%d with OLD_PAGE_MAYBE_DEALLOCATED.",
+			  VPID_AS_ARGS (&vpid));
 	    return ER_FAILED;
 	  }
 	break;
@@ -519,46 +621,31 @@ namespace cublog
   }
 
   void
-  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::unfix_page (THREAD_ENTRY *thread_p)
+  pgbuf_unfix_or_ordered_unfix (THREAD_ENTRY *thread_p, LOG_RCVINDEX rcv_index,
+				std::unique_ptr<PGBUF_WATCHER> &watcher_uptr, PAGE_PTR &page_ptr)
   {
-    switch (m_record_index)
+    switch (rcv_index)
       {
       case RVHF_INSERT:
-      case RVHF_MVCC_INSERT:
       case RVHF_DELETE:
+      case RVHF_UPDATE:
+      case RVHF_MVCC_INSERT:
       case RVHF_MVCC_DELETE_REC_HOME:
       case RVHF_MVCC_DELETE_OVERFLOW:
       case RVHF_MVCC_DELETE_REC_NEWHOME:
       case RVHF_MVCC_DELETE_MODIFY_HOME:
-      case RVHF_UPDATE:
-      case RVHF_MVCC_UPDATE_OVERFLOW:
+      case RVHF_UPDATE_NOTIFY_VACUUM:
       case RVHF_INSERT_NEWHOME:
-	// sanity asserts inside the function
-	pgbuf_ordered_unfix (thread_p, m_watcher_p.get ());
+      case RVHF_MVCC_UPDATE_OVERFLOW:
+	assert (page_ptr == nullptr);
+	// other sanity asserts inside the function
+	pgbuf_ordered_unfix (thread_p, watcher_uptr.get ());
 	break;
       default:
-	// sanity asserts inside the function
-	pgbuf_unfix (thread_p, m_page_ptr);
+	assert (watcher_uptr == nullptr);
+	// other sanity asserts inside the function
+	pgbuf_unfix (thread_p, page_ptr);
 	break;
       }
-  }
-
-  PAGE_PTR
-  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::get_page_ptr ()
-  {
-    if (m_page_ptr != nullptr)
-      {
-	assert (m_watcher_p == nullptr);
-	return m_page_ptr;
-      }
-    assert (m_watcher_p != nullptr && m_watcher_p->pgptr != nullptr);
-    return m_watcher_p->pgptr;
-  }
-
-  void
-  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::set_page_ptr (const PAGE_PTR &ptr)
-  {
-    assert (m_page_ptr == nullptr);
-    m_page_ptr = ptr;
   }
 }
