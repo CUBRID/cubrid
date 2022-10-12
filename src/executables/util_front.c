@@ -217,6 +217,7 @@ static ARG_MAP_TABLE ua_Unload_map[] = {
   {"-od", "--" UNLOAD_OUTPUT_PATH_L},
   {"-so", "--" UNLOAD_SCHEMA_ONLY_L},
   {"-oo", "--" UNLOAD_DATA_ONLY_L},
+  {"-li", "--" UNLOAD_LATEST_IMAGE_L},
   {"-p", "--" UNLOAD_OUTPUT_PREFIX_L},
   {"-f", "--" UNLOAD_HASH_FILE_L},
   {"-v", "--" UNLOAD_VERBOSE_L},

@@ -14635,9 +14635,11 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   REPL_INFO repl_info;
   REPL_INFO_SBR repl_stmt;
   PARSER_VARCHAR *name = NULL;
+  PARSER_VARCHAR **host_val = NULL;
   static const char *unknown_name = "-";
   char stmt_separator;
   char *stmt_end = NULL;
+  char *sbr_text = NULL;
 
   if (log_does_allow_replication () == false)
     {
@@ -14795,7 +14797,7 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_stmt.name = (char *) pt_get_varchar_bytes (name);
     }
 
-  if (parser->host_var_count == 0 && parser->auto_param_count == 0)
+  if (parser->host_var_count == 0)
     {
       /* it may contain multiple statements */
       if (strlen (statement->sql_user_text) > statement->sql_user_text_len)
@@ -14808,14 +14810,74 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
-      int saved_custom_print = parser->custom_print;
+      /*
+       * if the query string includes the host variables, while processing the variable holder '?'
+       * the values of the host variables can be replaced into the user's original query string
+       * the pt_print_db_value(...) returns the value string and its length.
+       * the length includes quotes in case of the char string.
+       */
+      char *sql_text = statement->sql_user_text;
+      int sql_len = statement->sql_user_text_len;
+      int i, n, nth;
+      int var_len = 0;
+      bool begin_quote = false;
 
-      parser->custom_print |= (PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING | PT_PRINT_QUOTES);
-      parser->print_db_value = pt_print_node_value;
-      repl_stmt.stmt_text = parser_print_tree (parser, statement);
-      parser->print_db_value = saved_func;
-      parser->custom_print = saved_custom_print;
+      host_val = (PARSER_VARCHAR **) malloc (sizeof (PARSER_VARCHAR *) * parser->host_var_count);
+      if (host_val == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      for (i = 0; i < parser->host_var_count; i++)
+	{
+	  host_val[i] = pt_print_db_value (parser, &parser->host_variables[i]);
+	  var_len += host_val[i]->length;
+	}
+
+      sbr_text = (char *) malloc (sql_len + var_len);
+      if (sbr_text == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+
+      n = nth = 0;
+
+      for (i = 0; i < sql_len; i++)
+	{
+	  if (sql_text[i] == '\'')
+	    {
+	      if (!begin_quote)
+		{
+		  begin_quote = true;
+		}
+	      else
+		{
+		  begin_quote = false;
+		}
+	    }
+
+	  if (sql_text[i] == '?' && !begin_quote)
+	    {
+	      if (nth < parser->host_var_count)
+		{
+		  strncpy (&sbr_text[n], (char *) host_val[nth]->bytes, host_val[nth]->length);
+		  n += host_val[nth++]->length;
+		}
+	      else
+		{
+		  error = ER_IT_UNKNOWN_VARIABLE;
+		  goto end;
+		}
+	    }
+	  else
+	    {
+	      sbr_text[n++] = sql_text[i];
+	    }
+	}
+
+      sbr_text[n] = 0;
+      repl_stmt.stmt_text = sbr_text;
     }
 
   repl_stmt.db_user = db_get_user_name ();
@@ -14841,6 +14903,18 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   db_string_free (repl_stmt.db_user);
+
+end:
+  if (sbr_text)
+    {
+      free (sbr_text);
+    }
+
+  if (host_val)
+    {
+      free (host_val);
+    }
+
   if (repl_stmt.sys_prm_context)
     {
       free (repl_stmt.sys_prm_context);

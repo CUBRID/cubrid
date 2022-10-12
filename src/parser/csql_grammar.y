@@ -27420,20 +27420,6 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
         length = node->info.value.data_value.str->length;
 
         node->type_enum = char_type;
-        if (string)
-          {
-            if (string[length - 1] == 0x20)
-              {
-                if (char_type == PT_TYPE_CHAR)
-                  {
-                    node->type_enum = PT_TYPE_VARCHAR;
-                  }
-                else if (char_type == PT_TYPE_NCHAR)
-                  {
-                    node->type_enum = PT_TYPE_VARNCHAR;
-                  }
-              }
-          }
 
         if (char_type == PT_TYPE_NCHAR)
           {
