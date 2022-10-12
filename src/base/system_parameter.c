@@ -2273,8 +2273,8 @@ static UINT64 prm_first_log_pageid_lower = 0LL;
 static UINT64 prm_first_log_pageid_upper = LOGPAGEID_MAX;
 static unsigned int prm_first_log_pageid_flag = 0;
 
-bool PRM_USE_STAT_ESTIMATION = false;
-static bool prm_use_stat_estimation_default = false;
+bool PRM_USE_STAT_ESTIMATION = true;
+static bool prm_use_stat_estimation_default = true;
 static unsigned int prm_use_stat_estimation_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
