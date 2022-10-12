@@ -24515,7 +24515,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
       op = pred->pe.m_eval_term.et.et_comp.rel_op;
       if (lhs->type != TYPE_CONSTANT)
 	{
-	  if (lhs->type != TYPE_POS_VALUE && lhs->type != TYPE_DBVAL)
+	  if (lhs->type != TYPE_POS_VALUE && lhs->type != TYPE_DBVAL && lhs->type != TYPE_INARITH)
 	    {
 	      goto cleanup;
 	    }
@@ -24546,7 +24546,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	      goto cleanup;
 	    }
 	}
-      if (rhs->type != TYPE_POS_VALUE && rhs->type != TYPE_DBVAL)
+      if (rhs->type != TYPE_POS_VALUE && rhs->type != TYPE_DBVAL && rhs->type != TYPE_INARITH)
 	{
 	  goto cleanup;
 	}
