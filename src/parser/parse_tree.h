@@ -819,7 +819,7 @@ struct json_t;
 	      { \
 		(r) = PT_NAME_DB_OBJECT (PT_SPEC_FLAT_ENTITY_LIST ((n))); \
 	      } \
-	    if (PT_SPEC_ENTITY_NAME ((n)) != NULL) \
+	    else if (PT_SPEC_ENTITY_NAME ((n)) != NULL) \
 	      { \
 		if (PT_NAME_DB_OBJECT (PT_SPEC_ENTITY_NAME ((n))) != NULL) \
 		  { \
