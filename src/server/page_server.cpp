@@ -87,7 +87,7 @@ page_server::connection_handler::connection_handler (cubcomm::channel &chn, tran
     },
     {
       tran_to_page_request::GET_OLDEST_ACTIVE_MVCCID,
-      std::bind (&page_server::connection_handler::receive_oldest_active_mvccid_request, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::connection_handler::handle_oldest_active_mvccid_request, std::ref (*this), std::placeholders::_1)
     },
     // passive only
     {
@@ -168,7 +168,7 @@ page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::se
 }
 
 void
-page_server::connection_handler::receive_oldest_active_mvccid_request (tran_server_conn_t::sequenced_payload &a_sp)
+page_server::connection_handler::handle_oldest_active_mvccid_request (tran_server_conn_t::sequenced_payload &a_sp)
 {
   assert (m_server_type == transaction_server_type::ACTIVE);
   const MVCCID oldest_mvccid = m_ps.m_pts_mvcc_tracker.get_global_oldest_active_mvccid();
