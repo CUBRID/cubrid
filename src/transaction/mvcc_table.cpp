@@ -707,17 +707,30 @@ mvcctable::get_global_oldest_visible () const
 }
 
 MVCCID
-mvcctable::update_global_oldest_visible ()
+mvcctable::update_global_oldest_visible (const MVCCID pts_oldest_visible)
 {
-  if (m_ov_lock_count == 0)
+  if (pts_oldest_visible != MVCCID_ALL_VISIBLE)
     {
-      MVCCID oldest_visible = compute_oldest_visible_mvccid ();
       if (m_ov_lock_count == 0)
 	{
-	  assert (m_oldest_visible.load () <= oldest_visible);
-	  m_oldest_visible.store (oldest_visible);
+	  MVCCID ats_oldest_visible = compute_oldest_visible_mvccid ();
+	  if (m_ov_lock_count == 0)
+	    {
+	      assert (m_oldest_visible.load () <= pts_oldest_visible);
+	      assert (m_oldest_visible.load () <= ats_oldest_visible);
+	      if (ats_oldest_visible < pts_oldest_visible)
+		{
+		  m_oldest_visible.store (ats_oldest_visible);
+		}
+	      else
+		{
+		  m_oldest_visible.store (pts_oldest_visible);
+		}
+
+	    }
 	}
     }
+
   return m_oldest_visible.load ();
 }
 

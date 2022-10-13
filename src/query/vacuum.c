@@ -2987,8 +2987,6 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
   er_log_debug (ARG_FILE_LINE, "ats oldest_visible = %llu, pts global_oldest_visible = %llu",
       (long long int) m_oldest_visible_mvccid, global_pts_oldest_visible_mvccid);
 
-  return;
-
   if (!vacuum_Data.is_loaded)
     {
       /* Load vacuum data. */
