@@ -2958,6 +2958,8 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 {
   PERF_UTIME_TRACKER perf_tracker;
 
+  assert (is_active_transaction_server());
+
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
       return;
@@ -2974,8 +2976,6 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
       // check if boot is aborted
       return;
     }
-
-  assert (is_active_transaction_server());
 
   PERF_UTIME_TRACKER_START (&thread_ref, &perf_tracker);
 
