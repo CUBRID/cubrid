@@ -271,7 +271,7 @@ active_tran_server *get_active_tran_server_ptr ()
     }
   else
     {
-      assert (is_active_transaction_server ());
+      assert (is_passive_transaction_server ());
       return nullptr;
     }
 }
@@ -285,7 +285,7 @@ passive_tran_server *get_passive_tran_server_ptr ()
     }
   else
     {
-      assert (is_passive_transaction_server ());
+      assert (is_active_transaction_server ());
       return nullptr;
     }
 }
