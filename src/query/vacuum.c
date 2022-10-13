@@ -2977,6 +2977,12 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
       return;
     }
 
+  if (!ts_Gl->is_page_server_connected()) 
+  {
+    // have to be connected to get mvcc status of PTSes.
+    return;
+  }
+
   PERF_UTIME_TRACKER_START (&thread_ref, &perf_tracker);
 
   m_oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
