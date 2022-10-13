@@ -10541,18 +10541,8 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses, const char *const
  *   classop(in): class object
  *   class(in): class structure
  *   subclasses(in): List of subclasses
- *   con(in):
- *   attrs(in): attribute getting the index
- *   asc_desc(in): asc/desc info list
- *   unique_pk(in): non-zeor if were allocating a UNIQUE index. zero otherwise.
- *   not_null(in):
- *   reverse(in):
- *   constraint_name(in): Name of constraint.
- *   index(out): The BTID of the returned index.
- *   fk_refcls_oid(in):
- *   fk_refcls_pk_btid(in):
- *   fk_name(in):
- *   index_status(in):
+ *   con(in): SM_CLASS_CONSTRAINT
+ *          con->index(out): The BTID of the returned index. 
  */
 
 static int
