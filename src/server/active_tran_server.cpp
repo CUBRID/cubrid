@@ -49,7 +49,13 @@ active_tran_server::get_oldest_active_mvccid_from_page_server () const
   MVCCID oldest_mvccid = MVCCID_NULL;
   std::memcpy (&oldest_mvccid, response_message.c_str (), sizeof (oldest_mvccid));
 
-  assert (MVCCID_IS_VALID (oldest_mvccid));
+  /*
+   * MVCCID_ALL_VISIBLE means the PS is waiting for at least one PTS to update its value.
+   * See page_server::pts_mvcc_tracker::init_oldest_active_mvccid().
+   *
+   * It could be also MVCCID_LAST which means there is no PTS.
+   */
+  assert (MVCCID_IS_NORMAL (oldest_mvccid) || MVCCID_ALL_VISIBLE == oldest_mvccid);
 
   return oldest_mvccid;
 }
