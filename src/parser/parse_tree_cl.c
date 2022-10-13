@@ -18997,11 +18997,16 @@ pt_print_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
 
   q = pt_append_nulstring (parser, q, " for ");
 
-  r1 = pt_print_bytes (parser, PT_SYNONYM_TARGET_OWNER_NAME (p));
-  q = pt_append_varchar (parser, q, r1);
-  q = pt_append_nulstring (parser, q, ".");
-  r1 = pt_print_bytes (parser, PT_SYNONYM_TARGET_NAME (p));
-  q = pt_append_varchar (parser, q, r1);
+  assert (PT_SYNONYM_TARGET_NAME (p) != NULL || PT_SYNONYM_COMMENT (p) != NULL);
+
+  if (PT_SYNONYM_TARGET_NAME (p))
+    {
+      r1 = pt_print_bytes (parser, PT_SYNONYM_TARGET_OWNER_NAME (p));
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ".");
+      r1 = pt_print_bytes (parser, PT_SYNONYM_TARGET_NAME (p));
+      q = pt_append_varchar (parser, q, r1);
+    }
 
   if (PT_SYNONYM_COMMENT (p))
     {
