@@ -202,16 +202,15 @@ void finalize_server_type ()
 {
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
-      if (is_active_transaction_server ())
+      if (is_passive_transaction_server ())
 	{
-	  assert (ats_Gl != nullptr);
-	  ats_Gl = nullptr;
+	  assert (pts_Gl != nullptr);
+	  pts_Gl = nullptr;
 	}
       else
 	{
-	  assert (is_passive_transaction_server ());
-	  assert (pts_Gl != nullptr);
-	  pts_Gl = nullptr;
+	  assert (ats_Gl != nullptr);
+	  ats_Gl = nullptr;
 	}
       ts_Gl->disconnect_page_server ();
       ts_Gl.reset (nullptr);
