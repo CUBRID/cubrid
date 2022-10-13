@@ -126,16 +126,16 @@ class page_server
 
       private:
 	// Request handlers for the request server:
-	void receive_log_prior_list (tran_server_conn_t::sequenced_payload &a_ip);
+	void receive_boot_info_request (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_log_page_fetch (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_data_page_fetch (tran_server_conn_t::sequenced_payload &a_ip);
+	void receive_disconnect_request (tran_server_conn_t::sequenced_payload &a_ip);
+	void receive_log_prior_list (tran_server_conn_t::sequenced_payload &a_ip);
+	void handle_oldest_active_mvccid_request (tran_server_conn_t::sequenced_payload &a_sp);
 	void receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload &a_sp);
 	void receive_oldest_active_mvccid (tran_server_conn_t::sequenced_payload &a_sp);
 
-	void receive_boot_info_request (tran_server_conn_t::sequenced_payload &a_ip);
-	void receive_disconnect_request (tran_server_conn_t::sequenced_payload &a_ip);
-	void handle_oldest_active_mvccid_request (tran_server_conn_t::sequenced_payload &a_sp);
 
 	void abnormal_tran_server_disconnect (css_error_code error_code, bool &abort_further_processing);
 
