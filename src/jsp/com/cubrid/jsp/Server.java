@@ -55,6 +55,7 @@ public class Server {
 
     private static List<String> jvmArguments = null;
 
+    private static final int udsPortNumber = -1;
     private int portNumber = 0;
     private Thread socketListener = null;
     private AtomicBoolean shutdown;
@@ -81,6 +82,7 @@ public class Server {
 
                 AFUNIXSocketAddress sockAddr = AFUNIXSocketAddress.of(socketFile);
                 serverSocket = AFUNIXServerSocket.bindOn(sockAddr);
+                portNumber = udsPortNumber;
             } else {
                 serverSocket = new ServerSocket(port_number);
                 portNumber = serverSocket.getLocalPort();
