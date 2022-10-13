@@ -9508,119 +9508,122 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
       for (c = constraints; c != NULL; c = c->next)
 	{
 	  /* ignore non-unique for now */
-	  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type) || c->type == SM_CONSTRAINT_FOREIGN_KEY)
+	  if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type) && c->type != SM_CONSTRAINT_FOREIGN_KEY)
 	    {
-	      SM_ATTRIBUTE **attrs;
-	      int found_match;
-	      int i;
+	      continue;
+	    }
+	  if (c->attributes[0] == NULL)
+	    {
+	      continue;
+	    }
 
-	      attrs = c->attributes;
-	      if (attrs[0] != NULL)
+	  SM_ATTRIBUTE **attrs;
+	  int found_match;
+	  int i;
+
+	  attrs = c->attributes;
+	  /* Loop over each attribute in the constraint */
+	  found_match = 1;
+	  for (i = 0; attrs[i] != NULL; i++)
+	    {
+	      /*
+	       * Try to find a corresponding attribute in the flattened template
+	       */
+	      for (att = flat->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 		{
-		  /* Loop over each attribute in the constraint */
-		  found_match = 1;
-		  for (i = 0; ((attrs[i] != NULL) && found_match); i++)
+		  if (SM_COMPARE_NAMES (attrs[i]->header.name, att->header.name) == 0)
 		    {
-		      /*
-		       * Try to find a corresponding attribute in the flattened template
-		       */
-		      for (att = flat->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
-			{
-			  if (SM_COMPARE_NAMES (attrs[i]->header.name, att->header.name) == 0)
-			    {
-			      break;
-			    }
-			}
-
-		      /*
-		       * If we found an attribute with a matching name but from a
-		       * different source class, it still isn't a match since it was
-		       * inherited from somewhere else.
-		       */
-		      if ((att == NULL) || (att->class_mop != attrs[i]->class_mop))
-			{
-			  found_match = 0;
-			}
-		    }
-
-		  if (found_match)
-		    {
-		      DB_VALUE cnstr_val;
-		      int cnstr_exists = 0;
-
-		      /* Does the constraint exist in the subclass ? */
-		      db_make_null (&cnstr_val);
-		      cnstr_exists =
-			classobj_find_prop_constraint (flat->properties, classobj_map_constraint_to_property (c->type),
-						       c->name, &cnstr_val);
-		      if (cnstr_exists)
-			{
-			  DB_SEQ *local_property;
-			  DB_VALUE btid_val;
-			  BTID btid;
-			  int is_global_index = 0;
-
-			  /* Get the BTID from the local constraint */
-			  db_make_null (&btid_val);
-			  local_property = db_get_set (&cnstr_val);
-			  if (set_get_element (local_property, 0, &btid_val))
-			    {
-			      pr_clear_value (&cnstr_val);
-			      goto structure_error;
-			    }
-			  if (classobj_btid_from_property_value (&btid_val, &btid, NULL))
-			    {
-			      pr_clear_value (&btid_val);
-			      pr_clear_value (&cnstr_val);
-			      goto structure_error;
-			    }
-			  pr_clear_value (&btid_val);
-
-			  /* Raise an error if the B-trees are not equal and the constraint is an unique constraint.
-			   * Foreign key constraints do not share the same index so it's expected to have different
-			   * btid in this case */
-			  if (sm_is_global_only_constraint (super->op, c, &is_global_index, def) != NO_ERROR)
-			    {
-			      pr_clear_value (&cnstr_val);
-			      goto structure_error;
-			    }
-
-			  if (is_global_index == 1 && !BTID_IS_EQUAL (&btid, &c->index_btid)
-			      && SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type))
-			    {
-			      ERROR1 (error, ER_SM_CONSTRAINT_EXISTS, c->name);
-			    }
-			}
-		      else
-			{
-			  BTID index_btid;
-			  int is_global_index = 0;
-
-			  BTID_SET_NULL (&index_btid);
-			  if (sm_is_global_only_constraint (super->op, c, &is_global_index, def) != NO_ERROR)
-			    {
-			      goto structure_error;
-			    }
-
-			  if (is_global_index == 1)
-			    {
-			      /* unique indexes are shared indexes */
-			      BTID_COPY (&index_btid, &c->index_btid);
-			    }
-			  if (classobj_put_index (&flat->properties, c->type, c->name, attrs, c->asc_desc,
-						  c->attrs_prefix_length, &index_btid, c->filter_predicate, c->fk_info,
-						  NULL, c->func_index_info, c->comment, c->index_status, true)
-			      != NO_ERROR)
-			    {
-			      pr_clear_value (&cnstr_val);
-			      goto structure_error;
-			    }
-			}
-
-		      pr_clear_value (&cnstr_val);
+		      break;
 		    }
 		}
+
+	      /*
+	       * If we found an attribute with a matching name but from a
+	       * different source class, it still isn't a match since it was
+	       * inherited from somewhere else.
+	       */
+	      if ((att == NULL) || (att->class_mop != attrs[i]->class_mop))
+		{
+		  found_match = 0;
+		  break;
+		}
 	    }
+
+	  if (found_match == 0)
+	    {
+	      continue;
+	    }
+
+	  DB_VALUE cnstr_val;
+	  int cnstr_exists = 0;
+
+	  /* Does the constraint exist in the subclass ? */
+	  db_make_null (&cnstr_val);
+	  cnstr_exists =
+	    classobj_find_prop_constraint (flat->properties, classobj_map_constraint_to_property (c->type), c->name,
+					   &cnstr_val);
+	  if (cnstr_exists)
+	    {
+	      DB_SEQ *local_property;
+	      DB_VALUE btid_val;
+	      BTID btid;
+	      int is_global_index = 0;
+
+	      /* Get the BTID from the local constraint */
+	      db_make_null (&btid_val);
+	      local_property = db_get_set (&cnstr_val);
+	      if (set_get_element (local_property, 0, &btid_val))
+		{
+		  pr_clear_value (&cnstr_val);
+		  goto structure_error;
+		}
+	      if (classobj_btid_from_property_value (&btid_val, &btid, NULL))
+		{
+		  pr_clear_value (&btid_val);
+		  pr_clear_value (&cnstr_val);
+		  goto structure_error;
+		}
+	      pr_clear_value (&btid_val);
+
+	      /* Raise an error if the B-trees are not equal and the constraint is an unique constraint.
+	       * Foreign key constraints do not share the same index so it's expected to have different
+	       * btid in this case */
+	      if (sm_is_global_only_constraint (super->op, c, &is_global_index, def) != NO_ERROR)
+		{
+		  pr_clear_value (&cnstr_val);
+		  goto structure_error;
+		}
+
+	      if (is_global_index == 1 && !BTID_IS_EQUAL (&btid, &c->index_btid)
+		  && SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type))
+		{
+		  ERROR1 (error, ER_SM_CONSTRAINT_EXISTS, c->name);
+		}
+	    }
+	  else
+	    {
+	      BTID index_btid;
+	      int is_global_index = 0;
+
+	      BTID_SET_NULL (&index_btid);
+	      if (sm_is_global_only_constraint (super->op, c, &is_global_index, def) != NO_ERROR)
+		{
+		  goto structure_error;
+		}
+
+	      if (is_global_index == 1)
+		{
+		  /* unique indexes are shared indexes */
+		  BTID_COPY (&index_btid, &c->index_btid);
+		}
+	      if (classobj_put_index (&flat->properties, c, &index_btid, c->fk_info, NULL, true) != NO_ERROR)
+		{
+		  pr_clear_value (&cnstr_val);
+		  goto structure_error;
+		}
+	    }
+
+	  pr_clear_value (&cnstr_val);
 	}
 
       /* make sure we free the transient constraint list */
@@ -11301,9 +11304,7 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
   /* Whether we allocated a BTID or not, always write the constraint info back out to the property list.
    * This is where the promotion of attribute name references to ids references happens.
    */
-  if (classobj_put_index (&(class_->properties), con->type, con->name, con->attributes, con->asc_desc,
-			  con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, con->fk_info, NULL,
-			  con->func_index_info, con->comment, con->index_status, false) != NO_ERROR)
+  if (classobj_put_index (&(class_->properties), con, &(con->index_btid), con->fk_info, NULL, false) != NO_ERROR)
     {
       return error;
     }
@@ -12040,10 +12041,8 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		}
 
 	      error =
-		classobj_put_index (&(flat->properties), con->type, con->name, con->attributes, con->asc_desc,
-				    con->attrs_prefix_length, &(con->index_btid), con->filter_predicate,
-				    con->fk_info, con->shared_cons_name, con->func_index_info, con->comment,
-				    con->index_status, false);
+		classobj_put_index (&(flat->properties), con, &(con->index_btid), con->fk_info, con->shared_cons_name,
+				    false);
 	      if (error != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
@@ -12052,10 +12051,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	    }
 	  else if (con->type == SM_CONSTRAINT_INDEX || con->type == SM_CONSTRAINT_REVERSE_INDEX)
 	    {
-	      error =
-		classobj_put_index (&(flat->properties), con->type, con->name, con->attributes, con->asc_desc,
-				    con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, NULL, NULL,
-				    con->func_index_info, con->comment, con->index_status, false);
+	      error = classobj_put_index (&(flat->properties), con, &(con->index_btid), NULL, NULL, false);
 	      if (error != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
@@ -15923,7 +15919,6 @@ sm_is_global_only_constraint (MOP classmop, SM_CLASS_CONSTRAINT * constraint, in
     case SM_CONSTRAINT_FOREIGN_KEY:
     case SM_CONSTRAINT_NOT_NULL:
       /* always local */
-      *is_global = 0;
       return NO_ERROR;
     case SM_CONSTRAINT_PRIMARY_KEY:
       /* always global */
@@ -15952,7 +15947,6 @@ sm_is_global_only_constraint (MOP classmop, SM_CLASS_CONSTRAINT * constraint, in
       && (template_ == NULL || (template_->inheritance == NULL && template_->partition_parent_atts == NULL)
 	  || template_->partition != NULL))
     {
-      *is_global = 0;
       return NO_ERROR;
     }
 
@@ -15960,7 +15954,6 @@ sm_is_global_only_constraint (MOP classmop, SM_CLASS_CONSTRAINT * constraint, in
     {
       if (template_->inheritance != NULL && template_->partition_parent_atts != NULL)
 	{
-	  *is_global = 0;
 	  return NO_ERROR;
 	}
     }
