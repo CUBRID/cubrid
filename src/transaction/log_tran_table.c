@@ -1330,7 +1330,7 @@ logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes)
 	   (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset,
 	   (unsigned long long) tdes->mvccinfo.id,
 	   (unsigned long long) (tdes->mvccinfo.sub_ids.empty ()? MVCCID_NULL : tdes->mvccinfo.sub_ids[0]),
-	   LSA_AS_ARGS (&tdes->last_mvcc_lsa),
+	   LSA_AS_ARGS (&tdes->mvccinfo.last_mvcc_lsa),
 	   tdes->client.client_type, tdes->client.get_db_user (), tdes->client.get_program_name (),
 	   tdes->client.get_login_name (), tdes->client.get_host_name (), tdes->client.process_id);
 
@@ -1526,7 +1526,6 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
   LSA_SET_NULL (&tdes->commit_abort_lsa);
-  tdes->last_mvcc_lsa.set_null ();
   tdes->page_desync_lsa.set_null ();
   tdes->topops.last = -1;
   tdes->gtrid = LOG_2PC_NULL_GTRID;
@@ -1601,6 +1600,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 
   assert (tdes->mvccinfo.id == MVCCID_NULL);
+  tdes->mvccinfo.reset ();
 
   if (BOOT_WRITE_ON_STANDY_CLIENT_TYPE (tdes->client.client_type))
     {
@@ -1695,7 +1695,6 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
   LSA_SET_NULL (&tdes->commit_abort_lsa);
-  tdes->last_mvcc_lsa.set_null ();
   tdes->page_desync_lsa.set_null ();
 
   r = rmutex_initialize (&tdes->rmutex_topop, RMUTEX_NAME_TDES_TOPOP);
@@ -4126,19 +4125,17 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 
   if (MVCCID_IS_VALID (mvccid))
     {
-      if (tdes->last_mvcc_lsa.is_null ())
+      if (curr_mvcc_info->last_mvcc_lsa.is_null ())
 	{
 	  // No log record contains this transaction MVCCID. The PTS replication has to also complete this MVCCID so it needs
 	  // to be notified via a log record. Add a log record containing the MVCCID.
 	  log_append_assigned_mvccid (thread_p, mvccid);
 	}
       mvcc_table->complete_mvcc (tran_index, mvccid, committed);
-
-      tdes->last_mvcc_lsa.set_null ();
     }
   else
     {
-      assert (tdes->last_mvcc_lsa.is_null ());
+      assert (curr_mvcc_info->last_mvcc_lsa.is_null ());
 
       if (committed && logtb_tran_update_all_global_unique_stats (thread_p) != NO_ERROR)
 	{

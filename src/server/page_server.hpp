@@ -199,6 +199,35 @@ class page_server
 	std::thread m_thread;
     };
 
+    /*
+     * helper class to track the active oldest mvccids of each Page Transaction Server.
+     * This provides the globally oldest active mvcc id to the vacuum on ATS.
+     * The vacuum has to take mvcc status of all PTSes into considerations,
+     * or it would clean up some data seen by a active snapshot on a PTS.
+     */
+    class pts_mvcc_tracker
+    {
+      public:
+	pts_mvcc_tracker () = default;
+
+	pts_mvcc_tracker (const pts_mvcc_tracker &) = delete;
+	pts_mvcc_tracker (pts_mvcc_tracker &&) = delete;
+
+	pts_mvcc_tracker &operator = (const pts_mvcc_tracker &) = delete;
+	pts_mvcc_tracker &operator = (pts_mvcc_tracker &&) = delete;
+
+	void init_oldest_active_mvccid (const std::string &pts_channel_id);
+	void update_oldest_active_mvccid (const std::string &pts_channel_id, const MVCCID mvccid);
+	void delete_oldest_active_mvccid (const std::string &pts_channel_id);
+
+	MVCCID get_global_oldest_active_mvccid ();
+
+      private:
+	/* <channel_id -> the oldest active mvccid of the PTS>. used by the vacuum on the ATS */
+	std::unordered_map<std::string, MVCCID> m_pts_oldest_active_mvccids;
+	std::mutex m_pts_oldest_active_mvccids_mtx;
+    };
+
     using responder_t = server_request_responder<connection_handler::tran_server_conn_t>;
 
   private: // functions that depend on private types
@@ -216,6 +245,7 @@ class page_server
     std::unique_ptr<responder_t> m_responder;
 
     async_disconnect_handler m_async_disconnect_handler;
+    pts_mvcc_tracker m_pts_mvcc_tracker;
 };
 
 extern page_server ps_Gl;

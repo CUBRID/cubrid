@@ -29,6 +29,7 @@
 #include <string>
 #include <mutex>
 #include <memory>
+#include <sstream>
 #if !defined (WINDOWS)
 #include <sys/uio.h>
 #else
@@ -99,13 +100,18 @@ namespace cubcomm
 
       std::string get_channel_id () const
       {
-	std::string channel_id = m_channel_name + "_" + m_hostname;
+	std::stringstream ss;
+
+	ss << m_channel_name << "_" << m_hostname;
 
 	if (m_port != -1)
 	  {
-	    channel_id += "_" + std::to_string (m_port);
+	    ss << "_" << m_port;
 	  }
-	return channel_id;
+
+	ss << "_" << m_socket;
+
+	return ss.str ();
       }
 
     protected:
