@@ -50,7 +50,7 @@ active_tran_server::get_oldeset_active_mvccid_from_page_server () const
   MVCCID oldest_mvccid = MVCCID_NULL;
   std::memcpy (&oldest_mvccid, response_message.c_str (), sizeof (oldest_mvccid));
 
-  assert (oldest_mvccid == MVCCID_NULL);
+  assert (MVCCID_IS_VALID (oldest_mvccid));
 
   return oldest_mvccid;
 }
