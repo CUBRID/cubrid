@@ -521,7 +521,7 @@ exit:
 static void
 javasp_dump_status (FILE *fp, JAVASP_STATUS_INFO status_info)
 {
-  if (status_info.pid == JAVASP_PORT_UDS_MODE)
+  if (status_info.port == JAVASP_PORT_UDS_MODE)
     {
       fprintf (fp, "Java Stored Procedure Server (%s, pid %d, UDS)\n", status_info.db_name, status_info.pid);
     }
