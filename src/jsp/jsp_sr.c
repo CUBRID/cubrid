@@ -536,7 +536,6 @@ jsp_start_server (const char *db_name, const char *path, int port)
     if (prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE_UDS) == true)
       {
 	uds_path = jsp_get_socket_file_path (db_name);
-	port = -1;
       }
     else
       {
