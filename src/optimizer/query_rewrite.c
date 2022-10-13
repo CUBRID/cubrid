@@ -3618,7 +3618,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 	  if (curr_pk_mop == NULL)
 	    {
 	      ASSERT_ERROR ();
-	      goto exit_on_error;
+	      goto cleanup;
 	    }
 
 #if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
@@ -3814,7 +3814,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 	      if (curr_fk_mop == NULL)
 		{
 		  ASSERT_ERROR ();
-		  goto exit_on_error;
+		  goto cleanup;
 		}
 
 #if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
@@ -3881,7 +3881,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 			{
 			  /* Already checked before. */
 			  assert (false);
-			  goto exit_on_error;
+			  goto cleanup;
 			}
 
 		      if (PT_SPEC_ID (curr_fk_spec) == PT_NAME_SPEC_ID (arg1))
@@ -4129,7 +4129,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 	}
     }
 
-exit_on_error:
+cleanup:
   if (pred_point_list != NULL)
     {
       parser_free_tree (parser, pred_point_list);
