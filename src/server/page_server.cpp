@@ -188,9 +188,11 @@ page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_co
 void
 page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_t::sequenced_payload &a_sp)
 {
-  /* TODO dummy function. will be modified corretly. soon  */
-  const MVCCID oldest_mvccid = *reinterpret_cast<const MVCCID *const> (a_sp.pull_payload().c_str());
-  er_log_debug (ARG_FILE_LINE, "receive_oldest_active_mvccid(): %d\n", oldest_mvccid);
+  assert (m_server_type == transaction_server_type::PASSIVE);
+
+  const auto oldest_mvccid = *reinterpret_cast<const MVCCID *const> (a_sp.pull_payload().c_str());
+
+  m_ps.m_pts_mvcc_tracker.update_oldest_active_mvccid (get_channel_id (), oldest_mvccid);
 }
 
 void
@@ -199,6 +201,11 @@ page_server::connection_handler::receive_disconnect_request (tran_server_conn_t:
   // if this instance acted as a prior sender sink - in other words, if this connection handler was for a
   // passive transaction server - it should have been disconnected beforehand
   assert (m_prior_sender_sink_hook_func == nullptr);
+
+  if (m_server_type == transaction_server_type::PASSIVE)
+    {
+      m_ps.m_pts_mvcc_tracker.delete_oldest_active_mvccid (get_channel_id());
+    }
 
   m_ps.disconnect_tran_server_async (this);
 }
@@ -232,6 +239,8 @@ page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code
 			(int)error_code);
 
 	  remove_prior_sender_sink ();
+
+	  m_ps.m_pts_mvcc_tracker.delete_oldest_active_mvccid (get_channel_id());
 	}
       else
 	{
@@ -371,6 +380,82 @@ page_server::async_disconnect_handler::disconnect_loop ()
     }
 }
 
+void page_server::pts_mvcc_tracker::init_oldest_active_mvccid (const std::string &pts_channel_id)
+{
+  std::lock_guard<std::mutex> lockg { m_pts_oldest_active_mvccids_mtx };
+  /*
+   * The entry must not already be present. If the same passive transaction server has been connected
+   * before, the entry must have been removed when the PTS disconnected or when the connection
+   *  to the PTS was aborted.
+   */
+  assert (m_pts_oldest_active_mvccids.find (pts_channel_id) == m_pts_oldest_active_mvccids.end());
+
+  /*
+   * MVCCID_ALL_VISIBLE means that it hasn't yet received. It will prevent the ATS to run vacuum.
+   * This is a guard for the window in which a PTS is connected but has't sent its oldest active mvccid.
+   * In this window, if we vaccum without considering the PTS, we possibly end up cleaning up the data
+   * a read-only transaction on the PTS see.
+   */
+  m_pts_oldest_active_mvccids[pts_channel_id] = MVCCID_ALL_VISIBLE;
+}
+
+void page_server::pts_mvcc_tracker::update_oldest_active_mvccid (const std::string &pts_channel_id, const MVCCID mvccid)
+{
+  assert (MVCCID_IS_NORMAL (mvccid));
+
+  std::lock_guard<std::mutex> lockg { m_pts_oldest_active_mvccids_mtx };
+
+  /*
+   * 1. The entry is already created when ths PTS is connected.
+   * 2. It is updated by the PTS only when it move foward.
+   *    Without update, it is MVCCID_ALL_VISIBLE by default, which is lower than any mvccid assigned.
+   */
+  assert (m_pts_oldest_active_mvccids.find (pts_channel_id) != m_pts_oldest_active_mvccids.end());
+  assert (m_pts_oldest_active_mvccids[pts_channel_id] < mvccid);
+
+  m_pts_oldest_active_mvccids[pts_channel_id] = mvccid;
+
+#if !defined(NDEBUG)
+  std::string msg;
+  std::stringstream ss;
+  ss << "receive_oldest_active_mvccid: update the oldest active mvccid to " << mvccid << " of " << pts_channel_id <<
+     std::endl;
+  ss << "oldest mvcc ids:" ;
+  for (const auto &it : m_pts_oldest_active_mvccids)
+    {
+      ss << " " << it.second;
+    }
+  er_log_debug (ARG_FILE_LINE, ss.str().c_str());
+#endif
+}
+void page_server::pts_mvcc_tracker::delete_oldest_active_mvccid (const std::string &pts_channel_id)
+{
+  std::lock_guard<std::mutex> lockg { m_pts_oldest_active_mvccids_mtx };
+  /* The entry is already created when ths PTS is connected. */
+  assert (m_pts_oldest_active_mvccids.find (pts_channel_id) != m_pts_oldest_active_mvccids.end());
+  m_pts_oldest_active_mvccids.erase (pts_channel_id);
+}
+
+MVCCID page_server::pts_mvcc_tracker::get_global_oldest_active_mvccid ()
+{
+  std::lock_guard<std::mutex> lockg { m_pts_oldest_active_mvccids_mtx };
+
+  MVCCID oldest_mvccid = MVCCID_LAST;
+  for (const auto &it : m_pts_oldest_active_mvccids)
+    {
+      if (oldest_mvccid > it.second)
+	{
+	  oldest_mvccid = it.second;
+	}
+    }
+
+  /* it can return either
+   * - MVCCID_LAST: no PTS is being tracked
+   * - or MVCCID_ALL_VISIBLE: at least one PTS has connected, but hasn't updated yet
+   * - or the computed oldest one */
+  return oldest_mvccid;
+}
+
 void
 page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
 {
@@ -399,10 +484,15 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
   assert (is_page_server ());
 
   chn.set_channel_name ("PTS_PS_comm");
+
+  const auto channel_id = chn.get_channel_id ();
+
   er_log_debug (ARG_FILE_LINE, "Passive transaction server connected to this page server. Channel id: %s.\n",
-		chn.get_channel_id ().c_str ());
+		channel_id.c_str ());
 
   m_passive_tran_server_conn.emplace_back (new connection_handler (chn, transaction_server_type::PASSIVE, *this));
+
+  m_pts_mvcc_tracker.init_oldest_active_mvccid (channel_id);
 }
 
 void
