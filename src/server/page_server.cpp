@@ -171,9 +171,7 @@ void
 page_server::connection_handler::receive_oldest_active_mvccid_request (tran_server_conn_t::sequenced_payload &a_sp)
 {
   assert (m_server_type == transaction_server_type::ACTIVE);
-  // 1. lockg
-  // 2. const auto oldest_mvccid = aggregate mvccids
-  const MVCCID oldest_mvccid = MVCCID_ALL_VISIBLE;
+  const MVCCID oldest_mvccid = m_ps.m_pts_mvcc_tracker.get_global_oldest_active_mvccid();
 
   std::string response_message;
   response_message.append (reinterpret_cast<const char *> (&oldest_mvccid), sizeof (oldest_mvccid));
