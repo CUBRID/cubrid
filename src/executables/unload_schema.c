@@ -1095,6 +1095,11 @@ extract_classes (extract_context & ctxt, print_output & schema_output_ctx)
       err_count++;
     }
 
+  if (export_server (schema_output_ctx) < 0)
+    {
+      err_count++;
+    }
+
   ctxt.has_indexes = emit_schema (schema_output_ctx, ctxt.classes, ctxt.do_auth, &ctxt.vclass_list_has_using_index,
 				  ctxt.storage_order);
   if (er_errid () != NO_ERROR)
@@ -1103,11 +1108,6 @@ extract_classes (extract_context & ctxt, print_output & schema_output_ctx)
     }
 
   if (emit_foreign_key (schema_output_ctx, ctxt.classes) != NO_ERROR)
-    {
-      err_count++;
-    }
-
-  if (export_server (schema_output_ctx) < 0)
     {
       err_count++;
     }
