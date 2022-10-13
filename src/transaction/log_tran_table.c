@@ -4090,6 +4090,38 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 
 /*
  * logtb_complete_mvcc () - Called at commit or rollback, completes MVCC info
+ *			    for current transaction. If the transaction used
+ *			    an MVCCID but that id was not added to any of the
+ *			    transaction's log records, adds a specific log record to register the id.
+ *
+ * return	  : Void.
+ * thread_p (in)  : Thread entry.
+ * tdes (in)	  : Transaction descriptor.
+ * committed (in) : True if transaction was committed false if it was aborted.
+ */
+void
+logtb_append_assigned_mvcc_if_needed_and_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
+{
+  MVCC_INFO *const curr_mvcc_info = &tdes->mvccinfo;
+  if (MVCCID_IS_VALID (curr_mvcc_info->id))
+    {
+      if (curr_mvcc_info->last_mvcc_lsa.is_null ())
+	{
+	  // No log record contains this transaction MVCCID. The PTS replication has to also complete this MVCCID so it needs
+	  // to be notified via a log record. Add a log record containing the MVCCID.
+	  log_append_assigned_mvccid (thread_p, curr_mvcc_info->id);
+	}
+    }
+  else
+    {
+      assert (curr_mvcc_info->last_mvcc_lsa.is_null ());
+    }
+
+  logtb_complete_mvcc (thread_p, tdes, committed);
+}
+
+/*
+ * logtb_complete_mvcc () - Called at commit or rollback, completes MVCC info
  *			    for current transaction.
  *
  * return	  : Void.
@@ -4125,17 +4157,10 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 
   if (MVCCID_IS_VALID (mvccid))
     {
-      if (curr_mvcc_info->last_mvcc_lsa.is_null ())
-	{
-	  // No log record contains this transaction MVCCID. The PTS replication has to also complete this MVCCID so it needs
-	  // to be notified via a log record. Add a log record containing the MVCCID.
-	  log_append_assigned_mvccid (thread_p, mvccid);
-	}
       mvcc_table->complete_mvcc (tran_index, mvccid, committed);
     }
   else
     {
-      assert (curr_mvcc_info->last_mvcc_lsa.is_null ());
 
       if (committed && logtb_tran_update_all_global_unique_stats (thread_p) != NO_ERROR)
 	{

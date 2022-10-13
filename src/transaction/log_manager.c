@@ -5516,7 +5516,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
   /* clear mvccid before releasing the locks. This operation must be done before do_postpone because it stores unique
    * statistics for all B-trees and if an error occurs those operations and all operations of current transaction must
    * be rolled back. */
-  logtb_complete_mvcc (thread_p, tdes, true);
+  logtb_append_assigned_mvcc_if_needed_and_complete_mvcc (thread_p, tdes, true);
 
   tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
   /* undo_nxlsa is no longer required here and must be reset, in case checkpoint takes a snapshot of this transaction
@@ -5645,7 +5645,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 	}
 
       /* clear mvccid before releasing the locks */
-      logtb_complete_mvcc (thread_p, tdes, false);
+      logtb_append_assigned_mvcc_if_needed_and_complete_mvcc (thread_p, tdes, false);
 
       /* It is safe to release locks here, since we already completed abort. */
       lock_unlock_all (thread_p);
@@ -5663,7 +5663,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 	}
 
       /* clear mvccid before releasing the locks */
-      logtb_complete_mvcc (thread_p, tdes, false);
+      logtb_append_assigned_mvcc_if_needed_and_complete_mvcc (thread_p, tdes, false);
 
       lock_unlock_all (thread_p);
 
