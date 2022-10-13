@@ -43,6 +43,7 @@
 #include "perf_monitor.h"
 #include "resource_shared_pool.hpp"
 #include "server_type.hpp"
+#include "active_tran_server.hpp"
 #include "thread_entry_task.hpp"
 #if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
@@ -2974,10 +2975,19 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
       return;
     }
 
+  assert (is_active_transaction_server());
+
   PERF_UTIME_TRACKER_START (&thread_ref, &perf_tracker);
 
   m_oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
   vacuum_er_log (VACUUM_ER_LOG_MASTER, "update oldest_visible = %lld", (long long int) m_oldest_visible_mvccid);
+ 
+  /* TODO temporary logging. The global one will be computed taking both into account, and the vacuum runs */ 
+  MVCCID global_pts_oldest_visible_mvccid = get_active_tran_server_ptr()->get_oldeset_active_mvccid_from_page_server();
+  er_log_debug (ARG_FILE_LINE, "ats oldest_visible = %lld, pts global_oldest_visible = %lld",
+      (long long int) m_oldest_visible_mvccid, global_pts_oldest_visible_mvccid);
+
+  return;
 
   if (!vacuum_Data.is_loaded)
     {

@@ -30,7 +30,9 @@
 #include <string>
 
 std::unique_ptr<tran_server> ts_Gl;
+
 // non-owning "shadow" pointer of globally visible ts_Gl
+active_tran_server *ats_Gl = nullptr;
 passive_tran_server *pts_Gl = nullptr;
 
 SERVER_TYPE get_server_type_from_config (server_type_config parameter_value);
@@ -136,7 +138,8 @@ int init_server_type (const char *db_name)
 
       if (is_active_transaction_server ())
 	{
-	  ts_Gl.reset (new active_tran_server ());
+	  ats_Gl = new active_tran_server ();
+	  ts_Gl.reset (ats_Gl);
 	}
       else if (is_passive_transaction_server ())
 	{
@@ -198,8 +201,14 @@ void finalize_server_type ()
 {
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
-      if (is_passive_transaction_server ())
+      if (is_active_transaction_server ())
 	{
+	  assert (ats_Gl != nullptr);
+	  ats_Gl = nullptr;
+	}
+      else
+	{
+	  assert (is_passive_transaction_server ());
 	  assert (pts_Gl != nullptr);
 	  pts_Gl = nullptr;
 	}
@@ -250,6 +259,20 @@ bool is_tran_server_with_remote_storage ()
       return ts_Gl->uses_remote_storage ();
     }
   return false;
+}
+
+active_tran_server *get_active_tran_server_ptr ()
+{
+  if (is_active_transaction_server ())
+    {
+      assert (ats_Gl != nullptr);
+      return ats_Gl;
+    }
+  else
+    {
+      assert (is_active_transaction_server ());
+      return nullptr;
+    }
 }
 
 passive_tran_server *get_passive_tran_server_ptr ()
