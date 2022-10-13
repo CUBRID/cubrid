@@ -3665,7 +3665,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 
 	      if (info.my_spec_cnt >= 1)
 		{
-		  if (PT_NODE_IS_EXPR (curr_pred) && PT_EXPR_OP (curr_pred) == PT_EQ
+		  if (curr_pred->or_next == NULL && PT_NODE_IS_EXPR (curr_pred) && PT_EXPR_OP (curr_pred) == PT_EQ
 		      && pt_is_attr (PT_EXPR_ARG1 (curr_pred)) && pt_is_attr (PT_EXPR_ARG2 (curr_pred)))
 		    {
 		      pred_point_list = parser_append_node (pt_point (parser, curr_pred), pred_point_list);
