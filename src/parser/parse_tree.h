@@ -1348,6 +1348,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_QUERY_NO_CACHE  0x100000000ULL	/* don't use the query cache (unused) */
 #define  PT_HINT_NO_PUSH_PRED  0x200000000ULL	/* do not push predicates */
 #define  PT_HINT_NO_MERGE  0x400000000ULL	/* do not merge view or in-line view */
+#define  PT_HINT_NO_ELIMINATE_JOIN  0x800000000ULL	/* do not eliminate join */
 
 /* Codes for error messages */
 typedef enum
