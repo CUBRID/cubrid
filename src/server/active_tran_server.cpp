@@ -43,8 +43,7 @@ active_tran_server::get_oldeset_active_mvccid_from_page_server () const
   const int error_code = send_receive (tran_to_page_request::GET_OLDEST_ACTIVE_MVCCID, std::string (), response_message);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
-      return error_code;
+      return MVCCID_NULL;
     }
 
   MVCCID oldest_mvccid = MVCCID_NULL;
