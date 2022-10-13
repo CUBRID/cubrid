@@ -138,6 +138,7 @@ int init_server_type (const char *db_name)
 
       if (is_active_transaction_server ())
 	{
+	  assert (ats_Gl == nullptr);
 	  ats_Gl = new active_tran_server ();
 	  ts_Gl.reset (ats_Gl);
 	}
