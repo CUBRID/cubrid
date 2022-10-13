@@ -149,7 +149,7 @@ main (int argc, char *argv[])
       }
 
     /* try to create info dir and get absolute path for info file; $CUBRID/var/javasp_<db_name>.info */
-    JAVASP_SERVER_INFO jsp_info = {-1, -1};
+    JAVASP_SERVER_INFO jsp_info = JAVASP_SERVER_INFO_INITIALIZER;
     status = javasp_get_server_info (db_name, jsp_info);
     if (status != NO_ERROR && command.compare ("start") != 0)
       {
@@ -178,7 +178,7 @@ main (int argc, char *argv[])
 	  }
 
 	// check process is running
-	if (jsp_info.pid == -1 || javasp_is_terminated_process (jsp_info.pid) == true)
+	if (jsp_info.pid == JAVASP_PID_DISABLED || javasp_is_terminated_process (jsp_info.pid) == true)
 	  {
 	    // NO_CONNECTION
 	    javasp_reset_info (db_name.c_str ());
@@ -284,27 +284,24 @@ static int
 javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_name, const std::string &path)
 {
   int status = NO_ERROR;
-  int check_port = -1;
-  int prm_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
 
-  /* trying to start javasp server for new port */
-  if (prm_port != jsp_info.port)
-    {
-      /* check javasp server is running with previously configured port number */
-      check_port = jsp_info.port;
-    }
-  else
-    {
-      /* check javasp server is running for the port number written in configuration file */
-      check_port = prm_port;
-    }
-
-  if (javasp_is_running (check_port, db_name))
+  if (jsp_info.pid != JAVASP_PID_DISABLED && javasp_is_running (jsp_info.port, db_name))
     {
       status = ER_GENERIC_ERROR;
     }
   else
     {
+      int prm_port = -1;
+      const bool is_uds_mode = prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE_UDS);
+      if (is_uds_mode)
+	{
+	  prm_port = JAVASP_PORT_UDS_MODE;
+	}
+      else
+	{
+	  prm_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
+	}
+
 #if !defined(WINDOWS)
       /* create a new session */
       setsid ();
@@ -314,7 +311,8 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
 
       if (status == NO_ERROR)
 	{
-	  JAVASP_SERVER_INFO jsp_new_info { getpid(), jsp_server_port () };
+	  int port_number = prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE_UDS) ? JAVASP_PORT_UDS_MODE : jsp_server_port ();
+	  JAVASP_SERVER_INFO jsp_new_info { getpid(), port_number };
 
 	  javasp_unlink_info (db_name.c_str ());
 	  if ((javasp_open_info_dir () && javasp_write_info (db_name.c_str (), jsp_new_info)))
@@ -523,8 +521,15 @@ exit:
 static void
 javasp_dump_status (FILE *fp, JAVASP_STATUS_INFO status_info)
 {
-  fprintf (fp, "Java Stored Procedure Server (%s, pid %d, port %d)\n", status_info.db_name, status_info.pid,
-	   status_info.port);
+  if (status_info.pid == JAVASP_PORT_UDS_MODE)
+    {
+      fprintf (fp, "Java Stored Procedure Server (%s, pid %d, UDS)\n", status_info.db_name, status_info.pid);
+    }
+  else
+    {
+      fprintf (fp, "Java Stored Procedure Server (%s, pid %d, port %d)\n", status_info.db_name, status_info.pid,
+	       status_info.port);
+    }
   auto vm_args_len = status_info.vm_args.size();
   if (vm_args_len > 0)
     {
