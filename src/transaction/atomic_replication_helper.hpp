@@ -221,7 +221,7 @@ namespace cublog
 	  };
 
 	  /*
-	   * Implements a RAII-like reference counted functionality to bokkeep page pointers for
+	   * Implements a RAII-like reference counted functionality to bookkeep page pointers for
 	   * a sequence of [possibly] nested atomic replication sub-sequences.
 	   * A page can be needed by multiple levels of a nested atomic replication sequence which
 	   * perfom changes on the page. Once the page is unfixed in a sequence at a certain

@@ -558,7 +558,7 @@ test_env_chkpt::generate_tdes (int index)
   tdes->savept_lsa = generate_log_lsa ();
   tdes->tail_topresult_lsa = generate_log_lsa ();
   tdes->commit_abort_lsa = NULL_LSA;
-  tdes->last_mvcc_lsa = generate_log_lsa ();
+  tdes->mvccinfo.last_mvcc_lsa = generate_log_lsa ();
   tdes->rcv.tran_start_postpone_lsa = generate_log_lsa ();
   tdes->wait_msecs = rand () % MAX_RAND;
   tdes->client_id  = rand () % MAX_RAND;

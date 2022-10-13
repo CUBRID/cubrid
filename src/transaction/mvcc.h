@@ -210,6 +210,8 @@ struct mvcc_info
   // *INDENT-ON*
   bool is_sub_active;		/* true in case that sub-transaction is running */
 
+  LOG_LSA last_mvcc_lsa;	/* The address of transaction's last MVCC log record. */
+
   // *INDENT-OFF*
   mvcc_info ();
   void init ();
