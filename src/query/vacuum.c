@@ -2989,7 +2989,7 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
   vacuum_er_log (VACUUM_ER_LOG_MASTER, "update oldest_visible = %lld", (long long int) m_oldest_visible_mvccid);
  
   /* TODO temporary logging. The global one will be computed taking both into account, and the vacuum runs */ 
-  MVCCID global_pts_oldest_visible_mvccid = get_active_tran_server_ptr ()->get_oldeset_active_mvccid_from_page_server ();
+  MVCCID global_pts_oldest_visible_mvccid = get_active_tran_server_ptr ()->get_oldest_active_mvccid_from_page_server ();
   if (global_pts_oldest_visible_mvccid == MVCCID_NULL)
   {
     assert (false);
