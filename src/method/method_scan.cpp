@@ -145,18 +145,7 @@ namespace cubscan
 
       int error = NO_ERROR;
 
-      DB_VALUE null_val;
-      db_value_clear (&null_val);
-
-      std::vector<std::reference_wrapper<DB_VALUE>> arg_wrapper;
-      for (int i = 0; i < m_arg_vector.size (); i++)
-	{
-	  bool is_used = m_arg_use_vector [i];
-	  auto arg_val = (is_used) ? std::ref (m_arg_vector[i]) : std::ref (null_val);
-	  arg_wrapper.emplace_back (arg_val);
-	}
-
-      if (scan_code == S_SUCCESS && (error = m_method_group->prepare (arg_wrapper)) != NO_ERROR)
+      if (scan_code == S_SUCCESS && (error = m_method_group->prepare (arg_wrapper, m_arg_use_vector)) != NO_ERROR)
 	{
 	  scan_code = S_ERROR;
 	}
