@@ -145,6 +145,8 @@ namespace cubscan
 
       int error = NO_ERROR;
 
+      std::vector<std::reference_wrapper<DB_VALUE>> arg_wrapper (m_arg_vector.begin (), m_arg_vector.end ());
+
       if (scan_code == S_SUCCESS && (error = m_method_group->prepare (arg_wrapper, m_arg_use_vector)) != NO_ERROR)
 	{
 	  scan_code = S_ERROR;
