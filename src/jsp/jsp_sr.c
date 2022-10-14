@@ -44,6 +44,7 @@
 
 #include "jsp_sr.h"
 #include "jsp_file.h"
+#include "jsp_comm.h"
 
 #include "boot_sr.h"
 #include "environment_variable.h"
@@ -506,7 +507,7 @@ jsp_start_server (const char *db_name, const char *path, int port)
   jclass cls, string_cls;
   JNIEnv *env_p = NULL;
   jmethodID mid;
-  jstring jstr_dbname, jstr_path, jstr_version, jstr_envroot, jstr_port, jstr_envtmp;
+  jstring jstr_dbname, jstr_path, jstr_version, jstr_envroot, jstr_port, jstr_uds_path;
   jobjectArray args;
   JavaVMInitArgs vm_arguments;
   JavaVMOption *options;
@@ -518,7 +519,7 @@ jsp_start_server (const char *db_name, const char *path, int port)
   char debug_jdwp[] = "-agentlib:jdwp=transport=dt_socket,server=y,address=%d,suspend=n";
   char disable_sig_handle[] = "-Xrs";
   const char *envroot;
-  const char *envtmp;
+  const char *uds_path;
   char jsp_file_path[PATH_MAX];
   char port_str[6] = { 0 };
   char *loc_p, *locale;
@@ -531,10 +532,14 @@ jsp_start_server (const char *db_name, const char *path, int port)
       }
 
     envroot = envvar_root ();
-    envtmp = envvar_get ("TMP");
-    if (envtmp == NULL || envtmp[0] == '\0')
+
+    if (prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE_UDS) == true)
       {
-	envtmp = "/tmp";
+	uds_path = jsp_get_socket_file_path (db_name);
+      }
+    else
+      {
+	uds_path = "";
       }
 
     snprintf (classpath, sizeof (classpath) - 1, "-Djava.class.path=%s",
@@ -667,8 +672,8 @@ jsp_start_server (const char *db_name, const char *path, int port)
 	goto error;
       }
 
-    jstr_envtmp = JVM_NewStringUTF (env_p, envtmp);
-    if (jstr_envtmp == NULL)
+    jstr_uds_path = JVM_NewStringUTF (env_p, uds_path);
+    if (jstr_uds_path == NULL)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
 		"Failed to construct a new 'java.lang.String object' by NewStringUTF()");
@@ -703,7 +708,7 @@ jsp_start_server (const char *db_name, const char *path, int port)
     JVM_SetObjectArrayElement (env_p, args, 1, jstr_path);
     JVM_SetObjectArrayElement (env_p, args, 2, jstr_version);
     JVM_SetObjectArrayElement (env_p, args, 3, jstr_envroot);
-    JVM_SetObjectArrayElement (env_p, args, 4, jstr_envtmp);
+    JVM_SetObjectArrayElement (env_p, args, 4, jstr_uds_path);
     JVM_SetObjectArrayElement (env_p, args, 5, jstr_port);
 
     sp_port = JVM_CallStaticIntMethod (env_p, cls, mid, args);
