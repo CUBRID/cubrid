@@ -497,7 +497,6 @@ OR_PUT_DOUBLE (char *ptr, double val)
 #define OR_BOUND_BIT_FLAG   0x80000000
 
 #define BIG_VAR_OFFSET_SIZE OR_INT_SIZE	/* 4byte */
-#define SHORT_VAR_OFFSET_SIZE OR_SHORT_SIZE	/* 2byte */
 
 /* OBJECT HEADER ACCESS MACROS */
 

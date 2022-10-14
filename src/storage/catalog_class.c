@@ -3249,7 +3249,6 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
   int i, pad, size, rc;
   int error = NO_ERROR;
   char mvcc_flags;
-  int offset_size;
 
   fixed_p = repr_p->fixed;
   n_fixed = repr_p->n_fixed;
@@ -3259,10 +3258,8 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
   attrs = value_p->sub.value;
   n_attrs = n_fixed + n_variable;
 
-  offset_size = OR_GET_OFFSET_SIZE (buf_p->ptr);
-
   /* header */
-  assert (offset_size == BIG_VAR_OFFSET_SIZE || offset_size == SHORT_VAR_OFFSET_SIZE);
+  assert (OR_GET_OFFSET_SIZE (buf_p->ptr) == BIG_VAR_OFFSET_SIZE);
 
   repr_id_bits = or_mvcc_get_repid_and_flags (buf_p, &rc);
   /* get bound_bits_flag and skip other MVCC header fields */
@@ -3302,7 +3299,7 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
     }
 
   /* get the offsets relative to the end of the header (beginning of variable table) */
-  vars = or_get_var_table_internal (buf_p, n_variable, catcls_unpack_allocator, offset_size);
+  vars = or_get_var_table (buf_p, n_variable, catcls_unpack_allocator);
   if (vars == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
