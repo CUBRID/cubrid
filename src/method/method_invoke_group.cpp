@@ -196,7 +196,7 @@ namespace cubmethod
 	  {
 	    /* optimize arguments only for java sp not to send redundant values */
 	    DB_VALUE null_val;
-	    db_value_clear (&null_val);
+	    db_make_null (&null_val);
 	    std::vector<std::reference_wrapper<DB_VALUE>> optimized_arg_base (arg_base.begin (),
 		arg_base.end ()); /* bind null value for the unused columns */
 	    for (int i = 0; i < arg_use_vec.size (); i++)
