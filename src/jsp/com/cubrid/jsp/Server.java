@@ -51,7 +51,7 @@ public class Server {
     private static String serverName;
     private static String spPath;
     private static String rootPath;
-    private static String udsPath;
+    private static String tmpPath;
 
     private static List<String> jvmArguments = null;
 
@@ -63,16 +63,17 @@ public class Server {
     private static Server serverInstance = null;
 
     private Server(
-            String name, String path, String version, String rPath, String uPath, String port)
+            String name, String path, String version, String rPath, String tPath, String port)
             throws IOException, ClassNotFoundException {
         serverName = name;
         spPath = path;
         rootPath = rPath;
-        udsPath = uPath;
+        tmpPath = tPath;
         shutdown = new AtomicBoolean(false);
 
         if (OSValidator.IS_UNIX) {
-            final File socketFile = new File(udsPath);
+            String socketName = rootPath + tmpPath + "/junixsocket-" + name + ".sock";
+            final File socketFile = new File(socketName);
 
             if (socketFile.exists()) {
                 socketFile.delete();
@@ -80,7 +81,7 @@ public class Server {
 
             try {
                 AFUNIXSocketAddress sockAddr = AFUNIXSocketAddress.of(socketFile);
-                AFUNIXServerSocket udsServerSocket = AFUNIXServerSocket.bindOn(sockAddr);
+                AFUNIXServerSocket udsServerSocket = AFUNIXServerSocket.bindOn (sockAddr);
                 udsSocketListener = new ListenerThread(udsServerSocket);
             } catch (Exception e) {
                 log(e);
