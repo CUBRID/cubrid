@@ -77,7 +77,6 @@ extern "C"
   int jsp_readn (SOCKET fd, void *vptr, int n);
 
   int jsp_ping (SOCKET fd);
-  char *jsp_get_socket_file_path (const char *db_name);
 
 #if defined(WINDOWS)
   extern int windows_socket_startup (FARPROC hook);
