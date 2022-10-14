@@ -33,8 +33,8 @@ struct dynamic_array_t
 };
 
 extern dynamic_array *da_create (int count, size_t len);
-extern int da_add (dynamic_array * da, const void *data);
-extern int da_put (dynamic_array * da, int pos, const void *data);
+extern int da_add (dynamic_array * da, void *data);
+extern int da_put (dynamic_array * da, int pos, void *data);
 extern int da_get (dynamic_array * da, int pos, void *data);
 extern int da_size (dynamic_array * da);
 extern int da_destroy (dynamic_array * da);

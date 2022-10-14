@@ -102,12 +102,6 @@ static int parse_user_define_file (FILE * user_define_file, FILE * output_file);
 static int parse_up_to_date (char *up_to_date, struct tm *time_date);
 static int print_backup_info (char *database_name, BO_RESTART_ARG * restart_arg);
 static int synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt);
-static int synccoll_check_tables (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * need_manual_sync);
-static int synccoll_check_foreign_keys (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * need_manual_sync);
-static int synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * need_manual_sync);
-static int synccoll_check_views (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * need_manual_sync);
-static int synccoll_check_triggers (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * need_manual_sync);
-static int synccoll_check_function_indexes (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * need_manual_sync);
 
 static int delete_all_ha_apply_info (void);
 static int insert_ha_apply_info (char *database_name, char *master_host_name, INT64 database_creation, INT64 pageid,
@@ -2746,8 +2740,10 @@ static int
 synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt)
 {
 #define FILE_STMT_NAME "cubrid_synccolldb_"
+#define QUERY_SIZE 1024
 
   LANG_COLL_COMPAT *db_collations = NULL;
+  DB_QUERY_RESULT *query_result = NULL;
   const LANG_COLL_COMPAT *db_coll;
   LANG_COLLATION *lc;
   FILE *f_stmt = NULL;
@@ -2757,6 +2753,12 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
   int i, db_coll_cnt;
   int status = EXIT_SUCCESS;
   int db_status;
+  char *vclass_names = NULL;
+  int vclass_names_used = 0;
+  int vclass_names_alloced = 0;
+  char *part_tables = NULL;
+  int part_tables_used = 0;
+  int part_tables_alloced = 0;
   bool need_manual_sync = false;
   THREAD_ENTRY *thread_p;
 
@@ -2798,6 +2800,8 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 
   for (i = 0; i < db_coll_cnt; i++)
     {
+      DB_QUERY_ERROR query_error;
+      char query[QUERY_SIZE];
       int j;
       bool is_obs_coll = false;
       bool check_atts = false;
@@ -2855,58 +2859,545 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 
       if (check_tables)
 	{
-	  db_status = synccoll_check_tables (db_coll, f_stmt, &need_manual_sync);
-	  if (db_status != NO_ERROR)
+	  /* get table names having collation; do not include partition sub-classes */
+
+	  // *INDENT-OFF*
+	  sprintf (query,
+		"SELECT "
+		  "[c].[unique_name] AS [class_name], "
+		  "[c].[class_type] AS [class_type] "
+		"FROM "
+		  "[_db_class] AS [c] "
+		  "LEFT OUTER JOIN [_db_partition] AS [p] ON [p].[class_of] = [c] AND [p].[pname] IS NOT NULL "
+		"WHERE "
+		  "[c].[collation_id] = %d "
+		  "AND [p].[pname] IS NULL",
+		db_coll->coll_id);
+	  // *INDENT-ON*
+
+	  db_status = db_compile_and_execute_local (query, &query_result, &query_error);
+
+	  if (db_status < 0)
 	    {
 	      status = EXIT_FAILURE;
 	      goto exit;
+	    }
+	  else if (db_status > 0)
+	    {
+	      DB_VALUE class_name;
+	      DB_VALUE ct;
+
+	      fprintf (stdout, "----------------------------------------\n");
+	      fprintf (stdout,
+		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB, SYNCCOLLDB_MSG_CLASS_OBS_COLL),
+		       db_coll->coll_name);
+
+	      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+		{
+		  if (db_query_get_tuple_value (query_result, 0, &class_name) != NO_ERROR
+		      || db_query_get_tuple_value (query_result, 1, &ct) != NO_ERROR)
+		    {
+		      status = EXIT_FAILURE;
+		      goto exit;
+		    }
+
+		  assert (DB_VALUE_TYPE (&class_name) == DB_TYPE_STRING);
+		  assert (DB_VALUE_TYPE (&ct) == DB_TYPE_INTEGER);
+
+		  if (db_get_int (&ct) != 0)
+		    {
+		      continue;
+		    }
+		  fprintf (stdout, "%s\n", db_get_string (&class_name));
+
+		  /* output query to fix schema */
+		  snprintf (query, sizeof (query) - 1, "ALTER TABLE [%s] " "COLLATE utf8_bin;",
+			    db_get_string (&class_name));
+		  fprintf (f_stmt, "%s\n", query);
+		  need_manual_sync = true;
+		}
+	    }
+
+	  if (query_result != NULL)
+	    {
+	      db_query_end (query_result);
+	      query_result = NULL;
 	    }
 	}
 
       if (check_atts)
 	{
-	  db_status = synccoll_check_foreign_keys (db_coll, f_stmt, &need_manual_sync);
-	  if (db_status != NO_ERROR)
+	  /* first drop foreign keys on attributes using collation; do not include partition sub-classes */
+
+	  // *INDENT-OFF*
+	  sprintf (query,
+		"SELECT "
+		  "[a].[class_of].[unique_name] AS [class_name], "
+		  "[i].[index_name] AS [index_name] "
+		"FROM "
+		  "[_db_attribute] AS [a] "
+		  "INNER JOIN [_db_domain] AS [d] ON [d].[object_of] = [a] "
+		  "INNER JOIN [_db_index] AS [i] ON [i].[class_of] = [a].[class_of] "
+		  "LEFT OUTER JOIN [_db_partition] AS [p] "
+		    "ON [p].[class_of] = [a].[class_of] AND [p].[pname] IS NOT NULL "
+		"WHERE "
+		  "[d].[collation_id] = %d "
+		  "AND [i].[is_foreign_key] = 1 "
+		  "AND [p].[pname] IS NULL "
+		"GROUP BY "
+		  "[a].[class_of].[unique_name], "
+		  "[i].[index_name]",
+		db_coll->coll_id);
+	  // *INDENT-ON*
+
+	  db_status = db_compile_and_execute_local (query, &query_result, &query_error);
+
+	  if (db_status < 0)
 	    {
 	      status = EXIT_FAILURE;
 	      goto exit;
 	    }
+	  else if (db_status > 0)
+	    {
+	      DB_VALUE class_name;
+	      DB_VALUE index_name;
 
-	  db_status = synccoll_check_attrs (db_coll, f_stmt, &need_manual_sync);
-	  if (db_status != NO_ERROR)
+	      fprintf (stdout, "----------------------------------------\n");
+	      fprintf (stdout,
+		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB, SYNCCOLLDB_MSG_FK_OBS_COLL),
+		       db_coll->coll_name);
+
+	      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+		{
+		  if (db_query_get_tuple_value (query_result, 0, &class_name) != NO_ERROR
+		      || db_query_get_tuple_value (query_result, 1, &index_name) != NO_ERROR)
+		    {
+		      status = EXIT_FAILURE;
+		      goto exit;
+		    }
+		  assert (DB_VALUE_TYPE (&class_name) == DB_TYPE_STRING);
+		  assert (DB_VALUE_TYPE (&index_name) == DB_TYPE_STRING);
+		  fprintf (stdout, "%s | %s\n", db_get_string (&class_name), db_get_string (&index_name));
+		  snprintf (query, sizeof (query) - 1, "ALTER TABLE [%s] DROP FOREIGN KEY [%s];",
+			    db_get_string (&class_name), db_get_string (&index_name));
+		  fprintf (f_stmt, "%s\n", query);
+		  need_manual_sync = true;
+		}
+	    }
+
+	  if (query_result != NULL)
+	    {
+	      db_query_end (query_result);
+	      query_result = NULL;
+	    }
+
+	  /* attributes having collation; do not include partition sub-classes */
+
+	  // *INDENT-OFF*
+	  sprintf (query,
+		"SELECT "
+		  "[a].[class_of].[unique_name] AS [class_name], "
+		  "[a].[class_of].[class_type] AS [class_type], "
+		  "[a].[attr_name] AS [attr_name], "
+		  "CASE [d].[data_type] "
+		    /* VARCHAR */
+		    "WHEN 4 THEN IF ([d].[prec] < 0, 'VARCHAR', CONCAT ('VARCHAR(', [d].[prec], ')')) "
+		    /* CHAR */
+		    "WHEN 25 THEN CONCAT ('CHAR(', [d].[prec], ')') "
+		    /* NCHAR */
+		    "WHEN 26 THEN CONCAT ('NCHAR(', [d].[prec], ')') "
+		    /* NCHAR VARYING */
+		    "WHEN 27 THEN IF ([d].[prec] < 0, 'NCHAR VARYING', CONCAT ('NCHAR VARYING(', [d].[prec], ')')) "
+		    /* ENUM */
+		    "WHEN 35 THEN ("
+			"SELECT "
+			  /* e.g. ENUM ('A','B','C',...,'Z') */
+			  "CONCAT ('ENUM (''', GROUP_CONCAT ([e].[t] SEPARATOR ''','''), ''')') "
+			"FROM "
+			  "TABLE ([d].[enumeration]) AS [e] ([t])"
+		      ") "
+		    "END AS [data_type], "
+		  "CASE "
+		    "WHEN LOCATE ("
+			"[a].[attr_name], "
+			/* 8 is the position after 'SELECT '. There is one empty string after 'SELECT'.
+			 * So the attribute name comes after at least position 8. */
+			"TRIM (SUBSTRING ([p].[pexpr] FROM 8 FOR (POSITION (' FROM ' IN [p].[pexpr]) - 8)))"
+		      ") > 0 THEN 1 "
+		    "ELSE 0 "
+		    "END AS [is_partitioning_key] "
+		"FROM "
+		  "[_db_attribute] AS [a] "
+		  "INNER JOIN [_db_domain] AS [d] ON [d].[object_of] = [a] "
+		  "LEFT OUTER JOIN [_db_partition] AS [p] ON [p].[class_of] = [a].[class_of] "
+		"WHERE "
+		  "[d].[collation_id] = %d "
+		  "AND [p].[pname] IS NULL "
+		"ORDER BY "
+		  "[a].[class_of].[unique_name], "
+		  "[a].[attr_name]",
+		db_coll->coll_id);
+	  // *INDENT-ON*
+
+	  db_status = db_compile_and_execute_local (query, &query_result, &query_error);
+
+	  if (db_status < 0)
 	    {
 	      status = EXIT_FAILURE;
 	      goto exit;
+	    }
+	  else if (db_status > 0)
+	    {
+	      DB_VALUE class_name;
+	      DB_VALUE attr;
+	      DB_VALUE ct;
+	      DB_VALUE attr_data_type;
+	      DB_VALUE has_part;
+
+	      fprintf (stdout, "----------------------------------------\n");
+	      fprintf (stdout,
+		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB, SYNCCOLLDB_MSG_ATTR_OBS_COLL),
+		       db_coll->coll_name);
+
+	      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+		{
+		  bool add_to_part_tables = false;
+
+		  if (db_query_get_tuple_value (query_result, 0, &class_name) != NO_ERROR
+		      || db_query_get_tuple_value (query_result, 1, &ct) != NO_ERROR
+		      || db_query_get_tuple_value (query_result, 2, &attr) != NO_ERROR
+		      || db_query_get_tuple_value (query_result, 3, &attr_data_type) != NO_ERROR
+		      || db_query_get_tuple_value (query_result, 4, &has_part) != NO_ERROR)
+		    {
+		      status = EXIT_FAILURE;
+		      goto exit;
+		    }
+
+		  assert (DB_VALUE_TYPE (&class_name) == DB_TYPE_STRING);
+		  assert (DB_VALUE_TYPE (&attr) == DB_TYPE_STRING);
+		  assert (DB_VALUE_TYPE (&ct) == DB_TYPE_INTEGER);
+		  assert (DB_VALUE_TYPE (&attr_data_type) == DB_TYPE_STRING);
+		  assert (DB_VALUE_TYPE (&has_part) == DB_TYPE_INTEGER);
+
+		  fprintf (stdout, "%s | %s %s\n", db_get_string (&class_name), db_get_string (&attr),
+			   db_get_string (&attr_data_type));
+
+		  /* output query to fix schema */
+		  if (db_get_int (&ct) == 0)
+		    {
+		      if (db_get_int (&has_part) == 1)
+			{
+			  /* class is partitioned, remove partition; we cannot change the collation of an attribute
+			   * having partitions */
+			  fprintf (f_stmt, "ALTER TABLE [%s] REMOVE PARTITIONING;\n", db_get_string (&class_name));
+			  add_to_part_tables = true;
+			}
+
+		      snprintf (query, sizeof (query) - 1, "ALTER TABLE [%s] " "MODIFY [%s] %s COLLATE utf8_bin;",
+				db_get_string (&class_name), db_get_string (&attr), db_get_string (&attr_data_type));
+		    }
+		  else
+		    {
+		      snprintf (query, sizeof (query) - 1, "DROP VIEW [%s];", db_get_string (&class_name));
+
+		      if (vclass_names == NULL || vclass_names_alloced <= vclass_names_used)
+			{
+			  if (vclass_names_alloced == 0)
+			    {
+			      vclass_names_alloced = 1 + DB_MAX_IDENTIFIER_LENGTH;
+			    }
+			  vclass_names = (char *) db_private_realloc (thread_p, vclass_names, 2 * vclass_names_alloced);
+
+			  if (vclass_names == NULL)
+			    {
+			      status = EXIT_FAILURE;
+			      goto exit;
+			    }
+			  vclass_names_alloced *= 2;
+			}
+
+		      memcpy (vclass_names + vclass_names_used, db_get_string (&class_name),
+			      db_get_string_size (&class_name));
+		      vclass_names_used += db_get_string_size (&class_name);
+		      memcpy (vclass_names + vclass_names_used, "\0", 1);
+		      vclass_names_used += 1;
+		    }
+		  fprintf (f_stmt, "%s\n", query);
+		  need_manual_sync = true;
+
+		  if (add_to_part_tables)
+		    {
+		      if (part_tables == NULL || part_tables_alloced <= part_tables_used)
+			{
+			  if (part_tables_alloced == 0)
+			    {
+			      part_tables_alloced = 1 + DB_MAX_IDENTIFIER_LENGTH;
+			    }
+			  part_tables = (char *) db_private_realloc (thread_p, part_tables, 2 * part_tables_alloced);
+
+			  if (part_tables == NULL)
+			    {
+			      status = EXIT_FAILURE;
+			      goto exit;
+			    }
+			  part_tables_alloced *= 2;
+			}
+
+		      memcpy (part_tables + part_tables_used, db_get_string (&class_name),
+			      db_get_string_size (&class_name));
+		      part_tables_used += db_get_string_size (&class_name);
+		      memcpy (part_tables + part_tables_used, "\0", 1);
+		      part_tables_used += 1;
+		    }
+		}
+	      if (part_tables != NULL)
+		{
+		  char *curr_tbl = part_tables;
+		  int tbl_size = strlen (curr_tbl);
+
+		  fprintf (stdout, "----------------------------------------\n");
+		  fprintf (stdout,
+			   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB,
+					   SYNCCOLLDB_MSG_PARTITION_OBS_COLL), db_coll->coll_name);
+
+		  while (tbl_size > 0)
+		    {
+		      printf ("%s\n", curr_tbl);
+		      curr_tbl += tbl_size + 1;
+		      if (curr_tbl >= part_tables + part_tables_used)
+			{
+			  break;
+			}
+		      tbl_size = strlen (curr_tbl);
+		    }
+		}
+	    }
+
+	  if (query_result != NULL)
+	    {
+	      db_query_end (query_result);
+	      query_result = NULL;
 	    }
 	}
 
       if (check_views)
 	{
-	  db_status = synccoll_check_views (db_coll, f_stmt, &need_manual_sync);
-	  if (db_status != NO_ERROR)
+	  // *INDENT-OFF*
+	  sprintf (query,
+		"SELECT "
+		  "[q].[class_of].[unique_name] AS [class_name], "
+		  "[q].[spec] AS [spec] "
+		"FROM "
+		  "[_db_query_spec] AS [q] "
+		"WHERE "
+		  "LOCATE ('collate %s', [q].[spec]) > 0",
+		db_coll->coll_name);
+	  // *INDENT-ON*
+
+	  db_status = db_compile_and_execute_local (query, &query_result, &query_error);
+
+	  if (db_status < 0)
 	    {
 	      status = EXIT_FAILURE;
 	      goto exit;
+	    }
+	  else if (db_status > 0)
+	    {
+	      DB_VALUE view;
+	      DB_VALUE query_spec;
+
+	      fprintf (stdout, "----------------------------------------\n");
+	      fprintf (stdout,
+		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB, SYNCCOLLDB_MSG_VIEW_OBS_COLL),
+		       db_coll->coll_name);
+
+	      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+		{
+		  bool already_dropped = false;
+
+		  if (db_query_get_tuple_value (query_result, 0, &view) != NO_ERROR
+		      || db_query_get_tuple_value (query_result, 1, &query_spec) != NO_ERROR)
+		    {
+		      status = EXIT_FAILURE;
+		      goto exit;
+		    }
+
+		  assert (DB_VALUE_TYPE (&view) == DB_TYPE_STRING);
+		  assert (DB_VALUE_TYPE (&query_spec) == DB_TYPE_STRING);
+
+		  fprintf (stdout, "%s | %s\n", db_get_string (&view), db_get_string (&query_spec));
+
+		  /* output query to fix schema */
+		  if (vclass_names != NULL)
+		    {
+		      char *search = vclass_names;
+		      int view_name_size = db_get_string_size (&view);
+
+		      /* search if the view was already put in .SQL file */
+		      while (search + view_name_size < vclass_names + vclass_names_used)
+			{
+			  if (memcmp (search, db_get_string (&view), view_name_size) == 0
+			      && *(search + view_name_size) == '\0')
+			    {
+			      already_dropped = true;
+			      break;
+			    }
+
+			  while (*search++ != '\0')
+			    {
+			      ;
+			    }
+			}
+		    }
+
+		  if (!already_dropped)
+		    {
+		      snprintf (query, sizeof (query) - 1, "DROP VIEW [%s];", db_get_string (&view));
+		      fprintf (f_stmt, "%s\n", query);
+		    }
+		  need_manual_sync = true;
+		}
+	    }
+
+	  if (query_result != NULL)
+	    {
+	      db_query_end (query_result);
+	      query_result = NULL;
 	    }
 	}
 
       if (check_triggers)
 	{
-	  db_status = synccoll_check_triggers (db_coll, f_stmt, &need_manual_sync);
-	  if (db_status != NO_ERROR)
+	  // *INDENT-OFF*
+	  sprintf (query,
+	  	"SELECT "
+		  "[t].[unique_name] AS [name], "
+		  "[t].[condition] AS [condition] "
+		"FROM "
+		  "[db_trigger] AS [t] "
+		"WHERE "
+		  "LOCATE ('collate %s', [t].[condition]) > 0",
+		db_coll->coll_name);
+	  // *INDENT-ON*
+
+	  db_status = db_compile_and_execute_local (query, &query_result, &query_error);
+
+	  if (db_status < 0)
 	    {
 	      status = EXIT_FAILURE;
 	      goto exit;
+	    }
+	  else if (db_status > 0)
+	    {
+	      DB_VALUE trig_name;
+	      DB_VALUE trig_cond;
+
+	      fprintf (stdout, "----------------------------------------\n");
+	      fprintf (stdout,
+		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB, SYNCCOLLDB_MSG_TRIG_OBS_COLL),
+		       db_coll->coll_name);
+
+
+	      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+		{
+		  if (db_query_get_tuple_value (query_result, 0, &trig_name) != NO_ERROR
+		      || db_query_get_tuple_value (query_result, 1, &trig_cond) != NO_ERROR)
+		    {
+		      status = EXIT_FAILURE;
+		      goto exit;
+		    }
+
+		  assert (DB_VALUE_TYPE (&trig_name) == DB_TYPE_STRING);
+		  assert (DB_VALUE_TYPE (&trig_cond) == DB_TYPE_STRING);
+
+		  fprintf (stdout, "%s | %s\n", db_get_string (&trig_name), db_get_string (&trig_cond));
+
+		  /* output query to fix schema */
+		  snprintf (query, sizeof (query) - 1, "DROP TRIGGER [%s];", db_get_string (&trig_name));
+		  fprintf (f_stmt, "%s\n", query);
+		  need_manual_sync = true;
+		}
+	    }
+
+	  if (query_result != NULL)
+	    {
+	      db_query_end (query_result);
+	      query_result = NULL;
 	    }
 	}
 
       if (check_func_index)
 	{
-	  db_status = synccoll_check_function_indexes (db_coll, f_stmt, &need_manual_sync);
-	  if (db_status != NO_ERROR)
+	  /* Function indexes using collation; do not include partition sub-classes */
+
+	  /* The condition of "[p].[class_of] = [k].[index_of].[class_of]" cannot be used as a join condition
+	   * because a path expression is used. So, INNER JOIN of _db_index and _db_index_key is required. */
+
+	  // *INDENT-OFF*
+	  sprintf (query,
+		"SELECT "
+		  "[k].[index_of].[index_name] AS [index_name], "
+		  "[k].[func] AS [func], "
+		  "[k].[index_of].[class_of].[unique_name] "
+		"FROM "
+		  "[_db_index] AS [i] "
+		  "INNER JOIN [_db_index_key] AS [k] ON [k].[index_of] = [i] "
+		  "LEFT OUTER JOIN [_db_partition] AS [p] "
+		    "ON [p].[class_of] = [i].[class_of] AND [p].[pname] IS NOT NULL "
+		"WHERE "
+		  "LOCATE ('%s', [k].[func]) > 0 " /* Why not 'collate %s'? */
+		  "AND [p].[pname] IS NULL",
+		db_coll->coll_name);
+	  // *INDENT-ON*
+
+	  db_status = db_compile_and_execute_local (query, &query_result, &query_error);
+
+	  if (db_status < 0)
 	    {
 	      status = EXIT_FAILURE;
 	      goto exit;
+	    }
+	  else if (db_status > 0)
+	    {
+	      DB_VALUE index_name;
+	      DB_VALUE func_expr;
+	      DB_VALUE class_name;
+
+	      fprintf (stdout, "----------------------------------------\n");
+	      fprintf (stdout,
+		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB, SYNCCOLLDB_MSG_FI_OBS_COLL),
+		       db_coll->coll_name);
+
+
+	      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+		{
+		  if (db_query_get_tuple_value (query_result, 0, &index_name) != NO_ERROR
+		      || db_query_get_tuple_value (query_result, 1, &func_expr) != NO_ERROR
+		      || db_query_get_tuple_value (query_result, 2, &class_name) != NO_ERROR)
+		    {
+		      status = EXIT_FAILURE;
+		      goto exit;
+		    }
+
+		  assert (DB_VALUE_TYPE (&index_name) == DB_TYPE_STRING);
+		  assert (DB_VALUE_TYPE (&func_expr) == DB_TYPE_STRING);
+		  assert (DB_VALUE_TYPE (&class_name) == DB_TYPE_STRING);
+
+		  fprintf (stdout, "%s | %s | %s\n", db_get_string (&class_name), db_get_string (&index_name),
+			   db_get_string (&func_expr));
+
+		  /* output query to fix schema */
+		  snprintf (query, sizeof (query) - 1, "ALTER TABLE [%s] " "DROP INDEX [%s];",
+			    db_get_string (&class_name), db_get_string (&index_name));
+		  fprintf (f_stmt, "%s\n", query);
+		  need_manual_sync = true;
+		}
+	    }
+
+	  if (query_result != NULL)
+	    {
+	      db_query_end (query_result);
+	      query_result = NULL;
 	    }
 	}
     }
@@ -2986,12 +3477,29 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
   fprintf (stdout, "----------------------------------------\n");
 
 exit:
+  if (vclass_names != NULL)
+    {
+      db_private_free (thread_p, vclass_names);
+      vclass_names = NULL;
+    }
+
+  if (part_tables != NULL)
+    {
+      db_private_free (thread_p, part_tables);
+      part_tables = NULL;
+    }
+
   if (f_stmt != NULL)
     {
       fclose (f_stmt);
       f_stmt = NULL;
     }
 
+  if (query_result != NULL)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
   if (db_collations != NULL)
     {
       db_private_free (thread_p, db_collations);
@@ -3000,1213 +3508,7 @@ exit:
   return status;
 
 #undef FILE_STMT_NAME
-}
-
-static int
-synccoll_check_tables (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * need_manual_sync)
-{
-#define QUERY_BUF_SIZE 1024
-
-  char query[QUERY_BUF_SIZE] = { 0 };
-  DB_QUERY_RESULT *query_result = NULL;
-  DB_QUERY_ERROR query_error;
-  DB_VALUE value;
-  DB_VALUE class_name_val;
-  DB_VALUE owner_name_val;
-  int error = NO_ERROR;
-
-  memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
-
-  db_make_null (&value);
-  db_make_null (&class_name_val);
-  db_make_null (&owner_name_val);
-
-  /* get table names having collation; do not include partition sub-classes */
-
-  // *INDENT-OFF*
-  sprintf (query,
-	"SELECT "
-	  "[c].[class_type] AS [class_type], "
-	  "[c].[is_system_class] AS [is_system_class], "
-	  "[c].[class_name] AS [class_name], "
-	  "LOWER ([c].[owner].[name]) AS [owner_name] "
-	"FROM "
-	  "[_db_class] AS [c] "
-	  "LEFT OUTER JOIN [_db_partition] AS [p] "
-	    "ON [p].[class_of] = [c] AND [p].[pname] IS NOT NULL "
-	"WHERE "
-	  "[c].[collation_id] = %d "
-	  "AND [p].[pname] IS NULL",
-	db_coll->coll_id);
-  // *INDENT-ON*
-
-  error = db_compile_and_execute_local (query, &query_result, &query_error);
-  if (error < 0)
-    {
-      goto exit;
-    }
-
-  error = db_query_first_tuple (query_result);
-  if (error != DB_CURSOR_SUCCESS)
-    {
-      if (error == DB_CURSOR_END)
-	{
-	  error = NO_ERROR;
-	}
-      else
-	{
-	  ASSERT_ERROR ();
-	}
-
-      goto exit;
-    }
-
-  fprintf (stdout, "----------------------------------------\n");
-  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB, SYNCCOLLDB_MSG_CLASS_OBS_COLL),
-	   db_coll->coll_name);
-
-  do
-    {
-      int class_type = SM_CLASS_CT;
-      int is_system_class = 0;
-      const char *class_name = NULL;
-      const char *owner_name = NULL;
-
-      /* class_type */
-      error = db_query_get_tuple_value (query_result, 0, &value);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&value) == DB_TYPE_INTEGER);
-      class_type = db_get_int (&value);
-      db_value_clear (&value);
-
-      if (class_type != SM_CLASS_CT)
-	{
-	  continue;
-	}
-
-      /* is_system_class */
-      error = db_query_get_tuple_value (query_result, 1, &value);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&value) == DB_TYPE_INTEGER);
-      is_system_class = db_get_int (&value);
-      db_value_clear (&value);
-
-      /* class_name */
-      error = db_query_get_tuple_value (query_result, 2, &class_name_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&class_name_val) == DB_TYPE_STRING);
-      class_name = db_get_string (&class_name_val);
-
-      /* owner_name */
-      error = db_query_get_tuple_value (query_result, 3, &owner_name_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&owner_name_val) == DB_TYPE_STRING);
-      owner_name = db_get_string (&owner_name_val);
-
-      if (is_system_class & SM_CLASSFLAG_SYSTEM)
-	{
-	  fprintf (stdout, "%s\n", class_name);
-	  fprintf (f_stmt, "ALTER TABLE [%s] COLLATE utf8_bin;\n", class_name);
-	}
-      else
-	{
-	  fprintf (stdout, "%s.%s\n", owner_name, class_name);
-	  fprintf (f_stmt, "ALTER TABLE [%s].[%s] COLLATE utf8_bin;\n", owner_name, class_name);
-	}
-
-      *need_manual_sync = true;
-
-      db_value_clear (&class_name_val);
-      db_value_clear (&owner_name_val);
-    }
-  while ((error = db_query_next_tuple (query_result)) == DB_CURSOR_SUCCESS);
-
-  if (error == DB_CURSOR_END)
-    {
-      error = NO_ERROR;
-    }
-  else
-    {
-      ASSERT_ERROR ();
-    }
-
-exit:
-  if (query_result != NULL)
-    {
-      db_query_end (query_result);
-      query_result = NULL;
-    }
-
-  return error;
-
-exit_on_error:
-  db_value_clear (&class_name_val);
-  db_value_clear (&owner_name_val);
-
-  if (query_result != NULL)
-    {
-      db_query_end (query_result);
-      query_result = NULL;
-    }
-
-  return error;
-
-#undef QUERY_BUF_SIZE
-}
-
-static int
-synccoll_check_foreign_keys (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * need_manual_sync)
-{
-#define QUERY_BUF_SIZE 1024
-
-  char query[QUERY_BUF_SIZE] = { 0 };
-  DB_QUERY_RESULT *query_result = NULL;
-  DB_QUERY_ERROR query_error;
-  DB_VALUE value;
-  DB_VALUE class_name_val;
-  DB_VALUE owner_name_val;
-  DB_VALUE index_name_val;
-
-  int error = NO_ERROR;
-
-  memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
-
-  db_make_null (&value);
-  db_make_null (&class_name_val);
-  db_make_null (&owner_name_val);
-  db_make_null (&index_name_val);
-
-  /* first drop foreign keys on attributes using collation; do not include partition sub-classes */
-
-  // *INDENT-OFF*
-  sprintf (query,
-	"SELECT "
-	  "[a].[class_of].[is_system_class] AS [is_system_class], "
-	  "[a].[class_of].[class_name] AS [class_name], "
-	  "LOWER ([a].[class_of].[owner].[name]) AS [owner_name], "
-	  "[i].[index_name] AS [index_name] "
-	"FROM "
-	  "[_db_attribute] AS [a] "
-	  "INNER JOIN [_db_domain] AS [d] ON [d].[object_of] = [a] "
-	  "INNER JOIN [_db_index] AS [i] ON [i].[class_of] = [a].[class_of] "
-	  "INNER JOIN [_db_index_key] AS [k] "
-	    "ON [k].[key_attr_name] = [a].[attr_name] AND [k].[index_of] = [i] "
-	  "LEFT OUTER JOIN [_db_partition] AS [p] "
-	    "ON [p].[class_of] = [a].[class_of] AND [p].[pname] IS NOT NULL "
-	"WHERE "
-	  "[d].[collation_id] = %d "
-	  "AND [i].[is_foreign_key] = 1 "
-	  "AND [p].[pname] IS NULL "
-	"GROUP BY "
-	  "[a].[class_of].[class_name], "
-	  "[i].[index_name], "
-	  "[a].[class_of].[owner].[name]",
-	db_coll->coll_id);
-  // *INDENT-ON*
-
-  error = db_compile_and_execute_local (query, &query_result, &query_error);
-  if (error < 0)
-    {
-      goto exit;
-    }
-
-  error = db_query_first_tuple (query_result);
-  if (error != DB_CURSOR_SUCCESS)
-    {
-      if (error == DB_CURSOR_END)
-	{
-	  error = NO_ERROR;
-	}
-      else
-	{
-	  ASSERT_ERROR ();
-	}
-
-      goto exit;
-    }
-
-  fprintf (stdout, "----------------------------------------\n");
-  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB, SYNCCOLLDB_MSG_FK_OBS_COLL),
-	   db_coll->coll_name);
-
-  do
-    {
-      int is_system_class = 0;
-      const char *class_name = NULL;
-      const char *owner_name = NULL;
-      const char *index_name = NULL;
-
-      /* is_system_class */
-      error = db_query_get_tuple_value (query_result, 0, &value);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&value) == DB_TYPE_INTEGER);
-      is_system_class = db_get_int (&value);
-      db_value_clear (&value);
-
-      /* class_name */
-      error = db_query_get_tuple_value (query_result, 1, &class_name_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&class_name_val) == DB_TYPE_STRING);
-      class_name = db_get_string (&class_name_val);
-
-      /* owner_name */
-      error = db_query_get_tuple_value (query_result, 2, &owner_name_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&owner_name_val) == DB_TYPE_STRING);
-      owner_name = db_get_string (&owner_name_val);
-
-      /* index_name */
-      error = db_query_get_tuple_value (query_result, 3, &index_name_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&index_name_val) == DB_TYPE_STRING);
-      index_name = db_get_string (&index_name_val);
-
-      if (is_system_class & SM_CLASSFLAG_SYSTEM)
-	{
-	  fprintf (stdout, "%s | %s\n", class_name, index_name);
-	  fprintf (f_stmt, "ALTER TABLE [%s] DROP FOREIGN KEY [%s];\n", class_name, index_name);
-	}
-      else
-	{
-	  fprintf (stdout, "%s.%s | %s\n", owner_name, class_name, index_name);
-	  fprintf (f_stmt, "ALTER TABLE [%s].[%s] DROP FOREIGN KEY [%s];\n", owner_name, class_name, index_name);
-	}
-
-      *need_manual_sync = true;
-
-      db_value_clear (&class_name_val);
-      db_value_clear (&owner_name_val);
-      db_value_clear (&index_name_val);
-    }
-  while ((error = db_query_next_tuple (query_result)) == DB_CURSOR_SUCCESS);
-
-  if (error == DB_CURSOR_END)
-    {
-      error = NO_ERROR;
-    }
-  else
-    {
-      ASSERT_ERROR ();
-    }
-
-exit:
-  if (query_result != NULL)
-    {
-      db_query_end (query_result);
-      query_result = NULL;
-    }
-
-  return error;
-
-exit_on_error:
-  db_value_clear (&class_name_val);
-  db_value_clear (&owner_name_val);
-  db_value_clear (&index_name_val);
-
-  if (query_result != NULL)
-    {
-      db_query_end (query_result);
-      query_result = NULL;
-    }
-
-  return error;
-
-#undef QUERY_BUF_SIZE
-}
-
-static int
-synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * need_manual_sync)
-{
-#define QUERY_BUF_SIZE 2048
-#define ARRAY_DEFAULT_SIZE 10
-
-  char query[QUERY_BUF_SIZE] = { 0 };
-  DB_QUERY_RESULT *query_result = NULL;
-  DB_QUERY_ERROR query_error;
-  DB_VALUE value;
-  DB_VALUE unique_name_val;
-  DB_VALUE class_name_val;
-  DB_VALUE owner_name_val;
-  DB_VALUE attr_name_val;
-  DB_VALUE attr_data_type_val;
-  dynamic_array *partition_array = NULL;
-  int partition_array_size = 0;
-  int i = 0;
-  int error = NO_ERROR;
-
-  memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
-
-  db_make_null (&value);
-  db_make_null (&unique_name_val);
-  db_make_null (&class_name_val);
-  db_make_null (&owner_name_val);
-  db_make_null (&attr_name_val);
-  db_make_null (&attr_data_type_val);
-
-  partition_array = da_create (ARRAY_DEFAULT_SIZE, DB_MAX_IDENTIFIER_LENGTH);
-  if (partition_array == NULL)
-    {
-      ERROR_SET_ERROR (error, ER_OUT_OF_VIRTUAL_MEMORY);
-      goto exit;
-    }
-
-  /* attributes having collation; do not include partition sub-classes */
-
-  // *INDENT-OFF*
-  sprintf (query,
-	"SELECT "
-	  "[a].[class_of].[class_type] AS [class_type], "
-	  "[a].[class_of].[is_system_class] AS [is_system_class], "
-	  "[a].[class_of].[unique_name] AS [unique_name], "
-	  "[a].[class_of].[class_name] AS [class_name], "
-	  "LOWER ([a].[class_of].[owner].[name]) AS [owner_name], "
-	  "[a].[attr_name] AS [attr_name], "
-	  "CASE [d].[data_type] "
-	    /* VARCHAR */
-	    "WHEN 4 THEN IF ([d].[prec] < 0, 'VARCHAR', CONCAT ('VARCHAR(', [d].[prec], ')')) "
-	    /* CHAR */
-	    "WHEN 25 THEN CONCAT ('CHAR(', [d].[prec], ')') "
-	    /* NCHAR */
-	    "WHEN 26 THEN CONCAT ('NCHAR(', [d].[prec], ')') "
-	    /* NCHAR VARYING */
-	    "WHEN 27 THEN IF ([d].[prec] < 0, 'NCHAR VARYING', CONCAT ('NCHAR VARYING(', [d].[prec], ')')) "
-	    /* ENUM */
-	    "WHEN 35 THEN ("
-		"SELECT "
-		  /* e.g. ENUM ('A','B','C',...,'Z') */
-		  "CONCAT ('ENUM (''', GROUP_CONCAT ([e].[t] SEPARATOR ''','''), ''')') "
-		"FROM "
-		  "TABLE ([d].[enumeration]) AS [e] ([t])"
-	      ") "
-	    "END AS [data_type], "
-	  "CASE "
-	    "WHEN LOCATE ("
-		"[a].[attr_name], "
-		/* 8 is the position after 'SELECT '. There is one empty string after 'SELECT'.
-		 * So the attribute name comes after at least position 8. */
-		"TRIM (SUBSTRING ([p].[pexpr] FROM 8 FOR (POSITION (' FROM ' IN [p].[pexpr]) - 8)))"
-	      ") > 0 THEN 1 "
-	    "ELSE 0 "
-	    "END AS [has_partition] "
-	"FROM "
-	  "[_db_attribute] AS [a] "
-	  "INNER JOIN [_db_domain] AS [d] ON [d].[object_of] = [a] "
-	  "LEFT OUTER JOIN [_db_partition] AS [p] ON [p].[class_of] = [a].[class_of] "
-	"WHERE "
-	  "[d].[collation_id] = %d "
-	  "AND [p].[pname] IS NULL "
-	"ORDER BY "
-	  "[a].[class_of].[unique_name], "
-	  "[a].[attr_name]",
-	db_coll->coll_id);
-  // *INDENT-ON*
-
-  error = db_compile_and_execute_local (query, &query_result, &query_error);
-  if (error < 0)
-    {
-      goto exit;
-    }
-
-  error = db_query_first_tuple (query_result);
-  if (error != DB_CURSOR_SUCCESS)
-    {
-      if (error == DB_CURSOR_END)
-	{
-	  error = NO_ERROR;
-	}
-      else
-	{
-	  ASSERT_ERROR ();
-	}
-
-      goto exit;
-    }
-
-  fprintf (stdout, "----------------------------------------\n");
-  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB, SYNCCOLLDB_MSG_ATTR_OBS_COLL),
-	   db_coll->coll_name);
-
-  do
-    {
-      int class_type = SM_CLASS_CT;
-      int is_system_class = 0;
-      const char *unique_name = NULL;
-      const char *class_name = NULL;
-      const char *owner_name = NULL;
-      const char *attr_name = NULL;
-      const char *attr_data_type = NULL;
-      int has_partition = 0;
-
-      /* class_type */
-      error = db_query_get_tuple_value (query_result, 0, &value);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&value) == DB_TYPE_INTEGER);
-      class_type = db_get_int (&value);
-      db_value_clear (&value);
-
-      /* is_system_class */
-      error = db_query_get_tuple_value (query_result, 1, &value);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&value) == DB_TYPE_INTEGER);
-      is_system_class = db_get_int (&value);
-      db_value_clear (&value);
-
-      /* unique_name */
-      error = db_query_get_tuple_value (query_result, 2, &unique_name_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&unique_name_val) == DB_TYPE_STRING);
-      unique_name = db_get_string (&unique_name_val);
-
-      /* class_name */
-      error = db_query_get_tuple_value (query_result, 3, &class_name_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&class_name_val) == DB_TYPE_STRING);
-      class_name = db_get_string (&class_name_val);
-
-      /* owner_name */
-      error = db_query_get_tuple_value (query_result, 4, &owner_name_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&owner_name_val) == DB_TYPE_STRING);
-      owner_name = db_get_string (&owner_name_val);
-
-      /* attr_name */
-      error = db_query_get_tuple_value (query_result, 5, &attr_name_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&attr_name_val) == DB_TYPE_STRING);
-      attr_name = db_get_string (&attr_name_val);
-
-      /* attr_data_type */
-      error = db_query_get_tuple_value (query_result, 6, &attr_data_type_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&attr_data_type_val) == DB_TYPE_STRING);
-      attr_data_type = db_get_string (&attr_data_type_val);
-
-      /* has_partition */
-      error = db_query_get_tuple_value (query_result, 7, &value);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&value) == DB_TYPE_INTEGER);
-      has_partition = db_get_int (&value);
-      db_value_clear (&value);
-
-      fprintf (stdout, "%s | %s %s\n", unique_name, attr_name, attr_data_type);
-
-      if (class_type == SM_CLASS_CT)
-	{
-	  if (has_partition == 1)
-	    {
-	      /* class is partitioned, remove partition; we cannot change the collation of an attribute
-	       * having partitions */
-
-	      error = da_add (partition_array, unique_name);
-	      if (error != NO_ERROR)
-		{
-		  ERROR_SET_ERROR (error, ER_OUT_OF_VIRTUAL_MEMORY);
-		  goto exit_on_error;
-		}
-
-	      if (is_system_class & SM_CLASSFLAG_SYSTEM)
-		{
-		  fprintf (f_stmt, "ALTER TABLE [%s] REMOVE PARTITIONING;\n", class_name);
-		  fprintf (f_stmt, "ALTER TABLE [%s] MODIFY [%s] %s COLLATE utf8_bin;\n", class_name, attr_name,
-			   attr_data_type);
-		}
-	      else
-		{
-		  fprintf (f_stmt, "ALTER TABLE [%s].[%s] REMOVE PARTITIONING;\n", owner_name, class_name);
-		  fprintf (f_stmt, "ALTER TABLE [%s].[%s] MODIFY [%s] %s COLLATE utf8_bin;\n", owner_name, class_name,
-			   attr_name, attr_data_type);
-		}
-	    }
-	  else
-	    {
-	      if (is_system_class & SM_CLASSFLAG_SYSTEM)
-		{
-		  fprintf (f_stmt, "ALTER TABLE [%s] MODIFY [%s] %s COLLATE utf8_bin;\n", class_name, attr_name,
-			   attr_data_type);
-		}
-	      else
-		{
-		  fprintf (f_stmt, "ALTER TABLE [%s].[%s] MODIFY [%s] %s COLLATE utf8_bin;\n", owner_name, class_name,
-			   attr_name, attr_data_type);
-		}
-	    }
-	}
-      else
-	{
-	  assert (class_type == SM_VCLASS_CT);
-
-	  if (is_system_class & SM_CLASSFLAG_SYSTEM)
-	    {
-	      fprintf (f_stmt, "DROP VIEW [%s];\n", class_name);
-	    }
-	  else
-	    {
-	      fprintf (f_stmt, "DROP VIEW [%s].[%s];\n", owner_name, class_name);
-	    }
-	}
-
-      *need_manual_sync = true;
-
-      db_value_clear (&unique_name_val);
-      db_value_clear (&owner_name_val);
-      db_value_clear (&class_name_val);
-      db_value_clear (&attr_name_val);
-      db_value_clear (&attr_data_type_val);
-    }
-  while ((error = db_query_next_tuple (query_result)) == DB_CURSOR_SUCCESS);
-
-  if (error == DB_CURSOR_END)
-    {
-      error = NO_ERROR;
-    }
-  else
-    {
-      ASSERT_ERROR ();
-    }
-
-  partition_array_size = da_size (partition_array);
-  if (partition_array_size > 0)
-    {
-      fprintf (stdout, "----------------------------------------\n");
-      fprintf (stdout,
-	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB, SYNCCOLLDB_MSG_PARTITION_OBS_COLL),
-	       db_coll->coll_name);
-
-      for (i = 0; i < partition_array_size; i++)
-	{
-	  char partition_name[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
-
-	  error = da_get (partition_array, i, partition_name);
-	  if (error != NO_ERROR)
-	    {
-	      ERROR_SET_ERROR (error, ER_GENERIC_ERROR);
-	      goto exit_on_error;
-	    }
-
-	  printf ("%s\n", partition_name);
-	}
-    }
-
-exit:
-  da_destroy (partition_array);
-
-  if (query_result != NULL)
-    {
-      db_query_end (query_result);
-      query_result = NULL;
-    }
-
-  return error;
-
-exit_on_error:
-  db_value_clear (&unique_name_val);
-  db_value_clear (&class_name_val);
-  db_value_clear (&owner_name_val);
-  db_value_clear (&attr_name_val);
-  db_value_clear (&attr_data_type_val);
-
-  da_destroy (partition_array);
-
-  if (query_result != NULL)
-    {
-      db_query_end (query_result);
-      query_result = NULL;
-    }
-
-  return error;
-
-#undef QUERY_BUF_SIZE
-#undef ARRAY_DEFAULT_SIZE
-}
-
-static int
-synccoll_check_views (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * need_manual_sync)
-{
-#define QUERY_BUF_SIZE 1024
-
-  char query[QUERY_BUF_SIZE] = { 0 };
-  DB_QUERY_RESULT *query_result = NULL;
-  DB_QUERY_ERROR query_error;
-  DB_VALUE value;
-  DB_VALUE view_name_val;
-  DB_VALUE owner_name_val;
-  DB_VALUE query_spec_val;
-  int error = NO_ERROR;
-
-  memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
-
-  db_make_null (&value);
-  db_make_null (&view_name_val);
-  db_make_null (&owner_name_val);
-  db_make_null (&query_spec_val);
-
-  // *INDENT-OFF*
-  sprintf (query,
-	"SELECT "
-	  "[q].[class_of].[is_system_class] AS [is_system_class], "
-	  "[q].[class_of].[class_name] AS [view_name], "
-	  "LOWER ([q].[class_of].[owner].[name]) AS [owner_name], "
-	  "[q].[spec] AS [spec], "
-	  "CASE WHEN [a].[class_of] IS NULL THEN 1 ELSE 0 END AS [need_check] "
-	"FROM "
-	  "[_db_query_spec] AS [q] "
-	  "LEFT OUTER JOIN ("
-	      "SELECT "
-		"[a].[class_of] AS [class_of] "
-	      "FROM "
-		"[_db_attribute] AS [a] "
-		"INNER JOIN [_db_domain] AS [d] ON [d].[object_of] = [a] "
-	      "WHERE "
-		"[d].[collation_id] = %d "
-	      "GROUP BY "
-		"[a].[class_of] "
-	    ") AS [a] ON [a].[class_of] = [q].[class_of]"
-	"WHERE "
-	  "LOCATE ('collate %s', [q].[spec]) > 0 "
-	  /* This is to distinguish between "collate utf8_de_exp" and "collate utf8_de_exp_ai_ci".
-	   * This is just one example, other collations could be the target. */
-	  "AND LOCATE ('collate %s', [q].[spec]) != LOCATE ('collate %s_', [q].[spec])",
-	db_coll->coll_id,
-	db_coll->coll_name,
-	db_coll->coll_name,
-	db_coll->coll_name);
-  // *INDENT-ON*
-
-  error = db_compile_and_execute_local (query, &query_result, &query_error);
-  if (error < 0)
-    {
-      goto exit;
-    }
-
-  error = db_query_first_tuple (query_result);
-  if (error != DB_CURSOR_SUCCESS)
-    {
-      if (error == DB_CURSOR_END)
-	{
-	  error = NO_ERROR;
-	}
-      else
-	{
-	  ASSERT_ERROR ();
-	}
-
-      goto exit;
-    }
-
-  fprintf (stdout, "----------------------------------------\n");
-  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB, SYNCCOLLDB_MSG_VIEW_OBS_COLL),
-	   db_coll->coll_name);
-
-  do
-    {
-      int is_system_class = 0;
-      const char *view_name = NULL;
-      const char *owner_name = NULL;
-      const char *query_spec = NULL;
-      int need_check = 0;
-
-      /* is_system_class */
-      error = db_query_get_tuple_value (query_result, 0, &value);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&value) == DB_TYPE_INTEGER);
-      is_system_class = db_get_int (&value);
-      db_value_clear (&value);
-
-      /* view_name */
-      error = db_query_get_tuple_value (query_result, 1, &view_name_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&view_name_val) == DB_TYPE_STRING);
-      view_name = db_get_string (&view_name_val);
-
-      /* owner_name */
-      error = db_query_get_tuple_value (query_result, 2, &owner_name_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&owner_name_val) == DB_TYPE_STRING);
-      owner_name = db_get_string (&owner_name_val);
-
-      /* query_spec */
-      error = db_query_get_tuple_value (query_result, 3, &query_spec_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&query_spec_val) == DB_TYPE_STRING);
-      query_spec = db_get_string (&query_spec_val);
-
-      /* need_check */
-      error = db_query_get_tuple_value (query_result, 4, &value);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&value) == DB_TYPE_INTEGER);
-      need_check = db_get_int (&value);
-      db_value_clear (&value);
-
-      if (is_system_class & SM_CLASSFLAG_SYSTEM)
-	{
-	  fprintf (stdout, "%s | %s\n", view_name, query_spec);
-
-	  if (need_check == 1)
-	    {
-	      fprintf (f_stmt, "DROP VIEW [%s];\n", view_name);
-	    }
-	}
-      else
-	{
-	  fprintf (stdout, "%s.%s | %s\n", owner_name, view_name, query_spec);
-
-	  if (need_check == 1)
-	    {
-	      fprintf (f_stmt, "DROP VIEW [%s].[%s];\n", owner_name, view_name);
-	    }
-	}
-
-      *need_manual_sync = true;
-
-      db_value_clear (&view_name_val);
-      db_value_clear (&owner_name_val);
-      db_value_clear (&query_spec_val);
-    }
-  while ((error = db_query_next_tuple (query_result)) == DB_CURSOR_SUCCESS);
-
-  if (error == DB_CURSOR_END)
-    {
-      error = NO_ERROR;
-    }
-  else
-    {
-      ASSERT_ERROR ();
-    }
-
-exit:
-  if (query_result != NULL)
-    {
-      db_query_end (query_result);
-      query_result = NULL;
-    }
-
-  return error;
-
-exit_on_error:
-  db_value_clear (&view_name_val);
-  db_value_clear (&owner_name_val);
-  db_value_clear (&query_spec_val);
-
-  if (query_result != NULL)
-    {
-      db_query_end (query_result);
-      query_result = NULL;
-    }
-
-  return error;
-
-#undef QUERY_BUF_SIZE
-}
-
-static int
-synccoll_check_triggers (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * need_manual_sync)
-{
-#define QUERY_BUF_SIZE 1024
-
-  char query[QUERY_BUF_SIZE] = { 0 };
-  DB_QUERY_RESULT *query_result = NULL;
-  DB_QUERY_ERROR query_error;
-  DB_VALUE trigger_name_val;
-  DB_VALUE owner_name_val;
-  DB_VALUE trigger_cond_val;
-
-  int error = NO_ERROR;
-
-  memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
-
-  db_make_null (&trigger_name_val);
-  db_make_null (&owner_name_val);
-  db_make_null (&trigger_cond_val);
-
-  // *INDENT-OFF*
-  sprintf (query,
-  	"SELECT "
-	  "[t].[name] AS [trigger_name], "
-	  "LOWER ([t].[owner].[name]) AS [owner_name], "
-	  "[t].[condition] AS [condition] "
-	"FROM "
-	  "[db_trigger] AS [t] "
-	"WHERE "
-	  "LOCATE ('collate %s', [t].[condition]) > 0",
-	db_coll->coll_name);
-  // *INDENT-ON*
-
-  error = db_compile_and_execute_local (query, &query_result, &query_error);
-  if (error < 0)
-    {
-      goto exit;
-    }
-
-  error = db_query_first_tuple (query_result);
-  if (error != DB_CURSOR_SUCCESS)
-    {
-      if (error == DB_CURSOR_END)
-	{
-	  error = NO_ERROR;
-	}
-      else
-	{
-	  ASSERT_ERROR ();
-	}
-
-      goto exit;
-    }
-
-  fprintf (stdout, "----------------------------------------\n");
-  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB, SYNCCOLLDB_MSG_TRIG_OBS_COLL),
-	   db_coll->coll_name);
-
-  do
-    {
-      int is_system_class = 0;
-      const char *trigger_name = NULL;
-      const char *owner_name = NULL;
-      const char *trigger_cond = NULL;
-
-      /* trigger_name */
-      error = db_query_get_tuple_value (query_result, 0, &trigger_name_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&trigger_name_val) == DB_TYPE_STRING);
-      trigger_name = db_get_string (&trigger_name_val);
-
-      /* owner_name */
-      error = db_query_get_tuple_value (query_result, 1, &owner_name_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&owner_name_val) == DB_TYPE_STRING);
-      owner_name = db_get_string (&owner_name_val);
-      assert (owner_name != NULL);
-
-      /* trigger_cond */
-      error = db_query_get_tuple_value (query_result, 2, &trigger_cond_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&trigger_cond_val) == DB_TYPE_STRING);
-      trigger_cond = db_get_string (&trigger_cond_val);
-
-      fprintf (stdout, "%s.%s | %s\n", owner_name, trigger_name, trigger_cond);
-      fprintf (f_stmt, "DROP TRIGGER [%s].[%s];\n", owner_name, trigger_name);
-
-      *need_manual_sync = true;
-
-      db_value_clear (&trigger_name_val);
-      db_value_clear (&owner_name_val);
-      db_value_clear (&trigger_cond_val);
-    }
-  while ((error = db_query_next_tuple (query_result)) == DB_CURSOR_SUCCESS);
-
-  if (error == DB_CURSOR_END)
-    {
-      error = NO_ERROR;
-    }
-  else
-    {
-      ASSERT_ERROR ();
-    }
-
-exit:
-  if (query_result != NULL)
-    {
-      db_query_end (query_result);
-      query_result = NULL;
-    }
-
-  return error;
-
-exit_on_error:
-  db_value_clear (&trigger_name_val);
-  db_value_clear (&owner_name_val);
-  db_value_clear (&trigger_cond_val);
-
-  if (query_result != NULL)
-    {
-      db_query_end (query_result);
-      query_result = NULL;
-    }
-
-  return error;
-
-#undef QUERY_BUF_SIZE
-}
-
-static int
-synccoll_check_function_indexes (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * need_manual_sync)
-{
-#define QUERY_BUF_SIZE 1024
-
-  char query[QUERY_BUF_SIZE] = { 0 };
-  DB_QUERY_RESULT *query_result = NULL;
-  DB_QUERY_ERROR query_error;
-  DB_VALUE value;
-  DB_VALUE class_name_val;
-  DB_VALUE owner_name_val;
-  DB_VALUE index_name_val;
-  DB_VALUE index_func_expr_val;
-  int error = NO_ERROR;
-
-  memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
-
-  db_make_null (&value);
-  db_make_null (&class_name_val);
-  db_make_null (&owner_name_val);
-  db_make_null (&index_name_val);
-  db_make_null (&index_func_expr_val);
-
-  /* Function indexes using collation; do not include partition sub-classes */
-
-  /* The condition of "[p].[class_of] = [k].[index_of].[class_of]" cannot be used as a join condition
-   * because a path expression is used. So, INNER JOIN of _db_index and _db_index_key is required. */
-
-  // *INDENT-OFF*
-  sprintf (query,
-	"SELECT "
-	  "[k].[index_of].[class_of].[is_system_class] AS [is_system_class], "
-	  "[k].[index_of].[class_of].[class_name] AS [class_name], "
-	  "LOWER ([k].[index_of].[class_of].[owner].[name]) AS [owner_name], "
-	  "[k].[index_of].[index_name] AS [index_name], "
-	  "[k].[func] AS [func] "
-	"FROM "
-	  "[_db_index] AS [i] "
-	  "INNER JOIN [_db_index_key] AS [k] ON [k].[index_of] = [i] "
-	  "LEFT OUTER JOIN [_db_partition] AS [p] "
-	    "ON [p].[class_of] = [i].[class_of] AND [p].[pname] IS NOT NULL "
-	"WHERE "
-	  "LOCATE ('%s', [k].[func]) > 0 " /* Why not 'collate %s'? */
-	  "AND [p].[pname] IS NULL",
-	db_coll->coll_name);
-  // *INDENT-ON*
-
-  error = db_compile_and_execute_local (query, &query_result, &query_error);
-  if (error < 0)
-    {
-      goto exit;
-    }
-
-  error = db_query_first_tuple (query_result);
-  if (error != DB_CURSOR_SUCCESS)
-    {
-      if (error == DB_CURSOR_END)
-	{
-	  error = NO_ERROR;
-	}
-      else
-	{
-	  ASSERT_ERROR ();
-	}
-
-      goto exit;
-    }
-
-  fprintf (stdout, "----------------------------------------\n");
-  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB, SYNCCOLLDB_MSG_FI_OBS_COLL),
-	   db_coll->coll_name);
-
-  do
-    {
-      int is_system_class = 0;
-      const char *class_name = NULL;
-      const char *owner_name = NULL;
-      const char *index_name = NULL;
-      const char *index_func_expr = NULL;
-
-      /* is_system_class */
-      error = db_query_get_tuple_value (query_result, 0, &value);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&value) == DB_TYPE_INTEGER);
-      is_system_class = db_get_int (&value);
-      db_value_clear (&value);
-
-      /* class_name */
-      error = db_query_get_tuple_value (query_result, 1, &class_name_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&class_name_val) == DB_TYPE_STRING);
-      class_name = db_get_string (&class_name_val);
-
-      /* owner_name */
-      error = db_query_get_tuple_value (query_result, 2, &owner_name_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&owner_name_val) == DB_TYPE_STRING);
-      owner_name = db_get_string (&owner_name_val);
-
-      /* index_name */
-      error = db_query_get_tuple_value (query_result, 3, &index_name_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&index_name_val) == DB_TYPE_STRING);
-      index_name = db_get_string (&index_name_val);
-
-      /* index_func_expr */
-      error = db_query_get_tuple_value (query_result, 4, &index_func_expr_val);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      assert (DB_VALUE_TYPE (&index_func_expr_val) == DB_TYPE_STRING);
-      index_func_expr = db_get_string (&index_func_expr_val);
-
-      if (is_system_class & SM_CLASSFLAG_SYSTEM)
-	{
-	  fprintf (stdout, "%s | %s | %s\n", class_name, index_name, index_func_expr);
-	  fprintf (f_stmt, "ALTER TABLE [%s] DROP INDEX [%s];\n", class_name, index_name);
-	}
-      else
-	{
-	  fprintf (stdout, "%s.%s | %s | %s\n", owner_name, class_name, index_name, index_func_expr);
-	  fprintf (f_stmt, "ALTER TABLE [%s].[%s] DROP INDEX [%s];\n", owner_name, class_name, index_name);
-	}
-
-      *need_manual_sync = true;
-
-      db_value_clear (&class_name_val);
-      db_value_clear (&owner_name_val);
-      db_value_clear (&index_name_val);
-      db_value_clear (&index_func_expr_val);
-    }
-  while ((error = db_query_next_tuple (query_result)) == DB_CURSOR_SUCCESS);
-
-  if (error == DB_CURSOR_END)
-    {
-      error = NO_ERROR;
-    }
-  else
-    {
-      ASSERT_ERROR ();
-    }
-
-exit:
-  if (query_result != NULL)
-    {
-      db_query_end (query_result);
-      query_result = NULL;
-    }
-
-  return error;
-
-exit_on_error:
-  db_value_clear (&class_name_val);
-  db_value_clear (&owner_name_val);
-  db_value_clear (&index_name_val);
-  db_value_clear (&index_func_expr_val);
-
-  if (query_result != NULL)
-    {
-      db_query_end (query_result);
-      query_result = NULL;
-    }
-
-  return error;
-
-#undef QUERY_BUF_SIZE
+#undef QUERY_SIZE
 }
 
 /*
