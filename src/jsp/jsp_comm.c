@@ -228,7 +228,7 @@ jsp_get_socket_file_path (const char *db_name)
 
   if (need_init)
     {
-      const size_t DIR_PATH_MAX = 128;	/* Guaranteed not to exceed 108 characters, see envvar_check_environment() */
+      const size_t DIR_PATH_MAX = 1024;	/* Guaranteed not to exceed 108 characters, see envvar_check_environment() */
       char dir_path[DIR_PATH_MAX] = { 0 };
       const char *cubrid_tmp = envvar_get ("TMP");
       if (cubrid_tmp == NULL || cubrid_tmp[0] == '\0')
