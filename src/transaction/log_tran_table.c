@@ -143,6 +143,8 @@ static void logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_IN
 static int logtb_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_authorization);
 static void logtb_find_thread_entry_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, int tran_index,
 					     bool except_me, REFPTR (THREAD_ENTRY, found_ptr));
+static void logtb_complete_mvcc_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed,
+					  bool check_null_last_mvcc_lsa);
 
 /*
  * logtb_realloc_topops_stack - realloc stack of top system operations
@@ -4117,7 +4119,8 @@ logtb_append_assigned_mvcc_if_needed_and_complete_mvcc (THREAD_ENTRY * thread_p,
       assert (curr_mvcc_info->last_mvcc_lsa.is_null ());
     }
 
-  logtb_complete_mvcc (thread_p, tdes, committed);
+  constexpr bool check_null_last_mvcc_lsa = false;
+  logtb_complete_mvcc_internal (thread_p, tdes, committed, check_null_last_mvcc_lsa);
 }
 
 /*
@@ -4131,6 +4134,13 @@ logtb_append_assigned_mvcc_if_needed_and_complete_mvcc (THREAD_ENTRY * thread_p,
  */
 void
 logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
+{
+  constexpr bool check_null_last_mvcc_lsa = true;
+  logtb_complete_mvcc_internal (thread_p, tdes, committed, check_null_last_mvcc_lsa);
+}
+
+static void
+logtb_complete_mvcc_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed, bool check_null_last_mvcc_lsa)
 {
   MVCC_INFO *curr_mvcc_info = NULL;
   mvcctable *mvcc_table = &log_Gl.mvcc_table;
@@ -4155,13 +4165,14 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
+  assert (!check_null_last_mvcc_lsa || curr_mvcc_info->last_mvcc_lsa.is_null ());
+
   if (MVCCID_IS_VALID (mvccid))
     {
       mvcc_table->complete_mvcc (tran_index, mvccid, committed);
     }
   else
     {
-
       if (committed && logtb_tran_update_all_global_unique_stats (thread_p) != NO_ERROR)
 	{
 	  assert (false);
