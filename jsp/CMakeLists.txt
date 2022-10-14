@@ -53,6 +53,12 @@ add_custom_command(TARGET jsp_build
   COMMENT "Build Java SP Server with Ant ..."
 )
 
+add_custom_target(jsp_unittest)
+add_custom_command(TARGET jsp_unittest
+  COMMAND ${ANT} test-junit -buildfile ${CMAKE_SOURCE_DIR}/jsp/build.xml -Dbasedir=. -Dversion=${BUILD_NUMBER} -Dsrc.dir=${JSP_DIR} -Divy.install.dir="${IVY_DIR}"
+  COMMENT "Unit Test Java SP Server with JUnit ..."
+)
+
 install(FILES
   ${CMAKE_CURRENT_BINARY_DIR}/jspserver.jar
   ${JSP_DIR}/logging.properties
