@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE project>
 
-<project name="Java Stored Procedure Server" default="dist" xmlns:ivy="antlib:org.apache.ivy.ant">
+<project name="Java Stored Procedure Server" default="dist" xmlns:ivy="antlib:org.apache.ivy.ant" >
     <!--
     ================
     Build properties
@@ -10,11 +10,7 @@
     <property name="src.dir" value="src/jsp"/>
     <property name="build.dir" value="bin"/>
     <property name="classes.dir" location="${build.dir}/classes"/>
-
-    <property name="test.src.path" value="com/cubrid/jsp/test"/>
     <property name="test.classes.dir" location="${build.dir}/test-classes"/>
-    <property name="test.reports.dir" location="${build.dir}/test-reports"/>
-
     <property name="ivy.reports.dir"  location="${build.dir}/ivy-reports"/>
 
     <property name="external.dir" value="external"/>
@@ -56,15 +52,12 @@
         <mkdir dir="${build.dir}"/>
         <mkdir dir="${classes.dir}"/>
         <mkdir dir="${test.classes.dir}"/>
-        <mkdir dir="${test.reports.dir}"/>
         <mkdir dir="${ivy.reports.dir}"/>
     </target>
 
     <target name="compile" depends="init">
-        <ivy:retrieve pattern="${dist.lib}/[artifact]-[revision].[ext]" conf="runtime"/>
-        <javac srcdir="${src.dir}" destdir="${classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="runtime.path">
+        <javac srcdir="${src.dir}" destdir="${classes.dir}" source="1.6" target="1.6" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="runtime.path">
             <include name="**/*.java"/>
-            <exclude name="${test.src.path}/*.java"/>
         </javac>
     </target>
 
@@ -72,7 +65,6 @@
         <delete failonerror="false" includeEmptyDirs="true">
             <fileset dir="${external.dir}"/>
             <fileset dir="${ivy.reports.dir}"/>
-            <fileset dir="${test.reports.dir}"/>
             <fileset dir="${test.classes.dir}"/>
             <fileset dir="${classes.dir}"/>
             <fileset dir="${build.dir}"/>
@@ -80,34 +72,9 @@
         </delete>
     </target>
 
-    <target name="test-junit" depends="init">
-        <ivy:retrieve pattern="${dist.lib}/[artifact]-[revision].[ext]" conf="test"/>
-        <javac srcdir="${src.dir}" destdir="${test.classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" classpathref="test.path">
-            <include name="${test.src.path}/*.java"/>
-        </javac>
-
-        <junit printsummary="yes" haltonfailure="no">
-            <classpath refid="runtime.path" />
-            <classpath refid="test.path" />
-            <classpath path="${test.classes.dir}" />
-            <classpath path="${classes.dir}" />
-            <formatter type="xml"/>
-            <batchtest todir="${test.reports.dir}">
-                <fileset dir="${src.dir}">
-                    <include name="${test.src.path}/*.java"/>
-                </fileset>
-            </batchtest>
-        </junit>
-
-        <mkdir dir="${test.reports.dir}/html"/>
-        <junitreport todir="${test.reports.dir}/html">
-            <fileset dir="${test.reports.dir}">
-                <include name="TEST-*.xml"/>
-            </fileset>
-        </junitreport>
-    </target>
-
     <target name="dist" depends="compile">
+        <ivy:retrieve pattern="${dist.lib}/[artifact]-[revision].[ext]" conf="runtime"/>
+        
         <manifestclasspath property="jar.classpath" jarfile="${dist.jar}">
             <classpath>
                 <fileset dir="${dist.lib}" includes="*.jar"/>
