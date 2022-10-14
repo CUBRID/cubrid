@@ -684,7 +684,7 @@ bool
 check_conf_file_consistency (char *conf_file)
 {
   struct stat sbuf;
-  int ret_val = 1;
+  bool ret_val = true;
   FILE *fp;
   char latest_mtime[MTIME_DIGITS + 1];
   ssize_t line_len;
