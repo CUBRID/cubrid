@@ -2932,13 +2932,7 @@ cgw_uint32_to_uni16 (uint32_t i, uint16_t * u)
       *u = (uint16_t) (i & 0xffff);
       return 1;
     }
-  else if (i < 0x10ffff)
-    {
-      i -= 0x10000;
-      *u++ = 0xd800 | (i >> 10);
-      *u = 0xdc00 | (i & 0x3ff);
-      return 2;
-    }
+
   return 0;
 }
 
