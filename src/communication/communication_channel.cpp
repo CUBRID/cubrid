@@ -164,7 +164,6 @@ namespace cubcomm
 	return INTERNAL_CSS_ERROR;
       }
 
-    m_type = CHANNEL_TYPE::INITIATOR;
     m_socket = css_tcp_client_open (hostname, port);
 
     er_log_chn_debug ("[%s] Connect to %s:%d socket = %d.\n", get_channel_id ().c_str (), hostname, port, m_socket);
@@ -174,6 +173,7 @@ namespace cubcomm
 	return REQUEST_REFUSED;
       }
 
+    m_type = CHANNEL_TYPE::INITIATOR;
     m_hostname = hostname;
     m_port = port;
 
