@@ -60,7 +60,7 @@
         do {                    \
           if (PTR) {            \
             free(PTR);          \
-            PTR = 0;    \
+            PTR = 0;            \
           }                     \
         } while (0)
 
@@ -103,7 +103,6 @@ static struct hostent *hostent_alloc (char *ipaddr, char *hostname);
 static bool ip_format_check (char *ip_addr);
 static int load_hosts_file ();
 static struct hostent *host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_type);
-bool check_conf_file_consistency (char *conf_file);
 
 /*
  * hostent_alloc () - Allocate memory hostent structure.
@@ -258,11 +257,6 @@ load_hosts_file ()
   memset (file_line, 0, LINE_BUF_SIZE + 1);
 
   hosts_conf_dir = envvar_confdir_file (host_conf_file_full_path, PATH_MAX, USER_HOSTS_FILE);
-
-  if (check_conf_file_consistency (host_conf_file_full_path) == 0)
-    {
-      return LOAD_FAIL;
-    }
 
   fp = fopen (hosts_conf_dir, "r");
   if (fp == NULL)
@@ -678,71 +672,4 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
 return_phase:
 
   return ret;
-}
-
-bool
-check_conf_file_consistency (char *conf_file)
-{
-  struct stat sbuf;
-  bool ret_val = true;
-  FILE *fp;
-  char latest_mtime[MTIME_DIGITS + 1];
-  ssize_t line_len;
-  char dir_name[7] = "uhosts";
-  char file_name[9] = "date.txt";
-  char date_dir_path[PATH_MAX];
-  char date_file_path[PATH_MAX];
-
-  envvar_vardir_file (date_dir_path, PATH_MAX, dir_name);
-
-  if (access (date_dir_path, F_OK) < 0)
-    {
-      /* create directory if not exist */
-      if (mkdir (date_dir_path, 0775) < 0 && errno == ENOENT)
-	{
-	  char pdir[PATH_MAX];
-
-	  if (cub_dirname_r (date_dir_path, pdir, PATH_MAX) > 0 && access (pdir, F_OK) < 0)
-	    {
-	      mkdir (pdir, 0775);
-	    }
-	}
-    }
-
-  if (access (date_dir_path, F_OK) < 0)
-    {
-      if (mkdir (date_dir_path, 0775) < 0)
-	{
-	  ret_val = false;
-	  goto return_phase;
-	}
-    }
-
-  sprintf (date_file_path, "%s/%s", date_dir_path, file_name);
-  fp = fopen (date_file_path, "a+");
-  if (fp == NULL)
-    {
-      ret_val = false;
-      goto return_phase;
-    }
-
-  if (stat (conf_file, &sbuf) >= 0)
-    {
-      fseek (fp, -(MTIME_DIGITS + 1), SEEK_END);
-      line_len = read (fileno (fp), latest_mtime, MTIME_DIGITS + 1);
-      latest_mtime[line_len - 1] = '\0';
-      if ((atoi (latest_mtime) != sbuf.st_mtime) || (line_len == 0))
-	{
-	  fprintf (fp, "%d\n", sbuf.st_mtime);
-	  if (line_len != 0)
-	    {
-	      ret_val = false;
-	    }
-	}
-    }
-  fclose (fp);
-
-return_phase:
-
-  return ret_val;
 }
