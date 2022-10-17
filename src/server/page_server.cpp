@@ -52,11 +52,14 @@ page_server::~page_server ()
 }
 
 page_server::connection_handler::connection_handler (cubcomm::channel &chn, transaction_server_type server_type,
-    page_server &ps)
+    page_server &ps, const std::string &underlying_channel_id)
   : m_server_type { server_type }
+  , m_underlying_channel_id { underlying_channel_id }
   , m_ps (ps)
   , m_abnormal_tran_server_disconnect { false }
 {
+  assert (!m_underlying_channel_id.empty ());
+
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 1; // Arbitrarily chosen
 
   m_conn.reset (
@@ -123,10 +126,10 @@ page_server::connection_handler::~connection_handler ()
   m_conn->stop_outgoing_communication_thread ();
 }
 
-std::string
-page_server::connection_handler::get_channel_id ()
+const std::string &
+page_server::connection_handler::get_channel_id () const
 {
-  return m_conn->get_underlying_channel_id ();
+  return m_underlying_channel_id;
 }
 
 void
@@ -192,7 +195,7 @@ page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_
 
   const auto oldest_mvccid = *reinterpret_cast<const MVCCID *const> (a_sp.pull_payload().c_str());
 
-  m_ps.m_pts_mvcc_tracker.update_oldest_active_mvccid (get_channel_id (), oldest_mvccid);
+  m_ps.m_pts_mvcc_tracker.update_oldest_active_mvccid (m_underlying_channel_id, oldest_mvccid);
 }
 
 void
@@ -204,7 +207,7 @@ page_server::connection_handler::receive_disconnect_request (tran_server_conn_t:
 
   if (m_server_type == transaction_server_type::PASSIVE)
     {
-      m_ps.m_pts_mvcc_tracker.delete_oldest_active_mvccid (get_channel_id());
+      m_ps.m_pts_mvcc_tracker.delete_oldest_active_mvccid (m_underlying_channel_id);
     }
 
   m_ps.disconnect_tran_server_async (this);
@@ -240,7 +243,7 @@ page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code
 
 	  remove_prior_sender_sink ();
 
-	  m_ps.m_pts_mvcc_tracker.delete_oldest_active_mvccid (get_channel_id());
+	  m_ps.m_pts_mvcc_tracker.delete_oldest_active_mvccid (m_underlying_channel_id);
 	}
       else
 	{
@@ -462,8 +465,12 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
   assert (is_page_server ());
 
   chn.set_channel_name ("ATS_PS_comm");
+
+  assert (chn.is_connection_alive ());
+  const auto channel_id = chn.get_channel_id ();
+
   er_log_debug (ARG_FILE_LINE, "Active transaction server connected to this page server. Channel id: %s.\n",
-		chn.get_channel_id ().c_str ());
+		channel_id.c_str ());
 
   if (m_active_tran_server_conn != nullptr)
     {
@@ -475,7 +482,7 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
       disconnect_active_tran_server ();
     }
 
-  m_active_tran_server_conn.reset (new connection_handler (chn, transaction_server_type::ACTIVE, *this));
+  m_active_tran_server_conn.reset (new connection_handler (chn, transaction_server_type::ACTIVE, *this, channel_id));
 }
 
 void
@@ -485,12 +492,14 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
 
   chn.set_channel_name ("PTS_PS_comm");
 
+  assert (chn.is_connection_alive ());
   const auto channel_id = chn.get_channel_id ();
 
   er_log_debug (ARG_FILE_LINE, "Passive transaction server connected to this page server. Channel id: %s.\n",
 		channel_id.c_str ());
 
-  m_passive_tran_server_conn.emplace_back (new connection_handler (chn, transaction_server_type::PASSIVE, *this));
+  m_passive_tran_server_conn.emplace_back (new connection_handler (chn, transaction_server_type::PASSIVE, *this,
+      channel_id));
 
   m_pts_mvcc_tracker.init_oldest_active_mvccid (channel_id);
 }
