@@ -2984,9 +2984,6 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
   }
 
   PERF_UTIME_TRACKER_START (&thread_ref, &perf_tracker);
-
-  m_oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
-  vacuum_er_log (VACUUM_ER_LOG_MASTER, "update oldest_visible = %lld", (long long int) m_oldest_visible_mvccid);
  
   /* TODO temporary logging. The global one will be computed taking both into account, and the vacuum runs */ 
   MVCCID global_pts_oldest_visible_mvccid = get_active_tran_server_ptr ()->get_oldest_active_mvccid_from_page_server ();
@@ -2999,6 +2996,9 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 
   er_log_debug (ARG_FILE_LINE, "ats oldest_visible = %llu, pts global_oldest_visible = %llu",
       (long long int) m_oldest_visible_mvccid, global_pts_oldest_visible_mvccid);
+
+  m_oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible (global_pts_oldest_visible_mvccid);
+  vacuum_er_log (VACUUM_ER_LOG_MASTER, "update oldest_visible = %lld", (long long int) m_oldest_visible_mvccid);
 
   if (!vacuum_Data.is_loaded)
     {
