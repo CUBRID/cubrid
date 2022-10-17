@@ -49,11 +49,9 @@ public class StoredProcedureClassLoader extends URLClassLoader {
     private FileTime lastModified = null;
 
     /* For singleton */
-    public synchronized static StoredProcedureClassLoader getInstance() {
+    public static synchronized StoredProcedureClassLoader getInstance() {
         if (instance == null) {
-                if (instance == null) {
-                    instance = new StoredProcedureClassLoader();
-                }
+            instance = new StoredProcedureClassLoader();
         }
 
         return instance;
