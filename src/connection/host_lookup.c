@@ -128,7 +128,7 @@ hostent_alloc (char *ipaddr, char *hostname)
   if (inet_pton (AF_INET, ipaddr, addr_trans_bi_buf) < 1)
     {
       FREE_MEM (hp);
-      return NULL;
+      goto return_phase;
     }
 
   hp->h_name = strdup (hostname);
@@ -138,7 +138,7 @@ hostent_alloc (char *ipaddr, char *hostname)
     {
       FREE_MEM (hp->h_name);
       FREE_MEM (hp);
-      return NULL;
+      goto return_phase;
     }
 
   if ((hp->h_addr_list[0] = (char *) malloc (sizeof (char) * IPv4_ADDR_LEN)) == NULL)
@@ -146,13 +146,16 @@ hostent_alloc (char *ipaddr, char *hostname)
       FREE_MEM (hp->h_addr_list);
       FREE_MEM (hp->h_name);
       FREE_MEM (hp);
-
-      return NULL;
+      goto return_phase;
     }
 
   memcpy (hp->h_addr, addr_trans_bi_buf, IPv4_ADDR_LEN);
 
   return hp;
+
+return_phase:
+
+  return NULL;
 }
 
 /*
@@ -184,7 +187,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 	  if (hosts_conf_file_Load == LOAD_FAIL)
 	    {
 	      pthread_mutex_unlock (&load_hosts_file_lock);
-	      return NULL;
+	      goto return_phase;
 	    }
 	}
       pthread_mutex_unlock (&load_hosts_file_lock);
@@ -198,7 +201,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
     {
       if (inet_ntop (AF_INET, &addr_trans->sin_addr, addr_trans_ch_buf, sizeof (addr_trans_ch_buf)) == NULL)
 	{
-	  return NULL;
+	  goto return_phase;
 	}
 
     }
@@ -219,10 +222,14 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_CANT_LOOKUP_INFO, 1, hostname);
 	  fprintf (stdout, "%s\n", er_msg ());
 	}
-      return NULL;
+      goto return_phase;
     }
 
   return hp;
+
+return_phase:
+
+  return NULL;
 }
 
 /*
@@ -263,7 +270,7 @@ load_hosts_file ()
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, host_conf_file_full_path);
       fprintf (stdout, "%s\n", er_msg ());
-      return LOAD_FAIL;
+      goto load_fail_phase;
     }
 
   while (fgets (file_line, LINE_BUF_SIZE, fp) != NULL)
@@ -295,10 +302,8 @@ load_hosts_file ()
 		  fprintf (stdout, "%s\n", er_msg ());
 
 		  user_host_Map.clear ();
-
 		  fclose (fp);
-
-		  return LOAD_FAIL;
+		  goto load_fail_phase;
 		}
 	      else
 		{
@@ -317,10 +322,8 @@ load_hosts_file ()
 		  fprintf (stdout, "%s\n", er_msg ());
 
 		  user_host_Map.clear ();
-
 		  fclose (fp);
-
-		  return LOAD_FAIL;
+		  goto load_fail_phase;
 		}
 	      else
 		{
@@ -339,8 +342,9 @@ load_hosts_file ()
 	      user_host_Map[ipaddr] = cache_idx;
 	      if ((hostent_Cache[cache_idx] = hostent_alloc (ipaddr, hostname)) == NULL)
 		{
+		  user_host_Map.clear ();
 		  fclose (fp);
-		  return LOAD_FAIL;
+		  goto load_fail_phase;
 		}
 
 	      cache_idx++;
@@ -355,8 +359,9 @@ load_hosts_file ()
 
 	      if (inet_ntop (AF_INET, &addr_trans.s_addr, addr_trans_ch_buf, sizeof (addr_trans_ch_buf)) == NULL)
 		{
+		  user_host_Map.clear ();
 		  fclose (fp);
-		  return LOAD_FAIL;
+		  goto load_fail_phase;
 		}
 
 	      if (strcmp (addr_trans_ch_buf, ipaddr))
@@ -366,11 +371,8 @@ load_hosts_file ()
 		  fprintf (stdout, "%s\n", er_msg ());
 
 		  user_host_Map.clear ();
-
 		  fclose (fp);
-
-		  return LOAD_FAIL;
-
+		  goto load_fail_phase;
 		}
 
 	    }
@@ -382,15 +384,17 @@ load_hosts_file ()
 	  fprintf (stdout, "%s\n", er_msg ());
 
 	  user_host_Map.clear ();
-
 	  fclose (fp);
-
-	  return LOAD_FAIL;
+	  goto load_fail_phase;
 	}
     }
   fclose (fp);
 
   return LOAD_SUCCESS;
+
+load_fail_phase:
+
+  return LOAD_FAIL;
 }
 
 /*
@@ -412,6 +416,7 @@ ip_format_check (char *ip_addr)
   if ((token = strtok_r (ip_addr, delim, &save_ptr_strtok)) == NULL)
     {
       ret = false;
+      goto return_phase;
     }
 
   do
@@ -442,6 +447,10 @@ ip_format_check (char *ip_addr)
     {
       ret = false;
     }
+
+  return ret;
+
+return_phase:
 
   return ret;
 }
