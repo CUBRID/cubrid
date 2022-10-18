@@ -525,6 +525,7 @@ jsp_start_server (const char *db_name, const char *path, int port)
   char *loc_p, *locale;
   char *jvm_opt_sysprm = NULL;
   int debug_port = -1;
+  const bool is_uds_mode = (port == JAVASP_PORT_UDS_MODE);
   {
     if (jvm != NULL)
       {
@@ -533,7 +534,7 @@ jsp_start_server (const char *db_name, const char *path, int port)
 
     envroot = envvar_root ();
 
-    if (prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE_UDS) == true)
+    if (is_uds_mode)
       {
 	uds_path = jsp_get_socket_file_path (db_name);
       }
@@ -712,7 +713,7 @@ jsp_start_server (const char *db_name, const char *path, int port)
     JVM_SetObjectArrayElement (env_p, args, 5, jstr_port);
 
     sp_port = JVM_CallStaticIntMethod (env_p, cls, mid, args);
-    if (JVM_ExceptionOccurred (env_p) || sp_port == -1)
+    if (JVM_ExceptionOccurred (env_p))
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
 		"Error occured while starting Java SP Server by CallStaticIntMethod()");
@@ -728,14 +729,31 @@ error:
 
 /*
  * jsp_server_port
- *   return: if disable jsp function and return -1
- *              enable jsp function and return jsp server port
+ *   return: if jsp is disabled return -2 (JAVASP_PORT_DISABLED)
+ *           else if jsp is UDS mode return -1
+ *           else return a port (TCP mode)
  *
  * Note:
  */
 
 int
 jsp_server_port (void)
+{
+  return sp_port;
+}
+
+/*
+ * jsp_server_port_from_info
+ *   return: if jsp is disabled return -2 (JAVASP_PORT_DISABLED)
+ *           else if jsp is UDS mode return -1
+ *           else return a port (TCP mode)
+ * 
+ *
+ * Note:
+ */
+
+int
+jsp_server_port_from_info (void)
 {
 #if defined (SA_MODE)
   return sp_port;
@@ -745,7 +763,7 @@ jsp_server_port (void)
   JAVASP_SERVER_INFO jsp_info {-1, -1};
 // *INDENT-ON*
   javasp_read_info (boot_db_name (), jsp_info);
-  return jsp_info.port;
+  return sp_port = jsp_info.port;
 #endif
 }
 
