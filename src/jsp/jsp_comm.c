@@ -23,6 +23,8 @@
  * Note:
  */
 
+#include "jsp_comm.h"
+
 #include "config.h"
 
 #include <assert.h>
@@ -43,8 +45,7 @@
 #include <windows.h>
 #endif /* not WINDOWS */
 
-#include "jsp_comm.h"
-
+#include "jsp_file.h"
 #include "connection_support.h"
 #include "porting.h"
 #include "error_manager.h"
@@ -78,12 +79,11 @@ jsp_connect_server (const char *db_name, int server_port)
 #if defined (WINDOWS)
   socket = jsp_connect_server_tcp (server_port);
 #else
-  if (prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE_UDS) == true)
+  if (server_port == JAVASP_PORT_UDS_MODE)
     {
       socket = jsp_connect_server_uds (db_name);
     }
-
-  if (socket == INVALID_SOCKET)
+  else
     {
       socket = jsp_connect_server_tcp (server_port);
     }
