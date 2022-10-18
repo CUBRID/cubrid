@@ -18,6 +18,9 @@
 
 #include "atomic_replication_helper.hpp"
 
+#if !defined (NDEBUG)
+#  include "log_manager.h"
+#endif
 #include "log_recovery.h"
 #include "log_recovery_redo.hpp"
 #include "page_buffer.h"
@@ -250,6 +253,29 @@ namespace cublog
     return min_lsa;
   }
 
+  void
+  atomic_replication_helper::append_control_log (TRANID trid, LOG_RECTYPE rectype, LOG_LSA lsa)
+  {
+    // TODO:
+    // - the single entry point which applies the accumulated log records
+    // - first approach will be dumb: every new control log will just apply and unfix all pages
+    //    between the previous control log and the end of the vector
+    // - this way, at the end, the vector will only contain control log records
+    //    and it will be safe to remove it
+    //
+    // - having the control logs, it will be easy to implement more restrictive approaches afterwards
+
+    const auto sequence_it = m_sequences_map.find (trid);
+    if (sequence_it == m_sequences_map.end ())
+      {
+	assert (false);
+	return;
+      }
+
+    atomic_log_sequence &sequence = sequence_it->second;
+    sequence.append_control_log (rectype, lsa);
+  }
+
   /********************************************************************************
    * atomic_replication_helper::atomic_log_sequence function definitions  *
    ********************************************************************************/
@@ -397,10 +423,11 @@ namespace cublog
 
     for (const atomic_log_entry &log_entry : m_log_vec)
       {
-	written = snprintf (buf_ptr, (size_t)left, "  LSA = %lld|%d  vpid = %d|%d\n  rcvindex = %s\n",
-			    LSA_AS_ARGS (&log_entry.m_record_lsa),
-			    VPID_AS_ARGS (&log_entry.m_vpid),
-			    rv_rcvindex_string (log_entry.m_record_index));
+	written = snprintf (buf_ptr, (size_t)left, "  LSA = %lld|%d  vpid = %d|%d  rcvindex = %s]n"
+			    "    rectype = %s  is_control = %d\n",
+			    LSA_AS_ARGS (&log_entry.m_record_lsa), VPID_AS_ARGS (&log_entry.m_vpid),
+			    rv_rcvindex_string (log_entry.m_record_index), log_to_string (log_entry.m_rectype),
+			    (int)log_entry.is_control ());
 	assert (written > 0);
 	buf_ptr += written;
 	assert (left >= written);
@@ -430,9 +457,12 @@ namespace cublog
 
     for (const auto &log_entry : m_log_vec)
       {
-	log_entry.apply_log_redo (thread_p, m_redo_context);
-	// bookkeeping actually will either unfix the page or just decrease its reference count
-	m_page_ptr_bookkeeping.unfix_page (thread_p, log_entry.m_vpid);
+	if (!log_entry.is_control ())
+	  {
+	    log_entry.apply_log_redo (thread_p, m_redo_context);
+	    // bookkeeping actually will either unfix the page or just decrease its reference count
+	    m_page_ptr_bookkeeping.unfix_page (thread_p, log_entry.m_vpid);
+	  }
       }
 
     // clear the vector of log records; page pts's might be, at this point, dangling pointers as the page ptr
@@ -446,13 +476,20 @@ namespace cublog
     return m_start_lsa;
   }
 
+  void
+  atomic_replication_helper::atomic_log_sequence::append_control_log (LOG_RECTYPE rectype, LOG_LSA lsa)
+  {
+    m_log_vec.emplace_back (lsa, rectype);
+  }
+
   /*********************************************************************************************************
    * atomic_replication_helper::atomic_log_sequence::atomic_log_entry function definitions  *
    *********************************************************************************************************/
 
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::atomic_log_entry (
 	  log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex, PAGE_PTR page_ptr)
-    : m_vpid { vpid }
+    : m_rectype { LOG_LARGER_LOGREC_TYPE }
+    , m_vpid { vpid }
     , m_record_lsa { lsa }
     , m_record_index { rcvindex }
     , m_page_ptr { page_ptr }
@@ -463,8 +500,22 @@ namespace cublog
     assert (m_page_ptr != nullptr);
   }
 
+  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::atomic_log_entry (log_lsa lsa, LOG_RECTYPE rectype)
+    : m_rectype { rectype }
+    , m_vpid VPID_INITIALIZER
+    , m_record_lsa { NULL_LSA }
+    , m_record_index { RV_NOT_DEFINED }
+    , m_page_ptr { nullptr }
+  {
+    assert (m_rectype != LOG_LARGER_LOGREC_TYPE );
+  }
+
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::atomic_log_entry (atomic_log_entry &&that)
-    : atomic_log_entry (that.m_record_lsa, that.m_vpid, that.m_record_index, that.m_page_ptr)
+    : m_rectype { that.m_rectype }
+    , m_vpid { that.m_vpid }
+    , m_record_lsa { that.m_record_lsa }
+    , m_record_index { that.m_record_index }
+    , m_page_ptr { that.m_page_ptr }
   {
   }
 
@@ -508,6 +559,16 @@ namespace cublog
 	assert (false);
 	break;
       }
+  }
+
+  bool
+  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::is_control () const
+  {
+    return (m_rectype == LOG_START_ATOMIC_REPL ||
+	    m_rectype == LOG_END_ATOMIC_REPL ||
+	    m_rectype == LOG_SYSOP_ATOMIC_START ||
+	    m_rectype == LOG_SYSOP_END ||
+	    m_rectype == LOG_SYSOP_START_POSTPONE);
   }
 
   /*********************************************************************************************************

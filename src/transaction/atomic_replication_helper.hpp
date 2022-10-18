@@ -122,6 +122,8 @@ namespace cublog
 
       log_lsa get_the_lowest_start_lsa () const;
 
+      void append_control_log (TRANID trid, LOG_RECTYPE rectype, LOG_LSA lsa);
+
     private: // methods
       void start_sequence_internal (TRANID trid, LOG_LSA start_lsa,
 				    const log_rv_redo_context &redo_context, bool is_sysop);
@@ -166,6 +168,8 @@ namespace cublog
 
 	  log_lsa get_start_lsa () const;
 
+	  void append_control_log (LOG_RECTYPE rectype, LOG_LSA lsa);
+
 	private:
 #if !defined (NDEBUG)
 	  void dump ();
@@ -179,6 +183,7 @@ namespace cublog
 	  {
 	    atomic_log_entry () = delete;
 	    atomic_log_entry (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex, PAGE_PTR page_ptr);
+	    atomic_log_entry (log_lsa lsa, LOG_RECTYPE rectype);
 
 	    atomic_log_entry (const atomic_log_entry &) = delete;
 	    atomic_log_entry (atomic_log_entry &&that);
@@ -190,6 +195,10 @@ namespace cublog
 	    template <typename T>
 	    void apply_log_by_type (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
 				    LOG_RECTYPE rectype) const;
+
+	    bool is_control () const;
+
+	    const LOG_RECTYPE m_rectype;
 
 	    const VPID m_vpid;
 	    const log_lsa m_record_lsa;

@@ -134,12 +134,14 @@ namespace cublog
 	    // nested atomic replication are not allowed
 	    assert (!m_atomic_helper.is_part_of_atomic_replication (header.trid));
 	    m_atomic_helper.add_atomic_replication_sequence (header.trid, m_redo_lsa, m_redo_context);
+	    m_atomic_helper.append_control_log (header.trid, LOG_START_ATOMIC_REPL, m_redo_lsa);
 	    set_lowest_unapplied_lsa ();
 	    break;
 	  case LOG_END_ATOMIC_REPL:
 	    assert (m_atomic_helper.is_part_of_atomic_replication (header.trid));
 	    // non-sysop and sysop atomic replication sequences cannot mix
 	    assert (!m_atomic_helper.can_end_sysop_sequence (header.trid));
+	    m_atomic_helper.append_control_log (header.trid, LOG_END_ATOMIC_REPL, m_redo_lsa);
 	    m_atomic_helper.apply_and_unfix_atomic_replication_sequence (&thread_entry, header.trid);
 	    set_lowest_unapplied_lsa ();
 	    break;
@@ -155,6 +157,7 @@ namespace cublog
 #endif
 	      {
 		m_atomic_helper.start_sysop_sequence (header.trid, m_redo_lsa, m_redo_context);
+		m_atomic_helper.append_control_log (header.trid, LOG_SYSOP_ATOMIC_START, m_redo_lsa);
 		set_lowest_unapplied_lsa ();
 	      }
 	    break;
@@ -314,6 +317,7 @@ namespace cublog
 	  {
 	    // only interprete LOG_SYSOP_START_POSTPONE if already part of an atomic replication sequence
 	    // apply modifications for all log records which are already part of the sequence
+	    m_atomic_helper.append_control_log (rec_header.trid, LOG_SYSOP_START_POSTPONE, m_redo_lsa);
 	    m_atomic_helper.apply_and_unfix_atomic_replication_sequence (&thread_entry, rec_header.trid);
 	  }
 	else
@@ -359,6 +363,7 @@ namespace cublog
 	    && m_atomic_helper.can_end_sysop_sequence (log_header.trid, log_rec.lastparent_lsa))
 	  {
 	    // atomic sequences performed by user transactions (ie: non-vacuum)
+	    m_atomic_helper.append_control_log (log_header.trid, LOG_SYSOP_END, m_redo_lsa);
 	    m_atomic_helper.apply_and_unfix_atomic_replication_sequence (&thread_entry, log_header.trid);
 	    set_lowest_unapplied_lsa ();
 	  }
@@ -374,6 +379,7 @@ namespace cublog
 	    //    where processed as they occured); in this case however, there would not be
 	    //    any atomic sequence to conclude because all should have been concluded up to now
 
+	    m_atomic_helper.append_control_log (log_header.trid, LOG_SYSOP_END, m_redo_lsa);
 	    m_atomic_helper.apply_and_unfix_atomic_replication_sequence (&thread_entry, log_header.trid);
 	    set_lowest_unapplied_lsa ();
 	  }
@@ -385,6 +391,7 @@ namespace cublog
 	    if (!LSA_ISNULL (&log_rec.lastparent_lsa)
 		&& m_atomic_helper.can_end_sysop_sequence (log_header.trid, log_rec.lastparent_lsa))
 	      {
+		m_atomic_helper.append_control_log (log_header.trid, LOG_SYSOP_END, m_redo_lsa);
 		m_atomic_helper.apply_and_unfix_atomic_replication_sequence (&thread_entry, log_header.trid);
 		set_lowest_unapplied_lsa ();
 	      }
