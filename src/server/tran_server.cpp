@@ -369,7 +369,7 @@ tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
 }
 
 int
-tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out)
+tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const
 {
   assert (is_page_server_connected ());
 
