@@ -5328,9 +5328,6 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 	  if (flat == NULL)
 	    {
 	      // ctshim
-#if defined(DBLINK_POC_INSERT_ENABLE_CHECK)
-	      error ! ! !
-#endif
 #if defined(DBLINK_POC_INSERT)
 		if (from_spec->remote_server_name)
 		{

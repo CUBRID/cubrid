@@ -10696,8 +10696,18 @@ pt_mk_spec_drived_dblink_table (PARSER_CONTEXT * parser, PT_NODE * from_tbl)
       return NULL;
     }
 
+
+  if(class_spec_info->entity_name->info.name.resolved)
+  {
+    char tmp[1024];
+    snprintf(tmp, sizeof(tmp), "%s.%s", class_spec_info->entity_name->info.name.resolved, class_spec_info->entity_name->info.name.original);
+    drived_spec->info.dblink_table.remote_table_name = pt_append_string (parser, NULL, tmp);
+  }
+  else
+  {
   drived_spec->info.dblink_table.remote_table_name =
     pt_append_string (parser, NULL, class_spec_info->entity_name->info.name.original);
+  }
 
   assert (class_spec_info->remote_server_name->node_type == PT_NAME);
   drived_spec->info.dblink_table.is_name = true;

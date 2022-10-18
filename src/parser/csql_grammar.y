@@ -4055,8 +4055,7 @@ only_class_name
 	| user_specified_name
 		{ DBG_TRACE_GRAMMAR(only_class_name, | user_specified_name);
                   $$ = $1; }
-// #if 1    // #if defined(DBLINK_POC_INSERT)              
-        | class_name_with_server_name
+        | class_name_with_server_name /*  DBLINK_POC_INSERT */
                 {{ DBG_TRACE_GRAMMAR(only_class_name, | class_name_with_server_name);
 
                         PT_NODE *scs = parser_new_node (this_parser, PT_SPEC);
@@ -4071,8 +4070,7 @@ only_class_name
                     
                         $$ = scs;                       
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-                DBG_PRINT}}                  
-// #endif                
+                DBG_PRINT}}
 
 	;
 
@@ -5006,7 +5004,7 @@ original_table_spec
 					       MSGCAT_SET_PARSER_SEMANTIC,
 					       MSGCAT_SEMANTIC_MERGE_HIERARCHY_NOT_ALLOWED);
 				  }
-#if 1 // ctshim  // #if defined(DBLINK_POC_INSERT)
+                                 /*  DBLINK_POC_INSERT */
  //                             parser_top_select_stmt_node()->node_type != PT_SELECT ?
                                 if(ent->info.spec.remote_server_name != NULL)
                                 {  
@@ -5018,8 +5016,7 @@ original_table_spec
                                    {
                                       PT_ERROR (this_parser, ent, "Oops! Sorry. only SELECT statements are supported yet."); // ctshim
                                    }
-                                }
-#endif                                
+                                }     
 			      }
 
 			    range_var = CONTAINER_AT_0 ($2);
@@ -5391,7 +5388,7 @@ only_all_class_spec
 	: only_class_name opt_partition_spec
 		{{ DBG_TRACE_GRAMMAR(only_all_class_spec, : only_class_name opt_partition_spec );
 
-            // #if defined(DBLINK_POC_INSERT)    
+                        /*  DBLINK_POC_INSERT */   
 			PT_NODE *ocs = NULL; //parser_new_node (this_parser, PT_SPEC);
                         if($1 && $1->node_type == PT_SPEC)
                         {
@@ -6758,7 +6755,7 @@ insert_set_stmt_header
 		{{ DBG_TRACE_GRAMMAR(insert_set_stmt_header, : opt_hint_list opt_into only_class_name SET insert_assignment_list);
 
 			PT_NODE *ins = parser_pop_hint_node ();
-			// #if defined(DBLINK_POC_INSERT)    
+			 /*  DBLINK_POC_INSERT */
 			PT_NODE *ocs = NULL; // parser_new_node (this_parser, PT_SPEC);
 			PT_NODE *nls = pt_node_list (this_parser, PT_IS_VALUE, CONTAINER_AT_1 ($5));
 
@@ -6913,7 +6910,7 @@ insert_name_clause_header
 		{{ DBG_TRACE_GRAMMAR(insert_name_clause_header, : opt_hint_list opt_into only_class_name opt_partition_spec opt_attr_list);
 
 			PT_NODE *ins = parser_pop_hint_node ();
-			// #if defined(DBLINK_POC_INSERT)    
+			 /*  DBLINK_POC_INSERT */    
 			PT_NODE *ocs = NULL; //parser_new_node (this_parser, PT_SPEC);
 
 // ctshim 

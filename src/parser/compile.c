@@ -863,13 +863,9 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
     }
 
   // ctshim
-#if defined(DBLINK_POC_INSERT_ENABLE_CHECK)
-  error ! ! !
-#endif
 #if defined(DBLINK_POC_INSERT)
-//fprintf(stdout, "CTSHIM:: pt_find_lck_classes()\n");
-    if (node->info.spec.entity_name && node->info.spec.remote_server_name)
-    {
+    if (node->info.spec.remote_server_name)
+    {      
       return node;
     }
 #endif

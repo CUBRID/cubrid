@@ -42,9 +42,7 @@
 #include "system_parameter.h"
 
 #define DBLINK_POC_INSERT
-#if defined(DBLINK_POC_INSERT)
-//# define DBLINK_POC_INSERT_ENABLE_CHECK
-#endif
+
 // forward definitions
 struct json_t;
 

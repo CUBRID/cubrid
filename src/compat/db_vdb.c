@@ -581,9 +581,6 @@ db_compile_statement_local (DB_SESSION * session)
   /* forget about any previous parsing errors, if any */
   pt_reset_error (parser);
 
-#if defined(DBLINK_POC_INSERT_ENABLE_CHECK)
-  error ! ! !
-#endif
 #if defined(DBLINK_POC_INSERT)
     // @server
     pt_check_server_extension (parser, statement);

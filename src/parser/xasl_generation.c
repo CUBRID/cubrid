@@ -18472,9 +18472,6 @@ pt_to_insert_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-#if defined(DBLINK_POC_INSERT_ENABLE_CHECK)
-  error ! ! !
-#endif
 #if defined(DBLINK_POC_INSERT)
   int host_var_count = 0;
 

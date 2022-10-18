@@ -399,7 +399,8 @@ static int pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * d
 #define PRINT_DEBUG_MSG(...)  printf(__VA_ARGS__)
 #define PRINT_DEBUG_MSG_2(...)  printf(__VA_ARGS__)
 #endif
-#endif
+
+#endif // #if defined(DBLINK_POC_INSERT)
 /*
  * pt_undef_names_pre () - Set error if name matching spec is found. Used in
  *			   insert to make sure no "correlated" names are used
@@ -2899,14 +2900,10 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       pt_bind_scope (parser, bind_arg);
 
 // ctshim   
-#if defined(DBLINK_POC_INSERT_ENABLE_CHECK)
-      error ! ! !
-#endif
 #if defined(DBLINK_POC_INSERT)
-	if (node->info.insert.spec->info.spec.flat_entity_list == NULL
-	    && node->info.insert.spec->info.spec.remote_server_name)
+	if (/* node->info.insert.spec->info.spec.flat_entity_list == NULL
+	    && */ node->info.insert.spec->info.spec.remote_server_name)
 	{
-	  //fprintf(stdout, "CTSHIM:: pt_bind_names()\n");
 	  goto insert_end;
 	}
 #endif
@@ -4472,8 +4469,7 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	{
 	  /* if a flat list has not been calculated, calculate it. */
 	  // ctshim
-#if defined(DBLINK_POC_INSERT)
-	  //fprintf(stdout, "CTSHIM:: pt_bind_namesflat_spec_pre()\n");
+#if defined(DBLINK_POC_INSERT)	  
 	  if (!node->info.spec.flat_entity_list && PT_SPEC_IS_ENTITY (node) && !node->info.spec.remote_server_name)
 #else
 	  if (!node->info.spec.flat_entity_list && PT_SPEC_IS_ENTITY (node))
@@ -4728,6 +4724,7 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
 }
 
 #if defined(DBLINK_POC_INSERT)
+
 #define DBLINK_ATTR_NAME      (1)
 #define DBLINK_ATTR_TYPE      (2)
 #define DBLINK_ATTR_SCALE     (3)
