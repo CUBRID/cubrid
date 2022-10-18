@@ -13722,7 +13722,29 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	{
 	  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, xasl->proc.update.wait_msecs);
 	}
-      error = qexec_execute_update (thread_p, xasl, false, xasl_state);
+      if (xasl->spec_list && xasl->spec_list->type == TARGET_DBLINK)
+	{
+	  int res;
+	  DBLINK_HOST_VARS host_vars;
+
+	  host_vars.count = xasl->spec_list->s.dblink_node.host_var_count;
+	  host_vars.index = xasl->spec_list->s.dblink_node.host_var_index;
+
+	  res = dblink_execute_query (xasl->spec_list, &xasl_state->vd, &host_vars);
+	  if (res < 0)
+	    {
+	      error = res;
+	    }
+	  else
+	    {
+	      xasl->list_id->tuple_cnt = res;
+	    }
+	}
+      else
+	{
+	  error = qexec_execute_update (thread_p, xasl, false, xasl_state);
+	}
+
       if (old_wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 	{
 	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
@@ -13747,7 +13769,29 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	{
 	  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, xasl->proc.delete_.wait_msecs);
 	}
-      error = qexec_execute_delete (thread_p, xasl, xasl_state);
+      if (xasl->spec_list && xasl->spec_list->type == TARGET_DBLINK)
+	{
+	  int res;
+	  DBLINK_HOST_VARS host_vars;
+
+	  host_vars.count = xasl->spec_list->s.dblink_node.host_var_count;
+	  host_vars.index = xasl->spec_list->s.dblink_node.host_var_index;
+
+	  res = dblink_execute_query (xasl->spec_list, &xasl_state->vd, &host_vars);
+	  if (res < 0)
+	    {
+	      error = res;
+	    }
+	  else
+	    {
+	      xasl->list_id->tuple_cnt = res;
+	    }
+	}
+      else
+	{
+	  error = qexec_execute_delete (thread_p, xasl, xasl_state);
+	}
+
       if (old_wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 	{
 	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
@@ -13844,7 +13888,28 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
 
       /* execute merge */
-      error = qexec_execute_merge (thread_p, xasl, xasl_state);
+      if (xasl->spec_list && xasl->spec_list->type == TARGET_DBLINK)
+	{
+	  int res;
+	  DBLINK_HOST_VARS host_vars;
+
+	  host_vars.count = xasl->spec_list->s.dblink_node.host_var_count;
+	  host_vars.index = xasl->spec_list->s.dblink_node.host_var_index;
+
+	  res = dblink_execute_query (xasl->spec_list, &xasl_state->vd, &host_vars);
+	  if (res < 0)
+	    {
+	      error = res;
+	    }
+	  else
+	    {
+	      xasl->list_id->tuple_cnt = res;
+	    }
+	}
+      else
+	{
+	  error = qexec_execute_merge (thread_p, xasl, xasl_state);
+	}
 
       if (old_wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 	{
