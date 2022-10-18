@@ -3001,8 +3001,8 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
       MVCCID global_pts_oldest_visible_mvccid = get_active_tran_server_ptr ()->get_oldest_active_mvccid_from_page_server ();
       if (global_pts_oldest_visible_mvccid == MVCCID_NULL)
         {
-          assert (false);
           vacuum_er_log (VACUUM_ER_LOG_MASTER, "%s", "Fail to get the oldest active mvccid across all PTS.");
+          assert (false);
           return;
         }
 
