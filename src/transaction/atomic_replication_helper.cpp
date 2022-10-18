@@ -365,6 +365,40 @@ namespace cublog
     return false;
   }
 
+#if !defined (NDEBUG)
+  void
+  atomic_replication_helper::atomic_log_sequence::dump ()
+  {
+    constexpr int BUF_LEN_MAX = SHRT_MAX;
+    char buf[BUF_LEN_MAX];
+    char *buf_ptr = buf;
+    int written = 0;
+    int left = BUF_LEN_MAX;
+
+    written = snprintf (buf_ptr, (size_t)left, "[ATOMIC_REPL] start_lsa = %lld|%d  is_sysop = %d"
+			"  postpone_started = %d  end_pospone_count = %d\n",
+			LSA_AS_ARGS (&m_start_lsa), (int)m_is_sysop,
+			(int)m_postpone_started, m_end_pospone_count);
+    assert (written > 0);
+    buf_ptr += written;
+    assert (left >= written);
+    left -= written;
+
+    for (const atomic_log_entry &log_entry : m_log_vec)
+      {
+	written = snprintf (buf_ptr, (size_t)left, "  LSA = %lld|%d  vpid = %d|%d\n  rcvindex = %s\n",
+			    LSA_AS_ARGS (&log_entry.m_record_lsa),
+			    VPID_AS_ARGS (&log_entry.m_vpid),
+			    rv_rcvindex_string (log_entry.m_record_index));
+	assert (written > 0);
+	buf_ptr += written;
+	assert (left >= written);
+	left -= written;
+      }
+    _er_log_debug (ARG_FILE_LINE, buf);
+  }
+#endif
+
   void
   atomic_replication_helper::atomic_log_sequence::apply_and_unfix_sequence (THREAD_ENTRY *thread_p)
   {
@@ -375,6 +409,14 @@ namespace cublog
     // and the entire sequence is already fixed.
     // Right after applying, unfix and ref-count-down each page. The bookkeeping mechanism will take care
     // of either unfixing the page or retaining it for a subsequent unfix.
+
+    if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+      {
+#if !defined (NDEBUG)
+	dump ();
+#endif
+      }
+
     for (const auto &log_entry : m_log_vec)
       {
 	log_entry.apply_log_redo (thread_p, m_redo_context);

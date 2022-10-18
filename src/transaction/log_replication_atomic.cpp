@@ -106,6 +106,8 @@ namespace cublog
 	    break;
 	  }
 	  case LOG_COMMIT:
+	    assert (!m_atomic_helper.is_part_of_atomic_replication (header.trid));
+
 	    if (m_replicate_mvcc)
 	      {
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::COMMITTED);
@@ -114,6 +116,8 @@ namespace cublog
 		    thread_entry, m_redo_lsa);
 	    break;
 	  case LOG_ABORT:
+	    assert (!m_atomic_helper.is_part_of_atomic_replication (header.trid));
+
 	    if (m_replicate_mvcc)
 	      {
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::ABORTED);

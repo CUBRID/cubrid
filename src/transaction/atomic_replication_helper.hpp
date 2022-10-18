@@ -49,7 +49,7 @@ namespace cublog
    *
    *    LOG_SYSOP_ATOMIC_START
    *        (undo|redo|undoredo|..)+
-   *    LOG_SYSOP_END
+   *    LOG_SYSOP_END with LOG_SYSOP_END_COMMIT
    *
    * 3. vacuum generated atomic sysops with nested postpone logical operations which, themselves,
    *    can contain atomic operations; these have the following layout:
@@ -157,6 +157,11 @@ namespace cublog
 	  void apply_and_unfix_sequence (THREAD_ENTRY *thread_p);
 
 	  log_lsa get_start_lsa () const;
+
+	private:
+#if !defined (NDEBUG)
+	  void dump ();
+#endif
 
 	private: // types
 	  /*
