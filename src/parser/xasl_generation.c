@@ -16977,7 +16977,7 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 
   aggregate = pt_to_aggregate (parser, select_node, NULL, NULL, NULL, NULL, NULL, &buildvalue->grbynum_val);
 
-  if (aggregate->flag_agg_optimize == true)
+  if (aggregate && aggregate->flag_agg_optimize == true)
     {
       qo_plan->plan_un.scan.scan_method = QO_SCANMETHOD_INDEX_SCAN_OPTIMIZED;
     }
