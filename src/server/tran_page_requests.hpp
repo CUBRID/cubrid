@@ -32,6 +32,7 @@ enum class tran_to_page_request
 
   // Active only
   SEND_LOG_PRIOR_LIST, /* response-less */
+  GET_OLDEST_ACTIVE_MVCCID,
 
   // Passive only
   SEND_LOG_BOOT_INFO_FETCH,

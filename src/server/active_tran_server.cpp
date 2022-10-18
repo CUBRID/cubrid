@@ -36,6 +36,30 @@ active_tran_server::uses_remote_storage () const
   return m_uses_remote_storage;
 }
 
+MVCCID
+active_tran_server::get_oldest_active_mvccid_from_page_server () const
+{
+  std::string response_message;
+  const int error_code = send_receive (tran_to_page_request::GET_OLDEST_ACTIVE_MVCCID, std::string (), response_message);
+  if (error_code != NO_ERROR)
+    {
+      return MVCCID_NULL;
+    }
+
+  MVCCID oldest_mvccid = MVCCID_NULL;
+  std::memcpy (&oldest_mvccid, response_message.c_str (), sizeof (oldest_mvccid));
+
+  /*
+   * MVCCID_ALL_VISIBLE means the PS is waiting for a PTS which is connected but haven't updated its value.
+   * See page_server::pts_mvcc_tracker::init_oldest_active_mvccid().
+   *
+   * It could be also MVCCID_LAST which means there is no PTS.
+   */
+  assert (MVCCID_IS_NORMAL (oldest_mvccid) || MVCCID_ALL_VISIBLE == oldest_mvccid);
+
+  return oldest_mvccid;
+}
+
 bool
 active_tran_server::get_remote_storage_config ()
 {

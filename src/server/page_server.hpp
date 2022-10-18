@@ -120,17 +120,18 @@ class page_server
 	connection_handler &operator= (connection_handler &&) = delete;
 
 	void push_request (page_to_tran_request id, std::string msg);
-	std::string get_channel_id ();
+	const std::string &get_connection_id () const;
 
 	void remove_prior_sender_sink ();
 
       private:
 	// Request handlers for the request server:
 	void receive_boot_info_request (tran_server_conn_t::sequenced_payload &a_ip);
-	void receive_log_prior_list (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_log_page_fetch (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_data_page_fetch (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_disconnect_request (tran_server_conn_t::sequenced_payload &a_ip);
+	void receive_log_prior_list (tran_server_conn_t::sequenced_payload &a_ip);
+	void handle_oldest_active_mvccid_request (tran_server_conn_t::sequenced_payload &a_sp);
 	void receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_ip);
 	void receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload &a_sp);
 	void receive_oldest_active_mvccid (tran_server_conn_t::sequenced_payload &a_sp);
@@ -152,6 +153,7 @@ class page_server
 	 * the peer transaction server and the check will no longer be valid
 	 */
 	const transaction_server_type m_server_type;
+	const std::string m_connection_id;
 
 	std::unique_ptr<tran_server_conn_t> m_conn;
 	page_server &m_ps;
