@@ -407,10 +407,11 @@ namespace cublog
   void
   atomic_replication_helper::atomic_log_sequence::dump ()
   {
-    char buf[PATH_MAX];
+    constexpr int BUF_LEN_MAX = SHRT_MAX;
+    char buf[BUF_LEN_MAX];
     char *buf_ptr = buf;
     int written = 0;
-    int left = PATH_MAX;
+    int left = BUF_LEN_MAX;
 
     written = snprintf (buf_ptr, (size_t)left, "[ATOMIC_REPL] start_lsa = %lld|%d  is_sysop = %d"
 			"  postpone_started = %d  end_pospone_count = %d\n",
