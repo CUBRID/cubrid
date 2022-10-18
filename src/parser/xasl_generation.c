@@ -18462,6 +18462,90 @@ outofmem:
 }
 
 static XASL_NODE *
+pt_to_merge_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  assert (parser != NULL && statement != NULL);
+
+  XASL_NODE *xasl = regu_xasl_node_alloc (INSERT_PROC);
+  if (xasl == NULL)
+    {
+      return NULL;
+    }
+
+  char *url = "cci:CUBRID:192.168.2.193:33000:demodb:dba::";
+  char *user = "dba";
+  char *password = "";
+  char *sql = "merge into tt using db_root \
+		on tt.a = ? \
+		when matched then update set b = ? \
+		when not matched then insert values (?, ?)";
+
+  int *index = (int *) parser_alloc (parser, 4 * sizeof (int));
+
+  index[0] = 0;
+  index[1] = 1;
+  index[2] = 2;
+  index[3] = 3;
+
+  xasl->spec_list =
+    pt_make_dblink_access_spec (ACCESS_METHOD_SEQUENTIAL, NULL, NULL, NULL, url, user, password, 4, index, sql);
+
+  return xasl;
+}
+
+static XASL_NODE *
+pt_to_delete_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  assert (parser != NULL && statement != NULL);
+
+  XASL_NODE *xasl = regu_xasl_node_alloc (INSERT_PROC);
+  if (xasl == NULL)
+    {
+      return NULL;
+    }
+
+  char *url = "cci:CUBRID:192.168.2.193:33000:demodb:dba::";
+  char *user = "dba";
+  char *password = "";
+  char *sql = "delete from tt where a = ? or b = ?";
+  int *index = (int *) parser_alloc (parser, 2 * sizeof (int));
+
+  index[0] = 0;
+  index[1] = 1;
+
+  xasl->spec_list =
+    pt_make_dblink_access_spec (ACCESS_METHOD_SEQUENTIAL, NULL, NULL, NULL, url, user, password, 2, index, sql);
+
+  return xasl;
+}
+
+static XASL_NODE *
+pt_to_update_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  assert (parser != NULL && statement != NULL);
+
+  XASL_NODE *xasl = regu_xasl_node_alloc (INSERT_PROC);
+  if (xasl == NULL)
+    {
+      return NULL;
+    }
+
+  char *url = "cci:CUBRID:192.168.2.193:33000:demodb:dba::";
+  char *user = "dba";
+  char *password = "";
+  char *sql = "update tt set b = ? where a = ?";
+  int *index = (int *) parser_alloc (parser, 2 * sizeof (int));
+
+  index[0] = 0;
+  index[1] = 1;
+
+  xasl->spec_list =
+    pt_make_dblink_access_spec (ACCESS_METHOD_SEQUENTIAL, NULL, NULL, NULL, url, user, password, 2, index, sql);
+
+  return xasl;
+}
+
+static XASL_NODE *
 pt_to_insert_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   assert (parser != NULL && statement != NULL);
@@ -20251,6 +20335,12 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   class_specs = statement->info.delete_.class_specs;
   with = statement->info.delete_.with;
 
+  char *name = (char *) from->info.spec.entity_name->info.name.original;
+  if (strstr (name, "@"))
+    {
+      return pt_to_delete_xasl_for_dblink (parser, statement);
+    }
+
   if (from && from->node_type == PT_SPEC && from->info.spec.range_var)
     {
       PT_NODE *select_node, *select_list = NULL;
@@ -20867,6 +20957,11 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
   orderby_for = statement->info.update.orderby_for;
   with = statement->info.update.with;
 
+  char *name = (char *) from->info.spec.entity_name->info.name.original;
+  if (strstr (name, "@"))
+    {
+      return pt_to_update_xasl_for_dblink (parser, statement);
+    }
   /* flush all classes */
   p = from;
   while (p != NULL && !has_partitioned)
@@ -25272,6 +25367,12 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_n
   OID *oid = NULL;
   int error = NO_ERROR;
   bool insert_only = (statement->info.merge.flags & PT_MERGE_INFO_INSERT_ONLY);
+
+  char *name = (char *) statement->info.merge.into->info.spec.entity_name->info.name.original;
+  if (strstr (name, "@"))
+    {
+      return pt_to_merge_xasl_for_dblink (parser, statement);
+    }
 
   xasl = regu_xasl_node_alloc (MERGE_PROC);
   if (xasl == NULL)
