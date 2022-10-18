@@ -581,6 +581,19 @@ db_compile_statement_local (DB_SESSION * session)
   /* forget about any previous parsing errors, if any */
   pt_reset_error (parser);
 
+#if defined(DBLINK_POC_INSERT_ENABLE_CHECK)
+  error ! ! !
+#endif
+#if defined(DBLINK_POC_INSERT)
+    // @server
+    pt_check_server_extension (parser, statement);
+  if (pt_has_error (parser))
+    {				// TODO: error number and  error_type
+      pt_report_to_ersys_with_statement (parser, PT_SYNTAX, statement);
+      return er_errid ();
+    }
+#endif
+
   /* store user-specified-name in info.name.original. */
   parser_walk_tree (parser, statement, NULL, NULL, pt_set_user_specified_name, NULL);
 
@@ -593,7 +606,7 @@ db_compile_statement_local (DB_SESSION * session)
       /* to prevent a memory leak, register the query type list to session */
       session->type_list[stmt_ndx] = qtype;
     }
-  if (cmd_type == CUBRID_STMT_EXECUTE_PREPARE)
+  else if (cmd_type == CUBRID_STMT_EXECUTE_PREPARE)
     {
       /* we don't actually have the statement which will be executed and we need to get some information about it from
        * the server */

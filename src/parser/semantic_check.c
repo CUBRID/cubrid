@@ -13798,6 +13798,20 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
       return NULL;
     }
 
+// ctshim
+#if defined(DBLINK_POC_INSERT)
+  if (stmt->info.insert.spec && stmt->info.insert.spec->info.spec.remote_server_name)
+    {
+      assert (stmt->info.insert.spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML);
+
+      if (stmt->node_type == PT_INSERT)
+	return stmt;
+      //else if(stmt->node_type == PT_MERGE)  
+      //    return stmt;    
+      assert (false);
+    }
+#endif
+
 #if 0				/* to disable TEXT */
   pt_resolve_insert_external (parser, ins);
 #endif /* 0 */

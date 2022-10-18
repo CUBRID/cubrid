@@ -18472,6 +18472,77 @@ pt_to_insert_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
+#if defined(DBLINK_POC_INSERT_ENABLE_CHECK)
+  error ! ! !
+#endif
+#if defined(DBLINK_POC_INSERT)
+  int host_var_count = 0;
+
+  char *sql;
+  PT_NODE *server_spec = statement->info.insert.spec->info.spec.remote_server_name;
+  PT_DBLINK_INFO *pdblink = &(server_spec->info.dblink_table);
+  host_var_count = pdblink->host_vars.count;
+  if (server_spec->node_type == PT_DBLINK_TABLE_DML)
+    {
+      assert (statement->info.insert.spec->info.spec.derived_table_type == PT_DBLINK_DML);
+      assert (server_spec->info.dblink_table.is_name);
+
+      extern int pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node);
+      if (pt_resolve_dblink_server_name (parser, server_spec) != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
+
+  if (pdblink->rewritten)
+    {
+      sql = (char *) pdblink->rewritten->bytes;
+    }
+  else
+    {
+      sql = (char *) pdblink->qstr->info.value.data_value.str->bytes;
+    }
+
+#if 0
+  char *t = strchr (sql, '@');
+  //char zsql[4096];
+  //strcpy(zsql, sql);
+  //char* t = strchr(zsql, '@');
+  if (t)
+    {
+      int len = strlen (pdblink->conn->info.name.original);
+      len++;			// '@'
+      if (pdblink->owner_name->info.name.original)
+	{
+	  len += strlen (pdblink->owner_name->info.name.original);
+	  len++;		// '.'
+	}
+      memset (t, ' ', len);
+    }
+#endif
+
+  pdblink->host_vars.count = host_var_count;
+  if (host_var_count > 0)
+    {
+      pdblink->host_vars.index = (int *) parser_alloc (parser, host_var_count * sizeof (int));
+      if (pdblink->host_vars.index == NULL)
+	{
+	  assert (false);
+	}
+
+      for (int i = 0; i < pdblink->host_vars.count; i++)
+	{
+	  pdblink->host_vars.index[i] = i;
+	}
+    }
+
+  xasl->spec_list =
+    pt_make_dblink_access_spec (ACCESS_METHOD_SEQUENTIAL, NULL, NULL, NULL,
+				(char *) pdblink->url->info.value.data_value.str->bytes,
+				(char *) pdblink->user->info.value.data_value.str->bytes,
+				(char *) pdblink->pwd->info.value.data_value.str->bytes,
+				pdblink->host_vars.count, pdblink->host_vars.index, (char *) sql);
+#else
   char *url = "cci:CUBRID:192.168.2.193:33000:demodb:dba::";
   char *user = "dba";
   char *password = "";
@@ -18483,6 +18554,7 @@ pt_to_insert_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   xasl->spec_list =
     pt_make_dblink_access_spec (ACCESS_METHOD_SEQUENTIAL, NULL, NULL, NULL, url, user, password, 2, index, sql);
+#endif
 
   return xasl;
 }
@@ -18522,10 +18594,18 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   char *name = (char *) statement->info.insert.spec->info.spec.entity_name->info.name.original;
 
+#if defined(DBLINK_POC_INSERT)
+  if (statement->info.insert.spec->info.spec.flat_entity_list == NULL
+      && statement->info.insert.spec->info.spec.remote_server_name)
+    {
+      return pt_to_insert_xasl_for_dblink (parser, statement);
+    }
+#else
   if (strstr (name, "@"))
     {
       return pt_to_insert_xasl_for_dblink (parser, statement);
     }
+#endif
 
   has_uniques = statement->info.insert.has_uniques;
   non_null_attrs = statement->info.insert.non_null_attrs;

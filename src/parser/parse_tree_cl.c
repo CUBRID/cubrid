@@ -9071,6 +9071,9 @@ static PT_NODE *
 pt_apply_spec (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.spec.entity_name, arg);
+#if defined(DBLINK_POC_INSERT)
+  PT_APPLY_WALK (parser, p->info.spec.remote_server_name, arg);
+#endif
   PT_APPLY_WALK (parser, p->info.spec.cte_name, arg);
   PT_APPLY_WALK (parser, p->info.spec.cte_pointer, arg);
   PT_APPLY_WALK (parser, p->info.spec.except_list, arg);
@@ -9164,6 +9167,20 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, "(");
       r1 = pt_print_bytes_l (parser, p->info.spec.entity_name);
       q = pt_append_varchar (parser, q, r1);
+
+#if defined(DBLINK_POC_INSERT)
+      if (p->info.spec.remote_server_name)
+	{
+	  q = pt_append_nulstring (parser, q, "@");
+	  if (p->info.spec.remote_server_name->next)
+	    {
+	      q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.spec.remote_server_name->next));
+	      q = pt_append_nulstring (parser, q, ".");
+	    }
+	  q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.spec.remote_server_name));
+	}
+#endif
+
       q = pt_append_nulstring (parser, q, ")");
       parser->custom_print = save_custom;
     }
@@ -9182,6 +9199,21 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       r1 = pt_print_bytes (parser, p->info.spec.entity_name);
       q = pt_append_varchar (parser, q, r1);
+
+#if defined(DBLINK_POC_INSERT)
+      if (p->info.spec.remote_server_name)
+	{
+	  q = pt_append_nulstring (parser, q, "@");
+	  if (p->info.spec.remote_server_name->next)
+	    {
+	      q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.spec.remote_server_name->next));
+	      q = pt_append_nulstring (parser, q, ".");
+	    }
+	  r1 = pt_print_bytes (parser, p->info.spec.remote_server_name);
+	  q = pt_append_varchar (parser, q, r1);
+	}
+#endif
+
       if (p->info.spec.partition)
 	{
 	  q = pt_append_nulstring (parser, q, " PARTITION (");
@@ -18575,7 +18607,9 @@ pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.dblink_table.qstr, arg);
   PT_APPLY_WALK (parser, p->info.dblink_table.pushed_pred, arg);
   PT_APPLY_WALK (parser, p->info.dblink_table.cols, arg);
-
+#if defined(DBLINK_POC_INSERT)
+  PT_APPLY_WALK (parser, p->info.dblink_table.sel_list, arg);
+#endif
   return p;
 }
 

@@ -5715,8 +5715,24 @@ check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func, PARSER_CONTEXT * pa
 
     case TR_EVENT_STATEMENT_INSERT:
       flat = (statement->info.insert.spec) ? statement->info.insert.spec->info.spec.flat_entity_list : NULL;
+
+      // ctshim
+#if defined(DBLINK_POC_INSERT)
+      if (statement->info.insert.spec && statement->info.insert.spec->info.spec.flat_entity_list == NULL
+	  && statement->info.insert.spec->info.spec.remote_server_name)
+	{
+	  //fprintf(stdout, "CTSHIM:: check_trigger()\n");        
+	  result = NO_ERROR;
+	}
+      else
+	{
+	  class_ = (flat) ? flat->info.name.db_object : NULL;
+	  result = tr_prepare_statement (&state, event, class_, 0, NULL);
+	}
+#else
       class_ = (flat) ? flat->info.name.db_object : NULL;
       result = tr_prepare_statement (&state, event, class_, 0, NULL);
+#endif
       break;
 
     case TR_EVENT_STATEMENT_UPDATE:
@@ -13560,12 +13576,28 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *with = NULL;
   int save_au;
 
+#if defined(DBLINK_POC_INSERT)
+  if (statement == NULL || statement->node_type != PT_INSERT || statement->info.insert.spec == NULL)
+    {
+      assert (false);
+      return ER_GENERIC_ERROR;
+    }
+  if (statement->info.insert.spec->info.spec.flat_entity_list == NULL)
+    {
+      if (statement->info.insert.spec->info.spec.remote_server_name == NULL)
+	{
+	  assert (false);
+	  return ER_GENERIC_ERROR;
+	}
+    }
+#else
   if (statement == NULL || statement->node_type != PT_INSERT || statement->info.insert.spec == NULL
       || statement->info.insert.spec->info.spec.flat_entity_list == NULL)
     {
       assert (false);
       return ER_GENERIC_ERROR;
     }
+#endif
 
   AU_DISABLE (save_au);
 
@@ -13590,20 +13622,29 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   statement->etc = NULL;
-  class_ = statement->info.insert.spec->info.spec.flat_entity_list;
-  values = statement->info.insert.value_clauses;
-
-  error = do_insert_checks (parser, statement, &class_, &update, values);
-  if (error != NO_ERROR)
+  //ctshim
+#if defined(DBLINK_POC_INSERT)
+//fprintf(stdout, "CTSHIM:: mq_prepare_insert()\n");
+  if (statement->info.insert.spec->info.spec.flat_entity_list)
     {
-      ASSERT_ERROR ();
-      goto cleanup;
-    }
+#endif
+      class_ = statement->info.insert.spec->info.spec.flat_entity_list;
+      values = statement->info.insert.value_clauses;
 
-  if (statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
-    {
-      goto cleanup;
+      error = do_insert_checks (parser, statement, &class_, &update, values);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto cleanup;
+	}
+
+      if (statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
+	{
+	  goto cleanup;
+	}
+#if defined(DBLINK_POC_INSERT)
     }
+#endif
 
   error = do_prepare_insert_internal (parser, statement);
 

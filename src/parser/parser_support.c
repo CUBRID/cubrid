@@ -3510,7 +3510,6 @@ pt_has_nullable_term (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
->>>>>>> upstream/develop
  * pt_insert_host_var () - insert a host_var into a list based on
  *                         its ordinal position
  *   return: a list of PT_HOST_VAR type nodes
@@ -10670,3 +10669,278 @@ pt_get_name_without_current_user_name (const char *name)
 
   return object_name;
 }
+
+
+
+
+#if defined(DBLINK_POC_INSERT)
+// ctshim
+static PT_NODE *
+pt_mk_spec_drived_dblink_table (PARSER_CONTEXT * parser, PT_NODE * from_tbl)
+{
+  PT_SPEC_INFO *class_spec_info = &from_tbl->info.spec;
+  PT_NODE *drived_spec;
+  PT_NODE *new_range_var;
+  PT_NODE *dbl_col = NULL;
+
+  if ((drived_spec = parser_new_node (parser, PT_DBLINK_TABLE)) == NULL)
+    {
+      PT_ERROR (parser, from_tbl, "Oops! Sorry, insufficient memory.");
+      return NULL;
+    }
+
+  if ((new_range_var = parser_new_node (parser, PT_NAME)) == NULL)
+    {
+      PT_ERROR (parser, from_tbl, "Oops! Sorry, insufficient memory.");
+      parser_free_node (parser, drived_spec);
+      return NULL;
+    }
+
+  drived_spec->info.dblink_table.remote_table_name =
+    pt_append_string (parser, NULL, class_spec_info->entity_name->info.name.original);
+
+  assert (class_spec_info->remote_server_name->node_type == PT_NAME);
+  drived_spec->info.dblink_table.is_name = true;
+  drived_spec->info.dblink_table.conn = class_spec_info->remote_server_name;
+  if (class_spec_info->remote_server_name->next)
+    {
+      drived_spec->info.dblink_table.owner_name = class_spec_info->remote_server_name->next;
+      class_spec_info->remote_server_name->next = NULL;
+    }
+  class_spec_info->remote_server_name = NULL;
+
+  // alias table_name
+  PARSER_VARCHAR *var_buf = 0;
+  if (class_spec_info->range_var)
+    {				/* alias table name */
+      var_buf = pt_print_bytes (parser, class_spec_info->range_var);
+    }
+  else
+    {
+      // from test_tbl@srv, test_tbl  
+      /* Should be unique.
+       * What if the remote table and local table name are the same?
+       * In the case of "<server_name>_<table_naem>", it is necessary to review the length limitation.  
+       */
+      var_buf = pt_print_bytes (parser, class_spec_info->entity_name);
+    }
+
+  //  extern char * pt_makename (const char *name);
+  //new_range_var->info.name.original = pt_makename ((char*)var_buf->bytes);
+  new_range_var->info.name.original = pt_append_string (parser, NULL, (char *) var_buf->bytes);
+
+
+  drived_spec->info.dblink_table.qstr = class_spec_info->entity_name;;
+  class_spec_info->entity_name = NULL;
+
+  drived_spec->info.dblink_table.qstr->next = class_spec_info->range_var;
+  class_spec_info->range_var = NULL;
+
+  drived_spec->info.dblink_table.cols = NULL;
+
+  from_tbl->info.spec.range_var = new_range_var;
+  from_tbl->info.spec.derived_table = drived_spec;
+  from_tbl->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE;
+
+  return from_tbl;
+}
+
+static void
+pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
+{
+  PT_QUERY_INFO *query = &query_stmt->info.query;
+  PT_NODE *from_tbl = query_stmt->info.query.q.select.from;
+
+  while (from_tbl)
+    {
+      if (from_tbl->info.spec.entity_name && from_tbl->info.spec.remote_server_name)
+	{
+	  pt_mk_spec_drived_dblink_table (parser, from_tbl);
+	  printf ("DEBUG(1): %s\n", parser_print_tree (parser, from_tbl));
+	}
+
+      from_tbl = from_tbl->next;
+    }
+}
+
+
+static void
+pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * dml_stmt)
+{
+  int i = 0;
+
+  if (dml_stmt->node_type == PT_INSERT && dml_stmt->info.insert.spec->info.spec.remote_server_name)
+    {
+      PT_NODE *ct = parser_new_node (parser, PT_DBLINK_TABLE_DML);
+      if (ct)
+	{
+	  PT_NODE *server = dml_stmt->info.insert.spec->info.spec.remote_server_name;
+	  assert (server->node_type == PT_NAME);
+
+	  //dml_stmt->info.insert.spec->info.spec.remote_server_name = ct;
+
+	  ct->info.dblink_table.is_name = true;
+	  //ct->info.dblink_table.host_var_cnt = 0;
+	  ct->info.dblink_table.conn = server;
+	  if (server->next)
+	    {
+	      assert (server->next->node_type == PT_NAME);
+	      ct->info.dblink_table.owner_name = server->next;
+	      server->next = NULL;
+	    }
+
+	  dml_stmt->info.insert.spec->info.spec.remote_server_name = ct;
+	  dml_stmt->info.insert.spec->info.spec.derived_table_type = PT_DBLINK_DML;
+
+	  PT_NODE *val = parser_new_node (parser, PT_VALUE);
+	  if (val)
+	    {
+	      val->type_enum = PT_TYPE_CHAR;
+	      val->info.value.string_type = ' ';
+	      val->info.value.data_value.str =
+		pt_append_bytes (parser, NULL, dml_stmt->sql_user_text, strlen (dml_stmt->sql_user_text));
+
+
+	      char *t = strchr ((char *) val->info.value.data_value.str->bytes, '@');
+	      if (t)
+		{
+		  int len = strlen (ct->info.dblink_table.conn->info.name.original);
+		  len++;	// '@'
+		  if (ct->info.dblink_table.owner_name)
+		    {
+		      len += strlen (ct->info.dblink_table.owner_name->info.name.original);
+		      len++;	// '.'
+		    }
+		  memset (t, ' ', len);
+		}
+
+
+	      PT_NODE_PRINT_VALUE_TO_TEXT (parser, val);
+	    }
+	  ct->info.dblink_table.qstr = val;
+	  //printf ("DEBUG(00): %s\n", parser_print_tree (parser, dml_stmt));   // ctshim
+	}
+    }
+}
+
+static PT_NODE *
+pt_convert_server (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+
+  assert (continue_walk != NULL);
+  if (parser == NULL || node == NULL)
+    {
+      PT_ERROR (parser, node, "Invalid arguments.");
+      return NULL;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      pt_convert_dblink_select_query (parser, node);
+      break;
+
+    case PT_INSERT:
+      pt_convert_dblink_dml_query (parser, node);
+      break;
+
+    case PT_SPEC:
+      if (node->info.spec.remote_server_name)
+	{
+	  //    node->info.spec.remote_server_name.pt_node_type
+	  printf ("DEBUG(parser_print_tree): %s\n", parser_print_tree (parser, node));	// ctshim
+	  printf ("DEBUG(parser_print_tree_list): %s\n", parser_print_tree_list (parser, node));	// ctshim
+	}
+      break;
+
+    case PT_NAME:
+      //assert(node->next == NULL);
+      break;
+
+    default:
+      break;
+    }
+
+  return node;
+}
+
+static PT_NODE *
+pt_check_unresolve_remote_server_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+
+  assert (continue_walk != NULL);
+
+  if (node->node_type == PT_SPEC && node->info.spec.remote_server_name)
+    {
+      if (node->info.spec.remote_server_name->node_type != PT_DBLINK_TABLE_DML)
+	{
+	  PT_ERROR (parser, node, "Oops! gggg");
+	  return NULL;
+	}
+    }
+
+  return node;
+}
+
+
+static PT_NODE *
+pt_check_host_var_count (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  int *count = (int *) arg;
+
+  if (node->node_type == PT_HOST_VAR && node->info.host_var.var_type == PT_HOST_IN)
+    {
+      (*count)++;
+    }
+
+  return node;
+}
+
+
+void
+pt_check_server_extension (PARSER_CONTEXT * parser, PT_NODE * stmt)
+{
+  // parser_walk_tree (parser, statement, NULL, NULL, pt_set_user_specified_name, NULL);
+
+  parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_server, NULL);
+  if (pt_has_error (parser))
+    {
+      return;
+    }
+
+  parser_walk_tree (parser, stmt, NULL, NULL, pt_check_unresolve_remote_server_name, NULL);
+  if (pt_has_error (parser))
+    {
+      return;
+    }
+
+  switch (stmt->node_type)
+    {
+    case PT_INSERT:
+      if (stmt->info.insert.spec && stmt->info.insert.spec->info.spec.flat_entity_list == NULL
+	  && stmt->info.insert.spec->info.spec.remote_server_name)
+	{
+	  int host_var_count = 0;
+	  parser_walk_tree (parser, stmt, pt_check_host_var_count, &host_var_count, NULL, NULL);
+
+	  PT_NODE *server_spec = stmt->info.insert.spec->info.spec.remote_server_name;
+	  PT_DBLINK_INFO *pdblink = &(server_spec->info.dblink_table);
+	  pdblink->host_vars.count = host_var_count;
+	  // stmt->info.insert.spec->info.spec.remote_server_name->column_number +=  (host_var_count * 10000);
+	}
+      break;
+
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+    case PT_UNION:
+    case PT_SELECT:
+      extern PT_NODE *pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+      parser_walk_tree (parser, stmt, pt_check_dblink_query, NULL, NULL, NULL);
+      break;
+    default:
+      break;
+    }
+
+  return;
+}
+#endif
