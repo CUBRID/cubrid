@@ -12352,7 +12352,12 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      TARGET_TYPE scan_type;
 	      ACCESS_METHOD access_method = ACCESS_METHOD_SEQUENTIAL;
 
-	      /* determine access_method */
+	      if (plan && plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN_OPTIMIZED)
+		{
+		  access_method = ACCESS_METHOD_INDEX_OPTIMIZED;
+		}
+	      else
+		/* determine access_method */
 	      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_RECORD_INFO_SCAN))
 		{
 		  access_method = ACCESS_METHOD_SEQUENTIAL_RECORD_INFO;
@@ -16224,6 +16229,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	pt_to_aggregate (parser, select_node, xasl->outptr_list, buildlist->g_val_list, buildlist->g_regu_list,
 			 buildlist->g_scan_regu_list, group_out_list, &buildlist->g_grbynum_val);
 
+      if (aggregate->flag_agg_optimize == true)
+	{
+	  qo_plan->plan_un.scan.scan_method = QO_SCANMETHOD_INDEX_SCAN_OPTIMIZED;
+	}
+
       /* compute function count */
       buildlist->g_func_count = 0;
       agg_list = aggregate;
@@ -16966,6 +16976,11 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   pt_set_qprior_node_etc (parser, select_node->info.query.q.select.having, xasl);
 
   aggregate = pt_to_aggregate (parser, select_node, NULL, NULL, NULL, NULL, NULL, &buildvalue->grbynum_val);
+
+  if (aggregate->flag_agg_optimize == true)
+    {
+      qo_plan->plan_un.scan.scan_method = QO_SCANMETHOD_INDEX_SCAN_OPTIMIZED;
+    }
 
   /* the calls pt_to_out_list, pt_to_spec_list, and pt_to_if_pred, record information in the "symbol_info" structure
    * used by subsequent calls, and must be done first, before calculating subquery lists, etc. */

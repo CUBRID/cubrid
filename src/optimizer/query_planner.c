@@ -11570,6 +11570,10 @@ qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent)
       fprintf (fp, "TABLE SCAN (%s)", class_name);
       break;
 
+    case QO_SCANMETHOD_INDEX_SCAN_OPTIMIZED:
+      fprintf (fp, "INDEX OPTIMIZED (%s)", class_name);
+      break;
+
     case QO_SCANMETHOD_INDEX_SCAN:
     case QO_SCANMETHOD_INDEX_ORDERBY_SCAN:
     case QO_SCANMETHOD_INDEX_GROUPBY_SCAN:

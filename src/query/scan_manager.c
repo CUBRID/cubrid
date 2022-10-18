@@ -2815,7 +2815,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   DB_TYPE single_node_type = DB_TYPE_NULL;
 
   /* scan type is HEAP SCAN or HEAP SCAN RECORD INFO */
-  assert (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO);
+  assert (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO || scan_type == S_INDEX_SCAN_OPTIMIZED);
   scan_id->type = scan_type;
 
   /* initialize SCAN_ID structure */
@@ -7827,6 +7827,10 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
       fprintf (fp, "(heap");
+      break;
+
+    case S_INDEX_SCAN_OPTIMIZED:
+      fprintf (fp, "(aggregate optimized");
       break;
 
     case S_INDX_SCAN:

@@ -6497,6 +6497,12 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  scan_type = S_HEAP_SCAN;
 	  indx_info = NULL;
 	}
+      else if (curr_spec->access == ACCESS_METHOD_INDEX_OPTIMIZED)
+	{
+	  /* set index scan optimized */
+	  scan_type = S_INDEX_SCAN_OPTIMIZED;
+	  indx_info = NULL;
+	}
       else if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
 	{
 	  /* open a sequential heap file scan that reads record info */
@@ -6531,7 +6537,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  return ER_QPROC_INVALID_XASLNODE;
 	}			/* if */
 
-      if (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO)
+      if (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO || scan_type == S_INDEX_SCAN_OPTIMIZED)
 	{
 	  error_code = scan_open_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
 					    curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,

@@ -3133,6 +3133,17 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		  fprintf (fp, "(table: unknown), ");
 		}
 	    }
+	  else if (spec->access == ACCESS_METHOD_INDEX_OPTIMIZED)
+	    {
+	      if (class_name != NULL)
+		{
+		  fprintf (fp, "(table: %s), ", class_name);
+		}
+	      else
+		{
+		  fprintf (fp, "(table: unknown), ");
+		}
+	    }
 	  else if (spec->access == ACCESS_METHOD_INDEX)
 	    {
 	      if (heap_get_indexinfo_of_btid (thread_p, &cls_node->cls_oid, &spec->indexptr->btid, NULL, NULL, NULL,
