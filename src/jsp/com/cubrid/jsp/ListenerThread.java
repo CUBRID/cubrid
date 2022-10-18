@@ -52,7 +52,6 @@ public class ListenerThread extends Thread {
                 client = serverSocket.accept();
                 client.setTcpNoDelay(true);
                 Thread execThread = new ExecuteThread(client);
-                execThread.setContextClassLoader(new StoredProcedureClassLoader());
                 execThread.start();
             } catch (IOException e) {
                 Server.log(e);
