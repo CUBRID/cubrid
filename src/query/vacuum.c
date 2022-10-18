@@ -43,6 +43,7 @@
 #include "perf_monitor.h"
 #include "resource_shared_pool.hpp"
 #include "server_type.hpp"
+#include "active_tran_server.hpp"
 #include "thread_entry_task.hpp"
 #if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
@@ -2957,6 +2958,8 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 {
   PERF_UTIME_TRACKER perf_tracker;
 
+  assert (is_active_transaction_server());
+
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
       return;
@@ -2978,6 +2981,36 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 
   m_oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
   vacuum_er_log (VACUUM_ER_LOG_MASTER, "update oldest_visible = %lld", (long long int) m_oldest_visible_mvccid);
+ 
+  if (is_tran_server_with_remote_storage ()) 
+    {
+      /* 
+       * Without remote storage, there is no PTS. So, it's enough to consider only the ATS's.
+       * 
+       * There are three possible configurations:
+       * 1. monolithic server (what is now in develop, without LETS (no PS and PTS))
+       * 2. scalability ATS with Local Storage (a configuration used for debugging & validation) (no PTS)
+       *    - no validation scenario requires any PTS.
+       * 3. scalability ATS proper with Remote Storage (with PS and possibly PTSes)
+       *
+       * 1, 2 don't need to request the mvcc status from other server because there is no PTS,
+       * which are both filtered with is_tran_server_with_remote_storage().
+       */
+
+      /* TODO temporary logging. The global one will be computed taking both into account, and the vacuum runs */ 
+      MVCCID global_pts_oldest_visible_mvccid = get_active_tran_server_ptr ()->get_oldest_active_mvccid_from_page_server ();
+      if (global_pts_oldest_visible_mvccid == MVCCID_NULL)
+        {
+          vacuum_er_log (VACUUM_ER_LOG_MASTER, "%s", "Fail to get the oldest active mvccid across all PTS.");
+          assert (false);
+          return;
+        }
+
+      er_log_debug (ARG_FILE_LINE, "ats oldest_visible = %llu, pts global_oldest_visible = %llu",
+          (long long int) m_oldest_visible_mvccid, global_pts_oldest_visible_mvccid);
+    }
+
+  return;
 
   if (!vacuum_Data.is_loaded)
     {

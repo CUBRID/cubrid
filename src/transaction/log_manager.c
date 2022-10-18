@@ -1616,7 +1616,6 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
   passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
   assert (pts_ptr != nullptr);
   log_lsa replication_start_redo_lsa = NULL_LSA;
-  log_lsa replication_prev_redo_lsa = NULL_LSA;
   {
     LOG_CS_ENTER (thread_p);
     // *INDENT-OFF*
@@ -1647,7 +1646,6 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
       // while still holding prior LSA lock, initialize passive transaction server replication
       // with a LSA that ensures that no record is lost (ie: while still holding the mutex)
       replication_start_redo_lsa = log_Gl.append.get_nxio_lsa ();
-      replication_prev_redo_lsa = log_Gl.append.prev_lsa;
     }
     // prior lists from page server are being received now
 
@@ -1675,13 +1673,12 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
   // prior lists are consumed and flushed to log pages
 
   assert (!replication_start_redo_lsa.is_null ());
-  assert (!replication_prev_redo_lsa.is_null ());
 
   log_daemons_init ();
 
   pts_ptr->start_oldest_active_mvccid_sender ();
 
-  pts_ptr->start_log_replicator (replication_start_redo_lsa, replication_prev_redo_lsa);
+  pts_ptr->start_log_replicator (replication_start_redo_lsa);
 
   // NOTE: make sure not to re-define trantable here; already defined in boot_restart_server
   // re-defining trabtable here, will reset all transaction info (which is not needed, see below) together
@@ -5516,7 +5513,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
   /* clear mvccid before releasing the locks. This operation must be done before do_postpone because it stores unique
    * statistics for all B-trees and if an error occurs those operations and all operations of current transaction must
    * be rolled back. */
-  logtb_complete_mvcc (thread_p, tdes, true);
+  logtb_append_assigned_mvcc_if_needed_and_complete_mvcc (thread_p, tdes, true);
 
   tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
   /* undo_nxlsa is no longer required here and must be reset, in case checkpoint takes a snapshot of this transaction
@@ -5645,7 +5642,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 	}
 
       /* clear mvccid before releasing the locks */
-      logtb_complete_mvcc (thread_p, tdes, false);
+      logtb_append_assigned_mvcc_if_needed_and_complete_mvcc (thread_p, tdes, false);
 
       /* It is safe to release locks here, since we already completed abort. */
       lock_unlock_all (thread_p);
@@ -5663,7 +5660,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 	}
 
       /* clear mvccid before releasing the locks */
-      logtb_complete_mvcc (thread_p, tdes, false);
+      logtb_append_assigned_mvcc_if_needed_and_complete_mvcc (thread_p, tdes, false);
 
       lock_unlock_all (thread_p);
 
