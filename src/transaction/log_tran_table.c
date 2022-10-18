@@ -4091,10 +4091,12 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_complete_mvcc () - Called at commit or rollback, completes MVCC info
- *			    for current transaction. If the transaction used
- *			    an MVCCID but that id was not added to any of the
- *			    transaction's log records, adds a specific log record to register the id.
+ * logtb_append_assigned_mvcc_if_needed_and_complete_mvcc () - Called at commit or rollback,
+ *			completes MVCC info for current transaction.
+ *			If the transaction used an MVCCID but that MVCCID was not added to any of the
+ *			transaction's log records, adds a specific log record to register the id.
+ *			This extra log record will be used by other mechanisms (eg: transactional
+ *			log replication) to ensure consistency of replicated MVCC table.
  *
  * return	  : Void.
  * thread_p (in)  : Thread entry.
