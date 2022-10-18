@@ -120,7 +120,7 @@ class page_server
 	connection_handler &operator= (connection_handler &&) = delete;
 
 	void push_request (page_to_tran_request id, std::string msg);
-	std::string get_channel_id ();
+	const std::string &get_connection_id () const;
 
 	void remove_prior_sender_sink ();
 
@@ -153,6 +153,7 @@ class page_server
 	 * the peer transaction server and the check will no longer be valid
 	 */
 	const transaction_server_type m_server_type;
+	const std::string m_connection_id;
 
 	std::unique_ptr<tran_server_conn_t> m_conn;
 	page_server &m_ps;

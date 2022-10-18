@@ -520,25 +520,18 @@ namespace cublog
   log_lsa
   replicator::get_highest_processed_lsa () const
   {
-    /*
-     * This is supposed to return the processed lsa by the replicator.
-     * In the case of atomic replicator on PTS, it points to the log record redone, that m_redo_lsa pointed to.
-     * However, "processed" means vague to the replicator of PS, with the parallel redo,
-     * because the replicator just put the redo records to workers and updates m_redo_lsa.
-     * Anyway, now get_highest_processed_lsa() is only used on PTS, so assert(false) here.
-     */
-    assert (false);
-    return MAX_LSA;
+    std::lock_guard<std::mutex> lockg (m_redo_lsa_mutex);
+    return m_redo_lsa;
   }
 
   log_lsa
   replicator::get_lowest_unapplied_lsa () const
   {
+    // TODO: needs to be refactored to work with the new replicators flavors
     if (m_parallel_replication_redo == nullptr)
       {
-	std::lock_guard<std::mutex> lockg (m_redo_lsa_mutex);
 	// sync
-	return m_redo_lsa;
+	return get_highest_processed_lsa ();
       }
 
     // a different value will return from here when the atomic replicator is added
