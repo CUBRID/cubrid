@@ -707,7 +707,7 @@ mvcctable::get_global_oldest_visible () const
 }
 
 MVCCID
-mvcctable::update_global_oldest_visible (const MVCCID pts_oldest_visible)
+mvcctable::update_global_oldest_visible (const MVCCID pts_oldest_visible /* = MVCCID_LAST */)
 {
   if (pts_oldest_visible != MVCCID_ALL_VISIBLE)
     {
@@ -716,7 +716,11 @@ mvcctable::update_global_oldest_visible (const MVCCID pts_oldest_visible)
 	  MVCCID ats_oldest_visible = compute_oldest_visible_mvccid ();
 	  if (m_ov_lock_count == 0)
 	    {
-	      assert (m_oldest_visible.load () <= pts_oldest_visible);
+	      /*
+	       * The assert below must to be met, but allow the desyncrhonization for now.
+	       * It is going to be dealt with soon in http://jira.cubrid.org/browse/LETS-563.
+	       */
+	      // assert (m_oldest_visible.load () <= pts_oldest_visible);
 	      assert (m_oldest_visible.load () <= ats_oldest_visible);
 	      if (ats_oldest_visible < pts_oldest_visible)
 		{

@@ -3028,8 +3028,6 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
           (long long int) m_oldest_visible_mvccid, global_pts_oldest_visible_mvccid);
     }
 
-  return;
-
   if (!vacuum_Data.is_loaded)
     {
       /* Load vacuum data. */
