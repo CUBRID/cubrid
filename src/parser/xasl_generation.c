@@ -16229,7 +16229,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	pt_to_aggregate (parser, select_node, xasl->outptr_list, buildlist->g_val_list, buildlist->g_regu_list,
 			 buildlist->g_scan_regu_list, group_out_list, &buildlist->g_grbynum_val);
 
-      if (aggregate->flag_agg_optimize == true)
+      if (aggregate && aggregate->flag_agg_optimize == true)
 	{
 	  qo_plan->plan_un.scan.scan_method = QO_SCANMETHOD_INDEX_SCAN_OPTIMIZED;
 	}
