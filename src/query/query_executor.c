@@ -6798,7 +6798,7 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	{
 	case TARGET_CLASS:
 	  if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-	      || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
+	      || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN || curr_spec->access == ACCESS_METHOD_INDEX_OPTIMIZED)
 	    {
 	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SSCANS);
 	    }
@@ -7724,7 +7724,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 	scan_open_heap_page_scan (thread_p, &spec->s_id, val_list, vd, &class_oid, &class_hfid, spec->where_pred,
 				  scan_type, spec->s.cls_node.cache_reserved, spec->s.cls_node.cls_regu_list_reserved);
     }
-  else if (spec->type == TARGET_CLASS && spec->access == ACCESS_METHOD_INDEX)
+  else if (spec->type == TARGET_CLASS && (spec->access == ACCESS_METHOD_INDEX || spec->access == ACCESS_METHOD_INDEX_OPTIMIZED))
     {
       INDX_SCAN_ID *isidp = &spec->s_id.s.isid;
       if (isidp->caches_inited)
@@ -7886,7 +7886,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	      assert (specp);
 
 	      /* count(*) query will scan an index but does not have a data-filter */
-	      if (specp->next == NULL && specp->access == ACCESS_METHOD_INDEX
+	      if (specp->next == NULL && specp->access == ACCESS_METHOD_INDEX || specp->access == ACCESS_METHOD_INDEX_OPTIMIZED
 		  && specp->s.cls_node.cls_regu_list_pred == NULL && specp->where_pred == NULL
 		  && !specp->indexptr->use_iss && !SCAN_IS_INDEX_MRO (&specp->s_id.s.isid)
 		  && !xptr->if_pred /* no if predicates */ )

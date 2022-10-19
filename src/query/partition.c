@@ -2886,7 +2886,7 @@ partition_prune_spec (THREAD_ENTRY * thread_p, val_descr * vd, access_spec_node 
   pinfo.vd = vd;
 
   if (spec->access == ACCESS_METHOD_SEQUENTIAL || spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-      || spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
+      || spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN || spec->access == ACCESS_METHOD_INDEX_OPTIMIZED)
     {
       error = partition_prune_heap_scan (&pinfo);
       if (error != NO_ERROR)
