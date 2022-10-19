@@ -4033,7 +4033,7 @@ us_hb_process_stop (HA_CONF * ha_conf, const char *db_name)
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HA_PROCS_NAME, PRINT_CMD_STOP);
 
   /* stop javasp server */
-  (void) process_javasp (STOP, 0, NULL, false, true, false, true);
+  (void) process_javasp (STOP, 0, 1, (const char **) &db_name, true, false, true);
 
   status = us_hb_copylogdb_stop (ha_conf, db_name, NULL, NULL);
   if (status != NO_ERROR)
