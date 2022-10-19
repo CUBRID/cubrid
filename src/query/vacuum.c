@@ -2979,12 +2979,10 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 
   PERF_UTIME_TRACKER_START (&thread_ref, &perf_tracker);
 
-  m_oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
-  vacuum_er_log (VACUUM_ER_LOG_MASTER, "update oldest_visible = %lld", (long long int) m_oldest_visible_mvccid);
- 
   if (is_tran_server_with_remote_storage ()) 
     {
       /* 
+       * Get the global oldest mvccid across all PTSes.
        * Without remote storage, there is no PTS. So, it's enough to consider only the ATS's.
        * 
        * There are three possible configurations:
@@ -3005,12 +3003,17 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
           assert (false);
           return;
         }
+      
+      vacuum_er_log (VACUUM_ER_LOG_MASTER, "PTS-across oldest_visible_mvccid = %lld", (long long int) global_pts_oldest_visible_mvccid);
 
-      er_log_debug (ARG_FILE_LINE, "ats oldest_visible = %llu, pts global_oldest_visible = %llu",
-          (long long int) m_oldest_visible_mvccid, global_pts_oldest_visible_mvccid);
+      m_oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible (global_pts_oldest_visible_mvccid);
     }
-
-  return;
+  else
+    {
+      m_oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
+    }
+  
+  vacuum_er_log (VACUUM_ER_LOG_MASTER, "update oldest_visible = %lld", (long long int) m_oldest_visible_mvccid);
 
   if (!vacuum_Data.is_loaded)
     {
