@@ -80,6 +80,12 @@ public class Server {
                     socketFile.delete();
                 }
 
+                /* check parent directory */
+                File socketDir = socketFile.getParentFile();
+                if (!socketDir.exists()) {
+                    socketDir.mkdirs();
+                }
+
                 AFUNIXSocketAddress sockAddr = AFUNIXSocketAddress.of(socketFile);
                 serverSocket = AFUNIXServerSocket.bindOn(sockAddr);
                 portNumber = udsPortNumber;
