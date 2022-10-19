@@ -721,6 +721,50 @@ mvcctable::update_global_oldest_visible ()
   return m_oldest_visible.load ();
 }
 
+MVCCID
+mvcctable::update_global_oldest_visible (const MVCCID pts_oldest_visible)
+{
+  assert (is_tran_server_with_remote_storage());
+  /*
+   * pts_oldest_visible can be
+   * - MVCCID_ALL_VISIBLE: means the PS is waiting for a PTS which is connected but haven't updated its value, so it is possibly inconsistent.
+   * - MVCCID_LAST: means no PTS exists.
+   * - normal mvccid
+   *
+   * See page_server::pts_mvcc_tracker::init_oldest_active_mvccid().
+   */
+  assert (MVCCID_IS_NORMAL (pts_oldest_visible) || MVCCID_ALL_VISIBLE == pts_oldest_visible);
+
+  if (pts_oldest_visible != MVCCID_ALL_VISIBLE)
+    {
+      if (m_ov_lock_count == 0)
+	{
+	  MVCCID ats_oldest_visible = compute_oldest_visible_mvccid ();
+	  if (m_ov_lock_count == 0)
+	    {
+	      /*
+	       * The assert below must be met to confirm there is no desynchronizaition.
+	       * But, it's allowed for now.
+	       * TODO: It is going to be dealt with soon in http://jira.cubrid.org/browse/LETS-563.
+	       */
+	      // assert (m_oldest_visible.load () <= pts_oldest_visible);
+	      assert (m_oldest_visible.load () <= ats_oldest_visible);
+	      if (ats_oldest_visible < pts_oldest_visible)
+		{
+		  m_oldest_visible.store (ats_oldest_visible);
+		}
+	      else
+		{
+		  m_oldest_visible.store (pts_oldest_visible);
+		}
+
+	    }
+	}
+    }
+
+  return m_oldest_visible.load ();
+}
+
 void
 mvcctable::lock_global_oldest_visible ()
 {
