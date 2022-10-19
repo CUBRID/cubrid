@@ -2979,7 +2979,6 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 
   PERF_UTIME_TRACKER_START (&thread_ref, &perf_tracker);
 
-  MVCCID global_pts_oldest_visible_mvccid = MVCCID_LAST;
   if (is_tran_server_with_remote_storage ()) 
     {
       /* 
@@ -2997,16 +2996,20 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
        */
 
       /* TODO temporary logging. The global one will be computed taking both into account, and the vacuum runs */ 
-      global_pts_oldest_visible_mvccid = get_active_tran_server_ptr ()->get_oldest_active_mvccid_from_page_server ();
+      MVCCID global_pts_oldest_visible_mvccid = get_active_tran_server_ptr ()->get_oldest_active_mvccid_from_page_server ();
       if (global_pts_oldest_visible_mvccid == MVCCID_NULL)
         {
           vacuum_er_log (VACUUM_ER_LOG_MASTER, "%s", "Fail to get the oldest active mvccid across all PTS.");
           assert (false);
           return;
         }
+      m_oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible (global_pts_oldest_visible_mvccid);
+    }
+  else
+    {
+      m_oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
     }
   
-  m_oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible (global_pts_oldest_visible_mvccid);
   vacuum_er_log (VACUUM_ER_LOG_MASTER, "update oldest_visible = %lld", (long long int) m_oldest_visible_mvccid);
 
   if (!vacuum_Data.is_loaded)

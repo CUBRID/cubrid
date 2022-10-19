@@ -91,7 +91,9 @@ class mvcctable
     void reset_start_mvccid ();     // not thread safe
 
     MVCCID get_global_oldest_visible () const;
-    MVCCID update_global_oldest_visible (const MVCCID pts_oldest_visible = MVCCID_LAST);
+    MVCCID update_global_oldest_visible ();
+    /* on Scalability, it takes mvcc status of PTSes into account */
+    MVCCID update_global_oldest_visible (const MVCCID pts_oldest_visible);
     void lock_global_oldest_visible ();
     void unlock_global_oldest_visible ();
     bool is_global_oldest_visible_locked () const;

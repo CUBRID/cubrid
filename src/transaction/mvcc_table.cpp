@@ -707,8 +707,34 @@ mvcctable::get_global_oldest_visible () const
 }
 
 MVCCID
-mvcctable::update_global_oldest_visible (const MVCCID pts_oldest_visible /* = MVCCID_LAST */)
+mvcctable::update_global_oldest_visible ()
 {
+  if (m_ov_lock_count == 0)
+    {
+      MVCCID oldest_visible = compute_oldest_visible_mvccid ();
+      if (m_ov_lock_count == 0)
+	{
+	  assert (m_oldest_visible.load () <= oldest_visible);
+	  m_oldest_visible.store (oldest_visible);
+	}
+    }
+  return m_oldest_visible.load ();
+}
+
+MVCCID
+mvcctable::update_global_oldest_visible (const MVCCID pts_oldest_visible)
+{
+  assert (is_tran_server_with_remote_storage());
+  /*
+   * pts_oldest_visible can be
+   * - MVCCID_ALL_VISIBLE: means the PS is waiting for a PTS which is connected but haven't updated its value, so it is possibly inconsistent.
+   * - MVCCID_LAST: means no PTS exists.
+   * - normal mvccid
+   *
+   * See page_server::pts_mvcc_tracker::init_oldest_active_mvccid().
+   */
+  assert (MVCCID_IS_NORMAL (pts_oldest_visible) || MVCCID_ALL_VISIBLE == pts_oldest_visible);
+
   if (pts_oldest_visible != MVCCID_ALL_VISIBLE)
     {
       if (m_ov_lock_count == 0)
