@@ -3982,7 +3982,7 @@ us_hb_deactivate (const char *hostname, bool immediate_stop)
     }
 
   /* stop javasp server */
-  (void) process_javasp (STOP, 0, NULL, false, true, false, false);
+  (void) process_javasp (STOP, 0, NULL, false, true, false, true);
 
   /* stop all HA processes including cub_server */
   args[opt_idx] = COMMDB_HA_DEACT_STOP_ALL;
