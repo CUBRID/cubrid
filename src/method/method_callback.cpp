@@ -135,9 +135,11 @@ namespace cubmethod
       }
 
     /* DDL audit */
-    logddl_set_sql_text ((char *) sql.c_str (), sql.size ());
-    logddl_set_stmt_type (handler ? handler->get_statement_type () : CUBRID_STMT_NONE);
-    logddl_set_err_code (m_error_ctx.get_error ());
+    if (handler && logddl_set_stmt_type (handler->get_statement_type()))
+      {
+	logddl_set_sql_text ((char *) sql.c_str (), sql.size ());
+	logddl_set_err_code (m_error_ctx.get_error ());
+      }
 
     if (m_error_ctx.has_error())
       {

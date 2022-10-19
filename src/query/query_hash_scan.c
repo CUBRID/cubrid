@@ -102,6 +102,7 @@ typedef struct fhs_dk_bucket_header FHS_DK_BUCKET_HEADER;
 struct fhs_dk_bucket_header
 {
   VPID next_bucket;		/* bucket pointer */
+  VPID last_bucket;		/* bucket pointer */
 };
 
 typedef enum
@@ -1387,16 +1388,12 @@ fhs_initialize_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *
 static int
 fhs_initialize_dk_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *args)
 {
-  VPID next_bucket;
   FHS_DK_BUCKET_HEADER dk_bucket_header;
   RECDES bucket_recdes;
   PGSLOTID slot_id;
   int success = SP_SUCCESS;
 
   int error_code = NO_ERROR;
-
-  next_bucket = *((VPID *) args);
-
   /*
    * fetch and initialize the new page. The parameter UNANCHORED_KEEP_
    * SEQUENCE indicates that the order of records will be preserved
@@ -1412,7 +1409,8 @@ fhs_initialize_dk_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, voi
   spage_initialize (thread_p, page_p, UNANCHORED_KEEP_SEQUENCE, FHS_ALIGNMENT, DONT_SAFEGUARD_RVSPACE);
 
   /* Initialize the bucket header */
-  dk_bucket_header.next_bucket = next_bucket;
+  dk_bucket_header.next_bucket = VPID_INITIALIZER;
+  dk_bucket_header.last_bucket = VPID_INITIALIZER;
 
   /* Set the record descriptor to the Bucket header */
   bucket_recdes.data = (char *) &dk_bucket_header;
@@ -2005,7 +2003,7 @@ fhs_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPI
   FHS_BUCKET_HEADER bucket_header;
   char found_depth;
   char init_bucket_data;
-  VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
+  VPID null_vpid = VPID_INITIALIZER;
   FHS_RESULT ins_result;
 
   int error_code = NO_ERROR;
@@ -2345,7 +2343,6 @@ fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_
   VPID dk_bucket_vpid;
   PAGE_PTR dk_bucket_page_p = NULL;
   TFTID tmp_tftid;
-  VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
 
   /* Check if insertion is duplicate, or not */
   if (fhs_locate_slot (thread_p, bucket_page_p, key_p, &slot_no, true) == true)
@@ -2374,7 +2371,7 @@ fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_
 	  /* the case of inserting firstly to DK bucket */
 	  /* make DK bucket page */
 	  success =
-	    file_alloc (thread_p, &fhsid_p->bucket_file, fhs_initialize_dk_bucket_new_page, &null_vpid, &dk_bucket_vpid,
+	    file_alloc (thread_p, &fhsid_p->bucket_file, fhs_initialize_dk_bucket_new_page, NULL, &dk_bucket_vpid,
 			&dk_bucket_page_p);
 	  if (success != NO_ERROR || dk_bucket_page_p == NULL)
 	    {
@@ -2504,34 +2501,47 @@ static FHS_RESULT
 fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID * next_bucket_vpid, void *key_p,
 			 TFTID * value_p)
 {
-  RECDES bucket_recdes, old_bucket_recdes;
+  RECDES bucket_recdes = RECDES_INITIALIZER, first_bucket_recdes = RECDES_INITIALIZER, last_bucket_recdes =
+    RECDES_INITIALIZER;
   PGSLOTID tmp_slot;
   int success;
-  FHS_DK_BUCKET_HEADER *dk_bucket_header_p;
-  VPID tmp_bucket_vpid, cur_bucket_vpid;
-  PAGE_PTR dk_bucket_page_p = NULL;
+  FHS_DK_BUCKET_HEADER *first_dk_bucket_header_p = NULL, *last_dk_bucket_header_p = NULL;
+  VPID last_bucket_vpid, cur_bucket_vpid;
+  PAGE_PTR first_dk_bucket_page_p = NULL;
+  PAGE_PTR last_dk_bucket_page_p = NULL;
   PAGE_PTR new_dk_bucket_page_p = NULL;
-  VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
+  bool is_first_bucket = false;
 
-  /* get last DK bucket page. TO_DO : add last_page for performance */
-  tmp_bucket_vpid = *next_bucket_vpid;
-  do
+  /* get last DK bucket page. */
+  first_dk_bucket_page_p = fhs_fix_old_page (thread_p, &fhsid_p->bucket_file, next_bucket_vpid, PGBUF_LATCH_WRITE);
+  if (first_dk_bucket_page_p == NULL)
     {
-      if (dk_bucket_page_p)
-	{
-	  pgbuf_unfix_and_init (thread_p, dk_bucket_page_p);
-	}
-      dk_bucket_page_p = fhs_fix_old_page (thread_p, &fhsid_p->bucket_file, &tmp_bucket_vpid, PGBUF_LATCH_WRITE);
-      if (dk_bucket_page_p == NULL)
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      goto error;
+    }
+  (void) spage_get_record (thread_p, first_dk_bucket_page_p, 0, &first_bucket_recdes, PEEK);
+  first_dk_bucket_header_p = (FHS_DK_BUCKET_HEADER *) first_bucket_recdes.data;
+  last_bucket_vpid = first_dk_bucket_header_p->last_bucket;
+
+  /* fix last DK bucket page. */
+  if (last_bucket_vpid.volid == NULL_VOLID && last_bucket_vpid.pageid == NULL_PAGEID)
+    {
+      /* first is last */
+      last_dk_bucket_page_p = first_dk_bucket_page_p;
+      last_dk_bucket_header_p = first_dk_bucket_header_p;
+      is_first_bucket = true;
+    }
+  else
+    {
+      last_dk_bucket_page_p = fhs_fix_old_page (thread_p, &fhsid_p->bucket_file, &last_bucket_vpid, PGBUF_LATCH_WRITE);
+      if (last_dk_bucket_page_p == NULL)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  goto error;
 	}
-      (void) spage_get_record (thread_p, dk_bucket_page_p, 0, &old_bucket_recdes, PEEK);
-      dk_bucket_header_p = (FHS_DK_BUCKET_HEADER *) old_bucket_recdes.data;
-      tmp_bucket_vpid = dk_bucket_header_p->next_bucket;
+      (void) spage_get_record (thread_p, last_dk_bucket_page_p, 0, &last_bucket_recdes, PEEK);
+      last_dk_bucket_header_p = (FHS_DK_BUCKET_HEADER *) last_bucket_recdes.data;
     }
-  while (!VPID_ISNULL (&tmp_bucket_vpid));
 
   /* insert new record into dk_bucket */
   if (fhs_compose_record (thread_p, key_p, value_p, &bucket_recdes, FHS_FLAG_DUMMY_NUM) != NO_ERROR)
@@ -2539,21 +2549,25 @@ fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID * next_b
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       goto error;
     }
-  success = spage_insert (thread_p, dk_bucket_page_p, &bucket_recdes, &tmp_slot);
+  success = spage_insert (thread_p, last_dk_bucket_page_p, &bucket_recdes, &tmp_slot);
   if (success == SP_DOESNT_FIT)
     {
       /* make new dk_bucket page */
       success =
-	file_alloc (thread_p, &fhsid_p->bucket_file, fhs_initialize_dk_bucket_new_page, &null_vpid, &cur_bucket_vpid,
+	file_alloc (thread_p, &fhsid_p->bucket_file, fhs_initialize_dk_bucket_new_page, NULL, &cur_bucket_vpid,
 		    &new_dk_bucket_page_p);
-      if (success != NO_ERROR || dk_bucket_page_p == NULL)
+      if (success != NO_ERROR || new_dk_bucket_page_p == NULL)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  goto error;
 	}
       /* connect with prior page */
-      dk_bucket_header_p->next_bucket = cur_bucket_vpid;
-      pgbuf_set_dirty (thread_p, dk_bucket_page_p, DONT_FREE);
+      last_dk_bucket_header_p->next_bucket = cur_bucket_vpid;
+      pgbuf_set_dirty (thread_p, last_dk_bucket_page_p, DONT_FREE);
+
+      /* set last dk bucket vpid at first dk bucket */
+      first_dk_bucket_header_p->last_bucket = cur_bucket_vpid;
+      pgbuf_set_dirty (thread_p, first_dk_bucket_page_p, DONT_FREE);
 
       /* insert record into new dk_bucket */
       success = spage_insert (thread_p, new_dk_bucket_page_p, &bucket_recdes, &tmp_slot);
@@ -2570,9 +2584,17 @@ fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID * next_b
       goto error;
     }
 
-  if (dk_bucket_page_p)
+  if (is_first_bucket)
     {
-      pgbuf_unfix_and_init (thread_p, dk_bucket_page_p);
+      last_dk_bucket_page_p = NULL;
+    }
+  if (first_dk_bucket_page_p)
+    {
+      pgbuf_unfix_and_init (thread_p, first_dk_bucket_page_p);
+    }
+  if (last_dk_bucket_page_p)
+    {
+      pgbuf_unfix_and_init (thread_p, last_dk_bucket_page_p);
     }
   fhs_free_recdes (thread_p, &bucket_recdes);
   if (new_dk_bucket_page_p)
@@ -2587,9 +2609,17 @@ error:
     {
       fhs_free_recdes (thread_p, &bucket_recdes);
     }
-  if (dk_bucket_page_p)
+  if (is_first_bucket)
     {
-      pgbuf_unfix_and_init (thread_p, dk_bucket_page_p);
+      last_dk_bucket_page_p = NULL;
+    }
+  if (first_dk_bucket_page_p)
+    {
+      pgbuf_unfix_and_init (thread_p, first_dk_bucket_page_p);
+    }
+  if (last_dk_bucket_page_p)
+    {
+      pgbuf_unfix_and_init (thread_p, last_dk_bucket_page_p);
     }
   if (new_dk_bucket_page_p)
     {
@@ -2604,7 +2634,7 @@ fhs_extend_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p,
 {
   VPID sibling_vpid;
   PAGE_PTR sibling_page_p = NULL;
-  VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
+  VPID null_vpid = VPID_INITIALIZER;
   int old_local_depth;
   int new_local_depth;
 

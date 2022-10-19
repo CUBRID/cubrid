@@ -55,6 +55,7 @@ namespace cubscan
 	  m_list_id = list_id;
 	  int arg_count = m_list_id->type_list.type_cnt;
 	  m_arg_vector.resize (arg_count);
+	  m_arg_use_vector.resize (arg_count, false);
 	  m_arg_dom_vector.resize (arg_count);
 
 	  for (int i = 0; i < arg_count; i++)
@@ -66,6 +67,17 @@ namespace cubscan
 		}
 	      m_arg_dom_vector[i] = domain;
 	    }
+	}
+
+      method_sig_node *sig = sig_list->method_sig;
+      while (sig)
+	{
+	  for (int i = 0; i < sig->num_method_args; i++)
+	    {
+	      int idx = sig->method_arg_pos [i];
+	      m_arg_use_vector [idx] = true;
+	    }
+	  sig = sig->next;
 	}
 
       if (m_dbval_list == nullptr)
@@ -132,8 +144,10 @@ namespace cubscan
       scan_code = get_single_tuple ();
 
       int error = NO_ERROR;
-      std::vector<std::reference_wrapper<DB_VALUE>> arg_wrapper (m_arg_vector.begin(), m_arg_vector.end());
-      if (scan_code == S_SUCCESS && (error = m_method_group->prepare (arg_wrapper)) != NO_ERROR)
+
+      std::vector<std::reference_wrapper<DB_VALUE>> arg_wrapper (m_arg_vector.begin (), m_arg_vector.end ());
+
+      if (scan_code == S_SUCCESS && (error = m_method_group->prepare (arg_wrapper, m_arg_use_vector)) != NO_ERROR)
 	{
 	  scan_code = S_ERROR;
 	}
