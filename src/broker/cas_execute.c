@@ -2671,7 +2671,8 @@ ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
 
-      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "cursor srv_h_id:%d %s%d", srv_h_id, "error:", err_info.err_number);
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "cursor srv_h_id:%d %s%d", srv_h_id, "error:",
+		     err_info.err_number);
 
       goto cursor_error;
     }
@@ -2717,9 +2718,9 @@ ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos, int argc, void **ar
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
 
-      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "cursor %s%d%s", 
-	"error:", err_info.err_number,
-        (srv_handle == NULL) ? "" : (srv_handle->cur_result == NULL) ? " current result is null" : "");
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "cursor %s%d%s",
+		     "error:", err_info.err_number,
+		     (srv_handle == NULL) ? "" : (srv_handle->cur_result == NULL) ? " current result is null" : "");
 
       goto cursor_update_error;
     }
@@ -3291,8 +3292,8 @@ ux_get_query_info (int srv_h_id, char info_type, T_NET_BUF * net_buf)
       errors_in_transaction++;
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
 
-      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "get_query_info srv_h_id:%d %s%d", srv_h_id, "error:",
-		     err_info.err_number);
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "get_query_info srv_h_id:%d %s%d", srv_h_id,
+		     "error:", err_info.err_number);
 
       NET_BUF_ERR_SET (net_buf);
       return err_code;
@@ -3354,8 +3355,8 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
 
-      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "get_parameter_info srv_h_id:%d %s%d", srv_h_id, "error:",
-		     err_info.err_number);
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "get_parameter_info srv_h_id:%d %s%d", srv_h_id,
+		     "error:", err_info.err_number);
 
       goto parameter_info_error;
     }
@@ -9478,7 +9479,7 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
 
       cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "make_out_rs srv_h_id:%d %s%d%s",
-	srv_h_id, "error:", err_info.err_number, (srv_handle != NULL) ? " current result is null" : "");
+		     srv_h_id, "error:", err_info.err_number, (srv_handle != NULL) ? " current result is null" : "");
 
       goto ux_make_out_rs_error;
     }
