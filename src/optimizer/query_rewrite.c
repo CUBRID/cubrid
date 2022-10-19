@@ -3621,9 +3621,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 	      goto cleanup;
 	    }
 
-#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-	  printf ("[debug] [parent] (1/7) table: %s\n", pt_print_alias (parser, curr_pk_spec));
-#endif
+	  er_log_debug (ARG_FILE_LINE, "[debug] [parent] (1/7) table: %s\n", pt_print_alias (parser, curr_pk_spec));
 
 	  for (curr_pk_cons = sm_class_constraints (curr_pk_mop); curr_pk_cons != NULL;
 	       curr_pk_cons = curr_pk_cons->next)
@@ -3640,9 +3638,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 	      continue;		/* curr_pk_spec->next */
 	    }
 
-#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-	  printf ("[debug] [parent] (2/7) referenced primary key: %s\n", curr_pk_cons->name);
-#endif
+	  er_log_debug (ARG_FILE_LINE, "[debug] [parent] (2/7) referenced primary key: %s\n", curr_pk_cons->name);
 
 	  if (pred_point_list != NULL)
 	    {
@@ -3683,9 +3679,8 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 	      continue;		/* curr_pk_spec->next */
 	    }
 
-#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-	  printf ("[debug] [parent] (3/7) predicates: %s\n", parser_print_tree_list (parser, pred_point_list));
-#endif
+	  er_log_debug (ARG_FILE_LINE, "[debug] [parent] (3/7) predicates: %s\n",
+			parser_print_tree_list (parser, pred_point_list));
 
 	  /* The columns of join predicates must be in the primary key. */
 	  for (pred_point = pred_point_list; pred_point != NULL; pred_point = pred_point->next)
@@ -3745,9 +3740,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 
 	  assert (pred_point == NULL);
 
-#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-	  printf ("[debug] [parent] (4/7) predicates with only columns in the primary key.\n");
-#endif
+	  er_log_debug (ARG_FILE_LINE, "[debug] [parent] (4/7) predicates with only columns in the primary key.\n");
 
 	  {
 	    memset (&info, 0, sizeof (SPEC_CNT_INFO));
@@ -3766,9 +3759,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 	      }
 	  }
 
-#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-	  printf ("[debug] [parent] (5/7) No references other than predicates.\n");
-#endif
+	  er_log_debug (ARG_FILE_LINE, "[debug] [parent] (5/7) No references other than predicates.\n");
 
 	  for (curr_fk_spec = query->info.query.q.select.from; curr_fk_spec != NULL; curr_fk_spec = curr_fk_spec->next)
 	    {
@@ -3817,9 +3808,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 		  goto cleanup;
 		}
 
-#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-	      printf ("[debug] [ child] (1/3) table: %s\n", pt_print_alias (parser, curr_fk_spec));
-#endif
+	      er_log_debug (ARG_FILE_LINE, "[debug] [ child] (1/3) table: %s\n", pt_print_alias (parser, curr_fk_spec));
 
 	      for (curr_fk_cons = sm_class_constraints (curr_fk_mop); curr_fk_cons != NULL;
 		   curr_fk_cons = curr_fk_cons->next)
@@ -3842,9 +3831,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 		      continue;	/* curr_fk_cons->next */
 		    }
 
-#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-		  printf ("[debug] [ child] (2/3) foreign key: %s\n", curr_fk_cons->name);
-#endif
+		  er_log_debug (ARG_FILE_LINE, "[debug] [ child] (2/3) foreign key: %s\n", curr_fk_cons->name);
 
 		  if (append_pred_list != NULL)
 		    {
@@ -3973,9 +3960,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 		  continue;	/* curr_fk_spec->next */
 		}
 
-#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-	      printf ("[debug] [ child] (3/3) predicates with only columns in the foreign key.\n");
-#endif
+	      er_log_debug (ARG_FILE_LINE, "[debug] [ child] (3/3) predicates with only columns in the foreign key.\n");
 
 	      assert (is_reducible);
 	      break;
@@ -3986,9 +3971,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 	      continue;		/* curr_pk_spec->next */
 	    }
 
-#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-	  printf ("[debug] [parent] (6/7) table to reduce: %s\n", db_get_class_name (curr_pk_mop));
-#endif
+	  er_log_debug (ARG_FILE_LINE, "[debug] [parent] (6/7) table to reduce: %s\n", db_get_class_name (curr_pk_mop));
 
 	  prev_pred = NULL;
 	  curr_pred = query->info.query.q.select.where;
@@ -4087,9 +4070,8 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 	      curr_append_pred = next_append_pred;
 	    }
 
-#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-	  printf ("[debug] [parent] (7/7) predicates to add: %s\n", parser_print_tree_list (parser, append_pred_list));
-#endif
+	  er_log_debug (ARG_FILE_LINE, "[debug] [parent] (7/7) predicates to add: %s\n",
+			parser_print_tree_list (parser, append_pred_list));
 
 	  if (append_pred_list != NULL)
 	    {
@@ -4121,9 +4103,7 @@ qo_reduce_joined_referenced_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 
       if (!has_reduce)
 	{
-#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-	  printf ("[debug] [------] (-/-) has_reduce: false\n");
-#endif
+	  er_log_debug (ARG_FILE_LINE, "[debug] [------] (-/-) has_reduce: false\n");
 
 	  break;
 	}
