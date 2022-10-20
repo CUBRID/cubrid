@@ -581,9 +581,9 @@ db_compile_statement_local (DB_SESSION * session)
   /* forget about any previous parsing errors, if any */
   pt_reset_error (parser);
 
-#if defined(DBLINK_POC_INSERT)
-    // @server
-    pt_check_server_extension (parser, statement);
+#if defined(DBLINK_DML_POC)
+  // @server
+  pt_check_server_extension (parser, statement);
   if (pt_has_error (parser))
     {				// TODO: error number and  error_type
       pt_report_to_ersys_with_statement (parser, PT_SYNTAX, statement);
@@ -668,6 +668,16 @@ db_compile_statement_local (DB_SESSION * session)
 	}
     }
 
+#if defined(DBLINK_DML_POC)
+  if ((statement->node_type == PT_INSERT && statement->info.insert.spec->info.spec.remote_server_name)
+      || (statement->node_type == PT_DELETE && statement->info.delete_.spec->info.spec.remote_server_name)
+      || (statement->node_type == PT_UPDATE && statement->info.update.spec->info.spec.remote_server_name)
+      || (statement->node_type == PT_MERGE && statement->info.merge.into->info.spec.remote_server_name))
+    {
+      goto poc_jump;
+    }
+#endif
+
   /* translate views or virtual classes into base classes */
   statement_result = mq_translate (parser, statement);
   if (!statement_result || pt_has_error (parser))
@@ -702,6 +712,9 @@ db_compile_statement_local (DB_SESSION * session)
 	}
     }
 
+#if defined(DBLINK_DML_POC)
+poc_jump:
+#endif
   /* so now, the statement is compiled */
   session->statements[stmt_ndx] = statement;
   session->stage[stmt_ndx] = StatementCompiledStage;

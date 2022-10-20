@@ -426,6 +426,9 @@ static PARSER_VARCHAR *pt_print_json_table (PARSER_CONTEXT * parser, PT_NODE * p
 static PARSER_VARCHAR *pt_print_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_json_table_columns (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p);
+#if defined(DBLINK_DML_POC)
+static PARSER_VARCHAR *pt_print_dblink_table_dml (PARSER_CONTEXT * parser, PT_NODE * p);
+#endif
 static PARSER_VARCHAR *pt_print_create_server (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_drop_server (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_rename_server (PARSER_CONTEXT * parser, PT_NODE * p);
@@ -3102,6 +3105,10 @@ pt_show_node_type (PT_NODE * node)
       return "CTE";
     case PT_DBLINK_TABLE:
       return "DBLINK";
+#if defined(DBLINK_DML_POC)
+    case PT_DBLINK_TABLE_DML:
+      return "DBLINK";		// TODO, ctshim fix to other name
+#endif
     case PT_CREATE_SERVER:
       return "CREATE_SERVER";
     case PT_DROP_SERVER:
@@ -5014,6 +5021,9 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_JSON_TABLE_NODE] = pt_apply_json_table_node;
   pt_apply_func_array[PT_JSON_TABLE_COLUMN] = pt_apply_json_table_column;
   pt_apply_func_array[PT_DBLINK_TABLE] = pt_apply_dblink_table;
+#if defined(DBLINK_DML_POC)
+  pt_apply_func_array[PT_DBLINK_TABLE_DML] = pt_apply_dblink_table;
+#endif
   pt_apply_func_array[PT_CREATE_SERVER] = pt_apply_create_server;
   pt_apply_func_array[PT_DROP_SERVER] = pt_apply_drop_server;
   pt_apply_func_array[PT_RENAME_SERVER] = pt_apply_rename_server;
@@ -5147,6 +5157,9 @@ pt_init_init_f (void)
   pt_init_func_array[PT_JSON_TABLE_NODE] = pt_init_func_null_function;
   pt_init_func_array[PT_JSON_TABLE_COLUMN] = pt_init_json_table_column;
   pt_init_func_array[PT_DBLINK_TABLE] = pt_init_func_null_function;
+#if defined(DBLINK_DML_POC)
+  pt_init_func_array[PT_DBLINK_TABLE_DML] = pt_init_func_null_function;
+#endif
   pt_init_func_array[PT_CREATE_SERVER] = pt_init_func_null_function;
   pt_init_func_array[PT_DROP_SERVER] = pt_init_func_null_function;
   pt_init_func_array[PT_RENAME_SERVER] = pt_init_func_null_function;
@@ -5273,6 +5286,9 @@ pt_init_print_f (void)
   pt_print_func_array[PT_JSON_TABLE_NODE] = pt_print_json_table_node;
   pt_print_func_array[PT_JSON_TABLE_COLUMN] = pt_print_json_table_columns;
   pt_print_func_array[PT_DBLINK_TABLE] = pt_print_dblink_table;
+#if defined(DBLINK_DML_POC)
+  pt_print_func_array[PT_DBLINK_TABLE_DML] = pt_print_dblink_table_dml;
+#endif
   pt_print_func_array[PT_CREATE_SERVER] = pt_print_create_server;
   pt_print_func_array[PT_DROP_SERVER] = pt_print_drop_server;
   pt_print_func_array[PT_RENAME_SERVER] = pt_print_rename_server;
@@ -9071,7 +9087,7 @@ static PT_NODE *
 pt_apply_spec (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.spec.entity_name, arg);
-#if defined(DBLINK_POC_INSERT)
+#if defined(DBLINK_DML_POC)
   PT_APPLY_WALK (parser, p->info.spec.remote_server_name, arg);
 #endif
   PT_APPLY_WALK (parser, p->info.spec.cte_name, arg);
@@ -9168,7 +9184,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes_l (parser, p->info.spec.entity_name);
       q = pt_append_varchar (parser, q, r1);
 
-#if defined(DBLINK_POC_INSERT)
+#if defined(DBLINK_DML_POC)
       if (p->info.spec.remote_server_name)
 	{
 	  q = pt_append_nulstring (parser, q, "@");
@@ -9200,7 +9216,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.spec.entity_name);
       q = pt_append_varchar (parser, q, r1);
 
-#if defined(DBLINK_POC_INSERT)
+#if defined(DBLINK_DML_POC)
       if (p->info.spec.remote_server_name)
 	{
 	  q = pt_append_nulstring (parser, q, "@");
@@ -18607,7 +18623,7 @@ pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.dblink_table.qstr, arg);
   PT_APPLY_WALK (parser, p->info.dblink_table.pushed_pred, arg);
   PT_APPLY_WALK (parser, p->info.dblink_table.cols, arg);
-#if defined(DBLINK_POC_INSERT)
+#if defined(DBLINK_DML_POC)
   PT_APPLY_WALK (parser, p->info.dblink_table.sel_list, arg);
 #endif
   return p;
@@ -18714,6 +18730,69 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
 
   return q;
 }
+
+#if defined(DBLINK_DML_POC)
+static PARSER_VARCHAR *
+pt_print_dblink_table_dml (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = 0, *r;
+  PT_DBLINK_INFO *pt = &(p->info.dblink_table);
+  assert (p->info.dblink_table.is_name == true);
+
+  if (p->info.dblink_table.owner_name)
+    {
+      r = pt_print_bytes (parser, p->info.dblink_table.owner_name);
+      q = pt_append_varchar (parser, q, r);
+      q = pt_append_nulstring (parser, q, ".");
+    }
+  r = pt_print_bytes (parser, p->info.dblink_table.conn);
+  q = pt_append_varchar (parser, q, r);
+
+  /* For Query-cache:
+   * Separate comments have been added 
+   * for cases where there is no change in the query but information on the server has changed. */
+  q = pt_append_nulstring (parser, q, "\n /* DBLINK(");
+
+  if (pt->url && pt->user && pt->pwd)
+    {
+      q = pt_append_bytes (parser, q, "'", 1);
+
+      char *t, *s;
+
+      // "cci:CUBRID:{HOST}:{PORT}:{DBNAME}:<user-name>:<password>:{PROPERITIES}"
+      s = (char *) pt->url->info.value.data_value.str->bytes;
+      // skip cci:
+      s = strchr (s, ':');
+      // skip CUBRID:
+      s = strchr (s + 1, ':');
+
+      t = ++s;
+      // host           
+      s = strchr (s, ':');
+      // port           
+      s = strchr (s + 1, ':');
+      // dbname           
+      s = strchr (s + 1, ':');
+      q = pt_append_bytes (parser, q, t, (int) (s - t));
+      t = s + 2;
+      // user
+      q = pt_append_nulstring (parser, q, ":");
+      q = pt_append_bytes (parser, q, (char *) pt->user->info.value.data_value.str->bytes,
+			   pt->user->info.value.data_value.str->length);
+      // password                           
+      q = pt_append_nulstring (parser, q, ":");
+      q = pt_append_nulstring (parser, q, "*");
+      // properties
+      //q = pt_append_nulstring (parser, q, t);
+
+      q = pt_append_bytes (parser, q, "'", 1);
+    }
+
+  q = pt_append_bytes (parser, q, ") */ ", 5);
+
+  return q;
+}
+#endif //   #if defined(DBLINK_DML_POC)
 
 static PT_NODE *
 pt_apply_create_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)

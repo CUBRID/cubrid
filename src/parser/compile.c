@@ -862,10 +862,9 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
       return node;
     }
 
-  // ctshim
-#if defined(DBLINK_POC_INSERT)
-    if (node->info.spec.remote_server_name)
-    {      
+#if defined(DBLINK_DML_POC)
+  if (node->info.spec.remote_server_name)
+    {
       return node;
     }
 #endif

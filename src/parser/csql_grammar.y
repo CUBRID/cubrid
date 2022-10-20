@@ -4055,14 +4055,16 @@ only_class_name
 	| user_specified_name
 		{ DBG_TRACE_GRAMMAR(only_class_name, | user_specified_name);
                   $$ = $1; }
-        | class_name_with_server_name /*  DBLINK_POC_INSERT */
+        | class_name_with_server_name
                 {{ DBG_TRACE_GRAMMAR(only_class_name, | class_name_with_server_name);
 
                         PT_NODE *scs = parser_new_node (this_parser, PT_SPEC);
 			if (scs)
 			  {
                             scs->info.spec.entity_name = CONTAINER_AT_0 ($1);
+#if defined(DBLINK_DML_POC)
                             scs->info.spec.remote_server_name = CONTAINER_AT_1 ($1);
+#endif
 
 			    scs->info.spec.only_all = PT_ONLY;
 			    scs->info.spec.meta_class = PT_CLASS;			    
@@ -5004,19 +5006,6 @@ original_table_spec
 					       MSGCAT_SET_PARSER_SEMANTIC,
 					       MSGCAT_SEMANTIC_MERGE_HIERARCHY_NOT_ALLOWED);
 				  }
-                                 /*  DBLINK_POC_INSERT */
- //                             parser_top_select_stmt_node()->node_type != PT_SELECT ?
-                                if(ent->info.spec.remote_server_name != NULL)
-                                {  
-                                   if(stmt->node_type != PT_SELECT)                                      
-                                   {
-                                      PT_ERROR (this_parser, ent, "Oops! Sorry. only SELECT statements are supported yet."); // ctshim
-                                   }
-                                   else if(CONTAINER_AT_1 ($2))
-                                   {
-                                      PT_ERROR (this_parser, ent, "Oops! Sorry. only SELECT statements are supported yet."); // ctshim
-                                   }
-                                }     
 			      }
 
 			    range_var = CONTAINER_AT_0 ($2);
@@ -5387,26 +5376,26 @@ meta_class_spec
 only_all_class_spec
 	: only_class_name opt_partition_spec
 		{{ DBG_TRACE_GRAMMAR(only_all_class_spec, : only_class_name opt_partition_spec );
-
-                        /*  DBLINK_POC_INSERT */   
-			PT_NODE *ocs = NULL; //parser_new_node (this_parser, PT_SPEC);
+                       PT_NODE *ocs = NULL;
+#if defined(DBLINK_DML_POC)
                         if($1 && $1->node_type == PT_SPEC)
                         {
-                                ocs = $1;
+                              ocs = $1;
                         }
                         else
+#endif                        
                         {
-                          ocs = parser_new_node (this_parser, PT_SPEC);
-			if (ocs)
-			  {
-			    ocs->info.spec.entity_name = $1;
-			    ocs->info.spec.only_all = PT_ONLY;
-			    ocs->info.spec.meta_class = PT_CLASS;
-			    if ($2)
+                           ocs = parser_new_node (this_parser, PT_SPEC);
+			   if (ocs)
+			    {
+			      ocs->info.spec.entity_name = $1;
+			      ocs->info.spec.only_all = PT_ONLY;
+			      ocs->info.spec.meta_class = PT_CLASS;
+			      if ($2)
 			      {
 				ocs->info.spec.partition = $2;
 			      }
-			  }
+			    }
                         }
 
 			$$ = ocs;
@@ -6755,24 +6744,23 @@ insert_set_stmt_header
 		{{ DBG_TRACE_GRAMMAR(insert_set_stmt_header, : opt_hint_list opt_into only_class_name SET insert_assignment_list);
 
 			PT_NODE *ins = parser_pop_hint_node ();
-			 /*  DBLINK_POC_INSERT */
-			PT_NODE *ocs = NULL; // parser_new_node (this_parser, PT_SPEC);
-			PT_NODE *nls = pt_node_list (this_parser, PT_IS_VALUE, CONTAINER_AT_1 ($5));
-
+			PT_NODE *ocs = NULL;
+                        PT_NODE *nls = pt_node_list (this_parser, PT_IS_VALUE, CONTAINER_AT_1 ($5));
+#if defined(DBLINK_DML_POC)
                         if($3 && $3->node_type == PT_SPEC)
                         {
-                                ocs = $3;
+                           ocs = $3;
                         }
                         else
+#endif
                         {
-                                ocs = parser_new_node (this_parser, PT_SPEC);
-                        
-			if (ocs)
-			  {
-			    ocs->info.spec.entity_name = $3;
-			    ocs->info.spec.only_all = PT_ONLY;
-			    ocs->info.spec.meta_class = PT_CLASS;
-			  }
+                           ocs = parser_new_node (this_parser, PT_SPEC);
+                           if (ocs)
+			    {
+			      ocs->info.spec.entity_name = $3;
+			      ocs->info.spec.only_all = PT_ONLY;
+			      ocs->info.spec.meta_class = PT_CLASS;
+			    }
                         }
 
 			if (ins)
@@ -6910,27 +6898,26 @@ insert_name_clause_header
 		{{ DBG_TRACE_GRAMMAR(insert_name_clause_header, : opt_hint_list opt_into only_class_name opt_partition_spec opt_attr_list);
 
 			PT_NODE *ins = parser_pop_hint_node ();
-			 /*  DBLINK_POC_INSERT */    
-			PT_NODE *ocs = NULL; //parser_new_node (this_parser, PT_SPEC);
-
-// ctshim 
+			PT_NODE *ocs = NULL;
+#if defined(DBLINK_DML_POC)
                         if($3 && $3->node_type == PT_SPEC)
                         {
-                                ocs = $3;
+                           ocs = $3;
                         }
                         else
+#endif
                         {
-                                ocs = parser_new_node (this_parser, PT_SPEC);
-			if (ocs)
-			  {
-			    ocs->info.spec.entity_name = $3;
-			    ocs->info.spec.only_all = PT_ONLY;
-			    ocs->info.spec.meta_class = PT_CLASS;
-			    if ($4)
+                           ocs = parser_new_node (this_parser, PT_SPEC);
+			   if (ocs)
+			   {
+			      ocs->info.spec.entity_name = $3;
+			      ocs->info.spec.only_all = PT_ONLY;
+			      ocs->info.spec.meta_class = PT_CLASS;
+			      if ($4)
 			      {
 			        ocs->info.spec.partition = $4;
 			      }
-			  }
+			   }
                         }
 
 			if (ins)
@@ -13995,10 +13982,10 @@ opt_from_clause
 				PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_ANSI_JOIN);
 			      }
 
-                            {
-                               // ctshim ================
-                               //pt_convert_dblink_select_query(node);
-                            }
+#if defined(DBLINK_DML_POC)
+                           // ctshim ================
+                           //pt_convert_dblink_select_query(node);
+#endif                            
 
 			    node->info.query.q.select.where = n = $4;
 			    if (n)

@@ -5696,17 +5696,26 @@ check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func, PARSER_CONTEXT * pa
 	  if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
 	    {
 	      flat = node->info.spec.flat_entity_list;
-	      class_ = (flat ? flat->info.name.db_object : NULL);
-	      if (class_ == NULL)
+#if defined(DBLINK_DML_POC)
+	      if (node->info.spec.remote_server_name)
 		{
-		  PT_INTERNAL_ERROR (parser, "invalid spec id");
-		  result = ER_FAILED;
-		  goto exit;
+		  result = NO_ERROR;
 		}
-	      result = tr_prepare_statement (&state, event, class_, 0, NULL);
-	      if (result != NO_ERROR)
+	      else
+#endif
 		{
-		  goto exit;
+		  class_ = (flat ? flat->info.name.db_object : NULL);
+		  if (class_ == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "invalid spec id");
+		      result = ER_FAILED;
+		      goto exit;
+		    }
+		  result = tr_prepare_statement (&state, event, class_, 0, NULL);
+		  if (result != NO_ERROR)
+		    {
+		      goto exit;
+		    }
 		}
 	    }
 	  node = node->next;
@@ -5717,22 +5726,18 @@ check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func, PARSER_CONTEXT * pa
       flat = (statement->info.insert.spec) ? statement->info.insert.spec->info.spec.flat_entity_list : NULL;
 
       // ctshim
-#if defined(DBLINK_POC_INSERT)
+#if defined(DBLINK_DML_POC)
       if (statement->info.insert.spec && statement->info.insert.spec->info.spec.flat_entity_list == NULL
 	  && statement->info.insert.spec->info.spec.remote_server_name)
 	{
-	  //fprintf(stdout, "CTSHIM:: check_trigger()\n");        
 	  result = NO_ERROR;
 	}
       else
+#endif
 	{
 	  class_ = (flat) ? flat->info.name.db_object : NULL;
 	  result = tr_prepare_statement (&state, event, class_, 0, NULL);
 	}
-#else
-      class_ = (flat) ? flat->info.name.db_object : NULL;
-      result = tr_prepare_statement (&state, event, class_, 0, NULL);
-#endif
       break;
 
     case TR_EVENT_STATEMENT_UPDATE:
@@ -8968,6 +8973,13 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
       has_any_update_trigger = 0;
       while (spec && !has_trigger && err == NO_ERROR)
 	{
+#if defined(DBLINK_DML_POC)
+	  if (spec->info.spec.remote_server_name)
+	    {
+	      spec = spec->next;
+	      continue;
+	    }
+#endif
 	  if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
 	    {
 	      flat = spec->info.spec.flat_entity_list;
@@ -9008,6 +9020,14 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* sm_class_has_triggers() checked if the class has active triggers */
       statement->info.update.has_trigger = (bool) has_trigger;
 
+#if defined(DBLINK_DML_POC)
+      if (statement->info.update.spec->info.spec.remote_server_name)
+	{
+	  not_nulls = NULL;
+	  goto poc_jump;
+	}
+#endif
+
       /* check if the target class has UNIQUE constraint and get attributes that has NOT NULL constraint */
       err = update_check_for_constraints (parser, &has_unique, &not_nulls, statement);
       if (err < NO_ERROR)
@@ -9015,6 +9035,10 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PT_INTERNAL_ERROR (parser, "update");
 	  break;		/* stop while loop if error */
 	}
+
+#if defined(DBLINK_DML_POC)
+    poc_jump:
+#endif
 
       statement->info.update.has_unique = (bool) has_unique;
 
@@ -10340,6 +10364,13 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
       node = (PT_NODE *) statement->info.delete_.spec;
       while (node && err == NO_ERROR && !has_trigger)
 	{
+#if defined(DBLINK_DML_POC)
+	  if (node->info.spec.remote_server_name)
+	    {
+	      node = node->next;
+	      continue;
+	    }
+#endif
 	  if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
 	    {
 	      flat = node->info.spec.flat_entity_list;
@@ -13576,7 +13607,7 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *with = NULL;
   int save_au;
 
-#if defined(DBLINK_POC_INSERT)
+#if defined(DBLINK_DML_POC)
   if (statement == NULL || statement->node_type != PT_INSERT || statement->info.insert.spec == NULL)
     {
       assert (false);
@@ -13623,11 +13654,10 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   statement->etc = NULL;
   //ctshim
-#if defined(DBLINK_POC_INSERT)
-//fprintf(stdout, "CTSHIM:: mq_prepare_insert()\n");
+#if defined(DBLINK_DML_POC)
   if (statement->info.insert.spec->info.spec.flat_entity_list)
-    {
 #endif
+    {
       class_ = statement->info.insert.spec->info.spec.flat_entity_list;
       values = statement->info.insert.value_clauses;
 
@@ -13642,9 +13672,7 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto cleanup;
 	}
-#if defined(DBLINK_POC_INSERT)
     }
-#endif
 
   error = do_prepare_insert_internal (parser, statement);
 
@@ -16304,6 +16332,14 @@ check_merge_trigger (PT_DO_FUNC * do_func, PARSER_CONTEXT * parser, PT_NODE * st
 
   state = NULL;
 
+#if defined(DBLINK_DML_POC)
+  if (statement->info.merge.into && statement->info.merge.into->info.spec.remote_server_name)
+    {
+      goto poc_jump;
+
+    }
+#endif
+
   flat = (statement->info.merge.into) ? statement->info.merge.into->info.spec.flat_entity_list : NULL;
   class_ = (flat) ? flat->info.name.db_object : NULL;
   if (class_ == NULL)
@@ -16340,6 +16376,10 @@ check_merge_trigger (PT_DO_FUNC * do_func, PARSER_CONTEXT * parser, PT_NODE * st
 	  goto exit;
 	}
     }
+
+#if defined(DBLINK_DML_POC)
+poc_jump:
+#endif
 
   if (state == NULL)
     {
@@ -16890,6 +16930,23 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto cleanup;
     }
 
+#if defined(DBLINK_DML_POC)
+  if (statement->info.merge.into->info.spec.remote_server_name)
+    {
+      server_insert = server_update = false;
+      if (statement->info.merge.insert.value_clauses)
+	{
+	  server_insert = true;
+	}
+      if (statement->info.merge.update.assignment && !insert_only)
+	{
+	  server_update = true;
+	}
+
+      goto poc_jump;
+    }
+#endif
+
   /* check into for triggers and virtual class */
   AU_SAVE_AND_DISABLE (au_save);
 
@@ -17030,6 +17087,11 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       server_insert = !has_trigger && !has_virt;
     }
 
+
+#if defined(DBLINK_DML_POC)
+poc_jump:
+#endif
+
   server_op = (server_insert && server_update);
 
   if (server_op)
@@ -17078,7 +17140,12 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (stream.xasl_id == NULL && err == NO_ERROR)
 	{
+#if defined(DBLINK_DML_POC)
+	  if (statement->info.merge.insert.value_clauses &&
+	      (statement->info.merge.into->info.spec.remote_server_name == NULL))
+#else
 	  if (statement->info.merge.insert.value_clauses)
+#endif
 	    {
 	      err = pt_find_omitted_default_expr (parser, flat->info.name.db_object,
 						  statement->info.merge.insert.attr_list, &default_expr_attrs);
@@ -17298,13 +17365,23 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   spec = statement->info.merge.into;
-  flat = spec->info.spec.flat_entity_list;
-  if (flat == NULL)
+#if defined(DBLINK_DML_POC)
+  if (spec->info.spec.remote_server_name)
     {
-      err = ER_GENERIC_ERROR;
-      goto exit;
+      class_obj = NULL;
     }
-  class_obj = flat->info.name.db_object;
+  else
+#endif
+    {
+      flat = spec->info.spec.flat_entity_list;
+      if (flat == NULL)
+	{
+	  err = ER_GENERIC_ERROR;
+	  goto exit;
+	}
+      class_obj = flat->info.name.db_object;
+    }
+
 
   if (statement->info.merge.flags & PT_MERGE_INFO_SERVER_OP)
     {

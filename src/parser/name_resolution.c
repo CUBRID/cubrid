@@ -252,15 +252,10 @@ static PT_NODE *pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_M
 static void pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC_TYPE derived_table_type,
 				    PT_NODE * derived_table, PT_NODE * parent_spec);
 static PT_NODE *pt_count_with_clauses (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-
-#if defined(DBLINK_POC_INSERT)
-int pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node);
-#else
 static int pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node);
-#endif
 
 
-#if defined(DBLINK_POC_INSERT)
+#if defined(DBLINK_DML_POC)
 static void pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt);
 typedef struct
 {
@@ -400,7 +395,7 @@ static int pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * d
 #define PRINT_DEBUG_MSG_2(...)  printf(__VA_ARGS__)
 #endif
 
-#endif // #if defined(DBLINK_POC_INSERT)
+#endif // #if defined(DBLINK_DML_POC)
 /*
  * pt_undef_names_pre () - Set error if name matching spec is found. Used in
  *			   insert to make sure no "correlated" names are used
@@ -1160,25 +1155,17 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	      table->info.json_table_info.tree =
 		parser_walk_tree (parser, table->info.json_table_info.tree, pt_bind_name_to_spec, spec, NULL, NULL);
 	    }
-	  else if (table->node_type == PT_DBLINK_TABLE)	// PT_DBLINK_TABLE_DML
+	  else if (table->node_type == PT_DBLINK_TABLE)
 	    {
-#if defined(DBLINK_POC_INSERT)
-	      assert (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE
-		      || spec->info.spec.derived_table_type == PT_DBLINK_DML);
-#else
 	      assert (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE);
-#endif
-
-
 	      if (table->info.dblink_table.is_name)
 		{
 		  if (pt_resolve_dblink_server_name (parser, table) != NO_ERROR)
 		    {
 		      return;
 		    }
-#if defined(DBLINK_POC_INSERT)
-		  if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE &&
-		      table->info.dblink_table.remote_table_name && *table->info.dblink_table.remote_table_name)
+#if defined(DBLINK_DML_POC)
+		  if (table->info.dblink_table.remote_table_name && *table->info.dblink_table.remote_table_name)
 		    {
 		      int err;
 		      S_REMOTE_TBL_COLS rmt_tbl_cols;
@@ -1215,13 +1202,9 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 		    }
 #endif
 		}
-#if defined(DBLINK_POC_INSERT)
-	      if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
-#endif
-		{
-		  table->info.dblink_table.cols =
-		    parser_walk_tree (parser, table->info.dblink_table.cols, pt_bind_name_to_spec, spec, NULL, NULL);
-		}
+
+	      table->info.dblink_table.cols =
+		parser_walk_tree (parser, table->info.dblink_table.cols, pt_bind_name_to_spec, spec, NULL, NULL);
 	    }
 	  else
 	    {
@@ -1250,6 +1233,17 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	  /* types and names of CTE should be already evaluated by pt_bind_names_in_cte; bind them to spec */
 	  pt_bind_spec_attrs (parser, spec);
 	}
+#if defined(DBLINK_DML_POC)
+      else if (spec->info.spec.remote_server_name
+	       && spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML)
+	{
+	  assert (spec->info.spec.remote_server_name->info.dblink_table.is_name);
+	  if (pt_resolve_dblink_server_name (parser, spec->info.spec.remote_server_name) != NO_ERROR)
+	    {
+	      return;
+	    }
+	}
+#endif
 
       if (prev_spec)
 	{
@@ -2844,8 +2838,14 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       pt_bind_scope (parser, bind_arg);
 
       (void) pt_resolve_hint (parser, node);
-
+#if defined(DBLINK_DML_POC)
+      if (node->info.update.spec->info.spec.remote_server_name == NULL)
+	{
+	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+	}
+#else
       parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+#endif
 
       /* pop the extra spec frame and add any extra specs to the from list */
       bind_arg->spec_frames = bind_arg->spec_frames->next;
@@ -2877,8 +2877,14 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       pt_bind_scope (parser, bind_arg);
 
       (void) pt_resolve_hint (parser, node);
-
+#if defined(DBLINK_DML_POC)
+      if (node->info.delete_.spec->info.spec.remote_server_name == NULL)
+	{
+	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+	}
+#else
       parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+#endif
 
       /* pop the extra spec frame and add any extra specs to the from list */
       bind_arg->spec_frames = bind_arg->spec_frames->next;
@@ -2899,10 +2905,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       bind_arg->spec_frames = &spec_frame;
       pt_bind_scope (parser, bind_arg);
 
-// ctshim   
-#if defined(DBLINK_POC_INSERT)
-	if (/* node->info.insert.spec->info.spec.flat_entity_list == NULL
-	    && */ node->info.insert.spec->info.spec.remote_server_name)
+#if defined(DBLINK_DML_POC)
+      if (node->info.insert.spec->info.spec.remote_server_name)
 	{
 	  goto insert_end;
 	}
@@ -3009,6 +3013,13 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       break;
 
     case PT_MERGE:
+#if defined(DBLINK_DML_POC)
+      if (node->info.merge.into->info.spec.remote_server_name)
+	{
+	  goto poc_jump;
+	}
+#endif
+
       if (node->info.merge.insert.value_clauses)
 	{
 	  /* resolve missing attr_list as star */
@@ -3043,6 +3054,10 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    }
 	}
 
+#if defined(DBLINK_DML_POC)
+    poc_jump:
+#endif
+
       assert (node->info.merge.into->next == NULL);
       node->info.merge.into->next = node->info.merge.using_clause;
 
@@ -3059,7 +3074,14 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  break;
 	}
 
+#if defined(DBLINK_DML_POC)
+      if (node->info.merge.into->info.spec.remote_server_name == NULL)
+	{
+	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+	}
+#else
       parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+#endif
       if (pt_has_error (parser))
 	{
 	  node = NULL;
@@ -4468,8 +4490,7 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
       while (node)
 	{
 	  /* if a flat list has not been calculated, calculate it. */
-	  // ctshim
-#if defined(DBLINK_POC_INSERT)	  
+#if defined(DBLINK_DML_POC)
 	  if (!node->info.spec.flat_entity_list && PT_SPEC_IS_ENTITY (node) && !node->info.spec.remote_server_name)
 #else
 	  if (!node->info.spec.flat_entity_list && PT_SPEC_IS_ENTITY (node))
@@ -4723,7 +4744,7 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
   return sorted_attrs[0];
 }
 
-#if defined(DBLINK_POC_INSERT)
+#if defined(DBLINK_DML_POC)
 
 #define DBLINK_ATTR_NAME      (1)
 #define DBLINK_ATTR_TYPE      (2)
@@ -5197,7 +5218,7 @@ set_parser_error:
 
   return res;
 }
-#endif // #if defined(DBLINK_POC_INSERT)
+#endif // #if defined(DBLINK_DML_POC)
 
 static PT_NODE *
 pt_dblink_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * dblink_column, void *args, int *continue_walk)
@@ -11144,10 +11165,7 @@ pt_bind_name_to_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
   return node;
 }
 
-#if !defined(DBLINK_POC_INSERT)
-static
-#endif
-  int
+static int
 pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *val[3];
@@ -11231,7 +11249,7 @@ pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node)
   return NO_ERROR;
 }
 
-#if defined(DBLINK_POC_INSERT)
+#if defined(DBLINK_DML_POC)
 typedef struct link_columns
 {
   PT_NODE *col_list;
@@ -11471,4 +11489,4 @@ pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 
   return node;
 }
-#endif // #if defined(DBLINK_POC_INSERT)
+#endif // #if defined(DBLINK_DML_POC)

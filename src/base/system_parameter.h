@@ -34,6 +34,8 @@
 #include "error_code.h"
 #include "porting.h"
 
+#define DBLINK_DML_POC		// ctshim
+
 typedef enum
 {
   PRM_ERR_NO_ERROR = NO_ERROR,

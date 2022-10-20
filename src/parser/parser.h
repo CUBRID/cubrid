@@ -678,7 +678,7 @@ extern "C"
   extern const char *pt_get_name_with_qualifier_removed (const char *name);
   extern const char *pt_get_name_without_current_user_name (const char *name);
 
-#if defined(DBLINK_POC_INSERT)
+#if defined(DBLINK_DML_POC)
   extern void pt_check_server_extension (PARSER_CONTEXT * parser, PT_NODE * stmt);
 #endif
 

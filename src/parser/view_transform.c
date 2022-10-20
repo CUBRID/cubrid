@@ -5328,10 +5328,9 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 	  if (flat == NULL)
 	    {
 	      // ctshim
-#if defined(DBLINK_POC_INSERT)
-		if (from_spec->remote_server_name)
+#if defined(DBLINK_DML_POC)
+	      if (from_spec->remote_server_name)
 		{
-		  // fprintf(stdout, "CTSHIM:: mq_translate_insert()\n");     
 		  assert (from_spec->remote_server_name->node_type == PT_DBLINK_TABLE_DML);
 		  last = &temp->next;
 		  continue;

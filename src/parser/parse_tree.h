@@ -41,8 +41,6 @@
 #include "string_opfunc.h"
 #include "system_parameter.h"
 
-#define DBLINK_POC_INSERT
-
 // forward definitions
 struct json_t;
 
@@ -981,13 +979,13 @@ enum pt_node_type
   PT_JSON_TABLE_NODE,
   PT_JSON_TABLE_COLUMN,
   PT_DBLINK_TABLE,
+#if defined(DBLINK_DML_POC)
+  PT_DBLINK_TABLE_DML,
+#endif
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
 typedef enum pt_node_type PT_NODE_TYPE;
-#if defined(DBLINK_POC_INSERT)
-#define PT_DBLINK_TABLE_DML   PT_DBLINK_TABLE
-#endif
 
 /* Enumerated Data Types for expressions with a VALUE */
 enum pt_type_enum
@@ -1229,9 +1227,6 @@ typedef enum
   PT_DERIVED_JSON_TABLE,	// json table spec derivation
 
   PT_DERIVED_DBLINK_TABLE,	// dblink table spec derivation
-#if defined(DBLINK_POC_INSERT)
-  PT_DBLINK_DML,
-#endif
 
   PT_PRIVATE,
   PT_PUBLIC,
@@ -2218,7 +2213,7 @@ struct pt_drop_session_var_info
 struct pt_spec_info
 {
   PT_NODE *entity_name;		/* PT_NAME */
-#if defined(DBLINK_POC_INSERT)
+#if defined(DBLINK_DML_POC)
   PT_NODE *remote_server_name;	/* PT_NAME or PT_DBLINK_INFO */
 #endif
   PT_NODE *cte_name;		/* PT_NAME */
@@ -3373,7 +3368,7 @@ typedef struct pt_dblink_info
   PT_HOST_VAR_IDX_INFO host_vars;	/* host variable index info for rewritten query */
   bool is_name;			/*  */
 
-#if defined(DBLINK_POC_INSERT)
+#if defined(DBLINK_DML_POC)
   char *remote_table_name;
   PT_NODE *sel_list;
 #endif
