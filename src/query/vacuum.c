@@ -2979,6 +2979,18 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 
   PERF_UTIME_TRACKER_START (&thread_ref, &perf_tracker);
 
+  if (!vacuum_Data.is_loaded)
+    {
+      /* Load vacuum data. */
+      /* This was initially in boot_restart_server. However, the "commit" of boot_restart_server will complain
+       * about vacuum data first and last page not being unfixed (and it will also unfix them).
+       * So, we have to load the data here (vacuum master never commits).
+       */
+      vacuum_data_load_first_and_last_page (&thread_ref);
+
+      m_cursor.set_on_vacuum_data_start ();
+    }
+
   if (is_tran_server_with_remote_storage ()) 
     {
       /* 
@@ -3014,18 +3026,6 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
     }
   
   vacuum_er_log (VACUUM_ER_LOG_MASTER, "update oldest_visible = %lld", (long long int) m_oldest_visible_mvccid);
-
-  if (!vacuum_Data.is_loaded)
-    {
-      /* Load vacuum data. */
-      /* This was initially in boot_restart_server. However, the "commit" of boot_restart_server will complain
-       * about vacuum data first and last page not being unfixed (and it will also unfix them).
-       * So, we have to load the data here (vacuum master never commits).
-       */
-      vacuum_data_load_first_and_last_page (&thread_ref);
-
-      m_cursor.set_on_vacuum_data_start ();
-    }
 
   if (!is_tran_server_with_remote_storage ())
     {
