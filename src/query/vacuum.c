@@ -3006,8 +3006,6 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
        * 1, 2 don't need to request the mvcc status from other server because there is no PTS,
        * which are both filtered with is_tran_server_with_remote_storage().
        */
-
-      /* TODO temporary logging. The global one will be computed taking both into account, and the vacuum runs */ 
       MVCCID global_pts_oldest_visible_mvccid = get_active_tran_server_ptr ()->get_oldest_active_mvccid_from_page_server ();
       if (global_pts_oldest_visible_mvccid == MVCCID_NULL)
         {
