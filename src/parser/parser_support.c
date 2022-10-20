@@ -10824,7 +10824,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * tbl_spec, PT_NOD
 {
   int i = 0;
 
-  if (tbl_spec->info.spec.remote_server_name == NULL)
+  if (!tbl_spec || tbl_spec->info.spec.remote_server_name == NULL)
     {
       return;
     }
