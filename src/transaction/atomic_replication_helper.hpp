@@ -86,18 +86,22 @@ namespace cublog
       atomic_replication_helper &operator= (const atomic_replication_helper &) = delete;
       atomic_replication_helper &operator= (atomic_replication_helper &&) = delete;
 
+#if (0)
       // start a new non-sysop atomic replication sequence for a transaction;
       // the transaction must not already have an atomic replication sequence started
       void add_atomic_replication_sequence (TRANID trid, LOG_LSA start_lsa, const log_rv_redo_context &redo_context);
+#endif
       // add a new log record as part of an already existing atomic replication
       // sequence (be it sysop or non-sysop)
-      int add_atomic_replication_log (THREAD_ENTRY *thread_p, TRANID tranid, log_lsa record_lsa, LOG_RCVINDEX rcvindex,
+      int add_atomic_replication_log (THREAD_ENTRY *thread_p, TRANID tranid, LOG_LSA record_lsa, LOG_RCVINDEX rcvindex,
 				      VPID vpid);
 
+#if (0)
       // start a new sysop atomic replication sequence for a transaction
       // the transaction must not already have an atomic replication sequence started
       void start_sysop_sequence (TRANID trid, LOG_LSA start_lsa,
 				 const log_rv_redo_context &redo_context);
+#endif
       // can a sysop-type atomic sequence be ended under the transaction
       bool can_end_sysop_sequence (TRANID trid, LOG_LSA sysop_parent_lsa) const;
       bool can_end_sysop_sequence (TRANID trid) const;
@@ -107,22 +111,29 @@ namespace cublog
       // replication sequences which will be treated unioned with the main, already started, one
 #if (0)
       void start_postpone_sequence (TRANID trid);
-#endif
       bool is_postpone_sequence_started (TRANID trid) const;
-#if (0)
       void complete_one_postpone_sequence (TRANID trid);
       // there is no easy way of knowing how many postpone sequences are in the transaction
       // but there should be at least one
       bool is_at_least_one_postpone_sequence_completed (TRANID trid) const;
 #endif
 
+#if (0)
       void apply_and_unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, TRANID tranid);
+#endif
 
       bool is_part_of_atomic_replication (TRANID tranid) const;
+      bool all_log_entries_are_control (TRANID tranid) const;
 
-      log_lsa get_the_lowest_start_lsa () const;
+      LOG_LSA get_the_lowest_start_lsa () const;
 
-      void append_control_log (TRANID trid, LOG_RECTYPE rectype, LOG_LSA lsa);
+      void append_control_log (
+	      THREAD_ENTRY *thread_p, TRANID trid, LOG_RECTYPE rectype, LOG_LSA lsa,
+	      const log_rv_redo_context &redo_context);
+      void append_control_log_sysop_end (
+	      THREAD_ENTRY *thread_p, TRANID trid, LOG_LSA lsa, LOG_LSA sysop_end_last_parent_lsa);
+
+      void forcibly_remove_idle_sequence (TRANID trid);
 
     private: // methods
       void start_sequence_internal (TRANID trid, LOG_LSA start_lsa,
@@ -141,38 +152,42 @@ namespace cublog
 	  atomic_log_sequence (const atomic_log_sequence &) = delete;
 	  atomic_log_sequence (atomic_log_sequence &&) = delete;
 
-	  ~atomic_log_sequence () = default;
+	  ~atomic_log_sequence ();
 
 	  atomic_log_sequence &operator= (const atomic_log_sequence &) = delete;
 	  atomic_log_sequence &operator= (atomic_log_sequence &&) = delete;
 
 	  // technical: function is needed to avoid double constructing a redo_context - which is expensive -
 	  // upon constructing a sequence
-	  void initialize (LOG_LSA start_lsa, bool is_sysop);
+	  void initialize (TRANID trid, LOG_LSA start_lsa, bool is_sysop);
 
-	  int add_atomic_replication_log (THREAD_ENTRY *thread_p, log_lsa record_lsa, LOG_RCVINDEX rcvindex, VPID vpid);
+	  int add_atomic_replication_log (THREAD_ENTRY *thread_p, LOG_LSA record_lsa, LOG_RCVINDEX rcvindex, VPID vpid);
 
 	  bool can_end_sysop_sequence (const LOG_LSA &sysop_parent_lsa) const;
 	  bool can_end_sysop_sequence () const;
 
 #if (0)
 	  void start_postpone_sequence ();
-#endif
 	  bool is_postpone_sequence_started () const;
-#if (0)
 	  void complete_one_postpone_sequence ();
 	  bool is_at_least_one_postpone_sequence_completed () const;
 #endif
 
+#if (0)
 	  void apply_and_unfix_sequence (THREAD_ENTRY *thread_p);
+#endif
+	  void apply_and_unfix_sequence_ex (THREAD_ENTRY *thread_p);
 
-	  log_lsa get_start_lsa () const;
+	  LOG_LSA get_start_lsa () const;
 
 	  void append_control_log (LOG_RECTYPE rectype, LOG_LSA lsa);
+	  void append_control_log_sysop_end (LOG_LSA lsa, LOG_LSA sysop_end_last_parent_lsa);
 
-	private:
+	  bool all_log_entries_are_control () const;
+	  bool can_purge ();
+
 #if !defined (NDEBUG)
-	  void dump ();
+	  void dump (const char *message) const;
 #endif
 
 	private: // types
@@ -182,14 +197,15 @@ namespace cublog
 	  struct atomic_log_entry
 	  {
 	    atomic_log_entry () = delete;
-	    atomic_log_entry (log_lsa lsa, VPID vpid, LOG_RCVINDEX rcvindex, PAGE_PTR page_ptr);
-	    atomic_log_entry (log_lsa lsa, LOG_RECTYPE rectype);
+	    atomic_log_entry (LOG_LSA lsa, VPID vpid, LOG_RCVINDEX rcvindex, PAGE_PTR page_ptr);
+	    atomic_log_entry (LOG_LSA lsa, LOG_RECTYPE rectype);
+	    atomic_log_entry (LOG_LSA lsa, LOG_LSA sysop_end_last_parent_lsa);
 
 	    atomic_log_entry (const atomic_log_entry &) = delete;
 	    atomic_log_entry (atomic_log_entry &&that);
 
 	    atomic_log_entry &operator= (const atomic_log_entry &) = delete;
-	    atomic_log_entry &operator= (atomic_log_entry &&) = delete;
+	    atomic_log_entry &operator= (atomic_log_entry &&that);
 
 	    void apply_log_redo (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context) const;
 	    template <typename T>
@@ -198,14 +214,18 @@ namespace cublog
 
 	    bool is_control () const;
 
-	    const LOG_RECTYPE m_rectype;
+#if !defined (NDEBUG)
+	    int dump_to_buffer (char *buf_ptr, int buf_len) const;
+#endif
 
-	    const VPID m_vpid;
-	    const log_lsa m_record_lsa;
-	    const LOG_RCVINDEX m_record_index;
+	    VPID m_vpid;
+	    LOG_RECTYPE m_rectype;
+	    LOG_LSA m_record_lsa;
+	    LOG_RCVINDEX m_record_index;
+	    LOG_LSA m_sysop_end_last_parent_lsa;
 	    // ownership of page pointer is with the bookkeeper in the owning class; this is just a
 	    // reference to allow applying the redo function when needed
-	    PAGE_PTR const m_page_ptr;
+	    PAGE_PTR m_page_ptr;
 	  };
 
 	  using page_ptr_watcher_uptr_type = std::unique_ptr<PGBUF_WATCHER>;
@@ -255,6 +275,10 @@ namespace cublog
 	    int fix_page (THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcv_index, PAGE_PTR &page_ptr_out);
 	    int unfix_page (THREAD_ENTRY *thread_p, VPID vpid);
 
+#if !defined (NDEBUG)
+	    void dump () const;
+#endif
+
 	    using page_ptr_info_map_type = std::map<VPID, page_ptr_info>;
 
 	    page_ptr_info_map_type m_page_ptr_info_map;
@@ -263,6 +287,7 @@ namespace cublog
 	  using atomic_log_entry_vector_type = std::vector<atomic_log_entry>;
 
 	private: // variables
+	  TRANID m_trid;
 	  /* The LSA of the log record which started this atomic sequence.
 	   * It is used for comparison to see whether a sysop end operation can close an
 	   * atomic replication sequence. */
