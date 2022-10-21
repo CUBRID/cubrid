@@ -94,6 +94,8 @@ static int javasp_get_server_info (const std::string &db_name, JAVASP_SERVER_INF
 static int javasp_check_argument (int argc, char *argv[], std::string &command, std::string &db_name);
 static int javasp_check_database (const std::string &db_name, std::string &db_path);
 
+static int javasp_get_port_param ();
+
 /*
  * main() - javasp main function
  */
@@ -281,6 +283,19 @@ exit:
 }
 
 static int
+javasp_get_port_param ()
+{
+  int prm_port = 0;
+#if defined (WINDOWS)
+  const bool is_uds_mode = false;
+#else
+  const bool is_uds_mode = prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE_UDS);
+#endif
+  prm_port = (is_uds_mode) ? JAVASP_PORT_UDS_MODE : prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
+  return prm_port;
+}
+
+static int
 javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_name, const std::string &path)
 {
   int status = NO_ERROR;
@@ -291,28 +306,16 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
     }
   else
     {
-      int prm_port = -1;
-      const bool is_uds_mode = prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE_UDS);
-      if (is_uds_mode)
-	{
-	  prm_port = JAVASP_PORT_UDS_MODE;
-	}
-      else
-	{
-	  prm_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
-	}
-
 #if !defined(WINDOWS)
       /* create a new session */
       setsid ();
 #endif
       er_clear (); // clear error before string JVM
-      status = jsp_start_server (db_name.c_str (), path.c_str (), prm_port);
+      status = jsp_start_server (db_name.c_str (), path.c_str (), javasp_get_port_param ());
 
       if (status == NO_ERROR)
 	{
-	  int port_number = prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE_UDS) ? JAVASP_PORT_UDS_MODE : jsp_server_port ();
-	  JAVASP_SERVER_INFO jsp_new_info { getpid(), port_number };
+	  JAVASP_SERVER_INFO jsp_new_info { getpid(), jsp_server_port () };
 
 	  javasp_unlink_info (db_name.c_str ());
 	  if ((javasp_open_info_dir () && javasp_write_info (db_name.c_str (), jsp_new_info)))
