@@ -285,7 +285,7 @@ exit:
 static int
 javasp_get_port_param ()
 {
-  int prm_port = -1;
+  int prm_port = 0;
 #if defined (WINDOWS)
   const bool is_uds_mode = false;
 #else
@@ -315,8 +315,7 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
 
       if (status == NO_ERROR)
 	{
-	  int port_number = prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE_UDS) ? JAVASP_PORT_UDS_MODE : jsp_server_port ();
-	  JAVASP_SERVER_INFO jsp_new_info { getpid(), port_number };
+	  JAVASP_SERVER_INFO jsp_new_info { getpid(), jsp_server_port () };
 
 	  javasp_unlink_info (db_name.c_str ());
 	  if ((javasp_open_info_dir () && javasp_write_info (db_name.c_str (), jsp_new_info)))
