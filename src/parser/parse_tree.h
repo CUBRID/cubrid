@@ -783,6 +783,8 @@ struct json_t;
 #define PT_SPEC_DERIVED_TABLE(n)	(PT_SPEC_ASSERT ((n)), (n)->info.spec.derived_table)
 #define PT_SPEC_FLAT_ENTITY_LIST(n)	(PT_SPEC_ASSERT ((n)), (n)->info.spec.flat_entity_list)
 #define PT_SPEC_ID(n)			(PT_SPEC_ASSERT ((n)), (n)->info.spec.id)
+#define PT_SPEC_ONLY_ALL(n)		(PT_SPEC_ASSERT ((n)), (n)->info.spec.only_all)
+#define PT_SPEC_JOIN_TYPE(n)		(PT_SPEC_ASSERT ((n)), (n)->info.spec.join_type)
 
 /* PT_SYNONYM_INFO */
 #define PT_SYNONYM_NAME(n)		((n)->info.synonym.synonym_name)
