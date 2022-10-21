@@ -11146,7 +11146,7 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT 
 	  shared_con = classobj_find_constraint_by_name (class_->constraints, con->shared_cons_name);
 	  con->index_btid = shared_con->index_btid;
 	}
-      else if (allocate_index (classop, class_, local_subclasses, con))
+      else if (allocate_index (classop, class_, local_subclasses, con) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -11221,7 +11221,7 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * con,
 	    }
 	}
     }
-  else if (allocate_index (classop, class_, subclasses, con))
+  else if (allocate_index (classop, class_, subclasses, con) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
