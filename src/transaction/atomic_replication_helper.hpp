@@ -72,6 +72,17 @@ namespace cublog
    *          which, potentially needs to iterate and execute all postpones if not already executed)
    *        LOG_SYSOP_END with LOG_SYSOP_END_LOGICAL_RUN_POSTPONE
    *    LOG_SYSOP_END with LOG_SYSOP_END_COMMIT
+   *
+   * 4. TODO .. explanation
+   *
+   *    LOG_START_ATOMIC_REPL
+   *    LOG_SYSOP_ATOMIC_START
+   *      .. redo records ..
+   *    LOG_SYSOP_END (with LOG_SYSOP_END_LOGICAL_UNDO )
+   *      .. redo records ..
+   *    LOG_SYSOP_END (with LOG_SYSOP_END_COMMIT)
+   *      .. redo records ..
+   *    LOG_END_ATOMIC_REPL
    */
   class atomic_replication_helper
   {
@@ -131,7 +142,8 @@ namespace cublog
 	      THREAD_ENTRY *thread_p, TRANID trid, LOG_RECTYPE rectype, LOG_LSA lsa,
 	      const log_rv_redo_context &redo_context);
       void append_control_log_sysop_end (
-	      THREAD_ENTRY *thread_p, TRANID trid, LOG_LSA lsa, LOG_LSA sysop_end_last_parent_lsa);
+	      THREAD_ENTRY *thread_p, TRANID trid, LOG_LSA lsa, LOG_SYSOP_END_TYPE sysop_end_type,
+	      LOG_LSA sysop_end_last_parent_lsa);
 
       void forcibly_remove_idle_sequence (TRANID trid);
 
@@ -140,6 +152,7 @@ namespace cublog
 				    const log_rv_redo_context &redo_context, bool is_sysop);
 #if !defined (NDEBUG)
       bool check_for_page_validity (VPID vpid, TRANID tranid) const;
+      void dump (const char *message) const;
 #endif
 
     private: // types
@@ -181,13 +194,15 @@ namespace cublog
 	  LOG_LSA get_start_lsa () const;
 
 	  void append_control_log (LOG_RECTYPE rectype, LOG_LSA lsa);
-	  void append_control_log_sysop_end (LOG_LSA lsa, LOG_LSA sysop_end_last_parent_lsa);
+	  void append_control_log_sysop_end (
+		  LOG_LSA lsa, LOG_SYSOP_END_TYPE sysop_end_type, LOG_LSA sysop_end_last_parent_lsa);
 
 	  bool all_log_entries_are_control () const;
 	  bool can_purge ();
 
 #if !defined (NDEBUG)
 	  void dump (const char *message) const;
+	  void dump_to_buffer (char *&buf_ptr, int &buf_len) const;
 #endif
 
 	private: // types
@@ -199,7 +214,7 @@ namespace cublog
 	    atomic_log_entry () = delete;
 	    atomic_log_entry (LOG_LSA lsa, VPID vpid, LOG_RCVINDEX rcvindex, PAGE_PTR page_ptr);
 	    atomic_log_entry (LOG_LSA lsa, LOG_RECTYPE rectype);
-	    atomic_log_entry (LOG_LSA lsa, LOG_LSA sysop_end_last_parent_lsa);
+	    atomic_log_entry (LOG_LSA lsa, LOG_SYSOP_END_TYPE sysop_end_type, LOG_LSA sysop_end_last_parent_lsa);
 
 	    atomic_log_entry (const atomic_log_entry &) = delete;
 	    atomic_log_entry (atomic_log_entry &&that);
@@ -215,14 +230,18 @@ namespace cublog
 	    bool is_control () const;
 
 #if !defined (NDEBUG)
-	    int dump_to_buffer (char *buf_ptr, int buf_len) const;
+	    void dump_to_buffer (char *&buf_ptr, int &buf_len) const;
 #endif
 
 	    VPID m_vpid;
 	    LOG_RECTYPE m_rectype;
 	    LOG_LSA m_record_lsa;
 	    LOG_RCVINDEX m_record_index;
+
+	    // only meaningful when dealing with a sysop end log record
+	    LOG_SYSOP_END_TYPE m_sysop_end_type;
 	    LOG_LSA m_sysop_end_last_parent_lsa;
+
 	    // ownership of page pointer is with the bookkeeper in the owning class; this is just a
 	    // reference to allow applying the redo function when needed
 	    PAGE_PTR m_page_ptr;

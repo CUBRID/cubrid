@@ -363,6 +363,7 @@ namespace cublog
       }
     else
 #endif
+#if (0)
       {
 #if (0)
 	if (log_rec.type == LOG_SYSOP_END_COMMIT
@@ -426,5 +427,8 @@ namespace cublog
 	      }
 	  }
       }
+#endif
+    m_atomic_helper.append_control_log_sysop_end (&thread_entry, log_header.trid,
+	m_redo_lsa, log_rec.type, log_rec.lastparent_lsa);
   }
 }

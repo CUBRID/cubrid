@@ -70,6 +70,13 @@ namespace cublog
 	return error_code;
       }
 
+    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+      {
+#if !defined (NDEBUG)
+	dump ("helper::add_atomic_replication_log");
+#endif
+      }
+
     return NO_ERROR;
   }
 
@@ -123,13 +130,13 @@ namespace cublog
       const log_rv_redo_context &redo_context, bool is_sysop)
   {
     const auto sequence_it = m_sequences_map.find (trid);
-    if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
 #if !defined (NDEBUG)
 	if (sequence_it != m_sequences_map.cend ())
 	  {
 	    const atomic_log_sequence &atomic_sequence = sequence_it->second;
-	    atomic_sequence.dump ("start_sequence_internal");
+	    dump ("helper::start_sequence_internal");
 	  }
 #endif
       }
@@ -312,8 +319,6 @@ namespace cublog
 
     if (sequence.can_purge ())
       {
-	er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] append_control_log purge sequence for trid = %d\n",
-		      trid);
 	m_sequences_map.erase (sequence_it);
 #if !defined (NDEBUG)
 	m_vpid_sets_map.erase (trid);
@@ -323,7 +328,7 @@ namespace cublog
 
   void
   atomic_replication_helper::append_control_log_sysop_end (THREAD_ENTRY *thread_p,
-      TRANID trid, LOG_LSA lsa, LOG_LSA sysop_end_last_parent_lsa)
+      TRANID trid, LOG_LSA lsa, LOG_SYSOP_END_TYPE sysop_end_type, LOG_LSA sysop_end_last_parent_lsa)
   {
     auto sequence_it = m_sequences_map.find (trid);
     if (sequence_it == m_sequences_map.end ())
@@ -335,12 +340,10 @@ namespace cublog
     atomic_log_sequence &sequence = sequence_it->second;
     sequence.apply_and_unfix_sequence_ex (thread_p);
 
-    sequence.append_control_log_sysop_end (lsa, sysop_end_last_parent_lsa);
+    sequence.append_control_log_sysop_end (lsa, sysop_end_type, sysop_end_last_parent_lsa);
 
     if (sequence.can_purge ())
       {
-	er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] append_control_log_sysop_end purge sequence for trid = %d",
-		      trid);
 	m_sequences_map.erase (sequence_it);
 #if !defined (NDEBUG)
 	m_vpid_sets_map.erase (trid);
@@ -358,16 +361,42 @@ namespace cublog
       }
 
     atomic_log_sequence &sequence = sequence_it->second;
-    if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
 #if !defined (NDEBUG)
-	sequence.dump ("terminate_sequence");
+	dump ("helper::forcibly_remove_idle_sequence");
 #endif
       }
 
     // sequence dtor will ensure proper idle state upon destruction
     m_sequences_map.erase (sequence_it);
   }
+
+#if !defined (NDEBUG)
+  void
+  atomic_replication_helper::dump (const char *message) const
+  {
+    constexpr int BUF_LEN_MAX = SHRT_MAX;
+    char buf[BUF_LEN_MAX];
+    char *buf_ptr = buf;
+    int buf_len = BUF_LEN_MAX;
+
+    const int written = snprintf (buf_ptr, (size_t)buf_len,
+				  "[ATOMIC_REPL] %s\n",
+				  ((message != nullptr) ? message : ""));
+    assert (written > 0);
+    buf_ptr += written;
+    assert (buf_len >= written);
+    buf_len -= written;
+
+    for (auto const &sequence_pair : m_sequences_map)
+      {
+	const atomic_log_sequence &sequence = sequence_pair.second;
+	sequence.dump_to_buffer (buf_ptr, buf_len);
+      }
+    _er_log_debug (ARG_FILE_LINE, buf);
+  }
+#endif
 
   /********************************************************************************
    * atomic_replication_helper::atomic_log_sequence function definitions  *
@@ -385,7 +414,7 @@ namespace cublog
 
   atomic_replication_helper::atomic_log_sequence::~atomic_log_sequence ()
   {
-    assert (all_log_entries_are_control ());
+    assert (m_log_vec.empty ());
   }
 
   void
@@ -507,40 +536,39 @@ namespace cublog
     constexpr int BUF_LEN_MAX = SHRT_MAX;
     char buf[BUF_LEN_MAX];
     char *buf_ptr = buf;
-    int written = 0;
-    int left = BUF_LEN_MAX;
+    int buf_len = BUF_LEN_MAX;
 
-    written = snprintf (buf_ptr, (size_t)left, "[ATOMIC_REPL] %s\n"
+    const int written = snprintf (buf_ptr, (size_t)buf_len,
+				  "[ATOMIC_REPL] %s\n",
+				  ((message != nullptr) ? message : ""));
+    assert (written > 0);
+    buf_ptr += written;
+    assert (buf_len >= written);
+    buf_len -= written;
+
+    dump_to_buffer (buf_ptr, buf_len);
+    _er_log_debug (ARG_FILE_LINE, buf);
+  }
+
+  void
+  atomic_replication_helper::atomic_log_sequence::dump_to_buffer (char *&buf_ptr, int &buf_len) const
+  {
+    int written = 0;
+    written = snprintf (buf_ptr, (size_t)buf_len,
 			"    %strid = %d  start_lsa = %lld|%d  is_sysop = %d"
 			"  postpone_started = %d  end_pospone_count = %d\n",
-			message, (m_log_vec.empty () ? "[EMPTY]  " : ""),
+			(m_log_vec.empty () ? "[EMPTY]  " : ""),
 			m_trid, LSA_AS_ARGS (&m_start_lsa), (int)m_is_sysop,
 			(int)m_postpone_started, m_end_pospone_count);
     assert (written > 0);
     buf_ptr += written;
-    assert (left >= written);
-    left -= written;
+    assert (buf_len >= written);
+    buf_len -= written;
 
-//    if (m_log_vec.empty())
-//      {
-//        written = snprintf (buf_ptr, (size_t)left, "  [EMPTY]\n");
-//        assert (written > 0);
-//        buf_ptr += written;
-//        assert (left >= written);
-//        left -= written;
-//      }
-//    else
-//      {
     for (const atomic_log_entry &log_entry : m_log_vec)
       {
-	written = log_entry.dump_to_buffer (buf_ptr, left);
-	assert (written > 0);
-	buf_ptr += written;
-	assert (left >= written);
-	left -= written;
+	log_entry.dump_to_buffer (buf_ptr, buf_len);
       }
-//      }
-    _er_log_debug (ARG_FILE_LINE, buf);
   }
 #endif
 
@@ -556,7 +584,7 @@ namespace cublog
     // Right after applying, unfix and ref-count-down each page. The bookkeeping mechanism will take care
     // of either unfixing the page or retaining it for a subsequent unfix.
 
-    if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
 #if !defined (NDEBUG)
 	dump ("apply_and_unfix_sequence");
@@ -582,10 +610,10 @@ namespace cublog
   void
   atomic_replication_helper::atomic_log_sequence::apply_and_unfix_sequence_ex (THREAD_ENTRY *thread_p)
   {
-    if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
 #if !defined (NDEBUG)
-	dump ("apply_and_unfix_sequence_ex START");
+	dump ("sequence::apply_and_unfix_sequence_ex START");
 #endif
       }
 
@@ -595,10 +623,18 @@ namespace cublog
 	return;
       }
 
-    // nothing to apply and unfix; the only existing entry must be the first control entry
+    // nothing to apply and unfix; the only existing entry must be the first control log entry
     if (m_log_vec.size () == 1)
       {
 	assert (m_log_vec[0].is_control ());
+	return;
+      }
+
+    atomic_log_entry_vector_type::const_reverse_iterator rbegin_work_log_it = m_log_vec.rbegin ();
+    const atomic_log_entry &rbegin_work_log = *rbegin_work_log_it;
+    if (rbegin_work_log.is_control ())
+      {
+	assert (all_log_entries_are_control ());
 	return;
       }
 
@@ -635,10 +671,10 @@ namespace cublog
 
     m_log_vec.erase (first_work_log_it, m_log_vec.end ());
 
-    if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
 #if !defined (NDEBUG)
-	dump ("apply_and_unfix_sequence_ex END");
+	dump ("sequence::apply_and_unfix_sequence_ex END");
 #endif
       }
 
@@ -655,23 +691,23 @@ namespace cublog
   atomic_replication_helper::atomic_log_sequence::append_control_log (LOG_RECTYPE rectype, LOG_LSA lsa)
   {
     m_log_vec.emplace_back (lsa, rectype);
-    if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
 #if !defined (NDEBUG)
-	dump ("append_control_log END");
+	dump ("sequence::append_control_log END");
 #endif
       }
   }
 
   void
   atomic_replication_helper::atomic_log_sequence::append_control_log_sysop_end (
-	  LOG_LSA lsa, LOG_LSA sysop_end_last_parent_lsa)
+	  LOG_LSA lsa, LOG_SYSOP_END_TYPE sysop_end_type, LOG_LSA sysop_end_last_parent_lsa)
   {
-    m_log_vec.emplace_back (lsa, sysop_end_last_parent_lsa);
-    if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+    m_log_vec.emplace_back (lsa, sysop_end_type, sysop_end_last_parent_lsa);
+    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
 #if !defined (NDEBUG)
-	dump ("append_control_log_sysop_end END");
+	dump ("sequence::append_control_log_sysop_end END");
 #endif
       }
   }
@@ -691,7 +727,6 @@ namespace cublog
   {
     assert (all_log_entries_are_control ());
 
-//    int debug_iter_count = 0;
     while (true)
       {
 	if (m_log_vec.empty ())
@@ -700,25 +735,93 @@ namespace cublog
 	  }
 
 	const size_t initial_log_vec_size = m_log_vec.size ();
+
+	// nothing can be inferred from only one entry alone
 	if (initial_log_vec_size == 1)
 	  {
 	    return false;
 	  }
 
-	if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 	  {
 #if !defined (NDEBUG)
-	    dump ("can_purge - START");
+	    dump ("sequence::can_purge - START");
 #endif
 	  }
 
-	atomic_log_entry_vector_type::const_iterator last_entry_it = m_log_vec.cend ();
-	--last_entry_it;
+	//atomic_log_entry_vector_type::const_iterator entry_it = m_log_vec.cend ();
+	//--entry_it;
+	const atomic_log_entry_vector_type::const_iterator last_entry_it = m_log_vec.cend () - 1;
 	const atomic_log_entry &last_entry = *last_entry_it;
 
-	// if the atomic replication sequence start lsa is higher or equal to the sysop
-	// end parent lsa, then the atomic sequence can be ended (commited & released)
-	if (LOG_SYSOP_END == last_entry.m_rectype)
+	// atomic replication sequence with an already executed postpone sequence that contained
+	// - itself - other atomic replication sequences)
+	if (LOG_SYSOP_END == last_entry.m_rectype
+	    && LOG_SYSOP_END_COMMIT == last_entry.m_sysop_end_type)
+	  {
+	    const atomic_log_entry_vector_type::const_iterator last_but_one_entry_it = (last_entry_it - 1);
+	    const atomic_log_entry &last_but_one_entry = *last_but_one_entry_it;
+
+	    if (initial_log_vec_size == 3 && LOG_SYSOP_START_POSTPONE == last_but_one_entry.m_rectype)
+	      {
+		const atomic_log_entry_vector_type::const_iterator last_last_but_one_entry_it
+		  = (last_but_one_entry_it - 1);
+		const atomic_log_entry &last_last_but_one_entry = *last_last_but_one_entry_it;
+
+		if (LOG_SYSOP_ATOMIC_START == last_last_but_one_entry.m_rectype)
+		  {
+		    m_log_vec.erase (last_last_but_one_entry_it, m_log_vec.cend ());
+		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+		      {
+#if !defined (NDEBUG)
+			dump ("sequence::can_purge - after LOG_SYSOP_END - LOG_SYSOP_START_POSTPONE");
+#endif
+		      }
+		    assert (m_log_vec.empty ());
+		  }
+	      }
+	    // if the atomic replication sequence start lsa is higher or equal to the sysop
+	    // end parent lsa, then the atomic sequence can be ended (commited & released)
+	    else if (!LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa)
+		     && (last_but_one_entry.m_record_lsa >= last_entry.m_sysop_end_last_parent_lsa))
+	      {
+		if (last_but_one_entry.m_rectype == LOG_SYSOP_ATOMIC_START)
+		  {
+		    // sysop end matches sysop atomic start; delete both start and end control log entries
+		    m_log_vec.erase (last_but_one_entry_it, m_log_vec.cend ());
+		  }
+		else
+		  {
+		    // sysop end is not matched by a sysop atomic start at the beginning
+		    // just remove the end control log record and leave the starting control log entry
+		    // there will, presumably, exist another log record to be processed that will
+		    // close the entire sequence (eg: LOG_END_ATOMIC_REPL)
+		    m_log_vec.erase (last_entry_it);
+		  }
+		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+		  {
+#if !defined (NDEBUG)
+		    dump ("sequence::can_purge - after LOG_SYSOP_END with non-null last_parent_lsa");
+#endif
+		  }
+	      }
+	    // isolated atomic sysop with null parent_lsa on the sysop end record
+	    // NOTE: potential inconsistent logging
+	    else if (LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa) && (initial_log_vec_size == 2)
+		     && LOG_SYSOP_ATOMIC_START == last_but_one_entry.m_rectype)
+	      {
+		m_log_vec.erase (last_but_one_entry_it, m_log_vec.cend ());
+		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+		  {
+#if !defined (NDEBUG)
+		    dump ("sequence::can_purge - after LOG_SYSOP_END with null last_parent_lsa");
+#endif
+		  }
+	      }
+	  }
+	// atomic replication sequence within a postpone sequence
+	else if (LOG_SYSOP_END == last_entry.m_rectype
+		 && LOG_SYSOP_END_LOGICAL_RUN_POSTPONE == last_entry.m_sysop_end_type)
 	  {
 	    const atomic_log_entry_vector_type::const_iterator last_but_one_entry_it = (last_entry_it - 1);
 	    const atomic_log_entry &last_but_one_entry = *last_but_one_entry_it;
@@ -726,58 +829,93 @@ namespace cublog
 	    if (!LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa) &&
 		(last_but_one_entry.m_record_lsa >= last_entry.m_sysop_end_last_parent_lsa))
 	      {
-		// remove [last but one, last] then re-check
 		m_log_vec.erase (last_but_one_entry_it, m_log_vec.cend ());
-		if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
 #if !defined (NDEBUG)
-		    dump ("can_purge - after LOG_SYSOP_END");
+		    dump ("sequence::can_purge - after LOG_SYSOP_END - LOG_SYSOP_END_LOGICAL_RUN_POSTPONE");
 #endif
 		  }
 	      }
 	  }
-	else
+	else if (LOG_SYSOP_END == last_entry.m_rectype
+		 && LOG_SYSOP_END_LOGICAL_UNDO == last_entry.m_sysop_end_type)
 	  {
-	    if (LOG_END_ATOMIC_REPL == last_entry.m_rectype)
-	      {
-		const atomic_log_entry_vector_type::const_iterator last_but_one_entry_it = (last_entry_it - 1);
-		const atomic_log_entry &last_but_one_entry = *last_but_one_entry_it;
+	    const atomic_log_entry_vector_type::const_iterator last_but_one_entry_it = (last_entry_it - 1);
+	    const atomic_log_entry &last_but_one_entry = *last_but_one_entry_it;
 
-		if (LOG_START_ATOMIC_REPL == last_but_one_entry.m_rectype)
+	    if (!LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa) &&
+		(last_but_one_entry.m_record_lsa >= last_entry.m_sysop_end_last_parent_lsa))
+	      {
+		m_log_vec.erase (last_but_one_entry_it, m_log_vec.cend ());
+		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
-		    // remove [last but one, last] then re-check
-		    m_log_vec.erase (last_but_one_entry_it, m_log_vec.end ());
-		    if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+#if !defined (NDEBUG)
+		    dump ("sequence::can_purge - after LOG_SYSOP_END - LOG_SYSOP_END_LOGICAL_UNDO");
+#endif
+		  }
+	      }
+	  }
+	else if (LOG_END_ATOMIC_REPL == last_entry.m_rectype)
+	  {
+	    // search backwards, until a start atomic replication log record is met; other 'sysop
+	    // ends' are allowed and skipped;
+	    // these are the sysops without a matching sysop atomic start - it is the consequence of the
+	    // known fact (optimization?): when adding consecutive 'sysop atomic start' log records only
+	    // one such log record is added
+	    bool only_valid_control_entries = true;
+	    for (atomic_log_entry_vector_type::const_iterator search_entry_it = (last_entry_it - 1)
+		 ; only_valid_control_entries; --search_entry_it)
+	      {
+		const atomic_log_entry &search_entry = *search_entry_it;
+
+		only_valid_control_entries = only_valid_control_entries
+					     && (search_entry.m_rectype == LOG_SYSOP_END
+						 || search_entry.m_rectype == LOG_START_ATOMIC_REPL);
+
+		if (search_entry.m_rectype == LOG_START_ATOMIC_REPL && only_valid_control_entries)
+		  {
+		    // remove all entries between start atomic replication and the end
+		    m_log_vec.erase (search_entry_it, m_log_vec.cend ());
+		    break;
+		  }
+
+		if (search_entry_it == m_log_vec.cbegin () || !only_valid_control_entries)
+		  {
+		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		      {
 #if !defined (NDEBUG)
-			dump ("can_purge - after LOG_END_ATOMIC_REPL");
+			dump ("sequence::can_purge - after failed LOG_END_ATOMIC_REPL");
 #endif
 		      }
+		    assert_release ("inconsistent atomic log sequence found" == nullptr);
+		    break;
 		  }
+	      }
+
+	    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+	      {
+#if !defined (NDEBUG)
+		dump ("sequence::can_purge - after LOG_END_ATOMIC_REPL");
+#endif
 	      }
 	  }
 
+	// TODO: idle stop condition should normally be removed
 	if (initial_log_vec_size == m_log_vec.size ())
 	  {
-	    if (initial_log_vec_size > 5)
+	    if (initial_log_vec_size >= 4)
 	      {
-		if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
 #if !defined (NDEBUG)
-		    dump ("can_purge - too many log entries");
+		    dump ("sequence::can_purge - too many log entries");
 #endif
 		  }
 		assert (false);
 	      }
 	    break;
 	  }
-
-//	++debug_iter_count;
-//	if (debug_iter_count > 5)
-//	  {
-//	    assert ("debug_iter_count > 5" == nullptr);
-//	    return false;
-//	  }
       }
 
     return false;
@@ -793,20 +931,23 @@ namespace cublog
     , m_rectype { LOG_LARGER_LOGREC_TYPE }
     , m_record_lsa { lsa }
     , m_record_index { rcvindex }
+    , m_sysop_end_type { (LOG_SYSOP_END_TYPE)-1 }
     , m_sysop_end_last_parent_lsa { NULL_LSA }
     , m_page_ptr { page_ptr }
   {
     assert (!VPID_ISNULL (&m_vpid));
     assert (m_record_lsa != NULL_LSA);
-    assert (0 <= m_record_index && m_record_index <= RV_LAST_LOGID);
+    assert (0 <= m_record_index &&m_record_index <= RV_LAST_LOGID);
     assert (m_page_ptr != nullptr);
   }
 
-  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::atomic_log_entry (LOG_LSA lsa, LOG_RECTYPE rectype)
+  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::atomic_log_entry (
+	  LOG_LSA lsa, LOG_RECTYPE rectype)
     : m_vpid VPID_INITIALIZER
     , m_rectype { rectype }
     , m_record_lsa { lsa }
     , m_record_index { RV_NOT_DEFINED }
+    , m_sysop_end_type { (LOG_SYSOP_END_TYPE)-1 }
     , m_sysop_end_last_parent_lsa { NULL_LSA }
     , m_page_ptr { nullptr }
   {
@@ -816,16 +957,18 @@ namespace cublog
     assert (m_rectype != LOG_SYSOP_END );
   }
 
-  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::atomic_log_entry (LOG_LSA lsa,
-      LOG_LSA sysop_end_last_parent_lsa)
+  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::atomic_log_entry (
+	  LOG_LSA lsa, LOG_SYSOP_END_TYPE sysop_end_type, LOG_LSA sysop_end_last_parent_lsa)
     : m_vpid VPID_INITIALIZER
     , m_rectype { LOG_SYSOP_END }
     , m_record_lsa { lsa }
     , m_record_index { RV_NOT_DEFINED }
+    , m_sysop_end_type { sysop_end_type }
     , m_sysop_end_last_parent_lsa { sysop_end_last_parent_lsa }
     , m_page_ptr { nullptr }
   {
     assert (m_record_lsa != NULL_LSA);
+    assert (LOG_SYSOP_END_COMMIT <= sysop_end_type &&sysop_end_type <= LOG_SYSOP_END_LOGICAL_RUN_POSTPONE);
     // sysop end parent lsa can also be null
   }
 
@@ -834,6 +977,8 @@ namespace cublog
     , m_rectype { that.m_rectype }
     , m_record_lsa { that.m_record_lsa }
     , m_record_index { that.m_record_index }
+    , m_sysop_end_type { that.m_sysop_end_type }
+    , m_sysop_end_last_parent_lsa { that.m_sysop_end_last_parent_lsa }
     , m_page_ptr { that.m_page_ptr }
   {
   }
@@ -845,6 +990,7 @@ namespace cublog
     std::swap (m_rectype, that.m_rectype);
     std::swap (m_record_lsa, that.m_record_lsa);
     std::swap (m_record_index, that.m_record_index);
+    std::swap (m_sysop_end_type, that.m_sysop_end_type);
     std::swap (m_sysop_end_last_parent_lsa, that.m_sysop_end_last_parent_lsa);
     std::swap (m_page_ptr, that.m_page_ptr);
     return *this;
@@ -903,22 +1049,33 @@ namespace cublog
   }
 
 #if !defined (NDEBUG)
-  int
-  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::dump_to_buffer (char *buf_ptr, int buf_len) const
+  void
+  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::dump_to_buffer (
+	  char *&buf_ptr, int &buf_len) const
   {
+    int written = 0;
     if (is_control ())
       {
-	return snprintf (buf_ptr, (size_t)buf_len, "  _C_ LSA = %lld|%d  sysop_end_last_parent_lsa = %lld|%d"
-			 "  rectype = %s\n",
-			 LSA_AS_ARGS (&m_record_lsa), LSA_AS_ARGS (&m_sysop_end_last_parent_lsa),
-			 log_to_string (m_rectype));
+	written = snprintf (buf_ptr, (size_t)buf_len,
+			    "  _C_ LSA = %lld|%d  rectype = %s"
+			    "  sysop_end_type = %s  sysop_end_last_parent_lsa = %lld|%d\n",
+			    LSA_AS_ARGS (&m_record_lsa), log_to_string (m_rectype),
+			    ((LOG_SYSOP_END_COMMIT <= m_sysop_end_type
+			      && m_sysop_end_type <= LOG_SYSOP_END_LOGICAL_RUN_POSTPONE) ?
+			     log_sysop_end_type_string (m_sysop_end_type) : "NULL"),
+			    LSA_AS_ARGS (&m_sysop_end_last_parent_lsa));
       }
     else
       {
 	assert (m_rectype == LOG_LARGER_LOGREC_TYPE);
-	return snprintf (buf_ptr, (size_t)buf_len, "  _W_ LSA = %lld|%d  vpid = %d|%d  rcvindex = %s\n",
-			 LSA_AS_ARGS (&m_record_lsa), VPID_AS_ARGS (&m_vpid), rv_rcvindex_string (m_record_index));
+	written = snprintf (buf_ptr, (size_t)buf_len, "  _W_ LSA = %lld|%d  vpid = %d|%d  rcvindex = %s\n",
+			    LSA_AS_ARGS (&m_record_lsa), VPID_AS_ARGS (&m_vpid),
+			    rv_rcvindex_string (m_record_index));
       }
+    assert (written > 0);
+    buf_ptr += written;
+    assert (buf_len >= written);
+    buf_len -= written;
   }
 #endif
 
