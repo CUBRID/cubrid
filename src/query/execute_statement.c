@@ -17456,7 +17456,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* free returned QFILE_LIST_ID */
       if (list_id)
 	{
-	  if (list_id->tuple_cnt > 0)
+	  if ((list_id->tuple_cnt > 0) && class_obj)
 	    {
 	      if (statement->flag.use_auto_commit && tran_was_latest_query_committed ())
 		{
