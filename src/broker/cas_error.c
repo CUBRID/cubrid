@@ -52,6 +52,8 @@
 #include "broker_filename.h"
 #include "cas_sql_log2.h"
 
+#define CUBRID_SQL_LOG_TRACE        "CUBRID_SQL_LOG_TRACE"
+
 static bool server_aborted = false;
 
 void
@@ -179,8 +181,26 @@ error_info_set_with_msg (int err_number, int err_indicator, const char *err_msg,
   err_info.err_string[ERR_FILE_LENGTH - 1] = 0;
   err_info.err_line = line;
 
-  if ((err_indicator == CAS_ERROR_INDICATOR) && (err_msg == NULL))
-    return err_indicator;
+  if (err_indicator == CAS_ERROR_INDICATOR)
+    {
+      const char *envvar_sqllog_trace = NULL;
+      envvar_sqllog_trace = getenv (CUBRID_SQL_LOG_TRACE);
+      if (err_msg == NULL)
+	{
+	  if (envvar_sqllog_trace != NULL && strcasecmp (envvar_sqllog_trace, "on") == 0)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SQL_ERROR_LOG_TRACE, 1, err_number);
+	    }
+	  return err_indicator;
+	}
+      else
+	{
+	  if (envvar_sqllog_trace != NULL && strcasecmp (envvar_sqllog_trace, "on") == 0)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SQL_ERROR_LOG_MSG_TRACE, 2, err_number, err_msg);
+	    }
+	}
+    }
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
   if (err_msg)
