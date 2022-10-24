@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright 2008 Search Solution Corporation
  * Copyright 2016 CUBRID Corporation
  *
@@ -75,6 +75,7 @@ namespace cublog
       const log_rv_redo_context &redo_context)
   {
     const auto sequence_it = m_sequences_map.find (trid);
+
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
 #if !defined (NDEBUG)
@@ -85,6 +86,7 @@ namespace cublog
 	  }
 #endif
       }
+
     assert (sequence_it == m_sequences_map.cend ());
 
     const std::pair<sequence_map_type::iterator, bool> emplace_res = m_sequences_map.emplace (trid, redo_context);
@@ -228,6 +230,7 @@ namespace cublog
       }
 
     atomic_log_sequence &sequence = sequence_it->second;
+
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
 #if !defined (NDEBUG)
@@ -405,6 +408,7 @@ namespace cublog
   atomic_replication_helper::atomic_log_sequence::append_control_log (LOG_RECTYPE rectype, LOG_LSA lsa)
   {
     m_log_vec.emplace_back (lsa, rectype);
+
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
 #if !defined (NDEBUG)
@@ -418,6 +422,7 @@ namespace cublog
 	  LOG_LSA lsa, LOG_SYSOP_END_TYPE sysop_end_type, LOG_LSA sysop_end_last_parent_lsa)
   {
     m_log_vec.emplace_back (lsa, sysop_end_type, sysop_end_last_parent_lsa);
+
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
 #if !defined (NDEBUG)
@@ -463,8 +468,6 @@ namespace cublog
 #endif
 	  }
 
-	//atomic_log_entry_vector_type::const_iterator entry_it = m_log_vec.cend ();
-	//--entry_it;
 	const atomic_log_entry_vector_type::const_iterator last_entry_it = m_log_vec.cend () - 1;
 	const atomic_log_entry &last_entry = *last_entry_it;
 
@@ -485,6 +488,7 @@ namespace cublog
 		if (LOG_SYSOP_ATOMIC_START == last_last_but_one_entry.m_rectype)
 		  {
 		    m_log_vec.erase (last_last_but_one_entry_it, m_log_vec.cend ());
+
 		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		      {
 #if !defined (NDEBUG)
@@ -512,6 +516,7 @@ namespace cublog
 		    // close the entire sequence (eg: LOG_END_ATOMIC_REPL)
 		    m_log_vec.erase (last_entry_it);
 		  }
+
 		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
 #if !defined (NDEBUG)
@@ -525,6 +530,7 @@ namespace cublog
 		     && LOG_SYSOP_ATOMIC_START == last_but_one_entry.m_rectype)
 	      {
 		m_log_vec.erase (last_but_one_entry_it, m_log_vec.cend ());
+
 		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
 #if !defined (NDEBUG)
@@ -544,6 +550,7 @@ namespace cublog
 		(last_but_one_entry.m_record_lsa >= last_entry.m_sysop_end_last_parent_lsa))
 	      {
 		m_log_vec.erase (last_but_one_entry_it, m_log_vec.cend ());
+
 		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
 #if !defined (NDEBUG)
@@ -562,6 +569,7 @@ namespace cublog
 		(last_but_one_entry.m_record_lsa >= last_entry.m_sysop_end_last_parent_lsa))
 	      {
 		m_log_vec.erase (last_but_one_entry_it, m_log_vec.cend ());
+
 		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
 #if !defined (NDEBUG)
@@ -602,6 +610,7 @@ namespace cublog
 			dump ("sequence::can_purge - after failed LOG_END_ATOMIC_REPL");
 #endif
 		      }
+
 		    assert_release ("inconsistent atomic log sequence found" == nullptr);
 		    break;
 		  }
@@ -626,6 +635,7 @@ namespace cublog
 		    dump ("sequence::can_purge - too many log entries");
 #endif
 		  }
+
 		assert (false);
 	      }
 	    break;
