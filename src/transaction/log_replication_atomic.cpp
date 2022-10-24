@@ -175,7 +175,8 @@ namespace cublog
 	    const LOG_REC_SYSOP_END log_rec =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SYSOP_END> ();
 
-	    replicate_sysop_end (thread_entry, header, log_rec);
+	    m_atomic_helper.append_control_log_sysop_end (
+		    &thread_entry, header.trid, m_redo_lsa, log_rec.type, log_rec.lastparent_lsa);
 
 	    read_and_bookkeep_mvcc_vacuum<LOG_REC_SYSOP_END> (header.back_lsa, m_redo_lsa, log_rec, false);
 	    if (m_replicate_mvcc)
@@ -258,7 +259,7 @@ namespace cublog
 	    const VPID log_vpid = log_rv_get_log_rec_vpid<T> (record_info.m_logrec);
 	    // return code ignored because it refers to failure to fix heap page
 	    // this is expected in the context of passive transaction server
-	    (void) m_atomic_helper.add_atomic_replication_log (&thread_entry, rec_header.trid, rec_lsa, rcvindex, log_vpid);
+	    (void) m_atomic_helper.append_log (&thread_entry, rec_header.trid, rec_lsa, rcvindex, log_vpid);
 	  }
 	else
 	  {
@@ -318,13 +319,5 @@ namespace cublog
 	    // by an atomic sequence; that will be treated in a standalone fashion
 	  }
       }
-  }
-
-  void
-  atomic_replicator::replicate_sysop_end (cubthread::entry &thread_entry, const LOG_RECORD_HEADER &log_header,
-					  const LOG_REC_SYSOP_END &log_rec)
-  {
-    m_atomic_helper.append_control_log_sysop_end (&thread_entry, log_header.trid,
-	m_redo_lsa, log_rec.type, log_rec.lastparent_lsa);
   }
 }

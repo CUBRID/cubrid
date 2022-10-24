@@ -34,8 +34,8 @@ namespace cublog
    *********************************************************************/
 
   int
-  atomic_replication_helper::add_atomic_replication_log (THREAD_ENTRY *thread_p, TRANID tranid,
-      LOG_LSA record_lsa, LOG_RCVINDEX rcvindex, VPID vpid)
+  atomic_replication_helper::append_log (THREAD_ENTRY *thread_p, TRANID tranid,
+					 LOG_LSA record_lsa, LOG_RCVINDEX rcvindex, VPID vpid)
   {
 #if !defined (NDEBUG)
     if (!VPID_ISNULL (&vpid) && !check_for_page_validity (vpid, tranid))
@@ -54,7 +54,7 @@ namespace cublog
       }
 
     atomic_log_sequence &sequence = sequence_it->second;
-    int error_code = sequence.add_atomic_replication_log (thread_p, record_lsa, rcvindex, vpid);
+    int error_code = sequence.append_log (thread_p, record_lsa, rcvindex, vpid);
     if (error_code != NO_ERROR)
       {
 	return error_code;
@@ -63,7 +63,7 @@ namespace cublog
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
 #if !defined (NDEBUG)
-	dump ("helper::add_atomic_replication_log");
+	dump ("helper::append_log");
 #endif
       }
 
@@ -180,7 +180,7 @@ namespace cublog
     // be able to make the decisions taking into consideration the last control log;
     // this can be implemented later and only if needed; works as is right now
     atomic_log_sequence &sequence = sequence_it->second;
-    sequence.apply_and_unfix_sequence_ex (thread_p);
+    sequence.apply_and_unfix (thread_p);
 
     sequence.append_control_log (rectype, lsa);
 
@@ -205,7 +205,7 @@ namespace cublog
       }
 
     atomic_log_sequence &sequence = sequence_it->second;
-    sequence.apply_and_unfix_sequence_ex (thread_p);
+    sequence.apply_and_unfix (thread_p);
 
     sequence.append_control_log_sysop_end (lsa, sysop_end_type, sysop_end_last_parent_lsa);
 
@@ -290,7 +290,7 @@ namespace cublog
   }
 
   int
-  atomic_replication_helper::atomic_log_sequence::add_atomic_replication_log (THREAD_ENTRY *thread_p,
+  atomic_replication_helper::atomic_log_sequence::append_log (THREAD_ENTRY *thread_p,
       LOG_LSA record_lsa, LOG_RCVINDEX rcvindex, VPID vpid)
   {
     PAGE_PTR page_p = nullptr;
@@ -325,12 +325,12 @@ namespace cublog
   }
 
   void
-  atomic_replication_helper::atomic_log_sequence::apply_and_unfix_sequence_ex (THREAD_ENTRY *thread_p)
+  atomic_replication_helper::atomic_log_sequence::apply_and_unfix (THREAD_ENTRY *thread_p)
   {
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
 #if !defined (NDEBUG)
-	dump ("sequence::apply_and_unfix_sequence_ex START");
+	dump ("sequence::apply_and_unfix START");
 #endif
       }
 
@@ -387,7 +387,7 @@ namespace cublog
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
 #if !defined (NDEBUG)
-	dump ("sequence::apply_and_unfix_sequence_ex END");
+	dump ("sequence::apply_and_unfix END");
 #endif
       }
 

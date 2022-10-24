@@ -112,8 +112,8 @@ namespace cublog
 
       // add a new log record as part of an already existing atomic replication
       // sequence (be it sysop or non-sysop)
-      int add_atomic_replication_log (THREAD_ENTRY *thread_p, TRANID tranid, LOG_LSA record_lsa, LOG_RCVINDEX rcvindex,
-				      VPID vpid);
+      int append_log (THREAD_ENTRY *thread_p, TRANID tranid, LOG_LSA record_lsa,
+		      LOG_RCVINDEX rcvindex, VPID vpid);
 
       bool is_part_of_atomic_replication (TRANID tranid) const;
       bool all_log_entries_are_control (TRANID tranid) const;
@@ -155,9 +155,9 @@ namespace cublog
 	  // upon constructing a sequence
 	  void initialize (TRANID trid, LOG_LSA start_lsa);
 
-	  int add_atomic_replication_log (THREAD_ENTRY *thread_p, LOG_LSA record_lsa, LOG_RCVINDEX rcvindex, VPID vpid);
+	  int append_log (THREAD_ENTRY *thread_p, LOG_LSA record_lsa, LOG_RCVINDEX rcvindex, VPID vpid);
 
-	  void apply_and_unfix_sequence_ex (THREAD_ENTRY *thread_p);
+	  void apply_and_unfix (THREAD_ENTRY *thread_p);
 
 	  LOG_LSA get_start_lsa () const;
 
