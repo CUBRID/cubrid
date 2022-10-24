@@ -36,10 +36,20 @@ namespace cublog
    * Helper class that provides methods to allow handling of all atomic replication sequences
    * generated on the active transaction server.
    *
-   * All examples given below are treated as a single atomic sequence.
+   * For all scenarios details below, the following rules apply:
+   * - from the helper's point of view, there are two types of log records:
+   *  - control log records - see 'is_control'
+   *  - proper log records
+   * - control log records are also added to the atomic sequence as atomic log entries
+   *    and they help in deciding for more advanced scenarios (and provide for future extensions)
+   * - in-between control records are the proper log records
+   * - a new new control record is added to the sequence, all proper log records are applied and
+   *    the page handles are released (the bookkeeping implementation takes care of this)
+   *
    * The following cases are covered by the implementation:
    *
-   * 1.
+   * 1. use transaction explicit atomic sequences
+   *
    *    LOG_START_ATOMIC_REPL
    *        (undo|redo|undoredo|..)+
    *    LOG_END_ATOMIC_REPL
@@ -73,15 +83,18 @@ namespace cublog
    *        LOG_SYSOP_END with LOG_SYSOP_END_LOGICAL_RUN_POSTPONE
    *    LOG_SYSOP_END with LOG_SYSOP_END_COMMIT
    *
-   * 4. TODO .. explanation
+   * 4. use transaction explicit atomic sequence "hosting" one or more sysop's; the first
+   *    LOG_SYSOP_ATOMIC_START is actually two LOG_SYSOP_ATOMIC_START but there is an optimization
+   *    in place to not add two consecutive log records of this type; special handling is
+   *    implemented for this case
    *
    *    LOG_START_ATOMIC_REPL
-   *    LOG_SYSOP_ATOMIC_START
-   *      .. redo records ..
-   *    LOG_SYSOP_END (with LOG_SYSOP_END_LOGICAL_UNDO )
-   *      .. redo records ..
-   *    LOG_SYSOP_END (with LOG_SYSOP_END_COMMIT)
-   *      .. redo records ..
+   *      LOG_SYSOP_ATOMIC_START
+   *        .. redo records ..
+   *      LOG_SYSOP_END (with LOG_SYSOP_END_LOGICAL_UNDO )
+   *        .. redo records ..
+   *      LOG_SYSOP_END (with LOG_SYSOP_END_COMMIT)
+   *        .. redo records ..
    *    LOG_END_ATOMIC_REPL
    */
   class atomic_replication_helper
@@ -97,43 +110,10 @@ namespace cublog
       atomic_replication_helper &operator= (const atomic_replication_helper &) = delete;
       atomic_replication_helper &operator= (atomic_replication_helper &&) = delete;
 
-#if (0)
-      // start a new non-sysop atomic replication sequence for a transaction;
-      // the transaction must not already have an atomic replication sequence started
-      void add_atomic_replication_sequence (TRANID trid, LOG_LSA start_lsa, const log_rv_redo_context &redo_context);
-#endif
       // add a new log record as part of an already existing atomic replication
       // sequence (be it sysop or non-sysop)
       int add_atomic_replication_log (THREAD_ENTRY *thread_p, TRANID tranid, LOG_LSA record_lsa, LOG_RCVINDEX rcvindex,
 				      VPID vpid);
-
-#if (0)
-      // start a new sysop atomic replication sequence for a transaction
-      // the transaction must not already have an atomic replication sequence started
-      void start_sysop_sequence (TRANID trid, LOG_LSA start_lsa,
-				 const log_rv_redo_context &redo_context);
-#endif
-#if (0)
-      // can a sysop-type atomic sequence be ended under the transaction
-      bool can_end_sysop_sequence (TRANID trid, LOG_LSA sysop_parent_lsa) const;
-      bool can_end_sysop_sequence (TRANID trid) const;
-#endif
-
-      // mark the start of postpone sequence for a transaction; transaction must have
-      // already started an atomic sequence; the postpone sequence can contain nested atomic
-      // replication sequences which will be treated unioned with the main, already started, one
-#if (0)
-      void start_postpone_sequence (TRANID trid);
-      bool is_postpone_sequence_started (TRANID trid) const;
-      void complete_one_postpone_sequence (TRANID trid);
-      // there is no easy way of knowing how many postpone sequences are in the transaction
-      // but there should be at least one
-      bool is_at_least_one_postpone_sequence_completed (TRANID trid) const;
-#endif
-
-#if (0)
-      void apply_and_unfix_atomic_replication_sequence (THREAD_ENTRY *thread_p, TRANID tranid);
-#endif
 
       bool is_part_of_atomic_replication (TRANID tranid) const;
       bool all_log_entries_are_control (TRANID tranid) const;
@@ -150,12 +130,7 @@ namespace cublog
       void forcibly_remove_idle_sequence (TRANID trid);
 
     private: // methods
-      void start_sequence_internal (TRANID trid, LOG_LSA start_lsa,
-				    const log_rv_redo_context &redo_context
-#if (0)
-				    , bool is_sysop
-#endif
-				    );
+      void start_sequence_internal (TRANID trid, LOG_LSA start_lsa, const log_rv_redo_context &redo_context);
 #if !defined (NDEBUG)
       bool check_for_page_validity (VPID vpid, TRANID tranid) const;
       void dump (const char *message) const;
@@ -178,29 +153,10 @@ namespace cublog
 
 	  // technical: function is needed to avoid double constructing a redo_context - which is expensive -
 	  // upon constructing a sequence
-	  void initialize (TRANID trid, LOG_LSA start_lsa
-#if (0)
-			   , bool is_sysop
-#endif
-			   );
+	  void initialize (TRANID trid, LOG_LSA start_lsa);
 
 	  int add_atomic_replication_log (THREAD_ENTRY *thread_p, LOG_LSA record_lsa, LOG_RCVINDEX rcvindex, VPID vpid);
 
-#if (0)
-	  bool can_end_sysop_sequence (const LOG_LSA &sysop_parent_lsa) const;
-	  bool can_end_sysop_sequence () const;
-#endif
-
-#if (0)
-	  void start_postpone_sequence ();
-	  bool is_postpone_sequence_started () const;
-	  void complete_one_postpone_sequence ();
-	  bool is_at_least_one_postpone_sequence_completed () const;
-#endif
-
-#if (0)
-	  void apply_and_unfix_sequence (THREAD_ENTRY *thread_p);
-#endif
 	  void apply_and_unfix_sequence_ex (THREAD_ENTRY *thread_p);
 
 	  LOG_LSA get_start_lsa () const;
@@ -324,15 +280,6 @@ namespace cublog
 	   * It is used for comparison to see whether a sysop end operation can close an
 	   * atomic replication sequence. */
 	  LOG_LSA m_start_lsa;
-#if (0)
-	  /* Separates the two types of atomic sequences:
-	   *  - sysop
-	   *  - non-sysop
-	   */
-	  bool m_is_sysop = false;
-	  bool m_postpone_started = false;
-	  int m_end_pospone_count = 0;
-#endif
 
 	  log_rv_redo_context m_redo_context;
 	  atomic_log_entry_vector_type m_log_vec;
