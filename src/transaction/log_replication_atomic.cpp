@@ -156,8 +156,10 @@ namespace cublog
 	    break;
 	  case LOG_END_ATOMIC_REPL:
 	    assert (m_atomic_helper.is_part_of_atomic_replication (header.trid));
+#if (0)
 	    // non-sysop and sysop atomic replication sequences cannot mix
 	    assert (!m_atomic_helper.can_end_sysop_sequence (header.trid));
+#endif
 	    m_atomic_helper.append_control_log (&thread_entry, header.trid, header.type, m_redo_lsa, m_redo_context);
 #if (0)
 	    m_atomic_helper.apply_and_unfix_atomic_replication_sequence (&thread_entry, header.trid);

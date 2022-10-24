@@ -90,6 +90,7 @@ namespace cublog
   }
 #endif
 
+#if (0)
   bool
   atomic_replication_helper::can_end_sysop_sequence (TRANID trid, LOG_LSA sysop_parent_lsa) const
   {
@@ -124,10 +125,15 @@ namespace cublog
 
     return false;
   }
+#endif
 
   void
   atomic_replication_helper::start_sequence_internal (TRANID trid, LOG_LSA start_lsa,
-      const log_rv_redo_context &redo_context, bool is_sysop)
+      const log_rv_redo_context &redo_context
+#if (0)
+      , bool is_sysop
+#endif
+     )
   {
     const auto sequence_it = m_sequences_map.find (trid);
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
@@ -148,7 +154,11 @@ namespace cublog
     atomic_log_sequence &emplaced_seq = emplace_res.first->second;
     // workaround call to allow constructing a sequence in-place above; otherwise,
     // it would need to double construct an internal redo context instance (which is expensive)
-    emplaced_seq.initialize (trid, start_lsa, is_sysop);
+    emplaced_seq.initialize (trid, start_lsa
+#if (0)
+                             , is_sysop
+#endif
+                             );
   }
 
 #if (0)
@@ -305,9 +315,15 @@ namespace cublog
     auto sequence_it = m_sequences_map.find (trid);
     if (sequence_it == m_sequences_map.end ())
       {
+#if (0)
 	const bool is_sysop { rectype == LOG_SYSOP_ATOMIC_START };
-	start_sequence_internal (trid, lsa, redo_context, is_sysop);
-	sequence_it = m_sequences_map.find (trid);
+#endif
+	start_sequence_internal (trid, lsa, redo_context
+#if (0)
+				 , is_sysop
+#endif
+				 );
+	sequence_it = m_sequences_map.begin ();
       }
 
     // TODO: idea, first add control log and then apply and unfix, such that apply and unfix will be able to make
@@ -405,9 +421,11 @@ namespace cublog
   atomic_replication_helper::atomic_log_sequence::atomic_log_sequence (
 	  const log_rv_redo_context &redo_context)
     : m_start_lsa { NULL_LSA }
+#if (0)
     , m_is_sysop { false }
     , m_postpone_started { false }
     , m_end_pospone_count { 0 }
+#endif
     , m_redo_context { redo_context }
   {
   }
@@ -418,12 +436,18 @@ namespace cublog
   }
 
   void
-  atomic_replication_helper::atomic_log_sequence::initialize (TRANID trid, LOG_LSA start_lsa, bool is_sysop)
+  atomic_replication_helper::atomic_log_sequence::initialize (TRANID trid, LOG_LSA start_lsa
+#if (0)
+                                                              , bool is_sysop
+#endif
+                                                              )
   {
     assert (!LSA_ISNULL (&start_lsa));
     m_trid = trid;
     m_start_lsa = start_lsa;
+#if (0)
     m_is_sysop = is_sysop;
+#endif
   }
 
   int
@@ -461,6 +485,7 @@ namespace cublog
     return err_code;
   }
 
+#if (0)
   bool
   atomic_replication_helper::atomic_log_sequence::can_end_sysop_sequence (const LOG_LSA &sysop_parent_lsa) const
   {
@@ -485,6 +510,7 @@ namespace cublog
       }
     return false;
   }
+#endif
 
 #if (0)
   void
@@ -555,11 +581,20 @@ namespace cublog
   {
     int written = 0;
     written = snprintf (buf_ptr, (size_t)buf_len,
-			"    %strid = %d  start_lsa = %lld|%d  is_sysop = %d"
-			"  postpone_started = %d  end_pospone_count = %d\n",
-			(m_log_vec.empty () ? "[EMPTY]  " : ""),
-			m_trid, LSA_AS_ARGS (&m_start_lsa), (int)m_is_sysop,
-			(int)m_postpone_started, m_end_pospone_count);
+			"    %strid = %d  start_lsa = %lld|%d"
+#if (0)
+			"  is_sysop = %d"
+			"  postpone_started = %d"
+			"  end_pospone_count = %d\n"
+#endif
+			, (m_log_vec.empty () ? "[EMPTY]  " : ""),
+			m_trid, LSA_AS_ARGS (&m_start_lsa)
+#if (0)
+			, (int)m_is_sysop
+			, (int)m_postpone_started
+			, m_end_pospone_count
+#endif
+			);
     assert (written > 0);
     buf_ptr += written;
     assert (buf_len >= written);
@@ -684,6 +719,7 @@ namespace cublog
   LOG_LSA
   atomic_replication_helper::atomic_log_sequence::get_start_lsa () const
   {
+    // TODO: start LSA can also be obtained from the first log entry
     return m_start_lsa;
   }
 

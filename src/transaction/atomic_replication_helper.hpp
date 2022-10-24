@@ -113,9 +113,11 @@ namespace cublog
       void start_sysop_sequence (TRANID trid, LOG_LSA start_lsa,
 				 const log_rv_redo_context &redo_context);
 #endif
+#if (0)
       // can a sysop-type atomic sequence be ended under the transaction
       bool can_end_sysop_sequence (TRANID trid, LOG_LSA sysop_parent_lsa) const;
       bool can_end_sysop_sequence (TRANID trid) const;
+#endif
 
       // mark the start of postpone sequence for a transaction; transaction must have
       // already started an atomic sequence; the postpone sequence can contain nested atomic
@@ -149,7 +151,11 @@ namespace cublog
 
     private: // methods
       void start_sequence_internal (TRANID trid, LOG_LSA start_lsa,
-				    const log_rv_redo_context &redo_context, bool is_sysop);
+				    const log_rv_redo_context &redo_context
+#if (0)
+				    , bool is_sysop
+#endif
+				    );
 #if !defined (NDEBUG)
       bool check_for_page_validity (VPID vpid, TRANID tranid) const;
       void dump (const char *message) const;
@@ -172,12 +178,18 @@ namespace cublog
 
 	  // technical: function is needed to avoid double constructing a redo_context - which is expensive -
 	  // upon constructing a sequence
-	  void initialize (TRANID trid, LOG_LSA start_lsa, bool is_sysop);
+	  void initialize (TRANID trid, LOG_LSA start_lsa
+#if (0)
+			   , bool is_sysop
+#endif
+			   );
 
 	  int add_atomic_replication_log (THREAD_ENTRY *thread_p, LOG_LSA record_lsa, LOG_RCVINDEX rcvindex, VPID vpid);
 
+#if (0)
 	  bool can_end_sysop_sequence (const LOG_LSA &sysop_parent_lsa) const;
 	  bool can_end_sysop_sequence () const;
+#endif
 
 #if (0)
 	  void start_postpone_sequence ();
@@ -306,11 +318,13 @@ namespace cublog
 	  using atomic_log_entry_vector_type = std::vector<atomic_log_entry>;
 
 	private: // variables
+	  /* the transaction this sequence belongs to; for logging/debugging purposes only */
 	  TRANID m_trid;
 	  /* The LSA of the log record which started this atomic sequence.
 	   * It is used for comparison to see whether a sysop end operation can close an
 	   * atomic replication sequence. */
 	  LOG_LSA m_start_lsa;
+#if (0)
 	  /* Separates the two types of atomic sequences:
 	   *  - sysop
 	   *  - non-sysop
@@ -318,6 +332,7 @@ namespace cublog
 	  bool m_is_sysop = false;
 	  bool m_postpone_started = false;
 	  int m_end_pospone_count = 0;
+#endif
 
 	  log_rv_redo_context m_redo_context;
 	  atomic_log_entry_vector_type m_log_vec;
