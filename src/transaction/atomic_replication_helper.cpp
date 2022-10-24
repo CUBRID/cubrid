@@ -323,7 +323,7 @@ namespace cublog
 				 , is_sysop
 #endif
 				 );
-	sequence_it = m_sequences_map.begin ();
+	sequence_it = m_sequences_map.find (trid);
       }
 
     // TODO: idea, first add control log and then apply and unfix, such that apply and unfix will be able to make
