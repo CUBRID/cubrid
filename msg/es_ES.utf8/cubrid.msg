@@ -1434,7 +1434,10 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 
 1352 Invalid number of columns specified.
 
-1353 Ultimo error
+1353 Internal CAS error : %1$d 
+1354 Internal CAS error : %1$d, %2$s
+
+1355 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

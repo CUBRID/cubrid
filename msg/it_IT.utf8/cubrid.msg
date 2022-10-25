@@ -1434,7 +1434,10 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 
 1352 Invalid number of columns specified.
 
-1353 Ultimo errore
+1353 Internal CAS error : %1$d 
+1354 Internal CAS error : %1$d, %2$s
+
+1355 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
