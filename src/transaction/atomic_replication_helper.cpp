@@ -670,7 +670,7 @@ namespace cublog
   atomic_replication_helper::atomic_log_sequence::dump_to_buffer (char *&buf_ptr, int &buf_len) const
   {
     int written = 0;
-    written = snprintf (buf_ptr, (size_t)buf_len, "    %strid = %d  start_lsa = %lld|%d"
+    written = snprintf (buf_ptr, (size_t)buf_len, "    %strid = %d  start_lsa = %lld|%d\n"
 			, (m_log_vec.empty () ? "[EMPTY]  " : ""), m_trid, LSA_AS_ARGS (&m_start_lsa));
     assert (written > 0);
     buf_ptr += written;
