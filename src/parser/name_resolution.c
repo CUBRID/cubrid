@@ -252,8 +252,13 @@ static PT_NODE *pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_M
 static void pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC_TYPE derived_table_type,
 				    PT_NODE * derived_table, PT_NODE * parent_spec);
 static PT_NODE *pt_count_with_clauses (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static int pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node);
 
+#if defined(DBLINK_DML_POC)
+static int pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node, char **server_owner_name);
+static int pt_resolve_dblink_check_owner_name (PARSER_CONTEXT * parser, PT_NODE * node, char **server_owner_name);
+#else
+static int pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node);
+#endif
 
 #if defined(DBLINK_DML_POC)
 static void pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt);
@@ -1112,6 +1117,66 @@ pt_bind_spec_attrs (PARSER_CONTEXT * parser, PT_NODE * spec)
     }
 }
 
+#if defined(DBLINK_DML_POC)
+static int
+check_server_names (PARSER_CONTEXT * parser, PT_NODE * spec, char **server_name_ref, char **server_owner_ref)
+{
+  int ret = NO_ERROR;
+
+  PT_NODE *table = spec->info.spec.remote_server_name;
+  if (spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML)
+    {
+      assert (table->info.dblink_table.is_name);
+      *server_owner_ref = NULL;
+      *server_name_ref = (char *) table->info.dblink_table.conn->info.name.original;
+      if (table->info.dblink_table.owner_name)
+	{
+	  ret = pt_resolve_dblink_server_name (parser, table, NULL);
+	  *server_owner_ref = (char *) table->info.dblink_table.owner_name->info.name.original;
+	}
+      else
+	{
+	  ret = pt_resolve_dblink_server_name (parser, table, server_owner_ref);
+	}
+
+      return ret;
+    }
+  else
+    {
+      assert (table->node_type == PT_NAME);
+      // TODO: 
+      //fprintf (stdout, "check:: [%s]\n", parser_print_tree (parser, spec));
+      if (strcasecmp (table->info.name.original, *server_name_ref))
+	{
+	  PT_ERROR (parser, spec, "multi server name error 1");
+	}
+      else if (table->next)
+	{
+	  if (strcasecmp (table->next->info.name.original, *server_owner_ref))
+	    {
+	      PT_ERROR (parser, spec, "multi server name error 2");
+	    }
+	}
+      else
+	{
+	  char *pt = NULL;
+	  ret = pt_resolve_dblink_check_owner_name (parser, table, &pt);
+	  if (ret != NO_ERROR)
+	    {
+	      return ret;
+	    }
+
+	  if (strcasecmp (pt, *server_owner_ref))
+	    {
+	      PT_ERROR (parser, spec, "multi server name error 3");
+	    }
+	}
+    }
+
+  return ret;
+}
+#endif
+
 /*
  * pt_bind_scope() -  bind names and types of derived tables in current scope.
  *   return:  void
@@ -1130,6 +1195,10 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
   SCOPES *scopes = bind_arg->scopes;
   PT_NODE *spec, *prev_spec = NULL;
   bool save_donot_fold;
+#if defined(DBLINK_DML_POC)
+  char *server_owner_ref = NULL;
+  char *server_name_ref = NULL;
+#endif
 
   spec = scopes->specs;
   scopes->specs = NULL;
@@ -1160,7 +1229,11 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	      assert (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE);
 	      if (table->info.dblink_table.is_name)
 		{
+#if defined(DBLINK_DML_POC)
+		  if (pt_resolve_dblink_server_name (parser, table, NULL) != NO_ERROR)
+#else
 		  if (pt_resolve_dblink_server_name (parser, table) != NO_ERROR)
+#endif
 		    {
 		      return;
 		    }
@@ -1234,11 +1307,9 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	  pt_bind_spec_attrs (parser, spec);
 	}
 #if defined(DBLINK_DML_POC)
-      else if (spec->info.spec.remote_server_name
-	       && spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML)
+      else if (spec->info.spec.remote_server_name)
 	{
-	  assert (spec->info.spec.remote_server_name->info.dblink_table.is_name);
-	  if (pt_resolve_dblink_server_name (parser, spec->info.spec.remote_server_name) != NO_ERROR)
+	  if (check_server_names (parser, spec, &server_name_ref, &server_owner_ref) != NO_ERROR)
 	    {
 	      return;
 	    }
@@ -11166,10 +11237,18 @@ pt_bind_name_to_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 }
 
 static int
+#if defined(DBLINK_DML_POC)
+pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node, char **server_owner_name)
+#else
 pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node)
+#endif
 {
   PT_NODE *val[3];
+#if defined(DBLINK_DML_POC)
+  DB_VALUE values[4];
+#else
   DB_VALUE values[3];
+#endif
   PT_DBLINK_INFO *dblink_table = &node->info.dblink_table;
   int i, error;
 
@@ -11178,7 +11257,13 @@ pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node)
   db_make_null (&(values[0]));
   db_make_null (&(values[1]));
   db_make_null (&(values[2]));
+#if defined(DBLINK_DML_POC)
+  db_make_null (&(values[3]));
+
+  error = get_dblink_info_from_dbserver (parser, dblink_table->conn, dblink_table->owner_name, values);
+#else
   error = get_dblink_info_from_dbserver (parser, node, values);
+#endif
   if (error != NO_ERROR)
     {
       // TODO: error handling         
@@ -11203,6 +11288,9 @@ pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node)
       pr_clear_value (&(values[0]));
       pr_clear_value (&(values[1]));
       pr_clear_value (&(values[2]));
+#if defined(DBLINK_DML_POC)
+      pr_clear_value (&(values[3]));
+#endif
       return error;
     }
 
@@ -11237,6 +11325,15 @@ pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node)
   url = (char *) db_get_string (&(values[0]));
   username = (char *) db_get_string (&(values[1]));
   password = (char *) db_get_string (&(values[2]));
+#if defined(DBLINK_DML_POC)
+  if (server_owner_name)
+    {
+      PARSER_VARCHAR *vc;
+      char *ownername = (char *) db_get_string (&(values[3]));
+      vc = pt_append_nulstring (parser, NULL, ownername);
+      *server_owner_name = (char *) vc->bytes;
+    }
+#endif
 
   dblink_table->url->info.value.data_value.str = pt_append_nulstring (parser, NULL, url);
   dblink_table->user->info.value.data_value.str = pt_append_nulstring (parser, NULL, username);
@@ -11245,9 +11342,66 @@ pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node)
   pr_clear_value (&(values[0]));
   pr_clear_value (&(values[1]));
   pr_clear_value (&(values[2]));
+#if defined(DBLINK_DML_POC)
+  pr_clear_value (&(values[3]));
+#endif
 
   return NO_ERROR;
 }
+
+#if defined(DBLINK_DML_POC)
+static int
+pt_resolve_dblink_check_owner_name (PARSER_CONTEXT * parser, PT_NODE * node, char **server_owner_name)
+{
+  DB_VALUE value;
+  int i, error;
+
+  assert (node->node_type == PT_NAME);
+
+  db_make_null (&value);
+
+  error = get_dblink_owner_name_from_dbserver (parser, node, node->next, &value);
+  if (error != NO_ERROR)
+    {
+      // TODO: error handling         
+      if (er_errid_if_has_error () != NO_ERROR)
+	{
+	  PT_ERROR (parser, node, (char *) er_msg ());
+	}
+      else if (!pt_has_error (parser))
+	{
+	  if (node->next)
+	    {
+	      PT_ERRORf3 (parser, node, "Failed to obtain server information for [%s].[%s]. error=%d",
+			  node->next->info.name.original, node->info.name.original, error);
+	    }
+	  else
+	    {
+	      PT_ERRORf2 (parser, node, "Failed to obtain server information for [%s]. error=%d",
+			  node->info.name.original, error);
+	    }
+	}
+
+      pr_clear_value (&value);
+      return error;
+    }
+
+  if (server_owner_name)
+    {
+      PARSER_VARCHAR *vc;
+      char *ownername = (char *) db_get_string (&value);
+      vc = pt_append_nulstring (parser, NULL, ownername);
+      *server_owner_name = (char *) vc->bytes;
+    }
+
+  pr_clear_value (&value);
+
+  return NO_ERROR;
+}
+#endif // #if defined(DBLINK_DML_POC)
+
+
+
 
 #if defined(DBLINK_DML_POC)
 typedef struct link_columns

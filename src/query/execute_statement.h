@@ -78,7 +78,14 @@ extern int do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_rename_server (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+#if defined(DBLINK_DML_POC)
+extern int get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_name, PT_NODE * owner_name,
+					  DB_VALUE * out_val);
+extern int get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_nm, PT_NODE * owner_nm,
+						DB_VALUE * out_val);
+#else
 extern int get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * values);
+#endif
 
 typedef int (PT_DO_FUNC) (PARSER_CONTEXT *, PT_NODE *);
 

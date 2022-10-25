@@ -17456,7 +17456,11 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* free returned QFILE_LIST_ID */
       if (list_id)
 	{
+#if defined(DBLINK_DML_POC)
 	  if ((list_id->tuple_cnt > 0) && class_obj)
+#else
+	  if (list_id->tuple_cnt > 0)
+#endif
 	    {
 	      if (statement->flag.use_auto_commit && tran_was_latest_query_committed ())
 		{
@@ -20690,19 +20694,29 @@ end:
 }
 
 int
+#if defined(DBLINK_DML_POC)
+get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_name, PT_NODE * owner_name, DB_VALUE * out_val)
+#else
 get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * out_val)
+#endif
 {
-  char *server_name;
   DB_OBJECT *server_object = NULL;
   DB_VALUE values[4], pwd_val;
   int au_save, error, cnt;
   const char *url_attr_names[4] = { SERVER_ATTR_HOST, SERVER_ATTR_PORT, SERVER_ATTR_DB_NAME, SERVER_ATTR_PROPERTIES };
+#if defined(DBLINK_DML_POC)
+  MOP user_obj = NULL;
+  DB_VALUE user_val;
+
+  db_make_null (&user_val);
+#else
   PT_DBLINK_INFO *dblink_table = &node->info.dblink_table;
+  PT_NODE *server_name = dblink_table->conn;
+  PT_NODE *owner_name = dblink_table->owner_name;
+#endif
 
-  server_name = (char *) dblink_table->conn->info.name.original;
   cnt = 0;
-
-  server_object = server_find (dblink_table->conn, dblink_table->owner_name, false);
+  server_object = server_find (server_name, owner_name, false);
   if (server_object == NULL)
     {
       return er_errid ();
@@ -20730,6 +20744,24 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE
     {
       goto error_end;
     }
+
+#if defined(DBLINK_DML_POC)
+  if (owner_name == NULL)
+    {
+      error = db_get (server_object, SERVER_ATTR_OWNER, &user_val);
+      if (error < 0)
+	{
+	  goto error_end;
+	}
+
+      user_obj = db_get_object (&user_val);
+      error = db_get (user_obj, "name", &(out_val[3]));
+      if (error < 0)
+	{
+	  goto error_end;
+	}
+    }
+#endif
 
   error = get_dblink_password_decrypt (db_get_string (&pwd_val), &(out_val[2]));
   if (error != NO_ERROR)
@@ -20778,9 +20810,50 @@ error_end:
     {
       pr_clear_value (&(values[cnt]));
     }
+#if defined(DBLINK_DML_POC)
+  pr_clear_value (&user_val);
+#endif
 
   return error;
 }
+
+#if defined(DBLINK_DML_POC)
+int
+get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_nm, PT_NODE * owner_nm,
+				     DB_VALUE * out_val)
+{
+  DB_OBJECT *server_object = NULL;
+  MOP user_obj = NULL;
+  int au_save, error;
+  DB_VALUE user_val;
+
+  db_make_null (&user_val);
+
+  server_object = server_find (server_nm, owner_nm, false);
+  if (server_object == NULL)
+    {
+      return er_errid ();
+    }
+
+  AU_DISABLE (au_save);		// disable checking authorization
+
+  if (owner_nm == NULL)
+    {
+      error = db_get (server_object, SERVER_ATTR_OWNER, &user_val);
+      if (error >= 0)
+	{
+	  user_obj = db_get_object (&user_val);
+	  error = db_get (user_obj, "name", out_val);
+	}
+    }
+
+error_end:
+  AU_ENABLE (au_save);
+  pr_clear_value (&user_val);
+
+  return error;
+}
+#endif // #if defined(DBLINK_DML_POC)
 
 
 #define DBLINK_PASSWORD_MAX_LENGTH      (128)

@@ -10773,30 +10773,57 @@ pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
 
 
 static PARSER_VARCHAR *
-pt_make_remote_query (PARSER_CONTEXT * parser, PT_DBLINK_INFO * dblink_table, char *sql_user_text, bool is_merge)
+pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, PT_NODE * tbl_spec, PT_NODE * using_spec)
 {
   PARSER_VARCHAR *pvc = NULL;
   char *ps, *pt, *t;
   int len, count, i;
 
-  count = is_merge ? 2 : 1;
-
-  len = strlen (dblink_table->conn->info.name.original);
-  len++;			// '@'
-  if (dblink_table->owner_name)
-    {
-      len += strlen (dblink_table->owner_name->info.name.original);
-      len++;			// '.'
-    }
-
   ps = sql_user_text;
-  for (i = 0; i < count; i++)
+  while (tbl_spec)
     {
+      assert (tbl_spec->info.spec.remote_server_name != NULL);
+      assert (tbl_spec->info.spec.remote_server_name->node_type == PT_NAME);
+
+      len = strlen (tbl_spec->info.spec.remote_server_name->info.name.original);
+      len++;			// '@'
+      if (tbl_spec->info.spec.remote_server_name->next)
+	{
+	  assert (tbl_spec->info.spec.remote_server_name->next->node_type == PT_NAME);
+	  len += strlen (tbl_spec->info.spec.remote_server_name->next->info.name.original);
+	  len++;		// '.'
+	}
+
       t = strchr ((char *) ps, '@');
       assert (t != NULL);
 
       pvc = pt_append_bytes (parser, pvc, ps, (t - ps));
       ps = t + len;
+
+      tbl_spec = tbl_spec->next;
+    }
+
+  while (using_spec)
+    {
+      assert (using_spec->info.spec.remote_server_name != NULL);
+      assert (using_spec->info.spec.remote_server_name->node_type == PT_NAME);
+
+      len = strlen (using_spec->info.spec.remote_server_name->info.name.original);
+      len++;			// '@'
+      if (using_spec->info.spec.remote_server_name->next)
+	{
+	  assert (using_spec->info.spec.remote_server_name->next->node_type == PT_NAME);
+	  len += strlen (using_spec->info.spec.remote_server_name->next->info.name.original);
+	  len++;		// '.'
+	}
+
+      t = strchr ((char *) ps, '@');
+      assert (t != NULL);
+
+      pvc = pt_append_bytes (parser, pvc, ps, (t - ps));
+      ps = t + len;
+
+      using_spec = using_spec->next;
     }
 
   pvc = pt_append_nulstring (parser, pvc, t + len);
@@ -10805,16 +10832,15 @@ pt_make_remote_query (PARSER_CONTEXT * parser, PT_DBLINK_INFO * dblink_table, ch
   t = pt + (pvc->length - 1);
   while (t > pt)
     {
-      if (*t == ' ' || *t == '\t' || *t == '\n' || *t == '\a')
+      if (*t != ' ' && *t != '\t' && *t != '\n' && *t != '\a')
 	{
-	  t--;
-	}
-      else
-	{
-	  t[1] = '\0';
 	  break;
 	}
+
+      t--;
     }
+  t[1] = '\0';
+  pvc->length = (int) (t - pt) + 1;
 
   return pvc;
 }
@@ -10824,16 +10850,83 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * tbl_spec, PT_NOD
 {
   int i = 0;
 
-  if (!tbl_spec || tbl_spec->info.spec.remote_server_name == NULL)
+  if (!tbl_spec)
     {
       return;
     }
+
+  PT_NODE *t_spec;
+
+  if (tbl_spec->info.spec.remote_server_name == NULL)
+    {
+      for (t_spec = tbl_spec->next; t_spec; t_spec = t_spec->next)
+	{
+	  if (t_spec->info.spec.remote_server_name != NULL)
+	    {
+	      PT_ERROR (parser, tbl_spec, "Not suppport!.");
+	      return;
+	    }
+	}
+
+      for (t_spec = using_spec; t_spec; t_spec = t_spec->next)
+	{
+	  if (t_spec->info.spec.remote_server_name != NULL)
+	    {
+	      PT_ERROR (parser, tbl_spec, "Not suppport!.");
+	      return;
+	    }
+	}
+
+      return;
+    }
+
+  for (t_spec = tbl_spec->next; t_spec; t_spec = t_spec->next)
+    {
+      if (t_spec->info.spec.remote_server_name == NULL)
+	{
+	  PT_ERROR (parser, tbl_spec, "Not suppport!.");
+	  return;
+	}
+    }
+
+  for (t_spec = using_spec; t_spec; t_spec = t_spec->next)
+    {
+      if (t_spec->info.spec.remote_server_name == NULL)
+	{
+	  PT_ERROR (parser, tbl_spec, "Not suppport!.");
+	  return;
+	}
+    }
+
+  /*  
+   ** The target server must all be the same.
+   ** Therefore, even if multiple tables are specified, only the first information is configured as PT_DBLINK_TABLE_DML.
+   ** Postpone checking that "user.server" and "server" are the same.
+   */
+
+  //
 
   PT_NODE *ct = parser_new_node (parser, PT_DBLINK_TABLE_DML);
   if (!ct)
     {
       assert (false);
       return;
+    }
+
+  PT_NODE *val = parser_new_node (parser, PT_VALUE);
+  if (!val)
+    {
+      assert (false);
+      return;
+    }
+
+  val->type_enum = PT_TYPE_CHAR;
+  val->info.value.string_type = ' ';
+
+  if (sql_user_text)
+    {
+      val->info.value.data_value.str = pt_make_remote_query (parser, sql_user_text, tbl_spec, using_spec);
+      PT_NODE_PRINT_VALUE_TO_TEXT (parser, val);
     }
 
   PT_NODE *server = tbl_spec->info.spec.remote_server_name;
@@ -10851,30 +10944,12 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * tbl_spec, PT_NOD
   tbl_spec->info.spec.remote_server_name = ct;
   //tbl_spec->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE_DML;
 
-  PT_NODE *val = parser_new_node (parser, PT_VALUE);
-  if (!val)
-    {
-      assert (false);
-      return;
-    }
-
-  val->type_enum = PT_TYPE_CHAR;
-  val->info.value.string_type = ' ';
-
-  if (sql_user_text)
-    {
-      val->info.value.data_value.str =
-	pt_make_remote_query (parser, &(ct->info.dblink_table), sql_user_text, (using_spec != NULL));
-      PT_NODE_PRINT_VALUE_TO_TEXT (parser, val);
-    }
-
   ct->info.dblink_table.qstr = val;
 }
 
 static PT_NODE *
 pt_convert_server (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-
   assert (continue_walk != NULL);
   if (parser == NULL || node == NULL)
     {
@@ -10908,6 +10983,7 @@ pt_convert_server (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
     case PT_SPEC:
       if (node->info.spec.remote_server_name)
 	{
+	  //printf ("PT_SPEC:: %s\n", parser_print_tree (parser, node->info.spec.remote_server_name));
 	  //    node->info.spec.remote_server_name.pt_node_type
 	}
       break;
@@ -10960,7 +11036,7 @@ pt_check_server_extension (PARSER_CONTEXT * parser, PT_NODE * stmt)
       return;
     }
 
-  parser_walk_tree (parser, stmt, NULL, NULL, pt_check_unresolve_remote_server_name, NULL);
+  parser_walk_tree (parser, stmt, pt_check_unresolve_remote_server_name, NULL, NULL, NULL);
   if (pt_has_error (parser))
     {
       return;
