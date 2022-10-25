@@ -4146,6 +4146,8 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
       break;
 
+    case S_INDEX_SCAN_OPTIMIZED:
+      break;
     case S_INDX_SCAN:
       isidp = &scan_id->s.isid;
       if (!OID_IS_ROOTOID (&isidp->cls_oid))
@@ -4607,6 +4609,8 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     case S_JSON_TABLE_SCAN:
     case S_VALUES_SCAN:
       return (s_id->position == S_BEFORE) ? S_SUCCESS : S_END;
+    case S_INDEX_SCAN_OPTIMIZED:
+      return S_END;
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);

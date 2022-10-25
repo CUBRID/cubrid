@@ -16229,9 +16229,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	pt_to_aggregate (parser, select_node, xasl->outptr_list, buildlist->g_val_list, buildlist->g_regu_list,
 			 buildlist->g_scan_regu_list, group_out_list, &buildlist->g_grbynum_val);
 
-      if (aggregate
-	  && (aggregate->function == PT_COUNT_STAR || aggregate->function == PT_MAX || aggregate->function == PT_MIN)
-	  && aggregate->flag_agg_optimize == true)
+      if (aggregate && aggregate->flag_agg_optimize == true)
 	{
 	  qo_plan->plan_un.scan.scan_method = QO_SCANMETHOD_INDEX_SCAN_OPTIMIZED;
 	}
@@ -16978,7 +16976,6 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   pt_set_qprior_node_etc (parser, select_node->info.query.q.select.having, xasl);
 
   aggregate = pt_to_aggregate (parser, select_node, NULL, NULL, NULL, NULL, NULL, &buildvalue->grbynum_val);
-
   if (aggregate && aggregate->flag_agg_optimize == true)
     {
       qo_plan->plan_un.scan.scan_method = QO_SCANMETHOD_INDEX_SCAN_OPTIMIZED;
