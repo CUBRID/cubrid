@@ -192,6 +192,28 @@ namespace cublog
 #if !defined (NDEBUG)
 	m_vpid_sets_map.erase (trid);
 #endif
+
+	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+	  {
+#if !defined (NDEBUG)
+	    const TRANID trid = sequence_it->first;
+	    _er_log_debug (ARG_FILE_LINE,
+			   "[ATOMIC_REPL] append_control_log purged trid = %d\n",
+			   trid);
+#endif
+	  }
+      }
+    else
+      {
+	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+	  {
+#if !defined (NDEBUG)
+	    const TRANID trid = sequence_it->first;
+	    _er_log_debug (ARG_FILE_LINE,
+			   "[ATOMIC_REPL] append_control_log _not_ purged trid = %d\n",
+			   trid);
+#endif
+	  }
       }
   }
 
@@ -217,6 +239,28 @@ namespace cublog
 #if !defined (NDEBUG)
 	m_vpid_sets_map.erase (trid);
 #endif
+
+	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+	  {
+#if !defined (NDEBUG)
+	    const TRANID trid = sequence_it->first;
+	    _er_log_debug (ARG_FILE_LINE,
+			   "[ATOMIC_REPL] append_control_log_sysop_end purged trid = %d\n",
+			   trid);
+#endif
+	  }
+      }
+    else
+      {
+	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+	  {
+#if !defined (NDEBUG)
+	    const TRANID trid = sequence_it->first;
+	    _er_log_debug (ARG_FILE_LINE,
+			   "[ATOMIC_REPL] append_control_log_sysop_end _not_ purged trid = %d\n",
+			   trid);
+#endif
+	  }
       }
   }
 
@@ -252,7 +296,8 @@ namespace cublog
     int buf_len = BUF_LEN_MAX;
 
     const int written = snprintf (buf_ptr, (size_t)buf_len,
-				  "[ATOMIC_REPL] %s\n",
+				  "[ATOMIC_REPL] %s%s\n",
+				  (m_sequences_map.empty () ? "[EMPTY]  " : ""),
 				  ((message != nullptr) ? message : ""));
     assert (written > 0);
     buf_ptr += written;
