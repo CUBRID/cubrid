@@ -813,30 +813,27 @@ struct json_t;
 					 (n)->node_type == PT_RENAME_SYNONYM)
 
 /* PT_SPEC_INFO */
-#define PT_SPEC_GET_DB_OBJECT(n, r)	\
-	do \
-	  { \
-	    if (PT_SPEC_FLAT_ENTITY_LIST ((n)) != NULL \
-		&& PT_NAME_DB_OBJECT (PT_SPEC_FLAT_ENTITY_LIST ((n))) != NULL) \
-	      { \
-		(r) = PT_NAME_DB_OBJECT (PT_SPEC_FLAT_ENTITY_LIST ((n))); \
-	      } \
-	    else if (PT_SPEC_ENTITY_NAME ((n)) != NULL) \
-	      { \
-		if (PT_NAME_DB_OBJECT (PT_SPEC_ENTITY_NAME ((n))) != NULL) \
-		  { \
-		    (r) = PT_NAME_DB_OBJECT (PT_SPEC_ENTITY_NAME ((n))); \
-		  } \
-		else \
-		  { \
-		    (r) = db_find_class (PT_NAME_ORIGINAL (PT_SPEC_ENTITY_NAME ((n)))); \
-		  } \
-	      } \
-	    else \
-	      { \
-		(r) = NULL; \
-	      } \
-	  } \
+#define PT_SPEC_GET_DB_OBJECT(n, r)						\
+	do									\
+	  {									\
+	    PT_NODE *entity_name = PT_SPEC_ENTITY_NAME ((n));			\
+										\
+	    if (entity_name != NULL)						\
+	      {									\
+		if (PT_NAME_DB_OBJECT (entity_name) != NULL)			\
+		  {								\
+		    (r) = PT_NAME_DB_OBJECT (entity_name);			\
+		  }								\
+		else								\
+		  {								\
+		    (r) = sm_find_class (PT_NAME_ORIGINAL (entity_name));	\
+		  }								\
+	      }									\
+	    else								\
+	      {									\
+		(r) = NULL;							\
+	      }									\
+	  }									\
 	while (0)
 
 /*
