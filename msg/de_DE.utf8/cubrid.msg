@@ -1313,8 +1313,10 @@ $ LOADDB
 1244 Das Laden von Aktualisierungen gemeinsam genutzter Attribute aus Objektdateien wird im CS-Modus nicht unterstützt.
 1245 Das Laden von Aktualisierungen von Klassenattributen aus Objektdateien wird im CS-Modus nicht unterstützt.
 1246 Fehler beim Abrufen der Adress- und Namensinformationen. Fehlerkode : %1$d, Meldung : %2$s.
+1247 Internal CAS error : %1$d 
+1248 Internal CAS error : %1$d, %2$s
 
-1247 Letzter Fehler
+1249 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):

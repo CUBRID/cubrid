@@ -1604,7 +1604,10 @@
 
 #define ER_GAI_ERROR                                -1246
 
-#define ER_LAST_ERROR                               -1247
+#define ER_SQL_ERROR_LOG_TRACE                      -1247
+#define ER_SQL_ERROR_LOG_MSG_TRACE                  -1248
+
+#define ER_LAST_ERROR                               -1249
 
 /*
  * CAUTION!
