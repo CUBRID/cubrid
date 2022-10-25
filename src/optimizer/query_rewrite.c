@@ -3594,9 +3594,6 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 	      continue;		/* curr_pk_spec->next */
 	    }
 
-	  er_log_debug (ARG_FILE_LINE, "[%s] The parent table to check is: %s\n", __func__,
-			pt_print_alias (parser, curr_pk_spec));
-
 	  reduce_reference_info.pk_spec = curr_pk_spec;
 
 	  if (qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (parser, query, &reduce_reference_info))
@@ -3629,9 +3626,6 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 		{
 		  continue;	/* curr_fk_spec->next */
 		}
-
-	      er_log_debug (ARG_FILE_LINE, "[%s] The child table to check is: %s\n", __func__,
-			    pt_print_alias (parser, curr_fk_spec));
 
 	      reduce_reference_info.fk_spec = curr_fk_spec;
 
