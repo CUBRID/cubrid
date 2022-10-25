@@ -4727,7 +4727,7 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
 	  if (from->info.spec.entity_name)
 	    {
 	      info.class_name = from->info.spec.entity_name->info.name.original;
-	      info.flag_agg_optimize = true;
+	      //info.flag_agg_optimize = true;
 	    }
 	}
     }
