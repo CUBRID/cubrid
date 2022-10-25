@@ -1332,8 +1332,10 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1261 Impossibile trovare la chiave al momento del ripristino (indice chiave: %1$d, ora di creazione: %2$s). Imposta la chiave (indice chiave: %3$d) per il database.
 1262 Il file della chiave è pieno.
 1263 Impossibile crittografare TDE la pagina di registro (pageid: %1$lld). Non si tenterà più di crittografare questa pagina.
+1264 Internal CAS error : %1$d 
+1265 Internal CAS error : %1$d, %2$s
 
-1264 Ultimo errore
+1266 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
