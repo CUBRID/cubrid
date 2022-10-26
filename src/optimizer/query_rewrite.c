@@ -3634,6 +3634,8 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 	  if (curr_fk_spec == NULL)
 	    {
 	      /* not found */
+	      er_log_debug (ARG_FILE_LINE, "%s: next parent. (spec: %s)\n", __func__,
+			    pt_print_alias (parser, curr_fk_spec));
 	      continue;		/* curr_pk_spec->next */
 	    }
 
@@ -3656,6 +3658,8 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 	  /* reset location */
 	  qo_reset_spec_location (parser, next_pk_spec, query);
 
+	  er_log_debug (ARG_FILE_LINE, "%s: reduce parent. (spec: %s)\n", __func__,
+			pt_print_alias (parser, curr_pk_spec));
 	  parser_free_node (parser, curr_pk_spec);
 	  curr_pk_spec = next_pk_spec;
 
@@ -3663,11 +3667,14 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 
 	  if (curr_pk_spec == NULL)
 	    {
+	      er_log_debug (ARG_FILE_LINE, "%s: repeat.\n", __func__);
 	      break;
 	    }
 	}
     }
   while (has_reduce);
+
+  er_log_debug (ARG_FILE_LINE, "%s: end.\n", __func__);
 
 cleanup_on_fail:
   if (reduce_reference_info.exclude_pk_spec_point_list != NULL)
@@ -3773,6 +3780,8 @@ qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (PARSER_CONTEXT * 
   curr_pk_spec = reduce_reference_info->pk_spec;
   assert (PT_NODE_IS_SPEC (curr_pk_spec));
 
+  er_log_debug (ARG_FILE_LINE, "%s: check parent. (spec: %s)\n", __func__, pt_print_alias (parser, curr_pk_spec));
+
   /* PT_ALL is not supported. */
   if (PT_SPEC_ONLY_ALL (curr_pk_spec) == PT_ALL)
     {
@@ -3803,8 +3812,6 @@ qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (PARSER_CONTEXT * 
   PT_SPEC_GET_DB_OBJECT (curr_pk_spec, curr_pk_mop);
   if (curr_pk_mop == NULL)
     {
-      ASSERT_ERROR ();
-
       /* CTEs and derived tables are excluded. */
       goto exit_on_fail_with_exclude;
     }
@@ -3941,13 +3948,15 @@ cleanup_on_fail:
   parser_free_tree (parser, reduce_pred_point_list);
   reduce_pred_point_list = NULL;
 
-  return false;
+  goto exit_on_fail;
 
 exit_on_fail_with_exclude:
+  er_log_debug (ARG_FILE_LINE, "%s: exclude. (spec: %s)\n", __func__, pt_print_alias (parser, curr_pk_spec));
   reduce_reference_info->exclude_pk_spec_point_list =
     parser_append_node (pt_point (parser, curr_pk_spec), reduce_reference_info->exclude_pk_spec_point_list);
 
 exit_on_fail:
+  er_log_debug (ARG_FILE_LINE, "%s: irreducible. (spec: %s)\n", __func__, pt_print_alias (parser, curr_pk_spec));
   return false;
 }
 
@@ -3966,6 +3975,7 @@ exit_on_fail:
  *         1. Access to hierarchical tables.
  *         2. Not an inner join or natural join.
  *         3. CTEs or derived tables.
+ *         4. No foreign key.
  */
 static bool
 qo_check_foreign_keys_referencing_primary_key_in_child_spec (PARSER_CONTEXT * parser, PT_NODE * query,
@@ -3993,6 +4003,8 @@ qo_check_foreign_keys_referencing_primary_key_in_child_spec (PARSER_CONTEXT * pa
 
   curr_fk_spec = reduce_reference_info->fk_spec;
   assert (PT_NODE_IS_SPEC (curr_fk_spec));
+
+  er_log_debug (ARG_FILE_LINE, "%s: check child. (spec: %s)\n", __func__, pt_print_alias (parser, curr_fk_spec));
 
   /* PT_ALL is not supported. */
   if (curr_fk_spec->info.spec.only_all == PT_ALL)
@@ -4024,8 +4036,6 @@ qo_check_foreign_keys_referencing_primary_key_in_child_spec (PARSER_CONTEXT * pa
   PT_SPEC_GET_DB_OBJECT (curr_fk_spec, curr_fk_mop);
   if (curr_fk_mop == NULL)
     {
-      ASSERT_ERROR ();
-
       /* CTEs and derived tables are excluded. */
       goto exit_on_fail_with_exclude;
     }
@@ -4056,13 +4066,20 @@ qo_check_foreign_keys_referencing_primary_key_in_child_spec (PARSER_CONTEXT * pa
 
   assert (curr_fk_cons == NULL);
 
-  return false;
+  if (reduce_reference_info->fk_cons == NULL)
+    {
+      /* No foreign key */
+      goto exit_on_fail_with_exclude;
+    }
+
+  goto exit_on_fail;
 
 exit_on_fail_with_exclude:
   reduce_reference_info->exclude_fk_spec_point_list =
     parser_append_node (pt_point (parser, curr_fk_spec), reduce_reference_info->exclude_fk_spec_point_list);
 
 exit_on_fail:
+  er_log_debug (ARG_FILE_LINE, "%s: next child. (spec: %s)\n", __func__, pt_print_alias (parser, curr_fk_spec));
   return false;
 }
 

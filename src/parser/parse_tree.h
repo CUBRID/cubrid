@@ -827,6 +827,7 @@ struct json_t;
 		else								\
 		  {								\
 		    (r) = sm_find_class (PT_NAME_ORIGINAL (entity_name));	\
+		    assert ((r) != NULL);					\
 		  }								\
 	      }									\
 	    else								\
