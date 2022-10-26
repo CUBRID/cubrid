@@ -29,7 +29,7 @@
     <UI>
       <Dialog Id="JavaWarningDlg" Width="284" Height="73" Title="Java Runtime" NoMinimize="yes">
         <Control Id="Text" Type="Text" X="38" Y="8" Width="240" Height="40" TabSkip="no">
-          <Text>JRE version 1.6 or higher for Windows @WIX_SUPPORTED_PLATFORM@ is required for SSL and Java Stored Procedure to function correctly. You may proceed with installation, but be sure to install JRE if you will be using it.</Text>
+          <Text>JRE version 1.8 or higher for Windows @WIX_SUPPORTED_PLATFORM@ is required for SSL and Java Stored Procedure to function correctly. You may proceed with installation, but be sure to install JRE if you will be using it.</Text>
         </Control>
         <Control Id="OK" Type="PushButton" X="114" Y="52" Width="56" Height="17" Default="yes" Cancel="yes" Text="OK">
           <Publish Event="EndDialog" Value="Return">1</Publish>
@@ -37,7 +37,7 @@
       </Dialog>
       <InstallUISequence>
 <!-- Warn if Java is not installed -->
-        <Show Dialog="JavaWarningDlg" Before="ResumeDlg"><![CDATA[NOT Installed AND JAVA_CURRENT_VERSION < "1.6"]]></Show>
+        <Show Dialog="JavaWarningDlg" Before="ResumeDlg"><![CDATA[NOT Installed AND JAVA_CURRENT_VERSION < "1.8"]]></Show>
       </InstallUISequence>
     </UI>
 <!-- Install the Visual C++ Redistributable for CRT-->
