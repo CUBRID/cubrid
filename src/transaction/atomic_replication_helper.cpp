@@ -250,7 +250,7 @@ namespace cublog
       }
   }
 
-  void atomic_replication_helper::forcibly_remove_idle_sequence (TRANID trid)
+  void atomic_replication_helper::forcibly_remove_sequence (TRANID trid)
   {
     auto sequence_it = m_sequences_map.find (trid);
     if (sequence_it == m_sequences_map.end ())
@@ -263,7 +263,7 @@ namespace cublog
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
-	dump ("helper::forcibly_remove_idle_sequence");
+	dump ("helper::forcibly_remove_sequence");
       }
 
     // sequence dtor will ensure proper idle state upon destruction

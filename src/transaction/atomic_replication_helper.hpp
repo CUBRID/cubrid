@@ -133,7 +133,7 @@ namespace cublog
 	      THREAD_ENTRY *thread_p, TRANID trid, LOG_LSA lsa, LOG_SYSOP_END_TYPE sysop_end_type,
 	      LOG_LSA sysop_end_last_parent_lsa);
 
-      void forcibly_remove_idle_sequence (TRANID trid);
+      void forcibly_remove_sequence (TRANID trid);
 
     private: // methods
       void start_sequence_internal (TRANID trid, LOG_LSA start_lsa, const log_rv_redo_context &redo_context);

@@ -131,7 +131,7 @@ namespace cublog
 	    if (m_atomic_helper.is_part_of_atomic_replication (header.trid)
 		&& m_atomic_helper.all_log_entries_are_control (header.trid))
 	      {
-		m_atomic_helper.forcibly_remove_idle_sequence (header.trid);
+		m_atomic_helper.forcibly_remove_sequence (header.trid);
 	      }
 
 	    if (m_replicate_mvcc)
