@@ -125,6 +125,8 @@ namespace cublog
 	    // to identify this state of a transaction (eg: at least for *2* the
 	    // recovery state could be identified by processing the log compensate records;
 	    //
+	    // for *2*, the issue http://jira.cubrid.org/browse/LETS-572 has been added;
+	    //
 	    // for now, a naive aproach of asserting and forcibly eliminating the atomic sequence
 	    assert (!m_atomic_helper.is_part_of_atomic_replication (header.trid)
 		    || m_atomic_helper.all_log_entries_are_control (header.trid));
