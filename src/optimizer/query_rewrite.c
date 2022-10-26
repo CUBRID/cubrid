@@ -3581,14 +3581,6 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
       for (prev_pk_spec = NULL, curr_pk_spec = query->info.query.q.select.from; curr_pk_spec != NULL;
 	   prev_pk_spec = curr_pk_spec, curr_pk_spec = curr_pk_spec->next)
 	{
-	  /* In the following cases, add to the exclude_pk_spec_point_list.
-	   *   1. Access to hierarchical tables.
-	   *   2. Not an inner join or natural join.
-	   *   3. CTEs or derived tables.
-	   *   4. No primary key.
-	   *   5. No foreign key referencing the primary key.
-	   *   6. Non-join predicates exist.
-	   */
 	  if (qo_is_exclude_spec (reduce_reference_info.exclude_pk_spec_point_list, curr_pk_spec))
 	    {
 	      continue;		/* curr_pk_spec->next */
@@ -3617,11 +3609,6 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 		  continue;	/* curr_fk_spec->next */
 		}
 
-	      /* In the following cases, add to the exclude_fk_spec_point_list.
-	       *   1. Access to hierarchical tables.
-	       *   2. Not an inner join or natural join.
-	       *   3. CTEs or derived tables.
-	       */
 	      if (qo_is_exclude_spec (reduce_reference_info.exclude_fk_spec_point_list, curr_fk_spec))
 		{
 		  continue;	/* curr_fk_spec->next */
@@ -3750,6 +3737,14 @@ qo_is_exclude_spec (PT_NODE * exclude_spec_point_list, PT_NODE * spec)
  * Note: If the given spec can be removed, set the memory object pointer of the given spec and a constraint pointer
  *       of a primary key to reduce_reference_info. And the predicates of the given spec are added
  *       to the reduce_pred_point_list.
+ * 
+ *       In the following cases, add to the exclude_pk_spec_point_list.
+ *         1. Access to hierarchical tables.
+ *         2. Not an inner join or natural join.
+ *         3. CTEs or derived tables.
+ *         4. No primary key.
+ *         5. No foreign key referencing the primary key.
+ *         6. Non-join predicates exist.
  */
 static bool
 qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
@@ -3966,6 +3961,11 @@ exit_on_fail:
  *
  * Note: For each foreign key of a given spec, it is checked
  *       in the qo_check_foreign_key_referencing_primary_key_in_child_spec() function.
+ * 
+ *       In the following cases, add to the exclude_fk_spec_point_list.
+ *         1. Access to hierarchical tables.
+ *         2. Not an inner join or natural join.
+ *         3. CTEs or derived tables.
  */
 static bool
 qo_check_foreign_keys_referencing_primary_key_in_child_spec (PARSER_CONTEXT * parser, PT_NODE * query,
@@ -4111,6 +4111,22 @@ qo_check_foreign_key_referencing_primary_key_in_child_spec (PARSER_CONTEXT * par
 
   assert (curr_fk_cons->type == SM_CONSTRAINT_FOREIGN_KEY);
 
+  /* We must check that the oid of the parent table is equal to the fk_info->ref_class_oid
+   * of the foreign key constraint.
+   * 
+   *   e.g. drop table if exists child, parent, super_parent;
+   *        create table super_parent (c1 int primary key);
+   *        create table parent under super_parent (c2 int);
+   *        create table child (c1 int);
+   *        alter table child add constraint foreign key (c1)  references parent (c1);
+   *
+   *        -- irreducible
+   *        select c.* from child c, super_parent s where c.c1 = s.c1;
+   *
+   *        -- reducible
+   *        select c.* from child c, parent s where c.c1 = s.c1;
+   */
+
   /* WS_OID or WS_REAL_OID, which one? */
   if (!OID_EQ (WS_REAL_OID (curr_pk_mop), &curr_fk_cons->fk_info->ref_class_oid))
     {
@@ -4198,10 +4214,8 @@ qo_check_foreign_key_referencing_primary_key_in_child_spec (PARSER_CONTEXT * par
 		   *   e.g. drop if exists child, parent;
 		   *        create table parent (c1 int, c2 int, primary key (c1, c2));
 		   *        create table child (c1 int, c2 int);
-		   *        alter table child add constraint
-		   *          foreign key (c1, c2) references parent (c1, c2);
-		   *        alter table child add constraint
-		   *          foreign key (c2, c1) references parent (c1, c2);
+		   *        alter table child add constraint foreign key (c1, c2) references parent (c1, c2);
+		   *        alter table child add constraint foreign key (c2, c1) references parent (c1, c2);
 		   *
 		   *        select c.* from child c, parent p where c.c1 = p.c2 and c.c2 = p.c1;
 		   */
