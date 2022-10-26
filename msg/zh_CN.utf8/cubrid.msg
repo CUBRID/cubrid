@@ -1314,8 +1314,10 @@ $ LOADDB
 1244 CS模式下不支持从对象文件中加载SHARED属性更新..
 1245 CS模式下不支持从对象文件中加载类属性更新.
 1246 获取地址和名称时出错. 代码: %1$d, 信息: %2$s.
+1247 Internal CAS error : %1$d 
+1248 Internal CAS error : %1$d, %2$s
 
-1247 最后一个错误.
+1249 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):

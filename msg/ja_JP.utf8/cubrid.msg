@@ -1313,8 +1313,10 @@ $ LOADDB
 1244 Loading shared attributes updates from object files is not supported in CS mode.
 1245 Loading class attributes updates from object files is not supported in CS mode.
 1246 Error getting address and name information. Code : %1$d, message : %2$s.
+1247 Internal CAS error : %1$d 
+1248 Internal CAS error : %1$d, %2$s
 
-1247 ラストエラー
+1249 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):

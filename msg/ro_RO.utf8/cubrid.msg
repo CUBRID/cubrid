@@ -1313,8 +1313,10 @@ $ LOADDB
 1244 Încărcarea atributelor de tip "shared" nu este suportată in modul client-server.
 1245 Încărcarea atributelor de tip "class" nu este suportată in modul client-server.
 1246 Eroare la obţinerea informaţiilor de adresă și nume. Cod : %1$d, mesaj : %2$s.
+1247 Internal CAS error : %1$d 
+1248 Internal CAS error : %1$d, %2$s
 
-1247 Ultima eroare
+1249 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
