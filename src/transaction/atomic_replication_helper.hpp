@@ -30,6 +30,12 @@
 #include "thread_entry.hpp"
 #include "vpid_utilities.hpp"
 
+// various local checks; currently linked to the debug state (to be removed at some point)
+#if !defined (NDEBUG)
+#   define ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+#   define ATOMIC_REPL_PAGE_PTR_BOOKKEEPING_DUMP
+#endif
+
 namespace cublog
 {
   /*
@@ -131,10 +137,10 @@ namespace cublog
 
     private: // methods
       void start_sequence_internal (TRANID trid, LOG_LSA start_lsa, const log_rv_redo_context &redo_context);
-#if !defined (NDEBUG)
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
       bool check_for_page_validity (VPID vpid, TRANID tranid) const;
-      void dump (const char *message) const;
 #endif
+      void dump (const char *message) const;
 
     private: // types
       class atomic_log_sequence
@@ -168,10 +174,8 @@ namespace cublog
 	  bool all_log_entries_are_control () const;
 	  bool can_purge ();
 
-#if !defined (NDEBUG)
 	  void dump (const char *message) const;
 	  void dump_to_buffer (char *&buf_ptr, int &buf_len) const;
-#endif
 
 	private: // types
 	  /*
@@ -197,9 +201,7 @@ namespace cublog
 
 	    bool is_control () const;
 
-#if !defined (NDEBUG)
 	    void dump_to_buffer (char *&buf_ptr, int &buf_len) const;
-#endif
 
 	    VPID m_vpid;
 	    LOG_RECTYPE m_rectype;
@@ -262,7 +264,7 @@ namespace cublog
 	    int fix_page (THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcv_index, PAGE_PTR &page_ptr_out);
 	    int unfix_page (THREAD_ENTRY *thread_p, VPID vpid);
 
-#if !defined (NDEBUG)
+#ifdef ATOMIC_REPL_PAGE_PTR_BOOKKEEPING_DUMP
 	    void dump () const;
 #endif
 
@@ -288,7 +290,7 @@ namespace cublog
 
       using sequence_map_type = std::map<TRANID, atomic_log_sequence>;
 
-#if !defined (NDEBUG)
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
       // check validity of atomic sequences
       // one page can only be accessed by one atomic sequence within one transaction
       // this check makes sense because, on active transaction server, there is no
@@ -300,7 +302,7 @@ namespace cublog
     private: // variables
       sequence_map_type m_sequences_map;
 
-#if !defined (NDEBUG)
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
       std::map<TRANID, vpid_set_type> m_vpid_sets_map;
 #endif
   };

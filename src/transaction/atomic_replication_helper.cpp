@@ -18,9 +18,7 @@
 
 #include "atomic_replication_helper.hpp"
 
-#if !defined (NDEBUG)
-#  include "log_manager.h"
-#endif
+#include "log_manager.h"
 #include "log_recovery.h"
 #include "log_recovery_redo.hpp"
 #include "page_buffer.h"
@@ -37,7 +35,7 @@ namespace cublog
   atomic_replication_helper::append_log (THREAD_ENTRY *thread_p, TRANID tranid,
 					 LOG_LSA record_lsa, LOG_RCVINDEX rcvindex, VPID vpid)
   {
-#if !defined (NDEBUG)
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
     if (!VPID_ISNULL (&vpid) && !check_for_page_validity (vpid, tranid))
       {
 	assert (false);
@@ -62,9 +60,7 @@ namespace cublog
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
-#if !defined (NDEBUG)
 	dump ("helper::append_log");
-#endif
       }
 
     return NO_ERROR;
@@ -78,13 +74,11 @@ namespace cublog
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
-#if !defined (NDEBUG)
 	if (sequence_it != m_sequences_map.cend ())
 	  {
 	    const atomic_log_sequence &atomic_sequence = sequence_it->second;
 	    dump ("helper::start_sequence_internal");
 	  }
-#endif
       }
 
     assert (sequence_it == m_sequences_map.cend ());
@@ -98,7 +92,7 @@ namespace cublog
     emplaced_seq.initialize (trid, start_lsa);
   }
 
-#if !defined (NDEBUG)
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
   bool
   atomic_replication_helper::check_for_page_validity (VPID vpid, TRANID tranid) const
   {
@@ -189,30 +183,26 @@ namespace cublog
     if (sequence.can_purge ())
       {
 	m_sequences_map.erase (sequence_it);
-#if !defined (NDEBUG)
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
 	m_vpid_sets_map.erase (trid);
 #endif
 
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 	  {
-#if !defined (NDEBUG)
 	    const TRANID trid = sequence_it->first;
 	    _er_log_debug (ARG_FILE_LINE,
 			   "[ATOMIC_REPL] append_control_log purged trid = %d\n",
 			   trid);
-#endif
 	  }
       }
     else
       {
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 	  {
-#if !defined (NDEBUG)
 	    const TRANID trid = sequence_it->first;
 	    _er_log_debug (ARG_FILE_LINE,
 			   "[ATOMIC_REPL] append_control_log _not_ purged trid = %d\n",
 			   trid);
-#endif
 	  }
       }
   }
@@ -236,30 +226,26 @@ namespace cublog
     if (sequence.can_purge ())
       {
 	m_sequences_map.erase (sequence_it);
-#if !defined (NDEBUG)
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
 	m_vpid_sets_map.erase (trid);
 #endif
 
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 	  {
-#if !defined (NDEBUG)
 	    const TRANID trid = sequence_it->first;
 	    _er_log_debug (ARG_FILE_LINE,
 			   "[ATOMIC_REPL] append_control_log_sysop_end purged trid = %d\n",
 			   trid);
-#endif
 	  }
       }
     else
       {
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 	  {
-#if !defined (NDEBUG)
 	    const TRANID trid = sequence_it->first;
 	    _er_log_debug (ARG_FILE_LINE,
 			   "[ATOMIC_REPL] append_control_log_sysop_end _not_ purged trid = %d\n",
 			   trid);
-#endif
 	  }
       }
   }
@@ -277,16 +263,13 @@ namespace cublog
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
-#if !defined (NDEBUG)
 	dump ("helper::forcibly_remove_idle_sequence");
-#endif
       }
 
     // sequence dtor will ensure proper idle state upon destruction
     m_sequences_map.erase (sequence_it);
   }
 
-#if !defined (NDEBUG)
   void
   atomic_replication_helper::dump (const char *message) const
   {
@@ -311,7 +294,6 @@ namespace cublog
       }
     _er_log_debug (ARG_FILE_LINE, buf);
   }
-#endif
 
   /********************************************************************************
    * atomic_replication_helper::atomic_log_sequence function definitions  *
@@ -377,9 +359,7 @@ namespace cublog
   {
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
-#if !defined (NDEBUG)
 	dump ("sequence::apply_and_unfix START");
-#endif
       }
 
     // nothing to apply and unfix
@@ -434,9 +414,7 @@ namespace cublog
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
-#if !defined (NDEBUG)
 	dump ("sequence::apply_and_unfix END");
-#endif
       }
 
     assert (all_log_entries_are_control ());
@@ -456,9 +434,7 @@ namespace cublog
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
-#if !defined (NDEBUG)
 	dump ("sequence::append_control_log END");
-#endif
       }
   }
 
@@ -470,9 +446,7 @@ namespace cublog
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
-#if !defined (NDEBUG)
 	dump ("sequence::append_control_log_sysop_end END");
-#endif
       }
   }
 
@@ -508,9 +482,7 @@ namespace cublog
 
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 	  {
-#if !defined (NDEBUG)
 	    dump ("sequence::can_purge - START");
-#endif
 	  }
 
 	const atomic_log_entry_vector_type::const_iterator last_entry_it = m_log_vec.cend () - 1;
@@ -536,9 +508,7 @@ namespace cublog
 
 		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		      {
-#if !defined (NDEBUG)
 			dump ("sequence::can_purge - after LOG_SYSOP_END - LOG_SYSOP_START_POSTPONE");
-#endif
 		      }
 		    assert (m_log_vec.empty ());
 		  }
@@ -564,9 +534,7 @@ namespace cublog
 
 		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
-#if !defined (NDEBUG)
 		    dump ("sequence::can_purge - after LOG_SYSOP_END with non-null last_parent_lsa");
-#endif
 		  }
 	      }
 	    // isolated atomic sysop with null parent_lsa on the sysop end record
@@ -578,9 +546,7 @@ namespace cublog
 
 		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
-#if !defined (NDEBUG)
 		    dump ("sequence::can_purge - after LOG_SYSOP_END with null last_parent_lsa");
-#endif
 		  }
 	      }
 	  }
@@ -598,9 +564,7 @@ namespace cublog
 
 		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
-#if !defined (NDEBUG)
 		    dump ("sequence::can_purge - after LOG_SYSOP_END - LOG_SYSOP_END_LOGICAL_RUN_POSTPONE");
-#endif
 		  }
 	      }
 	  }
@@ -617,9 +581,7 @@ namespace cublog
 
 		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
-#if !defined (NDEBUG)
 		    dump ("sequence::can_purge - after LOG_SYSOP_END - LOG_SYSOP_END_LOGICAL_UNDO");
-#endif
 		  }
 	      }
 	  }
@@ -651,9 +613,7 @@ namespace cublog
 		  {
 		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		      {
-#if !defined (NDEBUG)
 			dump ("sequence::can_purge - after failed LOG_END_ATOMIC_REPL");
-#endif
 		      }
 
 		    assert_release ("inconsistent atomic log sequence found" == nullptr);
@@ -663,9 +623,7 @@ namespace cublog
 
 	    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 	      {
-#if !defined (NDEBUG)
 		dump ("sequence::can_purge - after LOG_END_ATOMIC_REPL");
-#endif
 	      }
 	  }
 
@@ -676,9 +634,7 @@ namespace cublog
 	      {
 		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
-#if !defined (NDEBUG)
 		    dump ("sequence::can_purge - too many log entries");
-#endif
 		  }
 
 		assert (false);
@@ -690,7 +646,6 @@ namespace cublog
     return false;
   }
 
-#if !defined (NDEBUG)
   void
   atomic_replication_helper::atomic_log_sequence::dump (const char *message) const
   {
@@ -727,7 +682,6 @@ namespace cublog
 	log_entry.dump_to_buffer (buf_ptr, buf_len);
       }
   }
-#endif
 
   /*********************************************************************************************************
    * atomic_replication_helper::atomic_log_sequence::atomic_log_entry function definitions  *
@@ -856,7 +810,6 @@ namespace cublog
 	    m_rectype == LOG_SYSOP_START_POSTPONE);
   }
 
-#if !defined (NDEBUG)
   void
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::dump_to_buffer (
 	  char *&buf_ptr, int &buf_len) const
@@ -885,7 +838,6 @@ namespace cublog
     assert (buf_len >= written);
     buf_len -= written;
   }
-#endif
 
   /*********************************************************************************************************
    * atomic_replication_helper::atomic_log_sequence::page_ptr_info function definitions  *
@@ -994,7 +946,7 @@ namespace cublog
       }
   }
 
-#if !defined (NDEBUG)
+#ifdef ATOMIC_REPL_PAGE_PTR_BOOKKEEPING_DUMP
   void
   atomic_replication_helper::atomic_log_sequence::page_ptr_bookkeeping::dump () const
   {
