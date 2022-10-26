@@ -818,7 +818,7 @@ struct json_t;
 	  {									\
 	    PT_NODE *entity_name = PT_SPEC_ENTITY_NAME ((n));			\
 										\
-	    if (entity_name != NULL)						\
+	    if (entity_name != NULL && PT_NODE_IS_NAME (entity_name))		\
 	      {									\
 		if (PT_NAME_DB_OBJECT (entity_name) != NULL)			\
 		  {								\
