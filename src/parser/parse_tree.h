@@ -3371,6 +3371,7 @@ typedef struct pt_dblink_info
 #if defined(DBLINK_DML_POC)
   char *remote_table_name;
   PT_NODE *sel_list;
+  PT_NODE *server_list;
 #endif
 } PT_DBLINK_INFO;
 

@@ -10754,9 +10754,118 @@ pt_mk_spec_drived_dblink_table (PARSER_CONTEXT * parser, PT_NODE * from_tbl)
   return from_tbl;
 }
 
-static void
-pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
+typedef struct
 {
+  bool is_dml;
+  int cnt;
+  int len[2];
+  char *server[2];
+  //PT_NODE* server_owner_name[2];
+  char *name[2];
+  char *owner[2];
+} SERVER_NAME_LIST;
+
+static PT_NODE *
+pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PARSER_VARCHAR *vq = NULL;
+  char *name_ptr;
+  char *owner_ptr = NULL;
+  SERVER_NAME_LIST *snl = (SERVER_NAME_LIST *) arg;
+  int i;
+
+  assert (continue_walk != NULL);
+  if (node->node_type == PT_SPEC && node->info.spec.remote_server_name)
+    {
+      name_ptr = (char *) node->info.spec.remote_server_name->info.name.original;
+      if (node->info.spec.remote_server_name->next)
+	{
+	  owner_ptr = (char *) node->info.spec.remote_server_name->next->info.name.original;
+	}
+
+      for (i = 0; i < snl->cnt; i++)
+	{
+	  if (strcasecmp (snl->name[i], name_ptr) == 0)
+	    {
+	      if (owner_ptr && snl->owner[i])
+		{
+		  if (strcasecmp (snl->owner[i], owner_ptr) == 0)
+		    {
+		      return node;
+		    }
+		}
+	      else if (owner_ptr || snl->owner[i])
+		{
+		  break;
+		}
+
+	      return node;
+	    }
+	}
+
+      if (owner_ptr)
+	{
+	  vq = pt_append_nulstring (parser, vq, owner_ptr);
+	  vq = pt_append_bytes (parser, vq, ".", 1);
+	}
+      vq = pt_append_nulstring (parser, vq, name_ptr);
+
+      if (snl->cnt >= 2)
+	{
+	  PT_ERROR (parser, node, "multi over");
+	}
+      else
+	{
+	  int tlen = (int) strlen ((char *) vq->bytes);
+
+	  i = snl->cnt;
+	  if (snl->cnt == 1)
+	    {
+	      if (snl->len[0] < tlen)
+		{
+		  snl->len[1] = snl->len[0];
+		  snl->server[1] = snl->server[0];
+		  snl->name[1] = snl->name[0];
+		  snl->owner[1] = snl->owner[0];
+		  i = 0;
+		}
+	    }
+
+	  snl->len[i] = tlen;
+	  snl->server[i] = (char *) vq->bytes;
+	  if (owner_ptr)
+	    {
+	      snl->name[i] = (char *) vq->bytes + (strlen (owner_ptr) + 1);
+	      snl->owner[i] = (char *) vq->bytes;
+	    }
+	  else
+	    {
+	      snl->name[i] = (char *) vq->bytes;
+	      snl->owner[i] = NULL;
+	    }
+	  snl->cnt++;
+	}
+    }
+
+  return node;
+}
+
+static void
+pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, bool with_in_dml)
+{
+  if (with_in_dml == false)
+    {
+      SERVER_NAME_LIST snl;
+
+      memset (&snl, 0x00, sizeof (snl));
+      snl.is_dml = false;
+      parser_walk_tree (parser, query_stmt, pt_get_server_name_list, &snl, NULL, NULL);
+      if (snl.cnt == 0 || pt_has_error (parser))
+	{
+	  return;
+	}
+    }
+
   PT_QUERY_INFO *query = &query_stmt->info.query;
   PT_NODE *from_tbl = query_stmt->info.query.q.select.from;
 
@@ -10766,19 +10875,27 @@ pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
 	{
 	  pt_mk_spec_drived_dblink_table (parser, from_tbl);
 	}
+      else if (with_in_dml)
+	{
+	  PT_ERROR (parser, from_tbl, "mix table");
+	}
 
       from_tbl = from_tbl->next;
     }
 }
 
-
 static PARSER_VARCHAR *
-pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, PT_NODE * tbl_spec, PT_NODE * using_spec)
+pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text,
+#if 0
+		      PT_NODE * tbl_spec, PT_NODE * using_spec,
+#endif
+		      SERVER_NAME_LIST * snl)
 {
   PARSER_VARCHAR *pvc = NULL;
   char *ps, *pt, *t;
   int len, count, i;
 
+#if 0
   ps = sql_user_text;
   while (tbl_spec)
     {
@@ -10825,8 +10942,31 @@ pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, PT_NODE * tb
 
       using_spec = using_spec->next;
     }
+#endif
 
-  pvc = pt_append_nulstring (parser, pvc, t + len);
+  ps = sql_user_text;
+  while (ps)
+    {
+      t = strchr ((char *) ps, '@');
+      if (!t)
+	{
+	  break;
+	}
+      pvc = pt_append_bytes (parser, pvc, ps, (t - ps));
+
+      for (i = 0; i < snl->cnt; i++)
+	{
+	  if (strncasecmp (t + 1, snl->server[i], snl->len[i]) == 0)
+	    {
+	      break;
+	    }
+	}
+
+      assert (i < snl->cnt);
+      ps = t + snl->len[i] + 1;
+    }
+
+  pvc = pt_append_nulstring (parser, pvc, ps);
 
   pt = (char *) pvc->bytes;
   t = pt + (pvc->length - 1);
@@ -10846,7 +10986,8 @@ pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, PT_NODE * tb
 }
 
 static void
-pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * tbl_spec, PT_NODE * using_spec, char *sql_user_text)
+pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * tbl_spec, PT_NODE * using_spec, char *sql_user_text,
+			     SERVER_NAME_LIST * snl)
 {
   int i = 0;
 
@@ -10925,7 +11066,11 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * tbl_spec, PT_NOD
 
   if (sql_user_text)
     {
-      val->info.value.data_value.str = pt_make_remote_query (parser, sql_user_text, tbl_spec, using_spec);
+      val->info.value.data_value.str = pt_make_remote_query (parser, sql_user_text,
+#if 0
+							     tbl_spec, using_spec,
+#endif
+							     snl);
       PT_NODE_PRINT_VALUE_TO_TEXT (parser, val);
     }
 
@@ -10950,6 +11095,8 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * tbl_spec, PT_NOD
 static PT_NODE *
 pt_convert_server (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
+  SERVER_NAME_LIST *snl = (SERVER_NAME_LIST *) arg;
+
   assert (continue_walk != NULL);
   if (parser == NULL || node == NULL)
     {
@@ -10957,28 +11104,35 @@ pt_convert_server (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
       return NULL;
     }
 
+  // 선행으로 호출되도록 변경하고,  dml 내부의 select 구문에 대한 고민이 필요하다.
+  // PT_DBLINK_TABLE_DML 로 생성하고 이후 구성 파스트리를 제거해야 할까?
+  // 별도로 server_name 리스트를 구해야 함.
+
   switch (node->node_type)
     {
     case PT_SELECT:
-      pt_convert_dblink_select_query (parser, node);
+      if (snl->is_dml == false)
+	{
+	  pt_convert_dblink_select_query (parser, node, snl->is_dml);
+	}
       break;
 
     case PT_INSERT:
-      pt_convert_dblink_dml_query (parser, node->info.insert.spec, NULL, node->sql_user_text);
+      pt_convert_dblink_dml_query (parser, node->info.insert.spec, NULL, node->sql_user_text, snl);
       break;
 
     case PT_DELETE:
-      pt_convert_dblink_dml_query (parser, node->info.delete_.spec, NULL, node->sql_user_text);
+      pt_convert_dblink_dml_query (parser, node->info.delete_.spec, NULL, node->sql_user_text, snl);
       break;
 
     case PT_UPDATE:
-      pt_convert_dblink_dml_query (parser, node->info.update.spec, NULL, node->sql_user_text);
+      pt_convert_dblink_dml_query (parser, node->info.update.spec, NULL, node->sql_user_text, snl);
       break;
 
     case PT_MERGE:
-      pt_convert_dblink_dml_query (parser, node->info.merge.into, node->info.merge.using_clause, node->sql_user_text);
+      pt_convert_dblink_dml_query (parser, node->info.merge.into, node->info.merge.using_clause, node->sql_user_text,
+				   snl);
       break;
-
 
     case PT_SPEC:
       if (node->info.spec.remote_server_name)
@@ -11030,7 +11184,28 @@ pt_check_unresolve_remote_server_name (PARSER_CONTEXT * parser, PT_NODE * node, 
 void
 pt_check_server_extension (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
-  parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_server, NULL);
+  SERVER_NAME_LIST snl;
+
+  memset (&snl, 0x00, sizeof (snl));
+  switch (stmt->node_type)
+    {
+    case PT_INSERT:
+    case PT_DELETE:
+    case PT_UPDATE:
+    case PT_MERGE:
+      snl.is_dml = true;
+      parser_walk_tree (parser, stmt, pt_get_server_name_list, &snl, NULL, NULL);
+      if (snl.cnt == 0)
+	{
+	  return;
+	}
+      break;
+
+    default:
+      snl.is_dml = false;
+    }
+
+  parser_walk_tree (parser, stmt, pt_convert_server, &snl, NULL, NULL);
   if (pt_has_error (parser))
     {
       return;

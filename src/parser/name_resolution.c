@@ -1123,6 +1123,8 @@ check_server_names (PARSER_CONTEXT * parser, PT_NODE * spec, char **server_name_
 {
   int ret = NO_ERROR;
 
+  // table->info.dblink_table.server_list
+
   PT_NODE *table = spec->info.spec.remote_server_name;
   if (spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML)
     {
