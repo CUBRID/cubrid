@@ -24,9 +24,9 @@ LIBPATH=$LD_LIBRARY_PATH
 PATH=$CUBRID/bin:/usr/sbin:$PATH
 export LD_LIBRARY_PATH SHLIB_PATH LIBPATH PATH
 
-is_ncurses5=$(ldconfig -p | grep libncurses | grep "so.5")
+is_ncurses5=$(ldconfig -p | grep libncurses | grep "so.5" | wc -l)
 
-if [ -z "$is_ncurses5" ] && [ ! -f $CUBRID/lib/libncurses.so.5 ];then
+if [ $is_ncurses5 -eq 0 ] && [ ! -f $CUBRID/lib/libncurses.so.5 ];then
   for lib in libncurses libform libtinfo
   do
     curses_lib=$(ldconfig -p | grep $lib.so | grep -v "so.[1-4]" | sort -h | tail -1 | awk '{print $4}')
