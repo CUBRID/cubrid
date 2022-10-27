@@ -3590,7 +3590,7 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 
 	  reduce_reference_info.pk_spec = curr_pk_spec;
 
-	  if (qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (parser, query, &reduce_reference_info))
+	  if (!qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (parser, query, &reduce_reference_info))
 	    {
 	      if (er_has_error ())
 		{
