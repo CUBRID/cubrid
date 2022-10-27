@@ -13052,7 +13052,7 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
        */
       PT_NODE *non_recursive_part = cte_def->info.cte.non_recursive_part;
 
-      if (non_recursive_part->info.query.xasl)
+      if (non_recursive_part && non_recursive_part->info.query.xasl)
 	{
 	  cte_proc = (XASL_NODE *) non_recursive_part->info.query.xasl;
 	}
