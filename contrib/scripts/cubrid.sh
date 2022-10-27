@@ -24,45 +24,16 @@ LIBPATH=$LD_LIBRARY_PATH
 PATH=$CUBRID/bin:$PATH
 export LD_LIBRARY_PATH SHLIB_PATH LIBPATH PATH
 
+is_ncurses5=$(ldconfig -p | grep libncurses | grep "so.5")
 
-LIB=$CUBRID/lib
-
-if [ -f /etc/redhat-release ];then
-	OS=$(cat /etc/system-release-cpe | cut -d':' -f'3-3')
-elif [ -f /etc/os-release ];then
-	OS=$(cat /etc/os-release | egrep "^ID=" | cut -d'=' -f2-2)
+if [ -z "$is_ncurses5" ] && [ ! -f $CUBRID/lib/libncurses.so.5 ];then
+  for lib in libncurses libform libtinfo
+  do
+    curses_lib=$(ldconfig -p | grep $lib.so | grep -v "so.[1-4]" | sort -h | tail -1 | awk '{print $4}')
+    if [ -z "$curses_lib" ];then
+      echo "$lib.so: CUBRID requires the ncurses package. Make sure the ncurses package is installed"
+      break
+    fi
+    ln -s $curses_lib $CUBRID/lib/$lib.so.5
+  done
 fi
-
-case $OS in
-	fedoraproject | centos | redhat | rocky | oracle)
-		if [ ! -h /lib64/libncurses.so.5 ] && [ ! -h $LIB/libncurses.so.5 ];then
-			ln -s /lib64/libncurses.so.6 $LIB/libncurses.so.5
-			ln -s /lib64/libform.so.6 $LIB/libform.so.5
-			ln -s /lib64/libtinfo.so.6 $LIB/libtinfo.so.5
-		fi
-		;;
-	prolinux)
-		if [ ! -h /usr/lib64/libncurses.so.5 ] && [ ! -h $LIB/libncurses.so.5 ];then
-			ln -s /usr/lib64/libncurses.so.6 $LIB/libncurses.so.5
-			ln -s /usr/lib64/libform.so.6 $LIB/libform.so.5
-			ln -s /usr/lib64/libtinfo.so.6 $LIB/libtinfo.so.5
-		fi
-		;;
-	ubuntu)
-		if [ ! -h /lib/x86_64-linux-gnu/libncurses.so.5 ] && [ ! -h $LIB/libncurses.so.5 ];then
-			ln -s /lib/x86_64-linux-gnu/libncurses.so.6 $LIB/libncurses.so.5
-			ln -s /lib/x86_64-linux-gnu/libform.so.6 $LIB/libform.so.5
-			ln -s /lib/x86_64-linux-gnu/libtinfo.so.6 $LIB/libtinfo.so.5
-		fi
-		;;
-	debian)
-		if [ ! -h /lib/x86_64-linux-gnu/libncurses.so.5 ] && [ ! -h $LIB/libncurses.so.5 ];then
-			ln -s /lib/x86_64-linux-gnu/libncurses.so.6 $LIB/libncurses.so.5
-			ln -s /lib/x86_64-linux-gnu/libtinfo.so.6 $LIB/libtinfo.so.5
-			ln -s /usr/lib/x86_64-linux-gnu/libform.so.6 $LIB/libform.so.5
-		fi
-		;;
-	*)
-		echo "CUBRID requires the ncurses package. Make sure the ncurses package is installed"
-		;;
-esac

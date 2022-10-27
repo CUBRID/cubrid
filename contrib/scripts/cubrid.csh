@@ -25,53 +25,18 @@ else
 endif
 
 set path=($CUBRID/bin $path)
+set curses_lib=
 
 setenv SHLIB_PATH $LD_LIBRARY_PATH
 setenv LIBPATH $LD_LIBRARY_PATH
 
-set LIB=$CUBRID/lib
-
-if ( -f /etc/redhat-release ) then
-        set OS=`cat /etc/system-release-cpe | cut -d':' -f'3-3'`
-else if ( -f /etc/os-release ) then
-        set OS=`cat /etc/os-release | egrep "^ID=" | cut -d'=' -f2-2`
-     endif
+set is_ncurses5=`ldconfig -p | grep libncurses | grep "so.5" | wc -l`
+if ( $is_ncurses5 == 0 && ! -f $CUBRID/lib/libncurses.so.5 ) then
+  foreach lib ( libncurses libform libtinfo )
+    set curses_lib=`ldconfig -p | grep $lib.so | grep -v "so.[1-4]" | sort -h | tail -1 | awk '{print $4}'`
+    echo "aaa $curses_lib"
+    if ( -z "$curses_lib" ) then
+      echo "$lib.so: CUBRID requires the ncurses package. Make sure the ncurses package is installed"
+    endif
+  end
 endif
-
-switch ($OS)
-  case "fedoraproject":
-  case "centos":
-  case "redhat":
-  case "rocky":
-  case "oracle":
-    if ( ! -f /lib64/libncurses.so.5 && ! -f $LIB/libncurses.so.5 ) then
-    	ln -s /lib64/libncurses.so.6 $LIB/libncurses.so.5
-    	ln -s /lib64/libform.so.6 $LIB/libform.so.5
-    	ln -s /lib64/libtinfo.so.6 $LIB/libtinfo.so.5
-    endif
-    breaksw
-  case "prolinux":
-    if ( ! -f /usr/lib64/libncurses.so.5 && ! -f $LIB/libncurses.so.5 ) then
-        ln -s /usr/lib64/libncurses.so.6 $LIB/libncurses.so.5
-        ln -s /usr/lib64/libform.so.6 $LIB/libform.so.5
-        ln -s /usr/lib64/libtinfo.so.6 $LIB/libtinfo.so.5
-    endif
-    breaksw
-  case "ubuntu":
-    if ( ! -f /lib/x86_64-linux-gnu/libncurses.so.5 && ! -f $LIB/libncurses.so.5 ) then
-      ln -s /lib/x86_64-linux-gnu/libncurses.so.6 $LIB/libncurses.so.5
-      ln -s /lib/x86_64-linux-gnu/libform.so.6 $LIB/libform.so.5
-      ln -s /lib/x86_64-linux-gnu/libtinfo.so.6 $LIB/libtinfo.so.5
-    endif
-    breaksw
-  case "debian":
-    if ( ! -f /lib/x86_64-linux-gnu/libncurses.so.5 && ! -f $LIB/libncurses.so.5 ) then
-            ln -s /lib/x86_64-linux-gnu/libncurses.so.6 $LIB/libncurses.so.5
-            ln -s /lib/x86_64-linux-gnu/libtinfo.so.6 $LIB/libtinfo.so.5
-            ln -s /usr/lib/x86_64-linux-gnu/libform.so.6 $LIB/libform.so.5
-    endif
-    breaksw
-  default:
-    echo "CUBRID requires the ncurses package. Make sure the ncurses package is installed"
-    breaksw
-endsw
