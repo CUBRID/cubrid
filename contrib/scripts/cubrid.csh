@@ -34,7 +34,7 @@ set is_ncurses5=`ldconfig -p | grep libncurses | grep "so.5" | wc -l`
 if ( $is_ncurses5 == 0 && ! -f $CUBRID/lib/libncurses.so.5 ) then
   foreach lib ( libncurses libform libtinfo )
     set curses_lib=`ldconfig -p | grep $lib.so | grep -v "so.[1-4]" | sort -h | tail -1 | awk '{print $4}'`
-    echo "aaa $curses_lib"
+    ln -s $curses_lib $CUBRID/lib/$lib.so.5
     if ( -z "$curses_lib" ) then
       echo "$lib.so: CUBRID requires the ncurses package. Make sure the ncurses package is installed"
     endif
