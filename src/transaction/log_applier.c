@@ -477,7 +477,7 @@ static int la_does_page_exist (LOG_PAGEID pageid);
 static int la_init_repl_lists (bool need_realloc);
 static bool la_is_repl_lists_empty ();
 static LA_APPLY *la_find_apply_list (int tranid);
-static void la_log_copy_fromlog (char *rec_type, char *area, int length, LOG_PAGEID log_pageid, PGLENGTH log_offset,
+static void la_log_copy_fromlog (char *rec_type, char *area, int &length, LOG_PAGEID log_pageid, PGLENGTH log_offset,
 				 LOG_PAGE * log_pgptr);
 static LA_ITEM *la_new_repl_item (LOG_LSA * lsa, LOG_LSA * target_lsa);
 static void la_add_repl_item (LA_APPLY * apply, LA_ITEM * item);
@@ -2962,7 +2962,7 @@ la_add_apply_list (int tranid)
  *   log_pageid, log_offset, and log_pgptr are set as a side effect.
  */
 static void
-la_log_copy_fromlog (char *rec_type, char *area, int length, LOG_PAGEID log_pageid, PGLENGTH log_offset,
+la_log_copy_fromlog (char *rec_type, char *area, int &length, LOG_PAGEID log_pageid, PGLENGTH log_offset,
 		     LOG_PAGE * log_pgptr)
 {
   int rec_length = (int) sizeof (INT16);
