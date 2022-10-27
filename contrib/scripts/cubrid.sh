@@ -21,7 +21,7 @@ export CUBRID_DATABASES=$CUBRID/databases
 LD_LIBRARY_PATH=$CUBRID/lib:$CUBRID/cci/lib:$LD_LIBRARY_PATH
 SHLIB_PATH=$LD_LIBRARY_PATH
 LIBPATH=$LD_LIBRARY_PATH
-PATH=$CUBRID/bin:$PATH
+PATH=$CUBRID/bin:/usr/sbin:$PATH
 export LD_LIBRARY_PATH SHLIB_PATH LIBPATH PATH
 
 is_ncurses5=$(ldconfig -p | grep libncurses | grep "so.5")

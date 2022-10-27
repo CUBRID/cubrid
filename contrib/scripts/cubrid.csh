@@ -24,7 +24,7 @@ else
 	setenv LD_LIBRARY_PATH $CUBRID/lib:$CUBRID/cci/lib
 endif
 
-set path=($CUBRID/bin $path)
+set path=($CUBRID/bin /usr/sbin $path)
 set curses_lib=
 
 setenv SHLIB_PATH $LD_LIBRARY_PATH
