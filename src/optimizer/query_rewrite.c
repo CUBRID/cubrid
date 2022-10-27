@@ -3557,9 +3557,11 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
   PT_NODE *curr_fk_spec = NULL;
   bool has_reduce = false;
 
+  assert (parser != NULL && query != NULL);
+
   memset (&reduce_reference_info, 0, sizeof (QO_REDUCE_REFERENCE_INFO));
 
-  if (parser == NULL || query == NULL || query->node_type != PT_SELECT)
+  if (query->node_type != PT_SELECT)
     {
       return;
     }
@@ -3590,13 +3592,9 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 
 	  if (qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (parser, query, &reduce_reference_info))
 	    {
-	      ;
-	    }
-	  else
-	    {
 	      if (er_has_error ())
 		{
-		  goto cleanup_on_fail;
+		  goto exit_on_fail_with_cleanup;
 		}
 
 	      continue;		/* curr_pk_spec->next */
@@ -3624,7 +3622,7 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 		{
 		  if (er_has_error ())
 		    {
-		      goto cleanup_on_fail;
+		      goto exit_on_fail_with_cleanup;
 		    }
 
 		  continue;
@@ -3676,7 +3674,7 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 
   er_log_debug (ARG_FILE_LINE, "%s: end.\n", __func__);
 
-cleanup_on_fail:
+exit_on_fail_with_cleanup:
   if (reduce_reference_info.exclude_pk_spec_point_list != NULL)
     {
       parser_free_tree (parser, reduce_reference_info.exclude_pk_spec_point_list);
@@ -3791,21 +3789,23 @@ qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (PARSER_CONTEXT * 
   switch (PT_SPEC_JOIN_TYPE (curr_pk_spec))
     {
     case PT_JOIN_NONE:
-      [[fallthrough]];
+      /* fallthrough */
     case PT_JOIN_INNER:
-      [[fallthrough]];
+      /* fallthrough */
     case PT_JOIN_NATURAL:
       break;
 
     case PT_JOIN_CROSS:
-      [[fallthrough]];
+      /* fallthrough */
     case PT_JOIN_LEFT_OUTER:
-      [[fallthrough]];
+      /* fallthrough */
     case PT_JOIN_RIGHT_OUTER:
-      [[fallthrough]];
+      /* fallthrough */
     case PT_JOIN_FULL_OUTER:
-      [[fallthrough]];
+      /* fallthrough */
     case PT_JOIN_UNION:
+      /* fallthrough */
+    default:
       goto exit_on_fail_with_exclude;
     }
 
@@ -3897,7 +3897,7 @@ qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (PARSER_CONTEXT * 
 	  /* Already checked before. */
 	  assert (false);
 	  ERROR_SET_ERROR_ONLY (ER_FAILED);
-	  goto cleanup_on_fail;
+	  goto exit_on_fail_with_cleanup;
 	}
 
       for (i = 0; curr_pk_cons->attributes[i] != NULL; i++)
@@ -3944,7 +3944,7 @@ qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (PARSER_CONTEXT * 
 
   return true;
 
-cleanup_on_fail:
+exit_on_fail_with_cleanup:
   parser_free_tree (parser, reduce_pred_point_list);
   reduce_pred_point_list = NULL;
 
@@ -3954,6 +3954,7 @@ exit_on_fail_with_exclude:
   er_log_debug (ARG_FILE_LINE, "%s: exclude. (spec: %s)\n", __func__, pt_print_alias (parser, curr_pk_spec));
   reduce_reference_info->exclude_pk_spec_point_list =
     parser_append_node (pt_point (parser, curr_pk_spec), reduce_reference_info->exclude_pk_spec_point_list);
+  /* fallthrough */
 
 exit_on_fail:
   er_log_debug (ARG_FILE_LINE, "%s: irreducible. (spec: %s)\n", __func__, pt_print_alias (parser, curr_pk_spec));
@@ -4007,7 +4008,7 @@ qo_check_foreign_keys_referencing_primary_key_in_child_spec (PARSER_CONTEXT * pa
   er_log_debug (ARG_FILE_LINE, "%s: check child. (spec: %s)\n", __func__, pt_print_alias (parser, curr_fk_spec));
 
   /* PT_ALL is not supported. */
-  if (curr_fk_spec->info.spec.only_all == PT_ALL)
+  if (PT_SPEC_ONLY_ALL (curr_fk_spec))
     {
       goto exit_on_fail_with_exclude;
     }
@@ -4015,21 +4016,23 @@ qo_check_foreign_keys_referencing_primary_key_in_child_spec (PARSER_CONTEXT * pa
   switch (PT_SPEC_JOIN_TYPE (curr_fk_spec))
     {
     case PT_JOIN_NONE:
-      [[fallthrough]];
+      /* fallthrough */
     case PT_JOIN_INNER:
-      [[fallthrough]];
+      /* fallthrough */
     case PT_JOIN_NATURAL:
       break;
 
     case PT_JOIN_CROSS:
-      [[fallthrough]];
+      /* fallthrough */
     case PT_JOIN_LEFT_OUTER:
-      [[fallthrough]];
+      /* fallthrough */
     case PT_JOIN_RIGHT_OUTER:
-      [[fallthrough]];
+      /* fallthrough */
     case PT_JOIN_FULL_OUTER:
-      [[fallthrough]];
+      /* fallthrough */
     case PT_JOIN_UNION:
+      /* fallthrough */
+    default:
       goto exit_on_fail_with_exclude;
     }
 
@@ -4185,7 +4188,7 @@ qo_check_foreign_key_referencing_primary_key_in_child_spec (PARSER_CONTEXT * par
 	  /* Already checked before. */
 	  assert (false);
 	  ERROR_SET_ERROR_ONLY (ER_FAILED);
-	  goto cleanup_on_fail;
+	  goto exit_on_fail_with_cleanup;
 	}
 
       if (PT_SPEC_ID (curr_fk_spec) == PT_NAME_SPEC_ID (arg1))
@@ -4198,7 +4201,7 @@ qo_check_foreign_key_referencing_primary_key_in_child_spec (PARSER_CONTEXT * par
 	}
       else
 	{
-	  goto cleanup_on_fail;
+	  goto exit_on_fail_with_cleanup;
 	}
 
       assert (pk_pred_attr != NULL);
@@ -4236,7 +4239,7 @@ qo_check_foreign_key_referencing_primary_key_in_child_spec (PARSER_CONTEXT * par
 		   *
 		   *        select c.* from child c, parent p where c.c1 = p.c2 and c.c2 = p.c1;
 		   */
-		  goto cleanup_on_fail;
+		  goto exit_on_fail_with_cleanup;
 		}
 	    }
 	}
@@ -4248,9 +4251,10 @@ qo_check_foreign_key_referencing_primary_key_in_child_spec (PARSER_CONTEXT * par
 
   return true;
 
-cleanup_on_fail:
+exit_on_fail_with_cleanup:
   parser_free_tree (parser, append_not_null_pred_list);
   append_not_null_pred_list = NULL;
+  /* fallthrough */
 
 exit_on_fail:
   return false;

@@ -806,10 +806,10 @@ struct json_t;
 #define PT_NODE_IS_EXPR(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_EXPR)
 #define PT_NODE_IS_NAME(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_NAME)
 #define PT_NODE_IS_SPEC(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_SPEC)
-#define PT_NODE_IS_SYNONYM(n)		(PT_ASSERT_NOT_NULL ((n)), \
-					 (n)->node_type == PT_ALTER_SYNONYM || \
-					 (n)->node_type == PT_CREATE_SYNONYM || \
-					 (n)->node_type == PT_DROP_SYNONYM || \
+#define PT_NODE_IS_SYNONYM(n)		(PT_ASSERT_NOT_NULL ((n)),		\
+					 (n)->node_type == PT_ALTER_SYNONYM ||	\
+					 (n)->node_type == PT_CREATE_SYNONYM ||	\
+					 (n)->node_type == PT_DROP_SYNONYM ||	\
 					 (n)->node_type == PT_RENAME_SYNONYM)
 
 /* PT_SPEC_INFO */
