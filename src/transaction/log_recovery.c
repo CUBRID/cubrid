@@ -2913,6 +2913,9 @@ log_recovery_analysis_internal (THREAD_ENTRY * thread_p, INT64 * num_redo_log_re
 
       if (is_passive_transaction_server ())
 	{
+	  /* Since there is no recovery redo phase on PTS, PTS does not know the latest mvccid.
+	   * m_largest_mvccid will be updated during log_recovery_analysis () only for PTS.
+	   */
 	  const int tran_index = logtb_find_tran_index (thread_p, tran_id);
 	  if (tran_index != NULL_TRAN_INDEX)
 	    {
@@ -3285,7 +3288,7 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY * thread_p,
   //    - 1. decode, load and parse a transaction table snapshot (this contains description
   //      for the transactions that were active on active transaction server at the moment the
   //      snapshot was taken):
-  //      - to find out known (and unknown) MVCCISs
+  //      - to find out known (and unknown) MVCCIDs
   //      - initialize the mvcc table with the known MVCCIDs;
   //      - actually, the present MVCCIDs are considered still active, yet to be completed by
   //        subsequent steps
@@ -3330,7 +3333,18 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY * thread_p,
   //
   log_Gl.mvcc_table.complete_mvccids_if_still_active (LOG_SYSTEM_TRAN_INDEX, in_gaps_mvccids, false);
 
-  log_Gl.hdr.mvcc_next_id = log_rcv_context.get_largest_mvccid () + 1;
+  if (MVCC_ID_PRECEDES (log_rcv_context.get_largest_mvccid (), log_Gl.hdr.mvcc_next_id))
+    {
+      /* The updated log_Gl.hdr.mvcc_next_id in log_recovery_build_mvcc_table_from_trantable ()
+       * may not be the latest log_Gl.hdr.mvcc_next_id among servers (ATS, PS).
+       * Since log_Gl.hdr.mvcc_next_id is simply determined with checkpoint information,
+       * if there are some mvcc operation after the checkpoint, those mvccids can not be known on PTS.
+       * However, if ATS requests vacuum for mvccid performed after checkpoint, PTS cannot know about the mvccid, so a crash may occur.
+       * log_Gl.hdr.mvcc_next_id is usually updated in the REDO phase (PS),
+       * but since REDO is not performed on PTS, the largest mvccid obtained in the ANALYSIS phase will be used.
+       */
+      log_Gl.hdr.mvcc_next_id = log_rcv_context.get_largest_mvccid () + 1;
+    }
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, sys_tran_index);
 }

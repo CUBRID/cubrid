@@ -83,7 +83,7 @@ class log_recovery_context
     // Page server
     bool is_page_server () const;
 
-    // Passive transaction server
+    // For passive transaction server to know largest mvccid
     void set_largest_mvccid (const MVCCID mvccid);
 
   private:
@@ -106,7 +106,10 @@ class log_recovery_context
                                                */
     bool m_is_page_server = false;            // true for page server, false for transaction server
 
-    MVCCID m_largest_mvccid = MVCCID_NULL;
+    MVCCID m_largest_mvccid = MVCCID_NULL;    /* Since there is no recovery redo phase on PTS,
+                                               * PTS does not know the latest mvccid.
+                                               * This will be updated during log_recovery_analysis () only for PTS.
+                                               */
 
     log_lsa m_checkpoint_lsa = NULL_LSA;      // the initial checkpoint LSA, starting point for recovery analysis
     log_lsa m_start_redo_lsa = NULL_LSA;      // starting point for recovery redo
