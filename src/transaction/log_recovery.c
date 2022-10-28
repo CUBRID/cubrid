@@ -2913,8 +2913,9 @@ log_recovery_analysis_internal (THREAD_ENTRY * thread_p, INT64 * num_redo_log_re
 
       if (is_passive_transaction_server ())
 	{
-	  /* Since there is no recovery redo phase on PTS, PTS does not know the latest mvccid.
-	   * m_largest_mvccid will be updated during log_recovery_analysis () only for PTS.
+	  /* Since there is no recovery redo phase on PTS, PTS does not update log_Gl.hdr.mvcc_next_id.
+	   * So, largest_mvccid will be updated during log_recovery_analysis () only for PTS,
+	   * and it will be used to set log_Gl.hdr.mvcc_next_id.
 	   */
 	  const int tran_index = logtb_find_tran_index (thread_p, tran_id);
 	  if (tran_index != NULL_TRAN_INDEX)
