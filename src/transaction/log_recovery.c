@@ -2911,6 +2911,19 @@ log_recovery_analysis_internal (THREAD_ENTRY * thread_p, INT64 * num_redo_log_re
 	  break;
 	}
 
+      if (is_passive_transaction_server ())
+	{
+	  const int tran_index = logtb_find_tran_index (thread_p, tran_id);
+	  if (tran_index != NULL_TRAN_INDEX)
+	    {
+	      const LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+	      if (!MVCC_ID_PRECEDES (tdes->mvccinfo.id, context.get_largest_mvccid ()))
+		{
+		  context.set_largest_mvccid (tdes->mvccinfo.id);
+		}
+	    }
+	}
+
       prev_prev_lsa = prev_lsa;
       prev_lsa = context.get_end_redo_lsa ();
 
@@ -3192,8 +3205,6 @@ log_recovery_build_mvcc_table_from_trantable (THREAD_ENTRY * thread_p, MVCCID re
 	    }
 	  prev_mvccid = curr_mvccid;
 	}
-
-      log_Gl.hdr.mvcc_next_id = largest_mvccid + 1;
     }
 }
 
@@ -3318,6 +3329,8 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY * thread_p,
   // such situations, but a proper solution is needed
   //
   log_Gl.mvcc_table.complete_mvccids_if_still_active (LOG_SYSTEM_TRAN_INDEX, in_gaps_mvccids, false);
+
+  log_Gl.hdr.mvcc_next_id = log_rcv_context.get_largest_mvccid () + 1;
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, sys_tran_index);
 }

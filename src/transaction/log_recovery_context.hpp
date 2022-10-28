@@ -20,6 +20,7 @@
 #define _LOG_RECOVERY_CONTEXT_HPP_
 
 #include "log_lsa.hpp"
+#include "storage_common.h"
 
 #include <time.h>
 
@@ -62,6 +63,11 @@ class log_recovery_context
       return m_restore_stop_point;
     }
 
+    inline const MVCCID &get_largest_mvccid () const
+    {
+      return m_largest_mvccid;
+    }
+
     void set_start_redo_lsa (const log_lsa &start_redo_lsa);
     void set_end_redo_lsa (const log_lsa &end_redo_lsa);
 
@@ -76,6 +82,9 @@ class log_recovery_context
 
     // Page server
     bool is_page_server () const;
+
+    // Passive transaction server
+    void set_largest_mvccid (const MVCCID mvccid);
 
   private:
     static constexpr time_t RESTORE_STOP_POINT_NONE = -1;
@@ -96,6 +105,8 @@ class log_recovery_context
                                                * false if full restore is executed
                                                */
     bool m_is_page_server = false;            // true for page server, false for transaction server
+
+    MVCCID m_largest_mvccid = MVCCID_NULL;
 
     log_lsa m_checkpoint_lsa = NULL_LSA;      // the initial checkpoint LSA, starting point for recovery analysis
     log_lsa m_start_redo_lsa = NULL_LSA;      // starting point for recovery redo
