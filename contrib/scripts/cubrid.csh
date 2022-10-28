@@ -31,7 +31,7 @@ setenv SHLIB_PATH $LD_LIBRARY_PATH
 setenv LIBPATH $LD_LIBRARY_PATH
 
 set is_ncurses5=`ldconfig -p`
-if ( $? != 0 ) then
+if ( $status != 0 ) then
   echo "ldconfig: Command not found or permission denied, please check it."
   exit 1
 endif
