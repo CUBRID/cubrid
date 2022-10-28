@@ -3334,10 +3334,11 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY * thread_p,
   //
   log_Gl.mvcc_table.complete_mvccids_if_still_active (LOG_SYSTEM_TRAN_INDEX, in_gaps_mvccids, false);
 
-  if (MVCC_ID_PRECEDES (log_rcv_context.get_largest_mvccid (), log_Gl.hdr.mvcc_next_id))
+  if (!MVCC_ID_PRECEDES (log_rcv_context.get_largest_mvccid (), log_Gl.hdr.mvcc_next_id))
     {
       /* The updated log_Gl.hdr.mvcc_next_id in log_recovery_build_mvcc_table_from_trantable ()
-       * may not be the latest log_Gl.hdr.mvcc_next_id among servers (ATS, PS).
+       * may not be the same as the value of log_Gl.hdr.mvcc_next_id with other servers (ATS, PS)
+       * that have progressed up to log_Gl.hdr.append_lsa.
        * Since log_Gl.hdr.mvcc_next_id is simply determined with checkpoint information,
        * if there are some mvcc operation after the checkpoint, those mvccids can not be known on PTS.
        * However, if ATS requests vacuum for mvccid performed after checkpoint, PTS cannot know about the mvccid, so a crash may occur.
