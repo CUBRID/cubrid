@@ -30,7 +30,7 @@ if [ $? -ne 0 ];then
   exit 1
 fi
 
-is_ncurses5=$(echo $is_ncurses5 | grep libncurses.so.5 | wc -l)
+is_ncurses5=$(ldconfig -p | grep libncurses.so.5 | wc -l)
 
 if [ $is_ncurses5 -eq 0 ] && [ ! -f $CUBRID/lib/libncurses.so.5 ];then
   for lib in libncurses libform libtinfo

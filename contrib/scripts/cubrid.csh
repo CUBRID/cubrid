@@ -36,7 +36,7 @@ if ( $status != 0 ) then
   exit 1
 endif
 
-set is_ncurses5=`echo $is_ncurses5 | grep libncurses.so.5 | wc -l`
+set is_ncurses5=`ldconfig -p | grep libncurses.so.5 | wc -l`
 
 if ( $is_ncurses5 == 0 && ! -f $CUBRID/lib/libncurses.so.5 ) then
   foreach lib ( libncurses libform libtinfo )
