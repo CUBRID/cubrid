@@ -30,7 +30,7 @@ set curses_lib=
 setenv SHLIB_PATH $LD_LIBRARY_PATH
 setenv LIBPATH $LD_LIBRARY_PATH
 
-set is_ncurses5=`ldconfig -p | grep libncurses | grep "so.5" | wc -l`
+set is_ncurses5=`ldconfig -p | grep libncurses.so.5 | wc -l`
 if ( $is_ncurses5 == 0 && ! -f $CUBRID/lib/libncurses.so.5 ) then
   foreach lib ( libncurses libform libtinfo )
     set curses_lib=`ldconfig -p | grep $lib.so | grep -v "so.[1-4]" | sort -h | tail -1 | awk '{print $4}'`
