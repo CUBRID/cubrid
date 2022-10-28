@@ -24,7 +24,13 @@ LIBPATH=$LD_LIBRARY_PATH
 PATH=$CUBRID/bin:/usr/sbin:$PATH
 export LD_LIBRARY_PATH SHLIB_PATH LIBPATH PATH
 
-is_ncurses5=$(ldconfig -p | grep libncurses.so.5 | wc -l)
+is_ncurses5=$(ldconfig -p)
+if [ $? -ne 0 ];then
+  echo "ldconfig: Command not found or permission denied, please check it."
+  exit 1
+fi
+
+is_ncurses5=$(echo $is_ncurses5 | grep libncurses.so.5 | wc -l)
 
 if [ $is_ncurses5 -eq 0 ] && [ ! -f $CUBRID/lib/libncurses.so.5 ];then
   for lib in libncurses libform libtinfo
