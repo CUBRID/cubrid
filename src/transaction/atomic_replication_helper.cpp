@@ -987,6 +987,7 @@ namespace cublog
   pgbuf_fix_or_ordered_fix (THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcv_index,
 			    std::unique_ptr<PGBUF_WATCHER> &watcher_uptr, PAGE_PTR &page_ptr)
   {
+    constexpr PAGE_FETCH_MODE fetch_mode = OLD_PAGE_MAYBE_DEALLOCATED;
     switch (rcv_index)
       {
       case RVHF_INSERT:
@@ -1007,13 +1008,12 @@ namespace cublog
 	// using null hfid here as the watcher->group_id is initialized internally by pgbuf_ordered_fix at a cost
 	PGBUF_INIT_WATCHER (watcher_uptr.get (), PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
 
-	const int error_code = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED,
+	const int error_code = pgbuf_ordered_fix (thread_p, &vpid, fetch_mode,
 			       PGBUF_LATCH_WRITE, watcher_uptr.get ());
 	if (error_code != NO_ERROR)
 	  {
-	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unable to order-fix page %d|%d"
-			  " with OLD_PAGE_MAYBE_DEALLOCATED.",
-			  VPID_AS_ARGS (&vpid));
+	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unable to order-fix page %d|%d with fetch mode %d",
+			  VPID_AS_ARGS (&vpid), (int)fetch_mode);
 	    return error_code;
 	  }
 	break;
@@ -1021,12 +1021,12 @@ namespace cublog
       default:
 	assert (page_ptr == nullptr);
 
-	page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE,
+	page_ptr = pgbuf_fix (thread_p, &vpid, fetch_mode, PGBUF_LATCH_WRITE,
 			      PGBUF_UNCONDITIONAL_LATCH);
 	if (page_ptr == nullptr)
 	  {
-	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unable to fix on page %d|%d with OLD_PAGE_MAYBE_DEALLOCATED.",
-			  VPID_AS_ARGS (&vpid));
+	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unable to fix page %d|%d with fetch mode %d",
+			  VPID_AS_ARGS (&vpid), (int)fetch_mode);
 	    return ER_FAILED;
 	  }
 	break;
