@@ -8512,7 +8512,7 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "[READ DATA] Success fixing page: vpid = %d|%d, lsa = %lld|%d,"
+			 "[READ DATA] Successful while fixing page: vpid = %d|%d, lsa = %lld|%d,"
 			 " target_repl_lsa = %lld|%d\n",
 			 VPID_AS_ARGS (&vpid), LSA_AS_ARGS(&io_pgptr->prv.lsa), LSA_AS_ARGS (&target_repl_lsa));
 	}
