@@ -10840,7 +10840,6 @@ prm_tune_parameters (void)
   ha_check_disk_failure_interval_prm = prm_find (PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS, NULL);
   test_mode_prm = prm_find (PRM_NAME_TEST_MODE, NULL);
   tz_leap_second_support_prm = prm_find (PRM_NAME_TZ_LEAP_SECOND_SUPPORT, NULL);
-  java_stored_procedure_uds_prm = prm_find (PRM_NAME_JAVA_STORED_PROCEDURE_UDS, NULL);
 
   assert (max_plan_cache_entries_prm != NULL);
   if (max_plan_cache_entries_prm == NULL)
@@ -10880,10 +10879,6 @@ prm_tune_parameters (void)
 	  prm_set (ha_check_disk_failure_interval_prm, newval, false);
 	}
     }
-
-#if defined (WINDOWS)
-  (void) prm_set (java_stored_procedure_uds_prm, "no", false);
-#endif
 
   /* disable them temporarily */
 
