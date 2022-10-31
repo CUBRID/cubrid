@@ -1119,60 +1119,47 @@ pt_bind_spec_attrs (PARSER_CONTEXT * parser, PT_NODE * spec)
 
 #if defined(DBLINK_DML_POC)
 static int
-check_server_names (PARSER_CONTEXT * parser, PT_NODE * spec, char **server_name_ref, char **server_owner_ref)
+resolve_server_names (PARSER_CONTEXT * parser, PT_NODE * spec)
 {
   int ret = NO_ERROR;
 
-  // table->info.dblink_table.server_list
-
   PT_NODE *table = spec->info.spec.remote_server_name;
-  if (spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML)
-    {
-      assert (table->info.dblink_table.is_name);
-      *server_owner_ref = NULL;
-      *server_name_ref = (char *) table->info.dblink_table.conn->info.name.original;
-      if (table->info.dblink_table.owner_name)
-	{
-	  ret = pt_resolve_dblink_server_name (parser, table, NULL);
-	  *server_owner_ref = (char *) table->info.dblink_table.owner_name->info.name.original;
-	}
-      else
-	{
-	  ret = pt_resolve_dblink_server_name (parser, table, server_owner_ref);
-	}
+  PT_DBLINK_INFO *dblink_table = &table->info.dblink_table;
 
-      return ret;
+  assert (dblink_table->is_name);
+
+  /*
+   ** dblink_table, others : owner_list
+   ** ----------------------------------
+   **   tbl                :    NULL
+   **   user.tbl           :    NULL
+   **   user.tbl, user.tbl :    NULL
+   **   tbl,      tbl      :    NULL
+   **   user.tbl, tbl      :   "user" 
+   **   tbl,      user.tbl :   "user"  
+   */
+
+  if (dblink_table->owner_list == NULL)
+    {
+      return pt_resolve_dblink_server_name (parser, table, NULL);
+    }
+
+  char *server_owner_ref = NULL;
+  if (table->info.dblink_table.owner_name)
+    {
+      PT_NODE *tmp = table->info.dblink_table.owner_name;
+      table->info.dblink_table.owner_name = NULL;
+      ret = pt_resolve_dblink_server_name (parser, table, &server_owner_ref);
+      table->info.dblink_table.owner_name = tmp;
     }
   else
     {
-      assert (table->node_type == PT_NAME);
-      // TODO: 
-      //fprintf (stdout, "check:: [%s]\n", parser_print_tree (parser, spec));
-      if (strcasecmp (table->info.name.original, *server_name_ref))
-	{
-	  PT_ERROR (parser, spec, "multi server name error 1");
-	}
-      else if (table->next)
-	{
-	  if (strcasecmp (table->next->info.name.original, *server_owner_ref))
-	    {
-	      PT_ERROR (parser, spec, "multi server name error 2");
-	    }
-	}
-      else
-	{
-	  char *pt = NULL;
-	  ret = pt_resolve_dblink_check_owner_name (parser, table, &pt);
-	  if (ret != NO_ERROR)
-	    {
-	      return ret;
-	    }
+      ret = pt_resolve_dblink_server_name (parser, table, &server_owner_ref);
+    }
 
-	  if (strcasecmp (pt, *server_owner_ref))
-	    {
-	      PT_ERROR (parser, spec, "multi server name error 3");
-	    }
-	}
+  if (strcasecmp (dblink_table->owner_list->info.name.original, server_owner_ref) != 0)
+    {
+      PT_ERROR (parser, spec, "dblink: multi owner");
     }
 
   return ret;
@@ -1197,10 +1184,6 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
   SCOPES *scopes = bind_arg->scopes;
   PT_NODE *spec, *prev_spec = NULL;
   bool save_donot_fold;
-#if defined(DBLINK_DML_POC)
-  char *server_owner_ref = NULL;
-  char *server_name_ref = NULL;
-#endif
 
   spec = scopes->specs;
   scopes->specs = NULL;
@@ -1309,9 +1292,10 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	  pt_bind_spec_attrs (parser, spec);
 	}
 #if defined(DBLINK_DML_POC)
-      else if (spec->info.spec.remote_server_name)
+      else if (spec->info.spec.remote_server_name &&
+	       (spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML))
 	{
-	  if (check_server_names (parser, spec, &server_name_ref, &server_owner_ref) != NO_ERROR)
+	  if (resolve_server_names (parser, spec) != NO_ERROR)
 	    {
 	      return;
 	    }
@@ -11631,7 +11615,7 @@ pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
 PT_NODE *
 pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  *continue_walk = PT_CONTINUE_WALK;
+  //*continue_walk = PT_CONTINUE_WALK;
   if (!node || !parser)
     {
       return node;

@@ -10757,12 +10757,13 @@ pt_mk_spec_drived_dblink_table (PARSER_CONTEXT * parser, PT_NODE * from_tbl)
 typedef struct
 {
   bool is_dml;
-  int cnt;
+  bool is_query;
+  int local_cnt;
+  int server_cnt;
+  int server_node_cnt;
   int len[2];
-  char *server[2];
-  //PT_NODE* server_owner_name[2];
-  char *name[2];
-  char *owner[2];
+  char *server_full_name[2];
+  PT_NODE *server[2];
 } SERVER_NAME_LIST;
 
 static PT_NODE *
@@ -10772,198 +10773,123 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   char *name_ptr;
   char *owner_ptr = NULL;
   SERVER_NAME_LIST *snl = (SERVER_NAME_LIST *) arg;
-  int i;
+  PT_NODE *new_name, *new_owner;
 
+  //*continue_walk = PT_STOP_WALK;
+  *continue_walk = PT_CONTINUE_WALK;
   assert (continue_walk != NULL);
-  if (node->node_type == PT_SPEC && node->info.spec.remote_server_name)
+
+  if (node->node_type != PT_SPEC)
     {
-      name_ptr = (char *) node->info.spec.remote_server_name->info.name.original;
-      if (node->info.spec.remote_server_name->next)
+      return node;
+    }
+
+  if (node->info.spec.remote_server_name == NULL)
+    {
+      snl->local_cnt++;
+      return node;
+    }
+
+  name_ptr = (char *) node->info.spec.remote_server_name->info.name.original;
+  if (node->info.spec.remote_server_name->next)
+    {
+      owner_ptr = (char *) node->info.spec.remote_server_name->next->info.name.original;
+    }
+
+  snl->server_cnt++;
+  for (int i = 0; i < snl->server_node_cnt; i++)
+    {
+      if (strcasecmp (snl->server[i]->info.name.original, name_ptr) != 0)
 	{
-	  owner_ptr = (char *) node->info.spec.remote_server_name->next->info.name.original;
+	  PT_ERROR (parser, node, "dblink: multi over");
+	  return node;
 	}
 
-      for (i = 0; i < snl->cnt; i++)
+      if (owner_ptr == NULL && snl->server[i]->next == NULL)
 	{
-	  if (strcasecmp (snl->name[i], name_ptr) == 0)
-	    {
-	      if (owner_ptr && snl->owner[i])
-		{
-		  if (strcasecmp (snl->owner[i], owner_ptr) == 0)
-		    {
-		      return node;
-		    }
-		}
-	      else if (owner_ptr || snl->owner[i])
-		{
-		  break;
-		}
-
-	      return node;
-	    }
+	  return node;
 	}
 
-      if (owner_ptr)
+      if (owner_ptr && snl->server[i]->next)
 	{
-	  vq = pt_append_nulstring (parser, vq, owner_ptr);
-	  vq = pt_append_bytes (parser, vq, ".", 1);
-	}
-      vq = pt_append_nulstring (parser, vq, name_ptr);
-
-      if (snl->cnt >= 2)
-	{
-	  PT_ERROR (parser, node, "multi over");
-	}
-      else
-	{
-	  int tlen = (int) strlen ((char *) vq->bytes);
-
-	  i = snl->cnt;
-	  if (snl->cnt == 1)
+	  if (strcasecmp (snl->server[i]->next->info.name.original, owner_ptr) != 0)
 	    {
-	      if (snl->len[0] < tlen)
-		{
-		  snl->len[1] = snl->len[0];
-		  snl->server[1] = snl->server[0];
-		  snl->name[1] = snl->name[0];
-		  snl->owner[1] = snl->owner[0];
-		  i = 0;
-		}
+	      PT_ERROR (parser, node, "dblink: multi over");
 	    }
-
-	  snl->len[i] = tlen;
-	  snl->server[i] = (char *) vq->bytes;
-	  if (owner_ptr)
-	    {
-	      snl->name[i] = (char *) vq->bytes + (strlen (owner_ptr) + 1);
-	      snl->owner[i] = (char *) vq->bytes;
-	    }
-	  else
-	    {
-	      snl->name[i] = (char *) vq->bytes;
-	      snl->owner[i] = NULL;
-	    }
-	  snl->cnt++;
+	  return node;
 	}
     }
+
+  if (snl->server_node_cnt >= 2)
+    {
+      PT_ERROR (parser, node, "dblink: multi over");
+      return node;
+    }
+
+  new_name = parser_new_node (parser, PT_NAME);
+  new_name->info.name.original = pt_append_string (parser, NULL, name_ptr);
+  if (owner_ptr)
+    {
+      new_owner = parser_new_node (parser, PT_NAME);
+      new_owner->info.name.original = pt_append_string (parser, NULL, owner_ptr);
+      new_name->next = new_owner;
+
+      vq = pt_append_nulstring (parser, vq, owner_ptr);
+      vq = pt_append_bytes (parser, vq, ".", 1);
+    }
+  vq = pt_append_nulstring (parser, vq, name_ptr);
+
+  snl->len[snl->server_node_cnt] = (int) strlen ((char *) vq->bytes);
+  snl->server_full_name[snl->server_node_cnt] = (char *) vq->bytes;
+  snl->server[snl->server_node_cnt] = new_name;
+  snl->server_node_cnt++;
 
   return node;
 }
 
-static void
-pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, bool with_in_dml)
-{
-  if (with_in_dml == false)
-    {
-      SERVER_NAME_LIST snl;
-
-      memset (&snl, 0x00, sizeof (snl));
-      snl.is_dml = false;
-      parser_walk_tree (parser, query_stmt, pt_get_server_name_list, &snl, NULL, NULL);
-      if (snl.cnt == 0 || pt_has_error (parser))
-	{
-	  return;
-	}
-    }
-
-  PT_QUERY_INFO *query = &query_stmt->info.query;
-  PT_NODE *from_tbl = query_stmt->info.query.q.select.from;
-
-  while (from_tbl)
-    {
-      if (from_tbl->info.spec.entity_name && from_tbl->info.spec.remote_server_name)
-	{
-	  pt_mk_spec_drived_dblink_table (parser, from_tbl);
-	}
-      else if (with_in_dml)
-	{
-	  PT_ERROR (parser, from_tbl, "mix table");
-	}
-
-      from_tbl = from_tbl->next;
-    }
-}
-
 static PARSER_VARCHAR *
-pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text,
-#if 0
-		      PT_NODE * tbl_spec, PT_NODE * using_spec,
-#endif
-		      SERVER_NAME_LIST * snl)
+pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, SERVER_NAME_LIST * snl)
 {
   PARSER_VARCHAR *pvc = NULL;
   char *ps, *pt, *t;
-  int len, count, i;
-
-#if 0
-  ps = sql_user_text;
-  while (tbl_spec)
-    {
-      assert (tbl_spec->info.spec.remote_server_name != NULL);
-      assert (tbl_spec->info.spec.remote_server_name->node_type == PT_NAME);
-
-      len = strlen (tbl_spec->info.spec.remote_server_name->info.name.original);
-      len++;			// '@'
-      if (tbl_spec->info.spec.remote_server_name->next)
-	{
-	  assert (tbl_spec->info.spec.remote_server_name->next->node_type == PT_NAME);
-	  len += strlen (tbl_spec->info.spec.remote_server_name->next->info.name.original);
-	  len++;		// '.'
-	}
-
-      t = strchr ((char *) ps, '@');
-      assert (t != NULL);
-
-      pvc = pt_append_bytes (parser, pvc, ps, (t - ps));
-      ps = t + len;
-
-      tbl_spec = tbl_spec->next;
-    }
-
-  while (using_spec)
-    {
-      assert (using_spec->info.spec.remote_server_name != NULL);
-      assert (using_spec->info.spec.remote_server_name->node_type == PT_NAME);
-
-      len = strlen (using_spec->info.spec.remote_server_name->info.name.original);
-      len++;			// '@'
-      if (using_spec->info.spec.remote_server_name->next)
-	{
-	  assert (using_spec->info.spec.remote_server_name->next->node_type == PT_NAME);
-	  len += strlen (using_spec->info.spec.remote_server_name->next->info.name.original);
-	  len++;		// '.'
-	}
-
-      t = strchr ((char *) ps, '@');
-      assert (t != NULL);
-
-      pvc = pt_append_bytes (parser, pvc, ps, (t - ps));
-      ps = t + len;
-
-      using_spec = using_spec->next;
-    }
-#endif
 
   ps = sql_user_text;
-  while (ps)
+  if (snl->server_node_cnt > 0)
     {
-      t = strchr ((char *) ps, '@');
-      if (!t)
-	{
-	  break;
-	}
-      pvc = pt_append_bytes (parser, pvc, ps, (t - ps));
+      int i, idx;
+      int zidx[2] = { 0, 1 };
 
-      for (i = 0; i < snl->cnt; i++)
+      if (snl->server_node_cnt == 2 && snl->len[0] < snl->len[1])
 	{
-	  if (strncasecmp (t + 1, snl->server[i], snl->len[i]) == 0)
+	  zidx[0] = 1;
+	  zidx[1] = 0;
+	}
+
+      while (ps)
+	{
+	  t = strchr ((char *) ps, '@');
+	  if (!t)
 	    {
 	      break;
 	    }
-	}
+	  pvc = pt_append_bytes (parser, pvc, ps, (t - ps));
 
-      assert (i < snl->cnt);
-      ps = t + snl->len[i] + 1;
+	  for (i = 0; i < snl->server_node_cnt; i++)
+	    {
+	      idx = zidx[i];
+	      if (strncasecmp (t + 1, snl->server_full_name[idx], snl->len[idx]) == 0)
+		{
+		  char ch = t[snl->len[idx] + 1];
+		  if (char_isspace (ch) || ch == ',' || ch == ';' || ch == '(' || ch == ')')
+		    {
+		      break;
+		    }
+		}
+	    }
+
+	  assert (i < snl->server_node_cnt);
+	  ps = t + snl->len[idx] + 1;
+	}
     }
 
   pvc = pt_append_nulstring (parser, pvc, ps);
@@ -10996,47 +10922,33 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * tbl_spec, PT_NOD
       return;
     }
 
-  PT_NODE *t_spec;
+  int tmp_local_cnt = snl->local_cnt;
+  int tmp_server_cnt = snl->server_cnt;
 
-  if (tbl_spec->info.spec.remote_server_name == NULL)
+  parser_walk_tree (parser, tbl_spec, pt_get_server_name_list, snl, NULL, NULL);
+  if (using_spec && !pt_has_error (parser))
     {
-      for (t_spec = tbl_spec->next; t_spec; t_spec = t_spec->next)
-	{
-	  if (t_spec->info.spec.remote_server_name != NULL)
-	    {
-	      PT_ERROR (parser, tbl_spec, "Not suppport!.");
-	      return;
-	    }
-	}
-
-      for (t_spec = using_spec; t_spec; t_spec = t_spec->next)
-	{
-	  if (t_spec->info.spec.remote_server_name != NULL)
-	    {
-	      PT_ERROR (parser, tbl_spec, "Not suppport!.");
-	      return;
-	    }
-	}
-
+      parser_walk_tree (parser, using_spec, pt_get_server_name_list, snl, NULL, NULL);
+    }
+  if (pt_has_error (parser))
+    {
       return;
     }
 
-  for (t_spec = tbl_spec->next; t_spec; t_spec = t_spec->next)
+  if (snl->server_cnt == tmp_server_cnt)
     {
-      if (t_spec->info.spec.remote_server_name == NULL)
-	{
-	  PT_ERROR (parser, tbl_spec, "Not suppport!.");
-	  return;
-	}
+      // insert into local_tbl ...
+      return;
     }
-
-  for (t_spec = using_spec; t_spec; t_spec = t_spec->next)
+  else if (snl->local_cnt > tmp_local_cnt)
     {
-      if (t_spec->info.spec.remote_server_name == NULL)
-	{
-	  PT_ERROR (parser, tbl_spec, "Not suppport!.");
-	  return;
-	}
+      PT_ERROR (parser, tbl_spec, "dblink: dblink multi");
+      return;
+    }
+  else if (snl->local_cnt > 0)
+    {
+      PT_ERROR (parser, tbl_spec, "dblink: dblink multi 2");
+      return;
     }
 
   /*  
@@ -11044,8 +10956,6 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * tbl_spec, PT_NOD
    ** Therefore, even if multiple tables are specified, only the first information is configured as PT_DBLINK_TABLE_DML.
    ** Postpone checking that "user.server" and "server" are the same.
    */
-
-  //
 
   PT_NODE *ct = parser_new_node (parser, PT_DBLINK_TABLE_DML);
   if (!ct)
@@ -11064,13 +10974,10 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * tbl_spec, PT_NOD
   val->type_enum = PT_TYPE_CHAR;
   val->info.value.string_type = ' ';
 
+  assert (sql_user_text && sql_user_text[0]);
   if (sql_user_text)
     {
-      val->info.value.data_value.str = pt_make_remote_query (parser, sql_user_text,
-#if 0
-							     tbl_spec, using_spec,
-#endif
-							     snl);
+      val->info.value.data_value.str = pt_make_remote_query (parser, sql_user_text, snl);
       PT_NODE_PRINT_VALUE_TO_TEXT (parser, val);
     }
 
@@ -11086,34 +10993,105 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * tbl_spec, PT_NOD
       server->next = NULL;
     }
 
-  tbl_spec->info.spec.remote_server_name = ct;
-  //tbl_spec->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE_DML;
-
   ct->info.dblink_table.qstr = val;
+
+  for (i = 0; i < snl->server_node_cnt; i++)
+    {
+      if (snl->server_node_cnt != 1)
+	{
+	  if (ct->info.dblink_table.owner_list == NULL && snl->server[i]->next)
+	    {
+	      ct->info.dblink_table.owner_list = snl->server[i]->next;
+	      snl->server[i]->next = NULL;
+	    }
+	}
+
+      if (snl->server[i]->next)
+	{
+	  parser_free_node (parser, snl->server[i]->next);
+	}
+
+      parser_free_node (parser, snl->server[i]);
+    }
+
+  tbl_spec->info.spec.remote_server_name = ct;
+}
+
+
+static bool
+pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, SERVER_NAME_LIST * snl)
+{
+  bool has_dblink = false;
+/*
+  if (snl->is_dml == false)
+    { 
+      //snl->is_query = true;
+      parser_walk_tree (parser, query_stmt, pt_get_server_name_list, snl, NULL, NULL);      
+      if (snl->server_cnt == 0 || pt_has_error (parser))
+	{
+	  return false;
+	}
+      else if (snl->local_cnt > 0)
+	{
+	  PT_ERROR (parser, query_stmt, "dblink: dblink multi");
+	  return false;
+	}
+    }
+
+  if (snl->is_query == false)
+  {
+        return false;
+  } 
+*/
+
+  PT_QUERY_INFO *query = &query_stmt->info.query;
+  PT_NODE *from_tbl = query_stmt->info.query.q.select.from;
+
+  while (from_tbl)
+    {
+      parser_walk_tree (parser, from_tbl, pt_get_server_name_list, snl, NULL, NULL);
+
+      if (from_tbl->info.spec.entity_name && from_tbl->info.spec.remote_server_name)
+	{
+	  from_tbl = pt_mk_spec_drived_dblink_table (parser, from_tbl);
+	  has_dblink = true;
+	}
+      //else if (snl->is_dml)
+//      {
+//        PT_ERROR (parser, from_tbl, "dblink: mix table");
+//      }
+
+      from_tbl = from_tbl->next;
+    }
+
+  return has_dblink;
 }
 
 static PT_NODE *
 pt_convert_server (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   SERVER_NAME_LIST *snl = (SERVER_NAME_LIST *) arg;
+  //int tmp_local_cnt;
+  //int tmp_server_cnt;
 
   assert (continue_walk != NULL);
   if (parser == NULL || node == NULL)
     {
-      PT_ERROR (parser, node, "Invalid arguments.");
+      PT_ERROR (parser, node, "dblink: Invalid arguments.");
       return NULL;
     }
-
-  // 선행으로 호출되도록 변경하고,  dml 내부의 select 구문에 대한 고민이 필요하다.
-  // PT_DBLINK_TABLE_DML 로 생성하고 이후 구성 파스트리를 제거해야 할까?
-  // 별도로 server_name 리스트를 구해야 함.
 
   switch (node->node_type)
     {
     case PT_SELECT:
-      if (snl->is_dml == false)
+      //tmp_local_cnt = snl->local_cnt;
+      //tmp_server_cnt = snl->server_cnt;
+
+      if (pt_convert_dblink_select_query (parser, node, snl))
 	{
-	  pt_convert_dblink_select_query (parser, node, snl->is_dml);
+	  extern PT_NODE *pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+						 int *continue_walk);
+	  parser_walk_tree (parser, node, pt_check_dblink_query, NULL, NULL, NULL);
 	}
       break;
 
@@ -11130,20 +11108,10 @@ pt_convert_server (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
       break;
 
     case PT_MERGE:
-      pt_convert_dblink_dml_query (parser, node->info.merge.into, node->info.merge.using_clause, node->sql_user_text,
-				   snl);
-      break;
-
-    case PT_SPEC:
-      if (node->info.spec.remote_server_name)
-	{
-	  //printf ("PT_SPEC:: %s\n", parser_print_tree (parser, node->info.spec.remote_server_name));
-	  //    node->info.spec.remote_server_name.pt_node_type
-	}
-      break;
-
-    case PT_NAME:
-      //assert(node->next == NULL);
+      {
+	PT_MERGE_INFO *m = &(node->info.merge);
+	pt_convert_dblink_dml_query (parser, m->into, m->using_clause, node->sql_user_text, snl);
+      }
       break;
 
     default:
@@ -11186,7 +11154,8 @@ pt_check_server_extension (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   SERVER_NAME_LIST snl;
 
-  memset (&snl, 0x00, sizeof (snl));
+  memset (&snl, 0x00, sizeof (SERVER_NAME_LIST));
+
   switch (stmt->node_type)
     {
     case PT_INSERT:
@@ -11194,18 +11163,21 @@ pt_check_server_extension (PARSER_CONTEXT * parser, PT_NODE * stmt)
     case PT_UPDATE:
     case PT_MERGE:
       snl.is_dml = true;
-      parser_walk_tree (parser, stmt, pt_get_server_name_list, &snl, NULL, NULL);
-      if (snl.cnt == 0)
-	{
-	  return;
-	}
+      break;
+
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+    case PT_UNION:
+    case PT_SELECT:
+      snl.is_query = true;
       break;
 
     default:
-      snl.is_dml = false;
+      /* no action */
+      return;
     }
 
-  parser_walk_tree (parser, stmt, pt_convert_server, &snl, NULL, NULL);
+  parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_server, &snl);
   if (pt_has_error (parser))
     {
       return;
@@ -11236,8 +11208,8 @@ pt_check_server_extension (PARSER_CONTEXT * parser, PT_NODE * stmt)
     case PT_INTERSECTION:
     case PT_UNION:
     case PT_SELECT:
-      extern PT_NODE *pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-      parser_walk_tree (parser, stmt, pt_check_dblink_query, NULL, NULL, NULL);
+      //extern PT_NODE *pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+      //parser_walk_tree (parser, stmt, pt_check_dblink_query, NULL, NULL, NULL);
       break;
     default:
       break;

@@ -18625,7 +18625,7 @@ pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.dblink_table.cols, arg);
 #if defined(DBLINK_DML_POC)
   PT_APPLY_WALK (parser, p->info.dblink_table.sel_list, arg);
-  PT_APPLY_WALK (parser, p->info.dblink_table.server_list, arg);
+  PT_APPLY_WALK (parser, p->info.dblink_table.owner_list, arg);
 #endif
   return p;
 }
