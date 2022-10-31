@@ -30,9 +30,9 @@
 #include <stdio.h>
 #include "oid.h"
 #include "storage_common.h"
-#include "quick_fit.h"
 #include "locator.h"
 #include "dbtype_def.h"
+#include "memory_alloc.h"
 
 #if defined (SERVER_MODE)
 #error does not belong to server

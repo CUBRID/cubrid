@@ -297,7 +297,6 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/object_print_util.cpp
   ${OBJECT_DIR}/object_representation.c
   ${OBJECT_DIR}/object_template.c
-  ${OBJECT_DIR}/quick_fit.c
   ${OBJECT_DIR}/schema_class_truncator.cpp
   ${OBJECT_DIR}/schema_manager.c
   ${OBJECT_DIR}/schema_template.c

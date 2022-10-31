@@ -137,6 +137,14 @@ extern void db_scramble (void *region, int size);
             (ptr) = NULL; \
           } \
         } while (0)
+
+#define db_ws_free_and_init(ptr) \
+        do { \
+          if ((ptr)) { \
+            db_ws_free((ptr)); \
+            (ptr) = NULL; \
+          } \
+        } while (0)
 #else /* NDEBUG */
 #define db_private_free_and_init(thrd, ptr) \
         do { \
@@ -155,6 +163,12 @@ extern void db_scramble (void *region, int size);
           os_free((ptr)); \
           (ptr) = NULL; \
         } while (0)
+
+#define db_ws_free_and_init(ptr) \
+        do { \
+          db_ws_free((ptr)); \
+          (ptr) = NULL; \
+        } while (0)
 #endif /* NDEBUG */
 
 extern int ansisql_strcmp (const char *s, const char *t);
@@ -163,10 +177,21 @@ extern int ansisql_strcasecmp (const char *s, const char *t);
 #if !defined (SERVER_MODE)
 
 extern HL_HEAPID private_heap_id;
+extern HL_HEAPID ws_heap_id;
 
 #define os_malloc(size) (malloc (size))
 #define os_free(ptr) (free (ptr))
 #define os_realloc(ptr, size) (realloc ((ptr), (size)))
+
+#define db_ws_alloc(size) \
+        db_private_alloc(NULL, size)
+#define db_ws_free(ptr) \
+        db_private_free(NULL, ptr)
+#define db_ws_realloc(ptr, size) \
+        db_private_realloc(NULL, ptr, size)
+
+#define db_destroy_workspace_heap() db_destroy_private_heap(NULL, ws_heap_id)
+#define db_create_workspace_heap() (ws_heap_id = db_create_private_heap())
 
 #else /* SERVER_MODE */
 
