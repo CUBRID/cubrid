@@ -3896,7 +3896,6 @@ qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (PARSER_CONTEXT * 
 	{
 	  /* Already checked before. */
 	  assert (false);
-	  ERROR_SET_ERROR_ONLY (ER_FAILED);
 	  goto exit_on_fail_with_cleanup;
 	}
 
@@ -4187,7 +4186,6 @@ qo_check_foreign_key_referencing_primary_key_in_child_spec (PARSER_CONTEXT * par
 	{
 	  /* Already checked before. */
 	  assert (false);
-	  ERROR_SET_ERROR_ONLY (ER_FAILED);
 	  goto exit_on_fail_with_cleanup;
 	}
 
