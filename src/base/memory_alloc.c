@@ -589,9 +589,7 @@ void *
 db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc_track)
 #endif				/* NDEBUG */
 {
-#if !defined (CS_MODE)
   void *new_ptr = NULL;
-#endif /* !CS_MODE */
 
 #if defined (SERVER_MODE)
   HL_HEAPID heap_id;
@@ -606,9 +604,9 @@ db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc
 
   if (ws_heap_id && (size > 0))
     {
-      ptr = hl_lea_realloc (ws_heap_id, ptr, size);
+      new_ptr = hl_lea_realloc (ws_heap_id, ptr, size);
     }
-  return ptr;
+  return new_ptr;
 #elif defined (SERVER_MODE)
   if (size <= 0)
     {
