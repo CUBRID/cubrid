@@ -1728,11 +1728,11 @@
 
 #define ER_CGW_INVALID_COLUMNS_SPECIFIED         -1352
 
-#define ER_UHOST_IP_ADDR_INVALID_FORMAT         -1353
-#define ER_UHOST_HOST_NAME_TOO_LONG         -1354
-#define ER_UHOST_HOST_NAME_ALREADY_EXIST         -1355
-#define ER_UHOST_HOST_NAME_IP_ADDR_NOT_COMPLETE         -1356
-#define ER_UHOST_CANT_LOOKUP_INFO        -1357
+#define ER_UHOST_INVALID_FORMAT             -1353
+#define ER_UHOST_HOST_NAME_TOO_LONG                 -1354
+#define ER_UHOST_HOST_NAME_ALREADY_EXIST            -1355
+#define ER_UHOST_HOST_NAME_IP_ADDR_NOT_COMPLETE     -1356
+#define ER_UHOST_CANT_LOOKUP_INFO                   -1357
 
 #define ER_LAST_ERROR                               -1358
 

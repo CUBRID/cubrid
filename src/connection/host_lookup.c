@@ -292,12 +292,12 @@ load_hosts_file ()
 	    {
 	      break;
 	    }
+	  strcpy (temp_token, token);
 	  if (hostent_flag == INSERT_IPADDR)
 	    {
-	      strcpy (temp_token, token);
 	      if (ip_format_check (temp_token) == false)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_IP_ADDR_INVALID_FORMAT, 3, token, line_num,
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_INVALID_FORMAT, 4, "IP address", token, line_num,
 			  USER_HOSTS_FILE);
 		  fprintf (stdout, "%s\n", er_msg ());
 
@@ -318,6 +318,16 @@ load_hosts_file ()
 	      if (strlen (token) > HOSTNAME_LEN - 1)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_TOO_LONG, 3, token, line_num,
+			  USER_HOSTS_FILE);
+		  fprintf (stdout, "%s\n", er_msg ());
+
+		  user_host_Map.clear ();
+		  fclose (fp);
+		  goto load_fail_phase;
+		}
+	      else if (ip_format_check (temp_token) == true)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_INVALID_FORMAT, 4, "Hostname", token, line_num,
 			  USER_HOSTS_FILE);
 		  fprintf (stdout, "%s\n", er_msg ());
 
