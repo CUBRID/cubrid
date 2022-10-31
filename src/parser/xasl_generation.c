@@ -25130,7 +25130,22 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
     {
       goto error_exit;
     }
+#if 1
+  /* it's a temporary */
+  expr->info.expr.op = PT_IS_NOT_IN;
+  expr->info.expr.arg1 = parser_new_node (parser, PT_VALUE);
+  if (expr->info.expr.arg1 == NULL)
+    {
+      goto error_exit;
+    }
+  expr->info.expr.arg1->type_enum = PT_TYPE_INTEGER;
+  expr->info.expr.arg1->info.value.data_value.i = 1;
 
+  expr->info.expr.arg2 = corr_subq;
+#else
+  /* it will becomes real routine 
+     if the exists query is modifed for partitioned table
+   */
   expr->info.expr.op = PT_NOT;
   expr->type_enum = PT_TYPE_LOGICAL;
   expr->info.expr.arg1 = parser_new_node (parser, PT_EXPR);
@@ -25142,13 +25157,13 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
   expr->info.expr.arg1->info.expr.op = PT_EXISTS;
   expr->info.expr.arg1->type_enum = PT_TYPE_LOGICAL;
   expr->info.expr.arg1->info.expr.arg1 = corr_subq;
+#endif
 
   value = parser_new_node (parser, PT_VALUE);
   if (value == NULL)
     {
       goto error_exit;
     }
-
   value->type_enum = PT_TYPE_INTEGER;
   value->info.value.data_value.i = 1;
 
