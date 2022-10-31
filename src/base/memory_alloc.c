@@ -57,6 +57,35 @@ HL_HEAPID ws_heap_id = 0;	/* for workspace */
 static HL_HEAPID db_private_get_heapid_from_thread (REFPTR (THREAD_ENTRY, thread_p));
 #endif // SERVER_MODE
 
+#if defined(SA_MODE)
+typedef struct private_malloc_header_s PRIVATE_MALLOC_HEADER;
+struct private_malloc_header_s
+{
+  unsigned int magic;
+  int alloc_type;
+};
+
+#define PRIVATE_MALLOC_HEADER_MAGIC 0xafdaafdaU
+
+enum
+{
+  PRIVATE_ALLOC_TYPE_LEA = 1,
+  PRIVATE_ALLOC_TYPE_WS = 2
+};
+
+#define PRIVATE_MALLOC_HEADER_ALIGNED_SIZE \
+  ((sizeof(PRIVATE_MALLOC_HEADER) + 7) & ~7)
+
+#define private_request_size(s) \
+  (PRIVATE_MALLOC_HEADER_ALIGNED_SIZE + (s))
+
+#define private_hl2user_ptr(ptr) \
+  (void *)((char *)(ptr) + PRIVATE_MALLOC_HEADER_ALIGNED_SIZE)
+
+#define private_user2hl_ptr(ptr) \
+  (PRIVATE_MALLOC_HEADER *)((char *)(ptr) - PRIVATE_MALLOC_HEADER_ALIGNED_SIZE)
+#endif /* SA_MODE */
+
 /*
  * ansisql_strcmp - String comparison according to ANSI SQL
  *   return: an integer value which is less than zero
@@ -652,8 +681,8 @@ db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc
 	}
 
 #if !defined (NDEBUG)
-      assert (db_on_server && h->alloc_type == PRIVATE_ALLOC_TYPE_LEA
-	      || !db_on_server && h->alloc_type == PRIVATE_ALLOC_TYPE_WS);
+      assert ((db_on_server && (h->alloc_type == PRIVATE_ALLOC_TYPE_LEA))
+	      || (!db_on_server && (h->alloc_type == PRIVATE_ALLOC_TYPE_WS)));
 #endif
 
       return private_hl2user_ptr (new_h);
@@ -789,6 +818,11 @@ db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
 	  /* assertion point */
 	  return;
 	}
+
+#if !defined (NDEBUG)
+      assert ((db_on_server && (h->alloc_type == PRIVATE_ALLOC_TYPE_LEA))
+	      || (!db_on_server && (h->alloc_type == PRIVATE_ALLOC_TYPE_WS)));
+#endif
 
       hl_lea_free (*heap_id, h);
 

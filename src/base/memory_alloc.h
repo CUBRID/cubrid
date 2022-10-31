@@ -314,33 +314,4 @@ extern void db_destroy_fixed_heap (HL_HEAPID heap_id);
 extern void *db_fixed_alloc (HL_HEAPID heap_id, size_t size);
 extern void db_fixed_free (HL_HEAPID heap_id, void *ptr);
 
-#if defined(SA_MODE)
-typedef struct private_malloc_header_s PRIVATE_MALLOC_HEADER;
-struct private_malloc_header_s
-{
-  unsigned int magic;
-  int alloc_type;
-};
-
-#define PRIVATE_MALLOC_HEADER_MAGIC 0xafdaafdaU
-
-enum
-{
-  PRIVATE_ALLOC_TYPE_LEA = 1,
-  PRIVATE_ALLOC_TYPE_WS = 2
-};
-
-#define PRIVATE_MALLOC_HEADER_ALIGNED_SIZE \
-  ((sizeof(PRIVATE_MALLOC_HEADER) + 7) & ~7)
-
-#define private_request_size(s) \
-  (PRIVATE_MALLOC_HEADER_ALIGNED_SIZE + (s))
-
-#define private_hl2user_ptr(ptr) \
-  (void *)((char *)(ptr) + PRIVATE_MALLOC_HEADER_ALIGNED_SIZE)
-
-#define private_user2hl_ptr(ptr) \
-  (PRIVATE_MALLOC_HEADER *)((char *)(ptr) - PRIVATE_MALLOC_HEADER_ALIGNED_SIZE)
-#endif /* SA_MODE */
-
 #endif /* _MEMORY_ALLOC_H_ */
