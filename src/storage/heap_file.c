@@ -12536,12 +12536,12 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	      domain->type->index_writeval (&buf, func_res);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	    }
-	  k++;
+	  if (++k == num_vals)
+	    {
+	      break;
+	    }
 	}
-      if (k == num_vals)
-	{
-	  break;
-	}
+
       att = heap_locate_attribute (att_ids[i], attrinfo);
 
       error = heap_midxkey_get_value (recdes, att, &value, attrinfo);
