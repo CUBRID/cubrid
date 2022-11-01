@@ -28,11 +28,12 @@
 #include <string.h>
 #include <assert.h>
 
+#include "memory_alloc.h"
+
 #include "set_object.h"
 #include "misc_string.h"
 #include "object_domain.h"
 #include "dbtype.h"
-#include "memory_alloc.h"
 #include "util_func.h"
 #include "error_manager.h"
 #include "intl_support.h"
@@ -47,13 +48,9 @@
 
 #if !defined (SERVER_MODE)
 extern unsigned int db_on_server;
-HL_HEAPID private_heap_id = 0;
-HL_HEAPID ws_heap_id = 0;	/* for workspace */
+HL_HEAPID private_heap_id = 0;	/* for SA's server-side */
+HL_HEAPID ws_heap_id = 0;	/* for both SA's and CS's workspace */
 #endif /* SERVER_MODE */
-
-#if defined (SERVER_MODE)
-static HL_HEAPID db_private_get_heapid_from_thread (REFPTR (THREAD_ENTRY, thread_p));
-#endif // SERVER_MODE
 
 #if defined(SA_MODE)
 typedef struct private_malloc_header_s PRIVATE_MALLOC_HEADER;
@@ -211,7 +208,9 @@ db_clear_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
     {
 #if defined (SERVER_MODE)
       heap_id = db_private_get_heapid_from_thread (thread_p);
-#else /* SERVER_MODE */
+#elif defined (CS_MODE)
+      heap_id = ws_heap_id;
+#else
       heap_id = private_heap_id;
 #endif /* SERVER_MODE */
     }
@@ -234,11 +233,17 @@ db_change_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
 
 #if defined (SERVER_MODE)
   old_heap_id = db_private_set_heapid_to_thread (thread_p, heap_id);
-#else /* SERVER_MODE */
+#elif defined (CS_MODE)
+  old_heap_id = ws_heap_id;
+#else
   old_heap_id = private_heap_id;
   if (db_on_server)
     {
       private_heap_id = heap_id;
+    }
+  else
+    {
+      ws_heap_id = heap_id;
     }
 #endif
   return old_heap_id;
@@ -256,18 +261,25 @@ db_replace_private_heap (THREAD_ENTRY * thread_p)
 
 #if defined (SERVER_MODE)
   old_heap_id = db_private_get_heapid_from_thread (thread_p);
+#elif defined (CS_MODE)
+  old_heap_id = ws_heap_id;
 #else /* SERVER_MODE */
   old_heap_id = private_heap_id;
 #endif /* SERVER_MODE */
 
-#if defined (SERVER_MODE)
   heap_id = db_create_private_heap ();
+#if defined (SERVER_MODE)
   db_private_set_heapid_to_thread (thread_p, heap_id);
-#else /* SERVER_MODE */
+#elif defined (CS_MODE)
+  ws_heap_id = heap_id;
+#else
   if (db_on_server)
     {
-      heap_id = db_create_private_heap ();
       private_heap_id = heap_id;
+    }
+  else
+    {
+      ws_heap_id = heap_id;
     }
 #endif /* SERVER_MODE */
   return old_heap_id;
@@ -285,8 +297,10 @@ db_destroy_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
     {
 #if defined (SERVER_MODE)
       heap_id = db_private_get_heapid_from_thread (thread_p);
+#elif defined (CS_MODE)
+      heap_id = ws_heap_id;
 #else /* SERVER_MODE */
-      heap_id = private_heap_id;
+      heap_id = (db_on_server) ? private_heap_id : ws_heap_id;
 #endif /* SERVER_MODE */
     }
 
@@ -835,7 +849,7 @@ os_free_release (void *ptr, bool rc_track)
  *   return: heap id
  *   thread_p(in/out): thread local entry; output is never nil
  */
-static HL_HEAPID
+HL_HEAPID
 db_private_get_heapid_from_thread (REFPTR (THREAD_ENTRY, thread_p))
 {
   if (thread_p == NULL)
