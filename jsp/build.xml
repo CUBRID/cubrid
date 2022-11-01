@@ -15,6 +15,12 @@
     <property name="test.classes.dir" location="${build.dir}/test-classes"/>
     <property name="test.reports.dir" location="${build.dir}/test-reports"/>
 
+    <property name="plcsql.antlr.grammar1" value="${src.dir}/antlr4/PcsLexer.g4"/>
+    <property name="plcsql.antlr.grammar2" value="${src.dir}/antlr4/PcsParser.g4"/>
+    <property name="plcsql.antlr.grammar3" value="${src.dir}/antlr4/SqlParser.g4"/>
+    <property name="plcsql.antlrgen.dir" value="${basedir}/antlrgen"/>
+    <property name="plcsql.lib.path" value="com/cubrid/plcsql/lib"/>
+
     <property name="ivy.reports.dir"  location="${build.dir}/ivy-reports"/>
 
     <property name="external.dir" value="external"/>
@@ -61,10 +67,25 @@
     </target>
 
     <target name="compile" depends="init">
+
         <ivy:retrieve pattern="${dist.lib}/[artifact]-[revision].[ext]" conf="runtime"/>
-        <javac srcdir="${src.dir}" destdir="${classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="runtime.path">
+
+        <!-- run ANTLR to generate Java files from its grammar files -->
+        <delete dir="${plcsql.antlrgen.dir}"/>
+        <mkdir dir="${plcsql.antlrgen.dir}"/>
+        <java classname="org.antlr.v4.Tool" failonerror= "true" classpathref="runtime.path"
+                args="-listener -visitor -o ${plcsql.antlrgen.dir}">
+            <arg value="${plcsql.antlr.grammar1}"/>
+            <arg value="${plcsql.antlr.grammar2}"/>
+            <arg value="${plcsql.antlr.grammar3}"/>
+        </java>
+
+        <javac destdir="${classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="runtime.path">
+            <src path="${src.dir}"/>
+            <src path="${plcsql.antlrgen.dir}"/>
             <include name="**/*.java"/>
             <exclude name="${test.src.path}/*.java"/>
+            <exclude name="${plcsql.lib.path}/*.java"/>
         </javac>
     </target>
 
