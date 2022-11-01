@@ -81,7 +81,6 @@ class mvcctable
     void complete_mvcc (int tran_index, MVCCID mvccid, bool committed);
     void complete_sub_mvcc (MVCCID mvccid);
     void complete_mvccids_if_still_active (int tran_index, const std::set<MVCCID> &mvccids, bool committed);
-    void reset_lowest_active();
     MVCCID get_new_mvccid ();
     void get_two_new_mvccid (MVCCID &first, MVCCID &second);
     // update next_mvcc_id value with one received from ATS if it's larger than the current one
@@ -90,6 +89,8 @@ class mvcctable
     bool is_active (MVCCID mvccid) const;
 
     void reset_start_mvccid ();     // not thread safe
+
+    void update_oldest_active ();
 
     MVCCID get_global_oldest_visible () const;
     MVCCID update_global_oldest_visible ();

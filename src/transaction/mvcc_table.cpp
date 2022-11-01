@@ -620,13 +620,6 @@ mvcctable::complete_mvccids_if_still_active (int tran_index, const std::set<MVCC
 }
 
 void
-mvcctable::reset_lowest_active()
-{
-  MVCCID new_lowest_active = m_current_trans_status.m_active_mvccs.compute_lowest_active_mvccid ();
-  advance_oldest_active (new_lowest_active);
-}
-
-void
 mvcctable::complete_sub_mvcc (MVCCID mvccid)
 {
   assert (MVCCID_IS_VALID (mvccid));
@@ -700,6 +693,13 @@ mvcctable::reset_transaction_lowest_active (int tran_index)
   assert (tran_index < m_transaction_lowest_visible_mvccids_size);
   oldest_active_set (m_transaction_lowest_visible_mvccids[tran_index], tran_index, MVCCID_NULL,
 		     oldest_active_event::RESET);
+}
+
+void
+mvcctable::update_oldest_active ()
+{
+  MVCCID new_lowest_active = m_current_trans_status.m_active_mvccs.compute_lowest_active_mvccid ();
+  advance_oldest_active (new_lowest_active);
 }
 
 void
