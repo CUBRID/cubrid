@@ -546,13 +546,19 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
   assert (tran_index < m_transaction_lowest_visible_mvccids_size);
   if (committed && is_active_transaction_server ())
     {
-      /* be sure that transaction modifications can't be vacuumed up to LOG_COMMIT. Otherwise, the following
+      /* 1. be sure that transaction modifications can't be vacuumed up to LOG_COMMIT. Otherwise, the following
        * scenario will corrupt the database:
        * - transaction set its lowest_active_mvccid to MVCCID_NULL
        * - VACUUM clean up transaction modifications
        * - the system crash before LOG_COMMIT of current transaction
        *
        * It will be set to NULL after LOG_COMMIT
+       *
+       * 2. This is only the case if it's active transaction server because only ats generates log records and do vacuum.
+       *
+       * 3. This also prevents ats from vacumming a version on which a RO transaction in PTS may start.
+       *  A newly connected PTS starts replicating from the end of log on PS, and a RO transaction can start with a snapshot of then.
+       *  If VACUUM clean up the modifications before its LOG_COMMIT is flushed on PS, it possibly cleans up data seen by the RO transaction on a PTS.
        */
       MVCCID tran_lowest_active = oldest_active_get (m_transaction_lowest_visible_mvccids[tran_index], tran_index,
 				  oldest_active_event::COMPLETE_MVCC);
