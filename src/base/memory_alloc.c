@@ -39,6 +39,7 @@
 #include "intl_support.h"
 #include "resource_tracker.hpp"
 #include "customheaps.h"
+
 #if defined (SERVER_MODE)
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
@@ -80,53 +81,6 @@ enum
 #define private_user2hl_ptr(ptr) \
   (PRIVATE_MALLOC_HEADER *)((char *)(ptr) - PRIVATE_MALLOC_HEADER_ALIGNED_SIZE)
 #endif /* SA_MODE */
-
-/*
- * db_alignment () -
- *   return:
- *   n(in):
- */
-int
-db_alignment (int n)
-{
-  if (n >= (int) sizeof (double))
-    {
-      return (int) sizeof (double);
-    }
-  else if (n >= (int) sizeof (void *))
-    {
-      return (int) sizeof (void *);
-    }
-  else if (n >= (int) sizeof (int))
-    {
-      return (int) sizeof (int);
-    }
-  else if (n >= (int) sizeof (short))
-    {
-      return (int) sizeof (short);
-    }
-  else
-    {
-      return 1;
-    }
-}
-
-/*
- * db_align_to () - Return the least multiple of 'alignment' that is greater
- * than or equal to 'n'.
- *   return:
- *   n(in):
- *   alignment(in):
- */
-int
-db_align_to (int n, int alignment)
-{
-  /*
-   * Return the least multiple of 'alignment' that is greater than or
-   * equal to 'n'.  'alignment' must be a power of 2.
-   */
-  return (n + alignment - 1) & ~(alignment - 1);
-}
 
 /*
  * db_create_ostk_heap () - create an obstack heap

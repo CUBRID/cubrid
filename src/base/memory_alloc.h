@@ -24,75 +24,12 @@
 #ifndef _MEMORY_ALLOC_H_
 #define _MEMORY_ALLOC_H_
 
-#ident "$Id$"
-
 #include "config.h"
 #include "porting.h"
 
 #include "dbtype_def.h"
 #include "thread_compat.hpp"
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <limits.h>
-#include <sys/types.h>
-#include <stddef.h>
-#include <string.h>
-#if !defined(WINDOWS)
-#include <stdint.h>
-#endif
-
-#if defined (__cplusplus)
-#include <memory>
-#include <functional>
-#endif
-
-/* Ceiling of positive division */
-#define CEIL_PTVDIV(dividend, divisor) \
-        (((dividend) == 0) ? 0 : (((dividend) - 1) / (divisor)) + 1)
-
-/* Make sure that sizeof returns and integer, so I can use in the operations */
-#define DB_SIZEOF(val)          (sizeof(val))
-
-/*
- * Macros related to alignments
- */
-#define CHAR_ALIGNMENT          sizeof(char)
-#define SHORT_ALIGNMENT         sizeof(short)
-#define INT_ALIGNMENT           sizeof(int)
-#define LONG_ALIGNMENT          sizeof(long)
-#define FLOAT_ALIGNMENT         sizeof(float)
-#define DOUBLE_ALIGNMENT        sizeof(double)
-#if __WORDSIZE == 32
-#define PTR_ALIGNMENT		4
-#else
-#define PTR_ALIGNMENT		8
-#endif
-#define MAX_ALIGNMENT           DOUBLE_ALIGNMENT
-
-#if defined(NDEBUG)
-#define PTR_ALIGN(addr, boundary) \
-        ((char *)((((UINTPTR)(addr) + ((UINTPTR)((boundary)-1)))) \
-                  & ~((UINTPTR)((boundary)-1))))
-#else
-#define PTR_ALIGN(addr, boundary) \
-        (memset((void*)(addr), 0,\
-	   DB_WASTED_ALIGN((UINTPTR)(addr), (UINTPTR)(boundary))),\
-        (char *)((((UINTPTR)(addr) + ((UINTPTR)((boundary)-1)))) \
-                  & ~((UINTPTR)((boundary)-1))))
-#endif
-
-#define DB_ALIGN(offset, align) \
-        (((offset) + (align) - 1) & ~((align) - 1))
-
-#define DB_ALIGN_BELOW(offset, align) \
-        ((offset) & ~((align) - 1))
-
-#define DB_WASTED_ALIGN(offset, align) \
-        (DB_ALIGN((offset), (align)) - (offset))
-
-#define DB_ATT_ALIGN(offset) \
-        (((offset) + (INT_ALIGNMENT) - 1) & ~((INT_ALIGNMENT) - 1))
+#include "memory_alignment.hpp"
 
 /*
  * Macros related to memory allocation
@@ -219,19 +156,6 @@ extern void os_free_release (void *ptr, bool rc_track);
 #endif /* NDEBUG */
 
 #endif /* SERVER_MODE */
-
-/*
- * Return the assumed minimum alignment requirement for the requested
- * size.  Multiples of sizeof(double) are assumed to need double
- * alignment, etc.
- */
-extern int db_alignment (int);
-
-/*
- * Return the value of "n" to the next "alignment" boundary.  "alignment"
- * must be a power of 2.
- */
-extern int db_align_to (int n, int alignment);
 
 extern HL_HEAPID db_create_ostk_heap (int chunk_size);
 extern void db_destroy_ostk_heap (HL_HEAPID heap_id);
