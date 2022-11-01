@@ -171,9 +171,6 @@ extern void db_scramble (void *region, int size);
         } while (0)
 #endif /* NDEBUG */
 
-extern int ansisql_strcmp (const char *s, const char *t);
-extern int ansisql_strcasecmp (const char *s, const char *t);
-
 #if !defined (SERVER_MODE)
 
 extern HL_HEAPID private_heap_id;
