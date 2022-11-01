@@ -3319,6 +3319,8 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY * thread_p,
   //
   log_Gl.mvcc_table.complete_mvccids_if_still_active (LOG_SYSTEM_TRAN_INDEX, in_gaps_mvccids, false);
 
+  log_Gl.mvcc_table.reset_lowest_active ();
+
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, sys_tran_index);
 }
 
