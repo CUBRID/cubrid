@@ -20,23 +20,9 @@
  * memory_alloc.c - Memory allocation module
  */
 
-#ident "$Id$"
-
-#include "config.h"
-
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
-
 #include "memory_alloc.h"
 
-#include "set_object.h"
-#include "misc_string.h"
-#include "object_domain.h"
-#include "dbtype.h"
-#include "util_func.h"
 #include "error_manager.h"
-#include "intl_support.h"
 #include "resource_tracker.hpp"
 #include "customheaps.h"
 
