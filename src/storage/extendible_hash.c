@@ -2259,7 +2259,8 @@ ehash_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p, DB_TYPE key_t
       else
 #endif
 	{
-	  compare_result = ansisql_strcmp ((char *) key_p, bucket_record_p);
+	  // trailing space characters are already eliminated for the key */
+	  compare_result = strcmp ((char *) key_p, bucket_record_p);
 	}
       break;
 
