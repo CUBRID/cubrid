@@ -197,14 +197,7 @@ HL_HEAPID
 db_create_private_heap (void)
 {
   HL_HEAPID heap_id = 0;
-#if defined (SERVER_MODE)
   heap_id = hl_register_lea_heap ();
-#else /* SERVER_MODE */
-  if (db_on_server)
-    {
-      heap_id = hl_register_lea_heap ();
-    }
-#endif /* SERVER_MODE */
   return heap_id;
 }
 
