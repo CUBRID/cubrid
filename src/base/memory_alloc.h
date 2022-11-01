@@ -27,6 +27,7 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "porting.h"
 
 #include "dbtype_def.h"
 #include "thread_compat.hpp"
@@ -305,6 +306,7 @@ extern void *db_private_realloc_external (THREAD_ENTRY * thrd, void *ptr, size_t
 
 #if defined (SERVER_MODE)
 extern HL_HEAPID db_private_set_heapid_to_thread (THREAD_ENTRY * thread_p, HL_HEAPID heap_id);
+extern HL_HEAPID db_private_get_heapid_from_thread (REFPTR (THREAD_ENTRY, thread_p));
 #endif // SERVER_MODE
 
 extern HL_HEAPID db_create_fixed_heap (int req_size, int recs_per_chunk);
