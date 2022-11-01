@@ -180,6 +180,7 @@ extern HL_HEAPID ws_heap_id;
 #define os_free(ptr) (free (ptr))
 #define os_realloc(ptr, size) (realloc ((ptr), (size)))
 
+/* allocation APIs for workspace */
 #define db_ws_alloc(size) \
         db_private_alloc(NULL, size)
 #define db_ws_free(ptr) \
@@ -187,8 +188,8 @@ extern HL_HEAPID ws_heap_id;
 #define db_ws_realloc(ptr, size) \
         db_private_realloc(NULL, ptr, size)
 
-#define db_destroy_workspace_heap() db_destroy_private_heap(NULL, ws_heap_id)
 #define db_create_workspace_heap() (ws_heap_id = db_create_private_heap())
+#define db_destroy_workspace_heap() db_destroy_private_heap(NULL, ws_heap_id)
 
 #else /* SERVER_MODE */
 

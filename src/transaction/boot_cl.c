@@ -47,7 +47,7 @@
 #endif /* !HPUX */
 #include "boot_cl.h"
 #include "memory_alloc.h"
-#include "area_alloc.h"
+#include "memory_alloc_area.h"
 #include "storage_common.h"
 #include "oid.h"
 #include "error_manager.h"
