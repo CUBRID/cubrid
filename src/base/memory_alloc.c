@@ -40,8 +40,6 @@
 #include "customheaps.h"
 #if defined (SERVER_MODE)
 #include "thread_entry.hpp"
-#endif // SERVER_MODE
-#if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
 
