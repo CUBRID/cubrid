@@ -6497,10 +6497,10 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  scan_type = S_HEAP_SCAN;
 	  indx_info = NULL;
 	}
-      else if (curr_spec->access == ACCESS_METHOD_INDEX_OPTIMIZED)
+      else if (curr_spec->access == ACCESS_METHOD_AGG_OPTIMIZED)
 	{
 	  /* set index scan optimized */
-	  scan_type = S_INDEX_SCAN_OPTIMIZED;
+	  scan_type = S_AGG_OPTIMIZED;
 	  indx_info = NULL;
 	}
       else if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
@@ -6537,7 +6537,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  return ER_QPROC_INVALID_XASLNODE;
 	}			/* if */
 
-      if (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO || scan_type == S_INDEX_SCAN_OPTIMIZED)
+      if (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO || scan_type == S_AGG_OPTIMIZED)
 	{
 	  error_code = scan_open_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
 					    curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
@@ -6799,7 +6799,7 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	case TARGET_CLASS:
 	  if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
 	      || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN
-	      || curr_spec->access == ACCESS_METHOD_INDEX_OPTIMIZED)
+	      || curr_spec->access == ACCESS_METHOD_AGG_OPTIMIZED)
 	    {
 	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SSCANS);
 	    }
@@ -7725,8 +7725,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 	scan_open_heap_page_scan (thread_p, &spec->s_id, val_list, vd, &class_oid, &class_hfid, spec->where_pred,
 				  scan_type, spec->s.cls_node.cache_reserved, spec->s.cls_node.cls_regu_list_reserved);
     }
-  else if (spec->type == TARGET_CLASS
-	   && (spec->access == ACCESS_METHOD_INDEX || spec->access == ACCESS_METHOD_INDEX_OPTIMIZED))
+  else if (spec->type == TARGET_CLASS && spec->access == ACCESS_METHOD_INDEX)
     {
       INDX_SCAN_ID *isidp = &spec->s_id.s.isid;
       if (isidp->caches_inited)

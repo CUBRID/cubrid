@@ -12352,13 +12352,12 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      TARGET_TYPE scan_type;
 	      ACCESS_METHOD access_method = ACCESS_METHOD_SEQUENTIAL;
 
-	      if (plan && plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN_OPTIMIZED)
+	      /* determine access_method */
+	      if (plan && plan->plan_un.scan.scan_method == QO_SCANMETHOD_AGG_OPTIMIZED)
 		{
-		  access_method = ACCESS_METHOD_INDEX_OPTIMIZED;
+		  access_method = ACCESS_METHOD_AGG_OPTIMIZED;
 		}
-	      else
-		/* determine access_method */
-	      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_RECORD_INFO_SCAN))
+	      else if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_RECORD_INFO_SCAN))
 		{
 		  access_method = ACCESS_METHOD_SEQUENTIAL_RECORD_INFO;
 		}
@@ -16229,9 +16228,9 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	pt_to_aggregate (parser, select_node, xasl->outptr_list, buildlist->g_val_list, buildlist->g_regu_list,
 			 buildlist->g_scan_regu_list, group_out_list, &buildlist->g_grbynum_val);
 
-      if (aggregate && parser->statements[0]->node_type == PT_SELECT && aggregate->flag_agg_optimize == true)
+      if (aggregate && aggregate->flag_agg_optimize == true)
 	{
-	  qo_plan->plan_un.scan.scan_method = QO_SCANMETHOD_INDEX_SCAN_OPTIMIZED;
+	  qo_plan->plan_un.scan.scan_method = QO_SCANMETHOD_AGG_OPTIMIZED;
 	}
 
       /* compute function count */
@@ -16976,9 +16975,9 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   pt_set_qprior_node_etc (parser, select_node->info.query.q.select.having, xasl);
 
   aggregate = pt_to_aggregate (parser, select_node, NULL, NULL, NULL, NULL, NULL, &buildvalue->grbynum_val);
-  if (aggregate && parser->statements[0]->node_type == PT_SELECT && aggregate->flag_agg_optimize == true)
+  if (aggregate && aggregate->flag_agg_optimize == true)
     {
-      qo_plan->plan_un.scan.scan_method = QO_SCANMETHOD_INDEX_SCAN_OPTIMIZED;
+      qo_plan->plan_un.scan.scan_method = QO_SCANMETHOD_AGG_OPTIMIZED;
     }
 
   /* the calls pt_to_out_list, pt_to_spec_list, and pt_to_if_pred, record information in the "symbol_info" structure
@@ -25125,7 +25124,7 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
 PT_NODE *
 pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MERGE_INFO * info)
 {
-  PT_NODE *subq, *corr_subq, *expr, *and_expr, *value;
+  PT_NODE *subq, *corr_subq = NULL, *func = NULL, *expr = NULL, *and_expr = NULL, *value = NULL;
 
   subq = parser_new_node (parser, PT_SELECT);
   if (subq == NULL)
@@ -25136,25 +25135,22 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
   corr_subq = parser_new_node (parser, PT_SELECT);
   if (corr_subq == NULL)
     {
-      parser_free_tree (parser, subq);
       goto error_exit;
     }
 
-  expr = parser_new_node (parser, PT_FUNCTION);
-  if (expr == NULL)
+  func = parser_new_node (parser, PT_FUNCTION);
+  if (func == NULL)
     {
-      parser_free_tree (parser, subq);
-      parser_free_tree (parser, corr_subq);
       goto error_exit;
     }
 
-  expr->type_enum = PT_TYPE_INTEGER;
-  expr->info.function.arg_list = NULL;
-  expr->info.function.function_type = PT_COUNT_STAR;
+  func->type_enum = PT_TYPE_INTEGER;
+  func->info.function.function_type = PT_COUNT_STAR;
 
-  corr_subq->info.query.q.select.list = expr;
+  corr_subq->info.query.q.select.list = func;
   corr_subq->info.query.q.select.from = parser_copy_tree (parser, info->into);
   corr_subq->info.query.q.select.where = parser_copy_tree_list (parser, info->search_cond);
+
   /* add class where part */
   if (info->insert.class_where)
     {
@@ -25180,17 +25176,12 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
   expr = parser_new_node (parser, PT_EXPR);
   if (expr == NULL)
     {
-      parser_free_tree (parser, subq);
-      parser_free_tree (parser, corr_subq);
       goto error_exit;
     }
 
   value = parser_new_node (parser, PT_VALUE);
   if (value == NULL)
     {
-      parser_free_tree (parser, subq);
-      parser_free_tree (parser, corr_subq);
-      parser_free_tree (parser, expr);
       goto error_exit;
     }
 
@@ -25207,8 +25198,6 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
       and_expr = parser_new_node (parser, PT_EXPR);
       if (and_expr == NULL)
 	{
-	  parser_free_tree (parser, subq);
-	  parser_free_tree (parser, expr);	/* corr_subq is now in this tree */
 	  goto error_exit;
 	}
 
@@ -25231,6 +25220,37 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
   return subq;
 
 error_exit:
+
+  if (subq)
+    {
+      parser_free_tree (parser, subq);
+    }
+
+  if (corr_subq)
+    {
+      parser_free_tree (parser, corr_subq);
+    }
+
+  if (func)
+    {
+      parser_free_tree (parser, func);
+    }
+
+  if (expr)
+    {
+      parser_free_tree (parser, expr);
+    }
+
+  if (and_expr)
+    {
+      parser_free_tree (parser, and_expr);
+    }
+
+  if (value)
+    {
+      parser_free_tree (parser, value);
+    }
+
   PT_INTERNAL_ERROR (parser, "allocate new node");
   return NULL;
 }

@@ -90,7 +90,7 @@ typedef enum
   S_INDX_KEY_INFO_SCAN,		/* scans b-tree and queries for key info */
   S_INDX_NODE_INFO_SCAN,	/* scans b-tree nodes for info */
   S_DBLINK_SCAN,		/* scans dblink */
-  S_INDEX_SCAN_OPTIMIZED
+  S_AGG_OPTIMIZED
 } SCAN_TYPE;
 
 typedef struct dblink_scan_id DBLINK_SCAN_ID;

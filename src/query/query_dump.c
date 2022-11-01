@@ -442,8 +442,6 @@ qdump_access_method_string (ACCESS_METHOD access)
       return "sequential";
     case ACCESS_METHOD_INDEX:
       return "index";
-    case ACCESS_METHOD_INDEX_OPTIMIZED:
-      return "index";
     case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
       return "sequential record info";
     case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
@@ -3124,18 +3122,7 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 	      er_clear ();
 	    }
 
-	  if (spec->access == ACCESS_METHOD_SEQUENTIAL)
-	    {
-	      if (class_name != NULL)
-		{
-		  fprintf (fp, "(table: %s), ", class_name);
-		}
-	      else
-		{
-		  fprintf (fp, "(table: unknown), ");
-		}
-	    }
-	  else if (spec->access == ACCESS_METHOD_INDEX_OPTIMIZED)
+	  if (spec->access == ACCESS_METHOD_SEQUENTIAL || spec->access == ACCESS_METHOD_AGG_OPTIMIZED)
 	    {
 	      if (class_name != NULL)
 		{
