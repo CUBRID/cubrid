@@ -776,7 +776,7 @@ db_private_get_heapid_from_thread (REFPTR (THREAD_ENTRY, thread_p))
 }
 
 /*
- * css_set_private_heap() -
+ * db_private_set_heapid_to_thread() -
  *   return:
  *   thread_p(in):
  *   heap_id(in):
