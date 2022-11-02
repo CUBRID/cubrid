@@ -465,6 +465,63 @@ namespace cublog
   {
     assert (all_log_entries_are_control ());
 
+    // - after the actual payload log records in a sequences have been applied
+    //  this function tries to remove - in a consistent and controlled manner(*) -
+    //  the remaining "control" log recods;
+    // - the logic here is akin to "dynamic programming" as with each new processed
+    //  log record, the state is re-evaluated; similarly, with each applied sequence
+    //  of consecutive payload log records, the remaining log records are re-evaluated
+    //  in this function and, if possible, removed (most of the times in pairs - start -end)
+    // - another benefit is that it allows for "nested" atomic replication sequences with
+    //  [almost] arbitrary structure to be processed in a controlled way:
+    //
+    // Example:
+    //
+    //  ------------------------------------ transactional log axis ----->
+    //  C1  W1 W2 W3  C2  W4 W5 W6  C3  W7 W8 W9 W10 C4  W11 W12  C5  C6
+    //   |             |             |                |            |   |
+    //  start        start           |              start          |   |
+    //                              end                          end   end
+    //
+    //  Legend:
+    //    - C1, C2, .. : control log records
+    //    - W1, W2, .. : work/payload log records
+    //
+    //  The above sequence would be processed in the following way:
+    //  - C1 added
+    //      - can_purge is called, nothing to do
+    //  - W1-W3 added and accumulated
+    //  - C2 added
+    //      - decide that W1-W3 can be processed - process and remove
+    //      - can_purge is called, nothing to do
+    //  - W4-W6 added and accumulated
+    //  - C3 added
+    //      - decide that W4-W6 can be processed - process and remove
+    //      - can_purge is called, decide that C2, C3 can be removed
+    //  - W7-W10 added and accumulated
+    //  - C4 added
+    //      - decide that W7-W10 can be processed - process and remove
+    //      - can_purge is called, nothing to do as C4 does not have
+    //        a matching end pair "control" log record
+    //  - W11, W12 added and accumulated
+    //  - C5 added
+    //      - decide that W11, W12 can be processed - process and remove
+    //      - can_purge is called, decide that C4, C5 can be removed
+    //  - C6 added
+    //      - no actual paylod log records to apply
+    //      - can_purge is called, decide that C1, C6 can be removed
+    //
+    //  after this, the entire sequence is removed as it is left empty;
+    //
+    // - if, at some point within the same transaction, a new atomic sequence
+    //  control log records is encountered, a new, separate atomic sequence
+    //  object is created and handled
+    //
+    // (*) controlled manner = in such a way as to maintain consistency; this is mostly
+    // the result of empirical observations of encountered "control" log sequences;
+    // these sequences are laid out in the atomic_replication_helper class comment and
+    // their logic is implemented and acted upon in this function and the function
+    // calling this one
     while (true)
       {
 	if (m_log_vec.empty ())
@@ -488,7 +545,7 @@ namespace cublog
 	const atomic_log_entry_vector_type::const_iterator last_entry_it = m_log_vec.cend () - 1;
 	const atomic_log_entry &last_entry = *last_entry_it;
 
-	// atomic replication sequence with an already executed postpone sequence that contained
+	// atomic replication sequence with an already executed postpone sequence that (maybe) contained
 	// - itself - other atomic replication sequences)
 	if (LOG_SYSOP_END == last_entry.m_rectype
 	    && LOG_SYSOP_END_COMMIT == last_entry.m_sysop_end_type)
