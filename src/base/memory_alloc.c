@@ -209,10 +209,6 @@ db_replace_private_heap (THREAD_ENTRY * thread_p)
 #endif /* SERVER_MODE */
 
   heap_id = db_create_private_heap ();
-<<<<<<< HEAD
-
-=======
->>>>>>> origin/CBRD-24475
 #if defined (SERVER_MODE)
   db_private_set_heapid_to_thread (thread_p, heap_id);
 #elif defined (CS_MODE)
