@@ -151,7 +151,7 @@ db_clear_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
 #elif defined (CS_MODE)
       heap_id = ws_heap_id;
 #else
-      heap_id = private_heap_id;
+      heap_id = (db_on_server) ? private_heap_id : ws_heap_id;
 #endif /* SERVER_MODE */
     }
 
@@ -205,10 +205,11 @@ db_replace_private_heap (THREAD_ENTRY * thread_p)
 #elif defined (CS_MODE)
   old_heap_id = ws_heap_id;
 #else /* SERVER_MODE */
-  old_heap_id = private_heap_id;
+  old_heap_id = (db_on_server) ? private_heap_id : ws_heap_id;
 #endif /* SERVER_MODE */
 
   heap_id = db_create_private_heap ();
+
 #if defined (SERVER_MODE)
   db_private_set_heapid_to_thread (thread_p, heap_id);
 #elif defined (CS_MODE)
@@ -328,18 +329,18 @@ db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track)
       ptr = hl_lea_alloc (ws_heap_id, size);
     }
 #else /* SERVER_MODE */
-  HL_HEAPID *heap_id = db_on_server ? &private_heap_id : &ws_heap_id;
+  HL_HEAPID & heap_id = db_on_server ? private_heap_id : ws_heap_id;
 
-  if (!db_on_server && *heap_id == 0)
+  if (!db_on_server && heap_id == 0)
     {
-      *heap_id = db_create_private_heap ();
+      heap_id = db_create_private_heap ();
     }
 
-  if (*heap_id)
+  if (heap_id)
     {
       PRIVATE_MALLOC_HEADER *h = NULL;
       size_t req_sz = private_request_size (size);
-      h = (PRIVATE_MALLOC_HEADER *) hl_lea_alloc (private_heap_id, req_sz);
+      h = (PRIVATE_MALLOC_HEADER *) hl_lea_alloc (heap_id, req_sz);
       if (h != NULL)
 	{
 	  h->magic = PRIVATE_MALLOC_HEADER_MAGIC;
@@ -454,14 +455,14 @@ db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc
       return db_private_alloc (thrd, size);
     }
 
-  HL_HEAPID *heap_id = db_on_server ? &private_heap_id : &ws_heap_id;
+  HL_HEAPID & heap_id = db_on_server ? private_heap_id : ws_heap_id;
 
-  if (!db_on_server && *heap_id == 0)
+  if (!db_on_server && heap_id == 0)
     {
-      *heap_id = db_create_private_heap ();
+      heap_id = db_create_private_heap ();
     }
 
-  if (*heap_id)
+  if (heap_id)
     {
       PRIVATE_MALLOC_HEADER *h;
 
@@ -475,15 +476,17 @@ db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc
       size_t req_sz;
 
       req_sz = private_request_size (size);
-      new_h = (PRIVATE_MALLOC_HEADER *) hl_lea_realloc (*heap_id, h, req_sz);
+      new_h = (PRIVATE_MALLOC_HEADER *) hl_lea_realloc (heap_id, h, req_sz);
       if (new_h == NULL)
 	{
 	  return NULL;
 	}
+      new_h->magic = PRIVATE_MALLOC_HEADER_MAGIC;
+      new_h->alloc_type = db_on_server ? PRIVATE_ALLOC_TYPE_LEA : PRIVATE_ALLOC_TYPE_WS;
 
       /* make sure ptr was allocated in the same mode (db_on_server) */
-      assert ((db_on_server && (h->alloc_type == PRIVATE_ALLOC_TYPE_LEA))
-	      || (!db_on_server && (h->alloc_type == PRIVATE_ALLOC_TYPE_WS)));
+      assert ((db_on_server && (new_h->alloc_type == PRIVATE_ALLOC_TYPE_LEA))
+	      || (!db_on_server && (new_h->alloc_type == PRIVATE_ALLOC_TYPE_WS)));
 
       new_ptr = private_hl2user_ptr (new_h);
     }
@@ -599,9 +602,9 @@ db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
     }
 
 #else /* SA_MODE */
-  HL_HEAPID *heap_id = db_on_server ? &private_heap_id : &ws_heap_id;
+  HL_HEAPID & heap_id = db_on_server ? private_heap_id : ws_heap_id;
 
-  if (*heap_id == 0)
+  if (heap_id == 0)
     {
       free (ptr);
     }
@@ -619,7 +622,7 @@ db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
       assert ((db_on_server && (h->alloc_type == PRIVATE_ALLOC_TYPE_LEA))
 	      || (!db_on_server && (h->alloc_type == PRIVATE_ALLOC_TYPE_WS)));
 
-      hl_lea_free (*heap_id, h);
+      hl_lea_free (heap_id, h);
     }
 #endif /* SA_MODE */
 }
