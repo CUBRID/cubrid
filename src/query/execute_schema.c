@@ -10502,6 +10502,35 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
       goto exit;
     }
 
+  /* if it is an auto_increment column, check its domain */
+  if (found_att->auto_increment != NULL)
+    {
+      PT_NODE *att;
+      const char *att_name;
+
+      att = attribute->info.attr_def.attr_name;
+      att_name = att->info.name.original;
+
+      switch (attribute->type_enum)
+	{
+	case PT_TYPE_INTEGER:
+	case PT_TYPE_BIGINT:
+	case PT_TYPE_SMALLINT:
+	  break;
+
+	case PT_TYPE_NUMERIC:
+	  if (attribute->data_type->info.data_type.dec_precision == 0)
+	    {
+	      break;
+	    }
+
+	default:
+	  PT_ERRORmf (parser, att, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_AUTO_INCREMENT_DOMAIN, att_name);
+	  error = ER_PT_SEMANTIC;
+	  goto exit;
+	}
+    }
+
   if (is_att_prop_set (attr_chg_prop->p[P_NAME], ATT_CHG_PROPERTY_DIFF))
     {
       assert (new_name != NULL);
