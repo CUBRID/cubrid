@@ -54,7 +54,7 @@ static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
 static bool log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * rcv_lsa);
 static int log_rv_analysis_undo_redo (THREAD_ENTRY * thread_p, int tran_id, const LOG_LSA * log_lsa);
 static int log_rv_analysis_mvcc_undo_redo (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
-					   LOG_PAGE * log_page_p, LOG_RECTYPE log_type);
+					   LOG_PAGE * log_page_p, LOG_RECTYPE log_type, log_recovery_context & context);
 static int log_rv_analysis_undo_redo_internal (THREAD_ENTRY * thread_p, int tran_id, const LOG_LSA * log_lsa,
 					       LOG_TDES * &tdes);
 static int log_rv_analysis_dummy_head_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
@@ -71,7 +71,7 @@ static int log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tr
 						 LOG_PAGE * log_page_p);
 static int log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_assigned_mvccid (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
-					    LOG_PAGE * log_page_p);
+					    LOG_PAGE * log_page_p, log_recovery_context & context);
 static void log_rv_analysis_complete_mvccid (int tran_index, const LOG_TDES * tdes);
 static int log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				     LOG_LSA * prev_lsa, log_recovery_context & context);
@@ -1171,7 +1171,7 @@ log_rv_analysis_undo_redo (THREAD_ENTRY * thread_p, int tran_id, const LOG_LSA *
  */
 static int
 log_rv_analysis_mvcc_undo_redo (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-				LOG_RECTYPE log_type)
+				LOG_RECTYPE log_type, log_recovery_context & context)
 {
   LOG_TDES *tdes = nullptr;
   int error_code = log_rv_analysis_undo_redo_internal (thread_p, tran_id, log_lsa, tdes);
@@ -1222,6 +1222,19 @@ log_rv_analysis_mvcc_undo_redo (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * 
     default:
       assert ("other log record not expected to be handled here" == nullptr);
       error_code = ER_FAILED;
+    }
+
+  if (is_passive_transaction_server ())
+    {
+      /* Since there is no recovery redo phase on PTS, PTS does not update log_Gl.hdr.mvcc_next_id.
+       * So, largest_mvccid will be updated during log_recovery_analysis () only for PTS,
+       * and it will be used to set log_Gl.hdr.mvcc_next_id.
+       */
+
+      if (!MVCC_ID_PRECEDES (tdes->mvccinfo.id, context.get_largest_mvccid ()))
+        {
+          context.set_largest_mvccid (tdes->mvccinfo.id);
+        }
     }
 
   return error_code;
@@ -1735,7 +1748,7 @@ log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LS
 }
 
 static int
-log_rv_analysis_assigned_mvccid (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+log_rv_analysis_assigned_mvccid (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, log_recovery_context & context)
 {
   LOG_TDES *tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
   if (tdes == nullptr)
@@ -1752,6 +1765,19 @@ log_rv_analysis_assigned_mvccid (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA *
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_ASSIGNED_MVCCID), log_lsa, log_page_p);
   auto rec = (const LOG_REC_ASSIGNED_MVCCID *) (log_page_p->area + log_lsa->offset);
   tdes->mvccinfo.id = rec->mvccid;
+
+  if (is_passive_transaction_server ())
+    {
+      /* Since there is no recovery redo phase on PTS, PTS does not update log_Gl.hdr.mvcc_next_id.
+       * So, largest_mvccid will be updated during log_recovery_analysis () only for PTS,
+       * and it will be used to set log_Gl.hdr.mvcc_next_id.
+       */
+
+      if (!MVCC_ID_PRECEDES (tdes->mvccinfo.id, context.get_largest_mvccid ()))
+        {
+          context.set_largest_mvccid (tdes->mvccinfo.id);
+        }
+    }
 
   return NO_ERROR;
 }
@@ -2443,7 +2469,7 @@ log_rv_analysis_record_on_tran_server (THREAD_ENTRY * thread_p, LOG_RECTYPE log_
     case LOG_MVCC_DIFF_UNDOREDO_DATA:
     case LOG_MVCC_UNDO_DATA:
     case LOG_MVCC_REDO_DATA:
-      (void) log_rv_analysis_mvcc_undo_redo (thread_p, tran_id, log_lsa, log_page_p, log_type);
+      (void) log_rv_analysis_mvcc_undo_redo (thread_p, tran_id, log_lsa, log_page_p, log_type, context);
       break;
     case LOG_UNDOREDO_DATA:
     case LOG_DIFF_UNDOREDO_DATA:
@@ -2531,7 +2557,7 @@ log_rv_analysis_record_on_tran_server (THREAD_ENTRY * thread_p, LOG_RECTYPE log_
       break;
 
     case LOG_ASSIGNED_MVCCID:
-      (void) log_rv_analysis_assigned_mvccid (thread_p, tran_id, log_lsa, log_page_p);
+      (void) log_rv_analysis_assigned_mvccid (thread_p, tran_id, log_lsa, log_page_p, context);
       break;
 
     case LOG_DUMMY_CRASH_RECOVERY:
@@ -2909,23 +2935,6 @@ log_recovery_analysis_internal (THREAD_ENTRY * thread_p, INT64 * num_redo_log_re
 	   * Or, to use checksum on log records, but this may slow down the system.
 	   */
 	  break;
-	}
-
-      if (is_passive_transaction_server ())
-	{
-	  /* Since there is no recovery redo phase on PTS, PTS does not update log_Gl.hdr.mvcc_next_id.
-	   * So, largest_mvccid will be updated during log_recovery_analysis () only for PTS,
-	   * and it will be used to set log_Gl.hdr.mvcc_next_id.
-	   */
-	  const int tran_index = logtb_find_tran_index (thread_p, tran_id);
-	  if (tran_index != NULL_TRAN_INDEX)
-	    {
-	      const LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
-	      if (!MVCC_ID_PRECEDES (tdes->mvccinfo.id, context.get_largest_mvccid ()))
-		{
-		  context.set_largest_mvccid (tdes->mvccinfo.id);
-		}
-	    }
 	}
 
       prev_prev_lsa = prev_lsa;
@@ -3345,7 +3354,8 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY * thread_p,
        * log_Gl.hdr.mvcc_next_id is usually updated in the REDO phase (PS),
        * but since REDO is not performed on PTS, the largest mvccid obtained in the ANALYSIS phase will be used.
        */
-      log_Gl.hdr.mvcc_next_id = log_rcv_context.get_largest_mvccid () + 1;
+      log_Gl.hdr.mvcc_next_id = log_rcv_context.get_largest_mvccid ();
+      MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
     }
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, sys_tran_index);
