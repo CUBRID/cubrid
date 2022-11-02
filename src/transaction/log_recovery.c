@@ -1228,13 +1228,13 @@ log_rv_analysis_mvcc_undo_redo (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * 
     {
       /* Since there is no recovery redo phase on PTS, PTS does not update log_Gl.hdr.mvcc_next_id.
        * So, largest_mvccid will be updated during log_recovery_analysis () only for PTS,
-       * and it will be used to set log_Gl.hdr.mvcc_next_id.
+       * and it will be used to set log_Gl.hdr.mvcc_next_id in log_recovery_analysis_from_trantable_snapshot ().
        */
 
-      if (!MVCC_ID_PRECEDES (tdes->mvccinfo.id, context.get_largest_mvccid ()))
-        {
-          context.set_largest_mvccid (tdes->mvccinfo.id);
-        }
+      if (MVCC_ID_PRECEDES (context.get_largest_mvccid (), tdes->mvccinfo.id))
+	{
+	  context.set_largest_mvccid (tdes->mvccinfo.id);
+	}
     }
 
   return error_code;
@@ -1748,7 +1748,8 @@ log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LS
 }
 
 static int
-log_rv_analysis_assigned_mvccid (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, log_recovery_context & context)
+log_rv_analysis_assigned_mvccid (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+				 log_recovery_context & context)
 {
   LOG_TDES *tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
   if (tdes == nullptr)
@@ -1770,13 +1771,13 @@ log_rv_analysis_assigned_mvccid (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA *
     {
       /* Since there is no recovery redo phase on PTS, PTS does not update log_Gl.hdr.mvcc_next_id.
        * So, largest_mvccid will be updated during log_recovery_analysis () only for PTS,
-       * and it will be used to set log_Gl.hdr.mvcc_next_id.
+       * and it will be used to set log_Gl.hdr.mvcc_next_id in log_recovery_analysis_from_trantable_snapshot ().
        */
 
-      if (!MVCC_ID_PRECEDES (tdes->mvccinfo.id, context.get_largest_mvccid ()))
-        {
-          context.set_largest_mvccid (tdes->mvccinfo.id);
-        }
+      if (MVCC_ID_PRECEDES (context.get_largest_mvccid (), tdes->mvccinfo.id))
+	{
+	  context.set_largest_mvccid (tdes->mvccinfo.id);
+	}
     }
 
   return NO_ERROR;
