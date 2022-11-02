@@ -1230,11 +1230,7 @@ log_rv_analysis_mvcc_undo_redo (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * 
        * So, largest_mvccid will be updated during log_recovery_analysis () only for PTS,
        * and it will be used to set log_Gl.hdr.mvcc_next_id in log_recovery_analysis_from_trantable_snapshot ().
        */
-
-      if (MVCC_ID_PRECEDES (context.get_largest_mvccid (), tdes->mvccinfo.id))
-	{
-	  context.set_largest_mvccid (tdes->mvccinfo.id);
-	}
+      context.set_largest_mvccid (tdes->mvccinfo.id);
     }
 
   return error_code;
@@ -1773,11 +1769,7 @@ log_rv_analysis_assigned_mvccid (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA *
        * So, largest_mvccid will be updated during log_recovery_analysis () only for PTS,
        * and it will be used to set log_Gl.hdr.mvcc_next_id in log_recovery_analysis_from_trantable_snapshot ().
        */
-
-      if (MVCC_ID_PRECEDES (context.get_largest_mvccid (), tdes->mvccinfo.id))
-	{
-	  context.set_largest_mvccid (tdes->mvccinfo.id);
-	}
+      context.set_largest_mvccid (tdes->mvccinfo.id);
     }
 
   return NO_ERROR;
