@@ -6833,7 +6833,10 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
       curr_spec->pruned = false;
 
       /* init btid */
-      BTID_COPY (&curr_spec->indexptr->btid, &curr_spec->btid);
+      if (curr_spec->indexptr)
+	{
+	  BTID_COPY (&curr_spec->indexptr->btid, &curr_spec->btid);
+	}
     }
 
   scan_close_scan (thread_p, &curr_spec->s_id);
