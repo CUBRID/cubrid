@@ -715,8 +715,7 @@ typedef enum
 typedef enum
 {
   ACCESS_SPEC_FLAG_NONE = 0,
-  ACCESS_SPEC_FLAG_FOR_UPDATE = 0x01,	/* used with FOR UPDATE clause. The spec that will be locked. */
-  ACCESS_SPEC_FLAG_AGG_OPTIMIZED = 0x02	/* used for aggregate function optimized */
+  ACCESS_SPEC_FLAG_FOR_UPDATE = 0x01	/* used with FOR UPDATE clause. The spec that will be locked. */
 } ACCESS_SPEC_FLAG;
 
 struct cls_spec_node

@@ -12677,11 +12677,6 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_FOR_UPDATE);
 		}
 
-	      if (plan && plan->plan_un.scan.agg_optimized)
-		{
-		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_AGG_OPTIMIZED);
-		}
-
 	      access->next = access_list;
 	      access_list = access;
 	    }
@@ -25125,7 +25120,7 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
 PT_NODE *
 pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MERGE_INFO * info)
 {
-  PT_NODE *subq, *corr_subq = NULL, *func = NULL, *expr = NULL, *and_expr = NULL, *value = NULL;
+  PT_NODE *subq, *corr_subq, *expr, *and_expr, *value;
 
   subq = parser_new_node (parser, PT_SELECT);
   if (subq == NULL)
@@ -25136,22 +25131,25 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
   corr_subq = parser_new_node (parser, PT_SELECT);
   if (corr_subq == NULL)
     {
+      parser_free_tree (parser, subq);
       goto error_exit;
     }
 
-  func = parser_new_node (parser, PT_FUNCTION);
-  if (func == NULL)
+  expr = parser_new_node (parser, PT_FUNCTION);
+  if (expr == NULL)
     {
+      parser_free_tree (parser, subq);
+      parser_free_tree (parser, corr_subq);
       goto error_exit;
     }
 
-  func->type_enum = PT_TYPE_INTEGER;
-  func->info.function.function_type = PT_COUNT_STAR;
+  expr->type_enum = PT_TYPE_INTEGER;
+  expr->info.function.arg_list = NULL;
+  expr->info.function.function_type = PT_COUNT_STAR;
 
-  corr_subq->info.query.q.select.list = func;
+  corr_subq->info.query.q.select.list = expr;
   corr_subq->info.query.q.select.from = parser_copy_tree (parser, info->into);
   corr_subq->info.query.q.select.where = parser_copy_tree_list (parser, info->search_cond);
-
   /* add class where part */
   if (info->insert.class_where)
     {
@@ -25177,12 +25175,17 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
   expr = parser_new_node (parser, PT_EXPR);
   if (expr == NULL)
     {
+      parser_free_tree (parser, subq);
+      parser_free_tree (parser, corr_subq);
       goto error_exit;
     }
 
   value = parser_new_node (parser, PT_VALUE);
   if (value == NULL)
     {
+      parser_free_tree (parser, subq);
+      parser_free_tree (parser, corr_subq);
+      parser_free_tree (parser, expr);
       goto error_exit;
     }
 
@@ -25199,6 +25202,8 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
       and_expr = parser_new_node (parser, PT_EXPR);
       if (and_expr == NULL)
 	{
+	  parser_free_tree (parser, subq);
+	  parser_free_tree (parser, expr);	/* corr_subq is now in this tree */
 	  goto error_exit;
 	}
 
@@ -25221,37 +25226,6 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
   return subq;
 
 error_exit:
-
-  if (subq)
-    {
-      parser_free_tree (parser, subq);
-    }
-
-  if (corr_subq)
-    {
-      parser_free_tree (parser, corr_subq);
-    }
-
-  if (func)
-    {
-      parser_free_tree (parser, func);
-    }
-
-  if (expr)
-    {
-      parser_free_tree (parser, expr);
-    }
-
-  if (and_expr)
-    {
-      parser_free_tree (parser, and_expr);
-    }
-
-  if (value)
-    {
-      parser_free_tree (parser, value);
-    }
-
   PT_INTERNAL_ERROR (parser, "allocate new node");
   return NULL;
 }

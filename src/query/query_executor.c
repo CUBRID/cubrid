@@ -6488,11 +6488,6 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}
     }
 
-  if (curr_spec->flags & ACCESS_SPEC_FLAG_AGG_OPTIMIZED)
-    {
-      s_id->scan_stats.agg_optimized_scan = true;
-    }
-
   switch (curr_spec->type)
     {
     case TARGET_CLASS:
@@ -7862,6 +7857,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 	  if (!is_scan_needed)
 	    {
+	      xasl->spec_list->s_id.scan_stats.agg_optimized_scan = true;
 	      return S_SUCCESS;
 	    }
 
