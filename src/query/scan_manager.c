@@ -7740,11 +7740,14 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 
       if (scan_id->type == S_HEAP_SCAN)
 	{
-	  json_object_set_new (scan_stats, "heap", scan);
-	}
-      else if (scan_id->scan_stats.agg_optimized_scan)
-	{
-	  json_object_set_new (scan_stats, "aggregate optimized,", scan);
+	  if (scan_id->scan_stats.agg_optimized_scan)
+	    {
+	      json_object_set_new (scan_stats, "aggregate optimized,", scan);
+	    }
+	  else
+	    {
+	      json_object_set_new (scan_stats, "heap", scan);
+	    }
 	}
       else
 	{
