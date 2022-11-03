@@ -56,24 +56,46 @@ namespace cublog
       {
 	const int64_t end_time_msec = util_get_time_as_ms_since_epoch ();
 	const int64_t time_diff_msec = end_time_msec - a_start_time_msec;
-	assert (time_diff_msec >= 0);
 
-	perfmon_set_stat (thread_p, PSTAT_REDO_REPL_DELAY, static_cast<int> (time_diff_msec), false);
-
-	if (prm_get_bool_value (PRM_ID_ER_LOG_CALC_REPL_DELAY))
+	// assert (time_diff_msec >= 0);
+	if (time_diff_msec > 0)
 	  {
-	    _er_log_debug (ARG_FILE_LINE, "[CALC_REPL_DELAY]: %9lld msec", time_diff_msec);
-	  }
+	    perfmon_set_stat (thread_p, PSTAT_REDO_REPL_DELAY, static_cast<int> (time_diff_msec), false);
 
-	return NO_ERROR;
+	    if (prm_get_bool_value (PRM_ID_ER_LOG_CALC_REPL_DELAY))
+	      {
+		_er_log_debug (ARG_FILE_LINE, "[CALC_REPL_DELAY]: %lld msec", time_diff_msec);
+	      }
+
+	    return NO_ERROR;
+	  }
+	else
+	  {
+	    // value can be negative when different servers in a scalability cluster are executed
+	    // on different machines;
+	    // even with NTP time synchronization, sub-second differences are still possible between
+	    // different machines; and, in low loads, log replication can be pretty beefy (ie: <100 msec),
+	    // therefore not offsetting sub-second differences between the machines' clocks;
+	    // to prevent bogus output in reporting, skip these negative values
+	    if (prm_get_bool_value (PRM_ID_ER_LOG_CALC_REPL_DELAY))
+	      {
+		_er_log_debug (ARG_FILE_LINE,
+			       "[REPL_DELAY_ERR]: negative delay: start = %lld, end = %lld, diff = %lld msec",
+			       a_start_time_msec, end_time_msec, time_diff_msec);
+	      }
+
+	    return ER_FAILED;
+	  }
       }
     else
       {
-	er_log_debug (ARG_FILE_LINE, "log_rpl_calculate_replication_delay: "
-		      "encountered negative start time value: %lld milliseconds",
-		      a_start_time_msec);
+	if (prm_get_bool_value (PRM_ID_ER_LOG_CALC_REPL_DELAY))
+	  {
+	    _er_log_debug (ARG_FILE_LINE,
+			   "[REPL_DELAY_ERR]: encountered negative start time value: %lld msec",
+			   a_start_time_msec);
+	  }
 	return ER_FAILED;
       }
   }
-
 }
