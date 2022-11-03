@@ -45,7 +45,7 @@ namespace cublog
       void complete_sub_mvcc (TRANID tranid);
 
     private:
-      void dump_map () const;
+      void dump () const;
 
     private:
       struct tran_mvccid_info

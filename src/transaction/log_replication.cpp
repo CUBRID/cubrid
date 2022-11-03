@@ -405,9 +405,9 @@ namespace cublog
 	// mvccid might be valid or not
 	if (MVCCID_IS_NORMAL (log_rec.mvcc_undo_info.mvcc_undo.mvccid))
 	  {
-	    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+	    if (prm_get_bool_value (PRM_ID_ER_LOG_MVCC_REPL_DEBUG))
 	      {
-		_er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] %s tranid=%d MVCCID=%llu parent_MVCCID=%llu\n",
+		_er_log_debug (ARG_FILE_LINE, "[REPL_MVCC] %s tranid=%d MVCCID=%llu parent_MVCCID=%llu\n",
 			       log_sysop_end_type_string (log_rec.type), (int)tranid,
 			       (unsigned long long)log_rec.mvcc_undo_info.mvcc_undo.mvccid,
 			       (unsigned long long)log_rec.mvcc_undo_info.parent_mvccid);
@@ -418,9 +418,9 @@ namespace cublog
       }
     else if (log_rec.type == LOG_SYSOP_END_COMMIT)
       {
-	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+	if (prm_get_bool_value (PRM_ID_ER_LOG_MVCC_REPL_DEBUG))
 	  {
-	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] %s tranid=%d\n",
+	    _er_log_debug (ARG_FILE_LINE, "[REPL_MVCC] %s tranid=%d\n",
 			   log_sysop_end_type_string (log_rec.type), tranid);
 	  }
 	// only complete sub-ids, if found
@@ -428,9 +428,9 @@ namespace cublog
       }
     else if (log_rec.type == LOG_SYSOP_END_ABORT)
       {
-	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+	if (prm_get_bool_value (PRM_ID_ER_LOG_MVCC_REPL_DEBUG))
 	  {
-	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] %s tranid=%d\n",
+	    _er_log_debug (ARG_FILE_LINE, "[REPL_MVCC] %s tranid=%d\n",
 			   log_sysop_end_type_string (log_rec.type), tranid);
 	  }
 	// only complete sub-ids, if found
@@ -439,9 +439,9 @@ namespace cublog
     else
       {
 	// nothing
-	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_REPL_DEBUG))
+	if (prm_get_bool_value (PRM_ID_ER_LOG_MVCC_REPL_DEBUG))
 	  {
-	    _er_log_debug (ARG_FILE_LINE, "[REPLICATOR_MVCC] %s tranid=%d not handled\n",
+	    _er_log_debug (ARG_FILE_LINE, "[REPL_MVCC] %s tranid=%d not handled\n",
 			   log_sysop_end_type_string (log_rec.type), tranid);
 	  }
       }
