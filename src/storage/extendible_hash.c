@@ -52,6 +52,7 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "thread_compat.hpp"
+#include "misc_string.h"
 
 #ifdef EHASH_DEBUG
 #define EHASH_BALANCE_FACTOR     4	/* Threshold rate of no. of directory pointers over no. of bucket pages. If
@@ -2259,8 +2260,8 @@ ehash_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p, DB_TYPE key_t
       else
 #endif
 	{
-	  // trailing space characters are already eliminated for the key */
-	  compare_result = strcmp ((char *) key_p, bucket_record_p);
+	  // TODO: just use strcmp()?: trailing space characters are already eliminated for the key */
+	  compare_result = ansisql_strcmp ((char *) key_p, bucket_record_p);
 	}
       break;
 
