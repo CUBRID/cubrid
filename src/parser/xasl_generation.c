@@ -12353,11 +12353,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      ACCESS_METHOD access_method = ACCESS_METHOD_SEQUENTIAL;
 
 	      /* determine access_method */
-	      if (plan && plan->plan_un.scan.scan_method == QO_SCANMETHOD_AGG_OPTIMIZED)
-		{
-		  access_method = ACCESS_METHOD_AGG_OPTIMIZED;
-		}
-	      else if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_RECORD_INFO_SCAN))
+	      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_RECORD_INFO_SCAN))
 		{
 		  access_method = ACCESS_METHOD_SEQUENTIAL_RECORD_INFO;
 		}
@@ -12679,6 +12675,11 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      if (spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_CLAUSE)
 		{
 		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_FOR_UPDATE);
+		}
+
+	      if (plan && plan->plan_un.scan.agg_optimized)
+		{
+		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_AGG_OPTIMIZED);
 		}
 
 	      access->next = access_list;
@@ -16230,7 +16231,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
       if (aggregate && aggregate->flag_agg_optimize == true)
 	{
-	  qo_plan->plan_un.scan.scan_method = QO_SCANMETHOD_AGG_OPTIMIZED;
+	  qo_plan->plan_un.scan.agg_optimized = true;
 	}
 
       /* compute function count */
@@ -16977,7 +16978,7 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   aggregate = pt_to_aggregate (parser, select_node, NULL, NULL, NULL, NULL, NULL, &buildvalue->grbynum_val);
   if (aggregate && aggregate->flag_agg_optimize == true)
     {
-      qo_plan->plan_un.scan.scan_method = QO_SCANMETHOD_AGG_OPTIMIZED;
+      qo_plan->plan_un.scan.agg_optimized = true;
     }
 
   /* the calls pt_to_out_list, pt_to_spec_list, and pt_to_if_pred, record information in the "symbol_info" structure

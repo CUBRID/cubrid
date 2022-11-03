@@ -698,7 +698,6 @@ typedef enum
   ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN,	/* sequential scan access that only scans pages without accessing record data */
   ACCESS_METHOD_INDEX_KEY_INFO,	/* indexed access to obtain key information */
   ACCESS_METHOD_INDEX_NODE_INFO,	/* indexed access to obtain b-tree node info */
-  ACCESS_METHOD_AGG_OPTIMIZED
 } ACCESS_METHOD;
 
 #define IS_ANY_INDEX_ACCESS(access_) \
@@ -716,7 +715,8 @@ typedef enum
 typedef enum
 {
   ACCESS_SPEC_FLAG_NONE = 0,
-  ACCESS_SPEC_FLAG_FOR_UPDATE = 0x01	/* used with FOR UPDATE clause. The spec that will be locked. */
+  ACCESS_SPEC_FLAG_FOR_UPDATE = 0x01,	/* used with FOR UPDATE clause. The spec that will be locked. */
+  ACCESS_SPEC_FLAG_AGG_OPTIMIZED = 0x02	/* used for aggregate function optimized */
 } ACCESS_SPEC_FLAG;
 
 struct cls_spec_node

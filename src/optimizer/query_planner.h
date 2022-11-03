@@ -57,8 +57,7 @@ typedef enum
   QO_SCANMETHOD_INDEX_SCAN,
   QO_SCANMETHOD_INDEX_ORDERBY_SCAN,
   QO_SCANMETHOD_INDEX_GROUPBY_SCAN,
-  QO_SCANMETHOD_INDEX_SCAN_INSPECT,
-  QO_SCANMETHOD_AGG_OPTIMIZED
+  QO_SCANMETHOD_INDEX_SCAN_INSPECT
 } QO_SCANMETHOD;
 
 typedef enum
@@ -154,6 +153,7 @@ struct qo_plan
       bool index_cover;		/* covered index scan flag */
       bool index_iss;		/* index skip scan flag */
       bool index_loose;		/* loose index scan flag */
+      bool agg_optimized;
       QO_NODE_INDEX_ENTRY *index;
       BITSET multi_col_range_segs;	/* range condition segs for multi_col_term */
       BITSET hash_terms;	/* hash_terms for hash list scan */

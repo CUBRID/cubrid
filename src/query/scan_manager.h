@@ -89,8 +89,7 @@ typedef enum
   S_HEAP_PAGE_SCAN,		/* scans heap pages and queries for page information */
   S_INDX_KEY_INFO_SCAN,		/* scans b-tree and queries for key info */
   S_INDX_NODE_INFO_SCAN,	/* scans b-tree nodes for info */
-  S_DBLINK_SCAN,		/* scans dblink */
-  S_AGG_OPTIMIZED
+  S_DBLINK_SCAN			/* scans dblink */
 } SCAN_TYPE;
 
 typedef struct dblink_scan_id DBLINK_SCAN_ID;
@@ -324,6 +323,7 @@ struct scan_stats
   bool multi_range_opt;
   bool index_skip_scan;
   bool loose_index_scan;
+  bool agg_optimized_scan;
 
   /* hash list scan */
   struct timeval elapsed_hash_build;

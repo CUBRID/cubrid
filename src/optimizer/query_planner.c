@@ -11567,11 +11567,14 @@ qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent)
   switch (plan->plan_un.scan.scan_method)
     {
     case QO_SCANMETHOD_SEQ_SCAN:
-      fprintf (fp, "TABLE SCAN (%s)", class_name);
-      break;
-
-    case QO_SCANMETHOD_AGG_OPTIMIZED:
-      fprintf (fp, "INDEX AGG OPTIMIZED (%s)", class_name);
+      if (plan->plan_un.scan.agg_optimized)
+	{
+	  fprintf (fp, "INDEX AGG OPTIMIZED (%s)", class_name);
+	}
+      else
+	{
+	  fprintf (fp, "TABLE SCAN (%s)", class_name);
+	}
       break;
 
     case QO_SCANMETHOD_INDEX_SCAN:

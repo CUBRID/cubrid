@@ -2815,7 +2815,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   DB_TYPE single_node_type = DB_TYPE_NULL;
 
   /* scan type is HEAP SCAN or HEAP SCAN RECORD INFO */
-  assert (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO || scan_type == S_AGG_OPTIMIZED);
+  assert (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO);
   scan_id->type = scan_type;
 
   /* initialize SCAN_ID structure */
@@ -4055,7 +4055,6 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
-    case S_AGG_OPTIMIZED:
       hsidp = &scan_id->s.hsid;
       UT_CAST_TO_NULL_HEAP_OID (&hsidp->hfid, &hsidp->curr_oid);
       if (!OID_IS_ROOTOID (&hsidp->cls_oid))
@@ -4351,7 +4350,6 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
   switch (s_id->type)
     {
     case S_HEAP_SCAN:
-    case S_AGG_OPTIMIZED:
       if (s_id->grouped)
 	{
 	  OID_SET_NULL (&s_id->s.hsid.curr_oid);
@@ -4494,7 +4492,6 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
     case S_HEAP_PAGE_SCAN:
-    case S_AGG_OPTIMIZED:
       if (s_id->grouped)
 	{
 	  /* grouped, fixed scan */
@@ -4648,7 +4645,6 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
-    case S_AGG_OPTIMIZED:
       hsidp = &scan_id->s.hsid;
 
       /* do not free attr_cache here. xs_clear_access_spec_list() will free attr_caches. */
@@ -4768,7 +4764,6 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_HEAP_PAGE_SCAN:
     case S_CLASS_ATTR_SCAN:
     case S_VALUES_SCAN:
-    case S_AGG_OPTIMIZED:
       break;
 
     case S_INDX_SCAN:
@@ -5061,7 +5056,6 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
-    case S_AGG_OPTIMIZED:
       status = scan_next_heap_scan (thread_p, scan_id);
       break;
 
@@ -5219,7 +5213,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  if (scan_id->direction == S_FORWARD)
 	    {
 	      /* move forward */
-	      if (scan_id->type == S_HEAP_SCAN || scan_id->type == S_AGG_OPTIMIZED)
+	      if (scan_id->type == S_HEAP_SCAN)
 		{
 		  sp_scan =
 		    heap_next (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes, &hsidp->scan_cache,
@@ -5236,7 +5230,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  else
 	    {
 	      /* move backward */
-	      if (scan_id->type == S_HEAP_SCAN || scan_id->type == S_AGG_OPTIMIZED)
+	      if (scan_id->type == S_HEAP_SCAN)
 		{
 		  sp_scan =
 		    heap_prev (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes, &hsidp->scan_cache,
@@ -7741,7 +7735,6 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
     {
     case S_HEAP_SCAN:
     case S_LIST_SCAN:
-    case S_AGG_OPTIMIZED:
       json_object_set_new (scan, "readrows", json_integer (scan_id->scan_stats.read_rows));
       json_object_set_new (scan, "rows", json_integer (scan_id->scan_stats.qualified_rows));
 
@@ -7749,7 +7742,7 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 	{
 	  json_object_set_new (scan_stats, "heap", scan);
 	}
-      else if (scan_id->type == S_AGG_OPTIMIZED)
+      else if (scan_id->scan_stats.agg_optimized_scan)
 	{
 	  json_object_set_new (scan_stats, "aggregate optimized,", scan);
 	}
@@ -7835,11 +7828,14 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
   switch (scan_id->type)
     {
     case S_HEAP_SCAN:
-      fprintf (fp, "(heap");
-      break;
-
-    case S_AGG_OPTIMIZED:
-      fprintf (fp, "(aggregate optimized,");
+      if (scan_id->scan_stats.agg_optimized_scan)
+	{
+	  fprintf (fp, "(aggregate optimized,");
+	}
+      else
+	{
+	  fprintf (fp, "(heap");
+	}
       break;
 
     case S_INDX_SCAN:
@@ -7898,7 +7894,6 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
     case S_LIST_SCAN:
-    case S_AGG_OPTIMIZED:
       fprintf (fp, ", readrows: %llu, rows: %llu)", (unsigned long long int) scan_id->scan_stats.read_rows,
 	       (unsigned long long int) scan_id->scan_stats.qualified_rows);
       break;

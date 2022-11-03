@@ -6488,6 +6488,11 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}
     }
 
+  if (curr_spec->flags & ACCESS_SPEC_FLAG_AGG_OPTIMIZED)
+    {
+      s_id->scan_stats.agg_optimized_scan = true;
+    }
+
   switch (curr_spec->type)
     {
     case TARGET_CLASS:
@@ -6495,12 +6500,6 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	{
 	  /* open a sequential heap file scan */
 	  scan_type = S_HEAP_SCAN;
-	  indx_info = NULL;
-	}
-      else if (curr_spec->access == ACCESS_METHOD_AGG_OPTIMIZED)
-	{
-	  /* set index scan optimized */
-	  scan_type = S_AGG_OPTIMIZED;
 	  indx_info = NULL;
 	}
       else if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
@@ -6537,7 +6536,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  return ER_QPROC_INVALID_XASLNODE;
 	}			/* if */
 
-      if (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO || scan_type == S_AGG_OPTIMIZED)
+      if (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO)
 	{
 	  error_code = scan_open_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
 					    curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
@@ -6798,8 +6797,7 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	{
 	case TARGET_CLASS:
 	  if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-	      || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN
-	      || curr_spec->access == ACCESS_METHOD_AGG_OPTIMIZED)
+	      || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
 	    {
 	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SSCANS);
 	    }

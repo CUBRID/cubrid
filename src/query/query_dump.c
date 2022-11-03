@@ -3122,7 +3122,7 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 	      er_clear ();
 	    }
 
-	  if (spec->access == ACCESS_METHOD_SEQUENTIAL || spec->access == ACCESS_METHOD_AGG_OPTIMIZED)
+	  if (spec->access == ACCESS_METHOD_SEQUENTIAL)
 	    {
 	      if (class_name != NULL)
 		{
