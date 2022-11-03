@@ -3781,7 +3781,7 @@ qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (PARSER_CONTEXT * 
   er_log_debug (ARG_FILE_LINE, "%s: check parent. (spec: %s)\n", __func__, pt_print_alias (parser, curr_pk_spec));
 
   /* PT_ALL is not supported. */
-  if (PT_SPEC_ONLY_ALL (curr_pk_spec) == PT_ALL)
+  if (PT_SPEC_IS_ALL (curr_pk_spec))
     {
       goto exit_on_fail_with_exclude;
     }
@@ -4007,7 +4007,7 @@ qo_check_foreign_keys_referencing_primary_key_in_child_spec (PARSER_CONTEXT * pa
   er_log_debug (ARG_FILE_LINE, "%s: check child. (spec: %s)\n", __func__, pt_print_alias (parser, curr_fk_spec));
 
   /* PT_ALL is not supported. */
-  if (PT_SPEC_ONLY_ALL (curr_fk_spec))
+  if (PT_SPEC_IS_ALL (curr_fk_spec))
     {
       goto exit_on_fail_with_exclude;
     }
