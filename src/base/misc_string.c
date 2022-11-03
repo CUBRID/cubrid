@@ -143,7 +143,7 @@ ustr_lower (char *s)
  *       with the blanks on the right, so that both strings have the
  *       same length.
  */
-static int
+int
 ansisql_strcasecmp (const char *s, const char *t)
 {
   size_t s_length, t_length, min_length;
@@ -213,7 +213,7 @@ ansisql_strcasecmp (const char *s, const char *t)
  *       with the blanks on the right, so that both strings have the
  *       same length.
  */
-static int
+int
 ansisql_strcmp (const char *s, const char *t)
 {
   for (; *s == *t; s++, t++)
