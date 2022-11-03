@@ -229,7 +229,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 
 return_phase:
 
-  return NULL;
+  exit (0);
 }
 
 /*
