@@ -124,3 +124,130 @@ ustr_lower (char *s)
     *t = tolower (*t);
   return s;
 }
+
+
+/* TODO: move to proper place */
+/*
+ * ansisql_strcasecmp - Case-insensitive string comparison according to ANSI SQL
+ *   return: an integer value which is less than zero
+ *           if s is lexicographically less than t,
+ *           equal to zero if s is equal to t,
+ *           and greater than zero if s is greater than zero.
+ *   s(in): first string to be compared
+ *   t(in): second string to be compared
+ *
+ * Note: The contents of the null-terminated string s are compared with
+ *       the contents of the null-terminated string t, using the ANSI
+ *       SQL semantics. That is, if the lengths of the strings are not
+ *       the same, the shorter string is considered to be extended
+ *       with the blanks on the right, so that both strings have the
+ *       same length.
+ */
+static int
+ansisql_strcasecmp (const char *s, const char *t)
+{
+  size_t s_length, t_length, min_length;
+  int cmp_val;
+
+  s_length = strlen (s);
+  t_length = strlen (t);
+
+  min_length = s_length < t_length ? s_length : t_length;
+
+  cmp_val = intl_identifier_ncasecmp (s, t, (int) min_length);
+
+  /* If not equal for shorter length, return */
+  if (cmp_val)
+    {
+      return cmp_val;
+    }
+
+  /* If equal and same size, return */
+  if (s_length == t_length)
+    {
+      return 0;
+    }
+
+  /* If equal for shorter length and not same size, look for trailing blanks */
+  s += min_length;
+  t += min_length;
+
+  if (*s == '\0')
+    {
+      while (*t != '\0')
+	{
+	  if (*t++ != ' ')
+	    {
+	      return -1;
+	    }
+	}
+      return 0;
+    }
+  else
+    {
+      while (*s != '\0')
+	{
+	  if (*s++ != ' ')
+	    {
+	      return 1;
+	    }
+	}
+      return 0;
+    }
+}
+
+/* TODO: move to proper place */
+/*
+ * ansisql_strcmp - String comparison according to ANSI SQL
+ *   return: an integer value which is less than zero
+ *           if s is lexicographically less than t,
+ *           equal to zero if s is equal to t,
+ *           and greater than zero if s is greater than zero.
+ *   s(in): first string to be compared
+ *   t(in): second string to be compared
+ *
+ * Note: The contents of the null-terminated string s are compared with
+ *       the contents of the null-terminated string t, using the ANSI
+ *       SQL semantics. That is, if the lengths of the strings are not
+ *       the same, the shorter string is considered to be extended
+ *       with the blanks on the right, so that both strings have the
+ *       same length.
+ */
+static int
+ansisql_strcmp (const char *s, const char *t)
+{
+  for (; *s == *t; s++, t++)
+    {
+      if (*s == '\0')
+	{
+	  return 0;
+	}
+    }
+
+  if (*s == '\0')
+    {
+      while (*t != '\0')
+	{
+	  if (*t++ != ' ')
+	    {
+	      return -1;
+	    }
+	}
+      return 0;
+    }
+  else if (*t == '\0')
+    {
+      while (*s != '\0')
+	{
+	  if (*s++ != ' ')
+	    {
+	      return 1;
+	    }
+	}
+      return 0;
+    }
+  else
+    {
+      return (*(unsigned const char *) s < *(unsigned const char *) t) ? -1 : 1;
+    }
+}

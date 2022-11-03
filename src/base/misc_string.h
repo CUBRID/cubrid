@@ -41,6 +41,9 @@ extern "C"
   extern char *ustr_upper (char *s);
   extern char *ustr_lower (char *s);
 
+  extern int ansisql_strcasecmp (const char *s, const char *t);
+  extern int ansisql_strcmp (const char *s, const char *t);
+
 #ifdef __cplusplus
 }
 #endif
