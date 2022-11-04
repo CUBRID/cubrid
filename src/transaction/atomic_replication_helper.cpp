@@ -539,7 +539,7 @@ namespace cublog
 
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 	  {
-	    dump ("sequence::can_purge - START");
+	    dump ("sequence::can_purge START");
 	  }
 
 	const atomic_log_entry_vector_type::const_iterator last_entry_it = m_log_vec.cend () - 1;
@@ -554,8 +554,7 @@ namespace cublog
 	    // scenario (3)
 	    // atomic replication sequence with an already executed postpone sequence that (maybe) contained
 	    // - itself - other atomic replication sequences)
-	    if (initial_log_vec_size == 3 && (LOG_SYSOP_START_POSTPONE == last_but_one_entry.m_rectype
-					      || LOG_SYSOP_END_LOGICAL_UNDO == last_but_one_entry.m_rectype))
+	    if (initial_log_vec_size == 3 && (LOG_SYSOP_START_POSTPONE == last_but_one_entry.m_rectype))
 	      {
 		const atomic_log_entry_vector_type::const_iterator last_last_but_one_entry_it
 		  = (last_but_one_entry_it - 1);
@@ -567,7 +566,7 @@ namespace cublog
 
 		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		      {
-			dump ("sequence::can_purge - after LOG_SYSOP_END - LOG_SYSOP_START_POSTPONE");
+			dump ("sequence::can_purge(2) after erase");
 		      }
 		    assert (m_log_vec.empty ());
 		  }
@@ -582,6 +581,11 @@ namespace cublog
 		  {
 		    // sysop end matches sysop atomic start; delete both start and end control log entries
 		    m_log_vec.erase (last_but_one_entry_it, m_log_vec.cend ());
+
+		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+		      {
+			dump ("sequence::can_purge(3) after erase");
+		      }
 		  }
 		else
 		  {
@@ -590,23 +594,70 @@ namespace cublog
 		    // there will, presumably, exist another log record to be processed that will
 		    // close the entire sequence (eg: LOG_END_ATOMIC_REPL)
 		    m_log_vec.erase (last_entry_it);
-		  }
 
-		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
-		  {
-		    dump ("sequence::can_purge - after LOG_SYSOP_END with non-null last_parent_lsa");
+		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+		      {
+			dump ("sequence::can_purge(4) after erase");
+		      }
 		  }
 	      }
 	    // isolated atomic sysop with null parent_lsa on the sysop end record
 	    // NOTE: potential inconsistent logging
-	    else if (LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa) && (initial_log_vec_size == 2)
+	    else if ((initial_log_vec_size == 2)
+		     && LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa)
 		     && LOG_SYSOP_ATOMIC_START == last_but_one_entry.m_rectype)
 	      {
 		m_log_vec.erase (last_but_one_entry_it, m_log_vec.cend ());
 
 		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
-		    dump ("sequence::can_purge - after LOG_SYSOP_END with null last_parent_lsa");
+		    dump ("sequence::can_purge(5) after erase");
+		  }
+	      }
+	    else if ((initial_log_vec_size >= 3)
+		     && LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa)
+		     && (LOG_SYSOP_END == last_but_one_entry.m_rectype)
+		     && LSA_ISNULL (&last_but_one_entry.m_sysop_end_last_parent_lsa))
+	      {
+		// search backwards until a LOG_SYSOP_ATOMIC_START is found
+		// skipping any log_sysop_commit found
+		// provide for known optiomization when adding consecutive LOG_SYSOP_ATOMIC_START is
+		// prohibited, and only the first one remains
+		bool only_sysop_end_found = true;
+		// iteration will actually check again the last but one, which should be a LOG_SYSOP_END and
+		// will be skipped
+		for (atomic_log_entry_vector_type::const_iterator search_backwards_it = (last_but_one_entry_it - 1)
+		     ; only_sysop_end_found; --search_backwards_it)
+		  {
+		    const atomic_log_entry &search_backwards_entry = *search_backwards_it;
+		    only_sysop_end_found = only_sysop_end_found
+					   && (LOG_SYSOP_END == search_backwards_entry.m_rectype
+					       || LOG_SYSOP_ATOMIC_START == search_backwards_entry.m_rectype);
+
+		    if (LOG_SYSOP_ATOMIC_START == search_backwards_entry.m_rectype && only_sysop_end_found)
+		      {
+			// remove all entries starting with LOG_SYSOP_ATOMIC_START, at least one more
+			// LOG_SYSOP_END and the final LOG_SYSOP_END
+			m_log_vec.erase (search_backwards_it, m_log_vec.cend ());
+
+			if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+			  {
+			    dump ("sequence::can_purge(6) after erase");
+			  }
+
+			break;
+		      }
+
+		    if (search_backwards_it == m_log_vec.cbegin () || !only_sysop_end_found)
+		      {
+			if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+			  {
+			    dump ("sequence::can_purge(7) error)");
+			  }
+
+			assert_release ("inconsistent atomic log sequence found" == nullptr);
+			break;
+		      }
 		  }
 	      }
 	  }
@@ -625,7 +676,7 @@ namespace cublog
 
 		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
-		    dump ("sequence::can_purge - after LOG_SYSOP_END - LOG_SYSOP_END_LOGICAL_RUN_POSTPONE");
+		    dump ("sequence::can_purge(8) after erase");
 		  }
 	      }
 	  }
@@ -643,7 +694,7 @@ namespace cublog
 
 		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
-		    dump ("sequence::can_purge - after LOG_SYSOP_END - LOG_SYSOP_END_LOGICAL_UNDO");
+		    dump ("sequence::can_purge(9) after erase");
 		  }
 	      }
 	  }
@@ -669,6 +720,12 @@ namespace cublog
 		  {
 		    // remove all entries between start atomic replication and the end
 		    m_log_vec.erase (search_entry_it, m_log_vec.cend ());
+
+		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+		      {
+			dump ("sequence::can_purge(10) after erase");
+		      }
+
 		    break;
 		  }
 
@@ -676,17 +733,12 @@ namespace cublog
 		  {
 		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		      {
-			dump ("sequence::can_purge - after failed LOG_END_ATOMIC_REPL");
+			dump ("sequence::can_purge(11) error");
 		      }
 
 		    assert_release ("inconsistent atomic log sequence found" == nullptr);
 		    break;
 		  }
-	      }
-
-	    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
-	      {
-		dump ("sequence::can_purge - after LOG_END_ATOMIC_REPL");
 	      }
 	  }
 
