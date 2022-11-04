@@ -1736,8 +1736,9 @@
 #define ER_UHOST_HOST_NAME_ALREADY_EXIST            -1357
 #define ER_UHOST_HOST_NAME_IP_ADDR_NOT_COMPLETE     -1358
 #define ER_UHOST_CANT_LOOKUP_INFO                   -1359
+#define ER_UHOST_ERROR                              -1360
 
-#define ER_LAST_ERROR                               -1360
+#define ER_LAST_ERROR                               -1361
 
 /*
  * CAUTION!

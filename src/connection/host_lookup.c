@@ -201,12 +201,14 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
     {
       if (inet_ntop (AF_INET, &addr_trans->sin_addr, addr_trans_ch_buf, sizeof (addr_trans_ch_buf)) == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  goto return_phase;
 	}
 
     }
 
-  /*Look up in the user_host_Map */
+  /* Look up in the user_host_Map */
+  /* The case which is looking up the IP addr and checking the hostname or IP addr in the hash map */
   if ((lookup_type == HOSTNAME_TO_IPADDR) && (user_host_Map.find (hostname) != user_host_Map.end ()))
     {
       hp = hostent_Cache[user_host_Map.find (hostname)->second];
@@ -215,12 +217,16 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
     {
       hp = hostent_Cache[user_host_Map.find (addr_trans_ch_buf)->second];
     }
+  /*Hostname and IP addr cannot be found */
   else
     {
       if (lookup_type == HOSTNAME_TO_IPADDR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_CANT_LOOKUP_INFO, 1, hostname);
-	  fprintf (stdout, "%s\n", er_msg ());
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_CANT_LOOKUP_INFO, 1, addr_trans_ch_buf);
 	}
       goto return_phase;
     }
@@ -229,6 +235,9 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 
 return_phase:
 
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_ERROR, 0);
+  fprintf (stdout, "%s\n", er_msg ());
+  fflush (stdout);
   exit (0);
 }
 
@@ -269,7 +278,6 @@ load_hosts_file ()
   if (fp == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, host_conf_file_full_path);
-      fprintf (stdout, "%s\n", er_msg ());
       goto load_fail_phase;
     }
 
@@ -299,7 +307,6 @@ load_hosts_file ()
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_INVALID_FORMAT, 4, "IP address", token, line_num,
 			  USER_HOSTS_FILE);
-		  fprintf (stdout, "%s\n", er_msg ());
 
 		  user_host_Map.clear ();
 		  fclose (fp);
@@ -319,7 +326,6 @@ load_hosts_file ()
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_TOO_LONG, 3, token, line_num,
 			  USER_HOSTS_FILE);
-		  fprintf (stdout, "%s\n", er_msg ());
 
 		  user_host_Map.clear ();
 		  fclose (fp);
@@ -329,7 +335,6 @@ load_hosts_file ()
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_INVALID_FORMAT, 4, "Hostname", token, line_num,
 			  USER_HOSTS_FILE);
-		  fprintf (stdout, "%s\n", er_msg ());
 
 		  user_host_Map.clear ();
 		  fclose (fp);
@@ -352,6 +357,7 @@ load_hosts_file ()
 	      user_host_Map[ipaddr] = cache_idx;
 	      if ((hostent_Cache[cache_idx] = hostent_alloc (ipaddr, hostname)) == NULL)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 		  user_host_Map.clear ();
 		  fclose (fp);
 		  goto load_fail_phase;
@@ -369,6 +375,7 @@ load_hosts_file ()
 
 	      if (inet_ntop (AF_INET, &addr_trans.s_addr, addr_trans_ch_buf, sizeof (addr_trans_ch_buf)) == NULL)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 		  user_host_Map.clear ();
 		  fclose (fp);
 		  goto load_fail_phase;
@@ -378,7 +385,6 @@ load_hosts_file ()
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_ALREADY_EXIST, 3, hostname, line_num,
 			  USER_HOSTS_FILE);
-		  fprintf (stdout, "%s\n", er_msg ());
 
 		  user_host_Map.clear ();
 		  fclose (fp);
@@ -391,7 +397,6 @@ load_hosts_file ()
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_IP_ADDR_NOT_COMPLETE, 2, line_num,
 		  USER_HOSTS_FILE);
-	  fprintf (stdout, "%s\n", er_msg ());
 
 	  user_host_Map.clear ();
 	  fclose (fp);
