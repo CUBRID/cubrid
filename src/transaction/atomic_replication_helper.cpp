@@ -554,7 +554,8 @@ namespace cublog
 	    // scenario (3)
 	    // atomic replication sequence with an already executed postpone sequence that (maybe) contained
 	    // - itself - other atomic replication sequences)
-	    if (initial_log_vec_size == 3 && LOG_SYSOP_START_POSTPONE == last_but_one_entry.m_rectype)
+	    if (initial_log_vec_size == 3 && (LOG_SYSOP_START_POSTPONE == last_but_one_entry.m_rectype
+					      || LOG_SYSOP_END_LOGICAL_UNDO == last_but_one_entry.m_rectype))
 	      {
 		const atomic_log_entry_vector_type::const_iterator last_last_but_one_entry_it
 		  = (last_but_one_entry_it - 1);
