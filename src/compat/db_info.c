@@ -2285,6 +2285,24 @@ db_get_loader_commands (DB_OBJECT * obj)
   return (commands);
 }
 
+const char *
+db_get_class_comment (DB_OBJECT * obj)
+{
+  SM_CLASS *class_;
+  const char *comment;
+
+  CHECK_CONNECT_NULL ();
+  CHECK_1ARG_NULL (obj);
+
+  comment = NULL;
+  if (au_fetch_class (obj, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
+    {
+      comment = class_->comment;
+    }
+
+  return comment;
+}
+
 /*
  * OBJLIST ACCESSORS
  */

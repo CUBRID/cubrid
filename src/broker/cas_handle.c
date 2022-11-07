@@ -420,39 +420,65 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
   FREE_MEM (srv_handle->sql_stmt);
   ux_prepare_call_info_free (srv_handle->prepare_call_info);
 
-  if (srv_handle->schema_type < 0 || srv_handle->schema_type == CCI_SCH_CLASS
-      || srv_handle->schema_type == CCI_SCH_VCLASS || srv_handle->schema_type == CCI_SCH_ATTRIBUTE
-      || srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE || srv_handle->schema_type == CCI_SCH_QUERY_SPEC
-      || srv_handle->schema_type == CCI_SCH_DIRECT_SUPER_CLASS || srv_handle->schema_type == CCI_SCH_PRIMARY_KEY)
+  switch (srv_handle->schema_type)
     {
-      hm_qresult_end (srv_handle, TRUE);
-      hm_session_free (srv_handle);
-    }
-  else if (srv_handle->schema_type == CCI_SCH_CLASS_PRIVILEGE || srv_handle->schema_type == CCI_SCH_ATTR_PRIVILEGE
-	   || srv_handle->schema_type == CCI_SCH_SUPERCLASS || srv_handle->schema_type == CCI_SCH_SUBCLASS)
-    {
-      FREE_MEM (srv_handle->session);
-      srv_handle->cur_result = NULL;
-    }
-  else if (srv_handle->schema_type == CCI_SCH_TRIGGER)
-    {
+    case CCI_SCH_CLASS:
+      /* fallthrough */
+    case CCI_SCH_VCLASS:
+      /* fallthrough */
+    case CCI_SCH_SUPERCLASS:
+      /* fallthrough */
+    case CCI_SCH_SUBCLASS:
+      /* fallthrough */
+    case CCI_SCH_TRIGGER:
       if (srv_handle->session)
 	{
 	  db_objlist_free ((DB_OBJLIST *) (srv_handle->session));
 	}
       srv_handle->cur_result = NULL;
-    }
-  else if (srv_handle->schema_type == CCI_SCH_IMPORTED_KEYS || srv_handle->schema_type == CCI_SCH_EXPORTED_KEYS
-	   || srv_handle->schema_type == CCI_SCH_CROSS_REFERENCE)
-    {
-      T_FK_INFO_RESULT *fk_res = (T_FK_INFO_RESULT *) srv_handle->session;
+      break;
 
-      if (fk_res != NULL)
-	{
-	  release_all_fk_info_results (fk_res);
-	  srv_handle->session = NULL;
-	}
+    case CCI_SCH_ATTRIBUTE:
+      /* fallthrough */
+    case CCI_SCH_CLASS_ATTRIBUTE:
+      /* fallthrough */
+    case CCI_SCH_QUERY_SPEC:
+      /* fallthrough */
+    case CCI_SCH_DIRECT_SUPER_CLASS:
+      /* fallthrough */
+    case CCI_SCH_PRIMARY_KEY:
+      hm_qresult_end (srv_handle, TRUE);
+      hm_session_free (srv_handle);
+      break;
+
+    case CCI_SCH_CLASS_PRIVILEGE:
+      /* fallthrough */
+    case CCI_SCH_ATTR_PRIVILEGE:
+      FREE_MEM (srv_handle->session);
       srv_handle->cur_result = NULL;
+      break;
+
+    case CCI_SCH_IMPORTED_KEYS:
+      /* fallthrough */
+    case CCI_SCH_EXPORTED_KEYS:
+      /* fallthrough */
+    case CCI_SCH_CROSS_REFERENCE:
+      {
+	T_FK_INFO_RESULT *fk_res = (T_FK_INFO_RESULT *) srv_handle->session;
+
+	if (fk_res != NULL)
+	  {
+	    release_all_fk_info_results (fk_res);
+	    srv_handle->session = NULL;
+	  }
+	srv_handle->cur_result = NULL;
+      }
+      break;
+
+    default:
+      hm_qresult_end (srv_handle, TRUE);
+      hm_session_free (srv_handle);
+      break;
     }
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 }

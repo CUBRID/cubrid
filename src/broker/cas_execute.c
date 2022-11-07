@@ -161,13 +161,6 @@ struct t_priv_table
   char grant;
 };
 
-typedef struct t_class_table T_CLASS_TABLE;
-struct t_class_table
-{
-  char *class_name;
-  short class_type;
-};
-
 typedef struct t_attr_table T_ATTR_TABLE;
 struct t_attr_table
 {
@@ -239,6 +232,7 @@ static int fetch_class (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_
 static int fetch_attribute (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_method (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_methfile (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
+static int fetch_superclass (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_constraint (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_trigger (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_privilege (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
@@ -285,14 +279,14 @@ static char *get_domain_str (DB_DOMAIN * domain);
 
 static DB_OBJECT *ux_str_to_obj (char *str);
 
-static int sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char flag, T_SRV_HANDLE *,
-			   T_BROKER_VERSION client_version);
+static int sch_class_info (T_NET_BUF * net_buf, char *class_name_or_pattern, char pattern_flag, char vclass_flag,
+			   T_SRV_HANDLE * srv_handle);
 static int sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char pattern_flag, char flag,
 			  T_SRV_HANDLE *);
 static int sch_queryspec (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE *);
 static void sch_method_info (T_NET_BUF * net_buf, char *class_name, char flag, void **result);
 static void sch_methfile_info (T_NET_BUF * net_buf, char *class_name, void **result);
-static int sch_superclass (T_NET_BUF * net_buf, char *class_name, char flag, T_SRV_HANDLE * srv_handle);
+static int sch_superclass (T_NET_BUF * net_buf, char *class_name, char superclass_flag, T_SRV_HANDLE * srv_handle);
 static void sch_constraint (T_NET_BUF * net_buf, char *class_name, void **result);
 static void sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result);
 static int sch_class_priv (T_NET_BUF * net_buf, char *class_name, char pat_flag, T_SRV_HANDLE * srv_handle);
@@ -302,7 +296,7 @@ static int sch_direct_super_class (T_NET_BUF * net_buf, char *class_name, int pa
 static int sch_imported_keys (T_NET_BUF * net_buf, char *class_name, void **result);
 static int sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, char *pktable_name,
 						 char *fktable_name, void **result);
-static int class_type (DB_OBJECT * class_obj);
+static int sch_class_type (DB_OBJECT * class_obj);
 static int class_attr_info (const char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char pat_flag,
 			    T_ATTR_TABLE * attr_table);
 static int set_priv_table (unsigned int class_priv, char *name, T_PRIV_TABLE * priv_table, int index);
@@ -405,16 +399,16 @@ static T_FETCH_FUNC fetch_func[] = {
 #else
 static T_FETCH_FUNC fetch_func[] = {
   fetch_result,			/* query */
-  fetch_result,			/* SCH_CLASS */
-  fetch_result,			/* SCH_VCLASS */
+  fetch_class,			/* SCH_CLASS */
+  fetch_class,			/* SCH_VCLASS */
   fetch_result,			/* SCH_QUERY_SPEC */
   fetch_attribute,		/* SCH_ATTRIBUTE */
   fetch_attribute,		/* SCH_CLASS_ATTRIBUTE */
   fetch_method,			/* SCH_METHOD */
   fetch_method,			/* SCH_CLASS_METHOD */
   fetch_methfile,		/* SCH_METHOD_FILE */
-  fetch_class,			/* SCH_SUPERCLASS */
-  fetch_class,			/* SCH_SUBCLASS */
+  fetch_superclass,		/* SCH_SUPERCLASS */
+  fetch_superclass,		/* SCH_SUBCLASS */
   fetch_constraint,		/* SCH_CONSTRAINT */
   fetch_trigger,		/* SCH_TRIGGER */
   fetch_privilege,		/* SCH_CLASS_PRIVILEGE */
@@ -3964,10 +3958,10 @@ ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * 
   switch (schema_type)
     {
     case CCI_SCH_CLASS:
-      err_code = sch_class_info (net_buf, arg1, flag, 0, srv_handle, client_version);
+      err_code = sch_class_info (net_buf, arg1, flag, 0, srv_handle);
       break;
     case CCI_SCH_VCLASS:
-      err_code = sch_class_info (net_buf, arg1, flag, 1, srv_handle, client_version);
+      err_code = sch_class_info (net_buf, arg1, flag, 1, srv_handle);
       break;
     case CCI_SCH_QUERY_SPEC:
       err_code = sch_queryspec (net_buf, arg1, srv_handle);
@@ -6205,23 +6199,22 @@ static int
 fetch_class (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
 	     T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
-  T_OBJECT dummy_obj;
-  int tuple_num, tuple_num_msg_offset;
-  int i;
-  int num_result;
-  T_CLASS_TABLE *class_table;
-  char fetch_end_flag = 0;
   T_BROKER_VERSION client_version = req_info->client_version;
+  T_OBJECT dummy_obj = OID_INITIALIZER;
+  DB_OBJLIST *result_class_obj_list = NULL, *curr_class_obj_list = NULL;
+  DB_OBJECT *curr_class_obj = NULL;
+  int num_result = 0;
+  int tuple_num = 0, tuple_num_msg_offset = 0;
+  int i = 0;
+  char fetch_end_flag = 0;
 
-  class_table = (T_CLASS_TABLE *) (srv_handle->session);
-  if (class_table == NULL)
+  result_class_obj_list = (DB_OBJLIST *) (srv_handle->session);
+  if (result_class_obj_list == NULL)
     {
       return ERROR_INFO_SET (CAS_ER_NO_MORE_DATA, CAS_ERROR_INDICATOR);
     }
+
   num_result = srv_handle->sch_tuple_num;
-
-  memset (&dummy_obj, 0, sizeof (T_OBJECT));
-
   if (num_result < cursor_pos)
     {
       return ERROR_INFO_SET (CAS_ER_NO_MORE_DATA, CAS_ERROR_INDICATOR);
@@ -6229,19 +6222,39 @@ fetch_class (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fe
 
   tuple_num = 0;
   net_buf_cp_int (net_buf, tuple_num, &tuple_num_msg_offset);
-  for (i = 0; (i < fetch_count) && (cursor_pos <= num_result); i++)
+
+  for (i = 0, curr_class_obj_list = result_class_obj_list;
+       (i < fetch_count) && (cursor_pos <= num_result) && (curr_class_obj_list != NULL);
+       i++, curr_class_obj_list = curr_class_obj_list->next)
     {
-      char *p;
+      const char *class_name = NULL;
+      short class_type = 0;
+      const char *comment = NULL;
 
       net_buf_cp_int (net_buf, cursor_pos, NULL);
       net_buf_cp_object (net_buf, &dummy_obj);
 
+      curr_class_obj = curr_class_obj_list->op;
+
       /* 1. name */
-      p = class_table[cursor_pos - 1].class_name;
-      add_res_data_string (net_buf, p, strlen (p), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
+      class_name = db_get_class_name (curr_class_obj);
+      assert (class_name != NULL);
+      add_res_data_string (net_buf, class_name, strlen (class_name), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       /* 2. type */
-      add_res_data_short (net_buf, class_table[cursor_pos - 1].class_type, 0, NULL);
+      class_type = sch_class_type (curr_class_obj);
+      add_res_data_short (net_buf, class_type, 0, NULL);
+
+      /* 3. remarks */
+      comment = db_get_class_comment (curr_class_obj);
+      if (comment != NULL)
+	{
+	  add_res_data_string (net_buf, comment, strlen (comment), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
+	}
+      else
+	{
+	  add_res_data_string (net_buf, "", 0, 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
+	}
 
       tuple_num++;
       cursor_pos++;
@@ -6259,7 +6272,7 @@ fetch_class (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fe
 
   net_buf_overwrite_int (net_buf, tuple_num_msg_offset, tuple_num);
 
-  return 0;
+  return NO_ERROR;
 }
 
 static int
@@ -6644,6 +6657,73 @@ fetch_methfile (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char
   srv_handle->cursor_pos = cursor_pos;
 
   return 0;
+}
+
+static int
+fetch_superclass (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
+		  T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  T_BROKER_VERSION client_version = req_info->client_version;
+  T_OBJECT dummy_obj = OID_INITIALIZER;
+  DB_OBJLIST *class_obj_list = NULL, *curr_class_obj = NULL;
+  DB_OBJECT *class_obj = NULL;
+  int num_result = 0;
+  int tuple_num = 0, tuple_num_msg_offset = 0;
+  int i = 0;
+  const char *class_name = NULL;
+  short class_type = 0;
+  const char *comment = NULL;
+  char fetch_end_flag = 0;
+
+  class_obj_list = (DB_OBJLIST *) (srv_handle->session);
+  if (class_obj_list == NULL)
+    {
+      return ERROR_INFO_SET (CAS_ER_NO_MORE_DATA, CAS_ERROR_INDICATOR);
+    }
+
+  num_result = srv_handle->sch_tuple_num;
+  if (num_result < cursor_pos)
+    {
+      return ERROR_INFO_SET (CAS_ER_NO_MORE_DATA, CAS_ERROR_INDICATOR);
+    }
+
+  tuple_num = 0;
+  net_buf_cp_int (net_buf, tuple_num, &tuple_num_msg_offset);
+
+  for (i = 0, curr_class_obj = class_obj_list;
+       (i < fetch_count) && (cursor_pos <= num_result) && (curr_class_obj != NULL);
+       i++, curr_class_obj = curr_class_obj->next)
+    {
+      net_buf_cp_int (net_buf, cursor_pos, NULL);
+      net_buf_cp_object (net_buf, &dummy_obj);
+
+      class_obj = curr_class_obj->op;
+
+      /* 1. name */
+      class_name = db_get_class_name (class_obj);
+      add_res_data_string (net_buf, class_name, strlen (class_name), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
+
+      /* 2. type */
+      class_type = sch_class_type (class_obj);
+      add_res_data_short (net_buf, class_type, 0, NULL);
+
+      tuple_num++;
+      cursor_pos++;
+    }
+
+  if (cursor_pos > num_result)
+    {
+      fetch_end_flag = 1;
+    }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      net_buf_cp_byte (net_buf, fetch_end_flag);
+    }
+
+  net_buf_overwrite_int (net_buf, tuple_num_msg_offset, tuple_num);
+
+  return NO_ERROR;
 }
 
 static int
@@ -8323,95 +8403,143 @@ ux_str_to_obj (char *str)
 }
 
 static int
-sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v_class_flag, T_SRV_HANDLE * srv_handle,
-		T_BROKER_VERSION client_version)
+sch_class_info (T_NET_BUF * net_buf, char *class_name_or_pattern, char pattern_flag, char vclass_flag,
+		T_SRV_HANDLE * srv_handle)
 {
-  char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
-  int avail_size = sizeof (sql_stmt) - 1;
-  int num_result;
-  char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
-  char *class_name_only = NULL;
+  DB_OBJLIST *result_class_obj_list = NULL;
+  DB_VALUE lower_pattren_val;
+  int num_result = 0;
+  int error = NO_ERROR;
 
-  ut_tolower (class_name);
-
-  if (class_name)
+  if (class_name_or_pattern == NULL || class_name_or_pattern[0] == '\0')
     {
-      char *dot = NULL;
-      int len = 0;
-
-      class_name_only = class_name;
-      dot = strchr (class_name, '.');
-      if (dot)
-	{
-	  len = STATIC_CAST (int, dot - class_name);
-	  /* If the length is not correct, the username is invalid, so compare the entire class_name. */
-	  if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
-	    {
-	      memcpy (schema_name, class_name, len);
-	      schema_name[len] = '\0';
-	      class_name_only = dot + 1;
-	    }
-	}
-    }
-
-  // *INDENT-OFF*
-  STRING_APPEND (sql_p, avail_size,
-	"SELECT "
-	  "CASE "
-	    "WHEN is_system_class = 'NO' THEN LOWER (owner_name) || '.' || class_name "
-	    "ELSE class_name "
-	    "END AS unique_name, "
-	  "CAST ( "
-	      "CASE "
-		"WHEN is_system_class = 'YES' THEN 0 "
-		"WHEN class_type = 'CLASS' THEN 2 "
-		"ELSE 1 "
-		"END "
-	      "AS SHORT "
-	    "), "
-	  "comment "
-	"FROM "
-	  "db_class "
-	"WHERE 1 = 1 ");
-  // *INDENT-ON*
-
-  if (v_class_flag)
-    {
-      STRING_APPEND (sql_p, avail_size, "AND class_type = 'VCLASS' ");
+      goto exit;
     }
 
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
-      if (class_name_only)
+      DB_OBJLIST *all_class_obj_list = NULL, *curr_class_obj_list = NULL;
+      char *escape_char = get_backslash_escape_string ();
+      int escape_size = strlen (escape_char);
+      DB_VALUE pattren_val;
+      DB_VALUE escape_val;
+
+      db_make_string (&pattren_val, class_name_or_pattern);
+      error = db_string_lower (&pattren_val, &lower_pattren_val);
+      if (error != NO_ERROR)
 	{
-	  STRING_APPEND (sql_p, avail_size, "AND class_name LIKE '%s' ESCAPE '%s' ", class_name_only,
-			 get_backslash_escape_string ());
+	  goto exit;
+	}
+
+      db_make_char (&escape_val, escape_size, escape_char, escape_size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+
+      all_class_obj_list = db_get_all_classes ();
+      for (curr_class_obj_list = all_class_obj_list; curr_class_obj_list != NULL;
+	   curr_class_obj_list = curr_class_obj_list->next)
+	{
+	  DB_OBJECT *curr_class_obj = curr_class_obj_list->op;
+	  const char *class_name = NULL;
+	  const char *dot = NULL;
+	  DB_VALUE class_name_val;
+	  int match = 0;
+
+	  error = NO_ERROR;
+
+	  if (vclass_flag > 0 && db_is_vclass (curr_class_obj) == 0)
+	    {
+	      continue;
+	    }
+
+	  error = db_check_authorization (curr_class_obj, DB_AUTH_SELECT);
+	  if (error != NO_ERROR)
+	    {
+	      continue;
+	    }
+
+	  if (db_is_system_class (curr_class_obj) > 0)
+	    {
+	      class_name = db_get_class_name (curr_class_obj);
+	    }
+	  else
+	    {
+	      class_name = db_get_class_name (curr_class_obj);
+	      dot = strchr (class_name, '.');
+	      class_name = dot ? dot + 1 : class_name;
+	    }
+
+	  db_make_string (&class_name_val, class_name);
+
+	  error = db_string_like (&class_name_val, &lower_pattren_val, &escape_val, &match);
+	  if (error != NO_ERROR)
+	    {
+	      continue;
+	    }
+	  if (match != V_TRUE)
+	    {
+	      continue;
+	    }
+
+	  error = ml_ext_add (&result_class_obj_list, curr_class_obj, NULL);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto cleanup_on_error;
+	    }
+
+	  num_result++;
 	}
     }
   else
     {
-      if (class_name_only == NULL)
+      DB_OBJECT *class_obj = NULL;
+
+      class_obj = db_find_class (class_name_or_pattern);
+      if (class_obj == NULL)
 	{
-	  class_name_only = CONST_CAST (char *, "");
+	  goto exit;
 	}
-      STRING_APPEND (sql_p, avail_size, "AND class_name = '%s' ", class_name_only);
+
+      if (vclass_flag > 0 && db_is_vclass (class_obj) == 0)
+	{
+	  goto exit;
+	}
+
+      error = ml_ext_add (&result_class_obj_list, class_obj, NULL);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto cleanup_on_error;
+	}
+
+      num_result++;
     }
 
-  if (*schema_name)
-    {
-      STRING_APPEND (sql_p, avail_size, "AND owner_name = UPPER ('%s') ", schema_name);
-    }
-
-  num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
-  if (num_result < 0)
-    {
-      return num_result;
-    }
+  db_value_clear (&lower_pattren_val);
 
   net_buf_cp_int (net_buf, num_result, NULL);
   schema_table_meta (net_buf);
 
-  return 0;
+  srv_handle->session = (void *) result_class_obj_list;
+  srv_handle->sch_tuple_num = num_result;
+
+  return NO_ERROR;
+
+cleanup_on_error:
+  db_value_clear (&lower_pattren_val);
+
+  if (result_class_obj_list)
+    {
+      ml_ext_free (result_class_obj_list);
+    }
+
+exit:
+  net_buf_cp_int (net_buf, 0, NULL);
+  schema_table_meta (net_buf);
+
+  srv_handle->session = NULL;
+  srv_handle->sch_tuple_num = 0;
+
+  return error;
 }
 
 static int
@@ -8633,62 +8761,61 @@ sch_methfile_info (T_NET_BUF * net_buf, char *class_name, void **result)
 }
 
 static int
-sch_superclass (T_NET_BUF * net_buf, char *class_name, char flag, T_SRV_HANDLE * srv_handle)
+sch_superclass (T_NET_BUF * net_buf, char *class_name, char superclass_flag, T_SRV_HANDLE * srv_handle)
 {
-  DB_OBJECT *class_obj;
-  DB_OBJLIST *obj_list, *obj_tmp;
-  int num_obj;
-  T_CLASS_TABLE *class_table = NULL;
-  int alloc_table_size = 0;
-  int cls_type;
+  DB_OBJLIST *super_sub_class_obj_list = NULL, *curr_class_obj_list = NULL;
+  DB_OBJECT *class_obj = NULL;
+  int num_result = 0;
+  int error = NO_ERROR;
+
+  if (class_name == NULL || class_name[0] == '\0')
+    {
+      goto exit;
+    }
 
   class_obj = db_find_class (class_name);
-  if (flag)
+  if (class_obj == NULL)
     {
-      obj_list = db_get_superclasses (class_obj);
+      goto exit;
+    }
+
+  if (superclass_flag)
+    {
+      super_sub_class_obj_list = db_get_superclasses (class_obj);
     }
   else
     {
-      obj_list = db_get_subclasses (class_obj);
+      super_sub_class_obj_list = db_get_subclasses (class_obj);
     }
 
-  num_obj = 0;
-  for (obj_tmp = obj_list; obj_tmp; obj_tmp = obj_tmp->next)
+  if (super_sub_class_obj_list == NULL)
     {
-      char *p;
-
-      if (num_obj + 1 > alloc_table_size)
-	{
-	  alloc_table_size += 10;
-	  class_table = (T_CLASS_TABLE *) REALLOC (class_table, sizeof (T_CLASS_TABLE) * alloc_table_size);
-	  if (class_table == NULL)
-	    {
-	      db_objlist_free (obj_list);
-	      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-	    }
-	}
-
-      p = (char *) db_get_class_name (obj_tmp->op);
-
-      class_table[num_obj].class_name = p;
-      cls_type = class_type (obj_tmp->op);
-      if (cls_type < 0)
-	{
-	  db_objlist_free (obj_list);
-	  return cls_type;
-	}
-      class_table[num_obj].class_type = cls_type;
-
-      num_obj++;
+      goto exit;
     }
-  db_objlist_free (obj_list);
 
-  net_buf_cp_int (net_buf, num_obj, NULL);
+  for (curr_class_obj_list = super_sub_class_obj_list; curr_class_obj_list != NULL;
+       curr_class_obj_list = curr_class_obj_list->next)
+    {
+
+      num_result++;
+    }
+
+  net_buf_cp_int (net_buf, num_result, NULL);
   schema_superclasss_meta (net_buf);
 
-  srv_handle->session = (void *) class_table;
-  srv_handle->sch_tuple_num = num_obj;
-  return 0;
+  srv_handle->session = (void *) super_sub_class_obj_list;
+  srv_handle->sch_tuple_num = num_result;
+
+  return NO_ERROR;
+
+exit:
+  net_buf_cp_int (net_buf, 0, NULL);
+  schema_table_meta (net_buf);
+
+  srv_handle->session = NULL;
+  srv_handle->sch_tuple_num = 0;
+
+  return error;
 }
 
 static void
@@ -9083,7 +9210,7 @@ attr_priv_finale:
 }
 
 static int
-class_type (DB_OBJECT * class_obj)
+sch_class_type (DB_OBJECT * class_obj)
 {
   int error = db_is_system_class (class_obj);
 

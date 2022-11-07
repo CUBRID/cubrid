@@ -307,6 +307,7 @@ extern "C"
   extern DB_RESOLUTION *db_get_class_resolutions (DB_OBJECT * obj);
   extern DB_METHFILE *db_get_method_files (DB_OBJECT * obj);
   extern const char *db_get_loader_commands (DB_OBJECT * obj);
+  extern const char *db_get_class_comment (DB_OBJECT * obj);
 
   extern DB_TYPE db_attribute_type (DB_ATTRIBUTE * attribute);
   extern DB_ATTRIBUTE *db_attribute_next (DB_ATTRIBUTE * attribute);
