@@ -174,8 +174,6 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
   static struct hostent *hp;
 
   char addr_trans_ch_buf[IPADDR_LEN];
-  char hostname_buf[HOSTNAME_LEN];
-  char ipaddr_buf[IPADDR_LEN];
   struct sockaddr_in *addr_trans = NULL;
 
   if (hosts_conf_file_Load == LOAD_INIT)
@@ -350,7 +348,7 @@ load_hosts_file ()
 
       if (hostname[0] && ipaddr[0])
 	{
-	  /*not duplicated hostname */
+	  /*not duplicated hostname, IP address or not duplicated hostname and duplicated IP address */
 	  if ((user_host_Map.find (hostname) == user_host_Map.end ()))
 	    {
 	      user_host_Map[hostname] = cache_idx;
@@ -430,8 +428,7 @@ ip_format_check (char *ip_addr)
 
   if ((token = strtok_r (ip_addr, delim, &save_ptr_strtok)) == NULL)
     {
-      ret = false;
-      goto return_phase;
+      goto err_phase;
     }
 
   do
@@ -439,18 +436,15 @@ ip_format_check (char *ip_addr)
       dec_val = atoi (token);
       if (dec_val < 0 || dec_val > 255)
 	{
-	  ret = false;
-	  break;
+	  goto err_phase;
 	}
       else if (dec_val == 0 && token[0] != '0')
 	{
-	  ret = false;
-	  break;
+	  goto err_phase;
 	}
       else if (dec_val != 0 && (NUM_DIGIT (dec_val) != strlen (token)))
 	{
-	  ret = false;
-	  break;
+	  goto err_phase;
 	}
       else
 	{
@@ -460,13 +454,14 @@ ip_format_check (char *ip_addr)
   while (token = strtok_r (NULL, delim, &save_ptr_strtok));
   if (dot != NUM_IPADDR_DOT)
     {
-      ret = false;
+      goto err_phase;
     }
 
   return ret;
 
-return_phase:
+err_phase:
 
+  ret = false;
   return ret;
 }
 
