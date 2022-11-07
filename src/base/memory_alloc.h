@@ -75,14 +75,6 @@ extern void db_scramble (void *region, int size);
             (ptr) = NULL; \
           } \
         } while (0)
-
-#define db_ws_free_and_init(ptr) \
-        do { \
-          if ((ptr)) { \
-            db_ws_free((ptr)); \
-            (ptr) = NULL; \
-          } \
-        } while (0)
 #else /* NDEBUG */
 #define db_private_free_and_init(thrd, ptr) \
         do { \
@@ -101,13 +93,12 @@ extern void db_scramble (void *region, int size);
           os_free((ptr)); \
           (ptr) = NULL; \
         } while (0)
-
+#endif /* NDEBUG */
 #define db_ws_free_and_init(ptr) \
         do { \
           db_ws_free((ptr)); \
           (ptr) = NULL; \
         } while (0)
-#endif /* NDEBUG */
 
 #if !defined (SERVER_MODE)
 
