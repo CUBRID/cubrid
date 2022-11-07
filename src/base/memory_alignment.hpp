@@ -40,11 +40,7 @@
 #define LONG_ALIGNMENT          sizeof(long)
 #define FLOAT_ALIGNMENT         sizeof(float)
 #define DOUBLE_ALIGNMENT        sizeof(double)
-#if __WORDSIZE == 32
-#define PTR_ALIGNMENT		4
-#else
-#define PTR_ALIGNMENT		8
-#endif
+#define PTR_ALIGNMENT           sizeof(void*)
 #define MAX_ALIGNMENT           DOUBLE_ALIGNMENT
 
 #if defined(NDEBUG)
@@ -79,25 +75,25 @@
 inline int
 db_alignment (int n)
 {
-  if (n >= (int) sizeof (double))
+  if (n >= DOUBLE_ALIGNMENT)
     {
-      return (int) sizeof (double);
+      return DOUBLE_ALIGNMENT;
     }
-  else if (n >= (int) sizeof (void *))
+  else if (n >= PTR_ALIGNMENT)
     {
-      return (int) sizeof (void *);
+      return PTR_ALIGNMENT;
     }
-  else if (n >= (int) sizeof (int))
+  else if (n >= INT_ALIGNMENT)
     {
-      return (int) sizeof (int);
+      return INT_ALIGNMENT;
     }
-  else if (n >= (int) sizeof (short))
+  else if (n >= SHORT_ALIGNMENT)
     {
-      return (int) sizeof (short);
+      return SHORT_ALIGNMENT;
     }
   else
     {
-      return 1;
+      return CHAR_ALIGNMENT;
     }
 }
 
