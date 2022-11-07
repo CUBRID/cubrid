@@ -49,25 +49,28 @@ namespace cublog
    * - control log records are also added to the atomic sequence as atomic log entries
    *    and they help in deciding for more advanced scenarios (and provide for future extensions)
    * - in-between control records are the proper log records
-   * - a new new control record is added to the sequence, all proper log records are applied and
+   * - a new control record is added to the sequence, all proper log records are applied and
    *    the page handles are released (the bookkeeping implementation takes care of this)
    *
    * The following cases are covered by the implementation:
    *
-   * 1. use transaction explicit atomic sequences
+   * (1)
+   *    user transaction, explicit atomic sequences
    *
    *    LOG_START_ATOMIC_REPL
    *        (undo|redo|undoredo|..)+
    *    LOG_END_ATOMIC_REPL
    *
-   * 2. standalone sysop atomic sequences whose ending condition is based on the sysop end's
+   * (2)
+   *    standalone sysop atomic sequences whose ending condition is based on the sysop end's
    *    last parent LSA
    *
    *    LOG_SYSOP_ATOMIC_START
    *        (undo|redo|undoredo|..)+
    *    LOG_SYSOP_END with LOG_SYSOP_END_COMMIT
    *
-   * 3. vacuum generated atomic sysops with nested postpone logical operations which, themselves,
+   * (3)
+   *    vacuum generated atomic sysops with nested postpone logical operations which, themselves,
    *    can contain atomic operations; these have the following layout:
    *
    *    LOG_SYSOP_ATOMIC_START
@@ -89,7 +92,8 @@ namespace cublog
    *        LOG_SYSOP_END with LOG_SYSOP_END_LOGICAL_RUN_POSTPONE
    *    LOG_SYSOP_END with LOG_SYSOP_END_COMMIT
    *
-   * 4. use transaction explicit atomic sequence "hosting" one or more sysop's; the first
+   * (4)
+   *    use transaction explicit atomic sequence "hosting" one or more sysop's; the first
    *    LOG_SYSOP_ATOMIC_START is actually two LOG_SYSOP_ATOMIC_START but there is an optimization
    *    in place to not add two consecutive log records of this type; special handling is
    *    implemented for this case
@@ -118,7 +122,7 @@ namespace cublog
 
       // add a new log record as part of an already existing atomic replication
       // sequence (be it sysop or non-sysop)
-      int append_log (THREAD_ENTRY *thread_p, TRANID tranid, LOG_LSA record_lsa,
+      int append_log (THREAD_ENTRY *thread_p, TRANID tranid, LOG_LSA lsa,
 		      LOG_RCVINDEX rcvindex, VPID vpid);
 
       bool is_part_of_atomic_replication (TRANID tranid) const;
@@ -161,7 +165,7 @@ namespace cublog
 	  // upon constructing a sequence
 	  void initialize (TRANID trid, LOG_LSA start_lsa);
 
-	  int append_log (THREAD_ENTRY *thread_p, LOG_LSA record_lsa, LOG_RCVINDEX rcvindex, VPID vpid);
+	  int append_log (THREAD_ENTRY *thread_p, LOG_LSA lsa, LOG_RCVINDEX rcvindex, VPID vpid);
 
 	  void apply_and_unfix (THREAD_ENTRY *thread_p);
 
@@ -199,14 +203,14 @@ namespace cublog
 	    void apply_log_by_type (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
 				    LOG_RECTYPE rectype) const;
 
-	    bool is_control () const;
+	    inline bool is_control () const;
 
 	    void dump_to_buffer (char *&buf_ptr, int &buf_len) const;
 
 	    VPID m_vpid;
 	    LOG_RECTYPE m_rectype;
-	    LOG_LSA m_record_lsa;
-	    LOG_RCVINDEX m_record_index;
+	    LOG_LSA m_lsa;
+	    LOG_RCVINDEX m_rcvindex;
 
 	    // only meaningful when dealing with a sysop end log record
 	    LOG_SYSOP_END_TYPE m_sysop_end_type;
@@ -232,7 +236,7 @@ namespace cublog
 	    ~page_ptr_info ();
 
 	    VPID m_vpid = VPID_INITIALIZER;
-	    LOG_RCVINDEX m_rcv_index = RV_NOT_DEFINED;
+	    LOG_RCVINDEX m_rcvindex = RV_NOT_DEFINED;
 	    PAGE_PTR m_page_p = nullptr;
 	    page_ptr_watcher_uptr_type m_watcher_p;
 	    int m_ref_count = -1;
@@ -261,7 +265,7 @@ namespace cublog
 	    page_ptr_bookkeeping &operator= (const page_ptr_bookkeeping &) = delete;
 	    page_ptr_bookkeeping &operator= (page_ptr_bookkeeping &&) = delete;
 
-	    int fix_page (THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcv_index, PAGE_PTR &page_ptr_out);
+	    int fix_page (THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcvindex, PAGE_PTR &page_ptr_out);
 	    int unfix_page (THREAD_ENTRY *thread_p, VPID vpid);
 
 #ifdef ATOMIC_REPL_PAGE_PTR_BOOKKEEPING_DUMP
@@ -307,13 +311,17 @@ namespace cublog
 #endif
   };
 
-  int pgbuf_fix_or_ordered_fix (THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcv_index,
+  /*********************************************************************************************************
+   * standalone functions declarations
+   *********************************************************************************************************/
+
+  int pgbuf_fix_or_ordered_fix (THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcvindex,
 				std::unique_ptr<PGBUF_WATCHER> &watcher_uptr, PAGE_PTR &page_ptr);
-  void pgbuf_unfix_or_ordered_unfix (THREAD_ENTRY *thread_p, LOG_RCVINDEX rcv_index,
+  void pgbuf_unfix_or_ordered_unfix (THREAD_ENTRY *thread_p, LOG_RCVINDEX rcvindex,
 				     std::unique_ptr<PGBUF_WATCHER> &watcher_uptr, PAGE_PTR &page_ptr);
 
   /*********************************************************************************************************
-   * template functions implementations
+   * template/inline implementations
    *********************************************************************************************************/
 
   template <typename T>
@@ -326,13 +334,23 @@ namespace cublog
     rcv.pgptr = m_page_ptr;
 
     redo_context.m_reader.advance_when_does_not_fit (sizeof (T));
-    const log_rv_redo_rec_info<T> record_info (m_record_lsa, rectype,
+    const log_rv_redo_rec_info<T> record_info (m_lsa, rectype,
 	redo_context.m_reader.reinterpret_copy_and_add_align<T> ());
     if (log_rv_check_redo_is_needed (rcv.pgptr, record_info.m_start_lsa, redo_context.m_end_redo_lsa))
       {
-	rcv.reference_lsa = m_record_lsa;
+	rcv.reference_lsa = m_lsa;
 	log_rv_redo_record_sync_apply (thread_p, redo_context, record_info, m_vpid, rcv);
       }
+  }
+
+  inline bool
+  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::is_control () const
+  {
+    return (m_rectype == LOG_START_ATOMIC_REPL ||
+	    m_rectype == LOG_END_ATOMIC_REPL ||
+	    m_rectype == LOG_SYSOP_ATOMIC_START ||
+	    m_rectype == LOG_SYSOP_END ||
+	    m_rectype == LOG_SYSOP_START_POSTPONE);
   }
 }
 
