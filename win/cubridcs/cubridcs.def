@@ -692,6 +692,7 @@ EXPORTS
     db_get_errors
     db_get_expression
     db_get_loader_commands
+    db_get_class_comment
     db_get_method_descriptor
     db_get_method_error_msg
     db_get_method_file_names
@@ -830,6 +831,8 @@ EXPORTS
     db_sqlx_debug_print_result
     db_statement_count
     db_strftime
+    db_string_lower
+    db_string_like
     db_string_to_date
     db_string_to_time
     db_string_to_timestamp
