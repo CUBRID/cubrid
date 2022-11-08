@@ -6238,8 +6238,15 @@ fetch_class (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fe
 
       /* 1. name */
       class_name = db_get_class_name (curr_class_obj);
-      assert (class_name != NULL);
-      add_res_data_string (net_buf, class_name, strlen (class_name), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
+      if (class_name != NULL)
+	{
+	  add_res_data_string (net_buf, class_name, strlen (class_name), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
+	}
+      else
+	{
+	  assert (false);
+	  add_res_data_string (net_buf, "", 0, 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
+	}
 
       /* 2. type */
       class_type = sch_class_type (curr_class_obj);
@@ -6701,7 +6708,15 @@ fetch_superclass (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 
       /* 1. name */
       class_name = db_get_class_name (class_obj);
-      add_res_data_string (net_buf, class_name, strlen (class_name), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
+      if (class_name != NULL)
+	{
+	  add_res_data_string (net_buf, class_name, strlen (class_name), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
+	}
+      else
+	{
+	  assert (false);
+	  add_res_data_string (net_buf, "", 0, 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
+	}
 
       /* 2. type */
       class_type = sch_class_type (class_obj);
@@ -8419,8 +8434,8 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name_or_pattern, char pattern_f
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
       DB_OBJLIST *all_class_obj_list = NULL, *curr_class_obj_list = NULL;
-      char *escape_char = get_backslash_escape_string ();
-      int escape_size = strlen (escape_char);
+      char *escape_char = NULL;
+      int escape_size = 0;
       DB_VALUE pattren_val;
       DB_VALUE escape_val;
 
@@ -8428,9 +8443,12 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name_or_pattern, char pattern_f
       error = db_string_lower (&pattren_val, &lower_pattren_val);
       if (error != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto exit;
 	}
 
+      escape_char = get_backslash_escape_string ();
+      escape_size = strlen (escape_char);
       db_make_char (&escape_val, escape_size, escape_char, escape_size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
       all_class_obj_list = db_get_all_classes ();
@@ -8472,7 +8490,8 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name_or_pattern, char pattern_f
 	  error = db_string_like (&class_name_val, &lower_pattren_val, &escape_val, &match);
 	  if (error != NO_ERROR)
 	    {
-	      continue;
+	      ASSERT_ERROR ();
+	      goto cleanup_on_error;
 	    }
 	  if (match != V_TRUE)
 	    {
@@ -8796,10 +8815,10 @@ sch_superclass (T_NET_BUF * net_buf, char *class_name, char superclass_flag, T_S
   for (curr_class_obj_list = super_sub_class_obj_list; curr_class_obj_list != NULL;
        curr_class_obj_list = curr_class_obj_list->next)
     {
-
       num_result++;
     }
 
+exit:
   net_buf_cp_int (net_buf, num_result, NULL);
   schema_superclasss_meta (net_buf);
 
@@ -8807,15 +8826,6 @@ sch_superclass (T_NET_BUF * net_buf, char *class_name, char superclass_flag, T_S
   srv_handle->sch_tuple_num = num_result;
 
   return NO_ERROR;
-
-exit:
-  net_buf_cp_int (net_buf, 0, NULL);
-  schema_table_meta (net_buf);
-
-  srv_handle->session = NULL;
-  srv_handle->sch_tuple_num = 0;
-
-  return error;
 }
 
 static void
