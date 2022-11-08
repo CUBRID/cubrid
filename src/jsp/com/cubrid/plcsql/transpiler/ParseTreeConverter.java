@@ -319,7 +319,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         s = quotedStrToJavaStr(s);
         LocalDate date = DateTimeParser.DateLiteral.parse(s);
         assert date != null: "invalid DATE string: " + s;
-        System.out.println("[temp] date=" + date);
+        //System.out.println("[temp] date=" + date);
         return new ExprDate(date);
     }
 
@@ -329,7 +329,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         s = quotedStrToJavaStr(s);
         LocalTime time = DateTimeParser.TimeLiteral.parse(s);
         assert time != null: "invalid TIME string: " + s;
-        System.out.println("[temp] time=" + time);
+        //System.out.println("[temp] time=" + time);
         return new ExprTime(time);
     }
 
@@ -339,7 +339,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         s = quotedStrToJavaStr(s);
         LocalDateTime timestamp = DateTimeParser.TimestampLiteral.parse(s);
         assert timestamp != null: "invalid TIMESTAMP string: " + s;
-        System.out.println("[temp] timestamp=" + timestamp);
+        //System.out.println("[temp] timestamp=" + timestamp);
         return new ExprTimestamp(timestamp);
     }
 
@@ -349,7 +349,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         s = quotedStrToJavaStr(s);
         LocalDateTime datetime = DateTimeParser.DatetimeLiteral.parse(s);
         assert datetime != null: "invalid DATETIME string: " + s;
-        System.out.println("[temp] datetime=" + datetime);
+        //System.out.println("[temp] datetime=" + datetime);
         return new ExprDatetime(datetime);
     }
 
@@ -359,7 +359,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         s = quotedStrToJavaStr(s);
         TemporalAccessor timestampTZ = DateTimeParser.TimestampTZLiteral.parse(s);
         assert timestampTZ != null: "invalid TIMESTAMPTZ string: " + s;
-        System.out.println("[temp] timestampTZ=" + timestampTZ);
+        //System.out.println("[temp] timestampTZ=" + timestampTZ);
         return new ExprTimestampTZ(timestampTZ);
     }
 
@@ -369,7 +369,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         s = quotedStrToJavaStr(s);
         TemporalAccessor timestampLTZ = DateTimeParser.TimestampLTZLiteral.parse(s);
         assert timestampLTZ != null: "invalid TIMESTAMPLTZ string: " + s;
-        System.out.println("[temp] timestampLTZ=" + timestampLTZ);
+        //System.out.println("[temp] timestampLTZ=" + timestampLTZ);
         return new ExprTimestampLTZ(timestampLTZ);
     }
 
@@ -379,7 +379,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         s = quotedStrToJavaStr(s);
         TemporalAccessor datetimeTZ = DateTimeParser.DatetimeTZLiteral.parse(s);
         assert datetimeTZ != null: "invalid DATETIMETZ string: " + s;
-        System.out.println("[temp] datetimeTZ=" + datetimeTZ);
+        //System.out.println("[temp] datetimeTZ=" + datetimeTZ);
         return new ExprDatetimeTZ(datetimeTZ);
     }
 
@@ -389,7 +389,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         s = quotedStrToJavaStr(s);
         TemporalAccessor datetimeLTZ = DateTimeParser.DatetimeLTZLiteral.parse(s);
         assert datetimeLTZ != null: "invalid DATETIMELTZ string: " + s;
-        System.out.println("[temp] datetimeLTZ=" + datetimeLTZ);
+        //System.out.println("[temp] datetimeLTZ=" + datetimeLTZ);
         return new ExprDatetimeLTZ(datetimeLTZ);
     }
 

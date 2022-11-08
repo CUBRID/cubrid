@@ -63,8 +63,8 @@ public class DateTimeParser {
         private static final LocalDate minDate = LocalDate.of(1, 1, 1);      // 0001-01-01
         private static final LocalDate maxDate = LocalDate.of(9999, 12, 31); // 9999-12-31
         static {
-            System.out.println("minDate=" + minDate);
-            System.out.println("maxDate=" + maxDate);
+            //System.out.println("minDate=" + minDate);
+            //System.out.println("maxDate=" + maxDate);
         }
     }
 
@@ -90,8 +90,8 @@ public class DateTimeParser {
         private static final LocalDateTime minTimestamp = LocalDateTime.of(1970, 1, 1, 0, 0, 1);    // 1970-01-01 00:00:01
         private static final LocalDateTime maxTimestamp = LocalDateTime.of(2038, 1, 19, 3, 14, 7);  // 2038-01-19 03:14:07
         static {
-            System.out.println("minTimestamp=" + minTimestamp);
-            System.out.println("maxTimestamp=" + maxTimestamp);
+            //System.out.println("minTimestamp=" + minTimestamp);
+            //System.out.println("maxTimestamp=" + maxTimestamp);
         }
 
     }
