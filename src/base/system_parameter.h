@@ -467,6 +467,7 @@ enum param_id
   PRM_ID_ER_LOG_CALC_REPL_DELAY,
   /* temporary parameter to support passive transaction server replication debugging */
   PRM_ID_ER_LOG_MVCC_REPL_DEBUG,
+  PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG,
 
   PRM_ID_RECOVERY_PARALLEL_COUNT,
   PRM_ID_RECOVERY_PARALLEL_TASK_DEBUG,
