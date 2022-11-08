@@ -45,9 +45,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         assert level == 0;
 
         setUpPredefined();
-        addToImports("java.util.Objects");
-        addToImports("java.sql.*");     // TODO: remove this when predefined are separated into another module
-        addToImports("java.util.Date");
     }
 
     @Override public AstNode
@@ -80,7 +77,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         SymbolStack.popSymbolTable();
 
-        return new Unit(predefined, Unit.TargetKind.PROCEDURE, autonomousTransaction, connectionRequired, decl);
+        return new Unit(Unit.TargetKind.PROCEDURE, autonomousTransaction, connectionRequired, decl);
     }
 
     @Override public Unit
@@ -107,7 +104,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         SymbolStack.popSymbolTable();
 
-        return new Unit(predefined, Unit.TargetKind.FUNCTION, autonomousTransaction, connectionRequired, decl);
+        return new Unit(Unit.TargetKind.FUNCTION, autonomousTransaction, connectionRequired, decl);
     }
 
     @Override public NodeList<I_DeclParam>
@@ -1348,7 +1345,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     visitOpen_statement(Open_statementContext ctx) {
 
         connectionRequired = true;
-        addToImports("java.sql.*");     // TODO: remove this when predefined are separated into another module
+        addToImports("java.sql.*");
 
         String name = ctx.cursor_exp().identifier().getText().toUpperCase();
         name = Misc.peelId(name);
@@ -1659,8 +1656,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     private static final String SYMBOL_TABLE_TOP = "%top";
 
-    private static final NodeList<I_Decl> predefined = new NodeList<>();
-
     private static List<String> predefinedExceptions = Arrays.asList(
         "$APP_ERROR",   // for raise_application_error
 
@@ -1683,7 +1678,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         DeclException de;
         for (String s: predefinedExceptions) {
             de = new DeclException(s);
-            predefined.addNode(de);
             SymbolStack.putDecl(de.name, de);
         }
 
@@ -1691,8 +1685,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         DeclProc dp = new DeclProc("PUT_LINE",
             new NodeList<I_DeclParam>().addNode(
                 new DeclParamIn("s", new TypeSpec("Object"))), null, null);
-        // NOTE: Do not add this to the predefined: this procedure definition is hard coded in the Unit class.
-        //       Just add it to the symbol stack for type-checking.
         SymbolStack.putDecl("PUT_LINE", dp);
 
         // add functions
@@ -1704,20 +1696,16 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         // add constants TODO implement SQLERRM and SQLCODE properly
         DeclConst dc = new DeclConst("SQLERRM", new TypeSpec("String"), ExprNull.instance());
-        predefined.addNode(dc);
         SymbolStack.putDecl("SQLERRM", dc);
 
         dc = new DeclConst("SQLCODE", new TypeSpec("Integer"), ExprNull.instance());
-        predefined.addNode(dc);
         SymbolStack.putDecl("SQLCODE", dc);
 
         dc = new DeclConst("SYSDATE", new TypeSpec("Date"), ExprNull.instance());
-        predefined.addNode(dc);
         SymbolStack.putDecl("SYSDATE", dc);
 
 
         dc = new DeclConst("NATIVE", new TypeSpec("Integer"), ExprNull.instance());
-        predefined.addNode(dc);
         SymbolStack.putDecl("NATIVE", dc);
 
         dc = new DeclConst("SQL", new TypeSpec("ResultSet"), ExprNull.instance());
