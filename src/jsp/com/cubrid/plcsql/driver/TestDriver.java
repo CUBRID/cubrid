@@ -113,53 +113,54 @@ public class TestDriver
 
     public static void main(String[] args) {
 
-        for (int i = 0; i < 10; i++) {
-
-            if (args.length != 2) {
-               throw new RuntimeException("requires two arguments (a PL/CSQL file path and its sequence number)");
-            }
-
-            long t, t0;
-
-            t0 = System.currentTimeMillis();
-
-            String infile = args[0];
-            ParseTree tree = parse(infile);
-            if (tree == null) {
-                throw new RuntimeException("parsing failed");
-            }
-
-            System.out.println(String.format("parsing: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
-            t0 = t;
-
-            // get sequence number of the input file
-            int seq;
-            try {
-                seq = Integer.parseInt(args[1]);
-            } catch (NumberFormatException e) {
-                throw new RuntimeException(e);
-            }
-
-            // walk with a pretty printer to print parse tree
-            PrintStream out = getParseTreePrinterOutStream(seq);
-            ParseTreePrinter pp = new ParseTreePrinter(out, infile);
-            ParseTreeWalker.DEFAULT.walk(pp, tree);
-            out.close();
-
-            System.out.println(String.format("printing: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
-            t0 = t;
-
-            ParseTreeConverter converter = new ParseTreeConverter();
-            Unit unit = (Unit) converter.visit(tree);
-            out = getJavaCodeOutStream(unit.getClassName());
-            out.println(String.format("// seq=%05d, input-file=%s", seq, infile));
-            out.print(unit.toJavaCode());
-            out.close();
-
-            System.out.println(String.format("converting: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
-            t0 = t;
-
+        if (args.length == 0) {
+           throw new RuntimeException("requires arguments (PL/CSQL file paths)");
         }
+
+        long t, t0;
+
+        for (int i = 0; i < args.length; i++) {
+
+            System.out.println(String.format("file #%d: %s", i, args[i]));
+
+            try {
+                t0 = System.currentTimeMillis();
+
+                String infile = args[i];
+                ParseTree tree = parse(infile);
+                if (tree == null) {
+                    throw new RuntimeException("parsing failed");
+                }
+
+                System.out.println(String.format("parsing: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
+                t0 = t;
+
+                // walk with a pretty printer to print parse tree
+                PrintStream out = getParseTreePrinterOutStream(i);
+                ParseTreePrinter pp = new ParseTreePrinter(out, infile);
+                ParseTreeWalker.DEFAULT.walk(pp, tree);
+                out.close();
+
+                System.out.println(String.format("printing: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
+                t0 = t;
+
+                ParseTreeConverter converter = new ParseTreeConverter();
+                Unit unit = (Unit) converter.visit(tree);
+                out = getJavaCodeOutStream(unit.getClassName());
+                out.println(String.format("// seq=%05d, input-file=%s", i, infile));
+                out.print(unit.toJavaCode());
+                out.close();
+
+                System.out.println(String.format("converting: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
+                t0 = t;
+
+                System.out.println(" - success");
+            } catch (Throwable e) {
+                System.out.println(" - failure");
+                throw e;
+            }
+        }
+
     }
 
     private static class SyntaxErrorIndicator extends BaseErrorListener {

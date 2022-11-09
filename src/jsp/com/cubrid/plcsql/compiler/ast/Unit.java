@@ -16,18 +16,21 @@ public class Unit implements AstNode {
     public final TargetKind targetKind;
     public final boolean autonomousTransaction;
     public final boolean connectionRequired;
+    public final String importsStr;
     public final DeclRoutine routine;
 
     public Unit(
             TargetKind targetKind,
             boolean autonomousTransaction,
             boolean connectionRequired,
+            String importsStr,
             DeclRoutine routine
         ) {
 
         this.targetKind = targetKind;
         this.autonomousTransaction = autonomousTransaction;
         this.connectionRequired = connectionRequired;
+        this.importsStr = importsStr;
         this.routine = routine;
     }
 
@@ -48,7 +51,8 @@ public class Unit implements AstNode {
         String strParams = routine.paramList == null ? "// no parameters" : routine.paramList.toJavaCode(",\n");
 
         return tmplUnit
-            .replace("%IMPORTS%", ParseTreeConverter.getImportString())
+
+            .replace("%IMPORTS%", importsStr)
             .replace("%CLASS-NAME%", getClassName())
             .replace("%RETURN-TYPE%", routine.retType == null ? "void" : routine.retType.toJavaCode())
             .replace("%METHOD-NAME%", routine.name)

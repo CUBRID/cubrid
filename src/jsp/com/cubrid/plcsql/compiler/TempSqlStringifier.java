@@ -21,6 +21,12 @@ public class TempSqlStringifier extends PcsParserBaseListener {
     public NodeList<ExprId> intoVars = null;
     public StringBuffer sbuf = new StringBuffer();
 
+    private SymbolStack symbolStack;
+
+    TempSqlStringifier(SymbolStack symbolStack) {
+        this.symbolStack = symbolStack;
+    }
+
 	@Override public void
     visitTerminal(TerminalNode node) {
         Token t = node.getSymbol();
@@ -32,13 +38,13 @@ public class TempSqlStringifier extends PcsParserBaseListener {
             String var = txt.toUpperCase();
             var = Misc.peelId(var);
 
-            I_DeclId decl = SymbolStack.getDeclId(var);
+            I_DeclId decl = symbolStack.getDeclId(var);
             if (decl != null && (decl instanceof DeclVar || decl instanceof I_DeclParam)) {
                 if (withinIntoClause) {
                     assert !(decl instanceof DeclParamIn): "in-parameter " + txt + " cannot be used in into-clauses";
-                    intoVars.nodes.add(new ExprId(var, SymbolStack.getCurrentScope(), decl));
+                    intoVars.nodes.add(new ExprId(var, symbolStack.getCurrentScope(), decl));
                 } else {
-                    usedVars.nodes.add(new ExprId(var, SymbolStack.getCurrentScope(), decl));
+                    usedVars.nodes.add(new ExprId(var, symbolStack.getCurrentScope(), decl));
                     sbuf.append(" ?");
                 }
                 return;

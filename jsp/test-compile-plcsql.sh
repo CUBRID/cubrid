@@ -27,16 +27,7 @@ if [ -d ./pt ]; then
 fi
 mkdir ./pt
 
-n=0
-find $1 -type f | sort | while read line; do
-    if [ "$line" != "${line%.sql}" ]; then
-        echo "file #$n: $line"
+FILES=$(find $1 -type f -name '*.sql' | sort)
+#echo $FILES
+java -ea -cp $JAR $APP $FILES
 
-        if java -ea -cp $JAR $APP $line $n; then
-            echo ' - success'
-        else
-            echo ' - failure'
-        fi
-        n=$((n+1))
-    fi
-done

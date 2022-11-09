@@ -10,7 +10,7 @@ import java.util.TreeMap;
 
 public class SymbolStack {
 
-    static int pushSymbolTable(String name, boolean forRoutine) {
+    int pushSymbolTable(String name, boolean forRoutine) {
 
         int level = symbolTableStack.size();
         name = name.toLowerCase();
@@ -30,21 +30,21 @@ public class SymbolStack {
         return level;
     }
 
-    static void popSymbolTable() {
+    void popSymbolTable() {
         assert symbolTableStack.size() > 0;
         symbolTableStack.removeFirst();
         currSymbolTable = symbolTableStack.peek();
     }
 
-    static int getSize() {
+    int getSize() {
         return symbolTableStack.size();
     }
 
-    static Scope getCurrentScope() {
+    Scope getCurrentScope() {
         return currSymbolTable.scope;
     }
 
-    static <D extends I_Decl> void putDecl(String name, D decl) {
+    <D extends I_Decl> void putDecl(String name, D decl) {
         assert decl != null;
 
         Map<String, D> map = currSymbolTable.<D>map((Class<D>) decl.getClass());
@@ -57,19 +57,19 @@ public class SymbolStack {
         map.put(name, decl);
     }
 
-    static I_DeclId         getDeclId       (String name) { return getDecl(I_DeclId.class, name); }
-    static DeclException    getDeclException(String name) { return getDecl(DeclException.class, name); }
-    static DeclProc         getDeclProc     (String name) { return getDecl(DeclProc.class, name); }
-    static DeclFunc         getDeclFunc     (String name) { return getDecl(DeclFunc.class, name); }
-    static DeclLabel        getDeclLabel    (String name) { return getDecl(DeclLabel.class, name); }
+    I_DeclId         getDeclId       (String name) { return getDecl(I_DeclId.class, name); }
+    DeclException    getDeclException(String name) { return getDecl(DeclException.class, name); }
+    DeclProc         getDeclProc     (String name) { return getDecl(DeclProc.class, name); }
+    DeclFunc         getDeclFunc     (String name) { return getDecl(DeclFunc.class, name); }
+    DeclLabel        getDeclLabel    (String name) { return getDecl(DeclLabel.class, name); }
 
     // ----------------------------------------------------
     // Private
     // ----------------------------------------------------
 
-    private static SymbolTable currSymbolTable;
+    private SymbolTable currSymbolTable;
 
-    private static LinkedList<SymbolTable> symbolTableStack = new LinkedList<>();
+    private LinkedList<SymbolTable> symbolTableStack = new LinkedList<>();
 
     private static class SymbolTable {
         final Scope scope;
@@ -111,7 +111,7 @@ public class SymbolStack {
         }
     }
 
-    private static <D extends I_Decl> D getDecl(Class<D> declClass, String name) {
+    private <D extends I_Decl> D getDecl(Class<D> declClass, String name) {
         assert name != null;
 
         int size = symbolTableStack.size();
