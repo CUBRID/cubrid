@@ -8910,6 +8910,9 @@ file_tempcache_init (void)
   int ntrans = 1;
 #endif
 
+  /* file_Tempcache.tran_files cannot be NULL if file_Tempcache is initialized */
+  assert (file_Tempcache.tran_files == NULL);
+
   /* initialize free entry list... used to avoid entry allocation/deallocation */
   file_Tempcache.free_entries = NULL;
   file_Tempcache.nfree_entries_max = ntrans * 8;	/* I set 8 per transaction, maybe there is a better value */
@@ -8956,6 +8959,12 @@ file_tempcache_final (void)
 {
   int tran = 0;
   int ntrans;
+
+  /* file_Tempcache.tran_files cannot be NULL if file_Tempcache is initialized */
+  if (file_Tempcache.tran_files == NULL)
+    {
+      return;
+    }
 
 #if defined (SERVER_MODE)
   ntrans = logtb_get_number_of_total_tran_indices ();
