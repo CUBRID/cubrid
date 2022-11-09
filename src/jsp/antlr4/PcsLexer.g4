@@ -1,7 +1,7 @@
 lexer grammar PcsLexer;
 
 @header {
-package com.cubrid.plcsql.transpiler.antlrgen;
+package com.cubrid.plcsql.compiler.antlrgen;
 }
 
 @lexer::members {

@@ -2,7 +2,7 @@ parser grammar PcsParser;
 import SqlParser;
 
 @header {
-package com.cubrid.plcsql.transpiler.antlrgen;
+package com.cubrid.plcsql.compiler.antlrgen;
 }
 
 options {

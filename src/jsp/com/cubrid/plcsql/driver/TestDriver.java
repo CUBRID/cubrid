@@ -3,13 +3,13 @@ package com.cubrid.plcsql.driver;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
 
-import com.cubrid.plcsql.transpiler.antlrgen.PcsLexer;
-import com.cubrid.plcsql.transpiler.antlrgen.PcsParser;
+import com.cubrid.plcsql.compiler.antlrgen.PcsLexer;
+import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
 
-import com.cubrid.plcsql.transpiler.ParseTreePrinter;
-import com.cubrid.plcsql.transpiler.ParseTreeConverter;
+import com.cubrid.plcsql.compiler.ParseTreePrinter;
+import com.cubrid.plcsql.compiler.ParseTreeConverter;
 
-import com.cubrid.plcsql.transpiler.ast.Unit;
+import com.cubrid.plcsql.compiler.ast.Unit;
 
 import java.io.File;
 import java.io.FileInputStream;
