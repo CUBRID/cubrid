@@ -1057,7 +1057,7 @@ static int pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, co
 						     PAGE_FETCH_MODE fetch_mode, FILEIO_PAGE * io_page);
 static int pgbuf_read_page_from_file (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page);
 #if defined (SERVER_MODE)
-static int pgbuf_request_data_page_from_page_server (const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
+static int pgbuf_request_data_page_from_page_server (const VPID * vpid, const PAGE_FETCH_MODE fetch_mode,
 						     log_lsa target_repl_lsa, FILEIO_PAGE * io_page);
 #endif // SERVER_MODE
 static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
@@ -8340,7 +8340,7 @@ pgbuf_read_page_from_file (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_
  * io_page(out) : Address where content of page is stored. Must be of sufficient size.
  */
 static int
-pgbuf_request_data_page_from_page_server (const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
+pgbuf_request_data_page_from_page_server (const VPID * vpid, const PAGE_FETCH_MODE fetch_mode,
 					  log_lsa target_repl_lsa, FILEIO_PAGE * io_page)
 {
   assert (get_server_type () == SERVER_TYPE_TRANSACTION);
@@ -8357,26 +8357,23 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, PAGE_FETCH_MODE fet
   vpid_utils::pack (pac, *vpid);
   cublog::lsa_utils::pack (pac, target_repl_lsa);
 
-  {
-    PAGE_FETCH_MODE effective_fetch_mode;
-    if (log_is_in_crash_recovery_and_not_yet_completes_redo ())
-      {
-	assert (fetch_mode == RECOVERY_PAGE || fetch_mode == OLD_PAGE || fetch_mode == OLD_PAGE_PREVENT_DEALLOC);
-	effective_fetch_mode = fetch_mode;
-      }
-    else
-      {
-//        assert (fetch_mode == OLD_PAGE);
-//        effective_fetch_mode = OLD_PAGE;
-
-	assert (fetch_mode != NEW_PAGE && fetch_mode != OLD_PAGE_IF_IN_BUFFER
-		&& fetch_mode != OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT);
-	assert (fetch_mode == OLD_PAGE || fetch_mode == OLD_PAGE_MAYBE_DEALLOCATED
-		|| fetch_mode == OLD_PAGE_PREVENT_DEALLOC);
-	effective_fetch_mode = fetch_mode;
-      }
-    pac.pack_int (effective_fetch_mode);
-  }
+  // register a fatal error if an unexpected fetch mode
+  if (log_is_in_crash_recovery_and_not_yet_completes_redo ())
+    {
+      if (!(fetch_mode == RECOVERY_PAGE || fetch_mode == OLD_PAGE || fetch_mode == OLD_PAGE_PREVENT_DEALLOC))
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
+    }
+  else
+    {
+      if (!(fetch_mode == OLD_PAGE || fetch_mode == OLD_PAGE_MAYBE_DEALLOCATED
+	    || fetch_mode == OLD_PAGE_PREVENT_DEALLOC))
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
+    }
+  pac.pack_int (fetch_mode);
   std::string request_message (buffer.get (), size);
 
   const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE);
