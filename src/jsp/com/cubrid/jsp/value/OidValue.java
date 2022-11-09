@@ -35,6 +35,8 @@ import com.cubrid.jsp.Server;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import cubrid.jdbc.driver.CUBRIDConnectionDefault;
 import cubrid.sql.CUBRIDOID;
+import cubrid.sql.CUBRIDOIDImpl;
+
 import java.sql.DriverManager;
 import java.sql.SQLException;
 
@@ -66,7 +68,7 @@ public class OidValue extends Value {
 
     public CUBRIDOID[] toOidArray() throws TypeMismatchException {
         createInstance();
-        return new CUBRIDOID[] {oidObject};
+        return new CUBRIDOID[] { oidObject };
     }
 
     public CUBRIDOID toOid() throws TypeMismatchException {
@@ -77,10 +79,9 @@ public class OidValue extends Value {
     private void createInstance() {
         if (oidValue != null && oidObject == null) {
             try {
-                CUBRIDConnectionDefault con =
-                        (CUBRIDConnectionDefault)
-                                DriverManager.getConnection("jdbc:default:connection:");
-                oidObject = new CUBRIDOID(con, oidValue);
+                CUBRIDConnectionDefault con = (CUBRIDConnectionDefault) DriverManager
+                        .getConnection("jdbc:default:connection:");
+                oidObject = new CUBRIDOIDImpl(con, oidValue);
             } catch (SQLException e) {
                 oidObject = null;
             }
@@ -98,7 +99,7 @@ public class OidValue extends Value {
     }
 
     public String[] toStringArray() throws TypeMismatchException {
-        return new String[] {toString()};
+        return new String[] { toString() };
     }
 
     public Object toObject() throws TypeMismatchException {
@@ -106,6 +107,6 @@ public class OidValue extends Value {
     }
 
     public Object[] toObjectArray() throws TypeMismatchException {
-        return new Object[] {toObject()};
+        return new Object[] { toObject() };
     }
 }
