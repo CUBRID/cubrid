@@ -8,21 +8,31 @@
     ================
     -->
     <property name="src.dir" value="src/jsp"/>
-    <property name="build.dir" value="bin"/>
+    <property name="build.dir" value="build"/>
+    <property name="report.dir" value="report"/>
     <property name="classes.dir" location="${build.dir}/classes"/>
 
     <property name="test.src.path" value="com/cubrid/jsp/test"/>
     <property name="test.classes.dir" location="${build.dir}/test-classes"/>
-    <property name="test.reports.dir" location="${build.dir}/test-reports"/>
+    <property name="test.reports.dir" location="${report.dir}/test-reports"/>
 
-    <property name="ivy.reports.dir"  location="${build.dir}/ivy-reports"/>
+    <property name="plcsql.antlr.lexer" value="${src.dir}/antlr4/PcsLexer.g4"/>
+    <property name="plcsql.antlr.grammar" value="${src.dir}/antlr4/PcsParser.g4"/>
+    <property name="plcsql.antlr.sql" value="${src.dir}/antlr4/SqlParser.g4"/>
+    <property name="plcsql.antlrgen.dir" value="antlrgen"/>
+    <property name="plcsql.lib.path" value="com/cubrid/plcsql/lib"/>
+    <property name="plcsql.lib.sp.path" value="${plcsql.lib.path}/sp"/>
+    <property name="plcsql.lib.classes.dir" location="${build.dir}/plcsql-lib-classes"/>
+
+    <property name="ivy.reports.dir"  location="${report.dir}/ivy-reports"/>
 
     <property name="external.dir" value="external"/>
     <property name="ivy.install.version" value="2.4.0" />
     <property name="ivy.install.dir" value="${external.dir}"/>
 
     <property name="dist.main.class" value="com.cubrid.jsp.Server"/>
-    <property name="dist.jar" value="jspserver.jar"/>
+    <property name="dist.main.jar" value="jspserver.jar"/>
+    <property name="dist.splib.jar" value="splib.jar"/>
     <property name="dist.lib" value="lib"/>
 
     <!--
@@ -56,27 +66,45 @@
         <mkdir dir="${build.dir}"/>
         <mkdir dir="${classes.dir}"/>
         <mkdir dir="${test.classes.dir}"/>
+        <mkdir dir="${plcsql.lib.classes.dir}"/>
         <mkdir dir="${test.reports.dir}"/>
         <mkdir dir="${ivy.reports.dir}"/>
     </target>
 
     <target name="compile" depends="init">
+
         <ivy:retrieve pattern="${dist.lib}/[artifact]-[revision].[ext]" conf="runtime"/>
-        <javac srcdir="${src.dir}" destdir="${classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="runtime.path">
+
+        <!-- run ANTLR to generate Java files from its grammar files -->
+        <delete dir="${plcsql.antlrgen.dir}"/>
+        <mkdir dir="${plcsql.antlrgen.dir}"/>
+        <java classname="org.antlr.v4.Tool" failonerror= "true" classpathref="runtime.path"
+                args="-listener -visitor -o ${plcsql.antlrgen.dir}">
+            <arg value="${plcsql.antlr.lexer}"/>
+            <arg value="${plcsql.antlr.grammar}"/>
+            <arg value="${plcsql.antlr.sql}"/>
+        </java>
+
+        <javac destdir="${classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="runtime.path">
+            <src path="${src.dir}"/>
+            <src path="${plcsql.antlrgen.dir}"/>
             <include name="**/*.java"/>
             <exclude name="${test.src.path}/*.java"/>
+            <exclude name="${plcsql.lib.sp.path}/*.java"/>
+        </javac>
+
+        <javac destdir="${plcsql.lib.classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" debug="true">
+            <src path="${src.dir}"/>
+            <include name="${plcsql.lib.path}/**/*.java"/>
         </javac>
     </target>
 
     <target name="clean">
         <delete failonerror="false" includeEmptyDirs="true">
             <fileset dir="${external.dir}"/>
-            <fileset dir="${ivy.reports.dir}"/>
-            <fileset dir="${test.reports.dir}"/>
-            <fileset dir="${test.classes.dir}"/>
-            <fileset dir="${classes.dir}"/>
             <fileset dir="${build.dir}"/>
-            <fileset file="${dist.jar}"/>
+            <fileset dir="${report.dir}"/>
+            <fileset file="${dist.main.jar}"/>
         </delete>
     </target>
 
@@ -108,17 +136,19 @@
     </target>
 
     <target name="dist" depends="compile">
-        <manifestclasspath property="jar.classpath" jarfile="${dist.jar}">
+        <manifestclasspath property="jar.classpath" jarfile="${dist.main.jar}">
             <classpath>
                 <fileset dir="${dist.lib}" includes="*.jar"/>
             </classpath>
         </manifestclasspath>
 
-        <jar jarfile="${dist.jar}" basedir="${classes.dir}">
+        <jar jarfile="${dist.main.jar}" basedir="${classes.dir}">
             <manifest>
                     <attribute name="Main-Class" value="${dist.main.class}"/>
                     <attribute name="Class-Path" value="${jar.classpath}"/>
             </manifest>
         </jar>
+
+        <jar jarfile="${dist.splib.jar}" basedir="${plcsql.lib.classes.dir}"/>
     </target>
 </project>

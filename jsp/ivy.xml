@@ -7,6 +7,8 @@
         <conf name="test" extends="runtime"/>
     </configurations>
     <dependencies>
+        <dependency org="org.antlr" name="antlr4" rev="4.9.3" conf="runtime->default"/>
+        <dependency org="org.apache.commons" name="commons-text" rev="1.9" conf="runtime->default"/>
         <dependency org="cubrid" name="cubrid-jdbc" rev="latest.integration" conf="runtime->default"/>
         <dependency org="com.kohlschutter.junixsocket" name="junixsocket-core" rev="2.4.0" conf="runtime->default"/>
         <dependency org="com.kohlschutter.junixsocket" name="junixsocket-server" rev="2.4.0" conf="runtime->default"/>
