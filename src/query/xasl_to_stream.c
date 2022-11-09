@@ -3028,12 +3028,6 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
       ptr = xts_process_access_spec_type (ptr, access_spec);
     }
 
-  ptr = or_pack_int (ptr, xasl->next_scan_on);
-
-  ptr = or_pack_int (ptr, xasl->next_scan_block_on);
-
-  ptr = or_pack_int (ptr, xasl->cat_fetched);
-
   ptr = or_pack_int (ptr, (int) xasl->scan_op_type);
 
   ptr = or_pack_int (ptr, xasl->upd_del_class_cnt);
@@ -3111,9 +3105,6 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
     {
       return NULL;
     }
-
-  ptr = or_pack_int (ptr, xasl->projected_size);
-  ptr = or_pack_double (ptr, xasl->cardinality);
 
   ptr = or_pack_int (ptr, (int) xasl->iscan_oid_order);
 
@@ -5853,9 +5844,6 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + PTR_SIZE		/* isleaf_regu */
 	   + PTR_SIZE		/* iscycle_val */
 	   + PTR_SIZE		/* iscycle_regu */
-	   + OR_INT_SIZE	/* next_scan_on */
-	   + OR_INT_SIZE	/* next_scan_block_on */
-	   + OR_INT_SIZE	/* cat_fetched */
 	   + OR_INT_SIZE	/* scan_op_type */
 	   + OR_INT_SIZE	/* upd_del_class_cnt */
 	   + OR_INT_SIZE);	/* mvcc_reev_extra_cls_cnt */
@@ -5985,9 +5973,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
       return ER_FAILED;
     }
 
-  size += (OR_INT_SIZE		/* projected_size */
-	   + OR_DOUBLE_ALIGNED_SIZE	/* cardinality */
-	   + OR_INT_SIZE	/* iscan_oid_order */
+  size += (OR_INT_SIZE		/* iscan_oid_order */
 	   + PTR_SIZE		/* query_alias */
 	   + PTR_SIZE);		/* next */
 

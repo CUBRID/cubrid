@@ -62,14 +62,14 @@ namespace cubmethod
 	if (conn->is_valid() == false)
 	  {
 	    jsp_disconnect_server (conn->m_socket); // disconnect connecting with ExecuteThread in invalid state
-	    conn->m_socket = jsp_connect_server (boot_db_name (), jsp_server_port ());
+	    conn->m_socket = jsp_connect_server (boot_db_name (), jsp_server_port_from_info ());
 	  }
 
 	return conn;
       }
 
     // new connection
-    SOCKET socket = jsp_connect_server (boot_db_name (), jsp_server_port ());
+    SOCKET socket = jsp_connect_server (boot_db_name (), jsp_server_port_from_info ());
     return new connection (this, socket);
   }
 

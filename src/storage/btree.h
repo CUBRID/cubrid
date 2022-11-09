@@ -359,6 +359,7 @@ struct btree_ovfl_oid_capacity
   int tot_pg_cnt;		/* Total overflow oid page count */
   float tot_free_space;		/* Total free space in overflow oid pages */
   float tot_space;		/* Total space occupied by overflow oid pages */
+  float tot_used_space;		/* Total used space in  overflow oid pages */
   float avg_pg_free_sp;		/* Average free space on the occupied overflowoid page */
 };
 

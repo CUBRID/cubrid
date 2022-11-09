@@ -1435,7 +1435,10 @@ $ LOADDB
 
 1352 Invalid number of columns specified.
 
-1353 最后一个错误.
+1353 Internal CAS error : %1$d 
+1354 Internal CAS error : %1$d, %2$s
+
+1355 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):

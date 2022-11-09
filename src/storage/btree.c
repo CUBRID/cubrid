@@ -8597,8 +8597,10 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	  cpc->tot_used_space += cpc2.tot_used_space;
 
 	  cpc->ovfl_oid_pg.tot_free_space += cpc2.ovfl_oid_pg.tot_free_space;
-	  cpc->ovfl_oid_pg.tot_pg_cnt += cpc2.ovfl_oid_pg.tot_pg_cnt;
 	  cpc->ovfl_oid_pg.tot_space += cpc2.ovfl_oid_pg.tot_space;
+	  cpc->ovfl_oid_pg.tot_used_space += cpc2.ovfl_oid_pg.tot_used_space;
+
+	  cpc->ovfl_oid_pg.tot_pg_cnt += cpc2.ovfl_oid_pg.tot_pg_cnt;
 	  cpc->ovfl_oid_pg.dis_key_cnt += cpc2.ovfl_oid_pg.dis_key_cnt;
 	  cpc->ovfl_oid_pg.tot_val_cnt += cpc2.ovfl_oid_pg.tot_val_cnt;
 	  if (cpc->ovfl_oid_pg.max_pg_cnt_per_key < cpc2.ovfl_oid_pg.max_pg_cnt_per_key)
@@ -8667,6 +8669,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 
 		  cpc->ovfl_oid_pg.tot_free_space += free_space_ovfl;
 		  cpc->ovfl_oid_pg.tot_space += DB_PAGESIZE;
+		  cpc->ovfl_oid_pg.tot_used_space = (cpc->ovfl_oid_pg.tot_space - cpc->ovfl_oid_pg.tot_free_space);
 
 		  cpc->ovfl_oid_pg.tot_pg_cnt += 1;
 		  pg_cnt_per_key++;
@@ -8805,6 +8808,7 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
   char *index_name = NULL;
   char *class_name = NULL;
   FILE_DESCRIPTORS fdes;
+  char buf[256] = { 0 };
 
   assert (fp != NULL && btid != NULL);
 
@@ -8853,18 +8857,33 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
   fprintf (fp, "Height: %d\n", cpc.height);
   fprintf (fp, "Average Key Length: %d\n", cpc.avg_key_len);
   fprintf (fp, "Average Record Length: %d\n", cpc.avg_rec_len);
-  fprintf (fp, "Total Index Space: %.0f bytes\n", cpc.tot_space);
-  fprintf (fp, "Used Index Space: %.0f bytes\n", cpc.tot_used_space);
-  fprintf (fp, "Free Index Space: %.0f bytes\n", cpc.tot_free_space);
-  fprintf (fp, "Average Page Free Space: %.0f bytes\n", cpc.avg_pg_free_sp);
-  fprintf (fp, "Average Page Key Count: %d\n", cpc.avg_pg_key_cnt);
-  fprintf (fp, "Percentage of Free Space on Overflow Page: %d \n",
-	   (cpc.ovfl_oid_pg.tot_space > 0) ?
-	   (int) ((cpc.ovfl_oid_pg.tot_free_space / cpc.ovfl_oid_pg.tot_space) * 100) : 0);
-  fprintf (fp, "Average Overflow Free Space per Page: %d bytes\n", (int) cpc.ovfl_oid_pg.avg_pg_free_sp);
-  fprintf (fp, "Average Overflow Page Count Per Key: %d\n",
+
+  (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_space + cpc.ovfl_oid_pg.tot_space));
+  fprintf (fp, "Total Index Space: %s\n", buf);
+
+  (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_used_space));
+  fprintf (fp, "Used Index Space(Non-Overflow): %s\n", buf);
+
+  (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_free_space));
+  fprintf (fp, "Free Index Space(Non-Overflow): %s\n", buf);
+
+  (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.ovfl_oid_pg.tot_used_space));
+  fprintf (fp, "Used Index Space(Overflow): %s\n", buf);
+
+  (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.ovfl_oid_pg.tot_free_space));
+  fprintf (fp, "Free Index Space(Overflow): %s\n", buf);
+
+  (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.avg_pg_free_sp));
+  fprintf (fp, "Average Free Space per Page(Non-Overflow): %s\n", buf);
+
+  fprintf (fp, "Average Key Count per Page(Non-Overflow): %d\n", cpc.avg_pg_key_cnt);
+
+  (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.ovfl_oid_pg.avg_pg_free_sp));
+  fprintf (fp, "Average Free Space per Page(Overflow): %s\n", buf);
+
+  fprintf (fp, "Average Page Count per Key(Overflow): %d\n",
 	   (cpc.ovfl_oid_pg.dis_key_cnt > 0) ? (int) (cpc.ovfl_oid_pg.tot_pg_cnt / cpc.ovfl_oid_pg.dis_key_cnt) : 0);
-  fprintf (fp, "Max Overflow Page Count in a Key: %d\n", cpc.ovfl_oid_pg.max_pg_cnt_per_key);
+  fprintf (fp, "Max Page Count on a Key(Overflow): %d\n", cpc.ovfl_oid_pg.max_pg_cnt_per_key);
   fprintf (fp, "-------------------------------------------------------------\n");
 
 exit:
@@ -16487,7 +16506,11 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	}
     }
 
-  (void) pr_clone_value (value_p, key);
+  if (is_visible)
+    {
+      (void) pr_clone_value (value_p, key);
+    }
+
   btree_clear_key_value (&clear_key, &key_value);
 
 end:
@@ -22095,11 +22118,11 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
   // {"Num_leaf_page", "int"}
   db_make_int (out_values[idx++], cpc.leaf_pg_cnt);
 
-  // {"Num_Ovfl_page", "int"}
-  db_make_int (out_values[idx++], cpc.ovfl_oid_pg.tot_pg_cnt);
-
   // {"Num_non_leaf_page", "int"}
   db_make_int (out_values[idx++], cpc.nleaf_pg_cnt);
+
+  // {"Num_ovf_page", "int"}
+  db_make_int (out_values[idx++], cpc.ovfl_oid_pg.tot_pg_cnt);
 
   // {"Num_total_page", "int"}
   db_make_int (out_values[idx++], cpc.tot_pg_cnt + cpc.ovfl_oid_pg.tot_pg_cnt);
@@ -22114,14 +22137,14 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
   db_make_int (out_values[idx++], cpc.avg_rec_len);
 
   // {"Total_space", "varchar(64)"}
-  (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_space));
+  (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_space + cpc.ovfl_oid_pg.tot_space));
   error = db_make_string_copy (out_values[idx++], buf);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
 
-  // {"Total_used_space", "varchar(64)"}
+  // {"Total_used_space_non_ovf", "varchar(64)"}
   (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_used_space));
   error = db_make_string_copy (out_values[idx++], buf);
   if (error != NO_ERROR)
@@ -22129,7 +22152,7 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
       goto cleanup;
     }
 
-  // {"Total_free_space", "varchar(64)"}
+  // {"Total_free_space_non_ovf", "varchar(64)"}
   (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.tot_free_space));
   error = db_make_string_copy (out_values[idx++], buf);
   if (error != NO_ERROR)
@@ -22137,10 +22160,26 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
       goto cleanup;
     }
 
-  // {"Avg_num_page_key", "int"}
+  // {"Total_used_space_ovf", "varchar(64)"}
+  (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.ovfl_oid_pg.tot_used_space));
+  error = db_make_string_copy (out_values[idx++], buf);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  // {"Total_free_space_ovf", "varchar(64)"}
+  (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.ovfl_oid_pg.tot_free_space));
+  error = db_make_string_copy (out_values[idx++], buf);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  // {"Avg_num_key_per_page_non_ovf", "int"}
   db_make_int (out_values[idx++], cpc.avg_pg_key_cnt);
 
-  // {"Avg_page_free_space", "varchar(64)"}
+  // {"Avg_free_space_per_page_non_ovf", "varchar(64)"}
   (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.avg_pg_free_sp));
   error = db_make_string_copy (out_values[idx++], buf);
   if (error != NO_ERROR)
@@ -22148,20 +22187,19 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
       goto cleanup;
     }
 
-  // {"Percentage_free_space_Ovfl_page", "int"}
-  db_make_int (out_values[idx++],
-	       (cpc.ovfl_oid_pg.tot_space > 0) ?
-	       (int) ((cpc.ovfl_oid_pg.tot_free_space / cpc.ovfl_oid_pg.tot_space) * 100) : 0);
-
-  // {"Average_free_space_per_Ovfl_page", "int"}
-  db_make_int (out_values[idx++], (int) cpc.ovfl_oid_pg.avg_pg_free_sp);
-
-  // {"Average_Ovfl_page_count_per_key", "int"}
-  db_make_int (out_values[idx++],
-	       (cpc.ovfl_oid_pg.dis_key_cnt > 0) ?
+// {"Avg_num_ovf_page_per_key", "int"}
+  db_make_int (out_values[idx++], (cpc.ovfl_oid_pg.dis_key_cnt > 0) ?
 	       (int) (cpc.ovfl_oid_pg.tot_pg_cnt / cpc.ovfl_oid_pg.dis_key_cnt) : 0);
 
-  // {"Max_Ovfl_page_count_in_a_key", "int"}
+  // {"Avg_free_space_per_page_ovf", "varchar(64)"}
+  (void) util_byte_to_size_string (buf, 64, (UINT64) (cpc.ovfl_oid_pg.avg_pg_free_sp));
+  error = db_make_string_copy (out_values[idx++], buf);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  // {"Max_num_ovf_page_a_key", "int"}
   db_make_int (out_values[idx++], cpc.ovfl_oid_pg.max_pg_cnt_per_key);
 
   assert (idx == out_cnt);

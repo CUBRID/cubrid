@@ -87,8 +87,6 @@ extern int smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE const
 extern int smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names, const char *constraint_name,
 				int class_attribute, SM_ATTRIBUTE_FLAG constraint);
 
-extern int smt_add_index (SM_TEMPLATE * template_, const char *name, int on_or_off);
-
 extern int smt_find_attribute (SM_TEMPLATE * template_, const char *name, int class_attribute, SM_ATTRIBUTE ** attp);
 
 /* Method definition */

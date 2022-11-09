@@ -76,7 +76,7 @@ public class TargetMethod {
     }
 
     private Class<?> getClass(String name) throws ClassNotFoundException {
-        ClassLoader cl = Thread.currentThread().getContextClassLoader();
+        ClassLoader cl = StoredProcedureClassLoader.getInstance();
         return cl.loadClass(name);
     }
 

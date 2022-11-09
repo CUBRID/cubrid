@@ -10807,6 +10807,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *ha_check_disk_failure_interval_prm;
   SYSPRM_PARAM *test_mode_prm;
   SYSPRM_PARAM *tz_leap_second_support_prm;
+  SYSPRM_PARAM *java_stored_procedure_uds_prm;
 
   char newval[LINE_MAX];
   char host_name[CUB_MAXHOSTNAMELEN];
