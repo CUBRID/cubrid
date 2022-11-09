@@ -620,8 +620,8 @@ namespace cublog
 		     && LSA_ISNULL (&last_but_one_entry.m_sysop_end_last_parent_lsa))
 	      {
 		// search backwards until a LOG_SYSOP_ATOMIC_START is found
-		// skipping any log_sysop_commit found
-		// provide for known optiomization when adding consecutive LOG_SYSOP_ATOMIC_START is
+		// skipping any LOG_SYSOP_COMMIT found
+		// provide for known optimization when adding consecutive LOG_SYSOP_ATOMIC_START is
 		// prohibited, and only the first one remains
 		bool only_sysop_end_found = true;
 		// iteration will actually check again the last but one, which should be a LOG_SYSOP_END and
