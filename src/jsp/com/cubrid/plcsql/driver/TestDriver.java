@@ -65,6 +65,9 @@ public class TestDriver
         CommonTokenStream tokens = new CommonTokenStream(lexer);
         PcsParser parser = new PcsParser(tokens);
 
+        SyntaxErrorIndicator sei = new SyntaxErrorIndicator();
+        parser.addErrorListener(sei);
+
         System.out.println(String.format("  creating PcsLexer: %f sec",
             ((t = System.currentTimeMillis()) - t0) / 1000.0));
         t0 = t;
@@ -73,6 +76,10 @@ public class TestDriver
 
         System.out.println(String.format("  calling parser: %f sec",
             (System.currentTimeMillis() - t0) / 1000.0));
+
+        if (sei.hasError) {
+            throw new RuntimeException("syntax error");
+        }
 
         return ret;
     }
@@ -106,49 +113,69 @@ public class TestDriver
 
     public static void main(String[] args) {
 
-        if (args.length != 2) {
-           throw new RuntimeException("requires two arguments (a PL/CSQL file path and its sequence number)");
+        for (int i = 0; i < 10; i++) {
+
+            if (args.length != 2) {
+               throw new RuntimeException("requires two arguments (a PL/CSQL file path and its sequence number)");
+            }
+
+            long t, t0;
+
+            t0 = System.currentTimeMillis();
+
+            String infile = args[0];
+            ParseTree tree = parse(infile);
+            if (tree == null) {
+                throw new RuntimeException("parsing failed");
+            }
+
+            System.out.println(String.format("parsing: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
+            t0 = t;
+
+            // get sequence number of the input file
+            int seq;
+            try {
+                seq = Integer.parseInt(args[1]);
+            } catch (NumberFormatException e) {
+                throw new RuntimeException(e);
+            }
+
+            // walk with a pretty printer to print parse tree
+            PrintStream out = getParseTreePrinterOutStream(seq);
+            ParseTreePrinter pp = new ParseTreePrinter(out, infile);
+            ParseTreeWalker.DEFAULT.walk(pp, tree);
+            out.close();
+
+            System.out.println(String.format("printing: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
+            t0 = t;
+
+            ParseTreeConverter converter = new ParseTreeConverter();
+            Unit unit = (Unit) converter.visit(tree);
+            out = getJavaCodeOutStream(unit.getClassName());
+            out.println(String.format("// seq=%05d, input-file=%s", seq, infile));
+            out.print(unit.toJavaCode());
+            out.close();
+
+            System.out.println(String.format("converting: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
+            t0 = t;
+
         }
+    }
 
-        long t, t0;
+    private static class SyntaxErrorIndicator extends BaseErrorListener {
 
-        t0 = System.currentTimeMillis();
+        boolean hasError = false;
 
-        String infile = args[0];
-        ParseTree tree = parse(infile);
-        if (tree == null) {
-            throw new RuntimeException("parsing failed");
+        @Override
+        public void syntaxError(
+                Recognizer<?,?> recognizer,
+                Object offendingSymbol,
+                int line,
+                int charPositionInLine,
+                String msg,
+                RecognitionException e
+            ) {
+                hasError = true;
         }
-
-        System.out.println(String.format("parsing: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
-        t0 = t;
-
-        // get sequence number of the input file
-        int seq;
-        try {
-            seq = Integer.parseInt(args[1]);
-        } catch (NumberFormatException e) {
-            throw new RuntimeException(e);
-        }
-
-        // walk with a pretty printer to print parse tree
-        PrintStream out = getParseTreePrinterOutStream(seq);
-        ParseTreePrinter pp = new ParseTreePrinter(out, infile);
-        ParseTreeWalker.DEFAULT.walk(pp, tree);
-        out.close();
-
-        System.out.println(String.format("printing: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
-        t0 = t;
-
-        ParseTreeConverter converter = new ParseTreeConverter();
-        Unit unit = (Unit) converter.visit(tree);
-        out = getJavaCodeOutStream(unit.getClassName());
-        out.println(String.format("// seq=%05d, input-file=%s", seq, infile));
-        out.print(unit.toJavaCode());
-        out.close();
-
-        System.out.println(String.format("converting: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
-        t0 = t;
-
     }
 }
