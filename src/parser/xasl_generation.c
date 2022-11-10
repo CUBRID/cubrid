@@ -25111,7 +25111,7 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
 PT_NODE *
 pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MERGE_INFO * info)
 {
-  PT_NODE *subq, *corr_subq = NULL, *func = NULL, *expr = NULL, *and_expr = NULL, *value = NULL;
+  PT_NODE *subq, *corr_subq = NULL, *expr = NULL, *and_expr = NULL, *value = NULL;
 
   subq = parser_new_node (parser, PT_SELECT);
   if (subq == NULL)
@@ -25125,18 +25125,34 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
       goto error_exit;
     }
 
-  func = parser_new_node (parser, PT_FUNCTION);
-  if (func == NULL)
+  expr = parser_new_node (parser, PT_EXPR);
+  if (expr == NULL)
     {
       goto error_exit;
     }
 
-  func->type_enum = PT_TYPE_INTEGER;
-  func->info.function.function_type = PT_COUNT;
-  func->info.function.arg_list = parser_new_node (parser, PT_EXPR);
-  func->info.function.arg_list->info.expr.op = PT_ROWNUM;
+  expr->info.expr.op = PT_NOT;
+  expr->type_enum = PT_TYPE_LOGICAL;
+  expr->info.expr.arg1 = parser_new_node (parser, PT_EXPR);
+  if (expr->info.expr.arg1 == NULL)
+    {
+      goto error_exit;
+    }
 
-  corr_subq->info.query.q.select.list = func;
+  expr->info.expr.arg1->info.expr.op = PT_EXISTS;
+  expr->info.expr.arg1->type_enum = PT_TYPE_LOGICAL;
+  expr->info.expr.arg1->info.expr.arg1 = corr_subq;
+
+  value = parser_new_node (parser, PT_VALUE);
+  if (value == NULL)
+    {
+      goto error_exit;
+    }
+
+  value->type_enum = PT_TYPE_INTEGER;
+  value->info.value.data_value.i = 0;
+
+  corr_subq->info.query.q.select.list = value;
   corr_subq->info.query.q.select.from = parser_copy_tree (parser, info->into);
   corr_subq->info.query.q.select.where = parser_copy_tree_list (parser, info->search_cond);
   /* add class where part */
@@ -25160,26 +25176,6 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
 
   subq->info.query.q.select.list = parser_copy_tree_list (parser, select_list);
   subq->info.query.q.select.from = parser_copy_tree (parser, info->using_clause);
-
-  expr = parser_new_node (parser, PT_EXPR);
-  if (expr == NULL)
-    {
-      goto error_exit;
-    }
-
-  value = parser_new_node (parser, PT_VALUE);
-  if (value == NULL)
-    {
-      goto error_exit;
-    }
-
-  value->type_enum = PT_TYPE_INTEGER;
-  value->info.value.data_value.i = 0;
-
-  expr->type_enum = PT_TYPE_LOGICAL;
-  expr->info.expr.op = PT_EQ;
-  expr->info.expr.arg1 = corr_subq;
-  expr->info.expr.arg2 = value;
 
   if (info->insert.search_cond)
     {
@@ -25219,17 +25215,12 @@ error_exit:
       parser_free_tree (parser, corr_subq);
     }
 
-  if (func)
-    {
-      if (func->info.function.arg_list)
-	{
-	  parser_free_tree (parser, func->info.function.arg_list);
-	}
-      parser_free_tree (parser, func);
-    }
-
   if (expr)
     {
+      if (expr->info.expr.arg1)
+	{
+	  parser_free_tree (parser, expr->info.expr.arg1);
+	}
       parser_free_tree (parser, expr);
     }
 
