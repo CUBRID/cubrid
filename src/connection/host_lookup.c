@@ -119,7 +119,7 @@ hostent_alloc (char *ipaddr, char *hostname)
 
   if ((hp = (struct hostent *) malloc (sizeof (struct hostent))) == NULL)
     {
-      return NULL;
+      goto return_phase;
     }
 
   hp->h_addrtype = AF_INET;
@@ -275,7 +275,7 @@ load_hosts_file ()
   fp = fopen (hosts_conf_dir, "r");
   if (fp == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, host_conf_file_full_path);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_NOT_FOUND, 2, "Configuration", host_conf_file_full_path);
       goto load_fail_phase;
     }
 
