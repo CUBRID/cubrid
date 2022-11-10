@@ -421,7 +421,7 @@ void page_server::pts_mvcc_tracker::init_oldest_active_mvccid (const std::string
 
 void page_server::pts_mvcc_tracker::update_oldest_active_mvccid (const std::string &pts_channel_id, const MVCCID mvccid)
 {
-//  assert (MVCCID_IS_NORMAL (mvccid));
+  assert (MVCCID_IS_NORMAL (mvccid));
 
   std::lock_guard<std::mutex> lockg { m_pts_oldest_active_mvccids_mtx };
 
@@ -435,18 +435,18 @@ void page_server::pts_mvcc_tracker::update_oldest_active_mvccid (const std::stri
 
   m_pts_oldest_active_mvccids[pts_channel_id] = mvccid;
 
-//#if !defined(NDEBUG)
-//  std::string msg;
-//  std::stringstream ss;
-//  ss << "receive_oldest_active_mvccid: update the oldest active mvccid to " << mvccid << " of " << pts_channel_id <<
-//     std::endl;
-//  ss << "oldest mvcc ids:" ;
-//  for (const auto &it : m_pts_oldest_active_mvccids)
-//    {
-//      ss << " " << it.second;
-//    }
-//  er_log_debug (ARG_FILE_LINE, ss.str().c_str());
-//#endif
+#if !defined(NDEBUG)
+  std::string msg;
+  std::stringstream ss;
+  ss << "receive_oldest_active_mvccid: update the oldest active mvccid to " << mvccid << " of " << pts_channel_id <<
+     std::endl;
+  ss << "oldest mvcc ids:" ;
+  for (const auto &it : m_pts_oldest_active_mvccids)
+    {
+      ss << " " << it.second;
+    }
+  er_log_debug (ARG_FILE_LINE, ss.str ().c_str ());
+#endif
 }
 void page_server::pts_mvcc_tracker::delete_oldest_active_mvccid (const std::string &pts_channel_id)
 {
