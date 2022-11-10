@@ -75,25 +75,25 @@
 inline int
 db_alignment (int n)
 {
-  if (n >= DOUBLE_ALIGNMENT)
+  if (n >= STATIC_CAST (int, DOUBLE_ALIGNMENT))
     {
-      return DOUBLE_ALIGNMENT;
+      return STATIC_CAST (int, DOUBLE_ALIGNMENT);
     }
-  else if (n >= PTR_ALIGNMENT)
+  else if (n >= STATIC_CAST (int, PTR_ALIGNMENT))
     {
-      return PTR_ALIGNMENT;
+      return STATIC_CAST (int, PTR_ALIGNMENT);
     }
-  else if (n >= INT_ALIGNMENT)
+  else if (n >= STATIC_CAST (int, INT_ALIGNMENT))
     {
-      return INT_ALIGNMENT;
+      return STATIC_CAST (int, INT_ALIGNMENT);
     }
-  else if (n >= SHORT_ALIGNMENT)
+  else if (n >= STATIC_CAST (int, SHORT_ALIGNMENT))
     {
-      return SHORT_ALIGNMENT;
+      return STATIC_CAST (int, SHORT_ALIGNMENT);
     }
   else
     {
-      return CHAR_ALIGNMENT;
+      return STATIC_CAST (int, CHAR_ALIGNMENT);
     }
 }
 
