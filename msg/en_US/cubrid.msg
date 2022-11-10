@@ -1445,7 +1445,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1359 Unable to look up "%1$s" in the cubrid_hosts.conf.
 1360 An error occured when using user defined host.
 
-1361 Last Error
+1361 %1$s file "%2$s" was not found. 
+
+1362 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

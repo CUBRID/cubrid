@@ -1738,7 +1738,9 @@
 #define ER_UHOST_CANT_LOOKUP_INFO                   -1359
 #define ER_UHOST_ERROR                              -1360
 
-#define ER_LAST_ERROR                               -1361
+#define ER_FILE_NOT_FOUND                           -1361
+
+#define ER_LAST_ERROR                               -1362
 
 /*
  * CAUTION!
