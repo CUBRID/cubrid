@@ -42,6 +42,7 @@
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
 #include "dbtype.h"
+#include "misc_string.h"
 
 #define DB_OID_INCLUDED(r)      ((r)->oid_included == true)
 #define DB_INVALID_INDEX(i,cnt) ((i) < 0 || (i) >= (cnt))

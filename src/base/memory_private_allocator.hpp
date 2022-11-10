@@ -26,6 +26,9 @@
 #include "mem_block.hpp"
 #include "memory_alloc.h"
 
+#include <memory>
+#include <functional>
+
 // forward definitions
 namespace cubthread
 {
