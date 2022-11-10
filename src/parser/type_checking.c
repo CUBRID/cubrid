@@ -18417,7 +18417,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  break;
 
 	case PT_IS_NOT_IN:
-	  if (typ2 == DB_TYPE_NULL)
+	  if (typ1 != DB_TYPE_NULL && typ2 == DB_TYPE_NULL)
 	    {
 	      cmp = 1;
 	      break;
