@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright 2008 Search Solution Corporation
  * Copyright 2016 CUBRID Corporation
  *
@@ -305,6 +305,11 @@ namespace cublog
 
   atomic_replication_helper::atomic_log_sequence::~atomic_log_sequence ()
   {
+    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+      {
+	_er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL_SEQ]\n%s\n", m_full_dump_stream.str ().c_str ());
+      }
+
     assert (m_log_vec.empty ());
   }
 
@@ -340,12 +345,30 @@ namespace cublog
 	//    be fixed, a client transactions manages to fix the page; IOW, how is the progress
 	//    of the "highest processed LSA" working wrt atomic replication sequences
 
+	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+	  {
+	    constexpr int BUF_LEN_MAX = UCHAR_MAX;
+	    char buf[BUF_LEN_MAX];
+
+	    const int written = snprintf (buf, (size_t) BUF_LEN_MAX,
+					  "  _W_FAILED LSA = %lld|%d  vpid = %d|%d  rcvindex = %s\n",
+					  LSA_AS_ARGS (&lsa), VPID_AS_ARGS (&vpid),
+					  rv_rcvindex_string (rcvindex));
+	    assert (BUF_LEN_MAX > written);
+
+	    m_full_dump_stream << buf; // dump to buffer already ends with newline
+	  }
+
 	assert (page_p == nullptr);
       }
     else
       {
 	assert (page_p != nullptr);
-	m_log_vec.emplace_back (lsa, vpid, rcvindex, page_p);
+	const atomic_log_entry &new_entry = m_log_vec.emplace_back (lsa, vpid, rcvindex, page_p);
+	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+	  {
+	    new_entry.dump_to_stream (m_full_dump_stream);
+	  }
       }
 
     return err_code;
@@ -429,10 +452,11 @@ namespace cublog
   void
   atomic_replication_helper::atomic_log_sequence::append_control_log (LOG_RECTYPE rectype, LOG_LSA lsa)
   {
-    m_log_vec.emplace_back (lsa, rectype);
+    const atomic_log_entry &new_entry = m_log_vec.emplace_back (lsa, rectype);
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
+	new_entry.dump_to_stream (m_full_dump_stream);
 	dump ("sequence::append_control_log END");
       }
   }
@@ -441,10 +465,11 @@ namespace cublog
   atomic_replication_helper::atomic_log_sequence::append_control_log_sysop_end (
 	  LOG_LSA lsa, LOG_SYSOP_END_TYPE sysop_end_type, LOG_LSA sysop_end_last_parent_lsa)
   {
-    m_log_vec.emplace_back (lsa, sysop_end_type, sysop_end_last_parent_lsa);
+    const atomic_log_entry &new_entry = m_log_vec.emplace_back (lsa, sysop_end_type, sysop_end_last_parent_lsa);
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
+	new_entry.dump_to_stream (m_full_dump_stream);
 	dump ("sequence::append_control_log_sysop_end END");
       }
   }
@@ -942,6 +967,21 @@ namespace cublog
     buf_ptr += written;
     assert (buf_len >= written);
     buf_len -= written;
+  }
+
+  void
+  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::dump_to_stream (
+	  std::stringstream &dump_stream) const
+  {
+    constexpr int BUF_LEN_MAX = UCHAR_MAX;
+    char buf[BUF_LEN_MAX];
+    char *buf_ptr = buf;
+    int buf_len = BUF_LEN_MAX;
+
+    // maybe faster to first dump to stack buffer
+    dump_to_buffer (buf_ptr, buf_len);
+
+    dump_stream << (char *) buf; // dump to buffer already ends with newline
   }
 
   /*********************************************************************************************************
