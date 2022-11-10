@@ -1560,9 +1560,23 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
       goto end;
     }
 
-  if (classobj_put_index (&template_->properties, type, constraint_name, atts, asc_desc, attr_prefix_length, NULL,
-			  filter_index, fk_info, shared_cons_name, function_index, comment, index_status, true)
-      != NO_ERROR)
+  // Declare and use a temporary variable to match the prototype of the classobj_put_index() function.
+  SM_CLASS_CONSTRAINT con;
+
+  con.type = type;
+  con.name = constraint_name;
+  con.attributes = atts;
+  con.asc_desc = (int *) asc_desc;
+  con.attrs_prefix_length = (int *) attr_prefix_length;
+  con.filter_predicate = filter_index;
+  con.func_index_info = function_index;
+  con.comment = comment;
+  con.index_status = index_status;
+  con.index_btid = BTID_INITIALIZER;
+  con.fk_info = NULL;
+  con.shared_cons_name = NULL;
+
+  if (classobj_put_index (&template_->properties, &con, NULL, fk_info, shared_cons_name, true) != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
     }

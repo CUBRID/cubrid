@@ -34,7 +34,7 @@
 #include <errno.h>
 #include <assert.h>
 
-#include "area_alloc.h"
+#include "memory_alloc_area.h"
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"

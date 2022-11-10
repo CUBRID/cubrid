@@ -174,7 +174,8 @@ namespace cubmethod
   }
 
   int
-  method_invoke_group::prepare (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base)
+  method_invoke_group::prepare (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base,
+				const std::vector<bool> &arg_use_vec)
   {
     int error = NO_ERROR;
 
@@ -193,9 +194,20 @@ namespace cubmethod
 	  }
 	  case METHOD_TYPE_JAVA_SP:
 	  {
+	    /* optimize arguments only for java sp not to send redundant values */
+	    DB_VALUE null_val;
+	    db_make_null (&null_val);
+	    std::vector<std::reference_wrapper<DB_VALUE>> optimized_arg_base (arg_base.begin (),
+		arg_base.end ()); /* bind null value for the unused columns */
+	    for (int i = 0; i < arg_use_vec.size (); i++)
+	      {
+		bool is_used = arg_use_vec [i];
+		optimized_arg_base[i] = (!is_used) ? std::ref (null_val) : optimized_arg_base[i];
+	      }
+
 	    // send to Java SP Server
 	    cubmethod::header header (SP_CODE_PREPARE_ARGS, m_id);
-	    cubmethod::prepare_args arg (elem, arg_base);
+	    cubmethod::prepare_args arg (elem, optimized_arg_base);
 	    error = mcon_send_data_to_java (get_socket (), header, arg);
 	    break;
 	  }

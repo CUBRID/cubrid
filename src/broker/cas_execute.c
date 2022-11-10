@@ -72,11 +72,11 @@
 
 #include "db_set_function.h"
 #include "dbi.h"
+#include "parse_tree.h"
 #include "dbtype.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
 #include "ddl_log.h"
-#include "parse_tree.h"
 #include "api_compat.h"
 #include "method_callback.hpp"
 
@@ -879,12 +879,12 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
 	  goto prepare_error;
 	}
 
-      if (session->statements != NULL)
+      if (session->statements && (statement = session->statements[0]))
 	{
-	  statement = session->statements[0];
-	  if (statement != NULL)
+	  if (logddl_set_stmt_type (statement->node_type) && session->parser->original_buffer)
 	    {
-	      logddl_set_stmt_type (statement->node_type);
+	      logddl_set_sql_text ((char *) session->parser->original_buffer,
+				   strlen (session->parser->original_buffer));
 	    }
 	}
 
@@ -919,7 +919,10 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
 
   if (session->statements && (statement = session->statements[0]))
     {
-      logddl_set_stmt_type (statement->node_type);
+      if (logddl_set_stmt_type (statement->node_type) && session->parser->original_buffer)
+	{
+	  logddl_set_sql_text ((char *) session->parser->original_buffer, strlen (session->parser->original_buffer));
+	}
     }
 
   updatable_flag = flag & CCI_PREPARE_UPDATABLE;
@@ -2330,6 +2333,9 @@ ux_next_result (T_SRV_HANDLE * srv_handle, char flag, T_NET_BUF * net_buf, T_REQ
   if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "next_result %s%d", "error:", err_info.err_number);
+
       goto next_result_error;
     }
 
@@ -2416,7 +2422,6 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       if (sql_stmt != NULL)
 	{
 	  cas_log_write_query_string_nonl (sql_stmt, strlen (sql_stmt));
-	  logddl_set_sql_text (sql_stmt, (int) strlen (sql_stmt));
 	}
 
       session = db_open_buffer (sql_stmt);
@@ -2441,7 +2446,10 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	  cas_log_write2 ("");
 	  goto batch_error;
 	}
-      logddl_set_stmt_type (stmt_type);
+      if (logddl_set_stmt_type (stmt_type) && sql_stmt)
+	{
+	  logddl_set_sql_text (sql_stmt, sql_size /*(int) strlen (sql_stmt) */ );
+	}
 
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       db_get_cacheinfo (session, stmt_id, &use_plan_cache, &use_query_cache);
@@ -2936,6 +2944,9 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch
   if (srv_handle == NULL)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "fetch %s%d", "error:", err_info.err_number);
+
       goto fetch_error;
     }
 
@@ -3078,6 +3089,10 @@ ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
   if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "cursor srv_h_id %d %s%d", srv_h_id, "error:",
+		     err_info.err_number);
+
       goto cursor_error;
     }
 #if defined(CAS_FOR_CGW)
@@ -3087,6 +3102,10 @@ ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
   if (cur_result == NULL)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "cursor %s%d current result is null", "error:",
+		     err_info.err_number);
+
       goto cursor_error;
     }
 
@@ -3121,6 +3140,11 @@ ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos, int argc, void **ar
   if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST || srv_handle->cur_result == NULL)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "cursor %s%d%s",
+		     "error:", err_info.err_number,
+		     (srv_handle == NULL) ? "" : (srv_handle->cur_result == NULL) ? " current result is null" : "");
+
       goto cursor_update_error;
     }
 
@@ -3164,6 +3188,10 @@ ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos, int argc, void **ar
       err_code = make_bind_value (1, 2, argv + 1, &attr_val, net_buf, desired_type);
       if (err_code < 0)
 	{
+	  if (err_info.err_number == CAS_ER_SRV_HANDLE || err_info.err_number == CAS_ER_NUM_BIND)
+	    {
+	      cas_log_write (0, false, "cursor_update %s%d", "error:", err_info.err_number);
+	    }
 	  goto cursor_update_error;
 	}
 
@@ -3482,6 +3510,10 @@ ux_oid_put (int argc, void **argv, T_NET_BUF * net_buf)
       err_code = make_bind_value (1, 2, argv + 1, &attr_val, net_buf, attr_type);
       if (err_code < 0)
 	{
+	  if (err_info.err_number == CAS_ER_SRV_HANDLE || err_info.err_number == CAS_ER_NUM_BIND)
+	    {
+	      cas_log_write (0, false, "oid_put %s%d", "error:", err_info.err_number);
+	    }
 	  dbt_abort_object (otmpl);
 	  goto oid_put_error;
 	}
@@ -3683,6 +3715,10 @@ ux_get_query_info (int srv_h_id, char info_type, T_NET_BUF * net_buf)
     {
       errors_in_transaction++;
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "get_query_info srv_h_id %d %s%d", srv_h_id,
+		     "error:", err_info.err_number);
+
       NET_BUF_ERR_SET (net_buf);
       return err_code;
     }
@@ -3742,6 +3778,10 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
   if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "get_parameter_info srv_h_id %d %s%d", srv_h_id,
+		     "error:", err_info.err_number);
+
       goto parameter_info_error;
     }
 
@@ -9994,6 +10034,10 @@ fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, T_REQ_INFO * req_inf
     {
       int err_code;
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "fetch_call %s%d prepare_call_info is null",
+		     "error:", err_info.err_number);
+
       NET_BUF_ERR_SET (net_buf);
       return err_code;
     }
@@ -10472,6 +10516,11 @@ ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (srv_handle == NULL || srv_handle->cur_result == NULL)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "make_out_rs new_handle_id %d %s%d%s",
+		     new_handle_id, "error:", err_info.err_number,
+		     (srv_handle != NULL) ? " current result is null" : "");
+
       goto ux_make_out_rs_error;
     }
 
@@ -10479,6 +10528,10 @@ ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (q_result->stmt_type != CUBRID_STMT_SELECT)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "make_out_rs stmt_type %d %s%d",
+		     q_result->stmt_type, "error:", err_info.err_number);
+
       goto ux_make_out_rs_error;
     }
 
@@ -10512,6 +10565,10 @@ ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       if (col == NULL)
 	{
 	  err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+	  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "make_out_rs %s%d column_info is null", "error:",
+			 err_info.err_number);
+
 	  goto ux_make_out_rs_error;
 	}
 
