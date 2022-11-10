@@ -174,7 +174,7 @@ void
 page_server::connection_handler::handle_oldest_active_mvccid_request (tran_server_conn_t::sequenced_payload &a_sp)
 {
   assert (m_server_type == transaction_server_type::ACTIVE);
-  const MVCCID oldest_mvccid = m_ps.m_pts_mvcc_tracker.get_global_oldest_active_mvccid();
+  const MVCCID oldest_mvccid = m_ps.m_pts_mvcc_tracker.get_global_oldest_active_mvccid ();
 
   std::string response_message;
   response_message.append (reinterpret_cast<const char *> (&oldest_mvccid), sizeof (oldest_mvccid));
@@ -210,7 +210,7 @@ page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_
 {
   assert (m_server_type == transaction_server_type::PASSIVE);
 
-  const auto oldest_mvccid = *reinterpret_cast<const MVCCID *const> (a_sp.pull_payload().c_str());
+  const auto oldest_mvccid = *reinterpret_cast<const MVCCID *const> (a_sp.pull_payload ().c_str ());
 
   m_ps.m_pts_mvcc_tracker.update_oldest_active_mvccid (get_connection_id (), oldest_mvccid);
 }
@@ -408,7 +408,7 @@ void page_server::pts_mvcc_tracker::init_oldest_active_mvccid (const std::string
    * before, the entry must have been removed when the PTS disconnected or when the connection
    *  to the PTS was aborted.
    */
-  assert (m_pts_oldest_active_mvccids.find (pts_channel_id) == m_pts_oldest_active_mvccids.end());
+  assert (m_pts_oldest_active_mvccids.find (pts_channel_id) == m_pts_oldest_active_mvccids.end ());
 
   /*
    * MVCCID_ALL_VISIBLE means that it hasn't yet received. It will prevent the ATS to run vacuum.
@@ -421,7 +421,7 @@ void page_server::pts_mvcc_tracker::init_oldest_active_mvccid (const std::string
 
 void page_server::pts_mvcc_tracker::update_oldest_active_mvccid (const std::string &pts_channel_id, const MVCCID mvccid)
 {
-  assert (MVCCID_IS_NORMAL (mvccid));
+//  assert (MVCCID_IS_NORMAL (mvccid));
 
   std::lock_guard<std::mutex> lockg { m_pts_oldest_active_mvccids_mtx };
 
@@ -430,29 +430,29 @@ void page_server::pts_mvcc_tracker::update_oldest_active_mvccid (const std::stri
    * 2. It is updated by the PTS only when it move foward.
    *    Without update, it is MVCCID_ALL_VISIBLE by default, which is lower than any mvccid assigned.
    */
-  assert (m_pts_oldest_active_mvccids.find (pts_channel_id) != m_pts_oldest_active_mvccids.end());
+  assert (m_pts_oldest_active_mvccids.find (pts_channel_id) != m_pts_oldest_active_mvccids.end ());
   assert (m_pts_oldest_active_mvccids[pts_channel_id] < mvccid);
 
   m_pts_oldest_active_mvccids[pts_channel_id] = mvccid;
 
-#if !defined(NDEBUG)
-  std::string msg;
-  std::stringstream ss;
-  ss << "receive_oldest_active_mvccid: update the oldest active mvccid to " << mvccid << " of " << pts_channel_id <<
-     std::endl;
-  ss << "oldest mvcc ids:" ;
-  for (const auto &it : m_pts_oldest_active_mvccids)
-    {
-      ss << " " << it.second;
-    }
-  er_log_debug (ARG_FILE_LINE, ss.str().c_str());
-#endif
+//#if !defined(NDEBUG)
+//  std::string msg;
+//  std::stringstream ss;
+//  ss << "receive_oldest_active_mvccid: update the oldest active mvccid to " << mvccid << " of " << pts_channel_id <<
+//     std::endl;
+//  ss << "oldest mvcc ids:" ;
+//  for (const auto &it : m_pts_oldest_active_mvccids)
+//    {
+//      ss << " " << it.second;
+//    }
+//  er_log_debug (ARG_FILE_LINE, ss.str().c_str());
+//#endif
 }
 void page_server::pts_mvcc_tracker::delete_oldest_active_mvccid (const std::string &pts_channel_id)
 {
   std::lock_guard<std::mutex> lockg { m_pts_oldest_active_mvccids_mtx };
   /* The entry is already created when ths PTS is connected. */
-  assert (m_pts_oldest_active_mvccids.find (pts_channel_id) != m_pts_oldest_active_mvccids.end());
+  assert (m_pts_oldest_active_mvccids.find (pts_channel_id) != m_pts_oldest_active_mvccids.end ());
   m_pts_oldest_active_mvccids.erase (pts_channel_id);
 }
 
