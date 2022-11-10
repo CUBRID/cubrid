@@ -22,6 +22,7 @@
 #include <map>
 #include <vector>
 #include <set>
+#include <sstream>
 
 #include "log_lsa.hpp"
 #include "log_record.hpp"
@@ -206,6 +207,7 @@ namespace cublog
 	    inline bool is_control () const;
 
 	    void dump_to_buffer (char *&buf_ptr, int &buf_len) const;
+	    void dump_to_stream (std::stringstream &dump_stream) const;
 
 	    VPID m_vpid;
 	    LOG_RECTYPE m_rectype;
@@ -290,6 +292,9 @@ namespace cublog
 	  log_rv_redo_context m_redo_context;
 	  atomic_log_entry_vector_type m_log_vec;
 	  page_ptr_bookkeeping m_page_ptr_bookkeeping;
+
+	  // temporary mechanism to log all the log entries that were part of the sequence
+	  std::stringstream m_full_dump_stream;
       };
 
       using sequence_map_type = std::map<TRANID, atomic_log_sequence>;
