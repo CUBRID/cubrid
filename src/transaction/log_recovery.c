@@ -3336,7 +3336,9 @@ log_recovery_analysis_from_trantable_snapshot (THREAD_ENTRY * thread_p,
   //
   log_Gl.mvcc_table.complete_mvccids_if_still_active (LOG_SYSTEM_TRAN_INDEX, in_gaps_mvccids, false);
 
-  /* Update the oldest active mvccid with the currnet mvcctable, which will be taken into account by the global ATS vacuum. */
+  /* Update the oldest active mvccid with the current mvcctable,
+   * which will be taken into account by the global ATS vacuum.
+   */
   log_Gl.mvcc_table.update_oldest_active ();
 
   if (!MVCC_ID_PRECEDES (log_rcv_context.get_largest_mvccid (), log_Gl.hdr.mvcc_next_id))

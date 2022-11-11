@@ -554,11 +554,13 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
        *
        * It will be set to NULL after LOG_COMMIT
        *
-       * 2. This is only the case if it's active transaction server because only ats generates log records and do vacuum.
+       * 2. This is the case only if it's ATS because only ats generates log records and do vacuum.
        *
        * 3. This also prevents ats from vacumming a version on which a RO transaction in PTS may start.
-       *  A newly connected PTS starts replicating from the end of log on PS, and a RO transaction can start with a snapshot of then.
-       *  If VACUUM clean up the modifications before its LOG_COMMIT is flushed on PS, it possibly cleans up data seen by the RO transaction on a PTS.
+       *  A newly connected PTS starts replicating from the end of log on PS,
+       *  and a RO transaction can start with a snapshot of then.
+       *  If VACUUM cleans up the modifications before its LOG_COMMIT is flushed on PS,
+       *  it possibly cleans up data seen by the RO transaction on a PTS.
        */
       MVCCID tran_lowest_active = oldest_active_get (m_transaction_lowest_visible_mvccids[tran_index], tran_index,
 				  oldest_active_event::COMPLETE_MVCC);
