@@ -33,7 +33,7 @@
 
 #include "object_primitive.h"
 
-#include "memory_alloc_area.h"
+#include "area_alloc.h"
 #include "db_value_printer.hpp"
 #include "db_json.hpp"
 #include "elo.h"

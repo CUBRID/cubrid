@@ -24,12 +24,74 @@
 #ifndef _MEMORY_ALLOC_H_
 #define _MEMORY_ALLOC_H_
 
+#ident "$Id$"
+
 #include "config.h"
-#include "porting.h"
 
 #include "dbtype_def.h"
 #include "thread_compat.hpp"
-#include "memory_alignment.hpp"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <limits.h>
+#include <sys/types.h>
+#include <stddef.h>
+#include <string.h>
+#if !defined(WINDOWS)
+#include <stdint.h>
+#endif
+
+#if defined (__cplusplus)
+#include <memory>
+#include <functional>
+#endif
+
+/* Ceiling of positive division */
+#define CEIL_PTVDIV(dividend, divisor) \
+        (((dividend) == 0) ? 0 : (((dividend) - 1) / (divisor)) + 1)
+
+/* Make sure that sizeof returns and integer, so I can use in the operations */
+#define DB_SIZEOF(val)          (sizeof(val))
+
+/*
+ * Macros related to alignments
+ */
+#define CHAR_ALIGNMENT          sizeof(char)
+#define SHORT_ALIGNMENT         sizeof(short)
+#define INT_ALIGNMENT           sizeof(int)
+#define LONG_ALIGNMENT          sizeof(long)
+#define FLOAT_ALIGNMENT         sizeof(float)
+#define DOUBLE_ALIGNMENT        sizeof(double)
+#if __WORDSIZE == 32
+#define PTR_ALIGNMENT		4
+#else
+#define PTR_ALIGNMENT		8
+#endif
+#define MAX_ALIGNMENT           DOUBLE_ALIGNMENT
+
+#if defined(NDEBUG)
+#define PTR_ALIGN(addr, boundary) \
+        ((char *)((((UINTPTR)(addr) + ((UINTPTR)((boundary)-1)))) \
+                  & ~((UINTPTR)((boundary)-1))))
+#else
+#define PTR_ALIGN(addr, boundary) \
+        (memset((void*)(addr), 0,\
+	   DB_WASTED_ALIGN((UINTPTR)(addr), (UINTPTR)(boundary))),\
+        (char *)((((UINTPTR)(addr) + ((UINTPTR)((boundary)-1)))) \
+                  & ~((UINTPTR)((boundary)-1))))
+#endif
+
+#define DB_ALIGN(offset, align) \
+        (((offset) + (align) - 1) & ~((align) - 1))
+
+#define DB_ALIGN_BELOW(offset, align) \
+        ((offset) & ~((align) - 1))
+
+#define DB_WASTED_ALIGN(offset, align) \
+        (DB_ALIGN((offset), (align)) - (offset))
+
+#define DB_ATT_ALIGN(offset) \
+        (((offset) + (INT_ALIGNMENT) - 1) & ~((INT_ALIGNMENT) - 1))
 
 /*
  * Macros related to memory allocation
@@ -94,31 +156,17 @@ extern void db_scramble (void *region, int size);
           (ptr) = NULL; \
         } while (0)
 #endif /* NDEBUG */
-#define db_ws_free_and_init(ptr) \
-        do { \
-          db_ws_free((ptr)); \
-          (ptr) = NULL; \
-        } while (0)
+
+extern int ansisql_strcmp (const char *s, const char *t);
+extern int ansisql_strcasecmp (const char *s, const char *t);
 
 #if !defined (SERVER_MODE)
 
 extern HL_HEAPID private_heap_id;
-extern HL_HEAPID ws_heap_id;
 
 #define os_malloc(size) (malloc (size))
 #define os_free(ptr) (free (ptr))
 #define os_realloc(ptr, size) (realloc ((ptr), (size)))
-
-/* allocation APIs for workspace */
-#define db_ws_alloc(size) \
-        db_private_alloc(NULL, size)
-#define db_ws_free(ptr) \
-        db_private_free(NULL, ptr)
-#define db_ws_realloc(ptr, size) \
-        db_private_realloc(NULL, ptr, size)
-
-#define db_create_workspace_heap() (ws_heap_id = db_create_private_heap())
-#define db_destroy_workspace_heap() db_destroy_private_heap(NULL, ws_heap_id)
 
 #else /* SERVER_MODE */
 
@@ -147,6 +195,19 @@ extern void os_free_release (void *ptr, bool rc_track);
 #endif /* NDEBUG */
 
 #endif /* SERVER_MODE */
+
+/*
+ * Return the assumed minimum alignment requirement for the requested
+ * size.  Multiples of sizeof(double) are assumed to need double
+ * alignment, etc.
+ */
+extern int db_alignment (int);
+
+/*
+ * Return the value of "n" to the next "alignment" boundary.  "alignment"
+ * must be a power of 2.
+ */
+extern int db_align_to (int n, int alignment);
 
 extern HL_HEAPID db_create_ostk_heap (int chunk_size);
 extern void db_destroy_ostk_heap (HL_HEAPID heap_id);
@@ -221,12 +282,40 @@ extern void *db_private_realloc_external (THREAD_ENTRY * thrd, void *ptr, size_t
 
 #if defined (SERVER_MODE)
 extern HL_HEAPID db_private_set_heapid_to_thread (THREAD_ENTRY * thread_p, HL_HEAPID heap_id);
-extern HL_HEAPID db_private_get_heapid_from_thread (REFPTR (THREAD_ENTRY, thread_p));
 #endif // SERVER_MODE
 
 extern HL_HEAPID db_create_fixed_heap (int req_size, int recs_per_chunk);
 extern void db_destroy_fixed_heap (HL_HEAPID heap_id);
 extern void *db_fixed_alloc (HL_HEAPID heap_id, size_t size);
 extern void db_fixed_free (HL_HEAPID heap_id, void *ptr);
+
+#if defined(SA_MODE)
+typedef struct private_malloc_header_s PRIVATE_MALLOC_HEADER;
+struct private_malloc_header_s
+{
+  unsigned int magic;
+  int alloc_type;
+};
+
+#define PRIVATE_MALLOC_HEADER_MAGIC 0xafdaafdaU
+
+enum
+{
+  PRIVATE_ALLOC_TYPE_LEA = 1,
+  PRIVATE_ALLOC_TYPE_WS = 2
+};
+
+#define PRIVATE_MALLOC_HEADER_ALIGNED_SIZE \
+  ((sizeof(PRIVATE_MALLOC_HEADER) + 7) & ~7)
+
+#define private_request_size(s) \
+  (PRIVATE_MALLOC_HEADER_ALIGNED_SIZE + (s))
+
+#define private_hl2user_ptr(ptr) \
+  (void *)((char *)(ptr) + PRIVATE_MALLOC_HEADER_ALIGNED_SIZE)
+
+#define private_user2hl_ptr(ptr) \
+  (PRIVATE_MALLOC_HEADER *)((char *)(ptr) - PRIVATE_MALLOC_HEADER_ALIGNED_SIZE)
+#endif /* SA_MODE */
 
 #endif /* _MEMORY_ALLOC_H_ */
