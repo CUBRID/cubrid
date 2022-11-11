@@ -8343,7 +8343,7 @@ static int
 pgbuf_request_data_page_from_page_server (const VPID * vpid, const PAGE_FETCH_MODE fetch_mode,
 					  log_lsa target_repl_lsa, FILEIO_PAGE * io_page)
 {
-  assert (get_server_type () == SERVER_TYPE_TRANSACTION);
+  assert (is_transaction_server ());
 
   cubpacking::packer pac;
   size_t size = 0;
