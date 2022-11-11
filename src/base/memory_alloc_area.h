@@ -18,7 +18,7 @@
 
 
 /*
- * area_alloc.h - Area memory manager manager
+ * memory_alloc_area.h - Area memory manager manager
  *
  * Note:
  */

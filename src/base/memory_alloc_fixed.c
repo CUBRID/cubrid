@@ -17,7 +17,7 @@
  */
 
 /*
- * fixed_alloc.c - implementation of fixed-size record allocator
+ * memory_alloc_fixed.c - implementation of fixed-size record allocator
  */
 
 #ident "$Id$"
