@@ -1437,7 +1437,23 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 Last Error
+1351 The maximum length of the function expression string must be %1$d.
+
+1352 Invalid number of columns specified.
+
+1353 Internal CAS error : %1$d
+1354 Internal CAS error : %1$d, %2$s
+
+1355 %1$s "%2$s" is invalid format at line %3$d of the file "%4$s".
+1356 Hostname "%1$s" is too long, it should be less than or equal to 256 at line %2$d of the file "%3$s".
+1357 Hostname "%1$s" already exists, a hostname cannot be duplicated with other IP addresses at line %2$d of the file "%3$s".
+1358 Both, the IP address and hostname, must be written completely at line %1$d of the file "%2$s".
+1359 Unable to look up "%1$s" in the cubrid_hosts.conf.
+1360 An error occured when using user defined host.
+
+1361 File "%1$s" was not found.
+
+1362 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
