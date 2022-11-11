@@ -20,14 +20,31 @@
  * memory_alloc.c - Memory allocation module
  */
 
-#include "memory_alloc.h"
+#ident "$Id$"
 
+#include "config.h"
+
+#include <stdlib.h>
+#include <string.h>
+#include <assert.h>
+
+#include "set_object.h"
+#include "misc_string.h"
+#include "object_domain.h"
+#include "dbtype.h"
+#include "memory_alloc.h"
+#include "util_func.h"
 #include "error_manager.h"
+#include "intl_support.h"
 #include "resource_tracker.hpp"
 #include "customheaps.h"
-
+#if !defined (SERVER_MODE)
+#include "quick_fit.h"
+#endif /* SERVER_MODE */
 #if defined (SERVER_MODE)
 #include "thread_entry.hpp"
+#endif // SERVER_MODE
+#if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
 
@@ -35,38 +52,183 @@
 
 #if !defined (SERVER_MODE)
 extern unsigned int db_on_server;
-HL_HEAPID private_heap_id = 0;	/* for SA's server-side */
-HL_HEAPID ws_heap_id = 0;	/* for both SA's and CS's workspace */
+HL_HEAPID private_heap_id = 0;
 #endif /* SERVER_MODE */
 
-#if defined(SA_MODE)
-typedef struct private_malloc_header_s PRIVATE_MALLOC_HEADER;
-struct private_malloc_header_s
+#if defined (SERVER_MODE)
+static HL_HEAPID db_private_get_heapid_from_thread (REFPTR (THREAD_ENTRY, thread_p));
+#endif // SERVER_MODE
+
+/*
+ * ansisql_strcmp - String comparison according to ANSI SQL
+ *   return: an integer value which is less than zero
+ *           if s is lexicographically less than t,
+ *           equal to zero if s is equal to t,
+ *           and greater than zero if s is greater than zero.
+ *   s(in): first string to be compared
+ *   t(in): second string to be compared
+ *
+ * Note: The contents of the null-terminated string s are compared with
+ *       the contents of the null-terminated string t, using the ANSI
+ *       SQL semantics. That is, if the lengths of the strings are not
+ *       the same, the shorter string is considered to be extended
+ *       with the blanks on the right, so that both strings have the
+ *       same length.
+ */
+int
+ansisql_strcmp (const char *s, const char *t)
 {
-  unsigned int magic;
-  int alloc_type;
-};
+  for (; *s == *t; s++, t++)
+    {
+      if (*s == '\0')
+	{
+	  return 0;
+	}
+    }
 
-#define PRIVATE_MALLOC_HEADER_MAGIC 0xafdaafdaU
+  if (*s == '\0')
+    {
+      while (*t != '\0')
+	{
+	  if (*t++ != ' ')
+	    {
+	      return -1;
+	    }
+	}
+      return 0;
+    }
+  else if (*t == '\0')
+    {
+      while (*s != '\0')
+	{
+	  if (*s++ != ' ')
+	    {
+	      return 1;
+	    }
+	}
+      return 0;
+    }
+  else
+    {
+      return (*(unsigned const char *) s < *(unsigned const char *) t) ? -1 : 1;
+    }
+}
 
-enum
+/*
+ * ansisql_strcasecmp - Case-insensitive string comparison according to ANSI SQL
+ *   return: an integer value which is less than zero
+ *           if s is lexicographically less than t,
+ *           equal to zero if s is equal to t,
+ *           and greater than zero if s is greater than zero.
+ *   s(in): first string to be compared
+ *   t(in): second string to be compared
+ *
+ * Note: The contents of the null-terminated string s are compared with
+ *       the contents of the null-terminated string t, using the ANSI
+ *       SQL semantics. That is, if the lengths of the strings are not
+ *       the same, the shorter string is considered to be extended
+ *       with the blanks on the right, so that both strings have the
+ *       same length.
+ */
+int
+ansisql_strcasecmp (const char *s, const char *t)
 {
-  PRIVATE_ALLOC_TYPE_LEA = 1,
-  PRIVATE_ALLOC_TYPE_WS = 2
-};
+  size_t s_length, t_length, min_length;
+  int cmp_val;
 
-#define PRIVATE_MALLOC_HEADER_ALIGNED_SIZE \
-  ((sizeof(PRIVATE_MALLOC_HEADER) + 7) & ~7)
+  s_length = strlen (s);
+  t_length = strlen (t);
 
-#define private_request_size(s) \
-  (PRIVATE_MALLOC_HEADER_ALIGNED_SIZE + (s))
+  min_length = s_length < t_length ? s_length : t_length;
 
-#define private_hl2user_ptr(ptr) \
-  (void *)((char *)(ptr) + PRIVATE_MALLOC_HEADER_ALIGNED_SIZE)
+  cmp_val = intl_identifier_ncasecmp (s, t, (int) min_length);
 
-#define private_user2hl_ptr(ptr) \
-  (PRIVATE_MALLOC_HEADER *)((char *)(ptr) - PRIVATE_MALLOC_HEADER_ALIGNED_SIZE)
-#endif /* SA_MODE */
+  /* If not equal for shorter length, return */
+  if (cmp_val)
+    {
+      return cmp_val;
+    }
+
+  /* If equal and same size, return */
+  if (s_length == t_length)
+    {
+      return 0;
+    }
+
+  /* If equal for shorter length and not same size, look for trailing blanks */
+  s += min_length;
+  t += min_length;
+
+  if (*s == '\0')
+    {
+      while (*t != '\0')
+	{
+	  if (*t++ != ' ')
+	    {
+	      return -1;
+	    }
+	}
+      return 0;
+    }
+  else
+    {
+      while (*s != '\0')
+	{
+	  if (*s++ != ' ')
+	    {
+	      return 1;
+	    }
+	}
+      return 0;
+    }
+}
+
+/*
+ * db_alignment () -
+ *   return:
+ *   n(in):
+ */
+int
+db_alignment (int n)
+{
+  if (n >= (int) sizeof (double))
+    {
+      return (int) sizeof (double);
+    }
+  else if (n >= (int) sizeof (void *))
+    {
+      return (int) sizeof (void *);
+    }
+  else if (n >= (int) sizeof (int))
+    {
+      return (int) sizeof (int);
+    }
+  else if (n >= (int) sizeof (short))
+    {
+      return (int) sizeof (short);
+    }
+  else
+    {
+      return 1;
+    }
+}
+
+/*
+ * db_align_to () - Return the least multiple of 'alignment' that is greater
+ * than or equal to 'n'.
+ *   return:
+ *   n(in):
+ *   alignment(in):
+ */
+int
+db_align_to (int n, int alignment)
+{
+  /*
+   * Return the least multiple of 'alignment' that is greater than or
+   * equal to 'n'.  'alignment' must be a power of 2.
+   */
+  return (n + alignment - 1) & ~(alignment - 1);
+}
 
 /*
  * db_create_ostk_heap () - create an obstack heap
@@ -132,7 +294,14 @@ HL_HEAPID
 db_create_private_heap (void)
 {
   HL_HEAPID heap_id = 0;
+#if defined (SERVER_MODE)
   heap_id = hl_register_lea_heap ();
+#else /* SERVER_MODE */
+  if (db_on_server)
+    {
+      heap_id = hl_register_lea_heap ();
+    }
+#endif /* SERVER_MODE */
   return heap_id;
 }
 
@@ -148,10 +317,8 @@ db_clear_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
     {
 #if defined (SERVER_MODE)
       heap_id = db_private_get_heapid_from_thread (thread_p);
-#elif defined (CS_MODE)
-      heap_id = ws_heap_id;
-#else
-      heap_id = (db_on_server) ? private_heap_id : ws_heap_id;
+#else /* SERVER_MODE */
+      heap_id = private_heap_id;
 #endif /* SERVER_MODE */
     }
 
@@ -173,18 +340,11 @@ db_change_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
 
 #if defined (SERVER_MODE)
   old_heap_id = db_private_set_heapid_to_thread (thread_p, heap_id);
-#elif defined (CS_MODE)
-  old_heap_id = ws_heap_id;
-#else
+#else /* SERVER_MODE */
+  old_heap_id = private_heap_id;
   if (db_on_server)
     {
-      old_heap_id = private_heap_id;
       private_heap_id = heap_id;
-    }
-  else
-    {
-      old_heap_id = ws_heap_id;
-      ws_heap_id = heap_id;
     }
 #endif
   return old_heap_id;
@@ -202,26 +362,18 @@ db_replace_private_heap (THREAD_ENTRY * thread_p)
 
 #if defined (SERVER_MODE)
   old_heap_id = db_private_get_heapid_from_thread (thread_p);
-#elif defined (CS_MODE)
-  old_heap_id = ws_heap_id;
 #else /* SERVER_MODE */
-  old_heap_id = (db_on_server) ? private_heap_id : ws_heap_id;
+  old_heap_id = private_heap_id;
 #endif /* SERVER_MODE */
 
-  heap_id = db_create_private_heap ();
-
 #if defined (SERVER_MODE)
+  heap_id = db_create_private_heap ();
   db_private_set_heapid_to_thread (thread_p, heap_id);
-#elif defined (CS_MODE)
-  ws_heap_id = heap_id;
-#else
+#else /* SERVER_MODE */
   if (db_on_server)
     {
+      heap_id = db_create_private_heap ();
       private_heap_id = heap_id;
-    }
-  else
-    {
-      ws_heap_id = heap_id;
     }
 #endif /* SERVER_MODE */
   return old_heap_id;
@@ -239,10 +391,8 @@ db_destroy_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
     {
 #if defined (SERVER_MODE)
       heap_id = db_private_get_heapid_from_thread (thread_p);
-#elif defined (CS_MODE)
-      heap_id = ws_heap_id;
 #else /* SERVER_MODE */
-      heap_id = (db_on_server) ? private_heap_id : ws_heap_id;
+      heap_id = private_heap_id;
 #endif /* SERVER_MODE */
     }
 
@@ -286,15 +436,26 @@ void *
 db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track)
 #endif				/* NDEBUG */
 {
+#if !defined (CS_MODE)
   void *ptr = NULL;
+#endif /* !CS_MODE */
 
-  if (size == 0)
+#if defined (SERVER_MODE)
+  HL_HEAPID heap_id;
+#endif
+
+  assert (size > 0);
+
+#if defined (CS_MODE)
+  return db_ws_alloc (size);
+#elif defined (SERVER_MODE)
+  if (size <= 0)
     {
       return NULL;
     }
 
-#if defined (SERVER_MODE)
-  HL_HEAPID heap_id = db_private_get_heapid_from_thread (thrd);
+  heap_id = db_private_get_heapid_from_thread (thrd);
+
   if (heap_id)
     {
       ptr = hl_lea_alloc (heap_id, size);
@@ -317,51 +478,50 @@ db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track)
 	}
     }
 #endif /* !NDEBUG */
-#elif defined (CS_MODE)
-  if (ws_heap_id == 0)
-    {
-      /* not initialized yet */
-      ws_heap_id = db_create_private_heap ();
-    }
 
-  if (ws_heap_id)
+  return ptr;
+#else /* SA_MODE */
+  if (!db_on_server)
     {
-      ptr = hl_lea_alloc (ws_heap_id, size);
-    }
-#else /* SERVER_MODE */
-  HL_HEAPID & heap_id = db_on_server ? private_heap_id : ws_heap_id;
-
-  if (!db_on_server && heap_id == 0)
-    {
-      heap_id = db_create_private_heap ();
-    }
-
-  if (heap_id)
-    {
-      PRIVATE_MALLOC_HEADER *h = NULL;
-      size_t req_sz = private_request_size (size);
-      h = (PRIVATE_MALLOC_HEADER *) hl_lea_alloc (heap_id, req_sz);
-      if (h != NULL)
-	{
-	  h->magic = PRIVATE_MALLOC_HEADER_MAGIC;
-	  h->alloc_type = db_on_server ? PRIVATE_ALLOC_TYPE_LEA : PRIVATE_ALLOC_TYPE_WS;
-	  ptr = private_hl2user_ptr (h);
-	}
-      else
-	{
-	  return NULL;
-	}
+      return db_ws_alloc (size);
     }
   else
     {
-      ptr = malloc (size);
-      if (ptr == NULL)
+      if (size <= 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  return NULL;
+	}
+
+      if (private_heap_id)
+	{
+	  PRIVATE_MALLOC_HEADER *h = NULL;
+	  size_t req_sz;
+
+	  req_sz = private_request_size (size);
+	  h = (PRIVATE_MALLOC_HEADER *) hl_lea_alloc (private_heap_id, req_sz);
+
+	  if (h != NULL)
+	    {
+	      h->magic = PRIVATE_MALLOC_HEADER_MAGIC;
+	      h->alloc_type = PRIVATE_ALLOC_TYPE_LEA;
+	      return private_hl2user_ptr (h);
+	    }
+	  else
+	    {
+	      return NULL;
+	    }
+	}
+      else
+	{
+	  ptr = malloc (size);
+	  if (ptr == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	    }
+	  return ptr;
 	}
     }
 #endif /* SA_MODE */
-  return ptr;
 }
 
 
@@ -399,15 +559,23 @@ void *
 db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc_track)
 #endif				/* NDEBUG */
 {
+#if !defined (CS_MODE)
   void *new_ptr = NULL;
+#endif /* !CS_MODE */
 
-  if (size == 0)
+#if defined (SERVER_MODE)
+  HL_HEAPID heap_id;
+#endif
+
+#if defined (CS_MODE)
+  return db_ws_realloc (ptr, size);
+#elif defined (SERVER_MODE)
+  if (size <= 0)
     {
       return NULL;
     }
 
-#if defined (SERVER_MODE)
-  HL_HEAPID heap_id = db_private_get_heapid_from_thread (thrd);
+  heap_id = db_private_get_heapid_from_thread (thrd);
 
   if (heap_id)
     {
@@ -438,69 +606,62 @@ db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc
     }
 #endif /* !NDEBUG */
 
-#elif defined (CS_MODE)
-  if (ws_heap_id == 0)
-    {
-      /* not initialized yet */
-      ws_heap_id = db_create_private_heap ();
-    }
-
-  if (ws_heap_id && (size > 0))
-    {
-      new_ptr = hl_lea_realloc (ws_heap_id, ptr, size);
-    }
+  return new_ptr;
 #else /* SA_MODE */
   if (ptr == NULL)
     {
       return db_private_alloc (thrd, size);
     }
 
-  HL_HEAPID & heap_id = db_on_server ? private_heap_id : ws_heap_id;
-
-  if (!db_on_server && heap_id == 0)
+  if (!db_on_server)
     {
-      heap_id = db_create_private_heap ();
-    }
-
-  if (heap_id)
-    {
-      PRIVATE_MALLOC_HEADER *h;
-
-      h = private_user2hl_ptr (ptr);
-      if (h->magic != PRIVATE_MALLOC_HEADER_MAGIC)
-	{
-	  return NULL;
-	}
-
-      PRIVATE_MALLOC_HEADER *new_h;
-      size_t req_sz;
-
-      req_sz = private_request_size (size);
-      new_h = (PRIVATE_MALLOC_HEADER *) hl_lea_realloc (heap_id, h, req_sz);
-      if (new_h == NULL)
-	{
-	  return NULL;
-	}
-      new_h->magic = PRIVATE_MALLOC_HEADER_MAGIC;
-      new_h->alloc_type = db_on_server ? PRIVATE_ALLOC_TYPE_LEA : PRIVATE_ALLOC_TYPE_WS;
-
-      /* make sure ptr was allocated in the same mode (db_on_server) */
-      assert ((db_on_server && (new_h->alloc_type == PRIVATE_ALLOC_TYPE_LEA))
-	      || (!db_on_server && (new_h->alloc_type == PRIVATE_ALLOC_TYPE_WS)));
-
-      new_ptr = private_hl2user_ptr (new_h);
+      return db_ws_realloc (ptr, size);
     }
   else
     {
-      new_ptr = realloc (ptr, size);
-      if (new_ptr == NULL)
+      if (private_heap_id)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  PRIVATE_MALLOC_HEADER *h;
+
+	  h = private_user2hl_ptr (ptr);
+	  if (h->magic != PRIVATE_MALLOC_HEADER_MAGIC)
+	    {
+	      return NULL;
+	    }
+
+	  if (h->alloc_type == PRIVATE_ALLOC_TYPE_LEA)
+	    {
+	      PRIVATE_MALLOC_HEADER *new_h;
+	      size_t req_sz;
+
+	      req_sz = private_request_size (size);
+	      new_h = (PRIVATE_MALLOC_HEADER *) hl_lea_realloc (private_heap_id, h, req_sz);
+	      if (new_h == NULL)
+		{
+		  return NULL;
+		}
+	      return private_hl2user_ptr (new_h);
+	    }
+	  else if (h->alloc_type == PRIVATE_ALLOC_TYPE_WS)
+	    {
+	      return db_ws_realloc (ptr, size);
+	    }
+	  else
+	    {
+	      return NULL;
+	    }
+	}
+      else
+	{
+	  new_ptr = realloc (ptr, size);
+	  if (new_ptr == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	    }
+	  return new_ptr;
 	}
     }
 #endif /* SA_MODE */
-
-  return new_ptr;
 }
 
 /*
@@ -566,13 +727,19 @@ void
 db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
 #endif				/* NDEBUG */
 {
+#if defined (SERVER_MODE)
+  HL_HEAPID heap_id;
+#endif
+
   if (ptr == NULL)
     {
       return;
     }
 
-#if defined (SERVER_MODE)
-  HL_HEAPID heap_id = db_private_get_heapid_from_thread (thrd);
+#if defined (CS_MODE)
+  db_ws_free (ptr);
+#elif defined (SERVER_MODE)
+  heap_id = db_private_get_heapid_from_thread (thrd);
 
   if (heap_id)
     {
@@ -593,39 +760,45 @@ db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
     }
 #endif /* !NDEBUG */
 
-#elif defined (CS_MODE)
-  assert (ws_heap_id != 0);
+#else /* SA_MODE */
 
-  if (ws_heap_id)
+  if (!db_on_server)
     {
-      hl_lea_free (ws_heap_id, ptr);
+      db_ws_free (ptr);
+      return;
     }
 
-#else /* SA_MODE */
-  HL_HEAPID & heap_id = db_on_server ? private_heap_id : ws_heap_id;
-
-  if (heap_id == 0)
+  if (private_heap_id == 0)
     {
       free (ptr);
     }
   else
     {
-      PRIVATE_MALLOC_HEADER *h = private_user2hl_ptr (ptr);
+      PRIVATE_MALLOC_HEADER *h;
+
+      h = private_user2hl_ptr (ptr);
       if (h->magic != PRIVATE_MALLOC_HEADER_MAGIC)
 	{
 	  /* assertion point */
-	  assert (false);
 	  return;
 	}
 
-      /* make sure ptr was allocated in the same mode (db_on_server) */
-      assert ((db_on_server && (h->alloc_type == PRIVATE_ALLOC_TYPE_LEA))
-	      || (!db_on_server && (h->alloc_type == PRIVATE_ALLOC_TYPE_WS)));
-
-      hl_lea_free (heap_id, h);
+      if (h->alloc_type == PRIVATE_ALLOC_TYPE_LEA)
+	{
+	  hl_lea_free (private_heap_id, h);
+	}
+      else if (h->alloc_type == PRIVATE_ALLOC_TYPE_WS)
+	{
+	  db_ws_free (ptr);	/* not h */
+	}
+      else
+	{
+	  return;
+	}
     }
 #endif /* SA_MODE */
 }
+
 
 void *
 db_private_alloc_external (THREAD_ENTRY * thrd, size_t size)
@@ -765,7 +938,7 @@ os_free_release (void *ptr, bool rc_track)
  *   return: heap id
  *   thread_p(in/out): thread local entry; output is never nil
  */
-HL_HEAPID
+static HL_HEAPID
 db_private_get_heapid_from_thread (REFPTR (THREAD_ENTRY, thread_p))
 {
   if (thread_p == NULL)
@@ -778,7 +951,7 @@ db_private_get_heapid_from_thread (REFPTR (THREAD_ENTRY, thread_p))
 }
 
 /*
- * db_private_set_heapid_to_thread() -
+ * css_set_private_heap() -
  *   return:
  *   thread_p(in):
  *   heap_id(in):
