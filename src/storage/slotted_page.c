@@ -1036,6 +1036,11 @@ spage_collect_statistics (PAGE_PTR page_p, int *npages, int *nrecords, int *rec_
 	  continue;
 	}
 
+      if (slot_p->record_type == REC_MARKDELETED || slot_p->record_type == REC_DELETED_WILL_REUSE)
+	{
+	  continue;
+	}
+
       if (slot_p->record_type == REC_BIGONE)
 	{
 	  pages += 2;
