@@ -151,7 +151,7 @@ namespace cubcomm
       inline const channel &get_channel () const;		// get underlying channel
 
     private:
-      channel m_channel;					// requests are sent on this channel
+      channel m_send_channel;				// requests are sent on this channel
   };
 
   // A server that handles request messages. All requests must be preregistered.
@@ -191,7 +191,7 @@ namespace cubcomm
       void handle_request (std::unique_ptr<char[]> &message_buffer, size_t message_size);
 
     protected:
-      channel m_channel;	  // request are received on this channel
+      channel m_recv_channel;	  // request are received on this channel
 
     private:
       std::thread m_thread;				// thread that loops and handles requests
@@ -207,6 +207,7 @@ namespace cubcomm
     public:
       using client_request_id = ClientMsgId;
 
+      request_client_server () = delete;
       request_client_server (channel &&chn);
       request_client_server (const request_client_server &) = delete;
       request_client_server (request_client_server &&) = delete;
@@ -236,7 +237,7 @@ namespace cubcomm
   // --- request_client ---
   template <typename MsgId>
   request_client<MsgId>::request_client (channel &&chn)
-    : m_channel (std::move (chn))
+    : m_send_channel (std::move (chn))
   {
   }
 
@@ -244,19 +245,19 @@ namespace cubcomm
   template <typename ... PackableArgs>
   css_error_code request_client<MsgId>::send (MsgId msgid, const PackableArgs &... args)
   {
-    return send_client_request (m_channel, msgid, args...);
+    return send_client_request (m_send_channel, msgid, args...);
   }
 
   template <typename MsgId>
   const channel &request_client<MsgId>::get_channel () const
   {
-    return m_channel;
+    return m_send_channel;
   }
 
   // --- request_server ---
   template <typename MsgId>
   request_server<MsgId>::request_server (channel &&chn)
-    : m_channel (std::move (chn))
+    : m_recv_channel (std::move (chn))
   {
   }
 
@@ -274,7 +275,7 @@ namespace cubcomm
   template <typename MsgId>
   const channel &request_server<MsgId>::get_channel () const
   {
-    return m_channel;
+    return m_recv_channel;
   }
 
   template <typename MsgId>
@@ -328,7 +329,7 @@ namespace cubcomm
   {
     unsigned short events = POLLIN;
     unsigned short revents = 0;
-    (void) m_channel.wait_for (events, revents);
+    (void) m_recv_channel.wait_for (events, revents);
     bool received_message = (revents & POLLIN) != 0;
     return received_message;
   }
@@ -340,10 +341,10 @@ namespace cubcomm
     size_t expected_size = 0;
     std::size_t size_ilen = sizeof (expected_size);
     // NOTE: no ntohl here; integer value received as a stream of bytes
-    css_error_code err = m_channel.recv (reinterpret_cast <char *> (&expected_size), size_ilen);
+    css_error_code err = m_recv_channel.recv (reinterpret_cast <char *> (&expected_size), size_ilen);
     if (err != NO_ERRORS)
       {
-	er_log_recv_fail (m_channel, err);
+	er_log_recv_fail (m_recv_channel, err);
 	return err;
       }
     assert (size_ilen == sizeof (expected_size));
@@ -351,10 +352,10 @@ namespace cubcomm
     message_buffer.reset (new char [expected_size]);
 
     size_t receive_size = expected_size;
-    err = m_channel.recv (message_buffer.get (), receive_size);
+    err = m_recv_channel.recv (message_buffer.get (), receive_size);
     if (err != NO_ERRORS)
       {
-	er_log_recv_fail (m_channel, err);
+	er_log_recv_fail (m_recv_channel, err);
 	return err;
       }
     assert (receive_size == expected_size);
@@ -379,7 +380,7 @@ namespace cubcomm
 	assert (false);
 	return;
       }
-    er_log_recv_request (m_channel, static_cast<int> (msgid), message_size);
+    er_log_recv_request (m_recv_channel, static_cast<int> (msgid), message_size);
     req_handle_it->second (upk);
   }
 
@@ -387,7 +388,7 @@ namespace cubcomm
   request_server<MsgId>::~request_server ()
   {
     m_shutdown = true;
-    m_channel.close_connection ();
+    m_recv_channel.close_connection ();
     if (m_thread.joinable ())
       {
 	m_thread.join ();
@@ -406,7 +407,7 @@ namespace cubcomm
   css_error_code request_client_server<ClientMsgId, ServerMsgId>::send (ClientMsgId msgid,
       const PackableArgs &... args)
   {
-    return send_client_request (this->request_server<ServerMsgId>::m_channel, msgid, args...);
+    return send_client_request (this->request_server<ServerMsgId>::m_recv_channel, msgid, args...);
   }
 
   template <typename MsgId, typename ... PackableArgs>
@@ -421,8 +422,7 @@ namespace cubcomm
 
     // NOTE: no htonl here; integer value sent as a stream of bytes
     const css_error_code css_size_err = chn.send (
-	reinterpret_cast<const char *> (&packer_current_size),
-	sizeof (packer_current_size));
+	reinterpret_cast<const char *> (&packer_current_size), sizeof (packer_current_size));
     if (css_size_err != NO_ERRORS)
       {
 	er_log_send_fail (chn, css_size_err);

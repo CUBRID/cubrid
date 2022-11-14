@@ -135,16 +135,15 @@ namespace cubcomm
 
   css_error_code channel::recv_int (int &received)
   {
-    size_t len = sizeof (received);
+    const size_t len = sizeof (received);
 
-    size_t readlen = (size_t) css_readn (m_socket, reinterpret_cast<char *> (&received), (int) len,
-					 m_max_timeout_in_ms);
+    const int readlen = css_readn (m_socket, reinterpret_cast<char *> (&received), (int) len, m_max_timeout_in_ms);
     css_error_code error = NO_ERRORS;
     if (readlen < 0)
       {
 	error = css_error_code::ERROR_ON_COMMAND_READ;
       }
-    else if (readlen != len)
+    else if ((size_t) readlen != len)
       {
 	error = css_error_code::READ_LENGTH_MISMATCH;
       }

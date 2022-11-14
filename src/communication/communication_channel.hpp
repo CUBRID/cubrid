@@ -55,6 +55,7 @@ namespace cubcomm
       constexpr static int INVALID_PORT = -1;
 
     public:
+      channel () = delete;
       channel (int max_timeout_in_ms);
       channel (std::string &&channel_name);
       channel (int max_timeout_in_ms, std::string &&channel_name);
@@ -73,7 +74,8 @@ namespace cubcomm
       css_error_code send (const char *buffer, std::size_t length);
 
       // WARN: these functions use an all-or-nothing approach; use only if the higher level logic
-      // is able to recover from such a failure (important especially under load)
+      // is able to recover from such a failure or if higher level logic needs such an
+      // approach (eg: upon initializing connections)
       css_error_code send_int (int val);
       css_error_code recv_int (int &received);
 

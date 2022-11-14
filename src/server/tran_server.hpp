@@ -104,7 +104,6 @@ class tran_server
     int parse_page_server_hosts_config (std::string &hosts);
 
   private:
-
     std::vector<cubcomm::node> m_connection_list;
     cubcomm::server_server m_conn_type;
     std::vector<std::unique_ptr<page_server_conn_t>> m_page_server_conn_vec;
