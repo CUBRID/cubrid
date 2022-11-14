@@ -47,7 +47,7 @@
 #endif /* !HPUX */
 #include "boot_cl.h"
 #include "memory_alloc.h"
-#include "memory_alloc_area.h"
+#include "area_alloc.h"
 #include "storage_common.h"
 #include "oid.h"
 #include "error_manager.h"
@@ -1534,13 +1534,6 @@ boot_client_all_finalize (bool is_er_final)
 {
   if (BOOT_IS_CLIENT_RESTARTED () || boot_Is_client_all_final == false)
     {
-
-#if !defined (SA_MODE)
-/**
- *  The server credential structure is set in xboot_register_client(). 
- *  In CS_MODE, the structure is unpacked (internally the member variables are allocated by the allocation API). 
- *  In SA_MODE, xboot_register_client() just set global variables's address (not allocated, the memory exists in the data region) to the server credential. 
- */
       if (boot_Server_credential.db_full_name)
 	{
 	  db_private_free_and_init (NULL, boot_Server_credential.db_full_name);
@@ -1557,7 +1550,6 @@ boot_client_all_finalize (bool is_er_final)
 	{
 	  db_private_free_and_init (NULL, boot_Server_credential.db_lang);
 	}
-#endif
 
       showstmt_metadata_final ();
       tran_free_savepoint_list ();

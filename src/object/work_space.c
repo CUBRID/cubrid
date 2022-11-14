@@ -30,7 +30,7 @@
 #include <assert.h>
 
 #include "memory_alloc.h"
-#include "memory_alloc_area.h"
+#include "area_alloc.h"
 #include "message_catalog.h"
 #include "memory_hash.h"
 #include "error_manager.h"
