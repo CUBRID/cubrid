@@ -591,4 +591,3 @@ regular_id
     | VAR_
     | COVAR_
     ;
-

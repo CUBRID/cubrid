@@ -2,7 +2,7 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class DeclLabel extends Decl implements I_Decl {
+public class DeclLabel extends Decl {
 
     public final String name;
 

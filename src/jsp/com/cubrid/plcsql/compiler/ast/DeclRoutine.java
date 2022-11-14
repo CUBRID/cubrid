@@ -2,7 +2,7 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class DeclRoutine extends Decl implements I_Decl {
+public class DeclRoutine extends Decl {
 
     public final String name;
     public final NodeList<I_DeclParam> paramList;

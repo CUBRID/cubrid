@@ -135,8 +135,10 @@ public class TestDriver
                 System.out.println(String.format("parsing: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
                 t0 = t;
 
+                PrintStream out;
+
                 // walk with a pretty printer to print parse tree
-                PrintStream out = getParseTreePrinterOutStream(i);
+                out = getParseTreePrinterOutStream(i);
                 ParseTreePrinter pp = new ParseTreePrinter(out, infile);
                 ParseTreeWalker.DEFAULT.walk(pp, tree);
                 out.close();

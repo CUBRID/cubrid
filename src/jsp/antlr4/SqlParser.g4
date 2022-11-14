@@ -845,4 +845,3 @@ s_non_reserved_keywords_pre12c // !!!
     | YEAR
     | ZONE
     ;
-

@@ -51,7 +51,6 @@ public class Unit implements AstNode {
         String strParams = routine.paramList == null ? "// no parameters" : routine.paramList.toJavaCode(",\n");
 
         return tmplUnit
-
             .replace("%IMPORTS%", importsStr)
             .replace("%CLASS-NAME%", getClassName())
             .replace("%RETURN-TYPE%", routine.retType == null ? "void" : routine.retType.toJavaCode())
