@@ -68,29 +68,27 @@ public class StoredProcedureClassLoader extends URLClassLoader {
     private void init() {
         try {
             addURL(root.toUri().toURL());
-            initJar ();
+            initJar();
             lastModified = getLastModifiedTime(root);
         } catch (Exception e) {
             Server.log(e);
         }
     }
 
-    private void initJar() {
-        try(Stream<Path> files = Files.list(root)){
-            files.filter((file) -> !Files.isDirectory(file) &&
-            (file.toString().endsWith(".jar")))
-            .forEach(jar -> {
-                try {
-                    addURL(jar.toUri().toURL());
-                } catch (MalformedURLException e) {
-                    Server.log(e);
-                }
-            });
-        } catch (NoSuchFileException nsfe) {
+    private void initJar() throws IOException {
+        try (Stream<Path> files = Files.list(root)) {
+            files.filter((file) -> !Files.isDirectory(file) && (file.toString().endsWith(".jar")))
+                    .forEach(
+                            jar -> {
+                                try {
+                                    addURL(jar.toUri().toURL());
+                                } catch (MalformedURLException e) {
+                                    Server.log(e);
+                                }
+                            });
+        } catch (NoSuchFileException e) {
             // ignore
-        } catch (IOException e) {
-            Server.log(e);
-        } 
+        }
     }
 
     public Class<?> loadClass(String name) throws ClassNotFoundException {
