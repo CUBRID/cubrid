@@ -544,15 +544,23 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
   next_tran_status_finish (next_status, next_index);
 
   assert (tran_index < m_transaction_lowest_visible_mvccids_size);
-  if (committed)
+  if (committed && is_active_transaction_server ())
     {
-      /* be sure that transaction modifications can't be vacuumed up to LOG_COMMIT. Otherwise, the following
+      /* 1. be sure that transaction modifications can't be vacuumed up to LOG_COMMIT. Otherwise, the following
        * scenario will corrupt the database:
        * - transaction set its lowest_active_mvccid to MVCCID_NULL
        * - VACUUM clean up transaction modifications
        * - the system crash before LOG_COMMIT of current transaction
        *
        * It will be set to NULL after LOG_COMMIT
+       *
+       * 2. This is the case only if it's ATS because only ats generates log records and do vacuum.
+       *
+       * 3. This also prevents ats from vacumming a version on which a RO transaction in PTS may start.
+       *  A newly connected PTS starts replicating from the end of log on PS,
+       *  and a RO transaction can start with a snapshot of then.
+       *  If VACUUM cleans up the modifications before its LOG_COMMIT is flushed on PS,
+       *  it possibly cleans up data seen by the RO transaction on a PTS.
        */
       MVCCID tran_lowest_active = oldest_active_get (m_transaction_lowest_visible_mvccids[tran_index], tran_index,
 				  oldest_active_event::COMPLETE_MVCC);
@@ -690,6 +698,13 @@ mvcctable::reset_transaction_lowest_active (int tran_index)
 }
 
 void
+mvcctable::update_oldest_active ()
+{
+  MVCCID new_lowest_active = m_current_trans_status.m_active_mvccs.compute_lowest_active_mvccid ();
+  advance_oldest_active (new_lowest_active);
+}
+
+void
 mvcctable::reset_start_mvccid ()
 {
   m_current_trans_status.m_active_mvccs.reset_start_mvccid (log_Gl.hdr.mvcc_next_id);
@@ -724,6 +739,7 @@ mvcctable::update_global_oldest_visible ()
 MVCCID
 mvcctable::update_global_oldest_visible (const MVCCID pts_oldest_visible)
 {
+  assert (is_active_transaction_server());
   assert (is_tran_server_with_remote_storage());
   /*
    * pts_oldest_visible can be
@@ -742,12 +758,7 @@ mvcctable::update_global_oldest_visible (const MVCCID pts_oldest_visible)
 	  MVCCID ats_oldest_visible = compute_oldest_visible_mvccid ();
 	  if (m_ov_lock_count == 0)
 	    {
-	      /*
-	       * The assert below must be met to confirm there is no desynchronizaition.
-	       * But, it's allowed for now.
-	       * TODO: It is going to be dealt with soon in http://jira.cubrid.org/browse/LETS-563.
-	       */
-	      // assert (m_oldest_visible.load () <= pts_oldest_visible);
+	      assert (m_oldest_visible.load () <= pts_oldest_visible);
 	      assert (m_oldest_visible.load () <= ats_oldest_visible);
 	      if (ats_oldest_visible < pts_oldest_visible)
 		{
