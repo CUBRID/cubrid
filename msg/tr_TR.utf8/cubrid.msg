@@ -1434,7 +1434,10 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 
 1352 Invalid number of columns specified.
 
-1353 Son Hata
+1353 Internal CAS error : %1$d 
+1354 Internal CAS error : %1$d, %2$s
+
+1355 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
