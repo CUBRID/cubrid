@@ -17,7 +17,7 @@
  */
 
 /*
- * memory_alloc_area.c - Area memory manager
+ * area_alloc.c - Area memory manager
  *
  * Note:
  * Allocation areas provide a way to block allocate structures and maintain
@@ -37,7 +37,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include "memory_alloc_area.h"
+#include "area_alloc.h"
 #include "set_object.h"
 
 #if !defined (SERVER_MODE)

@@ -18,31 +18,28 @@
 
 
 /*
- * misc_string.h : case insensitive string comparison routines for 8-bit
- *             character sets
- *
+ *      quick_fit.h: Definitions for the Qick Fit allocation system.
  */
 
-#ifndef _MISC_STRING_H_
-#define _MISC_STRING_H_
+#ifndef _QUICK_FIT_H_
+#define _QUICK_FIT_H_
 
 #ident "$Id$"
 
-#include <string.h>
+/* free_and_init routine */
+#define db_ws_free_and_init(obj) \
+  do \
+    { \
+      db_ws_free ((obj)); \
+      (obj) = NULL; \
+    } \
+  while (0)
 
-#include "intl_support.h"
+extern HL_HEAPID db_create_workspace_heap (void);
+extern void db_destroy_workspace_heap (void);
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
+extern void db_ws_free (void *obj);
+extern void *db_ws_alloc (size_t bytes);
+extern void *db_ws_realloc (void *obj, size_t newsize);
 
-  extern char *ustr_casestr (const char *s1, const char *s2);
-  extern char *ustr_upper (char *s);
-  extern char *ustr_lower (char *s);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif				/* _MISC_STRING_H_ */
+#endif /* _QUICK_FIT_H_ */
