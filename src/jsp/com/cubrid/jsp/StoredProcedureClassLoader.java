@@ -32,13 +32,16 @@
 package com.cubrid.jsp;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
+import java.util.stream.Stream;
 
 public class StoredProcedureClassLoader extends URLClassLoader {
     private static volatile StoredProcedureClassLoader instance = null;
@@ -65,10 +68,29 @@ public class StoredProcedureClassLoader extends URLClassLoader {
     private void init() {
         try {
             addURL(root.toUri().toURL());
+            initJar ();
             lastModified = getLastModifiedTime(root);
-        } catch (IOException e) {
+        } catch (Exception e) {
             Server.log(e);
         }
+    }
+
+    private void initJar() {
+        try(Stream<Path> files = Files.list(root)){
+            files.filter((file) -> !Files.isDirectory(file) &&
+            (file.toString().endsWith(".jar")))
+            .forEach(jar -> {
+                try {
+                    addURL(jar.toUri().toURL());
+                } catch (MalformedURLException e) {
+                    Server.log(e);
+                }
+            });
+        } catch (NoSuchFileException nsfe) {
+            // ignore
+        } catch (IOException e) {
+            Server.log(e);
+        } 
     }
 
     public Class<?> loadClass(String name) throws ClassNotFoundException {
