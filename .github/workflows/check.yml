@@ -104,7 +104,7 @@ jobs:
           test ! -s gitdiff # is empty? yes: 0 no: 1
       - uses: axel-op/googlejavaformat-action@v3
         with:
-          skipCommit: true
+          skip-commit: true
           version: 1.7
           args: "--aosp --replace --set-exit-if-changed"
           files: ${{ steps.files.outputs.added_modified }}
