@@ -71,8 +71,8 @@ jobs:
       - uses: deepakputhraya/action-pr-title@master
         with:
           regex: '^\[[A-Z]+-\d+\]\s.+' # Regex the title should match.
-  code-style:
-    name: code-style
+  code-style-cpp:
+    name: code-style (c/cpp)
     runs-on: ubuntu-latest
     steps:
       - name: Install packages
@@ -102,19 +102,32 @@ jobs:
           done 
           git diff | tee gitdiff
           test ! -s gitdiff # is empty? yes: 0 no: 1
+      - name: Suggest code changes
+        if: ${{ failure() }}
+        uses: reviewdog/action-suggester@v1
+        with:
+          tool_name: code-style (indent, astyle)
+  code-style-java:
+    name: code-style (java)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: jitterbit/get-changed-files@v1
+        id: files
+        continue-on-error: true
       - uses: axel-op/googlejavaformat-action@v3
         with:
           skip-commit: true
           version: 1.7
           args: "--aosp --replace --set-exit-if-changed"
           files: ${{ steps.files.outputs.added_modified }}
-      - name: Print diffs
-        run: git --no-pager diff --exit-code
       - name: Suggest code changes
         if: ${{ failure() }}
         uses: reviewdog/action-suggester@v1
         with:
-          tool_name: code-style (indent, astyle)
+          tool_name: code-style (indent, googlejavaformat)
+      - name: Print diffs
+        run: git --no-pager diff --exit-code
   cppcheck:
     name: cppcheck
     runs-on: ubuntu-latest
