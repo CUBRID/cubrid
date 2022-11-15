@@ -91,11 +91,12 @@ jobs:
           sudo make -j install
           cd ..
 
-          # install java for google-java-format
-          sudo apt-get install openjdk-8-jdk
-
           # download google-java-format-1.7-all-deps.jar
           wget https://github.com/google/google-java-format/releases/download/google-java-format-1.7/google-java-format-1.7-all-deps.jar
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'adopt'
+          java-version: '8'
       - uses: actions/checkout@v2
       - id: files
         uses: jitterbit/get-changed-files@v1
