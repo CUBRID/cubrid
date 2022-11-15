@@ -108,7 +108,7 @@ jobs:
         id: stylecheck
         run: |
           for f in ${{ steps.files.outputs.added_modified }}; do
-            codestyle.sh ${f}
+            ./codestyle.sh ${f}
           done 
           git diff | tee gitdiff
           test ! -s gitdiff # is empty? yes: 0 no: 1
