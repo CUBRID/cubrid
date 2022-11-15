@@ -29,7 +29,7 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "area_alloc.h"
+#include "memory_alloc_area.h"
 #if !defined (SERVER_MODE)
 #include "authenticate.h"
 #endif // not SERVER_MODE

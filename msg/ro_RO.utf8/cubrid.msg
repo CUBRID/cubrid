@@ -1434,7 +1434,10 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 
 1352 Invalid number of columns specified.
 
-1353 Ultima eroare
+1353 Internal CAS error : %1$d 
+1354 Internal CAS error : %1$d, %2$s
+
+1355 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):

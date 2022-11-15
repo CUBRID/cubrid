@@ -1982,18 +1982,6 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		    {
 		      pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, indx_info->key_info.key_limit_u, is_final);
 		    }
-
-		  /* Restore the BTID for future usages (needed for partition cases). */
-		  /* XASL comes from the client with the btid set to the root class of the partitions hierarchy.
-		   * Scan begins and starts with the rootclass, then jumps to a partition and sets the btid in the
-		   * XASL to the one of the partition. Execution ends and the next identical statement comes and uses
-		   * the XASL previously generated. However, the BTID was not cleared from the INDEX_INFO structure
-		   * so the execution will fail.
-		   * We need to find a better solution so that we do not write on the XASL members during execution.
-		   */
-
-		  /* TODO: Fix me!! */
-		  BTID_COPY (&indx_info->btid, &p->btid);
 		}
 	    }
 	  break;
@@ -6800,15 +6788,6 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	    {
 	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
 	    }
-
-	  if (curr_spec->parts != NULL)
-	    {
-	      /* reset pruning info */
-	      db_private_free (thread_p, curr_spec->parts);
-	      curr_spec->parts = NULL;
-	      curr_spec->curent = NULL;
-	      curr_spec->pruned = false;
-	    }
 	  break;
 
 	case TARGET_CLASS_ATTR:
@@ -6844,6 +6823,22 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	  break;
 	}
     }
+
+  /* reset pruning info */
+  if (curr_spec->type == TARGET_CLASS && curr_spec->parts != NULL)
+    {
+      db_private_free (thread_p, curr_spec->parts);
+      curr_spec->parts = NULL;
+      curr_spec->curent = NULL;
+      curr_spec->pruned = false;
+
+      /* init btid */
+      if (curr_spec->indexptr)
+	{
+	  BTID_COPY (&curr_spec->indexptr->btid, &curr_spec->btid);
+	}
+    }
+
   scan_close_scan (thread_p, &curr_spec->s_id);
 }
 

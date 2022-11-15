@@ -45,7 +45,7 @@
 
 #include "boot_sr.h"
 
-#include "area_alloc.h"
+#include "memory_alloc_area.h"
 #include "btree.h"
 #include "chartype.h"
 #include "dbtran_def.h"

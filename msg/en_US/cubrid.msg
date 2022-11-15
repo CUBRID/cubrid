@@ -1435,7 +1435,10 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1352 Invalid number of columns specified.
 
-1353 Last Error
+1353 Internal CAS error : %1$d 
+1354 Internal CAS error : %1$d, %2$s
+
+1355 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

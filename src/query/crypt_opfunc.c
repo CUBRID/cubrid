@@ -26,7 +26,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <memory>
 #include <memory.h>
 #include <string.h>
 #include <math.h>
@@ -55,6 +54,9 @@
 #include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <openssl/rand.h>
+
+#include <memory>
+#include <functional>
 
 #define AES128_BLOCK_LEN (128/8)
 #define AES128_KEY_LEN (128/8)
