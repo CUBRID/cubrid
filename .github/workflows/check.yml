@@ -77,6 +77,7 @@ jobs:
     env:
       working-directory: .github/workflows
     steps:
+      - uses: actions/checkout@v2
       - name: Install packages
         run: |
           # dependencies to build GNU indent
@@ -100,7 +101,6 @@ jobs:
         with:
           distribution: 'adopt'
           java-version: '8'
-      - uses: actions/checkout@v2
       - id: files
         uses: jitterbit/get-changed-files@v1
         continue-on-error: true
