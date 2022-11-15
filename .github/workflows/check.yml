@@ -102,6 +102,14 @@ jobs:
           done 
           git diff | tee gitdiff
           test ! -s gitdiff # is empty? yes: 0 no: 1
+      - uses: axel-op/googlejavaformat-action@v3
+        with:
+          skipCommit: true
+          version: 1.7
+          args: "--aosp --replace --set-exit-if-changed"
+          files: ${{ steps.files.outputs.added_modified }}
+      - name: Print diffs
+        run: git --no-pager diff --exit-code
       - name: Suggest code changes
         if: ${{ failure() }}
         uses: reviewdog/action-suggester@v1
