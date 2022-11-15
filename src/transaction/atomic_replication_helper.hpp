@@ -117,22 +117,26 @@ namespace cublog
    *     |   |  .. redo records .. (eg: RVDK_RESERVE_SECTORS, RVPGBUF_NEW_PAGE, RVFL_EXTDATA_ADD)
    *     |   |
    *     |   \--LOG_SYSOP_END with LOG_SYSOP_END_LOGICAL_UNDO
+   *     |           (with valid lastparent_lsa)
    *     |   |
    *     |   |  .. redo records .. (eg: RVHF_STATS[+],
    *     |   |
    *     |   \--LOG_SYSOP_END with LOG_SYSOP_END_COMMIT
+   *     |           (with valid lastparent_lsa)
    *     |
    *     |   /--LOG_SYSOP_ATOMIC_START
    *     |   |
    *     |   |  .. redo records .. (eg: RVFL_PARTSECT_ALLOC, RVFL_FHEAD_ALLOC, RVPGBUF_NEW_PAGE)
    *     |   |
    *     |   \--LOG_SYSOP_END with LOG_SYSOP_END_LOGICAL_UNDO
+   *     |           (with valid lastparent_lsa)
    *     |
    *     |   /--LOG_SYSOP_ATOMIC_START
    *     |   |
    *     |   |  .. redo records .. (eg: RVFL_PARTSECT_ALLOC, RVFL_FHEAD_ALLOC, RVPGBUF_NEW_PAGE)
    *     |   |
    *     |   \--LOG_SYSOP_END with LOG_SYSOP_END_LOGICAL_UNDO
+   *     |           (with valid lastparent_lsa)
    *     |
    *     |  .. redo records .. (eg: LOG_DUMMY_OVF_RECORD, RVOVF_NEWPAGE_INSERT[+], RVHF_UPDATE_NOTIFY_VACUUM,
    *     |                          RVHF_SET_PREV_VERSION_LSA)
