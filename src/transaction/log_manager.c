@@ -3965,6 +3965,9 @@ log_sysop_start_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->topops.last++;
   LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, &tdes->tail_lsa);
   LSA_COPY (&tdes->topop_lsa, &tdes->tail_lsa);
+  /* if this newly added sysop is the very first log record added for this transaction, the
+   * tail_lsa will be empty; the tail lsa will be copied again after the sysop log record is
+   * added and tail lsa is filled in */
 
   LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
 
@@ -4009,6 +4012,16 @@ log_sysop_start_atomic (THREAD_ENTRY * thread_p)
 	}
 
       (void) prior_lsa_next_record (thread_p, node, tdes);
+
+      /* in case this sysop is the very first log record of this transaction, the descriptor's tail lsa was empty;
+       * copy again the sysop_start's lsa to be filled as the sysop_end's lastparent_lsa */
+      if (LSA_ISNULL (&tdes->topops.stack[tdes->topops.last].lastparent_lsa))
+	{
+	  assert (LSA_ISNULL (&tdes->topop_lsa));
+	  assert (!LSA_ISNULL (&tdes->tail_lsa));
+	  LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, &tdes->tail_lsa);
+	  LSA_COPY (&tdes->topop_lsa, &tdes->tail_lsa);
+	}
     }
   else
     {
