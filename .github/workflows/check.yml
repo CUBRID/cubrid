@@ -108,11 +108,10 @@ jobs:
         id: stylecheck
         run: |
           for f in ${{ steps.files.outputs.added_modified }}; do
-            ./codestyle.sh ${f}
+            .github/workflows/codestyle.sh ${f}
           done 
           git diff | tee gitdiff
           test ! -s gitdiff # is empty? yes: 0 no: 1
-        working-directory: ${{ env.working-directory }}
       - name: Suggest code changes
         if: ${{ failure() }}
         uses: reviewdog/action-suggester@v1
