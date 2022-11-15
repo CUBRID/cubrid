@@ -339,7 +339,7 @@ namespace cubcomm
       size_t &message_size)
   {
     size_t expected_size = 0;
-    std::size_t size_ilen = sizeof (expected_size);
+    size_t size_ilen = sizeof (expected_size);
     // NOTE: no ntohl here; integer value received as a stream of bytes
     css_error_code err = m_channel.recv (reinterpret_cast <char *> (&expected_size), size_ilen);
     if (err != NO_ERRORS)
