@@ -16224,11 +16224,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	pt_to_aggregate (parser, select_node, xasl->outptr_list, buildlist->g_val_list, buildlist->g_regu_list,
 			 buildlist->g_scan_regu_list, group_out_list, &buildlist->g_grbynum_val);
 
-      if (aggregate && aggregate->flag_agg_optimize == true)
-	{
-	  qo_plan->plan_un.scan.agg_optimized = true;
-	}
-
       /* compute function count */
       buildlist->g_func_count = 0;
       agg_list = aggregate;
@@ -16971,10 +16966,6 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   pt_set_qprior_node_etc (parser, select_node->info.query.q.select.having, xasl);
 
   aggregate = pt_to_aggregate (parser, select_node, NULL, NULL, NULL, NULL, NULL, &buildvalue->grbynum_val);
-  if (aggregate && aggregate->flag_agg_optimize == true)
-    {
-      qo_plan->plan_un.scan.agg_optimized = true;
-    }
 
   /* the calls pt_to_out_list, pt_to_spec_list, and pt_to_if_pred, record information in the "symbol_info" structure
    * used by subsequent calls, and must be done first, before calculating subquery lists, etc. */
