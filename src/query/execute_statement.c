@@ -11682,10 +11682,7 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
   key_ptr = bound_bits + bitmap_size;
 
   OR_BUF_INIT (buf, key_ptr, buf_size - bitmap_size);
-  if (bitmap_size > 0)
-    {
-      memset (bound_bits, 0, bitmap_size);
-    }
+  MIDXKEY_BOUNDBITS_INIT (bound_bits, bitmap_size);
 
   for (i = 0, attr = constraint->attributes; *attr != NULL; attr++, i++)
     {

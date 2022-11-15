@@ -1753,11 +1753,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   key_ptr = nullmap_ptr + nullmap_size;
 
   OR_BUF_INIT (buf, key_ptr, buf_size - nullmap_size);
-
-  if (nullmap_size > 0)
-    {
-      memset (nullmap_ptr, 0, nullmap_size);
-    }
+  MIDXKEY_BOUNDBITS_INIT (nullmap_ptr, nullmap_size);
 
   /* generate multi columns key (values -> midxkey.buf) */
   for (operand = func->value.funcp->operand, i = 0, dom = (vals_setdomain != NULL) ? vals_setdomain : idx_setdomain;

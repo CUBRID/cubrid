@@ -9512,7 +9512,8 @@ int
 pr_midxkey_init_boundbits (char *bufptr, int n_atts)
 {
   int nbytes = OR_MULTI_BOUND_BIT_BYTES (n_atts);
-  memset (bufptr, 0x00, nbytes);
+
+  MIDXKEY_BOUNDBITS_INIT (bufptr, nbytes);
 
   return nbytes;
 }
