@@ -93,6 +93,9 @@ jobs:
 
           # download google-java-format-1.7-all-deps.jar
           wget https://github.com/google/google-java-format/releases/download/google-java-format-1.7/google-java-format-1.7-all-deps.jar
+          JAVA_FORMATTER_PATH=`readlink -f  ./google-java-format-1.7-all-deps.jar`
+          echo "$JAVA_FORMATTER_PATH" >> $GITHUB_PATH
+
       - uses: actions/setup-java@v3
         with:
           distribution: 'adopt'
