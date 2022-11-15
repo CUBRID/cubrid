@@ -1033,11 +1033,8 @@ spage_collect_statistics (PAGE_PTR page_p, int *npages, int *nrecords, int *rec_
     {
       if (slot_p->offset_to_record == SPAGE_EMPTY_OFFSET)
 	{
-	  continue;
-	}
+	  assert (slot_p->record_type == REC_MARKDELETED || slot_p->record_type == REC_DELETED_WILL_REUSE);
 
-      if (slot_p->record_type == REC_MARKDELETED || slot_p->record_type == REC_DELETED_WILL_REUSE)
-	{
 	  continue;
 	}
 
