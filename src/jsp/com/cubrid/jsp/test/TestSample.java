@@ -31,11 +31,12 @@
 package com.cubrid.jsp.test;
 
 import static org.junit.Assert.assertTrue;
+
 import org.junit.Test;
 
 public class TestSample {
-     @Test
-     public void evaluatesExpression() {
+    @Test
+    public void evaluatesExpression() {
         assertTrue(true);
-     }
+    }
 }
