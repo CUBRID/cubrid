@@ -1492,7 +1492,6 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 
   int idx_ncols = 0, natts, i, j;
   int buf_size, nullmap_size;
-  unsigned char *bits;
 
   regu_variable_list_node *operand;
 
@@ -1562,11 +1561,6 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
        operand = operand->next, idx_dom = idx_dom->next, i++)
     {
       ret = fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL, &val);
-      if (ret != NO_ERROR)
-	{
-	  goto err_exit;
-	}
-
       if (ret != NO_ERROR)
 	{
 	  goto err_exit;
@@ -1762,11 +1756,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 
   if (nullmap_size > 0)
     {
-      bits = (unsigned char *) nullmap_ptr;
-      for (i = 0; i < nullmap_size; i++)
-	{
-	  bits[i] = (unsigned char) 0;
-	}
+      memset (nullmap_ptr, 0, nullmap_size);
     }
 
   /* generate multi columns key (values -> midxkey.buf) */

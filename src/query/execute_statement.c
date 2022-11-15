@@ -11621,7 +11621,6 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
   DB_MIDXKEY midxkey;
   SM_ATTRIBUTE **attr = NULL;
   int buf_size = 0, bitmap_size = 0, i, error = NO_ERROR, attr_count = 0;
-  unsigned char *bits;
   char *bound_bits = NULL, *key_ptr = NULL;
   OR_BUF buf;
   DB_VALUE *val = NULL;
@@ -11685,11 +11684,7 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
   OR_BUF_INIT (buf, key_ptr, buf_size - bitmap_size);
   if (bitmap_size > 0)
     {
-      bits = (unsigned char *) bound_bits;
-      for (i = 0; i < bitmap_size; i++)
-	{
-	  bits[i] = (unsigned char) 0;
-	}
+      memset (bound_bits, 0, bitmap_size);
     }
 
   for (i = 0, attr = constraint->attributes; *attr != NULL; attr++, i++)
