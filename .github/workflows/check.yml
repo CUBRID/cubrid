@@ -74,6 +74,8 @@ jobs:
   code-style:
     name: code-style
     runs-on: ubuntu-latest
+    env:
+      working-directory: ./.github/workflows
     steps:
       - name: Install packages
         run: |
@@ -93,9 +95,7 @@ jobs:
 
           # download google-java-format-1.7-all-deps.jar
           wget https://github.com/google/google-java-format/releases/download/google-java-format-1.7/google-java-format-1.7-all-deps.jar
-          JAVA_FORMATTER_PATH=`readlink -f  ./google-java-format-1.7-all-deps.jar`
-          echo "$JAVA_FORMATTER_PATH" >> $GITHUB_PATH
-
+        working-directory: ${{ env.working-directory }}
       - uses: actions/setup-java@v3
         with:
           distribution: 'adopt'
@@ -108,10 +108,11 @@ jobs:
         id: stylecheck
         run: |
           for f in ${{ steps.files.outputs.added_modified }}; do
-            .github/workflows/codestyle.sh ${f}
+            codestyle.sh ${f}
           done 
           git diff | tee gitdiff
           test ! -s gitdiff # is empty? yes: 0 no: 1
+        working-directory: ${{ env.working-directory }}
       - name: Suggest code changes
         if: ${{ failure() }}
         uses: reviewdog/action-suggester@v1
