@@ -33,7 +33,7 @@
 
 #include <stdarg.h>
 
-#include "memory_alloc_area.h"
+#include "area_alloc.h"
 #include "class_object.h"
 #include "object_fetch.h"
 #include "object_template.h"

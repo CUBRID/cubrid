@@ -29,7 +29,7 @@
 #include <assert.h>
 
 #include "language_support.h"
-#include "memory_alloc_area.h"
+#include "area_alloc.h"
 #include "work_space.h"
 #include "object_representation.h"
 #include "object_primitive.h"
