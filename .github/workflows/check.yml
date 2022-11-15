@@ -75,7 +75,7 @@ jobs:
     name: code-style
     runs-on: ubuntu-latest
     env:
-      working-directory: ./.github/workflows
+      working-directory: .github/workflows
     steps:
       - name: Install packages
         run: |
