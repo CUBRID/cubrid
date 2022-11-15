@@ -6491,8 +6491,7 @@ boot_define_view_db_server (void)
 	  "CURRENT_USER = 'DBA' "
 	  "OR {[ds].[owner].[name]} SUBSETEQ ([z].[groups])",
 	CT_DB_SERVER_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME);
+	AU_USER_CLASS_NAME);
   // *INDENT-ON*
 
   error_code = db_add_query_spec (class_mop, stmt);
