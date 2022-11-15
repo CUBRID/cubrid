@@ -9624,7 +9624,6 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
   int srch_num_class;		/* Num of class attrs that can be searched */
   OR_ATTRIBUTE *search_attrepr;	/* Information for disk attribute */
   int i, curr_attr;
-  bool isattr_found;
   int ret = NO_ERROR;
 
   /*
@@ -9649,7 +9648,6 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
        * Go over the list of attributes (instance, shared, and class attrs)
        * until the desired attribute is found
        */
-      isattr_found = false;
       if (islast_reset == true)
 	{
 	  search_attrepr = attr_info->last_classrepr->attributes;
@@ -9667,7 +9665,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	  value->attrid = search_attrepr[curr_attr].id;
 	}
 
-      for (i = 0; isattr_found == false && i < srch_num_attrs; i++, search_attrepr++)
+      for (i = 0; i < srch_num_attrs; i++, search_attrepr++)
 	{
 	  /*
 	   * Is this a desired instance attribute?
@@ -9678,7 +9676,6 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	       * Found it.
 	       * Initialize the attribute value information
 	       */
-	      isattr_found = true;
 	      value->attr_type = HEAP_INSTANCE_ATTR;
 	      if (islast_reset == true)
 		{
@@ -9710,7 +9707,13 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 		}
 
 	      num_found_attrs++;
+	      break;
 	    }
+	}
+
+      if (i < srch_num_attrs)
+	{			// found it.
+	  continue;
 	}
 
       /*
@@ -9719,8 +9722,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
        * for shared attributes.
        */
 
-      for (i = 0, search_attrepr = attr_info->last_classrepr->shared_attrs;
-	   isattr_found == false && i < srch_num_shared; i++, search_attrepr++)
+      for (i = 0, search_attrepr = attr_info->last_classrepr->shared_attrs; i < srch_num_shared; i++, search_attrepr++)
 	{
 	  /*
 	   * Is this a desired shared attribute?
@@ -9731,7 +9733,6 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	       * Found it.
 	       * Initialize the attribute value information
 	       */
-	      isattr_found = true;
 	      value->attr_type = HEAP_SHARED_ATTR;
 	      value->last_attrepr = search_attrepr;
 	      /*
@@ -9748,7 +9749,13 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 					value->last_attrepr->domain->precision, value->last_attrepr->domain->scale);
 		}
 	      num_found_attrs++;
+	      break;
 	    }
+	}
+
+      if (i < srch_num_shared)
+	{			// found it.
+	  continue;
 	}
 
       /*
@@ -9757,8 +9764,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
        * for class attributes.
        */
 
-      for (i = 0, search_attrepr = attr_info->last_classrepr->class_attrs; isattr_found == false && i < srch_num_class;
-	   i++, search_attrepr++)
+      for (i = 0, search_attrepr = attr_info->last_classrepr->class_attrs; i < srch_num_class; i++, search_attrepr++)
 	{
 	  /*
 	   * Is this a desired class attribute?
@@ -9770,7 +9776,6 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	       * Found it.
 	       * Initialize the attribute value information
 	       */
-	      isattr_found = true;
 	      value->attr_type = HEAP_CLASS_ATTR;
 	      if (islast_reset == true)
 		{
@@ -9794,6 +9799,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 					value->last_attrepr->domain->precision, value->last_attrepr->domain->scale);
 		}
 	      num_found_attrs++;
+	      break;
 	    }
 	}
     }
@@ -12526,7 +12532,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
     }
   or_advance (&buf, pr_midxkey_init_boundbits (nullmap_ptr, num_vals));
   k = 0;
-  for (i = 0; i < num_vals && k < num_vals; i++)
+  for (i = 0; i < num_vals; i++)
     {
       if (i == func_col_id)
 	{
