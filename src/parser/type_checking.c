@@ -7343,6 +7343,7 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
       node->type_enum = PT_TYPE_NULL;
       node->info.value.location = 0;
       node->flag.is_hidden_column = hidden;
+      node->flag.is_false_where = 1;
       node->next = next;	/* restore link */
     }
 
@@ -15003,7 +15004,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
       else
 	{
-	  if (DB_IS_NULL (arg1))
+	  if (o1->flag.is_false_where)
 	    {
 	      db_make_int (result, false);
 	    }
