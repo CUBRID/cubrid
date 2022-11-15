@@ -323,6 +323,7 @@ struct scan_stats
   bool multi_range_opt;
   bool index_skip_scan;
   bool loose_index_scan;
+  bool agg_optimized_scan;
 
   /* hash list scan */
   struct timeval elapsed_hash_build;
