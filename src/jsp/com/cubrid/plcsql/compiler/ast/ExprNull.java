@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 public class ExprNull implements I_Expr {
 
     public static ExprNull instance() {

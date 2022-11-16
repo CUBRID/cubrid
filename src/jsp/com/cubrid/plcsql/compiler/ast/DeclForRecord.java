@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 public class DeclForRecord extends Decl implements I_DeclId {
 
     public final String name;
@@ -52,8 +51,9 @@ public class DeclForRecord extends Decl implements I_DeclId {
 
     @Override
     public String toJavaCode() {
-        assert false; // unreachable: currently, used only in for-dynamic-sql-loop, not in any
-                      // ordinary declration list
+        // unreachable: currently, used only in for-dynamic-sql-loop, not in any ordinary declration
+        // list
+        assert false;
         throw new RuntimeException("unreachable");
     }
 

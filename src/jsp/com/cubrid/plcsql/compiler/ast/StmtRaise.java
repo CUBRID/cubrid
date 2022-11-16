@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 public class StmtRaise implements I_Stmt {
 
     public final ExName exName;

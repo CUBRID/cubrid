@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 public class DeclForIter extends Decl implements I_DeclId {
 
     public final String name;

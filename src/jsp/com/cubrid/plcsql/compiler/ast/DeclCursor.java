@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 import java.util.Arrays;
 
 public class DeclCursor extends Decl implements I_DeclId {

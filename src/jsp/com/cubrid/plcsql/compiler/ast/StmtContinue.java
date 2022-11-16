@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 public class StmtContinue implements I_Stmt {
 
     public final DeclLabel declLabel;

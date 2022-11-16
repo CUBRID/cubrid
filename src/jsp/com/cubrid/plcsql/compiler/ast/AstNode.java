@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 public interface AstNode {
 
     public String toJavaCode();

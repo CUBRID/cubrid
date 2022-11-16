@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 public class DeclLabel extends Decl {
 
     public final String name;

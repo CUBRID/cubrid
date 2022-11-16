@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 public class DeclParamIn extends Decl implements I_DeclParam {
 
     public final String name;

@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 public class StmtAssign implements I_Stmt {
 
     public final ExprId target;

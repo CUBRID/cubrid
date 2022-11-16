@@ -31,8 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
-
 import java.time.LocalTime;
 
 public class ExprTime implements I_Expr {

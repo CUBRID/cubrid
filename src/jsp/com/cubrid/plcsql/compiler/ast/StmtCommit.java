@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 public class StmtCommit implements I_Stmt {
 
     @Override

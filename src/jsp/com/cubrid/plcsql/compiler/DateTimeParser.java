@@ -111,10 +111,8 @@ public class DateTimeParser {
     public static class TimestampLiteral {
 
         public static LocalDateTime parse(String s) {
-            return parseDateAndTime(
-                    s,
-                    false); // NOTE: range check must be done in the server with the session
-                            // timezone
+            // NOTE: range check must be done in the server with the session timezone
+            return parseDateAndTime(s, false);
         }
 
         // ---------------------------------------

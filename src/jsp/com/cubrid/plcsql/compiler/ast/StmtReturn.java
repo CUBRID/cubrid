@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 public class StmtReturn implements I_Stmt {
 
     public final I_Expr retVal;

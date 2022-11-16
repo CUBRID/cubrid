@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 public class ExprSqlRowCount implements I_Expr {
 
     @Override

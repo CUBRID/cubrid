@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 public class StmtNull implements I_Stmt {
 
     public StmtNull() {}

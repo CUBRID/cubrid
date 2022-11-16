@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 public class ExprCursorAttr implements I_Expr {
 
     public final ExprId cursor;

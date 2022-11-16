@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 public class TypeSpec implements AstNode {
 
     public final String name;

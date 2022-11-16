@@ -47,8 +47,8 @@ public class ExName implements AstNode {
 
     @Override
     public String toJavaCode() {
-        assert false; // depends on the context in which this node is located and must not be called
-                      // directly
+        // depends on the context in which this node is located and must not be called directly
+        assert false;
         return null;
     }
 

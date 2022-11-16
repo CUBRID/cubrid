@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 public class ExprTrue implements I_Expr {
 
     public static ExprTrue instance() {

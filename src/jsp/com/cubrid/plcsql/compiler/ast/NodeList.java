@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 import java.util.ArrayList;
 import java.util.List;
 

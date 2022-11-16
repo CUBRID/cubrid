@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 public class StmtRaiseAppErr implements I_Stmt {
 
     public final I_Expr errCode;

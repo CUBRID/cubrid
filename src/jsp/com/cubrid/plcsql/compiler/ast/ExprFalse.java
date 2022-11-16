@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-
 public class ExprFalse implements I_Expr {
 
     public static ExprFalse instance() {
