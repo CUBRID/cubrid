@@ -31,25 +31,21 @@
 
 package com.cubrid.plcsql.compiler;
 
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
 import java.text.ParsePosition;
-
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.LocalDateTime;
-import java.time.ZonedDateTime;
-import java.time.ZoneOffset;
+import java.text.SimpleDateFormat;
 import java.time.DateTimeException;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.time.temporal.TemporalAccessor;
-
-import java.util.TimeZone;
-import java.util.Locale;
-import java.util.Date;
+import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.List;
-import java.util.Arrays;
+import java.util.Locale;
 
 public class DateTimeParser {
 
@@ -62,12 +58,17 @@ public class DateTimeParser {
     // min datetime: 0001-01-01 00:00:00.000
     private static final LocalDateTime minDatetime = LocalDateTime.of(1, 1, 1, 0, 0, 0, 0);
     // max datetime: 9999-12-31 23:59:59.999
-    private static final LocalDateTime maxDatetime = LocalDateTime.of(9999, 12, 31, 23, 59, 59, 999);
+    private static final LocalDateTime maxDatetime =
+            LocalDateTime.of(9999, 12, 31, 23, 59, 59, 999);
 
-    private static final long minTimestampUTC = ZonedDateTime.of(minTimestamp, TIMEZONE_0).toInstant().toEpochMilli();
-    private static final long maxTimestampUTC = ZonedDateTime.of(maxTimestamp, TIMEZONE_0).toInstant().toEpochMilli();
-    private static final long minDatetimeUTC = ZonedDateTime.of(minDatetime, TIMEZONE_0).toInstant().toEpochMilli();
-    private static final long maxDatetimeUTC = ZonedDateTime.of(maxDatetime, TIMEZONE_0).toInstant().toEpochMilli();
+    private static final long minTimestampUTC =
+            ZonedDateTime.of(minTimestamp, TIMEZONE_0).toInstant().toEpochMilli();
+    private static final long maxTimestampUTC =
+            ZonedDateTime.of(maxTimestamp, TIMEZONE_0).toInstant().toEpochMilli();
+    private static final long minDatetimeUTC =
+            ZonedDateTime.of(minDatetime, TIMEZONE_0).toInstant().toEpochMilli();
+    private static final long maxDatetimeUTC =
+            ZonedDateTime.of(maxDatetime, TIMEZONE_0).toInstant().toEpochMilli();
 
     public static final LocalDate nullDate = LocalDate.MAX;
     public static final LocalTime nullTime = LocalTime.MAX;
@@ -78,9 +79,9 @@ public class DateTimeParser {
         public static LocalDate parse(String s) {
             LocalDate ret = parseDateFragment(s);
 
-            if (ret != null &&
-                ret != nullDate &&
-                (ret.compareTo(minDate) < 0 || ret.compareTo(maxDate) > 0)) {
+            if (ret != null
+                    && ret != nullDate
+                    && (ret.compareTo(minDate) < 0 || ret.compareTo(maxDate) > 0)) {
                 return null;
             }
 
@@ -91,11 +92,12 @@ public class DateTimeParser {
         // Private
         // ---------------------------------------
 
-        private static final LocalDate minDate = LocalDate.of(1, 1, 1);      // 0001-01-01
+        private static final LocalDate minDate = LocalDate.of(1, 1, 1); // 0001-01-01
         private static final LocalDate maxDate = LocalDate.of(9999, 12, 31); // 9999-12-31
+
         static {
-            //System.out.println("minDate=" + minDate);
-            //System.out.println("maxDate=" + maxDate);
+            // System.out.println("minDate=" + minDate);
+            // System.out.println("maxDate=" + maxDate);
         }
     }
 
@@ -104,13 +106,15 @@ public class DateTimeParser {
         public static LocalTime parse(String s) {
             return parseTimeFragment(s, true);
         }
-
     }
 
     public static class TimestampLiteral {
 
         public static LocalDateTime parse(String s) {
-            return parseDateAndTime(s, false);  // NOTE: range check must be done in the server with the session timezone
+            return parseDateAndTime(
+                    s,
+                    false); // NOTE: range check must be done in the server with the session
+                            // timezone
         }
 
         // ---------------------------------------
@@ -118,13 +122,15 @@ public class DateTimeParser {
         // ---------------------------------------
 
         // TODO: minTimestamp and maxTimestamp must be UTC
-        private static final LocalDateTime minTimestamp = LocalDateTime.of(1970, 1, 1, 0, 0, 1);    // 1970-01-01 00:00:01
-        private static final LocalDateTime maxTimestamp = LocalDateTime.of(2038, 1, 19, 3, 14, 7);  // 2038-01-19 03:14:07
-        static {
-            //System.out.println("minTimestamp=" + minTimestamp);
-            //System.out.println("maxTimestamp=" + maxTimestamp);
-        }
+        private static final LocalDateTime minTimestamp =
+                LocalDateTime.of(1970, 1, 1, 0, 0, 1); // 1970-01-01 00:00:01
+        private static final LocalDateTime maxTimestamp =
+                LocalDateTime.of(2038, 1, 19, 3, 14, 7); // 2038-01-19 03:14:07
 
+        static {
+            // System.out.println("minTimestamp=" + minTimestamp);
+            // System.out.println("maxTimestamp=" + maxTimestamp);
+        }
     }
 
     public static class DatetimeLiteral {
@@ -132,9 +138,10 @@ public class DateTimeParser {
         public static LocalDateTime parse(String s) {
 
             LocalDateTime ret = parseDateAndTime(s, true);
-            if (ret != null &&
-                ret != nullDateTime &&
-                (ret.compareTo(minDatetime) < 0 || ret.compareTo(maxDatetime) > 0)) {   // NOTE: no UTC comparison
+            if (ret != null
+                    && ret != nullDateTime
+                    && (ret.compareTo(minDatetime) < 0
+                            || ret.compareTo(maxDatetime) > 0)) { // NOTE: no UTC comparison
                 return null;
             }
 
@@ -238,7 +245,7 @@ public class DateTimeParser {
     private static LocalDateTime parseDateAndTime(String s, boolean millis) {
 
         s = s.trim();
-        //System.out.println("[temp] ### " + s);
+        // System.out.println("[temp] ### " + s);
 
         String timeStr, dateStr;
         int colonIdx = s.indexOf(":");
@@ -247,7 +254,7 @@ public class DateTimeParser {
             int cut = s.lastIndexOf(" ");
             if (cut < 0) {
                 System.out.println("no date");
-                return null;    // error
+                return null; // error
             } else {
                 timeStr = s.substring(0, cut);
                 dateStr = s.substring(cut + 1);
@@ -286,7 +293,7 @@ public class DateTimeParser {
                 return nullDateTime;
             } else {
                 System.out.println("time must be zero");
-                return null;    // error
+                return null; // error
             }
         } else {
 
@@ -295,7 +302,9 @@ public class DateTimeParser {
             if (time == null) {
                 ret = date.atTime(0, 0, 0, 0);
             } else {
-                ret = date.atTime(time.getHour(), time.getMinute(), time.getSecond(), time.getNano());
+                ret =
+                        date.atTime(
+                                time.getHour(), time.getMinute(), time.getSecond(), time.getNano());
             }
 
             return ret;
@@ -306,12 +315,11 @@ public class DateTimeParser {
     // for parsing date fragment
     // ------------------------------------------------------
 
-    private static final List<SimpleDateFormat> dateFormats = Arrays.asList(
-        new SimpleDateFormat("MM/dd/yyyy"),
-        new SimpleDateFormat("yyyy-MM-dd")
-    );
+    private static final List<SimpleDateFormat> dateFormats =
+            Arrays.asList(new SimpleDateFormat("MM/dd/yyyy"), new SimpleDateFormat("yyyy-MM-dd"));
+
     static {
-        for (SimpleDateFormat f: dateFormats) {
+        for (SimpleDateFormat f : dateFormats) {
             f.setLenient(false);
             assert f.getCalendar() instanceof GregorianCalendar;
         }
@@ -320,10 +328,10 @@ public class DateTimeParser {
     private static LocalDate parseDateFragment(String s) {
 
         s = s.trim();
-        //System.out.println("[temp] ### " + s);
+        // System.out.println("[temp] ### " + s);
 
         int i = 0;
-        for (SimpleDateFormat f: dateFormats) {
+        for (SimpleDateFormat f : dateFormats) {
 
             ParsePosition pos = new ParsePosition(0);
 
@@ -332,7 +340,7 @@ public class DateTimeParser {
 
             Date d = f.parse(s, pos);
 
-            //System.out.println("[temp] i=" + i);
+            // System.out.println("[temp] i=" + i);
 
             if (d != null && pos.getIndex() == s.length()) {
 
@@ -362,9 +370,9 @@ public class DateTimeParser {
             } else if (pos.getErrorIndex() == s.length()) {
                 // check if it is 0000-00-00
 
-                if (calendar.isSet(Calendar.YEAR) &&
-                    calendar.isSet(Calendar.MONTH) &&
-                    calendar.isSet(Calendar.DAY_OF_MONTH)) {
+                if (calendar.isSet(Calendar.YEAR)
+                        && calendar.isSet(Calendar.MONTH)
+                        && calendar.isSet(Calendar.DAY_OF_MONTH)) {
 
                     f.setLenient(true);
                     int era = calendar.get(Calendar.ERA);
@@ -374,8 +382,11 @@ public class DateTimeParser {
                     f.setLenient(false);
 
                     // 0000-00-00 == BC 0002-11-30
-                    if (era == GregorianCalendar.BC && year == 2 && month == Calendar.NOVEMBER && day == 30) {
-                        //System.out.println("[temp] failed calendar after get=" + calendar);
+                    if (era == GregorianCalendar.BC
+                            && year == 2
+                            && month == Calendar.NOVEMBER
+                            && day == 30) {
+                        // System.out.println("[temp] failed calendar after get=" + calendar);
                         return nullDate;
                     }
                 }
@@ -391,22 +402,25 @@ public class DateTimeParser {
     // for parsing time fragment
     // ------------------------------------------------------
 
-    private static final List<SimpleDateFormat> timeFormats12 = Arrays.asList(
-        new SimpleDateFormat("KK:mm aa", Locale.US),
-        new SimpleDateFormat("KK:mm:ss aa", Locale.US),
-        new SimpleDateFormat("KK:mm:ss.SSS aa", Locale.US)  // must go at last
-    );
-    private static final List<SimpleDateFormat> timeFormats24 = Arrays.asList(
-        new SimpleDateFormat("HH:mm"),
-        new SimpleDateFormat("HH:mm:ss"),
-        new SimpleDateFormat("HH:mm:ss.SSS")    // must go at last
-    );
+    private static final List<SimpleDateFormat> timeFormats12 =
+            Arrays.asList(
+                    new SimpleDateFormat("KK:mm aa", Locale.US),
+                    new SimpleDateFormat("KK:mm:ss aa", Locale.US),
+                    new SimpleDateFormat("KK:mm:ss.SSS aa", Locale.US) // must go at last
+                    );
+    private static final List<SimpleDateFormat> timeFormats24 =
+            Arrays.asList(
+                    new SimpleDateFormat("HH:mm"),
+                    new SimpleDateFormat("HH:mm:ss"),
+                    new SimpleDateFormat("HH:mm:ss.SSS") // must go at last
+                    );
+
     static {
-        for (SimpleDateFormat f: timeFormats12) {
+        for (SimpleDateFormat f : timeFormats12) {
             f.setLenient(false);
             assert f.getCalendar() instanceof GregorianCalendar;
         }
-        for (SimpleDateFormat f: timeFormats24) {
+        for (SimpleDateFormat f : timeFormats24) {
             f.setLenient(false);
             assert f.getCalendar() instanceof GregorianCalendar;
         }
@@ -415,11 +429,11 @@ public class DateTimeParser {
     private static LocalTime parseTimeFragment(String s, boolean millis) {
 
         s = s.trim();
-        //System.out.println("[temp] ### " + s);
+        // System.out.println("[temp] ### " + s);
         List<SimpleDateFormat> formats = (s.indexOf(" ") >= 0) ? timeFormats12 : timeFormats24;
 
         int j = 0;
-        for (SimpleDateFormat f: formats) {
+        for (SimpleDateFormat f : formats) {
 
             ParsePosition pos = new ParsePosition(0);
 
@@ -428,15 +442,16 @@ public class DateTimeParser {
 
             Date d = f.parse(s, pos);
 
-            //System.out.println("[temp] j=" + j);
-            //System.out.println("[temp] d=" + d);
-            //System.out.println("[temp] pos=" + pos);
+            // System.out.println("[temp] j=" + j);
+            // System.out.println("[temp] d=" + d);
+            // System.out.println("[temp] pos=" + pos);
 
             if (d != null && pos.getIndex() == s.length()) {
-                return LocalTime.of(calendar.get(Calendar.HOUR_OF_DAY),
-                                    calendar.get(Calendar.MINUTE),
-                                    calendar.get(Calendar.SECOND),
-                                    calendar.get(Calendar.MILLISECOND) * 1000000);
+                return LocalTime.of(
+                        calendar.get(Calendar.HOUR_OF_DAY),
+                        calendar.get(Calendar.MINUTE),
+                        calendar.get(Calendar.SECOND),
+                        calendar.get(Calendar.MILLISECOND) * 1000000);
             }
 
             j++;
@@ -448,4 +463,3 @@ public class DateTimeParser {
         return null;
     }
 }
-

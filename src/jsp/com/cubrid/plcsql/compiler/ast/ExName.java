@@ -32,7 +32,6 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Scope;
-import com.cubrid.plcsql.compiler.Misc;
 
 public class ExName implements AstNode {
 
@@ -48,7 +47,8 @@ public class ExName implements AstNode {
 
     @Override
     public String toJavaCode() {
-        assert false;   // depends on the context in which this node is located and must not be called directly
+        assert false; // depends on the context in which this node is located and must not be called
+                      // directly
         return null;
     }
 

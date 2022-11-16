@@ -47,22 +47,15 @@ public class ExprBinaryOp implements I_Expr {
 
     @Override
     public String toJavaCode() {
-        return tmpl
-            .replace("%OPERATION%", opStr)
-            .replace("  %LEFT-OPERAND%", Misc.indentLines(left.toJavaCode(), 1))
-            .replace("  %RIGHT-OPERAND%", Misc.indentLines(right.toJavaCode(), 1))
-            ;
+        return tmpl.replace("%OPERATION%", opStr)
+                .replace("  %LEFT-OPERAND%", Misc.indentLines(left.toJavaCode(), 1))
+                .replace("  %RIGHT-OPERAND%", Misc.indentLines(right.toJavaCode(), 1));
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
-    private static final String tmpl = Misc.combineLines(
-        "op%OPERATION%(",
-        "  %LEFT-OPERAND%,",
-        "  %RIGHT-OPERAND%",
-        ")"
-    );
-
+    private static final String tmpl =
+            Misc.combineLines("op%OPERATION%(", "  %LEFT-OPERAND%,", "  %RIGHT-OPERAND%", ")");
 }

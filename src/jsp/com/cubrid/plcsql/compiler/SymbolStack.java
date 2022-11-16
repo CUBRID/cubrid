@@ -31,10 +31,9 @@
 
 package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.ast.*;
-
 import static com.cubrid.plcsql.compiler.antlrgen.PcsParser.*;
 
+import com.cubrid.plcsql.compiler.ast.*;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.TreeMap;
@@ -80,7 +79,11 @@ public class SymbolStack {
 
         Map<String, D> map = currSymbolTable.<D>map((Class<D>) decl.getClass());
         if (map.containsKey(name)) {
-            assert false: decl.typeStr() + " " + name + " has already been declared in the same routine";
+            assert false
+                    : decl.typeStr()
+                            + " "
+                            + name
+                            + " has already been declared in the same routine";
             throw new RuntimeException("unreachable");
         }
 
@@ -88,11 +91,25 @@ public class SymbolStack {
         map.put(name, decl);
     }
 
-    I_DeclId         getDeclId       (String name) { return getDecl(I_DeclId.class, name); }
-    DeclException    getDeclException(String name) { return getDecl(DeclException.class, name); }
-    DeclProc         getDeclProc     (String name) { return getDecl(DeclProc.class, name); }
-    DeclFunc         getDeclFunc     (String name) { return getDecl(DeclFunc.class, name); }
-    DeclLabel        getDeclLabel    (String name) { return getDecl(DeclLabel.class, name); }
+    I_DeclId getDeclId(String name) {
+        return getDecl(I_DeclId.class, name);
+    }
+
+    DeclException getDeclException(String name) {
+        return getDecl(DeclException.class, name);
+    }
+
+    DeclProc getDeclProc(String name) {
+        return getDecl(DeclProc.class, name);
+    }
+
+    DeclFunc getDeclFunc(String name) {
+        return getDecl(DeclFunc.class, name);
+    }
+
+    DeclLabel getDeclLabel(String name) {
+        return getDecl(DeclLabel.class, name);
+    }
 
     // ----------------------------------------------------
     // Private
@@ -104,7 +121,7 @@ public class SymbolStack {
 
     private static class SymbolTable {
         final Scope scope;
-        //final Map<String, DeclCursor> cursors;
+        // final Map<String, DeclCursor> cursors;
         final Map<String, I_DeclId> ids;
         final Map<String, DeclException> exceptions;
         final Map<String, DeclProc> procs;
@@ -114,7 +131,7 @@ public class SymbolStack {
         SymbolTable(Scope scope) {
             this.scope = scope;
 
-            //cursors = new TreeMap<>();
+            // cursors = new TreeMap<>();
             ids = new TreeMap<>();
             exceptions = new TreeMap<>();
             procs = new TreeMap<>();
@@ -125,7 +142,7 @@ public class SymbolStack {
         <D extends I_Decl> Map<String, D> map(Class<D> declClass) {
             /*if (DeclCursor.class.isAssignableFrom(declClass)) {
                 return (Map<String, D>) cursors;
-            } else */if (I_DeclId.class.isAssignableFrom(declClass)) {
+            } else */ if (I_DeclId.class.isAssignableFrom(declClass)) {
                 return (Map<String, D>) ids;
             } else if (DeclException.class.isAssignableFrom(declClass)) {
                 return (Map<String, D>) exceptions;
@@ -136,7 +153,7 @@ public class SymbolStack {
             } else if (DeclLabel.class.isAssignableFrom(declClass)) {
                 return (Map<String, D>) labels;
             } else {
-                assert false: ("unknown declaration type: " + declClass.getSimpleName());
+                assert false : ("unknown declaration type: " + declClass.getSimpleName());
                 return null;
             }
         }

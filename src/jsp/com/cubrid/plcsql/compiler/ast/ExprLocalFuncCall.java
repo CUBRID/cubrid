@@ -56,10 +56,12 @@ public class ExprLocalFuncCall implements I_Expr {
         if (args == null || args.nodes.size() == 0) {
             return block + "$" + name + "()";
         } else {
-            return block + "$" + name + "(\n" +
-                Misc.indentLines(decl.argsToJavaCode(args), 1) +
-                "\n)"
-                ;
+            return block
+                    + "$"
+                    + name
+                    + "(\n"
+                    + Misc.indentLines(decl.argsToJavaCode(args), 1)
+                    + "\n)";
         }
     }
 

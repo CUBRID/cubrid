@@ -63,18 +63,22 @@ public class DeclRoutine extends Decl {
     @Override
     public String toJavaCode() {
 
-        String strDeclClass = decls == null ? "// no declarations" :
-            tmplDeclClass.replace("%BLOCK%", name.toLowerCase())
-                         .replace("  %DECLARATIONS%", Misc.indentLines(decls.toJavaCode(), 1));
+        String strDeclClass =
+                decls == null
+                        ? "// no declarations"
+                        : tmplDeclClass
+                                .replace("%BLOCK%", name.toLowerCase())
+                                .replace(
+                                        "  %DECLARATIONS%",
+                                        Misc.indentLines(decls.toJavaCode(), 1));
         String strParams = paramList == null ? "// no parameters" : paramList.toJavaCode(",\n");
 
         return tmplFuncBody
-            .replace("%RETURN-TYPE%", retType == null ? "void" : retType.toJavaCode())
-            .replace("    %PARAMETERS%", Misc.indentLines(strParams, 2))
-            .replace("  %DECL-CLASS%", Misc.indentLines(strDeclClass, 1))
-            .replace("  %BODY%", Misc.indentLines(body.toJavaCode(), 1))
-            .replace("%METHOD-NAME%", name)
-            ;
+                .replace("%RETURN-TYPE%", retType == null ? "void" : retType.toJavaCode())
+                .replace("    %PARAMETERS%", Misc.indentLines(strParams, 2))
+                .replace("  %DECL-CLASS%", Misc.indentLines(strDeclClass, 1))
+                .replace("  %BODY%", Misc.indentLines(body.toJavaCode(), 1))
+                .replace("%METHOD-NAME%", name);
     }
 
     // --------------------------------------------------
@@ -84,13 +88,13 @@ public class DeclRoutine extends Decl {
     public String argsToJavaCode(NodeList<I_Expr> args) {
 
         assert args != null;
-        assert args.nodes.size() == paramList.nodes.size():
-            "formal and actual parameter of routine " + name + "does not match";
+        assert args.nodes.size() == paramList.nodes.size()
+                : "formal and actual parameter of routine " + name + "does not match";
 
         StringBuffer sbuf = new StringBuffer();
 
         int i = 0;
-        for (I_Expr a: args.nodes) {
+        for (I_Expr a : args.nodes) {
 
             if (i > 0) {
                 sbuf.append(",\n");
@@ -113,22 +117,22 @@ public class DeclRoutine extends Decl {
     // Private
     // --------------------------------------------------
 
-    private static final String tmplFuncBody = Misc.combineLines(
-        "%RETURN-TYPE% $%METHOD-NAME%(",
-        "    %PARAMETERS%",
-        "  ) throws Exception {",
-        "",
-        "  %DECL-CLASS%",
-        "",
-        "  %BODY%",
-        "}"
-    );
+    private static final String tmplFuncBody =
+            Misc.combineLines(
+                    "%RETURN-TYPE% $%METHOD-NAME%(",
+                    "    %PARAMETERS%",
+                    "  ) throws Exception {",
+                    "",
+                    "  %DECL-CLASS%",
+                    "",
+                    "  %BODY%",
+                    "}");
 
-    private static final String tmplDeclClass = Misc.combineLines(
-        "class Decl_of_%BLOCK% {",
-        "  Decl_of_%BLOCK%() throws Exception {};",
-        "  %DECLARATIONS%",
-        "}",
-        "Decl_of_%BLOCK% %BLOCK% = new Decl_of_%BLOCK%();"
-    );
+    private static final String tmplDeclClass =
+            Misc.combineLines(
+                    "class Decl_of_%BLOCK% {",
+                    "  Decl_of_%BLOCK%() throws Exception {};",
+                    "  %DECLARATIONS%",
+                    "}",
+                    "Decl_of_%BLOCK% %BLOCK% = new Decl_of_%BLOCK%();");
 }

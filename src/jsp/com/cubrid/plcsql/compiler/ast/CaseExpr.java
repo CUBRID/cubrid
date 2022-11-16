@@ -45,18 +45,14 @@ public class CaseExpr implements I_Stmt {
 
     @Override
     public String toJavaCode() {
-        return tmpl
-            .replace("%VALUE%", val.toJavaCode())
-            .replace("  %EXPRESSION%", Misc.indentLines(expr.toJavaCode(), 1))
-            ;
+        return tmpl.replace("%VALUE%", val.toJavaCode())
+                .replace("  %EXPRESSION%", Misc.indentLines(expr.toJavaCode(), 1));
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
-    private static final String tmpl = Misc.combineLines(
-        "Objects.equals(selector_%LEVEL%, %VALUE%) ?",
-        "  %EXPRESSION% :"
-    );
+    private static final String tmpl =
+            Misc.combineLines("Objects.equals(selector_%LEVEL%, %VALUE%) ?", "  %EXPRESSION% :");
 }

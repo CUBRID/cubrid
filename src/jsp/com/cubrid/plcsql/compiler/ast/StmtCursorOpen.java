@@ -52,24 +52,22 @@ public class StmtCursorOpen implements I_Stmt {
         DeclCursor decl = (DeclCursor) cursor.decl;
         String dupCursorArgStr = getDupCursorArgStr(decl.paramRefCounts);
         String hostValuesStr = getHostValuesStr(decl.usedValuesMap, decl.paramRefCounts);
-        return tmplStmt
-            .replace("  %DUPLICATE-CURSOR-ARG%", Misc.indentLines(dupCursorArgStr , 1))
-            .replace("  %CURSOR%", Misc.indentLines(cursor.toJavaCode(), 1))
-            .replace("%HOST-VALUES%", Misc.indentLines(hostValuesStr, 2, true))
-            .replace("%LEVEL%", "" + level)
-            ;
+        return tmplStmt.replace("  %DUPLICATE-CURSOR-ARG%", Misc.indentLines(dupCursorArgStr, 1))
+                .replace("  %CURSOR%", Misc.indentLines(cursor.toJavaCode(), 1))
+                .replace("%HOST-VALUES%", Misc.indentLines(hostValuesStr, 2, true))
+                .replace("%LEVEL%", "" + level);
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
-    private static final String tmplStmt = Misc.combineLines(
-        "{ // cursor open",
-        "  %DUPLICATE-CURSOR-ARG%",
-        "  %CURSOR%.open(conn%HOST-VALUES%);",
-        "}"
-    );
+    private static final String tmplStmt =
+            Misc.combineLines(
+                    "{ // cursor open",
+                    "  %DUPLICATE-CURSOR-ARG%",
+                    "  %CURSOR%.open(conn%HOST-VALUES%);",
+                    "}");
 
     // --------------------------------------------------
     // Protected
@@ -89,8 +87,10 @@ public class StmtCursorOpen implements I_Stmt {
                     sbuf.append("\n");
                 }
 
-                sbuf.append(String.format("Object a%d_%%LEVEL%% = %s;", i,
-                    Misc.indentLines(args.nodes.get(i).toJavaCode(), 1, true)));
+                sbuf.append(
+                        String.format(
+                                "Object a%d_%%LEVEL%% = %s;",
+                                i, Misc.indentLines(args.nodes.get(i).toJavaCode(), 1, true)));
             }
         }
 

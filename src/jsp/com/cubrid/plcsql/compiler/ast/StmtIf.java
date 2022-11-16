@@ -48,8 +48,10 @@ public class StmtIf implements I_Stmt {
         if (elsePart == null) {
             return condStmtParts.toJavaCode(" else ");
         } else {
-            return condStmtParts.toJavaCode(" else ") + " else {\n" +
-                Misc.indentLines(elsePart.toJavaCode(), 1) + "\n}";
+            return condStmtParts.toJavaCode(" else ")
+                    + " else {\n"
+                    + Misc.indentLines(elsePart.toJavaCode(), 1)
+                    + "\n}";
         }
     }
 
@@ -57,4 +59,3 @@ public class StmtIf implements I_Stmt {
     // Private
     // --------------------------------------------------
 }
-

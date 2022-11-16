@@ -45,20 +45,13 @@ public class ExprUnaryOp implements I_Expr {
 
     @Override
     public String toJavaCode() {
-        return tmpl
-            .replace("%OPERATION%", opStr)
-            .replace("  %OPERAND%", Misc.indentLines(o.toJavaCode(), 1))
-            ;
+        return tmpl.replace("%OPERATION%", opStr)
+                .replace("  %OPERAND%", Misc.indentLines(o.toJavaCode(), 1));
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
-    private static final String tmpl = Misc.combineLines(
-        "op%OPERATION%(",
-        "  %OPERAND%",
-        ")"
-    );
-
+    private static final String tmpl = Misc.combineLines("op%OPERATION%(", "  %OPERAND%", ")");
 }

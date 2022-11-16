@@ -45,19 +45,15 @@ public class CaseStmt implements I_Stmt {
 
     @Override
     public String toJavaCode() {
-        return tmpl
-            .replace("%VALUE%", val.toJavaCode())
-            .replace("  %STATEMENTS%", Misc.indentLines(stmts.toJavaCode(), 1))
-            ;
+        return tmpl.replace("%VALUE%", val.toJavaCode())
+                .replace("  %STATEMENTS%", Misc.indentLines(stmts.toJavaCode(), 1));
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
-    private static final String tmpl = Misc.combineLines(
-        "if (Objects.equals(selector_%LEVEL%, %VALUE%)) {",
-        "  %STATEMENTS%",
-        "}"
-    );
+    private static final String tmpl =
+            Misc.combineLines(
+                    "if (Objects.equals(selector_%LEVEL%, %VALUE%)) {", "  %STATEMENTS%", "}");
 }

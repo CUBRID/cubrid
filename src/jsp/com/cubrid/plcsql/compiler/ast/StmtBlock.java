@@ -32,7 +32,6 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
-import com.cubrid.plcsql.compiler.Scope;
 
 public class StmtBlock implements I_Stmt {
 
@@ -49,36 +48,32 @@ public class StmtBlock implements I_Stmt {
     @Override
     public String toJavaCode() {
 
-        String strDeclClass = decls == null ? "// no declarations" :
-            tmplDeclClass
-                .replace("%BLOCK%", block)
-                .replace("  %DECLARATIONS%", Misc.indentLines(decls.toJavaCode(), 1))
-                ;
+        String strDeclClass =
+                decls == null
+                        ? "// no declarations"
+                        : tmplDeclClass
+                                .replace("%BLOCK%", block)
+                                .replace(
+                                        "  %DECLARATIONS%",
+                                        Misc.indentLines(decls.toJavaCode(), 1));
 
         return tmplBlock
-            .replace("  %DECL-CLASS%", Misc.indentLines(strDeclClass, 1))
-            .replace("  %BODY%", Misc.indentLines(body.toJavaCode(), 1))
-            ;
+                .replace("  %DECL-CLASS%", Misc.indentLines(strDeclClass, 1))
+                .replace("  %BODY%", Misc.indentLines(body.toJavaCode(), 1));
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
-    private static final String tmplBlock = Misc.combineLines(
-        "{",
-        "",
-        "  %DECL-CLASS%",
-        "",
-        "  %BODY%",
-        "}"
-    );
+    private static final String tmplBlock =
+            Misc.combineLines("{", "", "  %DECL-CLASS%", "", "  %BODY%", "}");
 
-    private static final String tmplDeclClass = Misc.combineLines(
-        "class Decl_of_%BLOCK% {",
-        "  Decl_of_%BLOCK%() throws Exception {};",
-        "  %DECLARATIONS%",
-        "}",
-        "Decl_of_%BLOCK% %BLOCK% = new Decl_of_%BLOCK%();"
-    );
+    private static final String tmplDeclClass =
+            Misc.combineLines(
+                    "class Decl_of_%BLOCK% {",
+                    "  Decl_of_%BLOCK%() throws Exception {};",
+                    "  %DECLARATIONS%",
+                    "}",
+                    "Decl_of_%BLOCK% %BLOCK% = new Decl_of_%BLOCK%();");
 }

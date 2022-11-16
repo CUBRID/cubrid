@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 
 public class ExprNum implements I_Expr {
 
@@ -50,5 +49,3 @@ public class ExprNum implements I_Expr {
     // Private
     // --------------------------------------------------
 }
-
-

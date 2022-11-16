@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 
 public class ExprTrue implements I_Expr {
 
@@ -40,7 +39,8 @@ public class ExprTrue implements I_Expr {
     }
 
     private static ExprTrue singleton = new ExprTrue();
-    private ExprTrue() { }
+
+    private ExprTrue() {}
 
     @Override
     public String toJavaCode() {
@@ -51,5 +51,3 @@ public class ExprTrue implements I_Expr {
     // Private
     // --------------------------------------------------
 }
-
-

@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 
 public class StmtRaiseAppErr implements I_Stmt {
 
@@ -45,7 +44,8 @@ public class StmtRaiseAppErr implements I_Stmt {
 
     @Override
     public String toJavaCode() {
-        return String.format("throw new $$APP_ERROR(%s, %s);", errCode.toJavaCode(), errMsg.toJavaCode());
+        return String.format(
+                "throw new $$APP_ERROR(%s, %s);", errCode.toJavaCode(), errMsg.toJavaCode());
     }
 
     // --------------------------------------------------

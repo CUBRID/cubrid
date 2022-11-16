@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 
 public class ExprStr implements I_Expr {
 
@@ -43,12 +42,10 @@ public class ExprStr implements I_Expr {
 
     @Override
     public String toJavaCode() {
-        return '"' + val + '"';     // TODO: do I have to escape val?
+        return '"' + val + '"'; // TODO: do I have to escape val?
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 }
-
-

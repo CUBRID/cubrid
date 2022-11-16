@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 
 public class DeclFunc extends DeclRoutine {
 
@@ -40,8 +39,7 @@ public class DeclFunc extends DeclRoutine {
             NodeList<I_DeclParam> paramList,
             TypeSpec retType,
             NodeList<I_Decl> decls,
-            Body body
-        ) {
+            Body body) {
         super(name, paramList, retType, decls, body);
     }
 

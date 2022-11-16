@@ -31,12 +31,8 @@
 
 package com.cubrid.plcsql.compiler;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
 import java.io.PrintStream;
-
-import java.util.Set;
-import java.util.TreeSet;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class Misc {
 
@@ -47,7 +43,7 @@ public class Misc {
         }
     }
 
-    public static String combineLines(String ... lines) {
+    public static String combineLines(String... lines) {
         return String.join("\n", lines);
     }
 
@@ -67,7 +63,7 @@ public class Misc {
         String[] split = lines.split("\n");
         for (int i = 0; i < split.length; i++) {
 
-            if (skipFirstLine && i== 0) {
+            if (skipFirstLine && i == 0) {
                 continue;
             }
 
@@ -79,10 +75,11 @@ public class Misc {
         return String.join("\n", split);
     }
 
-
     public static String ctxToNonTerminalName(ParserRuleContext ctx) {
         String nonTerminal = ctx.getClass().getSimpleName();
-        nonTerminal = nonTerminal.substring(0, nonTerminal.length() - 7);   // 7: length of trailing 'Context'
+        nonTerminal =
+                nonTerminal.substring(
+                        0, nonTerminal.length() - 7); // 7: length of trailing 'Context'
         return nonTerminal.toLowerCase();
     }
 
@@ -93,8 +90,8 @@ public class Misc {
         if (len >= 2) {
 
             if (id.startsWith("\"") && id.endsWith("\"")
-            || id.startsWith("[") && id.endsWith("]")
-            || id.startsWith("`") && id.endsWith("`")) {
+                    || id.startsWith("[") && id.endsWith("]")
+                    || id.startsWith("`") && id.endsWith("`")) {
 
                 return id.substring(1, len - 1);
             }
@@ -107,7 +104,7 @@ public class Misc {
     // Private
     // ----------------------------------------------
 
-    private static final String INDENT = "  ";  // two spaces
+    private static final String INDENT = "  "; // two spaces
 
     private static String getIndents(int indents) {
         StringBuffer sbuf = new StringBuffer();
@@ -117,6 +114,4 @@ public class Misc {
 
         return sbuf.toString();
     }
-
 }
-

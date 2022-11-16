@@ -45,18 +45,13 @@ public class ExprCond implements I_Expr {
 
     @Override
     public String toJavaCode() {
-        return tmpl
-            .replace("%COND-PARTS%", condParts.toJavaCode())
-            .replace("%ELSE-PART%", elsePart == null ? "null" : elsePart.toJavaCode())
-            ;
+        return tmpl.replace("%COND-PARTS%", condParts.toJavaCode())
+                .replace("%ELSE-PART%", elsePart == null ? "null" : elsePart.toJavaCode());
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
-    private static final String tmpl = Misc.combineLines(
-        "(%COND-PARTS%",
-        "%ELSE-PART%)"
-    );
+    private static final String tmpl = Misc.combineLines("(%COND-PARTS%", "%ELSE-PART%)");
 }

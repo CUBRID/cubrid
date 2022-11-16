@@ -31,10 +31,9 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 
-import java.util.List;
 import java.util.ArrayList;
+import java.util.List;
 
 public class NodeList<N extends AstNode> implements AstNode {
 
@@ -62,7 +61,7 @@ public class NodeList<N extends AstNode> implements AstNode {
         StringBuffer sbuf = new StringBuffer();
 
         boolean first = true;
-        for (N p: nodes) {
+        for (N p : nodes) {
 
             if (delim != null) {
                 if (first) {

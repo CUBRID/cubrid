@@ -31,9 +31,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 
-import java.text.SimpleDateFormat;
 
 import java.time.LocalTime;
 
@@ -47,10 +45,8 @@ public class ExprTime implements I_Expr {
 
     @Override
     public String toJavaCode() {
-        return String.format("new Time(%d, %d, %d)",
-            time.getHour(),
-            time.getMinute(),
-            time.getSecond());
+        return String.format(
+                "new Time(%d, %d, %d)", time.getHour(), time.getMinute(), time.getSecond());
     }
 
     // --------------------------------------------------

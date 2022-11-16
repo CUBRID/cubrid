@@ -32,7 +32,6 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
-
 import java.util.List;
 
 public class ExHandler implements AstNode {
@@ -50,7 +49,7 @@ public class ExHandler implements AstNode {
 
         boolean first = true;
         StringBuffer sbuf = new StringBuffer();
-        for (ExName ex: exNames) {
+        for (ExName ex : exNames) {
 
             if (first) {
                 first = false;
@@ -67,19 +66,14 @@ public class ExHandler implements AstNode {
             }
         }
 
-        return tmpl
-            .replace("%EXCEPTIONS%", sbuf.toString())
-            .replace("  %STATEMENTS%", Misc.indentLines(stmts.toJavaCode(), 1))
-            ;
+        return tmpl.replace("%EXCEPTIONS%", sbuf.toString())
+                .replace("  %STATEMENTS%", Misc.indentLines(stmts.toJavaCode(), 1));
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
-    private static final String tmpl = Misc.combineLines(
-        " catch (%EXCEPTIONS% e) {",
-        "  %STATEMENTS%",
-        "}"
-    );
+    private static final String tmpl =
+            Misc.combineLines(" catch (%EXCEPTIONS% e) {", "  %STATEMENTS%", "}");
 }

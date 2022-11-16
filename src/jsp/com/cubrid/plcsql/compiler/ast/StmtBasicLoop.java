@@ -45,21 +45,15 @@ public class StmtBasicLoop implements I_Stmt {
 
     @Override
     public String toJavaCode() {
-        return tmpl
-            .replace("%OPT-LABEL%", declLabel == null ? "// no label": declLabel.toJavaCode())
-            .replace("  %STATEMENTS%", Misc.indentLines(stmts.toJavaCode(), 1))
-            ;
+        return tmpl.replace(
+                        "%OPT-LABEL%", declLabel == null ? "// no label" : declLabel.toJavaCode())
+                .replace("  %STATEMENTS%", Misc.indentLines(stmts.toJavaCode(), 1));
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
-    private static final String tmpl = Misc.combineLines(
-        "%OPT-LABEL%",
-        "while (true) {",
-        "  %STATEMENTS%",
-        "}"
-    );
+    private static final String tmpl =
+            Misc.combineLines("%OPT-LABEL%", "while (true) {", "  %STATEMENTS%", "}");
 }
-

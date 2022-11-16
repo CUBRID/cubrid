@@ -31,7 +31,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 
 public class DeclForRecord extends Decl implements I_DeclId {
 
@@ -42,7 +41,7 @@ public class DeclForRecord extends Decl implements I_DeclId {
     }
 
     public TypeSpec typeSpec() {
-        assert false: "unreachable";    // records without field do not appear in a program
+        assert false : "unreachable"; // records without field do not appear in a program
         throw new RuntimeException("unreachable");
     }
 
@@ -53,7 +52,8 @@ public class DeclForRecord extends Decl implements I_DeclId {
 
     @Override
     public String toJavaCode() {
-        assert false; // unreachable: currently, used only in for-dynamic-sql-loop, not in any ordinary declration list
+        assert false; // unreachable: currently, used only in for-dynamic-sql-loop, not in any
+                      // ordinary declration list
         throw new RuntimeException("unreachable");
     }
 

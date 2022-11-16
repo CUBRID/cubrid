@@ -49,19 +49,14 @@ public class CondStmt implements I_Stmt {
 
     @Override
     public String toJavaCode() {
-        return tmpl
-            .replace("%CONDITION%", cond.toJavaCode())
-            .replace("  %STATEMENTS%", Misc.indentLines(stmts.toJavaCode(), 1))
-            ;
+        return tmpl.replace("%CONDITION%", cond.toJavaCode())
+                .replace("  %STATEMENTS%", Misc.indentLines(stmts.toJavaCode(), 1));
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
-    private static final String tmpl = Misc.combineLines(
-        "if (%CONDITION%) {",
-        "  %STATEMENTS%",
-        "}"
-    );
+    private static final String tmpl =
+            Misc.combineLines("if (%CONDITION%) {", "  %STATEMENTS%", "}");
 }

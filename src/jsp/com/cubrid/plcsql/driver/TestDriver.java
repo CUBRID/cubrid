@@ -31,30 +31,20 @@
 
 package com.cubrid.plcsql.driver;
 
+import com.cubrid.plcsql.compiler.ParseTreeConverter;
+import com.cubrid.plcsql.compiler.ParseTreePrinter;
+import com.cubrid.plcsql.compiler.antlrgen.PcsLexer;
+import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
+import com.cubrid.plcsql.compiler.ast.Unit;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.PrintStream;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
 
-import com.cubrid.plcsql.compiler.antlrgen.PcsLexer;
-import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
-
-import com.cubrid.plcsql.compiler.ParseTreePrinter;
-import com.cubrid.plcsql.compiler.ParseTreeConverter;
-
-import com.cubrid.plcsql.compiler.ast.Unit;
-
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.PrintStream;
-import java.io.FileReader;
-import java.io.BufferedReader;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-
-import java.util.Map;
-import java.util.TreeMap;
-
-public class TestDriver
-{
+public class TestDriver {
     private static ParseTree parse(String inFilePath) {
 
         long t0, t;
@@ -66,8 +56,10 @@ public class TestDriver
             throw new RuntimeException(inFilePath + " is not a file");
         }
 
-        System.out.println(String.format("  creating File: %f sec",
-            ((t = System.currentTimeMillis()) - t0) / 1000.0));
+        System.out.println(
+                String.format(
+                        "  creating File: %f sec",
+                        ((t = System.currentTimeMillis()) - t0) / 1000.0));
         t0 = t;
 
         FileInputStream in;
@@ -77,8 +69,10 @@ public class TestDriver
             throw new RuntimeException(e);
         }
 
-        System.out.println(String.format("  creating FileInputStream: %f sec",
-            ((t = System.currentTimeMillis()) - t0) / 1000.0));
+        System.out.println(
+                String.format(
+                        "  creating FileInputStream: %f sec",
+                        ((t = System.currentTimeMillis()) - t0) / 1000.0));
         t0 = t;
 
         ANTLRInputStream input;
@@ -88,8 +82,10 @@ public class TestDriver
             throw new RuntimeException(e);
         }
 
-        System.out.println(String.format("  creating ANTLRInputStream: %f sec",
-            ((t = System.currentTimeMillis()) - t0) / 1000.0));
+        System.out.println(
+                String.format(
+                        "  creating ANTLRInputStream: %f sec",
+                        ((t = System.currentTimeMillis()) - t0) / 1000.0));
         t0 = t;
 
         PcsLexer lexer = new PcsLexer(input);
@@ -99,14 +95,17 @@ public class TestDriver
         SyntaxErrorIndicator sei = new SyntaxErrorIndicator();
         parser.addErrorListener(sei);
 
-        System.out.println(String.format("  creating PcsLexer: %f sec",
-            ((t = System.currentTimeMillis()) - t0) / 1000.0));
+        System.out.println(
+                String.format(
+                        "  creating PcsLexer: %f sec",
+                        ((t = System.currentTimeMillis()) - t0) / 1000.0));
         t0 = t;
 
         ParseTree ret = parser.sql_script();
 
-        System.out.println(String.format("  calling parser: %f sec",
-            (System.currentTimeMillis() - t0) / 1000.0));
+        System.out.println(
+                String.format(
+                        "  calling parser: %f sec", (System.currentTimeMillis() - t0) / 1000.0));
 
         if (sei.hasError) {
             throw new RuntimeException("syntax error");
@@ -145,7 +144,7 @@ public class TestDriver
     public static void main(String[] args) {
 
         if (args.length == 0) {
-           throw new RuntimeException("requires arguments (PL/CSQL file paths)");
+            throw new RuntimeException("requires arguments (PL/CSQL file paths)");
         }
 
         long t, t0;
@@ -163,7 +162,10 @@ public class TestDriver
                     throw new RuntimeException("parsing failed");
                 }
 
-                System.out.println(String.format("parsing: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
+                System.out.println(
+                        String.format(
+                                "parsing: %f sec",
+                                ((t = System.currentTimeMillis()) - t0) / 1000.0));
                 t0 = t;
 
                 PrintStream out;
@@ -174,7 +176,10 @@ public class TestDriver
                 ParseTreeWalker.DEFAULT.walk(pp, tree);
                 out.close();
 
-                System.out.println(String.format("printing: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
+                System.out.println(
+                        String.format(
+                                "printing: %f sec",
+                                ((t = System.currentTimeMillis()) - t0) / 1000.0));
                 t0 = t;
 
                 ParseTreeConverter converter = new ParseTreeConverter();
@@ -184,7 +189,10 @@ public class TestDriver
                 out.print(unit.toJavaCode());
                 out.close();
 
-                System.out.println(String.format("converting: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
+                System.out.println(
+                        String.format(
+                                "converting: %f sec",
+                                ((t = System.currentTimeMillis()) - t0) / 1000.0));
                 t0 = t;
 
                 System.out.println(" - success");
@@ -193,7 +201,6 @@ public class TestDriver
                 throw e;
             }
         }
-
     }
 
     private static class SyntaxErrorIndicator extends BaseErrorListener {
@@ -202,14 +209,13 @@ public class TestDriver
 
         @Override
         public void syntaxError(
-                Recognizer<?,?> recognizer,
+                Recognizer<?, ?> recognizer,
                 Object offendingSymbol,
                 int line,
                 int charPositionInLine,
                 String msg,
-                RecognitionException e
-            ) {
-                hasError = true;
+                RecognitionException e) {
+            hasError = true;
         }
     }
 }

@@ -43,5 +43,3 @@ public class Scope {
         this.level = level;
     }
 }
-
-

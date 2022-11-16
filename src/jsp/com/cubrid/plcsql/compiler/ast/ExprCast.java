@@ -48,14 +48,16 @@ public class ExprCast implements I_Expr {
         if (this.ty == null) {
             this.ty = ty;
         } else {
-            assert false: "target type of an ExprCast is set to " + ty + " with already set " + this.ty;
+            assert false
+                    : "target type of an ExprCast is set to " + ty + " with already set " + this.ty;
         }
     }
 
     @Override
     public String toJavaCode() {
         if (ty == null) {
-            return String.format("((%%TODO-ExprCast%%) (%s))", Misc.indentLines(expr.toJavaCode(), 1, true));
+            return String.format(
+                    "((%%TODO-ExprCast%%) (%s))", Misc.indentLines(expr.toJavaCode(), 1, true));
         } else {
             return String.format("((%s) (%s))", ty, Misc.indentLines(expr.toJavaCode(), 1, true));
         }

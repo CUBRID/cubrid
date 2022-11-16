@@ -40,7 +40,8 @@ public class StmtCase implements I_Stmt {
     public final NodeList<CaseStmt> whenParts;
     public final NodeList<I_Stmt> elsePart;
 
-    public StmtCase(int level, I_Expr selector, NodeList<CaseStmt> whenParts, NodeList<I_Stmt> elsePart) {
+    public StmtCase(
+            int level, I_Expr selector, NodeList<CaseStmt> whenParts, NodeList<I_Stmt> elsePart) {
         this.level = level;
         this.selector = selector;
         this.whenParts = whenParts;
@@ -52,17 +53,17 @@ public class StmtCase implements I_Stmt {
 
         if (elsePart == null) {
             return tmplStmtCaseNoElsePart
-                .replace("%SELECTOR-VALUE%", selector.toJavaCode())
-                .replace("  %WHEN-PARTS%", Misc.indentLines(whenParts.toJavaCode(" else "), 1))
-                .replace("%LEVEL%", "" + level) // level replacement must go last
-                ;
+                    .replace("%SELECTOR-VALUE%", selector.toJavaCode())
+                    .replace("  %WHEN-PARTS%", Misc.indentLines(whenParts.toJavaCode(" else "), 1))
+                    .replace("%LEVEL%", "" + level) // level replacement must go last
+            ;
         } else {
             return tmplStmtCase
-                .replace("%SELECTOR-VALUE%", selector.toJavaCode())
-                .replace("  %WHEN-PARTS%", Misc.indentLines(whenParts.toJavaCode(" else "), 1))
-                .replace("    %ELSE-PART%", Misc.indentLines(elsePart.toJavaCode(), 2))
-                .replace("%LEVEL%", "" + level) // level replacement must go last
-                ;
+                    .replace("%SELECTOR-VALUE%", selector.toJavaCode())
+                    .replace("  %WHEN-PARTS%", Misc.indentLines(whenParts.toJavaCode(" else "), 1))
+                    .replace("    %ELSE-PART%", Misc.indentLines(elsePart.toJavaCode(), 2))
+                    .replace("%LEVEL%", "" + level) // level replacement must go last
+            ;
         }
     }
 
@@ -70,19 +71,16 @@ public class StmtCase implements I_Stmt {
     // Private
     // --------------------------------------------------
 
-    private static final String tmplStmtCaseNoElsePart = Misc.combineLines(
-        "{",
-        "  Object selector_%LEVEL% = %SELECTOR-VALUE%;",
-        "  %WHEN-PARTS%",
-        "}"
-    );
+    private static final String tmplStmtCaseNoElsePart =
+            Misc.combineLines(
+                    "{", "  Object selector_%LEVEL% = %SELECTOR-VALUE%;", "  %WHEN-PARTS%", "}");
 
-    private static final String tmplStmtCase = Misc.combineLines(
-        "{",
-        "  Object selector_%LEVEL% = %SELECTOR-VALUE%;",
-        "  %WHEN-PARTS% else {",
-        "    %ELSE-PART%",
-        "  }",
-        "}"
-    );
+    private static final String tmplStmtCase =
+            Misc.combineLines(
+                    "{",
+                    "  Object selector_%LEVEL% = %SELECTOR-VALUE%;",
+                    "  %WHEN-PARTS% else {",
+                    "    %ELSE-PART%",
+                    "  }",
+                    "}");
 }

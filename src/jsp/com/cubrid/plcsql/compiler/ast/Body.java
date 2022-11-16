@@ -48,10 +48,8 @@ public class Body implements AstNode {
         if (exHandlers.nodes.size() == 0) {
             return stmts.toJavaCode();
         } else {
-            return tmpl
-                .replace("  %STATEMENTS%", Misc.indentLines(stmts.toJavaCode(), 1))
-                .replace("%CATCHES%", exHandlers.toJavaCode(null))
-                ;
+            return tmpl.replace("  %STATEMENTS%", Misc.indentLines(stmts.toJavaCode(), 1))
+                    .replace("%CATCHES%", exHandlers.toJavaCode(null));
         }
     }
 
@@ -59,11 +57,5 @@ public class Body implements AstNode {
     // Private
     // --------------------------------------------------
 
-    private static final String tmpl = Misc.combineLines(
-        "try {",
-        "  %STATEMENTS%",
-        "}%CATCHES%"
-    );
+    private static final String tmpl = Misc.combineLines("try {", "  %STATEMENTS%", "}%CATCHES%");
 }
-
-

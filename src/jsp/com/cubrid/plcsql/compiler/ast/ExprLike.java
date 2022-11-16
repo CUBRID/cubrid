@@ -47,23 +47,17 @@ public class ExprLike implements I_Expr {
 
     @Override
     public String toJavaCode() {
-        return tmpl
-            .replace("  %TARGET%", Misc.indentLines(target.toJavaCode(), 1))
-            .replace("  %PATTERN%", Misc.indentLines(pattern.toJavaCode(), 1))
-            .replace("  %ESCAPE%", Misc.indentLines(escape == null ? "null" : escape.toJavaCode(), 1))
-            ;
+        return tmpl.replace("  %TARGET%", Misc.indentLines(target.toJavaCode(), 1))
+                .replace("  %PATTERN%", Misc.indentLines(pattern.toJavaCode(), 1))
+                .replace(
+                        "  %ESCAPE%",
+                        Misc.indentLines(escape == null ? "null" : escape.toJavaCode(), 1));
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
-    private static final String tmpl = Misc.combineLines(
-        "opLike(",
-        "  %TARGET%,",
-        "  %PATTERN%,",
-        "  %ESCAPE%",
-        ")"
-    );
-
+    private static final String tmpl =
+            Misc.combineLines("opLike(", "  %TARGET%,", "  %PATTERN%,", "  %ESCAPE%", ")");
 }

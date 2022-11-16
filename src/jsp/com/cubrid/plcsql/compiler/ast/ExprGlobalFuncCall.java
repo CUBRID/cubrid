@@ -53,36 +53,34 @@ public class ExprGlobalFuncCall implements I_Expr {
         String paramStr = getParametersStr(argSize);
         String setUsedValuesStr = getSetUsedValuesStr(argSize);
 
-        return tmplStmt
-            .replace("%FUNC-NAME%", name)
-            .replace("%DYNAMIC-SQL%", dynSql)
-            .replace("%PARAMETERS%", paramStr)
-            .replace("    %SET-USED-VALUES%", Misc.indentLines(setUsedValuesStr, 2))
-            .replace("  %ARGUMENTS%", Misc.indentLines(args.toJavaCode(",\n"), 1))
-            .replace("%LEVEL%", "" + level)
-            ;
+        return tmplStmt.replace("%FUNC-NAME%", name)
+                .replace("%DYNAMIC-SQL%", dynSql)
+                .replace("%PARAMETERS%", paramStr)
+                .replace("    %SET-USED-VALUES%", Misc.indentLines(setUsedValuesStr, 2))
+                .replace("  %ARGUMENTS%", Misc.indentLines(args.toJavaCode(",\n"), 1))
+                .replace("%LEVEL%", "" + level);
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
-    private static final String tmplStmt = Misc.combineLines(
-        "(new Object() { // global function call: %FUNC-NAME%",
-        "  Object invoke(%PARAMETERS%) throws Exception {",
-        "    String dynSql_%LEVEL% = \"%DYNAMIC-SQL%\";",
-        "    CallableStatement stmt_%LEVEL% = conn.prepareCall(dynSql_%LEVEL%);",
-        "    stmt_%LEVEL%.registerOutParameter(1, java.sql.Types.OTHER);",
-        "    %SET-USED-VALUES%",
-        "    stmt_%LEVEL%.execute();",
-        "    Object ret_%LEVEL% = stmt_%LEVEL%.getObject(1);",
-        "    stmt_%LEVEL%.close();",
-        "    return ret_%LEVEL%;",
-        "  }",
-        "}.invoke(",
-        "  %ARGUMENTS%",
-        "))"
-    );
+    private static final String tmplStmt =
+            Misc.combineLines(
+                    "(new Object() { // global function call: %FUNC-NAME%",
+                    "  Object invoke(%PARAMETERS%) throws Exception {",
+                    "    String dynSql_%LEVEL% = \"%DYNAMIC-SQL%\";",
+                    "    CallableStatement stmt_%LEVEL% = conn.prepareCall(dynSql_%LEVEL%);",
+                    "    stmt_%LEVEL%.registerOutParameter(1, java.sql.Types.OTHER);",
+                    "    %SET-USED-VALUES%",
+                    "    stmt_%LEVEL%.execute();",
+                    "    Object ret_%LEVEL% = stmt_%LEVEL%.getObject(1);",
+                    "    stmt_%LEVEL%.close();",
+                    "    return ret_%LEVEL%;",
+                    "  }",
+                    "}.invoke(",
+                    "  %ARGUMENTS%",
+                    "))");
 
     private static String getDynSql(String name, int argCount) {
         return String.format("?= call %s(%s)", name, Common.getQuestionMarks(argCount));
