@@ -12005,27 +12005,25 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
    * Go over the list of attrs until all indexed attributes (OIDs, sets)
    * are found
    */
-  for (i = 0, num_found_attrs = 0, search_attrepr = classrepr->attributes; i < classrepr->n_attributes;
-       i++, search_attrepr++)
+  num_found_attrs = 0;
+  if (idx_info->has_single_col)
     {
-      if (search_attrepr->n_btids <= 0)
+      for (i = 0, search_attrepr = classrepr->attributes; i < classrepr->n_attributes; i++, search_attrepr++)
 	{
-	  continue;
-	}
-
-      if (idx_info->has_single_col)
-	{
-	  for (j = 0; j < *num_btids; j++)
+	  if (search_attrepr->n_btids > 0)
 	    {
-	      indexp = &classrepr->indexes[j];
-	      if (indexp->n_atts == 1 && indexp->atts[0]->id == search_attrepr->id)
+	      for (j = 0; j < *num_btids; j++)
 		{
-		  set_attrids[num_found_attrs++] = search_attrepr->id;
-		  break;
+		  indexp = &classrepr->indexes[j];
+		  if (indexp->n_atts == 1 && indexp->atts[0]->id == search_attrepr->id)
+		    {
+		      set_attrids[num_found_attrs++] = search_attrepr->id;
+		      break;
+		    }
 		}
 	    }
-	}
-    }				/* for (i = 0 ...) */
+	}			/* for (i = 0 ...) */
+    }
 
   if (idx_info->has_multi_col == 0 && num_found_attrs == 0)
     {
