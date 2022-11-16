@@ -4145,7 +4145,6 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  hsidp->caches_inited = true;
 	}
       break;
-
     case S_INDX_SCAN:
       isidp = &scan_id->s.isid;
       if (!OID_IS_ROOTOID (&isidp->cls_oid))
@@ -4607,7 +4606,6 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     case S_JSON_TABLE_SCAN:
     case S_VALUES_SCAN:
       return (s_id->position == S_BEFORE) ? S_SUCCESS : S_END;
-
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return S_ERROR;
@@ -7742,7 +7740,14 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 
       if (scan_id->type == S_HEAP_SCAN)
 	{
-	  json_object_set_new (scan_stats, "heap", scan);
+	  if (scan_id->scan_stats.agg_optimized_scan)
+	    {
+	      json_object_set_new (scan_stats, "aggregate optimized,", scan);
+	    }
+	  else
+	    {
+	      json_object_set_new (scan_stats, "heap", scan);
+	    }
 	}
       else
 	{
@@ -7826,7 +7831,14 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
   switch (scan_id->type)
     {
     case S_HEAP_SCAN:
-      fprintf (fp, "(heap");
+      if (scan_id->scan_stats.agg_optimized_scan)
+	{
+	  fprintf (fp, "(aggregate optimized,");
+	}
+      else
+	{
+	  fprintf (fp, "(heap");
+	}
       break;
 
     case S_INDX_SCAN:
