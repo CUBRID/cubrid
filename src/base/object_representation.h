@@ -46,6 +46,21 @@
 #include "porting_inline.hpp"
 #include "storage_common.h"
 
+#if 1				// ctshim
+#define SUPPORT_KEY_DUP_LEVEL
+
+#define HIDDEN_INDEX_COL_ATTR_ID    (-2848048)
+#define HIDDEN_INDEX_COL_ATTR_NAME  "_cub_idx_col_"
+
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+#define IS_HIDDEN_INDEX_COL_ID(id)      ((id) == HIDDEN_INDEX_COL_ATTR_ID)
+#define IS_HIDDEN_INDEX_COL_NAME(name)  ((name[0] == '_') && memcmp ((name), HIDDEN_INDEX_COL_ATTR_NAME, 14) == 0)
+#else
+#define IS_HIDDEN_INDEX_COL_ID(id)      (false)
+#define IS_HIDDEN_INDEX_COL_NAME(name)
+#endif
+#endif // #if 1
+
 // forward declarations
 struct log_lsa;
 struct setobj;

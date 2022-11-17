@@ -2024,6 +2024,13 @@ struct pt_index_info
   bool unique;			/* UNIQUE specified? */
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
   int ib_threads;
+#if 1				// defined(SUPPORT_KEY_DUP_LEVEL)
+#define OVFL_LEVEL_NOT_USED  (0)
+#define OVFL_LEVEL_DEFAULT   (32)
+#define OVFL_LEVEL_MIN       (0)
+#define OVFL_LEVEL_MAX       (31)
+  int ovfl_level;		/* Ovfl level(0~32), 0: Not Used,  32: use default, other: 2^level */
+#endif
 };
 
 /* CREATE USER INFO */

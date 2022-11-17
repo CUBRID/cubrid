@@ -126,6 +126,151 @@ static SM_CLASS_CONSTRAINT *smt_find_constraint (SM_TEMPLATE * ctemplate, const 
  * a lot of the error checking code in every function.
 */
 
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+int
+smt_make_hidden_attribute (SM_TEMPLATE * template_, MOP mop, SM_ATTRIBUTE ** attp)
+{
+  int error_code = NO_ERROR;
+  *attp = NULL;
+
+  //smt_add_attribute (def, "password", AU_PASSWORD_CLASS_NAME, (DB_DOMAIN *) 0);
+  //smt_add_attribute_any (template_, name, domain_string, domain, ID_ATTRIBUTE, false, NULL, NULL);
+
+  SM_ATTRIBUTE *att = NULL;
+  DB_DOMAIN *domain = (DB_DOMAIN *) 0;
+
+  //domain = tp_domain_construct (DB_TYPE_OBJECT, (DB_OBJECT *) TP_DOMAIN_SELF_REF, 0, 0, (TP_DOMAIN *) 0);
+
+  domain = tp_domain_construct (DB_TYPE_BIGINT, NULL, DB_BIGINT_PRECISION, 0, NULL);
+
+
+  //domain = pt_type_enum_to_db_domain (PT_TYPE_OBJECT);
+  //  error_code = get_domain (template_, domain_string, &domain);
+  //if (error_code != NO_ERROR)
+  //  {
+  //    goto error_exit;
+  //  }
+
+  if (domain == NULL)
+    {
+      ERROR0 (error_code, ER_SM_INVALID_ARGUMENTS);
+      goto error_exit;
+    }
+//DB_TYPE_OID  DB_TYPE_OBJECT
+  if (template_ && TP_DOMAIN_TYPE (domain) == DB_TYPE_OBJECT)
+    {
+      error_code = check_domain_class_type (template_, domain->class_mop);
+      if (error_code != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
+  att = classobj_make_attribute (HIDDEN_INDEX_COL_ATTR_NAME, domain->type, ID_ATTRIBUTE);
+  if (att == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      goto error_exit;
+    }
+  //att->comment = ws_copy_string (comment);
+
+  /* Flag this attribute as new so that we can initialize the original_value properly.  Make sure this isn't saved on
+   * disk ! */
+  att->flags |= SM_ATTFLAG_NEW;
+  //att->class_mop = template_ ? template_->op : mop;
+  att->class_mop = NULL;
+  att->domain = domain;
+  att->auto_increment = NULL;
+
+  att->id = HIDDEN_INDEX_COL_ATTR_ID;
+
+  *attp = att;
+  return error_code;
+
+error_exit:
+  if (att != NULL)
+    {
+      classobj_free_attribute (att);
+      att = NULL;
+    }
+
+  return error_code;
+}
+
+static int
+make_hidden_attribute (SM_TEMPLATE * template_, const char *name, SM_ATTRIBUTE ** attp)
+{
+  int error_code = NO_ERROR;
+  SM_ATTRIBUTE *att_list = template_->attributes;
+
+  *attp = NULL;
+
+  if (!sm_check_name (name))
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  if (!IS_HIDDEN_INDEX_COL_NAME (name))
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+
+  //smt_add_attribute (def, "password", AU_PASSWORD_CLASS_NAME, (DB_DOMAIN *) 0);
+
+  //smt_add_attribute_any (template_, name, domain_string, domain, ID_ATTRIBUTE, false, NULL, NULL);
+  //const char *domain_string = "tt";
+  DB_DOMAIN *domain = (DB_DOMAIN *) 0;
+  bool class_namespace = false;
+  const SM_NAME_SPACE name_space = ID_ATTRIBUTE;
+
+//const SM_NAME_SPACE name_space,
+  const bool add_first = false;
+  const char *add_after_attribute = NULL;
+  const char *comment = NULL;
+
+  SM_ATTRIBUTE *att = NULL;
+  char real_name[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+  sm_downcase_name (name, real_name, SM_MAX_IDENTIFIER_LENGTH);
+  name = real_name;
+
+  error_code = check_namespace (template_, name, class_namespace);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error_code = smt_make_hidden_attribute (template_, NULL, &att);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+#if 0				//========
+  error_code = smt_add_attribute_to_list (&att_list, att, add_first, add_after_attribute);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+#endif
+
+  *attp = att;
+  return error_code;
+
+error_exit:
+  if (att != NULL)
+    {
+      classobj_free_attribute (att);
+      att = NULL;
+    }
+  return error_code;
+
+}
+#endif // #if defined(SUPPORT_KEY_DUP_LEVEL)
+
 /*
  * smt_find_attribute() - Locate an instance, shared or class attribute
  *    in a template. Signal an error if not found.
@@ -1992,7 +2137,9 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   SM_ATTRIBUTE_FLAG constraint;
   bool has_nulls = false;
   bool is_secondary_index = false;
-
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+  int hidden_index_col = -1;
+#endif
   assert (template_ != NULL);
 
   error = smt_check_index_exist (template_, &shared_cons_name, constraint_type, constraint_name, att_names,
@@ -2010,15 +2157,33 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
     {
       while (att_names[n_atts] != NULL)
 	{
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+	  if (IS_HIDDEN_INDEX_COL_NAME (att_names[n_atts]))
+	    {
+	      hidden_index_col = n_atts;
+	    }
+#endif
 	  n_atts++;
 	}
     }
 
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+  if (hidden_index_col != -1 && hidden_index_col != (n_atts - 1))
+    {
+      printf ("debug: NOT LAST!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+    }
+  if ((n_atts == 0) || ((n_atts == 1) && (hidden_index_col != -1)))
+    {
+      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
+      goto error_return;
+    }
+#else
   if (n_atts == 0)
     {
       ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
       goto error_return;
     }
+#endif
 
   /* if primary key shares index with other constraint, it is neccessary to check whether the attributs do not have
    * null value. e.g. primary key shares index with unique constraint. Because unique constraint allows null value, we
@@ -2057,6 +2222,13 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
   for (i = 0; i < n_atts && error == NO_ERROR; i++)
     {
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+      if (hidden_index_col == i)
+	{
+	  error = make_hidden_attribute (template_, att_names[i], &atts[i]);
+	  continue;
+	}
+#endif
       error = smt_find_attribute (template_, att_names[i], class_attribute, &atts[i]);
       if (error == ER_SM_INHERITED_ATTRIBUTE)
 	{

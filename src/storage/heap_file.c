@@ -692,10 +692,11 @@ static OR_ATTRIBUTE *heap_locate_attribute (ATTR_ID attrid, HEAP_CACHE_ATTRINFO 
 
 static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 					 HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, TP_DOMAIN * func_domain,
-					 TP_DOMAIN ** key_domain);
+					 TP_DOMAIN ** key_domain, OID * rec_oid);
 static DB_MIDXKEY *heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey,
 					      int *att_ids, HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res,
-					      int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain);
+					      int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain,
+					      OID * rec_oid);
 
 static int heap_dump_hdr (FILE * fp, HEAP_HDR_STATS * heap_hdr);
 
@@ -9666,6 +9667,15 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	  /* Case that we want all attributes */
 	  value->attrid = search_attrepr[curr_attr].id;
 	}
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+      else if (IS_HIDDEN_INDEX_COL_ID (value->attrid))
+	{
+	  assert ((curr_attr + 1) == attr_info->num_values);
+
+	  value->attrid = search_attrepr[curr_attr].id;
+	  printf ("debug: heap_attrinfo_recache_attrepr(-2848048) AAAAAAAAAAAAAAAAAAAAAA\n");
+	}
+#endif
 
       for (i = 0; isattr_found == false && i < srch_num_attrs; i++, search_attrepr++)
 	{
@@ -12318,7 +12328,7 @@ heap_attrvalue_get_index (int value_index, ATTR_ID * attrid, int *n_btids, BTID 
  */
 static DB_MIDXKEY *
 heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, HEAP_CACHE_ATTRINFO * attrinfo,
-		      DB_VALUE * func_res, TP_DOMAIN * func_domain, TP_DOMAIN ** key_domain)
+		      DB_VALUE * func_res, TP_DOMAIN * func_domain, TP_DOMAIN ** key_domain, OID * rec_oid)
 {
   char *nullmap_ptr;
   OR_ATTRIBUTE **atts;
@@ -12387,17 +12397,45 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	{
 	  break;
 	}
-      error = heap_midxkey_get_value (recdes, atts[i], &value, attrinfo);
-      if (error == NO_ERROR && !db_value_is_null (&value))
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+      if (IS_HIDDEN_INDEX_COL_ID (atts[i]->id))
 	{
-	  atts[i]->domain->type->index_writeval (&buf, &value);
-	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-	}
+	  DB_VALUE tmp_val;
 
-      if (DB_NEED_CLEAR (&value))
-	{
-	  pr_clear_value (&value);
+	  // The rec_oid may be NULL when the index of the UNIQUE attribute is an index. 
+	  // In that case, however, it cannot enter here.
+	  assert (rec_oid != NULL);
+
+	  printf (">>> heap_midxkey_key_get() rec_oid = %d | %d | %d\n", rec_oid->volid, rec_oid->pageid,
+		  rec_oid->slotid);
+
+	  db_make_bigint (&tmp_val, *((DB_BIGINT *) rec_oid));
+	  tp_Bigint.index_writeval (&buf, &tmp_val);
+	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	  if (DB_NEED_CLEAR (&tmp_val))	// ---- ?
+	    {
+	      pr_clear_value (&tmp_val);
+	    }
+
+	  error = NO_ERROR;
 	}
+      else
+	{
+#endif
+	  error = heap_midxkey_get_value (recdes, atts[i], &value, attrinfo);
+	  if (error == NO_ERROR && !db_value_is_null (&value))
+	    {
+	      atts[i]->domain->type->index_writeval (&buf, &value);
+	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	    }
+
+	  if (DB_NEED_CLEAR (&value))
+	    {
+	      pr_clear_value (&value);
+	    }
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	}
+#endif
       if (key_domain != NULL)
 	{
 	  if (k == 0)
@@ -12485,7 +12523,7 @@ error:
 static DB_MIDXKEY *
 heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey, int *att_ids,
 			   HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, int func_col_id,
-			   int func_attr_index_start, TP_DOMAIN * midxkey_domain)
+			   int func_attr_index_start, TP_DOMAIN * midxkey_domain, OID * rec_oid)
 {
   char *nullmap_ptr;
   int num_vals, i, reprid, k;
@@ -12542,6 +12580,26 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	{
 	  break;
 	}
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+      if (IS_HIDDEN_INDEX_COL_ID (att_ids[i]))
+	{
+	  DB_VALUE tmp_val;
+	  assert (rec_oid != NULL);
+	  printf (">>> heap_midxkey_key_generate() rec_oid = %d | %d | %d\n", rec_oid->volid, rec_oid->pageid,
+		  rec_oid->slotid);
+
+	  db_make_bigint (&tmp_val, *((DB_BIGINT *) rec_oid));
+	  tp_Bigint.index_writeval (&buf, &tmp_val);
+	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	  if (DB_NEED_CLEAR (&tmp_val))	// ---- ?
+	    {
+	      pr_clear_value (&tmp_val);
+	    }
+
+	  break;
+	}
+#endif
+
       att = heap_locate_attribute (att_ids[i], attrinfo);
 
       error = heap_midxkey_get_value (recdes, att, &value, attrinfo);
@@ -12674,7 +12732,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 	}
 
       if (heap_midxkey_key_generate (thread_p, recdes, &midxkey, att_ids, attr_info, fi_res, fi_col_id,
-				     fi_attr_index_start, midxkey_domain) == NULL)
+				     fi_attr_index_start, midxkey_domain, cur_oid) == NULL)
 	{
 	  return NULL;
 	}
@@ -12752,7 +12810,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 DB_VALUE *
 heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTRINFO * idx_attrinfo, RECDES * recdes,
 			BTID * btid, DB_VALUE * db_value, char *buf, FUNC_PRED_UNPACK_INFO * func_indx_pred,
-			TP_DOMAIN ** key_domain)
+			TP_DOMAIN ** key_domain, OID * rec_oid)
 {
   OR_INDEX *index;
   int n_atts, reprid;
@@ -12837,7 +12895,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 
       midxkey.min_max_val.position = -1;
 
-      if (heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain) == NULL)
+      if (heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain, rec_oid) == NULL)
 	{
 	  return NULL;
 	}

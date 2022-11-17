@@ -866,6 +866,19 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p, OR_VA
 	  if (!DB_IS_NULL (&key_atts[1].value))
 	    {
 	      id = db_get_int (&key_atts[1].value);
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim .. 우와....
+	      if (IS_HIDDEN_INDEX_COL_ID (id))
+		{
+		  DB_VALUE tmp_val;
+		  db_make_string (&tmp_val, HIDDEN_INDEX_COL_ATTR_NAME);
+		  pr_clear_value (&key_atts[1].value);
+		  pr_clone_value (&tmp_val, &key_atts[1].value);
+		  if (tmp_val.need_clear)
+		    pr_clear_value (&tmp_val);
+
+		  continue;
+		}
+#endif
 
 	      for (ids = id_val_p->sub.value, k = 0; k < id_val_p->sub.count; k++)
 		{

@@ -2785,6 +2785,25 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	    }
 	}
 
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+      bool has_hidden_index_col = false;
+
+      // Class or shared attributes are not considered. These are not indexed columns.
+      // Also, The prefix index is also not supported.(The prefix index  will be deprecated.)
+      if (ctype == DB_CONSTRAINT_INDEX || ctype == DB_CONSTRAINT_REVERSE_INDEX)
+	{
+	  if (idx_info->prefix_length == NULL)
+	    {
+	      if ((idx_info->ovfl_level != OVFL_LEVEL_NOT_USED) && !SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype)
+		  && ctype != SM_CONSTRAINT_FOREIGN_KEY)
+		{
+		  has_hidden_index_col = true;
+		  nnames++;
+		}
+	    }
+	}
+#endif
+
       attnames = (char **) malloc ((nnames + 1) * sizeof (const char *));
       if (attnames == NULL)
 	{
@@ -2821,6 +2840,20 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	  i++;
 	  c = c->next;
 	}
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+      if (has_hidden_index_col)
+	{
+	  asc_desc[i] = 0;
+	  //attrs_prefix_length[i] = -1;
+	  //asc_desc[i] = idx_info->ovfl_level; ????????????????????????????
+	  attrs_prefix_length[i] = idx_info->ovfl_level * (-1);
+	  attnames[i++] = HIDDEN_INDEX_COL_ATTR_NAME;
+#define CT_XXX_1
+#ifdef  CT_XXX_1
+	  nnames--;
+#endif
+	}
+#endif
       attnames[i] = NULL;
 
       if (nnames == 1 && idx_info->prefix_length)
@@ -2844,6 +2877,45 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	    {
 	      func_index_info->col_id = idx_info->func_pos;
 	      func_index_info->attr_index_start = nnames - idx_info->func_no_args;
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim  func index
+	      if (has_hidden_index_col)
+		{
+#ifdef  CT_XXX_1
+		  if (idx_info->func_no_args > 0)
+		    {
+		      int offset = func_index_info->attr_index_start;
+		      memmove (asc_desc + (offset + 1), asc_desc + offset,
+			       idx_info->func_no_args * sizeof (asc_desc[0]));
+		      memmove (attrs_prefix_length + (offset + 1), attrs_prefix_length + offset,
+			       idx_info->func_no_args * sizeof (attrs_prefix_length[0]));
+		      memmove (attnames + (offset + 1), attnames + offset,
+			       idx_info->func_no_args * sizeof (attnames[0]));
+
+		      asc_desc[func_index_info->attr_index_start] = 0;
+		      attrs_prefix_length[func_index_info->attr_index_start] = -1;
+		      attnames[func_index_info->attr_index_start] = HIDDEN_INDEX_COL_ATTR_NAME;
+		    }
+
+		  func_index_info->attr_index_start++;
+		  assert (attnames[nnames + 1] == NULL);
+#else
+		  func_index_info->attr_index_start--;
+#endif
+		}
+#endif
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim do delete
+	      printf ("func_pos=%d nnames = %d func_no_args=%d attr_index_start=%d \n", idx_info->func_pos, nnames,
+		      idx_info->func_no_args, func_index_info->attr_index_start);
+	      for (i = 0; attnames[i]; i++)
+		{
+		  if ((i % 4) == 3)
+		    printf ("%d: %s \n", i, attnames[i]);
+		  else
+		    printf ("%d: %s \t", i, attnames[i]);
+		}
+	      printf ("===========================\n");
+
+#endif
 	    }
 	}
     }
@@ -3116,6 +3188,13 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
   bool do_rollback = false;
   SM_INDEX_STATUS saved_index_status = SM_NORMAL_INDEX;
 
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+  int alloc_cnt = 0;
+#else
+  int alloc_cnt = 0;
+#endif
+
+
   /* TODO refactor this code, the code in create_or_drop_index_helper and the code in do_drop_index in order to remove
    * duplicate code */
 
@@ -3188,10 +3267,18 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
       nnames++;
     }
 
-  attnames = (char **) malloc ((nnames + 1) * sizeof (const char *));
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+  alloc_cnt = nnames + 1;	// Support for free space in preparation for additional columns
+  // 뭔가 다른 조치가 필요함.  메모리 확보할때랑 루프돌면서 값을 채우는것이 일치 않해... asc_desc[] ?
+  // 메모리 확보는 alloc_cnt로.
+#else
+  alloc_cnt = nnames;
+#endif
+
+  attnames = (char **) malloc ((alloc_cnt + 1) * sizeof (const char *));
   if (attnames == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (nnames + 1) * sizeof (const char *));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (alloc_cnt + 1) * sizeof (const char *));
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error_exit;
     }
@@ -3214,13 +3301,16 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	}
     }
   attnames[i] = NULL;
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+  attnames[i + 1] = NULL;
+#endif
 
   if (idx->asc_desc)
     {
-      asc_desc = (int *) malloc ((nnames) * sizeof (int));
+      asc_desc = (int *) malloc ((alloc_cnt) * sizeof (int));
       if (asc_desc == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nnames * sizeof (int));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_cnt * sizeof (int));
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error_exit;
 	}
@@ -3235,10 +3325,10 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
     {
       assert (idx->attrs_prefix_length);
 
-      attrs_prefix_length = (int *) malloc ((nnames) * sizeof (int));
+      attrs_prefix_length = (int *) malloc ((alloc_cnt) * sizeof (int));
       if (attrs_prefix_length == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nnames * sizeof (int));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_cnt * sizeof (int));
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error_exit;
 	}
@@ -3331,6 +3421,32 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
       func_index_info->col_id = idx->func_index_info->col_id;
       func_index_info->attr_index_start = idx->func_index_info->attr_index_start;
     }
+
+
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+  if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != SM_CONSTRAINT_FOREIGN_KEY && (nnames > 1))
+    {
+      if (statement->info.index.ovfl_level == OVFL_LEVEL_NOT_USED)
+	{
+	  if (IS_HIDDEN_INDEX_COL_NAME (attnames[i - 1]))
+	    {			// remove hidden column                
+	      nnames--;
+	      free (attnames[nnames]);	// free for strdup
+	      attnames[nnames] = NULL;
+	    }
+	}
+      else if (!IS_HIDDEN_INDEX_COL_NAME (attnames[i - 1]))
+	{			// append hidden column
+	  asc_desc[nnames] = 0;
+	  //attrs_prefix_length[i] = -1;
+	  //asc_desc[i] = idx_info->ovfl_level; ????????????????????????????
+	  attrs_prefix_length[nnames] = statement->info.index.ovfl_level * (-1);
+	  attnames[nnames++] = HIDDEN_INDEX_COL_ATTR_NAME;
+	  attnames[nnames] = NULL;
+	}
+    }
+#endif
+
 
   error = tran_system_savepoint (UNIQUE_SAVEPOINT_ALTER_INDEX);
   if (error != NO_ERROR)

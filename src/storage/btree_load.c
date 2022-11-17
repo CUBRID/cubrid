@@ -3577,7 +3577,12 @@ compare_driver (const void *first, const void *second, void *arg)
 
       if (sort_args->func_index_info != NULL)
 	{
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	  assert (sort_args->n_attrs <= key_type->precision);	//???????????????????????? ctshim
+	  ;
+#else
 	  assert (sort_args->n_attrs <= key_type->precision);
+#endif
 	}
       else
 	{

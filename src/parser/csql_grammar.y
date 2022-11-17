@@ -614,6 +614,7 @@ int g_original_buffer_len;
 %type <boolean> opt_analytic_ignore_nulls
 %type <number> opt_encrypt_algorithm
 %type <number> opt_access_modifier
+%type <number> opt_index_level
 /*}}}*/
 
 /* define rule type (node) */
@@ -2686,9 +2687,10 @@ create_stmt
 	  only_class_name				/* 10 */
 	  index_column_name_list			/* 11 */
 	  opt_where_clause				/* 12 */
-	  opt_comment_spec				/* 13 */
-	  opt_with_online				/* 14 */
-	  opt_invisible					/* 15 */
+          opt_index_level                               /* 13 */
+	  opt_comment_spec				/* 14 */
+	  opt_with_online				/* 15 */
+	  opt_invisible					/* 16 */
 		{{ DBG_TRACE_GRAMMAR(create_stmt,  CREATE ~ INDEX identifier ON_ ~);
 
 			PT_NODE *node = parser_pop_hint_node ();
@@ -2755,8 +2757,7 @@ create_stmt
 			    prefix_col_count =
 				parser_count_prefix_columns (col, &arg_count);
 
-			    if (prefix_col_count > 1 ||
-				(prefix_col_count == 1 && arg_count > 1))
+			    if (prefix_col_count > 1 ||	(prefix_col_count == 1 && arg_count > 1))
 			      {
 				PT_ERRORm (this_parser, node,
 					   MSGCAT_SET_PARSER_SEMANTIC,
@@ -2782,36 +2783,48 @@ create_stmt
 					  }
 					else
 					  {
-					    PT_NODE *p = parser_new_node (this_parser,
-									  PT_NAME);
+					    PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 					    if (p)
 					      {
-						p->info.name.original =
-						     expr->info.function.generic_name;
+						p->info.name.original = expr->info.function.generic_name;
+                                                expr->info.function.generic_name = NULL;
 					      }
-					    node->info.index.prefix_length =
-							 expr->info.function.arg_list;
+					    node->info.index.prefix_length = expr->info.function.arg_list;
+
+                                            expr->info.function.arg_list = NULL;
+                                            parser_free_node (this_parser, expr);
+
 					    col->info.sort_spec.expr = p;
 					  }
 				      }
 				    else
 				      {
+                                        char buf[512], *ptr;
+                                        PT_FUNCTION_INFO *function_ptr = &col->info.sort_spec.expr->info.function;                                        
+
+                                        ptr = (char*)fcode_get_lowercase_name (function_ptr->function_type);
+                                        if(function_ptr->function_type == PT_GENERIC)
+                                        {
+                                           snprintf(buf, sizeof(buf)-1, "%s(%s)", ptr, function_ptr->generic_name);
+                                           ptr = buf;
+                                        }
+                                        
 					PT_ERRORmf (this_parser, col->info.sort_spec.expr,
-						    MSGCAT_SET_PARSER_SEMANTIC,
-						    MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_INDEX,
-						    fcode_get_lowercase_name (col->info.sort_spec.expr->info.function.
-                                                                              function_type));
+						    MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_INDEX, ptr);
 				      }
 				  }
 			      }
+
+                            node->info.index.ovfl_level = $13;// ctshim    
+
 			    node->info.index.where = $12;
 			    node->info.index.column_names = col;
-			    node->info.index.comment = $13;
+			    node->info.index.comment = $14; // ctshim
 
-                            int with_online_ret = $14;  // 0 for normal, 1 for online no parallel,
+                            int with_online_ret = $15;  // 0 for normal, 1 for online no parallel,
                                                         // thread_count + 1 for parallel
                             bool is_online = with_online_ret > 0;
-                            bool is_invisible = $15;
+                            bool is_invisible = $16;
 
                             if (is_online && is_invisible)
                               {
@@ -3633,6 +3646,7 @@ alter_stmt
 	  opt_where_clause				/* 11 */
 	  opt_comment_spec				/* 12 */
 	  REBUILD					/* 13 */
+          opt_index_level                               /* 14 */
 		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER ~ INDEX ~ REBUILD);
 
 			PT_NODE *node = parser_pop_hint_node ();
@@ -3694,6 +3708,8 @@ alter_stmt
 			    node->info.index.column_names = col;
 			    node->info.index.where = $11;
 			    node->info.index.comment = $12;
+
+                            node->info.index.ovfl_level = $14;// ctshim    
 
 			    $$ = node;
 			    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -10355,8 +10371,7 @@ attr_index_def
 				      {
 					p->info.name.original = expr->info.function.generic_name;
 				      }
-				    node->info.index.prefix_length =
-				    expr->info.function.arg_list;
+				    node->info.index.prefix_length = expr->info.function.arg_list;
 				    col->info.sort_spec.expr = p;
 				  }
 				else
@@ -16602,8 +16617,7 @@ reserved_func
 			      {
 			      	if (pt_is_const ($10->info.sort_spec.expr))
 			      	  {
-			      	    node->info.function.arg_list =
-			      	    					$10->info.sort_spec.expr;
+			      	    node->info.function.arg_list = $10->info.sort_spec.expr;
 			      	  }
 			      	else
 			      	  {
@@ -16616,9 +16630,7 @@ reserved_func
 			      	        node->info.function.order_by = $10;
 			      	      }
 
-				        node->info.function.arg_list =
-						          parser_copy_tree (this_parser,
-						          					$10->info.sort_spec.expr);
+				        node->info.function.arg_list = parser_copy_tree (this_parser, $10->info.sort_spec.expr);
 			          }
 			      }
 
@@ -21403,6 +21415,35 @@ opt_encrypt_algorithm
     { DBG_TRACE_GRAMMAR(opt_encrypt_algorithm, | ARIA ); 
       $$ = 2; }   /* TDE_ALGORITHM_ARIA */
   ;
+
+opt_index_level
+        : /* empty */
+		{ DBG_TRACE_GRAMMAR(opt_index_level, : );
+                  $$ = OVFL_LEVEL_NOT_USED; //OVFL_LEVEL_DEFAULT; // ctshim default
+                }
+	| LEVEL UNSIGNED_INTEGER
+		{ DBG_TRACE_GRAMMAR(opt_index_level, | LEVEL UNSIGNED_INTEGER ); 
+                  int int_val = -1;
+                  if (parse_int (&int_val, $2, 10) != 0)
+		      {
+			PT_ERRORmf (this_parser, NULL, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_UNSIGNED_INT32, $2);// ctshim MSGCAT_SYNTAX_INVALID_LEVEL_INT
+		      }
+                  else if(int_val < OVFL_LEVEL_MIN || int_val >= OVFL_LEVEL_MAX)
+                      {                          
+                        PT_ERRORmf (this_parser, NULL, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_UNSIGNED_INT32, $2); // ctshim MSGCAT_SYNTAX_INVALID_LEVEL_INT
+                      }
+
+   	          $$ = int_val;                  
+                  DBG_PRINT}
+        | LEVEL ON_
+                { DBG_TRACE_GRAMMAR(opt_index_level, | LEVEL ON_ ); 
+                  $$ = OVFL_LEVEL_DEFAULT; // ctshim default
+                DBG_PRINT}
+        | LEVEL OFF_
+                { DBG_TRACE_GRAMMAR(opt_index_level, | LEVEL OFF_ ); 
+                  $$ = OVFL_LEVEL_NOT_USED; 
+                DBG_PRINT}
+	;
 
 opt_comment_spec
 	: /* empty */

@@ -3244,11 +3244,38 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 
 		  if (DB_VALUE_TYPE (&avalue) == DB_TYPE_STRING)
 		    {
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+		      const char *att_name = db_get_string (&avalue);
+		      att = classobj_find_attribute_list (attributes, att_name, -1);
+		      if (att == NULL)
+			{
+			  if (IS_HIDDEN_INDEX_COL_NAME (att_name))
+			    {
+			      smt_make_hidden_attribute (NULL, NULL /* new_->attributes[j - 1]->class_mop */ , &att);
+			      //printf ("debug: classobj_make_class_constraints()    _cub_idx_col_ \n");
+			    }
+			}
+#else
 		      att = classobj_find_attribute_list (attributes, db_get_string (&avalue), -1);
+#endif
+
 		    }
 		  else if (DB_VALUE_TYPE (&avalue) == DB_TYPE_INTEGER)
 		    {
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+		      int att_id = db_get_int (&avalue);
+		      att = classobj_find_attribute_list (attributes, NULL, att_id);
+		      if (att == NULL)
+			{
+			  if (IS_HIDDEN_INDEX_COL_ID (att_id))
+			    {
+			      smt_make_hidden_attribute (NULL, NULL /* new_->attributes[j - 1]->class_mop */ , &att);
+			      //printf ("debug: classobj_make_class_constraints()    -2848048 \n");
+			    }
+			}
+#else
 		      att = classobj_find_attribute_list (attributes, NULL, db_get_int (&avalue));
+#endif
 		    }
 		  else
 		    {
