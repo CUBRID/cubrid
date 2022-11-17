@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class StmtCursorClose implements I_Stmt {
+public class StmtCursorClose implements Stmt {
 
     public final ExprId cursor;
 

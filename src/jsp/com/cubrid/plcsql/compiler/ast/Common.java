@@ -34,11 +34,11 @@ import com.cubrid.plcsql.compiler.Misc;
 
 class Common {
 
-    static String getSetUsedValuesStr(NodeList<? extends I_Expr> exprList) {
+    static String getSetUsedValuesStr(NodeList<? extends Expr> exprList) {
         return getSetUsedValuesStr(exprList, 1);
     }
 
-    static String getSetUsedValuesStr(NodeList<? extends I_Expr> exprList, int startIndex) {
+    static String getSetUsedValuesStr(NodeList<? extends Expr> exprList, int startIndex) {
 
         if (exprList == null || exprList.nodes.size() == 0) {
             return "// no used values";
@@ -50,7 +50,7 @@ class Common {
             if (i > 0) {
                 sbuf.append("\n");
             }
-            I_Expr expr = exprList.nodes.get(i);
+            Expr expr = exprList.nodes.get(i);
             sbuf.append(
                     tmplSetObject
                             .replace("%INDEX%", "" + (i + startIndex))

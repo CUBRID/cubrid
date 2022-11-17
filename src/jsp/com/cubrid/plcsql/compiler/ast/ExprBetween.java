@@ -32,13 +32,13 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class ExprBetween implements I_Expr {
+public class ExprBetween implements Expr {
 
-    public final I_Expr target;
-    public final I_Expr lowerBound;
-    public final I_Expr upperBound;
+    public final Expr target;
+    public final Expr lowerBound;
+    public final Expr upperBound;
 
-    public ExprBetween(I_Expr target, I_Expr lowerBound, I_Expr upperBound) {
+    public ExprBetween(Expr target, Expr lowerBound, Expr upperBound) {
         this.target = target;
         this.lowerBound = lowerBound;
         this.upperBound = upperBound;

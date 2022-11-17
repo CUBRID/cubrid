@@ -30,4 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public interface I_Expr extends AstNode {}
+public interface DeclId extends Decl {
+    TypeSpec typeSpec();
+} // marker interface

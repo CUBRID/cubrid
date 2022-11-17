@@ -32,26 +32,26 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class StmtForIterLoop implements I_Stmt {
+public class StmtForIterLoop implements Stmt {
 
     public final int level;
     public final DeclLabel declLabel;
     public final String iter;
     public final boolean reverse;
-    public final I_Expr lowerBound;
-    public final I_Expr upperBound;
-    public final I_Expr step;
-    public final NodeList<I_Stmt> stmts;
+    public final Expr lowerBound;
+    public final Expr upperBound;
+    public final Expr step;
+    public final NodeList<Stmt> stmts;
 
     public StmtForIterLoop(
             int level,
             DeclLabel declLabel,
             String iter,
             boolean reverse,
-            I_Expr lowerBound,
-            I_Expr upperBound,
-            I_Expr step,
-            NodeList<I_Stmt> stmts) {
+            Expr lowerBound,
+            Expr upperBound,
+            Expr step,
+            NodeList<Stmt> stmts) {
 
         this.level = level;
         this.declLabel = declLabel;

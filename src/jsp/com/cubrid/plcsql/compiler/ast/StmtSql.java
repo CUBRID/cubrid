@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class StmtSql implements I_Stmt {
+public class StmtSql implements Stmt {
 
     public StmtSql() {}
 

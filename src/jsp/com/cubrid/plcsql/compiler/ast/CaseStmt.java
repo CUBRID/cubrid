@@ -32,12 +32,12 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class CaseStmt implements I_Stmt {
+public class CaseStmt implements Stmt {
 
-    public final I_Expr val;
-    public final NodeList<I_Stmt> stmts;
+    public final Expr val;
+    public final NodeList<Stmt> stmts;
 
-    public CaseStmt(I_Expr val, NodeList<I_Stmt> stmts) {
+    public CaseStmt(Expr val, NodeList<Stmt> stmts) {
         this.val = val;
         this.stmts = stmts;
     }

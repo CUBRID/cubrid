@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DummyExpr implements I_Expr {
+public class DummyExpr implements Expr {
 
     public final String kind;
 

@@ -32,24 +32,24 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class StmtForSqlLoop implements I_Stmt {
+public class StmtForSqlLoop implements Stmt {
 
     public final boolean isDynamic;
     public final int level;
     public final String label;
     public final String record;
-    public final I_Expr sql;
-    public final NodeList<? extends I_Expr> usedExprList;
-    public final NodeList<I_Stmt> stmts;
+    public final Expr sql;
+    public final NodeList<? extends Expr> usedExprList;
+    public final NodeList<Stmt> stmts;
 
     public StmtForSqlLoop(
             boolean isDynamic,
             int level,
             String label,
             String record,
-            I_Expr sql,
-            NodeList<? extends I_Expr> usedExprList,
-            NodeList<I_Stmt> stmts) {
+            Expr sql,
+            NodeList<? extends Expr> usedExprList,
+            NodeList<Stmt> stmts) {
         this.isDynamic = isDynamic;
         this.level = level;
         this.label = label;

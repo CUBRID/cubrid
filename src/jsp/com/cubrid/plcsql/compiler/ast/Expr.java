@@ -30,12 +30,4 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Scope;
-
-public interface I_Decl extends AstNode {
-    void setScope(Scope scope);
-
-    Scope scope();
-
-    String typeStr();
-}
+public interface Expr extends AstNode {}

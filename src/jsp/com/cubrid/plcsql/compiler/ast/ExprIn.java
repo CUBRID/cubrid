@@ -32,12 +32,12 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class ExprIn implements I_Expr {
+public class ExprIn implements Expr {
 
-    public final I_Expr target;
-    public final NodeList<I_Expr> inElements;
+    public final Expr target;
+    public final NodeList<Expr> inElements;
 
-    public ExprIn(I_Expr target, NodeList<I_Expr> inElements) {
+    public ExprIn(Expr target, NodeList<Expr> inElements) {
         this.target = target;
         this.inElements = inElements;
     }

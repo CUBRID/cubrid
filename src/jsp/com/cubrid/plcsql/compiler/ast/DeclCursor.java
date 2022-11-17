@@ -32,10 +32,10 @@ package com.cubrid.plcsql.compiler.ast;
 
 import java.util.Arrays;
 
-public class DeclCursor extends Decl implements I_DeclId {
+public class DeclCursor extends DeclBase implements DeclId {
 
     public final String name;
-    public final NodeList<I_DeclParam> paramList;
+    public final NodeList<DeclParam> paramList;
     public final ExprStr sql;
     public final NodeList<ExprId> usedVars;
 
@@ -43,7 +43,7 @@ public class DeclCursor extends Decl implements I_DeclId {
     public int[] usedValuesMap;
 
     public DeclCursor(
-            String name, NodeList<I_DeclParam> paramList, ExprStr sql, NodeList<ExprId> usedVars) {
+            String name, NodeList<DeclParam> paramList, ExprStr sql, NodeList<ExprId> usedVars) {
         this.name = name;
         this.paramList = paramList;
         this.sql = sql;
@@ -76,7 +76,7 @@ public class DeclCursor extends Decl implements I_DeclId {
     // Private
     // --------------------------------------------------
 
-    private void setHostValuesMap(NodeList<I_DeclParam> paramList, NodeList<ExprId> usedVars) {
+    private void setHostValuesMap(NodeList<DeclParam> paramList, NodeList<ExprId> usedVars) {
 
         int paramSize = paramList == null ? 0 : paramList.nodes.size();
         int usedSize = usedVars == null ? 0 : usedVars.nodes.size();
@@ -85,9 +85,9 @@ public class DeclCursor extends Decl implements I_DeclId {
         usedValuesMap = new int[usedSize]; // NOTE: filled with zeros
 
         for (int i = 0; i < paramSize; i++) {
-            I_DeclParam di = paramList.nodes.get(i);
+            DeclParam di = paramList.nodes.get(i);
             for (int j = 0; j < usedSize; j++) {
-                I_DeclId dj = usedVars.nodes.get(j).decl;
+                DeclId dj = usedVars.nodes.get(j).decl;
                 if (di == dj) { // NOTE: reference equality
                     usedValuesMap[j] = -(i + 1);
                     paramRefCounts[i]++;

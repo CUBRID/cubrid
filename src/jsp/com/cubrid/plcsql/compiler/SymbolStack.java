@@ -73,7 +73,7 @@ public class SymbolStack {
         return currSymbolTable.scope;
     }
 
-    <D extends I_Decl> void putDecl(String name, D decl) {
+    <D extends Decl> void putDecl(String name, D decl) {
         assert decl != null;
 
         Map<String, D> map = currSymbolTable.<D>map((Class<D>) decl.getClass());
@@ -90,8 +90,8 @@ public class SymbolStack {
         map.put(name, decl);
     }
 
-    I_DeclId getDeclId(String name) {
-        return getDecl(I_DeclId.class, name);
+    DeclId getDeclId(String name) {
+        return getDecl(DeclId.class, name);
     }
 
     DeclException getDeclException(String name) {
@@ -121,7 +121,7 @@ public class SymbolStack {
     private static class SymbolTable {
         final Scope scope;
         // final Map<String, DeclCursor> cursors;
-        final Map<String, I_DeclId> ids;
+        final Map<String, DeclId> ids;
         final Map<String, DeclException> exceptions;
         final Map<String, DeclProc> procs;
         final Map<String, DeclFunc> funcs;
@@ -138,10 +138,10 @@ public class SymbolStack {
             labels = new TreeMap<>();
         }
 
-        <D extends I_Decl> Map<String, D> map(Class<D> declClass) {
+        <D extends Decl> Map<String, D> map(Class<D> declClass) {
             /*if (DeclCursor.class.isAssignableFrom(declClass)) {
                 return (Map<String, D>) cursors;
-            } else */ if (I_DeclId.class.isAssignableFrom(declClass)) {
+            } else */ if (DeclId.class.isAssignableFrom(declClass)) {
                 return (Map<String, D>) ids;
             } else if (DeclException.class.isAssignableFrom(declClass)) {
                 return (Map<String, D>) exceptions;
@@ -158,7 +158,7 @@ public class SymbolStack {
         }
     }
 
-    private <D extends I_Decl> D getDecl(Class<D> declClass, String name) {
+    private <D extends Decl> D getDecl(Class<D> declClass, String name) {
         assert name != null;
 
         int size = symbolTableStack.size();

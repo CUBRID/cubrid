@@ -33,7 +33,7 @@ package com.cubrid.plcsql.compiler.ast;
 public class DeclProc extends DeclRoutine {
 
     public DeclProc(
-            String name, NodeList<I_DeclParam> paramList, NodeList<I_Decl> decls, Body body) {
+            String name, NodeList<DeclParam> paramList, NodeList<Decl> decls, Body body) {
         super(name, paramList, null, decls, body);
     }
 

@@ -34,9 +34,9 @@ public class DeclFunc extends DeclRoutine {
 
     public DeclFunc(
             String name,
-            NodeList<I_DeclParam> paramList,
+            NodeList<DeclParam> paramList,
             TypeSpec retType,
-            NodeList<I_Decl> decls,
+            NodeList<Decl> decls,
             Body body) {
         super(name, paramList, retType, decls, body);
     }

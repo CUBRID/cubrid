@@ -33,7 +33,7 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.DateTimeParser;
 import java.time.LocalDateTime;
 
-public class ExprDatetime implements I_Expr {
+public class ExprDatetime implements Expr {
 
     public final LocalDateTime time;
 

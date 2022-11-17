@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class StmtRollback implements I_Stmt {
+public class StmtRollback implements Stmt {
 
     @Override
     public String toJavaCode() {

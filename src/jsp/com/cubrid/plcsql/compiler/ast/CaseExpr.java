@@ -32,12 +32,12 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class CaseExpr implements I_Stmt {
+public class CaseExpr implements Stmt {
 
-    public final I_Expr val;
-    public final I_Expr expr;
+    public final Expr val;
+    public final Expr expr;
 
-    public CaseExpr(I_Expr val, I_Expr expr) {
+    public CaseExpr(Expr val, Expr expr) {
         this.val = val;
         this.expr = expr;
     }

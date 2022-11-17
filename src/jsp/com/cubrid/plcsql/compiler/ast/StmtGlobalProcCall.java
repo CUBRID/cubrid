@@ -32,13 +32,13 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class StmtGlobalProcCall implements I_Stmt {
+public class StmtGlobalProcCall implements Stmt {
 
     public final int level;
     public final String name;
-    public final NodeList<I_Expr> args;
+    public final NodeList<Expr> args;
 
-    public StmtGlobalProcCall(int level, String name, NodeList<I_Expr> args) {
+    public StmtGlobalProcCall(int level, String name, NodeList<Expr> args) {
         this.level = level;
         this.name = name;
         this.args = args;

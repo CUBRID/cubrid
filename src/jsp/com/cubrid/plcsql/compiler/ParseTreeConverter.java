@@ -83,7 +83,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.pushSymbolTable(
                 "temp", true); // in order not to corrupt predefined symbol table
 
-        NodeList<I_DeclParam> paramList = visitParameter_list(ctx.parameter_list());
+        NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
 
         symbolStack.popSymbolTable();
         DeclProc decl = new DeclProc(name, paramList, null, null);
@@ -116,7 +116,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.pushSymbolTable(
                 "temp", true); // in order not to corrupt predefined symbol table
 
-        NodeList<I_DeclParam> paramList = visitParameter_list(ctx.parameter_list());
+        NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
         TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
 
         symbolStack.popSymbolTable();
@@ -142,16 +142,16 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public NodeList<I_DeclParam> visitParameter_list(Parameter_listContext ctx) {
+    public NodeList<DeclParam> visitParameter_list(Parameter_listContext ctx) {
 
         if (ctx == null) {
             return null;
         }
 
-        NodeList<I_DeclParam> ret = new NodeList<>();
+        NodeList<DeclParam> ret = new NodeList<>();
 
         for (ParameterContext pc : ctx.parameter()) {
-            ret.addNode((I_DeclParam) visit(pc));
+            ret.addNode((DeclParam) visit(pc));
         }
 
         return ret;
@@ -191,7 +191,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitDefault_value_part(Default_value_partContext ctx) {
+    public Expr visitDefault_value_part(Default_value_partContext ctx) {
         if (ctx == null) {
             return null;
         }
@@ -199,37 +199,37 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitAnd_exp(And_expContext ctx) {
-        I_Expr l = visitExpression(ctx.expression(0), "Boolean");
-        I_Expr r = visitExpression(ctx.expression(1), "Boolean");
+    public Expr visitAnd_exp(And_expContext ctx) {
+        Expr l = visitExpression(ctx.expression(0), "Boolean");
+        Expr r = visitExpression(ctx.expression(1), "Boolean");
 
         return new ExprBinaryOp("And", l, r);
     }
 
     @Override
-    public I_Expr visitOr_exp(Or_expContext ctx) {
-        I_Expr l = visitExpression(ctx.expression(0), "Boolean");
-        I_Expr r = visitExpression(ctx.expression(1), "Boolean");
+    public Expr visitOr_exp(Or_expContext ctx) {
+        Expr l = visitExpression(ctx.expression(0), "Boolean");
+        Expr r = visitExpression(ctx.expression(1), "Boolean");
 
         return new ExprBinaryOp("Or", l, r);
     }
 
     @Override
-    public I_Expr visitXor_exp(Xor_expContext ctx) {
-        I_Expr l = visitExpression(ctx.expression(0), "Boolean");
-        I_Expr r = visitExpression(ctx.expression(1), "Boolean");
+    public Expr visitXor_exp(Xor_expContext ctx) {
+        Expr l = visitExpression(ctx.expression(0), "Boolean");
+        Expr r = visitExpression(ctx.expression(1), "Boolean");
 
         return new ExprBinaryOp("Xor", l, r);
     }
 
     @Override
-    public I_Expr visitNot_exp(Not_expContext ctx) {
-        I_Expr o = visitExpression(ctx.unary_logical_expression(), "Boolean");
+    public Expr visitNot_exp(Not_expContext ctx) {
+        Expr o = visitExpression(ctx.unary_logical_expression(), "Boolean");
         return new ExprUnaryOp("Not", o);
     }
 
     @Override
-    public I_Expr visitRel_exp(Rel_expContext ctx) {
+    public Expr visitRel_exp(Rel_expContext ctx) {
         Relational_operatorContext op = ctx.relational_operator();
         String opStr =
                 op.EQUALS_OP() != null
@@ -252,45 +252,45 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             ty = "Integer";
         }
 
-        I_Expr l = visitExpression(ctx.relational_expression(0), ty);
-        I_Expr r = visitExpression(ctx.relational_expression(1), ty);
+        Expr l = visitExpression(ctx.relational_expression(0), ty);
+        Expr r = visitExpression(ctx.relational_expression(1), ty);
 
         return new ExprBinaryOp(opStr, l, r);
     }
 
     @Override
-    public I_Expr visitIs_null_exp(Is_null_expContext ctx) {
-        I_Expr o = visitExpression(ctx.is_null_expression(), "Object");
+    public Expr visitIs_null_exp(Is_null_expContext ctx) {
+        Expr o = visitExpression(ctx.is_null_expression(), "Object");
 
-        I_Expr expr = new ExprUnaryOp("IsNull", o);
+        Expr expr = new ExprUnaryOp("IsNull", o);
         return ctx.NOT() == null ? expr : new ExprUnaryOp("Not", expr);
     }
 
     @Override
-    public I_Expr visitBetween_exp(Between_expContext ctx) {
-        I_Expr target = visitExpression(ctx.between_expression(), "Integer"); // TODO
-        I_Expr lowerBound =
+    public Expr visitBetween_exp(Between_expContext ctx) {
+        Expr target = visitExpression(ctx.between_expression(), "Integer"); // TODO
+        Expr lowerBound =
                 visitExpression(ctx.between_elements().between_expression(0), "Integer"); // TODO
-        I_Expr upperBound =
+        Expr upperBound =
                 visitExpression(ctx.between_elements().between_expression(1), "Integer"); // TODO
 
-        I_Expr expr = new ExprBetween(target, lowerBound, upperBound);
+        Expr expr = new ExprBetween(target, lowerBound, upperBound);
         return ctx.NOT() == null ? expr : new ExprUnaryOp("Not", expr);
     }
 
     @Override
-    public I_Expr visitIn_exp(In_expContext ctx) {
-        I_Expr target = visitExpression(ctx.in_expression(), "Object");
-        NodeList<I_Expr> inElements = visitIn_elements(ctx.in_elements());
+    public Expr visitIn_exp(In_expContext ctx) {
+        Expr target = visitExpression(ctx.in_expression(), "Object");
+        NodeList<Expr> inElements = visitIn_elements(ctx.in_elements());
 
-        I_Expr expr = new ExprIn(target, inElements);
+        Expr expr = new ExprIn(target, inElements);
         return ctx.NOT() == null ? expr : new ExprUnaryOp("Not", expr);
     }
 
     @Override
-    public NodeList<I_Expr> visitIn_elements(In_elementsContext ctx) {
+    public NodeList<Expr> visitIn_elements(In_elementsContext ctx) {
 
-        NodeList<I_Expr> ret = new NodeList<>();
+        NodeList<Expr> ret = new NodeList<>();
 
         for (In_expressionContext e : ctx.in_expression()) {
             ret.addNode(visitExpression(e, "Object"));
@@ -300,19 +300,19 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitLike_exp(Like_expContext ctx) {
-        I_Expr target = visitExpression(ctx.like_expression(0), "String");
-        I_Expr pattern = visitExpression(ctx.like_expression(1), "String");
-        I_Expr escape = visitExpression(ctx.like_expression(2), "String");
+    public Expr visitLike_exp(Like_expContext ctx) {
+        Expr target = visitExpression(ctx.like_expression(0), "String");
+        Expr pattern = visitExpression(ctx.like_expression(1), "String");
+        Expr escape = visitExpression(ctx.like_expression(2), "String");
 
-        I_Expr expr = new ExprLike(target, pattern, escape);
+        Expr expr = new ExprLike(target, pattern, escape);
         return ctx.NOT() == null ? expr : new ExprUnaryOp("Not", expr);
     }
 
     @Override
-    public I_Expr visitMult_exp(Mult_expContext ctx) {
-        I_Expr l = visitExpression(ctx.concatenation(0), "Integer");
-        I_Expr r = visitExpression(ctx.concatenation(1), "Integer");
+    public Expr visitMult_exp(Mult_expContext ctx) {
+        Expr l = visitExpression(ctx.concatenation(0), "Integer");
+        Expr r = visitExpression(ctx.concatenation(1), "Integer");
         String opStr =
                 ctx.ASTERISK() != null
                         ? "Mult"
@@ -323,7 +323,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitAdd_exp(Add_expContext ctx) {
+    public Expr visitAdd_exp(Add_expContext ctx) {
         String opStr =
                 ctx.PLUS_SIGN() != null
                         ? "Add"
@@ -334,24 +334,24 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         String castTy = opStr.equals("Concat") ? "Object" : "Integer";
 
-        I_Expr l = visitExpression(ctx.concatenation(0), castTy);
-        I_Expr r = visitExpression(ctx.concatenation(1), castTy);
+        Expr l = visitExpression(ctx.concatenation(0), castTy);
+        Expr r = visitExpression(ctx.concatenation(1), castTy);
 
         return new ExprBinaryOp(opStr, l, r);
     }
 
     @Override
-    public I_Expr visitPower_exp(Power_expContext ctx) {
-        I_Expr l = visitExpression(ctx.unary_expression(0), "Integer");
-        I_Expr r = visitExpression(ctx.unary_expression(1), "Integer");
+    public Expr visitPower_exp(Power_expContext ctx) {
+        Expr l = visitExpression(ctx.unary_expression(0), "Integer");
+        Expr r = visitExpression(ctx.unary_expression(1), "Integer");
         return new ExprBinaryOp("Power", l, r);
     }
 
     @Override
-    public I_Expr visitNeg_exp(Neg_expContext ctx) {
-        I_Expr o = visitExpression(ctx.unary_expression(), "Integer");
+    public Expr visitNeg_exp(Neg_expContext ctx) {
+        Expr o = visitExpression(ctx.unary_expression(), "Integer");
 
-        I_Expr ret =
+        Expr ret =
                 ctx.PLUS_SIGN() != null
                         ? o
                         : ctx.MINUS_SIGN() != null ? new ExprUnaryOp("Neg", o) : null;
@@ -368,7 +368,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitDate_exp(Date_expContext ctx) {
+    public Expr visitDate_exp(Date_expContext ctx) {
         String s = ctx.quoted_string().getText();
         s = quotedStrToJavaStr(s);
         LocalDate date = DateTimeParser.DateLiteral.parse(s);
@@ -378,7 +378,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitTime_exp(Time_expContext ctx) {
+    public Expr visitTime_exp(Time_expContext ctx) {
         String s = ctx.quoted_string().getText();
         s = quotedStrToJavaStr(s);
         LocalTime time = DateTimeParser.TimeLiteral.parse(s);
@@ -388,7 +388,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitTimestamp_exp(Timestamp_expContext ctx) {
+    public Expr visitTimestamp_exp(Timestamp_expContext ctx) {
         String s = ctx.quoted_string().getText();
         s = quotedStrToJavaStr(s);
         LocalDateTime timestamp = DateTimeParser.TimestampLiteral.parse(s);
@@ -398,7 +398,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitDatetime_exp(Datetime_expContext ctx) {
+    public Expr visitDatetime_exp(Datetime_expContext ctx) {
         String s = ctx.quoted_string().getText();
         s = quotedStrToJavaStr(s);
         LocalDateTime datetime = DateTimeParser.DatetimeLiteral.parse(s);
@@ -408,7 +408,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitTimestamptz_exp(Timestamptz_expContext ctx) {
+    public Expr visitTimestamptz_exp(Timestamptz_expContext ctx) {
         String s = ctx.quoted_string().getText();
         s = quotedStrToJavaStr(s);
         TemporalAccessor timestampTZ = DateTimeParser.TimestampTZLiteral.parse(s);
@@ -418,7 +418,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitTimestampltz_exp(Timestampltz_expContext ctx) {
+    public Expr visitTimestampltz_exp(Timestampltz_expContext ctx) {
         String s = ctx.quoted_string().getText();
         s = quotedStrToJavaStr(s);
         TemporalAccessor timestampLTZ = DateTimeParser.TimestampLTZLiteral.parse(s);
@@ -428,7 +428,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitDatetimetz_exp(Datetimetz_expContext ctx) {
+    public Expr visitDatetimetz_exp(Datetimetz_expContext ctx) {
         String s = ctx.quoted_string().getText();
         s = quotedStrToJavaStr(s);
         TemporalAccessor datetimeTZ = DateTimeParser.DatetimeTZLiteral.parse(s);
@@ -438,7 +438,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitDatetimeltz_exp(Datetimeltz_expContext ctx) {
+    public Expr visitDatetimeltz_exp(Datetimeltz_expContext ctx) {
         String s = ctx.quoted_string().getText();
         s = quotedStrToJavaStr(s);
         TemporalAccessor datetimeLTZ = DateTimeParser.DatetimeLTZLiteral.parse(s);
@@ -448,7 +448,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitUint_exp(Uint_expContext ctx) {
+    public Expr visitUint_exp(Uint_expContext ctx) {
         try {
             BigInteger bi = new BigInteger(ctx.UNSIGNED_INTEGER().getText());
             return new ExprNum(bi.toString());
@@ -459,7 +459,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitFp_num_exp(Fp_num_expContext ctx) {
+    public Expr visitFp_num_exp(Fp_num_expContext ctx) {
         try {
             BigDecimal bd = new BigDecimal(ctx.FLOATING_POINT_NUM().getText());
             return new ExprNum(bd.toString());
@@ -476,28 +476,28 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitStr_exp(Str_expContext ctx) {
+    public Expr visitStr_exp(Str_expContext ctx) {
         String val = ctx.quoted_string().getText();
         return new ExprStr(quotedStrToJavaStr(val));
     }
 
     @Override
-    public I_Expr visitNull_exp(Null_expContext ctx) {
+    public Expr visitNull_exp(Null_expContext ctx) {
         return ExprNull.instance();
     }
 
     @Override
-    public I_Expr visitTrue_exp(True_expContext ctx) {
+    public Expr visitTrue_exp(True_expContext ctx) {
         return ExprTrue.instance();
     }
 
     @Override
-    public I_Expr visitFalse_exp(False_expContext ctx) {
+    public Expr visitFalse_exp(False_expContext ctx) {
         return ExprFalse.instance();
     }
 
     @Override
-    public I_Expr visitField_exp(Field_expContext ctx) {
+    public Expr visitField_exp(Field_expContext ctx) {
 
         ExprId record = visitIdentifierInner(ctx.record);
 
@@ -532,17 +532,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitFunction_call(Function_callContext ctx) {
+    public Expr visitFunction_call(Function_callContext ctx) {
 
         String name = ctx.identifier().getText().toUpperCase();
         name = Misc.peelId(name);
-        NodeList<I_Expr> args = visitFunction_argument(ctx.function_argument());
+        NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
 
         DeclFunc decl = symbolStack.getDeclFunc(name);
         if (decl == null) {
 
             if (args != null) {
-                for (I_Expr arg : args.nodes) {
+                for (Expr arg : args.nodes) {
                     if (arg instanceof ExprCast) {
                         ((ExprCast) arg).setTargetType("Object");
                     }
@@ -575,8 +575,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                                 + " does not match the number of its declared formal parameters";
 
                 int i = 0;
-                for (I_Expr arg : args.nodes) {
-                    I_DeclParam dp = decl.paramList.nodes.get(i);
+                for (Expr arg : args.nodes) {
+                    DeclParam dp = decl.paramList.nodes.get(i);
 
                     if (dp instanceof DeclParamOut) {
                         boolean valid = false;
@@ -607,17 +607,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitSearched_case_expression(Searched_case_expressionContext ctx) {
+    public Expr visitSearched_case_expression(Searched_case_expressionContext ctx) {
 
         NodeList<CondExpr> condParts = new NodeList<>();
         for (Searched_case_expression_when_partContext c :
                 ctx.searched_case_expression_when_part()) {
-            I_Expr cond = visitExpression(c.expression(0), "Boolean");
-            I_Expr expr = visitExpression(c.expression(1), "Object");
+            Expr cond = visitExpression(c.expression(0), "Boolean");
+            Expr expr = visitExpression(c.expression(1), "Object");
             condParts.addNode(new CondExpr(cond, expr));
         }
 
-        I_Expr elsePart;
+        Expr elsePart;
         if (ctx.case_expression_else_part() == null) {
             elsePart = null;
         } else {
@@ -628,21 +628,21 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitSimple_case_expression(Simple_case_expressionContext ctx) {
+    public Expr visitSimple_case_expression(Simple_case_expressionContext ctx) {
 
         symbolStack.pushSymbolTable("case_expr", false);
         int level = symbolStack.getCurrentScope().level;
 
-        I_Expr selector = visitExpression(ctx.expression(), "Object");
+        Expr selector = visitExpression(ctx.expression(), "Object");
 
         NodeList<CaseExpr> whenParts = new NodeList<>();
         for (Simple_case_expression_when_partContext c : ctx.simple_case_expression_when_part()) {
-            I_Expr val = visitExpression(c.expression(0), "Object");
-            I_Expr expr = visitExpression(c.expression(1), "Object");
+            Expr val = visitExpression(c.expression(0), "Object");
+            Expr expr = visitExpression(c.expression(1), "Object");
             whenParts.addNode(new CaseExpr(val, expr));
         }
 
-        I_Expr elsePart;
+        Expr elsePart;
         if (ctx.case_expression_else_part() == null) {
             elsePart = null;
         } else {
@@ -660,7 +660,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = ctx.cursor_exp().identifier().getText().toUpperCase();
         name = Misc.peelId(name);
 
-        I_DeclId decl = symbolStack.getDeclId(name);
+        DeclId decl = symbolStack.getDeclId(name);
         assert decl != null : ("undeclared id " + name);
         assert decl instanceof DeclCursor || decl instanceof DeclVar;
 
@@ -685,18 +685,18 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitParen_exp(Paren_expContext ctx) {
+    public Expr visitParen_exp(Paren_expContext ctx) {
         return visitExpression(ctx.expression(), null);
     }
 
     @Override
-    public I_Expr visitList_exp(List_expContext ctx) {
-        NodeList<I_Expr> elems = visitExpressions(ctx.expressions());
+    public Expr visitList_exp(List_expContext ctx) {
+        NodeList<Expr> elems = visitExpressions(ctx.expressions());
         return new ExprList(elems);
     }
 
     @Override
-    public NodeList<I_Decl> visitSeq_of_declare_specs(Seq_of_declare_specsContext ctx) {
+    public NodeList<Decl> visitSeq_of_declare_specs(Seq_of_declare_specsContext ctx) {
 
         if (ctx == null) {
             return null;
@@ -718,10 +718,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             }
         }
 
-        NodeList<I_Decl> ret = new NodeList<>();
+        NodeList<Decl> ret = new NodeList<>();
 
         for (Declare_specContext ds : ctx.declare_spec()) {
-            I_Decl d = (I_Decl) visit(ds);
+            Decl d = (Decl) visit(ds);
             if (d != null) {
                 ret.addNode(d);
             }
@@ -752,7 +752,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = ctx.identifier().getText().toUpperCase();
         name = Misc.peelId(name);
         TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
-        I_Expr val = visitDefault_value_part(ctx.default_value_part());
+        Expr val = visitDefault_value_part(ctx.default_value_part());
         if (val instanceof ExprCast) {
             ((ExprCast) val).setTargetType(ty.name);
         }
@@ -781,7 +781,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = ctx.identifier().getText().toUpperCase();
         name = Misc.peelId(name);
         TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
-        I_Expr val = visitDefault_value_part(ctx.default_value_part());
+        Expr val = visitDefault_value_part(ctx.default_value_part());
         if (val instanceof ExprCast) {
             ((ExprCast) val).setTargetType(ty.name);
         }
@@ -800,7 +800,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.pushSymbolTable("cursor_def", false);
 
-        NodeList<I_DeclParam> paramList = visitParameter_list(ctx.parameter_list());
+        NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
         // TODO: check if they are all in-params
 
         TempSqlStringifier stringifier = new TempSqlStringifier(symbolStack);
@@ -826,7 +826,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 "temp",
                 true); // in order not to corrupt the current symbol table with the parameters
 
-        NodeList<I_DeclParam> paramList = visitParameter_list(ctx.parameter_list());
+        NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
 
         symbolStack.popSymbolTable();
 
@@ -845,8 +845,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.pushSymbolTable(name, true);
 
-        NodeList<I_DeclParam> paramList = visitParameter_list(ctx.parameter_list());
-        NodeList<I_Decl> decls = visitSeq_of_declare_specs(ctx.seq_of_declare_specs());
+        NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
+        NodeList<Decl> decls = visitSeq_of_declare_specs(ctx.seq_of_declare_specs());
         Body body = visitBody(ctx.body());
 
         symbolStack.popSymbolTable();
@@ -866,7 +866,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 "temp",
                 true); // in order not to corrupt the current symbol table with the parameters
 
-        NodeList<I_DeclParam> paramList = visitParameter_list(ctx.parameter_list());
+        NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
         TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
 
         symbolStack.popSymbolTable();
@@ -886,9 +886,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.pushSymbolTable(name, true);
 
-        NodeList<I_DeclParam> paramList = visitParameter_list(ctx.parameter_list());
+        NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
         TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
-        NodeList<I_Decl> decls = visitSeq_of_declare_specs(ctx.seq_of_declare_specs());
+        NodeList<Decl> decls = visitSeq_of_declare_specs(ctx.seq_of_declare_specs());
         Body body = visitBody(ctx.body());
 
         symbolStack.popSymbolTable();
@@ -902,7 +902,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public Body visitBody(BodyContext ctx) {
 
-        NodeList<I_Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
 
         NodeList<ExHandler> exHandlers = new NodeList<>();
         for (Exception_handlerContext ehc : ctx.exception_handler()) {
@@ -913,11 +913,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public NodeList<I_Stmt> visitSeq_of_statements(Seq_of_statementsContext ctx) {
+    public NodeList<Stmt> visitSeq_of_statements(Seq_of_statementsContext ctx) {
 
-        NodeList<I_Stmt> stmts = new NodeList<>();
+        NodeList<Stmt> stmts = new NodeList<>();
         for (StatementContext sc : ctx.statement()) {
-            I_Stmt s = (I_Stmt) visit(sc);
+            Stmt s = (Stmt) visit(sc);
             if (s == null) {
                 assert false : ("sc=" + sc.getClass().getSimpleName());
             } else {
@@ -935,7 +935,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         String block = symbolStack.getCurrentScope().block;
 
-        NodeList<I_Decl> decls = visitSeq_of_declare_specs(ctx.seq_of_declare_specs());
+        NodeList<Decl> decls = visitSeq_of_declare_specs(ctx.seq_of_declare_specs());
         Body body = visitBody(ctx.body());
 
         symbolStack.popSymbolTable();
@@ -955,7 +955,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         String targetType = target.decl.typeSpec().name;
 
-        I_Expr val = visitExpression(ctx.expression(), targetType);
+        Expr val = visitExpression(ctx.expression(), targetType);
 
         return new StmtAssign(target, val);
     }
@@ -964,7 +964,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = ctx.getText().toUpperCase();
         name = Misc.peelId(name);
 
-        I_DeclId decl =
+        DeclId decl =
                 symbolStack.getDeclId(name); // NOTE: decl can be legally null if name is a serial
         Scope scope = symbolStack.getCurrentScope();
 
@@ -995,7 +995,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (ctx.expression() == null) {
             return new StmtContinue(declLabel);
         } else {
-            I_Expr cond = visitExpression(ctx.expression(), "Boolean");
+            Expr cond = visitExpression(ctx.expression(), "Boolean");
             return new CondStmt(cond, new StmtContinue(declLabel));
         }
     }
@@ -1016,7 +1016,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (ctx.expression() == null) {
             return new StmtBreak(declLabel);
         } else {
-            I_Expr cond = visitExpression(ctx.expression(), "Boolean");
+            Expr cond = visitExpression(ctx.expression(), "Boolean");
             return new CondStmt(cond, new StmtBreak(declLabel));
         }
     }
@@ -1026,8 +1026,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         NodeList<CondStmt> condParts = new NodeList<>();
 
-        I_Expr cond = visitExpression(ctx.expression(), "Boolean");
-        NodeList<I_Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        Expr cond = visitExpression(ctx.expression(), "Boolean");
+        NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
         condParts.addNode(new CondStmt(cond, stmts));
 
         for (Elsif_partContext c : ctx.elsif_part()) {
@@ -1036,7 +1036,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             condParts.addNode(new CondStmt(cond, stmts));
         }
 
-        NodeList<I_Stmt> elsePart;
+        NodeList<Stmt> elsePart;
         if (ctx.else_part() == null) {
             elsePart = null;
         } else {
@@ -1056,7 +1056,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             symbolStack.putDecl(declLabel.name, declLabel);
         }
 
-        NodeList<I_Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
 
         symbolStack.popSymbolTable();
 
@@ -1086,8 +1086,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             symbolStack.putDecl(declLabel.name, declLabel);
         }
 
-        I_Expr cond = visitExpression(ctx.expression(), "Boolean");
-        NodeList<I_Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        Expr cond = visitExpression(ctx.expression(), "Boolean");
+        NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
 
         symbolStack.popSymbolTable();
 
@@ -1106,9 +1106,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         boolean reverse = (ctx.iterator().REVERSE() != null);
 
         // the following must be done before putting the iterator variable to the symbol stack
-        I_Expr lowerBound = visitLower_bound(ctx.iterator().lower_bound());
-        I_Expr upperBound = visitUpper_bound(ctx.iterator().upper_bound());
-        I_Expr step = visitStep(ctx.iterator().step());
+        Expr lowerBound = visitLower_bound(ctx.iterator().lower_bound());
+        Expr upperBound = visitUpper_bound(ctx.iterator().upper_bound());
+        Expr step = visitStep(ctx.iterator().step());
 
         DeclForIter iterDecl = new DeclForIter(iter);
         symbolStack.putDecl(iter, iterDecl);
@@ -1118,7 +1118,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             symbolStack.putDecl(declLabel.name, declLabel);
         }
 
-        NodeList<I_Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
 
         symbolStack.popSymbolTable();
 
@@ -1127,17 +1127,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public I_Expr visitLower_bound(Lower_boundContext ctx) {
+    public Expr visitLower_bound(Lower_boundContext ctx) {
         return visitExpression(ctx.concatenation(), "Integer");
     }
 
     @Override
-    public I_Expr visitUpper_bound(Upper_boundContext ctx) {
+    public Expr visitUpper_bound(Upper_boundContext ctx) {
         return visitExpression(ctx.concatenation(), "Integer");
     }
 
     @Override
-    public I_Expr visitStep(StepContext ctx) {
+    public Expr visitStep(StepContext ctx) {
         if (ctx == null) {
             return null;
         }
@@ -1154,14 +1154,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String cursorName = ctx.for_cursor().cursor_exp().identifier().getText().toUpperCase();
         cursorName = Misc.peelId(cursorName);
 
-        I_DeclId d = symbolStack.getDeclId(cursorName);
+        DeclId d = symbolStack.getDeclId(cursorName);
         assert d != null : ("undeclared id " + cursorName);
         assert d instanceof DeclCursor;
         DeclCursor cursorDecl = (DeclCursor) d;
 
         Scope scope = symbolStack.getCurrentScope();
 
-        NodeList<I_Expr> args = visitExpressions(ctx.for_cursor().expressions());
+        NodeList<Expr> args = visitExpressions(ctx.for_cursor().expressions());
 
         assert (cursorDecl.paramList != null && cursorDecl.paramList.nodes.size() > 0)
                         == (args != null && args.nodes.size() > 0)
@@ -1177,10 +1177,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                             + " does not match the number of its declared formal parameters";
 
             int i = 0;
-            for (I_Expr arg : args.nodes) {
+            for (Expr arg : args.nodes) {
 
                 if (arg instanceof ExprCast) {
-                    I_DeclParam dp = cursorDecl.paramList.nodes.get(i);
+                    DeclParam dp = cursorDecl.paramList.nodes.get(i);
                     ((ExprCast) arg).setTargetType(dp.typeSpec().name);
                 }
 
@@ -1206,7 +1206,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         DeclForRecord declForRecord = new DeclForRecord(record);
         symbolStack.putDecl(record, declForRecord);
 
-        NodeList<I_Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
 
         symbolStack.popSymbolTable();
 
@@ -1243,7 +1243,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         DeclForRecord declForRecord = new DeclForRecord(record);
         symbolStack.putDecl(record, declForRecord);
 
-        NodeList<I_Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
 
         symbolStack.popSymbolTable();
 
@@ -1263,9 +1263,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String record = ctx.for_dynamic_sql().record_name().getText().toUpperCase();
         record = Misc.peelId(record);
 
-        I_Expr dynSql = visitExpression(ctx.for_dynamic_sql().dyn_sql(), "String");
+        Expr dynSql = visitExpression(ctx.for_dynamic_sql().dyn_sql(), "String");
 
-        NodeList<I_Expr> usedExprList;
+        NodeList<Expr> usedExprList;
         Restricted_using_clauseContext usingClause =
                 ctx.for_dynamic_sql().restricted_using_clause();
         if (usingClause == null) {
@@ -1286,7 +1286,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         DeclForRecord declForRecord = new DeclForRecord(record);
         symbolStack.putDecl(record, declForRecord);
 
-        NodeList<I_Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
 
         symbolStack.popSymbolTable();
 
@@ -1345,16 +1345,16 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.pushSymbolTable("case_stmt", false);
         int level = symbolStack.getCurrentScope().level;
 
-        I_Expr selector = visitExpression(ctx.expression(), "Object");
+        Expr selector = visitExpression(ctx.expression(), "Object");
 
         NodeList<CaseStmt> whenParts = new NodeList<>();
         for (Simple_case_statement_when_partContext c : ctx.simple_case_statement_when_part()) {
-            I_Expr val = visitExpression(c.expression(), "Object");
-            NodeList<I_Stmt> stmts = visitSeq_of_statements(c.seq_of_statements());
+            Expr val = visitExpression(c.expression(), "Object");
+            NodeList<Stmt> stmts = visitSeq_of_statements(c.seq_of_statements());
             whenParts.addNode(new CaseStmt(val, stmts));
         }
 
-        NodeList<I_Stmt> elsePart;
+        NodeList<Stmt> elsePart;
         if (ctx.case_statement_else_part() == null) {
             elsePart = null;
         } else {
@@ -1371,12 +1371,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         NodeList<CondStmt> condParts = new NodeList<>();
         for (Searched_case_statement_when_partContext c : ctx.searched_case_statement_when_part()) {
-            I_Expr cond = visitExpression(c.expression(), "Boolean");
-            NodeList<I_Stmt> stmts = visitSeq_of_statements(c.seq_of_statements());
+            Expr cond = visitExpression(c.expression(), "Boolean");
+            NodeList<Stmt> stmts = visitSeq_of_statements(c.seq_of_statements());
             condParts.addNode(new CondStmt(cond, stmts));
         }
 
-        NodeList<I_Stmt> elsePart;
+        NodeList<Stmt> elsePart;
         if (ctx.case_statement_else_part() == null) {
             elsePart = null;
         } else {
@@ -1389,8 +1389,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public StmtRaiseAppErr visitRaise_application_error_statement(
             Raise_application_error_statementContext ctx) {
-        I_Expr errCode = visitExpression(ctx.err_code(), "Integer");
-        I_Expr errMsg = visitExpression(ctx.err_msg(), "String");
+        Expr errCode = visitExpression(ctx.err_code(), "Integer");
+        Expr errMsg = visitExpression(ctx.err_msg(), "String");
         return new StmtRaiseAppErr(errCode, errMsg);
     }
 
@@ -1420,7 +1420,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = ctx.cursor_exp().identifier().getText().toUpperCase();
         name = Misc.peelId(name);
 
-        I_DeclId decl = symbolStack.getDeclId(name);
+        DeclId decl = symbolStack.getDeclId(name);
         assert decl != null : ("undeclared id " + name);
         assert decl instanceof DeclCursor || decl instanceof DeclVar;
 
@@ -1438,14 +1438,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = ctx.cursor_exp().identifier().getText().toUpperCase();
         name = Misc.peelId(name);
 
-        I_DeclId d = symbolStack.getDeclId(name);
+        DeclId d = symbolStack.getDeclId(name);
         assert d != null : ("undeclared id " + name);
         assert d instanceof DeclCursor;
         DeclCursor decl = (DeclCursor) d;
 
         Scope scope = symbolStack.getCurrentScope();
 
-        NodeList<I_Expr> args = visitExpressions(ctx.expressions());
+        NodeList<Expr> args = visitExpressions(ctx.expressions());
 
         assert (decl.paramList != null && decl.paramList.nodes.size() > 0)
                         == (args != null && args.nodes.size() > 0)
@@ -1461,10 +1461,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                             + " does not match the number of its declared formal parameters";
 
             int i = 0;
-            for (I_Expr arg : args.nodes) {
+            for (Expr arg : args.nodes) {
 
                 if (arg instanceof ExprCast) {
-                    I_DeclParam dp = decl.paramList.nodes.get(i);
+                    DeclParam dp = decl.paramList.nodes.get(i);
                     ((ExprCast) arg).setTargetType(dp.typeSpec().name);
                 }
 
@@ -1476,13 +1476,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public NodeList<I_Expr> visitExpressions(ExpressionsContext ctx) {
+    public NodeList<Expr> visitExpressions(ExpressionsContext ctx) {
 
         if (ctx == null) {
             return null;
         }
 
-        NodeList<I_Expr> ret = new NodeList<>();
+        NodeList<Expr> ret = new NodeList<>();
         for (ExpressionContext e : ctx.expression()) {
             ret.addNode(visitExpression(e, null));
         }
@@ -1496,7 +1496,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = ctx.cursor_exp().identifier().getText().toUpperCase();
         name = Misc.peelId(name);
 
-        I_DeclId decl = symbolStack.getDeclId(name);
+        DeclId decl = symbolStack.getDeclId(name);
         assert decl != null : ("undeclared id " + name);
         assert decl instanceof DeclCursor || decl instanceof DeclVar;
 
@@ -1507,7 +1507,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             String varName = v.identifier().getText().toUpperCase();
             varName = Misc.peelId(varName);
 
-            I_DeclId varDecl = symbolStack.getDeclId(varName);
+            DeclId varDecl = symbolStack.getDeclId(varName);
             assert varDecl != null : ("undeclared id " + name);
             assert varDecl instanceof DeclParamOut || varDecl instanceof DeclVar;
             intoVars.addNode(new ExprId(varName, scope, varDecl));
@@ -1525,7 +1525,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = ctx.variable_name().identifier().getText().toUpperCase();
         name = Misc.peelId(name);
 
-        I_DeclId decl = symbolStack.getDeclId(name);
+        DeclId decl = symbolStack.getDeclId(name);
         assert decl != null : ("undeclared id " + name);
         assert decl instanceof DeclVar || decl instanceof DeclParamOut
                 : "identifier in a open-for statement must be a variable or out-parameter";
@@ -1559,13 +1559,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         String name = ctx.routine_name().getText().toUpperCase();
         name = Misc.peelId(name);
-        NodeList<I_Expr> args = visitFunction_argument(ctx.function_argument());
+        NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
 
         DeclProc decl = symbolStack.getDeclProc(name);
         if (decl == null) {
 
             if (args != null) {
-                for (I_Expr arg : args.nodes) {
+                for (Expr arg : args.nodes) {
                     if (arg instanceof ExprCast) {
                         ((ExprCast) arg).setTargetType("Object");
                     }
@@ -1598,8 +1598,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                                 + " does not match the number of its declared formal parameters";
 
                 int i = 0;
-                for (I_Expr arg : args.nodes) {
-                    I_DeclParam dp = decl.paramList.nodes.get(i);
+                for (Expr arg : args.nodes) {
+                    DeclParam dp = decl.paramList.nodes.get(i);
 
                     if (dp instanceof DeclParamOut) {
                         boolean valid = false;
@@ -1638,7 +1638,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.pushSymbolTable("exec_imme", false);
         int level = symbolStack.getCurrentScope().level;
 
-        I_Expr dynSql = visitExpression(ctx.dyn_sql().expression(), "String");
+        Expr dynSql = visitExpression(ctx.dyn_sql().expression(), "String");
 
         NodeList<ExprId> intoVarList;
         Into_clauseContext intoClause = ctx.into_clause();
@@ -1648,7 +1648,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             intoVarList = visitInto_clause(intoClause);
         }
 
-        NodeList<I_Expr> usedExprList;
+        NodeList<Expr> usedExprList;
         Using_clauseContext usingClause = ctx.using_clause();
         if (usingClause == null) {
             usedExprList = null;
@@ -1662,9 +1662,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public NodeList<I_Expr> visitRestricted_using_clause(Restricted_using_clauseContext ctx) {
+    public NodeList<Expr> visitRestricted_using_clause(Restricted_using_clauseContext ctx) {
 
-        NodeList<I_Expr> ret = new NodeList<>();
+        NodeList<Expr> ret = new NodeList<>();
 
         for (ExpressionContext c : ctx.expression()) {
             ret.addNode(visitExpression(c, "Object"));
@@ -1674,12 +1674,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public NodeList<I_Expr> visitUsing_clause(Using_clauseContext ctx) {
+    public NodeList<Expr> visitUsing_clause(Using_clauseContext ctx) {
 
-        NodeList<I_Expr> ret = new NodeList<>();
+        NodeList<Expr> ret = new NodeList<>();
 
         for (Using_elementContext c : ctx.using_element()) {
-            I_Expr expr = visitExpression(c.expression(), "Object");
+            Expr expr = visitExpression(c.expression(), "Object");
             if (c.OUT() != null) {
                 assert isAssignableTo(expr)
                         : "expression '"
@@ -1710,13 +1710,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public NodeList<I_Expr> visitFunction_argument(Function_argumentContext ctx) {
+    public NodeList<Expr> visitFunction_argument(Function_argumentContext ctx) {
 
         if (ctx == null) {
             return null;
         }
 
-        NodeList<I_Expr> ret = new NodeList<>();
+        NodeList<Expr> ret = new NodeList<>();
         for (ArgumentContext c : ctx.argument()) {
             ret.addNode(visitExpression(c.expression(), null));
         }
@@ -1736,7 +1736,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             }
         }
 
-        NodeList<I_Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
 
         return new ExHandler(exceptions, stmts);
     }
@@ -1792,7 +1792,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         DeclProc dp =
                 new DeclProc(
                         "PUT_LINE",
-                        new NodeList<I_DeclParam>()
+                        new NodeList<DeclParam>()
                                 .addNode(new DeclParamIn("s", new TypeSpec("Object"))),
                         null,
                         null);
@@ -1847,21 +1847,21 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     /*
-    private I_Expr
+    private Expr
     visitExpression(ParserRuleContext ctx) {
         return visitExpression(ctx, null);
     }
      */
 
-    private I_Expr visitExpression(ParserRuleContext ctx, String targetType) {
+    private Expr visitExpression(ParserRuleContext ctx, String targetType) {
         if (ctx == null) {
             return null;
         }
 
         if (targetType == null) {
-            return (I_Expr) visit(ctx);
+            return (Expr) visit(ctx);
         } else {
-            I_Expr e = (I_Expr) visit(ctx);
+            Expr e = (Expr) visit(ctx);
             if (e instanceof ExprCast) {
                 ((ExprCast) e).setTargetType(targetType);
             }
@@ -1906,7 +1906,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         pcsToJavaTypeMap.put("SYS_REFCURSOR", "Query");
     }
 
-    private static boolean isAssignableTo(I_Expr expr) {
+    private static boolean isAssignableTo(Expr expr) {
 
         if (expr instanceof ExprId) {
             ExprId id = (ExprId) expr;

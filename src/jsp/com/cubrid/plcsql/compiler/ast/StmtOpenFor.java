@@ -32,7 +32,7 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class StmtOpenFor implements I_Stmt {
+public class StmtOpenFor implements Stmt {
 
     public final ExprId refCursor;
     public final ExprStr sql;

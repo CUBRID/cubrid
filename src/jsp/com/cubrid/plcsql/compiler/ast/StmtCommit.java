@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class StmtCommit implements I_Stmt {
+public class StmtCommit implements Stmt {
 
     @Override
     public String toJavaCode() {

@@ -32,11 +32,11 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class ExprList implements I_Expr {
+public class ExprList implements Expr {
 
-    public final NodeList<I_Expr> elems;
+    public final NodeList<Expr> elems;
 
-    public ExprList(NodeList<I_Expr> elems) {
+    public ExprList(NodeList<Expr> elems) {
         this.elems = elems;
     }
 

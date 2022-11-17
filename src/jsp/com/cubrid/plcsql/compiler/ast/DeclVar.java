@@ -30,13 +30,13 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DeclVar extends Decl implements I_DeclId {
+public class DeclVar extends DeclBase implements DeclId {
 
     public final String name;
     public final TypeSpec typeSpec;
-    public final I_Expr val;
+    public final Expr val;
 
-    public DeclVar(String name, TypeSpec typeSpec, I_Expr val) {
+    public DeclVar(String name, TypeSpec typeSpec, Expr val) {
         this.name = name;
         this.typeSpec = typeSpec;
         this.val = val;

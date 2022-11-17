@@ -36,18 +36,18 @@ public class StmtForCursorLoop extends StmtCursorOpen {
 
     // public final int level;
     // public final ExprId cursor;
-    // public final NodeList<I_Expr> args;
+    // public final NodeList<Expr> args;
     public final String label;
     public final String record;
-    public final NodeList<I_Stmt> stmts;
+    public final NodeList<Stmt> stmts;
 
     public StmtForCursorLoop(
             int level,
             ExprId cursor,
-            NodeList<I_Expr> args,
+            NodeList<Expr> args,
             String label,
             String record,
-            NodeList<I_Stmt> stmts) {
+            NodeList<Stmt> stmts) {
 
         super(level, cursor, args);
 

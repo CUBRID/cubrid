@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class ExprCursorAttr implements I_Expr {
+public class ExprCursorAttr implements Expr {
 
     public final ExprId cursor;
     public final String attribute;

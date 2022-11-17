@@ -30,12 +30,12 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class StmtRaiseAppErr implements I_Stmt {
+public class StmtRaiseAppErr implements Stmt {
 
-    public final I_Expr errCode;
-    public final I_Expr errMsg;
+    public final Expr errCode;
+    public final Expr errMsg;
 
-    public StmtRaiseAppErr(I_Expr errCode, I_Expr errMsg) {
+    public StmtRaiseAppErr(Expr errCode, Expr errMsg) {
         this.errCode = errCode;
         this.errMsg = errMsg;
     }

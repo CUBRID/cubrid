@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DeclParamOut extends Decl implements I_DeclParam {
+public class DeclParamOut extends DeclBase implements DeclParam {
 
     public final String name;
     public final TypeSpec typeSpec;

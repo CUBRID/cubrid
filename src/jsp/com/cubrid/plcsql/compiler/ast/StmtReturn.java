@@ -30,11 +30,11 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class StmtReturn implements I_Stmt {
+public class StmtReturn implements Stmt {
 
-    public final I_Expr retVal;
+    public final Expr retVal;
 
-    public StmtReturn(I_Expr retVal) {
+    public StmtReturn(Expr retVal) {
         this.retVal = retVal;
     }
 

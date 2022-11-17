@@ -32,7 +32,7 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class StmtCursorFetch implements I_Stmt {
+public class StmtCursorFetch implements Stmt {
 
     public final ExprId cursor;
     public final NodeList<ExprId> intoVars;

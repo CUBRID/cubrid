@@ -35,8 +35,8 @@ import com.cubrid.plcsql.compiler.antlrgen.PcsParserBaseListener;
 import com.cubrid.plcsql.compiler.ast.DeclParamIn;
 import com.cubrid.plcsql.compiler.ast.DeclVar;
 import com.cubrid.plcsql.compiler.ast.ExprId;
-import com.cubrid.plcsql.compiler.ast.I_DeclId;
-import com.cubrid.plcsql.compiler.ast.I_DeclParam;
+import com.cubrid.plcsql.compiler.ast.DeclId;
+import com.cubrid.plcsql.compiler.ast.DeclParam;
 import com.cubrid.plcsql.compiler.ast.NodeList;
 import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.tree.TerminalNode;
@@ -64,8 +64,8 @@ public class TempSqlStringifier extends PcsParserBaseListener {
             String var = txt.toUpperCase();
             var = Misc.peelId(var);
 
-            I_DeclId decl = symbolStack.getDeclId(var);
-            if (decl != null && (decl instanceof DeclVar || decl instanceof I_DeclParam)) {
+            DeclId decl = symbolStack.getDeclId(var);
+            if (decl != null && (decl instanceof DeclVar || decl instanceof DeclParam)) {
                 if (withinIntoClause) {
                     assert !(decl instanceof DeclParamIn)
                             : "in-parameter " + txt + " cannot be used in into-clauses";

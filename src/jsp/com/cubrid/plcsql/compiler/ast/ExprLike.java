@@ -32,13 +32,13 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class ExprLike implements I_Expr {
+public class ExprLike implements Expr {
 
-    public final I_Expr target;
-    public final I_Expr pattern;
-    public final I_Expr escape;
+    public final Expr target;
+    public final Expr pattern;
+    public final Expr escape;
 
-    public ExprLike(I_Expr target, I_Expr pattern, I_Expr escape) {
+    public ExprLike(Expr target, Expr pattern, Expr escape) {
         this.target = target;
         this.pattern = pattern;
         this.escape = escape;

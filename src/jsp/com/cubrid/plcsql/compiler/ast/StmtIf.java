@@ -32,12 +32,12 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class StmtIf implements I_Stmt {
+public class StmtIf implements Stmt {
 
     public final NodeList<CondStmt> condStmtParts;
-    public final NodeList<I_Stmt> elsePart;
+    public final NodeList<Stmt> elsePart;
 
-    public StmtIf(NodeList<CondStmt> condStmtParts, NodeList<I_Stmt> elsePart) {
+    public StmtIf(NodeList<CondStmt> condStmtParts, NodeList<Stmt> elsePart) {
         this.condStmtParts = condStmtParts;
         this.elsePart = elsePart;
     }

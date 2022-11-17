@@ -32,13 +32,13 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class StmtWhileLoop implements I_Stmt {
+public class StmtWhileLoop implements Stmt {
 
     public final DeclLabel declLabel;
-    public final I_Expr expr;
-    public final NodeList<I_Stmt> stmts;
+    public final Expr expr;
+    public final NodeList<Stmt> stmts;
 
-    public StmtWhileLoop(DeclLabel declLabel, I_Expr expr, NodeList<I_Stmt> stmts) {
+    public StmtWhileLoop(DeclLabel declLabel, Expr expr, NodeList<Stmt> stmts) {
         this.declLabel = declLabel;
         this.expr = expr;
         this.stmts = stmts;

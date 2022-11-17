@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class ExprFalse implements I_Expr {
+public class ExprFalse implements Expr {
 
     public static ExprFalse instance() {
         return singleton;

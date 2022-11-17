@@ -32,13 +32,13 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class StmtBlock implements I_Stmt {
+public class StmtBlock implements Stmt {
 
     public final String block;
-    public final NodeList<I_Decl> decls;
+    public final NodeList<Decl> decls;
     public final Body body;
 
-    public StmtBlock(String block, NodeList<I_Decl> decls, Body body) {
+    public StmtBlock(String block, NodeList<Decl> decls, Body body) {
         this.block = block;
         this.decls = decls;
         this.body = body;

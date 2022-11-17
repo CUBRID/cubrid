@@ -32,12 +32,12 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class ExprCast implements I_Expr {
+public class ExprCast implements Expr {
 
-    public final I_Expr expr;
+    public final Expr expr;
     public String ty = null;
 
-    public ExprCast(I_Expr expr) {
+    public ExprCast(Expr expr) {
         this.expr = expr;
     }
 

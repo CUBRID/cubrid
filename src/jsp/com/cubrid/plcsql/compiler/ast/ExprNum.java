@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class ExprNum implements I_Expr {
+public class ExprNum implements Expr {
 
     public final String val;
 

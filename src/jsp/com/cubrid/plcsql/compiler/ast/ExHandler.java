@@ -36,9 +36,9 @@ import java.util.List;
 public class ExHandler implements AstNode {
 
     public final List<ExName> exNames;
-    public final NodeList<I_Stmt> stmts;
+    public final NodeList<Stmt> stmts;
 
-    public ExHandler(List<ExName> exNames, NodeList<I_Stmt> stmts) {
+    public ExHandler(List<ExName> exNames, NodeList<Stmt> stmts) {
         this.exNames = exNames;
         this.stmts = stmts;
     }

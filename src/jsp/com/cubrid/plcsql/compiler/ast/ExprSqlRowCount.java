@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class ExprSqlRowCount implements I_Expr {
+public class ExprSqlRowCount implements Expr {
 
     @Override
     public String toJavaCode() {

@@ -32,20 +32,20 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class StmtExecImme implements I_Stmt {
+public class StmtExecImme implements Stmt {
 
     public final boolean isDynamic;
     public final int level;
-    public final I_Expr dynSql;
+    public final Expr dynSql;
     public final NodeList<ExprId> intoVarList;
-    public final NodeList<? extends I_Expr> usedExprList;
+    public final NodeList<? extends Expr> usedExprList;
 
     public StmtExecImme(
             boolean isDynamic,
             int level,
-            I_Expr dynSql,
+            Expr dynSql,
             NodeList<ExprId> intoVarList,
-            NodeList<? extends I_Expr> usedExprList) {
+            NodeList<? extends Expr> usedExprList) {
         this.isDynamic = isDynamic;
         this.level = level;
         this.dynSql = dynSql;

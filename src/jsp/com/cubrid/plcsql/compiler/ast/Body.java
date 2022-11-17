@@ -34,10 +34,10 @@ import com.cubrid.plcsql.compiler.Misc;
 
 public class Body implements AstNode {
 
-    public final NodeList<I_Stmt> stmts;
+    public final NodeList<Stmt> stmts;
     public final NodeList<ExHandler> exHandlers;
 
-    public Body(NodeList<I_Stmt> stmts, NodeList<ExHandler> exHandlers) {
+    public Body(NodeList<Stmt> stmts, NodeList<ExHandler> exHandlers) {
         this.stmts = stmts;
         this.exHandlers = exHandlers;
     }

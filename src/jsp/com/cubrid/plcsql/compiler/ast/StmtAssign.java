@@ -30,12 +30,12 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class StmtAssign implements I_Stmt {
+public class StmtAssign implements Stmt {
 
     public final ExprId target;
-    public final I_Expr val;
+    public final Expr val;
 
-    public StmtAssign(ExprId target, I_Expr val) {
+    public StmtAssign(ExprId target, Expr val) {
         this.target = target;
         this.val = val;
     }

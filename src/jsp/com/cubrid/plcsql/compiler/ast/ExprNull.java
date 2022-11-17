@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class ExprNull implements I_Expr {
+public class ExprNull implements Expr {
 
     public static ExprNull instance() {
         return singleton;

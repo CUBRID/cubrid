@@ -32,12 +32,12 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class ExprUnaryOp implements I_Expr {
+public class ExprUnaryOp implements Expr {
 
     public final String opStr;
-    public final I_Expr o;
+    public final Expr o;
 
-    public ExprUnaryOp(String opStr, I_Expr o) {
+    public ExprUnaryOp(String opStr, Expr o) {
         this.opStr = opStr;
         this.o = o;
     }

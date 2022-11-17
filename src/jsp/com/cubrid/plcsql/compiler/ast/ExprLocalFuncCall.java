@@ -33,14 +33,14 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.Scope;
 
-public class ExprLocalFuncCall implements I_Expr {
+public class ExprLocalFuncCall implements Expr {
 
     public final String name;
-    public final NodeList<I_Expr> args;
+    public final NodeList<Expr> args;
     public final Scope scope;
     public final DeclFunc decl;
 
-    public ExprLocalFuncCall(String name, NodeList<I_Expr> args, Scope scope, DeclFunc decl) {
+    public ExprLocalFuncCall(String name, NodeList<Expr> args, Scope scope, DeclFunc decl) {
         this.name = name;
         this.args = args;
         this.scope = scope;

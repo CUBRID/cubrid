@@ -30,4 +30,16 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public interface I_DeclParam extends I_DeclId {} // marker interface
+import com.cubrid.plcsql.compiler.Scope;
+
+public abstract class DeclBase implements Decl {
+    public Scope scope;
+
+    public void setScope(Scope scope) {
+        this.scope = scope;
+    }
+
+    public Scope scope() {
+        return scope;
+    }
+}

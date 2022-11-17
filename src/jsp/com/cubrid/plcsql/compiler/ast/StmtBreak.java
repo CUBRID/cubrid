@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class StmtBreak implements I_Stmt {
+public class StmtBreak implements Stmt {
 
     public final DeclLabel declLabel;
 

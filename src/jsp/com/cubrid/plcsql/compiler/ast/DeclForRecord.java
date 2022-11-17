@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DeclForRecord extends Decl implements I_DeclId {
+public class DeclForRecord extends DeclBase implements DeclId {
 
     public final String name;
 

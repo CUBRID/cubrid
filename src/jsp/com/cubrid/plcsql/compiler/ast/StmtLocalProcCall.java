@@ -33,14 +33,14 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.Scope;
 
-public class StmtLocalProcCall implements I_Stmt {
+public class StmtLocalProcCall implements Stmt {
 
     public final String name;
-    public final NodeList<I_Expr> args;
+    public final NodeList<Expr> args;
     public final Scope scope;
     public final DeclProc decl;
 
-    public StmtLocalProcCall(String name, NodeList<I_Expr> args, Scope scope, DeclProc decl) {
+    public StmtLocalProcCall(String name, NodeList<Expr> args, Scope scope, DeclProc decl) {
         this.name = name;
         this.args = args;
         this.scope = scope;

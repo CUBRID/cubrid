@@ -32,15 +32,15 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class StmtCase implements I_Stmt {
+public class StmtCase implements Stmt {
 
     public final int level;
-    public final I_Expr selector;
+    public final Expr selector;
     public final NodeList<CaseStmt> whenParts;
-    public final NodeList<I_Stmt> elsePart;
+    public final NodeList<Stmt> elsePart;
 
     public StmtCase(
-            int level, I_Expr selector, NodeList<CaseStmt> whenParts, NodeList<I_Stmt> elsePart) {
+            int level, Expr selector, NodeList<CaseStmt> whenParts, NodeList<Stmt> elsePart) {
         this.level = level;
         this.selector = selector;
         this.whenParts = whenParts;

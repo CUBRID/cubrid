@@ -32,18 +32,18 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class CondStmt implements I_Stmt {
+public class CondStmt implements Stmt {
 
-    public final I_Expr cond;
-    public final NodeList<I_Stmt> stmts;
+    public final Expr cond;
+    public final NodeList<Stmt> stmts;
 
-    public CondStmt(I_Expr cond, NodeList<I_Stmt> stmts) {
+    public CondStmt(Expr cond, NodeList<Stmt> stmts) {
         this.cond = cond;
         this.stmts = stmts;
     }
 
-    public CondStmt(I_Expr cond, I_Stmt stmt) {
-        this(cond, new NodeList<I_Stmt>().addNode(stmt));
+    public CondStmt(Expr cond, Stmt stmt) {
+        this(cond, new NodeList<Stmt>().addNode(stmt));
     }
 
     @Override

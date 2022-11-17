@@ -32,14 +32,14 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class ExprCase implements I_Expr {
+public class ExprCase implements Expr {
 
     public final int level;
-    public final I_Expr selector;
+    public final Expr selector;
     public final NodeList<CaseExpr> whenParts;
-    public final I_Expr elsePart;
+    public final Expr elsePart;
 
-    public ExprCase(int level, I_Expr selector, NodeList<CaseExpr> whenParts, I_Expr elsePart) {
+    public ExprCase(int level, Expr selector, NodeList<CaseExpr> whenParts, Expr elsePart) {
         this.level = level;
         this.selector = selector;
         this.whenParts = whenParts;

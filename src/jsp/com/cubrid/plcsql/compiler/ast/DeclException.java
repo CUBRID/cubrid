@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DeclException extends Decl {
+public class DeclException extends DeclBase {
 
     public final String name;
 

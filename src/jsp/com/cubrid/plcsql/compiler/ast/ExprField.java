@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class ExprField implements I_Expr {
+public class ExprField implements Expr {
 
     public final ExprId record;
     public String fieldName;

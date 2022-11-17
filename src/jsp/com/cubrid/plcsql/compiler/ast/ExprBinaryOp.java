@@ -32,13 +32,13 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class ExprBinaryOp implements I_Expr {
+public class ExprBinaryOp implements Expr {
 
     public final String opStr;
-    public final I_Expr left;
-    public final I_Expr right;
+    public final Expr left;
+    public final Expr right;
 
-    public ExprBinaryOp(String opStr, I_Expr left, I_Expr right) {
+    public ExprBinaryOp(String opStr, Expr left, Expr right) {
         this.opStr = opStr;
         this.left = left;
         this.right = right;

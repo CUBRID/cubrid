@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DummyStmt implements I_Stmt {
+public class DummyStmt implements Stmt {
 
     public final String kind;
 

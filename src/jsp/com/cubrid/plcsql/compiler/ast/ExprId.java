@@ -32,13 +32,13 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Scope;
 
-public class ExprId implements I_Expr {
+public class ExprId implements Expr {
 
     public final String name;
     public final Scope scope;
-    public final I_DeclId decl;
+    public final DeclId decl;
 
-    public ExprId(String name, Scope scope, I_DeclId decl) {
+    public ExprId(String name, Scope scope, DeclId decl) {
         this.name = name;
         this.scope = scope;
         this.decl = decl;

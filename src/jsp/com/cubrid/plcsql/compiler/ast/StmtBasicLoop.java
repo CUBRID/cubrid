@@ -32,12 +32,12 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class StmtBasicLoop implements I_Stmt {
+public class StmtBasicLoop implements Stmt {
 
     public final DeclLabel declLabel;
-    public final NodeList<I_Stmt> stmts;
+    public final NodeList<Stmt> stmts;
 
-    public StmtBasicLoop(DeclLabel declLabel, NodeList<I_Stmt> stmts) {
+    public StmtBasicLoop(DeclLabel declLabel, NodeList<Stmt> stmts) {
         this.declLabel = declLabel;
         this.stmts = stmts;
     }

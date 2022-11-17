@@ -32,7 +32,7 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class ExprSerialVal implements I_Expr {
+public class ExprSerialVal implements Expr {
 
     public enum SerialVal {
         CURR_VAL,

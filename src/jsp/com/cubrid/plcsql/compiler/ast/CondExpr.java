@@ -32,12 +32,12 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class CondExpr implements I_Expr {
+public class CondExpr implements Expr {
 
-    public final I_Expr cond;
-    public final I_Expr expr;
+    public final Expr cond;
+    public final Expr expr;
 
-    public CondExpr(I_Expr cond, I_Expr expr) {
+    public CondExpr(Expr cond, Expr expr) {
         this.cond = cond;
         this.expr = expr;
     }

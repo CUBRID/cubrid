@@ -32,13 +32,13 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class StmtCursorOpen implements I_Stmt {
+public class StmtCursorOpen implements Stmt {
 
     public final int level;
     public final ExprId cursor;
-    public final NodeList<I_Expr> args;
+    public final NodeList<Expr> args;
 
-    public StmtCursorOpen(int level, ExprId cursor, NodeList<I_Expr> args) {
+    public StmtCursorOpen(int level, ExprId cursor, NodeList<Expr> args) {
         assert cursor.decl instanceof DeclCursor;
 
         this.level = level;

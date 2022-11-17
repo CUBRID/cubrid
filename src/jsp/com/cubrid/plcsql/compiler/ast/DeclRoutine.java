@@ -32,19 +32,19 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class DeclRoutine extends Decl {
+public class DeclRoutine extends DeclBase {
 
     public final String name;
-    public final NodeList<I_DeclParam> paramList;
+    public final NodeList<DeclParam> paramList;
     public final TypeSpec retType;
-    public NodeList<I_Decl> decls;
+    public NodeList<Decl> decls;
     public Body body;
 
     public DeclRoutine(
             String name,
-            NodeList<I_DeclParam> paramList,
+            NodeList<DeclParam> paramList,
             TypeSpec retType,
-            NodeList<I_Decl> decls,
+            NodeList<Decl> decls,
             Body body) {
 
         this.name = name;
@@ -84,7 +84,7 @@ public class DeclRoutine extends Decl {
     // Package
     // --------------------------------------------------
 
-    public String argsToJavaCode(NodeList<I_Expr> args) {
+    public String argsToJavaCode(NodeList<Expr> args) {
 
         assert args != null;
         assert args.nodes.size() == paramList.nodes.size()
@@ -93,13 +93,13 @@ public class DeclRoutine extends Decl {
         StringBuffer sbuf = new StringBuffer();
 
         int i = 0;
-        for (I_Expr a : args.nodes) {
+        for (Expr a : args.nodes) {
 
             if (i > 0) {
                 sbuf.append(",\n");
             }
 
-            I_DeclParam dp = paramList.nodes.get(i);
+            DeclParam dp = paramList.nodes.get(i);
             if (dp instanceof DeclParamOut) {
                 sbuf.append(((ExprId) a).toJavaCodeForOutParam());
             } else {
