@@ -59,8 +59,6 @@ extern int method_Num_method_jsp_calls;
 
 #endif
 
-#define QMGR_MAX_QUERY_ENTRY_PER_TRAN   100
-
 #define QMGR_TEMP_FILE_FREE_LIST_SIZE   100
 
 #define QMGR_NUM_TEMP_FILE_LISTS        (TEMP_FILE_MEMBUF_NUM_TYPES)
@@ -274,7 +272,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
   int i;
   bool usable = false;
 
-  static_assert (QMGR_MAX_QUERY_ENTRY_PER_TRAN < SHRT_MAX, "Bad query entry count");
+  static int qmgr_max_query_entry_per_tran = prm_get_bool_value (PRM_ID_QMGR_MAX_QUERY_PER_TRAN);
 
   query_p = tran_entry_p->free_query_entry_list_p;
 
@@ -284,9 +282,9 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
       tran_entry_p->free_query_entry_list_p = query_p->next;
       pthread_mutex_unlock (&tran_entry_p->mutex);
     }
-  else if (QMGR_MAX_QUERY_ENTRY_PER_TRAN < tran_entry_p->num_query_entries)
+  else if (qmgr_max_query_entry_per_tran < tran_entry_p->num_query_entries)
     {
-      assert (QMGR_MAX_QUERY_ENTRY_PER_TRAN >= tran_entry_p->num_query_entries);
+      assert (qmgr_max_query_entry_per_tran >= tran_entry_p->num_query_entries);
       return NULL;
     }
   else
@@ -305,7 +303,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
 
   /* assign query id */
   hint_query_id = 0;
-  for (i = 0; i < QMGR_MAX_QUERY_ENTRY_PER_TRAN; i++)
+  for (i = 0; i < qmgr_max_query_entry_per_tran; i++)
     {
       if (tran_entry_p->query_id_generator >= SHRT_MAX - 2)	/* overflow happened */
 	{
@@ -1281,6 +1279,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   bool is_xasl_pinned_reference;
   bool do_not_cache = false;
 
+  static int qmgr_max_query_entry_per_tran = prm_get_bool_value (PRM_ID_QMGR_MAX_QUERY_PER_TRAN);
+
   cached_result = false;
   query_p = NULL;
   *query_id_p = -1;
@@ -1455,7 +1455,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 
   if (query_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QM_QENTRY_RUNOUT, 1, QMGR_MAX_QUERY_ENTRY_PER_TRAN);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QM_QENTRY_RUNOUT, 1, qmgr_max_query_entry_per_tran);
       goto exit_on_error;
     }
 
@@ -1776,6 +1776,8 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
   bool saved_is_stats_on;
   bool xasl_trace;
 
+  static int qmgr_max_query_entry_per_tran = prm_get_bool_value (PRM_ID_QMGR_MAX_QUERY_PER_TRAN);
+
   query_p = NULL;
   *query_id_p = -1;
   list_id_p = NULL;
@@ -1878,7 +1880,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
 
   if (query_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QM_QENTRY_RUNOUT, 1, QMGR_MAX_QUERY_ENTRY_PER_TRAN);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QM_QENTRY_RUNOUT, 1, qmgr_max_query_entry_per_tran);
       goto exit_on_error;
     }
 
