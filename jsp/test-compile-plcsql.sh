@@ -27,7 +27,7 @@ if [ ! -d $1 ] && [ ! -f $1 ]; then
 fi
 
 JAR='jspserver.jar'
-APP='com.cubrid.plcsql.driver.TestDriver'
+APP='com.cubrid.plcsql.handler.TestMain'
 
 echo "trying test cases contained in the directory:"
 echo "  $1"

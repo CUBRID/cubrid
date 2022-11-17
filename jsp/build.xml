@@ -20,9 +20,9 @@
     <property name="plcsql.antlr.grammar" value="${src.dir}/antlr4/PcsParser.g4"/>
     <property name="plcsql.antlr.sql" value="${src.dir}/antlr4/SqlParser.g4"/>
     <property name="plcsql.antlrgen.dir" value="antlrgen"/>
-    <property name="plcsql.lib.path" value="com/cubrid/plcsql/lib"/>
-    <property name="plcsql.lib.sp.path" value="${plcsql.lib.path}/sp"/>
-    <property name="plcsql.lib.classes.dir" location="${build.dir}/plcsql-lib-classes"/>
+    <property name="plcsql.predefined.path" value="com/cubrid/plcsql/predefined"/>
+    <property name="plcsql.predefined.sp.path" value="${plcsql.predefined.path}/sp"/>
+    <property name="plcsql.predefined.classes.dir" location="${build.dir}/plcsql-predefined-classes"/>
 
     <property name="ivy.reports.dir"  location="${report.dir}/ivy-reports"/>
 
@@ -66,7 +66,7 @@
         <mkdir dir="${build.dir}"/>
         <mkdir dir="${classes.dir}"/>
         <mkdir dir="${test.classes.dir}"/>
-        <mkdir dir="${plcsql.lib.classes.dir}"/>
+        <mkdir dir="${plcsql.predefined.classes.dir}"/>
         <mkdir dir="${test.reports.dir}"/>
         <mkdir dir="${ivy.reports.dir}"/>
     </target>
@@ -90,12 +90,12 @@
             <src path="${plcsql.antlrgen.dir}"/>
             <include name="**/*.java"/>
             <exclude name="${test.src.path}/*.java"/>
-            <exclude name="${plcsql.lib.sp.path}/*.java"/>
+            <exclude name="${plcsql.predefined.sp.path}/*.java"/>
         </javac>
 
-        <javac destdir="${plcsql.lib.classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" debug="true">
+        <javac destdir="${plcsql.predefined.classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" debug="true">
             <src path="${src.dir}"/>
-            <include name="${plcsql.lib.path}/**/*.java"/>
+            <include name="${plcsql.predefined.path}/**/*.java"/>
         </javac>
     </target>
 
@@ -149,6 +149,6 @@
             </manifest>
         </jar>
 
-        <jar jarfile="${dist.splib.jar}" basedir="${plcsql.lib.classes.dir}"/>
+        <jar jarfile="${dist.splib.jar}" basedir="${plcsql.predefined.classes.dir}"/>
     </target>
 </project>

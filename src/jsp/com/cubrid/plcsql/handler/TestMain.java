@@ -28,7 +28,7 @@
  *
  */
 
-package com.cubrid.plcsql.driver;
+package com.cubrid.plcsql.handler;
 
 import com.cubrid.plcsql.compiler.ParseTreeConverter;
 import com.cubrid.plcsql.compiler.ParseTreePrinter;
@@ -43,7 +43,7 @@ import java.io.PrintStream;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
 
-public class TestDriver {
+public class TestMain {
     private static ParseTree parse(String inFilePath) {
 
         long t0, t;
