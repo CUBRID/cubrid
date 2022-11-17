@@ -10891,9 +10891,8 @@ log_check_ha_delay_info_daemon_init ()
 {
   const bool do_supplemental_log = prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 ? true : false;
   const bool do_calc_replication_delay = prm_get_bool_value (PRM_ID_ER_LOG_CALC_REPL_DELAY);
-  const bool is_transaction_server = (get_server_type () == SERVER_TYPE_TRANSACTION);
 
-  const bool need_daemon = is_transaction_server && (!HA_DISABLED () || do_supplemental_log || do_calc_replication_delay);
+  const bool need_daemon = is_active_transaction_server () && (!HA_DISABLED () || do_supplemental_log || do_calc_replication_delay);
 
   if (!need_daemon)
     {
