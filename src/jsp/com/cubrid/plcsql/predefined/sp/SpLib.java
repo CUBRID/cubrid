@@ -28,7 +28,7 @@
  *
  */
 
-package com.cubrid.plcsql.lib.sp;
+package com.cubrid.plcsql.predefined.sp;
 
 import java.sql.*;
 import java.util.Date;

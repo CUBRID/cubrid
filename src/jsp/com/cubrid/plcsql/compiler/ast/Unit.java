@@ -121,7 +121,7 @@ public class Unit implements AstNode {
     private static final String tmplUnit =
             Misc.combineLines(
                     "%IMPORTS%",
-                    "import static com.cubrid.plcsql.lib.sp.SpLib.*;",
+                    "import static com.cubrid.plcsql.predefined.sp.SpLib.*;",
                     "",
                     "public class %CLASS-NAME% {",
                     "",
