@@ -67,49 +67,6 @@ endif(UNIX)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "  CMAKE_RUNTIME_OUTPUT_DIRECTORY=${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 
-if(WIN32)
-  set(WINDOWS_BASE_DIR ${CMAKE_SOURCE_DIR}/win)
-  set(WINDOWS_EXTERNAL_DIR ${WINDOWS_BASE_DIR}/external)
-  set(WINDOWS_EXTERNAL_LIB_DIR ${WINDOWS_EXTERNAL_DIR}/lib64)
-  set(WINDOWS_EXTERNAL_INCLUDE_DIR ${WINDOWS_EXTERNAL_DIR}/include)
-  # I could not load debug dll for jansson. disabled for now.
-  # if(CMAKE_BUILD_TYPE MATCHES "Debug")
-  #   set(WINDOWS_EXTERNAL_DLL_DIR ${WINDOWS_EXTERNAL_DIR}/dll_debug)
-  # else()
-    set(WINDOWS_EXTERNAL_DLL_DIR ${WINDOWS_EXTERNAL_DIR}/dll)
-  # endif()
-endif(WIN32)
-
-macro(_EXPAND_EXTERNAL_DEPENDENCY depender prefix_dependee)
-  message(STATUS "${depender} depends on external project ${prefix_dependee}")
-
-  set(DEPENDEE_INCLUDE_DIR ${${prefix_dependee}_INCLUDES})
-  if(DEFINED DEPENDEE_INCLUDE_DIR)
-    target_include_directories(${depender} PRIVATE ${DEPENDEE_INCLUDE_DIR})
-  else()
-    message(WARNING "include directory variable(${prefix_dependee}_INCLUDES) is not set for target ${prefix_dependee}")
-  endif()
-
-  set(DEPENDEE_LIBS_DIR ${${prefix_dependee}_LIBS})
-  if(DEFINED DEPENDEE_LIBS_DIR)
-    target_link_libraries(${depender} LINK_PRIVATE ${DEPENDEE_LIBS_DIR})
-  else()
-    message(WARNING "libraries directory variable(${prefix_dependee}_LIBS) is not set for target ${prefix_dependee}")
-  endif()
-
-  if (TARGET ${${prefix_dependee}_TARGET})
-    add_dependencies(${depender} ${${prefix_dependee}_TARGET})
-  else(TARGET ${${prefix_dependee}_TARGET})
-    message(STATUS "target ${prefix_dependee}_TARGET=${${prefix_dependee}_TARGET} doesn't exist")
-  endif(TARGET ${${prefix_dependee}_TARGET})
-endmacro(_EXPAND_EXTERNAL_DEPENDENCY)
-
-function(target_external_dependencies depender)
-  foreach (arg IN LISTS ARGN)
-    _EXPAND_EXTERNAL_DEPENDENCY(${depender} ${arg})
-  endforeach()
-endfunction(target_external_dependencies)
-
 # FIXME: linux 32bit build mode not working now
 option(ENABLE_32BIT "Build for 32-bit banaries (on 64-bit platform)" OFF)
 option(ENABLE_SYSTEMTAP "Enable dynamic tracing support using systemtap" ${ENABLE_SYSTEMTAP_DEFAULT})
@@ -119,44 +76,6 @@ option(WITH_JDBC "Build with JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
 option(WITH_CCI "Build with CCI driver" ON)
-
-# options for external libraries (BUNDLED, EXTERAL or SYSTEM)
-# expat library sources URL
-set(WITH_LIBEXPAT_URL "https://github.com/libexpat/libexpat/releases/download/R_2_2_5/expat-2.2.5.tar.bz2")
-
-# jansson library sources URL
-set(WITH_LIBJANSSON_URL "http://www.digip.org/jansson/releases/jansson-2.10.tar.gz")
-
-# editline library sources URL
-set(WITH_LIBEDIT_URL "http://thrysoee.dk/editline/libedit-20170329-3.1.tar.gz")
-
-# rapidjson library sources URL
-set(WITH_RAPIDJSON_URL "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz")
-
-# openssl library sources URL
-set(WITH_LIBOPENSSL_URL "https://www.openssl.org/source/old/1.1.1/openssl-1.1.1f.tar.gz")
-
-# unixODBC library sources URL
-set(WITH_LIBUNIXODBC_URL "http://www.unixodbc.org/unixODBC-2.3.9.tar.gz")
-
-set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (default: EXTERNAL)")
-set(WITH_BUNDLED_PREFIX "BUNDLED" CACHE STRING "Bundled library prefix (default: BUNDLED)")
-set(WITH_SYSTEM_PREFIX "SYSTEM" CACHE STRING "System library prefix (default: SYSTEM)")
-
-set(WITH_LIBEXPAT     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with expat library (default: EXTERNAL)")
-set(WITH_LIBJANSSON   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with jansson library (default: EXTERNAL)")
-set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editline library (default: EXTERNAL)")
-set(WITH_LIBNCURSES   "${WITH_SYSTEM_PREFIX}" CACHE STRING "Build with ncurses library (default: SYSTEM)")
-set(WITH_LIBOPENSSL   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with openssl library (default: EXTERNAL)")
-set(WITH_LIBUNIXODBC  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with unixODBC library (default: EXTERNAL)")
-
-
-message(STATUS "Build with Curses library: ${WITH_LIBNCURSES}")
-message(STATUS "Build with editline library: ${WITH_LIBEDIT}")
-message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
-message(STATUS "Build with jansson library: ${WITH_LIBJANSSON}")
-message(STATUS "Build with openssl library: ${WITH_LIBOPENSSL}")
-message(STATUS "Build with unixODBC library: ${WITH_LIBUNIXODBC}")
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
@@ -372,23 +291,22 @@ set(ESQL_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/esql_grammar.c)
 set(ESQL_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.l)
 set(ESQL_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/esql_lexer.c)
 
+# include 3rdparty
+message("Including Third Party Libraries")
+add_subdirectory(3rdparty)
+
+message("EP_TARGETS = ${EP_TARGETS}")
+message("EP_LIBS = ${EP_LIBS}")
+message("EP_INCLUDES = ${EP_INCLUDES}")
+
 # bison and flex check
-if(WIN32)
-  set(WIN_FLEX_BISON_VERSION "2.5.20")
-  set(WIN_FLEX_BISON_URL "https://github.com/lexxmark/winflexbison/releases/download/v${WIN_FLEX_BISON_VERSION}/win_flex_bison-${WIN_FLEX_BISON_VERSION}.zip")
-  set(WIN_FLEX_BISON_FILENAME "${CMAKE_BINARY_DIR}/external/Download/win_flex_bison.zip")
-  file(DOWNLOAD ${WIN_FLEX_BISON_URL} ${WIN_FLEX_BISON_FILENAME})
-
-  set(WIN_FLEX_BISON_INSTALL_DIR "${CMAKE_BINARY_DIR}/external/Install/win_flex_bison")
-  file(MAKE_DIRECTORY ${WIN_FLEX_BISON_INSTALL_DIR})
-  execute_process(COMMAND ${CMAKE_COMMAND} -E tar -xf ${WIN_FLEX_BISON_FILENAME} WORKING_DIRECTORY ${WIN_FLEX_BISON_INSTALL_DIR})
-  list(APPEND CMAKE_PREFIX_PATH ${WIN_FLEX_BISON_INSTALL_DIR})
-endif(WIN32)
-
 include(FindBISON)
-find_package(BISON 3.0.0)
+include(FindFLEX)
 
-if(NOT BISON_FOUND)
+find_package(BISON 3.0.0)
+find_package(FLEX 2.5.34 REQUIRED)
+
+if(NOT BISON_FOUND OR NOT FLEX_FOUND)
   if(UNIX)
     message(FATAL_ERROR "Please install bison and flex.")
   else()
@@ -400,10 +318,7 @@ if(NOT BISON_FOUND)
       " and retry running cmake."
     )
   endif()
-endif(NOT BISON_FOUND)
-
-include(FindFLEX)
-find_package(FLEX 2.5.34 REQUIRED)
+endif(NOT BISON_FOUND OR NOT FLEX_FOUND)
 
 # CSQL FLEX/BISON targets
 # replace old bison directives with new ones
@@ -890,310 +805,11 @@ else(USE_CUBRID_ENV)
   set(CUBRID_COMPATDIR compat CACHE STRING "The directory for compatible files")
 endif(USE_CUBRID_ENV)
 
-
-# For external library options
-include(ExternalProject)
-set_property(DIRECTORY PROPERTY EP_BASE "${CMAKE_BINARY_DIR}/external")
-set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --enable-static --disable-shared --with-pic CFLAGS=-w CXXFLAGS=-w)
-
-# WITH_LIBEXPAT can have multiple values with different meanings
-# on Linux:
-# * "EXTERNAL" - (default) builds expat library from URL stored in ${WITH_LIBEXPAT_URL} uses the library created by the build
-# * "SYSTEM"   - use expat library located in:
-#                  ${WITH_EXTERNAL_LIBS_PATH}
-#                  ${WITH_LIBEXPAT_ROOT_PATH}/lib
-#                use expat headers located in:
-#                  ${WITH_EXTERNAL_HEADERS_PATH}
-#                  ${WITH_LIBEXPAT_ROOT_PATH}/include
-# on Windows:
-# * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
-if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
-  set(LIBEXPAT_TARGET libexpat)
-  list(APPEND EP_TARGETS ${LIBEXPAT_TARGET})
-  if(UNIX)
-    externalproject_add(${LIBEXPAT_TARGET}
-      URL                  ${WITH_LIBEXPAT_URL}
-      LOG_BUILD            TRUE
-      LOG_INSTALL          TRUE
-      TIMEOUT              600
-      DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
-      BUILD_COMMAND        make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      )
-    set(LIBEXPAT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libexpat.a)
-    set(LIBEXPAT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/expat)
-  elseif(WIN32)
-    set(LIBEXPAT_LIBS ${WINDOWS_EXTERNAL_LIB_DIR}/libexpat.lib)
-    set(LIBEXPAT_INCLUDES ${WINDOWS_EXTERNAL_INCLUDE_DIR})
-    add_custom_target(${LIBEXPAT_TARGET}
-      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${WINDOWS_EXTERNAL_DLL_DIR}/libexpat64.dll to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/libexpat.dll"
-      COMMAND ${CMAKE_COMMAND} -E copy ${WINDOWS_EXTERNAL_DLL_DIR}/libexpat64.dll ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/libexpat.dll
-    )
-  endif(UNIX)
-elseif(WITH_LIBEXPAT STREQUAL "SYSTEM")
-  if(UNIX)
-    find_library(LIBEXPAT_LIBS NAMES libexpat.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBEXPAT_ROOT_PATH}/lib REQUIRED)
-    find_path(LIBEXPAT_INCLUDES NAMES expat.h expat_config.h expat_external.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBEXPAT_ROOT_PATH}/include REQUIRED)
-
-    message(STATUS "Found expat library: ${LIBEXPAT_LIBS}")
-    message(STATUS "Found expat headers: ${LIBEXPAT_INCLUDES}")
-  endif(UNIX)
-endif()
-list(APPEND EP_INCLUDES ${LIBEXPAT_INCLUDES})
-list(APPEND EP_LIBS ${LIBEXPAT_LIBS})
-
-# WITH_LIBJANSSON can have multiple values with different meanings
-# on Linux:
-# * "EXTERNAL" - (default) builds jansson library from URL stored in ${WITH_LIBJANSSON_URL} uses the library created by the build
-# * "SYSTEM"   - use jansson library located in:
-#                  ${WITH_EXTERNAL_LIBS_PATH}
-#                  ${WITH_LIBJANSSON_ROOT_PATH}/lib
-#                use jansson headers located in:
-#                  ${WITH_EXTERNAL_HEADERS_PATH}
-#                  ${WITH_LIBJANSSON_ROOT_PATH}/include
-# on Windows:
-# * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
-if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
-  set(LIBJANSSON_TARGET libjansson)
-  list(APPEND EP_TARGETS ${LIBJANSSON_TARGET})
-  if(UNIX)
-    externalproject_add(${LIBJANSSON_TARGET}
-      URL                  ${WITH_LIBJANSSON_URL}
-      LOG_BUILD            TRUE
-      LOG_INSTALL          TRUE
-      TIMEOUT              600
-      DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      )
-    set(LIBJANSSON_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libjansson.a)
-    set(LIBJANSSON_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/jansson)
-  else(UNIX)
-    # WIN32
-    set(LIBJANSSON_LIBS ${WINDOWS_EXTERNAL_LIB_DIR}/jansson64.lib)
-    set(LIBJANSSON_INCLUDES ${WINDOWS_EXTERNAL_INCLUDE_DIR})
-    add_custom_target(${LIBJANSSON_TARGET}
-      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${WINDOWS_EXTERNAL_DLL_DIR}/jansson64.dll to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/jansson.dll"
-      COMMAND ${CMAKE_COMMAND} -E copy ${WINDOWS_EXTERNAL_DLL_DIR}/jansson64.dll ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/jansson.dll
-      COMMAND ${CMAKE_COMMAND} -E copy ${WINDOWS_EXTERNAL_DLL_DIR}/jansson64.dll ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/jansson64.dll
-    )
-  endif(UNIX)
-elseif(WITH_LIBJANSSON STREQUAL "SYSTEM")
-  if(UNIX)
-    find_library(LIBJANSSON_LIBS NAMES libjansson.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBJANSSON_ROOT_PATH}/lib REQUIRED)
-    find_path(LIBJANSSON_INCLUDES NAMES jansson.h jansson_config.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBJANSSON_ROOT_PATH}/include REQUIRED)
-
-    message(STATUS "Found jansson library: ${LIBJANSSON_LIBS}")
-    message(STATUS "Found jansson headers: ${LIBJANSSON_INCLUDES}")
-  endif(UNIX)
-endif()
-list(APPEND EP_INCLUDES ${LIBJANSSON_INCLUDES})
-list(APPEND EP_LIBS ${LIBJANSSON_LIBS})
-
-# WITH_LIBNCURSES can have multiple values with different meanings
-# on Linux:
-# * "SYSTEM"   - uses ncurses installed in the system (for more info check https://cmake.org/cmake/help/v3.10/module/FindCurses.html)
-set(LIBNCURSES_TARGET libncurses)
-if(UNIX)
-  if(WITH_LIBNCURSES STREQUAL "SYSTEM")
-    include(FindCurses)
-    find_package(Curses REQUIRED)
-    CHECK_LIBRARY_EXISTS("${CURSES_LIBRARIES}" wtimeout "" LIBNCURSES_HAS_WTIMEOUT)
-    set(LIBNCURSES_INCLUDES "${CURSES_INCLUDE_DIRS}")
-    set(LIBNCURSES_LIBS "${CURSES_LIBRARIES}")
-
-    if(NOT LIBNCURSES_HAS_WTIMEOUT)
-      message(STATUS "search for tinfo library")
-      find_library(TINFO_LIBRARY NAMES tinfo)
-      if(TINFO_LIBRARY)
-        message(STATUS "found tinfo library")
-        CHECK_LIBRARY_EXISTS("${TINFO_LIBRARY}" wtimeout "" TINFO_HAS_WTIMEOUT)
-        if(TINFO_HAS_WTIMEOUT)
-          set(CURSES_LIBRARIES ${CURSES_LIBRARIES} ${TINFO_LIBRARY})
-        else(TINFO_HAS_WTIMEOUT)
-          message(FATAL_ERROR "tinfo library does not have wtimeout")
-        endif(TINFO_HAS_WTIMEOUT)
-      else(TINFO_LIBRARY)
-        message(FATAL_ERROR "no tinfo library")
-      endif(TINFO_LIBRARY)
-    endif(NOT LIBNCURSES_HAS_WTIMEOUT)
-  else(WITH_LIBNCURSES STREQUAL "SYSTEM")
-    message(FATAL_ERROR "Invalid WITH_LIBNCURSES option value ${WITH_LIBNCURSES}")
-  endif(WITH_LIBNCURSES STREQUAL "SYSTEM")
-endif(UNIX)
-
-# WITH_LIBEDIT can have multiple values with different meanings
-# on Linux:
-# * "EXTERNAL" - (default) builds editline library from URL stored in ${WITH_LIBEDIT_URL} uses the library created by the build
-# * "SYSTEM"   - use editline library located in:
-#                  ${WITH_EXTERNAL_LIBS_PATH}
-#                  ${WITH_LIBEDIT_ROOT_PATH}/lib
-#                use editline headers located in:
-#                  ${WITH_EXTERNAL_HEADERS_PATH}
-#                  ${WITH_LIBEDIT_ROOT_PATH}/include
-if(UNIX)
-  if(WITH_LIBEDIT STREQUAL "EXTERNAL")
-    set(LIBEDIT_TARGET libedit)
-    externalproject_add(${LIBEDIT_TARGET}
-      URL                  ${WITH_LIBEDIT_URL}
-      LOG_BUILD            TRUE
-      LOG_INSTALL          TRUE
-      TIMEOUT              600
-      DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    "LDFLAGS=-L${CMAKE_CURRENT_BINARY_DIR}/external/lib" ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      )
-    if(TARGET ${LIBNCURSES_TARGET})
-      add_dependencies(${LIBEDIT_TARGET} ${LIBNCURSES_TARGET})
-    endif()
-    set(LIBEDIT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libedit.a)
-    set(LIBEDIT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
-    list(APPEND EP_TARGETS ${LIBEDIT_TARGET})
-  elseif(WITH_LIBEDIT STREQUAL "SYSTEM")
-    find_library(LIBEDIT_LIBS NAMES libedit.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBEDIT_ROOT_PATH}/lib REQUIRED)
-    find_path(LIBEDIT_INCLUDES NAMES editline/readline.h histedit.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBEDIT_ROOT_PATH}/include REQUIRED)
-
-    message(STATUS "Found editline library: ${LIBEDIT_LIBS}")
-    message(STATUS "Found editline headers: ${LIBEDIT_INCLUDES}")
-  endif()
-endif(UNIX)
-list(APPEND EP_LIBS ${LIBEDIT_LIBS})
-list(APPEND EP_INCLUDES ${LIBEDIT_INCLUDES})
-
-# LZ4
-#
-set(LZ4_TARGET lz4)
-if(WIN32) # msvc-built lz4 v1.9.2 libraries 
-  set(LZ4_INCLUDES ${WINDOWS_EXTERNAL_DIR}/lz4/include)
-  set(LZ4_LIBS ${WINDOWS_EXTERNAL_DIR}/lz4/bin/liblz4.lib)
-  set(LZ4_DLL ${WINDOWS_EXTERNAL_DIR}/lz4/bin/liblz4.dll)
-
-  add_custom_target(${LZ4_TARGET}
-    COMMAND ${CMAKE_COMMAND} -E echo "  copying ${LZ4_DLL} to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/liblz4.dll"
-    COMMAND ${CMAKE_COMMAND} -E copy ${LZ4_DLL} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/liblz4.dll
-  )
-else()
-  externalproject_add(${LZ4_TARGET}
-    GIT_REPOSITORY https://github.com/lz4/lz4
-    GIT_TAG fdf2ef5             # https://github.com/lz4/lz4/releases/tag/v1.9.2
-    CONFIGURE_COMMAND ""        # no configure
-    BUILD_IN_SOURCE true        # lz4 Makefile is designed to run locally
-    BUILD_COMMAND make CFLAGS="-fPIC"  # to allow static linking in shared library
-    INSTALL_COMMAND ""          # suppress install
-  )
-  set(LZ4_INCLUDES ${CMAKE_BINARY_DIR}/external/Source/lz4/lib)
-  set(LZ4_LIBS ${CMAKE_BINARY_DIR}/external/Source/lz4/lib/liblz4.a)
-endif()
-list(APPEND EP_LIBS ${LZ4_LIBS})
-list(APPEND EP_INCLUDES ${LZ4_INCLUDES})
-
-# WITH_LOBOPENSSL can have multiple values with different meanings
-# on Linux:
-# * "EXTERNAL" - (default) builds openssl library from URL stored in ${WITH_LIBOPENSSL_URL} uses the library created by the build
-# * "SYSTEM"   - use openssl library located in:
-#                  ${WITH_EXTERNAL_LIBS_PATH}
-#                  ${WITH_LIBOPENSSL_ROOT_PATH}/lib
-#                use openssl headers located in:
-#                  ${WITH_EXTERNAL_HEADERS_PATH}
-#                  ${WITH_LIBOPENSSL_ROOT_PATH}/include
-# on Windows:
-# * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
-if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
-  set(LIBOPENSSL_TARGET libopenssl)
-  if(UNIX)
-    #compile OpenSSL library given an internet url to a OpenSSL archive
-    #e.g. https://www.openssl.org/source/openssl-1.1.1f.tar.gz
-    externalproject_add(${LIBOPENSSL_TARGET}
-      URL                  ${WITH_LIBOPENSSL_URL}
-      LOG_CONFIGURE        TRUE
-      LOG_BUILD            TRUE
-      LOG_INSTALL          TRUE
-      TIMEOUT              600
-      DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${CMAKE_CURRENT_BINARY_DIR}/external no-shared # ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        $(MAKE) all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      $(MAKE) install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      )
-    set(LIBOPENSSL_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libssl.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libcrypto.a)
-    set(LIBOPENSSL_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
-    list(APPEND EP_TARGETS ${LIBOPENSSL_TARGET})
-  else(UNIX)
-    set(LIBOPENSSL_LIBS ${WINDOWS_EXTERNAL_DIR}/openssl/lib/libssl.lib)
-    list(APPEND LIBOPENSSL_LIBS ${WINDOWS_EXTERNAL_DIR}/openssl/lib/libcrypto.lib)
-    list(APPEND LIBOPENSSL_LIBS Crypt32 Ws2_32)
-    set(LIBOPENSSL_INCLUDES ${WINDOWS_EXTERNAL_DIR}/openssl/include)
-  endif(UNIX)
-else(WITH_LIOPENSSL STREQUAL "SYSTEM")
-  if(UNIX)
-    find_library(LIBOPENSSL_LIBS NAMES libssl.a libcrypto.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBOPENSSL_ROOT_PATH}/lib REQUIRED)
-    find_path(LIBOPENSSL_INCLUDES NAMES openssl/conf.h openssl/evp.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBOPENSSL_ROOT_PATH}/include REQUIRED)
-    message(STATUS "Found openssl library: ${LIBOPENSSL_LIBS}")
-    message(STATUS "Found openssl headers: ${LIBOPENSSL_INCLUDES}")
-  endif(UNIX)
-endif()
-list(APPEND EP_INCLUDES ${LIBOPENSSL_INCLUDES})
-list(APPEND EP_LIBS ${LIBOPENSSL_LIBS})
-
-# WITH_LIBUNIXODBC can have multiple values with different meanings
-# on Linux:
-# * "EXTERNAL" - (default) builds unixODBC library from URL stored in ${WITH_LIBUNIXODBC_URL} uses the library created by the build
-#
-
-if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
-  set(LIBUNIXODBC_TARGET libodbc)
-  if(UNIX)
-    #compile unixODBC library given an internet url to a unixODBC archive
-    #e.g. http://www.unixodbc.org/unixODBC-2.3.9.tar.gz
-    externalproject_add(${LIBUNIXODBC_TARGET}
-      URL                  ${WITH_LIBUNIXODBC_URL}
-      LOG_CONFIGURE        TRUE
-      LOG_BUILD            TRUE
-      LOG_INSTALL          TRUE
-      TIMEOUT              600
-      DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external # ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        $(MAKE) AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      $(MAKE) install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      )
-    set(LIBUNIXODBC_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libodbc.so)
-    set(LIBUNIXODBC_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
-    list(APPEND EP_TARGETS ${LIBUNIXODBC_TARGET})
-  endif(UNIX)
-else(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
-    message(FATAL_ERROR "Invalid WITH_LIBUNIXODBC option value ${WITH_LIBUNIXODBC}")
-endif(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
-list(APPEND EP_INCLUDES ${LIBUNIXODBC_INCLUDES})
-
 # For JVM libraries
 if(WIN32)
-    set(JVM_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/jvm.lib)
+    set(JVM_LIBS ${CMAKE_SOURCE_DIR}/win/3rdparty/lib64/jvm.lib)
   list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
 endif(WIN32)
-
-# rapidjson
-set(RAPIDJSON_TARGET rapidjson)
-externalproject_add(${RAPIDJSON_TARGET}
-  # tried URL but archive gets downloaded every time. URL_MD5 may help
-  URL                  ${WITH_RAPIDJSON_URL}
-  LOG_CONFIGURE        TRUE
-  LOG_BUILD            TRUE
-  LOG_INSTALL          TRUE
-  TIMEOUT              600
-  DOWNLOAD_NO_PROGRESS 1
-  # don't install
-  INSTALL_COMMAND      ""
-  # don't build test, doc and examples
-  CMAKE_CACHE_ARGS     -DRAPIDJSON_BUILD_TESTS:STRING=off
-                       -DRAPIDJSON_BUILD_DOC:STRING=off
-                       -DRAPIDJSON_BUILD_EXAMPLES:STRING=off
-)
-# add to include directories
-include_directories(${CMAKE_BINARY_DIR}/external/Source/rapidjson/include)
-# add to external project targets
-list(APPEND EP_TARGETS ${RAPIDJSON_TARGET})
 
 if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   message("Build JDBC Driver from cubird-jdbc submodule")
@@ -1239,7 +855,9 @@ if(WIN32)
   add_subdirectory(win)
 endif(WIN32)
 
+# for cmserver
 if(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
+  include(ExternalProject)
   get_target_property(CCI_PUBLIC_HEADERS cascci PUBLIC_HEADER)
   get_target_property(CMDEP_PUBLIC_HEADERS cmdep PUBLIC_HEADER)
   get_target_property(CMSTAT_PUBLIC_HEADERS cmstat PUBLIC_HEADER)
@@ -1285,7 +903,6 @@ if(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/serve
     DESTINATION ${CUBRID_PREFIXDIR} COMPONENT Manager
     USE_SOURCE_PERMISSIONS)
 endif(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
-
 
 # create empty directories
 install(DIRECTORY DESTINATION ${CUBRID_LOGDIR})
