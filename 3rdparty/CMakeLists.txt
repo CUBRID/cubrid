@@ -29,7 +29,11 @@ set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (defau
 set(WITH_BUNDLED_PREFIX "BUNDLED" CACHE STRING "Bundled library prefix (default: BUNDLED)")
 set(WITH_SYSTEM_PREFIX "SYSTEM" CACHE STRING "System library prefix (default: SYSTEM)")
 
-set(WITH_LIBFLEXBISON "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with flex and bison library (default: SYSTEM)")
+if(UNIX)
+  set(WITH_LIBFLEXBISON "${WITH_SYSTEM_PREFIX}" CACHE STRING "Build with flex and bison library (default: SYSTEM)")
+else(WIN32)
+  set(WITH_LIBFLEXBISON "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with flex and bison library (default: EXTERNAL)")
+endif()
 set(WITH_LIBEXPAT     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with expat library (default: EXTERNAL)")
 set(WITH_LIBJANSSON   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with jansson library (default: EXTERNAL)")
 set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editline library (default: EXTERNAL)")
@@ -69,41 +73,12 @@ endif(WIN32)
 
 # WITH_LIBFLEXBISON can have multiple values with different meanings
 # on Linux:
-# * "EXTERNAL" - (default) builds flex and bison library from URL stored in ${WITH_LIBFLEX_URL} and ${LIBBISON_TARGET} uses the library created by the build
-# * "SYSTEM"   - use flex and bison library located in:e
+# * "SYSTEM"   - use flex and bison library located in the system.
 # on Windows:
 # * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/3rdparty
-set(LIBFLEX_TARGET libflex)
-set(LIBBISON_TARGET libbison)
+# * "SYSTEM"   - use flex and bison library installed by chocolately
 if(WITH_LIBFLEXBISON STREQUAL "EXTERNAL")
-  if(UNIX)
-    externalproject_add(${LIBFLEX_TARGET}
-      URL                  ${WITH_FLEX_URL}
-      LOG_BUILD            TRUE
-      LOG_INSTALL          TRUE
-      TIMEOUT              600
-      DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${3RDPARTY_LIBS_DIR} no-shared # ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        $(MAKE) AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND 	   "" # suppress install
-      )
-	  
-    externalproject_add(${LIBBISON_TARGET}
-      URL                  ${WITH_BISON_URL}
-      LOG_BUILD            TRUE
-      LOG_INSTALL          TRUE
-      TIMEOUT              600
-      DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${3RDPARTY_LIBS_DIR} no-shared # ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        $(MAKE) AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND 	   "" # suppress install
-      )
-	  
-    set(LIBFLEX_LIBS ${3RDPARTY_LIBS_DIR}/lib/libflex.a)
-    set(LIBBISON_LIBS ${3RDPARTY_LIBS_DIR}/lib/libbison.a)
-    set(LIBFLEX_INCLUDES ${3RDPARTY_LIBS_DIR}/include/flex)
-    set(LIBBISON_INCLUDES ${3RDPARTY_LIBS_DIR}/include/bison)
-  elseif(WIN32)
+  if(WIN32)
     # bison and flex for Windows
     set(WIN_FLEX_BISON_VERSION "2.5.20")
     set(WIN_FLEX_BISON_URL "https://github.com/lexxmark/winflexbison/releases/download/v${WIN_FLEX_BISON_VERSION}/win_flex_bison-${WIN_FLEX_BISON_VERSION}.zip")
@@ -114,7 +89,7 @@ if(WITH_LIBFLEXBISON STREQUAL "EXTERNAL")
     file(MAKE_DIRECTORY ${WIN_FLEX_BISON_INSTALL_DIR})
     execute_process(COMMAND ${CMAKE_COMMAND} -E tar -xf ${WIN_FLEX_BISON_FILENAME} WORKING_DIRECTORY ${WIN_FLEX_BISON_INSTALL_DIR})
     list(APPEND CMAKE_PREFIX_PATH ${WIN_FLEX_BISON_INSTALL_DIR})
-  endif(UNIX)
+  endif(WIN32)
 elseif(WITH_LIBFLEX STREQUAL "SYSTEM")
 	include(FindFLEX)
 	include(FindBISON)
