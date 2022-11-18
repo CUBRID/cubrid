@@ -8807,7 +8807,11 @@ pgbuf_put_bcb_into_invalid_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   /* the caller is holding bufptr->mutex */
   VPID_SET_NULL (&bufptr->vpid);
   bufptr->latch_mode = PGBUF_LATCH_INVALID;
-  assert ((bufptr->flags & PGBUF_BCB_FLAGS_MASK) == 0);
+
+  assert ((bufptr->flags & PGBUF_BCB_FLAGS_MASK) == 0
+	  || (is_passive_transaction_server ()
+	      && ((bufptr->flags & PGBUF_BCB_FLAGS_MASK) == PGBUF_BCB_FLUSH_NOT_NEEDED_FLAG)));
+
   pgbuf_bcb_change_zone (thread_p, bufptr, 0, PGBUF_INVALID_ZONE);
   pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (bufptr, ARG_FILE_LINE);
 
@@ -14718,6 +14722,30 @@ pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
   pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_UNKNOWN);
   pgbuf_set_tde_algorithm (thread_p, rcv->pgptr, TDE_ALGORITHM_NONE, true);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
+#if defined(SERVER_MODE)
+  if (is_passive_transaction_server ())
+    {
+      /* on a passive transaction server; upon de-allocation, remove the page
+       * from page buffer altogether; do this to avoid the following scenario:
+       * -
+       */
+#if !defined(NDEBUG)
+      /*
+       */
+      PGBUF_BCB *bufptr;
+      CAST_PGPTR_TO_BFPTR (bufptr, rcv->pgptr);
+      assert (bufptr->next_wait_thrd == nullptr);
+#endif
+      const int error_code = pgbuf_invalidate (thread_p, rcv->pgptr);
+      if (error_code != NO_ERROR)
+	{
+	  assert ("page invalidation failed" == nullptr);
+	  return error_code;
+	}
+    }
+#endif
+
   return NO_ERROR;
 }
 

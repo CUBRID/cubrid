@@ -1148,6 +1148,10 @@ namespace cublog
 	// other sanity asserts inside the function
 	pgbuf_ordered_unfix (thread_p, watcher_uptr.get ());
 	break;
+      case RVPGBUF_DEALLOC:
+	assert (watcher_uptr == nullptr);
+	// TODO: do not unfix the page, it has been already flushed from the page buffer
+	break;
       default:
 	assert (watcher_uptr == nullptr);
 	// other sanity asserts inside the function
