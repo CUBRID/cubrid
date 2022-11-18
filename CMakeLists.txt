@@ -295,27 +295,6 @@ set(ESQL_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/esql_lexer.c)
 message("Including Third Party Libraries")
 add_subdirectory(3rdparty)
 
-# bison and flex check
-include(FindBISON)
-include(FindFLEX)
-
-find_package(BISON 3.0.0)
-find_package(FLEX 2.5.34 REQUIRED)
-
-if(NOT BISON_FOUND OR NOT FLEX_FOUND)
-  if(UNIX)
-    message(FATAL_ERROR "Please install bison and flex.")
-  else()
-    message(
-      FATAL_ERROR
-      "Please install bison and flex.\nDownload the latest archive from"
-      " https://github.com/lexxmark/winflexbison/releases"
-      " extract it to a directory in the Path (e.g. %USERPROFILE%\\AppData\\Local\\Microsoft\\WindowsApps)"
-      " and retry running cmake."
-    )
-  endif()
-endif(NOT BISON_FOUND OR NOT FLEX_FOUND)
-
 # CSQL FLEX/BISON targets
 # replace old bison directives with new ones
 # use add_custom_command because we want to regenerate csql_grammar.yy
