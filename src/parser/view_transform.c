@@ -1215,6 +1215,7 @@ mq_updatable (PARSER_CONTEXT * parser, PT_NODE * statement, char **reuse_oid_cla
   int num_classes = 0;
   int max = MAX_STACK_OBJECTS;
   int reuse_oid = -1;
+
   DB_OBJECT *class_stack_array[MAX_STACK_OBJECTS];
   DB_OBJECT **classes = class_stack_array;
 
