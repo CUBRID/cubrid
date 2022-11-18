@@ -44,8 +44,8 @@ public class CaseStmt implements Stmt {
 
     @Override
     public String toJavaCode() {
-        return tmpl.replace("%VALUE%", val.toJavaCode())
-                .replace("  %STATEMENTS%", Misc.indentLines(stmts.toJavaCode(), 1));
+        return tmpl.replace("%'VALUE'%", val.toJavaCode())
+                .replace("  %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 1));
     }
 
     // --------------------------------------------------
@@ -54,5 +54,5 @@ public class CaseStmt implements Stmt {
 
     private static final String tmpl =
             Misc.combineLines(
-                    "if (Objects.equals(selector_%LEVEL%, %VALUE%)) {", "  %STATEMENTS%", "}");
+                    "if (Objects.equals(selector_%'LEVEL'%, %'VALUE'%)) {", "  %'STATEMENTS'%", "}");
 }

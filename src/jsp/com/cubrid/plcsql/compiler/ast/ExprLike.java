@@ -46,10 +46,10 @@ public class ExprLike implements Expr {
 
     @Override
     public String toJavaCode() {
-        return tmpl.replace("  %TARGET%", Misc.indentLines(target.toJavaCode(), 1))
-                .replace("  %PATTERN%", Misc.indentLines(pattern.toJavaCode(), 1))
+        return tmpl.replace("  %'TARGET'%", Misc.indentLines(target.toJavaCode(), 1))
+                .replace("  %'PATTERN'%", Misc.indentLines(pattern.toJavaCode(), 1))
                 .replace(
-                        "  %ESCAPE%",
+                        "  %'ESCAPE'%",
                         Misc.indentLines(escape == null ? "null" : escape.toJavaCode(), 1));
     }
 
@@ -58,5 +58,5 @@ public class ExprLike implements Expr {
     // --------------------------------------------------
 
     private static final String tmpl =
-            Misc.combineLines("opLike(", "  %TARGET%,", "  %PATTERN%,", "  %ESCAPE%", ")");
+            Misc.combineLines("opLike(", "  %'TARGET'%,", "  %'PATTERN'%,", "  %'ESCAPE'%", ")");
 }

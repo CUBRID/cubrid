@@ -67,7 +67,7 @@ public class Unit implements AstNode {
         if (connectionRequired) {
             strGetConn =
                     tmplGetConn.replace(
-                            "%AUTONOMOUS-TRANSACTION%",
+                            "%'AUTONOMOUS-TRANSACTION'%",
                             autonomousTransaction ? "?autonomous_transaction=true" : "");
         } else {
             strGetConn = "// connection not required";
@@ -77,9 +77,9 @@ public class Unit implements AstNode {
                 routine.decls == null
                         ? "// no declarations"
                         : tmplDeclClass
-                                .replace("%BLOCK%", routine.name.toLowerCase())
+                                .replace("%'BLOCK'%", routine.name.toLowerCase())
                                 .replace(
-                                        "  %DECLARATIONS%",
+                                        "  %'DECLARATIONS'%",
                                         Misc.indentLines(routine.decls.toJavaCode(), 1));
         ;
         String strParams =
@@ -87,16 +87,16 @@ public class Unit implements AstNode {
                         ? "// no parameters"
                         : routine.paramList.toJavaCode(",\n");
 
-        return tmplUnit.replace("%IMPORTS%", importsStr)
-                .replace("%CLASS-NAME%", getClassName())
+        return tmplUnit.replace("%'IMPORTS'%", importsStr)
+                .replace("%'CLASS-NAME'%", getClassName())
                 .replace(
-                        "%RETURN-TYPE%",
+                        "%'RETURN-TYPE'%",
                         routine.retType == null ? "void" : routine.retType.toJavaCode())
-                .replace("%METHOD-NAME%", routine.name)
-                .replace("      %PARAMETERS%", Misc.indentLines(strParams, 3))
-                .replace("    %GET-CONNECTION%", Misc.indentLines(strGetConn, 2))
-                .replace("    %DECL-CLASS%", Misc.indentLines(strDecls, 2))
-                .replace("    %BODY%", Misc.indentLines(routine.body.toJavaCode(), 2));
+                .replace("%'METHOD-NAME'%", routine.name)
+                .replace("      %'PARAMETERS'%", Misc.indentLines(strParams, 3))
+                .replace("    %'GET-CONNECTION'%", Misc.indentLines(strGetConn, 2))
+                .replace("    %'DECL-CLASS'%", Misc.indentLines(strDecls, 2))
+                .replace("    %'BODY'%", Misc.indentLines(routine.body.toJavaCode(), 2));
     }
 
     public String getClassName() {
@@ -120,37 +120,37 @@ public class Unit implements AstNode {
 
     private static final String tmplUnit =
             Misc.combineLines(
-                    "%IMPORTS%",
+                    "%'IMPORTS'%",
                     "import static com.cubrid.plcsql.predefined.sp.SpLib.*;",
                     "",
-                    "public class %CLASS-NAME% {",
+                    "public class %'CLASS-NAME'% {",
                     "",
-                    "  public static %RETURN-TYPE% $%METHOD-NAME%(",
-                    "      %PARAMETERS%",
+                    "  public static %'RETURN-TYPE'% $%'METHOD-NAME'%(",
+                    "      %'PARAMETERS'%",
                     "    ) throws Exception {",
                     "",
                     // "    Long[] sql_rowcount = new Long[] { -1L };",
                     "    Integer[] sql_rowcount = new Integer[] { -1 };",
-                    "    %GET-CONNECTION%",
+                    "    %'GET-CONNECTION'%",
                     "",
-                    "    %DECL-CLASS%",
+                    "    %'DECL-CLASS'%",
                     "",
-                    "    %BODY%",
+                    "    %'BODY'%",
                     "  }",
                     "}");
 
     private static final String tmplGetConn =
             Misc.combineLines(
                     "Connection conn = DriverManager.getConnection"
-                            + "(\"jdbc:default:connection:%AUTONOMOUS-TRANSACTION%\");");
+                            + "(\"jdbc:default:connection:%'AUTONOMOUS-TRANSACTION'%\");");
 
     private static final String tmplDeclClass =
             Misc.combineLines(
-                    "class Decl_of_%BLOCK% {",
-                    "  Decl_of_%BLOCK%() throws Exception {};",
-                    "  %DECLARATIONS%",
+                    "class Decl_of_%'BLOCK'% {",
+                    "  Decl_of_%'BLOCK'%() throws Exception {};",
+                    "  %'DECLARATIONS'%",
                     "}",
-                    "Decl_of_%BLOCK% %BLOCK% = new Decl_of_%BLOCK%();");
+                    "Decl_of_%'BLOCK'% %'BLOCK'% = new Decl_of_%'BLOCK'%();");
 
     private String className;
 }

@@ -51,14 +51,14 @@ public class StmtBlock implements Stmt {
                 decls == null
                         ? "// no declarations"
                         : tmplDeclClass
-                                .replace("%BLOCK%", block)
+                                .replace("%'BLOCK'%", block)
                                 .replace(
-                                        "  %DECLARATIONS%",
+                                        "  %'DECLARATIONS'%",
                                         Misc.indentLines(decls.toJavaCode(), 1));
 
         return tmplBlock
-                .replace("  %DECL-CLASS%", Misc.indentLines(strDeclClass, 1))
-                .replace("  %BODY%", Misc.indentLines(body.toJavaCode(), 1));
+                .replace("  %'DECL-CLASS'%", Misc.indentLines(strDeclClass, 1))
+                .replace("  %'BODY'%", Misc.indentLines(body.toJavaCode(), 1));
     }
 
     // --------------------------------------------------
@@ -66,13 +66,13 @@ public class StmtBlock implements Stmt {
     // --------------------------------------------------
 
     private static final String tmplBlock =
-            Misc.combineLines("{", "", "  %DECL-CLASS%", "", "  %BODY%", "}");
+            Misc.combineLines("{", "", "  %'DECL-CLASS'%", "", "  %'BODY'%", "}");
 
     private static final String tmplDeclClass =
             Misc.combineLines(
-                    "class Decl_of_%BLOCK% {",
-                    "  Decl_of_%BLOCK%() throws Exception {};",
-                    "  %DECLARATIONS%",
+                    "class Decl_of_%'BLOCK'% {",
+                    "  Decl_of_%'BLOCK'%() throws Exception {};",
+                    "  %'DECLARATIONS'%",
                     "}",
-                    "Decl_of_%BLOCK% %BLOCK% = new Decl_of_%BLOCK%();");
+                    "Decl_of_%'BLOCK'% %'BLOCK'% = new Decl_of_%'BLOCK'%();");
 }

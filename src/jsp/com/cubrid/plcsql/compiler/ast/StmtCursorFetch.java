@@ -45,8 +45,8 @@ public class StmtCursorFetch implements Stmt {
     @Override
     public String toJavaCode() {
         String setIntoVarsStr = getSetIntoVarsStr(intoVars);
-        return tmplStmt.replace("%CURSOR%", cursor.toJavaCode())
-                .replace("    %SET-INTO-VARIABLES%", Misc.indentLines(setIntoVarsStr, 2));
+        return tmplStmt.replace("%'CURSOR'%", cursor.toJavaCode())
+                .replace("    %'SET-INTO-VARIABLES'%", Misc.indentLines(setIntoVarsStr, 2));
     }
 
     // --------------------------------------------------
@@ -56,11 +56,11 @@ public class StmtCursorFetch implements Stmt {
     private static final String tmplStmt =
             Misc.combineLines(
                     "{ // cursor fetch",
-                    "  ResultSet rs = %CURSOR%.rs;",
+                    "  ResultSet rs = %'CURSOR'%.rs;",
                     "  if (rs == null) {",
                     "    ; // do nothing   TODO: throw an exception?",
                     "  } else if (rs.next()) {",
-                    "    %SET-INTO-VARIABLES%",
+                    "    %'SET-INTO-VARIABLES'%",
                     "  } else {",
                     "    ; // TODO: what to do? setting nulls to into-variables? ",
                     "  }",

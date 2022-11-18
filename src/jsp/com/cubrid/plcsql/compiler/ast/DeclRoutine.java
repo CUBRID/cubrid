@@ -66,18 +66,18 @@ public class DeclRoutine extends DeclBase {
                 decls == null
                         ? "// no declarations"
                         : tmplDeclClass
-                                .replace("%BLOCK%", name.toLowerCase())
+                                .replace("%'BLOCK'%", name.toLowerCase())
                                 .replace(
-                                        "  %DECLARATIONS%",
+                                        "  %'DECLARATIONS'%",
                                         Misc.indentLines(decls.toJavaCode(), 1));
         String strParams = paramList == null ? "// no parameters" : paramList.toJavaCode(",\n");
 
         return tmplFuncBody
-                .replace("%RETURN-TYPE%", retType == null ? "void" : retType.toJavaCode())
-                .replace("    %PARAMETERS%", Misc.indentLines(strParams, 2))
-                .replace("  %DECL-CLASS%", Misc.indentLines(strDeclClass, 1))
-                .replace("  %BODY%", Misc.indentLines(body.toJavaCode(), 1))
-                .replace("%METHOD-NAME%", name);
+                .replace("%'RETURN-TYPE'%", retType == null ? "void" : retType.toJavaCode())
+                .replace("    %'PARAMETERS'%", Misc.indentLines(strParams, 2))
+                .replace("  %'DECL-CLASS'%", Misc.indentLines(strDeclClass, 1))
+                .replace("  %'BODY'%", Misc.indentLines(body.toJavaCode(), 1))
+                .replace("%'METHOD-NAME'%", name);
     }
 
     // --------------------------------------------------
@@ -118,20 +118,20 @@ public class DeclRoutine extends DeclBase {
 
     private static final String tmplFuncBody =
             Misc.combineLines(
-                    "%RETURN-TYPE% $%METHOD-NAME%(",
-                    "    %PARAMETERS%",
+                    "%'RETURN-TYPE'% $%'METHOD-NAME'%(",
+                    "    %'PARAMETERS'%",
                     "  ) throws Exception {",
                     "",
-                    "  %DECL-CLASS%",
+                    "  %'DECL-CLASS'%",
                     "",
-                    "  %BODY%",
+                    "  %'BODY'%",
                     "}");
 
     private static final String tmplDeclClass =
             Misc.combineLines(
-                    "class Decl_of_%BLOCK% {",
-                    "  Decl_of_%BLOCK%() throws Exception {};",
-                    "  %DECLARATIONS%",
+                    "class Decl_of_%'BLOCK'% {",
+                    "  Decl_of_%'BLOCK'%() throws Exception {};",
+                    "  %'DECLARATIONS'%",
                     "}",
-                    "Decl_of_%BLOCK% %BLOCK% = new Decl_of_%BLOCK%();");
+                    "Decl_of_%'BLOCK'% %'BLOCK'% = new Decl_of_%'BLOCK'%();");
 }

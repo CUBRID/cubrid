@@ -51,10 +51,10 @@ public class StmtCursorOpen implements Stmt {
         DeclCursor decl = (DeclCursor) cursor.decl;
         String dupCursorArgStr = getDupCursorArgStr(decl.paramRefCounts);
         String hostValuesStr = getHostValuesStr(decl.usedValuesMap, decl.paramRefCounts);
-        return tmplStmt.replace("  %DUPLICATE-CURSOR-ARG%", Misc.indentLines(dupCursorArgStr, 1))
-                .replace("  %CURSOR%", Misc.indentLines(cursor.toJavaCode(), 1))
-                .replace("%HOST-VALUES%", Misc.indentLines(hostValuesStr, 2, true))
-                .replace("%LEVEL%", "" + level);
+        return tmplStmt.replace("  %'DUPLICATE-CURSOR-ARG'%", Misc.indentLines(dupCursorArgStr, 1))
+                .replace("  %'CURSOR'%", Misc.indentLines(cursor.toJavaCode(), 1))
+                .replace("%'HOST-VALUES'%", Misc.indentLines(hostValuesStr, 2, true))
+                .replace("%'LEVEL'%", "" + level);
     }
 
     // --------------------------------------------------
@@ -64,8 +64,8 @@ public class StmtCursorOpen implements Stmt {
     private static final String tmplStmt =
             Misc.combineLines(
                     "{ // cursor open",
-                    "  %DUPLICATE-CURSOR-ARG%",
-                    "  %CURSOR%.open(conn%HOST-VALUES%);",
+                    "  %'DUPLICATE-CURSOR-ARG'%",
+                    "  %'CURSOR'%.open(conn%'HOST-VALUES'%);",
                     "}");
 
     // --------------------------------------------------
@@ -88,7 +88,7 @@ public class StmtCursorOpen implements Stmt {
 
                 sbuf.append(
                         String.format(
-                                "Object a%d_%%LEVEL%% = %s;",
+                                "Object a%d_%%'LEVEL'%% = %s;",
                                 i, Misc.indentLines(args.nodes.get(i).toJavaCode(), 1, true)));
             }
         }
@@ -115,7 +115,7 @@ public class StmtCursorOpen implements Stmt {
                     int k = -m - 1;
                     if (paramRefCounts[k] > 1) {
                         // parameter-k appears more than one times in the select statement
-                        sbuf.append("a" + k + "_%LEVEL%");
+                        sbuf.append("a" + k + "_%'LEVEL'%");
                     } else {
                         assert paramRefCounts[k] == 1;
                         sbuf.append(args.nodes.get(k).toJavaCode());

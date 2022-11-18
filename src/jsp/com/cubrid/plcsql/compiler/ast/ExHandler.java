@@ -65,8 +65,8 @@ public class ExHandler implements AstNode {
             }
         }
 
-        return tmpl.replace("%EXCEPTIONS%", sbuf.toString())
-                .replace("  %STATEMENTS%", Misc.indentLines(stmts.toJavaCode(), 1));
+        return tmpl.replace("%'EXCEPTIONS'%", sbuf.toString())
+                .replace("  %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 1));
     }
 
     // --------------------------------------------------
@@ -74,5 +74,5 @@ public class ExHandler implements AstNode {
     // --------------------------------------------------
 
     private static final String tmpl =
-            Misc.combineLines(" catch (%EXCEPTIONS% e) {", "  %STATEMENTS%", "}");
+            Misc.combineLines(" catch (%'EXCEPTIONS'% e) {", "  %'STATEMENTS'%", "}");
 }

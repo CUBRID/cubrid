@@ -47,9 +47,9 @@ public class StmtWhileLoop implements Stmt {
     @Override
     public String toJavaCode() {
         return tmpl.replace(
-                        "%OPT-LABEL%", declLabel == null ? "// no label" : declLabel.toJavaCode())
-                .replace("%EXPRESSION%", expr.toJavaCode())
-                .replace("  %STATEMENTS%", Misc.indentLines(stmts.toJavaCode(), 1));
+                        "%'OPT-LABEL'%", declLabel == null ? "// no label" : declLabel.toJavaCode())
+                .replace("%'EXPRESSION'%", expr.toJavaCode())
+                .replace("  %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 1));
     }
 
     // --------------------------------------------------
@@ -57,5 +57,5 @@ public class StmtWhileLoop implements Stmt {
     // --------------------------------------------------
 
     private static final String tmpl =
-            Misc.combineLines("%OPT-LABEL%", "while (%EXPRESSION%) {", "  %STATEMENTS%", "}");
+            Misc.combineLines("%'OPT-LABEL'%", "while (%'EXPRESSION'%) {", "  %'STATEMENTS'%", "}");
 }

@@ -46,9 +46,9 @@ public class StmtOpenFor implements Stmt {
 
     @Override
     public String toJavaCode() {
-        return tmplStmt.replace("%REF-CURSOR%", refCursor.toJavaCode())
-                .replace("%QUERY%", sql.toJavaCode())
-                .replace("    %HOST-VARIABLES%", Misc.indentLines(usedVars.toJavaCode(",\n"), 2));
+        return tmplStmt.replace("%'REF-CURSOR'%", refCursor.toJavaCode())
+                .replace("%'QUERY'%", sql.toJavaCode())
+                .replace("    %'HOST-VARIABLES'%", Misc.indentLines(usedVars.toJavaCode(",\n"), 2));
     }
 
     // --------------------------------------------------
@@ -58,9 +58,9 @@ public class StmtOpenFor implements Stmt {
     private static final String tmplStmt =
             Misc.combineLines(
                     "{ // open-for statement",
-                    "  %REF-CURSOR% = new Query(%QUERY%);",
-                    "  %REF-CURSOR%.open(conn,",
-                    "    %HOST-VARIABLES%",
+                    "  %'REF-CURSOR'% = new Query(%'QUERY'%);",
+                    "  %'REF-CURSOR'%.open(conn,",
+                    "    %'HOST-VARIABLES'%",
                     "  );",
                     "}");
 }

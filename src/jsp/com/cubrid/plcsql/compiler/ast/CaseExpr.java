@@ -44,8 +44,8 @@ public class CaseExpr implements Stmt {
 
     @Override
     public String toJavaCode() {
-        return tmpl.replace("%VALUE%", val.toJavaCode())
-                .replace("  %EXPRESSION%", Misc.indentLines(expr.toJavaCode(), 1));
+        return tmpl.replace("%'VALUE'%", val.toJavaCode())
+                .replace("  %'EXPRESSION'%", Misc.indentLines(expr.toJavaCode(), 1));
     }
 
     // --------------------------------------------------
@@ -53,5 +53,5 @@ public class CaseExpr implements Stmt {
     // --------------------------------------------------
 
     private static final String tmpl =
-            Misc.combineLines("Objects.equals(selector_%LEVEL%, %VALUE%) ?", "  %EXPRESSION% :");
+            Misc.combineLines("Objects.equals(selector_%'LEVEL'%, %'VALUE'%) ?", "  %'EXPRESSION'% :");
 }

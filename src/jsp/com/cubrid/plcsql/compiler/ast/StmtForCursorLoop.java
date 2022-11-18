@@ -61,13 +61,13 @@ public class StmtForCursorLoop extends StmtCursorOpen {
         DeclCursor decl = (DeclCursor) cursor.decl;
         String dupCursorArgStr = getDupCursorArgStr(decl.paramRefCounts);
         String hostValuesStr = getHostValuesStr(decl.usedValuesMap, decl.paramRefCounts);
-        return tmplStmt.replace("  %DUPLICATE-CURSOR-ARG%", Misc.indentLines(dupCursorArgStr, 1))
-                .replace("%CURSOR%", cursor.toJavaCode())
-                .replace("%HOST-VALUES%", Misc.indentLines(hostValuesStr, 2, true))
-                .replace("%RECORD%", record)
-                .replace("%LABEL%", label == null ? "// no label" : label + "_%LEVEL%:")
-                .replace("%LEVEL%", "" + level)
-                .replace("    %STATEMENTS%", Misc.indentLines(stmts.toJavaCode(), 2));
+        return tmplStmt.replace("  %'DUPLICATE-CURSOR-ARG'%", Misc.indentLines(dupCursorArgStr, 1))
+                .replace("%'CURSOR'%", cursor.toJavaCode())
+                .replace("%'HOST-VALUES'%", Misc.indentLines(hostValuesStr, 2, true))
+                .replace("%'RECORD'%", record)
+                .replace("%'LABEL'%", label == null ? "// no label" : label + "_%'LEVEL'%:")
+                .replace("%'LEVEL'%", "" + level)
+                .replace("    %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 2));
     }
 
     // --------------------------------------------------
@@ -77,13 +77,13 @@ public class StmtForCursorLoop extends StmtCursorOpen {
     private static final String tmplStmt =
             Misc.combineLines(
                     "{ // for loop with a cursor",
-                    "  %DUPLICATE-CURSOR-ARG%",
-                    "  %CURSOR%.open(conn%HOST-VALUES%);",
-                    "  ResultSet $%RECORD%_r%LEVEL% = %CURSOR%.rs;",
-                    "  %LABEL%",
-                    "  while ($%RECORD%_r%LEVEL%.next()) {",
-                    "    %STATEMENTS%",
+                    "  %'DUPLICATE-CURSOR-ARG'%",
+                    "  %'CURSOR'%.open(conn%'HOST-VALUES'%);",
+                    "  ResultSet $%'RECORD'%_r%'LEVEL'% = %'CURSOR'%.rs;",
+                    "  %'LABEL'%",
+                    "  while ($%'RECORD'%_r%'LEVEL'%.next()) {",
+                    "    %'STATEMENTS'%",
                     "  }",
-                    "  %CURSOR%.close();",
+                    "  %'CURSOR'%.close();",
                     "}");
 }

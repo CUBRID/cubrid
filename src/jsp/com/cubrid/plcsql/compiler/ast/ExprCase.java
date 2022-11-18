@@ -49,12 +49,12 @@ public class ExprCase implements Expr {
     @Override
     public String toJavaCode() {
 
-        return tmpl.replace("%SELECTOR-VALUE%", selector.toJavaCode())
-                .replace("%WHEN-PARTS%", Misc.indentLines(whenParts.toJavaCode(), 2, true))
+        return tmpl.replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
+                .replace("%'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(), 2, true))
                 .replace(
-                        "    %ELSE-PART%",
+                        "    %'ELSE-PART'%",
                         Misc.indentLines(elsePart == null ? "null" : elsePart.toJavaCode(), 2))
-                .replace("%LEVEL%", "" + level) // level replacement must go last
+                .replace("%'LEVEL'%", "" + level) // level replacement must go last
         ;
     }
 
@@ -64,6 +64,6 @@ public class ExprCase implements Expr {
 
     private static final String tmpl =
             Misc.combineLines(
-                    "(new Object() { Object invoke(Object selector_%LEVEL%) throws Exception { // simple case expression",
-                    "  return %WHEN-PARTS%", "    %ELSE-PART%;", "} }.invoke(%SELECTOR-VALUE%))");
+                    "(new Object() { Object invoke(Object selector_%'LEVEL'%) throws Exception { // simple case expression",
+                    "  return %'WHEN-PARTS'%", "    %'ELSE-PART'%;", "} }.invoke(%'SELECTOR-VALUE'%))");
 }

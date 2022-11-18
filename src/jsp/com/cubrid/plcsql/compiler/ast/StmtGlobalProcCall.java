@@ -48,10 +48,10 @@ public class StmtGlobalProcCall implements Stmt {
     public String toJavaCode() {
         String dynSql = getDynSql(name, args == null ? 0 : args.nodes.size());
         String setUsedValuesStr = Common.getSetUsedValuesStr(args);
-        return tmplStmt.replace("%PROC-NAME%", name)
-                .replace("%DYNAMIC-SQL%", dynSql)
-                .replace("  %SET-USED-VALUES%", Misc.indentLines(setUsedValuesStr, 1))
-                .replace("%LEVEL%", "" + level);
+        return tmplStmt.replace("%'PROC-NAME'%", name)
+                .replace("%'DYNAMIC-SQL'%", dynSql)
+                .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedValuesStr, 1))
+                .replace("%'LEVEL'%", "" + level);
     }
 
     // --------------------------------------------------
@@ -60,12 +60,12 @@ public class StmtGlobalProcCall implements Stmt {
 
     private static final String tmplStmt =
             Misc.combineLines(
-                    "{ // global procedure call: %PROC-NAME%",
-                    "  String dynSql_%LEVEL% = \"%DYNAMIC-SQL%\";",
-                    "  CallableStatement stmt_%LEVEL% = conn.prepareCall(dynSql_%LEVEL%);",
-                    "  %SET-USED-VALUES%",
-                    "  stmt_%LEVEL%.execute();",
-                    "  stmt_%LEVEL%.close();",
+                    "{ // global procedure call: %'PROC-NAME'%",
+                    "  String dynSql_%'LEVEL'% = \"%'DYNAMIC-SQL'%\";",
+                    "  CallableStatement stmt_%'LEVEL'% = conn.prepareCall(dynSql_%'LEVEL'%);",
+                    "  %'SET-USED-VALUES'%",
+                    "  stmt_%'LEVEL'%.execute();",
+                    "  stmt_%'LEVEL'%.close();",
                     "}");
 
     private static String getDynSql(String name, int argCount) {

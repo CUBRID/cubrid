@@ -53,8 +53,8 @@ class Common {
             Expr expr = exprList.nodes.get(i);
             sbuf.append(
                     tmplSetObject
-                            .replace("%INDEX%", "" + (i + startIndex))
-                            .replace("  %VALUE%", Misc.indentLines(expr.toJavaCode(), 1)));
+                            .replace("%'INDEX'%", "" + (i + startIndex))
+                            .replace("  %'VALUE'%", Misc.indentLines(expr.toJavaCode(), 1)));
         }
 
         return sbuf.toString();
@@ -82,5 +82,5 @@ class Common {
     // ----------------------------------------------------
 
     private static final String tmplSetObject =
-            Misc.combineLines("stmt_%LEVEL%.setObject(", "  %INDEX%,", "  %VALUE%", ");");
+            Misc.combineLines("stmt_%'LEVEL'%.setObject(", "  %'INDEX'%,", "  %'VALUE'%", ");");
 }

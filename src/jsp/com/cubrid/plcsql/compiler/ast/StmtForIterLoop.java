@@ -69,13 +69,13 @@ public class StmtForIterLoop implements Stmt {
         String labelStr = declLabel == null ? "// no label" : declLabel.toJavaCode();
 
         return (reverse ? tmplForIterReverse : tmplForIter)
-                .replace("%LEVEL%", "" + level)
-                .replace("  %OPT-LABEL%", Misc.indentLines(labelStr, 1))
-                .replace("%ITER%", iter)
-                .replace("%LOWER-BOUND%", lowerBound.toJavaCode())
-                .replace("%UPPER-BOUND%", upperBound.toJavaCode())
-                .replace("%STEP%", step == null ? "1" : step.toJavaCode())
-                .replace("    %STATEMENTS%", Misc.indentLines(stmts.toJavaCode(), 2));
+                .replace("%'LEVEL'%", "" + level)
+                .replace("  %'OPT-LABEL'%", Misc.indentLines(labelStr, 1))
+                .replace("%'ITER'%", iter)
+                .replace("%'LOWER-BOUND'%", lowerBound.toJavaCode())
+                .replace("%'UPPER-BOUND'%", upperBound.toJavaCode())
+                .replace("%'STEP'%", step == null ? "1" : step.toJavaCode())
+                .replace("    %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 2));
     }
 
     // --------------------------------------------------
@@ -85,22 +85,22 @@ public class StmtForIterLoop implements Stmt {
     private static final String tmplForIter =
             Misc.combineLines(
                     "{",
-                    "  int upper_%LEVEL% = %UPPER-BOUND%;",
-                    "  int step_%LEVEL% = %STEP%;",
-                    "  %OPT-LABEL%",
-                    "  for (int $%ITER%_i%LEVEL% = %LOWER-BOUND%; $%ITER%_i%LEVEL% <= upper_%LEVEL%; $%ITER%_i%LEVEL% += step_%LEVEL%) {",
-                    "    %STATEMENTS%",
+                    "  int upper_%'LEVEL'% = %'UPPER-BOUND'%;",
+                    "  int step_%'LEVEL'% = %'STEP'%;",
+                    "  %'OPT-LABEL'%",
+                    "  for (int $%'ITER'%_i%'LEVEL'% = %'LOWER-BOUND'%; $%'ITER'%_i%'LEVEL'% <= upper_%'LEVEL'%; $%'ITER'%_i%'LEVEL'% += step_%'LEVEL'%) {",
+                    "    %'STATEMENTS'%",
                     "  }",
                     "}");
 
     private static final String tmplForIterReverse =
             Misc.combineLines(
                     "{",
-                    "  int lower_%LEVEL% = %LOWER-BOUND%;",
-                    "  int step_%LEVEL% = %STEP%;",
-                    "  %OPT-LABEL%",
-                    "  for (int $%ITER%_i%LEVEL% = %UPPER-BOUND%; $%ITER%_i%LEVEL% >= lower_%LEVEL%; $%ITER%_i%LEVEL% -= step_%LEVEL%) {",
-                    "    %STATEMENTS%",
+                    "  int lower_%'LEVEL'% = %'LOWER-BOUND'%;",
+                    "  int step_%'LEVEL'% = %'STEP'%;",
+                    "  %'OPT-LABEL'%",
+                    "  for (int $%'ITER'%_i%'LEVEL'% = %'UPPER-BOUND'%; $%'ITER'%_i%'LEVEL'% >= lower_%'LEVEL'%; $%'ITER'%_i%'LEVEL'% -= step_%'LEVEL'%) {",
+                    "    %'STATEMENTS'%",
                     "  }",
                     "}");
 }

@@ -62,13 +62,13 @@ public class StmtForSqlLoop implements Stmt {
     @Override
     public String toJavaCode() {
         String setUsedValuesStr = Common.getSetUsedValuesStr(usedExprList);
-        return tmplStmt.replace("%KIND%", isDynamic ? "dynamic" : "static")
-                .replace("%SQL%", sql.toJavaCode())
-                .replace("  %SET-USED-VALUES%", Misc.indentLines(setUsedValuesStr, 1))
-                .replace("%RECORD%", record)
-                .replace("%LABEL%", label == null ? "// no label" : label + "_%LEVEL%:")
-                .replace("%LEVEL%", "" + level)
-                .replace("    %STATEMENTS%", Misc.indentLines(stmts.toJavaCode(), 2));
+        return tmplStmt.replace("%'KIND'%", isDynamic ? "dynamic" : "static")
+                .replace("%'SQL'%", sql.toJavaCode())
+                .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedValuesStr, 1))
+                .replace("%'RECORD'%", record)
+                .replace("%'LABEL'%", label == null ? "// no label" : label + "_%'LEVEL'%:")
+                .replace("%'LEVEL'%", "" + level)
+                .replace("    %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 2));
     }
 
     // --------------------------------------------------
@@ -77,15 +77,15 @@ public class StmtForSqlLoop implements Stmt {
 
     private static final String tmplStmt =
             Misc.combineLines(
-                    "{ // for-loop with %KIND% SQL",
-                    "  String sql_%LEVEL% = %SQL%;",
-                    "  PreparedStatement stmt_%LEVEL% = conn.prepareStatement(sql_%LEVEL%);",
-                    "  %SET-USED-VALUES%",
-                    "  ResultSet $%RECORD%_r%LEVEL% = stmt_%LEVEL%.executeQuery();",
-                    "  %LABEL%",
-                    "  while ($%RECORD%_r%LEVEL%.next()) {",
-                    "    %STATEMENTS%",
+                    "{ // for-loop with %'KIND'% SQL",
+                    "  String sql_%'LEVEL'% = %'SQL'%;",
+                    "  PreparedStatement stmt_%'LEVEL'% = conn.prepareStatement(sql_%'LEVEL'%);",
+                    "  %'SET-USED-VALUES'%",
+                    "  ResultSet $%'RECORD'%_r%'LEVEL'% = stmt_%'LEVEL'%.executeQuery();",
+                    "  %'LABEL'%",
+                    "  while ($%'RECORD'%_r%'LEVEL'%.next()) {",
+                    "    %'STATEMENTS'%",
                     "  }",
-                    "  stmt_%LEVEL%.close();",
+                    "  stmt_%'LEVEL'%.close();",
                     "}");
 }

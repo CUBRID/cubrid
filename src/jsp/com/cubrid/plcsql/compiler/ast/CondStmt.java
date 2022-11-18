@@ -48,8 +48,8 @@ public class CondStmt implements Stmt {
 
     @Override
     public String toJavaCode() {
-        return tmpl.replace("%CONDITION%", cond.toJavaCode())
-                .replace("  %STATEMENTS%", Misc.indentLines(stmts.toJavaCode(), 1));
+        return tmpl.replace("%'CONDITION'%", cond.toJavaCode())
+                .replace("  %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 1));
     }
 
     // --------------------------------------------------
@@ -57,5 +57,5 @@ public class CondStmt implements Stmt {
     // --------------------------------------------------
 
     private static final String tmpl =
-            Misc.combineLines("if (%CONDITION%) {", "  %STATEMENTS%", "}");
+            Misc.combineLines("if (%'CONDITION'%) {", "  %'STATEMENTS'%", "}");
 }
