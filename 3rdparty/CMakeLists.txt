@@ -173,6 +173,7 @@ list(APPEND EP_LIBS ${LIBJANSSON_LIBS})
 # WITH_LIBNCURSES can have multiple values with different meanings
 # on Linux:
 # * "SYSTEM"   - uses ncurses installed in the system (for more info check https://cmake.org/cmake/help/v3.10/module/FindCurses.html)
+include (CheckLibraryExists)
 set(LIBCURSES_TARGET libncurses)
 if(UNIX)
   if(WITH_LIBNCURSES STREQUAL "SYSTEM")
