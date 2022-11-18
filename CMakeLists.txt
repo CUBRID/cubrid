@@ -295,10 +295,6 @@ set(ESQL_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/esql_lexer.c)
 message("Including Third Party Libraries")
 add_subdirectory(3rdparty)
 
-message("EP_TARGETS = ${EP_TARGETS}")
-message("EP_LIBS = ${EP_LIBS}")
-message("EP_INCLUDES = ${EP_INCLUDES}")
-
 # bison and flex check
 include(FindBISON)
 include(FindFLEX)
