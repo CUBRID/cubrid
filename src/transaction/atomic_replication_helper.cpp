@@ -667,8 +667,8 @@ namespace cublog
 	    const atomic_log_entry &last_but_one_entry = *last_but_one_entry_it;
 
 	    if (last_but_one_entry.m_rectype == LOG_SYSOP_ATOMIC_START) //&&
-		// !LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa) &&
-		// (last_but_one_entry.m_lsa >= last_entry.m_sysop_end_last_parent_lsa))
+	      // !LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa) &&
+	      // (last_but_one_entry.m_lsa >= last_entry.m_sysop_end_last_parent_lsa))
 	      {
 		m_log_vec.erase (last_but_one_entry_it, m_log_vec.cend ());
 
