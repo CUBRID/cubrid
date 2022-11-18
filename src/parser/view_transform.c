@@ -11731,7 +11731,8 @@ mq_fetch_subqueries_for_update_local (PARSER_CONTEXT * parser, PT_NODE * class_,
       if (!query_cache->view_cache->vquery_for_update
 	  && (!query_cache->view_cache->vquery_for_partial_update || (fetch_as != PT_PARTIAL_SELECT)) && parser)
 	{
-	  char reuse_tbl[256] = ".";
+	  char reuse_tbl[300] = "";
+
 	  if (reuse_oid_class_name)
 	    {
 	      sprintf (reuse_tbl, ", because %s table is REUSE_OID.", reuse_oid_class_name);
