@@ -15,7 +15,6 @@
 #   limitations under the License.
 # 
 #
-
 set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/csql.c
   ${EXECUTABLES_DIR}/csql_session.c
@@ -639,18 +638,22 @@ if(WIN32)
   target_link_libraries(cubridsa LINK_PRIVATE ws2_32 ${JVM_LIBS})
   set_target_properties(cubridsa PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cubridsa/cubridsa.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
+
+# include target_external_dependencies function
+include (expand_dependency)
+
 if(UNIX)
 target_external_dependencies(cubridsa
-  LIBNCURSES
+  LIBCURSES
   )
 endif(UNIX)
 target_external_dependencies(cubridsa
   LIBEXPAT
   LIBJANSSON
-  LIBEXPAT
   LIBEDIT
   LIBOPENSSL
   LZ4
+  RAPIDJSON
   )
 target_include_directories(cubridsa PRIVATE
   ${FLEX_INCLUDE_DIRS}
