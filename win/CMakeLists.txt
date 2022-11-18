@@ -109,17 +109,17 @@ install(TARGETS
   )
 
 install(FILES
-  ${CMAKE_SOURCE_DIR}/win/external/dll/jansson64.dll
+  ${CMAKE_SOURCE_DIR}/win/3rdparty/dll/jansson64.dll
   DESTINATION ${CUBRID_BINDIR} COMPONENT Library
   RENAME jansson.dll
   )
 install(FILES
-  ${CMAKE_SOURCE_DIR}/win/external/dll/libexpat64.dll
+  ${CMAKE_SOURCE_DIR}/win/3rdparty/dll/libexpat64.dll
   DESTINATION ${CUBRID_BINDIR} COMPONENT Library
   RENAME libexpat.dll
  )
  install(FILES
-   ${CMAKE_SOURCE_DIR}/win/external/lz4/bin/liblz4.dll
+   ${CMAKE_SOURCE_DIR}/win/3rdparty/lz4/bin/liblz4.dll
    DESTINATION ${CUBRID_BINDIR} COMPONENT Library
  )
 
