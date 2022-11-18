@@ -180,12 +180,6 @@ if(UNIX)
     include(FindCurses)
     find_package(Curses REQUIRED)
     CHECK_LIBRARY_EXISTS("${CURSES_LIBRARIES}" wtimeout "" LIBNCURSES_HAS_WTIMEOUT)
-    set(LIBNCURSES_INCLUDES "${CURSES_INCLUDE_DIRS}")
-    if (NOT DEFINED ${LIBNCURSES_INCLUDES})
-      set(LIBNCURSES_INCLUDES "${CURSES_INCLUDE_DIR}") # backward compatibility
-    endif (NOT DEFINED LIBNCURSES_INCLUDES)
-    set(LIBNCURSES_LIBS "${CURSES_LIBRARIES}")
-
     if(NOT LIBNCURSES_HAS_WTIMEOUT)
       message(STATUS "search for tinfo library")
       find_library(TINFO_LIBRARY NAMES tinfo)
@@ -205,6 +199,12 @@ if(UNIX)
     message(FATAL_ERROR "Invalid WITH_LIBNCURSES option value ${WITH_LIBNCURSES}")
   endif(WITH_LIBNCURSES STREQUAL "SYSTEM")
 endif(UNIX)
+
+set(LIBNCURSES_INCLUDES "${CURSES_INCLUDE_DIRS}")
+if (NOT DEFINED ${LIBNCURSES_INCLUDES})
+  set(LIBNCURSES_INCLUDES "${CURSES_INCLUDE_DIR}") # backward compatibility
+endif (NOT DEFINED ${LIBNCURSES_INCLUDES})
+set(LIBNCURSES_LIBS "${CURSES_LIBRARIES}")
 
 # WITH_LIBEDIT can have multiple values with different meanings
 # on Linux:
