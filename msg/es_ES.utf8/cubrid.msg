@@ -1437,7 +1437,16 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 Ultimo error
+1355 %1$s "%2$s" tiene un formato no válido en la línea %3$d del archivo "%4$s".
+1356 El nombre de host "%1$s" es demasiado largo, debe ser menor o igual a 256 en la línea %2$d del archivo "%3$s".
+1357 El nombre de host "%1$s" ya existe, un nombre de host no se puede duplicar con otras direcciones IP en la línea %2$d del archivo "%3$s".
+1358 Tanto la dirección IP como el nombre de host deben escribirse completamente en la línea %1$d del archivo "%2$s".
+1359 No se pudo buscar "%1$s" en cubrid_hosts.conf.
+1360 Ocurrió un error al usar el host definido por el usuario.
+
+1361 No se encontró el archivo "%1$s".
+
+1362 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

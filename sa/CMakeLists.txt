@@ -174,6 +174,7 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/connection_list_cl.c
   ${CONNECTION_DIR}/client_support.c
   ${CONNECTION_DIR}/connection_support.c
+  ${CONNECTION_DIR}/host_lookup.c
   )
 
 set(COMMUNICATION_SOURCES
