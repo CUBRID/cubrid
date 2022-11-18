@@ -1437,7 +1437,16 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 Son Hata
+1355 %1$s "%2$s", "%4$s" dosyasının %3$d satırında geçersiz biçim.
+1356 "%1$s" ana bilgisayar adı çok uzun, "%3$s" dosyasının %2$d satırında 256'dan küçük veya buna eşit olmalıdır.
+1357 "%1$s" ana bilgisayar adı zaten var, bir ana bilgisayar adı "%3$s" dosyasının %2$d satırındaki diğer IP adresleriyle çoğaltılamaz.
+1358 Hem IP adresi hem de ana bilgisayar adı, "%2$s" dosyasının %1$d satırına tamamen yazılmalıdır.
+1359 cubrid_hosts.conf dosyasında "%1$s" aranamıyor.
+1360 Kullanıcı tanımlı ana bilgisayar kullanılırken bir hata oluştu.
+
+1361 "%1$s" dosyası bulunamadı.
+
+1362 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

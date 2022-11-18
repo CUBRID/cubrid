@@ -69,8 +69,8 @@ set(BASE_SOURCES
   ${BASE_DIR}/bit.c
   ${BASE_DIR}/dynamic_array.c
   ${BASE_DIR}/porting.c
-  ${BASE_DIR}/memory_alloc_area.c
-  ${BASE_DIR}/memory_alloc_fixed.c
+  ${BASE_DIR}/area_alloc.c
+  ${BASE_DIR}/fixed_alloc.c
   ${BASE_DIR}/filesys_temp.cpp
   ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/memory_private_allocator.cpp
@@ -174,6 +174,7 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/connection_list_cl.c
   ${CONNECTION_DIR}/client_support.c
   ${CONNECTION_DIR}/connection_support.c
+  ${CONNECTION_DIR}/host_lookup.c
   )
 
 set(COMMUNICATION_SOURCES
@@ -297,6 +298,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/object_print_util.cpp
   ${OBJECT_DIR}/object_representation.c
   ${OBJECT_DIR}/object_template.c
+  ${OBJECT_DIR}/quick_fit.c
   ${OBJECT_DIR}/schema_class_truncator.cpp
   ${OBJECT_DIR}/schema_manager.c
   ${OBJECT_DIR}/schema_template.c

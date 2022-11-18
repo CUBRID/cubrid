@@ -39,6 +39,7 @@
 #include "broker_config.h"
 #include "broker_shm.h"
 #include "broker_error.h"
+#include "system_parameter.h"
 
 #include "broker_util.h"
 #include "util_func.h"
@@ -89,8 +90,16 @@ main (int argc, char **argv)
       return 0;
     }
 
+  er_init (NULL, ER_NEVER_EXIT);
+
   /* change the working directory to $CUBRID */
   ut_cd_root_dir ();
+
+  if (sysprm_load_and_init (NULL, NULL, SYSPRM_IGNORE_INTL_PARAMS) != NO_ERROR)
+    {
+      fprintf (stderr, "System Parameter load failed.");
+      return 0;
+    }
 
   err = broker_config_read (NULL, br_info, &num_broker, &master_shm_id, admin_log_file, 0, &acl_flag, acl_file, NULL);
   if (err < 0)
@@ -349,7 +358,7 @@ main (int argc, char **argv)
     {
       goto usage;
     }
-
+  er_final (ER_ALL_FINAL);
   return 0;
 
 usage:

@@ -31,7 +31,7 @@
 
 #include <stdarg.h>
 
-#include "memory_alloc_area.h"
+#include "area_alloc.h"
 #include "class_object.h"
 
 #define OBT_BASE_OBJECT(template_ptr) \

@@ -3151,6 +3151,7 @@ struct pt_value_info
   bool has_cs_introducer;	/* 1 if charset introducer is used for string node e.g. _utf8'a'; 0 otherwise. */
   bool is_collate_allowed;	/* 1 if this is a PT_VALUE allowed to have the COLLATE modifier (the grammar context in
 				 * which is created allows it) */
+  bool is_false_where;		/* reduced node from false where */
   int coll_modifier;		/* collation modifier = collation + 1 */
   int host_var_index;		/* save the host_var index which it comes from. -1 means it is a normal value. it does
 				 * not come from any host_var. */

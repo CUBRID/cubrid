@@ -71,7 +71,7 @@ set(THREAD_HEADERS
 
 set(BASE_SOURCES
   ${BASE_DIR}/adjustable_array.c
-  ${BASE_DIR}/memory_alloc_area.c
+  ${BASE_DIR}/area_alloc.c
   ${BASE_DIR}/base64.c
   ${BASE_DIR}/binaryheap.c
   ${BASE_DIR}/bit.c
@@ -88,7 +88,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/fault_injection.c
   ${BASE_DIR}/fileline_location.cpp
   ${BASE_DIR}/filesys_temp.cpp
-  ${BASE_DIR}/memory_alloc_fixed.c
+  ${BASE_DIR}/fixed_alloc.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
   ${BASE_DIR}/language_support.c
@@ -179,6 +179,7 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/connection_globals.c
   ${CONNECTION_DIR}/server_support.c
   ${CONNECTION_DIR}/connection_support.c
+  ${CONNECTION_DIR}/host_lookup.c
   )
 
 set(COMMUNICATION_SOURCES

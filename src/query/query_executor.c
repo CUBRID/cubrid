@@ -7852,6 +7852,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 	  if (!is_scan_needed)
 	    {
+	      xasl->spec_list->s_id.scan_stats.agg_optimized_scan = true;
 	      return S_SUCCESS;
 	    }
 
