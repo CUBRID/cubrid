@@ -272,7 +272,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
   int i;
   bool usable = false;
 
-  static int qmgr_max_query_entry_per_tran = prm_get_int_value (PRM_ID_QMGR_MAX_QUERY_PER_TRAN);
+  static int qmgr_max_query_entry_per_tran = prm_get_integer_value (PRM_ID_QMGR_MAX_QUERY_PER_TRAN);
 
   query_p = tran_entry_p->free_query_entry_list_p;
 
@@ -1279,7 +1279,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   bool is_xasl_pinned_reference;
   bool do_not_cache = false;
 
-  static int qmgr_max_query_entry_per_tran = prm_get_int_value (PRM_ID_QMGR_MAX_QUERY_PER_TRAN);
+  static int qmgr_max_query_entry_per_tran = prm_get_integer_value (PRM_ID_QMGR_MAX_QUERY_PER_TRAN);
 
   cached_result = false;
   query_p = NULL;
@@ -1776,7 +1776,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
   bool saved_is_stats_on;
   bool xasl_trace;
 
-  static int qmgr_max_query_entry_per_tran = prm_get_int_value (PRM_ID_QMGR_MAX_QUERY_PER_TRAN);
+  static int qmgr_max_query_entry_per_tran = prm_get_integer_value (PRM_ID_QMGR_MAX_QUERY_PER_TRAN);
 
   query_p = NULL;
   *query_id_p = -1;
