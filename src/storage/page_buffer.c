@@ -14727,12 +14727,12 @@ pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
   if (is_passive_transaction_server ())
     {
       /* on a passive transaction server; upon de-allocation, remove the page
-       * from page buffer altogether; do this to avoid the following scenario:
-       * -
-       */
+       * from page buffer altogether; needed because to provide a fail-safe mechanism
+       * for page re-allocation: when the same page is re-allocated in a subsequent
+       * transaction, the replication mechanism will fail to fix an 'PAGE_UNKNOWN' page */
 #if !defined(NDEBUG)
-      /*
-       */
+      /* crash if there are other, client, transactions waiting in line to fix the same page;
+       * architecturally, this should not be the case (as in a "monolithic" server as well) */
       PGBUF_BCB *bufptr;
       CAST_PGPTR_TO_BFPTR (bufptr, rcv->pgptr);
       assert (bufptr->next_wait_thrd == nullptr);
