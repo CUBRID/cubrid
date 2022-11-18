@@ -644,7 +644,7 @@ include (expand_dependency)
 
 if(UNIX)
 target_external_dependencies(cubridsa
-  LIBCURSES
+  LIBNCURSES
   )
 endif(UNIX)
 target_external_dependencies(cubridsa
