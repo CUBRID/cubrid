@@ -7342,8 +7342,8 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
       node->alias_print = alias_print;
       node->type_enum = PT_TYPE_NULL;
       node->info.value.location = 0;
-      node->flag.is_hidden_column = hidden;
       node->info.value.is_false_where = true;
+      node->flag.is_hidden_column = hidden;
       node->next = next;	/* restore link */
     }
 
