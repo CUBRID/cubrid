@@ -187,7 +187,7 @@ static PT_NODE *mq_rewrite_agg_names_post (PARSER_CONTEXT * parser, PT_NODE * no
 static bool mq_conditionally_add_objects (PARSER_CONTEXT * parser, PT_NODE * flat, DB_OBJECT *** classes, int *index,
 					  int *max);
 static PT_UPDATABILITY mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** classes, int *i,
-					   int *max);
+					   int *max, int *reuse_oid);
 static PT_NODE *mq_substitute_select_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec,
 						   PT_NODE * class_);
 static PT_NODE *mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
@@ -1078,9 +1078,10 @@ mq_conditionally_add_objects (PARSER_CONTEXT * parser, PT_NODE * flat, DB_OBJECT
  *   classes(in/out):
  *   num_classes(in/out):
  *   max(in/out):
+ *   reuse_oid(out):
  */
 static PT_UPDATABILITY
-mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** classes, int *num_classes, int *max)
+mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** classes, int *num_classes, int *max, int *reuse_oid)
 {
   PT_UPDATABILITY global = PT_UPDATABLE;
 
@@ -1119,7 +1120,7 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** 
 			  /* derived table from former view */
 			  local = (PT_UPDATABILITY) (local &
 						     mq_updatable_local (parser, spec->info.spec.derived_table, classes,
-									 num_classes, max));
+									 num_classes, max, reuse_oid));
 			}
 		      else
 			{
@@ -1155,6 +1156,10 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** 
 		  if (sm_is_reuse_oid_class ((*classes)[i]) || sm_is_system_class ((*classes)[i]) > 0)
 		    {
 		      local = (PT_UPDATABILITY) (local & PT_NOT_UPDATABLE);
+		      if (reuse_oid)
+		        {
+		          *reuse_oid = i;
+			}
 		      break;
 		    }
 		}
@@ -1173,11 +1178,11 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** 
 	      local =
 		(PT_UPDATABILITY) (local &
 				   mq_updatable_local (parser, statement->info.query.q.union_.arg1, classes,
-						       num_classes, max));
+						       num_classes, max, reuse_oid));
 	      local =
 		(PT_UPDATABILITY) (local &
 				   mq_updatable_local (parser, statement->info.query.q.union_.arg2, classes,
-						       num_classes, max));
+						       num_classes, max, reuse_oid));
 	    }
 	  break;
 
@@ -1200,17 +1205,24 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** 
  *   return: true on updatable
  *   parser(in):
  *   statement(in):
+ *   reuse_oid_class_name(out):
  */
 PT_UPDATABILITY
-mq_updatable (PARSER_CONTEXT * parser, PT_NODE * statement)
+mq_updatable (PARSER_CONTEXT * parser, PT_NODE * statement, char **reuse_oid_class_name)
 {
   PT_UPDATABILITY updatable;
   int num_classes = 0;
   int max = MAX_STACK_OBJECTS;
+  int reuse_oid = -1;
   DB_OBJECT *class_stack_array[MAX_STACK_OBJECTS];
   DB_OBJECT **classes = class_stack_array;
 
-  updatable = mq_updatable_local (parser, statement, &classes, &num_classes, &max);
+  updatable = mq_updatable_local (parser, statement, &classes, &num_classes, &max, &reuse_oid);
+
+  if (reuse_oid_class_name && reuse_oid >= 0)
+    {
+      *reuse_oid_class_name = (char *)db_get_class_name (class_stack_array[reuse_oid]);
+    }
 
   /* don't keep dangling pointers on stack or in virtual memory */
   memset (classes, 0, max * sizeof (DB_OBJECT *));
@@ -6177,7 +6189,7 @@ mq_fetch_subqueries (PARSER_CONTEXT * parser, PT_NODE * class_)
       return NULL;
     }
 
-  query_cache = sm_virtual_queries (parser, class_object);
+  query_cache = sm_virtual_queries (parser, class_object, NULL);
 
   if (query_cache && query_cache->view_cache)
     {
@@ -6877,7 +6889,7 @@ mq_free_virtual_query_cache (PARSER_CONTEXT * parser)
  *   class_object(in):
  */
 PARSER_CONTEXT *
-mq_virtual_queries (DB_OBJECT * class_object)
+mq_virtual_queries (DB_OBJECT * class_object, char **reuse_oid_class_name)
 {
   char buf[2000];
   const char *cname = db_get_class_name (class_object);
@@ -6952,7 +6964,7 @@ mq_virtual_queries (DB_OBJECT * class_object)
 
 	  if (!pt_has_error (parser) && symbols->vquery_for_query)
 	    {
-	      PT_UPDATABILITY updatable = mq_updatable (parser, symbols->vquery_for_query);
+	      PT_UPDATABILITY updatable = mq_updatable (parser, symbols->vquery_for_query, reuse_oid_class_name);
 
 	      if (updatable == PT_PARTIALLY_UPDATABLE)
 		{
@@ -11693,13 +11705,14 @@ mq_fetch_subqueries_for_update_local (PARSER_CONTEXT * parser, PT_NODE * class_,
 {
   PARSER_CONTEXT *query_cache;
   DB_OBJECT *class_object;
+  char *reuse_oid_class_name = NULL;
 
   if (!class_ || !(class_object = class_->info.name.db_object) || !qry_cache || db_is_class (class_object))
     {
       return NULL;
     }
 
-  *qry_cache = query_cache = sm_virtual_queries (parser, class_object);
+  *qry_cache = query_cache = sm_virtual_queries (parser, class_object, &reuse_oid_class_name);
 
   if (query_cache && query_cache->view_cache)
     {
@@ -11717,9 +11730,15 @@ mq_fetch_subqueries_for_update_local (PARSER_CONTEXT * parser, PT_NODE * class_,
       if (!query_cache->view_cache->vquery_for_update
 	  && (!query_cache->view_cache->vquery_for_partial_update || (fetch_as != PT_PARTIAL_SELECT)) && parser)
 	{
-	  PT_ERRORmf (parser, class_, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_VCLASS_NOT_UPDATABLE,
-		      /* use function to get name. class_->info.name.original is not always set. */
-		      db_get_class_name (class_object));
+	  char reuse_tbl[256] = ".";
+	  if (reuse_oid_class_name)
+	    {
+	      sprintf(reuse_tbl, ", because %s table is REUSE_OID.", reuse_oid_class_name);
+	    }
+
+	  PT_ERRORmf2 (parser, class_, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_VCLASS_NOT_UPDATABLE,
+	     /* use function to get name. class_->info.name.original is not always set. */
+	  db_get_class_name (class_object), reuse_tbl);
 	}
       if (fetch_as == PT_INVERTED_ASSIGNMENTS)
 	{
@@ -11930,7 +11949,7 @@ mq_fetch_attributes (PARSER_CONTEXT * parser, PT_NODE * class_)
       return NULL;
     }
 
-  query_cache = sm_virtual_queries (parser, class_object);
+  query_cache = sm_virtual_queries (parser, class_object, NULL);
 
   if (query_cache)
     {

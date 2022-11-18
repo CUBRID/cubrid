@@ -44,7 +44,7 @@ typedef enum pt_updatability PT_UPDATABILITY;
 
 extern PT_NODE *mq_bump_correlation_level (PARSER_CONTEXT * parser, PT_NODE * node, int increment, int match);
 
-extern PT_UPDATABILITY mq_updatable (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern PT_UPDATABILITY mq_updatable (PARSER_CONTEXT * parser, PT_NODE * statement, char **reuse_oid_class_name);
 
 extern PT_NODE *mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node);
 

@@ -1959,7 +1959,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 35 path expression '%1$s' crosses db boundary from %2$s, to class %3$s.
 36 %1$s is not authorized on %2$s.
 37 Select is not authorized on %1$s.
-38 Vclass %1$s is not updatable.
+38 Vclass %1$s is not updatable%2$s.
 39 %1$s is not a proxy vclass.
 40 query spec of proxy vclass must not be a join.
 41 %1$s has no object id set.
