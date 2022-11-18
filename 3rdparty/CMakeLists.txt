@@ -137,53 +137,6 @@ if(NOT BISON_FOUND OR NOT FLEX_FOUND)
   endif()
 endif(NOT BISON_FOUND OR NOT FLEX_FOUND)
 
-# WITH_LIBFLEXBISON can have multiple values with different meanings
-# on Linux:
-# * "EXTERNAL" - (default) builds flex and bison library from URL stored in ${WITH_LIBFLEXBISON_URL} uses the library created by the build
-# * "SYSTEM"   - use flex and bison library located in:
-#                  ${WITH_EXTERNAL_LIBS_PATH}
-#                  ${WITH_LIBEXPAT_ROOT_PATH}/lib
-#                use expat headers located in:
-#                  ${WITH_EXTERNAL_HEADERS_PATH}
-#                  ${WITH_LIBEXPAT_ROOT_PATH}/include
-# on Windows:
-# * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/3rdparty
-set(LIBEXPAT_TARGET libexpat)
-if(WITH_LIBFLEXBISON STREQUAL "EXTERNAL")
-  if(UNIX)
-    externalproject_add(${LIBEXPAT_TARGET}
-      URL                  ${WITH_BISON_URL}
-      LOG_BUILD            TRUE
-      LOG_INSTALL          TRUE
-      TIMEOUT              600
-      DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${3RDPARTY_LIBS_DIR} no-shared # ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        $(MAKE) AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      $(MAKE) install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      )
-    set(LIBEXPAT_LIBS ${3RDPARTY_LIBS_DIR}/lib/libexpat.a)
-    set(LIBEXPAT_INCLUDES ${3RDPARTY_LIBS_DIR}/include/expat)
-  elseif(WIN32)
-    # bison and flex for Windows
-    set(WIN_FLEX_BISON_VERSION "2.5.20")
-    set(WIN_FLEX_BISON_URL "https://github.com/lexxmark/winflexbison/releases/download/v${WIN_FLEX_BISON_VERSION}/win_flex_bison-${WIN_FLEX_BISON_VERSION}.zip")
-    set(WIN_FLEX_BISON_FILENAME "${3RDPARTY_LIBS_DIR}/Download/win_flex_bison.zip")
-    file(DOWNLOAD ${WIN_FLEX_BISON_URL} ${WIN_FLEX_BISON_FILENAME})
-
-    set(WIN_FLEX_BISON_INSTALL_DIR "${3RDPARTY_LIBS_DIR}/Install/win_flex_bison")
-    file(MAKE_DIRECTORY ${WIN_FLEX_BISON_INSTALL_DIR})
-    execute_process(COMMAND ${CMAKE_COMMAND} -E tar -xf ${WIN_FLEX_BISON_FILENAME} WORKING_DIRECTORY ${WIN_FLEX_BISON_INSTALL_DIR})
-    list(APPEND CMAKE_PREFIX_PATH ${WIN_FLEX_BISON_INSTALL_DIR})
-  endif(UNIX)
-elseif(WITH_LIBFLEXBISON STREQUAL "SYSTEM")
-	# bison and flex check
-	include(FindBISON)
-	include(FindFLEX)
-
-	find_package(BISON 3.0.0)
-	find_package(FLEX 2.5.34 REQUIRED)
-endif()
-
 # WITH_LIBEXPAT can have multiple values with different meanings
 # on Linux:
 # * "EXTERNAL" - (default) builds expat library from URL stored in ${WITH_LIBEXPAT_URL} uses the library created by the build
