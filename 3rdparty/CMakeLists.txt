@@ -95,8 +95,8 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
-      BUILD_COMMAND        make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      BUILD_COMMAND        $(MAKE) AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      $(MAKE) install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBEXPAT_LIBS ${3RDPARTY_LIBS_DIR}/lib/libexpat.a)
     set(LIBEXPAT_INCLUDES ${3RDPARTY_LIBS_DIR}/include/expat)
@@ -143,8 +143,8 @@ if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      BUILD_COMMAND        $(MAKE) all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      $(MAKE) install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBJANSSON_LIBS ${3RDPARTY_LIBS_DIR}/lib/libjansson.a)
     set(LIBJANSSON_INCLUDES ${3RDPARTY_LIBS_DIR}/include/jansson)
@@ -222,8 +222,8 @@ if(UNIX)
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    "LDFLAGS=-L${3RDPARTY_LIBS_DIR}/lib" ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      BUILD_COMMAND        $(MAKE) all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      $(MAKE) install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     if(TARGET ${LIBNCURSES_TARGET})
       add_dependencies(${LIBEDIT_TARGET} ${LIBNCURSES_TARGET})
@@ -260,7 +260,7 @@ else()
     GIT_TAG fdf2ef5             # https://github.com/lz4/lz4/releases/tag/v1.9.2
     CONFIGURE_COMMAND ""        # no configure
     BUILD_IN_SOURCE true        # lz4 Makefile is designed to run locally
-    BUILD_COMMAND make CFLAGS="-fPIC"  # to allow static linking in shared library
+    BUILD_COMMAND $(MAKE) CFLAGS="-fPIC"  # to allow static linking in shared library
     INSTALL_COMMAND ""          # suppress install
   )
   set(LZ4_INCLUDES ${3RDPARTY_LIBS_DIR}/Source/lz4/lib)
