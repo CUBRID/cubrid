@@ -1081,7 +1081,8 @@ mq_conditionally_add_objects (PARSER_CONTEXT * parser, PT_NODE * flat, DB_OBJECT
  *   reuse_oid(out):
  */
 static PT_UPDATABILITY
-mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** classes, int *num_classes, int *max, int *reuse_oid)
+mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** classes, int *num_classes, int *max,
+		    int *reuse_oid)
 {
   PT_UPDATABILITY global = PT_UPDATABLE;
 
@@ -1157,8 +1158,8 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** 
 		    {
 		      local = (PT_UPDATABILITY) (local & PT_NOT_UPDATABLE);
 		      if (reuse_oid)
-		        {
-		          *reuse_oid = i;
+			{
+			  *reuse_oid = i;
 			}
 		      break;
 		    }
@@ -1221,7 +1222,7 @@ mq_updatable (PARSER_CONTEXT * parser, PT_NODE * statement, char **reuse_oid_cla
 
   if (reuse_oid_class_name && reuse_oid >= 0)
     {
-      *reuse_oid_class_name = (char *)db_get_class_name (class_stack_array[reuse_oid]);
+      *reuse_oid_class_name = (char *) db_get_class_name (class_stack_array[reuse_oid]);
     }
 
   /* don't keep dangling pointers on stack or in virtual memory */
@@ -11733,12 +11734,12 @@ mq_fetch_subqueries_for_update_local (PARSER_CONTEXT * parser, PT_NODE * class_,
 	  char reuse_tbl[256] = ".";
 	  if (reuse_oid_class_name)
 	    {
-	      sprintf(reuse_tbl, ", because %s table is REUSE_OID.", reuse_oid_class_name);
+	      sprintf (reuse_tbl, ", because %s table is REUSE_OID.", reuse_oid_class_name);
 	    }
 
 	  PT_ERRORmf2 (parser, class_, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_VCLASS_NOT_UPDATABLE,
-	     /* use function to get name. class_->info.name.original is not always set. */
-	  db_get_class_name (class_object), reuse_tbl);
+		       /* use function to get name. class_->info.name.original is not always set. */
+		       db_get_class_name (class_object), reuse_tbl);
 	}
       if (fetch_as == PT_INVERTED_ASSIGNMENTS)
 	{
