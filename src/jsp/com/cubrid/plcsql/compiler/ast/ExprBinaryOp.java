@@ -56,5 +56,6 @@ public class ExprBinaryOp implements Expr {
     // --------------------------------------------------
 
     private static final String tmpl =
-            Misc.combineLines("op%'OPERATION'%(", "  %'LEFT-OPERAND'%,", "  %'RIGHT-OPERAND'%", ")");
+            Misc.combineLines(
+                    "op%'OPERATION'%(", "  %'LEFT-OPERAND'%,", "  %'RIGHT-OPERAND'%", ")");
 }

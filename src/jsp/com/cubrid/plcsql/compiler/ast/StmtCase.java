@@ -53,13 +53,15 @@ public class StmtCase implements Stmt {
         if (elsePart == null) {
             return tmplStmtCaseNoElsePart
                     .replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
-                    .replace("  %'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(" else "), 1))
+                    .replace(
+                            "  %'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(" else "), 1))
                     .replace("%'LEVEL'%", "" + level) // level replacement must go last
             ;
         } else {
             return tmplStmtCase
                     .replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
-                    .replace("  %'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(" else "), 1))
+                    .replace(
+                            "  %'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(" else "), 1))
                     .replace("    %'ELSE-PART'%", Misc.indentLines(elsePart.toJavaCode(), 2))
                     .replace("%'LEVEL'%", "" + level) // level replacement must go last
             ;
@@ -72,7 +74,10 @@ public class StmtCase implements Stmt {
 
     private static final String tmplStmtCaseNoElsePart =
             Misc.combineLines(
-                    "{", "  Object selector_%'LEVEL'% = %'SELECTOR-VALUE'%;", "  %'WHEN-PARTS'%", "}");
+                    "{",
+                    "  Object selector_%'LEVEL'% = %'SELECTOR-VALUE'%;",
+                    "  %'WHEN-PARTS'%",
+                    "}");
 
     private static final String tmplStmtCase =
             Misc.combineLines(

@@ -53,5 +53,6 @@ public class CaseExpr implements Stmt {
     // --------------------------------------------------
 
     private static final String tmpl =
-            Misc.combineLines("Objects.equals(selector_%'LEVEL'%, %'VALUE'%) ?", "  %'EXPRESSION'% :");
+            Misc.combineLines(
+                    "Objects.equals(selector_%'LEVEL'%, %'VALUE'%) ?", "  %'EXPRESSION'% :");
 }

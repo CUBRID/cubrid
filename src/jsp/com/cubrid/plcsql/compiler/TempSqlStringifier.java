@@ -32,11 +32,11 @@ package com.cubrid.plcsql.compiler;
 
 import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
 import com.cubrid.plcsql.compiler.antlrgen.PcsParserBaseListener;
+import com.cubrid.plcsql.compiler.ast.DeclId;
+import com.cubrid.plcsql.compiler.ast.DeclParam;
 import com.cubrid.plcsql.compiler.ast.DeclParamIn;
 import com.cubrid.plcsql.compiler.ast.DeclVar;
 import com.cubrid.plcsql.compiler.ast.ExprId;
-import com.cubrid.plcsql.compiler.ast.DeclId;
-import com.cubrid.plcsql.compiler.ast.DeclParam;
 import com.cubrid.plcsql.compiler.ast.NodeList;
 import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.tree.TerminalNode;

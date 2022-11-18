@@ -54,5 +54,6 @@ public class CaseStmt implements Stmt {
 
     private static final String tmpl =
             Misc.combineLines(
-                    "if (Objects.equals(selector_%'LEVEL'%, %'VALUE'%)) {", "  %'STATEMENTS'%", "}");
+                    "if (Objects.equals(selector_%'LEVEL'%, %'VALUE'%)) {",
+                    "  %'STATEMENTS'%", "}");
 }

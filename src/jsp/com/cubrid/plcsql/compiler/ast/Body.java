@@ -56,5 +56,6 @@ public class Body implements AstNode {
     // Private
     // --------------------------------------------------
 
-    private static final String tmpl = Misc.combineLines("try {", "  %'STATEMENTS'%", "}%'CATCHES'%");
+    private static final String tmpl =
+            Misc.combineLines("try {", "  %'STATEMENTS'%", "}%'CATCHES'%");
 }

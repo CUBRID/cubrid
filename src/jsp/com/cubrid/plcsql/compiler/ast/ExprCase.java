@@ -65,5 +65,7 @@ public class ExprCase implements Expr {
     private static final String tmpl =
             Misc.combineLines(
                     "(new Object() { Object invoke(Object selector_%'LEVEL'%) throws Exception { // simple case expression",
-                    "  return %'WHEN-PARTS'%", "    %'ELSE-PART'%;", "} }.invoke(%'SELECTOR-VALUE'%))");
+                    "  return %'WHEN-PARTS'%",
+                    "    %'ELSE-PART'%;",
+                    "} }.invoke(%'SELECTOR-VALUE'%))");
 }
