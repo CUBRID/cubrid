@@ -628,7 +628,8 @@ namespace cublog
 	      }
 	    // isolated atomic sysop with null parent_lsa on the sysop end record
 	    // NOTE: potential inconsistent logging
-	    else if (LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa) && (initial_log_vec_size == 2)
+	    else if ((initial_log_vec_size == 2)
+		     && LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa)
 		     && LOG_SYSOP_ATOMIC_START == last_but_one_entry.m_rectype)
 	      {
 		m_log_vec.erase (last_but_one_entry_it, m_log_vec.cend ());
