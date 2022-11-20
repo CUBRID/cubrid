@@ -25210,18 +25210,19 @@ error_exit:
       parser_free_tree (parser, subq);
     }
 
-  if (corr_subq)
-    {
-      parser_free_tree (parser, corr_subq);
-    }
-
   if (expr)
     {
       if (expr->info.expr.arg1)
 	{
 	  parser_free_tree (parser, expr->info.expr.arg1);
+	  corr_subq = NULL;
 	}
       parser_free_tree (parser, expr);
+    }
+
+  if (corr_subq)
+    {
+      parser_free_tree (parser, corr_subq);
     }
 
   if (and_expr)
