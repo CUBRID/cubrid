@@ -75,12 +75,12 @@ endif(WIN32)
 # on Linux:
 # * "SYSTEM"   - use flex and bison library located in the system.
 # on Windows:
-# * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/3rdparty
+# * "EXTERNAL" - (default) builds flex and bison library from URL
 # * "SYSTEM"   - use flex and bison library installed by chocolately
 if(WITH_LIBFLEXBISON STREQUAL "EXTERNAL")
   if(WIN32)
     # bison and flex for Windows
-    set(WIN_FLEX_BISON_VERSION "2.5.20")
+    set(WIN_FLEX_BISON_VERSION "2.5.22")
     set(WIN_FLEX_BISON_URL "https://github.com/lexxmark/winflexbison/releases/download/v${WIN_FLEX_BISON_VERSION}/win_flex_bison-${WIN_FLEX_BISON_VERSION}.zip")
     set(WIN_FLEX_BISON_FILENAME "${WINDOWS_EXTERNAL_DIR}/Download/win_flex_bison.zip")
     file(DOWNLOAD ${WIN_FLEX_BISON_URL} ${WIN_FLEX_BISON_FILENAME})
@@ -88,15 +88,33 @@ if(WITH_LIBFLEXBISON STREQUAL "EXTERNAL")
     set(WIN_FLEX_BISON_INSTALL_DIR "${WINDOWS_EXTERNAL_DIR}/Install/win_flex_bison")
     file(MAKE_DIRECTORY ${WIN_FLEX_BISON_INSTALL_DIR})
     execute_process(COMMAND ${CMAKE_COMMAND} -E tar -xf ${WIN_FLEX_BISON_FILENAME} WORKING_DIRECTORY ${WIN_FLEX_BISON_INSTALL_DIR})
-    list(APPEND CMAKE_PREFIX_PATH ${WIN_FLEX_BISON_INSTALL_DIR} PARENT_SCOPE)
+	  set (CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} ${WIN_FLEX_BISON_INSTALL_DIR} PARENT_SCOPE)
+
+	  #execute_process(
+    #  COMMAND ${CMAKE_COMMAND} -E echo "  copying ${WIN_FLEX_BISON_INSTALL_DIR}/FlexLexer.h to ${WINDOWS_EXTERNAL_INCLUDE_DIR}/FlexLexer.h"
+    #  COMMAND ${CMAKE_COMMAND} -E copy ${WIN_FLEX_BISON_INSTALL_DIR}/FlexLexer.h ${WINDOWS_EXTERNAL_INCLUDE_DIR}/FlexLexer.h
+    #)
+	
+	set(BISON_ROOT_DIR "${WIN_FLEX_BISON_INSTALL_DIR}")
+  set(FLEX_ROOT_DIR "${WIN_FLEX_BISON_INSTALL_DIR}")
+	set(BISON_EXECUTABLE "${WIN_FLEX_BISON_INSTALL_DIR}/win_bison.exe")
+	set(FLEX_EXECUTABLE "${WIN_FLEX_BISON_INSTALL_DIR}/win_flex.exe")
+
+  set(BISON_ROOT_DIR "${BISON_ROOT_DIR}" PARENT_SCOPE)
+  set(FLEX_ROOT_DIR "${FLEX_ROOT_DIR}" PARENT_SCOPE)
+	set(BISON_EXECUTABLE "${BISON_EXECUTABLE}" PARENT_SCOPE)
+	set(FLEX_EXECUTABLE "${FLEX_EXECUTABLE}" PARENT_SCOPE)
+
+  else(UNIX)
+    message(FATAL_ERROR "Building flex and bison library from URL is not supported")
   endif(WIN32)
 elseif(WITH_LIBFLEX STREQUAL "SYSTEM")
 	include(FindFLEX)
 	include(FindBISON)
 endif()
 
-find_package(FLEX 2.5.34 REQUIRED)
-find_package(BISON 3.0.0)
+find_package(FLEX 2.5.34 REQUIRED GLOBAL)
+find_package(BISON 3.0.0 REQUIRED GLOBAL)
 
 if(NOT BISON_FOUND OR NOT FLEX_FOUND)
   if(UNIX)
