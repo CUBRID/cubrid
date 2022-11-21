@@ -76,6 +76,7 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "tcp.h"
+#include "host_lookup.h"
 
 #ifndef HAVE_GETHOSTBYNAME_R
 #include <pthread.h>
@@ -130,7 +131,7 @@ css_gethostname (char *name, size_t namelen)
   hostname[namelen_ - 1] = '\0';
   gethostname (hostname, namelen_);
 
-  int gai_error = getaddrinfo (hostname, NULL, &hints, &result);
+  int gai_error = getaddrinfo_uhost (hostname, NULL, &hints, &result);
   if (gai_error != 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GAI_ERROR, 1, hostname);
@@ -246,7 +247,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       int herr;
       char buf[1024];
 
-      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
+      if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
@@ -257,7 +258,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       int herr;
       char buf[1024];
 
-      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &herr) == NULL)
+      if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
@@ -267,7 +268,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       struct hostent hent;
       struct hostent_data ht_data;
 
-      if (gethostbyname_r (host, &hent, &ht_data) == -1)
+      if (gethostbyname_r_uhost (host, &hent, &ht_data) == -1)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
@@ -280,7 +281,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       struct hostent *hp;
 
       pthread_mutex_lock (&gethostbyname_lock);
-      hp = gethostbyname (host);
+      hp = gethostbyname_uhost (host);
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
@@ -334,7 +335,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
       int herr;
       char buf[1024];
 
-      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
+      if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return INVALID_SOCKET;
@@ -345,7 +346,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
       int herr;
       char buf[1024];
 
-      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &herr) == NULL)
+      if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return INVALID_SOCKET;
@@ -355,7 +356,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
       struct hostent hent;
       struct hostent_data ht_data;
 
-      if (gethostbyname_r (host, &hent, &ht_data) == -1)
+      if (gethostbyname_r_uhost (host, &hent, &ht_data) == -1)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return INVALID_SOCKET;
@@ -369,7 +370,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
       int r;
 
       r = pthread_mutex_lock (&gethostbyname_lock);
-      hp = gethostbyname (host);
+      hp = gethostbyname_uhost (host);
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
@@ -1605,7 +1606,7 @@ css_get_peer_name (SOCKET sockfd, char *hostname, size_t len)
     {
       return errno;
     }
-  return getnameinfo (saddr, saddr_len, hostname, len, NULL, 0, NI_NOFQDN);
+  return getnameinfo_uhost (saddr, saddr_len, hostname, len, NULL, 0, NI_NOFQDN);
 }
 
 /*
@@ -1631,5 +1632,5 @@ css_get_sock_name (SOCKET sockfd, char *hostname, size_t len)
     {
       return errno;
     }
-  return getnameinfo (saddr, saddr_len, hostname, len, NULL, 0, NI_NOFQDN);
+  return getnameinfo_uhost (saddr, saddr_len, hostname, len, NULL, 0, NI_NOFQDN);
 }

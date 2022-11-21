@@ -69,6 +69,7 @@
 #include "cas_log.h"
 #include "ddl_log.h"
 #include "network_histogram.hpp"
+#include "host_lookup.h"
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */
@@ -2256,8 +2257,8 @@ csql_print_database (void)
       sin.sin_addr.s_addr = inet_addr (host_name);
 
       res =
-	getnameinfo ((struct sockaddr *) &sin, sizeof (sin), converted_host_name, sizeof (converted_host_name), NULL, 0,
-		     NI_NAMEREQD);
+	getnameinfo_uhost ((struct sockaddr *) &sin, sizeof (sin), converted_host_name, sizeof (converted_host_name),
+			   NULL, 0, NI_NAMEREQD);
       /*
        * if it fails to resolves hostname,
        * it will use db_get_host_connected()'s result.
@@ -3290,7 +3291,7 @@ get_host_ip (unsigned char *ip_addr)
     {
       return -1;
     }
-  if ((hp = gethostbyname (hostname)) == NULL)
+  if ((hp = gethostbyname_uhost (hostname)) == NULL)
     {
       return -1;
     }
