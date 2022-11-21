@@ -50,7 +50,11 @@
 #define SUPPORT_KEY_DUP_LEVEL
 
 #define HIDDEN_INDEX_COL_ATTR_ID    (-2848048)
-#define HIDDEN_INDEX_COL_ATTR_NAME  "_cub_idx_col_"
+#define HIDDEN_INDEX_COL_ATTR_NAME_PREFIX  "_cub_idx_col_"
+#define HIDDEN_INDEX_COL_ATTR_NAME         "_cub_idx_col_"
+
+#define GET_OVFL_LEVEL_4_SAVE(level)      ((level) * (-1))
+#define GET_OVFL_LEVEL_4_USE(level)       ((level) * (-1))
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 #define IS_HIDDEN_INDEX_COL_ID(id)      ((id) == HIDDEN_INDEX_COL_ATTR_ID)

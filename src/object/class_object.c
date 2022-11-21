@@ -4143,7 +4143,11 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 		{
 		  /* if not specified, ascending order */
 		  order = (asc_desc ? asc_desc[i] : 0);
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim, check... do remove
+		  assert (order == 0 || order == 1 || order < 0);
+#else
 		  assert (order == 0 || order == 1);
+#endif
 		  if (order != cons->asc_desc[i])
 		    {
 		      break;	/* not match */

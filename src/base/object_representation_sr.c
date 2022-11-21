@@ -1943,6 +1943,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 	      att_x.type = DB_TYPE_BIGINT;
 	      att_x.id = HIDDEN_INDEX_COL_ATTR_ID;
 
+	      // ctshim hidden type?
 	      att_x.domain = tp_domain_construct (DB_TYPE_BIGINT, NULL, DB_BIGINT_PRECISION, 0, NULL);
 
 
@@ -2140,7 +2141,12 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
   OR_ATTRIBUTE *ptr = NULL;
   int size;
 
-  assert (!IS_HIDDEN_INDEX_COL_ID (att_id));
+#if 1				// ctshim  check!!!
+  // assert (!IS_HIDDEN_INDEX_COL_ID (att_id));
+  if (IS_HIDDEN_INDEX_COL_ID (att_id))
+    size = 0;
+#endif
+
   /* Find the attribute with the matching attribute ID */
   for (i = 0, att = rep->attributes; i < rep->n_attributes && ptr == NULL; i++, att++)
     {
@@ -2258,8 +2264,14 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
     {
       assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
       att_id = db_get_int (&att_val);	/* The first attrID */
-      assert (!IS_HIDDEN_INDEX_COL_ID (att_id));
-      (void) or_install_btids_attribute (rep, att_id, &id);
+
+#if 1				// ctshim  check!!!
+      //assert (!IS_HIDDEN_INDEX_COL_ID (att_id));
+      if (IS_HIDDEN_INDEX_COL_ID (att_id))
+	(void) or_install_btids_attribute (rep, att_id, &id);	//무시 ?
+      else
+	(void) or_install_btids_attribute (rep, att_id, &id);
+#endif
     }
 
   /*

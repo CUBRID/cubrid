@@ -7762,6 +7762,18 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
        *  Generate a B-tree key contained in a DB_VALUE and return a
        *  pointer to it.
        */
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+      for (int x = 0; x < index->n_atts; x++)
+	{
+	  if (IS_HIDDEN_INDEX_COL_ID (index->atts[x]->id))
+	    {
+	      printf ("debug:: locator_add_or_remove_index_internal >> heap_attrvalue_get_key()  %d \n",
+		      index->asc_desc[x]);
+	      break;
+	    }
+	}
+#endif
+
       key_dbvalue =
 	heap_attrvalue_get_key (thread_p, i, &index_attrinfo, recdes, &btid, &dbvalue, aligned_buf,
 				(func_preds ? &func_preds[i] : NULL), NULL, inst_oid);

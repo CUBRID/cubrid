@@ -9534,11 +9534,29 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 	   (attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
 	    attr_info->last_classrepr->n_class_attrs))
     {
-      fprintf (stdout, " XXX There are not that many attributes. Num_attrs = %d, Num_requested_attrs = %d\n",
-	       attr_info->last_classrepr->n_attributes, requested_num_attrs);
-      requested_num_attrs =
-	attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
-	attr_info->last_classrepr->n_class_attrs;
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+      i = -1;
+      if (requested_num_attrs == attr_info->last_classrepr->n_attributes + 1)
+	{
+	  // Check for indexes containing all columns in the table
+	  // It does not consider indexes containing shared or class attributes.
+
+	  for (i = requested_num_attrs - 1; i >= 0 && !IS_HIDDEN_INDEX_COL_ID (attrids[i]); i--)
+	    {
+	      /* empty */ ;
+	    }
+	}
+      if (i < 0)
+	{
+#endif
+	  fprintf (stdout, " XXX There are not that many attributes. Num_attrs = %d, Num_requested_attrs = %d\n",
+		   attr_info->last_classrepr->n_attributes, requested_num_attrs);
+	  requested_num_attrs =
+	    attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
+	    attr_info->last_classrepr->n_class_attrs;
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	}
+#endif
     }
 
   if (requested_num_attrs > 0)
@@ -9670,9 +9688,13 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 #if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
       else if (IS_HIDDEN_INDEX_COL_ID (value->attrid))
 	{
-	  assert ((curr_attr + 1) == attr_info->num_values);
+	  // assert ((curr_attr + 1) == attr_info->num_values); 
 
-	  value->attrid = search_attrepr[curr_attr].id;
+	  // Since it is created fakely, it is filled with index 0 that can be obtained as quickly as possible.           
+	  value->attrid = search_attrepr[0].id;
+
+	  // ctshim ???????????????????????????????????????????
+
 	  printf ("debug: heap_attrinfo_recache_attrepr(-2848048) AAAAAAAAAAAAAAAAAAAAAA\n");
 	}
 #endif
@@ -12316,6 +12338,47 @@ heap_attrvalue_get_index (int value_index, ATTR_ID * attrid, int *n_btids, BTID 
 }
 #endif
 
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+static void
+heap_midxkey_key_hidden_col_attr (OR_BUF * or_buf_ptr, char *nullmap_ptr, int idx, OR_ATTRIBUTE * attr, OID * rec_oid)
+{
+  DB_VALUE tmp_val;
+
+  // The rec_oid may be NULL when the index of the UNIQUE attribute is an index. 
+  // In that case, however, it cannot enter here.
+  assert (rec_oid != NULL);
+
+  DB_TYPE domain_type = DB_TYPE_BIGINT;
+
+  switch (domain_type)
+    {
+    case DB_TYPE_BIGINT:
+      db_make_bigint (&tmp_val, *((DB_BIGINT *) rec_oid));
+      break;
+
+    case DB_TYPE_INTEGER:
+      db_make_bigint (&tmp_val, *((DB_BIGINT *) rec_oid) % INT_MAX);
+      break;
+
+    case DB_TYPE_SHORT:
+      db_make_bigint (&tmp_val, *((DB_BIGINT *) rec_oid) % SHRT_MAX);
+      break;
+
+    default:
+      assert (false);
+    }
+
+// ctshim hidden type?
+  //db_make_bigint (&tmp_val, *((DB_BIGINT *) rec_oid));
+  tp_Bigint.index_writeval (or_buf_ptr, &tmp_val);
+  OR_ENABLE_BOUND_BIT (nullmap_ptr, idx);
+  if (DB_NEED_CLEAR (&tmp_val))	// ???
+    {
+      pr_clear_value (&tmp_val);
+    }
+}
+#endif
+
 /*
  * heap_midxkey_key_get () -
  *   return:
@@ -12400,23 +12463,9 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 #if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
       if (IS_HIDDEN_INDEX_COL_ID (atts[i]->id))
 	{
-	  DB_VALUE tmp_val;
-
-	  // The rec_oid may be NULL when the index of the UNIQUE attribute is an index. 
-	  // In that case, however, it cannot enter here.
-	  assert (rec_oid != NULL);
-
+	  heap_midxkey_key_hidden_col_attr (&buf, nullmap_ptr, k, NULL, rec_oid);
 	  printf (">>> heap_midxkey_key_get() rec_oid = %d | %d | %d\n", rec_oid->volid, rec_oid->pageid,
 		  rec_oid->slotid);
-
-	  db_make_bigint (&tmp_val, *((DB_BIGINT *) rec_oid));
-	  tp_Bigint.index_writeval (&buf, &tmp_val);
-	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-	  if (DB_NEED_CLEAR (&tmp_val))	// ---- ?
-	    {
-	      pr_clear_value (&tmp_val);
-	    }
-
 	  error = NO_ERROR;
 	}
       else
@@ -12583,20 +12632,12 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 #if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
       if (IS_HIDDEN_INDEX_COL_ID (att_ids[i]))
 	{
-	  DB_VALUE tmp_val;
-	  assert (rec_oid != NULL);
+	  heap_midxkey_key_hidden_col_attr (&buf, nullmap_ptr, k, NULL, rec_oid);
 	  printf (">>> heap_midxkey_key_generate() rec_oid = %d | %d | %d\n", rec_oid->volid, rec_oid->pageid,
 		  rec_oid->slotid);
 
-	  db_make_bigint (&tmp_val, *((DB_BIGINT *) rec_oid));
-	  tp_Bigint.index_writeval (&buf, &tmp_val);
-	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-	  if (DB_NEED_CLEAR (&tmp_val))	// ---- ?
-	    {
-	      pr_clear_value (&tmp_val);
-	    }
-
-	  break;
+	  continue;
+	  k++;
 	}
 #endif
 

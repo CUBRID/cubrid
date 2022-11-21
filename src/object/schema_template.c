@@ -144,6 +144,28 @@ smt_make_hidden_attribute (SM_TEMPLATE * template_, MOP mop, SM_ATTRIBUTE ** att
   domain = tp_domain_construct (DB_TYPE_BIGINT, NULL, DB_BIGINT_PRECISION, 0, NULL);
 
 
+  DB_TYPE domain_type = DB_TYPE_BIGINT;
+  switch (domain_type)
+    {
+    case DB_TYPE_BIGINT:
+      domain = tp_domain_construct (domain_type, NULL, DB_BIGINT_PRECISION, 0, NULL);
+      break;
+
+    case DB_TYPE_INTEGER:
+      domain = tp_domain_construct (domain_type, NULL, DB_INTEGER_PRECISION, 0, NULL);
+      break;
+
+    case DB_TYPE_SHORT:
+      domain = tp_domain_construct (domain_type, NULL, DB_SHORT_PRECISION, 0, NULL);
+      break;
+
+    default:
+      assert (false);
+      break;
+    }
+
+
+
   //domain = pt_type_enum_to_db_domain (PT_TYPE_OBJECT);
   //  error_code = get_domain (template_, domain_string, &domain);
   //if (error_code != NO_ERROR)
@@ -2168,12 +2190,9 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
     }
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
-  if (hidden_index_col != -1 && hidden_index_col != (n_atts - 1))
-    {
-      printf ("debug: NOT LAST!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
-    }
   if ((n_atts == 0) || ((n_atts == 1) && (hidden_index_col != -1)))
     {
+      // ctshim error code !!!!
       ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
       goto error_return;
     }

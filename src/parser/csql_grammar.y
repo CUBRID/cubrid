@@ -2814,8 +2814,8 @@ create_stmt
 				      }
 				  }
 			      }
-
-                            node->info.index.ovfl_level = $13;// ctshim    
+                            
+                            node->info.index.ovfl_level = ($13 == OVFL_LEVEL_NOT_SET) ? OVFL_LEVEL_NOT_USED : $13; // ctshim
 
 			    node->info.index.where = $12;
 			    node->info.index.column_names = col;
@@ -21419,7 +21419,7 @@ opt_encrypt_algorithm
 opt_index_level
         : /* empty */
 		{ DBG_TRACE_GRAMMAR(opt_index_level, : );
-                  $$ = OVFL_LEVEL_NOT_USED; //OVFL_LEVEL_DEFAULT; // ctshim default
+                  $$ = OVFL_LEVEL_NOT_SET; // OVFL_LEVEL_NOT_USED; //OVFL_LEVEL_DEFAULT; // ctshim default
                 }
 	| LEVEL UNSIGNED_INTEGER
 		{ DBG_TRACE_GRAMMAR(opt_index_level, | LEVEL UNSIGNED_INTEGER ); 

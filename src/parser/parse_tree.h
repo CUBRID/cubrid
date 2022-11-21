@@ -2025,6 +2025,7 @@ struct pt_index_info
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
   int ib_threads;
 #if 1				// defined(SUPPORT_KEY_DUP_LEVEL)
+#define OVFL_LEVEL_NOT_SET   (-1)
 #define OVFL_LEVEL_NOT_USED  (0)
 #define OVFL_LEVEL_DEFAULT   (32)
 #define OVFL_LEVEL_MIN       (0)
