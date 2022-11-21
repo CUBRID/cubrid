@@ -12529,8 +12529,8 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
       num_vals = func_attr_index_start + 1;
     }
   or_advance (&buf, pr_midxkey_init_boundbits (nullmap_ptr, num_vals));
-  k = 0;
-  for (i = 0; i < num_vals; i++)
+
+  for (k = 0, i = 0; k < num_vals; i++, k++)
     {
       if (i == func_col_id)
 	{
@@ -12559,8 +12559,6 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	{
 	  pr_clear_value (&value);
 	}
-
-      k++;
     }
 
   if (value.need_clear == true)
