@@ -1092,7 +1092,7 @@ namespace cublog
   pgbuf_fix_or_ordered_fix (THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcvindex,
 			    std::unique_ptr<PGBUF_WATCHER> &watcher_uptr, PAGE_PTR &page_ptr)
   {
-    constexpr PAGE_FETCH_MODE fetch_mode = OLD_PAGE_MAYBE_DEALLOCATED;
+    constexpr PAGE_FETCH_MODE fetch_mode = OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT;
     switch (rcvindex)
       {
       case RVHF_INSERT:
