@@ -564,7 +564,7 @@ namespace cublog
 
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 	  {
-	    dump ("sequence::can_purge - START");
+	    dump ("sequence::can_purge START");
 	  }
 
 	const atomic_log_entry_vector_type::const_iterator last_entry_it = m_log_vec.cend () - 1;
@@ -591,7 +591,7 @@ namespace cublog
 
 		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		      {
-			dump ("sequence::can_purge - after LOG_SYSOP_END - LOG_SYSOP_START_POSTPONE");
+			dump ("sequence::can_purge(2) after erase");
 		      }
 		    assert (m_log_vec.empty ());
 		  }
@@ -606,6 +606,11 @@ namespace cublog
 		  {
 		    // sysop end matches sysop atomic start; delete both start and end control log entries
 		    m_log_vec.erase (last_but_one_entry_it, m_log_vec.cend ());
+
+		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+		      {
+			dump ("sequence::can_purge(3) after erase");
+		      }
 		  }
 		else
 		  {
@@ -614,23 +619,24 @@ namespace cublog
 		    // there will, presumably, exist another log record to be processed that will
 		    // close the entire sequence (eg: LOG_END_ATOMIC_REPL)
 		    m_log_vec.erase (last_entry_it);
-		  }
 
-		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
-		  {
-		    dump ("sequence::can_purge - after LOG_SYSOP_END with non-null last_parent_lsa");
+		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+		      {
+			dump ("sequence::can_purge(4) after erase");
+		      }
 		  }
 	      }
 	    // isolated atomic sysop with null parent_lsa on the sysop end record
 	    // NOTE: potential inconsistent logging
-	    else if (LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa) && (initial_log_vec_size == 2)
+	    else if ((initial_log_vec_size == 2)
+		     && LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa)
 		     && LOG_SYSOP_ATOMIC_START == last_but_one_entry.m_rectype)
 	      {
 		m_log_vec.erase (last_but_one_entry_it, m_log_vec.cend ());
 
 		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
-		    dump ("sequence::can_purge - after LOG_SYSOP_END with null last_parent_lsa");
+		    dump ("sequence::can_purge(5) after erase");
 		  }
 	      }
 	  }
@@ -649,25 +655,31 @@ namespace cublog
 
 		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
-		    dump ("sequence::can_purge - after LOG_SYSOP_END - LOG_SYSOP_END_LOGICAL_RUN_POSTPONE");
+		    dump ("sequence::can_purge(8) after erase");
 		  }
 	      }
 	  }
 	// part of scenario (4)
+	// part of scenario (5)
 	else if (LOG_SYSOP_END == last_entry.m_rectype
 		 && LOG_SYSOP_END_LOGICAL_UNDO == last_entry.m_sysop_end_type)
 	  {
 	    const atomic_log_entry_vector_type::const_iterator last_but_one_entry_it = (last_entry_it - 1);
 	    const atomic_log_entry &last_but_one_entry = *last_but_one_entry_it;
 
-	    if (!LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa) &&
-		(last_but_one_entry.m_lsa >= last_entry.m_sysop_end_last_parent_lsa))
+	    // NOTE: the LOG_SYSOP_END log record will have either valid or null 'lastparent_lsa' values;
+	    // for this reason, the condition here does not do any check for lastparent_lsa value;
+	    // normally, it should check that the value of lastparent_lsa is not-null and that it is less than
+	    // or equal to the lsa of the LOG_SYSOP_ATOMIC_START that started the atomic sequence;
+	    // however, when the LOG_SYSOP_ATOMIC_START log record coincides with the very start of
+	    // the transaction the value of 'lastparent_lsa' is null
+	    if (last_but_one_entry.m_rectype == LOG_SYSOP_ATOMIC_START)
 	      {
 		m_log_vec.erase (last_but_one_entry_it, m_log_vec.cend ());
 
 		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
-		    dump ("sequence::can_purge - after LOG_SYSOP_END - LOG_SYSOP_END_LOGICAL_UNDO");
+		    dump ("sequence::can_purge(9) after erase");
 		  }
 	      }
 	  }
@@ -693,6 +705,12 @@ namespace cublog
 		  {
 		    // remove all entries between start atomic replication and the end
 		    m_log_vec.erase (search_entry_it, m_log_vec.cend ());
+
+		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+		      {
+			dump ("sequence::can_purge(10) after erase");
+		      }
+
 		    break;
 		  }
 
@@ -700,17 +718,12 @@ namespace cublog
 		  {
 		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		      {
-			dump ("sequence::can_purge - after failed LOG_END_ATOMIC_REPL");
+			dump ("sequence::can_purge(11) error");
 		      }
 
 		    assert_release ("inconsistent atomic log sequence found" == nullptr);
 		    break;
 		  }
-	      }
-
-	    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
-	      {
-		dump ("sequence::can_purge - after LOG_END_ATOMIC_REPL");
 	      }
 	  }
 
