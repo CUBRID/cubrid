@@ -707,6 +707,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_FLASHBACK_WIN_SIZE "flashback_win_size"
 #define PRM_NAME_USE_USER_HOSTS "use_user_hosts"
 
+#define PRM_NAME_QMGR_MAX_QUERY_PER_TRAN "max_query_per_tran"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2416,6 +2418,12 @@ static unsigned int prm_flashback_win_size_flag = 0;
 bool PRM_USE_USER_HOSTS = false;
 static bool prm_use_user_hosts_default = false;
 static unsigned int prm_use_user_hosts_flag = 0;
+
+int PRM_MAX_QUERY_PER_TRAN_SIZE = INT_MAX;
+static int prm_max_query_per_tran_default = 100;
+static int prm_max_query_per_tran_lower = 1;
+static int prm_max_query_per_tran_upper = SHRT_MAX;
+static unsigned int prm_max_query_per_tran_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6225,6 +6233,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_use_user_hosts_default,
    (void *) &PRM_USE_USER_HOSTS,
    (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_QMGR_MAX_QUERY_PER_TRAN,
+   PRM_NAME_QMGR_MAX_QUERY_PER_TRAN,
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   PRM_INTEGER,
+   &prm_max_query_per_tran_flag,
+   (void *) &prm_max_query_per_tran_default,
+   (void *) &PRM_MAX_QUERY_PER_TRAN_SIZE,
+   (void *) &prm_max_query_per_tran_upper,
+   (void *) &prm_max_query_per_tran_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
