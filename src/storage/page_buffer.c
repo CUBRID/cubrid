@@ -1881,9 +1881,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
     {
       /* Make sure that the page has been allocated (i.e., is a valid page) */
       /* Suppress errors if fetch mode is OLD_PAGE_IF_IN_BUFFER. */
-      const bool no_error_when = (fetch_mode == OLD_PAGE_IF_IN_BUFFER) ||
-	(is_passive_transaction_server () && (fetch_mode == OLD_PAGE_MAYBE_DEALLOCATED));
-      if (pgbuf_is_valid_page (thread_p, vpid, no_error_when, NULL, NULL) != DISK_VALID)
+      if (pgbuf_is_valid_page (thread_p, vpid, fetch_mode == OLD_PAGE_IF_IN_BUFFER, NULL, NULL) != DISK_VALID)
 	{
 	  return NULL;
 	}

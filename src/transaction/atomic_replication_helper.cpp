@@ -667,9 +667,13 @@ namespace cublog
 	    const atomic_log_entry_vector_type::const_iterator last_but_one_entry_it = (last_entry_it - 1);
 	    const atomic_log_entry &last_but_one_entry = *last_but_one_entry_it;
 
-	    if (last_but_one_entry.m_rectype == LOG_SYSOP_ATOMIC_START) //&&
-	      // !LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa) &&
-	      // (last_but_one_entry.m_lsa >= last_entry.m_sysop_end_last_parent_lsa))
+	    // NOTE: the LOG_SYSOP_END log record will have either valid or null 'lastparent_lsa' values;
+	    // for this reason, the condition here does not do any check for lastparent_lsa value;
+	    // normally, it should check that the value of lastparent_lsa is not-null and that it is less than
+	    // or equal to the lsa of the LOG_SYSOP_ATOMIC_START that started the atomic sequence;
+	    // however, when the LOG_SYSOP_ATOMIC_START log record coincides with the very start of
+	    // the transaction the value of 'lastparent_lsa' is null
+	    if (last_but_one_entry.m_rectype == LOG_SYSOP_ATOMIC_START)
 	      {
 		m_log_vec.erase (last_but_one_entry_it, m_log_vec.cend ());
 
