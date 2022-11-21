@@ -112,8 +112,8 @@ elseif(WITH_LIBFLEX STREQUAL "SYSTEM")
 	include(FindBISON)
 endif()
 
-find_package(FLEX 2.5.34 REQUIRED GLOBAL)
-find_package(BISON 3.0.0 REQUIRED GLOBAL)
+find_package(FLEX 2.5.34 REQUIRED)
+find_package(BISON 3.0.0 REQUIRED)
 
 if(NOT BISON_FOUND OR NOT FLEX_FOUND)
   if(UNIX)
