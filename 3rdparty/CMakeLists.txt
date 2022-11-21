@@ -90,10 +90,10 @@ if(WITH_LIBFLEXBISON STREQUAL "EXTERNAL")
     execute_process(COMMAND ${CMAKE_COMMAND} -E tar -xf ${WIN_FLEX_BISON_FILENAME} WORKING_DIRECTORY ${WIN_FLEX_BISON_INSTALL_DIR})
 	  set (CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} ${WIN_FLEX_BISON_INSTALL_DIR} PARENT_SCOPE)
 
-	  #execute_process(
-    #  COMMAND ${CMAKE_COMMAND} -E echo "  copying ${WIN_FLEX_BISON_INSTALL_DIR}/FlexLexer.h to ${WINDOWS_EXTERNAL_INCLUDE_DIR}/FlexLexer.h"
-    #  COMMAND ${CMAKE_COMMAND} -E copy ${WIN_FLEX_BISON_INSTALL_DIR}/FlexLexer.h ${WINDOWS_EXTERNAL_INCLUDE_DIR}/FlexLexer.h
-    #)
+	  execute_process(
+      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${WIN_FLEX_BISON_INSTALL_DIR}/FlexLexer.h to ${WINDOWS_EXTERNAL_INCLUDE_DIR}/FlexLexer.h"
+      COMMAND ${CMAKE_COMMAND} -E copy ${WIN_FLEX_BISON_INSTALL_DIR}/FlexLexer.h ${WINDOWS_EXTERNAL_INCLUDE_DIR}/FlexLexer.h
+    )
 	
 	set(BISON_ROOT_DIR "${WIN_FLEX_BISON_INSTALL_DIR}")
   set(FLEX_ROOT_DIR "${WIN_FLEX_BISON_INSTALL_DIR}")
@@ -229,7 +229,6 @@ list(APPEND EP_LIBS ${LIBJANSSON_LIBS})
 # WITH_LIBNCURSES can have multiple values with different meanings
 # on Linux:
 # * "SYSTEM"   - uses ncurses installed in the system (for more info check https://cmake.org/cmake/help/v3.10/module/FindCurses.html)
-
 if(UNIX)
   include (CheckLibraryExists)
   set(LIBNCURSES_TARGET libncurses)
