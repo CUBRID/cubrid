@@ -229,9 +229,10 @@ list(APPEND EP_LIBS ${LIBJANSSON_LIBS})
 # WITH_LIBNCURSES can have multiple values with different meanings
 # on Linux:
 # * "SYSTEM"   - uses ncurses installed in the system (for more info check https://cmake.org/cmake/help/v3.10/module/FindCurses.html)
-include (CheckLibraryExists)
-set(LIBNCURSES_TARGET libncurses)
+
 if(UNIX)
+  include (CheckLibraryExists)
+  set(LIBNCURSES_TARGET libncurses)
   if(WITH_LIBNCURSES STREQUAL "SYSTEM")
     include(FindCurses)
     find_package(Curses REQUIRED)
@@ -254,13 +255,14 @@ if(UNIX)
   else(WITH_LIBNCURSES STREQUAL "SYSTEM")
     message(FATAL_ERROR "Invalid WITH_LIBNCURSES option value ${WITH_LIBNCURSES}")
   endif(WITH_LIBNCURSES STREQUAL "SYSTEM")
+  
+  set(LIBNCURSES_INCLUDES "${CURSES_INCLUDE_DIRS}")
+  if (NOT DEFINED ${LIBNCURSES_INCLUDES})
+    set(LIBNCURSES_INCLUDES "${CURSES_INCLUDE_DIR}") # backward compatibility
+  endif (NOT DEFINED ${LIBNCURSES_INCLUDES})
+  set(LIBNCURSES_LIBS "${CURSES_LIBRARIES}")
 endif(UNIX)
 
-set(LIBNCURSES_INCLUDES "${CURSES_INCLUDE_DIRS}")
-if (NOT DEFINED ${LIBNCURSES_INCLUDES})
-  set(LIBNCURSES_INCLUDES "${CURSES_INCLUDE_DIR}") # backward compatibility
-endif (NOT DEFINED ${LIBNCURSES_INCLUDES})
-set(LIBNCURSES_LIBS "${CURSES_LIBRARIES}")
 
 # WITH_LIBEDIT can have multiple values with different meanings
 # on Linux:
@@ -271,8 +273,8 @@ set(LIBNCURSES_LIBS "${CURSES_LIBRARIES}")
 #                use editline headers located in:
 #                  ${WITH_EXTERNAL_HEADERS_PATH}
 #                  ${WITH_LIBEDIT_ROOT_PATH}/include
-set(LIBEDIT_TARGET libedit)
 if(UNIX)
+  set(LIBEDIT_TARGET libedit)
   if(WITH_LIBEDIT STREQUAL "EXTERNAL")
     externalproject_add(${LIBEDIT_TARGET}
       URL                  ${WITH_LIBEDIT_URL}
@@ -297,9 +299,9 @@ if(UNIX)
     message(STATUS "Found editline library: ${LIBEDIT_LIBS}")
     message(STATUS "Found editline headers: ${LIBEDIT_INCLUDES}")
   endif()
+  list(APPEND EP_LIBS ${LIBEDIT_LIBS})
+  list(APPEND EP_INCLUDES ${LIBEDIT_INCLUDES})
 endif(UNIX)
-list(APPEND EP_LIBS ${LIBEDIT_LIBS})
-list(APPEND EP_INCLUDES ${LIBEDIT_INCLUDES})
 
 # LZ4
 #
@@ -437,10 +439,13 @@ set (EP_INCLUDES ${EP_INCLUDES} PARENT_SCOPE)
 # Expose targets for sa - FIXME better solutions
 include (3rdparty_util)
 
+if(UNIX)
+expose_3rdparty_variable(LIBEDIT)
 expose_3rdparty_variable(LIBNCURSES)
+endif(UNIX)
+
 expose_3rdparty_variable(LIBEXPAT)
 expose_3rdparty_variable(LIBJANSSON)
-expose_3rdparty_variable(LIBEDIT)
 expose_3rdparty_variable(LZ4)
 expose_3rdparty_variable(LIBOPENSSL)
 expose_3rdparty_variable(LIBUNIXODBC)

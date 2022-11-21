@@ -645,12 +645,12 @@ include (expand_dependency)
 if(UNIX)
 target_external_dependencies(cubridsa
   LIBNCURSES
+  LIBEDIT
   )
 endif(UNIX)
 target_external_dependencies(cubridsa
   LIBEXPAT
   LIBJANSSON
-  LIBEDIT
   LIBOPENSSL
   LZ4
   RAPIDJSON
