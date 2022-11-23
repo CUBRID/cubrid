@@ -25111,7 +25111,7 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
 PT_NODE *
 pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MERGE_INFO * info)
 {
-  PT_NODE *subq, *corr_subq, *expr, *and_expr, *value;
+  PT_NODE *subq, *corr_subq = NULL, *expr = NULL, *and_expr = NULL, *value = NULL;
 
   subq = parser_new_node (parser, PT_SELECT);
   if (subq == NULL)
@@ -25122,23 +25122,37 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
   corr_subq = parser_new_node (parser, PT_SELECT);
   if (corr_subq == NULL)
     {
-      parser_free_tree (parser, subq);
       goto error_exit;
     }
 
-  expr = parser_new_node (parser, PT_FUNCTION);
+  expr = parser_new_node (parser, PT_EXPR);
   if (expr == NULL)
     {
-      parser_free_tree (parser, subq);
-      parser_free_tree (parser, corr_subq);
       goto error_exit;
     }
 
-  expr->type_enum = PT_TYPE_INTEGER;
-  expr->info.function.arg_list = NULL;
-  expr->info.function.function_type = PT_COUNT_STAR;
+  expr->info.expr.op = PT_NOT;
+  expr->type_enum = PT_TYPE_LOGICAL;
+  expr->info.expr.arg1 = parser_new_node (parser, PT_EXPR);
+  if (expr->info.expr.arg1 == NULL)
+    {
+      goto error_exit;
+    }
 
-  corr_subq->info.query.q.select.list = expr;
+  expr->info.expr.arg1->info.expr.op = PT_EXISTS;
+  expr->info.expr.arg1->type_enum = PT_TYPE_LOGICAL;
+  expr->info.expr.arg1->info.expr.arg1 = corr_subq;
+
+  value = parser_new_node (parser, PT_VALUE);
+  if (value == NULL)
+    {
+      goto error_exit;
+    }
+
+  value->type_enum = PT_TYPE_INTEGER;
+  value->info.value.data_value.i = 0;
+
+  corr_subq->info.query.q.select.list = value;
   corr_subq->info.query.q.select.from = parser_copy_tree (parser, info->into);
   corr_subq->info.query.q.select.where = parser_copy_tree_list (parser, info->search_cond);
   /* add class where part */
@@ -25163,38 +25177,11 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
   subq->info.query.q.select.list = parser_copy_tree_list (parser, select_list);
   subq->info.query.q.select.from = parser_copy_tree (parser, info->using_clause);
 
-  expr = parser_new_node (parser, PT_EXPR);
-  if (expr == NULL)
-    {
-      parser_free_tree (parser, subq);
-      parser_free_tree (parser, corr_subq);
-      goto error_exit;
-    }
-
-  value = parser_new_node (parser, PT_VALUE);
-  if (value == NULL)
-    {
-      parser_free_tree (parser, subq);
-      parser_free_tree (parser, corr_subq);
-      parser_free_tree (parser, expr);
-      goto error_exit;
-    }
-
-  value->type_enum = PT_TYPE_INTEGER;
-  value->info.value.data_value.i = 0;
-
-  expr->type_enum = PT_TYPE_LOGICAL;
-  expr->info.expr.op = PT_EQ;
-  expr->info.expr.arg1 = corr_subq;
-  expr->info.expr.arg2 = value;
-
   if (info->insert.search_cond)
     {
       and_expr = parser_new_node (parser, PT_EXPR);
       if (and_expr == NULL)
 	{
-	  parser_free_tree (parser, subq);
-	  parser_free_tree (parser, expr);	/* corr_subq is now in this tree */
 	  goto error_exit;
 	}
 
@@ -25217,6 +25204,37 @@ pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
   return subq;
 
 error_exit:
+
+  if (subq)
+    {
+      parser_free_tree (parser, subq);
+    }
+
+  if (expr)
+    {
+      if (expr->info.expr.arg1)
+	{
+	  parser_free_tree (parser, expr->info.expr.arg1);
+	  corr_subq = NULL;
+	}
+      parser_free_tree (parser, expr);
+    }
+
+  if (corr_subq)
+    {
+      parser_free_tree (parser, corr_subq);
+    }
+
+  if (and_expr)
+    {
+      parser_free_tree (parser, and_expr);
+    }
+
+  if (value)
+    {
+      parser_free_tree (parser, value);
+    }
+
   PT_INTERNAL_ERROR (parser, "allocate new node");
   return NULL;
 }
