@@ -85,7 +85,6 @@ stats_client_unpack_statistics (char *buf_p)
   CLASS_STATS *class_stats_p;
   ATTR_STATS *attr_stats_p;
   BTREE_STATS *btree_stats_p;
-  int max_unique_keys;
   int i, j, k;
 
   if (buf_p == NULL)
@@ -215,14 +214,6 @@ stats_client_unpack_statistics (char *buf_p)
 	      buf_p += OR_INT_SIZE;
 	    }
 	}
-    }
-
-  /* correct estimated num_objects with unique keys */
-  max_unique_keys = OR_GET_INT (buf_p);
-  buf_p += OR_INT_SIZE;
-  if (max_unique_keys > 0)
-    {
-      class_stats_p->heap_num_objects = max_unique_keys;
     }
 
   /* validate key stats info */
