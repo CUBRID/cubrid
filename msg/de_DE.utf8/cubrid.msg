@@ -2011,6 +2011,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 80 Isolation Pegelwert in MVCC muss 'read committed', 'repeatable read' oder 'serializable'.
 81 '%1$s' ist ein 'auto_increment' Objekt, das nicht erlaubt als serielle verändert werden wird.
 82 Ungültiger JSON: '%1$s'.
+83 Vclass %1$s is not updatable because the vclass has some reuse_oid table. Please check it.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** Ungültiges Cache ***
