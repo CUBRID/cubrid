@@ -1816,6 +1816,7 @@ struct view_cache_info
   int number_of_attrs;
   DB_AUTH authorization;
   NESTED_VIEW_VERSION_INFO *nested_views;
+  bool has_reuse_oid_table;
 };
 
 struct parser_hint

@@ -1968,7 +1968,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 35 path expression '%1$s' crosses db boundary from %2$s, to class %3$s.
 36 %1$s is not authorized on %2$s.
 37 Select is not authorized on %1$s.
-38 Vclass %1$s is not updatable%2$s.
+38 Vclass %1$s is not updatable.
 39 %1$s is not a proxy vclass.
 40 query spec of proxy vclass must not be a join.
 41 %1$s has no object id set.
@@ -2012,6 +2012,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
 81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
 82 Invalid JSON: '%1$s'.
+83 Vclass %1$s is not updatable because the vclass has some reuse_oid table. Please check it.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** invalid cache ***

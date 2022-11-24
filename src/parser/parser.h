@@ -274,7 +274,7 @@ extern "C"
   extern bool pt_is_symmetric_op (PT_OP_TYPE op);
 
   extern void mq_free_virtual_query_cache (PARSER_CONTEXT * parser);
-  extern PARSER_CONTEXT *mq_virtual_queries (DB_OBJECT * class_obj, char **reuse_oid_class_name);
+  extern PARSER_CONTEXT *mq_virtual_queries (DB_OBJECT * class_obj);
 
   extern CUBRID_STMT_TYPE pt_node_to_cmd_type (PT_NODE * node);
 

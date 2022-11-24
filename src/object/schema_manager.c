@@ -6807,7 +6807,7 @@ sm_is_nested_view_recached (PARSER_CONTEXT * parser)
  */
 
 struct parser_context *
-sm_virtual_queries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, char **reuse_oid_class_name)
+sm_virtual_queries (PARSER_CONTEXT * parser, DB_OBJECT * class_object)
 {
   SM_CLASS *cl;
   PARSER_CONTEXT *cache = NULL, *tmp = NULL, *old_cache = NULL;
@@ -6888,7 +6888,7 @@ sm_virtual_queries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, char **re
        * will be allocated during the call to mq_virtual_queries. So, we'll assign it to a temp pointer and check it
        * again.  We need to keep the old one and free the new one because the parser assigned originally contains the
        * error message. */
-      tmp = mq_virtual_queries (class_object, reuse_oid_class_name);
+      tmp = mq_virtual_queries (class_object);
       if (tmp == NULL)
 	{
 	  if (old_cache)

@@ -678,7 +678,7 @@ db_compile_statement_local (DB_SESSION * session)
   /* validate include_oid setting in the session */
   if (session->include_oid)
     {
-      if (mq_updatable (parser, statement, NULL) == PT_UPDATABLE)
+      if (mq_updatable (parser, statement) == PT_UPDATABLE)
 	{
 	  if (session->include_oid == DB_ROW_OIDS)
 	    {
