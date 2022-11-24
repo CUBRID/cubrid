@@ -2011,7 +2011,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 80 El valor del nivel de aislamiento en MVCC debe ser 'read committed', 'readable read' o 'serializable'.
 81 '%1$s' es un objeto 'auto_increment', que no se puede alterar como serial.
 82 JSON inválido: '%1$s'.
-83 Vclass %1$s is not updatable because the vclass has some reuse_oid table. Please check it.
+83 Vclass %1$s is not updatable. Please check if any of its related classes are marked as REUSE_OID.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** Cache no valida. ***

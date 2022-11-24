@@ -2011,7 +2011,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 80 MVCCで分離レベルの値は、「read committed」、「repeatable read」または「serializable」でなければなりません。
 81 「%1$s」は「auto_increment」オブジェクトです。これはシリアルように変更することが許可されていません。
 82 Invalid JSON: '%1$s'.
-83 Vclass %1$s is not updatable because the vclass has some reuse_oid table. Please check it.
+83 Vclass %1$s is not updatable. Please check if any of its related classes are marked as REUSE_OID.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** 正しくないキャッシュ ***
