@@ -25091,19 +25091,70 @@ heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CON
 	}
       assert (is_passive_transaction_server ());
       // Handle the page desynchronization error
-      if (context->home_page_watcher.pgptr)
+
+      // clean - saving state if required
+      //
+      heap_clean_get_context (thread_p, context);
+
+      // also unfix what is in cache watcher; saving the state for a future re-fix after the wait
+      //
+      VPID saved_vpid VPID_INITIALIZER;
+      PGBUF_LATCH_MODE saved_latch_mode = PGBUF_NO_LATCH;
+      bool restore_scan_cache_page_watcher = false;
+      if (is_heap_scan)
 	{
-	  /* Unfix home page. */
-	  pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+	  assert (context->scan_cache != nullptr);
+	  if (context->scan_cache->page_watcher.pgptr != nullptr)
+	    {
+	      assert (context->scan_cache->cache_last_fix_page);
+
+	      pgbuf_ordered_unfix_and_save_for_refix (thread_p, &context->scan_cache->page_watcher,
+						      saved_vpid, saved_latch_mode);
+	      assert (!VPID_ISNULL (&saved_vpid));
+	      assert (PGBUF_LATCH_READ == saved_latch_mode);
+	      restore_scan_cache_page_watcher = true;
+	    }
 	}
 
-      if (context->fwd_page_watcher.pgptr != NULL)
-	{
-	  /* Unfix forward page. */
-	  pgbuf_ordered_unfix (thread_p, &context->fwd_page_watcher);
-	}
+      assert (PGBUF_IS_CLEAN_WATCHER (&context->home_page_watcher));
+      assert (PGBUF_IS_CLEAN_WATCHER (&context->fwd_page_watcher));
+      assert (PGBUF_IS_CLEAN_WATCHER (&context->scan_cache->page_watcher));
+
+      // wait for replication to catch-up
+      //
       constexpr VPID null_vpid = VPID_INITIALIZER;
       pgbuf_wait_for_replication (thread_p, &null_vpid);
+
+      // re-fix scan cache page watcher, if unfixed previously
+      //
+      if (restore_scan_cache_page_watcher)
+	{
+	  const int error_code = pgbuf_ordered_fix (thread_p, &saved_vpid, OLD_PAGE_MAYBE_DEALLOCATED,
+						    saved_latch_mode, &context->scan_cache->page_watcher);
+	  if (error_code != NO_ERROR)
+	    {
+	      // most likely, this [client read-only] transaction is expecting another thread
+	      // (most likely, the transactional log replication thread) to advance past a
+	      // certain point;
+	      // during replication, the page might be de-allocated while processing a log record
+	      // thus, failing to re-fix is expected
+	      //
+	      // TODO: in effect, the fetch mode is not correctly propagated to the page server;
+	      // instead - OLD_PAGE - is actually propagated to the
+	      // server (see pgbuf_request_data_page_from_page_server)
+	      // thus, if page has been de-allocated, an error will be retrieved from page server
+	      assert (false);
+
+	      // clean the watcher; leave it to a next iteration to return an error scan code
+	      PGBUF_CLEAR_WATCHER (&context->scan_cache->page_watcher);
+	    }
+	}
+
+      // now restore state for the next attempt to get the version
+      // (ie: move the cache page watcher to home page watcher)
+      //
+      heap_init_get_context (thread_p, context, context->oid_p, context->class_oid_p,
+			     context->recdes_p, context->scan_cache, context->ispeeking, context->old_chn);
     }
   while (true);
 #else
@@ -25141,6 +25192,17 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
       /* we need class_oid to check if the class is mvcc enabled */
       context->class_oid_p = &class_oid_local;
     }
+  // *INDENT-OFF*
+  scope_exit <std::function<void (void)>> reset_class_out_ftor (
+    [&context, &class_oid_local]()
+    {
+      if (context->class_oid_p == &class_oid_local)
+       {
+          // clean up locally set pointer to remove dangling pointer to stack variable
+          context->class_oid_p = nullptr;
+       }
+    });
+  // *INDENT-ON*
 
   if (context->scan_cache && context->ispeeking == COPY && context->recdes_p != NULL)
     {
