@@ -2012,6 +2012,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 80 MVCC中的隔离级别值必须是 'read committed', 'repeatable read' 或 'serializable'.
 81 '%1$s' 是一个 'auto_increment' 对象, 不允许改变成一个序列.
 82 无效的JSON: '%1$s'.
+83 Vclass %1$s is not updatable because the vclass has some reuse_oid table. Please check it.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** 无效的缓存 ***
