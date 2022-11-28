@@ -1437,7 +1437,16 @@ $ LOADDB
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 ラストエラー
+1355 %1$s "%2$s" は、ファイル "%4$s" の %3$d 行目にある無効な形式です。
+1356 ホスト名 "%1$s" が長すぎます。ファイル "%3$s" の %2$d 行で 256 以下にする必要があります。
+1357 ホスト名 "%1$s" は既に存在します。ファイル "%3$s" の %2$d 行でホスト名を他の IP アドレスと重複させることはできません。
+1358 IP アドレスとホスト名の両方を、ファイル "%2$s" の %1$d 行に完全に記述する必要があります。
+1359 cubrid_hosts.conf で「%1$s」を検索できません。
+1360 ユーザー定義ホストの使用中にエラーが発生しました。
+
+1361 ファイル "%1$s" が見つかりませんでした。
+
+1362 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
@@ -2002,6 +2011,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 80 MVCCで分離レベルの値は、「read committed」、「repeatable read」または「serializable」でなければなりません。
 81 「%1$s」は「auto_increment」オブジェクトです。これはシリアルように変更することが許可されていません。
 82 Invalid JSON: '%1$s'.
+83 Vclass %1$s is not updatable. Please check if any of its related classes are marked as REUSE_OID.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** 正しくないキャッシュ ***
