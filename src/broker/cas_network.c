@@ -51,6 +51,7 @@
 #include "cas_execute.h"
 #include "error_code.h"
 #include "broker_util.h"
+#include "host_lookup.h"
 
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
@@ -685,7 +686,7 @@ get_host_ip (unsigned char *ip_addr)
     {
       return -1;
     }
-  if ((hp = gethostbyname (hostname)) == NULL)
+  if ((hp = gethostbyname_uhost (hostname)) == NULL)
     {
       return -1;
     }

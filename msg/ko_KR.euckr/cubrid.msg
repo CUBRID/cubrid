@@ -1437,7 +1437,16 @@ $ LOADDB
 1353 CAS ³»ºÎ ¿¡·¯ : %1$d 
 1354 CAS ³»ºÎ ¿¡·¯ : %1$d, %2$s
 
-1355 ¸¶Áö¸· ¿¡·¯
+1355 "%4$s"ÆÄÀÏ %3$d¹øÂ° ÁÙ¿¡¼ %1$s "%2$s" Àº(´Â) Àß¸øµÈ Çü½ÄÀÔ´Ï´Ù.´
+1356 "%3$s ÆÄÀÏ %2$d¹øÂ° ÁÙ¿¡¼ È£½ºÆ® ¸í "%1$s"Àº(´Â) ³Ê¹« ±é´Ï´Ù, È£½ºÆ® ¸íÀÇ ±æÀÌ´Â 256ÀÚ º¸´Ù ÀÛ°Å³ª °°¾Æ¾ß ÇÕ´Ï´Ù.´
+1357 "%3$s" ÆÄÀÏ %2$d¹øÂ° ÁÙ¿¡¼ È£½ºÆ® ¸í "%1$s"Àº(´Â) ÀÌ¹Ì ÀÖ½À´Ï´Ù. ÇÏ³ªÀÇ È£½ºÆ® ¸íÀº(´Â) Áßº¹µÇ¾î ´Ù¸¥ IP ÁÖ¼Ò¸¦ °¡Áú ¼ö ¾ø½À´Ï´Ù. Ï
+1358 "%2$s" ÆÄÀÏ %1$d¹øÂ° ÁÙ¿¡¼ IP ÁÖ¼Ò¿Í È£½ºÆ® ¸í µÑ ´Ù ¿ÏÀüÇÏ°Ô ÀÛ¼ºµÇ¾î¾ß ÇÕ´Ï´Ù.´
+1359 cubrid_hosts.conf ÆÄÀÏ¿¡¼ "%1$s"À»(¸¦) Ã£À» ¼ö ¾ø½À´Ï´Ù.´
+1360 user defined host¸¦ »ç¿ëÇÏ´Â µµÁß¿¡ ¿¡·¯°¡ ¹ß»ýÇÏ¿´½À´Ï´Ù.
+
+1361 ÆÄÀÏ "%1$s"À»(¸¦) Ã£À» ¼ö ¾ø½À´Ï´Ù.
+
+1362 ¸¶Áö¸· ¿¡·¯
 
 $set 6 MSGCAT_SET_INTERNAL
 1 ¿¡·¯ ¼­ºê ½Ã½ºÅÛ¿¡ ¿¡·¯ ¹ß»ý(¶óÀÎ %1$d):
@@ -2002,6 +2011,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 80 Æ®·£Àè¼Ç °Ý¸®µµ´Â 'read committed', 'repeatable read', 'serializable' ÁßÀÇ ÇÏ³ª¿©¾ß ÇÕ´Ï´Ù.
 81 '%1$s'Àº auto_increment °´Ã¼·Î¼­ serial °´Ã¼Ã³·³ º¯°æÇÒ ¼ö ¾ø½À´Ï´Ù.
 82 À¯È¿ÇÏÁö ¾ÊÀº JSON: '%1$s'.
+83 Vclass %1$s is not updatable. Please check if any of its related classes are marked as REUSE_OID.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** Àß¸øµÈ Ä³½Ã ***

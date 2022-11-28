@@ -3726,23 +3726,25 @@ classobj_cache_class_constraints (SM_CLASS * class_)
 
   /* The NOT NULL constraints are not in the property lists but are instead contained in the SM_ATTRIBUTE structures as
    * flags.  Search through the attributes and cache the NOT NULL constraints found. */
-  if (error == NO_ERROR)
+  if (error != NO_ERROR)
     {
-      error =
-	classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_), class_->attributes, &(class_->constraints));
-    }
-  if (error == NO_ERROR)
-    {
-      error = classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_), class_->shared, &(class_->constraints));
-    }
-  if (error == NO_ERROR)
-    {
-      error =
-	classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_), class_->class_attributes,
-					     &(class_->constraints));
+      return error;
     }
 
-  return error;
+  error = classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_), class_->attributes, &(class_->constraints));
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error = classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_), class_->shared, &(class_->constraints));
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_), class_->class_attributes,
+					      &(class_->constraints));
 }
 
 

@@ -1971,7 +1971,6 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
   int i, j, e;
   int att_id, att_cnt;
   OR_ATTRIBUTE *att;
-  OR_ATTRIBUTE *ptr = NULL;
   OR_INDEX *index;
   DB_VALUE stat_val;
 
@@ -2039,13 +2038,13 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 	  else
 	    {
 #endif
-	      for (j = 0, att = rep->attributes, ptr = NULL; j < rep->n_attributes && ptr == NULL; j++, att++)
+	      for (j = 0, att = rep->attributes; j < rep->n_attributes; j++, att++)
 		{
 		  if (att->id == att_id)
-		    {
-		      ptr = att;
-		      index->atts[index->n_atts] = ptr;
+		    {		      
+		      index->atts[index->n_atts] = att;
 		      (index->n_atts)++;
+                      break;
 		    }
 		}
 #if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
@@ -2234,12 +2233,13 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
 #endif
 
   /* Find the attribute with the matching attribute ID */
-  for (i = 0, att = rep->attributes; i < rep->n_attributes && ptr == NULL; i++, att++)
+  for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
     {
       assert (!IS_HIDDEN_INDEX_COL_ID (att->id));
       if (att->id == att_id)
 	{
 	  ptr = att;
+	  break;
 	}
     }
 

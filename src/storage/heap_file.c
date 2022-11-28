@@ -9643,7 +9643,6 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
   int srch_num_class;		/* Num of class attrs that can be searched */
   OR_ATTRIBUTE *search_attrepr;	/* Information for disk attribute */
   int i, curr_attr;
-  bool isattr_found;
   int ret = NO_ERROR;
 
   /*
@@ -9668,7 +9667,6 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
        * Go over the list of attributes (instance, shared, and class attrs)
        * until the desired attribute is found
        */
-      isattr_found = false;
       if (islast_reset == true)
 	{
 	  search_attrepr = attr_info->last_classrepr->attributes;
@@ -9699,7 +9697,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	}
 #endif
 
-      for (i = 0; isattr_found == false && i < srch_num_attrs; i++, search_attrepr++)
+      for (i = 0; i < srch_num_attrs; i++, search_attrepr++)
 	{
 	  /*
 	   * Is this a desired instance attribute?
@@ -9710,7 +9708,6 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	       * Found it.
 	       * Initialize the attribute value information
 	       */
-	      isattr_found = true;
 	      value->attr_type = HEAP_INSTANCE_ATTR;
 	      if (islast_reset == true)
 		{
@@ -9742,7 +9739,13 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 		}
 
 	      num_found_attrs++;
+	      break;
 	    }
+	}
+
+      if (i < srch_num_attrs)
+	{			// found it.
+	  continue;
 	}
 
       /*
@@ -9751,8 +9754,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
        * for shared attributes.
        */
 
-      for (i = 0, search_attrepr = attr_info->last_classrepr->shared_attrs;
-	   isattr_found == false && i < srch_num_shared; i++, search_attrepr++)
+      for (i = 0, search_attrepr = attr_info->last_classrepr->shared_attrs; i < srch_num_shared; i++, search_attrepr++)
 	{
 	  /*
 	   * Is this a desired shared attribute?
@@ -9763,7 +9765,6 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	       * Found it.
 	       * Initialize the attribute value information
 	       */
-	      isattr_found = true;
 	      value->attr_type = HEAP_SHARED_ATTR;
 	      value->last_attrepr = search_attrepr;
 	      /*
@@ -9780,7 +9781,13 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 					value->last_attrepr->domain->precision, value->last_attrepr->domain->scale);
 		}
 	      num_found_attrs++;
+	      break;
 	    }
+	}
+
+      if (i < srch_num_shared)
+	{			// found it.
+	  continue;
 	}
 
       /*
@@ -9789,8 +9796,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
        * for class attributes.
        */
 
-      for (i = 0, search_attrepr = attr_info->last_classrepr->class_attrs; isattr_found == false && i < srch_num_class;
-	   i++, search_attrepr++)
+      for (i = 0, search_attrepr = attr_info->last_classrepr->class_attrs; i < srch_num_class; i++, search_attrepr++)
 	{
 	  /*
 	   * Is this a desired class attribute?
@@ -9802,7 +9808,6 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	       * Found it.
 	       * Initialize the attribute value information
 	       */
-	      isattr_found = true;
 	      value->attr_type = HEAP_CLASS_ATTR;
 	      if (islast_reset == true)
 		{
@@ -9826,6 +9831,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 					value->last_attrepr->domain->precision, value->last_attrepr->domain->scale);
 		}
 	      num_found_attrs++;
+	      break;
 	    }
 	}
     }
@@ -12031,27 +12037,25 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
    * Go over the list of attrs until all indexed attributes (OIDs, sets)
    * are found
    */
-  for (i = 0, num_found_attrs = 0, search_attrepr = classrepr->attributes; i < classrepr->n_attributes;
-       i++, search_attrepr++)
+  num_found_attrs = 0;
+  if (idx_info->has_single_col)
     {
-      if (search_attrepr->n_btids <= 0)
+      for (i = 0, search_attrepr = classrepr->attributes; i < classrepr->n_attributes; i++, search_attrepr++)
 	{
-	  continue;
-	}
-
-      if (idx_info->has_single_col)
-	{
-	  for (j = 0; j < *num_btids; j++)
+	  if (search_attrepr->n_btids > 0)
 	    {
-	      indexp = &classrepr->indexes[j];
-	      if (indexp->n_atts == 1 && indexp->atts[0]->id == search_attrepr->id)
+	      for (j = 0; j < *num_btids; j++)
 		{
-		  set_attrids[num_found_attrs++] = search_attrepr->id;
-		  break;
+		  indexp = &classrepr->indexes[j];
+		  if (indexp->n_atts == 1 && indexp->atts[0]->id == search_attrepr->id)
+		    {
+		      set_attrids[num_found_attrs++] = search_attrepr->id;
+		      break;
+		    }
 		}
 	    }
-	}
-    }				/* for (i = 0 ...) */
+	}			/* for (i = 0 ...) */
+    }
 
   if (idx_info->has_multi_col == 0 && num_found_attrs == 0)
     {
@@ -12645,8 +12649,8 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
       num_vals = func_attr_index_start + 1;
     }
   or_advance (&buf, pr_midxkey_init_boundbits (nullmap_ptr, num_vals));
-  k = 0;
-  for (i = 0; i < num_vals && k < num_vals; i++)
+
+  for (k = 0, i = 0; k < num_vals; i++, k++)
     {
       if (i == func_col_id)
 	{
@@ -12656,23 +12660,19 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	      domain->type->index_writeval (&buf, func_res);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	    }
-	  k++;
-	}
-      if (k == num_vals)
-	{
-	  break;
+	  if (++k == num_vals)
+	    {
+	      break;
+	    }
 	}
 #if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
       if (IS_HIDDEN_INDEX_COL_ID (att_ids[i]))
 	{
 	  heap_midxkey_index_write_hidden_value (&buf, nullmap_ptr, k, att_ids[i], rec_oid);
 	  //printf (">>> heap_midxkey_key_generate() rec_oid = %d | %d | %d\n", rec_oid->volid, rec_oid->pageid,                  rec_oid->slotid);
-
-	  k++;			// check.......... ctshim
 	  continue;
 	}
 #endif
-
       att = heap_locate_attribute (att_ids[i], attrinfo);
 
       error = heap_midxkey_get_value (recdes, att, &value, attrinfo);
@@ -12686,8 +12686,6 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	{
 	  pr_clear_value (&value);
 	}
-
-      k++;
     }
 
   if (value.need_clear == true)
