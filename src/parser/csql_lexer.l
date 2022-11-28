@@ -673,7 +673,10 @@ int is_dblink_query_string = 0;
 [oO][fF][fF][sS][eE][tT]				                { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return OFFSET; }
-[oO][nN]								{ begin_token(yytext);   return ON_; }
+[oO][nN]								{ begin_token(yytext);   return ON_; }                                                                                
+[oO][iIN][dD]								{ begin_token(yytext);   
+                                                                                csql_yylval.cptr = pt_makename(yytext);
+                                                                                return OID_; }
 [oO][nN][lL][iI][nN][eE]						{ begin_token(yytext);   
                                                                                 csql_yylval.cptr = pt_makename(yytext);
                                                                                 return ONLINE; }
@@ -699,6 +702,11 @@ int is_dblink_query_string = 0;
 [pP][aA][gG][eE]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return PAGE; }
+[pP][aA][gG][eE][iI][dD]						{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return PAGEID_; }
+
+                                                                                
 [pP][aA][rR][aA][lL][lL][eE][lL]					{ begin_token(yytext);
                                                                                 csql_yylval.cptr = pt_makename(yytext);
                                                                                 return PARALLEL; }										
@@ -878,6 +886,9 @@ int is_dblink_query_string = 0;
 [sS][hH][oO][rR][tT]							{ begin_token(yytext);   return SmallInt; }
 [sS][iI][mM][iI][lL][aA][rR]						{ begin_token(yytext);   return SIMILAR; }
 [sS][iI][zZ][eE]							{ begin_token(yytext);   return SIZE_; }
+[sS][lL][oO][tT][iI][dD]						{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return SLOTID_; }
 [sS][lL][oO][tT][sS]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return SLOTS; }
@@ -1030,6 +1041,9 @@ int is_dblink_query_string = 0;
 [vV][iI][sS][iI][bB][lL][eE]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return VISIBLE; }
+[vV][oO][lL][iI][dD]						        { begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return VOLID_; }
 [vV][oO][lL][uU][mM][eE]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return VOLUME; }

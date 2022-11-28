@@ -7767,8 +7767,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	{
 	  if (IS_HIDDEN_INDEX_COL_ID (index->atts[x]->id))
 	    {
-	      printf ("debug:: locator_add_or_remove_index_internal >> heap_attrvalue_get_key()  %d \n",
-		      index->asc_desc[x]);
+	      //printf ("debug:: locator_add_or_remove_index_internal >> heap_attrvalue_get_key()  %d \n", index->asc_desc[x]);
 	      break;
 	    }
 	}

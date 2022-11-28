@@ -172,7 +172,7 @@ extern void smt_downcase_all_class_info (void);
 #endif
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
-extern int smt_make_hidden_attribute (SM_TEMPLATE * template_, MOP mop, SM_ATTRIBUTE ** attp);
+extern int smt_make_hidden_attribute (int att_id, const char *att_name, SM_ATTRIBUTE ** attp);
 #endif
 
 #endif /* _SCHEMA_TEMPLATE_H_ */

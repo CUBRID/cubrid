@@ -3251,14 +3251,13 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 			{
 			  if (IS_HIDDEN_INDEX_COL_NAME (att_name))
 			    {
-			      smt_make_hidden_attribute (NULL, NULL /* new_->attributes[j - 1]->class_mop */ , &att);
+			      smt_make_hidden_attribute (-1, att_name, &att);
 			      //printf ("debug: classobj_make_class_constraints()    _cub_idx_col_ \n");
 			    }
 			}
 #else
 		      att = classobj_find_attribute_list (attributes, db_get_string (&avalue), -1);
 #endif
-
 		    }
 		  else if (DB_VALUE_TYPE (&avalue) == DB_TYPE_INTEGER)
 		    {
@@ -3269,7 +3268,7 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 			{
 			  if (IS_HIDDEN_INDEX_COL_ID (att_id))
 			    {
-			      smt_make_hidden_attribute (NULL, NULL /* new_->attributes[j - 1]->class_mop */ , &att);
+			      smt_make_hidden_attribute (att_id, NULL, &att);
 			      //printf ("debug: classobj_make_class_constraints()    -2848048 \n");
 			    }
 			}
@@ -4118,6 +4117,10 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	}
     }
 
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+  int hidden_col_idx = -1;
+#endif
+
   for (cons = cons_list; cons; cons = cons->next)
     {
       if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type))
@@ -4130,12 +4133,36 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	    }
 
 	  len = 0;		/* init */
+
+#if 0				//defined(SUPPORT_KEY_DUP_LEVEL)  // ctshim
+	  while (*attp && *namep)
+	    {
+	      if (intl_identifier_casecmp ((*attp)->header.name, *namep))
+		{
+		  if (hidden_col_idx == -1 && IS_HIDDEN_INDEX_COL_NAME (*namep))
+		    {
+		      hidden_col_idx = len;
+		    }
+
+		  if (hidden_col_idx != len || !IS_HIDDEN_INDEX_COL_NAME ((*attp)->header.name))
+		    {
+		      break;
+		    }
+		}
+
+	      attp++;
+	      namep++;
+	      len++;		/* increase name number */
+	    }
+
+#else
 	  while (*attp && *namep && !intl_identifier_casecmp ((*attp)->header.name, *namep))
 	    {
 	      attp++;
 	      namep++;
 	      len++;		/* increase name number */
 	    }
+#endif
 
 	  if (!*attp && !*namep && !classobj_is_possible_constraint (cons->type, new_cons))
 	    {
@@ -4143,11 +4170,8 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 		{
 		  /* if not specified, ascending order */
 		  order = (asc_desc ? asc_desc[i] : 0);
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim, check... do remove
-		  assert (order == 0 || order == 1 || order < 0);
-#else
 		  assert (order == 0 || order == 1);
-#endif
+
 		  if (order != cons->asc_desc[i])
 		    {
 		      break;	/* not match */

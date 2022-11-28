@@ -128,84 +128,130 @@ static SM_CLASS_CONSTRAINT *smt_find_constraint (SM_TEMPLATE * ctemplate, const 
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
 int
-smt_make_hidden_attribute (SM_TEMPLATE * template_, MOP mop, SM_ATTRIBUTE ** attp)
+smt_make_hidden_attribute (int att_id, const char *att_name, SM_ATTRIBUTE ** attp)
 {
   int error_code = NO_ERROR;
-  *attp = NULL;
-
-  //smt_add_attribute (def, "password", AU_PASSWORD_CLASS_NAME, (DB_DOMAIN *) 0);
-  //smt_add_attribute_any (template_, name, domain_string, domain, ID_ATTRIBUTE, false, NULL, NULL);
-
-  SM_ATTRIBUTE *att = NULL;
+  short mode = -1;
+  short level = -1;
   DB_DOMAIN *domain = (DB_DOMAIN *) 0;
 
-  //domain = tp_domain_construct (DB_TYPE_OBJECT, (DB_OBJECT *) TP_DOMAIN_SELF_REF, 0, 0, (TP_DOMAIN *) 0);
+  *attp = NULL;
 
-  domain = tp_domain_construct (DB_TYPE_BIGINT, NULL, DB_BIGINT_PRECISION, 0, NULL);
+  assert ((att_id != -1) || (att_name && *att_name));
 
-
-  DB_TYPE domain_type = DB_TYPE_BIGINT;
-  switch (domain_type)
+  //////////////////////////////
+#if 0
+  int idx, id;
+  short m, l;
+  const char *str;
+  for (nmode = DUP_MODE_OID; nmode <= DUP_MODE_VOLID; nmode++)
     {
-    case DB_TYPE_BIGINT:
-      domain = tp_domain_construct (domain_type, NULL, DB_BIGINT_PRECISION, 0, NULL);
+      for (nlevel = 0; nlevel <= 16; nlevel++)
+	{
+	  idx = BUILD_HIDDEN_INDEX_COL_IDX (nmode, nlevel);
+	  str = GET_HIDDEN_INDEX_COL_NAME (nmode, nlevel);
+
+	  id = MK_HIDDEN_INDEX_COL_ATTR_ID (nmode, nlevel);
+	  m = GET_HIDDEN_INDEX_COL_MODE (id);
+	  l = GET_HIDDEN_INDEX_COL_LEVEL (id);
+	  if (nmode != m)
+	    assert (false);
+	  if (nlevel != l)
+	    assert (false);
+	}
+    }
+#endif
+  ////////////////////////////
+
+  if (att_id != -1)
+    {
+      mode = GET_HIDDEN_INDEX_COL_MODE (att_id);
+      level = GET_HIDDEN_INDEX_COL_LEVEL (att_id);
+    }
+  else
+    {
+      GET_HIDDEN_INDEX_COL_MODE_LEVEL_FROM_NAME (att_name, mode, level);
+    }
+  assert (mode > DUP_MODE_NONE && mode < DUP_MODE_LAST);
+  assert (level >= OVFL_LEVEL_MIN && level < OVFL_LEVEL_MAX);
+
+
+  DB_TYPE type = DB_TYPE_INTEGER;
+  int precision = DB_INTEGER_PRECISION;
+  int hash_mod_val = 1 << level;	// like pow(2, level);
+  switch (mode)
+    {
+    case 1:			//DUP_MODE_OID:                  
+      if (level == 0)
+	{
+	  type = DB_TYPE_BIGINT;
+	  precision = DB_BIGINT_PRECISION;
+	}
+      else if (hash_mod_val <= SHRT_MAX)
+	{
+	  type = DB_TYPE_SHORT;
+	  precision = DB_SHORT_PRECISION;
+	}
       break;
 
-    case DB_TYPE_INTEGER:
-      domain = tp_domain_construct (domain_type, NULL, DB_INTEGER_PRECISION, 0, NULL);
+    case 2:			// DUP_MODE_PAGEID:
+      if (level != 0 && hash_mod_val <= SHRT_MAX)
+	{
+	  type = DB_TYPE_SHORT;
+	  precision = DB_SHORT_PRECISION;
+	}
       break;
 
-    case DB_TYPE_SHORT:
-      domain = tp_domain_construct (domain_type, NULL, DB_SHORT_PRECISION, 0, NULL);
+    case 3:			// DUP_MODE_SLOTID:
+    case 4:			// DUP_MODE_VOLID:      
+      type = DB_TYPE_SHORT;
+      precision = DB_SHORT_PRECISION;
       break;
 
     default:
       assert (false);
       break;
     }
-
-
-
-  //domain = pt_type_enum_to_db_domain (PT_TYPE_OBJECT);
-  //  error_code = get_domain (template_, domain_string, &domain);
-  //if (error_code != NO_ERROR)
-  //  {
-  //    goto error_exit;
-  //  }
-
+#if 1				//////////////////////
+  if (type == DB_TYPE_BIGINT)
+    domain = &tp_Bigint_domain;
+  else if (type == DB_TYPE_INTEGER)
+    domain = &tp_Integer_domain;
+  else
+    domain = &tp_Short_domain;
+#else
+  domain = tp_domain_construct (type, NULL, precision, 0, NULL);
+#endif
   if (domain == NULL)
     {
-      ERROR0 (error_code, ER_SM_INVALID_ARGUMENTS);
-      goto error_exit;
-    }
-//DB_TYPE_OID  DB_TYPE_OBJECT
-  if (template_ && TP_DOMAIN_TYPE (domain) == DB_TYPE_OBJECT)
-    {
-      error_code = check_domain_class_type (template_, domain->class_mop);
-      if (error_code != NO_ERROR)
-	{
-	  goto error_exit;
-	}
+      ERROR0 (error_code, ER_SM_INVALID_ARGUMENTS);	// ctshim to do error code??
+      return error_code;
     }
 
-  att = classobj_make_attribute (HIDDEN_INDEX_COL_ATTR_NAME, domain->type, ID_ATTRIBUTE);
+  const char *hidden_name = NULL;
+  SM_ATTRIBUTE *att = NULL;
+
+  hidden_name = GET_HIDDEN_INDEX_COL_NAME (mode, level);
+
+  att = classobj_make_attribute (hidden_name, domain->type, ID_ATTRIBUTE);
   if (att == NULL)
     {
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       goto error_exit;
     }
-  //att->comment = ws_copy_string (comment);
+  att->comment = NULL;
 
   /* Flag this attribute as new so that we can initialize the original_value properly.  Make sure this isn't saved on
    * disk ! */
   att->flags |= SM_ATTFLAG_NEW;
-  //att->class_mop = template_ ? template_->op : mop;
   att->class_mop = NULL;
   att->domain = domain;
   att->auto_increment = NULL;
 
-  att->id = HIDDEN_INDEX_COL_ATTR_ID;
+  att->id = MK_HIDDEN_INDEX_COL_ATTR_ID (mode, level);
+
+  //printf ("debug: smt_make_hidden_attribute() att = %08X , id=%d mode=%d\n", att, att->id, mode);
 
   *attp = att;
   return error_code;
@@ -240,24 +286,9 @@ make_hidden_attribute (SM_TEMPLATE * template_, const char *name, SM_ATTRIBUTE *
       return error_code;
     }
 
-
-  //smt_add_attribute (def, "password", AU_PASSWORD_CLASS_NAME, (DB_DOMAIN *) 0);
-
-  //smt_add_attribute_any (template_, name, domain_string, domain, ID_ATTRIBUTE, false, NULL, NULL);
-  //const char *domain_string = "tt";
   DB_DOMAIN *domain = (DB_DOMAIN *) 0;
   bool class_namespace = false;
-  const SM_NAME_SPACE name_space = ID_ATTRIBUTE;
-
-//const SM_NAME_SPACE name_space,
-  const bool add_first = false;
-  const char *add_after_attribute = NULL;
-  const char *comment = NULL;
-
   SM_ATTRIBUTE *att = NULL;
-  char real_name[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
-  sm_downcase_name (name, real_name, SM_MAX_IDENTIFIER_LENGTH);
-  name = real_name;
 
   error_code = check_namespace (template_, name, class_namespace);
   if (error_code != NO_ERROR)
@@ -265,19 +296,11 @@ make_hidden_attribute (SM_TEMPLATE * template_, const char *name, SM_ATTRIBUTE *
       goto error_exit;
     }
 
-  error_code = smt_make_hidden_attribute (template_, NULL, &att);
+  error_code = smt_make_hidden_attribute (-1, name, &att);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
     }
-
-#if 0				//========
-  error_code = smt_add_attribute_to_list (&att_list, att, add_first, add_after_attribute);
-  if (error_code != NO_ERROR)
-    {
-      goto error_exit;
-    }
-#endif
 
   *attp = att;
   return error_code;

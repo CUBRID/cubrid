@@ -378,9 +378,9 @@ static int do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_s
 static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement);
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
-static void alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, int ovfl_level, char **attnames, int *asc_desc,
-					      int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info,
-					      int hidden_index_col, int nnames);
+static void alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO * idx_info, char **attnames,
+					      int *asc_desc, int *attrs_prefix_length,
+					      SM_FUNCTION_INFO * func_index_info, int hidden_index_col, int nnames);
 static void create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int *asc_desc,
 				       int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames);
 #endif
@@ -2802,12 +2802,12 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	{
 	  if (idx_info->prefix_length == NULL)
 	    {
-	      if (idx_info->ovfl_level <= OVFL_LEVEL_NOT_SET)
+	      if (idx_info->dupkey_mode <= DUP_MODE_OVFL_LEVEL_NOT_SET)
 		{
 		  /* no action */ ;
 		}
-	      else if ((idx_info->ovfl_level != OVFL_LEVEL_NOT_USED) && !SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype)
-		       && ctype != SM_CONSTRAINT_FOREIGN_KEY)
+	      else if ((idx_info->dupkey_mode != DUP_MODE_NONE)
+		       && !SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != SM_CONSTRAINT_FOREIGN_KEY)
 		{
 		  has_hidden_index_col = true;
 		  nnames++;
@@ -3241,7 +3241,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
   // Support for free space in preparation for additional columns
-  //alloc_cnt = (statement->info.index.ovfl_level <= OVFL_LEVEL_NOT_USED) ? nnames : (nnames + 1);  
+  //alloc_cnt = (statement->info.index.ovfl_level <= DUP_MODE_NONE) ? nnames : (nnames + 1);  
   // 뭔가 다른 조치가 필요함.  메모리 확보할때랑 루프돌면서 값을 채우는것이 일치 않해... asc_desc[] ?
   // 메모리 확보는 alloc_cnt로.
   alloc_cnt = nnames + 1;
@@ -3402,7 +3402,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 #if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
   if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != SM_CONSTRAINT_FOREIGN_KEY)
     {
-      alter_rebuild_index_level_adjust (ctype, statement->info.index.ovfl_level, attnames, asc_desc,
+      alter_rebuild_index_level_adjust (ctype, &statement->info.index, attnames, asc_desc,
 					attrs_prefix_length, func_index_info, hidden_index_col, nnames);
     }
 #endif
@@ -15562,21 +15562,21 @@ ib_get_thread_count ()
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
 static void
-alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, int ovfl_level, char **attnames, int *asc_desc,
-				  int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int hidden_index_col,
-				  int nnames)
+alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO * idx_info, char **attnames,
+				  int *asc_desc, int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info,
+				  int hidden_index_col, int nnames)
 {
   int func_no_args = 0;
 
   assert (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != SM_CONSTRAINT_FOREIGN_KEY);
 
-  if (ovfl_level <= OVFL_LEVEL_NOT_SET)
+  if (idx_info->dupkey_mode <= DUP_MODE_OVFL_LEVEL_NOT_SET)
     {
       /* no action */
       return;
     }
 
-  if (ovfl_level == OVFL_LEVEL_NOT_USED)
+  if (idx_info->dupkey_mode == DUP_MODE_NONE)
     {
       if (hidden_index_col != -1)
 	{			// remove hidden column                  
@@ -15599,11 +15599,22 @@ alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, int ovfl_level, char
 		}
 	    }
 	}
+
+      return;
     }
-  else if (hidden_index_col != -1)
+
+  assert (idx_info->dupkey_mode != DUP_MODE_NONE && idx_info->dupkey_mode != DUP_MODE_OVFL_LEVEL_NOT_SET);
+  assert (idx_info->dupkey_hash_level >= OVFL_LEVEL_MIN && idx_info->dupkey_hash_level < OVFL_LEVEL_MAX);
+
+  if (hidden_index_col != -1)
     {				// reset level 
-      asc_desc[hidden_index_col] = GET_OVFL_LEVEL_4_SAVE (ovfl_level);	// 0;     // ovfl_level;
-      attrs_prefix_length[hidden_index_col] = ovfl_level * (-1);
+      asc_desc[hidden_index_col] = 0;
+      attrs_prefix_length[hidden_index_col] = -1;
+
+      free_and_init (attnames[hidden_index_col]);
+      attnames[hidden_index_col] =
+	strdup ((char *) GET_HIDDEN_INDEX_COL_NAME (idx_info->dupkey_mode, idx_info->dupkey_hash_level));
+      assert (attnames[hidden_index_col] != NULL);
     }
   else
     {				// append hidden column
@@ -15628,9 +15639,11 @@ alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, int ovfl_level, char
 	  hidden_index_col = nnames;
 	}
 
-      asc_desc[hidden_index_col] = GET_OVFL_LEVEL_4_SAVE (ovfl_level);	// 0;     // ovfl_level;
-      attrs_prefix_length[hidden_index_col] = ovfl_level * (-1);
-      attnames[hidden_index_col] = strdup (HIDDEN_INDEX_COL_ATTR_NAME);
+      asc_desc[hidden_index_col] = 0;
+      attrs_prefix_length[hidden_index_col] = -1;
+      attnames[hidden_index_col] =
+	strdup ((char *) GET_HIDDEN_INDEX_COL_NAME (idx_info->dupkey_mode, idx_info->dupkey_hash_level));
+      assert (attnames[hidden_index_col] != NULL);
 
       attnames[nnames + 1] = NULL;
     }
@@ -15641,6 +15654,10 @@ create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int 
 			   int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames)
 {
   int hidden_index_col;
+  int ovfl_level;
+
+  assert (idx_info->dupkey_mode != DUP_MODE_NONE && idx_info->dupkey_mode != DUP_MODE_OVFL_LEVEL_NOT_SET);
+  assert (idx_info->dupkey_hash_level >= OVFL_LEVEL_MIN && idx_info->dupkey_hash_level < OVFL_LEVEL_MAX);
 
   if (func_index_info)
     {
@@ -15662,9 +15679,9 @@ create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int 
       hidden_index_col = nnames;
     }
 
-  asc_desc[hidden_index_col] = GET_OVFL_LEVEL_4_SAVE (idx_info->ovfl_level);	//0;        // idx_info->ovfl_level;
-  attrs_prefix_length[hidden_index_col] = idx_info->ovfl_level * (-1);
-  attnames[hidden_index_col] = HIDDEN_INDEX_COL_ATTR_NAME;
+  asc_desc[hidden_index_col] = 0;
+  attrs_prefix_length[hidden_index_col] = -1;
+  attnames[hidden_index_col] = (char *) GET_HIDDEN_INDEX_COL_NAME (idx_info->dupkey_mode, idx_info->dupkey_hash_level);
 
   attnames[nnames + 1] = NULL;
 }

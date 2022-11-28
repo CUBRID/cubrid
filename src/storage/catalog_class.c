@@ -870,7 +870,10 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p, OR_VA
 	      if (IS_HIDDEN_INDEX_COL_ID (id))
 		{
 		  DB_VALUE tmp_val;
-		  db_make_string (&tmp_val, HIDDEN_INDEX_COL_ATTR_NAME);
+		  int mode = GET_HIDDEN_INDEX_COL_MODE (id);
+		  int ovfl_level = GET_HIDDEN_INDEX_COL_LEVEL (id);
+
+		  db_make_string (&tmp_val, GET_HIDDEN_INDEX_COL_NAME (mode, ovfl_level));
 		  pr_clear_value (&key_atts[1].value);
 		  pr_clone_value (&tmp_val, &key_atts[1].value);
 		  if (tmp_val.need_clear)

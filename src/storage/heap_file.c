@@ -9695,7 +9695,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 
 	  // ctshim ???????????????????????????????????????????
 
-	  printf ("debug: heap_attrinfo_recache_attrepr(-2848048) AAAAAAAAAAAAAAAAAAAAAA\n");
+	  // printf ("debug: heap_attrinfo_recache_attrepr(-2848048) AAAAAAAAAAAAAAAAAAAAAA\n");
 	}
 #endif
 
@@ -12339,8 +12339,9 @@ heap_attrvalue_get_index (int value_index, ATTR_ID * attrid, int *n_btids, BTID 
 #endif
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+
 static void
-heap_midxkey_key_hidden_col_attr (OR_BUF * or_buf_ptr, char *nullmap_ptr, int idx, OR_ATTRIBUTE * attr, OID * rec_oid)
+heap_midxkey_index_write_hidden_value (OR_BUF * or_buf_ptr, char *nullmap_ptr, int idx, int att_id, OID * rec_oid)
 {
   DB_VALUE tmp_val;
 
@@ -12348,34 +12349,67 @@ heap_midxkey_key_hidden_col_attr (OR_BUF * or_buf_ptr, char *nullmap_ptr, int id
   // In that case, however, it cannot enter here.
   assert (rec_oid != NULL);
 
-  DB_TYPE domain_type = DB_TYPE_BIGINT;
+  int hash_mod_val;
+  unsigned int hash_val;
+  short level = GET_HIDDEN_INDEX_COL_LEVEL (att_id);
+  short mode = GET_HIDDEN_INDEX_COL_MODE (att_id);
 
-  switch (domain_type)
+  hash_mod_val = 1 << level;	// like pow(2, level);
+
+  switch (mode)
     {
-    case DB_TYPE_BIGINT:
-      db_make_bigint (&tmp_val, *((DB_BIGINT *) rec_oid));
+    case 1:			//DUP_MODE_OID:  
+      if (level == 0)
+	{
+	  db_make_bigint (&tmp_val, *((DB_BIGINT *) rec_oid));
+	  tp_Bigint.index_writeval (or_buf_ptr, &tmp_val);
+	}
+      else if (hash_mod_val > SHRT_MAX)
+	{
+	  db_make_int (&tmp_val, (int) (OID_PSEUDO_KEY (rec_oid) % hash_mod_val));
+	  tp_Integer.index_writeval (or_buf_ptr, &tmp_val);
+	}
+      else
+	{
+	  db_make_short (&tmp_val, (short) (OID_PSEUDO_KEY (rec_oid) % hash_mod_val));
+	  tp_Short.index_writeval (or_buf_ptr, &tmp_val);
+	}
       break;
 
-    case DB_TYPE_INTEGER:
-      db_make_bigint (&tmp_val, *((DB_BIGINT *) rec_oid) % INT_MAX);
+    case 2:			// DUP_MODE_PAGEID:
+      if (level == 0)
+	{
+	  db_make_int (&tmp_val, rec_oid->pageid);
+	  tp_Integer.index_writeval (or_buf_ptr, &tmp_val);
+	}
+      else if (hash_mod_val > SHRT_MAX)
+	{
+	  db_make_int (&tmp_val, (int) (rec_oid->pageid % hash_mod_val));
+	  tp_Integer.index_writeval (or_buf_ptr, &tmp_val);
+	}
+      else
+	{
+	  db_make_short (&tmp_val, (short) (rec_oid->pageid % hash_mod_val));
+	  tp_Short.index_writeval (or_buf_ptr, &tmp_val);
+	}
       break;
 
-    case DB_TYPE_SHORT:
-      db_make_bigint (&tmp_val, *((DB_BIGINT *) rec_oid) % SHRT_MAX);
+    case 3:			// DUP_MODE_SLOTID:
+      db_make_short (&tmp_val, (level == 0) ? rec_oid->slotid : (rec_oid->slotid % hash_mod_val));
+      tp_Short.index_writeval (or_buf_ptr, &tmp_val);
       break;
 
+    case 4:			// DUP_MODE_VOLID:      
+      db_make_short (&tmp_val, (level == 0) ? rec_oid->volid : (rec_oid->volid % hash_mod_val));
+      tp_Short.index_writeval (or_buf_ptr, &tmp_val);
+      break;
     default:
       assert (false);
+      break;
     }
 
-// ctshim hidden type?
-  //db_make_bigint (&tmp_val, *((DB_BIGINT *) rec_oid));
-  tp_Bigint.index_writeval (or_buf_ptr, &tmp_val);
   OR_ENABLE_BOUND_BIT (nullmap_ptr, idx);
-  if (DB_NEED_CLEAR (&tmp_val))	// ???
-    {
-      pr_clear_value (&tmp_val);
-    }
+  //  The objects covered here are all numeric types, so there is no need to clean them up using pr_clear_value().
 }
 #endif
 
@@ -12463,9 +12497,8 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 #if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
       if (IS_HIDDEN_INDEX_COL_ID (atts[i]->id))
 	{
-	  heap_midxkey_key_hidden_col_attr (&buf, nullmap_ptr, k, NULL, rec_oid);
-	  printf (">>> heap_midxkey_key_get() rec_oid = %d | %d | %d\n", rec_oid->volid, rec_oid->pageid,
-		  rec_oid->slotid);
+	  heap_midxkey_index_write_hidden_value (&buf, nullmap_ptr, k, atts[i]->id, rec_oid);
+	  //printf (">>> heap_midxkey_key_get() rec_oid = %d | %d | %d\n", rec_oid->volid, rec_oid->pageid, rec_oid->slotid);
 	  error = NO_ERROR;
 	}
       else
@@ -12632,12 +12665,11 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 #if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
       if (IS_HIDDEN_INDEX_COL_ID (att_ids[i]))
 	{
-	  heap_midxkey_key_hidden_col_attr (&buf, nullmap_ptr, k, NULL, rec_oid);
-	  printf (">>> heap_midxkey_key_generate() rec_oid = %d | %d | %d\n", rec_oid->volid, rec_oid->pageid,
-		  rec_oid->slotid);
+	  heap_midxkey_index_write_hidden_value (&buf, nullmap_ptr, k, att_ids[i], rec_oid);
+	  //printf (">>> heap_midxkey_key_generate() rec_oid = %d | %d | %d\n", rec_oid->volid, rec_oid->pageid,                  rec_oid->slotid);
 
+	  k++;			// check.......... ctshim
 	  continue;
-	  k++;
 	}
 #endif
 

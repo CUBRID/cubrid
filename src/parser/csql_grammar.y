@@ -615,6 +615,8 @@ int g_original_buffer_len;
 %type <number> opt_encrypt_algorithm
 %type <number> opt_access_modifier
 %type <number> opt_index_level
+%type <number> opt_index_dup_level
+%type <number> index_dup_mode
 /*}}}*/
 
 /* define rule type (node) */
@@ -1653,6 +1655,11 @@ int g_original_buffer_len;
 %token <cptr> UTF8_STRING
 %token <cptr> IPV4_ADDRESS
 
+%token <cptr> OID_ 
+%token <cptr> PAGEID_
+%token <cptr> SLOTID_
+%token <cptr> VOLID_  
+
 /*}}}*/
 
 %%
@@ -2687,7 +2694,7 @@ create_stmt
 	  only_class_name				/* 10 */
 	  index_column_name_list			/* 11 */
 	  opt_where_clause				/* 12 */
-          opt_index_level                               /* 13 */
+          opt_index_dup_level                           /* 13 */
 	  opt_comment_spec				/* 14 */
 	  opt_with_online				/* 15 */
 	  opt_invisible					/* 16 */
@@ -2814,11 +2821,21 @@ create_stmt
 				      }
 				  }
 			      }
-                            
-                            node->info.index.ovfl_level = ($13 == OVFL_LEVEL_NOT_SET) ? OVFL_LEVEL_NOT_USED : $13; // ctshim
-
+                       
 			    node->info.index.where = $12;
 			    node->info.index.column_names = col;
+
+                            if($13 == DUP_MODE_OVFL_LEVEL_NOT_SET)
+                            {
+                                node->info.index.dupkey_mode = DUP_MODE_NONE;
+                                node->info.index.dupkey_hash_level = 0;
+                            }
+                            else
+                            {
+                                node->info.index.dupkey_mode = $13 & 0x0000FFFF;
+                                node->info.index.dupkey_hash_level = ($13 >> 16);
+                            }                               
+
 			    node->info.index.comment = $14; // ctshim
 
                             int with_online_ret = $15;  // 0 for normal, 1 for online no parallel,
@@ -3646,7 +3663,7 @@ alter_stmt
 	  opt_where_clause				/* 11 */
 	  opt_comment_spec				/* 12 */
 	  REBUILD					/* 13 */
-          opt_index_level                               /* 14 */
+          opt_index_dup_level                           /* 14 */
 		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER ~ INDEX ~ REBUILD);
 
 			PT_NODE *node = parser_pop_hint_node ();
@@ -3708,8 +3725,17 @@ alter_stmt
 			    node->info.index.column_names = col;
 			    node->info.index.where = $11;
 			    node->info.index.comment = $12;
-
-                            node->info.index.ovfl_level = $14;// ctshim    
+                            
+                            if($14 == DUP_MODE_OVFL_LEVEL_NOT_SET)
+                            {
+                                node->info.index.dupkey_mode = DUP_MODE_OVFL_LEVEL_NOT_SET;
+                                node->info.index.dupkey_hash_level = 0;
+                            }
+                            else
+                            {
+                                node->info.index.dupkey_mode = $14 & 0x0000FFFF;
+                                node->info.index.dupkey_hash_level = ($14 >> 16);
+                            }
 
 			    $$ = node;
 			    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -21416,10 +21442,36 @@ opt_encrypt_algorithm
       $$ = 2; }   /* TDE_ALGORITHM_ARIA */
   ;
 
+opt_index_dup_level
+        :  /* empty */
+	       { DBG_TRACE_GRAMMAR(opt_index_dup_level, : ); 
+                 $$ = DUP_MODE_OVFL_LEVEL_NOT_SET;  }      
+        | DUPLICATE_ ON_
+               { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DUPLICATE_ ON_ ); 
+                 $$ = DUP_MODE_DEFAULT | (OVFL_LEVEL_DEFAULT << 16); 
+               }
+        | DUPLICATE_ OFF_
+               { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DUPLICATE_ OFF_ ); 
+                 $$ = DUP_MODE_NONE;
+               }
+        | DUPLICATE_ WITH index_dup_mode opt_index_level
+               { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DUPLICATE_ WITH index_dup_mode opt_index_level ); 
+                 $$ = $3 | ($4 << 16);
+               }
+        ;
+
+index_dup_mode
+        :  OID_      { DBG_TRACE_GRAMMAR(index_dup_mode, | OID_ );    $$ = DUP_MODE_OID; }
+        |  PAGEID_   { DBG_TRACE_GRAMMAR(index_dup_mode, | PAGEID_ ); $$ = DUP_MODE_PAGEID; }
+        |  SLOTID_   { DBG_TRACE_GRAMMAR(index_dup_mode, | SLOTID_ ); $$ = DUP_MODE_SLOTID; }
+        |  VOLID_    { DBG_TRACE_GRAMMAR(index_dup_mode, | VOLID_ );  $$ = DUP_MODE_VOLID; } 
+        ;
+
+
 opt_index_level
         : /* empty */
 		{ DBG_TRACE_GRAMMAR(opt_index_level, : );
-                  $$ = OVFL_LEVEL_NOT_SET; // OVFL_LEVEL_NOT_USED; //OVFL_LEVEL_DEFAULT; // ctshim default
+                  $$ = OVFL_LEVEL_DEFAULT;
                 }
 	| LEVEL UNSIGNED_INTEGER
 		{ DBG_TRACE_GRAMMAR(opt_index_level, | LEVEL UNSIGNED_INTEGER ); 
@@ -21435,14 +21487,6 @@ opt_index_level
 
    	          $$ = int_val;                  
                   DBG_PRINT}
-        | LEVEL ON_
-                { DBG_TRACE_GRAMMAR(opt_index_level, | LEVEL ON_ ); 
-                  $$ = OVFL_LEVEL_DEFAULT; // ctshim default
-                DBG_PRINT}
-        | LEVEL OFF_
-                { DBG_TRACE_GRAMMAR(opt_index_level, | LEVEL OFF_ ); 
-                  $$ = OVFL_LEVEL_NOT_USED; 
-                DBG_PRINT}
 	;
 
 opt_comment_spec
@@ -22285,11 +22329,13 @@ identifier
 	| NTILE                  {{ DBG_TRACE_GRAMMAR(identifier, | NTILE              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NULLS                  {{ DBG_TRACE_GRAMMAR(identifier, | NULLS              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| OFFSET                 {{ DBG_TRACE_GRAMMAR(identifier, | OFFSET             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | OID_                   {{ DBG_TRACE_GRAMMAR(identifier, | OID_               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ONLINE                 {{ DBG_TRACE_GRAMMAR(identifier, | ONLINE             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| OPEN                   {{ DBG_TRACE_GRAMMAR(identifier, | OPEN               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ORDINALITY             {{ DBG_TRACE_GRAMMAR(identifier, | ORDINALITY         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| OWNER                  {{ DBG_TRACE_GRAMMAR(identifier, | OWNER              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PAGE                   {{ DBG_TRACE_GRAMMAR(identifier, | PAGE               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | PAGEID_                {{ DBG_TRACE_GRAMMAR(identifier, | PAGEID_            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PARALLEL               {{ DBG_TRACE_GRAMMAR(identifier, | PARALLEL           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PARTITIONING           {{ DBG_TRACE_GRAMMAR(identifier, | PARTITIONING       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PARTITIONS             {{ DBG_TRACE_GRAMMAR(identifier, | PARTITIONS         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -22327,7 +22373,8 @@ identifier
 	| SERIAL                 {{ DBG_TRACE_GRAMMAR(identifier, | SERIAL             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SERVER                 {{ DBG_TRACE_GRAMMAR(identifier, | SERVER             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SHOW                   {{ DBG_TRACE_GRAMMAR(identifier, | SHOW               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SLOTS                  {{ DBG_TRACE_GRAMMAR(identifier, | SLOTS              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| SLOTID_                {{ DBG_TRACE_GRAMMAR(identifier, | SLOTID_              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | SLOTS                  {{ DBG_TRACE_GRAMMAR(identifier, | SLOTS              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SLOTTED                {{ DBG_TRACE_GRAMMAR(identifier, | SLOTTED            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| STABILITY              {{ DBG_TRACE_GRAMMAR(identifier, | STABILITY          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| START_                 {{ DBG_TRACE_GRAMMAR(identifier, | START_             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -22355,6 +22402,7 @@ identifier
 	| VAR_POP                {{ DBG_TRACE_GRAMMAR(identifier, | VAR_POP            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| VAR_SAMP               {{ DBG_TRACE_GRAMMAR(identifier, | VAR_SAMP           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| VISIBLE                {{ DBG_TRACE_GRAMMAR(identifier, | VISIBLE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | VOLID_                 {{ DBG_TRACE_GRAMMAR(identifier, | VOLID_             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| VOLUME                 {{ DBG_TRACE_GRAMMAR(identifier, | VOLUME             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| WEEK                   {{ DBG_TRACE_GRAMMAR(identifier, | WEEK               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| WITHIN                 {{ DBG_TRACE_GRAMMAR(identifier, | WITHIN             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
