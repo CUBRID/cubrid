@@ -7417,7 +7417,8 @@ heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, REC
  * return		 : SCAN_CODE: S_ERROR, S_DOESNT_EXIST and S_SUCCESS.
  * thread_p (in)	 : Thread entry.
  * context (in/out)      : Heap get context used to store the information required for heap objects processing.
- * is_heap_scan (in)     : Used to decide if it is acceptable to reach deleted objects or not.
+ * is_heap_scan (in)     : Used to decide if it is acceptable to reach deleted objects or not. If true, reaching
+ *                          a non-existing slot/empty slot does not trigger an error and just returns doesn't exist.
  * non_ex_handling_type (in): Handling type for deleted objects
  *			      - LOG_ERROR_IF_DELETED: write the
  *				ER_HEAP_UNKNOWN_OBJECT error to log
@@ -25074,7 +25075,9 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
  *  return SCAN_CODE.
  *  thread_p (in): Thread entry.
  *  context (in): Heap get context.
- *  is_heap_scan (in): required for heap_prepare_get_context
+ *  is_heap_scan (in): required for heap_prepare_get_context (Used to decide if it is acceptable to reach
+ *                      deleted objects or not. If true, reaching a non-existing slot/empty slot does
+ *                      not trigger an error and just returns doesn't exist)
  */
 SCAN_CODE
 heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_heap_scan)
@@ -25090,7 +25093,10 @@ heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CON
 	  break;
 	}
       assert (is_passive_transaction_server ());
+      assert (context->scan_cache != nullptr);
+
       // Handle the page desynchronization error
+      //
 
       // clean - saving state if required
       //
@@ -25101,24 +25107,20 @@ heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CON
       VPID saved_vpid VPID_INITIALIZER;
       PGBUF_LATCH_MODE saved_latch_mode = PGBUF_NO_LATCH;
       bool restore_scan_cache_page_watcher = false;
-      if (is_heap_scan)
+      if (context->scan_cache != nullptr && context->scan_cache->page_watcher.pgptr != nullptr)
 	{
-	  assert (context->scan_cache != nullptr);
-	  if (context->scan_cache->page_watcher.pgptr != nullptr)
-	    {
-	      assert (context->scan_cache->cache_last_fix_page);
+	  assert (context->scan_cache->cache_last_fix_page);
 
-	      pgbuf_ordered_unfix_and_save_for_refix (thread_p, &context->scan_cache->page_watcher,
-						      saved_vpid, saved_latch_mode);
-	      assert (!VPID_ISNULL (&saved_vpid));
-	      assert (PGBUF_LATCH_READ == saved_latch_mode);
-	      restore_scan_cache_page_watcher = true;
-	    }
+	  pgbuf_ordered_unfix_and_save_for_refix (thread_p, &context->scan_cache->page_watcher,
+						  saved_vpid, saved_latch_mode);
+	  assert (!VPID_ISNULL (&saved_vpid));
+	  assert (PGBUF_LATCH_READ == saved_latch_mode);
+	  restore_scan_cache_page_watcher = true;
 	}
 
       assert (PGBUF_IS_CLEAN_WATCHER (&context->home_page_watcher));
       assert (PGBUF_IS_CLEAN_WATCHER (&context->fwd_page_watcher));
-      assert (PGBUF_IS_CLEAN_WATCHER (&context->scan_cache->page_watcher));
+      assert (context->scan_cache == nullptr || PGBUF_IS_CLEAN_WATCHER (&context->scan_cache->page_watcher));
 
       // wait for replication to catch-up
       //
@@ -25134,8 +25136,7 @@ heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CON
 	  if (error_code != NO_ERROR)
 	    {
 	      // most likely, this [client read-only] transaction is expecting another thread
-	      // (most likely, the transactional log replication thread) to advance past a
-	      // certain point;
+	      // (the transactional log replication thread) to advance past a certain LSA;
 	      // during replication, the page might be de-allocated while processing a log record
 	      // thus, failing to re-fix is expected
 	      //
@@ -25143,6 +25144,9 @@ heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CON
 	      // instead - OLD_PAGE - is actually propagated to the
 	      // server (see pgbuf_request_data_page_from_page_server)
 	      // thus, if page has been de-allocated, an error will be retrieved from page server
+	      er_log_debug (ARG_FILE_LINE, "heap_get_visible_version: page re-fix after replication wait failed for"
+			    " oid=%d|%d|%d of class_oid=%d|%d|%d",
+			    OID_AS_ARGS (context->oid_p), OID_AS_ARGS (context->class_oid_p));
 	      assert (false);
 
 	      // clean the watcher; leave it to a next iteration to return an error scan code
