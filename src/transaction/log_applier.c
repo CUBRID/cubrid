@@ -476,7 +476,7 @@ static int la_does_page_exist (LOG_PAGEID pageid);
 static int la_init_repl_lists (bool need_realloc);
 static bool la_is_repl_lists_empty ();
 static LA_APPLY *la_find_apply_list (int tranid);
-static void la_log_copy_fromlog (char *rec_type, char *area, int length, LOG_PAGEID log_pageid, PGLENGTH log_offset,
+static void la_log_copy_fromlog (char *rec_type, char *area, int *length, LOG_PAGEID log_pageid, PGLENGTH log_offset,
 				 LOG_PAGE * log_pgptr);
 static LA_ITEM *la_new_repl_item (LOG_LSA * lsa, LOG_LSA * target_lsa);
 static void la_add_repl_item (LA_APPLY * apply, LA_ITEM * item);
@@ -3000,7 +3000,7 @@ la_add_apply_list (int tranid)
  *   rec_type(out)
  *   area: Area where the portion of the log is copied.
  *               (Set as a side effect)
- *   length: the length to copy (type change PGLENGTH -> int)
+ *   length(in/out): the length to copy (type change PGLENGTH -> int) (in) and the length - 2 bytes when reading rec_type like REC_HOME otherwise length (out)
  *   log_pageid: log page identifier of the log data to copy
  *               (May be set as a side effect)
  *   log_offset: log offset within the log page of the log data to copy
@@ -3016,7 +3016,7 @@ la_add_apply_list (int tranid)
  *   log_pageid, log_offset, and log_pgptr are set as a side effect.
  */
 static void
-la_log_copy_fromlog (char *rec_type, char *area, int length, LOG_PAGEID log_pageid, PGLENGTH log_offset,
+la_log_copy_fromlog (char *rec_type, char *area, int *length, LOG_PAGEID log_pageid, PGLENGTH log_offset,
 		     LOG_PAGE * log_pgptr)
 {
   int rec_length = (int) sizeof (INT16);
@@ -3044,11 +3044,11 @@ la_log_copy_fromlog (char *rec_type, char *area, int length, LOG_PAGEID log_page
       rec_length -= copy_length;
       area_offset += copy_length;
       log_offset += copy_length;
-      length = length - DB_SIZEOF (INT16);
+      *length = *length - DB_SIZEOF (INT16);
     }
 
   area_offset = 0;
-  t_length = length;
+  t_length = *length;
 
   /* The log data is not contiguous */
   while (t_length > 0)
@@ -3195,7 +3195,7 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
       return NULL;
     }
 
-  (void) la_log_copy_fromlog (NULL, area, length, pageid, offset, repl_log_pgptr);
+  (void) la_log_copy_fromlog (NULL, area, &length, pageid, offset, repl_log_pgptr);
 
   item = la_new_repl_item (lsa, &repl_log->lsa);
   if (item == NULL)
@@ -3942,7 +3942,7 @@ la_get_undoredo_diff (LOG_PAGE ** pgptr, LOG_PAGEID * pageid, PGLENGTH * offset,
     }
 
   /* get undo data for XOR process */
-  la_log_copy_fromlog (NULL, *undo_data, *undo_length, *pageid, *offset, *pgptr);
+  la_log_copy_fromlog (NULL, *undo_data, undo_length, *pageid, *offset, *pgptr);
 
   if (*is_undo_zip && *undo_length > 0)
     {
@@ -4238,7 +4238,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
     {
       zip_len = GET_ZIP_LEN (temp_length);
       /* Get Zip Data */
-      la_log_copy_fromlog (NULL, *data, zip_len, pageid, offset, pg);
+      la_log_copy_fromlog (NULL, *data, &zip_len, pageid, offset, pg);
 
       if (zip_len != 0)
 	{
@@ -4263,7 +4263,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
   else
     {
       /* Get Redo Data */
-      la_log_copy_fromlog (rec_type ? *rec_type : NULL, *data, length, pageid, offset, pg);
+      la_log_copy_fromlog (rec_type ? *rec_type : NULL, *data, &length, pageid, offset, pg);
     }
 
   *d_length = length;
@@ -4538,7 +4538,7 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 		      if (ZIP_CHECK (temp_length))
 			{
 			  zip_len = GET_ZIP_LEN (temp_length);
-			  la_log_copy_fromlog (NULL, *data, zip_len, pageid, offset, pg);
+			  la_log_copy_fromlog (NULL, *data, &zip_len, pageid, offset, pg);
 
 			  if (zip_len != 0)
 			    {
@@ -4564,7 +4564,7 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 			}
 		      else
 			{
-			  la_log_copy_fromlog (rec_type ? *rec_type : NULL, *data, length, pageid, offset, pg);
+			  la_log_copy_fromlog (rec_type ? *rec_type : NULL, *data, &length, pageid, offset, pg);
 			}
 
 		      *d_length = length;
