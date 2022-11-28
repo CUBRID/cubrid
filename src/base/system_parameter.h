@@ -645,26 +645,26 @@ extern "C"
 			&& PRM_IS_FOR_SERVER (GET_PRM_STATIC_FLAG (id)) \
 			&& !PRM_CLIENT_SESSION_ONLY (GET_PRM_STATIC_FLAG (id)))
 
-typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
+  typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
-struct sysprm_param
-{
-  PARAM_ID id;			/* parameter ID */
-  const char *name;		/* the keyword expected */
-  unsigned int static_flag;	/* bitmask flag representing status words */
-  SYSPRM_DATATYPE datatype;	/* value data type */
-  unsigned int *dynamic_flag;	/* shared by both original and duplicated */
-  void *default_value;		/* address of (pointer to) default value */
-  void *value;			/* address of (pointer to) current value */
-  void *upper_limit;		/* highest allowable value */
-  void *lower_limit;		/* lowest allowable value */
-  char *force_value;		/* address of (pointer to) force value string */
-  DUP_PRM_FUNC set_dup;		/* set duplicated value to original value */
-  DUP_PRM_FUNC get_dup;		/* get duplicated value from original value */
-};
-typedef struct sysprm_param SYSPRM_PARAM;
+  struct sysprm_param
+  {
+    PARAM_ID id;		/* parameter ID */
+    const char *name;		/* the keyword expected */
+    unsigned int static_flag;	/* bitmask flag representing status words */
+    SYSPRM_DATATYPE datatype;	/* value data type */
+    unsigned int *dynamic_flag;	/* shared by both original and duplicated */
+    void *default_value;	/* address of (pointer to) default value */
+    void *value;		/* address of (pointer to) current value */
+    void *upper_limit;		/* highest allowable value */
+    void *lower_limit;		/* lowest allowable value */
+    char *force_value;		/* address of (pointer to) force value string */
+    DUP_PRM_FUNC set_dup;	/* set duplicated value to original value */
+    DUP_PRM_FUNC get_dup;	/* get duplicated value from original value */
+  };
+  typedef struct sysprm_param SYSPRM_PARAM;
 
-extern SYSPRM_PARAM prm_Def[];
+  extern SYSPRM_PARAM prm_Def[];
 
 #if defined (CS_MODE)
 /* when system parameters are loaded, session parameters need to be cached for
@@ -753,23 +753,22 @@ extern SYSPRM_PARAM prm_Def[];
  *
  * NOTE: keywords are stored as integers
  */
-inline int
-prm_get_integer_value (PARAM_ID prm_id)
-{
-  assert (prm_id <= PRM_LAST_ID);
-  assert (PRM_IS_INTEGER (&prm_Def[prm_id]) || PRM_IS_KEYWORD (&prm_Def[prm_id]));
+  inline int prm_get_integer_value (PARAM_ID prm_id)
+  {
+    assert (prm_id <= PRM_LAST_ID);
+    assert (PRM_IS_INTEGER (&prm_Def[prm_id]) || PRM_IS_KEYWORD (&prm_Def[prm_id]));
 
 #if defined (SERVER_MODE)
-  if (!PRM_SERVER_SESSION (prm_id))
-    {
-      return PRM_GET_INT (prm_Def[prm_id].value);
-    }
+    if (!PRM_SERVER_SESSION (prm_id))
+      {
+	return PRM_GET_INT (prm_Def[prm_id].value);
+      }
 
-  return PRM_GET_INT (prm_get_value (prm_id));
-#else /* SERVER_MODE */
-  return PRM_GET_INT (prm_Def[prm_id].value);
-#endif /* SERVER_MODE */
-}
+    return PRM_GET_INT (prm_get_value (prm_id));
+#else				/* SERVER_MODE */
+      return PRM_GET_INT (prm_Def[prm_id].value);
+#endif				/* SERVER_MODE */
+  }
 
 /*
  * prm_get_bool_value () - get the value of a parameter of type bool
@@ -777,23 +776,22 @@ prm_get_integer_value (PARAM_ID prm_id)
  * return      : value
  * prm_id (in) : parameter id
  */
-inline bool
-prm_get_bool_value (PARAM_ID prm_id)
-{
-  assert (prm_id <= PRM_LAST_ID);
-  assert (PRM_IS_BOOLEAN (&prm_Def[prm_id]));
+  inline bool prm_get_bool_value (PARAM_ID prm_id)
+  {
+    assert (prm_id <= PRM_LAST_ID);
+    assert (PRM_IS_BOOLEAN (&prm_Def[prm_id]));
 
 #if defined (SERVER_MODE)
-  if (!PRM_SERVER_SESSION (prm_id))
-    {
-      return PRM_GET_BOOL (prm_Def[prm_id].value);
-    }
+    if (!PRM_SERVER_SESSION (prm_id))
+      {
+	return PRM_GET_BOOL (prm_Def[prm_id].value);
+      }
 
-  return PRM_GET_BOOL (prm_get_value (prm_id));
+    return PRM_GET_BOOL (prm_get_value (prm_id));
 #else /* SERVER_MODE */
-  return PRM_GET_BOOL (prm_Def[prm_id].value);
+    return PRM_GET_BOOL (prm_Def[prm_id].value);
 #endif /* SERVER_MODE */
-}
+  }
 
 /*
  * prm_get_float_value () - get the value of a parameter of type float
@@ -801,23 +799,22 @@ prm_get_bool_value (PARAM_ID prm_id)
  * return      : value
  * prm_id (in) : parameter id
  */
-inline float
-prm_get_float_value (PARAM_ID prm_id)
-{
-  assert (prm_id <= PRM_LAST_ID);
-  assert (PRM_IS_FLOAT (&prm_Def[prm_id]));
+  inline float prm_get_float_value (PARAM_ID prm_id)
+  {
+    assert (prm_id <= PRM_LAST_ID);
+    assert (PRM_IS_FLOAT (&prm_Def[prm_id]));
 
 #if defined (SERVER_MODE)
-  if (!PRM_SERVER_SESSION (prm_id))
-    {
-      return PRM_GET_FLOAT (prm_Def[prm_id].value);
-    }
+    if (!PRM_SERVER_SESSION (prm_id))
+      {
+	return PRM_GET_FLOAT (prm_Def[prm_id].value);
+      }
 
-  return PRM_GET_FLOAT (prm_get_value (prm_id));
+    return PRM_GET_FLOAT (prm_get_value (prm_id));
 #else /* SERVER_MODE */
-  return PRM_GET_FLOAT (prm_Def[prm_id].value);
+    return PRM_GET_FLOAT (prm_Def[prm_id].value);
 #endif /* SERVER_MODE */
-}
+  }
 
 /*
  * prm_get_string_value () - get the value of a parameter of type string
@@ -825,23 +822,22 @@ prm_get_float_value (PARAM_ID prm_id)
  * return      : value
  * prm_id (in) : parameter id
  */
-inline char *
-prm_get_string_value (PARAM_ID prm_id)
-{
-  assert (prm_id <= PRM_LAST_ID);
-  assert (PRM_IS_STRING (&prm_Def[prm_id]));
+  inline char *prm_get_string_value (PARAM_ID prm_id)
+  {
+    assert (prm_id <= PRM_LAST_ID);
+    assert (PRM_IS_STRING (&prm_Def[prm_id]));
 
 #if defined (SERVER_MODE)
-  if (!PRM_SERVER_SESSION (prm_id))
-    {
-      return PRM_GET_STRING (prm_Def[prm_id].value);
-    }
+    if (!PRM_SERVER_SESSION (prm_id))
+      {
+	return PRM_GET_STRING (prm_Def[prm_id].value);
+      }
 
-  return PRM_GET_STRING (prm_get_value (prm_id));
+    return PRM_GET_STRING (prm_get_value (prm_id));
 #else /* SERVER_MODE */
-  return PRM_GET_STRING (prm_Def[prm_id].value);
+    return PRM_GET_STRING (prm_Def[prm_id].value);
 #endif /* SERVER_MODE */
-}
+  }
 
 /*
  * prm_get_integer_list_value () - get the value of a parameter of type
@@ -850,23 +846,22 @@ prm_get_string_value (PARAM_ID prm_id)
  * return      : value
  * prm_id (in) : parameter id
  */
-inline int *
-prm_get_integer_list_value (PARAM_ID prm_id)
-{
-  assert (prm_id <= PRM_LAST_ID);
-  assert (PRM_IS_INTEGER_LIST (&prm_Def[prm_id]));
+  inline int *prm_get_integer_list_value (PARAM_ID prm_id)
+  {
+    assert (prm_id <= PRM_LAST_ID);
+    assert (PRM_IS_INTEGER_LIST (&prm_Def[prm_id]));
 
 #if defined (SERVER_MODE)
-  if (!PRM_SERVER_SESSION (prm_id))
-    {
-      return PRM_GET_INTEGER_LIST (prm_Def[prm_id].value);
-    }
+    if (!PRM_SERVER_SESSION (prm_id))
+      {
+	return PRM_GET_INTEGER_LIST (prm_Def[prm_id].value);
+      }
 
-  return PRM_GET_INTEGER_LIST (prm_get_value (prm_id));
+    return PRM_GET_INTEGER_LIST (prm_get_value (prm_id));
 #else /* SERVER_MODE */
-  return PRM_GET_INTEGER_LIST (prm_Def[prm_id].value);
+    return PRM_GET_INTEGER_LIST (prm_Def[prm_id].value);
 #endif /* SERVER_MODE */
-}
+  }
 
 /*
  * prm_get_bigint_value () - get the value of a parameter of type size
@@ -874,26 +869,25 @@ prm_get_integer_list_value (PARAM_ID prm_id)
  * return      : value
  * prm_id (in) : parameter id
  */
-inline UINT64
-prm_get_bigint_value (PARAM_ID prm_id)
-{
-  assert (prm_id <= PRM_LAST_ID);
-  assert (PRM_IS_BIGINT (&prm_Def[prm_id]));
+  inline UINT64 prm_get_bigint_value (PARAM_ID prm_id)
+  {
+    assert (prm_id <= PRM_LAST_ID);
+    assert (PRM_IS_BIGINT (&prm_Def[prm_id]));
 
 #if defined (SERVER_MODE)
-  if (!PRM_SERVER_SESSION (prm_id))
-    {
-      return PRM_GET_BIGINT (prm_Def[prm_id].value);
-    }
+    if (!PRM_SERVER_SESSION (prm_id))
+      {
+	return PRM_GET_BIGINT (prm_Def[prm_id].value);
+      }
 
-  return PRM_GET_BIGINT (prm_get_value (prm_id));
+    return PRM_GET_BIGINT (prm_get_value (prm_id));
 #else /* SERVER_MODE */
-  return PRM_GET_BIGINT (prm_Def[prm_id].value);
+    return PRM_GET_BIGINT (prm_Def[prm_id].value);
 #endif /* SERVER_MODE */
-}
+  }
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif				/* _SYSTEM_PARAMETER_H_ */
+#endif /* _SYSTEM_PARAMETER_H_ */
