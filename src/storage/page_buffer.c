@@ -8143,6 +8143,14 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   return bufptr;
 }
 
+/*
+ * pgbuf_read_page_from_file_or_page_server () -
+ *
+ *    return : error code
+ *
+ * vpid (in)            : page identifier
+ * io_page(out): Address where content of page is stored. Must be of sufficient size.
+ */
 int
 pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * vpid, FILEIO_PAGE * io_page)
 {
@@ -8319,14 +8327,16 @@ pgbuf_read_page_from_file (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_
 /*
  * pgbuf_request_data_page_from_page_server () - Sends a request for a page to Page Server.
  *   return: void
+ *
+ * vpid(in) : page identifier
+ * target_repl_lsa(int) : an LSA sent to the Page Server which the Page Server's replication must have
+ *                        advanced past; part of the replication mechanism
+ * io_page(out) : Address where content of page is stored. Must be of sufficient size.
  */
 static int
 pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl_lsa, FILEIO_PAGE * io_page)
 {
-  assert (get_server_type () == SERVER_TYPE_TRANSACTION);
-
-  // *INDENT-OFF*
-  /* Send a request to Page Server for the Page. */
+  assert (is_transaction_server ());
 
   cubpacking::packer pac;
   size_t size = 0;
@@ -8334,7 +8344,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
   size += cublog::lsa_utils::get_packed_size (pac, size);
   size += vpid_utils::get_packed_size (pac, size);
   size += pac.get_packed_int_size (size);
-  std::unique_ptr<char[]> buffer (new char[size]);
+  std::unique_ptr < char[] > buffer (new char[size]);
 
   pac.set_buffer (buffer.get (), size);
   vpid_utils::pack (pac, *vpid);
@@ -8345,7 +8355,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
     {
       fetch_mode = RECOVERY_PAGE;
     }
-    else
+  else
     {
       fetch_mode = OLD_PAGE;
     }
@@ -8356,13 +8366,12 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
   if (perform_logging)
     {
       _er_log_debug (ARG_FILE_LINE, "[READ DATA] Send request for Page to Page Server."
-                                    " VPID: %d|%d, target repl LSA: %lld|%d\n",
-                     VPID_AS_ARGS (vpid), LSA_AS_ARGS(&target_repl_lsa));
+		     " VPID: %d|%d, target repl LSA: %lld|%d\n", VPID_AS_ARGS (vpid), LSA_AS_ARGS (&target_repl_lsa));
     }
 
   std::string response_message;
   int error_code = ts_Gl->send_receive (tran_to_page_request::SEND_DATA_PAGE_FETCH,
-                                           std::move (request_message), response_message);
+					std::move (request_message), response_message);
   // there are two layers of errors to he handled here:
   //  - client side communication to page server error
   //  - page server side errors
@@ -8373,7 +8382,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
       ASSERT_ERROR ();
       if (perform_logging)
 	{
-	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received error: %d \n", error_code);
+	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received error: %d\n", error_code);
 	}
       return error_code;
     }
@@ -8388,12 +8397,13 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
     {
       if (perform_logging)
 	{
-	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received error: %d \n", error_code);
+	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received error from Page Server: %d\n", error_code);
 	}
 
       if (error_code == ER_PB_BAD_PAGEID)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, VPID_AS_ARGS (vpid));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
+		  fileio_get_volume_label_with_unknown (vpid->volid));
 	}
       else
 	{
@@ -8414,7 +8424,6 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
     }
   assert (message_buf == response_message.c_str () + response_message.size ());
   return error_code;
-  // *INDENT-ON*
 }
 
 // *INDENT-OFF*
@@ -8454,7 +8463,7 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
         {
           _er_log_debug (ARG_FILE_LINE,
-                         "[READ DATA] Read on deallocated page with VPID = %d|%d, target repl LSA = %lld|%d\n",
+                         "[READ DATA] Error fixing page during recovery: vpid = %d|%d, target_repl_lsa = %lld|%d\n",
                          error, VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
         }
     }
@@ -8467,8 +8476,8 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "[READ DATA] Error %lld while fixing page VPID = %d|%d, target repl LSA = %lld|%d\n",
-			 error, VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
+			 "[READ DATA] Error fixing page: vpid = %d|%d, target_repl_lsa = %lld|%d, error = %d\n",
+			 VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa), error);
 	}
     }
   else
@@ -8486,8 +8495,8 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "[READ DATA] Successful while fixing page VPID = %d|%d,"
-			 " page LSA = %lld|%d, target repl LSA = %lld|%d\n",
+			 "[READ DATA] Successful while fixing page: vpid = %d|%d, lsa = %lld|%d,"
+			 " target_repl_lsa = %lld|%d\n",
 			 VPID_AS_ARGS (&vpid), LSA_AS_ARGS(&io_pgptr->prv.lsa), LSA_AS_ARGS (&target_repl_lsa));
 	}
 
