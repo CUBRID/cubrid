@@ -82,6 +82,7 @@ EXPORTS
     pgbuf_set_dirty
     prm_get_master_port_id
     prm_get_name
+    prm_Def
     rel_copy_version_string
     rel_build_number
     rel_build_os
