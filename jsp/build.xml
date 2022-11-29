@@ -93,7 +93,7 @@
             <exclude name="${plcsql.predefined.sp.path}/*.java"/>
         </javac>
 
-        <javac destdir="${plcsql.predefined.classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" debug="true">
+        <javac destdir="${plcsql.predefined.classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="runtime.path">
             <src path="${src.dir}"/>
             <include name="${plcsql.predefined.path}/**/*.java"/>
         </javac>

@@ -230,26 +230,41 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitRel_exp(Rel_expContext ctx) {
+        String opStr = null;
+
         Relational_operatorContext op = ctx.relational_operator();
-        String opStr =
-                op.EQUALS_OP() != null
-                        ? "Eq"
-                        : op.NOT_EQUAL_OP() != null
-                                ? "Neq"
-                                : op.LE() != null
-                                        ? "Le"
-                                        : op.GE() != null
-                                                ? "Ge"
-                                                : op.LT() != null
-                                                        ? "Lt"
-                                                        : op.GT() != null ? "Gt" : null;
+        if (op.EQUALS_OP() != null) {
+            opStr = "Eq";
+        } else if (op.NULL_SAFE_EQUALS_OP() != null) {
+            opStr = "NullSafeEq";
+        } else if (op.NOT_EQUAL_OP() != null) {
+            opStr = "Neq";
+        } else if (op.LE() != null) {
+            opStr = "Le";
+        } else if (op.GE() != null) {
+            opStr = "Ge";
+        } else if (op.LT() != null) {
+            opStr = "Lt";
+        } else if (op.GT() != null) {
+            opStr = "Gt";
+        } else if (op.SETEQ() != null) {
+            opStr = "SetEq";
+        } else if (op.SETNEQ() != null) {
+            opStr = "SetNeq";
+        } else if (op.SUPERSET() != null) {
+            opStr = "Superset";
+        } else if (op.SUBSET() != null) {
+            opStr = "Subset";
+        } else if (op.SUPERSETEQ() != null) {
+            opStr = "SupersetEq";
+        } else if (op.SUBSETEQ() != null) {
+            opStr = "SubsetEq";
+        }
         assert opStr != null;
 
-        String ty;
-        if (opStr.equals("Eq") || opStr.equals("Neq")) {
+        String ty = null;
+        if (opStr.equals("Eq") || opStr.equals("NullSafeEq") || opStr.equals("Neq")) {
             ty = "Object";
-        } else {
-            ty = "Integer";
         }
 
         Expr l = visitExpression(ctx.relational_expression(0), ty);
@@ -348,7 +363,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public Expr visitNeg_exp(Neg_expContext ctx) {
+    public Expr visitSign_exp(Sign_expContext ctx) {
         Expr o = visitExpression(ctx.unary_expression(), "Integer");
 
         Expr ret =
@@ -358,6 +373,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         assert ret != null;
 
         return ret;
+    }
+
+    @Override
+    public Expr visitBit_compli_exp(Bit_compli_expContext ctx) {
+        Expr o = visitExpression(ctx.unary_expression(), "Integer");
+        return new ExprUnaryOp("BitCompli", o);
     }
 
     private static final DateFormat dbgFormat =
@@ -1895,14 +1916,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         pcsToJavaTypeMap.put("TIME", "java.sql.Time");
         pcsToJavaTypeMap.put("TIMESTAMP", "java.sql.Timestamp");
         pcsToJavaTypeMap.put("DATETIME", "java.sql.Timestamp");
-        pcsToJavaTypeMap.put("TIMESTAMPTZ", "com.cubrid.plcsql.predefined.ZonedTimestamp");
-        pcsToJavaTypeMap.put("TIMESTAMPLTZ", "com.cubrid.plcsql.predefined.ZonedTimestamp");
-        pcsToJavaTypeMap.put("DATETIMETZ", "com.cubrid.plcsql.predefined.ZonedTimestamp");
-        pcsToJavaTypeMap.put("DATETIMELTZ", "com.cubrid.plcsql.predefined.ZonedTimestamp");
-        pcsToJavaTypeMap.put("SET", "java.lang.Object[]");
-        pcsToJavaTypeMap.put("MULTISET", "java.lang.Object[]");
-        pcsToJavaTypeMap.put("LIST", "java.lang.Object[]");
-        pcsToJavaTypeMap.put("SEQUENCE", "java.lang.Object[]");
+        pcsToJavaTypeMap.put("TIMESTAMPTZ", "com.cubrid.plcsql.predefined.ZonedTimestamp");     // ZonedDateTime?
+        pcsToJavaTypeMap.put("TIMESTAMPLTZ", "com.cubrid.plcsql.predefined.ZonedTimestamp");    // LocalDateTime?
+        pcsToJavaTypeMap.put("DATETIMETZ", "com.cubrid.plcsql.predefined.ZonedTimestamp");      // ZonedDateTime?
+        pcsToJavaTypeMap.put("DATETIMELTZ", "com.cubrid.plcsql.predefined.ZonedTimestamp");     // LocalDateTime?
+        pcsToJavaTypeMap.put("SET", "java.util.Set");
+        pcsToJavaTypeMap.put("MULTISET", "org.apache.commons.collections4.MultiSet");
+        pcsToJavaTypeMap.put("LIST", "java.util.List");
+        pcsToJavaTypeMap.put("SEQUENCE", "java.util.List");
         pcsToJavaTypeMap.put("SYS_REFCURSOR", "Query");
     }
 

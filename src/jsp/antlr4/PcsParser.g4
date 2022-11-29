@@ -342,7 +342,8 @@ concatenation
 unary_expression
     : atom                                      # unary_expression_prime
     | unary_expression '**' unary_expression    # power_exp
-    | ('-' | '+') unary_expression              # neg_exp
+    | ('-' | '+') unary_expression              # sign_exp
+    | '~' unary_expression                      # bit_compli_exp
     ;
 
 atom
@@ -363,7 +364,7 @@ function_call
 
 relational_operator
     : '='
-    | EQUALS_WITH_NULL_OP
+    | NULL_SAFE_EQUALS_OP
     | NOT_EQUAL_OP
     | '<='
     | '>='
