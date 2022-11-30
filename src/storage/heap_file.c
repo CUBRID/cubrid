@@ -25131,27 +25131,57 @@ heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CON
       //
       if (restore_scan_cache_page_watcher)
 	{
-	  const int error_code = pgbuf_ordered_fix (thread_p, &saved_vpid, OLD_PAGE_MAYBE_DEALLOCATED,
+	  const int error_code = pgbuf_ordered_fix (thread_p, &saved_vpid, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT,
 						    saved_latch_mode, &context->scan_cache->page_watcher);
 	  if (error_code != NO_ERROR)
 	    {
-	      // most likely, this [client read-only] transaction is expecting another thread
-	      // (the transactional log replication thread) to advance past a certain LSA;
-	      // during replication, the page might be de-allocated while processing a log record
-	      // thus, failing to re-fix is expected
+	      // On PTS, most likely, this [client read-only] transaction is expecting the
+	      // transactional log replication thread to advance past a certain LSA.
 	      //
-	      // TODO: in effect, the fetch mode is not correctly propagated to the page server;
-	      // instead - OLD_PAGE - is actually propagated to the
-	      // server (see pgbuf_request_data_page_from_page_server)
-	      // thus, if page has been de-allocated, an error will be retrieved from page server
-	      er_log_debug (ARG_FILE_LINE, "heap_get_visible_version: page re-fix after replication wait failed for"
-			    " oid=%d|%d|%d of class_oid=%d|%d|%d",
-			    OID_AS_ARGS (context->oid_p), OID_AS_ARGS (context->class_oid_p));
-	      assert (false);
+	      // During replication, the following can happen (beside the 'normal' case where the
+	      // page remains the same or log records are applied onto it without any de-alloc
+	      // or re-alloc sequences happening):
+	      //
+	      // 1) the page might be de-allocated:
+	      //  - eg, by processing a RVPGBUF_DEALLOC which, in the current implementation - see
+	      //    pgbuf_rv_dealloc_redo - on PTS will also invalidate the page from the page buffer
+	      //  - when this happens, the OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT fetch mode used above
+	      //    will cause the re-fix to fail
+	      //  - this is ok and it will be up to the next call to
+	      //    heap_get_visible_version_internal to deal with this situation
+	      //
+	      // 2) the page might be de-allocated and re-allocated
+	      //  - the scenario is as follows
+	      //  - the page is de-allocated by replication and invalidated from page buffer
+	      //  - when the re-allocating log record (or atomic sequence of log records) is
+	      //    processed by the PTS replication, the fetch mode
+	      //    OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT is used and the decisiton tree
+	      //    further bifurcates in 2:
+	      //    - the page is not in page buffer
+	      //      - in this case the re-fix above will fail
+	      //      - again, this is ok as we're most probably not interested in the re-allocated
+	      //        page anymore
+	      //      - and it is up to the logic further to handle the situation
+	      //    - the page has been re-fetched by another (newer) client transaction and is
+	      //      present in the page buffer
+	      //        - in this case the re-fix above will just succeed refixing the re-allocated
+	      //          page
+	      //        - and this is the problematic case;
+	      //        - most likely the layout of the page will be different (maybe even a
+	      //          different type)
+	      //        - it will be up to the logic further to deal with this (most likely the
+	      //          transaction  will unilaterally abort with an error to the client)
+	      //        - in debug mode, the PTS server will most probably crash
 
 	      // clean the watcher; leave it to a next iteration to return an error scan code
 	      PGBUF_CLEAR_WATCHER (&context->scan_cache->page_watcher);
 	    }
+
+	  er_log_debug (ARG_FILE_LINE, "heap_get_visible_version: page re-fix after replication wait"
+			" %s: oid=%d|%d|%d  class_oid=%d|%d|%d  vpid=%d|%d  latch_mode=%d",
+			((error_code != NO_ERROR) ? "failed" : "succeeded"),
+			OID_AS_ARGS (context->oid_p), OID_AS_ARGS (context->class_oid_p),
+			VPID_AS_ARGS (&saved_vpid), (int) saved_latch_mode);
 	}
 
       // now restore state for the next attempt to get the version
