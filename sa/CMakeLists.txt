@@ -287,6 +287,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/authenticate.c
   ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
+  ${OBJECT_DIR}/dup_key.c
   ${OBJECT_DIR}/elo.c
   ${OBJECT_DIR}/lob_locator.cpp
   ${OBJECT_DIR}/object_description.cpp

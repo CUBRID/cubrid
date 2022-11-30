@@ -2443,6 +2443,10 @@ ws_final (void)
   MOP mop, next;
   unsigned int slot;
 
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+  dk_hidden_attribute_finalized ();
+#endif
+
   tr_final ();
 
   if (prm_get_bool_value (PRM_ID_WS_MEMORY_REPORT))

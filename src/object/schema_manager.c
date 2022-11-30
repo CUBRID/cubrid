@@ -9977,16 +9977,6 @@ build_storage_order (SM_CLASS * class_, SM_TEMPLATE * flat)
 	  if (new_att->id != -1)
 	    {
 	      assert (!IS_HIDDEN_INDEX_COL_ID (new_att->id));
-#if 0				//defined(SUPPORT_KEY_DUP_LEVEL)    // ctshim  do delete
-	      if (IS_HIDDEN_INDEX_COL_ID (new_att->id))	// 삭제?? 되거나...
-		{
-		  assert (0);
-		  found = new_att;
-		  newrep = 1;
-		}
-	      else
-#endif
-
 	      if (new_att->id == current->id)
 		{
 		  found = new_att;

@@ -1070,8 +1070,6 @@ extern SM_ATTRIBUTE *classobj_find_attribute (SM_CLASS * class_, const char *nam
 
 extern SM_ATTRIBUTE *classobj_find_attribute_id (SM_CLASS * class_, int id, int class_attribute);
 
-extern SM_ATTRIBUTE *classobj_find_attribute_list (SM_ATTRIBUTE * attlist, const char *name, int id);
-
 extern SM_METHOD *classobj_find_method (SM_CLASS * class_, const char *name, int class_method);
 
 extern SM_COMPONENT *classobj_find_component (SM_CLASS * class_, const char *name, int class_component);
@@ -1118,5 +1116,4 @@ extern SM_PARTITION *classobj_copy_partition_info (SM_PARTITION * partition_info
 
 extern int classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons,
 					      SM_INDEX_STATUS index_status);
-
 #endif /* _CLASS_OBJECT_H_ */

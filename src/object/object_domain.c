@@ -668,6 +668,10 @@ tp_init (void)
 
   tp_Initialized = true;
 
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+  dk_hidden_attribute_initialized ();
+#endif
+
   return NO_ERROR;
 }
 

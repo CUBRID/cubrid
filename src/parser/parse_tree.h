@@ -41,6 +41,7 @@
 #include "string_opfunc.h"
 #include "system_parameter.h"
 
+#include "dup_key.h"
 // forward definitions
 struct json_t;
 
@@ -2026,28 +2027,10 @@ struct pt_index_info
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
   int ib_threads;
 #if 1				// defined(SUPPORT_KEY_DUP_LEVEL)
-#define DUP_MODE_OVFL_LEVEL_NOT_SET   (-1)
-#define OVFL_LEVEL_DEFAULT   (10)
-#define OVFL_LEVEL_MIN       (0)
-#define OVFL_LEVEL_MAX       (16)
   short dupkey_mode;		/* refer to enDupMode */
   short dupkey_hash_level;	/* 0 : no hash, others : hash size */
-  //int ovfl_level;             /* Ovfl level(0~32), 0: Not Used,  32: use default, other: 2^level */
 #endif
 };
-
-// SUPPORT_KEY_DUP_LEVEL
-typedef enum
-{
-  DUP_MODE_NONE = 0,
-  DUP_MODE_OID,
-  DUP_MODE_PAGEID,
-  DUP_MODE_SLOTID,
-  DUP_MODE_VOLID,
-  DUP_MODE_LAST
-} EN_DUP_MODE;
-#define DUP_MODE_DEFAULT  (DUP_MODE_PAGEID)
-
 
 /* CREATE USER INFO */
 struct pt_create_user_info

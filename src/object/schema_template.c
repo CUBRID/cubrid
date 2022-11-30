@@ -126,154 +126,16 @@ static SM_CLASS_CONSTRAINT *smt_find_constraint (SM_TEMPLATE * ctemplate, const 
  * a lot of the error checking code in every function.
 */
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
-int
-smt_make_hidden_attribute (int att_id, const char *att_name, SM_ATTRIBUTE ** attp)
-{
-  int error_code = NO_ERROR;
-  short mode = -1;
-  short level = -1;
-  DB_DOMAIN *domain = (DB_DOMAIN *) 0;
-
-  *attp = NULL;
-
-  assert ((att_id != -1) || (att_name && *att_name));
-
-  //////////////////////////////
-#if 0
-  int idx, id;
-  short m, l;
-  const char *str;
-  for (nmode = DUP_MODE_OID; nmode <= DUP_MODE_VOLID; nmode++)
-    {
-      for (nlevel = 0; nlevel <= 16; nlevel++)
-	{
-	  idx = BUILD_HIDDEN_INDEX_COL_IDX (nmode, nlevel);
-	  str = GET_HIDDEN_INDEX_COL_NAME (nmode, nlevel);
-
-	  id = MK_HIDDEN_INDEX_COL_ATTR_ID (nmode, nlevel);
-	  m = GET_HIDDEN_INDEX_COL_MODE (id);
-	  l = GET_HIDDEN_INDEX_COL_LEVEL (id);
-	  if (nmode != m)
-	    assert (false);
-	  if (nlevel != l)
-	    assert (false);
-	}
-    }
-#endif
-  ////////////////////////////
-
-  if (att_id != -1)
-    {
-      mode = GET_HIDDEN_INDEX_COL_MODE (att_id);
-      level = GET_HIDDEN_INDEX_COL_LEVEL (att_id);
-    }
-  else
-    {
-      GET_HIDDEN_INDEX_COL_MODE_LEVEL_FROM_NAME (att_name, mode, level);
-    }
-  assert (mode > DUP_MODE_NONE && mode < DUP_MODE_LAST);
-  assert (level >= OVFL_LEVEL_MIN && level < OVFL_LEVEL_MAX);
-
-
-  DB_TYPE type = DB_TYPE_INTEGER;
-  int precision = DB_INTEGER_PRECISION;
-  int hash_mod_val = 1 << level;	// like pow(2, level);
-  switch (mode)
-    {
-    case 1:			//DUP_MODE_OID:                  
-      if (level == 0)
-	{
-	  type = DB_TYPE_BIGINT;
-	  precision = DB_BIGINT_PRECISION;
-	}
-      else if (hash_mod_val <= SHRT_MAX)
-	{
-	  type = DB_TYPE_SHORT;
-	  precision = DB_SHORT_PRECISION;
-	}
-      break;
-
-    case 2:			// DUP_MODE_PAGEID:
-      if (level != 0 && hash_mod_val <= SHRT_MAX)
-	{
-	  type = DB_TYPE_SHORT;
-	  precision = DB_SHORT_PRECISION;
-	}
-      break;
-
-    case 3:			// DUP_MODE_SLOTID:
-    case 4:			// DUP_MODE_VOLID:      
-      type = DB_TYPE_SHORT;
-      precision = DB_SHORT_PRECISION;
-      break;
-
-    default:
-      assert (false);
-      break;
-    }
-#if 1				//////////////////////
-  if (type == DB_TYPE_BIGINT)
-    domain = &tp_Bigint_domain;
-  else if (type == DB_TYPE_INTEGER)
-    domain = &tp_Integer_domain;
-  else
-    domain = &tp_Short_domain;
-#else
-  domain = tp_domain_construct (type, NULL, precision, 0, NULL);
-#endif
-  if (domain == NULL)
-    {
-      ERROR0 (error_code, ER_SM_INVALID_ARGUMENTS);	// ctshim to do error code??
-      return error_code;
-    }
-
-  const char *hidden_name = NULL;
-  SM_ATTRIBUTE *att = NULL;
-
-  hidden_name = GET_HIDDEN_INDEX_COL_NAME (mode, level);
-
-  att = classobj_make_attribute (hidden_name, domain->type, ID_ATTRIBUTE);
-  if (att == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      goto error_exit;
-    }
-  att->comment = NULL;
-
-  /* Flag this attribute as new so that we can initialize the original_value properly.  Make sure this isn't saved on
-   * disk ! */
-  att->flags |= SM_ATTFLAG_NEW;
-  att->class_mop = NULL;
-  att->domain = domain;
-  att->auto_increment = NULL;
-
-  att->id = MK_HIDDEN_INDEX_COL_ATTR_ID (mode, level);
-
-  //printf ("debug: smt_make_hidden_attribute() att = %08X , id=%d mode=%d\n", att, att->id, mode);
-
-  *attp = att;
-  return error_code;
-
-error_exit:
-  if (att != NULL)
-    {
-      classobj_free_attribute (att);
-      att = NULL;
-    }
-
-  return error_code;
-}
-
+#if defined(SUPPORT_KEY_DUP_LEVEL)
 static int
 make_hidden_attribute (SM_TEMPLATE * template_, const char *name, SM_ATTRIBUTE ** attp)
 {
   int error_code = NO_ERROR;
-  SM_ATTRIBUTE *att_list = template_->attributes;
+  SM_ATTRIBUTE *att = NULL;
 
   *attp = NULL;
 
+#ifndef NDEBUG
   if (!sm_check_name (name))
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -286,17 +148,19 @@ make_hidden_attribute (SM_TEMPLATE * template_, const char *name, SM_ATTRIBUTE *
       return error_code;
     }
 
-  DB_DOMAIN *domain = (DB_DOMAIN *) 0;
-  bool class_namespace = false;
-  SM_ATTRIBUTE *att = NULL;
-
-  error_code = check_namespace (template_, name, class_namespace);
+  error_code = check_namespace (template_, name, false);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
     }
+#endif
 
-  error_code = smt_make_hidden_attribute (-1, name, &att);
+  att = dk_find_sm_hidden_attribute (-1, name);
+  if (att == NULL)
+    {
+      ERROR0 (error_code, ER_SM_INVALID_ARGUMENTS);	// ctshim to do error code??
+    }
+
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -306,15 +170,15 @@ make_hidden_attribute (SM_TEMPLATE * template_, const char *name, SM_ATTRIBUTE *
   return error_code;
 
 error_exit:
-  if (att != NULL)
+  if (att)
     {
       classobj_free_attribute (att);
-      att = NULL;
     }
+
   return error_code;
 
 }
-#endif // #if defined(SUPPORT_KEY_DUP_LEVEL)
+#endif
 
 /*
  * smt_find_attribute() - Locate an instance, shared or class attribute
@@ -2182,7 +2046,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   SM_ATTRIBUTE_FLAG constraint;
   bool has_nulls = false;
   bool is_secondary_index = false;
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
   int hidden_index_col = -1;
 #endif
   assert (template_ != NULL);
@@ -2202,7 +2066,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
     {
       while (att_names[n_atts] != NULL)
 	{
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
 	  if (IS_HIDDEN_INDEX_COL_NAME (att_names[n_atts]))
 	    {
 	      hidden_index_col = n_atts;
@@ -2212,7 +2076,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 	}
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
   if ((n_atts == 0) || ((n_atts == 1) && (hidden_index_col != -1)))
     {
       // ctshim error code !!!!
@@ -2264,7 +2128,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
   for (i = 0; i < n_atts && error == NO_ERROR; i++)
     {
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
       if (hidden_index_col == i)
 	{
 	  error = make_hidden_attribute (template_, att_names[i], &atts[i]);

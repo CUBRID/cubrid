@@ -1838,103 +1838,6 @@ err:
   return error;
 }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
-static OR_ATTRIBUTE st_zatt_x[sizeof (st_hidden_index_col_name) / sizeof (st_hidden_index_col_name[0])];
-
-void
-or_hidden_attribute_initialized ()
-{
-  int i, max;
-  int att_id;
-  OR_ATTRIBUTE *att;
-  int mode, level, idx;
-  int hash_mod_val;
-  const char *str;
-
-  max = sizeof (st_hidden_index_col_name) / sizeof (st_hidden_index_col_name[0]);
-
-  for (mode = 1 /*DUP_MODE_OID */ ; mode <= 4 /*DUP_MODE_VOLID */ ; mode++)
-    {
-      for (level = 0 /*OVFL_LEVEL_MIN */ ; level <= 16 /*OVFL_LEVEL_MAX */ ; level++)
-	{
-	  idx = BUILD_HIDDEN_INDEX_COL_IDX (mode, level);
-	  str = GET_HIDDEN_INDEX_COL_NAME (mode, level);
-	  att_id = MK_HIDDEN_INDEX_COL_ATTR_ID (mode, level);
-
-	  att = &(st_zatt_x[idx]);
-	  att->type = DB_TYPE_BIGINT;
-	  att->id = att_id;
-
-	  // ctshim hidden type?
-	  hash_mod_val = 1 << level;	// like pow(2, level);
-	  switch (mode)
-	    {
-	    case 1:		//DUP_MODE_OID:                  
-	      if (level == 0)
-		{
-		  att->domain = &tp_Bigint_domain;	//tp_domain_construct (DB_TYPE_BIGINT, NULL, DB_BIGINT_PRECISION, 0, NULL);
-		}
-	      else if (hash_mod_val <= SHRT_MAX)
-		{
-		  att->domain = &tp_Short_domain;	//tp_domain_construct (DB_TYPE_SHORT, NULL, DB_SHORT_PRECISION, 0, NULL);
-		}
-	      else
-		{
-		  att->domain = &tp_Integer_domain;	//tp_domain_construct (DB_TYPE_INTEGER, NULL, DB_INTEGER_PRECISION, 0, NULL);
-		}
-	      break;
-
-	    case 2:		// DUP_MODE_PAGEID:
-	      if (level != 0 && hash_mod_val <= SHRT_MAX)
-		{
-		  att->domain = &tp_Short_domain;	//tp_domain_construct (DB_TYPE_SHORT, NULL, DB_SHORT_PRECISION, 0, NULL);
-		}
-	      else
-		{
-		  att->domain = &tp_Integer_domain;	//tp_domain_construct (DB_TYPE_INTEGER, NULL, DB_INTEGER_PRECISION, 0, NULL);
-		}
-	      break;
-
-	    case 3:		// DUP_MODE_SLOTID:
-	    case 4:		// DUP_MODE_VOLID:      
-	      att->domain = &tp_Short_domain;	//tp_domain_construct (DB_TYPE_SHORT, NULL, DB_SHORT_PRECISION, 0, NULL);
-	      break;
-
-	    default:
-	      assert (false);
-	      break;
-	    }
-	}
-    }
-}
-
-
-static OR_ATTRIBUTE *
-find_hidden_attribute (int att_id)
-{
-  //static OR_ATTRIBUTE st_zatt_x[sizeof (st_hidden_index_col_name) / sizeof (st_hidden_index_col_name[0])];
-  //static bool st_zinit_x[sizeof (st_hidden_index_col_name) / sizeof (st_hidden_index_col_name[0])];
-  static bool st_init_hidden = false;
-
-  int mode = GET_HIDDEN_INDEX_COL_MODE (att_id);
-  int level = GET_HIDDEN_INDEX_COL_LEVEL (att_id);
-  int idx = BUILD_HIDDEN_INDEX_COL_IDX (mode, level);
-  OR_ATTRIBUTE *att;
-
-  assert (idx < (sizeof (st_hidden_index_col_name) / sizeof (st_hidden_index_col_name[0])));
-  assert (st_hidden_index_col_name[idx] != NULL);
-
-  att = &(st_zatt_x[idx]);
-  if (st_init_hidden == false)
-    {
-      or_hidden_attribute_initialized ();
-      st_init_hidden = true;
-    }
-
-  return att;
-}
-#endif
-
 /*
  * or_install_btids_class () - Install (add) the B-tree ID to the index
  *                             structure of the class representation
@@ -2029,10 +1932,10 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 	    }
 
 	  att_id = db_get_int (&att_val);
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
 	  if (IS_HIDDEN_INDEX_COL_ID (att_id))
 	    {
-	      index->atts[index->n_atts] = find_hidden_attribute (att_id);
+	      index->atts[index->n_atts] = (OR_ATTRIBUTE *) dk_find_or_hidden_attribute (att_id);
 	      (index->n_atts)++;
 	    }
 	  else
@@ -2041,13 +1944,13 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 	      for (j = 0, att = rep->attributes; j < rep->n_attributes; j++, att++)
 		{
 		  if (att->id == att_id)
-		    {		      
+		    {
 		      index->atts[index->n_atts] = att;
 		      (index->n_atts)++;
-                      break;
+		      break;
 		    }
 		}
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
 	    }
 #endif
 	}
@@ -2226,10 +2129,11 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
   OR_ATTRIBUTE *ptr = NULL;
   int size;
 
-#if 1				// ctshim  check!!!
-  // assert (!IS_HIDDEN_INDEX_COL_ID (att_id));
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim  check!!!
   if (IS_HIDDEN_INDEX_COL_ID (att_id))
-    size = 0;
+    {
+      return success;
+    }
 #endif
 
   /* Find the attribute with the matching attribute ID */
@@ -2351,13 +2255,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
       assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
       att_id = db_get_int (&att_val);	/* The first attrID */
 
-#if 1				// ctshim  check!!!
-      //assert (!IS_HIDDEN_INDEX_COL_ID (att_id));
-      if (IS_HIDDEN_INDEX_COL_ID (att_id))
-	(void) or_install_btids_attribute (rep, att_id, &id);	//무시 ?
-      else
-	(void) or_install_btids_attribute (rep, att_id, &id);
-#endif
+      (void) or_install_btids_attribute (rep, att_id, &id);
     }
 
   /*

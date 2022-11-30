@@ -2560,26 +2560,45 @@ classobj_cache_constraints (SM_CLASS * class_)
  *   id(in): attribute id
  */
 
-SM_ATTRIBUTE *
+static SM_ATTRIBUTE *
 classobj_find_attribute_list (SM_ATTRIBUTE * attlist, const char *name, int id)
 {
   SM_ATTRIBUTE *att;
 
-  for (att = attlist; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+  if (name != NULL)
     {
-      if (name != NULL)
+      for (att = attlist; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 	{
 	  if (intl_identifier_casecmp (att->header.name, name) == 0)
 	    {
-	      break;
+	      return att;
 	    }
 	}
-      else if (att->id == id)
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      if (IS_HIDDEN_INDEX_COL_NAME (name))
 	{
-	  break;
+	  return dk_find_sm_hidden_attribute (-1, name);
 	}
+#endif
     }
-  return att;
+  else
+    {
+      for (att = attlist; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+	{
+	  if (att->id == id)
+	    {
+	      return att;
+	    }
+	}
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      if (IS_HIDDEN_INDEX_COL_ID (id))
+	{
+	  return dk_find_sm_hidden_attribute (id, NULL);
+	}
+#endif
+    }
+
+  return NULL;
 }
 
 /*
@@ -3244,37 +3263,11 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 
 		  if (DB_VALUE_TYPE (&avalue) == DB_TYPE_STRING)
 		    {
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
-		      const char *att_name = db_get_string (&avalue);
-		      att = classobj_find_attribute_list (attributes, att_name, -1);
-		      if (att == NULL)
-			{
-			  if (IS_HIDDEN_INDEX_COL_NAME (att_name))
-			    {
-			      smt_make_hidden_attribute (-1, att_name, &att);
-			      //printf ("debug: classobj_make_class_constraints()    _cub_idx_col_ \n");
-			    }
-			}
-#else
 		      att = classobj_find_attribute_list (attributes, db_get_string (&avalue), -1);
-#endif
 		    }
 		  else if (DB_VALUE_TYPE (&avalue) == DB_TYPE_INTEGER)
 		    {
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
-		      int att_id = db_get_int (&avalue);
-		      att = classobj_find_attribute_list (attributes, NULL, att_id);
-		      if (att == NULL)
-			{
-			  if (IS_HIDDEN_INDEX_COL_ID (att_id))
-			    {
-			      smt_make_hidden_attribute (att_id, NULL, &att);
-			      //printf ("debug: classobj_make_class_constraints()    -2848048 \n");
-			    }
-			}
-#else
 		      att = classobj_find_attribute_list (attributes, NULL, db_get_int (&avalue));
-#endif
 		    }
 		  else
 		    {

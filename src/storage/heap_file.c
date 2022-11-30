@@ -9534,18 +9534,18 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 	   (attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
 	    attr_info->last_classrepr->n_class_attrs))
     {
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
       i = -1;
       if (requested_num_attrs == attr_info->last_classrepr->n_attributes + 1)
 	{
 	  // Check for indexes containing all columns in the table
 	  // It does not consider indexes containing shared or class attributes.
-
 	  for (i = requested_num_attrs - 1; i >= 0 && !IS_HIDDEN_INDEX_COL_ID (attrids[i]); i--)
 	    {
 	      /* empty */ ;
 	    }
 	}
+
       if (i < 0)
 	{
 #endif
@@ -9686,14 +9686,8 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 #if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
       else if (IS_HIDDEN_INDEX_COL_ID (value->attrid))
 	{
-	  // assert ((curr_attr + 1) == attr_info->num_values); 
-
-	  // Since it is created fakely, it is filled with index 0 that can be obtained as quickly as possible.           
+	  // Since it is created fakely, it is filled with index 0 that can be obtained as quickly as possible.
 	  value->attrid = search_attrepr[0].id;
-
-	  // ctshim ???????????????????????????????????????????
-
-	  // printf ("debug: heap_attrinfo_recache_attrepr(-2848048) AAAAAAAAAAAAAAAAAAAAAA\n");
 	}
 #endif
 
@@ -12342,81 +12336,6 @@ heap_attrvalue_get_index (int value_index, ATTR_ID * attrid, int *n_btids, BTID 
 }
 #endif
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
-
-static void
-heap_midxkey_index_write_hidden_value (OR_BUF * or_buf_ptr, char *nullmap_ptr, int idx, int att_id, OID * rec_oid)
-{
-  DB_VALUE tmp_val;
-
-  // The rec_oid may be NULL when the index of the UNIQUE attribute is an index. 
-  // In that case, however, it cannot enter here.
-  assert (rec_oid != NULL);
-
-  int hash_mod_val;
-  unsigned int hash_val;
-  short level = GET_HIDDEN_INDEX_COL_LEVEL (att_id);
-  short mode = GET_HIDDEN_INDEX_COL_MODE (att_id);
-
-  hash_mod_val = 1 << level;	// like pow(2, level);
-
-  switch (mode)
-    {
-    case 1:			//DUP_MODE_OID:  
-      if (level == 0)
-	{
-	  db_make_bigint (&tmp_val, *((DB_BIGINT *) rec_oid));
-	  tp_Bigint.index_writeval (or_buf_ptr, &tmp_val);
-	}
-      else if (hash_mod_val > SHRT_MAX)
-	{
-	  db_make_int (&tmp_val, (int) (OID_PSEUDO_KEY (rec_oid) % hash_mod_val));
-	  tp_Integer.index_writeval (or_buf_ptr, &tmp_val);
-	}
-      else
-	{
-	  db_make_short (&tmp_val, (short) (OID_PSEUDO_KEY (rec_oid) % hash_mod_val));
-	  tp_Short.index_writeval (or_buf_ptr, &tmp_val);
-	}
-      break;
-
-    case 2:			// DUP_MODE_PAGEID:
-      if (level == 0)
-	{
-	  db_make_int (&tmp_val, rec_oid->pageid);
-	  tp_Integer.index_writeval (or_buf_ptr, &tmp_val);
-	}
-      else if (hash_mod_val > SHRT_MAX)
-	{
-	  db_make_int (&tmp_val, (int) (rec_oid->pageid % hash_mod_val));
-	  tp_Integer.index_writeval (or_buf_ptr, &tmp_val);
-	}
-      else
-	{
-	  db_make_short (&tmp_val, (short) (rec_oid->pageid % hash_mod_val));
-	  tp_Short.index_writeval (or_buf_ptr, &tmp_val);
-	}
-      break;
-
-    case 3:			// DUP_MODE_SLOTID:
-      db_make_short (&tmp_val, (level == 0) ? rec_oid->slotid : (rec_oid->slotid % hash_mod_val));
-      tp_Short.index_writeval (or_buf_ptr, &tmp_val);
-      break;
-
-    case 4:			// DUP_MODE_VOLID:      
-      db_make_short (&tmp_val, (level == 0) ? rec_oid->volid : (rec_oid->volid % hash_mod_val));
-      tp_Short.index_writeval (or_buf_ptr, &tmp_val);
-      break;
-    default:
-      assert (false);
-      break;
-    }
-
-  OR_ENABLE_BOUND_BIT (nullmap_ptr, idx);
-  //  The objects covered here are all numeric types, so there is no need to clean them up using pr_clear_value().
-}
-#endif
-
 /*
  * heap_midxkey_key_get () -
  *   return:
@@ -12498,12 +12417,13 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	{
 	  break;
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
       if (IS_HIDDEN_INDEX_COL_ID (atts[i]->id))
 	{
-	  heap_midxkey_index_write_hidden_value (&buf, nullmap_ptr, k, atts[i]->id, rec_oid);
-	  //printf (">>> heap_midxkey_key_get() rec_oid = %d | %d | %d\n", rec_oid->volid, rec_oid->pageid, rec_oid->slotid);
-	  error = NO_ERROR;
+	  dk_heap_midxkey_get_hidden_value (atts[i]->id, rec_oid, &value);
+	  atts[i]->domain->type->index_writeval (&buf, &value);
+	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	  //  In this case, there is no need to clean them up using pr_clear_value().     
 	}
       else
 	{
@@ -12665,27 +12585,34 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	      break;
 	    }
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
       if (IS_HIDDEN_INDEX_COL_ID (att_ids[i]))
 	{
-	  heap_midxkey_index_write_hidden_value (&buf, nullmap_ptr, k, att_ids[i], rec_oid);
-	  //printf (">>> heap_midxkey_key_generate() rec_oid = %d | %d | %d\n", rec_oid->volid, rec_oid->pageid,                  rec_oid->slotid);
-	  continue;
-	}
-#endif
-      att = heap_locate_attribute (att_ids[i], attrinfo);
-
-      error = heap_midxkey_get_value (recdes, att, &value, attrinfo);
-      if (error == NO_ERROR && !db_value_is_null (&value))
-	{
+	  att = (OR_ATTRIBUTE *) dk_find_or_hidden_attribute (att_ids[i]);
+	  dk_heap_midxkey_get_hidden_value (att_ids[i], rec_oid, &value);
 	  att->domain->type->index_writeval (&buf, &value);
 	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	  //  In this case, there is no need to clean them up using pr_clear_value().     
 	}
-
-      if (DB_NEED_CLEAR (&value))
+      else
 	{
-	  pr_clear_value (&value);
+#endif
+	  att = heap_locate_attribute (att_ids[i], attrinfo);
+
+	  error = heap_midxkey_get_value (recdes, att, &value, attrinfo);
+	  if (error == NO_ERROR && !db_value_is_null (&value))
+	    {
+	      att->domain->type->index_writeval (&buf, &value);
+	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	    }
+
+	  if (DB_NEED_CLEAR (&value))
+	    {
+	      pr_clear_value (&value);
+	    }
+#if defined(SUPPORT_KEY_DUP_LEVEL)
 	}
+#endif
     }
 
   if (value.need_clear == true)

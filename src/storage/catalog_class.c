@@ -863,26 +863,30 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p, OR_VA
 	{
 	  key_atts = keys[j].sub.value;
 
-	  if (!DB_IS_NULL (&key_atts[1].value))
+	  if (DB_IS_NULL (&key_atts[1].value))
 	    {
-	      id = db_get_int (&key_atts[1].value);
+	      continue;
+	    }
+
+	  id = db_get_int (&key_atts[1].value);
 #if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim .. 우와....
-	      if (IS_HIDDEN_INDEX_COL_ID (id))
+	  if (IS_HIDDEN_INDEX_COL_ID (id))
+	    {
+	      DB_VALUE tmp_val;
+	      int mode = GET_HIDDEN_INDEX_COL_MODE (id);
+	      int ovfl_level = GET_HIDDEN_INDEX_COL_LEVEL (id);
+
+	      db_make_string (&tmp_val, GET_HIDDEN_INDEX_COL_NAME (mode, ovfl_level));
+	      pr_clear_value (&key_atts[1].value);
+	      pr_clone_value (&tmp_val, &key_atts[1].value);
+	      if (tmp_val.need_clear)
 		{
-		  DB_VALUE tmp_val;
-		  int mode = GET_HIDDEN_INDEX_COL_MODE (id);
-		  int ovfl_level = GET_HIDDEN_INDEX_COL_LEVEL (id);
-
-		  db_make_string (&tmp_val, GET_HIDDEN_INDEX_COL_NAME (mode, ovfl_level));
-		  pr_clear_value (&key_atts[1].value);
-		  pr_clone_value (&tmp_val, &key_atts[1].value);
-		  if (tmp_val.need_clear)
-		    pr_clear_value (&tmp_val);
-
-		  continue;
+		  pr_clear_value (&tmp_val);
 		}
+	    }
+	  else
+	    {
 #endif
-
 	      for (ids = id_val_p->sub.value, k = 0; k < id_val_p->sub.count; k++)
 		{
 		  id_atts = ids[k].sub.value;
@@ -890,9 +894,13 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p, OR_VA
 		    {
 		      pr_clear_value (&key_atts[1].value);
 		      pr_clone_value (&id_atts[1].value, &key_atts[1].value);
+
+		      // break; // ctshim check
 		    }
 		}
+#if defined(SUPPORT_KEY_DUP_LEVEL)
 	    }
+#endif
 	}
     }
 

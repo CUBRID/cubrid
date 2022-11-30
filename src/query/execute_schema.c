@@ -377,7 +377,7 @@ static int do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_s
 
 static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement);
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
 static void alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO * idx_info, char **attnames,
 					      int *asc_desc, int *attrs_prefix_length,
 					      SM_FUNCTION_INFO * func_index_info, int hidden_index_col, int nnames);
@@ -2793,7 +2793,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	    }
 	}
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
       bool has_hidden_index_col = false;
 
       // Class or shared attributes are not considered. These are not indexed columns.
@@ -2852,7 +2852,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	  i++;
 	  c = c->next;
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
       if (has_hidden_index_col)
 	{
 	  nnames--;		// get count of real columns, except hidden column
@@ -2883,7 +2883,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	      func_index_info->attr_index_start = nnames - idx_info->func_no_args;
 	    }
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
       if (has_hidden_index_col)
 	{
 	  create_index_level_adjust (idx_info, attnames, asc_desc, attrs_prefix_length, func_index_info, nnames);
@@ -3159,7 +3159,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
   bool do_rollback = false;
   SM_INDEX_STATUS saved_index_status = SM_NORMAL_INDEX;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
   int hidden_index_col = -1;
   int alloc_cnt = 0;
 #else
@@ -3239,12 +3239,8 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
       nnames++;
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
-  // Support for free space in preparation for additional columns
-  //alloc_cnt = (statement->info.index.ovfl_level <= DUP_MODE_NONE) ? nnames : (nnames + 1);  
-  // 뭔가 다른 조치가 필요함.  메모리 확보할때랑 루프돌면서 값을 채우는것이 일치 않해... asc_desc[] ?
-  // 메모리 확보는 alloc_cnt로.
-  alloc_cnt = nnames + 1;
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+  alloc_cnt = nnames + 1;	// Support for free space in preparation for additional columns
 #else
   alloc_cnt = nnames;
 #endif
@@ -3273,9 +3269,10 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error_exit;
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
       if (IS_HIDDEN_INDEX_COL_NAME (attnames[i]))
 	{
+	  assert (hidden_index_col == -1);
 	  hidden_index_col = i;
 	}
 #endif
@@ -3399,7 +3396,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
       func_index_info->attr_index_start = idx->func_index_info->attr_index_start;
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
   if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != SM_CONSTRAINT_FOREIGN_KEY)
     {
       alter_rebuild_index_level_adjust (ctype, &statement->info.index, attnames, asc_desc,
@@ -15560,7 +15557,7 @@ ib_get_thread_count ()
   return ib_thread_count;
 }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
 static void
 alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO * idx_info, char **attnames,
 				  int *asc_desc, int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info,
@@ -15614,7 +15611,6 @@ alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO 
       free_and_init (attnames[hidden_index_col]);
       attnames[hidden_index_col] =
 	strdup ((char *) GET_HIDDEN_INDEX_COL_NAME (idx_info->dupkey_mode, idx_info->dupkey_hash_level));
-      assert (attnames[hidden_index_col] != NULL);
     }
   else
     {				// append hidden column
@@ -15643,10 +15639,11 @@ alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO 
       attrs_prefix_length[hidden_index_col] = -1;
       attnames[hidden_index_col] =
 	strdup ((char *) GET_HIDDEN_INDEX_COL_NAME (idx_info->dupkey_mode, idx_info->dupkey_hash_level));
-      assert (attnames[hidden_index_col] != NULL);
 
       attnames[nnames + 1] = NULL;
     }
+
+  assert (attnames[hidden_index_col] != NULL);
 }
 
 static void
@@ -15685,5 +15682,4 @@ create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int 
 
   attnames[nnames + 1] = NULL;
 }
-
 #endif
