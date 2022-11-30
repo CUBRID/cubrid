@@ -911,6 +911,8 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
   set(LIBEXPAT_TARGET libexpat)
   list(APPEND EP_TARGETS ${LIBEXPAT_TARGET})
   if(UNIX)
+    set(LIBEXPAT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libexpat.a)
+    set(LIBEXPAT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/expat)
     externalproject_add(${LIBEXPAT_TARGET}
       URL                  ${WITH_LIBEXPAT_URL}
       LOG_BUILD            TRUE
@@ -920,10 +922,8 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
       BUILD_COMMAND        make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      BUILD_BYPRODUCTS     ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libexpat.a
+      BUILD_BYPRODUCTS     ${LIBEXPAT_LIBS}
       )
-    set(LIBEXPAT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libexpat.a)
-    set(LIBEXPAT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/expat)
   elseif(WIN32)
     set(LIBEXPAT_LIBS ${WINDOWS_EXTERNAL_LIB_DIR}/libexpat.lib)
     set(LIBEXPAT_INCLUDES ${WINDOWS_EXTERNAL_INCLUDE_DIR})
@@ -959,6 +959,8 @@ if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
   set(LIBJANSSON_TARGET libjansson)
   list(APPEND EP_TARGETS ${LIBJANSSON_TARGET})
   if(UNIX)
+    set(LIBJANSSON_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libjansson.a)
+    set(LIBJANSSON_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/jansson)
     externalproject_add(${LIBJANSSON_TARGET}
       URL                  ${WITH_LIBJANSSON_URL}
       LOG_BUILD            TRUE
@@ -968,10 +970,8 @@ if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      BUILD_BYPRODUCTS     ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libjansson.a
+      BUILD_BYPRODUCTS     ${LIBJANSSON_LIBS}
       )
-    set(LIBJANSSON_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libjansson.a)
-    set(LIBJANSSON_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/jansson)
   else(UNIX)
     # WIN32
     set(LIBJANSSON_LIBS ${WINDOWS_EXTERNAL_LIB_DIR}/jansson64.lib)
@@ -1038,6 +1038,8 @@ endif(UNIX)
 if(UNIX)
   if(WITH_LIBEDIT STREQUAL "EXTERNAL")
     set(LIBEDIT_TARGET libedit)
+    set(LIBEDIT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libedit.a)
+    set(LIBEDIT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
     externalproject_add(${LIBEDIT_TARGET}
       URL                  ${WITH_LIBEDIT_URL}
       LOG_BUILD            TRUE
@@ -1047,13 +1049,11 @@ if(UNIX)
       CONFIGURE_COMMAND    "LDFLAGS=-L${CMAKE_CURRENT_BINARY_DIR}/external/lib" ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      BUILD_BYPRODUCTS     ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libedit.a
+      BUILD_BYPRODUCTS     ${LIBEDIT_LIBS}
       )
     if(TARGET ${LIBNCURSES_TARGET})
       add_dependencies(${LIBEDIT_TARGET} ${LIBNCURSES_TARGET})
     endif()
-    set(LIBEDIT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libedit.a)
-    set(LIBEDIT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
     list(APPEND EP_TARGETS ${LIBEDIT_TARGET})
   elseif(WITH_LIBEDIT STREQUAL "SYSTEM")
     find_library(LIBEDIT_LIBS NAMES libedit.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBEDIT_ROOT_PATH}/lib REQUIRED)
@@ -1079,6 +1079,8 @@ if(WIN32) # msvc-built lz4 v1.9.2 libraries
     COMMAND ${CMAKE_COMMAND} -E copy ${LZ4_DLL} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/liblz4.dll
   )
 else()
+  set(LZ4_INCLUDES  ${CMAKE_BINARY_DIR}/external/Source/lz4/lib)
+  set(LZ4_LIBS      ${CMAKE_BINARY_DIR}/external/Source/lz4/lib/liblz4.a)
   externalproject_add(${LZ4_TARGET}
     GIT_REPOSITORY https://github.com/lz4/lz4
     GIT_TAG fdf2ef5             # https://github.com/lz4/lz4/releases/tag/v1.9.2
@@ -1086,10 +1088,8 @@ else()
     BUILD_IN_SOURCE true        # lz4 Makefile is designed to run locally
     BUILD_COMMAND make CFLAGS="-fPIC"  # to allow static linking in shared library
     INSTALL_COMMAND ""          # suppress install
-    BUILD_BYPRODUCTS            ${CMAKE_CURRENT_BINARY_DIR}/external/Source/lz4/lib/liblz4.a
+    BUILD_BYPRODUCTS            ${LZ4_LIBS}
   )
-  set(LZ4_INCLUDES ${CMAKE_BINARY_DIR}/external/Source/lz4/lib)
-  set(LZ4_LIBS ${CMAKE_BINARY_DIR}/external/Source/lz4/lib/liblz4.a)
 endif()
 list(APPEND EP_LIBS ${LZ4_LIBS})
 list(APPEND EP_INCLUDES ${LZ4_INCLUDES})
@@ -1110,6 +1110,8 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
   if(UNIX)
     #compile OpenSSL library given an internet url to a OpenSSL archive
     #e.g. https://www.openssl.org/source/openssl-1.1.1f.tar.gz
+    set(LIBOPENSSL_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libssl.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libcrypto.a)
+    set(LIBOPENSSL_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
     externalproject_add(${LIBOPENSSL_TARGET}
       URL                  ${WITH_LIBOPENSSL_URL}
       LOG_CONFIGURE        TRUE
@@ -1120,10 +1122,8 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
       CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${CMAKE_CURRENT_BINARY_DIR}/external no-shared # ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      BUILD_BYPRODUCTS     ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libssl.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libcrypto.a
+      BUILD_BYPRODUCTS     ${LIBOPENSSL_LIBS}
       )
-    set(LIBOPENSSL_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libssl.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libcrypto.a)
-    set(LIBOPENSSL_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
     list(APPEND EP_TARGETS ${LIBOPENSSL_TARGET})
   else(UNIX)
     set(LIBOPENSSL_LIBS ${WINDOWS_EXTERNAL_DIR}/openssl/lib/libssl.lib)
@@ -1152,6 +1152,8 @@ if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
   if(UNIX)
     #compile unixODBC library given an internet url to a unixODBC archive
     #e.g. http://www.unixodbc.org/unixODBC-2.3.9.tar.gz
+    set(LIBUNIXODBC_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libodbc.so)
+    set(LIBUNIXODBC_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
     externalproject_add(${LIBUNIXODBC_TARGET}
       URL                  ${WITH_LIBUNIXODBC_URL}
       LOG_CONFIGURE        TRUE
@@ -1162,10 +1164,8 @@ if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
       CONFIGURE_COMMAND    <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external # ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      BUILD_BYPRODUCTS     ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libodbc.so
+      BUILD_BYPRODUCTS     ${LIBUNIXODBC_LIBS}
       )
-    set(LIBUNIXODBC_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libodbc.so)
-    set(LIBUNIXODBC_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
     list(APPEND EP_TARGETS ${LIBUNIXODBC_TARGET})
   endif(UNIX)
 else(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
@@ -1181,6 +1181,7 @@ endif(WIN32)
 
 # rapidjson
 set(RAPIDJSON_TARGET rapidjson)
+set(RAPIDJSON_INCLUDES ${CMAKE_BINARY_DIR}/external/Source/rapidjson/include)
 externalproject_add(${RAPIDJSON_TARGET}
   # tried URL but archive gets downloaded every time. URL_MD5 may help
   URL                  ${WITH_RAPIDJSON_URL}
@@ -1195,10 +1196,10 @@ externalproject_add(${RAPIDJSON_TARGET}
   CMAKE_CACHE_ARGS     -DRAPIDJSON_BUILD_TESTS:STRING=off
                        -DRAPIDJSON_BUILD_DOC:STRING=off
                        -DRAPIDJSON_BUILD_EXAMPLES:STRING=off
+  BUILD_BYPRODUCTS     ${RAPIDJSON_INCLUDES}
 )
-# add to include directories
-include_directories(${CMAKE_BINARY_DIR}/external/Source/rapidjson/include)
 # add to external project targets
+list(APPEND EP_INCLUDES ${RAPIDJSON_INCLUDES})
 list(APPEND EP_TARGETS ${RAPIDJSON_TARGET})
 
 if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)

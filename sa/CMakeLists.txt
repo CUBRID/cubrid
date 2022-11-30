@@ -651,6 +651,7 @@ target_external_dependencies(cubridsa
   LIBEDIT
   LIBOPENSSL
   LZ4
+  RAPIDJSON
   )
 target_include_directories(cubridsa PRIVATE
   ${FLEX_INCLUDE_DIRS}

@@ -270,9 +270,9 @@ function build_configure ()
   fi
 
   generate_opt=""
-	if [ "$build_generator" = "ninja" ]; then
+  if [ "$build_generator" = "ninja" ]; then
     generate_opt="-G Ninja"
-	fi
+  fi
 	
   cmake -E chdir $build_dir cmake $configure_prefix $configure_options $source_dir $generate_opt
 
@@ -299,7 +299,14 @@ function build_install ()
 {
   # make install
   print_check "Installing"
-  cmake --build $build_dir --target install
+
+  chdir_command="cmake -E chdir $build_dir"
+  if [ "$build_generator" = "ninja" ]; then
+    $chdir_command ninja install
+	else
+    $chdir_command make install
+  fi
+
   [ $? -eq 0 ] && print_result "OK" || print_fatal "Installation failed"
 }
 
