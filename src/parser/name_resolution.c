@@ -2637,6 +2637,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       spec_frame.extra_specs = NULL;
       bind_arg->spec_frames = &spec_frame;
       pt_bind_scope (parser, bind_arg);
+      if (pt_has_error (parser))
+	{
+	  /* this node will be registered to orphan list and freed later */
+	  return NULL;
+	}
 
       (void) pt_resolve_hint (parser, node);
 
@@ -2670,6 +2675,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       spec_frame.extra_specs = NULL;
       bind_arg->spec_frames = &spec_frame;
       pt_bind_scope (parser, bind_arg);
+      if (pt_has_error (parser))
+	{
+	  /* this node will be registered to orphan list and freed later */
+	  return NULL;
+	}
 
       (void) pt_resolve_hint (parser, node);
 
