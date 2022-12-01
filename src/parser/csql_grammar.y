@@ -10352,8 +10352,9 @@ attr_index_def
 	  identifier                /* 2 */
 	  index_column_name_list    /* 3 */
 	  opt_where_clause          /* 4 */
-	  opt_comment_spec          /* 5 */
-	  opt_invisible             /* 6 */
+          opt_index_dup_level       /* 5 */
+	  opt_comment_spec          /* 6 */
+	  opt_invisible             /* 7 */
 		{{ DBG_TRACE_GRAMMAR(attr_index_def, : index_or_key identifier index_column_name_list opt_where_clause opt_comment_spec opt_invisible);
 			int arg_count = 0, prefix_col_count = 0;
 			PT_NODE* node = parser_new_node(this_parser,
@@ -10368,14 +10369,12 @@ attr_index_def
 			  }
 			node->info.index.indexed_class = NULL;
 			node->info.index.where = $4;
-			node->info.index.comment = $5;
+			node->info.index.comment = $6;
 			node->info.index.index_status = SM_NORMAL_INDEX;
 
-			prefix_col_count =
-				parser_count_prefix_columns (col, &arg_count);
+			prefix_col_count = parser_count_prefix_columns (col, &arg_count);
 
-			if (prefix_col_count > 1 ||
-			    (prefix_col_count == 1 && arg_count > 1))
+			if (prefix_col_count > 1 || (prefix_col_count == 1 && arg_count > 1))
 			  {
 			    PT_ERRORm (this_parser, node,
 				       MSGCAT_SET_PARSER_SEMANTIC,
@@ -10408,12 +10407,25 @@ attr_index_def
 				  }
 			      }
 			  }
+#if 1 //
+                            if($5 == DUP_MODE_OVFL_LEVEL_NOT_SET)
+                            {
+                                node->info.index.dupkey_mode = DUP_MODE_NONE;
+                                node->info.index.dupkey_hash_level = 0;
+                            }
+                            else
+                            {
+                                node->info.index.dupkey_mode = $5 & 0x0000FFFF;
+                                node->info.index.dupkey_hash_level = ($5 >> 16);
+                            } 
+#endif                            
+
 			node->info.index.column_names = col;
 			node->info.index.index_status = SM_NORMAL_INDEX;
-			if ($6)
-				{
-					node->info.index.index_status = SM_INVISIBLE_INDEX;
-				}
+			if ($7)
+			  {
+			       node->info.index.index_status = SM_INVISIBLE_INDEX;
+			  }
 			$$ = node;
 
 		DBG_PRINT}}
