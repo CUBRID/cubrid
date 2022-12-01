@@ -4066,7 +4066,109 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_
   return key_type;
 }
 
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+static void
+classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAINT_TYPE new_cons,
+					  const char **att_names, const int *asc_desc, const int *attrs_prefix_length,
+					  const SM_FUNCTION_INFO * func_index_info)
+{
+  SM_CLASS_CONSTRAINT *cons;
+  SM_ATTRIBUTE **attp;
+  const char **namep;
+  int nnames;
 
+  // If there is a column corresponding to PK among the attributes constituting the index, the hidden_index_column is not added.
+  int hidden_index_col = -1;
+  for (nnames = 0, namep = att_names; *namep; namep++, nnames++)
+    {
+      if (IS_HIDDEN_INDEX_COL_NAME (*namep))
+	{
+	  hidden_index_col = nnames;
+	}
+    }
+
+  if (hidden_index_col == -1)
+    {
+      return;
+    }
+
+  /* for foreign key, need to check redundancy first */
+  if (new_cons == DB_CONSTRAINT_FOREIGN_KEY)
+    {
+      ;
+    }
+
+  for (cons = cons_list; cons; cons = cons->next)
+    {
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (cons->type) == false)
+	{
+	  continue;
+	}
+
+      if (!cons->attributes || !att_names)
+	{
+	  continue;
+	}
+
+      for (attp = cons->attributes; *attp; attp++)
+	{
+	  for (namep = att_names; *namep; namep++)
+	    {
+	      if (!intl_identifier_casecmp ((*attp)->header.name, *namep))
+		{
+		  break;
+		}
+	    }
+
+	  if (!*namep)
+	    {
+	      break;
+	    }
+	}
+
+      if (!*attp)
+	{
+	  // remove hidden column                  
+	  assert ((asc_desc[hidden_index_col] == HIDDEN_INDEX_COL_ATTR_NAME_DO_NOT_FREE)
+		  || (asc_desc[hidden_index_col] == HIDDEN_INDEX_COL_ATTR_NAME_NEED_FREE));
+	  if (asc_desc[hidden_index_col] == HIDDEN_INDEX_COL_ATTR_NAME_DO_NOT_FREE)
+	    {
+	      att_names[hidden_index_col] = NULL;
+	    }
+	  else
+	    {
+	      free_and_init (att_names[hidden_index_col]);
+	    }
+
+	  if (func_index_info && func_index_info->attr_index_start > 0)
+	    {
+	      int func_no_args = nnames - hidden_index_col;
+	      if (func_no_args > 0)
+		{
+		  memmove ((int *) asc_desc + hidden_index_col, (int *) asc_desc + (hidden_index_col + 1),
+			   (func_no_args * sizeof (asc_desc[0])));
+		  if (attrs_prefix_length)
+		    {
+		      memmove ((int *) attrs_prefix_length + hidden_index_col,
+			       (int *) attrs_prefix_length + (hidden_index_col + 1),
+			       (func_no_args * sizeof (attrs_prefix_length[0])));
+		    }
+		  memmove (att_names + hidden_index_col, att_names + (hidden_index_col + 1),
+			   (func_no_args * sizeof (att_names[0])));
+
+		  att_names[nnames - 1] = NULL;
+		  ((SM_FUNCTION_INFO *) func_index_info)->attr_index_start--;
+		}
+	    }
+
+	  return;
+	}
+    }
+
+  // 
+  ((int *) asc_desc)[hidden_index_col] = 0;
+}
+#endif
 /*
  * classobj_find_cons_index2()
  *   return:
@@ -4118,92 +4220,93 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 
   for (cons = cons_list; cons; cons = cons->next)
     {
-      if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type))
+      if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type) == false)
 	{
-	  attp = cons->attributes;
-	  namep = att_names;
-	  if (!attp || !namep)
-	    {
-	      continue;
-	    }
+	  continue;
+	}
 
-	  len = 0;		/* init */
+      attp = cons->attributes;
+      namep = att_names;
+      if (!attp || !namep)
+	{
+	  continue;
+	}
+
+      len = 0;			/* init */
 
 #if 0				//defined(SUPPORT_KEY_DUP_LEVEL)  // ctshim
-	  while (*attp && *namep)
+      while (*attp && *namep)
+	{
+	  if (intl_identifier_casecmp ((*attp)->header.name, *namep))
 	    {
-	      if (intl_identifier_casecmp ((*attp)->header.name, *namep))
+	      if (hidden_col_idx == -1 && IS_HIDDEN_INDEX_COL_NAME (*namep))
 		{
-		  if (hidden_col_idx == -1 && IS_HIDDEN_INDEX_COL_NAME (*namep))
-		    {
-		      hidden_col_idx = len;
-		    }
-
-		  if (hidden_col_idx != len || !IS_HIDDEN_INDEX_COL_NAME ((*attp)->header.name))
-		    {
-		      break;
-		    }
+		  hidden_col_idx = len;
 		}
 
-	      attp++;
-	      namep++;
-	      len++;		/* increase name number */
+	      if (hidden_col_idx != len || !IS_HIDDEN_INDEX_COL_NAME ((*attp)->header.name))
+		{
+		  break;
+		}
 	    }
+
+	  attp++;
+	  namep++;
+	  len++;		/* increase name number */
+	}
 
 #else
-	  while (*attp && *namep && !intl_identifier_casecmp ((*attp)->header.name, *namep))
-	    {
-	      attp++;
-	      namep++;
-	      len++;		/* increase name number */
-	    }
+      while (*attp && *namep && !intl_identifier_casecmp ((*attp)->header.name, *namep))
+	{
+	  attp++;
+	  namep++;
+	  len++;		/* increase name number */
+	}
 #endif
 
-	  if (!*attp && !*namep && !classobj_is_possible_constraint (cons->type, new_cons))
+      if (!*attp && !*namep && !classobj_is_possible_constraint (cons->type, new_cons))
+	{
+	  for (i = 0; i < len; i++)
 	    {
-	      for (i = 0; i < len; i++)
+	      /* if not specified, ascending order */
+	      order = (asc_desc ? asc_desc[i] : 0);
+	      assert (order == 0 || order == 1);
+
+	      if (order != cons->asc_desc[i])
 		{
-		  /* if not specified, ascending order */
-		  order = (asc_desc ? asc_desc[i] : 0);
-		  assert (order == 0 || order == 1);
-
-		  if (order != cons->asc_desc[i])
-		    {
-		      break;	/* not match */
-		    }
-		}
-
-	      if (i == len)
-		{
-		  if (filter_predicate)
-		    {
-		      if (!cons->filter_predicate)
-			{
-			  continue;
-			}
-
-		      if (!filter_predicate->pred_string || !cons->filter_predicate->pred_string)
-			{
-			  continue;
-			}
-
-		      if (strcmp (filter_predicate->pred_string, cons->filter_predicate->pred_string))
-			{
-			  continue;
-			}
-		    }
-		  else
-		    {
-		      if (cons->filter_predicate)
-			{
-			  continue;
-			}
-		    }
-
-		  return cons;
+		  break;	/* not match */
 		}
 	    }
 
+	  if (i == len)
+	    {
+	      if (filter_predicate)
+		{
+		  if (!cons->filter_predicate)
+		    {
+		      continue;
+		    }
+
+		  if (!filter_predicate->pred_string || !cons->filter_predicate->pred_string)
+		    {
+		      continue;
+		    }
+
+		  if (strcmp (filter_predicate->pred_string, cons->filter_predicate->pred_string))
+		    {
+		      continue;
+		    }
+		}
+	      else
+		{
+		  if (cons->filter_predicate)
+		    {
+		      continue;
+		    }
+		}
+
+	      return cons;
+	    }
 	}
     }
 
@@ -8139,6 +8242,11 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char **out_shared
       ERROR2 (error, ER_SM_INDEX_EXISTS, class_name, existing_con->name);
       return error;
     }
+
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+  classobj_check_attr_in_unique_constraint (constraints, constraint_type, att_names, asc_desc,
+					    NULL /*attrs_prefix_length */ , func_index_info);
+#endif
 
   existing_con = classobj_find_constraint_by_attrs (constraints, constraint_type, att_names, asc_desc, filter_index);
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */

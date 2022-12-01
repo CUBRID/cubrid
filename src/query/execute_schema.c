@@ -15586,8 +15586,11 @@ alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO 
 		{
 		  memmove (asc_desc + hidden_index_col, asc_desc + (hidden_index_col + 1),
 			   (func_no_args * sizeof (asc_desc[0])));
-		  memmove (attrs_prefix_length + hidden_index_col, attrs_prefix_length + (hidden_index_col + 1),
-			   (func_no_args * sizeof (attrs_prefix_length[0])));
+		  if (attrs_prefix_length)
+		    {
+		      memmove (attrs_prefix_length + hidden_index_col, attrs_prefix_length + (hidden_index_col + 1),
+			       (func_no_args * sizeof (attrs_prefix_length[0])));
+		    }
 		  memmove (attnames + hidden_index_col, attnames + (hidden_index_col + 1),
 			   (func_no_args * sizeof (attnames[0])));
 
@@ -15606,7 +15609,10 @@ alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO 
   if (hidden_index_col != -1)
     {				// reset level 
       asc_desc[hidden_index_col] = 0;
-      attrs_prefix_length[hidden_index_col] = -1;
+      if (attrs_prefix_length)
+	{
+	  attrs_prefix_length[hidden_index_col] = -1;
+	}
 
       free_and_init (attnames[hidden_index_col]);
       attnames[hidden_index_col] =
@@ -15621,9 +15627,12 @@ alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO 
 	    {
 	      memmove (asc_desc + (func_index_info->attr_index_start + 1),
 		       asc_desc + func_index_info->attr_index_start, func_no_args * sizeof (asc_desc[0]));
-	      memmove (attrs_prefix_length + (func_index_info->attr_index_start + 1),
-		       attrs_prefix_length + func_index_info->attr_index_start,
-		       func_no_args * sizeof (attrs_prefix_length[0]));
+	      if (attrs_prefix_length)
+		{
+		  memmove (attrs_prefix_length + (func_index_info->attr_index_start + 1),
+			   attrs_prefix_length + func_index_info->attr_index_start,
+			   func_no_args * sizeof (attrs_prefix_length[0]));
+		}
 	      memmove (attnames + (func_index_info->attr_index_start + 1),
 		       attnames + func_index_info->attr_index_start, func_no_args * sizeof (attnames[0]));
 
@@ -15634,11 +15643,14 @@ alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO 
 	{
 	  hidden_index_col = nnames;
 	}
-
-      asc_desc[hidden_index_col] = 0;
-      attrs_prefix_length[hidden_index_col] = -1;
+      
+      if (attrs_prefix_length)
+	{
+	  attrs_prefix_length[hidden_index_col] = -1;
+	}
       attnames[hidden_index_col] =
 	strdup ((char *) GET_HIDDEN_INDEX_COL_NAME (idx_info->dupkey_mode, idx_info->dupkey_hash_level));
+      asc_desc[hidden_index_col] = HIDDEN_INDEX_COL_ATTR_NAME_NEED_FREE;
 
       attnames[nnames + 1] = NULL;
     }
@@ -15651,7 +15663,6 @@ create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int 
 			   int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames)
 {
   int hidden_index_col;
-  int ovfl_level;
 
   assert (idx_info->dupkey_mode != DUP_MODE_NONE && idx_info->dupkey_mode != DUP_MODE_OVFL_LEVEL_NOT_SET);
   assert (idx_info->dupkey_hash_level >= OVFL_LEVEL_MIN && idx_info->dupkey_hash_level < OVFL_LEVEL_MAX);
@@ -15662,9 +15673,12 @@ create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int 
 	{
 	  memmove (asc_desc + (func_index_info->attr_index_start + 1),
 		   asc_desc + func_index_info->attr_index_start, idx_info->func_no_args * sizeof (asc_desc[0]));
-	  memmove (attrs_prefix_length + (func_index_info->attr_index_start + 1),
-		   attrs_prefix_length + func_index_info->attr_index_start,
-		   idx_info->func_no_args * sizeof (attrs_prefix_length[0]));
+	  if (attrs_prefix_length)
+	    {
+	      memmove (attrs_prefix_length + (func_index_info->attr_index_start + 1),
+		       attrs_prefix_length + func_index_info->attr_index_start,
+		       idx_info->func_no_args * sizeof (attrs_prefix_length[0]));
+	    }
 	  memmove (attnames + (func_index_info->attr_index_start + 1),
 		   attnames + func_index_info->attr_index_start, idx_info->func_no_args * sizeof (attnames[0]));
 	}
@@ -15675,10 +15689,13 @@ create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int 
     {
       hidden_index_col = nnames;
     }
-
-  asc_desc[hidden_index_col] = 0;
-  attrs_prefix_length[hidden_index_col] = -1;
+  
+  if (attrs_prefix_length)
+    {
+      attrs_prefix_length[hidden_index_col] = -1;
+    }
   attnames[hidden_index_col] = (char *) GET_HIDDEN_INDEX_COL_NAME (idx_info->dupkey_mode, idx_info->dupkey_hash_level);
+  asc_desc[hidden_index_col] = HIDDEN_INDEX_COL_ATTR_NAME_DO_NOT_FREE;
 
   attnames[nnames + 1] = NULL;
 }
