@@ -15566,6 +15566,7 @@ alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO 
   int func_no_args = 0;
 
   assert (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != SM_CONSTRAINT_FOREIGN_KEY);
+  assert (asc_desc != NULL);
 
   if (idx_info->dupkey_mode <= DUP_MODE_OVFL_LEVEL_NOT_SET)
     {
@@ -15643,7 +15644,7 @@ alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO 
 	{
 	  hidden_index_col = nnames;
 	}
-      
+
       if (attrs_prefix_length)
 	{
 	  attrs_prefix_length[hidden_index_col] = -1;
@@ -15663,6 +15664,8 @@ create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int 
 			   int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames)
 {
   int hidden_index_col;
+
+  assert (asc_desc != NULL);
 
   assert (idx_info->dupkey_mode != DUP_MODE_NONE && idx_info->dupkey_mode != DUP_MODE_OVFL_LEVEL_NOT_SET);
   assert (idx_info->dupkey_hash_level >= OVFL_LEVEL_MIN && idx_info->dupkey_hash_level < OVFL_LEVEL_MAX);
@@ -15689,7 +15692,7 @@ create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int 
     {
       hidden_index_col = nnames;
     }
-  
+
   if (attrs_prefix_length)
     {
       attrs_prefix_length[hidden_index_col] = -1;

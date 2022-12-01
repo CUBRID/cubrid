@@ -4077,6 +4077,8 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
   const char **namep;
   int nnames;
 
+  assert (asc_desc != NULL);
+
   // If there is a column corresponding to PK among the attributes constituting the index, the hidden_index_column is not added.
   int hidden_index_col = -1;
   for (nnames = 0, namep = att_names; *namep; namep++, nnames++)
@@ -8086,8 +8088,7 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj, SM_COMPONENT * com
  *   return: share, not share, create new index.
  *   constraint(in): the constraints list
  *   constraint_type(in): the new constraint type
- *   filter_predicate(in): the new expression from CREATE INDEX idx
- *		       ON tbl(col1, ...) WHERE filter_predicate
+ *   filter_predicate(in): the new expression from CREATE INDEX idx ON tbl(col1, ...) WHERE filter_predicate
  *   func_index_info (in): the new function index information
  *   existing_con(in): the existed relative constraint
  *   primary_con(out): the reference of existed primary key
