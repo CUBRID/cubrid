@@ -157,13 +157,14 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("LIBEXPAT" ${LIBEXPAT_LIBS})
     externalproject_add(${LIBEXPAT_TARGET}
       URL                  ${WITH_LIBEXPAT_URL}
+      LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
-      BUILD_COMMAND        $(MAKE) AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      $(MAKE) install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      BUILD_COMMAND        make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBEXPAT_BYPRODUCTS}"
       )
   elseif(WIN32)
@@ -207,13 +208,14 @@ if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("LIBJANSSON" ${LIBJANSSON_LIBS})
     externalproject_add(${LIBJANSSON_TARGET}
       URL                  ${WITH_LIBJANSSON_URL}
+      LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        $(MAKE) all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      $(MAKE) install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBJANSSON_BYPRODUCTS}"
       )
   else(UNIX)
@@ -296,9 +298,9 @@ if(UNIX)
       LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    "LDFLAGS=-L${3RDPARTY_LIBS_DIR}/lib" ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        $(MAKE) all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      $(MAKE) install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBEDIT_BYPRODUCTS}"
       )
     if(TARGET ${LIBNCURSES_TARGET})
@@ -333,12 +335,12 @@ else()
   set(LZ4_LIBS ${3RDPARTY_LIBS_DIR}/Source/lz4/lib/liblz4.a)
   ADD_BY_PRODUCTS_VARIABLE ("LZ4" ${LZ4_LIBS})
   externalproject_add(${LZ4_TARGET}
-    GIT_REPOSITORY https://github.com/lz4/lz4
-    GIT_TAG fdf2ef5             # https://github.com/lz4/lz4/releases/tag/v1.9.2
-    CONFIGURE_COMMAND ""        # no configure
-    BUILD_IN_SOURCE true        # lz4 Makefile is designed to run locally
-    BUILD_COMMAND $(MAKE) CFLAGS="-fPIC"  # to allow static linking in shared library
-    INSTALL_COMMAND ""          # suppress install
+    GIT_REPOSITORY        https://github.com/lz4/lz4
+    GIT_TAG fdf2ef5                           # https://github.com/lz4/lz4/releases/tag/v1.9.2
+    CONFIGURE_COMMAND     ""                  # no configure
+    BUILD_IN_SOURCE       true                # lz4 Makefile is designed to run locally
+    BUILD_COMMAND         make CFLAGS="-fPIC" # to allow static linking in shared library
+    INSTALL_COMMAND       ""                  # suppress install
     "${LZ4_BYPRODUCTS}"
   )
 endif()
@@ -372,8 +374,8 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${3RDPARTY_LIBS_DIR} no-shared # ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        $(MAKE) all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      $(MAKE) install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBOPENSSL_BYPRODUCTS}"
       )
     list(APPEND EP_TARGETS ${LIBOPENSSL_TARGET})
@@ -414,8 +416,8 @@ if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    <SOURCE_DIR>/configure --prefix=${3RDPARTY_LIBS_DIR} # ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        $(MAKE) AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      $(MAKE) install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      BUILD_COMMAND        make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBUNIXODBC_BYPRODUCTS}"
       )
     list(APPEND EP_TARGETS ${LIBUNIXODBC_TARGET})
