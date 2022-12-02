@@ -1643,7 +1643,11 @@ cas_sig_handler (int signo)
   cas_free (true);
   as_info->pid = 0;
   as_info->uts_status = UTS_STATUS_RESTART;
+#ifdef _GCOV
+  exit (0);
+#else
   _exit (0);
+#endif
 }
 
 static void
