@@ -1277,7 +1277,7 @@ cas_main (void)
 			  shm_appl->cgw_link_server_port,
 			  tmp_name, tmp_user, "********", shm_appl->cgw_link_connect_url_property);
 	      }
-	    else if (dbms_type == SUPPORTED_DBMS_MYSQL)
+	    else if (dbms_type == SUPPORTED_DBMS_MYSQL || dbms_type == SUPPORTED_DBMS_MARIADB)
 	      {
 		snprintf (odbc_connect_url, CGW_LINK_URL_MAX_LEN, MYSQL_CONNECT_URL_FORMAT,
 			  shm_appl->cgw_link_odbc_driver_name,
