@@ -49,6 +49,15 @@ message(STATUS "Build with Curses library: ${WITH_LIBNCURSES}")
 message(STATUS "Build with openssl library: ${WITH_LIBOPENSSL}")
 message(STATUS "Build with unixODBC library: ${WITH_LIBUNIXODBC}")
 
+macro(ADD_BY_PRODUCTS_VARIABLE prefix_dependee)
+  if (CMAKE_GENERATOR MATCHES "Ninja")
+    if(CMAKE_VERSION VERSION_LESS "3.2")
+      message(FATAL_ERROR "The Ninja generator requires CMake 3.2+. Try the \"Unix Makefiles\" generator instead.")
+    endif()
+    set(${prefix_dependee}_BYPRODUCTS BUILD_BYPRODUCTS "${ARGN}")
+  endif()
+endmacro()
+
 # For external library options
 include(ExternalProject)
 
@@ -143,6 +152,9 @@ endif(NOT BISON_FOUND OR NOT FLEX_FOUND)
 set(LIBEXPAT_TARGET libexpat)
 if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
   if(UNIX)
+    set(LIBEXPAT_LIBS ${3RDPARTY_LIBS_DIR}/lib/libexpat.a)
+    set(LIBEXPAT_INCLUDES ${3RDPARTY_LIBS_DIR}/include/expat)
+    ADD_BY_PRODUCTS_VARIABLE ("LIBEXPAT" ${LIBEXPAT_LIBS})
     externalproject_add(${LIBEXPAT_TARGET}
       URL                  ${WITH_LIBEXPAT_URL}
       LOG_BUILD            TRUE
@@ -152,9 +164,8 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
       BUILD_COMMAND        $(MAKE) AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      $(MAKE) install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      "${LIBEXPAT_BYPRODUCTS}"
       )
-    set(LIBEXPAT_LIBS ${3RDPARTY_LIBS_DIR}/lib/libexpat.a)
-    set(LIBEXPAT_INCLUDES ${3RDPARTY_LIBS_DIR}/include/expat)
   elseif(WIN32)
     set(LIBEXPAT_LIBS ${WINDOWS_EXTERNAL_LIB_DIR}/libexpat.lib)
     set(LIBEXPAT_INCLUDES ${WINDOWS_EXTERNAL_INCLUDE_DIR})
@@ -191,6 +202,9 @@ set(LIBJANSSON_TARGET libjansson)
 if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
   list(APPEND EP_TARGETS ${LIBJANSSON_TARGET})
   if(UNIX)
+    set(LIBJANSSON_LIBS ${3RDPARTY_LIBS_DIR}/lib/libjansson.a)
+    set(LIBJANSSON_INCLUDES ${3RDPARTY_LIBS_DIR}/include/jansson)
+    ADD_BY_PRODUCTS_VARIABLE ("LIBJANSSON" ${LIBJANSSON_LIBS})
     externalproject_add(${LIBJANSSON_TARGET}
       URL                  ${WITH_LIBJANSSON_URL}
       LOG_BUILD            TRUE
@@ -200,9 +214,8 @@ if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        $(MAKE) all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      $(MAKE) install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      "${LIBJANSSON_BYPRODUCTS}"
       )
-    set(LIBJANSSON_LIBS ${3RDPARTY_LIBS_DIR}/lib/libjansson.a)
-    set(LIBJANSSON_INCLUDES ${3RDPARTY_LIBS_DIR}/include/jansson)
   else(UNIX)
     # WIN32
     set(LIBJANSSON_LIBS ${WINDOWS_EXTERNAL_LIB_DIR}/jansson64.lib)
@@ -274,6 +287,9 @@ endif(UNIX)
 if(UNIX)
   set(LIBEDIT_TARGET libedit)
   if(WITH_LIBEDIT STREQUAL "EXTERNAL")
+    set(LIBEDIT_LIBS ${3RDPARTY_LIBS_DIR}/lib/libedit.a)
+    set(LIBEDIT_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
+    ADD_BY_PRODUCTS_VARIABLE ("LIBEDIT" ${LIBEDIT_LIBS})
     externalproject_add(${LIBEDIT_TARGET}
       URL                  ${WITH_LIBEDIT_URL}
       LOG_BUILD            TRUE
@@ -283,12 +299,11 @@ if(UNIX)
       CONFIGURE_COMMAND    "LDFLAGS=-L${3RDPARTY_LIBS_DIR}/lib" ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        $(MAKE) all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      $(MAKE) install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      "${LIBEDIT_BYPRODUCTS}"
       )
     if(TARGET ${LIBNCURSES_TARGET})
       add_dependencies(${LIBEDIT_TARGET} ${LIBNCURSES_TARGET})
     endif()
-    set(LIBEDIT_LIBS ${3RDPARTY_LIBS_DIR}/lib/libedit.a)
-    set(LIBEDIT_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
     list(APPEND EP_TARGETS ${LIBEDIT_TARGET})
   elseif(WITH_LIBEDIT STREQUAL "SYSTEM")
     find_library(LIBEDIT_LIBS NAMES libedit.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBEDIT_ROOT_PATH}/lib REQUIRED)
@@ -314,6 +329,9 @@ if(WIN32) # msvc-built lz4 v1.9.2 libraries
     COMMAND ${CMAKE_COMMAND} -E copy ${LZ4_DLL} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/liblz4.dll
   )
 else()
+  set(LZ4_INCLUDES ${3RDPARTY_LIBS_DIR}/Source/lz4/lib)
+  set(LZ4_LIBS ${3RDPARTY_LIBS_DIR}/Source/lz4/lib/liblz4.a)
+  ADD_BY_PRODUCTS_VARIABLE ("LZ4" ${LZ4_LIBS})
   externalproject_add(${LZ4_TARGET}
     GIT_REPOSITORY https://github.com/lz4/lz4
     GIT_TAG fdf2ef5             # https://github.com/lz4/lz4/releases/tag/v1.9.2
@@ -321,9 +339,8 @@ else()
     BUILD_IN_SOURCE true        # lz4 Makefile is designed to run locally
     BUILD_COMMAND $(MAKE) CFLAGS="-fPIC"  # to allow static linking in shared library
     INSTALL_COMMAND ""          # suppress install
+    "${LZ4_BYPRODUCTS}"
   )
-  set(LZ4_INCLUDES ${3RDPARTY_LIBS_DIR}/Source/lz4/lib)
-  set(LZ4_LIBS ${3RDPARTY_LIBS_DIR}/Source/lz4/lib/liblz4.a)
 endif()
 list(APPEND EP_LIBS ${LZ4_LIBS})
 list(APPEND EP_INCLUDES ${LZ4_INCLUDES})
@@ -344,6 +361,9 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
   if(UNIX)
     #compile OpenSSL library given an internet url to a OpenSSL archive
     #e.g. https://www.openssl.org/source/openssl-1.1.1f.tar.gz
+    set(LIBOPENSSL_LIBS ${3RDPARTY_LIBS_DIR}/lib/libssl.a ${3RDPARTY_LIBS_DIR}/lib/libcrypto.a)
+    set(LIBOPENSSL_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
+    ADD_BY_PRODUCTS_VARIABLE ("LIBOPENSSL" ${LIBOPENSSL_LIBS})
     externalproject_add(${LIBOPENSSL_TARGET}
       URL                  ${WITH_LIBOPENSSL_URL}
       LOG_CONFIGURE        TRUE
@@ -354,9 +374,8 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
       CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${3RDPARTY_LIBS_DIR} no-shared # ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        $(MAKE) all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      $(MAKE) install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      "${LIBOPENSSL_BYPRODUCTS}"
       )
-    set(LIBOPENSSL_LIBS ${3RDPARTY_LIBS_DIR}/lib/libssl.a ${3RDPARTY_LIBS_DIR}/lib/libcrypto.a)
-    set(LIBOPENSSL_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
     list(APPEND EP_TARGETS ${LIBOPENSSL_TARGET})
   else(UNIX)
     set(LIBOPENSSL_LIBS ${WINDOWS_EXTERNAL_DIR}/openssl/lib/libssl.lib)
@@ -384,6 +403,9 @@ if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
   if(UNIX)
     #compile unixODBC library given an internet url to a unixODBC archive
     #e.g. http://www.unixodbc.org/unixODBC-2.3.9.tar.gz
+    set(LIBUNIXODBC_LIBS ${3RDPARTY_LIBS_DIR}/lib/libodbc.so)
+    set(LIBUNIXODBC_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
+    ADD_BY_PRODUCTS_VARIABLE ("LIBUNIXODBC" ${LIBUNIXODBC_LIBS})
     externalproject_add(${LIBUNIXODBC_TARGET}
       URL                  ${WITH_LIBUNIXODBC_URL}
       LOG_CONFIGURE        TRUE
@@ -394,9 +416,8 @@ if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
       CONFIGURE_COMMAND    <SOURCE_DIR>/configure --prefix=${3RDPARTY_LIBS_DIR} # ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        $(MAKE) AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      $(MAKE) install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      "${LIBUNIXODBC_BYPRODUCTS}"
       )
-    set(LIBUNIXODBC_LIBS ${3RDPARTY_LIBS_DIR}/lib/libodbc.so)
-    set(LIBUNIXODBC_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
     list(APPEND EP_TARGETS ${LIBUNIXODBC_TARGET})
   endif(UNIX)
 else(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
@@ -406,6 +427,10 @@ list(APPEND EP_INCLUDES ${LIBUNIXODBC_INCLUDES})
 
 # rapidjson
 set(RAPIDJSON_TARGET rapidjson)
+# add to include directories
+set(RAPIDJSON_INCLUDES ${3RDPARTY_LIBS_DIR}/Source/rapidjson/include)
+set(RAPIDJSON_LIBS "")
+ADD_BY_PRODUCTS_VARIABLE ("RAPIDJSON" ${RAPIDJSON_INCLUDES})
 externalproject_add(${RAPIDJSON_TARGET}
   # tried URL but archive gets downloaded every time. URL_MD5 may help
   URL                  ${WITH_RAPIDJSON_URL}
@@ -420,10 +445,8 @@ externalproject_add(${RAPIDJSON_TARGET}
   CMAKE_CACHE_ARGS     -DRAPIDJSON_BUILD_TESTS:STRING=off
                        -DRAPIDJSON_BUILD_DOC:STRING=off
                        -DRAPIDJSON_BUILD_EXAMPLES:STRING=off
+  "${RAPIDJSON_BYPRODUCTS}"
 )
-# add to include directories
-set(RAPIDJSON_INCLUDES ${3RDPARTY_LIBS_DIR}/Source/rapidjson/include)
-set(RAPIDJSON_LIBS "")
 
 # add to external project targets
 list(APPEND EP_TARGETS ${RAPIDJSON_TARGET})
