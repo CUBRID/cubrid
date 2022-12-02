@@ -647,7 +647,6 @@ endif(UNIX)
 target_external_dependencies(cubridsa
   LIBEXPAT
   LIBJANSSON
-  LIBEXPAT
   LIBEDIT
   LIBOPENSSL
   LZ4
