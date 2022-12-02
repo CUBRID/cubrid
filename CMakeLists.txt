@@ -110,6 +110,15 @@ function(target_external_dependencies depender)
   endforeach()
 endfunction(target_external_dependencies)
 
+macro(ADD_BY_PRODUCTS_VARIABLE prefix_dependee)
+  if (CMAKE_GENERATOR MATCHES "Ninja")
+    if(CMAKE_VERSION VERSION_LESS "3.2")
+      message(FATAL_ERROR "The Ninja generator requires CMake 3.2+. Try the \"Unix Makefiles\" generator instead.")
+    endif()
+    set(${prefix_dependee}_BYPRODUCTS BUILD_BYPRODUCTS "${ARGN}")
+  endif()
+endmacro()
+
 # FIXME: linux 32bit build mode not working now
 option(ENABLE_32BIT "Build for 32-bit banaries (on 64-bit platform)" OFF)
 option(ENABLE_SYSTEMTAP "Enable dynamic tracing support using systemtap" ${ENABLE_SYSTEMTAP_DEFAULT})
@@ -907,12 +916,12 @@ set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINAR
 #                  ${WITH_LIBEXPAT_ROOT_PATH}/include
 # on Windows:
 # * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
+set(LIBEXPAT_TARGET libexpat)
 if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
-  set(LIBEXPAT_TARGET libexpat)
-  list(APPEND EP_TARGETS ${LIBEXPAT_TARGET})
   if(UNIX)
     set(LIBEXPAT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libexpat.a)
     set(LIBEXPAT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/expat)
+    ADD_BY_PRODUCTS_VARIABLE ("LIBEXPAT" ${LIBEXPAT_LIBS})
     externalproject_add(${LIBEXPAT_TARGET}
       URL                  ${WITH_LIBEXPAT_URL}
       LOG_BUILD            TRUE
@@ -922,7 +931,7 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
       BUILD_COMMAND        make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      BUILD_BYPRODUCTS     ${LIBEXPAT_LIBS}
+      "${LIBEXPAT_BYPRODUCTS}"
       )
   elseif(WIN32)
     set(LIBEXPAT_LIBS ${WINDOWS_EXTERNAL_LIB_DIR}/libexpat.lib)
@@ -941,6 +950,7 @@ elseif(WITH_LIBEXPAT STREQUAL "SYSTEM")
     message(STATUS "Found expat headers: ${LIBEXPAT_INCLUDES}")
   endif(UNIX)
 endif()
+list(APPEND EP_TARGETS ${LIBEXPAT_TARGET})
 list(APPEND EP_INCLUDES ${LIBEXPAT_INCLUDES})
 list(APPEND EP_LIBS ${LIBEXPAT_LIBS})
 
@@ -961,6 +971,7 @@ if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
   if(UNIX)
     set(LIBJANSSON_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libjansson.a)
     set(LIBJANSSON_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/jansson)
+    ADD_BY_PRODUCTS_VARIABLE ("LIBJANSSON" ${LIBJANSSON_LIBS})
     externalproject_add(${LIBJANSSON_TARGET}
       URL                  ${WITH_LIBJANSSON_URL}
       LOG_BUILD            TRUE
@@ -970,7 +981,7 @@ if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      BUILD_BYPRODUCTS     ${LIBJANSSON_LIBS}
+      "${LIBJANSSON_BYPRODUCTS}"
       )
   else(UNIX)
     # WIN32
@@ -1040,6 +1051,7 @@ if(UNIX)
     set(LIBEDIT_TARGET libedit)
     set(LIBEDIT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libedit.a)
     set(LIBEDIT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
+    ADD_BY_PRODUCTS_VARIABLE ("LIBEDIT" ${LIBEDIT_LIBS})
     externalproject_add(${LIBEDIT_TARGET}
       URL                  ${WITH_LIBEDIT_URL}
       LOG_BUILD            TRUE
@@ -1049,7 +1061,7 @@ if(UNIX)
       CONFIGURE_COMMAND    "LDFLAGS=-L${CMAKE_CURRENT_BINARY_DIR}/external/lib" ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      BUILD_BYPRODUCTS     ${LIBEDIT_LIBS}
+      "${LIBEDIT_BYPRODUCTS}"
       )
     if(TARGET ${LIBNCURSES_TARGET})
       add_dependencies(${LIBEDIT_TARGET} ${LIBNCURSES_TARGET})
@@ -1081,6 +1093,7 @@ if(WIN32) # msvc-built lz4 v1.9.2 libraries
 else()
   set(LZ4_INCLUDES  ${CMAKE_BINARY_DIR}/external/Source/lz4/lib)
   set(LZ4_LIBS      ${CMAKE_BINARY_DIR}/external/Source/lz4/lib/liblz4.a)
+  ADD_BY_PRODUCTS_VARIABLE ("LZ4" ${LZ4_LIBS})
   externalproject_add(${LZ4_TARGET}
     GIT_REPOSITORY https://github.com/lz4/lz4
     GIT_TAG fdf2ef5             # https://github.com/lz4/lz4/releases/tag/v1.9.2
@@ -1088,7 +1101,7 @@ else()
     BUILD_IN_SOURCE true        # lz4 Makefile is designed to run locally
     BUILD_COMMAND make CFLAGS="-fPIC"  # to allow static linking in shared library
     INSTALL_COMMAND ""          # suppress install
-    BUILD_BYPRODUCTS            ${LZ4_LIBS}
+    "${LZ4_BYPRODUCTS}"
   )
 endif()
 list(APPEND EP_LIBS ${LZ4_LIBS})
@@ -1105,13 +1118,14 @@ list(APPEND EP_INCLUDES ${LZ4_INCLUDES})
 #                  ${WITH_LIBOPENSSL_ROOT_PATH}/include
 # on Windows:
 # * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
+set(LIBOPENSSL_TARGET libopenssl)
 if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
-  set(LIBOPENSSL_TARGET libopenssl)
   if(UNIX)
     #compile OpenSSL library given an internet url to a OpenSSL archive
     #e.g. https://www.openssl.org/source/openssl-1.1.1f.tar.gz
     set(LIBOPENSSL_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libssl.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libcrypto.a)
     set(LIBOPENSSL_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
+    ADD_BY_PRODUCTS_VARIABLE ("LIBOPENSSL" ${LIBOPENSSL_LIBS})
     externalproject_add(${LIBOPENSSL_TARGET}
       URL                  ${WITH_LIBOPENSSL_URL}
       LOG_CONFIGURE        TRUE
@@ -1122,7 +1136,7 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
       CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${CMAKE_CURRENT_BINARY_DIR}/external no-shared # ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      BUILD_BYPRODUCTS     ${LIBOPENSSL_LIBS}
+      "${LIBOPENSSL_BYPRODUCTS}"
       )
     list(APPEND EP_TARGETS ${LIBOPENSSL_TARGET})
   else(UNIX)
@@ -1154,6 +1168,7 @@ if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
     #e.g. http://www.unixodbc.org/unixODBC-2.3.9.tar.gz
     set(LIBUNIXODBC_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libodbc.so)
     set(LIBUNIXODBC_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
+    ADD_BY_PRODUCTS_VARIABLE ("LIBUNIXODBC" ${LIBUNIXODBC_LIBS})
     externalproject_add(${LIBUNIXODBC_TARGET}
       URL                  ${WITH_LIBUNIXODBC_URL}
       LOG_CONFIGURE        TRUE
@@ -1164,7 +1179,7 @@ if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
       CONFIGURE_COMMAND    <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external # ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      BUILD_BYPRODUCTS     ${LIBUNIXODBC_LIBS}
+      "${LIBUNIXODBC_BYPRODUCTS}"
       )
     list(APPEND EP_TARGETS ${LIBUNIXODBC_TARGET})
   endif(UNIX)
@@ -1182,6 +1197,7 @@ endif(WIN32)
 # rapidjson
 set(RAPIDJSON_TARGET rapidjson)
 set(RAPIDJSON_INCLUDES ${CMAKE_BINARY_DIR}/external/Source/rapidjson/include)
+ADD_BY_PRODUCTS_VARIABLE ("RAPIDJSON" ${RAPIDJSON_INCLUDES})
 externalproject_add(${RAPIDJSON_TARGET}
   # tried URL but archive gets downloaded every time. URL_MD5 may help
   URL                  ${WITH_RAPIDJSON_URL}
@@ -1196,7 +1212,7 @@ externalproject_add(${RAPIDJSON_TARGET}
   CMAKE_CACHE_ARGS     -DRAPIDJSON_BUILD_TESTS:STRING=off
                        -DRAPIDJSON_BUILD_DOC:STRING=off
                        -DRAPIDJSON_BUILD_EXAMPLES:STRING=off
-  BUILD_BYPRODUCTS     ${RAPIDJSON_INCLUDES}
+  "${RAPIDJSON_BYPRODUCTS}"
 )
 # add to external project targets
 list(APPEND EP_INCLUDES ${RAPIDJSON_INCLUDES})
