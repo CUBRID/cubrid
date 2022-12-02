@@ -55,13 +55,13 @@ public class ExprId implements Expr {
         } else if (decl instanceof DeclForRecord) {
             return String.format("$%s_r%d", name, decl.scope().level);
         } else if (decl instanceof DeclConst || decl instanceof DeclCursor) {
-            if (scope.routine.equals(decl.scope().routine)) {
+            if (scope.routine.equals(decl.scope().routine)) {   // TODO: routine? not block?
                 return String.format("%s.$%s", decl.scope().block, name);
             } else {
                 return String.format("$%s", name);
             }
         } else if (decl instanceof DeclVar) {
-            if (scope.routine.equals(decl.scope().routine)) {
+            if (scope.routine.equals(decl.scope().routine)) {   // TODO: routine? not block?
                 return String.format("%s.$%s[0]", decl.scope().block, name);
             } else {
                 return String.format("$%s[0]", name);

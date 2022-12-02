@@ -59,9 +59,7 @@ import org.apache.commons.text.StringEscapeUtils;
 public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     public ParseTreeConverter() {
-        super();
-
-        int level = symbolStack.pushSymbolTable(SYMBOL_TABLE_TOP, true);
+        int level = symbolStack.pushSymbolTable(SYMBOL_TABLE_TOP, false);
         assert level == 0;
 
         setUpPredefined();
@@ -81,7 +79,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         name = Misc.peelId(name);
 
         symbolStack.pushSymbolTable(
-                "temp", true); // in order not to corrupt predefined symbol table
+                "temp", false); // in order not to corrupt predefined symbol table
 
         NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
 
@@ -232,8 +230,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public Expr visitRel_exp(Rel_expContext ctx) {
         Relational_operatorContext op = ctx.relational_operator();
         String opStr =
-                op.EQUALS_OP() != null
-                        ? "Eq"
+                op.EQUALS_OP() != null ? "Eq"
                         : op.NOT_EQUAL_OP() != null
                                 ? "Neq"
                                 : op.LE() != null
@@ -316,7 +313,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String opStr =
                 ctx.ASTERISK() != null
                         ? "Mult"
-                        : ctx.SOLIDUS() != null ? "Div" : ctx.MOD() != null ? "Mod" : null;
+                        : (ctx.SOLIDUS() != null || ctx.DIV() != null) ? "Div" : ctx.MOD() != null ? "Mod" : null;
         assert opStr != null;
 
         return new ExprBinaryOp(opStr, l, r);
@@ -358,13 +355,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         assert ret != null;
 
         return ret;
-    }
-
-    private static final DateFormat dbgFormat =
-            new SimpleDateFormat("G yyyy-MM-dd HH:mm:ss.SSS XXX", Locale.US);
-
-    static {
-        dbgFormat.setTimeZone(TimeZone.getTimeZone("GMT+0"));
     }
 
     @Override
@@ -469,12 +459,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
     }
 
-    private static String quotedStrToJavaStr(String val) {
-        val = val.substring(1, val.length() - 1); // strip enclosing '
-        val = val.replace("''", "'");
-        return StringEscapeUtils.escapeJava(val);
-    }
-
     @Override
     public Expr visitStr_exp(Str_expContext ctx) {
         String val = ctx.quoted_string().getText();
@@ -552,12 +536,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             connectionRequired = true;
             addToImports("java.sql.*");
 
-            symbolStack.pushSymbolTable("global_func_call", false);
-            int level = symbolStack.getCurrentScope().level;
-
+            int level = symbolStack.getCurrentScope().level + 1;
             ExprGlobalFuncCall ret = new ExprGlobalFuncCall(level, name, args);
-
-            symbolStack.popSymbolTable();
 
             return new ExprCast(ret);
         } else {
@@ -737,7 +717,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitPragma_declaration(Pragma_declarationContext ctx) {
         assert ctx.AUTONOMOUS_TRANSACTION() != null;
-        // currently, only the Autonomous Transaction is possible
+
+        // currently, only the Autonomous Transaction is
         // allowed only in the top-level declarations
         assert symbolStack.getCurrentScope().level == 1;
 
@@ -1575,12 +1556,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             connectionRequired = true;
             addToImports("java.sql.*");
 
-            symbolStack.pushSymbolTable("global_proc_call", false);
-            int level = symbolStack.getCurrentScope().level;
-
+            int level = symbolStack.getCurrentScope().level + 1;
             StmtGlobalProcCall ret = new StmtGlobalProcCall(level, name, args);
-
-            symbolStack.popSymbolTable();
 
             return ret;
         } else {
@@ -1917,4 +1894,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         return false;
     }
+
+    private static String quotedStrToJavaStr(String val) {
+        val = val.substring(1, val.length() - 1); // strip enclosing '
+        val = val.replace("''", "'");
+        return StringEscapeUtils.escapeJava(val);
+    }
+
+    private static final DateFormat dbgFormat =
+            new SimpleDateFormat("G yyyy-MM-dd HH:mm:ss.SSS XXX", Locale.US);
+    static {
+        dbgFormat.setTimeZone(TimeZone.getTimeZone("GMT+0"));
+    }
+
 }

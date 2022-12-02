@@ -49,7 +49,7 @@ public class SymbolStack {
             routine = name + "_" + level;
             block = name;
         } else {
-            routine = currSymbolTable.scope.routine;
+            routine = currSymbolTable == null ? null : currSymbolTable.scope.routine;
             block = name + "_" + level;
         }
 
@@ -82,7 +82,7 @@ public class SymbolStack {
                     : decl.typeStr()
                             + " "
                             + name
-                            + " has already been declared in the same routine";
+                            + " has already been declared in the same scope";
             throw new RuntimeException("unreachable");
         }
 
@@ -120,7 +120,6 @@ public class SymbolStack {
 
     private static class SymbolTable {
         final Scope scope;
-        // final Map<String, DeclCursor> cursors;
         final Map<String, DeclId> ids;
         final Map<String, DeclException> exceptions;
         final Map<String, DeclProc> procs;
@@ -130,7 +129,6 @@ public class SymbolStack {
         SymbolTable(Scope scope) {
             this.scope = scope;
 
-            // cursors = new TreeMap<>();
             ids = new TreeMap<>();
             exceptions = new TreeMap<>();
             procs = new TreeMap<>();
@@ -139,9 +137,7 @@ public class SymbolStack {
         }
 
         <D extends Decl> Map<String, D> map(Class<D> declClass) {
-            /*if (DeclCursor.class.isAssignableFrom(declClass)) {
-                return (Map<String, D>) cursors;
-            } else */ if (DeclId.class.isAssignableFrom(declClass)) {
+            if (DeclId.class.isAssignableFrom(declClass)) {
                 return (Map<String, D>) ids;
             } else if (DeclException.class.isAssignableFrom(declClass)) {
                 return (Map<String, D>) exceptions;
