@@ -2011,6 +2011,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 80 MVCC tecrit seviye değerlerini 'read committed', 'repeatable read' ya da 'serializable' olması gerekir.
 81 '%1$s' bir 'auto_increment' nesne olduğunu, seri olarak değiştirilebilir izin verilmez.
 82 Geçersiz JSON: '%1$s'.
+83 Vclass %1$s is not updatable because the vclass has some reuse_oid table. Please check it.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** geçersiz önbellek ***
