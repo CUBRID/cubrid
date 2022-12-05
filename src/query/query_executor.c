@@ -4704,7 +4704,7 @@ wrapup:
     result = (gbstate.state == NO_ERROR || gbstate.state == SORT_PUT_STOP) ? NO_ERROR : ER_FAILED;
 
     /* check merge result */
-    if (XASL_IS_FLAGED (xasl, XASL_IS_MERGE_QUERY) && list_id->tuple_cnt != gbstate.input_recs)
+    if (result == NO_ERROR && XASL_IS_FLAGED (xasl, XASL_IS_MERGE_QUERY) && list_id->tuple_cnt != gbstate.input_recs)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MERGE_TOO_MANY_SOURCE_ROWS, 0);
 	result = ER_FAILED;
