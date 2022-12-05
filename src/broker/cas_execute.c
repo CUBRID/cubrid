@@ -322,6 +322,7 @@ static int ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle, T_NET
 static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
 
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
+static int recompile_statement (T_SRV_HANDLE * srv_handle);
 
 static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_INT,		/* 1 */
@@ -2197,6 +2198,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
   DB_VALUE val;
   DB_OBJECT *ins_obj_p;
   T_BROKER_VERSION client_version = req_info->client_version;
+  int retried_query_num = 0;
 
   if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
     {
@@ -2312,6 +2314,18 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 
       if (res_count < 0)
 	{
+	  if (res_count == ER_QPROC_INVALID_XASLNODE && retried_query_num != num_query)
+	    {
+	      err_code = recompile_statement (srv_handle);
+	      if (err_code < 0)
+		{
+		  goto exec_db_error;
+		}
+	      session = (DB_SESSION *) srv_handle->session;
+	      retried_query_num = num_query;
+	      num_query--;
+	      continue;
+	    }
 	  goto exec_db_error;
 	}
 
@@ -10432,4 +10446,42 @@ do_commit_after_execute (const t_srv_handle & server_handle)
     {
       return true;
     }
+}
+
+static int
+recompile_statement (T_SRV_HANDLE * srv_handle)
+{
+  int err_code = 0;
+  int stmt_id = 0;
+  DB_SESSION *session = NULL;
+
+  session = db_open_buffer (srv_handle->sql_stmt);
+  if (!session)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      return err_code;
+    }
+
+  if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
+    {
+      db_session_set_xasl_cache_pinned (session, true, false);
+    }
+
+  stmt_id = db_compile_statement (session);
+  if (stmt_id < 0)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      return err_code;
+    }
+
+  if (srv_handle->session != NULL)
+    {
+      db_close_session ((DB_SESSION *) srv_handle->session);
+      srv_handle->session = NULL;
+    }
+
+  srv_handle->session = session;
+  srv_handle->q_result->stmt_id = stmt_id;
+
+  return err_code;
 }
