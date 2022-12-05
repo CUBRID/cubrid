@@ -20,7 +20,6 @@
 #include "catch2/catch.hpp"
 
 #include "atomic_replication_helper.hpp"
-#include "scope_exit.hpp"
 
 #include "fake_packable_object.hpp"
 
@@ -105,7 +104,6 @@ TEST_CASE ("log replication atomic helper: LOG_START/END_ATOMIC_REPL", "")
   test_spec.calculate_log_records_offsets (start_lsa);
 
   gl_Test_Spec = &test_spec;
-  scope_exit reset_gl_test_spec_ftor ([&gl_Test_Spec] { gl_Test_Spec == nullptr; });
 
   cublog::atomic_replication_helper atomic_helper;
   test_spec.execute (atomic_helper);
@@ -142,7 +140,6 @@ TEST_CASE ("log replication atomic helper: LOG_SYSOP_ATOMIC_START/LOG_SYSOP_END-
   test_spec.calculate_log_records_offsets (start_lsa);
 
   gl_Test_Spec = &test_spec;
-  scope_exit reset_gl_test_spec_ftor ([&gl_Test_Spec] { gl_Test_Spec == nullptr; });
 
   cublog::atomic_replication_helper atomic_helper;
   test_spec.execute (atomic_helper);
@@ -173,7 +170,6 @@ TEST_CASE ("log replication atomic helper: LOG_SYSOP_ATOMIC_START/LOG_SYSOP_END-
   test_spec.calculate_log_records_offsets (start_lsa);
 
   gl_Test_Spec = &test_spec;
-  scope_exit reset_gl_test_spec_ftor ([&gl_Test_Spec] { gl_Test_Spec == nullptr; });
 
   cublog::atomic_replication_helper atomic_helper;
   test_spec.execute (atomic_helper);
@@ -220,7 +216,6 @@ TEST_CASE ("log replication atomic helper: LOG_SYSOP_ATOMIC_START/LOG_SYSOP_STAR
   test_spec.calculate_log_records_offsets (start_lsa);
 
   gl_Test_Spec = &test_spec;
-  scope_exit reset_gl_test_spec_ftor ([&gl_Test_Spec] { gl_Test_Spec == nullptr; });
 
   cublog::atomic_replication_helper atomic_helper;
   test_spec.execute (atomic_helper);
@@ -242,6 +237,8 @@ test_spec_type::test_spec_type ()
   : m_log_redo_context { NULL_LSA, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, log_reader::fetch_mode::FORCE }
 {
   m_thread_p = new THREAD_ENTRY;
+
+  gl_Test_Spec = this;
 }
 
 test_spec_type::~test_spec_type ()
@@ -294,8 +291,9 @@ void test_spec_type::calculate_log_records_offsets (LOG_LSA start_lsa)
       // no valid lsa in the vector
       // calculate starting from the supplied start_lsa
       assert (!LSA_ISNULL (&start_lsa));
+      assert (start_lsa.offset >= 0);
       lsa = start_lsa;
-      if (lsa.offset < sizeof (LOG_HDRPAGE))
+      if ((size_t)lsa.offset < sizeof (LOG_HDRPAGE))
 	{
 	  lsa.offset = sizeof (LOG_HDRPAGE);
 	}
@@ -397,9 +395,17 @@ namespace cubthread
 }
 
 PAGE_PTR
-pgbuf_fix_debug (THREAD_ENTRY * /*thread_p*/, const VPID *vpid, PAGE_FETCH_MODE /*fetch_mode*/,
-		 PGBUF_LATCH_MODE /*request_mode*/, PGBUF_LATCH_CONDITION /*condition*/,
-		 const char */*caller_file*/, int /*caller_line*/)
+#if !defined(NDEBUG)
+pgbuf_fix_debug
+#else /* NDEBUG */
+pgbuf_fix_release
+#endif /* NDEBUG */
+(THREAD_ENTRY * /*thread_p*/, const VPID *vpid, PAGE_FETCH_MODE /*fetch_mode*/
+ , PGBUF_LATCH_MODE /*request_mode*/, PGBUF_LATCH_CONDITION /*condition*/
+#if !defined(NDEBUG)
+ , const char */*caller_file*/, int /*caller_line*/
+#endif /* NDEBUG */
+)
 {
   assert (gl_Test_Spec != nullptr);
 
@@ -410,8 +416,16 @@ pgbuf_fix_debug (THREAD_ENTRY * /*thread_p*/, const VPID *vpid, PAGE_FETCH_MODE 
 }
 
 void
-pgbuf_unfix_debug (THREAD_ENTRY * /*thread_p*/, PAGE_PTR pgptr, const char */*caller_file*/,
-		   int /*caller_line*/)
+#if !defined(NDEBUG)
+pgbuf_unfix_debug
+#else /* NDEBUG */
+pgbuf_unfix
+#endif /* NDEBUG */
+(THREAD_ENTRY * /*thread_p*/, PAGE_PTR pgptr
+#if !defined(NDEBUG)
+ , const char */*caller_file*/, int /*caller_line*/
+#endif /* NDEBUG */
+)
 {
   assert (gl_Test_Spec != nullptr);
 
@@ -419,9 +433,17 @@ pgbuf_unfix_debug (THREAD_ENTRY * /*thread_p*/, PAGE_PTR pgptr, const char */*ca
 }
 
 int
-pgbuf_ordered_fix_debug (THREAD_ENTRY * /*thread_p*/, const VPID *req_vpid, PAGE_FETCH_MODE /*fetch_mode*/,
-			 const PGBUF_LATCH_MODE /*request_mode*/, PGBUF_WATCHER *req_watcher,
-			 const char */*caller_file*/, int /*caller_line*/)
+#if !defined(NDEBUG)
+pgbuf_ordered_fix_debug
+#else /* NDEBUG */
+pgbuf_ordered_fix_release
+#endif /* NDEBUG */
+(THREAD_ENTRY * /*thread_p*/, const VPID *req_vpid, PAGE_FETCH_MODE /*fetch_mode*/,
+ const PGBUF_LATCH_MODE /*request_mode*/, PGBUF_WATCHER *req_watcher
+#if !defined(NDEBUG)
+ , const char */*caller_file*/, int /*caller_line*/
+#endif /* NDEBUG */
+)
 {
   assert (gl_Test_Spec != nullptr);
   assert (req_watcher != nullptr);
@@ -434,8 +456,16 @@ pgbuf_ordered_fix_debug (THREAD_ENTRY * /*thread_p*/, const VPID *req_vpid, PAGE
 }
 
 void
-pgbuf_ordered_unfix_debug (THREAD_ENTRY * /*thread_p*/, PGBUF_WATCHER *watcher_object,
-			   const char */*caller_file*/, int /*caller_line*/)
+#if !defined(NDEBUG)
+pgbuf_ordered_unfix_debug
+#else /* NDEBUG */
+pgbuf_ordered_unfix
+#endif /* NDEBUG */
+(THREAD_ENTRY * /*thread_p*/, PGBUF_WATCHER *watcher_object
+#if !defined(NDEBUG)
+ , const char */*caller_file*/, int /*caller_line*/
+#endif /* NDEBUG */
+)
 {
   assert (gl_Test_Spec != nullptr);
   assert (watcher_object != nullptr);
@@ -472,6 +502,23 @@ logpb_fetch_page (THREAD_ENTRY * /*thread_p*/, const LOG_LSA * /*req_lsa*/, LOG_
   return NO_ERROR;
 }
 
+log_rv_redo_context::log_rv_redo_context (const log_lsa &end_redo_lsa, PAGE_FETCH_MODE page_fetch_mode,
+    log_reader::fetch_mode reader_fetch_page_mode)
+  : m_end_redo_lsa { end_redo_lsa }
+  , m_page_fetch_mode { page_fetch_mode }
+  , m_reader_fetch_page_mode { reader_fetch_page_mode }
+{
+}
+
+log_rv_redo_context::log_rv_redo_context (const log_rv_redo_context &that)
+  : log_rv_redo_context { that.m_end_redo_lsa, that.m_page_fetch_mode, that.m_reader_fetch_page_mode }
+{
+}
+
+log_rv_redo_context::~log_rv_redo_context ()
+{
+}
+
 // ****************************************************************
 // CUBRID stuff; not used but required by linker
 // ****************************************************************
@@ -484,7 +531,7 @@ prm_get_bool_value (PARAM_ID prm_id)
     case PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG:
       return false;
     default:
-      assert (false);
+      assert_release (false);
       return false;
     }
 }
@@ -492,56 +539,63 @@ prm_get_bool_value (PARAM_ID prm_id)
 void
 _er_log_debug (const char */*file_name*/, const int /*line_no*/, const char */*fmt*/, ...)
 {
-  assert (false);
+  assert_release (false);
+}
+
+void
+er_set (int /*severity*/, const char */*file_name*/, const int /*line_no*/, int /*err_id*/, int /*num_args*/, ...)
+{
+  assert_release (false);
 }
 
 const char *
 rv_rcvindex_string (LOG_RCVINDEX /*rcvindex*/)
 {
-  assert (false);
+  assert_release (false);
   return nullptr;
 }
 
 const char *
 log_sysop_end_type_string (LOG_SYSOP_END_TYPE /*end_type*/)
 {
-  assert (false);
+  assert_release (false);
   return nullptr;
 }
 
 const char *
 log_to_string (LOG_RECTYPE /*type*/)
 {
-  assert (false);
+  assert_release (false);
   return nullptr;
 }
 
 perfmon_counter_timer_tracker::perfmon_counter_timer_tracker (PERF_STAT_ID a_stat_id)
   : m_stat_id (a_stat_id)
 {
-  assert (false);
+  assert_release (false);
 }
 
 perfmon_counter_timer_raii_tracker::perfmon_counter_timer_raii_tracker (PERF_STAT_ID a_stat_id)
   : m_tracker (a_stat_id)
 {
-  assert (false);
+  assert_release (false);
 }
 
 perfmon_counter_timer_raii_tracker::~perfmon_counter_timer_raii_tracker ()
 {
-  assert (false);
+  assert_release (false);
 }
 
 void
 logpb_fatal_error (THREAD_ENTRY */*thread_p*/, bool /*log_exit*/, const char */*file_name*/,
 		   const int /*lineno*/, const char */*fmt*/, ...)
 {
-  assert (false);
+  assert_release (false);
 }
 
 HFID *pgbuf_ordered_null_hfid = nullptr;
 
+#if !defined(NDEBUG)
 // NOTE: same implementation as in page_buffer.c module as it has no side effects
 void
 pgbuf_watcher_init_debug (PGBUF_WATCHER *watcher, const char *caller_file,
@@ -578,18 +632,19 @@ pgbuf_watcher_init_debug (PGBUF_WATCHER *watcher, const char *caller_file,
       snprintf (watcher->init_at, sizeof (watcher->init_at) - 1, "%s:%d", p, caller_line);
     }
 }
+#endif
 
 LOG_LSA *
 pgbuf_get_lsa (PAGE_PTR /*pgptr*/)
 {
-  assert (false);
+  assert_release (false);
   return nullptr;
 }
 
 const LOG_LSA *
 pgbuf_set_lsa (THREAD_ENTRY * /*thread_p*/, PAGE_PTR /*pgptr*/, const LOG_LSA * /*lsa_ptr*/)
 {
-  assert (false);
+  assert_release (false);
   return nullptr;
 }
 
@@ -631,7 +686,7 @@ namespace cublog
 {
   prior_recver::~prior_recver ()
   {
-    assert (!m_thread.joinable ());
+    assert_release (!m_thread.joinable ());
   }
 }
 
@@ -650,7 +705,7 @@ int
 log_rv_get_unzip_log_data (THREAD_ENTRY * /*thread_p*/, int /*length*/, log_reader & /*log_pgptr_reader*/,
 			   LOG_ZIP * /*unzip_ptr*/, bool & /*is_zip*/)
 {
-  assert (false);
+  assert_release (false);
   return ER_FAILED;
 }
 
@@ -659,7 +714,7 @@ log_rv_get_unzip_and_diff_redo_log_data (THREAD_ENTRY * /*thread_p*/, log_reader
     LOG_RCV * /*rcv*/, int /*undo_length*/, const char */*undo_data*/,
     LOG_ZIP & /*redo_unzip*/)
 {
-  assert (false);
+  assert_release (false);
   return ER_FAILED;
 }
 
@@ -667,26 +722,6 @@ bool
 log_rv_check_redo_is_needed (const PAGE_PTR & /*pgptr*/, const LOG_LSA & /*rcv_lsa*/,
 			     const LOG_LSA & /*end_redo_lsa*/)
 {
-  assert (false);
+  assert_release (false);
   return false;
-}
-
-log_rv_redo_context::log_rv_redo_context (const log_lsa &end_redo_lsa, PAGE_FETCH_MODE page_fetch_mode,
-    log_reader::fetch_mode reader_fetch_page_mode)
-  : m_end_redo_lsa { end_redo_lsa }
-  , m_page_fetch_mode { page_fetch_mode }
-  , m_reader_fetch_page_mode { reader_fetch_page_mode }
-{
-  //assert (false);
-}
-
-log_rv_redo_context::log_rv_redo_context (const log_rv_redo_context &that)
-  : log_rv_redo_context { that.m_end_redo_lsa, that.m_page_fetch_mode, that.m_reader_fetch_page_mode }
-{
-  //assert (false);
-}
-
-log_rv_redo_context::~log_rv_redo_context ()
-{
-  //assert (false);
 }

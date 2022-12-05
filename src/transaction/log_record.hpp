@@ -153,10 +153,8 @@ enum log_rectype
                                  * or undo images that never retrieved from the log. */
 
   /* NOTE: add actual (persistent) new values before this */
-#if !defined (NDEBUG)
   LOG_DUMMY_UNIT_TESTING,	/* exclusively for unit testing; not to be persisted;
                                  * constant value does not need be preserved */
-#endif
 
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
