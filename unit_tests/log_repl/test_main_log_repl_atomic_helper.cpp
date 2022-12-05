@@ -223,6 +223,8 @@ TEST_CASE ("log replication atomic helper: LOG_SYSOP_ATOMIC_START/LOG_SYSOP_STAR
   REQUIRE (atomic_helper.all_log_entries_are_control (trid));
 }
 
+// TODO: add more complex scenarios involving multiple transactions
+
 //  _CL_ LSA = 35288|2848  rectype = LOG_SYSOP_ATOMIC_START  sysop_end_type = N_A  sysop_end_last_parent_lsa = -1|-1
 //  _FL_ LSA = 35288|2880  vpid = 0|640  rcvindex = RVFL_PARTSECT_DEALLOC
 //  _FL_ LSA = 35288|2952  vpid = 0|640  rcvindex = RVFL_FHEAD_DEALLOC
