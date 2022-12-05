@@ -13396,7 +13396,7 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   PT_NODE *class_;
   PT_NODE *values = NULL;
-  PT_NODE *attr_list;
+  PT_NODE *attr_list, *value_clauses, *query;
   PT_NODE *update = NULL;
   PT_NODE *with = NULL;
   int save_au;
@@ -13415,6 +13415,19 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       assert (false);
       goto cleanup;
+    }
+
+  /* there can be no results, this is a compile time false where clause */
+  value_clauses = statement->info.insert.value_clauses;
+  if (value_clauses && value_clauses->info.node_list.list_type == PT_IS_SUBQUERY)
+    {
+      query = value_clauses->info.node_list.list;
+      if (PT_IS_SELECT (query) && pt_false_where (parser, query))
+	{
+	  /* tell to the execute routine that there's no XASL to execute */
+	  statement->xasl_id = NULL;
+	  goto cleanup;
+	}
     }
 
   statement->etc = NULL;
