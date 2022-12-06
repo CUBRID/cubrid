@@ -20130,8 +20130,11 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   pval = NULL;
 
   /* DBNAME */
-  assert (create_server->dbname->node_type == PT_NAME);
-  attr_val[2] = (char *) create_server->dbname->info.name.original;
+  assert (create_server->dbname->node_type == PT_NAME || create_server->dbname->node_type == PT_VALUE);
+  // *INDENT-OFF* 
+  attr_val[2] = (create_server->dbname->node_type == PT_NAME) ? (char *) create_server->dbname->info.name.original
+                                                              : (char *) PT_VALUE_GET_BYTES (create_server->dbname);
+  // *INDENT-ON* 
   if (attr_val[2] == NULL)
     {
       error = ER_FAILED;
@@ -20139,8 +20142,11 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* USER */
-  assert (create_server->user->node_type == PT_NAME);
-  attr_val[3] = (char *) create_server->user->info.name.original;
+  assert (create_server->user->node_type == PT_NAME || create_server->user->node_type == PT_VALUE);
+  // *INDENT-OFF* 
+  attr_val[3] = (create_server->user->node_type == PT_NAME) ? (char *) create_server->user->info.name.original
+                                                            : (char *) PT_VALUE_GET_BYTES (create_server->user);
+  // *INDENT-ON* 
   if (attr_val[3] == NULL)
     {
       error = ER_FAILED;
