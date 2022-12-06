@@ -290,6 +290,9 @@ namespace cublog
 	   *  - or unfixed if there is no parent [sub]sequence which needs the page anymore (aka:
 	   *    the [sub]sequence which just requested the fix is the outer-most one that needed
 	   *    the page in the current overall sequence of possibly nested [sub]sequences
+	   *
+	   * TODO:
+	   *  - since page buffer already has reference counting, ca we make do without this?
 	   */
 	  struct page_ptr_bookkeeping
 	  {
@@ -360,6 +363,8 @@ namespace cublog
   void pgbuf_unfix_or_ordered_unfix (THREAD_ENTRY *thread_p, LOG_RCVINDEX rcvindex,
 				     std::unique_ptr<PGBUF_WATCHER> &watcher_uptr, PAGE_PTR &page_ptr);
 
+  inline bool atomrepl_is_control (LOG_RECTYPE rectype);
+
   /*********************************************************************************************************
    * template/inline implementations
    *********************************************************************************************************/
@@ -386,11 +391,17 @@ namespace cublog
   inline bool
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::is_control () const
   {
-    return (m_rectype == LOG_START_ATOMIC_REPL ||
-	    m_rectype == LOG_END_ATOMIC_REPL ||
-	    m_rectype == LOG_SYSOP_ATOMIC_START ||
-	    m_rectype == LOG_SYSOP_END ||
-	    m_rectype == LOG_SYSOP_START_POSTPONE);
+    return atomrepl_is_control (m_rectype);
+  }
+
+  inline bool
+  atomrepl_is_control (LOG_RECTYPE rectype)
+  {
+    return (rectype == LOG_START_ATOMIC_REPL ||
+	    rectype == LOG_END_ATOMIC_REPL ||
+	    rectype == LOG_SYSOP_ATOMIC_START ||
+	    rectype == LOG_SYSOP_END ||
+	    rectype == LOG_SYSOP_START_POSTPONE);
   }
 }
 
