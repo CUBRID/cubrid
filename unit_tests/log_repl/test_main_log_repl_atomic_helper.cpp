@@ -223,8 +223,6 @@ TEST_CASE ("log replication atomic helper: LOG_SYSOP_ATOMIC_START/LOG_SYSOP_STAR
   REQUIRE (atomic_helper.all_log_entries_are_control (trid));
 }
 
-// TODO: add more complex scenarios involving multiple transactions
-
 //  _CL_ LSA = 35288|2848  rectype = LOG_SYSOP_ATOMIC_START  sysop_end_type = N_A  sysop_end_last_parent_lsa = -1|-1
 //  _FL_ LSA = 35288|2880  vpid = 0|640  rcvindex = RVFL_PARTSECT_DEALLOC
 //  _FL_ LSA = 35288|2952  vpid = 0|640  rcvindex = RVFL_FHEAD_DEALLOC
@@ -272,8 +270,9 @@ void test_spec_type::calculate_log_records_offsets (LOG_LSA start_lsa)
   //    adding a new log record in the spec definition, requires having calculated the lsa (offset) of
   //    a previous log record)
 
-  LOG_LSA lsa = INV_LSA;
   // first, skip all log records with already calculated lsa's
+  //
+  LOG_LSA lsa = INV_LSA;
   log_record_spec_vector_type::iterator it = m_log_record_vec.begin ();
   for (; it != m_log_record_vec.end (); ++it)
     {
@@ -288,6 +287,8 @@ void test_spec_type::calculate_log_records_offsets (LOG_LSA start_lsa)
 	}
     }
 
+  // if no log record was previously initialized, initialize first lsa as specified
+  //
   if (LSA_ISNULL (&lsa))
     {
       // no valid lsa in the vector
@@ -295,17 +296,15 @@ void test_spec_type::calculate_log_records_offsets (LOG_LSA start_lsa)
       assert (!LSA_ISNULL (&start_lsa));
       assert (start_lsa.offset >= 0);
       lsa = start_lsa;
-      if ((size_t)lsa.offset < sizeof (LOG_HDRPAGE))
-	{
-	  lsa.offset = sizeof (LOG_HDRPAGE);
-	}
     }
   else
     {
       // will continue from last encountered lsa
     }
 
-  //for (log_record_spec_type &log_rec : m_log_record_vec)
+  // all remaining log records must have not been initialized
+  // calculate LSA's for all the rest
+  //
   for (; it != m_log_record_vec.end (); ++it)
     {
       log_record_spec_type &log_rec = *it;

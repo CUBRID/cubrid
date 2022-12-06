@@ -895,7 +895,7 @@ namespace cublog
 	apply_log_by_type<LOG_REC_COMPENSATE> (thread_p, redo_context, header.type);
 	break;
       case LOG_DUMMY_UNIT_TESTING:
-	// nop
+	// "hijack" the actual execution of the redo function by .. nop
 	break;
       default:
 	assert (false);
