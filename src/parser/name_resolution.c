@@ -1011,7 +1011,8 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 		{
 		  if (pt_resolve_dblink_server_name (parser, table) != NO_ERROR)
 		    {
-		      return;
+		      // In order to continue the evaluation of the remaining SPECs, an error does not escape the loop.
+		      /* no action */ ;
 		    }
 		}
 
@@ -2637,11 +2638,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       spec_frame.extra_specs = NULL;
       bind_arg->spec_frames = &spec_frame;
       pt_bind_scope (parser, bind_arg);
-      if (pt_has_error (parser))
-	{
-	  /* this node will be registered to orphan list and freed later */
-	  return NULL;
-	}
 
       (void) pt_resolve_hint (parser, node);
 
@@ -2675,11 +2671,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       spec_frame.extra_specs = NULL;
       bind_arg->spec_frames = &spec_frame;
       pt_bind_scope (parser, bind_arg);
-      if (pt_has_error (parser))
-	{
-	  /* this node will be registered to orphan list and freed later */
-	  return NULL;
-	}
 
       (void) pt_resolve_hint (parser, node);
 
