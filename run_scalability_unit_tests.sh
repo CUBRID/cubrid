@@ -31,6 +31,7 @@ run_test ./test_prior_list_serialize
 run_test ./test_prior_sendrecv
 run_test ./test_request_cs
 run_test ./test_server_request_responder
+run_test ./test_log_repl_atomic_helper
 
 exit $global_error_code
 
