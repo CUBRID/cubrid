@@ -48,6 +48,7 @@ struct spec_id_info
 {
   UINTPTR id;
   bool appears;
+  bool nullable;
 };
 
 typedef struct to_dot_info TO_DOT_INFO;
@@ -189,6 +190,50 @@ qo_check_nullable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	case PT_CONCAT_WS:
 	  /* NEED FUTURE OPTIMIZATION */
 	  (*nullable_cntp)++;
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * qo_check_nullable_expr_with_spec () -
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in):
+ */
+PT_NODE *
+qo_check_nullable_expr_with_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  SPEC_ID_INFO *info = (SPEC_ID_INFO *) arg;
+
+  if (node->node_type == PT_EXPR)
+    {
+      /* check for nullable term: expr(..., NULL, ...) can be non-NULL */
+      switch (node->info.expr.op)
+	{
+	case PT_IS_NULL:
+	case PT_CASE:
+	case PT_COALESCE:
+	case PT_NVL:
+	case PT_NVL2:
+	case PT_DECODE:
+	case PT_IF:
+	case PT_IFNULL:
+	case PT_ISNULL:
+	case PT_CONCAT_WS:
+	    info->appears = false;
+	    parser_walk_tree (parser, node, qo_get_name_by_spec_id, info, NULL, NULL);
+	    if (info->appears)
+	      {
+		info->nullable = true;
+		*continue_walk = PT_STOP_WALK;
+	      }
 	  break;
 	default:
 	  break;
@@ -3518,7 +3563,6 @@ qo_rewrite_like_for_index_scan (PARSER_CONTEXT * const parser, PT_NODE * like, P
 
   /* if success, use like_save. Otherwise, keep like. */
   like_save = pt_semantic_type (parser, like_save, NULL);
-
   if (like_save == NULL || er_errid () != NO_ERROR || pt_has_error (parser))
     {
       like->next = between->next;
@@ -3584,7 +3628,13 @@ qo_check_like_expression_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
       return node;
     }
 
-  if (PT_IS_QUERY (node) || PT_IS_NAME_NODE (node) || PT_IS_DOT_NODE (node))
+  if (PT_IS_QUERY (node) || PT_IS_DOT_NODE (node))
+    {
+      *like_expression_not_safe = true;
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+  else if (PT_IS_NAME_NODE (node) && node->info.name.correlation_level == 0)
     {
       *like_expression_not_safe = true;
       *continue_walk = PT_STOP_WALK;
@@ -3603,11 +3653,18 @@ qo_check_like_expression_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 static void
 qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 {
+  bool error_saved = false;
   PT_NODE *cnf_node = NULL;
   /* prev node in list which linked by next pointer. */
   PT_NODE *prev = NULL;
   /* prev node in list which linked by or_next pointer. */
   PT_NODE *or_prev = NULL;
+
+  if (er_errid () != NO_ERROR)
+    {
+      er_stack_push ();
+      error_saved = true;
+    }
 
   for (cnf_node = *cnf_list; cnf_node != NULL; cnf_node = cnf_node->next)
     {
@@ -3737,6 +3794,11 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 	  or_prev = crt_expr;
 	}
       prev = cnf_node;
+    }
+
+  if (error_saved)
+    {
+      er_stack_pop ();
     }
 }
 
@@ -5393,10 +5455,9 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 static PT_NODE *
 qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_NODE *spec, *prev_spec, *expr, *ns;
-  SPEC_ID_INFO info;
+  PT_NODE *spec, *prev_spec, *expr, *ns, *save_next;
+  SPEC_ID_INFO info, info_spec;
   RESET_LOCATION_INFO locate_info;
-  int nullable_cnt;		/* nullable terms count */
   bool rewrite_again;
 
   if (node->node_type != PT_SELECT)
@@ -5418,30 +5479,35 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       prev_spec = NULL;
       for (spec = node->info.query.q.select.from; spec; prev_spec = spec, spec = spec->next)
 	{
-	  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER || spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
+	  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER || (spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER && prev_spec))
 	    {
 	      if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
 		{
-		  info.id = spec->info.spec.id;
+		  info.id = info_spec.id = spec->info.spec.id;
 		}
-	      else if (prev_spec != NULL)
+	      else
 		{
-		  info.id = prev_spec->info.spec.id;
+		  info.id = info_spec.id = prev_spec->info.spec.id;
 		}
 
-	      info.appears = false;
-	      nullable_cnt = 0;
+	      info_spec.appears = false;
+	      info.nullable = false;
 
 	      /* search where list */
 	      for (expr = node->info.query.q.select.where; expr; expr = expr->next)
 		{
 		  if (expr->node_type == PT_EXPR && expr->info.expr.location == 0 && expr->info.expr.op != PT_IS_NULL
-		      && expr->or_next == NULL)
+		      && expr->or_next == NULL && expr->info.expr.op != PT_AND && expr->info.expr.op != PT_OR)
 		    {
-		      (void) parser_walk_leaves (parser, expr, qo_get_name_by_spec_id, &info, qo_check_nullable_expr,
-						 &nullable_cnt);
+		      save_next = expr->next;
+		      expr->next = NULL;
+		      (void) parser_walk_tree (parser, expr, NULL, NULL, qo_check_nullable_expr_with_spec, &info);
+		      (void) parser_walk_tree (parser, expr, qo_get_name_by_spec_id, &info_spec, NULL, NULL);
+		      expr->next = save_next;
+
 		      /* have found a term which makes outer join to inner */
-		      if (info.appears && nullable_cnt == 0)
+		      /* there are predicate referenced by spec and all preds are not nullable */
+		      if (info_spec.appears && !info.nullable)
 			{
 			  rewrite_again = true;
 			  spec->info.spec.join_type = PT_JOIN_INNER;
@@ -6601,7 +6667,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
        * statement to get targets to update. We should check whether it was already single-table-optimized. Here is an
        * example: CREATE TABLE t(p INT, c INT, x INT); INSERT INTO t VALUES(1, 11, 0), (1, 12, 0), (2, 21, 0); UPDATE t
        * SET x=0 WHERE c IN (SELECT c FROM t START WITH p=1 CONNECT BY PRIOR c=p); */
-      if (node->info.query.q.select.connect_by != NULL && !PT_IS_VALUE_NODE (node->info.query.q.select.where)
+      if (node->info.query.q.select.connect_by != NULL
 	  && !node->info.query.q.select.after_cb_filter && !node->info.query.q.select.single_table_opt)
 	{
 	  PT_NODE *join_part = NULL;
