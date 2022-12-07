@@ -24,7 +24,7 @@ on:
 jobs:
   license:
     name: license
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
       - uses: jitterbit/get-changed-files@v1
@@ -66,14 +66,14 @@ jobs:
           test $result = "PASS" # if non-zero, fail
   pr-style:
     name: pr-style
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: deepakputhraya/action-pr-title@master
         with:
           regex: '^\[[A-Z]+-\d+\]\s.+' # Regex the title should match.
   code-style:
     name: code-style
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     env:
       working-directory: .github/workflows
     steps:
@@ -119,7 +119,7 @@ jobs:
           tool_name: code-style (indent, astyle, google-java-format)
   cppcheck:
     name: cppcheck
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - name: Install packages
         run: |
