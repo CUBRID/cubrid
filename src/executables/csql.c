@@ -1738,7 +1738,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   DB_QUERY_TYPE *attr_spec = NULL;	/* result attribute spec. */
   int total;			/* number of statements to execute */
   bool do_abort_transaction = false;	/* flag for transaction abort */
-  PT_NODE *statement;
+  PT_NODE *statement = NULL;
   char sql_text[DDL_LOG_BUFFER_SIZE] = { 0 };
 
   csql_Num_failures = 0;
