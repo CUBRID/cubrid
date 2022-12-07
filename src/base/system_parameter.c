@@ -12662,3 +12662,144 @@ sysprm_update_cached_session_param_val (const PARAM_ID prm_id)
     }
 }
 #endif /* CS_MODE */
+
+/*
+ * prm_get_integer_value () - get the value of a parameter of type integer
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ *
+ * NOTE: keywords are stored as integers
+ */
+  int prm_get_integer_value (PARAM_ID prm_id)
+  {
+    assert (prm_id <= PRM_LAST_ID);
+    assert (PRM_IS_INTEGER (&prm_Def[prm_id]) || PRM_IS_KEYWORD (&prm_Def[prm_id]));
+
+#if defined (SERVER_MODE)
+    if (!PRM_SERVER_SESSION (prm_id))
+      {
+	return PRM_GET_INT (prm_Def[prm_id].value);
+      }
+
+    return PRM_GET_INT (prm_get_value (prm_id));
+#else				/* SERVER_MODE */
+      return PRM_GET_INT (prm_Def[prm_id].value);
+#endif				/* SERVER_MODE */
+  }
+
+/*
+ * prm_get_bool_value () - get the value of a parameter of type bool
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+  bool prm_get_bool_value (PARAM_ID prm_id)
+  {
+    assert (prm_id <= PRM_LAST_ID);
+    assert (PRM_IS_BOOLEAN (&prm_Def[prm_id]));
+
+#if defined (SERVER_MODE)
+    if (!PRM_SERVER_SESSION (prm_id))
+      {
+	return PRM_GET_BOOL (prm_Def[prm_id].value);
+      }
+
+    return PRM_GET_BOOL (prm_get_value (prm_id));
+#else /* SERVER_MODE */
+    return PRM_GET_BOOL (prm_Def[prm_id].value);
+#endif /* SERVER_MODE */
+  }
+
+/*
+ * prm_get_float_value () - get the value of a parameter of type float
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+  float prm_get_float_value (PARAM_ID prm_id)
+  {
+    assert (prm_id <= PRM_LAST_ID);
+    assert (PRM_IS_FLOAT (&prm_Def[prm_id]));
+
+#if defined (SERVER_MODE)
+    if (!PRM_SERVER_SESSION (prm_id))
+      {
+	return PRM_GET_FLOAT (prm_Def[prm_id].value);
+      }
+
+    return PRM_GET_FLOAT (prm_get_value (prm_id));
+#else /* SERVER_MODE */
+    return PRM_GET_FLOAT (prm_Def[prm_id].value);
+#endif /* SERVER_MODE */
+  }
+
+/*
+ * prm_get_string_value () - get the value of a parameter of type string
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+  char *prm_get_string_value (PARAM_ID prm_id)
+  {
+    assert (prm_id <= PRM_LAST_ID);
+    assert (PRM_IS_STRING (&prm_Def[prm_id]));
+
+#if defined (SERVER_MODE)
+    if (!PRM_SERVER_SESSION (prm_id))
+      {
+	return PRM_GET_STRING (prm_Def[prm_id].value);
+      }
+
+    return PRM_GET_STRING (prm_get_value (prm_id));
+#else /* SERVER_MODE */
+    return PRM_GET_STRING (prm_Def[prm_id].value);
+#endif /* SERVER_MODE */
+  }
+
+/*
+ * prm_get_integer_list_value () - get the value of a parameter of type
+ *				   integer list
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+  int *prm_get_integer_list_value (PARAM_ID prm_id)
+  {
+    assert (prm_id <= PRM_LAST_ID);
+    assert (PRM_IS_INTEGER_LIST (&prm_Def[prm_id]));
+
+#if defined (SERVER_MODE)
+    if (!PRM_SERVER_SESSION (prm_id))
+      {
+	return PRM_GET_INTEGER_LIST (prm_Def[prm_id].value);
+      }
+
+    return PRM_GET_INTEGER_LIST (prm_get_value (prm_id));
+#else /* SERVER_MODE */
+    return PRM_GET_INTEGER_LIST (prm_Def[prm_id].value);
+#endif /* SERVER_MODE */
+  }
+
+/*
+ * prm_get_bigint_value () - get the value of a parameter of type size
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+  UINT64 prm_get_bigint_value (PARAM_ID prm_id)
+  {
+    assert (prm_id <= PRM_LAST_ID);
+    assert (PRM_IS_BIGINT (&prm_Def[prm_id]));
+
+#if defined (SERVER_MODE)
+    if (!PRM_SERVER_SESSION (prm_id))
+      {
+	return PRM_GET_BIGINT (prm_Def[prm_id].value);
+      }
+
+    return PRM_GET_BIGINT (prm_get_value (prm_id));
+#else /* SERVER_MODE */
+    return PRM_GET_BIGINT (prm_Def[prm_id].value);
+#endif /* SERVER_MODE */
+  }
