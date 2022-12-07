@@ -378,7 +378,7 @@ relational_operator
     ;
 
 in_elements
-    : in_expression (',' in_expression)*
+    : '(' in_expression (',' in_expression)* ')'
     ;
 
 between_elements

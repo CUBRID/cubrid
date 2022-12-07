@@ -1876,10 +1876,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         pcsToJavaTypeMap.put("TIMESTAMPLTZ", "com.cubrid.plcsql.predefined.ZonedTimestamp");
         pcsToJavaTypeMap.put("DATETIMETZ", "com.cubrid.plcsql.predefined.ZonedTimestamp");
         pcsToJavaTypeMap.put("DATETIMELTZ", "com.cubrid.plcsql.predefined.ZonedTimestamp");
-        pcsToJavaTypeMap.put("SET", "java.lang.Object[]");
-        pcsToJavaTypeMap.put("MULTISET", "java.lang.Object[]");
-        pcsToJavaTypeMap.put("LIST", "java.lang.Object[]");
-        pcsToJavaTypeMap.put("SEQUENCE", "java.lang.Object[]");
+        pcsToJavaTypeMap.put("SET", "java.util.Set");
+        pcsToJavaTypeMap.put("MULTISET", "org.apache.commons.collections4.MultiSet");
+        pcsToJavaTypeMap.put("LIST", "java.util.List");
+        pcsToJavaTypeMap.put("SEQUENCE", "java.util.List");
         pcsToJavaTypeMap.put("SYS_REFCURSOR", "Query");
     }
 
