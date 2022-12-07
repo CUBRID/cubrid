@@ -477,7 +477,7 @@ static int la_does_page_exist (LOG_PAGEID pageid);
 static int la_init_repl_lists (bool need_realloc);
 static bool la_is_repl_lists_empty ();
 static LA_APPLY *la_find_apply_list (int tranid);
-static void la_log_copy_fromlog (char *rec_type, char *area, int length, LOG_PAGEID log_pageid, PGLENGTH log_offset,
+static void la_log_copy_fromlog (char *rec_type, char *area, int *length, LOG_PAGEID log_pageid, PGLENGTH log_offset,
 				 LOG_PAGE * log_pgptr);
 static LA_ITEM *la_new_repl_item (LOG_LSA * lsa, LOG_LSA * target_lsa);
 static void la_add_repl_item (LA_APPLY * apply, LA_ITEM * item);
@@ -510,7 +510,8 @@ static int la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgp
 				   char **data, int *d_length);
 static int la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr, unsigned int match_rcvindex,
 				     void **logs, char **rec_type, RECDES * recdes);
-static int la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *rcvindex, char *rec_type);
+static int la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *rcvindex, char *rec_type,
+			  bool is_mvcc_class);
 
 static int la_apply_delete_log (LA_ITEM * item);
 static int la_apply_update_log (LA_ITEM * item);
@@ -2945,7 +2946,7 @@ la_add_apply_list (int tranid)
  *   rec_type(out)
  *   area: Area where the portion of the log is copied.
  *               (Set as a side effect)
- *   length: the length to copy (type change PGLENGTH -> int)
+ *   length(in/out): the length to copy (type change PGLENGTH -> int) (in) and the length - 2 bytes when reading rec_type like REC_HOME otherwise length (out)
  *   log_pageid: log page identifier of the log data to copy
  *               (May be set as a side effect)
  *   log_offset: log offset within the log page of the log data to copy
@@ -2961,7 +2962,7 @@ la_add_apply_list (int tranid)
  *   log_pageid, log_offset, and log_pgptr are set as a side effect.
  */
 static void
-la_log_copy_fromlog (char *rec_type, char *area, int length, LOG_PAGEID log_pageid, PGLENGTH log_offset,
+la_log_copy_fromlog (char *rec_type, char *area, int *length, LOG_PAGEID log_pageid, PGLENGTH log_offset,
 		     LOG_PAGE * log_pgptr)
 {
   int rec_length = (int) sizeof (INT16);
@@ -2989,11 +2990,11 @@ la_log_copy_fromlog (char *rec_type, char *area, int length, LOG_PAGEID log_page
       rec_length -= copy_length;
       area_offset += copy_length;
       log_offset += copy_length;
-      length = length - DB_SIZEOF (INT16);
+      *length = *length - DB_SIZEOF (INT16);
     }
 
   area_offset = 0;
-  t_length = length;
+  t_length = *length;
 
   /* The log data is not contiguous */
   while (t_length > 0)
@@ -3140,7 +3141,7 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
       return NULL;
     }
 
-  (void) la_log_copy_fromlog (NULL, area, length, pageid, offset, repl_log_pgptr);
+  (void) la_log_copy_fromlog (NULL, area, &length, pageid, offset, repl_log_pgptr);
 
   item = la_new_repl_item (lsa, &repl_log->lsa);
   if (item == NULL)
@@ -3885,7 +3886,7 @@ la_get_undoredo_diff (LOG_PAGE ** pgptr, LOG_PAGEID * pageid, PGLENGTH * offset,
     }
 
   /* get undo data for XOR process */
-  la_log_copy_fromlog (NULL, *undo_data, *undo_length, *pageid, *offset, *pgptr);
+  la_log_copy_fromlog (NULL, *undo_data, undo_length, *pageid, *offset, *pgptr);
 
   if (*is_undo_zip && *undo_length > 0)
     {
@@ -4179,7 +4180,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
     {
       zip_len = GET_ZIP_LEN (temp_length);
       /* Get Zip Data */
-      la_log_copy_fromlog (NULL, *data, zip_len, pageid, offset, pg);
+      la_log_copy_fromlog (NULL, *data, &zip_len, pageid, offset, pg);
 
       if (zip_len != 0)
 	{
@@ -4204,7 +4205,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
   else
     {
       /* Get Redo Data */
-      la_log_copy_fromlog (rec_type ? *rec_type : NULL, *data, length, pageid, offset, pg);
+      la_log_copy_fromlog (rec_type ? *rec_type : NULL, *data, &length, pageid, offset, pg);
     }
 
   *d_length = length;
@@ -4475,7 +4476,7 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 		      if (ZIP_CHECK (temp_length))
 			{
 			  zip_len = GET_ZIP_LEN (temp_length);
-			  la_log_copy_fromlog (NULL, *data, zip_len, pageid, offset, pg);
+			  la_log_copy_fromlog (NULL, *data, &zip_len, pageid, offset, pg);
 
 			  if (zip_len != 0)
 			    {
@@ -4501,7 +4502,7 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 			}
 		      else
 			{
-			  la_log_copy_fromlog (rec_type ? *rec_type : NULL, *data, length, pageid, offset, pg);
+			  la_log_copy_fromlog (rec_type ? *rec_type : NULL, *data, &length, pageid, offset, pg);
 			}
 
 		      *d_length = length;
@@ -4568,11 +4569,12 @@ la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr, unsigned i
 /*
  * la_get_recdes() - get the record description from the log file
  *   return: NO_ERROR or error code
+ *    lsa: lsa
  *    pgptr: point to the target log page
  *    recdes(out): record description (output)
  *    rcvindex(out): recovery index (output)
- *    log_data: log data area
- *    ovf_yn(out)  : true if the log data is in overflow page
+ *    rec_type(out): record type (output)
+ *    is_mvcc_class: true if the recdes relates to the mvcc class or otherwise false
  *
  * Note:
  *     To replicate the data, we have to filter the record descripion
@@ -4580,7 +4582,8 @@ la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr, unsigned i
  *     for the given lsa.
  */
 static int
-la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *rcvindex, char *rec_type)
+la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *rcvindex, char *rec_type,
+	       bool is_mvcc_class)
 {
   LOG_RECORD_HEADER *lrec;
   LOG_PAGE *pg;
@@ -4646,6 +4649,37 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
     {
       la_make_room_for_mvcc_insid (recdes);
     }
+
+  /*
+   * This log record is generated by the bulk operation of the loaddb utility on the CS-mode.
+   * So, the recdes needs to convert to the mvcc style to process it on the slave node.
+   *
+   * Note:
+   *   The execution of insert statement on the SA-mode also generates this kind of log record.
+   *   But, it doesn't create any replication log record. So, we don't need to consider it.
+   */
+  if (is_mvcc_class && *rcvindex == RVHF_INSERT && recdes->type != REC_BIGONE)
+    {
+      int repid_and_flag_bits = 0;
+
+      repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (recdes->data);
+
+#if !defined (NDEBUG)
+      {
+	char mvcc_flag;
+
+	mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+	assert (mvcc_flag == 0);
+      }
+#endif
+
+      repid_and_flag_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
+
+      OR_PUT_INT (recdes->data, repid_and_flag_bits);
+
+      la_make_room_for_mvcc_insid (recdes);
+    }
+
 
   return error;
 }
@@ -4996,7 +5030,7 @@ la_apply_update_log (LA_ITEM * item)
   recdes = la_assign_recdes_from_pool ();
 
   /* retrieve the target record description */
-  error = la_get_recdes (&item->target_lsa, pgptr, recdes, &rcvindex, la_Info.rec_type);
+  error = la_get_recdes (&item->target_lsa, pgptr, recdes, &rcvindex, la_Info.rec_type, false);
   if (error != NO_ERROR)
     {
       goto end;
@@ -5137,6 +5171,40 @@ end:
 }
 
 /*
+ * la_is_mvcc_class() - check if a class supports mvcc
+ *   return: true if a class supports mvcc or otherwise false
+ *   class_oid: class oid
+ *
+ * Note:
+ *   this function was created by referring to the mvcc_is_mvcc_disabled_class()
+ */
+static bool
+la_is_mvcc_class (const OID * class_oid)
+{
+  if (OID_ISNULL (class_oid) || OID_IS_ROOTOID (class_oid))
+    {
+      return false;
+    }
+
+  if (oid_is_serial (class_oid))
+    {
+      return false;
+    }
+
+  if (oid_check_cached_class_oid (OID_CACHE_COLLATION_CLASS_ID, class_oid))
+    {
+      return false;
+    }
+
+  if (oid_check_cached_class_oid (OID_CACHE_HA_APPLY_INFO_CLASS_ID, class_oid))
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
  * la_apply_insert_log() - apply the insert log to the target slave
  *   return: NO_ERROR or error code
  *   item : replication item
@@ -5161,6 +5229,7 @@ la_apply_insert_log (LA_ITEM * item)
   LOG_PAGEID old_pageid = NULL_PAGEID;
 
   string_buffer sb;
+  bool is_mvcc_class;
 
   error = la_flush_repl_items (false);
   if (error != NO_ERROR)
@@ -5177,10 +5246,23 @@ la_apply_insert_log (LA_ITEM * item)
       return er_errid ();
     }
 
+  class_obj = db_find_class (item->class_name);
+  if (class_obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_FAILED;
+	}
+      goto end;
+    }
+
   recdes = la_assign_recdes_from_pool ();
+  is_mvcc_class = la_is_mvcc_class (ws_oid (class_obj));
 
   /* retrieve the target record description */
-  error = la_get_recdes (&item->target_lsa, pgptr, recdes, &rcvindex, la_Info.rec_type);
+  error = la_get_recdes (&item->target_lsa, pgptr, recdes, &rcvindex, la_Info.rec_type, is_mvcc_class);
   if (error != NO_ERROR)
     {
       goto end;
@@ -5199,18 +5281,6 @@ la_apply_insert_log (LA_ITEM * item)
       er_log_debug (ARG_FILE_LINE, "apply_insert : rcvindex = %d\n", rcvindex);
       error = ER_FAILED;
 
-      goto end;
-    }
-
-  class_obj = db_find_class (item->class_name);
-  if (class_obj == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
       goto end;
     }
 

@@ -998,7 +998,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, xasl_st
 	      if (stream->buffer == NULL && stream->xasl_header != NULL)
 		{
 		  /* also header was requested. */
-		  qfile_load_xasl_node_header (thread_p, stream->buffer, stream->xasl_header);
+		  qfile_load_xasl_node_header (thread_p, cache_entry_p->stream.buffer, stream->xasl_header);
 		}
 	      xcache_unfix (thread_p, cache_entry_p);
 	      goto exit_on_end;
