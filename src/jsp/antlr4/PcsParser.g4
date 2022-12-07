@@ -320,8 +320,8 @@ between_expression
     ;
 
 in_expression
-    : like_expression                       # in_expression_prime
-    | in_expression NOT? IN in_elements     # in_exp
+    : like_expression                               # in_expression_prime
+    | in_expression NOT? IN '(' in_elements ')'     # in_exp
     ;
 
 like_expression
@@ -341,7 +341,6 @@ concatenation
 
 unary_expression
     : atom                                      # unary_expression_prime
-    | unary_expression '**' unary_expression    # power_exp
     | ('-' | '+') unary_expression              # sign_exp
     | '~' unary_expression                      # bit_compli_exp
     ;

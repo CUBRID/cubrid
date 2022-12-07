@@ -329,9 +329,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         Expr l = visitExpression(ctx.concatenation(0), "Integer");
         Expr r = visitExpression(ctx.concatenation(1), "Integer");
         String opStr =
-                ctx.ASTERISK() != null
-                        ? "Mult"
-                        : ctx.SOLIDUS() != null ? "Div" : ctx.MOD() != null ? "Mod" : null;
+                ctx.ASTERISK() != null ? "Mult" :
+                ctx.SOLIDUS() != null ? "Div" :
+                ctx.DIV() != null ? "DivInt" :
+                ctx.MOD() != null ? "Mod" : null;
         assert opStr != null;
 
         return new ExprBinaryOp(opStr, l, r);
@@ -356,13 +357,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public Expr visitPower_exp(Power_expContext ctx) {
-        Expr l = visitExpression(ctx.unary_expression(0), "Integer");
-        Expr r = visitExpression(ctx.unary_expression(1), "Integer");
-        return new ExprBinaryOp("Power", l, r);
-    }
-
-    @Override
     public Expr visitSign_exp(Sign_expContext ctx) {
         Expr o = visitExpression(ctx.unary_expression(), "Integer");
 
@@ -379,6 +373,39 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public Expr visitBit_compli_exp(Bit_compli_expContext ctx) {
         Expr o = visitExpression(ctx.unary_expression(), "Integer");
         return new ExprUnaryOp("BitCompli", o);
+    }
+
+    @Override
+    public Expr visitBit_shift_exp(Bit_shift_expContext ctx) {
+        Expr l = visitExpression(ctx.concatenation(0), "Integer");
+        Expr r = visitExpression(ctx.concatenation(1), "Integer");
+        String opStr =
+                ctx.LT2() != null ? "BitShiftLeft" :
+                ctx.GT2() != null ? "BitShiftRight" : null;
+        assert opStr != null;
+
+        return new ExprBinaryOp(opStr, l, r);
+    }
+
+    @Override
+    public Expr visitBit_and_exp(Bit_and_expContext ctx) {
+        Expr l = visitExpression(ctx.concatenation(0), "Integer");
+        Expr r = visitExpression(ctx.concatenation(1), "Integer");
+        return new ExprBinaryOp("BitAnd", l, r);
+    }
+
+    @Override
+    public Expr visitBit_xor_exp(Bit_xor_expContext ctx) {
+        Expr l = visitExpression(ctx.concatenation(0), "Integer");
+        Expr r = visitExpression(ctx.concatenation(1), "Integer");
+        return new ExprBinaryOp("BitXor", l, r);
+    }
+
+    @Override
+    public Expr visitBit_or_exp(Bit_or_expContext ctx) {
+        Expr l = visitExpression(ctx.concatenation(0), "Integer");
+        Expr r = visitExpression(ctx.concatenation(1), "Integer");
+        return new ExprBinaryOp("BitOr", l, r);
     }
 
     private static final DateFormat dbgFormat =
