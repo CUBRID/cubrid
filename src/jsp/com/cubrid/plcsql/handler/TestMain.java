@@ -148,6 +148,7 @@ public class TestMain {
 
         long t, t0;
 
+        int failCnt = 0;
         for (int i = 0; i < args.length; i++) {
 
             System.out.println(String.format("file #%d: %s", i, args[i]));
@@ -196,10 +197,14 @@ public class TestMain {
 
                 System.out.println(" - success");
             } catch (Throwable e) {
+                e.printStackTrace();
                 System.out.println(" - failure");
-                throw e;
+                failCnt++;
             }
         }
+
+        System.out.println(String.format("total: %d, success: %d, failure: %d",
+            args.length, (args.length - failCnt), failCnt));
     }
 
     private static class SyntaxErrorIndicator extends BaseErrorListener {
