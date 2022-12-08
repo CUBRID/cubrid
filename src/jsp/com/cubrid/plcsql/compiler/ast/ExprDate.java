@@ -44,10 +44,10 @@ public class ExprDate implements Expr {
     @Override
     public String toJavaCode() {
         if (date.equals(DateTimeParser.nullDate)) {
-            return "new Date(0 - 1900, 0 - 1, 0)";
+            return "LocalDate.MAX";
         } else {
             return String.format(
-                    "new Date(%d - 1900, %d - 1, %d)",
+                    "LocalDate.of(%d, %d, %d)",
                     date.getYear(), date.getMonthValue(), date.getDayOfMonth());
         }
     }

@@ -49,29 +49,26 @@ import java.util.Locale;
 public class DateTimeParser {
 
     private static final ZoneOffset TIMEZONE_0 = ZoneOffset.of("Z");
+    private static final ZoneOffset TIMEZONE_SESSION = ZoneOffset.of("+05:00");  // temporary code TODO: fix this
 
-    // min timestamp: 1970-01-01 00:00:01
-    private static final LocalDateTime minTimestamp = LocalDateTime.of(1970, 1, 1, 0, 0, 1);
-    // max timestamp: 2038-01-19 03:14:07
-    private static final LocalDateTime maxTimestamp = LocalDateTime.of(2038, 1, 19, 3, 14, 7);
+    // zoneless part of min timestamp: 1970-01-01 00:00:01
+    private static final LocalDateTime minTimestampLocal = LocalDateTime.of(1970, 1, 1, 0, 0, 1);
+    // zoneless part of max timestamp local part: 2038-01-19 03:14:07
+    private static final LocalDateTime maxTimestampLocal = LocalDateTime.of(2038, 1, 19, 3, 14, 7);
     // min datetime: 0001-01-01 00:00:00.000
     private static final LocalDateTime minDatetime = LocalDateTime.of(1, 1, 1, 0, 0, 0, 0);
     // max datetime: 9999-12-31 23:59:59.999
     private static final LocalDateTime maxDatetime =
             LocalDateTime.of(9999, 12, 31, 23, 59, 59, 999);
 
-    private static final long minTimestampUTC =
-            ZonedDateTime.of(minTimestamp, TIMEZONE_0).toInstant().toEpochMilli();
-    private static final long maxTimestampUTC =
-            ZonedDateTime.of(maxTimestamp, TIMEZONE_0).toInstant().toEpochMilli();
-    private static final long minDatetimeUTC =
-            ZonedDateTime.of(minDatetime, TIMEZONE_0).toInstant().toEpochMilli();
-    private static final long maxDatetimeUTC =
-            ZonedDateTime.of(maxDatetime, TIMEZONE_0).toInstant().toEpochMilli();
+    private static final ZonedDateTime minTimestamp = ZonedDateTime.of(minTimestampLocal, TIMEZONE_0);
+    private static final ZonedDateTime maxTimestamp = ZonedDateTime.of(maxTimestampLocal, TIMEZONE_0);
+    private static final ZonedDateTime minDatetimeUTC = ZonedDateTime.of(minDatetime, TIMEZONE_0);
+    private static final ZonedDateTime maxDatetimeUTC = ZonedDateTime.of(maxDatetime, TIMEZONE_0);
 
     public static final LocalDate nullDate = LocalDate.MAX;
-    public static final LocalTime nullTime = LocalTime.MAX;
-    public static final LocalDateTime nullDateTime = LocalDateTime.MAX;
+    public static final LocalDateTime nullDatetime = LocalDateTime.MAX;
+    public static final ZonedDateTime nullDatetimeUTC = ZonedDateTime.of(nullDatetime, TIMEZONE_0);
 
     public static class DateLiteral {
 
@@ -93,40 +90,19 @@ public class DateTimeParser {
 
         private static final LocalDate minDate = LocalDate.of(1, 1, 1); // 0001-01-01
         private static final LocalDate maxDate = LocalDate.of(9999, 12, 31); // 9999-12-31
-
-        static {
-            // System.out.println("minDate=" + minDate);
-            // System.out.println("maxDate=" + maxDate);
-        }
     }
 
     public static class TimeLiteral {
 
         public static LocalTime parse(String s) {
-            return parseTimeFragment(s, true);
+            return parseTimeFragment(s, false);
         }
     }
 
     public static class TimestampLiteral {
 
-        public static LocalDateTime parse(String s) {
-            // NOTE: range check must be done in the server with the session timezone
-            return parseDateAndTime(s, false);
-        }
-
-        // ---------------------------------------
-        // Private
-        // ---------------------------------------
-
-        // TODO: minTimestamp and maxTimestamp must be UTC
-        private static final LocalDateTime minTimestamp =
-                LocalDateTime.of(1970, 1, 1, 0, 0, 1); // 1970-01-01 00:00:01
-        private static final LocalDateTime maxTimestamp =
-                LocalDateTime.of(2038, 1, 19, 3, 14, 7); // 2038-01-19 03:14:07
-
-        static {
-            // System.out.println("minTimestamp=" + minTimestamp);
-            // System.out.println("maxTimestamp=" + maxTimestamp);
+        public static ZonedDateTime parse(String s) {
+            return ZonedDateTimeLiteral.parse(s, false); // same as TIMESTAMPLTZ with timezone omitted
         }
     }
 
@@ -136,70 +112,19 @@ public class DateTimeParser {
 
             LocalDateTime ret = parseDateAndTime(s, true);
             if (ret != null
-                    && ret != nullDateTime
+                    && ret != nullDatetime
                     && (ret.compareTo(minDatetime) < 0
-                            || ret.compareTo(maxDatetime) > 0)) { // NOTE: no UTC comparison
+                            || ret.compareTo(maxDatetime) > 0)) {
                 return null;
             }
 
             return ret;
         }
-
-        // ---------------------------------------
-        // Private
-        // ---------------------------------------
-
     }
 
-    public static class TimestampTZLiteral {
-
-        public static TemporalAccessor parse(String stz) {
-
-            TemporalAccessor ret = parseZonedDateAndTime(stz, false);
-            if (ret instanceof ZonedDateTime) {
-                ZonedDateTime zoned = (ZonedDateTime) ret;
-                if (!zoned.toLocalDateTime().equals(nullDateTime)) {
-                    long utc = zoned.toInstant().toEpochMilli();
-                    if (utc < minTimestampUTC || utc > maxTimestampUTC) {
-                        return null;
-                    }
-                }
-            }
-
-            return ret;
-        }
-    }
-
-    public static class TimestampLTZLiteral {
-
-        public static TemporalAccessor parse(String stz) {
-            return TimestampTZLiteral.parse(stz);
-        }
-    }
-
-    public static class DatetimeTZLiteral {
-
-        public static TemporalAccessor parse(String stz) {
-
-            TemporalAccessor ret = parseZonedDateAndTime(stz, true);
-            if (ret instanceof ZonedDateTime) {
-                ZonedDateTime zoned = (ZonedDateTime) ret;
-                if (!zoned.toLocalDateTime().equals(nullDateTime)) {
-                    long utc = zoned.toInstant().toEpochMilli();
-                    if (utc < minDatetimeUTC || utc > maxDatetimeUTC) {
-                        return null;
-                    }
-                }
-            }
-
-            return ret;
-        }
-    }
-
-    public static class DatetimeLTZLiteral {
-
-        public static TemporalAccessor parse(String stz) {
-            return DatetimeTZLiteral.parse(stz);
+    public static class ZonedDateTimeLiteral {
+        public static ZonedDateTime parse(String s, boolean forDatetime) {
+            return parseZonedDateAndTime(s, forDatetime);
         }
     }
 
@@ -208,41 +133,54 @@ public class DateTimeParser {
     // ---------------------------------------
 
     // returns a ZonedDateTime when a timezone offset is given, otherwise returns a LocalDateTime
-    public static TemporalAccessor parseZonedDateAndTime(String stz, boolean millis) {
+    public static ZonedDateTime parseZonedDateAndTime(String s, boolean forDatetime) {
 
         // get timezone offset
+        LocalDateTime localPart;
         ZoneOffset zone;
-        int delim = stz.lastIndexOf(" ");
+        int delim = s.lastIndexOf(" ");
         if (delim < 0) {
             // no timezone offset
-            return parseDateAndTime(stz, millis);
+            localPart = parseDateAndTime(s, forDatetime);
+            zone = TIMEZONE_SESSION;
         } else {
-            String tz = stz.substring(delim + 1);
+            String dt = s.substring(0, delim);
+            String z = s.substring(delim + 1);
             try {
-                zone = ZoneOffset.of(tz);
+                localPart = parseDateAndTime(dt, forDatetime);
+                zone = ZoneOffset.of(z);
             } catch (DateTimeException e) {
-                // timezone offset is invalid. try timezone omitted string
-                return parseDateAndTime(stz, millis);
+                // z turn out not to be a timezone offset. try timezone omitted string
+                localPart = parseDateAndTime(s, forDatetime);
+                zone = TIMEZONE_SESSION;
             }
         }
 
-        // get date and time
-        String s = stz.substring(0, delim);
-        LocalDateTime ldt = parseDateAndTime(s, millis);
-        if (ldt == null) {
+        if (localPart == null) {
             return null;
         }
-        if (ldt == nullDateTime) {
-            return ZonedDateTime.of(ldt, zone);
+        if (localPart == nullDatetime) {
+            return nullDatetimeUTC;
         }
 
-        return ZonedDateTime.of(ldt, zone);
+        ZonedDateTime ret = ZonedDateTime.of(localPart, zone);
+        if (forDatetime) {
+            if (ret.compareTo(minDatetimeUTC) < 0 || ret.compareTo(maxDatetimeUTC) > 0) {
+                return null;
+            }
+        } else {
+            // in this case, for TIMESTAMP*
+            if (ret.compareTo(minTimestamp) < 0 || ret.compareTo(maxTimestamp) > 0) {
+                return null;
+            }
+        }
+
+        return ret;
     }
 
     private static LocalDateTime parseDateAndTime(String s, boolean millis) {
 
         s = s.trim();
-        // System.out.println("[temp] ### " + s);
 
         String timeStr, dateStr;
         int colonIdx = s.indexOf(":");
@@ -250,7 +188,6 @@ public class DateTimeParser {
             //  order: <time> <date>
             int cut = s.lastIndexOf(" ");
             if (cut < 0) {
-                System.out.println("no date");
                 return null; // error
             } else {
                 timeStr = s.substring(0, cut);
@@ -270,7 +207,6 @@ public class DateTimeParser {
 
         LocalDate date = parseDateFragment(dateStr);
         if (date == null) {
-            System.out.println("date error");
             return null;
         }
 
@@ -280,16 +216,14 @@ public class DateTimeParser {
         } else {
             time = parseTimeFragment(timeStr, millis);
             if (time == null) {
-                System.out.println("time error");
                 return null;
             }
         }
 
         if (date.equals(nullDate)) {
             if (time == null || time.equals(LocalTime.MIN)) {
-                return nullDateTime;
+                return nullDatetime;
             } else {
-                System.out.println("time must be zero");
                 return null; // error
             }
         } else {
@@ -308,10 +242,6 @@ public class DateTimeParser {
         }
     }
 
-    // ------------------------------------------------------
-    // for parsing date fragment
-    // ------------------------------------------------------
-
     private static final List<SimpleDateFormat> dateFormats =
             Arrays.asList(new SimpleDateFormat("MM/dd/yyyy"), new SimpleDateFormat("yyyy-MM-dd"));
 
@@ -325,7 +255,6 @@ public class DateTimeParser {
     private static LocalDate parseDateFragment(String s) {
 
         s = s.trim();
-        // System.out.println("[temp] ### " + s);
 
         int i = 0;
         for (SimpleDateFormat f : dateFormats) {
@@ -337,7 +266,6 @@ public class DateTimeParser {
 
             Date d = f.parse(s, pos);
 
-            // System.out.println("[temp] i=" + i);
 
             if (d != null && pos.getIndex() == s.length()) {
 
@@ -383,7 +311,6 @@ public class DateTimeParser {
                             && year == 2
                             && month == Calendar.NOVEMBER
                             && day == 30) {
-                        // System.out.println("[temp] failed calendar after get=" + calendar);
                         return nullDate;
                     }
                 }
@@ -426,7 +353,6 @@ public class DateTimeParser {
     private static LocalTime parseTimeFragment(String s, boolean millis) {
 
         s = s.trim();
-        // System.out.println("[temp] ### " + s);
         List<SimpleDateFormat> formats = (s.indexOf(" ") >= 0) ? timeFormats12 : timeFormats24;
 
         int j = 0;
@@ -438,10 +364,6 @@ public class DateTimeParser {
             calendar.clear();
 
             Date d = f.parse(s, pos);
-
-            // System.out.println("[temp] j=" + j);
-            // System.out.println("[temp] d=" + d);
-            // System.out.println("[temp] pos=" + pos);
 
             if (d != null && pos.getIndex() == s.length()) {
                 return LocalTime.of(

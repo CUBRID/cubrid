@@ -39,8 +39,9 @@ import java.math.BigInteger;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZonedDateTime;
+import java.time.LocalDateTime;
 import java.time.temporal.TemporalAccessor;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -380,11 +381,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public Expr visitTimestamp_exp(Timestamp_expContext ctx) {
         String s = ctx.quoted_string().getText();
-        s = quotedStrToJavaStr(s);
-        LocalDateTime timestamp = DateTimeParser.TimestampLiteral.parse(s);
-        assert timestamp != null : "invalid TIMESTAMP string: " + s;
-        // System.out.println("[temp] timestamp=" + timestamp);
-        return new ExprTimestamp(timestamp);
+        return parseZonedDateTime(s, false, "TIMESTAMP");
     }
 
     @Override
@@ -400,41 +397,25 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public Expr visitTimestamptz_exp(Timestamptz_expContext ctx) {
         String s = ctx.quoted_string().getText();
-        s = quotedStrToJavaStr(s);
-        TemporalAccessor timestampTZ = DateTimeParser.TimestampTZLiteral.parse(s);
-        assert timestampTZ != null : "invalid TIMESTAMPTZ string: " + s;
-        // System.out.println("[temp] timestampTZ=" + timestampTZ);
-        return new ExprTimestampTZ(timestampTZ);
+        return parseZonedDateTime(s, false, "TIMESTAMPTZ");
     }
 
     @Override
     public Expr visitTimestampltz_exp(Timestampltz_expContext ctx) {
         String s = ctx.quoted_string().getText();
-        s = quotedStrToJavaStr(s);
-        TemporalAccessor timestampLTZ = DateTimeParser.TimestampLTZLiteral.parse(s);
-        assert timestampLTZ != null : "invalid TIMESTAMPLTZ string: " + s;
-        // System.out.println("[temp] timestampLTZ=" + timestampLTZ);
-        return new ExprTimestampLTZ(timestampLTZ);
+        return parseZonedDateTime(s, false, "TIMESTAMPLTZ");
     }
 
     @Override
     public Expr visitDatetimetz_exp(Datetimetz_expContext ctx) {
         String s = ctx.quoted_string().getText();
-        s = quotedStrToJavaStr(s);
-        TemporalAccessor datetimeTZ = DateTimeParser.DatetimeTZLiteral.parse(s);
-        assert datetimeTZ != null : "invalid DATETIMETZ string: " + s;
-        // System.out.println("[temp] datetimeTZ=" + datetimeTZ);
-        return new ExprDatetimeTZ(datetimeTZ);
+        return parseZonedDateTime(s, true, "DATETIMETZ");
     }
 
     @Override
     public Expr visitDatetimeltz_exp(Datetimeltz_expContext ctx) {
         String s = ctx.quoted_string().getText();
-        s = quotedStrToJavaStr(s);
-        TemporalAccessor datetimeLTZ = DateTimeParser.DatetimeLTZLiteral.parse(s);
-        assert datetimeLTZ != null : "invalid DATETIMELTZ string: " + s;
-        // System.out.println("[temp] datetimeLTZ=" + datetimeLTZ);
-        return new ExprDatetimeLTZ(datetimeLTZ);
+        return parseZonedDateTime(s, true, "DATETIMELTZ");
     }
 
     @Override
@@ -1866,16 +1847,16 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         pcsToJavaTypeMap.put("FLOAT", "java.lang.Float");
         pcsToJavaTypeMap.put("REAL", "java.lang.Float");
         pcsToJavaTypeMap.put("DOUBLE", "java.lang.Double");
-        pcsToJavaTypeMap.put("DOUBLE PRECISION", "java.lang.Double"); // ???
+        pcsToJavaTypeMap.put("DOUBLE PRECISION", "java.lang.Double");
 
-        pcsToJavaTypeMap.put("DATE", "java.sql.Date");
-        pcsToJavaTypeMap.put("TIME", "java.sql.Time");
-        pcsToJavaTypeMap.put("TIMESTAMP", "java.sql.Timestamp");
-        pcsToJavaTypeMap.put("DATETIME", "java.sql.Timestamp");
-        pcsToJavaTypeMap.put("TIMESTAMPTZ", "com.cubrid.plcsql.predefined.ZonedTimestamp");
-        pcsToJavaTypeMap.put("TIMESTAMPLTZ", "com.cubrid.plcsql.predefined.ZonedTimestamp");
-        pcsToJavaTypeMap.put("DATETIMETZ", "com.cubrid.plcsql.predefined.ZonedTimestamp");
-        pcsToJavaTypeMap.put("DATETIMELTZ", "com.cubrid.plcsql.predefined.ZonedTimestamp");
+        pcsToJavaTypeMap.put("DATE", "java.time.LocalDate");
+        pcsToJavaTypeMap.put("TIME", "java.time.LocalTime");
+        pcsToJavaTypeMap.put("TIMESTAMP", "java.time.ZonedDateTime");
+        pcsToJavaTypeMap.put("DATETIME", "java.time.LocalDateTime");
+        pcsToJavaTypeMap.put("TIMESTAMPTZ", "java.time.ZonedDateTime");
+        pcsToJavaTypeMap.put("TIMESTAMPLTZ", "java.time.ZonedDateTime");
+        pcsToJavaTypeMap.put("DATETIMETZ", "java.time.ZonedDateTime");
+        pcsToJavaTypeMap.put("DATETIMELTZ", "java.time.ZonedDateTime");
         pcsToJavaTypeMap.put("SET", "java.util.Set");
         pcsToJavaTypeMap.put("MULTISET", "org.apache.commons.collections4.MultiSet");
         pcsToJavaTypeMap.put("LIST", "java.util.List");
@@ -1907,4 +1888,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         dbgFormat.setTimeZone(TimeZone.getTimeZone("GMT+0"));
     }
 
+    private ExprZonedDateTime parseZonedDateTime(String s, boolean forDatetime, String originType) {
+        s = quotedStrToJavaStr(s);
+        ZonedDateTime timestamp = DateTimeParser.ZonedDateTimeLiteral.parse(s, forDatetime);
+        assert timestamp != null : String.format("invalid %s string: %s", originType, s);
+        addToImports("java.time.ZoneOffset");
+        if (timestamp.equals(DateTimeParser.nullDatetimeUTC)) {
+            addToImports("java.time.LocalDateTime");
+        }
+        return new ExprZonedDateTime(timestamp, originType);
+    }
 }
