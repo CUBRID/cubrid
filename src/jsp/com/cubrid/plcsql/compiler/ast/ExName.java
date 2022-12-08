@@ -37,11 +37,13 @@ public class ExName implements AstNode {
     public final String name;
     public final Scope scope;
     public final DeclException decl;
+    public final boolean prefixDeclBlock;
 
     public ExName(String name, Scope scope, DeclException decl) {
         this.name = name;
         this.scope = scope;
         this.decl = decl;
+        prefixDeclBlock = (decl == null) ? false : decl.scope().declDone;
     }
 
     @Override

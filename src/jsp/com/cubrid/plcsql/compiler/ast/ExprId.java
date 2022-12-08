@@ -37,11 +37,13 @@ public class ExprId implements Expr {
     public final String name;
     public final Scope scope;
     public final DeclId decl;
+    public boolean prefixDeclBlock;
 
     public ExprId(String name, Scope scope, DeclId decl) {
         this.name = name;
         this.scope = scope;
         this.decl = decl;
+        prefixDeclBlock = (decl == null) ? false : decl.scope().declDone; // decl == null is temporary TODO fix it.
     }
 
     @Override
@@ -55,13 +57,13 @@ public class ExprId implements Expr {
         } else if (decl instanceof DeclForRecord) {
             return String.format("$%s_r%d", name, decl.scope().level);
         } else if (decl instanceof DeclConst || decl instanceof DeclCursor) {
-            if (scope.routine.equals(decl.scope().routine)) { // TODO: routine? not block?
+            if (prefixDeclBlock) {
                 return String.format("%s.$%s", decl.scope().block, name);
             } else {
                 return String.format("$%s", name);
             }
         } else if (decl instanceof DeclVar) {
-            if (scope.routine.equals(decl.scope().routine)) { // TODO: routine? not block?
+            if (prefixDeclBlock) {
                 return String.format("%s.$%s[0]", decl.scope().block, name);
             } else {
                 return String.format("$%s[0]", name);
@@ -76,7 +78,7 @@ public class ExprId implements Expr {
         if (decl instanceof DeclParamOut) {
             return String.format("$%s", name);
         } else if (decl instanceof DeclVar) {
-            if (scope.routine.equals(decl.scope().routine)) {
+            if (prefixDeclBlock) {
                 return String.format("%s.$%s", decl.scope().block, name);
             } else {
                 return String.format("$%s", name);

@@ -44,14 +44,14 @@ public class SymbolStack {
         int level = symbolTableStack.size();
         name = name.toLowerCase();
 
-        String routine, block;
+        String routine;
         if (forRoutine) {
-            routine = name + "_" + level;
-            block = name;
+            routine = name.toUpperCase();
         } else {
-            routine = currSymbolTable == null ? null : currSymbolTable.scope.routine;
-            block = name + "_" + level;
+            routine = (currSymbolTable == null) ? null : currSymbolTable.scope.routine;
         }
+
+        String block = name + "_" + level;
 
         currSymbolTable = new SymbolTable(new Scope(routine, block, level));
         symbolTableStack.addFirst(currSymbolTable);

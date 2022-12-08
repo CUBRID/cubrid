@@ -39,18 +39,20 @@ public class StmtLocalProcCall implements Stmt {
     public final NodeList<Expr> args;
     public final Scope scope;
     public final DeclProc decl;
+    public final boolean prefixDeclBlock;
 
     public StmtLocalProcCall(String name, NodeList<Expr> args, Scope scope, DeclProc decl) {
         this.name = name;
         this.args = args;
         this.scope = scope;
         this.decl = decl;
+        prefixDeclBlock = decl.scope().declDone;
     }
 
     @Override
     public String toJavaCode() {
 
-        String block = scope.routine.equals(decl.scope().routine) ? decl.scope().block + "." : "";
+        String block = prefixDeclBlock ? decl.scope().block + "." : "";
 
         if (args == null || args.nodes.size() == 0) {
             return block + "$" + name + "();";

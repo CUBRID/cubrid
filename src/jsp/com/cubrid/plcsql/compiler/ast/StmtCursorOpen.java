@@ -121,7 +121,9 @@ public class StmtCursorOpen implements Stmt {
                         sbuf.append(args.nodes.get(k).toJavaCode());
                     }
                 } else {
-                    sbuf.append(decl.usedVars.nodes.get(i).toJavaCode());
+                    ExprId var = decl.usedVars.nodes.get(i);
+                    var.prefixDeclBlock = (var.decl == null) ? false : var.decl.scope().declDone;
+                    sbuf.append(var.toJavaCode());
                 }
             }
             return sbuf.toString();

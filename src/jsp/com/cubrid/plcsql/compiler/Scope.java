@@ -35,10 +35,17 @@ public class Scope {
     public final String routine;
     public final String block;
     public final int level;
+    public boolean declDone;
 
     Scope(String routine, String block, int level) {
         this.routine = routine;
         this.block = block;
         this.level = level;
+        declDone = false;
     }
+
+    void setDeclDone() {
+        declDone = true;
+    }
+
 }

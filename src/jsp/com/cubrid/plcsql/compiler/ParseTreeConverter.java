@@ -78,13 +78,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = ctx.identifier().getText().toUpperCase();
         name = Misc.peelId(name);
 
-        symbolStack.pushSymbolTable(
-                "temp", false); // in order not to corrupt predefined symbol table
+        int level = symbolStack.pushSymbolTable("temp", false); // in order not to corrupt predefined symbol table
 
         NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
 
         symbolStack.popSymbolTable();
-        DeclProc decl = new DeclProc(name, paramList, null, null);
+        DeclProc decl = new DeclProc(name, paramList, null, null, level);
         symbolStack.putDecl(name, decl); // in order to allow recursive calls
 
         symbolStack.pushSymbolTable(name, true);
@@ -111,14 +110,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = ctx.identifier().getText().toUpperCase();
         name = Misc.peelId(name);
 
-        symbolStack.pushSymbolTable(
-                "temp", true); // in order not to corrupt predefined symbol table
+        int level = symbolStack.pushSymbolTable("temp", false); // in order not to corrupt predefined symbol table
 
         NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
         TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
 
         symbolStack.popSymbolTable();
-        DeclFunc decl = new DeclFunc(name, paramList, retType, null, null);
+        DeclFunc decl = new DeclFunc(name, paramList, retType, null, null, level);
         symbolStack.putDecl(name, decl); // in order to allow recursive calls
 
         symbolStack.pushSymbolTable(name, true);
@@ -694,6 +692,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             }
         }
 
+        symbolStack.getCurrentScope().setDeclDone();
+
         if (ret.nodes.size() == 0) {
             return null;
         } else {
@@ -790,15 +790,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = ctx.identifier().getText().toUpperCase();
         name = Misc.peelId(name);
 
-        symbolStack.pushSymbolTable(
-                "temp",
-                true); // in order not to corrupt the current symbol table with the parameters
+        // in order not to corrupt the current symbol table with the parameters
+        int level = symbolStack.pushSymbolTable("temp", false);
 
         NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
 
         symbolStack.popSymbolTable();
 
-        DeclProc ret = new DeclProc(name, paramList, null, null);
+        DeclProc ret = new DeclProc(name, paramList, null, null, level);
         symbolStack.putDecl(name, ret);
     }
 
@@ -830,16 +829,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = ctx.identifier().getText().toUpperCase();
         name = Misc.peelId(name);
 
-        symbolStack.pushSymbolTable(
-                "temp",
-                true); // in order not to corrupt the current symbol table with the parameters
+        // in order not to corrupt the current symbol table with the parameters
+        int level = symbolStack.pushSymbolTable("temp", false);
 
         NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
         TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
 
         symbolStack.popSymbolTable();
 
-        DeclFunc ret = new DeclFunc(name, paramList, retType, null, null);
+        DeclFunc ret = new DeclFunc(name, paramList, retType, null, null, level);
         symbolStack.putDecl(name, ret);
     }
 
@@ -1298,11 +1296,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         } else {
 
             String routine = symbolStack.getCurrentScope().routine;
-            routine = routine.substring(0, routine.lastIndexOf('_'));
-            routine = routine.toUpperCase();
-
             DeclFunc df = symbolStack.getDeclFunc(routine);
-            assert df != null : "decl of " + routine + " must exsit";
+            assert df != null;
             return new StmtReturn(visitExpression(ctx.expression(), df.retType.name));
         }
     }
@@ -1762,14 +1757,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                         new NodeList<DeclParam>()
                                 .addNode(new DeclParamIn("s", new TypeSpec("Object"))),
                         null,
-                        null);
+                        null,
+                        0);
         symbolStack.putDecl("PUT_LINE", dp);
 
         // add functions
-        DeclFunc df = new DeclFunc("OPEN_CURSOR", null, new TypeSpec("Integer"), null, null);
+        DeclFunc df = new DeclFunc("OPEN_CURSOR", null, new TypeSpec("Integer"), null, null, 0);
         symbolStack.putDecl("OPEN_CURSOR", df);
 
-        df = new DeclFunc("LAST_ERROR_POSITION", null, new TypeSpec("Integer"), null, null);
+        df = new DeclFunc("LAST_ERROR_POSITION", null, new TypeSpec("Integer"), null, null, 0);
         symbolStack.putDecl("LAST_ERROR_POSITION", df);
 
         // add constants TODO implement SQLERRM and SQLCODE properly
