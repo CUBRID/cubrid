@@ -746,15 +746,12 @@ extern "C"
   extern int sysprm_set_error (SYSPRM_ERR rc, const char *data);
   extern int sysprm_get_session_parameters_count (void);
 
-#if defined (WINDOWS)
-  /* FIXME!!! Segmentation fault when using inline function on Window. Temporarily, disable inline functions on Window. */
-  extern int prm_get_integer_value (PARAM_ID prm_id);
-  extern bool prm_get_bool_value (PARAM_ID prm_id);
-  extern float prm_get_float_value (PARAM_ID prm_id);
-  extern char *prm_get_string_value (PARAM_ID prm_id);
-  extern int *prm_get_integer_list_value (PARAM_ID prm_id);
-  extern UINT64 prm_get_bigint_value (PARAM_ID prm_id);
-#else				/* WINDOWS */
+  STATIC_INLINE int prm_get_integer_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));;
+  STATIC_INLINE bool prm_get_bool_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));;
+  STATIC_INLINE float prm_get_float_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));;
+  STATIC_INLINE char *prm_get_string_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));;
+  STATIC_INLINE int *prm_get_integer_list_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));;
+  STATIC_INLINE UINT64 prm_get_bigint_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));;
 /*
  * prm_get_integer_value () - get the value of a parameter of type integer
  *
@@ -895,7 +892,6 @@ extern "C"
     return PRM_GET_BIGINT (prm_Def[prm_id].value);
 #endif /* SERVER_MODE */
   }
-#endif /* WINDOWS */
 
 #ifdef __cplusplus
 }
