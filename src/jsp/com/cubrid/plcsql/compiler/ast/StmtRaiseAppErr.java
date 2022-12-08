@@ -42,8 +42,11 @@ public class StmtRaiseAppErr implements Stmt {
 
     @Override
     public String toJavaCode() {
+        /* TODO
         return String.format(
                 "throw new $$APP_ERROR(%s, %s);", errCode.toJavaCode(), errMsg.toJavaCode());
+                */
+        return String.format("throw new $$APP_ERROR();");
     }
 
     // --------------------------------------------------

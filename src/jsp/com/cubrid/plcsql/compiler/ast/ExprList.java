@@ -37,16 +37,13 @@ public class ExprList implements Expr {
     public final NodeList<Expr> elems;
 
     public ExprList(NodeList<Expr> elems) {
+        assert elems != null;
         this.elems = elems;
     }
 
     @Override
     public String toJavaCode() {
-        if (elems == null) {
-            return "new Object[0]";
-        } else {
-            return "new Object[] {\n" + Misc.indentLines(elems.toJavaCode(",\n"), 1) + "\n}";
-        }
+        return "Arrays.asList(\n" + Misc.indentLines(elems.toJavaCode(",\n"), 1) + "\n)";
     }
 
     // --------------------------------------------------

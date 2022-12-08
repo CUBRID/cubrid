@@ -612,6 +612,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
+        if (whenParts.nodes.size() > 0) {
+            addToImports("java.util.Objects");
+        }
         return new ExprCast(new ExprCase(level, selector, whenParts, elsePart));
     }
 
@@ -653,6 +656,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public Expr visitList_exp(List_expContext ctx) {
         NodeList<Expr> elems = visitExpressions(ctx.expressions());
+        addToImports("java.util.Arrays");
         return new ExprList(elems);
     }
 
@@ -1325,6 +1329,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
+        if (whenParts.nodes.size() > 0) {
+            addToImports("java.util.Objects");
+        }
         return new StmtCase(level, selector, whenParts, elsePart);
     }
 
