@@ -79,10 +79,7 @@ public class SymbolStack {
         Map<String, D> map = currSymbolTable.<D>map((Class<D>) decl.getClass());
         if (map.containsKey(name)) {
             assert false
-                    : decl.typeStr()
-                            + " "
-                            + name
-                            + " has already been declared in the same scope";
+                    : decl.typeStr() + " " + name + " has already been declared in the same scope";
             throw new RuntimeException("unreachable");
         }
 

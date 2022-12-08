@@ -203,8 +203,10 @@ public class TestMain {
             }
         }
 
-        System.out.println(String.format("total: %d, success: %d, failure: %d",
-            args.length, (args.length - failCnt), failCnt));
+        System.out.println(
+                String.format(
+                        "total: %d, success: %d, failure: %d",
+                        args.length, (args.length - failCnt), failCnt));
     }
 
     private static class SyntaxErrorIndicator extends BaseErrorListener {

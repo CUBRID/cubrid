@@ -48,7 +48,8 @@ public class ExprZonedDateTime implements Expr {
 
         if (time.equals(DateTimeParser.nullDatetimeUTC)) {
             return String.format(
-                    "ZonedDateTime.of(LocalDateTime.MAX, ZoneOffset.of(\"Z\")) /* %s */", originType);
+                    "ZonedDateTime.of(LocalDateTime.MAX, ZoneOffset.of(\"Z\")) /* %s */",
+                    originType);
         } else {
             return String.format(
                     "ZonedDateTime.of(%d, %d, %d, %d, %d, %d, %d, ZoneOffset.of(\"%s\")) /* %s */",
@@ -60,8 +61,7 @@ public class ExprZonedDateTime implements Expr {
                     time.getSecond(),
                     time.getNano(),
                     time.getOffset().getId(),
-                    originType
-                    );
+                    originType);
         }
     }
 

@@ -39,10 +39,9 @@ import java.math.BigInteger;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
-import java.time.LocalDateTime;
-import java.time.temporal.TemporalAccessor;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -231,7 +230,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public Expr visitRel_exp(Rel_expContext ctx) {
         Relational_operatorContext op = ctx.relational_operator();
         String opStr =
-                op.EQUALS_OP() != null ? "Eq"
+                op.EQUALS_OP() != null
+                        ? "Eq"
                         : op.NOT_EQUAL_OP() != null
                                 ? "Neq"
                                 : op.LE() != null
@@ -314,7 +314,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String opStr =
                 ctx.ASTERISK() != null
                         ? "Mult"
-                        : (ctx.SOLIDUS() != null || ctx.DIV() != null) ? "Div" : ctx.MOD() != null ? "Mod" : null;
+                        : (ctx.SOLIDUS() != null || ctx.DIV() != null)
+                                ? "Div"
+                                : ctx.MOD() != null ? "Mod" : null;
         assert opStr != null;
 
         return new ExprBinaryOp(opStr, l, r);
@@ -1891,6 +1893,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     private static final DateFormat dbgFormat =
             new SimpleDateFormat("G yyyy-MM-dd HH:mm:ss.SSS XXX", Locale.US);
+
     static {
         dbgFormat.setTimeZone(TimeZone.getTimeZone("GMT+0"));
     }
