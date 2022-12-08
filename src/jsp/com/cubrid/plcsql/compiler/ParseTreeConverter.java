@@ -78,7 +78,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = ctx.identifier().getText().toUpperCase();
         name = Misc.peelId(name);
 
-        int level = symbolStack.pushSymbolTable("temp", false); // in order not to corrupt predefined symbol table
+        int level =
+                symbolStack.pushSymbolTable(
+                        "temp", false); // in order not to corrupt predefined symbol table
 
         NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
 
@@ -110,7 +112,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = ctx.identifier().getText().toUpperCase();
         name = Misc.peelId(name);
 
-        int level = symbolStack.pushSymbolTable("temp", false); // in order not to corrupt predefined symbol table
+        int level =
+                symbolStack.pushSymbolTable(
+                        "temp", false); // in order not to corrupt predefined symbol table
 
         NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
         TypeSpec retType = (TypeSpec) visit(ctx.type_spec());

@@ -37,7 +37,7 @@ public class DeclFunc extends DeclRoutine {
             NodeList<DeclParam> paramList,
             TypeSpec retType,
             NodeList<Decl> decls,
-            Body body, 
+            Body body,
             int level) {
         super(name, paramList, retType, decls, body, level);
     }

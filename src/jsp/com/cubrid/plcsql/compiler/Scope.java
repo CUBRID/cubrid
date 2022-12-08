@@ -47,5 +47,4 @@ public class Scope {
     void setDeclDone() {
         declDone = true;
     }
-
 }
