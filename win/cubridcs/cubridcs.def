@@ -414,12 +414,6 @@ EXPORTS
     numeric_db_value_print
     os_set_signal_handler
     prm_get_master_port_id
-    prm_get_bool_value
-    prm_get_float_value
-    prm_get_integer_list_value
-    prm_get_integer_value
-    prm_get_bigint_value
-    prm_get_string_value
     prm_set_integer_value
     prm_Def
     rel_copy_version_string

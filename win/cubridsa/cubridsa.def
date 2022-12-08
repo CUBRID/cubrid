@@ -81,12 +81,6 @@ EXPORTS
     pgbuf_get_vpid_ptr
     pgbuf_set_dirty
     prm_get_master_port_id
-    prm_get_bool_value
-    prm_get_float_value
-    prm_get_integer_list_value
-    prm_get_integer_value
-    prm_get_bigint_value
-    prm_get_string_value
     prm_get_name
     prm_Def
     rel_copy_version_string
