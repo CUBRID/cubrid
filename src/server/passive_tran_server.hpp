@@ -38,7 +38,6 @@ class passive_tran_server : public tran_server
     void start_log_replicator (const log_lsa &start_lsa, const log_lsa &prev_lsa);
     void start_oldest_active_mvccid_sender ();
 
-
     /* highest processed lsa, to be used for retrieve pages from PS */
     log_lsa get_highest_processed_lsa () const;
     /* lowest unapplied lsa, to be used to wait for page sync */
