@@ -2011,6 +2011,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 80 Nivelul de izolare MVCC trebuie să fie 'read committed', 'repeatable read' sau'serializable'.
 81 '%1$s' este un obiect 'auto_increment', care nu poate fi modificat ca serial.
 82 JSON invalid: '%1$s'.
+83 Vclass %1$s is not updatable because the vclass has some reuse_oid table. Please check it.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** cache invalid ***

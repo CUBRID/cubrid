@@ -2011,6 +2011,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 80 트랜잭션 격리도는 'read committed', 'repeatable read', 'serializable' 중의 하나여야 합니다.
 81 '%1$s'은 auto_increment 객체로서 serial 객체처럼 변경할 수 없습니다.
 82 유효하지 않은 JSON: '%1$s'.
+83 Vclass %1$s is not updatable. Please check if any of its related classes are marked as REUSE_OID.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** 잘못된 캐시 ***
