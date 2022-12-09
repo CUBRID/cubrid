@@ -351,8 +351,8 @@ namespace cublog
 	    char buf[BUF_LEN_MAX];
 
 	    const int written = snprintf (buf, (size_t) BUF_LEN_MAX,
-					  "  _W_FAILED LSA = %lld|%d  vpid = %d|%d  rcvindex = %s\n",
-					  LSA_AS_ARGS (&lsa), VPID_AS_ARGS (&vpid),
+					  "  _FAIL_ trid=%d  LSA = %lld|%d  vpid = %d|%d  rcvindex = %s\n",
+					  m_trid, LSA_AS_ARGS (&lsa), VPID_AS_ARGS (&vpid),
 					  rv_rcvindex_string (rcvindex));
 	    assert (BUF_LEN_MAX > written);
 
@@ -367,7 +367,7 @@ namespace cublog
 	const atomic_log_entry &new_entry = m_log_vec.emplace_back (lsa, vpid, rcvindex, page_p);
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 	  {
-	    new_entry.dump_to_stream (m_full_dump_stream);
+	    new_entry.dump_to_stream (m_full_dump_stream, m_trid);
 	  }
       }
 
@@ -456,7 +456,7 @@ namespace cublog
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
-	new_entry.dump_to_stream (m_full_dump_stream);
+	new_entry.dump_to_stream (m_full_dump_stream, m_trid);
 	dump ("sequence::append_control_log END");
       }
   }
@@ -469,7 +469,7 @@ namespace cublog
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
-	new_entry.dump_to_stream (m_full_dump_stream);
+	new_entry.dump_to_stream (m_full_dump_stream, m_trid);
 	dump ("sequence::append_control_log_sysop_end END");
       }
   }
@@ -779,7 +779,7 @@ namespace cublog
 
     for (const atomic_log_entry &log_entry : m_log_vec)
       {
-	log_entry.dump_to_buffer (buf_ptr, buf_len);
+	log_entry.dump_to_buffer (buf_ptr, buf_len, m_trid);
       }
   }
 
@@ -905,7 +905,7 @@ namespace cublog
 
   void
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::dump_to_buffer (
-	  char *&buf_ptr, int &buf_len) const
+	  char *&buf_ptr, int &buf_len, TRANID trid) const
   {
     int written = 0;
     if (is_control ())
@@ -914,16 +914,17 @@ namespace cublog
 	  = (LOG_SYSOP_END_COMMIT <= m_sysop_end_type && m_sysop_end_type <= LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
 	    ? log_sysop_end_type_string (m_sysop_end_type) : "N_A";
 	written = snprintf (buf_ptr, (size_t)buf_len,
-			    "  _C_ LSA = %lld|%d  rectype = %s"
+			    "  _CTRL_ trid=%d  LSA = %lld|%d  rectype = %s"
 			    "  sysop_end_type = %s  sysop_end_last_parent_lsa = %lld|%d\n",
-			    LSA_AS_ARGS (&m_lsa), log_to_string (m_rectype),
+			    trid, LSA_AS_ARGS (&m_lsa), log_to_string (m_rectype),
 			    sysop_end_type_str, LSA_AS_ARGS (&m_sysop_end_last_parent_lsa));
       }
     else
       {
 	assert (m_rectype == LOG_LARGER_LOGREC_TYPE);
-	written = snprintf (buf_ptr, (size_t)buf_len, "  _W_ LSA = %lld|%d  vpid = %d|%d  rcvindex = %s\n",
-			    LSA_AS_ARGS (&m_lsa), VPID_AS_ARGS (&m_vpid),
+	written = snprintf (buf_ptr, (size_t)buf_len,
+			    "  _REDO_ trid=%d  LSA = %lld|%d  vpid = %d|%d  rcvindex = %s\n",
+			    trid, LSA_AS_ARGS (&m_lsa), VPID_AS_ARGS (&m_vpid),
 			    rv_rcvindex_string (m_rcvindex));
       }
     assert (written > 0);
@@ -934,7 +935,7 @@ namespace cublog
 
   void
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::dump_to_stream (
-	  std::stringstream &dump_stream) const
+	  std::stringstream &dump_stream, TRANID trid) const
   {
     constexpr int BUF_LEN_MAX = UCHAR_MAX;
     char buf[BUF_LEN_MAX];
@@ -942,7 +943,7 @@ namespace cublog
     int buf_len = BUF_LEN_MAX;
 
     // maybe faster to first dump to stack buffer
-    dump_to_buffer (buf_ptr, buf_len);
+    dump_to_buffer (buf_ptr, buf_len, trid);
 
     dump_stream << (char *) buf; // dump to buffer already ends with newline
   }
@@ -955,6 +956,7 @@ namespace cublog
   {
     assert (m_page_p == nullptr);
     assert (m_watcher_p == nullptr);
+    assert (m_ref_count == 0);
   }
 
   /*********************************************************************************************************
@@ -1095,6 +1097,9 @@ namespace cublog
   pgbuf_fix_or_ordered_fix (THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcvindex,
 			    std::unique_ptr<PGBUF_WATCHER> &watcher_uptr, PAGE_PTR &page_ptr)
   {
+    assert (watcher_uptr == nullptr);
+    assert (page_ptr == nullptr);
+
     constexpr PAGE_FETCH_MODE fetch_mode = OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT;
     switch (rcvindex)
       {
@@ -1110,8 +1115,6 @@ namespace cublog
       case RVHF_INSERT_NEWHOME:
       case RVHF_MVCC_UPDATE_OVERFLOW:
       {
-	assert (watcher_uptr == nullptr);
-
 	watcher_uptr.reset (new PGBUF_WATCHER ());
 	// using null hfid here as the watcher->group_id is initialized internally by pgbuf_ordered_fix at a cost
 	PGBUF_INIT_WATCHER (watcher_uptr.get (), PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
@@ -1127,8 +1130,6 @@ namespace cublog
 	break;
       }
       default:
-	assert (page_ptr == nullptr);
-
 	page_ptr = pgbuf_fix (thread_p, &vpid, fetch_mode, PGBUF_LATCH_WRITE,
 			      PGBUF_UNCONDITIONAL_LATCH);
 	if (page_ptr == nullptr)
@@ -1166,7 +1167,9 @@ namespace cublog
 	break;
       case RVPGBUF_DEALLOC:
 	assert (watcher_uptr == nullptr);
-	// TODO: do not unfix the page, it has been already flushed from the page buffer
+	// do not unfix the page, it has been already flushed from the page buffer
+	assert (page_ptr != nullptr);
+	page_ptr = nullptr;
 	break;
       default:
 	assert (watcher_uptr == nullptr);
