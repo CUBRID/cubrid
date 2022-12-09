@@ -776,4 +776,4 @@ extern "C"
 
 
 
-#endif /* _SYSTEM_PARAMETER_H_ */
+#endif				/* _SYSTEM_PARAMETER_H_ */
