@@ -746,152 +746,29 @@ extern "C"
   extern int sysprm_set_error (SYSPRM_ERR rc, const char *data);
   extern int sysprm_get_session_parameters_count (void);
 
-  STATIC_INLINE int prm_get_integer_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));;
-  STATIC_INLINE bool prm_get_bool_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));;
-  STATIC_INLINE float prm_get_float_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));;
-  STATIC_INLINE char *prm_get_string_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));;
-  STATIC_INLINE int *prm_get_integer_list_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));;
-  STATIC_INLINE UINT64 prm_get_bigint_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));;
-/*
- * prm_get_integer_value () - get the value of a parameter of type integer
- *
- * return      : value
- * prm_id (in) : parameter id
- *
- * NOTE: keywords are stored as integers
- */
-  STATIC_INLINE int prm_get_integer_value (PARAM_ID prm_id)
-  {
-    assert (prm_id <= PRM_LAST_ID);
-    assert (PRM_IS_INTEGER (&prm_Def[prm_id]) || PRM_IS_KEYWORD (&prm_Def[prm_id]));
+#define prm_get_integer_value(prm_id) ( \
+    (!PRM_SERVER_SESSION (prm_id)) ? PRM_GET_INT (prm_Def[prm_id].value) : PRM_GET_INT (prm_get_value (prm_id)) \
+  )
 
-#if defined (SERVER_MODE)
-    if (!PRM_SERVER_SESSION (prm_id))
-      {
-	return PRM_GET_INT (prm_Def[prm_id].value);
-      }
+#define prm_get_bool_value(prm_id) ( \
+    (!PRM_SERVER_SESSION (prm_id)) ? PRM_GET_BOOL (prm_Def[prm_id].value) : PRM_GET_BOOL (prm_get_value (prm_id)) \
+  )
 
-    return PRM_GET_INT (prm_get_value (prm_id));
-#else				/* SERVER_MODE */
-      return PRM_GET_INT (prm_Def[prm_id].value);
-#endif				/* SERVER_MODE */
-  }
+#define prm_get_float_value(prm_id) ( \
+    (!PRM_SERVER_SESSION (prm_id)) ? PRM_GET_FLOAT (prm_Def[prm_id].value) : PRM_GET_FLOAT (prm_get_value (prm_id)) \
+  )
 
-/*
- * prm_get_bool_value () - get the value of a parameter of type bool
- *
- * return      : value
- * prm_id (in) : parameter id
- */
-  STATIC_INLINE bool prm_get_bool_value (PARAM_ID prm_id)
-  {
-    assert (prm_id <= PRM_LAST_ID);
-    assert (PRM_IS_BOOLEAN (&prm_Def[prm_id]));
+#define prm_get_string_value(prm_id) ( \
+    (!PRM_SERVER_SESSION (prm_id)) ? PRM_GET_STRING (prm_Def[prm_id].value) : PRM_GET_STRING (prm_get_value (prm_id)) \
+  )
 
-#if defined (SERVER_MODE)
-    if (!PRM_SERVER_SESSION (prm_id))
-      {
-	return PRM_GET_BOOL (prm_Def[prm_id].value);
-      }
+#define prm_get_integer_list_value(prm_id) ( \
+    (!PRM_SERVER_SESSION (prm_id)) ? PRM_GET_INTEGER_LIST (prm_Def[prm_id].value) : PRM_GET_INTEGER_LIST (prm_get_value (prm_id)) \
+  )
 
-    return PRM_GET_BOOL (prm_get_value (prm_id));
-#else /* SERVER_MODE */
-    return PRM_GET_BOOL (prm_Def[prm_id].value);
-#endif /* SERVER_MODE */
-  }
-
-/*
- * prm_get_float_value () - get the value of a parameter of type float
- *
- * return      : value
- * prm_id (in) : parameter id
- */
-  STATIC_INLINE float prm_get_float_value (PARAM_ID prm_id)
-  {
-    assert (prm_id <= PRM_LAST_ID);
-    assert (PRM_IS_FLOAT (&prm_Def[prm_id]));
-
-#if defined (SERVER_MODE)
-    if (!PRM_SERVER_SESSION (prm_id))
-      {
-	return PRM_GET_FLOAT (prm_Def[prm_id].value);
-      }
-
-    return PRM_GET_FLOAT (prm_get_value (prm_id));
-#else /* SERVER_MODE */
-    return PRM_GET_FLOAT (prm_Def[prm_id].value);
-#endif /* SERVER_MODE */
-  }
-
-/*
- * prm_get_string_value () - get the value of a parameter of type string
- *
- * return      : value
- * prm_id (in) : parameter id
- */
-  STATIC_INLINE char *prm_get_string_value (PARAM_ID prm_id)
-  {
-    assert (prm_id <= PRM_LAST_ID);
-    assert (PRM_IS_STRING (&prm_Def[prm_id]));
-
-#if defined (SERVER_MODE)
-    if (!PRM_SERVER_SESSION (prm_id))
-      {
-	return PRM_GET_STRING (prm_Def[prm_id].value);
-      }
-
-    return PRM_GET_STRING (prm_get_value (prm_id));
-#else /* SERVER_MODE */
-    return PRM_GET_STRING (prm_Def[prm_id].value);
-#endif /* SERVER_MODE */
-  }
-
-/*
- * prm_get_integer_list_value () - get the value of a parameter of type
- *				   integer list
- *
- * return      : value
- * prm_id (in) : parameter id
- */
-  STATIC_INLINE int *prm_get_integer_list_value (PARAM_ID prm_id)
-  {
-    assert (prm_id <= PRM_LAST_ID);
-    assert (PRM_IS_INTEGER_LIST (&prm_Def[prm_id]));
-
-#if defined (SERVER_MODE)
-    if (!PRM_SERVER_SESSION (prm_id))
-      {
-	return PRM_GET_INTEGER_LIST (prm_Def[prm_id].value);
-      }
-
-    return PRM_GET_INTEGER_LIST (prm_get_value (prm_id));
-#else /* SERVER_MODE */
-    return PRM_GET_INTEGER_LIST (prm_Def[prm_id].value);
-#endif /* SERVER_MODE */
-  }
-
-/*
- * prm_get_bigint_value () - get the value of a parameter of type size
- *
- * return      : value
- * prm_id (in) : parameter id
- */
-  STATIC_INLINE UINT64 prm_get_bigint_value (PARAM_ID prm_id)
-  {
-    assert (prm_id <= PRM_LAST_ID);
-    assert (PRM_IS_BIGINT (&prm_Def[prm_id]));
-
-#if defined (SERVER_MODE)
-    if (!PRM_SERVER_SESSION (prm_id))
-      {
-	return PRM_GET_BIGINT (prm_Def[prm_id].value);
-      }
-
-    return PRM_GET_BIGINT (prm_get_value (prm_id));
-#else /* SERVER_MODE */
-    return PRM_GET_BIGINT (prm_Def[prm_id].value);
-#endif /* SERVER_MODE */
-  }
+#define prm_get_bigint_value(prm_id) ( \
+    (!PRM_SERVER_SESSION (prm_id)) ? PRM_GET_BIGINT (prm_Def[prm_id].value) : PRM_GET_BIGINT (prm_get_value (prm_id)) \
+  )
 
 #ifdef __cplusplus
 }
