@@ -748,13 +748,13 @@ extern "C"
 
 #if defined (WINDOWS)
   /* FIXME!!! Segmentation fault when using inline function on Window. Temporarily, disable inline functions on Window. */
-  extern int prm_get_integer_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));
-  extern bool prm_get_bool_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));
-  extern float prm_get_float_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));
-  extern char *prm_get_string_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));
-  extern int *prm_get_integer_list_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));
-  extern UINT64 prm_get_bigint_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));
-#else				/* window */
+  extern int prm_get_integer_value (PARAM_ID prm_id);
+  extern bool prm_get_bool_value (PARAM_ID prm_id);
+  extern float prm_get_float_value (PARAM_ID prm_id);
+  extern char *prm_get_string_value (PARAM_ID prm_id);
+  extern int *prm_get_integer_list_value (PARAM_ID prm_id);
+  extern UINT64 prm_get_bigint_value (PARAM_ID prm_id);
+#else /* window */
   STATIC_INLINE int prm_get_integer_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));
   STATIC_INLINE bool prm_get_bool_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));
   STATIC_INLINE float prm_get_float_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));
