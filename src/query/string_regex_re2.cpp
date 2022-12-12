@@ -50,7 +50,7 @@ namespace cubregex
     std::string pattern;
     if (cublocale::convert_to_string (pattern, cr->pattern, cr->codeset) == false)
       {
-       return ER_QSTR_BAD_SRC_CODESET;
+	return ER_QSTR_BAD_SRC_CODESET;
       }
 
     // TODO assuming that UTF8

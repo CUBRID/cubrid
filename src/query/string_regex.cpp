@@ -92,7 +92,8 @@ namespace cubregex
 
   int compile_regex_internal (REFPTR (compiled_regex, cr), const std::string &pattern_string, const engine_type type,
 			      const opt_flag_type opt_flag, const LANG_COLLATION *collation);
-  bool should_compile_skip (REFPTR (compiled_regex, cr), const std::string &pattern, const engine_type type, const opt_flag_type opt_flag,
+  bool should_compile_skip (REFPTR (compiled_regex, cr), const std::string &pattern, const engine_type type,
+			    const opt_flag_type opt_flag,
 			    const INTL_CODESET codeset);
   opt_flag_type parse_match_type (const std::string &match_type);
 
@@ -108,10 +109,10 @@ namespace cubregex
 
     const char *engine_type_prm = prm_get_string_value (PRM_ID_REGEXP_ENGINE);
 
-  #if !defined (NDEBUG)
-      assert (check_regexp_engine_prm (engine_type_prm));
-  #endif
-    
+#if !defined (NDEBUG)
+    assert (check_regexp_engine_prm (engine_type_prm));
+#endif
+
     engine_type type = get_engine_type_by_name (engine_type_prm);
 
 
@@ -210,7 +211,8 @@ namespace cubregex
   }
 
   int
-  compile_regex_internal (REFPTR (compiled_regex, cr),  const std::string &pattern_string, const engine_type type, const opt_flag_type opt_flag,
+  compile_regex_internal (REFPTR (compiled_regex, cr),  const std::string &pattern_string, const engine_type type,
+			  const opt_flag_type opt_flag,
 			  const LANG_COLLATION *collation)
   {
     int error = NO_ERROR;
@@ -228,7 +230,7 @@ namespace cubregex
 	cr = new compiled_regex ();
       }
 
-    cr->type = type; 
+    cr->type = type;
     cr->compiled = new compiled_regex_object { nullptr };
     cr->pattern.assign (pattern_string);
     cr->flags = opt_flag;
@@ -252,11 +254,12 @@ namespace cubregex
   }
 
   bool
-  should_compile_skip (REFPTR (compiled_regex, cr), const std::string &pattern, const engine_type type, const opt_flag_type opt_flag,
+  should_compile_skip (REFPTR (compiled_regex, cr), const std::string &pattern, const engine_type type,
+		       const opt_flag_type opt_flag,
 		       const INTL_CODESET codeset)
   {
     if (cr == nullptr
-  || cr->type != type
+	|| cr->type != type
 	|| cr->flags != opt_flag
 	|| cr->pattern.size() != pattern.size()
 	|| cr->pattern.compare (pattern) != 0
