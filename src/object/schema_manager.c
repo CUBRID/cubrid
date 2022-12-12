@@ -484,9 +484,11 @@ static const char *sm_locate_method_file (SM_CLASS * class_, const char *functio
 static void sm_method_final (void);
 #endif
 
+#if 0				// defined(UNCALLED_FUNCTION)
 static int sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CONSTRAINT_TYPE constraint_type,
 				 const char *constraint_name, const char **att_names, const int *asc_desc,
 				 const SM_PREDICATE_INFO * filter_index, const SM_FUNCTION_INFO * func_info);
+#endif
 
 static void sm_reset_descriptors (MOP class_);
 
@@ -14448,6 +14450,7 @@ sm_produce_constraint_name_tmpl (SM_TEMPLATE * tmpl, DB_CONSTRAINT_TYPE constrai
   return sm_produce_constraint_name (template_classname (tmpl), constraint_type, att_names, asc_desc, given_name);
 }
 
+#if 0				// defined(UNCALLED_FUNCTION)
 /*
  * sm_check_index_exist() - Check index is duplicated.
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -14483,6 +14486,7 @@ sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CONSTRAINT_TY
   return classobj_check_index_exist (class_->constraints, out_shared_cons_name, sm_ch_name ((MOBJ) class_),
 				     constraint_type, constraint_name, att_names, asc_desc, filter_index, func_info);
 }
+#endif
 
 static int
 sm_add_secondary_index_on_partition (MOP classop, DB_CONSTRAINT_TYPE constraint_type,

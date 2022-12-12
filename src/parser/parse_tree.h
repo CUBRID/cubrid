@@ -2026,7 +2026,7 @@ struct pt_index_info
   bool unique;			/* UNIQUE specified? */
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
   int ib_threads;
-#if 1				// defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_KEY_DUP_LEVEL)
   short dupkey_mode;		/* refer to enDupMode */
   short dupkey_hash_level;	/* 0 : no hash, others : hash size */
 #endif
@@ -3179,6 +3179,10 @@ struct pt_foreign_key_info
   PT_MISC_TYPE match_type;	/* full or partial */
   PT_MISC_TYPE delete_action;
   PT_MISC_TYPE update_action;
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+  short dupkey_mode;		/* refer to enDupMode */
+  short dupkey_hash_level;	/* 0 : no hash, others : hash size */
+#endif
 };
 
 /* Info for the CONSTRAINT node */

@@ -11958,9 +11958,16 @@ heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACH
  *   attr_info(in):
  *   idx_info(in):
  */
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+int
+heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * class_recdes,
+				HEAP_CACHE_ATTRINFO * attr_info, HEAP_IDX_ELEMENTS_INFO * idx_info,
+				bool is_check_foreign)
+#else
 int
 heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * class_recdes,
 				HEAP_CACHE_ATTRINFO * attr_info, HEAP_IDX_ELEMENTS_INFO * idx_info)
+#endif
 {
   ATTR_ID guess_attrids[HEAP_GUESS_NUM_INDEXED_ATTRS];
   ATTR_ID *set_attrids;
@@ -12012,14 +12019,32 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
   for (j = 0; j < *num_btids; j++)
     {
       indexp = &classrepr->indexes[j];
-      if (indexp->n_atts == 1)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+      if (is_check_foreign && IS_HIDDEN_INDEX_COL_ID (indexp->atts[indexp->n_atts - 1]->id))
 	{
-	  idx_info->has_single_col = 1;
+	  if (indexp->n_atts == 2)
+	    {
+	      idx_info->has_single_col = 1;
+	    }
+	  else if (indexp->n_atts > 2)
+	    {
+	      idx_info->has_multi_col = 1;
+	    }
 	}
-      else if (indexp->n_atts > 1)
+      else
 	{
-	  idx_info->has_multi_col = 1;
+#endif
+	  if (indexp->n_atts == 1)
+	    {
+	      idx_info->has_single_col = 1;
+	    }
+	  else if (indexp->n_atts > 1)
+	    {
+	      idx_info->has_multi_col = 1;
+	    }
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	}
+#endif
       /* check for already found both */
       if (idx_info->has_single_col && idx_info->has_multi_col)
 	{
@@ -12041,11 +12066,26 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	      for (j = 0; j < *num_btids; j++)
 		{
 		  indexp = &classrepr->indexes[j];
-		  if (indexp->n_atts == 1 && indexp->atts[0]->id == search_attrepr->id)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+		  if (is_check_foreign && IS_HIDDEN_INDEX_COL_ID (indexp->atts[indexp->n_atts - 1]->id))
 		    {
-		      set_attrids[num_found_attrs++] = search_attrepr->id;
-		      break;
+		      if (indexp->n_atts == 2 && indexp->atts[0]->id == search_attrepr->id)
+			{
+			  set_attrids[num_found_attrs++] = search_attrepr->id;
+			  break;
+			}
 		    }
+		  else
+		    {
+#endif
+		      if (indexp->n_atts == 1 && indexp->atts[0]->id == search_attrepr->id)
+			{
+			  set_attrids[num_found_attrs++] = search_attrepr->id;
+			  break;
+			}
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+		    }
+#endif
 		}
 	    }
 	}			/* for (i = 0 ...) */
@@ -12420,6 +12460,14 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 #if defined(SUPPORT_KEY_DUP_LEVEL)
       if (IS_HIDDEN_INDEX_COL_ID (atts[i]->id))
 	{
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+	  if (index->type == BTREE_FOREIGN_KEY)
+	    {
+	      printf ("foreign key!!!\n");
+	      ;			//continue; 
+	    }
+#endif
+
 	  dk_heap_midxkey_get_hidden_value (atts[i]->id, rec_oid, &value);
 	  atts[i]->domain->type->index_writeval (&buf, &value);
 	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
@@ -12815,6 +12863,9 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
   DB_VALUE *ret_val = NULL;
   DB_VALUE *fi_res = NULL;
   TP_DOMAIN *fi_domain = NULL;
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+  bool is_check_foreign = false;
+#endif
 
   assert (DB_IS_NULL (db_value));
 
@@ -12848,6 +12899,13 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
   n_atts = index->n_atts;
   *btid = index->btid;
 
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+  if (is_check_foreign && IS_HIDDEN_INDEX_COL_ID (index->atts[index->n_atts - 1]->id))
+    {
+      n_atts--;			//-----------------
+    }
+#endif
+
   /* is function index */
   if (index->func_index_info)
     {
@@ -12858,6 +12916,13 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 	}
       fi_res = db_value;
     }
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+  if (is_check_foreign && index->type == BTREE_FOREIGN_KEY)
+    {
+      printf ("haha foreign key!!!\n");
+    }
+#endif
 
   /*
    *  Multi-column index.  Construct the key as a sequence of attribute

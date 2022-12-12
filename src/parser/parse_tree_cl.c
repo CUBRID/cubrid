@@ -6270,6 +6270,65 @@ pt_apply_alter_index (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   return p;
 }
 
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+static PARSER_VARCHAR *
+pt_print_hidden_index_info (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *b = NULL;
+
+  if (p->info.index.dupkey_mode == DUP_MODE_NONE)
+    {
+      if (DUP_MODE_DEFAULT != DUP_MODE_NONE)
+	{
+	  b = pt_append_nulstring (parser, b, " duplicate OFF");
+	}
+    }
+  else
+    {
+      if ((p->info.index.dupkey_mode == DUP_MODE_DEFAULT) && (p->info.index.dupkey_hash_level == OVFL_LEVEL_DEFAULT))
+	{
+	  b = pt_append_nulstring (parser, b, " duplicate ON");
+	}
+      else
+	{
+	  switch (p->info.index.dupkey_mode)
+	    {
+	    case DUP_MODE_OID:
+	      b = pt_append_nulstring (parser, b, " duplicate with OID");
+	      break;
+	    case DUP_MODE_PAGEID:
+	      b = pt_append_nulstring (parser, b, " duplicate with PAGEID");
+	      break;
+	    case DUP_MODE_SLOTID:
+	      b = pt_append_nulstring (parser, b, " duplicate with SLOTID");
+	      break;
+	    case DUP_MODE_VOLID:
+	      b = pt_append_nulstring (parser, b, " duplicate with VOLID");
+	      break;
+	    default:
+	      assert (false);
+	    }
+
+	  if ((p->info.index.dupkey_mode == DUP_MODE_DEFAULT)
+	      && (p->info.index.dupkey_hash_level == OVFL_LEVEL_DEFAULT))
+	    {
+
+	    }
+
+	  if ((p->info.index.dupkey_mode != DUP_MODE_NONE) && (p->info.index.dupkey_hash_level == OVFL_LEVEL_DEFAULT))
+	    {
+	      char tmp_buf[32];
+	      sprintf (tmp_buf, " level %d", p->info.index.dupkey_hash_level);
+	      b = pt_append_nulstring (parser, b, tmp_buf);
+	    }
+	}
+    }
+
+  return b;
+}
+
+#endif
+
 /*
  * pt_print_alter_index () -
  *   return:
@@ -6360,6 +6419,14 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.index.code == PT_REBUILD_INDEX)
     {
       b = pt_append_nulstring (parser, b, "rebuild");
+
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      //if (p->info.index.dupkey_mode == DUP_MODE_NONE)  // ctshim check default policy
+      {
+	PARSER_VARCHAR *rt = pt_print_hidden_index_info (parser, p);
+	b = pt_append_varchar (parser, b, rt);
+      }
+#endif
     }
 
   return b;
@@ -7304,6 +7371,14 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
   b = pt_append_nulstring (parser, b, " (");
   b = pt_append_varchar (parser, b, r2);
   b = pt_append_nulstring (parser, b, ") ");
+
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+  //if (p->info.index.dupkey_mode == DUP_MODE_NONE) // ctshim check default policy
+  {
+    PARSER_VARCHAR *rt = pt_print_hidden_index_info (parser, p);
+    b = pt_append_varchar (parser, b, rt);
+  }
+#endif
 
   if (p->info.index.where != NULL)
     {

@@ -4077,8 +4077,6 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
   const char **namep;
   int nnames;
 
-  assert (asc_desc != NULL);
-
   // If there is a column corresponding to PK among the attributes constituting the index, the hidden_index_column is not added.
   int hidden_index_col = -1;
   for (nnames = 0, namep = att_names; *namep; namep++, nnames++)
@@ -4130,25 +4128,20 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
 
       if (!*attp)
 	{
-	  // remove hidden column                  
-	  assert ((asc_desc[hidden_index_col] == HIDDEN_INDEX_COL_ATTR_NAME_DO_NOT_FREE)
-		  || (asc_desc[hidden_index_col] == HIDDEN_INDEX_COL_ATTR_NAME_NEED_FREE));
-	  if (asc_desc[hidden_index_col] == HIDDEN_INDEX_COL_ATTR_NAME_DO_NOT_FREE)
-	    {
-	      att_names[hidden_index_col] = NULL;
-	    }
-	  else
-	    {
-	      free_and_init (att_names[hidden_index_col]);
-	    }
+	  // remove hidden column
+	  att_names[hidden_index_col] = NULL;
 
 	  if (func_index_info && func_index_info->attr_index_start > 0)
 	    {
 	      int func_no_args = nnames - hidden_index_col;
 	      if (func_no_args > 0)
 		{
-		  memmove ((int *) asc_desc + hidden_index_col, (int *) asc_desc + (hidden_index_col + 1),
-			   (func_no_args * sizeof (asc_desc[0])));
+		  if (asc_desc)
+		    {
+		      memmove ((int *) asc_desc + hidden_index_col, (int *) asc_desc + (hidden_index_col + 1),
+			       (func_no_args * sizeof (asc_desc[0])));
+		      ((int *) asc_desc)[hidden_index_col] = 0;
+		    }
 		  if (attrs_prefix_length)
 		    {
 		      memmove ((int *) attrs_prefix_length + hidden_index_col,
@@ -4166,9 +4159,6 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
 	  return;
 	}
     }
-
-  // 
-  ((int *) asc_desc)[hidden_index_col] = 0;
 }
 #endif
 /*
@@ -4236,7 +4226,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 
       len = 0;			/* init */
 
-#if 0				//defined(SUPPORT_KEY_DUP_LEVEL)  // ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
       while (*attp && *namep)
 	{
 	  if (intl_identifier_casecmp ((*attp)->header.name, *namep))
@@ -4256,7 +4246,6 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	  namep++;
 	  len++;		/* increase name number */
 	}
-
 #else
       while (*attp && *namep && !intl_identifier_casecmp ((*attp)->header.name, *namep))
 	{
@@ -4276,6 +4265,12 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 
 	      if (order != cons->asc_desc[i])
 		{
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+		  if ((i == (len - 1)) && IS_HIDDEN_INDEX_COL_ID ((attp[-1]->id)))
+		    {
+		      i++;
+		    }
+#endif
 		  break;	/* not match */
 		}
 	    }

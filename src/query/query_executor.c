@@ -11033,7 +11033,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   if (insert->has_uniques && (insert->do_replace || odku_assignments != NULL))
     {
-      if (heap_attrinfo_start_with_index (thread_p, &class_oid, NULL, &index_attr_info, &idx_info) < 0)
+      if (heap_attrinfo_start_with_index (thread_p, &class_oid, NULL, &index_attr_info, &idx_info
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+					  , false
+#endif
+	  ) < 0)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -21874,7 +21878,11 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	{
 	  index_att = index->atts[j];
 	  att_id = index_att->id;
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	  assert (att_id >= 0 || IS_HIDDEN_INDEX_COL_ID (att_id));
+#else
 	  assert (att_id >= 0);
+#endif
 
 	  if (index_position == function_index_pos)
 	    {
@@ -21932,15 +21940,31 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	    }
 
 	  /* Column_name */
-	  for (k = 0; k < rep->n_attributes; k++)
-	    {
-	      if (att_id == attr_ids[k])
-		{
-		  db_make_string (out_values[4], attr_names[k]);
-		  qexec_end_one_iteration (thread_p, xasl, xasl_state, &tplrec);
-		  break;
-		}
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	  if (IS_HIDDEN_INDEX_COL_ID (att_id))
+	    {			// Should I show this here or not!  -- ctshim
+	      int mode = GET_HIDDEN_INDEX_COL_MODE (att_id);
+	      int level = GET_HIDDEN_INDEX_COL_LEVEL (att_id);
+	      char *hidden_col_name = (char *) GET_HIDDEN_INDEX_COL_NAME (mode, level);
+
+	      db_make_string (out_values[4], hidden_col_name);
+	      qexec_end_one_iteration (thread_p, xasl, xasl_state, &tplrec);
 	    }
+	  else
+	    {
+#endif
+	      for (k = 0; k < rep->n_attributes; k++)
+		{
+		  if (att_id == attr_ids[k])
+		    {
+		      db_make_string (out_values[4], attr_names[k]);
+		      qexec_end_one_iteration (thread_p, xasl, xasl_state, &tplrec);
+		      break;
+		    }
+		}
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	    }
+#endif
 
 	  /* clear alloced DB_VALUEs */
 	  pr_clear_value (out_values[5]);

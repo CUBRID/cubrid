@@ -4042,11 +4042,19 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info, true);
+#else
   num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info);
+#endif
   if (num_found <= 0)
     {
       return error_code;
     }
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+  ;
+#endif
 
   if (idx_info.has_single_col)
     {
@@ -4082,6 +4090,13 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
        * the corresponding referenced column in some row of the referenced table.
        * Please notice that we don't currently support <match type>.
        */
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+      if (IS_HIDDEN_INDEX_COL_ID (index->atts[index->n_atts - 1]->id))
+	{
+	  has_null = (index->n_atts > 2) ? btree_multicol_key_has_null (key_dbvalue) : DB_IS_NULL (key_dbvalue);
+	}
+      else
+#endif
       if (index->n_atts > 1)
 	{
 
@@ -7697,7 +7712,11 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
    *  Populate the index_attrinfo structure.
    *  Return the number of indexed attributes found.
    */
-  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info);
+  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+					      , false
+#endif
+    );
   num_btids = idx_info.num_btids;
 
   if (num_found == 0)
@@ -8214,7 +8233,11 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   aligned_newbuf = PTR_ALIGN (newbuf, MAX_ALIGNMENT);
   aligned_oldbuf = PTR_ALIGN (oldbuf, MAX_ALIGNMENT);
 
-  new_num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &space_attrinfo[0], &new_idx_info);
+  new_num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &space_attrinfo[0], &new_idx_info
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+						  , false
+#endif
+    );
   num_btids = new_idx_info.num_btids;
   if (new_num_found < 0)
     {
@@ -8222,7 +8245,11 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
     }
   new_attrinfo = &space_attrinfo[0];
 
-  old_num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &space_attrinfo[1], &old_idx_info);
+  old_num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &space_attrinfo[1], &old_idx_info
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+						  , false
+#endif
+    );
   old_num_btids = old_idx_info.num_btids;
   if (old_num_found < 0)
     {
@@ -8845,7 +8872,11 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
    *  Populate the index_attrinfo structure.
    *  Return the number of indexed attributes found.
    */
-  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info);
+  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+					      , false
+#endif
+    );
   num_btids = idx_info.num_btids;
   if (num_found < 1)
     {
@@ -10258,7 +10289,11 @@ locator_check_class (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * peek, HF
   char *btname = NULL;
   int *attrs_prefix_length = NULL;
 
-  if (heap_attrinfo_start_with_index (thread_p, class_oid, peek, &attr_info, &idx_info) < 0)
+  if (heap_attrinfo_start_with_index (thread_p, class_oid, peek, &attr_info, &idx_info
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+				      , false
+#endif
+      ) < 0)
     {
       return DISK_ERROR;
     }

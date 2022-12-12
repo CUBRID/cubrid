@@ -46,8 +46,9 @@ typedef enum
 
 //---------------------------------------------------------------------
 #define SUPPORT_KEY_DUP_LEVEL
+//#define SUPPORT_KEY_DUP_LEVEL_FK
 
-#define HIDDEN_INDEX_COL_ATTR_ID_BASE    (-2848048)
+#define HIDDEN_INDEX_COL_ATTR_ID_BASE    (-28480000)
 #define HIDDEN_INDEX_COL_ATTR_NAME_PREFIX  "_cub_idx_col_"
 #define HIDDEN_INDEX_COL_ATTR_NAME_PREFIX_LEN  (13)
 
@@ -55,9 +56,6 @@ typedef enum
 #define HIDDEN_INDEX_COL_ATTR_NAME_PREFIX_PAGEID  "p_"
 #define HIDDEN_INDEX_COL_ATTR_NAME_PREFIX_SLOTID  "s_"
 #define HIDDEN_INDEX_COL_ATTR_NAME_PREFIX_VOLID   "v_"
-
-#define HIDDEN_INDEX_COL_ATTR_NAME_DO_NOT_FREE  (0x07)
-#define HIDDEN_INDEX_COL_ATTR_NAME_NEED_FREE    (0x08)
 
 static const char *st_hidden_index_col_name[] = {
 /* *INDENT-OFF* */
@@ -160,7 +158,7 @@ static const char *st_hidden_index_col_name[] = {
 #define IS_HIDDEN_INDEX_COL_NAME(name)  ((name[0] == '_') && memcmp ((name), HIDDEN_INDEX_COL_ATTR_NAME_PREFIX, HIDDEN_INDEX_COL_ATTR_NAME_PREFIX_LEN) == 0)
 #else
 #define IS_HIDDEN_INDEX_COL_ID(id)      (false)
-#define IS_HIDDEN_INDEX_COL_NAME(name)
+#define IS_HIDDEN_INDEX_COL_NAME(name)  (false)
 #endif
 
 

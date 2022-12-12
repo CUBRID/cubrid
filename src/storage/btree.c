@@ -19806,6 +19806,20 @@ exit_on_error:
 }
 #endif
 
+#if 0				// ctshim
+void
+debug_print (char *title, DB_VALUE * value)
+{
+  fprintf (stdout, "[%s] ", title);
+  if (value)
+    db_fprint_value (stdout, value);
+  fprintf (stdout, "\n");
+  fflush (stdout);
+}
+#else
+#define debug_print(a,b)
+#endif
+
 /*
  * btree_ils_adjust_range () - Adjust scanning range for loose index scan.
  *
@@ -19835,6 +19849,12 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   prefix_len = bts->index_scan_idp->indx_info->ils_prefix_len;
   use_desc_index = bts->use_desc_index;
   part_key_desc = BTREE_IS_PART_KEY_DESC (&bts->btid_int);
+
+
+  debug_print ("\n*** btree_ils_adjust_range()", NULL);
+  debug_print ("curr_key", curr_key);
+  debug_print ("key_range->key1", &key_range->key1);
+  debug_print ("key_range->key2", &key_range->key2);
 
   /* check environment */
   if (DB_VALUE_DOMAIN_TYPE (curr_key) != DB_TYPE_MIDXKEY)
@@ -20024,6 +20044,9 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   new_key.need_clear = true;
   pr_midxkey_add_elements (&new_key, new_key_dbvals, curr_key->data.midxkey.ncolumns,
 			   curr_key->data.midxkey.domain->setdomain);
+
+  debug_print ("target_key", target_key);
+  debug_print ("new_key", &new_key);
 
 #if !defined(NDEBUG)
   if (DB_IS_NULL (target_key))
@@ -24211,6 +24234,9 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     }
   else
     {
+
+      debug_print ("bts->key_range.lower_key", bts->key_range.lower_key);
+      debug_print ("bts->key_range.upper_key", bts->key_range.upper_key);
       /* Has lower limit. Try to locate the key. */
       error_code =
 	btree_locate_key (thread_p, &bts->btid_int, bts->key_range.lower_key, &bts->C_vpid, &bts->slot_id,

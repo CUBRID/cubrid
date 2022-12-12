@@ -2129,11 +2129,8 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
   OR_ATTRIBUTE *ptr = NULL;
   int size;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim  check!!!
-  if (IS_HIDDEN_INDEX_COL_ID (att_id))
-    {
-      return success;
-    }
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+  assert (!IS_HIDDEN_INDEX_COL_ID (att_id));
 #endif
 
   /* Find the attribute with the matching attribute ID */
@@ -2254,6 +2251,20 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
     {
       assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
       att_id = db_get_int (&att_val);	/* The first attrID */
+
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim  check!!!
+      if (IS_HIDDEN_INDEX_COL_ID (att_id))
+	{
+	  /* { btid, hidden_attrID, hidden_asc_desc, [attrID, asc_desc]+, {fk_info} or {key prefix length}, status, comment} */
+	  assert (seq_size >= 8);
+	  i = 3;
+	  if (set_get_element_nocopy (constraint_seq, i, &att_val) == NO_ERROR)
+	    {
+	      assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
+	      att_id = db_get_int (&att_val);	/* The first attrID after HIDDEN_INDEX_COL */
+	    }
+	}
+#endif
 
       (void) or_install_btids_attribute (rep, att_id, &id);
     }
