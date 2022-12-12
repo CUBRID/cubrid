@@ -94,7 +94,7 @@ public class CUBRIDServerSideConnection implements Connection {
 
     protected void requestDBParameter() throws IOException, SQLException {
         DBParameterInfo info = getSUConnection().getDBParameter();
-        
+
         switch (info.tran_isolation) {
             case CUBRIDIsolationLevel.TRAN_READ_COMMITTED:
                 transactionIsolation = TRANSACTION_READ_COMMITTED;

@@ -32,7 +32,6 @@
 #endif
 
 #define STRING_MAX_SIZE         (16*1024*1024)
-#define STRING_MAX_SIZE_LIMIT   (STRING_MAX_SIZE * sizeof(wchar_t))
 #define LOGIN_TIME_OUT          5
 #define NUM_OF_DIGITS(NUMBER)   (int)log10(NUMBER) + 1
 #define DISCONNECTED_STATE      -1
@@ -49,7 +48,7 @@
 
 #define UNICODE_CODE_PAGE       "UCS-2"
 #define UTF8_CODE_PAGE          "UTF-8"
-#define CONV_STRING_BUF_SIZE    (STRING_MAX_SIZE_LIMIT + STRING_MAX_SIZE)
+#define CONV_STRING_BUF_SIZE    (STRING_MAX_SIZE)
 
 #if defined (WINDOWS)
 #define CONV_M_TO_W(M, W, LEN)	MultiByteToWideChar(CP_ACP, 0, M, -1, W, LEN)
@@ -67,7 +66,8 @@ struct t_supported_dbms
 
 static INTL_CODESET client_charset = INTL_CODESET_UTF8;
 static char conv_out_string[CONV_STRING_BUF_SIZE + 1];
-static T_SUPPORTED_DBMS supported_dbms_list[] = { {"oracle", SUPPORTED_DBMS_ORACLE}, {"mysql", SUPPORTED_DBMS_MYSQL} };
+static T_SUPPORTED_DBMS supported_dbms_list[] =
+  { {"oracle", SUPPORTED_DBMS_ORACLE}, {"mysql", SUPPORTED_DBMS_MYSQL}, {"mariadb", SUPPORTED_DBMS_MARIADB} };
 
 static int supported_dbms_max_num = sizeof (supported_dbms_list) / sizeof (T_SUPPORTED_DBMS);
 static SUPPORTED_DBMS_TYPE curr_dbms_type = NOT_SUPPORTED_DBMS;
@@ -179,7 +179,7 @@ cgw_database_connect (SUPPORTED_DBMS_TYPE dbms_type, const char *connect_url, ch
 	       SQL_HANDLE_ENV,
 	       err_code = SQLAllocHandle (SQL_HANDLE_DBC, local_odbc_handle->henv, &local_odbc_handle->hdbc));
 
-  if (dbms_type == SUPPORTED_DBMS_MYSQL)
+  if (dbms_type == SUPPORTED_DBMS_MYSQL || dbms_type == SUPPORTED_DBMS_MARIADB)
     {
       SQL_CHK_ERR (local_odbc_handle->hdbc,
 		   SQL_HANDLE_ENV,
@@ -1078,10 +1078,11 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 	{
 	  bind_col_size = get_datatype_size (col_data_type, col_size, precision, scale);
 	}
-      bind_col_size *= sizeof (wchar_t);
 
       if (cgw_is_support_datatype (col_data_type, bind_col_size))
 	{
+	  bind_col_size = bind_col_size * 2;
+
 	  this_col_binding->col_data_type = col_data_type;
 	  this_col_binding->col_size = bind_col_size;
 	  this_col_binding->next = NULL;
@@ -1570,7 +1571,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 	    break;
 	  }
 
-	if (curr_dbms_type == SUPPORTED_DBMS_MYSQL)
+	if (curr_dbms_type == SUPPORTED_DBMS_MYSQL || curr_dbms_type == SUPPORTED_DBMS_MARIADB)
 	  {
 	    c_data_type = SQL_C_CHAR;
 	    sql_bind_type = SQL_TYPE_TIMESTAMP;
@@ -2285,7 +2286,7 @@ cgw_is_support_datatype (SQLSMALLINT data_type, SQLLEN type_size)
     case SQL_TYPE_DATE:
     case SQL_TYPE_TIME:
 #endif
-      if ((data_type == SQL_LONGVARCHAR || data_type == SQL_WLONGVARCHAR) && type_size > STRING_MAX_SIZE_LIMIT)
+      if ((data_type == SQL_LONGVARCHAR || data_type == SQL_WLONGVARCHAR) && type_size > STRING_MAX_SIZE)
 	{
 	  support_data_type = false;
 	}
@@ -2311,12 +2312,13 @@ cgw_is_support_datatype (SQLSMALLINT data_type, SQLLEN type_size)
 static int
 cgw_count_number_of_digits (int num_bits)
 {
-  if (num_bits <= 0 || num_bits > 64)
+
+  if (num_bits < 0 || num_bits > 64)
     {
       return ER_FAILED;
     }
 
-  return NUM_OF_DIGITS (pow (2, num_bits) - 1);
+  return (num_bits == 0) ? 0 : NUM_OF_DIGITS (pow (2, num_bits) - 1);
 }
 
 SUPPORTED_DBMS_TYPE

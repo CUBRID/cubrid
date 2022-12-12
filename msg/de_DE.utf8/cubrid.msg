@@ -1437,7 +1437,16 @@ $ LOADDB
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 Letzter Fehler
+1355 %1$s "%2$s" hat ein ungültiges Format in Zeile %3$d der Datei "%4$s"
+1356 Hostname "%1$s" ist zu lang, er sollte kleiner oder gleich 256 in Zeile %2$d der Datei "%3$s" sein.
+1357 Der Hostname "%1$s" existiert bereits, ein Hostname kann nicht mit anderen IP-Adressen in Zeile %2$d der Datei "%3$s" dupliziert werden.
+1358 Sowohl die IP-Adresse als auch der Hostname müssen vollständig in Zeile %1$d der Datei "%2$s" stehen.
+1359 "%1$s" kann nicht in der cubrid_hosts.conf nachgeschlagen werden.
+1360 Bei der Verwendung eines benutzerdefinierten Hosts ist ein Fehler aufgetreten.
+
+1361 Datei "%1$s" wurde nicht gefunden.
+
+1362 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
@@ -2002,6 +2011,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 80 Isolation Pegelwert in MVCC muss 'read committed', 'repeatable read' oder 'serializable'.
 81 '%1$s' ist ein 'auto_increment' Objekt, das nicht erlaubt als serielle verändert werden wird.
 82 Ungültiger JSON: '%1$s'.
+83 Vclass %1$s is not updatable. Please check if any of its related classes are marked as REUSE_OID.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** Ungültiges Cache ***

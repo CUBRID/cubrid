@@ -9511,16 +9511,9 @@ pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index, DB_VALUE *
 int
 pr_midxkey_init_boundbits (char *bufptr, int n_atts)
 {
-  unsigned char *bits;
-  int i, nbytes;
+  int nbytes = OR_MULTI_BOUND_BIT_BYTES (n_atts);
 
-  nbytes = OR_MULTI_BOUND_BIT_BYTES (n_atts);
-  bits = (unsigned char *) bufptr;
-
-  for (i = 0; i < nbytes; i++)
-    {
-      bits[i] = (unsigned char) 0;
-    }
+  MIDXKEY_BOUNDBITS_INIT (bufptr, nbytes);
 
   return nbytes;
 }
