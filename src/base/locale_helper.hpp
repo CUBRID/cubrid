@@ -39,6 +39,7 @@ namespace cublocale
 
   bool convert_to_wstring (std::wstring &out, const std::string &in, const INTL_CODESET codeset);
   bool convert_to_string (std::string &out, const std::wstring &in, const INTL_CODESET codeset);
+  bool convert_to_string (std::string &out, const std::string &in, const INTL_CODESET codeset);
 }
 
 #endif /* _LOCALE_HELPER_HPP_ */

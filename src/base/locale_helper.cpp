@@ -236,4 +236,86 @@ namespace cublocale
 
     return is_success;
   }
+
+  /*
+   * convert_to_string () -
+   *
+   * Arguments:
+   *        out:  (Out) Output string
+   *        in: (In) Input string
+   *        codeset: (In) code of the input string
+   *
+   * Returns: bool
+   *
+   * Note:
+   *   This function converts from a wide string into a multi-byte encoded string
+   */
+  bool convert_to_string (std::string &out, const std::string &in, const INTL_CODESET codeset)
+  {
+    bool is_success = false;
+
+    if (in.empty ())
+      {
+	// don't need to convert for empty string
+	out.clear ();
+	return true;
+      }
+
+    try
+      {
+	if (codeset == INTL_CODESET_UTF8)
+	  {
+	    out.assign (std::move (in));
+	    is_success = true;
+	  }
+	else
+	  {
+	    std::string to_str;
+	    to_str.resize (in.size());
+	    std::string::pointer to_str_ptr = (char *) to_str.data();
+
+	    int conv_status = 0;
+	    int conv_size = 0;
+	    switch (codeset)
+	      {
+	      case INTL_CODESET_ISO88591:
+		conv_status = intl_utf8_to_iso88591 ((const unsigned char *) in.data (), in.size (),
+						     (unsigned char **) &to_str_ptr,
+						     &conv_size);
+		break;
+	      case INTL_CODESET_KSC5601_EUC:
+		conv_status = intl_utf8_to_euckr ((const unsigned char *) in.data (), in.size (),
+						  (unsigned char **) &to_str_ptr,
+						  &conv_size);
+		break;
+	      case INTL_CODESET_RAW_BYTES:
+		/* when coercing multibyte to binary charset, we just reinterpret each byte as one character */
+		to_str.assign (in.begin(), in.end());
+		break;
+	      default:
+		// unrecognized codeset
+		conv_status = 1;
+		assert (false);
+		break;
+	      }
+
+	    /* conversion failed */
+	    if (conv_status != 0)
+	      {
+		return false;
+	      }
+
+	    to_str.resize (conv_size);
+	    out.assign (std::move (to_str));
+	    is_success = true;
+	  }
+      }
+    catch (const std::range_error &re)
+      {
+	// do nothing
+      }
+
+    return is_success;
+  }
+
 }

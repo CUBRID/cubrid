@@ -35,7 +35,13 @@
 #include "numeric_opfunc.h"
 #include "object_domain.h"
 #include "thread_compat.hpp"
+
+#ifdef  __cplusplus
+#include <functional>
 #include "string_regex.hpp"
+#else
+typedef struct cub_compiled_regex cub_compiled_regex;
+#endif
 
 #define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
                                  ((s)==DB_TYPE_VARCHAR))
@@ -216,21 +222,23 @@ extern int db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_s
 extern int db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * esc_char,
 			   int *result);
 
-#ifdef __cplusplus
-extern int db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * case_sensitive,
-			    cub_regex_object ** comp_regex, char **comp_pattern, int *result);
-
-extern int db_string_regexp_count (DB_VALUE * result, DB_VALUE * args[], const int num_args,
-				   cub_regex_object ** comp_regex, char **comp_pattern);
-extern int db_string_regexp_instr (DB_VALUE * result, DB_VALUE * args[], const int num_args,
-				   cub_regex_object ** comp_regex, char **comp_pattern);
-extern int db_string_regexp_like (DB_VALUE * result, DB_VALUE * args[], const int num_args,
-				  cub_regex_object ** comp_regex, char **comp_pattern);
-extern int db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], const int num_args,
-				     cub_regex_object ** comp_regex, char **comp_pattern);
-extern int db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], const int num_args,
-				    cub_regex_object ** comp_regex, char **comp_pattern);
-#endif
+//***********************************************************************************************
+// Regular Expression Functions
+//***********************************************************************************************
+// using db_regex_func = std::function<int (DB_VALUE *, DB_VALUE*[], const int, cub_compiled_regex **, char **)>;
+extern int db_string_rlike (const DB_VALUE *src_string, const DB_VALUE *pattern, const DB_VALUE *case_sensitive,
+			    cub_compiled_regex **comp_regex, int *result);
+extern int db_string_regexp_count (DB_VALUE *result, DB_VALUE *args[], const int num_args,
+				   cub_compiled_regex **comp_regex);
+extern int db_string_regexp_instr (DB_VALUE *result, DB_VALUE *args[], const int num_args,
+				   cub_compiled_regex **comp_regex);
+extern int db_string_regexp_like (DB_VALUE *result, DB_VALUE *args[], const int num_args,
+				  cub_compiled_regex **comp_regex);
+extern int db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], const int num_args,
+				     cub_compiled_regex **comp_regex);
+extern int db_string_regexp_substr (DB_VALUE *result, DB_VALUE *args[], const int num_args,
+				    cub_compiled_regex **comp_regex);
+//***********************************************************************************************
 
 extern int db_string_limit_size_string (DB_VALUE * src_string, DB_VALUE * result, const int new_size, int *spare_bytes);
 extern int db_string_fix_string_size (DB_VALUE * src_string);

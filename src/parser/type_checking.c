@@ -18504,7 +18504,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	case PT_RLIKE_BINARY:
 	case PT_NOT_RLIKE_BINARY:
 	  {
-	    int err = db_string_rlike (arg1, arg2, arg3, NULL, NULL, &cmp);
+	    int err = db_string_rlike (arg1, arg2, arg3, NULL, &cmp);
 
 	    switch (err)
 	      {
@@ -20026,23 +20026,23 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       break;
 
     case F_REGEXP_COUNT:
-      error = db_string_regexp_count (result, args, num_args, NULL, NULL);
+      error = db_string_regexp_count (result, args, num_args, NULL);
       break;
 
     case F_REGEXP_INSTR:
-      error = db_string_regexp_instr (result, args, num_args, NULL, NULL);
+      error = db_string_regexp_instr (result, args, num_args, NULL);
       break;
 
     case F_REGEXP_LIKE:
-      error = db_string_regexp_like (result, args, num_args, NULL, NULL);
+      error = db_string_regexp_like (result, args, num_args, NULL);
       break;
 
     case F_REGEXP_REPLACE:
-      error = db_string_regexp_replace (result, args, num_args, NULL, NULL);
+      error = db_string_regexp_replace (result, args, num_args, NULL);
       break;
 
     case F_REGEXP_SUBSTR:
-      error = db_string_regexp_substr (result, args, num_args, NULL, NULL);
+      error = db_string_regexp_substr (result, args, num_args, NULL);
       break;
 
     default:
