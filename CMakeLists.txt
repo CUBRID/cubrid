@@ -1224,18 +1224,23 @@ list(APPEND EP_TARGETS ${RAPIDJSON_TARGET})
 # RE2
 set(RE2_TARGET re2)
 if(WITH_RE2 STREQUAL "EXTERNAL")
-  set(RE2_INCLUDES ${CMAKE_BINARY_DIR}/external/include)
-  set(RE2_LIBS ${CMAKE_BINARY_DIR}/external/lib/libre2.a)
-  ADD_BY_PRODUCTS_VARIABLE ("RE2" ${RE2_LIBS})
-  externalproject_add(${RE2_TARGET}
-    GIT_REPOSITORY https://github.com/google/re2
-    GIT_TAG 5723bb8             # https://github.com/google/re2/releases/tag/2022-06-01
-    CONFIGURE_COMMAND ""        # no configure
-    BUILD_IN_SOURCE true        # re2 Makefile is designed to run locally
-    BUILD_COMMAND make CFLAGS="-fPIC" CXXFLAGS="-fPIC" # to allow static linking in shared library
-    INSTALL_COMMAND make install prefix="${CMAKE_BINARY_DIR}/external/"
-    "${RE2_BYPRODUCTS}"
-  )
+  if(UNIX)
+    set(RE2_INCLUDES ${CMAKE_BINARY_DIR}/external/include)
+    set(RE2_LIBS ${CMAKE_BINARY_DIR}/external/lib/libre2.a)
+    ADD_BY_PRODUCTS_VARIABLE ("RE2" ${RE2_LIBS})
+    externalproject_add(${RE2_TARGET}
+      GIT_REPOSITORY https://github.com/google/re2
+      GIT_TAG 5723bb8             # https://github.com/google/re2/releases/tag/2022-06-01
+      CONFIGURE_COMMAND ""        # no configure
+      BUILD_IN_SOURCE true        # re2 Makefile is designed to run locally
+      BUILD_COMMAND make CFLAGS="-fPIC" CXXFLAGS="-fPIC" # to allow static linking in shared library
+      INSTALL_COMMAND make install prefix="${CMAKE_BINARY_DIR}/external/"
+      "${RE2_BYPRODUCTS}"
+    )
+  else(UNIX)
+    set(RE2_INCLUDES ${WINDOWS_EXTERNAL_DIR}/RE2/include)
+    set(RE2_LIBS ${WINDOWS_EXTERNAL_DIR}/RE2/lib/re2.lib)
+  endif(UNIX)
 else(WITH_RE2 STREQUAL "EXTERNAL")
   message(FATAL_ERROR "Invalid WITH_RE2 option value ${WITH_RE2}")
 endif()
