@@ -63,8 +63,8 @@ namespace cubmethod
     switch (code)
       {
       case METHOD_CALLBACK_END_TRANSACTION:
-  error = end_transaction (unpacker);
-  break;
+	error = end_transaction (unpacker);
+	break;
       case METHOD_CALLBACK_QUERY_PREPARE:
 	error = prepare (unpacker);
 	break;
@@ -111,19 +111,17 @@ namespace cubmethod
     unpacker.unpack_all (command);
 
     if (command == 1)
-    {
-      db_commit_transaction ();
-    }
+      {
+	db_commit_transaction ();
+      }
     else if (command == 2)
-    {
-      db_abort_transaction ();
-    }
+      {
+	db_abort_transaction ();
+      }
     else
-    {
-      assert (false);
-      mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
-      return ER_FAILED;
-    }
+      {
+	assert (false);
+      }
 
     free_query_handle_all (true);
 

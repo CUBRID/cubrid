@@ -321,7 +321,6 @@ public class SUConnection {
         unpacker.unpackInt();
     }
 
-
     public void addElementToSet(CUBRIDOID oid, String attributeName, Object value)
             throws IOException, SQLException {
         collectionCmd(CUBRIDServerSideConstants.ADD_ELEMENT_TO_SET, oid, attributeName, value, -1);

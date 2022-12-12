@@ -339,8 +339,8 @@ namespace cubmethod
 	error = callback_get_generated_keys (thread_ref, unpacker);
 	break;
       case METHOD_CALLBACK_END_TRANSACTION:
-  error = callback_end_transaction (thread_ref, unpacker);
-  break;
+	error = callback_end_transaction (thread_ref, unpacker);
+	break;
       default:
 	// TODO: not implemented yet, do we need error handling?
 	assert (false);
