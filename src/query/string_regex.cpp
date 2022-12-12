@@ -121,7 +121,8 @@ namespace cubregex
 	return NO_ERROR;
       }
 
-    return compile_regex_internal (cr, pattern_string, type, opt_flag, collation);
+    int error_code = compile_regex_internal (cr, pattern_string, type, opt_flag, collation);
+    return error_code == ER_QSTR_BAD_SRC_CODESET ? NO_ERROR : error_code;
   }
 
   int

@@ -1543,6 +1543,7 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 	    case F_REGEXP_SUBSTR:
 	      {
 		delete regu_var->value.funcp->tmp_obj->compiled_regex;
+		regu_var->value.funcp->tmp_obj->compiled_regex = NULL;
 	      }
 	      break;
 	    default:
