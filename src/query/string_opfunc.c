@@ -4548,7 +4548,6 @@ db_string_rlike (const DB_VALUE * src, const DB_VALUE * pattern, const DB_VALUE 
 	goto cleanup;
       }
 
-// *INDENT-OFF*
     LANG_COLLATION *collation = lang_get_collation (coll_id);
     assert (collation != NULL);
 
@@ -4557,19 +4556,19 @@ db_string_rlike (const DB_VALUE * src, const DB_VALUE * pattern, const DB_VALUE 
 
     /* compile pattern if needed */
     std::string pattern_string (db_get_string (pattern), db_get_string_size (pattern));
-    if (cubregex::compile (compiled_regex, pattern_string, match_str, collation) != NO_ERROR)
-    {
-      goto cleanup;
-    }
+    error_status = cubregex::compile (compiled_regex, pattern_string, match_str, collation);
+    if (error_status != NO_ERROR)
+      {
+	goto cleanup;
+      }
 
     std::string src_string (db_get_string (src), db_get_string_size (src));
     error_status = cubregex::search (*result, *compiled_regex, src_string);
     if (error_status != NO_ERROR)
       {
-  	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
+	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	goto cleanup;
       }
-// *INDENT-ON*
   }
 
 cleanup:
@@ -4713,14 +4712,12 @@ db_string_regexp_count (DB_VALUE * result, DB_VALUE * args[], int const num_args
 	goto exit;
       }
 
-    // *INDENT-OFF*
     /* match_type argument check */
-std::string match_type_str;
-if (match_type)
-    {
-      match_type_str.assign (db_get_string (match_type), db_get_string_size (match_type));
-    }
-    // *INDENT-ON*
+    std::string match_type_str;
+    if (match_type)
+      {
+	match_type_str.assign (db_get_string (match_type), db_get_string_size (match_type));
+      }
 
     /* check pattern string */
     if (db_get_string_size (pattern) == 0 || position_value >= db_get_string_size (src))
@@ -4731,14 +4728,13 @@ if (match_type)
     LANG_COLLATION *collation = lang_get_collation (coll_id);
     assert (collation != NULL);
 
-    // *INDENT-OFF*
     /* compile pattern if needed */
     std::string pattern_string (db_get_string (pattern), db_get_string_size (pattern));
     error_status = cubregex::compile (compiled_regex, pattern_string, match_type_str, collation);
-if (error_status != NO_ERROR)
-{
-      goto exit;
-    }
+    if (error_status != NO_ERROR)
+      {
+	goto exit;
+      }
 
     /* perform regular expression according to the position and occurence value */
     int result_value = 0;
@@ -4750,7 +4746,6 @@ if (error_status != NO_ERROR)
 	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	goto exit;
       }
-    // *INDENT-ON*
 
     /* make result */
     db_make_int (result, result_value);
@@ -4931,14 +4926,12 @@ db_string_regexp_instr (DB_VALUE * result, DB_VALUE * args[], int const num_args
 	goto exit;
       }
 
-    // *INDENT-OFF*
     /* match_type argument check */
-std::string match_type_str;
-if (match_type)
-    {
-      match_type_str.assign (db_get_string (match_type), db_get_string_size (match_type));
-    }
-    // *INDENT-ON*
+    std::string match_type_str;
+    if (match_type)
+      {
+	match_type_str.assign (db_get_string (match_type), db_get_string_size (match_type));
+      }
 
     /* check pattern string */
     if (db_get_string_size (pattern) == 0 || position_value >= db_get_string_size (src))
@@ -4949,27 +4942,25 @@ if (match_type)
     LANG_COLLATION *collation = lang_get_collation (coll_id);
     assert (collation != NULL);
 
-    // *INDENT-OFF*
     /* compile pattern if needed */
     std::string pattern_string (db_get_string (pattern), db_get_string_size (pattern));
     error_status = cubregex::compile (compiled_regex, pattern_string, match_type_str, collation);
-if (error_status != NO_ERROR)
-{
-      goto exit;
-    }
+    if (error_status != NO_ERROR)
+      {
+	goto exit;
+      }
 
     /* perform regular expression according to the position and occurence value */
     int result_value = 0;
     std::string src_string (db_get_string (src), db_get_string_size (src));
     error_status = cubregex::instr (result_value, *compiled_regex, src_string, position_value,
-				      occurrence_value, return_opt_value);
+				    occurrence_value, return_opt_value);
     if (error_status != NO_ERROR)
       {
 	/* regex execution error */
 	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
-  goto exit;
+	goto exit;
       }
-    // *INDENT-ON*
 
     /* make result */
     db_make_int (result, result_value);
@@ -5097,14 +5088,12 @@ db_string_regexp_like (DB_VALUE * result, DB_VALUE * args[], int const num_args,
 	goto exit;
       }
 
-    // *INDENT-OFF*
     /* match_type argument check */
-std::string match_type_str;
-if (match_type)
-    {
-      match_type_str.assign (db_get_string (match_type), db_get_string_size (match_type));
-    }
-    // *INDENT-ON*
+    std::string match_type_str;
+    if (match_type)
+      {
+	match_type_str.assign (db_get_string (match_type), db_get_string_size (match_type));
+      }
 
     /* check pattern string */
     if (db_get_string_size (pattern) == 0)
@@ -5116,14 +5105,13 @@ if (match_type)
     LANG_COLLATION *collation = lang_get_collation (coll_id);
     assert (collation != NULL);
 
-    // *INDENT-OFF*
     /* compile pattern if needed */
     std::string pattern_string (db_get_string (pattern), db_get_string_size (pattern));
     error_status = cubregex::compile (compiled_regex, pattern_string, match_type_str, collation);
-if (error_status != NO_ERROR)
-{
-      goto exit;
-    }
+    if (error_status != NO_ERROR)
+      {
+	goto exit;
+      }
 
     /* perform regular expression according to the position and occurence value */
     int result_value = 0;
@@ -5135,7 +5123,6 @@ if (error_status != NO_ERROR)
 	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	goto exit;
       }
-    // *INDENT-ON*
 
     /* make result */
     db_make_int (result, result_value);
@@ -5316,14 +5303,12 @@ db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], int const num_ar
 	goto exit;
       }
 
-    // *INDENT-OFF*
     /* match_type argument check */
-std::string match_type_str;
-if (match_type)
-    {
-      match_type_str.assign (db_get_string (match_type), db_get_string_size (match_type));
-    }
-    // *INDENT-ON*
+    std::string match_type_str;
+    if (match_type)
+      {
+	match_type_str.assign (db_get_string (match_type), db_get_string_size (match_type));
+      }
 
     /* check pattern string */
     if (db_get_string_size (pattern) == 0 || position_value >= db_get_string_size (src))
@@ -5334,14 +5319,13 @@ if (match_type)
     LANG_COLLATION *collation = lang_get_collation (coll_id);
     assert (collation != NULL);
 
-    // *INDENT-OFF*
     /* compile pattern if needed */
     std::string pattern_string (db_get_string (pattern), db_get_string_size (pattern));
     error_status = cubregex::compile (compiled_regex, pattern_string, match_type_str, collation);
-if (error_status != NO_ERROR)
-{
-      goto exit;
-    }
+    if (error_status != NO_ERROR)
+      {
+	goto exit;
+      }
 
     /* perform regular expression according to the position and occurence value */
     std::string result_string;
@@ -5361,7 +5345,6 @@ if (error_status != NO_ERROR)
 	    goto exit;
 	  }
       }
-    // *INDENT-ON*
 
     /* make result */
     int result_char_size = result_string.size ();
@@ -5557,14 +5540,12 @@ db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], int const num_arg
 	goto exit;
       }
 
-    // *INDENT-OFF*
     /* match_type argument check */
-std::string match_type_str;
-if (match_type)
-    {
-      match_type_str.assign (db_get_string (match_type), db_get_string_size (match_type));
-    }
-    // *INDENT-ON*
+    std::string match_type_str;
+    if (match_type)
+      {
+	match_type_str.assign (db_get_string (match_type), db_get_string_size (match_type));
+      }
 
     /* check pattern string */
     if (db_get_string_size (pattern) == 0 || position_value >= db_get_string_size (src))
@@ -5575,14 +5556,13 @@ if (match_type)
     LANG_COLLATION *collation = lang_get_collation (coll_id);
     assert (collation != NULL);
 
-    // *INDENT-OFF*
     /* compile pattern if needed */
     std::string pattern_string (db_get_string (pattern), db_get_string_size (pattern));
     error_status = cubregex::compile (compiled_regex, pattern_string, match_type_str, collation);
-if (error_status != NO_ERROR)
-{
-      goto exit;
-    }
+    if (error_status != NO_ERROR)
+      {
+	goto exit;
+      }
 
     /* perform regular expression according to the position and occurence value */
     std::string result_string;
@@ -5596,7 +5576,6 @@ if (error_status != NO_ERROR)
 	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	goto exit;
       }
-    // *INDENT-ON*
 
     if (is_matched)
       {
