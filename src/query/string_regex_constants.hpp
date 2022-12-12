@@ -17,7 +17,7 @@
  */
 
 //
-// string_regex - definitions and functions related to regular expression
+// string_regex - definitions related to regular expression
 //
 
 #ifndef _STRING_REGEX_CONSTANTS_HPP_
