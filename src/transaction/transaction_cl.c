@@ -1331,9 +1331,9 @@ tran_end_libcas_function (void)
   tm_libcas_depth--;
 
   if (tm_libcas_depth < 0)
-  {
-    tm_libcas_depth = 0;
-  }
+    {
+      tm_libcas_depth = 0;
+    }
 
   assert (tm_libcas_depth >= 0);
 }

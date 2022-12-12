@@ -313,10 +313,13 @@ public class SUConnection {
     }
 
     // UFunctionCode.END_TRANSACTION
-    public void endTransaction (boolean type) throws IOException, SQLException {
+    public void endTransaction(boolean type) throws IOException, SQLException {
         CUBRIDPacker packer = new CUBRIDPacker(outputBuffer);
         packer.packInt(SUFunctionCode.END_TRANSACTION.getCode());
-        packer.packInt((type == true) ? CUBRIDServerSideConstants.END_TRAN_COMMIT : CUBRIDServerSideConstants.END_TRAN_ROLLBACK);
+        packer.packInt(
+                (type == true)
+                        ? CUBRIDServerSideConstants.END_TRAN_COMMIT
+                        : CUBRIDServerSideConstants.END_TRAN_ROLLBACK);
         CUBRIDUnpacker unpacker = request(outputBuffer);
         unpacker.unpackInt();
     }
