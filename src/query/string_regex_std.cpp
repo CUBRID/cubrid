@@ -147,24 +147,25 @@ namespace cubregex
 
     try
       {
+	cub_std_regex &std_reg = * (reg.compiled->std_obj);
 #if defined(WINDOWS)
 	/* HACK: case insensitive doesn't work well on Windows.
 	*  This code transforms source string into lowercase
 	*  and perform searching regular expression pattern.
 	*/
-	if (reg.flags() & std::regex_constants::icase)
+	if (std_reg.flags() & std::regex_constants::icase)
 	  {
 	    std::wstring src_lower;
 	    src_lower.resize (src_wstring.size ());
 	    std::transform (src_wstring.begin(), src_wstring.end(), src_lower.begin(), ::towlower);
-	    is_matched = std::regex_search (src_lower, * (reg.compiled->std_obj));
+	    is_matched = std::regex_search (src_lower, std_reg);
 	  }
 	else
 	  {
-	    is_matched = std::regex_search (src_wstring, * (reg.compiled->std_obj));
+	    is_matched = std::regex_search (src_wstring, std_reg);
 	  }
 #else
-	is_matched = std::regex_search (src_wstring, * (reg.compiled->std_obj));
+	is_matched = std::regex_search (src_wstring, std_reg);
 #endif
       }
     catch (std::regex_error &e)
@@ -198,13 +199,14 @@ namespace cubregex
 	    src_wstring.substr (position, src_wstring.size () - position)
     );
 
+    cub_std_regex &std_reg = * (reg.compiled->std_obj);
 #if defined(WINDOWS)
     /* HACK: case insensitive doesn't work well on Windows.
     *  This code transforms source string into lowercase
     *  and perform searching regular expression pattern.
     */
     std::wstring target_lower;
-    if (reg.flags() & std::regex_constants::icase)
+    if (std_reg.flags() & std::regex_constants::icase)
       {
 	target_lower.resize (target.size ());
 	std::transform (target.begin(), target.end(), target_lower.begin(), ::towlower);
@@ -219,9 +221,9 @@ namespace cubregex
     try
       {
 #if defined(WINDOWS)
-	auto reg_iter = cub_std_regex_iterator (target_lower.begin (), target_lower.end (), * (reg.compiled->std_obj));
+	auto reg_iter = cub_std_regex_iterator (target_lower.begin (), target_lower.end (), std_reg);
 #else
-	auto reg_iter = cub_std_regex_iterator (target.begin (), target.end (), * (reg.compiled->std_obj));
+	auto reg_iter = cub_std_regex_iterator (target.begin (), target.end (), std_reg);
 #endif
 	auto reg_end = cub_std_regex_iterator ();
 	result = std::distance (reg_iter, reg_end);
@@ -276,10 +278,11 @@ namespace cubregex
     int match_idx = -1;
     try
       {
+	cub_std_regex &std_reg = * (reg.compiled->std_obj);
 #if defined(WINDOWS)
-	auto reg_iter = cub_std_regex_iterator (target_lower.begin (), target_lower.end (), * (reg.compiled->std_obj));
+	auto reg_iter = cub_std_regex_iterator (target_lower.begin (), target_lower.end (), std_reg);
 #else
-	auto reg_iter = cub_std_regex_iterator (target.begin (), target.end (), * (reg.compiled->std_obj));
+	auto reg_iter = cub_std_regex_iterator (target.begin (), target.end (), std_reg);
 #endif
 	auto reg_end = cub_std_regex_iterator ();
 
@@ -369,7 +372,8 @@ namespace cubregex
 
     try
       {
-	auto reg_iter = cub_std_regex_iterator (target_lowercase.begin (), target_lowercase.end (), * (reg.compiled->std_obj));
+	cub_std_regex &std_reg = * (reg.compiled->std_obj);
+	auto reg_iter = cub_std_regex_iterator (target_lowercase.begin (), target_lowercase.end (), std_reg);
 	auto reg_end = cub_std_regex_iterator ();
 
 	int last_pos = 0;
@@ -469,15 +473,16 @@ namespace cubregex
 
     try
       {
+	cub_std_regex &std_reg = * (reg.compiled->std_obj);
 	if (occurrence == 0)
 	  {
 	    result_wstring.append (
-		    std::regex_replace (target, * (reg.compiled->std_obj), repl_wstring)
+		    std::regex_replace (target, std_reg, repl_wstring)
 	    );
 	  }
 	else
 	  {
-	    auto reg_iter = cub_std_regex_iterator (target.begin (), target.end (), * (reg.compiled->std_obj));
+	    auto reg_iter = cub_std_regex_iterator (target.begin (), target.end (), std_reg);
 	    auto reg_end = cub_std_regex_iterator ();
 
 	    int n = 1;
@@ -587,10 +592,11 @@ namespace cubregex
     size_t match_length = 0;
     try
       {
+	cub_std_regex &std_reg = * (reg.compiled->std_obj);
 #if defined(WINDOWS)
-	auto reg_iter = cub_std_regex_iterator (target_lower.begin (), target_lower.end (), * (reg.compiled->std_obj));
+	auto reg_iter = cub_std_regex_iterator (target_lower.begin (), target_lower.end (), std_reg);
 #else
-	auto reg_iter = cub_std_regex_iterator (target.begin (), target.end (), * (reg.compiled->std_obj));
+	auto reg_iter = cub_std_regex_iterator (target.begin (), target.end (), std_reg);
 #endif
 	auto reg_end = cub_std_regex_iterator ();
 	auto out = std::back_inserter (result_wstring);
