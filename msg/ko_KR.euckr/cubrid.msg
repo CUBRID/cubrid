@@ -1437,11 +1437,11 @@ $ LOADDB
 1353 CAS ³»ºÎ ¿¡·¯ : %1$d 
 1354 CAS ³»ºÎ ¿¡·¯ : %1$d, %2$s
 
-1355 "%4$s"ÆÄÀÏ %3$d¹øÂ° ÁÙ¿¡¼ %1$s "%2$s" Àº(´Â) Àß¸øµÈ Çü½ÄÀÔ´Ï´Ù.´
-1356 "%3$s ÆÄÀÏ %2$d¹øÂ° ÁÙ¿¡¼ È£½ºÆ® ¸í "%1$s"Àº(´Â) ³Ê¹« ±é´Ï´Ù, È£½ºÆ® ¸íÀÇ ±æÀÌ´Â 256ÀÚ º¸´Ù ÀÛ°Å³ª °°¾Æ¾ß ÇÕ´Ï´Ù.´
-1357 "%3$s" ÆÄÀÏ %2$d¹øÂ° ÁÙ¿¡¼ È£½ºÆ® ¸í "%1$s"Àº(´Â) ÀÌ¹Ì ÀÖ½À´Ï´Ù. ÇÏ³ªÀÇ È£½ºÆ® ¸íÀº(´Â) Áßº¹µÇ¾î ´Ù¸¥ IP ÁÖ¼Ò¸¦ °¡Áú ¼ö ¾ø½À´Ï´Ù. Ï
-1358 "%2$s" ÆÄÀÏ %1$d¹øÂ° ÁÙ¿¡¼ IP ÁÖ¼Ò¿Í È£½ºÆ® ¸í µÑ ´Ù ¿ÏÀüÇÏ°Ô ÀÛ¼ºµÇ¾î¾ß ÇÕ´Ï´Ù.´
-1359 cubrid_hosts.conf ÆÄÀÏ¿¡¼ "%1$s"À»(¸¦) Ã£À» ¼ö ¾ø½À´Ï´Ù.´
+1355 "%4$s"ÆÄÀÏ %3$d¹øÂ° ÁÙ¿¡¼­ %1$s "%2$s" Àº(´Â) Àß¸øµÈ Çü½ÄÀÔ´Ï´Ù.
+1356 "%3$s ÆÄÀÏ %2$d¹øÂ° ÁÙ¿¡¼­ È£½ºÆ® ¸í "%1$s"Àº(´Â) ³Ê¹« ±é´Ï´Ù, È£½ºÆ® ¸íÀÇ ±æÀÌ´Â 256ÀÚ º¸´Ù ÀÛ°Å³ª °°¾Æ¾ß ÇÕ´Ï´Ù.
+1357 "%3$s" ÆÄÀÏ %2$d¹øÂ° ÁÙ¿¡¼­ È£½ºÆ® ¸í "%1$s"Àº(´Â) ÀÌ¹Ì ÀÖ½À´Ï´Ù. ÇÏ³ªÀÇ È£½ºÆ® ¸íÀº(´Â) Áßº¹µÇ¾î ´Ù¸¥ IP ÁÖ¼Ò¸¦ °¡Áú ¼ö ¾ø½À´Ï´Ù. 
+1358 "%2$s" ÆÄÀÏ %1$d¹øÂ° ÁÙ¿¡¼­ IP ÁÖ¼Ò¿Í È£½ºÆ® ¸í µÑ ´Ù ¿ÏÀüÇÏ°Ô ÀÛ¼ºµÇ¾î¾ß ÇÕ´Ï´Ù.
+1359 cubrid_hosts.conf ÆÄÀÏ¿¡¼­ "%1$s"À»(¸¦) Ã£À» ¼ö ¾ø½À´Ï´Ù.
 1360 user defined host¸¦ »ç¿ëÇÏ´Â µµÁß¿¡ ¿¡·¯°¡ ¹ß»ýÇÏ¿´½À´Ï´Ù.
 
 1361 ÆÄÀÏ "%1$s"À»(¸¦) Ã£À» ¼ö ¾ø½À´Ï´Ù.
@@ -1610,6 +1610,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 133 Àß¸øµÈ Çü½ÄÀÇ drop synonym ±¸¹®ÀÔ´Ï´Ù.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
 134 Àß¸øµÈ Çü½ÄÀÇ rename synonym ±¸¹®ÀÔ´Ï´Ù.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
 135 ALTER SYNONYM¿¡ ´ëÇØ ÁöÁ¤µÈ ¿É¼ÇÀÌ ¾ø½À´Ï´Ù.
+136 ServerÀÇ DBNAME ÃÖ´ë ±æÀÌ´Â %1$d ¹ÙÀÌÆ®ÀÔ´Ï´Ù.
+137 ServerÀÇ USER ÃÖ´ë ±æÀÌ´Â %1$d ¹ÙÀÌÆ®ÀÔ´Ï´Ù.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 ¸Þ¸ð¸®°¡ ºÎÁ·ÇÕ´Ï´Ù
