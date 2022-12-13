@@ -21454,8 +21454,8 @@ opt_encrypt_algorithm
 opt_index_dup_level
         :  /* empty */
 	       { DBG_TRACE_GRAMMAR(opt_index_dup_level, : ); 
-                 // $$ = DUP_MODE_OVFL_LEVEL_NOT_SET;  }
-                 $$ = DUP_MODE_DEFAULT;  }      
+                 $$ = DUP_MODE_OVFL_LEVEL_NOT_SET;  }
+                 //$$ = DUP_MODE_DEFAULT;  }      
         | DUPLICATE_ ON_
                { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DUPLICATE_ ON_ ); 
                  $$ = DUP_MODE_DEFAULT | (OVFL_LEVEL_DEFAULT << 16); 
