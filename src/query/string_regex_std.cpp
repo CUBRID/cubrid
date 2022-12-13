@@ -264,7 +264,8 @@ namespace cubregex
     *  and perform searching regular expression pattern.
     */
     std::wstring target_lower;
-    if (reg.flags() & std::regex_constants::icase)
+    cub_std_regex &std_reg = * (reg.compiled->std_obj);
+    if (std_reg.flags() & std::regex_constants::icase)
       {
 	target_lower.resize (target.size ());
 	std::transform (target.begin(), target.end(), target_lower.begin(), ::towlower);
@@ -278,7 +279,6 @@ namespace cubregex
     int match_idx = -1;
     try
       {
-	cub_std_regex &std_reg = * (reg.compiled->std_obj);
 #if defined(WINDOWS)
 	auto reg_iter = cub_std_regex_iterator (target_lower.begin (), target_lower.end (), std_reg);
 #else
@@ -359,8 +359,10 @@ namespace cubregex
 	    src_wstring.substr (position, src_wstring.size () - position)
     );
 
+    cub_std_regex &std_reg = * (reg.compiled->std_obj);
+
     std::wstring target_lowercase;
-    if (reg.flags() & std::regex_constants::icase)
+    if (std_reg.flags() & std::regex_constants::icase)
       {
 	target_lowercase.resize (target.size ());
 	std::transform (target.begin(), target.end(), target_lowercase.begin(), ::towlower);
@@ -372,7 +374,6 @@ namespace cubregex
 
     try
       {
-	cub_std_regex &std_reg = * (reg.compiled->std_obj);
 	auto reg_iter = cub_std_regex_iterator (target_lowercase.begin (), target_lowercase.end (), std_reg);
 	auto reg_end = cub_std_regex_iterator ();
 
@@ -577,7 +578,8 @@ namespace cubregex
     *  and perform searching regular expression pattern.
     */
     std::wstring target_lower;
-    if (reg.flags() & std::regex_constants::icase)
+    cub_std_regex &std_reg = * (reg.compiled->std_obj);
+    if (std_reg.flags() & std::regex_constants::icase)
       {
 	target_lower.resize (target.size ());
 	std::transform (target.begin(), target.end(), target_lower.begin(), ::towlower);
@@ -592,7 +594,6 @@ namespace cubregex
     size_t match_length = 0;
     try
       {
-	cub_std_regex &std_reg = * (reg.compiled->std_obj);
 #if defined(WINDOWS)
 	auto reg_iter = cub_std_regex_iterator (target_lower.begin (), target_lower.end (), std_reg);
 #else
