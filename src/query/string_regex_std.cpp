@@ -258,13 +258,13 @@ namespace cubregex
 	    src_wstring.substr (position, src_wstring.size () - position)
     );
 
+    cub_std_regex &std_reg = * (reg.compiled->std_obj);
 #if defined(WINDOWS)
     /* HACK: case insensitive doesn't work well on Windows.
     *  This code transforms source string into lowercase
     *  and perform searching regular expression pattern.
     */
     std::wstring target_lower;
-    cub_std_regex &std_reg = * (reg.compiled->std_obj);
     if (std_reg.flags() & std::regex_constants::icase)
       {
 	target_lower.resize (target.size ());
@@ -360,7 +360,6 @@ namespace cubregex
     );
 
     cub_std_regex &std_reg = * (reg.compiled->std_obj);
-
     std::wstring target_lowercase;
     if (std_reg.flags() & std::regex_constants::icase)
       {
@@ -377,6 +376,7 @@ namespace cubregex
 	auto reg_iter = cub_std_regex_iterator (target_lowercase.begin (), target_lowercase.end (), std_reg);
 	auto reg_end = cub_std_regex_iterator ();
 
+	int match_pos = -1;
 	int last_pos = 0;
 	int n = 1;
 	auto out = std::back_inserter (result_wstring);
@@ -387,7 +387,7 @@ namespace cubregex
 	    match_result = *reg_iter;
 
 	    /* prefix */
-	    int match_pos = match_result.position ();
+	    match_pos = match_result.position ();
 	    size_t match_length = match_result.length ();
 	    std::wstring match_prefix = target.substr (last_pos, match_pos - last_pos);
 	    out = std::copy (match_prefix.begin (), match_prefix.end (), out);
@@ -572,13 +572,14 @@ namespace cubregex
 	    src_wstring.substr (position, src_wstring.size () - position)
     );
 
+    cub_std_regex &std_reg = * (reg.compiled->std_obj);
+
 #if defined(WINDOWS)
     /* HACK: case insensitive doesn't work well on Windows.
     *  This code transforms source string into lowercase
     *  and perform searching regular expression pattern.
     */
     std::wstring target_lower;
-    cub_std_regex &std_reg = * (reg.compiled->std_obj);
     if (std_reg.flags() & std::regex_constants::icase)
       {
 	target_lower.resize (target.size ());
