@@ -32,7 +32,7 @@ options {
 }
 
 sql_script
-    : unit_statement ';'? EOF
+    : unit_statement EOF
     ;
 
 unit_statement

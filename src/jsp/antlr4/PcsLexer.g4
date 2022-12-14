@@ -26,14 +26,6 @@ lexer grammar PcsLexer;
 package com.cubrid.plcsql.compiler.antlrgen;
 }
 
-@lexer::members {
-    private boolean isNewlineAtPos(int pos)
-    {
-        int la = _input.LA(pos);
-        return la == -1 || la == '\n';
-    }
-}
-
 A_LETTER:                     A ;
 ALL:                          A L L ;
 AND:                          A N D ;

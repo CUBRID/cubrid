@@ -1798,7 +1798,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     private String getJavaType(String pcsType) {
         String val = pcsToJavaTypeMap.get(pcsType);
-        assert val != null;
+        assert val != null : ("invalid type name " + pcsType);
 
         String[] split = val.split("\\.");
         if ("Query".equals(val)) {
