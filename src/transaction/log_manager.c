@@ -11583,7 +11583,6 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	  cdc_log ("cdc_loginfo_producer_execute : cdc_Gl.producer.state is in CDC_PRODUCER_STATE_WAIT ");
 
 	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
-	  cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_NONE;
 
 	  pthread_mutex_lock (&cdc_Gl.producer.lock);
 	  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
@@ -14473,6 +14472,8 @@ void
 cdc_wakeup_producer ()
 {
   cdc_log ("cdc_wakeup_producer : consumer request the producer to wakeup");
+
+  cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_NONE;
 
   pthread_cond_signal (&cdc_Gl.producer.wait_cond);
 }

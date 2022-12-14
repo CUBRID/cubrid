@@ -187,6 +187,7 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/connection_server_rules.cpp
   ${CONNECTION_DIR}/server_support.c
   ${CONNECTION_DIR}/connection_support.c
+  ${CONNECTION_DIR}/host_lookup.c
   )
 
 set(COMMUNICATION_SOURCES

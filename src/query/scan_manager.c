@@ -159,7 +159,7 @@ static int reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt);
 static int check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * chk_fn);
 static int scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * indexal,
 				   TP_DOMAIN * btree_domainp, int num_term, REGU_VARIABLE * func, VAL_DESCR * vd,
-				   int key_minmax, bool is_iss, DB_VALUE * fetched_values);
+				   int key_minmax, bool is_iss);
 static int scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY_VAL_RANGE * key_val_range,
 				       INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd);
 static int scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_limit_upper,
@@ -1483,8 +1483,7 @@ check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * key_va
  */
 static int
 scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * indexable, TP_DOMAIN * btree_domainp,
-			int num_term, REGU_VARIABLE * func, VAL_DESCR * vd, int key_minmax, bool is_iss,
-			DB_VALUE * fetched_values)
+			int num_term, REGU_VARIABLE * func, VAL_DESCR * vd, int key_minmax, bool is_iss)
 {
   int ret = NO_ERROR;
   DB_VALUE *val = NULL;
@@ -1493,7 +1492,6 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 
   int idx_ncols = 0, natts, i, j;
   int buf_size, nullmap_size;
-  unsigned char *bits;
 
   regu_variable_list_node *operand;
 
@@ -1563,13 +1561,6 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
        operand = operand->next, idx_dom = idx_dom->next, i++)
     {
       ret = fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL, &val);
-      if (ret != NO_ERROR)
-	{
-	  goto err_exit;
-	}
-
-      pr_clear_value (&fetched_values[i]);
-      ret = pr_clone_value (val, &fetched_values[i]);
       if (ret != NO_ERROR)
 	{
 	  goto err_exit;
@@ -1675,8 +1666,11 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	}
       else
 	{
-	  assert (fetched_values != NULL);
-	  val = &fetched_values[natts];
+	  ret = fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL, &val);
+	  if (ret != NO_ERROR)
+	    {
+	      goto err_exit;
+	    }
 	}
 
       if (need_new_setdomain == true)
@@ -1759,15 +1753,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   key_ptr = nullmap_ptr + nullmap_size;
 
   OR_BUF_INIT (buf, key_ptr, buf_size - nullmap_size);
-
-  if (nullmap_size > 0)
-    {
-      bits = (unsigned char *) nullmap_ptr;
-      for (i = 0; i < nullmap_size; i++)
-	{
-	  bits[i] = (unsigned char) 0;
-	}
-    }
+  MIDXKEY_BOUNDBITS_INIT (nullmap_ptr, nullmap_size);
 
   /* generate multi columns key (values -> midxkey.buf) */
   for (operand = func->value.funcp->operand, i = 0, dom = (vals_setdomain != NULL) ? vals_setdomain : idx_setdomain;
@@ -1780,8 +1766,11 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	}
       else
 	{
-	  assert (fetched_values != NULL);
-	  val = &fetched_values[i];
+	  ret = fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL, &val);
+	  if (ret != NO_ERROR)
+	    {
+	      goto err_exit;
+	    }
 	}
 
       if (DB_IS_NULL (val))
@@ -1959,8 +1948,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 
 	  ret =
 	    scan_dbvals_to_midxkey (thread_p, &key_val_range->key1, &indexable, btree_domainp,
-				    key_val_range->num_index_term, key_ranges->key1, vd, key_minmax, iscan_id->iss.use,
-				    iscan_id->fetched_values);
+				    key_val_range->num_index_term, key_ranges->key1, vd, key_minmax, iscan_id->iss.use);
 	}
       else
 	{
@@ -2007,8 +1995,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 
 	  ret =
 	    scan_dbvals_to_midxkey (thread_p, &key_val_range->key2, &indexable, btree_domainp,
-				    key_val_range->num_index_term, key_ranges->key2, vd, key_minmax, iscan_id->iss.use,
-				    iscan_id->fetched_values);
+				    key_val_range->num_index_term, key_ranges->key2, vd, key_minmax, iscan_id->iss.use);
 	}
       else
 	{
@@ -3084,7 +3071,6 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->indx_cov.list_id = indx_info->cov_list_id;
   isidp->indx_cov.tplrec = NULL;
   isidp->indx_cov.lsid = NULL;
-  isidp->fetched_values = NULL;
 
   /* index scan info */
   BTS = &isidp->bt_scan;
@@ -3231,17 +3217,6 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	{
 	  /* found multi-column key-val */
 	  need_copy_buf = true;
-
-	  /* make fetched values for scan_regu_key_to_index_key(). */
-	  isidp->fetched_values = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * isidp->bt_num_attrs);
-	  if (isidp->fetched_values == NULL)
-	    {
-	      goto exit_on_error;
-	    }
-	  for (int j = 0; j < isidp->bt_num_attrs; j++)
-	    {
-	      db_make_null (&isidp->fetched_values[j]);
-	    }
 	}
       else
 	{			/* single-column index */
@@ -3308,10 +3283,6 @@ exit_on_error:
   if (isidp->key_vals)
     {
       isidp->key_vals = NULL;
-    }
-  if (isidp->fetched_values)
-    {
-      db_private_free_and_init (thread_p, isidp->fetched_values);
     }
   if (isidp->bt_attr_ids)
     {
@@ -4160,7 +4131,6 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  hsidp->caches_inited = true;
 	}
       break;
-
     case S_INDX_SCAN:
       isidp = &scan_id->s.isid;
       if (!OID_IS_ROOTOID (&isidp->cls_oid))
@@ -4622,7 +4592,6 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     case S_JSON_TABLE_SCAN:
     case S_VALUES_SCAN:
       return (s_id->position == S_BEFORE) ? S_SUCCESS : S_END;
-
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return S_ERROR;
@@ -4788,14 +4757,6 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (isidp->key_vals)
 	{
 	  isidp->key_vals = NULL;
-	}
-      if (isidp->fetched_values)
-	{
-	  for (int j = 0; j < isidp->bt_num_attrs; j++)
-	    {
-	      pr_clear_value (&isidp->fetched_values[j]);
-	    }
-	  db_private_free_and_init (thread_p, isidp->fetched_values);
 	}
 
       /* free allocated memory for the scan */
@@ -7765,7 +7726,14 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 
       if (scan_id->type == S_HEAP_SCAN)
 	{
-	  json_object_set_new (scan_stats, "heap", scan);
+	  if (scan_id->scan_stats.agg_optimized_scan)
+	    {
+	      json_object_set_new (scan_stats, "aggregate optimized,", scan);
+	    }
+	  else
+	    {
+	      json_object_set_new (scan_stats, "heap", scan);
+	    }
 	}
       else
 	{
@@ -7849,7 +7817,14 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
   switch (scan_id->type)
     {
     case S_HEAP_SCAN:
-      fprintf (fp, "(heap");
+      if (scan_id->scan_stats.agg_optimized_scan)
+	{
+	  fprintf (fp, "(aggregate optimized,");
+	}
+      else
+	{
+	  fprintf (fp, "(heap");
+	}
       break;
 
     case S_INDX_SCAN:

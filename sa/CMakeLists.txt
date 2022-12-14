@@ -180,6 +180,7 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/connection_list_cl.c
   ${CONNECTION_DIR}/client_support.c
   ${CONNECTION_DIR}/connection_support.c
+  ${CONNECTION_DIR}/host_lookup.c
   )
 
 set(COMMUNICATION_HEADERS
@@ -686,10 +687,10 @@ endif(UNIX)
 target_external_dependencies(cubridsa
   LIBEXPAT
   LIBJANSSON
-  LIBEXPAT
   LIBEDIT
   LIBOPENSSL
   LZ4
+  RAPIDJSON
   )
 target_include_directories(cubridsa PRIVATE
   ${FLEX_INCLUDE_DIRS}

@@ -1434,7 +1434,19 @@ $ LOADDB
 
 1352 명시된 열의 개수가 올바르지 않습니다.
 
-1353 마지막 에러
+1353 CAS 내부 에러 : %1$d 
+1354 CAS 내부 에러 : %1$d, %2$s
+
+1355 "%4$s"파일 %3$d번째 줄에서 %1$s "%2$s" 은(는) 잘못된 형식입니다.
+1356 "%3$s 파일 %2$d번째 줄에서 호스트 명 "%1$s"은(는) 너무 깁니다, 호스트 명의 길이는 256자 보다 작거나 같아야 합니다.
+1357 "%3$s" 파일 %2$d번째 줄에서 호스트 명 "%1$s"은(는) 이미 있습니다. 하나의 호스트 명은(는) 중복되어 다른 IP 주소를 가질 수 없습니다. 
+1358 "%2$s" 파일 %1$d번째 줄에서 IP 주소와 호스트 명 둘 다 완전하게 작성되어야 합니다.
+1359 cubrid_hosts.conf 파일에서 "%1$s"을(를) 찾을 수 없습니다.
+1360 user defined host를 사용하는 도중에 에러가 발생하였습니다.
+
+1361 파일 "%1$s"을(를) 찾을 수 없습니다.
+
+1362 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1598,6 +1610,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 133 잘못된 형식의 drop synonym 구문입니다.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
 134 잘못된 형식의 rename synonym 구문입니다.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
 135 ALTER SYNONYM에 대해 지정된 옵션이 없습니다.
+136 Server의 DBNAME 최대 길이는 %1$d 바이트입니다.
+137 Server의 USER 최대 길이는 %1$d 바이트입니다.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -1999,6 +2013,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 80 트랜잭션 격리도는 'read committed', 'repeatable read', 'serializable' 중의 하나여야 합니다.
 81 '%1$s'은 auto_increment 객체로서 serial 객체처럼 변경할 수 없습니다.
 82 유효하지 않은 JSON: '%1$s'.
+83 Vclass %1$s is not updatable. Please check if any of its related classes are marked as REUSE_OID.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** 잘못된 캐시 ***

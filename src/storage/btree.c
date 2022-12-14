@@ -16585,7 +16585,11 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	}
     }
 
-  (void) pr_clone_value (value_p, key);
+  if (is_visible)
+    {
+      (void) pr_clone_value (value_p, key);
+    }
+
   btree_clear_key_value (&clear_key, &key_value);
 
 end:

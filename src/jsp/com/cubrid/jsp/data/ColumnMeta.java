@@ -1,7 +1,5 @@
 package com.cubrid.jsp.data;
 
-import com.cubrid.jsp.data.ColumnInfo;
-import com.cubrid.jsp.data.DBType;
 import java.sql.ResultSetMetaData;
 
 public class ColumnMeta {

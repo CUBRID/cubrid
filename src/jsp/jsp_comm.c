@@ -23,6 +23,8 @@
  * Note:
  */
 
+#include "jsp_comm.h"
+
 #include "config.h"
 
 #include <assert.h>
@@ -43,8 +45,7 @@
 #include <windows.h>
 #endif /* not WINDOWS */
 
-#include "jsp_comm.h"
-
+#include "jsp_file.h"
 #include "connection_support.h"
 #include "porting.h"
 #include "error_manager.h"
@@ -52,6 +53,7 @@
 
 #include "system_parameter.h"
 #include "object_representation.h"
+#include "host_lookup.h"
 
 #if defined (CS_MODE)
 #include "network_interface_cl.h"
@@ -59,7 +61,6 @@
 #include "boot_sr.h"
 #endif
 
-static char *jsp_get_socket_file_path (const char *db_name);
 static SOCKET jsp_connect_server_tcp (int server_port);
 #if !defined (WINDOWS)
 static SOCKET jsp_connect_server_uds (const char *db_name);
@@ -79,12 +80,11 @@ jsp_connect_server (const char *db_name, int server_port)
 #if defined (WINDOWS)
   socket = jsp_connect_server_tcp (server_port);
 #else
-  if (prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE_UDS) == true)
+  if (server_port == JAVASP_PORT_UDS_MODE)
     {
       socket = jsp_connect_server_uds (db_name);
     }
-
-  if (socket == INVALID_SOCKET)
+  else
     {
       socket = jsp_connect_server_tcp (server_port);
     }
@@ -221,7 +221,7 @@ jsp_ping (SOCKET fd)
   return NO_ERROR;
 }
 
-static char *
+char *
 jsp_get_socket_file_path (const char *db_name)
 {
   static char path[PATH_MAX];
@@ -229,14 +229,19 @@ jsp_get_socket_file_path (const char *db_name)
 
   if (need_init)
     {
+      const size_t DIR_PATH_MAX = 128;	/* Guaranteed not to exceed 108 characters, see envvar_check_environment() */
+      char dir_path[DIR_PATH_MAX] = { 0 };
       const char *cubrid_tmp = envvar_get ("TMP");
-
       if (cubrid_tmp == NULL || cubrid_tmp[0] == '\0')
 	{
-	  cubrid_tmp = "/tmp";
+	  envvar_vardir_file (dir_path, DIR_PATH_MAX, "CUBRID_SOCK/");
+	}
+      else
+	{
+	  snprintf (dir_path, DIR_PATH_MAX, "%s/", cubrid_tmp);
 	}
 
-      snprintf (path, PATH_MAX, "%s%s/%s%s%s", envvar_root (), cubrid_tmp, "junixsocket-", db_name, ".sock");
+      snprintf (path, PATH_MAX, "%s%s%s%s", dir_path, "sp_", db_name, ".sock");
       need_init = false;
     }
 
@@ -309,7 +314,7 @@ jsp_connect_server_tcp (int server_port)
   else
     {
       struct hostent *hp;
-      hp = gethostbyname (server_host);
+      hp = gethostbyname_uhost (server_host);
 
       if (hp == NULL)
 	{

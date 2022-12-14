@@ -137,3 +137,13 @@ build_x86_64_debug/
 build_x86_64_release/
 build_x86_64_coverage/
 build_x86_64_profile/
+
+## Development Environments
+# Visual Studio Code
+.vscode/*
+
+# Local History for Visual Studio Code
+.history/
+
+# Built Visual Studio Code Extensions
+*.vsix
