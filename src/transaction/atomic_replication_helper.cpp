@@ -26,6 +26,7 @@
 
 namespace cublog
 {
+  constexpr int BUF_LEN_MAX = 2048;
 
   /*********************************************************************
    * atomic_replication_helper function definitions                    *
@@ -270,7 +271,6 @@ namespace cublog
   void
   atomic_replication_helper::dump (const char *message) const
   {
-    constexpr int BUF_LEN_MAX = SHRT_MAX;
     char buf[BUF_LEN_MAX];
     char *buf_ptr = buf;
     int buf_len = BUF_LEN_MAX;
@@ -310,7 +310,7 @@ namespace cublog
 	_er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL_SEQ]\n%s\n", m_full_dump_stream.str ().c_str ());
       }
 
-    assert (m_log_vec.empty ());
+    assert (all_log_entries_are_control ());
   }
 
   void
@@ -347,7 +347,6 @@ namespace cublog
 
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 	  {
-	    constexpr int BUF_LEN_MAX = UCHAR_MAX;
 	    char buf[BUF_LEN_MAX];
 
 	    const int written = snprintf (buf, (size_t) BUF_LEN_MAX,
@@ -749,7 +748,6 @@ namespace cublog
   void
   atomic_replication_helper::atomic_log_sequence::dump (const char *message) const
   {
-    constexpr int BUF_LEN_MAX = SHRT_MAX;
     char buf[BUF_LEN_MAX];
     char *buf_ptr = buf;
     int buf_len = BUF_LEN_MAX;
@@ -937,7 +935,6 @@ namespace cublog
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::dump_to_stream (
 	  std::stringstream &dump_stream, TRANID trid) const
   {
-    constexpr int BUF_LEN_MAX = UCHAR_MAX;
     char buf[BUF_LEN_MAX];
     char *buf_ptr = buf;
     int buf_len = BUF_LEN_MAX;
@@ -965,7 +962,17 @@ namespace cublog
 
   atomic_replication_helper::atomic_log_sequence::page_ptr_bookkeeping::~page_ptr_bookkeeping ()
   {
-    assert (m_page_ptr_info_map.empty ());
+    // all remaining info's must be of unfixed pages
+    // entries for unfixed pages are only maintained to prevent a subsequent successful fix
+    // within the same atomic sequence
+    assert (std::none_of (m_page_ptr_info_map.cbegin (), m_page_ptr_info_map.cend (),
+			  [] (const page_ptr_info_map_type::value_type &pair)
+    {
+      const page_ptr_info &info = pair.second;
+      assert (!info.m_successfully_fixed);
+      assert (info.m_page_p == nullptr);
+      return info.m_successfully_fixed;
+    }));
   }
 
   int
@@ -974,28 +981,27 @@ namespace cublog
   {
     assert (page_ptr_out == nullptr);
 
+    int err_code = NO_ERROR;
     page_ptr_info *info_p = nullptr;
+    bool failed_to_fix_now = false;
 
     const auto find_it = m_page_ptr_info_map.find (vpid);
     if (find_it != m_page_ptr_info_map.cend ())
       {
 	info_p = &find_it->second;
 
-	++info_p->m_ref_count;
-
 	// TODO: assert that, if page was fixed with regular fix, new rcv index must not
 	// mandate ordered fix (or the other way around)
       }
     else
       {
-	page_ptr_watcher_uptr_type page_watcher_up;
+	page_ptr_watcher_uptr_type page_watcher_up { nullptr };
 	PAGE_PTR page_p { nullptr };
-	const int err_code = pgbuf_fix_or_ordered_fix (thread_p, vpid, rcvindex, page_watcher_up, page_p);
-	if (err_code != NO_ERROR)
-	  {
-	    return err_code;
-	  }
+	err_code = pgbuf_fix_or_ordered_fix (thread_p, vpid, rcvindex, page_watcher_up, page_p);
 
+	// always register page info, even when unsuccessful fix
+	// this way a guard exists against subsequent succesful fixes for the same page within
+	// the same atomic sequence
 	std::pair<page_ptr_info_map_type::iterator, bool> insert_res
 	  = m_page_ptr_info_map.emplace (vpid, std::move (page_ptr_info ()));
 	assert (insert_res.second);
@@ -1003,22 +1009,142 @@ namespace cublog
 	info_p = &insert_res.first->second;
 	info_p->m_vpid = vpid;
 	info_p->m_rcvindex = rcvindex;
-	info_p->m_page_p = page_p;
-	page_p = nullptr;
-	info_p->m_watcher_p.swap (page_watcher_up);
 
-	info_p->m_ref_count = 1;
+	if (err_code != NO_ERROR)
+	  {
+	    assert (page_p == nullptr && (page_watcher_up == nullptr || page_watcher_up->pgptr == nullptr));
+	    if (page_watcher_up != nullptr)
+	      {
+		PGBUF_CLEAR_WATCHER (page_watcher_up.get ());
+	      }
+
+	    info_p->m_successfully_fixed = false;
+	    failed_to_fix_now = true;
+	  }
+	else
+	  {
+	    info_p->m_page_p = page_p;
+	    page_p = nullptr;
+	    info_p->m_watcher_p.swap (page_watcher_up);
+
+	    info_p->m_successfully_fixed = true;
+	  }
       }
 
-    if (info_p->m_page_p != nullptr)
+    if (false == info_p->m_successfully_fixed)
+      {
+	// either:
+	//  - attempted now and fix failed; entry has been registered and no further attempt
+	//    to fix the page will be made
+	//  - the fix has failed in a previous attempt (with a previous log record for the same page), and
+	//    we're just being consistent
+
+	if (failed_to_fix_now)
+	  {
+	    // failed to fix in this function, just return error
+	    if (err_code != NO_ERROR)
+	      {
+		return err_code;
+	      }
+	    return ER_FAILED;
+	  }
+	else
+	  {
+	    /*
+	     * Implements a guard against subsequent different results of a call to fix a page:
+	     *  - if a first call to "fix_page" fails (because the page is not in internal
+	     *    page buffer of the passive transaction server)
+	     *  - a subsequent call will also be considered as failed
+	     *  - this ensures that the page will not be inconsistently replicated as the following
+	     *    scenario can happen:
+	     *    - there is a window of opportunity between the moment the atomic replication
+	     *      infrastructure (this helper implementation executing on the replication thread)
+	     *      and a client transaction thread
+	     *    - suppose, when the replication thread attempts to fix the page to apply the
+	     *      log record LSA(i) (for example), and the page is neither in the passive
+	     *      transaction server's replication nor in transit between the page server
+	     *      and the passive transaction server, the fix will fail
+	     *    - at the same time, a client transaction will attempt to fix the page
+	     *      and it will succeed and as the implementation is done, the page will
+	     *      be requested from page server with LSA(i-1) - because the replication
+	     *      thread will report LSA(i-1) as the last LSA having been processed
+	     *    - this happens because, while the replication thread is processing the
+	     *      log record LSA(i), it is the LSA(i-1) that is being returned as processed
+	     *      to the client transaction to make the request to page server (see call-path:
+	     *        -> pgbuf_read_page_from_file_or_page_server
+	     *          -> log_lsa passive_tran_server::get_highest_processed_lsa
+	     *            -> replicator::get_highest_processed_lsa
+	     *      and the way the value of "m_redo_lsa" is updated in atomic_replicator::redo_upto
+	     *    - the page server will return the page updated by page server's own replication up
+	     *      and including LSA(i-1)
+	     *    - so, the state at this point is that the page will have been retrieved from the page
+	     *      server and the state of the page's replication is at LSA(i-1) and the passive
+	     *      transaction server's replication would not have applied the log record at LSA(i)
+	     *    - if the atomic sequence contains a new log record for the same page - LSA(i+1) -
+	     *      the replication will fix the page and apply the log record LSA(i+1)
+	     *      but the page will not have contained the log record at LSA(i)
+	     *  - the window of opportunity for this to happen is quite small; for this to happen
+	     *    it would mean that a client transaction would request a page, and retrieve from
+	     *    page server in smaller frame of time than it takes the atomic replication thread
+	     *    to process an atomic sequence; but cannot be ruled out entirely
+	     */
+
+	    // the fix failed for a previous log record within the same atomic sequence
+	    // check again and, if successful, then log a fatal error
+	    // the purpose is to indentify whether such situations can happen
+
+	    page_ptr_watcher_uptr_type page_watcher_uptr { nullptr };
+	    PAGE_PTR page_ptr { nullptr };
+	    err_code = pgbuf_fix_or_ordered_fix (thread_p, vpid, rcvindex, page_watcher_uptr, page_ptr);
+
+	    // error handling for an possible
+	    if (err_code == NO_ERROR)
+	      {
+		// a new fix attempt succeeded
+		// this is only to be able to record a fatal error
+		char buf[BUF_LEN_MAX];
+		(void) snprintf (buf, (size_t)BUF_LEN_MAX,
+				 "atomic sequence succeeded subsequent fix for page with"
+				 "vpid= %d|%d and rcvindex = %d\n",
+				 VPID_AS_ARGS (&vpid), (int)rcvindex);
+
+		er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATOMIC_REPL_ERROR, 1, buf);
+		pgbuf_unfix_or_ordered_unfix (thread_p, rcvindex, page_watcher_uptr, page_ptr);
+		page_ptr = nullptr;
+		if (page_watcher_uptr != nullptr)
+		  {
+		    PGBUF_CLEAR_WATCHER (page_watcher_uptr.get ());
+		  }
+	      }
+	    // else as expected; if the page failed to be fixed a previous time, it should fail now as well
+
+	    // regardless of this check, always return error
+	    // to remain consistent with the first attempt for fixing the same page
+	    if (err_code != NO_ERROR)
+	      {
+		return err_code;
+	      }
+	    return ER_FAILED;
+	  }
+      }
+    else if (info_p->m_page_p != nullptr)
       {
 	assert (info_p->m_watcher_p == nullptr);
+
+	++info_p->m_ref_count;
 	page_ptr_out = info_p->m_page_p;
+      }
+    else if (info_p->m_watcher_p != nullptr && info_p->m_watcher_p->pgptr != nullptr)
+      {
+	assert (info_p->m_page_p == nullptr);
+
+	++info_p->m_ref_count;
+	page_ptr_out = info_p->m_watcher_p->pgptr;
       }
     else
       {
-	assert (info_p->m_watcher_p != nullptr && info_p->m_watcher_p->pgptr != nullptr);
-	page_ptr_out = info_p->m_watcher_p->pgptr;
+	// impossible state
+	assert (false);
       }
 
     return NO_ERROR;
@@ -1032,6 +1158,7 @@ namespace cublog
     if (find_it != m_page_ptr_info_map.cend ())
       {
 	page_ptr_info &info = find_it->second;
+	assert (info.m_successfully_fixed);
 
 	--info.m_ref_count;
 	if (info.m_ref_count == 0)
@@ -1060,7 +1187,6 @@ namespace cublog
   void
   atomic_replication_helper::atomic_log_sequence::page_ptr_bookkeeping::dump () const
   {
-    constexpr int BUF_LEN_MAX = SHRT_MAX;
     char buf[BUF_LEN_MAX];
     char *buf_ptr = buf;
     int written = 0;
@@ -1077,9 +1203,10 @@ namespace cublog
       {
 	const page_ptr_info &info = pair.second;
 	written = snprintf (buf_ptr, (size_t)left, "  m_vpid = %d|%d  rcvindex = %s"
-			    "  page_p = %p  watcher_p = %p  ref_cnt = %d\n",
+			    "  page_p = %p  watcher_p = %p  ref_cnt = %d  fixed=%d\n",
 			    VPID_AS_ARGS (&info.m_vpid), rv_rcvindex_string (info.m_rcvindex),
-			    (void *)info.m_page_p, (void *)info.m_watcher_p.get (), info.m_ref_count);
+			    (void *)info.m_page_p, (void *)info.m_watcher_p.get (), info.m_ref_count,
+			    info.m_successfully_fixed);
 	assert (written > 0);
 	buf_ptr += written;
 	assert (left >= written);
