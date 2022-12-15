@@ -4588,6 +4588,7 @@ do_commit (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* Row count should be reset to -1 for explicit commits (i.e: commit statements) but should not be reset in
    * AUTO_COMMIT mode. This is the best place to reset it for commit statements. */
   db_update_row_count_cache (-1);
+  cubmethod::get_callback_handler ()->free_query_handle_all (true);
   return tran_commit (statement->info.commit_work.retain_lock ? true : false);
 }
 
@@ -4639,6 +4640,8 @@ do_rollback (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  db_value_clear (&val);
 	}
     }
+
+  cubmethod::get_callback_handler ()->free_query_handle_all (true);
 
   return error;
 }

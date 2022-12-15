@@ -168,12 +168,26 @@ namespace cubmethod
       {
 	if (handler->execute (request) == NO_ERROR)
 	  {
+	    int error = handler->execute (request);
+	  }
+	if (error == NO_ERROR)
+	  {
 	    /* register query_id for out resultset */
 	    const cubmethod::query_result &qresult = handler->get_result();
 	    if (qresult.stmt_type == CUBRID_STMT_SELECT)
 	      {
 		uint64_t qid = (uint64_t) handler->get_execute_info ().qresult_info.query_id;
 		m_qid_handler_map[qid] = request.handler_id;
+	      }
+	  }
+	else
+	  {
+	    else
+	      {
+		/* XASL cache is not found */
+		m_error_ctx.clear ();
+		handler->prepare_retry ();
+		handler->execute (request);
 	      }
 	  }
       }
