@@ -4595,7 +4595,7 @@ boot_define_view_super_class (void)
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
 	      "FROM "
-	        /* AU_USER_CLASS_NAME */
+		/* AU_USER_CLASS_NAME */
 		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
@@ -5540,7 +5540,7 @@ boot_define_view_method_file (void)
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
 	      "FROM "
-	        /* AU_USER_CLASS_NAME */
+		/* AU_USER_CLASS_NAME */
 		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
@@ -5674,7 +5674,7 @@ boot_define_view_index (void)
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
 	      "FROM "
-	        /* AU_USER_CLASS_NAME */
+		/* AU_USER_CLASS_NAME */
 		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
@@ -5794,7 +5794,7 @@ boot_define_view_index_key (void)
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
 	      "FROM "
-	        /* AU_USER_CLASS_NAME */
+		/* AU_USER_CLASS_NAME */
 		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
@@ -5914,7 +5914,7 @@ boot_define_view_authorization (void)
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
 	      "FROM "
-	        /* AU_USER_CLASS_NAME */
+		/* AU_USER_CLASS_NAME */
 		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
@@ -6038,7 +6038,7 @@ boot_define_view_trigger (void)
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
 	      "FROM "
-	        /* AU_USER_CLASS_NAME */
+		/* AU_USER_CLASS_NAME */
 		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
@@ -6622,7 +6622,7 @@ boot_define_view_synonym (void)
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
 	      "FROM "
-	        /* AU_USER_CLASS_NAME */
+		/* AU_USER_CLASS_NAME */
 		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
@@ -6729,7 +6729,7 @@ boot_define_view_db_server (void)
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
 	      "FROM "
-	        /* AU_USER_CLASS_NAME */
+		/* AU_USER_CLASS_NAME */
 		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
