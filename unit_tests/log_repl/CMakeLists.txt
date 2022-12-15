@@ -22,6 +22,7 @@ project(test_log_repl)
 # test_log_repl_atomic_helper
 #
 set(TEST_LOG_REPL_ATOMIC_HELPER_SOURCES
+  ${TEST_FAKE_DIR}/fake_system_parameter.cpp
   ${TEST_FAKE_DIR}/fake_thread_entry.cpp
   ${TRANSACTION_DIR}/atomic_replication_helper.cpp
   test_main_log_repl_atomic_helper.cpp
