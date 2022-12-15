@@ -500,7 +500,6 @@ struct log_tdes
   LOG_LSA tail_topresult_lsa;	/* Address of last partial abort/commit */
   LOG_LSA commit_abort_lsa;	/* Address of the commit/abort operation. Used by checkpoint to decide whether to
 				 * consider or not a transaction as concluded. */
-  LOG_LSA last_mvcc_lsa;	/* The address of transaction's last MVCC log record. */
   LOG_LSA page_desync_lsa;	/* Only on PTS: the LSA of a page found to be ahead of replication, that could cause a page
 				 * desynchronization issue. */
   int client_id;		/* unique client id */
@@ -1201,6 +1200,8 @@ extern int xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 extern bool logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern bool logtb_is_mvccid_committed (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern MVCC_SNAPSHOT *logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
+extern void logtb_append_assigned_mvcc_if_needed_and_complete_mvcc (THREAD_ENTRY * thread_p,
+								    LOG_TDES * tdes, bool committed);
 extern void logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed);
 extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 

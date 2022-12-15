@@ -1676,6 +1676,8 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
 
   log_daemons_init ();
 
+  pts_ptr->start_oldest_active_mvccid_sender ();
+
   pts_ptr->start_log_replicator (replication_start_redo_lsa);
 
   // NOTE: make sure not to re-define trantable here; already defined in boot_restart_server
@@ -5511,7 +5513,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
   /* clear mvccid before releasing the locks. This operation must be done before do_postpone because it stores unique
    * statistics for all B-trees and if an error occurs those operations and all operations of current transaction must
    * be rolled back. */
-  logtb_complete_mvcc (thread_p, tdes, true);
+  logtb_append_assigned_mvcc_if_needed_and_complete_mvcc (thread_p, tdes, true);
 
   tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
   /* undo_nxlsa is no longer required here and must be reset, in case checkpoint takes a snapshot of this transaction
@@ -5640,7 +5642,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 	}
 
       /* clear mvccid before releasing the locks */
-      logtb_complete_mvcc (thread_p, tdes, false);
+      logtb_append_assigned_mvcc_if_needed_and_complete_mvcc (thread_p, tdes, false);
 
       /* It is safe to release locks here, since we already completed abort. */
       lock_unlock_all (thread_p);
@@ -5658,7 +5660,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 	}
 
       /* clear mvccid before releasing the locks */
-      logtb_complete_mvcc (thread_p, tdes, false);
+      logtb_append_assigned_mvcc_if_needed_and_complete_mvcc (thread_p, tdes, false);
 
       lock_unlock_all (thread_p);
 
@@ -10887,9 +10889,12 @@ log_clock_daemon_init ()
 void
 log_check_ha_delay_info_daemon_init ()
 {
-  bool do_supplemental_log = prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 ? true : false;
+  const bool do_supplemental_log = prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 ? true : false;
+  const bool do_calc_replication_delay = prm_get_bool_value (PRM_ID_ER_LOG_CALC_REPL_DELAY);
 
-  if (HA_DISABLED () && !do_supplemental_log && get_server_type () != SERVER_TYPE_TRANSACTION)
+  const bool need_daemon = is_active_transaction_server () && (!HA_DISABLED () || do_supplemental_log || do_calc_replication_delay);
+
+  if (!need_daemon)
     {
       return;
     }

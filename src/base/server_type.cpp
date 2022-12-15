@@ -1,6 +1,6 @@
 /*
  * Copyright 2008 Search Solution Corporation
- * Copyright 2021 CUBRID Corporation
+ * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,7 +30,9 @@
 #include <string>
 
 std::unique_ptr<tran_server> ts_Gl;
+
 // non-owning "shadow" pointer of globally visible ts_Gl
+active_tran_server *ats_Gl = nullptr;
 passive_tran_server *pts_Gl = nullptr;
 
 SERVER_TYPE get_server_type_from_config (server_type_config parameter_value);
@@ -136,7 +138,9 @@ int init_server_type (const char *db_name)
 
       if (is_active_transaction_server ())
 	{
-	  ts_Gl.reset (new active_tran_server ());
+	  assert (ats_Gl == nullptr);
+	  ats_Gl = new active_tran_server ();
+	  ts_Gl.reset (ats_Gl);
 	}
       else if (is_passive_transaction_server ())
 	{
@@ -203,6 +207,11 @@ void finalize_server_type ()
 	  assert (pts_Gl != nullptr);
 	  pts_Gl = nullptr;
 	}
+      else
+	{
+	  assert (ats_Gl != nullptr);
+	  ats_Gl = nullptr;
+	}
       ts_Gl->disconnect_page_server ();
       ts_Gl.reset (nullptr);
     }
@@ -252,6 +261,20 @@ bool is_tran_server_with_remote_storage ()
   return false;
 }
 
+active_tran_server *get_active_tran_server_ptr ()
+{
+  if (is_active_transaction_server ())
+    {
+      assert (ats_Gl != nullptr);
+      return ats_Gl;
+    }
+  else
+    {
+      assert (false);
+      return nullptr;
+    }
+}
+
 passive_tran_server *get_passive_tran_server_ptr ()
 {
   if (is_passive_transaction_server ())
@@ -261,7 +284,7 @@ passive_tran_server *get_passive_tran_server_ptr ()
     }
   else
     {
-      assert (is_passive_transaction_server ());
+      assert (false);
       return nullptr;
     }
 }

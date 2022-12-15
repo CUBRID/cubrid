@@ -207,6 +207,7 @@ namespace cubcomm
     public:
       using client_request_id = ClientMsgId;
 
+      request_client_server () = delete;
       request_client_server (channel &&chn);
       request_client_server (const request_client_server &) = delete;
       request_client_server (request_client_server &&) = delete;
@@ -337,16 +338,18 @@ namespace cubcomm
   css_error_code request_server<MsgId>::receive_request_buffer (std::unique_ptr<char[]> &message_buffer,
       size_t &message_size)
   {
-    int ilen = 0;
-    css_error_code err = m_channel.recv_int (ilen);
+    size_t expected_size = 0;
+    size_t size_ilen = sizeof (expected_size);
+    // NOTE: no ntohl here; integer value received as a stream of bytes
+    css_error_code err = m_channel.recv (reinterpret_cast <char *> (&expected_size), size_ilen);
     if (err != NO_ERRORS)
       {
 	er_log_recv_fail (m_channel, err);
 	return err;
       }
+    assert (size_ilen == sizeof (expected_size));
 
-    size_t expected_size = static_cast<size_t> (ilen);
-    message_buffer.reset (new char [ilen]);
+    message_buffer.reset (new char [expected_size]);
 
     size_t receive_size = expected_size;
     err = m_channel.recv (message_buffer.get (), receive_size);
@@ -413,10 +416,13 @@ namespace cubcomm
     packing_packer packer;
     cubmem::extensible_block eb;
     packer.set_buffer_and_pack_all (eb, static_cast<int> (msgid), args...);
+    const size_t packer_current_size = packer.get_current_size ();
 
-    er_log_send_request (chn, static_cast<int> (msgid), packer.get_current_size ());
+    er_log_send_request (chn, static_cast<int> (msgid), packer_current_size);
 
-    const css_error_code css_size_err = chn.send_int (static_cast<int> (packer.get_current_size ()));
+    // NOTE: no htonl here; integer value sent as a stream of bytes
+    const css_error_code css_size_err = chn.send (
+	reinterpret_cast<const char *> (&packer_current_size), sizeof (packer_current_size));
     if (css_size_err != NO_ERRORS)
       {
 	er_log_send_fail (chn, css_size_err);

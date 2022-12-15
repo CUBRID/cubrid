@@ -297,6 +297,13 @@ extern void pgbuf_unfix_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const ch
 extern void pgbuf_ordered_unfix_debug (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object, const char *caller_file,
 				       int caller_line);
 
+#define pgbuf_ordered_unfix_and_save_for_refix(thread_p, watcher_object, out_save_vpid, out_save_latch_mode) \
+	pgbuf_ordered_unfix_and_save_for_refix_debug(thread_p, watcher_object, out_save_vpid, out_save_latch_mode, \
+				  __FILE__, __LINE__)
+extern void pgbuf_ordered_unfix_and_save_for_refix_debug (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object,
+							  VPID & out_save_vpid, PGBUF_LATCH_MODE & out_save_latch_mode,
+							  const char *caller_file, int caller_line);
+
 #define pgbuf_invalidate_all(thread_p, volid) \
 	pgbuf_invalidate_all_debug(thread_p, volid, __FILE__, __LINE__)
 extern int pgbuf_invalidate_all_debug (THREAD_ENTRY * thread_p, VOLID volid, const char *caller_file, int caller_line);
@@ -333,6 +340,8 @@ extern int pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR *
 extern void pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 
 extern void pgbuf_ordered_unfix (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object);
+extern void pgbuf_ordered_unfix_and_save_for_refix (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object,
+						    VPID & out_save_vpid, PGBUF_LATCH_MODE & out_save_latch_mode);
 
 extern int pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);

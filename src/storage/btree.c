@@ -24841,7 +24841,8 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   /* Pages are still linked. */
 
   /* Fix current page too. */
-  bts->C_page = pgbuf_fix_old_and_check_repl_desync (thread_p, bts->C_vpid, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
+  bts->C_page =
+    pgbuf_fix_old_and_check_repl_desync (thread_p, bts->C_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 
   if (bts->C_page == NULL)
     {

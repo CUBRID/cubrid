@@ -7417,7 +7417,8 @@ heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, REC
  * return		 : SCAN_CODE: S_ERROR, S_DOESNT_EXIST and S_SUCCESS.
  * thread_p (in)	 : Thread entry.
  * context (in/out)      : Heap get context used to store the information required for heap objects processing.
- * is_heap_scan (in)     : Used to decide if it is acceptable to reach deleted objects or not.
+ * is_heap_scan (in)     : Used to decide if it is acceptable to reach deleted objects or not. If true, reaching
+ *                          a non-existing slot/empty slot does not trigger an error and just returns doesn't exist.
  * non_ex_handling_type (in): Handling type for deleted objects
  *			      - LOG_ERROR_IF_DELETED: write the
  *				ER_HEAP_UNKNOWN_OBJECT error to log
@@ -25076,7 +25077,9 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
  *  return SCAN_CODE.
  *  thread_p (in): Thread entry.
  *  context (in): Heap get context.
- *  is_heap_scan (in): required for heap_prepare_get_context
+ *  is_heap_scan (in): required for heap_prepare_get_context (Used to decide if it is acceptable to reach
+ *                      deleted objects or not. If true, reaching a non-existing slot/empty slot does
+ *                      not trigger an error and just returns doesn't exist)
  */
 SCAN_CODE
 heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_heap_scan)
@@ -25092,20 +25095,102 @@ heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CON
 	  break;
 	}
       assert (is_passive_transaction_server ());
+      assert (context->scan_cache != nullptr);
+
       // Handle the page desynchronization error
-      if (context->home_page_watcher.pgptr)
+      //
+
+      // clean - saving state if required
+      //
+      heap_clean_get_context (thread_p, context);
+
+      // also unfix what is in cache watcher; saving the state for a future re-fix after the wait
+      //
+      VPID saved_vpid VPID_INITIALIZER;
+      PGBUF_LATCH_MODE saved_latch_mode = PGBUF_NO_LATCH;
+      bool restore_scan_cache_page_watcher = false;
+      if (context->scan_cache != nullptr && context->scan_cache->page_watcher.pgptr != nullptr)
 	{
-	  /* Unfix home page. */
-	  pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+	  assert (context->scan_cache->cache_last_fix_page);
+
+	  pgbuf_ordered_unfix_and_save_for_refix (thread_p, &context->scan_cache->page_watcher,
+						  saved_vpid, saved_latch_mode);
+	  assert (!VPID_ISNULL (&saved_vpid));
+	  assert (PGBUF_LATCH_READ == saved_latch_mode);
+	  restore_scan_cache_page_watcher = true;
 	}
 
-      if (context->fwd_page_watcher.pgptr != NULL)
-	{
-	  /* Unfix forward page. */
-	  pgbuf_ordered_unfix (thread_p, &context->fwd_page_watcher);
-	}
+      assert (PGBUF_IS_CLEAN_WATCHER (&context->home_page_watcher));
+      assert (PGBUF_IS_CLEAN_WATCHER (&context->fwd_page_watcher));
+      assert (context->scan_cache == nullptr || PGBUF_IS_CLEAN_WATCHER (&context->scan_cache->page_watcher));
+
+      // wait for replication to catch-up
+      //
       constexpr VPID null_vpid = VPID_INITIALIZER;
       pgbuf_wait_for_replication (thread_p, &null_vpid);
+
+      // re-fix scan cache page watcher, if unfixed previously
+      //
+      if (restore_scan_cache_page_watcher)
+	{
+	  const int error_code = pgbuf_ordered_fix (thread_p, &saved_vpid, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT,
+						    saved_latch_mode, &context->scan_cache->page_watcher);
+	  if (error_code != NO_ERROR)
+	    {
+	      // On PTS, most likely, this [client read-only] transaction is expecting the
+	      // transactional log replication thread to advance past a certain LSA.
+	      //
+	      // During replication, the following can happen (beside the 'normal' case where the
+	      // page remains the same or log records are applied onto it without any de-alloc
+	      // or re-alloc sequences happening):
+	      //
+	      // 1) the page might be de-allocated:
+	      //  - eg, by processing a RVPGBUF_DEALLOC which, in the current implementation - see
+	      //    pgbuf_rv_dealloc_redo - on PTS will also invalidate the page from the page buffer
+	      //  - when this happens, the OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT fetch mode used above
+	      //    will cause the re-fix to fail
+	      //  - this is ok and it will be up to the next call to
+	      //    heap_get_visible_version_internal to deal with this situation
+	      //
+	      // 2) the page might be de-allocated and re-allocated
+	      //  - the scenario is as follows
+	      //  - the page is de-allocated by replication and invalidated from page buffer
+	      //  - when the re-allocating log record (or atomic sequence of log records) is
+	      //    processed by the PTS replication, the fetch mode
+	      //    OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT is used and the decisiton tree
+	      //    further bifurcates in 2:
+	      //    - the page is not in page buffer
+	      //      - in this case the re-fix above will fail
+	      //      - again, this is ok as we're most probably not interested in the re-allocated
+	      //        page anymore
+	      //      - and it is up to the logic further to handle the situation
+	      //    - the page has been re-fetched by another (newer) client transaction and is
+	      //      present in the page buffer
+	      //        - in this case the re-fix above will just succeed refixing the re-allocated
+	      //          page
+	      //        - and this is the problematic case;
+	      //        - most likely the layout of the page will be different (maybe even a
+	      //          different type)
+	      //        - it will be up to the logic further to deal with this (most likely the
+	      //          transaction  will unilaterally abort with an error to the client)
+	      //        - in debug mode, the PTS server will most probably crash
+
+	      // clean the watcher; leave it to a next iteration to return an error scan code
+	      PGBUF_CLEAR_WATCHER (&context->scan_cache->page_watcher);
+	    }
+
+	  er_log_debug (ARG_FILE_LINE, "heap_get_visible_version: page re-fix after replication wait"
+			" %s: oid=%d|%d|%d  class_oid=%d|%d|%d  vpid=%d|%d  latch_mode=%d",
+			((error_code != NO_ERROR) ? "failed" : "succeeded"),
+			OID_AS_ARGS (context->oid_p), OID_AS_ARGS (context->class_oid_p),
+			VPID_AS_ARGS (&saved_vpid), (int) saved_latch_mode);
+	}
+
+      // now restore state for the next attempt to get the version
+      // (ie: move the cache page watcher to home page watcher)
+      //
+      heap_init_get_context (thread_p, context, context->oid_p, context->class_oid_p,
+			     context->recdes_p, context->scan_cache, context->ispeeking, context->old_chn);
     }
   while (true);
 #else
@@ -25143,6 +25228,17 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
       /* we need class_oid to check if the class is mvcc enabled */
       context->class_oid_p = &class_oid_local;
     }
+  // *INDENT-OFF*
+  scope_exit <std::function<void (void)>> reset_class_out_ftor (
+    [&context, &class_oid_local]()
+    {
+      if (context->class_oid_p == &class_oid_local)
+       {
+          // clean up locally set pointer to remove dangling pointer to stack variable
+          context->class_oid_p = nullptr;
+       }
+    });
+  // *INDENT-ON*
 
   if (context->scan_cache && context->ispeeking == COPY && context->recdes_p != NULL)
     {

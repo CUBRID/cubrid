@@ -22,9 +22,11 @@
 #include "server_type.hpp"
 #include "system_parameter.h"
 #include "thread_manager.hpp"
+#include "thread_looper.hpp"
 
 passive_tran_server::~passive_tran_server ()
 {
+  assert (m_oldest_active_mvccid_sender == nullptr);
   assert (m_replicator == nullptr);
 }
 
@@ -65,6 +67,12 @@ passive_tran_server::receive_log_prior_list (page_server_conn_t::sequenced_paylo
 {
   std::string message = a_ip.pull_payload ();
   log_Gl.get_log_prior_receiver ().push_message (std::move (message));
+}
+
+void
+passive_tran_server::stop_outgoing_page_server_messages ()
+{
+  cubthread::get_manager ()->destroy_daemon (m_oldest_active_mvccid_sender);
 }
 
 int
@@ -149,6 +157,37 @@ void passive_tran_server::send_and_receive_stop_log_prior_dispatch ()
   // outside this context, all log prior currently present on the passive transaction server
   // needs to be consumed (aka: waited to be consumed/serialized to log)
 }
+
+void passive_tran_server::start_oldest_active_mvccid_sender ()
+{
+  assert (m_oldest_active_mvccid_sender == nullptr);
+
+  /* Now 1s , but it would be a system parameter later to make it tunable. */
+  cubthread::looper loop (std::chrono::milliseconds (1000));
+  auto func_exec = std::bind (&passive_tran_server::send_oldest_active_mvccid, std::ref (*this), std::placeholders::_1);
+  auto sender_entry = new cubthread::entry_callable_task (std::move (func_exec)); /* delete on retire. See the constr. */;
+
+  m_oldest_active_mvccid_sender = cubthread::get_manager ()->create_daemon (loop, sender_entry,
+				  "passive_tran_server::oldest_active_mvccid_sender");
+
+  assert (m_oldest_active_mvccid_sender != nullptr); // when create_daemon() fails
+}
+
+void passive_tran_server::send_oldest_active_mvccid (cubthread::entry &)
+{
+  std::string request_message;
+
+  const auto new_oldest_active_mvccid = log_Gl.mvcc_table.update_global_oldest_visible();
+  if (new_oldest_active_mvccid == m_oldest_active_mvccid)
+    {
+      return;
+    }
+
+  m_oldest_active_mvccid = new_oldest_active_mvccid;
+  request_message.append (reinterpret_cast<const char *> (&m_oldest_active_mvccid), sizeof (m_oldest_active_mvccid));
+  push_request (tran_to_page_request::SEND_OLDEST_ACTIVE_MVCCID, std::move (request_message));
+}
+
 
 log_lsa passive_tran_server::get_highest_processed_lsa () const
 {

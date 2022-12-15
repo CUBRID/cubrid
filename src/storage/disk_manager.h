@@ -116,7 +116,6 @@ extern DISK_ISVALID disk_check (THREAD_ENTRY * thread_p, bool repair);
 extern int disk_dump_all (THREAD_ENTRY * thread_p, FILE * fp);
 extern int disk_spacedb (THREAD_ENTRY * thread_p, SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols);
 extern DKNVOLS disk_get_perm_volume_count ();
-extern void disk_set_page_server_perm_volume_count (DKNVOLS nvols);
 
 extern int disk_volume_header_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt,
 					  void **ctx);

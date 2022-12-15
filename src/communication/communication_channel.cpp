@@ -135,16 +135,15 @@ namespace cubcomm
 
   css_error_code channel::recv_int (int &received)
   {
-    size_t len = sizeof (received);
+    const size_t len = sizeof (received);
 
-    size_t readlen = (size_t) css_readn (m_socket, reinterpret_cast<char *> (&received), (int) len,
-					 m_max_timeout_in_ms);
+    const int readlen = css_readn (m_socket, reinterpret_cast<char *> (&received), (int) len, m_max_timeout_in_ms);
     css_error_code error = NO_ERRORS;
     if (readlen < 0)
       {
 	error = css_error_code::ERROR_ON_COMMAND_READ;
       }
-    else if (readlen != len)
+    else if ((size_t) readlen != len)
       {
 	error = css_error_code::READ_LENGTH_MISMATCH;
       }
@@ -164,7 +163,6 @@ namespace cubcomm
 	return INTERNAL_CSS_ERROR;
       }
 
-    m_type = CHANNEL_TYPE::INITIATOR;
     m_socket = css_tcp_client_open (hostname, port);
 
     er_log_chn_debug ("[%s] Connect to %s:%d socket = %d.\n", get_channel_id ().c_str (), hostname, port, m_socket);
@@ -174,6 +172,7 @@ namespace cubcomm
 	return REQUEST_REFUSED;
       }
 
+    m_type = CHANNEL_TYPE::INITIATOR;
     m_hostname = hostname;
     m_port = port;
 

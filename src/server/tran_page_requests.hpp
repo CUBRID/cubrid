@@ -32,10 +32,12 @@ enum class tran_to_page_request
 
   // Active only
   SEND_LOG_PRIOR_LIST, /* response-less */
+  GET_OLDEST_ACTIVE_MVCCID, /* synchronously waiting for response */
 
   // Passive only
-  SEND_LOG_BOOT_INFO_FETCH,
-  SEND_STOP_LOG_PRIOR_DISPATCH,
+  SEND_LOG_BOOT_INFO_FETCH, /* synchronously waiting for response */
+  SEND_STOP_LOG_PRIOR_DISPATCH, /* synchronously waiting for response */
+  SEND_OLDEST_ACTIVE_MVCCID, /* response-less */
 };
 
 enum class page_to_tran_request

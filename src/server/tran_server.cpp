@@ -238,6 +238,9 @@ tran_server::init_page_server_hosts (const char *db_name)
   return exit_code;
 }
 
+/* NOTE : Since TS don't need the information about the number of permanent volume during boot,
+ *        this message has no actual use currently. However, this mechanism will be reserved,
+ *        because it can be used in the future when multiple PS's are supported. */
 int
 tran_server::get_boot_info_from_page_server ()
 {
@@ -252,7 +255,8 @@ tran_server::get_boot_info_from_page_server ()
   DKNVOLS nvols_perm;
   std::memcpy (&nvols_perm, response_message.c_str (), sizeof (nvols_perm));
 
-  disk_set_page_server_perm_volume_count (nvols_perm);
+  /* Check the dummay value whether the TS receives the message from PS (receive_boot_info_request) well. */
+  assert (nvols_perm == VOLID_MAX);
 
   return NO_ERROR;
 }
@@ -322,6 +326,9 @@ void
 tran_server::disconnect_page_server ()
 {
   assert_is_tran_server ();
+
+  stop_outgoing_page_server_messages ();
+
   const int payload = static_cast<int> (m_conn_type);
   std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
   er_log_debug (ARG_FILE_LINE, "Transaction server starts disconnecting from the page servers.");
@@ -362,7 +369,7 @@ tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
 }
 
 int
-tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out)
+tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const
 {
   assert (is_page_server_connected ());
 

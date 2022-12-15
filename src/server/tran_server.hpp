@@ -75,7 +75,7 @@ class tran_server
     void disconnect_page_server ();
     bool is_page_server_connected () const;
     void push_request (tran_to_page_request reqid, std::string &&payload);
-    int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out);
+    int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
 
     virtual bool uses_remote_storage () const;
 
@@ -88,6 +88,9 @@ class tran_server
     // Booting functions that require specialization
     virtual bool get_remote_storage_config () = 0;
     virtual void on_boot () = 0;
+
+    // Before disconnecting page server, make sure no message is being sent anymore to the page server.
+    virtual void stop_outgoing_page_server_messages () = 0;
 
     virtual request_handlers_map_t get_request_handlers ();
 

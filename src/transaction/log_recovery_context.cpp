@@ -20,6 +20,7 @@
 
 #include "server_type.hpp"
 #include "thread_manager.hpp"
+#include "mvcc.h"
 
 log_recovery_context::log_recovery_context ()
 {
@@ -100,6 +101,15 @@ void
 log_recovery_context::set_start_redo_lsa (const log_lsa &start_redo_lsa)
 {
   m_start_redo_lsa = start_redo_lsa;
+}
+
+void
+log_recovery_context::set_largest_mvccid (const MVCCID mvccid)
+{
+  if (MVCC_ID_PRECEDES (m_largest_mvccid, mvccid))
+    {
+      m_largest_mvccid = mvccid;
+    }
 }
 
 bool

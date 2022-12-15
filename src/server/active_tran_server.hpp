@@ -30,6 +30,7 @@ class active_tran_server : public tran_server
     }
 
     bool uses_remote_storage () const final override;
+    MVCCID get_oldest_active_mvccid_from_page_server () const;
 
   private:
     void on_boot () final override;
@@ -38,6 +39,8 @@ class active_tran_server : public tran_server
     request_handlers_map_t get_request_handlers () final override;
 
     void receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip);
+
+    void stop_outgoing_page_server_messages () final override;
 
   private:
     bool m_uses_remote_storage = false;
