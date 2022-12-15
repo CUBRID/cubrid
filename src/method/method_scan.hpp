@@ -95,6 +95,7 @@ namespace cubscan
 
 	std::vector<TP_DOMAIN *> m_arg_dom_vector; /* arg value's domain */
 	std::vector<DB_VALUE> m_arg_vector;        /* arg value */
+	std::vector<bool> m_arg_use_vector;        /* arg is used for method, should be prepared */
 
 	qproc_db_value_list *m_dbval_list; /* result */
     };

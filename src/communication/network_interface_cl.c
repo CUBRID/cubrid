@@ -8759,7 +8759,7 @@ jsp_get_server_port (void)
 #else /* CS_MODE */
   int port;
   THREAD_ENTRY *thread_p = enter_server ();
-  port = jsp_server_port ();
+  port = jsp_server_port_from_info ();
   exit_server (*thread_p);
   return port;
 #endif /* !CS_MODE */

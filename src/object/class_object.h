@@ -950,11 +950,8 @@ extern int classobj_copy_props (DB_SEQ * properties, MOP filter_class, DB_SEQ **
 extern void classobj_free_prop (DB_SEQ * properties);
 extern int classobj_put_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue);
 extern int classobj_drop_prop (DB_SEQ * properties, const char *name);
-extern int classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name,
-			       SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attr_prefix_length,
-			       const BTID * id, SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
-			       char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment,
-			       SM_INDEX_STATUS index_status, bool attr_name_instead_of_id);
+extern int classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID * id,
+			       SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name, bool attr_name_instead_of_id);
 extern int classobj_find_prop_constraint (DB_SEQ * properties, const char *prop_name, const char *cnstr_name,
 					  DB_VALUE * cnstr_val);
 

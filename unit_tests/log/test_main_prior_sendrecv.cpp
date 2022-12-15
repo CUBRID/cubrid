@@ -21,6 +21,7 @@
 
 #include "log_prior_recv.hpp"
 #include "log_prior_send.hpp"
+#include "system_parameter.h"
 
 #include <condition_variable>
 #include <mutex>
@@ -107,6 +108,9 @@ TEST_CASE ("Test prior list transfers with two receivers", "")
 
 test_env::test_env (size_t receivers_count)
 {
+  // affirmative answers for debug parameters used in the context of this test
+  prm_set_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER, true);
+
   // For each receiver, three steps must be done:
   //	1. creating a prior info, where log is transferred
   //	2. creating the log receiver
@@ -347,16 +351,4 @@ log_wakeup_log_flush_daemon ()
 void
 _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 {
-}
-
-bool
-prm_get_bool_value (PARAM_ID id)
-{
-  // affirmative for debug parameters used in the context of this test
-  if (id == PRM_ID_ER_LOG_PRIOR_TRANSFER)
-    {
-      return true;
-    }
-  assert (false);
-  return false;
 }

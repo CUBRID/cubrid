@@ -574,12 +574,10 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       goto error_return;
     }
 
-  logddl_init ();
-  logddl_set_logging_enabled (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG));
-  logddl_set_app_name (APP_NAME_LOADDB);
+  logddl_init (APP_NAME_LOADDB);
+  logddl_check_ddl_audit_param ();
   logddl_set_db_name (args.volume.c_str ());
   logddl_set_user_name (args.user_name.c_str ());
-  logddl_set_pid (getpid ());
 
   /* disable trigger actions to be fired */
   db_disable_trigger ();

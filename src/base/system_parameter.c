@@ -728,6 +728,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_FLASHBACK_TIMEOUT "flashback_timeout"
 #define PRM_NAME_FLASHBACK_MAX_TRANSACTION "flashback_max_transaction"
 #define PRM_NAME_FLASHBACK_WIN_SIZE "flashback_win_size"
+#define PRM_NAME_USE_USER_HOSTS "use_user_hosts"
+
+#define PRM_NAME_QMGR_MAX_QUERY_PER_TRAN "max_query_per_tran"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -743,104 +746,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 /*
  * Bit masks for flag representing status words
  */
-
-/*
- * Static flags
- */
-#define PRM_EMPTY_FLAG	    0x00000000	/* empty flag */
-#define PRM_USER_CHANGE     0x00000001	/* user can change, not implemented */
-#define PRM_FOR_CLIENT      0x00000002	/* is for client parameter */
-#define PRM_FOR_SERVER      0x00000004	/* is for server parameter */
-#define PRM_HIDDEN          0x00000008	/* is hidden */
-#define PRM_RELOADABLE      0x00000010	/* is reloadable */
-#define PRM_COMPOUND        0x00000020	/* sets the value of several others */
-#define PRM_TEST_CHANGE     0x00000040	/* can only be changed in the test mode */
-#define PRM_FOR_HA          0x00000080	/* is for heartbeat */
-#define PRM_FOR_SESSION	    0x00000100	/* is a session parameter - all client or client/server parameters that can be
-					 * changed on-line */
-#define PRM_FORCE_SERVER    0x00000200	/* client should get value from server */
-#define PRM_FOR_QRY_STRING  0x00000400	/* if a parameter can affect the plan generation it should be included in the
-					 * query string */
-#define PRM_CLIENT_SESSION  0x00000800	/* mark those client/server session parameters that should not affect the
-					 * server */
-#define PRM_SIZE_UNIT       0x00001000	/* has size unit interface */
-#define PRM_TIME_UNIT       0x00002000	/* has time unit interface */
-#define PRM_DIFFER_UNIT     0x00004000	/* parameter unit need to be changed */
-#define PRM_FOR_HA_CONTEXT  0x00008000	/* should be replicated into HA log applier */
-
-#define PRM_GET_SERVER      0x00010000	/* return the value of server parameter from client/server parameter. Note that
-					 * this flag only can be set if the parameter has PRM_FOR_CLIENT,
-					 * PRM_FOR_SERVER, and PRM_USER_CHANGE flags. */
-
-#define PRM_DEPRECATED      0x40000000	/* is deprecated */
-#define PRM_OBSOLETED       0x80000000	/* is obsoleted */
-
-/*
- * Dynamic flags
- */
-#define PRM_SET             0x00000001	/* has been set */
-#define PRM_ALLOCATED       0x00000002	/* storage has been malloc'd */
-#define PRM_DEFAULT_USED    0x00000004	/* Default value has been used */
-#define PRM_DIFFERENT	    0x00000008	/* mark those parameters that have values different than their default.
-					 * currently used by parameters that should be printed to query string */
-
-/*
- * Macros to get data type
- */
-#define PRM_IS_STRING(x)          ((x)->datatype == PRM_STRING)
-#define PRM_IS_INTEGER(x)         ((x)->datatype == PRM_INTEGER)
-#define PRM_IS_FLOAT(x)           ((x)->datatype == PRM_FLOAT)
-#define PRM_IS_BOOLEAN(x)         ((x)->datatype == PRM_BOOLEAN)
-#define PRM_IS_KEYWORD(x)         ((x)->datatype == PRM_KEYWORD)
-#define PRM_IS_INTEGER_LIST(x)    ((x)->datatype == PRM_INTEGER_LIST)
-#define PRM_IS_BIGINT(x)          ((x)->datatype == PRM_BIGINT)
-
-/*
- * Macros to access bit fields
- */
-
-#define PRM_USER_CAN_CHANGE(x)    (x & PRM_USER_CHANGE)
-#define PRM_IS_FOR_CLIENT(x)      (x & PRM_FOR_CLIENT)
-#define PRM_IS_FOR_SERVER(x)      (x & PRM_FOR_SERVER)
-#define PRM_IS_HIDDEN(x)          (x & PRM_HIDDEN)
-#define PRM_IS_RELOADABLE(x)      (x & PRM_RELOADABLE)
-#define PRM_IS_COMPOUND(x)        (x & PRM_COMPOUND)
-#define PRM_TEST_CHANGE_ONLY(x)   (x & PRM_TEST_CHANGE)
-#define PRM_IS_FOR_HA(x)          (x & PRM_FOR_HA)
-#define PRM_IS_FOR_SESSION(x)	  (x & PRM_FOR_SESSION)
-#define PRM_GET_FROM_SERVER(x)	  (x & PRM_FORCE_SERVER)
-#define PRM_IS_FOR_QRY_STRING(x)  (x & PRM_FOR_QRY_STRING)
-#define PRM_CLIENT_SESSION_ONLY(x) (x & PRM_CLIENT_SESSION)
-#define PRM_HAS_SIZE_UNIT(x)      (x & PRM_SIZE_UNIT)
-#define PRM_HAS_TIME_UNIT(x)      (x & PRM_TIME_UNIT)
-#define PRM_DIFFERENT_UNIT(x)     (x & PRM_DIFFER_UNIT)
-#define PRM_IS_FOR_HA_CONTEXT(x)  (x & PRM_FOR_HA_CONTEXT)
-#define PRM_IS_GET_SERVER(x)      (x & PRM_GET_SERVER)
-#define PRM_IS_DEPRECATED(x)      (x & PRM_DEPRECATED)
-#define PRM_IS_OBSOLETED(x)       (x & PRM_OBSOLETED)
-
-#define PRM_IS_SET(x)             (x & PRM_SET)
-#define PRM_IS_ALLOCATED(x)       (x & PRM_ALLOCATED)
-#define PRM_DEFAULT_VAL_USED(x)   (x & PRM_DEFAULT_USED)
-#define PRM_IS_DIFFERENT(x)	  (x & PRM_DIFFERENT)
-
-/*
- * Macros to manipulate bit fields
- */
-
-#define PRM_CLEAR_BIT(this, here)  (here &= ~this)
-#define PRM_SET_BIT(this, here)    (here |= this)
-
-/*
- * Macros to get values
- */
-
-#define PRM_GET_INT(x)      (*((int *) (x)))
-#define PRM_GET_FLOAT(x)    (*((float *) (x)))
-#define PRM_GET_STRING(x)   (*((char **) (x)))
-#define PRM_GET_BOOL(x)     (*((bool *) (x)))
-#define PRM_GET_INTEGER_LIST(x) (*((int **) (x)))
-#define PRM_GET_BIGINT(x)     (*((UINT64 *) (x)))
 
 /*
  * Macros to call functions
@@ -2515,6 +2420,16 @@ static int prm_flashback_win_size_lower = 0;
 static int prm_flashback_win_size_upper = INT_MAX;
 static unsigned int prm_flashback_win_size_flag = 0;
 
+bool PRM_USE_USER_HOSTS = false;
+static bool prm_use_user_hosts_default = false;
+static unsigned int prm_use_user_hosts_flag = 0;
+
+int PRM_MAX_QUERY_PER_TRAN_SIZE = INT_MAX;
+static int prm_max_query_per_tran_default = 100;
+static int prm_max_query_per_tran_lower = 1;
+static int prm_max_query_per_tran_upper = SHRT_MAX;
+static unsigned int prm_max_query_per_tran_flag = 0;
+
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
 static int prm_size_to_io_pages (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type);
@@ -2534,24 +2449,7 @@ static int prm_equal_to_ori (void *out_val, SYSPRM_DATATYPE out_type, void *in_v
 static void update_session_state_from_sys_params (THREAD_ENTRY * thread_p, SESSION_PARAM * session_params);
 #endif
 
-struct sysprm_param
-{
-  PARAM_ID id;			/* parameter ID */
-  const char *name;		/* the keyword expected */
-  unsigned int static_flag;	/* bitmask flag representing status words */
-  SYSPRM_DATATYPE datatype;	/* value data type */
-  unsigned int *dynamic_flag;	/* shared by both original and duplicated */
-  void *default_value;		/* address of (pointer to) default value */
-  void *value;			/* address of (pointer to) current value */
-  void *upper_limit;		/* highest allowable value */
-  void *lower_limit;		/* lowest allowable value */
-  char *force_value;		/* address of (pointer to) force value string */
-  DUP_PRM_FUNC set_dup;		/* set duplicated value to original value */
-  DUP_PRM_FUNC get_dup;		/* get duplicated value from original value */
-};
-typedef struct sysprm_param SYSPRM_PARAM;
-
-static SYSPRM_PARAM prm_Def[] = {
+SYSPRM_PARAM prm_Def[] = {
   {PRM_ID_ER_LOG_DEBUG,
    PRM_NAME_ER_LOG_DEBUG,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
@@ -6518,27 +6416,31 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_flashback_win_size_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_USE_USER_HOSTS,
+   PRM_NAME_USE_USER_HOSTS,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   PRM_BOOLEAN,
+   &prm_use_user_hosts_flag,
+   (void *) &prm_use_user_hosts_default,
+   (void *) &PRM_USE_USER_HOSTS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_QMGR_MAX_QUERY_PER_TRAN,
+   PRM_NAME_QMGR_MAX_QUERY_PER_TRAN,
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   PRM_INTEGER,
+   &prm_max_query_per_tran_flag,
+   (void *) &prm_max_query_per_tran_default,
+   (void *) &PRM_MAX_QUERY_PER_TRAN_SIZE,
+   (void *) &prm_max_query_per_tran_upper,
+   (void *) &prm_max_query_per_tran_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
 };
-
-#define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
-#define PARAM_MSG_FMT(msgid) msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS, (msgid))
-
-#define GET_PRM(id) (&prm_Def[(id)])
-#define GET_PRM_STATIC_FLAG(id) ((GET_PRM (id))->static_flag)
-#define GET_PRM_DYNAMIC_FLAG(id) ((GET_PRM (id))->dynamic_flag)
-#define GET_PRM_DATATYPE(id) ((GET_PRM (id))->datatype)
-
-#if defined (CS_MODE)
-#define PRM_PRINT_QRY_STRING(id) (PRM_IS_DIFFERENT (*(GET_PRM_DYNAMIC_FLAG (id))) \
-			&& PRM_IS_FOR_QRY_STRING (GET_PRM_STATIC_FLAG (id)))
-#else
-#define PRM_PRINT_QRY_STRING(id) (PRM_IS_FOR_QRY_STRING (GET_PRM_STATIC_FLAG (id)))
-#endif
-
-#define PRM_SERVER_SESSION(id) (PRM_IS_FOR_SESSION (GET_PRM_STATIC_FLAG (id)) \
-			&& PRM_IS_FOR_SERVER (GET_PRM_STATIC_FLAG (id)) \
-			&& !PRM_CLIENT_SESSION_ONLY (GET_PRM_STATIC_FLAG (id)))
 
 static int num_session_parameters = 0;
 #define NUM_SESSION_PRM num_session_parameters
@@ -11479,99 +11381,6 @@ prm_get_value (PARAM_ID prm_id)
 }
 
 /*
- * prm_get_integer_value () - get the value of a parameter of type integer
- *
- * return      : value
- * prm_id (in) : parameter id
- *
- * NOTE: keywords are stored as integers
- */
-int
-prm_get_integer_value (PARAM_ID prm_id)
-{
-  assert (prm_id <= PRM_LAST_ID);
-  assert (PRM_IS_INTEGER (&prm_Def[prm_id]) || PRM_IS_KEYWORD (&prm_Def[prm_id]));
-
-  return PRM_GET_INT (prm_get_value (prm_id));
-}
-
-/*
- * prm_get_bool_value () - get the value of a parameter of type bool
- *
- * return      : value
- * prm_id (in) : parameter id
- */
-bool
-prm_get_bool_value (PARAM_ID prm_id)
-{
-  assert (prm_id <= PRM_LAST_ID);
-  assert (PRM_IS_BOOLEAN (&prm_Def[prm_id]));
-
-  return PRM_GET_BOOL (prm_get_value (prm_id));
-}
-
-/*
- * prm_get_float_value () - get the value of a parameter of type float
- *
- * return      : value
- * prm_id (in) : parameter id
- */
-float
-prm_get_float_value (PARAM_ID prm_id)
-{
-  assert (prm_id <= PRM_LAST_ID);
-  assert (PRM_IS_FLOAT (&prm_Def[prm_id]));
-
-  return PRM_GET_FLOAT (prm_get_value (prm_id));
-}
-
-/*
- * prm_get_string_value () - get the value of a parameter of type string
- *
- * return      : value
- * prm_id (in) : parameter id
- */
-char *
-prm_get_string_value (PARAM_ID prm_id)
-{
-  assert (prm_id <= PRM_LAST_ID);
-  assert (PRM_IS_STRING (&prm_Def[prm_id]));
-
-  return PRM_GET_STRING (prm_get_value (prm_id));
-}
-
-/*
- * prm_get_integer_list_value () - get the value of a parameter of type
- *				   integer list
- *
- * return      : value
- * prm_id (in) : parameter id
- */
-int *
-prm_get_integer_list_value (PARAM_ID prm_id)
-{
-  assert (prm_id <= PRM_LAST_ID);
-  assert (PRM_IS_INTEGER_LIST (&prm_Def[prm_id]));
-
-  return PRM_GET_INTEGER_LIST (prm_get_value (prm_id));
-}
-
-/*
- * prm_get_bigint_value () - get the value of a parameter of type size
- *
- * return      : value
- * prm_id (in) : parameter id
- */
-UINT64
-prm_get_bigint_value (PARAM_ID prm_id)
-{
-  assert (prm_id <= PRM_LAST_ID);
-  assert (PRM_IS_BIGINT (&prm_Def[prm_id]));
-
-  return PRM_GET_BIGINT (prm_get_value (prm_id));
-}
-
-/*
  * prm_set_integer_value () - set a new value to a parameter of type integer
  *
  * return      : void
@@ -13191,3 +13000,98 @@ sysprm_update_cached_session_param_val (const PARAM_ID prm_id)
     }
 }
 #endif /* CS_MODE */
+
+#if defined (WINDOWS)
+/*
+ * prm_get_integer_value () - get the value of a parameter of type integer
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ *
+ * NOTE: keywords are stored as integers
+ */
+int
+prm_get_integer_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (PRM_IS_INTEGER (&prm_Def[prm_id]) || PRM_IS_KEYWORD (&prm_Def[prm_id]));
+
+  return PRM_GET_INT (prm_get_value (prm_id));
+}
+
+/*
+ * prm_get_bool_value () - get the value of a parameter of type bool
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+bool
+prm_get_bool_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (PRM_IS_BOOLEAN (&prm_Def[prm_id]));
+
+  return PRM_GET_BOOL (prm_get_value (prm_id));
+}
+
+/*
+ * prm_get_float_value () - get the value of a parameter of type float
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+float
+prm_get_float_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (PRM_IS_FLOAT (&prm_Def[prm_id]));
+
+  return PRM_GET_FLOAT (prm_get_value (prm_id));
+}
+
+/*
+ * prm_get_string_value () - get the value of a parameter of type string
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+char *
+prm_get_string_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (PRM_IS_STRING (&prm_Def[prm_id]));
+
+  return PRM_GET_STRING (prm_get_value (prm_id));
+}
+
+/*
+ * prm_get_integer_list_value () - get the value of a parameter of type
+ *				   integer list
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+int *
+prm_get_integer_list_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (PRM_IS_INTEGER_LIST (&prm_Def[prm_id]));
+
+  return PRM_GET_INTEGER_LIST (prm_get_value (prm_id));
+}
+
+/*
+ * prm_get_bigint_value () - get the value of a parameter of type size
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+UINT64
+prm_get_bigint_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (PRM_IS_BIGINT (&prm_Def[prm_id]));
+
+  return PRM_GET_BIGINT (prm_get_value (prm_id));
+}
+#endif /* window */

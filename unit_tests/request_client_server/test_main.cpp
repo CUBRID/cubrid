@@ -24,6 +24,7 @@
 #include "request_sync_send_queue.hpp"
 #include "request_sync_client_server.hpp"
 #include "response_broker.hpp"
+#include "system_parameter.h"
 
 #include "comm_channel_mock.hpp"
 
@@ -918,6 +919,9 @@ test_client_and_server_env::test_client_and_server_env (test_handler_register_fu
   handler_register (m_server);
   mock_socket_between_client_and_server (m_client, m_server, m_sockdir);
   init_globals ();
+
+  // affirmative answers for debug parameters used in the context of this test
+  prm_set_bool_value (PRM_ID_ER_LOG_COMM_REQUEST, true);
 }
 
 test_client_and_server_env::~test_client_and_server_env ()
@@ -1274,18 +1278,6 @@ void
 er_set (int, const char *, const int, int, int, ...)
 {
   // nop
-}
-
-bool
-prm_get_bool_value (PARAM_ID prmid)
-{
-  // affirmative for debug parameters used in the context of this test
-  if (prmid == PRM_ID_ER_LOG_COMM_REQUEST)
-    {
-      return true;
-    }
-  assert (false);
-  return false;
 }
 
 int
