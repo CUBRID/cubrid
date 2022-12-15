@@ -983,8 +983,8 @@ perfmon_server_get_stats (THREAD_ENTRY * thread_p)
 }
 
 /*
- *   xperfmon_server_copy_stats - Copy recorded server statistics for the current
- *				  transaction index
+ *   xperfmon_server_copy_stats_for - Copy recorded server statistics for trace
+ *				on the numbers of fetches, ioreads, and iowrites
  *   return: none
  *   to_stats(out): buffer to copy
  */
