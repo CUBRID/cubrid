@@ -125,6 +125,7 @@ add_dependencies(test_prior_list_serialize
 # test_prior_sendrecv
 #
 set(TEST_PRIOR_SENDRECV_SOURCES
+  ${TEST_FAKE_DIR}/fake_system_parameter.cpp
   ${TRANSACTION_DIR}/log_prior_send.cpp
   ${TRANSACTION_DIR}/log_prior_recv.cpp
   test_main_prior_sendrecv.cpp
@@ -188,6 +189,7 @@ add_dependencies(test_log_lsa_utils
 # test_log_recovery_parallel
 #
 set(TEST_LOG_RECOVERY_PARALLEL_SOURCES
+  ${TEST_FAKE_DIR}/fake_system_parameter.cpp
   ${TRANSACTION_DIR}/log_recovery_redo_parallel.cpp
   ut_redo_job_impl.cpp
   ut_database.cpp

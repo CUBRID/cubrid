@@ -18,86 +18,50 @@
 
 #include "system_parameter.h"
 
-union fake_prmval
-{
-  int i;
-  float f;
-  bool b;
-  char *str;
-  int *ilist;
-  UINT64 ull;
-};
+SYSPRM_PARAM prm_Def[PRM_LAST_ID];
 
-fake_prmval g_Prmdef[PRM_LAST_ID];
+bool prm_Def_bool_val_array[PRM_LAST_ID];
+int prm_Def_integer_val_array[PRM_LAST_ID];
 
-int
-prm_get_integer_value (PARAM_ID prm_id)
+// NOTE: this is implemented here as it seems it is not called
+// however, should it ever be needed, it must be refactored as:
+//  - either an indirection to another test specific implementation in the
+//    test source
+//  - or taken out of here and put only in whichever tests needs it
+void *
+prm_get_value (PARAM_ID prm_id)
 {
-  return g_Prmdef[prm_id].i;
-}
-
-float
-prm_get_float_value (PARAM_ID prm_id)
-{
-  return g_Prmdef[prm_id].f;
-}
-
-bool
-prm_get_bool_value (PARAM_ID prm_id)
-{
-  return g_Prmdef[prm_id].b;
-}
-
-char *
-prm_get_string_value (PARAM_ID prm_id)
-{
-  return g_Prmdef[prm_id].str;
-}
-
-int *
-prm_get_integer_list_value (PARAM_ID prm_id)
-{
-  return g_Prmdef[prm_id].ilist;
-}
-
-UINT64
-prm_get_bigint_value (PARAM_ID prm_id)
-{
-  return g_Prmdef[prm_id].ull;
-}
-
-void
-prm_set_integer_value (PARAM_ID prm_id, int value)
-{
-  g_Prmdef[prm_id].i = value;
-}
-
-void
-prm_set_float_value (PARAM_ID prm_id, float value)
-{
-  g_Prmdef[prm_id].f = value;
+  assert (false);
+  return nullptr;
 }
 
 void
 prm_set_bool_value (PARAM_ID prm_id, bool value)
 {
-  g_Prmdef[prm_id].b = value;
+  assert (prm_id <= PRM_LAST_ID);
+  prm_Def[prm_id].datatype = PRM_BOOLEAN;
+
+  // on demand, provide support for the value if not already set before
+  // set value only once to avoid mistakes such as: different calls set
+  // different value type to the same parameter
+  if (prm_Def[prm_id].value == nullptr)
+    {
+      prm_Def[prm_id].value = (void *)&prm_Def_bool_val_array[prm_id];
+    }
+
+  PRM_GET_BOOL (prm_Def[prm_id].value) = value;
 }
 
 void
-prm_set_string_value (PARAM_ID prm_id, char *value)
+prm_set_integer_value (PARAM_ID prm_id, int value)
 {
-  g_Prmdef[prm_id].str = value;
-}
+  assert (prm_id <= PRM_LAST_ID);
+  prm_Def[prm_id].datatype = PRM_INTEGER;
 
-void
-prm_set_integer_list_value (PARAM_ID prm_id, int *value)
-{
-  g_Prmdef[prm_id].ilist = value;
-}
+  if (prm_Def[prm_id].value == nullptr)
+    {
+      prm_Def[prm_id].value = (void *)&prm_Def_integer_val_array[prm_id];
+    }
 
-void
-prm_set_bigint_value (PARAM_ID prm_id, UINT64 value)
-{
-  g_Prmdef[prm_id].ull = value;
+  PRM_GET_INT (prm_Def[prm_id].value) = value;
 }

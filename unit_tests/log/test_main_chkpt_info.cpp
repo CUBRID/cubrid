@@ -790,13 +790,6 @@ or_put_value (OR_BUF *, DB_VALUE *, int, int, int)
   return 0;
 }
 
-bool
-prm_get_bool_value (PARAM_ID prmid)
-{
-  assert (false);
-  return false;
-}
-
 void
 _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 {
