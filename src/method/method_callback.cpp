@@ -166,10 +166,7 @@ namespace cubmethod
       }
     else
       {
-	if (handler->execute (request) == NO_ERROR)
-	  {
-	    int error = handler->execute (request);
-	  }
+	int error = handler->execute (request);
 	if (error == NO_ERROR)
 	  {
 	    /* register query_id for out resultset */
@@ -182,13 +179,10 @@ namespace cubmethod
 	  }
 	else
 	  {
-	    else
-	      {
-		/* XASL cache is not found */
-		m_error_ctx.clear ();
-		handler->prepare_retry ();
-		handler->execute (request);
-	      }
+	    /* XASL cache is not found */
+	    m_error_ctx.clear ();
+	    handler->prepare_retry ();
+	    handler->execute (request);
 	  }
       }
 

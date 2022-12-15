@@ -89,6 +89,7 @@
 #include "tz_support.h"
 #include "dbtype.h"
 #include "crypt_opfunc.h"
+#include "method_callback.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
