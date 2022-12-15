@@ -1434,7 +1434,19 @@ $ LOADDB
 
 1352 Invalid number of columns specified.
 
-1353 Letzter Fehler
+1353 Internal CAS error : %1$d 
+1354 Internal CAS error : %1$d, %2$s
+
+1355 %1$s "%2$s" hat ein ungültiges Format in Zeile %3$d der Datei "%4$s"
+1356 Hostname "%1$s" ist zu lang, er sollte kleiner oder gleich 256 in Zeile %2$d der Datei "%3$s" sein.
+1357 Der Hostname "%1$s" existiert bereits, ein Hostname kann nicht mit anderen IP-Adressen in Zeile %2$d der Datei "%3$s" dupliziert werden.
+1358 Sowohl die IP-Adresse als auch der Hostname müssen vollständig in Zeile %1$d der Datei "%2$s" stehen.
+1359 "%1$s" kann nicht in der cubrid_hosts.conf nachgeschlagen werden.
+1360 Bei der Verwendung eines benutzerdefinierten Hosts ist ein Fehler aufgetreten.
+
+1361 Datei "%1$s" wurde nicht gefunden.
+
+1362 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
@@ -1598,6 +1610,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 133 Ungültige Verwendung von DROP SYNONYM.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
 134 Ungültige Verwendung von RENAME SYNONYM.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
 135 Keine Optionen für ALTER SYNONYM angegeben.
+136 Maximum length of a server dbname is %1$d bytes.
+137 Maximum length of a server user is %1$d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Außer Speicher.
@@ -1999,6 +2013,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 80 Isolation Pegelwert in MVCC muss 'read committed', 'repeatable read' oder 'serializable'.
 81 '%1$s' ist ein 'auto_increment' Objekt, das nicht erlaubt als serielle verändert werden wird.
 82 Ungültiger JSON: '%1$s'.
+83 Vclass %1$s is not updatable. Please check if any of its related classes are marked as REUSE_OID.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** Ungültiges Cache ***

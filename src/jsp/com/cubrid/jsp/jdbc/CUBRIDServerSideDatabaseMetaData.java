@@ -68,7 +68,7 @@ public class CUBRIDServerSideDatabaseMetaData implements DatabaseMetaData {
         minorVersion = -1;
     }
 
-    protected void parserVersionString () {
+    protected void parserVersionString() {
         productVersion = System.getProperty("cubrid.server.version");
 
         StringTokenizer st = new StringTokenizer(productVersion, ".");
@@ -138,7 +138,7 @@ public class CUBRIDServerSideDatabaseMetaData implements DatabaseMetaData {
     @Override
     public String getDatabaseProductVersion() throws SQLException {
         if (productVersion == null) {
-            parserVersionString ();
+            parserVersionString();
         }
         return productVersion;
     }
@@ -741,7 +741,7 @@ public class CUBRIDServerSideDatabaseMetaData implements DatabaseMetaData {
             case Connection.TRANSACTION_READ_COMMITTED:
             case Connection.TRANSACTION_REPEATABLE_READ:
             case Connection.TRANSACTION_SERIALIZABLE:
-            // case CUBRIDServerSideConnection.TRAN_REP_CLASS_COMMIT_INSTANCE:
+                // case CUBRIDServerSideConnection.TRAN_REP_CLASS_COMMIT_INSTANCE:
                 return true;
             default:
                 return false;
@@ -749,8 +749,7 @@ public class CUBRIDServerSideDatabaseMetaData implements DatabaseMetaData {
     }
 
     @Override
-    public boolean supportsDataDefinitionAndDataManipulationTransactions()
-            throws SQLException {
+    public boolean supportsDataDefinitionAndDataManipulationTransactions() throws SQLException {
         return true;
     }
 
@@ -798,7 +797,7 @@ public class CUBRIDServerSideDatabaseMetaData implements DatabaseMetaData {
         };
 
         boolean[] nullable = {true, true, false, true, true, true, false, false};
-        
+
         // TODO
         return null;
     }
@@ -846,11 +845,11 @@ public class CUBRIDServerSideDatabaseMetaData implements DatabaseMetaData {
             DBType.DB_SHORT,
             DBType.DB_STRING,
         };
-        
+
         boolean[] nullable = {
             true, true, false, false, false, false, false, false, false, false, false, false, false
         };
-        
+
         // TODO
         return null;
     }
@@ -859,7 +858,7 @@ public class CUBRIDServerSideDatabaseMetaData implements DatabaseMetaData {
     public ResultSet getTables(
             String catalog, String schemaPattern, String tableNamePattern, String[] types)
             throws SQLException {
-                
+
         String[] names = {"TABLE_CAT", "TABLE_SCHEM", "TABLE_NAME", "TABLE_TYPE", "REMARKS"};
         int[] type = {
             DBType.DB_STRING,
@@ -869,13 +868,14 @@ public class CUBRIDServerSideDatabaseMetaData implements DatabaseMetaData {
             DBType.DB_STRING,
         };
         boolean[] nullable = {true, true, false, false, false};
-        
+
         SUStatement s = null;
         try {
-        s = con.getSUConnection().getSchemaInfo(
-            USchType.SCH_CLASS, tableNamePattern, null, (byte) 3);
+            s =
+                    con.getSUConnection()
+                            .getSchemaInfo(USchType.SCH_CLASS, tableNamePattern, null, (byte) 3);
         } catch (Exception e) {
-            throw new SQLException (e);
+            throw new SQLException(e);
         }
 
         List<ColumnInfo> columnInfo = s.getColumnInfo();
@@ -888,14 +888,14 @@ public class CUBRIDServerSideDatabaseMetaData implements DatabaseMetaData {
              */
             has_remarks = true;
         }
-        
+
         int[] precision = new int[5];
         precision[0] = 0; /* TABLE_CAT */
         precision[1] = 0; /* TABLE_SCHEM */
         precision[2] = columnInfo.get(0).prec; /* TABLE_NAME */
         precision[3] = 12; /* TABLE_TYPE */
         precision[4] = has_remarks ? columnInfo.get(2).prec : 0; /* REMARKS */
-        
+
         // TODO
 
         Object[] value = new Object[5];
@@ -985,7 +985,7 @@ public class CUBRIDServerSideDatabaseMetaData implements DatabaseMetaData {
         // TODO
         return null;
     }
-    
+
     /*
      * empty ResultSet
      */
@@ -1004,12 +1004,12 @@ public class CUBRIDServerSideDatabaseMetaData implements DatabaseMetaData {
      */
     @Override
     public ResultSet getCatalogs() throws SQLException {
-        
+
         String[] names = {"TABLE_SCHEM"};
         int[] types = {DBType.DB_STRING};
         boolean[] nullable = {false};
         // TODO
-        
+
         return null;
     }
 
@@ -1085,7 +1085,7 @@ public class CUBRIDServerSideDatabaseMetaData implements DatabaseMetaData {
             throws SQLException {
         if (table == null) {
             // TODO: error handling
-            
+
         }
         return getForeignKeys(USchType.SCH_EXPORTED_KEYS, table, null);
     }
@@ -1128,7 +1128,7 @@ public class CUBRIDServerSideDatabaseMetaData implements DatabaseMetaData {
             "SQL_DATETIME_SUB",
             "NUM_PREC_RADIX"
         };
-        
+
         int[] types = {
             DBType.DB_STRING,
             DBType.DB_SHORT,
@@ -1363,7 +1363,7 @@ public class CUBRIDServerSideDatabaseMetaData implements DatabaseMetaData {
     @Override
     public int getDatabaseMajorVersion() throws SQLException {
         if (majorVersion == -1) {
-            parserVersionString ();
+            parserVersionString();
         }
         return majorVersion;
     }
@@ -1371,7 +1371,7 @@ public class CUBRIDServerSideDatabaseMetaData implements DatabaseMetaData {
     @Override
     public int getDatabaseMinorVersion() throws SQLException {
         if (minorVersion == -1) {
-            parserVersionString ();
+            parserVersionString();
         }
         return minorVersion;
     }
@@ -1435,17 +1435,12 @@ public class CUBRIDServerSideDatabaseMetaData implements DatabaseMetaData {
     }
 
     @Override
-    public ResultSet getSuperTables(
-            String catalog, String schemaPattern, String tableNamePattern) throws SQLException {
+    public ResultSet getSuperTables(String catalog, String schemaPattern, String tableNamePattern)
+            throws SQLException {
 
         String[] names = {"TABLE_CAT", "TABLE_SCHEM", "TABLE_NAME", "SUPERTABLE_NAME"};
 
-        int[] type = {
-            DBType.DB_STRING,
-            DBType.DB_STRING,
-            DBType.DB_STRING,
-            DBType.DB_STRING
-        };
+        int[] type = {DBType.DB_STRING, DBType.DB_STRING, DBType.DB_STRING, DBType.DB_STRING};
 
         boolean[] nullable = {true, true, false, false};
 
@@ -1454,9 +1449,9 @@ public class CUBRIDServerSideDatabaseMetaData implements DatabaseMetaData {
     }
 
     @Override
-    public ResultSet getSuperTypes(
-            String catalog, String schemaPattern, String typeNamePattern) throws SQLException {
-        
+    public ResultSet getSuperTypes(String catalog, String schemaPattern, String typeNamePattern)
+            throws SQLException {
+
         String[] names = {
             "TYPE_CAT",
             "TYPE_SCHEM",
@@ -1474,9 +1469,9 @@ public class CUBRIDServerSideDatabaseMetaData implements DatabaseMetaData {
             DBType.DB_STRING,
             DBType.DB_STRING,
         };
-        
+
         boolean[] nullable = {true, true, false, true, true, false};
-        
+
         // TODO
         return null;
     }

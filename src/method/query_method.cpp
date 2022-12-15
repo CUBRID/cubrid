@@ -609,7 +609,9 @@ int xmethod_invoke_fold_constants (THREAD_ENTRY *thread_p, const method_sig_list
   cubmethod::method_invoke_group *method_group = cubmethod::get_rctx (thread_p)->create_invoke_group (thread_p, sig_list,
       false);
   method_group->begin ();
-  error_code = method_group->prepare (args);
+
+  std::vector<bool> dummy_use_vec (args.size(), true);
+  error_code = method_group->prepare (args, dummy_use_vec);
   if (error_code != NO_ERROR)
     {
       return error_code;

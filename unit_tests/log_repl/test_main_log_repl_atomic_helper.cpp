@@ -37,6 +37,11 @@ constexpr LOG_LSA INV_LSA { NULL_LOG_PAGEID, NULL_LOG_OFFSET };
 constexpr bool FIX_SUCC = true;
 constexpr bool FIX_FAIL = false;
 
+struct fake_system_parameters_initialize_type
+{
+  fake_system_parameters_initialize_type();
+};
+
 struct log_record_spec_type
 {
   TRANID m_trid;
@@ -74,6 +79,11 @@ struct test_spec_type
   void unfix_page (PAGE_PTR page_ptr);
 
   void check_error (int severity, int err_id);
+
+public:
+  // RAII style, make sure it is the first member of the class
+  // to ensure that the initialization gets executed before anything else
+  fake_system_parameters_initialize_type m_system_params;
 
   THREAD_ENTRY *m_thread_p = nullptr;
 
@@ -302,6 +312,11 @@ TEST_CASE ("LOG_SYSOP_ATOMIC_START/LOG_SYSOP_END-LOG_SYSOP_END_LOGICAL_UNDO - fa
 // ****************************************************************
 // test_spec_type implementation
 // ****************************************************************
+
+fake_system_parameters_initialize_type::fake_system_parameters_initialize_type()
+{
+  prm_set_bool_value(PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG, false);
+}
 
 test_spec_type::test_spec_type ()
   : m_log_redo_context { NULL_LSA, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, log_reader::fetch_mode::FORCE }

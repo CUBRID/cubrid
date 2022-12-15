@@ -347,33 +347,6 @@ if(UNIX)
   target_link_libraries(unittests_bit LINK_PRIVATE cubrid)
 endif(UNIX)
 
-
-# compat utils
-if(UNIX)
-  SET_SOURCE_FILES_PROPERTIES(
-    ${EXECUTABLES_DIR}/util_front.c
-    PROPERTIES LANGUAGE CXX
-  )
-  add_executable(addvoldb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(backupdb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(checkdb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(commdb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(compactdb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(copydb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(createdb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(deletedb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(installdb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(killtran ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(loaddb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(lockdb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(optimizedb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(renamedb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(restoredb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(spacedb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(sqlx ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(unloaddb ${EXECUTABLES_DIR}/util_front.c)
-endif(UNIX)
-
 # install
 install(TARGETS
   cubridesql
@@ -391,33 +364,6 @@ install(TARGETS
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   )
-
-# install compats
-if(UNIX)
-  install(TARGETS
-    addvoldb
-    backupdb
-    checkdb
-    commdb
-    compactdb
-    copydb
-    createdb
-    deletedb
-    installdb
-    killtran
-    loaddb
-    lockdb
-    optimizedb
-    renamedb
-    restoredb
-    spacedb
-    sqlx
-    unloaddb
-    RUNTIME DESTINATION ${CUBRID_COMPATDIR} COMPONENT Application
-    )
-  # TODO: compat scripts start|stop_cubrid?
-endif(UNIX)
-
 
 # install pdb files for debugging on windows
 if(WIN32)

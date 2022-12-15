@@ -19,6 +19,8 @@
 #define CATCH_CONFIG_MAIN
 #include "catch2/catch.hpp"
 
+#include "system_parameter.h"
+
 #include "ut_database.hpp"
 
 struct log_recovery_test_config
@@ -35,6 +37,17 @@ struct log_recovery_test_config
   /* useful in debugging to print helper messages/progress */
   bool verbose;
 };
+
+static void initialize_fake_system_parameters ()
+{
+  // params needed by linked code
+  // same default values as in system_parameter module
+  prm_set_bool_value (PRM_ID_USE_SYSTEM_MALLOC, false);
+  prm_set_bool_value (PRM_ID_PERF_TEST_MODE, false);
+
+  // parameters specific to this test
+  prm_set_bool_value (PRM_ID_RECOVERY_PARALLEL_TASK_DEBUG, false);
+}
 
 static bool thread_infrastructure_initialized = false;
 
@@ -212,6 +225,7 @@ class measure_time
 TEST_CASE ("log recovery parallel test: quick tests", "[ci]")
 {
   srand (time (nullptr));
+  initialize_fake_system_parameters ();
   initialize_thread_infrastructure ();
 
   constexpr std::array<size_t, 1> volume_count_per_database_arr { 10u };
@@ -258,6 +272,7 @@ TEST_CASE ("log recovery parallel test: quick tests", "[ci]")
 TEST_CASE ("log recovery parallel test: extensive tests", "[long]")
 {
   srand (time (nullptr));
+  initialize_fake_system_parameters ();
   initialize_thread_infrastructure ();
 
   constexpr std::array<size_t, 2> volume_count_per_database_arr { 1u, 10u };
