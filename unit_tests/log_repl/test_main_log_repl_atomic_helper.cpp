@@ -39,7 +39,7 @@ constexpr bool FIX_FAIL = false;
 
 struct fake_system_parameters_initialize_type
 {
-  fake_system_parameters_initialize_type();
+  fake_system_parameters_initialize_type ();
 };
 
 struct log_record_spec_type
@@ -63,34 +63,34 @@ using page_ptr_set = std::set<PAGE_PTR>;
 
 struct test_spec_type
 {
-  test_spec_type ();
-  ~test_spec_type ();
+    test_spec_type ();
+    ~test_spec_type ();
 
-  void calculate_log_records_offsets (LOG_LSA start_lsa);
+    void calculate_log_records_offsets (LOG_LSA start_lsa);
 
-  void execute (cublog::atomic_replication_helper &atomic_helper);
+    void execute (cublog::atomic_replication_helper &atomic_helper);
 
-  PAGE_PTR alloc_page (const VPID &vpid);
-  PAGE_PTR fix_page (const VPID &vpid);
-  void unfix_page (PAGE_PTR page_ptr);
+    PAGE_PTR alloc_page (const VPID &vpid);
+    PAGE_PTR fix_page (const VPID &vpid);
+    void unfix_page (PAGE_PTR page_ptr);
 
-public:
-  // RAII style, make sure it is the first member of the class
-  // to ensure that the initialization gets executed before anything else
-  fake_system_parameters_initialize_type m_system_params;
+  public:
+    // RAII style, make sure it is the first member of the class
+    // to ensure that the initialization gets executed before anything else
+    fake_system_parameters_initialize_type m_system_params;
 
-  THREAD_ENTRY *m_thread_p = nullptr;
+    THREAD_ENTRY *m_thread_p = nullptr;
 
-  log_rv_redo_context m_log_redo_context;
+    log_rv_redo_context m_log_redo_context;
 
-  // the actual log record sequence that the test is executing
-  log_record_spec_vector_type m_log_record_vec;
-  // points to the current replicating log
-  const log_record_spec_type *m_current_log_ptr = nullptr;
+    // the actual log record sequence that the test is executing
+    log_record_spec_vector_type m_log_record_vec;
+    // points to the current replicating log
+    const log_record_spec_type *m_current_log_ptr = nullptr;
 
-  // bookkeeping for pgbuf functionality
-  vpid_page_ptr_map m_fixed_page_map;
-  page_ptr_set m_fixed_page_ptr_set;
+    // bookkeeping for pgbuf functionality
+    vpid_page_ptr_map m_fixed_page_map;
+    page_ptr_set m_fixed_page_ptr_set;
 };
 
 // global test spec instance to be used by bookkeeping by mocked functionality
@@ -100,7 +100,7 @@ test_spec_type *gl_Test_Spec = nullptr;
 // actual tests
 // ****************************************************************
 
-TEST_CASE ("LOG_START/END_ATOMIC_REPL", "")
+TEST_CASE ("LOG_START/END_ATOMIC_REPL", "[dbg]")
 {
   // logging snippet:
   //  _CL_ LSA = 10177|5376  rectype = LOG_START_ATOMIC_REPL  sysop_end_type = N_A  sysop_end_last_parent_lsa = -1|-1
@@ -312,9 +312,10 @@ TEST_CASE ("LOG_SYSOP_ATOMIC_START/LOG_SYSOP_END-LOG_SYSOP_END_LOGICAL_UNDO - fa
 // test_spec_type implementation
 // ****************************************************************
 
-fake_system_parameters_initialize_type::fake_system_parameters_initialize_type()
+fake_system_parameters_initialize_type::fake_system_parameters_initialize_type ()
 {
-  prm_set_bool_value(PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG, false);
+  prm_set_bool_value (PRM_ID_ER_LOG_DEBUG, true);
+  prm_set_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG, false);
 }
 
 test_spec_type::test_spec_type ()
@@ -509,18 +510,13 @@ void test_spec_type::unfix_page (PAGE_PTR page_ptr)
 
 PGLENGTH db_Log_page_size = IO_DEFAULT_PAGE_SIZE;
 
-bool
-prm_get_bool_value (PARAM_ID prm_id)
+void
+_er_log_debug (const char */*file_name*/, const int /*line_no*/, const char */*fmt*/, ...)
 {
-  switch (prm_id)
-    {
-    case PRM_ID_ER_LOG_DEBUG:
-    case PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG:
-      return false;
-    default:
-      assert_release (false);
-      return false;
-    }
+  //va_list ap;
+  //va_start (ap, fmt);
+  //vprintf(fmt, ap);
+  //va_end (ap);
 }
 
 struct rvfun RV_fun[] = {};
@@ -665,12 +661,6 @@ log_rv_redo_context::~log_rv_redo_context ()
 // ****************************************************************
 // CUBRID stuff; not used but required by linker
 // ****************************************************************
-
-void
-_er_log_debug (const char */*file_name*/, const int /*line_no*/, const char */*fmt*/, ...)
-{
-  assert_release (false);
-}
 
 void
 er_set (int /*severity*/, const char */*file_name*/, const int /*line_no*/, int /*err_id*/, int /*num_args*/, ...)

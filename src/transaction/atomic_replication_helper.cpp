@@ -106,7 +106,7 @@ namespace cublog
 	      {
 		er_log_debug (ARG_FILE_LINE,
 			      "[ATOMIC_REPL] page %d|%d already part of sequence in trid %d;"
-			      " cannot be part of new sequence in trid %d",
+			      " cannot be part of new sequence in trid %d\n",
 			      VPID_AS_ARGS (&vpid), curr_tranid, tranid);
 		return false;
 	      }
@@ -1123,7 +1123,7 @@ namespace cublog
 			       PGBUF_LATCH_WRITE, watcher_uptr.get ());
 	if (error_code != NO_ERROR)
 	  {
-	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unable to order-fix page %d|%d with fetch mode %d",
+	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unable to order-fix page %d|%d with fetch mode %d\n",
 			  VPID_AS_ARGS (&vpid), (int)fetch_mode);
 	    return error_code;
 	  }
@@ -1134,7 +1134,7 @@ namespace cublog
 			      PGBUF_UNCONDITIONAL_LATCH);
 	if (page_ptr == nullptr)
 	  {
-	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unable to fix page %d|%d with fetch mode %d",
+	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unable to fix page %d|%d with fetch mode %d\n",
 			  VPID_AS_ARGS (&vpid), (int)fetch_mode);
 	    return ER_FAILED;
 	  }
