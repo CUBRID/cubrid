@@ -32,8 +32,8 @@
 
 #include "string_regex_constants.hpp"
 
-#define GET_RE2_OBJ (cr) (*(cr.compiled->re2_obj))
-#define GET_STD_OBJ (cr) (*(cr.compiled->re2_std))
+#define GET_RE2_OBJ(cr) (*(cr.compiled->re2_obj))
+#define GET_STD_OBJ(cr) (*(cr.compiled->std_obj))
 
 namespace cubregex
 {

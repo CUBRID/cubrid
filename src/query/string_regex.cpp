@@ -27,6 +27,7 @@
 #include "language_support.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
+#include "locale_helper.hpp"
 
 #include <algorithm>
 #include <string>
@@ -101,6 +102,8 @@ namespace cubregex
   compile (REFPTR (compiled_regex, cr), const std::string &pattern_string, const std::string &opt_str,
 	   const LANG_COLLATION *collation)
   {
+    assert (collation);
+
     opt_flag_type opt_flag = parse_match_type (opt_str);
     if (opt_flag & opt_flag::OPT_ERROR)
       {
@@ -115,16 +118,15 @@ namespace cubregex
 
     engine_type type = get_engine_type_by_name (engine_type_prm);
 
-
-    if (should_compile_skip (cr, pattern_string, type, opt_flag, collation->codeset) == true)
-      {
-	return NO_ERROR;
-      }
-
     std::string utf8_pattern;
-    if (cublocale::convert_string_to_utf8 (utf8_pattern, cr->pattern, cr->codeset) == false)
+    if (cublocale::convert_string_to_utf8 (utf8_pattern, pattern_string, collation->codeset) == false)
       {
 	return ER_QSTR_BAD_SRC_CODESET;
+      }
+
+    if (should_compile_skip (cr, utf8_pattern, type, opt_flag, collation->codeset) == true)
+      {
+	return NO_ERROR;
       }
 
     int error_code = compile_regex_internal (cr, utf8_pattern, type, opt_flag, collation);
@@ -222,17 +224,19 @@ namespace cubregex
 	return ER_QSTR_BAD_SRC_CODESET;
       }
 
+    int error = NO_ERROR;
     std::string utf8_result;
     switch (reg.type)
       {
       case engine_type::LIB_CPPSTD:
-	return std_replace (utf8_result, reg, utf8_src, utf8_repl, position, occurrence);
+	error = std_replace (utf8_result, reg, utf8_src, utf8_repl, position, occurrence);
 	break;
       case engine_type::LIB_RE2:
-	return re2_replace (utf8_result, reg, utf8_src, utf8_repl, position, occurrence);
+	error = re2_replace (utf8_result, reg, utf8_src, utf8_repl, position, occurrence);
 	break;
       default:
 	assert (false);
+	error = ER_FAILED;
       }
 
     if (cublocale::convert_utf8_to_string (result, utf8_result, reg.codeset) == false)
@@ -241,7 +245,7 @@ namespace cubregex
 	return ER_QSTR_BAD_SRC_CODESET;
       }
 
-    return ER_FAILED;
+    return error;
   }
 
   int substr (std::string &result, bool &is_matched, const compiled_regex &reg, const std::string &src,
@@ -253,17 +257,19 @@ namespace cubregex
 	return ER_QSTR_BAD_SRC_CODESET;
       }
 
+    int error = NO_ERROR;
     std::string utf8_result;
     switch (reg.type)
       {
       case engine_type::LIB_CPPSTD:
-	return std_substr (utf8_result, is_matched, reg, utf8_src, position, occurrence);
+	error = std_substr (utf8_result, is_matched, reg, utf8_src, position, occurrence);
 	break;
       case engine_type::LIB_RE2:
-	return re2_substr (utf8_result, is_matched, reg, utf8_src, position, occurrence);
+	error = re2_substr (utf8_result, is_matched, reg, utf8_src, position, occurrence);
 	break;
       default:
 	assert (false);
+	error = ER_FAILED;
       }
 
     if (cublocale::convert_utf8_to_string (result, utf8_result, reg.codeset) == false)
@@ -271,7 +277,7 @@ namespace cubregex
 	return ER_QSTR_BAD_SRC_CODESET;
       }
 
-    return ER_FAILED;
+    return error;
   }
 
   int
