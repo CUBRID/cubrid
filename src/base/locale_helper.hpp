@@ -37,9 +37,11 @@ namespace cublocale
   std::string get_codeset_name (const LANG_COLLATION *lang_coll);
   std::locale get_locale (const std::string &charset, const std::string &lang);
 
-  bool convert_to_wstring (std::wstring &out, const std::string &in, const INTL_CODESET codeset);
+  bool convert_utf8_to_string (std::string &out_string, const std::string &input_string, const INTL_CODESET codeset);
+  bool convert_string_to_utf8 (std::string &utf8_string, const std::string &input_string, const INTL_CODESET codeset);
+
+  bool convert_string_to_wstring (std::wstring &out, const std::string &in, const INTL_CODESET codeset);
   bool convert_to_string (std::string &out, const std::wstring &in, const INTL_CODESET codeset);
-  bool convert_to_string (std::string &out, const std::string &in, const INTL_CODESET codeset);
 }
 
 #endif /* _LOCALE_HELPER_HPP_ */
