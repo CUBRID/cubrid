@@ -64,7 +64,14 @@ using page_ptr_set = std::set<PAGE_PTR>;
 struct test_spec_type
 {
     test_spec_type ();
+
+    test_spec_type (const test_spec_type &) = delete;
+    test_spec_type (test_spec_type &&) = delete;
+
     ~test_spec_type ();
+
+    test_spec_type &operator = (const test_spec_type &) = delete;
+    test_spec_type &operator = (test_spec_type &&) = delete;
 
     void calculate_log_records_offsets (LOG_LSA start_lsa);
 
