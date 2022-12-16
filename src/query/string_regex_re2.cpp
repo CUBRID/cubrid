@@ -30,6 +30,9 @@ namespace cubregex
 {
   using namespace re2;
 
+  template <typename Func>
+  static bool re2_on_match (const RE2 &re2, const re2::StringPiece &target, const int occurrence, Func &&lambda);
+
   RE2::Options
   re2_parse_match_type (const opt_flag_type &opt_type)
   {
@@ -46,7 +49,7 @@ namespace cubregex
   re2_compile (REFPTR (compiled_regex, cr))
   {
     RE2::Options opt = re2_parse_match_type (cr->flags);
-    REFPTR (RE2, reg) = cr->compiled->re2_obj = new RE2 (utf8_pattern, opt);
+    REFPTR (RE2, reg) = cr->compiled->re2_obj = new RE2 (cr->pattern, opt);
 
     if (!reg->ok())
       {
@@ -57,21 +60,19 @@ namespace cubregex
     return NO_ERROR;
   }
 
-  int re2_search (int &result, const compiled_regex &reg, const std::string &src)
+  template <typename Func>
+  static bool
+  re2_on_match (const RE2 &re2, const re2::StringPiece &target, const int occurrence, Func &&lambda)
   {
-    bool is_matched = RE2::PartialMatch (src, GET_RE2_OBJ (reg));
-    result = is_matched ? V_TRUE : V_FALSE;
-    return NO_ERROR;
-  }
-
-  int re2_on_match (const std::string &target)
-  {
-    re2::StringPiece target_piece (target);
-    cublocale::utf8_iterator iter = target.begin ();
-    while (p <= ep)
+    bool is_matched = false;
+    int n = 1;
+    char *current_p = (char *) target.data();
+    const char *end_p = current_p + target.size();
+    re2::StringPiece match;
+    while (current_p <= end_p)
       {
-	bool is_matched = GET_RE2_OBJ (reg).Match (target_piece, static_cast<size_t> (p - target.data()),
-			  target.size(), RE2::UNANCHORED, &match, 1);
+	is_matched = re2.Match (target, static_cast<size_t> (current_p - target.data()),
+				target.size(), RE2::UNANCHORED, &match, 1);
 	if (!is_matched)
 	  {
 	    break;
@@ -79,16 +80,31 @@ namespace cubregex
 
 	if (n == occurrence)
 	  {
-	    match_idx = static_cast<size_t> (match.data() - target.data());
-	    match_idx += (return_opt == 1) ? match.size() : 0;
+	    is_matched = true;
+	    lambda (match, current_p); // do something on regex is matched
+	    break;
+	  }
+	else
+	  {
+	    is_matched = false;
 	  }
 
-	++n;
-	p = (char *) match.data() + match.size ();
+	++n; // next occurence idx
+	current_p = (char *) match.data() + match.size (); // next pos to search a non-overapping regex match
       }
+    return is_matched;
   }
 
-  int re2_count (int &result, const compiled_regex &reg, const std::string &src, const int position)
+  int
+  re2_search (int &result, const compiled_regex &reg, const std::string &src)
+  {
+    bool is_matched = RE2::PartialMatch (src, GET_RE2_OBJ (reg));
+    result = is_matched ? V_TRUE : V_FALSE;
+    return NO_ERROR;
+  }
+
+  int
+  re2_count (int &result, const compiled_regex &reg, const std::string &src, const int position)
   {
     assert (position >= 0);
 
@@ -104,8 +120,9 @@ namespace cubregex
     return NO_ERROR;
   }
 
-  int re2_instr (int &result, const compiled_regex &reg, const std::string &src,
-		 const int position, const int occurrence, const int return_opt)
+  int
+  re2_instr (int &result, const compiled_regex &reg, const std::string &src,
+	     const int position, const int occurrence, const int return_opt)
   {
     assert (position >= 0);
     assert (occurrence >= 1);
@@ -116,29 +133,13 @@ namespace cubregex
     int match_idx = -1;
     re2::StringPiece target_piece (target);
 
-    int n = 1;
-    char *p = (char *) target.data();
-    const char *ep = p + target.size();
-    re2::StringPiece match;
-    while (p <= ep)
-      {
-	bool is_matched = GET_RE2_OBJ (reg).Match (target_piece, static_cast<size_t> (p - target.data()),
-			  target.size(), RE2::UNANCHORED, &match, 1);
-	if (!is_matched)
-	  {
-	    break;
-	  }
+    auto lambda = [&] (re2::StringPiece &match, char *current_p)
+    {
+      match_idx = static_cast<size_t> (match.data() - target.data());
+      match_idx += (return_opt == 1) ? match.size() : 0;
+    };
 
-	if (n == occurrence)
-	  {
-	    match_idx = static_cast<size_t> (match.data() - target.data());
-	    match_idx += (return_opt == 1) ? match.size() : 0;
-	  }
-
-	++n;
-	p = (char *) match.data() + match.size ();
-      }
-
+    bool is_matched = re2_on_match (GET_RE2_OBJ (reg), target_piece, occurrence, lambda);
     if (match_idx != -1)
       {
 	result = position + match_idx + 1;
@@ -151,9 +152,10 @@ namespace cubregex
     return NO_ERROR;
   }
 
-  int re2_replace (std::string &result, const compiled_regex &reg, const std::string &src,
-		   const std::string &repl, const int position,
-		   const int occurrence)
+  int
+  re2_replace (std::string &result, const compiled_regex &reg, const std::string &src,
+	       const std::string &repl, const int position,
+	       const int occurrence)
   {
     assert (position >= 0);
     assert (occurrence >= 0);
@@ -176,50 +178,32 @@ namespace cubregex
     else
       {
 	int match_pos = -1;
-	int n = 1;
 	re2::StringPiece target_piece (target);
+	auto lambda = [&] (re2::StringPiece &match, char *current_p)
+	{
+	  // append prefix of the matched sub-string
+	  result.append (result_string);
 
-	char *p = (char *) target.data();
-	const char *ep = p + target.size();
-	char *lastend = nullptr;
-	re2::StringPiece match;
-	while (p <= ep)
-	  {
-	    bool is_matched = re2_obj->Match (target_piece, static_cast<size_t> (p - target.data()),
-					      target.size(), RE2::UNANCHORED, &match, 1);
-	    if (!is_matched)
-	      {
-		break;
-	      }
+	  if (target.data () < current_p)
+	    {
+	      result.append (target.data (), current_p - target.data());
+	    }
 
-	    if (n == occurrence)
-	      {
-		// append prefix of the matched sub-string
-		result.append (result_string);
+	  if (current_p < match.data())
+	    {
+	      result.append (current_p, match.data() - current_p);
+	    }
 
-		if (target.data () < p)
-		  {
-		    result.append (target.data (), p - target.data());
-		  }
+	  // replace
+	  result.append (rewrite);
 
-		if (p < match.data())
-		  {
-		    result.append (p, match.data() - p);
-		  }
+	  // the remaining part
+	  match_pos = match.data() + match.size () - target.data();
+	  int size = target.size() - match_pos;
+	  result.append (target.substr (match_pos, size));
+	};
 
-		// replace
-		result.append (rewrite);
-
-		// the remaining part
-		match_pos = match.data() + match.size () - target.data();
-		int size = target.size() - match_pos;
-		result.append (target.substr (match_pos, size));
-	      }
-
-	    ++n;
-	    p = (char *) match.data() + match.size ();
-	  }
-
+	bool is_matched = re2_on_match (GET_RE2_OBJ (reg), target_piece, occurrence, lambda);
 	if (match_pos == -1)
 	  {
 	    result.append (result_string.append (target));
@@ -229,8 +213,9 @@ namespace cubregex
     return NO_ERROR;
   }
 
-  int re2_substr (std::string &result, bool &is_matched, const compiled_regex &reg, const std::string &src,
-		  const int position, const int occurrence)
+  int
+  re2_substr (std::string &result, bool &is_matched, const compiled_regex &reg, const std::string &src,
+	      const int position, const int occurrence)
   {
     assert (position >= 0);
     assert (occurrence >= 1);
@@ -238,37 +223,13 @@ namespace cubregex
     /* split source string by position value */
     std::string target = src.substr (position, src.size () - position);
 
-    int n = 1;
     re2::StringPiece target_piece (target);
+    auto lambda = [&] (re2::StringPiece &match, char *current_p)
+    {
+      result.assign (match.as_string());
+    };
 
-    char *p = (char *) target.data();
-    const char *ep = p + target.size();
-    re2::StringPiece match;
-    while (p <= ep)
-      {
-	is_matched = GET_RE2_OBJ (reg).Match (target_piece, static_cast<size_t> (p - target.data()),
-					      target.size(), RE2::UNANCHORED, &match, 1);
-	if (!is_matched)
-	  {
-	    break;
-	  }
-
-	if (n == occurrence)
-	  {
-	    is_matched = true;
-	    result.assign (match.as_string());
-	    break;
-	  }
-	else
-	  {
-	    // reset is_matched
-	    is_matched = false;
-	  }
-
-	++n; // next occurence idx
-	p = (char *) match.data() + match.size (); // next pos to search a non-overapping regex match
-      }
-
+    is_matched = re2_on_match (GET_RE2_OBJ (reg), target_piece, occurrence, lambda);
     return NO_ERROR;
   }
 }
