@@ -40,9 +40,8 @@ prm_get_value (PARAM_ID prm_id)
 }
 
 #if defined (WINDOWS)
-  // TODO: see system_parameter.h where these function are only inlined on non-WINDOWS
-  // and inlined elsewhere
-
+// TODO: see system_parameter.h where these function are only inlined on non-WINDOWS
+// and inlined elsewhere
 bool
 prm_get_bool_value (PARAM_ID prm_id)
 {
