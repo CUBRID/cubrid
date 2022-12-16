@@ -457,6 +457,7 @@ PAGE_PTR test_spec_type::alloc_page (const VPID &vpid)
 {
   PAGE_PTR const page_ptr = new char[256];
   // some debug message; might help
+  // cppcheck-suppress [autovarInvalidDeallocation]
   snprintf (page_ptr, 256, "page with vpid=%d|%d", VPID_AS_ARGS (&vpid));
 
   return page_ptr;
