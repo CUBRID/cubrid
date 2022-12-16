@@ -31,9 +31,39 @@ int prm_Def_integer_val_array[PRM_LAST_ID];
 void *
 prm_get_value (PARAM_ID prm_id)
 {
+  if (prm_Def[prm_id].value != nullptr)
+    {
+      return prm_Def[prm_id].value;
+    }
   assert (false);
   return nullptr;
 }
+
+#if defined (WINDOWS)
+  // TODO: see system_parameter.h where these function are only inlined on non-WINDOWS
+  // and inlined elsewhere
+
+bool
+prm_get_bool_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (prm_Def[prm_id].value != nullptr);
+  assert (prm_Def[prm_id].value == (void *)&prm_Def_bool_val_array[prm_id]);
+
+  return PRM_GET_BOOL (prm_get_value (prm_id));
+}
+
+int
+prm_get_integer_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (prm_Def[prm_id].value != nullptr);
+  assert (prm_Def[prm_id].value == (void *)&prm_Def_integer_val_array[prm_id]);
+
+  return PRM_GET_INT (prm_get_value (prm_id));
+}
+#endif
+
 
 void
 prm_set_bool_value (PARAM_ID prm_id, bool value)
