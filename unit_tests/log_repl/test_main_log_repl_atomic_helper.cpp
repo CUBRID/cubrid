@@ -100,7 +100,7 @@ test_spec_type *gl_Test_Spec = nullptr;
 // actual tests
 // ****************************************************************
 
-TEST_CASE ("LOG_START/END_ATOMIC_REPL", "[dbg]")
+TEST_CASE ("LOG_START/END_ATOMIC_REPL", "")
 {
   // logging snippet:
   //  _CL_ LSA = 10177|5376  rectype = LOG_START_ATOMIC_REPL  sysop_end_type = N_A  sysop_end_last_parent_lsa = -1|-1
@@ -260,7 +260,7 @@ TEST_CASE ("LOG_SYSOP_ATOMIC_START/LOG_SYSOP_START_POSTPONE/LOG_SYSOP_END", "")
   REQUIRE (atomic_helper.all_log_entries_are_control (trid));
 }
 
-TEST_CASE ("LOG_SYSOP_ATOMIC_START/LOG_SYSOP_END-LOG_SYSOP_END_LOGICAL_UNDO - fail to fix", "[dbg]")
+TEST_CASE ("LOG_SYSOP_ATOMIC_START/LOG_SYSOP_END-LOG_SYSOP_END_LOGICAL_UNDO - fail to fix", "")
 {
   // logging snippet:
   // _CL_ LSA = 340|3880  rectype = LOG_SYSOP_ATOMIC_START  sysop_end_type = N_A  sysop_end_last_parent_lsa = -1|-1
