@@ -26,6 +26,8 @@
 
 #include <iostream>
 
+#define GET_RE2_OBJ (cr) (*(cr.compiled->re2_obj))
+
 namespace cubregex
 {
   using namespace re2;
@@ -47,14 +49,14 @@ namespace cubregex
   {
     RE2::Options opt = re2_parse_match_type (cr->flags);
 
-    std::string pattern;
-    if (cublocale::convert_to_string (pattern, cr->pattern, cr->codeset) == false)
+    std::string utf8_pattern;
+    if (cublocale::convert_string_to_utf8 (utf8_pattern, cr->pattern, cr->codeset) == false)
       {
 	return ER_QSTR_BAD_SRC_CODESET;
       }
 
     // TODO assuming that UTF8
-    REFPTR (RE2, reg) = cr->compiled->re2_obj = new RE2 (pattern, opt);
+    REFPTR (RE2, reg) = cr->compiled->re2_obj = new RE2 (utf8_pattern, opt);
 
     if (!reg->ok())
       {
@@ -68,7 +70,15 @@ namespace cubregex
   int re2_search (int &result, const compiled_regex &reg, const std::string &src)
   {
     bool is_matched = false;
-    is_matched = RE2::PartialMatch (src, * (reg.compiled->re2_obj));
+
+    std::string utf8_src;
+    if (cublocale::convert_string_to_utf8 (utf8_src, src, reg.codeset) == false)
+      {
+	result = V_FALSE;
+	return ER_QSTR_BAD_SRC_CODESET;
+      }
+
+    is_matched = RE2::PartialMatch (utf8_src, GET_RE2_OBJ (reg));
     result = is_matched ? V_TRUE : V_FALSE;
     return NO_ERROR;
   }
@@ -77,14 +87,19 @@ namespace cubregex
   {
     assert (position >= 0);
 
+    std::string utf8_src;
+    if (cublocale::convert_string_to_utf8 (utf8_src, src, reg.codeset) == false)
+      {
+	result = V_FALSE;
+	return ER_QSTR_BAD_SRC_CODESET;
+      }
+
     /* split source string by position value */
     std::string target = src.substr (position, src.size () - position);
 
     result = 0;
-    REFPTR (RE2, re2_obj) = reg.compiled->re2_obj;
-
     re2::StringPiece piece (target);
-    while (RE2::FindAndConsume (&piece, *re2_obj))
+    while (RE2::FindAndConsume (&piece, GET_RE2_OBJ (reg)))
       {
 	++result;
       }
@@ -101,7 +116,6 @@ namespace cubregex
     std::string target = src.substr (position, src.size () - position);
 
     int match_idx = -1;
-    REFPTR (RE2, re2_obj) = reg.compiled->re2_obj;
     re2::StringPiece target_piece (target);
 
     int n = 1;
@@ -110,8 +124,8 @@ namespace cubregex
     re2::StringPiece match;
     while (p <= ep)
       {
-	bool is_matched = re2_obj->Match (target_piece, static_cast<size_t> (p - target.data()),
-					  target.size(), RE2::UNANCHORED, &match, 1);
+	bool is_matched = GET_RE2_OBJ (reg).Match (target_piece, static_cast<size_t> (p - target.data()),
+			  target.size(), RE2::UNANCHORED, &match, 1);
 	if (!is_matched)
 	  {
 	    break;
@@ -151,15 +165,14 @@ namespace cubregex
     std::string target = src.substr (position, src.size () - position);
 
     re2::StringPiece rewrite (repl);
-    REFPTR (RE2, re2_obj) = reg.compiled->re2_obj;
     if (occurrence == 0)
       {
-	RE2::GlobalReplace (&target,*re2_obj, rewrite);
+	RE2::GlobalReplace (&target, GET_RE2_OBJ (reg), rewrite);
 	result.assign (result_string.append (target));
       }
     else if (occurrence == 1)
       {
-	RE2::Replace (&target,*re2_obj, rewrite);
+	RE2::Replace (&target, GET_RE2_OBJ (reg), rewrite);
 	result.assign (result_string.append (target));
       }
     else
@@ -227,8 +240,6 @@ namespace cubregex
     /* split source string by position value */
     std::string target = src.substr (position, src.size () - position);
 
-    REFPTR (RE2, re2_obj) = reg.compiled->re2_obj;
-
     int n = 1;
     re2::StringPiece target_piece (target);
 
@@ -237,8 +248,8 @@ namespace cubregex
     re2::StringPiece match;
     while (p <= ep)
       {
-	is_matched = re2_obj->Match (target_piece, static_cast<size_t> (p - target.data()),
-				     target.size(), RE2::UNANCHORED, &match, 1);
+	is_matched = GET_RE2_OBJ (reg).Match (target_piece, static_cast<size_t> (p - target.data()),
+					      target.size(), RE2::UNANCHORED, &match, 1);
 	if (!is_matched)
 	  {
 	    break;
