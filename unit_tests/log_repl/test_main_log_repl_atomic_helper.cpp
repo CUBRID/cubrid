@@ -66,7 +66,14 @@ using page_ptr_set = std::set<PAGE_PTR>;
 struct test_spec_type
 {
     test_spec_type ();
+
+    test_spec_type (const test_spec_type &) = delete;
+    test_spec_type (test_spec_type &&) = delete;
+
     ~test_spec_type ();
+
+    test_spec_type &operator = (const test_spec_type &) = delete;
+    test_spec_type &operator = (test_spec_type &&) = delete;
 
     void calculate_log_records_offsets (LOG_LSA start_lsa);
 
@@ -491,6 +498,7 @@ PAGE_PTR test_spec_type::alloc_page (const VPID &vpid)
 {
   PAGE_PTR const page_ptr = new char[256];
   // some debug message; might help
+  // cppcheck-suppress [wrongPrintfScanfArgNum]
   snprintf (page_ptr, 256, "page with vpid=%d|%d", VPID_AS_ARGS (&vpid));
 
   return page_ptr;
