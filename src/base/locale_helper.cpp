@@ -72,6 +72,12 @@ namespace cublocale
    */
   bool convert_utf8_to_string (std::string &out_string, const std::string &utf8_string, const INTL_CODESET codeset)
   {
+    if (utf8_string.empty())
+      {
+	out_string.clear ();
+	return true;
+      }
+
     if (codeset == INTL_CODESET_UTF8)
       {
 	out_string.assign (std::move (utf8_string));
@@ -134,6 +140,12 @@ namespace cublocale
    */
   bool convert_string_to_utf8 (std::string &utf8_string, const std::string &input_string, const INTL_CODESET codeset)
   {
+    if (input_string.empty ())
+      {
+	utf8_string.clear ();
+	return true;
+      }
+
     if (codeset != INTL_CODESET_UTF8)
       {
 	std::string utf8_converted;
@@ -196,7 +208,7 @@ namespace cublocale
    *   to perform locale-aware functionality such as searching or replacing by the regular expression with <regex>
    *   It convert given string into utf8 string and then make wide string
    */
-  bool convert_utf8_to_wstring (std::wstring &out, const std::string &in, const INTL_CODESET codeset)
+  bool convert_utf8_to_wstring (std::wstring &out, const std::string &in)
   {
     bool is_success = false;
 
