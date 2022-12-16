@@ -182,11 +182,11 @@ namespace cublocale
   }
 
   /*
-   * convert_string_to_wstring () -
+   * convert_utf8_to_wstring () -
    *
    * Arguments:
    *        out:  (Out) Output wide string
-   *        in: (In) Input string
+   *        in: (In) Input UTF-8 string
    *        codeset: (In) code of the input string
    *
    * Returns: bool
@@ -196,7 +196,7 @@ namespace cublocale
    *   to perform locale-aware functionality such as searching or replacing by the regular expression with <regex>
    *   It convert given string into utf8 string and then make wide string
    */
-  bool convert_string_to_wstring (std::wstring &out, const std::string &in, const INTL_CODESET codeset)
+  bool convert_utf8_to_wstring (std::wstring &out, const std::string &in, const INTL_CODESET codeset)
   {
     bool is_success = false;
 
@@ -207,18 +207,15 @@ namespace cublocale
 	return true;
       }
 
-    std::string utf8_str;
-    is_success = convert_string_to_utf8 (utf8_str, in, codeset);
-
     try
       {
 #if defined(WINDOWS)
 	std::wstring converted;
-	int nLen = MultiByteToWideChar (CP_UTF8, 0, utf8_str.data (), utf8_str.size (), NULL, NULL);
+	int nLen = MultiByteToWideChar (CP_UTF8, 0, in.data (), in.size (), NULL, NULL);
 	converted.resize (nLen);
-	MultiByteToWideChar (CP_UTF8, 0, utf8_str.data (), utf8_str.size (), &converted[0], nLen);
+	MultiByteToWideChar (CP_UTF8, 0, in.data (), in.size (), &converted[0], nLen);
 #else
-	std::wstring converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.from_bytes (utf8_str);
+	std::wstring converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.from_bytes (in);
 #endif
 	out.assign (std::move (converted));
 	is_success = true;
@@ -232,19 +229,18 @@ namespace cublocale
   }
 
   /*
-   * convert_to_string () -
+   * convert_wstring_to_utf8 () -
    *
    * Arguments:
    *        out:  (Out) Output wide string
    *        in: (In) Input string
-   *        codeset: (In) code of the input string
    *
    * Returns: bool
    *
    * Note:
    *   This function converts from a wide string into a multi-byte encoded string
    */
-  bool convert_to_string (std::string &out, const std::wstring &in, const INTL_CODESET codeset)
+  bool convert_wstring_to_utf8 (std::string &out, const std::wstring &in)
   {
     bool is_success = false;
 
@@ -257,15 +253,15 @@ namespace cublocale
 
     try
       {
+	out.clear ();
 #if defined(WINDOWS)
 	int nLen = WideCharToMultiByte (CP_UTF8, 0, in.data (), in.size (), NULL, 0, NULL, NULL);
-	std::string converted;
-	converted.resize (nLen);
-	WideCharToMultiByte (CP_UTF8, 0, in.data (), in.size (), &converted[0], nLen, NULL, NULL);
+	out.resize (nLen);
+	WideCharToMultiByte (CP_UTF8, 0, in.data (), in.size (), &out[0], nLen, NULL, NULL);
 #else
-	std::string converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.to_bytes (in);
+	out = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.to_bytes (in);
 #endif
-	is_success = convert_utf8_to_string (out, converted, codeset);
+	is_success = true;
       }
     catch (const std::range_error &re)
       {

@@ -40,8 +40,8 @@ namespace cublocale
   bool convert_utf8_to_string (std::string &out_string, const std::string &input_string, const INTL_CODESET codeset);
   bool convert_string_to_utf8 (std::string &utf8_string, const std::string &input_string, const INTL_CODESET codeset);
 
-  bool convert_string_to_wstring (std::wstring &out, const std::string &in, const INTL_CODESET codeset);
-  bool convert_to_string (std::string &out, const std::wstring &in, const INTL_CODESET codeset);
+  bool convert_utf8_to_wstring (std::wstring &out, const std::string &in);
+  bool convert_wstring_to_utf8 (std::string &out, const std::wstring &in);
 }
 
 #endif /* _LOCALE_HELPER_HPP_ */

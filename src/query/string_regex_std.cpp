@@ -96,7 +96,7 @@ namespace cubregex
     int error_status = NO_ERROR;
 
     std::wstring pattern_wstring;
-    if (cublocale::convert_string_to_wstring (pattern_wstring, cr->pattern, cr->codeset) == false)
+    if (cublocale::convert_utf8_to_wstring (pattern_wstring, cr->pattern) == false)
       {
 	error_status = ER_QSTR_BAD_SRC_CODESET;
 	return error_status;
@@ -138,7 +138,7 @@ namespace cubregex
     bool is_matched = false;
 
     std::wstring src_wstring;
-    if (cublocale::convert_string_to_wstring (src_wstring, src, reg.codeset) == false)
+    if (cublocale::convert_utf8_to_wstring (src_wstring, src) == false)
       {
 	error_status = ER_QSTR_BAD_SRC_CODESET;
 	result = V_FALSE;
@@ -188,7 +188,7 @@ namespace cubregex
     int error_status = NO_ERROR;
 
     std::wstring src_wstring;
-    if (cublocale::convert_string_to_wstring (src_wstring, src, reg.codeset) == false)
+    if (cublocale::convert_utf8_to_wstring (src_wstring, src) == false)
       {
 	error_status = ER_QSTR_BAD_SRC_CODESET;
 	return error_status;
@@ -247,7 +247,7 @@ namespace cubregex
     int error_status = NO_ERROR;
 
     std::wstring src_wstring;
-    if (cublocale::convert_string_to_wstring (src_wstring, src, reg.codeset) == false)
+    if (cublocale::convert_utf8_to_wstring (src_wstring, src) == false)
       {
 	error_status = ER_QSTR_BAD_SRC_CODESET;
 	return error_status;
@@ -340,14 +340,14 @@ namespace cubregex
     int error_status = NO_ERROR;
 
     std::wstring src_wstring;
-    if (cublocale::convert_string_to_wstring (src_wstring, src, reg.codeset) == false)
+    if (cublocale::convert_utf8_to_wstring (src_wstring, src) == false)
       {
 	error_status = ER_QSTR_BAD_SRC_CODESET;
 	return error_status;
       }
 
     std::wstring repl_wstring;
-    if (cublocale::convert_string_to_wstring (repl_wstring, repl, reg.codeset) == false)
+    if (cublocale::convert_utf8_to_wstring (repl_wstring, repl) == false)
       {
 	error_status = ER_QSTR_BAD_SRC_CODESET;
 	return error_status;
@@ -425,7 +425,7 @@ namespace cubregex
 	    out = std::copy (target.begin (), target.end (), out);
 	  }
 
-	if (cublocale::convert_to_string (result, result_wstring, reg.codeset) == false)
+	if (cublocale::convert_wstring_to_utf8 (result, result_wstring) == false)
 	  {
 	    error_status = ER_QSTR_BAD_SRC_CODESET;
 	    return error_status;
@@ -453,14 +453,14 @@ namespace cubregex
     int error_status = NO_ERROR;
 
     std::wstring src_wstring;
-    if (cublocale::convert_string_to_wstring (src_wstring, src, reg.codeset) == false)
+    if (cublocale::convert_utf8_to_wstring (src_wstring, src) == false)
       {
 	error_status = ER_QSTR_BAD_SRC_CODESET;
 	return error_status;
       }
 
     std::wstring repl_wstring;
-    if (cublocale::convert_string_to_wstring (repl_wstring, repl, reg.codeset) == false)
+    if (cublocale::convert_utf8_to_wstring (repl_wstring, repl) == false)
       {
 	error_status = ER_QSTR_BAD_SRC_CODESET;
 	return error_status;
@@ -530,7 +530,7 @@ namespace cubregex
 	      }
 	  }
 
-	if (cublocale::convert_to_string (result, result_wstring, reg.codeset) == false)
+	if (cublocale::convert_wstring_to_utf8 (result, result_wstring) == false)
 	  {
 	    error_status = ER_QSTR_BAD_SRC_CODESET;
 	    return error_status;
@@ -560,7 +560,7 @@ namespace cubregex
     is_matched = false;
 
     std::wstring src_wstring;
-    if (cublocale::convert_string_to_wstring (src_wstring, src, reg.codeset) == false)
+    if (cublocale::convert_utf8_to_wstring (src_wstring, src) == false)
       {
 	error_status = ER_QSTR_BAD_SRC_CODESET;
 	return error_status;
@@ -622,7 +622,7 @@ namespace cubregex
 	    ++n;
 	  }
 
-	if (cublocale::convert_to_string (result, result_wstring, reg.codeset) == false)
+	if (cublocale::convert_wstring_to_utf8 (result, result_wstring) == false)
 	  {
 	    error_status = ER_QSTR_BAD_SRC_CODESET;
 	    return error_status;

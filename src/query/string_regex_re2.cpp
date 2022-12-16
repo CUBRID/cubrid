@@ -48,14 +48,6 @@ namespace cubregex
   re2_compile (REFPTR (compiled_regex, cr))
   {
     RE2::Options opt = re2_parse_match_type (cr->flags);
-
-    std::string utf8_pattern;
-    if (cublocale::convert_string_to_utf8 (utf8_pattern, cr->pattern, cr->codeset) == false)
-      {
-	return ER_QSTR_BAD_SRC_CODESET;
-      }
-
-    // TODO assuming that UTF8
     REFPTR (RE2, reg) = cr->compiled->re2_obj = new RE2 (utf8_pattern, opt);
 
     if (!reg->ok())
@@ -69,30 +61,38 @@ namespace cubregex
 
   int re2_search (int &result, const compiled_regex &reg, const std::string &src)
   {
-    bool is_matched = false;
-
-    std::string utf8_src;
-    if (cublocale::convert_string_to_utf8 (utf8_src, src, reg.codeset) == false)
-      {
-	result = V_FALSE;
-	return ER_QSTR_BAD_SRC_CODESET;
-      }
-
-    is_matched = RE2::PartialMatch (utf8_src, GET_RE2_OBJ (reg));
+    bool is_matched = RE2::PartialMatch (src, GET_RE2_OBJ (reg));
     result = is_matched ? V_TRUE : V_FALSE;
     return NO_ERROR;
+  }
+
+  int re2_on_match (const std::string &target)
+  {
+    re2::StringPiece target_piece (target);
+    cublocale::utf8_iterator iter = target.begin ();
+    while (p <= ep)
+      {
+	bool is_matched = GET_RE2_OBJ (reg).Match (target_piece, static_cast<size_t> (p - target.data()),
+			  target.size(), RE2::UNANCHORED, &match, 1);
+	if (!is_matched)
+	  {
+	    break;
+	  }
+
+	if (n == occurrence)
+	  {
+	    match_idx = static_cast<size_t> (match.data() - target.data());
+	    match_idx += (return_opt == 1) ? match.size() : 0;
+	  }
+
+	++n;
+	p = (char *) match.data() + match.size ();
+      }
   }
 
   int re2_count (int &result, const compiled_regex &reg, const std::string &src, const int position)
   {
     assert (position >= 0);
-
-    std::string utf8_src;
-    if (cublocale::convert_string_to_utf8 (utf8_src, src, reg.codeset) == false)
-      {
-	result = V_FALSE;
-	return ER_QSTR_BAD_SRC_CODESET;
-      }
 
     /* split source string by position value */
     std::string target = src.substr (position, src.size () - position);
