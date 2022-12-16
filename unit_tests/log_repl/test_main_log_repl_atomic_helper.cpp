@@ -581,13 +581,16 @@ _er_log_debug (const char */*file_name*/, const int /*line_no*/, const char */*f
   //va_end (ap);
 }
 
-struct rvfun RV_fun[] = {
-  {RV_NOT_DEFINED,
-   "RV_NOT_DEFINED",
-   nullptr,
-   nullptr,
-   nullptr,
-   nullptr},
+struct rvfun RV_fun[] =
+{
+  {
+    RV_NOT_DEFINED,
+    "RV_NOT_DEFINED",
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr
+  },
 };
 
 namespace cubthread
