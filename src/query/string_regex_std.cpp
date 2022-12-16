@@ -359,7 +359,7 @@ namespace cubregex
 	    src_wstring.substr (position, src_wstring.size () - position)
     );
 
-    cub_std_regex &std_reg = * (reg.compiled->std_obj);
+    cub_std_regex &std_reg = GET_STD_OBJ (reg);
     std::wstring target_lowercase;
     if (std_reg.flags() & std::regex_constants::icase)
       {
@@ -474,7 +474,7 @@ namespace cubregex
 
     try
       {
-	cub_std_regex &std_reg = * (reg.compiled->std_obj);
+	cub_std_regex &std_reg = GET_STD_OBJ (reg);
 	if (occurrence == 0)
 	  {
 	    result_wstring.append (

@@ -26,8 +26,6 @@
 
 #include <iostream>
 
-#define GET_RE2_OBJ (cr) (*(cr.compiled->re2_obj))
-
 namespace cubregex
 {
   using namespace re2;
