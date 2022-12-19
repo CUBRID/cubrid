@@ -6271,62 +6271,57 @@ pt_apply_alter_index (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 }
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-static PARSER_VARCHAR *
-pt_print_hidden_index_info (PARSER_CONTEXT * parser, PT_NODE * p)
+char *
+pt_print_hidden_index_info (char *buf, int buf_size, int dupkey_mode, int dupkey_hash_level)
 {
-  PARSER_VARCHAR *b = NULL;
+  int len = 0;
+  char *str_mode = "";
 
-  if (p->info.index.dupkey_mode == DUP_MODE_NONE)
+  switch (dupkey_mode)
     {
-      if (DUP_MODE_DEFAULT != DUP_MODE_NONE)
+    case DUP_MODE_NONE:
+      if ((DUP_MODE_OVFL_LEVEL_AUTO_SET > DUP_MODE_NONE))
 	{
-	  b = pt_append_nulstring (parser, b, " duplicate OFF");
+	  len = snprintf (buf, buf_size, "%s", " duplicate OFF");
 	}
+      assert (len < buf_size);
+      return buf;
+
+    case DUP_MODE_OID:
+      str_mode = " duplicate with OID";
+      break;
+    case DUP_MODE_PAGEID:
+      str_mode = " duplicate with PAGEID";
+      break;
+    case DUP_MODE_SLOTID:
+      str_mode = " duplicate with SLOTID";
+      break;
+    case DUP_MODE_VOLID:
+      str_mode = " duplicate with VOLID";
+      break;
+    default:
+      assert (false);
+    }
+
+  if ((dupkey_mode == DUP_MODE_DEFAULT) && (dupkey_hash_level == OVFL_LEVEL_DEFAULT))
+    {
+      if (dupkey_mode != DUP_MODE_OVFL_LEVEL_AUTO_SET)
+	{
+	  len = snprintf (buf, buf_size, "%s", " duplicate ON");
+	}
+    }
+  else if (dupkey_hash_level == OVFL_LEVEL_DEFAULT)
+    {
+      len = snprintf (buf, buf_size, "%s", str_mode);
     }
   else
     {
-      if ((p->info.index.dupkey_mode == DUP_MODE_DEFAULT) && (p->info.index.dupkey_hash_level == OVFL_LEVEL_DEFAULT))
-	{
-	  b = pt_append_nulstring (parser, b, " duplicate ON");
-	}
-      else
-	{
-	  switch (p->info.index.dupkey_mode)
-	    {
-	    case DUP_MODE_OID:
-	      b = pt_append_nulstring (parser, b, " duplicate with OID");
-	      break;
-	    case DUP_MODE_PAGEID:
-	      b = pt_append_nulstring (parser, b, " duplicate with PAGEID");
-	      break;
-	    case DUP_MODE_SLOTID:
-	      b = pt_append_nulstring (parser, b, " duplicate with SLOTID");
-	      break;
-	    case DUP_MODE_VOLID:
-	      b = pt_append_nulstring (parser, b, " duplicate with VOLID");
-	      break;
-	    default:
-	      assert (false);
-	    }
-
-	  if ((p->info.index.dupkey_mode == DUP_MODE_DEFAULT)
-	      && (p->info.index.dupkey_hash_level == OVFL_LEVEL_DEFAULT))
-	    {
-
-	    }
-
-	  if ((p->info.index.dupkey_mode != DUP_MODE_NONE) && (p->info.index.dupkey_hash_level == OVFL_LEVEL_DEFAULT))
-	    {
-	      char tmp_buf[32];
-	      sprintf (tmp_buf, " level %d", p->info.index.dupkey_hash_level);
-	      b = pt_append_nulstring (parser, b, tmp_buf);
-	    }
-	}
+      len = snprintf (buf, buf_size, "%s level %d", str_mode, dupkey_hash_level);
     }
 
-  return b;
+  assert (len < buf_size);
+  return buf;
 }
-
 #endif
 
 /*
@@ -6423,8 +6418,9 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
 #if defined(SUPPORT_KEY_DUP_LEVEL)
       //if (p->info.index.dupkey_mode == DUP_MODE_NONE)  // ctshim check default policy
       {
-	PARSER_VARCHAR *rt = pt_print_hidden_index_info (parser, p);
-	b = pt_append_varchar (parser, b, rt);
+	char buf[64] = { 0x00, };
+	pt_print_hidden_index_info (buf, sizeof (buf), p->info.index.dupkey_mode, p->info.index.dupkey_hash_level);
+	b = pt_append_nulstring (parser, b, buf);
       }
 #endif
     }
@@ -7375,8 +7371,9 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
 #if defined(SUPPORT_KEY_DUP_LEVEL)
   //if (p->info.index.dupkey_mode == DUP_MODE_NONE) // ctshim check default policy
   {
-    PARSER_VARCHAR *rt = pt_print_hidden_index_info (parser, p);
-    b = pt_append_varchar (parser, b, rt);
+    char buf[64] = { 0x00, };
+    pt_print_hidden_index_info (buf, sizeof (buf), p->info.index.dupkey_mode, p->info.index.dupkey_hash_level);
+    b = pt_append_nulstring (parser, b, buf);
   }
 #endif
 

@@ -4178,6 +4178,9 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
   SM_ATTRIBUTE **attp;
   const char **namep;
   int i, len, order;
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+  int new_len = 0;
+#endif
 
   /* for foreign key, need to check redundancy first */
   if (new_cons == DB_CONSTRAINT_FOREIGN_KEY)
@@ -4206,10 +4209,6 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	}
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
-  int hidden_col_idx = -1;
-#endif
-
   for (cons = cons_list; cons; cons = cons->next)
     {
       if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type) == false)
@@ -4226,38 +4225,42 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 
       len = 0;			/* init */
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
-      while (*attp && *namep)
-	{
-	  if (intl_identifier_casecmp ((*attp)->header.name, *namep))
-	    {
-	      if (hidden_col_idx == -1 && IS_HIDDEN_INDEX_COL_NAME (*namep))
-		{
-		  hidden_col_idx = len;
-		}
-
-	      if (hidden_col_idx != len || !IS_HIDDEN_INDEX_COL_NAME ((*attp)->header.name))
-		{
-		  break;
-		}
-	    }
-
-	  attp++;
-	  namep++;
-	  len++;		/* increase name number */
-	}
-#else
       while (*attp && *namep && !intl_identifier_casecmp ((*attp)->header.name, *namep))
 	{
 	  attp++;
 	  namep++;
 	  len++;		/* increase name number */
 	}
+
+#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+      new_len = len;
+
+      if (*attp)
+	{
+	  if (IS_HIDDEN_INDEX_COL_NAME ((*attp)->header.name))
+	    {
+	      attp++;
+	      len++;
+	    }
+	}
+
+      if (*namep)
+	{
+	  if (IS_HIDDEN_INDEX_COL_NAME (*namep))
+	    {
+	      namep++;
+	      new_len++;
+	    }
+	}
 #endif
 
       if (!*attp && !*namep && !classobj_is_possible_constraint (cons->type, new_cons))
 	{
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	  for (i = 0; i < len && i < new_len; i++)
+#else
 	  for (i = 0; i < len; i++)
+#endif
 	    {
 	      /* if not specified, ascending order */
 	      order = (asc_desc ? asc_desc[i] : 0);
@@ -4265,12 +4268,6 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 
 	      if (order != cons->asc_desc[i])
 		{
-#if defined(SUPPORT_KEY_DUP_LEVEL)
-		  if ((i == (len - 1)) && IS_HIDDEN_INDEX_COL_ID ((attp[-1]->id)))
-		    {
-		      i++;
-		    }
-#endif
 		  break;	/* not match */
 		}
 	    }

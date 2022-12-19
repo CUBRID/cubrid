@@ -606,6 +606,11 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
   const int *asc_desc;
   const int *prefix_length;
   int k, n_attrs = 0;
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+  extern char *pt_print_hidden_index_info (char *buf, int buf_size, int dupkey_mode, int dupkey_hash_level);
+  bool is_check_hidden_col = false;
+  char hidden_col_buf[64] = { 0x00, };
+#endif
 
   if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
     {
@@ -713,6 +718,16 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	{
 	  break;
 	}
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      if (k == (n_attrs - 1) && IS_HIDDEN_INDEX_COL_ID ((*attribute_p)->id))
+	{
+	  int mode = GET_HIDDEN_INDEX_COL_MODE ((*attribute_p)->id);
+	  int level = GET_HIDDEN_INDEX_COL_LEVEL ((*attribute_p)->id);
+	  pt_print_hidden_index_info (hidden_col_buf, sizeof (hidden_col_buf), mode, level);
+	  is_check_hidden_col = true;
+	  break;
+	}
+#endif
       if (k > 0)
 	{
 	  m_buf (", ");
@@ -741,6 +756,17 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
     }
 
   m_buf (")");
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+  if (hidden_col_buf[0])
+    {
+      m_buf ("%s", hidden_col_buf);
+    }
+  else if (!is_check_hidden_col && (DUP_MODE_OVFL_LEVEL_AUTO_SET > DUP_MODE_NONE))
+    {
+      pt_print_hidden_index_info (hidden_col_buf, sizeof (hidden_col_buf), DUP_MODE_NONE, 0);
+      m_buf ("%s", hidden_col_buf);
+    }
+#endif
 
   if (constraint.filter_predicate && constraint.filter_predicate->pred_string)
     {

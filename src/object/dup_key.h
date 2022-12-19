@@ -28,10 +28,9 @@
 
 
 // 
-#define DUP_MODE_OVFL_LEVEL_NOT_SET   (-1)
-#define OVFL_LEVEL_DEFAULT   (10)
 #define OVFL_LEVEL_MIN       (0)
 #define OVFL_LEVEL_MAX       (16)
+#define OVFL_LEVEL_DEFAULT   (10)
 
 typedef enum
 {
@@ -43,6 +42,10 @@ typedef enum
   DUP_MODE_LAST
 } EN_DUP_MODE;
 #define DUP_MODE_DEFAULT  (DUP_MODE_PAGEID)
+
+#define DUP_MODE_OVFL_LEVEL_NOT_SET   (-1)
+/* DUP_MODE_OVFL_LEVEL_AUTO_SET is a value between DUP_MODE_NONE and (DUP_MODE_LAST-1) */
+#define DUP_MODE_OVFL_LEVEL_AUTO_SET  (DUP_MODE_DEFAULT)
 
 //---------------------------------------------------------------------
 #define SUPPORT_KEY_DUP_LEVEL

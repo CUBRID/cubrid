@@ -3281,6 +3281,9 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 #endif
     }
   attnames[i] = NULL;
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+  attnames[alloc_cnt] = NULL;
+#endif
 
   if (idx->asc_desc)
     {
@@ -3422,10 +3425,8 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  goto error_exit;
 	}
-      if (hidden_index_col != -1)
-	{
-	  hidden_col_name_ptr = attnames[hidden_index_col];
-	}
+
+      hidden_col_name_ptr = (hidden_index_col == -1) ? NULL : attnames[hidden_index_col];
     }
 #endif
 

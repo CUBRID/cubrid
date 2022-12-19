@@ -21454,8 +21454,8 @@ opt_encrypt_algorithm
 opt_index_dup_level
         :  /* empty */
 	       { DBG_TRACE_GRAMMAR(opt_index_dup_level, : ); 
-                 $$ = DUP_MODE_OVFL_LEVEL_NOT_SET;  }
-                 //$$ = DUP_MODE_DEFAULT;  }      
+                 $$ = DUP_MODE_OVFL_LEVEL_NOT_SET;
+               }
         | DUPLICATE_ ON_
                { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DUPLICATE_ ON_ ); 
                  $$ = DUP_MODE_DEFAULT | (OVFL_LEVEL_DEFAULT << 16); 
@@ -27638,9 +27638,22 @@ pt_ct_check_select (char* p, char *perr_msg)
 static void pt_get_dup_mode_level(bool is_rebuild, int mode_level, short* mode, short* level)
 {
     if(mode_level == DUP_MODE_OVFL_LEVEL_NOT_SET)
-      {                
-        *mode = is_rebuild ? DUP_MODE_OVFL_LEVEL_NOT_SET : DUP_MODE_NONE;
-        *level = 0;
+      { 
+        if(is_rebuild)
+        {
+           *mode = DUP_MODE_OVFL_LEVEL_NOT_SET;
+           *level = 0;
+        }
+        else if(DUP_MODE_OVFL_LEVEL_AUTO_SET == DUP_MODE_NONE)        
+        {
+            *mode = DUP_MODE_NONE;
+            *level = 0;
+        }
+        else
+        {
+           *mode = DUP_MODE_OVFL_LEVEL_AUTO_SET;        
+           *level = OVFL_LEVEL_DEFAULT;
+        }
       }
     else
       {
