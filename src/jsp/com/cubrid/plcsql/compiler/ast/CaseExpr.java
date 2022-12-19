@@ -32,7 +32,7 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class CaseExpr implements Stmt {
+public class CaseExpr implements AstNode {
 
     public final Expr val;
     public final Expr expr;

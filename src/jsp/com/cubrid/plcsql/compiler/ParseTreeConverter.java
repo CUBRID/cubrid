@@ -711,7 +711,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         // currently, only the Autonomous Transaction is
         // allowed only in the top-level declarations
-        assert symbolStack.getCurrentScope().level == 1;
+        assert symbolStack.getCurrentScope().level == 1
+                : "AUTONOMOUS_TRANSACTION declaration is only allowed at the top level";
 
         // just turn on the flag and return nothing
         autonomousTransaction = true;
@@ -889,7 +890,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         for (StatementContext sc : ctx.statement()) {
             Stmt s = (Stmt) visit(sc);
             if (s == null) {
-                assert false : ("sc=" + sc.getClass().getSimpleName());
+                assert false;
             } else {
                 stmts.addNode(s);
             }
@@ -1126,7 +1127,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         DeclId d = symbolStack.getDeclId(cursorName);
         assert d != null : ("undeclared id " + cursorName);
-        assert d instanceof DeclCursor;
+        assert d instanceof DeclCursor : (cursorName + " is not a cursor");
         DeclCursor cursorDecl = (DeclCursor) d;
 
         Scope scope = symbolStack.getCurrentScope();
@@ -1410,7 +1411,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         DeclId d = symbolStack.getDeclId(name);
         assert d != null : ("undeclared id " + name);
-        assert d instanceof DeclCursor;
+        assert d instanceof DeclCursor : (name + " is not a cursor");
         DeclCursor decl = (DeclCursor) d;
 
         Scope scope = symbolStack.getCurrentScope();

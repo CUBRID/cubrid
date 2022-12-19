@@ -32,7 +32,7 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class CondExpr implements Expr {
+public class CondExpr implements AstNode {
 
     public final Expr cond;
     public final Expr expr;
