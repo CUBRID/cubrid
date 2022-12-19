@@ -12964,13 +12964,44 @@ pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAG
  *   watcher_object(in/out): page watcher
  *
  */
-#if !defined (NDEBUG)
 void
+#if !defined (NDEBUG)
 pgbuf_ordered_unfix_debug (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object, const char *caller_file,
 			   int caller_line)
-#else /* NDEBUG */
-void
+#else				/* NDEBUG */
 pgbuf_ordered_unfix (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object)
+#endif				/* NDEBUG */
+{
+  VPID save_vpid;
+  PGBUF_LATCH_MODE save_latch_mode;
+
+#if !defined(NDEBUG)
+  pgbuf_ordered_unfix_and_save_for_refix_debug (thread_p, watcher_object, save_vpid, save_latch_mode,
+						caller_file, caller_line);
+#else
+  pgbuf_ordered_unfix_and_save_for_refix (thread_p, watcher_object, save_vpid, save_latch_mode);
+#endif
+}
+
+/*
+ * pgbuf_ordered_unfix_and_save_for_refix () - Unfix a page which was previously fixed with
+ *                  ordered_fix (has a page watcher). Also, output needed parameters for a future re-fix.
+ *   return: void
+ *
+ *   thread_p(in):
+ *   watcher_object(in/out): page watcher
+ *   out_save_vpid (out): vpid of the unfixed page
+ *   out_save_latch_mode (out): the previous latch mode used for the fix
+ *
+ */
+void
+#if !defined (NDEBUG)
+pgbuf_ordered_unfix_and_save_for_refix_debug (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object,
+					      VPID & out_save_vpid, PGBUF_LATCH_MODE & out_save_latch_mode,
+					      const char *caller_file, int caller_line)
+#else				/* NDEBUG */
+pgbuf_ordered_unfix_and_save_for_refix (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object,
+					VPID & out_save_vpid, PGBUF_LATCH_MODE & out_save_latch_mode)
 #endif				/* NDEBUG */
 {
   PGBUF_HOLDER *holder;
@@ -12996,6 +13027,10 @@ pgbuf_ordered_unfix (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object)
   holder = pgbuf_get_holder (thread_p, pgptr);
 
   assert_release (holder != NULL);
+
+  // save state for re-fix
+  out_save_vpid = holder->bufptr->vpid;
+  out_save_latch_mode = holder->bufptr->latch_mode;
 
   watcher = holder->last_watcher;
   while (watcher != NULL)

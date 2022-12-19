@@ -34,6 +34,11 @@ constexpr LOG_RCVINDEX INV_RCVINDEX = RV_NOT_DEFINED;
 constexpr LOG_SYSOP_END_TYPE INV_SYSOP_END_TYPE = (LOG_SYSOP_END_TYPE)-1;
 constexpr LOG_LSA INV_LSA { NULL_LOG_PAGEID, NULL_LOG_OFFSET };
 
+struct fake_system_parameters_initialize_type
+{
+  fake_system_parameters_initialize_type();
+};
+
 struct log_record_spec_type
 {
   TRANID m_trid;
@@ -63,6 +68,11 @@ struct test_spec_type
 
   PAGE_PTR fix_page (const VPID &vpid);
   void unfix_page (PAGE_PTR page_ptr);
+
+public:
+  // RAII style, make sure it is the first member of the class
+  // to ensure that the initialization gets executed before anything else
+  fake_system_parameters_initialize_type m_system_params;
 
   THREAD_ENTRY *m_thread_p = nullptr;
 
@@ -232,6 +242,11 @@ TEST_CASE ("log replication atomic helper: LOG_SYSOP_ATOMIC_START/LOG_SYSOP_STAR
 // ****************************************************************
 // test_spec_type implementation
 // ****************************************************************
+
+fake_system_parameters_initialize_type::fake_system_parameters_initialize_type()
+{
+  prm_set_bool_value(PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG, false);
+}
 
 test_spec_type::test_spec_type ()
   : m_log_redo_context { NULL_LSA, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, log_reader::fetch_mode::FORCE }
@@ -523,19 +538,6 @@ log_rv_redo_context::~log_rv_redo_context ()
 // ****************************************************************
 // CUBRID stuff; not used but required by linker
 // ****************************************************************
-
-bool
-prm_get_bool_value (PARAM_ID prm_id)
-{
-  switch (prm_id)
-    {
-    case PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG:
-      return false;
-    default:
-      assert_release (false);
-      return false;
-    }
-}
 
 void
 _er_log_debug (const char */*file_name*/, const int /*line_no*/, const char */*fmt*/, ...)

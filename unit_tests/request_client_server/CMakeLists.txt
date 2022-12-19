@@ -22,6 +22,7 @@ project (request_client_server)
 # tests for request [sync] client server and all helping classes
 #
 set (TEST_REQUEST_CS_SOURCES
+  ${TEST_FAKE_DIR}/fake_system_parameter.cpp
   ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/packer.cpp
   ${COMMUNICATION_DIR}/request_client_server.cpp

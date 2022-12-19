@@ -16,9 +16,24 @@
  *
  */
 
+#include "connection_defs.h"
+#include "system_parameter.h"
+
 #include "test_packing.hpp"
 
 #include <iostream>
+
+static void initialize_fake_system_parameters ()
+{
+  // params needed by linked code
+  // same default values as in system_parameter module
+  prm_set_bool_value (PRM_ID_USE_SYSTEM_MALLOC, false);
+  prm_set_bool_value (PRM_ID_PERF_TEST_MODE, false);
+  prm_set_integer_value (PRM_ID_CSS_MAX_CLIENTS, 100);
+  prm_set_integer_value (PRM_ID_HA_MODE, HA_MODE_OFF);
+  prm_set_integer_value (PRM_ID_VACUUM_WORKER_COUNT, 10);
+  prm_set_bool_value (PRM_ID_IGNORE_TRAILING_SPACE, false);
+}
 
 template <typename Func, typename ... Args>
 int
@@ -43,6 +58,8 @@ test_module (int &global_error, Func &&f, Args &&... args)
 int main ()
 {
   int global_error = 0;
+
+  initialize_fake_system_parameters ();
 
   test_module (global_error, test_packing::test_packing1);
 

@@ -1,5 +1,4 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation.
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -29,45 +28,15 @@
  *
  */
 
-package com.cubrid.jsp;
+package com.cubrid.jsp.test;
 
-import java.io.IOException;
-import java.net.ServerSocket;
-import java.net.Socket;
+import static org.junit.Assert.assertTrue;
 
-public class ListenerThread extends Thread {
+import org.junit.Test;
 
-    private ServerSocket serverSocket = null;
-
-    ListenerThread(ServerSocket serverSocket) {
-        super();
-        this.serverSocket = serverSocket;
-    }
-
-    @Override
-    public void run() {
-        Socket client = null;
-        while (!Thread.interrupted()) {
-            try {
-                client = serverSocket.accept();
-                client.setTcpNoDelay(true);
-                Thread execThread = new ExecuteThread(client);
-                execThread.start();
-            } catch (IOException e) {
-                Server.log(e);
-                break;
-            }
-        }
-
-        try {
-            serverSocket.close();
-        } catch (IOException e) {
-            // do nothing
-        }
-        serverSocket = null;
-    }
-
-    public ServerSocket getServerSocket() {
-        return serverSocket;
+public class TestSample {
+    @Test
+    public void evaluatesExpression() {
+        assertTrue(true);
     }
 }

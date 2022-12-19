@@ -11621,7 +11621,6 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
   DB_MIDXKEY midxkey;
   SM_ATTRIBUTE **attr = NULL;
   int buf_size = 0, bitmap_size = 0, i, error = NO_ERROR, attr_count = 0;
-  unsigned char *bits;
   char *bound_bits = NULL, *key_ptr = NULL;
   OR_BUF buf;
   DB_VALUE *val = NULL;
@@ -11683,14 +11682,7 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
   key_ptr = bound_bits + bitmap_size;
 
   OR_BUF_INIT (buf, key_ptr, buf_size - bitmap_size);
-  if (bitmap_size > 0)
-    {
-      bits = (unsigned char *) bound_bits;
-      for (i = 0; i < bitmap_size; i++)
-	{
-	  bits[i] = (unsigned char) 0;
-	}
-    }
+  MIDXKEY_BOUNDBITS_INIT (bound_bits, bitmap_size);
 
   for (i = 0, attr = constraint->attributes; *attr != NULL; attr++, i++)
     {
@@ -20138,8 +20130,11 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   pval = NULL;
 
   /* DBNAME */
-  assert (create_server->dbname->node_type == PT_NAME);
-  attr_val[2] = (char *) create_server->dbname->info.name.original;
+  assert (create_server->dbname->node_type == PT_NAME || create_server->dbname->node_type == PT_VALUE);
+  // *INDENT-OFF* 
+  attr_val[2] = (create_server->dbname->node_type == PT_NAME) ? (char *) create_server->dbname->info.name.original
+                                                              : (char *) PT_VALUE_GET_BYTES (create_server->dbname);
+  // *INDENT-ON* 
   if (attr_val[2] == NULL)
     {
       error = ER_FAILED;
@@ -20147,8 +20142,11 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* USER */
-  assert (create_server->user->node_type == PT_NAME);
-  attr_val[3] = (char *) create_server->user->info.name.original;
+  assert (create_server->user->node_type == PT_NAME || create_server->user->node_type == PT_VALUE);
+  // *INDENT-OFF* 
+  attr_val[3] = (create_server->user->node_type == PT_NAME) ? (char *) create_server->user->info.name.original
+                                                            : (char *) PT_VALUE_GET_BYTES (create_server->user);
+  // *INDENT-ON* 
   if (attr_val[3] == NULL)
     {
       error = ER_FAILED;
