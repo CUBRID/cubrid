@@ -86,6 +86,7 @@
 #include "dbtype.h"
 #include "object_primitive.h"
 #include "connection_globals.h"
+#include "host_lookup.h"
 
 #if defined(CS_MODE)
 #include "network.h"
@@ -7132,7 +7133,7 @@ boot_get_ip (void)
       boot_get_host_name ();
     }
 
-  if ((hp = gethostbyname (boot_Host_name)) != NULL)
+  if ((hp = gethostbyname_uhost (boot_Host_name)) != NULL)
     {
       char *ip = inet_ntoa (*(struct in_addr *) *hp->h_addr_list);
       memcpy (boot_Ip_address, ip, 15);

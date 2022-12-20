@@ -7972,7 +7972,7 @@ sjsp_get_server_port (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  (void) or_pack_int (reply, jsp_server_port ());
+  (void) or_pack_int (reply, jsp_server_port_from_info ());
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 

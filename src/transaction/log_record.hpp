@@ -152,6 +152,10 @@ enum log_rectype
                                  * it contains transaction user info, DDL statement, undo lsa, redo lsa for DML,
                                  * or undo images that never retrieved from the log. */
 
+  /* NOTE: add actual (persistent) new values before this */
+  LOG_DUMMY_UNIT_TESTING,	/* exclusively for unit testing; not to be persisted;
+                                 * constant value does not need be preserved */
+
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
 typedef enum log_rectype LOG_RECTYPE;

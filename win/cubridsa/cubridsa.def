@@ -88,6 +88,7 @@ EXPORTS
     prm_get_bigint_value
     prm_get_string_value
     prm_get_name
+    prm_Def
     rel_copy_version_string
     rel_build_number
     rel_build_os
@@ -831,3 +832,5 @@ EXPORTS
     or_unpack_string_nocopy
     windows_socket_startup
     windows_socket_shutdown
+    gethostbyname_uhost
+    getnameinfo_uhost

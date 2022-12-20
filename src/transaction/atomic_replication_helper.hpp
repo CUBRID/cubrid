@@ -22,6 +22,7 @@
 #include <map>
 #include <vector>
 #include <set>
+#include <sstream>
 
 #include "log_lsa.hpp"
 #include "log_record.hpp"
@@ -106,6 +107,41 @@ namespace cublog
    *      LOG_SYSOP_END (with LOG_SYSOP_END_COMMIT)
    *        .. redo records ..
    *    LOG_END_ATOMIC_REPL
+   *
+   *  (5)
+   *    explicit atomic replication sequence
+   *    apparently occuring in page overflow allocation scenarios
+   *
+   *    LOG_START_ATOMIC_REPL
+   *     |   |
+   *     |   |  .. redo records .. (eg: RVDK_RESERVE_SECTORS, RVPGBUF_NEW_PAGE, RVFL_EXTDATA_ADD)
+   *     |   |
+   *     |   \--LOG_SYSOP_END with LOG_SYSOP_END_LOGICAL_UNDO
+   *     |           (with valid lastparent_lsa)
+   *     |   |
+   *     |   |  .. redo records .. (eg: RVHF_STATS[+],
+   *     |   |
+   *     |   \--LOG_SYSOP_END with LOG_SYSOP_END_COMMIT
+   *     |           (with valid lastparent_lsa)
+   *     |
+   *     |   /--LOG_SYSOP_ATOMIC_START
+   *     |   |
+   *     |   |  .. redo records .. (eg: RVFL_PARTSECT_ALLOC, RVFL_FHEAD_ALLOC, RVPGBUF_NEW_PAGE)
+   *     |   |
+   *     |   \--LOG_SYSOP_END with LOG_SYSOP_END_LOGICAL_UNDO
+   *     |           (with valid lastparent_lsa)
+   *     |
+   *     |   /--LOG_SYSOP_ATOMIC_START
+   *     |   |
+   *     |   |  .. redo records .. (eg: RVFL_PARTSECT_ALLOC, RVFL_FHEAD_ALLOC, RVPGBUF_NEW_PAGE)
+   *     |   |
+   *     |   \--LOG_SYSOP_END with LOG_SYSOP_END_LOGICAL_UNDO
+   *     |           (with valid lastparent_lsa)
+   *     |
+   *     |  .. redo records .. (eg: LOG_DUMMY_OVF_RECORD, RVOVF_NEWPAGE_INSERT[+], RVHF_UPDATE_NOTIFY_VACUUM,
+   *     |                          RVHF_SET_PREV_VERSION_LSA)
+   *     |
+   *     \--LOG_END_ATOMIC_REPL
    */
   class atomic_replication_helper
   {
@@ -206,6 +242,7 @@ namespace cublog
 	    inline bool is_control () const;
 
 	    void dump_to_buffer (char *&buf_ptr, int &buf_len) const;
+	    void dump_to_stream (std::stringstream &dump_stream) const;
 
 	    VPID m_vpid;
 	    LOG_RECTYPE m_rectype;
@@ -253,6 +290,9 @@ namespace cublog
 	   *  - or unfixed if there is no parent [sub]sequence which needs the page anymore (aka:
 	   *    the [sub]sequence which just requested the fix is the outer-most one that needed
 	   *    the page in the current overall sequence of possibly nested [sub]sequences
+	   *
+	   * TODO:
+	   *  - since page buffer already has reference counting, ca we make do without this?
 	   */
 	  struct page_ptr_bookkeeping
 	  {
@@ -290,6 +330,9 @@ namespace cublog
 	  log_rv_redo_context m_redo_context;
 	  atomic_log_entry_vector_type m_log_vec;
 	  page_ptr_bookkeeping m_page_ptr_bookkeeping;
+
+	  // temporary mechanism to log all the log entries that were part of the sequence
+	  std::stringstream m_full_dump_stream;
       };
 
       using sequence_map_type = std::map<TRANID, atomic_log_sequence>;
@@ -320,6 +363,8 @@ namespace cublog
   void pgbuf_unfix_or_ordered_unfix (THREAD_ENTRY *thread_p, LOG_RCVINDEX rcvindex,
 				     std::unique_ptr<PGBUF_WATCHER> &watcher_uptr, PAGE_PTR &page_ptr);
 
+  inline bool atomrepl_is_control (LOG_RECTYPE rectype);
+
   /*********************************************************************************************************
    * template/inline implementations
    *********************************************************************************************************/
@@ -346,11 +391,17 @@ namespace cublog
   inline bool
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::is_control () const
   {
-    return (m_rectype == LOG_START_ATOMIC_REPL ||
-	    m_rectype == LOG_END_ATOMIC_REPL ||
-	    m_rectype == LOG_SYSOP_ATOMIC_START ||
-	    m_rectype == LOG_SYSOP_END ||
-	    m_rectype == LOG_SYSOP_START_POSTPONE);
+    return atomrepl_is_control (m_rectype);
+  }
+
+  inline bool
+  atomrepl_is_control (LOG_RECTYPE rectype)
+  {
+    return (rectype == LOG_START_ATOMIC_REPL ||
+	    rectype == LOG_END_ATOMIC_REPL ||
+	    rectype == LOG_SYSOP_ATOMIC_START ||
+	    rectype == LOG_SYSOP_END ||
+	    rectype == LOG_SYSOP_START_POSTPONE);
   }
 }
 

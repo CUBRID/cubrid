@@ -76,7 +76,7 @@ public class TargetMethod {
     }
 
     private Class<?> getClass(String name) throws ClassNotFoundException {
-        ClassLoader cl = Thread.currentThread().getContextClassLoader();
+        ClassLoader cl = StoredProcedureClassLoader.getInstance();
         return cl.loadClass(name);
     }
 
@@ -203,7 +203,12 @@ public class TargetMethod {
 
     public Method getMethod()
             throws SecurityException, NoSuchMethodException, ClassNotFoundException {
-        return getClass(className).getMethod(methodName, argsTypes);
+        Class<?> c = getClass(className);
+        if (c == null) {
+            throw new ClassNotFoundException (className);
+        }
+        Method m = c.getMethod(methodName, argsTypes);
+        return m;
     }
 
     public Class<?>[] getArgsTypes() {

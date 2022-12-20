@@ -19,6 +19,8 @@
 #define CATCH_CONFIG_MAIN
 #include "catch2/catch.hpp"
 
+#include "system_parameter.h"
+
 #include "server_request_responder.hpp"
 
 #include <array>
@@ -27,6 +29,8 @@ struct test_thread_init_final
 {
   test_thread_init_final ()
   {
+    initialize_fake_system_parameters();
+
     THREAD_ENTRY *thread_p = NULL;
     cubthread::initialize (thread_p);
     cubthread::initialize_thread_entries ();
@@ -35,6 +39,13 @@ struct test_thread_init_final
   ~test_thread_init_final ()
   {
     cubthread::finalize ();
+  }
+
+  void initialize_fake_system_parameters ()
+  {
+    // same default value as in system_parameter module
+    prm_set_bool_value (PRM_ID_PERF_TEST_MODE, false);
+    prm_set_integer_value (PRM_ID_VACUUM_WORKER_COUNT, 10);
   }
 };
 

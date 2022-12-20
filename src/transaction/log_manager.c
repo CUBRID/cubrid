@@ -1616,6 +1616,7 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
   passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
   assert (pts_ptr != nullptr);
   log_lsa replication_start_redo_lsa = NULL_LSA;
+  log_lsa replication_prev_redo_lsa = NULL_LSA;
   {
     LOG_CS_ENTER (thread_p);
     // *INDENT-OFF*
@@ -1646,6 +1647,7 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
       // while still holding prior LSA lock, initialize passive transaction server replication
       // with a LSA that ensures that no record is lost (ie: while still holding the mutex)
       replication_start_redo_lsa = log_Gl.append.get_nxio_lsa ();
+      replication_prev_redo_lsa = log_Gl.append.prev_lsa;
     }
     // prior lists from page server are being received now
 
@@ -1673,12 +1675,13 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
   // prior lists are consumed and flushed to log pages
 
   assert (!replication_start_redo_lsa.is_null ());
+  assert (!replication_prev_redo_lsa.is_null ());
 
   log_daemons_init ();
 
   pts_ptr->start_oldest_active_mvccid_sender ();
 
-  pts_ptr->start_log_replicator (replication_start_redo_lsa);
+  pts_ptr->start_log_replicator (replication_start_redo_lsa, replication_prev_redo_lsa);
 
   // NOTE: make sure not to re-define trantable here; already defined in boot_restart_server
   // re-defining trabtable here, will reset all transaction info (which is not needed, see below) together
@@ -10889,9 +10892,12 @@ log_clock_daemon_init ()
 void
 log_check_ha_delay_info_daemon_init ()
 {
-  bool do_supplemental_log = prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 ? true : false;
+  const bool do_supplemental_log = prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 ? true : false;
+  const bool do_calc_replication_delay = prm_get_bool_value (PRM_ID_ER_LOG_CALC_REPL_DELAY);
 
-  if (HA_DISABLED () && !do_supplemental_log && get_server_type () != SERVER_TYPE_TRANSACTION)
+  const bool need_daemon = is_active_transaction_server () && (!HA_DISABLED () || do_supplemental_log || do_calc_replication_delay);
+
+  if (!need_daemon)
     {
       return;
     }
@@ -11585,7 +11591,6 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	  cdc_log ("cdc_loginfo_producer_execute : cdc_Gl.producer.state is in CDC_PRODUCER_STATE_WAIT ");
 
 	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
-	  cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_NONE;
 
 	  pthread_mutex_lock (&cdc_Gl.producer.lock);
 	  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
@@ -14475,6 +14480,8 @@ void
 cdc_wakeup_producer ()
 {
   cdc_log ("cdc_wakeup_producer : consumer request the producer to wakeup");
+
+  cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_NONE;
 
   pthread_cond_signal (&cdc_Gl.producer.wait_cond);
 }

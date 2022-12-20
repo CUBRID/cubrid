@@ -7417,7 +7417,8 @@ heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, REC
  * return		 : SCAN_CODE: S_ERROR, S_DOESNT_EXIST and S_SUCCESS.
  * thread_p (in)	 : Thread entry.
  * context (in/out)      : Heap get context used to store the information required for heap objects processing.
- * is_heap_scan (in)     : Used to decide if it is acceptable to reach deleted objects or not.
+ * is_heap_scan (in)     : Used to decide if it is acceptable to reach deleted objects or not. If true, reaching
+ *                          a non-existing slot/empty slot does not trigger an error and just returns doesn't exist.
  * non_ex_handling_type (in): Handling type for deleted objects
  *			      - LOG_ERROR_IF_DELETED: write the
  *				ER_HEAP_UNKNOWN_OBJECT error to log
@@ -9701,7 +9702,6 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
   int srch_num_class;		/* Num of class attrs that can be searched */
   OR_ATTRIBUTE *search_attrepr;	/* Information for disk attribute */
   int i, curr_attr;
-  bool isattr_found;
   int ret = NO_ERROR;
 
   /*
@@ -9726,7 +9726,6 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
        * Go over the list of attributes (instance, shared, and class attrs)
        * until the desired attribute is found
        */
-      isattr_found = false;
       if (islast_reset == true)
 	{
 	  search_attrepr = attr_info->last_classrepr->attributes;
@@ -9744,7 +9743,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	  value->attrid = search_attrepr[curr_attr].id;
 	}
 
-      for (i = 0; isattr_found == false && i < srch_num_attrs; i++, search_attrepr++)
+      for (i = 0; i < srch_num_attrs; i++, search_attrepr++)
 	{
 	  /*
 	   * Is this a desired instance attribute?
@@ -9755,7 +9754,6 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	       * Found it.
 	       * Initialize the attribute value information
 	       */
-	      isattr_found = true;
 	      value->attr_type = HEAP_INSTANCE_ATTR;
 	      if (islast_reset == true)
 		{
@@ -9787,7 +9785,13 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 		}
 
 	      num_found_attrs++;
+	      break;
 	    }
+	}
+
+      if (i < srch_num_attrs)
+	{			// found it.
+	  continue;
 	}
 
       /*
@@ -9796,8 +9800,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
        * for shared attributes.
        */
 
-      for (i = 0, search_attrepr = attr_info->last_classrepr->shared_attrs;
-	   isattr_found == false && i < srch_num_shared; i++, search_attrepr++)
+      for (i = 0, search_attrepr = attr_info->last_classrepr->shared_attrs; i < srch_num_shared; i++, search_attrepr++)
 	{
 	  /*
 	   * Is this a desired shared attribute?
@@ -9808,7 +9811,6 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	       * Found it.
 	       * Initialize the attribute value information
 	       */
-	      isattr_found = true;
 	      value->attr_type = HEAP_SHARED_ATTR;
 	      value->last_attrepr = search_attrepr;
 	      /*
@@ -9825,7 +9827,13 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 					value->last_attrepr->domain->precision, value->last_attrepr->domain->scale);
 		}
 	      num_found_attrs++;
+	      break;
 	    }
+	}
+
+      if (i < srch_num_shared)
+	{			// found it.
+	  continue;
 	}
 
       /*
@@ -9834,8 +9842,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
        * for class attributes.
        */
 
-      for (i = 0, search_attrepr = attr_info->last_classrepr->class_attrs; isattr_found == false && i < srch_num_class;
-	   i++, search_attrepr++)
+      for (i = 0, search_attrepr = attr_info->last_classrepr->class_attrs; i < srch_num_class; i++, search_attrepr++)
 	{
 	  /*
 	   * Is this a desired class attribute?
@@ -9847,7 +9854,6 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	       * Found it.
 	       * Initialize the attribute value information
 	       */
-	      isattr_found = true;
 	      value->attr_type = HEAP_CLASS_ATTR;
 	      if (islast_reset == true)
 		{
@@ -9871,6 +9877,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 					value->last_attrepr->domain->precision, value->last_attrepr->domain->scale);
 		}
 	      num_found_attrs++;
+	      break;
 	    }
 	}
     }
@@ -12076,27 +12083,25 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
    * Go over the list of attrs until all indexed attributes (OIDs, sets)
    * are found
    */
-  for (i = 0, num_found_attrs = 0, search_attrepr = classrepr->attributes; i < classrepr->n_attributes;
-       i++, search_attrepr++)
+  num_found_attrs = 0;
+  if (idx_info->has_single_col)
     {
-      if (search_attrepr->n_btids <= 0)
+      for (i = 0, search_attrepr = classrepr->attributes; i < classrepr->n_attributes; i++, search_attrepr++)
 	{
-	  continue;
-	}
-
-      if (idx_info->has_single_col)
-	{
-	  for (j = 0; j < *num_btids; j++)
+	  if (search_attrepr->n_btids > 0)
 	    {
-	      indexp = &classrepr->indexes[j];
-	      if (indexp->n_atts == 1 && indexp->atts[0]->id == search_attrepr->id)
+	      for (j = 0; j < *num_btids; j++)
 		{
-		  set_attrids[num_found_attrs++] = search_attrepr->id;
-		  break;
+		  indexp = &classrepr->indexes[j];
+		  if (indexp->n_atts == 1 && indexp->atts[0]->id == search_attrepr->id)
+		    {
+		      set_attrids[num_found_attrs++] = search_attrepr->id;
+		      break;
+		    }
 		}
 	    }
-	}
-    }				/* for (i = 0 ...) */
+	}			/* for (i = 0 ...) */
+    }
 
   if (idx_info->has_multi_col == 0 && num_found_attrs == 0)
     {
@@ -12602,8 +12607,8 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
       num_vals = func_attr_index_start + 1;
     }
   or_advance (&buf, pr_midxkey_init_boundbits (nullmap_ptr, num_vals));
-  k = 0;
-  for (i = 0; i < num_vals && k < num_vals; i++)
+
+  for (k = 0, i = 0; k < num_vals; i++, k++)
     {
       if (i == func_col_id)
 	{
@@ -12613,12 +12618,12 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	      domain->type->index_writeval (&buf, func_res);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	    }
-	  k++;
+	  if (++k == num_vals)
+	    {
+	      break;
+	    }
 	}
-      if (k == num_vals)
-	{
-	  break;
-	}
+
       att = heap_locate_attribute (att_ids[i], attrinfo);
 
       error = heap_midxkey_get_value (recdes, att, &value, attrinfo);
@@ -12632,8 +12637,6 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	{
 	  pr_clear_value (&value);
 	}
-
-      k++;
     }
 
   if (value.need_clear == true)
@@ -24987,7 +24990,9 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
  *  return SCAN_CODE.
  *  thread_p (in): Thread entry.
  *  context (in): Heap get context.
- *  is_heap_scan (in): required for heap_prepare_get_context
+ *  is_heap_scan (in): required for heap_prepare_get_context (Used to decide if it is acceptable to reach
+ *                      deleted objects or not. If true, reaching a non-existing slot/empty slot does
+ *                      not trigger an error and just returns doesn't exist)
  */
 SCAN_CODE
 heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_heap_scan)
@@ -25003,20 +25008,102 @@ heap_get_visible_version_with_repl_desync (THREAD_ENTRY * thread_p, HEAP_GET_CON
 	  break;
 	}
       assert (is_passive_transaction_server ());
+      assert (context->scan_cache != nullptr);
+
       // Handle the page desynchronization error
-      if (context->home_page_watcher.pgptr)
+      //
+
+      // clean - saving state if required
+      //
+      heap_clean_get_context (thread_p, context);
+
+      // also unfix what is in cache watcher; saving the state for a future re-fix after the wait
+      //
+      VPID saved_vpid VPID_INITIALIZER;
+      PGBUF_LATCH_MODE saved_latch_mode = PGBUF_NO_LATCH;
+      bool restore_scan_cache_page_watcher = false;
+      if (context->scan_cache != nullptr && context->scan_cache->page_watcher.pgptr != nullptr)
 	{
-	  /* Unfix home page. */
-	  pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+	  assert (context->scan_cache->cache_last_fix_page);
+
+	  pgbuf_ordered_unfix_and_save_for_refix (thread_p, &context->scan_cache->page_watcher,
+						  saved_vpid, saved_latch_mode);
+	  assert (!VPID_ISNULL (&saved_vpid));
+	  assert (PGBUF_LATCH_READ == saved_latch_mode);
+	  restore_scan_cache_page_watcher = true;
 	}
 
-      if (context->fwd_page_watcher.pgptr != NULL)
-	{
-	  /* Unfix forward page. */
-	  pgbuf_ordered_unfix (thread_p, &context->fwd_page_watcher);
-	}
+      assert (PGBUF_IS_CLEAN_WATCHER (&context->home_page_watcher));
+      assert (PGBUF_IS_CLEAN_WATCHER (&context->fwd_page_watcher));
+      assert (context->scan_cache == nullptr || PGBUF_IS_CLEAN_WATCHER (&context->scan_cache->page_watcher));
+
+      // wait for replication to catch-up
+      //
       constexpr VPID null_vpid = VPID_INITIALIZER;
       pgbuf_wait_for_replication (thread_p, &null_vpid);
+
+      // re-fix scan cache page watcher, if unfixed previously
+      //
+      if (restore_scan_cache_page_watcher)
+	{
+	  const int error_code = pgbuf_ordered_fix (thread_p, &saved_vpid, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT,
+						    saved_latch_mode, &context->scan_cache->page_watcher);
+	  if (error_code != NO_ERROR)
+	    {
+	      // On PTS, most likely, this [client read-only] transaction is expecting the
+	      // transactional log replication thread to advance past a certain LSA.
+	      //
+	      // During replication, the following can happen (beside the 'normal' case where the
+	      // page remains the same or log records are applied onto it without any de-alloc
+	      // or re-alloc sequences happening):
+	      //
+	      // 1) the page might be de-allocated:
+	      //  - eg, by processing a RVPGBUF_DEALLOC which, in the current implementation - see
+	      //    pgbuf_rv_dealloc_redo - on PTS will also invalidate the page from the page buffer
+	      //  - when this happens, the OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT fetch mode used above
+	      //    will cause the re-fix to fail
+	      //  - this is ok and it will be up to the next call to
+	      //    heap_get_visible_version_internal to deal with this situation
+	      //
+	      // 2) the page might be de-allocated and re-allocated
+	      //  - the scenario is as follows
+	      //  - the page is de-allocated by replication and invalidated from page buffer
+	      //  - when the re-allocating log record (or atomic sequence of log records) is
+	      //    processed by the PTS replication, the fetch mode
+	      //    OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT is used and the decisiton tree
+	      //    further bifurcates in 2:
+	      //    - the page is not in page buffer
+	      //      - in this case the re-fix above will fail
+	      //      - again, this is ok as we're most probably not interested in the re-allocated
+	      //        page anymore
+	      //      - and it is up to the logic further to handle the situation
+	      //    - the page has been re-fetched by another (newer) client transaction and is
+	      //      present in the page buffer
+	      //        - in this case the re-fix above will just succeed refixing the re-allocated
+	      //          page
+	      //        - and this is the problematic case;
+	      //        - most likely the layout of the page will be different (maybe even a
+	      //          different type)
+	      //        - it will be up to the logic further to deal with this (most likely the
+	      //          transaction  will unilaterally abort with an error to the client)
+	      //        - in debug mode, the PTS server will most probably crash
+
+	      // clean the watcher; leave it to a next iteration to return an error scan code
+	      PGBUF_CLEAR_WATCHER (&context->scan_cache->page_watcher);
+	    }
+
+	  er_log_debug (ARG_FILE_LINE, "heap_get_visible_version: page re-fix after replication wait"
+			" %s: oid=%d|%d|%d  class_oid=%d|%d|%d  vpid=%d|%d  latch_mode=%d",
+			((error_code != NO_ERROR) ? "failed" : "succeeded"),
+			OID_AS_ARGS (context->oid_p), OID_AS_ARGS (context->class_oid_p),
+			VPID_AS_ARGS (&saved_vpid), (int) saved_latch_mode);
+	}
+
+      // now restore state for the next attempt to get the version
+      // (ie: move the cache page watcher to home page watcher)
+      //
+      heap_init_get_context (thread_p, context, context->oid_p, context->class_oid_p,
+			     context->recdes_p, context->scan_cache, context->ispeeking, context->old_chn);
     }
   while (true);
 #else
@@ -25054,6 +25141,17 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
       /* we need class_oid to check if the class is mvcc enabled */
       context->class_oid_p = &class_oid_local;
     }
+  // *INDENT-OFF*
+  scope_exit <std::function<void (void)>> reset_class_out_ftor (
+    [&context, &class_oid_local]()
+    {
+      if (context->class_oid_p == &class_oid_local)
+       {
+          // clean up locally set pointer to remove dangling pointer to stack variable
+          context->class_oid_p = nullptr;
+       }
+    });
+  // *INDENT-ON*
 
   if (context->scan_cache && context->ispeeking == COPY && context->recdes_p != NULL)
     {

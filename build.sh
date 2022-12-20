@@ -29,6 +29,7 @@ script_dir=$(dirname $(readlink -f $0))
 # variables for options
 build_target="x86_64"
 build_mode="release"
+build_generator="make"
 source_dir=`pwd`
 default_java_dir="/usr/lib/jvm/java"
 java_dir=""
@@ -267,7 +268,14 @@ function build_configure ()
   else
     configure_dir="$source_dir"
   fi
-  cmake -E chdir $build_dir cmake $configure_prefix $configure_options $source_dir
+
+  generate_opt=""
+  if [ "$build_generator" = "ninja" ]; then
+    generate_opt="-G Ninja"
+  fi
+	
+  cmake -E chdir $build_dir cmake $configure_prefix $configure_options $source_dir $generate_opt
+
   [ $? -eq 0 ] && print_result "OK" || print_fatal "Configuring failed"
 }
 
@@ -291,7 +299,14 @@ function build_install ()
 {
   # make install
   print_check "Installing"
-  cmake --build $build_dir --target install
+
+  chdir_command="cmake -E chdir $build_dir"
+  if [ "$build_generator" = "ninja" ]; then
+    $chdir_command ninja install
+	else
+    $chdir_command make install
+  fi
+
   [ $? -eq 0 ] && print_result "OK" || print_fatal "Installation failed"
 }
 
@@ -454,6 +469,7 @@ function show_usage ()
   echo "  -m      Set build mode(release, debug or coverage); [default: release]"
   echo "  -i      Increase build number; [default: no]"
   echo "  -a      Run autogen.sh before build; [default: yes]"
+  echo "  -g      Specifies the generator for a build (make, ninja); [default: make]"
   echo "  -c opts Set configure options; [default: NONE]"
   echo "  -s path Set source path; [default: current directory]"
   echo "  -b path Set build path; [default: <source path>/build_<mode>_<target>]"
@@ -483,10 +499,11 @@ function show_usage ()
 
 function get_options ()
 {
-  while getopts ":t:m:is:b:p:o:aj:c:z:vh" opt; do
+  while getopts ":t:m:g:is:b:p:o:aj:c:z:vh" opt; do
     case $opt in
       t ) build_target="$OPTARG" ;;
       m ) build_mode="$OPTARG" ;;
+      g ) build_generator="$OPTARG" ;;
       s ) source_dir="$OPTARG" ;;
       b ) build_dir="$OPTARG" ;;
       p ) prefix_dir="$OPTARG" ;;
@@ -519,6 +536,11 @@ function get_options ()
   case $build_mode in
     release|debug|coverage);;
     *) show_usage; print_fatal "Mode [$build_mode] is not valid mode" ;;
+  esac
+
+  case $build_generator in
+    make|ninja);;
+    *) show_usage; print_fatal "Generator [$build_generator] is not valid mode" ;;
   esac
 
   if [ "x$build_dir" = "x" ]; then

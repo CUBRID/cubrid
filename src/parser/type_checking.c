@@ -7342,6 +7342,7 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
       node->alias_print = alias_print;
       node->type_enum = PT_TYPE_NULL;
       node->info.value.location = 0;
+      node->info.value.is_false_where = true;
       node->flag.is_hidden_column = hidden;
       node->next = next;	/* restore link */
     }
@@ -15003,7 +15004,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
       else
 	{
-	  db_make_int (result, true);
+	  if (o1->node_type == PT_VALUE && o1->info.value.is_false_where)
+	    {
+	      db_make_int (result, false);
+	    }
+	  else
+	    {
+	      db_make_int (result, true);
+	    }
 	}
       break;
 
@@ -18286,7 +18294,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
     case PT_NOT_BETWEEN:
     case PT_RANGE:
 
-      if (op != PT_BETWEEN && op != PT_NOT_BETWEEN && op != PT_RANGE && (op != PT_EQ || qualifier != PT_EQ_TORDER))
+      if (op != PT_BETWEEN && op != PT_NOT_BETWEEN && op != PT_RANGE && op != PT_IS_NOT_IN
+	  && (op != PT_EQ || qualifier != PT_EQ_TORDER))
 	{
 	  if ((typ1 == DB_TYPE_NULL || typ2 == DB_TYPE_NULL) && op != PT_NULLSAFE_EQ)
 	    {
@@ -18408,8 +18417,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    cmp = 1;
 	  break;
 
-	case PT_NE_ALL:
 	case PT_IS_NOT_IN:
+	  if (o2->node_type == PT_VALUE && o2->info.value.is_false_where)
+	    {
+	      cmp = 1;
+	      break;
+	    }
+	case PT_NE_ALL:
 	  cmp = set_issome (arg1, db_get_set (arg2), PT_EQ_SOME, 1);
 	  if (cmp == 1)
 	    cmp = 0;

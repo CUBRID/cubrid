@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright 2008 Search Solution Corporation
  * Copyright 2016 CUBRID Corporation
  *
@@ -305,6 +305,11 @@ namespace cublog
 
   atomic_replication_helper::atomic_log_sequence::~atomic_log_sequence ()
   {
+    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+      {
+	_er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL_SEQ]\n%s\n", m_full_dump_stream.str ().c_str ());
+      }
+
     assert (m_log_vec.empty ());
   }
 
@@ -340,12 +345,30 @@ namespace cublog
 	//    be fixed, a client transactions manages to fix the page; IOW, how is the progress
 	//    of the "highest processed LSA" working wrt atomic replication sequences
 
+	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+	  {
+	    constexpr int BUF_LEN_MAX = UCHAR_MAX;
+	    char buf[BUF_LEN_MAX];
+
+	    const int written = snprintf (buf, (size_t) BUF_LEN_MAX,
+					  "  _W_FAILED LSA = %lld|%d  vpid = %d|%d  rcvindex = %s\n",
+					  LSA_AS_ARGS (&lsa), VPID_AS_ARGS (&vpid),
+					  rv_rcvindex_string (rcvindex));
+	    assert (BUF_LEN_MAX > written);
+
+	    m_full_dump_stream << buf; // dump to buffer already ends with newline
+	  }
+
 	assert (page_p == nullptr);
       }
     else
       {
 	assert (page_p != nullptr);
-	m_log_vec.emplace_back (lsa, vpid, rcvindex, page_p);
+	const atomic_log_entry &new_entry = m_log_vec.emplace_back (lsa, vpid, rcvindex, page_p);
+	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+	  {
+	    new_entry.dump_to_stream (m_full_dump_stream);
+	  }
       }
 
     return err_code;
@@ -429,10 +452,11 @@ namespace cublog
   void
   atomic_replication_helper::atomic_log_sequence::append_control_log (LOG_RECTYPE rectype, LOG_LSA lsa)
   {
-    m_log_vec.emplace_back (lsa, rectype);
+    const atomic_log_entry &new_entry = m_log_vec.emplace_back (lsa, rectype);
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
+	new_entry.dump_to_stream (m_full_dump_stream);
 	dump ("sequence::append_control_log END");
       }
   }
@@ -441,10 +465,11 @@ namespace cublog
   atomic_replication_helper::atomic_log_sequence::append_control_log_sysop_end (
 	  LOG_LSA lsa, LOG_SYSOP_END_TYPE sysop_end_type, LOG_LSA sysop_end_last_parent_lsa)
   {
-    m_log_vec.emplace_back (lsa, sysop_end_type, sysop_end_last_parent_lsa);
+    const atomic_log_entry &new_entry = m_log_vec.emplace_back (lsa, sysop_end_type, sysop_end_last_parent_lsa);
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
+	new_entry.dump_to_stream (m_full_dump_stream);
 	dump ("sequence::append_control_log_sysop_end END");
       }
   }
@@ -539,7 +564,7 @@ namespace cublog
 
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 	  {
-	    dump ("sequence::can_purge - START");
+	    dump ("sequence::can_purge START");
 	  }
 
 	const atomic_log_entry_vector_type::const_iterator last_entry_it = m_log_vec.cend () - 1;
@@ -566,7 +591,7 @@ namespace cublog
 
 		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		      {
-			dump ("sequence::can_purge - after LOG_SYSOP_END - LOG_SYSOP_START_POSTPONE");
+			dump ("sequence::can_purge(2) after erase");
 		      }
 		    assert (m_log_vec.empty ());
 		  }
@@ -581,6 +606,11 @@ namespace cublog
 		  {
 		    // sysop end matches sysop atomic start; delete both start and end control log entries
 		    m_log_vec.erase (last_but_one_entry_it, m_log_vec.cend ());
+
+		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+		      {
+			dump ("sequence::can_purge(3) after erase");
+		      }
 		  }
 		else
 		  {
@@ -589,23 +619,24 @@ namespace cublog
 		    // there will, presumably, exist another log record to be processed that will
 		    // close the entire sequence (eg: LOG_END_ATOMIC_REPL)
 		    m_log_vec.erase (last_entry_it);
-		  }
 
-		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
-		  {
-		    dump ("sequence::can_purge - after LOG_SYSOP_END with non-null last_parent_lsa");
+		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+		      {
+			dump ("sequence::can_purge(4) after erase");
+		      }
 		  }
 	      }
 	    // isolated atomic sysop with null parent_lsa on the sysop end record
 	    // NOTE: potential inconsistent logging
-	    else if (LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa) && (initial_log_vec_size == 2)
+	    else if ((initial_log_vec_size == 2)
+		     && LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa)
 		     && LOG_SYSOP_ATOMIC_START == last_but_one_entry.m_rectype)
 	      {
 		m_log_vec.erase (last_but_one_entry_it, m_log_vec.cend ());
 
 		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
-		    dump ("sequence::can_purge - after LOG_SYSOP_END with null last_parent_lsa");
+		    dump ("sequence::can_purge(5) after erase");
 		  }
 	      }
 	  }
@@ -624,25 +655,31 @@ namespace cublog
 
 		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
-		    dump ("sequence::can_purge - after LOG_SYSOP_END - LOG_SYSOP_END_LOGICAL_RUN_POSTPONE");
+		    dump ("sequence::can_purge(8) after erase");
 		  }
 	      }
 	  }
 	// part of scenario (4)
+	// part of scenario (5)
 	else if (LOG_SYSOP_END == last_entry.m_rectype
 		 && LOG_SYSOP_END_LOGICAL_UNDO == last_entry.m_sysop_end_type)
 	  {
 	    const atomic_log_entry_vector_type::const_iterator last_but_one_entry_it = (last_entry_it - 1);
 	    const atomic_log_entry &last_but_one_entry = *last_but_one_entry_it;
 
-	    if (!LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa) &&
-		(last_but_one_entry.m_lsa >= last_entry.m_sysop_end_last_parent_lsa))
+	    // NOTE: the LOG_SYSOP_END log record will have either valid or null 'lastparent_lsa' values;
+	    // for this reason, the condition here does not do any check for lastparent_lsa value;
+	    // normally, it should check that the value of lastparent_lsa is not-null and that it is less than
+	    // or equal to the lsa of the LOG_SYSOP_ATOMIC_START that started the atomic sequence;
+	    // however, when the LOG_SYSOP_ATOMIC_START log record coincides with the very start of
+	    // the transaction the value of 'lastparent_lsa' is null
+	    if (last_but_one_entry.m_rectype == LOG_SYSOP_ATOMIC_START)
 	      {
 		m_log_vec.erase (last_but_one_entry_it, m_log_vec.cend ());
 
 		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		  {
-		    dump ("sequence::can_purge - after LOG_SYSOP_END - LOG_SYSOP_END_LOGICAL_UNDO");
+		    dump ("sequence::can_purge(9) after erase");
 		  }
 	      }
 	  }
@@ -668,6 +705,12 @@ namespace cublog
 		  {
 		    // remove all entries between start atomic replication and the end
 		    m_log_vec.erase (search_entry_it, m_log_vec.cend ());
+
+		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+		      {
+			dump ("sequence::can_purge(10) after erase");
+		      }
+
 		    break;
 		  }
 
@@ -675,17 +718,12 @@ namespace cublog
 		  {
 		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		      {
-			dump ("sequence::can_purge - after failed LOG_END_ATOMIC_REPL");
+			dump ("sequence::can_purge(11) error");
 		      }
 
 		    assert_release ("inconsistent atomic log sequence found" == nullptr);
 		    break;
 		  }
-	      }
-
-	    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
-	      {
-		dump ("sequence::can_purge - after LOG_END_ATOMIC_REPL");
 	      }
 	  }
 
@@ -856,6 +894,9 @@ namespace cublog
       case LOG_COMPENSATE:
 	apply_log_by_type<LOG_REC_COMPENSATE> (thread_p, redo_context, header.type);
 	break;
+      case LOG_DUMMY_UNIT_TESTING:
+	// "hijack" the actual execution of the redo function by .. nop
+	break;
       default:
 	assert (false);
 	break;
@@ -889,6 +930,21 @@ namespace cublog
     buf_ptr += written;
     assert (buf_len >= written);
     buf_len -= written;
+  }
+
+  void
+  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::dump_to_stream (
+	  std::stringstream &dump_stream) const
+  {
+    constexpr int BUF_LEN_MAX = UCHAR_MAX;
+    char buf[BUF_LEN_MAX];
+    char *buf_ptr = buf;
+    int buf_len = BUF_LEN_MAX;
+
+    // maybe faster to first dump to stack buffer
+    dump_to_buffer (buf_ptr, buf_len);
+
+    dump_stream << (char *) buf; // dump to buffer already ends with newline
   }
 
   /*********************************************************************************************************
@@ -1039,6 +1095,7 @@ namespace cublog
   pgbuf_fix_or_ordered_fix (THREAD_ENTRY *thread_p, VPID vpid, LOG_RCVINDEX rcvindex,
 			    std::unique_ptr<PGBUF_WATCHER> &watcher_uptr, PAGE_PTR &page_ptr)
   {
+    constexpr PAGE_FETCH_MODE fetch_mode = OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT;
     switch (rcvindex)
       {
       case RVHF_INSERT:
@@ -1059,13 +1116,12 @@ namespace cublog
 	// using null hfid here as the watcher->group_id is initialized internally by pgbuf_ordered_fix at a cost
 	PGBUF_INIT_WATCHER (watcher_uptr.get (), PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
 
-	const int error_code = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED,
+	const int error_code = pgbuf_ordered_fix (thread_p, &vpid, fetch_mode,
 			       PGBUF_LATCH_WRITE, watcher_uptr.get ());
 	if (error_code != NO_ERROR)
 	  {
-	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unable to order-fix page %d|%d"
-			  " with OLD_PAGE_MAYBE_DEALLOCATED.",
-			  VPID_AS_ARGS (&vpid));
+	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unable to order-fix page %d|%d with fetch mode %d",
+			  VPID_AS_ARGS (&vpid), (int)fetch_mode);
 	    return error_code;
 	  }
 	break;
@@ -1073,12 +1129,12 @@ namespace cublog
       default:
 	assert (page_ptr == nullptr);
 
-	page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE,
+	page_ptr = pgbuf_fix (thread_p, &vpid, fetch_mode, PGBUF_LATCH_WRITE,
 			      PGBUF_UNCONDITIONAL_LATCH);
 	if (page_ptr == nullptr)
 	  {
-	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unable to fix on page %d|%d with OLD_PAGE_MAYBE_DEALLOCATED.",
-			  VPID_AS_ARGS (&vpid));
+	    er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] Unable to fix page %d|%d with fetch mode %d",
+			  VPID_AS_ARGS (&vpid), (int)fetch_mode);
 	    return ER_FAILED;
 	  }
 	break;
@@ -1107,6 +1163,10 @@ namespace cublog
 	assert (page_ptr == nullptr);
 	// other sanity asserts inside the function
 	pgbuf_ordered_unfix (thread_p, watcher_uptr.get ());
+	break;
+      case RVPGBUF_DEALLOC:
+	assert (watcher_uptr == nullptr);
+	// TODO: do not unfix the page, it has been already flushed from the page buffer
 	break;
       default:
 	assert (watcher_uptr == nullptr);
