@@ -130,7 +130,7 @@ namespace cubregex
       }
 
     int error_code = compile_regex_internal (cr, utf8_pattern, type, opt_flag, collation);
-    return error_code == ER_QSTR_BAD_SRC_CODESET ? NO_ERROR : error_code;
+    return error_code;
   }
 
   int
