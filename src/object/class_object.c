@@ -4066,7 +4066,7 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_
   return key_type;
 }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
 static void
 classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAINT_TYPE new_cons,
 					  const char **att_names, const int *asc_desc, const int *attrs_prefix_length,
@@ -4232,7 +4232,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	  len++;		/* increase name number */
 	}
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
       new_len = len;
 
       if (*attp)
@@ -8242,7 +8242,7 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char **out_shared
       return error;
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
   classobj_check_attr_in_unique_constraint (constraints, constraint_type, att_names, asc_desc, NULL, func_index_info);
 #endif
 

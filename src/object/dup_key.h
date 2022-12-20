@@ -26,8 +26,9 @@
 
 #ident "$Id$"
 
+#define SUPPORT_KEY_DUP_LEVEL
+//#define SUPPORT_KEY_DUP_LEVEL_FK
 
-// 
 #define OVFL_LEVEL_MIN       (0)
 #define OVFL_LEVEL_MAX       (16)
 #define OVFL_LEVEL_DEFAULT   (10)
@@ -44,12 +45,20 @@ typedef enum
 #define DUP_MODE_DEFAULT  (DUP_MODE_PAGEID)
 
 #define DUP_MODE_OVFL_LEVEL_NOT_SET   (-1)
+
 /* DUP_MODE_OVFL_LEVEL_AUTO_SET is a value between DUP_MODE_NONE and (DUP_MODE_LAST-1) */
 #define DUP_MODE_OVFL_LEVEL_AUTO_SET  (DUP_MODE_NONE)
 
-//---------------------------------------------------------------------
-#define SUPPORT_KEY_DUP_LEVEL
-//#define SUPPORT_KEY_DUP_LEVEL_FK
+/* ******************************************************** */
+#if !defined(SUPPORT_KEY_DUP_LEVEL)
+/* ******************************************************** */
+
+#define IS_HIDDEN_INDEX_COL_ID(id)      (false)
+#define IS_HIDDEN_INDEX_COL_NAME(name)  (false)
+
+/* ******************************************************** */
+#else /* #if !defined(SUPPORT_KEY_DUP_LEVEL) */
+/* ******************************************************** */
 
 #define HIDDEN_INDEX_COL_ATTR_ID_BASE    (-28480000)
 #define HIDDEN_INDEX_COL_ATTR_NAME_PREFIX  "_cub_idx_col_"
@@ -158,24 +167,12 @@ static const char *st_hidden_index_col_name[] = {
  } while(0)
  // *INDENT-ON*
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
 #define IS_HIDDEN_INDEX_COL_ID(id)      ((id) <= HIDDEN_INDEX_COL_ATTR_ID_BASE)
 #define IS_HIDDEN_INDEX_COL_NAME(name)  ((name[0] == '_') && memcmp ((name), HIDDEN_INDEX_COL_ATTR_NAME_PREFIX, HIDDEN_INDEX_COL_ATTR_NAME_PREFIX_LEN) == 0)
-#else
-#define IS_HIDDEN_INDEX_COL_ID(id)      (false)
-#define IS_HIDDEN_INDEX_COL_NAME(name)  (false)
-#endif
-
 
 extern DB_DOMAIN *dk_get_hidden_attr_domain_type (int mode, int level);
 extern void dk_hidden_attribute_initialized ();
 extern void dk_hidden_attribute_finalized ();
-
-#if !defined(SERVER_MODE)
-#include "class_object.h"
-
-extern SM_ATTRIBUTE *dk_find_sm_hidden_attribute (int att_id, const char *att_name);
-#endif
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
 extern int dk_heap_midxkey_get_hidden_value (int att_id, OID * rec_oid, DB_VALUE * value);
@@ -184,5 +181,14 @@ extern int dk_heap_midxkey_get_hidden_value (int att_id, OID * rec_oid, DB_VALUE
 extern void *dk_find_or_hidden_attribute (int att_id);
 #endif
 
+#if !defined(SERVER_MODE)
+#include "class_object.h"
+
+extern SM_ATTRIBUTE *dk_find_sm_hidden_attribute (int att_id, const char *att_name);
+#endif
+
+/* ******************************************************** */
+#endif /* #if !defined(SUPPORT_KEY_DUP_LEVEL) */
+/* ******************************************************** */
 
 #endif /* _DUP_KEY_H_ */

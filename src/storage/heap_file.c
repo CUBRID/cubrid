@@ -9549,8 +9549,12 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
       if (i < 0)
 	{
 #endif
+#if 1
+	  assert (false);
+#else
 	  fprintf (stdout, " XXX There are not that many attributes. Num_attrs = %d, Num_requested_attrs = %d\n",
 		   attr_info->last_classrepr->n_attributes, requested_num_attrs);
+#endif
 	  requested_num_attrs =
 	    attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
 	    attr_info->last_classrepr->n_class_attrs;
