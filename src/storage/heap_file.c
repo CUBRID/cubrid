@@ -21031,7 +21031,6 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   RECDES forward_recdes;
   OID forward_oid;
   int rc;
-  bool atomic_replication_flag = false;
 
   LOG_TDES *tdes = NULL;
 
@@ -21528,7 +21527,6 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   int error_code = NO_ERROR;
 
   LOG_TDES *tdes = NULL;
-  bool atomic_replication_flag = false;
 
   /* check input */
   assert (context != NULL);
@@ -21958,6 +21956,17 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->overflow_page_watcher_p != NULL);
 
+   // *INDENT-OFF*
+   // To ensure that, if started, the atomic replication area will also end.
+   scope_exit <std::function<void (void)>> log_on_exit ([&thread_p, &atomic_replication_flag]()
+   {
+     if (atomic_replication_flag == true)
+      {
+         log_append_empty_record (thread_p, LOG_END_ATOMIC_REPL, NULL);
+      }
+   });
+   // *INDENT-ON*
+
   if (context->do_supplemental_log)
     {
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
@@ -22152,10 +22161,6 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   /* Fall through to exit. */
 
 exit:
-  if (atomic_replication_flag == true)
-    {
-      log_append_empty_record (thread_p, LOG_END_ATOMIC_REPL, NULL);
-    }
 
   return error_code;
 }
@@ -22182,7 +22187,6 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   LOG_LSA prev_version_lsa = LSA_INITIALIZER;
   PGBUF_WATCHER newhome_pg_watcher;	/* fwd pg watcher required for heap_update_set_prev_version() */
   PGBUF_WATCHER *newhome_pg_watcher_p = NULL;
-  bool atomic_replication_flag = false;
 
   LOG_TDES *tdes = NULL;
 
@@ -22504,7 +22508,6 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   LOG_LSA prev_version_lsa;
   PGBUF_WATCHER newhome_pg_watcher;	/* fwd pg watcher required for heap_update_set_prev_version() */
   PGBUF_WATCHER *newhome_pg_watcher_p = NULL;
-  bool atomic_replication_flag = false;
 
   LOG_TDES *tdes = NULL;
 
