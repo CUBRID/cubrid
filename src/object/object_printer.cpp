@@ -44,6 +44,30 @@
 #include <assert.h>
 
 //--------------------------------------------------------------------------------
+void object_printer::describe_comment_for_session_cmd (const char *comment)
+{
+  db_value comment_value;
+
+  assert (comment != NULL);
+
+  db_make_null (&comment_value);
+  db_make_string (&comment_value, comment);
+
+  m_buf ("COMMENT ");
+  if (comment != NULL && comment[0] != '\0')
+    {
+      db_value_printer printer (m_buf);
+      printer.describe_comment_value (&comment_value);
+    }
+  else
+    {
+      m_buf ("''");
+    }
+
+  pr_clear_value (&comment_value);
+}
+
+//--------------------------------------------------------------------------------
 void object_printer::describe_comment (const char *comment)
 {
   db_value comment_value;
@@ -121,7 +145,14 @@ void object_printer::describe_partition_parts (const sm_partition &parts, class_
   if (parts.comment != NULL && parts.comment[0] != '\0')
     {
       m_buf (" ");
-      describe_comment (parts.comment);
+      if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
+	{
+          describe_comment_for_session_cmd (parts.comment);
+	}
+      else
+	{
+          describe_comment (parts.comment);
+	}
     }
 
   pr_clear_value (&ele);
@@ -584,7 +615,14 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
   if (attribute.comment != NULL && attribute.comment[0] != '\0')
     {
       m_buf (" ");
-      describe_comment (attribute.comment);
+      if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
+        {
+          describe_comment_for_session_cmd (attribute.comment);
+        }
+      else
+        {
+          describe_comment (attribute.comment);
+        }
     }
 }
 
@@ -801,7 +839,14 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
   if (constraint.comment != NULL && constraint.comment[0] != '\0')
     {
       m_buf (" ");
-      describe_comment (constraint.comment);
+      if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
+	{
+          describe_comment_for_session_cmd (constraint.comment);
+	}
+      else
+	{
+          describe_comment (constraint.comment);
+	}
     }
 
   if (constraint.index_status == SM_INVISIBLE_INDEX)
@@ -894,7 +939,7 @@ void object_printer::describe_class_trigger (const tr_trigger &trigger)
   if (trigger.comment != NULL && trigger.comment[0] != '\0')
     {
       m_buf (" ");
-      describe_comment (trigger.comment);
+      describe_comment_for_session_cmd (trigger.comment);
     }
 }
 
