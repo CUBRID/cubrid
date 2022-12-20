@@ -45,7 +45,7 @@ typedef enum
 
 #define DUP_MODE_OVFL_LEVEL_NOT_SET   (-1)
 /* DUP_MODE_OVFL_LEVEL_AUTO_SET is a value between DUP_MODE_NONE and (DUP_MODE_LAST-1) */
-#define DUP_MODE_OVFL_LEVEL_AUTO_SET  (DUP_MODE_DEFAULT)
+#define DUP_MODE_OVFL_LEVEL_AUTO_SET  (DUP_MODE_NONE)
 
 //---------------------------------------------------------------------
 #define SUPPORT_KEY_DUP_LEVEL

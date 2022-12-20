@@ -5576,7 +5576,7 @@ boot_define_view_index (void)
           "NVL2((SELECT 1 FROM _db_index_key [k] WHERE [k].index_of.class_of = [i].class_of "
                                                    "AND [k].index_of.index_name = [i].[index_name] "
                                                    "AND [k].key_attr_name RLIKE " HIDDEN_INDEX_COL_NAME_PATTERN
-                 "), ([i].[key_count] - 1), [i].[key_count]") AS [key_count], "	  	  
+                 "), ([i].[key_count] - 1), [i].[key_count]) AS [key_count], "	  	  
 #else
 	  "[i].[key_count] AS [key_count], "
 #endif          
