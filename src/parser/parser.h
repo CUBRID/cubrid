@@ -677,6 +677,10 @@ extern "C"
   extern const char *pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * name);
   extern const char *pt_get_name_with_qualifier_removed (const char *name);
   extern const char *pt_get_name_without_current_user_name (const char *name);
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+  extern char *pt_print_hidden_index_info (char *buf, int buf_size, int dupkey_mode, int dupkey_hash_level);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

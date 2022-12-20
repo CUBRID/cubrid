@@ -607,7 +607,6 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
   const int *prefix_length;
   int k, n_attrs = 0;
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-  extern char *pt_print_hidden_index_info (char *buf, int buf_size, int dupkey_mode, int dupkey_hash_level);
   bool is_check_hidden_col = false;
   char hidden_col_buf[64] = { 0x00, };
 #endif

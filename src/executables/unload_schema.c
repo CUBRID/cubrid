@@ -2911,6 +2911,10 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
   const int *asc_desc;
   const int *prefix_length;
   int k, n_attrs = 0;
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+  bool is_check_hidden_col = false;
+  char hidden_col_buf[64] = { 0x00, };
+#endif
 
   constraint_list = db_get_constraints (class_);
   if (constraint_list == NULL)
@@ -2956,6 +2960,10 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	{
 	  continue;		/* same index skip */
 	}
+
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      hidden_col_buf[0] = '\0';
+#endif
 
       SPLIT_USER_SPECIFIED_NAME (cls_name, owner_name, class_name);
       if (constraint->func_index_info)
@@ -3028,6 +3036,16 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 		}
 	    }
 	  att_name = db_attribute_name (*att);
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	  if (k == (n_attrs - 1) && IS_HIDDEN_INDEX_COL_ID ((*att)->id))
+	    {
+	      int mode = GET_HIDDEN_INDEX_COL_MODE ((*att)->id);
+	      int level = GET_HIDDEN_INDEX_COL_LEVEL ((*att)->id);
+	      pt_print_hidden_index_info (hidden_col_buf, sizeof (hidden_col_buf), mode, level);
+	      is_check_hidden_col = true;
+	      break;
+	    }
+#endif
 	  if (k > 0)
 	    {
 	      output_ctx (", ");
@@ -3053,6 +3071,29 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	    }
 	  k++;
 	}
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      if (hidden_col_buf[0])
+	{
+	  output_ctx (") %s", hidden_col_buf);
+	}
+      else if (!is_check_hidden_col && (DUP_MODE_OVFL_LEVEL_AUTO_SET > DUP_MODE_NONE))
+	{
+	  pt_print_hidden_index_info (hidden_col_buf, sizeof (hidden_col_buf), DUP_MODE_NONE, 0);
+	  output_ctx (") %s", hidden_col_buf);
+	}
+      else
+	{
+	  output_ctx (")");
+	}
+
+      if (constraint->filter_predicate)
+	{
+	  if (constraint->filter_predicate->pred_string)
+	    {
+	      output_ctx (" where %s", constraint->filter_predicate->pred_string);
+	    }
+	}
+#else
       if (constraint->filter_predicate)
 	{
 	  if (constraint->filter_predicate->pred_string)
@@ -3064,6 +3105,7 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	{
 	  output_ctx (")");
 	}
+#endif
       if (constraint->comment != NULL && constraint->comment[0] != '\0')
 	{
 	  output_ctx (" ");
