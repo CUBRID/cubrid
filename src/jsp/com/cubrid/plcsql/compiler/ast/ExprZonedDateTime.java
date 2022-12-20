@@ -31,46 +31,37 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.DateTimeParser;
-import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
-import java.time.temporal.TemporalAccessor;
 
 public class ExprZonedDateTime implements Expr {
 
-    public final TemporalAccessor time;
+    public final ZonedDateTime time;
+    public final String originType;
 
-    public ExprZonedDateTime(TemporalAccessor time) {
+    public ExprZonedDateTime(ZonedDateTime time, String originType) {
         this.time = time;
+        this.originType = originType;
     }
 
     @Override
     public String toJavaCode() {
 
-        String offsetStr;
-        LocalDateTime localPart;
-        if (time instanceof ZonedDateTime) {
-            offsetStr = '"' + ((ZonedDateTime) time).getOffset().getId() + '"';
-            localPart = ((ZonedDateTime) time).toLocalDateTime();
-        } else {
-            assert time instanceof LocalDateTime;
-            offsetStr = "null";
-            localPart = (LocalDateTime) time;
-        }
-
-        if (localPart.equals(DateTimeParser.nullDateTime)) {
+        if (time.equals(DateTimeParser.nullDatetimeUTC)) {
             return String.format(
-                    "new ZonedTimestamp(%s, 0 - 1900, 0 - 1, 0, 0, 0, 0, 0)", offsetStr);
+                    "ZonedDateTime.of(LocalDateTime.MAX, ZoneOffset.of(\"Z\")) /* %s */",
+                    originType);
         } else {
             return String.format(
-                    "new ZonedTimestamp(%s, %d - 1900, %d - 1, %d, %d, %d, %d, %d)",
-                    offsetStr,
-                    localPart.getYear(),
-                    localPart.getMonthValue(),
-                    localPart.getDayOfMonth(),
-                    localPart.getHour(),
-                    localPart.getMinute(),
-                    localPart.getSecond(),
-                    localPart.getNano());
+                    "ZonedDateTime.of(%d, %d, %d, %d, %d, %d, %d, ZoneOffset.of(\"%s\")) /* %s */",
+                    time.getYear(),
+                    time.getMonthValue(),
+                    time.getDayOfMonth(),
+                    time.getHour(),
+                    time.getMinute(),
+                    time.getSecond(),
+                    time.getNano(),
+                    time.getOffset().getId(),
+                    originType);
         }
     }
 

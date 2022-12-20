@@ -91,14 +91,14 @@ public class SpLib {
     }
 
     public static class Query {
-        final String query;
-        ResultSet rs;
+        public final String query;
+        public ResultSet rs;
 
-        Query(String query) {
+        public Query(String query) {
             this.query = query;
         }
 
-        void open(Connection conn, Object... val) throws Exception {
+        public void open(Connection conn, Object... val) throws Exception {
             if (isOpen()) {
                 throw new RuntimeException("already open");
             }
@@ -109,7 +109,7 @@ public class SpLib {
             rs = pstmt.executeQuery();
         }
 
-        void close() throws Exception {
+        public void close() throws Exception {
             if (rs != null) {
                 Statement stmt = rs.getStatement();
                 if (stmt != null) {
@@ -119,25 +119,25 @@ public class SpLib {
             }
         }
 
-        boolean isOpen() throws Exception {
+        public boolean isOpen() throws Exception {
             return (rs != null && !rs.isClosed());
         }
 
-        boolean found() throws Exception {
+        public boolean found() throws Exception {
             if (!isOpen()) {
                 throw new RuntimeException("invalid cursor");
             }
             return rs.getRow() > 0;
         }
 
-        boolean notFound() throws Exception {
+        public boolean notFound() throws Exception {
             if (!isOpen()) {
                 throw new RuntimeException("invalid cursor");
             }
             return rs.getRow() == 0;
         }
 
-        int rowCount() throws Exception {
+        public int rowCount() throws Exception {
             if (!isOpen()) {
                 throw new RuntimeException("invalid cursor");
             }

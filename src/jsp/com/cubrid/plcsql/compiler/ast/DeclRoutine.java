@@ -39,19 +39,22 @@ public class DeclRoutine extends DeclBase {
     public final TypeSpec retType;
     public NodeList<Decl> decls;
     public Body body;
+    public int level;
 
     public DeclRoutine(
             String name,
             NodeList<DeclParam> paramList,
             TypeSpec retType,
             NodeList<Decl> decls,
-            Body body) {
+            Body body,
+            int level) {
 
         this.name = name;
         this.paramList = paramList;
         this.retType = retType;
         this.decls = decls;
         this.body = body;
+        this.level = level;
     }
 
     @Override
@@ -67,6 +70,7 @@ public class DeclRoutine extends DeclBase {
                         ? "// no declarations"
                         : tmplDeclClass
                                 .replace("%'BLOCK'%", name.toLowerCase())
+                                .replace("%'LEVEL'%", "" + level)
                                 .replace(
                                         "  %'DECLARATIONS'%",
                                         Misc.indentLines(decls.toJavaCode(), 1));
@@ -87,8 +91,7 @@ public class DeclRoutine extends DeclBase {
     public String argsToJavaCode(NodeList<Expr> args) {
 
         assert args != null;
-        assert args.nodes.size() == paramList.nodes.size()
-                : "formal and actual parameter of routine " + name + "does not match";
+        assert args.nodes.size() == paramList.nodes.size();
 
         StringBuffer sbuf = new StringBuffer();
 
@@ -133,5 +136,5 @@ public class DeclRoutine extends DeclBase {
                     "  Decl_of_%'BLOCK'%() throws Exception {};",
                     "  %'DECLARATIONS'%",
                     "}",
-                    "Decl_of_%'BLOCK'% %'BLOCK'% = new Decl_of_%'BLOCK'%();");
+                    "Decl_of_%'BLOCK'% %'BLOCK'%_%'LEVEL'% = new Decl_of_%'BLOCK'%();");
 }

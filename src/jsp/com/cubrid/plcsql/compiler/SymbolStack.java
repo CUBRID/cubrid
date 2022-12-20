@@ -44,14 +44,14 @@ public class SymbolStack {
         int level = symbolTableStack.size();
         name = name.toLowerCase();
 
-        String routine, block;
+        String routine;
         if (forRoutine) {
-            routine = name + "_" + level;
-            block = name;
+            routine = name.toUpperCase();
         } else {
-            routine = currSymbolTable.scope.routine;
-            block = name + "_" + level;
+            routine = (currSymbolTable == null) ? null : currSymbolTable.scope.routine;
         }
+
+        String block = name + "_" + level;
 
         currSymbolTable = new SymbolTable(new Scope(routine, block, level));
         symbolTableStack.addFirst(currSymbolTable);
@@ -79,10 +79,7 @@ public class SymbolStack {
         Map<String, D> map = currSymbolTable.<D>map((Class<D>) decl.getClass());
         if (map.containsKey(name)) {
             assert false
-                    : decl.typeStr()
-                            + " "
-                            + name
-                            + " has already been declared in the same routine";
+                    : decl.typeStr() + " " + name + " has already been declared in the same scope";
             throw new RuntimeException("unreachable");
         }
 
@@ -120,7 +117,6 @@ public class SymbolStack {
 
     private static class SymbolTable {
         final Scope scope;
-        // final Map<String, DeclCursor> cursors;
         final Map<String, DeclId> ids;
         final Map<String, DeclException> exceptions;
         final Map<String, DeclProc> procs;
@@ -130,7 +126,6 @@ public class SymbolStack {
         SymbolTable(Scope scope) {
             this.scope = scope;
 
-            // cursors = new TreeMap<>();
             ids = new TreeMap<>();
             exceptions = new TreeMap<>();
             procs = new TreeMap<>();
@@ -139,9 +134,7 @@ public class SymbolStack {
         }
 
         <D extends Decl> Map<String, D> map(Class<D> declClass) {
-            /*if (DeclCursor.class.isAssignableFrom(declClass)) {
-                return (Map<String, D>) cursors;
-            } else */ if (DeclId.class.isAssignableFrom(declClass)) {
+            if (DeclId.class.isAssignableFrom(declClass)) {
                 return (Map<String, D>) ids;
             } else if (DeclException.class.isAssignableFrom(declClass)) {
                 return (Map<String, D>) exceptions;

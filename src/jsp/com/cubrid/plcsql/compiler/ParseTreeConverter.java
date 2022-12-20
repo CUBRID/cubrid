@@ -41,7 +41,7 @@ import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.time.temporal.TemporalAccessor;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -59,9 +59,7 @@ import org.apache.commons.text.StringEscapeUtils;
 public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     public ParseTreeConverter() {
-        super();
-
-        int level = symbolStack.pushSymbolTable(SYMBOL_TABLE_TOP, true);
+        int level = symbolStack.pushSymbolTable(SYMBOL_TABLE_TOP, false);
         assert level == 0;
 
         setUpPredefined();
@@ -80,13 +78,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = ctx.identifier().getText().toUpperCase();
         name = Misc.peelId(name);
 
-        symbolStack.pushSymbolTable(
-                "temp", true); // in order not to corrupt predefined symbol table
+        int level =
+                symbolStack.pushSymbolTable(
+                        "temp", false); // in order not to corrupt predefined symbol table
 
         NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
 
         symbolStack.popSymbolTable();
-        DeclProc decl = new DeclProc(name, paramList, null, null);
+        DeclProc decl = new DeclProc(name, paramList, null, null, level);
         symbolStack.putDecl(name, decl); // in order to allow recursive calls
 
         symbolStack.pushSymbolTable(name, true);
@@ -113,14 +112,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = ctx.identifier().getText().toUpperCase();
         name = Misc.peelId(name);
 
-        symbolStack.pushSymbolTable(
-                "temp", true); // in order not to corrupt predefined symbol table
+        int level =
+                symbolStack.pushSymbolTable(
+                        "temp", false); // in order not to corrupt predefined symbol table
 
         NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
         TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
 
         symbolStack.popSymbolTable();
-        DeclFunc decl = new DeclFunc(name, paramList, retType, null, null);
+        DeclFunc decl = new DeclFunc(name, paramList, retType, null, null, level);
         symbolStack.putDecl(name, decl); // in order to allow recursive calls
 
         symbolStack.pushSymbolTable(name, true);
@@ -408,13 +408,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return new ExprBinaryOp("BitOr", l, r);
     }
 
-    private static final DateFormat dbgFormat =
-            new SimpleDateFormat("G yyyy-MM-dd HH:mm:ss.SSS XXX", Locale.US);
-
-    static {
-        dbgFormat.setTimeZone(TimeZone.getTimeZone("GMT+0"));
-    }
-
     @Override
     public Expr visitDate_exp(Date_expContext ctx) {
         String s = ctx.quoted_string().getText();
@@ -438,11 +431,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public Expr visitTimestamp_exp(Timestamp_expContext ctx) {
         String s = ctx.quoted_string().getText();
-        s = quotedStrToJavaStr(s);
-        LocalDateTime timestamp = DateTimeParser.TimestampLiteral.parse(s);
-        assert timestamp != null : "invalid TIMESTAMP string: " + s;
-        // System.out.println("[temp] timestamp=" + timestamp);
-        return new ExprTimestamp(timestamp);
+        return parseZonedDateTime(s, false, "TIMESTAMP");
     }
 
     @Override
@@ -458,41 +447,25 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public Expr visitTimestamptz_exp(Timestamptz_expContext ctx) {
         String s = ctx.quoted_string().getText();
-        s = quotedStrToJavaStr(s);
-        TemporalAccessor timestampTZ = DateTimeParser.TimestampTZLiteral.parse(s);
-        assert timestampTZ != null : "invalid TIMESTAMPTZ string: " + s;
-        // System.out.println("[temp] timestampTZ=" + timestampTZ);
-        return new ExprTimestampTZ(timestampTZ);
+        return parseZonedDateTime(s, false, "TIMESTAMPTZ");
     }
 
     @Override
     public Expr visitTimestampltz_exp(Timestampltz_expContext ctx) {
         String s = ctx.quoted_string().getText();
-        s = quotedStrToJavaStr(s);
-        TemporalAccessor timestampLTZ = DateTimeParser.TimestampLTZLiteral.parse(s);
-        assert timestampLTZ != null : "invalid TIMESTAMPLTZ string: " + s;
-        // System.out.println("[temp] timestampLTZ=" + timestampLTZ);
-        return new ExprTimestampLTZ(timestampLTZ);
+        return parseZonedDateTime(s, false, "TIMESTAMPLTZ");
     }
 
     @Override
     public Expr visitDatetimetz_exp(Datetimetz_expContext ctx) {
         String s = ctx.quoted_string().getText();
-        s = quotedStrToJavaStr(s);
-        TemporalAccessor datetimeTZ = DateTimeParser.DatetimeTZLiteral.parse(s);
-        assert datetimeTZ != null : "invalid DATETIMETZ string: " + s;
-        // System.out.println("[temp] datetimeTZ=" + datetimeTZ);
-        return new ExprDatetimeTZ(datetimeTZ);
+        return parseZonedDateTime(s, true, "DATETIMETZ");
     }
 
     @Override
     public Expr visitDatetimeltz_exp(Datetimeltz_expContext ctx) {
         String s = ctx.quoted_string().getText();
-        s = quotedStrToJavaStr(s);
-        TemporalAccessor datetimeLTZ = DateTimeParser.DatetimeLTZLiteral.parse(s);
-        assert datetimeLTZ != null : "invalid DATETIMELTZ string: " + s;
-        // System.out.println("[temp] datetimeLTZ=" + datetimeLTZ);
-        return new ExprDatetimeLTZ(datetimeLTZ);
+        return parseZonedDateTime(s, true, "DATETIMELTZ");
     }
 
     @Override
@@ -515,12 +488,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             assert false : "invalid floating point number: " + ctx.FLOATING_POINT_NUM().getText();
             throw new RuntimeException("unreachable");
         }
-    }
-
-    private static String quotedStrToJavaStr(String val) {
-        val = val.substring(1, val.length() - 1); // strip enclosing '
-        val = val.replace("''", "'");
-        return StringEscapeUtils.escapeJava(val);
     }
 
     @Override
@@ -600,12 +567,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             connectionRequired = true;
             addToImports("java.sql.*");
 
-            symbolStack.pushSymbolTable("global_func_call", false);
-            int level = symbolStack.getCurrentScope().level;
-
+            int level = symbolStack.getCurrentScope().level + 1;
             ExprGlobalFuncCall ret = new ExprGlobalFuncCall(level, name, args);
-
-            symbolStack.popSymbolTable();
 
             return new ExprCast(ret);
         } else {
@@ -699,6 +662,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
+        if (whenParts.nodes.size() > 0) {
+            addToImports("java.util.Objects");
+        }
         return new ExprCast(new ExprCase(level, selector, whenParts, elsePart));
     }
 
@@ -740,6 +706,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public Expr visitList_exp(List_expContext ctx) {
         NodeList<Expr> elems = visitExpressions(ctx.expressions());
+        addToImports("java.util.Arrays");
         return new ExprList(elems);
     }
 
@@ -775,6 +742,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             }
         }
 
+        symbolStack.getCurrentScope().setDeclDone();
+
         if (ret.nodes.size() == 0) {
             return null;
         } else {
@@ -785,9 +754,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitPragma_declaration(Pragma_declarationContext ctx) {
         assert ctx.AUTONOMOUS_TRANSACTION() != null;
-        // currently, only the Autonomous Transaction is possible
+
+        // currently, only the Autonomous Transaction is
         // allowed only in the top-level declarations
-        assert symbolStack.getCurrentScope().level == 1;
+        assert symbolStack.getCurrentScope().level == 1
+                : "AUTONOMOUS_TRANSACTION declaration is only allowed at the top level";
 
         // just turn on the flag and return nothing
         autonomousTransaction = true;
@@ -870,15 +841,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = ctx.identifier().getText().toUpperCase();
         name = Misc.peelId(name);
 
-        symbolStack.pushSymbolTable(
-                "temp",
-                true); // in order not to corrupt the current symbol table with the parameters
+        // in order not to corrupt the current symbol table with the parameters
+        int level = symbolStack.pushSymbolTable("temp", false);
 
         NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
 
         symbolStack.popSymbolTable();
 
-        DeclProc ret = new DeclProc(name, paramList, null, null);
+        DeclProc ret = new DeclProc(name, paramList, null, null, level);
         symbolStack.putDecl(name, ret);
     }
 
@@ -910,16 +880,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = ctx.identifier().getText().toUpperCase();
         name = Misc.peelId(name);
 
-        symbolStack.pushSymbolTable(
-                "temp",
-                true); // in order not to corrupt the current symbol table with the parameters
+        // in order not to corrupt the current symbol table with the parameters
+        int level = symbolStack.pushSymbolTable("temp", false);
 
         NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
         TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
 
         symbolStack.popSymbolTable();
 
-        DeclFunc ret = new DeclFunc(name, paramList, retType, null, null);
+        DeclFunc ret = new DeclFunc(name, paramList, retType, null, null, level);
         symbolStack.putDecl(name, ret);
     }
 
@@ -967,7 +936,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         for (StatementContext sc : ctx.statement()) {
             Stmt s = (Stmt) visit(sc);
             if (s == null) {
-                assert false : ("sc=" + sc.getClass().getSimpleName());
+                assert false;
             } else {
                 stmts.addNode(s);
             }
@@ -1204,7 +1173,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         DeclId d = symbolStack.getDeclId(cursorName);
         assert d != null : ("undeclared id " + cursorName);
-        assert d instanceof DeclCursor;
+        assert d instanceof DeclCursor : (cursorName + " is not a cursor");
         DeclCursor cursorDecl = (DeclCursor) d;
 
         Scope scope = symbolStack.getCurrentScope();
@@ -1378,11 +1347,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         } else {
 
             String routine = symbolStack.getCurrentScope().routine;
-            routine = routine.substring(0, routine.lastIndexOf('_'));
-            routine = routine.toUpperCase();
-
             DeclFunc df = symbolStack.getDeclFunc(routine);
-            assert df != null : "decl of " + routine + " must exsit";
+            assert df != null;
             return new StmtReturn(visitExpression(ctx.expression(), df.retType.name));
         }
     }
@@ -1411,6 +1377,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
+        if (whenParts.nodes.size() > 0) {
+            addToImports("java.util.Objects");
+        }
         return new StmtCase(level, selector, whenParts, elsePart);
     }
 
@@ -1488,7 +1457,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         DeclId d = symbolStack.getDeclId(name);
         assert d != null : ("undeclared id " + name);
-        assert d instanceof DeclCursor;
+        assert d instanceof DeclCursor : (name + " is not a cursor");
         DeclCursor decl = (DeclCursor) d;
 
         Scope scope = symbolStack.getCurrentScope();
@@ -1623,12 +1592,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             connectionRequired = true;
             addToImports("java.sql.*");
 
-            symbolStack.pushSymbolTable("global_proc_call", false);
-            int level = symbolStack.getCurrentScope().level;
-
+            int level = symbolStack.getCurrentScope().level + 1;
             StmtGlobalProcCall ret = new StmtGlobalProcCall(level, name, args);
-
-            symbolStack.popSymbolTable();
 
             return ret;
         } else {
@@ -1843,14 +1808,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                         new NodeList<DeclParam>()
                                 .addNode(new DeclParamIn("s", new TypeSpec("Object"))),
                         null,
-                        null);
+                        null,
+                        0);
         symbolStack.putDecl("PUT_LINE", dp);
 
         // add functions
-        DeclFunc df = new DeclFunc("OPEN_CURSOR", null, new TypeSpec("Integer"), null, null);
+        DeclFunc df = new DeclFunc("OPEN_CURSOR", null, new TypeSpec("Integer"), null, null, 0);
         symbolStack.putDecl("OPEN_CURSOR", df);
 
-        df = new DeclFunc("LAST_ERROR_POSITION", null, new TypeSpec("Integer"), null, null);
+        df = new DeclFunc("LAST_ERROR_POSITION", null, new TypeSpec("Integer"), null, null, 0);
         symbolStack.putDecl("LAST_ERROR_POSITION", df);
 
         // add constants TODO implement SQLERRM and SQLCODE properly
@@ -1879,7 +1845,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     private String getJavaType(String pcsType) {
         String val = pcsToJavaTypeMap.get(pcsType);
-        assert val != null;
+        assert val != null : ("invalid type name " + pcsType);
 
         String[] split = val.split("\\.");
         if ("Query".equals(val)) {
@@ -1937,16 +1903,16 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         pcsToJavaTypeMap.put("FLOAT", "java.lang.Float");
         pcsToJavaTypeMap.put("REAL", "java.lang.Float");
         pcsToJavaTypeMap.put("DOUBLE", "java.lang.Double");
-        pcsToJavaTypeMap.put("DOUBLE PRECISION", "java.lang.Double"); // ???
+        pcsToJavaTypeMap.put("DOUBLE PRECISION", "java.lang.Double");
 
-        pcsToJavaTypeMap.put("DATE", "java.sql.Date");
-        pcsToJavaTypeMap.put("TIME", "java.sql.Time");
-        pcsToJavaTypeMap.put("TIMESTAMP", "java.sql.Timestamp");
-        pcsToJavaTypeMap.put("DATETIME", "java.sql.Timestamp");
-        pcsToJavaTypeMap.put("TIMESTAMPTZ", "com.cubrid.plcsql.predefined.ZonedTimestamp");     // ZonedDateTime?
-        pcsToJavaTypeMap.put("TIMESTAMPLTZ", "com.cubrid.plcsql.predefined.ZonedTimestamp");    // LocalDateTime?
-        pcsToJavaTypeMap.put("DATETIMETZ", "com.cubrid.plcsql.predefined.ZonedTimestamp");      // ZonedDateTime?
-        pcsToJavaTypeMap.put("DATETIMELTZ", "com.cubrid.plcsql.predefined.ZonedTimestamp");     // LocalDateTime?
+        pcsToJavaTypeMap.put("DATE", "java.time.LocalDate");
+        pcsToJavaTypeMap.put("TIME", "java.time.LocalTime");
+        pcsToJavaTypeMap.put("TIMESTAMP", "java.time.ZonedDateTime");
+        pcsToJavaTypeMap.put("DATETIME", "java.time.LocalDateTime");
+        pcsToJavaTypeMap.put("TIMESTAMPTZ", "java.time.ZonedDateTime");
+        pcsToJavaTypeMap.put("TIMESTAMPLTZ", "java.time.ZonedDateTime");
+        pcsToJavaTypeMap.put("DATETIMETZ", "java.time.ZonedDateTime");
+        pcsToJavaTypeMap.put("DATETIMELTZ", "java.time.ZonedDateTime");
         pcsToJavaTypeMap.put("SET", "java.util.Set");
         pcsToJavaTypeMap.put("MULTISET", "org.apache.commons.collections4.MultiSet");
         pcsToJavaTypeMap.put("LIST", "java.util.List");
@@ -1964,5 +1930,29 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         return false;
+    }
+
+    private static String quotedStrToJavaStr(String val) {
+        val = val.substring(1, val.length() - 1); // strip enclosing '
+        val = val.replace("''", "'");
+        return StringEscapeUtils.escapeJava(val);
+    }
+
+    private static final DateFormat dbgFormat =
+            new SimpleDateFormat("G yyyy-MM-dd HH:mm:ss.SSS XXX", Locale.US);
+
+    static {
+        dbgFormat.setTimeZone(TimeZone.getTimeZone("GMT+0"));
+    }
+
+    private ExprZonedDateTime parseZonedDateTime(String s, boolean forDatetime, String originType) {
+        s = quotedStrToJavaStr(s);
+        ZonedDateTime timestamp = DateTimeParser.ZonedDateTimeLiteral.parse(s, forDatetime);
+        assert timestamp != null : String.format("invalid %s string: %s", originType, s);
+        addToImports("java.time.ZoneOffset");
+        if (timestamp.equals(DateTimeParser.nullDatetimeUTC)) {
+            addToImports("java.time.LocalDateTime");
+        }
+        return new ExprZonedDateTime(timestamp, originType);
     }
 }

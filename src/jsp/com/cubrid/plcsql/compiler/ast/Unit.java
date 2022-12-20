@@ -53,6 +53,8 @@ public class Unit implements AstNode {
             String importsStr,
             DeclRoutine routine) {
 
+        assert routine.level == 1;
+
         this.targetKind = targetKind;
         this.autonomousTransaction = autonomousTransaction;
         this.connectionRequired = connectionRequired;
@@ -78,6 +80,7 @@ public class Unit implements AstNode {
                         ? "// no declarations"
                         : tmplDeclClass
                                 .replace("%'BLOCK'%", routine.name.toLowerCase())
+                                .replace("%'LEVEL'%", "" + routine.level)
                                 .replace(
                                         "  %'DECLARATIONS'%",
                                         Misc.indentLines(routine.decls.toJavaCode(), 1));
@@ -150,7 +153,7 @@ public class Unit implements AstNode {
                     "  Decl_of_%'BLOCK'%() throws Exception {};",
                     "  %'DECLARATIONS'%",
                     "}",
-                    "Decl_of_%'BLOCK'% %'BLOCK'% = new Decl_of_%'BLOCK'%();");
+                    "Decl_of_%'BLOCK'% %'BLOCK'%_%'LEVEL'% = new Decl_of_%'BLOCK'%();");
 
     private String className;
 }

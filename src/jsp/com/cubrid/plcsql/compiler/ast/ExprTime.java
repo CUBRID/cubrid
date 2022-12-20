@@ -43,7 +43,7 @@ public class ExprTime implements Expr {
     @Override
     public String toJavaCode() {
         return String.format(
-                "new Time(%d, %d, %d)", time.getHour(), time.getMinute(), time.getSecond());
+                "LocalTime.of(%d, %d, %d)", time.getHour(), time.getMinute(), time.getSecond());
     }
 
     // --------------------------------------------------

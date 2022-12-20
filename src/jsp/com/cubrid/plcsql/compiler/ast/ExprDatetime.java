@@ -43,11 +43,11 @@ public class ExprDatetime implements Expr {
 
     @Override
     public String toJavaCode() {
-        if (time.equals(DateTimeParser.nullDateTime)) {
-            return "new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0)";
+        if (time.equals(DateTimeParser.nullDatetime)) {
+            return "LocalDateTime.MAX";
         } else {
             return String.format(
-                    "new Timestamp(%d - 1900, %d - 1, %d, %d, %d, %d, %d)",
+                    "LocalDateTime.of(%d, %d, %d, %d, %d, %d, %d)",
                     time.getYear(),
                     time.getMonthValue(),
                     time.getDayOfMonth(),

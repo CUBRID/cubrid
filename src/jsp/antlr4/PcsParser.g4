@@ -32,7 +32,7 @@ options {
 }
 
 sql_script
-    : unit_statement ';'? EOF
+    : unit_statement EOF
     ;
 
 unit_statement
@@ -45,6 +45,11 @@ create_function
       (IS | AS) seq_of_declare_specs? body ';'
     ;
 
+create_procedure
+    : CREATE (OR REPLACE)? PROCEDURE identifier ('(' parameter_list ')')?
+      (IS | AS) seq_of_declare_specs? body ';'
+    ;
+
 function_body
     : FUNCTION identifier ('(' parameter_list ')')? RETURN type_spec
       (IS | AS) seq_of_declare_specs? body ';'
@@ -52,11 +57,6 @@ function_body
 
 procedure_body
     : PROCEDURE identifier ('(' parameter_list ')')?
-      (IS | AS) seq_of_declare_specs? body ';'
-    ;
-
-create_procedure
-    : CREATE (OR REPLACE)? PROCEDURE identifier ('(' parameter_list ')')?
       (IS | AS) seq_of_declare_specs? body ';'
     ;
 
@@ -321,7 +321,7 @@ between_expression
 
 in_expression
     : like_expression                               # in_expression_prime
-    | in_expression NOT? IN '(' in_elements ')'     # in_exp
+    | in_expression NOT? IN in_elements     # in_exp
     ;
 
 like_expression
@@ -378,7 +378,7 @@ relational_operator
     ;
 
 in_elements
-    : in_expression (',' in_expression)*
+    : '(' in_expression (',' in_expression)* ')'
     ;
 
 between_elements
