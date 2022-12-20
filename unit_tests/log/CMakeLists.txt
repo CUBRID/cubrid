@@ -189,7 +189,6 @@ add_dependencies(test_log_lsa_utils
 # test_log_recovery_parallel
 #
 set(TEST_LOG_RECOVERY_PARALLEL_SOURCES
-  ${TEST_FAKE_DIR}/fake_system_parameter.cpp
   ${TRANSACTION_DIR}/log_recovery_redo_parallel.cpp
   ut_redo_job_impl.cpp
   ut_database.cpp

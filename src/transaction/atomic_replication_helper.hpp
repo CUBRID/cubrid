@@ -241,8 +241,8 @@ namespace cublog
 
 	    inline bool is_control () const;
 
-	    void dump_to_buffer (char *&buf_ptr, int &buf_len) const;
-	    void dump_to_stream (std::stringstream &dump_stream) const;
+	    void dump_to_buffer (char *&buf_ptr, int &buf_len, TRANID trid) const;
+	    void dump_to_stream (std::stringstream &dump_stream, TRANID trid) const;
 
 	    VPID m_vpid;
 	    LOG_RECTYPE m_rectype;
@@ -276,7 +276,7 @@ namespace cublog
 	    LOG_RCVINDEX m_rcvindex = RV_NOT_DEFINED;
 	    PAGE_PTR m_page_p = nullptr;
 	    page_ptr_watcher_uptr_type m_watcher_p;
-	    int m_ref_count = -1;
+	    int m_ref_count = 0;
 	  };
 
 	  /*

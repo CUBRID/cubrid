@@ -19,7 +19,6 @@
 project (test_packing)
 
 set (TEST_PACKING_SRC
-  ${TEST_FAKE_DIR}/fake_system_parameter.cpp
   test_main.cpp
   test_packing.cpp
   )
