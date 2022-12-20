@@ -143,6 +143,8 @@ static const char *st_hidden_index_col_name[] = {
 #define MK_HIDDEN_INDEX_COL_ATTR_ID(mode, level) (HIDDEN_INDEX_COL_ATTR_ID_BASE - ((mode) | ((level) << 4)))
 #define GET_HIDDEN_INDEX_COL_MODE(attid)         ((HIDDEN_INDEX_COL_ATTR_ID_BASE - (attid)) & 0x0000000F)
 #define GET_HIDDEN_INDEX_COL_LEVEL(attid)        ((HIDDEN_INDEX_COL_ATTR_ID_BASE - (attid)) >> 4)
+
+#define HIDDEN_INDEX_COL_NAME_PATTERN   "'^_cub_idx_col_(o|v|s|p)_[0-9][0-9]$'"
 // *INDENT-OFF*
 #define GET_HIDDEN_INDEX_COL_MODE_LEVEL_FROM_NAME(name, mode, level)  do {                                         \
         char chx, ch_mode;                                                                                         \
