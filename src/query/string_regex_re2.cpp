@@ -23,6 +23,7 @@
 #include "string_regex.hpp"
 
 #include "locale_helper.hpp"
+#include "intl_support.h"
 
 #include <iostream>
 
@@ -32,6 +33,9 @@ namespace cubregex
 
   template <typename Func>
   static bool re2_on_match (const RE2 &re2, const re2::StringPiece &target, const int occurrence, Func &&lambda);
+
+  static std::string re2_split_string (const std::string &src, int position);
+  static void re2_distance_utf8 (int &length, const char *s, const char *e);
 
   RE2::Options
   re2_parse_match_type (const opt_flag_type &opt_type)
@@ -60,41 +64,6 @@ namespace cubregex
     return NO_ERROR;
   }
 
-  template <typename Func>
-  static bool
-  re2_on_match (const RE2 &re2, const re2::StringPiece &target, const int occurrence, Func &&lambda)
-  {
-    bool is_matched = false;
-    int n = 1;
-    char *current_p = (char *) target.data();
-    const char *end_p = current_p + target.size();
-    re2::StringPiece match;
-    while (current_p <= end_p)
-      {
-	is_matched = re2.Match (target, static_cast<size_t> (current_p - target.data()),
-				target.size(), RE2::UNANCHORED, &match, 1);
-	if (!is_matched)
-	  {
-	    break;
-	  }
-
-	if (n == occurrence)
-	  {
-	    is_matched = true;
-	    lambda (match, current_p); // do something on regex is matched
-	    break;
-	  }
-	else
-	  {
-	    is_matched = false;
-	  }
-
-	++n; // next occurence idx
-	current_p = (char *) match.data() + match.size (); // next pos to search a non-overapping regex match
-      }
-    return is_matched;
-  }
-
   int
   re2_search (int &result, const compiled_regex &reg, const std::string &src)
   {
@@ -109,7 +78,7 @@ namespace cubregex
     assert (position >= 0);
 
     /* split source string by position value */
-    std::string target = src.substr (position, src.size () - position);
+    std::string target = re2_split_string (src, position);
 
     result = 0;
     re2::StringPiece piece (target);
@@ -128,15 +97,21 @@ namespace cubregex
     assert (occurrence >= 1);
 
     /* split source string by position value */
-    std::string target = src.substr (position, src.size () - position);
+    std::string target = re2_split_string (src, position);
 
     int match_idx = -1;
     re2::StringPiece target_piece (target);
 
     auto lambda = [&] (re2::StringPiece &match, char *current_p)
     {
-      match_idx = static_cast<size_t> (match.data() - target.data());
-      match_idx += (return_opt == 1) ? match.size() : 0;
+      re2_distance_utf8 (match_idx, target.data(), match.data());
+
+      if (return_opt == 1)
+	{
+	  int match_utf8_length = 0;
+	  re2_distance_utf8 (match_utf8_length, match.data(), match.data() + match.size ());
+	  match_idx += match_utf8_length;
+	}
     };
 
     bool is_matched = re2_on_match (GET_RE2_OBJ (reg), target_piece, occurrence, lambda);
@@ -162,7 +137,7 @@ namespace cubregex
 
     /* split source string by position value */
     std::string result_string (src.substr (0, position));
-    std::string target = src.substr (position, src.size () - position);
+    std::string target = re2_split_string (src, position);
 
     re2::StringPiece rewrite (repl);
     if (occurrence == 0)
@@ -221,7 +196,7 @@ namespace cubregex
     assert (occurrence >= 1);
 
     /* split source string by position value */
-    std::string target = src.substr (position, src.size () - position);
+    std::string target = re2_split_string (src, position);
 
     re2::StringPiece target_piece (target);
     auto lambda = [&] (re2::StringPiece &match, char *current_p)
@@ -232,4 +207,80 @@ namespace cubregex
     is_matched = re2_on_match (GET_RE2_OBJ (reg), target_piece, occurrence, lambda);
     return NO_ERROR;
   }
+
+  static void
+  re2_distance_utf8 (int &length, const char *s, const char *e)
+  {
+    length = 0;
+    char *current = (char *) s;
+    int dummy;
+    while (current < e)
+      {
+	current = (char *) intl_nextchar_utf8 ((const unsigned char *) current, &dummy);
+
+	if (current <= e)
+	  {
+	    length++;
+	  }
+      }
+  }
+
+  static std::string
+  re2_split_string (const std::string &src, int position)
+  {
+    int dummy;
+    char *s = (char *) src.data ();
+    const char *end = src.data() + src.size ();
+    int i;
+    for (i = 0; i < position && s < end; i++)
+      {
+	s = (char *) intl_nextchar_utf8 ((const unsigned char *) s, &dummy);
+      }
+
+    if (i == position && s < end)
+      {
+	int pos = s - src.data ();
+	return src.substr (pos, src.size () - pos);
+      }
+    else
+      {
+	return std::string ();
+      }
+  }
+
+  template <typename Func>
+  static bool
+  re2_on_match (const RE2 &re2, const re2::StringPiece &target, const int occurrence, Func &&lambda)
+  {
+    bool is_matched = false;
+    int n = 1;
+    char *current_p = (char *) target.data();
+    const char *end_p = current_p + target.size();
+    re2::StringPiece match;
+    while (current_p <= end_p)
+      {
+	is_matched = re2.Match (target, static_cast<size_t> (current_p - target.data()),
+				target.size(), RE2::UNANCHORED, &match, 1);
+	if (!is_matched)
+	  {
+	    break;
+	  }
+
+	if (n == occurrence)
+	  {
+	    is_matched = true;
+	    lambda (match, current_p); // do something on regex is matched
+	    break;
+	  }
+	else
+	  {
+	    is_matched = false;
+	  }
+
+	++n; // next occurence idx
+	current_p = (char *) match.data() + match.size (); // next pos to search a non-overapping regex match
+      }
+    return is_matched;
+  }
+
 }
