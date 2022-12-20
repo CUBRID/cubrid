@@ -4559,6 +4559,7 @@ db_string_rlike (const DB_VALUE * src, const DB_VALUE * pattern, const DB_VALUE 
     error_status = cubregex::compile (compiled_regex, pattern_string, match_str, collation);
     if (error_status != NO_ERROR)
       {
+	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	goto cleanup;
       }
 
@@ -4733,6 +4734,7 @@ db_string_regexp_count (DB_VALUE * result, DB_VALUE * args[], int const num_args
     error_status = cubregex::compile (compiled_regex, pattern_string, match_type_str, collation);
     if (error_status != NO_ERROR)
       {
+	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	goto exit;
       }
 
@@ -4947,6 +4949,7 @@ db_string_regexp_instr (DB_VALUE * result, DB_VALUE * args[], int const num_args
     error_status = cubregex::compile (compiled_regex, pattern_string, match_type_str, collation);
     if (error_status != NO_ERROR)
       {
+	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	goto exit;
       }
 
@@ -5110,6 +5113,7 @@ db_string_regexp_like (DB_VALUE * result, DB_VALUE * args[], int const num_args,
     error_status = cubregex::compile (compiled_regex, pattern_string, match_type_str, collation);
     if (error_status != NO_ERROR)
       {
+	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	goto exit;
       }
 
@@ -5324,6 +5328,7 @@ db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], int const num_ar
     error_status = cubregex::compile (compiled_regex, pattern_string, match_type_str, collation);
     if (error_status != NO_ERROR)
       {
+	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	goto exit;
       }
 
@@ -5561,6 +5566,7 @@ db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], int const num_arg
     error_status = cubregex::compile (compiled_regex, pattern_string, match_type_str, collation);
     if (error_status != NO_ERROR)
       {
+	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	goto exit;
       }
 
