@@ -4256,12 +4256,18 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 
       if (!*attp && !*namep && !classobj_is_possible_constraint (cons->type, new_cons))
 	{
-#if defined(SUPPORT_KEY_DUP_LEVEL)
-	  for (i = 0; i < len && i < new_len; i++)
-#else
 	  for (i = 0; i < len; i++)
-#endif
 	    {
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	      if (i >= new_len)
+		{
+		  if ((i + 1) == len)
+		    {
+		      i++;	/* set matched */
+		    }
+		  break;
+		}
+#endif
 	      /* if not specified, ascending order */
 	      order = (asc_desc ? asc_desc[i] : 0);
 	      assert (order == 0 || order == 1);
@@ -8237,8 +8243,7 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char **out_shared
     }
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
-  classobj_check_attr_in_unique_constraint (constraints, constraint_type, att_names, asc_desc,
-					    NULL /*attrs_prefix_length */ , func_index_info);
+  classobj_check_attr_in_unique_constraint (constraints, constraint_type, att_names, asc_desc, NULL, func_index_info);
 #endif
 
   existing_con = classobj_find_constraint_by_attrs (constraints, constraint_type, att_names, asc_desc, filter_index);

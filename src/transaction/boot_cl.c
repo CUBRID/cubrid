@@ -5572,7 +5572,7 @@ boot_define_view_index (void)
 	  "CASE [i].[is_reverse] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_reverse], "
 	  "[i].[class_of].[class_name] AS [class_name], "
 	  "CAST ([i].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
-#if defined(SUPPORT_KEY_DUP_LEVEL)          
+#if 0 //defined(SUPPORT_KEY_DUP_LEVEL)     -- ctshim     
           "NVL2((SELECT 1 FROM _db_index_key [k] WHERE [k].index_of.class_of = [i].class_of "
                                                    "AND [k].index_of.index_name = [i].[index_name] "
                                                    "AND [k].key_attr_name RLIKE " HIDDEN_INDEX_COL_NAME_PATTERN
@@ -5707,7 +5707,7 @@ boot_define_view_index_key (void)
 	  /* CT_INDEXKEY_NAME */
 	  "[%s] AS [k] "
 	"WHERE "
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if 0 // defined(SUPPORT_KEY_DUP_LEVEL) -- ctshim
           "("
 #endif        
 	  "CURRENT_USER = 'DBA' "
@@ -5737,7 +5737,7 @@ boot_define_view_index_key (void)
 		      "[u].[name] = CURRENT_USER"
 		  ") "
 		"AND [au].[auth_type] = 'SELECT'"
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if 0 // defined(SUPPORT_KEY_DUP_LEVEL) -- ctshim
              ")"
           ") AND [k].[key_attr_name] NOT RLIKE " HIDDEN_INDEX_COL_NAME_PATTERN,
 #else                
