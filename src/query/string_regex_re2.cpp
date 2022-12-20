@@ -44,7 +44,8 @@ namespace cubregex
     // default
     opt.set_log_errors (false);
     opt.set_case_sensitive ((opt_type & OPT_ICASE) == 0);
-    // TODO
+
+    // TODO: set max memory limits from a system paramter
     // opt.set_max_mem (opt.max_mem ());
     return opt;
   }
