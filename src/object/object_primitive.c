@@ -7909,14 +7909,7 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 		{
 		  /* safeguard */
 		  assert (mul2->min_max_val.type == MIN_COLUMN || mul2->min_max_val.type == MAX_COLUMN);
-		  if (mul2->min_max_val.type == MIN_COLUMN)
-		    {
-		      c = DB_GT;
-		    }
-		  else
-		    {
-		      c = DB_LT;
-		    }
+		  c = (mul2->min_max_val.type == MIN_COLUMN) ? DB_GT : DB_LT;
 		}
 	      else
 		{
@@ -7930,14 +7923,7 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 		{
 		  /* safeguard */
 		  assert (mul1->min_max_val.type == MIN_COLUMN || mul1->min_max_val.type == MAX_COLUMN);
-		  if (mul1->min_max_val.type == MIN_COLUMN)
-		    {
-		      c = DB_LT;
-		    }
-		  else
-		    {
-		      c = DB_GT;
-		    }
+		  c = (mul1->min_max_val.type == MIN_COLUMN) ? DB_LT : DB_GT;
 		}
 	      else
 		{
@@ -7954,43 +7940,18 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 		    {
 		      MIN_MAX_COLUMN_TYPE type1 = mul1->min_max_val.type;
 		      MIN_MAX_COLUMN_TYPE type2 = mul2->min_max_val.type;
-		      if (type1 == type2)
-			{
-			  c = DB_EQ;
-			}
-		      else if (type1 == MIN_COLUMN)
-			{
-			  c = DB_LT;
-			}
-		      else
-			{
-			  c = DB_GT;
-			}
+		      c = (type1 == type2) ? DB_EQ : ((type1 == MIN_COLUMN) ? DB_LT : DB_GT);
 		    }
 		  else
 		    {
 		      assert (mul1->min_max_val.type == MIN_COLUMN || mul1->min_max_val.type == MAX_COLUMN);
-		      if (mul1->min_max_val.type == MIN_COLUMN)
-			{
-			  c = DB_LT;
-			}
-		      else
-			{
-			  c = DB_GT;
-			}
+		      c = (mul1->min_max_val.type == MIN_COLUMN) ? DB_LT : DB_GT;
 		    }
 		}
 	      else if (mul2->min_max_val.position == i)
 		{
 		  assert (mul2->min_max_val.type == MIN_COLUMN || mul2->min_max_val.type == MAX_COLUMN);
-		  if (mul2->min_max_val.type == MIN_COLUMN)
-		    {
-		      c = DB_GT;
-		    }
-		  else
-		    {
-		      c = DB_LT;
-		    }
+		  c = (mul2->min_max_val.type == MIN_COLUMN) ? DB_GT : DB_LT;
 		}
 	      else
 		{
