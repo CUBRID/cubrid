@@ -22190,6 +22190,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   LOG_LSA prev_version_lsa = LSA_INITIALIZER;
   PGBUF_WATCHER newhome_pg_watcher;	/* fwd pg watcher required for heap_update_set_prev_version() */
   PGBUF_WATCHER *newhome_pg_watcher_p = NULL;
+  bool atomic_replication_flag = false;
 
   LOG_TDES *tdes = NULL;
 
@@ -22199,6 +22200,17 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   assert (context->home_page_watcher_p != NULL);
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->forward_page_watcher_p != NULL);
+
+   // *INDENT-OFF*
+   // To ensure that, if started, the atomic replication area will also end.
+   scope_exit <std::function<void (void)>> log_on_exit ([&thread_p, &atomic_replication_flag]()
+   {
+     if (atomic_replication_flag == true)
+      {
+         log_append_empty_record (thread_p, LOG_END_ATOMIC_REPL, NULL);
+      }
+   });
+   // *INDENT-ON*
 
   if (context->do_supplemental_log)
     {
@@ -22347,6 +22359,13 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
    */
   if (update_old_home)
     {
+      /* Updating home record and setting prev_version_lsa have to be atomic. */
+      if (!atomic_replication_flag && is_mvcc_op)
+	{
+	  log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
+	  atomic_replication_flag = true;
+	}
+
       /* log operation */
       heap_log_update_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
 				&context->home_recdes, &new_home_recdes,
@@ -22424,6 +22443,16 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
    */
   if (update_old_forward)
     {
+      /*
+       * Updating forward record and setting prev_version_lsa have to be atomic
+       * if the home record (REC_RELOCATION) is not updated.
+       */
+      if (!atomic_replication_flag && is_mvcc_op)
+	{
+	  log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
+	  atomic_replication_flag = true;
+	}
+
       /* log operation */
       heap_log_update_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
 				&forward_recdes, context->recdes_p, RVHF_UPDATE);
@@ -22511,6 +22540,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   LOG_LSA prev_version_lsa;
   PGBUF_WATCHER newhome_pg_watcher;	/* fwd pg watcher required for heap_update_set_prev_version() */
   PGBUF_WATCHER *newhome_pg_watcher_p = NULL;
+  bool atomic_replication_flag = false;
 
   LOG_TDES *tdes = NULL;
 
@@ -22520,6 +22550,17 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   assert (context->home_page_watcher_p != NULL);
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->forward_page_watcher_p != NULL);
+
+   // *INDENT-OFF*
+   // To ensure that, if started, the atomic replication area will also end.
+   scope_exit <std::function<void (void)>> log_on_exit ([&thread_p, &atomic_replication_flag]()
+   {
+     if (atomic_replication_flag == true)
+      {
+         log_append_empty_record (thread_p, LOG_END_ATOMIC_REPL, NULL);
+      }
+   });
+   // *INDENT-ON*
 
   if (context->do_supplemental_log)
     {
@@ -22660,6 +22701,17 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  goto exit;
 	}
       HEAP_PERF_TRACK_PREPARE (thread_p, context);
+    }
+
+  /*
+   * Updating home record and setting prev_version_lsa have to be atomic.
+   * The prev_version_lsa could be updated on the forward record,
+   * but it can't be seen until the home record is updated.
+   */
+  if (!atomic_replication_flag && is_mvcc_op)
+    {
+      log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
+      atomic_replication_flag = true;
     }
 
   /* log home update */
