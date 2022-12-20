@@ -199,7 +199,6 @@ namespace cublocale
    * Arguments:
    *        out:  (Out) Output wide string
    *        in: (In) Input UTF-8 string
-   *        codeset: (In) code of the input string
    *
    * Returns: bool
    *
