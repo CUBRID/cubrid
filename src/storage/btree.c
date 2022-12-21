@@ -5518,13 +5518,12 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 	}
     }
 
+  if (is_record_read && btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
+    {
+      search_key->has_fence_key = btree_search_key_helper::HAS_FENCE_KEY;
+    }
   if (c < 0)
     {
-      if (is_record_read && btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
-	{
-	  search_key->has_fence_key = btree_search_key_helper::HAS_FENCE_KEY;
-	}
-
       /* Key doesn't exist and is smaller than current middle key. */
       if (middle == 1)
 	{
@@ -5542,11 +5541,6 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
     }
   else
     {
-      if (is_record_read && btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
-	{
-	  search_key->has_fence_key = btree_search_key_helper::HAS_FENCE_KEY;
-	}
-
       /* Key doesn't exist and is bigger than current middle key. */
       if (middle == key_cnt)
 	{
@@ -20002,37 +19996,37 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       break;
     }
 
+  dom = curr_key->data.midxkey.domain->setdomain;
   /* copy prefix of current key into target key */
   for (i = 0; i < prefix_len; i++)
     {
       pr_midxkey_get_element_nocopy (&curr_key->data.midxkey, i, &new_key_dbvals[i], NULL, NULL);
+      dom = dom->next;		/* get to coerce domain */
     }
 
-  /* build suffix */
-
-  dom = curr_key->data.midxkey.domain->setdomain;
-
-  /* get to domain */
-  for (i = 0; i < prefix_len; i++)
+  if (prefix_len < curr_key->data.midxkey.ncolumns)
     {
-      dom = dom->next;
-    }
+      /* build suffix */
+      for ( /*i = prefix_len */ ; i < curr_key->data.midxkey.ncolumns; i++)
+	{
+	  db_make_null (&new_key_dbvals[i]);
+	}
 
-  /* set maximum suffix (min_max_val), the minimum is NULL */
-  if ((prefix_len < curr_key->data.midxkey.ncolumns)
-      && ((dom->is_desc && use_desc_index) || (!dom->is_desc && !use_desc_index)))
-    {
+      /* The data value is set to NULL, 
+       * But the minimum and maximum values of the actual meaning are set to min_max_val.type. */
       midxkey.min_max_val.position = prefix_len;
-      midxkey.min_max_val.type = MAX_COLUMN;
+      if ((dom->is_desc && !use_desc_index) || (!dom->is_desc && use_desc_index))
+	{
+	  midxkey.min_max_val.type = MIN_COLUMN;
+	}
+      else
+	{
+	  midxkey.min_max_val.type = MAX_COLUMN;
+	}
     }
   else
     {
       midxkey.min_max_val.position = -1;
-    }
-
-  for (i = prefix_len; i < curr_key->data.midxkey.ncolumns; i++)
-    {
-      db_make_null (&new_key_dbvals[i]);
     }
 
   /* build midxkey */
@@ -24246,14 +24240,17 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
-      if (!found && bts->use_desc_index)
+      if (!found)
 	{
-	  /* Key was not found and the bts->slot_id was positioned to next key bigger than bts->key_range.lower_key.
-	   * For descending scan, we should be positioned on the first smaller when key is not found. Update
-	   * bts->slot_id. */
-	  bts->slot_id--;
+	  if (bts->use_desc_index)
+	    {
+	      /* Key was not found and the bts->slot_id was positioned to next key bigger than bts->key_range.lower_key.
+	       * For descending scan, we should be positioned on the first smaller when key is not found. Update
+	       * bts->slot_id. */
+	      bts->slot_id--;
+	    }
 	}
-      if (found && (bts->key_range.range == GT_LT || bts->key_range.range == GT_LE || bts->key_range.range == GT_INF))
+      else if (bts->key_range.range == GT_LT || bts->key_range.range == GT_LE || bts->key_range.range == GT_INF)
 	{
 	  /* Lower limit key was found, but the scan range must be bigger than the limit. Go to next key. */
 	  /* Mark the key as consumed and let btree_range_scan_advance_over_filtered_keys handle it. */

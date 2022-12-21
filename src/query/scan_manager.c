@@ -1531,11 +1531,16 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
     for (idx_dom = idx_setdomain; idx_dom != NULL; idx_dom = idx_dom->next)
       {
 	dom_ncols++;
+#if 0
+	/* idx_dom->precision is -1 in the following cases.
+	 * create index idx on t1(IFNULL(a,'x'), b); -- a is char(n)
+	 * Remove the assert check.  */
 	if (idx_dom->precision < 0)
 	  {
 	    assert (false);
 	    return ER_FAILED;
 	  }
+#endif
       }
 
     if (dom_ncols <= 0)

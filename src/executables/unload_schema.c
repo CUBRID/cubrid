@@ -3874,8 +3874,13 @@ export_server (print_output & output_ctx)
 	      output_ctx ("CREATE SERVER [%s].[%s] (", owner_name, srv_name);
 	      output_ctx ("\n\t HOST= '%s'", (char *) db_get_string (values + 1));
 	      output_ctx (",\n\t PORT= %d", db_get_int (values + 2));
-	      output_ctx (",\n\t DBNAME= %s", (char *) db_get_string (values + 3));
-	      output_ctx (",\n\t USER= %s", (char *) db_get_string (values + 4));
+
+	      output_ctx (",\n\t DBNAME= ");
+	      desc_value_print (output_ctx, values + 3);
+
+	      output_ctx (",\n\t USER= ");
+	      desc_value_print (output_ctx, values + 4);
+
 	      output_ctx (",\n\t PASSWORD= '%s'", (char *) db_get_string (&passwd_val));
 
 	      str = (char *) db_get_string (values + 6);
@@ -3887,7 +3892,8 @@ export_server (print_output & output_ctx)
 	      str = (char *) db_get_string (values + 7);
 	      if (str)
 		{
-		  output_ctx (",\n\t COMMENT= '%s'", str);
+		  output_ctx (",\n\t COMMENT= ");
+		  desc_value_print (output_ctx, values + 7);
 		}
 	      output_ctx (" );\n");
 	    }
