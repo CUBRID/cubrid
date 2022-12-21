@@ -4067,14 +4067,17 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_
 }
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
+extern int alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO * idx_info, char **attnames,
+					     int *asc_desc, int *attrs_prefix_length,
+					     SM_FUNCTION_INFO * func_index_info, int &hidden_index_col, int nnames);
+
 static void
 classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAINT_TYPE new_cons,
-					  const char **att_names, const int *asc_desc, const int *attrs_prefix_length,
-					  const SM_FUNCTION_INFO * func_index_info)
+					  char **att_names, int *asc_desc, SM_FUNCTION_INFO * func_index_info)
 {
   SM_CLASS_CONSTRAINT *cons;
   SM_ATTRIBUTE **attp;
-  const char **namep;
+  char **namep;
   int nnames;
 
   // If there is a column corresponding to PK among the attributes constituting the index, the hidden_index_column is not added.
@@ -4128,33 +4131,12 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
 
       if (!*attp)
 	{
-	  // remove hidden column
-	  att_names[hidden_index_col] = NULL;
+	  PT_INDEX_INFO idx_info;
 
-	  if (func_index_info && func_index_info->attr_index_start > 0)
-	    {
-	      int func_no_args = nnames - hidden_index_col;
-	      if (func_no_args > 0)
-		{
-		  if (asc_desc)
-		    {
-		      memmove ((int *) asc_desc + hidden_index_col, (int *) asc_desc + (hidden_index_col + 1),
-			       (func_no_args * sizeof (asc_desc[0])));
-		      ((int *) asc_desc)[hidden_index_col] = 0;
-		    }
-		  if (attrs_prefix_length)
-		    {
-		      memmove ((int *) attrs_prefix_length + hidden_index_col,
-			       (int *) attrs_prefix_length + (hidden_index_col + 1),
-			       (func_no_args * sizeof (attrs_prefix_length[0])));
-		    }
-		  memmove (att_names + hidden_index_col, att_names + (hidden_index_col + 1),
-			   (func_no_args * sizeof (att_names[0])));
-
-		  att_names[nnames - 1] = NULL;
-		  ((SM_FUNCTION_INFO *) func_index_info)->attr_index_start--;
-		}
-	    }
+	  // For indexes that use prefixes, it does not reach here.
+	  idx_info.dupkey_mode = DUP_MODE_NONE;
+	  alter_rebuild_index_level_adjust (new_cons, &idx_info, att_names, asc_desc, NULL, func_index_info,
+					    hidden_index_col, nnames);
 
 	  return;
 	}
@@ -8243,7 +8225,8 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char **out_shared
     }
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-  classobj_check_attr_in_unique_constraint (constraints, constraint_type, att_names, asc_desc, NULL, func_index_info);
+  classobj_check_attr_in_unique_constraint (constraints, constraint_type, (char **) att_names, (int *) asc_desc,
+					    (SM_FUNCTION_INFO *) func_index_info);
 #endif
 
   existing_con = classobj_find_constraint_by_attrs (constraints, constraint_type, att_names, asc_desc, filter_index);

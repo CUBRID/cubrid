@@ -3425,8 +3425,6 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  goto error_exit;
 	}
-
-      hidden_col_name_ptr = (hidden_index_col == -1) ? NULL : attnames[hidden_index_col];
     }
 #endif
 
@@ -3480,7 +3478,7 @@ end:
 	  free_and_init (attnames[i]);
 	}
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-      /* attnames[hidden_index_col] can be removed from classobj_check_attr_in_unique_constraint().
+      /* attnames[hidden_index_col] can be removed from alter_rebuild_index_level_adjust().
        * In this case, attnames[x] is set to NULL, but the actual memory was not freed. 
        * Even if attnames[x] is set to NULL, hidden_col_name_ptr tells you the memory address you have allocated.
        */

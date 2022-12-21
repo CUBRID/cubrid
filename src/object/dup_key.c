@@ -378,9 +378,11 @@ alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO 
   if (idx_info->dupkey_mode == DUP_MODE_NONE)
     {
       if (hidden_index_col != -1)
-	{			// remove hidden column                  
-	  free_and_init (attnames[hidden_index_col]);
+	{			// remove hidden column   
+	  // If memory release is actually required, it is performed in do_alter_index_rebuild().                
+	  attnames[hidden_index_col] = NULL;
 
+	  assert (!func_index_info || (func_index_info && func_index_info->attr_index_start > 0));
 	  if (func_index_info && func_index_info->attr_index_start > 0)
 	    {
 	      func_no_args = nnames - hidden_index_col;
