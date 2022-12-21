@@ -2252,7 +2252,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
       assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
       att_id = db_get_int (&att_val);	/* The first attrID */
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim  check!!!
+#if defined(SUPPORT_KEY_DUP_LEVEL)
       if (IS_HIDDEN_INDEX_COL_ID (att_id))
 	{
 	  /* { btid, hidden_attrID, hidden_asc_desc, [attrID, asc_desc]+, {fk_info} or {key prefix length}, status, comment} */

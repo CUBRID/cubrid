@@ -439,9 +439,9 @@ alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO 
 		}
 	      memmove (attnames + (func_index_info->attr_index_start + 1),
 		       attnames + func_index_info->attr_index_start, func_no_args * sizeof (attnames[0]));
-
-	      hidden_index_col = func_index_info->attr_index_start++;
 	    }
+
+	  hidden_index_col = func_index_info->attr_index_start++;
 	}
       else
 	{

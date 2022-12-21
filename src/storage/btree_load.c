@@ -3577,10 +3577,10 @@ compare_driver (const void *first, const void *second, void *arg)
 
       if (sort_args->func_index_info != NULL)
 	{
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL)
 	  /* In the following cases, the precision may be smaller than n_attrs.  
 	   * create index idx on tbl(left(s2, v1),v3); 
-	   * So remove the assert().  */
+	   * So, remove the assert().  */
 	  //assert (sort_args->n_attrs <= key_type->precision);
 #else
 	  assert (sort_args->n_attrs <= key_type->precision);

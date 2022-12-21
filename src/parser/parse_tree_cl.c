@@ -6416,12 +6416,12 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_nulstring (parser, b, "rebuild");
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-      //if (p->info.index.dupkey_mode == DUP_MODE_NONE)  // ctshim check default policy
-      {
-	char buf[64] = { 0x00, };
-	pt_print_hidden_index_info (buf, sizeof (buf), p->info.index.dupkey_mode, p->info.index.dupkey_hash_level);
-	b = pt_append_nulstring (parser, b, buf);
-      }
+      char buf[64] = { 0x00, };
+      pt_print_hidden_index_info (buf, sizeof (buf), p->info.index.dupkey_mode, p->info.index.dupkey_hash_level);
+      if (buf[0])
+	{
+	  b = pt_append_nulstring (parser, b, buf);
+	}
 #endif
     }
 
@@ -7369,12 +7369,12 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
   b = pt_append_nulstring (parser, b, ") ");
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-  //if (p->info.index.dupkey_mode == DUP_MODE_NONE) // ctshim check default policy
-  {
-    char buf[64] = { 0x00, };
-    pt_print_hidden_index_info (buf, sizeof (buf), p->info.index.dupkey_mode, p->info.index.dupkey_hash_level);
-    b = pt_append_nulstring (parser, b, buf);
-  }
+  char buf[64] = { 0x00, };
+  pt_print_hidden_index_info (buf, sizeof (buf), p->info.index.dupkey_mode, p->info.index.dupkey_hash_level);
+  if (buf[0])
+    {
+      b = pt_append_nulstring (parser, b, buf);
+    }
 #endif
 
   if (p->info.index.where != NULL)

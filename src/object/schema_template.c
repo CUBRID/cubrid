@@ -2078,18 +2078,13 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
   if ((n_atts == 0) || ((n_atts == 1) && (hidden_index_col != -1)))
-    {
-      // ctshim error code !!!!
-      ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
-      goto error_return;
-    }
 #else
   if (n_atts == 0)
+#endif
     {
       ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
       goto error_return;
     }
-#endif
 
   /* if primary key shares index with other constraint, it is neccessary to check whether the attributs do not have
    * null value. e.g. primary key shares index with unique constraint. Because unique constraint allows null value, we

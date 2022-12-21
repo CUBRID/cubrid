@@ -2843,7 +2843,7 @@ create_stmt
                             pt_get_dup_mode_level(false, $13,  &node->info.index.dupkey_mode, &node->info.index.dupkey_hash_level);
 #endif                            
 
-			    node->info.index.comment = $14; // ctshim
+			    node->info.index.comment = $14;
 
                             int with_online_ret = $15;  // 0 for normal, 1 for online no parallel,
                                                         // thread_count + 1 for parallel
@@ -9633,7 +9633,7 @@ foreign_key_constraint
 			    node->info.constraint.type = PT_CONSTRAIN_FOREIGN_KEY;
 			    node->info.constraint.un.foreign_key.attrs = $5;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)  // ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
                             printf("FOREIGN KEY\n");
                             pt_get_dup_mode_level(false, $7,  &node->info.constraint.un.foreign_key.dupkey_mode, &node->info.constraint.un.foreign_key.dupkey_hash_level);
 #endif
@@ -10808,7 +10808,7 @@ column_other_constraint_def
 			    constraint->info.constraint.un.foreign_key.update_action = TO_NUMBER (CONTAINER_AT_1 ($7));	/* update_action */
 			    constraint->info.constraint.un.foreign_key.referenced_class = $5;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK) // ctshim
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
                             printf("REFERENCE\n");
                             pt_get_dup_mode_level(false, $3,  &constraint->info.constraint.un.foreign_key.dupkey_mode, &constraint->info.constraint.un.foreign_key.dupkey_hash_level);
 #endif  
