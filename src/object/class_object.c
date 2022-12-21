@@ -4101,7 +4101,7 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
     {
       ;
     }
-#endif    
+#endif
 
   for (cons = cons_list; cons; cons = cons->next)
     {
