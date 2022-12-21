@@ -67,7 +67,7 @@ namespace cublog
   class atomic_replicator : public replicator
   {
     public:
-      atomic_replicator (const log_lsa &start_redo_lsa);
+      atomic_replicator (const log_lsa &start_redo_lsa, const log_lsa &prev_redo_lsa);
 
       atomic_replicator (const atomic_replicator &) = delete;
       atomic_replicator (atomic_replicator &&) = delete;
@@ -77,6 +77,8 @@ namespace cublog
       atomic_replicator &operator= (const atomic_replicator &) = delete;
       atomic_replicator &operator= (atomic_replicator &&) = delete;
 
+      /* return current progress of the replicator */
+      log_lsa get_highest_processed_lsa () const override;
       /* return the lowest value lsa that was not applied, the next in line lsa */
       log_lsa get_lowest_unapplied_lsa () const override;
     private:
@@ -90,6 +92,7 @@ namespace cublog
     private:
       atomic_replication_helper m_atomic_helper;
       log_lsa m_lowest_unapplied_lsa;
+      log_lsa m_processed_lsa = NULL_LSA; /* protected by m_redo_lsa_mutex with m_redo_lsa */
       mutable std::mutex m_lowest_unapplied_lsa_mutex;
   };
 }
