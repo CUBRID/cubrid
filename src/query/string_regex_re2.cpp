@@ -34,7 +34,7 @@ namespace cubregex
   template <typename Func>
   static bool re2_on_match (const RE2 &re2, const re2::StringPiece &target, const int occurrence, Func &&lambda);
 
-  static std::string re2_split_string (const std::string &src, int position);
+  static std::string re2_split_string_utf8 (const std::string &src, int position);
   static void re2_distance_utf8 (int &length, const char *s, const char *e);
 
   RE2::Options
@@ -79,7 +79,7 @@ namespace cubregex
     assert (position >= 0);
 
     /* split source string by position value */
-    std::string target = re2_split_string (src, position);
+    std::string target = re2_split_string_utf8 (src, position);
 
     result = 0;
     re2::StringPiece piece (target);
@@ -98,7 +98,7 @@ namespace cubregex
     assert (occurrence >= 1);
 
     /* split source string by position value */
-    std::string target = re2_split_string (src, position);
+    std::string target = re2_split_string_utf8 (src, position);
 
     int match_idx = -1;
     re2::StringPiece target_piece (target);
@@ -138,7 +138,7 @@ namespace cubregex
 
     /* split source string by position value */
     std::string result_string (src.substr (0, position));
-    std::string target = re2_split_string (src, position);
+    std::string target = re2_split_string_utf8 (src, position);
 
     re2::StringPiece rewrite (repl);
     if (occurrence == 0)
@@ -197,7 +197,7 @@ namespace cubregex
     assert (occurrence >= 1);
 
     /* split source string by position value */
-    std::string target = re2_split_string (src, position);
+    std::string target = re2_split_string_utf8 (src, position);
 
     re2::StringPiece target_piece (target);
     auto lambda = [&] (re2::StringPiece &match, char *current_p)
@@ -227,7 +227,7 @@ namespace cubregex
   }
 
   static std::string
-  re2_split_string (const std::string &src, int position)
+  re2_split_string_utf8 (const std::string &src, int position)
   {
     int dummy;
     char *s = (char *) src.data ();
