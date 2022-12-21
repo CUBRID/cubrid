@@ -147,11 +147,11 @@ void object_printer::describe_partition_parts (const sm_partition &parts, class_
       m_buf (" ");
       if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
 	{
-          describe_comment_for_session_cmd (parts.comment);
+	  describe_comment_for_session_cmd (parts.comment);
 	}
       else
 	{
-          describe_comment (parts.comment);
+	  describe_comment (parts.comment);
 	}
     }
 
@@ -616,13 +616,13 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
     {
       m_buf (" ");
       if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
-        {
-          describe_comment_for_session_cmd (attribute.comment);
-        }
+	{
+	  describe_comment_for_session_cmd (attribute.comment);
+	}
       else
-        {
-          describe_comment (attribute.comment);
-        }
+	{
+	  describe_comment (attribute.comment);
+	}
     }
 }
 
@@ -841,11 +841,11 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
       m_buf (" ");
       if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
 	{
-          describe_comment_for_session_cmd (constraint.comment);
+	  describe_comment_for_session_cmd (constraint.comment);
 	}
       else
 	{
-          describe_comment (constraint.comment);
+	  describe_comment (constraint.comment);
 	}
     }
 
