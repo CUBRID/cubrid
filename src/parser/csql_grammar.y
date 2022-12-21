@@ -440,9 +440,9 @@ static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * n
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 static void pt_get_dup_mode_level(bool is_rebuild, int mode_level, short* mode, short* level);
 
-#define CHECK_HIDDEN_COL_NAME(nm)  do {  \   
+#define CHECK_HIDDEN_COL_NAME(nm)  do {  \
    if((nm) && IS_HIDDEN_INDEX_COL_NAME((nm)->info.name.original))   \
-   {                                    \
+   {                                     \
       PT_ERRORf2 (this_parser, (nm), "Attribute name [%s] is not allowed." \
                                      "Names starting with \"%s\" are reserved by CUBRID.", \
                                      (nm)->info.name.original, HIDDEN_INDEX_COL_ATTR_NAME_PREFIX);  \

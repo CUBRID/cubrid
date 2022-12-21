@@ -4095,11 +4095,13 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
       return;
     }
 
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
   /* for foreign key, need to check redundancy first */
   if (new_cons == DB_CONSTRAINT_FOREIGN_KEY)
     {
       ;
     }
+#endif    
 
   for (cons = cons_list; cons; cons = cons->next)
     {
