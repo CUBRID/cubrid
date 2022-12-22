@@ -6277,6 +6277,14 @@ pt_print_hidden_index_info (char *buf, int buf_size, int dupkey_mode, int dupkey
   int len = 0;
   char *str_mode = "";
 
+  buf[0] = '\0';
+  if (dupkey_mode == DUP_MODE_OVFL_LEVEL_NOT_SET)
+    {
+      /* It entered to output an error message due to a parsing error. */
+      assert (dupkey_hash_level == 0);
+      return buf;
+    }
+
   switch (dupkey_mode)
     {
     case DUP_MODE_NONE:
