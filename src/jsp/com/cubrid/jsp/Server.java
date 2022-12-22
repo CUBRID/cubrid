@@ -104,7 +104,7 @@ public class Server {
 
             System.setSecurityManager(new SpSecurityManager());
             System.setProperty("cubrid.server.version", version);
-            Class.forName("com.cubrid.jspcubrid.jdbc.driver.CUBRIDDriver");
+            Class.forName("com.cubrid.jsp.jdbc.CUBRIDServerSideDriver");
 
             getJVMArguments(); /* store jvm options */
         } else {
