@@ -27677,15 +27677,10 @@ static void pt_get_dup_mode_level(bool is_rebuild, int mode_level, short* mode, 
            *mode = DUP_MODE_OVFL_LEVEL_NOT_SET;
            *level = 0;
         }
-        else if(DUP_MODE_OVFL_LEVEL_AUTO_SET == DUP_MODE_NONE)        
-        {
-            *mode = DUP_MODE_NONE;
-            *level = 0;
-        }
         else
         {
-           *mode = DUP_MODE_OVFL_LEVEL_AUTO_SET;        
-           *level = OVFL_LEVEL_DEFAULT;
+            *mode = DUP_MODE_OVFL_LEVEL_AUTO_SET; 
+            *level = (*mode == DUP_MODE_NONE) ? 0 : OVFL_LEVEL_DEFAULT;
         }
       }
     else
