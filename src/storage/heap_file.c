@@ -9691,8 +9691,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
       else if (IS_HIDDEN_INDEX_COL_ID (value->attrid))
 	{
 	  // Since it is created fakely, it is filled with index 0 that can be obtained as quickly as possible.
-	  //value->attrid = search_attrepr[0].id; // ctshim , -- need check
-	  value->attrid = search_attrepr[curr_attr].id;
+	  value->attrid = search_attrepr[0].id;	// ctshim , -- need check         
 	}
 #endif
 
