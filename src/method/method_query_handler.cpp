@@ -191,6 +191,16 @@ namespace cubmethod
   }
 
   int
+  query_handler::prepare_retry ()
+  {
+    if (is_prepared ())
+      {
+	return prepare (m_sql_stmt, m_prepare_flag);
+      }
+    return ER_FAILED;
+  }
+
+  int
   query_handler::execute (const execute_request &request)
   {
     int error = NO_ERROR;
