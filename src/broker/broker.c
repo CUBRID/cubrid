@@ -1427,7 +1427,7 @@ read_from_client_with_timeout (SOCKET sock_fd, char *buf, int size, int timeout_
 
   if (IS_INVALID_SOCKET (sock_fd))
     {
-	 return -1;
+      return -1;
     }
 
 #ifdef ASYNC_MODE
@@ -1435,9 +1435,9 @@ read_from_client_with_timeout (SOCKET sock_fd, char *buf, int size, int timeout_
     {
       read_len = read_buffer_async (sock_fd, buf, size, timeout_sec);
       if (read_len <= 0)
-        {
-          return -1;
-        }
+	{
+	  return -1;
+	}
 
       buf += read_len;
       size -= read_len;
@@ -1463,7 +1463,7 @@ write_to_client_with_timeout (SOCKET sock_fd, char *buf, int size, int timeout_s
 
   if (IS_INVALID_SOCKET (sock_fd))
     {
-	 return -1;
+      return -1;
     }
 
   while (size > 0)
@@ -1471,9 +1471,9 @@ write_to_client_with_timeout (SOCKET sock_fd, char *buf, int size, int timeout_s
       write_len = write_buffer_async (sock_fd, buf, size, timeout_sec);
 
       if (write_len <= 0)
-        {
-          return -1;
-        }
+	{
+	  return -1;
+	}
 
       buf += write_len;
       size -= write_len;
@@ -3347,9 +3347,9 @@ read_buffer_async (SOCKET sock_fd, char *buf, int size, int timeout)
       return -1;
     }
 
-  if (po[0].revents & POLLOUT)	/* RECEIVE NEW REQUEST */
+  if (po[0].revents & POLLIN)	/* RECEIVE NEW REQUEST */
     {
-	 read_len = READ_FROM_SOCKET (sock_fd, buf, size);
+      read_len = READ_FROM_SOCKET (sock_fd, buf, size);
     }
 
   return read_len;
