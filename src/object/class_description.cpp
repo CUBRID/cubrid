@@ -261,7 +261,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	  if (has_comment)
 	    {
 	      sb ("%-20s ", (char *) sm_ch_name ((MOBJ) class_));
-	      printer.describe_comment (class_->comment);
+	      printer.describe_comment_for_session_cmd (class_->comment);
 	    }
 	  else
 	    {
@@ -273,7 +273,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	  if (has_comment)
 	    {
 	      sb ("%-20s COLLATE %s ", sm_ch_name ((MOBJ) class_), lang_get_collation_name (class_->collation_id));
-	      printer.describe_comment (class_->comment);
+	      printer.describe_comment_for_session_cmd (class_->comment);
 	    }
 	  else
 	    {
