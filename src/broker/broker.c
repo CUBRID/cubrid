@@ -3379,7 +3379,7 @@ write_buffer_async (SOCKET sock_fd, char *buf, int size, int timeout)
 
   if (po[0].revents & POLLOUT) /* RECEIVE NEW REQUEST */
     {
-	 write_len = WRITE_TO_SOCKET (sock_fd, buf, size);
+      write_len = WRITE_TO_SOCKET (sock_fd, buf, size);
     }
 #else
   write_len = WRITE_TO_SOCKET (sock_fd, buf, size);
