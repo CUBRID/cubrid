@@ -3372,12 +3372,12 @@ write_buffer_async (SOCKET sock_fd, char *buf, int size, int timeout)
     }
   while (ret < 0 && errno == EINTR);
 
-  if (ret < 1) /* ERROR OR TIMEOUT */
+  if (ret < 1)			/* ERROR OR TIMEOUT */
     {
       return -1;
     }
 
-  if (po[0].revents & POLLOUT) /* RECEIVE NEW REQUEST */
+  if (po[0].revents & POLLOUT)	/* RECEIVE NEW REQUEST */
     {
       write_len = WRITE_TO_SOCKET (sock_fd, buf, size);
     }
