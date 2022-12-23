@@ -194,7 +194,7 @@
 	  write_to_client(FD, (char*) &write_val, 4);	\
 	} while (0)
 
-#define JOB_COUNT_MAX		1000000
+#define JOB_COUNT_MAX		130000000
 
 /* num of collecting counts per monitoring interval */
 #define NUM_COLLECT_COUNT_PER_INTVL     4
@@ -1466,6 +1466,7 @@ write_to_client_with_timeout (SOCKET sock_fd, char *buf, int size, int timeout_s
       return -1;
     }
 
+#ifdef ASYNC_MODE
   while (size > 0)
     {
       write_len = write_buffer_async (sock_fd, buf, size, timeout_sec);
@@ -1478,6 +1479,9 @@ write_to_client_with_timeout (SOCKET sock_fd, char *buf, int size, int timeout_s
       buf += write_len;
       size -= write_len;
     }
+#else
+  len = WRITE_TO_SOCKET (sock_fd, buf, size);
+#endif
 
   return len;
 }
@@ -3362,7 +3366,6 @@ write_buffer_async (SOCKET sock_fd, char *buf, int size, int timeout)
   struct pollfd po[1] = { {0, 0, 0} };
   int ret;
 
-#ifdef ASYNC_MODE
   po[0].fd = sock_fd;
   po[0].events = POLLOUT;
 
@@ -3381,9 +3384,6 @@ write_buffer_async (SOCKET sock_fd, char *buf, int size, int timeout)
     {
       write_len = WRITE_TO_SOCKET (sock_fd, buf, size);
     }
-#else
-  write_len = WRITE_TO_SOCKET (sock_fd, buf, size);
-#endif
 
   return write_len;
 }
