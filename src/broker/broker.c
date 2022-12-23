@@ -3342,12 +3342,12 @@ read_buffer_async (SOCKET sock_fd, char *buf, int size, int timeout)
     }
   while (ret < 0 && errno == EINTR);
 
-  if (ret < 1) /* ERROR OR TIMEOUT */
+  if (ret < 1)			/* ERROR OR TIMEOUT */
     {
       return -1;
     }
 
-  if (po[0].revents & POLLIN) /* RECEIVE NEW REQUEST */
+  if (po[0].revents & POLLOUT)	/* RECEIVE NEW REQUEST */
     {
 	 read_len = READ_FROM_SOCKET (sock_fd, buf, size);
     }
