@@ -79,20 +79,18 @@ public class CUBRIDServerSideDriver implements Driver {
         }
 
         Connection conn = null;
-        if (url.toLowerCase().startsWith(JDBC_DEFAULT_CONNECTION)) {
-            try {
-                Thread t = Thread.currentThread();
-                conn =
-                        (Connection)
-                                invoke(
-                                        "com.cubrid.jsp.ExecuteThread",
-                                        "createConnection",
-                                        null,
-                                        t,
-                                        null);
-            } catch (Exception e) {
-                /* do nothing. The exception will be dealt with in ExecuteThread */
-            }
+        try {
+            Thread t = Thread.currentThread();
+            conn =
+                    (Connection)
+                            invoke(
+                                    "com.cubrid.jsp.ExecuteThread",
+                                    "createConnection",
+                                    null,
+                                    t,
+                                    null);
+        } catch (Exception e) {
+            /* do nothing. The exception will be dealt with in ExecuteThread */
         }
 
         return conn;
