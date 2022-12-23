@@ -762,8 +762,22 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
     }
   else if (!is_check_hidden_col && (DUP_MODE_OVFL_LEVEL_AUTO_SET > DUP_MODE_NONE))
     {
-      pt_print_hidden_index_info (hidden_col_buf, sizeof (hidden_col_buf), DUP_MODE_NONE, 0);
-      m_buf ("%s", hidden_col_buf);
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+      if (constraint.type == SM_CONSTRAINT_FOREIGN_KEY)
+	{
+	  // ctshim, check
+	}
+#endif
+
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (constraint.type) == false
+#if !defined(SUPPORT_KEY_DUP_LEVEL_FK)
+	  && (constraint.type != SM_CONSTRAINT_FOREIGN_KEY)
+#endif
+	 )
+	{
+	  pt_print_hidden_index_info (hidden_col_buf, sizeof (hidden_col_buf), DUP_MODE_NONE, 0);
+	  m_buf ("%s", hidden_col_buf);
+	}
     }
 #endif
 

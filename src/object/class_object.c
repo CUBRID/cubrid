@@ -4218,11 +4218,14 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
       new_len = len;
-
       if (*attp)
 	{
 	  if (IS_HIDDEN_INDEX_COL_NAME ((*attp)->header.name))
 	    {
+	      if (new_cons == DB_CONSTRAINT_FOREIGN_KEY && cons->type != SM_CONSTRAINT_FOREIGN_KEY)	// ctshim, FK!
+		{
+		  continue;
+		}
 	      attp++;
 	      len++;
 	    }
@@ -4232,6 +4235,10 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	{
 	  if (IS_HIDDEN_INDEX_COL_NAME (*namep))
 	    {
+	      if (cons->type == SM_CONSTRAINT_FOREIGN_KEY && new_cons != DB_CONSTRAINT_FOREIGN_KEY)	// ctshim, FK!
+		{
+		  continue;
+		}
 	      namep++;
 	      new_len++;
 	    }

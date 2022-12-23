@@ -3078,8 +3078,22 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	}
       else if (!is_check_hidden_col && (DUP_MODE_OVFL_LEVEL_AUTO_SET > DUP_MODE_NONE))
 	{
-	  pt_print_hidden_index_info (hidden_col_buf, sizeof (hidden_col_buf), DUP_MODE_NONE, 0);
-	  output_ctx (") %s", hidden_col_buf);
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+	  if (ctype == SM_CONSTRAINT_FOREIGN_KEY)
+	    {
+	      // ctshim, check
+	    }
+#endif
+
+	  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) == false
+#if !defined(SUPPORT_KEY_DUP_LEVEL_FK)
+	      && (ctype != SM_CONSTRAINT_FOREIGN_KEY)
+#endif
+	    )
+	    {
+	      pt_print_hidden_index_info (hidden_col_buf, sizeof (hidden_col_buf), DUP_MODE_NONE, 0);
+	      output_ctx (") %s", hidden_col_buf);
+	    }
 	}
       else
 	{
