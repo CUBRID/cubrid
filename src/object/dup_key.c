@@ -362,7 +362,7 @@ dk_find_sm_hidden_attribute (int att_id, const char *att_name)
 int
 alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO * idx_info, char **attnames,
 				  int *asc_desc, int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info,
-				  int &hidden_index_col, int nnames)
+				  int &hidden_index_col, int nnames, bool is_reverse)
 {
   int func_no_args = 0;
 
@@ -418,7 +418,7 @@ alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO 
 	  attrs_prefix_length[hidden_index_col] = -1;
 	}
 
-      asc_desc[hidden_index_col] = 0;
+      asc_desc[hidden_index_col] = (is_reverse ? 1 : 0);
       strcpy (attnames[hidden_index_col],
 	      (char *) GET_HIDDEN_INDEX_COL_NAME (idx_info->dupkey_mode, idx_info->dupkey_hash_level));
     }
@@ -453,7 +453,7 @@ alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO 
 	  attrs_prefix_length[hidden_index_col] = -1;
 	}
 
-      asc_desc[hidden_index_col] = 0;
+      asc_desc[hidden_index_col] = (is_reverse ? 1 : 0);
       /* do_alter_index_rebuild() is using strdup(). The same treatment method shall be followed. */
       attnames[hidden_index_col] =
 	strdup ((char *) GET_HIDDEN_INDEX_COL_NAME (idx_info->dupkey_mode, idx_info->dupkey_hash_level));
@@ -472,7 +472,7 @@ alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO 
 
 void
 create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int *asc_desc,
-			   int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames)
+			   int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames, bool is_reverse)
 {
   int hidden_index_col;
 
@@ -509,7 +509,7 @@ create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int 
       attrs_prefix_length[hidden_index_col] = -1;
     }
   attnames[hidden_index_col] = (char *) GET_HIDDEN_INDEX_COL_NAME (idx_info->dupkey_mode, idx_info->dupkey_hash_level);
-  asc_desc[hidden_index_col] = 0;
+  asc_desc[hidden_index_col] = (is_reverse ? 1 : 0);
 
   attnames[nnames + 1] = NULL;
 }
