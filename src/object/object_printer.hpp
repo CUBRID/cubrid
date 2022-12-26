@@ -59,6 +59,7 @@ class object_printer
     {}
 
     void describe_comment (const char *comment);
+    void describe_comment_for_session_cmd (const char *comment);
     void describe_partition_parts (const sm_partition &parts, class_description::type prt_type);
     void describe_identifier (const char *identifier, class_description::type prt_type);
     void describe_domain (/*const*/ tp_domain &domain, class_description::type prt_type, bool force_print_collation);
