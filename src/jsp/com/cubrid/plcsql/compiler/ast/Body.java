@@ -38,6 +38,9 @@ public class Body implements AstNode {
     public final NodeList<ExHandler> exHandlers;
 
     public Body(NodeList<Stmt> stmts, NodeList<ExHandler> exHandlers) {
+        assert stmts != null;       // stmts cannot be null by the syntax
+        assert exHandlers != null;  // see visitBody() in ParseTreeConverter
+
         this.stmts = stmts;
         this.exHandlers = exHandlers;
     }
