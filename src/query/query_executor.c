@@ -21769,7 +21769,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
     }
 
   size_values = xasl->outptr_list->valptr_cnt;
-  assert (size_values == 14);
+  assert (size_values == 14);	/* The 14 is number of aliases[] in pt_make_query_show_index() */
   out_values = (DB_VALUE **) malloc (size_values * sizeof (DB_VALUE *));
   if (out_values == NULL)
     {
@@ -21943,12 +21943,19 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 	  if (IS_HIDDEN_INDEX_COL_ID (att_id))
 	    {			// Should I show this here or not!  -- ctshim
+#if defined(ENABLE_SHOW_HIDDEN_ATTR)
 	      int mode = GET_HIDDEN_INDEX_COL_MODE (att_id);
 	      int level = GET_HIDDEN_INDEX_COL_LEVEL (att_id);
 	      char *hidden_col_name = (char *) GET_HIDDEN_INDEX_COL_NAME (mode, level);
 
 	      db_make_string (out_values[4], hidden_col_name);
 	      qexec_end_one_iteration (thread_p, xasl, xasl_state, &tplrec);
+#else
+	      /* clear alloced DB_VALUEs */
+	      pr_clear_value (out_values[5]);
+	      pr_clear_value (out_values[9]);
+	      continue;
+#endif
 	    }
 	  else
 	    {

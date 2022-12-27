@@ -29,6 +29,9 @@
 #define SUPPORT_KEY_DUP_LEVEL
 //#define SUPPORT_KEY_DUP_LEVEL_FK
 
+// view(db_index, db_index_key), show index statement
+//#define ENABLE_SHOW_HIDDEN_ATTR
+
 #define OVFL_LEVEL_MIN       (0)
 #define OVFL_LEVEL_MAX       (16)
 #define OVFL_LEVEL_DEFAULT   (10)

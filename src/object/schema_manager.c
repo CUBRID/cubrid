@@ -16248,7 +16248,9 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
   size_t attr_ids_size;
   OID *oids = NULL;
   HFID *hfids = NULL;
+#if 0				// ctshim
   int reverse;
+#endif
   int unique_pk = 0;
   int not_null = 0;
 
@@ -16392,7 +16394,7 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
 
       subclass_ = NULL;
     }
-
+#if 0				// ctshim
   if (con->type == SM_CONSTRAINT_REVERSE_INDEX || con->type == SM_CONSTRAINT_REVERSE_UNIQUE)
     {
       reverse = 1;
@@ -16401,6 +16403,7 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
     {
       reverse = 0;
     }
+#endif
 
   if (con->type == SM_CONSTRAINT_UNIQUE || con->type == SM_CONSTRAINT_REVERSE_UNIQUE)
     {
