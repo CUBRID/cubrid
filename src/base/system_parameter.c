@@ -2330,8 +2330,8 @@ static int prm_max_query_per_tran_lower = 1;
 static int prm_max_query_per_tran_upper = SHRT_MAX;
 static unsigned int prm_max_query_per_tran_flag = 0;
 
-const char *PRM_REGEXP_ENGINE = "cppstd";
-static const char *prm_regexp_engine_default = "cppstd";
+const char *PRM_REGEXP_ENGINE = "re2";
+static const char *prm_regexp_engine_default = "re2";
 static unsigned int prm_regexp_engine_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
