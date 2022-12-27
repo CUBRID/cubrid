@@ -1938,13 +1938,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return StringEscapeUtils.escapeJava(val);
     }
 
-    private static final DateFormat dbgFormat =
-            new SimpleDateFormat("G yyyy-MM-dd HH:mm:ss.SSS XXX", Locale.US);
-
-    static {
-        dbgFormat.setTimeZone(TimeZone.getTimeZone("GMT+0"));
-    }
-
     private ExprZonedDateTime parseZonedDateTime(String s, boolean forDatetime, String originType) {
         s = quotedStrToJavaStr(s);
         ZonedDateTime timestamp = DateTimeParser.ZonedDateTimeLiteral.parse(s, forDatetime);
