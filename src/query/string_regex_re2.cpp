@@ -34,7 +34,7 @@ namespace cubregex
   template <typename Func>
   static bool re2_on_match (const RE2 &re2, const re2::StringPiece &target, const int occurrence, Func &&lambda);
 
-  static std::string re2_split_string_utf8 (const std::string &src, int position);
+  static void re2_split_string_utf8 (const std::string &src, const int position, std::string &a, std::string &b);
   static void re2_distance_utf8 (int &length, const char *s, const char *e);
 
   RE2::Options
@@ -79,7 +79,9 @@ namespace cubregex
     assert (position >= 0);
 
     /* split source string by position value */
-    std::string target = re2_split_string_utf8 (src, position);
+    std::string prefix;
+    std::string target;
+    re2_split_string_utf8 (src, position, prefix, target);
 
     result = 0;
     re2::StringPiece piece (target);
@@ -98,7 +100,9 @@ namespace cubregex
     assert (occurrence >= 1);
 
     /* split source string by position value */
-    std::string target = re2_split_string_utf8 (src, position);
+    std::string prefix;
+    std::string target;
+    re2_split_string_utf8 (src, position, prefix, target);
 
     int match_idx = -1;
     re2::StringPiece target_piece (target);
@@ -137,52 +141,59 @@ namespace cubregex
     assert (occurrence >= 0);
 
     /* split source string by position value */
-    std::string result_string (src.substr (0, position));
-    std::string target = re2_split_string_utf8 (src, position);
+    std::string prefix;
+    std::string target;
+    re2_split_string_utf8 (src, position, prefix, target);
 
     re2::StringPiece rewrite (repl);
-    if (occurrence == 0)
+    int match_pos = -1;
+    re2::StringPiece target_piece (target);
+
+    char *last_matched_ptr = NULL;
+    int last_matched_size = 0;
+
+    std::string mid;
+    auto lambda = [&] (re2::StringPiece &match, char *current_p)
+    {
+      if (last_matched_ptr == NULL && target.data() < current_p)
+	{
+	  // before the first match
+	  mid.append (target.data (), current_p - target.data());
+	}
+
+      last_matched_ptr = (char *) match.data ();
+      last_matched_size = match.size ();
+
+      if (current_p < last_matched_ptr)
+	{
+	  // the prefix of the matched
+	  mid.append (current_p, last_matched_ptr - current_p);
+	}
+
+      // replace
+      mid.append (rewrite.as_string ());
+    };
+
+    bool is_matched = re2_on_match (GET_RE2_OBJ (reg), target_piece, occurrence, lambda);
+    if (last_matched_ptr == NULL)
       {
-	RE2::GlobalReplace (&target, GET_RE2_OBJ (reg), rewrite);
-	result.assign (result_string.append (target));
-      }
-    else if (occurrence == 1)
-      {
-	RE2::Replace (&target, GET_RE2_OBJ (reg), rewrite);
-	result.assign (result_string.append (target));
+	result.append (src);
       }
     else
       {
-	int match_pos = -1;
-	re2::StringPiece target_piece (target);
-	auto lambda = [&] (re2::StringPiece &match, char *current_p)
-	{
-	  // append prefix of the matched sub-string
-	  result.append (result_string);
+	// append prefix of the replaced sub-string
+	result.append (prefix);
 
-	  if (target.data () < current_p)
-	    {
-	      result.append (target.data (), current_p - target.data());
-	    }
+	// if the occurrence is zero, append a sub-string with all concatenated from the replaced first match to the replaced last match
+	// else append a sub-string with a replaced match corresponding to the occurrence
+	result.append (mid);
 
-	  if (current_p < match.data())
-	    {
-	      result.append (current_p, match.data() - current_p);
-	    }
-
-	  // replace
-	  result.append (rewrite);
-
-	  // the remaining part
-	  match_pos = match.data() + match.size () - target.data();
-	  int size = target.size() - match_pos;
-	  result.append (target.substr (match_pos, size));
-	};
-
-	bool is_matched = re2_on_match (GET_RE2_OBJ (reg), target_piece, occurrence, lambda);
-	if (match_pos == -1)
+	// the remaining after the last matched
+	char *end_ptr = (char *) target.data () + target.size ();
+	char *last_matched_end_ptr = (char *) last_matched_ptr + last_matched_size;
+	if (last_matched_end_ptr < end_ptr)
 	  {
-	    result.append (result_string.append (target));
+	    result.append (last_matched_end_ptr, end_ptr - last_matched_end_ptr);
 	  }
       }
 
@@ -197,7 +208,9 @@ namespace cubregex
     assert (occurrence >= 1);
 
     /* split source string by position value */
-    std::string target = re2_split_string_utf8 (src, position);
+    std::string prefix;
+    std::string target;
+    re2_split_string_utf8 (src, position, prefix, target);
 
     re2::StringPiece target_piece (target);
     auto lambda = [&] (re2::StringPiece &match, char *current_p)
@@ -226,8 +239,8 @@ namespace cubregex
       }
   }
 
-  static std::string
-  re2_split_string_utf8 (const std::string &src, int position)
+  static void
+  re2_split_string_utf8 (const std::string &src, const int position, std::string &a, std::string &b)
   {
     int dummy;
     char *s = (char *) src.data ();
@@ -241,11 +254,13 @@ namespace cubregex
     if (i == position && s < end)
       {
 	int pos = s - src.data ();
-	return src.substr (pos, src.size () - pos);
+	a.assign (src.substr (0, pos));
+	b.assign (src.substr (pos, src.size() - pos));
       }
     else
       {
-	return std::string ();
+	a.clear ();
+	b.clear ();
       }
   }
 
@@ -267,11 +282,14 @@ namespace cubregex
 	    break;
 	  }
 
-	if (n == occurrence)
+	if (n == occurrence || occurrence == 0)
 	  {
 	    is_matched = true;
 	    lambda (match, current_p); // do something on regex is matched
-	    break;
+	    if (n == occurrence)
+	      {
+		break;
+	      }
 	  }
 	else
 	  {
