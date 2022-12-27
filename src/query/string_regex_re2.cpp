@@ -58,7 +58,7 @@ namespace cubregex
 
     if (!reg->ok())
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REGEX_COMPILE_ERROR, 1, reg->error());
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REGEX_COMPILE_ERROR, 1, reg->error().c_str());
 	return ER_REGEX_COMPILE_ERROR;
       }
 
@@ -145,10 +145,6 @@ namespace cubregex
     std::string target;
     re2_split_string_utf8 (src, position, prefix, target);
 
-    re2::StringPiece rewrite (repl);
-    int match_pos = -1;
-    re2::StringPiece target_piece (target);
-
     char *last_matched_ptr = NULL;
     int last_matched_size = 0;
 
@@ -171,9 +167,10 @@ namespace cubregex
 	}
 
       // replace
-      mid.append (rewrite.as_string ());
+      mid.append (repl);
     };
 
+    re2::StringPiece target_piece (target);
     bool is_matched = re2_on_match (GET_RE2_OBJ (reg), target_piece, occurrence, lambda);
     if (last_matched_ptr == NULL)
       {
@@ -301,5 +298,4 @@ namespace cubregex
       }
     return is_matched;
   }
-
 }
