@@ -47,11 +47,11 @@
 
 static DB_LOGICAL eval_negative (DB_LOGICAL res);
 static DB_LOGICAL eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2);
-static DB_LOGICAL eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator,
-				      const COMP_EVAL_TERM * et_comp);
-static DB_LOGICAL eval_some_eval (DB_VALUE * item, DB_SET * set, REL_OP rel_operator);
-static DB_LOGICAL eval_all_eval (DB_VALUE * item, DB_SET * set, REL_OP rel_operator);
-static int eval_item_card_set (DB_VALUE * item, DB_SET * set, REL_OP rel_operator);
+static DB_LOGICAL eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2,
+				      REL_OP rel_operator, const COMP_EVAL_TERM * et_comp);
+static DB_LOGICAL eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator);
+static DB_LOGICAL eval_all_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator);
+static int eval_item_card_set (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator);
 static DB_LOGICAL eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id,
 				       REL_OP rel_operator);
 static DB_LOGICAL eval_all_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id,
@@ -146,7 +146,8 @@ eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2)
  *   et_comp(in): compound evaluation term
  */
 static DB_LOGICAL
-eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator, const COMP_EVAL_TERM * et_comp)
+eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator,
+		    const COMP_EVAL_TERM * et_comp)
 {
   int result;
   bool comparable = true;
@@ -221,6 +222,13 @@ eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator, c
 	      vtype2 = DB_VALUE_DOMAIN_TYPE (dbval2);
 	      if (vtype1 != vtype2)
 		{
+		  HL_HEAPID save_heapid = 0;
+
+		  if (REGU_VARIABLE_IS_FLAGED (et_comp->rhs, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+		    {
+		      save_heapid = db_change_private_heap (thread_p, 0);
+		    }
+
 		  if (vtype2 == DB_TYPE_OBJECT)
 		    {
 		      ;		/* do nothing */
@@ -243,6 +251,11 @@ eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator, c
 		      /* vtype1 is more general, try to coerce value_2 */
 		      dom = tp_domain_resolve_default (vtype1);
 		      (void) tp_value_coerce (dbval2, dbval2, dom);
+		    }
+
+		  if (save_heapid != 0)
+		    {
+		      (void) db_change_private_heap (thread_p, save_heapid);
 		    }
 		}
 	    }
@@ -334,7 +347,7 @@ eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator, c
  */
 
 static DB_LOGICAL
-eval_some_eval (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
+eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
 {
   int i;
   DB_LOGICAL res, t_res;
@@ -351,7 +364,7 @@ eval_some_eval (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
 	  return V_ERROR;
 	}
 
-      t_res = eval_value_rel_cmp (item, &elem_val, rel_operator, NULL);
+      t_res = eval_value_rel_cmp (thread_p, item, &elem_val, rel_operator, NULL);
       pr_clear_value (&elem_val);
       if (t_res == V_TRUE)
 	{
@@ -398,7 +411,7 @@ eval_some_eval (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
  *
  */
 static DB_LOGICAL
-eval_all_eval (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
+eval_all_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
 {
   DB_LOGICAL some_res;
 
@@ -437,7 +450,7 @@ eval_all_eval (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
       return V_ERROR;
     }
 
-  some_res = eval_some_eval (item, set, rel_operator);
+  some_res = eval_some_eval (thread_p, item, set, rel_operator);
   /* negate the some result */
   return eval_negative (some_res);
 }
@@ -460,7 +473,7 @@ eval_all_eval (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
  *              to 1 for the case of basic sets.
  */
 static int
-eval_item_card_set (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
+eval_item_card_set (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
 {
   int num, i;
   DB_LOGICAL res;
@@ -482,7 +495,7 @@ eval_item_card_set (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
 	  return UNKNOWN_CARD;
 	}
 
-      res = eval_value_rel_cmp (item, &elem_val, rel_operator, NULL);
+      res = eval_value_rel_cmp (thread_p, item, &elem_val, rel_operator, NULL);
       pr_clear_value (&elem_val);
 
       if (res == V_ERROR)
@@ -584,7 +597,7 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
 	      return V_ERROR;
 	    }
 
-	  t_res = eval_value_rel_cmp (item, &list_val, rel_operator, NULL);
+	  t_res = eval_value_rel_cmp (thread_p, item, &list_val, rel_operator, NULL);
 	  if (t_res == V_TRUE || t_res == V_ERROR)
 	    {
 	      pr_clear_value (&list_val);
@@ -722,7 +735,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
 
       pr_type->data_readval (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0);
 
-      rc = eval_value_rel_cmp (item, &list_val, R_LT, NULL);
+      rc = eval_value_rel_cmp (thread_p, item, &list_val, R_LT, NULL);
       if (rc == V_ERROR)
 	{
 	  pr_clear_value (&list_val);
@@ -735,7 +748,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
 	  continue;
 	}
 
-      rc = eval_value_rel_cmp (item, &list_val, R_EQ, NULL);
+      rc = eval_value_rel_cmp (thread_p, item, &list_val, R_EQ, NULL);
       pr_clear_value (&list_val);
 
       if (rc == V_ERROR)
@@ -817,7 +830,7 @@ eval_sub_multi_set_to_sort_list (THREAD_ENTRY * thread_p, DB_SET * set1, QFILE_L
 	      continue;
 	    }
 
-	  rc = eval_value_rel_cmp (&elem_val, &elem_val2, R_EQ, NULL);
+	  rc = eval_value_rel_cmp (thread_p, &elem_val, &elem_val2, R_EQ, NULL);
 	  if (rc == V_ERROR)
 	    {
 	      pr_clear_value (&elem_val);
@@ -837,7 +850,7 @@ eval_sub_multi_set_to_sort_list (THREAD_ENTRY * thread_p, DB_SET * set1, QFILE_L
 	  continue;
 	}
 
-      card1 = eval_item_card_set (&elem_val, set1, R_EQ);
+      card1 = eval_item_card_set (thread_p, &elem_val, set1, R_EQ);
       if (card1 == ER_FAILED)
 	{
 	  pr_clear_value (&elem_val);
@@ -959,7 +972,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
 	  pr_type->data_readval (&buf, &list_val2, list_id->type_list.domp[0], -1, true, NULL, 0);
 
-	  rc = eval_value_rel_cmp (&list_val, &list_val2, R_EQ, NULL);
+	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL);
 	  if (rc == V_ERROR)
 	    {
 	      res = V_ERROR;
@@ -967,7 +980,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 	    }
 	  else if (rc != V_TRUE)
 	    {
-	      card2 = eval_item_card_set (&list_val2, set, R_EQ);
+	      card2 = eval_item_card_set (thread_p, &list_val2, set, R_EQ);
 	      if (card2 == ER_FAILED)
 		{
 		  res = V_ERROR;
@@ -1019,7 +1032,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
       pr_type->data_readval (&buf, &list_val2, list_id->type_list.domp[0], -1, true, NULL, 0);
 
-      card2 = eval_item_card_set (&list_val2, set, R_EQ);
+      card2 = eval_item_card_set (thread_p, &list_val2, set, R_EQ);
       if (card2 == ER_FAILED)
 	{
 	  res = V_ERROR;
@@ -1135,7 +1148,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
 	  pr_type->data_readval (&buf, &list_val2, list_id1->type_list.domp[0], -1, true, NULL, 0);
 
-	  rc = eval_value_rel_cmp (&list_val, &list_val2, R_EQ, NULL);
+	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL);
 
 	  if (rc == V_ERROR)
 	    {
@@ -1911,7 +1924,7 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
 	       * general case: compare values, db_value_compare will
 	       * take care of any coercion necessary.
 	       */
-	      result = eval_value_rel_cmp (peek_val1, peek_val2, et_comp->rel_op, et_comp);
+	      result = eval_value_rel_cmp (thread_p, peek_val1, peek_val2, et_comp->rel_op, et_comp);
 	    }
 	  break;
 
@@ -2001,17 +2014,17 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
 		/* rhs value is a set, use set evaluation routines */
 		if (et_alsm->eq_flag == F_ALL)
 		  {
-		    result = eval_all_eval (peek_val1, db_get_set (peek_val2), et_alsm->rel_op);
+		    result = eval_all_eval (thread_p, peek_val1, db_get_set (peek_val2), et_alsm->rel_op);
 		  }
 		else
 		  {
-		    result = eval_some_eval (peek_val1, db_get_set (peek_val2), et_alsm->rel_op);
+		    result = eval_some_eval (thread_p, peek_val1, db_get_set (peek_val2), et_alsm->rel_op);
 		  }
 	      }
 	    else
 	      {
 		/* other cases, use general evaluation routines */
-		result = eval_value_rel_cmp (peek_val1, peek_val2, et_alsm->rel_op, NULL);
+		result = eval_value_rel_cmp (thread_p, peek_val1, peek_val2, et_alsm->rel_op, NULL);
 	      }
 	  }
 	  break;
@@ -2132,7 +2145,7 @@ eval_pred_comp0 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, 
    * general case: compare values, db_value_compare will
    * take care of any coercion necessary.
    */
-  return eval_value_rel_cmp (peek_val1, peek_val2, et_comp->rel_op, et_comp);
+  return eval_value_rel_cmp (thread_p, peek_val1, peek_val2, et_comp->rel_op, et_comp);
 }
 
 /*
@@ -2347,11 +2360,11 @@ eval_pred_alsm4 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, 
   /* rhs value is a set, use set evaluation routines */
   if (et_alsm->eq_flag == F_ALL)
     {
-      return eval_all_eval (peek_val1, db_get_set (peek_val2), et_alsm->rel_op);
+      return eval_all_eval (thread_p, peek_val1, db_get_set (peek_val2), et_alsm->rel_op);
     }
   else
     {
-      return eval_some_eval (peek_val1, db_get_set (peek_val2), et_alsm->rel_op);
+      return eval_some_eval (thread_p, peek_val1, db_get_set (peek_val2), et_alsm->rel_op);
     }
 }
 
