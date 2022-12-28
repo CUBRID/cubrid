@@ -690,7 +690,7 @@ opţiuni valide:\n\
       --max-writesize-in-sec=MĂRIME  dimensiunea volumului de date scris pe secundă; (ex. 512K, 1M, 10M);\n\
                                      implicit: neutilizat; minim: 160K\n\
   -n, --volume-name=NUME             NUMELE volumului de informaţii; implicit: generat (după modelul "db"_ext1)\n\
-  -F, --file-path=CALE               CALEA unde se va adăuga fişierul pentru noul volum; implicit: directorul de lucru\n\
+  -F, --file-path=CALE               CALEA unde se va adăuga fişierul pentru noul volum; implicit: volume_extension_path\n\
       --comment=COMENTARIU           COMENTARIU pentru adăugarea fişierului de volum; implicit: absent\n\
   -p, --purpose=SCOP                 SCOP pentru adăugarea fişierului de volum; valori permise:\n\
                                            DATA - doar pentru date\n\
