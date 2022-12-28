@@ -28,7 +28,7 @@
  *
  */
 
-package com.cubrid.test.splib;
+package com.cubrid.plcsql.predefined;
 
 import static com.cubrid.plcsql.predefined.sp.SpLib.*;
 

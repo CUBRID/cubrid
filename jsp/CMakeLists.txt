@@ -57,7 +57,7 @@ add_custom_command(TARGET jsp_build
 
 add_custom_target(jsp_unittest)
 add_custom_command(TARGET jsp_unittest
-  COMMAND ${ANT} test-junit -buildfile ${CMAKE_SOURCE_DIR}/jsp/build.xml -Dbasedir=. -Dversion=${BUILD_NUMBER} -Dsrc.dir=${JSP_DIR} -Divy.install.dir="${IVY_DIR}"
+  COMMAND ${ANT} test-jsp -buildfile ${CMAKE_SOURCE_DIR}/jsp/build.xml -Dbasedir=. -Dversion=${BUILD_NUMBER} -Dsrc.dir=${JSP_DIR} -Divy.install.dir="${IVY_DIR}"
   COMMENT "Unit Test Java SP Server with JUnit ..."
 )
 

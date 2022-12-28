@@ -13,8 +13,8 @@
     <property name="classes.dir" location="${build.dir}/classes"/>
 
     <property name="unit-test.path" value="${src.dir}/unit-test"/>
-    <property name="test.src.path" value="com/cubrid/jsp/test"/>
-    <property name="test.splib.path" value="com/cubrid/test/splib"/>
+    <property name="test.server.path" value="com/cubrid/jsp"/>
+    <property name="test.splib.path" value="com/cubrid/plcsql/predefined"/>
     <property name="test.classes.dir" location="${build.dir}/test-classes"/>
     <property name="test.reports.dir" location="${report.dir}/test-reports"/>
 
@@ -91,13 +91,13 @@
             <src path="${src.dir}"/>
             <src path="${plcsql.antlrgen.dir}"/>
             <include name="**/*.java"/>
-            <exclude name="${unit-test.path}/**/*.java"/>
-            <exclude name="${test.src.path}/*.java"/>
+            <exclude name="unit-test/**/*.java"/>
             <exclude name="${plcsql.predefined.sp.path}/*.java"/>
         </javac>
 
         <javac destdir="${plcsql.predefined.classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="runtime.path">
             <src path="${src.dir}"/>
+            <exclude name="unit-test/**/*.java"/>
             <include name="${plcsql.predefined.path}/**/*.java"/>
         </javac>
     </target>
@@ -111,10 +111,11 @@
         </delete>
     </target>
 
-    <target name="test-junit" depends="init">
+    <target name="test-jsp" depends="init">
         <ivy:retrieve pattern="${dist.lib}/[artifact]-[revision].[ext]" conf="test"/>
-        <javac srcdir="${src.dir}" destdir="${test.classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" classpathref="test.path">
-            <include name="${test.src.path}/*.java"/>
+        <javac srcdir="${unit-test.path}" destdir="${test.classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8">
+            <classpath refid="test.path"/>
+            <include name="${test.server.path}/*.java"/>
         </javac>
 
         <junit printsummary="yes" haltonfailure="no">
@@ -124,8 +125,8 @@
             <classpath path="${classes.dir}" />
             <formatter type="xml"/>
             <batchtest todir="${test.reports.dir}">
-                <fileset dir="${src.dir}">
-                    <include name="${test.src.path}/*.java"/>
+                <fileset dir="${unit-test.path}">
+                    <include name="${test.server.path}/**/*.java"/>
                 </fileset>
             </batchtest>
         </junit>
@@ -157,7 +158,7 @@
             <formatter type="xml"/>
             <batchtest todir="${test.reports.dir}">
                 <fileset dir="${unit-test.path}">
-                    <include name="${test.splib.path}/TestSpLib.java"/>
+                    <include name="${test.splib.path}/**/*.java"/>
                 </fileset>
             </batchtest>
         </junit>
