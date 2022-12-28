@@ -27,10 +27,13 @@
 #ident "$Id$"
 
 #define SUPPORT_KEY_DUP_LEVEL
+
+#if defined(SUPPORT_KEY_DUP_LEVEL)
 //#define SUPPORT_KEY_DUP_LEVEL_FK
 
 // view(db_index, db_index_key), show index statement
 //#define ENABLE_SHOW_HIDDEN_ATTR
+#endif
 
 #define OVFL_LEVEL_MIN       (0)
 #define OVFL_LEVEL_MAX       (16)
