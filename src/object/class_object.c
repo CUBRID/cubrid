@@ -7954,7 +7954,9 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj, SM_COMPONENT * com
  *          share  : share index with existed index;
  *          new idx: create new index;
  *          error  : not share index and return error msg.
- *      3 filter_predicate and func_index_info should be checked.
+ *      3. filter_predicate and func_index_info were checked in classbj_find_constraint_by_attors().
+ *      4. The fact that existing_con is not NULL means that there are the same indexes, 
+ *         from the count and order of attributes, order direction, function index composition, and filter conditions.
  * +---------------+-------------------------------------------------------+
  * |               |              Existed constraint or index              |
  * |               +----------+-----------+---------+----------+-----------+
@@ -7983,42 +7985,60 @@ classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints, const DB_
 {
   SM_CONSTRAINT_COMPATIBILITY ret;
 
-  /* only one primary key is allowed in a table. */
-  if (constraint_type == DB_CONSTRAINT_PRIMARY_KEY)
-    {
-      SM_CLASS_CONSTRAINT *prim_con;
-      prim_con = classobj_find_cons_primary_key (constraints);
-      if (prim_con != NULL)
-	{
-	  *primary_con = prim_con;
-	  return SM_NOT_SHARE_PRIMARY_KEY_AND_WARNING;
-	}
-    }
-
   if (existing_con == NULL)
     {
       return SM_CREATE_NEW_INDEX;
     }
 
-  if (DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type) && SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type))
+  switch (constraint_type)
     {
-      return SM_SHARE_INDEX;
-    }
+    case DB_CONSTRAINT_PRIMARY_KEY:
+      {
+	/* only one primary key is allowed in a table. */
+	SM_CLASS_CONSTRAINT *prim_con;
+	prim_con = classobj_find_cons_primary_key (constraints);
+	if (prim_con != NULL)
+	  {
+	    *primary_con = prim_con;
+	    return SM_NOT_SHARE_PRIMARY_KEY_AND_WARNING;
+	  }
+      }
+      [[fallthrough]];		// Do not use "break;" and proceed.
+    case DB_CONSTRAINT_UNIQUE:
+    case DB_CONSTRAINT_REVERSE_UNIQUE:
+      {
+	if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type))
+	  {
+	    return SM_SHARE_INDEX;
+	  }
+      }
+      break;
 
-  if (constraint_type == DB_CONSTRAINT_FOREIGN_KEY)
-    {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type))
-	{
-	  return SM_CREATE_NEW_INDEX;
-	}
-      else if (existing_con->type == SM_CONSTRAINT_INDEX)
-	{
-	  return SM_SHARE_INDEX;
-	}
-    }
-  else if (constraint_type == DB_CONSTRAINT_INDEX && existing_con->type == SM_CONSTRAINT_FOREIGN_KEY)
-    {
-      return SM_SHARE_INDEX;
+    case DB_CONSTRAINT_FOREIGN_KEY:
+      {
+	if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type))
+	  {
+	    return SM_CREATE_NEW_INDEX;
+	  }
+	else if (existing_con->type == SM_CONSTRAINT_INDEX || existing_con->type == DB_CONSTRAINT_REVERSE_INDEX)
+	  {
+	    return SM_SHARE_INDEX;
+	  }
+      }
+      break;
+
+    case DB_CONSTRAINT_INDEX:
+    case DB_CONSTRAINT_REVERSE_INDEX:
+      {
+	if (existing_con->type == SM_CONSTRAINT_FOREIGN_KEY)
+	  {
+	    return SM_SHARE_INDEX;
+	  }
+      }
+      break;
+
+    default:
+      break;
     }
 
   return SM_NOT_SHARE_INDEX_AND_WARNING;
