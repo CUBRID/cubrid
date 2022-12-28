@@ -30,8 +30,6 @@
 
 package com.cubrid.plcsql.predefined.sp;
 
-import com.cubrid.plcsql.predefined.ZonedTimestamp;
-
 import org.apache.commons.collections4.MultiSet;
 import org.apache.commons.collections4.multiset.HashMultiSet;
 
@@ -47,7 +45,6 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.List;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.Objects;
 
 import java.math.BigDecimal;
@@ -82,7 +79,7 @@ public class SpLib {
 
     public static String $SQLERRM = null;
     public static Integer $SQLCODE = null;
-    public static Date $SYSDATE = null;
+    public static LocalDate $SYSDATE = null;
     public static Integer $NATIVE = null;
 
     public static void $PUT_LINE(Object s) {
@@ -333,25 +330,25 @@ public class SpLib {
         }
         return l <= r;
     }
-    public static Boolean opLe(Date l, Date r) {
+    public static Boolean opLe(LocalDate l, LocalDate r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) <= 0;
     }
-    public static Boolean opLe(Time l, Time r) {
+    public static Boolean opLe(LocalTime l, LocalTime r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) <= 0;
     }
-    public static Boolean opLe(Timestamp l, Timestamp r) {
+    public static Boolean opLe(LocalDateTime l, LocalDateTime r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) <= 0;
     }
-    public static Boolean opLe(ZonedTimestamp l, ZonedTimestamp r) {
+    public static Boolean opLe(ZonedDateTime l, ZonedDateTime r) {
         if (l == null || r == null) {
             return null;
         }
@@ -422,25 +419,25 @@ public class SpLib {
         }
         return l >= r;
     }
-    public static Boolean opGe(Date l, Date r) {
+    public static Boolean opGe(LocalDate l, LocalDate r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) >= 0;
     }
-    public static Boolean opGe(Time l, Time r) {
+    public static Boolean opGe(LocalTime l, LocalTime r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) >= 0;
     }
-    public static Boolean opGe(Timestamp l, Timestamp r) {
+    public static Boolean opGe(LocalDateTime l, LocalDateTime r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) >= 0;
     }
-    public static Boolean opGe(ZonedTimestamp l, ZonedTimestamp r) {
+    public static Boolean opGe(ZonedDateTime l, ZonedDateTime r) {
         if (l == null || r == null) {
             return null;
         }
@@ -511,25 +508,25 @@ public class SpLib {
         }
         return l < r;
     }
-    public static Boolean opLt(Date l, Date r) {
+    public static Boolean opLt(LocalDate l, LocalDate r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) < 0;
     }
-    public static Boolean opLt(Time l, Time r) {
+    public static Boolean opLt(LocalTime l, LocalTime r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) < 0;
     }
-    public static Boolean opLt(Timestamp l, Timestamp r) {
+    public static Boolean opLt(LocalDateTime l, LocalDateTime r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) < 0;
     }
-    public static Boolean opLt(ZonedTimestamp l, ZonedTimestamp r) {
+    public static Boolean opLt(ZonedDateTime l, ZonedDateTime r) {
         if (l == null || r == null) {
             return null;
         }
@@ -598,25 +595,25 @@ public class SpLib {
         }
         return l > r;
     }
-    public static Boolean opGt(Date l, Date r) {
+    public static Boolean opGt(LocalDate l, LocalDate r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) > 0;
     }
-    public static Boolean opGt(Time l, Time r) {
+    public static Boolean opGt(LocalTime l, LocalTime r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) > 0;
     }
-    public static Boolean opGt(Timestamp l, Timestamp r) {
+    public static Boolean opGt(LocalDateTime l, LocalDateTime r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) > 0;
     }
-    public static Boolean opGt(ZonedTimestamp l, ZonedTimestamp r) {
+    public static Boolean opGt(ZonedDateTime l, ZonedDateTime r) {
         if (l == null || r == null) {
             return null;
         }
@@ -1020,25 +1017,25 @@ public class SpLib {
         }
         return o >= lower && o <= upper;
     }
-    public static Boolean opBetween(Date o, Date lower, Date upper) {
+    public static Boolean opBetween(LocalDate o, LocalDate lower, LocalDate upper) {
         if (o == null || lower == null || upper == null) {
             return null;
         }
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
-    public static Boolean opBetween(Time o, Time lower, Time upper) {
+    public static Boolean opBetween(LocalTime o, LocalTime lower, LocalTime upper) {
         if (o == null || lower == null || upper == null) {
             return null;
         }
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
-    public static Boolean opBetween(Timestamp o, Timestamp lower, Timestamp upper) {
+    public static Boolean opBetween(LocalDateTime o, LocalDateTime lower, LocalDateTime upper) {
         if (o == null || lower == null || upper == null) {
             return null;
         }
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
-    public static Boolean opBetween(ZonedTimestamp o, ZonedTimestamp lower, ZonedTimestamp upper) {
+    public static Boolean opBetween(ZonedDateTime o, ZonedDateTime lower, ZonedDateTime upper) {
         if (o == null || lower == null || upper == null) {
             return null;
         }
@@ -1720,14 +1717,28 @@ public class SpLib {
     }
 
     private static MultiSet unionMultiSets(MultiSet l, MultiSet r) {
-        throw new RuntimeException("unimplemented yet");
+        HashMultiSet ret = new HashMultiSet(l);
+        ret.addAll(r);
+        return ret;
     }
 
     private static MultiSet diffMultiSets(MultiSet l, MultiSet r) {
-        throw new RuntimeException("unimplemented yet");
+        HashMultiSet ret = new HashMultiSet(l);
+        ret.removeAll(r);
+        return ret;
     }
 
     private static MultiSet intersectMultiSets(MultiSet l, MultiSet r) {
-        throw new RuntimeException("unimplemented yet");
+        HashMultiSet ret = new HashMultiSet(l);
+        Set s = l.uniqueSet();
+        for (Object o: s) {
+            int ln = l.getCount(o);
+            int rn = r.getCount(o);
+            int min = Math.min(ln, rn);
+            if (min > 0) {
+                ret.add(o, min);
+            }
+        }
+        return ret;
     }
 }
