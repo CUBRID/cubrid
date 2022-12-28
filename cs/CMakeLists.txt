@@ -237,11 +237,12 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/regu_var.cpp
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
+  ${QUERY_DIR}/string_regex_std.cpp
+  ${QUERY_DIR}/string_regex_re2.cpp
   ${QUERY_DIR}/xasl_to_stream.c
   )
 set(QUERY_HEADERS
   ${QUERY_DIR}/query_monitoring.hpp
-  ${QUERY_DIR}/string_regex.hpp
 )
 
 set(OBJECT_SOURCES
