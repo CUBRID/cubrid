@@ -4156,8 +4156,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	      if ((func_index_info->attr_index_start != cons->func_index_info->attr_index_start)
 		  || (func_index_info->col_id != cons->func_index_info->col_id)
 		  || (func_index_info->fi_domain->is_desc != cons->func_index_info->fi_domain->is_desc)
-		  /* || (strcmp (func_index_info->expr_stream, cons->func_index_info->expr_stream)==0) */
-		  || (strcmp (func_index_info->expr_str, cons->func_index_info->expr_str) == 0))
+		  || (strcmp (func_index_info->expr_str, cons->func_index_info->expr_str) != 0))
 		{
 		  continue;
 		}
