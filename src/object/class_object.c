@@ -7985,6 +7985,18 @@ classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints, const DB_
 {
   SM_CONSTRAINT_COMPATIBILITY ret;
 
+  /* only one primary key is allowed in a table. */
+  if (constraint_type == DB_CONSTRAINT_PRIMARY_KEY)
+    {
+      SM_CLASS_CONSTRAINT *prim_con;
+      prim_con = classobj_find_cons_primary_key (constraints);
+      if (prim_con != NULL)
+	{
+	  *primary_con = prim_con;
+	  return SM_NOT_SHARE_PRIMARY_KEY_AND_WARNING;
+	}
+    }
+
   if (existing_con == NULL)
     {
       return SM_CREATE_NEW_INDEX;
@@ -7993,48 +8005,31 @@ classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints, const DB_
   switch (constraint_type)
     {
     case DB_CONSTRAINT_PRIMARY_KEY:
-      {
-	/* only one primary key is allowed in a table. */
-	SM_CLASS_CONSTRAINT *prim_con;
-	prim_con = classobj_find_cons_primary_key (constraints);
-	if (prim_con != NULL)
-	  {
-	    *primary_con = prim_con;
-	    return SM_NOT_SHARE_PRIMARY_KEY_AND_WARNING;
-	  }
-      }
-      [[fallthrough]];		// Do not use "break;" and proceed.
     case DB_CONSTRAINT_UNIQUE:
     case DB_CONSTRAINT_REVERSE_UNIQUE:
-      {
-	if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type))
-	  {
-	    return SM_SHARE_INDEX;
-	  }
-      }
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type))
+	{
+	  return SM_SHARE_INDEX;
+	}
       break;
 
     case DB_CONSTRAINT_FOREIGN_KEY:
-      {
-	if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type))
-	  {
-	    return SM_CREATE_NEW_INDEX;
-	  }
-	else if (existing_con->type == SM_CONSTRAINT_INDEX || existing_con->type == DB_CONSTRAINT_REVERSE_INDEX)
-	  {
-	    return SM_SHARE_INDEX;
-	  }
-      }
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type))
+	{
+	  return SM_CREATE_NEW_INDEX;
+	}
+      else if (existing_con->type == SM_CONSTRAINT_INDEX || existing_con->type == DB_CONSTRAINT_REVERSE_INDEX)
+	{
+	  return SM_SHARE_INDEX;
+	}
       break;
 
     case DB_CONSTRAINT_INDEX:
     case DB_CONSTRAINT_REVERSE_INDEX:
-      {
-	if (existing_con->type == SM_CONSTRAINT_FOREIGN_KEY)
-	  {
-	    return SM_SHARE_INDEX;
-	  }
-      }
+      if (existing_con->type == SM_CONSTRAINT_FOREIGN_KEY)
+	{
+	  return SM_SHARE_INDEX;
+	}
       break;
 
     default:
