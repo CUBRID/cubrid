@@ -46,6 +46,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Objects;
+import java.util.regex.PatternSyntaxException;
 
 import java.math.BigDecimal;
 
@@ -1585,13 +1586,72 @@ public class SpLib {
         return l | r;
     }
 
+    // ====================================
+    // like
     public static Boolean opLike(String s, String pattern, String escape) {
-        return false;
+        assert pattern != null;
+        assert escape == null || escape.length() == 1;
+
+        if (s == null) {
+            return null;
+        }
+
+        String regex = getRegexForLike(pattern, escape);
+        System.out.println("temp: " + regex);
+        try {
+            return s.matches(regex);
+        } catch (PatternSyntaxException e) {
+            assert false;
+            throw new RuntimeException("unreachable");
+        }
     }
 
     // ------------------------------------------------
     // Private
     // ------------------------------------------------
+
+    static String getRegexForLike(String pattern, String escape) {
+
+        StringBuffer sbuf = new StringBuffer();
+
+        int len = pattern.length();
+        if (escape == null) {
+            for (int i = 0; i < len; i++) {
+                char c = pattern.charAt(i);
+                if (c == '%') {
+                    sbuf.append(".*");
+                } else if (c == '_') {
+                    sbuf.append(".");
+                } else {
+                    sbuf.append(c);
+                }
+            }
+        } else {
+            char esc = escape.charAt(0);
+            for (int i = 0; i < len; i++) {
+                char c = pattern.charAt(i);
+                if (esc == c) {
+                    if (i + 1 == len) {
+                        sbuf.append(c); // append the escape character at the end of the pattern as CUBRID does
+                    } else {
+                        i++;
+                        sbuf.append(pattern.charAt(i)); // append it whether it is one of '%', '_', or the escape char.
+                    }
+                } else {
+                    if (c == '%') {
+                        sbuf.append(".*");
+                    } else if (c == '_') {
+                        sbuf.append(".");
+                    } else {
+                        sbuf.append(c);
+                    }
+                }
+            }
+
+        }
+
+        return sbuf.toString();
+    }
 
     // set and multiset ordering
     enum SetOrder {
