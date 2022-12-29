@@ -145,7 +145,7 @@
         <javac srcdir="${unit-test.path}" destdir="${test.classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" >
             <classpath refid="test.path"/>
             <classpath path="${plcsql.predefined.classes.dir}" />
-            <include name="${test.splib.path}/TestSpLib.java"/>
+            <include name="${test.splib.path}/**/*.java"/>
         </javac>
 
         <junit printsummary="yes" haltonfailure="no">

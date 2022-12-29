@@ -1594,14 +1594,14 @@ public class SpLib {
     // ------------------------------------------------
 
     // set and multiset ordering
-    private enum SetOrder {
+    enum SetOrder {
         EQUAL,
         INCLUDING,
         INCLUDED,
         NONE,
     }
 
-    private static SetOrder compareSets(Set l, Set r) {
+    static SetOrder compareSets(Set l, Set r) {
         assert l != null && r != null;
 
         if (l.equals(r)) {
@@ -1617,37 +1617,51 @@ public class SpLib {
         return SetOrder.NONE;
     }
 
-    private static SetOrder compareMultiSets(MultiSet l, MultiSet r) {
+    static SetOrder compareMultiSets(MultiSet l, MultiSet r) {
         assert l != null && r != null;
 
         if (l.equals(r)) {
             return SetOrder.EQUAL;
-        } else if (l.containsAll(r)) {
-            Set s = r.uniqueSet();
-            for (Object o: s) {
-                int ln = l.getCount(o);
-                int rn = r.getCount(o);
-                if (ln < rn) {
-                    return SetOrder.NONE;
+        } else {
+            boolean broken = false;
+            if (l.containsAll(r)) {
+                Set s = r.uniqueSet();
+
+                for (Object o: s) {
+                    int ln = l.getCount(o);
+                    int rn = r.getCount(o);
+                    if (ln < rn) {
+                        broken = true;
+                        break;
+                    }
+                }
+                if (!broken) {
+                    return SetOrder.INCLUDING;
                 }
             }
-            return SetOrder.INCLUDING;
-        } else if (r.containsAll(l)) {
-            Set s = l.uniqueSet();
-            for (Object o: s) {
-                int ln = l.getCount(o);
-                int rn = r.getCount(o);
-                if (ln > rn) {
-                    return SetOrder.NONE;
+
+            broken = false;
+            if (r.containsAll(l)) {
+                Set s = l.uniqueSet();
+                for (Object o: s) {
+                    int ln = l.getCount(o);
+                    int rn = r.getCount(o);
+                    if (ln > rn) {
+                        broken = true;
+                        break;
+                    }
+                }
+                if (!broken) {
+                    return SetOrder.INCLUDED;
                 }
             }
-            return SetOrder.INCLUDED;
+
+            return SetOrder.NONE;
         }
 
-        return SetOrder.NONE;
     }
 
-    private static <E extends Comparable<E>> int compareLists(List<E> l, List<E> r) {
+    static <E extends Comparable<E>> int compareLists(List<E> l, List<E> r) {
         assert l != null && r != null;
 
         // lexicographic order
@@ -1672,64 +1686,60 @@ public class SpLib {
         return (ln - rn);
     }
 
-    private static MultiSet set2MultiSet(Set s) {
+    static MultiSet set2MultiSet(Set s) {
         assert s != null;
         return new HashMultiSet(s);
     }
 
-    private static MultiSet list2MultiSet(List l) {
+    static MultiSet list2MultiSet(List l) {
         assert l != null;
         return new HashMultiSet(l); // TODO: check if the elements duplicate in the list has count larger than 1
     }
 
-    private static List concatLists(List l, List r) {
+    static List concatLists(List l, List r) {
         ArrayList ret = new ArrayList();
         ret.addAll(l);
         ret.addAll(r);
         return ret;
     }
 
-    private static Set unionSets(Set l, Set r) {
+    static Set unionSets(Set l, Set r) {
         HashSet ret = new HashSet();
         ret.addAll(l);
         ret.addAll(r);
         return ret;
     }
 
-    private static Set diffSets(Set l, Set r) {
+    static Set diffSets(Set l, Set r) {
         HashSet ret = new HashSet();
-        for (Object o: l) {
-            if (!r.contains(o)) {
-                ret.add(o);
-            }
-        }
+        ret.addAll(l);
+        ret.removeAll(r);
         return ret;
     }
 
-    private static Set intersectSets(Set l, Set r) {
+    static Set intersectSets(Set l, Set r) {
         HashSet ret = new HashSet();
-        for (Object o: l) {
-            if (r.contains(o)) {
-                ret.add(o);
-            }
-        }
+        ret.addAll(l);
+        ret.retainAll(r);
         return ret;
     }
 
-    private static MultiSet unionMultiSets(MultiSet l, MultiSet r) {
+    static MultiSet unionMultiSets(MultiSet l, MultiSet r) {
         HashMultiSet ret = new HashMultiSet(l);
         ret.addAll(r);
         return ret;
     }
 
-    private static MultiSet diffMultiSets(MultiSet l, MultiSet r) {
+    static MultiSet diffMultiSets(MultiSet l, MultiSet r) {
         HashMultiSet ret = new HashMultiSet(l);
-        ret.removeAll(r);
+        for (Object o: r) {
+            ret.remove(o);
+        }
         return ret;
     }
 
-    private static MultiSet intersectMultiSets(MultiSet l, MultiSet r) {
-        HashMultiSet ret = new HashMultiSet(l);
+    static MultiSet intersectMultiSets(MultiSet l, MultiSet r) {
+        HashMultiSet ret = new HashMultiSet();
         Set s = l.uniqueSet();
         for (Object o: s) {
             int ln = l.getCount(o);
