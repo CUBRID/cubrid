@@ -674,7 +674,7 @@ addvoldb: 데이터베이스 볼륨 파일을 추가\n\
       --db-volume-size=SIZE        추가될 볼륨의 크기; 기본값: 설정에서 읽음\n\
       --max-writesize-in-sec=SIZE  초당 추가될 볼륨의 크기. (예. 512K, 1M, 10M); 기본값: 사용하지 않음; 최소값: 160K\n\
   -n, --volume-name=NAME           볼륨 이름; 기본값: "db"_ext1 과 같은 이름을 생성\n\
-  -F, --file-path=PATH             데이터베이스 파일에 대한 볼륨 패스; 기본값: 현재 디렉터리\n\
+  -F, --file-path=PATH             데이터베이스 파일에 대한 볼륨 패스; 기본값: volume_extension_path\n\
       --comment=COMMENT            볼륨 주석; 기본값: 없음\n\
   -p, --purpose=PURPOSE            볼륨 사용 용도; 다음과 같은 값이 허용됨\n\
                                            DATA - 데이터 볼륨\n\
