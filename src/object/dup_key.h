@@ -67,9 +67,11 @@ typedef enum
 /* ******************************************************** */
 
 #define RESERVED_INDEX_ATTR_ID_BASE    (-28480000)
-#define RESERVED_INDEX_ATTR_NAME_PREFIX  "_cub_idx_col_"
-#define RESERVED_INDEX_COL_NAME_PATTERN   "'^_cub_idx_col_(o|v|s|p)_([0][0-9]|[1][0-6])$'"
-#define RESERVED_INDEX_ATTR_NAME_PREFIX_LEN  (13)
+#define RESERVED_INDEX_ATTR_NAME_PREFIX        "_cub_idx_col_"
+#define RESERVED_INDEX_ATTR_NAME_LIKE_PATTERN  "'_cub_idx_col_%%'"
+#define RESERVED_INDEX_ATTR_NAME_REG_PATTERN   "'^_cub_idx_col_(o|v|s|p)_([0][0-9]|[1][0-6])$'"
+
+#define RESERVED_INDEX_ATTR_NAME_PREFIX_LEN  (13)	// strlen(RESERVED_INDEX_ATTR_NAME_PREFIX)
 
 #define RESERVED_INDEX_ATTR_NAME_PREFIX_OID     "o_"
 #define RESERVED_INDEX_ATTR_NAME_PREFIX_PAGEID  "p_"
