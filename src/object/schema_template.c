@@ -158,7 +158,8 @@ make_hidden_attribute (SM_TEMPLATE * template_, const char *name, SM_ATTRIBUTE *
   att = dk_find_sm_reserved_index_attribute (-1, name);
   if (att == NULL)
     {
-      ERROR0 (error_code, ER_SM_INVALID_ARGUMENTS);	// ctshim to do error code??
+      assert (false);
+      ERROR0 (error_code, ER_FAILED);
     }
 
   if (error_code != NO_ERROR)

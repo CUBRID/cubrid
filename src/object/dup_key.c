@@ -266,7 +266,8 @@ dk_sm_hidden_attribute_initialized ()
 	  domain = get_reserved_index_attr_domain_type (mode, level);
 	  if (domain == NULL)
 	    {
-	      ERROR0 (error_code, ER_SM_INVALID_ARGUMENTS);	// ctshim to do error code??
+	      assert (false);
+	      ERROR0 (error_code, ER_FAILED);
 	      goto error_exit;
 	    }
 
@@ -280,7 +281,7 @@ dk_sm_hidden_attribute_initialized ()
 
 	  /* Flag this attribute as new so that we can initialize the original_value properly.  
 	   * Make sure this isn't saved on disk ! */
-	  att->flags |= SM_ATTFLAG_NEW;	// check ? SM_ATTFLAG_NONE 
+	  att->flags |= SM_ATTFLAG_NEW;
 	  att->class_mop = NULL;
 	  att->domain = domain;
 	  att->auto_increment = NULL;
