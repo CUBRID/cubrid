@@ -102,9 +102,9 @@ public class Server {
         if (serverSocket != null) {
             socketListener = new ListenerThread(serverSocket);
 
-            Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
             System.setSecurityManager(new SpSecurityManager());
             System.setProperty("cubrid.server.version", version);
+            Class.forName("com.cubrid.jsp.jdbc.CUBRIDServerSideDriver");
 
             getJVMArguments(); /* store jvm options */
         } else {
