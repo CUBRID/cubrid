@@ -2444,7 +2444,7 @@ ws_final (void)
   unsigned int slot;
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-  dk_hidden_attribute_finalized ();
+  dk_reserved_index_attribute_finalized ();
 #endif
 
   tr_final ();

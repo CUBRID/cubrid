@@ -5046,7 +5046,7 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 	    {
 	      attr_id = consp->attributes[0]->id;
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-	      if (IS_HIDDEN_INDEX_COL_ID (attr_id))
+	      if (IS_RESERVED_INDEX_ATTR_ID (attr_id))
 		{		// ctshim , -- need check
 		  attr_id = consp->attributes[1]->id;
 		}
@@ -5503,7 +5503,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	      /* function index with the function expression as the first attribute */
 	      attr_id = index_entryp->constraints->attributes[0]->id;
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-	      if (IS_HIDDEN_INDEX_COL_ID (attr_id))
+	      if (IS_RESERVED_INDEX_ATTR_ID (attr_id))
 		{
 		  attr_id = index_entryp->constraints->attributes[1]->id;
 		}

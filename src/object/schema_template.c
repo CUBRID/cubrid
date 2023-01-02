@@ -142,7 +142,7 @@ make_hidden_attribute (SM_TEMPLATE * template_, const char *name, SM_ATTRIBUTE *
       return error_code;
     }
 
-  if (!IS_HIDDEN_INDEX_COL_NAME (name))
+  if (!IS_RESERVED_INDEX_ATTR_NAME (name))
     {
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
@@ -155,7 +155,7 @@ make_hidden_attribute (SM_TEMPLATE * template_, const char *name, SM_ATTRIBUTE *
     }
 #endif
 
-  att = dk_find_sm_hidden_attribute (-1, name);
+  att = dk_find_sm_reserved_index_attribute (-1, name);
   if (att == NULL)
     {
       ERROR0 (error_code, ER_SM_INVALID_ARGUMENTS);	// ctshim to do error code??
@@ -2067,7 +2067,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
       while (att_names[n_atts] != NULL)
 	{
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-	  if (IS_HIDDEN_INDEX_COL_NAME (att_names[n_atts]))
+	  if (IS_RESERVED_INDEX_ATTR_NAME (att_names[n_atts]))
 	    {
 	      hidden_index_col = n_atts;
 	    }

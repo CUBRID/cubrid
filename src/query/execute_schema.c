@@ -3275,7 +3275,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  goto error_exit;
 	}
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-      if (IS_HIDDEN_INDEX_COL_NAME (attnames[i]))
+      if (IS_RESERVED_INDEX_ATTR_NAME (attnames[i]))
 	{
 	  assert (hidden_index_col == -1);
 	  hidden_index_col = i;
@@ -7587,7 +7587,7 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
     }
   else if (fk_info->dupkey_mode != DUP_MODE_NONE)
     {
-      att_names[i++] = (char *) GET_HIDDEN_INDEX_COL_NAME (fk_info->dupkey_mode, fk_info->dupkey_hash_level);
+      att_names[i++] = (char *) GET_RESERVED_INDEX_ATTR_NAME (fk_info->dupkey_mode, fk_info->dupkey_hash_level);
     }
 #endif
   att_names[i] = NULL;

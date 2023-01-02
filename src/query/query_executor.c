@@ -21879,7 +21879,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  index_att = index->atts[j];
 	  att_id = index_att->id;
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-	  assert (att_id >= 0 || IS_HIDDEN_INDEX_COL_ID (att_id));
+	  assert (att_id >= 0 || IS_RESERVED_INDEX_ATTR_ID (att_id));
 #else
 	  assert (att_id >= 0);
 #endif
@@ -21941,12 +21941,12 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 	  /* Column_name */
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-	  if (IS_HIDDEN_INDEX_COL_ID (att_id))
+	  if (IS_RESERVED_INDEX_ATTR_ID (att_id))
 	    {			// Should I show this here or not!  -- ctshim
 #if defined(ENABLE_SHOW_HIDDEN_ATTR)
-	      int mode = GET_HIDDEN_INDEX_COL_MODE (att_id);
-	      int level = GET_HIDDEN_INDEX_COL_LEVEL (att_id);
-	      char *hidden_col_name = (char *) GET_HIDDEN_INDEX_COL_NAME (mode, level);
+	      int mode = GET_RESERVED_INDEX_ATTR_MODE (att_id);
+	      int level = GET_RESERVED_INDEX_ATTR_LEVEL (att_id);
+	      char *hidden_col_name = (char *) GET_RESERVED_INDEX_ATTR_NAME (mode, level);
 
 	      db_make_string (out_values[4], hidden_col_name);
 	      qexec_end_one_iteration (thread_p, xasl, xasl_state, &tplrec);

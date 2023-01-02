@@ -4091,7 +4091,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
        * Please notice that we don't currently support <match type>.
        */
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
-      if (IS_HIDDEN_INDEX_COL_ID (index->atts[index->n_atts - 1]->id))
+      if (IS_RESERVED_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
 	{
 	  has_null = (index->n_atts > 2) ? btree_multicol_key_has_null (key_dbvalue) : DB_IS_NULL (key_dbvalue);
 	}

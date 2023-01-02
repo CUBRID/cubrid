@@ -271,7 +271,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 
       att->type = or_att->type;
       att->id = or_att->id;
-      assert (!IS_HIDDEN_INDEX_COL_ID (att->id));
+      assert (!IS_RESERVED_INDEX_ATTR_ID (att->id));
       att->location = or_att->location;
       att->position = or_att->position;
       att->val_length = or_att->default_value.val_length;
@@ -1933,9 +1933,9 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 
 	  att_id = db_get_int (&att_val);
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-	  if (IS_HIDDEN_INDEX_COL_ID (att_id))
+	  if (IS_RESERVED_INDEX_ATTR_ID (att_id))
 	    {
-	      index->atts[index->n_atts] = (OR_ATTRIBUTE *) dk_find_or_hidden_attribute (att_id);
+	      index->atts[index->n_atts] = (OR_ATTRIBUTE *) dk_find_or_reserved_index_attribute (att_id);
 	      (index->n_atts)++;
 	    }
 	  else
@@ -2130,13 +2130,13 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
   int size;
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-  assert (!IS_HIDDEN_INDEX_COL_ID (att_id));
+  assert (!IS_RESERVED_INDEX_ATTR_ID (att_id));
 #endif
 
   /* Find the attribute with the matching attribute ID */
   for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
     {
-      assert (!IS_HIDDEN_INDEX_COL_ID (att->id));
+      assert (!IS_RESERVED_INDEX_ATTR_ID (att->id));
       if (att->id == att_id)
 	{
 	  ptr = att;
@@ -2253,7 +2253,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
       att_id = db_get_int (&att_val);	/* The first attrID */
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-      if (IS_HIDDEN_INDEX_COL_ID (att_id))
+      if (IS_RESERVED_INDEX_ATTR_ID (att_id))
 	{
 	  /* { btid, hidden_attrID, hidden_asc_desc, [attrID, asc_desc]+, {fk_info} or {key prefix length}, status, comment} */
 	  assert (seq_size >= 8);
@@ -2515,7 +2515,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
-      assert (!IS_HIDDEN_INDEX_COL_ID (att->id));
+      assert (!IS_RESERVED_INDEX_ATTR_ID (att->id));
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -2710,7 +2710,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
-      assert (!IS_HIDDEN_INDEX_COL_ID (att->id));
+      assert (!IS_RESERVED_INDEX_ATTR_ID (att->id));
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -2790,7 +2790,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
-      assert (!IS_HIDDEN_INDEX_COL_ID (att->id));
+      assert (!IS_RESERVED_INDEX_ATTR_ID (att->id));
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -3034,7 +3034,7 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       fixed = repatt + OR_VAR_TABLE_SIZE (ORC_REPATT_VAR_ATT_COUNT);
 
       att->id = OR_GET_INT (fixed + ORC_REPATT_ID_OFFSET);
-      assert (!IS_HIDDEN_INDEX_COL_ID (att->id));
+      assert (!IS_RESERVED_INDEX_ATTR_ID (att->id));
       att->type = (DB_TYPE) OR_GET_INT (fixed + ORC_REPATT_TYPE_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -3233,7 +3233,7 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	  fixed = repatt + OR_VAR_TABLE_SIZE (ORC_REPATT_VAR_ATT_COUNT);
 
 	  att->id = OR_GET_INT (fixed + ORC_REPATT_ID_OFFSET);
-	  assert (!IS_HIDDEN_INDEX_COL_ID (att->id));
+	  assert (!IS_RESERVED_INDEX_ATTR_ID (att->id));
 	  att->type = (DB_TYPE) OR_GET_INT (fixed + ORC_REPATT_TYPE_OFFSET);
 	  att->position = j;
 	  att->default_value.val_length = 0;

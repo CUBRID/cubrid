@@ -3037,10 +3037,10 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	    }
 	  att_name = db_attribute_name (*att);
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-	  if (k == (n_attrs - 1) && IS_HIDDEN_INDEX_COL_ID ((*att)->id))
+	  if (k == (n_attrs - 1) && IS_RESERVED_INDEX_ATTR_ID ((*att)->id))
 	    {
-	      int mode = GET_HIDDEN_INDEX_COL_MODE ((*att)->id);
-	      int level = GET_HIDDEN_INDEX_COL_LEVEL ((*att)->id);
+	      int mode = GET_RESERVED_INDEX_ATTR_MODE ((*att)->id);
+	      int level = GET_RESERVED_INDEX_ATTR_LEVEL ((*att)->id);
 	      pt_print_hidden_index_info (hidden_col_buf, sizeof (hidden_col_buf), mode, level);
 	      is_check_hidden_col = true;
 	      break;

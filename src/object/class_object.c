@@ -2575,9 +2575,9 @@ classobj_find_attribute_list (SM_ATTRIBUTE * attlist, const char *name, int id)
 	    }
 	}
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-      if (IS_HIDDEN_INDEX_COL_NAME (name))
+      if (IS_RESERVED_INDEX_ATTR_NAME (name))
 	{
-	  return dk_find_sm_hidden_attribute (-1, name);
+	  return dk_find_sm_reserved_index_attribute (-1, name);
 	}
 #endif
     }
@@ -2591,9 +2591,9 @@ classobj_find_attribute_list (SM_ATTRIBUTE * attlist, const char *name, int id)
 	    }
 	}
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-      if (IS_HIDDEN_INDEX_COL_ID (id))
+      if (IS_RESERVED_INDEX_ATTR_ID (id))
 	{
-	  return dk_find_sm_hidden_attribute (id, NULL);
+	  return dk_find_sm_reserved_index_attribute (id, NULL);
 	}
 #endif
     }
@@ -4085,7 +4085,7 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
   int hidden_index_col = -1;
   for (nnames = 0, namep = att_names; *namep; namep++, nnames++)
     {
-      if (IS_HIDDEN_INDEX_COL_NAME (*namep))
+      if (IS_RESERVED_INDEX_ATTR_NAME (*namep))
 	{
 	  hidden_index_col = nnames;
 	}
@@ -4222,7 +4222,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
       new_len = len;
       if (*attp)
 	{
-	  if (IS_HIDDEN_INDEX_COL_NAME ((*attp)->header.name))
+	  if (IS_RESERVED_INDEX_ATTR_NAME ((*attp)->header.name))
 	    {
 	      if (new_cons == DB_CONSTRAINT_FOREIGN_KEY && cons->type != SM_CONSTRAINT_FOREIGN_KEY)	// ctshim, FK!
 		{
@@ -4235,7 +4235,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 
       if (*namep)
 	{
-	  if (IS_HIDDEN_INDEX_COL_NAME (*namep))
+	  if (IS_RESERVED_INDEX_ATTR_NAME (*namep))
 	    {
 	      if (cons->type == SM_CONSTRAINT_FOREIGN_KEY && new_cons != DB_CONSTRAINT_FOREIGN_KEY)	// ctshim, FK!
 		{

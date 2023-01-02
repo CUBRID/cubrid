@@ -756,10 +756,10 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	  break;
 	}
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-      if (k == (n_attrs - 1) && IS_HIDDEN_INDEX_COL_ID ((*attribute_p)->id))
+      if (k == (n_attrs - 1) && IS_RESERVED_INDEX_ATTR_ID ((*attribute_p)->id))
 	{
-	  int mode = GET_HIDDEN_INDEX_COL_MODE ((*attribute_p)->id);
-	  int level = GET_HIDDEN_INDEX_COL_LEVEL ((*attribute_p)->id);
+	  int mode = GET_RESERVED_INDEX_ATTR_MODE ((*attribute_p)->id);
+	  int level = GET_RESERVED_INDEX_ATTR_LEVEL ((*attribute_p)->id);
 	  pt_print_hidden_index_info (hidden_col_buf, sizeof (hidden_col_buf), mode, level);
 	  is_check_hidden_col = true;
 	  break;

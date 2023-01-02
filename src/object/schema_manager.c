@@ -9978,7 +9978,7 @@ build_storage_order (SM_CLASS * class_, SM_TEMPLATE * flat)
 	  /* if the ids are the same, use it without looking at the name, this is how rename works */
 	  if (new_att->id != -1)
 	    {
-	      assert (!IS_HIDDEN_INDEX_COL_ID (new_att->id));
+	      assert (!IS_RESERVED_INDEX_ATTR_ID (new_att->id));
 	      if (new_att->id == current->id)
 		{
 		  found = new_att;
