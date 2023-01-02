@@ -31,6 +31,7 @@
 #include "system.h"
 #include "dbtype_def.h"
 #include "parse_tree.h"
+#include "dup_key.h"
 
 #if defined (SERVER_MODE)
 #error Does not belong to server module

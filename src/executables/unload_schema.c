@@ -3081,7 +3081,7 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	  if (ctype == SM_CONSTRAINT_FOREIGN_KEY)
 	    {
-	      // ctshim, check
+	      // ctshim, TODO: check FK!
 	    }
 #endif
 

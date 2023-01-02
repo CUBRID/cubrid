@@ -21942,7 +21942,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  /* Column_name */
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 	  if (IS_RESERVED_INDEX_ATTR_ID (att_id))
-	    {			// Should I show this here or not!  -- ctshim
+	    {
 #if defined(ENABLE_SHOW_HIDDEN_ATTR)
 	      int mode = GET_RESERVED_INDEX_ATTR_MODE (att_id);
 	      int level = GET_RESERVED_INDEX_ATTR_LEVEL (att_id);

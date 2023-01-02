@@ -5047,7 +5047,9 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 	      attr_id = consp->attributes[0]->id;
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 	      if (IS_RESERVED_INDEX_ATTR_ID (attr_id))
-		{		// ctshim , -- need check
+		{
+		  // If a function index is defined in the first position, the second position is the actual column.
+		  // ex) create index idx on tbl(abs(val));
 		  attr_id = consp->attributes[1]->id;
 		}
 #endif

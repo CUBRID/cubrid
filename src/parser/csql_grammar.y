@@ -21486,13 +21486,14 @@ opt_index_level
 	| LEVEL UNSIGNED_INTEGER
 		{ DBG_TRACE_GRAMMAR(opt_index_level, | LEVEL UNSIGNED_INTEGER ); 
                   int int_val = -1;
+                  // ctshim to do error code?? MSGCAT_SYNTAX_INVALID_LEVEL_INT
                   if (parse_int (&int_val, $2, 10) != 0)
 		      {
-			PT_ERRORmf (this_parser, NULL, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_UNSIGNED_INT32, $2);// ctshim MSGCAT_SYNTAX_INVALID_LEVEL_INT
+			PT_ERRORmf (this_parser, NULL, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_UNSIGNED_INT32, $2);
 		      }
                   else if(int_val < OVFL_LEVEL_MIN || int_val >= OVFL_LEVEL_MAX)
                       {                          
-                        PT_ERRORmf (this_parser, NULL, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_UNSIGNED_INT32, $2); // ctshim MSGCAT_SYNTAX_INVALID_LEVEL_INT
+                        PT_ERRORmf (this_parser, NULL, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_UNSIGNED_INT32, $2);
                       }
 
    	          $$ = int_val;                  

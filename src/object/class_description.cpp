@@ -726,7 +726,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	       * belong to the table itself.
 	       */
 	      if (include_inherited
-#if defined(SUPPORT_KEY_DUP_LEVEL) // ctshim, TO DO: check it.
+#if defined(SUPPORT_KEY_DUP_LEVEL)
 		  || IS_RESERVED_INDEX_ATTR_ID (c->attributes[0]->id)
 		  || (c->attributes[0] != NULL && c->attributes[0]->class_mop == op))
 #else
@@ -755,7 +755,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	      if (SM_IS_CONSTRAINT_INDEX_FAMILY (c->type))
 		{
 		  if (include_inherited
-#if defined(SUPPORT_KEY_DUP_LEVEL) // ctshim, TO DO: check it.
+#if defined(SUPPORT_KEY_DUP_LEVEL)
 		      || IS_RESERVED_INDEX_ATTR_ID (c->attributes[0]->id)
 		      || (c->attributes[0] != NULL && c->attributes[0]->class_mop == op))
 #else

@@ -869,7 +869,7 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p, OR_VA
 	    }
 
 	  id = db_get_int (&key_atts[1].value);
-#if defined(SUPPORT_KEY_DUP_LEVEL)	// ctshim .. 우와....
+#if defined(SUPPORT_KEY_DUP_LEVEL)
 	  if (IS_RESERVED_INDEX_ATTR_ID (id))
 	    {
 	      DB_VALUE tmp_val;
@@ -894,8 +894,6 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p, OR_VA
 		    {
 		      pr_clear_value (&key_atts[1].value);
 		      pr_clone_value (&id_atts[1].value, &key_atts[1].value);
-
-		      // break; // ctshim check
 		    }
 		}
 #if defined(SUPPORT_KEY_DUP_LEVEL)

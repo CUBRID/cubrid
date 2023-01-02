@@ -377,16 +377,6 @@ static int do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_s
 
 static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement);
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
-extern int alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO * idx_info, char **attnames,
-					     int *asc_desc, int *attrs_prefix_length,
-					     SM_FUNCTION_INFO * func_index_info, int &hidden_index_col, int nnames,
-					     bool is_reverse);
-extern void create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int *asc_desc,
-				       int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames,
-				       bool is_reverse);
-#endif
-
 int ib_thread_count = 0;
 
 /*
@@ -2803,7 +2793,6 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
       if (ctype == DB_CONSTRAINT_INDEX || ctype == DB_CONSTRAINT_REVERSE_INDEX)
 	{
 	  if (idx_info->prefix_length == NULL)
-	    //if (idx_info->prefix_length == NULL && idx_info->function_expr == NULL) // ctshim, 임시로 함수인덱스 미지원
 	    {
 	      if (idx_info->dupkey_mode <= DUP_MODE_OVFL_LEVEL_NOT_SET)
 		{
@@ -2889,8 +2878,8 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 #if defined(SUPPORT_KEY_DUP_LEVEL)
       if (has_hidden_index_col)
 	{
-	  create_index_level_adjust (idx_info, attnames, asc_desc, attrs_prefix_length, func_index_info, nnames,
-				     SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (ctype));
+	  dk_create_index_level_adjust (idx_info, attnames, asc_desc, attrs_prefix_length, func_index_info, nnames,
+					SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (ctype));
 	}
 #endif
     }
@@ -3421,9 +3410,9 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 #if defined(SUPPORT_KEY_DUP_LEVEL)
   if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (original_ctype) && original_ctype != SM_CONSTRAINT_FOREIGN_KEY)
     {
-      error = alter_rebuild_index_level_adjust (original_ctype, &statement->info.index, attnames, asc_desc,
-						attrs_prefix_length, func_index_info, hidden_index_col, nnames,
-						SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (original_ctype));
+      error = dk_alter_rebuild_index_level_adjust (original_ctype, &statement->info.index, attnames, asc_desc,
+						   attrs_prefix_length, func_index_info, &hidden_index_col, nnames,
+						   SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (original_ctype));
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -3481,7 +3470,7 @@ end:
 	  free_and_init (attnames[i]);
 	}
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-      /* attnames[hidden_index_col] can be removed from alter_rebuild_index_level_adjust().
+      /* attnames[hidden_index_col] can be removed from dk_alter_rebuild_index_level_adjust().
        * In this case, attnames[x] is set to NULL, but the actual memory was not freed. 
        * Even if attnames[x] is set to NULL, hidden_col_name_ptr tells you the memory address you have allocated.
        */

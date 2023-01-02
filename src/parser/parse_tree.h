@@ -41,7 +41,8 @@
 #include "string_opfunc.h"
 #include "system_parameter.h"
 
-#include "dup_key.h"
+#include "dup_key_def.h"
+
 // forward definitions
 struct json_t;
 
@@ -3917,6 +3918,7 @@ enum cdc_ddl_object_type
 typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
 
 void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
+
 
 #ifdef __cplusplus
 extern "C"

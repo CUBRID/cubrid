@@ -35,16 +35,12 @@
 #include "object_representation_sr.h"
 #endif
 
-#if !defined(SERVER_MODE)
-#include "parse_tree.h"
-#endif
-
 #include "dup_key.h"
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 
 static DB_DOMAIN *
-dk_get_reserved_index_attr_domain_type (int mode, int level)
+get_reserved_index_attr_domain_type (int mode, int level)
 {
   DB_DOMAIN *domain = (DB_DOMAIN *) 0;
 
@@ -176,13 +172,13 @@ dk_or_hidden_attribute_initialized ()
 	{
 	  att_id = MK_RESERVED_INDEX_ATTR_ID (mode, level);
 	  st_or_atts[mode - 1][level].id = att_id;
-	  st_or_atts[mode - 1][level].domain = dk_get_reserved_index_attr_domain_type (mode, level);
+	  st_or_atts[mode - 1][level].domain = get_reserved_index_attr_domain_type (mode, level);
 	  st_or_atts[mode - 1][level].type = st_or_atts[mode - 1][level].domain->type->id;
 
 #ifndef NDEBUG
 	  cnt++;
 	  hidden_name = GET_RESERVED_INDEX_ATTR_NAME (mode, level);
-	  domain = dk_get_reserved_index_attr_domain_type (mode, level);
+	  domain = get_reserved_index_attr_domain_type (mode, level);
 	  dk_heap_midxkey_get_reserved_index_value (att_id, &rec_oid, &v);
 
 	  mode2 = GET_RESERVED_INDEX_ATTR_MODE (att_id);
@@ -267,7 +263,7 @@ dk_sm_hidden_attribute_initialized ()
       for (level = OVFL_LEVEL_MIN; level <= OVFL_LEVEL_MAX; level++)
 	{
 	  hidden_name = GET_RESERVED_INDEX_ATTR_NAME (mode, level);
-	  domain = dk_get_reserved_index_attr_domain_type (mode, level);
+	  domain = get_reserved_index_attr_domain_type (mode, level);
 	  if (domain == NULL)
 	    {
 	      ERROR0 (error_code, ER_SM_INVALID_ARGUMENTS);	// ctshim to do error code??
@@ -329,14 +325,15 @@ dk_find_sm_reserved_index_attribute (int att_id, const char *att_name)
 }
 
 int
-alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO * idx_info, char **attnames,
-				  int *asc_desc, int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info,
-				  int &hidden_index_col, int nnames, bool is_reverse)
+dk_alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO * idx_info, char **attnames,
+				     int *asc_desc, int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info,
+				     int *hidden_index_col, int nnames, bool is_reverse)
 {
   int func_no_args = 0;
 
   assert (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != SM_CONSTRAINT_FOREIGN_KEY);
   assert (asc_desc != NULL);
+  assert (hidden_index_col != NULL);
 
   if (idx_info->dupkey_mode <= DUP_MODE_OVFL_LEVEL_NOT_SET)
     {
@@ -346,32 +343,32 @@ alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO 
 
   if (idx_info->dupkey_mode == DUP_MODE_NONE)
     {
-      if (hidden_index_col != -1)
+      if (*hidden_index_col != -1)
 	{			// remove hidden column   
 	  // If memory release is actually required, it is performed in do_alter_index_rebuild().                
-	  attnames[hidden_index_col] = NULL;
+	  attnames[*hidden_index_col] = NULL;
 
 	  assert (!func_index_info || (func_index_info && func_index_info->attr_index_start > 0));
 	  if (func_index_info && func_index_info->attr_index_start > 0)
 	    {
-	      func_no_args = nnames - hidden_index_col;
+	      func_no_args = nnames - *hidden_index_col;
 	      if (func_no_args > 0)
 		{
-		  memmove (asc_desc + hidden_index_col, asc_desc + (hidden_index_col + 1),
+		  memmove (asc_desc + *hidden_index_col, asc_desc + (*hidden_index_col + 1),
 			   (func_no_args * sizeof (asc_desc[0])));
 		  if (attrs_prefix_length)
 		    {
-		      memmove (attrs_prefix_length + hidden_index_col, attrs_prefix_length + (hidden_index_col + 1),
+		      memmove (attrs_prefix_length + *hidden_index_col, attrs_prefix_length + (*hidden_index_col + 1),
 			       (func_no_args * sizeof (attrs_prefix_length[0])));
 		    }
-		  memmove (attnames + hidden_index_col, attnames + (hidden_index_col + 1),
+		  memmove (attnames + *hidden_index_col, attnames + (*hidden_index_col + 1),
 			   (func_no_args * sizeof (attnames[0])));
 
 		  attnames[nnames - 1] = NULL;
 		  func_index_info->attr_index_start--;
 		}
 	    }
-	  hidden_index_col = -1;
+	  *hidden_index_col = -1;
 	}
 
       return NO_ERROR;
@@ -380,15 +377,15 @@ alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO 
   assert (idx_info->dupkey_mode != DUP_MODE_NONE && idx_info->dupkey_mode != DUP_MODE_OVFL_LEVEL_NOT_SET);
   assert (idx_info->dupkey_hash_level >= OVFL_LEVEL_MIN && idx_info->dupkey_hash_level < OVFL_LEVEL_MAX);
 
-  if (hidden_index_col != -1)
+  if (*hidden_index_col != -1)
     {				// reset level       
       if (attrs_prefix_length)
 	{
-	  attrs_prefix_length[hidden_index_col] = -1;
+	  attrs_prefix_length[*hidden_index_col] = -1;
 	}
 
-      asc_desc[hidden_index_col] = (is_reverse ? 1 : 0);
-      strcpy (attnames[hidden_index_col],
+      asc_desc[*hidden_index_col] = (is_reverse ? 1 : 0);
+      strcpy (attnames[*hidden_index_col],
 	      (char *) GET_RESERVED_INDEX_ATTR_NAME (idx_info->dupkey_mode, idx_info->dupkey_hash_level));
     }
   else
@@ -410,25 +407,25 @@ alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO 
 		       attnames + func_index_info->attr_index_start, func_no_args * sizeof (attnames[0]));
 	    }
 
-	  hidden_index_col = func_index_info->attr_index_start++;
+	  *hidden_index_col = func_index_info->attr_index_start++;
 	}
       else
 	{
-	  hidden_index_col = nnames;
+	  *hidden_index_col = nnames;
 	}
 
       if (attrs_prefix_length)
 	{
-	  attrs_prefix_length[hidden_index_col] = -1;
+	  attrs_prefix_length[*hidden_index_col] = -1;
 	}
 
-      asc_desc[hidden_index_col] = (is_reverse ? 1 : 0);
+      asc_desc[*hidden_index_col] = (is_reverse ? 1 : 0);
       /* do_alter_index_rebuild() is using strdup(). The same treatment method shall be followed. */
-      attnames[hidden_index_col] =
+      attnames[*hidden_index_col] =
 	strdup ((char *) GET_RESERVED_INDEX_ATTR_NAME (idx_info->dupkey_mode, idx_info->dupkey_hash_level));
       attnames[nnames + 1] = NULL;
 
-      if (attnames[hidden_index_col] == NULL)
+      if (attnames[*hidden_index_col] == NULL)
 	{
 	  char *str = (char *) GET_RESERVED_INDEX_ATTR_NAME (idx_info->dupkey_mode, idx_info->dupkey_hash_level);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (strlen (str) + 1) * sizeof (char));
@@ -440,8 +437,8 @@ alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO 
 }
 
 void
-create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int *asc_desc,
-			   int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames, bool is_reverse)
+dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int *asc_desc,
+			      int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames, bool is_reverse)
 {
   int hidden_index_col;
 

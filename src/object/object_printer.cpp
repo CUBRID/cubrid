@@ -803,7 +803,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
       if (constraint.type == SM_CONSTRAINT_FOREIGN_KEY)
 	{
-	  // ctshim, check
+	  // ctshim, TODO: check FK!
 	}
 #endif
 

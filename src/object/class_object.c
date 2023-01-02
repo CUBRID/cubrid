@@ -4067,11 +4067,6 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_
 }
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-extern int alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO * idx_info, char **attnames,
-					     int *asc_desc, int *attrs_prefix_length,
-					     SM_FUNCTION_INFO * func_index_info, int &hidden_index_col, int nnames,
-					     bool is_reverse);
-
 static void
 classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAINT_TYPE new_cons,
 					  char **att_names, int *asc_desc, SM_FUNCTION_INFO * func_index_info)
@@ -4138,9 +4133,9 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
 
 	  // For indexes that use prefixes, it does not reach here.
 	  idx_info.dupkey_mode = DUP_MODE_NONE;
-	  alter_rebuild_index_level_adjust (new_cons, &idx_info, att_names, asc_desc, NULL, func_index_info,
-					    hidden_index_col, nnames,
-					    SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (cons->type));
+	  dk_alter_rebuild_index_level_adjust (new_cons, &idx_info, att_names, asc_desc, NULL, func_index_info,
+					       &hidden_index_col, nnames,
+					       SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (cons->type));
 
 	  return;
 	}
