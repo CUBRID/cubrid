@@ -21491,7 +21491,7 @@ opt_index_level
 		      {
 			PT_ERRORmf (this_parser, NULL, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_UNSIGNED_INT32, $2);
 		      }
-                  else if(int_val < OVFL_LEVEL_MIN || int_val >= OVFL_LEVEL_MAX)
+                  else if(int_val < OVFL_LEVEL_MIN || int_val > OVFL_LEVEL_MAX)
                       {                          
                         PT_ERRORmf (this_parser, NULL, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_UNSIGNED_INT32, $2);
                       }

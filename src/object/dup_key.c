@@ -52,24 +52,24 @@ get_reserved_index_attr_domain_type (int mode, int level)
 	{
 	  domain = &tp_Bigint_domain;	// tp_domain_construct (DB_TYPE_BIGINT, NULL, DB_BIGINT_PRECISION, 0, NULL); 
 	}
-      else if (hash_mod_val <= SHRT_MAX)
+      else if (hash_mod_val > SHRT_MAX)
 	{
-	  domain = &tp_Short_domain;	//tp_domain_construct (DB_TYPE_SHORT, NULL, DB_SHORT_PRECISION, 0, NULL);
+	  domain = &tp_Integer_domain;	//tp_domain_construct (DB_TYPE_INTEGER, NULL, DB_INTEGER_PRECISION, 0, NULL);
 	}
       else
 	{
-	  domain = &tp_Integer_domain;	//tp_domain_construct (DB_TYPE_INTEGER, NULL, DB_INTEGER_PRECISION, 0, NULL);
+	  domain = &tp_Short_domain;	//tp_domain_construct (DB_TYPE_SHORT, NULL, DB_SHORT_PRECISION, 0, NULL);
 	}
       break;
 
     case DUP_MODE_PAGEID:
-      if (level != 0 && hash_mod_val <= SHRT_MAX)
+      if (level == 0 || hash_mod_val > SHRT_MAX)
 	{
-	  domain = &tp_Short_domain;	//tp_domain_construct (DB_TYPE_SHORT, NULL, DB_SHORT_PRECISION, 0, NULL);
+	  domain = &tp_Integer_domain;	//tp_domain_construct (DB_TYPE_INTEGER, NULL, DB_INTEGER_PRECISION, 0, NULL);
 	}
       else
 	{
-	  domain = &tp_Integer_domain;	//tp_domain_construct (DB_TYPE_INTEGER, NULL, DB_INTEGER_PRECISION, 0, NULL);
+	  domain = &tp_Short_domain;	//tp_domain_construct (DB_TYPE_SHORT, NULL, DB_SHORT_PRECISION, 0, NULL);         
 	}
       break;
 
@@ -318,7 +318,7 @@ dk_find_sm_reserved_index_attribute (int att_id, const char *att_name)
       GET_RESERVED_INDEX_ATTR_MODE_LEVEL_FROM_NAME (att_name, mode, level);
     }
   assert (mode > DUP_MODE_NONE && mode < DUP_MODE_LAST);
-  assert (level >= OVFL_LEVEL_MIN && level < OVFL_LEVEL_MAX);
+  assert (level >= OVFL_LEVEL_MIN && level <= OVFL_LEVEL_MAX);
   assert (st_reserved_index_col_name[mode - 1][level] != NULL);
   assert (st_sm_atts_init == true);
 
@@ -376,7 +376,7 @@ dk_alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_IN
     }
 
   assert (idx_info->dupkey_mode != DUP_MODE_NONE && idx_info->dupkey_mode != DUP_MODE_OVFL_LEVEL_NOT_SET);
-  assert (idx_info->dupkey_hash_level >= OVFL_LEVEL_MIN && idx_info->dupkey_hash_level < OVFL_LEVEL_MAX);
+  assert (idx_info->dupkey_hash_level >= OVFL_LEVEL_MIN && idx_info->dupkey_hash_level <= OVFL_LEVEL_MAX);
 
   if (*hidden_index_col != -1)
     {				// reset level       
@@ -446,7 +446,7 @@ dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, i
   assert (asc_desc != NULL);
 
   assert (idx_info->dupkey_mode != DUP_MODE_NONE && idx_info->dupkey_mode != DUP_MODE_OVFL_LEVEL_NOT_SET);
-  assert (idx_info->dupkey_hash_level >= OVFL_LEVEL_MIN && idx_info->dupkey_hash_level < OVFL_LEVEL_MAX);
+  assert (idx_info->dupkey_hash_level >= OVFL_LEVEL_MIN && idx_info->dupkey_hash_level <= OVFL_LEVEL_MAX);
 
   if (func_index_info)
     {
