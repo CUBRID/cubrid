@@ -68,6 +68,7 @@ typedef enum
 
 #define RESERVED_INDEX_ATTR_ID_BASE    (-28480000)
 #define RESERVED_INDEX_ATTR_NAME_PREFIX  "_cub_idx_col_"
+#define RESERVED_INDEX_COL_NAME_PATTERN   "'^_cub_idx_col_(o|v|s|p)_([0][0-9]|[1][0-6])$'"
 #define RESERVED_INDEX_ATTR_NAME_PREFIX_LEN  (13)
 
 #define RESERVED_INDEX_ATTR_NAME_PREFIX_OID     "o_"
@@ -164,8 +165,6 @@ static const char *st_reserved_index_col_name[COUNT_OF_DUP_MODE][COUNT_OF_DUP_LE
 #define MK_RESERVED_INDEX_ATTR_ID(mode, level)      (RESERVED_INDEX_ATTR_ID_BASE - ((mode) | ((level) << 4)))
 #define GET_RESERVED_INDEX_ATTR_MODE(attid)         ((RESERVED_INDEX_ATTR_ID_BASE - (attid)) & 0x0000000F)
 #define GET_RESERVED_INDEX_ATTR_LEVEL(attid)        ((RESERVED_INDEX_ATTR_ID_BASE - (attid)) >> 4)
-
-#define HIDDEN_INDEX_COL_NAME_PATTERN   "'^_cub_idx_col_(o|v|s|p)_([0][0-9]|[1][0-6])$'"
 
 #define GET_RESERVED_INDEX_ATTR_MODE_LEVEL_FROM_NAME(name, mode, level)  do {                                   \
         char chx, ch_mode;                                                                                      \

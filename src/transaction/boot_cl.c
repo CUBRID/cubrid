@@ -5575,7 +5575,7 @@ boot_define_view_index (void)
 #if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(ENABLE_SHOW_HIDDEN_ATTR)   // -- ctshim     
           "NVL2((SELECT 1 FROM _db_index_key [k] WHERE [k].index_of.class_of = [i].class_of "
                                                    "AND [k].index_of.index_name = [i].[index_name] "
-                                                   "AND [k].key_attr_name RLIKE " HIDDEN_INDEX_COL_NAME_PATTERN
+                                                   "AND [k].key_attr_name RLIKE " RESERVED_INDEX_COL_NAME_PATTERN
                  "), ([i].[key_count] - 1), [i].[key_count]) AS [key_count], "
 #else
 	  "[i].[key_count] AS [key_count], "
@@ -5739,7 +5739,7 @@ boot_define_view_index_key (void)
 		"AND [au].[auth_type] = 'SELECT'"
 #if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(ENABLE_SHOW_HIDDEN_ATTR) //-- ctshim
              ")"
-          ") AND [k].[key_attr_name] NOT RLIKE " HIDDEN_INDEX_COL_NAME_PATTERN,
+          ") AND [k].[key_attr_name] NOT RLIKE " RESERVED_INDEX_COL_NAME_PATTERN,
 #else                
 	    ")",
 #endif            
