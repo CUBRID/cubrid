@@ -440,7 +440,7 @@ static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * n
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 static void pt_get_dup_mode_level(bool is_rebuild, int mode_level, short* mode, short* level);
 
-#define CHECK_HIDDEN_COL_NAME(nm)  do {  \
+#define CHECK_RESERVED_IDX_ATTR_NAME(nm)  do {  \
    if((nm) && IS_RESERVED_INDEX_ATTR_NAME((nm)->info.name.original))   \
    {                                     \
       PT_ERRORf2 (this_parser, (nm), "Attribute name [%s] is not allowed." \
@@ -449,7 +449,7 @@ static void pt_get_dup_mode_level(bool is_rebuild, int mode_level, short* mode, 
    } \
 } while(0)
 #else
-#define CHECK_HIDDEN_COL_NAME(nm)
+#define CHECK_RESERVED_IDX_ATTR_NAME(nm)
 #endif // #if defined(SUPPORT_KEY_DUP_LEVEL)
 
 #define push_msg(a) _push_msg(a, __LINE__)
@@ -10222,7 +10222,7 @@ view_attr_def
 			    node->info.attr_def.attr_name = $1;
 			    node->info.attr_def.comment = $2;
 			    node->info.attr_def.attr_type = PT_NORMAL;
-                            CHECK_HIDDEN_COL_NAME($1);
+                            CHECK_RESERVED_IDX_ATTR_NAME($1);
 			  }
 
 			$$ = node;
@@ -10448,7 +10448,7 @@ attr_def_one
 				PT_NAME_INFO_SET_FLAG (node->info.attr_def.attr_name,
 						       PT_NAME_INFO_EXTERNAL);
 			      }
-                            CHECK_HIDDEN_COL_NAME($1);
+                            CHECK_RESERVED_IDX_ATTR_NAME($1);
 			  }
 
 			parser_save_attr_def_one (node);
@@ -11104,7 +11104,7 @@ attr_def_comment
 				attr_node->info.attr_def.attr_name = $1;
 				attr_node->info.attr_def.comment = $3;
 				attr_node->info.attr_def.attr_type = parser_attr_type;
-                                CHECK_HIDDEN_COL_NAME($1);
+                                CHECK_RESERVED_IDX_ATTR_NAME($1);
 			  }
 
 			$$ = attr_node;
@@ -24276,7 +24276,7 @@ dblink_column_definition
                         {
                                 node->info.attr_def.size_constraint = dt->info.data_type.precision;
                         }
-                        CHECK_HIDDEN_COL_NAME($1);
+                        CHECK_RESERVED_IDX_ATTR_NAME($1);
                 }
 
                 $$ = node;
