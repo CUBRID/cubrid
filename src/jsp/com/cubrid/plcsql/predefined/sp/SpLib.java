@@ -1597,7 +1597,6 @@ public class SpLib {
         }
 
         String regex = getRegexForLike(pattern, escape);
-        System.out.println("temp: " + regex);
         try {
             return s.matches(regex);
         } catch (PatternSyntaxException e) {

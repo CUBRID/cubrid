@@ -320,7 +320,7 @@ between_expression
     ;
 
 in_expression
-    : like_expression                               # in_expression_prime
+    : like_expression                       # in_expression_prime
     | in_expression NOT? IN in_elements     # in_exp
     ;
 
