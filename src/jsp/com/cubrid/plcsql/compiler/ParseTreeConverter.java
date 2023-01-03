@@ -325,10 +325,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         Expr l = visitExpression(ctx.concatenation(0), "Integer");
         Expr r = visitExpression(ctx.concatenation(1), "Integer");
         String opStr =
-                ctx.ASTERISK() != null ? "Mult" :
-                ctx.SOLIDUS() != null ? "Div" :
-                ctx.DIV() != null ? "DivInt" :
-                ctx.MOD() != null ? "Mod" : null;
+                ctx.ASTERISK() != null
+                        ? "Mult"
+                        : ctx.SOLIDUS() != null
+                                ? "Div"
+                                : ctx.DIV() != null ? "DivInt" : ctx.MOD() != null ? "Mod" : null;
         assert opStr != null;
 
         return new ExprBinaryOp(opStr, l, r);
@@ -376,8 +377,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         Expr l = visitExpression(ctx.concatenation(0), "Integer");
         Expr r = visitExpression(ctx.concatenation(1), "Integer");
         String opStr =
-                ctx.LT2() != null ? "BitShiftLeft" :
-                ctx.GT2() != null ? "BitShiftRight" : null;
+                ctx.LT2() != null ? "BitShiftLeft" : ctx.GT2() != null ? "BitShiftRight" : null;
         assert opStr != null;
 
         return new ExprBinaryOp(opStr, l, r);
