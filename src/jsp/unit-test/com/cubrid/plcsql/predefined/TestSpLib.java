@@ -31,29 +31,24 @@
 package com.cubrid.plcsql.predefined;
 
 import static com.cubrid.plcsql.predefined.sp.SpLib.*;
-
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertEquals;
-
-import org.junit.Test;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import java.math.BigDecimal;
-
 import java.time.LocalDate;
-import java.time.LocalTime;
 import java.time.LocalDateTime;
-import java.time.ZonedDateTime;
+import java.time.LocalTime;
 import java.time.ZoneOffset;
-
-import java.util.Set;
-import java.util.List;
+import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.ArrayList;
-
+import java.util.List;
+import java.util.Set;
 import org.apache.commons.collections4.MultiSet;
 import org.apache.commons.collections4.multiset.HashMultiSet;
+import org.junit.Test;
 
 public class TestSpLib {
     @Test
@@ -71,9 +66,9 @@ public class TestSpLib {
 
     @Test
     public void testOpNeg() {
-        assertEquals(opNeg(Short.valueOf((short)1)), Short.valueOf((short)-1));
+        assertEquals(opNeg(Short.valueOf((short) 1)), Short.valueOf((short) -1));
         assertEquals(opNeg(Integer.valueOf(1)), Integer.valueOf(-1));
-        assertEquals(opNeg(Long.valueOf((long)1)), Long.valueOf((long)-1));
+        assertEquals(opNeg(Long.valueOf((long) 1)), Long.valueOf((long) -1));
         assertEquals(opNeg(new BigDecimal("1.1")), new BigDecimal("-1.1"));
         assertEquals(opNeg(Float.valueOf(1.1f)), Float.valueOf(-1.1f));
         assertEquals(opNeg(Double.valueOf(1.1)), Double.valueOf(-1.1));
@@ -81,9 +76,9 @@ public class TestSpLib {
 
     @Test
     public void testOpBitCompli() {
-        assertEquals(opBitCompli(Short.valueOf((short)1)), Long.valueOf(~(long)1));
-        assertEquals(opBitCompli(Integer.valueOf(1)), Long.valueOf(~(long)1));
-        assertEquals(opBitCompli(Long.valueOf((long)1)), Long.valueOf(~(long)1));
+        assertEquals(opBitCompli(Short.valueOf((short) 1)), Long.valueOf(~(long) 1));
+        assertEquals(opBitCompli(Integer.valueOf(1)), Long.valueOf(~(long) 1));
+        assertEquals(opBitCompli(Long.valueOf((long) 1)), Long.valueOf(~(long) 1));
     }
 
     @Test
@@ -138,9 +133,9 @@ public class TestSpLib {
         assertEquals(opLe("abd", "abc"), false);
 
         // shorts
-        assertEquals(opLe((short)1, (short)1), true);
-        assertEquals(opLe((short)0, (short)1), true);
-        assertEquals(opLe((short)2, (short)1), false);
+        assertEquals(opLe((short) 1, (short) 1), true);
+        assertEquals(opLe((short) 0, (short) 1), true);
+        assertEquals(opLe((short) 2, (short) 1), false);
 
         // int
         assertEquals(opLe(1, 1), true);
@@ -148,9 +143,9 @@ public class TestSpLib {
         assertEquals(opLe(2, 1), false);
 
         // longs
-        assertEquals(opLe((long)1, (long)1), true);
-        assertEquals(opLe((long)0, (long)1), true);
-        assertEquals(opLe((long)2, (long)1), false);
+        assertEquals(opLe((long) 1, (long) 1), true);
+        assertEquals(opLe((long) 0, (long) 1), true);
+        assertEquals(opLe((long) 2, (long) 1), false);
 
         // BigDecimals
         assertEquals(opLe(new BigDecimal("1.1"), new BigDecimal("1.1")), true);
@@ -168,27 +163,48 @@ public class TestSpLib {
         assertEquals(opLe(2.1, 1.1), false);
 
         // LocalDates
-        assertEquals(opLe(LocalDate.of(2000,10,10), LocalDate.of(2000,10,10)), true);
-        assertEquals(opLe(LocalDate.of(2000,10,9), LocalDate.of(2000,10,10)), true);
-        assertEquals(opLe(LocalDate.of(2000,10,11), LocalDate.of(2000,10,10)), false);
+        assertEquals(opLe(LocalDate.of(2000, 10, 10), LocalDate.of(2000, 10, 10)), true);
+        assertEquals(opLe(LocalDate.of(2000, 10, 9), LocalDate.of(2000, 10, 10)), true);
+        assertEquals(opLe(LocalDate.of(2000, 10, 11), LocalDate.of(2000, 10, 10)), false);
 
         // LocalTimes
-        assertEquals(opLe(LocalTime.of(10,10,10), LocalTime.of(10,10,10)), true);
-        assertEquals(opLe(LocalTime.of(10,10,9), LocalTime.of(10,10,10)), true);
-        assertEquals(opLe(LocalTime.of(10,10,11), LocalTime.of(10,10,10)), false);
+        assertEquals(opLe(LocalTime.of(10, 10, 10), LocalTime.of(10, 10, 10)), true);
+        assertEquals(opLe(LocalTime.of(10, 10, 9), LocalTime.of(10, 10, 10)), true);
+        assertEquals(opLe(LocalTime.of(10, 10, 11), LocalTime.of(10, 10, 10)), false);
 
         // LocalDateTimes
-        assertEquals(opLe(LocalDateTime.of(2000,10,10,10,10,10), LocalDateTime.of(2000,10,10,10,10,10)), true);
-        assertEquals(opLe(LocalDateTime.of(2000,10,9,10,10,10), LocalDateTime.of(2000,10,10,10,10,10)), true);
-        assertEquals(opLe(LocalDateTime.of(2000,10,11,10,10,10), LocalDateTime.of(2000,10,10,10,10,10)), false);
+        assertEquals(
+                opLe(
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 10),
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 10)),
+                true);
+        assertEquals(
+                opLe(
+                        LocalDateTime.of(2000, 10, 9, 10, 10, 10),
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 10)),
+                true);
+        assertEquals(
+                opLe(
+                        LocalDateTime.of(2000, 10, 11, 10, 10, 10),
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 10)),
+                false);
 
         // ZonedDateTimes
-        assertEquals(opLe(ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC),
-                          ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC)), true);
-        assertEquals(opLe(ZonedDateTime.of(2000,10,9,10,10,10,0, ZoneOffset.UTC),
-                          ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC)), true);
-        assertEquals(opLe(ZonedDateTime.of(2000,10,11,10,10,10,0, ZoneOffset.UTC),
-                          ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC)), false);
+        assertEquals(
+                opLe(
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC),
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC)),
+                true);
+        assertEquals(
+                opLe(
+                        ZonedDateTime.of(2000, 10, 9, 10, 10, 10, 0, ZoneOffset.UTC),
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC)),
+                true);
+        assertEquals(
+                opLe(
+                        ZonedDateTime.of(2000, 10, 11, 10, 10, 10, 0, ZoneOffset.UTC),
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC)),
+                false);
     }
 
     @Test
@@ -199,9 +215,9 @@ public class TestSpLib {
         assertEquals(opGe("abd", "abc"), true);
 
         // shorts
-        assertEquals(opGe((short)1, (short)1), true);
-        assertEquals(opGe((short)0, (short)1), false);
-        assertEquals(opGe((short)2, (short)1), true);
+        assertEquals(opGe((short) 1, (short) 1), true);
+        assertEquals(opGe((short) 0, (short) 1), false);
+        assertEquals(opGe((short) 2, (short) 1), true);
 
         // int
         assertEquals(opGe(1, 1), true);
@@ -209,9 +225,9 @@ public class TestSpLib {
         assertEquals(opGe(2, 1), true);
 
         // longs
-        assertEquals(opGe((long)1, (long)1), true);
-        assertEquals(opGe((long)0, (long)1), false);
-        assertEquals(opGe((long)2, (long)1), true);
+        assertEquals(opGe((long) 1, (long) 1), true);
+        assertEquals(opGe((long) 0, (long) 1), false);
+        assertEquals(opGe((long) 2, (long) 1), true);
 
         // BigDecimals
         assertEquals(opGe(new BigDecimal("1.1"), new BigDecimal("1.1")), true);
@@ -229,27 +245,48 @@ public class TestSpLib {
         assertEquals(opGe(2.1, 1.1), true);
 
         // LocalDates
-        assertEquals(opGe(LocalDate.of(2000,10,10), LocalDate.of(2000,10,10)), true);
-        assertEquals(opGe(LocalDate.of(2000,10,9), LocalDate.of(2000,10,10)), false);
-        assertEquals(opGe(LocalDate.of(2000,10,11), LocalDate.of(2000,10,10)), true);
+        assertEquals(opGe(LocalDate.of(2000, 10, 10), LocalDate.of(2000, 10, 10)), true);
+        assertEquals(opGe(LocalDate.of(2000, 10, 9), LocalDate.of(2000, 10, 10)), false);
+        assertEquals(opGe(LocalDate.of(2000, 10, 11), LocalDate.of(2000, 10, 10)), true);
 
         // LocalTimes
-        assertEquals(opGe(LocalTime.of(10,10,10), LocalTime.of(10,10,10)), true);
-        assertEquals(opGe(LocalTime.of(10,10,9), LocalTime.of(10,10,10)), false);
-        assertEquals(opGe(LocalTime.of(10,10,11), LocalTime.of(10,10,10)), true);
+        assertEquals(opGe(LocalTime.of(10, 10, 10), LocalTime.of(10, 10, 10)), true);
+        assertEquals(opGe(LocalTime.of(10, 10, 9), LocalTime.of(10, 10, 10)), false);
+        assertEquals(opGe(LocalTime.of(10, 10, 11), LocalTime.of(10, 10, 10)), true);
 
         // LocalDateTimes
-        assertEquals(opGe(LocalDateTime.of(2000,10,10,10,10,10), LocalDateTime.of(2000,10,10,10,10,10)), true);
-        assertEquals(opGe(LocalDateTime.of(2000,10,9,10,10,10), LocalDateTime.of(2000,10,10,10,10,10)), false);
-        assertEquals(opGe(LocalDateTime.of(2000,10,11,10,10,10), LocalDateTime.of(2000,10,10,10,10,10)), true);
+        assertEquals(
+                opGe(
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 10),
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 10)),
+                true);
+        assertEquals(
+                opGe(
+                        LocalDateTime.of(2000, 10, 9, 10, 10, 10),
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 10)),
+                false);
+        assertEquals(
+                opGe(
+                        LocalDateTime.of(2000, 10, 11, 10, 10, 10),
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 10)),
+                true);
 
         // ZonedDateTimes
-        assertEquals(opGe(ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC),
-                          ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC)), true);
-        assertEquals(opGe(ZonedDateTime.of(2000,10,9,10,10,10,0, ZoneOffset.UTC),
-                          ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC)), false);
-        assertEquals(opGe(ZonedDateTime.of(2000,10,11,10,10,10,0, ZoneOffset.UTC),
-                          ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC)), true);
+        assertEquals(
+                opGe(
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC),
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC)),
+                true);
+        assertEquals(
+                opGe(
+                        ZonedDateTime.of(2000, 10, 9, 10, 10, 10, 0, ZoneOffset.UTC),
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC)),
+                false);
+        assertEquals(
+                opGe(
+                        ZonedDateTime.of(2000, 10, 11, 10, 10, 10, 0, ZoneOffset.UTC),
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC)),
+                true);
     }
 
     @Test
@@ -260,9 +297,9 @@ public class TestSpLib {
         assertEquals(opLt("abd", "abc"), false);
 
         // shorts
-        assertEquals(opLt((short)1, (short)1), false);
-        assertEquals(opLt((short)0, (short)1), true);
-        assertEquals(opLt((short)2, (short)1), false);
+        assertEquals(opLt((short) 1, (short) 1), false);
+        assertEquals(opLt((short) 0, (short) 1), true);
+        assertEquals(opLt((short) 2, (short) 1), false);
 
         // int
         assertEquals(opLt(1, 1), false);
@@ -270,9 +307,9 @@ public class TestSpLib {
         assertEquals(opLt(2, 1), false);
 
         // longs
-        assertEquals(opLt((long)1, (long)1), false);
-        assertEquals(opLt((long)0, (long)1), true);
-        assertEquals(opLt((long)2, (long)1), false);
+        assertEquals(opLt((long) 1, (long) 1), false);
+        assertEquals(opLt((long) 0, (long) 1), true);
+        assertEquals(opLt((long) 2, (long) 1), false);
 
         // BigDecimals
         assertEquals(opLt(new BigDecimal("1.1"), new BigDecimal("1.1")), false);
@@ -290,27 +327,48 @@ public class TestSpLib {
         assertEquals(opLt(2.1, 1.1), false);
 
         // LocalDates
-        assertEquals(opLt(LocalDate.of(2000,10,10), LocalDate.of(2000,10,10)), false);
-        assertEquals(opLt(LocalDate.of(2000,10,9), LocalDate.of(2000,10,10)), true);
-        assertEquals(opLt(LocalDate.of(2000,10,11), LocalDate.of(2000,10,10)), false);
+        assertEquals(opLt(LocalDate.of(2000, 10, 10), LocalDate.of(2000, 10, 10)), false);
+        assertEquals(opLt(LocalDate.of(2000, 10, 9), LocalDate.of(2000, 10, 10)), true);
+        assertEquals(opLt(LocalDate.of(2000, 10, 11), LocalDate.of(2000, 10, 10)), false);
 
         // LocalTimes
-        assertEquals(opLt(LocalTime.of(10,10,10), LocalTime.of(10,10,10)), false);
-        assertEquals(opLt(LocalTime.of(10,10,9), LocalTime.of(10,10,10)), true);
-        assertEquals(opLt(LocalTime.of(10,10,11), LocalTime.of(10,10,10)), false);
+        assertEquals(opLt(LocalTime.of(10, 10, 10), LocalTime.of(10, 10, 10)), false);
+        assertEquals(opLt(LocalTime.of(10, 10, 9), LocalTime.of(10, 10, 10)), true);
+        assertEquals(opLt(LocalTime.of(10, 10, 11), LocalTime.of(10, 10, 10)), false);
 
         // LocalDateTimes
-        assertEquals(opLt(LocalDateTime.of(2000,10,10,10,10,10), LocalDateTime.of(2000,10,10,10,10,10)), false);
-        assertEquals(opLt(LocalDateTime.of(2000,10,9,10,10,10), LocalDateTime.of(2000,10,10,10,10,10)), true);
-        assertEquals(opLt(LocalDateTime.of(2000,10,11,10,10,10), LocalDateTime.of(2000,10,10,10,10,10)), false);
+        assertEquals(
+                opLt(
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 10),
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 10)),
+                false);
+        assertEquals(
+                opLt(
+                        LocalDateTime.of(2000, 10, 9, 10, 10, 10),
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 10)),
+                true);
+        assertEquals(
+                opLt(
+                        LocalDateTime.of(2000, 10, 11, 10, 10, 10),
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 10)),
+                false);
 
         // ZonedDateTimes
-        assertEquals(opLt(ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC),
-                          ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC)), false);
-        assertEquals(opLt(ZonedDateTime.of(2000,10,9,10,10,10,0, ZoneOffset.UTC),
-                          ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC)), true);
-        assertEquals(opLt(ZonedDateTime.of(2000,10,11,10,10,10,0, ZoneOffset.UTC),
-                          ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC)), false);
+        assertEquals(
+                opLt(
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC),
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC)),
+                false);
+        assertEquals(
+                opLt(
+                        ZonedDateTime.of(2000, 10, 9, 10, 10, 10, 0, ZoneOffset.UTC),
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC)),
+                true);
+        assertEquals(
+                opLt(
+                        ZonedDateTime.of(2000, 10, 11, 10, 10, 10, 0, ZoneOffset.UTC),
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC)),
+                false);
     }
 
     @Test
@@ -321,9 +379,9 @@ public class TestSpLib {
         assertEquals(opGt("abd", "abc"), true);
 
         // shorts
-        assertEquals(opGt((short)1, (short)1), false);
-        assertEquals(opGt((short)0, (short)1), false);
-        assertEquals(opGt((short)2, (short)1), true);
+        assertEquals(opGt((short) 1, (short) 1), false);
+        assertEquals(opGt((short) 0, (short) 1), false);
+        assertEquals(opGt((short) 2, (short) 1), true);
 
         // int
         assertEquals(opGt(1, 1), false);
@@ -331,9 +389,9 @@ public class TestSpLib {
         assertEquals(opGt(2, 1), true);
 
         // longs
-        assertEquals(opGt((long)1, (long)1), false);
-        assertEquals(opGt((long)0, (long)1), false);
-        assertEquals(opGt((long)2, (long)1), true);
+        assertEquals(opGt((long) 1, (long) 1), false);
+        assertEquals(opGt((long) 0, (long) 1), false);
+        assertEquals(opGt((long) 2, (long) 1), true);
 
         // BigDecimals
         assertEquals(opGt(new BigDecimal("1.1"), new BigDecimal("1.1")), false);
@@ -351,34 +409,55 @@ public class TestSpLib {
         assertEquals(opGt(2.1, 1.1), true);
 
         // LocalDates
-        assertEquals(opGt(LocalDate.of(2000,10,10), LocalDate.of(2000,10,10)), false);
-        assertEquals(opGt(LocalDate.of(2000,10,9), LocalDate.of(2000,10,10)), false);
-        assertEquals(opGt(LocalDate.of(2000,10,11), LocalDate.of(2000,10,10)), true);
+        assertEquals(opGt(LocalDate.of(2000, 10, 10), LocalDate.of(2000, 10, 10)), false);
+        assertEquals(opGt(LocalDate.of(2000, 10, 9), LocalDate.of(2000, 10, 10)), false);
+        assertEquals(opGt(LocalDate.of(2000, 10, 11), LocalDate.of(2000, 10, 10)), true);
 
         // LocalTimes
-        assertEquals(opGt(LocalTime.of(10,10,10), LocalTime.of(10,10,10)), false);
-        assertEquals(opGt(LocalTime.of(10,10,9), LocalTime.of(10,10,10)), false);
-        assertEquals(opGt(LocalTime.of(10,10,11), LocalTime.of(10,10,10)), true);
+        assertEquals(opGt(LocalTime.of(10, 10, 10), LocalTime.of(10, 10, 10)), false);
+        assertEquals(opGt(LocalTime.of(10, 10, 9), LocalTime.of(10, 10, 10)), false);
+        assertEquals(opGt(LocalTime.of(10, 10, 11), LocalTime.of(10, 10, 10)), true);
 
         // LocalDateTimes
-        assertEquals(opGt(LocalDateTime.of(2000,10,10,10,10,10), LocalDateTime.of(2000,10,10,10,10,10)), false);
-        assertEquals(opGt(LocalDateTime.of(2000,10,9,10,10,10), LocalDateTime.of(2000,10,10,10,10,10)), false);
-        assertEquals(opGt(LocalDateTime.of(2000,10,11,10,10,10), LocalDateTime.of(2000,10,10,10,10,10)), true);
+        assertEquals(
+                opGt(
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 10),
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 10)),
+                false);
+        assertEquals(
+                opGt(
+                        LocalDateTime.of(2000, 10, 9, 10, 10, 10),
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 10)),
+                false);
+        assertEquals(
+                opGt(
+                        LocalDateTime.of(2000, 10, 11, 10, 10, 10),
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 10)),
+                true);
 
         // ZonedDateTimes
-        assertEquals(opGt(ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC),
-                          ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC)), false);
-        assertEquals(opGt(ZonedDateTime.of(2000,10,9,10,10,10,0, ZoneOffset.UTC),
-                          ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC)), false);
-        assertEquals(opGt(ZonedDateTime.of(2000,10,11,10,10,10,0, ZoneOffset.UTC),
-                          ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC)), true);
+        assertEquals(
+                opGt(
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC),
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC)),
+                false);
+        assertEquals(
+                opGt(
+                        ZonedDateTime.of(2000, 10, 9, 10, 10, 10, 0, ZoneOffset.UTC),
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC)),
+                false);
+        assertEquals(
+                opGt(
+                        ZonedDateTime.of(2000, 10, 11, 10, 10, 10, 0, ZoneOffset.UTC),
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC)),
+                true);
     }
 
-    List l0 = Arrays.asList(1,2,3);
-    List l00 = Arrays.asList(1,2,3);
-    List l1 = Arrays.asList(1,1,2,2,3,3);
-    List l2 = Arrays.asList(2,3,4);
-    List l3 = Arrays.asList(1,2,3,5);
+    List l0 = Arrays.asList(1, 2, 3);
+    List l00 = Arrays.asList(1, 2, 3);
+    List l1 = Arrays.asList(1, 1, 2, 2, 3, 3);
+    List l2 = Arrays.asList(2, 3, 4);
+    List l3 = Arrays.asList(1, 2, 3, 5);
 
     Set s0 = new HashSet(l0);
     Set s00 = new HashSet(l00);
@@ -619,20 +698,24 @@ public class TestSpLib {
         assertEquals(opBetween("abe", "abb", "abd"), false);
 
         // shorts
-        assertEquals(opBetween((short)1, (short)0, (short)2), true);
-        assertEquals(opBetween((short)3, (short)0, (short)2), false);
+        assertEquals(opBetween((short) 1, (short) 0, (short) 2), true);
+        assertEquals(opBetween((short) 3, (short) 0, (short) 2), false);
 
         // int
         assertEquals(opBetween(1, 0, 2), true);
         assertEquals(opBetween(3, 0, 2), false);
 
         // longs
-        assertEquals(opBetween((long)1, (long)0, (long)2), true);
-        assertEquals(opBetween((long)3, (long)0, (long)2), false);
+        assertEquals(opBetween((long) 1, (long) 0, (long) 2), true);
+        assertEquals(opBetween((long) 3, (long) 0, (long) 2), false);
 
         // BigDecimals
-        assertEquals(opBetween(new BigDecimal("1.1"), new BigDecimal("0.1"), new BigDecimal("2.1")), true);
-        assertEquals(opBetween(new BigDecimal("3.1"), new BigDecimal("0.1"), new BigDecimal("2.1")), false);
+        assertEquals(
+                opBetween(new BigDecimal("1.1"), new BigDecimal("0.1"), new BigDecimal("2.1")),
+                true);
+        assertEquals(
+                opBetween(new BigDecimal("3.1"), new BigDecimal("0.1"), new BigDecimal("2.1")),
+                false);
 
         // floats
         assertEquals(opBetween(1.1f, 0.1f, 2.1f), true);
@@ -643,29 +726,60 @@ public class TestSpLib {
         assertEquals(opBetween(3.1, 0.1, 2.1), false);
 
         // LocalDates
-        assertEquals(opBetween(LocalDate.of(2000,10,11), LocalDate.of(2000,10,10), LocalDate.of(2000,10,12)), true);
-        assertEquals(opBetween(LocalDate.of(2000,10,13), LocalDate.of(2000,10,10), LocalDate.of(2000,10,12)), false);
+        assertEquals(
+                opBetween(
+                        LocalDate.of(2000, 10, 11),
+                        LocalDate.of(2000, 10, 10),
+                        LocalDate.of(2000, 10, 12)),
+                true);
+        assertEquals(
+                opBetween(
+                        LocalDate.of(2000, 10, 13),
+                        LocalDate.of(2000, 10, 10),
+                        LocalDate.of(2000, 10, 12)),
+                false);
 
         // LocalTimes
-        assertEquals(opBetween(LocalTime.of(10,10,11), LocalTime.of(10,10,10), LocalTime.of(10,10,12)), true);
-        assertEquals(opBetween(LocalTime.of(10,10,13), LocalTime.of(10,10,10), LocalTime.of(10,10,12)), false);
+        assertEquals(
+                opBetween(
+                        LocalTime.of(10, 10, 11),
+                        LocalTime.of(10, 10, 10),
+                        LocalTime.of(10, 10, 12)),
+                true);
+        assertEquals(
+                opBetween(
+                        LocalTime.of(10, 10, 13),
+                        LocalTime.of(10, 10, 10),
+                        LocalTime.of(10, 10, 12)),
+                false);
 
         // LocalDateTimes
-        assertEquals(opBetween(LocalDateTime.of(2000,10,10,10,10,11),
-                          LocalDateTime.of(2000,10,10,10,10,10),
-                          LocalDateTime.of(2000,10,10,10,10,12)), true);
-        assertEquals(opBetween(LocalDateTime.of(2000,10,10,10,10,13),
-                          LocalDateTime.of(2000,10,10,10,10,10),
-                          LocalDateTime.of(2000,10,10,10,10,12)), false);
+        assertEquals(
+                opBetween(
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 11),
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 10),
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 12)),
+                true);
+        assertEquals(
+                opBetween(
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 13),
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 10),
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 12)),
+                false);
 
         // ZonedDateTimes
-        assertEquals(opBetween(ZonedDateTime.of(2000,10,10,10,10,11,0, ZoneOffset.UTC),
-                          ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC),
-                          ZonedDateTime.of(2000,10,10,10,10,12,0, ZoneOffset.UTC)), true);
-        assertEquals(opBetween(ZonedDateTime.of(2000,10,10,10,10,13,0, ZoneOffset.UTC),
-                          ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC),
-                          ZonedDateTime.of(2000,10,10,10,10,12,0, ZoneOffset.UTC)), false);
-
+        assertEquals(
+                opBetween(
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 11, 0, ZoneOffset.UTC),
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC),
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 12, 0, ZoneOffset.UTC)),
+                true);
+        assertEquals(
+                opBetween(
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 13, 0, ZoneOffset.UTC),
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC),
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 12, 0, ZoneOffset.UTC)),
+                false);
     }
 
     @Test
@@ -676,31 +790,31 @@ public class TestSpLib {
 
     @Test
     public void testOpMult() {
-        assertEquals(opMult((short)1, (short)2), Short.valueOf((short)2));
+        assertEquals(opMult((short) 1, (short) 2), Short.valueOf((short) 2));
         assertEquals(opMult(1, 2), Integer.valueOf(2));
-        assertEquals(opMult((long)1, (long)2), Long.valueOf((long)2));
+        assertEquals(opMult((long) 1, (long) 2), Long.valueOf((long) 2));
         assertEquals(opMult(new BigDecimal("1.1"), new BigDecimal("2.2")), new BigDecimal("2.42"));
         assertTrue(opMult(1.1f, 2.2f) != null);
         assertTrue(opMult(1.1, 2.2) != null);
 
-        assertEquals(opMult(s0, s2), new HashSet(Arrays.asList(2,3)));
-        assertEquals(opMult(m1, s2), new HashMultiSet(Arrays.asList(2,3)));
-        assertEquals(opMult(l1, s2), new HashMultiSet(Arrays.asList(2,3)));
+        assertEquals(opMult(s0, s2), new HashSet(Arrays.asList(2, 3)));
+        assertEquals(opMult(m1, s2), new HashMultiSet(Arrays.asList(2, 3)));
+        assertEquals(opMult(l1, s2), new HashMultiSet(Arrays.asList(2, 3)));
 
-        assertEquals(opMult(s0, m2), new HashMultiSet(Arrays.asList(2,3)));
-        assertEquals(opMult(m1, m2), new HashMultiSet(Arrays.asList(2,3)));
-        assertEquals(opMult(l1, m2), new HashMultiSet(Arrays.asList(2,3)));
+        assertEquals(opMult(s0, m2), new HashMultiSet(Arrays.asList(2, 3)));
+        assertEquals(opMult(m1, m2), new HashMultiSet(Arrays.asList(2, 3)));
+        assertEquals(opMult(l1, m2), new HashMultiSet(Arrays.asList(2, 3)));
 
-        assertEquals(opMult(s0, l2), new HashMultiSet(Arrays.asList(2,3)));
-        assertEquals(opMult(m1, l2), new HashMultiSet(Arrays.asList(2,3)));
-        assertEquals(opMult(l1, l2), new HashMultiSet(Arrays.asList(2,3)));
+        assertEquals(opMult(s0, l2), new HashMultiSet(Arrays.asList(2, 3)));
+        assertEquals(opMult(m1, l2), new HashMultiSet(Arrays.asList(2, 3)));
+        assertEquals(opMult(l1, l2), new HashMultiSet(Arrays.asList(2, 3)));
     }
 
     @Test
     public void testOpDiv() {
-        assertEquals(opDiv((short)1, (short)2), Short.valueOf((short)0));
+        assertEquals(opDiv((short) 1, (short) 2), Short.valueOf((short) 0));
         assertEquals(opDiv(1, 2), Integer.valueOf(0));
-        assertEquals(opDiv((long)1, (long)2), Long.valueOf((long)0));
+        assertEquals(opDiv((long) 1, (long) 2), Long.valueOf((long) 0));
         assertEquals(opDiv(new BigDecimal("1.1"), new BigDecimal("2.2")), new BigDecimal("0.5"));
         assertTrue(opDiv(1.1f, 2.2f) != null);
         assertTrue(opDiv(1.1, 2.2) != null);
@@ -708,80 +822,95 @@ public class TestSpLib {
 
     @Test
     public void testOpDivInt() {
-        assertEquals(opDivInt((short)1, (short)2), Short.valueOf((short)0));
+        assertEquals(opDivInt((short) 1, (short) 2), Short.valueOf((short) 0));
         assertEquals(opDivInt(1, 2), Integer.valueOf(0));
-        assertEquals(opDivInt((long)1, (long)2), Long.valueOf((long)0));
+        assertEquals(opDivInt((long) 1, (long) 2), Long.valueOf((long) 0));
     }
 
     @Test
     public void testOpMod() {
-        assertEquals(opMod((short)1, (short)2), Short.valueOf((short)1));
+        assertEquals(opMod((short) 1, (short) 2), Short.valueOf((short) 1));
         assertEquals(opMod(1, 2), Integer.valueOf(1));
-        assertEquals(opMod((long)1, (long)2), Long.valueOf((long)1));
+        assertEquals(opMod((long) 1, (long) 2), Long.valueOf((long) 1));
     }
 
     @Test
     public void testOpAdd() {
-        assertEquals(opAdd((short)1, (short)2), Short.valueOf((short)3));
+        assertEquals(opAdd((short) 1, (short) 2), Short.valueOf((short) 3));
         assertEquals(opAdd(1, 2), Integer.valueOf(3));
-        assertEquals(opAdd((long)1, (long)2), Long.valueOf((long)3));
+        assertEquals(opAdd((long) 1, (long) 2), Long.valueOf((long) 3));
         assertEquals(opAdd(new BigDecimal("1.1"), new BigDecimal("2.2")), new BigDecimal("3.3"));
         assertTrue(opAdd(1.1f, 2.2f) != null);
         assertTrue(opAdd(1.1, 2.2) != null);
 
-        assertEquals(opAdd(LocalTime.of(10,10,10), 10), LocalTime.of(10,10,20));
-        assertEquals(opAdd(LocalDate.of(2000,10,10), 10), LocalDate.of(2000,10,20));
-        assertEquals(opAdd(LocalDateTime.of(2000,10,10,10,10,10), 10), LocalDateTime.of(2000,10,10,10,10,10,10000000));
-        assertEquals(opAdd(ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC), 10),
-                           ZonedDateTime.of(2000,10,10,10,10,20,0, ZoneOffset.UTC));
+        assertEquals(opAdd(LocalTime.of(10, 10, 10), 10), LocalTime.of(10, 10, 20));
+        assertEquals(opAdd(LocalDate.of(2000, 10, 10), 10), LocalDate.of(2000, 10, 20));
+        assertEquals(
+                opAdd(LocalDateTime.of(2000, 10, 10, 10, 10, 10), 10),
+                LocalDateTime.of(2000, 10, 10, 10, 10, 10, 10000000));
+        assertEquals(
+                opAdd(ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC), 10),
+                ZonedDateTime.of(2000, 10, 10, 10, 10, 20, 0, ZoneOffset.UTC));
 
-        assertEquals(opAdd(s0, s2), new HashSet(Arrays.asList(1,2,3,4)));
-        assertEquals(opAdd(m1, s2), new HashMultiSet(Arrays.asList(1,1,2,2,3,3,2,3,4)));
-        assertEquals(opAdd(l1, s2), new HashMultiSet(Arrays.asList(1,1,2,2,3,3,2,3,4)));
+        assertEquals(opAdd(s0, s2), new HashSet(Arrays.asList(1, 2, 3, 4)));
+        assertEquals(opAdd(m1, s2), new HashMultiSet(Arrays.asList(1, 1, 2, 2, 3, 3, 2, 3, 4)));
+        assertEquals(opAdd(l1, s2), new HashMultiSet(Arrays.asList(1, 1, 2, 2, 3, 3, 2, 3, 4)));
 
-        assertEquals(opAdd(s0, m2), new HashMultiSet(Arrays.asList(1,2,3,2,3,4)));
-        assertEquals(opAdd(m1, m2), new HashMultiSet(Arrays.asList(1,1,2,2,3,3,2,3,4)));
-        assertEquals(opAdd(l1, m2), new HashMultiSet(Arrays.asList(1,1,2,2,3,3,2,3,4)));
+        assertEquals(opAdd(s0, m2), new HashMultiSet(Arrays.asList(1, 2, 3, 2, 3, 4)));
+        assertEquals(opAdd(m1, m2), new HashMultiSet(Arrays.asList(1, 1, 2, 2, 3, 3, 2, 3, 4)));
+        assertEquals(opAdd(l1, m2), new HashMultiSet(Arrays.asList(1, 1, 2, 2, 3, 3, 2, 3, 4)));
 
-        assertEquals(opAdd(s0, l2), new HashMultiSet(Arrays.asList(1,2,3,2,3,4)));
-        assertEquals(opAdd(m1, l2), new HashMultiSet(Arrays.asList(1,1,2,2,3,3,2,3,4)));
-        assertEquals(opAdd(l1, l2), new ArrayList(Arrays.asList(1,1,2,2,3,3,2,3,4)));
+        assertEquals(opAdd(s0, l2), new HashMultiSet(Arrays.asList(1, 2, 3, 2, 3, 4)));
+        assertEquals(opAdd(m1, l2), new HashMultiSet(Arrays.asList(1, 1, 2, 2, 3, 3, 2, 3, 4)));
+        assertEquals(opAdd(l1, l2), new ArrayList(Arrays.asList(1, 1, 2, 2, 3, 3, 2, 3, 4)));
     }
 
     @Test
     public void testOpSubtract() {
-        assertEquals(opSubtract((short)1, (short)2), Short.valueOf((short)-1));
+        assertEquals(opSubtract((short) 1, (short) 2), Short.valueOf((short) -1));
         assertEquals(opSubtract(1, 2), Integer.valueOf(-1));
-        assertEquals(opSubtract((long)1, (long)2), Long.valueOf((long)-1));
-        assertEquals(opSubtract(new BigDecimal("1.1"), new BigDecimal("2.2")), new BigDecimal("-1.1"));
+        assertEquals(opSubtract((long) 1, (long) 2), Long.valueOf((long) -1));
+        assertEquals(
+                opSubtract(new BigDecimal("1.1"), new BigDecimal("2.2")), new BigDecimal("-1.1"));
         assertTrue(opSubtract(1.1f, 2.2f) != null);
         assertTrue(opSubtract(1.1, 2.2) != null);
 
-        assertEquals(opSubtract(LocalTime.of(10,10,10), LocalTime.of(10,10,0)), Long.valueOf(10L));
-        assertEquals(opSubtract(LocalDate.of(2000,10,10), LocalDate.of(2000,9,30)), Long.valueOf(10L));
-        assertEquals(opSubtract(LocalDateTime.of(2000,10,10,10,10,10), LocalDateTime.of(2000,10,10,10,10,9,990000000)),
-                     Long.valueOf(10L));
-        assertEquals(opSubtract(ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC),
-                                ZonedDateTime.of(2000,10,10,10,10,0,0, ZoneOffset.UTC)),
-                     Long.valueOf(10L));
+        assertEquals(
+                opSubtract(LocalTime.of(10, 10, 10), LocalTime.of(10, 10, 0)), Long.valueOf(10L));
+        assertEquals(
+                opSubtract(LocalDate.of(2000, 10, 10), LocalDate.of(2000, 9, 30)),
+                Long.valueOf(10L));
+        assertEquals(
+                opSubtract(
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 10),
+                        LocalDateTime.of(2000, 10, 10, 10, 10, 9, 990000000)),
+                Long.valueOf(10L));
+        assertEquals(
+                opSubtract(
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC),
+                        ZonedDateTime.of(2000, 10, 10, 10, 10, 0, 0, ZoneOffset.UTC)),
+                Long.valueOf(10L));
 
-        assertEquals(opSubtract(LocalTime.of(10,10,10), 10), LocalTime.of(10,10,0));
-        assertEquals(opSubtract(LocalDate.of(2000,10,10), 10), LocalDate.of(2000,9,30));
-        assertEquals(opSubtract(LocalDateTime.of(2000,10,10,10,10,10), 10), LocalDateTime.of(2000,10,10,10,10,9,990000000));
-        assertEquals(opSubtract(ZonedDateTime.of(2000,10,10,10,10,10,0, ZoneOffset.UTC), 10),
-                                ZonedDateTime.of(2000,10,10,10,10,0,0, ZoneOffset.UTC));
+        assertEquals(opSubtract(LocalTime.of(10, 10, 10), 10), LocalTime.of(10, 10, 0));
+        assertEquals(opSubtract(LocalDate.of(2000, 10, 10), 10), LocalDate.of(2000, 9, 30));
+        assertEquals(
+                opSubtract(LocalDateTime.of(2000, 10, 10, 10, 10, 10), 10),
+                LocalDateTime.of(2000, 10, 10, 10, 10, 9, 990000000));
+        assertEquals(
+                opSubtract(ZonedDateTime.of(2000, 10, 10, 10, 10, 10, 0, ZoneOffset.UTC), 10),
+                ZonedDateTime.of(2000, 10, 10, 10, 10, 0, 0, ZoneOffset.UTC));
 
         assertEquals(opSubtract(s0, s2), new HashSet(Arrays.asList(1)));
-        assertEquals(opSubtract(m1, s2), new HashMultiSet(Arrays.asList(1,1,2,3)));
-        assertEquals(opSubtract(l1, s2), new HashMultiSet(Arrays.asList(1,1,2,3)));
+        assertEquals(opSubtract(m1, s2), new HashMultiSet(Arrays.asList(1, 1, 2, 3)));
+        assertEquals(opSubtract(l1, s2), new HashMultiSet(Arrays.asList(1, 1, 2, 3)));
 
         assertEquals(opSubtract(s0, m2), new HashMultiSet(Arrays.asList(1)));
-        assertEquals(opSubtract(m1, m2), new HashMultiSet(Arrays.asList(1,1,2,3)));
-        assertEquals(opSubtract(l1, m2), new HashMultiSet(Arrays.asList(1,1,2,3)));
+        assertEquals(opSubtract(m1, m2), new HashMultiSet(Arrays.asList(1, 1, 2, 3)));
+        assertEquals(opSubtract(l1, m2), new HashMultiSet(Arrays.asList(1, 1, 2, 3)));
 
         assertEquals(opSubtract(s0, l2), new HashMultiSet(Arrays.asList(1)));
-        assertEquals(opSubtract(m1, l2), new HashMultiSet(Arrays.asList(1,1,2,3)));
-        assertEquals(opSubtract(l1, l2), new HashMultiSet(Arrays.asList(1,1,2,3)));
+        assertEquals(opSubtract(m1, l2), new HashMultiSet(Arrays.asList(1, 1, 2, 3)));
+        assertEquals(opSubtract(l1, l2), new HashMultiSet(Arrays.asList(1, 1, 2, 3)));
     }
 
     @Test
@@ -824,6 +953,4 @@ public class TestSpLib {
         assertTrue(opLike("a%bc", "a\\%%", "\\"));
         assertTrue(opLike("a_bc", "a\\_%", "\\"));
     }
-
 }
-

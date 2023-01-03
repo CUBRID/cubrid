@@ -31,20 +31,16 @@
 package com.cubrid.plcsql.predefined.sp;
 
 import static com.cubrid.plcsql.predefined.sp.SpLib.*;
-
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertTrue;
 
-import java.util.Set;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Arrays;
-
+import java.util.Set;
 import org.apache.commons.collections4.MultiSet;
 import org.apache.commons.collections4.multiset.HashMultiSet;
-
 import org.junit.Test;
 
 public class TestSpLibPriv {
@@ -163,6 +159,4 @@ public class TestSpLibPriv {
         assertEquals(m0, intersectMultiSets(m0, m1));
         assertEquals(m16, intersectMultiSets(m0, m2));
     }
-
 }
-
