@@ -51,6 +51,7 @@ class db_value_printer
     void describe_money (const db_monetary *value); //former describe_money(parser...)
     void describe_value (const db_value *value);    //former describe_value(parser...)
     void describe_data (const db_value *value);     //former describe_data(parser...)
+    void describe_comment_value (const db_value *value);    //former describe_value(parser...)
 
   protected:
     void describe_midxkey (const db_midxkey *midxkey, int help_Max_set_elements=20);  //former describe_midxkey()

@@ -674,7 +674,7 @@ geçerli seçenekler:\n\
       --db-volume-size=SIZE        ilave yoğunluk büyüklüğü; varsayılan: cubrid.conf içinde db_volume_size\n\
       --max-writesize-in-sec=SIZE  the amount of volume written per second; (ex. 512K, 1M, 10M); default: not used; minimum: 160K\n\
   -n, --volume-name=NAME           Bilgi yoğunluğunun NAME; varsayılan: örneğin, "db"_ext1 olarak oluşturmak\n\
-  -F, --file-path=PATH             yoğunluk dosyası eklemek için PATH; varsayılan: çalışma dizini\n\
+  -F, --file-path=PATH             yoğunluk dosyası eklemek için PATH; varsayılan: volume_extension_path\n\
       --comment=COMMENT            yoğunluk dosyası eklemek için COMMENT; varsayılan: hiçbir\n\
   -p, --purpose=PURPOSE            yoğunluk dosyası eklemek için PURPOSE; izin:\n\
                                            DATA - sadece veri için\n\

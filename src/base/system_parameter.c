@@ -89,6 +89,7 @@
 #include "thread_worker_pool.hpp"	// for cubthread::system_core_count
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
+#include "string_regex.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -708,6 +709,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_USE_USER_HOSTS "use_user_hosts"
 
 #define PRM_NAME_QMGR_MAX_QUERY_PER_TRAN "max_query_per_tran"
+
+#define PRM_NAME_REGEXP_ENGINE "regexp_engine"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2326,6 +2329,10 @@ static int prm_max_query_per_tran_default = 100;
 static int prm_max_query_per_tran_lower = 1;
 static int prm_max_query_per_tran_upper = SHRT_MAX;
 static unsigned int prm_max_query_per_tran_flag = 0;
+
+const char *PRM_REGEXP_ENGINE = "re2";
+static const char *prm_regexp_engine_default = "re2";
+static unsigned int prm_regexp_engine_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6132,7 +6139,18 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_max_query_per_tran_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_REGEXP_ENGINE,
+   PRM_NAME_REGEXP_ENGINE,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_STRING,
+   &prm_regexp_engine_flag,
+   (void *) &prm_regexp_engine_default,
+   (void *) &PRM_REGEXP_ENGINE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 static int num_session_parameters = 0;
@@ -7098,6 +7116,16 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
 	  error = PRM_ERR_CANNOT_CHANGE;
 	  prm_report_bad_entry (key + sec_len, ini->lineno[i], error, file);
 	  return error;
+	}
+
+      if (strcmp (prm->name, PRM_NAME_REGEXP_ENGINE) == 0 && value)
+	{
+	  if (cubregex::check_regexp_engine_prm (value) == false)
+	    {
+	      error = PRM_ERR_BAD_VALUE;
+	      prm_report_bad_entry (key + sec_len, ini->lineno[i], error, file);
+	      return error;
+	    }
 	}
 
       error = prm_set (prm, value, true);
@@ -12662,3 +12690,98 @@ sysprm_update_cached_session_param_val (const PARAM_ID prm_id)
     }
 }
 #endif /* CS_MODE */
+
+#if defined (WINDOWS)
+/*
+ * prm_get_integer_value () - get the value of a parameter of type integer
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ *
+ * NOTE: keywords are stored as integers
+ */
+int
+prm_get_integer_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (PRM_IS_INTEGER (&prm_Def[prm_id]) || PRM_IS_KEYWORD (&prm_Def[prm_id]));
+
+  return PRM_GET_INT (prm_get_value (prm_id));
+}
+
+/*
+ * prm_get_bool_value () - get the value of a parameter of type bool
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+bool
+prm_get_bool_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (PRM_IS_BOOLEAN (&prm_Def[prm_id]));
+
+  return PRM_GET_BOOL (prm_get_value (prm_id));
+}
+
+/*
+ * prm_get_float_value () - get the value of a parameter of type float
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+float
+prm_get_float_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (PRM_IS_FLOAT (&prm_Def[prm_id]));
+
+  return PRM_GET_FLOAT (prm_get_value (prm_id));
+}
+
+/*
+ * prm_get_string_value () - get the value of a parameter of type string
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+char *
+prm_get_string_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (PRM_IS_STRING (&prm_Def[prm_id]));
+
+  return PRM_GET_STRING (prm_get_value (prm_id));
+}
+
+/*
+ * prm_get_integer_list_value () - get the value of a parameter of type
+ *				   integer list
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+int *
+prm_get_integer_list_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (PRM_IS_INTEGER_LIST (&prm_Def[prm_id]));
+
+  return PRM_GET_INTEGER_LIST (prm_get_value (prm_id));
+}
+
+/*
+ * prm_get_bigint_value () - get the value of a parameter of type size
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+UINT64
+prm_get_bigint_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (PRM_IS_BIGINT (&prm_Def[prm_id]));
+
+  return PRM_GET_BIGINT (prm_get_value (prm_id));
+}
+#endif /* window */
