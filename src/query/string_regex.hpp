@@ -24,7 +24,7 @@
 #define _STRING_REGEX_HPP_
 
 #include <regex>
-#include <re2/re2.h>
+#include "re2/re2.h"
 
 #include "error_manager.h"
 #include "intl_support.h"
