@@ -280,7 +280,7 @@ PERIOD:   '.';
 FLOATING_POINT_NUM: BASIC_UINT? '.' [0-9]+ ([eE] ('+'|'-')? BASIC_UINT)? [fF]?;
 UNSIGNED_INTEGER:    BASIC_UINT ([eE] ('+'|'-')? BASIC_UINT)?;
 
-DELIMITED_ID: '"' REGULAR_ID '"' ;
+DELIMITED_ID: ('"' | '[' | '`') REGULAR_ID ('"' | ']' | '`') ;
 CHAR_STRING: '\''  (~('\'' | '\r' | '\n') | '\'' '\'' | NEWLINE)* '\'';
 
 NULL_SAFE_EQUALS_OP:          '<=>';
@@ -330,7 +330,7 @@ SINGLE_LINE_COMMENT:    '--' ~('\r' | '\n')* NEWLINE_EOF                 -> chan
 SINGLE_LINE_COMMENT2:   '//' ~('\r' | '\n')* NEWLINE_EOF                 -> channel(HIDDEN);
 MULTI_LINE_COMMENT:     '/*' .*? '*/'                                    -> channel(HIDDEN);
 
-REGULAR_ID: SIMPLE_LETTER (SIMPLE_LETTER | '_' | '$' | [0-9])*;
+REGULAR_ID: SIMPLE_LETTER (SIMPLE_LETTER | '_' | [0-9])*;
 
 SPACES: [ \t\r\n]+ -> channel(HIDDEN);
 
