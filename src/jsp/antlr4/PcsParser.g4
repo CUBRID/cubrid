@@ -305,13 +305,8 @@ unary_logical_expression
     ;
 
 relational_expression
-    : is_null_expression                                                # relational_expression_prime
+    : between_expression                                                # relational_expression_prime
     | relational_expression relational_operator relational_expression   # rel_exp
-    ;
-
-is_null_expression
-    : between_expression                    # is_null_expression_prime
-    | is_null_expression IS NOT? NULL_      # is_null_exp
     ;
 
 between_expression
@@ -325,8 +320,13 @@ in_expression
     ;
 
 like_expression
-    : concatenation                                                         # like_expression_prime
+    : is_null_expression                                                    # like_expression_prime
     | like_expression NOT? LIKE like_expression (ESCAPE like_expression)?   # like_exp
+    ;
+
+is_null_expression
+    : concatenation                         # is_null_expression_prime
+    | is_null_expression IS NOT? NULL_      # is_null_exp
     ;
 
 concatenation
