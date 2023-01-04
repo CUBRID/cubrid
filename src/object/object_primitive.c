@@ -7766,8 +7766,7 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   int i;
-  int adv_size1, adv_size2;
-  int size1, size2;
+  int adv_size;
   TP_DOMAIN *dom1, *dom2;
   char *bitptr1, *bitptr2;
   char *mem1, *mem2;
@@ -7833,12 +7832,10 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
   bitptr1 = mul1->buf;
   bitptr2 = mul2->buf;
 
-  adv_size1 = OR_MULTI_BOUND_BIT_BYTES (mul1->domain->precision);
+  adv_size = OR_MULTI_BOUND_BIT_BYTES (mul1->domain->precision);
 
-  mem1 = bitptr1 + adv_size1;
-  mem2 = bitptr2 + adv_size1;
-  size1 = adv_size1;
-  size2 = adv_size1;
+  mem1 = bitptr1 + adv_size;
+  mem2 = bitptr2 + adv_size;
 
   dom1 = mul1->domain->setdomain;
   dom2 = mul2->domain->setdomain;
@@ -7858,16 +7855,14 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 
 	  if (OR_MULTI_ATT_IS_BOUND (bitptr1, i))
 	    {
-	      adv_size1 = pr_midxkey_element_disk_size (mem1, dom1);
-	      mem1 += adv_size1;
-	      size1 += adv_size1;
+	      adv_size = pr_midxkey_element_disk_size (mem1, dom1);
+	      mem1 += adv_size;
 	    }
 
 	  if (OR_MULTI_ATT_IS_BOUND (bitptr2, i))
 	    {
-	      adv_size2 = pr_midxkey_element_disk_size (mem2, dom2);
-	      mem2 += adv_size2;
-	      size2 += adv_size2;
+	      adv_size = pr_midxkey_element_disk_size (mem2, dom2);
+	      mem2 += adv_size;
 	    }
 	}
     }
@@ -7899,13 +7894,11 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 
 	      if (c == DB_EQ)
 		{
-		  adv_size1 = pr_midxkey_element_disk_size (mem1, dom1);
-		  mem1 += adv_size1;
-		  size1 += adv_size1;
+		  adv_size = pr_midxkey_element_disk_size (mem1, dom1);
+		  mem1 += adv_size;
 
-		  adv_size2 = pr_midxkey_element_disk_size (mem2, dom2);
-		  mem2 += adv_size2;
-		  size2 += adv_size2;
+		  adv_size = pr_midxkey_element_disk_size (mem2, dom2);
+		  mem2 += adv_size;
 		  continue;
 		}
 	    }
@@ -7982,27 +7975,27 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 
   if (result_size1 != NULL)
     {
-      adv_size1 = 0;
+      adv_size = 0;
       if (c != DB_EQ)
 	{
 	  if (dom1 != NULL && OR_MULTI_ATT_IS_BOUND (bitptr1, i))
 	    {
-	      adv_size1 = pr_midxkey_element_disk_size (mem1, dom1);
+	      adv_size = pr_midxkey_element_disk_size (mem1, dom1);
 	    }
 	}
-      *result_size1 = size1 + adv_size1;
+      *result_size1 = (int) (mem1 - mul1->buf) + adv_size;
     }
   if (result_size2 != NULL)
     {
-      adv_size2 = 0;
+      adv_size = 0;
       if (c != DB_EQ)
 	{
 	  if (dom2 != NULL && OR_MULTI_ATT_IS_BOUND (bitptr2, i))
 	    {
-	      adv_size2 = pr_midxkey_element_disk_size (mem2, dom2);
+	      adv_size = pr_midxkey_element_disk_size (mem2, dom2);
 	    }
 	}
-      *result_size2 = size2 + adv_size2;
+      *result_size2 = (int) (mem2 - mul2->buf) + adv_size;
     }
 
   *diff_column = i;
