@@ -1810,13 +1810,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                         0);
         symbolStack.putDecl("PUT_LINE", dp);
 
-        // add functions
-        DeclFunc df = new DeclFunc("OPEN_CURSOR", null, new TypeSpec("Integer"), null, null, 0);
-        symbolStack.putDecl("OPEN_CURSOR", df);
-
-        df = new DeclFunc("LAST_ERROR_POSITION", null, new TypeSpec("Integer"), null, null, 0);
-        symbolStack.putDecl("LAST_ERROR_POSITION", df);
-
         // add constants TODO implement SQLERRM and SQLCODE properly
         DeclConst dc = new DeclConst("SQLERRM", new TypeSpec("String"), ExprNull.instance());
         symbolStack.putDecl("SQLERRM", dc);
@@ -1826,9 +1819,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         dc = new DeclConst("SYSDATE", new TypeSpec("Date"), ExprNull.instance());
         symbolStack.putDecl("SYSDATE", dc);
-
-        dc = new DeclConst("NATIVE", new TypeSpec("Integer"), ExprNull.instance());
-        symbolStack.putDecl("NATIVE", dc);
 
         dc = new DeclConst("SQL", new TypeSpec("ResultSet"), ExprNull.instance());
         symbolStack.putDecl("SQL", dc);
