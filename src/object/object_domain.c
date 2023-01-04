@@ -6265,9 +6265,22 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
 	  {
-	    if (tp_atonumeric (src, target) != NO_ERROR)
+	    DB_VALUE temp;
+
+	    if (tp_atonumeric (src, &temp) != NO_ERROR)
 	      {
-		err = ER_FAILED;
+		if (er_errid () != NO_ERROR)
+		  {
+		    err = DOMAIN_ERROR;
+		  }
+		else
+		  {
+		    err = DOMAIN_INCOMPATIBLE;
+		  }
+	      }
+	    else
+	      {
+		err = tp_value_coerce (&temp, target, desired_domain);
 	      }
 	    break;
 	  }

@@ -23,36 +23,81 @@
 #ifndef _STRING_REGEX_HPP_
 #define _STRING_REGEX_HPP_
 
-#ifdef __cplusplus
 #include <regex>
-#include <locale>
+#include "re2/re2.h"
 
 #include "error_manager.h"
+#include "intl_support.h"
 #include "language_support.h"
 
-// forward declarations
+#include "string_regex_constants.hpp"
+
+#define GET_RE2_OBJ(cr) (*(cr.compiled->re2_obj))
+#define GET_STD_OBJ(cr) (*(cr.compiled->std_obj))
+
 namespace cubregex
 {
-  struct compiled_regex;
   struct cub_reg_traits;
 }
 
 // alias
-using cub_compiled_regex = cubregex::compiled_regex;
-using cub_regex_object = std::basic_regex <wchar_t, cubregex::cub_reg_traits>;
-using cub_regex_iterator = std::regex_iterator<std::wstring::iterator, wchar_t, cubregex::cub_reg_traits>;
-using cub_regex_results = std::match_results <std::wstring::iterator>;
+using cub_std_regex_iterator = std::regex_iterator<std::wstring::iterator, wchar_t, cubregex::cub_reg_traits>;
+using cub_std_regex_results = std::match_results <std::wstring::iterator>;
+using cub_std_regex = std::basic_regex <wchar_t, cubregex::cub_reg_traits>;
 
 namespace cubregex
 {
+  union compiled_regex_object
+  {
+    cub_std_regex *std_obj;
+    re2::RE2 *re2_obj;
+  };
+
   struct compiled_regex
   {
-    cub_regex_object *regex;
-    char *pattern;
+    engine_type type;
+    compiled_regex_object *compiled;
+    std::string pattern;
+    opt_flag_type flags;
+    INTL_CODESET codeset;
 
-    compiled_regex ();
+    compiled_regex ()
+      : type (LIB_NONE)
+      , compiled (nullptr)
+      , pattern ()
+      , flags (0)
+      , codeset (INTL_CODESET_NONE)
+    {
+      //
+    }
     ~compiled_regex ();
   };
+
+  /* related to system parameter */
+  bool check_regexp_engine_prm (const char *param_name);
+  engine_type get_engine_type_by_name (const char *param_name);
+
+  /*
+  * compile() - Compile regex object
+  *   return: Error code
+  *   cr(in/out): Compiled regex object
+  *   collation(in)
+  */
+  int compile (REFPTR (compiled_regex, cr), const std::string &pattern_string, const std::string &opt_str,
+	       const LANG_COLLATION *collation);
+  int search (int &result, const compiled_regex &reg, const std::string &src);
+  int count (int &result, const compiled_regex &reg, const std::string &src, const int position);
+  int instr (int &result, const compiled_regex &reg, const std::string &src,
+	     const int position, const int occurrence, const int return_opt);
+  int replace (std::string &result, const compiled_regex &reg, const std::string &src,
+	       const std::string &repl, const int position,
+	       const int occurrence);
+  int substr (std::string &result, bool &is_matched, const compiled_regex &reg, const std::string &src,
+	      const int position, const int occurrence);
+
+  //***********************************************************************************************
+  // C++ <regex> standard library
+  //***********************************************************************************************
 
   /* it throws the error_collate when collatename syntax ([[. .]]), which gives an inconsistent result, is detected. */
   struct cub_reg_traits : std::regex_traits<wchar_t>
@@ -79,30 +124,40 @@ namespace cubregex
     }
   };
 
-  void clear (cub_regex_object *&compiled_regex, char *&compiled_pattern);
-  int parse_match_type (std::regex_constants::syntax_option_type &reg_flags, std::string &opt_str);
+  std::regex_constants::syntax_option_type std_parse_match_type (const opt_flag_type &opt_type);
 
   /* because regex_error::what() gives different messages depending on compiler, an error message should be returned by error code of regex_error explicitly. */
-  std::string parse_regex_exception (std::regex_error &e);
+  std::string std_parse_regex_exception (std::regex_error &e);
 
-  bool check_should_recompile (const cub_regex_object *compiled_regex, const char *compiled_pattern,
-			       const std::string &pattern,
-			       const std::regex_constants::syntax_option_type reg_flags);
+  int std_compile (REFPTR (compiled_regex, cr), const LANG_COLLATION *collation);
+  int std_search (int &result, const compiled_regex &reg, const std::string &src);
+  int std_count (int &result, const compiled_regex &reg, const std::string &src, const int position);
+  int std_instr (int &result, const compiled_regex &reg, const std::string &src,
+		 const int position, const int occurrence, const int return_opt);
+  int std_replace (std::string &result, const compiled_regex &reg, const std::string &src,
+		   const std::string &repl, const int position,
+		   const int occurrence);
+  int std_substr (std::string &result, bool &is_matched, const compiled_regex &reg, const std::string &src,
+		  const int position, const int occurrence);
 
-  int compile (cub_regex_object *&rx_compiled_regex, const char *pattern,
-	       const std::regex_constants::syntax_option_type reg_flags, const LANG_COLLATION *collation);
-  int search (int &result, const cub_regex_object &reg, const std::string &src, const INTL_CODESET codeset);
+  //***********************************************************************************************
+  // Google RE2 library
+  //***********************************************************************************************
 
-  int count (int &result, const cub_regex_object &reg, const std::string &src, const int position,
-	     const INTL_CODESET codeset);
-  int instr (int &result, const cub_regex_object &reg, const std::string &src,
-	     const int position, const int occurrence, const int return_opt, const INTL_CODESET codeset);
-  int replace (std::string &result, const cub_regex_object &reg, const std::string &src,
-	       const std::string &repl, const int position,
-	       const int occurrence, const INTL_CODESET codeset);
-  int substr (std::string &result, bool &is_matched, const cub_regex_object &reg, const std::string &src,
-	      const int position, const int occurrence, const INTL_CODESET codeset);
+  RE2::Options re2_parse_match_type (const opt_flag_type &opt_type);
+
+  int re2_compile (REFPTR (compiled_regex, cr));
+  int re2_search (int &result, const compiled_regex &reg, const std::string &src);
+  int re2_count (int &result, const compiled_regex &reg, const std::string &src, const int position);
+  int re2_instr (int &result, const compiled_regex &reg, const std::string &src,
+		 const int position, const int occurrence, const int return_opt);
+  int re2_replace (std::string &result, const compiled_regex &reg, const std::string &src,
+		   const std::string &repl, const int position,
+		   const int occurrence);
+  int re2_substr (std::string &result, bool &is_matched, const compiled_regex &reg, const std::string &src,
+		  const int position, const int occurrence);
 }
-#endif
+
+using cub_compiled_regex = cubregex::compiled_regex;
 
 #endif // _STRING_REGEX_HPP_

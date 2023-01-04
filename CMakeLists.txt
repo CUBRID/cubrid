@@ -148,6 +148,7 @@ set(WITH_LIBOPENSSL_URL "https://www.openssl.org/source/old/1.1.1/openssl-1.1.1f
 # unixODBC library sources URL
 set(WITH_LIBUNIXODBC_URL "http://www.unixodbc.org/unixODBC-2.3.9.tar.gz")
 
+
 set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (default: EXTERNAL)")
 set(WITH_BUNDLED_PREFIX "BUNDLED" CACHE STRING "Bundled library prefix (default: BUNDLED)")
 set(WITH_SYSTEM_PREFIX "SYSTEM" CACHE STRING "System library prefix (default: SYSTEM)")
@@ -158,6 +159,7 @@ set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editlin
 set(WITH_LIBNCURSES   "${WITH_SYSTEM_PREFIX}" CACHE STRING "Build with ncurses library (default: SYSTEM)")
 set(WITH_LIBOPENSSL   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with openssl library (default: EXTERNAL)")
 set(WITH_LIBUNIXODBC  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with unixODBC library (default: EXTERNAL)")
+set(WITH_RE2          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with re2 library (default: EXTERNAL)")
 
 
 message(STATUS "Build with Curses library: ${WITH_LIBNCURSES}")
@@ -166,6 +168,7 @@ message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
 message(STATUS "Build with jansson library: ${WITH_LIBJANSSON}")
 message(STATUS "Build with openssl library: ${WITH_LIBOPENSSL}")
 message(STATUS "Build with unixODBC library: ${WITH_LIBUNIXODBC}")
+message(STATUS "Build with RE2 library: ${WITH_RE2}")
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
@@ -1217,6 +1220,38 @@ externalproject_add(${RAPIDJSON_TARGET}
 # add to external project targets
 list(APPEND EP_INCLUDES ${RAPIDJSON_INCLUDES})
 list(APPEND EP_TARGETS ${RAPIDJSON_TARGET})
+
+# RE2
+set(RE2_TARGET re2)
+if(WITH_RE2 STREQUAL "EXTERNAL")
+  if(UNIX)
+    set(RE2_INCLUDES ${CMAKE_BINARY_DIR}/external/Source/re2)
+    set(RE2_LIBS ${CMAKE_BINARY_DIR}/external/Source/re2/obj/libre2.a)
+    ADD_BY_PRODUCTS_VARIABLE ("RE2" ${RE2_LIBS})
+    externalproject_add(${RE2_TARGET}
+      GIT_REPOSITORY https://github.com/google/re2
+      GIT_TAG 5723bb8             # https://github.com/google/re2/releases/tag/2022-06-01
+      CONFIGURE_COMMAND ""        # no configure
+      BUILD_IN_SOURCE true        # re2 Makefile is designed to run locally
+      BUILD_COMMAND make CFLAGS="-fPIC" CXXFLAGS="-fPIC" # to allow static linking in shared library
+      INSTALL_COMMAND ""
+      "${RE2_BYPRODUCTS}"
+    )
+  else(UNIX)
+    set(RE2_INCLUDES ${WINDOWS_EXTERNAL_DIR}/RE2/include)
+    set(RE2_LIBS ${WINDOWS_EXTERNAL_DIR}/RE2/lib/re2.lib)
+    set(RE2_DLL ${WINDOWS_EXTERNAL_DIR}/RE2/bin/re2.dll)
+    add_custom_target(${RE2_TARGET}
+      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${RE2_TARGET} to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/re2.dll"
+      COMMAND ${CMAKE_COMMAND} -E copy ${RE2_DLL} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/re2.dll
+    )
+  endif(UNIX)
+else(WITH_RE2 STREQUAL "EXTERNAL")
+  message(FATAL_ERROR "Invalid WITH_RE2 option value ${WITH_RE2}")
+endif()
+# add to external project targets
+list(APPEND EP_LIBS ${RE2_LIBS})
+list(APPEND EP_INCLUDES ${RE2_INCLUDES})
 
 if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   message("Build JDBC Driver from cubird-jdbc submodule")

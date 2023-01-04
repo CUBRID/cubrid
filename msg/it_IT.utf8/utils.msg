@@ -674,7 +674,7 @@ opzioni valide:\n\
       --db-volume-size=SIZE        dimensione del volume addizionale; predefinito: db_volume_size in cubrid.conf\n\
       --max-writesize-in-sec=SIZE  la quantità di volume scritti al secondo; (ex. 512K, 1M, 10M); predefinito: non utilizzato; minimo: 160K\n\
   -n, --volume-name=NAME           NAME del volume di informazioni; predefinito: generate such as "db"_ext1)\n\
-  -F, --file-path=PATH             PATH per l'aggiunta di file di volume; predefinito: directory di lavoro\n\
+  -F, --file-path=PATH             PATH per l'aggiunta di file di volume; predefinito: volume_extension_path\n\
       --comment=COMMENT            COMMENT per aggiungere file di volume; predefinito: nessuno\n\
   -p, --purpose=PURPOSE            PURPOSE per l'aggiunta di file di volume; consentito:\n\
                                            DATA - solo per data\n\
