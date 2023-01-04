@@ -7830,50 +7830,45 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
   }
 #endif /* NDEBUG */
 
-  size1 = size2 = 0;
-
-  mem1 = bitptr1 = mul1->buf;
-  mem2 = bitptr2 = mul2->buf;
+  bitptr1 = mul1->buf;
+  bitptr2 = mul2->buf;
 
   adv_size1 = OR_MULTI_BOUND_BIT_BYTES (mul1->domain->precision);
 
-  mem1 += adv_size1;
-  mem2 += adv_size1;
-  size1 += adv_size1;
-  size2 += adv_size1;
+  mem1 = bitptr1 + adv_size1;
+  mem2 = bitptr2 + adv_size1;
+  size1 = adv_size1;
+  size2 = adv_size1;
 
   dom1 = mul1->domain->setdomain;
   dom2 = mul2->domain->setdomain;
 
-  if (num_index_term > 0)
-    {
-      last = num_index_term;
-    }
-  else
-    {
-      last = mul1->ncolumns;
-    }
+  last = (num_index_term > 0) ? num_index_term : mul1->ncolumns;
 
-  for (i = 0; start_colp && i < *start_colp; i++, dom1 = dom1->next, dom2 = dom2->next)
+  i = 0;
+  if (start_colp)
     {
-      if (dom1 == NULL || dom2 == NULL || dom1->is_desc != dom2->is_desc)
+      for ( /* blank */ ; i < *start_colp; i++, dom1 = dom1->next, dom2 = dom2->next)
 	{
-	  assert (false);
-	  return DB_UNK;
-	}
+	  if (dom1 == NULL || dom2 == NULL || dom1->is_desc != dom2->is_desc)
+	    {
+	      assert (false);
+	      return DB_UNK;
+	    }
 
-      if (OR_MULTI_ATT_IS_BOUND (bitptr1, i))
-	{
-	  adv_size1 = pr_midxkey_element_disk_size (mem1, dom1);
-	  mem1 += adv_size1;
-	  size1 += adv_size1;
-	}
+	  if (OR_MULTI_ATT_IS_BOUND (bitptr1, i))
+	    {
+	      adv_size1 = pr_midxkey_element_disk_size (mem1, dom1);
+	      mem1 += adv_size1;
+	      size1 += adv_size1;
+	    }
 
-      if (OR_MULTI_ATT_IS_BOUND (bitptr2, i))
-	{
-	  adv_size2 = pr_midxkey_element_disk_size (mem2, dom2);
-	  mem2 += adv_size2;
-	  size2 += adv_size2;
+	  if (OR_MULTI_ATT_IS_BOUND (bitptr2, i))
+	    {
+	      adv_size2 = pr_midxkey_element_disk_size (mem2, dom2);
+	      mem2 += adv_size2;
+	      size2 += adv_size2;
+	    }
 	}
     }
 
@@ -7885,24 +7880,36 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 	  return DB_UNK;
 	}
 
-      if (OR_MULTI_ATT_IS_BOUND (bitptr1, i) && OR_MULTI_ATT_IS_BOUND (bitptr2, i))
+      if (OR_MULTI_ATT_IS_BOUND (bitptr1, i))
 	{
-	  /* check for val1 and val2 same domain */
-	  if (dom1 == dom2 || tp_domain_match (dom1, dom2, TP_EXACT_MATCH))
+	  if (OR_MULTI_ATT_IS_BOUND (bitptr2, i))
 	    {
-	      c = dom1->type->index_cmpdisk (mem1, mem2, dom1, do_coercion, total_order, NULL);
+	      /* check for val1 and val2 same domain */
+	      if (dom1 == dom2 || tp_domain_match (dom1, dom2, TP_EXACT_MATCH))
+		{
+		  c = dom1->type->index_cmpdisk (mem1, mem2, dom1, do_coercion, total_order, NULL);
+		}
+	      else
+		{
+		  /* coercion and comparison
+		   * val1 and val2 have different domain
+		   */
+		  c = pr_midxkey_compare_element (mem1, mem2, dom1, dom2, do_coercion, total_order);
+		}
+
+	      if (c == DB_EQ)
+		{
+		  adv_size1 = pr_midxkey_element_disk_size (mem1, dom1);
+		  mem1 += adv_size1;
+		  size1 += adv_size1;
+
+		  adv_size2 = pr_midxkey_element_disk_size (mem2, dom2);
+		  mem2 += adv_size2;
+		  size2 += adv_size2;
+		  continue;
+		}
 	    }
 	  else
-	    {
-	      /* coercion and comparison
-	       * val1 and val2 have different domain
-	       */
-	      c = pr_midxkey_compare_element (mem1, mem2, dom1, dom2, do_coercion, total_order);
-	    }
-	}
-      else
-	{
-	  if (OR_MULTI_ATT_IS_BOUND (bitptr1, i))
 	    {
 	      /* val 1 bound, val 2 unbound */
 	      if (mul2->min_max_val.position == i)
@@ -7916,68 +7923,52 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 		  c = DB_GT;
 		}
 	    }
-	  else if (OR_MULTI_ATT_IS_BOUND (bitptr2, i))
+	}
+      else if (OR_MULTI_ATT_IS_BOUND (bitptr2, i))
+	{
+	  /* val 1 unbound, val 2 bound */
+	  if (mul1->min_max_val.position == i)
 	    {
-	      /* val 1 unbound, val 2 bound */
-	      if (mul1->min_max_val.position == i)
-		{
-		  /* safeguard */
-		  assert (mul1->min_max_val.type == MIN_COLUMN || mul1->min_max_val.type == MAX_COLUMN);
-		  c = (mul1->min_max_val.type == MIN_COLUMN) ? DB_LT : DB_GT;
-		}
-	      else
-		{
-		  c = DB_LT;
-		}
+	      /* safeguard */
+	      assert (mul1->min_max_val.type == MIN_COLUMN || mul1->min_max_val.type == MAX_COLUMN);
+	      c = (mul1->min_max_val.type == MIN_COLUMN) ? DB_LT : DB_GT;
 	    }
 	  else
 	    {
-	      /* val 1 unbound, val 2 unbound */
-	      /* SPECIAL_COLUMN_MIN > NULL */
-	      if (mul1->min_max_val.position == i)
+	      c = DB_LT;
+	    }
+	}
+      else
+	{
+	  /* val 1 unbound, val 2 unbound */
+	  /* SPECIAL_COLUMN_MIN > NULL */
+	  if (mul1->min_max_val.position == i)
+	    {
+	      if (mul2->min_max_val.position == i)
 		{
-		  if (mul2->min_max_val.position == i)
-		    {
-		      MIN_MAX_COLUMN_TYPE type1 = mul1->min_max_val.type;
-		      MIN_MAX_COLUMN_TYPE type2 = mul2->min_max_val.type;
-		      c = (type1 == type2) ? DB_EQ : ((type1 == MIN_COLUMN) ? DB_LT : DB_GT);
-		    }
-		  else
-		    {
-		      assert (mul1->min_max_val.type == MIN_COLUMN || mul1->min_max_val.type == MAX_COLUMN);
-		      c = (mul1->min_max_val.type == MIN_COLUMN) ? DB_LT : DB_GT;
-		    }
-		}
-	      else if (mul2->min_max_val.position == i)
-		{
-		  assert (mul2->min_max_val.type == MIN_COLUMN || mul2->min_max_val.type == MAX_COLUMN);
-		  c = (mul2->min_max_val.type == MIN_COLUMN) ? DB_GT : DB_LT;
+		  MIN_MAX_COLUMN_TYPE type1 = mul1->min_max_val.type;
+		  MIN_MAX_COLUMN_TYPE type2 = mul2->min_max_val.type;
+		  c = (type1 == type2) ? DB_EQ : ((type1 == MIN_COLUMN) ? DB_LT : DB_GT);
 		}
 	      else
 		{
-		  c = DB_EQ;
+		  assert (mul1->min_max_val.type == MIN_COLUMN || mul1->min_max_val.type == MAX_COLUMN);
+		  c = (mul1->min_max_val.type == MIN_COLUMN) ? DB_LT : DB_GT;
 		}
+	    }
+	  else if (mul2->min_max_val.position == i)
+	    {
+	      assert (mul2->min_max_val.type == MIN_COLUMN || mul2->min_max_val.type == MAX_COLUMN);
+	      c = (mul2->min_max_val.type == MIN_COLUMN) ? DB_GT : DB_LT;
+	    }
+	  else
+	    {
+	      c = DB_EQ;
+	      continue;
 	    }
 	}
 
-      if (c != DB_EQ)
-	{
-	  break;		/* exit for-loop */
-	}
-
-      if (OR_MULTI_ATT_IS_BOUND (bitptr1, i))
-	{
-	  adv_size1 = pr_midxkey_element_disk_size (mem1, dom1);
-	  mem1 += adv_size1;
-	  size1 += adv_size1;
-	}
-
-      if (OR_MULTI_ATT_IS_BOUND (bitptr2, i))
-	{
-	  adv_size2 = pr_midxkey_element_disk_size (mem2, dom2);
-	  mem2 += adv_size2;
-	  size2 += adv_size2;
-	}
+      break;			/* exit for-loop */
     }
 
   if (start_colp != NULL)
