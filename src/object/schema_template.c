@@ -128,7 +128,7 @@ static SM_CLASS_CONSTRAINT *smt_find_constraint (SM_TEMPLATE * ctemplate, const 
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 static int
-make_hidden_attribute (SM_TEMPLATE * template_, const char *name, SM_ATTRIBUTE ** attp)
+smt_find_reserved_index_attribute (SM_TEMPLATE * template_, const char *name, SM_ATTRIBUTE ** attp)
 {
   int error_code = NO_ERROR;
   SM_ATTRIBUTE *att = NULL;
@@ -2048,7 +2048,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   bool has_nulls = false;
   bool is_secondary_index = false;
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-  int hidden_index_col = -1;
+  int reserved_index_col_pos = -1;
 #endif
   assert (template_ != NULL);
 
@@ -2070,7 +2070,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 	  if (IS_RESERVED_INDEX_ATTR_NAME (att_names[n_atts]))
 	    {
-	      hidden_index_col = n_atts;
+	      reserved_index_col_pos = n_atts;
 	    }
 #endif
 	  n_atts++;
@@ -2078,7 +2078,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
     }
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-  if ((n_atts == 0) || ((n_atts == 1) && (hidden_index_col != -1)))
+  if ((n_atts == 0) || ((n_atts == 1) && (reserved_index_col_pos != -1)))
 #else
   if (n_atts == 0)
 #endif
@@ -2125,9 +2125,9 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   for (i = 0; i < n_atts && error == NO_ERROR; i++)
     {
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-      if (hidden_index_col == i)
+      if (reserved_index_col_pos == i)
 	{
-	  error = make_hidden_attribute (template_, att_names[i], &atts[i]);
+	  error = smt_find_reserved_index_attribute (template_, att_names[i], &atts[i]);
 	  continue;
 	}
 #endif
@@ -2269,7 +2269,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 	{
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	  error = smt_check_foreign_key (template_, constraint_name, atts,
-					 ((hidden_index_col == -1) ? n_atts : (n_atts - 1)), fk_info);
+					 ((reserved_index_col_pos == -1) ? n_atts : (n_atts - 1)), fk_info);
 #else
 	  error = smt_check_foreign_key (template_, constraint_name, atts, n_atts, fk_info);
 #endif

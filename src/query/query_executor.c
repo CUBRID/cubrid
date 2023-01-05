@@ -21954,9 +21954,9 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 #if defined(ENABLE_SHOW_HIDDEN_ATTR)
 	      int mode = GET_RESERVED_INDEX_ATTR_MODE (att_id);
 	      int level = GET_RESERVED_INDEX_ATTR_LEVEL (att_id);
-	      char *hidden_col_name = (char *) GET_RESERVED_INDEX_ATTR_NAME (mode, level);
+	      char *reserved_col_name = (char *) GET_RESERVED_INDEX_ATTR_NAME (mode, level);
 
-	      db_make_string (out_values[4], hidden_col_name);
+	      db_make_string (out_values[4], reserved_col_name);
 	      qexec_end_one_iteration (thread_p, xasl, xasl_state, &tplrec);
 #else
 	      /* clear alloced DB_VALUEs */

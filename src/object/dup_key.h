@@ -69,6 +69,7 @@ typedef enum
 #define RESERVED_INDEX_ATTR_NAME_REG_PATTERN   "'^_cub_idx_col_(o|v|s|p)_([0][0-9]|[1][0-6])$'"
 
 #define RESERVED_INDEX_ATTR_NAME_PREFIX_LEN  (13)	// strlen(RESERVED_INDEX_ATTR_NAME_PREFIX)
+#define RESERVED_INDEX_ATTR_NAME_BUF_SIZE    (255)
 
 #define RESERVED_INDEX_ATTR_NAME_PREFIX_OID     "o_"
 #define RESERVED_INDEX_ATTR_NAME_PREFIX_PAGEID  "p_"
@@ -195,12 +196,16 @@ extern SM_ATTRIBUTE *dk_find_sm_reserved_index_attribute (int att_id, const char
 
 extern int dk_alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO * idx_info,
 						char **attnames, int *asc_desc, int *attrs_prefix_length,
-						SM_FUNCTION_INFO * func_index_info, int *hidden_index_col, int nnames,
-						bool is_reverse);
+						SM_FUNCTION_INFO * func_index_info, int *reserved_index_col_pos,
+						int nnames, bool is_reverse);
 extern void dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int *asc_desc,
 					  int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames,
 					  bool is_reverse);
+
+extern char *dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupkey_hash_level);
 #endif
+
+
 
 extern void dk_reserved_index_attribute_initialized ();
 extern void dk_reserved_index_attribute_finalized ();

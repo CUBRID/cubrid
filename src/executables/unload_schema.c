@@ -2912,8 +2912,8 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
   const int *prefix_length;
   int k, n_attrs = 0;
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-  bool is_check_hidden_col = false;
-  char hidden_col_buf[64] = { 0x00, };
+  bool is_check_reserved_col = false;
+  char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
 #endif
 
   constraint_list = db_get_constraints (class_);
@@ -2962,7 +2962,7 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	}
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-      hidden_col_buf[0] = '\0';
+      reserved_col_buf[0] = '\0';
 #endif
 
       SPLIT_USER_SPECIFIED_NAME (cls_name, owner_name, class_name);
@@ -3041,8 +3041,8 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	    {
 	      int mode = GET_RESERVED_INDEX_ATTR_MODE ((*att)->id);
 	      int level = GET_RESERVED_INDEX_ATTR_LEVEL ((*att)->id);
-	      pt_print_hidden_index_info (hidden_col_buf, sizeof (hidden_col_buf), mode, level);
-	      is_check_hidden_col = true;
+	      dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), mode, level);
+	      is_check_reserved_col = true;
 	      break;
 	    }
 #endif
@@ -3072,11 +3072,11 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	  k++;
 	}
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-      if (hidden_col_buf[0])
+      if (reserved_col_buf[0])
 	{
-	  output_ctx (") %s", hidden_col_buf);
+	  output_ctx (") %s", reserved_col_buf);
 	}
-      else if (!is_check_hidden_col && (DUP_MODE_OVFL_LEVEL_AUTO_SET > DUP_MODE_NONE))
+      else if (!is_check_reserved_col && (DUP_MODE_OVFL_LEVEL_AUTO_SET > DUP_MODE_NONE))
 	{
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	  if (ctype == SM_CONSTRAINT_FOREIGN_KEY)
@@ -3091,8 +3091,8 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 #endif
 	    )
 	    {
-	      pt_print_hidden_index_info (hidden_col_buf, sizeof (hidden_col_buf), DUP_MODE_NONE, 0);
-	      output_ctx (") %s", hidden_col_buf);
+	      dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), DUP_MODE_NONE, 0);
+	      output_ctx (") %s", reserved_col_buf);
 	    }
 	}
       else

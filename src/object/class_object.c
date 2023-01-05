@@ -4076,17 +4076,17 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
   char **namep;
   int nnames;
 
-  // If there is a column corresponding to PK among the attributes constituting the index, the hidden_index_column is not added.
-  int hidden_index_col = -1;
+  // If there is a column corresponding to PK among the attributes constituting the index, the reserved_index_column is not added.
+  int reserved_index_col_pos = -1;
   for (nnames = 0, namep = att_names; *namep; namep++, nnames++)
     {
       if (IS_RESERVED_INDEX_ATTR_NAME (*namep))
 	{
-	  hidden_index_col = nnames;
+	  reserved_index_col_pos = nnames;
 	}
     }
 
-  if (hidden_index_col == -1)
+  if (reserved_index_col_pos == -1)
     {
       return;
     }
@@ -4134,7 +4134,7 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
 	  // For indexes that use prefixes, it does not reach here.
 	  idx_info.dupkey_mode = DUP_MODE_NONE;
 	  dk_alter_rebuild_index_level_adjust (new_cons, &idx_info, att_names, asc_desc, NULL, func_index_info,
-					       &hidden_index_col, nnames,
+					       &reserved_index_col_pos, nnames,
 					       SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (cons->type));
 
 	  return;

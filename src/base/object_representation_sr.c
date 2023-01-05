@@ -2255,7 +2255,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
 #if defined(SUPPORT_KEY_DUP_LEVEL)
       if (IS_RESERVED_INDEX_ATTR_ID (att_id))
 	{
-	  /* { btid, hidden_attrID, hidden_asc_desc, [attrID, asc_desc]+, {fk_info} or {key prefix length}, status, comment} */
+	  /* { btid, reserved_index_attrID, asc_desc, [attrID, asc_desc]+, {fk_info} or {key prefix length}, status, comment} */
 	  assert (seq_size >= 8);
 	  i = 3;
 	  if (set_get_element_nocopy (constraint_seq, i, &att_val) == NO_ERROR)

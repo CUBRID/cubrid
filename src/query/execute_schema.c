@@ -2786,7 +2786,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	}
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-      bool has_hidden_index_col = false;
+      bool has_reserved_index_col = false;
 
       // Class or shared attributes are not considered. These are not indexed columns.
       // Also, The prefix index is also not supported.(The prefix index  will be deprecated.)
@@ -2801,7 +2801,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	      else if ((idx_info->dupkey_mode != DUP_MODE_NONE)
 		       && !SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != SM_CONSTRAINT_FOREIGN_KEY)
 		{
-		  has_hidden_index_col = true;
+		  has_reserved_index_col = true;
 		  nnames++;
 		}
 	    }
@@ -2845,7 +2845,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	  c = c->next;
 	}
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-      if (has_hidden_index_col)
+      if (has_reserved_index_col)
 	{
 	  nnames--;		// get count of real columns, except hidden column
 	}
@@ -2876,7 +2876,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	    }
 	}
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-      if (has_hidden_index_col)
+      if (has_reserved_index_col)
 	{
 	  dk_create_index_level_adjust (idx_info, attnames, asc_desc, attrs_prefix_length, func_index_info, nnames,
 					SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (ctype));
@@ -3153,8 +3153,8 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
   SM_INDEX_STATUS saved_index_status = SM_NORMAL_INDEX;
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-  char *hidden_col_name_ptr = NULL;
-  int hidden_index_col = -1;
+  char *reserved_col_name_ptr = NULL;
+  int reserved_index_col_pos = -1;
   int alloc_cnt = 0;
 #else
   int alloc_cnt = 0;
@@ -3266,9 +3266,9 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 #if defined(SUPPORT_KEY_DUP_LEVEL)
       if (IS_RESERVED_INDEX_ATTR_NAME (attnames[i]))
 	{
-	  assert (hidden_index_col == -1);
-	  hidden_index_col = i;
-	  hidden_col_name_ptr = attnames[i];
+	  assert (reserved_index_col_pos == -1);
+	  reserved_index_col_pos = i;
+	  reserved_col_name_ptr = attnames[i];
 	}
 #endif
     }
@@ -3411,8 +3411,8 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
   if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (original_ctype) && original_ctype != SM_CONSTRAINT_FOREIGN_KEY)
     {
       error = dk_alter_rebuild_index_level_adjust (original_ctype, &statement->info.index, attnames, asc_desc,
-						   attrs_prefix_length, func_index_info, &hidden_index_col, nnames,
-						   SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (original_ctype));
+						   attrs_prefix_length, func_index_info, &reserved_index_col_pos,
+						   nnames, SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (original_ctype));
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -3462,21 +3462,21 @@ end:
       for (i = 0; attnames[i]; i++)
 	{
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-	  if (hidden_col_name_ptr == attnames[i])
+	  if (reserved_col_name_ptr == attnames[i])
 	    {
-	      hidden_col_name_ptr = NULL;
+	      reserved_col_name_ptr = NULL;
 	    }
 #endif
 	  free_and_init (attnames[i]);
 	}
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-      /* attnames[hidden_index_col] can be removed from dk_alter_rebuild_index_level_adjust().
+      /* attnames[reserved_index_col_pos] can be removed from dk_alter_rebuild_index_level_adjust().
        * In this case, attnames[x] is set to NULL, but the actual memory was not freed. 
-       * Even if attnames[x] is set to NULL, hidden_col_name_ptr tells you the memory address you have allocated.
+       * Even if attnames[x] is set to NULL, reserved_col_name_ptr tells you the memory address you have allocated.
        */
-      if (hidden_col_name_ptr)
+      if (reserved_col_name_ptr)
 	{
-	  free_and_init (hidden_col_name_ptr);
+	  free_and_init (reserved_col_name_ptr);
 	}
 #endif
       free_and_init (attnames);
