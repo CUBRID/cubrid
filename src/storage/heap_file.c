@@ -692,11 +692,18 @@ static OR_ATTRIBUTE *heap_locate_attribute (ATTR_ID attrid, HEAP_CACHE_ATTRINFO 
 
 static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 					 HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, TP_DOMAIN * func_domain,
-					 TP_DOMAIN ** key_domain, OID * rec_oid);
+					 TP_DOMAIN ** key_domain
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+					 , OID * rec_oid
+#endif
+  );
 static DB_MIDXKEY *heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey,
 					      int *att_ids, HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res,
-					      int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain,
-					      OID * rec_oid);
+					      int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+					      , OID * rec_oid
+#endif
+  );
 
 static int heap_dump_hdr (FILE * fp, HEAP_HDR_STATS * heap_hdr);
 
@@ -12392,7 +12399,11 @@ heap_attrvalue_get_index (int value_index, ATTR_ID * attrid, int *n_btids, BTID 
  */
 static DB_MIDXKEY *
 heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, HEAP_CACHE_ATTRINFO * attrinfo,
-		      DB_VALUE * func_res, TP_DOMAIN * func_domain, TP_DOMAIN ** key_domain, OID * rec_oid)
+		      DB_VALUE * func_res, TP_DOMAIN * func_domain, TP_DOMAIN ** key_domain
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+		      , OID * rec_oid
+#endif
+  )
 {
   char *nullmap_ptr;
   OR_ATTRIBUTE **atts;
@@ -12581,7 +12592,11 @@ error:
 static DB_MIDXKEY *
 heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey, int *att_ids,
 			   HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, int func_col_id,
-			   int func_attr_index_start, TP_DOMAIN * midxkey_domain, OID * rec_oid)
+			   int func_attr_index_start, TP_DOMAIN * midxkey_domain
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+			   , OID * rec_oid
+#endif
+  )
 {
   char *nullmap_ptr;
   int num_vals, i, reprid, k;
@@ -12782,7 +12797,11 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 	}
 
       if (heap_midxkey_key_generate (thread_p, recdes, &midxkey, att_ids, attr_info, fi_res, fi_col_id,
-				     fi_attr_index_start, midxkey_domain, cur_oid) == NULL)
+				     fi_attr_index_start, midxkey_domain
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+				     , cur_oid
+#endif
+	  ) == NULL)
 	{
 	  return NULL;
 	}
@@ -12860,7 +12879,11 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 DB_VALUE *
 heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTRINFO * idx_attrinfo, RECDES * recdes,
 			BTID * btid, DB_VALUE * db_value, char *buf, FUNC_PRED_UNPACK_INFO * func_indx_pred,
-			TP_DOMAIN ** key_domain, OID * rec_oid)
+			TP_DOMAIN ** key_domain
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+			, OID * rec_oid
+#endif
+  )
 {
   OR_INDEX *index;
   int n_atts, reprid;
@@ -12962,7 +12985,11 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 
       midxkey.min_max_val.position = -1;
 
+#if defined(SUPPORT_KEY_DUP_LEVEL)
       if (heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain, rec_oid) == NULL)
+#else
+      if (heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain) == NULL)
+#endif
 	{
 	  return NULL;
 	}

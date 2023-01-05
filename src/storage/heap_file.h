@@ -40,6 +40,7 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 #include "tde.h"
+#include "dup_key_def.h"
 
 // forward declarations
 class multi_index_unique_stats;
@@ -495,12 +496,16 @@ extern int heap_attrinfo_start_with_btid (THREAD_ENTRY * thread_p, OID * class_o
 extern DB_VALUE *heap_attrvalue_get_index (int value_index, ATTR_ID * attrid, int *n_btids, BTID ** btids,
 					   HEAP_CACHE_ATTRINFO * idx_attrinfo);
 #endif
+
 extern HEAP_ATTRVALUE *heap_attrvalue_locate (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
 extern OR_ATTRIBUTE *heap_locate_last_attrepr (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
 extern DB_VALUE *heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTRINFO * idx_attrinfo,
 					 RECDES * recdes, BTID * btid, DB_VALUE * db_value, char *buf,
-					 FUNC_PRED_UNPACK_INFO * func_indx_preds, TP_DOMAIN ** key_domain,
-					 OID * rec_oid);
+					 FUNC_PRED_UNPACK_INFO * func_indx_preds, TP_DOMAIN ** key_domain
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+					 , OID * rec_oid
+#endif
+  );
 
 extern BTID *heap_indexinfo_get_btid (int btid_index, HEAP_CACHE_ATTRINFO * attrinfo);
 extern int heap_indexinfo_get_num_attrs (int btid_index, HEAP_CACHE_ATTRINFO * attrinfo);

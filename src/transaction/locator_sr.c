@@ -202,7 +202,7 @@ static LC_FIND_CLASSNAME xlocator_reserve_class_name (THREAD_ENTRY * thread_p, c
 
 static int locator_filter_errid (THREAD_ENTRY * thread_p, int num_ignore_error_count, int *ignore_error_list);
 static int locator_area_op_to_pruning_type (LC_COPYAREA_OPERATION op);
-#if defined (ENABLE_UNUSED_FUNCTION_2)
+#if 0				// defined (ENABLE_UNUSED_FUNCTION_2)
 static int locator_prefetch_index_page (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * classrec, RECDES * recdes,
 					int btid_index, HEAP_CACHE_ATTRINFO * attr_info);
 static int locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid,
@@ -4075,8 +4075,11 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 
       /* must be updated when key_prefix_length will be added for FK and PK */
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, &index_attrinfo, recdes, &btid, &dbvalue, aligned_buf, NULL, NULL,
-				inst_oid);
+	heap_attrvalue_get_key (thread_p, i, &index_attrinfo, recdes, &btid, &dbvalue, aligned_buf, NULL, NULL
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+				, inst_oid
+#endif
+	);
       if (key_dbvalue == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -7783,7 +7786,11 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
        */
       key_dbvalue =
 	heap_attrvalue_get_key (thread_p, i, &index_attrinfo, recdes, &btid, &dbvalue, aligned_buf,
-				(func_preds ? &func_preds[i] : NULL), NULL, inst_oid);
+				(func_preds ? &func_preds[i] : NULL), NULL
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+				, inst_oid
+#endif
+	);
       if (key_dbvalue == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -8406,10 +8413,18 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 
       new_key =
 	heap_attrvalue_get_key (thread_p, i, new_attrinfo, new_recdes, &new_btid, &new_dbvalue, aligned_newbuf, NULL,
-				NULL, oid);
+				NULL
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+				, oid
+#endif
+	);
       old_key =
 	heap_attrvalue_get_key (thread_p, i, old_attrinfo, old_recdes, &old_btid, &old_dbvalue, aligned_oldbuf, NULL,
-				&key_domain, oid);
+				&key_domain
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+				, oid
+#endif
+	);
 
       if ((new_key == NULL) || (old_key == NULL))
 	{
@@ -8687,7 +8702,11 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  key_domain = NULL;
 	  repl_old_key =
 	    heap_attrvalue_get_key (thread_p, pk_btid_index, old_attrinfo, old_recdes, &old_btid, &old_dbvalue,
-				    aligned_oldbuf, NULL, &key_domain, oid);
+				    aligned_oldbuf, NULL, &key_domain
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+				    , oid
+#endif
+	    );
 	  if (repl_old_key == NULL)
 	    {
 	      error_code = ER_FAILED;
@@ -8939,7 +8958,11 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 
 	      dbvalue_ptr =
 		heap_attrvalue_get_key (thread_p, i, &index_attrinfo, &copy_rec, &inst_btid, &dbvalue, aligned_buf,
-					NULL, NULL, &inst_oid);
+					NULL, NULL
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+					, &inst_oid
+#endif
+		);
 	      if (dbvalue_ptr == NULL)
 		{
 		  continue;
@@ -8962,7 +8985,11 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 	{
 	  dbvalue_ptr =
 	    heap_attrvalue_get_key (thread_p, key_index, &index_attrinfo, &copy_rec, &inst_btid, &dbvalue, aligned_buf,
-				    NULL, NULL, &inst_oid);
+				    NULL, NULL
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+				    , &inst_oid
+#endif
+	    );
 	}
 
       /* Delete the instance from the B-tree */
@@ -9379,7 +9406,11 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
       /* Make sure that the index entry exist */
       if ((n_attr_ids == 1 && heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &record, &attr_info) != NO_ERROR)
 	  || (key = heap_attrvalue_get_key (thread_p, index_id, &attr_info, &record, &btid_info, &dbvalue, aligned_buf,
-					    NULL, NULL, &inst_oid)) == NULL)
+					    NULL, NULL
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+					    , &inst_oid
+#endif
+	      )) == NULL)
 	{
 	  if (isallvalid != DISK_INVALID)
 	    {
@@ -9829,8 +9860,11 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 	  if ((heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &peek, &attr_info) != NO_ERROR)
 	      ||
 	      ((key =
-		heap_attrvalue_get_key (thread_p, index_id, &attr_info, &peek, btid, &dbvalue, aligned_buf, NULL,
-					NULL, &inst_oid)) == NULL))
+		heap_attrvalue_get_key (thread_p, index_id, &attr_info, &peek, btid, &dbvalue, aligned_buf, NULL, NULL
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+					, &inst_oid
+#endif
+		)) == NULL))
 	    {
 	      if (isallvalid != DISK_INVALID)
 		{
@@ -12315,7 +12349,7 @@ locator_area_op_to_pruning_type (LC_COPYAREA_OPERATION op)
   return 0;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION_2)
+#if 0				// defined (ENABLE_UNUSED_FUNCTION_2)
 static int
 locator_prefetch_index_page (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * classrec, RECDES * recdes,
 			     int btid_index, HEAP_CACHE_ATTRINFO * attr_info)
@@ -12381,9 +12415,11 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid, OID 
       goto free_and_return;
     }
 
-  key =
-    heap_attrvalue_get_key (thread_p, index_id, attr_info_p, recdes, &tmp_btid, &dbvalue, aligned_buf, NULL, NULL,
-			    NULL);
+  key = heap_attrvalue_get_key (thread_p, index_id, attr_info_p, recdes, &tmp_btid, &dbvalue, aligned_buf, NULL, NULL
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+				, NULL
+#endif
+    );
   if (key == NULL)
     {
       error = ER_FAILED;

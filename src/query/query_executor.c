@@ -10367,8 +10367,11 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       BTID_COPY (&btid, &index->btid);
       // ctshim  FK check
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL,
-				NULL);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+				, NULL
+#endif
+	);
       /* TODO: unique with prefix length */
       if (key_dbvalue == NULL)
 	{
@@ -10599,7 +10602,11 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 
       // ctshim FK check
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL, NULL);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+				, NULL
+#endif
+	);
       if (key_dbvalue == NULL)
 	{
 	  goto error_exit;

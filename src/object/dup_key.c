@@ -92,7 +92,7 @@ dk_heap_midxkey_get_reserved_index_value (int att_id, OID * rec_oid, DB_VALUE * 
 {
   // The rec_oid may be NULL when the index of the UNIQUE attribute is an index. 
   // In that case, however, it cannot enter here.
-  assert (rec_oid != NULL);
+  assert_release (rec_oid != NULL);
 
   int hash_mod_val;
   short level = GET_RESERVED_INDEX_ATTR_LEVEL (att_id);
