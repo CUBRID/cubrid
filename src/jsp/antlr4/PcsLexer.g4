@@ -283,7 +283,7 @@ UNSIGNED_INTEGER:    BASIC_UINT ([eE] ('+'|'-')? BASIC_UINT)?;
 DELIMITED_ID: '"' REGULAR_ID '"' ;
 CHAR_STRING: '\''  (~('\'' | '\r' | '\n') | '\'' '\'' | NEWLINE)* '\'';
 
-EQUALS_WITH_NULL_OP:          '<=>';
+NULL_SAFE_EQUALS_OP:          '<=>';
 
 GE:             '>=';
 LE:             '<=';
@@ -297,6 +297,7 @@ RIGHT_PAREN:               ')';
 ASTERISK:                  '*';
 PLUS_SIGN:                 '+';
 MINUS_SIGN:                '-';
+BIT_COMPLI:                '~';
 COMMA:                     ',';
 SOLIDUS:                   '/';
 AT_SIGN:                   '@';
