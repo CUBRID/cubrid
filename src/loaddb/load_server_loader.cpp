@@ -117,8 +117,28 @@ namespace cubload
     cubthread::entry &thread_ref = cubthread::get_entry ();
     LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
     LC_FIND_CLASSNAME found_again = LC_CLASSNAME_EXIST;
+    const char *dot = strchr (class_name, '.');
 
-    found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
+    if (dot != NULL)
+      {
+	found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
+      }
+    else
+      {
+	/* Added for backwards compatibility.
+	 *
+	 * In versions lower than 11.2, the schema name is not specified in the unloaded object file.
+	 * So, if the schema name is not specified, the schema name of the current session must be specified.
+	 */
+
+	const char *user_name = m_session.get_args ().user_name.c_str ();
+	char user_specified_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
+	snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", user_name, class_name);
+
+	found = xlocator_find_class_oid (&thread_ref, user_specified_name, &class_oid, BU_LOCK);
+      }
+
     if (found == LC_CLASSNAME_EXIST)
       {
 	return found;
