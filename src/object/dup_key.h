@@ -32,10 +32,6 @@
 #include "parse_tree.h"
 #endif
 
-#define OVFL_LEVEL_MIN       (0)
-#define OVFL_LEVEL_MAX       (16)
-#define OVFL_LEVEL_DEFAULT   (10)
-
 typedef enum
 {
   DUP_MODE_NONE = 0,
@@ -45,12 +41,18 @@ typedef enum
   DUP_MODE_VOLID,
   DUP_MODE_LAST
 } EN_DUP_MODE;
-#define DUP_MODE_DEFAULT  (DUP_MODE_PAGEID)
 
+#define OVFL_LEVEL_MIN       (0)
+#define OVFL_LEVEL_MAX       (16)
+
+#if !defined(SERVER_MODE)
+#define OVFL_LEVEL_DEFAULT   (10)
+#define DUP_MODE_DEFAULT     (DUP_MODE_PAGEID)
 #define DUP_MODE_OVFL_LEVEL_NOT_SET   (-1)
 
 /* DUP_MODE_OVFL_LEVEL_AUTO_SET is a value between DUP_MODE_NONE and (DUP_MODE_LAST-1) */
 #define DUP_MODE_OVFL_LEVEL_AUTO_SET  (DUP_MODE_NONE)
+#endif
 
 /* ******************************************************** */
 #if !defined(SUPPORT_KEY_DUP_LEVEL)
