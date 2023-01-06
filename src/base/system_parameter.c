@@ -89,6 +89,7 @@
 #include "thread_worker_pool.hpp"	// for cubthread::system_core_count
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
+#include "string_regex.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -708,6 +709,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_USE_USER_HOSTS "use_user_hosts"
 
 #define PRM_NAME_QMGR_MAX_QUERY_PER_TRAN "max_query_per_tran"
+
+#define PRM_NAME_REGEXP_ENGINE "regexp_engine"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2326,6 +2329,10 @@ static int prm_max_query_per_tran_default = 100;
 static int prm_max_query_per_tran_lower = 1;
 static int prm_max_query_per_tran_upper = SHRT_MAX;
 static unsigned int prm_max_query_per_tran_flag = 0;
+
+const char *PRM_REGEXP_ENGINE = "re2";
+static const char *prm_regexp_engine_default = "re2";
+static unsigned int prm_regexp_engine_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6132,7 +6139,18 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_max_query_per_tran_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_REGEXP_ENGINE,
+   PRM_NAME_REGEXP_ENGINE,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_STRING,
+   &prm_regexp_engine_flag,
+   (void *) &prm_regexp_engine_default,
+   (void *) &PRM_REGEXP_ENGINE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 static int num_session_parameters = 0;
@@ -7098,6 +7116,16 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
 	  error = PRM_ERR_CANNOT_CHANGE;
 	  prm_report_bad_entry (key + sec_len, ini->lineno[i], error, file);
 	  return error;
+	}
+
+      if (strcmp (prm->name, PRM_NAME_REGEXP_ENGINE) == 0 && value)
+	{
+	  if (cubregex::check_regexp_engine_prm (value) == false)
+	    {
+	      error = PRM_ERR_BAD_VALUE;
+	      prm_report_bad_entry (key + sec_len, ini->lineno[i], error, file);
+	      return error;
+	    }
 	}
 
       error = prm_set (prm, value, true);

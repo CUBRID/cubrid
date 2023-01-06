@@ -674,7 +674,7 @@ opciones validas:\n\
       --db-volume-size=SIZE        tamano de volumen adicional; estandar: db_volume_size en cubrid.conf\n\
       --max-writesize-in-sec=SIZE  la cantidad de volumen escrita por segundo; (ex. 512K, 1M, 10M); estandar: no utilizado; minimum: 160K\n\
   -n, --volume-name=NAME           NOMBRE de volumen de informacion; estandar: generar como "db"_ext1)\n\
-  -F, --file-path=PATH             RUTA para archivo de agregacion volumen; estandar: directorio de trabajo\n\
+  -F, --file-path=PATH             RUTA para archivo de agregacion volumen; estandar: volume_extension_path\n\
       --comment=COMMENT            COMENTARIO para archivo de agregacion volumen; estandar: ninguno\n\
   -p, --purpose=PURPOSE            PROPOSITO para archivo de agregacion volumen; permitido:\n\
                                            DATA - solo para datos\n\
