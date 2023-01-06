@@ -281,6 +281,9 @@ int is_dblink_query_string = 0;
 [dD][eE][cC][rR][eE][mM][eE][nN][tT]					{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return DECREMENT; }
+[dD][eE][dD][uU][pP][lL][iI][cC][aA][tT][eE]				{ begin_token(yytext);
+                                                                                csql_yylval.cptr = pt_makename(yytext);
+                                                                                return DEDUPLICATE_; }
 [dD][eE][fF][aA][uU][lL][tT]						{ begin_token(yytext);   return DEFAULT; }
 [dD][eE][fF][eE][rR][rR][aA][bB][lL][eE]				{ begin_token(yytext);   return DEFERRABLE; }
 [dD][eE][fF][eE][rR][rR][eE][dD]					{ begin_token(yytext);   return DEFERRED; }

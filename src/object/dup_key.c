@@ -502,22 +502,22 @@ dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupk
     case DUP_MODE_NONE:
       if ((DUP_MODE_OVFL_LEVEL_AUTO_SET > DUP_MODE_NONE))
 	{
-	  len = snprintf (buf, buf_size, "%s", " duplicate OFF");
+	  len = snprintf (buf, buf_size, "%s", " deduplicate OFF");
 	}
       assert (len < buf_size);
       return buf;
 
     case DUP_MODE_OID:
-      str_mode = " duplicate with OID";
+      str_mode = " deduplicate with OID";
       break;
     case DUP_MODE_PAGEID:
-      str_mode = " duplicate with PAGEID";
+      str_mode = " deduplicate with PAGEID";
       break;
     case DUP_MODE_SLOTID:
-      str_mode = " duplicate with SLOTID";
+      str_mode = " deduplicate with SLOTID";
       break;
     case DUP_MODE_VOLID:
-      str_mode = " duplicate with VOLID";
+      str_mode = " deduplicate with VOLID";
       break;
     default:
       assert (false);
@@ -527,7 +527,7 @@ dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupk
     {
       if (dupkey_mode != DUP_MODE_OVFL_LEVEL_AUTO_SET)
 	{
-	  len = snprintf (buf, buf_size, "%s", " duplicate ON");
+	  len = snprintf (buf, buf_size, "%s", " deduplicate ON");
 	}
     }
   else if (dupkey_hash_level == OVFL_LEVEL_DEFAULT)

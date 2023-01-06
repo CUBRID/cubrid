@@ -1669,6 +1669,7 @@ int g_original_buffer_len;
 %token <cptr> UTF8_STRING
 %token <cptr> IPV4_ADDRESS
 
+%token <cptr> DEDUPLICATE_
 %token <cptr> OID_ 
 %token <cptr> PAGEID_
 %token <cptr> SLOTID_
@@ -21456,16 +21457,16 @@ opt_index_dup_level
 	       { DBG_TRACE_GRAMMAR(opt_index_dup_level, : ); 
                  $$ = DUP_MODE_OVFL_LEVEL_NOT_SET;
                }
-        | DUPLICATE_ ON_
-               { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DUPLICATE_ ON_ ); 
+        | DEDUPLICATE_ ON_
+               { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DEDUPLICATE_ ON_ ); 
                  $$ = DUP_MODE_DEFAULT | (OVFL_LEVEL_DEFAULT << 16); 
                }
-        | DUPLICATE_ OFF_
-               { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DUPLICATE_ OFF_ ); 
+        | DEDUPLICATE_ OFF_
+               { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DEDUPLICATE_ OFF_ ); 
                  $$ = DUP_MODE_NONE;
                }
-        | DUPLICATE_ WITH index_dup_mode opt_index_level
-               { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DUPLICATE_ WITH index_dup_mode opt_index_level ); 
+        | DEDUPLICATE_ WITH index_dup_mode opt_index_level
+               { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DEDUPLICATE_ WITH index_dup_mode opt_index_level ); 
                  $$ = $3 | ($4 << 16);
                }
         ;
@@ -22254,7 +22255,8 @@ identifier
 	| DATE_SUB               {{ DBG_TRACE_GRAMMAR(identifier, | DATE_SUB           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DBLINK                 {{ DBG_TRACE_GRAMMAR(identifier, | DBLINK             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DBNAME                 {{ DBG_TRACE_GRAMMAR(identifier, | DBNAME             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| DECREMENT              {{ DBG_TRACE_GRAMMAR(identifier, | DECREMENT          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| DECREMENT              {{ DBG_TRACE_GRAMMAR(identifier, | DECREMENT          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}        
+	| DEDUPLICATE_           {{ DBG_TRACE_GRAMMAR(identifier, | DEDUPLICATE_       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DENSE_RANK             {{ DBG_TRACE_GRAMMAR(identifier, | DENSE_RANK         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DISK_SIZE              {{ DBG_TRACE_GRAMMAR(identifier, | DISK_SIZE          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DONT_REUSE_OID         {{ DBG_TRACE_GRAMMAR(identifier, | DONT_REUSE_OID     ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
