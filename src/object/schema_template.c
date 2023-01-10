@@ -177,7 +177,6 @@ error_exit:
     }
 
   return error_code;
-
 }
 #endif
 

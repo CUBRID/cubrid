@@ -727,8 +727,8 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	       */
 	      if (include_inherited
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-		  || IS_RESERVED_INDEX_ATTR_ID (c->attributes[0]->id)
-		  || (c->attributes[0] != NULL && c->attributes[0]->class_mop == op))
+		  || (c->attributes[0] != NULL && (IS_RESERVED_INDEX_ATTR_ID (c->attributes[0]->id)
+						   || c->attributes[0]->class_mop == op)))
 #else
 		  || (!include_inherited && c->attributes[0] != NULL && c->attributes[0]->class_mop == op))
 #endif
@@ -756,8 +756,8 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 		{
 		  if (include_inherited
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-		      || IS_RESERVED_INDEX_ATTR_ID (c->attributes[0]->id)
-		      || (c->attributes[0] != NULL && c->attributes[0]->class_mop == op))
+		      || (c->attributes[0] != NULL && (IS_RESERVED_INDEX_ATTR_ID (c->attributes[0]->id)
+						       || c->attributes[0]->class_mop == op)))
 #else
 		      || (!include_inherited && c->attributes[0] != NULL && c->attributes[0]->class_mop == op))
 #endif
