@@ -25,7 +25,6 @@
 #include "config.h"
 
 #include <cassert>
-#include <iostream>
 #include <string>
 #include <regex>
 #include <filesystem>
@@ -152,7 +151,7 @@ create_package_directories (const std::string &java_dir_path)
     }
   catch (fs::filesystem_error &e)
     {
-      std::cerr << "can't create directory: " << java_dir_path << ", " << e.what () << '\n';
+      fprintf (stderr, "can't create directory: %s. %s\n", java_dir_path.c_str (), e.what ());
       return ER_FAILED;
     }
   return NO_ERROR;
@@ -167,11 +166,11 @@ copy_file (const std::string &java_dir_path)
       std::string class_file_path = java_dir_path + class_file_name;
       if (!Force_overwrite && fs::exists (class_file_path) == true)
 	{
-	  std::cout << "'" << class_file_path << "'" << " is exist. overwrite? (y/n): ";
+	  fprintf (stdout, "'%s' is exist. overwrite? (y/n): ", class_file_path.c_str ());
 	  char c = getchar ();
 	  if (c != 'Y' && c != 'y')
 	    {
-	      std::cout << "loadjava is canceled" << std::endl;
+	      fprintf (stdout, "loadjava is canceled\n");
 	      return NO_ERROR;
 	    }
 	}
@@ -181,7 +180,7 @@ copy_file (const std::string &java_dir_path)
     }
   catch (fs::filesystem_error &e)
     {
-      std::cerr << "loadjava fail: file operation error: " << e.what () << '\n';
+      fprintf (stderr, "loadjava fail: file operation error: %s\n", e.what ());
       return ER_FAILED;
     }
 
