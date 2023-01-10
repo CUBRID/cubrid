@@ -45,7 +45,7 @@ public class DeclParamOut extends DeclBase implements DeclParam {
     }
 
     @Override
-    public String typeStr() {
+    public String kind() {
         return "out-parameter";
     }
 

@@ -39,7 +39,7 @@ public class DeclLabel extends DeclBase {
     }
 
     @Override
-    public String typeStr() {
+    public String kind() {
         return "label";
     }
 

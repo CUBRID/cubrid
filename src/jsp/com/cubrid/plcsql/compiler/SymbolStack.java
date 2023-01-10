@@ -33,9 +33,11 @@ package com.cubrid.plcsql.compiler;
 import static com.cubrid.plcsql.compiler.antlrgen.PcsParser.*;
 
 import com.cubrid.plcsql.compiler.ast.*;
+import java.util.List;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 public class SymbolStack {
 
@@ -73,13 +75,41 @@ public class SymbolStack {
         return currSymbolTable.scope;
     }
 
+    // ----------------------------------------
+    //
+    void putOperator(String name, DeclFunc df) {
+
+        Operator op = ops.get(name);
+        if (op == null) {
+            op = new Operator();
+            ops.put(name, op);
+        }
+
+        assert currSymbolTable.scope.level == 0;
+        df.setScope(currSymbolTable.scope);
+        op.put(df);
+    }
+
+    DeclFunc getOperator(String name, List<TypeSpec> argTypes) {
+
+        Operator op = ops.get(name);
+        if (op == null) {
+            return null;
+        } else {
+            return op.get(argTypes);
+        }
+    }
+
+    // ----------------------------------------
+    //
+
     <D extends Decl> void putDecl(String name, D decl) {
         assert decl != null;
 
         Map<String, D> map = currSymbolTable.<D>map((Class<D>) decl.getClass());
         if (map.containsKey(name)) {
             assert false
-                    : decl.typeStr() + " " + name + " has already been declared in the same scope";
+                    : decl.kind() + " " + name + " has already been declared in the same scope";
             throw new RuntimeException("unreachable");
         }
 
@@ -91,16 +121,16 @@ public class SymbolStack {
         return getDecl(DeclId.class, name);
     }
 
-    DeclException getDeclException(String name) {
-        return getDecl(DeclException.class, name);
-    }
-
     DeclProc getDeclProc(String name) {
         return getDecl(DeclProc.class, name);
     }
 
     DeclFunc getDeclFunc(String name) {
         return getDecl(DeclFunc.class, name);
+    }
+
+    DeclException getDeclException(String name) {
+        return getDecl(DeclException.class, name);
     }
 
     DeclLabel getDeclLabel(String name) {
@@ -113,35 +143,28 @@ public class SymbolStack {
 
     private SymbolTable currSymbolTable;
 
+    private final Map<String, Operator> ops = new TreeMap<>();
+
     private LinkedList<SymbolTable> symbolTableStack = new LinkedList<>();
 
     private static class SymbolTable {
         final Scope scope;
-        final Map<String, DeclId> ids;
-        final Map<String, DeclException> exceptions;
-        final Map<String, DeclProc> procs;
-        final Map<String, DeclFunc> funcs;
-        final Map<String, DeclLabel> labels;
+
+        final Map<String, DeclId> ids = new TreeMap<>();
+        final Map<String, DeclException> exceptions = new TreeMap<>();
+        final Map<String, DeclLabel> labels = new TreeMap<>();
 
         SymbolTable(Scope scope) {
             this.scope = scope;
-
-            ids = new TreeMap<>();
-            exceptions = new TreeMap<>();
-            procs = new TreeMap<>();
-            funcs = new TreeMap<>();
-            labels = new TreeMap<>();
         }
 
         <D extends Decl> Map<String, D> map(Class<D> declClass) {
-            if (DeclId.class.isAssignableFrom(declClass)) {
+            if (DeclId.class.isAssignableFrom(declClass) ||
+                DeclProc.class.isAssignableFrom(declClass) ||
+                DeclFunc.class.isAssignableFrom(declClass)) {
                 return (Map<String, D>) ids;
             } else if (DeclException.class.isAssignableFrom(declClass)) {
                 return (Map<String, D>) exceptions;
-            } else if (DeclProc.class.isAssignableFrom(declClass)) {
-                return (Map<String, D>) procs;
-            } else if (DeclFunc.class.isAssignableFrom(declClass)) {
-                return (Map<String, D>) funcs;
             } else if (DeclLabel.class.isAssignableFrom(declClass)) {
                 return (Map<String, D>) labels;
             } else {
@@ -164,5 +187,59 @@ public class SymbolStack {
         }
 
         return null;
+    }
+
+    // Operator class corresponds to operators (+, -, etc) and system provided functions (substr, trim, strcomp, etc)
+    // which can be overloaded unlike user defined procedures and functions.
+    // It implements DeclId in order to be inserted ids map for system provided functions.
+    private static class Operator extends DeclBase implements DeclId {
+
+        private final Map<String, DeclFunc> overloads = new TreeMap<>();   // (arguments types --> function decl) map
+
+        void put(DeclFunc decl) {
+            List<TypeSpec> paramTypes =
+                decl.paramList.nodes.stream()
+                    .map(e -> e.typeSpec())
+                    .collect(Collectors.toList());
+            String key = getKey(paramTypes);
+            DeclFunc old = overloads.put(key, decl);
+            // system predefined operators and functions must be unique with their names and argument types.
+            assert old == null;
+        }
+
+        DeclFunc get(List<TypeSpec> argTypes) {
+            String key = getKey(argTypes);
+            return overloads.get(key);
+        }
+
+        @Override
+        public String kind() {
+            return "operator";
+        }
+
+        @Override
+        public String toJavaCode() {
+            assert false: "unreachable";
+            throw new RuntimeException("unreachagle");
+        }
+
+        // -----------------------------------------------
+        // Private
+        // -----------------------------------------------
+
+        String getKey(List<TypeSpec> types) {
+
+            StringBuffer sbuf = new StringBuffer();
+
+            for (TypeSpec t: types) {
+
+                if (sbuf.length() > 0) {
+                    sbuf.append(',');
+                }
+                sbuf.append(t.name);
+            }
+
+            return sbuf.toString();
+        }
     }
 }

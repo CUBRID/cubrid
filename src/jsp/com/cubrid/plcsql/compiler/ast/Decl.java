@@ -34,8 +34,6 @@ import com.cubrid.plcsql.compiler.Scope;
 
 public interface Decl extends AstNode {
     void setScope(Scope scope);
-
     Scope scope();
-
-    String typeStr();
+    String kind();
 }

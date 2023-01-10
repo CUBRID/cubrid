@@ -963,12 +963,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         ExprId target = visitIdentifier(ctx.assignment_target().identifier());
         assert target.decl instanceof DeclVar || target.decl instanceof DeclParamOut
-                : target.decl.typeStr()
+                : target.decl.kind()
                         + " "
                         + target.name
                         + " cannot be used as a target of an assignment";
 
-        String targetType = target.decl.typeSpec().name;
+        String targetType = ((DeclVarLike) target.decl).typeSpec().name;
 
         Expr val = visitExpression(ctx.expression(), targetType);
 
@@ -1544,7 +1544,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         assert decl != null : ("undeclared id " + name);
         assert decl instanceof DeclVar || decl instanceof DeclParamOut
                 : "identifier in a open-for statement must be a variable or out-parameter";
-        assert "Query".equals(decl.typeSpec().name)
+        assert "Query".equals(((DeclVarLike) decl).typeSpec().name)
                 : "identifier in a open-for statement must be of the SYS_REFCURSOR type";
 
         Scope scope = symbolStack.getCurrentScope();
@@ -1772,7 +1772,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     private final SymbolStack symbolStack = new SymbolStack();
     private final Set<String> imports = new TreeSet<>();
 
-    private static final String SYMBOL_TABLE_TOP = "%top";
+    private static final String SYMBOL_TABLE_TOP = "%predefined";
 
     private static List<String> predefinedExceptions =
             Arrays.asList(
@@ -1817,8 +1817,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         dc = new DeclConst("SQLCODE", new TypeSpec("Integer"), ExprNull.instance());
         symbolStack.putDecl("SQLCODE", dc);
 
+        /*
         dc = new DeclConst("SYSDATE", new TypeSpec("Date"), ExprNull.instance());
         symbolStack.putDecl("SYSDATE", dc);
+         */
 
         dc = new DeclConst("SQL", new TypeSpec("ResultSet"), ExprNull.instance());
         symbolStack.putDecl("SQL", dc);

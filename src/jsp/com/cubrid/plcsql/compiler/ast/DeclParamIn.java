@@ -45,7 +45,7 @@ public class DeclParamIn extends DeclBase implements DeclParam {
     }
 
     @Override
-    public String typeStr() {
+    public String kind() {
         return "in-parameter";
     }
 

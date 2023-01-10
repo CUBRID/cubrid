@@ -79,7 +79,7 @@ public class StmtCursorFetch implements Stmt {
             sbuf.append(
                     String.format(
                             "%s = (%s) rs.getObject(%d);",
-                            id.toJavaCode(), id.decl.typeSpec().name, i + 1));
+                            id.toJavaCode(), ((DeclVarLike) id.decl).typeSpec().name, i + 1));
 
             i++;
         }

@@ -38,13 +38,8 @@ public class DeclForRecord extends DeclBase implements DeclId {
         this.name = name;
     }
 
-    public TypeSpec typeSpec() {
-        assert false : "unreachable"; // records without field do not appear in a program
-        throw new RuntimeException("unreachable");
-    }
-
     @Override
-    public String typeStr() {
+    public String kind() {
         return "for-loop-record";
     }
 

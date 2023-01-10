@@ -136,7 +136,7 @@ public class StmtExecImme implements Stmt {
             assert id.decl instanceof DeclVar || id.decl instanceof DeclParamOut
                     : "only variables or out-parameters can be used in into-clauses";
 
-            String ty = id.decl.typeSpec().name;
+            String ty = ((DeclVarLike) id.decl).typeSpec().name;
 
             sbuf.append(
                     String.format(

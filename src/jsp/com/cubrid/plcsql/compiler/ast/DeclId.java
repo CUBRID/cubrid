@@ -31,5 +31,4 @@
 package com.cubrid.plcsql.compiler.ast;
 
 public interface DeclId extends Decl {
-    TypeSpec typeSpec();
 } // marker interface

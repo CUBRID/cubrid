@@ -32,7 +32,7 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class DeclRoutine extends DeclBase {
+public abstract class DeclRoutine extends DeclBase implements DeclId {
 
     public final String name;
     public final NodeList<DeclParam> paramList;
@@ -55,11 +55,6 @@ public class DeclRoutine extends DeclBase {
         this.decls = decls;
         this.body = body;
         this.level = level;
-    }
-
-    @Override
-    public String typeStr() {
-        return "function";
     }
 
     @Override

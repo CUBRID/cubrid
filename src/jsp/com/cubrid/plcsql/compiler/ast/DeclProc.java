@@ -42,7 +42,7 @@ public class DeclProc extends DeclRoutine {
     }
 
     @Override
-    public String typeStr() {
+    public String kind() {
         return "procedure";
     }
 

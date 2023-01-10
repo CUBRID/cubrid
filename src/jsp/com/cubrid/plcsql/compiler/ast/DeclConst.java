@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DeclConst extends DeclBase implements DeclId {
+public class DeclConst extends DeclBase implements DeclVarLike {
 
     public final String name;
     public final TypeSpec typeSpec;
@@ -49,7 +49,7 @@ public class DeclConst extends DeclBase implements DeclId {
     }
 
     @Override
-    public String typeStr() {
+    public String kind() {
         return "constant";
     }
 

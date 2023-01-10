@@ -33,19 +33,13 @@ package com.cubrid.plcsql.compiler.ast;
 public class DeclForIter extends DeclBase implements DeclId {
 
     public final String name;
-    public final TypeSpec typeSpec;
 
     public DeclForIter(String name) {
         this.name = name;
-        typeSpec = new TypeSpec("Integer");
-    }
-
-    public TypeSpec typeSpec() {
-        return typeSpec;
     }
 
     @Override
-    public String typeStr() {
+    public String kind() {
         return "for-loop-iterator";
     }
 

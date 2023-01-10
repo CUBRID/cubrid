@@ -30,24 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DeclFunc extends DeclRoutine {
-
-    public DeclFunc(
-            String name,
-            NodeList<DeclParam> paramList,
-            TypeSpec retType,
-            NodeList<Decl> decls,
-            Body body,
-            int level) {
-        super(name, paramList, retType, decls, body, level);
-    }
-
-    @Override
-    public String kind() {
-        return "function";
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
+public interface DeclVarLike extends DeclId {
+    TypeSpec typeSpec();
 }

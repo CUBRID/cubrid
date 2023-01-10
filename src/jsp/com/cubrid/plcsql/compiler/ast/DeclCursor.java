@@ -52,13 +52,8 @@ public class DeclCursor extends DeclBase implements DeclId {
         setHostValuesMap(paramList, usedVars);
     }
 
-    public TypeSpec typeSpec() {
-        assert false : "unreachable"; // cursors do not appear alone in a program
-        throw new RuntimeException("unreachable");
-    }
-
     @Override
-    public String typeStr() {
+    public String kind() {
         return "cursor";
     }
 

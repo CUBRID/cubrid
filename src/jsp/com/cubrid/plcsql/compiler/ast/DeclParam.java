@@ -30,4 +30,4 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public interface DeclParam extends DeclId {} // marker interface
+public interface DeclParam extends DeclVarLike {} // marker interface
