@@ -5159,6 +5159,10 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 			    "locator_insert_force: qexec_clear_list_cache_by_class failed for class { %d %d %d }\n",
 			    real_class_oid.pageid, real_class_oid.slotid, real_class_oid.volid);
 	    }
+	  if (!OID_EQ (&real_class_oid, class_oid))
+	    {
+	      qmgr_add_modified_class (thread_p, class_oid);
+	    }
 	  qmgr_add_modified_class (thread_p, &real_class_oid);
 	}
 #if 0				/* TODO - dead code; do not delete me */
@@ -5329,7 +5333,11 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   REPL_INFO repl_info;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
+  OID superclass_oid;
+
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
+
+  OID_SET_NULL (&superclass_oid);
 
   /*
    * While scanning objects, the given scancache does not fix the last
@@ -5785,7 +5793,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
       if (pruning_type != DB_NOT_PARTITIONED_CLASS)
 	{
-	  OID superclass_oid;
 	  OID real_class_oid;
 	  HFID real_hfid;
 	  int granted;
@@ -5951,6 +5958,10 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      er_log_debug (ARG_FILE_LINE,
 			    "locator_update_force: qexec_clear_list_cache_by_class failed for class { %d %d %d }\n",
 			    class_oid->pageid, class_oid->slotid, class_oid->volid);
+	    }
+	  if (!OID_EQ (&superclass_oid, class_oid))
+	    {
+	      qmgr_add_modified_class (thread_p, &superclass_oid);
 	    }
 	  qmgr_add_modified_class (thread_p, class_oid);
 	}
@@ -6246,11 +6257,34 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
       /* remove query result cache entries which are relevant with this class */
       if (!QFILE_IS_LIST_CACHE_DISABLED)
 	{
+	  OID superclass_oid;
+	  OID real_class_oid;
+	  HFID real_hfid;
+
 	  if (qexec_clear_list_cache_by_class (thread_p, &class_oid) != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
 			    "locator_delete_force: qexec_clear_list_cache_by_class failed for class { %d %d %d }\n",
 			    class_oid.pageid, class_oid.slotid, class_oid.volid);
+	    }
+
+	  OID_SET_NULL (&superclass_oid);
+
+	  HFID_COPY (&real_hfid, hfid);
+	  COPY_OID (&real_class_oid, &class_oid);
+
+	  error_code =
+	    partition_prune_update (thread_p, &class_oid, &copy_recdes, NULL, DB_PARTITIONED_CLASS, &real_class_oid,
+				    &real_hfid, &superclass_oid);
+
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  if (!OID_EQ (&superclass_oid, &class_oid))
+	    {
+	      qmgr_add_modified_class (thread_p, &superclass_oid);
 	    }
 	  qmgr_add_modified_class (thread_p, &class_oid);
 	}
