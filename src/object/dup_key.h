@@ -51,7 +51,7 @@ typedef enum
 #define DUP_MODE_OVFL_LEVEL_NOT_SET   (-1)
 
 /* DUP_MODE_OVFL_LEVEL_AUTO_SET is a value between DUP_MODE_NONE and (DUP_MODE_LAST-1) */
-#define DUP_MODE_OVFL_LEVEL_AUTO_SET  (DUP_MODE_NONE)
+#define DUP_MODE_OVFL_LEVEL_AUTO_SET  (DUP_MODE_PAGEID)
 #endif
 
 /* ******************************************************** */
@@ -172,11 +172,15 @@ static const char *st_reserved_index_col_name[COUNT_OF_DUP_MODE][COUNT_OF_DUP_LE
         char chx, ch_mode;                                                                                      \
         if(sscanf ((name) + RESERVED_INDEX_ATTR_NAME_PREFIX_LEN, "%c_%02d%c", &(ch_mode), &(level), &chx) != 2) \
           {  assert(false); }                                                                                   \
-        if(ch_mode == RESERVED_INDEX_ATTR_NAME_PREFIX_OID[0])         (mode) = DUP_MODE_OID;                    \
-        else if(ch_mode == RESERVED_INDEX_ATTR_NAME_PREFIX_PAGEID[0]) (mode) = DUP_MODE_PAGEID;                 \
-        else if(ch_mode == RESERVED_INDEX_ATTR_NAME_PREFIX_SLOTID[0]) (mode) = DUP_MODE_SLOTID;                 \
-        else if(ch_mode == RESERVED_INDEX_ATTR_NAME_PREFIX_VOLID[0])  (mode) = DUP_MODE_VOLID;                  \
-        else assert (false);                                                                                    \
+        assert(((level) >= OVFL_LEVEL_MIN) && ((level) <= OVFL_LEVEL_MAX));                                     \
+        switch(ch_mode)                                                                                         \
+        {                                                                                                       \
+           case RESERVED_INDEX_ATTR_NAME_PREFIX_OID[0]:    (mode) = DUP_MODE_OID;    break;                     \
+           case RESERVED_INDEX_ATTR_NAME_PREFIX_PAGEID[0]: (mode) = DUP_MODE_PAGEID; break;                     \
+           case RESERVED_INDEX_ATTR_NAME_PREFIX_SLOTID[0]: (mode) = DUP_MODE_SLOTID; break;                     \
+           case RESERVED_INDEX_ATTR_NAME_PREFIX_VOLID[0]:  (mode) = DUP_MODE_VOLID;  break;                     \
+           default: assert(false);                                                                              \
+        }                                                                                                       \
  } while(0)
  // *INDENT-ON*
 
