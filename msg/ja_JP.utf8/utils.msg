@@ -903,6 +903,8 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 4 必須パラメーター; デフォルト: なし
 5 強制ーオーバーライト
 6 クラスファイルがもう存在したらオーバーライトする。; デフォルト: オーバーライトしない
+7 java-package-name
+8 java package name, empty if not specified
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 出力ファイル「%1$s」が開けません。\n

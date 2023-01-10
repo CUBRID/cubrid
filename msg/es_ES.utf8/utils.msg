@@ -903,6 +903,8 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 4 argumento pedido, no hay estandar
 5 forzar sobrescribir
 6 sobrescribir archivo de clase si existe, estandar no
+7 java-package-name
+8 java package name, empty if not specified
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 No se puede abrir archivo de salida '%1$s'\n

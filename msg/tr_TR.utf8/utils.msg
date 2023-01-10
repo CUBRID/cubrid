@@ -903,6 +903,8 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 4 Gerekli bağımsız değişkeni, bir varsayılanı yok
 5 zorlamak - üzerine yazmak
 6 varsa sınıf dosyanın üzerine yazmak, varsayılan yok
+7 java-package-name
+8 java package name, empty if not specified
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Çıktı dosyası '%1$s' açılamıyor \n

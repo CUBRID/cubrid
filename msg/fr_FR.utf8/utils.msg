@@ -906,6 +906,8 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 4 argument obligatoire, aucun défaut
 5 force-overwrite
 6 remplace le fichier de classe si lui existe, par défaut non
+7 java-package-name
+8 java package name, empty if not specified
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Impossible d'ouvrir le fichier de sortie '%1$s'\n
