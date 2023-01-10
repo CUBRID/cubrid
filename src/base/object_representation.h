@@ -90,36 +90,32 @@ struct setobj;
 #define OR_GET_BYTE(ptr) \
   (*(unsigned char *) ((char *) (ptr)))
 #define OR_GET_SHORT(ptr) \
-  ((short) ntohs (*(short *) ((char *) (ptr))))
+  (*(short *) ((char *) (ptr)))
 #define OR_GET_INT(ptr) \
-  ((int) ntohl (*(int *) ((char *) (ptr))))
+  (*(int *) ((char *) (ptr)))
 #define OR_GET_FLOAT(ptr, value) \
-  (*(value) = ntohf (*(UINT32 *) (ptr)))
+  (*(value) = *(UINT32 *) (ptr))
 #define OR_GET_DOUBLE(ptr, value) \
-  (*(value) = ntohd (*(UINT64 *) (ptr)))
+  (*(value) = *(UINT64 *) (ptr))
 #define OR_GET_STRING(ptr) \
   ((char *) ((char *) (ptr)))
 
 #define OR_PUT_BYTE(ptr, val) \
   (*((unsigned char *) (ptr)) = (unsigned char) (val))
 #define OR_PUT_SHORT(ptr, val) \
-  (*(short *) ((char *) (ptr)) = htons ((short) (val)))
+  (*(short *) ((char *) (ptr)) = (short) (val))
 #define OR_PUT_INT(ptr, val) \
-  (*(int *) ((char *) (ptr)) = htonl ((int) (val)))
+  (*(int *) ((char *) (ptr)) = (int) (val))
 inline void
 OR_PUT_FLOAT (char *ptr, float val)
 {
-  UINT32 ui;
-  ui = htonf (val);
-  memcpy (ptr, &ui, sizeof (ui));
+  memcpy (ptr, &val, sizeof (val));
 }
 
 inline void
 OR_PUT_DOUBLE (char *ptr, double val)
 {
-  UINT64 ui;
-  ui = htond (val);
-  memcpy (ptr, &ui, sizeof (ui));
+  memcpy (ptr, &val, sizeof (val));
 }
 
 #define OR_GET_BIG_VAR_OFFSET(ptr) 	OR_GET_INT (ptr)	/* 4byte */
