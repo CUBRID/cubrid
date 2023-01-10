@@ -10888,3 +10888,39 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 #endif // CS_MODE
   return ER_NOT_IN_STANDALONE;
 }
+
+int
+plcsql_transfer_file (const std::string & input_file, std::string & output_file)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  packing_packer packer;
+  cubmem::extensible_block eb;
+  char *ptr = NULL;
+
+  char *data_reply = NULL;
+  int data_reply_size = 0;
+
+  packer.set_buffer_and_pack_all (eb, input_file);
+
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int req_error = net_client_request2 (NET_SERVER_PLCSQL_TRANSFER_FILE, eb.get_ptr (), (int) packer.get_current_size (),
+				       reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_reply_size);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &data_reply_size);
+      ptr = or_unpack_int (ptr, &rc);
+      if (data_reply_size > 0)
+	{
+	  packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
+	  unpacker.unpack_all (output_file);
+	}
+      free_and_init (data_reply);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}

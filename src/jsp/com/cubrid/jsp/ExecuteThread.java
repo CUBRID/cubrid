@@ -40,6 +40,7 @@ import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
 import com.cubrid.jsp.value.Value;
 import com.cubrid.jsp.value.ValueUtilities;
+import com.cubrid.plcsql.handler.TestMain;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
@@ -65,6 +66,8 @@ public class ExecuteThread extends Thread {
     private static final int REQ_CODE_DESTROY = 0x10;
     private static final int REQ_CODE_END = 0x20;
     private static final int REQ_CODE_PREPARE_ARGS = 0x40;
+
+    private static final int REQ_CODE_COMPILE = 0x80;
 
     private static final int REQ_CODE_UTIL_PING = 0xDE;
     private static final int REQ_CODE_UTIL_STATUS = 0xEE;
@@ -187,6 +190,29 @@ public class ExecuteThread extends Thread {
                         {
                             destroyJDBCResources();
                             Thread.currentThread().interrupt();
+                            break;
+                        }
+
+                    case REQ_CODE_COMPILE:
+                        {
+                            id = unpacker.unpackBigint();
+                            String inSource = unpacker.unpackCString();
+
+                            try {
+                                String outSource = TestMain.compilePLCSQL(inSource);
+
+                                resultBuffer.clear(); /* prepare to put */
+                                packer.setBuffer(resultBuffer);
+                                packer.packString(outSource);
+
+                                resultBuffer = packer.getBuffer();
+
+                                output.writeInt(resultBuffer.position());
+                                output.write(resultBuffer.array(), 0, resultBuffer.position());
+                            } catch (Exception e) {
+                                output.writeInt(0);
+                            }
+                            output.flush();
                             break;
                         }
 

@@ -67,6 +67,28 @@ if(UNIX)
 endif(UNIX)
 add_dependencies(csql cubridsa cubridcs)
 
+set(PLCSQL_SOURCES
+  ${EXECUTABLES_DIR}/plcsql.cpp
+  ${EXECUTABLES_DIR}/util_support.c
+  ${EXECUTABLES_DIR}/util_common.c
+  ${BASE_DIR}/porting.c
+  ${BASE_DIR}/cubrid_getopt_long.c
+  )
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${PLCSQL_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
+if(WIN32)
+  list(APPEND PLCSQL_SOURCES)
+endif(WIN32)
+
+add_executable(plcsql_helper ${PLCSQL_SOURCES})
+target_compile_definitions(plcsql_helper PRIVATE ${COMMON_DEFS})
+target_include_directories(plcsql_helper PRIVATE ${EP_INCLUDES})
+add_dependencies(plcsql_helper ${EP_TARGETS})
+target_link_libraries(plcsql_helper LINK_PRIVATE cubridcs)
+
 set(CUB_MASTER_SOURCES
   ${EXECUTABLES_DIR}/master.c
   ${EXECUTABLES_DIR}/master_request.c
@@ -357,6 +379,7 @@ install(TARGETS
   cub_javasp
   cub_admin
   cubrid_esql
+  plcsql_helper
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header

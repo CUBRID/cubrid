@@ -44,6 +44,53 @@ import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
 
 public class TestMain {
+    public static String compilePLCSQL(String in) {
+        long t0, t;
+        CodePointCharStream stream = CharStreams.fromString(in);
+
+        t0 = System.currentTimeMillis();
+
+        ANTLRInputStream input = new ANTLRInputStream(in);
+
+        System.out.println(
+                String.format(
+                        "  creating ANTLRInputStream: %f sec",
+                        ((t = System.currentTimeMillis()) - t0) / 1000.0));
+        t0 = t;
+
+        PcsLexer lexer = new PcsLexer(input);
+        CommonTokenStream tokens = new CommonTokenStream(lexer);
+        PcsParser parser = new PcsParser(tokens);
+
+        SyntaxErrorIndicator sei = new SyntaxErrorIndicator();
+        parser.addErrorListener(sei);
+
+        System.out.println(
+                String.format(
+                        "  creating PcsLexer: %f sec",
+                        ((t = System.currentTimeMillis()) - t0) / 1000.0));
+        t0 = t;
+
+        ParseTree ret = parser.sql_script();
+        if (ret == null) {
+            return ("parsing failed");
+        }
+
+        System.out.println(
+                String.format("parsing: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
+        t0 = t;
+
+        ParseTreeConverter converter = new ParseTreeConverter();
+        Unit unit = (Unit) converter.visit(ret);
+
+        System.out.println(
+                String.format(
+                        "converting: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
+        t0 = t;
+
+        return unit.toJavaCode();
+    }
+
     private static ParseTree parse(String inFilePath) {
 
         long t0, t;
