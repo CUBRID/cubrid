@@ -9697,8 +9697,33 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 #if defined(SUPPORT_KEY_DUP_LEVEL)
       else if (IS_RESERVED_INDEX_ATTR_ID (value->attrid))
 	{
-	  // Since it is created fakely, it is filled with index 0 that can be obtained as quickly as possible.
-	  value->attrid = search_attrepr[0].id;	// ctshim , -- need check
+#define FAKE_RESERVED_INDEX_ATTR	// ctshim , -- need check
+#if defined(FAKE_RESERVED_INDEX_ATTR)
+	  /* Since it is created fakely, it is filled with index 0 that can be obtained as quickly as possible.
+	   * In this case, there is no need to perform separate processing in heap_attrvalue_read(). 
+	   * However, it would be better to choose a fake id that does not cost a lot to read.
+	   * Fortunately, it is placed before the variable types. */
+
+	  value->attrid = search_attrepr[0].id;
+#else
+	  // In this case, in case of reserved_attr_id in heap_attrvalue_read(), skip should be processed.
+	  value->attr_type = HEAP_INSTANCE_ATTR;
+	  if (islast_reset == true)
+	    {
+	      value->last_attrepr = (OR_ATTRIBUTE *) dk_find_or_reserved_index_attribute (value->attrid);
+	      if (value->state == HEAP_UNINIT_ATTRVALUE)
+		{
+		  db_value_domain_init (&value->dbvalue, value->last_attrepr->type,
+					value->last_attrepr->domain->precision, value->last_attrepr->domain->scale);
+		}
+	    }
+	  else
+	    {
+	      value->read_attrepr = (OR_ATTRIBUTE *) dk_find_or_reserved_index_attribute (value->attrid);
+	    }
+	  num_found_attrs++;
+	  continue;
+#endif
 	}
 #endif
 
@@ -10065,6 +10090,14 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   volatile int disk_length = -1;
   int ret = NO_ERROR;
 
+#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(FAKE_RESERVED_INDEX_ATTR)
+  if (IS_RESERVED_INDEX_ATTR_ID (value->attrid))
+    {
+      /* In the case of reserved_index_attr_id, there is no content that actually exists in HEAP.
+       * Therefore, the read operation is skipped and success is returned. */
+      return NO_ERROR;
+    }
+#endif
   /* Initialize disk value information */
   disk_data = NULL;
   disk_bound = false;
