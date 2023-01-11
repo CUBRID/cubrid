@@ -35,7 +35,6 @@ public class TypeSpec implements AstNode {
     public final String fullName;
     public final String name;
 
-
     public TypeSpec(String fullName) {
         this.fullName = fullName;
         String[] split = fullName.split("\\.");

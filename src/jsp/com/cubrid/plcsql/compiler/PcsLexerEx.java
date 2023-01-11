@@ -31,7 +31,6 @@
 package com.cubrid.plcsql.compiler;
 
 import com.cubrid.plcsql.compiler.antlrgen.PcsLexer;
-
 import org.antlr.v4.runtime.CharStream;
 import org.antlr.v4.runtime.Token;
 
@@ -39,7 +38,9 @@ public class PcsLexerEx extends PcsLexer {
     private boolean collect = true;
     private StringBuffer sbuf = new StringBuffer();
 
-    public PcsLexerEx(CharStream input) { super(input); }
+    public PcsLexerEx(CharStream input) {
+        super(input);
+    }
 
     @Override
     public Token emit() {
@@ -48,14 +49,15 @@ public class PcsLexerEx extends PcsLexer {
         // collect token texts until IS or AS is seen
         if (collect) {
             switch (ret.getType()) {
-            case IS: case AS:
-                collect = false;
-                break;
-            case SPACES:
-                sbuf.append(' ');
-                break;
-            default:
-                sbuf.append(ret.getText().toUpperCase());
+                case IS:
+                case AS:
+                    collect = false;
+                    break;
+                case SPACES:
+                    sbuf.append(' ');
+                    break;
+                default:
+                    sbuf.append(ret.getText().toUpperCase());
             }
         }
 
@@ -70,7 +72,5 @@ public class PcsLexerEx extends PcsLexer {
         } else {
             return null;
         }
-
     }
 }
-

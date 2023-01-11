@@ -70,7 +70,7 @@ public class Unit implements AstNode {
         } else {
             boolean first = true;
             StringBuffer sbuf = new StringBuffer();
-            for (DeclParam dp: routine.paramList.nodes) {
+            for (DeclParam dp : routine.paramList.nodes) {
                 if (first) {
                     first = false;
                 } else {

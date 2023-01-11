@@ -32,7 +32,6 @@ package com.cubrid.plcsql.handler;
 
 import com.cubrid.plcsql.compiler.ParseTreeConverter;
 import com.cubrid.plcsql.compiler.ParseTreePrinter;
-//import com.cubrid.plcsql.compiler.antlrgen.PcsLexer;
 import com.cubrid.plcsql.compiler.PcsLexerEx;
 import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
@@ -245,7 +244,8 @@ public class TestMain {
                                 ((t = System.currentTimeMillis()) - t0) / 1000.0));
                 t0 = t;
 
-                System.out.println("temp: " + String.format(sqlTemplate[0], unit.getJavaSignature()));
+                System.out.println(
+                        "temp: " + String.format(sqlTemplate[0], unit.getJavaSignature()));
                 System.out.println(" - success");
             } catch (Throwable e) {
                 e.printStackTrace();
