@@ -2333,6 +2333,8 @@ static unsigned int prm_max_query_per_tran_flag = 0;
 /* *INDENT-OFF* */
 int PRM_REGEXP_ENGINE = cubregex::engine_type::LIB_RE2;
 static int prm_regexp_engine_default = cubregex::engine_type::LIB_RE2;
+static int prm_regexp_engine_lower = cubregex::engine_type::LIB_CPPSTD;
+static int prm_regexp_engine_upper = cubregex::engine_type::LIB_RE2;
 static unsigned int prm_regexp_engine_flag = 0;
 /* *INDENT-ON* */
 
@@ -6149,7 +6151,8 @@ SYSPRM_PARAM prm_Def[] = {
    &prm_regexp_engine_flag,
    (void *) &prm_regexp_engine_default,
    (void *) &PRM_REGEXP_ENGINE,
-   (void *) NULL, (void *) NULL,
+   (void *) &prm_regexp_engine_upper,
+   (void *) &prm_regexp_engine_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
