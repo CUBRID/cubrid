@@ -921,7 +921,7 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 5 force-overwrite
 6 suprascrie fişierul de clasă dacă exista, implicit nu
 7 java-package-name
-8 java package name, empty if not specified
+8 Numele pachetului Java, gol dacă nu este specificat
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Fişierul de ieşire '%1$s' nu a putut fi deschis\n

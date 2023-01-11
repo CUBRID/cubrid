@@ -903,7 +903,7 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 5 强制重写
 6 如果类存在则进行重写, 默认 不
 7 java-package-name
-8 java package name, empty if not specified
+8 Java包名，不指定则为空
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 无法打开输出文件 '%1$s'\n
