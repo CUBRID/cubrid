@@ -184,10 +184,9 @@ namespace cublog
 #ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
       // Check validity of atomic sequences wrt access to pages intertwined.
       // As an example, on an Active Transaction Server, the following sequence of events involving two
-      // concurrent transactions can happen:
-      //    kept minimalist for brevity):
+      // concurrent transactions can happen (example kept minimalist for brevity):
       //    1. T1 starts an atomic sequence
-      //    2. TI fixes, writes and unfixes VPID1 (LSA1)
+      //    2. T1 fixes, writes and unfixes VPID1 (LSA1)
       //    3. T2 starts an atomic sequence
       //    4. T2 fixes, writes and unfixes VPID1 (LSA2)
       //    5. T1 fixes, writes and unfixes VPID1 (LSA3)
@@ -199,7 +198,7 @@ namespace cublog
       //    2. VPID1 would be fixed for T1 atomic sequence
       //    3. an atomic replication sequence is started for T2
       //    4. VPID1 is also fixed for T2 atomic sequnce; this would be OK because all atomic replication
-      //        sequences are happening within the same thread; and since Cubrid has a 1 thread == 1
+      //        sequences are executed within the same thread; and since Cubrid has a 1 thread == 1
       //        transaction affinity, this does not invalidate  the page buffer's concepts
       //    5. a new log record is bookkept for T1
       //    6. the atomic sequence for T2 is concluded, and log record at LSA2 is applied to VPID1 and
