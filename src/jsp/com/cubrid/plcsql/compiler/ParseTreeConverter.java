@@ -41,7 +41,6 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -57,8 +56,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public ParseTreeConverter() {
         int level = symbolStack.pushSymbolTable(SYMBOL_TABLE_TOP, false);
         assert level == 0;
-
-        setUpPredefined();
+        symbolStack.setUpPredefined();
     }
 
     @Override
@@ -512,12 +510,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public Expr visitField_exp(Field_expContext ctx) {
 
-        ExprId record = visitIdentifierInner(ctx.record);
+        String name = ctx.record.getText().toUpperCase();
+        name = Misc.peelId(name);
+        DeclId decl = symbolStack.getDeclId(name);
 
         String fieldName = ctx.field.getText().toUpperCase();
         fieldName = Misc.peelId(fieldName);
 
-        if (record.decl == null) {
+        if (decl == null) {
+            // NOTE: decl can be null if name is a serial
             if (fieldName.equals("CURRENT_VALUE") || fieldName.equals("NEXT_VALUE")) {
 
                 connectionRequired = true;
@@ -526,20 +527,22 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 return new ExprSerialVal(
                         symbolStack.getCurrentScope().level
                                 + 1, // do not push a symbol table: no nested structure
-                        record.name,
+                        name,
                         fieldName.equals("CURRENT_VALUE")
                                 ? ExprSerialVal.SerialVal.CURR_VAL
                                 : ExprSerialVal.SerialVal.NEXT_VAL);
             } else {
-                assert false : ("undeclared id " + record.name);
+                assert false : ("undeclared id " + name);
                 return null;
             }
         } else {
-            assert record.decl instanceof DeclForRecord
+            assert decl instanceof DeclForRecord
                     : "field lookup is only allowed for a record, but "
                             + ctx.record.getText()
                             + " is not a record";
 
+            Scope scope = symbolStack.getCurrentScope();
+            ExprId record = new ExprId(name, scope, decl);
             return new ExprCast(new ExprField(record, fieldName));
         }
     }
@@ -961,7 +964,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public StmtAssign visitAssignment_statement(Assignment_statementContext ctx) {
 
-        ExprId target = visitIdentifier(ctx.assignment_target().identifier());
+        Expr e = visitIdentifier(ctx.assignment_target().identifier());
+        assert e instanceof ExprId: "assignment target must be an id";
+        ExprId target = (ExprId) e;
         assert target.decl instanceof DeclVar || target.decl instanceof DeclParamOut
                 : target.decl.kind()
                         + " "
@@ -975,23 +980,35 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return new StmtAssign(target, val);
     }
 
-    private ExprId visitIdentifierInner(IdentifierContext ctx) {
+    @Override
+    public Expr visitIdentifier(IdentifierContext ctx) {
         String name = ctx.getText().toUpperCase();
         name = Misc.peelId(name);
 
-        DeclId decl =
-                symbolStack.getDeclId(name); // NOTE: decl can be legally null if name is a serial
-        Scope scope = symbolStack.getCurrentScope();
+        DeclId declId =
+                symbolStack.getDeclId(name); // NOTE: declId can be legally null if name is a serial
+        if (declId == null) {
+            DeclFunc declFunc = symbolStack.getDeclFunc(name);
+            if (declFunc == null) {
 
-        return new ExprId(name, scope, decl);
-    }
+                connectionRequired = true;
+                addToImports("java.sql.*");
 
-    @Override
-    public ExprId visitIdentifier(IdentifierContext ctx) {
-
-        ExprId e = visitIdentifierInner(ctx);
-        assert e.decl != null : ("undeclared id " + e.name);
-        return e;
+                int level = symbolStack.getCurrentScope().level + 1;
+                return new ExprCast(new ExprGlobalFuncCall(level, name, null));
+            } else {
+                int n = declFunc.paramList.nodes.size();
+                if (n > 0) {
+                    assert false : ("function " + name + " requires " + n + " arguments");
+                    throw new RuntimeException("unreachable");
+                } else {
+                    return new ExprLocalFuncCall(name, null, symbolStack.getCurrentScope(), declFunc);
+                }
+            }
+        } else {
+            Scope scope = symbolStack.getCurrentScope();
+            return new ExprId(name, scope, declId);
+        }
     }
 
     @Override
@@ -1709,7 +1726,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         NodeList<ExprId> ret = new NodeList<>();
 
         for (IdentifierContext c : ctx.identifier()) {
-            ExprId id = visitIdentifier(c);
+            Expr e = visitIdentifier(c);
+            assert e instanceof ExprId : "targets of into clause must be ids";
+            ExprId id = (ExprId) e;
             assert id.decl instanceof DeclVar || id.decl instanceof DeclParamOut
                     : "variable "
                             + id.name
@@ -1773,58 +1792,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     private final Set<String> imports = new TreeSet<>();
 
     private static final String SYMBOL_TABLE_TOP = "%predefined";
-
-    private static List<String> predefinedExceptions =
-            Arrays.asList(
-                    "$APP_ERROR", // for raise_application_error
-                    "CASE_NOT_FOUND",
-                    "CURSOR_ALREADY_OPEN",
-                    "DUP_VAL_ON_INDEX",
-                    "INVALID_CURSOR",
-                    "LOGIN_DENIED",
-                    "NO_DATA_FOUND",
-                    "PROGRAM_ERROR",
-                    "ROWTYPE_MISMATCH",
-                    "STORAGE_ERROR",
-                    "TOO_MANY_ROWS",
-                    "VALUE_ERROR",
-                    "ZERO_DIVIDE");
-
-    private void setUpPredefined() {
-
-        // add exceptions
-        DeclException de;
-        for (String s : predefinedExceptions) {
-            de = new DeclException(s);
-            symbolStack.putDecl(de.name, de);
-        }
-
-        // add procedures
-        DeclProc dp =
-                new DeclProc(
-                        "PUT_LINE",
-                        new NodeList<DeclParam>()
-                                .addNode(new DeclParamIn("s", new TypeSpec("Object"))),
-                        null,
-                        null,
-                        0);
-        symbolStack.putDecl("PUT_LINE", dp);
-
-        // add constants TODO implement SQLERRM and SQLCODE properly
-        DeclConst dc = new DeclConst("SQLERRM", new TypeSpec("String"), ExprNull.instance());
-        symbolStack.putDecl("SQLERRM", dc);
-
-        dc = new DeclConst("SQLCODE", new TypeSpec("Integer"), ExprNull.instance());
-        symbolStack.putDecl("SQLCODE", dc);
-
-        /*
-        dc = new DeclConst("SYSDATE", new TypeSpec("Date"), ExprNull.instance());
-        symbolStack.putDecl("SYSDATE", dc);
-         */
-
-        dc = new DeclConst("SQL", new TypeSpec("ResultSet"), ExprNull.instance());
-        symbolStack.putDecl("SQL", dc);
-    }
 
     private void addToImports(String i) {
         imports.add(i);
