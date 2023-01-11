@@ -177,12 +177,68 @@ namespace cublog
 
     private: // methods
       void start_sequence_internal (TRANID trid, LOG_LSA start_lsa, const log_rv_redo_context &redo_context);
-#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
-      bool check_for_page_validity (VPID vpid, TRANID tranid) const;
-#endif
+
       void dump (const char *message) const;
 
     private: // types
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+      // Check validity of atomic sequences wrt access to pages intertwined.
+      // As an example, on an Active Transaction Server, the following sequence of events involving two
+      // concurrent transactions can happen:
+      //    kept minimalist for brevity):
+      //    1. T1 starts an atomic sequence
+      //    2. TI fixes, writes and unfixes VPID1 (LSA1)
+      //    3. T2 starts an atomic sequence
+      //    4. T2 fixes, writes and unfixes VPID1 (LSA2)
+      //    5. T1 fixes, writes and unfixes VPID1 (LSA3)
+      //    6. T2 ends the atomic sequence
+      //    7. T1 ends the atomic sequence
+      //
+      // The above sequence would be replicated by a passive transaction server as follows:
+      //    1. an atomic replication sequence is started for T1
+      //    2. VPID1 would be fixed for T1 atomic sequence
+      //    3. an atomic replication sequence is started for T2
+      //    4. VPID1 is also fixed for T2 atomic sequnce; this would be OK because all atomic replication
+      //        sequences are happening within the same thread; and since Cubrid has a 1 thread == 1
+      //        transaction affinity, this does not invalidate  the page buffer's concepts
+      //    5. a new log record is bookkept for T1
+      //    6. the atomic sequence for T2 is concluded, and log record at LSA2 is applied to VPID1 and
+      //        the page VPID1 is unfixed
+      //    7. the atomic sequnce for T1 is concluded, and log records at LSA1 and LSA3 are applied to
+      //        VPID1 and the page VPID1 is unfixed
+      //
+      // Remarks:
+      // - it is obvious that such an occurence of events will cause the log records to be
+      //    applied to a page out of order
+      // - the real occurring scenarios are even more complex as a single atomic sequence for a
+      //    transaction is made up of multiple sub-sections which are applied and the pages unfixed
+      //    as "control log records" are being processed
+      class vpid_bookeeping
+      {
+	public:
+	  vpid_bookeeping () = default;
+	  vpid_bookeeping (const vpid_bookeeping &) = delete;
+	  vpid_bookeeping (vpid_bookeeping &&) = delete;
+
+	  ~vpid_bookeeping ();
+
+	  vpid_bookeeping &operator= (const vpid_bookeeping &) = delete;
+	  vpid_bookeeping &operator= (vpid_bookeeping &&) = delete;
+
+	  void add_or_increase_for_transaction (TRANID trid, VPID vpid);
+	  void decrease_or_remove_for_transaction (TRANID trid, VPID vpid);
+
+	  void check_absent_for_transaction (TRANID trid) const;
+
+	private: // types
+	  using vpid_map_type = std::map<VPID, int>;
+	  using tranid_vpid_usage_map_type = std::map<TRANID, vpid_map_type>;
+
+	private: // members
+	  tranid_vpid_usage_map_type m_usage_map;
+      };
+#endif
+
       class atomic_log_sequence
       {
 	public:
@@ -201,9 +257,17 @@ namespace cublog
 	  // upon constructing a sequence
 	  void initialize (TRANID trid, LOG_LSA start_lsa);
 
-	  int append_log (THREAD_ENTRY *thread_p, LOG_LSA lsa, LOG_RCVINDEX rcvindex, VPID vpid);
+	  int append_log (THREAD_ENTRY *thread_p, LOG_LSA lsa, LOG_RCVINDEX rcvindex, VPID vpid
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+			  , vpid_bookeeping &vpid_bk
+#endif
+			 );
 
-	  void apply_and_unfix (THREAD_ENTRY *thread_p);
+	  void apply_and_unfix (THREAD_ENTRY *thread_p
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+				, vpid_bookeeping &vpid_bk
+#endif
+			       );
 
 	  LOG_LSA get_start_lsa () const;
 
@@ -335,20 +399,11 @@ namespace cublog
 
       using sequence_map_type = std::map<TRANID, atomic_log_sequence>;
 
-#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
-      // check validity of atomic sequences
-      // one page can only be accessed by one atomic sequence within one transaction
-      // this check makes sense because, on active transaction server, there is no
-      // notion of an "atomic" sequence and, hence, it is totally possible that
-      // another transaction might access the same page
-      using vpid_set_type = std::set<VPID>;
-#endif
-
     private: // variables
       sequence_map_type m_sequences_map;
 
 #ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
-      std::map<TRANID, vpid_set_type> m_vpid_sets_map;
+      vpid_bookeeping m_vpid_bk;
 #endif
   };
 

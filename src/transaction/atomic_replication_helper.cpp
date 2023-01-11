@@ -36,15 +36,6 @@ namespace cublog
   atomic_replication_helper::append_log (THREAD_ENTRY *thread_p, TRANID tranid,
 					 LOG_LSA lsa, LOG_RCVINDEX rcvindex, VPID vpid)
   {
-#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
-    if (!VPID_ISNULL (&vpid) && !check_for_page_validity (vpid, tranid))
-      {
-	assert (false);
-      }
-    vpid_set_type &vpids = m_vpid_sets_map[tranid];
-    vpids.insert (vpid);
-#endif
-
     const auto sequence_it = m_sequences_map.find (tranid);
     if (sequence_it == m_sequences_map.cend ())
       {
@@ -53,7 +44,11 @@ namespace cublog
       }
 
     atomic_log_sequence &sequence = sequence_it->second;
-    int error_code = sequence.append_log (thread_p, lsa, rcvindex, vpid);
+    int error_code = sequence.append_log (thread_p, lsa, rcvindex, vpid
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+					  , m_vpid_bk
+#endif
+					 );
     if (error_code != NO_ERROR)
       {
 	return error_code;
@@ -91,32 +86,6 @@ namespace cublog
     // it would need to double construct an internal redo context instance (which is expensive)
     emplaced_seq.initialize (trid, start_lsa);
   }
-
-#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
-  bool
-  atomic_replication_helper::check_for_page_validity (VPID vpid, TRANID tranid) const
-  {
-    for (auto const &vpid_sets_it : m_vpid_sets_map)
-      {
-	const TRANID &curr_tranid = vpid_sets_it.first;
-	if (curr_tranid != tranid)
-	  {
-	    const vpid_set_type &curr_vpid_set = vpid_sets_it.second;
-	    const vpid_set_type::const_iterator vpid_set_it = curr_vpid_set.find (vpid);
-	    if (vpid_set_it != curr_vpid_set.cend ())
-	      {
-		er_log_debug (ARG_FILE_LINE,
-			      "[ATOMIC_REPL] page %d|%d already part of sequence in trid %d;"
-			      " cannot be part of new sequence in trid %d\n",
-			      VPID_AS_ARGS (&vpid), curr_tranid, tranid);
-		return false;
-	      }
-	  }
-      }
-
-    return true;
-  }
-#endif
 
   bool
   atomic_replication_helper::is_part_of_atomic_replication (TRANID tranid) const
@@ -176,7 +145,11 @@ namespace cublog
     // be able to make the decisions taking into consideration the last control log;
     // this can be implemented later and only if needed; works as is right now
     atomic_log_sequence &sequence = sequence_it->second;
-    sequence.apply_and_unfix (thread_p);
+    sequence.apply_and_unfix (thread_p
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+			      , m_vpid_bk
+#endif
+			     );
 
     sequence.append_control_log (rectype, lsa);
 
@@ -184,7 +157,7 @@ namespace cublog
       {
 	m_sequences_map.erase (sequence_it);
 #ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
-	m_vpid_sets_map.erase (trid);
+	m_vpid_bk.check_absent_for_transaction (trid);
 #endif
 
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
@@ -219,7 +192,11 @@ namespace cublog
       }
 
     atomic_log_sequence &sequence = sequence_it->second;
-    sequence.apply_and_unfix (thread_p);
+    sequence.apply_and_unfix (thread_p
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+			      , m_vpid_bk
+#endif
+			     );
 
     sequence.append_control_log_sysop_end (lsa, sysop_end_type, sysop_end_last_parent_lsa);
 
@@ -227,7 +204,7 @@ namespace cublog
       {
 	m_sequences_map.erase (sequence_it);
 #ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
-	m_vpid_sets_map.erase (trid);
+	m_vpid_bk.check_absent_for_transaction (trid);
 #endif
 
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
@@ -266,6 +243,9 @@ namespace cublog
 
     // sequence dtor will ensure proper idle state upon destruction
     m_sequences_map.erase (sequence_it);
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+    m_vpid_bk.check_absent_for_transaction (trid);
+#endif
   }
 
   void
@@ -291,6 +271,55 @@ namespace cublog
       }
     _er_log_debug (ARG_FILE_LINE, buf);
   }
+
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+  atomic_replication_helper::vpid_bookeeping::~vpid_bookeeping ()
+  {
+    assert (m_usage_map.empty ());
+  }
+
+  void atomic_replication_helper::vpid_bookeeping::add_or_increase_for_transaction (TRANID trid, VPID vpid)
+  {
+    // check that the same vpid is not concurrently present in any other transaction
+    for (const std::pair<TRANID, vpid_map_type> &tran_pair : m_usage_map)
+      {
+	if (tran_pair.first != trid)
+	  {
+	    const vpid_map_type &tran_vpids = tran_pair.second;
+	    assert (tran_vpids.find (vpid) == tran_vpids.cend ());
+	  }
+      }
+
+    vpid_map_type &outer_map = m_usage_map[trid];
+    int &vpid_count = outer_map[vpid];
+    ++vpid_count;
+  }
+
+  void atomic_replication_helper::vpid_bookeeping::decrease_or_remove_for_transaction (TRANID trid, VPID vpid)
+  {
+    auto outer_map_it = m_usage_map.find (trid);
+    assert (outer_map_it != m_usage_map.cend ());
+    vpid_map_type &inner_map = outer_map_it->second;
+    auto inner_map_it =inner_map.find (vpid);
+    assert (inner_map_it != inner_map.cend ());
+    int &vpid_count = inner_map_it->second;
+    assert (vpid_count > 0);
+    --vpid_count;
+    if (vpid_count == 0)
+      {
+	inner_map.erase (inner_map_it);
+	if (inner_map.empty ())
+	  {
+	    m_usage_map.erase (outer_map_it);
+	  }
+      }
+  }
+
+  void atomic_replication_helper::vpid_bookeeping::check_absent_for_transaction (TRANID trid) const
+  {
+    assert (m_usage_map.find (trid) == m_usage_map.cend ());
+  }
+#endif
 
   /********************************************************************************
    * atomic_replication_helper::atomic_log_sequence function definitions  *
@@ -323,7 +352,11 @@ namespace cublog
 
   int
   atomic_replication_helper::atomic_log_sequence::append_log (THREAD_ENTRY *thread_p,
-      LOG_LSA lsa, LOG_RCVINDEX rcvindex, VPID vpid)
+      LOG_LSA lsa, LOG_RCVINDEX rcvindex, VPID vpid
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+      , vpid_bookeeping &vpid_bk
+#endif
+							     )
   {
     PAGE_PTR page_p = nullptr;
     // bookkeeping fixes page, keeps all info regarding how the page was fixed (either
@@ -363,6 +396,11 @@ namespace cublog
     else
       {
 	assert (page_p != nullptr);
+
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+	vpid_bk.add_or_increase_for_transaction (m_trid, vpid);
+#endif
+
 	const atomic_log_entry &new_entry = m_log_vec.emplace_back (lsa, vpid, rcvindex, page_p);
 	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 	  {
@@ -374,7 +412,11 @@ namespace cublog
   }
 
   void
-  atomic_replication_helper::atomic_log_sequence::apply_and_unfix (THREAD_ENTRY *thread_p)
+  atomic_replication_helper::atomic_log_sequence::apply_and_unfix (THREAD_ENTRY *thread_p
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+      , vpid_bookeeping &vpid_bk
+#endif
+								  )
   {
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
@@ -429,6 +471,10 @@ namespace cublog
 	assert (!log_entry.is_control ());
 	log_entry.apply_log_redo (thread_p, m_redo_context);
 	m_page_ptr_bookkeeping.unfix_page (thread_p, log_entry.m_vpid);
+
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+	vpid_bk.decrease_or_remove_for_transaction (m_trid, log_entry.m_vpid);
+#endif
       }
 
     m_log_vec.erase (first_work_log_it, m_log_vec.cend ());
