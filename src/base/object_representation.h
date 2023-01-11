@@ -94,9 +94,9 @@ struct setobj;
 #define OR_GET_INT(ptr) \
   (*(int *) ((char *) (ptr)))
 #define OR_GET_FLOAT(ptr, value) \
-  (*(value) = *(UINT32 *) (ptr))
+  (*(value) = *(float *) (ptr))
 #define OR_GET_DOUBLE(ptr, value) \
-  (*(value) = *(UINT64 *) (ptr))
+  (*(value) = *(double *) (ptr))
 #define OR_GET_STRING(ptr) \
   ((char *) ((char *) (ptr)))
 
