@@ -1492,7 +1492,6 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 
   int idx_ncols = 0, natts, i, j;
   int buf_size, nullmap_size;
-  unsigned char *bits;
 
   regu_variable_list_node *operand;
 
@@ -1532,11 +1531,16 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
     for (idx_dom = idx_setdomain; idx_dom != NULL; idx_dom = idx_dom->next)
       {
 	dom_ncols++;
+#if 0
+	/* idx_dom->precision is -1 in the following cases.
+	 * create index idx on t1(IFNULL(a,'x'), b); -- a is char(n)
+	 * Remove the assert check.  */
 	if (idx_dom->precision < 0)
 	  {
 	    assert (false);
 	    return ER_FAILED;
 	  }
+#endif
       }
 
     if (dom_ncols <= 0)
@@ -1562,11 +1566,6 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
        operand = operand->next, idx_dom = idx_dom->next, i++)
     {
       ret = fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL, &val);
-      if (ret != NO_ERROR)
-	{
-	  goto err_exit;
-	}
-
       if (ret != NO_ERROR)
 	{
 	  goto err_exit;
@@ -1759,15 +1758,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   key_ptr = nullmap_ptr + nullmap_size;
 
   OR_BUF_INIT (buf, key_ptr, buf_size - nullmap_size);
-
-  if (nullmap_size > 0)
-    {
-      bits = (unsigned char *) nullmap_ptr;
-      for (i = 0; i < nullmap_size; i++)
-	{
-	  bits[i] = (unsigned char) 0;
-	}
-    }
+  MIDXKEY_BOUNDBITS_INIT (nullmap_ptr, nullmap_size);
 
   /* generate multi columns key (values -> midxkey.buf) */
   for (operand = func->value.funcp->operand, i = 0, dom = (vals_setdomain != NULL) ? vals_setdomain : idx_setdomain;
@@ -4145,7 +4136,6 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  hsidp->caches_inited = true;
 	}
       break;
-
     case S_INDX_SCAN:
       isidp = &scan_id->s.isid;
       if (!OID_IS_ROOTOID (&isidp->cls_oid))
@@ -4607,7 +4597,6 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     case S_JSON_TABLE_SCAN:
     case S_VALUES_SCAN:
       return (s_id->position == S_BEFORE) ? S_SUCCESS : S_END;
-
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return S_ERROR;
@@ -7742,7 +7731,14 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 
       if (scan_id->type == S_HEAP_SCAN)
 	{
-	  json_object_set_new (scan_stats, "heap", scan);
+	  if (scan_id->scan_stats.agg_optimized_scan)
+	    {
+	      json_object_set_new (scan_stats, "aggregate optimized,", scan);
+	    }
+	  else
+	    {
+	      json_object_set_new (scan_stats, "heap", scan);
+	    }
 	}
       else
 	{
@@ -7826,7 +7822,14 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
   switch (scan_id->type)
     {
     case S_HEAP_SCAN:
-      fprintf (fp, "(heap");
+      if (scan_id->scan_stats.agg_optimized_scan)
+	{
+	  fprintf (fp, "(aggregate optimized,");
+	}
+      else
+	{
+	  fprintf (fp, "(heap");
+	}
       break;
 
     case S_INDX_SCAN:

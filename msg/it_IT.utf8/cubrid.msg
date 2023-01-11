@@ -1437,7 +1437,16 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 Ultimo errore
+1355 %1$s "%2$s" non è un formato non valido alla riga %3$d del file "%4$s".
+1356 Il nome host "%1$s" è troppo lungo, dovrebbe essere minore o uguale a 256 alla riga %2$d del file "%3$s".
+1357 Il nome host "%1$s" esiste già, non è possibile duplicare un nome host con altri indirizzi IP alla riga %2$d del file "%3$s".
+1358 Sia l'indirizzo IP che il nome host devono essere scritti completamente alla riga %1$d del file "%2$s".
+1359 Impossibile cercare "%1$s" in cubrid_hosts.conf.
+1360 Si è verificato un errore durante l'utilizzo dell'host definito dall'utente.
+
+1361 Il file "%1$s" non è stato trovato.
+
+1362 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
@@ -1601,6 +1610,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 133 Uso non valido di DROP SYNONYM.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
 134 Uso non valido di RENAME SYNONYM.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
 135 Nessuna opzione specificata per ALTER SYNONYM.
+136 Maximum length of a server dbname is %1$d bytes.
+137 Maximum length of a server user is %1$d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memoria esaurita.
@@ -2002,6 +2013,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 80 Valore del livello isolation in MVCC deve essere 'read committed', 'repeatable read' o 'serializable'.
 81 '%1$s' è un 'auto_increment' oggetto, che non può essere modificato come un seriale.
 82 JSON non valido: '%1$s'.
+83 Vclass %1$s is not updatable. Please check if any of its related classes are marked as REUSE_OID.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** cache non valido ***

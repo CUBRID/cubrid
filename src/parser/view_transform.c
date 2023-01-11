@@ -186,8 +186,7 @@ static PT_NODE *mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node, v
 static PT_NODE *mq_rewrite_agg_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static bool mq_conditionally_add_objects (PARSER_CONTEXT * parser, PT_NODE * flat, DB_OBJECT *** classes, int *index,
 					  int *max);
-static PT_UPDATABILITY mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** classes, int *i,
-					   int *max);
+static PT_UPDATABILITY mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** classes, int *i);
 static PT_NODE *mq_substitute_select_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec,
 						   PT_NODE * class_);
 static PT_NODE *mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
@@ -1155,6 +1154,10 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** 
 		  if (sm_is_reuse_oid_class ((*classes)[i]) || sm_is_system_class ((*classes)[i]) > 0)
 		    {
 		      local = (PT_UPDATABILITY) (local & PT_NOT_UPDATABLE);
+		      if (parser->view_cache)
+			{
+			  parser->view_cache->has_reuse_oid_table = true;
+			}
 		      break;
 		    }
 		}
@@ -1207,6 +1210,7 @@ mq_updatable (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_UPDATABILITY updatable;
   int num_classes = 0;
   int max = MAX_STACK_OBJECTS;
+
   DB_OBJECT *class_stack_array[MAX_STACK_OBJECTS];
   DB_OBJECT **classes = class_stack_array;
 
@@ -1640,6 +1644,7 @@ mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, voi
  *  - select for schema
  *  - has CONNECT BY
  *  - is merge query
+ *  - is CTE query
  *  - view spec is outer join spec
  *  - main query's where has define_vars ':='
  *  - subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation function
@@ -1816,7 +1821,10 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       return NON_PUSHABLE;
     }
   /* check for CTE query */
-  if (subquery->info.query.with != NULL)
+  /* TODO : Queries with CTE can be also view merged */
+  /*        After view merging, 'spec->info.spec.cte_pointer' must be changed to the copied value of the newly added WITH CLAUSE. */
+  /*        see pt_resolve_cte_specs() and pt_resolve_spec_to_cte() */
+  if (mainquery->info.query.with != NULL || subquery->info.query.with != NULL)
     {
       /* not pushable */
       return NON_PUSHABLE;
@@ -3231,6 +3239,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
     }
 
   tree = mq_reset_ids_in_statement (parser, tree);
+
   return tree;
 }
 
@@ -11712,9 +11721,18 @@ mq_fetch_subqueries_for_update_local (PARSER_CONTEXT * parser, PT_NODE * class_,
       if (!query_cache->view_cache->vquery_for_update
 	  && (!query_cache->view_cache->vquery_for_partial_update || (fetch_as != PT_PARTIAL_SELECT)) && parser)
 	{
-	  PT_ERRORmf (parser, class_, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_VCLASS_NOT_UPDATABLE,
-		      /* use function to get name. class_->info.name.original is not always set. */
-		      db_get_class_name (class_object));
+	  if (query_cache->view_cache->has_reuse_oid_table)
+	    {
+	      PT_ERRORmf (parser, class_, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_REUSE_OID_TABLE_NOT_UPDATABLE,
+			  /* use function to get name. class_->info.name.original is not always set. */
+			  db_get_class_name (class_object));
+	    }
+	  else
+	    {
+	      PT_ERRORmf (parser, class_, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_VCLASS_NOT_UPDATABLE,
+			  /* use function to get name. class_->info.name.original is not always set. */
+			  db_get_class_name (class_object));
+	    }
 	}
       if (fetch_as == PT_INVERTED_ASSIGNMENTS)
 	{
