@@ -28,7 +28,7 @@
  *
  */
 
-package com.cubrid.jsp.test;
+package com.cubrid.jsp;
 
 import static org.junit.Assert.assertTrue;
 

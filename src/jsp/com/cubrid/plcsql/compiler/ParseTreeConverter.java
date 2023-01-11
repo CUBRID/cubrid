@@ -226,26 +226,41 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitRel_exp(Rel_expContext ctx) {
+        String opStr = null;
+
         Relational_operatorContext op = ctx.relational_operator();
-        String opStr =
-                op.EQUALS_OP() != null
-                        ? "Eq"
-                        : op.NOT_EQUAL_OP() != null
-                                ? "Neq"
-                                : op.LE() != null
-                                        ? "Le"
-                                        : op.GE() != null
-                                                ? "Ge"
-                                                : op.LT() != null
-                                                        ? "Lt"
-                                                        : op.GT() != null ? "Gt" : null;
+        if (op.EQUALS_OP() != null) {
+            opStr = "Eq";
+        } else if (op.NULL_SAFE_EQUALS_OP() != null) {
+            opStr = "NullSafeEq";
+        } else if (op.NOT_EQUAL_OP() != null) {
+            opStr = "Neq";
+        } else if (op.LE() != null) {
+            opStr = "Le";
+        } else if (op.GE() != null) {
+            opStr = "Ge";
+        } else if (op.LT() != null) {
+            opStr = "Lt";
+        } else if (op.GT() != null) {
+            opStr = "Gt";
+        } else if (op.SETEQ() != null) {
+            opStr = "SetEq";
+        } else if (op.SETNEQ() != null) {
+            opStr = "SetNeq";
+        } else if (op.SUPERSET() != null) {
+            opStr = "Superset";
+        } else if (op.SUBSET() != null) {
+            opStr = "Subset";
+        } else if (op.SUPERSETEQ() != null) {
+            opStr = "SupersetEq";
+        } else if (op.SUBSETEQ() != null) {
+            opStr = "SubsetEq";
+        }
         assert opStr != null;
 
-        String ty;
-        if (opStr.equals("Eq") || opStr.equals("Neq")) {
+        String ty = null;
+        if (opStr.equals("Eq") || opStr.equals("NullSafeEq") || opStr.equals("Neq")) {
             ty = "Object";
-        } else {
-            ty = "Integer";
         }
 
         Expr l = visitExpression(ctx.relational_expression(0), ty);
@@ -312,9 +327,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String opStr =
                 ctx.ASTERISK() != null
                         ? "Mult"
-                        : (ctx.SOLIDUS() != null || ctx.DIV() != null)
+                        : ctx.SOLIDUS() != null
                                 ? "Div"
-                                : ctx.MOD() != null ? "Mod" : null;
+                                : ctx.DIV() != null ? "DivInt" : ctx.MOD() != null ? "Mod" : null;
         assert opStr != null;
 
         return new ExprBinaryOp(opStr, l, r);
@@ -339,14 +354,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public Expr visitPower_exp(Power_expContext ctx) {
-        Expr l = visitExpression(ctx.unary_expression(0), "Integer");
-        Expr r = visitExpression(ctx.unary_expression(1), "Integer");
-        return new ExprBinaryOp("Power", l, r);
-    }
-
-    @Override
-    public Expr visitNeg_exp(Neg_expContext ctx) {
+    public Expr visitSign_exp(Sign_expContext ctx) {
         Expr o = visitExpression(ctx.unary_expression(), "Integer");
 
         Expr ret =
@@ -356,6 +364,44 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         assert ret != null;
 
         return ret;
+    }
+
+    @Override
+    public Expr visitBit_compli_exp(Bit_compli_expContext ctx) {
+        Expr o = visitExpression(ctx.unary_expression(), "Integer");
+        return new ExprUnaryOp("BitCompli", o);
+    }
+
+    @Override
+    public Expr visitBit_shift_exp(Bit_shift_expContext ctx) {
+        Expr l = visitExpression(ctx.concatenation(0), "Integer");
+        Expr r = visitExpression(ctx.concatenation(1), "Integer");
+        String opStr =
+                ctx.LT2() != null ? "BitShiftLeft" : ctx.GT2() != null ? "BitShiftRight" : null;
+        assert opStr != null;
+
+        return new ExprBinaryOp(opStr, l, r);
+    }
+
+    @Override
+    public Expr visitBit_and_exp(Bit_and_expContext ctx) {
+        Expr l = visitExpression(ctx.concatenation(0), "Integer");
+        Expr r = visitExpression(ctx.concatenation(1), "Integer");
+        return new ExprBinaryOp("BitAnd", l, r);
+    }
+
+    @Override
+    public Expr visitBit_xor_exp(Bit_xor_expContext ctx) {
+        Expr l = visitExpression(ctx.concatenation(0), "Integer");
+        Expr r = visitExpression(ctx.concatenation(1), "Integer");
+        return new ExprBinaryOp("BitXor", l, r);
+    }
+
+    @Override
+    public Expr visitBit_or_exp(Bit_or_expContext ctx) {
+        Expr l = visitExpression(ctx.concatenation(0), "Integer");
+        Expr r = visitExpression(ctx.concatenation(1), "Integer");
+        return new ExprBinaryOp("BitOr", l, r);
     }
 
     @Override
