@@ -62,6 +62,34 @@ public class Unit implements AstNode {
         this.routine = routine;
     }
 
+    public String getJavaSignature() {
+
+        String ret;
+        if (routine.paramList == null) {
+            ret = String.format("%s.$%s()", getClassName(), routine.name);
+        } else {
+            boolean first = true;
+            StringBuffer sbuf = new StringBuffer();
+            for (DeclParam dp: routine.paramList.nodes) {
+                if (first) {
+                    first = false;
+                } else {
+                    sbuf.append(", ");
+                }
+
+                sbuf.append(dp.toJavaSignature());
+            }
+
+            ret = String.format("%s.$%s(%s)", getClassName(), routine.name, sbuf.toString());
+        }
+
+        if (targetKind == TargetKind.FUNCTION) {
+            return (ret + " return " + routine.retType.toJavaSignature());
+        } else {
+            return ret;
+        }
+    }
+
     @Override
     public String toJavaCode() {
 

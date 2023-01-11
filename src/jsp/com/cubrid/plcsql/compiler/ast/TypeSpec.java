@@ -32,15 +32,23 @@ package com.cubrid.plcsql.compiler.ast;
 
 public class TypeSpec implements AstNode {
 
+    public final String fullName;
     public final String name;
 
-    public TypeSpec(String name) {
-        this.name = name;
+
+    public TypeSpec(String fullName) {
+        this.fullName = fullName;
+        String[] split = fullName.split("\\.");
+        name = split[split.length - 1];
     }
 
     @Override
     public String toJavaCode() {
         return name;
+    }
+
+    public String toJavaSignature() {
+        return fullName;
     }
 
     // --------------------------------------------------

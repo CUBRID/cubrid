@@ -28,37 +28,49 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler;
 
-public class DeclParamIn extends DeclBase implements DeclParam {
+import com.cubrid.plcsql.compiler.antlrgen.PcsLexer;
 
-    public final String name;
-    public final TypeSpec typeSpec;
+import org.antlr.v4.runtime.CharStream;
+import org.antlr.v4.runtime.Token;
 
-    public DeclParamIn(String name, TypeSpec typeSpec) {
-        this.name = name;
-        this.typeSpec = typeSpec;
-    }
+public class PcsLexerEx extends PcsLexer {
+    private boolean collect = true;
+    private StringBuffer sbuf = new StringBuffer();
 
-    public TypeSpec typeSpec() {
-        return typeSpec;
-    }
+    public PcsLexerEx(CharStream input) { super(input); }
 
     @Override
-    public String typeStr() {
-        return "in-parameter";
+    public Token emit() {
+        Token ret = super.emit();
+
+        // collect token texts until IS or AS is seen
+        if (collect) {
+            switch (ret.getType()) {
+            case IS: case AS:
+                collect = false;
+                break;
+            case SPACES:
+                sbuf.append(' ');
+                break;
+            default:
+                sbuf.append(ret.getText().toUpperCase());
+            }
+        }
+
+        return ret;
     }
 
-    @Override
-    public String toJavaCode() {
-        return String.format("%s $%s", typeSpec.toJavaCode(), name);
-    }
+    public String getCreateSqlTemplate() {
 
-    public String toJavaSignature() {
-        return String.format("%s", typeSpec.toJavaSignature());
-    }
+        String s = sbuf.toString().trim();
+        if (s.length() > 0) {
+            return s + " AS LANGUAGE JAVA NAME '%s';";
+        } else {
+            return null;
+        }
 
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
+    }
 }
+

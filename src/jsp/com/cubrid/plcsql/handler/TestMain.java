@@ -32,7 +32,8 @@ package com.cubrid.plcsql.handler;
 
 import com.cubrid.plcsql.compiler.ParseTreeConverter;
 import com.cubrid.plcsql.compiler.ParseTreePrinter;
-import com.cubrid.plcsql.compiler.antlrgen.PcsLexer;
+//import com.cubrid.plcsql.compiler.antlrgen.PcsLexer;
+import com.cubrid.plcsql.compiler.PcsLexerEx;
 import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
 import java.io.File;
@@ -58,7 +59,7 @@ public class TestMain {
                         ((t = System.currentTimeMillis()) - t0) / 1000.0));
         t0 = t;
 
-        PcsLexer lexer = new PcsLexer(input);
+        PcsLexerEx lexer = new PcsLexerEx(input);
         CommonTokenStream tokens = new CommonTokenStream(lexer);
         PcsParser parser = new PcsParser(tokens);
 
@@ -67,7 +68,7 @@ public class TestMain {
 
         System.out.println(
                 String.format(
-                        "  creating PcsLexer: %f sec",
+                        "  creating PcsLexerEx: %f sec",
                         ((t = System.currentTimeMillis()) - t0) / 1000.0));
         t0 = t;
 
@@ -91,7 +92,7 @@ public class TestMain {
         return unit.toJavaCode();
     }
 
-    private static ParseTree parse(String inFilePath) {
+    private static ParseTree parse(String inFilePath, String[] sqlTemplate) {
 
         long t0, t;
 
@@ -134,7 +135,7 @@ public class TestMain {
                         ((t = System.currentTimeMillis()) - t0) / 1000.0));
         t0 = t;
 
-        PcsLexer lexer = new PcsLexer(input);
+        PcsLexerEx lexer = new PcsLexerEx(input);
         CommonTokenStream tokens = new CommonTokenStream(lexer);
         PcsParser parser = new PcsParser(tokens);
 
@@ -143,7 +144,7 @@ public class TestMain {
 
         System.out.println(
                 String.format(
-                        "  creating PcsLexer: %f sec",
+                        "  creating PcsLexerEx: %f sec",
                         ((t = System.currentTimeMillis()) - t0) / 1000.0));
         t0 = t;
 
@@ -157,6 +158,7 @@ public class TestMain {
             throw new RuntimeException("syntax error");
         }
 
+        sqlTemplate[0] = lexer.getCreateSqlTemplate();
         return ret;
     }
 
@@ -204,7 +206,8 @@ public class TestMain {
                 t0 = System.currentTimeMillis();
 
                 String infile = args[i];
-                ParseTree tree = parse(infile);
+                String[] sqlTemplate = new String[1];
+                ParseTree tree = parse(infile, sqlTemplate);
                 if (tree == null) {
                     throw new RuntimeException("parsing failed");
                 }
@@ -242,6 +245,7 @@ public class TestMain {
                                 ((t = System.currentTimeMillis()) - t0) / 1000.0));
                 t0 = t;
 
+                System.out.println("temp: " + String.format(sqlTemplate[0], unit.getJavaSignature()));
                 System.out.println(" - success");
             } catch (Throwable e) {
                 e.printStackTrace();
