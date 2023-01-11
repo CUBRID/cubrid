@@ -9697,7 +9697,6 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 #if defined(SUPPORT_KEY_DUP_LEVEL)
       else if (IS_RESERVED_INDEX_ATTR_ID (value->attrid))
 	{
-#define FAKE_RESERVED_INDEX_ATTR	// ctshim , -- need check
 #if defined(FAKE_RESERVED_INDEX_ATTR)
 	  /* Since it is created fakely, it is filled with index 0 that can be obtained as quickly as possible.
 	   * In this case, there is no need to perform separate processing in heap_attrvalue_read(). 

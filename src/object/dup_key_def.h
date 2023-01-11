@@ -29,11 +29,14 @@
 // Once the code is applied, we will remove it.
 
 #define SUPPORT_KEY_DUP_LEVEL
-//#define SUPPORT_KEY_DUP_LEVEL_FK
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 // view(db_index, db_index_key), show index statement
 //#define ENABLE_SHOW_HIDDEN_ATTR
+
+#define FAKE_RESERVED_INDEX_ATTR
+
+//#define SUPPORT_KEY_DUP_LEVEL_FK
 #endif
 
 #endif // _DUP_KEY_DEF_H_
