@@ -1024,6 +1024,8 @@ int g_original_buffer_len;
 %type <c2> connect_item
 %type <c2> alter_server_item
 %type <c2> opt_create_synonym
+%type <c2> class_name_with_server_name
+
 /*}}}*/
 
 /* define rule type (json_table_column_behavior) */
@@ -4053,6 +4055,24 @@ only_class_name
 	| user_specified_name
 		{ DBG_TRACE_GRAMMAR(only_class_name, | user_specified_name);
                   $$ = $1; }
+        | class_name_with_server_name
+                {{ DBG_TRACE_GRAMMAR(only_class_name, | class_name_with_server_name);
+
+                        PT_NODE *scs = parser_new_node (this_parser, PT_SPEC);
+			if (scs)
+			  {
+                            scs->info.spec.entity_name = CONTAINER_AT_0 ($1);
+			    /* for DBLink DML */
+                            scs->info.spec.remote_server_name = CONTAINER_AT_1 ($1);
+
+			    scs->info.spec.only_all = PT_ONLY;
+			    scs->info.spec.meta_class = PT_CLASS;			    
+			  }
+                    
+                        $$ = scs;                       
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT}}
+
 	;
 
 rename_stmt
@@ -5355,18 +5375,26 @@ meta_class_spec
 only_all_class_spec
 	: only_class_name opt_partition_spec
 		{{ DBG_TRACE_GRAMMAR(only_all_class_spec, : only_class_name opt_partition_spec );
-
-			PT_NODE *ocs = parser_new_node (this_parser, PT_SPEC);
-			if (ocs)
-			  {
-			    ocs->info.spec.entity_name = $1;
-			    ocs->info.spec.only_all = PT_ONLY;
-			    ocs->info.spec.meta_class = PT_CLASS;
-			    if ($2)
+                       PT_NODE *ocs = NULL;
+			/* for DBLink DML */
+                        if($1 && $1->node_type == PT_SPEC)
+                        {
+                              ocs = $1;
+                        }
+                        else
+                        {
+                           ocs = parser_new_node (this_parser, PT_SPEC);
+			   if (ocs)
+			    {
+			      ocs->info.spec.entity_name = $1;
+			      ocs->info.spec.only_all = PT_ONLY;
+			      ocs->info.spec.meta_class = PT_CLASS;
+			      if ($2)
 			      {
 				ocs->info.spec.partition = $2;
 			      }
-			  }
+			    }
+                        }
 
 			$$ = ocs;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -5405,9 +5433,21 @@ only_all_class_spec
 		DBG_PRINT}}
 	;
 
+class_name_with_server_name
+        : class_name '@' dblink_server_name
+                {{DBG_TRACE_GRAMMAR(class_name_with_server_name, : class_name '@' dblink_server_name);
+                assert($1 != NULL && $3 != NULL);
+                container_2 ctn;
+                // Do NOT automatically assign a user name. 
+                PT_NAME_INFO_CLEAR_FLAG($1, PT_NAME_INFO_USER_SPECIFIED);
+                SET_CONTAINER_2 (ctn, $1, $3);
+                $$ = ctn;
+                DBG_PRINT}}
+        ;
+
 object_name
 	: identifier DOT identifier
-		{{ DBG_TRACE_GRAMMAR(class_name, : identifier DOT identifier);
+		{{ DBG_TRACE_GRAMMAR(object_name, : identifier DOT identifier);
 
 			PT_NODE *qualifier = $1;
 			PT_NODE *node = $3;
@@ -5423,7 +5463,7 @@ object_name
 
 		DBG_PRINT}}
 	| identifier
-		{{ DBG_TRACE_GRAMMAR(class_name, | identifier);
+		{{ DBG_TRACE_GRAMMAR(object_name, | identifier);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -6702,15 +6742,24 @@ insert_set_stmt_header
 		{{ DBG_TRACE_GRAMMAR(insert_set_stmt_header, : opt_hint_list opt_into only_class_name SET insert_assignment_list);
 
 			PT_NODE *ins = parser_pop_hint_node ();
-			PT_NODE *ocs = parser_new_node (this_parser, PT_SPEC);
-			PT_NODE *nls = pt_node_list (this_parser, PT_IS_VALUE, CONTAINER_AT_1 ($5));
+			PT_NODE *ocs = NULL;
+                        PT_NODE *nls = pt_node_list (this_parser, PT_IS_VALUE, CONTAINER_AT_1 ($5));
 
-			if (ocs)
-			  {
-			    ocs->info.spec.entity_name = $3;
-			    ocs->info.spec.only_all = PT_ONLY;
-			    ocs->info.spec.meta_class = PT_CLASS;
-			  }
+			/* for DBLink DML */
+                        if($3 && $3->node_type == PT_SPEC)
+                        {
+                           ocs = $3;
+                        }
+                        else
+                        {
+                           ocs = parser_new_node (this_parser, PT_SPEC);
+                           if (ocs)
+			    {
+			      ocs->info.spec.entity_name = $3;
+			      ocs->info.spec.only_all = PT_ONLY;
+			      ocs->info.spec.meta_class = PT_CLASS;
+			    }
+                        }
 
 			if (ins)
 			  {
@@ -6847,18 +6896,27 @@ insert_name_clause_header
 		{{ DBG_TRACE_GRAMMAR(insert_name_clause_header, : opt_hint_list opt_into only_class_name opt_partition_spec opt_attr_list);
 
 			PT_NODE *ins = parser_pop_hint_node ();
-			PT_NODE *ocs = parser_new_node (this_parser, PT_SPEC);
+			PT_NODE *ocs = NULL;
 
-			if (ocs)
-			  {
-			    ocs->info.spec.entity_name = $3;
-			    ocs->info.spec.only_all = PT_ONLY;
-			    ocs->info.spec.meta_class = PT_CLASS;
-			    if ($4)
+			/* for DBLink DML */
+                        if($3 && $3->node_type == PT_SPEC)
+                        {
+                           ocs = $3;
+                        }
+                        else
+                        {
+                           ocs = parser_new_node (this_parser, PT_SPEC);
+			   if (ocs)
+			   {
+			      ocs->info.spec.entity_name = $3;
+			      ocs->info.spec.only_all = PT_ONLY;
+			      ocs->info.spec.meta_class = PT_CLASS;
+			      if ($4)
 			      {
 			        ocs->info.spec.partition = $4;
 			      }
-			  }
+			   }
+                        }
 
 			if (ins)
 			  {
@@ -13963,10 +14021,11 @@ opt_from_clause
 
 			    node->info.query.q.select.with_increment = $10;
 			    node->info.query.id = (UINTPTR) node;
-			  }
 
 			if (node->info.query.all_distinct != PT_ALL)
 			  is_dummy_select = false;	/* not dummy */
+			  }
+
 			if (is_dummy_select == true)
 			  {
 			    /* mark as dummy */
@@ -27248,7 +27307,8 @@ pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_neste
     }
 }
 
-static bool pt_ct_check_fill_connection_info (char* p, char *pInfo[], char *perr_msg)
+static bool 
+pt_ct_check_fill_connection_info (char* p, char *pInfo[], char *perr_msg)
 {   
    //  <host>:<port>:<db_name>:<db_user>:<db_password>:[?<properties>]     
    int   nCnt, i;

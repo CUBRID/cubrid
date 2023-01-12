@@ -677,6 +677,9 @@ extern "C"
   extern const char *pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * name);
   extern const char *pt_get_name_with_qualifier_removed (const char *name);
   extern const char *pt_get_name_without_current_user_name (const char *name);
+
+  extern void pt_check_server_extension (PARSER_CONTEXT * parser, PT_NODE * stmt);
+
 #ifdef __cplusplus
 }
 #endif

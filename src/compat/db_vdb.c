@@ -581,6 +581,14 @@ db_compile_statement_local (DB_SESSION * session)
   /* forget about any previous parsing errors, if any */
   pt_reset_error (parser);
 
+  // @server
+  pt_check_server_extension (parser, statement);
+  if (pt_has_error (parser))
+    {				// TODO: error number and  error_type
+      pt_report_to_ersys_with_statement (parser, PT_SYNTAX, statement);
+      return er_errid ();
+    }
+
   /* store user-specified-name in info.name.original. */
   parser_walk_tree (parser, statement, NULL, NULL, pt_set_user_specified_name, NULL);
 
@@ -593,7 +601,7 @@ db_compile_statement_local (DB_SESSION * session)
       /* to prevent a memory leak, register the query type list to session */
       session->type_list[stmt_ndx] = qtype;
     }
-  if (cmd_type == CUBRID_STMT_EXECUTE_PREPARE)
+  else if (cmd_type == CUBRID_STMT_EXECUTE_PREPARE)
     {
       /* we don't actually have the statement which will be executed and we need to get some information about it from
        * the server */
@@ -658,37 +666,47 @@ db_compile_statement_local (DB_SESSION * session)
 	}
     }
 
-  /* translate views or virtual classes into base classes */
-  statement_result = mq_translate (parser, statement);
-  if (!statement_result || pt_has_error (parser))
+  if ((statement->node_type == PT_INSERT && statement->info.insert.spec->info.spec.remote_server_name)
+      || (statement->node_type == PT_DELETE && statement->info.delete_.spec->info.spec.remote_server_name)
+      || (statement->node_type == PT_UPDATE && statement->info.update.spec->info.spec.remote_server_name)
+      || (statement->node_type == PT_MERGE && statement->info.merge.into->info.spec.remote_server_name))
     {
-      pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
-      return er_errid ();
+      ;
     }
-  statement = statement_result;
-
-  /* prefetch and lock translated real classes to avoid deadlock */
-  (void) pt_class_pre_fetch (parser, statement);
-  if (pt_has_error (parser))
+  else
     {
-      pt_report_to_ersys_with_statement (parser, PT_SYNTAX, statement);
-      return er_errid ();
-    }
-
-  /* validate include_oid setting in the session */
-  if (session->include_oid)
-    {
-      if (mq_updatable (parser, statement) == PT_UPDATABLE)
+      /* translate views or virtual classes into base classes */
+      statement_result = mq_translate (parser, statement);
+      if (!statement_result || pt_has_error (parser))
 	{
-	  if (session->include_oid == DB_ROW_OIDS)
-	    {
-	      (void) pt_add_row_oid (parser, statement);
-	    }
+	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
+	  return er_errid ();
 	}
-      else
+      statement = statement_result;
+
+      /* prefetch and lock translated real classes to avoid deadlock */
+      (void) pt_class_pre_fetch (parser, statement);
+      if (pt_has_error (parser))
 	{
-	  /* disallow OID column for non-updatable query */
-	  session->include_oid = DB_NO_OIDS;
+	  pt_report_to_ersys_with_statement (parser, PT_SYNTAX, statement);
+	  return er_errid ();
+	}
+
+      /* validate include_oid setting in the session */
+      if (session->include_oid)
+	{
+	  if (mq_updatable (parser, statement) == PT_UPDATABLE)
+	    {
+	      if (session->include_oid == DB_ROW_OIDS)
+		{
+		  (void) pt_add_row_oid (parser, statement);
+		}
+	    }
+	  else
+	    {
+	      /* disallow OID column for non-updatable query */
+	      session->include_oid = DB_NO_OIDS;
+	    }
 	}
     }
 
