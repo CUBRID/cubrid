@@ -62,10 +62,7 @@ static std::string package_path;
 static void
 usage (void)
 {
-  fprintf (stderr, "Usage: loadjava [OPTION] database-name java-class-file\n");
-  fprintf (stderr, "Options:\n-y\t%s\n-p\t%s\n",
-	   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADJAVA, LOADJAVA_ARG_FORCE_OVERWRITE_HELP),
-	   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADJAVA, LOADJAVA_ARG_FORCE_PACKAGE_HELP));
+  fprintf (stderr, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADJAVA, LOADJAVA_MSG_USAGE));
 }
 
 static int

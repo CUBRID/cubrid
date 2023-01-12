@@ -901,10 +901,12 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 2 argomento richiesto, niente predefinito
 3 java-class-file
 4 argomento richiesto, niente predefinito
-5 force-overwrite
-6 sovrascrivere class file, se esiste, niente predefinito
-7 java-package-name
-8 nome pacchetto java, vuoto se non specificato
+60 \
+Usage: loadjava [OPTION] database-name java-class-file\n\
+\n\
+valid options:\n\
+  -y, --overwrite              sovrascrivere class file, se esiste, niente predefinito\n\
+  -p, --package                nome pacchetto java, vuoto se non specificato\n\
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Impossibile aprire il file di output '%1$s'\n

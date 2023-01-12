@@ -900,10 +900,12 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 2 必选参数, no default
 3 java类文件
 4 必选参数, no default
-5 强制重写
-6 如果类存在则进行重写, 默认 不
-7 java-package-name
-8 Java包名，不指定则为空
+60 \
+Usage: loadjava [OPTION] database-name java-class-file\n\
+\n\
+valid options:\n\
+  -y, --overwrite              如果类存在则进行重写, 默认 不\n\
+  -p, --package                Java包名，不指定则为空\n\
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 无法打开输出文件 '%1$s'\n
