@@ -2169,7 +2169,7 @@ hb_cluster_load_ping_host_list (char *ha_ping_host_list)
 
       if (strcmp (host_p, "0.0.0.0") == 0)
 	{
-	  snprintf (buf, sizeof (buf), "We do not allow 0.0.0.0 as a ping hosts, excluded.");
+	  snprintf (buf, sizeof (buf), "We do not allow 0.0.0.0 as a ping hosts, excluded");
 	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, buf);
 	}
       else
