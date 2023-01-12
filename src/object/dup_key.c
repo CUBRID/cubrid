@@ -39,6 +39,12 @@
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 
+#if !defined(SERVER_MODE)
+bool is_support_auto_dup_mode = DUP_MODE_AUTO;
+int dup_mode_defalut = DUP_MODE_VALUE_DEFAULT;
+int dup_level_default = DUP_LEVEL_VALUE_DEFAULT;
+#endif
+
 static DB_DOMAIN *
 get_reserved_index_attr_domain_type (int mode, int level)
 {
@@ -87,66 +93,6 @@ get_reserved_index_attr_domain_type (int mode, int level)
 }
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
-int
-dk_heap_midxkey_get_reserved_index_value (int att_id, OID * rec_oid, DB_VALUE * value)
-{
-  // The rec_oid may be NULL when the index of the UNIQUE attribute is an index. 
-  // In that case, however, it cannot enter here.
-  assert_release (rec_oid != NULL);
-
-  int hash_mod_val;
-  short level = GET_RESERVED_INDEX_ATTR_LEVEL (att_id);
-  short mode = GET_RESERVED_INDEX_ATTR_MODE (att_id);
-
-  hash_mod_val = 1 << level;	// like pow(2, level);
-
-  switch (mode)
-    {
-    case DUP_MODE_OID:
-      if (level == 0)
-	{
-	  db_make_bigint (value, *((DB_BIGINT *) rec_oid));
-	}
-      else if (hash_mod_val > SHRT_MAX)
-	{
-	  db_make_int (value, (int) (OID_PSEUDO_KEY (rec_oid) % hash_mod_val));
-	}
-      else
-	{
-	  db_make_short (value, (short) (OID_PSEUDO_KEY (rec_oid) % hash_mod_val));
-	}
-      break;
-
-    case DUP_MODE_PAGEID:
-      if (level == 0)
-	{
-	  db_make_int (value, rec_oid->pageid);
-	}
-      else if (hash_mod_val > SHRT_MAX)
-	{
-	  db_make_int (value, (int) (rec_oid->pageid % hash_mod_val));
-	}
-      else
-	{
-	  db_make_short (value, (short) (rec_oid->pageid % hash_mod_val));
-	}
-      break;
-
-    case DUP_MODE_SLOTID:
-      db_make_short (value, (level == 0) ? rec_oid->slotid : (rec_oid->slotid % hash_mod_val));
-      break;
-
-    case DUP_MODE_VOLID:
-      db_make_short (value, (level == 0) ? rec_oid->volid : (rec_oid->volid % hash_mod_val));
-      break;
-    default:
-      assert (false);
-      break;
-    }
-
-  return NO_ERROR;
-}
-
 static OR_ATTRIBUTE st_or_atts[COUNT_OF_DUP_MODE][COUNT_OF_DUP_LEVEL];
 static bool st_or_atts_init = false;
 
@@ -219,6 +165,65 @@ dk_find_or_reserved_index_attribute (int att_id)
   return (void *) &(st_or_atts[mode - 1][level]);
 }
 
+int
+dk_heap_midxkey_get_reserved_index_value (int att_id, OID * rec_oid, DB_VALUE * value)
+{
+  // The rec_oid may be NULL when the index of the UNIQUE attribute is an index. 
+  // In that case, however, it cannot enter here.
+  assert_release (rec_oid != NULL);
+
+  int hash_mod_val;
+  short level = GET_RESERVED_INDEX_ATTR_LEVEL (att_id);
+  short mode = GET_RESERVED_INDEX_ATTR_MODE (att_id);
+
+  hash_mod_val = 1 << level;	// like pow(2, level);
+
+  switch (mode)
+    {
+    case DUP_MODE_OID:
+      if (level == 0)
+	{
+	  db_make_bigint (value, *((DB_BIGINT *) rec_oid));
+	}
+      else if (hash_mod_val > SHRT_MAX)
+	{
+	  db_make_int (value, (int) (OID_PSEUDO_KEY (rec_oid) % hash_mod_val));
+	}
+      else
+	{
+	  db_make_short (value, (short) (OID_PSEUDO_KEY (rec_oid) % hash_mod_val));
+	}
+      break;
+
+    case DUP_MODE_PAGEID:
+      if (level == 0)
+	{
+	  db_make_int (value, rec_oid->pageid);
+	}
+      else if (hash_mod_val > SHRT_MAX)
+	{
+	  db_make_int (value, (int) (rec_oid->pageid % hash_mod_val));
+	}
+      else
+	{
+	  db_make_short (value, (short) (rec_oid->pageid % hash_mod_val));
+	}
+      break;
+
+    case DUP_MODE_SLOTID:
+      db_make_short (value, (level == 0) ? rec_oid->slotid : (rec_oid->slotid % hash_mod_val));
+      break;
+
+    case DUP_MODE_VOLID:
+      db_make_short (value, (level == 0) ? rec_oid->volid : (rec_oid->volid % hash_mod_val));
+      break;
+    default:
+      assert (false);
+      break;
+    }
+
+  return NO_ERROR;
+}
 #endif // #if defined(SERVER_MODE) || defined(SA_MODE)
 
 #if !defined(SERVER_MODE)
@@ -257,6 +262,9 @@ dk_sm_attribute_initialized ()
   const char *reserved_name = NULL;
   SM_ATTRIBUTE *att;
   DB_DOMAIN *domain = NULL;
+
+  assert (dup_mode_defalut > DUP_MODE_NONE && dup_mode_defalut < DUP_MODE_LAST);
+  assert (dup_level_default >= OVFL_LEVEL_MIN && dup_level_default <= OVFL_LEVEL_MAX);
 
   for (mode = DUP_MODE_OID; mode <= DUP_MODE_VOLID; mode++)
     {
@@ -500,7 +508,7 @@ dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupk
   switch (dupkey_mode)
     {
     case DUP_MODE_NONE:
-      if ((DUP_MODE_OVFL_LEVEL_AUTO_SET > DUP_MODE_NONE))
+      if (is_support_auto_dup_mode)
 	{
 	  len = snprintf (buf, buf_size, "%s", " deduplicate OFF");
 	}
@@ -523,14 +531,14 @@ dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupk
       assert (false);
     }
 
-  if ((dupkey_mode == DUP_MODE_DEFAULT) && (dupkey_hash_level == OVFL_LEVEL_DEFAULT))
+  if ((dupkey_mode == dup_mode_defalut) && (dupkey_hash_level == dup_level_default))
     {
-      if (dupkey_mode != DUP_MODE_OVFL_LEVEL_AUTO_SET)
+      if (!is_support_auto_dup_mode)
 	{
 	  len = snprintf (buf, buf_size, "%s", " deduplicate ON");
 	}
     }
-  else if (dupkey_hash_level == OVFL_LEVEL_DEFAULT)
+  else if (dupkey_hash_level == dup_level_default)
     {
       len = snprintf (buf, buf_size, "%s", str_mode);
     }

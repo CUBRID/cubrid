@@ -798,7 +798,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
     {
       m_buf ("%s", reserved_col_buf);
     }
-  else if (!is_check_reserved_col && (DUP_MODE_OVFL_LEVEL_AUTO_SET > DUP_MODE_NONE))
+  else if (!is_check_reserved_col && is_support_auto_dup_mode)
     {
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
       if (constraint.type == SM_CONSTRAINT_FOREIGN_KEY)

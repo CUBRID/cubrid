@@ -46,12 +46,19 @@ typedef enum
 #define OVFL_LEVEL_MAX       (16)
 
 #if !defined(SERVER_MODE)
-#define OVFL_LEVEL_DEFAULT   (10)
-#define DUP_MODE_DEFAULT     (DUP_MODE_PAGEID)
-#define DUP_MODE_OVFL_LEVEL_NOT_SET   (-1)
 
-/* DUP_MODE_OVFL_LEVEL_AUTO_SET is a value between DUP_MODE_NONE and (DUP_MODE_LAST-1) */
-#define DUP_MODE_OVFL_LEVEL_AUTO_SET  (DUP_MODE_NONE)
+#define DUP_MODE_AUTO      (false)
+
+#define DUP_MODE_OVFL_LEVEL_NOT_SET   (-1)
+/* OVFL_LEVEL_MIN ~ OVFL_LEVEL_MAX */
+#define DUP_LEVEL_VALUE_DEFAULT    (10)
+/* DUP_MODE_VALUE_DEFAULT is a value between DUP_MODE_OID and (DUP_MODE_LAST-1) */
+#define DUP_MODE_VALUE_DEFAULT     (DUP_MODE_OID)
+
+
+extern bool is_support_auto_dup_mode;
+extern int dup_mode_defalut;
+extern int dup_level_default;
 #endif
 
 /* ******************************************************** */
@@ -195,8 +202,9 @@ static const char *st_reserved_index_col_name[COUNT_OF_DUP_MODE][COUNT_OF_DUP_LE
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
 extern int dk_heap_midxkey_get_reserved_index_value (int att_id, OID * rec_oid, DB_VALUE * value);
+
 // The actual return type is OR_ATTRIBUTE*.
-// Here it is treated as void* due to collision with C++. (error: template with C linkage)
+// But, here it is treated as void* due to collision with C++. (error: template with C linkage)
 extern void *dk_find_or_reserved_index_attribute (int att_id);
 #endif
 

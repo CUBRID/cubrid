@@ -3076,7 +3076,7 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	{
 	  output_ctx (") %s", reserved_col_buf);
 	}
-      else if (!is_check_reserved_col && (DUP_MODE_OVFL_LEVEL_AUTO_SET > DUP_MODE_NONE))
+      else if (!is_check_reserved_col && is_support_auto_dup_mode)
 	{
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	  if (ctype == SM_CONSTRAINT_FOREIGN_KEY)

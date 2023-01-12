@@ -21459,7 +21459,7 @@ opt_index_dup_level
                }
         | DEDUPLICATE_ ON_
                { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DEDUPLICATE_ ON_ ); 
-                 $$ = DUP_MODE_DEFAULT | (OVFL_LEVEL_DEFAULT << 16); 
+                 $$ = dup_mode_defalut | (dup_level_default << 16); 
                }
         | DEDUPLICATE_ OFF_
                { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DEDUPLICATE_ OFF_ ); 
@@ -21482,7 +21482,7 @@ index_dup_mode
 opt_index_level
         : /* empty */
 		{ DBG_TRACE_GRAMMAR(opt_index_level, : );
-                  $$ = OVFL_LEVEL_DEFAULT;
+                  $$ = dup_level_default;
                 }
 	| LEVEL UNSIGNED_INTEGER
 		{ DBG_TRACE_GRAMMAR(opt_index_level, | LEVEL UNSIGNED_INTEGER ); 
@@ -27680,10 +27680,15 @@ static void pt_get_dup_mode_level(bool is_rebuild, int mode_level, short* mode, 
            *mode = DUP_MODE_OVFL_LEVEL_NOT_SET;
            *level = 0;
         }
+        else if(is_support_auto_dup_mode)
+        {
+           *mode = dup_mode_defalut; 
+           *level = dup_level_default;
+        }
         else
         {
-            *mode = DUP_MODE_OVFL_LEVEL_AUTO_SET; 
-            *level = (*mode == DUP_MODE_NONE) ? 0 : OVFL_LEVEL_DEFAULT;
+           *mode = DUP_MODE_NONE; 
+           *level = 0;        
         }
       }
     else
