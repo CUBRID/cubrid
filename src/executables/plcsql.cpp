@@ -413,6 +413,8 @@ main (int argc, char *argv[])
 	}
     }
 
+    PLCSQL_LOG ("Registering PL/CSQL procedure/function has been completed successfully.");
+
     error = NO_ERROR;
     goto exit_on_end;
   }
