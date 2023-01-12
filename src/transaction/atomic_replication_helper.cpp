@@ -1057,36 +1057,40 @@ namespace cublog
 	     *  - a subsequent call will also be considered as failed
 	     *  - this ensures that the page will not be inconsistently replicated as the following
 	     *    scenario can happen:
-	     *    - there is a window of opportunity between the moment the atomic replication
-	     *      infrastructure (this helper implementation executing on the replication thread)
-	     *      and a client transaction thread
-	     *    - suppose, when the replication thread attempts to fix the page to apply the
-	     *      log record LSA(i) (for example), and the page is neither in the passive
-	     *      transaction server's replication nor in transit between the page server
-	     *      and the passive transaction server, the fix will fail
-	     *    - at the same time, a client transaction will attempt to fix the page
-	     *      and it will succeed and as the implementation is done, the page will
-	     *      be requested from page server with LSA(i-1) - because the replication
-	     *      thread will report LSA(i-1) as the last LSA having been processed
-	     *    - this happens because, while the replication thread is processing the
-	     *      log record LSA(i), it is the LSA(i-1) that is being returned as processed
-	     *      to the client transaction to make the request to page server (see call-path:
-	     *        -> pgbuf_read_page_from_file_or_page_server
-	     *          -> log_lsa passive_tran_server::get_highest_processed_lsa
-	     *            -> replicator::get_highest_processed_lsa
-	     *      and the way the value of "m_redo_lsa" is updated in atomic_replicator::redo_upto
-	     *    - the page server will return the page updated by page server's own replication up
-	     *      and including LSA(i-1)
-	     *    - so, the state at this point is that the page will have been retrieved from the page
-	     *      server and the state of the page's replication is at LSA(i-1) and the passive
-	     *      transaction server's replication would not have applied the log record at LSA(i)
-	     *    - if the atomic sequence contains a new log record for the same page - LSA(i+1) -
-	     *      the replication will fix the page and apply the log record LSA(i+1)
-	     *      but the page will not have contained the log record at LSA(i)
-	     *  - the window of opportunity for this to happen is quite small; for this to happen
-	     *    it would mean that a client transaction would request a page, and retrieve from
-	     *    page server in smaller frame of time than it takes the atomic replication thread
-	     *    to process an atomic sequence; but cannot be ruled out entirely
+	     *
+	     *    Suppose that the replication must replicate an atomic sequence for which there are 2 log
+	     *    records for the same page (VPID1):
+	     *      - LSA(i-1)
+	     *      - LSA(i)
+	     *    Chronologically, in a corner case scenario, the following sequence of actions is possible:
+	     *      - the replication processes the first log record LSA(i-1) and attempts to fix the page VPID1
+	     *      - the replication fails to fix the page VPID1 because the page is not in the PTS's page
+	     *        buffer nor in transit from PS to PTS
+	     *      - at this point the replication reports:
+	     *        - m_processed_lsa = LSA(i-2)
+	     *        - m_redo_lsa = LSA(i-1)
+	     *      - at this point the currently executing instruction on the replication thread is somewhere
+	     *        within function `atomic_replicator::redo_upto` BEFORE the synchronized sequence where
+	     *        `m_processed_lsa` and `m_redo_lsa` are advanced
+	     *      - a client transaction also tries to fix page VPID1 and succeeds:
+	     *      - the page is requested to Page Server to be retrieved having LSA(i-2) already
+	     *        processed (see implementation for `atomic_replicator::get_highest_processed_lsa`)
+	     *      - the PS waits for its own replication to have already passed LSA(i-2) (so LSA(i-2) is
+	     *        already applied to its respective page but LSA(i-1) is not guaranteed to have been
+	     *        applied to VPID1)
+	     *      - at this point, the PTS client transaction fixes for read page VPID1 with applied
+	     *        LSA(i-2) but not with LSA(i-1) (in the worst case scenario)
+	     *      - the client transaction does its job and unfixes the page VPID1
+	     *      - the replication thread steps in and attempts to fix page VPID1 to apply the log at LSA(i)
+	     *      - but the page does not contain the modification from LSA(i-1)
+	     *
+	     * - this is the window of opportunity that must be avoided; the window is very small, as it would
+	     *    require that a client transaction would request a page, retrieve it from page server in a
+	     *    smaller time frame than it takes the atomic replication thread to process an atomic
+	     *    sequence (but cannot be ruled out as long as the atomic replication thread also receives
+	     *    the prior log lists info over the same wire from the Page Server
+	     * - and this is what this current check guards against; for now, the check is to set a fatal
+	     *    error to see whether this ever happens
 	     */
 
 	    // the fix failed for a previous log record within the same atomic sequence
@@ -1203,7 +1207,7 @@ namespace cublog
       {
 	const page_ptr_info &info = pair.second;
 	written = snprintf (buf_ptr, (size_t)left, "  m_vpid = %d|%d  rcvindex = %s"
-			    "  page_p = %p  watcher_p = %p  ref_cnt = %d  fixed=%d\n",
+			    "  page_p = %p  watcher_p = %p  ref_cnt = %d  fixed = %d\n",
 			    VPID_AS_ARGS (&info.m_vpid), rv_rcvindex_string (info.m_rcvindex),
 			    (void *)info.m_page_p, (void *)info.m_watcher_p.get (), info.m_ref_count,
 			    info.m_successfully_fixed);
