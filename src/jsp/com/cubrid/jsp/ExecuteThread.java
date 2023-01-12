@@ -223,17 +223,21 @@ public class ExecuteThread extends Thread {
                                 fos.close();
 
                                 String cubrid_env = System.getenv("CUBRID");
-                                String command = "javac " + javaFilePath + " -cp " + cubrid_env + "/java/splib.jar";
+                                String command =
+                                        "javac "
+                                                + javaFilePath
+                                                + " -cp "
+                                                + cubrid_env
+                                                + "/java/splib.jar";
                                 Process proc = Runtime.getRuntime().exec(command);
                                 proc.getErrorStream().close();
                                 proc.getInputStream().close();
                                 proc.getOutputStream().close();
                                 proc.waitFor();
 
-                                if (proc.exitValue() != 0)
-                                {
+                                if (proc.exitValue() != 0) {
                                     // TODO
-                                    throw new RuntimeException ();
+                                    throw new RuntimeException();
                                 }
 
                                 resultBuffer = packer.getBuffer();

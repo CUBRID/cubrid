@@ -375,7 +375,7 @@ main (int argc, char *argv[])
     if (plcsql_transfer_file (input_string, output_string, sql) != NO_ERROR)
       {
 	PLCSQL_LOG ("transferring PL/CSQL program is failed");
-	goto exit_on_end; 
+	goto exit_on_end;
       }
 
     std::cout << "*************************************************************" << std::endl;
@@ -386,31 +386,31 @@ main (int argc, char *argv[])
 
     // Execute SQL
     {
-    if (sql.empty ())
-    {
-  PLCSQL_LOG ("Invalid SQL string");
-  goto exit_on_end;
-    }
-
-    session = db_open_buffer (sql.c_str ());
-    if (!session)
+      if (sql.empty ())
 	{
-    PLCSQL_LOG ("Parsing SQL is failed");
+	  PLCSQL_LOG ("Invalid SQL string");
 	  goto exit_on_end;
 	}
 
-    int stmt_id = db_compile_statement (session);
-    if (stmt_id < 0)
-    {
-      PLCSQL_LOG ("Compiling SQL is failed");
-      goto exit_on_end;
-    }
+      session = db_open_buffer (sql.c_str ());
+      if (!session)
+	{
+	  PLCSQL_LOG ("Parsing SQL is failed");
+	  goto exit_on_end;
+	}
 
-    int db_error = db_execute_statement (session, stmt_id, &result);
-    if (db_error < 0)
-      {
-        goto exit_on_end;
-      }
+      int stmt_id = db_compile_statement (session);
+      if (stmt_id < 0)
+	{
+	  PLCSQL_LOG ("Compiling SQL is failed");
+	  goto exit_on_end;
+	}
+
+      int db_error = db_execute_statement (session, stmt_id, &result);
+      if (db_error < 0)
+	{
+	  goto exit_on_end;
+	}
     }
 
     error = NO_ERROR;

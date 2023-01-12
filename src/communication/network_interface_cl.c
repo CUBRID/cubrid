@@ -10890,7 +10890,7 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 }
 
 int
-plcsql_transfer_file (const std::string & input_file, std::string & output_file, std::string &sql)
+plcsql_transfer_file (const std::string & input_file, std::string & output_file, std::string & sql)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
