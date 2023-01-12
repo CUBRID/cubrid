@@ -41,22 +41,22 @@ unit_statement
     ;
 
 create_function
-    : CREATE (OR REPLACE)? FUNCTION identifier ('(' parameter_list ')')? RETURN type_spec
+    : CREATE (OR REPLACE)? FUNCTION identifier '(' parameter_list? ')' RETURN type_spec
       (IS | AS) seq_of_declare_specs? body ';'
     ;
 
 create_procedure
-    : CREATE (OR REPLACE)? PROCEDURE identifier ('(' parameter_list ')')?
+    : CREATE (OR REPLACE)? PROCEDURE identifier '(' parameter_list? ')'
       (IS | AS) seq_of_declare_specs? body ';'
     ;
 
 function_body
-    : FUNCTION identifier ('(' parameter_list ')')? RETURN type_spec
+    : FUNCTION identifier '(' parameter_list? ')' RETURN type_spec
       (IS | AS) seq_of_declare_specs? body ';'
     ;
 
 procedure_body
-    : PROCEDURE identifier ('(' parameter_list ')')?
+    : PROCEDURE identifier '(' parameter_list? ')'
       (IS | AS) seq_of_declare_specs? body ';'
     ;
 
@@ -100,7 +100,7 @@ constant_declaration
     ;
 
 cursor_definition
-    : CURSOR identifier ('(' parameter_list ')' )? IS s_select_statement ';'
+    : CURSOR identifier '(' parameter_list? ')' IS s_select_statement ';'
     ;
 
 exception_declaration
