@@ -2166,8 +2166,11 @@ hb_cluster_load_ping_host_list (char *ha_ping_host_list)
 	  break;
 	}
 
-      hb_add_ping_host (host_p);
-      num_hosts++;
+      if (strcmp (host_p, "0.0.0.0") != 0)
+        {
+          hb_add_ping_host (host_p);
+          num_hosts++;
+        }
     }
 
   return num_hosts;
