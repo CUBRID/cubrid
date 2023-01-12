@@ -74,8 +74,7 @@ namespace cubregex
   };
 
   /* related to system parameter */
-  bool check_regexp_engine_prm (const char *param_name);
-  engine_type get_engine_type_by_name (const char *param_name);
+  const char *get_engine_name (const engine_type &type);
 
   /*
   * compile() - Compile regex object
