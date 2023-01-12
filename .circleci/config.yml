@@ -55,7 +55,7 @@ jobs:
           name: Build
           command: |
             mkdir -p /tmp/build_logs
-            scl enable devtoolset-8 -- /entrypoint.sh build
+            scl enable devtoolset-9 -- /entrypoint.sh build
             mv -f build.log /tmp/build_logs
       - run:
           name: Commits
