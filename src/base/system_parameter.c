@@ -2220,8 +2220,8 @@ int PRM_ER_LOG_TDE = false;
 static int prm_er_log_tde_default = false;
 static unsigned int prm_er_log_tde_flag = 0;
 
-bool PRM_JAVA_STORED_PROCEDURE = false;
-static bool prm_java_stored_procedure_default = false;
+bool PRM_JAVA_STORED_PROCEDURE = true;
+static bool prm_java_stored_procedure_default = true;
 static unsigned int prm_java_stored_procedure_flag = 0;
 
 int PRM_JAVA_STORED_PROCEDURE_PORT = 0;
