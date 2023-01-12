@@ -277,6 +277,7 @@ namespace cublog
 	    PAGE_PTR m_page_p = nullptr;
 	    page_ptr_watcher_uptr_type m_watcher_p;
 	    int m_ref_count = 0;
+	    bool m_successfully_fixed = false;
 	  };
 
 	  /*
@@ -290,9 +291,6 @@ namespace cublog
 	   *  - or unfixed if there is no parent [sub]sequence which needs the page anymore (aka:
 	   *    the [sub]sequence which just requested the fix is the outer-most one that needed
 	   *    the page in the current overall sequence of possibly nested [sub]sequences
-	   *
-	   * TODO:
-	   *  - since page buffer already has reference counting, ca we make do without this?
 	   */
 	  struct page_ptr_bookkeeping
 	  {

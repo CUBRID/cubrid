@@ -55,6 +55,8 @@ struct log_record_spec_type
   // whether the page for the log record will be fixed or will
   // faill to be fixed (to simulate real life conditions)
   bool m_fix_success;
+
+  bool m_severe_error_occured = false;
 };
 using log_record_spec_vector_type = std::vector<log_record_spec_type>;
 
@@ -77,9 +79,13 @@ struct test_spec_type
 
     void execute (cublog::atomic_replication_helper &atomic_helper);
 
+    void check_after_execution (TRANID trid, const cublog::atomic_replication_helper &atomic_helper);
+
     PAGE_PTR alloc_page (const VPID &vpid);
     PAGE_PTR fix_page (const VPID &vpid);
     void unfix_page (PAGE_PTR page_ptr);
+
+    void check_error (int severity, int err_id);
 
   public:
     // RAII style, make sure it is the first member of the class
@@ -93,7 +99,7 @@ struct test_spec_type
     // the actual log record sequence that the test is executing
     log_record_spec_vector_type m_log_record_vec;
     // points to the current replicating log
-    const log_record_spec_type *m_current_log_ptr = nullptr;
+    log_record_spec_type *m_current_log_ptr = nullptr;
 
     // bookkeeping for pgbuf functionality
     vpid_page_ptr_map m_fixed_page_map;
@@ -134,8 +140,7 @@ TEST_CASE ("LOG_START/END_ATOMIC_REPL", "")
 
   cublog::atomic_replication_helper atomic_helper;
   test_spec.execute (atomic_helper);
-  REQUIRE (!atomic_helper.is_part_of_atomic_replication (trid));
-  REQUIRE (atomic_helper.all_log_entries_are_control (trid));
+  test_spec.check_after_execution (trid, atomic_helper);
 }
 
 TEST_CASE ("LOG_SYSOP_ATOMIC_START/LOG_SYSOP_END-LOG_SYSOP_END_LOGICAL_UNDO", "")
@@ -176,8 +181,7 @@ TEST_CASE ("LOG_SYSOP_ATOMIC_START/LOG_SYSOP_END-LOG_SYSOP_END_LOGICAL_UNDO", ""
 
   cublog::atomic_replication_helper atomic_helper;
   test_spec.execute (atomic_helper);
-  REQUIRE (!atomic_helper.is_part_of_atomic_replication (trid));
-  REQUIRE (atomic_helper.all_log_entries_are_control (trid));
+  test_spec.check_after_execution (trid, atomic_helper);
 }
 
 TEST_CASE ("LOG_SYSOP_ATOMIC_START/LOG_SYSOP_END-LOG_SYSOP_END_COMMIT", "")
@@ -210,8 +214,7 @@ TEST_CASE ("LOG_SYSOP_ATOMIC_START/LOG_SYSOP_END-LOG_SYSOP_END_COMMIT", "")
 
   cublog::atomic_replication_helper atomic_helper;
   test_spec.execute (atomic_helper);
-  REQUIRE (!atomic_helper.is_part_of_atomic_replication (trid));
-  REQUIRE (atomic_helper.all_log_entries_are_control (trid));
+  test_spec.check_after_execution (trid, atomic_helper);
 }
 
 TEST_CASE ("LOG_SYSOP_ATOMIC_START/LOG_SYSOP_START_POSTPONE/LOG_SYSOP_END", "")
@@ -263,8 +266,7 @@ TEST_CASE ("LOG_SYSOP_ATOMIC_START/LOG_SYSOP_START_POSTPONE/LOG_SYSOP_END", "")
 
   cublog::atomic_replication_helper atomic_helper;
   test_spec.execute (atomic_helper);
-  REQUIRE (!atomic_helper.is_part_of_atomic_replication (trid));
-  REQUIRE (atomic_helper.all_log_entries_are_control (trid));
+  test_spec.check_after_execution (trid, atomic_helper);
 }
 
 TEST_CASE ("LOG_SYSOP_ATOMIC_START/LOG_SYSOP_END-LOG_SYSOP_END_LOGICAL_UNDO - fail to fix", "")
@@ -288,7 +290,7 @@ TEST_CASE ("LOG_SYSOP_ATOMIC_START/LOG_SYSOP_END-LOG_SYSOP_END_LOGICAL_UNDO - fa
     { trid, INV_LSA, INV_VPID, LOG_SYSOP_ATOMIC_START, INV_RCVINDEX, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC },
     { trid, INV_LSA, { 60, 0 }, INV_RECTYPE, RVFL_PARTSECT_ALLOC, INV_SYSOP_END_TYPE, INV_LSA, FIX_FAIL },
     { trid, INV_LSA, { 60, 0 }, INV_RECTYPE, RVFL_FHEAD_ALLOC, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC },
-    { trid, INV_LSA, { 60, 0 }, INV_RECTYPE, RVFL_EXTDATA_REMOVE, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC },
+    { trid, INV_LSA, { 60, 0 }, INV_RECTYPE, RVFL_EXTDATA_REMOVE, INV_SYSOP_END_TYPE, INV_LSA, FIX_FAIL },
     { trid, INV_LSA, { 60, 0 }, INV_RECTYPE, RVFL_EXTDATA_ADD, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC },
     { trid, INV_LSA, { 51, 0 }, INV_RECTYPE, RVHF_NEWPAGE, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC },
   };
@@ -305,8 +307,7 @@ TEST_CASE ("LOG_SYSOP_ATOMIC_START/LOG_SYSOP_END-LOG_SYSOP_END_LOGICAL_UNDO - fa
 
   cublog::atomic_replication_helper atomic_helper;
   test_spec.execute (atomic_helper);
-  REQUIRE (!atomic_helper.is_part_of_atomic_replication (trid));
-  REQUIRE (atomic_helper.all_log_entries_are_control (trid));
+  test_spec.check_after_execution (trid, atomic_helper);
 }
 
 //  _CL_ LSA = 35288|2848  rectype = LOG_SYSOP_ATOMIC_START  sysop_end_type = N_A  sysop_end_last_parent_lsa = -1|-1
@@ -414,7 +415,7 @@ void test_spec_type::calculate_log_records_offsets (LOG_LSA start_lsa)
 
 void test_spec_type::execute (cublog::atomic_replication_helper &atomic_helper)
 {
-  for (const log_record_spec_type &log_rec : m_log_record_vec)
+  for (log_record_spec_type &log_rec : m_log_record_vec)
     {
       REQUIRE (log_rec.m_lsa != INV_LSA);
       m_current_log_ptr = &log_rec;
@@ -448,9 +449,49 @@ void test_spec_type::execute (cublog::atomic_replication_helper &atomic_helper)
 	  atomic_helper.append_log (m_thread_p, log_rec.m_trid, log_rec.m_lsa,
 				    log_rec.m_rcvindex, log_rec.m_vpid);
 	}
+
+      if (m_current_log_ptr->m_severe_error_occured)
+	{
+	  atomic_helper.forcibly_remove_sequence (m_current_log_ptr->m_trid);
+	  break;
+	}
     }
 
   m_current_log_ptr = nullptr;
+}
+
+void test_spec_type::check_after_execution (TRANID trid, const cublog::atomic_replication_helper &atomic_helper)
+{
+  REQUIRE (!atomic_helper.is_part_of_atomic_replication (trid));
+  REQUIRE (atomic_helper.all_log_entries_are_control (trid));
+
+  log_record_spec_vector_type::const_iterator log_rec_it = m_log_record_vec.cbegin ();
+  VPID fix_fail_vpid = INV_VPID;
+  for ( ; log_rec_it != m_log_record_vec.cend (); ++log_rec_it)
+    {
+      const log_record_spec_type &log_rec = *log_rec_it;
+      if (log_rec.m_fix_success == FIX_FAIL)
+	{
+	  fix_fail_vpid = log_rec.m_vpid;
+	  break;
+	}
+    }
+  bool severe_error_occured_after_failed_page_fix = false;
+  for ( ; log_rec_it != m_log_record_vec.cend (); ++log_rec_it)
+    {
+      const log_record_spec_type &log_rec = *log_rec_it;
+      if (log_rec.m_severe_error_occured)
+	{
+	  REQUIRE (!VPID_ISNULL (&fix_fail_vpid));
+	  REQUIRE (VPID_EQ (&log_rec.m_vpid, &fix_fail_vpid));
+	  severe_error_occured_after_failed_page_fix = true;
+	  break;
+	}
+    }
+  if (!VPID_ISNULL (&fix_fail_vpid))
+    {
+      REQUIRE (severe_error_occured_after_failed_page_fix);
+    }
 }
 
 PAGE_PTR test_spec_type::alloc_page (const VPID &vpid)
@@ -510,6 +551,19 @@ void test_spec_type::unfix_page (PAGE_PTR page_ptr)
   // nothing to do actually because we chose not to implement reference counting
   // in the unit test as well; therefore, pages are "fixed" when requested and only
   // unfixed when the test spec is destroyed
+}
+
+void test_spec_type::check_error (int severity, int err_id)
+{
+  REQUIRE (m_current_log_ptr != nullptr);
+
+  REQUIRE (ER_FATAL_ERROR_SEVERITY == severity);
+  REQUIRE ((m_current_log_ptr->m_fix_success && err_id == ER_ATOMIC_REPL_ERROR));
+
+  if (ER_FATAL_ERROR_SEVERITY == severity)
+    {
+      m_current_log_ptr->m_severe_error_occured = true;
+    }
 }
 
 // ****************************************************************
@@ -676,15 +730,15 @@ log_rv_redo_context::~log_rv_redo_context ()
 {
 }
 
+void
+er_set (int severity, const char */*file_name*/, const int /*line_no*/, int err_id, int /*num_args*/, ...)
+{
+  gl_Test_Spec->check_error (severity, err_id);
+}
+
 // ****************************************************************
 // CUBRID stuff; not used but required by linker
 // ****************************************************************
-
-void
-er_set (int /*severity*/, const char */*file_name*/, const int /*line_no*/, int /*err_id*/, int /*num_args*/, ...)
-{
-  assert_release (false);
-}
 
 const char *
 rv_rcvindex_string (LOG_RCVINDEX /*rcvindex*/)
