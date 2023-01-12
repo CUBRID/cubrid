@@ -33,6 +33,7 @@ package com.cubrid.jsp;
 
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
+import com.cubrid.jsp.data.CompileInfo;
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.data.DataUtilities;
 import com.cubrid.jsp.exception.ExecuteException;
@@ -43,12 +44,18 @@ import com.cubrid.jsp.value.ValueUtilities;
 import com.cubrid.plcsql.handler.TestMain;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.reflect.InvocationTargetException;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
@@ -199,11 +206,35 @@ public class ExecuteThread extends Thread {
                             String inSource = unpacker.unpackCString();
 
                             try {
-                                String outSource = TestMain.compilePLCSQL(inSource);
+                                CompileInfo info = TestMain.compilePLCSQL(inSource);
 
                                 resultBuffer.clear(); /* prepare to put */
                                 packer.setBuffer(resultBuffer);
-                                packer.packString(outSource);
+                                packer.packString(info.translated);
+                                packer.packString(info.sqlTemplate);
+
+                                String javaFilePath =
+                                        StoredProcedureClassLoader.ROOT_PATH
+                                                + info.className
+                                                + ".java";
+                                File file = new File(javaFilePath);
+                                FileOutputStream fos = new FileOutputStream(file, false);
+                                fos.write(info.translated.getBytes(Charset.forName("UTF-8")));
+                                fos.close();
+
+                                String cubrid_env = System.getenv("CUBRID");
+                                String command = "javac " + javaFilePath + " -cp " + cubrid_env + "/java/splib.jar";
+                                Process proc = Runtime.getRuntime().exec(command);
+                                proc.getErrorStream().close();
+                                proc.getInputStream().close();
+                                proc.getOutputStream().close();
+                                proc.waitFor();
+
+                                if (proc.exitValue() != 0)
+                                {
+                                    // TODO
+                                    throw new RuntimeException ();
+                                }
 
                                 resultBuffer = packer.getBuffer();
 
@@ -297,6 +328,14 @@ public class ExecuteThread extends Thread {
             }
         }
         closeSocket();
+    }
+
+    private static void printLines(String cmd, InputStream ins) throws Exception {
+        String line = null;
+        BufferedReader in = new BufferedReader(new InputStreamReader(ins));
+        while ((line = in.readLine()) != null) {
+            System.out.println(cmd + " " + line);
+        }
     }
 
     private int listenCommand() throws Exception {

@@ -21,8 +21,11 @@
  *
  */
 
-#include <cstdlib>
+#if !defined(WINDOWS)
 #include <pwd.h>
+#endif
+
+#include <cstdlib>
 #include <cstring>
 #include <cwctype>
 #include <vector>
@@ -339,6 +342,9 @@ main (int argc, char *argv[])
     {0, 0, 0, 0}
   };
 
+  DB_SESSION *session = NULL;
+  DB_QUERY_RESULT *result = NULL;
+
   {
     if (parse_options (argc, argv, &plcsql_arg, options, option_string) != NO_ERROR)
       {
@@ -364,15 +370,48 @@ main (int argc, char *argv[])
     std::cout << "=============================================================" << std::endl;
 
     std::string output_string;
-    if (plcsql_transfer_file (input_string, output_string) != NO_ERROR)
+    std::string sql;
+
+    if (plcsql_transfer_file (input_string, output_string, sql) != NO_ERROR)
       {
 	PLCSQL_LOG ("transferring PL/CSQL program is failed");
-	goto exit_on_end;
+	goto exit_on_end; 
       }
 
     std::cout << "*************************************************************" << std::endl;
     std::cout << output_string << std::endl;
     std::cout << "*************************************************************" << std::endl;
+    std::cout << sql << std::endl;
+    std::cout << "*************************************************************" << std::endl;
+
+    // Execute SQL
+    {
+    if (sql.empty ())
+    {
+  PLCSQL_LOG ("Invalid SQL string");
+  goto exit_on_end;
+    }
+
+    session = db_open_buffer (sql.c_str ());
+    if (!session)
+	{
+    PLCSQL_LOG ("Parsing SQL is failed");
+	  goto exit_on_end;
+	}
+
+    int stmt_id = db_compile_statement (session);
+    if (stmt_id < 0)
+    {
+      PLCSQL_LOG ("Compiling SQL is failed");
+      goto exit_on_end;
+    }
+
+    int db_error = db_execute_statement (session, stmt_id, &result);
+    if (db_error < 0)
+      {
+        goto exit_on_end;
+      }
+    }
 
     error = NO_ERROR;
     goto exit_on_end;
@@ -384,5 +423,15 @@ print_usage:
   /* fall through */
 
 exit_on_end:
+  if (result != NULL)
+    {
+      db_query_end (result);
+    }
+
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
   return error;
 }

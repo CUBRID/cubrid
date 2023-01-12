@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.handler;
 
+import com.cubrid.jsp.data.CompileInfo;
 import com.cubrid.plcsql.compiler.ParseTreeConverter;
 import com.cubrid.plcsql.compiler.ParseTreePrinter;
 import com.cubrid.plcsql.compiler.PcsLexerEx;
@@ -44,9 +45,10 @@ import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
 
 public class TestMain {
-    public static String compilePLCSQL(String in) {
+    public static CompileInfo compilePLCSQL(String in) {
         long t0, t;
         CodePointCharStream stream = CharStreams.fromString(in);
+        CompileInfo info = new CompileInfo();
 
         t0 = System.currentTimeMillis();
 
@@ -73,7 +75,7 @@ public class TestMain {
 
         ParseTree ret = parser.sql_script();
         if (ret == null) {
-            return ("parsing failed");
+            return info;
         }
 
         System.out.println(
@@ -88,7 +90,11 @@ public class TestMain {
                         "converting: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
         t0 = t;
 
-        return unit.toJavaCode();
+        info.translated = unit.toJavaCode();
+        info.sqlTemplate = String.format(lexer.getCreateSqlTemplate(), unit.getJavaSignature());
+        info.className = unit.getClassName();
+
+        return info;
     }
 
     private static ParseTree parse(String inFilePath, String[] sqlTemplate) {

@@ -36,6 +36,9 @@ import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.net.ServerSocket;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.FileHandler;
@@ -61,6 +64,9 @@ public class Server {
     private AtomicBoolean shutdown;
 
     private static Server serverInstance = null;
+
+    private static String tempPathStr = Server.getSpPath() + "/tmp/";
+    public static final Path tempPath = Paths.get(tempPathStr);
 
     private Server(
             String name, String path, String version, String rPath, String uPath, String port)
@@ -107,6 +113,7 @@ public class Server {
             Class.forName("com.cubrid.jsp.jdbc.CUBRIDServerSideDriver");
 
             getJVMArguments(); /* store jvm options */
+            Files.createDirectories(tempPath);
         } else {
             /* error, serverSocket is not properly initialized */
             System.exit(1);
