@@ -1197,7 +1197,7 @@ bool PRM_ANSI_QUOTES = true;
 static bool prm_ansi_quotes_default = true;
 static unsigned int prm_ansi_quotes_flag = 0;
 
-#if !defined(SERVER_MODE) && defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_KEY_DUP_LEVEL)
 bool PRM_AUTO_DUP_MODE = false;
 static bool prm_auto_dup_mode_default = false;
 static unsigned int prm_auto_dup_mode_flag = 0;
@@ -6174,7 +6174,7 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-#if !defined(SERVER_MODE) && defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_KEY_DUP_LEVEL)
   {PRM_ID_AUTO_DUP_MODE,
    PRM_NAME_AUTO_DUP_MODE,
    (PRM_FOR_CLIENT /* | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_HIDDEN */ ),

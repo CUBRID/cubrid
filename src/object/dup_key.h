@@ -45,8 +45,6 @@ typedef enum
 #define OVFL_LEVEL_MIN       (0)
 #define OVFL_LEVEL_MAX       (16)
 
-#if !defined(SERVER_MODE)
-
 #define DUP_MODE_AUTO      (false)
 
 #define DUP_MODE_OVFL_LEVEL_NOT_SET   (-1)
@@ -56,7 +54,6 @@ typedef enum
 #define DUP_MODE_VALUE_DEFAULT     (DUP_MODE_PAGEID)
 
 extern bool is_support_auto_dup_mode;
-#endif
 
 /* ******************************************************** */
 #if !defined(SUPPORT_KEY_DUP_LEVEL)
