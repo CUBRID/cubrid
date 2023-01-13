@@ -979,6 +979,7 @@ enum pt_node_type
   PT_JSON_TABLE_NODE,
   PT_JSON_TABLE_COLUMN,
   PT_DBLINK_TABLE,
+  PT_DBLINK_TABLE_DML,
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
@@ -2211,6 +2212,7 @@ struct pt_drop_session_var_info
 struct pt_spec_info
 {
   PT_NODE *entity_name;		/* PT_NAME */
+  PT_NODE *remote_server_name;	/* PT_NAME or PT_DBLINK_INFO */
   PT_NODE *cte_name;		/* PT_NAME */
   PT_NODE *cte_pointer;		/* PT_POINTER - points to the cte_definition */
   PT_NODE *except_list;		/* PT_SPEC */
@@ -3363,6 +3365,11 @@ typedef struct pt_dblink_info
   PARSER_VARCHAR *rewritten;	/* rewritten query string for dblink */
   PT_HOST_VAR_IDX_INFO host_vars;	/* host variable index info for rewritten query */
   bool is_name;			/*  */
+
+  char *remote_table_name;
+  PT_NODE *sel_list;
+  PT_NODE *owner_list;
+
 } PT_DBLINK_INFO;
 
 typedef struct pt_create_server_info

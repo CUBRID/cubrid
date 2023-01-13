@@ -104,4 +104,8 @@ extern int do_recreate_func_index_constr (PARSER_CONTEXT * parser, SM_CONSTRAINT
 extern int do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * filter_index_info,
 					    PT_NODE * alter, const char *src_cls_name, const char *new_cls_name);
 
+extern int init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE_INFO ** assigns_data,
+                               int *assigns_count, CLIENT_UPDATE_CLASS_INFO ** cls_data, int *cls_count,
+                               DB_VALUE ** values, int *values_cnt, bool has_delete);
+
 #endif /* _EXECUTE_SCHEMA_H_ */
