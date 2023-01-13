@@ -117,9 +117,7 @@ namespace cubload
     cubthread::entry &thread_ref = cubthread::get_entry ();
     LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
     LC_FIND_CLASSNAME found_again = LC_CLASSNAME_EXIST;
-    const char *dot = strchr (class_name, '.');
-
-    if (dot != NULL)
+    if (strchr (class_name, '.'))
       {
 	found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
       }
