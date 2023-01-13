@@ -130,14 +130,13 @@ namespace cubload
 	 * So, if the schema name is not specified, the schema name of the current session must be specified.
 	 */
 
-	const char *user_name = m_session.get_args ().user_name.c_str ();
 	char user_specified_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-	/* It should be possible to know the user of the current session. If there is no user set
-	 * in the current session, I think there is a problem during the execution of the preceding code.
-	 */
+	const char *user_name = m_session.get_args ().user_name.c_str ();
 	assert (user_name != NULL);
+
 	snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", user_name, class_name);
+
 	found = xlocator_find_class_oid (&thread_ref, user_specified_name, &class_oid, BU_LOCK);
       }
 
