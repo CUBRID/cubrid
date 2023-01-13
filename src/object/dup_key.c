@@ -555,6 +555,12 @@ dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupk
 void
 dk_reserved_index_attribute_initialized ()
 {
+#if !defined(SERVER_MODE)
+  is_support_auto_dup_mode = prm_get_bool_value (PRM_ID_AUTO_DUP_MODE);
+  dup_mode_defalut = prm_get_integer_value (PRM_ID_DUP_MODE);
+  dup_level_default = prm_get_integer_value (PRM_ID_DUP_LEVEL);
+#endif
+
 #if defined(SERVER_MODE) || defined(SA_MODE)
   dk_or_attribute_initialized ();
 #endif

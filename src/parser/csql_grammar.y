@@ -115,6 +115,22 @@ extern int is_dblink_query_string;
 #    define DBG_TRACE_GRAMMAR(rule_head, rule_components)
 #endif
 
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+#include "system_parameter.h"
+static bool is_dup_mode_init_need = true;   
+static void dup_mode_init();
+
+static struct
+{
+   bool is_support_auto;
+   int mode_defalut;
+   int level_default;
+} dup_value = { false, 0, 0 };
+
+#define INIT_DUP_MODE_ENV()  do { if(is_dup_mode_init_need) {dup_mode_init();} } while(0)
+
+#endif
+
 static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
 /*%CODE_END%*/%}
 
@@ -21459,7 +21475,8 @@ opt_index_dup_level
                }
         | DEDUPLICATE_ ON_
                { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DEDUPLICATE_ ON_ ); 
-                 $$ = dup_mode_defalut | (dup_level_default << 16); 
+                 INIT_DUP_MODE_ENV();
+                 $$ = dup_value.mode_defalut | (dup_value.level_default << 16); 
                }
         | DEDUPLICATE_ OFF_
                { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DEDUPLICATE_ OFF_ ); 
@@ -21482,7 +21499,8 @@ index_dup_mode
 opt_index_level
         : /* empty */
 		{ DBG_TRACE_GRAMMAR(opt_index_level, : );
-                  $$ = dup_level_default;
+                  INIT_DUP_MODE_ENV();
+                  $$ = dup_value.level_default;
                 }
 	| LEVEL UNSIGNED_INTEGER
 		{ DBG_TRACE_GRAMMAR(opt_index_level, | LEVEL UNSIGNED_INTEGER ); 
@@ -27671,8 +27689,18 @@ pt_ct_check_select (char* p, char *perr_msg)
 }
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
+static void dup_mode_init()
+{  
+  dup_value.is_support_auto = prm_get_bool_value (PRM_ID_AUTO_DUP_MODE);
+  dup_value.mode_defalut = prm_get_integer_value (PRM_ID_DUP_MODE);
+  dup_value.level_default = prm_get_integer_value (PRM_ID_DUP_LEVEL);
+  is_dup_mode_init_need = false;
+}
+
 static void pt_get_dup_mode_level(bool is_rebuild, int mode_level, short* mode, short* level)
-{
+{   
+    INIT_DUP_MODE_ENV();
+
     if(mode_level == DUP_MODE_OVFL_LEVEL_NOT_SET)
       { 
         if(is_rebuild)
@@ -27680,10 +27708,10 @@ static void pt_get_dup_mode_level(bool is_rebuild, int mode_level, short* mode, 
            *mode = DUP_MODE_OVFL_LEVEL_NOT_SET;
            *level = 0;
         }
-        else if(is_support_auto_dup_mode)
+        else if(dup_value.is_support_auto)
         {
-           *mode = dup_mode_defalut; 
-           *level = dup_level_default;
+           *mode = dup_value.mode_defalut; 
+           *level = dup_value.level_default;
         }
         else
         {
@@ -27699,4 +27727,4 @@ static void pt_get_dup_mode_level(bool is_rebuild, int mode_level, short* mode, 
 }
 #endif
 
-
+//prm_get_boolean_value (PRM_AUTO_DUP_MODE) 

@@ -716,6 +716,11 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
 
+#define PRM_NAME_AUTO_DUP_MODE  "auto_dup_mode"
+#define PRM_NAME_DUP_MODE  "dup_mode"
+#define PRM_NAME_DUP_LEVEL "dup_level"
+
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -1191,6 +1196,24 @@ static unsigned int prm_compat_mode_flag = 0;
 bool PRM_ANSI_QUOTES = true;
 static bool prm_ansi_quotes_default = true;
 static unsigned int prm_ansi_quotes_flag = 0;
+
+#if !defined(SERVER_MODE) && defined(SUPPORT_KEY_DUP_LEVEL)
+bool PRM_AUTO_DUP_MODE = false;
+static bool prm_auto_dup_mode_default = false;
+static unsigned int prm_auto_dup_mode_flag = 0;
+
+int PRM_DUP_MODE = DUP_MODE_VALUE_DEFAULT;
+static int prm_dup_mode_default = DUP_MODE_VALUE_DEFAULT;
+static unsigned int prm_dup_mode_flag = 0;
+static int prm_dup_mode_lower = (DUP_MODE_NONE + 1);
+static int prm_dup_mode_upper = (DUP_MODE_LAST - 1);
+
+int PRM_DUP_LEVEL = DUP_LEVEL_VALUE_DEFAULT;
+static int prm_dup_level_default = DUP_LEVEL_VALUE_DEFAULT;
+static unsigned int prm_dup_level_flag = 0;
+static int prm_dup_level_lower = OVFL_LEVEL_MIN;
+static int prm_dup_level_upper = OVFL_LEVEL_MAX;
+#endif
 
 int PRM_DEFAULT_WEEK_FORMAT = 0;
 static int prm_week_format_default = 0;
@@ -6151,6 +6174,43 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+#if !defined(SERVER_MODE) && defined(SUPPORT_KEY_DUP_LEVEL)
+  {PRM_ID_AUTO_DUP_MODE,
+   PRM_NAME_AUTO_DUP_MODE,
+   (PRM_FOR_CLIENT /* | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_HIDDEN */ ),
+   PRM_BOOLEAN,
+   &prm_auto_dup_mode_flag,
+   (void *) &prm_auto_dup_mode_default,
+   (void *) &PRM_AUTO_DUP_MODE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DUP_MODE,
+   PRM_NAME_DUP_MODE,
+   (PRM_FOR_CLIENT /* | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_HIDDEN */ ),
+   PRM_INTEGER,
+   &prm_dup_mode_flag,
+   (void *) &prm_dup_mode_default,
+   (void *) &PRM_DUP_MODE,
+   (void *) &prm_dup_mode_upper,
+   (void *) &prm_dup_mode_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DUP_LEVEL,
+   PRM_NAME_DUP_LEVEL,
+   (PRM_FOR_CLIENT /* | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_HIDDEN */ ),
+   PRM_INTEGER,
+   &prm_dup_level_flag,
+   (void *) &prm_dup_level_default,
+   (void *) &PRM_DUP_LEVEL,
+   (void *) &prm_dup_level_upper,
+   (void *) &prm_dup_level_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+#endif
 };
 
 static int num_session_parameters = 0;
