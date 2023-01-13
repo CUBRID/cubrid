@@ -18797,8 +18797,6 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   DB_TYPE key1_type, key2_type;
   DB_TYPE dom_type;
-  int dummy_diff_column;
-  bool dom_is_desc = false, dummy_next_dom_is_desc;
   bool comparable = true;
 
   assert (key1 != NULL && key2 != NULL && key_domain != NULL);
@@ -18847,11 +18845,14 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 	  return DB_UNK;
 	}
 
-      c = pr_midxkey_compare (db_get_midxkey (key1), db_get_midxkey (key2), do_coercion, total_order, -1, start_colp,
-			      NULL, NULL, &dummy_diff_column, &dom_is_desc, &dummy_next_dom_is_desc);
+      bool dom_is_desc[2];
+      int dummy_diff_column;
+      c =
+	pr_midxkey_compare (db_get_midxkey (key1), db_get_midxkey (key2), do_coercion, total_order, -1, start_colp,
+			    &dummy_diff_column, dom_is_desc, NULL);
       assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
-      if (dom_is_desc)
+      if (dom_is_desc[0])
 	{
 	  c = ((c == DB_GT) ? DB_LT : (c == DB_LT) ? DB_GT : c);
 	}
