@@ -84,36 +84,6 @@ jobs:
     parallelism: 8
     <<: *test_defaults
 
-  build_ol:
-    <<: *oraclelinux
-    environment:
-      MAKEFLAGS: -j 10
-    resource_class: large
-    steps:
-      - checkout
-      - run:
-          name: Submodules
-          command: |
-            git submodule sync
-            git submodule update --init
-      - run:
-          name: Build
-          command: |
-            mkdir -p /tmp/build_logs
-            scl enable devtoolset-8 -- /entrypoint.sh build
-            mv -f build.log /tmp/build_logs
-      - run:
-          name: Commits
-          command: |
-            mkdir -p /tmp/build_logs
-            git log | head -n 1000 > commits.log || true
-            mv -f commits.log /tmp/build_logs
-      - persist_to_workspace:
-          root: .
-          paths:
-            - CUBRID
-      - store_artifacts:
-          path: /tmp/build_logs
   test_medium_ol:
     <<: *oraclelinux
     environment:
@@ -134,14 +104,13 @@ workflows:
   build_test:
     jobs:
       - build
-      #- test_medium:
-      #    requires:
-      #      - build
-      #- test_sql:
-      #    requires:
-      #      - build
+      - test_medium:
+          requires:
+            - build
+      - test_sql:
+          requires:
+            - build
 
-      #- build_ol
       - test_medium_ol:
           requires:
             - build
