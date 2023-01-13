@@ -26,10 +26,10 @@ pipeline {
             }
 
             echo 'Building...'
-            sh 'scl enable devtoolset-8 -- /entrypoint.sh build'
+            sh 'scl enable devtoolset-9 -- /entrypoint.sh build'
 
             echo 'Packing...'
-            sh "scl enable devtoolset-8 -- /entrypoint.sh dist -o ${OUTPUT_DIR}"
+            sh "scl enable devtoolset-9 -- /entrypoint.sh dist -o ${OUTPUT_DIR}"
 
             echo 'Testing...'
             sh '/entrypoint.sh test || echo "$? failed"'
@@ -55,10 +55,10 @@ pipeline {
           }
           steps {
             echo 'Building...'
-            sh 'scl enable devtoolset-8 -- /entrypoint.sh build -m debug'
+            sh 'scl enable devtoolset-9 -- /entrypoint.sh build -m debug'
             
             echo 'Packing...'
-            sh "scl enable devtoolset-8 -- /entrypoint.sh dist -m debug -o ${OUTPUT_DIR}"
+            sh "scl enable devtoolset-9 -- /entrypoint.sh dist -m debug -o ${OUTPUT_DIR}"
 
             echo 'Testing...'
             sh '/entrypoint.sh test || echo "$? failed"'
