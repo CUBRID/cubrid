@@ -5143,7 +5143,14 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  return;
 	}
-      xperfmon_server_copy_stats (thread_p, base_stats);
+      if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
+	{
+	  xperfmon_server_copy_stats (thread_p, base_stats);
+	}
+      else
+	{
+	  xperfmon_server_copy_stats_for_trace (thread_p, base_stats);
+	}
 
       tsc_getticks (&start_tick);
 
@@ -5386,8 +5393,16 @@ null_list:
 	      goto exit;
 	    }
 
-	  xperfmon_server_copy_stats (thread_p, current_stats);
-	  perfmon_calc_diff_stats (diff_stats, current_stats, base_stats);
+	  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
+	    {
+	      xperfmon_server_copy_stats (thread_p, current_stats);
+	      perfmon_calc_diff_stats (diff_stats, current_stats, base_stats);
+	    }
+	  else
+	    {
+	      xperfmon_server_copy_stats_for_trace (thread_p, current_stats);
+	      perfmon_calc_diff_stats_for_trace (diff_stats, current_stats, base_stats);
+	    }
 
 	  if (response_time >= trace_slow_msec)
 	    {

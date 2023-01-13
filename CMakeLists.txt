@@ -1225,8 +1225,8 @@ list(APPEND EP_TARGETS ${RAPIDJSON_TARGET})
 set(RE2_TARGET re2)
 if(WITH_RE2 STREQUAL "EXTERNAL")
   if(UNIX)
-    set(RE2_INCLUDES ${CMAKE_BINARY_DIR}/external/include)
-    set(RE2_LIBS ${CMAKE_BINARY_DIR}/external/lib/libre2.a)
+    set(RE2_INCLUDES ${CMAKE_BINARY_DIR}/external/Source/re2)
+    set(RE2_LIBS ${CMAKE_BINARY_DIR}/external/Source/re2/obj/libre2.a)
     ADD_BY_PRODUCTS_VARIABLE ("RE2" ${RE2_LIBS})
     externalproject_add(${RE2_TARGET}
       GIT_REPOSITORY https://github.com/google/re2
@@ -1234,7 +1234,7 @@ if(WITH_RE2 STREQUAL "EXTERNAL")
       CONFIGURE_COMMAND ""        # no configure
       BUILD_IN_SOURCE true        # re2 Makefile is designed to run locally
       BUILD_COMMAND make CFLAGS="-fPIC" CXXFLAGS="-fPIC" # to allow static linking in shared library
-      INSTALL_COMMAND make install prefix="${CMAKE_BINARY_DIR}/external/"
+      INSTALL_COMMAND ""
       "${RE2_BYPRODUCTS}"
     )
   else(UNIX)
