@@ -26,6 +26,8 @@ test_defaults: &test_defaults
     - run:
         name: Collect Logs
         command: |
+          echo $USER
+          cat /proc/sys/kernel/dmesg_restrict
           mkdir -p /tmp/logs
           mv -f CUBRID/log /tmp/logs/cubrid_log
           mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
