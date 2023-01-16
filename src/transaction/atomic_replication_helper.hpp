@@ -33,9 +33,10 @@
 
 // various local checks; currently linked to the debug state (to be removed at some point)
 #if !defined (NDEBUG)
-#   define ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
 #   define ATOMIC_REPL_PAGE_PTR_BOOKKEEPING_DUMP
 #endif
+
+#define ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
 
 namespace cublog
 {
@@ -195,12 +196,12 @@ namespace cublog
       //
       // The above sequence would be replicated by a passive transaction server as follows:
       //    1. an atomic replication sequence is started for T1
-      //    2. VPID1 would be fixed for T1 atomic sequence
+      //    2. VPID1 would be fixed for T1 atomic sequence (LSA1)
       //    3. an atomic replication sequence is started for T2
       //    4. VPID1 is also fixed for T2 atomic sequnce; this would be OK because all atomic replication
       //        sequences are executed within the same thread; and since Cubrid has a 1 thread == 1
-      //        transaction affinity, this does not invalidate  the page buffer's concepts
-      //    5. a new log record is bookkept for T1
+      //        transaction affinity, this does not invalidate  the page buffer's concepts (LSA2)
+      //    5. a new log record is bookkept for T1 (LSA3)
       //    6. the atomic sequence for T2 is concluded, and log record at LSA2 is applied to VPID1 and
       //        the page VPID1 is unfixed
       //    7. the atomic sequnce for T1 is concluded, and log records at LSA1 and LSA3 are applied to
@@ -208,10 +209,15 @@ namespace cublog
       //
       // Remarks:
       // - it is obvious that such an occurence of events will cause the log records to be
-      //    applied to a page out of order
+      //    applied to VPID1 out of order: LSA2, LSA1, LSA3
       // - the real occurring scenarios are even more complex as a single atomic sequence for a
       //    transaction is made up of multiple sub-sections which are applied and the pages unfixed
       //    as "control log records" are being processed
+      //
+      // NOTE: this is a [temporary] mitigation effort on the side of the Passive Transaction Server
+      //  replication; if this will not suffice - i.e. such intertwined accesses are still invalidated,
+      //  the proper fix is to "really" enforce atomic sequences on the Active Transaction Server side
+      //  where the transactional log is generated
       class vpid_bookeeping
       {
 	public:
