@@ -11044,11 +11044,50 @@ error_return:
   return error;
 }
 
+static void
+pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text,
+			     int local_upd, int remote_upd, SERVER_NAME_LIST * snl);
+
+static void
+pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text, SERVER_NAME_LIST * snl)
+{
+  PT_NODE *del, *spec;
+  int remote_del = 0, local_del = 0;
+
+  del = node->info.delete_.target_classes;
+  while (del)
+    {
+      for (spec = node->info.delete_.spec; spec; spec = spec->next)
+	{
+	  if (spec->info.spec.remote_server_name)
+	    {
+	      if (strcmp(spec->info.spec.range_var, del->info.name.original) == 0)
+		{
+		  remote_del++;
+		}
+	    }
+	  else
+	    {
+	      if (strcmp(spec->info.spec.range_var, del->info.name.original) == 0)
+		{
+	          local_del++;
+		}
+	    }
+	}
+
+      del = del->next;
+    }
+
+  pt_convert_dblink_dml_query (parser, node, sql_user_text, local_del, remote_del, snl);
+
+  return; 
+}
+
 static bool
 pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, SERVER_NAME_LIST * snl);
 
 static void
-pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * using_spec, char *sql_user_text,
+pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text,
 			     SERVER_NAME_LIST * snl)
 {
   int i, idx, local_upd = 0, assigns_count = 0;
@@ -11058,9 +11097,6 @@ pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
   CLIENT_UPDATE_INFO *assigns = NULL, *assign = NULL;
   CLIENT_UPDATE_CLASS_INFO *cls_info = NULL, *cls = NULL;
   DB_VALUE *dbvals = NULL;
-
-  int tmp_local_cnt = snl->local_cnt;
-  int tmp_server_cnt = snl->server_cnt;
 
   assignments = node->info.update.assignment;
 
@@ -11096,13 +11132,34 @@ pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
 	}
     }
 
+   pt_convert_dblink_dml_query (parser, node, tbl_spec, sql_user_text, local_upd, remote_upd, snl);
+}
+
+static void
+pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text,
+			     int local_upd, int remote_upd, SERVER_NAME_LIST * snl)
+{
+  int tmp_local_cnt = snl->local_cnt;
+  int tmp_server_cnt = snl->server_cnt;
+
+  PT_NODE *sel, *spec, *old_spec, tbl_spec;
+
+  switch (node->node_type)
+    {
+    case PT_DELETE;
+      tbl_spec = node->info.delete_.spec;
+      break;
+    case PT_UPDATE;
+      tbl_spec = node->info.update.spec;
+      break;
+    default:
+      assert (false);
+    }
+
   while (tbl_spec)
     {
-      PT_NODE *prev, *sel, *spec, *old_spec;
-
       if (tbl_spec->info.spec.derived_table)
 	{ 
-	  prev = tbl_spec;
           tbl_spec = tbl_spec->next;
 	  continue;
 	}
@@ -11129,7 +11186,6 @@ pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
 	      parser_walk_tree (parser, sel, pt_check_dblink_query, NULL, NULL, NULL);
 	    }
 	}
-      prev = tbl_spec;
       tbl_spec = tbl_spec->next;
     }
 
@@ -11438,7 +11494,7 @@ pt_convert_server (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
       break;
 
     case PT_DELETE:
-      pt_convert_dblink_dml_query (parser, node->info.delete_.spec, NULL, node->sql_user_text, snl);
+      pt_convert_dblink_delete_query (parser, node, snl);
       break;
 
     case PT_UPDATE:
