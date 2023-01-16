@@ -554,10 +554,12 @@ literal
     | TIME quoted_string            # time_exp
     | TIMESTAMP quoted_string       # timestamp_exp
     | DATETIME quoted_string        # datetime_exp
+    /* TODO: restore the following four lines
     | TIMESTAMPTZ quoted_string     # timestamptz_exp
     | TIMESTAMPLTZ quoted_string    # timestampltz_exp
     | DATETIMETZ quoted_string      # datetimetz_exp
     | DATETIMELTZ quoted_string     # datetimeltz_exp
+     */
     | numeric                       # num_exp
     | quoted_string                 # str_exp
     | NULL_                         # null_exp

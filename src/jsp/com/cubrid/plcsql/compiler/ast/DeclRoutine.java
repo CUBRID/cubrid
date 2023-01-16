@@ -34,27 +34,27 @@ import com.cubrid.plcsql.compiler.Misc;
 
 public abstract class DeclRoutine extends DeclBase {
 
+    public int level;
     public final String name;
     public final NodeList<DeclParam> paramList;
     public final TypeSpec retType;
     public NodeList<Decl> decls;
     public Body body;
-    public int level;
 
     public DeclRoutine(
+            int level,
             String name,
             NodeList<DeclParam> paramList,
             TypeSpec retType,
             NodeList<Decl> decls,
-            Body body,
-            int level) {
+            Body body) {
 
+        this.level = level;
         this.name = name;
         this.paramList = paramList;
         this.retType = retType;
         this.decls = decls;
         this.body = body;
-        this.level = level;
     }
 
     @Override

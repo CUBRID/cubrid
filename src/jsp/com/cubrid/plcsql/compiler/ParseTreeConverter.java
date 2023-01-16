@@ -53,11 +53,13 @@ import org.apache.commons.text.StringEscapeUtils;
 // parse tree --> AST converter
 public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
+    /*
     public ParseTreeConverter() {
         int level = symbolStack.pushSymbolTable(SYMBOL_TABLE_TOP, false);
         assert level == 0;
         symbolStack.setUpPredefined();
     }
+     */
 
     @Override
     public AstNode visitSql_script(Sql_scriptContext ctx) {
@@ -79,7 +81,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
 
         symbolStack.popSymbolTable();
-        DeclProc decl = new DeclProc(name, paramList, null, null, level);
+        DeclProc decl = new DeclProc(level, name, paramList, null, null);
         symbolStack.putDecl(name, decl); // in order to allow recursive calls
 
         symbolStack.pushSymbolTable(name, true);
@@ -114,7 +116,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
 
         symbolStack.popSymbolTable();
-        DeclFunc decl = new DeclFunc(name, paramList, retType, null, null, level);
+        DeclFunc decl = new DeclFunc(level, name, paramList, retType, null, null);
         symbolStack.putDecl(name, decl); // in order to allow recursive calls
 
         symbolStack.pushSymbolTable(name, true);
@@ -440,6 +442,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return new ExprDatetime(datetime);
     }
 
+    /* TODO: restore the following four methods
     @Override
     public Expr visitTimestamptz_exp(Timestamptz_expContext ctx) {
         String s = ctx.quoted_string().getText();
@@ -463,6 +466,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String s = ctx.quoted_string().getText();
         return parseZonedDateTime(s, true, "DATETIMELTZ");
     }
+     */
 
     @Override
     public Expr visitUint_exp(Uint_expContext ctx) {
@@ -849,7 +853,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        DeclProc ret = new DeclProc(name, paramList, null, null, level);
+        DeclProc ret = new DeclProc(level, name, paramList, null, null);
         symbolStack.putDecl(name, ret);
     }
 
@@ -889,7 +893,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        DeclFunc ret = new DeclFunc(name, paramList, retType, null, null, level);
+        DeclFunc ret = new DeclFunc(level, name, paramList, retType, null, null);
         symbolStack.putDecl(name, ret);
     }
 
@@ -1866,10 +1870,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         pcsToJavaTypeMap.put("TIME", "java.time.LocalTime");
         pcsToJavaTypeMap.put("TIMESTAMP", "java.time.ZonedDateTime");
         pcsToJavaTypeMap.put("DATETIME", "java.time.LocalDateTime");
+        /* TODO: restore the following four lines
         pcsToJavaTypeMap.put("TIMESTAMPTZ", "java.time.ZonedDateTime");
         pcsToJavaTypeMap.put("TIMESTAMPLTZ", "java.time.ZonedDateTime");
         pcsToJavaTypeMap.put("DATETIMETZ", "java.time.ZonedDateTime");
         pcsToJavaTypeMap.put("DATETIMELTZ", "java.time.ZonedDateTime");
+         */
         pcsToJavaTypeMap.put("SET", "java.util.Set");
         pcsToJavaTypeMap.put("MULTISET", "org.apache.commons.collections4.MultiSet");
         pcsToJavaTypeMap.put("LIST", "java.util.List");

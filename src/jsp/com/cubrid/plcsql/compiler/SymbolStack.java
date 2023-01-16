@@ -33,6 +33,10 @@ package com.cubrid.plcsql.compiler;
 import static com.cubrid.plcsql.compiler.antlrgen.PcsParser.*;
 
 import com.cubrid.plcsql.compiler.ast.*;
+
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+
 import java.util.Arrays;
 import java.util.List;
 import java.util.LinkedList;
@@ -42,39 +46,149 @@ import java.util.stream.Collectors;
 
 public class SymbolStack {
 
-    void setUpPredefined() {
+    // -------------------------------------------------------
+    // Static area - common to all symbol stack instances
+    //
 
-        // add exceptions
-        DeclException de;
-        for (String s : predefinedExceptions) {
-            de = new DeclException(s);
-            putDecl(de.name, de);
+    private static List<String> predefinedExceptions =
+            Arrays.asList(
+                    "$APP_ERROR", // for raise_application_error
+                    "CASE_NOT_FOUND",
+                    "CURSOR_ALREADY_OPEN",
+                    "DUP_VAL_ON_INDEX",
+                    "INVALID_CURSOR",
+                    "LOGIN_DENIED",
+                    "NO_DATA_FOUND",
+                    "PROGRAM_ERROR",
+                    "ROWTYPE_MISMATCH",
+                    "STORAGE_ERROR",
+                    "TOO_MANY_ROWS",
+                    "VALUE_ERROR",
+                    "ZERO_DIVIDE");
+
+    private static final Map<String, OverloadedFunc> operators = new TreeMap<>();
+    private static final Map<String, OverloadedFunc> predefinedFuncs = new TreeMap<>();
+    private static SymbolTable predefinedSymbols = new SymbolTable(new Scope(null, "%predefined_0", 0));
+
+    static {
+
+        // add SpLib staic methods corresponding to operators
+        {
+            Class c = null;
+            try {
+                c = Class.forName("com.cubrid.plcsql.predefined.sp.SpLib");
+            } catch (ClassNotFoundException e) {
+                assert false : "SpLib class not found";
+            }
+
+            Method[] methods = c.getMethods();
+            for (Method m: methods) {
+                if ((m.getModifiers() & Modifier.STATIC) > 0) {
+                    String name = m.getName();
+                    if (name.startsWith("op")) {
+                        System.out.println("temp: " + m.getName());
+
+                        // parameter types
+                        Class[] paramTypes = m.getParameterTypes();
+                        NodeList<DeclParam> params;
+                        if (paramTypes.length == 0) {
+                            params = null;
+                        } else {
+                            params = new NodeList<>();
+                            int i = 0;
+                            for (Class pt: paramTypes) {
+                                String typeName = pt.getName();
+                                System.out.println("  " + typeName);
+                                DeclParamIn p = new DeclParamIn("p" + i, new TypeSpec(typeName));
+                                params.addNode(p);
+                            }
+                        }
+
+                        // return type
+                        String typeName = m.getReturnType().getName();
+                        System.out.println("  =>" + typeName);
+                        TypeSpec retType = new TypeSpec(typeName);
+
+                        // add op
+                        DeclFunc op = new DeclFunc(0, name, params, retType, null, null);
+                        putOperator(name, op);
+                    }
+                }
+            }
+
+            // add exceptions
+            DeclException de;
+            for (String s : predefinedExceptions) {
+                de = new DeclException(s);
+                putDeclTo(predefinedSymbols, de.name, de);
+            }
+
+            // add procedures
+            DeclProc dp =
+                    new DeclProc(
+                            0,
+                            "PUT_LINE",
+                            new NodeList<DeclParam>()
+                                    .addNode(new DeclParamIn("s", new TypeSpec("java.lang.Object"))),
+                            null,
+                            null);
+            putDeclTo(predefinedSymbols, "PUT_LINE", dp);
+
+            // add constants TODO implement SQLERRM and SQLCODE properly
+            DeclConst dc = new DeclConst("SQLERRM", new TypeSpec("java.lang.String"), ExprNull.instance());
+            putDeclTo(predefinedSymbols, "SQLERRM", dc);
+
+            dc = new DeclConst("SQLCODE", new TypeSpec("java.lang.Integer"), ExprNull.instance());
+            putDeclTo(predefinedSymbols, "SQLCODE", dc);
+
+            dc = new DeclConst("SQL", new TypeSpec("java.sql.ResultSet"), ExprNull.instance()); // TODO: ResultSet?
+            putDeclTo(predefinedSymbols, "SQL", dc);
+
+            dc = new DeclConst("SYSDATE", new TypeSpec("java.time.LocalDate"), ExprNull.instance());
+            putDeclTo(predefinedSymbols, "SYSDATE", dc);
+        }
+    }
+
+    private static void putOperator(String name, DeclFunc df) {
+
+        OverloadedFunc overload = operators.get(name);
+        if (overload == null) {
+            overload = new OverloadedFunc();
+            operators.put(name, overload);
         }
 
-        // add procedures
-        DeclProc dp =
-                new DeclProc(
-                        "PUT_LINE",
-                        new NodeList<DeclParam>()
-                                .addNode(new DeclParamIn("s", new TypeSpec("Object"))),
-                        null,
-                        null,
-                        0);
-        putDecl("PUT_LINE", dp);
+        df.setScope(predefinedSymbols.scope);
+        overload.put(df);
+    }
 
-        // add functions
-        DeclFunc df = new DeclFunc("SYSDATE", new NodeList<DeclParam>(), new TypeSpec("LocalDate"), null, null, 0);
-        putDecl("SYSDATE", df);
+    private static void putPredefinedFunc(String name, DeclFunc df) {
 
-        // add constants TODO implement SQLERRM and SQLCODE properly
-        DeclConst dc = new DeclConst("SQLERRM", new TypeSpec("String"), ExprNull.instance());
-        putDecl("SQLERRM", dc);
+        OverloadedFunc overload = predefinedFuncs.get(name);
+        if (overload == null) {
+            overload = new OverloadedFunc();
+            predefinedFuncs.put(name, overload);
+        }
 
-        dc = new DeclConst("SQLCODE", new TypeSpec("Integer"), ExprNull.instance());
-        putDecl("SQLCODE", dc);
+        df.setScope(predefinedSymbols.scope);
+        overload.put(df);
+    }
 
-        dc = new DeclConst("SQL", new TypeSpec("ResultSet"), ExprNull.instance());
-        putDecl("SQL", dc);
+    static DeclFunc getOperator(String name, List<TypeSpec> argTypes) {
+
+        OverloadedFunc overload = operators.get(name);
+        if (overload == null) {
+            return null;
+        } else {
+            return overload.get(argTypes);
+        }
+    }
+
+    // -----------------------------------------------------------------------------
+    // end of Static
+    //
+
+    SymbolStack() {
+        symbolTableStack.addFirst(predefinedSymbols);
     }
 
     int pushSymbolTable(String name, boolean forRoutine) {
@@ -113,66 +227,33 @@ public class SymbolStack {
 
     // ----------------------------------------
     //
-    private void putOperator(String name, DeclFunc df) {
-
-        assert currSymbolTable.scope.level == 0;
-
-        OverloadedFunc overload = operators.get(name);
-        if (overload == null) {
-            overload = new OverloadedFunc();
-            operators.put(name, overload);
-        }
-
-        df.setScope(currSymbolTable.scope);
-        overload.put(df);
-    }
-
-    private void putPredefinedFunc(String name, DeclFunc df) {
-
-        assert currSymbolTable.scope.level == 0;
-
-        OverloadedFunc overload = predefinedFuncs.get(name);
-        if (overload == null) {
-            overload = new OverloadedFunc();
-            predefinedFuncs.put(name, overload);
-        }
-
-        df.setScope(currSymbolTable.scope);
-        overload.put(df);
-    }
-
-    DeclFunc getOperator(String name, List<TypeSpec> argTypes) {
-
-        OverloadedFunc overload = operators.get(name);
-        if (overload == null) {
-            return null;
-        } else {
-            return overload.get(argTypes);
-        }
-    }
 
     // ----------------------------------------
     //
 
     <D extends Decl> void putDecl(String name, D decl) {
+        putDeclTo(currSymbolTable, name, decl);
+    }
+
+    static <D extends Decl> void putDeclTo(SymbolTable symbolTable, String name, D decl) {
         assert decl != null;
 
-        Map<String, D> map = currSymbolTable.<D>map((Class<D>) decl.getClass());
+        Map<String, D> map = symbolTable.<D>map((Class<D>) decl.getClass());
         assert map != null;
-        if (map == currSymbolTable.labels) {
+        if (map == symbolTable.labels) {
             if (map.containsKey(name)) {
                 assert false : name + " has already been declared in the same scope";
                 throw new RuntimeException("unreachable");
             }
         } else {
-            if (currSymbolTable.ids.containsKey(name) ||
-                currSymbolTable.procs.containsKey(name) ||
-                currSymbolTable.funcs.containsKey(name) ||
-                currSymbolTable.exceptions.containsKey(name)) {
+            if (symbolTable.ids.containsKey(name) ||
+                symbolTable.procs.containsKey(name) ||
+                symbolTable.funcs.containsKey(name) ||
+                symbolTable.exceptions.containsKey(name)) {
                 assert false : name + " has already been declared in the same scope";
                 throw new RuntimeException("unreachable");
             }
-            if (currSymbolTable.scope.level == 0 && map == currSymbolTable.funcs) {
+            if (symbolTable.scope.level == 0 && map == symbolTable.funcs) {
                 if (predefinedFuncs.containsKey(name)) {
                     assert false : name + " is a predefined function";
                     throw new RuntimeException("unreachable");
@@ -180,7 +261,7 @@ public class SymbolStack {
             }
         }
 
-        decl.setScope(currSymbolTable.scope);
+        decl.setScope(symbolTable.scope);
         map.put(name, decl);
     }
 
@@ -236,9 +317,6 @@ public class SymbolStack {
     // ----------------------------------------------------
 
     private SymbolTable currSymbolTable;
-
-    private final Map<String, OverloadedFunc> operators = new TreeMap<>();
-    private final Map<String, OverloadedFunc> predefinedFuncs = new TreeMap<>();
 
     private LinkedList<SymbolTable> symbolTableStack = new LinkedList<>();
 
@@ -341,22 +419,4 @@ public class SymbolStack {
             return sbuf.toString();
         }
     }
-
-    private static List<String> predefinedExceptions =
-            Arrays.asList(
-                    "$APP_ERROR", // for raise_application_error
-                    "CASE_NOT_FOUND",
-                    "CURSOR_ALREADY_OPEN",
-                    "DUP_VAL_ON_INDEX",
-                    "INVALID_CURSOR",
-                    "LOGIN_DENIED",
-                    "NO_DATA_FOUND",
-                    "PROGRAM_ERROR",
-                    "ROWTYPE_MISMATCH",
-                    "STORAGE_ERROR",
-                    "TOO_MANY_ROWS",
-                    "VALUE_ERROR",
-                    "ZERO_DIVIDE");
-
-
 }

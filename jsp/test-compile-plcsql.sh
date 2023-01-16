@@ -26,8 +26,9 @@ if [ ! -d $1 ] && [ ! -f $1 ]; then
     exit 1
 fi
 
-JAR='jspserver.jar'
-APP='com.cubrid.plcsql.handler.TestMain'
+MAIN_JAR=jspserver.jar
+SPLIB_JAR=splib.jar
+APP=com.cubrid.plcsql.handler.TestMain
 
 echo "trying test cases contained in the directory:"
 echo "  $1"
@@ -45,5 +46,5 @@ mkdir ./pt
 
 FILES=$(find $1 -type f -name '*.sql' | sort)
 #echo $FILES
-java -ea -cp $JAR $APP $FILES
+java -ea -cp $MAIN_JAR:$SPLIB_JAR $APP $FILES
 
