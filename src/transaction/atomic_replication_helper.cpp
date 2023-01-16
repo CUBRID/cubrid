@@ -280,13 +280,13 @@ namespace cublog
 
   void atomic_replication_helper::vpid_bookeeping::add_or_increase_for_transaction (TRANID trid, VPID vpid)
   {
-    // check that the same vpid is not concurrently present in any other transaction
+    // check that the same vpid is not present at the same time in any other atomic sequence (ie: transaction)
     for (const std::pair<TRANID, vpid_map_type> &tran_pair : m_usage_map)
       {
 	if (tran_pair.first != trid)
 	  {
 	    const vpid_map_type &tran_vpids = tran_pair.second;
-	    assert (tran_vpids.find (vpid) == tran_vpids.cend ());
+	    assert_release (tran_vpids.find (vpid) == tran_vpids.cend ());
 	  }
       }
 
