@@ -30,15 +30,14 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public abstract class TypeSpec implements AstNode {
-    public final String name;
+public class TypeSpecPercent extends TypeSpec {
 
-    public TypeSpec(String name) {
-        this.name = name;
-    }
+    public final String table;
+    public final String column;
 
-    @Override
-    public String toJavaCode() {
-        return name;
+    public TypeSpecPercent(String table, String column) {
+        super("Object");    // name unknown yet
+        this.table = table;
+        this.column = column;
     }
 }

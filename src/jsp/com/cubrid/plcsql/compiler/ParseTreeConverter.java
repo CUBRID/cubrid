@@ -178,12 +178,61 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public TypeSpec visitType_spec(Type_specContext ctx) {
-        String pcsType = ctx.native_datatype().getText().toUpperCase();
+    public TypeSpec visitPercent_type_spec(Percent_type_specContext ctx) {
+
+        if (ctx.table_name() == null) {
+            // case variable%TYPE
+            String idName = ctx.identifier().getText().toUpperCase();
+            idName = Misc.peelId(idName);
+
+            DeclId declId = symbolStack.getDeclId(idName);
+            assert (declId != null) && (declId instanceof DeclVarLike):
+                idName + " must be a procedure/function parameter, variable, or constant";
+
+            return ((DeclVarLike) declId).typeSpec();
+        } else {
+            // case table.column%TYPE
+            String table = ctx.table_name().getText().toUpperCase();
+            table = Misc.peelId(table);
+            String column = ctx.identifier().getText().toUpperCase();
+            column = Misc.peelId(column);
+
+            return new TypeSpecPercent(table, column);
+        }
+
+    }
+
+    @Override
+    public TypeSpecNumeric visitNumeric_type(Numeric_typeContext ctx) {
+        int precision = -1, scale = -1;
+        try {
+            if (ctx.precision != null) {
+                precision = Integer.parseInt(ctx.precision.getText());
+                if (ctx.scale != null) {
+                    scale = Integer.parseInt(ctx.scale.getText());
+                }
+            }
+        } catch (NumberFormatException e) {
+            assert false;
+            throw new RuntimeException("unreachable");
+        }
+
+        return new TypeSpecNumeric("BigDecimal", precision, scale);
+    }
+
+    @Override
+    public TypeSpecSimple visitString_type(String_typeContext ctx) {
+        // ignore length for now
+        return new TypeSpecSimple("String");
+    }
+
+    @Override
+    public TypeSpecSimple visitSimple_type(Simple_typeContext ctx) {
+        String pcsType = ctx.getText().toUpperCase();
         pcsType = Misc.peelId(pcsType);
         String javaType = getJavaType(pcsType);
         assert javaType != null;
-        return new TypeSpec(javaType);
+        return new TypeSpecSimple(javaType);
     }
 
     @Override

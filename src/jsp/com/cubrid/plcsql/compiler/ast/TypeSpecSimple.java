@@ -30,15 +30,9 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public abstract class TypeSpec implements AstNode {
-    public final String name;
+public class TypeSpecSimple extends TypeSpec {
 
-    public TypeSpec(String name) {
-        this.name = name;
-    }
-
-    @Override
-    public String toJavaCode() {
-        return name;
+    public TypeSpecSimple(String name) {
+        super(name);
     }
 }

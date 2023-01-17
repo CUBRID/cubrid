@@ -502,11 +502,6 @@ table_name
 
 column_name
     : identifier
-    | table_name '.' identifier
-    ;
-
-column_list
-    : column_name (',' column_name)*
     ;
 
 function_argument
@@ -518,17 +513,27 @@ argument
     ;
 
 type_spec
-    : native_datatype precision_part?
-    ;
-
-precision_part
-    : '(' numeric (',' numeric)? ')'
+    : native_datatype                           # native_type_spec
+    | (table_name '.')? identifier PERCENT_TYPE   # percent_type_spec
     ;
 
 native_datatype
+    : numeric_type
+    | string_type
+    | simple_type
+    ;
+
+numeric_type
+    : (NUMERIC | DECIMAL | DEC) ('(' precision=UNSIGNED_INTEGER (',' scale=UNSIGNED_INTEGER)? ')')?
+    ;
+
+string_type
+    : (CHAR | VARCHAR) ( '(' length=UNSIGNED_INTEGER ')' )?
+    | STRING
+    ;
+
+simple_type
     : BOOLEAN
-    | CHAR | VARCHAR | STRING
-    | NUMERIC | DECIMAL | DEC
     | SHORT | SMALLINT
     | INT | INTEGER
     | BIGINT
@@ -538,14 +543,15 @@ native_datatype
     | TIME
     | TIMESTAMP
     | DATETIME
+    /* TODO: restore the following four lines
     | TIMESTAMPLTZ
     | TIMESTAMPTZ
     | DATETIMELTZ
     | DATETIMETZ
+     */
     | SET
     | MULTISET
-    | LIST
-    | SEQUENCE
+    | LIST | SEQUENCE
     | SYS_REFCURSOR
     ;
 
