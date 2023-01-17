@@ -908,8 +908,12 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 2 필수 인자; 기본값: 없음
 3 java-class-file
 4 필수 인자; 기본값: 없음
-5 force-overwrite
-6 클래스 파일이 이미 존재하면 덮어씀; 기본값: 덮어쓰지 않음
+60 \
+Usage: loadjava [OPTION] database-name java-class-file\n\
+\n\
+valid options:\n\
+  -y, --overwrite              클래스 파일이 이미 존재하면 덮어씀; 기본값: 덮어쓰지 않음\n\
+  -p, --package                Java 패키지 이름; 지정하지 않으면 빈 문자열\n\
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 출력 파일 '%1$s'을 열 수 없습니다\n
