@@ -137,7 +137,7 @@ plcsql_get_user_home (char *homedir, int homedir_size)
  *   characters other than the path name itself. If error occurred from O.S,
  *   give up the extension and just return the `pathname'.
  */
-char *
+static char *
 plcsql_get_real_path (const char *pathname)
 {
 #if defined(WINDOWS)
@@ -269,8 +269,17 @@ exit:
 }
 
 int
-parse_options (int argc, char *argv[], plcsql_argument *pl_args, GETOPT_LONG *opts, char *option_string)
+parse_options (int argc, char *argv[], plcsql_argument *pl_args)
 {
+  char option_string[64];
+  GETOPT_LONG opts[] =
+  {
+    {CSQL_USER_L, 1, 0, CSQL_USER_S},
+    {CSQL_PASSWORD_L, 1, 0, CSQL_PASSWORD_S},
+    {CSQL_INPUT_FILE_L, 1, 0, CSQL_INPUT_FILE_S},
+    {0, 0, 0, 0}
+  };
+
   utility_make_getopt_optstring (opts, option_string);
 
   while (1)
@@ -331,22 +340,12 @@ int
 main (int argc, char *argv[])
 {
   int error = EXIT_FAILURE;
-  char option_string[64];
   plcsql_argument plcsql_arg;
-
-  GETOPT_LONG options[] =
-  {
-    {CSQL_USER_L, 1, 0, CSQL_USER_S},
-    {CSQL_PASSWORD_L, 1, 0, CSQL_PASSWORD_S},
-    {CSQL_INPUT_FILE_L, 1, 0, CSQL_INPUT_FILE_S},
-    {0, 0, 0, 0}
-  };
-
   DB_SESSION *session = NULL;
   DB_QUERY_RESULT *result = NULL;
 
   {
-    if (parse_options (argc, argv, &plcsql_arg, options, option_string) != NO_ERROR)
+    if (parse_options (argc, argv, &plcsql_arg) != NO_ERROR)
       {
 	goto print_usage;
       }
@@ -355,13 +354,13 @@ main (int argc, char *argv[])
 
     if (db_restart_ex ("PLCSQL Helper", DB_PLCSQL_AS_ARGS (plcsql_arg)) != NO_ERROR)
       {
-	PLCSQL_LOG ("connecting with cub_server is failed");
+	PLCSQL_LOG ("Connecting with cub_server is failed");
 	goto exit_on_end;
       }
 
     if (plcsql_read_file (plcsql_arg.in_file_name) != NO_ERROR)
       {
-	PLCSQL_LOG ("reading PL/CSQL program is failed");
+	PLCSQL_LOG ("Reading PL/CSQL program is failed");
 	goto exit_on_end;
       }
 
@@ -372,9 +371,10 @@ main (int argc, char *argv[])
     std::string output_string;
     std::string sql;
 
+    /* Call network interface API to send a input file (PL/CSQL program) */
     if (plcsql_transfer_file (input_string, output_string, sql) != NO_ERROR)
       {
-	PLCSQL_LOG ("transferring PL/CSQL program is failed");
+	PLCSQL_LOG ("Transferring PL/CSQL program is failed");
 	goto exit_on_end;
       }
 

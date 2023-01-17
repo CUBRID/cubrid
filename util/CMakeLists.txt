@@ -70,7 +70,6 @@ add_dependencies(csql cubridsa cubridcs)
 set(PLCSQL_SOURCES
   ${EXECUTABLES_DIR}/plcsql.cpp
   ${EXECUTABLES_DIR}/util_support.c
-  ${EXECUTABLES_DIR}/util_common.c
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/cubrid_getopt_long.c
   )
