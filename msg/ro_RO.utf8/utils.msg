@@ -918,8 +918,12 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 2 argument obligatoriu, fără valoare implicită
 3 java-class-file
 4 argument obligatoriu, fără valoare implicită
-5 force-overwrite
-6 suprascrie fişierul de clasă dacă exista, implicit nu
+60 \
+Usage: loadjava [OPTION] database-name java-class-file\n\
+\n\
+valid options:\n\
+  -y, --overwrite              suprascrie fişierul de clasă dacă exista, implicit nu\n\
+  -p, --package                Numele pachetului Java, gol dacă nu este specificat\n\
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Fişierul de ieşire '%1$s' nu a putut fi deschis\n
