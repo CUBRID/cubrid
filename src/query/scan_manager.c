@@ -8329,7 +8329,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
  *      2. list file size check
  *      3. regu_list_build, regu_list_probe is not null
  *      4. The number of probe regu_var and build regu match
- *      5. type of regu var is not oid && vobj
+ *      5. type of regu var is not vobj
  *      6. list file from dptr is not allowed
 */
 static HASH_METHOD
@@ -8363,14 +8363,13 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
 
   for (build_cnt = 0; build && probe; build_cnt++)
     {
-      /* type of regu var is not oid && vobj */
+      /* type of regu var is not vobj */
       /* This is the case when type coercion is impossible. so use list scan */
       /* In the list scan, Vobj is converted to oid for comparison at tp_value_compare_with_error(). */
       vtype1 = REGU_VARIABLE_GET_TYPE (&probe->value);
       vtype2 = REGU_VARIABLE_GET_TYPE (&build->value);
 
-      if (((vtype1 == DB_TYPE_OBJECT || vtype1 == DB_TYPE_VOBJ) && vtype2 == DB_TYPE_OID) ||
-	  ((vtype2 == DB_TYPE_OBJECT || vtype2 == DB_TYPE_VOBJ) && vtype1 == DB_TYPE_OID))
+      if (vtype1 == DB_TYPE_VOBJ || vtype2 == DB_TYPE_VOBJ)
 	{
 	  return HASH_METH_NOT_USE;
 	}
