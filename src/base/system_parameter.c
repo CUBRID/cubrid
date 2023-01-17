@@ -2415,8 +2415,6 @@ static int prm_flashback_win_size_lower = 0;
 static int prm_flashback_win_size_upper = INT_MAX;
 static unsigned int prm_flashback_win_size_flag = 0;
 
-<<<<<<< HEAD
-=======
 bool PRM_USE_USER_HOSTS = false;
 static bool prm_use_user_hosts_default = false;
 static unsigned int prm_use_user_hosts_flag = 0;
@@ -2435,7 +2433,6 @@ static int prm_regexp_engine_upper = cubregex::engine_type::LIB_RE2;
 static unsigned int prm_regexp_engine_flag = 0;
 /* *INDENT-ON* */
 
->>>>>>> e466fc46a ([CBRD-24563] Add RE2 for REGEXP functions (#3997))
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
 static int prm_size_to_io_pages (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type);
