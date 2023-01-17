@@ -352,6 +352,10 @@ extern int pr_Enable_string_compression;
 /* 1 size byte, 4 bytes the compressed size, 4 bytes the decompressed size, length and the max alignment */
 #define PRIM_STRING_MAXIMUM_DISK_SIZE(length) (OR_BYTE_SIZE + OR_INT_SIZE + OR_INT_SIZE + (length) + MAX_ALIGNMENT)
 
+// *INDENT-OFF*
+#define MIDXKEY_BOUNDBITS_INIT(bufptr, nbytes)  do { if(nbytes > 0) { memset ((bufptr), 0x00, (nbytes)); } } while(0)
+// *INDENT-ON*
+
 //////////////////////////////////////////////////////////////////////////
 // Inline/template implementation
 //////////////////////////////////////////////////////////////////////////

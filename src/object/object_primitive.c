@@ -9548,7 +9548,7 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, s
   else
     {
       /* bound bits */
-      (void) pr_midxkey_init_boundbits (bound_bits, bitmap_size);
+      MIDXKEY_BOUNDBITS_INIT (bound_bits, bitmap_size);
       or_advance (&buf, bitmap_size);
     }
 
