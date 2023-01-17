@@ -22,8 +22,10 @@
  */
 
 #include "config.h"
+#include "porting.h"
 
 #include <cstdlib>
+#include <cstdarg>
 #include <cstring>
 #include <cwctype>
 #include <vector>
