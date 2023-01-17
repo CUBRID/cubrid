@@ -1195,7 +1195,6 @@ if(WITH_RE2 STREQUAL "EXTERNAL")
   if(UNIX)
     set(RE2_INCLUDES ${CMAKE_BINARY_DIR}/external/include)
     set(RE2_LIBS ${CMAKE_BINARY_DIR}/external/lib/libre2.a)
-    ADD_BY_PRODUCTS_VARIABLE ("RE2" ${RE2_LIBS})
     externalproject_add(${RE2_TARGET}
       GIT_REPOSITORY https://github.com/google/re2
       GIT_TAG 5723bb8             # https://github.com/google/re2/releases/tag/2022-06-01
