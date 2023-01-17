@@ -222,13 +222,16 @@ public class ExecuteThread extends Thread {
                                 fos.write(info.translated.getBytes(Charset.forName("UTF-8")));
                                 fos.close();
 
-                                String cubrid_env = System.getenv("CUBRID");
+                                String cubrid_env_root = Server.getRootPath();
                                 String command =
                                         "javac "
                                                 + javaFilePath
                                                 + " -cp "
-                                                + cubrid_env
+                                                + cubrid_env_root
                                                 + "/java/splib.jar";
+
+                                System.out.println(command);
+
                                 Process proc = Runtime.getRuntime().exec(command);
                                 proc.getErrorStream().close();
                                 proc.getInputStream().close();
@@ -237,17 +240,19 @@ public class ExecuteThread extends Thread {
 
                                 if (proc.exitValue() != 0) {
                                     // TODO
-                                    throw new RuntimeException();
+                                    throw new RuntimeException(command);
                                 }
 
                                 resultBuffer = packer.getBuffer();
 
                                 output.writeInt(resultBuffer.position());
                                 output.write(resultBuffer.array(), 0, resultBuffer.position());
+                                output.flush();
                             } catch (Exception e) {
                                 output.writeInt(0);
+                                output.flush();
+                                throw new RuntimeException(e);
                             }
-                            output.flush();
                             break;
                         }
 

@@ -10915,6 +10915,11 @@ plcsql_transfer_file (const std::string & input_file, std::string & output_file,
 	{
 	  packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
 	  unpacker.unpack_all (output_file, sql);
+	  rc = NO_ERROR;
+	}
+      else
+	{
+	  rc = ER_FAILED;
 	}
       free_and_init (data_reply);
     }

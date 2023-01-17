@@ -86,6 +86,11 @@ add_executable(plcsql_helper ${PLCSQL_SOURCES})
 target_compile_definitions(plcsql_helper PRIVATE ${COMMON_DEFS})
 target_include_directories(plcsql_helper PRIVATE ${EP_INCLUDES})
 add_dependencies(plcsql_helper ${EP_TARGETS})
+
+if(UNIX)
+  target_link_libraries(plcsql_helper PUBLIC stdc++fs)
+endif(UNIX)
+
 target_link_libraries(plcsql_helper LINK_PRIVATE cubridcs)
 
 set(CUB_MASTER_SOURCES
