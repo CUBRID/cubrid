@@ -1612,6 +1612,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 No options specified for ALTER SYNONYM.
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
+138 Invalid level. Valid values are %1$d through %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.

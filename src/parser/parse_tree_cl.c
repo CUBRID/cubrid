@@ -6360,6 +6360,18 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.index.code == PT_REBUILD_INDEX)
     {
       b = pt_append_nulstring (parser, b, "rebuild");
+
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      if (p->info.index.unique == false)
+	{
+	  char buf[64] = { 0x00, };
+	  dk_print_reserved_index_info (buf, sizeof (buf), p->info.index.dupkey_mode, p->info.index.dupkey_hash_level);
+	  if (buf[0])
+	    {
+	      b = pt_append_nulstring (parser, b, buf);
+	    }
+	}
+#endif
     }
 
   return b;
@@ -7304,6 +7316,18 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
   b = pt_append_nulstring (parser, b, " (");
   b = pt_append_varchar (parser, b, r2);
   b = pt_append_nulstring (parser, b, ") ");
+
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+  if (p->info.index.unique == false)
+    {
+      char buf[64] = { 0x00, };
+      dk_print_reserved_index_info (buf, sizeof (buf), p->info.index.dupkey_mode, p->info.index.dupkey_hash_level);
+      if (buf[0])
+	{
+	  b = pt_append_nulstring (parser, b, buf);
+	}
+    }
+#endif
 
   if (p->info.index.where != NULL)
     {

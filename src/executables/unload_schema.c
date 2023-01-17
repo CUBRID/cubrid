@@ -2911,6 +2911,10 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
   const int *asc_desc;
   const int *prefix_length;
   int k, n_attrs = 0;
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+  bool is_check_reserved_col = false;
+  char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
+#endif
 
   constraint_list = db_get_constraints (class_);
   if (constraint_list == NULL)
@@ -2956,6 +2960,10 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	{
 	  continue;		/* same index skip */
 	}
+
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      reserved_col_buf[0] = '\0';
+#endif
 
       SPLIT_USER_SPECIFIED_NAME (cls_name, owner_name, class_name);
       if (constraint->func_index_info)
@@ -3028,6 +3036,16 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 		}
 	    }
 	  att_name = db_attribute_name (*att);
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	  if (k == (n_attrs - 1) && IS_RESERVED_INDEX_ATTR_ID ((*att)->id))
+	    {
+	      int mode = GET_RESERVED_INDEX_ATTR_MODE ((*att)->id);
+	      int level = GET_RESERVED_INDEX_ATTR_LEVEL ((*att)->id);
+	      dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), mode, level);
+	      is_check_reserved_col = true;
+	      break;
+	    }
+#endif
 	  if (k > 0)
 	    {
 	      output_ctx (", ");
@@ -3053,6 +3071,43 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	    }
 	  k++;
 	}
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      if (reserved_col_buf[0])
+	{
+	  output_ctx (") %s", reserved_col_buf);
+	}
+      else if (!is_check_reserved_col && is_support_auto_dup_mode)
+	{
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+	  if (ctype == SM_CONSTRAINT_FOREIGN_KEY)
+	    {
+	      // ctshim, TODO: check FK!
+	    }
+#endif
+
+	  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) == false
+#if !defined(SUPPORT_KEY_DUP_LEVEL_FK)
+	      && (ctype != SM_CONSTRAINT_FOREIGN_KEY)
+#endif
+	    )
+	    {
+	      dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), DUP_MODE_NONE, 0);
+	      output_ctx (") %s", reserved_col_buf);
+	    }
+	}
+      else
+	{
+	  output_ctx (")");
+	}
+
+      if (constraint->filter_predicate)
+	{
+	  if (constraint->filter_predicate->pred_string)
+	    {
+	      output_ctx (" where %s", constraint->filter_predicate->pred_string);
+	    }
+	}
+#else
       if (constraint->filter_predicate)
 	{
 	  if (constraint->filter_predicate->pred_string)
@@ -3064,6 +3119,7 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	{
 	  output_ctx (")");
 	}
+#endif
       if (constraint->comment != NULL && constraint->comment[0] != '\0')
 	{
 	  output_ctx (" ");

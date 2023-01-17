@@ -692,10 +692,18 @@ static OR_ATTRIBUTE *heap_locate_attribute (ATTR_ID attrid, HEAP_CACHE_ATTRINFO 
 
 static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 					 HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, TP_DOMAIN * func_domain,
-					 TP_DOMAIN ** key_domain);
+					 TP_DOMAIN ** key_domain
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+					 , OID * rec_oid
+#endif
+  );
 static DB_MIDXKEY *heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey,
 					      int *att_ids, HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res,
-					      int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain);
+					      int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+					      , OID * rec_oid
+#endif
+  );
 
 static int heap_dump_hdr (FILE * fp, HEAP_HDR_STATS * heap_hdr);
 
@@ -9533,11 +9541,33 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 	   (attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
 	    attr_info->last_classrepr->n_class_attrs))
     {
-      fprintf (stdout, " XXX There are not that many attributes. Num_attrs = %d, Num_requested_attrs = %d\n",
-	       attr_info->last_classrepr->n_attributes, requested_num_attrs);
-      requested_num_attrs =
-	attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
-	attr_info->last_classrepr->n_class_attrs;
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      i = -1;
+      if (requested_num_attrs == attr_info->last_classrepr->n_attributes + 1)
+	{
+	  // Check for indexes containing all columns in the table
+	  // It does not consider indexes containing shared or class attributes.
+	  for (i = requested_num_attrs - 1; i >= 0 && !IS_RESERVED_INDEX_ATTR_ID (attrids[i]); i--)
+	    {
+	      /* empty */ ;
+	    }
+	}
+
+      if (i < 0)
+	{
+#endif
+#if 1
+	  assert (false);
+#else
+	  fprintf (stdout, " XXX There are not that many attributes. Num_attrs = %d, Num_requested_attrs = %d\n",
+		   attr_info->last_classrepr->n_attributes, requested_num_attrs);
+#endif
+	  requested_num_attrs =
+	    attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
+	    attr_info->last_classrepr->n_class_attrs;
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	}
+#endif
     }
 
   if (requested_num_attrs > 0)
@@ -9664,6 +9694,37 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	  /* Case that we want all attributes */
 	  value->attrid = search_attrepr[curr_attr].id;
 	}
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      else if (IS_RESERVED_INDEX_ATTR_ID (value->attrid))
+	{
+#if defined(FAKE_RESERVED_INDEX_ATTR)
+	  /* Since it is created fakely, it is filled with index 0 that can be obtained as quickly as possible.
+	   * In this case, there is no need to perform separate processing in heap_attrvalue_read(). 
+	   * However, it would be better to choose a fake id that does not cost a lot to read.
+	   * Fortunately, it is placed before the variable types. */
+
+	  value->attrid = search_attrepr[0].id;
+#else
+	  // In this case, in case of reserved_attr_id in heap_attrvalue_read(), skip should be processed.
+	  value->attr_type = HEAP_INSTANCE_ATTR;
+	  if (islast_reset == true)
+	    {
+	      value->last_attrepr = (OR_ATTRIBUTE *) dk_find_or_reserved_index_attribute (value->attrid);
+	      if (value->state == HEAP_UNINIT_ATTRVALUE)
+		{
+		  db_value_domain_init (&value->dbvalue, value->last_attrepr->type,
+					value->last_attrepr->domain->precision, value->last_attrepr->domain->scale);
+		}
+	    }
+	  else
+	    {
+	      value->read_attrepr = (OR_ATTRIBUTE *) dk_find_or_reserved_index_attribute (value->attrid);
+	    }
+	  num_found_attrs++;
+	  continue;
+#endif
+	}
+#endif
 
       for (i = 0; i < srch_num_attrs; i++, search_attrepr++)
 	{
@@ -10028,6 +10089,14 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   volatile int disk_length = -1;
   int ret = NO_ERROR;
 
+#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(FAKE_RESERVED_INDEX_ATTR)
+  if (IS_RESERVED_INDEX_ATTR_ID (value->attrid))
+    {
+      /* In the case of reserved_index_attr_id, there is no content that actually exists in HEAP.
+       * Therefore, the read operation is skipped and success is returned. */
+      return NO_ERROR;
+    }
+#endif
   /* Initialize disk value information */
   disk_data = NULL;
   disk_bound = false;
@@ -11932,9 +12001,16 @@ heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACH
  *   attr_info(in):
  *   idx_info(in):
  */
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+int
+heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * class_recdes,
+				HEAP_CACHE_ATTRINFO * attr_info, HEAP_IDX_ELEMENTS_INFO * idx_info,
+				bool is_check_foreign)
+#else
 int
 heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * class_recdes,
 				HEAP_CACHE_ATTRINFO * attr_info, HEAP_IDX_ELEMENTS_INFO * idx_info)
+#endif
 {
   ATTR_ID guess_attrids[HEAP_GUESS_NUM_INDEXED_ATTRS];
   ATTR_ID *set_attrids;
@@ -11986,14 +12062,32 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
   for (j = 0; j < *num_btids; j++)
     {
       indexp = &classrepr->indexes[j];
-      if (indexp->n_atts == 1)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+      if (is_check_foreign && IS_RESERVED_INDEX_ATTR_ID (indexp->atts[indexp->n_atts - 1]->id))
 	{
-	  idx_info->has_single_col = 1;
+	  if (indexp->n_atts == 2)
+	    {
+	      idx_info->has_single_col = 1;
+	    }
+	  else if (indexp->n_atts > 2)
+	    {
+	      idx_info->has_multi_col = 1;
+	    }
 	}
-      else if (indexp->n_atts > 1)
+      else
 	{
-	  idx_info->has_multi_col = 1;
+#endif
+	  if (indexp->n_atts == 1)
+	    {
+	      idx_info->has_single_col = 1;
+	    }
+	  else if (indexp->n_atts > 1)
+	    {
+	      idx_info->has_multi_col = 1;
+	    }
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	}
+#endif
       /* check for already found both */
       if (idx_info->has_single_col && idx_info->has_multi_col)
 	{
@@ -12015,11 +12109,26 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	      for (j = 0; j < *num_btids; j++)
 		{
 		  indexp = &classrepr->indexes[j];
-		  if (indexp->n_atts == 1 && indexp->atts[0]->id == search_attrepr->id)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+		  if (is_check_foreign && IS_RESERVED_INDEX_ATTR_ID (indexp->atts[indexp->n_atts - 1]->id))
 		    {
-		      set_attrids[num_found_attrs++] = search_attrepr->id;
-		      break;
+		      if (indexp->n_atts == 2 && indexp->atts[0]->id == search_attrepr->id)
+			{
+			  set_attrids[num_found_attrs++] = search_attrepr->id;
+			  break;
+			}
 		    }
+		  else
+		    {
+#endif
+		      if (indexp->n_atts == 1 && indexp->atts[0]->id == search_attrepr->id)
+			{
+			  set_attrids[num_found_attrs++] = search_attrepr->id;
+			  break;
+			}
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+		    }
+#endif
 		}
 	    }
 	}			/* for (i = 0 ...) */
@@ -12322,7 +12431,11 @@ heap_attrvalue_get_index (int value_index, ATTR_ID * attrid, int *n_btids, BTID 
  */
 static DB_MIDXKEY *
 heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, HEAP_CACHE_ATTRINFO * attrinfo,
-		      DB_VALUE * func_res, TP_DOMAIN * func_domain, TP_DOMAIN ** key_domain)
+		      DB_VALUE * func_res, TP_DOMAIN * func_domain, TP_DOMAIN ** key_domain
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+		      , OID * rec_oid
+#endif
+  )
 {
   char *nullmap_ptr;
   OR_ATTRIBUTE **atts;
@@ -12391,17 +12504,39 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	{
 	  break;
 	}
-      error = heap_midxkey_get_value (recdes, atts[i], &value, attrinfo);
-      if (error == NO_ERROR && !db_value_is_null (&value))
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      if (IS_RESERVED_INDEX_ATTR_ID (atts[i]->id))
 	{
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+	  if (index->type == BTREE_FOREIGN_KEY)
+	    {
+	      //printf ("foreign key!!!\n");
+	      ;			//continue; 
+	    }
+#endif
+
+	  dk_heap_midxkey_get_reserved_index_value (atts[i]->id, rec_oid, &value);
 	  atts[i]->domain->type->index_writeval (&buf, &value);
 	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	  //  In this case, there is no need to clean them up using pr_clear_value().     
 	}
-
-      if (DB_NEED_CLEAR (&value))
+      else
 	{
-	  pr_clear_value (&value);
+#endif
+	  error = heap_midxkey_get_value (recdes, atts[i], &value, attrinfo);
+	  if (error == NO_ERROR && !db_value_is_null (&value))
+	    {
+	      atts[i]->domain->type->index_writeval (&buf, &value);
+	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	    }
+
+	  if (DB_NEED_CLEAR (&value))
+	    {
+	      pr_clear_value (&value);
+	    }
+#if defined(SUPPORT_KEY_DUP_LEVEL)
 	}
+#endif
       if (key_domain != NULL)
 	{
 	  if (k == 0)
@@ -12489,7 +12624,11 @@ error:
 static DB_MIDXKEY *
 heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey, int *att_ids,
 			   HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, int func_col_id,
-			   int func_attr_index_start, TP_DOMAIN * midxkey_domain)
+			   int func_attr_index_start, TP_DOMAIN * midxkey_domain
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+			   , OID * rec_oid
+#endif
+  )
 {
   char *nullmap_ptr;
   int num_vals, i, reprid, k;
@@ -12545,20 +12684,34 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	      break;
 	    }
 	}
-
-      att = heap_locate_attribute (att_ids[i], attrinfo);
-
-      error = heap_midxkey_get_value (recdes, att, &value, attrinfo);
-      if (error == NO_ERROR && !db_value_is_null (&value))
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      if (IS_RESERVED_INDEX_ATTR_ID (att_ids[i]))
 	{
+	  att = (OR_ATTRIBUTE *) dk_find_or_reserved_index_attribute (att_ids[i]);
+	  dk_heap_midxkey_get_reserved_index_value (att_ids[i], rec_oid, &value);
 	  att->domain->type->index_writeval (&buf, &value);
 	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	  //  In this case, there is no need to clean them up using pr_clear_value().     
 	}
-
-      if (DB_NEED_CLEAR (&value))
+      else
 	{
-	  pr_clear_value (&value);
+#endif
+	  att = heap_locate_attribute (att_ids[i], attrinfo);
+
+	  error = heap_midxkey_get_value (recdes, att, &value, attrinfo);
+	  if (error == NO_ERROR && !db_value_is_null (&value))
+	    {
+	      att->domain->type->index_writeval (&buf, &value);
+	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	    }
+
+	  if (DB_NEED_CLEAR (&value))
+	    {
+	      pr_clear_value (&value);
+	    }
+#if defined(SUPPORT_KEY_DUP_LEVEL)
 	}
+#endif
     }
 
   if (value.need_clear == true)
@@ -12676,7 +12829,11 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 	}
 
       if (heap_midxkey_key_generate (thread_p, recdes, &midxkey, att_ids, attr_info, fi_res, fi_col_id,
-				     fi_attr_index_start, midxkey_domain) == NULL)
+				     fi_attr_index_start, midxkey_domain
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+				     , cur_oid
+#endif
+	  ) == NULL)
 	{
 	  return NULL;
 	}
@@ -12754,13 +12911,20 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 DB_VALUE *
 heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTRINFO * idx_attrinfo, RECDES * recdes,
 			BTID * btid, DB_VALUE * db_value, char *buf, FUNC_PRED_UNPACK_INFO * func_indx_pred,
-			TP_DOMAIN ** key_domain)
+			TP_DOMAIN ** key_domain
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+			, OID * rec_oid
+#endif
+  )
 {
   OR_INDEX *index;
   int n_atts, reprid;
   DB_VALUE *ret_val = NULL;
   DB_VALUE *fi_res = NULL;
   TP_DOMAIN *fi_domain = NULL;
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+  bool is_check_foreign = false;
+#endif
 
   assert (DB_IS_NULL (db_value));
 
@@ -12794,6 +12958,13 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
   n_atts = index->n_atts;
   *btid = index->btid;
 
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+  if (is_check_foreign && IS_RESERVED_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
+    {
+      n_atts--;			//-----------------
+    }
+#endif
+
   /* is function index */
   if (index->func_index_info)
     {
@@ -12804,6 +12975,13 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 	}
       fi_res = db_value;
     }
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+  if (is_check_foreign && index->type == BTREE_FOREIGN_KEY)
+    {
+      printf ("haha foreign key!!!\n");
+    }
+#endif
 
   /*
    *  Multi-column index.  Construct the key as a sequence of attribute
@@ -12839,7 +13017,11 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 
       midxkey.min_max_val.position = -1;
 
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      if (heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain, rec_oid) == NULL)
+#else
       if (heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain) == NULL)
+#endif
 	{
 	  return NULL;
 	}

@@ -668,6 +668,10 @@ tp_init (void)
 
   tp_Initialized = true;
 
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+  dk_reserved_index_attribute_initialized ();
+#endif
+
   return NO_ERROR;
 }
 

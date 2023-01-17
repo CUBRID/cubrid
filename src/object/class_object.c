@@ -2558,26 +2558,45 @@ classobj_cache_constraints (SM_CLASS * class_)
  *   id(in): attribute id
  */
 
-SM_ATTRIBUTE *
+static SM_ATTRIBUTE *
 classobj_find_attribute_list (SM_ATTRIBUTE * attlist, const char *name, int id)
 {
   SM_ATTRIBUTE *att;
 
-  for (att = attlist; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+  if (name != NULL)
     {
-      if (name != NULL)
+      for (att = attlist; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 	{
 	  if (intl_identifier_casecmp (att->header.name, name) == 0)
 	    {
-	      break;
+	      return att;
 	    }
 	}
-      else if (att->id == id)
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      if (IS_RESERVED_INDEX_ATTR_NAME (name))
 	{
-	  break;
+	  return dk_find_sm_reserved_index_attribute (-1, name);
 	}
+#endif
     }
-  return att;
+  else
+    {
+      for (att = attlist; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+	{
+	  if (att->id == id)
+	    {
+	      return att;
+	    }
+	}
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      if (IS_RESERVED_INDEX_ATTR_ID (id))
+	{
+	  return dk_find_sm_reserved_index_attribute (id, NULL);
+	}
+#endif
+    }
+
+  return NULL;
 }
 
 /*
@@ -4045,7 +4064,82 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_
   return key_type;
 }
 
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+static void
+classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAINT_TYPE new_cons,
+					  char **att_names, int *asc_desc, SM_FUNCTION_INFO * func_index_info)
+{
+  SM_CLASS_CONSTRAINT *cons;
+  SM_ATTRIBUTE **attp;
+  char **namep;
+  int nnames;
 
+  // If there is a column corresponding to PK among the attributes constituting the index, the reserved_index_column is not added.
+  int reserved_index_col_pos = -1;
+  for (nnames = 0, namep = att_names; *namep; namep++, nnames++)
+    {
+      if (IS_RESERVED_INDEX_ATTR_NAME (*namep))
+	{
+	  reserved_index_col_pos = nnames;
+	}
+    }
+
+  if (reserved_index_col_pos == -1)
+    {
+      return;
+    }
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+  /* for foreign key, need to check redundancy first */
+  if (new_cons == DB_CONSTRAINT_FOREIGN_KEY)
+    {
+      ;
+    }
+#endif
+
+  for (cons = cons_list; cons; cons = cons->next)
+    {
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (cons->type) == false)
+	{
+	  continue;
+	}
+
+      if (!cons->attributes || !att_names)
+	{
+	  continue;
+	}
+
+      for (attp = cons->attributes; *attp; attp++)
+	{
+	  for (namep = att_names; *namep; namep++)
+	    {
+	      if (!intl_identifier_casecmp ((*attp)->header.name, *namep))
+		{
+		  break;
+		}
+	    }
+
+	  if (!*namep)
+	    {
+	      break;
+	    }
+	}
+
+      if (!*attp)
+	{
+	  PT_INDEX_INFO idx_info;
+
+	  // For indexes that use prefixes, it does not reach here.
+	  idx_info.dupkey_mode = DUP_MODE_NONE;
+	  dk_alter_rebuild_index_level_adjust (new_cons, &idx_info, att_names, asc_desc, NULL, func_index_info,
+					       &reserved_index_col_pos, nnames,
+					       SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (cons->type));
+
+	  return;
+	}
+    }
+}
+#endif
 /*
  * classobj_find_cons_index2()
  *   return:
@@ -4064,6 +4158,9 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
   SM_ATTRIBUTE **attp;
   const char **namep;
   int i, len, order;
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+  int new_len = 0;
+#endif
 
   /* for foreign key, need to check redundancy first */
   if (new_cons == DB_CONSTRAINT_FOREIGN_KEY)
@@ -4094,76 +4191,118 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 
   for (cons = cons_list; cons; cons = cons->next)
     {
-      if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type))
+      if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type) == false)
 	{
-	  attp = cons->attributes;
-	  namep = att_names;
-	  if (!attp || !namep)
-	    {
-	      continue;
-	    }
-	  if (((filter_predicate && !cons->filter_predicate) || (!filter_predicate && cons->filter_predicate))
-	      || ((func_index_info && !cons->func_index_info) || (!func_index_info && cons->func_index_info)))
-	    {
-	      continue;
-	    }
-
-	  len = 0;		/* init */
-	  while (*attp && *namep && !intl_identifier_casecmp ((*attp)->header.name, *namep))
-	    {
-	      attp++;
-	      namep++;
-	      len++;		/* increase name number */
-	    }
-
-	  if (*attp || *namep || classobj_is_possible_constraint (cons->type, new_cons))
-	    {
-	      continue;
-	    }
-
-	  for (i = 0; i < len; i++)
-	    {
-	      /* if not specified, ascending order */
-	      order = (asc_desc ? asc_desc[i] : 0);
-	      assert (order == 0 || order == 1);
-	      if (order != cons->asc_desc[i])
-		{
-		  break;	/* not match */
-		}
-	    }
-
-	  if (i != len)
-	    {
-	      continue;
-	    }
-
-	  if (filter_predicate)
-	    {
-	      if (!filter_predicate->pred_string || !cons->filter_predicate->pred_string)
-		{
-		  continue;
-		}
-
-	      if (strcmp (filter_predicate->pred_string, cons->filter_predicate->pred_string))
-		{
-		  continue;
-		}
-	    }
-
-	  if (func_index_info)
-	    {
-	      /* expr_str are printed tree, identifiers are already lower case */
-	      if ((func_index_info->attr_index_start != cons->func_index_info->attr_index_start)
-		  || (func_index_info->col_id != cons->func_index_info->col_id)
-		  || (func_index_info->fi_domain->is_desc != cons->func_index_info->fi_domain->is_desc)
-		  || (strcmp (func_index_info->expr_str, cons->func_index_info->expr_str) != 0))
-		{
-		  continue;
-		}
-	    }
-
-	  return cons;
+	  continue;
 	}
+
+      if (((filter_predicate && !cons->filter_predicate) || (!filter_predicate && cons->filter_predicate))
+	  || ((func_index_info && !cons->func_index_info) || (!func_index_info && cons->func_index_info)))
+	{
+	  continue;
+	}
+
+      attp = cons->attributes;
+      namep = att_names;
+      if (!attp || !namep)
+	{
+	  continue;
+	}
+
+      len = 0;			/* init */
+      while (*attp && *namep && !intl_identifier_casecmp ((*attp)->header.name, *namep))
+	{
+	  attp++;
+	  namep++;
+	  len++;		/* increase name number */
+	}
+
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      new_len = len;
+      if (*attp)
+	{
+	  if (IS_RESERVED_INDEX_ATTR_NAME ((*attp)->header.name))
+	    {
+	      if (new_cons == DB_CONSTRAINT_FOREIGN_KEY && cons->type != SM_CONSTRAINT_FOREIGN_KEY)	// ctshim, FK!
+		{
+		  continue;
+		}
+	      attp++;
+	      len++;
+	    }
+	}
+
+      if (*namep)
+	{
+	  if (IS_RESERVED_INDEX_ATTR_NAME (*namep))
+	    {
+	      if (cons->type == SM_CONSTRAINT_FOREIGN_KEY && new_cons != DB_CONSTRAINT_FOREIGN_KEY)	// ctshim, FK!
+		{
+		  continue;
+		}
+	      namep++;
+	      new_len++;
+	    }
+	}
+#endif
+
+      if (*attp || *namep || classobj_is_possible_constraint (cons->type, new_cons))
+	{
+	  continue;
+	}
+
+      for (i = 0; i < len; i++)
+	{
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	  if (i >= new_len)
+	    {
+	      if ((i + 1) == len)
+		{
+		  i++;		/* set matched */
+		}
+	      break;
+	    }
+#endif
+	  /* if not specified, ascending order */
+	  order = (asc_desc ? asc_desc[i] : 0);
+	  assert (order == 0 || order == 1);
+	  if (order != cons->asc_desc[i])
+	    {
+	      break;		/* not match */
+	    }
+	}
+
+      if (i != len)
+	{
+	  continue;
+	}
+
+      if (filter_predicate)
+	{
+	  if (!filter_predicate->pred_string || !cons->filter_predicate->pred_string)
+	    {
+	      continue;
+	    }
+
+	  if (strcmp (filter_predicate->pred_string, cons->filter_predicate->pred_string))
+	    {
+	      continue;
+	    }
+	}
+
+      if (func_index_info)
+	{
+	  /* expr_str are printed tree, identifiers are already lower case */
+	  if ((func_index_info->attr_index_start != cons->func_index_info->attr_index_start)
+	      || (func_index_info->col_id != cons->func_index_info->col_id)
+	      || (func_index_info->fi_domain->is_desc != cons->func_index_info->fi_domain->is_desc)
+	      || (strcmp (func_index_info->expr_str, cons->func_index_info->expr_str) != 0))
+	    {
+	      continue;
+	    }
+	}
+
+      break;
     }
 
   return cons;
@@ -7942,8 +8081,7 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj, SM_COMPONENT * com
  *   return: share, not share, create new index.
  *   constraint(in): the constraints list
  *   constraint_type(in): the new constraint type
- *   filter_predicate(in): the new expression from CREATE INDEX idx
- *		       ON tbl(col1, ...) WHERE filter_predicate
+ *   filter_predicate(in): the new expression from CREATE INDEX idx ON tbl(col1, ...) WHERE filter_predicate
  *   func_index_info (in): the new function index information
  *   existing_con(in): the existed relative constraint
  *   primary_con(out): the reference of existed primary key
@@ -8074,6 +8212,11 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char **out_shared
       ERROR2 (error, ER_SM_INDEX_EXISTS, class_name, existing_con->name);
       return error;
     }
+
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+  classobj_check_attr_in_unique_constraint (constraints, constraint_type, (char **) att_names, (int *) asc_desc,
+					    (SM_FUNCTION_INFO *) func_index_info);
+#endif
 
   existing_con =
     classobj_find_constraint_by_attrs (constraints, constraint_type, att_names, asc_desc, filter_index,

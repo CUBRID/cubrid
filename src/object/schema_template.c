@@ -126,6 +126,60 @@ static SM_CLASS_CONSTRAINT *smt_find_constraint (SM_TEMPLATE * ctemplate, const 
  * a lot of the error checking code in every function.
 */
 
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+static int
+smt_find_reserved_index_attribute (SM_TEMPLATE * template_, const char *name, SM_ATTRIBUTE ** attp)
+{
+  int error_code = NO_ERROR;
+  SM_ATTRIBUTE *att = NULL;
+
+  *attp = NULL;
+
+#ifndef NDEBUG
+  if (!sm_check_name (name))
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  if (!IS_RESERVED_INDEX_ATTR_NAME (name))
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  error_code = check_namespace (template_, name, false);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+#endif
+
+  att = dk_find_sm_reserved_index_attribute (-1, name);
+  if (att == NULL)
+    {
+      assert (false);
+      ERROR0 (error_code, ER_FAILED);
+    }
+
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  *attp = att;
+  return error_code;
+
+error_exit:
+  if (att)
+    {
+      classobj_free_attribute (att);
+    }
+
+  return error_code;
+}
+#endif
+
 /*
  * smt_find_attribute() - Locate an instance, shared or class attribute
  *    in a template. Signal an error if not found.
@@ -1992,7 +2046,9 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   SM_ATTRIBUTE_FLAG constraint;
   bool has_nulls = false;
   bool is_secondary_index = false;
-
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+  int reserved_index_col_pos = -1;
+#endif
   assert (template_ != NULL);
 
   error = smt_check_index_exist (template_, &shared_cons_name, constraint_type, constraint_name, att_names,
@@ -2010,11 +2066,21 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
     {
       while (att_names[n_atts] != NULL)
 	{
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	  if (IS_RESERVED_INDEX_ATTR_NAME (att_names[n_atts]))
+	    {
+	      reserved_index_col_pos = n_atts;
+	    }
+#endif
 	  n_atts++;
 	}
     }
 
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+  if ((n_atts == 0) || ((n_atts == 1) && (reserved_index_col_pos != -1)))
+#else
   if (n_atts == 0)
+#endif
     {
       ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
       goto error_return;
@@ -2057,6 +2123,13 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
   for (i = 0; i < n_atts && error == NO_ERROR; i++)
     {
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      if (reserved_index_col_pos == i)
+	{
+	  error = smt_find_reserved_index_attribute (template_, att_names[i], &atts[i]);
+	  continue;
+	}
+#endif
       error = smt_find_attribute (template_, att_names[i], class_attribute, &atts[i]);
       if (error == ER_SM_INHERITED_ATTRIBUTE)
 	{
@@ -2193,7 +2266,12 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
       if (constraint == SM_ATTFLAG_FOREIGN_KEY)
 	{
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+	  error = smt_check_foreign_key (template_, constraint_name, atts,
+					 ((reserved_index_col_pos == -1) ? n_atts : (n_atts - 1)), fk_info);
+#else
 	  error = smt_check_foreign_key (template_, constraint_name, atts, n_atts, fk_info);
+#endif
 	  if (error != NO_ERROR)
 	    {
 	      goto error_return;

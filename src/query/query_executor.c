@@ -10365,8 +10365,13 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       COPY_OID (&pruned_oid, &class_oid);
       HFID_COPY (&pruned_hfid, &class_hfid);
       BTID_COPY (&btid, &index->btid);
+      // ctshim  FK check
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+				, NULL
+#endif
+	);
       /* TODO: unique with prefix length */
       if (key_dbvalue == NULL)
 	{
@@ -10595,8 +10600,13 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       COPY_OID (&class_oid, &attr_info->class_oid);
       is_global_index = false;
 
+      // ctshim FK check
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+				, NULL
+#endif
+	);
       if (key_dbvalue == NULL)
 	{
 	  goto error_exit;
@@ -11038,7 +11048,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   if (insert->has_uniques && (insert->do_replace || odku_assignments != NULL))
     {
-      if (heap_attrinfo_start_with_index (thread_p, &class_oid, NULL, &index_attr_info, &idx_info) < 0)
+      if (heap_attrinfo_start_with_index (thread_p, &class_oid, NULL, &index_attr_info, &idx_info
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+					  , false
+#endif
+	  ) < 0)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -21770,7 +21784,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
     }
 
   size_values = xasl->outptr_list->valptr_cnt;
-  assert (size_values == 14);
+  assert (size_values == 14);	/* The 14 is number of aliases[] in pt_make_query_show_index() */
   out_values = (DB_VALUE **) malloc (size_values * sizeof (DB_VALUE *));
   if (out_values == NULL)
     {
@@ -21879,7 +21893,11 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	{
 	  index_att = index->atts[j];
 	  att_id = index_att->id;
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	  assert (att_id >= 0 || IS_RESERVED_INDEX_ATTR_ID (att_id));
+#else
 	  assert (att_id >= 0);
+#endif
 
 	  if (index_position == function_index_pos)
 	    {
@@ -21937,15 +21955,38 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	    }
 
 	  /* Column_name */
-	  for (k = 0; k < rep->n_attributes; k++)
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	  if (IS_RESERVED_INDEX_ATTR_ID (att_id))
 	    {
-	      if (att_id == attr_ids[k])
-		{
-		  db_make_string (out_values[4], attr_names[k]);
-		  qexec_end_one_iteration (thread_p, xasl, xasl_state, &tplrec);
-		  break;
-		}
+#if defined(ENABLE_SHOW_HIDDEN_ATTR)
+	      int mode = GET_RESERVED_INDEX_ATTR_MODE (att_id);
+	      int level = GET_RESERVED_INDEX_ATTR_LEVEL (att_id);
+	      char *reserved_col_name = (char *) GET_RESERVED_INDEX_ATTR_NAME (mode, level);
+
+	      db_make_string (out_values[4], reserved_col_name);
+	      qexec_end_one_iteration (thread_p, xasl, xasl_state, &tplrec);
+#else
+	      /* clear alloced DB_VALUEs */
+	      pr_clear_value (out_values[5]);
+	      pr_clear_value (out_values[9]);
+	      continue;
+#endif
 	    }
+	  else
+	    {
+#endif
+	      for (k = 0; k < rep->n_attributes; k++)
+		{
+		  if (att_id == attr_ids[k])
+		    {
+		      db_make_string (out_values[4], attr_names[k]);
+		      qexec_end_one_iteration (thread_p, xasl, xasl_state, &tplrec);
+		      break;
+		    }
+		}
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	    }
+#endif
 
 	  /* clear alloced DB_VALUEs */
 	  pr_clear_value (out_values[5]);

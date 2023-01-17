@@ -41,6 +41,8 @@
 #include "string_opfunc.h"
 #include "system_parameter.h"
 
+#include "dup_key_def.h"
+
 // forward definitions
 struct json_t;
 
@@ -2025,6 +2027,10 @@ struct pt_index_info
   bool unique;			/* UNIQUE specified? */
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
   int ib_threads;
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+  short dupkey_mode;		/* refer to enDupMode */
+  short dupkey_hash_level;	/* 0 : no hash, others : hash size */
+#endif
 };
 
 /* CREATE USER INFO */
@@ -3174,6 +3180,10 @@ struct pt_foreign_key_info
   PT_MISC_TYPE match_type;	/* full or partial */
   PT_MISC_TYPE delete_action;
   PT_MISC_TYPE update_action;
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+  short dupkey_mode;		/* refer to enDupMode */
+  short dupkey_hash_level;	/* 0 : no hash, others : hash size */
+#endif
 };
 
 /* Info for the CONSTRAINT node */
@@ -3908,6 +3918,7 @@ enum cdc_ddl_object_type
 typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
 
 void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
+
 
 #ifdef __cplusplus
 extern "C"

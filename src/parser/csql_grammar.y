@@ -115,6 +115,22 @@ extern int is_dblink_query_string;
 #    define DBG_TRACE_GRAMMAR(rule_head, rule_components)
 #endif
 
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+#include "system_parameter.h"
+static bool is_dup_mode_init_need = true;   
+static void dup_mode_init();
+
+static struct
+{
+   bool is_support_auto;
+   int mode_defalut;
+   int level_default;
+} dup_value = { false, 0, 0 };
+
+#define INIT_DUP_MODE_ENV()  do { if(is_dup_mode_init_need) {dup_mode_init();} } while(0)
+
+#endif
+
 static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
 /*%CODE_END%*/%}
 
@@ -437,6 +453,20 @@ static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
 
 static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+static void pt_get_dup_mode_level(bool is_rebuild, int mode_level, short* mode, short* level);
+
+#define CHECK_RESERVED_IDX_ATTR_NAME(nm)  do {  \
+   if((nm) && IS_RESERVED_INDEX_ATTR_NAME((nm)->info.name.original))   \
+   {                                     \
+      PT_ERRORf2 (this_parser, (nm), "Attribute name [%s] is not allowed." \
+                                     "Names starting with \"%s\" are reserved by CUBRID.", \
+                                     (nm)->info.name.original, RESERVED_INDEX_ATTR_NAME_PREFIX);  \
+   } \
+} while(0)
+#else
+#define CHECK_RESERVED_IDX_ATTR_NAME(nm)
+#endif // #if defined(SUPPORT_KEY_DUP_LEVEL)
 
 #define push_msg(a) _push_msg(a, __LINE__)
 
@@ -614,6 +644,9 @@ int g_original_buffer_len;
 %type <boolean> opt_analytic_ignore_nulls
 %type <number> opt_encrypt_algorithm
 %type <number> opt_access_modifier
+%type <number> opt_index_level
+%type <number> opt_index_dup_level
+%type <number> index_dup_mode
 /*}}}*/
 
 /* define rule type (node) */
@@ -1652,6 +1685,12 @@ int g_original_buffer_len;
 %token <cptr> UTF8_STRING
 %token <cptr> IPV4_ADDRESS
 
+%token <cptr> DEDUPLICATE_
+%token <cptr> OID_ 
+%token <cptr> PAGEID_
+%token <cptr> SLOTID_
+%token <cptr> VOLID_  
+
 /*}}}*/
 
 %%
@@ -2686,9 +2725,10 @@ create_stmt
 	  only_class_name				/* 10 */
 	  index_column_name_list			/* 11 */
 	  opt_where_clause				/* 12 */
-	  opt_comment_spec				/* 13 */
-	  opt_with_online				/* 14 */
-	  opt_invisible					/* 15 */
+          opt_index_dup_level                           /* 13 */
+	  opt_comment_spec				/* 14 */
+	  opt_with_online				/* 15 */
+	  opt_invisible					/* 16 */
 		{{ DBG_TRACE_GRAMMAR(create_stmt,  CREATE ~ INDEX identifier ON_ ~);
 
 			PT_NODE *node = parser_pop_hint_node ();
@@ -2755,8 +2795,7 @@ create_stmt
 			    prefix_col_count =
 				parser_count_prefix_columns (col, &arg_count);
 
-			    if (prefix_col_count > 1 ||
-				(prefix_col_count == 1 && arg_count > 1))
+			    if (prefix_col_count > 1 ||	(prefix_col_count == 1 && arg_count > 1))
 			      {
 				PT_ERRORm (this_parser, node,
 					   MSGCAT_SET_PARSER_SEMANTIC,
@@ -2782,36 +2821,51 @@ create_stmt
 					  }
 					else
 					  {
-					    PT_NODE *p = parser_new_node (this_parser,
-									  PT_NAME);
+					    PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 					    if (p)
 					      {
-						p->info.name.original =
-						     expr->info.function.generic_name;
+						p->info.name.original = expr->info.function.generic_name;
+                                                expr->info.function.generic_name = NULL;
 					      }
-					    node->info.index.prefix_length =
-							 expr->info.function.arg_list;
+					    node->info.index.prefix_length = expr->info.function.arg_list;
+
+                                            expr->info.function.arg_list = NULL;
+                                            parser_free_node (this_parser, expr);
+
 					    col->info.sort_spec.expr = p;
 					  }
 				      }
 				    else
 				      {
+                                        char buf[512], *ptr;
+                                        PT_FUNCTION_INFO *function_ptr = &col->info.sort_spec.expr->info.function;                                        
+
+                                        ptr = (char*)fcode_get_lowercase_name (function_ptr->function_type);
+                                        if(function_ptr->function_type == PT_GENERIC)
+                                        {
+                                           snprintf(buf, sizeof(buf)-1, "%s(%s)", ptr, function_ptr->generic_name);
+                                           ptr = buf;
+                                        }
+                                        
 					PT_ERRORmf (this_parser, col->info.sort_spec.expr,
-						    MSGCAT_SET_PARSER_SEMANTIC,
-						    MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_INDEX,
-						    fcode_get_lowercase_name (col->info.sort_spec.expr->info.function.
-                                                                              function_type));
+						    MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_INDEX, ptr);
 				      }
 				  }
 			      }
+                       
 			    node->info.index.where = $12;
 			    node->info.index.column_names = col;
-			    node->info.index.comment = $13;
 
-                            int with_online_ret = $14;  // 0 for normal, 1 for online no parallel,
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+                            pt_get_dup_mode_level(false, $13,  &node->info.index.dupkey_mode, &node->info.index.dupkey_hash_level);
+#endif                            
+
+			    node->info.index.comment = $14;
+
+                            int with_online_ret = $15;  // 0 for normal, 1 for online no parallel,
                                                         // thread_count + 1 for parallel
                             bool is_online = with_online_ret > 0;
-                            bool is_invisible = $15;
+                            bool is_invisible = $16;
 
                             if (is_online && is_invisible)
                               {
@@ -3633,6 +3687,7 @@ alter_stmt
 	  opt_where_clause				/* 11 */
 	  opt_comment_spec				/* 12 */
 	  REBUILD					/* 13 */
+          opt_index_dup_level                           /* 14 */
 		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER ~ INDEX ~ REBUILD);
 
 			PT_NODE *node = parser_pop_hint_node ();
@@ -3693,7 +3748,10 @@ alter_stmt
 
 			    node->info.index.column_names = col;
 			    node->info.index.where = $11;
-			    node->info.index.comment = $12;
+			    node->info.index.comment = $12;                            
+#if defined(SUPPORT_KEY_DUP_LEVEL)                            
+                            pt_get_dup_mode_level(true, $14, &node->info.index.dupkey_mode, &node->info.index.dupkey_hash_level);
+#endif                            
 
 			    $$ = node;
 			    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -5433,7 +5491,7 @@ object_name
 
 user_specified_name_without_dot
 	: identifier_without_dot DOT identifier_without_dot
-		{{
+		{{ DBG_TRACE_GRAMMAR(user_specified_name_without_dot, : identifier_without_dot DOT identifier_without_dot);
 
 			PT_NODE *user = $1;
 			PT_NODE *name = $3;
@@ -5451,7 +5509,7 @@ user_specified_name_without_dot
 
 		DBG_PRINT}}
 	| identifier_without_dot
-		{{
+		{{ DBG_TRACE_GRAMMAR(user_specified_name_without_dot, | identifier_without_dot);
 
 			PT_NODE *name = $1;
 
@@ -5468,8 +5526,8 @@ user_specified_name_without_dot
 
 user_specified_name
 	: object_name
-		{{
-
+		{{ DBG_TRACE_GRAMMAR(user_specified_name, : object_name);
+ 
 			PT_NODE *name = $1;
 
 			if (name)
@@ -9577,10 +9635,11 @@ foreign_key_constraint
 	  KEY 						/* 2 */
 	  opt_identifier				/* 3 */
 	  '(' index_column_identifier_list ')'		/* 4, 5, 6 */
-	  REFERENCES					/* 7 */
-	  user_specified_name				/* 8 */
-	  opt_paren_attr_list				/* 9 */
-	  opt_ref_rule_list				/* 10 */
+          opt_index_dup_level                           /* 7 */
+	  REFERENCES					/* 8 */
+	  user_specified_name				/* 9 */
+	  opt_paren_attr_list				/* 10 */
+	  opt_ref_rule_list				/* 11 */
 		{{ DBG_TRACE_GRAMMAR(foreign_key_constraint, : FOREIGN KEY ~ '(' index_column_identifier_list ')' REFERENCES ~);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_CONSTRAINT);
@@ -9591,11 +9650,15 @@ foreign_key_constraint
 			    node->info.constraint.type = PT_CONSTRAIN_FOREIGN_KEY;
 			    node->info.constraint.un.foreign_key.attrs = $5;
 
-			    node->info.constraint.un.foreign_key.referenced_attrs = $9;
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+                            printf("FOREIGN KEY\n");
+                            pt_get_dup_mode_level(false, $7,  &node->info.constraint.un.foreign_key.dupkey_mode, &node->info.constraint.un.foreign_key.dupkey_hash_level);
+#endif
+			    node->info.constraint.un.foreign_key.referenced_attrs = $10;
 			    node->info.constraint.un.foreign_key.match_type = PT_MATCH_REGULAR;
-			    node->info.constraint.un.foreign_key.delete_action = TO_NUMBER (CONTAINER_AT_0 ($10));	/* delete_action */
-			    node->info.constraint.un.foreign_key.update_action = TO_NUMBER (CONTAINER_AT_1 ($10));	/* update_action */
-			    node->info.constraint.un.foreign_key.referenced_class = $8;
+			    node->info.constraint.un.foreign_key.delete_action = TO_NUMBER (CONTAINER_AT_0 ($11));	/* delete_action */
+			    node->info.constraint.un.foreign_key.update_action = TO_NUMBER (CONTAINER_AT_1 ($11));	/* update_action */
+			    node->info.constraint.un.foreign_key.referenced_class = $9;
 			  }
 
 			$$ = node;
@@ -10176,6 +10239,7 @@ view_attr_def
 			    node->info.attr_def.attr_name = $1;
 			    node->info.attr_def.comment = $2;
 			    node->info.attr_def.attr_type = PT_NORMAL;
+                            CHECK_RESERVED_IDX_ATTR_NAME($1);
 			  }
 
 			$$ = node;
@@ -10310,8 +10374,9 @@ attr_index_def
 	  identifier                /* 2 */
 	  index_column_name_list    /* 3 */
 	  opt_where_clause          /* 4 */
-	  opt_comment_spec          /* 5 */
-	  opt_invisible             /* 6 */
+          opt_index_dup_level       /* 5 */
+	  opt_comment_spec          /* 6 */
+	  opt_invisible             /* 7 */
 		{{ DBG_TRACE_GRAMMAR(attr_index_def, : index_or_key identifier index_column_name_list opt_where_clause opt_comment_spec opt_invisible);
 			int arg_count = 0, prefix_col_count = 0;
 			PT_NODE* node = parser_new_node(this_parser,
@@ -10326,14 +10391,12 @@ attr_index_def
 			  }
 			node->info.index.indexed_class = NULL;
 			node->info.index.where = $4;
-			node->info.index.comment = $5;
+			node->info.index.comment = $6;
 			node->info.index.index_status = SM_NORMAL_INDEX;
 
-			prefix_col_count =
-				parser_count_prefix_columns (col, &arg_count);
+			prefix_col_count = parser_count_prefix_columns (col, &arg_count);
 
-			if (prefix_col_count > 1 ||
-			    (prefix_col_count == 1 && arg_count > 1))
+			if (prefix_col_count > 1 || (prefix_col_count == 1 && arg_count > 1))
 			  {
 			    PT_ERRORm (this_parser, node,
 				       MSGCAT_SET_PARSER_SEMANTIC,
@@ -10355,8 +10418,7 @@ attr_index_def
 				      {
 					p->info.name.original = expr->info.function.generic_name;
 				      }
-				    node->info.index.prefix_length =
-				    expr->info.function.arg_list;
+				    node->info.index.prefix_length = expr->info.function.arg_list;
 				    col->info.sort_spec.expr = p;
 				  }
 				else
@@ -10367,12 +10429,15 @@ attr_index_def
 				  }
 			      }
 			  }
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+                        pt_get_dup_mode_level(false, $5,  &node->info.index.dupkey_mode, &node->info.index.dupkey_hash_level);
+#endif                            
 			node->info.index.column_names = col;
 			node->info.index.index_status = SM_NORMAL_INDEX;
-			if ($6)
-				{
-					node->info.index.index_status = SM_INVISIBLE_INDEX;
-				}
+			if ($7)
+			  {
+			       node->info.index.index_status = SM_INVISIBLE_INDEX;
+			  }
 			$$ = node;
 
 		DBG_PRINT}}
@@ -10400,6 +10465,7 @@ attr_def_one
 				PT_NAME_INFO_SET_FLAG (node->info.attr_def.attr_name,
 						       PT_NAME_INFO_EXTERNAL);
 			      }
+                            CHECK_RESERVED_IDX_ATTR_NAME($1);
 			  }
 
 			parser_save_attr_def_one (node);
@@ -10739,11 +10805,12 @@ column_other_constraint_def
 		DBG_PRINT}}
 	| opt_constraint_id			/* 1 */
 	  opt_foreign_key			/* 2 */
-	  REFERENCES				/* 3 */
-	  class_name				/* 4 */
-	  opt_paren_attr_list			/* 5 */
-	  opt_ref_rule_list			/* 6 */
-	  opt_constraint_attr_list		/* 7 */
+          opt_index_dup_level                   /* 3 */
+	  REFERENCES				/* 4 */
+	  class_name				/* 5 */
+	  opt_paren_attr_list			/* 6 */
+	  opt_ref_rule_list			/* 7 */
+	  opt_constraint_attr_list		/* 8 */
 		{{ DBG_TRACE_GRAMMAR(column_other_constraint_def, | opt_constraint_id opt_foreign_key REFERENCES class_name ~);
 
 			PT_NODE *node = parser_get_attr_def_one ();
@@ -10752,31 +10819,30 @@ column_other_constraint_def
 
 			if (constraint)
 			  {
-			    constraint->info.constraint.un.foreign_key.referenced_attrs = $5;
+			    constraint->info.constraint.un.foreign_key.referenced_attrs = $6;
 			    constraint->info.constraint.un.foreign_key.match_type = PT_MATCH_REGULAR;
-			    constraint->info.constraint.un.foreign_key.delete_action = TO_NUMBER (CONTAINER_AT_0 ($6));	/* delete_action */
-			    constraint->info.constraint.un.foreign_key.update_action = TO_NUMBER (CONTAINER_AT_1 ($6));	/* update_action */
-			    constraint->info.constraint.un.foreign_key.referenced_class = $4;
-			  }
+			    constraint->info.constraint.un.foreign_key.delete_action = TO_NUMBER (CONTAINER_AT_0 ($7));	/* delete_action */
+			    constraint->info.constraint.un.foreign_key.update_action = TO_NUMBER (CONTAINER_AT_1 ($7));	/* update_action */
+			    constraint->info.constraint.un.foreign_key.referenced_class = $5;
 
-			if (constraint)
-			  {
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+                            printf("REFERENCE\n");
+                            pt_get_dup_mode_level(false, $3,  &constraint->info.constraint.un.foreign_key.dupkey_mode, &constraint->info.constraint.un.foreign_key.dupkey_hash_level);
+#endif  
+
 			    constraint->info.constraint.type = PT_CONSTRAIN_FOREIGN_KEY;
-			    constraint->info.constraint.un.foreign_key.attrs
-			      = parser_copy_tree (this_parser, node->info.attr_def.attr_name);
+			    constraint->info.constraint.un.foreign_key.attrs = parser_copy_tree (this_parser, node->info.attr_def.attr_name);
 
 			    constraint->info.constraint.name = $1;
 
-			    if (TO_NUMBER (CONTAINER_AT_0 ($7)))
+			    if (TO_NUMBER (CONTAINER_AT_0 ($8)))
 			      {
-				constraint->info.constraint.deferrable =
-				  (short)TO_NUMBER (CONTAINER_AT_1 ($7));
+				constraint->info.constraint.deferrable = (short)TO_NUMBER (CONTAINER_AT_1 ($8));
 			      }
 
-			    if (TO_NUMBER (CONTAINER_AT_2 ($7)))
+			    if (TO_NUMBER (CONTAINER_AT_2 ($8)))
 			      {
-				constraint->info.constraint.initially_deferred =
-				  (short)TO_NUMBER (CONTAINER_AT_3 ($7));
+				constraint->info.constraint.initially_deferred = (short)TO_NUMBER (CONTAINER_AT_3 ($8));
 			      }
 			  }
 
@@ -11055,6 +11121,7 @@ attr_def_comment
 				attr_node->info.attr_def.attr_name = $1;
 				attr_node->info.attr_def.comment = $3;
 				attr_node->info.attr_def.attr_type = parser_attr_type;
+                                CHECK_RESERVED_IDX_ATTR_NAME($1);
 			  }
 
 			$$ = attr_node;
@@ -16602,8 +16669,7 @@ reserved_func
 			      {
 			      	if (pt_is_const ($10->info.sort_spec.expr))
 			      	  {
-			      	    node->info.function.arg_list =
-			      	    					$10->info.sort_spec.expr;
+			      	    node->info.function.arg_list = $10->info.sort_spec.expr;
 			      	  }
 			      	else
 			      	  {
@@ -16616,9 +16682,7 @@ reserved_func
 			      	        node->info.function.order_by = $10;
 			      	      }
 
-				        node->info.function.arg_list =
-						          parser_copy_tree (this_parser,
-						          					$10->info.sort_spec.expr);
+				        node->info.function.arg_list = parser_copy_tree (this_parser, $10->info.sort_spec.expr);
 			          }
 			      }
 
@@ -21404,6 +21468,57 @@ opt_encrypt_algorithm
       $$ = 2; }   /* TDE_ALGORITHM_ARIA */
   ;
 
+opt_index_dup_level
+        :  /* empty */
+	       { DBG_TRACE_GRAMMAR(opt_index_dup_level, : ); 
+                 $$ = DUP_MODE_OVFL_LEVEL_NOT_SET;
+               }
+        | DEDUPLICATE_ ON_
+               { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DEDUPLICATE_ ON_ ); 
+                 INIT_DUP_MODE_ENV();
+                 $$ = dup_value.mode_defalut | (dup_value.level_default << 16); 
+               }
+        | DEDUPLICATE_ OFF_
+               { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DEDUPLICATE_ OFF_ ); 
+                 $$ = DUP_MODE_NONE;
+               }
+        | DEDUPLICATE_ WITH index_dup_mode opt_index_level
+               { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DEDUPLICATE_ WITH index_dup_mode opt_index_level ); 
+                 $$ = $3 | ($4 << 16);
+               }
+        ;
+
+index_dup_mode
+        :  OID_      { DBG_TRACE_GRAMMAR(index_dup_mode, | OID_ );    $$ = DUP_MODE_OID; }
+        |  PAGEID_   { DBG_TRACE_GRAMMAR(index_dup_mode, | PAGEID_ ); $$ = DUP_MODE_PAGEID; }
+        |  SLOTID_   { DBG_TRACE_GRAMMAR(index_dup_mode, | SLOTID_ ); $$ = DUP_MODE_SLOTID; }
+        |  VOLID_    { DBG_TRACE_GRAMMAR(index_dup_mode, | VOLID_ );  $$ = DUP_MODE_VOLID; } 
+        ;
+
+
+opt_index_level
+        : /* empty */
+		{ DBG_TRACE_GRAMMAR(opt_index_level, : );
+                  INIT_DUP_MODE_ENV();
+                  $$ = dup_value.level_default;
+                }
+	| LEVEL UNSIGNED_INTEGER
+		{ DBG_TRACE_GRAMMAR(opt_index_level, | LEVEL UNSIGNED_INTEGER ); 
+                  int int_val = -1;
+                  // ctshim to do error code
+                  if (parse_int (&int_val, $2, 10) != 0)
+		      {
+			PT_ERRORmf (this_parser, $2, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_UNSIGNED_INT32, $2);
+		      }
+                  else if(int_val < OVFL_LEVEL_MIN || int_val > OVFL_LEVEL_MAX)
+                      {                          
+                        PT_ERRORmf2 (this_parser, $2, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_LEVEL, OVFL_LEVEL_MIN, OVFL_LEVEL_MAX);
+                      }
+
+   	          $$ = int_val;                  
+                  DBG_PRINT}
+	;
+
 opt_comment_spec
 	: /* empty */
 		{ DBG_TRACE_GRAMMAR(opt_comment_spec, : );
@@ -22034,7 +22149,7 @@ simple_path_id_list
 
 identifier_without_dot
 	: identifier
-		{{
+		{{ DBG_TRACE_GRAMMAR(identifier_without_dot, : identifier);
 
 			PT_NODE *p = $1;
 
@@ -22158,7 +22273,8 @@ identifier
 	| DATE_SUB               {{ DBG_TRACE_GRAMMAR(identifier, | DATE_SUB           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DBLINK                 {{ DBG_TRACE_GRAMMAR(identifier, | DBLINK             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DBNAME                 {{ DBG_TRACE_GRAMMAR(identifier, | DBNAME             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| DECREMENT              {{ DBG_TRACE_GRAMMAR(identifier, | DECREMENT          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| DECREMENT              {{ DBG_TRACE_GRAMMAR(identifier, | DECREMENT          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}        
+	| DEDUPLICATE_           {{ DBG_TRACE_GRAMMAR(identifier, | DEDUPLICATE_       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DENSE_RANK             {{ DBG_TRACE_GRAMMAR(identifier, | DENSE_RANK         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DISK_SIZE              {{ DBG_TRACE_GRAMMAR(identifier, | DISK_SIZE          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DONT_REUSE_OID         {{ DBG_TRACE_GRAMMAR(identifier, | DONT_REUSE_OID     ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -22244,11 +22360,13 @@ identifier
 	| NTILE                  {{ DBG_TRACE_GRAMMAR(identifier, | NTILE              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NULLS                  {{ DBG_TRACE_GRAMMAR(identifier, | NULLS              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| OFFSET                 {{ DBG_TRACE_GRAMMAR(identifier, | OFFSET             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | OID_                   {{ DBG_TRACE_GRAMMAR(identifier, | OID_               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ONLINE                 {{ DBG_TRACE_GRAMMAR(identifier, | ONLINE             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| OPEN                   {{ DBG_TRACE_GRAMMAR(identifier, | OPEN               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ORDINALITY             {{ DBG_TRACE_GRAMMAR(identifier, | ORDINALITY         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| OWNER                  {{ DBG_TRACE_GRAMMAR(identifier, | OWNER              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PAGE                   {{ DBG_TRACE_GRAMMAR(identifier, | PAGE               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | PAGEID_                {{ DBG_TRACE_GRAMMAR(identifier, | PAGEID_            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PARALLEL               {{ DBG_TRACE_GRAMMAR(identifier, | PARALLEL           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PARTITIONING           {{ DBG_TRACE_GRAMMAR(identifier, | PARTITIONING       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PARTITIONS             {{ DBG_TRACE_GRAMMAR(identifier, | PARTITIONS         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -22286,7 +22404,8 @@ identifier
 	| SERIAL                 {{ DBG_TRACE_GRAMMAR(identifier, | SERIAL             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SERVER                 {{ DBG_TRACE_GRAMMAR(identifier, | SERVER             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SHOW                   {{ DBG_TRACE_GRAMMAR(identifier, | SHOW               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SLOTS                  {{ DBG_TRACE_GRAMMAR(identifier, | SLOTS              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| SLOTID_                {{ DBG_TRACE_GRAMMAR(identifier, | SLOTID_              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | SLOTS                  {{ DBG_TRACE_GRAMMAR(identifier, | SLOTS              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SLOTTED                {{ DBG_TRACE_GRAMMAR(identifier, | SLOTTED            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| STABILITY              {{ DBG_TRACE_GRAMMAR(identifier, | STABILITY          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| START_                 {{ DBG_TRACE_GRAMMAR(identifier, | START_             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -22314,6 +22433,7 @@ identifier
 	| VAR_POP                {{ DBG_TRACE_GRAMMAR(identifier, | VAR_POP            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| VAR_SAMP               {{ DBG_TRACE_GRAMMAR(identifier, | VAR_SAMP           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| VISIBLE                {{ DBG_TRACE_GRAMMAR(identifier, | VISIBLE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | VOLID_                 {{ DBG_TRACE_GRAMMAR(identifier, | VOLID_             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| VOLUME                 {{ DBG_TRACE_GRAMMAR(identifier, | VOLUME             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| WEEK                   {{ DBG_TRACE_GRAMMAR(identifier, | WEEK               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| WITHIN                 {{ DBG_TRACE_GRAMMAR(identifier, | WITHIN             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -24176,6 +24296,7 @@ dblink_column_definition
                         {
                                 node->info.attr_def.size_constraint = dt->info.data_type.precision;
                         }
+                        CHECK_RESERVED_IDX_ATTR_NAME($1);
                 }
 
                 $$ = node;
@@ -27566,3 +27687,44 @@ pt_ct_check_select (char* p, char *perr_msg)
    sprintf(perr_msg, "Only SELECT statements are supported.");
    return false;
 }
+
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+static void dup_mode_init()
+{  
+  dup_value.is_support_auto = prm_get_bool_value (PRM_ID_AUTO_DUP_MODE);
+  dup_value.mode_defalut = prm_get_integer_value (PRM_ID_DUP_MODE);
+  dup_value.level_default = prm_get_integer_value (PRM_ID_DUP_LEVEL);
+  is_dup_mode_init_need = false;
+}
+
+static void pt_get_dup_mode_level(bool is_rebuild, int mode_level, short* mode, short* level)
+{   
+    INIT_DUP_MODE_ENV();
+
+    if(mode_level == DUP_MODE_OVFL_LEVEL_NOT_SET)
+      { 
+        if(is_rebuild)
+        {
+           *mode = DUP_MODE_OVFL_LEVEL_NOT_SET;
+           *level = 0;
+        }
+        else if(dup_value.is_support_auto)
+        {
+           *mode = dup_value.mode_defalut; 
+           *level = dup_value.level_default;
+        }
+        else
+        {
+           *mode = DUP_MODE_NONE; 
+           *level = 0;        
+        }
+      }
+    else
+      {
+        *mode = mode_level & 0x0000FFFF;
+        *level = (mode_level >> 16);
+       }
+}
+#endif
+
+//prm_get_boolean_value (PRM_AUTO_DUP_MODE) 

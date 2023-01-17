@@ -5045,6 +5045,14 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 	      && !intl_identifier_casecmp (expr_str, consp->func_index_info->expr_str))
 	    {
 	      attr_id = consp->attributes[0]->id;
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	      if (IS_RESERVED_INDEX_ATTR_ID (attr_id))
+		{
+		  // If a function index is defined in the first position, the second position is the actual column.
+		  // ex) create index idx on tbl(abs(val));
+		  attr_id = consp->attributes[1]->id;
+		}
+#endif
 
 	      for (j = 0; j < n_attrs; j++, attr_statsp++)
 		{
@@ -5496,6 +5504,12 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	    {
 	      /* function index with the function expression as the first attribute */
 	      attr_id = index_entryp->constraints->attributes[0]->id;
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	      if (IS_RESERVED_INDEX_ATTR_ID (attr_id))
+		{
+		  attr_id = index_entryp->constraints->attributes[1]->id;
+		}
+#endif
 	    }
 
 	  for (k = 0; k < n_attrs; k++, attr_statsp++)

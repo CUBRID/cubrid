@@ -45,6 +45,7 @@
 #include "object_representation_constants.h"
 #include "porting_inline.hpp"
 #include "storage_common.h"
+#include "dup_key.h"
 
 // forward declarations
 struct log_lsa;
