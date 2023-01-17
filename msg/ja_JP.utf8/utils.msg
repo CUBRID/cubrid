@@ -674,7 +674,7 @@ addvoldb: データベースボリュームファイルを追加。\n\
       --db-volume-size=SIZE        追加するボリュームのサイズ; デフォルト: 設定から読み込む。\n\
       --max-writesize-in-sec=SIZE  一秒に書かれるボリューム量; (ex. 512K, 1M, 10M); デフォルト: 使用しない; 最小: 160K\n\
   -n, --volume-name=NAME           ボリューム名; デフォルト: "db"_ext1のような名前で生成。\n\
-  -F, --file-path=PATH             データベースファイルのパス; デフォルト: 現在ディレクトリー\n\
+  -F, --file-path=PATH             データベースファイルのパス; デフォルト: volume_extension_path\n\
       --comment=COMMENT            ボリュームコメント; デフォルト: なし\n\
   -p, --purpose=PURPOSE            ボリュームの使い道; 次のような使い道ができます。\n\
                                            DATA - データヴォリューム\n\

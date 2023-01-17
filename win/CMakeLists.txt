@@ -122,7 +122,12 @@ install(FILES
    ${CMAKE_SOURCE_DIR}/win/external/lz4/bin/liblz4.dll
    DESTINATION ${CUBRID_BINDIR} COMPONENT Library
  )
-
+ 
+ install(FILES
+   ${CMAKE_SOURCE_DIR}/win/external/RE2/bin/re2.dll
+   DESTINATION ${CUBRID_BINDIR} COMPONENT Library
+ )
+ 
 # install pdb files for debugging on windows
 install(DIRECTORY
   ${CMAKE_CURRENT_BINARY_DIR}/\${CMAKE_INSTALL_CONFIG_NAME}/
