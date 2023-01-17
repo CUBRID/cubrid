@@ -53,6 +53,7 @@
 
 #include "system_parameter.h"
 #include "object_representation.h"
+#include "host_lookup.h"
 
 #if defined (CS_MODE)
 #include "network_interface_cl.h"
@@ -313,7 +314,7 @@ jsp_connect_server_tcp (int server_port)
   else
     {
       struct hostent *hp;
-      hp = gethostbyname (server_host);
+      hp = gethostbyname_uhost (server_host);
 
       if (hp == NULL)
 	{

@@ -173,6 +173,7 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/connection_list_cl.c
   ${CONNECTION_DIR}/client_support.c
   ${CONNECTION_DIR}/connection_support.c
+  ${CONNECTION_DIR}/host_lookup.c
   )
 
 set(COMMUNICATION_SOURCES
@@ -236,11 +237,12 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/regu_var.cpp
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
+  ${QUERY_DIR}/string_regex_std.cpp
+  ${QUERY_DIR}/string_regex_re2.cpp
   ${QUERY_DIR}/xasl_to_stream.c
   )
 set(QUERY_HEADERS
   ${QUERY_DIR}/query_monitoring.hpp
-  ${QUERY_DIR}/string_regex.hpp
 )
 
 set(OBJECT_SOURCES

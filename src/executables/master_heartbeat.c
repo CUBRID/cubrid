@@ -59,6 +59,7 @@
 #include "porting.h"
 #include "tcp.h"
 #include "utility.h"
+#include "host_lookup.h"
 
 #define HB_INFO_STR_MAX         8192
 #define SERVER_DEREG_MAX_POLL_COUNT 10
@@ -1832,7 +1833,7 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
       int herr;
       char buf[1024];
 
-      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
+      if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
 	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
@@ -1843,7 +1844,7 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
       int herr;
       char buf[1024];
 
-      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &herr) == NULL)
+      if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
 	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
@@ -1853,7 +1854,7 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
       struct hostent hent;
       struct hostent_data ht_data;
 
-      if (gethostbyname_r (host, &hent, &ht_data) == -1)
+      if (gethostbyname_r_uhost (host, &hent, &ht_data) == -1)
 	{
 	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
@@ -1867,7 +1868,7 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
       int r;
 
       r = pthread_mutex_lock (&gethostbyname_lock);
-      hp = gethostbyname (host);
+      hp = gethostbyname_uhost (host);
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
@@ -2149,6 +2150,7 @@ hb_cluster_load_ping_host_list (char *ha_ping_host_list)
   int num_hosts = 0;
   char host_list[LINE_MAX];
   char *host_list_p, *host_p, *host_pp;
+  char buf[128];
 
   if (ha_ping_host_list == NULL)
     {
@@ -2165,8 +2167,16 @@ hb_cluster_load_ping_host_list (char *ha_ping_host_list)
 	  break;
 	}
 
-      hb_add_ping_host (host_p);
-      num_hosts++;
+      if (strcmp (host_p, "0.0.0.0") == 0)
+	{
+	  snprintf (buf, sizeof (buf), "We do not allow 0.0.0.0 as a ping hosts, excluded");
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, buf);
+	}
+      else
+	{
+	  hb_add_ping_host (host_p);
+	  num_hosts++;
+	}
     }
 
   return num_hosts;

@@ -47,6 +47,7 @@
 #include "broker_error.h"
 #include "broker_filename.h"
 #include "broker_util.h"
+#include "host_lookup.h"
 
 #if defined(WINDOWS)
 #include "broker_list.h"
@@ -757,7 +758,7 @@ get_host_ip (unsigned char *ip_addr)
       fprintf (stderr, "gethostname error\n");
       return -1;
     }
-  if ((hp = gethostbyname (hostname)) == NULL)
+  if ((hp = gethostbyname_uhost (hostname)) == NULL)
     {
       fprintf (stderr, "unknown host : %s\n", hostname);
       return -1;

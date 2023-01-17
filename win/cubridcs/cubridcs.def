@@ -421,6 +421,7 @@ EXPORTS
     prm_get_bigint_value
     prm_get_string_value
     prm_set_integer_value
+    prm_Def
     rel_copy_version_string
     rel_build_number
     rel_release_string
@@ -971,3 +972,5 @@ EXPORTS
   setobj_type
   db_get_json_raw_body
   db_json_val_from_str
+  gethostbyname_uhost
+  getnameinfo_uhost

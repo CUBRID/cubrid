@@ -105,6 +105,27 @@ void db_value_printer::describe_money (const db_monetary *value)
 }
 
 //--------------------------------------------------------------------------------
+void db_value_printer::describe_comment_value (const db_value *value)
+{
+  INTL_CODESET codeset = INTL_CODESET_NONE;
+  const char *src, *end;
+
+  codeset = db_get_string_codeset (value);
+  if (codeset != LANG_SYS_CODESET)
+    {
+      m_buf ("%s", lang_charset_introducer (codeset));
+    }
+
+  m_buf += '\'';
+
+  src = db_get_string (value);
+  end = src + db_get_string_size (value);
+  m_buf.add_bytes (end - src, src);
+
+  m_buf += '\'';
+}
+
+//--------------------------------------------------------------------------------
 void db_value_printer::describe_value (const db_value *value)
 {
   INTL_CODESET codeset = INTL_CODESET_NONE;

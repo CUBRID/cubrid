@@ -31,8 +31,6 @@
 
 package com.cubrid.jsp.data;
 
-import com.cubrid.jsp.data.DBType;
-import com.cubrid.jsp.data.SOID;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideResultSet;
 import cubrid.sql.CUBRIDOID;
 import java.io.UnsupportedEncodingException;
@@ -103,7 +101,8 @@ public class CUBRIDPacker {
 
     public void packOID(SOID oid) {
         align(DataUtilities.INT_ALIGNMENT);
-        ensureSpace(DataUtilities.INT_BYTES + DataUtilities.SHORT_BYTES + DataUtilities.SHORT_BYTES);
+        ensureSpace(
+                DataUtilities.INT_BYTES + DataUtilities.SHORT_BYTES + DataUtilities.SHORT_BYTES);
         packInt(oid.pageId);
         packShort(oid.slotId);
         packShort(oid.volId);
@@ -117,7 +116,8 @@ public class CUBRIDPacker {
             buffer.put(value);
             align(DataUtilities.INT_ALIGNMENT);
         } else {
-            ensureSpace(value.length + 1 + DataUtilities.INT_BYTES); // str + LARGE_STRING_CODE + len
+            ensureSpace(
+                    value.length + 1 + DataUtilities.INT_BYTES); // str + LARGE_STRING_CODE + len
             buffer.put((byte) DataUtilities.LARGE_STRING_CODE);
 
             align(DataUtilities.INT_ALIGNMENT);

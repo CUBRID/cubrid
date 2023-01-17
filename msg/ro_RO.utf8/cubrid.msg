@@ -1437,7 +1437,16 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 Ultima eroare
+1355 %1$s "%2$s" este format nevalid la rândul %3$d al fișierului "%4$s".
+1356 Numele de gazdă "%1$s" este prea lung, ar trebui să fie mai mic sau egal cu 256 la linia %2$d a fișierului "%3$s".
+1357 Numele de gazdă "%1$s" există deja, un nume de gazdă nu poate fi duplicat cu alte adrese IP la linia %2$d a fișierului "%3$s".
+1358 Ambele, adresa IP și numele de gazdă, trebuie să fie scrise complet la linia %1$d a fișierului "%2$s".
+1359 Nu se poate căuta "%1$s" în cubrid_hosts.conf.
+1360 A apărut o eroare la utilizarea gazdei definite de utilizator.
+
+1361 Fișierul "%1$s" nu a fost găsit.
+
+1362 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
@@ -1601,6 +1610,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 133 Utilizare invalidă a DROP SYNONYM.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
 134 Utilizare invalidă a RENAME SYNONYM.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
 135 Nu au fost specificate opțiuni pentru ALTER SYNONYM.
+136 Maximum length of a server dbname is %1$d bytes.
+137 Maximum length of a server user is %1$d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memorie epuizată.
@@ -2002,6 +2013,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 80 Nivelul de izolare MVCC trebuie să fie 'read committed', 'repeatable read' sau'serializable'.
 81 '%1$s' este un obiect 'auto_increment', care nu poate fi modificat ca serial.
 82 JSON invalid: '%1$s'.
+83 Vclass %1$s is not updatable because the vclass has some reuse_oid table. Please check it.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** cache invalid ***
