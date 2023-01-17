@@ -1637,6 +1637,7 @@ mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, voi
  *  - select for schema
  *  - has CONNECT BY
  *  - is merge query
+ *  - is CTE query
  *  - view spec is outer join spec
  *  - main query's where has define_vars ':='
  *  - subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation function
@@ -1806,7 +1807,10 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       return NON_PUSHABLE;
     }
   /* check for CTE query */
-  if (subquery->info.query.with != NULL)
+  /* TODO : Queries with CTE can be also view merged */
+  /*        After view merging, 'spec->info.spec.cte_pointer' must be changed to the copied value of the newly added WITH CLAUSE. */
+  /*        see pt_resolve_cte_specs() and pt_resolve_spec_to_cte() */
+  if (mainquery->info.query.with != NULL || subquery->info.query.with != NULL)
     {
       /* not pushable */
       return NON_PUSHABLE;
@@ -3191,6 +3195,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
     }
 
   tree = mq_reset_ids_in_statement (parser, tree);
+
   return tree;
 }
 
