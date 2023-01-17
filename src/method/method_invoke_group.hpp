@@ -73,7 +73,7 @@ namespace cubmethod
       ~method_invoke_group ();
 
       void begin ();
-      int prepare (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base);
+      int prepare (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base, const std::vector<bool> &arg_use_vec);
       int execute (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base);
       int reset (bool is_end_query);
       void destroy_resources ();

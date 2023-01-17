@@ -38,6 +38,13 @@ struct javasp_server_info
   int port;
 };
 
+#define JAVASP_PID_DISABLED   -1
+#define JAVASP_PORT_DISABLED  -2
+#define JAVASP_PORT_UDS_MODE  -1
+
+#define JAVASP_SERVER_INFO_INITIALIZER \
+  {JAVASP_PID_DISABLED, JAVASP_PORT_DISABLED}
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -45,6 +52,7 @@ extern "C"
 
   extern bool javasp_open_info_dir ();
   extern FILE *javasp_open_info (const char *db_name, const char *mode);
+  extern void javasp_unlink_info (const char *db_name);
 
   extern bool javasp_read_info (const char *db_name, JAVASP_SERVER_INFO & info);
   extern bool javasp_write_info (const char *db_name, JAVASP_SERVER_INFO info);

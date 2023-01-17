@@ -56,7 +56,7 @@
     </target>
 
     <target name="compile" depends="init">
-        <javac srcdir="${src.dir}" destdir="${classes.dir}" source="1.6" target="1.6" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="runtime.path">
+        <javac srcdir="${src.dir}" destdir="${classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="runtime.path">
             <include name="**/*.java"/>
         </javac>
     </target>

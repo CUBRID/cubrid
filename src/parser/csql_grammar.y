@@ -660,6 +660,7 @@ int g_original_buffer_len;
 %type <node> serial_name
 %type <node> synonym_name_without_dot
 %type <node> synonym_name
+%type <node> opt_alter_synonym
 %type <node> opt_identifier
 %type <node> normal_or_class_attr_list_with_commas
 %type <node> normal_or_class_attr
@@ -3140,8 +3141,8 @@ create_stmt
 			    PT_SYNONYM_NAME (node) = $5;
 			    PT_SYNONYM_TARGET_NAME (node) = $7;
 			    PT_SYNONYM_COMMENT (node) = $8;
-			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 			    if (synonym_access_modifier == PT_PUBLIC)
 			      {
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
@@ -3974,9 +3975,8 @@ alter_stmt
 	  SYNONYM			/* 3 */
 		{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_ALTER); }	/* 4 */
 	  synonym_name			/* 5 */
-	  For				/* 6 */
-	  class_name			/* 7 */
-	  opt_comment_spec		/* 8 */
+	  opt_alter_synonym		/* 6 */
+	  opt_comment_spec		/* 7 */
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER opt_access_modifier SYNONYM synonym_name For class_name opt_comment_spec);
 
@@ -3987,10 +3987,15 @@ alter_stmt
 			  {
 			    PT_SYNONYM_ACCESS_MODIFIER (node) = $2;
 			    PT_SYNONYM_NAME (node) = $5;
-			    PT_SYNONYM_TARGET_NAME (node) = $7;
-			    PT_SYNONYM_COMMENT (node) = $8;
-			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
+			    PT_SYNONYM_TARGET_NAME (node) = $6;
+			    PT_SYNONYM_COMMENT (node) = $7;
 
+			    if (PT_SYNONYM_TARGET_NAME (node) == NULL && PT_SYNONYM_COMMENT (node) == NULL)
+			      {
+				PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_SYNONYM_ALTER_NO_OPTION);
+			      }
+
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 			    if (synonym_access_modifier == PT_PUBLIC)
 			      {
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
@@ -4113,8 +4118,8 @@ rename_stmt
 			    PT_SYNONYM_ACCESS_MODIFIER (node) = $2;
 			    PT_SYNONYM_OLD_NAME (node) = $5;
 			    PT_SYNONYM_NEW_NAME (node) = $7;
-			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 			    if (synonym_access_modifier == PT_PUBLIC)
 			      {
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
@@ -4463,8 +4468,8 @@ drop_stmt
 			    PT_SYNONYM_ACCESS_MODIFIER (node) = $2;
 			    PT_SYNONYM_IF_EXISTS (node) = $5;
 			    PT_SYNONYM_NAME (node) = $6;
-			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 
+			    synonym_access_modifier = PT_SYNONYM_ACCESS_MODIFIER (node);
 			    if (synonym_access_modifier == PT_PUBLIC)
 			      {
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
@@ -8924,8 +8929,19 @@ call_stmt
 			PT_NODE *node = $2;
 			if (node)
 			  {
-			    node->info.method_call.call_or_expr = PT_IS_CALL_STMT;
-			    node->info.method_call.to_return_var = $3;
+			    if (node->node_type == PT_METHOD_CALL)
+			      {
+			        node->info.method_call.call_or_expr = PT_IS_CALL_STMT;
+			        node->info.method_call.to_return_var = $3;
+			      }
+			    else
+			      {
+			        // assuming that node is PT_EXPR or PT_FUNCTION
+			        assert (node->node_type == PT_EXPR || node->node_type == PT_FUNCTION);
+
+			        PT_ERRORmf2 (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A,
+			          parser_print_tree (this_parser, node), pt_show_misc_type (PT_SP_PROCEDURE));
+			      }
 			  }
 
 			parser_cannot_prepare = true;
@@ -18609,7 +18625,9 @@ generic_function
 
 			PT_NODE *node = NULL;
 			if ($5 == NULL)
-			  node = parser_keyword_func ($1->info.name.original, $3);
+			  {
+			    node = parser_keyword_func ($1->info.name.original, $3);
+			  }
 
 			if (node == NULL)
 			  {
@@ -23783,12 +23801,38 @@ connect_item
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PORT), val);
                 $$ = ctn;
            DBG_PRINT}}
+         | DBNAME '=' char_string_literal 
+          {{ DBG_TRACE_GRAMMAR(connect_item,  | DBNAME '=' char_string_literal  );
+               container_2 ctn;
+               PT_NODE *val = $3;
+               val->type_enum = PT_TYPE_VARCHAR;
+               if (val->info.value.data_value.str->length > 254)
+		 {
+		    PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_MAX_SERVER_DBNAME_LEN, 254);
+		 }
+		 PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);                
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_DBNAME), val);
+                $$ = ctn;
+           DBG_PRINT}}            
         | DBNAME '=' identifier 
           {{ DBG_TRACE_GRAMMAR(connect_item,  | DBNAME '=' identifier  );
                 container_2 ctn;
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_DBNAME), $3);
                 $$ = ctn;
            DBG_PRINT}}
+        | USER '=' char_string_literal 
+          {{ DBG_TRACE_GRAMMAR(connect_item,  | USER '=' char_string_literal);
+               container_2 ctn;
+               PT_NODE *val = $3;
+               val->type_enum = PT_TYPE_VARCHAR;
+               if (val->info.value.data_value.str->length > 254)
+		 {
+		    PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_MAX_SERVER_USER_LEN, 254);
+		 }
+	       PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);                
+               SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_USER), val);
+               $$ = ctn;
+           DBG_PRINT}}            
         | USER '=' identifier
           {{ DBG_TRACE_GRAMMAR(connect_item, | USER '=' identifier);
                 container_2 ctn;
@@ -23872,10 +23916,17 @@ connect_item
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_COMMENT), NULL);
                 $$ = ctn;
            DBG_PRINT }}
-        | COMMENT '=' char_string
+        | COMMENT '=' char_string_literal
           {{ DBG_TRACE_GRAMMAR(connect_item, | COMMENT '=' char_string );
                 container_2 ctn;
-                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_COMMENT), $3);
+                PT_NODE *val = $3;
+                $3->type_enum = PT_TYPE_VARCHAR;
+                if (val->info.value.data_value.str->length > SM_MAX_COMMENT_LENGTH)
+		  {
+		       PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_MAX_COMMENT_LEN, SM_MAX_COMMENT_LENGTH);
+		  }
+	        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);                
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_COMMENT), val);
                 $$ = ctn;
            DBG_PRINT}}
         ;
@@ -24213,6 +24264,20 @@ opt_create_synonym
 
 		DBG_PRINT}}
 	;
+
+opt_alter_synonym
+	: /*empty*/
+		{{ DBG_TRACE_GRAMMAR(opt_alter_synonym, : );
+
+			$$ = NULL;
+
+		DBG_PRINT}}
+	| For class_name
+		{{ DBG_TRACE_GRAMMAR(opt_alter_syonnym, : For class_name);
+
+			$$ = $2;
+
+		DBG_PRINT}}
 
 %%
 

@@ -94,6 +94,8 @@ static int javasp_get_server_info (const std::string &db_name, JAVASP_SERVER_INF
 static int javasp_check_argument (int argc, char *argv[], std::string &command, std::string &db_name);
 static int javasp_check_database (const std::string &db_name, std::string &db_path);
 
+static int javasp_get_port_param ();
+
 /*
  * main() - javasp main function
  */
@@ -149,7 +151,7 @@ main (int argc, char *argv[])
       }
 
     /* try to create info dir and get absolute path for info file; $CUBRID/var/javasp_<db_name>.info */
-    JAVASP_SERVER_INFO jsp_info = {-1, -1};
+    JAVASP_SERVER_INFO jsp_info = JAVASP_SERVER_INFO_INITIALIZER;
     status = javasp_get_server_info (db_name, jsp_info);
     if (status != NO_ERROR && command.compare ("start") != 0)
       {
@@ -177,15 +179,29 @@ main (int argc, char *argv[])
 	    return ER_GENERIC_ERROR;
 	  }
 
+	// check process is running
+	if (jsp_info.pid == JAVASP_PID_DISABLED || javasp_is_terminated_process (jsp_info.pid) == true)
+	  {
+	    // NO_CONNECTION
+	    javasp_reset_info (db_name.c_str ());
+	    goto exit;
+	  }
+
 	char buffer[JAVASP_PING_LEN] = {0};
-	if ((status = javasp_ping_server (jsp_info.port, db_name.c_str (), buffer)) == NO_ERROR)
+	if (status == NO_ERROR)
+	  {
+	    status = javasp_ping_server (jsp_info.port, db_name.c_str (), buffer);
+	  }
+
+	if (status == NO_ERROR)
 	  {
 	    fprintf (stdout, "%s", buffer);
 	  }
 	else
 	  {
-	    fprintf (stdout, "NO_CONNECTION");
+	    goto exit;
 	  }
+
 	return status;
       }
 
@@ -210,10 +226,11 @@ main (int argc, char *argv[])
 	status = javasp_start_server (jsp_info, db_name, pathname);
 	if (status == NO_ERROR)
 	  {
-	    while (true)
+	    do
 	      {
 		SLEEP_MILISEC (0, 100);
 	      }
+	    while (true);
 	  }
       }
     else if (command.compare ("stop") == 0)
@@ -266,25 +283,24 @@ exit:
 }
 
 static int
+javasp_get_port_param ()
+{
+  int prm_port = 0;
+#if defined (WINDOWS)
+  const bool is_uds_mode = false;
+#else
+  const bool is_uds_mode = prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE_UDS);
+#endif
+  prm_port = (is_uds_mode) ? JAVASP_PORT_UDS_MODE : prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
+  return prm_port;
+}
+
+static int
 javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_name, const std::string &path)
 {
   int status = NO_ERROR;
-  int check_port = -1;
-  int prm_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
 
-  /* trying to start javasp server for new port */
-  if (prm_port != jsp_info.port)
-    {
-      /* check javasp server is running with previously configured port number */
-      check_port = jsp_info.port;
-    }
-  else
-    {
-      /* check javasp server is running for the port number written in configuration file */
-      check_port = prm_port;
-    }
-
-  if (javasp_is_running (check_port, db_name))
+  if (jsp_info.pid != JAVASP_PID_DISABLED && javasp_is_running (jsp_info.port, db_name))
     {
       status = ER_GENERIC_ERROR;
     }
@@ -295,12 +311,13 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
       setsid ();
 #endif
       er_clear (); // clear error before string JVM
-      status = jsp_start_server (db_name.c_str (), path.c_str (), prm_port);
+      status = jsp_start_server (db_name.c_str (), path.c_str (), javasp_get_port_param ());
 
       if (status == NO_ERROR)
 	{
 	  JAVASP_SERVER_INFO jsp_new_info { getpid(), jsp_server_port () };
 
+	  javasp_unlink_info (db_name.c_str ());
 	  if ((javasp_open_info_dir () && javasp_write_info (db_name.c_str (), jsp_new_info)))
 	    {
 	      /* succeed */
@@ -344,9 +361,10 @@ javasp_stop_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_nam
 	  status = er_errid ();
 	}
 
+      javasp_reset_info (db_name.c_str ());
       jsp_disconnect_server (socket);
 
-      if (!javasp_is_terminated_process (jsp_info.pid))
+      if (jsp_info.pid != -1 && !javasp_is_terminated_process (jsp_info.pid))
 	{
 	  javasp_terminate_process (jsp_info.pid);
 	}
@@ -368,16 +386,14 @@ javasp_status_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_n
   if (socket != INVALID_SOCKET)
     {
       char *ptr = NULL;
-      OR_ALIGNED_BUF (OR_INT_SIZE * 4) a_request;
+      OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_request;
       char *request = OR_ALIGNED_BUF_START (a_request);
 
       ptr = or_pack_int (request, OR_INT_SIZE);
       ptr = or_pack_int (ptr, SP_CODE_UTIL_STATUS);
-      ptr = or_pack_int (ptr, OR_INT_SIZE);
-      ptr = or_pack_int (ptr, SP_CODE_UTIL_TERMINATE_THREAD);
 
-      int nbytes = jsp_writen (socket, request, OR_INT_SIZE * 4);
-      if (nbytes != OR_INT_SIZE * 4)
+      int nbytes = jsp_writen (socket, request, OR_INT_SIZE * 2);
+      if (nbytes != OR_INT_SIZE * 2)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
 	  status = er_errid ();
@@ -409,6 +425,20 @@ javasp_status_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_n
 	  goto exit;
 	}
 
+      // send terminate thread
+      ptr = or_pack_int (request, OR_INT_SIZE);
+      ptr = or_pack_int (ptr, SP_CODE_UTIL_TERMINATE_THREAD);
+
+      nbytes = jsp_writen (socket, request, OR_INT_SIZE * 2);
+      if (nbytes != OR_INT_SIZE * 2)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+	  status = er_errid ();
+	  goto exit;
+	}
+
+      jsp_disconnect_server (socket);
+
       int num_args = 0;
       JAVASP_STATUS_INFO status_info;
 
@@ -422,11 +452,13 @@ javasp_status_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_n
 	  ptr = or_unpack_string_nocopy (ptr, &arg);
 	  status_info.vm_args.push_back (std::string (arg));
 	}
-      jsp_disconnect_server (socket);
+
       javasp_dump_status (stdout, status_info);
     }
 
 exit:
+  jsp_disconnect_server (socket);
+
   if (buffer)
     {
       free_and_init (buffer);
@@ -438,7 +470,7 @@ exit:
 static int
 javasp_ping_server (const int server_port, const char *db_name, char *buf)
 {
-  OR_ALIGNED_BUF (OR_INT_SIZE * 4) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_request;
   char *request = OR_ALIGNED_BUF_START (a_request);
   char *ptr = NULL;
   SOCKET socket = INVALID_SOCKET;
@@ -448,11 +480,9 @@ javasp_ping_server (const int server_port, const char *db_name, char *buf)
     {
       ptr = or_pack_int (request, OR_INT_SIZE);
       ptr = or_pack_int (ptr, SP_CODE_UTIL_PING);
-      ptr = or_pack_int (ptr, OR_INT_SIZE);
-      ptr = or_pack_int (ptr, SP_CODE_UTIL_TERMINATE_THREAD);
 
-      int nbytes = jsp_writen (socket, request, OR_INT_SIZE * 4);
-      if (nbytes != OR_INT_SIZE * 4)
+      int nbytes = jsp_writen (socket, request, OR_INT_SIZE * 2);
+      if (nbytes != OR_INT_SIZE * 2)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
 	  goto exit;
@@ -473,6 +503,17 @@ javasp_ping_server (const int server_port, const char *db_name, char *buf)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
 	  goto exit;
 	}
+
+      // ack
+      ptr = or_pack_int (request, OR_INT_SIZE);
+      ptr = or_pack_int (ptr, SP_CODE_UTIL_TERMINATE_THREAD);
+
+      nbytes = jsp_writen (socket, request, OR_INT_SIZE * 2);
+      if (nbytes != OR_INT_SIZE * 2)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+	  goto exit;
+	}
     }
 
 exit:
@@ -483,8 +524,15 @@ exit:
 static void
 javasp_dump_status (FILE *fp, JAVASP_STATUS_INFO status_info)
 {
-  fprintf (fp, "Java Stored Procedure Server (%s, pid %d, port %d)\n", status_info.db_name, status_info.pid,
-	   status_info.port);
+  if (status_info.port == JAVASP_PORT_UDS_MODE)
+    {
+      fprintf (fp, "Java Stored Procedure Server (%s, pid %d, UDS)\n", status_info.db_name, status_info.pid);
+    }
+  else
+    {
+      fprintf (fp, "Java Stored Procedure Server (%s, pid %d, port %d)\n", status_info.db_name, status_info.pid,
+	       status_info.port);
+    }
   auto vm_args_len = status_info.vm_args.size();
   if (vm_args_len > 0)
     {

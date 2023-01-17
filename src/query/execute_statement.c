@@ -89,6 +89,7 @@
 #include "tz_support.h"
 #include "dbtype.h"
 #include "crypt_opfunc.h"
+#include "method_callback.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1309,7 +1310,7 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mo
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_UTILITY && prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
     {
       char other_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
 
@@ -4588,6 +4589,7 @@ do_commit (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* Row count should be reset to -1 for explicit commits (i.e: commit statements) but should not be reset in
    * AUTO_COMMIT mode. This is the best place to reset it for commit statements. */
   db_update_row_count_cache (-1);
+  cubmethod::get_callback_handler ()->free_query_handle_all (true);
   return tran_commit (statement->info.commit_work.retain_lock ? true : false);
 }
 
@@ -4639,6 +4641,8 @@ do_rollback (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  db_value_clear (&val);
 	}
     }
+
+  cubmethod::get_callback_handler ()->free_query_handle_all (true);
 
   return error;
 }
@@ -17675,7 +17679,8 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   DB_OBJECT *target_owner_obj = NULL;
   char synonym_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  const char *target_name = NULL;
+  char target_name_buf[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *comment = NULL;
   int error = NO_ERROR;
 
@@ -17691,14 +17696,28 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_NAME (statement)), synonym_name, DB_MAX_IDENTIFIER_LENGTH);
 
   /* target_name */
-  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name, DB_MAX_IDENTIFIER_LENGTH);
-
-  /* target_owner */
-  target_owner_obj = db_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
-  if (target_owner_obj == NULL)
+  if (PT_SYNONYM_TARGET_NAME (statement) == NULL)
     {
-      ASSERT_ERROR_AND_SET (error);
-      return error;
+      /* If only the comment is changed, PT_SYNONYM_TARGET_NAME (statement) can be NULL.
+       * If both PT_SYNONYM_TARGET_NAME (statement) and PT_SYNONYM_COMMENT (statement) are NULL,
+       * an error occurred in yyparse() and it should not have come here. */
+      assert (PT_SYNONYM_COMMENT (statement) != NULL);
+    }
+  else
+    {
+      /* PT_SYNONYM_TARGET_NAME (statement) != NULL */
+
+      sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name_buf,
+			      DB_MAX_IDENTIFIER_LENGTH);
+      target_name = target_name_buf;
+
+      /* target_owner */
+      target_owner_obj = db_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
+      if (target_owner_obj == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
     }
 
   /* comment */
@@ -17772,56 +17791,79 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
       goto end;
     }
 
-  /* target_unique_name */
-  db_make_string (&value, target_name);
-  error = dbt_put_internal (obj_tmpl, "target_unique_name", &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
+  /* old_target_name */
+  if (target_name != NULL
+      && sm_get_synonym_target_name (instance_obj, old_target_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
     {
-      ASSERT_ERROR ();
+      ASSERT_ERROR_AND_SET (error);
       goto end;
     }
 
-  /* target_name */
-  db_make_string (&value, sm_remove_qualifier_name (target_name));
-  error = dbt_put_internal (obj_tmpl, "target_name", &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
+  /* target_unique_name, target_name, target_owner */
+  if (target_name == NULL)
     {
-      ASSERT_ERROR ();
-      goto end;
+      /* If only the comment is changed, target_name can be NULL.
+       * If both target_name and comment are NULL,
+       * an error occurred in yyparse() and it should not have come here. */
+      assert (comment != NULL);
     }
-
-  /* target_owner */
-  db_make_object (&value, target_owner);
-  error = dbt_put_internal (obj_tmpl, "target_owner", &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
+  else if (intl_identifier_casecmp (old_target_name, target_name) != 0)
     {
-      ASSERT_ERROR ();
-      goto end;
+      /* target_name != NULL */
+
+      /* target_unique_name */
+      db_make_string (&value, target_name);
+      error = dbt_put_internal (obj_tmpl, "target_unique_name", &value);
+      db_value_clear (&value);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
+
+      /* target_name */
+      db_make_string (&value, sm_remove_qualifier_name (target_name));
+      error = dbt_put_internal (obj_tmpl, "target_name", &value);
+      db_value_clear (&value);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
+
+      /* target_owner */
+      db_make_object (&value, target_owner);
+      error = dbt_put_internal (obj_tmpl, "target_owner", &value);
+      db_value_clear (&value);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
+
+      old_target_obj = locator_find_class_with_purpose (old_target_name, false);
+      old_target_obj_id = ws_identifier (old_target_obj);
     }
 
   /* comment */
   if (comment != NULL)
     {
-      db_make_string (&value, comment);
+      if (*comment == '\0')
+	{
+	  db_make_null (&value);
+	}
+      else
+	{
+	  db_make_string (&value, comment);
+	}
       error = dbt_put_internal (obj_tmpl, "comment", &value);
-      pr_clear_value (&value);
+      db_value_clear (&value);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto end;
 	}
     }
-
-  if (sm_get_synonym_target_name (instance_obj, old_target_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
-    }
-  old_target_obj = locator_find_class_with_purpose (old_target_name, false);
-  old_target_obj_id = ws_identifier (old_target_obj);
 
   instance_obj = dbt_finish_object (obj_tmpl);
   if (instance_obj == NULL)
@@ -17837,7 +17879,7 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
       ASSERT_ERROR ();
     }
 
-  if (intl_identifier_casecmp (old_target_name, target_name) != 0)
+  if (old_target_obj_id != NULL)
     {
       synonym_remove_xasl_by_oid (old_target_obj_id);
     }
@@ -17948,7 +17990,7 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
   AU_DISABLE (save);
 
   /* synonym class object */
-  class_obj = sm_find_class (CT_SYNONYM_NAME);
+  class_obj = db_find_class (CT_SYNONYM_NAME);
   if (class_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -18023,7 +18065,7 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
   /* unique_name */
   db_make_string (&value, synonym_name);
   error = dbt_put_internal (obj_tmpl, "unique_name", &value);
-  pr_clear_value (&value);
+  db_value_clear (&value);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -18033,7 +18075,7 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
   /* synonym_name */
   db_make_string (&value, sm_remove_qualifier_name (synonym_name));
   error = dbt_put_internal (obj_tmpl, "name", &value);
-  pr_clear_value (&value);
+  db_value_clear (&value);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -18043,7 +18085,7 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
   /* synonym_owner */
   db_make_object (&value, synonym_owner);
   error = dbt_put_internal (obj_tmpl, "owner", &value);
-  pr_clear_value (&value);
+  db_value_clear (&value);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -18053,7 +18095,7 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
   /* is_public_synonym */
   db_make_int (&value, is_public_synonym);
   error = dbt_put_internal (obj_tmpl, "is_public", &value);
-  pr_clear_value (&value);
+  db_value_clear (&value);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -18063,7 +18105,7 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
   /* target_unique_name */
   db_make_string (&value, target_name);
   error = dbt_put_internal (obj_tmpl, "target_unique_name", &value);
-  pr_clear_value (&value);
+  db_value_clear (&value);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -18073,7 +18115,7 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
   /* target_name */
   db_make_string (&value, sm_remove_qualifier_name (target_name));
   error = dbt_put_internal (obj_tmpl, "target_name", &value);
-  pr_clear_value (&value);
+  db_value_clear (&value);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -18083,7 +18125,7 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
   /* target_owner */
   db_make_object (&value, target_owner);
   error = dbt_put_internal (obj_tmpl, "target_owner", &value);
-  pr_clear_value (&value);
+  db_value_clear (&value);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -18091,11 +18133,11 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
     }
 
   /* comment */
-  if (comment != NULL)
+  if (comment != NULL && *comment != '\0')
     {
       db_make_string (&value, comment);
       error = dbt_put_internal (obj_tmpl, "comment", &value);
-      pr_clear_value (&value);
+      db_value_clear (&value);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -18197,7 +18239,7 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
   else
     {
       /* synonym_class_obj == NULL */
-      class_obj = sm_find_class (CT_SYNONYM_NAME);
+      class_obj = db_find_class (CT_SYNONYM_NAME);
       if (class_obj == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
@@ -18258,7 +18300,10 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
       ASSERT_ERROR ();
     }
 
-  synonym_remove_xasl_by_oid (old_target_obj_id);
+  if (old_target_obj_id != NULL)
+    {
+      synonym_remove_xasl_by_oid (old_target_obj_id);
+    }
 
 end:
   AU_ENABLE (save);
@@ -18326,7 +18371,7 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
 
   AU_DISABLE (save);
 
-  class_obj = sm_find_class (CT_SYNONYM_NAME);
+  class_obj = db_find_class (CT_SYNONYM_NAME);
   if (class_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -18404,7 +18449,7 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
   /* unique_name */
   db_make_string (&value, new_synonym_name);
   error = dbt_put_internal (obj_tmpl, "unique_name", &value);
-  pr_clear_value (&value);
+  db_value_clear (&value);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -18414,7 +18459,7 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
   /* name */
   db_make_string (&value, sm_remove_qualifier_name (new_synonym_name));
   error = dbt_put_internal (obj_tmpl, "name", &value);
-  pr_clear_value (&value);
+  db_value_clear (&value);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -18443,7 +18488,10 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
       ASSERT_ERROR ();
     }
 
-  synonym_remove_xasl_by_oid (old_target_obj_id);
+  if (old_target_obj_id != NULL)
+    {
+      synonym_remove_xasl_by_oid (old_target_obj_id);
+    }
 
 end:
   if (obj_tmpl != NULL && instance_obj == NULL)
@@ -20094,8 +20142,11 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   pval = NULL;
 
   /* DBNAME */
-  assert (create_server->dbname->node_type == PT_NAME);
-  attr_val[2] = (char *) create_server->dbname->info.name.original;
+  assert (create_server->dbname->node_type == PT_NAME || create_server->dbname->node_type == PT_VALUE);
+  // *INDENT-OFF* 
+  attr_val[2] = (create_server->dbname->node_type == PT_NAME) ? (char *) create_server->dbname->info.name.original
+                                                              : (char *) PT_VALUE_GET_BYTES (create_server->dbname);
+  // *INDENT-ON* 
   if (attr_val[2] == NULL)
     {
       error = ER_FAILED;
@@ -20103,8 +20154,11 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* USER */
-  assert (create_server->user->node_type == PT_NAME);
-  attr_val[3] = (char *) create_server->user->info.name.original;
+  assert (create_server->user->node_type == PT_NAME || create_server->user->node_type == PT_VALUE);
+  // *INDENT-OFF* 
+  attr_val[3] = (create_server->user->node_type == PT_NAME) ? (char *) create_server->user->info.name.original
+                                                            : (char *) PT_VALUE_GET_BYTES (create_server->user);
+  // *INDENT-ON* 
   if (attr_val[3] == NULL)
     {
       error = ER_FAILED;

@@ -704,12 +704,11 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_FLASHBACK_TIMEOUT "flashback_timeout"
 #define PRM_NAME_FLASHBACK_MAX_TRANSACTION "flashback_max_transaction"
+#define PRM_NAME_FLASHBACK_WIN_SIZE "flashback_win_size"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
-
-#define PRM_NAME_NO_USER_SPECIFIED_NAME "no_user_specified_name"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -2407,9 +2406,11 @@ static int prm_flashback_max_transaction_lower = 1;
 static int prm_flashback_max_transaction_upper = INT_MAX;
 static unsigned int prm_flashback_max_transaction_flag = 0;
 
-bool PRM_NO_USER_SPECIFIED_NAME = false;
-static const bool prm_no_user_specified_name_default = false;
-static unsigned int prm_no_user_specified_name_flag = 0;
+int PRM_FLASHBACK_WIN_SIZE = INT_MAX;
+static int prm_flashback_win_size_default = 0;
+static int prm_flashback_win_size_lower = 0;
+static int prm_flashback_win_size_upper = INT_MAX;
+static unsigned int prm_flashback_win_size_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6199,15 +6200,15 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_NO_USER_SPECIFIED_NAME,
-   PRM_NAME_NO_USER_SPECIFIED_NAME,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
-   PRM_BOOLEAN,
-   &prm_no_user_specified_name_flag,
-   (void *) &prm_no_user_specified_name_default,
-   (void *) &PRM_NO_USER_SPECIFIED_NAME,
-   (void *) NULL,
-   (void *) NULL,
+  {PRM_ID_FLASHBACK_WIN_SIZE,
+   PRM_NAME_FLASHBACK_WIN_SIZE,
+   (PRM_FOR_CLIENT | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_flashback_win_size_flag,
+   (void *) &prm_flashback_win_size_default,
+   (void *) &PRM_FLASHBACK_WIN_SIZE,
+   (void *) &prm_flashback_win_size_upper,
+   (void *) &prm_flashback_win_size_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
@@ -10806,6 +10807,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *ha_check_disk_failure_interval_prm;
   SYSPRM_PARAM *test_mode_prm;
   SYSPRM_PARAM *tz_leap_second_support_prm;
+  SYSPRM_PARAM *java_stored_procedure_uds_prm;
 
   char newval[LINE_MAX];
   char host_name[CUB_MAXHOSTNAMELEN];

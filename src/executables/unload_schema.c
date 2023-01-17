@@ -1095,6 +1095,11 @@ extract_classes (extract_context & ctxt, print_output & schema_output_ctx)
       err_count++;
     }
 
+  if (export_server (schema_output_ctx) < 0)
+    {
+      err_count++;
+    }
+
   ctxt.has_indexes = emit_schema (schema_output_ctx, ctxt.classes, ctxt.do_auth, &ctxt.vclass_list_has_using_index,
 				  ctxt.storage_order);
   if (er_errid () != NO_ERROR)
@@ -1103,11 +1108,6 @@ extract_classes (extract_context & ctxt, print_output & schema_output_ctx)
     }
 
   if (emit_foreign_key (schema_output_ctx, ctxt.classes) != NO_ERROR)
-    {
-      err_count++;
-    }
-
-  if (export_server (schema_output_ctx) < 0)
     {
       err_count++;
     }
@@ -3832,8 +3832,13 @@ export_server (print_output & output_ctx)
 	      output_ctx ("CREATE SERVER [%s].[%s] (", owner_name, srv_name);
 	      output_ctx ("\n\t HOST= '%s'", (char *) db_get_string (values + 1));
 	      output_ctx (",\n\t PORT= %d", db_get_int (values + 2));
-	      output_ctx (",\n\t DBNAME= %s", (char *) db_get_string (values + 3));
-	      output_ctx (",\n\t USER= %s", (char *) db_get_string (values + 4));
+
+	      output_ctx (",\n\t DBNAME= ");
+	      desc_value_print (output_ctx, values + 3);
+
+	      output_ctx (",\n\t USER= ");
+	      desc_value_print (output_ctx, values + 4);
+
 	      output_ctx (",\n\t PASSWORD= '%s'", (char *) db_get_string (&passwd_val));
 
 	      str = (char *) db_get_string (values + 6);
@@ -3845,7 +3850,8 @@ export_server (print_output & output_ctx)
 	      str = (char *) db_get_string (values + 7);
 	      if (str)
 		{
-		  output_ctx (",\n\t COMMENT= '%s'", str);
+		  output_ctx (",\n\t COMMENT= ");
+		  desc_value_print (output_ctx, values + 7);
 		}
 	      output_ctx (" );\n");
 	    }

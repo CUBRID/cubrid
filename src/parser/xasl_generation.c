@@ -7681,6 +7681,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      break;
 
 	    case PT_METHOD_CALL:
+	      /*
+	         TODO : JSP containing column cannot be here because the query is rewritten in meth_translate().
+	         The index scan may not work because of the query rewrite in meth_translate().
+	         The method call should proceed in the same way as the internal function.
+	         pt_to_regu_variable() : generate regu_var for jsp function
+	         fetch_peek_dbval() : fetch regu_var for jsp function
+	       */
+
 	      /* a method call that can be evaluated as a constant expression. */
 	      regu_alloc (val);
 	      pt_evaluate_tree (parser, node, val, 1);
@@ -13016,7 +13024,7 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
        */
       PT_NODE *non_recursive_part = cte_def->info.cte.non_recursive_part;
 
-      if (non_recursive_part->info.query.xasl)
+      if (non_recursive_part && non_recursive_part->info.query.xasl)
 	{
 	  cte_proc = (XASL_NODE *) non_recursive_part->info.query.xasl;
 	}

@@ -83,6 +83,18 @@ javasp_open_info (const char *db_name, const char *mode)
   return fp;
 }
 
+void
+javasp_unlink_info (const char *db_name)
+{
+  char file_name[PATH_MAX] = { 0 };
+  char file_path[PATH_MAX] = { 0 };
+
+  snprintf (file_name, PATH_MAX, "javasp/javasp_%s.info", db_name);
+  envvar_vardir_file (file_path, PATH_MAX, file_name);
+
+  unlink (file_path);
+}
+
 bool
 javasp_get_info_file (char *buf, size_t len, const char *db_name)
 {
@@ -147,23 +159,22 @@ javasp_read_info (const char *db_name, JAVASP_SERVER_INFO & info)
 bool
 javasp_write_info (const char *db_name, JAVASP_SERVER_INFO info)
 {
+  bool result = false;
   FILE *fp = NULL;
 
-  fp = javasp_open_info (db_name, "w");
+  fp = javasp_open_info (db_name, "w+");
   if (fp)
     {
       fprintf (fp, "%d %d", info.pid, info.port);
       fclose (fp);
-      return true;
+      result = true;
     }
-  return false;
+  return result;
 }
 
 bool
 javasp_reset_info (const char *db_name)
 {
-// *INDENT-OFF*
-  JAVASP_SERVER_INFO reset_info {-1, -1};
-// *INDENT-ON*
+  JAVASP_SERVER_INFO reset_info = JAVASP_SERVER_INFO_INITIALIZER;
   return javasp_write_info (db_name, reset_info);
 }

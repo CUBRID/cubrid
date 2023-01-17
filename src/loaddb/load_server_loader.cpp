@@ -118,15 +118,36 @@ namespace cubload
     LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
     LC_FIND_CLASSNAME found_again = LC_CLASSNAME_EXIST;
 
-    found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
+    if (strchr (class_name, '.'))
+      {
+	found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
+      }
+    else
+      {
+	/* Added for backwards compatibility.
+	 *
+	 * In versions lower than 11.2, the schema name is not specified in the unloaded object file.
+	 * So, if the schema name is not specified, the schema name of the current session must be specified.
+	 */
+
+	char user_specified_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
+	const char *user_name = m_session.get_args ().user_name.c_str ();
+	assert (user_name != NULL);
+
+	snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", user_name, class_name);
+
+	found = xlocator_find_class_oid (&thread_ref, user_specified_name, &class_oid, BU_LOCK);
+      }
+
     if (found == LC_CLASSNAME_EXIST)
       {
 	return found;
       }
 
+#if defined(SERVER_MODE)
     /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-    if (thread_ref.conn_entry->client_type == DB_CLIENT_TYPE_ADMIN_UTILITY
-	&& prm_get_bool_value (PRM_ID_NO_USER_SPECIFIED_NAME))
+    if (thread_ref.conn_entry->client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
       {
 	found_again = locate_class_for_all_users (class_name, class_oid);
 	if (found_again == LC_CLASSNAME_EXIST)
@@ -134,6 +155,7 @@ namespace cubload
 	    return found_again;
 	  }
       }
+#endif
 
     return found;
   }

@@ -1432,7 +1432,9 @@ $ LOADDB
 
 1351 함수 표현식 문자열의 최대 길이는 %1$d이어야 합니다.
 
-1352 마지막 에러
+1352 명시된 열의 개수가 올바르지 않습니다.
+
+1353 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1591,10 +1593,13 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 128 JSON_OBJECTAGG 인자의 갯수가 잘못되었습니다.
 129 PARALLEL 인자 값은 %1$d에서 %2$d까지 허용됩니다.
 130 dblink - Server name cannot contain periods.
-131 잘못된 형식의 alter synonym 구문입니다.\n  ALTER [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-132 잘못된 형식의 create synonym 구문입니다.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<user_name>.]<synonym_name> FOR [<user_name>.]<target_name> [COMMENT 'comment_string']
-133 잘못된 형식의 drop synonym 구문입니다.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<user_name>.]<synonym_name>
-134 잘못된 형식의 rename synonym 구문입니다.\n  RENAME [PRIVATE] SYNONYM [<user_name>.]<old_synonym_name> {AS|TO} [<user_name>.]<new_synonym_name>
+131 잘못된 형식의 alter synonym 구문입니다.\n  ALTER [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> {FOR [<schema_name>.]<target_name> [COMMENT 'comment_string'] | COMMENT 'comment_string'}
+132 잘못된 형식의 create synonym 구문입니다.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> FOR [<schema_name>.]<target_name> [COMMENT 'comment_string']
+133 잘못된 형식의 drop synonym 구문입니다.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
+134 잘못된 형식의 rename synonym 구문입니다.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
+135 ALTER SYNONYM에 대해 지정된 옵션이 없습니다.
+136 Server의 DBNAME 최대 길이는 %1$d 바이트입니다.
+137 Server의 USER 최대 길이는 %1$d 바이트입니다.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
