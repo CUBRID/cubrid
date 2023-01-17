@@ -1203,7 +1203,6 @@ if(WITH_RE2 STREQUAL "EXTERNAL")
       BUILD_IN_SOURCE true        # re2 Makefile is designed to run locally
       BUILD_COMMAND make CFLAGS="-fPIC" CXXFLAGS="-fPIC" # to allow static linking in shared library
       INSTALL_COMMAND make install prefix="${CMAKE_BINARY_DIR}/external/"
-      "${RE2_BYPRODUCTS}"
     )
   else(UNIX)
     set(RE2_INCLUDES ${WINDOWS_EXTERNAL_DIR}/RE2/include)
