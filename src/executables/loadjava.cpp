@@ -102,10 +102,8 @@ parse_argument (int argc, char *argv[])
 		  return ER_FAILED;
 		}
 	      // replace all for package name's dot to SEPARATER
-	      // e.g. org.cubrid.abc => /org/cubrid/abc/
-	      package_path = SEPERATOR;
-	      package_path += std::regex_replace (package_name, std::regex ("\\."), SEPARATOR_STRING);
-	      package_path += SEPERATOR;
+	      // e.g. org.cubrid.abc => org/cubrid/abc
+	      package_path = std::regex_replace (package_name, std::regex ("\\."), SEPARATOR_STRING);
 	    }
 	}
 	break;
@@ -134,7 +132,7 @@ parse_argument (int argc, char *argv[])
 }
 
 static int
-create_package_directories (const std::string &java_dir_path)
+create_package_directories (const fs::path &java_dir_path)
 {
   try
     {
@@ -148,20 +146,26 @@ create_package_directories (const std::string &java_dir_path)
     }
   catch (fs::filesystem_error &e)
     {
-      fprintf (stderr, "can't create directory: %s. %s\n", java_dir_path.c_str (), e.what ());
+      fprintf (stderr, "can't create directory: %s. %s\n", java_dir_path.generic_string ().c_str (), e.what ());
       return ER_FAILED;
     }
   return NO_ERROR;
 }
 
 static int
-copy_file (const std::string &java_dir_path)
+copy_file (const fs::path &java_dir_path)
 {
-  std::string class_file_name = fs::path (Src_class).filename().generic_string();
   try
     {
-      std::string class_file_path = java_dir_path + class_file_name;
-      if (!Force_overwrite && fs::exists (class_file_path) == true)
+      fs::path src_path = fs::path (Src_class);
+      if (fs::exists (src_path) == false)
+	{
+	  return ER_FAILED;
+	}
+
+      std::string class_file_name = src_path.filename().generic_string();
+      fs::path class_file_path = java_dir_path / class_file_name;
+      if (Force_overwrite == false && fs::exists (class_file_path) == true)
 	{
 	  fprintf (stdout, "'%s' is exist. overwrite? (y/n): ", class_file_path.c_str ());
 	  char c = getchar ();
@@ -173,7 +177,7 @@ copy_file (const std::string &java_dir_path)
 	}
 
       const auto copyOptions = fs::copy_options::overwrite_existing;
-      fs::copy (std::string (Src_class), class_file_path, copyOptions);
+      fs::copy (src_path, class_file_path, copyOptions);
     }
   catch (fs::filesystem_error &e)
     {
@@ -193,7 +197,7 @@ main (int argc, char *argv[])
 {
   int status = EXIT_FAILURE;
   DB_INFO *db = NULL;
-  std::string java_dir_path;
+  fs::path java_dir_path;
 
   /* initialize message catalog for argument parsing and usage() */
   if (utility_initialize () != NO_ERROR)
@@ -212,10 +216,14 @@ main (int argc, char *argv[])
       goto error;
     }
 
-  java_dir_path = db->pathname;
-  java_dir_path += SEPERATOR;
-  java_dir_path += JAVA_DIR;
-  java_dir_path += package_path;
+  // DB path e.g. $CUBRID/demodb
+  java_dir_path.assign (std::string (db->pathname));
+
+  // e.g. $CUBRID/demodb/java
+  java_dir_path.append (JAVA_DIR);
+
+  // e.g. $CUBRID/demodb/java/org/cubrid/path/
+  java_dir_path.append (package_path);
 
   if (create_package_directories (java_dir_path) != NO_ERROR)
     {
