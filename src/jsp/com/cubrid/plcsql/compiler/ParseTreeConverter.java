@@ -64,7 +64,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitSql_script(Sql_scriptContext ctx) {
         AstNode ret = visitUnit_statement(ctx.unit_statement());
-        assert symbolStack.getSize() == 1;
+        assert symbolStack.getSize() == 2;
         return ret;
     }
 
@@ -809,7 +809,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         // currently, only the Autonomous Transaction is
         // allowed only in the top-level declarations
-        assert symbolStack.getCurrentScope().level == 1
+        assert symbolStack.getCurrentScope().level == 2
                 : "AUTONOMOUS_TRANSACTION declaration is only allowed at the top level";
 
         // just turn on the flag and return nothing

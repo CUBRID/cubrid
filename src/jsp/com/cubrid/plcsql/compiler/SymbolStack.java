@@ -189,6 +189,8 @@ public class SymbolStack {
 
     SymbolStack() {
         symbolTableStack.addFirst(predefinedSymbols);
+        currSymbolTable = new SymbolTable(new Scope(null, "unit_1", 1)); // for the main procedure/function
+        symbolTableStack.addFirst(currSymbolTable);
     }
 
     int pushSymbolTable(String name, boolean forRoutine) {

@@ -53,7 +53,7 @@ public class Unit implements AstNode {
             String importsStr,
             DeclRoutine routine) {
 
-        assert routine.level == 1;
+        assert routine.level == 2;
 
         this.targetKind = targetKind;
         this.autonomousTransaction = autonomousTransaction;
