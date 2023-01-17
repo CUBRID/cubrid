@@ -261,8 +261,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String ty = null;
         if (opStr.equals("Eq") || opStr.equals("NullSafeEq") || opStr.equals("Neq")) {
             ty = "Object";
-        } else {
-            ty = "Integer";
         }
 
         Expr l = visitExpression(ctx.relational_expression(0), ty);
