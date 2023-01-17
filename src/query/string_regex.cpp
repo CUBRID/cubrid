@@ -62,29 +62,9 @@ namespace cubregex
     "re2"
   };
 
-  bool check_regexp_engine_prm (const char *param_name)
+  const char *get_engine_name (const engine_type &type)
   {
-    assert (param_name);
-
-    if (strcmp (param_name, engine_name[LIB_CPPSTD]) == 0
-	|| strcmp (param_name, engine_name[LIB_RE2]) == 0)
-      {
-	return true;
-      }
-    return false;
-  }
-
-  engine_type get_engine_type_by_name (const char *param_name)
-  {
-    if (strcmp (param_name, engine_name[LIB_CPPSTD]) == 0)
-      {
-	return engine_type::LIB_CPPSTD;
-      }
-    else if (strcmp (param_name, engine_name[LIB_RE2]) == 0)
-      {
-	return engine_type::LIB_RE2;
-      }
-    return engine_type::LIB_NONE;
+    return engine_name[type];
   }
 
   //////////////////////////////////////////////////////////////////////////
@@ -110,13 +90,7 @@ namespace cubregex
 	return ER_QPROC_INVALID_PARAMETER;
       }
 
-    const char *engine_type_prm = prm_get_string_value (PRM_ID_REGEXP_ENGINE);
-
-#if !defined (NDEBUG)
-    assert (check_regexp_engine_prm (engine_type_prm));
-#endif
-
-    engine_type type = get_engine_type_by_name (engine_type_prm);
+    engine_type type = static_cast<engine_type> (prm_get_integer_value (PRM_ID_REGEXP_ENGINE));
 
     std::string utf8_pattern;
     if (cublocale::convert_string_to_utf8 (utf8_pattern, pattern_string, collation->codeset) == false)

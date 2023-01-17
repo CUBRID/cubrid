@@ -2150,6 +2150,7 @@ hb_cluster_load_ping_host_list (char *ha_ping_host_list)
   int num_hosts = 0;
   char host_list[LINE_MAX];
   char *host_list_p, *host_p, *host_pp;
+  char buf[128];
 
   if (ha_ping_host_list == NULL)
     {
@@ -2166,8 +2167,16 @@ hb_cluster_load_ping_host_list (char *ha_ping_host_list)
 	  break;
 	}
 
-      hb_add_ping_host (host_p);
-      num_hosts++;
+      if (strcmp (host_p, "0.0.0.0") == 0)
+	{
+	  snprintf (buf, sizeof (buf), "We do not allow 0.0.0.0 as a ping hosts, excluded");
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, buf);
+	}
+      else
+	{
+	  hb_add_ping_host (host_p);
+	  num_hosts++;
+	}
     }
 
   return num_hosts;
