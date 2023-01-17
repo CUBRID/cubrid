@@ -1599,6 +1599,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 133 DROP SYNONYM 的使用无效.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
 134 RENAME SYNONYM 的使用无效.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
 135 没有为 ALTER SYNONYM 指定选项。
+136 Maximum length of a server dbname is %1$d bytes.
+137 Maximum length of a server user is %1$d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 内存耗尽.
