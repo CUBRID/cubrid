@@ -26,6 +26,7 @@ test_defaults: &test_defaults
           #test
           cat tc.list
           id 
+          chmod 777 /proc/sys/kernel/dmesg_restrict
           ls -al /proc/sys/kernel/dmesg_restrict
           cat /proc/sys/kernel/dmesg_restrict
           echo 0 > /proc/sys/kernel/dmesg_restrict
