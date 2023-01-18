@@ -65,6 +65,7 @@ jobs:
             mkdir -p /tmp/build_logs
             #scl enable devtoolset-9 -- /entrypoint.sh build
             #mv -f build.log /tmp/build_logs
+            mkdir -p /home/CUBRID
       - run:
           name: Commits
           command: |
