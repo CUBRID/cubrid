@@ -13,7 +13,7 @@ test_defaults: &test_defaults
     - attach_workspace:
         at: .
     - run:
-        name: Test
+        name: Test circleci debug
         shell: /bin/bash
         environment:
           _JAVA_OPTIONS: -Xmx1g
@@ -22,16 +22,24 @@ test_defaults: &test_defaults
           /entrypoint.sh checkout
           circleci tests glob cubrid-testcases/$TEST_SUITE/_* | circleci tests split | tee tc.list
           find cubrid-testcases/$TEST_SUITE/_* -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
-          /entrypoint.sh test
-    - run:
-        name: Collect Logs
-        command: |
+
+          #test
+          cat tc.list
+          id 
+          cat /proc/sys/kernel/dmesg_restrict
+          #echo 0 > /proc/sys/kernel/dmesg_restrict
           mkdir -p /tmp/logs
-          mv -f CUBRID/log /tmp/logs/cubrid_log
-          mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
-          #find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
           dmesg > /tmp/logs/dmesg.out
-        when: on_fail
+          #/entrypoint.sh test
+    #- run:
+    #    name: Collect Logs
+    #    command: |
+    #      mkdir -p /tmp/logs
+    #      mv -f CUBRID/log /tmp/logs/cubrid_log
+    #      mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
+    #      #find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
+    #      dmesg > /tmp/logs/dmesg.out
+    #    when: on_fail
     - store_test_results:
         path: /tmp/tests
     - store_artifacts:
@@ -103,17 +111,17 @@ workflows:
   version: 2
   build_test:
     jobs:
-      - build
-      - test_medium:
-          requires:
-            - build
+    #  - build
+    #  - test_medium:
+    #      requires:
+    #        - build
       - test_sql:
           requires:
             - build
 
-      - test_medium_ol:
-          requires:
-            - build
-      - test_sql_ol:
-          requires:
-            - build
+    #  - test_medium_ol:
+    #      requires:
+    #        - build
+    #  - test_sql_ol:
+    #      requires:
+    #        - build
