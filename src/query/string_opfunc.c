@@ -4566,7 +4566,6 @@ db_string_rlike (const DB_VALUE * src, const DB_VALUE * pattern, const DB_VALUE 
     error_status = cubregex::search (*result, *compiled_regex, src_string);
     if (error_status != NO_ERROR)
       {
-	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	goto cleanup;
       }
   }
@@ -4581,6 +4580,10 @@ cleanup:
 	  *result = V_UNKNOWN;
 	  er_clear ();
 	  error_status = NO_ERROR;
+	}
+      else
+	{
+	  error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	}
     }
 
@@ -4742,7 +4745,6 @@ db_string_regexp_count (DB_VALUE * result, DB_VALUE * args[], int const num_args
     if (error_status != NO_ERROR)
       {
 	/* regex execution error */
-	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	goto exit;
       }
 
@@ -4760,6 +4762,10 @@ exit:
 	  /* we must not return an error code */
 	  er_clear ();
 	  error_status = NO_ERROR;
+	}
+      else
+	{
+	  error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	}
     }
 
@@ -4956,7 +4962,6 @@ db_string_regexp_instr (DB_VALUE * result, DB_VALUE * args[], int const num_args
     if (error_status != NO_ERROR)
       {
 	/* regex execution error */
-	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	goto exit;
       }
 
@@ -4974,6 +4979,10 @@ exit:
 	  /* we must not return an error code */
 	  er_clear ();
 	  error_status = NO_ERROR;
+	}
+      else
+	{
+	  error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	}
     }
 
@@ -5117,7 +5126,6 @@ db_string_regexp_like (DB_VALUE * result, DB_VALUE * args[], int const num_args,
     if (error_status != NO_ERROR)
       {
 	/* regex execution error */
-	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	goto exit;
       }
 
@@ -5135,6 +5143,10 @@ exit:
 	  /* we must not return an error code */
 	  er_clear ();
 	  error_status = NO_ERROR;
+	}
+      else
+	{
+	  error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	}
     }
 
@@ -5390,6 +5402,10 @@ exit:
 	  er_clear ();
 	  error_status = NO_ERROR;
 	}
+      else
+	{
+	  error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
+	}
     }
 
   if (comp_regex == NULL)
@@ -5568,7 +5584,6 @@ db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], int const num_arg
     if (error_status != NO_ERROR)
       {
 	/* regex execution error */
-	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	goto exit;
       }
 
@@ -5603,6 +5618,10 @@ exit:
 	  /* we must not return an error code */
 	  er_clear ();
 	  error_status = NO_ERROR;
+	}
+      else
+	{
+	  error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	}
     }
 
