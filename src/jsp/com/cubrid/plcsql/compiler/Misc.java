@@ -35,6 +35,11 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public class Misc {
 
+    public enum RoutineType {
+        FUNC,
+        PROC,
+    }
+
     public static void printIndent(PrintStream out, int indents) {
 
         for (int i = 0; i < indents; i++) {

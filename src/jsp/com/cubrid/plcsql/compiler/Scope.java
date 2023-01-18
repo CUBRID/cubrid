@@ -31,13 +31,14 @@
 package com.cubrid.plcsql.compiler;
 
 public class Scope {
-
+    public final Misc.RoutineType routineType; 
     public final String routine;
     public final String block;
     public final int level;
     public boolean declDone;
 
-    Scope(String routine, String block, int level) {
+    Scope(Misc.RoutineType routineType, String routine, String block, int level) {
+        this.routineType = routineType;
         this.routine = routine;
         this.block = block;
         this.level = level;

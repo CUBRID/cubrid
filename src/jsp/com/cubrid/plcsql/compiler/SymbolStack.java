@@ -68,7 +68,7 @@ public class SymbolStack {
 
     private static final Map<String, OverloadedFunc> operators = new TreeMap<>();
     private static final Map<String, OverloadedFunc> predefinedFuncs = new TreeMap<>();
-    private static SymbolTable predefinedSymbols = new SymbolTable(new Scope(null, "%predefined_0", 0));
+    private static SymbolTable predefinedSymbols = new SymbolTable(new Scope(null, null, "%predefined_0", 0));
 
     static {
 
@@ -188,25 +188,32 @@ public class SymbolStack {
 
     SymbolStack() {
         symbolTableStack.addFirst(predefinedSymbols);
-        currSymbolTable = new SymbolTable(new Scope(null, "unit_1", 1)); // for the main procedure/function
+        currSymbolTable = new SymbolTable(new Scope(null, null, "unit_1", 1)); // for the main procedure/function
         symbolTableStack.addFirst(currSymbolTable);
     }
 
-    int pushSymbolTable(String name, boolean forRoutine) {
+    int pushSymbolTable(String name, Misc.RoutineType routineType) {
 
         int level = symbolTableStack.size();
         name = name.toLowerCase();
 
         String routine;
-        if (forRoutine) {
-            routine = name.toUpperCase();
+        if (routineType == null) {
+            if (currSymbolTable == null) {
+                routineType = null;
+                routine = null;
+            } else {
+                // inherit them from its parent
+                routineType = currSymbolTable.scope.routineType;
+                routine = currSymbolTable.scope.routine;
+            }
         } else {
-            routine = (currSymbolTable == null) ? null : currSymbolTable.scope.routine;
+            routine = name.toUpperCase();
         }
 
         String block = name + "_" + level;
 
-        currSymbolTable = new SymbolTable(new Scope(routine, block, level));
+        currSymbolTable = new SymbolTable(new Scope(routineType, routine, block, level));
         symbolTableStack.addFirst(currSymbolTable);
 
         return level;
