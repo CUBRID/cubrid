@@ -63,14 +63,14 @@ jobs:
           name: Build
           command: |
             mkdir -p /tmp/build_logs
-            scl enable devtoolset-9 -- /entrypoint.sh build
-            mv -f build.log /tmp/build_logs
+            #scl enable devtoolset-9 -- /entrypoint.sh build
+            #mv -f build.log /tmp/build_logs
       - run:
           name: Commits
           command: |
             mkdir -p /tmp/build_logs
-            git log | head -n 1000 > commits.log || true
-            mv -f commits.log /tmp/build_logs
+            #git log | head -n 1000 > commits.log || true
+            #mv -f commits.log /tmp/build_logs
       - persist_to_workspace:
           root: .
           paths:
@@ -111,13 +111,13 @@ workflows:
   version: 2
   build_test:
     jobs:
-    #  - build
+      - build
     #  - test_medium:
     #      requires:
     #        - build
       - test_sql:
-    #      requires:
-    #        - build
+          requires:
+            - build
 
     #  - test_medium_ol:
     #      requires:
