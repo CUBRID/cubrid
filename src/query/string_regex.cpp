@@ -44,15 +44,22 @@ namespace cubregex
 	switch (type)
 	  {
 	  case engine_type::LIB_CPPSTD:
-	    delete compiled->std_obj;
+	    if (compiled->std_obj)
+	      {
+		delete compiled->std_obj;
+	      }
 	    break;
 	  case engine_type::LIB_RE2:
-	    delete compiled->re2_obj;
+	    if (compiled->re2_obj)
+	      {
+		delete compiled->re2_obj;
+	      }
 	    break;
 	  default:
 	    assert (false);
 	  }
 	delete compiled;
+	compiled = {nullptr};
       }
   }
 
@@ -264,16 +271,10 @@ namespace cubregex
     // delete previous compiled object
     if (cr)
       {
-	if (cr->compiled)
-	  {
-	    delete cr->compiled;
-	  }
-      }
-    else
-      {
-	cr = new compiled_regex ();
+	delete cr;
       }
 
+    cr = new compiled_regex ();
     cr->type = type;
     cr->compiled = new compiled_regex_object { nullptr };
     cr->pattern.assign (pattern_string);
@@ -292,6 +293,13 @@ namespace cubregex
 	assert (false);
 	error = ER_FAILED;
 	break;
+      }
+
+    /* compiling regex pattern failed */
+    if (error != NO_ERROR)
+      {
+	delete cr;
+	cr = nullptr;
       }
 
     return error;
