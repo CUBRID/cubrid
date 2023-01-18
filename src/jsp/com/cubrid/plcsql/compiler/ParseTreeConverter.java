@@ -53,84 +53,19 @@ import org.apache.commons.text.StringEscapeUtils;
 // parse tree --> AST converter
 public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
-    /*
-    public ParseTreeConverter() {
-        int level = symbolStack.pushSymbolTable(SYMBOL_TABLE_TOP, false);
-        assert level == 0;
-        symbolStack.setUpPredefined();
-    }
-     */
-
     @Override
     public AstNode visitSql_script(Sql_scriptContext ctx) {
-        AstNode ret = visitUnit_statement(ctx.unit_statement());
+        AstNode ret = visitCreate_routine(ctx.create_routine());
         assert symbolStack.getSize() == 2;
         return ret;
     }
 
     @Override
-    public Unit visitCreate_procedure(Create_procedureContext ctx) {
+    public Unit visitCreate_routine(Create_routineContext ctx) {
 
-        String name = ctx.identifier().getText().toUpperCase();
-        name = Misc.peelId(name);
-
-        int level =
-                symbolStack.pushSymbolTable(
-                        "temp", false); // in order not to corrupt predefined symbol table
-
-        NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
-
-        symbolStack.popSymbolTable();
-        DeclProc decl = new DeclProc(level, name, paramList, null, null);
-        symbolStack.putDecl(name, decl); // in order to allow recursive calls
-
-        symbolStack.pushSymbolTable(name, true);
-
-        visitParameter_list(
-                ctx.parameter_list()); // need to do again to put the parameters to the symbol table
-
-        decl.decls = visitSeq_of_declare_specs(ctx.seq_of_declare_specs());
-        decl.body = visitBody(ctx.body());
-
-        symbolStack.popSymbolTable();
-
+        previsitRoutine_definition(ctx.routine_definition());
+        DeclRoutine decl = visitRoutine_definition(ctx.routine_definition());
         return new Unit(
-                Unit.TargetKind.PROCEDURE,
-                autonomousTransaction,
-                connectionRequired,
-                getImportString(),
-                decl);
-    }
-
-    @Override
-    public Unit visitCreate_function(Create_functionContext ctx) {
-
-        String name = ctx.identifier().getText().toUpperCase();
-        name = Misc.peelId(name);
-
-        int level =
-                symbolStack.pushSymbolTable(
-                        "temp", false); // in order not to corrupt predefined symbol table
-
-        NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
-        TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
-
-        symbolStack.popSymbolTable();
-        DeclFunc decl = new DeclFunc(level, name, paramList, retType, null, null);
-        symbolStack.putDecl(name, decl); // in order to allow recursive calls
-
-        symbolStack.pushSymbolTable(name, true);
-
-        visitParameter_list(
-                ctx.parameter_list()); // need to do again to put the parameters to the symbol table
-
-        decl.decls = visitSeq_of_declare_specs(ctx.seq_of_declare_specs());
-        decl.body = visitBody(ctx.body());
-
-        symbolStack.popSymbolTable();
-
-        return new Unit(
-                Unit.TargetKind.FUNCTION,
                 autonomousTransaction,
                 connectionRequired,
                 getImportString(),
@@ -775,13 +710,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
             ParserRuleContext routine;
 
-            routine = ds.procedure_body();
+            routine = ds.routine_definition();
             if (routine != null) {
-                previsitProcedure_body((Procedure_bodyContext) routine);
-            }
-            routine = ds.function_body();
-            if (routine != null) {
-                previsitFunction_body((Function_bodyContext) routine);
+                previsitRoutine_definition((Routine_definitionContext) routine);
             }
         }
 
@@ -888,7 +819,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return ret;
     }
 
-    private void previsitProcedure_body(Procedure_bodyContext ctx) {
+    private void previsitRoutine_definition(Routine_definitionContext ctx) {
 
         String name = ctx.identifier().getText().toUpperCase();
         name = Misc.peelId(name);
@@ -900,18 +831,25 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        DeclProc ret = new DeclProc(level, name, paramList, null, null);
-        symbolStack.putDecl(name, ret);
+        if (ctx.PROCEDURE() == null) {
+            // function
+            assert ctx.RETURN() != null: "definition of function " + name + " must specify its return type";
+            TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
+            DeclFunc ret = new DeclFunc(level, name, paramList, retType, null, null);
+            symbolStack.putDecl(name, ret);
+        } else {
+            // procedure
+            assert ctx.RETURN() == null: "definition of procedure " + name + " may not specify a return type";
+            DeclProc ret = new DeclProc(level, name, paramList, null, null);
+            symbolStack.putDecl(name, ret);
+        }
     }
 
     @Override
-    public AstNode visitProcedure_body(Procedure_bodyContext ctx) {
+    public DeclRoutine visitRoutine_definition(Routine_definitionContext ctx) {
 
         String name = ctx.identifier().getText().toUpperCase();
         name = Misc.peelId(name);
-
-        DeclProc ret = symbolStack.getDeclProc(name);
-        assert ret != null; // from the previsit
 
         symbolStack.pushSymbolTable(name, true);
 
@@ -921,47 +859,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        ret.decls = decls;
-        ret.body = body;
-
-        return ret;
-    }
-
-    private void previsitFunction_body(Function_bodyContext ctx) {
-
-        String name = ctx.identifier().getText().toUpperCase();
-        name = Misc.peelId(name);
-
-        // in order not to corrupt the current symbol table with the parameters
-        int level = symbolStack.pushSymbolTable("temp", false);
-
-        NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
-        TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
-
-        symbolStack.popSymbolTable();
-
-        DeclFunc ret = new DeclFunc(level, name, paramList, retType, null, null);
-        symbolStack.putDecl(name, ret);
-    }
-
-    @Override
-    public AstNode visitFunction_body(Function_bodyContext ctx) {
-
-        String name = ctx.identifier().getText().toUpperCase();
-        name = Misc.peelId(name);
-
-        DeclFunc ret = symbolStack.getDeclFunc(name);
+        DeclRoutine ret;
+        if (ctx.PROCEDURE() == null) {
+            // function
+            ret = symbolStack.getDeclFunc(name);
+        } else {
+            // procedure
+            ret = symbolStack.getDeclProc(name);
+        }
         assert ret != null; // from the previsit
-
-        symbolStack.pushSymbolTable(name, true);
-
-        NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
-        TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
-        NodeList<Decl> decls = visitSeq_of_declare_specs(ctx.seq_of_declare_specs());
-        Body body = visitBody(ctx.body());
-
-        symbolStack.popSymbolTable();
-
         ret.decls = decls;
         ret.body = body;
 

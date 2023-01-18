@@ -57,6 +57,10 @@ public abstract class DeclRoutine extends DeclBase {
         this.body = body;
     }
 
+    public boolean isProcedure() {
+        return (retType == null);
+    }
+
     @Override
     public String toJavaCode() {
 

@@ -32,31 +32,15 @@ options {
 }
 
 sql_script
-    : unit_statement EOF
+    : create_routine EOF
     ;
 
-unit_statement
-    : create_function
-    | create_procedure
+create_routine
+    : CREATE (OR REPLACE)? routine_definition
     ;
 
-create_function
-    : CREATE (OR REPLACE)? FUNCTION identifier ('(' parameter_list ')')? RETURN type_spec
-      (IS | AS) seq_of_declare_specs? body ';'
-    ;
-
-create_procedure
-    : CREATE (OR REPLACE)? PROCEDURE identifier ('(' parameter_list ')')?
-      (IS | AS) seq_of_declare_specs? body ';'
-    ;
-
-function_body
-    : FUNCTION identifier ('(' parameter_list ')')? RETURN type_spec
-      (IS | AS) seq_of_declare_specs? body ';'
-    ;
-
-procedure_body
-    : PROCEDURE identifier ('(' parameter_list ')')?
+routine_definition
+    : (PROCEDURE | FUNCTION) identifier ('(' parameter_list ')')? (RETURN type_spec)?
       (IS | AS) seq_of_declare_specs? body ';'
     ;
 
@@ -81,8 +65,7 @@ declare_spec
     : pragma_declaration
     | item_declaration
     | cursor_definition
-    | procedure_body
-    | function_body
+    | routine_definition
     ;
 
 item_declaration

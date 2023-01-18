@@ -35,19 +35,12 @@ import java.sql.*;
 
 public class Unit implements AstNode {
 
-    public enum TargetKind {
-        FUNCTION,
-        PROCEDURE
-    };
-
-    public final TargetKind targetKind;
     public final boolean autonomousTransaction;
     public final boolean connectionRequired;
     public final String importsStr;
     public final DeclRoutine routine;
 
     public Unit(
-            TargetKind targetKind,
             boolean autonomousTransaction,
             boolean connectionRequired,
             String importsStr,
@@ -55,7 +48,6 @@ public class Unit implements AstNode {
 
         assert routine.level == 2;
 
-        this.targetKind = targetKind;
         this.autonomousTransaction = autonomousTransaction;
         this.connectionRequired = connectionRequired;
         this.importsStr = importsStr;
@@ -105,12 +97,7 @@ public class Unit implements AstNode {
     public String getClassName() {
 
         if (className == null) {
-            String kindStr =
-                    (targetKind == TargetKind.FUNCTION)
-                            ? "Func"
-                            : (targetKind == TargetKind.PROCEDURE) ? "Proc" : null;
-            assert kindStr != null;
-
+            String kindStr = routine.isProcedure() ? "Proc" : "Func";
             className = String.format("%s_%s", kindStr, routine.name);
         }
 
