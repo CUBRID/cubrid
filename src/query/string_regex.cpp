@@ -295,13 +295,6 @@ namespace cubregex
 	break;
       }
 
-    /* compiling regex pattern failed */
-    if (error != NO_ERROR)
-      {
-	delete cr;
-	cr = nullptr;
-      }
-
     return error;
   }
 
