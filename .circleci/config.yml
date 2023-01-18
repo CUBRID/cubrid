@@ -27,7 +27,8 @@ test_defaults: &test_defaults
           cat tc.list
           id 
           cat /proc/sys/kernel/dmesg_restrict
-          #echo 0 > /proc/sys/kernel/dmesg_restrict
+          echo 0 > /proc/sys/kernel/dmesg_restrict
+          cat /proc/sys/kernel/dmesg_restrict
           mkdir -p /tmp/logs
           dmesg > /tmp/logs/dmesg.out
           #/entrypoint.sh test
