@@ -33,13 +33,12 @@ package com.cubrid.plcsql.compiler.ast;
 public class DeclFunc extends DeclRoutine {
 
     public DeclFunc(
-            int level,
             String name,
             NodeList<DeclParam> paramList,
             TypeSpec retType,
             NodeList<Decl> decls,
             Body body) {
-        super(level, name, paramList, retType, decls, body);
+        super(name, paramList, retType, decls, body);
     }
 
     @Override

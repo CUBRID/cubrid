@@ -34,7 +34,6 @@ import com.cubrid.plcsql.compiler.Misc;
 
 public abstract class DeclRoutine extends DeclBase {
 
-    public int level;
     public final String name;
     public final NodeList<DeclParam> paramList;
     public final TypeSpec retType;
@@ -42,19 +41,21 @@ public abstract class DeclRoutine extends DeclBase {
     public Body body;
 
     public DeclRoutine(
-            int level,
             String name,
             NodeList<DeclParam> paramList,
             TypeSpec retType,
             NodeList<Decl> decls,
             Body body) {
 
-        this.level = level;
         this.name = name;
         this.paramList = paramList;
         this.retType = retType;
         this.decls = decls;
         this.body = body;
+    }
+
+    public String getDeclBlockName() {
+        return name.toLowerCase() + '_' + (scope.level + 1);
     }
 
     public boolean isProcedure() {
@@ -68,8 +69,7 @@ public abstract class DeclRoutine extends DeclBase {
                 decls == null
                         ? "// no declarations"
                         : tmplDeclClass
-                                .replace("%'BLOCK'%", name.toLowerCase())
-                                .replace("%'LEVEL'%", "" + level)
+                                .replace("%'BLOCK'%", getDeclBlockName())
                                 .replace(
                                         "  %'DECLARATIONS'%",
                                         Misc.indentLines(decls.toJavaCode(), 1));
@@ -135,5 +135,5 @@ public abstract class DeclRoutine extends DeclBase {
                     "  Decl_of_%'BLOCK'%() throws Exception {};",
                     "  %'DECLARATIONS'%",
                     "}",
-                    "Decl_of_%'BLOCK'% %'BLOCK'%_%'LEVEL'% = new Decl_of_%'BLOCK'%();");
+                    "Decl_of_%'BLOCK'% %'BLOCK'% = new Decl_of_%'BLOCK'%();");
 }

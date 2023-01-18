@@ -825,7 +825,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         name = Misc.peelId(name);
 
         // in order not to corrupt the current symbol table with the parameters
-        int level = symbolStack.pushSymbolTable("temp", false);
+        symbolStack.pushSymbolTable("temp", false);
 
         NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
 
@@ -835,12 +835,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             // function
             assert ctx.RETURN() != null: "definition of function " + name + " must specify its return type";
             TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
-            DeclFunc ret = new DeclFunc(level, name, paramList, retType, null, null);
+            DeclFunc ret = new DeclFunc(name, paramList, retType, null, null);
             symbolStack.putDecl(name, ret);
         } else {
             // procedure
             assert ctx.RETURN() == null: "definition of procedure " + name + " may not specify a return type";
-            DeclProc ret = new DeclProc(level, name, paramList, null, null);
+            DeclProc ret = new DeclProc(name, paramList, null, null);
             symbolStack.putDecl(name, ret);
         }
     }

@@ -110,7 +110,7 @@ public class SymbolStack {
                         TypeSpec retType = new TypeSpecSimple(typeName);
 
                         // add op
-                        DeclFunc op = new DeclFunc(0, name, params, retType, null, null);
+                        DeclFunc op = new DeclFunc(name, params, retType, null, null);
                         putOperator(name, op);
                     }
                 }
@@ -126,7 +126,6 @@ public class SymbolStack {
             // add procedures
             DeclProc dp =
                     new DeclProc(
-                            0,
                             "PUT_LINE",
                             new NodeList<DeclParam>()
                                     .addNode(new DeclParamIn("s", new TypeSpecSimple("Object"))),
