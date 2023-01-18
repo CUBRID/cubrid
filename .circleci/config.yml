@@ -54,12 +54,12 @@ jobs:
       MAKEFLAGS: -j 10
     resource_class: large
     steps:
-      - checkout
-      - run:
-          name: Submodules
-          command: |
-            git submodule sync
-            git submodule update --init
+      #- checkout
+      #- run:
+      #    name: Submodules
+      #    command: |
+      #      git submodule sync
+      #      git submodule update --init
       - run:
           name: Build
           command: |
