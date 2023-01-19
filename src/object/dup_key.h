@@ -53,8 +53,6 @@ typedef enum
 /* DUP_MODE_VALUE_DEFAULT is a value between DUP_MODE_OID and (DUP_MODE_LAST-1) */
 #define DUP_MODE_VALUE_DEFAULT     (DUP_MODE_PAGEID)
 
-extern bool is_support_auto_dup_mode;
-
 /* ******************************************************** */
 #if !defined(SUPPORT_KEY_DUP_LEVEL)
 /* ******************************************************** */

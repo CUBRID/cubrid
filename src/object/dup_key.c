@@ -263,8 +263,10 @@ dk_sm_attribute_initialized ()
   SM_ATTRIBUTE *att;
   DB_DOMAIN *domain = NULL;
 
-  assert (dup_mode_defalut > DUP_MODE_NONE && dup_mode_defalut < DUP_MODE_LAST);
-  assert (dup_level_default >= OVFL_LEVEL_MIN && dup_level_default <= OVFL_LEVEL_MAX);
+  assert (prm_get_integer_value (PRM_ID_DUP_MODE) > DUP_MODE_NONE
+	  && prm_get_integer_value (PRM_ID_DUP_MODE) < DUP_MODE_LAST);
+  assert (prm_get_integer_value (PRM_ID_DUP_LEVEL) >= OVFL_LEVEL_MIN
+	  && prm_get_integer_value (PRM_ID_DUP_LEVEL) <= OVFL_LEVEL_MAX);
 
   for (mode = DUP_MODE_OID; mode <= DUP_MODE_VOLID; mode++)
     {
@@ -508,7 +510,7 @@ dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupk
   switch (dupkey_mode)
     {
     case DUP_MODE_NONE:
-      if (is_support_auto_dup_mode)
+      if (prm_get_bool_value (PRM_ID_AUTO_DUP_MODE))
 	{
 	  len = snprintf (buf, buf_size, "%s", " deduplicate OFF");
 	}
@@ -531,14 +533,15 @@ dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupk
       assert (false);
     }
 
-  if ((dupkey_mode == dup_mode_defalut) && (dupkey_hash_level == dup_level_default))
+  if ((dupkey_mode == prm_get_integer_value (PRM_ID_DUP_MODE))
+      && (dupkey_hash_level == prm_get_integer_value (PRM_ID_DUP_LEVEL)))
     {
-      if (!is_support_auto_dup_mode)
+      if (!prm_get_bool_value (PRM_ID_AUTO_DUP_MODE))
 	{
 	  len = snprintf (buf, buf_size, "%s", " deduplicate ON");
 	}
     }
-  else if (dupkey_hash_level == dup_level_default)
+  else if (dupkey_hash_level == prm_get_integer_value (PRM_ID_DUP_LEVEL))
     {
       len = snprintf (buf, buf_size, "%s", str_mode);
     }
@@ -555,12 +558,6 @@ dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupk
 void
 dk_reserved_index_attribute_initialized ()
 {
-#if !defined(SERVER_MODE)
-  is_support_auto_dup_mode = prm_get_bool_value (PRM_ID_AUTO_DUP_MODE);
-  dup_mode_defalut = prm_get_integer_value (PRM_ID_DUP_MODE);
-  dup_level_default = prm_get_integer_value (PRM_ID_DUP_LEVEL);
-#endif
-
 #if defined(SERVER_MODE) || defined(SA_MODE)
   dk_or_attribute_initialized ();
 #endif
