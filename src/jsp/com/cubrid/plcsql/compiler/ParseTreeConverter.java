@@ -90,8 +90,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public DeclParamIn visitParameter_in(Parameter_inContext ctx) {
-        String name = ctx.parameter_name().getText().toUpperCase();
-        name = Misc.peelId(name);
+        String name = Misc.getNormalizedText(ctx.parameter_name());
         TypeSpec typeSpec = (TypeSpec) visit(ctx.type_spec());
 
         DeclParamIn ret = new DeclParamIn(name, typeSpec);
@@ -102,8 +101,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public DeclParamOut visitParameter_out(Parameter_outContext ctx) {
-        String name = ctx.parameter_name().getText().toUpperCase();
-        name = Misc.peelId(name);
+        String name = Misc.getNormalizedText(ctx.parameter_name());
         TypeSpec typeSpec = (TypeSpec) visit(ctx.type_spec());
 
         DeclParamOut ret = new DeclParamOut(name, typeSpec);
@@ -117,8 +115,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         if (ctx.table_name() == null) {
             // case variable%TYPE
-            String idName = ctx.identifier().getText().toUpperCase();
-            idName = Misc.peelId(idName);
+            String idName = Misc.getNormalizedText(ctx.identifier());
 
             DeclId declId = symbolStack.getDeclId(idName);
             assert (declId != null) && (declId instanceof DeclVarLike):
@@ -127,10 +124,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             return ((DeclVarLike) declId).typeSpec();
         } else {
             // case table.column%TYPE
-            String table = ctx.table_name().getText().toUpperCase();
-            table = Misc.peelId(table);
-            String column = ctx.identifier().getText().toUpperCase();
-            column = Misc.peelId(column);
+            String table = Misc.getNormalizedText(ctx.table_name());
+            String column = Misc.getNormalizedText(ctx.identifier());
 
             return new TypeSpecPercent(table, column);
         }
@@ -163,8 +158,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public TypeSpecSimple visitSimple_type(Simple_typeContext ctx) {
-        String pcsType = ctx.getText().toUpperCase();
-        pcsType = Misc.peelId(pcsType);
+        String pcsType = Misc.getNormalizedText(ctx);
         String javaType = getJavaType(pcsType);
         assert javaType != null;
         return new TypeSpecSimple(javaType);
@@ -496,12 +490,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public Expr visitField_exp(Field_expContext ctx) {
 
-        String name = ctx.record.getText().toUpperCase();
-        name = Misc.peelId(name);
+        String name = Misc.getNormalizedText(ctx.record);
         DeclId decl = symbolStack.getDeclId(name);
 
-        String fieldName = ctx.field.getText().toUpperCase();
-        fieldName = Misc.peelId(fieldName);
+        String fieldName = Misc.getNormalizedText(ctx.field);
 
         if (decl == null) {
             // NOTE: decl can be null if name is a serial
@@ -536,8 +528,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public Expr visitFunction_call(Function_callContext ctx) {
 
-        String name = ctx.identifier().getText().toUpperCase();
-        name = Misc.peelId(name);
+        String name = Misc.getNormalizedText(ctx.identifier());
         NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
 
         DeclFunc decl = symbolStack.getDeclFunc(name);
@@ -658,8 +649,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitCursor_attr_exp(Cursor_attr_expContext ctx) {
 
-        String name = ctx.cursor_exp().identifier().getText().toUpperCase();
-        name = Misc.peelId(name);
+        String name = Misc.getNormalizedText(ctx.cursor_exp().identifier());
 
         DeclId decl = symbolStack.getDeclId(name);
         assert decl != null : ("undeclared id " + name);
@@ -751,8 +741,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitConstant_declaration(Constant_declarationContext ctx) {
 
-        String name = ctx.identifier().getText().toUpperCase();
-        name = Misc.peelId(name);
+        String name = Misc.getNormalizedText(ctx.identifier());
         TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
         Expr val = visitDefault_value_part(ctx.default_value_part());
         if (val instanceof ExprCast) {
@@ -768,8 +757,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitException_declaration(Exception_declarationContext ctx) {
 
-        String name = ctx.identifier().getText().toUpperCase();
-        name = Misc.peelId(name);
+        String name = Misc.getNormalizedText(ctx.identifier());
 
         DeclException ret = new DeclException(name);
         symbolStack.putDecl(name, ret);
@@ -780,8 +768,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitVariable_declaration(Variable_declarationContext ctx) {
 
-        String name = ctx.identifier().getText().toUpperCase();
-        name = Misc.peelId(name);
+        String name = Misc.getNormalizedText(ctx.identifier());
         TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
         Expr val = visitDefault_value_part(ctx.default_value_part());
         if (val instanceof ExprCast) {
@@ -797,8 +784,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitCursor_definition(Cursor_definitionContext ctx) {
 
-        String name = ctx.identifier().getText().toUpperCase();
-        name = Misc.peelId(name);
+        String name = Misc.getNormalizedText(ctx.identifier());
 
         symbolStack.pushSymbolTable("cursor_def", null);
 
@@ -821,8 +807,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     private void previsitRoutine_definition(Routine_definitionContext ctx) {
 
-        String name = ctx.identifier().getText().toUpperCase();
-        name = Misc.peelId(name);
+        String name = Misc.getNormalizedText(ctx.identifier());
 
         // in order not to corrupt the current symbol table with the parameters
         symbolStack.pushSymbolTable("temp", null);
@@ -848,8 +833,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public DeclRoutine visitRoutine_definition(Routine_definitionContext ctx) {
 
-        String name = ctx.identifier().getText().toUpperCase();
-        name = Misc.peelId(name);
+        String name = Misc.getNormalizedText(ctx.identifier());
 
         boolean isFunction = (ctx.PROCEDURE() == null);
 
@@ -941,8 +925,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitIdentifier(IdentifierContext ctx) {
-        String name = ctx.getText().toUpperCase();
-        name = Misc.peelId(name);
+        String name = Misc.getNormalizedText(ctx);
 
         DeclId declId =
                 symbolStack.getDeclId(name); // NOTE: declId can be legally null if name is a serial
@@ -978,7 +961,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (lnc == null) {
             declLabel = null;
         } else {
-            String label = Misc.peelId(lnc.getText().toUpperCase());
+            String label = Misc.getNormalizedText(lnc);
             declLabel = symbolStack.getDeclLabel(label);
             assert declLabel != null : "undeclared label " + label;
         }
@@ -999,7 +982,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (lnc == null) {
             declLabel = null;
         } else {
-            String label = Misc.peelId(lnc.getText().toUpperCase());
+            String label = Misc.getNormalizedText(lnc);
             declLabel = symbolStack.getDeclLabel(label);
             assert declLabel != null : "undeclared label " + label;
         }
@@ -1061,8 +1044,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             return null;
         }
 
-        String name = ctx.label_name().getText().toUpperCase();
-        name = Misc.peelId(name);
+        String name = Misc.getNormalizedText(ctx.label_name());
 
         return new DeclLabel(name);
     }
@@ -1091,8 +1073,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.pushSymbolTable("for_iter", null);
         int level = symbolStack.getCurrentScope().level;
 
-        String iter = ctx.iterator().index_name().getText().toUpperCase();
-        iter = Misc.peelId(iter);
+        String iter = Misc.getNormalizedText(ctx.iterator().index_name());
 
         boolean reverse = (ctx.iterator().REVERSE() != null);
 
@@ -1142,8 +1123,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         connectionRequired = true;
         addToImports("java.sql.*");
 
-        String cursorName = ctx.for_cursor().cursor_exp().identifier().getText().toUpperCase();
-        cursorName = Misc.peelId(cursorName);
+        String cursorName = Misc.getNormalizedText(ctx.for_cursor().cursor_exp().identifier());
 
         DeclId d = symbolStack.getDeclId(cursorName);
         assert d != null : ("undeclared id " + cursorName);
@@ -1182,8 +1162,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.pushSymbolTable("for_cursor_loop", null);
         int level = symbolStack.getCurrentScope().level;
 
-        String record = ctx.for_cursor().record_name().getText().toUpperCase();
-        record = Misc.peelId(record);
+        String record = Misc.getNormalizedText(ctx.for_cursor().record_name());
 
         String label;
         DeclLabel declLabel = visitLabel_declaration(ctx.label_declaration());
@@ -1214,8 +1193,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.pushSymbolTable("for_s_sql_loop", null);
         int level = symbolStack.getCurrentScope().level;
 
-        String record = ctx.for_static_sql().record_name().getText().toUpperCase();
-        record = Misc.peelId(record);
+        String record = Misc.getNormalizedText(ctx.for_static_sql().record_name());
 
         TempSqlStringifier stringifier = new TempSqlStringifier(symbolStack);
         new ParseTreeWalker().walk(stringifier, ctx.for_static_sql().s_select_statement());
@@ -1251,8 +1229,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.pushSymbolTable("for_d_sql_loop", null);
         int level = symbolStack.getCurrentScope().level;
 
-        String record = ctx.for_dynamic_sql().record_name().getText().toUpperCase();
-        record = Misc.peelId(record);
+        String record = Misc.getNormalizedText(ctx.for_dynamic_sql().record_name());
 
         Expr dynSql = visitExpression(ctx.for_dynamic_sql().dyn_sql(), "String");
 
@@ -1302,8 +1279,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             return null;
         }
 
-        String name = ctx.identifier().getText().toUpperCase();
-        name = Misc.peelId(name);
+        String name = Misc.getNormalizedText(ctx.identifier());
 
         DeclException decl = symbolStack.getDeclException(name);
         assert decl != null : ("undeclared exception: " + name);
@@ -1413,8 +1389,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitClose_statement(Close_statementContext ctx) {
 
-        String name = ctx.cursor_exp().identifier().getText().toUpperCase();
-        name = Misc.peelId(name);
+        String name = Misc.getNormalizedText(ctx.cursor_exp().identifier());
 
         DeclId decl = symbolStack.getDeclId(name);
         assert decl != null : ("undeclared id " + name);
@@ -1431,8 +1406,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         connectionRequired = true;
         addToImports("java.sql.*");
 
-        String name = ctx.cursor_exp().identifier().getText().toUpperCase();
-        name = Misc.peelId(name);
+        String name = Misc.getNormalizedText(ctx.cursor_exp().identifier());
 
         DeclId d = symbolStack.getDeclId(name);
         assert d != null : ("undeclared id " + name);
@@ -1489,8 +1463,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitFetch_statement(Fetch_statementContext ctx) {
 
-        String name = ctx.cursor_exp().identifier().getText().toUpperCase();
-        name = Misc.peelId(name);
+        String name = Misc.getNormalizedText(ctx.cursor_exp().identifier());
 
         DeclId decl = symbolStack.getDeclId(name);
         assert decl != null : ("undeclared id " + name);
@@ -1500,8 +1473,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         NodeList<ExprId> intoVars = new NodeList<>();
         for (Variable_nameContext v : ctx.variable_name()) {
-            String varName = v.identifier().getText().toUpperCase();
-            varName = Misc.peelId(varName);
+            String varName = Misc.getNormalizedText(v.identifier());
 
             DeclId varDecl = symbolStack.getDeclId(varName);
             assert varDecl != null : ("undeclared id " + name);
@@ -1518,8 +1490,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         connectionRequired = true;
         addToImports("java.sql.*");
 
-        String name = ctx.variable_name().identifier().getText().toUpperCase();
-        name = Misc.peelId(name);
+        String name = Misc.getNormalizedText(ctx.variable_name().identifier());
 
         DeclId decl = symbolStack.getDeclId(name);
         assert decl != null : ("undeclared id " + name);
@@ -1553,8 +1524,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitProcedure_call(Procedure_callContext ctx) {
 
-        String name = ctx.routine_name().getText().toUpperCase();
-        name = Misc.peelId(name);
+        String name = Misc.getNormalizedText(ctx.routine_name());
         NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
 
         DeclProc decl = symbolStack.getDeclProc(name);

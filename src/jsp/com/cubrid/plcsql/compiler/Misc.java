@@ -40,6 +40,10 @@ public class Misc {
         PROC,
     }
 
+    public static String getNormalizedText(ParserRuleContext ctx) {
+        return peelId(ctx.getText().toUpperCase());
+    }
+
     public static void printIndent(PrintStream out, int indents) {
 
         for (int i = 0; i < indents; i++) {
