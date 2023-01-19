@@ -111,9 +111,10 @@ workflows:
           requires:
             - build
 
+      - build_ol
       - test_medium_ol:
           requires:
-            - build
+            - build_ol
       - test_sql_ol:
           requires:
-            - build
+            - build_ol
