@@ -11217,6 +11217,7 @@ pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
   pt_init_assignments_helper (parser, &ea, assignments);
   for (idx = 0; idx < assigns_count && error == NO_ERROR; idx += multi_assign_cnt)
     {
+      multi_assign_cnt = 1;
       assign = &assigns[idx];
       cls = assign->cls_info;
       if (cls == NULL)
@@ -11234,7 +11235,6 @@ pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
 
       pt_get_next_assignment (&ea);
       rhs = ea.rhs;
-      multi_assign_cnt = 1;
       if (ea.is_n_column)
 	{
 	  while (pt_get_next_assignment (&ea) && rhs == ea.rhs)
