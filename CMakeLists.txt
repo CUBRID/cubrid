@@ -1057,6 +1057,7 @@ else()
   set(LZ4_INCLUDES ${CMAKE_BINARY_DIR}/external/Source/lz4/lib)
   set(LZ4_LIBS ${CMAKE_BINARY_DIR}/external/Source/lz4/lib/liblz4.a)
 endif()
+list(APPEND EP_TARGETS ${LZ4_TARGET})
 list(APPEND EP_LIBS ${LZ4_LIBS})
 list(APPEND EP_INCLUDES ${LZ4_INCLUDES})
 
