@@ -153,15 +153,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public TypeSpecSimple visitString_type(String_typeContext ctx) {
         // ignore length for now
-        return new TypeSpecSimple("String");
+        return TypeSpecSimple.of("java.lang.String");
     }
 
     @Override
     public TypeSpecSimple visitSimple_type(Simple_typeContext ctx) {
         String pcsType = Misc.getNormalizedText(ctx);
-        String javaType = getJavaType(pcsType);
-        assert javaType != null;
-        return new TypeSpecSimple(javaType);
+        return TypeSpecSimple.of(getJavaType(pcsType));
     }
 
     @Override
@@ -1735,28 +1733,20 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     private boolean connectionRequired = false; // TODO: temporary
 
     private String getJavaType(String pcsType) {
-        String val = pcsToJavaTypeMap.get(pcsType);
-        assert val != null : ("invalid type name " + pcsType);
+        String javaType = pcsToJavaTypeMap.get(pcsType);
+        assert javaType != null : ("invalid type name " + pcsType);
 
-        String[] split = val.split("\\.");
-        if ("Query".equals(val)) {
+        if ("com.cubrid.plcsql.predefined.sp.SpLib.Query".equals(javaType)) {
             // no need to import Cursor now   TODO: remove this case later
-        } else if (val.startsWith("java.lang.") && split.length == 3) {
+        } else if (javaType.startsWith("java.lang.") && javaType.lastIndexOf('.') == 9) {  // 9:the index of the second '.'
             // no need to import java.lang.*
         } else {
             // if it is not in the java.lang package
-            addToImports(val);
+            addToImports(javaType);
         }
 
-        return split[split.length - 1];
+        return javaType;
     }
-
-    /*
-    private Expr
-    visitExpression(ParserRuleContext ctx) {
-        return visitExpression(ctx, null);
-    }
-     */
 
     private Expr visitExpression(ParserRuleContext ctx, String targetType) {
         if (ctx == null) {
@@ -1800,17 +1790,19 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         pcsToJavaTypeMap.put("TIME", "java.time.LocalTime");
         pcsToJavaTypeMap.put("TIMESTAMP", "java.time.ZonedDateTime");
         pcsToJavaTypeMap.put("DATETIME", "java.time.LocalDateTime");
+
         /* TODO: restore the following four lines
         pcsToJavaTypeMap.put("TIMESTAMPTZ", "java.time.ZonedDateTime");
         pcsToJavaTypeMap.put("TIMESTAMPLTZ", "java.time.ZonedDateTime");
         pcsToJavaTypeMap.put("DATETIMETZ", "java.time.ZonedDateTime");
         pcsToJavaTypeMap.put("DATETIMELTZ", "java.time.ZonedDateTime");
          */
+
         pcsToJavaTypeMap.put("SET", "java.util.Set");
         pcsToJavaTypeMap.put("MULTISET", "org.apache.commons.collections4.MultiSet");
         pcsToJavaTypeMap.put("LIST", "java.util.List");
         pcsToJavaTypeMap.put("SEQUENCE", "java.util.List");
-        pcsToJavaTypeMap.put("SYS_REFCURSOR", "Query");
+        pcsToJavaTypeMap.put("SYS_REFCURSOR", "com.cubrid.plcsql.predefined.sp.SpLib.Query");
     }
 
     private static boolean isAssignableTo(Expr expr) {

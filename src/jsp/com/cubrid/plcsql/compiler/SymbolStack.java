@@ -97,9 +97,9 @@ public class SymbolStack {
                             params = new NodeList<>();
                             int i = 0;
                             for (Class pt: paramTypes) {
-                                String typeName = pt.getName();
+                                String typeName = pt.getTypeName();
                                 System.out.println("  " + typeName);
-                                DeclParamIn p = new DeclParamIn("p" + i, new TypeSpecSimple(typeName));
+                                DeclParamIn p = new DeclParamIn("p" + i, TypeSpecSimple.of(typeName));
                                 params.addNode(p);
                             }
                         }
@@ -107,7 +107,7 @@ public class SymbolStack {
                         // return type
                         String typeName = m.getReturnType().getName();
                         System.out.println("  =>" + typeName);
-                        TypeSpec retType = new TypeSpecSimple(typeName);
+                        TypeSpec retType = TypeSpecSimple.of(typeName);
 
                         // add op
                         DeclFunc op = new DeclFunc(name, params, retType, null, null);
@@ -128,22 +128,19 @@ public class SymbolStack {
                     new DeclProc(
                             "PUT_LINE",
                             new NodeList<DeclParam>()
-                                    .addNode(new DeclParamIn("s", new TypeSpecSimple("Object"))),
+                                    .addNode(new DeclParamIn("s", TypeSpecSimple.of("java.lang.Object"))),
                             null,
                             null);
             putDeclTo(predefinedSymbols, "PUT_LINE", dp);
 
             // add constants TODO implement SQLERRM and SQLCODE properly
-            DeclConst dc = new DeclConst("SQLERRM", new TypeSpecSimple("String"), ExprNull.instance());
+            DeclConst dc = new DeclConst("SQLERRM", TypeSpecSimple.of("java.lang.String"), ExprNull.instance());
             putDeclTo(predefinedSymbols, "SQLERRM", dc);
 
-            dc = new DeclConst("SQLCODE", new TypeSpecSimple("Integer"), ExprNull.instance());
+            dc = new DeclConst("SQLCODE", TypeSpecSimple.of("java.lang.Integer"), ExprNull.instance());
             putDeclTo(predefinedSymbols, "SQLCODE", dc);
 
-            dc = new DeclConst("SQL", new TypeSpecSimple("ResultSet"), ExprNull.instance()); // TODO: ResultSet?
-            putDeclTo(predefinedSymbols, "SQL", dc);
-
-            dc = new DeclConst("SYSDATE", new TypeSpecSimple("LocalDate"), ExprNull.instance());
+            dc = new DeclConst("SYSDATE", TypeSpecSimple.of("java.time.LocalDate"), ExprNull.instance());
             putDeclTo(predefinedSymbols, "SYSDATE", dc);
         }
     }

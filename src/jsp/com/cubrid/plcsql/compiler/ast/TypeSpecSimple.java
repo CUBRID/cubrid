@@ -30,9 +30,59 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class TypeSpecSimple extends TypeSpec {
+import com.cubrid.plcsql.compiler.Misc;
 
-    public TypeSpecSimple(String name) {
-        super(name);
+import java.util.Map;
+import java.util.HashMap;
+
+public class TypeSpecSimple extends TypeSpec {
+    public final String fullJavaType;
+
+    public static TypeSpecSimple of(String s) {
+        TypeSpecSimple ret = singletons.get(s);
+        assert ret != null : "wrong java type " + s;
+        return ret;
+    }
+
+    private TypeSpecSimple(String fullJavaType) {
+        super(getSimpleName(fullJavaType));
+        this.fullJavaType = fullJavaType;
+    }
+
+    private static String getSimpleName(String fullJavaType) {
+        String[] split = fullJavaType.split("\\.");
+        assert split.length > 2;
+        return split[split.length - 1];
+    }
+
+    private static final String[] javaTypes = new String[] {
+        "java.lang.Object",
+        "java.lang.Object[]",
+
+        "java.lang.Boolean",
+        "java.lang.String",
+        "java.math.BigDecimal",
+        "java.lang.Short",
+        "java.lang.Integer",
+        "java.lang.Long",
+        "java.lang.Float",
+        "java.lang.Double",
+        "java.time.LocalDate",
+        "java.time.LocalTime",
+        "java.time.ZonedDateTime",
+        "java.time.LocalDateTime",
+        "java.util.Set",
+        "org.apache.commons.collections4.MultiSet",
+        "java.util.List",
+        "com.cubrid.plcsql.predefined.sp.SpLib.Query"
+        //"java.time.ZonedDateTime",    TODO: restore this line with timezoned date/time types
+    };
+
+    private static final Map<String, TypeSpecSimple> singletons = new HashMap<>();
+    static {
+        for (String jt: javaTypes) {
+            TypeSpecSimple r = singletons.put(jt, new TypeSpecSimple(jt));
+            assert r == null;   // no duplicate
+        }
     }
 }

@@ -44,7 +44,8 @@ public class ExprIn implements Expr {
 
     @Override
     public String toJavaCode() {
-        return tmpl.replace("  %'TARGET'%", Misc.indentLines(target.toJavaCode(), 1))
+        return tmpl
+                .replace("  %'TARGET'%", Misc.indentLines(target.toJavaCode(), 1))
                 .replace("  %'IN-ELEMENTS'%", Misc.indentLines(inElements.toJavaCode(",\n"), 1));
     }
 
@@ -52,6 +53,9 @@ public class ExprIn implements Expr {
     // Private
     // --------------------------------------------------
 
-    private static final String tmpl =
-            Misc.combineLines("opIn(", "  %'TARGET'%,", "  %'IN-ELEMENTS'%", ")");
+    private static final String tmpl = Misc.combineLines(
+        "opIn(",
+        "  %'TARGET'%,",
+        "  %'IN-ELEMENTS'%",
+        ")");
 }
