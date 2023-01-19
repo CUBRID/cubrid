@@ -79,7 +79,11 @@ SET_SOURCE_FILES_PROPERTIES(
   PROPERTIES LANGUAGE CXX
   )
 if(WIN32)
-  list(APPEND PLCSQL_SOURCES)
+  list(APPEND PLCSQL_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
+  SET_SOURCE_FILES_PROPERTIES(
+    ${BASE_DIR}/cubrid_getopt_long.c
+    PROPERTIES LANGUAGE CXX
+  )
 endif(WIN32)
 
 add_executable(plcsql_helper ${PLCSQL_SOURCES})
