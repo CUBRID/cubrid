@@ -10789,8 +10789,8 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
       else
 	{
-          snl->local_cnt++;
-          return node;
+	  snl->local_cnt++;
+	  return node;
 	}
     }
 
@@ -10798,16 +10798,16 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
     {
       name_ptr = (char *) node->info.spec.remote_server_name->info.name.original;
       if (node->info.spec.remote_server_name->next)
-        {
-          owner_ptr = (char *) node->info.spec.remote_server_name->next->info.name.original;
-        }
+	{
+	  owner_ptr = (char *) node->info.spec.remote_server_name->next->info.name.original;
+	}
     }
   else
     {
       name_ptr = (char *) node->info.spec.derived_table->info.dblink_table.conn->info.name.original;
       if (node->info.spec.derived_table->info.dblink_table.owner_name)
 	{
-          owner_ptr = (char *) node->info.spec.derived_table->info.dblink_table.owner_name->info.name.original;
+	  owner_ptr = (char *) node->info.spec.derived_table->info.dblink_table.owner_name->info.name.original;
 	}
     }
 
@@ -11023,7 +11023,8 @@ pt_init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE
 
       for (idx = 0; idx < upd_cls_cnt; idx++)
 	{
-	  if (cls_info[idx].spec->info.spec.range_var || cls_info[idx].spec->info.spec.entity_name->node_type == PT_NAME)
+	  if (cls_info[idx].spec->info.spec.range_var
+	      || cls_info[idx].spec->info.spec.entity_name->node_type == PT_NAME)
 	    {
 	      tbl_spec = cls_info[idx].spec;
 	    }
@@ -11031,39 +11032,40 @@ pt_init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE
 	    {
 	      tbl_spec = cls_info[idx].spec->info.spec.entity_name;
 	    }
+
+	  lhs_name = (char *) ea.lhs->info.name.original;
 	  while (tbl_spec && !found)
 	    {
 	      tbl_name =
-	        (char *) ((cls_info[idx].spec->info.spec.range_var) ? cls_info[idx].spec->info.spec.range_var->info.name.
-		          original : cls_info[idx].spec->info.spec.entity_name->info.name.original);
-	      if (cls_info[idx].spec->info.spec.range_var)
-	        {
-	          tbl_alias = (char *) cls_info[idx].spec->info.spec.range_var->info.name.original;
-	        }
+		(tbl_spec->info.spec.range_var) ? (char *) tbl_spec->info.spec.range_var->info.name.original
+		: (char *) tbl_spec->info.spec.entity_name->info.name.original;
+	      if (tbl_spec->info.spec.range_var)
+		{
+		  tbl_alias = (char *) tbl_spec->info.spec.range_var->info.name.original;
+		}
 
-	      lhs_name = (char *) ea.lhs->info.name.original;
-
+	      assign->cls_info = NULL;
 	      if (strcmp (tbl_name, lhs_name) == 0 || (tbl_alias && strcmp (tbl_alias, lhs_name) == 0))
-	        {
-	          assign->cls_info = &cls_info[idx];
-	          /* link assignment to its class info */
-	          if (cls_info[idx].first_assign)
+		{
+		  assign->cls_info = &cls_info[idx];
+		  /* link assignment to its class info */
+		  if (cls_info[idx].first_assign)
 		    {
 		      assign2 = cls_info[idx].first_assign;
 		      while (assign2->next)
-		        {
-		          assign2 = assign2->next;
-		        }
+			{
+			  assign2 = assign2->next;
+			}
 		      assign2->next = assign;
 		    }
-	          else
+		  else
 		    {
 		      cls_info[idx].first_assign = assign;
 		    }
-	          assign->next = NULL;
+		  assign->next = NULL;
 		  found = true;
-	          break;
-	        }
+		  break;
+		}
 	      tbl_spec = tbl_spec->next;
 	    }
 	}
@@ -11161,8 +11163,8 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
 	{
 	  if (spec->info.spec.remote_server_name)
 	    {
-	      if (spec->info.spec.range_var 
-		   && strcmp (spec->info.spec.range_var->info.name.original, del->info.name.original) == 0)
+	      if (spec->info.spec.range_var
+		  && strcmp (spec->info.spec.range_var->info.name.original, del->info.name.original) == 0)
 		{
 		  remote_del++;
 		  break;
@@ -11171,7 +11173,7 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
 	  else
 	    {
 	      if (spec->info.spec.range_var
-		   && strcmp (spec->info.spec.range_var->info.name.original, del->info.name.original) == 0)
+		  && strcmp (spec->info.spec.range_var->info.name.original, del->info.name.original) == 0)
 		{
 		  local_del++;
 		  break;
@@ -11179,11 +11181,11 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
 	    }
 	}
 
-	if (spec == NULL)
-	  {
-	    /* not matched: error case */
-	    local_del++;
-	  }
+      if (spec == NULL)
+	{
+	  /* not matched: error case */
+	  local_del++;
+	}
 
       del = del->next;
     }
