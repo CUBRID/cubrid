@@ -11015,40 +11015,56 @@ pt_init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE
   pt_init_assignments_helper (parser, &ea, assignments);
   for (assign = assigns; pt_get_next_assignment (&ea); assign++)
     {
+      PT_NODE *tbl_spec;
       char *tbl_name;
       char *tbl_alias = NULL;
       char *lhs_name;
+      bool found = false;
+
       for (idx = 0; idx < upd_cls_cnt; idx++)
 	{
-	  tbl_name =
-	    (char *) ((cls_info[idx].spec->info.spec.range_var) ? cls_info[idx].spec->info.spec.range_var->info.name.
-		      original : cls_info[idx].spec->info.spec.entity_name->info.name.original);
-	  if (cls_info[idx].spec->info.spec.range_var)
+	  if (cls_info[idx].spec->info.spec.range_var || cls_info[idx].spec->info.spec.entity_name->node_type == PT_NAME)
 	    {
-	      tbl_alias = (char *) cls_info[idx].spec->info.spec.range_var->info.name.original;
+	      tbl_spec = cls_info[idx].spec;
 	    }
-
-	  lhs_name = (char *) ea.lhs->info.name.original;
-
-	  if (strcmp (tbl_name, lhs_name) == 0 || (tbl_alias && strcmp (tbl_alias, lhs_name) == 0))
+	  else if (cls_info[idx].spec->info.spec.entity_name->node_type == PT_SPEC)
 	    {
-	      assign->cls_info = &cls_info[idx];
-	      /* link assignment to its class info */
-	      if (cls_info[idx].first_assign)
-		{
-		  assign2 = cls_info[idx].first_assign;
-		  while (assign2->next)
+	      tbl_spec = cls_info[idx].spec->info.spec.entity_name;
+	    }
+	  while (tbl_spec && !found)
+	    {
+	      tbl_name =
+	        (char *) ((cls_info[idx].spec->info.spec.range_var) ? cls_info[idx].spec->info.spec.range_var->info.name.
+		          original : cls_info[idx].spec->info.spec.entity_name->info.name.original);
+	      if (cls_info[idx].spec->info.spec.range_var)
+	        {
+	          tbl_alias = (char *) cls_info[idx].spec->info.spec.range_var->info.name.original;
+	        }
+
+	      lhs_name = (char *) ea.lhs->info.name.original;
+
+	      if (strcmp (tbl_name, lhs_name) == 0 || (tbl_alias && strcmp (tbl_alias, lhs_name) == 0))
+	        {
+	          assign->cls_info = &cls_info[idx];
+	          /* link assignment to its class info */
+	          if (cls_info[idx].first_assign)
 		    {
-		      assign2 = assign2->next;
+		      assign2 = cls_info[idx].first_assign;
+		      while (assign2->next)
+		        {
+		          assign2 = assign2->next;
+		        }
+		      assign2->next = assign;
 		    }
-		  assign2->next = assign;
-		}
-	      else
-		{
-		  cls_info[idx].first_assign = assign;
-		}
-	      assign->next = NULL;
-	      break;
+	          else
+		    {
+		      cls_info[idx].first_assign = assign;
+		    }
+	          assign->next = NULL;
+		  found = true;
+	          break;
+	        }
+	      tbl_spec = tbl_spec->next;
 	    }
 	}
     }
