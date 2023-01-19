@@ -4573,7 +4573,6 @@ db_string_rlike (const DB_VALUE * src, const DB_VALUE * pattern, const DB_VALUE 
 cleanup:
   if (error_status != NO_ERROR)
     {
-      *result = V_ERROR;
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  /* we must not return an error code */
@@ -4583,7 +4582,7 @@ cleanup:
 	}
       else
 	{
-	  error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
+	  (error_status == ER_QSTR_BAD_SRC_CODESET) ? error_status = NO_ERROR : *result = V_ERROR;
 	}
     }
 
@@ -4973,15 +4972,16 @@ db_string_regexp_instr (DB_VALUE * result, DB_VALUE * args[], int const num_args
 exit:
   if (error_status != NO_ERROR)
     {
-      db_make_null (result);
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  /* we must not return an error code */
+	  db_make_null (result);
 	  er_clear ();
 	  error_status = NO_ERROR;
 	}
       else
 	{
+	  db_make_int (result, 0);
 	  error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	}
     }
@@ -5146,6 +5146,7 @@ exit:
 	}
       else
 	{
+	  db_make_int (result, 0);
 	  error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	}
     }
