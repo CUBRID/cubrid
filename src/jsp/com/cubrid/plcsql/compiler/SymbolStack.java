@@ -86,7 +86,7 @@ public class SymbolStack {
                 if ((m.getModifiers() & Modifier.STATIC) > 0) {
                     String name = m.getName();
                     if (name.startsWith("op")) {
-                        System.out.println("temp: " + m.getName());
+                        //System.out.println("temp: " + m.getName());
 
                         // parameter types
                         Class[] paramTypes = m.getParameterTypes();
@@ -98,7 +98,7 @@ public class SymbolStack {
                             int i = 0;
                             for (Class pt: paramTypes) {
                                 String typeName = pt.getTypeName();
-                                System.out.println("  " + typeName);
+                                //System.out.println("  " + typeName);
                                 DeclParamIn p = new DeclParamIn("p" + i, TypeSpecSimple.of(typeName));
                                 params.addNode(p);
                             }
@@ -106,7 +106,7 @@ public class SymbolStack {
 
                         // return type
                         String typeName = m.getReturnType().getName();
-                        System.out.println("  =>" + typeName);
+                        //System.out.println("  =>" + typeName);
                         TypeSpec retType = TypeSpecSimple.of(typeName);
 
                         // add op

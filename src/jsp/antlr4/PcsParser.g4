@@ -374,7 +374,7 @@ case_expression
     ;
 
 simple_case_expression
-    : CASE expression simple_case_expression_when_part+ case_expression_else_part? END CASE?
+    : CASE expression simple_case_expression_when_part+ case_expression_else_part? END
     ;
 
 simple_case_expression_when_part
@@ -382,7 +382,7 @@ simple_case_expression_when_part
     ;
 
 searched_case_expression
-    : CASE searched_case_expression_when_part+ case_expression_else_part? END CASE?
+    : CASE searched_case_expression_when_part+ case_expression_else_part? END
     ;
 
 searched_case_expression_when_part
@@ -411,7 +411,7 @@ err_msg
     ;
 
 simple_case_statement
-    : CASE expression simple_case_statement_when_part+  case_statement_else_part? END CASE?
+    : CASE expression simple_case_statement_when_part+  case_statement_else_part? END CASE
     ;
 
 simple_case_statement_when_part
@@ -419,7 +419,7 @@ simple_case_statement_when_part
     ;
 
 searched_case_statement
-    : CASE searched_case_statement_when_part+ case_statement_else_part? END CASE?
+    : CASE searched_case_statement_when_part+ case_statement_else_part? END CASE
     ;
 
 searched_case_statement_when_part
