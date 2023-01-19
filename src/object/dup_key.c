@@ -336,7 +336,7 @@ dk_alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_IN
 {
   int func_no_args = 0;
 
-  assert (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != SM_CONSTRAINT_FOREIGN_KEY);
+  assert (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != DB_CONSTRAINT_FOREIGN_KEY);
   assert (asc_desc != NULL);
   assert (reserved_index_col_pos != NULL);
 
@@ -491,8 +491,9 @@ char *
 dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupkey_hash_level)
 {
   int len = 0;
-  char *pzstr_mode[DUP_MODE_LAST - 1] = {
-    "" "OID",
+  const char *pzstr_mode[DUP_MODE_LAST] = {
+    "",
+    "OID",
     "PAGEID",
     "SLOTID",
     "VOLID"
@@ -511,11 +512,12 @@ dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupk
 
   if (dupkey_hash_level == OVFL_LEVEL_MIN)
     {
-      len = snprintf (buf, buf_size, " deduplicate with %s", pzstr_mode[dupkey_mode]);
+      len = snprintf (buf, buf_size, " deduplicate with %s", (char *) pzstr_mode[dupkey_mode]);
     }
   else
     {
-      len = snprintf (buf, buf_size, " deduplicate with %s level %d", pzstr_mode[dupkey_mode], dupkey_hash_level);
+      len =
+	snprintf (buf, buf_size, " deduplicate with %s level %d", (char *) pzstr_mode[dupkey_mode], dupkey_hash_level);
     }
 
   assert (len < buf_size);
