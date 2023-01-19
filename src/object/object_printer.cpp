@@ -645,7 +645,6 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
   const int *prefix_length;
   int k, n_attrs = 0;
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-  bool is_check_reserved_col = false;
   char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
 #endif
 
@@ -761,7 +760,6 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	  int mode = GET_RESERVED_INDEX_ATTR_MODE ((*attribute_p)->id);
 	  int level = GET_RESERVED_INDEX_ATTR_LEVEL ((*attribute_p)->id);
 	  dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), mode, level);
-	  is_check_reserved_col = true;
 	  break;
 	}
 #endif
@@ -797,25 +795,6 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
   if (reserved_col_buf[0])
     {
       m_buf ("%s", reserved_col_buf);
-    }
-  else if (!is_check_reserved_col && prm_get_bool_value (PRM_ID_AUTO_DUP_MODE))
-    {
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
-      if (constraint.type == SM_CONSTRAINT_FOREIGN_KEY)
-	{
-	  // ctshim, TODO: check FK!
-	}
-#endif
-
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (constraint.type) == false
-#if !defined(SUPPORT_KEY_DUP_LEVEL_FK)
-	  && (constraint.type != SM_CONSTRAINT_FOREIGN_KEY)
-#endif
-	 )
-	{
-	  dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), DUP_MODE_NONE, 0);
-	  m_buf ("%s", reserved_col_buf);
-	}
     }
 #endif
 

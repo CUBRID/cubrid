@@ -39,12 +39,6 @@
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 
-#if !defined(SERVER_MODE)
-bool is_support_auto_dup_mode = DUP_MODE_AUTO;
-int dup_mode_defalut = DUP_MODE_VALUE_DEFAULT;
-int dup_level_default = DUP_LEVEL_VALUE_DEFAULT;
-#endif
-
 static DB_DOMAIN *
 get_reserved_index_attr_domain_type (int mode, int level)
 {
@@ -263,10 +257,10 @@ dk_sm_attribute_initialized ()
   SM_ATTRIBUTE *att;
   DB_DOMAIN *domain = NULL;
 
-  assert (prm_get_integer_value (PRM_ID_DUP_MODE) > DUP_MODE_NONE
-	  && prm_get_integer_value (PRM_ID_DUP_MODE) < DUP_MODE_LAST);
-  assert (prm_get_integer_value (PRM_ID_DUP_LEVEL) >= OVFL_LEVEL_MIN
-	  && prm_get_integer_value (PRM_ID_DUP_LEVEL) <= OVFL_LEVEL_MAX);
+  assert (prm_get_integer_value (PRM_ID_AUTO_DEDUP_MODE) >= DUP_MODE_NONE
+	  && prm_get_integer_value (PRM_ID_AUTO_DEDUP_MODE) < DUP_MODE_LAST);
+  assert (prm_get_integer_value (PRM_ID_AUTO_DEDUP_LEVEL) >= OVFL_LEVEL_MIN
+	  && prm_get_integer_value (PRM_ID_AUTO_DEDUP_LEVEL) <= OVFL_LEVEL_MAX);
 
   for (mode = DUP_MODE_OID; mode <= DUP_MODE_VOLID; mode++)
     {
@@ -497,57 +491,31 @@ char *
 dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupkey_hash_level)
 {
   int len = 0;
-  char *str_mode = "";
+  char *pzstr_mode[DUP_MODE_LAST - 1] = {
+    "" "OID",
+    "PAGEID",
+    "SLOTID",
+    "VOLID"
+  };
+
+  assert ((dupkey_mode >= DUP_MODE_OVFL_LEVEL_NOT_SET) && (dupkey_mode < DUP_MODE_LAST));
 
   buf[0] = '\0';
-  if (dupkey_mode == DUP_MODE_OVFL_LEVEL_NOT_SET)
+  if (dupkey_mode <= DUP_MODE_NONE)
     {
-      /* It entered to output an error message due to a parsing error. */
-      assert (dupkey_hash_level == 0);
+      /* case DUP_MODE_OVFL_LEVEL_NOT_SET: 
+       *     It entered to output an error message due to a parsing error. */
+      assert ((dupkey_mode = DUP_MODE_NONE) || (dupkey_mode == DUP_MODE_OVFL_LEVEL_NOT_SET && dupkey_hash_level == 0));
       return buf;
     }
 
-  switch (dupkey_mode)
+  if (dupkey_hash_level == OVFL_LEVEL_MIN)
     {
-    case DUP_MODE_NONE:
-      if (prm_get_bool_value (PRM_ID_AUTO_DUP_MODE))
-	{
-	  len = snprintf (buf, buf_size, "%s", " deduplicate OFF");
-	}
-      assert (len < buf_size);
-      return buf;
-
-    case DUP_MODE_OID:
-      str_mode = " deduplicate with OID";
-      break;
-    case DUP_MODE_PAGEID:
-      str_mode = " deduplicate with PAGEID";
-      break;
-    case DUP_MODE_SLOTID:
-      str_mode = " deduplicate with SLOTID";
-      break;
-    case DUP_MODE_VOLID:
-      str_mode = " deduplicate with VOLID";
-      break;
-    default:
-      assert (false);
-    }
-
-  if ((dupkey_mode == prm_get_integer_value (PRM_ID_DUP_MODE))
-      && (dupkey_hash_level == prm_get_integer_value (PRM_ID_DUP_LEVEL)))
-    {
-      if (!prm_get_bool_value (PRM_ID_AUTO_DUP_MODE))
-	{
-	  len = snprintf (buf, buf_size, "%s", " deduplicate ON");
-	}
-    }
-  else if (dupkey_hash_level == prm_get_integer_value (PRM_ID_DUP_LEVEL))
-    {
-      len = snprintf (buf, buf_size, "%s", str_mode);
+      len = snprintf (buf, buf_size, " deduplicate with %s", pzstr_mode[dupkey_mode]);
     }
   else
     {
-      len = snprintf (buf, buf_size, "%s level %d", str_mode, dupkey_hash_level);
+      len = snprintf (buf, buf_size, " deduplicate with %s level %d", pzstr_mode[dupkey_mode], dupkey_hash_level);
     }
 
   assert (len < buf_size);

@@ -21457,14 +21457,6 @@ opt_index_dup_level
 	       { DBG_TRACE_GRAMMAR(opt_index_dup_level, : ); 
                  $$ = DUP_MODE_OVFL_LEVEL_NOT_SET;
                }
-        | DEDUPLICATE_ ON_
-               { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DEDUPLICATE_ ON_ );                  
-                 $$ = prm_get_integer_value (PRM_ID_DUP_MODE) | (prm_get_integer_value (PRM_ID_DUP_LEVEL) << 16); 
-               }
-        | DEDUPLICATE_ OFF_
-               { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DEDUPLICATE_ OFF_ ); 
-                 $$ = DUP_MODE_NONE;
-               }
         | DEDUPLICATE_ WITH index_dup_mode opt_index_level
                { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DEDUPLICATE_ WITH index_dup_mode opt_index_level ); 
                  $$ = $3 | ($4 << 16);
@@ -21482,7 +21474,7 @@ index_dup_mode
 opt_index_level
         : /* empty */
 		{ DBG_TRACE_GRAMMAR(opt_index_level, : );                  
-                  $$ = prm_get_integer_value (PRM_ID_DUP_LEVEL);
+                  $$ = prm_get_integer_value (PRM_ID_AUTO_DEDUP_LEVEL);
                 }
 	| LEVEL UNSIGNED_INTEGER
 		{ DBG_TRACE_GRAMMAR(opt_index_level, | LEVEL UNSIGNED_INTEGER ); 
@@ -27682,23 +27674,17 @@ static void pt_get_dup_mode_level(bool is_rebuild, int mode_level, short* mode, 
            *mode = DUP_MODE_OVFL_LEVEL_NOT_SET;
            *level = 0;
         }
-        else if(prm_get_bool_value (PRM_ID_AUTO_DUP_MODE))
-        {
-           *mode = prm_get_integer_value (PRM_ID_DUP_MODE); 
-           *level = prm_get_integer_value (PRM_ID_DUP_LEVEL);
-        }
         else
         {
-           *mode = DUP_MODE_NONE; 
-           *level = 0;        
+           *mode = prm_get_integer_value (PRM_ID_AUTO_DEDUP_MODE);
+           *level = prm_get_integer_value (PRM_ID_AUTO_DEDUP_LEVEL);
         }
       }
     else
-      {
+     {
         *mode = mode_level & 0x0000FFFF;
         *level = (mode_level >> 16);
-       }
+     }
 }
 #endif
 
-//prm_get_boolean_value (PRM_AUTO_DUP_MODE) 

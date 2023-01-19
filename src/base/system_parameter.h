@@ -468,10 +468,9 @@ enum param_id
   /* change PRM_LAST_ID when adding new system parameters */
 #include "dup_key_def.h"
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-  PRM_ID_AUTO_DUP_MODE,
-  PRM_ID_DUP_MODE,
-  PRM_ID_DUP_LEVEL,
-  PRM_LAST_ID = PRM_ID_DUP_LEVEL
+  PRM_ID_AUTO_DEDUP_MODE,
+  PRM_ID_AUTO_DEDUP_LEVEL,
+  PRM_LAST_ID = PRM_ID_AUTO_DEDUP_LEVEL
 #else
   PRM_LAST_ID = PRM_ID_REGEXP_ENGINE
 #endif
