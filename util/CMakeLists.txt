@@ -70,21 +70,12 @@ add_dependencies(csql cubridsa cubridcs)
 set(PLCSQL_SOURCES
   ${EXECUTABLES_DIR}/plcsql.cpp
   ${EXECUTABLES_DIR}/util_support.c
-  ${BASE_DIR}/porting.c
-  ${BASE_DIR}/cubrid_getopt_long.c
   )
 
 SET_SOURCE_FILES_PROPERTIES(
   ${PLCSQL_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
-if(WIN32)
-  list(APPEND PLCSQL_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
-  SET_SOURCE_FILES_PROPERTIES(
-    ${BASE_DIR}/cubrid_getopt_long.c
-    PROPERTIES LANGUAGE CXX
-  )
-endif(WIN32)
 
 add_executable(plcsql_helper ${PLCSQL_SOURCES})
 target_compile_definitions(plcsql_helper PRIVATE ${COMMON_DEFS})

@@ -21,9 +21,6 @@
  *
  */
 
-#include "config.h"
-#include "porting.h"
-
 #include <cstdlib>
 #include <cstdarg>
 #include <cstring>
@@ -35,14 +32,13 @@
 #include <iterator>
 #include <filesystem>
 
-#include "environment_variable.h"
-#include "utility.h"
-#include "util_support.h"
-#include "cubrid_getopt.h"
-#include "error_manager.h"
 #include "dbi.h"
 #include "db_client_type.hpp"
+#include "error_manager.h"
 #include "network_interface_cl.h"
+#include "porting.h"
+#include "utility.h"
+#include "util_support.h"
 
 namespace fs = std::filesystem;
 

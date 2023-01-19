@@ -450,7 +450,8 @@ extern int flashback_get_loginfo (int trid, char *user, OID * classlist, int num
 				  int *invalid_class_idx);
 
 /* PL/CSQL */
-extern int plcsql_transfer_file (const std::string & input_file, std::string & output_file, std::string & sql);
+EXPORT_IMPORT extern int plcsql_transfer_file (const std::string & input_file, std::string & output_file,
+					       std::string & sql);
 
 
 #endif /* _NETWORK_INTERFACE_CL_H_ */
