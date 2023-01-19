@@ -1197,7 +1197,7 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	  else if (table->node_type == PT_DBLINK_TABLE)
 	    {
 	      assert (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE);
-	      if (table->info.dblink_table.is_name)
+	      if (table->info.dblink_table.is_name && table->info.dblink_table.url == NULL)
 		{
 		  if (pt_resolve_dblink_server_name (parser, table, NULL) != NO_ERROR)
 		    {

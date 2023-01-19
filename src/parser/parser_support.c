@@ -10783,14 +10783,32 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
   if (node->info.spec.remote_server_name == NULL)
     {
-      snl->local_cnt++;
-      return node;
+      if (node->info.spec.derived_table && node->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+	{
+	  /* dblink table */
+	}
+      else
+	{
+          snl->local_cnt++;
+          return node;
+	}
     }
 
-  name_ptr = (char *) node->info.spec.remote_server_name->info.name.original;
-  if (node->info.spec.remote_server_name->next)
+  if (node->info.spec.remote_server_name)
     {
-      owner_ptr = (char *) node->info.spec.remote_server_name->next->info.name.original;
+      name_ptr = (char *) node->info.spec.remote_server_name->info.name.original;
+      if (node->info.spec.remote_server_name->next)
+        {
+          owner_ptr = (char *) node->info.spec.remote_server_name->next->info.name.original;
+        }
+    }
+  else
+    {
+      name_ptr = (char *) node->info.spec.derived_table->info.dblink_table.conn->info.name.original;
+      if (node->info.spec.derived_table->info.dblink_table.owner_name)
+	{
+          owner_ptr = (char *) node->info.spec.derived_table->info.dblink_table.owner_name->info.name.original;
+	}
     }
 
   snl->server_cnt++;
@@ -11095,6 +11113,26 @@ pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sq
 }
 
 static void
+pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text, SERVER_NAME_LIST * snl)
+{
+  PT_NODE *insert, *spec;
+  int remote_ins = 0;
+
+  spec = node->info.insert.spec;
+  if (spec->info.spec.remote_server_name)
+    {
+      remote_ins = 1;
+    }
+
+  if (remote_ins && node->info.insert.value_clauses->info.node_list.list->node_type == PT_SELECT)
+    {
+      pt_convert_dblink_dml_query (parser, node, sql_user_text, /* always 0 */ 0, remote_ins, snl);
+    }
+
+  return;
+}
+
+static void
 pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text, SERVER_NAME_LIST * snl)
 {
   PT_NODE *del, *spec;
@@ -11107,19 +11145,29 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
 	{
 	  if (spec->info.spec.remote_server_name)
 	    {
-	      if (strcmp (spec->info.spec.range_var->info.name.original, del->info.name.original) == 0)
+	      if (spec->info.spec.range_var 
+		   && strcmp (spec->info.spec.range_var->info.name.original, del->info.name.original) == 0)
 		{
 		  remote_del++;
+		  break;
 		}
 	    }
 	  else
 	    {
-	      if (strcmp (spec->info.spec.range_var->info.name.original, del->info.name.original) == 0)
+	      if (spec->info.spec.range_var
+		   && strcmp (spec->info.spec.range_var->info.name.original, del->info.name.original) == 0)
 		{
 		  local_del++;
+		  break;
 		}
 	    }
 	}
+
+	if (spec == NULL)
+	  {
+	    /* not matched: error case */
+	    local_del++;
+	  }
 
       del = del->next;
     }
@@ -11203,10 +11251,16 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
   int tmp_local_cnt = snl->local_cnt;
   int tmp_server_cnt = snl->server_cnt;
 
-  PT_NODE *sel, *spec, *tbl_spec = NULL, *upd_spec;
+  PT_NODE *sel, *spec, *tbl_spec = NULL, *into_spec = NULL, *upd_spec, *server;
 
   switch (node->node_type)
     {
+    case PT_INSERT:
+      into_spec = node->info.insert.spec;
+      assert (sel = node->info.insert.value_clauses->info.node_list.list);
+      assert (sel->node_type == PT_SELECT);
+      upd_spec = sel->info.query.q.select.from;
+      break;
     case PT_DELETE:
       upd_spec = node->info.delete_.spec;
       break;
@@ -11214,6 +11268,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
       upd_spec = node->info.update.spec;
       break;
     case PT_MERGE:
+      into_spec = node->info.merge.into;
       upd_spec = node->info.merge.using_clause;
       break;
     default:
@@ -11256,6 +11311,11 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
 	    }
 	}
       tbl_spec = tbl_spec->next;
+    }
+
+  if (into_spec)
+    {
+      parser_walk_tree (parser, into_spec, pt_get_server_name_list, snl, NULL, NULL);
     }
 
   parser_walk_tree (parser, upd_spec, pt_get_server_name_list, snl, NULL, NULL);
@@ -11317,24 +11377,24 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
       PT_NODE_PRINT_VALUE_TO_TEXT (parser, val);
     }
 
-  PT_NODE *server_spec = upd_spec;
-  PT_NODE *server;
-
-  while (server_spec)
+  if (into_spec)
     {
-      server = server_spec->info.spec.remote_server_name;
-      if (server)
-	{
-	  ct->info.dblink_table.is_name = true;
-	  ct->info.dblink_table.conn = server;
-	  if (server->next)
-	    {
-	      assert (server->next->node_type == PT_NAME);
-	      ct->info.dblink_table.owner_name = server->next;
-	      server->next = NULL;
-	    }
-	}
-      server_spec = server_spec->next;
+      server = into_spec->info.spec.remote_server_name;
+    }
+  else
+    {
+      server = upd_spec->info.spec.remote_server_name;
+    }
+
+  assert (server->node_type == PT_NAME);
+
+  ct->info.dblink_table.is_name = true;
+  ct->info.dblink_table.conn = server;
+  if (server->next)
+    {
+      assert (server->next->node_type == PT_NAME);
+      ct->info.dblink_table.owner_name = server->next;
+      server->next = NULL;
     }
 
   ct->info.dblink_table.qstr = val;
@@ -11358,7 +11418,14 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
       parser_free_node (parser, snl->server[i]);
     }
 
-  upd_spec->info.spec.remote_server_name = ct;
+  if (into_spec)
+    {
+      into_spec->info.spec.remote_server_name = ct;
+    }
+  else
+    {
+      upd_spec->info.spec.remote_server_name = ct;
+    }
 
   return;
 }
@@ -11393,6 +11460,7 @@ pt_convert_dblink_merge_dml_query (PARSER_CONTEXT * parser, PT_NODE * tbl_spec, 
       // insert into local_tbl ...
       return;
     }
+#if 0
   else if (snl->local_cnt > tmp_local_cnt)
     {
       PT_ERROR (parser, tbl_spec, "dblink: dblink multi");
@@ -11403,6 +11471,7 @@ pt_convert_dblink_merge_dml_query (PARSER_CONTEXT * parser, PT_NODE * tbl_spec, 
       PT_ERROR (parser, tbl_spec, "dblink: dblink multi 2");
       return;
     }
+#endif
 
   /*  
    ** The target server must all be the same.
@@ -11549,7 +11618,7 @@ pt_convert_server (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
       break;
 
     case PT_INSERT:
-      //pt_convert_dblink_dml_query (parser, node->info.insert.spec, NULL, node->sql_user_text, snl);
+      pt_convert_dblink_insert_query (parser, node, node->sql_user_text, snl);
       break;
 
     case PT_DELETE:
@@ -11563,8 +11632,9 @@ pt_convert_server (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 
     case PT_MERGE:
       {
-	PT_MERGE_INFO *m = &(node->info.merge);
-	pt_convert_dblink_merge_dml_query (parser, m->into, NULL, node->sql_user_text, snl);
+	//PT_MERGE_INFO *m = &(node->info.merge);
+	//pt_convert_dblink_merge_dml_query (parser, m->into, m->using_clause, node->sql_user_text, snl);
+	pt_convert_dblink_merge_query (parser, node, node->sql_user_text, snl);
       }
       break;
 
