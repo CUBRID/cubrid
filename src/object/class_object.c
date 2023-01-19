@@ -4160,6 +4160,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
   int i, len, order;
 #if defined(SUPPORT_KEY_DUP_LEVEL)
   int new_len = 0;
+  int zdecr[2] = { 0, 0 };
 #endif
 
   /* for foreign key, need to check redundancy first */
@@ -4229,6 +4230,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 		}
 	      attp++;
 	      len++;
+	      zdecr[0] = 1;
 	    }
 	}
 
@@ -4242,6 +4244,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 		}
 	      namep++;
 	      new_len++;
+	      zdecr[1] = 1;
 	    }
 	}
 #endif
@@ -4293,8 +4296,13 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
       if (func_index_info)
 	{
 	  /* expr_str are printed tree, identifiers are already lower case */
-	  if ((func_index_info->attr_index_start != cons->func_index_info->attr_index_start)
-	      || (func_index_info->col_id != cons->func_index_info->col_id)
+	  if ((func_index_info->col_id != cons->func_index_info->col_id)
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	      || ((func_index_info->attr_index_start - zdecr[1]) !=
+		  (cons->func_index_info->attr_index_start - zdecr[0]))
+#else
+	      || (func_index_info->attr_index_start != cons->func_index_info->attr_index_start)
+#endif
 	      || (func_index_info->fi_domain->is_desc != cons->func_index_info->fi_domain->is_desc)
 	      || (strcmp (func_index_info->expr_str, cons->func_index_info->expr_str) != 0))
 	    {
