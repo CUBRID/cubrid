@@ -11016,6 +11016,7 @@ pt_init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE
   for (assign = assigns; pt_get_next_assignment (&ea); assign++)
     {
       PT_NODE *tbl_spec;
+      PT_NODE *entity_spec;
       char *tbl_name;
       char *tbl_alias = NULL;
       char *lhs_name;
@@ -11036,12 +11037,25 @@ pt_init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE
 	  lhs_name = (char *) ea.lhs->info.name.original;
 	  while (tbl_spec && !found)
 	    {
-	      tbl_name =
-		(tbl_spec->info.spec.range_var) ? (char *) tbl_spec->info.spec.range_var->info.name.original
-		: (char *) tbl_spec->info.spec.entity_name->info.name.original;
 	      if (tbl_spec->info.spec.range_var)
 		{
+		  tbl_name = (char *) tbl_spec->info.spec.range_var->info.name.original;
 		  tbl_alias = (char *) tbl_spec->info.spec.range_var->info.name.original;
+		  entity_spec = NULL;
+		}
+	      else
+		{
+		  entity_spec = tbl_spec->info.spec.entity_name;
+		}
+
+	      while (entity_spec)
+		{
+		  if (entity_spec->node_type == PT_NAME)
+		    {
+		      tbl_name = (char *) entity_spec->info.name.original;
+		      break;
+		    }
+		  entity_spec = entity_spec->info.spec.entity_name;
 		}
 
 	      assign->cls_info = NULL;
