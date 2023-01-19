@@ -159,8 +159,7 @@ namespace cublog
 
       // add a new log record as part of an already existing atomic replication
       // sequence (be it sysop or non-sysop)
-      int append_log (THREAD_ENTRY *thread_p, TRANID tranid, LOG_LSA lsa,
-		      LOG_RCVINDEX rcvindex, VPID vpid);
+      void append_log (TRANID tranid, LOG_LSA lsa, LOG_RCVINDEX rcvindex, VPID vpid);
 
       bool is_part_of_atomic_replication (TRANID tranid) const;
       bool all_log_entries_are_control (TRANID tranid) const;
@@ -262,11 +261,11 @@ namespace cublog
 	  // upon constructing a sequence
 	  void initialize (TRANID trid, LOG_LSA start_lsa);
 
-	  int append_log (THREAD_ENTRY *thread_p, LOG_LSA lsa, LOG_RCVINDEX rcvindex, VPID vpid
+	  void append_log (LOG_LSA lsa, LOG_RCVINDEX rcvindex, VPID vpid
 #ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
-			  , vpid_bookeeping &vpid_bk
+			   , vpid_bookeeping &vpid_bk
 #endif
-			 );
+			  );
 
 	  void apply_and_unfix (THREAD_ENTRY *thread_p
 #ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
@@ -293,9 +292,11 @@ namespace cublog
 	  struct atomic_log_entry
 	  {
 	    atomic_log_entry () = delete;
-	    atomic_log_entry (LOG_LSA lsa, VPID vpid, LOG_RCVINDEX rcvindex, PAGE_PTR page_ptr);
+	    atomic_log_entry (LOG_LSA lsa, VPID vpid, LOG_RCVINDEX rcvindex);
 	    atomic_log_entry (LOG_LSA lsa, LOG_RECTYPE rectype);
 	    atomic_log_entry (LOG_LSA lsa, LOG_SYSOP_END_TYPE sysop_end_type, LOG_LSA sysop_end_last_parent_lsa);
+
+	    ~atomic_log_entry ();
 
 	    atomic_log_entry (const atomic_log_entry &) = delete;
 	    atomic_log_entry (atomic_log_entry &&that);
@@ -396,7 +397,6 @@ namespace cublog
 
 	  log_rv_redo_context m_redo_context;
 	  atomic_log_entry_vector_type m_log_vec;
-	  page_ptr_bookkeeping m_page_ptr_bookkeeping;
 
 	  // temporary mechanism to log all the log entries that were part of the sequence
 	  std::stringstream m_full_dump_stream;
