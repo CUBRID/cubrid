@@ -10783,9 +10783,34 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
   if (node->info.spec.remote_server_name == NULL)
     {
-      if (node->info.spec.derived_table && node->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+      if (node->info.spec.derived_table)
 	{
-	  /* dblink table */
+	  if (node->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+	    {
+	      snl->server_cnt++;
+	    }
+	  else
+	    {
+	      PT_NODE *derived = node->info.spec.derived_table;
+	      switch (derived->node_type)
+		{
+		case PT_SELECT:
+		  parser_walk_tree (parser, derived->info.query.q.select.from, pt_get_server_name_list, snl, NULL,
+				    NULL);
+		  break;
+		case PT_UNION:
+		case PT_INTERSECTION:
+		case PT_DIFFERENCE:
+		  parser_walk_tree (parser, derived->info.query.q.union_.arg1->info.query.q.select.from,
+				    pt_get_server_name_list, snl, NULL, NULL);
+		  parser_walk_tree (parser, derived->info.query.q.union_.arg2->info.query.q.select.from,
+				    pt_get_server_name_list, snl, NULL, NULL);
+		  break;
+		default:
+		  snl->local_cnt++;
+		}
+	      return node;
+	    }
 	}
       else
 	{
