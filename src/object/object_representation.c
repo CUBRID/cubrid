@@ -1175,12 +1175,6 @@ or_get_var_table_internal (OR_BUF * buf, int nvars, char *(*allocator) (int), in
  * COMMUNICATION BUFFER PACK/UNPACK FUNCTIONS
  */
 
-
-/*
- * NUMERIC DATA TYPE TRANSLATORS
- *    Translators for the numeric data types int, short, errcode, lock...
- */
-
 /*
  * or_pack_int - write int value to ptr
  *    return: advanced buffer pointer
