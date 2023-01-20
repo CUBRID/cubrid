@@ -1235,11 +1235,6 @@ extern int or_packed_db_value_array_length (int count, DB_VALUE * val);
 extern void or_encode (char *buffer, const char *source, int size);
 extern void or_decode (const char *buffer, char *dest, int size);
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 EXTERN_INLINE void or_init (OR_BUF * buf, char *data, int length) __attribute__ ((ALWAYS_INLINE));
 
 /* These are called when overflow/underflow are detected */
@@ -1280,8 +1275,9 @@ extern int or_put_varbit (OR_BUF * buf, const char *string, int bitlen);
 extern int or_put_varchar (OR_BUF * buf, char *string, int charlen);
 EXTERN_INLINE int or_put_string_aligned (OR_BUF * buf, char *string) __attribute__ ((ALWAYS_INLINE));
 EXTERN_INLINE int or_put_string_aligned_with_length (OR_BUF * buf, const char *str) __attribute__ ((ALWAYS_INLINE));
-EXTERN_INLINE int or_put_offset (OR_BUF * buf, int num) __attribute__ ((ALWAYS_INLINE));
-EXTERN_INLINE int or_put_offset_internal (OR_BUF * buf, int num, int offset_size) __attribute__ ((ALWAYS_INLINE));
+EXPORT_IMPORT EXTERN_INLINE int or_put_offset (OR_BUF * buf, int num) __attribute__ ((ALWAYS_INLINE));
+EXPORT_IMPORT EXTERN_INLINE int or_put_offset_internal (OR_BUF * buf, int num, int offset_size)
+  __attribute__ ((ALWAYS_INLINE));
 EXTERN_INLINE int or_put_oid (OR_BUF * buf, const OID * oid) __attribute__ ((ALWAYS_INLINE));
 extern int or_put_mvccid (OR_BUF * buf, MVCCID mvccid);
 
@@ -1313,7 +1309,8 @@ STATIC_INLINE int or_get_varchar_compression_lengths (OR_BUF * buf, int *compres
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_get_string_size_byte (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
 EXTERN_INLINE int or_get_offset (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
-EXTERN_INLINE int or_get_offset_internal (OR_BUF * buf, int *error, int offset_size) __attribute__ ((ALWAYS_INLINE));
+EXPORT_IMPORT EXTERN_INLINE int or_get_offset_internal (OR_BUF * buf, int *error, int offset_size)
+  __attribute__ ((ALWAYS_INLINE));
 EXTERN_INLINE int or_get_oid (OR_BUF * buf, OID * oid) __attribute__ ((ALWAYS_INLINE));
 extern int or_get_mvccid (OR_BUF * buf, MVCCID * mvccid);
 
@@ -1330,10 +1327,6 @@ EXTERN_INLINE int or_skip_varchar_remainder (OR_BUF * buf, int charlen, int alig
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int or_length_binary (DB_BINARY * binary);
 extern int or_length_string (char *string);
-#endif
-
-#ifdef __cplusplus
-}
 #endif
 
 extern int or_packed_put_varbit (OR_BUF * buf, const char *string, int bitlen);
@@ -1417,11 +1410,6 @@ extern int or_put_json_schema (OR_BUF * buf, const char *schema);
 
 #define OR_IS_STRING_LENGTH_COMPRESSABLE(str_length) \
   ((str_length) >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION && (str_length) <= LZ4_MAX_INPUT_SIZE)
-
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 
 /*
  * or_init - initialize the field of an OR_BUF
@@ -2895,9 +2883,5 @@ or_skip_varchar_remainder (OR_BUF * buf, int charlen, int align)
 
   return rc;
 }
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* _OBJECT_REPRESENTATION_H_ */

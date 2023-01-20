@@ -73,11 +73,6 @@
 #define OR_HAVE_HTONL
 #endif /* HPUX || _AIX || WINDOWS || LINUX */
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 typedef union moving_van MOVING_VAN;
 union moving_van
 {
@@ -174,9 +169,5 @@ extern UINT64 htond (double);
 #endif /* !OR_HAVE_HTOND */
 
 #endif /* OR_BYTE_ORDER == OR_LITTLE_ENDIAN */
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* _BYTE_ORDER_H_ */
