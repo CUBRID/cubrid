@@ -63,7 +63,7 @@ namespace cubregex
 
     compiled_regex ()
       : type (LIB_NONE)
-      , compiled (nullptr)
+      , compiled {nullptr}
       , pattern ()
       , flags (0)
       , codeset (INTL_CODESET_NONE)
