@@ -44,7 +44,7 @@ public class StmtContinue implements Stmt {
         if (declLabel == null) {
             return "continue;";
         } else {
-            return String.format("continue $%s_%d;", declLabel.name, declLabel.scope.level);
+            return String.format("continue %s_%d;", declLabel.name, declLabel.scope.level);
         }
     }
 

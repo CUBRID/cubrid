@@ -55,10 +55,9 @@ public class StmtLocalProcCall implements Stmt {
         String block = prefixDeclBlock ? decl.scope().block + "." : "";
 
         if (args == null || args.nodes.size() == 0) {
-            return block + "$" + name + "();";
+            return block + name + "();";
         } else {
             return block
-                    + "$"
                     + name
                     + "(\n"
                     + Misc.indentLines(decl.argsToJavaCode(args), 1)

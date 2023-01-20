@@ -45,7 +45,7 @@ public class DeclLabel extends DeclBase {
 
     @Override
     public String toJavaCode() {
-        return String.format("$%s_%d:", name, scope.level);
+        return String.format("%s_%d:", name, scope.level);
     }
 
     // --------------------------------------------------

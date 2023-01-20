@@ -114,7 +114,7 @@ public class Unit implements AstNode {
                     "",
                     "public class %'CLASS-NAME'% {",
                     "",
-                    "  public static %'RETURN-TYPE'% $%'METHOD-NAME'%(",
+                    "  public static %'RETURN-TYPE'% %'METHOD-NAME'%(",
                     "      %'PARAMETERS'%",
                     "    ) throws Exception {",
                     "",

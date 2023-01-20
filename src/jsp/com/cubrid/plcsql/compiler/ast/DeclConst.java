@@ -55,7 +55,7 @@ public class DeclConst extends DeclBase implements DeclVarLike {
 
     @Override
     public String toJavaCode() {
-        return String.format("%s $%s = %s;", typeSpec.toJavaCode(), name, val.toJavaCode());
+        return String.format("%s %s = %s;", typeSpec.toJavaCode(), name, val.toJavaCode());
     }
 
     // --------------------------------------------------

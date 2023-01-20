@@ -51,7 +51,7 @@ public class DeclParamIn extends DeclBase implements DeclParam {
 
     @Override
     public String toJavaCode() {
-        return String.format("%s $%s", typeSpec.toJavaCode(), name);
+        return String.format("%s %s", typeSpec.toJavaCode(), name);
     }
 
     // --------------------------------------------------

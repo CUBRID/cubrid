@@ -44,7 +44,7 @@ public class StmtBreak implements Stmt {
         if (declLabel == null) {
             return "break;";
         } else {
-            return String.format("break $%s_%d;", declLabel.name, declLabel.scope.level);
+            return String.format("break %s_%d;", declLabel.name, declLabel.scope.level);
         }
     }
 

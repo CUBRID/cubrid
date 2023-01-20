@@ -44,9 +44,9 @@ public class StmtRaiseAppErr implements Stmt {
     public String toJavaCode() {
         /* TODO
         return String.format(
-                "throw new $$APP_ERROR(%s, %s);", errCode.toJavaCode(), errMsg.toJavaCode());
+                "throw new $APP_ERROR(%s, %s);", errCode.toJavaCode(), errMsg.toJavaCode());
                 */
-        return String.format("throw new $$APP_ERROR();");
+        return String.format("throw new $APP_ERROR();");
     }
 
     // --------------------------------------------------

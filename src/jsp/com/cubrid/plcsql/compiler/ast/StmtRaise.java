@@ -43,9 +43,9 @@ public class StmtRaise implements Stmt {
         if (exName == null) {
             return "throw new Exception();";
         } else if (exName.prefixDeclBlock) {
-            return String.format("throw %s.new $%s();", exName.decl.scope().block, exName.name);
+            return String.format("throw %s.new %s();", exName.decl.scope().block, exName.name);
         } else {
-            return String.format("throw new $%s();", exName.name);
+            return String.format("throw new %s();", exName.name);
         }
     }
 

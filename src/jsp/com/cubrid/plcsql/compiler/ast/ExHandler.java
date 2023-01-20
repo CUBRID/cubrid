@@ -59,9 +59,9 @@ public class ExHandler implements AstNode {
             if ("OTHERS".equals(ex.name)) {
                 sbuf.append("Throwable");
             } else if (ex.prefixDeclBlock) {
-                sbuf.append("Decl_of_" + ex.decl.scope().block + ".$" + ex.name);
+                sbuf.append("Decl_of_" + ex.decl.scope().block + "." + ex.name);
             } else {
-                sbuf.append("$" + ex.name);
+                sbuf.append(ex.name);
             }
         }
 

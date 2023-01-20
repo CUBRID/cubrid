@@ -120,7 +120,7 @@ public abstract class DeclRoutine extends DeclBase {
 
     private static final String tmplFuncBody =
             Misc.combineLines(
-                    "%'RETURN-TYPE'% $%'METHOD-NAME'%(",
+                    "%'RETURN-TYPE'% %'METHOD-NAME'%(",
                     "    %'PARAMETERS'%",
                     "  ) throws Exception {",
                     "",

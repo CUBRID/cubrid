@@ -60,7 +60,7 @@ public class DeclCursor extends DeclBase implements DeclId {
     @Override
     public String toJavaCode() {
         return String.format(
-                "final Query $%s = new Query(%s);\n  // param-ref-counts: %s\n  // used-values-map: %s",
+                "final Query %s = new Query(%s);\n  // param-ref-counts: %s\n  // used-values-map: %s",
                 name,
                 sql.toJavaCode(),
                 Arrays.toString(paramRefCounts),

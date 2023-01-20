@@ -48,49 +48,38 @@ import org.apache.commons.collections4.multiset.HashMultiSet;
 
 public class SpLib {
 
-    public static class $$APP_ERROR extends RuntimeException {}
+    public static class $APP_ERROR extends RuntimeException {}
 
-    public static class $CASE_NOT_FOUND extends RuntimeException {}
+    public static class CASE_NOT_FOUND extends RuntimeException {}
 
-    public static class $CURSOR_ALREADY_OPEN extends RuntimeException {}
+    public static class CURSOR_ALREADY_OPEN extends RuntimeException {}
 
-    public static class $DUP_VAL_ON_INDEX extends RuntimeException {}
+    public static class DUP_VAL_ON_INDEX extends RuntimeException {}
 
-    public static class $INVALID_CURSOR extends RuntimeException {}
+    public static class INVALID_CURSOR extends RuntimeException {}
 
-    public static class $LOGIN_DENIED extends RuntimeException {}
+    public static class LOGIN_DENIED extends RuntimeException {}
 
-    public static class $NO_DATA_FOUND extends RuntimeException {}
+    public static class NO_DATA_FOUND extends RuntimeException {}
 
-    public static class $PROGRAM_ERROR extends RuntimeException {}
+    public static class PROGRAM_ERROR extends RuntimeException {}
 
-    public static class $ROWTYPE_MISMATCH extends RuntimeException {}
+    public static class ROWTYPE_MISMATCH extends RuntimeException {}
 
-    public static class $STORAGE_ERROR extends RuntimeException {}
+    public static class STORAGE_ERROR extends RuntimeException {}
 
-    public static class $TOO_MANY_ROWS extends RuntimeException {}
+    public static class TOO_MANY_ROWS extends RuntimeException {}
 
-    public static class $VALUE_ERROR extends RuntimeException {}
+    public static class VALUE_ERROR extends RuntimeException {}
 
-    public static class $ZERO_DIVIDE extends RuntimeException {}
+    public static class ZERO_DIVIDE extends RuntimeException {}
 
-    public static String $SQLERRM = null;
-    public static Integer $SQLCODE = null;
-    public static LocalDate $SYSDATE = null;
-    public static Integer $NATIVE = null;
+    public static String SQLERRM = null;
+    public static Integer SQLCODE = null;
+    public static LocalDate SYSDATE = null;
 
-    public static void $PUT_LINE(Object s) {
+    public static void PUT_LINE(Object s) {
         System.out.println(s);
-    }
-
-    // TODO: remove
-    public static Integer $OPEN_CURSOR() {
-        return -1;
-    }
-
-    // TODO: remove
-    public static Integer $LAST_ERROR_POSITION() {
-        return -1;
     }
 
     public static class Query {

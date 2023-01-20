@@ -45,7 +45,7 @@ public class DeclException extends DeclBase {
 
     @Override
     public String toJavaCode() {
-        return "class $" + name + " extends RuntimeException {}";
+        return "class " + name + " extends RuntimeException {}";
     }
 
     // --------------------------------------------------

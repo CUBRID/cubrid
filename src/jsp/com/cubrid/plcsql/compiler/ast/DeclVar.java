@@ -55,9 +55,9 @@ public class DeclVar extends DeclBase implements DeclVarLike {
     public String toJavaCode() {
         String ty = typeSpec.toJavaCode();
         if (val == null) {
-            return String.format("%s[] $%s = new %s[] { null };", ty, name, ty);
+            return String.format("%s[] %s = new %s[] { null };", ty, name, ty);
         } else {
-            return String.format("%s[] $%s = new %s[] { %s };", ty, name, ty, val.toJavaCode());
+            return String.format("%s[] %s = new %s[] { %s };", ty, name, ty, val.toJavaCode());
         }
     }
 
