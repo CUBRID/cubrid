@@ -8568,7 +8568,7 @@ qdata_regexp_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_
 	function_p->tmp_obj->compiled_regex = new cub_compiled_regex ();
       }
 
-    cub_compiled_regex *compiled_regex = function_p->tmp_obj->compiled_regex;
+    cub_compiled_regex *&compiled_regex = function_p->tmp_obj->compiled_regex;
     error_status = regexp_func (function_p->value, args, no_args, &compiled_regex);
     if (error_status != NO_ERROR)
       {
