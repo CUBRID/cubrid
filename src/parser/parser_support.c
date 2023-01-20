@@ -11024,8 +11024,11 @@ pt_init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE
 
       for (idx = 0; idx < upd_cls_cnt; idx++)
 	{
-	  if (cls_info[idx].spec->info.spec.range_var
-	      || cls_info[idx].spec->info.spec.entity_name->node_type == PT_NAME)
+	  if (cls_info[idx].spec->info.spec.range_var == NULL && cls_info[idx].spec->info.spec.entity_name == NULL)
+	    {
+	      continue;
+	    }
+	  if (cls_info[idx].spec->info.spec.entity_name->node_type == PT_NAME)
 	    {
 	      tbl_spec = cls_info[idx].spec;
 	    }
