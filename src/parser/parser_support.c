@@ -11024,15 +11024,16 @@ pt_init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE
 
       for (idx = 0; idx < upd_cls_cnt; idx++)
 	{
-	  if (cls_info[idx].spec->info.spec.entity_name
-	      && cls_info[idx].spec->info.spec.entity_name->node_type == PT_NAME)
+	  if (cls_info[idx].spec->info.spec.entity_name)
 	    {
-	      tbl_spec = cls_info[idx].spec;
-	    }
-	  else if (cls_info[idx].spec->info.spec.range_var
-		   && cls_info[idx].spec->info.spec.entity_name->node_type == PT_SPEC)
-	    {
-	      tbl_spec = cls_info[idx].spec->info.spec.entity_name;
+	      if (cls_info[idx].spec->info.spec.entity_name->node_type == PT_NAME)
+		{
+		  tbl_spec = cls_info[idx].spec;
+		}
+	      else if (cls_info[idx].spec->info.spec.entity_name->node_type == PT_SPEC)
+		{
+		  tbl_spec = cls_info[idx].spec->info.spec.entity_name;
+		}
 	    }
 
 	  lhs_name = (char *) ea.lhs->info.name.original;
