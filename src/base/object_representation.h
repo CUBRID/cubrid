@@ -1275,9 +1275,8 @@ extern int or_put_varbit (OR_BUF * buf, const char *string, int bitlen);
 extern int or_put_varchar (OR_BUF * buf, char *string, int charlen);
 EXTERN_INLINE int or_put_string_aligned (OR_BUF * buf, char *string) __attribute__ ((ALWAYS_INLINE));
 EXTERN_INLINE int or_put_string_aligned_with_length (OR_BUF * buf, const char *str) __attribute__ ((ALWAYS_INLINE));
-EXPORT_IMPORT EXTERN_INLINE int or_put_offset (OR_BUF * buf, int num) __attribute__ ((ALWAYS_INLINE));
-EXPORT_IMPORT EXTERN_INLINE int or_put_offset_internal (OR_BUF * buf, int num, int offset_size)
-  __attribute__ ((ALWAYS_INLINE));
+EXTERN_INLINE int or_put_offset (OR_BUF * buf, int num) __attribute__ ((ALWAYS_INLINE));
+EXTERN_INLINE int or_put_offset_internal (OR_BUF * buf, int num, int offset_size) __attribute__ ((ALWAYS_INLINE));
 EXTERN_INLINE int or_put_oid (OR_BUF * buf, const OID * oid) __attribute__ ((ALWAYS_INLINE));
 extern int or_put_mvccid (OR_BUF * buf, MVCCID mvccid);
 
@@ -1309,8 +1308,7 @@ STATIC_INLINE int or_get_varchar_compression_lengths (OR_BUF * buf, int *compres
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_get_string_size_byte (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
 EXTERN_INLINE int or_get_offset (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
-EXPORT_IMPORT EXTERN_INLINE int or_get_offset_internal (OR_BUF * buf, int *error, int offset_size)
-  __attribute__ ((ALWAYS_INLINE));
+EXTERN_INLINE int or_get_offset_internal (OR_BUF * buf, int *error, int offset_size) __attribute__ ((ALWAYS_INLINE));
 EXTERN_INLINE int or_get_oid (OR_BUF * buf, OID * oid) __attribute__ ((ALWAYS_INLINE));
 extern int or_get_mvccid (OR_BUF * buf, MVCCID * mvccid);
 

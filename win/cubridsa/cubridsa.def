@@ -75,6 +75,10 @@ EXPORTS
     fileio_make_volume_info_name
     locator_has_heap
     ntohi64
+    htonl
+    ntohl
+    htons
+    ntohs
     numeric_coerce_int_to_num
     pgbuf_fix_release
     pgbuf_fix_debug
