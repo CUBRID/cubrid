@@ -868,7 +868,7 @@ namespace cublog
 			   " VPID: %d|%d, LSA: %lld|%d and index %d",
 			   VPID_AS_ARGS (&m_vpid), LSA_AS_ARGS (&m_lsa), m_rcvindex);
       }
-    const log_rec_header header = redo_context.m_reader.reinterpret_copy_and_add_align<log_rec_header> ();
+    const LOG_RECORD_HEADER header = redo_context.m_reader.reinterpret_copy_and_add_align<LOG_RECORD_HEADER> ();
 
     switch (header.type)
       {
