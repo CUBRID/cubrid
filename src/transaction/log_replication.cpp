@@ -494,7 +494,6 @@ namespace cublog
   void
   replicator::wait_past_target_lsa (const log_lsa &a_target_lsa)
   {
-    // TODO: needs to be refactored to work with the new replicators flavors
     if (m_parallel_replication_redo == nullptr)
       {
 	// sync
