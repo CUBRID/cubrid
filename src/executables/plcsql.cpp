@@ -86,7 +86,7 @@ plcsql_argument::print (void)
 	       , db_name.c_str()
 	       , user_name.c_str()
 	       , passwd.c_str()
-	       , fs::canonical (fs::path (in_file)).c_str());
+	       , in_file.c_str());
     }
 }
 
@@ -120,26 +120,34 @@ utility_plcsql_print (int message_num, ...)
 static int
 plcsql_read_file (const std::string &file_name)
 {
-  fs::path src_path = fs::path (file_name);
-  if (fs::exists (src_path) == true)
+  try
     {
-      std::ifstream infile (fs::canonical (src_path), std::ios_base::binary);
-
-      if (infile)
+      fs::path src_path = fs::path (file_name);
+      if (fs::exists (src_path) == true)
 	{
-	  std::vector<char> buf (
-		  (std::istreambuf_iterator<char> (infile)),
-		  (std::istreambuf_iterator<char>()));
+	  std::ifstream infile (fs::canonical (src_path), std::ios_base::binary);
 
-	  input_string.assign (buf.data(), buf.size ());
-	  infile.close ();
-	  return NO_ERROR;
-	}
-      else
-	{
-	  PLCSQL_LOG ("RR_OS_ERROR");
+	  if (infile)
+	    {
+	      std::vector<char> buf (
+		      (std::istreambuf_iterator<char> (infile)),
+		      (std::istreambuf_iterator<char>()));
+
+	      input_string.assign (buf.data(), buf.size ());
+	      infile.close ();
+	      return NO_ERROR;
+	    }
+	  else
+	    {
+	      PLCSQL_LOG ("RR_OS_ERROR");
+	    }
 	}
     }
+  catch (fs::filesystem_error &e)
+    {
+      PLCSQL_LOG (e.what ());
+    }
+
   return ER_FAILED;
 }
 
