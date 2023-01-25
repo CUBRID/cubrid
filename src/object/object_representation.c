@@ -6282,7 +6282,6 @@ or_unpack_sha1 (char *ptr, SHA1Hash * sha1)
   return ptr + OR_SHA1_SIZE;
 }
 
-
 /*
  * or_packed_spacedb_size () - compute the size required to pack all space info
  *
