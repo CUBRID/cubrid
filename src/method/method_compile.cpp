@@ -25,13 +25,13 @@
 
 namespace cubmethod
 {
-  int invoke_compile (runtime_context &ctx, const std::string program, cubmem::extensible_block &blk)
+  int invoke_compile (runtime_context &ctx, const std::string program, const bool &verbose, cubmem::extensible_block &blk)
   {
     connection *conn = ctx.get_connection_pool().claim();
     header header (SP_CODE_COMPILE, 0);
 
     SOCKET socket = conn->get_socket ();
-    int error = mcon_send_data_to_java (socket, header, program);
+    int error = mcon_send_data_to_java (socket, header, verbose, program);
 
     int nbytes = -1;
 

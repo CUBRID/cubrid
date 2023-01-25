@@ -42,25 +42,34 @@
 
 namespace fs = std::filesystem;
 
+static std::string input_string;
+static std::string output_string;
+static std::string sql;
+static bool verbose = false;
+
 #define DB_PLCSQL_AS_ARGS(arg) \
-  arg.db_name, arg.user_name, arg.passwd, NULL, DB_CLIENT_TYPE_PLCSQL_HELPER
+  arg.db_name.data(), arg.user_name.data(), arg.passwd.data(), NULL, DB_CLIENT_TYPE_PLCSQL_HELPER
+
+#define PLCSQL_LOG_FORCE(str) \
+  do { \
+      std::cout << str << std::endl; \
+  } while(0)
 
 #define PLCSQL_LOG(str) \
-  fprintf (stdout, "%s\n", str)
-
-static std::string input_string;
+  do { \
+    if (verbose) { \
+      std::cout << str << std::endl; \
+    } \
+  } while(0)
 
 struct plcsql_argument
 {
-  const char *db_name;
-  const char *user_name;
-  const char *passwd;
+  std::string db_name;
+  std::string user_name;
+  std::string passwd;
   std::string in_file;
 
   plcsql_argument ()
-    : db_name (NULL)
-    , user_name (NULL)
-    , passwd (NULL)
   {
     //
   }
@@ -71,17 +80,26 @@ struct plcsql_argument
 void
 plcsql_argument::print (void)
 {
-  fprintf (stdout, "db name = %s, user name = %s, password = %s, input file = %s\n"
-	   , db_name ? db_name : NULL
-	   , user_name ? user_name : NULL
-	   , passwd ? passwd : NULL
-	   , fs::canonical (fs::path (in_file)).c_str());
+  if (verbose)
+    {
+      fprintf (stdout, "db name = %s, user name = %s, password = %s, input file = %s\n"
+	       , db_name.c_str()
+	       , user_name.c_str()
+	       , passwd.c_str()
+	       , fs::canonical (fs::path (in_file)).c_str());
+    }
 }
 
 static void
 utility_plcsql_usage (void)
 {
-  fprintf (stdout, "%s\n", "invalid command");
+  fprintf (stdout,
+	   "Usage : plcsql_helper [OPTION] database-name\n" "\n" "valid options:\n"
+	   "-u, --user=ID                 user ID for database access;\n"
+	   "-p, --password=PASS           user password; default: none\n"
+	   "-i, --input-file              path for input PL/CSQL file\n"
+	   "-v, --verbose                 verbose mode to print logs\n"
+	   "-h, --help                    show usage\n");
 }
 
 static void
@@ -131,9 +149,10 @@ parse_options (int argc, char *argv[], plcsql_argument *pl_args)
   char option_string[64];
   GETOPT_LONG opts[] =
   {
-    {CSQL_USER_L, 1, 0, CSQL_USER_S},
-    {CSQL_PASSWORD_L, 1, 0, CSQL_PASSWORD_S},
-    {CSQL_INPUT_FILE_L, 1, 0, CSQL_INPUT_FILE_S},
+    {"user", 1, 0, 'u'},
+    {"password", 1, 0, 'p'},
+    {"input-file", 1, 0, 'i'},
+    {"verbose", 0, 0, 'v'},
     {0, 0, 0, 0}
   };
 
@@ -144,8 +163,7 @@ parse_options (int argc, char *argv[], plcsql_argument *pl_args)
       int option_index = 0;
       int option_key;
 
-      option_key = getopt_long (argc, argv, option_string, opts, &option_index);
-
+      option_key = getopt_long (argc, argv, "u:p:i:vh", opts, &option_index);
       if (option_key == -1)
 	{
 	  break;
@@ -153,17 +171,22 @@ parse_options (int argc, char *argv[], plcsql_argument *pl_args)
 
       switch (option_key)
 	{
-	case CSQL_USER_S:
-	  pl_args->user_name = strdup (optarg);
+	case 'u':
+	  pl_args->user_name.assign (optarg ? optarg : "");
 	  break;
 
-	case CSQL_PASSWORD_S:
-	  pl_args->passwd = strdup (optarg);
+	case 'p':
+	  pl_args->passwd.assign (optarg ? optarg : "");
 	  break;
 
-	case CSQL_INPUT_FILE_S:
+	case 'i':
 	  pl_args->in_file.assign (optarg ? optarg : "");
 	  break;
+
+	case 'v':
+	  verbose = true;
+	  break;
+
 	default:
 	  return ER_FAILED;
 	}
@@ -195,76 +218,73 @@ main (int argc, char *argv[])
 	goto print_usage;
       }
 
-    std::cout << std::endl << "====== Arguments ================================================" << std::endl;
+    PLCSQL_LOG ("[Arguments]");
     plcsql_arg.print ();
+
+    if (er_init (NULL, ER_NEVER_EXIT) != NO_ERROR)
+      {
+	PLCSQL_LOG_FORCE ("Initializing error manager is failed");
+	goto exit_on_end;
+      }
 
     if (db_restart_ex ("PLCSQL Helper", DB_PLCSQL_AS_ARGS (plcsql_arg)) != NO_ERROR)
       {
-	PLCSQL_LOG ("Connecting with cub_server is failed");
+	PLCSQL_LOG_FORCE ("Connecting with cub_server is failed");
 	goto exit_on_end;
       }
 
     if (plcsql_read_file (plcsql_arg.in_file) != NO_ERROR)
       {
-	PLCSQL_LOG ("Reading PL/CSQL program is failed");
+	PLCSQL_LOG_FORCE ("Reading PL/CSQL program is failed");
 	goto exit_on_end;
       }
 
-    std::cout << std::endl << "====== Input File ================================================" << std::endl <<
-	      std::endl;
-    std::cout << input_string << std::endl;
-    std::cout << std::endl;
+    PLCSQL_LOG ("[Input File]");
+    PLCSQL_LOG (input_string);
 
-    std::string output_string;
-    std::string sql;
-
-    std::cout << std::endl << "====== Compile PL/CSQL ===========================================" << std::endl <<
-	      std::endl;
+    PLCSQL_LOG ("[Compile PL/CSQL]");
     /* Call network interface API to send a input file (PL/CSQL program) */
-    if (plcsql_transfer_file (input_string, output_string, sql) != NO_ERROR)
+    if (plcsql_transfer_file (input_string, verbose, output_string, sql) != NO_ERROR)
       {
 	PLCSQL_LOG ("Transferring PL/CSQL program is failed");
 	goto exit_on_end;
       }
 
-    std::cout << std::endl << "====== Output File================================================" << std::endl <<
-	      std::endl;
-    std::cout << output_string << std::endl;
-    std::cout << std::endl << "====== Stored Routine Definition =================================" << std::endl <<
-	      std::endl;
-    std::cout << sql << std::endl;
+    PLCSQL_LOG ("[Output File]");
+    PLCSQL_LOG (output_string);
+
+    PLCSQL_LOG ("[Stored Routine Definition]");
+    PLCSQL_LOG (sql);
 
     // Execute SQL
     {
       if (sql.empty ())
 	{
-	  PLCSQL_LOG ("Invalid SQL string");
+	  PLCSQL_LOG_FORCE ("Invalid SQL string");
 	  goto exit_on_end;
 	}
 
       session = db_open_buffer (sql.c_str ());
       if (!session)
 	{
-	  PLCSQL_LOG ("Parsing SQL is failed");
+	  PLCSQL_LOG_FORCE ("Parsing SQL is failed");
 	  goto exit_on_end;
 	}
 
       int stmt_id = db_compile_statement (session);
       if (stmt_id < 0)
 	{
-	  PLCSQL_LOG ("Compiling SQL is failed");
+	  PLCSQL_LOG_FORCE ("Compiling SQL is failed");
 	  goto exit_on_end;
 	}
 
       int db_error = db_execute_statement (session, stmt_id, &result);
       if (db_error < 0)
 	{
+	  PLCSQL_LOG_FORCE ("Executing SQL is failed");
 	  goto exit_on_end;
 	}
     }
-
-    std::cout << std::endl << "====== Result ================================================" << std::endl;
-    PLCSQL_LOG ("Registering PL/CSQL procedure/function has been completed successfully.");
 
     error = NO_ERROR;
     goto exit_on_end;
@@ -283,6 +303,16 @@ exit_on_end:
 
   if (session != NULL)
     {
+      if (error == NO_ERROR)
+	{
+	  PLCSQL_LOG_FORCE ("Registering PL/CSQL procedure/function has been completed successfully");
+	  (void) db_commit_transaction ();
+	}
+      else
+	{
+	  PLCSQL_LOG_FORCE ("Registering PL/CSQL procedure/function has been failed");
+	  (void) db_abort_transaction ();
+	}
       db_close_session (session);
     }
 

@@ -10890,7 +10890,8 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 }
 
 int
-plcsql_transfer_file (const std::string & input_file, std::string & output_file, std::string & sql)
+plcsql_transfer_file (const std::string & input_file, const bool & verbose, std::string & output_file,
+		      std::string & sql)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
@@ -10901,7 +10902,7 @@ plcsql_transfer_file (const std::string & input_file, std::string & output_file,
   char *data_reply = NULL;
   int data_reply_size = 0;
 
-  packer.set_buffer_and_pack_all (eb, input_file);
+  packer.set_buffer_and_pack_all (eb, verbose, input_file);
 
   OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);

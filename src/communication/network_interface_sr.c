@@ -11128,8 +11128,9 @@ splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 {
   packing_unpacker unpacker (request, (size_t) reqlen);
 
+  bool verbose;
   std::string input_string;
-  unpacker.unpack_all (input_string);
+  unpacker.unpack_all (verbose, input_string);
 
   cubmethod::runtime_context * ctx = NULL;
   session_get_method_runtime_context (thread_p, ctx);
@@ -11138,7 +11139,7 @@ splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   cubmem::extensible_block ext_blk;
   if (ctx)
     {
-      error = cubmethod::invoke_compile (*ctx, input_string, ext_blk);
+      error = cubmethod::invoke_compile (*ctx, input_string, verbose, ext_blk);
     }
 
   // Error code and is_ignored.

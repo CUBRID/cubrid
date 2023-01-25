@@ -44,14 +44,11 @@ import com.cubrid.jsp.value.ValueUtilities;
 import com.cubrid.plcsql.handler.TestMain;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
-import java.io.BufferedReader;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.lang.reflect.InvocationTargetException;
 import java.net.Socket;
 import java.nio.ByteBuffer;
@@ -203,10 +200,11 @@ public class ExecuteThread extends Thread {
                     case REQ_CODE_COMPILE:
                         {
                             id = unpacker.unpackBigint();
+                            boolean verbose = unpacker.unpackBool();
                             String inSource = unpacker.unpackCString();
 
                             try {
-                                CompileInfo info = TestMain.compilePLCSQL(inSource);
+                                CompileInfo info = TestMain.compilePLCSQL(inSource, verbose);
 
                                 resultBuffer.clear(); /* prepare to put */
                                 packer.setBuffer(resultBuffer);
@@ -229,8 +227,6 @@ public class ExecuteThread extends Thread {
                                                 + " -cp "
                                                 + cubrid_env_root
                                                 + "/java/splib.jar";
-
-                                System.out.println(command);
 
                                 Process proc = Runtime.getRuntime().exec(command);
                                 proc.getErrorStream().close();
@@ -337,14 +333,6 @@ public class ExecuteThread extends Thread {
             }
         }
         closeSocket();
-    }
-
-    private static void printLines(String cmd, InputStream ins) throws Exception {
-        String line = null;
-        BufferedReader in = new BufferedReader(new InputStreamReader(ins));
-        while ((line = in.readLine()) != null) {
-            System.out.println(cmd + " " + line);
-        }
     }
 
     private int listenCommand() throws Exception {

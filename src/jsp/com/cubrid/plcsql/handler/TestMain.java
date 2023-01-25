@@ -45,20 +45,24 @@ import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
 
 public class TestMain {
-    public static CompileInfo compilePLCSQL(String in) {
-        long t0, t;
+    public static CompileInfo compilePLCSQL(String in, boolean verbose) {
+        long t0 = 0, t = 0;
         CodePointCharStream stream = CharStreams.fromString(in);
         CompileInfo info = new CompileInfo();
 
-        t0 = System.currentTimeMillis();
+        if (verbose) {
+            t0 = System.currentTimeMillis();
+        }
 
         ANTLRInputStream input = new ANTLRInputStream(in);
 
-        System.out.println(
-                String.format(
-                        "  creating ANTLRInputStream: %f sec",
-                        ((t = System.currentTimeMillis()) - t0) / 1000.0));
-        t0 = t;
+        if (verbose) {
+            System.out.println(
+                    String.format(
+                            "  creating ANTLRInputStream: %f sec",
+                            ((t = System.currentTimeMillis()) - t0) / 1000.0));
+            t0 = t;
+        }
 
         PcsLexerEx lexer = new PcsLexerEx(input);
         CommonTokenStream tokens = new CommonTokenStream(lexer);
@@ -67,28 +71,36 @@ public class TestMain {
         SyntaxErrorIndicator sei = new SyntaxErrorIndicator();
         parser.addErrorListener(sei);
 
-        System.out.println(
-                String.format(
-                        "  creating PcsLexerEx: %f sec",
-                        ((t = System.currentTimeMillis()) - t0) / 1000.0));
-        t0 = t;
+        if (verbose) {
+            System.out.println(
+                    String.format(
+                            "  creating PcsLexerEx: %f sec",
+                            ((t = System.currentTimeMillis()) - t0) / 1000.0));
+            t0 = t;
+        }
 
         ParseTree ret = parser.sql_script();
         if (ret == null) {
             return info;
         }
 
-        System.out.println(
-                String.format("parsing: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
-        t0 = t;
+        if (verbose) {
+            System.out.println(
+                    String.format(
+                            "parsing: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
+            t0 = t;
+        }
 
         ParseTreeConverter converter = new ParseTreeConverter();
         Unit unit = (Unit) converter.visit(ret);
 
-        System.out.println(
-                String.format(
-                        "converting: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
-        t0 = t;
+        if (verbose) {
+            System.out.println(
+                    String.format(
+                            "converting: %f sec",
+                            ((t = System.currentTimeMillis()) - t0) / 1000.0));
+            t0 = t;
+        }
 
         info.translated = unit.toJavaCode();
         info.sqlTemplate = String.format(lexer.getCreateSqlTemplate(), unit.getJavaSignature());
