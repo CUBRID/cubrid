@@ -1449,8 +1449,10 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  csql_arg->single_line_execution = false;
 	}
-
-      fprintf (csql_Output_fp, "SINGLELINE IS %s\n", (csql_arg->single_line_execution ? "ON" : "OFF"));
+      if (csql_Is_interactive)
+	{
+	  fprintf (csql_Output_fp, "SINGLELINE IS %s\n", (csql_arg->single_line_execution ? "ON" : "OFF"));
+	}
 
       break;
     }
