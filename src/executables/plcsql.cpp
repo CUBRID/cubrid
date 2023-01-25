@@ -164,8 +164,6 @@ parse_options (int argc, char *argv[], plcsql_argument *pl_args)
     {0, 0, 0, 0}
   };
 
-  utility_make_getopt_optstring (opts, option_string);
-
   while (1)
     {
       int option_index = 0;
