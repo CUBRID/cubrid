@@ -272,9 +272,11 @@ OR_PUT_DOUBLE (char *ptr, double val)
 #define OR_GET_OFFSET(ptr) \
   OR_GET_OFFSET_INTERNAL (ptr, BIG_VAR_OFFSET_SIZE)
 
-#define OR_PUT_BIG_VAR_OFFSET(ptr, val)	OR_PUT_INT (ptr, val)	/* 4byte */
+#define OR_PUT_BIG_VAR_OFFSET(ptr, val) \
+  OR_PUT_INT (ptr, val)		/* 4byte */
 
-#define OR_GET_BIG_VAR_OFFSET(ptr) 	OR_GET_INT (ptr)	/* 4byte */
+#define OR_GET_BIG_VAR_OFFSET(ptr) \
+  OR_GET_INT (ptr)		/* 4byte */
 
 #define OR_PUT_SHA1(ptr, value) \
   do { \
@@ -321,6 +323,7 @@ OR_PUT_DOUBLE (char *ptr, double val)
     OR_PUT_INT (((char *) (ptr)) + OR_VPID_PAGEID, (vpid)->pageid); \
     OR_PUT_SHORT (((char *) (ptr)) + OR_VPID_VOLID, (vpid)->volid); \
   } while (0)
+
 #define OR_PUT_VPID_ALIGNED(ptr, vpid) \
   do { \
     OR_PUT_INT (((char *) (ptr)) + OR_VPID_PAGEID, (vpid)->pageid); \
