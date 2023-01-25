@@ -251,7 +251,7 @@ main (int argc, char *argv[])
     /* Call network interface API to send a input file (PL/CSQL program) */
     if (plcsql_transfer_file (input_string, verbose, output_string, sql) != NO_ERROR)
       {
-	PLCSQL_LOG ("Transferring PL/CSQL program is failed");
+	PLCSQL_LOG ("Transferring or Translating PL/CSQL program is failed");
 	goto exit_on_end;
       }
 
