@@ -92,7 +92,7 @@ namespace cublog
     private:
       atomic_replication_helper m_atomic_helper;
 
-      log_lsa m_processed_lsa = NULL_LSA; /* protected by m_redo_lsa_mutex with m_redo_lsa */
+      log_lsa m_processed_lsa = NULL_LSA;
       mutable std::mutex m_processed_lsa_mutex;
 
       log_lsa m_lowest_unapplied_lsa;
