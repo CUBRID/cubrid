@@ -1267,7 +1267,7 @@ EXTERN_INLINE int or_put_string_aligned_with_length (OR_BUF * buf, const char *s
 EXTERN_INLINE int or_put_offset (OR_BUF * buf, int num) __attribute__ ((ALWAYS_INLINE));
 EXTERN_INLINE int or_put_offset_internal (OR_BUF * buf, int num, int offset_size) __attribute__ ((ALWAYS_INLINE));
 EXTERN_INLINE int or_put_oid (OR_BUF * buf, const OID * oid) __attribute__ ((ALWAYS_INLINE));
-extern int or_put_mvccid (OR_BUF * buf, MVCCID mvccid);
+EXTERN_INLINE int or_put_mvccid (OR_BUF * buf, MVCCID mvccid);
 
 /* Data unpacking functions */
 EXTERN_INLINE int or_get_byte (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
@@ -1299,7 +1299,7 @@ STATIC_INLINE int or_get_string_size_byte (OR_BUF * buf, int *error) __attribute
 EXTERN_INLINE int or_get_offset (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
 EXTERN_INLINE int or_get_offset_internal (OR_BUF * buf, int *error, int offset_size) __attribute__ ((ALWAYS_INLINE));
 EXTERN_INLINE int or_get_oid (OR_BUF * buf, OID * oid) __attribute__ ((ALWAYS_INLINE));
-extern int or_get_mvccid (OR_BUF * buf, MVCCID * mvccid);
+EXTERN_INLINE int or_get_mvccid (OR_BUF * buf, MVCCID * mvccid);
 
 EXTERN_INLINE int or_varbit_length (int bitlen) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_varbit_length_internal (int bitlen, int align) __attribute__ ((ALWAYS_INLINE));
@@ -2696,6 +2696,57 @@ or_get_oid (OR_BUF * buf, OID * oid)
     {
       OR_GET_OID (buf->ptr, oid);
       buf->ptr += OR_OID_SIZE;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * or_put_mvccid () - Put an MVCCID to OR Buffer.
+ *
+ * return      : Error code.
+ * buf (in)    : OR Buffer
+ * mvccid (in) : MVCCID
+ */
+EXTERN_INLINE int
+or_put_mvccid (OR_BUF * buf, MVCCID mvccid)
+{
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
+    {
+      return (or_overflow (buf));
+    }
+  else
+    {
+      OR_PUT_MVCCID (buf->ptr, &mvccid);
+      buf->ptr += OR_MVCCID_SIZE;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * or_get_mvccid () - Get an MVCCID from OR Buffer.
+ *
+ * return	: MVCCID
+ * buf (in/out) : OR Buffer.
+ * error (out)  : Error code.
+ */
+EXTERN_INLINE int
+or_get_mvccid (OR_BUF * buf, MVCCID * mvccid)
+{
+  assert (mvccid != NULL);
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  *mvccid = MVCCID_NULL;
+
+  if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
+    {
+      return or_underflow (buf);
+    }
+  else
+    {
+      OR_GET_MVCCID (buf->ptr, mvccid);
+      buf->ptr += OR_MVCCID_SIZE;
     }
   return NO_ERROR;
 }
