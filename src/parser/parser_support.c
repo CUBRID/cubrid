@@ -10839,14 +10839,16 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   snl->server_cnt++;
   for (int i = 0; i < snl->server_node_cnt; i++)
     {
+      int node_cnt = 0;
+
       if (strcasecmp (snl->server[i]->info.name.original, name_ptr) != 0)
 	{
-	  PT_ERROR (parser, node, "dblink: multi over");
-	  return node;
+	  node_cnt++;
 	}
 
       if (owner_ptr == NULL && snl->server[i]->next == NULL)
 	{
+	  snl->server_node_cnt += node_cnt;
 	  return node;
 	}
 
@@ -10854,16 +10856,11 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	{
 	  if (strcasecmp (snl->server[i]->next->info.name.original, owner_ptr) != 0)
 	    {
-	      PT_ERROR (parser, node, "dblink: multi over");
+	      node_cnt++;
 	    }
+	  snl->server_node_cnt += node_cnt;
 	  return node;
 	}
-    }
-
-  if (snl->server_node_cnt >= 2)
-    {
-      PT_ERROR (parser, node, "dblink: multi over");
-      return node;
     }
 
   new_name = parser_new_node (parser, PT_NAME);
@@ -11387,11 +11384,18 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
   if (snl->local_cnt > 0 && remote_upd > 0)
     {
       PT_ERROR (parser, upd_spec, "dblink: multi-update not allowed");
+      return;
     }
 
   if (snl->server_cnt == tmp_server_cnt || (local_upd > 0 && remote_upd == 0))
     {
       // insert into local_tbl ...
+      return;
+    }
+
+  if (snl->server_node_cnt >= 2 && remote_upd > 0)
+    {
+      PT_ERROR (parser, upd_spec, "dblink: multi-server-update not allowed");
       return;
     }
 #if 0
