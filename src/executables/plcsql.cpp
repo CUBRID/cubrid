@@ -218,6 +218,12 @@ main (int argc, char *argv[])
   DB_QUERY_RESULT *result = NULL;
 
   {
+    if (er_init (NULL, ER_NEVER_EXIT) != NO_ERROR)
+      {
+	PLCSQL_LOG_FORCE ("Initializing error manager is failed");
+	goto exit_on_end;
+      }
+
     if (parse_options (argc, argv, &plcsql_arg) != NO_ERROR)
       {
 	goto print_usage;
@@ -225,12 +231,6 @@ main (int argc, char *argv[])
 
     PLCSQL_LOG ("[Arguments]");
     plcsql_arg.print ();
-
-    if (er_init (NULL, ER_NEVER_EXIT) != NO_ERROR)
-      {
-	PLCSQL_LOG_FORCE ("Initializing error manager is failed");
-	goto exit_on_end;
-      }
 
     if (db_restart_ex ("PLCSQL Helper", DB_PLCSQL_AS_ARGS (plcsql_arg)) != NO_ERROR)
       {
