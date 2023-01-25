@@ -76,13 +76,9 @@ EXPORTS
     locator_has_heap
     ntohs
     ntohl
-    ntohf
-    ntohd
     ntohi64
     htons
     htonl
-    htonf
-    htond
     htoni64
     numeric_coerce_int_to_num
     pgbuf_fix_release
