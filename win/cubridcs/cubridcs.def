@@ -412,13 +412,9 @@ EXPORTS
     net_client_ping_server
     ntohs
     ntohl
-    ntohf
-    ntohd
     ntohi64
     htons
     htonl
-    htonf
-    htond
     htoni64
     numeric_db_value_print
     os_set_signal_handler

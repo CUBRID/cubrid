@@ -169,7 +169,7 @@ htonf (float from)
 
   return to;
 }
-#endif /* !OR_HAVE_HTONL */
+#endif /* !OR_HAVE_HTONF */
 
 #if !defined (OR_HAVE_HTOND)
 UINT64
