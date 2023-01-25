@@ -85,20 +85,6 @@ struct setobj;
 #define OR_CHECK_FLOAT_OVERFLOW(i)         ((i) > FLT_MAX || (-(i)) > FLT_MAX)
 #define OR_CHECK_DOUBLE_OVERFLOW(i)        ((i) > DBL_MAX || (-(i)) > DBL_MAX)
 
-#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
-#define swap64(x)  \
-  ((((unsigned long long) (x) & (0x00000000000000FFULL)) << 56) \
-   | (((unsigned long long) (x) & (0xFF00000000000000ULL)) >> 56) \
-   | (((unsigned long long) (x) & (0x000000000000FF00ULL)) << 40) \
-   | (((unsigned long long) (x) & (0x00FF000000000000ULL)) >> 40) \
-   | (((unsigned long long) (x) & (0x0000000000FF0000ULL)) << 24) \
-   | (((unsigned long long) (x) & (0x0000FF0000000000ULL)) >> 24) \
-   | (((unsigned long long) (x) & (0x00000000FF000000ULL)) << 8) \
-   | (((unsigned long long) (x) & (0x000000FF00000000ULL)) >> 8))
-#else /* OR_BYTE_ORDER == OR_LITTLE_ENDIAN */
-#define swap64(x)        (x)
-#endif /* OR_BYTE_ORDER == OR_BIG_ENDIAN */
-
 #if __WORDSIZE == 32
 #define OR_PTR_SIZE             4
 #define OR_PUT_PTR(ptr, val)    OR_PUT_INT ((ptr), (val))
