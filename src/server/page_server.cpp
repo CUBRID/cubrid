@@ -210,7 +210,7 @@ page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_
 {
   assert (m_server_type == transaction_server_type::PASSIVE);
 
-  const auto oldest_mvccid = *reinterpret_cast<const MVCCID *const> (a_sp.pull_payload().c_str());
+  const auto oldest_mvccid = *reinterpret_cast<const MVCCID *> (a_sp.pull_payload().c_str());
 
   m_ps.m_pts_mvcc_tracker.update_oldest_active_mvccid (get_connection_id (), oldest_mvccid);
 }

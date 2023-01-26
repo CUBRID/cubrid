@@ -78,9 +78,9 @@ namespace cublog
       atomic_replicator &operator= (atomic_replicator &&) = delete;
 
       /* return current progress of the replicator */
-      log_lsa get_highest_processed_lsa () const override;
+      log_lsa get_highest_processed_lsa () const;
       /* return the lowest value lsa that was not applied, the next in line lsa */
-      log_lsa get_lowest_unapplied_lsa () const override;
+      log_lsa get_lowest_unapplied_lsa () const;
     private:
       void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa) override;
       template <typename T>
