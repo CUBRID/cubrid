@@ -111,6 +111,17 @@ namespace cublog
   {
     LOG_LSA min_lsa = MAX_LSA;
 
+    // NOTE: the calculation is simplistic:
+    //  - even if an atomic sequence is still present; it does not mean that the start
+    //    of that sequence is the lowest unprocessed lsa
+    //  - this is caused by the fact that an atomic sequence is not applied once
+    //    in etirety; but, it is applied in bursts as guided by every new "control
+    //    log" that is processed
+    //  - the calculation can be made more accurate by more closely following the
+    //    the in burst progress of applying logs in the sequence
+    //  - however, the gain would be marginal as most atomic sequences are so small
+    //    that it would not really make a difference
+    //
     for (auto const &sequence_map_iterator : m_sequences_map)
       {
 	const atomic_log_sequence &sequence = sequence_map_iterator.second;
