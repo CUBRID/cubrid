@@ -13874,6 +13874,7 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE *
     }
 
   if (is_att_prop_set (attr_chg_prop->p[P_DEFAULT_VALUE], ATT_CHG_PROPERTY_PRESENT_OLD) &&
+      !is_att_prop_set (attr_chg_prop->p[P_DEFAULT_VALUE], ATT_CHG_PROPERTY_PRESENT_NEW) &&
       (is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_NEED_ROW_CHECK)
        || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PSEUDO_UPGRADE)))
     {
