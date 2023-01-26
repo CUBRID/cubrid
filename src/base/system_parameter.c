@@ -1197,14 +1197,14 @@ static bool prm_ansi_quotes_default = true;
 static unsigned int prm_ansi_quotes_flag = 0;
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-int PRM_AUTO_DEDUP_MODE = DUP_MODE_VALUE_DEFAULT;
-static int prm_dedup_mode_default = DUP_MODE_VALUE_DEFAULT;
+int PRM_AUTO_DEDUP_MODE = DUP_MODE_NONE;
+static int prm_dedup_mode_default = DUP_MODE_NONE;
 static unsigned int prm_dedup_mode_flag = 0;
 static int prm_dedup_mode_lower = DUP_MODE_NONE;
 static int prm_dedup_mode_upper = (DUP_MODE_LAST - 1);
 
-int PRM_AUTO_DEDUP_LEVEL = DUP_LEVEL_VALUE_DEFAULT;
-static int prm_dedup_level_default = DUP_LEVEL_VALUE_DEFAULT;
+int PRM_AUTO_DEDUP_LEVEL = OVFL_LEVEL_MIN;
+static int prm_dedup_level_default = OVFL_LEVEL_MIN;
 static unsigned int prm_dedup_level_flag = 0;
 static int prm_dedup_level_lower = OVFL_LEVEL_MIN;
 static int prm_dedup_level_upper = OVFL_LEVEL_MAX;
