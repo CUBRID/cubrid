@@ -19,7 +19,7 @@
 #ifndef _PASSIVE_TRAN_SERVER_HPP_
 #define _PASSIVE_TRAN_SERVER_HPP_
 
-#include "log_replication.hpp"
+#include "log_replication_atomic.hpp"
 #include "tran_server.hpp"
 
 class passive_tran_server : public tran_server
@@ -58,7 +58,7 @@ class passive_tran_server : public tran_server
     void stop_outgoing_page_server_messages () final override;
 
   private:
-    std::unique_ptr<cublog::replicator> m_replicator;
+    std::unique_ptr<cublog::atomic_replicator> m_replicator;
     cubthread::daemon *m_oldest_active_mvccid_sender = nullptr;
     /* the oldest visible mvcc id considering the replicator and RO transactions */
     MVCCID m_oldest_active_mvccid = MVCCID_NULL;
