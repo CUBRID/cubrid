@@ -1200,7 +1200,7 @@ static unsigned int prm_ansi_quotes_flag = 0;
 int PRM_AUTO_DEDUP_MODE = DUP_MODE_VALUE_DEFAULT;
 static int prm_dedup_mode_default = DUP_MODE_VALUE_DEFAULT;
 static unsigned int prm_dedup_mode_flag = 0;
-static int prm_dedup_mode_lower = (DUP_MODE_NONE + 1);
+static int prm_dedup_mode_lower = DUP_MODE_NONE;
 static int prm_dedup_mode_upper = (DUP_MODE_LAST - 1);
 
 int PRM_AUTO_DEDUP_LEVEL = DUP_LEVEL_VALUE_DEFAULT;
@@ -6178,7 +6178,7 @@ SYSPRM_PARAM prm_Def[] = {
   {PRM_ID_AUTO_DEDUP_MODE,
    PRM_NAME_AUTO_DEDUP_MODE,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
-   PRM_INTEGER,
+   PRM_KEYWORD,
    &prm_dedup_mode_flag,
    (void *) &prm_dedup_mode_default,
    (void *) &PRM_AUTO_DEDUP_MODE,
@@ -6361,6 +6361,17 @@ static KEYVAL regexp_engine_words[] = {
   {get_engine_name(engine_type::LIB_RE2), engine_type::LIB_RE2}
 };
 /* *INDENT-ON* */
+
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+static KEYVAL dup_mode_words[] = {
+  {"off", DUP_MODE_NONE},
+  {"none", DUP_MODE_NONE},
+  {"oid", DUP_MODE_OID},
+  {"pageid", DUP_MODE_PAGEID},
+  {"slotid", DUP_MODE_SLOTID},
+  {"volid", DUP_MODE_VOLID}
+};
+#endif
 
 static const char *compat_mode_values_PRM_ANSI_QUOTES[COMPAT_ORACLE + 2] = {
   NULL,				/* COMPAT_CUBRID */
@@ -8312,6 +8323,12 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 	{
 	  keyvalp = prm_keyword (PRM_GET_INT (prm->value), NULL, regexp_engine_words, DIM (regexp_engine_words));
 	}
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_AUTO_DEDUP_MODE) == 0)
+	{
+	  keyvalp = prm_keyword (PRM_GET_INT (prm->value), NULL, dup_mode_words, DIM (dup_mode_words));
+	}
+#endif
       else
 	{
 	  assert (false);
@@ -8616,6 +8633,12 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
 	{
 	  keyvalp = prm_keyword (value.i, NULL, regexp_engine_words, DIM (regexp_engine_words));
 	}
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_AUTO_DEDUP_MODE) == 0)
+	{
+	  keyvalp = prm_keyword (value.i, NULL, dup_mode_words, DIM (dup_mode_words));
+	}
+#endif
       else
 	{
 	  assert (false);
@@ -9832,6 +9855,12 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	  {
 	    keyvalp = prm_keyword (-1, value, regexp_engine_words, DIM (regexp_engine_words));
 	  }
+#if defined(SUPPORT_KEY_DUP_LEVEL)
+	else if (intl_mbs_casecmp (prm->name, PRM_NAME_AUTO_DEDUP_MODE) == 0)
+	  {
+	    keyvalp = prm_keyword (-1, value, dup_mode_words, DIM (dup_mode_words));
+	  }
+#endif
 	else
 	  {
 	    assert (false);
