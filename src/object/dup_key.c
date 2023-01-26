@@ -506,7 +506,7 @@ dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupk
     {
       /* case DUP_MODE_OVFL_LEVEL_NOT_SET: 
        *     It entered to output an error message due to a parsing error. */
-      assert ((dupkey_mode = DUP_MODE_NONE) || (dupkey_mode == DUP_MODE_OVFL_LEVEL_NOT_SET && dupkey_hash_level == 0));
+      assert ((dupkey_mode == DUP_MODE_NONE) || (dupkey_mode == DUP_MODE_OVFL_LEVEL_NOT_SET && dupkey_hash_level == 0));
       return buf;
     }
 
