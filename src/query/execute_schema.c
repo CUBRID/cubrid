@@ -13873,6 +13873,14 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE *
 	}
     }
 
+  if (is_att_prop_set (attr_chg_prop->p[P_DEFAULT_VALUE], ATT_CHG_PROPERTY_PRESENT_OLD) &&
+      (is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_NEED_ROW_CHECK)
+       || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PSEUDO_UPGRADE)))
+    {
+      error = ER_ALTER_CHANGE_CAST_FAILED_SET_DEFAULT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+    }
+
 exit:
   db_value_clear (&def_value);
   return error;
