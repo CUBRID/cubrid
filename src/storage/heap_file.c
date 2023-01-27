@@ -12510,7 +12510,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	  if (index->type == BTREE_FOREIGN_KEY)
 	    {
-	      //printf ("foreign key!!!\n");
+	      printf ("foreign key!!!\n");
 	      ;			//continue; 
 	    }
 #endif

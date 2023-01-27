@@ -3408,7 +3408,11 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-  if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (original_ctype) && original_ctype != SM_CONSTRAINT_FOREIGN_KEY)
+  if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (original_ctype)
+#if !defined(SUPPORT_KEY_DUP_LEVEL_FK)
+      && original_ctype != SM_CONSTRAINT_FOREIGN_KEY
+#endif
+    )
     {
       error = dk_alter_rebuild_index_level_adjust (original_ctype, &statement->info.index, attnames, asc_desc,
 						   attrs_prefix_length, func_index_info, &reserved_index_col_pos,

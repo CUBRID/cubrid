@@ -336,8 +336,16 @@ dk_alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_IN
 {
   int func_no_args = 0;
 
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+  assert (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype));
+  if (ctype != DB_CONSTRAINT_FOREIGN_KEY)
+    {
+      assert (asc_desc != NULL);
+    }
+#else
   assert (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != DB_CONSTRAINT_FOREIGN_KEY);
   assert (asc_desc != NULL);
+#endif
   assert (reserved_index_col_pos != NULL);
 
   if (idx_info->dupkey_mode <= DUP_MODE_OVFL_LEVEL_NOT_SET)
