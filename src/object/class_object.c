@@ -4093,7 +4093,7 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
   /* for foreign key, need to check redundancy first */
   if (new_cons == DB_CONSTRAINT_FOREIGN_KEY)
     {
-      printf ("foreign key\n");
+      //printf ("foreign key\n");
     }
 #endif
 

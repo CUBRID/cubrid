@@ -36,7 +36,7 @@
 
 #define FAKE_RESERVED_INDEX_ATTR
 
-#define SUPPORT_KEY_DUP_LEVEL_FK
+//#define SUPPORT_KEY_DUP_LEVEL_FK
 #endif
 
 #endif // _DUP_KEY_DEF_H_
