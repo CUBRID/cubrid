@@ -3907,6 +3907,11 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
     }
   else
     {
+      /*
+         TODO: the below code snippet should be moved to appropriate position.
+         this code is temporal for dblink error, as like "not found server-name"
+         delete or update .. join (select * from dblink (server-name, ...)
+       */
       if (pt_has_error (parser))
 	{
 	  pt_report_to_ersys (parser, PT_SEMANTIC);
