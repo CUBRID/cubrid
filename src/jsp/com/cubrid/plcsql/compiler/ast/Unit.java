@@ -30,10 +30,17 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+
 import com.cubrid.plcsql.compiler.Misc;
 import java.sql.*;
 
 public class Unit implements AstNode {
+
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        return visitor.visitUnit(this);
+    }
 
     public final boolean autonomousTransaction;
     public final boolean connectionRequired;

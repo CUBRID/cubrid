@@ -30,9 +30,16 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+
 import com.cubrid.plcsql.compiler.Misc;
 
 public class StmtForIterLoop implements Stmt {
+
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        return visitor.visitStmtForIterLoop(this);
+    }
 
     public final int level;
     public final DeclLabel declLabel;

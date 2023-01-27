@@ -30,12 +30,20 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+
 import com.cubrid.plcsql.compiler.Misc;
 
 import java.util.Map;
 import java.util.HashMap;
 
 public class TypeSpecSimple extends TypeSpec {
+
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        return visitor.visitTypeSpecSimple(this);
+    }
+
     public final String fullJavaType;
 
     public static TypeSpecSimple of(String s) {

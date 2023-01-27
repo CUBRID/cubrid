@@ -30,7 +30,14 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+
 public class StmtRollback implements Stmt {
+
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        return visitor.visitStmtRollback(this);
+    }
 
     @Override
     public String toJavaCode() {

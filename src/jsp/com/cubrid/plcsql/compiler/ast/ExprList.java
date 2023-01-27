@@ -30,9 +30,16 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+
 import com.cubrid.plcsql.compiler.Misc;
 
 public class ExprList implements Expr {
+
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        return visitor.visitExprList(this);
+    }
 
     public final NodeList<Expr> elems;
 

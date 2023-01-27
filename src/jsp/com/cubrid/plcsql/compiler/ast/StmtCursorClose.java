@@ -30,7 +30,14 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+
 public class StmtCursorClose implements Stmt {
+
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        return visitor.visitStmtCursorClose(this);
+    }
 
     public final ExprId cursor;
 

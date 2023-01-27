@@ -30,9 +30,16 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+
 import com.cubrid.plcsql.compiler.Misc;
 
 public class StmtIf implements Stmt {
+
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        return visitor.visitStmtIf(this);
+    }
 
     public final NodeList<CondStmt> condStmtParts;
     public final NodeList<Stmt> elsePart;

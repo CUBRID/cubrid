@@ -30,7 +30,15 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+
 public interface AstNode {
 
     public String toJavaCode();
+
+    public default <R> R accept(AstNodeVisitor<R> visitor) {
+        assert false: "accept not overriden";
+        throw new RuntimeException("accept not overriden");
+    }
+
 }

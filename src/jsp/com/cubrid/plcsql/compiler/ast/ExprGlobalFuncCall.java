@@ -30,9 +30,16 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+
 import com.cubrid.plcsql.compiler.Misc;
 
 public class ExprGlobalFuncCall implements Expr {
+
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        return visitor.visitExprGlobalFuncCall(this);
+    }
 
     public final int level;
     public final String name;

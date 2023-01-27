@@ -30,10 +30,17 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+
 import com.cubrid.plcsql.compiler.Misc;
 import java.util.List;
 
 public class ExHandler implements AstNode {
+
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        return visitor.visitExHandler(this);
+    }
 
     public final List<ExName> exNames;
     public final NodeList<Stmt> stmts;

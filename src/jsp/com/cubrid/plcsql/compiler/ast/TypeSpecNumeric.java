@@ -30,7 +30,14 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+
 public class TypeSpecNumeric extends TypeSpec {
+
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        return visitor.visitTypeSpecNumeric(this);
+    }
 
     public final int precision;
     public final int scale;

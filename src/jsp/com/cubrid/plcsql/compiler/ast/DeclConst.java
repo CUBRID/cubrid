@@ -30,7 +30,14 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+
 public class DeclConst extends DeclBase implements DeclVarLike {
+
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        return visitor.visitDeclConst(this);
+    }
 
     public final String name;
     public final TypeSpec typeSpec;

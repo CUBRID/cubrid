@@ -30,10 +30,17 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.Scope;
 
 public class ExprLocalFuncCall implements Expr {
+
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        return visitor.visitExprLocalFuncCall(this);
+    }
 
     public final String name;
     public final NodeList<Expr> args;

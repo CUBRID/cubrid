@@ -30,7 +30,14 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+
 public class DeclParamIn extends DeclParam {
+
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        return visitor.visitDeclParamIn(this);
+    }
 
     public DeclParamIn(String name, TypeSpec typeSpec) {
         super(name, typeSpec);

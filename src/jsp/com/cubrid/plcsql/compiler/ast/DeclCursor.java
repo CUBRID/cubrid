@@ -30,9 +30,16 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+
 import java.util.Arrays;
 
 public class DeclCursor extends DeclBase implements DeclId {
+
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        return visitor.visitDeclCursor(this);
+    }
 
     public final String name;
     public final NodeList<DeclParam> paramList;

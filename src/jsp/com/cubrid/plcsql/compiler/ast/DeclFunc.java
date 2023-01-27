@@ -30,9 +30,16 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+
 public class DeclFunc extends DeclRoutine {
 
-    public DeclFunc(
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        return visitor.visitDeclFunc(this);
+    }
+
+   public DeclFunc(
             String name,
             NodeList<DeclParam> paramList,
             TypeSpec retType,
