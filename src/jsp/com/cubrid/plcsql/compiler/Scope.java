@@ -31,7 +31,7 @@
 package com.cubrid.plcsql.compiler;
 
 public class Scope {
-    public final Misc.RoutineType routineType; 
+    public final Misc.RoutineType routineType;
     public final String routine;
     public final String block;
     public final int level;

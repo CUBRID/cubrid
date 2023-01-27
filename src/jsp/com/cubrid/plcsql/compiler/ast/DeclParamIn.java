@@ -30,18 +30,10 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DeclParamIn extends DeclBase implements DeclParam {
-
-    public final String name;
-    public final TypeSpec typeSpec;
+public class DeclParamIn extends DeclParam {
 
     public DeclParamIn(String name, TypeSpec typeSpec) {
-        this.name = name;
-        this.typeSpec = typeSpec;
-    }
-
-    public TypeSpec typeSpec() {
-        return typeSpec;
+        super(name, typeSpec);
     }
 
     @Override

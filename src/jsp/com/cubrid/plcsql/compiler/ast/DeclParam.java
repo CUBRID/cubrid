@@ -30,4 +30,19 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public interface DeclParam extends DeclVarLike {} // marker interface
+public abstract class DeclParam extends DeclBase implements DeclVarLike {
+
+    public final String name;
+    public final TypeSpec typeSpec;
+
+    public DeclParam(String name, TypeSpec typeSpec) {
+        this.name = name;
+        this.typeSpec = typeSpec;
+    }
+
+    @Override
+    public TypeSpec typeSpec() {
+        return typeSpec;
+    }
+
+}

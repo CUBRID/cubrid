@@ -925,30 +925,26 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public Expr visitIdentifier(IdentifierContext ctx) {
         String name = Misc.getNormalizedText(ctx);
 
-        DeclId declId =
-                symbolStack.getDeclId(name); // NOTE: declId can be legally null if name is a serial
-        if (declId == null) {
-            DeclFunc declFunc = symbolStack.getDeclFunc(name);
-            if (declFunc == null) {
+        Decl decl = symbolStack.getDeclForIdExpr(name);
+        if (decl == null) {
 
-                connectionRequired = true;
-                addToImports("java.sql.*");
+            // this is possibly a global function call
 
-                int level = symbolStack.getCurrentScope().level + 1;
-                return new ExprCast(new ExprGlobalFuncCall(level, name, null));
-            } else {
-                int n = declFunc.paramList.nodes.size();
-                if (n > 0) {
-                    assert false : ("function " + name + " requires " + n + " arguments");
-                    throw new RuntimeException("unreachable");
-                } else {
-                    return new ExprLocalFuncCall(name, null, symbolStack.getCurrentScope(), declFunc);
-                }
-            }
-        } else {
+            connectionRequired = true;
+            addToImports("java.sql.*");
+
+            int level = symbolStack.getCurrentScope().level + 1;
+            return new ExprCast(new ExprGlobalFuncCall(level, name, null));
+        } else if (decl instanceof DeclId) {
             Scope scope = symbolStack.getCurrentScope();
-            return new ExprId(name, scope, declId);
+            return new ExprId(name, scope, (DeclId) decl);
+        } else if (decl instanceof DeclFunc) {
+            Scope scope = symbolStack.getCurrentScope();
+            return new ExprLocalFuncCall(name, null, scope, (DeclFunc) decl);
         }
+
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
     }
 
     @Override

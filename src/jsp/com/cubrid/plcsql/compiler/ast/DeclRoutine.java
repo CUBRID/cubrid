@@ -32,6 +32,9 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 
+import java.util.List;
+import java.util.ArrayList;
+
 public abstract class DeclRoutine extends DeclBase {
 
     public final String name;
@@ -83,9 +86,18 @@ public abstract class DeclRoutine extends DeclBase {
                 .replace("%'METHOD-NAME'%", name);
     }
 
-    // --------------------------------------------------
-    // Package
-    // --------------------------------------------------
+    public List<TypeSpec> getParamTypes() {
+
+        List<TypeSpec> ret = new ArrayList<TypeSpec>();
+
+        if (paramList != null) {
+            for (DeclParam param: paramList.nodes) {
+                ret.add(param.typeSpec());
+            }
+        }
+
+        return ret;
+    }
 
     public String argsToJavaCode(NodeList<Expr> args) {
 

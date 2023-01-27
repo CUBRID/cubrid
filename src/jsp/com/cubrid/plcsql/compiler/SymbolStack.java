@@ -39,6 +39,7 @@ import java.lang.reflect.Modifier;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.TreeMap;
@@ -278,7 +279,6 @@ public class SymbolStack {
         return getDecl(DeclProc.class, name);
     }
 
-    // TODO: remove this
     DeclFunc getDeclFunc(String name) {
         DeclFunc ret = getDecl(DeclFunc.class, name);
         if (ret == null) {
@@ -287,6 +287,8 @@ public class SymbolStack {
             if (overloaded == null) {
                 return null;
             } else {
+                assert overloaded.overloads.size() == 1 :
+                    "getting an overloaded function " + name + " only by its name is ambiguous";
                 return overloaded.overloads.values().iterator().next();
             }
         } else {
@@ -305,7 +307,11 @@ public class SymbolStack {
                 return overloaded.get(argTypes);
             }
         } else {
-            return ret;
+            if (argTypes.equals(ret.getParamTypes())) {
+                return ret;
+            } else {
+                return null;
+            }
         }
     }
 
@@ -317,9 +323,30 @@ public class SymbolStack {
         return getDecl(DeclLabel.class, name);
     }
 
+    // return DeclId or DeclFunc for an identifier expression
+    Decl getDeclForIdExpr(String name) {
+        DeclId declId = getDeclId(name);
+        DeclFunc declFunc = getDeclFunc(name, EMPTY_TYPE_SPEC);   // one with no parameters
+
+        if (declFunc == null) {
+            return declId;
+        } else if (declId == null) {
+            return declFunc;
+        } else {
+            if (declId.scope().level > declFunc.scope().level) {
+                return declId;
+            } else {
+                assert declId.scope().level < declFunc.scope().level;   // they cannot be on the same level
+                return declFunc;
+            }
+        }
+    }
+
     // ----------------------------------------------------
     // Private
     // ----------------------------------------------------
+
+    private static final List<TypeSpec> EMPTY_TYPE_SPEC = new ArrayList<TypeSpec>();
 
     private SymbolTable currSymbolTable;
 
