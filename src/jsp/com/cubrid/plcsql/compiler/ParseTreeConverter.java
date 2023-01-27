@@ -818,12 +818,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             // function
             assert ctx.RETURN() != null: "definition of function " + name + " must specify its return type";
             TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
-            DeclFunc ret = new DeclFunc(name, paramList, retType, null, null);
+            DeclFunc ret = new DeclFunc(name, paramList, retType);
             symbolStack.putDecl(name, ret);
         } else {
             // procedure
             assert ctx.RETURN() == null: "definition of procedure " + name + " may not specify a return type";
-            DeclProc ret = new DeclProc(name, paramList, null, null);
+            DeclProc ret = new DeclProc(name, paramList);
             symbolStack.putDecl(name, ret);
         }
     }
@@ -1692,7 +1692,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         List<ExName> exceptions = new ArrayList<>();
         for (Exception_nameContext c : ctx.exception_name()) {
             if ("OTHERS".equals(c.getText().toUpperCase())) {
-                exceptions.add(new ExName("OTHERS", null, null));
+                exceptions.add(new ExName("OTHERS"));
             } else {
                 exceptions.add(visitException_name(c));
             }

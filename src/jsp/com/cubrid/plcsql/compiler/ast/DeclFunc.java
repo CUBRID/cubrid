@@ -41,6 +41,13 @@ public class DeclFunc extends DeclRoutine {
         super(name, paramList, retType, decls, body);
     }
 
+    public DeclFunc(
+            String name,
+            NodeList<DeclParam> paramList,
+            TypeSpec retType) {
+        super(name, paramList, retType, null, null);
+    }
+
     @Override
     public String kind() {
         return "function";

@@ -148,15 +148,31 @@ public class TestMain {
 
         long t, t0;
 
-        int failCnt = 0;
-        for (int i = 0; i < args.length; i++) {
+        boolean optPrintParseTree = false;
 
-            System.out.println(String.format("file #%d: %s", i, args[i]));
+        int i;
+        for (i = 0; i < args.length; i++) {
+            String arg = args[i];
+            if (arg.startsWith("-")) {
+                if ("-p".equals(arg)) {
+                    optPrintParseTree = true;
+                } else {
+                    throw new RuntimeException("unknown option " + arg);
+                }
+            } else {
+                break;
+            }
+        }
+
+        int failCnt = 0;
+        for (int j = i; j < args.length; j++) {
+
+            System.out.println(String.format("file #%d: %s", j - i, args[j]));
 
             try {
                 t0 = System.currentTimeMillis();
 
-                String infile = args[i];
+                String infile = args[j];
                 ParseTree tree = parse(infile);
                 if (tree == null) {
                     throw new RuntimeException("parsing failed");
@@ -170,22 +186,24 @@ public class TestMain {
 
                 PrintStream out;
 
-                // walk with a pretty printer to print parse tree
-                out = getParseTreePrinterOutStream(i);
-                ParseTreePrinter pp = new ParseTreePrinter(out, infile);
-                ParseTreeWalker.DEFAULT.walk(pp, tree);
-                out.close();
+                if (optPrintParseTree) {
+                    // walk with a pretty printer to print parse tree
+                    out = getParseTreePrinterOutStream(j - i);
+                    ParseTreePrinter pp = new ParseTreePrinter(out, infile);
+                    ParseTreeWalker.DEFAULT.walk(pp, tree);
+                    out.close();
 
-                System.out.println(
-                        String.format(
-                                "printing: %f sec",
-                                ((t = System.currentTimeMillis()) - t0) / 1000.0));
-                t0 = t;
+                    System.out.println(
+                            String.format(
+                                    "printing: %f sec",
+                                    ((t = System.currentTimeMillis()) - t0) / 1000.0));
+                    t0 = t;
+                }
 
                 ParseTreeConverter converter = new ParseTreeConverter();
                 Unit unit = (Unit) converter.visit(tree);
                 out = getJavaCodeOutStream(unit.getClassName());
-                out.println(String.format("// seq=%05d, input-file=%s", i, infile));
+                out.println(String.format("// seq=%05d, input-file=%s", j - i, infile));
                 out.print(unit.toJavaCode());
                 out.close();
 

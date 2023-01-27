@@ -110,7 +110,7 @@ public class SymbolStack {
                         TypeSpec retType = TypeSpecSimple.of(typeName);
 
                         // add op
-                        DeclFunc op = new DeclFunc(name, params, retType, null, null);
+                        DeclFunc op = new DeclFunc(name, params, retType);
                         putOperator(name, op);
                     }
                 }

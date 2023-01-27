@@ -40,6 +40,12 @@ public class DeclProc extends DeclRoutine {
         super(name, paramList, null, decls, body);
     }
 
+    public DeclProc(
+            String name,
+            NodeList<DeclParam> paramList) {
+        super(name, paramList, null, null, null);
+    }
+
     @Override
     public String kind() {
         return "procedure";

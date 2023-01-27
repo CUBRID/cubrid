@@ -46,6 +46,10 @@ public class ExName implements AstNode {
         prefixDeclBlock = (decl == null) ? false : decl.scope().declDone;
     }
 
+    public ExName(String name) {
+        this(name, null, null);
+    }
+
     @Override
     public String toJavaCode() {
         // depends on the context in which this node is located and must not be called directly
