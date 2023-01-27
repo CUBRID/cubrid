@@ -1,19 +1,19 @@
 defaults: &defaults
   working_directory: /home
   docker:
-    - image: cubridci/cubridci:11.2
+    - image: cubridci/cubridci:develop
     
 oraclelinux: &oraclelinux
   working_directory: /home
   docker:
-    - image: cubridci/cubridci:ol7.8_11.2
+    - image: cubridci/cubridci:ol7.8 
 
 test_defaults: &test_defaults
   steps:
     - attach_workspace:
         at: .
     - run:
-        name: Test circleci debug
+        name: Test
         shell: /bin/bash
         environment:
           _JAVA_OPTIONS: -Xmx1g
@@ -22,27 +22,16 @@ test_defaults: &test_defaults
           /entrypoint.sh checkout
           circleci tests glob cubrid-testcases/$TEST_SUITE/_* | circleci tests split | tee tc.list
           find cubrid-testcases/$TEST_SUITE/_* -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
-
-          #test
-          cat tc.list
-          id 
-          chmod 777 /proc/sys/kernel/dmesg_restrict
-          ls -al /proc/sys/kernel/dmesg_restrict
-          cat /proc/sys/kernel/dmesg_restrict
-          echo 0 > /proc/sys/kernel/dmesg_restrict
-          cat /proc/sys/kernel/dmesg_restrict
+          /entrypoint.sh test
+    - run:
+        name: Collect Logs
+        command: |
           mkdir -p /tmp/logs
+          mv -f CUBRID/log /tmp/logs/cubrid_log
+          mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
+          #find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
           dmesg > /tmp/logs/dmesg.out
-          #/entrypoint.sh test
-    #- run:
-    #    name: Collect Logs
-    #    command: |
-    #      mkdir -p /tmp/logs
-    #      mv -f CUBRID/log /tmp/logs/cubrid_log
-    #      mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
-    #      #find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
-    #      dmesg > /tmp/logs/dmesg.out
-    #    when: on_fail
+        when: on_fail
     - store_test_results:
         path: /tmp/tests
     - store_artifacts:
@@ -56,25 +45,24 @@ jobs:
       MAKEFLAGS: -j 10
     resource_class: large
     steps:
-      #- checkout
-      #- run:
-      #    name: Submodules
-      #    command: |
-      #      git submodule sync
-      #      git submodule update --init
+      - checkout
+      - run:
+          name: Submodules
+          command: |
+            git submodule sync
+            git submodule update --init
       - run:
           name: Build
           command: |
             mkdir -p /tmp/build_logs
-            #scl enable devtoolset-9 -- /entrypoint.sh build
-            #mv -f build.log /tmp/build_logs
-            mkdir -p /home/CUBRID
+            scl enable devtoolset-9 -- /entrypoint.sh build
+            mv -f build.log /tmp/build_logs
       - run:
           name: Commits
           command: |
             mkdir -p /tmp/build_logs
-            #git log | head -n 1000 > commits.log || true
-            #mv -f commits.log /tmp/build_logs
+            git log | head -n 1000 > commits.log || true
+            mv -f commits.log /tmp/build_logs
       - persist_to_workspace:
           root: .
           paths:
@@ -116,16 +104,16 @@ workflows:
   build_test:
     jobs:
       - build
-    #  - test_medium:
-    #      requires:
-    #        - build
+      - test_medium:
+          requires:
+            - build
       - test_sql:
           requires:
             - build
 
-    #  - test_medium_ol:
-    #      requires:
-    #        - build
-    #  - test_sql_ol:
-    #      requires:
-    #        - build
+      - test_medium_ol:
+          requires:
+            - build
+      - test_sql_ol:
+          requires:
+            - build
