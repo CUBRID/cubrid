@@ -3907,6 +3907,12 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
     }
   else
     {
+      if (pt_has_error (parser))
+	{
+	  pt_report_to_ersys (parser, PT_SEMANTIC);
+	  return er_errid ();
+	}
+
       assert (PT_SPEC_IS_CTE (spec) || PT_SPEC_IS_DERIVED (spec));
       col = pt_is_on_list (parser, name, spec->info.spec.as_attr_list);
       ok = (col != NULL);

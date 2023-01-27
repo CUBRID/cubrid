@@ -10767,7 +10767,7 @@ static PT_NODE *
 pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PARSER_VARCHAR *vq = NULL;
-  char *name_ptr;
+  char *name_ptr = NULL;
   char *owner_ptr = NULL;
   SERVER_NAME_LIST *snl = (SERVER_NAME_LIST *) arg;
   PT_NODE *new_name, *new_owner;
@@ -10829,10 +10829,13 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
     }
   else
     {
-      name_ptr = (char *) node->info.spec.derived_table->info.dblink_table.conn->info.name.original;
-      if (node->info.spec.derived_table->info.dblink_table.owner_name)
+      if (node->info.spec.derived_table->info.dblink_table.conn)
 	{
-	  owner_ptr = (char *) node->info.spec.derived_table->info.dblink_table.owner_name->info.name.original;
+	  name_ptr = (char *) node->info.spec.derived_table->info.dblink_table.conn->info.name.original;
+	  if (node->info.spec.derived_table->info.dblink_table.owner_name)
+	    {
+	      owner_ptr = (char *) node->info.spec.derived_table->info.dblink_table.owner_name->info.name.original;
+	    }
 	}
     }
 
@@ -10841,7 +10844,7 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
     {
       int node_cnt = 0;
 
-      if (strcasecmp (snl->server[i]->info.name.original, name_ptr) != 0)
+      if (name_ptr == NULL || strcasecmp (snl->server[i]->info.name.original, name_ptr) != 0)
 	{
 	  node_cnt++;
 	}
@@ -10863,23 +10866,26 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
     }
 
-  new_name = parser_new_node (parser, PT_NAME);
-  new_name->info.name.original = pt_append_string (parser, NULL, name_ptr);
-  if (owner_ptr)
+  if (name_ptr != NULL)
     {
-      new_owner = parser_new_node (parser, PT_NAME);
-      new_owner->info.name.original = pt_append_string (parser, NULL, owner_ptr);
-      new_name->next = new_owner;
+      new_name = parser_new_node (parser, PT_NAME);
+      new_name->info.name.original = pt_append_string (parser, NULL, name_ptr);
+      if (owner_ptr)
+	{
+	  new_owner = parser_new_node (parser, PT_NAME);
+	  new_owner->info.name.original = pt_append_string (parser, NULL, owner_ptr);
+	  new_name->next = new_owner;
 
-      vq = pt_append_nulstring (parser, vq, owner_ptr);
-      vq = pt_append_bytes (parser, vq, ".", 1);
+	  vq = pt_append_nulstring (parser, vq, owner_ptr);
+	  vq = pt_append_bytes (parser, vq, ".", 1);
+	}
+      vq = pt_append_nulstring (parser, vq, name_ptr);
+
+      snl->len[snl->server_node_cnt] = (int) strlen ((char *) vq->bytes);
+      snl->server_full_name[snl->server_node_cnt] = (char *) vq->bytes;
+      snl->server[snl->server_node_cnt] = new_name;
+      snl->server_node_cnt++;
     }
-  vq = pt_append_nulstring (parser, vq, name_ptr);
-
-  snl->len[snl->server_node_cnt] = (int) strlen ((char *) vq->bytes);
-  snl->server_full_name[snl->server_node_cnt] = (char *) vq->bytes;
-  snl->server[snl->server_node_cnt] = new_name;
-  snl->server_node_cnt++;
 
   return node;
 }
