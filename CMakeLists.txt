@@ -1086,6 +1086,7 @@ else()
   set(LZ4_INCLUDES ${CMAKE_BINARY_DIR}/external/Source/lz4/lib)
   set(LZ4_LIBS ${CMAKE_BINARY_DIR}/external/Source/lz4/lib/liblz4.a)
 endif()
+list(APPEND EP_TARGETS ${LZ4_TARGET})
 list(APPEND EP_LIBS ${LZ4_LIBS})
 list(APPEND EP_INCLUDES ${LZ4_INCLUDES})
 
@@ -1216,6 +1217,7 @@ else(WITH_RE2 STREQUAL "EXTERNAL")
   message(FATAL_ERROR "Invalid WITH_RE2 option value ${WITH_RE2}")
 endif()
 # add to external project targets
+list(APPEND EP_TARGETS ${RE2_TARGET})
 list(APPEND EP_LIBS ${RE2_LIBS})
 list(APPEND EP_INCLUDES ${RE2_INCLUDES})
 
