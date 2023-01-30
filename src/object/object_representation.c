@@ -543,6 +543,95 @@ or_put_bound_bit (char *bound_bits, int element, int bound)
 #endif /* ENABLE_UNUSED_FUNCTION */
 #endif /* !SERVER_MODE */
 
+/*
+ * or_put_monetary - write a DB_MONETARY value to or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    monetary(in): pointer to DB_MONETARY value
+ */
+int
+or_put_monetary (OR_BUF * buf, DB_MONETARY * monetary)
+{
+  int error;
+
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  /* check for valid currency type don't put default case in the switch!!! */
+  error = ER_INVALID_CURRENCY_TYPE;
+  switch (monetary->type)
+    {
+    case DB_CURRENCY_DOLLAR:
+    case DB_CURRENCY_YEN:
+    case DB_CURRENCY_WON:
+    case DB_CURRENCY_TL:
+    case DB_CURRENCY_BRITISH_POUND:
+    case DB_CURRENCY_CAMBODIAN_RIEL:
+    case DB_CURRENCY_CHINESE_RENMINBI:
+    case DB_CURRENCY_INDIAN_RUPEE:
+    case DB_CURRENCY_RUSSIAN_RUBLE:
+    case DB_CURRENCY_AUSTRALIAN_DOLLAR:
+    case DB_CURRENCY_CANADIAN_DOLLAR:
+    case DB_CURRENCY_BRASILIAN_REAL:
+    case DB_CURRENCY_ROMANIAN_LEU:
+    case DB_CURRENCY_EURO:
+    case DB_CURRENCY_SWISS_FRANC:
+    case DB_CURRENCY_DANISH_KRONE:
+    case DB_CURRENCY_NORWEGIAN_KRONE:
+    case DB_CURRENCY_BULGARIAN_LEV:
+    case DB_CURRENCY_VIETNAMESE_DONG:
+    case DB_CURRENCY_CZECH_KORUNA:
+    case DB_CURRENCY_POLISH_ZLOTY:
+    case DB_CURRENCY_SWEDISH_KRONA:
+    case DB_CURRENCY_CROATIAN_KUNA:
+    case DB_CURRENCY_SERBIAN_DINAR:
+      error = NO_ERROR;		/* it's a type we expect */
+      break;
+    default:
+      break;
+    }
+
+  if (error != NO_ERROR)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, monetary->type);
+      return error;
+    }
+
+  if ((buf->ptr + OR_MONETARY_SIZE) > buf->endptr)
+    {
+      return (or_overflow (buf));
+    }
+  else
+    {
+      OR_PUT_MONETARY (buf->ptr, monetary);
+      buf->ptr += OR_MONETARY_SIZE;
+    }
+
+  return error;
+}
+
+/*
+ * or_get_monetary - read a DB_MONETARY from or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    monetary(out): pointer to DB_MONETARY value
+ */
+int
+or_get_monetary (OR_BUF * buf, DB_MONETARY * monetary)
+{
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  if ((buf->ptr + OR_MONETARY_SIZE) > buf->endptr)
+    {
+      return or_underflow (buf);
+    }
+  else
+    {
+      OR_GET_MONETARY (buf->ptr, monetary);
+      buf->ptr += OR_MONETARY_SIZE;
+    }
+  return NO_ERROR;
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_put_binary - Writes a binary array into the translation buffer.
@@ -597,6 +686,130 @@ or_put_varbit (OR_BUF * buf, const char *string, int bitlen)
 {
   return or_put_varbit_internal (buf, string, bitlen, CHAR_ALIGNMENT);
 }
+
+#if defined(ENABLE_UNUSED_FUNCTION)
+/*
+ * or_get_varbit - get varbit from or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    length_ptr(out): length of varbit read
+ */
+char *
+or_get_varbit (OR_BUF * buf, int *length_ptr)
+{
+  int bitlen, charlen;
+  char *new_ = NULL;
+  int rc = NO_ERROR;
+
+  bitlen = or_get_varbit_length (buf, &rc);
+
+  if (rc != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  /* Allocate storage for the string including the kludge NULL terminator */
+  charlen = BITS_TO_BYTES (bitlen);
+  new_ = db_private_alloc (NULL, charlen + 1);
+
+  if (new_ == NULL)
+    {
+      or_abort (buf);
+      return NULL;
+    }
+  rc = or_get_data (buf, new_, charlen);
+
+  if (rc == NO_ERROR)
+    {
+      /* return the length */
+      if (length_ptr != NULL)
+	{
+	  *length_ptr = bitlen;
+	}
+
+      /* round up to a word boundary */
+      rc = or_get_align32 (buf);
+    }
+  if (rc != NO_ERROR)
+    {
+      if (new_)
+	{
+	  db_private_free_and_init (NULL, new_);
+	}
+      return NULL;
+    }
+
+  return new_;
+}
+#endif /* ENABLE_UNUSED_FUNCTION */
+
+/*
+ * or_put_varchar - put varchar to or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    string(in): string to put into the or buffer
+ *    charlen(in): string length
+ */
+int
+or_put_varchar (OR_BUF * buf, char *string, int charlen)
+{
+  return or_put_varchar_internal (buf, string, charlen, CHAR_ALIGNMENT);
+}
+
+#if defined(ENABLE_UNUSED_FUNCTION)
+/*
+ * or_get_varchar - get varchar from or buffer
+ *    return: varchar pointer read from the or buffer. or NULL for error
+ *    buf(in/out): or buffer
+ *    length_ptr(out): length of returned string
+ */
+char *
+or_get_varchar (OR_BUF * buf, int *length_ptr)
+{
+  int rc = NO_ERROR;
+  int charlen;
+  char *new_;
+
+  charlen = or_get_varchar_length (buf, &rc);
+
+  if (rc != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  /* Allocate storage for the string including the kludge NULL terminator */
+  new_ = db_private_alloc (NULL, charlen + 1);
+
+  if (new_ == NULL)
+    {
+      or_abort (buf);
+      return NULL;
+    }
+  rc = or_get_data (buf, new_, charlen + 1);
+
+  if (rc == NO_ERROR)
+    {
+
+      /* return the length */
+      if (length_ptr != NULL)
+	{
+	  *length_ptr = charlen;
+	}
+
+      /* round up to a word boundary */
+      rc = or_get_align32 (buf);
+    }
+  if (rc != NO_ERROR)
+    {
+      db_private_free_and_init (NULL, new_);
+      return NULL;
+    }
+  else
+    {
+      return new_;
+    }
+}
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 static int
 or_put_varbit_internal (OR_BUF * buf, const char *string, int bitlen, int align)
@@ -667,75 +880,6 @@ or_put_varbit_internal (OR_BUF * buf, const char *string, int bitlen, int align)
     }
 
   return status;
-}
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * or_get_varbit - get varbit from or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    length_ptr(out): length of varbit read
- */
-char *
-or_get_varbit (OR_BUF * buf, int *length_ptr)
-{
-  int bitlen, charlen;
-  char *new_ = NULL;
-  int rc = NO_ERROR;
-
-  bitlen = or_get_varbit_length (buf, &rc);
-
-  if (rc != NO_ERROR)
-    {
-      return NULL;
-    }
-
-  /* Allocate storage for the string including the kludge NULL terminator */
-  charlen = BITS_TO_BYTES (bitlen);
-  new_ = db_private_alloc (NULL, charlen + 1);
-
-  if (new_ == NULL)
-    {
-      or_abort (buf);
-      return NULL;
-    }
-  rc = or_get_data (buf, new_, charlen);
-
-  if (rc == NO_ERROR)
-    {
-      /* return the length */
-      if (length_ptr != NULL)
-	{
-	  *length_ptr = bitlen;
-	}
-
-      /* round up to a word boundary */
-      rc = or_get_align32 (buf);
-    }
-  if (rc != NO_ERROR)
-    {
-      if (new_)
-	{
-	  db_private_free_and_init (NULL, new_);
-	}
-      return NULL;
-    }
-
-  return new_;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-/*
- * or_put_varchar - put varchar to or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    string(in): string to put into the or buffer
- *    charlen(in): string length
- */
-int
-or_put_varchar (OR_BUF * buf, char *string, int charlen)
-{
-  return or_put_varchar_internal (buf, string, charlen, CHAR_ALIGNMENT);
 }
 
 static int
@@ -885,61 +1029,6 @@ cleanup:
 
   return rc;
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * or_get_varchar - get varchar from or buffer
- *    return: varchar pointer read from the or buffer. or NULL for error
- *    buf(in/out): or buffer
- *    length_ptr(out): length of returned string
- */
-char *
-or_get_varchar (OR_BUF * buf, int *length_ptr)
-{
-  int rc = NO_ERROR;
-  int charlen;
-  char *new_;
-
-  charlen = or_get_varchar_length (buf, &rc);
-
-  if (rc != NO_ERROR)
-    {
-      return NULL;
-    }
-
-  /* Allocate storage for the string including the kludge NULL terminator */
-  new_ = db_private_alloc (NULL, charlen + 1);
-
-  if (new_ == NULL)
-    {
-      or_abort (buf);
-      return NULL;
-    }
-  rc = or_get_data (buf, new_, charlen + 1);
-
-  if (rc == NO_ERROR)
-    {
-
-      /* return the length */
-      if (length_ptr != NULL)
-	{
-	  *length_ptr = charlen;
-	}
-
-      /* round up to a word boundary */
-      rc = or_get_align32 (buf);
-    }
-  if (rc != NO_ERROR)
-    {
-      db_private_free_and_init (NULL, new_);
-      return NULL;
-    }
-  else
-    {
-      return new_;
-    }
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
