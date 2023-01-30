@@ -1134,11 +1134,6 @@ resolve_server_names (PARSER_CONTEXT * parser, PT_NODE * spec)
    **   tbl,      user.tbl :   "user"  
    */
 
-  if (pt_has_error (parser))
-    {
-      return -1;
-    }
-
   if (dblink_table->owner_list == NULL)
     {
       return pt_resolve_dblink_server_name (parser, table, NULL);
