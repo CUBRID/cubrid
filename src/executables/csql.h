@@ -234,7 +234,9 @@ extern "C"
     S_CMD_HISTORY_READ,
     S_CMD_HISTORY_LIST,
 
-    S_CMD_TRACE
+    S_CMD_TRACE,
+
+    S_CMD_SINGLELINE
   } SESSION_CMD;
 
 /* iq_ function return status */

@@ -185,6 +185,7 @@ $ csql help messages
    ;HISTORYList                 - mostrar lista de las consultas ejecutadas.\n\
    ;HISTORYRead <history_num>   - leer entrada sobre el numero de historia en bufer de comando.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
+   ;SIngleline [ON|OFF]         - habilitar/deshabilitar el modo de una sola línea.\n\
    ;HElp                        - mostrar este mensaje de ayuda.\n\n
 
 232 <Restricciones>
