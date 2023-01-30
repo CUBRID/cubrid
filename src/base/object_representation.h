@@ -1267,7 +1267,7 @@ EXTERN_INLINE int or_put_string_aligned_with_length (OR_BUF * buf, const char *s
 EXTERN_INLINE int or_put_offset (OR_BUF * buf, int num) __attribute__ ((ALWAYS_INLINE));
 EXTERN_INLINE int or_put_offset_internal (OR_BUF * buf, int num, int offset_size) __attribute__ ((ALWAYS_INLINE));
 EXTERN_INLINE int or_put_oid (OR_BUF * buf, const OID * oid) __attribute__ ((ALWAYS_INLINE));
-EXTERN_INLINE int or_put_mvccid (OR_BUF * buf, MVCCID mvccid);
+EXTERN_INLINE int or_put_mvccid (OR_BUF * buf, MVCCID mvccid) __attribute__ ((ALWAYS_INLINE));
 
 /* Data unpacking functions */
 EXTERN_INLINE int or_get_byte (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
@@ -1286,11 +1286,9 @@ EXTERN_INLINE int or_get_monetary (OR_BUF * buf, DB_MONETARY * monetary) __attri
 EXTERN_INLINE int or_get_data (OR_BUF * buf, char *data, int length) __attribute__ ((ALWAYS_INLINE));
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern char *or_get_varbit (OR_BUF * buf, int *length_ptr);
-#endif
-EXTERN_INLINE int or_get_varbit_length (OR_BUF * buf, int *intval) __attribute__ ((ALWAYS_INLINE));
-#if defined(ENABLE_UNUSED_FUNCTION)
 extern char *or_get_varchar (OR_BUF * buf, int *length_ptr);
 #endif
+EXTERN_INLINE int or_get_varbit_length (OR_BUF * buf, int *intval) __attribute__ ((ALWAYS_INLINE));
 EXTERN_INLINE int or_get_varchar_length (OR_BUF * buf, int *intval) __attribute__ ((ALWAYS_INLINE));
 /* Get the compressed and the decompressed lengths of a string stored in buffer */
 STATIC_INLINE int or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *decompressed_size)
@@ -1299,7 +1297,7 @@ STATIC_INLINE int or_get_string_size_byte (OR_BUF * buf, int *error) __attribute
 EXTERN_INLINE int or_get_offset (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
 EXTERN_INLINE int or_get_offset_internal (OR_BUF * buf, int *error, int offset_size) __attribute__ ((ALWAYS_INLINE));
 EXTERN_INLINE int or_get_oid (OR_BUF * buf, OID * oid) __attribute__ ((ALWAYS_INLINE));
-EXTERN_INLINE int or_get_mvccid (OR_BUF * buf, MVCCID * mvccid);
+EXTERN_INLINE int or_get_mvccid (OR_BUF * buf, MVCCID * mvccid) __attribute__ ((ALWAYS_INLINE));
 
 EXTERN_INLINE int or_varbit_length (int bitlen) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_varbit_length_internal (int bitlen, int align) __attribute__ ((ALWAYS_INLINE));
