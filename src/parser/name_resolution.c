@@ -845,6 +845,15 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
 
   if (er_errid () != NO_ERROR)
     {
+      /*
+         in case that the dblink server is not found
+         it is meaningless to call pt_get_resoultion.
+       */
+      if (er_errid () == ER_DBLINK_SERVER_NOT_FOUND)
+	{
+	  return in_node;
+	}
+
       er_stack_push ();
       error_saved = true;
     }
@@ -1124,6 +1133,11 @@ resolve_server_names (PARSER_CONTEXT * parser, PT_NODE * spec)
    **   user.tbl, tbl      :   "user" 
    **   tbl,      user.tbl :   "user"  
    */
+
+  if (pt_has_error (parser))
+    {
+      return -1;
+    }
 
   if (dblink_table->owner_list == NULL)
     {
@@ -3907,17 +3921,6 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
     }
   else
     {
-      /*
-         TODO: the below code snippet should be moved to appropriate position.
-         this code is temporal for dblink error, as like "not found server-name"
-         delete or update .. join (select * from dblink (server-name, ...)
-       */
-      if (pt_has_error (parser))
-	{
-	  pt_report_to_ersys (parser, PT_SEMANTIC);
-	  return er_errid ();
-	}
-
       assert (PT_SPEC_IS_CTE (spec) || PT_SPEC_IS_DERIVED (spec));
       col = pt_is_on_list (parser, name, spec->info.spec.as_attr_list);
       ok = (col != NULL);
