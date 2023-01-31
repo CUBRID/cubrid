@@ -92,11 +92,13 @@ active_tran_server::on_boot ()
 {
   assert (is_active_transaction_server ());
 
-  m_prior_sender_sink_hook_func =
-	  std::bind (&active_tran_server::push_request, std::ref (*this), tran_to_page_request::SEND_LOG_PRIOR_LIST,
-		     std::placeholders::_1);
-
-  log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hook_func);
+  for (size_t i = 0; i < get_connected_page_server_count(); i++)
+    {
+      m_prior_sender_sink_hooks.emplace_back (std::bind (&active_tran_server::push_request_to, this, i,
+					      tran_to_page_request::SEND_LOG_PRIOR_LIST,
+					      std::placeholders::_1));
+      log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hooks.back ());
+    }
 }
 
 active_tran_server::request_handlers_map_t
@@ -117,4 +119,8 @@ active_tran_server::get_request_handlers ()
 void
 active_tran_server::stop_outgoing_page_server_messages ()
 {
+  for (const auto &sink : m_prior_sender_sink_hooks)
+    {
+      log_Gl.m_prior_sender.remove_sink (sink);
+    }
 }
