@@ -33,6 +33,7 @@ package com.cubrid.jsp;
 
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
+import com.cubrid.jsp.data.CompileInfo;
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.data.DataUtilities;
 import com.cubrid.jsp.exception.ExecuteException;
@@ -40,14 +41,18 @@ import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
 import com.cubrid.jsp.value.Value;
 import com.cubrid.jsp.value.ValueUtilities;
+import com.cubrid.plcsql.handler.TestMain;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
@@ -65,6 +70,8 @@ public class ExecuteThread extends Thread {
     private static final int REQ_CODE_DESTROY = 0x10;
     private static final int REQ_CODE_END = 0x20;
     private static final int REQ_CODE_PREPARE_ARGS = 0x40;
+
+    private static final int REQ_CODE_COMPILE = 0x80;
 
     private static final int REQ_CODE_UTIL_PING = 0xDE;
     private static final int REQ_CODE_UTIL_STATUS = 0xEE;
@@ -187,6 +194,61 @@ public class ExecuteThread extends Thread {
                         {
                             destroyJDBCResources();
                             Thread.currentThread().interrupt();
+                            break;
+                        }
+
+                    case REQ_CODE_COMPILE:
+                        {
+                            id = unpacker.unpackBigint();
+                            boolean verbose = unpacker.unpackBool();
+                            String inSource = unpacker.unpackCString();
+
+                            try {
+                                CompileInfo info = TestMain.compilePLCSQL(inSource, verbose);
+
+                                resultBuffer.clear(); /* prepare to put */
+                                packer.setBuffer(resultBuffer);
+                                packer.packString(info.translated);
+                                packer.packString(info.sqlTemplate);
+
+                                String javaFilePath =
+                                        StoredProcedureClassLoader.ROOT_PATH
+                                                + info.className
+                                                + ".java";
+                                File file = new File(javaFilePath);
+                                FileOutputStream fos = new FileOutputStream(file, false);
+                                fos.write(info.translated.getBytes(Charset.forName("UTF-8")));
+                                fos.close();
+
+                                String cubrid_env_root = Server.getRootPath();
+                                String command =
+                                        "javac "
+                                                + javaFilePath
+                                                + " -cp "
+                                                + cubrid_env_root
+                                                + "/java/splib.jar";
+
+                                Process proc = Runtime.getRuntime().exec(command);
+                                proc.getErrorStream().close();
+                                proc.getInputStream().close();
+                                proc.getOutputStream().close();
+                                proc.waitFor();
+
+                                if (proc.exitValue() != 0) {
+                                    // TODO
+                                    throw new RuntimeException(command);
+                                }
+
+                                resultBuffer = packer.getBuffer();
+
+                                output.writeInt(resultBuffer.position());
+                                output.write(resultBuffer.array(), 0, resultBuffer.position());
+                                output.flush();
+                            } catch (Exception e) {
+                                output.writeInt(0);
+                                output.flush();
+                                throw new RuntimeException(e);
+                            }
                             break;
                         }
 

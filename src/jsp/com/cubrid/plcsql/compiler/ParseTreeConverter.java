@@ -1844,8 +1844,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         assert val != null : ("invalid type name " + pcsType);
 
         String[] split = val.split("\\.");
-        if ("Query".equals(val)) {
-            // no need to import Cursor now   TODO: remove this case later
+        if ("com.cubrid.plcsql.predefined.sp.Query".equals(val)) {
+            // no need to import Cursor now because it is in the SpLib
         } else if (val.startsWith("java.lang.") && split.length == 3) {
             // no need to import java.lang.*
         } else {
@@ -1853,7 +1853,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             addToImports(val);
         }
 
-        return split[split.length - 1];
+        return val;
     }
 
     /*
@@ -1913,7 +1913,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         pcsToJavaTypeMap.put("MULTISET", "org.apache.commons.collections4.MultiSet");
         pcsToJavaTypeMap.put("LIST", "java.util.List");
         pcsToJavaTypeMap.put("SEQUENCE", "java.util.List");
-        pcsToJavaTypeMap.put("SYS_REFCURSOR", "Query");
+        pcsToJavaTypeMap.put("SYS_REFCURSOR", "com.cubrid.plcsql.predefined.sp.Query");
     }
 
     private static boolean isAssignableTo(Expr expr) {
