@@ -11216,11 +11216,22 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
 	    }
 	  else
 	    {
-	      if (spec->info.spec.range_var
-		  && strcmp (spec->info.spec.range_var->info.name.original, del->info.name.original) == 0)
+	      if (spec->info.spec.range_var)
 		{
-		  local_del++;
-		  break;
+		  if (strcmp (spec->info.spec.range_var->info.name.original, del->info.name.original) == 0)
+		    {
+		      local_del++;
+		      break;
+		    }
+		}
+	      else
+		{
+		  assert (spec->info.spec.entity_name);
+		  if (strcmp (spec->info.spec.entity_name->info.name.original, del->info.name.original) == 0)
+		    {
+		      local_del++;
+		      break;
+		    }
 		}
 	    }
 	}
@@ -11228,7 +11239,8 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
       if (spec == NULL)
 	{
 	  /* not matched: error case */
-	  local_del++;
+	  PT_ERRORf (parser, node->info.delete_.spec, "dblink: delete target %s not found", del->info.name.original);
+	  return;
 	}
 
       del = del->next;
