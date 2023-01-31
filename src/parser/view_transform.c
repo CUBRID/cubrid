@@ -1669,7 +1669,7 @@ static PUSHABLE_TYPE
 mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery, PT_NODE * class_spec,
 			 bool is_vclass, PT_NODE * order_by, PT_NODE * class_)
 {
-  PT_NODE *pred, *statement_spec = NULL, *orderby_for;
+  PT_NODE *pred, *statement_spec = NULL, *orderby_for, *select_list;
   CHECK_PUSHABLE_INFO cpi;
   bool is_pushable_query, is_outer_joined;
   bool is_only_spec, is_rownum_only, is_orderby_for;
@@ -1690,27 +1690,32 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     case PT_SELECT:
       statement_spec = mainquery->info.query.q.select.from;
       pred = mainquery->info.query.q.select.where;
+      select_list = mainquery->info.query.q.select.list;
       break;
 
     case PT_UPDATE:
       statement_spec = mainquery->info.update.spec;
       pred = mainquery->info.update.search_cond;
+      select_list = NULL;
       break;
 
     case PT_DELETE:
       statement_spec = mainquery->info.delete_.spec;
       pred = mainquery->info.delete_.search_cond;
+      select_list = NULL;
       break;
 
     case PT_INSERT:
       /* since INSERT can not have a spec list or statement conditions, there is nothing to check */
       statement_spec = mainquery->info.insert.spec;
       pred = NULL;
+      select_list = NULL;
       break;
 
     case PT_MERGE:
       statement_spec = mainquery->info.merge.into;
       pred = mainquery->info.merge.insert.search_cond;
+      select_list = NULL;
       break;
 
     default:
@@ -1786,7 +1791,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   /* subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation */
   if (subquery->info.query.order_by
       && ((!is_rownum_only && pt_has_inst_num (parser, pred)) || pt_has_analytic (parser, mainquery)
-	  || pt_has_order_sensitive_agg (parser, mainquery)))
+	  || pt_has_order_sensitive_agg (parser, mainquery) || pt_has_expr_of_inst_in_sel_list (parser, select_list)))
     {
       /* not pushable */
       return NON_PUSHABLE;
@@ -3911,25 +3916,15 @@ mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * 
       return false;
     }
 
-  /* check if select list of mainquery has expr of instnum */
-  col = node->info.query.q.select.list;
-  while (col)
-    {
-      /* cut off next */
-      save_next = col->next;
-      col->next = NULL;
-
-      if (!PT_IS_INSTNUM (col) && pt_has_inst_num (parser, col))
-	{
-	  col->next = save_next;
-	  return false;
-	}
-      col->next = save_next;
-      col = col->next;
-    }
-
   /* subquery check */
   if (!pt_is_select (subquery))
+    {
+      return false;
+    }
+
+  /* check if select list of mainquery has expr of instnum */
+  col = node->info.query.q.select.list;
+  if (pt_has_expr_of_inst_in_sel_list (parser, col))
     {
       return false;
     }
