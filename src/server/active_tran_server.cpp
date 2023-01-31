@@ -92,7 +92,7 @@ active_tran_server::on_boot ()
 {
   assert (is_active_transaction_server ());
 
-  for (size_t i = 0; i < get_connected_page_server_count(); i++)
+  for (size_t i = 0; i < get_connected_page_server_count (); i++)
     {
       m_prior_sender_sink_hooks.emplace_back (std::bind (&active_tran_server::push_request_to, this, i,
 					      tran_to_page_request::SEND_LOG_PRIOR_LIST,
