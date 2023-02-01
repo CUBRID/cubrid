@@ -85,22 +85,12 @@ struct setobj;
 #define OR_CHECK_FLOAT_OVERFLOW(i)         ((i) > FLT_MAX || (-(i)) > FLT_MAX)
 #define OR_CHECK_DOUBLE_OVERFLOW(i)        ((i) > DBL_MAX || (-(i)) > DBL_MAX)
 
-#if __WORDSIZE == 32
-#define OR_PTR_SIZE             4
-#define OR_PUT_PTR(ptr, val)    OR_PUT_INT ((ptr), (val))
-#define OR_GET_PTR(ptr)         OR_GET_INT ((ptr))
-#else /* __WORDSIZE == 32 */
-#define OR_PTR_SIZE             8
-#define OR_PUT_PTR(ptr, val)    (*(UINTPTR *) ((char *) (ptr)) = swap64 ((UINTPTR) val))
-#define OR_GET_PTR(ptr)         ((UINTPTR) swap64 (*(UINTPTR *) ((char *) (ptr))))
-#endif /* __WORDSIZE == 64 */
-
-#define OR_INT64_SIZE           8
-
 /* simple macro to calculate minimum bytes to contain given bits */
 #define BITS_TO_BYTES(bit_cnt)		(((bit_cnt) + 7) / 8)
 
 /* PACK/UNPACK MACROS */
+
+/* NUMERIC */
 
 #define OR_PUT_BYTE(ptr, val) \
   (*((unsigned char *) (ptr)) = (unsigned char) (val))
@@ -159,6 +149,16 @@ OR_PUT_DOUBLE (char *ptr, double val)
 
 #define OR_GET_DOUBLE(ptr, value) \
   (*(value) = ntohd (*(UINT64 *) (ptr)))
+
+#if __WORDSIZE == 32
+#define OR_PUT_PTR(ptr, val)    OR_PUT_INT ((ptr), (val))
+#define OR_GET_PTR(ptr)         OR_GET_INT ((ptr))
+#else /* __WORDSIZE == 32 */
+#define OR_PUT_PTR(ptr, val)    (*(UINTPTR *) ((char *) (ptr)) = swap64 ((UINTPTR) val))
+#define OR_GET_PTR(ptr)         ((UINTPTR) swap64 (*(UINTPTR *) ((char *) (ptr))))
+#endif /* __WORDSIZE == 64 */
+
+/* EXTENDED TYPE */
 
 #define OR_PUT_TIME(ptr, value) \
   OR_PUT_INT (ptr, *((DB_TIME *) (value)))
@@ -241,43 +241,6 @@ OR_PUT_DOUBLE (char *ptr, double val)
 #define OR_GET_CURRENCY_TYPE(ptr) \
   (DB_CURRENCY) OR_GET_INT (((char *) (ptr)) + OR_MONETARY_TYPE)
 
-#define OR_GET_STRING(ptr) \
-  ((char *) ((char *) (ptr)))
-
-#define OR_PUT_OFFSET_INTERNAL(ptr, val, offset_size) \
-  do { \
-    if (offset_size == OR_BYTE_SIZE) \
-      { \
-        OR_PUT_BYTE(ptr, val); \
-      } \
-    else if (offset_size == OR_SHORT_SIZE) \
-      { \
-        OR_PUT_SHORT(ptr, val); \
-      } \
-    else if (offset_size == OR_INT_SIZE) \
-      { \
-        OR_PUT_INT(ptr, val); \
-      } \
-  } while (0)
-
-#define OR_GET_OFFSET_INTERNAL(ptr, offset_size) \
-  (offset_size == OR_BYTE_SIZE) \
-   ? OR_GET_BYTE (ptr) \
-   : ((offset_size == OR_SHORT_SIZE) \
-      ? OR_GET_SHORT (ptr) : OR_GET_INT (ptr))
-
-#define OR_PUT_OFFSET(ptr, val) \
-  OR_PUT_OFFSET_INTERNAL(ptr, val, BIG_VAR_OFFSET_SIZE)
-
-#define OR_GET_OFFSET(ptr) \
-  OR_GET_OFFSET_INTERNAL (ptr, BIG_VAR_OFFSET_SIZE)
-
-#define OR_PUT_BIG_VAR_OFFSET(ptr, val) \
-  OR_PUT_INT (ptr, val)		/* 4byte */
-
-#define OR_GET_BIG_VAR_OFFSET(ptr) \
-  OR_GET_INT (ptr)		/* 4byte */
-
 #define OR_PUT_SHA1(ptr, value) \
   do { \
     int i = 0; \
@@ -295,6 +258,9 @@ OR_PUT_DOUBLE (char *ptr, double val)
 	((SHA1Hash *) (value))->h[i] = (INT32) OR_GET_INT (ptr + i * OR_INT_SIZE); \
       } \
   } while (0)
+
+#define OR_GET_STRING(ptr) \
+  ((char *) ((char *) (ptr)))
 
 /* DISK IDENTIFIERS */
 
@@ -415,6 +381,42 @@ OR_PUT_DOUBLE (char *ptr, double val)
     OR_PUT_INT64 (((char *) (ptr)) + OR_LOG_LSA_PAGEID, &pageid); \
     OR_PUT_SHORT (((char *) (ptr)) + OR_LOG_LSA_OFFSET, -1); \
   } while (0)
+
+/* VARIABLE OFFSET ACCESSORS */
+
+#define OR_PUT_OFFSET_INTERNAL(ptr, val, offset_size) \
+  do { \
+    if (offset_size == OR_BYTE_SIZE) \
+      { \
+        OR_PUT_BYTE(ptr, val); \
+      } \
+    else if (offset_size == OR_SHORT_SIZE) \
+      { \
+        OR_PUT_SHORT(ptr, val); \
+      } \
+    else if (offset_size == OR_INT_SIZE) \
+      { \
+        OR_PUT_INT(ptr, val); \
+      } \
+  } while (0)
+
+#define OR_GET_OFFSET_INTERNAL(ptr, offset_size) \
+  (offset_size == OR_BYTE_SIZE) \
+   ? OR_GET_BYTE (ptr) \
+   : ((offset_size == OR_SHORT_SIZE) \
+      ? OR_GET_SHORT (ptr) : OR_GET_INT (ptr))
+
+#define OR_PUT_OFFSET(ptr, val) \
+  OR_PUT_OFFSET_INTERNAL(ptr, val, BIG_VAR_OFFSET_SIZE)
+
+#define OR_GET_OFFSET(ptr) \
+  OR_GET_OFFSET_INTERNAL (ptr, BIG_VAR_OFFSET_SIZE)
+
+#define OR_PUT_BIG_VAR_OFFSET(ptr, val) \
+  OR_PUT_INT (ptr, val)		/* 4byte */
+
+#define OR_GET_BIG_VAR_OFFSET(ptr) \
+  OR_GET_INT (ptr)		/* 4byte */
 
 /*
  * VARIABLE OFFSET TABLE ACCESSORS
@@ -1242,13 +1244,33 @@ STATIC_INLINE int or_get_align (OR_BUF * buf, int align) __attribute__ ((ALWAYS_
 STATIC_INLINE int or_get_align32 (OR_BUF * buf) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_get_align64 (OR_BUF * buf) __attribute__ ((ALWAYS_INLINE));
 
-/* Data packing functions */
+/*
+ * NUMERIC DATA TRANSFORMS
+ *    This set of functions handles the transformation of the
+ *    numeric types byte, short, integer, float, and double.
+ *
+ */
+
 STATIC_INLINE int or_put_byte (OR_BUF * buf, int num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_put_short (OR_BUF * buf, int num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_put_int (OR_BUF * buf, int num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_put_bigint (OR_BUF * buf, DB_BIGINT num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_put_float (OR_BUF * buf, float num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_put_double (OR_BUF * buf, double num) __attribute__ ((ALWAYS_INLINE));
+
+STATIC_INLINE int or_get_byte (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_get_short (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_get_int (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_BIGINT or_get_bigint (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE float or_get_float (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE double or_get_double (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
+
+/*
+ * EXTENDED TYPE TRANSLATORS
+ *    This set of functions reads and writes the extended types time,
+ *    utime, date, and monetary.
+ */
+
 STATIC_INLINE int or_put_time (OR_BUF * buf, DB_TIME * timeval) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_put_utime (OR_BUF * buf, DB_UTIME * timeval) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_put_timestamptz (OR_BUF * buf, DB_TIMESTAMPTZ * ts_tz) __attribute__ ((ALWAYS_INLINE));
@@ -1256,6 +1278,15 @@ STATIC_INLINE int or_put_date (OR_BUF * buf, DB_DATE * date) __attribute__ ((ALW
 STATIC_INLINE int or_put_datetime (OR_BUF * buf, DB_DATETIME * datetimeval) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_put_datetimetz (OR_BUF * buf, DB_DATETIMETZ * datetimetz) __attribute__ ((ALWAYS_INLINE));
 extern int or_put_monetary (OR_BUF * buf, DB_MONETARY * monetary);
+
+STATIC_INLINE int or_get_time (OR_BUF * buf, DB_TIME * timeval) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_get_utime (OR_BUF * buf, DB_UTIME * timeval) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_get_timestamptz (OR_BUF * buf, DB_TIMESTAMPTZ * ts_tz) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_get_date (OR_BUF * buf, DB_DATE * date) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_get_datetime (OR_BUF * buf, DB_DATETIME * datetime) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_get_datetimetz (OR_BUF * buf, DB_DATETIMETZ * datetimetz) __attribute__ ((ALWAYS_INLINE));
+extern int or_get_monetary (OR_BUF * buf, DB_MONETARY * monetary);
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int or_put_binary (OR_BUF * buf, DB_BINARY * binary);
 #endif
@@ -1264,25 +1295,7 @@ extern int or_put_varbit (OR_BUF * buf, const char *string, int bitlen);
 extern int or_put_varchar (OR_BUF * buf, char *string, int charlen);
 STATIC_INLINE int or_put_string_aligned (OR_BUF * buf, char *string) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_put_string_aligned_with_length (OR_BUF * buf, const char *str) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_put_offset (OR_BUF * buf, int num) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_put_offset_internal (OR_BUF * buf, int num, int offset_size) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_put_oid (OR_BUF * buf, const OID * oid) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_put_mvccid (OR_BUF * buf, MVCCID mvccid) __attribute__ ((ALWAYS_INLINE));
 
-/* Data unpacking functions */
-STATIC_INLINE int or_get_byte (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_get_short (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_get_int (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_BIGINT or_get_bigint (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE float or_get_float (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE double or_get_double (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_get_time (OR_BUF * buf, DB_TIME * timeval) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_get_utime (OR_BUF * buf, DB_UTIME * timeval) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_get_timestamptz (OR_BUF * buf, DB_TIMESTAMPTZ * ts_tz) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_get_date (OR_BUF * buf, DB_DATE * date) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_get_datetime (OR_BUF * buf, DB_DATETIME * datetime) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_get_datetimetz (OR_BUF * buf, DB_DATETIMETZ * datetimetz) __attribute__ ((ALWAYS_INLINE));
-extern int or_get_monetary (OR_BUF * buf, DB_MONETARY * monetary);
 STATIC_INLINE int or_get_data (OR_BUF * buf, char *data, int length) __attribute__ ((ALWAYS_INLINE));
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern char *or_get_varbit (OR_BUF * buf, int *length_ptr);
@@ -1294,10 +1307,6 @@ STATIC_INLINE int or_get_varchar_length (OR_BUF * buf, int *intval) __attribute_
 STATIC_INLINE int or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *decompressed_size)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_get_string_size_byte (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_get_offset (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_get_offset_internal (OR_BUF * buf, int *error, int offset_size) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_get_oid (OR_BUF * buf, OID * oid) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_get_mvccid (OR_BUF * buf, MVCCID * mvccid) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int or_varbit_length (int bitlen) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_varchar_length (int charlen) __attribute__ ((ALWAYS_INLINE));
@@ -1313,6 +1322,27 @@ STATIC_INLINE int or_skip_varchar_remainder (OR_BUF * buf, int charlen, int alig
 extern int or_length_binary (DB_BINARY * binary);
 extern int or_length_string (char *string);
 #endif
+
+/*
+ * DISK IDENTIFIER TRANSLATORS
+ *    Translators for the disk identifiers OID, HFID, BTID, EHID.
+ */
+
+STATIC_INLINE int or_put_oid (OR_BUF * buf, const OID * oid) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_put_mvccid (OR_BUF * buf, MVCCID mvccid) __attribute__ ((ALWAYS_INLINE));
+
+STATIC_INLINE int or_get_oid (OR_BUF * buf, OID * oid) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_get_mvccid (OR_BUF * buf, MVCCID * mvccid) __attribute__ ((ALWAYS_INLINE));
+
+/* VARIABLE OFFSET TABLE ACCESSORS */
+
+STATIC_INLINE int or_put_offset (OR_BUF * buf, int num) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_put_offset_internal (OR_BUF * buf, int num, int offset_size) __attribute__ ((ALWAYS_INLINE));
+
+STATIC_INLINE int or_get_offset (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_get_offset_internal (OR_BUF * buf, int *error, int offset_size) __attribute__ ((ALWAYS_INLINE));
+
+/* Data unpacking functions */
 
 extern int or_packed_put_varbit (OR_BUF * buf, const char *string, int bitlen);
 extern int or_packed_put_varchar (OR_BUF * buf, char *string, int charlen);
@@ -2501,165 +2531,6 @@ or_get_string_size_byte (OR_BUF * buf, int *error)
   return size_prefix;
 }
 
-STATIC_INLINE int
-or_put_offset (OR_BUF * buf, int num)
-{
-  return or_put_offset_internal (buf, num, BIG_VAR_OFFSET_SIZE);
-}
-
-STATIC_INLINE int
-or_put_offset_internal (OR_BUF * buf, int num, int offset_size)
-{
-  if (offset_size == OR_BYTE_SIZE)
-    {
-      return or_put_byte (buf, num);
-    }
-  else if (offset_size == OR_SHORT_SIZE)
-    {
-      return or_put_short (buf, num);
-    }
-  else
-    {
-      assert (offset_size == BIG_VAR_OFFSET_SIZE);
-
-      return or_put_int (buf, num);
-    }
-}
-
-STATIC_INLINE int
-or_get_offset (OR_BUF * buf, int *error)
-{
-  return or_get_offset_internal (buf, error, BIG_VAR_OFFSET_SIZE);
-}
-
-STATIC_INLINE int
-or_get_offset_internal (OR_BUF * buf, int *error, int offset_size)
-{
-  if (offset_size == OR_BYTE_SIZE)
-    {
-      return or_get_byte (buf, error);
-    }
-  else if (offset_size == OR_SHORT_SIZE)
-    {
-      return or_get_short (buf, error);
-    }
-  else
-    {
-      assert (offset_size == BIG_VAR_OFFSET_SIZE);
-      return or_get_int (buf, error);
-    }
-}
-
-/*
- * or_put_oid - write content of an OID structure from or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    oid(in): pointer to OID
- */
-STATIC_INLINE int
-or_put_oid (OR_BUF * buf, const OID * oid)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_OID_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      if (oid == NULL)
-	{
-	  OR_PUT_NULL_OID (buf->ptr);
-	}
-      else
-	{
-	  /* Cannot allow any temp oid's to be written */
-	  if (OID_ISTEMP (oid))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	      or_abort (buf);
-	    }
-	  OR_PUT_OID (buf->ptr, oid);
-	}
-      buf->ptr += OR_OID_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_oid - read content of an OID structure from or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    oid(out): pointer to OID
- */
-STATIC_INLINE int
-or_get_oid (OR_BUF * buf, OID * oid)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_OID_SIZE) > buf->endptr)
-    {
-      return or_underflow (buf);
-    }
-  else
-    {
-      OR_GET_OID (buf->ptr, oid);
-      buf->ptr += OR_OID_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_put_mvccid () - Put an MVCCID to OR Buffer.
- *
- * return      : Error code.
- * buf (in)    : OR Buffer
- * mvccid (in) : MVCCID
- */
-STATIC_INLINE int
-or_put_mvccid (OR_BUF * buf, MVCCID mvccid)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      OR_PUT_MVCCID (buf->ptr, &mvccid);
-      buf->ptr += OR_MVCCID_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_mvccid () - Get an MVCCID from OR Buffer.
- *
- * return	: MVCCID
- * buf (in/out) : OR Buffer.
- * error (out)  : Error code.
- */
-STATIC_INLINE int
-or_get_mvccid (OR_BUF * buf, MVCCID * mvccid)
-{
-  assert (mvccid != NULL);
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  *mvccid = MVCCID_NULL;
-
-  if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
-    {
-      return or_underflow (buf);
-    }
-  else
-    {
-      OR_GET_MVCCID (buf->ptr, mvccid);
-      buf->ptr += OR_MVCCID_SIZE;
-    }
-  return NO_ERROR;
-}
-
 /*
  * or_packed_varbit_length - returns packed varbit length of or buffer encoding
  *    return: varbit encoding length
@@ -2829,6 +2700,172 @@ or_skip_varchar_remainder (OR_BUF * buf, int charlen, int align)
     }
 
   return rc;
+}
+
+/*
+ * DISK IDENTIFIER TRANSLATORS
+ *    Translators for the disk identifiers OID, HFID, BTID, EHID.
+ */
+
+/*
+ * or_put_oid - write content of an OID structure from or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    oid(in): pointer to OID
+ */
+STATIC_INLINE int
+or_put_oid (OR_BUF * buf, const OID * oid)
+{
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  if ((buf->ptr + OR_OID_SIZE) > buf->endptr)
+    {
+      return (or_overflow (buf));
+    }
+  else
+    {
+      if (oid == NULL)
+	{
+	  OR_PUT_NULL_OID (buf->ptr);
+	}
+      else
+	{
+	  /* Cannot allow any temp oid's to be written */
+	  if (OID_ISTEMP (oid))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      or_abort (buf);
+	    }
+	  OR_PUT_OID (buf->ptr, oid);
+	}
+      buf->ptr += OR_OID_SIZE;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * or_get_oid - read content of an OID structure from or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    oid(out): pointer to OID
+ */
+STATIC_INLINE int
+or_get_oid (OR_BUF * buf, OID * oid)
+{
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  if ((buf->ptr + OR_OID_SIZE) > buf->endptr)
+    {
+      return or_underflow (buf);
+    }
+  else
+    {
+      OR_GET_OID (buf->ptr, oid);
+      buf->ptr += OR_OID_SIZE;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * or_put_mvccid () - Put an MVCCID to OR Buffer.
+ *
+ * return      : Error code.
+ * buf (in)    : OR Buffer
+ * mvccid (in) : MVCCID
+ */
+STATIC_INLINE int
+or_put_mvccid (OR_BUF * buf, MVCCID mvccid)
+{
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
+    {
+      return (or_overflow (buf));
+    }
+  else
+    {
+      OR_PUT_MVCCID (buf->ptr, &mvccid);
+      buf->ptr += OR_MVCCID_SIZE;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * or_get_mvccid () - Get an MVCCID from OR Buffer.
+ *
+ * return	: MVCCID
+ * buf (in/out) : OR Buffer.
+ * error (out)  : Error code.
+ */
+STATIC_INLINE int
+or_get_mvccid (OR_BUF * buf, MVCCID * mvccid)
+{
+  assert (mvccid != NULL);
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  *mvccid = MVCCID_NULL;
+
+  if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
+    {
+      return or_underflow (buf);
+    }
+  else
+    {
+      OR_GET_MVCCID (buf->ptr, mvccid);
+      buf->ptr += OR_MVCCID_SIZE;
+    }
+  return NO_ERROR;
+}
+
+/* VARIABLE OFFSET TABLE ACCESSORS */
+
+STATIC_INLINE int
+or_put_offset (OR_BUF * buf, int num)
+{
+  return or_put_offset_internal (buf, num, BIG_VAR_OFFSET_SIZE);
+}
+
+STATIC_INLINE int
+or_put_offset_internal (OR_BUF * buf, int num, int offset_size)
+{
+  if (offset_size == OR_BYTE_SIZE)
+    {
+      return or_put_byte (buf, num);
+    }
+  else if (offset_size == OR_SHORT_SIZE)
+    {
+      return or_put_short (buf, num);
+    }
+  else
+    {
+      assert (offset_size == BIG_VAR_OFFSET_SIZE);
+
+      return or_put_int (buf, num);
+    }
+}
+
+STATIC_INLINE int
+or_get_offset (OR_BUF * buf, int *error)
+{
+  return or_get_offset_internal (buf, error, BIG_VAR_OFFSET_SIZE);
+}
+
+STATIC_INLINE int
+or_get_offset_internal (OR_BUF * buf, int *error, int offset_size)
+{
+  if (offset_size == OR_BYTE_SIZE)
+    {
+      return or_get_byte (buf, error);
+    }
+  else if (offset_size == OR_SHORT_SIZE)
+    {
+      return or_get_short (buf, error);
+    }
+  else
+    {
+      assert (offset_size == BIG_VAR_OFFSET_SIZE);
+      return or_get_int (buf, error);
+    }
 }
 
 #endif /* _OBJECT_REPRESENTATION_H_ */
