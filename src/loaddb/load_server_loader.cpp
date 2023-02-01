@@ -118,7 +118,7 @@ namespace cubload
     LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
     LC_FIND_CLASSNAME found_again = LC_CLASSNAME_EXIST;
 
-    if (strchr (class_name, '.'))
+    if (strchr (class_name, '.') || utility_check_system_class_name (class_name))
       {
 	found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
       }

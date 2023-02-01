@@ -182,6 +182,7 @@ $ csql help messages
    ;HISTORYList                 - 수행된 쿼리 리스트 보기.\n\
    ;HISTORYRead <history_num>   - 히스토리 번호에 해당되는 쿼리를 명령어 버퍼에 올림.\n\
    ;TRAce [ON|OFF] [text/json]  - 쿼리 자동 트레이스 설정|해제.\n\
+   ;SIngleline [ON|OFF]         - 싱글 라인 모드 활성화|비활성화.\n\
    ;HElp                        - 도움말 메시지 출력.\n\n
 
 232 <제약사항> 
