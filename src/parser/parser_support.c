@@ -3354,7 +3354,7 @@ pt_has_inst_num (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_has_inst_num () - check if tree has an EXPR node having INST_NUM in select list
+ * pt_has_expr_of_inst_in_sel_list  () - check if tree has an EXPR node having INST_NUM in select list
  *   return: true if tree has EXPR node having INST_NUM
  *   parser(in):
  *   node(in):
