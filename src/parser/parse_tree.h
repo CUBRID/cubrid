@@ -3914,6 +3914,16 @@ enum cdc_ddl_object_type
 };
 typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
 
+typedef struct
+{
+  int local_cnt;
+  int server_cnt;
+  int server_node_cnt;
+  int len[2];
+  char *server_full_name[2];
+  PT_NODE *server[2];
+} SERVER_NAME_LIST;
+
 void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
 
 #ifdef __cplusplus

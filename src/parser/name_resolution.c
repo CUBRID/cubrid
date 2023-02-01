@@ -1152,11 +1152,6 @@ resolve_server_names (PARSER_CONTEXT * parser, PT_NODE * spec)
       ret = pt_resolve_dblink_server_name (parser, table, &server_owner_ref);
     }
 
-  if (strcasecmp (dblink_table->owner_list->info.name.original, server_owner_ref) != 0)
-    {
-      //PT_ERROR (parser, spec, "dblink: multi owner");
-    }
-
   return ret;
 }
 
