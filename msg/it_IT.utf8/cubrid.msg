@@ -1598,6 +1598,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 133 Uso non valido di DROP SYNONYM.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
 134 Uso non valido di RENAME SYNONYM.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
 135 Nessuna opzione specificata per ALTER SYNONYM.
+136 Maximum length of a server dbname is %1$d bytes.
+137 Maximum length of a server user is %1$d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memoria esaurita.

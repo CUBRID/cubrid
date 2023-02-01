@@ -89,6 +89,7 @@
 #include "tz_support.h"
 #include "dbtype.h"
 #include "crypt_opfunc.h"
+#include "method_callback.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -4588,6 +4589,7 @@ do_commit (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* Row count should be reset to -1 for explicit commits (i.e: commit statements) but should not be reset in
    * AUTO_COMMIT mode. This is the best place to reset it for commit statements. */
   db_update_row_count_cache (-1);
+  cubmethod::get_callback_handler ()->free_query_handle_all (true);
   return tran_commit (statement->info.commit_work.retain_lock ? true : false);
 }
 
@@ -4639,6 +4641,8 @@ do_rollback (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  db_value_clear (&val);
 	}
     }
+
+  cubmethod::get_callback_handler ()->free_query_handle_all (true);
 
   return error;
 }
@@ -20138,8 +20142,11 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   pval = NULL;
 
   /* DBNAME */
-  assert (create_server->dbname->node_type == PT_NAME);
-  attr_val[2] = (char *) create_server->dbname->info.name.original;
+  assert (create_server->dbname->node_type == PT_NAME || create_server->dbname->node_type == PT_VALUE);
+  // *INDENT-OFF* 
+  attr_val[2] = (create_server->dbname->node_type == PT_NAME) ? (char *) create_server->dbname->info.name.original
+                                                              : (char *) PT_VALUE_GET_BYTES (create_server->dbname);
+  // *INDENT-ON* 
   if (attr_val[2] == NULL)
     {
       error = ER_FAILED;
@@ -20147,8 +20154,11 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* USER */
-  assert (create_server->user->node_type == PT_NAME);
-  attr_val[3] = (char *) create_server->user->info.name.original;
+  assert (create_server->user->node_type == PT_NAME || create_server->user->node_type == PT_VALUE);
+  // *INDENT-OFF* 
+  attr_val[3] = (create_server->user->node_type == PT_NAME) ? (char *) create_server->user->info.name.original
+                                                            : (char *) PT_VALUE_GET_BYTES (create_server->user);
+  // *INDENT-ON* 
   if (attr_val[3] == NULL)
     {
       error = ER_FAILED;

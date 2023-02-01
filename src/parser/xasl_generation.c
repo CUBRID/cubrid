@@ -1425,7 +1425,6 @@ pt_make_pred_term_rlike (REGU_VARIABLE * arg1, REGU_VARIABLE * arg2, REGU_VARIAB
   et_rlike->pattern = arg2;
   et_rlike->case_sensitive = case_sensitive;
   et_rlike->compiled_regex = NULL;
-  et_rlike->compiled_pattern = NULL;
 
   return pred;
 }
@@ -13024,7 +13023,7 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
        */
       PT_NODE *non_recursive_part = cte_def->info.cte.non_recursive_part;
 
-      if (non_recursive_part->info.query.xasl)
+      if (non_recursive_part && non_recursive_part->info.query.xasl)
 	{
 	  cte_proc = (XASL_NODE *) non_recursive_part->info.query.xasl;
 	}
