@@ -354,6 +354,14 @@ tran_server::is_page_server_connected () const
 }
 
 bool
+tran_server::is_page_server_connected (const size_t idx) const
+{
+  assert_is_tran_server ();
+
+  return m_page_server_conn_vec.size () > idx;
+}
+
+bool
 tran_server::uses_remote_storage () const
 {
   return false;
@@ -363,7 +371,7 @@ void
 tran_server::push_request (size_t idx, tran_to_page_request reqid, std::string &&payload)
 {
   assert (idx < m_page_server_conn_vec.size());
-  if (!is_page_server_connected ())
+  if (!is_page_server_connected (idx))
     {
       return;
     }
@@ -381,7 +389,7 @@ tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
 int
 tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const
 {
-  assert (is_page_server_connected ());
+  assert (is_page_server_connected (0));
 
   // TODO push a request to the "main connection"
   const css_error_code error_code = m_page_server_conn_vec[0]->send_recv (reqid, std::move (payload_in), payload_out);
