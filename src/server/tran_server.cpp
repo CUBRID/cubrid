@@ -199,15 +199,13 @@ tran_server::init_page_server_hosts (const char *db_name)
   bool failed_conn = false;
   for (const cubcomm::node &node : m_connection_list)
     {
-      const int local_exit_code = connect_to_page_server (node, db_name);
-      if (local_exit_code == NO_ERROR)
+      exit_code = connect_to_page_server (node, db_name);
+      if (exit_code == NO_ERROR)
 	{
 	  ++valid_connection_count;
-	  exit_code = NO_ERROR;
 	}
       else
 	{
-	  exit_code = local_exit_code;
 	  failed_conn = true;
 	  er_log_debug (ARG_FILE_LINE, "Failed to connect to host: %s port: %d\n", node.get_host ().c_str (), node.get_port ());
 	}
