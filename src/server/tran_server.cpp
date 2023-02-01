@@ -360,7 +360,7 @@ tran_server::uses_remote_storage () const
 }
 
 void
-tran_server::push_request_to (size_t idx, tran_to_page_request reqid, std::string &&payload)
+tran_server::push_request (size_t idx, tran_to_page_request reqid, std::string &&payload)
 {
   assert (idx < m_page_server_conn_vec.size());
   if (!is_page_server_connected ())
@@ -375,7 +375,7 @@ void
 tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
 {
   // TODO push a request to the "main connection"
-  push_request_to (0, reqid, std::move (payload));
+  push_request (0, reqid, std::move (payload));
 }
 
 int
