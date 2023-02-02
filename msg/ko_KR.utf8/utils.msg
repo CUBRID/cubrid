@@ -553,7 +553,7 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
   -S, --SA-mode               독립 모드 실행\n\
   -C, --CS-mode               클라이언트 서버 모드 실행\n\
       --datafile-per-class    각 클래스별 오브젝트 파일 생성; 기본값:한 개의 오브젝트 파일생성\n\
-      --each-schema-info      스키마 정보를 오브젝트별로 각각의 파일 생성; 기본값: 모든 오브젝트가 포함된 한 개의 스키마 파일 생성\n
+      --each-schema-info      스키마 정보를 오브젝트별로 분리하여 각각의 파일로 생성; 기본값: 모든 오브젝트가 포함된 한 개의 스키마 파일 생성\n
 
 
 $set 14 MSGCAT_UTIL_SET_COMPACTDB
