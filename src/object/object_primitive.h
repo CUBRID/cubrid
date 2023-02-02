@@ -311,6 +311,11 @@ extern int pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index,
 					  char **prev_ptrp);
 extern int pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
 				    struct tp_domain *dbvals_domain_list);
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+extern int pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
+					      struct tp_domain *dbvals_domain_list, int tail_null_cnt);
+#endif
+
 extern int pr_midxkey_init_boundbits (char *bufptr, int n_atts);
 extern int pr_index_writeval_disk_size (DB_VALUE * value);
 extern int pr_data_writeval_disk_size (DB_VALUE * value);

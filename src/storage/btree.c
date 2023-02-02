@@ -5963,6 +5963,125 @@ error_return:
   return BTREE_ERROR_OCCURRED;
 }
 
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+int
+btree_check_remake_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
+				key_val_range * kv_range, bool * is_newly)
+{
+  DB_MIDXKEY midxkey;
+  TP_DOMAIN *tp_dom = NULL;
+  TP_DOMAIN *setdomain_ptr = NULL;
+  DB_VALUE *new_key_dbvals = NULL;
+  DB_VALUE *dbvals_ptr = NULL;
+  ATTR_ID last_attrid;
+  int i, last_asc_desc, num_attrs;
+  int ret = NO_ERROR;
+
+  *is_newly = false;
+
+  if (key->domain.general_info.type == DB_TYPE_MIDXKEY)
+    {
+      num_attrs = heap_get_reserved_attr_by_btid (thread_p, class_oid, btid, &last_attrid, &last_asc_desc, NULL);
+      assert (num_attrs > 0);
+      if (!IS_RESERVED_INDEX_ATTR_ID (last_attrid))
+	{
+	  goto clear_pos;
+	}
+      assert ((num_attrs - 1) == key->data.midxkey.ncolumns);
+
+      /* allocate key buffer */
+      new_key_dbvals = (DB_VALUE *) db_private_alloc (thread_p, key->data.midxkey.ncolumns * sizeof (DB_VALUE));
+      if (new_key_dbvals == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  key->data.midxkey.ncolumns * sizeof (DB_VALUE));
+	  ret = ER_FAILED;
+	  goto clear_pos;
+	}
+
+      /* copy prefix of current key into target key */
+      for (i = 0; i < key->data.midxkey.ncolumns; i++)
+	{
+	  pr_midxkey_get_element_nocopy (&key->data.midxkey, i, &new_key_dbvals[i], NULL, NULL);
+	}
+
+      dbvals_ptr = new_key_dbvals;
+      num_attrs = key->data.midxkey.ncolumns;
+      setdomain_ptr = key->data.midxkey.domain->setdomain;
+    }
+  else
+    {
+      num_attrs = heap_get_reserved_attr_by_btid (thread_p, class_oid, btid, &last_attrid, &last_asc_desc, &tp_dom);
+      assert (num_attrs > 0);
+      if (!IS_RESERVED_INDEX_ATTR_ID (last_attrid))
+	{
+	  goto clear_pos;
+	}
+      assert (num_attrs == 2);
+      assert (tp_dom != NULL);
+
+      dbvals_ptr = key;
+      num_attrs = 1;
+      setdomain_ptr = tp_dom;
+    }
+
+  // ----------------------------------------------------------------------------------
+  /* build midxkey */
+  midxkey.buf = NULL;
+  midxkey.domain = NULL;	// If you set it to NULL, btree_color_color() will automatically set it.
+  midxkey.ncolumns = 0;
+  midxkey.size = 0;
+  midxkey.min_max_val.position = num_attrs;
+
+  // key_min  
+  midxkey.min_max_val.type = (last_asc_desc == 0) ? MIN_COLUMN : MAX_COLUMN;
+  db_make_midxkey (&(kv_range->key1), &midxkey);
+  ret = pr_midxkey_add_elements_with_null (&(kv_range->key1), dbvals_ptr, num_attrs, setdomain_ptr, 1);
+  if (ret != NO_ERROR)
+    {
+      goto clear_pos;
+    }
+  kv_range->key1.need_clear = true;
+
+  // key_max  
+  midxkey.min_max_val.type = (last_asc_desc == 0) ? MAX_COLUMN : MIN_COLUMN;
+  db_make_midxkey (&(kv_range->key2), &midxkey);
+  ret = pr_midxkey_add_elements_with_null (&(kv_range->key2), dbvals_ptr, num_attrs, setdomain_ptr, 1);
+  if (ret != NO_ERROR)
+    {
+      goto clear_pos;
+    }
+  kv_range->key2.need_clear = true;
+
+  *is_newly = true;
+
+clear_pos:
+  if (new_key_dbvals)
+    {
+      for (i = 0; i < key->data.midxkey.ncolumns; i++)
+	{
+	  pr_clear_value (&new_key_dbvals[i]);	/* it might be alloced/copied */
+	}
+      db_private_free (thread_p, new_key_dbvals);
+    }
+
+  if (tp_dom)
+    {
+      tp_domain_free (tp_dom);
+    }
+
+  if (ret != NO_ERROR)
+    {
+      pr_clear_value (&(kv_range->key1));
+      pr_clear_value (&(kv_range->key2));
+    }
+
+  return ret;
+}
+
+#endif
+
 /*
  * btree_find_foreign_key () - Find and lock any existing object in foreign key. Used to check that delete/update on
  *			       primary key is allowed.
@@ -5987,11 +6106,33 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   assert (class_oid != NULL);
   assert (found_oid != NULL);
 
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+  //DB_VALUE new_key1, new_key2;
+  bool is_newly = false;
+
+  db_make_null (&kv_range.key1);
+  db_make_null (&kv_range.key2);
+  error_code = btree_check_remake_foreign_key (thread_p, btid, key, class_oid, &kv_range, &is_newly);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+#endif
+
   /* Find if key has any objects. */
 
   /* Define range of scan. */
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+  if (!is_newly)
+    {
+      pr_share_value (key, &kv_range.key1);
+      pr_share_value (key, &kv_range.key2);
+    }
+#else
   pr_share_value (key, &kv_range.key1);
   pr_share_value (key, &kv_range.key2);
+#endif
   kv_range.range = GE_LE;
   kv_range.num_index_term = 0;
 
@@ -6009,6 +6150,13 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+      if (is_newly)
+	{
+	  pr_clear_value (&kv_range.key1);
+	  pr_clear_value (&kv_range.key2);
+	}
+#endif
       return error_code;
     }
   /* Execute scan. */
@@ -6029,6 +6177,15 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
 	}
     }
 #endif /* SERVER_MODE */
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+  if (is_newly)
+    {
+      pr_clear_value (&kv_range.key1);
+      pr_clear_value (&kv_range.key2);
+    }
+#endif
+
   return error_code;
 }
 

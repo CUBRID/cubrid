@@ -489,6 +489,11 @@ extern int heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_
 extern int heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * class_recdes,
 					   HEAP_CACHE_ATTRINFO * attr_info, HEAP_IDX_ELEMENTS_INFO * idx_info);
 #endif
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+extern int heap_get_reserved_attr_by_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, ATTR_ID * last_attrid,
+					   int *last_asc_desc, TP_DOMAIN ** tpdomain);
+#endif
 extern int heap_attrinfo_start_with_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid,
 					  HEAP_CACHE_ATTRINFO * attr_info);
 
@@ -504,6 +509,9 @@ extern DB_VALUE *heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index
 					 FUNC_PRED_UNPACK_INFO * func_indx_preds, TP_DOMAIN ** key_domain
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 					 , OID * rec_oid
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+					 , bool is_check_foreign
+#endif
 #endif
   );
 

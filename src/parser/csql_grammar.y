@@ -9635,7 +9635,6 @@ foreign_key_constraint
 			    node->info.constraint.un.foreign_key.attrs = $5;
 
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
-                            printf("FOREIGN KEY\n");
                             pt_get_dup_mode_level(false, $7,  &node->info.constraint.un.foreign_key.dupkey_mode, &node->info.constraint.un.foreign_key.dupkey_hash_level);
 #endif
 			    node->info.constraint.un.foreign_key.referenced_attrs = $10;

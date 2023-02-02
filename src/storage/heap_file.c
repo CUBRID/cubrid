@@ -695,6 +695,9 @@ static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, 
 					 TP_DOMAIN ** key_domain
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 					 , OID * rec_oid
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+					 , bool is_check_foreign
+#endif
 #endif
   );
 static DB_MIDXKEY *heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey,
@@ -12253,6 +12256,51 @@ heap_classrepr_find_index_id (OR_CLASSREP * classrepr, const BTID * btid)
   return id;
 }
 
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+int
+heap_get_reserved_attr_by_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, ATTR_ID * last_attrid,
+				int *last_asc_desc, TP_DOMAIN ** tpdomain)
+{
+  OR_CLASSREP *classrepr = NULL;
+  int index_id = -1;
+  int classrepr_cacheindex = -1;
+  int num_found_attrs = 0;
+
+  /*
+   *  Get the class representation so that we can access the indexes.
+   */
+  classrepr = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &classrepr_cacheindex);
+  if (classrepr == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /*
+   *  Get the index ID which corresponds to the BTID
+   */
+  index_id = heap_classrepr_find_index_id (classrepr, btid);
+  if (index_id < 0)
+    {
+      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
+      return ER_FAILED;
+    }
+
+  num_found_attrs = classrepr->indexes[index_id].n_atts;
+  if (num_found_attrs > 0)
+    {
+      *last_attrid = classrepr->indexes[index_id].atts[num_found_attrs - 1]->id;
+      *last_asc_desc = classrepr->indexes[index_id].asc_desc[num_found_attrs - 1];
+      if (tpdomain)
+	{
+	  *tpdomain = tp_domain_copy (classrepr->indexes[index_id].atts[0]->domain, false);
+	}
+    }
+
+  heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
+  return num_found_attrs;
+}
+#endif
+
 /*
  * heap_attrinfo_start_with_btid () - Initialize an attribute information structure
  *   return: ID for the index which corresponds to the passed BTID.
@@ -12434,6 +12482,9 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 		      DB_VALUE * func_res, TP_DOMAIN * func_domain, TP_DOMAIN ** key_domain
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 		      , OID * rec_oid
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+		      , bool is_check_foreign
+#endif
 #endif
   )
 {
@@ -12454,6 +12505,14 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
     {
       num_atts = index->func_index_info->attr_index_start + 1;
     }
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+  if (is_check_foreign && IS_RESERVED_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
+    {
+      assert (func_res == NULL);
+      num_atts--;
+    }
+#endif
+
   assert (PTR_ALIGN (midxkey->buf, INT_ALIGNMENT) == midxkey->buf);
 
   or_init (&buf, midxkey->buf, -1);
@@ -12914,6 +12973,9 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 			TP_DOMAIN ** key_domain
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 			, OID * rec_oid
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+			, bool is_check_foreign
+#endif
 #endif
   )
 {
@@ -12922,7 +12984,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
   DB_VALUE *ret_val = NULL;
   DB_VALUE *fi_res = NULL;
   TP_DOMAIN *fi_domain = NULL;
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK) && !defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
   bool is_check_foreign = false;
 #endif
 
@@ -12961,7 +13023,8 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
   if (is_check_foreign && IS_RESERVED_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
     {
-      n_atts--;			//-----------------
+      assert (index->type == BTREE_FOREIGN_KEY);
+      n_atts--;			//-----------------   
     }
 #endif
 
@@ -12975,13 +13038,6 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 	}
       fi_res = db_value;
     }
-
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
-  if (is_check_foreign && index->type == BTREE_FOREIGN_KEY)
-    {
-      printf ("haha foreign key!!!\n");
-    }
-#endif
 
   /*
    *  Multi-column index.  Construct the key as a sequence of attribute
@@ -13018,7 +13074,12 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
       midxkey.min_max_val.position = -1;
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+      if (heap_midxkey_key_get
+	  (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain, rec_oid, is_check_foreign) == NULL)
+#else
       if (heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain, rec_oid) == NULL)
+#endif
 #else
       if (heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain) == NULL)
 #endif

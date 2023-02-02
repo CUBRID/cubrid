@@ -10370,6 +10370,9 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				, NULL
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+				, false
+#endif
 #endif
 	);
       /* TODO: unique with prefix length */
@@ -10605,6 +10608,9 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				, NULL
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+				, false
+#endif
 #endif
 	);
       if (key_dbvalue == NULL)

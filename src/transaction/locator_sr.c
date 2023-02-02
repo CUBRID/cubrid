@@ -4078,6 +4078,9 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 	heap_attrvalue_get_key (thread_p, i, &index_attrinfo, recdes, &btid, &dbvalue, aligned_buf, NULL, NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				, inst_oid
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+				, true
+#endif
 #endif
 	);
       if (key_dbvalue == NULL)
@@ -4229,6 +4232,10 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   OID found_oid;
   BTREE_ISCAN_OID_LIST oid_list;
 
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+  bool is_newly = false;
+#endif
+
   oid_list.oidp = NULL;
 
   mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
@@ -4279,7 +4286,30 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	    {
 	      goto error3;
 	    }
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+	  is_newly = false;
+	  if (num_attrs > 1 && IS_RESERVED_INDEX_ATTR_ID (attr_ids[num_attrs - 1]))
+	    {
+	      assert ((num_attrs - 1) == index->n_atts);
+
+	      error_code =
+		btree_check_remake_foreign_key (thread_p, &fkref->self_btid, key, &fkref->self_oid, &key_val_range,
+						&is_newly);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto error3;
+		}
+	    }
+	  else
+	    {
+	      assert (num_attrs == index->n_atts);
+	    }
+#else
 	  assert (num_attrs == index->n_atts);
+#endif
+
 	  /* We might check for foreign key and schema consistency problems here but we rely on the schema manager to
 	   * prevent inconsistency; see do_check_fk_constraints() for details */
 
@@ -4312,8 +4342,17 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	    }
 	  scan_init_index_scan (&isid, &oid_list, mvcc_snapshot);
 	  is_upd_scan_init = false;
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+	  if (!is_newly)
+	    {
+	      pr_clone_value (key, &key_val_range.key1);
+	      pr_clone_value (key, &key_val_range.key2);
+	    }
+#else
 	  pr_clone_value (key, &key_val_range.key1);
 	  pr_clone_value (key, &key_val_range.key2);
+#endif
 	  key_val_range.range = GE_LE;
 	  key_val_range.num_index_term = 0;
 	  BTREE_INIT_SCAN (&bt_scan);
@@ -4575,6 +4614,10 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   OID found_oid;
   BTREE_ISCAN_OID_LIST oid_list;
 
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+  bool is_newly = false;
+#endif
+
   oid_list.oidp = NULL;
 
   mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
@@ -4624,7 +4667,29 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	    {
 	      goto error3;
 	    }
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+	  is_newly = false;
+	  if (num_attrs > 1 && IS_RESERVED_INDEX_ATTR_ID (attr_ids[num_attrs - 1]))
+	    {
+	      assert ((num_attrs - 1) == index->n_atts);
+
+	      error_code =
+		btree_check_remake_foreign_key (thread_p, &fkref->self_btid, key, &fkref->self_oid, &key_val_range,
+						&is_newly);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto error3;
+		}
+	    }
+	  else
+	    {
+	      assert (num_attrs == index->n_atts);
+	    }
+#else
 	  assert (num_attrs == index->n_atts);
+#endif
 	  /* We might check for foreign key and schema consistency problems here but we rely on the schema manager to
 	   * prevent inconsistency; see do_check_fk_constraints() for details */
 
@@ -4659,8 +4724,16 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	  scan_init_index_scan (&isid, &oid_list, mvcc_snapshot);
 
 	  is_upd_scan_init = false;
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+	  if (!is_newly)
+	    {
+	      pr_clone_value (key, &key_val_range.key1);
+	      pr_clone_value (key, &key_val_range.key2);
+	    }
+#else
 	  pr_clone_value (key, &key_val_range.key1);
 	  pr_clone_value (key, &key_val_range.key2);
+#endif
 	  key_val_range.range = GE_LE;
 	  key_val_range.num_index_term = 0;
 	  BTREE_INIT_SCAN (&bt_scan);
@@ -7789,6 +7862,9 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 				(func_preds ? &func_preds[i] : NULL), NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				, inst_oid
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+				, false
+#endif
 #endif
 	);
       if (key_dbvalue == NULL)
@@ -8416,6 +8492,9 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 				NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				, oid
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+				, false
+#endif
 #endif
 	);
       old_key =
@@ -8423,6 +8502,9 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 				&key_domain
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				, oid
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+				, false
+#endif
 #endif
 	);
 
@@ -8705,6 +8787,9 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 				    aligned_oldbuf, NULL, &key_domain
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				    , oid
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+				    , false
+#endif
 #endif
 	    );
 	  if (repl_old_key == NULL)
@@ -8961,6 +9046,9 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 					NULL, NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 					, &inst_oid
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+					, false
+#endif
 #endif
 		);
 	      if (dbvalue_ptr == NULL)
@@ -8988,6 +9076,9 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 				    NULL, NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				    , &inst_oid
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+				    , false
+#endif
 #endif
 	    );
 	}
@@ -9409,6 +9500,9 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 					    NULL, NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 					    , &inst_oid
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+					    , false
+#endif
 #endif
 	      )) == NULL)
 	{
@@ -9863,6 +9957,9 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 		heap_attrvalue_get_key (thread_p, index_id, &attr_info, &peek, btid, &dbvalue, aligned_buf, NULL, NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 					, &inst_oid
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+					, false
+#endif
 #endif
 		)) == NULL))
 	    {
