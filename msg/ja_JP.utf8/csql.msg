@@ -185,6 +185,7 @@ $ csql help messages
    ;HISTORYList                 - 実行したクエリリスト表示。\n\
    ;HISTORYRead <history_num>   - ヒストリー番号のクエリをコマンドバッファーにセーブする。\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
+   ;SIngleline [ON|OFF]         - 単線モードの有効化/無効化.\n\
    ;HElp                        - ヘルプメッセージ出力。\n\n
 
 232 <制約事項> 

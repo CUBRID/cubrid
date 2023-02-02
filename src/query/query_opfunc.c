@@ -8538,7 +8538,7 @@ qdata_regexp_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_
     assert (index == no_args);
 
     // *INDENT-OFF*
-    std::function<int(DB_VALUE*, DB_VALUE*[], const int, cub_regex_object**, char**)> regexp_func;
+    std::function<int(DB_VALUE*, DB_VALUE*[], const int, cub_compiled_regex**)> regexp_func;
     switch (function_p->ftype)
     {
       case F_REGEXP_COUNT:
@@ -8568,8 +8568,8 @@ qdata_regexp_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_
 	function_p->tmp_obj->compiled_regex = new cub_compiled_regex ();
       }
 
-    cub_compiled_regex *compiled_regex = function_p->tmp_obj->compiled_regex;
-    error_status = regexp_func (function_p->value, args, no_args, &compiled_regex->regex, &compiled_regex->pattern);
+    cub_compiled_regex *&compiled_regex = function_p->tmp_obj->compiled_regex;
+    error_status = regexp_func (function_p->value, args, no_args, &compiled_regex);
     if (error_status != NO_ERROR)
       {
 	goto exit;

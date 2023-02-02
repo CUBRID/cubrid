@@ -1439,6 +1439,22 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  fprintf (csql_Error_fp, "Auto trace isn't allowed in SA mode.\n");
 	}
       break;
+
+    case S_CMD_SINGLELINE:
+      if (!strcasecmp (argument, "on"))
+	{
+	  csql_arg->single_line_execution = true;
+	}
+      else if (!strcasecmp (argument, "off"))
+	{
+	  csql_arg->single_line_execution = false;
+	}
+      if (csql_Is_interactive)
+	{
+	  fprintf (csql_Output_fp, "SINGLELINE IS %s\n", (csql_arg->single_line_execution ? "ON" : "OFF"));
+	}
+
+      break;
     }
 
   return DO_CMD_SUCCESS;
@@ -1738,7 +1754,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   DB_QUERY_TYPE *attr_spec = NULL;	/* result attribute spec. */
   int total;			/* number of statements to execute */
   bool do_abort_transaction = false;	/* flag for transaction abort */
-  PT_NODE *statement;
+  PT_NODE *statement = NULL;
   char sql_text[DDL_LOG_BUFFER_SIZE] = { 0 };
 
   csql_Num_failures = 0;

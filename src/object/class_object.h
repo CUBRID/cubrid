@@ -989,7 +989,8 @@ extern SM_CLASS_CONSTRAINT *classobj_find_constraint_by_name (SM_CLASS_CONSTRAIN
 extern SM_CLASS_CONSTRAINT *classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list,
 							       DB_CONSTRAINT_TYPE new_cons, const char **att_names,
 							       const int *asc_desc,
-							       const SM_PREDICATE_INFO * filter_predicate);
+							       const SM_PREDICATE_INFO * filter_predicate,
+							       const SM_FUNCTION_INFO * func_index_info);
 extern TP_DOMAIN *classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_oid);
 extern void classobj_remove_class_constraint_node (SM_CLASS_CONSTRAINT ** constraints, SM_CLASS_CONSTRAINT * node);
 
