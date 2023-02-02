@@ -462,8 +462,8 @@ list(APPEND EP_INCLUDES ${RAPIDJSON_INCLUDES})
 set(RE2_TARGET re2)
 if(WITH_RE2 STREQUAL "EXTERNAL")
   if(UNIX)
-    set(RE2_INCLUDES ${CMAKE_BINARY_DIR}/external/Source/re2)
-    set(RE2_LIBS ${CMAKE_BINARY_DIR}/external/Source/re2/obj/libre2.a)
+    set(RE2_INCLUDES ${3RDPARTY_LIBS_DIR}/Source/re2)
+    set(RE2_LIBS ${3RDPARTY_LIBS_DIR}/Source/re2/obj/libre2.a)
     ADD_BY_PRODUCTS_VARIABLE ("RE2" ${RE2_LIBS})
     externalproject_add(${RE2_TARGET}
       GIT_REPOSITORY https://github.com/google/re2
