@@ -59,10 +59,21 @@
 
 #define CLASS_NAME_MAX 80
 
-/* suffix names */
-#define SCHEMA_SUFFIX "_schema"
-#define TRIGGER_SUFFIX "_trigger"
-#define INDEX_SUFFIX "_indexes"
+#define SCHEMA_NAME	  "_schema"
+#define TRIGGER_NAME	  "_trigger"
+#define INDEX_NAME	  "_indexes"
+
+#define CLASS_SUFFIX          "_class"
+#define FK_SUFFIX             "_fk"
+#define GRANT_SUFFIX          "_grant"
+#define PK_SUFFIX             "_pk"
+#define PROCEDURE_SUFFIX      "_procedure"
+#define SERIAL_SUFFIX         "_serial"
+#define SERVER_SUFFIX         "_server"
+#define SYNONYM_SUFFIX        "_synonym"
+#define USER_SUFFIX           "_user"
+#define VCLASS_SUFFIX         "_vclass"
+
 
 #define EX_ERROR_CHECK(c,d,m)                                 \
   do {                                                        \
@@ -135,6 +146,13 @@ typedef enum
   SYNONYM_VALUE_INDEX_MAX
 } SYNONYM_VALUE_INDEX;
 
+typedef enum
+{
+  EXTRACT_CLASS_ALL,
+  EXTRACT_CLASS,
+  EXTRACT_VCLASS
+} EXTRACT_CLASS_TYPE;
+
 static void filter_system_classes (DB_OBJLIST ** class_list);
 static void filter_unrequired_classes (DB_OBJLIST ** class_list);
 static int is_dependent_class (DB_OBJECT * class_, DB_OBJLIST * unordered, DB_OBJLIST * ordered);
@@ -151,7 +169,8 @@ static int emit_indexes (print_output & output_ctx, DB_OBJLIST * classes, int ha
 			 DB_OBJLIST * vclass_list_has_using_index);
 
 static int emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth,
-			DB_OBJLIST ** vclass_list_has_using_index, EMIT_STORAGE_ORDER emit_storage_order);
+			DB_OBJLIST ** vclass_list_has_using_index, EMIT_STORAGE_ORDER storage_order,
+			EXTRACT_CLASS_TYPE extract_class);
 static bool has_vclass_domains (DB_OBJECT * vclass);
 static DB_OBJLIST *emit_query_specs (print_output & output_ctx, DB_OBJLIST * classes);
 static int emit_query_specs_has_using_index (print_output & output_ctx, DB_OBJLIST * vclass_list_has_using_index);
@@ -180,9 +199,27 @@ static void emit_partition_info (print_output & output_ctx, MOP clsobj);
 static int emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg_set);
 static int emit_stored_procedure (print_output & output_ctx);
 static int emit_foreign_key (print_output & output_ctx, DB_OBJLIST * classes);
+static int emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 static int create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
 			    char *output_filename_p, const size_t filename_size);
+static int create_filename (const char *output_dirname, const char *output_prefix, const char *middle,
+			    const char *suffix, char *output_filename_p, const size_t filename_size);
 static int export_server (print_output & output_ctx);
+static int get_classes (extract_context & ctxt, print_output & output_ctx);
+static int extract_whole_schema_file (extract_context & ctxt, const char *output_filename);
+static int extract_each_schema_file (extract_context & ctxt);
+static int extract_schema (extract_context & ctxt, print_output & schema_output_ctx);
+static int extract_only_user (extract_context & ctxt);
+static int extract_only_serial (extract_context & ctxt);
+static int extract_only_synonym (extract_context & ctxt);
+static int extract_only_procedure (extract_context & ctxt);
+static int extract_only_server (extract_context & ctxt);
+static int extract_only_class (extract_context & ctxt);
+static int extract_only_vclass (extract_context & ctxt);
+static int extract_only_pk (extract_context & ctxt);
+static int extract_only_fk (extract_context & ctxt);
+static int extract_only_grant (extract_context & ctxt);
+static void extract_primary_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 /*
  * CLASS DEPENDENCY ORDERING
  *
@@ -993,46 +1030,45 @@ end:
  * extract_classes_to_file - exports schema to file
  *    return: 0 if successful, error count otherwise
  *    ctxt(in/out): extract context
- *    output_filename(in/out) : output filename
  */
 int
-extract_classes_to_file (extract_context & ctxt, const char *output_filename)
+extract_classes_to_file (extract_context & ctxt)
 {
-  FILE *output_file;
   int err_count = 0;
 
-  output_file = fopen_ex (output_filename, "w");
-  if (output_file == NULL)
+  if (each_schema_info)
     {
-      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
-      return 1;
+      err_count = extract_each_schema_file (ctxt);
     }
-
-  file_print_output output_ctx (output_file);
-
-  err_count = extract_classes (ctxt, output_ctx);
-
-  if (err_count == 0)
+  else
     {
-      output_ctx ("\n");
-      output_ctx ("COMMIT WORK;\n");
-    }
+      char output_filename_schema[PATH_MAX * 2] = { '\0' };
 
-  fclose (output_file);
+      if (create_filename_schema (ctxt.output_dirname, ctxt.output_prefix, output_filename_schema,
+				  sizeof (output_filename_schema)) == 0)
+	{
+	  err_count = extract_whole_schema_file (ctxt, output_filename_schema);
+	}
+      else
+	{
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+	  err_count = 1;
+	}
+    }
 
   return err_count;
 }
 
 /*
- * extract_classes - exports schema to output
+ * extract_schema - exports schema to output
  *    return: 0 if successful, error count otherwise
  *    ctxt(in/out): extract context
  *    schema_output_ctx(in/out) : output countext
  * Note:
  *    Always output the entire schema.
  */
-int
-extract_classes (extract_context & ctxt, print_output & schema_output_ctx)
+static int
+extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
 {
   DB_OBJLIST *classes = NULL;
   DB_OBJLIST *vclass_list_has_using_index = NULL;
@@ -1101,13 +1137,18 @@ extract_classes (extract_context & ctxt, print_output & schema_output_ctx)
     }
 
   ctxt.has_indexes = emit_schema (schema_output_ctx, ctxt.classes, ctxt.do_auth, &ctxt.vclass_list_has_using_index,
-				  ctxt.storage_order);
+				  ctxt.storage_order, EXTRACT_CLASS_ALL);
   if (er_errid () != NO_ERROR)
     {
       err_count++;
     }
 
   if (emit_foreign_key (schema_output_ctx, ctxt.classes) != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  if (emit_grant (ctxt, schema_output_ctx, ctxt.classes) != NO_ERROR)
     {
       err_count++;
     }
@@ -1290,7 +1331,7 @@ emit_indexes (print_output & output_ctx, DB_OBJLIST * classes, int has_indexes,
  */
 static int
 emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OBJLIST ** vclass_list_has_using_index,
-	     EMIT_STORAGE_ORDER storage_order)
+	     EMIT_STORAGE_ORDER storage_order, EXTRACT_CLASS_TYPE extract_class)
 {
   DB_OBJLIST *cl;
   int is_vclass;
@@ -1318,13 +1359,32 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
 	  continue;
 	}
 
-      /* Because class is created by the owner, it uses a name with the qualifier removed. */
-      output_ctx ("CREATE %s %s%s%s", is_vclass ? "VCLASS" : "CLASS",
-		  PRINT_IDENTIFIER (sm_remove_qualifier_name (name)));
-
       if (au_fetch_class_force (cl->op, &class_, AU_FETCH_READ) != NO_ERROR)
 	{
 	  class_ = NULL;
+	}
+      else
+	{
+	  if (extract_class == EXTRACT_CLASS_ALL)
+	    {
+	      output_ctx ("CREATE %s %s%s%s", is_vclass ? "VCLASS" : "CLASS",
+			  PRINT_IDENTIFIER (sm_remove_qualifier_name (name)));
+	    }
+	  else
+	    {
+	      if (is_vclass == TRUE && extract_class == EXTRACT_VCLASS)
+		{
+		  output_ctx ("CREATE VCLASS %s%s%s", PRINT_IDENTIFIER (sm_remove_qualifier_name (name)));
+		}
+	      else if (is_vclass == FALSE && extract_class == EXTRACT_CLASS)
+		{
+		  output_ctx ("CREATE CLASS %s%s%s", PRINT_IDENTIFIER (sm_remove_qualifier_name (name)));
+		}
+	      else
+		{
+		  continue;
+		}
+	    }
 	}
 
       if (is_vclass > 0)
@@ -1414,7 +1474,27 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
   for (cl = classes; cl != NULL; cl = cl->next)
     {
       is_vclass = db_is_vclass (cl->op);
-      class_type = (is_vclass > 0) ? "VCLASS" : "CLASS";
+
+      if (extract_class == EXTRACT_CLASS_ALL)
+	{
+	  class_type = (is_vclass > 0) ? "VCLASS" : "CLASS";
+	}
+      else
+	{
+	  if (is_vclass == TRUE && extract_class == EXTRACT_VCLASS)
+	    {
+	      class_type = "VCLASS";
+	    }
+	  else if (is_vclass == FALSE && extract_class == EXTRACT_CLASS)
+	    {
+	      class_type = "CLASS";
+	    }
+	  else
+	    {
+	      continue;
+	    }
+	}
+
       (void) emit_superclasses (output_ctx, cl->op, class_type);
     }
 
@@ -1428,6 +1508,26 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
       bool found = false;
 
       is_vclass = db_is_vclass (cl->op);
+      if (extract_class == EXTRACT_CLASS_ALL)
+	{
+	  class_type = (is_vclass > 0) ? "VCLASS" : "CLASS";
+	}
+      else
+	{
+	  if (is_vclass == TRUE && extract_class == EXTRACT_VCLASS)
+	    {
+	      class_type = "VCLASS";
+	    }
+	  else if (is_vclass == FALSE && extract_class == EXTRACT_CLASS)
+	    {
+	      class_type = "CLASS";
+	    }
+	  else
+	    {
+	      continue;
+	    }
+	}
+
       name = db_get_class_name (cl->op);
       if (do_is_partitioned_subclass (&is_partitioned, name, NULL))
 	{
@@ -1435,8 +1535,6 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
 	}
 
       output_ctx ("\n");
-
-      class_type = (is_vclass > 0) ? "VCLASS" : "CLASS";
 
       if (emit_all_attributes (output_ctx, cl->op, class_type, &has_indexes, storage_order))
 	{
@@ -1460,7 +1558,26 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
   for (cl = classes; cl != NULL; cl = cl->next)
     {
       is_vclass = db_is_vclass (cl->op);
-      class_type = (is_vclass > 0) ? "VCLASS" : "CLASS";
+      if (extract_class == EXTRACT_CLASS_ALL)
+	{
+	  class_type = (is_vclass > 0) ? "VCLASS" : "CLASS";
+	}
+      else
+	{
+	  if (is_vclass == TRUE && extract_class == EXTRACT_VCLASS)
+	    {
+	      class_type = "VCLASS";
+	    }
+	  else if (is_vclass == FALSE && extract_class == EXTRACT_CLASS)
+	    {
+	      class_type = "CLASS";
+	    }
+	  else
+	    {
+	      continue;
+	    }
+	}
+
       (void) emit_resolutions (output_ctx, cl->op, class_type);
     }
 
@@ -1470,26 +1587,17 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
    * do query specs LAST after we're sure that all potentially
    * referenced classes have their full definitions.
    */
-  *vclass_list_has_using_index = emit_query_specs (output_ctx, classes);
+  if (extract_class != EXTRACT_CLASS)
+    {
+      *vclass_list_has_using_index = emit_query_specs (output_ctx, classes);
+    }
+
+  if (er_errid () == ER_OBJ_NO_COMPONENTS)
+    {
+      er_clear ();
+    }
 
   output_ctx ("\n");
-
-  /*
-   * Dump authorizations.
-   */
-  if (do_auth)
-    {
-      output_ctx ("\n");
-      for (cl = classes; cl != NULL; cl = cl->next)
-	{
-	  name = db_get_class_name (cl->op);
-	  if (do_is_partitioned_subclass (&is_partitioned, name, NULL))
-	    {
-	      continue;
-	    }
-	  au_export_grants (output_ctx, cl->op);
-	}
-    }
 
   return has_indexes;
 }
@@ -2252,9 +2360,12 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
 	}
     }
 
-  if (unique_flag)
+  if (each_schema_info == false)
     {
-      emit_unique_def (output_ctx, class_, class_type);
+      if (unique_flag)
+	{
+	  emit_unique_def (output_ctx, class_, class_type);
+	}
     }
 
   if (reverse_unique_flag)
@@ -3897,21 +4008,21 @@ int
 create_filename_schema (const char *output_dirname, const char *output_prefix,
 			char *output_filename_p, const size_t filename_size)
 {
-  return create_filename (output_dirname, output_prefix, SCHEMA_SUFFIX, output_filename_p, filename_size);
+  return create_filename (output_dirname, output_prefix, SCHEMA_NAME, output_filename_p, filename_size);
 }
 
 int
 create_filename_trigger (const char *output_dirname, const char *output_prefix,
 			 char *output_filename_p, const size_t filename_size)
 {
-  return create_filename (output_dirname, output_prefix, TRIGGER_SUFFIX, output_filename_p, filename_size);
+  return create_filename (output_dirname, output_prefix, TRIGGER_NAME, output_filename_p, filename_size);
 }
 
 int
 create_filename_indexes (const char *output_dirname, const char *output_prefix,
 			 char *output_filename_p, const size_t filename_size)
 {
-  return create_filename (output_dirname, output_prefix, INDEX_SUFFIX, output_filename_p, filename_size);
+  return create_filename (output_dirname, output_prefix, INDEX_NAME, output_filename_p, filename_size);
 }
 
 static int
@@ -3933,4 +4044,692 @@ create_filename (const char *output_dirname, const char *output_prefix, const ch
   snprintf (output_filename_p, filename_size - 1, "%s/%s%s", output_dirname, output_prefix, suffix);
 
   return 0;
+}
+
+static int
+create_filename (const char *output_dirname, const char *output_prefix, const char *middle, const char *suffix,
+		 char *output_filename_p, const size_t filename_size)
+{
+  if (output_dirname == NULL)
+    {
+      output_dirname = ".";
+    }
+
+  size_t total = strlen (output_dirname) + strlen (output_prefix) + strlen (middle) + strlen (suffix) + 8;
+
+  if (total > filename_size)
+    {
+      return -1;
+    }
+
+  snprintf (output_filename_p, filename_size - 1, "%s/%s%s%s", output_dirname, output_prefix, middle, suffix);
+
+  return 0;
+}
+
+static int
+extract_only_user (extract_context & ctxt)
+{
+  FILE *output_file = NULL;
+  int err = NO_ERROR;
+  char output_filename[PATH_MAX * 2] = { '\0' };
+
+  if (required_class_only == true && ctxt.do_auth)
+    {
+      return NO_ERROR;
+    }
+
+  if (create_filename
+      (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, USER_SUFFIX, output_filename,
+       sizeof (output_filename)) != 0)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      return ER_FAILED;
+    }
+
+  file_print_output output_ctx (output_file);
+
+  err = au_export_users (output_ctx);
+  if (err == NO_ERROR)
+    {
+      output_ctx ("\n");
+      output_ctx ("COMMIT WORK;\n");
+    }
+
+  if (output_file != NULL)
+    {
+      fclose (output_file);
+      output_file = NULL;
+    }
+
+  return err;
+}
+
+static int
+extract_only_serial (extract_context & ctxt)
+{
+  FILE *output_file = NULL;
+  char output_filename[PATH_MAX * 2] = { '\0' };
+
+  if (required_class_only == true)
+    {
+      return NO_ERROR;
+    }
+
+  if (create_filename
+      (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, SERIAL_SUFFIX, output_filename,
+       sizeof (output_filename)) != 0)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      return ER_FAILED;
+    }
+
+  file_print_output output_ctx (output_file);
+
+  if (export_serial (output_ctx) != NO_ERROR)
+    {
+      fprintf (stderr, "%s", db_error_string (3));
+      if (db_error_code () == ER_INVALID_SERIAL_VALUE)
+	{
+	  fprintf (stderr, " Check the value of db_serial object.\n");
+	}
+    }
+
+  output_ctx ("\n");
+  output_ctx ("COMMIT WORK;\n");
+
+  if (output_file != NULL)
+    {
+      fclose (output_file);
+      output_file = NULL;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+extract_only_synonym (extract_context & ctxt)
+{
+  FILE *output_file = NULL;
+  char output_filename[PATH_MAX * 2] = { '\0' };
+
+  if (create_filename
+      (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, SYNONYM_SUFFIX, output_filename,
+       sizeof (output_filename)) != 0)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      return ER_FAILED;
+    }
+
+  file_print_output output_ctx (output_file);
+
+  if (export_synonym (output_ctx) != NO_ERROR)
+    {
+      fprintf (stderr, "%s", db_error_string (3));
+      if (db_error_code () == ER_SYNONYM_INVALID_VALUE)
+	{
+	  fprintf (stderr, " Check the value of _db_synonym object.\n");
+	}
+    }
+
+  output_ctx ("\n");
+  output_ctx ("COMMIT WORK;\n");
+
+  if (output_file != NULL)
+    {
+      fclose (output_file);
+      output_file = NULL;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+extract_only_procedure (extract_context & ctxt)
+{
+  FILE *output_file = NULL;
+  int err = NO_ERROR;
+  char output_filename[PATH_MAX * 2] = { '\0' };
+
+  if (create_filename
+      (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, PROCEDURE_SUFFIX, output_filename,
+       sizeof (output_filename)) != 0)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      return ER_FAILED;
+    }
+
+  file_print_output output_ctx (output_file);
+
+  err = emit_stored_procedure (output_ctx);
+  if (err == NO_ERROR)
+    {
+      output_ctx ("\n");
+      output_ctx ("COMMIT WORK;\n");
+    }
+
+  if (output_file != NULL)
+    {
+      fclose (output_file);
+      output_file = NULL;
+    }
+
+  return err;
+}
+
+static int
+extract_only_server (extract_context & ctxt)
+{
+  FILE *output_file = NULL;
+  int err = NO_ERROR;
+  char output_filename[PATH_MAX * 2] = { '\0' };
+
+  if (create_filename
+      (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, SERVER_SUFFIX, output_filename,
+       sizeof (output_filename)) != 0)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      return ER_FAILED;
+    }
+
+  file_print_output output_ctx (output_file);
+
+  err = export_server (output_ctx);
+  if (err == NO_ERROR)
+    {
+      output_ctx ("\n");
+      output_ctx ("COMMIT WORK;\n");
+    }
+
+  if (output_file != NULL)
+    {
+      fclose (output_file);
+      output_file = NULL;
+    }
+
+  return err;
+}
+
+static int
+extract_only_class (extract_context & ctxt)
+{
+  FILE *output_file = NULL;
+  int err = NO_ERROR;
+  char output_filename[PATH_MAX * 2] = { '\0' };
+
+  if (create_filename
+      (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, CLASS_SUFFIX, output_filename,
+       sizeof (output_filename)) != 0)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      return ER_FAILED;
+    }
+
+  file_print_output output_ctx (output_file);
+
+  if (ctxt.classes == NULL)
+    {
+      err = get_classes (ctxt, output_ctx);
+      if (err != NO_ERROR)
+	{
+	  if (output_file != NULL)
+	    {
+	      fclose (output_file);
+	      output_file = NULL;
+	    }
+	}
+    }
+
+  emit_schema (output_ctx, ctxt.classes, ctxt.do_auth, &ctxt.vclass_list_has_using_index,
+	       ctxt.storage_order, EXTRACT_CLASS);
+  if (er_errid () == NO_ERROR)
+    {
+      output_ctx ("\n");
+      output_ctx ("COMMIT WORK;\n");
+    }
+  else
+    {
+      err = ER_FAILED;
+    }
+
+  if (output_file != NULL)
+    {
+      fclose (output_file);
+      output_file = NULL;
+    }
+
+  return err;
+}
+
+static int
+extract_only_vclass (extract_context & ctxt)
+{
+  FILE *output_file = NULL;
+  int err = NO_ERROR;
+  char output_filename[PATH_MAX * 2] = { '\0' };
+
+  if (create_filename
+      (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, VCLASS_SUFFIX, output_filename,
+       sizeof (output_filename)) != 0)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      return ER_FAILED;
+    }
+
+  file_print_output output_ctx (output_file);
+
+  if (ctxt.classes == NULL)
+    {
+      err = get_classes (ctxt, output_ctx);
+      if (err != NO_ERROR)
+	{
+	  if (output_file != NULL)
+	    {
+	      fclose (output_file);
+	      output_file = NULL;
+	    }
+	}
+    }
+
+  emit_schema (output_ctx, ctxt.classes, ctxt.do_auth, &ctxt.vclass_list_has_using_index,
+	       ctxt.storage_order, EXTRACT_VCLASS);
+  if (er_errid () == NO_ERROR)
+    {
+      output_ctx ("\n");
+      output_ctx ("COMMIT WORK;\n");
+    }
+  else
+    {
+      err = ER_FAILED;
+    }
+
+  if (output_file != NULL)
+    {
+      fclose (output_file);
+      output_file = NULL;
+    }
+
+  return err;
+}
+
+static int
+extract_only_pk (extract_context & ctxt)
+{
+  FILE *output_file = NULL;
+  int err = NO_ERROR;
+  char output_filename[PATH_MAX * 2] = { '\0' };
+
+  if (create_filename
+      (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, PK_SUFFIX, output_filename, sizeof (output_filename)) != 0)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      return ER_FAILED;
+    }
+
+  file_print_output output_ctx (output_file);
+
+  if (ctxt.classes == NULL)
+    {
+      err = get_classes (ctxt, output_ctx);
+      if (err != NO_ERROR)
+	{
+	  if (output_file != NULL)
+	    {
+	      fclose (output_file);
+	      output_file = NULL;
+	    }
+	}
+    }
+
+  extract_primary_key (ctxt, output_ctx, ctxt.classes);
+  if (er_errid () == NO_ERROR)
+    {
+      output_ctx ("\n");
+      output_ctx ("COMMIT WORK;\n");
+    }
+  else
+    {
+      err = ER_FAILED;
+    }
+
+  if (output_file != NULL)
+    {
+      fclose (output_file);
+      output_file = NULL;
+    }
+
+  return err;
+}
+
+static int
+extract_only_fk (extract_context & ctxt)
+{
+  FILE *output_file = NULL;
+  int err = NO_ERROR;
+  char output_filename[PATH_MAX * 2] = { '\0' };
+
+  if (create_filename
+      (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, FK_SUFFIX, output_filename, sizeof (output_filename)) != 0)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      return ER_FAILED;
+    }
+
+  file_print_output output_ctx (output_file);
+
+  if (ctxt.classes == NULL)
+    {
+      err = get_classes (ctxt, output_ctx);
+      if (err != NO_ERROR)
+	{
+	  if (output_file != NULL)
+	    {
+	      fclose (output_file);
+	      output_file = NULL;
+	    }
+	}
+    }
+
+  err = emit_foreign_key (output_ctx, ctxt.classes);
+  if (err == NO_ERROR)
+    {
+      output_ctx ("\n");
+      output_ctx ("COMMIT WORK;\n");
+    }
+
+  if (output_file != NULL)
+    {
+      fclose (output_file);
+      output_file = NULL;
+    }
+
+  return err;
+}
+
+static int
+extract_only_grant (extract_context & ctxt)
+{
+  FILE *output_file = NULL;
+  int err = NO_ERROR;
+  char output_filename[PATH_MAX * 2] = { '\0' };
+
+  if (create_filename
+      (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, GRANT_SUFFIX, output_filename,
+       sizeof (output_filename)) != 0)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      return ER_FAILED;
+    }
+
+  file_print_output output_ctx (output_file);
+
+  if (ctxt.classes == NULL)
+    {
+      err = get_classes (ctxt, output_ctx);
+      if (err != NO_ERROR)
+	{
+	  if (output_file != NULL)
+	    {
+	      fclose (output_file);
+	      output_file = NULL;
+	    }
+	}
+    }
+
+  err = emit_grant (ctxt, output_ctx, ctxt.classes);
+  if (err == NO_ERROR)
+    {
+      output_ctx ("\n");
+      output_ctx ("COMMIT WORK;\n");
+    }
+
+  if (output_file != NULL)
+    {
+      fclose (output_file);
+      output_file = NULL;
+    }
+
+  return err;
+}
+
+static void
+extract_primary_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes)
+{
+  DB_OBJLIST *cl = NULL;
+  int is_vclass = 0;
+  const char *class_type = NULL;
+  char *class_name = NULL;
+  DB_ATTRIBUTE *attribute_list = NULL, *a = NULL;
+  int pk_flag = 0;
+
+  for (cl = classes; cl != NULL; cl = cl->next)
+    {
+      pk_flag = 0;
+      attribute_list = db_get_attributes (cl->op);
+
+      /* see if we have an unique defined on any attribute */
+      for (a = attribute_list; a != NULL; a = db_attribute_next (a))
+	{
+	  if (db_attribute_class (a) == cl->op)
+	    {
+	      if (pk_flag == 0 && db_attribute_is_unique (a))
+		{
+		  pk_flag = 1;
+		  is_vclass = db_is_vclass (cl->op);
+		  class_type = (is_vclass > 0) ? "VCLASS" : "CLASS";
+		  emit_unique_def (output_ctx, cl->op, class_type);
+		}
+	    }
+	}
+    }
+
+  if (er_errid () == ER_OBJ_NO_COMPONENTS)
+    {
+      er_clear ();
+    }
+}
+
+static int
+emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes)
+{
+  int err = NO_ERROR;
+  DB_OBJLIST *cl;
+  const char *name;
+  int is_partitioned = 0;
+
+  if (ctxt.do_auth)
+    {
+      for (cl = classes; cl != NULL; cl = cl->next)
+	{
+	  name = db_get_class_name (cl->op);
+	  if (do_is_partitioned_subclass (&is_partitioned, name, NULL))
+	    {
+	      continue;
+	    }
+	  err = au_export_grants (output_ctx, cl->op);
+	}
+    }
+
+  return err;
+}
+
+static int
+extract_each_schema_file (extract_context & ctxt)
+{
+  int err_count = 0;
+
+  if (extract_only_user (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  if (extract_only_serial (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  if (extract_only_synonym (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  if (extract_only_procedure (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  if (extract_only_server (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  if (extract_only_fk (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  if (extract_only_grant (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  if (extract_only_vclass (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  if (extract_only_class (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  if (extract_only_pk (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  return err_count;
+}
+
+static int
+extract_whole_schema_file (extract_context & ctxt, const char *output_filename)
+{
+  FILE *output_file;
+  int err_count = 0;
+
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      return 1;
+    }
+
+  file_print_output output_ctx (output_file);
+  err_count = extract_schema (ctxt, output_ctx);
+
+  if (err_count == 0)
+    {
+      output_ctx ("\n");
+      output_ctx ("COMMIT WORK;\n");
+    }
+
+  fclose (output_file);
+
+  return err_count;
+}
+
+static int
+get_classes (extract_context & ctxt, print_output & output_ctx)
+{
+  int err = NO_ERROR;
+  /*
+   * convert the class table into an ordered class list, would be better
+   * if we just built the initial list rather than using the table.
+   */
+  ctxt.classes = get_ordered_classes (output_ctx, NULL);
+  if (ctxt.classes == NULL)
+    {
+      if (db_error_code () != NO_ERROR)
+	{
+	  err = ER_FAILED;
+	}
+      else
+	{
+	  fprintf (stderr, "%s: Unknown database error occurs " "but may not be database error.\n\n", ctxt.exec_name);
+	  err = ER_FAILED;
+	}
+      return err;
+    }
+
+  return err;
 }

@@ -39,6 +39,8 @@ struct extract_context
   int do_auth;
   EMIT_STORAGE_ORDER storage_order;
   const char *exec_name;
+  const char *output_dirname;
+  const char *output_prefix;
 
   /* working */
   int has_indexes;
@@ -49,6 +51,8 @@ struct extract_context
     do_auth (0),
     storage_order (FOLLOW_STORAGE_ORDER),
     exec_name (NULL),
+    output_dirname(NULL),
+    output_prefix(NULL),
     has_indexes (0),
     classes (NULL),
     vclass_list_has_using_index (NULL)
