@@ -544,6 +544,81 @@ or_put_bound_bit (char *bound_bits, int element, int bound)
 #endif /* !SERVER_MODE */
 
 /*
+ * or_overflow - called by the or_put_ functions when there is not enough
+ * room in the buffer to hold a particular value.
+ *    return: ER_TF_BUFFER_OVERFLOW or long jump to buf->error_abort
+ *    buf(in): translation state structure
+ *
+ * Note:
+ *    Because of the recursive nature of the translation functions, we may
+ *    be several levels deep so we can do a longjmp out to the top level
+ *    if the user has supplied a jmpbuf.
+ *    Because jmpbuf is not a pointer, we have to keep an additional flag
+ *    called "error_abort" in the OR_BUF structure to indicate the validity
+ *    of the jmpbuf.
+ *    This is a fairly common ocurrence because the locator regularly calls
+ *    the transformer with a buffer that is too small.  When overflow
+ *    is detected, it allocates a larger one and retries the operation.
+ *    Because of this, a system error is not signaled here.
+ */
+int
+or_overflow (OR_BUF * buf)
+{
+  /*
+   * since this is normal behavior, don't set an error condition, the
+   * main transformer functions will need to test the status value
+   * for ER_TF_BUFFER_OVERFLOW and know that this isn't an error condition.
+   */
+
+  if (buf->error_abort)
+    {
+      _longjmp (buf->env, ER_TF_BUFFER_OVERFLOW);
+    }
+
+  return ER_TF_BUFFER_OVERFLOW;
+}
+
+/*
+ * or_underflow - This is called by the or_get_ functions when there is
+ * not enough data in the buffer to extract a particular value.
+ *    return: ER_TF_BUFFER_UNDERFLOW or long jump to buf->env
+ *    buf(in): translation state structure
+ *
+ * Note:
+ * Unlike or_overflow this is NOT a common ocurrence and indicates a serious
+ * memory or disk corruption problem.
+ */
+int
+or_underflow (OR_BUF * buf)
+{
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_UNDERFLOW, 0);
+
+  if (buf->error_abort)
+    {
+      _longjmp (buf->env, ER_TF_BUFFER_UNDERFLOW);
+    }
+  return ER_TF_BUFFER_UNDERFLOW;
+}
+
+/*
+ * or_abort - This is called if there was some fundemtal error
+ *    return: void
+ *    buf(in): translation state structure
+ *
+ * Note:
+ *    An appropriate error message should have already been set.
+ */
+void
+or_abort (OR_BUF * buf)
+{
+  /* assume an appropriate error has already been set */
+  if (buf->error_abort)
+    {
+      _longjmp (buf->env, er_errid ());
+    }
+}
+
+/*
  * or_put_monetary - write a DB_MONETARY value to or buffer
  *    return: NO_ERROR or error code
  *    buf(in/out): or buffer

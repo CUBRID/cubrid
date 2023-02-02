@@ -384,39 +384,40 @@ OR_PUT_DOUBLE (char *ptr, double val)
 
 /* VARIABLE OFFSET ACCESSORS */
 
+#define OR_PUT_BIG_VAR_OFFSET(ptr, val) \
+  OR_PUT_INT ((ptr), (val))
+
+#define OR_GET_BIG_VAR_OFFSET(ptr) \
+  OR_GET_INT ((ptr))
+
+#define OR_PUT_OFFSET(ptr, val) \
+  OR_PUT_BIG_VAR_OFFSET ((ptr), (val))
+
+#define OR_GET_OFFSET(ptr) \
+  OR_GET_BIG_VAR_OFFSET ((ptr))
+
 #define OR_PUT_OFFSET_INTERNAL(ptr, val, offset_size) \
   do { \
-    if (offset_size == OR_BYTE_SIZE) \
+    if ((offset_size) == OR_BYTE_SIZE) \
       { \
-        OR_PUT_BYTE(ptr, val); \
+	OR_PUT_BYTE ((ptr), (val)); \
       } \
-    else if (offset_size == OR_SHORT_SIZE) \
+    else if ((offset_size) == OR_SHORT_SIZE) \
       { \
-        OR_PUT_SHORT(ptr, val); \
+	OR_PUT_SHORT ((ptr), (val)); \
       } \
-    else if (offset_size == OR_INT_SIZE) \
+    else \
       { \
-        OR_PUT_INT(ptr, val); \
+	assert ((offset_size) == OR_INT_SIZE); \
+	OR_PUT_INT ((ptr), (val)); \
       } \
   } while (0)
 
 #define OR_GET_OFFSET_INTERNAL(ptr, offset_size) \
-  (offset_size == OR_BYTE_SIZE) \
-   ? OR_GET_BYTE (ptr) \
-   : ((offset_size == OR_SHORT_SIZE) \
-      ? OR_GET_SHORT (ptr) : OR_GET_INT (ptr))
-
-#define OR_PUT_OFFSET(ptr, val) \
-  OR_PUT_OFFSET_INTERNAL(ptr, val, BIG_VAR_OFFSET_SIZE)
-
-#define OR_GET_OFFSET(ptr) \
-  OR_GET_OFFSET_INTERNAL (ptr, BIG_VAR_OFFSET_SIZE)
-
-#define OR_PUT_BIG_VAR_OFFSET(ptr, val) \
-  OR_PUT_INT (ptr, val)		/* 4byte */
-
-#define OR_GET_BIG_VAR_OFFSET(ptr) \
-  OR_GET_INT (ptr)		/* 4byte */
+  ((offset_size) == OR_BYTE_SIZE) \
+   ? OR_GET_BYTE ((ptr)) \
+   : (((offset_size) == OR_SHORT_SIZE) \
+      ? OR_GET_SHORT ((ptr)) : OR_GET_INT ((ptr)))
 
 /*
  * VARIABLE OFFSET TABLE ACCESSORS
@@ -1229,9 +1230,9 @@ extern void or_decode (const char *buffer, char *dest, int size);
 STATIC_INLINE void or_init (OR_BUF * buf, char *data, int length) __attribute__ ((ALWAYS_INLINE));
 
 /* These are called when overflow/underflow are detected */
-STATIC_INLINE int or_overflow (OR_BUF * buf) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_underflow (OR_BUF * buf) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void or_abort (OR_BUF * buf) __attribute__ ((ALWAYS_INLINE));
+extern int or_overflow (OR_BUF * buf);
+extern int or_underflow (OR_BUF * buf);
+extern void or_abort (OR_BUF * buf);
 
 /* Pack/unpack support functions */
 STATIC_INLINE int or_advance (OR_BUF * buf, int offset) __attribute__ ((ALWAYS_INLINE));
@@ -1336,9 +1337,11 @@ STATIC_INLINE int or_get_mvccid (OR_BUF * buf, MVCCID * mvccid) __attribute__ ((
 
 /* VARIABLE OFFSET TABLE ACCESSORS */
 
+STATIC_INLINE int or_put_big_var_offset (OR_BUF * buf, int num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_put_offset (OR_BUF * buf, int num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_put_offset_internal (OR_BUF * buf, int num, int offset_size) __attribute__ ((ALWAYS_INLINE));
 
+STATIC_INLINE int or_get_big_var_offset (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_get_offset (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_get_offset_internal (OR_BUF * buf, int *error, int offset_size) __attribute__ ((ALWAYS_INLINE));
 
@@ -1456,81 +1459,6 @@ or_init (OR_BUF * buf, char *data, int length)
 /*
  * OR_BUF PACK/UNPACK FUNCTIONS
  */
-
-/*
- * or_overflow - called by the or_put_ functions when there is not enough
- * room in the buffer to hold a particular value.
- *    return: ER_TF_BUFFER_OVERFLOW or long jump to buf->error_abort
- *    buf(in): translation state structure
- *
- * Note:
- *    Because of the recursive nature of the translation functions, we may
- *    be several levels deep so we can do a longjmp out to the top level
- *    if the user has supplied a jmpbuf.
- *    Because jmpbuf is not a pointer, we have to keep an additional flag
- *    called "error_abort" in the OR_BUF structure to indicate the validity
- *    of the jmpbuf.
- *    This is a fairly common ocurrence because the locator regularly calls
- *    the transformer with a buffer that is too small.  When overflow
- *    is detected, it allocates a larger one and retries the operation.
- *    Because of this, a system error is not signaled here.
- */
-STATIC_INLINE int
-or_overflow (OR_BUF * buf)
-{
-  /*
-   * since this is normal behavior, don't set an error condition, the
-   * main transformer functions will need to test the status value
-   * for ER_TF_BUFFER_OVERFLOW and know that this isn't an error condition.
-   */
-
-  if (buf->error_abort)
-    {
-      _longjmp (buf->env, ER_TF_BUFFER_OVERFLOW);
-    }
-
-  return ER_TF_BUFFER_OVERFLOW;
-}
-
-/*
- * or_underflow - This is called by the or_get_ functions when there is
- * not enough data in the buffer to extract a particular value.
- *    return: ER_TF_BUFFER_UNDERFLOW or long jump to buf->env
- *    buf(in): translation state structure
- *
- * Note:
- * Unlike or_overflow this is NOT a common ocurrence and indicates a serious
- * memory or disk corruption problem.
- */
-STATIC_INLINE int
-or_underflow (OR_BUF * buf)
-{
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_UNDERFLOW, 0);
-
-  if (buf->error_abort)
-    {
-      _longjmp (buf->env, ER_TF_BUFFER_UNDERFLOW);
-    }
-  return ER_TF_BUFFER_UNDERFLOW;
-}
-
-/*
- * or_abort - This is called if there was some fundemtal error
- *    return: void
- *    buf(in): translation state structure
- *
- * Note:
- *    An appropriate error message should have already been set.
- */
-STATIC_INLINE void
-or_abort (OR_BUF * buf)
-{
-  /* assume an appropriate error has already been set */
-  if (buf->error_abort)
-    {
-      _longjmp (buf->env, er_errid ());
-    }
-}
 
 /*
  * or_seek - This sets the translation pointer directly to a certain byte in
@@ -2820,9 +2748,27 @@ or_get_mvccid (OR_BUF * buf, MVCCID * mvccid)
 /* VARIABLE OFFSET TABLE ACCESSORS */
 
 STATIC_INLINE int
+or_put_big_var_offset (OR_BUF * buf, int num)
+{
+  return or_put_int (buf, num);
+}
+
+STATIC_INLINE int
+or_get_big_var_offset (OR_BUF * buf, int *error)
+{
+  return or_get_int (buf, error);
+}
+
+STATIC_INLINE int
 or_put_offset (OR_BUF * buf, int num)
 {
-  return or_put_offset_internal (buf, num, BIG_VAR_OFFSET_SIZE);
+  return or_put_big_var_offset (buf, num);
+}
+
+STATIC_INLINE int
+or_get_offset (OR_BUF * buf, int *error)
+{
+  return or_get_big_var_offset (buf, error);
 }
 
 STATIC_INLINE int
@@ -2838,16 +2784,9 @@ or_put_offset_internal (OR_BUF * buf, int num, int offset_size)
     }
   else
     {
-      assert (offset_size == BIG_VAR_OFFSET_SIZE);
-
+      assert (offset_size == OR_INT_SIZE);
       return or_put_int (buf, num);
     }
-}
-
-STATIC_INLINE int
-or_get_offset (OR_BUF * buf, int *error)
-{
-  return or_get_offset_internal (buf, error, BIG_VAR_OFFSET_SIZE);
 }
 
 STATIC_INLINE int
@@ -2863,7 +2802,7 @@ or_get_offset_internal (OR_BUF * buf, int *error, int offset_size)
     }
   else
     {
-      assert (offset_size == BIG_VAR_OFFSET_SIZE);
+      assert (offset_size == OR_INT_SIZE);
       return or_get_int (buf, error);
     }
 }
