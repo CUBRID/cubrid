@@ -22,7 +22,8 @@
 #include "log_prior_send.hpp"
 #include "tran_server.hpp"
 
-#include <list>
+#include <vector>
+#include <memory>
 
 class active_tran_server : public tran_server
 {
@@ -51,7 +52,7 @@ class active_tran_server : public tran_server
      * sends prior nodes to the page servers.
      * The order can differ from m_page_server_conn_vec
      */
-    std::list<cublog::prior_sender::sink_hook_t> m_prior_sender_sink_hooks;
+    std::vector<std::unique_ptr<cublog::prior_sender::sink_hook_t>> m_prior_sender_sink_hooks;
 };
 
 #endif // !_ACTIVE_TRAN_SERVER_HPP_
