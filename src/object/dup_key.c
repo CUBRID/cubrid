@@ -73,11 +73,6 @@ get_reserved_index_attr_domain_type (int mode, int level)
 	}
       break;
 
-    case DUP_MODE_SLOTID:
-    case DUP_MODE_VOLID:
-      domain = &tp_Short_domain;	//tp_domain_construct (DB_TYPE_SHORT, NULL, DB_SHORT_PRECISION, 0, NULL);
-      break;
-
     default:
       assert (false);
       break;
@@ -204,13 +199,6 @@ dk_heap_midxkey_get_reserved_index_value (int att_id, OID * rec_oid, DB_VALUE * 
 	}
       break;
 
-    case DUP_MODE_SLOTID:
-      db_make_short (value, (level == 0) ? rec_oid->slotid : (rec_oid->slotid % hash_mod_val));
-      break;
-
-    case DUP_MODE_VOLID:
-      db_make_short (value, (level == 0) ? rec_oid->volid : (rec_oid->volid % hash_mod_val));
-      break;
     default:
       assert (false);
       break;
@@ -232,7 +220,7 @@ dk_sm_attribute_finalized ()
 
   if (st_sm_atts_init)
     {
-      for (mode = DUP_MODE_OID; mode <= DUP_MODE_VOLID; mode++)
+      for (mode = DUP_MODE_NONE + 1; mode < DUP_MODE_LAST; mode++)
 	{
 	  for (level = OVFL_LEVEL_MIN; level <= OVFL_LEVEL_MAX; level++)
 	    {
@@ -262,7 +250,7 @@ dk_sm_attribute_initialized ()
   assert (prm_get_integer_value (PRM_ID_AUTO_DEDUP_LEVEL) >= OVFL_LEVEL_MIN
 	  && prm_get_integer_value (PRM_ID_AUTO_DEDUP_LEVEL) <= OVFL_LEVEL_MAX);
 
-  for (mode = DUP_MODE_OID; mode <= DUP_MODE_VOLID; mode++)
+  for (mode = DUP_MODE_NONE + 1; mode < DUP_MODE_LAST; mode++)
     {
       for (level = OVFL_LEVEL_MIN; level <= OVFL_LEVEL_MAX; level++)
 	{
@@ -499,13 +487,7 @@ char *
 dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupkey_hash_level)
 {
   int len = 0;
-  const char *pzstr_mode[DUP_MODE_LAST] = {
-    "",
-    "OID",
-    "PAGEID",
-    "SLOTID",
-    "VOLID"
-  };
+  char *pstr_mode;
 
   assert ((dupkey_mode >= DUP_MODE_OVFL_LEVEL_NOT_SET) && (dupkey_mode < DUP_MODE_LAST));
 
@@ -518,14 +500,14 @@ dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupk
       return buf;
     }
 
+  pstr_mode = (dupkey_mode == DUP_MODE_PAGEID) ? (char *) "PAGEID" : (char *) "OID";
   if (dupkey_hash_level == OVFL_LEVEL_MIN)
     {
-      len = snprintf (buf, buf_size, " deduplicate with %s", (char *) pzstr_mode[dupkey_mode]);
+      len = snprintf (buf, buf_size, " deduplicate with %s", (char *) pstr_mode);
     }
   else
     {
-      len =
-	snprintf (buf, buf_size, " deduplicate with %s level %d", (char *) pzstr_mode[dupkey_mode], dupkey_hash_level);
+      len = snprintf (buf, buf_size, " deduplicate with %s level %d", (char *) pstr_mode, dupkey_hash_level);
     }
 
   assert (len < buf_size);

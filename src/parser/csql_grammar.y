@@ -1672,8 +1672,7 @@ int g_original_buffer_len;
 %token <cptr> DEDUPLICATE_
 %token <cptr> OID_ 
 %token <cptr> PAGEID_
-%token <cptr> SLOTID_
-%token <cptr> VOLID_  
+
 
 /*}}}*/
 
@@ -21465,8 +21464,6 @@ opt_index_dup_level
 index_dup_mode
         :  OID_      { DBG_TRACE_GRAMMAR(index_dup_mode, | OID_ );    $$ = DUP_MODE_OID; }
         |  PAGEID_   { DBG_TRACE_GRAMMAR(index_dup_mode, | PAGEID_ ); $$ = DUP_MODE_PAGEID; }
-        |  SLOTID_   { DBG_TRACE_GRAMMAR(index_dup_mode, | SLOTID_ ); $$ = DUP_MODE_SLOTID; }
-        |  VOLID_    { DBG_TRACE_GRAMMAR(index_dup_mode, | VOLID_ );  $$ = DUP_MODE_VOLID; } 
         ;
 
 
@@ -22377,7 +22374,6 @@ identifier
 	| SERIAL                 {{ DBG_TRACE_GRAMMAR(identifier, | SERIAL             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SERVER                 {{ DBG_TRACE_GRAMMAR(identifier, | SERVER             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SHOW                   {{ DBG_TRACE_GRAMMAR(identifier, | SHOW               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SLOTID_                {{ DBG_TRACE_GRAMMAR(identifier, | SLOTID_              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
         | SLOTS                  {{ DBG_TRACE_GRAMMAR(identifier, | SLOTS              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SLOTTED                {{ DBG_TRACE_GRAMMAR(identifier, | SLOTTED            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| STABILITY              {{ DBG_TRACE_GRAMMAR(identifier, | STABILITY          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -22405,8 +22401,7 @@ identifier
 	| VARIANCE               {{ DBG_TRACE_GRAMMAR(identifier, | VARIANCE           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| VAR_POP                {{ DBG_TRACE_GRAMMAR(identifier, | VAR_POP            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| VAR_SAMP               {{ DBG_TRACE_GRAMMAR(identifier, | VAR_SAMP           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| VISIBLE                {{ DBG_TRACE_GRAMMAR(identifier, | VISIBLE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-        | VOLID_                 {{ DBG_TRACE_GRAMMAR(identifier, | VOLID_             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| VISIBLE                {{ DBG_TRACE_GRAMMAR(identifier, | VISIBLE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}        
 	| VOLUME                 {{ DBG_TRACE_GRAMMAR(identifier, | VOLUME             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| WEEK                   {{ DBG_TRACE_GRAMMAR(identifier, | WEEK               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| WITHIN                 {{ DBG_TRACE_GRAMMAR(identifier, | WITHIN             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}

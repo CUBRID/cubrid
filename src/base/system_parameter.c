@@ -6367,9 +6367,7 @@ static KEYVAL dup_mode_words[] = {
   {"off", DUP_MODE_NONE},
   {"none", DUP_MODE_NONE},
   {"oid", DUP_MODE_OID},
-  {"pageid", DUP_MODE_PAGEID},
-  {"slotid", DUP_MODE_SLOTID},
-  {"volid", DUP_MODE_VOLID}
+  {"pageid", DUP_MODE_PAGEID}
 };
 #endif
 
