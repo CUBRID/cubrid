@@ -33,6 +33,7 @@ typedef enum
   FOLLOW_ATTRIBUTE_ORDER = 1
 } EMIT_STORAGE_ORDER;
 
+// *INDENT-OFF*
 struct extract_context
 {
   /* input */
@@ -61,5 +62,5 @@ struct extract_context
 
   void clear_schema_workspace (void);
 };
-
+// *INDENT-ON*
 #endif /* _EXTRACT_SCHEMA_HPP_ */
