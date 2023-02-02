@@ -23801,12 +23801,38 @@ connect_item
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PORT), val);
                 $$ = ctn;
            DBG_PRINT}}
+         | DBNAME '=' char_string_literal 
+          {{ DBG_TRACE_GRAMMAR(connect_item,  | DBNAME '=' char_string_literal  );
+               container_2 ctn;
+               PT_NODE *val = $3;
+               val->type_enum = PT_TYPE_VARCHAR;
+               if (val->info.value.data_value.str->length > 254)
+		 {
+		    PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_MAX_SERVER_DBNAME_LEN, 254);
+		 }
+		 PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);                
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_DBNAME), val);
+                $$ = ctn;
+           DBG_PRINT}}            
         | DBNAME '=' identifier 
           {{ DBG_TRACE_GRAMMAR(connect_item,  | DBNAME '=' identifier  );
                 container_2 ctn;
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_DBNAME), $3);
                 $$ = ctn;
            DBG_PRINT}}
+        | USER '=' char_string_literal 
+          {{ DBG_TRACE_GRAMMAR(connect_item,  | USER '=' char_string_literal);
+               container_2 ctn;
+               PT_NODE *val = $3;
+               val->type_enum = PT_TYPE_VARCHAR;
+               if (val->info.value.data_value.str->length > 254)
+		 {
+		    PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_MAX_SERVER_USER_LEN, 254);
+		 }
+	       PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);                
+               SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_USER), val);
+               $$ = ctn;
+           DBG_PRINT}}            
         | USER '=' identifier
           {{ DBG_TRACE_GRAMMAR(connect_item, | USER '=' identifier);
                 container_2 ctn;
@@ -23890,10 +23916,17 @@ connect_item
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_COMMENT), NULL);
                 $$ = ctn;
            DBG_PRINT }}
-        | COMMENT '=' char_string
+        | COMMENT '=' char_string_literal
           {{ DBG_TRACE_GRAMMAR(connect_item, | COMMENT '=' char_string );
                 container_2 ctn;
-                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_COMMENT), $3);
+                PT_NODE *val = $3;
+                $3->type_enum = PT_TYPE_VARCHAR;
+                if (val->info.value.data_value.str->length > SM_MAX_COMMENT_LENGTH)
+		  {
+		       PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_MAX_COMMENT_LEN, SM_MAX_COMMENT_LENGTH);
+		  }
+	        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);                
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_COMMENT), val);
                 $$ = ctn;
            DBG_PRINT}}
         ;

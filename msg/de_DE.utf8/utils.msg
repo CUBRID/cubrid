@@ -674,7 +674,7 @@ gültige Optionen:\n\
       --db-volume-size=GRÖSSE      Größe des zusätzlichen Datenträger; Standard: db_volume_size in cubrid.conf\n\
       --max-writesize-in-sec=SIZE  Speichergröße pro Sekunde; (ex. 512K, 1M, 10M); Standardwert: nicht benutzt; Minimum: 160K\n\
   -n, --volume-name=NAME           NAME des Datenträgers; Standard: erzeugt wie "db"_ext1)\n\
-  -F, --file-path=PFAD             PFAD des neuen Datenträgers; Standard: Arbeitsverzeichnis\n\
+  -F, --file-path=PFAD             PFAD des neuen Datenträgers; Standard: volume_extension_path\n\
       --comment=KOMMENTAR          KOMMENTAR fürs neue Datenträger; Standard: keinen\n\
   -p, --purpose=ZWECK              ZWECK des neuen Datenträgers; erlaubte Werte:\n\
                                            DATA - nur für Daten\n\

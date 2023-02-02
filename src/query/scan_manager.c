@@ -1150,8 +1150,6 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term)
 {
   int rc = DB_UNK;
   DB_TYPE key_type;
-  int dummy_diff_column;
-  bool dummy_dom_is_desc, dummy_next_dom_is_desc;
 
   if (val1 == NULL || val2 == NULL)
     {
@@ -1179,9 +1177,10 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term)
       key_type = DB_VALUE_DOMAIN_TYPE (val1);
       if (key_type == DB_TYPE_MIDXKEY)
 	{
+	  int dummy_diff_column;
 	  rc =
 	    pr_midxkey_compare (db_get_midxkey (val1), db_get_midxkey (val2), 1, 1, num_index_term, NULL,
-				NULL, NULL, &dummy_diff_column, &dummy_dom_is_desc, &dummy_next_dom_is_desc);
+				&dummy_diff_column, NULL, NULL);
 	}
       else
 	{
@@ -1531,11 +1530,16 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
     for (idx_dom = idx_setdomain; idx_dom != NULL; idx_dom = idx_dom->next)
       {
 	dom_ncols++;
+#if 0
+	/* idx_dom->precision is -1 in the following cases.
+	 * create index idx on t1(IFNULL(a,'x'), b); -- a is char(n)
+	 * Remove the assert check.  */
 	if (idx_dom->precision < 0)
 	  {
 	    assert (false);
 	    return ER_FAILED;
 	  }
+#endif
       }
 
     if (dom_ncols <= 0)
