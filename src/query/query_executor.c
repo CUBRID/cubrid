@@ -7883,12 +7883,11 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	      specp = xptr->spec_list;
 	      assert (specp);
 
-	      /* count(*) query will scan an index but does not have a data-filter */
+	      /* count(*) query will scan an index but does not have a data-filter(where, if_pred, after_join_pred) */
 	      if (specp->next == NULL && specp->access == ACCESS_METHOD_INDEX
 		  && specp->s.cls_node.cls_regu_list_pred == NULL && specp->where_pred == NULL
 		  && !specp->indexptr->use_iss && !SCAN_IS_INDEX_MRO (&specp->s_id.s.isid)
-		  && !xptr->if_pred /* no if predicates */
-		  && !xptr->after_join_pred /* no after_join predicate */ )
+		  && !xptr->after_join_pred && !xptr->if_pred)
 		{
 		  /* there are two optimization for query having count() only
 		   * 1. Skip saving data to temporary files.
