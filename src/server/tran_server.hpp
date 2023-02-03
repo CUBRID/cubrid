@@ -75,7 +75,7 @@ class tran_server
     void disconnect_page_server ();
     bool is_page_server_connected () const;
     bool is_page_server_connected (const size_t idx) const;
-    void push_request (const size_t idx, tran_to_page_request reqid, std::string &&payload);
+    void push_request_to (size_t idx, tran_to_page_request reqid, std::string &&payload);
     void push_request (tran_to_page_request reqid, std::string &&payload);
     int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
 

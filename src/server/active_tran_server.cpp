@@ -92,14 +92,10 @@ active_tran_server::on_boot ()
 {
   assert (is_active_transaction_server ());
 
-  /* the signature of the push_request */
-  using request_functor_t = void (active_tran_server::*) (size_t, tran_to_page_request, std::string &&);
-
   for (size_t i = 0; i < get_connected_page_server_count (); i++)
     {
-      m_prior_sender_sink_hooks.emplace_back (std::make_unique <cublog::prior_sender::sink_hook_t> (
-	  std::bind (static_cast<request_functor_t> (&active_tran_server::push_request),				      this, i,
-		     tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1)));
+      m_prior_sender_sink_hooks.emplace_back (std::make_unique <cublog::prior_sender::sink_hook_t> (std::bind (
+	  &active_tran_server::push_request_to, this, i, tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1)));
       log_Gl.m_prior_sender.add_sink (*m_prior_sender_sink_hooks.back ());
     }
 }
