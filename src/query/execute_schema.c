@@ -10486,15 +10486,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
     {
       goto exit;
     }
-#if 0
-  if (new_default == NULL)
-    {
-      attribute->info.attr_def.data_default = parser_new_node (parser, PT_DATA_DEFAULT);
-      attribute->info.attr_def.data_default->info.data_default.default_value = parser_new_node (parser, PT_VALUE);
-      attribute->info.attr_def.data_default->info.data_default.default_value->info.value.db_value = ctemplate->attributes->default_value.value;
-      new_default = &attribute->info.attr_def.data_default->info.data_default.default_value->info.value.db_value;
-    }
-#endif
+
   error = smt_change_attribute_w_dflt_w_order (ctemplate, attr_name, new_name, NULL, attr_db_domain,
 					       attr_chg_prop->name_space, new_default, &new_default_expr,
 					       attribute->info.attr_def.on_update, change_first, change_after_attr,
@@ -13880,17 +13872,6 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE *
 	    }
 	}
     }
-
-#if 0
-  if (is_att_prop_set (attr_chg_prop->p[P_DEFAULT_VALUE], ATT_CHG_PROPERTY_PRESENT_OLD) &&
-      !is_att_prop_set (attr_chg_prop->p[P_DEFAULT_VALUE], ATT_CHG_PROPERTY_PRESENT_NEW) &&
-      (is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_NEED_ROW_CHECK)
-       || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PSEUDO_UPGRADE)))
-    {
-      error = ER_ALTER_CHANGE_CAST_FAILED_SET_DEFAULT;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-    }
-#endif
 
 exit:
   db_value_clear (&def_value);

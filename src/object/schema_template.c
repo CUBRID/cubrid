@@ -4460,12 +4460,12 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
 
   if (new_default_value == NULL)
     {
-      new_default_value = &def->attributes->default_value.value;
+      new_default_value = &(*found_att)->default_value.value;
     }
 
   if (new_default_expr == NULL)
     {
-      new_default_expr = &def->attributes->default_value.default_expr;
+      new_default_expr = &(*found_att)->default_value.default_expr;
     }
 
   is_class_attr = (name_space == ID_CLASS_ATTRIBUTE);

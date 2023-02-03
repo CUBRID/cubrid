@@ -4523,7 +4523,6 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
 	}
 
       /* make a copy of the default value */
-      src->default_value.value.domain.general_info.is_null = 0;
       if (pr_clone_value (&src->default_value.value, &dest->default_value.value))
 	{
 	  goto memory_error;
