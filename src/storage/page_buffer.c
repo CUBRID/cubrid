@@ -1056,7 +1056,8 @@ static PGBUF_BCB *pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID *
 static int pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * vpid, FILEIO_PAGE * io_page);
 static int pgbuf_read_page_from_file (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page);
 #if defined (SERVER_MODE)
-static int pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl_lsa, FILEIO_PAGE * io_page);
+static int pgbuf_request_data_page_from_page_server (THREAD_ENTRY & thread_r, const VPID * vpid,
+						     log_lsa target_repl_lsa, FILEIO_PAGE * io_page);
 #endif // SERVER_MODE
 static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 static int pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked);
@@ -1260,7 +1261,14 @@ STATIC_INLINE int pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p) __attr
 static bool pgbuf_is_temp_lsa (const log_lsa & lsa);
 static void pgbuf_init_temp_page_lsa (FILEIO_PAGE * io_page, PGLENGTH page_size);
 
-static void pgbuf_scan_bcb_table (THREAD_ENTRY * thread_p);
+static void pgbuf_scan_bcb_table ();
+
+#if defined (SERVER_MODE)
+static bool pgbuf_compress_page (THREAD_ENTRY & thread_r, const void *data_in, int data_in_size,
+				 const char *&data_out, int &data_out_size);
+static bool pgbuf_decompress_page (THREAD_ENTRY & thread_r, const void *data_in, int data_in_size,
+				   const char *&data_out, int &data_out_size);
+#endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
 // *INDENT-OFF*
@@ -8201,7 +8209,7 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 	  FILEIO_PAGE *second_io_page = reinterpret_cast<FILEIO_PAGE *> (buffer_uptr.get ());
 	  // *INDENT-ON*
 	  // The page returned can be null during recovery in the case that the page was already deallocated on PS
-	  error_code = pgbuf_request_data_page_from_page_server (vpid, target_repl_lsa, second_io_page);
+	  error_code = pgbuf_request_data_page_from_page_server (*thread_p, vpid, target_repl_lsa, second_io_page);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -8252,8 +8260,8 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 		   * applied immediately and thus, the difference; compare everything ignoring the
 		   * statistics
 		   */
-		  const PAGE_PTR pgptr = (const PAGE_PTR) ((char *) io_page->page);
-		  const PAGE_PTR second_pgptr = (const PAGE_PTR) ((char *) second_io_page->page);
+		  const PAGE_PTR pgptr = (PAGE_PTR) io_page->page;
+		  const PAGE_PTR second_pgptr = (PAGE_PTR) second_io_page->page;
 		  if (io_page->prv.ptype == PAGE_BTREE && second_io_page->prv.ptype == PAGE_BTREE
 		      && btree_is_btree_root_page (thread_p, pgptr)
 		      && btree_is_btree_root_page (thread_p, second_pgptr))
@@ -8289,7 +8297,7 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 	}
       else
 	{
-	  return pgbuf_request_data_page_from_page_server (vpid, target_repl_lsa, io_page);
+	  return pgbuf_request_data_page_from_page_server (*thread_p, vpid, target_repl_lsa, io_page);
 	}
     }
   return NO_ERROR;
@@ -8334,7 +8342,8 @@ pgbuf_read_page_from_file (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_
  * io_page(out) : Address where content of page is stored. Must be of sufficient size.
  */
 static int
-pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl_lsa, FILEIO_PAGE * io_page)
+pgbuf_request_data_page_from_page_server (THREAD_ENTRY & thread_r, const VPID * vpid, log_lsa target_repl_lsa,
+					  FILEIO_PAGE * io_page)
 {
   assert (is_transaction_server ());
 
@@ -8412,14 +8421,33 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid, log_lsa target_repl
     }
   else
     {
+      PGLENGTH data_length = 0;
+      std::memcpy (&data_length, message_buf, sizeof (PGLENGTH));
+      message_buf += sizeof (PGLENGTH);
+
+      const char *decompressed_data = nullptr;
+      int decompressed_data_size = 0;
+      const bool decompressed = pgbuf_decompress_page (thread_r, reinterpret_cast < const void *>(message_buf),
+						       (int) data_length, decompressed_data, decompressed_data_size);
+      assert (decompressed);
+      message_buf += data_length;
+
+      if (!decompressed)
+	{
+	  // TODO: error
+	  assert_release (false);
+	}
+      assert (IO_PAGESIZE == decompressed_data_size);
+
       // We have a page.
-      std::memcpy (io_page, message_buf, IO_PAGESIZE);
-      message_buf += IO_PAGESIZE;
+      std::memcpy (io_page, decompressed_data, (size_t) decompressed_data_size);
 
       if (perform_logging)
 	{
-	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received data page VPID: %d|%d, page LSA: %lld|%d \n",
-			 io_page->prv.volid, io_page->prv.pageid, LSA_AS_ARGS (&io_page->prv.lsa));
+	  _er_log_debug (ARG_FILE_LINE, "[READ DATA] Received data page VPID: %d|%d, page LSA: %lld|%d\n"
+			 "    compr_size = %d, ratio = %.2lf\n",
+			 io_page->prv.volid, io_page->prv.pageid, LSA_AS_ARGS (&io_page->prv.lsa),
+			 (int) data_length, ((double) data_length / (double) decompressed_data_size) * 100.);
 	}
     }
   assert (message_buf == response_message.c_str () + response_message.size ());
@@ -8489,15 +8517,34 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       // pack NO_ERROR first
       payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
 
+      const char *compressed_data = nullptr;
+      int compressed_data_size = 0;
+      const bool compressed = pgbuf_compress_page(thread_r, reinterpret_cast<const void *> (io_pgptr), IO_PAGESIZE,
+                                                  compressed_data, compressed_data_size);
+      assert (compressed);
+
+      if (!compressed)
+        {
+          // TODO: if compression failed, set error and send original page
+          assert_release (false);
+        }
+
+      // add compressed size
+      const PGLENGTH compressed_length = (PGLENGTH)compressed_data_size;
+      payload_in_out.append (reinterpret_cast<const char *> (&compressed_length),
+                             sizeof (PGLENGTH));
+
       // add io_page
-      payload_in_out.append (reinterpret_cast<const char *> (io_pgptr), (size_t) IO_PAGESIZE);
+      payload_in_out.append (compressed_data, (size_t) compressed_data_size);
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
 			 "[READ DATA] Successful while fixing page: vpid = %d|%d, lsa = %lld|%d,"
-			 " target_repl_lsa = %lld|%d\n",
-			 VPID_AS_ARGS (&vpid), LSA_AS_ARGS(&io_pgptr->prv.lsa), LSA_AS_ARGS (&target_repl_lsa));
+			 " target_repl_lsa = %lld|%d\n"
+	                 "    compr_size = %d, ratio = %.2lf\n",
+			 VPID_AS_ARGS (&vpid), LSA_AS_ARGS(&io_pgptr->prv.lsa), LSA_AS_ARGS (&target_repl_lsa),
+	                 (int) compressed_data_size, ((double)compressed_data_size/(double)IO_PAGESIZE) * 100.);
 	}
 
       // only unfix after having used casted IO page ptr for logging
@@ -8505,6 +8552,86 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
     }
 }
 // *INDENT-ON*
+
+bool
+pgbuf_compress_page (THREAD_ENTRY & thread_r, const void *data_in, int data_in_size,
+		     const char *&data_out, int &data_out_size)
+{
+  assert (data_in != nullptr && data_in_size > 0);
+
+  assert (data_out == nullptr);
+  data_out_size = 0;
+
+  if (prm_get_bool_value (PRM_ID_REPLICATION_COMPRESS_PAGES_TRANSFER))
+    {
+      // it is arbitrary which of the thread entry compress structures is used in this context
+      // the thread on which this routine is to be executed is part of a thread
+      // pool which is only used to dispatch responses from the page server to the transaction servers
+      if (thread_r.log_zip_undo == nullptr)
+	{
+	  thread_r.log_zip_undo = log_zip_alloc (IO_PAGESIZE);
+	}
+
+      const bool compressed = log_zip (thread_r.log_zip_undo, data_in_size, data_in);
+      assert (compressed);
+
+      if (compressed)
+	{
+	  data_out = thread_r.log_zip_undo->log_data;
+	  data_out_size = thread_r.log_zip_undo->data_length;
+
+	  // TODO: perf stat about compress ratio
+	  return true;
+	}
+    }
+  else
+    {
+      data_out = reinterpret_cast < const char *>(data_in);
+      data_out_size = data_in_size;
+      return true;
+    }
+
+  return false;
+}
+
+bool
+pgbuf_decompress_page (THREAD_ENTRY & thread_r, const void *data_in, int data_in_size,
+		       const char *&data_out, int &data_out_size)
+{
+  assert (data_in != nullptr && data_in_size > 0);
+
+  assert (data_out == nullptr);
+  data_out_size = 0;
+
+  if (prm_get_bool_value (PRM_ID_REPLICATION_COMPRESS_PAGES_TRANSFER))
+    {
+      // it is arbitrary which of the thread entry compress structures is used in this context
+      // the thread on which this routine is to be executed is part of a thread
+      // pool which is only used to dispatch responses from the page server to the transaction servers
+      if (thread_r.log_zip_undo == nullptr)
+	{
+	  thread_r.log_zip_undo = log_zip_alloc (IO_PAGESIZE);
+	}
+
+      const bool decompressed = log_unzip (thread_r.log_zip_undo, data_in_size, data_in);
+      assert (decompressed);
+
+      if (decompressed)
+	{
+	  data_out = thread_r.log_zip_undo->log_data;
+	  data_out_size = thread_r.log_zip_undo->data_length;
+	  return true;
+	}
+    }
+  else
+    {
+      data_out = reinterpret_cast < const char *>(data_in);
+      data_out_size = data_in_size;
+      return true;
+    }
+
+  return false;
+}
 #endif // SERVER_MODE
 
 /*
