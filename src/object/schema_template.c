@@ -4460,8 +4460,18 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
 
   if (new_default_value == NULL && new_default_expr->default_expr_type == DB_DEFAULT_NONE)
     {
-      new_default_value = &(*found_att)->default_value.value;
-      new_default_expr = &(*found_att)->default_value.default_expr;
+      DB_VALUE *default_value = &(*found_att)->default_value.value;
+      DB_DEFAULT_EXPR *default_expr = &(*found_att)->default_value.default_expr;
+
+      if (!DB_IS_NULL (default_value))
+	{
+	  new_default_value = default_value;
+	}
+
+      if (default_expr->default_expr_type != DB_DEFAULT_NONE)
+	{
+	  new_default_expr = default_expr;
+	}
     }
 
   is_class_attr = (name_space == ID_CLASS_ATTRIBUTE);
