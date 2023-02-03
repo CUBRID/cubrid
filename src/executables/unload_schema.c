@@ -206,20 +206,20 @@ static int create_filename (const char *output_dirname, const char *output_prefi
 			    const char *suffix, char *output_filename_p, const size_t filename_size);
 static int export_server (print_output & output_ctx);
 static int get_classes (extract_context & ctxt, print_output & output_ctx);
-static int extract_whole_schema_file (extract_context & ctxt, const char *output_filename);
-static int extract_each_schema_file (extract_context & ctxt);
+static int extract_all_schema_file (extract_context & ctxt, const char *output_filename);
+static int extract_split_schema_files (extract_context & ctxt);
 static int extract_schema (extract_context & ctxt, print_output & schema_output_ctx);
-static int extract_only_user (extract_context & ctxt);
-static int extract_only_serial (extract_context & ctxt);
-static int extract_only_synonym (extract_context & ctxt);
-static int extract_only_procedure (extract_context & ctxt);
-static int extract_only_server (extract_context & ctxt);
-static int extract_only_class (extract_context & ctxt);
-static int extract_only_vclass (extract_context & ctxt);
-static int extract_only_pk (extract_context & ctxt);
-static int extract_only_fk (extract_context & ctxt);
-static int extract_only_grant (extract_context & ctxt);
-static void extract_primary_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
+static int extract_user (extract_context & ctxt);
+static int extract_serial (extract_context & ctxt);
+static int extract_synonym (extract_context & ctxt);
+static int extract_procedure (extract_context & ctxt);
+static int extract_server (extract_context & ctxt);
+static int extract_class (extract_context & ctxt);
+static int extract_vclass (extract_context & ctxt);
+static int extract_pk (extract_context & ctxt);
+static int extract_fk (extract_context & ctxt);
+static int extract_grant (extract_context & ctxt);
+static void emit_primary_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 /*
  * CLASS DEPENDENCY ORDERING
  *
@@ -1038,7 +1038,7 @@ extract_classes_to_file (extract_context & ctxt)
 
   if (split_schema_files)
     {
-      err_count = extract_each_schema_file (ctxt);
+      err_count = extract_split_schema_files (ctxt);
     }
   else
     {
@@ -1047,7 +1047,7 @@ extract_classes_to_file (extract_context & ctxt)
       if (create_filename_schema (ctxt.output_dirname, ctxt.output_prefix, output_filename_schema,
 				  sizeof (output_filename_schema)) == 0)
 	{
-	  err_count = extract_whole_schema_file (ctxt, output_filename_schema);
+	  err_count = extract_all_schema_file (ctxt, output_filename_schema);
 	}
       else
 	{
@@ -4068,7 +4068,7 @@ create_filename (const char *output_dirname, const char *output_prefix, const ch
 }
 
 static int
-extract_only_user (extract_context & ctxt)
+extract_user (extract_context & ctxt)
 {
   FILE *output_file = NULL;
   int err = NO_ERROR;
@@ -4113,7 +4113,7 @@ extract_only_user (extract_context & ctxt)
 }
 
 static int
-extract_only_serial (extract_context & ctxt)
+extract_serial (extract_context & ctxt)
 {
   FILE *output_file = NULL;
   char output_filename[PATH_MAX * 2] = { '\0' };
@@ -4162,7 +4162,7 @@ extract_only_serial (extract_context & ctxt)
 }
 
 static int
-extract_only_synonym (extract_context & ctxt)
+extract_synonym (extract_context & ctxt)
 {
   FILE *output_file = NULL;
   char output_filename[PATH_MAX * 2] = { '\0' };
@@ -4206,7 +4206,7 @@ extract_only_synonym (extract_context & ctxt)
 }
 
 static int
-extract_only_procedure (extract_context & ctxt)
+extract_procedure (extract_context & ctxt)
 {
   FILE *output_file = NULL;
   int err = NO_ERROR;
@@ -4246,7 +4246,7 @@ extract_only_procedure (extract_context & ctxt)
 }
 
 static int
-extract_only_server (extract_context & ctxt)
+extract_server (extract_context & ctxt)
 {
   FILE *output_file = NULL;
   int err = NO_ERROR;
@@ -4286,7 +4286,7 @@ extract_only_server (extract_context & ctxt)
 }
 
 static int
-extract_only_class (extract_context & ctxt)
+extract_class (extract_context & ctxt)
 {
   FILE *output_file = NULL;
   int err = NO_ERROR;
@@ -4344,7 +4344,7 @@ extract_only_class (extract_context & ctxt)
 }
 
 static int
-extract_only_vclass (extract_context & ctxt)
+extract_vclass (extract_context & ctxt)
 {
   FILE *output_file = NULL;
   int err = NO_ERROR;
@@ -4402,7 +4402,7 @@ extract_only_vclass (extract_context & ctxt)
 }
 
 static int
-extract_only_pk (extract_context & ctxt)
+extract_pk (extract_context & ctxt)
 {
   FILE *output_file = NULL;
   int err = NO_ERROR;
@@ -4437,7 +4437,7 @@ extract_only_pk (extract_context & ctxt)
 	}
     }
 
-  extract_primary_key (ctxt, output_ctx, ctxt.classes);
+  emit_primary_key (ctxt, output_ctx, ctxt.classes);
   if (er_errid () == NO_ERROR)
     {
       output_ctx ("\n");
@@ -4458,7 +4458,7 @@ extract_only_pk (extract_context & ctxt)
 }
 
 static int
-extract_only_fk (extract_context & ctxt)
+extract_fk (extract_context & ctxt)
 {
   FILE *output_file = NULL;
   int err = NO_ERROR;
@@ -4510,7 +4510,7 @@ extract_only_fk (extract_context & ctxt)
 }
 
 static int
-extract_only_grant (extract_context & ctxt)
+extract_grant (extract_context & ctxt)
 {
   FILE *output_file = NULL;
   int err = NO_ERROR;
@@ -4563,7 +4563,7 @@ extract_only_grant (extract_context & ctxt)
 }
 
 static void
-extract_primary_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes)
+emit_primary_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes)
 {
   DB_OBJLIST *cl = NULL;
   int is_vclass = 0;
@@ -4624,56 +4624,56 @@ emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * clas
 }
 
 static int
-extract_each_schema_file (extract_context & ctxt)
+extract_split_schema_files (extract_context & ctxt)
 {
   int err_count = 0;
 
-  if (extract_only_user (ctxt) != NO_ERROR)
+  if (extract_user (ctxt) != NO_ERROR)
     {
       err_count++;
     }
 
-  if (extract_only_serial (ctxt) != NO_ERROR)
+  if (extract_serial (ctxt) != NO_ERROR)
     {
       err_count++;
     }
 
-  if (extract_only_synonym (ctxt) != NO_ERROR)
+  if (extract_synonym (ctxt) != NO_ERROR)
     {
       err_count++;
     }
 
-  if (extract_only_procedure (ctxt) != NO_ERROR)
+  if (extract_procedure (ctxt) != NO_ERROR)
     {
       err_count++;
     }
 
-  if (extract_only_server (ctxt) != NO_ERROR)
+  if (extract_server (ctxt) != NO_ERROR)
     {
       err_count++;
     }
 
-  if (extract_only_fk (ctxt) != NO_ERROR)
+  if (extract_fk (ctxt) != NO_ERROR)
     {
       err_count++;
     }
 
-  if (extract_only_grant (ctxt) != NO_ERROR)
+  if (extract_grant (ctxt) != NO_ERROR)
     {
       err_count++;
     }
 
-  if (extract_only_vclass (ctxt) != NO_ERROR)
+  if (extract_vclass (ctxt) != NO_ERROR)
     {
       err_count++;
     }
 
-  if (extract_only_class (ctxt) != NO_ERROR)
+  if (extract_class (ctxt) != NO_ERROR)
     {
       err_count++;
     }
 
-  if (extract_only_pk (ctxt) != NO_ERROR)
+  if (extract_pk (ctxt) != NO_ERROR)
     {
       err_count++;
     }
@@ -4682,7 +4682,7 @@ extract_each_schema_file (extract_context & ctxt)
 }
 
 static int
-extract_whole_schema_file (extract_context & ctxt, const char *output_filename)
+extract_all_schema_file (extract_context & ctxt, const char *output_filename)
 {
   FILE *output_file;
   int err_count = 0;
