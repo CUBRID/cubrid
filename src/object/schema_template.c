@@ -4458,6 +4458,16 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
       return error;
     }
 
+  if (new_default_value == NULL)
+    {
+      new_default_value = &def->attributes->default_value.value;
+    }
+
+  if (new_default_expr == NULL)
+    {
+      new_default_expr = &def->attributes->default_value.default_expr;
+    }
+
   is_class_attr = (name_space == ID_CLASS_ATTRIBUTE);
   if (new_default_value != NULL || (new_default_expr != NULL && new_default_expr->default_expr_type != DB_DEFAULT_NONE))
     {
