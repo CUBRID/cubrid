@@ -22,6 +22,9 @@
 #include "log_prior_send.hpp"
 #include "tran_server.hpp"
 
+#include <vector>
+#include <memory>
+
 class active_tran_server : public tran_server
 {
   public:
@@ -45,7 +48,11 @@ class active_tran_server : public tran_server
   private:
     bool m_uses_remote_storage = false;
 
-    cublog::prior_sender::sink_hook_t m_prior_sender_sink_hook_func;
+    /*
+     * sends prior nodes to the page servers.
+     * The order can differ from m_page_server_conn_vec
+     */
+    std::vector<std::unique_ptr<cublog::prior_sender::sink_hook_t>> m_prior_sender_sink_hooks;
 };
 
 #endif // !_ACTIVE_TRAN_SERVER_HPP_
