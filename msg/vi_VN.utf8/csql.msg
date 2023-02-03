@@ -185,6 +185,7 @@ $ csql help messages
    ;HISTORYList                 - display list of the executed queries.\n\
    ;HISTORYRead <history_num>   - read entry on the history number into command buffer.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
+   ;SIngleline [ON|OFF]         - bật/tắt chế độ một dòng.\n\
    ;HElp                        - display this help message.\n\n
 
 232 <Constraints> 

@@ -124,7 +124,9 @@ static SESSION_CMD_TABLE csql_Session_cmd_table[] = {
   {"historyread", S_CMD_HISTORY_READ, CMD_EMPTY_FLAG},
   {"historylist", S_CMD_HISTORY_LIST, CMD_EMPTY_FLAG},
 
-  {"trace", S_CMD_TRACE, CMD_CHECK_CONNECT}
+  {"trace", S_CMD_TRACE, CMD_CHECK_CONNECT},
+
+  {"singleline", S_CMD_SINGLELINE, CMD_EMPTY_FLAG}
 };
 
 /*
