@@ -185,6 +185,7 @@ $ messaggi di aiuto csql
    ;HISTORYList                 - visualizzare l'elenco delle query eseguite.\n\
    ;HISTORYRead <history_num>   - leggere la voce del numero storia in buffer dei comandi.\n\
    ;TRAce [ON/OFF] [text/json]  - attivare/disattivare sql auto trace.\n\
+   ;SIngleline [ON|OFF]         - abilitare/disabilitare la modalità a riga singola.\n\
    ;HElp                        - visualizza questo messaggio di aiuto.\n\n
 
 232 <Vincoli> 

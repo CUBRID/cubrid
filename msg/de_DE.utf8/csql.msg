@@ -186,6 +186,7 @@ $ csql help messages
    ;HISTORYList                 - Liste der ausgeführten Abfragen anzeigen.\n\
    ;HISTORYRead <history_num>   - Eintrag über die Verlaufszahl in den Befehlspuffer schreiben.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
+   ;SIngleline [ON|OFF]         - Single-Line-Modus aktivieren/deaktivieren.\n\
    ;HElp                        - Hilfe anzeigen.\n\n
 
 232 <Beschränkungen> 

@@ -185,6 +185,7 @@ $ csql help messages
    ;HISTORYList                 - çalıştırılan sorguların listesini görüntüleyebilir.\n\
    ;HISTORYRead <history_num>   - komut buffer içine geçmiş numarası üzerinde giriş okuyun.\n\
    ;TRAce [ON/OFF] [text/json]  - sql otomatik iz etkinleştirmek/devre dışı.\n\
+   ;SIngleline [ON|OFF]         - tek hat modunu etkinleştir/devre dışı bırak.\n\
    ;HElp                        - yardım mesajını görüntüler.\n\n
 
 232 <Constraints> 
