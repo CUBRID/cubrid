@@ -60,7 +60,7 @@ bool include_references = false;
 
 bool required_class_only = false;
 bool datafile_per_class = false;
-bool each_schema_info = false;
+bool split_schema_files = false;
 LIST_MOPS *class_table = NULL;
 DB_OBJECT **req_class_table = NULL;
 
@@ -137,7 +137,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       order = FOLLOW_ATTRIBUTE_ORDER;
     }
 
-  each_schema_info = utility_get_option_string_value (arg_map, UNLOAD_EACH_SCHEMA_INFO_S, 0);
+  split_schema_files = utility_get_option_string_value (arg_map, UNLOAD_SPLIT_SCHEMA_FILES_S, 0);
 
   /* depreciated */
   utility_get_option_bool_value (arg_map, UNLOAD_USE_DELIMITER_S);

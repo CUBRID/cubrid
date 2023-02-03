@@ -1359,8 +1359,8 @@ typedef struct _ha_config
 #define UNLOAD_KEEP_STORAGE_ORDER_L		"keep-storage-order"
 #define UNLOAD_LATEST_IMAGE_S                   11919
 #define UNLOAD_LATEST_IMAGE_L                   "latest-image"
-#define UNLOAD_EACH_SCHEMA_INFO_S               11920
-#define UNLOAD_EACH_SCHEMA_INFO_L               "each-schema-info"
+#define UNLOAD_SPLIT_SCHEMA_FILES_S             11920
+#define UNLOAD_SPLIT_SCHEMA_FILES_L             "split-schema-files"
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'

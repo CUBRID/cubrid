@@ -49,7 +49,7 @@ extern bool do_objects;
 extern bool ignore_err_flag;
 extern bool required_class_only;
 extern bool datafile_per_class;
-extern bool each_schema_info;
+extern bool split_schema_files;
 extern LIST_MOPS *class_table;
 extern DB_OBJECT **req_class_table;
 extern int is_req_class (DB_OBJECT * class_);

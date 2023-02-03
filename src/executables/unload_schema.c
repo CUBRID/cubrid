@@ -1036,7 +1036,7 @@ extract_classes_to_file (extract_context & ctxt)
 {
   int err_count = 0;
 
-  if (each_schema_info)
+  if (split_schema_files)
     {
       err_count = extract_each_schema_file (ctxt);
     }
@@ -2360,7 +2360,7 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
 	}
     }
 
-  if (each_schema_info == false)
+  if (split_schema_files == false)
     {
       if (unique_flag)
 	{
