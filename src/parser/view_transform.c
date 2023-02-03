@@ -2171,6 +2171,10 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
   /* generate orderby_num(), inst_num() */
   if (!(ord_num = parser_new_node (parser, PT_EXPR)) || !(ins_num = parser_new_node (parser, PT_EXPR)))
     {
+      if (ord_num)
+	{
+	  parser_free_tree (parser, ord_num);
+	}
       PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
       return NULL;
     }
