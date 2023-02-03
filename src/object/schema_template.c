@@ -4458,13 +4458,9 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
       return error;
     }
 
-  if (new_default_value == NULL)
+  if (new_default_value == NULL && new_default_expr->default_expr_type == DB_DEFAULT_NONE)
     {
       new_default_value = &(*found_att)->default_value.value;
-    }
-
-  if (new_default_expr == NULL)
-    {
       new_default_expr = &(*found_att)->default_value.default_expr;
     }
 
