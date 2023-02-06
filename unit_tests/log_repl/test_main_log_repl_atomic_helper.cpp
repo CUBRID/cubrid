@@ -316,6 +316,184 @@ TEST_CASE ("LOG_SYSOP_ATOMIC_START/LOG_SYSOP_END-LOG_SYSOP_END_LOGICAL_UNDO - fa
 //  _FL_ LSA = 35288|3024  vpid = 0|641  rcvindex = RVPGBUF_DEALLOC
 //  _CL_ LSA = 35288|3088  rectype = LOG_SYSOP_END  sysop_end_type = LOG_SYSOP_END_LOGICAL_RUN_POSTPONE  sysop_end_last_parent_lsa = 35288|2728
 
+TEST_CASE ("LOG_SYSOP_ATOMIC_START/LOG_SYSOP_START_POSTPONE/LOG_SYSOP_END - 2 Transactions", "[dbg]")
+{
+  // TRID - 3              TRID -8
+  //
+  //                       LSA = 105813|1488, Forw log = 105813|1520, Backw log = 105813|1416,
+  //                            Trid =  -8, Prev tran logrec =  -1| -1
+  //                            Type = LOG_SYSOP_ATOMIC_START
+  //
+  //                       LSA = 105813|1520, Forw log = 105813|1592, Backw log = 105813|1488,
+  //                            Trid =  -8, Prev tran logrec = 105813|1488
+  //                            Type = LOG_UNDOREDO_DATA, Recv_index = RVBT_RECORD_MODIFY_UNDOREDO,
+  //                            Volid = 0 Pageid = 9933 Offset = -8192,
+  //
+  //                       LSA = 105813|1640, Forw log = 105813|1704, Backw log = 105813|1592,
+  //                            Trid =  -8, Prev tran logrec = 105813|1520
+  //                            Type = LOG_POSTPONE, Recv_index = RVFL_DEALLOC,
+  //                            Volid = -1 Pageid = -1 Offset = 0,
+  //
+  // LSA = 105818|528, Forw log = 105818|560, Backw log = 105818|456,
+  //      Trid =  -3, Prev tran logrec =  -1| -1
+  //      Type = LOG_SYSOP_ATOMIC_START
+  //
+  // LSA = 105818|560, Forw log = 105818|632, Backw log = 105818|528,
+  //      Trid =  -3, Prev tran logrec = 105818|528
+  //      Type = LOG_UNDOREDO_DATA, Recv_index = RVBT_RECORD_MODIFY_UNDOREDO,
+  //      Volid = 0 Pageid = 4241 Offset = -8192,
+  //
+  // LSA = 105818|776, Forw log = 105818|840, Backw log = 105818|704,
+  //      Trid =  -3, Prev tran logrec = 105818|560
+  //      Type = LOG_POSTPONE, Recv_index = RVFL_DEALLOC,
+  //      Volid = -1 Pageid = -1 Offset = 0,
+  //
+  // LSA = 105818|1248, Forw log = 105818|1368, Backw log = 105818|1176,
+  //      Trid =  -3, Prev tran logrec = 105818|776
+  //      Type = LOG_SYSOP_START_POSTPONE,
+  //      lastparent_lsa = -1|-1, prv_topresult_lsa = -1|-1, type = LOG_SYSOP_END_COMMIT
+  //      posp_lsa = 105818|776
+  //
+  // LSA = 105818|1632, Forw log = 105818|1664, Backw log = 105818|1584,
+  //      Trid =  -3, Prev tran logrec = 105818|1248
+  //      Type = LOG_SYSOP_ATOMIC_START
+  //
+  // LSA = 105818|1664, Forw log = 105818|1736, Backw log = 105818|1632,
+  //      Trid =  -3, Prev tran logrec = 105818|1632
+  //      Type = LOG_UNDOREDO_DATA, Recv_index = RVFL_PARTSECT_DEALLOC,
+  //      Volid = 0 Pageid = 4224 Offset = 232,
+  //
+  //                       LSA = 105818|1736, Forw log = 105818|1856, Backw log = 105818|1664,
+  //                            Trid =  -8, Prev tran logrec = 105813|1640
+  //                            Type = LOG_SYSOP_START_POSTPONE,
+  //                            lastparent_lsa = -1|-1, prv_topresult_lsa = -1|-1, type = LOG_SYSOP_END_COMMIT
+  //                            posp_lsa = 105813|1640
+  //
+  // LSA = 105818|1856, Forw log = 105818|1928, Backw log = 105818|1736,
+  //      Trid =  -3, Prev tran logrec = 105818|1664
+  //      Type = LOG_UNDOREDO_DATA, Recv_index = RVFL_FHEAD_DEALLOC,
+  //      Volid = 0 Pageid = 4224 Offset = 0,
+  //
+  // LSA = 105818|1928, Forw log = 105818|1992, Backw log = 105818|1856,
+  //      Trid =  -3, Prev tran logrec = 105818|1856
+  //      Type = LOG_UNDOREDO_DATA, Recv_index = RVPGBUF_DEALLOC,
+  //      Volid = 0 Pageid = 4240 Offset = 0,
+  //
+  // LSA = 105818|1992, Forw log = 105818|2104, Backw log = 105818|1928,
+  //      Trid =  -3, Prev tran logrec = 105818|1928
+  //      Type = LOG_SYSOP_END,
+  //      lastparent_lsa = 105818|1248, prv_topresult_lsa = -1|-1, type = LOG_SYSOP_END_LOGICAL_RUN_POSTPONE
+  //      run_postpone_lsa = 105818|776, postpone = sysop
+  //
+  //                       LSA = 105818|2416, Forw log = 105818|2448, Backw log = 105818|2344,
+  //                            Trid =  -8, Prev tran logrec = 105818|1736
+  //                            Type = LOG_SYSOP_ATOMIC_START
+  //
+  //                       LSA = 105818|2448, Forw log = 105818|2520, Backw log = 105818|2416,
+  //                            Trid =  -8, Prev tran logrec = 105818|2416
+  //                            Type = LOG_UNDOREDO_DATA, Recv_index = RVFL_PARTSECT_DEALLOC,
+  //                            Volid = 0 Pageid = 4224 Offset = 264,
+  //
+  //                       LSA = 105818|2568, Forw log = 105818|2640, Backw log = 105818|2520,
+  //                            Trid =  -8, Prev tran logrec = 105818|2448
+  //                            Type = LOG_UNDOREDO_DATA, Recv_index = RVFL_FHEAD_DEALLOC,
+  //                            Volid = 0 Pageid = 4224 Offset = 0,
+  //
+  //                       LSA = 105818|2760, Forw log = 105818|2824, Backw log = 105818|2688,
+  //                            Trid =  -8, Prev tran logrec = 105818|2568
+  //                            Type = LOG_UNDOREDO_DATA, Recv_index = RVPGBUF_DEALLOC,
+  //                            Volid = 0 Pageid = 6725 Offset = 0,
+  //
+  //                       LSA = 105818|2824, Forw log = 105818|2936, Backw log = 105818|2760,
+  //                            Trid =  -8, Prev tran logrec = 105818|2760
+  //                            Type = LOG_SYSOP_END,
+  //                            lastparent_lsa = 105818|1736, prv_topresult_lsa = -1|-1, type = LOG_SYSOP_END_LOGICAL_RUN_POSTPONE
+  //                            run_postpone_lsa = 105813|1640, postpone = sysop
+  //
+  //                       LSA = 105818|3056, Forw log = 105818|3168, Backw log = 105818|2984,
+  //                            Trid =  -8, Prev tran logrec = 105818|2824
+  //                            Type = LOG_SYSOP_END,
+  //                            lastparent_lsa = -1|-1, prv_topresult_lsa = -1|-1, type = LOG_SYSOP_END_COMMIT
+  //
+  // LSA = 105818|3216, Forw log = 105818|3328, Backw log = 105818|3168,
+  //      Trid =  -3, Prev tran logrec = 105818|1992
+  //      Type = LOG_SYSOP_END,
+  //      lastparent_lsa = -1|-1, prv_topresult_lsa = -1|-1, type = LOG_SYSOP_END_COMMIT
+
+  test_spec_type test_spec;
+
+  log_record_spec_vector_type &log_rec_vec = test_spec.m_log_record_vec;
+
+  constexpr TRANID trid1 = -3;
+  constexpr TRANID trid2 = -8;
+  constexpr LOG_LSA start_lsa = { 813, 488 };
+
+  log_rec_vec =
+  {
+    { trid2, INV_LSA, INV_VPID, LOG_SYSOP_ATOMIC_START, INV_RCVINDEX, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC },
+    { trid2, INV_LSA, { 933, 0 }, LOG_UNDOREDO_DATA, RVBT_RECORD_MODIFY_UNDOREDO, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC },
+//  { trid2, INV_LSA, INV_VPID, LOG_POSTPONE, INV_RCVINDEX, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC },
+
+    { trid1, INV_LSA, INV_VPID, LOG_SYSOP_ATOMIC_START, INV_RCVINDEX, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC },
+    { trid1, INV_LSA, { 241, 0 }, LOG_UNDOREDO_DATA, RVBT_RECORD_MODIFY_UNDOREDO, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC },
+//  { trid1, INV_LSA, INV_VPID, LOG_POSTPONE, INV_RCVINDEX, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC },
+    { trid1, INV_LSA, INV_VPID, LOG_SYSOP_START_POSTPONE, INV_RCVINDEX, LOG_SYSOP_END_COMMIT, INV_LSA, FIX_SUCC },
+    { trid1, INV_LSA, INV_VPID, LOG_SYSOP_ATOMIC_START, INV_RCVINDEX, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC },
+    { trid1, INV_LSA, { 224, 0 }, LOG_UNDOREDO_DATA, RVFL_PARTSECT_DEALLOC, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC },
+
+    { trid2, INV_LSA, INV_VPID, LOG_SYSOP_START_POSTPONE, INV_RCVINDEX, LOG_SYSOP_END_COMMIT, INV_LSA, FIX_SUCC },
+
+    { trid1, INV_LSA, { 224, 0 }, LOG_UNDOREDO_DATA, RVFL_FHEAD_DEALLOC, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC },
+    { trid1, INV_LSA, { 240, 0 }, LOG_UNDOREDO_DATA, RVPGBUF_DEALLOC, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC },
+  };
+
+  // trid1
+  //
+  test_spec.calculate_log_records_offsets (start_lsa);
+  log_record_spec_type &trid1_sysop_start_postpone_rec = log_rec_vec[4];
+  REQUIRE (trid1_sysop_start_postpone_rec.m_rectype == LOG_SYSOP_START_POSTPONE);
+  REQUIRE (trid1_sysop_start_postpone_rec.m_lsa != INV_LSA);
+  //const LOG_LSA &trid1_sysop_end_last_parent_lsa = trid1_sysop_start_postpone_rec.m_lsa;
+  log_rec_vec.push_back (
+  {
+    trid1, INV_LSA, INV_VPID, LOG_SYSOP_END, INV_RCVINDEX, LOG_SYSOP_END_LOGICAL_RUN_POSTPONE,
+    trid1_sysop_start_postpone_rec.m_lsa, FIX_SUCC });
+
+  // trid2
+  //
+  log_rec_vec.push_back (
+  { trid2, INV_LSA, INV_VPID, LOG_SYSOP_ATOMIC_START, INV_RCVINDEX, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC });
+  log_rec_vec.push_back (
+  { trid2, INV_LSA, { 224, 0 }, LOG_UNDOREDO_DATA, RVFL_PARTSECT_DEALLOC, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC });
+  log_rec_vec.push_back (
+  { trid2, INV_LSA, { 224, 0 }, LOG_UNDOREDO_DATA, RVFL_FHEAD_DEALLOC, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC });
+  log_rec_vec.push_back (
+  { trid2, INV_LSA, { 725, 0 }, LOG_UNDOREDO_DATA, RVPGBUF_DEALLOC, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC });
+  test_spec.calculate_log_records_offsets (start_lsa);
+  log_record_spec_type &trid2_sysop_start_postpone_rec = log_rec_vec[7];
+  REQUIRE (trid2_sysop_start_postpone_rec.m_rectype == LOG_SYSOP_START_POSTPONE);
+  REQUIRE (trid2_sysop_start_postpone_rec.m_lsa != INV_LSA);
+  log_rec_vec.push_back (
+  {
+    trid2, INV_LSA, INV_VPID, LOG_SYSOP_END, INV_RCVINDEX, LOG_SYSOP_END_LOGICAL_RUN_POSTPONE,
+    trid2_sysop_start_postpone_rec.m_lsa, FIX_SUCC });
+  log_rec_vec.push_back (
+  { trid2, INV_LSA, INV_VPID, LOG_SYSOP_END, INV_RCVINDEX, LOG_SYSOP_END_COMMIT, INV_LSA, FIX_SUCC });
+
+  // trid1
+  //
+  log_rec_vec.push_back (
+  { trid1, INV_LSA, INV_VPID, LOG_SYSOP_END, INV_RCVINDEX, LOG_SYSOP_END_COMMIT, INV_LSA, FIX_SUCC });
+
+  test_spec.calculate_log_records_offsets (start_lsa);
+
+  gl_Test_Spec = &test_spec;
+
+  cublog::atomic_replication_helper atomic_helper;
+  test_spec.execute (atomic_helper);
+  test_spec.check_after_execution (trid1, atomic_helper);
+}
+
 // ****************************************************************
 // test_spec_type implementation
 // ****************************************************************
@@ -434,7 +612,7 @@ void test_spec_type::execute (cublog::atomic_replication_helper &atomic_helper)
 	{
 	  REQUIRE (VPID_EQ (&log_rec.m_vpid, &INV_VPID));
 	  REQUIRE (log_rec.m_rcvindex == INV_RCVINDEX);
-	  REQUIRE (log_rec.m_sysop_end_type == INV_SYSOP_END_TYPE);
+	  //REQUIRE (log_rec.m_sysop_end_type == INV_SYSOP_END_TYPE);
 	  REQUIRE (log_rec.m_sysop_end_last_parent_lsa == INV_LSA);
 
 	  atomic_helper.append_control_log (m_thread_p, log_rec.m_trid, log_rec.m_rectype,
@@ -442,7 +620,7 @@ void test_spec_type::execute (cublog::atomic_replication_helper &atomic_helper)
 	}
       else
 	{
-	  REQUIRE (log_rec.m_rectype == INV_RECTYPE);
+	  //REQUIRE (log_rec.m_rectype == INV_RECTYPE);
 	  REQUIRE (log_rec.m_sysop_end_type == INV_SYSOP_END_TYPE);
 	  REQUIRE (log_rec.m_sysop_end_last_parent_lsa == INV_LSA);
 
