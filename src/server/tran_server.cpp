@@ -199,15 +199,13 @@ tran_server::init_page_server_hosts (const char *db_name)
   bool failed_conn = false;
   for (const cubcomm::node &node : m_connection_list)
     {
-      const int local_exit_code = connect_to_page_server (node, db_name);
-      if (local_exit_code == NO_ERROR)
+      exit_code = connect_to_page_server (node, db_name);
+      if (exit_code == NO_ERROR)
 	{
 	  ++valid_connection_count;
-	  exit_code = NO_ERROR;
 	}
       else
 	{
-	  exit_code = local_exit_code;
 	  failed_conn = true;
 	  er_log_debug (ARG_FILE_LINE, "Failed to connect to host: %s port: %d\n", node.get_host ().c_str (), node.get_port ());
 	}
@@ -217,7 +215,9 @@ tran_server::init_page_server_hosts (const char *db_name)
     {
       //at least one valid host exists clear the error remaining from previous failing ones
       er_clear ();
+      exit_code = NO_ERROR;
     }
+
   // validate connections vs. config
   //
   if (valid_connection_count == 0 && uses_remote_storage)
@@ -352,27 +352,44 @@ tran_server::is_page_server_connected () const
 }
 
 bool
+tran_server::is_page_server_connected (const size_t idx) const
+{
+  assert_is_tran_server ();
+
+  return m_page_server_conn_vec.size () > idx;
+}
+
+bool
 tran_server::uses_remote_storage () const
 {
   return false;
 }
 
 void
-tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
+tran_server::push_request_to (size_t idx, tran_to_page_request reqid, std::string &&payload)
 {
-  if (!is_page_server_connected ())
+  assert (idx < m_page_server_conn_vec.size());
+  if (!is_page_server_connected (idx))
     {
       return;
     }
 
-  m_page_server_conn_vec[0]->push (reqid, std::move (payload));
+  m_page_server_conn_vec[idx]->push (reqid, std::move (payload));
+}
+
+void
+tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
+{
+  // TODO push a request to the "main connection"
+  push_request_to (0, reqid, std::move (payload));
 }
 
 int
 tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const
 {
-  assert (is_page_server_connected ());
+  assert (is_page_server_connected (0));
 
+  // TODO push a request to the "main connection"
   const css_error_code error_code = m_page_server_conn_vec[0]->send_recv (reqid, std::move (payload_in), payload_out);
   // NOTE: enhance error handling when:
   //  - more than one page server will be handled
@@ -386,6 +403,12 @@ tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in,
     }
 
   return NO_ERROR;
+}
+
+size_t
+tran_server::get_connected_page_server_count () const
+{
+  return m_page_server_conn_vec.size ();
 }
 
 tran_server::request_handlers_map_t

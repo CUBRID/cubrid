@@ -29,7 +29,7 @@ struct test_thread_init_final
 {
   test_thread_init_final ()
   {
-    initialize_fake_system_parameters();
+    initialize_fake_system_parameters ();
 
     THREAD_ENTRY *thread_p = NULL;
     cubthread::initialize (thread_p);
@@ -62,6 +62,12 @@ class test_conn
 	  : m_rsn (a_rsn)
 	  , m_payload (a_payload)
 	{
+	}
+
+	sequenced_payload &operator= (std::nullptr_t)
+	{
+	  m_rsn = 0;
+	  m_payload = 0;
 	}
 
 	payload_t pull_payload ()

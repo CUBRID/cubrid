@@ -74,6 +74,8 @@ class tran_server
 
     void disconnect_page_server ();
     bool is_page_server_connected () const;
+    bool is_page_server_connected (const size_t idx) const;
+    void push_request_to (size_t idx, tran_to_page_request reqid, std::string &&payload);
     void push_request (tran_to_page_request reqid, std::string &&payload);
     int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
 
@@ -84,6 +86,7 @@ class tran_server
     using request_handlers_map_t = std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t>;
 
   protected:
+    size_t get_connected_page_server_count () const;
 
     // Booting functions that require specialization
     virtual bool get_remote_storage_config () = 0;
@@ -95,7 +98,6 @@ class tran_server
     virtual request_handlers_map_t get_request_handlers ();
 
   private:
-
     int init_page_server_hosts (const char *db_name);
     int get_boot_info_from_page_server ();
     int connect_to_page_server (const cubcomm::node &node, const char *db_name);
@@ -104,7 +106,6 @@ class tran_server
     int parse_page_server_hosts_config (std::string &hosts);
 
   private:
-
     std::vector<cubcomm::node> m_connection_list;
     cubcomm::server_server m_conn_type;
     std::vector<std::unique_ptr<page_server_conn_t>> m_page_server_conn_vec;
