@@ -34,7 +34,6 @@ namespace cublog
 
   void
   atomic_replication_helper::append_log (TRANID tranid, LOG_LSA lsa, LOG_RCVINDEX rcvindex, VPID vpid)
-  // TODO: relay LOG_RECTYPE here; and it will not be needed to re-read the log record
   {
     const auto sequence_it = m_sequences_map.find (tranid);
     if (sequence_it == m_sequences_map.cend ())
@@ -478,7 +477,7 @@ namespace cublog
 	    }
 
 #ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
-	  // TODO: there is still a logic gap here:
+	  // NOTE: there is still a logic gap here:
 	  //  - the vpid bookkeeping mechanism accounts for every VPID and warns (ie: asserts/crashes) if
 	  //    vpids are accessed concurrently between two atomic sequences of two different transactions
 	  //  - however, if the page for that VPID cannot be fixed (ie: because it is not already in the
