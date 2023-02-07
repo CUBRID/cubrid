@@ -7719,8 +7719,8 @@ pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN 
       return DB_UNK;		/* impossible case */
     }
 
-  OR_BUF_INIT (buf_val1, mem1, -1);
-  OR_BUF_INIT (buf_val2, mem2, -1);
+  or_init (&buf_val1, mem1, -1);
+  or_init (&buf_val2, mem2, -1);
 
   db_make_null (&val1);
   db_make_null (&val2);

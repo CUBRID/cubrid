@@ -741,7 +741,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	  dbval_size = pr_data_writeval_disk_size (db_value_p);
 	  if (dbval_size > 0 && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)) != NULL)
 	    {
-	      OR_BUF_INIT (buf, disk_repr_p, dbval_size);
+	      or_init (&buf, disk_repr_p, dbval_size);
 	      error = pr_type_p->data_writeval (&buf, db_value_p);
 	      if (error != NO_ERROR)
 		{
@@ -2472,7 +2472,7 @@ qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple,
 
   /* initialize buffer */
   db_make_int (&int_val, 0);
-  OR_BUF_INIT (iterator, tuple, QFILE_GET_TUPLE_LENGTH (tuple));
+  or_init (&iterator, tuple, QFILE_GET_TUPLE_LENGTH (tuple));
   rc = or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);
   if (rc != NO_ERROR)
     {
