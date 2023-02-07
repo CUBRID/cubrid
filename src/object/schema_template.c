@@ -4463,6 +4463,7 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
   /* 
      The default value's domain should be checked even though the new default is not specified
    */
+  db_make_null (&default_value);
   if (new_default_value == NULL && new_default_expr->default_expr_type == DB_DEFAULT_NONE)
     {
       pr_clone_value (&(*found_att)->default_value.value, &default_value);
@@ -4485,6 +4486,8 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
       assert (((*found_att)->flags & SM_ATTFLAG_NEW) == 0);
       error = smt_set_attribute_default (def, ((new_name != NULL) ? new_name : name), is_class_attr, new_default_value,
 					 new_default_expr);
+
+      db_value_clear (&default_value);
       if (error != NO_ERROR)
 	{
 	  return error;
