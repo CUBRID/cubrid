@@ -6314,7 +6314,7 @@ log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p, char *rcv_data,
   assert (record != NULL);
 
   /* Prepare buffer. */
-  OR_BUF_INIT (rcv_buf, rcv_data, rcv_data_length);
+  or_init (&rcv_buf, rcv_data, rcv_data_length);
 
   return log_rv_undoredo_partial_changes_recursive (thread_p, &rcv_buf, record, is_undo);
 }

@@ -16332,7 +16332,7 @@ qexec_get_tuple_column_value (QFILE_TUPLE tpl, int index, DB_VALUE * valp, tp_do
 	  return ER_FAILED;
 	}
 
-      OR_BUF_INIT (buf, ptr, length);
+      or_init (&buf, ptr, length);
 
       if (pr_type->data_readval (&buf, valp, domain, -1, false, NULL, 0) != NO_ERROR)
 	{
@@ -20969,7 +20969,7 @@ qexec_analytic_sort_key_header_load (ANALYTIC_FUNCTION_STATE * func_state, bool 
     {
       length = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p);
       tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
-      OR_BUF_INIT (buf, tuple_p, length);
+      or_init (&buf, tuple_p, length);
 
       rc =
 	func_state->func_p->domain->type->data_readval (&buf, func_state->func_p->value, func_state->func_p->domain, -1,

@@ -3925,7 +3925,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	}
       else
 	{
-	  OR_BUF_INIT (buffer, attr, -1);
+	  or_init (&buffer, attr, -1);
 
 	  rc = or_get_varchar_compression_lengths (&buffer, &compressed_length, &decompressed_length);
 	  if (rc != NO_ERROR)
@@ -4137,7 +4137,7 @@ or_replace_rep_id (RECDES * record, int repid)
   char mvcc_flag;
   bool is_bound_bit = false;
 
-  OR_BUF_INIT (orep, record->data, record->area_size);
+  or_init (&orep, record->data, record->area_size);
   buf = &orep;
 
   mvcc_flag = or_mvcc_get_flag (record);
@@ -4277,7 +4277,7 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
       HEAP_MOVE_INSIDE_RECORD (record, new_mvcc_size, old_mvcc_size);
     }
 
-  OR_BUF_INIT (orep, record->data, record->area_size);
+  or_init (&orep, record->data, record->area_size);
   buf = &orep;
 
   error =
@@ -4340,7 +4340,7 @@ or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int boun
 
   assert (record != NULL && record->data != NULL && record->length == 0);
 
-  OR_BUF_INIT (orep, record->data, record->area_size);
+  or_init (&orep, record->data, record->area_size);
   buf = &orep;
 
   error =
@@ -4454,7 +4454,7 @@ or_mvcc_set_flag (RECDES * record, char flags)
   /* Set new mvcc flags */
   repid_and_flag += ((flags & OR_MVCC_FLAG_MASK) << OR_MVCC_FLAG_SHIFT_BITS);
 
-  OR_BUF_INIT (orep, record->data, record->area_size);
+  or_init (&orep, record->data, record->area_size);
   buf = &orep;
   buf->ptr = buf->buffer + OR_REP_OFFSET;
   or_put_int (buf, repid_and_flag);

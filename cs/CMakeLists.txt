@@ -327,13 +327,14 @@ set(TRANSACTION_HEADERS
   )
 
 set(STORAGE_SOURCES
-  ${STORAGE_DIR}/storage_common.c
+  ${STORAGE_DIR}/byte_order.c
+  ${STORAGE_DIR}/es.c
+  ${STORAGE_DIR}/es_common.c
+  ${STORAGE_DIR}/es_posix.c
+  ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/statistics_cl.c
-  ${STORAGE_DIR}/file_io.c
-  ${STORAGE_DIR}/es_common.c
-  ${STORAGE_DIR}/es.c
-  ${STORAGE_DIR}/es_posix.c
+  ${STORAGE_DIR}/storage_common.c
   ${STORAGE_DIR}/tde.c
   )
 
