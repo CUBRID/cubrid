@@ -296,8 +296,6 @@ namespace cublog
 	    atomic_log_entry (LOG_LSA lsa, LOG_RECTYPE rectype);
 	    atomic_log_entry (LOG_LSA lsa, LOG_SYSOP_END_TYPE sysop_end_type, LOG_LSA sysop_end_last_parent_lsa);
 
-	    ~atomic_log_entry ();
-
 	    atomic_log_entry (const atomic_log_entry &) = delete;
 	    atomic_log_entry (atomic_log_entry &&that);
 

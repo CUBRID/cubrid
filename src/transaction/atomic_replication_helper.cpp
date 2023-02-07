@@ -360,7 +360,7 @@ namespace cublog
 #endif
 							     )
   {
-    const atomic_log_entry &new_entry = m_log_vec.emplace_back (lsa, vpid, rcvindex/*, page_p*/);
+    const atomic_log_entry &new_entry = m_log_vec.emplace_back (lsa, vpid, rcvindex);
 
 #ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
     vpid_bk.add_or_increase_for_transaction (m_trid, vpid);
@@ -886,13 +886,6 @@ namespace cublog
     assert (m_lsa != NULL_LSA);
     assert (LOG_SYSOP_END_COMMIT <= sysop_end_type && sysop_end_type <= LOG_SYSOP_END_LOGICAL_RUN_POSTPONE);
     // sysop end parent lsa can also be null
-  }
-
-  atomic_replication_helper::atomic_log_sequence::atomic_log_entry::~atomic_log_entry ()
-  {
-    // this assert should be valid; except we're using emplaced constructed objects for which
-    // we're not properly initializing this value
-    //assert (m_page_ptr == nullptr);
   }
 
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::atomic_log_entry (atomic_log_entry &&that)
