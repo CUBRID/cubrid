@@ -589,7 +589,7 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
 	}
       else
 	{
-	  OR_BUF_INIT (buf, ptr, length);
+	  or_init (&buf, ptr, length);
 
 	  if (pr_type->data_readval (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0) != NO_ERROR)
 	    {
@@ -731,7 +731,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
 	  return UNKNOWN_CARD;
 	}
 
-      OR_BUF_INIT (buf, ptr, length);
+      or_init (&buf, ptr, length);
 
       pr_type->data_readval (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0);
 
@@ -960,7 +960,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 	  goto end;
 	}
 
-      OR_BUF_INIT (buf, ptr, length);
+      or_init (&buf, ptr, length);
 
       pr_type->data_readval (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0);
 
@@ -1136,7 +1136,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 	  goto end;
 	}
 
-      OR_BUF_INIT (buf, ptr, length);
+      or_init (&buf, ptr, length);
 
       pr_type->data_readval (&buf, &list_val, list_id1->type_list.domp[0], -1, true, NULL, 0);
 
