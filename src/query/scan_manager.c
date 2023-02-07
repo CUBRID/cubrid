@@ -1756,7 +1756,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   nullmap_ptr = midxkey.buf;
   key_ptr = nullmap_ptr + nullmap_size;
 
-  OR_BUF_INIT (buf, key_ptr, buf_size - nullmap_size);
+  or_init (&buf, key_ptr, buf_size - nullmap_size);
   MIDXKEY_BOUNDBITS_INIT (nullmap_ptr, nullmap_size);
 
   /* generate multi columns key (values -> midxkey.buf) */

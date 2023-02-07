@@ -410,7 +410,12 @@ EXPORTS
     msgcat_final
     msgcat_message
     net_client_ping_server
+    ntohs
+    ntohl
     ntohi64
+    htons
+    htonl
+    htoni64
     numeric_db_value_print
     os_set_signal_handler
     prm_get_master_port_id
