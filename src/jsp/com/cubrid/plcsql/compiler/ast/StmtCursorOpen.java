@@ -48,6 +48,7 @@ public class StmtCursorOpen implements Stmt {
 
     public StmtCursorOpen(int level, ExprId id, NodeList<Expr> args) {
         assert id.decl instanceof DeclCursor;
+        assert args != null;
 
         this.level = level;
         this.id = id;

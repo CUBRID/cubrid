@@ -72,15 +72,16 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 decl);
     }
 
+    private static final NodeList<DeclParam> EMPTY_PARAMS = new NodeList<>();
+
     @Override
     public NodeList<DeclParam> visitParameter_list(Parameter_listContext ctx) {
 
         if (ctx == null) {
-            return null;
+            return EMPTY_PARAMS;
         }
 
         NodeList<DeclParam> ret = new NodeList<>();
-
         for (ParameterContext pc : ctx.parameter()) {
             ret.addNode((DeclParam) visit(pc));
         }
@@ -585,11 +586,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         DeclFunc decl = symbolStack.getDeclFunc(name);
         if (decl == null) {
 
-            if (args != null) {
-                for (Expr arg : args.nodes) {
-                    if (arg instanceof ExprCast) {
-                        ((ExprCast) arg).setTargetType("Object");
-                    }
+            for (Expr arg : args.nodes) {
+                if (arg instanceof ExprCast) {
+                    ((ExprCast) arg).setTargetType("Object");
                 }
             }
 
@@ -601,45 +600,33 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
             return ret;
         } else {
-            if ((decl.paramList != null && decl.paramList.nodes.size() > 0) == (args != null && args.nodes.size() > 0)) {
-                // OK
-            } else {
+            if (decl.paramList.nodes.size() != args.nodes.size()) {
                 throw new SemanticError("the number of arguments to function " + name +
                     " does not match the number of the function's declared formal parameters");
             }
 
-            if (args != null && args.nodes.size() > 0) {
+            int i = 0;
+            for (Expr arg : args.nodes) {
+                DeclParam dp = decl.paramList.nodes.get(i);
 
-                if (args.nodes.size() == decl.paramList.nodes.size()) {
-                    // OK
-                } else {
-                    throw new SemanticError("the number of arguments to function " + name +
-                        " does not match the number of the function's its declared formal parameters");
-                }
-
-                int i = 0;
-                for (Expr arg : args.nodes) {
-                    DeclParam dp = decl.paramList.nodes.get(i);
-
-                    if (dp instanceof DeclParamOut) {
-                        boolean valid = false;
-                        if (arg instanceof ExprId) {
-                            ExprId id = (ExprId) arg;
-                            if (id.decl instanceof DeclVar || id.decl instanceof DeclParamOut) {
-                                valid = true;
-                            }
+                if (dp instanceof DeclParamOut) {
+                    boolean valid = false;
+                    if (arg instanceof ExprId) {
+                        ExprId id = (ExprId) arg;
+                        if (id.decl instanceof DeclVar || id.decl instanceof DeclParamOut) {
+                            valid = true;
                         }
-                        if (!valid) {
-                            throw new SemanticError("argument " + i + " to the function " + name +
-                                " must be a variable or out-parameter because it is to an out-parameter");
-                        }
-
-                    } else if (arg instanceof ExprCast) {
-                        ((ExprCast) arg).setTargetType(dp.typeSpec().name);
+                    }
+                    if (!valid) {
+                        throw new SemanticError("argument " + i + " to the function " + name +
+                            " must be a variable or out-parameter because it is to an out-parameter");
                     }
 
-                    i++;
+                } else if (arg instanceof ExprCast) {
+                    ((ExprCast) arg).setTargetType(dp.typeSpec().name);
                 }
+
+                i++;
             }
 
             return new ExprLocalFuncCall(name, args, symbolStack.getCurrentScope(), decl);
@@ -904,7 +891,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.pushSymbolTable(name, isFunction ? Misc.RoutineType.FUNC : Misc.RoutineType.PROC);
 
-        NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
+        visitParameter_list(ctx.parameter_list());  // just to put symbols to the symbol table
+
         NodeList<Decl> decls = visitSeq_of_declare_specs(ctx.seq_of_declare_specs());
         Body body = visitBody(ctx.body());
 
@@ -997,7 +985,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             addToImports("java.sql.*");
 
             int level = symbolStack.getCurrentScope().level + 1;
-            return new ExprGlobalFuncCall(level, name, null);
+            return new ExprGlobalFuncCall(level, name, EMPTY_ARGS);
         } else if (decl instanceof DeclId) {
             Scope scope = symbolStack.getCurrentScope();
             return new ExprId(name, scope, (DeclId) decl);
@@ -1203,33 +1191,21 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         NodeList<Expr> args = visitExpressions(ctx.for_cursor().expressions());
 
-        if ((cursorDecl.paramList != null && cursorDecl.paramList.nodes.size() > 0)
-                        == (args != null && args.nodes.size() > 0)) {
-            // OK
-        } else {
-                throw new SemanticError("the number of arguments to cursor "
-                        + cursorName
-                        + " does not match the number of its declared formal parameters");
+        if (cursorDecl.paramList.nodes.size() != args.nodes.size()) {
+            throw new SemanticError("the number of arguments to cursor "
+                    + cursorName
+                    + " does not match the number of its declared formal parameters");
         }
 
-        if (args != null && args.nodes.size() > 0) {
+        int i = 0;
+        for (Expr arg : args.nodes) {
 
-            if (args.nodes.size() != cursorDecl.paramList.nodes.size()) {
-                    throw new SemanticError("the number of arguments to cursor "
-                            + cursorName
-                            + " does not match the number of its declared formal parameters");
+            if (arg instanceof ExprCast) {
+                DeclParam dp = cursorDecl.paramList.nodes.get(i);
+                ((ExprCast) arg).setTargetType(dp.typeSpec().name);
             }
 
-            int i = 0;
-            for (Expr arg : args.nodes) {
-
-                if (arg instanceof ExprCast) {
-                    DeclParam dp = cursorDecl.paramList.nodes.get(i);
-                    ((ExprCast) arg).setTargetType(dp.typeSpec().name);
-                }
-
-                i++;
-            }
+            i++;
         }
 
         symbolStack.pushSymbolTable("for_cursor_loop", null);
@@ -1511,33 +1487,21 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         NodeList<Expr> args = visitExpressions(ctx.expressions());
 
-        if ((decl.paramList != null && decl.paramList.nodes.size() > 0)
-                        == (args != null && args.nodes.size() > 0)) {
-            // OK
-        } else {
-                throw new SemanticError("the number of arguments to cursor "
-                        + name
-                        + " does not match the number of its declared formal parameters");
+        if (decl.paramList.nodes.size() != args.nodes.size()) {
+            throw new SemanticError("the number of arguments to cursor "
+                    + name
+                    + " does not match the number of its declared formal parameters");
         }
 
-        if (args != null && args.nodes.size() > 0) {
+        int i = 0;
+        for (Expr arg : args.nodes) {
 
-            if (args.nodes.size() != decl.paramList.nodes.size()) {
-                    throw new SemanticError("the number of arguments to cursor "
-                            + name
-                            + " does not match the number of its declared formal parameters");
+            if (arg instanceof ExprCast) {
+                DeclParam dp = decl.paramList.nodes.get(i);
+                ((ExprCast) arg).setTargetType(dp.typeSpec().name);
             }
 
-            int i = 0;
-            for (Expr arg : args.nodes) {
-
-                if (arg instanceof ExprCast) {
-                    DeclParam dp = decl.paramList.nodes.get(i);
-                    ((ExprCast) arg).setTargetType(dp.typeSpec().name);
-                }
-
-                i++;
-            }
+            i++;
         }
 
         return new StmtCursorOpen(scope.level, new ExprId(name, scope, decl), args);
@@ -1547,7 +1511,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public NodeList<Expr> visitExpressions(ExpressionsContext ctx) {
 
         if (ctx == null) {
-            return null;
+            return EMPTY_ARGS;
         }
 
         NodeList<Expr> ret = new NodeList<>();
@@ -1649,11 +1613,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         DeclProc decl = symbolStack.getDeclProc(name);
         if (decl == null) {
 
-            if (args != null) {
-                for (Expr arg : args.nodes) {
-                    if (arg instanceof ExprCast) {
-                        ((ExprCast) arg).setTargetType("Object");
-                    }
+            for (Expr arg : args.nodes) {
+                if (arg instanceof ExprCast) {
+                    ((ExprCast) arg).setTargetType("Object");
                 }
             }
 
@@ -1665,50 +1627,38 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
             return ret;
         } else {
-            if ((decl.paramList != null && decl.paramList.nodes.size() > 0)
-                            == (args != null && args.nodes.size() > 0)) {
-                // OK
-            } else {
-                    throw new SemanticError("the number of arguments to procedure "
-                            + name
-                            + " does not match the number of its declared formal parameters");
+            if (decl.paramList.nodes.size() != args.nodes.size()) {
+                throw new SemanticError("the number of arguments to procedure "
+                        + name
+                        + " does not match the number of its declared formal parameters");
             }
 
-            if (args != null && args.nodes.size() > 0) {
+            int i = 0;
+            for (Expr arg : args.nodes) {
+                DeclParam dp = decl.paramList.nodes.get(i);
 
-                if (args.nodes.size() != decl.paramList.nodes.size()) {
-                        throw new SemanticError("the number of arguments to procedure "
-                                + name
-                                + " does not match the number of its declared formal parameters");
-                }
-
-                int i = 0;
-                for (Expr arg : args.nodes) {
-                    DeclParam dp = decl.paramList.nodes.get(i);
-
-                    if (dp instanceof DeclParamOut) {
-                        boolean valid = false;
-                        if (arg instanceof ExprId) {
-                            ExprId id = (ExprId) arg;
-                            if (id.decl instanceof DeclVar || id.decl instanceof DeclParamOut) {
-                                valid = true;
-                            }
+                if (dp instanceof DeclParamOut) {
+                    boolean valid = false;
+                    if (arg instanceof ExprId) {
+                        ExprId id = (ExprId) arg;
+                        if (id.decl instanceof DeclVar || id.decl instanceof DeclParamOut) {
+                            valid = true;
                         }
-                        if (!valid) {
-                                throw new SemanticError("argument "
-                                        + i
-                                        + " to the procedure"
-                                        + name
-                                        + " must be a variable or "
-                                        + " out-parameter because it is to an out-parameter");
-                        }
-
-                    } else if (arg instanceof ExprCast) {
-                        ((ExprCast) arg).setTargetType(dp.typeSpec().name);
+                    }
+                    if (!valid) {
+                            throw new SemanticError("argument "
+                                    + i
+                                    + " to the procedure"
+                                    + name
+                                    + " must be a variable or "
+                                    + " out-parameter because it is to an out-parameter");
                     }
 
-                    i++;
+                } else if (arg instanceof ExprCast) {
+                    ((ExprCast) arg).setTargetType(dp.typeSpec().name);
                 }
+
+                i++;
             }
 
             return new StmtLocalProcCall(name, args, symbolStack.getCurrentScope(), decl);
@@ -1797,11 +1747,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return ret;
     }
 
+    private static final NodeList<Expr> EMPTY_ARGS = new NodeList<>();
+
     @Override
     public NodeList<Expr> visitFunction_argument(Function_argumentContext ctx) {
 
         if (ctx == null) {
-            return null;
+            return EMPTY_ARGS;
         }
 
         NodeList<Expr> ret = new NodeList<>();

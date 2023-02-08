@@ -52,6 +52,8 @@ public class DeclCursor extends DeclBase implements DeclId {
 
     public DeclCursor(
             String name, NodeList<DeclParam> paramList, ExprStr sql, NodeList<ExprId> usedVars) {
+
+        assert paramList != null;
         this.name = name;
         this.paramList = paramList;
         this.sql = sql;
@@ -81,7 +83,7 @@ public class DeclCursor extends DeclBase implements DeclId {
 
     private void setHostValuesMap(NodeList<DeclParam> paramList, NodeList<ExprId> usedVars) {
 
-        int paramSize = paramList == null ? 0 : paramList.nodes.size();
+        int paramSize = paramList.nodes.size();
         int usedSize = usedVars == null ? 0 : usedVars.nodes.size();
 
         paramRefCounts = new int[paramSize]; // NOTE: filled with zeros

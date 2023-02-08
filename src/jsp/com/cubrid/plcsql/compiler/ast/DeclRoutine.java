@@ -50,6 +50,8 @@ public abstract class DeclRoutine extends DeclBase {
             NodeList<Decl> decls,
             Body body) {
 
+        assert paramList != null;
+
         this.name = name;
         this.paramList = paramList;
         this.retType = retType;
@@ -76,7 +78,7 @@ public abstract class DeclRoutine extends DeclBase {
                                 .replace(
                                         "  %'DECLARATIONS'%",
                                         Misc.indentLines(decls.toJavaCode(), 1));
-        String strParams = paramList == null ? "// no parameters" : paramList.toJavaCode(",\n");
+        String strParams = paramList.toJavaCode(",\n");
 
         return tmplFuncBody
                 .replace("%'RETURN-TYPE'%", retType == null ? "void" : retType.toJavaCode())
@@ -90,10 +92,8 @@ public abstract class DeclRoutine extends DeclBase {
 
         List<TypeSpec> ret = new ArrayList<TypeSpec>();
 
-        if (paramList != null) {
-            for (DeclParam param: paramList.nodes) {
-                ret.add(param.typeSpec());
-            }
+        for (DeclParam param: paramList.nodes) {
+            ret.add(param.typeSpec());
         }
 
         return ret;

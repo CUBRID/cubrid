@@ -50,6 +50,7 @@ public class StmtLocalProcCall implements Stmt {
     public final boolean prefixDeclBlock;
 
     public StmtLocalProcCall(String name, NodeList<Expr> args, Scope scope, DeclProc decl) {
+        assert args != null;
         this.name = name;
         this.args = args;
         this.scope = scope;
@@ -62,7 +63,7 @@ public class StmtLocalProcCall implements Stmt {
 
         String block = prefixDeclBlock ? decl.scope().block + "." : "";
 
-        if (args == null || args.nodes.size() == 0) {
+        if (args.nodes.size() == 0) {
             return block + name + "();";
         } else {
             return block

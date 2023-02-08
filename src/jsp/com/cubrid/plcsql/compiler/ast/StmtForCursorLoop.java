@@ -56,6 +56,8 @@ public class StmtForCursorLoop extends StmtCursorOpen {
 
         super(level, id, args);
 
+        assert args != null;
+
         this.label = label;
         this.record = record;
         this.stmts = stmts;

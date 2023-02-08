@@ -47,6 +47,7 @@ public class StmtGlobalProcCall implements Stmt {
     public final NodeList<Expr> args;
 
     public StmtGlobalProcCall(int level, String name, NodeList<Expr> args) {
+        assert args != null;
         this.level = level;
         this.name = name;
         this.args = args;
@@ -54,7 +55,7 @@ public class StmtGlobalProcCall implements Stmt {
 
     @Override
     public String toJavaCode() {
-        String dynSql = getDynSql(name, args == null ? 0 : args.nodes.size());
+        String dynSql = getDynSql(name, args.nodes.size());
         String setUsedValuesStr = Common.getSetUsedValuesStr(args);
         return tmplStmt.replace("%'PROC-NAME'%", name)
                 .replace("%'DYNAMIC-SQL'%", dynSql)

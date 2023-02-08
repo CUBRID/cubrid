@@ -47,6 +47,7 @@ public class ExprGlobalFuncCall implements Expr {
     public final NodeList<Expr> args;
 
     public ExprGlobalFuncCall(int level, String name, NodeList<Expr> args) {
+        assert args != null;
         this.level = level;
         this.name = name;
         this.args = args;

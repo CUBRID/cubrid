@@ -62,7 +62,7 @@ public class ExprLocalFuncCall implements Expr {
 
         String block = prefixDeclBlock ? decl.scope().block + "." : "";
 
-        if (args == null || args.nodes.size() == 0) {
+        if (args.nodes.size() == 0) {
             return block + name + "()";
         } else {
             return block
