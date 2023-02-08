@@ -67,6 +67,27 @@ if(UNIX)
 endif(UNIX)
 add_dependencies(csql cubridsa cubridcs)
 
+set(PLCSQL_SOURCES
+  ${EXECUTABLES_DIR}/plcsql.cpp
+  ${EXECUTABLES_DIR}/util_support.c
+  )
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${PLCSQL_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
+
+add_executable(plcsql_helper ${PLCSQL_SOURCES})
+target_compile_definitions(plcsql_helper PRIVATE ${COMMON_DEFS})
+target_include_directories(plcsql_helper PRIVATE ${EP_INCLUDES})
+add_dependencies(plcsql_helper ${EP_TARGETS})
+
+if(UNIX)
+  target_link_libraries(plcsql_helper PUBLIC stdc++fs)
+endif(UNIX)
+
+target_link_libraries(plcsql_helper LINK_PRIVATE cubridcs)
+
 set(CUB_MASTER_SOURCES
   ${EXECUTABLES_DIR}/master.c
   ${EXECUTABLES_DIR}/master_request.c
@@ -182,7 +203,7 @@ add_executable(cubrid_rel ${CUBRID_REL_SOURCES})
 target_link_libraries(cubrid_rel LINK_PRIVATE cubridsa)
 
 
-set(LOADJAVA_SOURCES ${EXECUTABLES_DIR}/loadjava.c)
+set(LOADJAVA_SOURCES ${EXECUTABLES_DIR}/loadjava.cpp)
 SET_SOURCE_FILES_PROPERTIES(
   ${LOADJAVA_SOURCES}
   PROPERTIES LANGUAGE CXX
@@ -193,6 +214,7 @@ endif(WIN32)
 add_executable(loadjava ${LOADJAVA_SOURCES})
 if(UNIX)
   target_link_libraries(loadjava LINK_PRIVATE cubridsa)
+  target_link_libraries(loadjava PUBLIC stdc++fs)
 else(UNIX)
   target_link_libraries(loadjava LINK_PRIVATE cubridcs)
 endif(UNIX)
@@ -357,6 +379,7 @@ install(TARGETS
   cub_javasp
   cub_admin
   cubrid_esql
+  plcsql_helper
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
