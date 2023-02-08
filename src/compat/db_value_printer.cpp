@@ -656,3 +656,30 @@ db_sprint_value (const db_value *value, string_buffer &sb)
   db_value_printer printer (sb);
   printer.describe_value (value);
 }
+
+#ifndef NDEBUG
+void
+db_value_print_consol (const db_value *value, bool add_newline, char *fmt, ...)
+{
+  if (fmt && *fmt)
+    {
+      va_list ap;
+
+      va_start (ap, fmt);
+      (void) vfprintf (stdout, fmt, ap);
+      va_end (ap);
+    }
+
+  if (value)
+    {
+      db_fprint_value (stdout, value);
+    }
+
+  if (add_newline)
+    {
+      fprintf (stdout, "\n");
+    }
+
+  fflush (stdout);
+}
+#endif

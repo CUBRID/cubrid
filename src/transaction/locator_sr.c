@@ -4052,10 +4052,6 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
       return error_code;
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
-  ;
-#endif
-
   if (idx_info.has_single_col)
     {
       error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, &index_attrinfo);
@@ -4096,17 +4092,22 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
        * the corresponding referenced column in some row of the referenced table.
        * Please notice that we don't currently support <match type>.
        */
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
-      if (IS_RESERVED_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
-	{
-	  has_null = (index->n_atts > 2) ? btree_multicol_key_has_null (key_dbvalue) : DB_IS_NULL (key_dbvalue);
-	}
-      else
-#endif
       if (index->n_atts > 1)
 	{
-
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_3X)
+	  if (index->n_atts == 2 && IS_RESERVED_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
+	    {
+	      assert (DB_VALUE_TYPE (key_dbvalue) != DB_TYPE_MIDXKEY);
+	      has_null = DB_IS_NULL (key_dbvalue);
+	    }
+	  else
+	    {
+	      assert (DB_VALUE_TYPE (key_dbvalue) == DB_TYPE_MIDXKEY);
+	      has_null = btree_multicol_key_has_null (key_dbvalue);
+	    }
+#else
 	  has_null = btree_multicol_key_has_null (key_dbvalue);
+#endif
 	}
       else
 	{
@@ -4301,14 +4302,10 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  ASSERT_ERROR ();
 		  goto error3;
 		}
+	      num_attrs--;
 	    }
-	  else
-	    {
-	      assert (num_attrs == index->n_atts);
-	    }
-#else
-	  assert (num_attrs == index->n_atts);
 #endif
+	  assert (num_attrs == index->n_atts);
 
 	  /* We might check for foreign key and schema consistency problems here but we rely on the schema manager to
 	   * prevent inconsistency; see do_check_fk_constraints() for details */
@@ -4682,14 +4679,11 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  ASSERT_ERROR ();
 		  goto error3;
 		}
+	      num_attrs--;
 	    }
-	  else
-	    {
-	      assert (num_attrs == index->n_atts);
-	    }
-#else
-	  assert (num_attrs == index->n_atts);
 #endif
+	  assert (num_attrs == index->n_atts);
+
 	  /* We might check for foreign key and schema consistency problems here but we rely on the schema manager to
 	   * prevent inconsistency; see do_check_fk_constraints() for details */
 

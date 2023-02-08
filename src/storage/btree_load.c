@@ -53,6 +53,9 @@
 #include "xserver_interface.h"
 #include "xasl.h"
 #include "xasl_unpack_info.hpp"
+#ifndef NDEBUG
+#include "db_value_printer.hpp"
+#endif
 
 typedef struct sort_args SORT_ARGS;
 struct sort_args
@@ -3929,6 +3932,24 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   BTREE_SCAN_PART partitions[MAX_PARTITIONS];
   bool has_nulls = false;
 
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_3X)
+  DB_VALUE new_key;
+  bool has_reserved_index_col = false;
+  DB_VALUE *fk_key_ptr = &fk_key;
+
+  db_make_null (&new_key);
+  if (sort_args->n_attrs > 1)
+    {
+      has_reserved_index_col = IS_RESERVED_INDEX_ATTR_ID (sort_args->attr_ids[sort_args->n_attrs - 1]);
+      if (has_reserved_index_col)
+	{
+	  fk_key_ptr = &new_key;
+	}
+    }
+#else
+  DB_VALUE *fk_key_ptr = &fk_key;
+#endif
+
   btree_init_temp_key_value (&clear_fk_key, &fk_key);
   btree_init_temp_key_value (&clear_pk_key, &pk_key);
 
@@ -4032,7 +4053,29 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  break;
 	}
 
-      if (DB_IS_NULL (&fk_key))
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_3X)
+      if (has_reserved_index_col)
+	{
+	  assert (!DB_IS_NULL (&fk_key));
+	  assert (DB_VALUE_DOMAIN_TYPE (&fk_key) == DB_TYPE_MIDXKEY);
+
+	  DB_MIDXKEY *mxkey = db_get_midxkey (&fk_key);
+
+	  pr_clear_value (&new_key);
+	  if (fk_key.data.midxkey.ncolumns > 2)
+	    {
+	      pr_clone_value (&fk_key, &new_key);
+	      new_key.data.midxkey.ncolumns--;
+	      new_key.data.midxkey.domain = pk_bt_scan.btid_int.key_type;
+	    }
+	  else
+	    {
+	      pr_midxkey_get_element_nocopy (&fk_key.data.midxkey, 0, &new_key, NULL, NULL);
+	    }
+	}
+#endif
+
+      if (DB_IS_NULL (fk_key_ptr))
 	{
 	  /* Only way to get this is by having no visible objects in the foreign key. */
 	  /* Must be checked!! */
@@ -4042,12 +4085,23 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
       /* Check for multi col nulls. */
       if (sort_args->n_attrs > 1)
 	{
-	  has_nulls = btree_multicol_key_has_null (&fk_key);
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_3X)
+	  if (has_reserved_index_col && sort_args->n_attrs == 2)
+	    {
+	      has_nulls = DB_IS_NULL (fk_key_ptr);
+	    }
+	  else
+	    {
+	      has_nulls = btree_multicol_key_has_null (fk_key_ptr);
+	    }
+#else
+	  has_nulls = btree_multicol_key_has_null (fk_key_ptr);
+#endif
 	}
       else
 	{
 	  /* TODO: unreachable case */
-	  has_nulls = DB_IS_NULL (&fk_key);
+	  has_nulls = DB_IS_NULL (fk_key_ptr);
 	}
 
       if (has_nulls)
@@ -4091,7 +4145,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  BTID_COPY (&pk_btid, sort_args->fk_refcls_pk_btid);
 
 	  /* Get the correct oid, btid and partition of the key we are looking for. */
-	  ret = partition_prune_partition_index (&pcontext, &fk_key, &pk_clsoid, &pk_btid, &pos);
+	  ret = partition_prune_partition_index (&pcontext, fk_key_ptr, &pk_clsoid, &pk_btid, &pos);
 	  if (ret != NO_ERROR)
 	    {
 	      break;
@@ -4100,7 +4154,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  if (BTID_IS_NULL (&partitions[pos].btid))
 	    {
 	      /* No need to lock individual partitions here, since the partitioned table is already locked */
-	      ret = partition_prune_unique_btid (&pcontext, &fk_key, &pk_clsoid, &pk_dummy_hfid, &pk_btid);
+	      ret = partition_prune_unique_btid (&pcontext, fk_key_ptr, &pk_clsoid, &pk_dummy_hfid, &pk_btid);
 	      if (ret != NO_ERROR)
 		{
 		  break;
@@ -4126,7 +4180,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
       if (pk_bt_scan.C_page == NULL)
 	{
 	  /* No search has been initiated yet, we start from root. */
-	  ret = btree_locate_key (thread_p, &pk_bt_scan.btid_int, &fk_key, &pk_bt_scan.C_vpid, &pk_bt_scan.slot_id,
+	  ret = btree_locate_key (thread_p, &pk_bt_scan.btid_int, fk_key_ptr, &pk_bt_scan.C_vpid, &pk_bt_scan.slot_id,
 				  &pk_bt_scan.C_page, &found);
 	  if (ret != NO_ERROR)
 	    {
@@ -4136,7 +4190,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  else if (!found)
 	    {
 	      /* Value was not found at all, it means the foreign key is invalid. */
-	      val_print = pr_valstring (&fk_key);
+	      val_print = pr_valstring (fk_key_ptr);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 		      (val_print ? val_print : "unknown value"));
 	      ret = ER_FK_INVALID;
@@ -4159,7 +4213,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	      if (!pk_has_slot_visible)
 		{
 		  /* No visible object in current page, but the key was located here. Should not happen often. */
-		  val_print = pr_valstring (&fk_key);
+		  val_print = pr_valstring (fk_key_ptr);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 			  (val_print ? val_print : "unknown value"));
 		  ret = ER_FK_INVALID;
@@ -4191,7 +4245,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 		{
 		  /* The primary key has ended, but the value from foreign key was not found. */
 		  /* Foreign key is invalid. Set error. */
-		  val_print = pr_valstring (&fk_key);
+		  val_print = pr_valstring (fk_key_ptr);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 			  (val_print ? val_print : "unknown value"));
 		  ret = ER_FK_INVALID;
@@ -4200,7 +4254,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 		}
 
 	      /* We need to compare the current value with the new value from the primary key. */
-	      compare_ret = btree_compare_key (&pk_key, &fk_key, pk_bt_scan.btid_int.key_type, 1, 1, NULL);
+	      compare_ret = btree_compare_key (&pk_key, fk_key_ptr, pk_bt_scan.btid_int.key_type, 1, 1, NULL);
 	      if (compare_ret == DB_EQ)
 		{
 		  /* Found value, stop searching in pk. */
@@ -4214,7 +4268,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	      else
 		{
 		  /* Fk is invalid. Set error. */
-		  val_print = pr_valstring (&fk_key);
+		  val_print = pr_valstring (fk_key_ptr);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 			  (val_print ? val_print : "unknown value"));
 		  ret = ER_FK_INVALID;
@@ -4261,6 +4315,10 @@ end:
 
   btree_clear_key_value (&clear_fk_key, &fk_key);
   btree_clear_key_value (&clear_pk_key, &pk_key);
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_3X)
+  pr_clear_value (&new_key);
+#endif
 
   if (clear_pcontext == true)
     {

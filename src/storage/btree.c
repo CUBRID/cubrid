@@ -6029,7 +6029,7 @@ btree_check_remake_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE *
   // ----------------------------------------------------------------------------------
   /* build midxkey */
   midxkey.buf = NULL;
-  midxkey.domain = NULL;	// If you set it to NULL, btree_color_color() will automatically set it.
+  midxkey.domain = NULL;	// If you set it to NULL, btree_prepare_bts() will automatically set it.
   midxkey.ncolumns = 0;
   midxkey.size = 0;
   midxkey.min_max_val.position = num_attrs;

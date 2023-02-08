@@ -4158,7 +4158,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
   SM_ATTRIBUTE **attp;
   const char **namep;
   int i, len, order;
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_KEY_DUP_LEVEL_IGNORE_MODE_LEVEL)
   int new_len = 0;
   int new_index_start, con_index_start;
 #endif
@@ -4218,7 +4218,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	  len++;		/* increase name number */
 	}
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_KEY_DUP_LEVEL_IGNORE_MODE_LEVEL)
       if (func_index_info)
 	{
 	  con_index_start = cons->func_index_info->attr_index_start;
@@ -4262,7 +4262,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 
       for (i = 0; i < len; i++)
 	{
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_KEY_DUP_LEVEL_IGNORE_MODE_LEVEL)
 	  if (i >= new_len)
 	    {
 	      if ((i + 1) == len)
@@ -4303,7 +4303,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	{
 	  /* expr_str are printed tree, identifiers are already lower case */
 	  if ((func_index_info->col_id != cons->func_index_info->col_id)
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_KEY_DUP_LEVEL_IGNORE_MODE_LEVEL)
 	      || (new_index_start != con_index_start)
 #else
 	      || (func_index_info->attr_index_start != cons->func_index_info->attr_index_start)
@@ -6702,6 +6702,14 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate, SM_CLASS_CONSTRAINT * const
 	    {
 	      goto error_exit;
 	    }
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_3X)
+#if !defined(NDEBUG)
+	  if (count > 1 && IS_RESERVED_INDEX_ATTR_NAME (att_names[count - 1]))
+	    {
+	      count--;
+	    }
+#endif
+#endif
 	  assert (count == count_ref);
 	}
       else
