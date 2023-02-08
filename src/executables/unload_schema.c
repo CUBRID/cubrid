@@ -202,7 +202,7 @@ static int emit_foreign_key (print_output & output_ctx, DB_OBJLIST * classes);
 static int emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 static int create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
 			    char *output_filename_p, const size_t filename_size);
-static int create_filename (const char *output_dirname, const char *output_prefix, const char *middle,
+static int create_filename (const char *output_dirname, const char *output_prefix, const char *infix,
 			    const char *suffix, char *output_filename_p, const size_t filename_size);
 static int export_server (print_output & output_ctx);
 static int get_classes (extract_context & ctxt, print_output & output_ctx);
@@ -4047,7 +4047,7 @@ create_filename (const char *output_dirname, const char *output_prefix, const ch
 }
 
 static int
-create_filename (const char *output_dirname, const char *output_prefix, const char *middle, const char *suffix,
+create_filename (const char *output_dirname, const char *output_prefix, const char *infix, const char *suffix,
 		 char *output_filename_p, const size_t filename_size)
 {
   if (output_dirname == NULL)
@@ -4055,14 +4055,14 @@ create_filename (const char *output_dirname, const char *output_prefix, const ch
       output_dirname = ".";
     }
 
-  size_t total = strlen (output_dirname) + strlen (output_prefix) + strlen (middle) + strlen (suffix) + 8;
+  size_t total = strlen (output_dirname) + strlen (output_prefix) + strlen (infix) + strlen (suffix) + 8;
 
   if (total > filename_size)
     {
       return -1;
     }
 
-  snprintf (output_filename_p, filename_size - 1, "%s/%s%s%s", output_dirname, output_prefix, middle, suffix);
+  snprintf (output_filename_p, filename_size - 1, "%s/%s%s%s", output_dirname, output_prefix, infix, suffix);
 
   return 0;
 }
