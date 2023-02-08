@@ -3887,14 +3887,14 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
 	    }
 
 	  temp_size = k + 1;
-	  if (k > i)
+	  if (temp[k] == '0')
+	    {
+	      continue;
+	    }
+	  else if (k >= i)
 	    {
 	      buf[nbuf] = '.';
 	      nbuf++;
-	    }
-	  else
-	    {
-	      continue;
 	    }
 	}
 
