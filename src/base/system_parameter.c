@@ -2213,7 +2213,9 @@ static bool prm_heap_info_cache_logging_default = false;
 static unsigned int prm_heap_info_cache_logging_flag = 0;
 
 int PRM_TDE_DEFAULT_ALGORITHM = TDE_ALGORITHM_AES;
-static int prm_tde_default_algorithm = TDE_ALGORITHM_AES;
+static int prm_tde_algorithm_default = TDE_ALGORITHM_AES;
+static int prm_tde_algorithm_upper = TDE_ALGORITHM_ARIA;
+static int prm_tde_algorithm_lower = TDE_ALGORITHM_NONE;
 static unsigned int prm_tde_default_algorithm_flag = 0;
 
 int PRM_ER_LOG_TDE = false;
@@ -5886,9 +5888,9 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_CLIENT | PRM_FOR_SERVER),
    PRM_KEYWORD,
    &prm_tde_default_algorithm_flag,
-   (void *) &prm_tde_default_algorithm,
+   (void *) &prm_tde_algorithm_default,
    (void *) &PRM_TDE_DEFAULT_ALGORITHM,
-   (void *) NULL, (void *) NULL,
+   (void *) &prm_tde_algorithm_upper, (void *) &prm_tde_algorithm_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

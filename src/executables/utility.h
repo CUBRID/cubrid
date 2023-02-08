@@ -1721,6 +1721,7 @@ extern "C"
   extern INT64 utility_get_option_bigint_value (UTIL_ARG_MAP * arg_map, int arg_ch);
   extern int utility_get_option_string_table_size (UTIL_ARG_MAP * arg_map);
   extern int utility_check_class_name (const char *class_name);
+  extern bool utility_check_system_class_name (const char *class_name);
 
   extern FILE *fopen_ex (const char *filename, const char *type);
 
