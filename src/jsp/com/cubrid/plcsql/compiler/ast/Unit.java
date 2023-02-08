@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
@@ -125,8 +126,7 @@ public class Unit implements AstNode {
                     "      %'PARAMETERS'%",
                     "    ) throws Exception {",
                     "",
-                    // "    Long[] sql_rowcount = new Long[] { -1L };",
-                    "    Integer[] sql_rowcount = new Integer[] { -1 };",
+                    "    Long[] sql_rowcount = new Long[] { -1L };",
                     "    %'GET-CONNECTION'%",
                     "",
                     "    %'DECL-CLASS'%",

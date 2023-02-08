@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
@@ -41,18 +42,18 @@ public class StmtCursorFetch implements Stmt {
         return visitor.visitStmtCursorFetch(this);
     }
 
-    public final ExprId cursor;
+    public final ExprId id;
     public final NodeList<ExprId> intoVars;
 
-    public StmtCursorFetch(ExprId cursor, NodeList<ExprId> intoVars) {
-        this.cursor = cursor;
+    public StmtCursorFetch(ExprId id, NodeList<ExprId> intoVars) {
+        this.id = id;
         this.intoVars = intoVars;
     }
 
     @Override
     public String toJavaCode() {
         String setIntoVarsStr = getSetIntoVarsStr(intoVars);
-        return tmplStmt.replace("%'CURSOR'%", cursor.toJavaCode())
+        return tmplStmt.replace("%'CURSOR'%", id.toJavaCode())
                 .replace("    %'SET-INTO-VARIABLES'%", Misc.indentLines(setIntoVarsStr, 2));
     }
 

@@ -30,14 +30,10 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 public class DeclForRecord extends DeclBase implements DeclId {
-
-    @Override
-    public <R> R accept(AstNodeVisitor<R> visitor) {
-        return visitor.visitDeclForRecord(this);
-    }
 
     public final String name;
 

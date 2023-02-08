@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
@@ -61,6 +62,6 @@ public class CaseStmt implements AstNode {
 
     private static final String tmpl =
             Misc.combineLines(
-                    "if (Objects.equals(selector_%'LEVEL'%, %'VALUE'%)) {",
+                    "if (Boolean.TRUE.equals(opEq(selector_%'LEVEL'%, %'VALUE'%))) {",
                     "  %'STATEMENTS'%", "}");
 }

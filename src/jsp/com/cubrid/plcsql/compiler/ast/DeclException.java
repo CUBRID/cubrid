@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 public class DeclException extends DeclBase {
@@ -54,8 +56,4 @@ public class DeclException extends DeclBase {
     public String toJavaCode() {
         return "class " + name + " extends RuntimeException {}";
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

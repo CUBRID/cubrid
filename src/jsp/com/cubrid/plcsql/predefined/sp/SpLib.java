@@ -252,7 +252,105 @@ public class SpLib {
 
     // ====================================
     // comparison equal
-    public static Boolean opEq(Object l, Object r) {
+    public static Boolean opEq(Boolean l, Boolean r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(BigDecimal l, BigDecimal r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(Short l, Short r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(Integer l, Integer r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(Long l, Long r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(Float l, Float r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(Double l, Double r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(LocalTime l, LocalTime r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(LocalDate l, LocalDate r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(ZonedDateTime l, ZonedDateTime r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(LocalDateTime l, LocalDateTime r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(Set l, Set r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(MultiSet l, MultiSet r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(List l, List r) {
         if (l == null || r == null) {
             return null;
         }

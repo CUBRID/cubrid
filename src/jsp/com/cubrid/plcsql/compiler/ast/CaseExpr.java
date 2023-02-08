@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
@@ -61,5 +62,5 @@ public class CaseExpr implements AstNode {
 
     private static final String tmpl =
             Misc.combineLines(
-                    "Objects.equals(selector_%'LEVEL'%, %'VALUE'%) ?", "  %'EXPRESSION'% :");
+                    "Boolean.TRUE.equals(opEq(selector_%'LEVEL'%, %'VALUE'%)) ?", "  %'EXPRESSION'% :");
 }

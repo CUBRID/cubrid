@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
@@ -42,24 +43,24 @@ public class StmtCursorOpen implements Stmt {
     }
 
     public final int level;
-    public final ExprId cursor;
+    public final ExprId id;
     public final NodeList<Expr> args;
 
-    public StmtCursorOpen(int level, ExprId cursor, NodeList<Expr> args) {
-        assert cursor.decl instanceof DeclCursor;
+    public StmtCursorOpen(int level, ExprId id, NodeList<Expr> args) {
+        assert id.decl instanceof DeclCursor;
 
         this.level = level;
-        this.cursor = cursor;
+        this.id = id;
         this.args = args;
     }
 
     @Override
     public String toJavaCode() {
-        DeclCursor decl = (DeclCursor) cursor.decl;
+        DeclCursor decl = (DeclCursor) id.decl;
         String dupCursorArgStr = getDupCursorArgStr(decl.paramRefCounts);
         String hostValuesStr = getHostValuesStr(decl.usedValuesMap, decl.paramRefCounts);
         return tmplStmt.replace("  %'DUPLICATE-CURSOR-ARG'%", Misc.indentLines(dupCursorArgStr, 1))
-                .replace("  %'CURSOR'%", Misc.indentLines(cursor.toJavaCode(), 1))
+                .replace("  %'CURSOR'%", Misc.indentLines(id.toJavaCode(), 1))
                 .replace("%'HOST-VALUES'%", Misc.indentLines(hostValuesStr, 2, true))
                 .replace("%'LEVEL'%", "" + level);
     }
@@ -113,7 +114,7 @@ public class StmtCursorOpen implements Stmt {
         if (size == 0) {
             return "/* no used host values */";
         } else {
-            DeclCursor decl = (DeclCursor) cursor.decl;
+            DeclCursor decl = (DeclCursor) id.decl;
             StringBuffer sbuf = new StringBuffer();
             for (int i = 0; i < size; i++) {
                 sbuf.append(",\n");

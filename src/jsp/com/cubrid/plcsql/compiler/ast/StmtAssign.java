@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 public class StmtAssign implements Stmt {
@@ -39,17 +40,17 @@ public class StmtAssign implements Stmt {
         return visitor.visitStmtAssign(this);
     }
 
-    public final ExprId target;
+    public final ExprId var;
     public final Expr val;
 
-    public StmtAssign(ExprId target, Expr val) {
-        this.target = target;
+    public StmtAssign(ExprId var, Expr val) {
+        this.var = var;
         this.val = val;
     }
 
     @Override
     public String toJavaCode() {
-        return String.format("%s = %s;", target.toJavaCode(), val.toJavaCode());
+        return String.format("%s = %s;", var.toJavaCode(), val.toJavaCode());
     }
 
     // --------------------------------------------------

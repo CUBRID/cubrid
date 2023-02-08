@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
@@ -65,9 +66,15 @@ public class ExprCase implements Expr {
         ;
     }
 
+    public void setCommonType(TypeSpec ty) {
+        this.commonType = ty;
+    }
+
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
+
+    private TypeSpec commonType;
 
     private static final String tmpl =
             Misc.combineLines(

@@ -30,18 +30,19 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
-public class ExprNum implements Expr {
+public class ExprFloat implements Expr {
 
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {
-        return visitor.visitExprNum(this);
+        return visitor.visitExprFloat(this);
     }
 
     public final String val;
 
-    public ExprNum(String val) {
+    public ExprFloat(String val) {
         this.val = val;
     }
 

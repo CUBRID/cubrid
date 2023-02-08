@@ -135,13 +135,13 @@ public class SymbolStack {
             putDeclTo(predefinedSymbols, "PUT_LINE", dp);
 
             // add constants TODO implement SQLERRM and SQLCODE properly
-            DeclConst dc = new DeclConst("SQLERRM", TypeSpecSimple.of("java.lang.String"), ExprNull.instance());
+            DeclConst dc = new DeclConst("SQLERRM", TypeSpecSimple.of("java.lang.String"), false, ExprNull.SINGLETON);
             putDeclTo(predefinedSymbols, "SQLERRM", dc);
 
-            dc = new DeclConst("SQLCODE", TypeSpecSimple.of("java.lang.Integer"), ExprNull.instance());
+            dc = new DeclConst("SQLCODE", TypeSpecSimple.of("java.lang.Integer"), false, ExprNull.SINGLETON);
             putDeclTo(predefinedSymbols, "SQLCODE", dc);
 
-            dc = new DeclConst("SYSDATE", TypeSpecSimple.of("java.time.LocalDate"), ExprNull.instance());
+            dc = new DeclConst("SYSDATE", TypeSpecSimple.of("java.time.LocalDate"), false, ExprNull.SINGLETON);
             putDeclTo(predefinedSymbols, "SYSDATE", dc);
         }
     }
@@ -170,13 +170,13 @@ public class SymbolStack {
         overload.put(df);
     }
 
-    static DeclFunc getOperator(String name, List<TypeSpec> argTypes) {
+    public static DeclFunc getOperator(String name, TypeSpec... argTypes) {
 
         OverloadedFunc overload = operators.get(name);
         if (overload == null) {
             return null;
         } else {
-            return overload.get(argTypes);
+            return overload.get(Arrays.asList(argTypes));
         }
     }
 

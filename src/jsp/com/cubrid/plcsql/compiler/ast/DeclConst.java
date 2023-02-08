@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 public class DeclConst extends DeclBase implements DeclVarLike {
@@ -41,13 +42,15 @@ public class DeclConst extends DeclBase implements DeclVarLike {
 
     public final String name;
     public final TypeSpec typeSpec;
+    public final boolean notNull;
     public final Expr val;
 
-    public DeclConst(String name, TypeSpec typeSpec, Expr val) {
+    public DeclConst(String name, TypeSpec typeSpec, boolean notNull, Expr val) {
         assert val != null;
 
         this.name = name;
         this.typeSpec = typeSpec;
+        this.notNull = notNull;
         this.val = val;
     }
 

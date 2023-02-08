@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 public class ExprFalse implements Expr {
@@ -39,11 +40,7 @@ public class ExprFalse implements Expr {
         return visitor.visitExprFalse(this);
     }
 
-    public static ExprFalse instance() {
-        return singleton;
-    }
-
-    private static ExprFalse singleton = new ExprFalse();
+    public static final ExprFalse SINGLETON = new ExprFalse();
 
     private ExprFalse() {}
 

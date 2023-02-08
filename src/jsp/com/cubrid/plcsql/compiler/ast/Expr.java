@@ -30,4 +30,10 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public interface Expr extends AstNode {}
+import com.cubrid.plcsql.compiler.Coerce;
+
+public interface Expr extends AstNode {
+    default void setCoerce(Coerce c) {
+        // TODO
+    }
+}

@@ -31,94 +31,307 @@
 package com.cubrid.plcsql.compiler.visitor;
 
 import com.cubrid.plcsql.compiler.ast.*;
+import com.cubrid.plcsql.compiler.SemanticError;
 
 public class AstNodeVisitor<R> {
-    public R visit(AstNode node) { return node.accept(this); }
+    public R visit(AstNode node) {
+        return node.accept(this);
+    }
+    public <E extends AstNode> TypeSpec visitNodeList(NodeList<E> nodeList) {
+        for (E e: nodeList.nodes) {
+            visit(e);
+        }
+        return null;
+    }
 
-    public R visitUnit(Unit node) { return null; }
-    public R visitBody(Body node) { return null; }
+    public R visitUnit(Unit node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitBody(Body node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
 
-    public R visitExHandler(ExHandler node) { return null; }
-    public R visitExName(ExName node) { return null; }
+    public R visitExHandler(ExHandler node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExName(ExName node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
 
-    public R visitTypeSpecNumeric(TypeSpecNumeric node) { return null; }
-    public R visitTypeSpecPercent(TypeSpecPercent node) { return null; }
-    public R visitTypeSpecSimple(TypeSpecSimple node) { return null; }
+    public R visitTypeSpecNumeric(TypeSpecNumeric node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitTypeSpecPercent(TypeSpecPercent node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitTypeSpecSimple(TypeSpecSimple node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
 
-    public R visitCaseExpr(CaseExpr node) { return null; }
-    public R visitCaseStmt(CaseStmt node) { return null; }
-    public R visitCondExpr(CondExpr node) { return null; }
-    public R visitCondStmt(CondStmt node) { return null; }
+    public R visitCaseExpr(CaseExpr node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitCaseStmt(CaseStmt node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitCondExpr(CondExpr node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitCondStmt(CondStmt node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
 
-    public R visitDeclParamIn(DeclParamIn node) { return null; }
-    public R visitDeclParamOut(DeclParamOut node) { return null; }
+    public R visitDeclParamIn(DeclParamIn node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitDeclParamOut(DeclParamOut node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
 
-    public R visitDeclVar(DeclVar node) { return null; }
-    public R visitDeclConst(DeclConst node) { return null; }
+    public R visitDeclVar(DeclVar node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitDeclConst(DeclConst node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
 
-    public R visitDeclFunc(DeclFunc node) { return null; }
-    public R visitDeclProc(DeclProc node) { return null; }
+    public R visitDeclFunc(DeclFunc node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitDeclProc(DeclProc node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
 
-    public R visitDeclCursor(DeclCursor node) { return null; }
-    public R visitDeclForIter(DeclForIter node) { return null; }
-    public R visitDeclForRecord(DeclForRecord node) { return null; }
+    public R visitDeclCursor(DeclCursor node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitDeclLabel(DeclLabel node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitDeclException(DeclException node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
 
-    public R visitDeclLabel(DeclLabel node) { return null; }
-    public R visitDeclException(DeclException node) { return null; }
+    public R visitExprBetween(ExprBetween node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprBinaryOp(ExprBinaryOp node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprCase(ExprCase node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprCond(ExprCond node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprCursorAttr(ExprCursorAttr node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprDate(ExprDate node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprDatetime(ExprDatetime node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprFalse(ExprFalse node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprField(ExprField node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprGlobalFuncCall(ExprGlobalFuncCall node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprId(ExprId node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprIn(ExprIn node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprLike(ExprLike node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprList(ExprList node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprLocalFuncCall(ExprLocalFuncCall node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprNull(ExprNull node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprUint(ExprUint node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprFloat(ExprFloat node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprSerialVal(ExprSerialVal node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprSqlRowCount(ExprSqlRowCount node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprStr(ExprStr node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprTime(ExprTime node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprTrue(ExprTrue node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprUnaryOp(ExprUnaryOp node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitExprZonedDateTime(ExprZonedDateTime node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
 
-    public R visitExprBetween(ExprBetween node) { return null; }
-    public R visitExprBinaryOp(ExprBinaryOp node) { return null; }
-    public R visitExprCase(ExprCase node) { return null; }
-    public R visitExprCast(ExprCast node) { return null; }
-    public R visitExprCond(ExprCond node) { return null; }
-    public R visitExprCursorAttr(ExprCursorAttr node) { return null; }
-    public R visitExprDate(ExprDate node) { return null; }
-    public R visitExprDatetime(ExprDatetime node) { return null; }
-    public R visitExprFalse(ExprFalse node) { return null; }
-    public R visitExprField(ExprField node) { return null; }
-    public R visitExprGlobalFuncCall(ExprGlobalFuncCall node) { return null; }
-    public R visitExprId(ExprId node) { return null; }
-    public R visitExprIn(ExprIn node) { return null; }
-    public R visitExprLike(ExprLike node) { return null; }
-    public R visitExprList(ExprList node) { return null; }
-    public R visitExprLocalFuncCall(ExprLocalFuncCall node) { return null; }
-    public R visitExprNull(ExprNull node) { return null; }
-    public R visitExprNum(ExprNum node) { return null; }
-    public R visitExprSerialVal(ExprSerialVal node) { return null; }
-    public R visitExprSqlRowCount(ExprSqlRowCount node) { return null; }
-    public R visitExprStr(ExprStr node) { return null; }
-    public R visitExprTime(ExprTime node) { return null; }
-    public R visitExprTrue(ExprTrue node) { return null; }
-    public R visitExprUnaryOp(ExprUnaryOp node) { return null; }
-    public R visitExprZonedDateTime(ExprZonedDateTime node) { return null; }
+    public R visitStmtAssign(StmtAssign node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtBasicLoop(StmtBasicLoop node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtBlock(StmtBlock node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtBreak(StmtBreak node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtCase(StmtCase node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtCommit(StmtCommit node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtContinue(StmtContinue node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtCursorClose(StmtCursorClose node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtCursorFetch(StmtCursorFetch node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtCursorOpen(StmtCursorOpen node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtExecImme(StmtExecImme node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtForCursorLoop(StmtForCursorLoop node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtForIterLoop(StmtForIterLoop node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtForSqlLoop(StmtForSqlLoop node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtGlobalProcCall(StmtGlobalProcCall node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtIf(StmtIf node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtLocalProcCall(StmtLocalProcCall node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtNull(StmtNull node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtOpenFor(StmtOpenFor node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtRaise(StmtRaise node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtRaiseAppErr(StmtRaiseAppErr node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtReturn(StmtReturn node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtRollback(StmtRollback node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
+    public R visitStmtWhileLoop(StmtWhileLoop node) {
+        assert false: "not overriden";
+        throw new RuntimeException("not overriden");
+    }
 
-    public R visitStmtAssign(StmtAssign node) { return null; }
-    public R visitStmtBasicLoop(StmtBasicLoop node) { return null; }
-    public R visitStmtBlock(StmtBlock node) { return null; }
-    public R visitStmtBreak(StmtBreak node) { return null; }
-    public R visitStmtCase(StmtCase node) { return null; }
-    public R visitStmtCommit(StmtCommit node) { return null; }
-    public R visitStmtContinue(StmtContinue node) { return null; }
-    public R visitStmtCursorClose(StmtCursorClose node) { return null; }
-    public R visitStmtCursorFetch(StmtCursorFetch node) { return null; }
-    public R visitStmtCursorOpen(StmtCursorOpen node) { return null; }
-    public R visitStmtExecImme(StmtExecImme node) { return null; }
-    public R visitStmtForCursorLoop(StmtForCursorLoop node) { return null; }
-    public R visitStmtForIterLoop(StmtForIterLoop node) { return null; }
-    public R visitStmtForSqlLoop(StmtForSqlLoop node) { return null; }
-    public R visitStmtGlobalProcCall(StmtGlobalProcCall node) { return null; }
-    public R visitStmtIf(StmtIf node) { return null; }
-    public R visitStmtLocalProcCall(StmtLocalProcCall node) { return null; }
-    public R visitStmtNull(StmtNull node) { return null; }
-    public R visitStmtOpenFor(StmtOpenFor node) { return null; }
-    public R visitStmtRaise(StmtRaise node) { return null; }
-    public R visitStmtRaiseAppErr(StmtRaiseAppErr node) { return null; }
-    public R visitStmtReturn(StmtReturn node) { return null; }
-    public R visitStmtRollback(StmtRollback node) { return null; }
-    public R visitStmtSql(StmtSql node) { return null; }
-    public R visitStmtWhileLoop(StmtWhileLoop node) { return null; }
-
-    /* no need to visit the following super classes
+    /* no need to visit the following classes
+    # super classes/inteerfaces
     AstNode
     NodeList
     Decl
@@ -131,8 +344,14 @@ public class AstNodeVisitor<R> {
     Stmt
     TypeSpec
 
+    # actually no ast nodes
+    DeclForIter
+    DeclForRecord
+
+    # dummies
     DummyExpr
     DummyStmt
+    ExprCast
      */
 }
 

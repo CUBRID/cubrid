@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
@@ -41,22 +42,19 @@ public class StmtForCursorLoop extends StmtCursorOpen {
         return visitor.visitStmtForCursorLoop(this);
     }
 
-    // public final int level;
-    // public final ExprId cursor;
-    // public final NodeList<Expr> args;
     public final String label;
     public final String record;
     public final NodeList<Stmt> stmts;
 
     public StmtForCursorLoop(
             int level,
-            ExprId cursor,
+            ExprId id,
             NodeList<Expr> args,
             String label,
             String record,
             NodeList<Stmt> stmts) {
 
-        super(level, cursor, args);
+        super(level, id, args);
 
         this.label = label;
         this.record = record;
@@ -65,11 +63,11 @@ public class StmtForCursorLoop extends StmtCursorOpen {
 
     @Override
     public String toJavaCode() {
-        DeclCursor decl = (DeclCursor) cursor.decl;
+        DeclCursor decl = (DeclCursor) id.decl;
         String dupCursorArgStr = getDupCursorArgStr(decl.paramRefCounts);
         String hostValuesStr = getHostValuesStr(decl.usedValuesMap, decl.paramRefCounts);
         return tmplStmt.replace("  %'DUPLICATE-CURSOR-ARG'%", Misc.indentLines(dupCursorArgStr, 1))
-                .replace("%'CURSOR'%", cursor.toJavaCode())
+                .replace("%'CURSOR'%", id.toJavaCode())
                 .replace("%'HOST-VALUES'%", Misc.indentLines(hostValuesStr, 2, true))
                 .replace("%'RECORD'%", record)
                 .replace("%'LABEL'%", label == null ? "// no label" : label + "_%'LEVEL'%:")

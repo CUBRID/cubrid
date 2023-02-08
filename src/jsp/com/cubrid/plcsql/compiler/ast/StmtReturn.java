@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 public class StmtReturn implements Stmt {
@@ -40,9 +41,11 @@ public class StmtReturn implements Stmt {
     }
 
     public final Expr retVal;
+    public final TypeSpec retType;
 
-    public StmtReturn(Expr retVal) {
+    public StmtReturn(Expr retVal, TypeSpec retType) {
         this.retVal = retVal;
+        this.retType = retType;
     }
 
     @Override
@@ -53,8 +56,4 @@ public class StmtReturn implements Stmt {
             return "return " + retVal.toJavaCode() + ";";
         }
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

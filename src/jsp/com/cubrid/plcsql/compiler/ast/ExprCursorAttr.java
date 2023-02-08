@@ -30,26 +30,40 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 public class ExprCursorAttr implements Expr {
+
+    public enum Attr {
+        ISOPEN("isOpen"),
+        FOUND("found"),
+        NOTFOUND("notFound"),
+        ROWCOUNT("rowCount");
+
+        Attr(String method) {
+            this.method = method;
+        }
+
+        private String method;
+    }
 
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {
         return visitor.visitExprCursorAttr(this);
     }
 
-    public final ExprId cursor;
-    public final String attribute;
+    public final ExprId id;
+    public final Attr attr;
 
-    public ExprCursorAttr(ExprId cursor, String attribute) {
-        this.cursor = cursor;
-        this.attribute = attribute;
+    public ExprCursorAttr(ExprId id, Attr attr) {
+        this.id = id;
+        this.attr = attr;
     }
 
     @Override
     public String toJavaCode() {
-        return cursor.toJavaCode() + "." + attribute + "()";
+        return id.toJavaCode() + "." + attr.method + "()";
     }
 
     // --------------------------------------------------

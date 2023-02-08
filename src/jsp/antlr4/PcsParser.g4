@@ -304,7 +304,7 @@ in_expression
 
 like_expression
     : is_null_expression                                                    # like_expression_prime
-    | like_expression NOT? LIKE like_expression (ESCAPE like_expression)?   # like_exp
+    | like_expression NOT? LIKE quoted_string (ESCAPE quoted_string)?   # like_exp
     ;
 
 is_null_expression
@@ -496,8 +496,8 @@ argument
     ;
 
 type_spec
-    : native_datatype                           # native_type_spec
-    | (table_name '.')? identifier PERCENT_TYPE   # percent_type_spec
+    : native_datatype                               # native_type_spec
+    | (table_name '.')? identifier PERCENT_TYPE     # percent_type_spec
     ;
 
 native_datatype

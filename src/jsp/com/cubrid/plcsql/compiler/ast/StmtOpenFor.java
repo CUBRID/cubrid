@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
@@ -41,19 +42,19 @@ public class StmtOpenFor implements Stmt {
         return visitor.visitStmtOpenFor(this);
     }
 
-    public final ExprId refCursor;
+    public final ExprId id;
     public final ExprStr sql;
     public final NodeList<ExprId> usedVars;
 
-    public StmtOpenFor(ExprId refCursor, ExprStr sql, NodeList<ExprId> usedVars) {
-        this.refCursor = refCursor;
+    public StmtOpenFor(ExprId id, ExprStr sql, NodeList<ExprId> usedVars) {
+        this.id = id;
         this.sql = sql;
         this.usedVars = usedVars;
     }
 
     @Override
     public String toJavaCode() {
-        return tmplStmt.replace("%'REF-CURSOR'%", refCursor.toJavaCode())
+        return tmplStmt.replace("%'REF-CURSOR'%", id.toJavaCode())
                 .replace("%'QUERY'%", sql.toJavaCode())
                 .replace("    %'HOST-VARIABLES'%", Misc.indentLines(usedVars.toJavaCode(",\n"), 2));
     }

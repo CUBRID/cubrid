@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 public class StmtCursorClose implements Stmt {
@@ -39,15 +40,15 @@ public class StmtCursorClose implements Stmt {
         return visitor.visitStmtCursorClose(this);
     }
 
-    public final ExprId cursor;
+    public final ExprId id;
 
-    public StmtCursorClose(ExprId cursor) {
-        this.cursor = cursor;
+    public StmtCursorClose(ExprId id) {
+        this.id = id;
     }
 
     @Override
     public String toJavaCode() {
-        return cursor.toJavaCode() + ".close();";
+        return id.toJavaCode() + ".close();";
     }
 
     // --------------------------------------------------

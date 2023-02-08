@@ -30,15 +30,16 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+import com.cubrid.plcsql.compiler.SemanticError;
 
 public interface AstNode {
 
     public String toJavaCode();
 
     public default <R> R accept(AstNodeVisitor<R> visitor) {
-        assert false: "accept not overriden";
-        throw new RuntimeException("accept not overriden");
+        assert false: "accept not overriden for " + getClass().getSimpleName();
+        throw new RuntimeException("accept not overriden for " + getClass().getSimpleName());
     }
-
 }

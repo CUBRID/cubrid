@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
@@ -55,9 +56,15 @@ public class ExprCond implements Expr {
                 .replace("%'ELSE-PART'%", elsePart == null ? "null" : elsePart.toJavaCode());
     }
 
+    public void setCommonType(TypeSpec ty) {
+        this.commonType = ty;
+    }
+
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
+
+    private TypeSpec commonType;
 
     private static final String tmpl = Misc.combineLines("(%'COND-PARTS'%", "%'ELSE-PART'%)");
 }

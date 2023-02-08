@@ -167,36 +167,36 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (ctx == null) {
             return null;
         }
-        return visitExpression(ctx.expression(), null);
+        return visitExpression(ctx.expression());
     }
 
     @Override
     public Expr visitAnd_exp(And_expContext ctx) {
-        Expr l = visitExpression(ctx.expression(0), "Boolean");
-        Expr r = visitExpression(ctx.expression(1), "Boolean");
+        Expr l = visitExpression(ctx.expression(0));
+        Expr r = visitExpression(ctx.expression(1));
 
         return new ExprBinaryOp("And", l, r);
     }
 
     @Override
     public Expr visitOr_exp(Or_expContext ctx) {
-        Expr l = visitExpression(ctx.expression(0), "Boolean");
-        Expr r = visitExpression(ctx.expression(1), "Boolean");
+        Expr l = visitExpression(ctx.expression(0));
+        Expr r = visitExpression(ctx.expression(1));
 
         return new ExprBinaryOp("Or", l, r);
     }
 
     @Override
     public Expr visitXor_exp(Xor_expContext ctx) {
-        Expr l = visitExpression(ctx.expression(0), "Boolean");
-        Expr r = visitExpression(ctx.expression(1), "Boolean");
+        Expr l = visitExpression(ctx.expression(0));
+        Expr r = visitExpression(ctx.expression(1));
 
         return new ExprBinaryOp("Xor", l, r);
     }
 
     @Override
     public Expr visitNot_exp(Not_expContext ctx) {
-        Expr o = visitExpression(ctx.unary_logical_expression(), "Boolean");
+        Expr o = visitExpression(ctx.unary_logical_expression());
         return new ExprUnaryOp("Not", o);
     }
 
@@ -239,15 +239,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             ty = "Object";
         }
 
-        Expr l = visitExpression(ctx.relational_expression(0), ty);
-        Expr r = visitExpression(ctx.relational_expression(1), ty);
+        Expr l = visitExpression(ctx.relational_expression(0));
+        Expr r = visitExpression(ctx.relational_expression(1));
 
         return new ExprBinaryOp(opStr, l, r);
     }
 
     @Override
     public Expr visitIs_null_exp(Is_null_expContext ctx) {
-        Expr o = visitExpression(ctx.is_null_expression(), "Object");
+        Expr o = visitExpression(ctx.is_null_expression());
 
         Expr expr = new ExprUnaryOp("IsNull", o);
         return ctx.NOT() == null ? expr : new ExprUnaryOp("Not", expr);
@@ -255,11 +255,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitBetween_exp(Between_expContext ctx) {
-        Expr target = visitExpression(ctx.between_expression(), "Integer"); // TODO
+        Expr target = visitExpression(ctx.between_expression()); // TODO
         Expr lowerBound =
-                visitExpression(ctx.between_elements().between_expression(0), "Integer"); // TODO
+                visitExpression(ctx.between_elements().between_expression(0)); // TODO
         Expr upperBound =
-                visitExpression(ctx.between_elements().between_expression(1), "Integer"); // TODO
+                visitExpression(ctx.between_elements().between_expression(1)); // TODO
 
         Expr expr = new ExprBetween(target, lowerBound, upperBound);
         return ctx.NOT() == null ? expr : new ExprUnaryOp("Not", expr);
@@ -267,7 +267,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitIn_exp(In_expContext ctx) {
-        Expr target = visitExpression(ctx.in_expression(), "Object");
+        Expr target = visitExpression(ctx.in_expression());
         NodeList<Expr> inElements = visitIn_elements(ctx.in_elements());
 
         Expr expr = new ExprIn(target, inElements);
@@ -280,7 +280,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         NodeList<Expr> ret = new NodeList<>();
 
         for (In_expressionContext e : ctx.in_expression()) {
-            ret.addNode(visitExpression(e, "Object"));
+            ret.addNode(visitExpression(e));
         }
 
         return ret;
@@ -288,9 +288,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitLike_exp(Like_expContext ctx) {
-        Expr target = visitExpression(ctx.like_expression(0), "String");
-        Expr pattern = visitExpression(ctx.like_expression(1), "String");
-        Expr escape = visitExpression(ctx.like_expression(2), "String");
+        Expr target = visitExpression(ctx.like_expression());
+        ExprStr pattern = (ExprStr) visitExpression(ctx.quoted_string(0));
+        ExprStr escape = (ExprStr) visitExpression(ctx.quoted_string(1));
+
+        if (escape != null && escape.val.length() != 1) {
+            throw new SemanticError("the escape does not consist of a single character");
+        }
 
         Expr expr = new ExprLike(target, pattern, escape);
         return ctx.NOT() == null ? expr : new ExprUnaryOp("Not", expr);
@@ -298,8 +302,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitMult_exp(Mult_expContext ctx) {
-        Expr l = visitExpression(ctx.concatenation(0), "Integer");
-        Expr r = visitExpression(ctx.concatenation(1), "Integer");
+        Expr l = visitExpression(ctx.concatenation(0));
+        Expr r = visitExpression(ctx.concatenation(1));
         String opStr =
                 ctx.ASTERISK() != null
                         ? "Mult"
@@ -323,15 +327,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         String castTy = opStr.equals("Concat") ? "Object" : "Integer";
 
-        Expr l = visitExpression(ctx.concatenation(0), castTy);
-        Expr r = visitExpression(ctx.concatenation(1), castTy);
+        Expr l = visitExpression(ctx.concatenation(0));
+        Expr r = visitExpression(ctx.concatenation(1));
 
         return new ExprBinaryOp(opStr, l, r);
     }
 
     @Override
     public Expr visitSign_exp(Sign_expContext ctx) {
-        Expr o = visitExpression(ctx.unary_expression(), "Integer");
+        Expr o = visitExpression(ctx.unary_expression());
 
         Expr ret =
                 ctx.PLUS_SIGN() != null
@@ -344,14 +348,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitBit_compli_exp(Bit_compli_expContext ctx) {
-        Expr o = visitExpression(ctx.unary_expression(), "Integer");
+        Expr o = visitExpression(ctx.unary_expression());
         return new ExprUnaryOp("BitCompli", o);
     }
 
     @Override
     public Expr visitBit_shift_exp(Bit_shift_expContext ctx) {
-        Expr l = visitExpression(ctx.concatenation(0), "Integer");
-        Expr r = visitExpression(ctx.concatenation(1), "Integer");
+        Expr l = visitExpression(ctx.concatenation(0));
+        Expr r = visitExpression(ctx.concatenation(1));
         String opStr =
                 ctx.LT2() != null ? "BitShiftLeft" : ctx.GT2() != null ? "BitShiftRight" : null;
         assert opStr != null;
@@ -361,22 +365,22 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitBit_and_exp(Bit_and_expContext ctx) {
-        Expr l = visitExpression(ctx.concatenation(0), "Integer");
-        Expr r = visitExpression(ctx.concatenation(1), "Integer");
+        Expr l = visitExpression(ctx.concatenation(0));
+        Expr r = visitExpression(ctx.concatenation(1));
         return new ExprBinaryOp("BitAnd", l, r);
     }
 
     @Override
     public Expr visitBit_xor_exp(Bit_xor_expContext ctx) {
-        Expr l = visitExpression(ctx.concatenation(0), "Integer");
-        Expr r = visitExpression(ctx.concatenation(1), "Integer");
+        Expr l = visitExpression(ctx.concatenation(0));
+        Expr r = visitExpression(ctx.concatenation(1));
         return new ExprBinaryOp("BitXor", l, r);
     }
 
     @Override
     public Expr visitBit_or_exp(Bit_or_expContext ctx) {
-        Expr l = visitExpression(ctx.concatenation(0), "Integer");
-        Expr r = visitExpression(ctx.concatenation(1), "Integer");
+        Expr l = visitExpression(ctx.concatenation(0));
+        Expr r = visitExpression(ctx.concatenation(1));
         return new ExprBinaryOp("BitOr", l, r);
     }
 
@@ -443,10 +447,27 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
      */
 
     @Override
-    public Expr visitUint_exp(Uint_expContext ctx) {
+    public ExprUint visitUint_exp(Uint_expContext ctx) {
         try {
             BigInteger bi = new BigInteger(ctx.UNSIGNED_INTEGER().getText());
-            return new ExprNum(bi.toString());
+
+            // do not allow an unsinged integer literal beyond the range of bigint  TODO: confirm this
+            try {
+                long l = bi.longValueExact();
+            } catch (ArithmeticException e) {
+                throw new SemanticError(String.format(
+                    "unsigned integer literal %s has a too large value beyond the range of BIGINT",
+                    ctx.UNSIGNED_INTEGER().getText()));
+            }
+
+            boolean big = false;
+            try {
+                long l = bi.intValueExact();
+            } catch (ArithmeticException e) {
+                big = true;
+            }
+
+            return new ExprUint(bi.toString(), big);
         } catch (NumberFormatException e) {
             assert false : "invalid integer: " + ctx.UNSIGNED_INTEGER().getText();
             throw new RuntimeException("unreachable");
@@ -454,10 +475,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public Expr visitFp_num_exp(Fp_num_expContext ctx) {
+    public ExprFloat visitFp_num_exp(Fp_num_expContext ctx) {
         try {
             BigDecimal bd = new BigDecimal(ctx.FLOATING_POINT_NUM().getText());
-            return new ExprNum(bd.toString());
+            return new ExprFloat(bd.toString());
         } catch (NumberFormatException e) {
             assert false : "invalid floating point number: " + ctx.FLOATING_POINT_NUM().getText();
             throw new RuntimeException("unreachable");
@@ -472,17 +493,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitNull_exp(Null_expContext ctx) {
-        return ExprNull.instance();
+        return ExprNull.SINGLETON;
     }
 
     @Override
     public Expr visitTrue_exp(True_expContext ctx) {
-        return ExprTrue.instance();
+        return ExprTrue.SINGLETON;
     }
 
     @Override
     public Expr visitFalse_exp(False_expContext ctx) {
-        return ExprFalse.instance();
+        return ExprFalse.SINGLETON;
     }
 
     @Override
@@ -519,7 +540,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
             Scope scope = symbolStack.getCurrentScope();
             ExprId record = new ExprId(name, scope, decl);
-            return new ExprCast(new ExprField(record, fieldName));
+            return new ExprField(record, fieldName);
         }
     }
 
@@ -546,7 +567,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             int level = symbolStack.getCurrentScope().level + 1;
             ExprGlobalFuncCall ret = new ExprGlobalFuncCall(level, name, args);
 
-            return new ExprCast(ret);
+            return ret;
         } else {
             assert (decl.paramList != null && decl.paramList.nodes.size() > 0)
                             == (args != null && args.nodes.size() > 0)
@@ -599,8 +620,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         NodeList<CondExpr> condParts = new NodeList<>();
         for (Searched_case_expression_when_partContext c :
                 ctx.searched_case_expression_when_part()) {
-            Expr cond = visitExpression(c.expression(0), "Boolean");
-            Expr expr = visitExpression(c.expression(1), "Object");
+            Expr cond = visitExpression(c.expression(0));
+            Expr expr = visitExpression(c.expression(1));
             condParts.addNode(new CondExpr(cond, expr));
         }
 
@@ -608,10 +629,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (ctx.case_expression_else_part() == null) {
             elsePart = null;
         } else {
-            elsePart = visitExpression(ctx.case_expression_else_part().expression(), "Object");
+            elsePart = visitExpression(ctx.case_expression_else_part().expression());
         }
 
-        return new ExprCast(new ExprCond(condParts, elsePart));
+        return new ExprCond(condParts, elsePart);
     }
 
     @Override
@@ -620,12 +641,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.pushSymbolTable("case_expr", null);
         int level = symbolStack.getCurrentScope().level;
 
-        Expr selector = visitExpression(ctx.expression(), "Object");
+        Expr selector = visitExpression(ctx.expression());
 
         NodeList<CaseExpr> whenParts = new NodeList<>();
         for (Simple_case_expression_when_partContext c : ctx.simple_case_expression_when_part()) {
-            Expr val = visitExpression(c.expression(0), "Object");
-            Expr expr = visitExpression(c.expression(1), "Object");
+            Expr val = visitExpression(c.expression(0));
+            Expr expr = visitExpression(c.expression(1));
             whenParts.addNode(new CaseExpr(val, expr));
         }
 
@@ -633,7 +654,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (ctx.case_expression_else_part() == null) {
             elsePart = null;
         } else {
-            elsePart = visitExpression(ctx.case_expression_else_part().expression(), "Object");
+            elsePart = visitExpression(ctx.case_expression_else_part().expression());
         }
 
         symbolStack.popSymbolTable();
@@ -641,7 +662,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (whenParts.nodes.size() > 0) {
             addToImports("java.util.Objects");
         }
-        return new ExprCast(new ExprCase(level, selector, whenParts, elsePart));
+        return new ExprCase(level, selector, whenParts, elsePart);
     }
 
     @Override
@@ -655,17 +676,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         Scope scope = symbolStack.getCurrentScope();
 
-        String attribute =
+        ExprCursorAttr.Attr attr =
                 ctx.PERCENT_ISOPEN() != null
-                        ? "isOpen"
+                        ? ExprCursorAttr.Attr.ISOPEN
                         : ctx.PERCENT_FOUND() != null
-                                ? "found"
+                                ? ExprCursorAttr.Attr.FOUND
                                 : ctx.PERCENT_NOTFOUND() != null
-                                        ? "notFound"
-                                        : ctx.PERCENT_ROWCOUNT() != null ? "rowCount" : null;
-        assert attribute != null;
+                                        ? ExprCursorAttr.Attr.NOTFOUND
+                                        : ctx.PERCENT_ROWCOUNT() != null ? ExprCursorAttr.Attr.ROWCOUNT : null;
+        assert attr != null;
 
-        return new ExprCursorAttr(new ExprId(name, scope, decl), attribute);
+        return new ExprCursorAttr(new ExprId(name, scope, decl), attr);
     }
 
     @Override
@@ -675,7 +696,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitParen_exp(Paren_expContext ctx) {
-        return visitExpression(ctx.expression(), null);
+        return visitExpression(ctx.expression());
     }
 
     @Override
@@ -746,7 +767,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             ((ExprCast) val).setTargetType(ty.name);
         }
 
-        DeclConst ret = new DeclConst(name, ty, val);
+        DeclConst ret = new DeclConst(name, ty, ctx.NOT() != null, val);
         symbolStack.putDecl(name, ret);
 
         return ret;
@@ -773,7 +794,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             ((ExprCast) val).setTargetType(ty.name);
         }
 
-        DeclVar ret = new DeclVar(name, ty, val);
+        DeclVar ret = new DeclVar(name, ty, ctx.NOT() != null, val);
         symbolStack.putDecl(name, ret);
 
         return ret;
@@ -906,19 +927,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public StmtAssign visitAssignment_statement(Assignment_statementContext ctx) {
 
         Expr e = visitIdentifier(ctx.assignment_target().identifier());
-        assert e instanceof ExprId: "assignment target must be an id";
-        ExprId target = (ExprId) e;
-        assert target.decl instanceof DeclVar || target.decl instanceof DeclParamOut
-                : target.decl.kind()
+        assert e instanceof ExprId: "assignment target variable must be an id";
+        ExprId var = (ExprId) e;
+        assert var.decl instanceof DeclVar || var.decl instanceof DeclParamOut
+                : var.decl.kind()
                         + " "
-                        + target.name
-                        + " cannot be used as a target of an assignment";
+                        + var.name
+                        + " cannot be used as a var of an assignment";
 
-        String targetType = ((DeclVarLike) target.decl).typeSpec().name;
+        Expr val = visitExpression(ctx.expression());
 
-        Expr val = visitExpression(ctx.expression(), targetType);
-
-        return new StmtAssign(target, val);
+        return new StmtAssign(var, val);
     }
 
     @Override
@@ -934,7 +953,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             addToImports("java.sql.*");
 
             int level = symbolStack.getCurrentScope().level + 1;
-            return new ExprCast(new ExprGlobalFuncCall(level, name, null));
+            return new ExprGlobalFuncCall(level, name, null);
         } else if (decl instanceof DeclId) {
             Scope scope = symbolStack.getCurrentScope();
             return new ExprId(name, scope, (DeclId) decl);
@@ -950,6 +969,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitContinue_statement(Continue_statementContext ctx) {
 
+        // TODO: check if this continue is in a loop
+
         Label_nameContext lnc = ctx.label_name();
         DeclLabel declLabel;
         if (lnc == null) {
@@ -963,7 +984,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (ctx.expression() == null) {
             return new StmtContinue(declLabel);
         } else {
-            Expr cond = visitExpression(ctx.expression(), "Boolean");
+            Expr cond = visitExpression(ctx.expression());
             return new CondStmt(cond, new StmtContinue(declLabel));
         }
     }
@@ -971,8 +992,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitExit_statement(Exit_statementContext ctx) {
 
-        Label_nameContext lnc = ctx.label_name();
+        // TODO: check if this exit is in a loop
+
         DeclLabel declLabel;
+        Label_nameContext lnc = ctx.label_name();
         if (lnc == null) {
             declLabel = null;
         } else {
@@ -984,7 +1007,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (ctx.expression() == null) {
             return new StmtBreak(declLabel);
         } else {
-            Expr cond = visitExpression(ctx.expression(), "Boolean");
+            Expr cond = visitExpression(ctx.expression());
             return new CondStmt(cond, new StmtBreak(declLabel));
         }
     }
@@ -994,12 +1017,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         NodeList<CondStmt> condParts = new NodeList<>();
 
-        Expr cond = visitExpression(ctx.expression(), "Boolean");
+        Expr cond = visitExpression(ctx.expression());
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
         condParts.addNode(new CondStmt(cond, stmts));
 
         for (Elsif_partContext c : ctx.elsif_part()) {
-            cond = visitExpression(c.expression(), "Boolean");
+            cond = visitExpression(c.expression());
             stmts = visitSeq_of_statements(c.seq_of_statements());
             condParts.addNode(new CondStmt(cond, stmts));
         }
@@ -1053,7 +1076,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             symbolStack.putDecl(declLabel.name, declLabel);
         }
 
-        Expr cond = visitExpression(ctx.expression(), "Boolean");
+        Expr cond = visitExpression(ctx.expression());
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
 
         symbolStack.popSymbolTable();
@@ -1094,12 +1117,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitLower_bound(Lower_boundContext ctx) {
-        return visitExpression(ctx.concatenation(), "Integer");
+        return visitExpression(ctx.concatenation());
     }
 
     @Override
     public Expr visitUpper_bound(Upper_boundContext ctx) {
-        return visitExpression(ctx.concatenation(), "Integer");
+        return visitExpression(ctx.concatenation());
     }
 
     @Override
@@ -1108,7 +1131,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             return null;
         }
 
-        return visitExpression(ctx.concatenation(), "Integer");
+        return visitExpression(ctx.concatenation());
     }
 
     @Override
@@ -1225,7 +1248,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         String record = Misc.getNormalizedText(ctx.for_dynamic_sql().record_name());
 
-        Expr dynSql = visitExpression(ctx.for_dynamic_sql().dyn_sql(), "String");
+        Expr dynSql = visitExpression(ctx.for_dynamic_sql().dyn_sql());
 
         NodeList<Expr> usedExprList;
         Restricted_using_clauseContext usingClause =
@@ -1263,6 +1286,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public StmtRaise visitRaise_statement(Raise_statementContext ctx) {
         ExName exName = visitException_name(ctx.exception_name());
+        if (exName == null) {
+            // TODO: check if this raise is in a exception handler
+        }
         return new StmtRaise(exName);
     }
 
@@ -1290,7 +1316,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (ctx.expression() == null) {
             assert routineType == Misc.RoutineType.PROC :
                 "function " + symbolStack.getCurrentScope().routine + " must return a value";
-            return new StmtReturn(null);
+            return new StmtReturn(null, null);
         } else {
             assert routineType == Misc.RoutineType.FUNC :
                 "procedure " + symbolStack.getCurrentScope().routine + " may not return a value";
@@ -1298,7 +1324,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             String routine = symbolStack.getCurrentScope().routine;
             DeclFunc df = symbolStack.getDeclFunc(routine);
             assert df != null;
-            return new StmtReturn(visitExpression(ctx.expression(), df.retType.name));
+            return new StmtReturn(visitExpression(ctx.expression()), df.retType);
         }
     }
 
@@ -1308,11 +1334,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.pushSymbolTable("case_stmt", null);
         int level = symbolStack.getCurrentScope().level;
 
-        Expr selector = visitExpression(ctx.expression(), "Object");
+        Expr selector = visitExpression(ctx.expression());
 
         NodeList<CaseStmt> whenParts = new NodeList<>();
         for (Simple_case_statement_when_partContext c : ctx.simple_case_statement_when_part()) {
-            Expr val = visitExpression(c.expression(), "Object");
+            Expr val = visitExpression(c.expression());
             NodeList<Stmt> stmts = visitSeq_of_statements(c.seq_of_statements());
             whenParts.addNode(new CaseStmt(val, stmts));
         }
@@ -1337,7 +1363,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         NodeList<CondStmt> condParts = new NodeList<>();
         for (Searched_case_statement_when_partContext c : ctx.searched_case_statement_when_part()) {
-            Expr cond = visitExpression(c.expression(), "Boolean");
+            Expr cond = visitExpression(c.expression());
             NodeList<Stmt> stmts = visitSeq_of_statements(c.seq_of_statements());
             condParts.addNode(new CondStmt(cond, stmts));
         }
@@ -1355,8 +1381,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public StmtRaiseAppErr visitRaise_application_error_statement(
             Raise_application_error_statementContext ctx) {
-        Expr errCode = visitExpression(ctx.err_code(), "Integer");
-        Expr errMsg = visitExpression(ctx.err_msg(), "String");
+        Expr errCode = visitExpression(ctx.err_code());
+        Expr errMsg = visitExpression(ctx.err_msg());
         return new StmtRaiseAppErr(errCode, errMsg);
     }
 
@@ -1448,7 +1474,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         NodeList<Expr> ret = new NodeList<>();
         for (ExpressionContext e : ctx.expression()) {
-            ret.addNode(visitExpression(e, null));
+            ret.addNode(visitExpression(e));
         }
 
         return ret;
@@ -1594,7 +1620,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.pushSymbolTable("exec_imme", null);
         int level = symbolStack.getCurrentScope().level;
 
-        Expr dynSql = visitExpression(ctx.dyn_sql().expression(), "String");
+        Expr dynSql = visitExpression(ctx.dyn_sql().expression());
 
         NodeList<ExprId> intoVarList;
         Into_clauseContext intoClause = ctx.into_clause();
@@ -1623,7 +1649,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         NodeList<Expr> ret = new NodeList<>();
 
         for (ExpressionContext c : ctx.expression()) {
-            ret.addNode(visitExpression(c, "Object"));
+            ret.addNode(visitExpression(c));
         }
 
         return ret;
@@ -1635,7 +1661,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         NodeList<Expr> ret = new NodeList<>();
 
         for (Using_elementContext c : ctx.using_element()) {
-            Expr expr = visitExpression(c.expression(), "Object");
+            Expr expr = visitExpression(c.expression());
             if (c.OUT() != null) {
                 assert isAssignableTo(expr)
                         : "expression '"
@@ -1676,7 +1702,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         NodeList<Expr> ret = new NodeList<>();
         for (ArgumentContext c : ctx.argument()) {
-            ret.addNode(visitExpression(c.expression(), null));
+            ret.addNode(visitExpression(c.expression()));
         }
 
         return ret;
@@ -1744,19 +1770,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return javaType;
     }
 
-    private Expr visitExpression(ParserRuleContext ctx, String targetType) {
+    private Expr visitExpression(ParserRuleContext ctx) {
         if (ctx == null) {
             return null;
-        }
-
-        if (targetType == null) {
-            return (Expr) visit(ctx);
         } else {
-            Expr e = (Expr) visit(ctx);
-            if (e instanceof ExprCast) {
-                ((ExprCast) e).setTargetType(targetType);
-            }
-            return e;
+            return (Expr) visit(ctx);
         }
     }
 

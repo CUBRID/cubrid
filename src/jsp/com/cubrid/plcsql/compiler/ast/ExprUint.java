@@ -30,20 +30,27 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
-public class StmtSql implements Stmt {
+public class ExprUint implements Expr {
 
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {
-        return visitor.visitStmtSql(this);
+        return visitor.visitExprUint(this);
     }
 
-    public StmtSql() {}
+    public final String val;
+    public final boolean big;
+
+    public ExprUint(String val, boolean big) {
+        this.val = val;
+        this.big = big;
+    }
 
     @Override
     public String toJavaCode() {
-        return "// %TODO-StmtSql%";
+        return val;
     }
 
     // --------------------------------------------------

@@ -28,42 +28,10 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
-
-import com.cubrid.plcsql.compiler.Misc;
-
-public class CondStmt implements Stmt {
-
-    @Override
-    public <R> R accept(AstNodeVisitor<R> visitor) {
-        return visitor.visitCondStmt(this);
+public class SemanticError extends RuntimeException {
+    public SemanticError(String msg) {
+        super(msg);
     }
-
-    public final Expr cond;
-    public final NodeList<Stmt> stmts;
-
-    public CondStmt(Expr cond, NodeList<Stmt> stmts) {
-        this.cond = cond;
-        this.stmts = stmts;
-    }
-
-    public CondStmt(Expr cond, Stmt stmt) {
-        this(cond, new NodeList<Stmt>().addNode(stmt));
-    }
-
-    @Override
-    public String toJavaCode() {
-        return tmpl.replace("%'CONDITION'%", cond.toJavaCode())
-                .replace("  %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 1));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl =
-            Misc.combineLines("if (%'CONDITION'%) {", "  %'STATEMENTS'%", "}");
 }

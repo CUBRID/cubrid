@@ -38,6 +38,12 @@ public abstract class TypeSpec implements AstNode {
     }
 
     @Override
+    public boolean equals(Object that) {
+        return this == that;    // Actually, this is the same as equals of Object class.
+                                // I just wanted to be explicit.
+    }
+
+    @Override
     public String toJavaCode() {
         return name;
     }

@@ -28,42 +28,41 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+import com.cubrid.plcsql.compiler.ast.TypeSpec;
 
-import com.cubrid.plcsql.compiler.Misc;
+public class Coerce {
 
-public class CondStmt implements Stmt {
+    public String funcName;
 
-    @Override
-    public <R> R accept(AstNodeVisitor<R> visitor) {
-        return visitor.visitCondStmt(this);
+    public Coerce() {}
+    public Coerce(String funcName) {
+        this.funcName = funcName;
     }
 
-    public final Expr cond;
-    public final NodeList<Stmt> stmts;
-
-    public CondStmt(Expr cond, NodeList<Stmt> stmts) {
-        this.cond = cond;
-        this.stmts = stmts;
+    public String toJavaCode(String exprJavaCode) {
+        return String.format("%s(%s)", funcName, exprJavaCode);
     }
 
-    public CondStmt(Expr cond, Stmt stmt) {
-        this(cond, new NodeList<Stmt>().addNode(stmt));
+    public static Coerce getCoerce(TypeSpec from, TypeSpec to) {
+        if (from.equals(to)) {
+            return IDENTITY;
+        }
+
+        // TODO: fill other cases
+
+        return null;
     }
 
-    @Override
-    public String toJavaCode() {
-        return tmpl.replace("%'CONDITION'%", cond.toJavaCode())
-                .replace("  %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 1));
+    // ----------------------------------------------
+    // cases
+    // ----------------------------------------------
+
+    private static class Identity extends Coerce {
+        public String toJavaCode(String exprJavaCode) {
+            return exprJavaCode;    // no coercion
+        }
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl =
-            Misc.combineLines("if (%'CONDITION'%) {", "  %'STATEMENTS'%", "}");
+    private static Coerce IDENTITY = new Identity();
 }

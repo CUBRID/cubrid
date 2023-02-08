@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
@@ -42,17 +43,17 @@ public class ExprUnaryOp implements Expr {
     }
 
     public final String opStr;
-    public final Expr o;
+    public final Expr operand;
 
-    public ExprUnaryOp(String opStr, Expr o) {
+    public ExprUnaryOp(String opStr, Expr operand) {
         this.opStr = opStr;
-        this.o = o;
+        this.operand = operand;
     }
 
     @Override
     public String toJavaCode() {
         return tmpl.replace("%'OPERATION'%", opStr)
-                .replace("  %'OPERAND'%", Misc.indentLines(o.toJavaCode(), 1));
+                .replace("  %'OPERAND'%", Misc.indentLines(operand.toJavaCode(), 1));
     }
 
     // --------------------------------------------------

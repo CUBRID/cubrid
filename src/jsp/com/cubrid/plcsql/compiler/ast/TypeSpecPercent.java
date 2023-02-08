@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 public class TypeSpecPercent extends TypeSpec {
@@ -43,8 +44,23 @@ public class TypeSpecPercent extends TypeSpec {
     public final String column;
 
     public TypeSpecPercent(String table, String column) {
-        super("Object");    // name unknown yet
+        super("%UNKNOWN%");    // name unknown yet
         this.table = table;
         this.column = column;
+    }
+
+    public void setResolvedType(TypeSpec resolvedType) {
+        this.resolvedType = resolvedType;
+    }
+
+    private TypeSpec resolvedType;
+
+    @Override
+    public String toJavaCode() {
+        if (resolvedType == null) {
+            return super.toJavaCode();
+        } else {
+            return resolvedType.toJavaCode();
+        }
     }
 }

@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
@@ -42,12 +43,12 @@ public class StmtWhileLoop implements Stmt {
     }
 
     public final DeclLabel declLabel;
-    public final Expr expr;
+    public final Expr cond;
     public final NodeList<Stmt> stmts;
 
-    public StmtWhileLoop(DeclLabel declLabel, Expr expr, NodeList<Stmt> stmts) {
+    public StmtWhileLoop(DeclLabel declLabel, Expr cond, NodeList<Stmt> stmts) {
         this.declLabel = declLabel;
-        this.expr = expr;
+        this.cond = cond;
         this.stmts = stmts;
     }
 
@@ -55,7 +56,7 @@ public class StmtWhileLoop implements Stmt {
     public String toJavaCode() {
         return tmpl.replace(
                         "%'OPT-LABEL'%", declLabel == null ? "// no label" : declLabel.toJavaCode())
-                .replace("%'EXPRESSION'%", expr.toJavaCode())
+                .replace("%'EXPRESSION'%", cond.toJavaCode())
                 .replace("  %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 1));
     }
 
