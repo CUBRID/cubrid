@@ -275,11 +275,17 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 
   if (admin_log_file != NULL)
     {
-      admin_log2 = strdup (admin_log_file);
+      char buf[BROKER_PATH_MAX];
+
+#if defined (WINDOWS)
+      admin_log2 = _fullpath (buf, admin_log_file, BROKER_PATH_MAX);
+#else
+      admin_log2 = admin_log_file;
+#endif /* WINDOWS */
+
       if (admin_log2)
 	{
 	  broker_create_dir (dirname (admin_log2));
-	  free (admin_log2);
 	}
     }
 
