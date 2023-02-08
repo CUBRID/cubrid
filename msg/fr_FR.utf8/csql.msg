@@ -185,6 +185,7 @@ $ csql help messages
    ;HISTORYList                 - affiche la liste des requêtes exécutées.\n\
    ;HISTORYRead <history_num>   - lit l 'entrée sur le numéro d'historique dans le tampon de commande.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
+   ;SIngleline [ON|OFF]         - activer/désactiver le mode monoligne.\n\
    ;HElp                        - affiche ce message d'aide.\n\n
 
 232 <Constraints> 

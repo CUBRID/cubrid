@@ -4458,7 +4458,7 @@ boot_define_view_class (void)
 	  "[c].[class_name] AS [class_name], "
 	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOW' END AS [class_type], "
-	  "CASE WHEN MOD([c].[is_system_class], 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_system_class], "
+	  "CASE WHEN MOD ([c].[is_system_class], 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_system_class], "
 	  "CASE [c].[tde_algorithm] WHEN 0 THEN 'NONE' WHEN 1 THEN 'AES' WHEN 2 THEN 'ARIA' END AS [tde_algorithm], "
 	  "CASE "
 	    "WHEN [c].[sub_classes] IS NULL THEN 'NO' "
@@ -4476,7 +4476,15 @@ boot_define_view_class (void)
 	"WHERE "
 	  "[c].[collation_id] = [coll].[coll_id] "
 	  "AND ("
-	      "CURRENT_USER = 'DBA' "
+	      "{'DBA'} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
 	      "OR {[c].[owner].[name]} SUBSETEQ ("
 		  "SELECT "
 		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
@@ -4508,6 +4516,7 @@ boot_define_view_class (void)
 	CT_PARTITION_NAME,
 	CT_CLASS_NAME,
 	CT_COLLATION_NAME,
+	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
@@ -4582,7 +4591,15 @@ boot_define_view_super_class (void)
 	  /* CT_CLASS_NAME */
 	  "[%s] AS [c], TABLE ([c].[super_classes]) AS [t] ([s]) "
 	"WHERE "
-	  "CURRENT_USER = 'DBA' "
+	  "{'DBA'} SUBSETEQ ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") "
 	  "OR {[c].[owner].[name]} SUBSETEQ ("
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
@@ -4611,6 +4628,7 @@ boot_define_view_super_class (void)
 		"AND [au].[auth_type] = 'SELECT'"
 	    ")",
 	CT_CLASS_NAME,
+	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
@@ -4689,7 +4707,15 @@ boot_define_view_vclass (void)
 	"WHERE "
 	  "[q].[class_of] = [c] "
 	  "AND ("
-	      "CURRENT_USER = 'DBA' "
+	      "{'DBA'} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
 	      "OR {[q].[class_of].[owner].[name]} SUBSETEQ ("
 		  "SELECT "
 		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
@@ -4720,6 +4746,7 @@ boot_define_view_vclass (void)
 	    ")",
 	CT_QUERYSPEC_NAME,
 	CT_CLASS_NAME,
+	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
@@ -4842,7 +4869,15 @@ boot_define_view_attribute (void)
 	  "AND [d].[object_of] = [a] "
 	  "AND [d].[data_type] = [t].[type_id] "
 	  "AND ("
-	      "CURRENT_USER = 'DBA' "
+	      "{'DBA'} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
 	      "OR {[c].[owner].[name]} SUBSETEQ ("
 		  "SELECT "
 		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
@@ -4877,6 +4912,7 @@ boot_define_view_attribute (void)
 	CT_ATTRIBUTE_NAME,
 	CT_DOMAIN_NAME,
 	CT_DATATYPE_NAME,
+	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
@@ -4973,7 +5009,15 @@ boot_define_view_attribute_set_domain (void)
 	  "AND [d].[object_of] = [a] "
 	  "AND [e].[data_type] = [et].[type_id] "
 	  "AND ("
-	      "CURRENT_USER = 'DBA' "
+	      "{'DBA'} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
 	      "OR {[c].[owner].[name]} SUBSETEQ ("
 		  "SELECT "
 		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
@@ -5006,6 +5050,7 @@ boot_define_view_attribute_set_domain (void)
 	CT_ATTRIBUTE_NAME,
 	CT_DOMAIN_NAME,
 	CT_DATATYPE_NAME,
+	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
@@ -5092,7 +5137,15 @@ boot_define_view_method (void)
 	"WHERE "
 	  "[s].[meth_of] = [m] "
 	  "AND ("
-	      "CURRENT_USER = 'DBA' "
+	      "{'DBA'} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
 	      "OR {[m].[class_of].[owner].[name]} SUBSETEQ ("
 		  "SELECT "
 		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
@@ -5123,6 +5176,7 @@ boot_define_view_method (void)
 	    ")",
 	CT_METHOD_NAME,
 	CT_METHSIG_NAME,
+	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
@@ -5221,7 +5275,15 @@ boot_define_view_method_argument (void)
 	  "AND [d].[object_of] = [a] "
 	  "AND [d].[data_type] = [t].[type_id] "
 	  "AND ("
-	      "CURRENT_USER = 'DBA' "
+	      "{'DBA'} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
 	      "OR {[s].[meth_of].[class_of].[owner].[name]} SUBSETEQ ("
 		  "SELECT "
 		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
@@ -5254,6 +5316,7 @@ boot_define_view_method_argument (void)
 	CT_METHARG_NAME,
 	CT_DOMAIN_NAME,
 	CT_DATATYPE_NAME,
+	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
@@ -5355,7 +5418,15 @@ boot_define_view_method_argument_set_domain (void)
 	  "AND [d].[object_of] = [a] "
 	  "AND [e].[data_type] = [et].[type_id] "
 	  "AND ("
-	      "CURRENT_USER = 'DBA' "
+	      "{'DBA'} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
 	      "OR {[s].[meth_of].[class_of].[owner].[name]} SUBSETEQ ("
 		  "SELECT "
 		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
@@ -5388,6 +5459,7 @@ boot_define_view_method_argument_set_domain (void)
 	CT_METHARG_NAME,
 	CT_DOMAIN_NAME,
 	CT_DATATYPE_NAME,
+	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
@@ -5464,7 +5536,15 @@ boot_define_view_method_file (void)
 	  /* CT_METHFILE_NAME */
 	  "[%s] AS [f] "
 	"WHERE "
-	  "CURRENT_USER = 'DBA' "
+	  "{'DBA'} SUBSETEQ ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") "
 	  "OR {[f].[class_of].[owner].[name]} SUBSETEQ ("
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
@@ -5493,6 +5573,7 @@ boot_define_view_method_file (void)
 		"AND [au].[auth_type] = 'SELECT'"
 	    ")",
 	CT_METHFILE_NAME,
+	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
@@ -5596,7 +5677,15 @@ boot_define_view_index (void)
 	  /* CT_INDEX_NAME */
 	  "[%s] AS [i] "
 	"WHERE "
-	  "CURRENT_USER = 'DBA' "
+	  "{'DBA'} SUBSETEQ ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") "
 	  "OR {[i].[class_of].[owner].[name]} SUBSETEQ ("
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
@@ -5625,6 +5714,7 @@ boot_define_view_index (void)
 		"AND [au].[auth_type] = 'SELECT'"
 	    ")",
 	CT_INDEX_NAME,
+	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
@@ -5710,7 +5800,15 @@ boot_define_view_index_key (void)
 #if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(ENABLE_SHOW_HIDDEN_ATTR)
           "("
 #endif        
-	  "CURRENT_USER = 'DBA' "
+	  "{'DBA'} SUBSETEQ ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") "
 	  "OR {[k].[index_of].[class_of].[owner].[name]} SUBSETEQ ("
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
@@ -5744,6 +5842,7 @@ boot_define_view_index_key (void)
 	    ")",
 #endif            
 	CT_INDEXKEY_NAME,
+	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
@@ -5826,7 +5925,15 @@ boot_define_view_authorization (void)
 	  /* CT_CLASSAUTH_NAME */
 	  "[%s] AS [a] "
 	"WHERE "
-	  "CURRENT_USER = 'DBA' "
+	  "{'DBA'} SUBSETEQ ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") "
 	  "OR {[a].[class_of].[owner].[name]} SUBSETEQ ("
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
@@ -5855,6 +5962,7 @@ boot_define_view_authorization (void)
 		"AND [au].[auth_type] = 'SELECT'"
 	    ")",
 	CT_CLASSAUTH_NAME,
+	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
@@ -5941,7 +6049,15 @@ boot_define_view_trigger (void)
 	  /* CT_CLASS_NAME */
 	  "LEFT OUTER JOIN [%s] AS [c] ON [t].[target_class] = [c].[class_of] "
 	"WHERE "
-	  "CURRENT_USER = 'DBA' "
+	  "{'DBA'} SUBSETEQ ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") "
 	  "OR {[t].[owner].[name]} SUBSETEQ ("
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
@@ -5971,6 +6087,7 @@ boot_define_view_trigger (void)
 	    ")",
 	TR_CLASS_NAME,
 	CT_CLASS_NAME,
+	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
@@ -6060,7 +6177,15 @@ boot_define_view_partition (void)
 	  "[p].[class_of] = [c] "
 	  "AND [s] = [cc] "
 	  "AND ("
-	      "CURRENT_USER = 'DBA' "
+	      "{'DBA'} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
 	      "OR {[p].[class_of].[owner].[name]} SUBSETEQ ("
 		  "SELECT "
 		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
@@ -6092,6 +6217,7 @@ boot_define_view_partition (void)
 	CT_PARTITION_NAME,
 	CT_CLASS_NAME,
 	CT_CLASS_NAME,
+	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
@@ -6507,7 +6633,15 @@ boot_define_view_synonym (void)
 	  /* CT_SYNONYM_NAME */
 	  "[%s] AS [s] "
 	"WHERE "
-	  "CURRENT_USER = 'DBA' "
+	  "{'DBA'} SUBSETEQ ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") "
 	  "OR [s].[is_public] = 1 "
 	  "OR ("
 	      "[s].[is_public] = 0 "
@@ -6522,6 +6656,7 @@ boot_define_view_synonym (void)
 		")"
 	    ")",
 	CT_SYNONYM_NAME,
+	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
 
@@ -6605,7 +6740,15 @@ boot_define_view_db_server (void)
 	  /* CT_DB_SERVER_NAME */
 	  "[%s] AS [ds] "
 	"WHERE "
-	  "CURRENT_USER = 'DBA' "
+	  "{'DBA'} SUBSETEQ ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") "
 	  "OR {[ds].[owner].[name]} SUBSETEQ ("
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
@@ -6634,6 +6777,7 @@ boot_define_view_db_server (void)
 		"AND [au].[auth_type] = 'SELECT'"
 	    ")",
 	CT_DB_SERVER_NAME,
+	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);

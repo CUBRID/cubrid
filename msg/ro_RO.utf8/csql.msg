@@ -186,6 +186,7 @@ $ csql help messages
    ;HISTORYRead <history_num>   - citeşte în buffer-ul de comenzi înregistrarea din istoric\n\
                                   specificată prin parametru.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
+   ;SIngleline [ON|OFF]         - activați/dezactivați modul cu o singură linie.\n\
    ;HElp                        - afişează acest mesaj de ajutor.\n\n
 
 232 <Constrângeri> 

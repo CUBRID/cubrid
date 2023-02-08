@@ -93,7 +93,7 @@ namespace cubmethod
 	for (int i = 0; i < m_list_id->type_list.type_cnt; i++)
 	  {
 	    QFILE_TUPLE_VALUE_FLAG flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value_r (tuple_record.tpl, i, &ptr, &length);
-	    OR_BUF_INIT (buf, ptr, length);
+	    or_init (&buf, ptr, length);
 
 	    TP_DOMAIN *domain = m_list_id->type_list.domp[i];
 	    if (domain == NULL || domain->type == NULL)
@@ -160,7 +160,7 @@ namespace cubmethod
 		    return S_ERROR;
 		  }
 
-		OR_BUF_INIT (buf, ptr, length);
+		or_init (&buf, ptr, length);
 
 		if (pr_type->data_readval (&buf, value, domain, -1, true, NULL, 0) != NO_ERROR)
 		  {
