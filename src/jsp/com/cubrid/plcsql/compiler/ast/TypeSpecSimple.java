@@ -53,6 +53,11 @@ public class TypeSpecSimple extends TypeSpec {
         return ret;
     }
 
+    @Override
+    public String toJavaSignature() {
+        return fullJavaType;
+    }
+
     private TypeSpecSimple(String fullJavaType) {
         super(getSimpleName(fullJavaType));
         this.fullJavaType = fullJavaType;

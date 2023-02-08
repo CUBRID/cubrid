@@ -43,9 +43,14 @@ public class TypeSpecNumeric extends TypeSpec {
     public final int precision;
     public final int scale;
 
-    public TypeSpecNumeric(String name, int precision, int scale) {
-        super(name);
+    public TypeSpecNumeric(int precision, int scale) {
+        super("BigDecimal");
         this.precision = precision;
         this.scale = scale;
+    }
+
+    @Override
+    public String toJavaSignature() {
+        return "java.math.BigDecimal";
     }
 }

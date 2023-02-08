@@ -45,4 +45,5 @@ public abstract class DeclParam extends DeclBase implements DeclVarLike {
         return typeSpec;
     }
 
+    abstract String toJavaSignature();
 }

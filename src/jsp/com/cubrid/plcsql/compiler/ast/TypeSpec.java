@@ -31,6 +31,7 @@
 package com.cubrid.plcsql.compiler.ast;
 
 public abstract class TypeSpec implements AstNode {
+
     public final String name;
 
     public TypeSpec(String name) {
@@ -47,4 +48,6 @@ public abstract class TypeSpec implements AstNode {
     public String toJavaCode() {
         return name;
     }
+
+    public abstract String toJavaSignature();
 }

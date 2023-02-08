@@ -243,7 +243,7 @@ namespace cubscan
 	  for (int i = 0; i < m_list_id->type_list.type_cnt; i++)
 	    {
 	      QFILE_TUPLE_VALUE_FLAG flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tuple_record.tpl, i, &ptr, &length);
-	      OR_BUF_INIT (buf, ptr, length);
+	      or_init (&buf, ptr, length);
 
 	      DB_VALUE *value = &m_arg_vector [i];
 	      TP_DOMAIN *domain = m_arg_dom_vector [i];

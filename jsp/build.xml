@@ -165,9 +165,12 @@
     </target>
 
     <target name="dist" depends="compile">
+        <jar jarfile="${dist.splib.jar}" basedir="${plcsql.predefined.classes.dir}"/>
+
         <manifestclasspath property="jar.classpath" jarfile="${dist.main.jar}">
             <classpath>
                 <fileset dir="${dist.lib}" includes="*.jar"/>
+                <fileset dir="." includes="splib.jar"/>
             </classpath>
         </manifestclasspath>
 
@@ -177,7 +180,5 @@
                     <attribute name="Class-Path" value="${jar.classpath}"/>
             </manifest>
         </jar>
-
-        <jar jarfile="${dist.splib.jar}" basedir="${plcsql.predefined.classes.dir}"/>
     </target>
 </project>

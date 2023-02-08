@@ -28,52 +28,58 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+import com.cubrid.plcsql.compiler.antlrgen.PcsLexer;
+import org.antlr.v4.runtime.CharStream;
+import org.antlr.v4.runtime.Token;
 
-public class TypeSpecPercent extends TypeSpec {
+public class PcsLexerEx extends PcsLexer {
+    private boolean collect = true;
+    private boolean putSpace = false;
+    private StringBuffer sbuf = new StringBuffer();
 
-    private TypeSpec resolvedType;
-
-    @Override
-    public <R> R accept(AstNodeVisitor<R> visitor) {
-        return visitor.visitTypeSpecPercent(this);
-    }
-
-    public final String table;
-    public final String column;
-
-    public TypeSpecPercent(String table, String column) {
-        super("%TODO-TypeSpecPercent%");    // name unknown yet
-        this.table = table;
-        this.column = column;
-    }
-
-    public void setResolvedType(TypeSpec resolvedType) {
-        this.resolvedType = resolvedType;
+    public PcsLexerEx(CharStream input) {
+        super(input);
     }
 
     @Override
-    public String toJavaSignature() {
-        if (resolvedType == null) {
-            // assert false;    // TODO: restore these two lines
-            // throw new RuntimeException("unreachable");
-            return super.toJavaCode();
-        } else {
-            return resolvedType.toJavaSignature();
+    public Token emit() {
+        Token ret = super.emit();
+
+        // collect token texts until IS or AS is seen
+        if (collect) {
+            switch (ret.getType()) {
+                case IS:
+                case AS:
+                    collect = false;
+                    break;
+                case SPACES:
+                    if (putSpace) {
+                        sbuf.append(' ');
+                        putSpace = false;
+                    }
+                    break;
+                case SINGLE_LINE_COMMENT:
+                case SINGLE_LINE_COMMENT2:
+                case MULTI_LINE_COMMENT:
+                    break;
+                default:
+                    sbuf.append(ret.getText().toUpperCase());
+                    putSpace = true;
+            }
         }
+
+        return ret;
     }
 
-    @Override
-    public String toJavaCode() {
-        if (resolvedType == null) {
-            // assert false;    // TODO: restore these two lines
-            // throw new RuntimeException("unreachable");
-            return super.toJavaCode();
+    public String getCreateSqlTemplate() {
+
+        String s = sbuf.toString().trim();
+        if (s.length() > 0) {
+            return s + " AS LANGUAGE JAVA NAME '%s';";
         } else {
-            return resolvedType.toJavaCode();
+            return null;
         }
     }
 }

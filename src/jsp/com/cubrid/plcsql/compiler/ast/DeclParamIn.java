@@ -54,6 +54,10 @@ public class DeclParamIn extends DeclParam {
         return String.format("%s %s", typeSpec.toJavaCode(), name);
     }
 
+    public String toJavaSignature() {
+        return String.format("%s", typeSpec.toJavaSignature());
+    }
+
     // --------------------------------------------------
     // Private
     // --------------------------------------------------

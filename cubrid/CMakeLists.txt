@@ -267,6 +267,7 @@ set(JSP_SOURCES
 set(METHOD_SOURCES
   ${METHOD_DIR}/method_connection_sr.cpp
   ${METHOD_DIR}/method_connection_pool.cpp
+  ${METHOD_DIR}/method_compile.cpp
   ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_error.cpp
   ${METHOD_DIR}/method_invoke_builtin.cpp
@@ -339,10 +340,11 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
   ${STORAGE_DIR}/btree_unique.cpp
+  ${STORAGE_DIR}/byte_order.c
   ${STORAGE_DIR}/catalog_class.c
   ${STORAGE_DIR}/compactdb_sr.c
-  ${STORAGE_DIR}/double_write_buffer.c
   ${STORAGE_DIR}/disk_manager.c
+  ${STORAGE_DIR}/double_write_buffer.c
   ${STORAGE_DIR}/es.c
   ${STORAGE_DIR}/es_common.c
   ${STORAGE_DIR}/es_posix.c

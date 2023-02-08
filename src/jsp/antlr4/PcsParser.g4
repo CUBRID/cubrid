@@ -40,7 +40,7 @@ create_routine
     ;
 
 routine_definition
-    : (PROCEDURE | FUNCTION) identifier ('(' parameter_list ')')? (RETURN type_spec)?
+    : (PROCEDURE | FUNCTION) identifier ( ('(' parameter_list ')')? | '(' ')' ) (RETURN type_spec)?
       (IS | AS) seq_of_declare_specs? body ';'
     ;
 
@@ -83,7 +83,7 @@ constant_declaration
     ;
 
 cursor_definition
-    : CURSOR identifier ('(' parameter_list ')' )? IS s_select_statement ';'
+    : CURSOR identifier ( ('(' parameter_list ')')? | '(' ')' ) IS s_select_statement ';'
     ;
 
 exception_declaration
@@ -303,8 +303,8 @@ in_expression
     ;
 
 like_expression
-    : is_null_expression                                                    # like_expression_prime
-    | like_expression NOT? LIKE quoted_string (ESCAPE quoted_string)?   # like_exp
+    : is_null_expression                                                                # like_expression_prime
+    | like_expression NOT? LIKE pattern=quoted_string (ESCAPE escape=quoted_string)?    # like_exp
     ;
 
 is_null_expression

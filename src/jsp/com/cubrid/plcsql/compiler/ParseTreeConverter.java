@@ -147,7 +147,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             throw new RuntimeException("unreachable");
         }
 
-        return new TypeSpecNumeric("BigDecimal", precision, scale);
+        return new TypeSpecNumeric(precision, scale);
     }
 
     @Override
@@ -289,8 +289,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public Expr visitLike_exp(Like_expContext ctx) {
         Expr target = visitExpression(ctx.like_expression());
-        ExprStr pattern = (ExprStr) visitExpression(ctx.quoted_string(0));
-        ExprStr escape = (ExprStr) visitExpression(ctx.quoted_string(1));
+        ExprStr pattern = visitQuoted_string(ctx.pattern);
+        ExprStr escape = ctx.escape == null ? null : visitQuoted_string(ctx.escape);
+
+        assert pattern != null;
 
         if (escape != null && escape.val.length() != 1) {
             throw new SemanticError("the escape does not consist of a single character");
@@ -486,8 +488,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public Expr visitStr_exp(Str_expContext ctx) {
+    public ExprStr visitStr_exp(Str_expContext ctx) {
         String val = ctx.quoted_string().getText();
+        return new ExprStr(quotedStrToJavaStr(val));
+    }
+
+    @Override
+    public ExprStr visitQuoted_string(Quoted_stringContext ctx) {
+        String val = ctx.getText();
         return new ExprStr(quotedStrToJavaStr(val));
     }
 

@@ -147,7 +147,8 @@ namespace cubregex
 
     try
       {
-	cub_std_regex &std_reg = * (reg.compiled->std_obj);
+	cub_std_regex &std_reg = GET_STD_OBJ (reg);
+
 #if defined(WINDOWS)
 	/* HACK: case insensitive doesn't work well on Windows.
 	*  This code transforms source string into lowercase
@@ -199,7 +200,8 @@ namespace cubregex
 	    src_wstring.substr (position, src_wstring.size () - position)
     );
 
-    cub_std_regex &std_reg = * (reg.compiled->std_obj);
+    cub_std_regex &std_reg = GET_STD_OBJ (reg);
+
 #if defined(WINDOWS)
     /* HACK: case insensitive doesn't work well on Windows.
     *  This code transforms source string into lowercase
@@ -258,7 +260,7 @@ namespace cubregex
 	    src_wstring.substr (position, src_wstring.size () - position)
     );
 
-    cub_std_regex &std_reg = * (reg.compiled->std_obj);
+    cub_std_regex &std_reg = GET_STD_OBJ (reg);
 #if defined(WINDOWS)
     /* HACK: case insensitive doesn't work well on Windows.
     *  This code transforms source string into lowercase
@@ -572,7 +574,7 @@ namespace cubregex
 	    src_wstring.substr (position, src_wstring.size () - position)
     );
 
-    cub_std_regex &std_reg = * (reg.compiled->std_obj);
+    cub_std_regex &std_reg = GET_STD_OBJ (reg);
 
 #if defined(WINDOWS)
     /* HACK: case insensitive doesn't work well on Windows.

@@ -1,4 +1,5 @@
 /*
+ *
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -28,52 +29,10 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.jsp.data;
 
-import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
-
-public class TypeSpecPercent extends TypeSpec {
-
-    private TypeSpec resolvedType;
-
-    @Override
-    public <R> R accept(AstNodeVisitor<R> visitor) {
-        return visitor.visitTypeSpecPercent(this);
-    }
-
-    public final String table;
-    public final String column;
-
-    public TypeSpecPercent(String table, String column) {
-        super("%TODO-TypeSpecPercent%");    // name unknown yet
-        this.table = table;
-        this.column = column;
-    }
-
-    public void setResolvedType(TypeSpec resolvedType) {
-        this.resolvedType = resolvedType;
-    }
-
-    @Override
-    public String toJavaSignature() {
-        if (resolvedType == null) {
-            // assert false;    // TODO: restore these two lines
-            // throw new RuntimeException("unreachable");
-            return super.toJavaCode();
-        } else {
-            return resolvedType.toJavaSignature();
-        }
-    }
-
-    @Override
-    public String toJavaCode() {
-        if (resolvedType == null) {
-            // assert false;    // TODO: restore these two lines
-            // throw new RuntimeException("unreachable");
-            return super.toJavaCode();
-        } else {
-            return resolvedType.toJavaCode();
-        }
-    }
+public class CompileInfo {
+    public String translated;
+    public String sqlTemplate;
+    public String className;
 }

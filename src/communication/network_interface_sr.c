@@ -88,6 +88,8 @@
 #include "log_manager.h"
 #include "crypt_opfunc.h"
 #include "flashback.h"
+#include "method_compile.hpp"
+
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -11118,4 +11120,34 @@ css_send_error:
 
   flashback_reset ();
   return;
+}
+
+
+void
+splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  packing_unpacker unpacker (request, (size_t) reqlen);
+
+  bool verbose;
+  std::string input_string;
+  unpacker.unpack_all (verbose, input_string);
+
+  cubmethod::runtime_context * ctx = NULL;
+  session_get_method_runtime_context (thread_p, ctx);
+
+  int error = ER_FAILED;
+  cubmem::extensible_block ext_blk;
+  if (ctx)
+    {
+      error = cubmethod::invoke_compile (*ctx, input_string, verbose, ext_blk);
+    }
+
+  // Error code and is_ignored.
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = or_pack_int (reply, ext_blk.get_size ());
+  ptr = or_pack_int (ptr, error);
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				     ext_blk.get_ptr (), (int) ext_blk.get_size ());
 }
