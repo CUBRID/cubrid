@@ -3878,8 +3878,24 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
       /* Add decimal point */
       if (i == temp_size - scale)
 	{
-	  buf[nbuf] = '.';
-	  nbuf++;
+	  int k = temp_size - 1;
+
+	  /* remove trailing zero */
+	  while (k > i && temp[k] == '0')
+	    {
+	      k--;
+	    }
+
+	  temp_size = k + 1;
+	  if (k > i)
+	    {
+	      buf[nbuf] = '.';
+	      nbuf++;
+	    }
+	  else
+	    {
+	      continue;
+	    }
 	}
 
       /* Check to see if the first significant digit has been found */
