@@ -117,6 +117,7 @@ int (*csql_text_console_to_utf8) (const char *, const int, char **, int *) = NUL
 
 int csql_Row_count;
 int csql_Num_failures;
+int csql_return_status;
 
 /* command editor lines */
 int csql_Line_lwm = -1;
@@ -135,6 +136,8 @@ char csql_Shell_cmd[PATH_MAX] = "command.com";
 #else
 char csql_Shell_cmd[PATH_MAX] = "csh";
 #endif
+
+char csql_Formatter_cmd[PATH_MAX] = "fsqlf";
 
 /* tty file stream which is used for conversation with users.
  * In batch mode, this will be set to "/dev/null"
@@ -187,6 +190,7 @@ static int csql_column_width_info_list_size = 0;
 static int csql_column_width_info_list_index = 0;
 
 static bool csql_Query_trace = false;
+static bool csql_Editor_format = false;
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(WINDOWS)
@@ -782,6 +786,8 @@ csql_get_external_command (SESSION_CMD cmd_no)
       return csql_Print_cmd;
     case S_CMD_PAGER_CMD:
       return csql_Pager_cmd;
+    case S_CMD_FORMATTER_CMD:
+      return csql_Formatter_cmd;
     default:
       assert (false);
       return NULL;
@@ -913,7 +919,28 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_EDIT:		/* invoke system editor */
-      if (csql_invoke_system_editor () != CSQL_SUCCESS)
+      if (*argument == '\0')
+	{
+	  csql_Editor_format = false;
+	}
+      else if (!strcasecmp (argument, "format") || !strcasecmp (argument, "fmt"))
+	{
+	  csql_Editor_format = true;
+	}
+      else
+	{
+	  csql_Error_code = CSQL_ERR_FORMAT_OPTION;
+	  nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+	  break;
+	}
+
+      csql_return_status = csql_invoke_system_editor (csql_Editor_format);
+      if (csql_return_status == CSQL_ERR_FORMAT)
+	{
+	  csql_Error_code = CSQL_ERR_FORMAT;
+	  return DO_CMD_FAILURE;
+	}
+      else if (csql_return_status == CSQL_FAILURE)
 	{
 	  return DO_CMD_FAILURE;
 	}
@@ -1041,6 +1068,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
     case S_CMD_EDIT_CMD:
     case S_CMD_PRINT_CMD:
     case S_CMD_PAGER_CMD:
+    case S_CMD_FORMATTER_CMD:
       if (*argument == '\0')
 	{
 	  fprintf (csql_Output_fp, "\n\t%s\n\n", csql_get_external_command ((SESSION_CMD) cmd_no));
@@ -2918,6 +2946,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   csql_Shell_cmd[PATH_MAX - 1] = '\0';
   csql_Print_cmd[PATH_MAX - 1] = '\0';
   csql_Pager_cmd[PATH_MAX - 1] = '\0';
+  csql_Formatter_cmd[PATH_MAX - 1] = '\0';
 
   env = getenv ("EDITOR");
   if (env)
@@ -2930,7 +2959,13 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
     {
       strncpy (csql_Shell_cmd, env, PATH_MAX - 1);
     }
-
+  
+  env = getenv ("FORMATTER");
+  if (env)
+    {
+      strncpy(csql_Formatter_cmd, env, PATH_MAX - 1);
+    }
+  
   if (csql_arg->nopager)
     {
       csql_Pager_cmd[0] = '\0';

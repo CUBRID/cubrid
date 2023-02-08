@@ -239,6 +239,95 @@ csql_invoke_system (const char *command)
     }
 }
 
+
+/*
+ * csql_invoke_formatter()
+ *   return: CSQL_SUCCESS/CSQL_FAILURE/CSQL_FORMAT_FAILURE
+ *
+ * Note:
+ *   copy command editor buffer into temporary file and
+ *   invoke formatter. After the format is finished,
+ *   read the file into editor buffer.
+ */
+int
+csql_invoke_formatter()
+{
+  auto[before_filename, before_fileptr] = filesys::open_temp_file("bef_fmt_");
+  if (before_fileptr == NULL)
+    {
+      csql_Error_code = CSQL_ERR_OS_ERROR;
+      nonscr_display_error(csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return CSQL_FAILURE;
+    }
+  filesys::auto_delete_file before_file_del (before_filename.c_str());
+  filesys::auto_close_file before_file (before_fileptr);
+
+  if (csql_edit_write_file(before_file.get()) == CSQL_FAILURE)
+    {
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return CSQL_FAILURE;
+    }
+
+  char *cmd = csql_get_tmp_buf (strlen (csql_Editor_cmd + 1 + before_filename.size()));
+  if (cmd == NULL)
+    {
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return CSQL_FAILURE;
+    }
+  fclose (before_file.release());
+  sprintf (cmd, "%s %s", csql_Editor_cmd, before_filename.c_str());
+
+  auto[after_filename, after_fileptr] = filesys::open_temp_file ("aft_fmt_");
+  if (after_fileptr == NULL)
+    {
+      csql_Error_code = CSQL_ERR_OS_ERROR;
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return CSQL_FAILURE;
+    }
+  filesys::auto_delete_file after_file_del (after_filename.c_str());
+  filesys::auto_close_file after_file (after_fileptr);
+
+  char *command = csql_get_tmp_buf (strlen (csql_Formatter_cmd + 1 + before_filename.size() + 1 + after_filename.size()));
+  if (command == NULL)
+    {
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return CSQL_FAILURE;
+    }
+  fclose (after_file.release());
+  sprintf (command, "%s %s %s", csql_Formatter_cmd, before_filename.c_str(), after_filename.c_str());
+
+  before_file.reset (fopen (before_filename.c_str(), "r"));
+  if (!before_file)
+    {
+      csql_Error_code = CSQL_ERR_OS_ERROR;
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return CSQL_FAILURE;
+    }
+
+  after_file.reset (fopen (after_filename.c_str(), "r"));
+  if (!after_file)
+    {
+      csql_Error_code = CSQL_ERR_OS_ERROR;
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return CSQL_FAILURE;
+    }
+
+  if (system (command) == 32512)
+    {
+      return CSQL_FORMAT_FAILURE;
+    }
+
+  csql_edit_contents_clear();
+  if (csql_edit_read_file (after_file.get()) == CSQL_FAILURE)
+    {
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return CSQL_FAILURE;
+    }
+
+  return CSQL_SUCCESS;
+}
+
+
 /*
  * csql_invoke_system_editor()
  *   return: CSQL_SUCCESS/CSQL_FAILURE
@@ -249,13 +338,22 @@ csql_invoke_system (const char *command)
  *   edit is finished, read the file into editor buffer
  */
 int
-csql_invoke_system_editor (void)
+csql_invoke_system_editor (bool csql_Editor_format)
 {
   if (!iq_output_device_is_a_tty ())
     {
       csql_Error_code = CSQL_ERR_CANT_EDIT;
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
       return CSQL_FAILURE;
+    }
+  
+  if (csql_Editor_format)
+    {
+      int return_status = csql_invoke_formatter();
+      if (return_status != CSQL_SUCCESS)
+        {
+          return return_status;
+        }
     }
 
   /* create an unique file in tmp folder and open it for writing */
@@ -1297,7 +1395,9 @@ static CSQL_ERR_MSG_MAP csql_Err_msg_map[] = {
   {CSQL_ERR_INVALID_ARG_COMBINATION, CSQL_E_INVALIDARGCOM_TEXT},
   {CSQL_ERR_CANT_EDIT, CSQL_E_CANT_EDIT_TEXT},
   {CSQL_ERR_INFO_CMD_HELP, CSQL_HELP_INFOCMD_TEXT},
-  {CSQL_ERR_CLASS_NAME_MISSED, CSQL_E_CLASSNAMEMISSED_TEXT}
+  {CSQL_ERR_CLASS_NAME_MISSED, CSQL_E_CLASSNAMEMISSED_TEXT},
+  {CSQL_ERR_FORMAT_OPTION, CSQL_E_FORMATOPTION_TEXT},
+  {CSQL_ERR_FORMAT, CSQL_E_FORMAT_TEXT}
 };
 
 /*
