@@ -132,7 +132,7 @@ into_clause
     ;
 
 assignment_statement
-    : assignment_target ':=' expression
+    : identifier ':=' expression
     ;
 
 continue_statement
@@ -251,11 +251,11 @@ open_statement
     ;
 
 fetch_statement
-    : FETCH cursor_exp INTO variable_name (',' variable_name)*
+    : FETCH cursor_exp INTO identifier (',' identifier)*
     ;
 
 open_for_statement
-    : OPEN variable_name FOR s_select_statement
+    : OPEN identifier FOR s_select_statement
     ;
 
 transaction_control_statements
@@ -458,15 +458,7 @@ exception_name
     : identifier
     ;
 
-variable_name
-    : identifier
-    ;
-
 index_name
-    : identifier
-    ;
-
-assignment_target
     : identifier
     ;
 
