@@ -3152,7 +3152,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
   bool do_rollback = false;
   SM_INDEX_STATUS saved_index_status = SM_NORMAL_INDEX;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(KEEP_REBUILD_POLICY)
   char *reserved_col_name_ptr = NULL;
   int reserved_index_col_pos = -1;
   int alloc_cnt = 0;
@@ -3233,7 +3233,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
       nnames++;
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(KEEP_REBUILD_POLICY)
   alloc_cnt = nnames + 1;	// Support for free space in preparation for additional columns
 #else
   alloc_cnt = nnames;
@@ -3263,7 +3263,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error_exit;
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(KEEP_REBUILD_POLICY)
       if (IS_RESERVED_INDEX_ATTR_NAME (attnames[i]))
 	{
 	  assert (reserved_index_col_pos == -1);
@@ -3273,8 +3273,8 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 #endif
     }
   attnames[i] = NULL;
-#if defined(SUPPORT_KEY_DUP_LEVEL)
-  attnames[alloc_cnt] = NULL;
+#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(KEEP_REBUILD_POLICY)
+  attnames[i + 1] = NULL;
 #endif
 
   if (idx->asc_desc)
@@ -3291,6 +3291,9 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  asc_desc[i] = idx->asc_desc[i];
 	}
+#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(KEEP_REBUILD_POLICY)
+      asc_desc[i] = 0;
+#endif
     }
 
   if (original_ctype == DB_CONSTRAINT_INDEX)
@@ -3309,6 +3312,9 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  attrs_prefix_length[i] = idx->attrs_prefix_length[i];
 	}
+#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(KEEP_REBUILD_POLICY)
+      attrs_prefix_length[i] = -1;
+#endif
     }
 
   if (idx->filter_predicate)
@@ -3407,7 +3413,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
       goto error_exit;
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(KEEP_REBUILD_POLICY)
   if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (original_ctype)
 #if !defined(SUPPORT_KEY_DUP_LEVEL_FK)
       && original_ctype != SM_CONSTRAINT_FOREIGN_KEY
@@ -3465,7 +3471,7 @@ end:
     {
       for (i = 0; attnames[i]; i++)
 	{
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(KEEP_REBUILD_POLICY)
 	  if (reserved_col_name_ptr == attnames[i])
 	    {
 	      reserved_col_name_ptr = NULL;
@@ -3473,7 +3479,7 @@ end:
 #endif
 	  free_and_init (attnames[i]);
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(KEEP_REBUILD_POLICY)
       /* attnames[reserved_index_col_pos] can be removed from dk_alter_rebuild_index_level_adjust().
        * In this case, attnames[x] is set to NULL, but the actual memory was not freed. 
        * Even if attnames[x] is set to NULL, reserved_col_name_ptr tells you the memory address you have allocated.

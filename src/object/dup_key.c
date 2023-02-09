@@ -50,7 +50,8 @@ get_reserved_index_attr_domain_type (int mode, int level)
     case DUP_MODE_OID:
       if (level == 0)
 	{
-	  domain = &tp_Bigint_domain;	// tp_domain_construct (DB_TYPE_BIGINT, NULL, DB_BIGINT_PRECISION, 0, NULL); 
+	  /* domain = &tp_Oid_domain; // tp_domain_construct (DB_TYPE_OID, (DB_OBJECT *) 0, 0, 0, (TP_DOMAIN *) 0); */
+	  domain = &tp_Bigint_domain;	// tp_domain_construct (DB_TYPE_BIGINT, NULL, DB_BIGINT_PRECISION, 0, NULL);
 	}
       else if (hash_mod_val > SHRT_MAX)
 	{
@@ -172,6 +173,7 @@ dk_heap_midxkey_get_reserved_index_value (int att_id, OID * rec_oid, DB_VALUE * 
     case DUP_MODE_OID:
       if (level == 0)
 	{
+	  /* db_make_oid (value, rec_oid); */
 	  db_make_bigint (value, *((DB_BIGINT *) rec_oid));
 	}
       else if (hash_mod_val > SHRT_MAX)
