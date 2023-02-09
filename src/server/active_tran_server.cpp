@@ -125,7 +125,7 @@ active_tran_server::stop_outgoing_page_server_messages ()
     }
 }
 
-tran_server::connection_handler *
+active_tran_server::connection_handler *
 active_tran_server::create_connection_handler (cubcomm::channel &&chn, tran_server &ts) const
 {
   // active_tran_server::connection_handler

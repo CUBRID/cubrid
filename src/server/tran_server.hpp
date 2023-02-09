@@ -80,7 +80,6 @@ class tran_server
     void push_request (tran_to_page_request reqid, std::string &&payload);
     int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
 
-
     void disconnect_all_page_servers ();
     bool is_page_server_connected () const;
     virtual bool uses_remote_storage () const;

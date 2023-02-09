@@ -68,7 +68,7 @@ class passive_tran_server : public tran_server
     void on_boot () final override;
 
     void stop_outgoing_page_server_messages () final override;
-    tran_server::connection_handler *create_connection_handler (cubcomm::channel &&chn,
+    connection_handler *create_connection_handler (cubcomm::channel &&chn,
 	tran_server &ts) const final override;
 
   private:

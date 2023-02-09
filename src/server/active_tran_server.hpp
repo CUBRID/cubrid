@@ -36,14 +36,6 @@ class active_tran_server : public tran_server
     MVCCID get_oldest_active_mvccid_from_page_server () const;
 
   private:
-    void on_boot () final override;
-    bool get_remote_storage_config () final override;
-
-    void stop_outgoing_page_server_messages () final override;
-    tran_server::connection_handler *create_connection_handler (cubcomm::channel &&chn,
-	tran_server &ts) const final override;
-
-  private:
     class connection_handler : public tran_server::connection_handler
     {
       public:
@@ -57,6 +49,14 @@ class active_tran_server : public tran_server
 	// request handlers
 	void receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip);
     };
+
+  private:
+    void on_boot () final override;
+    bool get_remote_storage_config () final override;
+
+    void stop_outgoing_page_server_messages () final override;
+    connection_handler *create_connection_handler (cubcomm::channel &&chn,
+	tran_server &ts) const final override;
 
   private:
     bool m_uses_remote_storage = false;
