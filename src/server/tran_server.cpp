@@ -37,7 +37,7 @@ tran_server::~tran_server ()
   assert (is_transaction_server () || m_page_server_conn_vec.empty ());
   if (is_transaction_server () && !m_page_server_conn_vec.empty ())
     {
-      disconnect_page_server ();
+      disconnect_all_page_servers ();
     }
 }
 
@@ -339,7 +339,7 @@ tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_n
 }
 
 void
-tran_server::disconnect_page_server ()
+tran_server::disconnect_all_page_servers ()
 {
   assert_is_tran_server ();
 

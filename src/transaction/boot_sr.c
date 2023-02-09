@@ -3198,10 +3198,10 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 	  //          -> boot_server_all_finalize
 	  //            -> finalize_server_type
 	  //              -> and then polymorphically in the transaction server object
-	  //                disconnect_page_server routine right before sending
+	  //                disconnect_all_page_servers routine right before sending
 	  //                the final disconnect message to Page Server(s)
 	  //  - send the final disconnect message to Page Server(s)
-	  //    - done in : tran_server::disconnect_page_server
+	  //    - done in : tran_server::disconnect_all_page_servers
 	  //  - delete the Passive Transaction Server object
 	  //    - done in: finalize_server_type
 
@@ -3231,7 +3231,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
       //        shutdown server routine
       //          -> boot_server_all_finalize
       //            -> finalize_server_type
-      //              -> tran_server::disconnect_page_server
+      //              -> tran_server::disconnect_all_page_servers
       //  - delete the Active Transaction Server object
       //    - done in: finalize_server_type
     }
