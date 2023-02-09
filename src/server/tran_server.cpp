@@ -138,6 +138,18 @@ tran_server::boot (const char *db_name)
   return NO_ERROR;
 }
 
+void
+tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
+{
+  m_page_server_conn_vec[0]->push_request (reqid, std::move (payload));
+}
+
+int
+tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const
+{
+  return m_page_server_conn_vec[0]->send_receive (reqid, std::move (payload_in), payload_out);
+}
+
 int
 tran_server::init_page_server_hosts (const char *db_name)
 {
@@ -303,21 +315,10 @@ tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_n
   er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
 
-  constexpr size_t RESPONSE_PARTITIONING_SIZE = 24;   // Arbitrarily chosen
-  // TODO: to reduce contention as much as possible, should be equal to the maximum number
-  // of active transactions that the system allows (PRM_ID_CSS_MAX_CLIENTS) + 1
 
-  cubcomm::send_queue_error_handler no_transaction_handler { nullptr };
-  // Transaction server will use message specific error handlers.
-  // Implementation will assert that an error handler is present if needed.
-
-  // NOTE: only the base class part (cubcomm::server) of a cubcomm::server_server instance is
+  // NOTE: only the base class part (cubcomm::channel) of a cubcomm::server_channel instance is
   // moved as argument below
-  m_page_server_conn_vec.emplace_back (
-	  new page_server_conn_t (std::move (srv_chn), get_request_handlers (), tran_to_page_request::RESPOND,
-				  page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE,
-				  std::move (no_transaction_handler)));
-  m_page_server_conn_vec.back ()->start ();
+  m_page_server_conn_vec.emplace_back (new connection_handler (std::move (srv_chn), *this));
 
   return NO_ERROR;
 }
@@ -336,8 +337,8 @@ tran_server::disconnect_page_server ()
   for (size_t i = 0; i < m_page_server_conn_vec.size (); i++)
     {
       er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from page server with channel id: %s.\n",
-		    m_page_server_conn_vec[i]->get_underlying_channel_id ().c_str ());
-      m_page_server_conn_vec[i]->push (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
+		    m_page_server_conn_vec[i]->get_channel_id ().c_str ());
+      m_page_server_conn_vec[i]->push_request (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
     }
   m_page_server_conn_vec.clear ();
   er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from all page servers.");
@@ -352,57 +353,9 @@ tran_server::is_page_server_connected () const
 }
 
 bool
-tran_server::is_page_server_connected (const size_t idx) const
-{
-  assert_is_tran_server ();
-
-  return m_page_server_conn_vec.size () > idx;
-}
-
-bool
 tran_server::uses_remote_storage () const
 {
   return false;
-}
-
-void
-tran_server::push_request_to (size_t idx, tran_to_page_request reqid, std::string &&payload)
-{
-  assert (idx < m_page_server_conn_vec.size());
-  if (!is_page_server_connected (idx))
-    {
-      return;
-    }
-
-  m_page_server_conn_vec[idx]->push (reqid, std::move (payload));
-}
-
-void
-tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
-{
-  // TODO push a request to the "main connection"
-  push_request_to (0, reqid, std::move (payload));
-}
-
-int
-tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const
-{
-  assert (is_page_server_connected (0));
-
-  // TODO push a request to the "main connection"
-  const css_error_code error_code = m_page_server_conn_vec[0]->send_recv (reqid, std::move (payload_in), payload_out);
-  // NOTE: enhance error handling when:
-  //  - more than one page server will be handled
-  //  - fail-over will be implemented
-
-  if (error_code != NO_ERRORS)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
-      er_log_debug (ARG_FILE_LINE, "Error during send_recv message to page server. Server cannot be reached.");
-      return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
-    }
-
-  return NO_ERROR;
 }
 
 size_t
@@ -418,6 +371,59 @@ tran_server::get_request_handlers ()
   // For now, there are no such handlers; return an empty map.
   std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map;
   return handlers_map;
+}
+
+tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tran_server &ts)
+  : m_ts { ts }
+{
+  constexpr size_t RESPONSE_PARTITIONING_SIZE = 24;   // Arbitrarily chosen
+  // TODO: to reduce contention as much as possible, should be equal to the maximum number
+  // of active transactions that the system allows (PRM_ID_CSS_MAX_CLIENTS) + 1
+
+  cubcomm::send_queue_error_handler no_transaction_handler { nullptr };
+  // Transaction server will use message specific error handlers.
+  // Implementation will assert that an error handler is present if needed.
+
+  m_conn.reset (new page_server_conn_t (std::move (chn), m_ts.get_request_handlers (), tran_to_page_request::RESPOND,
+					page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (no_transaction_handler)));
+
+  assert (m_conn != nullptr);
+  m_conn->start ();
+}
+
+tran_server::connection_handler::~connection_handler ()
+{
+}
+
+void
+tran_server::connection_handler::push_request (tran_to_page_request reqid, std::string &&payload)
+{
+  m_conn->push (reqid, std::move (payload));
+}
+
+int
+tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::string &&payload_in,
+    std::string &payload_out) const
+{
+  const css_error_code error_code = m_conn->send_recv (reqid, std::move (payload_in), payload_out);
+  // NOTE: enhance error handling when:
+  //  - more than one page server will be handled
+  //  - fail-over will be implemented
+
+  if (error_code != NO_ERRORS)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
+      er_log_debug (ARG_FILE_LINE, "Error during send_recv message to page server. Server cannot be reached.");
+      return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
+    }
+
+  return NO_ERROR;
+}
+
+const std::string
+tran_server::connection_handler::get_channel_id () const
+{
+  return m_conn->get_underlying_channel_id ();
 }
 
 void

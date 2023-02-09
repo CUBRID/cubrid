@@ -95,7 +95,8 @@ active_tran_server::on_boot ()
   for (size_t i = 0; i < get_connected_page_server_count (); i++)
     {
       m_prior_sender_sink_hooks.emplace_back (std::make_unique <cublog::prior_sender::sink_hook_t> (std::bind (
-	  &active_tran_server::push_request_to, this, i, tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1)));
+	  &active_tran_server::connection_handler::push_request, std::ref (m_page_server_conn_vec[i]),
+	  tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1)));
       log_Gl.m_prior_sender.add_sink (*m_prior_sender_sink_hooks.back ());
     }
 }

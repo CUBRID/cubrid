@@ -72,18 +72,47 @@ class tran_server
 
     int boot (const char *db_name);
 
-    void disconnect_page_server ();
-    bool is_page_server_connected () const;
-    bool is_page_server_connected (const size_t idx) const;
-    void push_request_to (size_t idx, tran_to_page_request reqid, std::string &&payload);
+    /* send request to the main connection */
     void push_request (tran_to_page_request reqid, std::string &&payload);
     int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
 
+    void disconnect_page_server ();
+    bool is_page_server_connected () const;
     virtual bool uses_remote_storage () const;
 
   protected:
     using page_server_conn_t = cubcomm::request_sync_client_server<tran_to_page_request, page_to_tran_request, std::string>;
     using request_handlers_map_t = std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t>;
+
+    class connection_handler
+    {
+      public:
+
+	connection_handler () = delete;
+	connection_handler (cubcomm::channel &&chn, tran_server &ts);
+
+	connection_handler (const connection_handler &) = delete;
+	connection_handler (connection_handler &&) = delete;
+
+	~connection_handler ();
+
+	connection_handler &operator= (const connection_handler &) = delete;
+	connection_handler &operator= (connection_handler &&) = delete;
+
+	void push_request (tran_to_page_request reqid, std::string &&payload);
+	int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
+
+	const std::string get_channel_id () const;
+
+      protected:
+	// virtual void on_disconnect();
+      private:
+	// Request handlers for requests in common
+	// void receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip);
+      private:
+	tran_server &m_ts;
+	std::unique_ptr<page_server_conn_t> m_conn;
+    };
 
   protected:
     size_t get_connected_page_server_count () const;
@@ -97,6 +126,9 @@ class tran_server
 
     virtual request_handlers_map_t get_request_handlers ();
 
+  protected:
+    std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
+
   private:
     int init_page_server_hosts (const char *db_name);
     int get_boot_info_from_page_server ();
@@ -108,7 +140,6 @@ class tran_server
   private:
     std::vector<cubcomm::node> m_connection_list;
     cubcomm::server_server m_conn_type;
-    std::vector<std::unique_ptr<page_server_conn_t>> m_page_server_conn_vec;
 };
 
 #endif // !_tran_server_HPP_
