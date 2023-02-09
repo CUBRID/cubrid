@@ -250,32 +250,32 @@ csql_invoke_system (const char *command)
  *   read the file into editor buffer.
  */
 int
-csql_invoke_formatter()
+csql_invoke_formatter ()
 {
-  auto[before_filename, before_fileptr] = filesys::open_temp_file("bef_fmt_");
+  auto[before_filename, before_fileptr] = filesys::open_temp_file ("bef_fmt_");
   if (before_fileptr == NULL)
     {
       csql_Error_code = CSQL_ERR_OS_ERROR;
-      nonscr_display_error(csql_Scratch_text, SCRATCH_TEXT_LEN);
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
       return CSQL_FAILURE;
     }
-  filesys::auto_delete_file before_file_del (before_filename.c_str());
+  filesys::auto_delete_file before_file_del (before_filename.c_str ());
   filesys::auto_close_file before_file (before_fileptr);
 
-  if (csql_edit_write_file(before_file.get()) == CSQL_FAILURE)
+  if (csql_edit_write_file (before_file.get ()) == CSQL_FAILURE)
     {
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
       return CSQL_FAILURE;
     }
 
-  char *cmd = csql_get_tmp_buf (strlen (csql_Editor_cmd + 1 + before_filename.size()));
+  char *cmd = csql_get_tmp_buf (strlen (csql_Editor_cmd + 1 + before_filename.size ()));
   if (cmd == NULL)
     {
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
       return CSQL_FAILURE;
     }
-  fclose (before_file.release());
-  sprintf (cmd, "%s %s", csql_Editor_cmd, before_filename.c_str());
+  fclose (before_file.release ());
+  sprintf (cmd, "%s %s", csql_Editor_cmd, before_filename.c_str ());
 
   auto[after_filename, after_fileptr] = filesys::open_temp_file ("aft_fmt_");
   if (after_fileptr == NULL)
@@ -284,19 +284,20 @@ csql_invoke_formatter()
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
       return CSQL_FAILURE;
     }
-  filesys::auto_delete_file after_file_del (after_filename.c_str());
+  filesys::auto_delete_file after_file_del (after_filename.c_str ());
   filesys::auto_close_file after_file (after_fileptr);
 
-  char *command = csql_get_tmp_buf (strlen (csql_Formatter_cmd + 1 + before_filename.size() + 1 + after_filename.size()));
+  char *command =
+    csql_get_tmp_buf (strlen (csql_Formatter_cmd + 1 + before_filename.size () + 1 + after_filename.size ()));
   if (command == NULL)
     {
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
       return CSQL_FAILURE;
     }
-  fclose (after_file.release());
-  sprintf (command, "%s %s %s", csql_Formatter_cmd, before_filename.c_str(), after_filename.c_str());
+  fclose (after_file.release ());
+  sprintf (command, "%s %s %s", csql_Formatter_cmd, before_filename.c_str (), after_filename.c_str ());
 
-  before_file.reset (fopen (before_filename.c_str(), "r"));
+  before_file.reset (fopen (before_filename.c_str (), "r"));
   if (!before_file)
     {
       csql_Error_code = CSQL_ERR_OS_ERROR;
@@ -304,7 +305,7 @@ csql_invoke_formatter()
       return CSQL_FAILURE;
     }
 
-  after_file.reset (fopen (after_filename.c_str(), "r"));
+  after_file.reset (fopen (after_filename.c_str (), "r"));
   if (!after_file)
     {
       csql_Error_code = CSQL_ERR_OS_ERROR;
@@ -317,8 +318,8 @@ csql_invoke_formatter()
       return CSQL_FORMAT_FAILURE;
     }
 
-  csql_edit_contents_clear();
-  if (csql_edit_read_file (after_file.get()) == CSQL_FAILURE)
+  csql_edit_contents_clear ();
+  if (csql_edit_read_file (after_file.get ()) == CSQL_FAILURE)
     {
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
       return CSQL_FAILURE;
@@ -346,14 +347,14 @@ csql_invoke_system_editor (bool csql_Editor_format)
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
       return CSQL_FAILURE;
     }
-  
+
   if (csql_Editor_format)
     {
-      int return_status = csql_invoke_formatter();
+      int return_status = csql_invoke_formatter ();
       if (return_status != CSQL_SUCCESS)
-        {
-          return return_status;
-        }
+	{
+	  return return_status;
+	}
     }
 
   /* create an unique file in tmp folder and open it for writing */

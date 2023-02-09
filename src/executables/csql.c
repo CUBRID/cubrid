@@ -2959,13 +2959,13 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
     {
       strncpy (csql_Shell_cmd, env, PATH_MAX - 1);
     }
-  
+
   env = getenv ("FORMATTER");
   if (env)
     {
-      strncpy(csql_Formatter_cmd, env, PATH_MAX - 1);
+      strncpy (csql_Formatter_cmd, env, PATH_MAX - 1);
     }
-  
+
   if (csql_arg->nopager)
     {
       csql_Pager_cmd[0] = '\0';
