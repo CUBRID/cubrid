@@ -237,7 +237,7 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
         TypeSpec rightType = visit(node.right);
         DeclFunc binOp = symbolStack.getOperator("op" + node.opStr, leftType, rightType);
         if (binOp == null) {
-            throw new SemanticError("the binary operator cannot be applied to the argument types");
+            throw new SemanticError("the binary operator " + node.opStr + " cannot be applied to the argument types");
         }
 
         return binOp.retType;
@@ -439,7 +439,7 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
         TypeSpec operandType = visit(node.operand);
         DeclFunc unaryOp = symbolStack.getOperator("op" + node.opStr, operandType);
         if (unaryOp == null) {
-            throw new SemanticError("the unary operator cannot be applied to the argument type");
+            throw new SemanticError("the unary " + node.opStr + " operator cannot be applied to the argument type");
         }
         return unaryOp.retType;
     }
@@ -482,7 +482,7 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
 
         visitNodeList(node.whenParts);
         if (node.elsePart != null) {
-            visit(node.elsePart);
+            visitNodeList(node.elsePart);
         }
 
         caseSelectorType = saveCaseSelectorType;    // restore
@@ -569,9 +569,11 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
             throw new SemanticError("upper bound of for loop must be of the INTEGER type");
         }
 
-        ty = visit(node.step);
-        if (!TypeSpecSimple.INTEGER.equals(ty)) {
-            throw new SemanticError("step of for loop must be of the INTEGER type");
+        if (node.step != null) {
+            ty = visit(node.step);
+            if (!TypeSpecSimple.INTEGER.equals(ty)) {
+                throw new SemanticError("step of for loop must be of the INTEGER type");
+            }
         }
 
         visitNodeList(node.stmts);

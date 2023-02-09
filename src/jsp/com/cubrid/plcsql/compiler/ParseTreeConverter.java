@@ -53,6 +53,8 @@ import org.apache.commons.text.StringEscapeUtils;
 // parse tree --> AST converter
 public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
+    public final SymbolStack symbolStack = new SymbolStack();
+
     @Override
     public AstNode visitSql_script(Sql_scriptContext ctx) {
         AstNode ret = visitCreate_routine(ctx.create_routine());
@@ -137,7 +139,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public TypeSpecNumeric visitNumeric_type(Numeric_typeContext ctx) {
+    public TypeSpecSimple visitNumeric_type(Numeric_typeContext ctx) {
         int precision = -1, scale = -1;
         try {
             if (ctx.precision != null) {
@@ -151,8 +153,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             throw new RuntimeException("unreachable");
         }
 
-        addToImports("java.math.BigDecimal");
-        return new TypeSpecNumeric(precision, scale);
+        // TODO: restore two lines below
+        //addToImports("java.math.BigDecimal");
+        // return new TypeSpecNumeric(precision, scale);
+        return TypeSpecSimple.of(getJavaType("NUMERIC"));   // ignore precision and scale for now
     }
 
     @Override
@@ -1768,7 +1772,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     // Private
     // --------------------------------------------------------
 
-    private final SymbolStack symbolStack = new SymbolStack();
     private final Set<String> imports = new TreeSet<>();
 
     private static final String SYMBOL_TABLE_TOP = "%predefined";
