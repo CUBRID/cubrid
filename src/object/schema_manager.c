@@ -14235,6 +14235,12 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 
 	  for (ptr = att_names, i = 0; i < n_attrs; ptr++, i++)
 	    {
+#if defined(SUPPORT_KEY_DUP_LEVEL_TEST_FK_NAME)
+	      if (IS_RESERVED_INDEX_ATTR_NAME (*ptr) && memcmp (prefix, "fk_", 4) == 0)
+		{
+		  continue;
+		}
+#endif
 	      strcat (name_all, *ptr);
 	      if (asc_desc && !DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (type) && asc_desc[i] == 1)
 		{
