@@ -409,8 +409,7 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
     }
     @Override
     public TypeSpec visitExprFloat(ExprFloat node) {
-        //return TypeSpecSimple.BIGDECIMAL;  // TODO: use this line with precision and scale
-        return TypeSpecSimple.DOUBLE;
+        return TypeSpecSimple.BIGDECIMAL;   // TODO: apply precision and scale
     }
     @Override
     public TypeSpec visitExprSerialVal(ExprSerialVal node) {

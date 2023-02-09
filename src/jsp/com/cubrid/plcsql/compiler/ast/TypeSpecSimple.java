@@ -102,6 +102,7 @@ public class TypeSpecSimple extends TypeSpec {
         }
     }
 
+    public static TypeSpecSimple OBJECT        = of("java.lang.Object");
     public static TypeSpecSimple NULL          = of("..Null");
     public static TypeSpecSimple CURSOR        = of("..Cursor");
 

@@ -48,7 +48,7 @@ public class ExprFloat implements Expr {
 
     @Override
     public String toJavaCode() {
-        return val;
+        return "new BigDecimal(" + val + ")";
     }
 
     // --------------------------------------------------

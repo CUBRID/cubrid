@@ -31,6 +31,7 @@
 package com.cubrid.plcsql.compiler;
 
 import com.cubrid.plcsql.compiler.ast.TypeSpec;
+import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 
 public class Coerce {
 
