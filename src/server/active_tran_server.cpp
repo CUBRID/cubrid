@@ -68,7 +68,36 @@ active_tran_server::get_remote_storage_config ()
 }
 
 void
-active_tran_server::receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip)
+active_tran_server::on_boot ()
+{
+  assert (is_active_transaction_server ());
+
+  for (size_t i = 0; i < get_connected_page_server_count (); i++)
+    {
+      m_prior_sender_sink_hooks.emplace_back (std::make_unique <cublog::prior_sender::sink_hook_t> (std::bind (
+	  &active_tran_server::connection_handler::push_request, std::ref (m_page_server_conn_vec[i]),
+	  tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1)));
+      log_Gl.m_prior_sender.add_sink (*m_prior_sender_sink_hooks.back ());
+    }
+}
+
+active_tran_server::connection_handler::request_handlers_map_t
+active_tran_server::connection_handler::get_request_handlers ()
+{
+  request_handlers_map_t::value_type saved_lsa_handler_value =
+	  std::make_pair (page_to_tran_request::SEND_SAVED_LSA,
+			  std::bind (&active_tran_server::connection_handler::receive_saved_lsa, this, std::placeholders::_1));
+
+  std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map =
+	  tran_server::connection_handler::get_request_handlers ();
+
+  handlers_map.insert (saved_lsa_handler_value);
+
+  return handlers_map;
+}
+
+void
+active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip)
 {
   std::string message = a_ip.pull_payload ();
   log_lsa saved_lsa;
@@ -88,39 +117,17 @@ active_tran_server::receive_saved_lsa (page_server_conn_t::sequenced_payload &a_
 }
 
 void
-active_tran_server::on_boot ()
-{
-  assert (is_active_transaction_server ());
-
-  for (size_t i = 0; i < get_connected_page_server_count (); i++)
-    {
-      m_prior_sender_sink_hooks.emplace_back (std::make_unique <cublog::prior_sender::sink_hook_t> (std::bind (
-	  &active_tran_server::connection_handler::push_request, std::ref (m_page_server_conn_vec[i]),
-	  tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1)));
-      log_Gl.m_prior_sender.add_sink (*m_prior_sender_sink_hooks.back ());
-    }
-}
-
-active_tran_server::request_handlers_map_t
-active_tran_server::get_request_handlers ()
-{
-  request_handlers_map_t::value_type saved_lsa_handler_value =
-	  std::make_pair (page_to_tran_request::SEND_SAVED_LSA,
-			  std::bind (&active_tran_server::receive_saved_lsa, std::ref (*this), std::placeholders::_1));
-
-  std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map =
-	  tran_server::get_request_handlers ();
-
-  handlers_map.insert (saved_lsa_handler_value);
-
-  return handlers_map;
-}
-
-void
 active_tran_server::stop_outgoing_page_server_messages ()
 {
   for (const auto &sink : m_prior_sender_sink_hooks)
     {
       log_Gl.m_prior_sender.remove_sink (*sink);
     }
+}
+
+tran_server::connection_handler *
+active_tran_server::create_connection_handler (cubcomm::channel &&chn, tran_server &ts) const
+{
+  // active_tran_server::connection_handler
+  return new connection_handler (std::move (chn), ts);
 }

@@ -81,14 +81,11 @@ class tran_server
     virtual bool uses_remote_storage () const;
 
   protected:
-    using page_server_conn_t = cubcomm::request_sync_client_server<tran_to_page_request, page_to_tran_request, std::string>;
-    using request_handlers_map_t = std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t>;
-
     class connection_handler
     {
       public:
-
 	connection_handler () = delete;
+
 	connection_handler (cubcomm::channel &&chn, tran_server &ts);
 
 	connection_handler (const connection_handler &) = delete;
@@ -105,17 +102,27 @@ class tran_server
 	const std::string get_channel_id () const;
 
       protected:
+	using page_server_conn_t = cubcomm::request_sync_client_server<tran_to_page_request, page_to_tran_request, std::string>;
+	using request_handlers_map_t = std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t>;
+
+      protected:
 	// virtual void on_disconnect();
+	virtual request_handlers_map_t get_request_handlers ();
+
+      protected:
+	tran_server &m_ts;
+
       private:
 	// Request handlers for requests in common
 	// void receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip);
+
       private:
-	tran_server &m_ts;
 	std::unique_ptr<page_server_conn_t> m_conn;
     };
 
   protected:
     size_t get_connected_page_server_count () const;
+    virtual connection_handler *create_connection_handler (cubcomm::channel &&chn, tran_server &ts) const;
 
     // Booting functions that require specialization
     virtual bool get_remote_storage_config () = 0;
@@ -123,8 +130,6 @@ class tran_server
 
     // Before disconnecting page server, make sure no message is being sent anymore to the page server.
     virtual void stop_outgoing_page_server_messages () = 0;
-
-    virtual request_handlers_map_t get_request_handlers ();
 
   protected:
     std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;

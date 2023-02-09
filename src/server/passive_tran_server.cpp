@@ -48,25 +48,18 @@ passive_tran_server::on_boot ()
   assert (is_passive_transaction_server ());
 }
 
-tran_server::request_handlers_map_t
-passive_tran_server::get_request_handlers ()
+passive_tran_server::connection_handler::request_handlers_map_t
+passive_tran_server::connection_handler::get_request_handlers ()
 {
   std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map =
-	  tran_server::get_request_handlers ();
+	  tran_server::connection_handler::get_request_handlers ();
 
-  auto from_ps_log_prior_list_handler = std::bind (&passive_tran_server::receive_log_prior_list,
-					std::ref (*this), std::placeholders::_1);
+  auto from_ps_log_prior_list_handler = std::bind (&passive_tran_server::connection_handler::receive_log_prior_list,
+					this, std::placeholders::_1);
   handlers_map.insert (std::make_pair (page_to_tran_request::SEND_TO_PTS_LOG_PRIOR_LIST,
 				       from_ps_log_prior_list_handler));
 
   return handlers_map;
-}
-
-void
-passive_tran_server::receive_log_prior_list (page_server_conn_t::sequenced_payload &a_ip)
-{
-  std::string message = a_ip.pull_payload ();
-  log_Gl.get_log_prior_receiver ().push_message (std::move (message));
 }
 
 void
@@ -148,6 +141,7 @@ void passive_tran_server::send_and_receive_stop_log_prior_dispatch ()
 
   std::string expected_empty_answer;
   // blocking call
+  // TODO enable to stop per connection, not only main connection
   (void) send_receive (tran_to_page_request::SEND_STOP_LOG_PRIOR_DISPATCH, std::string (), expected_empty_answer);
   // do not care about possible communication error with server here as long as transaction server is
   // going down anyway (on the other side of the fence, page server[s] should be resilient to transaction
@@ -210,4 +204,18 @@ void passive_tran_server::finish_replication_during_shutdown (cubthread::entry &
 void passive_tran_server::wait_replication_past_target_lsa (LOG_LSA lsa)
 {
   m_replicator->wait_past_target_lsa (lsa);
+}
+
+tran_server::connection_handler *
+passive_tran_server::create_connection_handler (cubcomm::channel &&chn, tran_server &ts) const
+{
+  // passive_tran_server::connection_handler
+  return new connection_handler (std::move (chn), ts);
+}
+
+void
+passive_tran_server::connection_handler::receive_log_prior_list (page_server_conn_t::sequenced_payload &a_ip)
+{
+  std::string message = a_ip.pull_payload ();
+  log_Gl.get_log_prior_receiver ().push_message (std::move (message));
 }

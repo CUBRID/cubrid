@@ -318,7 +318,7 @@ tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_n
 
   // NOTE: only the base class part (cubcomm::channel) of a cubcomm::server_channel instance is
   // moved as argument below
-  m_page_server_conn_vec.emplace_back (new connection_handler (std::move (srv_chn), *this));
+  m_page_server_conn_vec.emplace_back (create_connection_handler (std::move (srv_chn), *this));
 
   return NO_ERROR;
 }
@@ -364,13 +364,10 @@ tran_server::get_connected_page_server_count () const
   return m_page_server_conn_vec.size ();
 }
 
-tran_server::request_handlers_map_t
-tran_server::get_request_handlers ()
+tran_server::connection_handler *
+tran_server::create_connection_handler (cubcomm::channel &&chn, tran_server &ts) const
 {
-  // Insert handlers specific to all transaction servers here.
-  // For now, there are no such handlers; return an empty map.
-  std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map;
-  return handlers_map;
+  return new connection_handler (std::move (chn), ts);
 }
 
 tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tran_server &ts)
@@ -384,7 +381,7 @@ tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tra
   // Transaction server will use message specific error handlers.
   // Implementation will assert that an error handler is present if needed.
 
-  m_conn.reset (new page_server_conn_t (std::move (chn), m_ts.get_request_handlers (), tran_to_page_request::RESPOND,
+  m_conn.reset (new page_server_conn_t (std::move (chn), get_request_handlers (), tran_to_page_request::RESPOND,
 					page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (no_transaction_handler)));
 
   assert (m_conn != nullptr);
@@ -394,6 +391,16 @@ tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tra
 tran_server::connection_handler::~connection_handler ()
 {
 }
+
+tran_server::connection_handler::request_handlers_map_t
+tran_server::connection_handler::get_request_handlers ()
+{
+  // Insert handlers specific to all transaction servers here.
+  // For now, there are no such handlers; return an empty map.
+  std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map;
+  return handlers_map;
+}
+
 
 void
 tran_server::connection_handler::push_request (tran_to_page_request reqid, std::string &&payload)

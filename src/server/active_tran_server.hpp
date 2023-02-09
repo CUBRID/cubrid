@@ -39,11 +39,24 @@ class active_tran_server : public tran_server
     void on_boot () final override;
     bool get_remote_storage_config () final override;
 
-    request_handlers_map_t get_request_handlers () final override;
-
-    void receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip);
-
     void stop_outgoing_page_server_messages () final override;
+    tran_server::connection_handler *create_connection_handler (cubcomm::channel &&chn,
+	tran_server &ts) const final override;
+
+  private:
+    class connection_handler : public tran_server::connection_handler
+    {
+      public:
+	connection_handler (cubcomm::channel &&chn, tran_server &ts)
+	  : tran_server::connection_handler (std::move (chn), ts)
+	{}
+
+      private:
+	request_handlers_map_t get_request_handlers () final override;
+
+	// request handlers
+	void receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip);
+    };
 
   private:
     bool m_uses_remote_storage = false;
