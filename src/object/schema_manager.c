@@ -14140,7 +14140,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
   else
     {
       const char *prefix;
-      int i, k;
+      int i;
       int class_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       int att_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       char md5_str[32 + 1] = { '\0' };
@@ -14189,7 +14189,12 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       for (ptr = att_names; (*ptr != NULL) && (i < n_attrs); ptr++, i++)
 	{
 	  int ptr_size = 0;
-
+#if defined(SUPPORT_KEY_DUP_LEVEL_TEST_FK_NAME)
+	  if (IS_RESERVED_INDEX_ATTR_NAME (*ptr) && memcmp (prefix, "fk_", 4) == 0)
+	    {
+	      continue;
+	    }
+#endif
 	  do_desc = false;	/* init */
 	  if (asc_desc)
 	    {
@@ -14293,11 +14298,16 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  strncat (name, class_name_only, class_name_prefix_size);
 
 	  /* separated list of attribute names */
-	  k = 0;
 	  i = 0;
 	  /* n_attrs is already limited to MAX_ATTR_IN_AUTO_GEN_NAME here */
-	  for (ptr = att_names; k < n_attrs; ptr++, i++)
+	  for (ptr = att_names; i < n_attrs; ptr++, i++)
 	    {
+#if defined(SUPPORT_KEY_DUP_LEVEL_TEST_FK_NAME)
+	      if (IS_RESERVED_INDEX_ATTR_NAME (*ptr) && memcmp (prefix, "fk_", 4) == 0)
+		{
+		  continue;
+		}
+#endif
 	      do_desc = false;	/* init */
 	      if (asc_desc)
 		{
@@ -14355,7 +14365,6 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 
 		  strcat (name, att_name_trunc);
 		}
-	      k++;
 	    }
 
 	  if (att_name_prefix_size != DB_MAX_IDENTIFIER_LENGTH || class_name_prefix_size != DB_MAX_IDENTIFIER_LENGTH)

@@ -138,7 +138,7 @@ static const char *st_reserved_index_col_name[COUNT_OF_DUP_MODE][COUNT_OF_DUP_LE
 
 #define IS_RESERVED_INDEX_ATTR_ID(id)      ((id) >= MIN_RESERVED_INDEX_ATTR_ID &&  (id) <= MAX_RESERVED_INDEX_ATTR_ID)
 #define IS_RESERVED_INDEX_ATTR_NAME(name)  \
-        ((name[0] == '_') && !memcmp ((name), RESERVED_INDEX_ATTR_NAME_PREFIX, RESERVED_INDEX_ATTR_NAME_PREFIX_LEN))
+        (((name)[0] == '_') && !memcmp ((name), RESERVED_INDEX_ATTR_NAME_PREFIX, RESERVED_INDEX_ATTR_NAME_PREFIX_LEN))
 
 
 
