@@ -264,11 +264,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitBetween_exp(Between_expContext ctx) {
-        Expr target = visitExpression(ctx.between_expression()); // TODO
+        Expr target = visitExpression(ctx.between_expression());
         Expr lowerBound =
-                visitExpression(ctx.between_elements().between_expression(0)); // TODO
+                visitExpression(ctx.between_elements().between_expression(0));
         Expr upperBound =
-                visitExpression(ctx.between_elements().between_expression(1)); // TODO
+                visitExpression(ctx.between_elements().between_expression(1));
 
         Expr expr = new ExprBetween(target, lowerBound, upperBound);
         return ctx.NOT() == null ? expr : new ExprUnaryOp("Not", expr);
@@ -827,7 +827,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.pushSymbolTable("cursor_def", null);
 
         NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
-        // TODO: check if they are all in-params
+        for (DeclParam dp: paramList.nodes) {
+            if (dp instanceof DeclParamOut) {
+                throw new SemanticError("parameters of cursor definition cannot be OUT parameters");
+            }
+        }
 
         TempSqlStringifier stringifier = new TempSqlStringifier(symbolStack);
         new ParseTreeWalker().walk(stringifier, ctx.s_select_statement());
@@ -1004,7 +1008,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitContinue_statement(Continue_statementContext ctx) {
 
-        // TODO: check if this continue is in a loop
+        if (!within(ctx, Loop_statementContext.class)) {
+            throw new SemanticError("continue statements must be in a loop");
+        }
 
         Label_nameContext lnc = ctx.label_name();
         DeclLabel declLabel;
@@ -1029,7 +1035,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitExit_statement(Exit_statementContext ctx) {
 
-        // TODO: check if this exit is in a loop
+        if (!within(ctx, Loop_statementContext.class)) {
+            throw new SemanticError("exit statements must be in a loop");
+        }
 
         DeclLabel declLabel;
         Label_nameContext lnc = ctx.label_name();
@@ -1316,7 +1324,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public StmtRaise visitRaise_statement(Raise_statementContext ctx) {
         ExName exName = visitException_name(ctx.exception_name());
         if (exName == null) {
-            // TODO: check if this raise is in a exception handler
+            if (!within(ctx, Exception_handlerContext.class)) {
+                throw new SemanticError("raise statements without a exception name must be in an exception handler");
+            }
         }
         return new StmtRaise(exName);
     }
@@ -1769,7 +1779,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     private boolean autonomousTransaction = false;
-    private boolean connectionRequired = false; // TODO: temporary
+    private boolean connectionRequired = false;
 
     private String getJavaType(String pcsType) {
         String javaType = pcsToJavaTypeMap.get(pcsType);
@@ -1778,7 +1788,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         if ("com.cubrid.plcsql.predefined.sp.SpLib.Query".equals(javaType)) {
-            // no need to import Cursor now   TODO: remove this case later
+            // no need to import Cursor now
         } else if (javaType.startsWith("java.lang.") && javaType.lastIndexOf('.') == 9) {  // 9:the index of the second '.'
             // no need to import java.lang.*
         } else {
@@ -1859,5 +1869,18 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             addToImports("java.time.LocalDateTime");
         }
         return new ExprZonedDateTime(timestamp, originType);
+    }
+
+    private boolean within(ParserRuleContext ctx, Class ctxClass) {
+        while (true) {
+            ParserRuleContext parent = ctx.getParent();
+            if (parent == null) {
+                return false;
+            }
+            if (ctxClass.isAssignableFrom(parent.getClass())) {
+                return true;
+            }
+            ctx = parent;
+        }
     }
 }

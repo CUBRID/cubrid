@@ -48,7 +48,7 @@ public class ExprStr implements Expr {
 
     @Override
     public String toJavaCode() {
-        return '"' + val + '"'; // TODO: do I have to escape val?
+        return '"' + val + '"';
     }
 
     // --------------------------------------------------

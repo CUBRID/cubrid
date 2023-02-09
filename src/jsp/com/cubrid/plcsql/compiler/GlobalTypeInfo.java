@@ -35,6 +35,7 @@ import com.cubrid.plcsql.compiler.ast.TypeSpec;
 public class GlobalTypeInfo {
     public TypeSpec getTableColumnType(String table, String column) {
         // TODO
-        return null;
+        assert false: "not implemented yet";
+        throw new RuntimeException("not implemented yet");
     }
 }

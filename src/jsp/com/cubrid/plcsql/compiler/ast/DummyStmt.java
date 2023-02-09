@@ -40,7 +40,7 @@ public class DummyStmt implements Stmt {
 
     @Override
     public String toJavaCode() {
-        return "//%TODO-Stmt(" + kind + ")%";
+        return "//%TODO-DummyStmt(" + kind + ")%";
     }
 
     // --------------------------------------------------

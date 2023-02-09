@@ -46,7 +46,9 @@ public class Coerce {
     }
 
     public static Coerce getCoerce(TypeSpec from, TypeSpec to) {
-        if (from.equals(to)) {
+        if (to.equals(TypeSpecSimple.OBJECT) ||
+            from.equals(TypeSpecSimple.NULL) ||
+            from.equals(to)) {
             return IDENTITY;
         }
 

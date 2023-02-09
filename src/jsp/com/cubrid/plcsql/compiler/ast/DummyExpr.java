@@ -40,7 +40,7 @@ public class DummyExpr implements Expr {
 
     @Override
     public String toJavaCode() {
-        return "%TODO-Expr(" + kind + ")%";
+        return "%TODO-DummyExpr(" + kind + ")%";
     }
 
     // --------------------------------------------------

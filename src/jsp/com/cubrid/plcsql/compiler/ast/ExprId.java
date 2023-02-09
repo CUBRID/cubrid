@@ -51,10 +51,7 @@ public class ExprId implements Expr {
         this.name = name;
         this.scope = scope;
         this.decl = decl;
-        prefixDeclBlock =
-                (decl == null)
-                        ? false
-                        : decl.scope().declDone; // decl == null is temporary TODO fix it.
+        prefixDeclBlock = decl.scope().declDone;
     }
 
     @Override
