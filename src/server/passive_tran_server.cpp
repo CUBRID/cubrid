@@ -141,7 +141,6 @@ void passive_tran_server::send_and_receive_stop_log_prior_dispatch ()
 
   std::string expected_empty_answer;
   // blocking call
-  // TODO enable to stop per connection, not only main connection
   (void) send_receive (tran_to_page_request::SEND_STOP_LOG_PRIOR_DISPATCH, std::string (), expected_empty_answer);
   // do not care about possible communication error with server here as long as transaction server is
   // going down anyway (on the other side of the fence, page server[s] should be resilient to transaction

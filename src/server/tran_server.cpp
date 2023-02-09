@@ -139,15 +139,30 @@ tran_server::boot (const char *db_name)
 }
 
 void
+tran_server::push_request (size_t idx, tran_to_page_request reqid, std::string &&payload)
+{
+  assert (idx < m_page_server_conn_vec.size());
+  m_page_server_conn_vec[idx]->push_request (reqid, std::move (payload));
+}
+
+int
+tran_server::send_receive (size_t idx, tran_to_page_request reqid, std::string &&payload_in,
+			   std::string &payload_out) const
+{
+  assert (idx < m_page_server_conn_vec.size());
+  return m_page_server_conn_vec[idx]->send_receive (reqid, std::move (payload_in), payload_out);
+}
+
+void
 tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
 {
-  m_page_server_conn_vec[0]->push_request (reqid, std::move (payload));
+  push_request (0, reqid, std::move (payload));
 }
 
 int
 tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const
 {
-  return m_page_server_conn_vec[0]->send_receive (reqid, std::move (payload_in), payload_out);
+  return send_receive (0, reqid, std::move (payload_in), payload_out);
 }
 
 int

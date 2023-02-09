@@ -72,9 +72,14 @@ class tran_server
 
     int boot (const char *db_name);
 
+    /* send request to a specific connection */
+    void push_request (size_t idx, tran_to_page_request reqid, std::string &&payload);
+    int send_receive (size_t idx, tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
+
     /* send request to the main connection */
     void push_request (tran_to_page_request reqid, std::string &&payload);
     int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
+
 
     void disconnect_page_server ();
     bool is_page_server_connected () const;
