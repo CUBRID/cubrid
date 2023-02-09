@@ -42,28 +42,26 @@ public class StmtCursorOpen implements Stmt {
         return visitor.visitStmtCursorOpen(this);
     }
 
-    public final int level;
-    public final ExprId id;
+    public final ExprId cursor;
     public final NodeList<Expr> args;
 
-    public StmtCursorOpen(int level, ExprId id, NodeList<Expr> args) {
-        assert id.decl instanceof DeclCursor;
+    public StmtCursorOpen(ExprId cursor, NodeList<Expr> args) {
+        assert cursor.decl instanceof DeclCursor;
         assert args != null;
 
-        this.level = level;
-        this.id = id;
+        this.cursor = cursor;
         this.args = args;
     }
 
     @Override
     public String toJavaCode() {
-        DeclCursor decl = (DeclCursor) id.decl;
+        DeclCursor decl = (DeclCursor) cursor.decl;
         String dupCursorArgStr = getDupCursorArgStr(decl.paramRefCounts);
         String hostValuesStr = getHostValuesStr(decl.usedValuesMap, decl.paramRefCounts);
         return tmplStmt.replace("  %'DUPLICATE-CURSOR-ARG'%", Misc.indentLines(dupCursorArgStr, 1))
-                .replace("  %'CURSOR'%", Misc.indentLines(id.toJavaCode(), 1))
+                .replace("  %'CURSOR'%", Misc.indentLines(cursor.toJavaCode(), 1))
                 .replace("%'HOST-VALUES'%", Misc.indentLines(hostValuesStr, 2, true))
-                .replace("%'LEVEL'%", "" + level);
+                .replace("%'LEVEL'%", "" + cursor.scope.level);
     }
 
     // --------------------------------------------------
@@ -115,7 +113,7 @@ public class StmtCursorOpen implements Stmt {
         if (size == 0) {
             return "/* no used host values */";
         } else {
-            DeclCursor decl = (DeclCursor) id.decl;
+            DeclCursor decl = (DeclCursor) cursor.decl;
             StringBuffer sbuf = new StringBuffer();
             for (int i = 0; i < size; i++) {
                 sbuf.append(",\n");

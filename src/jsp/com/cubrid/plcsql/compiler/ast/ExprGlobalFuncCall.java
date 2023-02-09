@@ -42,13 +42,11 @@ public class ExprGlobalFuncCall implements Expr {
         return visitor.visitExprGlobalFuncCall(this);
     }
 
-    public final int level;
     public final String name;
     public final NodeList<Expr> args;
 
-    public ExprGlobalFuncCall(int level, String name, NodeList<Expr> args) {
+    public ExprGlobalFuncCall(String name, NodeList<Expr> args) {
         assert args != null;
-        this.level = level;
         this.name = name;
         this.args = args;
     }
@@ -65,8 +63,7 @@ public class ExprGlobalFuncCall implements Expr {
                 .replace("%'DYNAMIC-SQL'%", dynSql)
                 .replace("%'PARAMETERS'%", paramStr)
                 .replace("    %'SET-USED-VALUES'%", Misc.indentLines(setUsedValuesStr, 2))
-                .replace("  %'ARGUMENTS'%", Misc.indentLines(args.toJavaCode(",\n"), 1))
-                .replace("%'LEVEL'%", "" + level);
+                .replace("  %'ARGUMENTS'%", Misc.indentLines(args.toJavaCode(",\n"), 1));
     }
 
     // --------------------------------------------------
@@ -77,14 +74,14 @@ public class ExprGlobalFuncCall implements Expr {
             Misc.combineLines(
                     "(new Object() { // global function call: %'FUNC-NAME'%",
                     "  Object invoke(%'PARAMETERS'%) throws Exception {",
-                    "    String dynSql_%'LEVEL'% = \"%'DYNAMIC-SQL'%\";",
-                    "    CallableStatement stmt_%'LEVEL'% = conn.prepareCall(dynSql_%'LEVEL'%);",
-                    "    stmt_%'LEVEL'%.registerOutParameter(1, java.sql.Types.OTHER);",
+                    "    String dynSql = \"%'DYNAMIC-SQL'%\";",
+                    "    CallableStatement stmt = conn.prepareCall(dynSql);",
+                    "    stmt.registerOutParameter(1, java.sql.Types.OTHER);",
                     "    %'SET-USED-VALUES'%",
-                    "    stmt_%'LEVEL'%.execute();",
-                    "    Object ret_%'LEVEL'% = stmt_%'LEVEL'%.getObject(1);",
-                    "    stmt_%'LEVEL'%.close();",
-                    "    return ret_%'LEVEL'%;",
+                    "    stmt.execute();",
+                    "    Object ret = stmt.getObject(1);",
+                    "    stmt.close();",
+                    "    return ret;",
                     "  }",
                     "}.invoke(",
                     "  %'ARGUMENTS'%",
@@ -122,7 +119,7 @@ public class ExprGlobalFuncCall implements Expr {
                 sbuf.append(";\n");
             }
 
-            sbuf.append(String.format("stmt_%%'LEVEL'%%.setObject(%d, o%d);", i + 2, i));
+            sbuf.append(String.format("stmt.setObject(%d, o%d);", i + 2, i));
         }
 
         return sbuf.toString();

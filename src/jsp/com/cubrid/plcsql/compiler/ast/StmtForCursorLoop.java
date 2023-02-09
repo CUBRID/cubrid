@@ -47,14 +47,13 @@ public class StmtForCursorLoop extends StmtCursorOpen {
     public final NodeList<Stmt> stmts;
 
     public StmtForCursorLoop(
-            int level,
-            ExprId id,
+            ExprId cursor,
             NodeList<Expr> args,
             String label,
             String record,
             NodeList<Stmt> stmts) {
 
-        super(level, id, args);
+        super(cursor, args);
 
         assert args != null;
 
@@ -65,15 +64,15 @@ public class StmtForCursorLoop extends StmtCursorOpen {
 
     @Override
     public String toJavaCode() {
-        DeclCursor decl = (DeclCursor) id.decl;
+        DeclCursor decl = (DeclCursor) cursor.decl;
         String dupCursorArgStr = getDupCursorArgStr(decl.paramRefCounts);
         String hostValuesStr = getHostValuesStr(decl.usedValuesMap, decl.paramRefCounts);
         return tmplStmt.replace("  %'DUPLICATE-CURSOR-ARG'%", Misc.indentLines(dupCursorArgStr, 1))
-                .replace("%'CURSOR'%", id.toJavaCode())
+                .replace("%'CURSOR'%", cursor.toJavaCode())
                 .replace("%'HOST-VALUES'%", Misc.indentLines(hostValuesStr, 2, true))
                 .replace("%'RECORD'%", record)
                 .replace("%'LABEL'%", label == null ? "// no label" : label + "_%'LEVEL'%:")
-                .replace("%'LEVEL'%", "" + level)
+                .replace("%'LEVEL'%", "" + cursor.scope.level)
                 .replace("    %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 2));
     }
 

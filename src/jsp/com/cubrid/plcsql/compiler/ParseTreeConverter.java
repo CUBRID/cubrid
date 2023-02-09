@@ -151,6 +151,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             throw new RuntimeException("unreachable");
         }
 
+        addToImports("java.math.BigDecimal");
         return new TypeSpecNumeric(precision, scale);
     }
 
@@ -555,20 +556,19 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 connectionRequired = true;
                 addToImports("java.sql.*");
 
+                // do not push a symbol table: no nested structure
                 return new ExprSerialVal(
-                        symbolStack.getCurrentScope().level
-                                + 1, // do not push a symbol table: no nested structure
-                        Misc.getNormalizedText(ctx.record),
-                        fieldName.equals("CURRENT_VALUE")
-                                ? ExprSerialVal.SerialVal.CURR_VAL
-                                : ExprSerialVal.SerialVal.NEXT_VAL);
+                    Misc.getNormalizedText(ctx.record),
+                    fieldName.equals("CURRENT_VALUE")
+                            ? ExprSerialVal.SerialVal.CURR_VAL
+                            : ExprSerialVal.SerialVal.NEXT_VAL);
             } else {
                 throw new SemanticError("undeclared id " + Misc.getNormalizedText(ctx.record));
             }
         } else {
             if (!(record.decl instanceof DeclForRecord)) {
                 throw new SemanticError("field lookup is only allowed for a record, but " +
-                    ctx.record.getText() + " is not a record");
+                    Misc.getNormalizedText(ctx.record) + " is not a record");
             }
 
             Scope scope = symbolStack.getCurrentScope();
@@ -594,8 +594,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             connectionRequired = true;
             addToImports("java.sql.*");
 
-            int level = symbolStack.getCurrentScope().level + 1;
-            ExprGlobalFuncCall ret = new ExprGlobalFuncCall(level, name, args);
+            ExprGlobalFuncCall ret = new ExprGlobalFuncCall(name, args);
 
             return ret;
         } else {
@@ -651,7 +650,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public Expr visitSimple_case_expression(Simple_case_expressionContext ctx) {
 
         symbolStack.pushSymbolTable("case_expr", null);
-        int level = symbolStack.getCurrentScope().level;
 
         Expr selector = visitExpression(ctx.expression());
 
@@ -674,7 +672,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (whenParts.nodes.size() > 0) {
             addToImports("java.util.Objects");
         }
-        return new ExprCase(level, selector, whenParts, elsePart);
+        return new ExprCase(selector, whenParts, elsePart);
     }
 
     private static boolean isCursorOrRefcursor(ExprId id) {
@@ -973,8 +971,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             connectionRequired = true;
             addToImports("java.sql.*");
 
-            int level = symbolStack.getCurrentScope().level + 1;
-            return new ExprGlobalFuncCall(level, name, EMPTY_ARGS);
+            return new ExprGlobalFuncCall(name, EMPTY_ARGS);
         } else if (decl instanceof DeclId) {
             Scope scope = symbolStack.getCurrentScope();
             return new ExprId(name, scope, (DeclId) decl);
@@ -1130,7 +1127,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public StmtForIterLoop visitStmt_for_iter_loop(Stmt_for_iter_loopContext ctx) {
 
         symbolStack.pushSymbolTable("for_iter", null);
-        int level = symbolStack.getCurrentScope().level;
 
         String iter = Misc.getNormalizedText(ctx.iterator().index_name());
 
@@ -1154,7 +1150,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.popSymbolTable();
 
         return new StmtForIterLoop(
-                level, declLabel, iter, reverse, lowerBound, upperBound, step, stmts);
+                declLabel, iterDecl, reverse, lowerBound, upperBound, step, stmts);
     }
 
     @Override
@@ -1181,6 +1177,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         connectionRequired = true;
         addToImports("java.sql.*");
+
+        symbolStack.pushSymbolTable("for_cursor_loop", null);
 
         IdentifierContext idCtx = ctx.for_cursor().cursor_exp().identifier();
         ExprId cursor = visitNonFuncIdentifier(idCtx);
@@ -1211,9 +1209,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             i++;
         }
 
-        symbolStack.pushSymbolTable("for_cursor_loop", null);
-        int level = symbolStack.getCurrentScope().level;
-
         String record = Misc.getNormalizedText(ctx.for_cursor().record_name());
 
         String label;
@@ -1232,7 +1227,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        return new StmtForCursorLoop(level, cursor, args, label, record, stmts);
+        return new StmtForCursorLoop(cursor, args, label, record, stmts);
     }
 
     @Override
@@ -1242,7 +1237,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         addToImports("java.sql.*");
 
         symbolStack.pushSymbolTable("for_s_sql_loop", null);
-        int level = symbolStack.getCurrentScope().level;
 
         String record = Misc.getNormalizedText(ctx.for_static_sql().record_name());
 
@@ -1270,7 +1264,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.popSymbolTable();
 
         return new StmtForSqlLoop(
-                false, level, label, record, new ExprStr(sql), stringifier.usedVars, stmts);
+                false, label, declForRecord, new ExprStr(sql), stringifier.usedVars, stmts);
     }
 
     @Override
@@ -1280,7 +1274,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         addToImports("java.sql.*");
 
         symbolStack.pushSymbolTable("for_d_sql_loop", null);
-        int level = symbolStack.getCurrentScope().level;
 
         String record = Misc.getNormalizedText(ctx.for_dynamic_sql().record_name());
 
@@ -1311,7 +1304,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        return new StmtForSqlLoop(true, level, label, record, dynSql, usedExprList, stmts);
+        return new StmtForSqlLoop(true, label, declForRecord, dynSql, usedExprList, stmts);
     }
 
     @Override
@@ -1436,11 +1429,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         TempSqlStringifier stringifier = new TempSqlStringifier(symbolStack);
         new ParseTreeWalker().walk(stringifier, ctx);
 
+        int level = symbolStack.getCurrentScope().level + 1;
         String sql = StringEscapeUtils.escapeJava(stringifier.sbuf.toString());
         return new StmtExecImme(
                 false,
-                symbolStack.getCurrentScope().level
-                        + 1, // do not push a symbol table because there is no nested structure
+                level,
                 new ExprStr(sql),
                 stringifier.intoVars,
                 stringifier.usedVars);
@@ -1495,8 +1488,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             i++;
         }
 
-        Scope scope = symbolStack.getCurrentScope();
-        return new StmtCursorOpen(scope.level, cursor, args);
+        return new StmtCursorOpen(cursor, args);
     }
 
     @Override
@@ -1637,8 +1629,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         connectionRequired = true;
         addToImports("java.sql.*");
 
-        symbolStack.pushSymbolTable("exec_imme", null);
-        int level = symbolStack.getCurrentScope().level;
 
         Expr dynSql = visitExpression(ctx.dyn_sql().expression());
 
@@ -1658,8 +1648,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             usedExprList = visitUsing_clause(usingClause);
         }
 
-        symbolStack.popSymbolTable();
-
+        int level = symbolStack.getCurrentScope().level + 1;
         return new StmtExecImme(true, level, dynSql, intoVarList, usedExprList);
     }
 
@@ -1775,6 +1764,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     private static final String SYMBOL_TABLE_TOP = "%predefined";
 
     private void addToImports(String i) {
+        //System.out.println("temp: i = " + i);
         imports.add(i);
     }
 

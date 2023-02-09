@@ -409,7 +409,8 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
     }
     @Override
     public TypeSpec visitExprFloat(ExprFloat node) {
-        return TypeSpecSimple.BIGDECIMAL;  // TODO: precision and scale?
+        //return TypeSpecSimple.BIGDECIMAL;  // TODO: use this line with precision and scale
+        return TypeSpecSimple.DOUBLE;
     }
     @Override
     public TypeSpec visitExprSerialVal(ExprSerialVal node) {
@@ -513,7 +514,6 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
             throw new RuntimeException("not implemented yet");
         } else if (idType.equals(TypeSpecSimple.REFCURSOR)) {
             // nothing to do more,
-            // or static analysis to check variable types? (TODO)
         } else {
             throw new SemanticError("cannot fetch a variable which is not a cursor");
         }
@@ -521,8 +521,8 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
     }
     @Override
     public TypeSpec visitStmtCursorOpen(StmtCursorOpen node) {
-        TypeSpec idType = visit(node.id);
-        DeclCursor declCursor = (DeclCursor) node.id.decl;
+        TypeSpec idType = visit(node.cursor);
+        DeclCursor declCursor = (DeclCursor) node.cursor.decl;
         if (idType.equals(TypeSpecSimple.CURSOR)) {
             int len = node.args.nodes.size();
             for (int i = 0; i < len; i++){
@@ -534,7 +534,7 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
                 if (c == null) {
                     throw new SemanticError(String.format(
                         "argument %d to cursor %s has an incompatible type",
-                        i, node.id.name));
+                        i, node.cursor.name));
                 }
                 arg.setCoerce(c);
             }
@@ -620,7 +620,6 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
         // TODO: requires server API
         assert false: "not implemented yet";
         throw new RuntimeException("not implemented yet");
-
         //return null;
     }
     @Override

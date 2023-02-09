@@ -42,13 +42,11 @@ public class ExprCase implements Expr {
         return visitor.visitExprCase(this);
     }
 
-    public final int level;
     public final Expr selector;
     public final NodeList<CaseExpr> whenParts;
     public final Expr elsePart;
 
-    public ExprCase(int level, Expr selector, NodeList<CaseExpr> whenParts, Expr elsePart) {
-        this.level = level;
+    public ExprCase(Expr selector, NodeList<CaseExpr> whenParts, Expr elsePart) {
         this.selector = selector;
         this.whenParts = whenParts;
         this.elsePart = elsePart;
@@ -61,9 +59,7 @@ public class ExprCase implements Expr {
                 .replace("%'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(), 2, true))
                 .replace(
                         "    %'ELSE-PART'%",
-                        Misc.indentLines(elsePart == null ? "null" : elsePart.toJavaCode(), 2))
-                .replace("%'LEVEL'%", "" + level) // level replacement must go last
-        ;
+                        Misc.indentLines(elsePart == null ? "null" : elsePart.toJavaCode(), 2));
     }
 
     public void setCommonType(TypeSpec ty) {
@@ -78,7 +74,7 @@ public class ExprCase implements Expr {
 
     private static final String tmpl =
             Misc.combineLines(
-                    "(new Object() { Object invoke(Object selector_%'LEVEL'%) throws Exception { // simple case expression",
+                    "(new Object() { Object invoke(Object selector) throws Exception { // simple case expression",
                     "  return %'WHEN-PARTS'%",
                     "    %'ELSE-PART'%;",
                     "} }.invoke(%'SELECTOR-VALUE'%))");

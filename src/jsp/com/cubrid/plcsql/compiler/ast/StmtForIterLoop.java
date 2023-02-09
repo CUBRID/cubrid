@@ -42,9 +42,8 @@ public class StmtForIterLoop implements Stmt {
         return visitor.visitStmtForIterLoop(this);
     }
 
-    public final int level;
     public final DeclLabel declLabel;
-    public final String iter;
+    public final DeclForIter iter;
     public final boolean reverse;
     public final Expr lowerBound;
     public final Expr upperBound;
@@ -52,16 +51,14 @@ public class StmtForIterLoop implements Stmt {
     public final NodeList<Stmt> stmts;
 
     public StmtForIterLoop(
-            int level,
             DeclLabel declLabel,
-            String iter,
+            DeclForIter iter,
             boolean reverse,
             Expr lowerBound,
             Expr upperBound,
             Expr step,
             NodeList<Stmt> stmts) {
 
-        this.level = level;
         this.declLabel = declLabel;
         this.iter = iter;
         this.reverse = reverse;
@@ -77,9 +74,9 @@ public class StmtForIterLoop implements Stmt {
         String labelStr = declLabel == null ? "// no label" : declLabel.toJavaCode();
 
         return (reverse ? tmplForIterReverse : tmplForIter)
-                .replace("%'LEVEL'%", "" + level)
+                .replace("%'LEVEL'%", "" + iter.scope.level)
                 .replace("  %'OPT-LABEL'%", Misc.indentLines(labelStr, 1))
-                .replace("%'ITER'%", iter)
+                .replace("%'ITER'%", iter.name)
                 .replace("%'LOWER-BOUND'%", lowerBound.toJavaCode())
                 .replace("%'UPPER-BOUND'%", upperBound.toJavaCode())
                 .replace("%'STEP'%", step == null ? "1" : step.toJavaCode())

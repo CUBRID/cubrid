@@ -62,5 +62,5 @@ public class CaseExpr implements AstNode {
 
     private static final String tmpl =
             Misc.combineLines(
-                    "Boolean.TRUE.equals(opEq(selector_%'LEVEL'%, %'VALUE'%)) ?", "  %'EXPRESSION'% :");
+                    "Boolean.TRUE.equals(opEq(selector, %'VALUE'%)) ?", "  %'EXPRESSION'% :");
 }

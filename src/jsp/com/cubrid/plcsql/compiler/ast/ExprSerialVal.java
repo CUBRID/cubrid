@@ -47,12 +47,10 @@ public class ExprSerialVal implements Expr {
         NEXT_VAL,
     }
 
-    public final int level;
     public final String name;
     public final SerialVal mode; // CURR_VAL or NEXT_VAL
 
-    public ExprSerialVal(int level, String name, SerialVal mode) {
-        this.level = level;
+    public ExprSerialVal(String name, SerialVal mode) {
         this.name = name;
         this.mode = mode;
     }
@@ -64,8 +62,7 @@ public class ExprSerialVal implements Expr {
                 .replace("%'SERIAL-NAME'%", name)
                 .replace(
                         "%'SERIAL-VAL'%",
-                        (mode == SerialVal.CURR_VAL) ? "CURRENT_VALUE" : "NEXT_VALUE")
-                .replace("%'LEVEL'%", "" + level);
+                        (mode == SerialVal.CURR_VAL) ? "CURRENT_VALUE" : "NEXT_VALUE");
     }
 
     // --------------------------------------------------
@@ -76,18 +73,18 @@ public class ExprSerialVal implements Expr {
             Misc.combineLines(
                     "(new Object() {",
                     "  int getSerialVal() throws Exception {",
-                    "    int ret_%'LEVEL'%;",
-                    "    String dynSql_%'LEVEL'% = \"select %'SERIAL-NAME'%.%'SERIAL-VAL'%\";",
-                    "    PreparedStatement stmt_%'LEVEL'% = conn.prepareStatement(dynSql_%'LEVEL'%);",
-                    "    ResultSet r%'LEVEL'% = stmt_%'LEVEL'%.executeQuery();",
-                    "    if (r%'LEVEL'%.next()) {",
-                    "      ret_%'LEVEL'% = r%'LEVEL'%.getInt(1);",
+                    "    int ret;",
+                    "    String dynSql = \"select %'SERIAL-NAME'%.%'SERIAL-VAL'%\";",
+                    "    PreparedStatement stmt = conn.prepareStatement(dynSql);",
+                    "    ResultSet r = stmt.executeQuery();",
+                    "    if (r.next()) {",
+                    "      ret = r.getInt(1);",
                     "    } else {",
                     "      assert false; // serial value must be present",
-                    "      ret_%'LEVEL'% = -1;",
+                    "      ret = -1;",
                     "    }",
-                    "    stmt_%'LEVEL'%.close();",
-                    "    return ret_%'LEVEL'%;",
+                    "    stmt.close();",
+                    "    return ret;",
                     "  }",
                     "}.getSerialVal())");
 }
