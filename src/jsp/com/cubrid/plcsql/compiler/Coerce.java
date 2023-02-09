@@ -32,6 +32,9 @@ package com.cubrid.plcsql.compiler;
 
 import com.cubrid.plcsql.compiler.ast.TypeSpec;
 import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
+import com.cubrid.plcsql.compiler.ast.TypeSpecVariadic;
+
+import java.util.List;
 
 public class Coerce {
 
@@ -56,6 +59,32 @@ public class Coerce {
         // TODO: fill other cases
 
         return null;
+    }
+
+    public static boolean matchTypeLists(List<TypeSpec> from, List<TypeSpec> to) {
+        if (from.size() < to.size()) {
+            return false;
+        }
+
+        boolean isDstVariadic = false;
+        TypeSpec src, dst = null;
+        int len = from.size();
+        for (int i = 0; i < len; i++) {
+            src = from.get(i);
+            if (!isDstVariadic) {
+                dst = to.get(i);
+                if (dst instanceof TypeSpecVariadic) {
+                    isDstVariadic = true;
+                    dst = ((TypeSpecVariadic) dst).elem;
+                }
+            }
+            assert dst != null;
+            if (getCoerce(src, dst) == null) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // ----------------------------------------------

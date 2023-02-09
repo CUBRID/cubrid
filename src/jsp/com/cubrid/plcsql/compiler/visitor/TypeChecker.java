@@ -225,7 +225,7 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
 
         TypeSpec upperType = visit(node.upperBound);
 
-        if (areComparableTypes(targetType, upperType)) {
+        if (!areComparableTypes(targetType, upperType)) {
             throw new SemanticError("expression and the upper bound do not have comparable types in 'between' expression");
         }
 

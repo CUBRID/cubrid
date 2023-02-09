@@ -73,7 +73,6 @@ public class TypeSpecSimple extends TypeSpec {
     static {
         final String[] javaTypes = new String[] {
             "java.lang.Object",
-            "java.lang.Object[]",
             "..Null",       // not an actual java type
             "..Cursor",     // not an actual java type
 

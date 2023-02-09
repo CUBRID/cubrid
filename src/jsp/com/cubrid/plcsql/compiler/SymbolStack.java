@@ -42,7 +42,7 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.Map;
-import java.util.TreeMap;
+import java.util.HashMap;
 import java.util.stream.Collectors;
 
 public class SymbolStack {
@@ -67,8 +67,8 @@ public class SymbolStack {
                     "VALUE_ERROR",
                     "ZERO_DIVIDE");
 
-    private static final Map<String, OverloadedFunc> operators = new TreeMap<>();
-    private static final Map<String, OverloadedFunc> predefinedFuncs = new TreeMap<>();
+    private static final Map<String, OverloadedFunc> operators = new HashMap<>();
+    private static final Map<String, OverloadedFunc> cubridFuncs = new HashMap<>();
     private static SymbolTable predefinedSymbols = new SymbolTable(new Scope(null, null, "%predefined_0", 0));
 
     static {
@@ -91,24 +91,24 @@ public class SymbolStack {
 
                         // parameter types
                         Class[] paramTypes = m.getParameterTypes();
-                        NodeList<DeclParam> params;
-                        if (paramTypes.length == 0) {
-                            params = null;
-                        } else {
-                            params = new NodeList<>();
-                            int i = 0;
-                            for (Class pt: paramTypes) {
-                                String typeName = pt.getTypeName();
-                                //System.out.println("  " + typeName);
-                                DeclParamIn p = new DeclParamIn("p" + i, TypeSpecSimple.of(typeName));
-                                params.addNode(p);
-                            }
+                        NodeList<DeclParam> params = new NodeList<>();;
+                        int i = 0;
+                        for (Class pt: paramTypes) {
+                            String typeName = pt.getTypeName();
+                            //System.out.println("  " + typeName);
+                            TypeSpec paramType = TypeSpec.of(typeName);
+                            assert paramType != null;
+
+                            DeclParamIn p = new DeclParamIn("p" + i, paramType);
+                            params.addNode(p);
+                            i++;
                         }
 
                         // return type
-                        String typeName = m.getReturnType().getName();
+                        String typeName = m.getReturnType().getTypeName();
                         //System.out.println("  =>" + typeName);
-                        TypeSpec retType = TypeSpecSimple.of(typeName);
+                        TypeSpec retType = TypeSpec.of(typeName);
+                        assert retType != null;
 
                         // add op
                         DeclFunc op = new DeclFunc(name, params, retType);
@@ -147,37 +147,40 @@ public class SymbolStack {
     }
 
     private static void putOperator(String name, DeclFunc df) {
-
-        OverloadedFunc overload = operators.get(name);
-        if (overload == null) {
-            overload = new OverloadedFunc();
-            operators.put(name, overload);
-        }
-
-        df.setScope(predefinedSymbols.scope);
-        overload.put(df);
-    }
-
-    private static void putPredefinedFunc(String name, DeclFunc df) {
-
-        OverloadedFunc overload = predefinedFuncs.get(name);
-        if (overload == null) {
-            overload = new OverloadedFunc();
-            predefinedFuncs.put(name, overload);
-        }
-
-        df.setScope(predefinedSymbols.scope);
-        overload.put(df);
+        putPredefinedFunc(operators, name, df);
     }
 
     public static DeclFunc getOperator(String name, TypeSpec... argTypes) {
+        return getPredefinedFunc(operators, name, argTypes);
+    }
 
-        OverloadedFunc overload = operators.get(name);
+    private static void putCubridFunc(String name, DeclFunc df) {
+        putPredefinedFunc(cubridFuncs, name, df);
+    }
+
+    public static DeclFunc getCubridFunc(String name, TypeSpec... argTypes) {
+        return getPredefinedFunc(cubridFuncs, name, argTypes);
+    }
+
+    private static DeclFunc getPredefinedFunc(Map<String, OverloadedFunc> map, String name, TypeSpec... argTypes) {
+        OverloadedFunc overload = map.get(name);
         if (overload == null) {
             return null;
         } else {
             return overload.get(Arrays.asList(argTypes));
         }
+    }
+
+    private static void putPredefinedFunc(Map<String, OverloadedFunc> map, String name, DeclFunc df) {
+
+        OverloadedFunc overload = map.get(name);
+        if (overload == null) {
+            overload = new OverloadedFunc();
+            map.put(name, overload);
+        }
+
+        df.setScope(predefinedSymbols.scope);
+        overload.put(df);
     }
 
     // -----------------------------------------------------------------------------
@@ -260,7 +263,7 @@ public class SymbolStack {
                 throw new RuntimeException("unreachable");
             }
             if (symbolTable.scope.level == 0 && map == symbolTable.funcs) {
-                if (predefinedFuncs.containsKey(name)) {
+                if (cubridFuncs.containsKey(name)) {
                     assert false : name + " is a predefined function";
                     throw new RuntimeException("unreachable");
                 }
@@ -283,7 +286,7 @@ public class SymbolStack {
         DeclFunc ret = getDecl(DeclFunc.class, name);
         if (ret == null) {
             // search the predefined functions too
-            OverloadedFunc overloaded = predefinedFuncs.get(name);
+            OverloadedFunc overloaded = cubridFuncs.get(name);
             if (overloaded == null) {
                 return null;
             } else {
@@ -300,7 +303,7 @@ public class SymbolStack {
         DeclFunc ret = getDecl(DeclFunc.class, name);
         if (ret == null) {
             // search the predefined functions too
-            OverloadedFunc overloaded = predefinedFuncs.get(name);
+            OverloadedFunc overloaded = cubridFuncs.get(name);
             if (overloaded == null) {
                 return null;
             } else {
@@ -355,11 +358,11 @@ public class SymbolStack {
     private static class SymbolTable {
         final Scope scope;
 
-        final Map<String, DeclId> ids = new TreeMap<>();
-        final Map<String, DeclProc> procs = new TreeMap<>();
-        final Map<String, DeclFunc> funcs = new TreeMap<>();
-        final Map<String, DeclException> exceptions = new TreeMap<>();
-        final Map<String, DeclLabel> labels = new TreeMap<>();
+        final Map<String, DeclId> ids = new HashMap<>();
+        final Map<String, DeclProc> procs = new HashMap<>();
+        final Map<String, DeclFunc> funcs = new HashMap<>();
+        final Map<String, DeclException> exceptions = new HashMap<>();
+        final Map<String, DeclLabel> labels = new HashMap<>();
 
         SymbolTable(Scope scope) {
             this.scope = scope;
@@ -403,22 +406,27 @@ public class SymbolStack {
     // It implements DeclId in order to be inserted ids map for system provided functions.
     private static class OverloadedFunc extends DeclBase {
 
-        private final Map<String, DeclFunc> overloads = new TreeMap<>();   // (arguments types --> function decl) map
+        private final Map<List<TypeSpec>, DeclFunc> overloads = new HashMap<>();   // (arguments types --> function decl) map
 
         void put(DeclFunc decl) {
             List<TypeSpec> paramTypes =
                 decl.paramList.nodes.stream()
                     .map(e -> e.typeSpec())
                     .collect(Collectors.toList());
-            String key = getKey(paramTypes);
-            DeclFunc old = overloads.put(key, decl);
+            DeclFunc old = overloads.put(paramTypes, decl);
             // system predefined operators and functions must be unique with their names and argument types.
             assert old == null;
         }
 
         DeclFunc get(List<TypeSpec> argTypes) {
-            String key = getKey(argTypes);
-            return overloads.get(key);
+            DeclFunc ret = null;
+            for (Map.Entry<List<TypeSpec>, DeclFunc> e: overloads.entrySet()) {
+                if (Coerce.matchTypeLists(argTypes, e.getKey())) {
+                    assert ret == null;     // TODO: remove this assert when ready
+                    ret = e.getValue();
+                }
+            }
+            return ret;
         }
 
         @Override
@@ -430,25 +438,6 @@ public class SymbolStack {
         public String toJavaCode() {
             assert false: "unreachable";
             throw new RuntimeException("unreachagle");
-        }
-
-        // -----------------------------------------------
-        // Private
-        // -----------------------------------------------
-
-        String getKey(List<TypeSpec> types) {
-
-            StringBuffer sbuf = new StringBuffer();
-
-            for (TypeSpec t: types) {
-
-                if (sbuf.length() > 0) {
-                    sbuf.append(',');
-                }
-                sbuf.append(t.name);
-            }
-
-            return sbuf.toString();
         }
     }
 }

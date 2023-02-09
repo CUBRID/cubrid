@@ -30,38 +30,32 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public abstract class TypeSpec implements AstNode {
+import com.cubrid.plcsql.compiler.SemanticError;
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
-    public final String name;
+import com.cubrid.plcsql.compiler.Misc;
 
-    public TypeSpec(String name) {
-        this.name = name;
-    }
+import java.util.Map;
+import java.util.HashMap;
 
-    public static TypeSpec of(String name) {
-        if (name.endsWith("[]")) {
-            String elemName = name.substring(0, name.length() - 2);
-            TypeSpecSimple elem = TypeSpecSimple.of(elemName);
-            if (elem == null) {
-                return null;
-            } else {
-                return new TypeSpecVariadic(elem);
-            }
-        } else {
-            return TypeSpecSimple.of(name);
-        }
+public class TypeSpecVariadic extends TypeSpec {
+
+    public final TypeSpecSimple elem;
+
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        assert false: "unreachable";  // cannot be a part of an AST: only in a symbol table for CUBRID predefined functions
+        throw new RuntimeException("unreachable");
     }
 
     @Override
-    public boolean equals(Object that) {
-        return this == that;    // Actually, this is the same as equals of Object class.
-                                // I just wanted to be explicit.
+    public String toJavaSignature() {
+        assert false: "unreachable";  // cannot be a parameter or return type of a stored procedure
+        throw new RuntimeException("unreachable");
     }
 
-    @Override
-    public String toJavaCode() {
-        return name;
+    public TypeSpecVariadic(TypeSpecSimple elem) {
+        super(elem.name + "[]");
+        this.elem = elem;
     }
-
-    public abstract String toJavaSignature();
 }
