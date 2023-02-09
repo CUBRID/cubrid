@@ -3852,6 +3852,8 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
   bool found_first_non_zero = false;
   int scale = db_value_scale (val);
 
+  static bool oracle_style_number = prm_get_bool_value (PRM_ID_ORACLE_STYLE_NUMBER_RETURN);
+
   assert (val != NULL && buf != NULL);
 
   if (DB_IS_NULL (val))
@@ -3871,8 +3873,7 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
       /* Add the negative sign */
       if (temp[i] == '-')
 	{
-	  buf[nbuf] = '-';
-	  nbuf++;
+	  buf[nbuf++] = '-';
 	}
 
       /* Add decimal point */
@@ -3880,21 +3881,27 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
 	{
 	  int k = temp_size - 1;
 
-	  /* remove trailing zero */
-	  while (k > i && temp[k] == '0')
+	  if (oracle_style_number)
 	    {
-	      k--;
-	    }
+	      /* remove trailing zero */
+	      while (k > i && temp[k] == '0')
+		{
+		  k--;
+		}
 
-	  temp_size = k + 1;
-	  if (temp[k] == '0')
-	    {
-	      continue;
+	      temp_size = k + 1;
+	      if (temp[k] == '0')
+		{
+		  continue;
+		}
+	      else if (k >= i)
+		{
+		  buf[nbuf++] = '.';
+		}
 	    }
-	  else if (k >= i)
+	  else
 	    {
-	      buf[nbuf] = '.';
-	      nbuf++;
+	      buf[nbuf++] = '.';
 	    }
 	}
 
@@ -3907,8 +3914,7 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
       /* Remove leading zeroes */
       if (found_first_non_zero || i >= temp_size - scale - 1)
 	{
-	  buf[nbuf] = temp[i];
-	  nbuf++;
+	  buf[nbuf++] = temp[i];
 	}
     }
 
