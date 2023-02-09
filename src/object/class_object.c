@@ -4089,14 +4089,6 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
       return;
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
-  /* for foreign key, need to check redundancy first */
-  if (new_cons == DB_CONSTRAINT_FOREIGN_KEY)
-    {
-      //printf ("foreign key\n");
-    }
-#endif
-
   for (cons = cons_list; cons; cons = cons->next)
     {
       if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (cons->type) == false)
@@ -8235,8 +8227,11 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char **out_shared
     }
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-  classobj_check_attr_in_unique_constraint (constraints, constraint_type, (char **) att_names, (int *) asc_desc,
-					    (SM_FUNCTION_INFO *) func_index_info);
+  if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type))
+    {
+      classobj_check_attr_in_unique_constraint (constraints, constraint_type, (char **) att_names, (int *) asc_desc,
+						(SM_FUNCTION_INFO *) func_index_info);
+    }
 #endif
 
   existing_con =
