@@ -39,11 +39,14 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class AstNode {
 
+    public ParserRuleContext ctx;
+
     public abstract String toJavaCode();
     public abstract <R> R accept(AstNodeVisitor<R> visitor);
 
     public AstNode(ParserRuleContext ctx) {
         if (ctx != null) {
+            this.ctx = ctx;
             this.lineNo = Misc.getLineOf(ctx);
         }
     }
@@ -57,5 +60,4 @@ public abstract class AstNode {
     // ---------------------------------------------------
 
     private int lineNo;
-
 }

@@ -31,6 +31,7 @@
 package com.cubrid.plcsql.handler;
 
 import com.cubrid.jsp.data.CompileInfo;
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.ParseTreeConverter;
 import com.cubrid.plcsql.compiler.ParseTreePrinter;
 import com.cubrid.plcsql.compiler.PcsLexerEx;
@@ -318,8 +319,12 @@ public class TestMain {
 
                 System.out.println(" - success");
             } catch (Throwable e) {
+                if (e instanceof SemanticError) {
+                    System.err.println("Semantic Error on line " + ((SemanticError) e).lineNo + ":");
+                }
+
                 e.printStackTrace();
-                System.out.println(" - failure");
+                System.err.println(" - failure");
                 failCnt++;
             }
         }

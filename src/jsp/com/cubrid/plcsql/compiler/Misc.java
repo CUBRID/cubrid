@@ -43,7 +43,9 @@ public class Misc {
     }
 
     public static int getLineOf(ParserRuleContext ctx) {
-        assert ctx != null;
+        if (ctx == null) {
+            return 0;
+        }
 
         Token start = null;
         while (true) {
