@@ -112,7 +112,6 @@ class tran_server
 	using request_handlers_map_t = std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t>;
 
       protected:
-	// virtual void on_disconnect();
 	virtual request_handlers_map_t get_request_handlers ();
 
       protected:
@@ -120,7 +119,6 @@ class tran_server
 
       private:
 	// Request handlers for requests in common
-	// void receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip);
 
       private:
 	std::unique_ptr<page_server_conn_t> m_conn;
