@@ -154,7 +154,7 @@ $ csql help messages
    ;EXit                        - exit program.\n\
 \n\
    ;CLear                       - clear command buffer.\n\
-   ;EDIT   [format/fmt]         - invoke system editor with command buffer.\n\
+   ;EDIT   [format/fmt]         - invoke system editor with or without formatting the command buffer.\n\
    ;LISt                        - display the content of command buffer.\n\
 \n\
    ;RUn                         - execute sql in command buffer.\n\
@@ -169,7 +169,7 @@ $ csql help messages
    ;EDITOR_Cmd   [editor-cmd]     command to new one, or display the current\n\
    ;PRINT_Cmd    [print-cmd]      one, respectively.\n\
    ;PAger_cmd    [pager-cmd]\n\
-   ;FORMATTER_Cmd[formatter-cmd]\n\
+   ;FOrmatter_cmd[formatter-cmd]\n\
 \n\
    ;DATE                        - display the local time, date.\n\
    ;DATAbase                    - display the name of database being accessed.\n\

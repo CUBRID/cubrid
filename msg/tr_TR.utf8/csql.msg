@@ -112,6 +112,7 @@ $  Bu 3 boş bırakılmalı
 194 Komut satırı argümanlarının geçersiz kombinasyonu (seçenekler).
 196 Tanımlanamayan bir hata oluıtu.
 197 Çıkış yönlendirildişinde ';edit' izin verilmez.
+198 Biçimlendirme başarısız oldu.
 
 203 <%1$s> 
 204 <Super Classes> 
@@ -153,7 +154,7 @@ $ csql help messages
    ;EXit                        - programdan çık.\n\
 \n\
    ;CLear                       - komut buffer temizle.\n\
-   ;EDIT                        - komut buffer ile sistem editörü çağırmak.\n\
+   ;EDIT   [format/fmt]         - komut arabelleğini biçimlendirerek veya biçimlendirmeden sistem düzenleyicisini çağırın.\n\
    ;LISt                        - komut buffwe içerik görüntüle.\n\
 \n\
    ;RUn                         - komut buffer içinde SQL yürüt.\n\
@@ -164,10 +165,11 @@ $ csql help messages
    ;AUtocommit [ON|OFF]         - otomatik tamamlama modunu etkinleştirme / devre dışı bırakma.\n\
    ;REStart                     - veritabanını yeniden başlat.\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - varsayılan dış kabuğu ayarla, editör, yazdır ve çağrı cihazı\n\
+   ;SHELL_Cmd    [shell-cmd]    - varsayılan dış kabuğu ayarla, editör, yazdır, çağrı cihazı ve biçimlendirici\n\
    ;EDITOR_Cmd   [editor-cmd]     yeni bir tane komut ver veya geçerli olanı görüntüle\n\
    ;PRINT_Cmd    [print-cmd]      bir, sırasıyla.\n\
    ;PAger_cmd    [pager-cmd]\n\
+   ;FOrmatter_cmd[formatter-cmd]\n\
 \n\
    ;DATE                        - yerel saat görüntüle, tarih.\n\
    ;DATAbase                    - veritabanı erişilen adını görüntüler.\n\

@@ -112,6 +112,7 @@ $ Diese 3 sollten leer sein
 194 Ungültige Kombination von Befehlszeilenargumente (Optionen).
 196 Ein unbekannter Fehler ist aufgetreten.
 197 ';edit' ist nicht zulässig, wenn die Ausgabe umgeleitet wurde.
+198 Formatieren fehlgeschlagen.
 
 203 <%1$s> 
 204 <Oberklassen> 
@@ -154,7 +155,7 @@ $ csql help messages
    ;EXit                        - Programm beenden.\n\
 \n\
    ;CLear                       - Befehlspuffer leeren.\n\
-   ;EDIT                        - System-Editor mit dem Befehlspuffer rufen.\n\
+   ;EDIT   [format/fmt]         - System-Editor mit oder ohne Formatierung des Befehlspuffer aufrufen.\n\
    ;LISt                        - Inhalt eines Befehlspuffer anzeigen.\n\
 \n\
    ;RUn                         - SQL in Befehlspuffer ausführen.\n\
@@ -165,10 +166,11 @@ $ csql help messages
    ;AUtocommit [ON|OFF]         - aktivieren/deaktivieren des Auto-Commit-Modus.\n\
    ;REStart                     - Datenbank neustarten.\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - Standard-Shell, -Editor, -Printer und -Pager setzen\n\
+   ;SHELL_Cmd    [shell-cmd]    - Standard-Shell, -Editor, -Printer, -Pager und -Formatierer setzen\n\
    ;EDITOR_Cmd   [editor-cmd]     Befehl für eine neue, oder die aktuelle Anzeigen\n\
    ;PRINT_Cmd    [print-cmd]      einzeln, jeweils.\n\
    ;PAger_cmd    [pager-cmd]\n\
+   ;FOrmatter_cmd[formatter-cmd]\n\
 \n\
    ;DATE                        - lokale Uhrzeit und Datum anzeigen.\n\
    ;DATAbase                    - den Namen der zugegriffenen Datenbank anzeigen.\n\

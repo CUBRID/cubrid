@@ -112,6 +112,7 @@ $ These 3 should be blank
 194 명령어 옵션 조합이 잘못되었습니다.
 196 미정의 에러 발생.
 197 출력이 재지정된 경우에는 ';edit' 명령어를 사용할 수 없습니다.
+198 포맷 실패.
 
 203 <%1$s> 
 204 <상위 클래스> 
@@ -152,7 +153,7 @@ $ csql help messages
    ;EXit                        - 종료.\n\
 \n\
    ;CLear                       - 명령어 버퍼 내용을 지움.\n\
-   ;EDIT                        - 명령어 버퍼 편집.\n\
+   ;EDIT   [format/fmt]         - 명령어 버퍼를 포맷하거나, 하지 않고 편집.\n\
    ;LISt                        - 명령어 버퍼 내용 출력.\n\
 \n\
    ;RUn                         - 명령어 버퍼 실행.\n\
@@ -166,6 +167,7 @@ $ csql help messages
    ;EDITOR_Cmd   [editor-cmd]   - 내정된 편집기를 설정하거나 보여줌.\n\
    ;PRINT_Cmd    [print-cmd]    - 내정된 프린트 명령어를 설정하거나 보여줌.\n\
    ;PAger_cmd    [pager-cmd]    - 내정된 페이지 구분기를 설정하거나 보여줌.\n\
+   ;FOrmatter_cmd[formatter-cmd]- 내정된 포맷터를 설정하거나 보여줌.\n\
 \n\
    ;DATE                        - 지역 날짜, 시간 출력.\n\
    ;DATAbase                    - 접근 중인 데이터베이스 이름 출력.\n\
