@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -45,7 +47,9 @@ public class CaseExpr extends AstNode {
     public final Expr val;
     public final Expr expr;
 
-    public CaseExpr(Expr val, Expr expr) {
+    public CaseExpr(ParserRuleContext ctx, Expr val, Expr expr) {
+        super(ctx);
+
         this.val = val;
         this.expr = expr;
     }

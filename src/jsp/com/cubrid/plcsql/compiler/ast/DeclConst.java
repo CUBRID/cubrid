@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -45,7 +47,9 @@ public class DeclConst extends DeclVarLike {
     public final boolean notNull;
     public final Expr val;
 
-    public DeclConst(String name, TypeSpec typeSpec, boolean notNull, Expr val) {
+    public DeclConst(ParserRuleContext ctx, String name, TypeSpec typeSpec, boolean notNull, Expr val) {
+        super(ctx);
+
         assert val != null;
 
         this.name = name;

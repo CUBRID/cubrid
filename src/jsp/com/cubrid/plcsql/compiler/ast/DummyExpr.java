@@ -30,13 +30,17 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 public class DummyExpr extends Expr {
 
     public final String kind;
 
-    public DummyExpr(String kind) {
+    public DummyExpr(ParserRuleContext ctx, String kind) {
+        super(ctx);
+
         this.kind = kind;
     }
 

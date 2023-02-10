@@ -39,6 +39,10 @@ public class NodeList<N extends AstNode> extends AstNode {
 
     public final List<N> nodes = new ArrayList<>();
 
+    public NodeList() {
+        super(null);
+    }
+
     public NodeList<N> addNode(N p) {
         assert p != null;
         nodes.add(p);

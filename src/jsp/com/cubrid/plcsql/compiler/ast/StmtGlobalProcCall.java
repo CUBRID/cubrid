@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -46,7 +48,9 @@ public class StmtGlobalProcCall extends Stmt {
     public final String name;
     public final NodeList<Expr> args;
 
-    public StmtGlobalProcCall(int level, String name, NodeList<Expr> args) {
+    public StmtGlobalProcCall(ParserRuleContext ctx, int level, String name, NodeList<Expr> args) {
+        super(ctx);
+
         assert args != null;
         this.level = level;
         this.name = name;

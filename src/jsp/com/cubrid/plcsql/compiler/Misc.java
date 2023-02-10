@@ -30,14 +30,34 @@
 
 package com.cubrid.plcsql.compiler;
 
-import java.io.PrintStream;
 import org.antlr.v4.runtime.ParserRuleContext;
+import org.antlr.v4.runtime.Token;
+
+import java.io.PrintStream;
 
 public class Misc {
 
     public enum RoutineType {
         FUNC,
         PROC,
+    }
+
+    public static int getLineOf(ParserRuleContext ctx) {
+        assert ctx != null;
+
+        Token start = null;
+        while (true) {
+            start = ctx.getStart();
+            if (start == null) {
+                ctx = ctx.getParent();
+                assert ctx != null;
+            } else {
+                break;
+            }
+        }
+        assert start != null;
+
+        return start.getLine();
     }
 
     public static String getNormalizedText(ParserRuleContext ctx) {

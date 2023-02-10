@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -44,7 +46,9 @@ public class ExprTime extends Expr {
 
     public final LocalTime time;
 
-    public ExprTime(LocalTime time) {
+    public ExprTime(ParserRuleContext ctx, LocalTime time) {
+        super(ctx);
+
         this.time = time;
     }
 

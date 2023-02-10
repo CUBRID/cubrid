@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -46,7 +48,9 @@ public class StmtOpenFor extends Stmt {
     public final ExprStr sql;
     public final NodeList<ExprId> usedVars;
 
-    public StmtOpenFor(ExprId id, ExprStr sql, NodeList<ExprId> usedVars) {
+    public StmtOpenFor(ParserRuleContext ctx, ExprId id, ExprStr sql, NodeList<ExprId> usedVars) {
+        super(ctx);
+
         this.id = id;
         this.sql = sql;
         this.usedVars = usedVars;

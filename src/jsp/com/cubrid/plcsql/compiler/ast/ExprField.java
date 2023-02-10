@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -43,7 +45,9 @@ public class ExprField extends Expr {
     public final ExprId record;
     public String fieldName;
 
-    public ExprField(ExprId record, String fieldName) {
+    public ExprField(ParserRuleContext ctx, ExprId record, String fieldName) {
+        super(ctx);
+
         this.record = record;
         this.fieldName = fieldName;
     }

@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -47,15 +49,17 @@ public class ExName extends AstNode {
     public final DeclException decl;
     public final boolean prefixDeclBlock;
 
-    public ExName(String name, Scope scope, DeclException decl) {
+    public ExName(ParserRuleContext ctx, String name, Scope scope, DeclException decl) {
+        super(ctx);
+
         this.name = name;
         this.scope = scope;
         this.decl = decl;
         prefixDeclBlock = (decl == null) ? false : decl.scope().declDone;
     }
 
-    public ExName(String name) {
-        this(name, null, null);
+    public ExName(ParserRuleContext ctx, String name) {
+        this(ctx, name, null, null);
     }
 
     @Override

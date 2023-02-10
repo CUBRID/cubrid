@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -43,7 +45,9 @@ public class StmtAssign extends Stmt {
     public final ExprId var;
     public final Expr val;
 
-    public StmtAssign(ExprId var, Expr val) {
+    public StmtAssign(ParserRuleContext ctx, ExprId var, Expr val) {
+        super(ctx);
+
         this.var = var;
         this.val = val;
     }

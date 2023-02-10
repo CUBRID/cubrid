@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -46,7 +48,9 @@ public class StmtWhileLoop extends Stmt {
     public final Expr cond;
     public final NodeList<Stmt> stmts;
 
-    public StmtWhileLoop(DeclLabel declLabel, Expr cond, NodeList<Stmt> stmts) {
+    public StmtWhileLoop(ParserRuleContext ctx, DeclLabel declLabel, Expr cond, NodeList<Stmt> stmts) {
+        super(ctx);
+
         this.declLabel = declLabel;
         this.cond = cond;
         this.stmts = stmts;

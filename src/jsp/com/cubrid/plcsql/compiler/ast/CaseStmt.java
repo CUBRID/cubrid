@@ -1,5 +1,7 @@
 /*
- * Copyright (c) 2016 CUBRID Corporation.
+ * Copyright (ParserRuleContext ctx, c) 2016 CUBRID Corporation.
+ *  super(ctx);
+ *
  *
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted provided that the following conditions are met:
@@ -30,6 +32,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -45,7 +49,9 @@ public class CaseStmt extends AstNode {
     public final Expr val;
     public final NodeList<Stmt> stmts;
 
-    public CaseStmt(Expr val, NodeList<Stmt> stmts) {
+    public CaseStmt(ParserRuleContext ctx, Expr val, NodeList<Stmt> stmts) {
+        super(ctx);
+
         this.val = val;
         this.stmts = stmts;
     }

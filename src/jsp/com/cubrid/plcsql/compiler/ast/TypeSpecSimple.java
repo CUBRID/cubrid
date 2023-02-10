@@ -58,6 +58,10 @@ public class TypeSpecSimple extends TypeSpec {
         return fullJavaType;
     }
 
+    // ------------------------------------------------------------------
+    // Private
+    // ------------------------------------------------------------------
+
     private TypeSpecSimple(String fullJavaType) {
         super(getSimpleName(fullJavaType));
         this.fullJavaType = fullJavaType;

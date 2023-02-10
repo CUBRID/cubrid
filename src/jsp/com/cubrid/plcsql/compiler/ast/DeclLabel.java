@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -42,7 +44,9 @@ public class DeclLabel extends Decl {
 
     public final String name;
 
-    public DeclLabel(String name) {
+    public DeclLabel(ParserRuleContext ctx, String name) {
+        super(ctx);
+
         this.name = name;
     }
 

@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -49,13 +51,15 @@ public class StmtForSqlLoop extends Stmt {
     public final NodeList<? extends Expr> usedExprList;
     public final NodeList<Stmt> stmts;
 
-    public StmtForSqlLoop(
+    public StmtForSqlLoop(ParserRuleContext ctx,
             boolean isDynamic,
             String label,
             DeclForRecord record,
             Expr sql,
             NodeList<? extends Expr> usedExprList,
             NodeList<Stmt> stmts) {
+        super(ctx);
+
         this.isDynamic = isDynamic;
         this.label = label;
         this.record = record;

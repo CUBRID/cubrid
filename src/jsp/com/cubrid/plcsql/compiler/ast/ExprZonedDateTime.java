@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -46,7 +48,9 @@ public class ExprZonedDateTime extends Expr {
     public final ZonedDateTime time;
     public final String originType;
 
-    public ExprZonedDateTime(ZonedDateTime time, String originType) {
+    public ExprZonedDateTime(ParserRuleContext ctx, ZonedDateTime time, String originType) {
+        super(ctx);
+
         this.time = time;
         this.originType = originType;
     }

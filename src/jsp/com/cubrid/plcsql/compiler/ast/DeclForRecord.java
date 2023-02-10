@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -37,7 +39,9 @@ public class DeclForRecord extends DeclId {
 
     public final String name;
 
-    public DeclForRecord(String name) {
+    public DeclForRecord(ParserRuleContext ctx, String name) {
+        super(ctx);
+
         this.name = name;
     }
 

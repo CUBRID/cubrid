@@ -30,19 +30,19 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 public class ExprTrue extends Expr {
 
+    public static final ExprTrue SINGLETON = new ExprTrue();
+
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {
         return visitor.visitExprTrue(this);
     }
-
-    public static final ExprTrue SINGLETON = new ExprTrue();
-
-    private ExprTrue() {}
 
     @Override
     public String toJavaCode() {
@@ -52,4 +52,9 @@ public class ExprTrue extends Expr {
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
+
+    private ExprTrue() {
+        super(null);
+    }
+
 }

@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -45,13 +47,15 @@ public class CondStmt extends Stmt {
     public final Expr cond;
     public final NodeList<Stmt> stmts;
 
-    public CondStmt(Expr cond, NodeList<Stmt> stmts) {
+    public CondStmt(ParserRuleContext ctx, Expr cond, NodeList<Stmt> stmts) {
+        super(ctx);
+
         this.cond = cond;
         this.stmts = stmts;
     }
 
-    public CondStmt(Expr cond, Stmt stmt) {
-        this(cond, new NodeList<Stmt>().addNode(stmt));
+    public CondStmt(ParserRuleContext ctx, Expr cond, Stmt stmt) {
+        this(ctx, cond, new NodeList<Stmt>().addNode(stmt));
     }
 
     @Override

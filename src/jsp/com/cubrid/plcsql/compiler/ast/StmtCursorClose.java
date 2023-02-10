@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -42,7 +44,9 @@ public class StmtCursorClose extends Stmt {
 
     public final ExprId id;
 
-    public StmtCursorClose(ExprId id) {
+    public StmtCursorClose(ParserRuleContext ctx, ExprId id) {
+        super(ctx);
+
         this.id = id;
     }
 

@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -40,8 +42,8 @@ public class DeclParamIn extends DeclParam {
         return visitor.visitDeclParamIn(this);
     }
 
-    public DeclParamIn(String name, TypeSpec typeSpec) {
-        super(name, typeSpec);
+    public DeclParamIn(ParserRuleContext ctx, String name, TypeSpec typeSpec) {
+        super(ctx, name, typeSpec);
     }
 
     @Override

@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -46,7 +48,9 @@ public class ExprLike extends Expr {
     public final ExprStr pattern;
     public final ExprStr escape;
 
-    public ExprLike(Expr target, ExprStr pattern, ExprStr escape) {
+    public ExprLike(ParserRuleContext ctx, Expr target, ExprStr pattern, ExprStr escape) {
+        super(ctx);
+
         this.target = target;
         this.pattern = pattern;
         this.escape = escape;

@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -48,12 +50,14 @@ public class StmtExecImme extends Stmt {
     public final NodeList<ExprId> intoVarList;
     public final NodeList<? extends Expr> usedExprList;
 
-    public StmtExecImme(
+    public StmtExecImme(ParserRuleContext ctx,
             boolean isDynamic,
             int level,
             Expr dynSql,
             NodeList<ExprId> intoVarList,
             NodeList<? extends Expr> usedExprList) {
+        super(ctx);
+
         this.isDynamic = isDynamic;
         this.level = level;
         this.dynSql = dynSql;

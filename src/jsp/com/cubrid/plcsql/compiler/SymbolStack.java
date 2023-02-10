@@ -100,7 +100,7 @@ public class SymbolStack {
                             TypeSpec paramType = TypeSpec.of(typeName);
                             assert paramType != null;
 
-                            DeclParamIn p = new DeclParamIn("p" + i, paramType);
+                            DeclParamIn p = new DeclParamIn(null, "p" + i, paramType);
                             params.addNode(p);
                             i++;
                         }
@@ -112,7 +112,7 @@ public class SymbolStack {
                         assert retType != null;
 
                         // add op
-                        DeclFunc op = new DeclFunc(name, params, retType);
+                        DeclFunc op = new DeclFunc(null, name, params, retType);
                         putOperator(name, op);
                     }
                 }
@@ -121,28 +121,28 @@ public class SymbolStack {
             // add exceptions
             DeclException de;
             for (String s : predefinedExceptions) {
-                de = new DeclException(s);
+                de = new DeclException(null, s);
                 putDeclTo(predefinedSymbols, de.name, de);
             }
 
             // add procedures
             DeclProc dp =
-                    new DeclProc(
+                    new DeclProc(null, 
                             "PUT_LINE",
                             new NodeList<DeclParam>()
-                                    .addNode(new DeclParamIn("s", TypeSpecSimple.of("java.lang.Object"))),
+                                    .addNode(new DeclParamIn(null, "s", TypeSpecSimple.of("java.lang.Object"))),
                             null,
                             null);
             putDeclTo(predefinedSymbols, "PUT_LINE", dp);
 
             // add constants TODO implement SQLERRM and SQLCODE properly
-            DeclConst dc = new DeclConst("SQLERRM", TypeSpecSimple.of("java.lang.String"), false, ExprNull.SINGLETON);
+            DeclConst dc = new DeclConst(null, "SQLERRM", TypeSpecSimple.of("java.lang.String"), false, ExprNull.SINGLETON);
             putDeclTo(predefinedSymbols, "SQLERRM", dc);
 
-            dc = new DeclConst("SQLCODE", TypeSpecSimple.of("java.lang.Integer"), false, ExprNull.SINGLETON);
+            dc = new DeclConst(null, "SQLCODE", TypeSpecSimple.of("java.lang.Integer"), false, ExprNull.SINGLETON);
             putDeclTo(predefinedSymbols, "SQLCODE", dc);
 
-            dc = new DeclConst("SYSDATE", TypeSpecSimple.of("java.time.LocalDate"), false, ExprNull.SINGLETON);
+            dc = new DeclConst(null, "SYSDATE", TypeSpecSimple.of("java.time.LocalDate"), false, ExprNull.SINGLETON);
             putDeclTo(predefinedSymbols, "SYSDATE", dc);
         }
     }
@@ -402,12 +402,16 @@ public class SymbolStack {
         return null;
     }
 
-    // OverloadedFunc class corresponds to operators (+, -, etc) and system provided functions (substr, trim, strcomp, etc)
+    // OverloadedFunc class corresponds to operators (+, -, etc) and system provided functions (substr, trim, etc)
     // which can be overloaded unlike user defined procedures and functions.
     // It implements DeclId in order to be inserted ids map for system provided functions.
     private static class OverloadedFunc extends Decl {
 
-        private final Map<List<TypeSpec>, DeclFunc> overloads = new HashMap<>();   // (arguments types --> function decl) map
+        OverloadedFunc() {
+            super(null);
+        }
+
+        private final Map<List<TypeSpec>, DeclFunc> overloads = new HashMap<>();   // (arg types --> func decl) map
 
         void put(DeclFunc decl) {
             List<TypeSpec> paramTypes =

@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -42,7 +44,9 @@ public class StmtRaise extends Stmt {
 
     public final ExName exName;
 
-    public StmtRaise(ExName exName) {
+    public StmtRaise(ParserRuleContext ctx, ExName exName) {
+        super(ctx);
+
         this.exName = exName;
     }
 

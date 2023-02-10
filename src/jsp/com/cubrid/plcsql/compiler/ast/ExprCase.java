@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -46,7 +48,9 @@ public class ExprCase extends Expr {
     public final NodeList<CaseExpr> whenParts;
     public final Expr elsePart;
 
-    public ExprCase(Expr selector, NodeList<CaseExpr> whenParts, Expr elsePart) {
+    public ExprCase(ParserRuleContext ctx, Expr selector, NodeList<CaseExpr> whenParts, Expr elsePart) {
+        super(ctx);
+
         this.selector = selector;
         this.whenParts = whenParts;
         this.elsePart = elsePart;

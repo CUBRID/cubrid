@@ -57,8 +57,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public AstNode visitSql_script(Sql_scriptContext ctx) {
+
         AstNode ret = visitCreate_routine(ctx.create_routine());
+
         assert symbolStack.getSize() == 2;
+        assert EMPTY_PARAMS.nodes.size() == 0;
+        assert EMPTY_ARGS.nodes.size() == 0;
+
         return ret;
     }
 
@@ -67,7 +72,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         previsitRoutine_definition(ctx.routine_definition());
         DeclRoutine decl = visitRoutine_definition(ctx.routine_definition());
-        return new Unit(
+        return new Unit(ctx,
                 autonomousTransaction,
                 connectionRequired,
                 getImportString(),
@@ -94,7 +99,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = Misc.getNormalizedText(ctx.parameter_name());
         TypeSpec typeSpec = (TypeSpec) visit(ctx.type_spec());
 
-        DeclParamIn ret = new DeclParamIn(name, typeSpec);
+        DeclParamIn ret = new DeclParamIn(ctx, name, typeSpec);
         symbolStack.putDecl(name, ret);
 
         return ret;
@@ -105,7 +110,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = Misc.getNormalizedText(ctx.parameter_name());
         TypeSpec typeSpec = (TypeSpec) visit(ctx.type_spec());
 
-        DeclParamOut ret = new DeclParamOut(name, typeSpec);
+        DeclParamOut ret = new DeclParamOut(ctx, name, typeSpec);
         symbolStack.putDecl(name, ret);
 
         return ret;
@@ -182,7 +187,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         Expr l = visitExpression(ctx.expression(0));
         Expr r = visitExpression(ctx.expression(1));
 
-        return new ExprBinaryOp("And", l, r);
+        return new ExprBinaryOp(ctx, "And", l, r);
     }
 
     @Override
@@ -190,7 +195,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         Expr l = visitExpression(ctx.expression(0));
         Expr r = visitExpression(ctx.expression(1));
 
-        return new ExprBinaryOp("Or", l, r);
+        return new ExprBinaryOp(ctx, "Or", l, r);
     }
 
     @Override
@@ -198,13 +203,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         Expr l = visitExpression(ctx.expression(0));
         Expr r = visitExpression(ctx.expression(1));
 
-        return new ExprBinaryOp("Xor", l, r);
+        return new ExprBinaryOp(ctx, "Xor", l, r);
     }
 
     @Override
     public Expr visitNot_exp(Not_expContext ctx) {
         Expr o = visitExpression(ctx.unary_logical_expression());
-        return new ExprUnaryOp("Not", o);
+        return new ExprUnaryOp(ctx, "Not", o);
     }
 
     @Override
@@ -253,15 +258,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         Expr l = visitExpression(ctx.relational_expression(0));
         Expr r = visitExpression(ctx.relational_expression(1));
 
-        return new ExprBinaryOp(opStr, l, r);
+        return new ExprBinaryOp(ctx, opStr, l, r);
     }
 
     @Override
     public Expr visitIs_null_exp(Is_null_expContext ctx) {
         Expr o = visitExpression(ctx.is_null_expression());
 
-        Expr expr = new ExprUnaryOp("IsNull", o);
-        return ctx.NOT() == null ? expr : new ExprUnaryOp("Not", expr);
+        Expr expr = new ExprUnaryOp(ctx, "IsNull", o);
+        return ctx.NOT() == null ? expr : new ExprUnaryOp(ctx, "Not", expr);
     }
 
     @Override
@@ -272,8 +277,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         Expr upperBound =
                 visitExpression(ctx.between_elements().between_expression(1));
 
-        Expr expr = new ExprBetween(target, lowerBound, upperBound);
-        return ctx.NOT() == null ? expr : new ExprUnaryOp("Not", expr);
+        Expr expr = new ExprBetween(ctx, target, lowerBound, upperBound);
+        return ctx.NOT() == null ? expr : new ExprUnaryOp(ctx, "Not", expr);
     }
 
     @Override
@@ -281,8 +286,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         Expr target = visitExpression(ctx.in_expression());
         NodeList<Expr> inElements = visitIn_elements(ctx.in_elements());
 
-        Expr expr = new ExprIn(target, inElements);
-        return ctx.NOT() == null ? expr : new ExprUnaryOp("Not", expr);
+        Expr expr = new ExprIn(ctx, target, inElements);
+        return ctx.NOT() == null ? expr : new ExprUnaryOp(ctx, "Not", expr);
     }
 
     @Override
@@ -309,8 +314,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             throw new SemanticError("the escape does not consist of a single character");
         }
 
-        Expr expr = new ExprLike(target, pattern, escape);
-        return ctx.NOT() == null ? expr : new ExprUnaryOp("Not", expr);
+        Expr expr = new ExprLike(ctx, target, pattern, escape);
+        return ctx.NOT() == null ? expr : new ExprUnaryOp(ctx, "Not", expr);
     }
 
     @Override
@@ -328,7 +333,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             throw new RuntimeException("unreachable");
         }
 
-        return new ExprBinaryOp(opStr, l, r);
+        return new ExprBinaryOp(ctx, opStr, l, r);
     }
 
     @Override
@@ -349,7 +354,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         Expr l = visitExpression(ctx.concatenation(0));
         Expr r = visitExpression(ctx.concatenation(1));
 
-        return new ExprBinaryOp(opStr, l, r);
+        return new ExprBinaryOp(ctx, opStr, l, r);
     }
 
     @Override
@@ -359,7 +364,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         Expr ret =
                 ctx.PLUS_SIGN() != null
                         ? o
-                        : ctx.MINUS_SIGN() != null ? new ExprUnaryOp("Neg", o) : null;
+                        : ctx.MINUS_SIGN() != null ? new ExprUnaryOp(ctx, "Neg", o) : null;
         if (ret == null) {
             assert false : "unreachable";   // by syntax
             throw new RuntimeException("unreachable");
@@ -371,7 +376,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public Expr visitBit_compli_exp(Bit_compli_expContext ctx) {
         Expr o = visitExpression(ctx.unary_expression());
-        return new ExprUnaryOp("BitCompli", o);
+        return new ExprUnaryOp(ctx, "BitCompli", o);
     }
 
     @Override
@@ -385,28 +390,28 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             throw new RuntimeException("unreachable");
         }
 
-        return new ExprBinaryOp(opStr, l, r);
+        return new ExprBinaryOp(ctx, opStr, l, r);
     }
 
     @Override
     public Expr visitBit_and_exp(Bit_and_expContext ctx) {
         Expr l = visitExpression(ctx.concatenation(0));
         Expr r = visitExpression(ctx.concatenation(1));
-        return new ExprBinaryOp("BitAnd", l, r);
+        return new ExprBinaryOp(ctx, "BitAnd", l, r);
     }
 
     @Override
     public Expr visitBit_xor_exp(Bit_xor_expContext ctx) {
         Expr l = visitExpression(ctx.concatenation(0));
         Expr r = visitExpression(ctx.concatenation(1));
-        return new ExprBinaryOp("BitXor", l, r);
+        return new ExprBinaryOp(ctx, "BitXor", l, r);
     }
 
     @Override
     public Expr visitBit_or_exp(Bit_or_expContext ctx) {
         Expr l = visitExpression(ctx.concatenation(0));
         Expr r = visitExpression(ctx.concatenation(1));
-        return new ExprBinaryOp("BitOr", l, r);
+        return new ExprBinaryOp(ctx, "BitOr", l, r);
     }
 
     @Override
@@ -418,7 +423,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             throw new SemanticError("invalid DATE string: " + s);
         }
         // System.out.println("[temp] date=" + date);
-        return new ExprDate(date);
+        return new ExprDate(ctx, date);
     }
 
     @Override
@@ -430,13 +435,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             throw new SemanticError("invalid TIME string: " + s);
         }
         // System.out.println("[temp] time=" + time);
-        return new ExprTime(time);
+        return new ExprTime(ctx, time);
     }
 
     @Override
     public Expr visitTimestamp_exp(Timestamp_expContext ctx) {
         String s = ctx.quoted_string().getText();
-        return parseZonedDateTime(s, false, "TIMESTAMP");
+        return parseZonedDateTime(ctx, s, false, "TIMESTAMP");
     }
 
     @Override
@@ -448,32 +453,32 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             throw new SemanticError("invalid DATETIME string: " + s);
         }
         // System.out.println("[temp] datetime=" + datetime);
-        return new ExprDatetime(datetime);
+        return new ExprDatetime(ctx, datetime);
     }
 
     /* TODO: restore the following four methods
     @Override
     public Expr visitTimestamptz_exp(Timestamptz_expContext ctx) {
         String s = ctx.quoted_string().getText();
-        return parseZonedDateTime(s, false, "TIMESTAMPTZ");
+        return parseZonedDateTime(ctx, s, false, "TIMESTAMPTZ");
     }
 
     @Override
     public Expr visitTimestampltz_exp(Timestampltz_expContext ctx) {
         String s = ctx.quoted_string().getText();
-        return parseZonedDateTime(s, false, "TIMESTAMPLTZ");
+        return parseZonedDateTime(ctx, s, false, "TIMESTAMPLTZ");
     }
 
     @Override
     public Expr visitDatetimetz_exp(Datetimetz_expContext ctx) {
         String s = ctx.quoted_string().getText();
-        return parseZonedDateTime(s, true, "DATETIMETZ");
+        return parseZonedDateTime(ctx, s, true, "DATETIMETZ");
     }
 
     @Override
     public Expr visitDatetimeltz_exp(Datetimeltz_expContext ctx) {
         String s = ctx.quoted_string().getText();
-        return parseZonedDateTime(s, true, "DATETIMELTZ");
+        return parseZonedDateTime(ctx, s, true, "DATETIMELTZ");
     }
      */
 
@@ -504,14 +509,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             big = true;
         }
 
-        return new ExprUint(bi.toString(), big);
+        return new ExprUint(ctx, bi.toString(), big);
     }
 
     @Override
     public ExprFloat visitFp_num_exp(Fp_num_expContext ctx) {
         try {
             BigDecimal bd = new BigDecimal(ctx.FLOATING_POINT_NUM().getText());
-            return new ExprFloat(bd.toString());
+            return new ExprFloat(ctx, bd.toString());
         } catch (NumberFormatException e) {
             assert false : "unreachable";   // by syntax
             throw new RuntimeException("unreachable");
@@ -521,13 +526,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public ExprStr visitStr_exp(Str_expContext ctx) {
         String val = ctx.quoted_string().getText();
-        return new ExprStr(quotedStrToJavaStr(val));
+        return new ExprStr(ctx, quotedStrToJavaStr(val));
     }
 
     @Override
     public ExprStr visitQuoted_string(Quoted_stringContext ctx) {
         String val = ctx.getText();
-        return new ExprStr(quotedStrToJavaStr(val));
+        return new ExprStr(ctx, quotedStrToJavaStr(val));
     }
 
     @Override
@@ -559,7 +564,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 addToImports("java.sql.*");
 
                 // do not push a symbol table: no nested structure
-                return new ExprSerialVal(
+                return new ExprSerialVal(ctx,
                     Misc.getNormalizedText(ctx.record),
                     fieldName.equals("CURRENT_VALUE")
                             ? ExprSerialVal.SerialVal.CURR_VAL
@@ -574,7 +579,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             }
 
             Scope scope = symbolStack.getCurrentScope();
-            return new ExprField(record, fieldName);
+            return new ExprField(ctx, record, fieldName);
         }
     }
 
@@ -596,7 +601,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             connectionRequired = true;
             addToImports("java.sql.*");
 
-            ExprGlobalFuncCall ret = new ExprGlobalFuncCall(name, args);
+            ExprGlobalFuncCall ret = new ExprGlobalFuncCall(ctx, name, args);
 
             return ret;
         } else {
@@ -623,7 +628,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 i++;
             }
 
-            return new ExprLocalFuncCall(name, args, symbolStack.getCurrentScope(), decl);
+            return new ExprLocalFuncCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
         }
     }
 
@@ -635,7 +640,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 ctx.searched_case_expression_when_part()) {
             Expr cond = visitExpression(c.expression(0));
             Expr expr = visitExpression(c.expression(1));
-            condParts.addNode(new CondExpr(cond, expr));
+            condParts.addNode(new CondExpr(c, cond, expr));
         }
 
         Expr elsePart;
@@ -645,7 +650,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             elsePart = visitExpression(ctx.case_expression_else_part().expression());
         }
 
-        return new ExprCond(condParts, elsePart);
+        return new ExprCond(ctx, condParts, elsePart);
     }
 
     @Override
@@ -659,7 +664,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         for (Simple_case_expression_when_partContext c : ctx.simple_case_expression_when_part()) {
             Expr val = visitExpression(c.expression(0));
             Expr expr = visitExpression(c.expression(1));
-            whenParts.addNode(new CaseExpr(val, expr));
+            whenParts.addNode(new CaseExpr(c, val, expr));
         }
 
         Expr elsePart;
@@ -674,7 +679,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (whenParts.nodes.size() > 0) {
             addToImports("java.util.Objects");
         }
-        return new ExprCase(selector, whenParts, elsePart);
+        return new ExprCase(ctx, selector, whenParts, elsePart);
     }
 
     @Override
@@ -698,12 +703,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                                         : ctx.PERCENT_ROWCOUNT() != null ? ExprCursorAttr.Attr.ROWCOUNT : null;
         assert attr != null;    // by syntax
 
-        return new ExprCursorAttr(cursor, attr);
+        return new ExprCursorAttr(ctx, cursor, attr);
     }
 
     @Override
     public ExprSqlRowCount visitSql_rowcount_exp(Sql_rowcount_expContext ctx) {
-        return new ExprSqlRowCount();
+        return new ExprSqlRowCount(ctx);
     }
 
     @Override
@@ -715,7 +720,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public Expr visitList_exp(List_expContext ctx) {
         NodeList<Expr> elems = visitExpressions(ctx.expressions());
         addToImports("java.util.Arrays");
-        return new ExprList(elems);
+        return new ExprList(ctx, elems);
     }
 
     @Override
@@ -780,7 +785,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             ((ExprCast) val).setTargetType(ty.name);
         }
 
-        DeclConst ret = new DeclConst(name, ty, ctx.NOT() != null, val);
+        DeclConst ret = new DeclConst(ctx, name, ty, ctx.NOT() != null, val);
         symbolStack.putDecl(name, ret);
 
         return ret;
@@ -791,7 +796,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         String name = Misc.getNormalizedText(ctx.identifier());
 
-        DeclException ret = new DeclException(name);
+        DeclException ret = new DeclException(ctx, name);
         symbolStack.putDecl(name, ret);
 
         return ret;
@@ -807,7 +812,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             ((ExprCast) val).setTargetType(ty.name);
         }
 
-        DeclVar ret = new DeclVar(name, ty, ctx.NOT() != null, val);
+        DeclVar ret = new DeclVar(ctx, name, ty, ctx.NOT() != null, val);
         symbolStack.putDecl(name, ret);
 
         return ret;
@@ -836,7 +841,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        DeclCursor ret = new DeclCursor(name, paramList, new ExprStr(sql), stringifier.usedVars);
+        DeclCursor ret = new DeclCursor(ctx, name, paramList,
+            new ExprStr(ctx.s_select_statement(), sql), stringifier.usedVars);
         symbolStack.putDecl(name, ret);
 
         return ret;
@@ -883,7 +889,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             exHandlers.addNode(visitException_handler(ehc));
         }
 
-        return new Body(stmts, exHandlers);
+        return new Body(ctx, stmts, exHandlers);
     }
 
     @Override
@@ -909,7 +915,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        return new StmtBlock(block, decls, body);
+        return new StmtBlock(ctx, block, decls, body);
     }
 
     @Override
@@ -925,7 +931,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         Expr val = visitExpression(ctx.expression());
 
-        return new StmtAssign(var, val);
+        return new StmtAssign(ctx, var, val);
     }
 
     @Override
@@ -940,13 +946,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             connectionRequired = true;
             addToImports("java.sql.*");
 
-            return new ExprGlobalFuncCall(name, EMPTY_ARGS);
+            return new ExprGlobalFuncCall(ctx, name, EMPTY_ARGS);
         } else if (decl instanceof DeclId) {
             Scope scope = symbolStack.getCurrentScope();
-            return new ExprId(name, scope, (DeclId) decl);
+            return new ExprId(ctx, name, scope, (DeclId) decl);
         } else if (decl instanceof DeclFunc) {
             Scope scope = symbolStack.getCurrentScope();
-            return new ExprLocalFuncCall(name, null, scope, (DeclFunc) decl);
+            return new ExprLocalFuncCall(ctx, name, null, scope, (DeclFunc) decl);
         }
 
         assert false : "unreachable";
@@ -973,10 +979,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         if (ctx.expression() == null) {
-            return new StmtContinue(declLabel);
+            return new StmtContinue(ctx, declLabel);
         } else {
             Expr cond = visitExpression(ctx.expression());
-            return new CondStmt(cond, new StmtContinue(declLabel));
+            return new CondStmt(ctx, cond, new StmtContinue(ctx, declLabel));
         }
     }
 
@@ -1000,10 +1006,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         if (ctx.expression() == null) {
-            return new StmtBreak(declLabel);
+            return new StmtBreak(ctx, declLabel);
         } else {
             Expr cond = visitExpression(ctx.expression());
-            return new CondStmt(cond, new StmtBreak(declLabel));
+            return new CondStmt(ctx, cond, new StmtBreak(ctx, declLabel));
         }
     }
 
@@ -1014,12 +1020,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         Expr cond = visitExpression(ctx.expression());
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
-        condParts.addNode(new CondStmt(cond, stmts));
+        condParts.addNode(new CondStmt(ctx.expression(), cond, stmts));
 
         for (Elsif_partContext c : ctx.elsif_part()) {
             cond = visitExpression(c.expression());
             stmts = visitSeq_of_statements(c.seq_of_statements());
-            condParts.addNode(new CondStmt(cond, stmts));
+            condParts.addNode(new CondStmt(c.expression(), cond, stmts));
         }
 
         NodeList<Stmt> elsePart;
@@ -1029,7 +1035,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             elsePart = visitSeq_of_statements(ctx.else_part().seq_of_statements());
         }
 
-        return new StmtIf(condParts, elsePart);
+        return new StmtIf(ctx, condParts, elsePart);
     }
 
     @Override
@@ -1046,7 +1052,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        return new StmtBasicLoop(declLabel, stmts);
+        return new StmtBasicLoop(ctx, declLabel, stmts);
     }
 
     @Override
@@ -1058,7 +1064,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         String name = Misc.getNormalizedText(ctx.label_name());
 
-        return new DeclLabel(name);
+        return new DeclLabel(ctx, name);
     }
 
     @Override
@@ -1076,7 +1082,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        return new StmtWhileLoop(declLabel, cond, stmts);
+        return new StmtWhileLoop(ctx, declLabel, cond, stmts);
     }
 
     @Override
@@ -1093,7 +1099,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         Expr upperBound = visitUpper_bound(ctx.iterator().upper_bound());
         Expr step = visitStep(ctx.iterator().step());
 
-        DeclForIter iterDecl = new DeclForIter(iter);
+        DeclForIter iterDecl = new DeclForIter(ctx.iterator().index_name(), iter);
         symbolStack.putDecl(iter, iterDecl);
 
         DeclLabel declLabel = visitLabel_declaration(ctx.label_declaration());
@@ -1105,7 +1111,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        return new StmtForIterLoop(
+        return new StmtForIterLoop(ctx,
                 declLabel, iterDecl, reverse, lowerBound, upperBound, step, stmts);
     }
 
@@ -1176,14 +1182,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             symbolStack.putDecl(label, declLabel);
         }
 
-        DeclForRecord declForRecord = new DeclForRecord(record);
+        DeclForRecord declForRecord = new DeclForRecord(ctx.for_cursor().record_name(), record);
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
 
         symbolStack.popSymbolTable();
 
-        return new StmtForCursorLoop(cursor, args, label, record, stmts);
+        return new StmtForCursorLoop(ctx, cursor, args, label, record, stmts);
     }
 
     @Override
@@ -1212,15 +1218,16 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             symbolStack.putDecl(label, declLabel);
         }
 
-        DeclForRecord declForRecord = new DeclForRecord(record);
+        DeclForRecord declForRecord = new DeclForRecord(ctx.for_static_sql().record_name(), record);
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
 
         symbolStack.popSymbolTable();
 
-        return new StmtForSqlLoop(
-                false, label, declForRecord, new ExprStr(sql), stringifier.usedVars, stmts);
+        return new StmtForSqlLoop(ctx,
+                false, label, declForRecord, new ExprStr(ctx.for_static_sql().s_select_statement(), sql),
+                stringifier.usedVars, stmts);
     }
 
     @Override
@@ -1253,19 +1260,19 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             symbolStack.putDecl(label, declLabel);
         }
 
-        DeclForRecord declForRecord = new DeclForRecord(record);
+        DeclForRecord declForRecord = new DeclForRecord(ctx.for_dynamic_sql().record_name(), record);
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
 
         symbolStack.popSymbolTable();
 
-        return new StmtForSqlLoop(true, label, declForRecord, dynSql, usedExprList, stmts);
+        return new StmtForSqlLoop(ctx, true, label, declForRecord, dynSql, usedExprList, stmts);
     }
 
     @Override
     public StmtNull visitNull_statement(Null_statementContext ctx) {
-        return new StmtNull();
+        return new StmtNull(ctx);
     }
 
     @Override
@@ -1276,7 +1283,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 throw new SemanticError("raise statements without a exception name must be in an exception handler");
             }
         }
-        return new StmtRaise(exName);
+        return new StmtRaise(ctx, exName);
     }
 
     @Override
@@ -1295,7 +1302,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         Scope scope = symbolStack.getCurrentScope();
 
-        return new ExName(name, scope, decl);
+        return new ExName(ctx, name, scope, decl);
     }
 
     @Override
@@ -1306,7 +1313,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             if (routineType != Misc.RoutineType.PROC) {
                 throw new SemanticError("function " + symbolStack.getCurrentScope().routine + " must return a value");
             }
-            return new StmtReturn(null, null);
+            return new StmtReturn(ctx, null, null);
         } else {
             if (routineType != Misc.RoutineType.FUNC) {
                 throw new SemanticError("procedure " + symbolStack.getCurrentScope().routine + " may not return a value");
@@ -1315,7 +1322,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             String routine = symbolStack.getCurrentScope().routine;
             DeclFunc df = symbolStack.getDeclFunc(routine);
             assert df != null;
-            return new StmtReturn(visitExpression(ctx.expression()), df.retType);
+            return new StmtReturn(ctx, visitExpression(ctx.expression()), df.retType);
         }
     }
 
@@ -1331,7 +1338,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         for (Simple_case_statement_when_partContext c : ctx.simple_case_statement_when_part()) {
             Expr val = visitExpression(c.expression());
             NodeList<Stmt> stmts = visitSeq_of_statements(c.seq_of_statements());
-            whenParts.addNode(new CaseStmt(val, stmts));
+            whenParts.addNode(new CaseStmt(c, val, stmts));
         }
 
         NodeList<Stmt> elsePart;
@@ -1346,7 +1353,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (whenParts.nodes.size() > 0) {
             addToImports("java.util.Objects");
         }
-        return new StmtCase(level, selector, whenParts, elsePart);
+        return new StmtCase(ctx, level, selector, whenParts, elsePart);
     }
 
     @Override
@@ -1356,7 +1363,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         for (Searched_case_statement_when_partContext c : ctx.searched_case_statement_when_part()) {
             Expr cond = visitExpression(c.expression());
             NodeList<Stmt> stmts = visitSeq_of_statements(c.seq_of_statements());
-            condParts.addNode(new CondStmt(cond, stmts));
+            condParts.addNode(new CondStmt(c, cond, stmts));
         }
 
         NodeList<Stmt> elsePart;
@@ -1366,7 +1373,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             elsePart = visitSeq_of_statements(ctx.case_statement_else_part().seq_of_statements());
         }
 
-        return new StmtIf(condParts, elsePart);
+        return new StmtIf(ctx, condParts, elsePart);
     }
 
     @Override
@@ -1374,7 +1381,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             Raise_application_error_statementContext ctx) {
         Expr errCode = visitExpression(ctx.err_code());
         Expr errMsg = visitExpression(ctx.err_msg());
-        return new StmtRaiseAppErr(errCode, errMsg);
+        return new StmtRaiseAppErr(ctx, errCode, errMsg);
     }
 
     @Override
@@ -1389,10 +1396,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         int level = symbolStack.getCurrentScope().level + 1;
         String sql = StringEscapeUtils.escapeJava(stringifier.sbuf.toString());
-        return new StmtExecImme(
+        return new StmtExecImme(ctx,
                 false,
                 level,
-                new ExprStr(sql),
+                new ExprStr(ctx, sql),
                 stringifier.intoVars,
                 stringifier.usedVars);
     }
@@ -1408,7 +1415,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             throw new SemanticError("cannot close a non-cursor object");
         }
 
-        return new StmtCursorClose(cursor);
+        return new StmtCursorClose(ctx, cursor);
     }
 
     @Override
@@ -1446,7 +1453,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             i++;
         }
 
-        return new StmtCursorOpen(cursor, args);
+        return new StmtCursorOpen(ctx, cursor, args);
     }
 
     @Override
@@ -1485,7 +1492,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             intoVars.addNode(id);
         }
 
-        return new StmtCursorFetch(cursor, intoVars);
+        return new StmtCursorFetch(ctx, cursor, intoVars);
     }
 
     @Override
@@ -1512,17 +1519,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
         String sql = StringEscapeUtils.escapeJava(stringifier.sbuf.toString());
 
-        return new StmtOpenFor(refCursor, new ExprStr(sql), stringifier.usedVars);
+        return new StmtOpenFor(ctx, refCursor, new ExprStr(ctx.s_select_statement(), sql), stringifier.usedVars);
     }
 
     @Override
     public StmtCommit visitCommit_statement(Commit_statementContext ctx) {
-        return new StmtCommit();
+        return new StmtCommit(ctx);
     }
 
     @Override
     public StmtRollback visitRollback_statement(Rollback_statementContext ctx) {
-        return new StmtRollback();
+        return new StmtRollback(ctx);
     }
 
     @Override
@@ -1544,7 +1551,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             addToImports("java.sql.*");
 
             int level = symbolStack.getCurrentScope().level + 1;
-            StmtGlobalProcCall ret = new StmtGlobalProcCall(level, name, args);
+            StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, level, name, args);
 
             return ret;
         } else {
@@ -1577,7 +1584,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 i++;
             }
 
-            return new StmtLocalProcCall(name, args, symbolStack.getCurrentScope(), decl);
+            return new StmtLocalProcCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
         }
     }
 
@@ -1607,7 +1614,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         int level = symbolStack.getCurrentScope().level + 1;
-        return new StmtExecImme(true, level, dynSql, intoVarList, usedExprList);
+        return new StmtExecImme(ctx, true, level, dynSql, intoVarList, usedExprList);
     }
 
     @Override
@@ -1686,7 +1693,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         List<ExName> exceptions = new ArrayList<>();
         for (Exception_nameContext c : ctx.exception_name()) {
             if ("OTHERS".equals(c.getText().toUpperCase())) {
-                exceptions.add(new ExName("OTHERS"));
+                exceptions.add(new ExName(c, "OTHERS"));
             } else {
                 exceptions.add(visitException_name(c));
             }
@@ -1694,7 +1701,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
 
-        return new ExHandler(exceptions, stmts);
+        return new ExHandler(ctx, exceptions, stmts);
     }
 
     public String getImportString() {
@@ -1789,7 +1796,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             return null;
         } else if (decl instanceof DeclId) {
             Scope scope = symbolStack.getCurrentScope();
-            return new ExprId(name, scope, (DeclId) decl);
+            return new ExprId(ctx, name, scope, (DeclId) decl);
         } else if (decl instanceof DeclFunc) {
             return null;
         }
@@ -1815,14 +1822,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 throw new SemanticError("definition of function " + name + " must specify its return type");
             }
             TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
-            DeclFunc ret = new DeclFunc(name, paramList, retType);
+            DeclFunc ret = new DeclFunc(ctx, name, paramList, retType);
             symbolStack.putDecl(name, ret);
         } else {
             // procedure
             if (ctx.RETURN() != null) {
                 throw new SemanticError("definition of procedure " + name + " may not specify a return type");
             }
-            DeclProc ret = new DeclProc(name, paramList);
+            DeclProc ret = new DeclProc(ctx, name, paramList);
             symbolStack.putDecl(name, ret);
         }
     }
@@ -1858,7 +1865,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
     }
 
-    private ExprZonedDateTime parseZonedDateTime(String s, boolean forDatetime, String originType) {
+    private ExprZonedDateTime parseZonedDateTime(ParserRuleContext ctx,
+            String s, boolean forDatetime, String originType) {
+
         s = quotedStrToJavaStr(s);
         ZonedDateTime timestamp = DateTimeParser.ZonedDateTimeLiteral.parse(s, forDatetime);
         if (timestamp == null) {
@@ -1868,7 +1877,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (timestamp.equals(DateTimeParser.nullDatetimeUTC)) {
             addToImports("java.time.LocalDateTime");
         }
-        return new ExprZonedDateTime(timestamp, originType);
+        return new ExprZonedDateTime(ctx, timestamp, originType);
     }
 
     private boolean within(ParserRuleContext ctx, Class ctxClass) {

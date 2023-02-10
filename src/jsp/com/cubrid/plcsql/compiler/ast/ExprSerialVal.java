@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -50,7 +52,9 @@ public class ExprSerialVal extends Expr {
     public final String name;
     public final SerialVal mode; // CURR_VAL or NEXT_VAL
 
-    public ExprSerialVal(String name, SerialVal mode) {
+    public ExprSerialVal(ParserRuleContext ctx, String name, SerialVal mode) {
+        super(ctx);
+
         this.name = name;
         this.mode = mode;
     }

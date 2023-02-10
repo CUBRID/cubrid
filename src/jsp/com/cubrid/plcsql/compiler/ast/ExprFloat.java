@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -42,7 +44,9 @@ public class ExprFloat extends Expr {
 
     public final String val;
 
-    public ExprFloat(String val) {
+    public ExprFloat(ParserRuleContext ctx, String val) {
+        super(ctx);
+
         this.val = val;
     }
 

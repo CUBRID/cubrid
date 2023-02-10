@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -45,7 +47,9 @@ public class ExprUnaryOp extends Expr {
     public final String opStr;
     public final Expr operand;
 
-    public ExprUnaryOp(String opStr, Expr operand) {
+    public ExprUnaryOp(ParserRuleContext ctx, String opStr, Expr operand) {
+        super(ctx);
+
         this.opStr = opStr;
         this.operand = operand;
     }

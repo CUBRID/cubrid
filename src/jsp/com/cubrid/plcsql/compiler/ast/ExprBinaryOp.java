@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -46,7 +48,9 @@ public class ExprBinaryOp extends Expr {
     public final Expr left;
     public final Expr right;
 
-    public ExprBinaryOp(String opStr, Expr left, Expr right) {
+    public ExprBinaryOp(ParserRuleContext ctx, String opStr, Expr left, Expr right) {
+        super(ctx);
+
         this.opStr = opStr;
         this.left = left;
         this.right = right;

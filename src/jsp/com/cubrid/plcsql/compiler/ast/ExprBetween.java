@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -46,7 +48,9 @@ public class ExprBetween extends Expr {
     public final Expr lowerBound;
     public final Expr upperBound;
 
-    public ExprBetween(Expr target, Expr lowerBound, Expr upperBound) {
+    public ExprBetween(ParserRuleContext ctx, Expr target, Expr lowerBound, Expr upperBound) {
+        super(ctx);
+
         this.target = target;
         this.lowerBound = lowerBound;
         this.upperBound = upperBound;

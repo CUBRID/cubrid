@@ -27,8 +27,9 @@
  * OF SUCH DAMAGE.
  *
  */
-
 package com.cubrid.plcsql.compiler.ast;
+
+import org.antlr.v4.runtime.ParserRuleContext;
 
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
@@ -50,8 +51,9 @@ public class DeclCursor extends DeclId {
     public int[] paramRefCounts;
     public int[] usedValuesMap;
 
-    public DeclCursor(
+    public DeclCursor(ParserRuleContext ctx,
             String name, NodeList<DeclParam> paramList, ExprStr sql, NodeList<ExprId> usedVars) {
+        super(ctx);
 
         assert paramList != null;
         this.name = name;

@@ -30,13 +30,17 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 public class DummyStmt extends Stmt {
 
     public final String kind;
 
-    public DummyStmt(String kind) {
+    public DummyStmt(ParserRuleContext ctx, String kind) {
+        super(ctx);
+
         this.kind = kind;
     }
 

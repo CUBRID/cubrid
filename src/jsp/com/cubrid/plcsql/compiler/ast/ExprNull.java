@@ -42,7 +42,9 @@ public class ExprNull extends Expr {
 
     public static final ExprNull SINGLETON = new ExprNull();
 
-    private ExprNull() {}
+    private ExprNull() {
+        super(null);
+    }
 
     @Override
     public String toJavaCode() {

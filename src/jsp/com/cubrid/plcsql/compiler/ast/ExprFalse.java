@@ -35,14 +35,16 @@ import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 public class ExprFalse extends Expr {
 
+    public static final ExprFalse SINGLETON = new ExprFalse();
+
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {
         return visitor.visitExprFalse(this);
     }
 
-    public static final ExprFalse SINGLETON = new ExprFalse();
-
-    private ExprFalse() {}
+    private ExprFalse() {
+        super(null);
+    }
 
     @Override
     public String toJavaCode() {

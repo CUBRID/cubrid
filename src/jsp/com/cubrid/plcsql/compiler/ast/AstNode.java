@@ -30,22 +30,26 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 import com.cubrid.plcsql.compiler.SemanticError;
+
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class AstNode {
 
     public abstract String toJavaCode();
     public abstract <R> R accept(AstNodeVisitor<R> visitor);
 
-    public int lineNo() {
-        return lineNo;
+    public AstNode(ParserRuleContext ctx) {
+        if (ctx != null) {
+            this.lineNo = Misc.getLineOf(ctx);
+        }
     }
 
-    public AstNode setLineNo(int lineNo) {
-        this.lineNo = lineNo;
-        return this;
+    public int lineNo() {
+        return lineNo;
     }
 
     // ---------------------------------------------------
@@ -53,4 +57,5 @@ public abstract class AstNode {
     // ---------------------------------------------------
 
     private int lineNo;
+
 }

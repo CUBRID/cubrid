@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -45,7 +47,9 @@ public class StmtCursorFetch extends Stmt {
     public final ExprId id;
     public final NodeList<ExprId> intoVars;
 
-    public StmtCursorFetch(ExprId id, NodeList<ExprId> intoVars) {
+    public StmtCursorFetch(ParserRuleContext ctx, ExprId id, NodeList<ExprId> intoVars) {
+        super(ctx);
+
         this.id = id;
         this.intoVars = intoVars;
     }

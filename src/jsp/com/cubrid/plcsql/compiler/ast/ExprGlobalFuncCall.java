@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -45,7 +47,9 @@ public class ExprGlobalFuncCall extends Expr {
     public final String name;
     public final NodeList<Expr> args;
 
-    public ExprGlobalFuncCall(String name, NodeList<Expr> args) {
+    public ExprGlobalFuncCall(ParserRuleContext ctx, String name, NodeList<Expr> args) {
+        super(ctx);
+
         assert args != null;
         this.name = name;
         this.args = args;

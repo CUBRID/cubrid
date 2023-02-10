@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -46,14 +48,14 @@ public class StmtForCursorLoop extends StmtCursorOpen {
     public final String record;
     public final NodeList<Stmt> stmts;
 
-    public StmtForCursorLoop(
+    public StmtForCursorLoop(ParserRuleContext ctx,
             ExprId cursor,
             NodeList<Expr> args,
             String label,
             String record,
             NodeList<Stmt> stmts) {
 
-        super(cursor, args);
+        super(ctx, cursor, args);
 
         assert args != null;
 

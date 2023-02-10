@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.Misc;
 
 import java.util.List;
@@ -43,12 +45,13 @@ public abstract class DeclRoutine extends Decl {
     public NodeList<Decl> decls;
     public Body body;
 
-    public DeclRoutine(
+    public DeclRoutine(ParserRuleContext ctx,
             String name,
             NodeList<DeclParam> paramList,
             TypeSpec retType,
             NodeList<Decl> decls,
             Body body) {
+        super(ctx);
 
         assert paramList != null;
 

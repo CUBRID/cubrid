@@ -30,12 +30,15 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 public abstract class DeclParam extends DeclVarLike {
 
     public final String name;
     public final TypeSpec typeSpec;
 
-    public DeclParam(String name, TypeSpec typeSpec) {
+    public DeclParam(ParserRuleContext ctx, String name, TypeSpec typeSpec) {
+        super(ctx);
         this.name = name;
         this.typeSpec = typeSpec;
     }

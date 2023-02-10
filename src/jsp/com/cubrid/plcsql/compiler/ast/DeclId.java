@@ -30,4 +30,10 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public abstract class DeclId extends Decl { }
+import org.antlr.v4.runtime.ParserRuleContext;
+
+public abstract class DeclId extends Decl {
+    public DeclId(ParserRuleContext ctx) {
+        super(ctx);
+    }
+}

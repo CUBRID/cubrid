@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -47,8 +49,10 @@ public class StmtCase extends Stmt {
     public final NodeList<CaseStmt> whenParts;
     public final NodeList<Stmt> elsePart;
 
-    public StmtCase(
+    public StmtCase(ParserRuleContext ctx,
             int level, Expr selector, NodeList<CaseStmt> whenParts, NodeList<Stmt> elsePart) {
+        super(ctx);
+
         this.level = level;
         this.selector = selector;
         this.whenParts = whenParts;

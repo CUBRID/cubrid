@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -56,7 +58,9 @@ public class ExprCursorAttr extends Expr {
     public final ExprId id;
     public final Attr attr;
 
-    public ExprCursorAttr(ExprId id, Attr attr) {
+    public ExprCursorAttr(ParserRuleContext ctx, ExprId id, Attr attr) {
+        super(ctx);
+
         this.id = id;
         this.attr = attr;
     }

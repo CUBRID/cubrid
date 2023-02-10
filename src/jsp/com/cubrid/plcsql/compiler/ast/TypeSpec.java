@@ -30,11 +30,14 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 public abstract class TypeSpec extends AstNode {
 
     public final String name;
 
     public TypeSpec(String name) {
+        super(null);
         this.name = name;
     }
 

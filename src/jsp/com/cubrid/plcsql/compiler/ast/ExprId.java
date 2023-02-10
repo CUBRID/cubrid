@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -47,7 +49,9 @@ public class ExprId extends Expr {
     public final DeclId decl;
     public boolean prefixDeclBlock;
 
-    public ExprId(String name, Scope scope, DeclId decl) {
+    public ExprId(ParserRuleContext ctx, String name, Scope scope, DeclId decl) {
+        super(ctx);
+
         this.name = name;
         this.scope = scope;
         this.decl = decl;

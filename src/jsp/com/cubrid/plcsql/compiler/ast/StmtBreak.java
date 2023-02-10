@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -42,7 +44,9 @@ public class StmtBreak extends Stmt {
 
     public final DeclLabel declLabel;
 
-    public StmtBreak(DeclLabel declLabel) {
+    public StmtBreak(ParserRuleContext ctx, DeclLabel declLabel) {
+        super(ctx);
+
         this.declLabel = declLabel;
     }
 

@@ -30,9 +30,12 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
+// TODO: can use singleton
 public class StmtNull extends Stmt {
 
     @Override
@@ -40,14 +43,12 @@ public class StmtNull extends Stmt {
         return visitor.visitStmtNull(this);
     }
 
-    public StmtNull() {}
+    public StmtNull(ParserRuleContext ctx) {
+        super(ctx);
+    }
 
     @Override
     public String toJavaCode() {
         return ";";
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -46,7 +48,9 @@ public class ExHandler extends AstNode {
     public final List<ExName> exNames;
     public final NodeList<Stmt> stmts;
 
-    public ExHandler(List<ExName> exNames, NodeList<Stmt> stmts) {
+    public ExHandler(ParserRuleContext ctx, List<ExName> exNames, NodeList<Stmt> stmts) {
+        super(ctx);
+
         this.exNames = exNames;
         this.stmts = stmts;
     }

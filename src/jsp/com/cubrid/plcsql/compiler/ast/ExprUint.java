@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
@@ -43,7 +45,9 @@ public class ExprUint extends Expr {
     public final String val;
     public final boolean big;
 
-    public ExprUint(String val, boolean big) {
+    public ExprUint(ParserRuleContext ctx, String val, boolean big) {
+        super(ctx);
+
         this.val = val;
         this.big = big;
     }
