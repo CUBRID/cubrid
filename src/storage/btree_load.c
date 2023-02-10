@@ -3933,17 +3933,18 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   bool has_nulls = false;
 
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK_3X)
-  DB_VALUE new_key;
   bool has_reserved_index_col = false;
+  DB_VALUE new_fk_key[2];
   DB_VALUE *fk_key_ptr = &fk_key;
 
-  db_make_null (&new_key);
+  db_make_null (&(new_fk_key[0]));
+  db_make_null (&(new_fk_key[1]));
   if (sort_args->n_attrs > 1)
     {
       has_reserved_index_col = IS_RESERVED_INDEX_ATTR_ID (sort_args->attr_ids[sort_args->n_attrs - 1]);
       if (has_reserved_index_col)
 	{
-	  fk_key_ptr = &new_key;
+	  fk_key_ptr = &(new_fk_key[0]);
 	}
     }
 #else
@@ -4059,19 +4060,30 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  assert (!DB_IS_NULL (&fk_key));
 	  assert (DB_VALUE_DOMAIN_TYPE (&fk_key) == DB_TYPE_MIDXKEY);
 
-	  DB_MIDXKEY *mxkey = db_get_midxkey (&fk_key);
+	  /* { v1, OID }      ==> v1
+	   * { v1, v2 , OID } ==> { v1, v2 }
+	   */
 
-	  pr_clear_value (&new_key);
+	  DB_VALUE *new_ptr = (fk_key_ptr == &(new_fk_key[0])) ? &(new_fk_key[1]) : &(new_fk_key[0]);
+
+	  pr_clear_value (new_ptr);
 	  if (fk_key.data.midxkey.ncolumns > 2)
 	    {
-	      pr_clone_value (&fk_key, &new_key);
-	      new_key.data.midxkey.ncolumns--;
-	      new_key.data.midxkey.domain = pk_bt_scan.btid_int.key_type;
+	      pr_clone_value (&fk_key, new_ptr);
+	      new_ptr->data.midxkey.ncolumns--;
+	      new_ptr->data.midxkey.domain = pk_bt_scan.btid_int.key_type;
 	    }
 	  else
 	    {
-	      pr_midxkey_get_element_nocopy (&fk_key.data.midxkey, 0, &new_key, NULL, NULL);
+	      pr_midxkey_get_element_nocopy (&fk_key.data.midxkey, 0, new_ptr, NULL, NULL);
 	    }
+
+	  if (btree_compare_key (fk_key_ptr, new_ptr, pk_bt_scan.btid_int.key_type, 1, 1, NULL) == DB_EQ)
+	    {
+	      continue;
+	    }
+
+	  fk_key_ptr = new_ptr;
 	}
 #endif
 
@@ -4230,7 +4242,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
       else
 	{
 	  /* We try to resume the search in the current leaf. */
-	  while (!found)
+	  while (true)
 	    {
 	      ret = btree_advance_to_next_slot_and_fix_page (thread_p, &pk_bt_scan.btid_int, &pk_bt_scan.C_vpid,
 							     &pk_bt_scan.C_page, &pk_bt_scan.slot_id, &pk_key,
@@ -4277,7 +4289,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 		}
 	    }
 
-	  if (!found && pk_bt_scan.slot_id > pk_node_key_cnt)
+	  if (pk_bt_scan.slot_id > pk_node_key_cnt)
 	    {
 	      old_page = pk_bt_scan.C_page;
 	      pk_bt_scan.C_page = NULL;
@@ -4317,7 +4329,8 @@ end:
   btree_clear_key_value (&clear_pk_key, &pk_key);
 
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK_3X)
-  pr_clear_value (&new_key);
+  pr_clear_value (&(new_fk_key[0]));
+  pr_clear_value (&(new_fk_key[1]));
 #endif
 
   if (clear_pcontext == true)
@@ -4444,9 +4457,10 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
     }
 
   /* Advance to next key. */
+  int incr_decr_val = (is_desc ? -1 : 1);
   while (true)
     {
-      *slot_id += (is_desc ? -1 : 1);
+      *slot_id += incr_decr_val;
       assert (0 <= *slot_id);
 
       if (*slot_id == 0 || *slot_id >= *key_cnt + 1)

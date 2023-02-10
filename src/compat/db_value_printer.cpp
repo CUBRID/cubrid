@@ -659,7 +659,7 @@ db_sprint_value (const db_value *value, string_buffer &sb)
 
 #ifndef NDEBUG
 void
-db_value_print_consol (const db_value *value, bool add_newline, char *fmt, ...)
+db_value_print_console (const db_value *value, bool add_newline, char *fmt, ...)
 {
   if (fmt && *fmt)
     {
