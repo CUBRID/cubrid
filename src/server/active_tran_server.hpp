@@ -39,7 +39,14 @@ class active_tran_server : public tran_server
     class connection_handler : public tran_server::connection_handler
     {
       public:
+	connection_handler () = delete;
 	connection_handler (cubcomm::channel &&chn, tran_server &ts);
+
+	connection_handler (const connection_handler &) = delete;
+	connection_handler (connection_handler &&) = delete;
+
+	connection_handler &operator= (const connection_handler &) = delete;
+	connection_handler &operator= (connection_handler &&) = delete;
 
 	void disconnect () final override;
       private:
