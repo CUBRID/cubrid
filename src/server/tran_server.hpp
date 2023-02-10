@@ -102,8 +102,6 @@ class tran_server
 	connection_handler (const connection_handler &) = delete;
 	connection_handler (connection_handler &&) = delete;
 
-	~connection_handler ();
-
 	connection_handler &operator= (const connection_handler &) = delete;
 	connection_handler &operator= (connection_handler &&) = delete;
 

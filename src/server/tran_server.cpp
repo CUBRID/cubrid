@@ -400,10 +400,6 @@ tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tra
   m_conn->start ();
 }
 
-tran_server::connection_handler::~connection_handler ()
-{
-}
-
 tran_server::connection_handler::request_handlers_map_t
 tran_server::connection_handler::get_request_handlers ()
 {
