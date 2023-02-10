@@ -570,6 +570,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_REDO_REPL_DELAY, "Redo_replication_delay_msec"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_REDO_REPL_LOG_REDO_SYNC, "Redo_replication_log_redo_sync"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_REDO_FUNC_EXEC, "Log_redo_func_exec"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_COMPRESS_PAGES_TRANSFER_RATIO, "compress_pages_transfer_ratio"),
 
   /* Array type statistics */
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_COUNTERS, "Num_data_page_fix_ext", &f_dump_in_file_Num_data_page_fix_ext,

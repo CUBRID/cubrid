@@ -8440,9 +8440,9 @@ pgbuf_request_data_page_from_page_server (THREAD_ENTRY & thread_r, const VPID * 
       if (!decompressed)
 	{
 	  constexpr size_t buf_len = 128;
-          char buf[buf_len];
-          snprintf (buf, buf_len, "vpid = %d|%d, target_repl_lsa = %lld|%d",
-                    VPID_AS_ARGS(vpid), LSA_AS_ARGS (&target_repl_lsa));
+	  char buf[buf_len];
+	  snprintf (buf, buf_len, "vpid = %d|%d, target_repl_lsa = %lld|%d",
+		    VPID_AS_ARGS (vpid), LSA_AS_ARGS (&target_repl_lsa));
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_DECOMPRESS_FAILED_W_DETAILS, 1, buf);
 	  assert_release (false);
 	}
@@ -8554,6 +8554,14 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
 
       // add io_page
       payload_in_out.append (compressed_data, (size_t) compressed_data_size);
+
+      if (perfmon_is_perf_tracking ())
+        {
+          // supply the value in greater values to allow for increased accuracy of division
+          // to obtain a ratio out of the calculated average, divide by 100.0
+          const double ratio_factored = ((double)compressed_data_size/(double)IO_PAGESIZE) * 100. * 100.;
+          perfmon_time_stat (&thread_r, PSTAT_COMPRESS_PAGES_TRANSFER_RATIO, (UINT64)ratio_factored);
+        }
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
