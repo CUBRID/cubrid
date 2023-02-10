@@ -39,15 +39,18 @@ class active_tran_server : public tran_server
     class connection_handler : public tran_server::connection_handler
     {
       public:
-	connection_handler (cubcomm::channel &&chn, tran_server &ts)
-	  : tran_server::connection_handler (std::move (chn), ts)
-	{}
+	connection_handler (cubcomm::channel &&chn, tran_server &ts);
 
+	void disconnect () final override;
       private:
 	request_handlers_map_t get_request_handlers () final override;
+	void remove_prior_sender_sink ();
 
 	// request handlers
 	void receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip);
+
+      private:
+	cublog::prior_sender::sink_hook_t m_prior_sender_sink_hook_func;
     };
 
   private:
@@ -60,12 +63,6 @@ class active_tran_server : public tran_server
 
   private:
     bool m_uses_remote_storage = false;
-
-    /*
-     * sends prior nodes to the page servers.
-     * The order can differ from m_page_server_conn_vec
-     */
-    std::vector<std::unique_ptr<cublog::prior_sender::sink_hook_t>> m_prior_sender_sink_hooks;
 };
 
 #endif // !_ACTIVE_TRAN_SERVER_HPP_

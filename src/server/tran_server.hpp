@@ -103,6 +103,8 @@ class tran_server
 	void push_request (tran_to_page_request reqid, std::string &&payload);
 	int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
 
+	virtual void disconnect ();
+
 	const std::string get_channel_id () const;
 
       protected:

@@ -345,15 +345,11 @@ tran_server::disconnect_all_page_servers ()
 
   stop_outgoing_page_server_messages ();
 
-  const int payload = static_cast<int> (m_conn_type);
-  std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
-  er_log_debug (ARG_FILE_LINE, "Transaction server starts disconnecting from the page servers.");
-
-  for (size_t i = 0; i < m_page_server_conn_vec.size (); i++)
+  for (const auto &conn : m_page_server_conn_vec)
     {
       er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from page server with channel id: %s.\n",
-		    m_page_server_conn_vec[i]->get_channel_id ().c_str ());
-      m_page_server_conn_vec[i]->push_request (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
+		    conn->get_channel_id ().c_str ());
+      conn->disconnect ();
     }
   m_page_server_conn_vec.clear ();
   er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from all page servers.");
@@ -416,7 +412,6 @@ tran_server::connection_handler::get_request_handlers ()
   return handlers_map;
 }
 
-
 void
 tran_server::connection_handler::push_request (tran_to_page_request reqid, std::string &&payload)
 {
@@ -440,6 +435,18 @@ tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::
     }
 
   return NO_ERROR;
+}
+
+void
+tran_server::connection_handler::disconnect ()
+{
+  // All msg generators have to stop beforehad to make sure SEND_DISCONNECT_MSG is the last msg.
+
+  const int payload = static_cast<int> (m_ts.m_conn_type);
+  std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
+  er_log_debug (ARG_FILE_LINE, "Transaction server starts disconnecting from the page servers.");
+
+  push_request (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
 }
 
 const std::string
