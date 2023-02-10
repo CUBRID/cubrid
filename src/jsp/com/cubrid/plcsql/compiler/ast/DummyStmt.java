@@ -30,12 +30,20 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DummyStmt implements Stmt {
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+
+public class DummyStmt extends Stmt {
 
     public final String kind;
 
     public DummyStmt(String kind) {
         this.kind = kind;
+    }
+
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        assert false: "unreachable";
+        throw new RuntimeException("unreachable");
     }
 
     @Override

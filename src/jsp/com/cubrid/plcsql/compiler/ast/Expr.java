@@ -32,8 +32,9 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Coerce;
 
-public interface Expr extends AstNode {
-    default void setCoerce(Coerce c) {
+public abstract class Expr extends AstNode {
+
+    public void setCoerce(Coerce c) {
         // TODO
     }
 }

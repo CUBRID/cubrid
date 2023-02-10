@@ -33,6 +33,7 @@ package com.cubrid.plcsql.compiler;
 import static com.cubrid.plcsql.compiler.antlrgen.PcsParser.*;
 
 import com.cubrid.plcsql.compiler.ast.*;
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -404,7 +405,7 @@ public class SymbolStack {
     // OverloadedFunc class corresponds to operators (+, -, etc) and system provided functions (substr, trim, strcomp, etc)
     // which can be overloaded unlike user defined procedures and functions.
     // It implements DeclId in order to be inserted ids map for system provided functions.
-    private static class OverloadedFunc extends DeclBase {
+    private static class OverloadedFunc extends Decl {
 
         private final Map<List<TypeSpec>, DeclFunc> overloads = new HashMap<>();   // (arguments types --> function decl) map
 
@@ -427,6 +428,13 @@ public class SymbolStack {
                 }
             }
             return ret;
+        }
+
+        // TODO: separate Symbol from AstNode. Remove 'extends Decl' and the following method
+        @Override
+        public <R> R accept(AstNodeVisitor<R> visitor) {
+            assert false: "unreachable";
+            throw new RuntimeException("unreachable");
         }
 
         @Override

@@ -33,7 +33,7 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
-public class ExprTrue implements Expr {
+public class ExprTrue extends Expr {
 
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {

@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public abstract class TypeSpec implements AstNode {
+public abstract class TypeSpec extends AstNode {
 
     public final String name;
 

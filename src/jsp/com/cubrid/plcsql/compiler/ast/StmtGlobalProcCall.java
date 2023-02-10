@@ -35,7 +35,7 @@ import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class StmtGlobalProcCall implements Stmt {
+public class StmtGlobalProcCall extends Stmt {
 
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {

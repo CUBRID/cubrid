@@ -36,7 +36,7 @@ import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 import com.cubrid.plcsql.compiler.DateTimeParser;
 import java.time.ZonedDateTime;
 
-public class ExprZonedDateTime implements Expr {
+public class ExprZonedDateTime extends Expr {
 
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {

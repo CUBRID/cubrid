@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public abstract class DeclParam extends DeclBase implements DeclVarLike {
+public abstract class DeclParam extends DeclVarLike {
 
     public final String name;
     public final TypeSpec typeSpec;

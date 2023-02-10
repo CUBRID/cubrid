@@ -32,8 +32,22 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Scope;
 
-public interface Decl extends AstNode {
-    void setScope(Scope scope);
-    Scope scope();
-    String kind();
+public abstract class Decl extends AstNode {
+
+    public abstract String kind();
+
+    public void setScope(Scope scope) {
+        this.scope = scope;
+    }
+
+    public Scope scope() {
+        return scope;
+    }
+
+    // -----------------------------------------
+    // Private
+    // -----------------------------------------
+
+    protected Scope scope;
 }
+

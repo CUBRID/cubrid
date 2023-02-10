@@ -35,7 +35,7 @@ import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class StmtCase implements Stmt {
+public class StmtCase extends Stmt {
 
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {

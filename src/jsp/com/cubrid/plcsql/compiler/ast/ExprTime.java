@@ -35,7 +35,7 @@ import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import java.time.LocalTime;
 
-public class ExprTime implements Expr {
+public class ExprTime extends Expr {
 
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {

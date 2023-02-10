@@ -35,7 +35,7 @@ import com.cubrid.plcsql.compiler.Misc;
 import java.util.List;
 import java.util.ArrayList;
 
-public abstract class DeclRoutine extends DeclBase {
+public abstract class DeclRoutine extends Decl {
 
     public final String name;
     public final NodeList<DeclParam> paramList;

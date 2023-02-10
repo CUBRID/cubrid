@@ -36,7 +36,7 @@ import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 import com.cubrid.plcsql.compiler.Misc;
 import java.util.List;
 
-public class ExHandler implements AstNode {
+public class ExHandler extends AstNode {
 
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {

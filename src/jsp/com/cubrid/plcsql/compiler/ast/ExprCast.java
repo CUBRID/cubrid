@@ -35,7 +35,7 @@ import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class ExprCast implements Expr {
+public class ExprCast extends Expr {
 
     public final Expr expr;
     public String ty = null;
@@ -53,6 +53,12 @@ public class ExprCast implements Expr {
             assert false
                     : "target type of an ExprCast is set to " + ty + " with already set " + this.ty;
         }
+    }
+
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        assert false: "unreachable";
+        throw new RuntimeException("unreachable");
     }
 
     @Override

@@ -35,7 +35,7 @@ import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class CondExpr implements AstNode {
+public class CondExpr extends AstNode {
 
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {

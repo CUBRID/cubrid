@@ -30,12 +30,20 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DummyExpr implements Expr {
+import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+
+public class DummyExpr extends Expr {
 
     public final String kind;
 
     public DummyExpr(String kind) {
         this.kind = kind;
+    }
+
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        assert false: "unreachable";
+        throw new RuntimeException("unreachable");
     }
 
     @Override

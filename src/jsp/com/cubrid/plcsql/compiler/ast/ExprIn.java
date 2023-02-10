@@ -35,7 +35,7 @@ import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class ExprIn implements Expr {
+public class ExprIn extends Expr {
 
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {

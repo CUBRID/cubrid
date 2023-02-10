@@ -33,7 +33,7 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
-public class StmtBreak implements Stmt {
+public class StmtBreak extends Stmt {
 
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {

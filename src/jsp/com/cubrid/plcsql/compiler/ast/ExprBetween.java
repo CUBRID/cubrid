@@ -35,7 +35,7 @@ import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class ExprBetween implements Expr {
+public class ExprBetween extends Expr {
 
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {

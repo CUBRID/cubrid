@@ -30,5 +30,4 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public interface DeclId extends Decl {
-} // marker interface
+public abstract class DeclId extends Decl { }

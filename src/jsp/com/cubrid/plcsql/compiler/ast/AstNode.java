@@ -34,12 +34,23 @@ import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 import com.cubrid.plcsql.compiler.SemanticError;
 
-public interface AstNode {
+public abstract class AstNode {
 
-    public String toJavaCode();
+    public abstract String toJavaCode();
+    public abstract <R> R accept(AstNodeVisitor<R> visitor);
 
-    public default <R> R accept(AstNodeVisitor<R> visitor) {
-        assert false: "accept not overriden for " + getClass().getSimpleName();
-        throw new RuntimeException("accept not overriden for " + getClass().getSimpleName());
+    public int lineNo() {
+        return lineNo;
     }
+
+    public AstNode setLineNo(int lineNo) {
+        this.lineNo = lineNo;
+        return this;
+    }
+
+    // ---------------------------------------------------
+    // Private
+    // ---------------------------------------------------
+
+    private int lineNo;
 }

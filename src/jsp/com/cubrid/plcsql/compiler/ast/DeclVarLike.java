@@ -30,6 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public interface DeclVarLike extends DeclId {
-    TypeSpec typeSpec();
+public abstract class DeclVarLike extends DeclId {
+    public abstract TypeSpec typeSpec();
 }

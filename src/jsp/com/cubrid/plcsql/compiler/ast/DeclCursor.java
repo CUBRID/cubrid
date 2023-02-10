@@ -35,7 +35,7 @@ import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import java.util.Arrays;
 
-public class DeclCursor extends DeclBase implements DeclId {
+public class DeclCursor extends DeclId {
 
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {

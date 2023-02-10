@@ -74,8 +74,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 decl);
     }
 
-    private static final NodeList<DeclParam> EMPTY_PARAMS = new NodeList<>();
-
     @Override
     public NodeList<DeclParam> visitParameter_list(Parameter_listContext ctx) {
 
@@ -679,14 +677,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return new ExprCase(selector, whenParts, elsePart);
     }
 
-    private static boolean isCursorOrRefcursor(ExprId id) {
-
-        DeclId decl = id.decl;
-        return (decl instanceof DeclCursor ||
-            ((decl instanceof DeclVar || decl instanceof DeclParam) &&
-                ((DeclVarLike) decl).typeSpec().equals(TypeSpecSimple.REFCURSOR)));
-    }
-
     @Override
     public AstNode visitCursor_attr_exp(Cursor_attr_expContext ctx) {
 
@@ -852,35 +842,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return ret;
     }
 
-    private void previsitRoutine_definition(Routine_definitionContext ctx) {
-
-        String name = Misc.getNormalizedText(ctx.identifier());
-
-        // in order not to corrupt the current symbol table with the parameters
-        symbolStack.pushSymbolTable("temp", null);
-
-        NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
-
-        symbolStack.popSymbolTable();
-
-        if (ctx.PROCEDURE() == null) {
-            // function
-            if (ctx.RETURN() == null) {
-                throw new SemanticError("definition of function " + name + " must specify its return type");
-            }
-            TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
-            DeclFunc ret = new DeclFunc(name, paramList, retType);
-            symbolStack.putDecl(name, ret);
-        } else {
-            // procedure
-            if (ctx.RETURN() != null) {
-                throw new SemanticError("definition of procedure " + name + " may not specify a return type");
-            }
-            DeclProc ret = new DeclProc(name, paramList);
-            symbolStack.putDecl(name, ret);
-        }
-    }
-
     @Override
     public DeclRoutine visitRoutine_definition(Routine_definitionContext ctx) {
 
@@ -986,23 +947,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         } else if (decl instanceof DeclFunc) {
             Scope scope = symbolStack.getCurrentScope();
             return new ExprLocalFuncCall(name, null, scope, (DeclFunc) decl);
-        }
-
-        assert false : "unreachable";
-        throw new RuntimeException("unreachable");
-    }
-
-    private ExprId visitNonFuncIdentifier(IdentifierContext ctx) {
-        String name = Misc.getNormalizedText(ctx);
-
-        Decl decl = symbolStack.getDeclForIdExpr(name);
-        if (decl == null) {
-            return null;
-        } else if (decl instanceof DeclId) {
-            Scope scope = symbolStack.getCurrentScope();
-            return new ExprId(name, scope, (DeclId) decl);
-        } else if (decl instanceof DeclFunc) {
-            return null;
         }
 
         assert false : "unreachable";
@@ -1721,8 +1665,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return ret;
     }
 
-    private static final NodeList<Expr> EMPTY_ARGS = new NodeList<>();
-
     @Override
     public NodeList<Expr> visitFunction_argument(Function_argumentContext ctx) {
 
@@ -1772,46 +1714,19 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     // Private
     // --------------------------------------------------------
 
-    private final Set<String> imports = new TreeSet<>();
-
     private static final String SYMBOL_TABLE_TOP = "%predefined";
+    private static final NodeList<DeclParam> EMPTY_PARAMS = new NodeList<>();
+    private static final NodeList<Expr> EMPTY_ARGS = new NodeList<>();
 
-    private void addToImports(String i) {
-        //System.out.println("temp: i = " + i);
-        imports.add(i);
-    }
+    private static boolean isCursorOrRefcursor(ExprId id) {
 
-    private boolean autonomousTransaction = false;
-    private boolean connectionRequired = false;
-
-    private String getJavaType(String pcsType) {
-        String javaType = pcsToJavaTypeMap.get(pcsType);
-        if (javaType == null) {
-            throw new SemanticError("invalid type name " + pcsType);
-        }
-
-        if ("com.cubrid.plcsql.predefined.sp.SpLib.Query".equals(javaType)) {
-            // no need to import Cursor now
-        } else if (javaType.startsWith("java.lang.") && javaType.lastIndexOf('.') == 9) {  // 9:the index of the second '.'
-            // no need to import java.lang.*
-        } else {
-            // if it is not in the java.lang package
-            addToImports(javaType);
-        }
-
-        return javaType;
-    }
-
-    private Expr visitExpression(ParserRuleContext ctx) {
-        if (ctx == null) {
-            return null;
-        } else {
-            return (Expr) visit(ctx);
-        }
+        DeclId decl = id.decl;
+        return (decl instanceof DeclCursor ||
+            ((decl instanceof DeclVar || decl instanceof DeclParam) &&
+                ((DeclVarLike) decl).typeSpec().equals(TypeSpecSimple.REFCURSOR)));
     }
 
     private static final Map<String, String> pcsToJavaTypeMap = new TreeMap<>();
-
     static {
         pcsToJavaTypeMap.put("BOOLEAN", "java.lang.Boolean");
 
@@ -1859,6 +1774,88 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         val = val.substring(1, val.length() - 1); // strip enclosing '
         val = val.replace("''", "'");
         return StringEscapeUtils.escapeJava(val);
+    }
+
+    private boolean autonomousTransaction = false;
+    private boolean connectionRequired = false;
+
+    private final Set<String> imports = new TreeSet<>();
+
+    private ExprId visitNonFuncIdentifier(IdentifierContext ctx) {
+        String name = Misc.getNormalizedText(ctx);
+
+        Decl decl = symbolStack.getDeclForIdExpr(name);
+        if (decl == null) {
+            return null;
+        } else if (decl instanceof DeclId) {
+            Scope scope = symbolStack.getCurrentScope();
+            return new ExprId(name, scope, (DeclId) decl);
+        } else if (decl instanceof DeclFunc) {
+            return null;
+        }
+
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
+    private void previsitRoutine_definition(Routine_definitionContext ctx) {
+
+        String name = Misc.getNormalizedText(ctx.identifier());
+
+        // in order not to corrupt the current symbol table with the parameters
+        symbolStack.pushSymbolTable("temp", null);
+
+        NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
+
+        symbolStack.popSymbolTable();
+
+        if (ctx.PROCEDURE() == null) {
+            // function
+            if (ctx.RETURN() == null) {
+                throw new SemanticError("definition of function " + name + " must specify its return type");
+            }
+            TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
+            DeclFunc ret = new DeclFunc(name, paramList, retType);
+            symbolStack.putDecl(name, ret);
+        } else {
+            // procedure
+            if (ctx.RETURN() != null) {
+                throw new SemanticError("definition of procedure " + name + " may not specify a return type");
+            }
+            DeclProc ret = new DeclProc(name, paramList);
+            symbolStack.putDecl(name, ret);
+        }
+    }
+
+    private void addToImports(String i) {
+        //System.out.println("temp: i = " + i);
+        imports.add(i);
+    }
+
+    private String getJavaType(String pcsType) {
+        String javaType = pcsToJavaTypeMap.get(pcsType);
+        if (javaType == null) {
+            throw new SemanticError("invalid type name " + pcsType);
+        }
+
+        if ("com.cubrid.plcsql.predefined.sp.SpLib.Query".equals(javaType)) {
+            // no need to import Cursor now
+        } else if (javaType.startsWith("java.lang.") && javaType.lastIndexOf('.') == 9) {  // 9:the index of the second '.'
+            // no need to import java.lang.*
+        } else {
+            // if it is not in the java.lang package
+            addToImports(javaType);
+        }
+
+        return javaType;
+    }
+
+    private Expr visitExpression(ParserRuleContext ctx) {
+        if (ctx == null) {
+            return null;
+        } else {
+            return (Expr) visit(ctx);
+        }
     }
 
     private ExprZonedDateTime parseZonedDateTime(String s, boolean forDatetime, String originType) {

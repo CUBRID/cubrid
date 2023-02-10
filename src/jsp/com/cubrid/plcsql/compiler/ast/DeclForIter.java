@@ -33,12 +33,19 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
-public class DeclForIter extends DeclBase implements DeclId {
+public class DeclForIter extends DeclId {
 
     public final String name;
 
     public DeclForIter(String name) {
         this.name = name;
+    }
+
+    // TODO: separate Symbol from AstNode. Remove 'extends Decl' and the following method
+    @Override
+    public <R> R accept(AstNodeVisitor<R> visitor) {
+        assert false: "unreachable";
+        throw new RuntimeException("unreachable");
     }
 
     @Override

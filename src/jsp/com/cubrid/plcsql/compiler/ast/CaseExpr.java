@@ -35,7 +35,7 @@ import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class CaseExpr implements AstNode {
+public class CaseExpr extends AstNode {
 
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {

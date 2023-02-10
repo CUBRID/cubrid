@@ -669,6 +669,12 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
         return null;
     }
 
+    @Override
+    public TypeSpec visitExName(ExName node) {
+        assert false: "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
     // ------------------------------------------------------------------
     // Private
     // ------------------------------------------------------------------

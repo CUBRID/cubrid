@@ -33,7 +33,7 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
-public class DeclVar extends DeclBase implements DeclVarLike {
+public class DeclVar extends DeclVarLike {
 
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {

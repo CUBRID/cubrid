@@ -34,7 +34,7 @@ import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
-public class DeclException extends DeclBase {
+public class DeclException extends Decl {
 
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {

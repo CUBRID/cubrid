@@ -33,7 +33,7 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
-public class ExprCursorAttr implements Expr {
+public class ExprCursorAttr extends Expr {
 
     public enum Attr {
         ISOPEN("isOpen"),

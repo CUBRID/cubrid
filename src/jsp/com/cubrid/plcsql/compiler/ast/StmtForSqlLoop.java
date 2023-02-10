@@ -35,7 +35,7 @@ import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class StmtForSqlLoop implements Stmt {
+public class StmtForSqlLoop extends Stmt {
 
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {

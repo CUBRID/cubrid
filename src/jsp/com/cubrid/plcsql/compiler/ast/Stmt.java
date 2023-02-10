@@ -30,4 +30,4 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public interface Stmt extends AstNode {}
+public abstract class Stmt extends AstNode {}
