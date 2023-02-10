@@ -99,7 +99,7 @@ struct t_ddl_audit_handle
   bool jsp_mode;
 };
 
-static T_DDL_AUDIT_HANDLE ddl_audit_handle = { 0x00, };
+static T_DDL_AUDIT_HANDLE ddl_audit_handle;
 
 static bool is_first_initialized = true;
 static bool ddl_logging_enabled = false;

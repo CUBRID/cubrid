@@ -528,6 +528,10 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL || CAS_FOR_CGW */
     {
       ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "execute_internal srv_h_id %d %s%d",
+		     srv_h_id, "error:", err_info.err_number);
+
       NET_BUF_ERR_SET (net_buf);
       return FN_KEEP_CONN;
     }
@@ -1175,6 +1179,10 @@ fn_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO
   if (srv_handle == NULL)
     {
       ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "fn_fetch srv_h_id %d %s%d",
+		     srv_h_id, "error:", err_info.err_number);
+
       NET_BUF_ERR_SET (net_buf);
       return FN_KEEP_CONN;
     }
@@ -1579,6 +1587,10 @@ fn_collection (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
       err_code = make_bind_value (1, 2, argv + value_index, &ele_val, net_buf, db_type);
       if (err_code < 0)
 	{
+	  if (err_info.err_number == CAS_ER_SRV_HANDLE || err_info.err_number == CAS_ER_NUM_BIND)
+	    {
+	      cas_log_write (0, false, "fn_collection %s%d", "error:", err_info.err_number);
+	    }
 	  goto fn_col_finale;
 	}
     }
@@ -1665,6 +1677,10 @@ fn_next_result (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
   if (srv_handle == NULL)
     {
       ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "fn_next_result srv_h_id %d %s%d",
+		     srv_h_id, "error:", err_info.err_number);
+
       NET_BUF_ERR_SET (net_buf);
       return FN_KEEP_CONN;
     }
@@ -2204,6 +2220,10 @@ fn_get_generated_keys (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_bu
   if (srv_handle == NULL)
     {
       ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "fn_get_generated_keys srv_h_id %d %s%d",
+		     srv_h_id, "error:", err_info.err_number);
+
       NET_BUF_ERR_SET (net_buf);
       return FN_KEEP_CONN;
     }

@@ -152,8 +152,6 @@ static SM_FUNCTION_INFO *classobj_make_function_index_info (DB_SEQ * func_seq);
 static DB_SEQ *classobj_make_function_index_info_seq (SM_FUNCTION_INFO * func_index_info);
 static SM_CONSTRAINT_COMPATIBILITY classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints,
 								       const DB_CONSTRAINT_TYPE constraint_type,
-								       const SM_PREDICATE_INFO * filter_predicate,
-								       const SM_FUNCTION_INFO * func_index_info,
 								       const SM_CLASS_CONSTRAINT * existing_con,
 								       SM_CLASS_CONSTRAINT ** primary_con);
 static int classobj_check_function_constraint_info (DB_SEQ * constraint_seq, bool * has_function_constraint);
@@ -624,10 +622,8 @@ classobj_copy_props (DB_SEQ * properties, MOP filter_class, DB_SEQ ** new_proper
 	    }
 	  if (is_global == 0)
 	    {
-	      if (classobj_put_index (new_properties, c->type, c->name, c->attributes, c->asc_desc,
-				      c->attrs_prefix_length, &(c->index_btid), c->filter_predicate, c->fk_info,
-				      c->shared_cons_name, c->func_index_info, c->comment, c->index_status, false)
-		  != NO_ERROR)
+	      if (classobj_put_index (new_properties, c, &(c->index_btid), c->fk_info, c->shared_cons_name, false) !=
+		  NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -973,14 +969,11 @@ classobj_put_seq_with_name_and_iterate (DB_SEQ * destination, int &index, const 
  *   comment(in):
  */
 int
-classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name, SM_ATTRIBUTE ** atts,
-		    const int *asc_desc, const int *attr_prefix_length, const BTID * id,
-		    SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name,
-		    SM_FUNCTION_INFO * func_index_info, const char *comment, SM_INDEX_STATUS index_status,
-		    bool attr_name_instead_of_id)
+classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID * id, SM_FOREIGN_KEY_INFO * fk_info,
+		    char *shared_cons_name, bool attr_name_instead_of_id)
 {
   int i;
-  const char *prop_name = classobj_map_constraint_to_property (type);
+  const char *prop_name = classobj_map_constraint_to_property (con->type);
   DB_VALUE pvalue, value;
   DB_SEQ *unique_property = NULL, *constraint = NULL;
   int found = 0;
@@ -1073,26 +1066,26 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
     }
 
   /* Fill the indexed attributes into the sequence */
-  for (i = 0, num_attrs = 0; atts[i] != NULL; i++, num_attrs++)
+  for (i = 0, num_attrs = 0; con->attributes[i] != NULL; i++, num_attrs++)
     {
       if (attr_name_instead_of_id)
 	{
 	  /* name */
-	  db_make_string (&value, atts[i]->header.name);
+	  db_make_string (&value, con->attributes[i]->header.name);
 	}
       else
 	{
 	  /* id */
-	  db_make_int (&value, atts[i]->id);
+	  db_make_int (&value, con->attributes[i]->id);
 	}
       classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
 
       /* asc_desc */
-      db_make_int (&value, asc_desc ? asc_desc[i] : 0);
+      db_make_int (&value, con->asc_desc ? con->asc_desc[i] : 0);
       classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
     }
 
-  if (type == SM_CONSTRAINT_FOREIGN_KEY)
+  if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
     {
       if (classobj_put_seq_and_iterate (constraint, constraint_seq_index, classobj_make_foreign_key_info_seq (fk_info))
 	  != NO_ERROR)
@@ -1100,7 +1093,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	  goto error;
 	}
     }
-  else if (type == SM_CONSTRAINT_PRIMARY_KEY)
+  else if (con->type == SM_CONSTRAINT_PRIMARY_KEY)
     {
       SM_FOREIGN_KEY_INFO *fk;
       int num_live_fk = 0;
@@ -1151,12 +1144,14 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
     }
   else
     {
-      if (filter_index_info == NULL && func_index_info == NULL)
+      int *attr_prefix_length = con->attrs_prefix_length;
+
+      if (con->filter_predicate == NULL && con->func_index_info == NULL)
 	{
 	  /* prefix length */
 	  if (classobj_put_seq_and_iterate (constraint, constraint_seq_index,
-					    classobj_make_index_attr_prefix_seq (num_attrs, attr_prefix_length))
-	      != NO_ERROR)
+					    classobj_make_index_attr_prefix_seq (num_attrs,
+										 attr_prefix_length)) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -1171,10 +1166,10 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	      goto error;
 	    }
 
-	  if (filter_index_info != NULL)
+	  if (con->filter_predicate != NULL)
 	    {
 	      if (classobj_put_seq_with_name_and_iterate (seq, seq_index, SM_FILTER_INDEX_ID,
-							  classobj_make_index_filter_pred_seq (filter_index_info))
+							  classobj_make_index_filter_pred_seq (con->filter_predicate))
 		  != NO_ERROR)
 		{
 		  set_free (seq);
@@ -1183,18 +1178,18 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 
 	      if (classobj_put_seq_with_name_and_iterate (seq, seq_index, SM_PREFIX_INDEX_ID,
 							  classobj_make_index_attr_prefix_seq (num_attrs,
-											       attr_prefix_length))
-		  != NO_ERROR)
+											       attr_prefix_length)) !=
+		  NO_ERROR)
 		{
 		  set_free (seq);
 		  goto error;
 		}
 	    }
 
-	  if (func_index_info != NULL)
+	  if (con->func_index_info != NULL)
 	    {
 	      if (classobj_put_seq_with_name_and_iterate (seq, seq_index, SM_FUNCTION_INDEX_ID,
-							  classobj_make_function_index_info_seq (func_index_info))
+							  classobj_make_function_index_info_seq (con->func_index_info))
 		  != NO_ERROR)
 		{
 		  set_free (seq);
@@ -1208,23 +1203,21 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	      set_free (seq);
 	      goto error;
 	    }
-
-	  // ok
 	}
     }
 
   /* add index status. */
-  db_make_int (&value, index_status);
+  db_make_int (&value, con->index_status);
   classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
 
   /* comment */
-  db_make_string (&value, comment);
+  db_make_string (&value, con->comment);
   classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
 
   /* Append the constraint to the unique property sequence */
   db_make_sequence (&value, constraint);
   constraint = NULL;
-  classobj_put_prop (unique_property, constraint_name, &value);
+  classobj_put_prop (unique_property, con->name, &value);
   pr_clear_value (&value);
 
   /* Put/Replace the unique property */
@@ -3705,23 +3698,25 @@ classobj_cache_class_constraints (SM_CLASS * class_)
 
   /* The NOT NULL constraints are not in the property lists but are instead contained in the SM_ATTRIBUTE structures as
    * flags.  Search through the attributes and cache the NOT NULL constraints found. */
-  if (error == NO_ERROR)
+  if (error != NO_ERROR)
     {
-      error =
-	classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_), class_->attributes, &(class_->constraints));
-    }
-  if (error == NO_ERROR)
-    {
-      error = classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_), class_->shared, &(class_->constraints));
-    }
-  if (error == NO_ERROR)
-    {
-      error =
-	classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_), class_->class_attributes,
-					     &(class_->constraints));
+      return error;
     }
 
-  return error;
+  error = classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_), class_->attributes, &(class_->constraints));
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error = classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_), class_->shared, &(class_->constraints));
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_), class_->class_attributes,
+					      &(class_->constraints));
 }
 
 
@@ -4062,7 +4057,8 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_
  */
 SM_CLASS_CONSTRAINT *
 classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAINT_TYPE new_cons, const char **att_names,
-				   const int *asc_desc, const SM_PREDICATE_INFO * filter_predicate)
+				   const int *asc_desc, const SM_PREDICATE_INFO * filter_predicate,
+				   const SM_FUNCTION_INFO * func_index_info)
 {
   SM_CLASS_CONSTRAINT *cons;
   SM_ATTRIBUTE **attp;
@@ -4106,6 +4102,11 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	    {
 	      continue;
 	    }
+	  if (((filter_predicate && !cons->filter_predicate) || (!filter_predicate && cons->filter_predicate))
+	      || ((func_index_info && !cons->func_index_info) || (!func_index_info && cons->func_index_info)))
+	    {
+	      continue;
+	    }
 
 	  len = 0;		/* init */
 	  while (*attp && *namep && !intl_identifier_casecmp ((*attp)->header.name, *namep))
@@ -4115,50 +4116,53 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	      len++;		/* increase name number */
 	    }
 
-	  if (!*attp && !*namep && !classobj_is_possible_constraint (cons->type, new_cons))
+	  if (*attp || *namep || classobj_is_possible_constraint (cons->type, new_cons))
 	    {
-	      for (i = 0; i < len; i++)
+	      continue;
+	    }
+
+	  for (i = 0; i < len; i++)
+	    {
+	      /* if not specified, ascending order */
+	      order = (asc_desc ? asc_desc[i] : 0);
+	      assert (order == 0 || order == 1);
+	      if (order != cons->asc_desc[i])
 		{
-		  /* if not specified, ascending order */
-		  order = (asc_desc ? asc_desc[i] : 0);
-		  assert (order == 0 || order == 1);
-		  if (order != cons->asc_desc[i])
-		    {
-		      break;	/* not match */
-		    }
-		}
-
-	      if (i == len)
-		{
-		  if (filter_predicate)
-		    {
-		      if (!cons->filter_predicate)
-			{
-			  continue;
-			}
-
-		      if (!filter_predicate->pred_string || !cons->filter_predicate->pred_string)
-			{
-			  continue;
-			}
-
-		      if (strcmp (filter_predicate->pred_string, cons->filter_predicate->pred_string))
-			{
-			  continue;
-			}
-		    }
-		  else
-		    {
-		      if (cons->filter_predicate)
-			{
-			  continue;
-			}
-		    }
-
-		  return cons;
+		  break;	/* not match */
 		}
 	    }
 
+	  if (i != len)
+	    {
+	      continue;
+	    }
+
+	  if (filter_predicate)
+	    {
+	      if (!filter_predicate->pred_string || !cons->filter_predicate->pred_string)
+		{
+		  continue;
+		}
+
+	      if (strcmp (filter_predicate->pred_string, cons->filter_predicate->pred_string))
+		{
+		  continue;
+		}
+	    }
+
+	  if (func_index_info)
+	    {
+	      /* expr_str are printed tree, identifiers are already lower case */
+	      if ((func_index_info->attr_index_start != cons->func_index_info->attr_index_start)
+		  || (func_index_info->col_id != cons->func_index_info->col_id)
+		  || (func_index_info->fi_domain->is_desc != cons->func_index_info->fi_domain->is_desc)
+		  || (strcmp (func_index_info->expr_str, cons->func_index_info->expr_str) != 0))
+		{
+		  continue;
+		}
+	    }
+
+	  return cons;
 	}
     }
 
@@ -4240,9 +4244,8 @@ classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CONSTRAINT * 
 	{
 	  continue;
 	}
-      if (classobj_put_index (properties, type, con->name, con->attributes, con->asc_desc, con->attrs_prefix_length,
-			      &(con->index_btid), con->filter_predicate, con->fk_info, con->shared_cons_name,
-			      con->func_index_info, con->comment, con->index_status, false) != NO_ERROR)
+      if (classobj_put_index (properties, con, &(con->index_btid), con->fk_info, con->shared_cons_name, false) !=
+	  NO_ERROR)
 	{
 	  error = ER_SM_INVALID_PROPERTY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -7951,7 +7954,9 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj, SM_COMPONENT * com
  *          share  : share index with existed index;
  *          new idx: create new index;
  *          error  : not share index and return error msg.
- *      3 filter_predicate and func_index_info should be checked.
+ *      3. filter_predicate and func_index_info were checked in classbj_find_constraint_by_attors().
+ *      4. The fact that existing_con is not NULL means that there are the same indexes, 
+ *         from the count and order of attributes, order direction, function index composition, and filter conditions.
  * +---------------+-------------------------------------------------------+
  * |               |              Existed constraint or index              |
  * |               +----------+-----------+---------+----------+-----------+
@@ -7976,9 +7981,7 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj, SM_COMPONENT * com
  */
 static SM_CONSTRAINT_COMPATIBILITY
 classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints, const DB_CONSTRAINT_TYPE constraint_type,
-				    const SM_PREDICATE_INFO * filter_predicate,
-				    const SM_FUNCTION_INFO * func_index_info, const SM_CLASS_CONSTRAINT * existing_con,
-				    SM_CLASS_CONSTRAINT ** primary_con)
+				    const SM_CLASS_CONSTRAINT * existing_con, SM_CLASS_CONSTRAINT ** primary_con)
 {
   SM_CONSTRAINT_COMPATIBILITY ret;
 
@@ -7999,65 +8002,41 @@ classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints, const DB_
       return SM_CREATE_NEW_INDEX;
     }
 
-  if (DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type) && SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type))
+  switch (constraint_type)
     {
-      ret = SM_SHARE_INDEX;
-      goto check_filter_function;
-    }
+    case DB_CONSTRAINT_PRIMARY_KEY:
+    case DB_CONSTRAINT_UNIQUE:
+    case DB_CONSTRAINT_REVERSE_UNIQUE:
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type))
+	{
+	  return SM_SHARE_INDEX;
+	}
+      break;
 
-  if (constraint_type == DB_CONSTRAINT_FOREIGN_KEY)
-    {
+    case DB_CONSTRAINT_FOREIGN_KEY:
       if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type))
 	{
 	  return SM_CREATE_NEW_INDEX;
 	}
-      else if (existing_con->type == SM_CONSTRAINT_INDEX)
+      else if (existing_con->type == SM_CONSTRAINT_INDEX || existing_con->type == DB_CONSTRAINT_REVERSE_INDEX)
 	{
-	  ret = SM_SHARE_INDEX;
-	  if (existing_con->filter_predicate != NULL || existing_con->func_index_info != NULL)
-	    {
-	      ret = SM_CREATE_NEW_INDEX;
-	    }
-	  return ret;
+	  return SM_SHARE_INDEX;
 	}
-    }
-  else if (constraint_type == DB_CONSTRAINT_INDEX && existing_con->type == SM_CONSTRAINT_FOREIGN_KEY)
-    {
-      ret = SM_SHARE_INDEX;
-      if (filter_predicate != NULL || func_index_info != NULL)
+      break;
+
+    case DB_CONSTRAINT_INDEX:
+    case DB_CONSTRAINT_REVERSE_INDEX:
+      if (existing_con->type == SM_CONSTRAINT_FOREIGN_KEY)
 	{
-	  ret = SM_CREATE_NEW_INDEX;
+	  return SM_SHARE_INDEX;
 	}
-      return ret;
+      break;
+
+    default:
+      break;
     }
 
-  ret = SM_NOT_SHARE_INDEX_AND_WARNING;
-
-check_filter_function:
-  if (func_index_info && existing_con->func_index_info)
-    {
-      /* expr_str are printed tree, identifiers are already lower case */
-      if (!strcmp (func_index_info->expr_str, existing_con->func_index_info->expr_str)
-	  && (func_index_info->attr_index_start == existing_con->func_index_info->attr_index_start)
-	  && (func_index_info->col_id == existing_con->func_index_info->col_id)
-	  && (func_index_info->fi_domain->is_desc == existing_con->func_index_info->fi_domain->is_desc))
-	{
-	  return ret;
-	}
-      else
-	{
-	  return SM_CREATE_NEW_INDEX;
-	}
-    }
-  if ((func_index_info != NULL) && (existing_con->func_index_info == NULL))
-    {
-      return SM_CREATE_NEW_INDEX;
-    }
-  if ((func_index_info == NULL) && (existing_con->func_index_info != NULL))
-    {
-      return SM_CREATE_NEW_INDEX;
-    }
-  return ret;
+  return SM_NOT_SHARE_INDEX_AND_WARNING;
 }
 
 /*
@@ -8096,7 +8075,9 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char **out_shared
       return error;
     }
 
-  existing_con = classobj_find_constraint_by_attrs (constraints, constraint_type, att_names, asc_desc, filter_index);
+  existing_con =
+    classobj_find_constraint_by_attrs (constraints, constraint_type, att_names, asc_desc, filter_index,
+				       func_index_info);
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
   if (existing_con != NULL)
     {
@@ -8108,8 +8089,7 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char **out_shared
     }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-  compat_state = classobj_check_index_compatibility (constraints, constraint_type, filter_index, func_index_info,
-						     existing_con, &prim_con);
+  compat_state = classobj_check_index_compatibility (constraints, constraint_type, existing_con, &prim_con);
   switch (compat_state)
     {
     case SM_CREATE_NEW_INDEX:

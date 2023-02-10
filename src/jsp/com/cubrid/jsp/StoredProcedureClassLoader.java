@@ -31,84 +31,86 @@
 
 package com.cubrid.jsp;
 
-import java.io.File;
-import java.io.FileFilter;
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.util.HashMap;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
+import java.util.stream.Stream;
 
 public class StoredProcedureClassLoader extends URLClassLoader {
-    private HashMap<String, Long> files = new HashMap<String, Long>();
+    private static volatile StoredProcedureClassLoader instance = null;
 
-    private File root;
+    private static final String ROOT_PATH = Server.getSpPath() + "/java/";
+    private static final Path root = Paths.get(ROOT_PATH);
 
-    public StoredProcedureClassLoader() {
+    private FileTime lastModified = null;
+
+    /* For singleton */
+    public static synchronized StoredProcedureClassLoader getInstance() {
+        if (instance == null) {
+            instance = new StoredProcedureClassLoader();
+        }
+
+        return instance;
+    }
+
+    private StoredProcedureClassLoader() {
         super(new URL[0]);
         init();
     }
 
     private void init() {
-        root = new File(Server.getSpPath() + "/java");
         try {
-            addURL(root.toURI().toURL());
-            initJars();
-            initClasses();
-        } catch (MalformedURLException e) {
+            addURL(root.toUri().toURL());
+            initJar();
+            lastModified = getLastModifiedTime(root);
+        } catch (Exception e) {
             Server.log(e);
         }
     }
 
-    private void initJars() throws MalformedURLException {
-        File[] jars =
-                root.listFiles(
-                        new FileFilter() {
-                            public boolean accept(File f) {
-                                return isJarFile(f);
-                            }
-                        });
-
-        if (jars == null) {
-            return;
-        }
-
-        for (int i = 0; i < jars.length; i++) {
-            files.put(jars[i].getName(), jars[i].lastModified());
-        }
-
-        for (int i = 0; i < jars.length; i++) {
-            addURL(jars[i].toURI().toURL());
-        }
-    }
-
-    private void initClasses() throws MalformedURLException {
-        File[] classes =
-                root.listFiles(
-                        new FileFilter() {
-                            public boolean accept(File f) {
-                                return isClassFile(f);
-                            }
-                        });
-
-        if (classes == null) {
-            return;
-        }
-
-        for (int i = 0; i < classes.length; i++) {
-            files.put(classes[i].getName(), classes[i].lastModified());
-            addURL(classes[i].toURI().toURL());
+    private void initJar() throws IOException {
+        try (Stream<Path> files = Files.list(root)) {
+            files.filter((file) -> !Files.isDirectory(file) && (file.toString().endsWith(".jar")))
+                    .forEach(
+                            jar -> {
+                                try {
+                                    addURL(jar.toUri().toURL());
+                                } catch (MalformedURLException e) {
+                                    Server.log(e);
+                                }
+                            });
+        } catch (NoSuchFileException e) {
+            // ignore
         }
     }
 
     public Class<?> loadClass(String name) throws ClassNotFoundException {
-        return super.loadClass(name);
+        try {
+            if (!isModified()) {
+                return super.loadClass(name);
+            }
+
+            instance = new StoredProcedureClassLoader();
+            return instance.loadClass(name);
+        } catch (IOException e) {
+            return null;
+        }
     }
 
-    private boolean isJarFile(File f) {
-        return f.getName().lastIndexOf(".jar") > 0;
+    private boolean isModified() throws IOException {
+        return lastModified.compareTo(getLastModifiedTime(root)) != 0;
     }
 
-    private boolean isClassFile(File f) {
-        return f.getName().lastIndexOf(".class") > 0;
+    private FileTime getLastModifiedTime(Path path) throws IOException {
+        BasicFileAttributes attr = Files.readAttributes(path, BasicFileAttributes.class);
+        FileTime lastModifiedTime = attr.lastModifiedTime();
+        return lastModifiedTime;
     }
 }

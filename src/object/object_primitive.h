@@ -305,8 +305,7 @@ extern int pr_free_ext_value (DB_VALUE * value);
 
 extern DB_VALUE_COMPARE_RESULT pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion,
 						   int total_order, int num_index_term, int *start_colp,
-						   int *result_size1, int *result_size2, int *diff_column,
-						   bool * dom_is_desc, bool * next_dom_is_desc);
+						   int *diff_column, bool * dom_is_desc, int *result_size);
 extern int pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain);
 extern int pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index, DB_VALUE * value, int *prev_indexp,
 					  char **prev_ptrp);
@@ -351,6 +350,10 @@ extern int pr_Enable_string_compression;
 
 /* 1 size byte, 4 bytes the compressed size, 4 bytes the decompressed size, length and the max alignment */
 #define PRIM_STRING_MAXIMUM_DISK_SIZE(length) (OR_BYTE_SIZE + OR_INT_SIZE + OR_INT_SIZE + (length) + MAX_ALIGNMENT)
+
+// *INDENT-OFF*
+#define MIDXKEY_BOUNDBITS_INIT(bufptr, nbytes)  do { if(nbytes > 0) { memset ((bufptr), 0x00, (nbytes)); } } while(0)
+// *INDENT-ON*
 
 //////////////////////////////////////////////////////////////////////////
 // Inline/template implementation

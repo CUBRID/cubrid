@@ -185,6 +185,7 @@ $ csql help messages
    ;HISTORYList                 - 显示已经执行的查询列表.\n\
    ;HISTORYRead <history_num>   - 将histroy_num所对应的内容读取到命令缓冲区.\n\
    ;TRAce [ON/OFF] [text/json]  - 启用/禁用 sql auto trace.\n\
+   ;SIngleline [ON|OFF]         - 启用/禁用单行模式.\n\
    ;HElp                        - 显示帮助信息.\n\n
 
 232 <系统规定参数> 

@@ -673,7 +673,7 @@ addvoldb: 为数据库添加一个卷文件.\n\
       --db-volume-size=SIZE        指定附加卷大小; 默认: db_volume_size 在 cubrid.conf 文件中\n\
       --max-writesize-in-sec=SIZE  指定每秒写卷文件的上限值; (例如. 512K, 1M, 10M); 默认: 不指定; 最小值: 160K\n\
   -n, --volume-name=NAME           信息卷的名称; 默认: 像这样生成 "db"_ext1)\n\
-  -F, --file-path=PATH             为将被添加的卷文件指定一个创建目录; 默认: 工作目录\n\
+  -F, --file-path=PATH             为将被添加的卷文件指定一个创建目录; 默认: volume_extension_path\n\
       --comment=COMMENT            给添加的卷文件加注释; 默认: 无\n\
   -p, --purpose=PURPOSE            指明添加卷文件的目的; 允许的值:\n\
                                            DATA - 为了数据\n\

@@ -270,7 +270,7 @@ static int process_broker (int command_type, int argc, const char **argv, bool p
 static int process_gateway (int command_type, int argc, const char **argv, bool process_window_service);
 static int process_manager (int command_type, bool process_window_service);
 static int process_javasp (int command_type, int argc, const char **argv, bool show_usage, bool suppress_message,
-			   bool process_window_service);
+			   bool process_window_service, bool ha_mode);
 static int process_javasp_start (const char *db_name, bool suppress_message, bool process_window_service);
 static int process_javasp_stop (const char *db_name, bool suppress_message, bool process_window_service);
 static int process_javasp_status (const char *db_name, bool suppress_message);
@@ -301,7 +301,7 @@ static int is_broker_running (void);
 static int is_gateway_running (void);
 static UTIL_MANAGER_SERVER_STATUS_E is_manager_running (unsigned int sleep_time);
 static UTIL_JAVASP_SERVER_STATUS_E is_javasp_running (const char *server_name);
-static void get_server_names (char **name_buffer);
+static void get_server_names (const char *type, char **name_buffer);
 
 #if defined(WINDOWS)
 static bool is_windows_service_running (unsigned int sleep_time);
@@ -690,7 +690,8 @@ main (int argc, char *argv[])
 #endif /* !WINDOWs */
       break;
     case JAVASP_UTIL:
-      status = process_javasp (command_type, argc - 3, (const char **) &argv[3], true, false, process_window_service);
+      status =
+	process_javasp (command_type, argc - 3, (const char **) &argv[3], true, false, process_window_service, false);
       break;
     case GATEWAY:
       status = process_gateway (command_type, argc - 3, (const char **) &argv[3], process_window_service);
@@ -1357,7 +1358,7 @@ process_service (int command_type, bool process_window_service)
 	{
 	  if (!are_all_services_stopped (0, process_window_service))
 	    {
-	      (void) process_javasp (command_type, 0, NULL, false, false, process_window_service);
+	      (void) process_javasp (command_type, 0, NULL, false, false, process_window_service, false);
 
 	      if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0
 		  && us_Property_map[SERVER_START_LIST].property_value != NULL
@@ -1414,7 +1415,7 @@ process_service (int command_type, bool process_window_service)
 	const char *args[] = { "-b" };
 
 	(void) process_server (command_type, 0, NULL, false, true, false);
-	(void) process_javasp (command_type, 0, NULL, true, false, false);
+	(void) process_javasp (command_type, 0, NULL, true, false, false, false);
 	(void) process_broker (command_type, 1, args, false);
 	(void) process_gateway (command_type, 1, args, false);
 	(void) process_manager (command_type, false);
@@ -1439,12 +1440,13 @@ process_service (int command_type, bool process_window_service)
  *      out_buffer (out):
  */
 static void
-get_server_names (char **name_buffer)
+get_server_names (const char *type, char **name_buffer)
 {
   FILE *input;
   char buf[4096];
   char cmd[PATH_MAX];
 
+  assert (strcmp (type, CHECK_SERVER) == 0 || strcmp (type, CHECK_HA_SERVER) == 0);
   assert (name_buffer != NULL);
 
   *name_buffer = NULL;
@@ -1470,7 +1472,7 @@ get_server_names (char **name_buffer)
       * ignore HA-applylogdb and HA-copylogdb
       * check Server and HA-Server
       */
-      std::string::size_type server_pos = s.find (CHECK_SERVER);
+      std::string::size_type server_pos = s.find (type);
       if (server_pos == std::string::npos)
       {
         continue;
@@ -1772,7 +1774,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		  if (status == NO_ERROR)
 		    {
 		      (void) process_javasp (command_type, 1, (const char **) &token, false, true,
-					     process_window_service);
+					     process_window_service, false);
 		    }
 		}
 	    }
@@ -1790,7 +1792,8 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 	  /* try to stop javasp server first */
 	  if (is_javasp_running (token) == JAVASP_SERVER_RUNNING)
 	    {
-	      (void) process_javasp (command_type, 1, (const char **) &token, false, true, process_window_service);
+	      (void) process_javasp (command_type, 1, (const char **) &token, false, true, process_window_service,
+				     false);
 	    }
 
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_SERVER_NAME, PRINT_CMD_STOP, token);
@@ -2984,7 +2987,7 @@ process_javasp_status (const char *db_name)
 
 static int
 process_javasp (int command_type, int argc, const char **argv, bool show_usage, bool suppress_message,
-		bool process_window_service)
+		bool process_window_service, bool ha_mode)
 {
   const int buf_size = 4096;
   char *buf = NULL;
@@ -3000,7 +3003,8 @@ process_javasp (int command_type, int argc, const char **argv, bool show_usage, 
       /* get all server names from master request */
       if (css_does_master_exist (master_port))
 	{
-	  get_server_names (&buf);
+	  const char *server_type = (ha_mode) ? CHECK_HA_SERVER : CHECK_SERVER;
+	  get_server_names (server_type, &buf);
 	}
     }
   else				/* cubrid javasp command */
@@ -3977,6 +3981,9 @@ us_hb_deactivate (const char *hostname, bool immediate_stop)
       args[opt_idx++] = COMMDB_HB_DEACT_IMMEDIATELY;
     }
 
+  /* stop javasp server */
+  (void) process_javasp (STOP, 0, NULL, false, true, false, true);
+
   /* stop all HA processes including cub_server */
   args[opt_idx] = COMMDB_HA_DEACT_STOP_ALL;
   status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
@@ -4024,6 +4031,9 @@ us_hb_process_stop (HA_CONF * ha_conf, const char *db_name)
   int status = NO_ERROR;
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HA_PROCS_NAME, PRINT_CMD_STOP);
+
+  /* stop javasp server */
+  (void) process_javasp (STOP, 1, (const char **) &db_name, false, true, false, true);
 
   status = us_hb_copylogdb_stop (ha_conf, db_name, NULL, NULL);
   if (status != NO_ERROR)

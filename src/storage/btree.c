@@ -256,7 +256,7 @@
 	{ \
 	  size -= DB_ALIGN (DISK_VPID_SIZE, BTREE_MAX_ALIGN); \
 	} \
-      OR_BUF_INIT (buf, (btree_rec)->data, size); \
+      or_init (&buf, (btree_rec)->data, size); \
     } \
   while (false)
 
@@ -5518,13 +5518,12 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 	}
     }
 
+  if (is_record_read && btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
+    {
+      search_key->has_fence_key = btree_search_key_helper::HAS_FENCE_KEY;
+    }
   if (c < 0)
     {
-      if (is_record_read && btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
-	{
-	  search_key->has_fence_key = btree_search_key_helper::HAS_FENCE_KEY;
-	}
-
       /* Key doesn't exist and is smaller than current middle key. */
       if (middle == 1)
 	{
@@ -5542,11 +5541,6 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
     }
   else
     {
-      if (is_record_read && btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
-	{
-	  search_key->has_fence_key = btree_search_key_helper::HAS_FENCE_KEY;
-	}
-
       /* Key doesn't exist and is bigger than current middle key. */
       if (middle == key_cnt)
 	{
@@ -16506,7 +16500,11 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	}
     }
 
-  (void) pr_clone_value (value_p, key);
+  if (is_visible)
+    {
+      (void) pr_clone_value (value_p, key);
+    }
+
   btree_clear_key_value (&clear_key, &key_value);
 
 end:
@@ -18799,8 +18797,6 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   DB_TYPE key1_type, key2_type;
   DB_TYPE dom_type;
-  int dummy_diff_column;
-  bool dom_is_desc = false, dummy_next_dom_is_desc;
   bool comparable = true;
 
   assert (key1 != NULL && key2 != NULL && key_domain != NULL);
@@ -18849,11 +18845,14 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 	  return DB_UNK;
 	}
 
-      c = pr_midxkey_compare (db_get_midxkey (key1), db_get_midxkey (key2), do_coercion, total_order, -1, start_colp,
-			      NULL, NULL, &dummy_diff_column, &dom_is_desc, &dummy_next_dom_is_desc);
+      bool dom_is_desc[2];
+      int dummy_diff_column;
+      c =
+	pr_midxkey_compare (db_get_midxkey (key1), db_get_midxkey (key2), do_coercion, total_order, -1, start_colp,
+			    &dummy_diff_column, dom_is_desc, NULL);
       assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
-      if (dom_is_desc)
+      if (dom_is_desc[0])
 	{
 	  c = ((c == DB_GT) ? DB_LT : (c == DB_LT) ? DB_GT : c);
 	}
@@ -19978,37 +19977,37 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       break;
     }
 
+  dom = curr_key->data.midxkey.domain->setdomain;
   /* copy prefix of current key into target key */
   for (i = 0; i < prefix_len; i++)
     {
       pr_midxkey_get_element_nocopy (&curr_key->data.midxkey, i, &new_key_dbvals[i], NULL, NULL);
+      dom = dom->next;		/* get to coerce domain */
     }
 
-  /* build suffix */
-
-  dom = curr_key->data.midxkey.domain->setdomain;
-
-  /* get to domain */
-  for (i = 0; i < prefix_len; i++)
+  if (prefix_len < curr_key->data.midxkey.ncolumns)
     {
-      dom = dom->next;
-    }
+      /* build suffix */
+      for ( /*i = prefix_len */ ; i < curr_key->data.midxkey.ncolumns; i++)
+	{
+	  db_make_null (&new_key_dbvals[i]);
+	}
 
-  /* set maximum suffix (min_max_val), the minimum is NULL */
-  if ((prefix_len < curr_key->data.midxkey.ncolumns)
-      && ((dom->is_desc && use_desc_index) || (!dom->is_desc && !use_desc_index)))
-    {
+      /* The data value is set to NULL, 
+       * But the minimum and maximum values of the actual meaning are set to min_max_val.type. */
       midxkey.min_max_val.position = prefix_len;
-      midxkey.min_max_val.type = MAX_COLUMN;
+      if ((dom->is_desc && !use_desc_index) || (!dom->is_desc && use_desc_index))
+	{
+	  midxkey.min_max_val.type = MIN_COLUMN;
+	}
+      else
+	{
+	  midxkey.min_max_val.type = MAX_COLUMN;
+	}
     }
   else
     {
       midxkey.min_max_val.position = -1;
-    }
-
-  for (i = prefix_len; i < curr_key->data.midxkey.ncolumns; i++)
-    {
-      db_make_null (&new_key_dbvals[i]);
     }
 
   /* build midxkey */
@@ -21435,7 +21434,7 @@ btree_pack_object (char *ptr, BTID_INT * btid_int, BTREE_NODE_TYPE node_type, RE
 {
   OR_BUF buffer;
 
-  OR_BUF_INIT (buffer, record->data, record->area_size);
+  or_init (&buffer, record->data, record->area_size);
   buffer.ptr = ptr;
 
   if (btree_or_put_object (&buffer, btid_int, node_type, object_info) != NO_ERROR)
@@ -24216,14 +24215,17 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
-      if (!found && bts->use_desc_index)
+      if (!found)
 	{
-	  /* Key was not found and the bts->slot_id was positioned to next key bigger than bts->key_range.lower_key.
-	   * For descending scan, we should be positioned on the first smaller when key is not found. Update
-	   * bts->slot_id. */
-	  bts->slot_id--;
+	  if (bts->use_desc_index)
+	    {
+	      /* Key was not found and the bts->slot_id was positioned to next key bigger than bts->key_range.lower_key.
+	       * For descending scan, we should be positioned on the first smaller when key is not found. Update
+	       * bts->slot_id. */
+	      bts->slot_id--;
+	    }
 	}
-      if (found && (bts->key_range.range == GT_LT || bts->key_range.range == GT_LE || bts->key_range.range == GT_INF))
+      else if (bts->key_range.range == GT_LT || bts->key_range.range == GT_LE || bts->key_range.range == GT_INF)
 	{
 	  /* Lower limit key was found, but the scan range must be bigger than the limit. Go to next key. */
 	  /* Mark the key as consumed and let btree_range_scan_advance_over_filtered_keys handle it. */
@@ -27527,7 +27529,7 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
 	  VPID vpid_key = VPID_INITIALIZER;
 	  int rc = NO_ERROR;
 
-	  OR_BUF_INIT (buf_vpid_key, record.data + record.length - DISK_VPID_ALIGNED_SIZE, DISK_VPID_ALIGNED_SIZE);
+	  or_init (&buf_vpid_key, record.data + record.length - DISK_VPID_ALIGNED_SIZE, DISK_VPID_ALIGNED_SIZE);
 	  vpid_key.pageid = or_get_int (&buf_vpid_key, &rc);
 	  vpid_key.volid = or_get_short (&buf_vpid_key, &rc);
 

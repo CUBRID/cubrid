@@ -175,6 +175,7 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/connection_list_cl.c
   ${CONNECTION_DIR}/client_support.c
   ${CONNECTION_DIR}/connection_support.c
+  ${CONNECTION_DIR}/host_lookup.c
   )
 
 set(COMMUNICATION_SOURCES
@@ -269,6 +270,8 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/stream_to_xasl.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
+  ${QUERY_DIR}/string_regex_std.cpp
+  ${QUERY_DIR}/string_regex_re2.cpp
   ${QUERY_DIR}/vacuum.c
   ${QUERY_DIR}/xasl_cache.c
   ${QUERY_DIR}/xasl_to_stream.c
@@ -280,7 +283,6 @@ set(QUERY_HEADERS
   ${QUERY_DIR}/query_monitoring.hpp
   ${QUERY_DIR}/query_reevaluation.hpp
   ${QUERY_DIR}/scan_json_table.hpp
-  ${QUERY_DIR}/string_regex.hpp
   )
 
 set(OBJECT_SOURCES
@@ -417,10 +419,11 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
   ${STORAGE_DIR}/btree_unique.cpp
+  ${STORAGE_DIR}/byte_order.c
   ${STORAGE_DIR}/catalog_class.c
   ${STORAGE_DIR}/compactdb_sr.c
-  ${STORAGE_DIR}/double_write_buffer.c
   ${STORAGE_DIR}/disk_manager.c
+  ${STORAGE_DIR}/double_write_buffer.c
   ${STORAGE_DIR}/es.c
   ${STORAGE_DIR}/es_common.c
   ${STORAGE_DIR}/es_owfs.c
@@ -647,10 +650,11 @@ endif(UNIX)
 target_external_dependencies(cubridsa
   LIBEXPAT
   LIBJANSSON
-  LIBEXPAT
   LIBEDIT
   LIBOPENSSL
   LZ4
+  RAPIDJSON
+  RE2
   )
 target_include_directories(cubridsa PRIVATE
   ${FLEX_INCLUDE_DIRS}

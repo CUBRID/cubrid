@@ -117,13 +117,14 @@ public class CUBRIDUnpacker {
 
     public int unpackStringSize() {
         int len = (int) buffer.get();
-        if (len == 0xff) {
-            /* LARGE_STRING_CODE */
-            len = buffer.getInt();
-        }
-
         if (len < 0) {
             len = len & 0xff; // convert to unsigned
+        }
+
+        if (len == 0xff) {
+            /* LARGE_STRING_CODE */
+            align(DataUtilities.INT_ALIGNMENT);
+            len = buffer.getInt();
         }
 
         return len;

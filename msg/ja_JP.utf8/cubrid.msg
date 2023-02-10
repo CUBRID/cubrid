@@ -1434,7 +1434,19 @@ $ LOADDB
 
 1352 Invalid number of columns specified.
 
-1353 ラストエラー
+1353 Internal CAS error : %1$d 
+1354 Internal CAS error : %1$d, %2$s
+
+1355 %1$s "%2$s" は、ファイル "%4$s" の %3$d 行目にある無効な形式です。
+1356 ホスト名 "%1$s" が長すぎます。ファイル "%3$s" の %2$d 行で 256 以下にする必要があります。
+1357 ホスト名 "%1$s" は既に存在します。ファイル "%3$s" の %2$d 行でホスト名を他の IP アドレスと重複させることはできません。
+1358 IP アドレスとホスト名の両方を、ファイル "%2$s" の %1$d 行に完全に記述する必要があります。
+1359 cubrid_hosts.conf で「%1$s」を検索できません。
+1360 ユーザー定義ホストの使用中にエラーが発生しました。
+
+1361 ファイル "%1$s" が見つかりませんでした。
+
+1362 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
@@ -1598,6 +1610,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 133 「DROP SYNONYM」の使用が無効です。\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
 134 「RENAME SYNONYM」の使用が無効です。\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
 135 「ALTER SYNONYM」にオプションが指定されていません。
+136 Maximum length of a server dbname is %1$d bytes.
+137 Maximum length of a server user is %1$d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 メモリーが足りません。
@@ -1999,6 +2013,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 80 MVCCで分離レベルの値は、「read committed」、「repeatable read」または「serializable」でなければなりません。
 81 「%1$s」は「auto_increment」オブジェクトです。これはシリアルように変更することが許可されていません。
 82 Invalid JSON: '%1$s'.
+83 Vclass %1$s is not updatable. Please check if any of its related classes are marked as REUSE_OID.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** 正しくないキャッシュ ***

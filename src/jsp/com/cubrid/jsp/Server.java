@@ -51,78 +51,80 @@ public class Server {
     private static String serverName;
     private static String spPath;
     private static String rootPath;
-    private static String tmpPath;
+    private static String udsPath;
 
     private static List<String> jvmArguments = null;
 
+    private static final int udsPortNumber = -1;
     private int portNumber = 0;
-    private Thread tcpSocketListener = null;
-    private Thread udsSocketListener = null;
+    private Thread socketListener = null;
     private AtomicBoolean shutdown;
 
     private static Server serverInstance = null;
 
     private Server(
-            String name, String path, String version, String rPath, String tPath, String port)
+            String name, String path, String version, String rPath, String uPath, String port)
             throws IOException, ClassNotFoundException {
         serverName = name;
         spPath = path;
         rootPath = rPath;
-        tmpPath = tPath;
+        udsPath = uPath;
         shutdown = new AtomicBoolean(false);
 
-        if (OSValidator.IS_UNIX) {
-            String socketName = rootPath + tmpPath + "/junixsocket-" + name + ".sock";
-            final File socketFile = new File(socketName);
-
-            if (socketFile.exists()) {
-                socketFile.delete();
-            }
-
-            try {
-                AFUNIXSocketAddress sockAddr = AFUNIXSocketAddress.of(socketFile);
-                AFUNIXServerSocket udsServerSocket = AFUNIXServerSocket.bindOn (sockAddr);
-                udsSocketListener = new ListenerThread(udsServerSocket);
-            } catch (Exception e) {
-                log(e);
-                e.printStackTrace();
-                System.exit(1);
-            }
-        }
-
+        ServerSocket serverSocket = null;
         int port_number = Integer.parseInt(port);
         try {
-            ServerSocket tcpServerSocket = new ServerSocket(port_number);
-            tcpSocketListener = new ListenerThread(tcpServerSocket);
-            portNumber = tcpServerSocket.getLocalPort();
+            if (OSValidator.IS_UNIX && port_number == -1) {
+                final File socketFile = new File(udsPath);
+                if (socketFile.exists()) {
+                    socketFile.delete();
+                }
+
+                /* check parent directory */
+                File socketDir = socketFile.getParentFile();
+                if (!socketDir.exists()) {
+                    socketDir.mkdirs();
+                }
+
+                AFUNIXSocketAddress sockAddr = AFUNIXSocketAddress.of(socketFile);
+                serverSocket = AFUNIXServerSocket.bindOn(sockAddr);
+                portNumber = udsPortNumber;
+            } else {
+                serverSocket = new ServerSocket(port_number);
+                portNumber = serverSocket.getLocalPort();
+            }
         } catch (Exception e) {
             log(e);
             e.printStackTrace();
             System.exit(1);
         }
 
-        Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
-        System.setSecurityManager(new SpSecurityManager());
-        System.setProperty("cubrid.server.version", version);
+        if (serverSocket != null) {
+            socketListener = new ListenerThread(serverSocket);
 
-        getJVMArguments(); /* store jvm options */
+            System.setSecurityManager(new SpSecurityManager());
+            System.setProperty("cubrid.server.version", version);
+            Class.forName("com.cubrid.jsp.jdbc.CUBRIDServerSideDriver");
+
+            getJVMArguments(); /* store jvm options */
+        } else {
+            /* error, serverSocket is not properly initialized */
+            System.exit(1);
+        }
     }
 
     private void startSocketListener() {
-        if (udsSocketListener != null) {
-            udsSocketListener.setDaemon(true);
-            udsSocketListener.start();
+        if (socketListener != null) {
+            socketListener.setDaemon(true);
+            socketListener.start();
         }
-        tcpSocketListener.setDaemon(true);
-        tcpSocketListener.start();
     }
 
     private void stopSocketListener() {
-        if (udsSocketListener != null) {
-            udsSocketListener.interrupt();
-            udsSocketListener = null;
+        if (socketListener != null) {
+            socketListener.interrupt();
+            socketListener = null;
         }
-        tcpSocketListener.interrupt();
     }
 
     public int getPortNumber() {
