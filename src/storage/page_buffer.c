@@ -8435,12 +8435,15 @@ pgbuf_request_data_page_from_page_server (THREAD_ENTRY & thread_r, const VPID * 
       // all are handled in the decompress function
       const bool decompressed = pgbuf_decompress_page (thread_r, reinterpret_cast < const void *>(message_buf),
 						       (int) data_length, decompressed_data, decompressed_data_size);
-      assert (decompressed);
       message_buf += data_length;
 
       if (!decompressed)
 	{
-	  // TODO: error
+	  constexpr size_t buf_len = 128;
+          char buf[buf_len];
+          snprintf (buf, buf_len, "vpid = %d|%d, target_repl_lsa = %lld|%d",
+                    VPID_AS_ARGS(vpid), LSA_AS_ARGS (&target_repl_lsa));
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_DECOMPRESS_FAILED_W_DETAILS, 1, buf);
 	  assert_release (false);
 	}
       assert (IO_PAGESIZE == decompressed_data_size);
@@ -8636,7 +8639,6 @@ pgbuf_decompress_page (THREAD_ENTRY & thread_r, const void *data_in, int data_in
 	}
 
       const bool decompressed = log_unzip (thread_r.log_zip_undo, data_in_size, data_in);
-      assert (decompressed);
 
       if (decompressed)
 	{
