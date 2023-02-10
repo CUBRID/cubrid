@@ -59,27 +59,42 @@ public class ExprCase extends Expr {
     @Override
     public String toJavaCode() {
 
-        return tmpl.replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
-                .replace("%'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(), 2, true))
-                .replace(
-                        "    %'ELSE-PART'%",
-                        Misc.indentLines(elsePart == null ? "null" : elsePart.toJavaCode(), 2));
+        assert selectorType != null;
+        assert resultType != null;
+
+        if (TypeSpecSimple.NULL.equals(resultType)) {
+            return "null";
+        } else {
+            return tmpl
+                    .replace("%'RESULT-TYPE'%", resultType.toJavaCode())
+                    .replace("%'SELECTOR-TYPE'%", selectorType.toJavaCode())
+                    .replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
+                    .replace("%'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(), 2, true))
+                    .replace(
+                            "    %'ELSE-PART'%",
+                            Misc.indentLines(elsePart == null ? "null" : elsePart.toJavaCode(), 2));
+        }
     }
 
-    public void setCommonType(TypeSpec ty) {
-        this.commonType = ty;
+    public void setSelectorType(TypeSpec ty) {
+        this.selectorType = ty;
+    }
+
+    public void setResultType(TypeSpec ty) {
+        this.resultType = ty;
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
-    private TypeSpec commonType;
+    private TypeSpec selectorType;
+    private TypeSpec resultType;
 
     private static final String tmpl =
             Misc.combineLines(
-                    "(new Object() { Object invoke(Object selector) throws Exception { // simple case expression",
+                    "(new Object() { %'RESULT-TYPE'% invoke(%'SELECTOR-TYPE'% selector) throws Exception { // simple case expression",
                     "  return %'WHEN-PARTS'%",
                     "    %'ELSE-PART'%;",
-                    "} }.invoke(%'SELECTOR-VALUE'%))");
+                    "}}.invoke(%'SELECTOR-VALUE'%))");
 }

@@ -54,6 +54,14 @@ public class TypeSpecVariadic extends TypeSpec {
         throw new RuntimeException("unreachable");
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || this.getClass() != o.getClass()) {
+            return false;
+        }
+        return this.elem.equals(((TypeSpecVariadic) o).elem);
+    }
+
     public TypeSpecVariadic(TypeSpecSimple elem) {
         super(elem.name + "[]");
         this.elem = elem;

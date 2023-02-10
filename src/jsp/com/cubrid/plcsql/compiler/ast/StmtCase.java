@@ -62,8 +62,11 @@ public class StmtCase extends Stmt {
     @Override
     public String toJavaCode() {
 
+        assert selectorType != null;
+
         if (elsePart == null) {
             return tmplStmtCaseNoElsePart
+                    .replace("%'SELECTOR-TYPE'%", selectorType.toJavaCode())
                     .replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
                     .replace(
                             "  %'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(" else "), 1))
@@ -71,6 +74,7 @@ public class StmtCase extends Stmt {
             ;
         } else {
             return tmplStmtCase
+                    .replace("%'SELECTOR-TYPE'%", selectorType.toJavaCode())
                     .replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
                     .replace(
                             "  %'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(" else "), 1))
@@ -80,21 +84,27 @@ public class StmtCase extends Stmt {
         }
     }
 
+    public void setSelectorType(TypeSpec ty) {
+        this.selectorType = ty;
+    }
+
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
+    private TypeSpec selectorType;
+
     private static final String tmplStmtCaseNoElsePart =
             Misc.combineLines(
                     "{",
-                    "  Object selector_%'LEVEL'% = %'SELECTOR-VALUE'%;",
+                    "  %'SELECTOR-TYPE'% selector_%'LEVEL'% = %'SELECTOR-VALUE'%;",
                     "  %'WHEN-PARTS'%",
                     "}");
 
     private static final String tmplStmtCase =
             Misc.combineLines(
                     "{",
-                    "  Object selector_%'LEVEL'% = %'SELECTOR-VALUE'%;",
+                    "  %'SELECTOR-TYPE'% selector_%'LEVEL'% = %'SELECTOR-VALUE'%;",
                     "  %'WHEN-PARTS'% else {",
                     "    %'ELSE-PART'%",
                     "  }",

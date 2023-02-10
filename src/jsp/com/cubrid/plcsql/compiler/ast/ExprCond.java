@@ -56,19 +56,25 @@ public class ExprCond extends Expr {
 
     @Override
     public String toJavaCode() {
-        return tmpl.replace("%'COND-PARTS'%", condParts.toJavaCode())
-                .replace("%'ELSE-PART'%", elsePart == null ? "null" : elsePart.toJavaCode());
+
+        if (TypeSpecSimple.NULL.equals(resultType)) {
+            return "null";
+        } else {
+            return tmpl
+                    .replace("%'COND-PARTS'%", condParts.toJavaCode())
+                    .replace("%'ELSE-PART'%", elsePart == null ? "null" : elsePart.toJavaCode());
+        }
     }
 
-    public void setCommonType(TypeSpec ty) {
-        this.commonType = ty;
+    public void setResultType(TypeSpec ty) {
+        this.resultType = ty;
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
-    private TypeSpec commonType;
+    private TypeSpec resultType;
 
     private static final String tmpl = Misc.combineLines("(%'COND-PARTS'%", "%'ELSE-PART'%)");
 }

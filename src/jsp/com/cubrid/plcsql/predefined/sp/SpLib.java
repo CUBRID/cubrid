@@ -1161,6 +1161,13 @@ public class SpLib {
 
     // ====================================
     // between
+    public static Boolean opBetween(Boolean o, Boolean lower, Boolean upper) {
+        if (o == null || lower == null || upper == null) {
+            return null;
+        }
+        return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
+    }
+
     public static Boolean opBetween(String o, String lower, String upper) {
         if (o == null || lower == null || upper == null) {
             return null;

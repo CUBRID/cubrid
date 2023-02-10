@@ -97,8 +97,8 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
     @Override
     public TypeSpec visitCaseExpr(CaseExpr node) {
         TypeSpec caseValType = visit(node.val);
-        if (!areEqualableTypes(caseSelectorType, caseValType)) {
-            throw new SemanticError(node.val.lineNo(),
+        if (!areComparableTypes(caseSelectorType, caseValType)) {
+            throw new SemanticError(node.val.lineNo(),      // err 1
                 "type of the case expression is not comparable with the type of the case selector expression");
         }
         return visit(node.expr);
@@ -106,7 +106,7 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
     @Override
     public TypeSpec visitCaseStmt(CaseStmt node) {
         TypeSpec caseValType = visit(node.val);
-        if (!areEqualableTypes(caseSelectorType, caseValType)) {
+        if (!areComparableTypes(caseSelectorType, caseValType)) {
             throw new SemanticError(node.val.lineNo(),
                 "type of the case expression is not comparable with the type of the case selector expression");
         }
@@ -256,6 +256,7 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
 
         TypeSpec saveCaseSelectorType = caseSelectorType;
         caseSelectorType = visit(node.selector);
+        node.setSelectorType(caseSelectorType);
 
         TypeSpec commonType = null;
         for (CaseExpr ce: node.whenParts.nodes) {
@@ -273,14 +274,14 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
 
         caseSelectorType = saveCaseSelectorType;    // restore
 
-        node.setCommonType(commonType);
+        node.setResultType(commonType);
         return commonType;
     }
     @Override
     public TypeSpec visitExprCond(ExprCond node) {
         TypeSpec commonType = null;
         for (CondExpr ce: node.condParts.nodes) {
-            TypeSpec ty = visit(ce);
+            TypeSpec ty = visitCondExpr(ce);
             if (commonType == null) {
                 commonType = ty;
             } else {
@@ -292,7 +293,7 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
             commonType = getCommonType(commonType, ty);
         }
 
-        node.setCommonType(commonType);
+        node.setResultType(commonType);
         return commonType;
     }
     @Override
@@ -364,7 +365,7 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
         int i = 1;
         for (Expr e: node.inElements.nodes) {
             TypeSpec eType = visit(e);
-            if (!areEqualableTypes(targetType, eType)){
+            if (!areComparableTypes(targetType, eType)){
                 throw new SemanticError(e.lineNo(),
                     "element-" + i + " does not have a compatible type");
             }
@@ -489,6 +490,7 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
     public TypeSpec visitStmtCase(StmtCase node) {
         TypeSpec saveCaseSelectorType = caseSelectorType;
         caseSelectorType = visit(node.selector);
+        node.setSelectorType(caseSelectorType);
 
         visitNodeList(node.whenParts);
         if (node.elsePart != null) {
@@ -704,10 +706,6 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
     private GlobalTypeInfo gti;
 
     private TypeSpec caseSelectorType;
-
-    private boolean areEqualableTypes(TypeSpec l, TypeSpec r) {
-        return l.equals(r); // TODO: consider implicit type conversion
-    }
 
     private boolean areComparableTypes(TypeSpec l, TypeSpec r) {
         return l.equals(r); // TODO: consider implicit type conversion

@@ -655,7 +655,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         Expr elsePart;
         if (ctx.case_expression_else_part() == null) {
-            elsePart = null;
+            elsePart = null;    // TODO: put exception throwing code insead of null
         } else {
             elsePart = visitExpression(ctx.case_expression_else_part().expression());
         }
@@ -679,7 +679,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         Expr elsePart;
         if (ctx.case_expression_else_part() == null) {
-            elsePart = null;
+            elsePart = null;    // TODO: put exception throwing code insead of null
         } else {
             elsePart = visitExpression(ctx.case_expression_else_part().expression());
         }
@@ -1374,7 +1374,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         NodeList<Stmt> elsePart;
         if (ctx.case_statement_else_part() == null) {
-            elsePart = null;
+            elsePart = null;    // TODO: put exception throwing code insead of null
         } else {
             elsePart = visitSeq_of_statements(ctx.case_statement_else_part().seq_of_statements());
         }
@@ -1399,7 +1399,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         NodeList<Stmt> elsePart;
         if (ctx.case_statement_else_part() == null) {
-            elsePart = null;
+            elsePart = null;    // TODO: put exception throwing code insead of null
         } else {
             elsePart = visitSeq_of_statements(ctx.case_statement_else_part().seq_of_statements());
         }
