@@ -117,7 +117,6 @@ int (*csql_text_console_to_utf8) (const char *, const int, char **, int *) = NUL
 
 int csql_Row_count;
 int csql_Num_failures;
-int csql_return_status;
 
 /* command editor lines */
 int csql_Line_lwm = -1;
@@ -137,7 +136,7 @@ char csql_Shell_cmd[PATH_MAX] = "command.com";
 char csql_Shell_cmd[PATH_MAX] = "csh";
 #endif
 
-char csql_Formatter_cmd[PATH_MAX] = "fsqlf";
+char csql_Formatter_cmd[PATH_MAX];
 
 /* tty file stream which is used for conversation with users.
  * In batch mode, this will be set to "/dev/null"
@@ -919,28 +918,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_EDIT:		/* invoke system editor */
-      if (*argument == '\0')
-	{
-	  csql_Editor_format = false;
-	}
-      else if (!strcasecmp (argument, "format") || !strcasecmp (argument, "fmt"))
-	{
-	  csql_Editor_format = true;
-	}
-      else
-	{
-	  csql_Error_code = CSQL_ERR_FORMAT_OPTION;
-	  nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
-	  break;
-	}
-
-      csql_return_status = csql_invoke_system_editor (csql_Editor_format);
-      if (csql_return_status == CSQL_ERR_FORMAT)
-	{
-	  csql_Error_code = CSQL_ERR_FORMAT;
-	  return DO_CMD_FAILURE;
-	}
-      else if (csql_return_status == CSQL_FAILURE)
+      if (csql_invoke_system_editor ((argument[0] == '\0') ? NULL : argument) != CSQL_SUCCESS)
 	{
 	  return DO_CMD_FAILURE;
 	}

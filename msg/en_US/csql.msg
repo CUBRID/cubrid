@@ -112,8 +112,7 @@ $ These 3 should be blank
 194 Invalid combination of command line arguments (options).
 196 An undefined error has occurred.
 197 ';edit' is not allowed when output has been redirected.
-198 Invalid option.
-199 Format failed.
+198 Format failed.
 
 203 <%1$s> 
 204 <Super Classes> 

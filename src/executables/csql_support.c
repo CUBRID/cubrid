@@ -242,7 +242,7 @@ csql_invoke_system (const char *command)
 
 /*
  * csql_invoke_formatter()
- *   return: CSQL_SUCCESS/CSQL_FAILURE/CSQL_FORMAT_FAILURE
+ *   return: CSQL_SUCCESS/CSQL_FAILURE
  *
  * Note:
  *   copy command editor buffer into temporary file and
@@ -256,7 +256,6 @@ csql_invoke_formatter ()
   if (before_fileptr == NULL)
     {
       csql_Error_code = CSQL_ERR_OS_ERROR;
-      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
       return CSQL_FAILURE;
     }
   filesys::auto_delete_file before_file_del (before_filename.c_str ());
@@ -281,7 +280,6 @@ csql_invoke_formatter ()
   if (after_fileptr == NULL)
     {
       csql_Error_code = CSQL_ERR_OS_ERROR;
-      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
       return CSQL_FAILURE;
     }
   filesys::auto_delete_file after_file_del (after_filename.c_str ());
@@ -301,7 +299,6 @@ csql_invoke_formatter ()
   if (!before_file)
     {
       csql_Error_code = CSQL_ERR_OS_ERROR;
-      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
       return CSQL_FAILURE;
     }
 
@@ -309,14 +306,22 @@ csql_invoke_formatter ()
   if (!after_file)
     {
       csql_Error_code = CSQL_ERR_OS_ERROR;
-      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
       return CSQL_FAILURE;
     }
 
+#if defined(WINDOWS)
+  if (system (command) == 1)
+    {
+      csql_Error_code = CSQL_ERR_FORMAT;
+      return CSQL_FAILURE;
+    }
+#else /* !WINDOWS */
   if (system (command) == 32512)
     {
-      return CSQL_FORMAT_FAILURE;
+      csql_Error_code = CSQL_ERR_FORMAT;
+      return CSQL_FAILURE;
     }
+#endif
 
   csql_edit_contents_clear ();
   if (csql_edit_read_file (after_file.get ()) == CSQL_FAILURE)
@@ -332,6 +337,7 @@ csql_invoke_formatter ()
 /*
  * csql_invoke_system_editor()
  *   return: CSQL_SUCCESS/CSQL_FAILURE
+ *   argument: eidt session command argument input
  *
  * Note:
  *   copy command editor buffer into temporary file and
@@ -339,7 +345,7 @@ csql_invoke_formatter ()
  *   edit is finished, read the file into editor buffer
  */
 int
-csql_invoke_system_editor (bool csql_Editor_format)
+csql_invoke_system_editor (const char *argument)
 {
   if (!iq_output_device_is_a_tty ())
     {
@@ -348,12 +354,11 @@ csql_invoke_system_editor (bool csql_Editor_format)
       return CSQL_FAILURE;
     }
 
-  if (csql_Editor_format)
+  if (csql_Formatter_cmd[0] != '\0' && argument && (!strcasecmp (argument, "format") || !strcasecmp (argument, "fmt")))
     {
-      int return_status = csql_invoke_formatter ();
-      if (return_status != CSQL_SUCCESS)
+      if (csql_invoke_formatter () != CSQL_SUCCESS)
 	{
-	  return return_status;
+	  return CSQL_FAILURE;
 	}
     }
 
@@ -1397,7 +1402,6 @@ static CSQL_ERR_MSG_MAP csql_Err_msg_map[] = {
   {CSQL_ERR_CANT_EDIT, CSQL_E_CANT_EDIT_TEXT},
   {CSQL_ERR_INFO_CMD_HELP, CSQL_HELP_INFOCMD_TEXT},
   {CSQL_ERR_CLASS_NAME_MISSED, CSQL_E_CLASSNAMEMISSED_TEXT},
-  {CSQL_ERR_FORMAT_OPTION, CSQL_E_FORMATOPTION_TEXT},
   {CSQL_ERR_FORMAT, CSQL_E_FORMAT_TEXT}
 };
 
