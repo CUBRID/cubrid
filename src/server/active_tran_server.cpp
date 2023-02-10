@@ -79,12 +79,13 @@ active_tran_server::stop_outgoing_page_server_messages ()
 }
 
 active_tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tran_server &ts)
-  : tran_server::connection_handler (std::move (chn), ts)
+  : tran_server::connection_handler (std::move (chn), ts, get_request_handlers ())
 {
   m_prior_sender_sink_hook_func = std::bind (&tran_server::connection_handler::push_request, this,
 				  tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1);
   log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hook_func);
 }
+
 active_tran_server::connection_handler::request_handlers_map_t
 active_tran_server::connection_handler::get_request_handlers ()
 {

@@ -50,7 +50,7 @@ class passive_tran_server : public tran_server
     {
       public:
 	connection_handler (cubcomm::channel &&chn, tran_server &ts)
-	  : tran_server::connection_handler (std::move (chn), ts)
+	  : tran_server::connection_handler (std::move (chn), ts, get_request_handlers())
 	{}
 
       private:

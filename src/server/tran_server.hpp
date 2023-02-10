@@ -88,9 +88,16 @@ class tran_server
     class connection_handler
     {
       public:
+	using page_server_conn_t = cubcomm::request_sync_client_server<tran_to_page_request, page_to_tran_request, std::string>;
+	using request_handlers_map_t = std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t>;
+
 	connection_handler () = delete;
 
-	connection_handler (cubcomm::channel &&chn, tran_server &ts);
+	connection_handler (cubcomm::channel &&chn, tran_server &ts, request_handlers_map_t &&request_handlers);
+
+	connection_handler (cubcomm::channel &&chn, tran_server &ts)
+	  : connection_handler { std::move (chn), ts, get_request_handlers () }
+	{ }
 
 	connection_handler (const connection_handler &) = delete;
 	connection_handler (connection_handler &&) = delete;
@@ -106,10 +113,6 @@ class tran_server
 	virtual void disconnect ();
 
 	const std::string get_channel_id () const;
-
-      protected:
-	using page_server_conn_t = cubcomm::request_sync_client_server<tran_to_page_request, page_to_tran_request, std::string>;
-	using request_handlers_map_t = std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t>;
 
       protected:
 	virtual request_handlers_map_t get_request_handlers ();

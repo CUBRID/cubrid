@@ -381,7 +381,8 @@ tran_server::create_connection_handler (cubcomm::channel &&chn, tran_server &ts)
   return new connection_handler (std::move (chn), ts);
 }
 
-tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tran_server &ts)
+tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tran_server &ts,
+    request_handlers_map_t &&request_handlers)
   : m_ts { ts }
 {
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 24;   // Arbitrarily chosen
@@ -392,7 +393,7 @@ tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tra
   // Transaction server will use message specific error handlers.
   // Implementation will assert that an error handler is present if needed.
 
-  m_conn.reset (new page_server_conn_t (std::move (chn), get_request_handlers (), tran_to_page_request::RESPOND,
+  m_conn.reset (new page_server_conn_t (std::move (chn), std::move (request_handlers), tran_to_page_request::RESPOND,
 					page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (no_transaction_handler)));
 
   assert (m_conn != nullptr);
