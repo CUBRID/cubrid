@@ -274,7 +274,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 
   if (admin_log_file != NULL)
     {
-      char buf[BROKER_PATH_MAX] = {0,};
+      char buf[BROKER_PATH_MAX] = { 0, };
 
 #if defined (WINDOWS)
       if (_fullpath (buf, admin_log_file, BROKER_PATH_MAX) == NULL)
