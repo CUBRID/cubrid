@@ -4060,6 +4060,11 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  assert (!DB_IS_NULL (&fk_key));
 	  assert (DB_VALUE_DOMAIN_TYPE (&fk_key) == DB_TYPE_MIDXKEY);
 
+	  if (btree_multicol_key_contiguous_null_fields_cnt (&fk_key) == (fk_key.data.midxkey.ncolumns - 1))
+	    {
+	      continue;
+	    }
+
 	  /* { v1, OID }      ==> v1
 	   * { v1, v2 , OID } ==> { v1, v2 }
 	   */
@@ -4070,8 +4075,10 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  if (fk_key.data.midxkey.ncolumns > 2)
 	    {
 	      pr_clone_value (&fk_key, new_ptr);
+	      // need comment. ctshim
 	      new_ptr->data.midxkey.ncolumns--;
 	      new_ptr->data.midxkey.domain = pk_bt_scan.btid_int.key_type;
+	      OR_MULTI_CLEAR_BOUND_BIT (new_ptr->data.midxkey.buf, new_ptr->data.midxkey.ncolumns);
 	    }
 	  else
 	    {
