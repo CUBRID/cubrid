@@ -3993,6 +3993,7 @@ typedef struct
   int len[2];
   char *server_full_name[2];
   PT_NODE *server[2];
+  bool has_dblink_query;
 } SERVER_NAME_LIST;
 
 void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);

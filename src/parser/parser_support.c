@@ -10814,6 +10814,7 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  if (node->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	    {
 	      snl->server_cnt++;
+	      snl->has_dblink_query = true;
 	    }
 	  else
 	    {
@@ -11265,7 +11266,8 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
       if (spec == NULL)
 	{
 	  /* not matched: error case */
-	  PT_ERRORf (parser, node->info.delete_.spec, "dblink: invalid delete target %s", del->info.name.original);
+	  PT_ERRORmf (parser, node->info.delete_.spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST,
+		      del->info.name.original);
 	  return;
 	}
 
@@ -11434,6 +11436,12 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
   if (snl->server_cnt == tmp_server_cnt || (local_upd > 0 && remote_upd == 0))
     {
       /* local update onley */
+      return;
+    }
+
+  if (snl->has_dblink_query)
+    {
+      PT_ERROR (parser, upd_spec, "dblink: remote DML has DBLINK query is not allowed");
       return;
     }
 
