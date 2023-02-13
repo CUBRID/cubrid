@@ -1081,7 +1081,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         controlFlowBlocked = allFlowsBlocked;
 
-        return new StmtIf(ctx, condParts, elsePart);
+        return new StmtIf(ctx, false, condParts, elsePart);
     }
 
     @Override
@@ -1452,7 +1452,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         controlFlowBlocked = allFlowsBlocked;
-        return new StmtIf(ctx, condParts, elsePart);
+        return new StmtIf(ctx, true, condParts, elsePart);
     }
 
     @Override

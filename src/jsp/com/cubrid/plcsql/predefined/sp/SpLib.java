@@ -78,6 +78,10 @@ public class SpLib {
     public static Integer SQLCODE = null;
     public static LocalDate SYSDATE = null;
 
+    public static Object raiseCaseNotFound() {
+        throw new CASE_NOT_FOUND();
+    }
+
     public static void PUT_LINE(Object s) {
         System.out.println(s);
     }

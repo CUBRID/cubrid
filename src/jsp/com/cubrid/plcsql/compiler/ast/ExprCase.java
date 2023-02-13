@@ -63,16 +63,25 @@ public class ExprCase extends Expr {
         assert resultType != null;
 
         if (TypeSpecSimple.NULL.equals(resultType)) {
-            return "null";
+            if (elsePart == null) { // TODO
+                assert false: "every case has null and else-part is absent: not implemented yet";
+                throw new RuntimeException("every case has null and else-part is absent: not implemented yet");
+            } else {
+                return "null";
+            }
         } else {
+            String elseCode;
+            if (elsePart == null) {
+                elseCode = "(%'RESULT-TYPE'%) raiseCaseNotFound()";
+            } else {
+                elseCode = elsePart.toJavaCode();
+            }
             return tmpl
-                    .replace("%'RESULT-TYPE'%", resultType.toJavaCode())
                     .replace("%'SELECTOR-TYPE'%", selectorType.toJavaCode())
                     .replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
                     .replace("%'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(), 2, true))
-                    .replace(
-                            "    %'ELSE-PART'%",
-                            Misc.indentLines(elsePart == null ? "null" : elsePart.toJavaCode(), 2));
+                    .replace("    %'ELSE-PART'%", Misc.indentLines(elseCode, 2))
+                    .replace("%'RESULT-TYPE'%", resultType.toJavaCode());
         }
     }
 

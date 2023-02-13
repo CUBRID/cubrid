@@ -64,24 +64,21 @@ public class StmtCase extends Stmt {
 
         assert selectorType != null;
 
+        String elseCode;
         if (elsePart == null) {
-            return tmplStmtCaseNoElsePart
-                    .replace("%'SELECTOR-TYPE'%", selectorType.toJavaCode())
-                    .replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
-                    .replace(
-                            "  %'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(" else "), 1))
-                    .replace("%'LEVEL'%", "" + level) // level replacement must go last
-            ;
+            elseCode = "throw new CASE_NOT_FOUND();";
         } else {
-            return tmplStmtCase
-                    .replace("%'SELECTOR-TYPE'%", selectorType.toJavaCode())
-                    .replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
-                    .replace(
-                            "  %'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(" else "), 1))
-                    .replace("    %'ELSE-PART'%", Misc.indentLines(elsePart.toJavaCode(), 2))
-                    .replace("%'LEVEL'%", "" + level) // level replacement must go last
-            ;
+            elseCode = elsePart.toJavaCode();
         }
+
+        return tmplStmtCase
+                .replace("%'SELECTOR-TYPE'%", selectorType.toJavaCode())
+                .replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
+                .replace(
+                        "  %'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(" else "), 1))
+                .replace("    %'ELSE-PART'%", Misc.indentLines(elseCode, 2))
+                .replace("%'LEVEL'%", "" + level) // level replacement must go last
+        ;
     }
 
     public void setSelectorType(TypeSpec ty) {
@@ -93,13 +90,6 @@ public class StmtCase extends Stmt {
     // --------------------------------------------------
 
     private TypeSpec selectorType;
-
-    private static final String tmplStmtCaseNoElsePart =
-            Misc.combineLines(
-                    "{",
-                    "  %'SELECTOR-TYPE'% selector_%'LEVEL'% = %'SELECTOR-VALUE'%;",
-                    "  %'WHEN-PARTS'%",
-                    "}");
 
     private static final String tmplStmtCase =
             Misc.combineLines(

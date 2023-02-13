@@ -86,8 +86,8 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
     public TypeSpec visitTypeSpecPercent(TypeSpecPercent node) {
         //TODO: requries server API
         //node.setResolvedType(gti.getTableColumnType(node.table, node.column));
-        assert false: "not implemented yet";
-        throw new RuntimeException("not implemented yet");
+        assert false: "server semantic API required: not implemented yet";
+        throw new RuntimeException("server semantic API required: not implemented yet");
     }
     @Override
     public TypeSpec visitTypeSpecSimple(TypeSpecSimple node) {
@@ -205,8 +205,8 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
     @Override
     public TypeSpec visitDeclCursor(DeclCursor node) {
         // TODO: requires server API
-        assert false: "not implemented yet";
-        throw new RuntimeException("not implemented yet");
+        assert false: "server semantic API required: not implemented yet";
+        throw new RuntimeException("server semantic API required: not implemented yet");
     }
     @Override
     public TypeSpec visitDeclLabel(DeclLabel node) {
@@ -333,14 +333,14 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
     @Override
     public TypeSpec visitExprField(ExprField node) {
         // TODO: requires server API
-        assert false: "not implemented yet";
-        throw new RuntimeException("not implemented yet");
+        assert false: "server semantic API required: not implemented yet";
+        throw new RuntimeException("server semantic API required: not implemented yet");
     }
     @Override
     public TypeSpec visitExprGlobalFuncCall(ExprGlobalFuncCall node) {
         // TODO: requires server API
-        assert false: "not implemented yet";
-        throw new RuntimeException("not implemented yet");
+        assert false: "server semantic API required: not implemented yet";
+        throw new RuntimeException("server semantic API required: not implemented yet");
     }
     @Override
     public TypeSpec visitExprId(ExprId node) {
@@ -352,8 +352,8 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
             return TypeSpecSimple.INTEGER;
         } else if (node.decl instanceof DeclForRecord) {
             // TODO: requires server API
-            assert false: "not implemented yet";
-            throw new RuntimeException("not implemented yet");
+            assert false: "server semantic API required: not implemented yet";
+            throw new RuntimeException("server semantic API required: not implemented yet");
         } else {
             assert false: "unreachable";
             throw new RuntimeException("unreachable");
@@ -424,8 +424,8 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
     @Override
     public TypeSpec visitExprSerialVal(ExprSerialVal node) {
         //TODO: requries server API
-        assert false: "not implemented yet";
-        throw new RuntimeException("not implemented yet");
+        assert false: "server semantic API required: not implemented yet";
+        throw new RuntimeException("server semantic API required: not implemented yet");
     }
     @Override
     public TypeSpec visitExprSqlRowCount(ExprSqlRowCount node) {
@@ -522,8 +522,8 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
         TypeSpec idType = visit(node.id);
         if (idType.equals(TypeSpecSimple.CURSOR)) {
             // TODO: requires server API
-            assert false: "not implemented yet";
-            throw new RuntimeException("not implemented yet");
+            assert false: "server semantic API required: not implemented yet";
+            throw new RuntimeException("server semantic API required: not implemented yet");
         } else if (idType.equals(TypeSpecSimple.REFCURSOR)) {
             // nothing to do more,
         } else {
@@ -569,8 +569,8 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
         }
 
         // TODO: requires server API
-        assert false: "not implemented yet";
-        throw new RuntimeException("not implemented yet");
+        assert false: "server semantic API required: not implemented yet";
+        throw new RuntimeException("server semantic API required: not implemented yet");
         //return null;
     }
     @Override
@@ -621,15 +621,15 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
         // TODO: check if it is a SELECT statement
 
         // TODO: requires server API
-        assert false: "not implemented yet";
-        throw new RuntimeException("not implemented yet");
+        assert false: "server semantic API required: not implemented yet";
+        throw new RuntimeException("server semantic API required: not implemented yet");
         //return null;
     }
     @Override
     public TypeSpec visitStmtGlobalProcCall(StmtGlobalProcCall node) {
         // TODO: requires server API
-        assert false: "not implemented yet";
-        throw new RuntimeException("not implemented yet");
+        assert false: "server semantic API required: not implemented yet";
+        throw new RuntimeException("server semantic API required: not implemented yet");
         //return null;
     }
     @Override
@@ -658,8 +658,8 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
         }
 
         // TODO: requires server API
-        assert false: "not implemented yet";
-        throw new RuntimeException("not implemented yet");
+        assert false: "server semantic API required: not implemented yet";
+        throw new RuntimeException("server semantic API required: not implemented yet");
         //return null;
     }
     @Override

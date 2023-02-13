@@ -58,11 +58,22 @@ public class ExprCond extends Expr {
     public String toJavaCode() {
 
         if (TypeSpecSimple.NULL.equals(resultType)) {
-            return "null";
+            if (elsePart == null) { // TODO
+                assert false: "every case has null and else-part is absent: not implemented yet";
+                throw new RuntimeException("every case has null and else-part is absent: not implemented yet");
+            } else {
+                return "null";
+            }
         } else {
+            String elseCode;
+            if (elsePart == null) {
+                elseCode = "(%'RESULT-TYPE'%) raiseCaseNotFound()";
+            } else {
+                elseCode = elsePart.toJavaCode();
+            }
             return tmpl
                     .replace("%'COND-PARTS'%", condParts.toJavaCode())
-                    .replace("%'ELSE-PART'%", elsePart == null ? "null" : elsePart.toJavaCode());
+                    .replace("%'ELSE-PART'%", elseCode);
         }
     }
 
