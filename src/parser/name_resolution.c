@@ -4538,6 +4538,18 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 		  node->info.spec.id = (UINTPTR) node;
 		}
 
+	      if (derived_table->node_type == PT_DBLINK_TABLE)
+		{
+		  assert (node->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE);
+		  if (derived_table->info.dblink_table.is_name && derived_table->info.dblink_table.url == NULL)
+		    {
+		      if (pt_resolve_dblink_server_name (parser, derived_table) != NO_ERROR)
+			{
+			  return NULL;
+			}
+		    }
+		}
+
 	      parser_walk_tree (parser, derived_table, pt_flat_spec_pre, info, pt_continue_walk, NULL);
 	    }
 	  else
