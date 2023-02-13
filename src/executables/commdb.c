@@ -705,7 +705,7 @@ process_is_registered_proc (CSS_CONN_ENTRY * conn, char *args)
   rid = send_request_one_arg (conn, IS_REGISTERED_HA_PROC, (char *) buffer, len);
   return_string (conn, rid, &reply_buffer, &size);
 
-  if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
+  if (size > 0 && strncmp (reply_buffer, HA_REQUEST_SUCCESS, size - 1) == 0)
     {
       error = NO_ERROR;
     }
