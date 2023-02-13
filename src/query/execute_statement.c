@@ -13629,7 +13629,6 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   statement->etc = NULL;
-  //ctshim
   if (statement->info.insert.spec->info.spec.flat_entity_list)
     {
       class_ = statement->info.insert.spec->info.spec.flat_entity_list;

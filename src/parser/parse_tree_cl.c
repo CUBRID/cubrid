@@ -3104,7 +3104,7 @@ pt_show_node_type (PT_NODE * node)
     case PT_DBLINK_TABLE:
       return "DBLINK";
     case PT_DBLINK_TABLE_DML:
-      return "DBLINK";		// TODO, ctshim fix to other name
+      return "DBLINK_DML";
     case PT_CREATE_SERVER:
       return "CREATE_SERVER";
     case PT_DROP_SERVER:

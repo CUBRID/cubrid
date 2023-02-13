@@ -13819,17 +13819,13 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	}
     }
   else if (stmt->node_type == PT_MERGE)
-    {				// ctshim
+    {
       if (stmt->info.merge.into && stmt->info.merge.into->info.spec.remote_server_name)
 	{
 	  assert (stmt->info.merge.into->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML);
 	  return stmt;
 	}
     }
-
-#if 0				/* to disable TEXT */
-  pt_resolve_insert_external (parser, ins);
-#endif /* 0 */
 
   if (stmt->node_type == PT_INSERT)
     {

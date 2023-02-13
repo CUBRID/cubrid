@@ -385,9 +385,6 @@ static int pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO *
 static int pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink,
 					    S_REMOTE_TBL_COLS * rmt_tbl_cols);
 
-#define PRINT_DEBUG_MSG(...)
-#define PRINT_DEBUG_MSG_2(...)
-
 /*
  * pt_undef_names_pre () - Set error if name matching spec is found. Used in
  *			   insert to make sure no "correlated" names are used
@@ -1236,11 +1233,8 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 
 		      if ((err = pt_remake_dblink_select_list (parser, &spec->info.spec, &rmt_tbl_cols)) != NO_ERROR)
 			{
-			  PRINT_DEBUG_MSG_2 ("DEBUG(22): %s\n", parser_print_tree (parser, spec));	//------ ctshim      
 			  return;
 			}
-
-		      PRINT_DEBUG_MSG_2 ("DEBUG(2): %s\n", parser_print_tree (parser, spec));	//------ ctshim
 		    }
 		}
 
@@ -4813,10 +4807,6 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
   switch (attr_def_node->type_enum)
     {
     case PT_TYPE_JSON:
-      // ctshim ==============================     
-      /*  json_schema_str ?
-         dt->info.data_type.json_schema = ?
-       */
       break;
 
     case PT_TYPE_VARCHAR:
@@ -5035,31 +5025,15 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
   dblink_table->qstr = val;
 
   assert (dblink_table->cols == NULL);
+  assert (dblink_table->sel_list);
 
   PT_NODE *attr_def_node = NULL;
   PT_NODE *id_node;
   PT_NODE *tmp;
 
-  if (dblink_table->sel_list == NULL)
-    {				// temp create (dummy int)      
-      if ((id_node = parser_new_node (parser, PT_NAME)) == NULL)
-	{
-	  PT_ERROR (parser, derived_table, er_msg ());
-	  return ER_FAILED;
-	}
-      id_node->info.name.original = pt_append_string (parser, NULL, "dummy");
-      if ((attr_def_node = pt_mk_attr_def_node (parser, id_node, NULL)) == NULL)
-	{
-	  return ER_FAILED;
-	}
-    }
-  else if (dblink_table->sel_list->node_type == PT_NAME && dblink_table->sel_list->type_enum == PT_TYPE_STAR)
+  if (dblink_table->sel_list->node_type == PT_NAME && dblink_table->sel_list->type_enum == PT_TYPE_STAR)
     {
-      if (dblink_table->sel_list->next != NULL)
-	{
-	  PT_ERROR (parser, derived_table, "Oops! Sorry, Not yet implements.");	// ctshim
-	}
-
+      assert (dblink_table->sel_list->next == NULL);
       for (int i = 0; i < rmt_cols->get_attr_size (); i++)
 	{
 	  if ((id_node = parser_new_node (parser, PT_NAME)) == NULL)
@@ -5138,7 +5112,6 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
   col_info = cci_get_result_info (req, &cmd_type, &col_count);
   if (!col_info && col_count == 0)
     {
-      //ctshim: Can I get an error code?
       res = ER_FAILED;
       goto set_parser_error;
     }
@@ -11392,7 +11365,6 @@ check_for_already_exists (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, cons
 
   PT_NODE *name = parser_new_node (parser, PT_NAME);
 
-  PRINT_DEBUG_MSG ("<<<(%s)", (char *) "append");
   if (resolved && original)
     {
       //name->info.name.resolved = pt_append_string (parser, NULL, resolved);
@@ -11424,18 +11396,13 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
     }
   else if (node->node_type == PT_DOT_)
     {				// case: tbl.col      
-      PRINT_DEBUG_MSG (">>>(%s)<<<", (char *) pt_print_bytes (parser, node)->bytes);
-
       check_for_already_exists
 	(parser, plkcol, node->info.dot.arg1->info.name.original, node->info.dot.arg2->info.name.original);
-      PRINT_DEBUG_MSG ("\n");
 
       *continue_walk = PT_LIST_WALK;
     }
   else if (node->node_type == PT_NAME)
     {
-      PRINT_DEBUG_MSG (">>>(%s)<<<", (char *) pt_print_bytes (parser, node)->bytes);
-
       if (node->type_enum == PT_TYPE_STAR)
 	{			// case:  tbl.*
 	  check_for_already_exists (parser, plkcol, node->info.name.original, NULL);
@@ -11444,13 +11411,10 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	{
 	  check_for_already_exists (parser, plkcol, NULL, node->info.name.original);
 	}
-      PRINT_DEBUG_MSG ("\n");
     }
   else if (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_STAR)
     {
-      PRINT_DEBUG_MSG (">>>(%s)<<<", (char *) "*");
       {
-	PRINT_DEBUG_MSG ("<<<(%s)", (char *) "append");
 	name = parser_new_node (parser, PT_NAME);
 	name->type_enum = PT_TYPE_STAR;
 	if (plkcol->col_list)
@@ -11459,7 +11423,6 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	  }
 	plkcol->col_list = name;
       }
-      PRINT_DEBUG_MSG ("\n");
     }
   return node;
 }
@@ -11512,33 +11475,18 @@ pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
 	      memset (&lkcol, 0x00, sizeof (lkcol));
 	      lkcol.col_list = table->info.dblink_table.sel_list;
 
-	      // Do NOT automatically assign a user name. 
-	      //PT_NAME_INFO_CLEAR_FLAG(spec->entity_name, PT_NAME_INFO_USER_SPECIFIED); 
-
-
-	      lkcol.tbl_name_node = spec->info.spec.range_var;	// spec->range_var ? spec->range_var : spec->entity_name;
-	      PRINT_DEBUG_MSG ("alias=%s\n", lkcol.tbl_name_node->info.name.original);
-
-	      PRINT_DEBUG_MSG ("*** SELECT LIST ::  \n");
+	      lkcol.tbl_name_node = spec->info.spec.range_var;
 	      pt_get_cols_4_dblink (parser, &lkcol, query->q.select.list);
-	      PRINT_DEBUG_MSG ("*** WHERE ::  \n");
 	      pt_get_cols_4_dblink (parser, &lkcol, query->q.select.where);
-	      PRINT_DEBUG_MSG ("*** ON COND ::  \n");
 	      pt_get_cols_4_dblink (parser, &lkcol, spec->info.spec.on_cond);
-	      PRINT_DEBUG_MSG ("*** HAVING ::  \n");
 	      pt_get_cols_4_dblink (parser, &lkcol, query->q.select.having);
-	      PRINT_DEBUG_MSG ("*** GROUP BY ::  \n");
 	      pt_get_cols_4_dblink (parser, &lkcol, query->q.select.group_by);
-	      PRINT_DEBUG_MSG ("*** ORDER BY ::  \n");
 	      pt_get_cols_4_dblink (parser, &lkcol, query->order_by);
 	      PARSER_VARCHAR *q = 0;
-	      PRINT_DEBUG_MSG ("*******************************\n");
 	      for (PT_NODE * col = lkcol.col_list; col; col = col->next)
 		{
 		  q = pt_print_bytes (parser, col);
-		  PRINT_DEBUG_MSG (">>>(%s)<<<\n", (char *) q->bytes);
 		}
-	      PRINT_DEBUG_MSG ("*******************************\n");
 
 	      table->info.dblink_table.sel_list = lkcol.col_list;
 	      lkcol.col_list = NULL;
@@ -11558,8 +11506,7 @@ pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 
   if (node->node_type == PT_SELECT)
     {
-      pt_gather_dblink_colums (parser, node);	// ctshim
-      PRINT_DEBUG_MSG_2 ("DEBUG(3): %s\n", parser_print_tree (parser, node));	//------ ctshim
+      pt_gather_dblink_colums (parser, node);
     }
 
   return node;
