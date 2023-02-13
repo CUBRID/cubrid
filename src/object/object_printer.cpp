@@ -760,6 +760,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	  int mode = GET_RESERVED_INDEX_ATTR_MODE ((*attribute_p)->id);
 	  int level = GET_RESERVED_INDEX_ATTR_LEVEL ((*attribute_p)->id);
 	  dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), mode, level);
+	  n_attrs--;
 	  break;
 	}
 #endif
