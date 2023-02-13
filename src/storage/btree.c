@@ -5964,7 +5964,7 @@ error_return:
 }
 
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 int
 btree_check_remake_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
 				key_val_range * kv_range, bool * is_newly)
@@ -6106,7 +6106,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   assert (class_oid != NULL);
   assert (found_oid != NULL);
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
   //DB_VALUE new_key1, new_key2;
   bool is_newly = false;
 
@@ -6123,7 +6123,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   /* Find if key has any objects. */
 
   /* Define range of scan. */
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
   if (!is_newly)
     {
       pr_share_value (key, &kv_range.key1);
@@ -6150,7 +6150,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
       if (is_newly)
 	{
 	  pr_clear_value (&kv_range.key1);
@@ -6178,7 +6178,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
     }
 #endif /* SERVER_MODE */
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
   if (is_newly)
     {
       pr_clear_value (&kv_range.key1);

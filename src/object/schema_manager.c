@@ -9550,7 +9550,7 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 	      /*
 	       * Try to find a corresponding attribute in the flattened template
 	       */
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_3X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	      if (IS_RESERVED_INDEX_ATTR_ID (attrs[i]->id))
 		{
 		  assert (attrs[i + 1] == NULL);
@@ -10891,7 +10891,7 @@ check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs, co
     {
       for (i = 0, n_attrs = 0; key_attrs[i] != NULL; i++, n_attrs++);
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_3X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
       if (n_attrs > 1 && IS_RESERVED_INDEX_ATTR_ID (key_attrs[n_attrs - 1]->id))
 	{
 	  n_attrs--;

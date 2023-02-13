@@ -4074,7 +4074,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 	heap_attrvalue_get_key (thread_p, i, &index_attrinfo, recdes, &btid, &dbvalue, aligned_buf, NULL, NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				, inst_oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 				, true
 #endif
 #endif
@@ -4094,7 +4094,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
        */
       if (index->n_atts > 1)
 	{
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_3X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)	// ctshim MATCH TYPE
 	  if (index->n_atts == 2 && IS_RESERVED_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
 	    {
 	      assert (DB_VALUE_TYPE (key_dbvalue) != DB_TYPE_MIDXKEY);
@@ -4233,7 +4233,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   OID found_oid;
   BTREE_ISCAN_OID_LIST oid_list;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
   bool is_newly = false;
 #endif
 
@@ -4288,7 +4288,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	      goto error3;
 	    }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	  is_newly = false;
 	  if (num_attrs > 1 && IS_RESERVED_INDEX_ATTR_ID (attr_ids[num_attrs - 1]))
 	    {
@@ -4340,7 +4340,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	  scan_init_index_scan (&isid, &oid_list, mvcc_snapshot);
 	  is_upd_scan_init = false;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	  if (!is_newly)
 	    {
 	      pr_clone_value (key, &key_val_range.key1);
@@ -4611,7 +4611,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   OID found_oid;
   BTREE_ISCAN_OID_LIST oid_list;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
   bool is_newly = false;
 #endif
 
@@ -4665,7 +4665,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	      goto error3;
 	    }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	  is_newly = false;
 	  if (num_attrs > 1 && IS_RESERVED_INDEX_ATTR_ID (attr_ids[num_attrs - 1]))
 	    {
@@ -4718,7 +4718,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	  scan_init_index_scan (&isid, &oid_list, mvcc_snapshot);
 
 	  is_upd_scan_init = false;
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	  if (!is_newly)
 	    {
 	      pr_clone_value (key, &key_val_range.key1);
@@ -7890,7 +7890,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 				(func_preds ? &func_preds[i] : NULL), NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				, inst_oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 				, false
 #endif
 #endif
@@ -8520,7 +8520,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 				NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				, oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 				, false
 #endif
 #endif
@@ -8530,7 +8530,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 				&key_domain
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				, oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 				, false
 #endif
 #endif
@@ -8815,7 +8815,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 				    aligned_oldbuf, NULL, &key_domain
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				    , oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 				    , false
 #endif
 #endif
@@ -9074,7 +9074,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 					NULL, NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 					, &inst_oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 					, false
 #endif
 #endif
@@ -9104,7 +9104,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 				    NULL, NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				    , &inst_oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 				    , false
 #endif
 #endif
@@ -9528,7 +9528,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 					    NULL, NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 					    , &inst_oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 					    , false
 #endif
 #endif
@@ -9985,7 +9985,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 		heap_attrvalue_get_key (thread_p, index_id, &attr_info, &peek, btid, &dbvalue, aligned_buf, NULL, NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 					, &inst_oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 					, false
 #endif
 #endif

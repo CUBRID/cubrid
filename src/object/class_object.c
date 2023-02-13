@@ -6694,13 +6694,11 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate, SM_CLASS_CONSTRAINT * const
 	    {
 	      goto error_exit;
 	    }
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_3X)
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	  if (count > 1 && IS_RESERVED_INDEX_ATTR_NAME (att_names[count - 1]))
 	    {
 	      count--;
 	    }
-#endif
 #endif
 	  assert (count == count_ref);
 	}

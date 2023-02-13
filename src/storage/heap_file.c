@@ -695,7 +695,7 @@ static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, 
 					 TP_DOMAIN ** key_domain
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 					 , OID * rec_oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 					 , bool is_check_foreign
 #endif
 #endif
@@ -12248,7 +12248,7 @@ heap_classrepr_find_index_id (OR_CLASSREP * classrepr, const BTID * btid)
   return id;
 }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_2X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 int
 heap_get_reserved_attr_by_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, ATTR_ID * last_attrid,
 				int *last_asc_desc, TP_DOMAIN ** tpdomain)
@@ -12474,7 +12474,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 		      DB_VALUE * func_res, TP_DOMAIN * func_domain, TP_DOMAIN ** key_domain
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 		      , OID * rec_oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 		      , bool is_check_foreign
 #endif
 #endif
@@ -12497,7 +12497,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
     {
       num_atts = index->func_index_info->attr_index_start + 1;
     }
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
   if (is_check_foreign && IS_RESERVED_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
     {
       assert (func_res == NULL);
@@ -12965,7 +12965,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 			TP_DOMAIN ** key_domain
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 			, OID * rec_oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 			, bool is_check_foreign
 #endif
 #endif
@@ -12976,9 +12976,6 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
   DB_VALUE *ret_val = NULL;
   DB_VALUE *fi_res = NULL;
   TP_DOMAIN *fi_domain = NULL;
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK) && !defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
-  bool is_check_foreign = false;
-#endif
 
   assert (DB_IS_NULL (db_value));
 
@@ -13066,7 +13063,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
       midxkey.min_max_val.position = -1;
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_1X)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
       if (heap_midxkey_key_get
 	  (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain, rec_oid, is_check_foreign) == NULL)
 #else
