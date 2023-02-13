@@ -354,7 +354,7 @@ check_is_array (const T & a)
 
 #if defined (WINDOWS)
 #define IS_ABS_PATH(p) IS_PATH_SEPARATOR((p)[0]) \
-	|| (isalpha((p)[0]) && (p)[1] == ':' && IS_PATH_SEPARATOR((p)[2]))
+	|| (isalpha((p)[0]) && (p)[1] == ':' && (IS_PATH_SEPARATOR((p)[2]) || (p)[2] == '/'))
 #else /* WINDOWS */
 #define IS_ABS_PATH(p) IS_PATH_SEPARATOR((p)[0])
 #endif /* WINDOWS */
