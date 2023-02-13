@@ -65,6 +65,19 @@ public class StmtBasicLoop extends Stmt {
     // Private
     // --------------------------------------------------
 
+    // NOTE: why I use 'while(opNot(false))' instead of simpler 'while(true)':
+    // Compiling Java code below with javac causes 'unreachable statement' error
+    //     while (true) {
+    //         continue;
+    //     }
+    //     ... // a statement
+    // However the following does not
+    //     while (opNot(false)) {
+    //         continue;
+    //     }
+    //     ... // a statement
+    // It seems that static analysis of javac does not go beyond method call boundaries
+
     private static final String tmpl =
-            Misc.combineLines("%'OPT-LABEL'%", "while (true) {", "  %'STATEMENTS'%", "}");
+            Misc.combineLines("%'OPT-LABEL'%", "while (opNot(false)) {", "  %'STATEMENTS'%", "}");
 }

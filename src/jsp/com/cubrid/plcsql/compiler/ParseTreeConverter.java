@@ -880,9 +880,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.popSymbolTable();
 
         DeclRoutine ret;
-        if (ctx.PROCEDURE() == null) {
-            // function
+        if (isFunction) {
             ret = symbolStack.getDeclFunc(name);
+            if (!controlFlowBlocked) {
+                throw new SemanticError(Misc.getLineOf(ctx),
+                    "function " + ret.name + " can reach its end without returning a value");
+            }
         } else {
             // procedure
             ret = symbolStack.getDeclProc(name);
@@ -897,23 +900,35 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public Body visitBody(BodyContext ctx) {
 
+        boolean allFlowsBlocked;
+
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        allFlowsBlocked = controlFlowBlocked;
 
         NodeList<ExHandler> exHandlers = new NodeList<>();
         for (Exception_handlerContext ehc : ctx.exception_handler()) {
             exHandlers.addNode(visitException_handler(ehc));
+            allFlowsBlocked = allFlowsBlocked && controlFlowBlocked;
         }
 
+        controlFlowBlocked = allFlowsBlocked;
         return new Body(ctx, stmts, exHandlers);
     }
 
     @Override
     public NodeList<Stmt> visitSeq_of_statements(Seq_of_statementsContext ctx) {
 
+        controlFlowBlocked = false;
+
         NodeList<Stmt> stmts = new NodeList<>();
         for (StatementContext sc : ctx.statement()) {
+            if (controlFlowBlocked) {
+                throw new SemanticError(Misc.getLineOf(sc),
+                    "unreachable statement");
+            }
             stmts.addNode((Stmt) visit(sc));
         }
+        // NOTE: the last statement might turn the control flow to blocked
 
         return stmts;
     }
@@ -998,6 +1013,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         if (ctx.expression() == null) {
+            controlFlowBlocked = true;
             return new StmtContinue(ctx, declLabel);
         } else {
             Expr cond = visitExpression(ctx.expression());
@@ -1027,6 +1043,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         if (ctx.expression() == null) {
+            controlFlowBlocked = true;
             return new StmtBreak(ctx, declLabel);
         } else {
             Expr cond = visitExpression(ctx.expression());
@@ -1037,24 +1054,32 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public StmtIf visitIf_statement(If_statementContext ctx) {
 
+        boolean allFlowsBlocked;
+
         NodeList<CondStmt> condParts = new NodeList<>();
 
         Expr cond = visitExpression(ctx.expression());
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        allFlowsBlocked = controlFlowBlocked;
         condParts.addNode(new CondStmt(ctx.expression(), cond, stmts));
 
         for (Elsif_partContext c : ctx.elsif_part()) {
             cond = visitExpression(c.expression());
             stmts = visitSeq_of_statements(c.seq_of_statements());
+            allFlowsBlocked = allFlowsBlocked && controlFlowBlocked;
             condParts.addNode(new CondStmt(c.expression(), cond, stmts));
         }
 
         NodeList<Stmt> elsePart;
         if (ctx.else_part() == null) {
             elsePart = null;
+            allFlowsBlocked = false;
         } else {
             elsePart = visitSeq_of_statements(ctx.else_part().seq_of_statements());
+            allFlowsBlocked = allFlowsBlocked && controlFlowBlocked;
         }
+
+        controlFlowBlocked = allFlowsBlocked;
 
         return new StmtIf(ctx, condParts, elsePart);
     }
@@ -1070,6 +1095,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        controlFlowBlocked = false; // every loop is assumed not to block control flow in generated Java code
 
         symbolStack.popSymbolTable();
 
@@ -1100,6 +1126,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         Expr cond = visitExpression(ctx.expression());
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        controlFlowBlocked = false; // every loop is assumed not to block control flow in generated Java code
 
         symbolStack.popSymbolTable();
 
@@ -1129,6 +1156,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        controlFlowBlocked = false; // every loop is assumed not to block control flow in generated Java code
 
         symbolStack.popSymbolTable();
 
@@ -1210,6 +1238,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        controlFlowBlocked = false; // every loop is assumed not to block control flow in generated Java code
 
         symbolStack.popSymbolTable();
 
@@ -1250,6 +1279,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        controlFlowBlocked = false; // every loop is assumed not to block control flow in generated Java code
 
         symbolStack.popSymbolTable();
 
@@ -1291,6 +1321,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        controlFlowBlocked = false; // every loop is assumed not to block control flow in generated Java code
 
         symbolStack.popSymbolTable();
 
@@ -1311,6 +1342,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     "raise statements without a exception name must be in an exception handler");
             }
         }
+
+        controlFlowBlocked = true;
         return new StmtRaise(ctx, exName);
     }
 
@@ -1336,6 +1369,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public StmtReturn visitReturn_statement(Return_statementContext ctx) {
+
+        controlFlowBlocked = true;
 
         Misc.RoutineType routineType = symbolStack.getCurrentScope().routineType;
         if (ctx.expression() == null) {
@@ -1410,8 +1445,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public StmtRaiseAppErr visitRaise_application_error_statement(
             Raise_application_error_statementContext ctx) {
+
         Expr errCode = visitExpression(ctx.err_code());
         Expr errMsg = visitExpression(ctx.err_msg());
+
+        controlFlowBlocked = true;
         return new StmtRaiseAppErr(ctx, errCode, errMsg);
     }
 
@@ -1826,10 +1864,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return StringEscapeUtils.escapeJava(val);
     }
 
+    private final Set<String> imports = new TreeSet<>();
+
     private boolean autonomousTransaction = false;
     private boolean connectionRequired = false;
 
-    private final Set<String> imports = new TreeSet<>();
+    private boolean controlFlowBlocked;
 
     private ExprId visitNonFuncIdentifier(IdentifierContext ctx) {
         String name = Misc.getNormalizedText(ctx);
