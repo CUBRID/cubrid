@@ -555,7 +555,8 @@ options valids:\n\
       --use-delimiter             utilise '"' dans les endroits où un identificateur commence ou se termine; par défaut: ne pas utiliser\n\
   -S, --SA-mode                   exécution en mode autonome\n\
   -C, --CS-mode                   exécution en mode client-serveur\n\
-      --datafile-per-class        créer un fichier objet pour chaque classe; par défaut: désactivé
+      --datafile-per-class        créer un fichier objet pour chaque classe; par défaut: désactivé\n\
+      --split-schema-files        diviser les informations de schéma par objet et générer chaque fichier ; Par défaut : générer un fichier de schéma avec tous les objets\n
 
 
 
