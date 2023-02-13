@@ -350,11 +350,15 @@ check_is_array (const T & a)
 #endif /* WINDOWS */
 #define PATH_CURRENT    '.'
 
+#if defined (WINDOWS)
+#define IS_PATH_SEPARATOR(c) ((c) == PATH_SEPARATOR || (c) == '/')
+#else
 #define IS_PATH_SEPARATOR(c) ((c) == PATH_SEPARATOR)
+#endif
 
 #if defined (WINDOWS)
 #define IS_ABS_PATH(p) IS_PATH_SEPARATOR((p)[0]) \
-	|| (isalpha((p)[0]) && (p)[1] == ':' && (IS_PATH_SEPARATOR((p)[2]) || (p)[2] == '/'))
+	|| (isalpha((p)[0]) && (p)[1] == ':' && IS_PATH_SEPARATOR((p)[2]))
 #else /* WINDOWS */
 #define IS_ABS_PATH(p) IS_PATH_SEPARATOR((p)[0])
 #endif /* WINDOWS */
