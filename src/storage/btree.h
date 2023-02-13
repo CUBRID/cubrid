@@ -698,9 +698,6 @@ extern int btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOB
 extern int btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, int flag_minkey);
 extern bool btree_multicol_key_is_null (DB_VALUE * key);
 extern int btree_multicol_key_has_null (DB_VALUE * key);
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_3X)
-int btree_multicol_key_contiguous_null_fields_cnt (DB_VALUE * key);
-#endif
 extern DISK_ISVALID btree_find_key (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, DB_VALUE * key, bool * clear_key);
 /* for migration */
 extern TP_DOMAIN *btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid);

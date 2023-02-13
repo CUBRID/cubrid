@@ -4054,47 +4054,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  break;
 	}
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_3X)
-      if (has_reserved_index_col)
-	{
-	  assert (!DB_IS_NULL (&fk_key));
-	  assert (DB_VALUE_DOMAIN_TYPE (&fk_key) == DB_TYPE_MIDXKEY);
-
-	  if (btree_multicol_key_contiguous_null_fields_cnt (&fk_key) == (fk_key.data.midxkey.ncolumns - 1))
-	    {
-	      continue;
-	    }
-
-	  /* { v1, OID }      ==> v1
-	   * { v1, v2 , OID } ==> { v1, v2 }
-	   */
-
-	  DB_VALUE *new_ptr = (fk_key_ptr == &(new_fk_key[0])) ? &(new_fk_key[1]) : &(new_fk_key[0]);
-
-	  pr_clear_value (new_ptr);
-	  if (fk_key.data.midxkey.ncolumns > 2)
-	    {
-	      pr_clone_value (&fk_key, new_ptr);
-	      // need comment. ctshim
-	      new_ptr->data.midxkey.ncolumns--;
-	      new_ptr->data.midxkey.domain = pk_bt_scan.btid_int.key_type;
-	      OR_MULTI_CLEAR_BOUND_BIT (new_ptr->data.midxkey.buf, new_ptr->data.midxkey.ncolumns);
-	    }
-	  else
-	    {
-	      pr_midxkey_get_element_nocopy (&fk_key.data.midxkey, 0, new_ptr, NULL, NULL);
-	    }
-
-	  if (btree_compare_key (fk_key_ptr, new_ptr, pk_bt_scan.btid_int.key_type, 1, 1, NULL) == DB_EQ)
-	    {
-	      continue;
-	    }
-
-	  fk_key_ptr = new_ptr;
-	}
-#endif
-
-      if (DB_IS_NULL (fk_key_ptr))
+      if (DB_IS_NULL (&fk_key))
 	{
 	  /* Only way to get this is by having no visible objects in the foreign key. */
 	  /* Must be checked!! */
@@ -4104,23 +4064,12 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
       /* Check for multi col nulls. */
       if (sort_args->n_attrs > 1)
 	{
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_3X)
-	  if (has_reserved_index_col && sort_args->n_attrs == 2)
-	    {
-	      has_nulls = DB_IS_NULL (fk_key_ptr);
-	    }
-	  else
-	    {
-	      has_nulls = btree_multicol_key_has_null (fk_key_ptr);
-	    }
-#else
-	  has_nulls = btree_multicol_key_has_null (fk_key_ptr);
-#endif
+	  has_nulls = btree_multicol_key_has_null (&fk_key);
 	}
       else
 	{
 	  /* TODO: unreachable case */
-	  has_nulls = DB_IS_NULL (fk_key_ptr);
+	  has_nulls = DB_IS_NULL (&fk_key);
 	}
 
       if (has_nulls)
@@ -4154,6 +4103,43 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  /* Skip current key. */
 	  continue;
 	}
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK_3X)
+      if (has_reserved_index_col)
+	{
+	  assert (!DB_IS_NULL (&fk_key));
+	  assert (DB_VALUE_DOMAIN_TYPE (&fk_key) == DB_TYPE_MIDXKEY);
+
+	  /* { v1, OID }      ==> v1
+	   * { v1, v2 , OID } ==> { v1, v2 }
+	   */
+
+	  DB_VALUE *new_ptr = (fk_key_ptr == &(new_fk_key[0])) ? &(new_fk_key[1]) : &(new_fk_key[0]);
+
+	  pr_clear_value (new_ptr);
+	  if (fk_key.data.midxkey.ncolumns > 2)
+	    {
+	      pr_clone_value (&fk_key, new_ptr);
+	      /* Disguise the last column as missing. 
+	       * To do this, reduce the number of columns.
+	       * Modify bitmap information for btree_multicol_key_is_null() function. */
+	      new_ptr->data.midxkey.ncolumns--;
+	      OR_MULTI_CLEAR_BOUND_BIT (new_ptr->data.midxkey.buf, new_ptr->data.midxkey.ncolumns);
+	      new_ptr->data.midxkey.domain = pk_bt_scan.btid_int.key_type;
+	    }
+	  else
+	    {
+	      pr_midxkey_get_element_nocopy (&fk_key.data.midxkey, 0, new_ptr, NULL, NULL);
+	    }
+
+	  if (btree_compare_key (fk_key_ptr, new_ptr, pk_bt_scan.btid_int.key_type, 1, 1, NULL) == DB_EQ)
+	    {
+	      continue;
+	    }
+
+	  fk_key_ptr = new_ptr;
+	}
+#endif
 
       /* We got the value from the foreign key, now search through the primary key index. */
       found = false;

@@ -18383,39 +18383,6 @@ btree_multicol_key_is_null (DB_VALUE * key)
   return status;
 }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK_3X)
-int
-btree_multicol_key_contiguous_null_fields_cnt (DB_VALUE * key)
-{
-  DB_MIDXKEY *midxkey;
-  int i = 0;
-
-  if (DB_VALUE_TYPE (key) == DB_TYPE_MIDXKEY)
-    {
-      assert (!DB_IS_NULL (key));
-
-      midxkey = db_get_midxkey (key);
-      assert (midxkey != NULL);
-
-      /* ncolumns == -1 means already constructing step */
-      if (midxkey && midxkey->ncolumns != -1)
-	{
-	  for (i = 0; i < midxkey->ncolumns; i++)
-	    {
-	      if (!OR_MULTI_ATT_IS_UNBOUND (midxkey->buf, i))
-		{
-		  break;
-		}
-	    }
-
-	  return i;
-	}
-    }
-
-  return -1;
-}
-#endif
-
 /*
  * btree_multicol_key_has_null () -
  *   return: Return true if DB_VALUE is a multi-column key and has a NULL element in it and false otherwise.
