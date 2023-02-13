@@ -1124,7 +1124,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             symbolStack.putDecl(declLabel.name, declLabel);
         }
 
-        Expr cond = visitExpression(ctx.expression());
+        Expr cond = visitExpression(ctx.expression());  // TODO: handle the case when the cond is compile time TRUE
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
         controlFlowBlocked = false; // every loop is assumed not to block control flow in generated Java code
 
@@ -1254,7 +1254,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.pushSymbolTable("for_s_sql_loop", null);
 
         ParserRuleContext recNameCtx = ctx.for_static_sql().record_name();
-        ParserRuleContext selectCtx = ctx.for_static_sql().record_name();
+        ParserRuleContext selectCtx = ctx.for_static_sql().s_select_statement();
 
         String record = Misc.getNormalizedText(recNameCtx);
 
@@ -1395,6 +1395,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitSimple_case_statement(Simple_case_statementContext ctx) {
 
+        boolean allFlowsBlocked = true;
+
         symbolStack.pushSymbolTable("case_stmt", null);
         int level = symbolStack.getCurrentScope().level;
 
@@ -1404,14 +1406,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         for (Simple_case_statement_when_partContext c : ctx.simple_case_statement_when_part()) {
             Expr val = visitExpression(c.expression());
             NodeList<Stmt> stmts = visitSeq_of_statements(c.seq_of_statements());
+            allFlowsBlocked = allFlowsBlocked && controlFlowBlocked;
             whenParts.addNode(new CaseStmt(c, val, stmts));
         }
 
         NodeList<Stmt> elsePart;
         if (ctx.case_statement_else_part() == null) {
             elsePart = null;    // TODO: put exception throwing code insead of null
+            //allFlowsBlocked = allFlowsBlocked && true;
         } else {
             elsePart = visitSeq_of_statements(ctx.case_statement_else_part().seq_of_statements());
+            allFlowsBlocked = allFlowsBlocked && controlFlowBlocked;
         }
 
         symbolStack.popSymbolTable();
@@ -1419,26 +1424,34 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (whenParts.nodes.size() > 0) {
             addToImports("java.util.Objects");
         }
+
+        controlFlowBlocked = allFlowsBlocked;
         return new StmtCase(ctx, level, selector, whenParts, elsePart);
     }
 
     @Override
     public StmtIf visitSearched_case_statement(Searched_case_statementContext ctx) {
 
+        boolean allFlowsBlocked = true;
+
         NodeList<CondStmt> condParts = new NodeList<>();
         for (Searched_case_statement_when_partContext c : ctx.searched_case_statement_when_part()) {
             Expr cond = visitExpression(c.expression());
             NodeList<Stmt> stmts = visitSeq_of_statements(c.seq_of_statements());
+            allFlowsBlocked = allFlowsBlocked && controlFlowBlocked;
             condParts.addNode(new CondStmt(c, cond, stmts));
         }
 
         NodeList<Stmt> elsePart;
         if (ctx.case_statement_else_part() == null) {
             elsePart = null;    // TODO: put exception throwing code insead of null
+            //allFlowsBlocked = allFlowsBlocked && true;
         } else {
             elsePart = visitSeq_of_statements(ctx.case_statement_else_part().seq_of_statements());
+            allFlowsBlocked = allFlowsBlocked && controlFlowBlocked;
         }
 
+        controlFlowBlocked = allFlowsBlocked;
         return new StmtIf(ctx, condParts, elsePart);
     }
 
@@ -1462,6 +1475,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         TempSqlStringifier stringifier = new TempSqlStringifier(symbolStack);
         new ParseTreeWalker().walk(stringifier, ctx);
+
+        // TODO: with semantic information from the server
+        // if it is a SELECT statement,
+        //  . error if there is no into-clause
+        //  . error if identifers in the into-calause is not updatable
+        //  . select list must be assignable to the identifiers in the into-clause (check their lengths and types)
 
         int level = symbolStack.getCurrentScope().level + 1;
         String sql = StringEscapeUtils.escapeJava(stringifier.sbuf.toString());
@@ -1771,13 +1790,21 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public ExHandler visitException_handler(Exception_handlerContext ctx) {
 
+        ParserRuleContext others = null;
+
         List<ExName> exceptions = new ArrayList<>();
         for (Exception_nameContext c : ctx.exception_name()) {
             if ("OTHERS".equals(c.getText().toUpperCase())) {
+                others = c;
                 exceptions.add(new ExName(c, "OTHERS"));
             } else {
                 exceptions.add(visitException_name(c));
             }
+        }
+
+        if (others != null && ctx.exception_name().size() > 1) {
+            throw new SemanticError(Misc.getLineOf(others),
+                "OTHERS cannot be ORed with an exception name");
         }
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());

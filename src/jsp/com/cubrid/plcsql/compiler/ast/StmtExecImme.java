@@ -46,21 +46,21 @@ public class StmtExecImme extends Stmt {
 
     public final boolean isDynamic;
     public final int level;
-    public final Expr dynSql;
+    public final Expr sql;
     public final NodeList<ExprId> intoVarList;
     public final NodeList<? extends Expr> usedExprList;
 
     public StmtExecImme(ParserRuleContext ctx,
             boolean isDynamic,
             int level,
-            Expr dynSql,
+            Expr sql,
             NodeList<ExprId> intoVarList,
             NodeList<? extends Expr> usedExprList) {
         super(ctx);
 
         this.isDynamic = isDynamic;
         this.level = level;
-        this.dynSql = dynSql;
+        this.sql = sql;
         this.intoVarList = intoVarList;
         this.usedExprList = usedExprList;
     }
@@ -72,7 +72,7 @@ public class StmtExecImme extends Stmt {
         if (intoVarList == null) {
             // DML statement TODO: check it is not a Select statement
             return tmplDml.replace("%'KIND'%", isDynamic ? "dynamic" : "static")
-                    .replace("%'SQL'%", dynSql.toJavaCode())
+                    .replace("%'SQL'%", sql.toJavaCode())
                     .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedValuesStr, 1))
                     .replace("%'LEVEL'%", "" + level);
         } else {
@@ -81,7 +81,7 @@ public class StmtExecImme extends Stmt {
             String setNullsStr = getSetNullsStr(intoVarList);
             return tmplSelect
                     .replace("%'KIND'%", isDynamic ? "dynamic" : "static")
-                    .replace("%'SQL'%", dynSql.toJavaCode())
+                    .replace("%'SQL'%", sql.toJavaCode())
                     .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedValuesStr, 1))
                     .replace("      %'SET-RESULTS'%", Misc.indentLines(setResultsStr, 3))
                     .replace("    %'SET-NULLS'%", Misc.indentLines(setNullsStr, 2))

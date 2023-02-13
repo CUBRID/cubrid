@@ -552,13 +552,22 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
                 arg.setCoerce(c);
             }
         } else {
-            throw new SemanticError(node.cursor.lineNo(), 
+            throw new SemanticError(node.cursor.lineNo(),
                 "cannot open a variable which is not a cursor");
         }
         return null;
     }
     @Override
     public TypeSpec visitStmtExecImme(StmtExecImme node) {
+
+        if (node.isDynamic) {
+            TypeSpec sqlType = visit(node.sql);
+            if (!sqlType.equals(TypeSpecSimple.STRING)) {
+                throw new SemanticError(node.sql.lineNo(),
+                    "SQL in the EXECUTE IMMEDIATE statement must be of the STRING type");
+            }
+        }
+
         // TODO: requires server API
         assert false: "not implemented yet";
         throw new RuntimeException("not implemented yet");
@@ -600,6 +609,17 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
     }
     @Override
     public TypeSpec visitStmtForSqlLoop(StmtForSqlLoop node) {
+
+        if (node.isDynamic) {
+            TypeSpec sqlType = visit(node.sql);
+            if (!sqlType.equals(TypeSpecSimple.STRING)) {
+                throw new SemanticError(node.sql.lineNo(),
+                    "SQL in the EXECUTE IMMEDIATE statement must be of the STRING type");
+            }
+        }
+
+        // TODO: check if it is a SELECT statement
+
         // TODO: requires server API
         assert false: "not implemented yet";
         throw new RuntimeException("not implemented yet");
