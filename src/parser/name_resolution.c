@@ -4530,6 +4530,7 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 			      pt_short_print_l (parser, node->info.spec.as_attr_list));
 		}
 	    }
+	  /* dblink query */
 	  else if (PT_SPEC_IS_DERIVED (node))
 	    {
 	      PT_NODE *derived_table = node->info.spec.derived_table;
