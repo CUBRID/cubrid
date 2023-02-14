@@ -89,10 +89,6 @@ class tran_server
 
 	connection_handler () = delete;
 
-	connection_handler (cubcomm::channel &&chn, tran_server &ts)
-	  : connection_handler { std::move (chn), ts, get_request_handlers () }
-	{ }
-
 	connection_handler (const connection_handler &) = delete;
 	connection_handler (connection_handler &&) = delete;
 
@@ -122,7 +118,7 @@ class tran_server
 
   protected:
     size_t get_connected_page_server_count () const;
-    virtual connection_handler *create_connection_handler (cubcomm::channel &&chn, tran_server &ts) const;
+    virtual connection_handler *create_connection_handler (cubcomm::channel &&chn, tran_server &ts) const = 0;
 
     // Booting functions that require specialization
     virtual bool get_remote_storage_config () = 0;
