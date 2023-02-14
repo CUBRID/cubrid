@@ -773,7 +773,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         // currently, only the Autonomous Transaction is
         // allowed only in the top-level declarations
         if (symbolStack.getCurrentScope().level != 2) {
-            throw new SemanticError(Misc.getLineOf(ctx),
+            throw new SemanticError(Misc.getLineOf(ctx),    // s013
                 "AUTONOMOUS_TRANSACTION declaration is only allowed at the top level");
         }
 
@@ -835,7 +835,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
         for (DeclParam dp: paramList.nodes) {
             if (dp instanceof DeclParamOut) {
-                throw new SemanticError(Misc.getLineOf(dp.ctx),
+                throw new SemanticError(Misc.getLineOf(dp.ctx), // s014
                     "parameters of cursor definition cannot be OUT parameters");
             }
         }
@@ -843,7 +843,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         TempSqlStringifier stringifier = new TempSqlStringifier(symbolStack);
         new ParseTreeWalker().walk(stringifier, ctx.s_select_statement());
         if (stringifier.intoVars != null) {
-            throw new SemanticError(Misc.getLineOf(ctx.s_select_statement()),
+            throw new SemanticError(Misc.getLineOf(ctx.s_select_statement()),   // s015
                 "SQL in a cursor definition cannot have an into-clause");
         }
         String sql = StringEscapeUtils.escapeJava(stringifier.sbuf.toString());
@@ -877,7 +877,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (isFunction) {
             ret = symbolStack.getDeclFunc(name);
             if (!controlFlowBlocked) {
-                throw new SemanticError(Misc.getLineOf(ctx),
+                throw new SemanticError(Misc.getLineOf(ctx),    // s016
                     "function " + ret.name + " can reach its end without returning a value");
             }
         } else {
@@ -905,7 +905,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             allFlowsBlocked = allFlowsBlocked && controlFlowBlocked;
         }
 
-        controlFlowBlocked = allFlowsBlocked;
+        controlFlowBlocked = allFlowsBlocked;   // s017-1
         return new Body(ctx, stmts, exHandlers);
     }
 
@@ -917,7 +917,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         NodeList<Stmt> stmts = new NodeList<>();
         for (StatementContext sc : ctx.statement()) {
             if (controlFlowBlocked) {
-                throw new SemanticError(Misc.getLineOf(sc),
+                throw new SemanticError(Misc.getLineOf(sc), // s017
                     "unreachable statement");
             }
             stmts.addNode((Stmt) visit(sc));
@@ -947,11 +947,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         ExprId var = visitNonFuncIdentifier(ctx.identifier());
         if (var == null) {
-            throw new SemanticError(Misc.getLineOf(ctx.identifier()),
+            throw new SemanticError(Misc.getLineOf(ctx.identifier()),   // s018
                 "undeclared id " + Misc.getNormalizedText(ctx.identifier()));
         }
         if (!isAssignableTo(var)) {
-            throw new SemanticError(Misc.getLineOf(ctx.identifier()),
+            throw new SemanticError(Misc.getLineOf(ctx.identifier()),   // s019
                 Misc.getNormalizedText(ctx.identifier()) + " is not assignable to");
         }
 
@@ -989,7 +989,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public AstNode visitContinue_statement(Continue_statementContext ctx) {
 
         if (!within(ctx, Loop_statementContext.class)) {
-            throw new SemanticError(Misc.getLineOf(ctx),
+            throw new SemanticError(Misc.getLineOf(ctx),    // s020
                 "continue statements must be in a loop");
         }
 
@@ -1001,13 +1001,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             String label = Misc.getNormalizedText(lnc);
             declLabel = symbolStack.getDeclLabel(label);
             if (declLabel == null) {
-                throw new SemanticError(Misc.getLineOf(lnc),
+                throw new SemanticError(Misc.getLineOf(lnc),    // s021
                     "undeclared label " + label);
             }
         }
 
         if (ctx.expression() == null) {
-            controlFlowBlocked = true;
+            controlFlowBlocked = true;  // s017-2
             return new StmtContinue(ctx, declLabel);
         } else {
             Expr cond = visitExpression(ctx.expression());
@@ -1019,7 +1019,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public AstNode visitExit_statement(Exit_statementContext ctx) {
 
         if (!within(ctx, Loop_statementContext.class)) {
-            throw new SemanticError(Misc.getLineOf(ctx),
+            throw new SemanticError(Misc.getLineOf(ctx),    // s022
                 "exit statements must be in a loop");
         }
 
@@ -1031,13 +1031,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             String label = Misc.getNormalizedText(lnc);
             declLabel = symbolStack.getDeclLabel(label);
             if (declLabel == null) {
-                throw new SemanticError(Misc.getLineOf(lnc),
+                throw new SemanticError(Misc.getLineOf(lnc),    // s023
                     "undeclared label " + label);
             }
         }
 
         if (ctx.expression() == null) {
-            controlFlowBlocked = true;
+            controlFlowBlocked = true;  // s107-3
             return new StmtBreak(ctx, declLabel);
         } else {
             Expr cond = visitExpression(ctx.expression());
@@ -1073,7 +1073,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             allFlowsBlocked = allFlowsBlocked && controlFlowBlocked;
         }
 
-        controlFlowBlocked = allFlowsBlocked;
+        controlFlowBlocked = allFlowsBlocked;   // s017-3
 
         return new StmtIf(ctx, false, condParts, elsePart);
     }
@@ -1188,11 +1188,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         IdentifierContext idCtx = ctx.for_cursor().cursor_exp().identifier();
         ExprId cursor = visitNonFuncIdentifier(idCtx);
         if (cursor == null) {
-            throw new SemanticError(Misc.getLineOf(idCtx),
+            throw new SemanticError(Misc.getLineOf(idCtx),  // s024
                 "undeclared id " + Misc.getNormalizedText(idCtx));
         }
         if (!(cursor.decl instanceof DeclCursor)) {
-            throw new SemanticError(Misc.getLineOf(idCtx),
+            throw new SemanticError(Misc.getLineOf(idCtx),  // s025
                 Misc.getNormalizedText(idCtx) + " is not a cursor");
         }
         DeclCursor cursorDecl = (DeclCursor) cursor.decl;
@@ -1200,7 +1200,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         NodeList<Expr> args = visitExpressions(ctx.for_cursor().expressions());
 
         if (cursorDecl.paramList.nodes.size() != args.nodes.size()) {
-            throw new SemanticError(Misc.getLineOf(idCtx),
+            throw new SemanticError(Misc.getLineOf(idCtx),  // s026
                     "the number of arguments to cursor "
                     + Misc.getNormalizedText(idCtx)
                     + " does not match the number of its declared formal parameters");
@@ -1255,8 +1255,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         TempSqlStringifier stringifier = new TempSqlStringifier(symbolStack);
         new ParseTreeWalker().walk(stringifier, selectCtx);
         if (stringifier.intoVars != null) {
-            throw new SemanticError(Misc.getLineOf(selectCtx),
-                "SQL in for-loop statement cannot have into-clause");
+            throw new SemanticError(Misc.getLineOf(selectCtx),  // s027
+                "SQL in for-loop statement cannot have an into-clause");
         }
         String sql = StringEscapeUtils.escapeJava(stringifier.sbuf.toString());
 
@@ -1332,12 +1332,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         ExName exName = visitException_name(ctx.exception_name());
         if (exName == null) {
             if (!within(ctx, Exception_handlerContext.class)) {
-                throw new SemanticError(Misc.getLineOf(ctx),
+                throw new SemanticError(Misc.getLineOf(ctx),    // s028
                     "raise statements without a exception name must be in an exception handler");
             }
         }
 
-        controlFlowBlocked = true;
+        controlFlowBlocked = true;  // s017-4
         return new StmtRaise(ctx, exName);
     }
 
@@ -1352,7 +1352,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         DeclException decl = symbolStack.getDeclException(name);
         if (decl == null) {
-            throw new SemanticError(Misc.getLineOf(ctx),
+            throw new SemanticError(Misc.getLineOf(ctx),    // s029
                 "undeclared exception: " + name);
         }
 
@@ -1364,18 +1364,18 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public StmtReturn visitReturn_statement(Return_statementContext ctx) {
 
-        controlFlowBlocked = true;
+        controlFlowBlocked = true;  // s017-5
 
         Misc.RoutineType routineType = symbolStack.getCurrentScope().routineType;
         if (ctx.expression() == null) {
             if (routineType != Misc.RoutineType.PROC) {
-                throw new SemanticError(Misc.getLineOf(ctx),
+                throw new SemanticError(Misc.getLineOf(ctx),    // s030
                     "function " + symbolStack.getCurrentScope().routine + " must return a value");
             }
             return new StmtReturn(ctx, null, null);
         } else {
             if (routineType != Misc.RoutineType.FUNC) {
-                throw new SemanticError(Misc.getLineOf(ctx),
+                throw new SemanticError(Misc.getLineOf(ctx),    // s031
                     "procedure " + symbolStack.getCurrentScope().routine + " may not return a value");
             }
 
@@ -1419,7 +1419,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             addToImports("java.util.Objects");
         }
 
-        controlFlowBlocked = allFlowsBlocked;
+        controlFlowBlocked = allFlowsBlocked;   // s017-6
         return new StmtCase(ctx, level, selector, whenParts, elsePart);
     }
 
@@ -1445,7 +1445,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             allFlowsBlocked = allFlowsBlocked && controlFlowBlocked;
         }
 
-        controlFlowBlocked = allFlowsBlocked;
+        controlFlowBlocked = allFlowsBlocked;   // s017-7
         return new StmtIf(ctx, true, condParts, elsePart);
     }
 
@@ -1456,7 +1456,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         Expr errCode = visitExpression(ctx.err_code());
         Expr errMsg = visitExpression(ctx.err_msg());
 
-        controlFlowBlocked = true;
+        controlFlowBlocked = true;  // s017-8
         return new StmtRaiseAppErr(ctx, errCode, errMsg);
     }
 
@@ -1493,11 +1493,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         ExprId cursor = visitNonFuncIdentifier(idCtx);
         if (cursor == null) {
-            throw new SemanticError(Misc.getLineOf(idCtx),
+            throw new SemanticError(Misc.getLineOf(idCtx),  // s032
                 "undeclared id " + Misc.getNormalizedText(idCtx));
         }
         if (!isCursorOrRefcursor(cursor)) {
-            throw new SemanticError(Misc.getLineOf(idCtx),
+            throw new SemanticError(Misc.getLineOf(idCtx),  // s033
                 "cannot close a non-cursor object");
         }
 
@@ -1514,11 +1514,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         ExprId cursor = visitNonFuncIdentifier(idCtx);
         if (cursor == null) {
-            throw new SemanticError(Misc.getLineOf(idCtx),
+            throw new SemanticError(Misc.getLineOf(idCtx),  // s034
                 "undeclared id " + Misc.getNormalizedText(idCtx));
         }
         if (!(cursor.decl instanceof DeclCursor)) {
-            throw new SemanticError(Misc.getLineOf(idCtx),
+            throw new SemanticError(Misc.getLineOf(idCtx),  // s035
                 Misc.getNormalizedText(idCtx) + " is not a cursor");
         }
         DeclCursor decl = (DeclCursor) cursor.decl;
@@ -1526,7 +1526,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         NodeList<Expr> args = visitExpressions(ctx.expressions());
 
         if (decl.paramList.nodes.size() != args.nodes.size()) {
-            throw new SemanticError(Misc.getLineOf(ctx.expressions()), "the number of arguments to cursor "
+            throw new SemanticError(Misc.getLineOf(ctx.expressions()),  // s036
+                    "the number of arguments to cursor "
                     + Misc.getNormalizedText(idCtx)
                     + " does not match the number of its declared formal parameters");
         }
@@ -1566,11 +1567,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         IdentifierContext idCtx = ctx.cursor_exp().identifier();
         ExprId cursor = visitNonFuncIdentifier(idCtx);
         if (cursor == null) {
-            throw new SemanticError(Misc.getLineOf(idCtx),
+            throw new SemanticError(Misc.getLineOf(idCtx),  // s037
                 "undeclared id " + Misc.getNormalizedText(idCtx));
         }
         if (!isCursorOrRefcursor(cursor)) {
-            throw new SemanticError(Misc.getLineOf(idCtx),
+            throw new SemanticError(Misc.getLineOf(idCtx),  // s038
                 "cannot fetch a non-cursor object");
         }
 
@@ -1578,7 +1579,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         for (IdentifierContext v : ctx.identifier()) {
             ExprId id = visitNonFuncIdentifier(v);
             if (!isAssignableTo(id)) {
-                throw new SemanticError(Misc.getLineOf(v),
+                throw new SemanticError(Misc.getLineOf(v),  // s039
                     "variables to store fetch results must be assignable to");
             }
             intoVars.addNode(id);
@@ -1595,22 +1596,22 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         ExprId refCursor = visitNonFuncIdentifier(ctx.identifier());
         if (refCursor == null) {
-            throw new SemanticError(Misc.getLineOf(ctx.identifier()),
+            throw new SemanticError(Misc.getLineOf(ctx.identifier()),   // s040
                 "undeclared id " + Misc.getNormalizedText(ctx.identifier()));
         }
         if (!isAssignableTo(refCursor)) {
-            throw new SemanticError(Misc.getLineOf(ctx.identifier()),
+            throw new SemanticError(Misc.getLineOf(ctx.identifier()),   // s041
                 "identifier in a open-for statement must be assignable-to");
         }
         if (!((DeclVarLike) refCursor.decl).typeSpec().equals(TypeSpecSimple.REFCURSOR)) {
-            throw new SemanticError(Misc.getLineOf(ctx.identifier()),
+            throw new SemanticError(Misc.getLineOf(ctx.identifier()),   // s042
                 "identifier in a open-for statement must be of the SYS_REFCURSOR type");
         }
 
         TempSqlStringifier stringifier = new TempSqlStringifier(symbolStack);
         new ParseTreeWalker().walk(stringifier, ctx.s_select_statement());
         if (stringifier.intoVars != null) {
-            throw new SemanticError(Misc.getLineOf(ctx.s_select_statement()),
+            throw new SemanticError(Misc.getLineOf(ctx.s_select_statement()),   // s043
                 "SQL in a open-for statement cannot have an into-clause");
         }
         String sql = StringEscapeUtils.escapeJava(stringifier.sbuf.toString());
@@ -1652,7 +1653,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             return ret;
         } else {
             if (decl.paramList.nodes.size() != args.nodes.size()) {
-                throw new SemanticError(Misc.getLineOf(ctx),
+                throw new SemanticError(Misc.getLineOf(ctx),    // s044
                     "the number of arguments to procedure " + name +
                     " does not match the number of its declared formal parameters");
             }
@@ -1665,7 +1666,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     if (arg instanceof ExprId && isAssignableTo((ExprId) arg)) {
                         // OK
                     } else {
-                            throw new SemanticError(Misc.getLineOf(arg.ctx),
+                            throw new SemanticError(Misc.getLineOf(arg.ctx),    // s045
                                 "argument " + i + " to the procedure" + name
                                 + " must be a variable or out-parameter because it is to an out-parameter");
                     }
@@ -1733,7 +1734,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 if (expr instanceof ExprId && isAssignableTo((ExprId) expr)) {
                     // OK
                 } else {
-                    throw new SemanticError(Misc.getLineOf(c),
+                    throw new SemanticError(Misc.getLineOf(c),  // s046
                         "expression '" + c.expression().getText() +
                         "' cannot be used as an OUT parameter in the USING clause because it is not assignable to");
                 }
@@ -1752,12 +1753,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         for (IdentifierContext c : ctx.identifier()) {
             ExprId id = visitNonFuncIdentifier(c);
             if (id == null) {
-                throw new SemanticError(Misc.getLineOf(c),
+                throw new SemanticError(Misc.getLineOf(c),  // s047
                     "undeclared id " + Misc.getNormalizedText(c));
             }
             if (!isAssignableTo(id)) {
-                throw new SemanticError(Misc.getLineOf(c),
-                        "variable " + c.getText()
+                throw new SemanticError(Misc.getLineOf(c),  // s048
+                        "variable " + Misc.getNormalizedText(c)
                         + " cannot be used in the INTO clause because it is not assignable to");
             }
             ret.addNode(id);
@@ -1797,8 +1798,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         if (others != null && ctx.exception_name().size() > 1) {
-            throw new SemanticError(Misc.getLineOf(others),
-                "OTHERS cannot be ORed with an exception name");
+            throw new SemanticError(Misc.getLineOf(others), // s049
+                "OTHERS may not be combined with another exception using OR");
         }
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
@@ -1927,7 +1928,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (ctx.PROCEDURE() == null) {
             // function
             if (ctx.RETURN() == null) {
-                throw new SemanticError(Misc.getLineOf(ctx),
+                throw new SemanticError(Misc.getLineOf(ctx),    // s050
                     "definition of function " + name + " must specify its return type");
             }
             TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
@@ -1936,7 +1937,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         } else {
             // procedure
             if (ctx.RETURN() != null) {
-                throw new SemanticError(Misc.getLineOf(ctx),
+                throw new SemanticError(Misc.getLineOf(ctx),    // s051
                     "definition of procedure " + name + " may not specify a return type");
             }
             DeclProc ret = new DeclProc(ctx, name, paramList);
@@ -1951,10 +1952,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     private String getJavaType(ParserRuleContext ctx, String pcsType) {
         String javaType = pcsToJavaTypeMap.get(pcsType);
-        if (javaType == null) {
-            throw new SemanticError(Misc.getLineOf(ctx), "invalid type name " + pcsType);
-        }
-
+        assert javaType != null;    // by syntax
         if ("com.cubrid.plcsql.predefined.sp.SpLib.Query".equals(javaType)) {
             // no need to import Cursor now
         } else if (javaType.startsWith("java.lang.") && javaType.lastIndexOf('.') == 9) {  // 9:the index of the second '.'
@@ -1981,7 +1979,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         s = quotedStrToJavaStr(s);
         ZonedDateTime timestamp = DateTimeParser.ZonedDateTimeLiteral.parse(s, forDatetime);
         if (timestamp == null) {
-            throw new SemanticError(Misc.getLineOf(ctx),
+            throw new SemanticError(Misc.getLineOf(ctx),    // s053
                 String.format("invalid %s string: %s", originType, s));
         }
         addToImports("java.time.ZoneOffset");

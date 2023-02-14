@@ -73,7 +73,8 @@ public class ExprCond extends Expr {
             }
             return tmpl
                     .replace("%'COND-PARTS'%", condParts.toJavaCode())
-                    .replace("%'ELSE-PART'%", elseCode);
+                    .replace("%'ELSE-PART'%", elseCode)
+                    .replace("%'RESULT-TYPE'%", resultType.toJavaCode());
         }
     }
 
