@@ -72,10 +72,6 @@ class tran_server
 
     int boot (const char *db_name);
 
-    /* send request to a specific connection */
-    void push_request (size_t idx, tran_to_page_request reqid, std::string &&payload);
-    int send_receive (size_t idx, tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
-
     /* send request to the main connection */
     void push_request (tran_to_page_request reqid, std::string &&payload);
     int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
@@ -142,6 +138,10 @@ class tran_server
     int init_page_server_hosts (const char *db_name);
     int get_boot_info_from_page_server ();
     int connect_to_page_server (const cubcomm::node &node, const char *db_name);
+
+    /* send request to a specific connection */
+    void push_request (size_t idx, tran_to_page_request reqid, std::string &&payload);
+    int send_receive (size_t idx, tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
 
     int parse_server_host (const std::string &host);
     int parse_page_server_hosts_config (std::string &hosts);
