@@ -369,12 +369,6 @@ tran_server::uses_remote_storage () const
   return false;
 }
 
-size_t
-tran_server::get_connected_page_server_count () const
-{
-  return m_page_server_conn_vec.size ();
-}
-
 tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tran_server &ts,
     request_handlers_map_t &&request_handlers)
   : m_ts { ts }

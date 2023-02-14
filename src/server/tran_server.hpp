@@ -117,7 +117,6 @@ class tran_server
     };
 
   protected:
-    size_t get_connected_page_server_count () const;
     virtual connection_handler *create_connection_handler (cubcomm::channel &&chn, tran_server &ts) const = 0;
 
     // Booting functions that require specialization
