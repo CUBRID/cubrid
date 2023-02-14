@@ -49,6 +49,7 @@ class active_tran_server : public tran_server
 	connection_handler &operator= (connection_handler &&) = delete;
 
 	void disconnect () final override;
+
       private:
 	request_handlers_map_t get_request_handlers () final override;
 	void remove_prior_sender_sink ();
