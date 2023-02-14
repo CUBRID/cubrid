@@ -415,7 +415,7 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
     }
     @Override
     public TypeSpec visitExprUint(ExprUint node) {
-        return node.big ? TypeSpecSimple.LONG : TypeSpecSimple.INTEGER;
+        return node.ty;
     }
     @Override
     public TypeSpec visitExprFloat(ExprFloat node) {

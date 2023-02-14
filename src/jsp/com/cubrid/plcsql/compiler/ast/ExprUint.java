@@ -43,13 +43,13 @@ public class ExprUint extends Expr {
     }
 
     public final String val;
-    public final boolean big;
+    public final TypeSpec ty;
 
-    public ExprUint(ParserRuleContext ctx, String val, boolean big) {
+    public ExprUint(ParserRuleContext ctx, String val, TypeSpec ty) {
         super(ctx);
 
         this.val = val;
-        this.big = big;
+        this.ty = ty;
     }
 
     @Override

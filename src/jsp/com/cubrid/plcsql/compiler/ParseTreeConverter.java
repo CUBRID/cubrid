@@ -123,11 +123,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             // case variable%TYPE
             ExprId id = visitNonFuncIdentifier(ctx.identifier());
             if (id == null) {
-                throw new SemanticError(Misc.getLineOf(ctx),
+                throw new SemanticError(Misc.getLineOf(ctx),    // s000
                     "undeclared id " + Misc.getNormalizedText(ctx.identifier()));
             }
             if (!(id.decl instanceof DeclVarLike)) {
-                throw new SemanticError(Misc.getLineOf(ctx),
+                throw new SemanticError(Misc.getLineOf(ctx),    // s001
                     Misc.getNormalizedText(ctx.identifier()) +
                     " must be a procedure/function parameter, variable, or constant");
             }
@@ -313,7 +313,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         assert pattern != null; // by syntax
 
         if (escape != null && escape.val.length() != 1) {
-            throw new SemanticError(Misc.getLineOf(ctx.escape),
+            throw new SemanticError(Misc.getLineOf(ctx.escape),     // s002
                 "the escape does not consist of a single character");
         }
 
@@ -423,7 +423,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         s = quotedStrToJavaStr(s);
         LocalDate date = DateTimeParser.DateLiteral.parse(s);
         if (date == null) {
-            throw new SemanticError(Misc.getLineOf(ctx),
+            throw new SemanticError(Misc.getLineOf(ctx),    // s003
                 "invalid DATE string: " + s);
         }
         // System.out.println("[temp] date=" + date);
@@ -436,7 +436,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         s = quotedStrToJavaStr(s);
         LocalTime time = DateTimeParser.TimeLiteral.parse(s);
         if (time == null) {
-            throw new SemanticError(Misc.getLineOf(ctx),
+            throw new SemanticError(Misc.getLineOf(ctx),    // s004
                 "invalid TIME string: " + s);
         }
         // System.out.println("[temp] time=" + time);
@@ -455,7 +455,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         s = quotedStrToJavaStr(s);
         LocalDateTime datetime = DateTimeParser.DatetimeLiteral.parse(s);
         if (datetime == null) {
-            throw new SemanticError(Misc.getLineOf(ctx),
+            throw new SemanticError(Misc.getLineOf(ctx),    // s005
                 "invalid DATETIME string: " + s);
         }
         // System.out.println("[temp] datetime=" + datetime);
@@ -491,31 +491,26 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public ExprUint visitUint_exp(Uint_expContext ctx) {
 
-        BigInteger bi;
         try {
-            bi = new BigInteger(ctx.UNSIGNED_INTEGER().getText());
+            TypeSpec ty;
+
+            BigInteger bi = new BigInteger(ctx.UNSIGNED_INTEGER().getText());
+            if (bi.compareTo(UINT_LITERAL_MAX) > 0) {
+                throw new SemanticError(Misc.getLineOf(ctx),    // s006
+                    "number of digits of integer literals may not exceed 38");
+            } else if (bi.compareTo(BIGINT_MAX) > 0) {
+                ty = TypeSpecSimple.BIGDECIMAL;
+            } else if (bi.compareTo(INT_MAX) > 0) {
+                ty = TypeSpecSimple.LONG;
+            } else {
+                ty = TypeSpecSimple.INTEGER;
+            }
+
+            return new ExprUint(ctx, bi.toString(), ty);
         } catch (NumberFormatException e) {
             assert false : "unreachable";   // by syntax
             throw new RuntimeException("unreachable");
         }
-
-        // do not allow an unsinged integer literal beyond the range of bigint  TODO: confirm this
-        try {
-            long l = bi.longValueExact();
-        } catch (ArithmeticException e) {
-            throw new SemanticError(Misc.getLineOf(ctx),
-                String.format("unsigned integer literal %s has a too large value beyond the range of BIGINT",
-                    ctx.UNSIGNED_INTEGER().getText()));
-        }
-
-        boolean big = false;
-        try {
-            long l = bi.intValueExact();
-        } catch (ArithmeticException e) {
-            big = true;
-        }
-
-        return new ExprUint(ctx, bi.toString(), big);
     }
 
     @Override
@@ -576,14 +571,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                             ? ExprSerialVal.SerialVal.CURR_VAL
                             : ExprSerialVal.SerialVal.NEXT_VAL);
             } else {
-                throw new SemanticError(Misc.getLineOf(ctx.record),
+                throw new SemanticError(Misc.getLineOf(ctx.record), // s007
                     "undeclared id " + Misc.getNormalizedText(ctx.record));
             }
         } else {
             if (!(record.decl instanceof DeclForRecord)) {
-                throw new SemanticError(Misc.getLineOf(ctx.record),
-                    "field lookup is only allowed for a record, but " +
-                    Misc.getNormalizedText(ctx.record) + " is not a record");
+                throw new SemanticError(Misc.getLineOf(ctx.record), // s008
+                    "field lookup is only allowed for records");
             }
 
             Scope scope = symbolStack.getCurrentScope();
@@ -614,7 +608,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             return ret;
         } else {
             if (decl.paramList.nodes.size() != args.nodes.size()) {
-                throw new SemanticError(Misc.getLineOf(ctx),
+                throw new SemanticError(Misc.getLineOf(ctx),    // s009
                     "the number of arguments to function " + name +
                     " does not match the number of the function's declared formal parameters");
             }
@@ -627,7 +621,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     if (arg instanceof ExprId && isAssignableTo((ExprId) arg)) {
                         // OK
                     } else {
-                        throw new SemanticError(Misc.getLineOf(arg.ctx),
+                        throw new SemanticError(Misc.getLineOf(arg.ctx),    // s010
                             "argument " + i + " to the function " + name +
                             " must be assignable to because it is to an out-parameter");
                     }
@@ -697,11 +691,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         ExprId cursor = visitNonFuncIdentifier(ctx.cursor_exp().identifier());
         if (cursor == null) {
-            throw new SemanticError(Misc.getLineOf(ctx),
+            throw new SemanticError(Misc.getLineOf(ctx),    // s011
                 "undeclared id " + Misc.getNormalizedText(ctx.cursor_exp().identifier()));
         }
         if (!isCursorOrRefcursor(cursor)) {
-            throw new SemanticError(Misc.getLineOf(ctx),
+            throw new SemanticError(Misc.getLineOf(ctx),    // s012
                 "cursor attributes cannot be read from a non-cursor object");
         }
 
@@ -1828,6 +1822,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     // --------------------------------------------------------
     // Private
     // --------------------------------------------------------
+
+    private static final BigInteger UINT_LITERAL_MAX = new BigInteger("99999999999999999999999999999999999999");
+    private static final BigInteger BIGINT_MAX = new BigInteger("9223372036854775807");
+    private static final BigInteger INT_MAX = new BigInteger("2147483648");
 
     private static final String SYMBOL_TABLE_TOP = "%predefined";
     private static final NodeList<DeclParam> EMPTY_PARAMS = new NodeList<>();
