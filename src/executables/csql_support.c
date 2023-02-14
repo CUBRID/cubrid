@@ -267,15 +267,6 @@ csql_invoke_formatter ()
       return CSQL_FAILURE;
     }
 
-  char *cmd = csql_get_tmp_buf (strlen (csql_Editor_cmd + 1 + before_filename.size ()));
-  if (cmd == NULL)
-    {
-      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
-      return CSQL_FAILURE;
-    }
-  fclose (before_file.release ());
-  sprintf (cmd, "%s %s", csql_Editor_cmd, before_filename.c_str ());
-
   auto[after_filename, after_fileptr] = filesys::open_temp_file ("aft_fmt_");
   if (after_fileptr == NULL)
     {

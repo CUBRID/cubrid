@@ -189,7 +189,6 @@ static int csql_column_width_info_list_size = 0;
 static int csql_column_width_info_list_index = 0;
 
 static bool csql_Query_trace = false;
-static bool csql_Editor_format = false;
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(WINDOWS)
