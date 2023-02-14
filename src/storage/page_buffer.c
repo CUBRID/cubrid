@@ -8557,10 +8557,8 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
 
       if (perfmon_is_perf_tracking ())
         {
-          // supply the value in greater values to allow for increased accuracy of division
-          // to obtain a ratio out of the calculated average, divide by 100.0
-          const double ratio_factored = ((double)compressed_data_size/(double)IO_PAGESIZE) * 100. * 100.;
-          perfmon_time_stat (&thread_r, PSTAT_COMPRESS_PAGES_TRANSFER_RATIO, (UINT64)ratio_factored);
+          perfmon_add_stat (&thread_r, PSTAT_COMPR_HEAP_PAGES_TRANSF_COMPRESSED, (UINT64)compressed_data_size);
+          perfmon_add_stat (&thread_r, PSTAT_COMPR_HEAP_PAGES_TRANSF_UNCOMPRESSED, (UINT64)IO_PAGESIZE);
         }
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
