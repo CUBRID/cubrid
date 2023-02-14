@@ -89,14 +89,13 @@ active_tran_server::connection_handler::connection_handler (cubcomm::channel &&c
 active_tran_server::connection_handler::request_handlers_map_t
 active_tran_server::connection_handler::get_request_handlers ()
 {
-  request_handlers_map_t::value_type saved_lsa_handler_value =
-	  std::make_pair (page_to_tran_request::SEND_SAVED_LSA,
-			  std::bind (&active_tran_server::connection_handler::receive_saved_lsa, this, std::placeholders::_1));
+  /* start from the request handlers in common on ATS and PTS */
+  auto handlers_map = tran_server::connection_handler::get_request_handlers ();
 
-  std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map =
-	  tran_server::connection_handler::get_request_handlers ();
+  auto saved_lsa_handler = std::bind (&active_tran_server::connection_handler::receive_saved_lsa, this,
+				      std::placeholders::_1);
 
-  handlers_map.insert (saved_lsa_handler_value);
+  handlers_map.insert (std::make_pair (page_to_tran_request::SEND_SAVED_LSA, saved_lsa_handler));
 
   return handlers_map;
 }
