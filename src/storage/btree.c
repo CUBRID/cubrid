@@ -1916,38 +1916,6 @@ btree_get_node_level (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
 #endif
 
 /*
- * btree_clear_key_value () -
- *   return: cleared flag
- *   clear_flag (in/out):
- *   key_value (in/out):
- */
-bool
-btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value)
-{
-  if (*clear_flag == true || key_value->need_clear == true)
-    {
-      pr_clear_value (key_value);
-      *clear_flag = false;
-    }
-  // also set null
-  db_make_null (key_value);
-  return *clear_flag;
-}
-
-/*
- * btree_init_temp_key_value () -
- *   return: void
- *   clear_flag (in/out):
- *   key_value (in/out):
- */
-void
-btree_init_temp_key_value (bool * clear_flag, DB_VALUE * key_value)
-{
-  db_make_null (key_value);
-  *clear_flag = false;
-}
-
-/*
  * btree_create_overflow_key_file () - Create file for overflow keyes
  *
  * return   : Error code
