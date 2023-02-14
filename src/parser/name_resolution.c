@@ -1215,17 +1215,17 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 			  PT_DBLINK_INFO *dblink_table = &table->info.dblink_table;
 			  if (dblink_table->owner_name)
 			    {
-			      PT_ERRORf4 (parser, table,
-					  "Failed to get column information for table [%s] on remote [%s].[%s]. error=%d",
+			      PT_ERRORf3 (parser, table,
+					  "Failed to get column information for table [%s] on remote [%s].[%s]",
 					  dblink_table->remote_table_name,
 					  dblink_table->owner_name->info.name.original,
-					  dblink_table->conn->info.name.original, err);
+					  dblink_table->conn->info.name.original);
 			    }
 			  else
 			    {
-			      PT_ERRORf3 (parser, table,
-					  "Failed to get column information for table [%s] on remote [%s]. error=%d",
-					  dblink_table->remote_table_name, dblink_table->conn->info.name.original, err);
+			      PT_ERRORf2 (parser, table,
+					  "Failed to get column information for table [%s] on remote [%s]",
+					  dblink_table->remote_table_name, dblink_table->conn->info.name.original);
 			    }
 
 			  return;
@@ -3905,6 +3905,12 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
     }
   else
     {
+      if (pt_has_error (parser))
+	{
+	  /* if already has error, return with no action */
+	  return 0;
+	}
+
       assert (PT_SPEC_IS_CTE (spec) || PT_SPEC_IS_DERIVED (spec));
       col = pt_is_on_list (parser, name, spec->info.spec.as_attr_list);
       ok = (col != NULL);
@@ -5845,6 +5851,12 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	    }
 	  else
 	    {
+	      if (pt_has_error (parser))
+		{
+		  /* if already has error, shrink error message */
+		  return NULL;
+		}
+
 	      temp = arg1->data_type;
 	      if (temp)
 		{
@@ -5902,6 +5914,12 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	    }
 	  else
 	    {
+	      if (pt_has_error (parser))
+		{
+		  /* if already has error, shrink error message */
+		  return NULL;
+		}
+
 	      temp = arg1->data_type;
 	      if (temp)
 		{
