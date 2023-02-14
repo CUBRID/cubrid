@@ -1215,17 +1215,17 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 			  PT_DBLINK_INFO *dblink_table = &table->info.dblink_table;
 			  if (dblink_table->owner_name)
 			    {
-			      PT_ERRORf3 (parser, table,
-					  "Failed to get column information for table [%s] on remote [%s].[%s]",
+			      PT_ERRORf4 (parser, table,
+					  "Failed to get column information for table [%s] on remote [%s].[%s]. err=%d",
 					  dblink_table->remote_table_name,
 					  dblink_table->owner_name->info.name.original,
-					  dblink_table->conn->info.name.original);
+					  dblink_table->conn->info.name.original, err);
 			    }
 			  else
 			    {
-			      PT_ERRORf2 (parser, table,
-					  "Failed to get column information for table [%s] on remote [%s]",
-					  dblink_table->remote_table_name, dblink_table->conn->info.name.original);
+			      PT_ERRORf3 (parser, table,
+					  "Failed to get column information for table [%s] on remote [%s]. err=%d",
+					  dblink_table->remote_table_name, dblink_table->conn->info.name.original, err);
 			    }
 
 			  return;
