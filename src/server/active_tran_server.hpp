@@ -62,7 +62,6 @@ class active_tran_server : public tran_server
     };
 
   private:
-    void on_boot () final override;
     bool get_remote_storage_config () final override;
 
     void stop_outgoing_page_server_messages () final override;

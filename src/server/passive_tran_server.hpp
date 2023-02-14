@@ -73,7 +73,6 @@ class passive_tran_server : public tran_server
 
     bool uses_remote_storage () const final override;
     bool get_remote_storage_config () final override;
-    void on_boot () final override;
 
     void stop_outgoing_page_server_messages () final override;
     connection_handler *create_connection_handler (cubcomm::channel &&chn,

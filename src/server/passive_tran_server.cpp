@@ -42,12 +42,6 @@ passive_tran_server::get_remote_storage_config ()
   return true;
 }
 
-void
-passive_tran_server::on_boot ()
-{
-  assert (is_passive_transaction_server ());
-}
-
 passive_tran_server::connection_handler::request_handlers_map_t
 passive_tran_server::connection_handler::get_request_handlers ()
 {

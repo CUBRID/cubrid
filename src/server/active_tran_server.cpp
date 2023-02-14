@@ -68,12 +68,6 @@ active_tran_server::get_remote_storage_config ()
 }
 
 void
-active_tran_server::on_boot ()
-{
-  assert (is_active_transaction_server ());
-}
-
-void
 active_tran_server::stop_outgoing_page_server_messages ()
 {
 }

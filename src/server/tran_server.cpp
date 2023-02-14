@@ -133,8 +133,6 @@ tran_server::boot (const char *db_name)
 	}
     }
 
-  on_boot ();
-
   return NO_ERROR;
 }
 
