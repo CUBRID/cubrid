@@ -1302,7 +1302,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.pushSymbolTable("for_d_sql_loop", null);
 
-        String record = Misc.getNormalizedText(ctx.for_dynamic_sql().record_name());
+        ParserRuleContext recNameCtx = ctx.for_dynamic_sql().record_name();
+        String record = Misc.getNormalizedText(recNameCtx);
 
         Expr dynSql = visitExpression(ctx.for_dynamic_sql().dyn_sql());
 
@@ -1324,7 +1325,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             symbolStack.putDecl(label, declLabel);
         }
 
-        DeclForRecord declForRecord = new DeclForRecord(ctx.for_dynamic_sql().record_name(), record);
+        DeclForRecord declForRecord = new DeclForRecord(recNameCtx, record);
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());

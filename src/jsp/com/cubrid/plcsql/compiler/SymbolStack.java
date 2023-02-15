@@ -434,7 +434,7 @@ public class SymbolStack {
             return ret;
         }
 
-        // TODO: separate Symbol from AstNode. Remove 'extends Decl' and the following method
+        // TODO: separate Symbol from AstNode. Remove 'extends Decl' and the following methods
         @Override
         public <R> R accept(AstNodeVisitor<R> visitor) {
             assert false: "unreachable";

@@ -129,9 +129,7 @@ public abstract class AstNodeVisitor<R> {
     /* no need to visit the following classes
     # super classes/inteerfaces
     AstNode
-    NodeList
     Decl
-    DeclBase
     DeclId
     DeclParam
     DeclRoutine
@@ -145,8 +143,6 @@ public abstract class AstNodeVisitor<R> {
     DeclForRecord
 
     # dummies
-    DummyExpr
-    DummyStmt
     ExprCast
      */
 }
