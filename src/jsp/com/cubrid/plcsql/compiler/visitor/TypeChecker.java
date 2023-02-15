@@ -665,13 +665,13 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
 
         ty = visit(node.errCode);
         if (!ty.equals(TypeSpecSimple.INTEGER)) {
-            throw new SemanticError(node.errCode.lineNo(),  // s227
+            throw new SemanticError(node.errCode.lineNo(),  // s220
                 "error code must be an integer");
         }
 
         ty = visit(node.errMsg);
         if (!ty.equals(TypeSpecSimple.STRING)) {
-            throw new SemanticError(node.errMsg.lineNo(),   // s228
+            throw new SemanticError(node.errMsg.lineNo(),   // s218
                 "error message must be a string");
         }
 
@@ -683,7 +683,7 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
             TypeSpec valType = visit(node.retVal);
             Coerce c = Coerce.getCoerce(valType, node.retType);
             if (c == null) {
-                throw new SemanticError(node.retVal.lineNo(),   // s229
+                throw new SemanticError(node.retVal.lineNo(),   // s217
                     "return value has a type incompatible with the return type");
             }
             node.retVal.setCoerce(c);
@@ -698,7 +698,7 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
     public TypeSpec visitStmtWhileLoop(StmtWhileLoop node) {
         TypeSpec condType = visit(node.cond);
         if (!condType.equals(TypeSpecSimple.BOOLEAN)) {
-            throw new SemanticError(node.cond.lineNo(), // s230
+            throw new SemanticError(node.cond.lineNo(), // s211
                 "condition expressions of while loops must be of the BOOLEAN type");
         }
         visitNodeList(node.stmts);
