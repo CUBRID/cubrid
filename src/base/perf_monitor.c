@@ -565,11 +565,12 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_DEALLOC_CNT, "Num_data_page_avoid_dealloc"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_VICTIM_CNT, "Num_data_page_avoid_victim"),
 
-  /* Scalability statistics */
+  /* Scalability statistics - specific to: Page Server, Passive Transaction Server */
   /* Peek time in msec taken for the log to be transferred, processed an applied on the page server */
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_REDO_REPL_DELAY, "Redo_replication_delay_msec"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_REDO_REPL_LOG_REDO_SYNC, "Redo_replication_log_redo_sync"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_REDO_FUNC_EXEC, "Log_redo_func_exec"),
+  /* Scalability statistics - specific to: Page Server */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_COMPR_HEAP_PAGES_TRANSF_COMPRESSED, "Compr_heap_pages_transf_compressed"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_COMPR_HEAP_PAGES_TRANSF_UNCOMPRESSED, "Compr_heap_pages_transf_uncompressed"),
   PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_COMPR_HEAP_PAGES_TRANSF_RATIO, "Compr_heap_pages_transf_ratio"),
