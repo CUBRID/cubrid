@@ -4314,7 +4314,7 @@ sm_update_statistics (MOP classop, bool with_fullscan)
  *
  * NOTE: We will delay updating statistics until a transaction is committed
  *       when it is requested during other processing, such as
- *       "alter table ..." or "create index ...".
+ *       "alter table ...." or "create index ...".
  */
 int
 sm_update_statistics_without_gathering_stats (MOP classop, bool with_fullscan)
