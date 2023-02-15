@@ -46,16 +46,37 @@ class passive_tran_server : public tran_server
     void wait_replication_past_target_lsa (LOG_LSA lsa);
 
   private:
+    class connection_handler : public tran_server::connection_handler
+    {
+      public:
+	connection_handler () = delete;
+
+	connection_handler (cubcomm::channel &&chn, tran_server &ts)
+	  : tran_server::connection_handler (std::move (chn), ts, get_request_handlers())
+	{}
+
+	connection_handler (const connection_handler &) = delete;
+	connection_handler (connection_handler &&) = delete;
+
+	connection_handler &operator= (const connection_handler &) = delete;
+	connection_handler &operator= (connection_handler &&) = delete;
+
+      private:
+	request_handlers_map_t get_request_handlers () final override;
+
+	/* reuqest handlers */
+	void receive_log_prior_list (page_server_conn_t::sequenced_payload &a_ip);
+    };
+
+  private:
     void send_oldest_active_mvccid (cubthread::entry &thread_entry);
 
     bool uses_remote_storage () const final override;
     bool get_remote_storage_config () final override;
-    void on_boot () final override;
-    request_handlers_map_t get_request_handlers () final override;
-
-    void receive_log_prior_list (page_server_conn_t::sequenced_payload &a_ip);
 
     void stop_outgoing_page_server_messages () final override;
+    connection_handler *create_connection_handler (cubcomm::channel &&chn,
+	tran_server &ts) const final override;
 
   private:
     std::unique_ptr<cublog::atomic_replicator> m_replicator;

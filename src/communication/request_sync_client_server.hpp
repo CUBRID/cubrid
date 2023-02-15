@@ -116,8 +116,6 @@ namespace cubcomm
       sequenced_payload &operator= (sequenced_payload &&other);
       sequenced_payload &operator= (const sequenced_payload &) = delete;
 
-      sequenced_payload &operator= (std::nullptr_t);
-
       void push_payload (T_PAYLOAD &&a_payload);
       T_PAYLOAD pull_payload ();
 
@@ -344,17 +342,6 @@ namespace cubcomm
 
 	other.m_rsn = NO_RESPONSE_SEQUENCE_NUMBER;
       }
-    return *this;
-  }
-
-
-  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
-  typename request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::sequenced_payload &
-  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::sequenced_payload::operator= (
-	  std::nullptr_t)
-  {
-    m_rsn = NO_RESPONSE_SEQUENCE_NUMBER;
-    m_user_payload.clear ();
     return *this;
   }
 
