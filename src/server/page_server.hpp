@@ -124,6 +124,9 @@ class page_server
 
 	void remove_prior_sender_sink ();
 
+	// request disconnection from this connection (TS)
+	void push_disconnection_request ();
+
       private:
 	// Request handlers for the request server:
 	void receive_boot_info_request (tran_server_conn_t::sequenced_payload &a_ip);
