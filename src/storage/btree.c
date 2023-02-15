@@ -6160,6 +6160,9 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
       return error_code;
     }
   /* Execute scan. */
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+  btree_scan.is_fk_remake = is_newly;
+#endif
   error_code = btree_range_scan (thread_p, &btree_scan, btree_range_scan_find_fk_any_object);
   assert (error_code == NO_ERROR || er_errid () != NO_ERROR);
 
@@ -25882,7 +25885,18 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       /* Key was fully consumed. We are here because no object was found. Since this key was the only one of interest,
        * scan can be stopped. */
       assert (OID_ISNULL (&((BTREE_FIND_FK_OBJECT *) bts->bts_other)->found_oid));
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+      if (bts->is_fk_remake)
+	{
+	  bts->key_status = BTS_KEY_IS_CONSUMED;
+	}
+      else
+	{
+	  bts->end_scan = true;
+	}
+#else
       bts->end_scan = true;
+#endif
     }
   return NO_ERROR;
 }

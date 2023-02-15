@@ -12558,14 +12558,6 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 #if defined(SUPPORT_KEY_DUP_LEVEL)
       if (IS_RESERVED_INDEX_ATTR_ID (atts[i]->id))
 	{
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
-	  if (index->type == BTREE_FOREIGN_KEY)
-	    {
-	      //printf ("foreign key!!!\n");
-	      ;			//continue; 
-	    }
-#endif
-
 	  dk_heap_midxkey_get_reserved_index_value (atts[i]->id, rec_oid, &value);
 	  atts[i]->domain->type->index_writeval (&buf, &value);
 	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);

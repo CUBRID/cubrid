@@ -242,7 +242,9 @@ struct btree_scan
   bool is_btid_int_valid;
   bool is_scan_started;
   bool force_restart_from_root;
-
+#if 1				/* defined(SUPPORT_KEY_DUP_LEVEL_FK) */
+  bool is_fk_remake;
+#endif
   PERF_UTIME_TRACKER time_track;
 
   void *bts_other;
@@ -294,6 +296,7 @@ struct btree_scan
     OID_SET_NULL (&(bts)->match_class_oid);		\
     (bts)->time_track.is_perf_tracking = false;		\
     (bts)->bts_other = NULL;				\
+    (bts)->is_fk_remake = false;                        \
   } while (0)
 
 #define BTREE_RESET_SCAN(bts)				\
@@ -312,6 +315,7 @@ struct btree_scan
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
     (bts)->is_scan_started = false;			\
+    (bts)->is_fk_remake = false;                        \
   } while (0)
 
 #define BTREE_END_OF_SCAN(bts) \

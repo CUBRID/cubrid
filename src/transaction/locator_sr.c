@@ -4042,11 +4042,12 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
+  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
-  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info, true);
-#else
-  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info);
+					      , true
 #endif
+    );
+
   if (num_found <= 0)
     {
       return error_code;

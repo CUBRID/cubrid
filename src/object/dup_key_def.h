@@ -41,8 +41,5 @@
 #define SUPPORT_KEY_DUP_LEVEL_FK
 #endif
 
-/* TODO:
- * 1. heap_attrvalue_get_key, heap_midxkey_key_get 에서 파라메터 제거하고 <match type> 점검에 대한 공통루틴 이용할까?
- * 2.  btree_check_foreign_key에서도 점검해야 할지 조사 필요 --> check_fk_validity()에서 조치를 하고 들어옴
-*/
+
 #endif // _DUP_KEY_DEF_H_
