@@ -871,6 +871,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         NodeList<Decl> decls = visitSeq_of_declare_specs(ctx.seq_of_declare_specs());
         Body body = visitBody(ctx.body());
+        if (body.label != null && !body.label.equals(name)) {
+            throw new SemanticError(Misc.getLineOf(ctx.body().label_name()),
+                String.format("label does not match the %s name %s", isFunction ? "function" : "procedure", name)); // s053
+        }
 
         symbolStack.popSymbolTable();
 
@@ -907,7 +911,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         controlFlowBlocked = allFlowsBlocked;   // s017-1
-        return new Body(ctx, stmts, exHandlers);
+
+        String label;
+        if (ctx.label_name() == null) {
+            label = null;
+        } else {
+            label = Misc.getNormalizedText(ctx.label_name());
+        }
+
+        return new Body(ctx, stmts, exHandlers, label);
     }
 
     @Override
@@ -1980,7 +1992,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         s = quotedStrToJavaStr(s);
         ZonedDateTime timestamp = DateTimeParser.ZonedDateTimeLiteral.parse(s, forDatetime);
         if (timestamp == null) {
-            throw new SemanticError(Misc.getLineOf(ctx),    // s053
+            throw new SemanticError(Misc.getLineOf(ctx),    // s052
                 String.format("invalid %s string: %s", originType, s));
         }
         addToImports("java.time.ZoneOffset");

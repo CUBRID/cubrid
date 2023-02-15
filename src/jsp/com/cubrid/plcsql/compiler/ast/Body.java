@@ -46,8 +46,9 @@ public class Body extends AstNode {
 
     public final NodeList<Stmt> stmts;
     public final NodeList<ExHandler> exHandlers;
+    public final String label;
 
-    public Body(ParserRuleContext ctx, NodeList<Stmt> stmts, NodeList<ExHandler> exHandlers) {
+    public Body(ParserRuleContext ctx, NodeList<Stmt> stmts, NodeList<ExHandler> exHandlers, String label) {
         super(ctx);
 
         assert stmts != null; // stmts cannot be null by the syntax
@@ -55,6 +56,7 @@ public class Body extends AstNode {
 
         this.stmts = stmts;
         this.exHandlers = exHandlers;
+        this.label = label;
     }
 
     @Override
