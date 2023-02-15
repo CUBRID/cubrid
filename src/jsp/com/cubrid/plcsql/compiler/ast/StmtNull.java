@@ -33,13 +33,13 @@ package com.cubrid.plcsql.compiler.ast;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 
 // TODO: can use singleton
 public class StmtNull extends Stmt {
 
     @Override
-    public <R> R accept(AstNodeVisitor<R> visitor) {
+    public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitStmtNull(this);
     }
 

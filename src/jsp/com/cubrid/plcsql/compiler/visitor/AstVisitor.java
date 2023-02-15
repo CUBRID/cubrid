@@ -31,46 +31,21 @@
 package com.cubrid.plcsql.compiler.visitor;
 
 import com.cubrid.plcsql.compiler.ast.*;
-import com.cubrid.plcsql.compiler.SemanticError;
 
-public abstract class AstNodeVisitor<R> {
+public abstract class AstVisitor<R> {
 
     public R visit(AstNode node) {
         return node.accept(this);
     }
 
-    public <E extends AstNode> R visitNodeList(NodeList<E> nodeList) {
-        // default implementation is provided for NodeList
-        for (E e: nodeList.nodes) {
-            visit(e);
-        }
-        return null;
-    }
-
     public abstract R visitUnit(Unit node);
-    public abstract R visitBody(Body node);
-
-    public abstract R visitExHandler(ExHandler node);
-    public abstract R visitExName(ExName node);
-
-    public abstract R visitTypeSpecNumeric(TypeSpecNumeric node);
-    public abstract R visitTypeSpecPercent(TypeSpecPercent node);
-    public abstract R visitTypeSpecSimple(TypeSpecSimple node);
-
-    public abstract R visitCaseExpr(CaseExpr node);
-    public abstract R visitCaseStmt(CaseStmt node);
-    public abstract R visitCondExpr(CondExpr node);
-    public abstract R visitCondStmt(CondStmt node);
-
-    public abstract R visitDeclParamIn(DeclParamIn node);
-    public abstract R visitDeclParamOut(DeclParamOut node);
-
-    public abstract R visitDeclVar(DeclVar node);
-    public abstract R visitDeclConst(DeclConst node);
 
     public abstract R visitDeclFunc(DeclFunc node);
     public abstract R visitDeclProc(DeclProc node);
-
+    public abstract R visitDeclParamIn(DeclParamIn node);
+    public abstract R visitDeclParamOut(DeclParamOut node);
+    public abstract R visitDeclVar(DeclVar node);
+    public abstract R visitDeclConst(DeclConst node);
     public abstract R visitDeclCursor(DeclCursor node);
     public abstract R visitDeclLabel(DeclLabel node);
     public abstract R visitDeclException(DeclException node);
@@ -125,6 +100,28 @@ public abstract class AstNodeVisitor<R> {
     public abstract R visitStmtReturn(StmtReturn node);
     public abstract R visitStmtRollback(StmtRollback node);
     public abstract R visitStmtWhileLoop(StmtWhileLoop node);
+
+    public abstract R visitBody(Body node);
+
+    public abstract R visitExHandler(ExHandler node);
+    public abstract R visitExName(ExName node);
+
+    public abstract R visitTypeSpecNumeric(TypeSpecNumeric node);
+    public abstract R visitTypeSpecPercent(TypeSpecPercent node);
+    public abstract R visitTypeSpecSimple(TypeSpecSimple node);
+
+    public abstract R visitCaseExpr(CaseExpr node);
+    public abstract R visitCaseStmt(CaseStmt node);
+    public abstract R visitCondExpr(CondExpr node);
+    public abstract R visitCondStmt(CondStmt node);
+
+    public <E extends AstNode> R visitNodeList(NodeList<E> nodeList) {
+        // default implementation is provided for NodeList
+        for (E e: nodeList.nodes) {
+            visit(e);
+        }
+        return null;
+    }
 
     /* no need to visit the following classes
     # super classes/inteerfaces

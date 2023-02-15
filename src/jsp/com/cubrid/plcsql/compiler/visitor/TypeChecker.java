@@ -38,7 +38,7 @@ import com.cubrid.plcsql.compiler.Coerce;
 
 import java.util.List;
 
-public class TypeChecker extends AstNodeVisitor<TypeSpec> {
+public class TypeChecker extends AstVisitor<TypeSpec> {
 
     public TypeChecker(SymbolStack symbolStack, GlobalTypeInfo gti) {
         this.symbolStack = symbolStack;

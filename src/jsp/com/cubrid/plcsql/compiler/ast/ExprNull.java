@@ -31,12 +31,12 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 
 public class ExprNull extends Expr {
 
     @Override
-    public <R> R accept(AstNodeVisitor<R> visitor) {
+    public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitExprNull(this);
     }
 

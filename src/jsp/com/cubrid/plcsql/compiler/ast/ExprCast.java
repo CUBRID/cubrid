@@ -33,7 +33,7 @@ package com.cubrid.plcsql.compiler.ast;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
 
@@ -60,7 +60,7 @@ public class ExprCast extends Expr {
     }
 
     @Override
-    public <R> R accept(AstNodeVisitor<R> visitor) {
+    public <R> R accept(AstVisitor<R> visitor) {
         assert false: "unreachable";
         throw new RuntimeException("unreachable");
     }

@@ -33,7 +33,7 @@ package com.cubrid.plcsql.compiler;
 import static com.cubrid.plcsql.compiler.antlrgen.PcsParser.*;
 
 import com.cubrid.plcsql.compiler.ast.*;
-import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -436,7 +436,7 @@ public class SymbolStack {
 
         // TODO: separate Symbol from AstNode. Remove 'extends Decl' and the following methods
         @Override
-        public <R> R accept(AstNodeVisitor<R> visitor) {
+        public <R> R accept(AstVisitor<R> visitor) {
             assert false: "unreachable";
             throw new RuntimeException("unreachable");
         }

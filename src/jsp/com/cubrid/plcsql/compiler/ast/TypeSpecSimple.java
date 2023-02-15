@@ -31,7 +31,7 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
 
@@ -41,7 +41,7 @@ import java.util.HashMap;
 public class TypeSpecSimple extends TypeSpec {
 
     @Override
-    public <R> R accept(AstNodeVisitor<R> visitor) {
+    public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitTypeSpecSimple(this);
     }
 
