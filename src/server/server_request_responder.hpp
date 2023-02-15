@@ -288,7 +288,6 @@ server_request_responder<T_CONN>::task::task (server_request_responder &request_
 template<typename T_CONN>
 server_request_responder<T_CONN>::task::~task ()
 {
-  m_sequenced_payload = nullptr;
   m_function = nullptr;
 }
 

@@ -64,12 +64,6 @@ class test_conn
 	{
 	}
 
-	sequenced_payload &operator= (std::nullptr_t)
-	{
-	  m_rsn = 0;
-	  m_payload = 0;
-	}
-
 	payload_t pull_payload ()
 	{
 	  payload_t ret = m_payload;
