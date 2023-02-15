@@ -405,7 +405,17 @@ public class TypeChecker extends AstNodeVisitor<TypeSpec> {
     }
     @Override
     public TypeSpec visitExprUint(ExprUint node) {
-        return node.ty;
+        switch(node.ty) {
+        case BIGDECIMAL:
+            return TypeSpecSimple.BIGDECIMAL;
+        case LONG:
+            return TypeSpecSimple.LONG;
+        case INTEGER:
+            return TypeSpecSimple.INTEGER;
+        default:
+            assert false: "unreachable";
+            throw new RuntimeException("unreachable");
+        }
     }
     @Override
     public TypeSpec visitExprFloat(ExprFloat node) {

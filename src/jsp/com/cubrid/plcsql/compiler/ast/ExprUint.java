@@ -37,15 +37,21 @@ import com.cubrid.plcsql.compiler.visitor.AstNodeVisitor;
 
 public class ExprUint extends Expr {
 
+    public enum Type {
+        BIGDECIMAL,
+        LONG,
+        INTEGER
+    }
+
     @Override
     public <R> R accept(AstNodeVisitor<R> visitor) {
         return visitor.visitExprUint(this);
     }
 
     public final String val;
-    public final TypeSpec ty;
+    public final Type ty;
 
-    public ExprUint(ParserRuleContext ctx, String val, TypeSpec ty) {
+    public ExprUint(ParserRuleContext ctx, String val, Type ty) {
         super(ctx);
 
         this.val = val;
@@ -54,6 +60,14 @@ public class ExprUint extends Expr {
 
     @Override
     public String toJavaCode() {
+        switch (ty) {
+            case BIGDECIMAL:
+                return "new BigDecimal(\"" + val + "\")";
+            case LONG:
+                return "new Long(" + val + "L)";
+            case INTEGER:
+                return "new Integer(" + val + ")";
+        }
         return val;
     }
 

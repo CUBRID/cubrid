@@ -492,18 +492,19 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public ExprUint visitUint_exp(Uint_expContext ctx) {
 
         try {
-            TypeSpec ty;
+            ExprUint.Type ty;
 
             BigInteger bi = new BigInteger(ctx.UNSIGNED_INTEGER().getText());
             if (bi.compareTo(UINT_LITERAL_MAX) > 0) {
                 throw new SemanticError(Misc.getLineOf(ctx),    // s006
                     "number of digits of integer literals may not exceed 38");
             } else if (bi.compareTo(BIGINT_MAX) > 0) {
-                ty = TypeSpecSimple.BIGDECIMAL;
+                addToImports("java.math.BigDecimal");
+                ty = ExprUint.Type.BIGDECIMAL;
             } else if (bi.compareTo(INT_MAX) > 0) {
-                ty = TypeSpecSimple.LONG;
+                ty = ExprUint.Type.LONG;
             } else {
-                ty = TypeSpecSimple.INTEGER;
+                ty = ExprUint.Type.INTEGER;
             }
 
             return new ExprUint(ctx, bi.toString(), ty);
