@@ -165,6 +165,10 @@ static PT_NODE *pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const
 						  int arg_info_count, PT_NODE * args);
 static PT_NODE *pt_resolve_showstmt_args_named (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_ARG * arg_infos,
 						int arg_info_count, PT_NODE * args);
+
+static bool pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, SERVER_NAME_LIST * snl);
+static void pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text,
+					 int local_upd, int remote_upd, SERVER_NAME_LIST * snl);
 #define NULL_ATTRID -1
 
 /*
@@ -10710,7 +10714,7 @@ pt_get_name_without_current_user_name (const char *name)
 }
 
 static PT_NODE *
-pt_mk_spec_drived_dblink_table (PARSER_CONTEXT * parser, PT_NODE * from_tbl)
+pt_mk_spec_derived_dblink_table (PARSER_CONTEXT * parser, PT_NODE * from_tbl)
 {
   PT_SPEC_INFO *class_spec_info = &from_tbl->info.spec;
   PT_NODE *drived_spec;
@@ -10719,13 +10723,13 @@ pt_mk_spec_drived_dblink_table (PARSER_CONTEXT * parser, PT_NODE * from_tbl)
 
   if ((drived_spec = parser_new_node (parser, PT_DBLINK_TABLE)) == NULL)
     {
-      PT_ERROR (parser, from_tbl, "Oops! Sorry, insufficient memory.");
+      PT_ERRORmf (parser, drived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
       return NULL;
     }
 
   if ((new_range_var = parser_new_node (parser, PT_NAME)) == NULL)
     {
-      PT_ERROR (parser, from_tbl, "Oops! Sorry, insufficient memory.");
+      PT_ERRORmf (parser, drived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
       parser_free_node (parser, drived_spec);
       return NULL;
     }
@@ -10769,8 +10773,6 @@ pt_mk_spec_drived_dblink_table (PARSER_CONTEXT * parser, PT_NODE * from_tbl)
       var_buf = pt_print_bytes (parser, class_spec_info->entity_name);
     }
 
-  //  extern char * pt_makename (const char *name);
-  //new_range_var->info.name.original = pt_makename ((char*)var_buf->bytes);
   new_range_var->info.name.original = pt_append_string (parser, NULL, (char *) var_buf->bytes);
 
 
@@ -11165,10 +11167,6 @@ error_return:
 }
 
 static void
-pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text,
-			     int local_upd, int remote_upd, SERVER_NAME_LIST * snl);
-
-static void
 pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text, SERVER_NAME_LIST * snl)
 {
   PT_NODE *target, *source;
@@ -11278,8 +11276,6 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
 
   return;
 }
-
-static bool pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, SERVER_NAME_LIST * snl);
 
 static void
 pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text, SERVER_NAME_LIST * snl)
@@ -11407,8 +11403,6 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
 
 	  if (pt_convert_dblink_select_query (parser, sel, snl))
 	    {
-	      extern PT_NODE *pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * sel, void *arg,
-						     int *continue_walk);
 	      parser_walk_tree (parser, sel, pt_check_dblink_query, NULL, NULL, NULL);
 	    }
 	}
@@ -11435,7 +11429,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
 
   if (snl->server_cnt == tmp_server_cnt || (local_upd > 0 && remote_upd == 0))
     {
-      /* local update onley */
+      /* local update only */
       return;
     }
 
@@ -11460,14 +11454,14 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
   PT_NODE *ct = parser_new_node (parser, PT_DBLINK_TABLE_DML);
   if (!ct)
     {
-      assert (false);
+      PT_ERRORmf (parser, ct, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
       return;
     }
 
   PT_NODE *val = parser_new_node (parser, PT_VALUE);
   if (!val)
     {
-      assert (false);
+      PT_ERRORmf (parser, val, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
       return;
     }
 
@@ -11548,7 +11542,7 @@ pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, S
 
       if (from_tbl->info.spec.entity_name && from_tbl->info.spec.remote_server_name)
 	{
-	  from_tbl = pt_mk_spec_drived_dblink_table (parser, from_tbl);
+	  from_tbl = pt_mk_spec_derived_dblink_table (parser, from_tbl);
 	  has_dblink = true;
 	}
 
@@ -11570,8 +11564,6 @@ pt_convert_server (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
     case PT_SELECT:
       if (pt_convert_dblink_select_query (parser, node, snl))
 	{
-	  extern PT_NODE *pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
-						 int *continue_walk);
 	  parser_walk_tree (parser, node, pt_check_dblink_query, NULL, NULL, NULL);
 	}
       break;
