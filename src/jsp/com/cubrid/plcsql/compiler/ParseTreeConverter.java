@@ -165,7 +165,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public TypeSpecSimple visitString_type(String_typeContext ctx) {
+    public TypeSpecSimple visitChar_type(Char_typeContext ctx) {
         // ignore length for now
         return TypeSpecSimple.of("java.lang.String");
     }

@@ -494,7 +494,7 @@ type_spec
 
 native_datatype
     : numeric_type
-    | string_type
+    | char_type
     | simple_type
     ;
 
@@ -502,13 +502,13 @@ numeric_type
     : (NUMERIC | DECIMAL | DEC) ('(' precision=UNSIGNED_INTEGER (',' scale=UNSIGNED_INTEGER)? ')')?
     ;
 
-string_type
+char_type
     : (CHAR | VARCHAR) ( '(' length=UNSIGNED_INTEGER ')' )?
-    | STRING
     ;
 
 simple_type
     : BOOLEAN
+    | STRING
     | SHORT | SMALLINT
     | INT | INTEGER
     | BIGINT
