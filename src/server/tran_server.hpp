@@ -26,6 +26,7 @@
 
 #include <string>
 #include <vector>
+#include <shared_mutex>
 
 // forward declaration
 namespace cubpacking
@@ -74,7 +75,7 @@ class tran_server
 
     /* send request to the main connection */
     void push_request (tran_to_page_request reqid, std::string &&payload);
-    int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
+    int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out);
 
     void disconnect_all_page_servers ();
     bool is_page_server_connected () const;
@@ -144,6 +145,7 @@ class tran_server
   private:
     std::vector<cubcomm::node> m_connection_list;
     std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
+    std::shared_mutex m_page_server_conn_vec_mtx;
 
     cubcomm::server_server m_conn_type;
 };

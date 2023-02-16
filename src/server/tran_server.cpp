@@ -29,6 +29,7 @@
 #include <cstring>
 #include <functional>
 #include <string>
+#include <shared_mutex>
 
 static void assert_is_tran_server ();
 
@@ -154,12 +155,16 @@ tran_server::send_receive (size_t idx, tran_to_page_request reqid, std::string &
 void
 tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
 {
+  std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
+
   push_request (0, reqid, std::move (payload));
 }
 
 int
-tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const
+tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out)
 {
+  std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
+
   return send_receive (0, reqid, std::move (payload_in), payload_out);
 }
 
@@ -403,19 +408,22 @@ tran_server::connection_handler::get_request_handlers ()
 void
 tran_server::connection_handler::receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip)
 {
-  // TODO add a mutex
   auto &conn_vec = m_ts.m_page_server_conn_vec;
-  auto it = conn_vec.begin();
-  for (; it != conn_vec.end(); it++)
-    {
-      // TODO trigger the main connection change procedure when it was the main connection
-      if (it->get () == this)
-	{
-	  conn_vec.erase (it);
-	}
-    }
+  {
+    std::lock_guard<std::shared_mutex> lk_guard (m_ts.m_page_server_conn_vec_mtx);
 
-  assert (it != conn_vec.end ());
+    auto it = conn_vec.begin();
+    for (; it != conn_vec.end(); it++)
+      {
+	// TODO trigger the main connection change procedure when it was the main connection
+	if (it->get () == this)
+	  {
+	    conn_vec.erase (it);
+	  }
+      }
+
+    assert (it != conn_vec.end ());
+  }
 
   disconnect ();
 }

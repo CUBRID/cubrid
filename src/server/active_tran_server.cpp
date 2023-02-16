@@ -37,7 +37,7 @@ active_tran_server::uses_remote_storage () const
 }
 
 MVCCID
-active_tran_server::get_oldest_active_mvccid_from_page_server () const
+active_tran_server::get_oldest_active_mvccid_from_page_server ()
 {
   std::string response_message;
   const int error_code = send_receive (tran_to_page_request::GET_OLDEST_ACTIVE_MVCCID, std::string (), response_message);
