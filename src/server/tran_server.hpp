@@ -129,9 +129,6 @@ class tran_server
     // Before disconnecting page server, make sure no message is being sent anymore to the page server.
     virtual void stop_outgoing_page_server_messages () = 0;
 
-  protected:
-    std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
-
   private:
     int init_page_server_hosts (const char *db_name);
     int get_boot_info_from_page_server ();
@@ -146,6 +143,8 @@ class tran_server
 
   private:
     std::vector<cubcomm::node> m_connection_list;
+    std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
+
     cubcomm::server_server m_conn_type;
 };
 
