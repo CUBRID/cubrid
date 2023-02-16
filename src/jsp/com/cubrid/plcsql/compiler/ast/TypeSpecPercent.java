@@ -30,9 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
-import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 
 public class TypeSpecPercent extends TypeSpec {
@@ -48,7 +45,7 @@ public class TypeSpecPercent extends TypeSpec {
     public final String column;
 
     public TypeSpecPercent(String table, String column) {
-        super("%TODO-TypeSpecPercent%");    // name unknown yet
+        super("%TODO-TypeSpecPercent%"); // name unknown yet
         this.table = table;
         this.column = column;
     }

@@ -29,12 +29,9 @@
  */
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
-import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-
 import java.util.Arrays;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class DeclCursor extends DeclId {
 
@@ -51,8 +48,12 @@ public class DeclCursor extends DeclId {
     public int[] paramRefCounts;
     public int[] usedValuesMap;
 
-    public DeclCursor(ParserRuleContext ctx,
-            String name, NodeList<DeclParam> paramList, ExprStr sql, NodeList<ExprId> usedVars) {
+    public DeclCursor(
+            ParserRuleContext ctx,
+            String name,
+            NodeList<DeclParam> paramList,
+            ExprStr sql,
+            NodeList<ExprId> usedVars) {
         super(ctx);
 
         assert paramList != null;

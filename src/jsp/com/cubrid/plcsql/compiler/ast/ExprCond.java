@@ -30,12 +30,9 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
-import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprCond extends Expr {
 
@@ -59,8 +56,9 @@ public class ExprCond extends Expr {
 
         if (TypeSpecSimple.NULL.equals(resultType)) {
             if (elsePart == null) { // TODO
-                assert false: "every case has null and else-part is absent: not implemented yet";
-                throw new RuntimeException("every case has null and else-part is absent: not implemented yet");
+                assert false : "every case has null and else-part is absent: not implemented yet";
+                throw new RuntimeException(
+                        "every case has null and else-part is absent: not implemented yet");
             } else {
                 return "null";
             }
@@ -71,8 +69,7 @@ public class ExprCond extends Expr {
             } else {
                 elseCode = elsePart.toJavaCode();
             }
-            return tmpl
-                    .replace("%'COND-PARTS'%", condParts.toJavaCode())
+            return tmpl.replace("%'COND-PARTS'%", condParts.toJavaCode())
                     .replace("%'ELSE-PART'%", elseCode)
                     .replace("%'RESULT-TYPE'%", resultType.toJavaCode());
         }

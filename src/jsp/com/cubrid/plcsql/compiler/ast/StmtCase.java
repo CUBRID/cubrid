@@ -30,12 +30,9 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
-import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class StmtCase extends Stmt {
 
@@ -49,8 +46,12 @@ public class StmtCase extends Stmt {
     public final NodeList<CaseStmt> whenParts;
     public final NodeList<Stmt> elsePart;
 
-    public StmtCase(ParserRuleContext ctx,
-            int level, Expr selector, NodeList<CaseStmt> whenParts, NodeList<Stmt> elsePart) {
+    public StmtCase(
+            ParserRuleContext ctx,
+            int level,
+            Expr selector,
+            NodeList<CaseStmt> whenParts,
+            NodeList<Stmt> elsePart) {
         super(ctx);
 
         this.level = level;
@@ -74,8 +75,7 @@ public class StmtCase extends Stmt {
         return tmplStmtCase
                 .replace("%'SELECTOR-TYPE'%", selectorType.toJavaCode())
                 .replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
-                .replace(
-                        "  %'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(" else "), 1))
+                .replace("  %'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(" else "), 1))
                 .replace("    %'ELSE-PART'%", Misc.indentLines(elseCode, 2))
                 .replace("%'LEVEL'%", "" + level) // level replacement must go last
         ;

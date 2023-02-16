@@ -30,12 +30,9 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
-import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class StmtIf extends Stmt {
 
@@ -48,8 +45,11 @@ public class StmtIf extends Stmt {
     public final NodeList<CondStmt> condStmtParts;
     public final NodeList<Stmt> elsePart;
 
-    public StmtIf(ParserRuleContext ctx,
-            boolean forSearchedCaseStmt, NodeList<CondStmt> condStmtParts, NodeList<Stmt> elsePart) {
+    public StmtIf(
+            ParserRuleContext ctx,
+            boolean forSearchedCaseStmt,
+            NodeList<CondStmt> condStmtParts,
+            NodeList<Stmt> elsePart) {
         super(ctx);
 
         this.forSearchedCaseStmt = forSearchedCaseStmt;

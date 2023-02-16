@@ -30,8 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
 public abstract class TypeSpec extends AstNode {
 
     public final String name;
@@ -57,8 +55,8 @@ public abstract class TypeSpec extends AstNode {
 
     @Override
     public boolean equals(Object that) {
-        return this == that;    // Actually, this is the same as equals of Object class.
-                                // I just wanted to be explicit.
+        return this == that; // Actually, this is the same as equals of Object class.
+        // I just wanted to be explicit.
     }
 
     @Override

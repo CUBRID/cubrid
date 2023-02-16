@@ -30,13 +30,9 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-
-import com.cubrid.plcsql.compiler.Misc;
-
-import java.util.Map;
 import java.util.HashMap;
+import java.util.Map;
 
 public class TypeSpecSimple extends TypeSpec {
 
@@ -74,56 +70,56 @@ public class TypeSpecSimple extends TypeSpec {
     }
 
     private static final Map<String, TypeSpecSimple> singletons = new HashMap<>();
+
     static {
-        final String[] javaTypes = new String[] {
-            "java.lang.Object",
-            "..Null",       // not an actual java type
-            "..Cursor",     // not an actual java type
+        final String[] javaTypes =
+                new String[] {
+                    "java.lang.Object",
+                    "..Null", // not an actual java type
+                    "..Cursor", // not an actual java type
+                    "java.lang.Boolean",
+                    "java.lang.String",
+                    "java.math.BigDecimal",
+                    "java.lang.Short",
+                    "java.lang.Integer",
+                    "java.lang.Long",
+                    "java.lang.Float",
+                    "java.lang.Double",
+                    "java.time.LocalDate",
+                    "java.time.LocalTime",
+                    "java.time.ZonedDateTime",
+                    "java.time.LocalDateTime",
+                    "java.util.Set",
+                    "org.apache.commons.collections4.MultiSet",
+                    "java.util.List",
+                    "com.cubrid.plcsql.predefined.sp.SpLib.Query"
+                };
 
-            "java.lang.Boolean",
-            "java.lang.String",
-            "java.math.BigDecimal",
-            "java.lang.Short",
-            "java.lang.Integer",
-            "java.lang.Long",
-            "java.lang.Float",
-            "java.lang.Double",
-            "java.time.LocalDate",
-            "java.time.LocalTime",
-            "java.time.ZonedDateTime",
-            "java.time.LocalDateTime",
-            "java.util.Set",
-            "org.apache.commons.collections4.MultiSet",
-            "java.util.List",
-
-            "com.cubrid.plcsql.predefined.sp.SpLib.Query"
-        };
-
-        for (String jt: javaTypes) {
+        for (String jt : javaTypes) {
             TypeSpecSimple r = singletons.put(jt, new TypeSpecSimple(jt));
-            assert r == null;   // no duplicate
+            assert r == null; // no duplicate
         }
     }
 
-    public static TypeSpecSimple OBJECT        = of("java.lang.Object");
-    public static TypeSpecSimple NULL          = of("..Null");
-    public static TypeSpecSimple CURSOR        = of("..Cursor");
+    public static TypeSpecSimple OBJECT = of("java.lang.Object");
+    public static TypeSpecSimple NULL = of("..Null");
+    public static TypeSpecSimple CURSOR = of("..Cursor");
 
-    public static TypeSpecSimple BOOLEAN       = of("java.lang.Boolean");
-    public static TypeSpecSimple STRING        = of("java.lang.String");
-    public static TypeSpecSimple BIGDECIMAL    = of("java.math.BigDecimal");
-    public static TypeSpecSimple SHORT         = of("java.lang.Short");
-    public static TypeSpecSimple INTEGER       = of("java.lang.Integer");
-    public static TypeSpecSimple LONG          = of("java.lang.Long");
-    public static TypeSpecSimple FLOAT         = of("java.lang.Float");
-    public static TypeSpecSimple DOUBLE        = of("java.lang.Double");
-    public static TypeSpecSimple LOCALDATE     = of("java.time.LocalDate");
-    public static TypeSpecSimple LOCALTIME     = of("java.time.LocalTime");
+    public static TypeSpecSimple BOOLEAN = of("java.lang.Boolean");
+    public static TypeSpecSimple STRING = of("java.lang.String");
+    public static TypeSpecSimple BIGDECIMAL = of("java.math.BigDecimal");
+    public static TypeSpecSimple SHORT = of("java.lang.Short");
+    public static TypeSpecSimple INTEGER = of("java.lang.Integer");
+    public static TypeSpecSimple LONG = of("java.lang.Long");
+    public static TypeSpecSimple FLOAT = of("java.lang.Float");
+    public static TypeSpecSimple DOUBLE = of("java.lang.Double");
+    public static TypeSpecSimple LOCALDATE = of("java.time.LocalDate");
+    public static TypeSpecSimple LOCALTIME = of("java.time.LocalTime");
     public static TypeSpecSimple ZONEDDATETIME = of("java.time.ZonedDateTime");
     public static TypeSpecSimple LOCALDATETIME = of("java.time.LocalDateTime");
-    public static TypeSpecSimple SET           = of("java.util.Set");
-    public static TypeSpecSimple MULTISET      = of("org.apache.commons.collections4.MultiSet");
-    public static TypeSpecSimple LIST          = of("java.util.List");
+    public static TypeSpecSimple SET = of("java.util.Set");
+    public static TypeSpecSimple MULTISET = of("org.apache.commons.collections4.MultiSet");
+    public static TypeSpecSimple LIST = of("java.util.List");
 
-    public static TypeSpecSimple REFCURSOR     = of("com.cubrid.plcsql.predefined.sp.SpLib.Query");
+    public static TypeSpecSimple REFCURSOR = of("com.cubrid.plcsql.predefined.sp.SpLib.Query");
 }

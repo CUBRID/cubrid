@@ -30,12 +30,9 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
-import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class Body extends AstNode {
 
@@ -48,7 +45,11 @@ public class Body extends AstNode {
     public final NodeList<ExHandler> exHandlers;
     public final String label;
 
-    public Body(ParserRuleContext ctx, NodeList<Stmt> stmts, NodeList<ExHandler> exHandlers, String label) {
+    public Body(
+            ParserRuleContext ctx,
+            NodeList<Stmt> stmts,
+            NodeList<ExHandler> exHandlers,
+            String label) {
         super(ctx);
 
         assert stmts != null; // stmts cannot be null by the syntax
@@ -74,5 +75,5 @@ public class Body extends AstNode {
     // --------------------------------------------------
 
     private static final String tmpl =
-            Misc.combineLines( "try {", "  %'STATEMENTS'%", "}%'CATCHES'%");
+            Misc.combineLines("try {", "  %'STATEMENTS'%", "}%'CATCHES'%");
 }

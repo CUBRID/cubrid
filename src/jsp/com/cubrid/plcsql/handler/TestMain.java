@@ -31,10 +31,10 @@
 package com.cubrid.plcsql.handler;
 
 import com.cubrid.jsp.data.CompileInfo;
-import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.ParseTreeConverter;
 import com.cubrid.plcsql.compiler.ParseTreePrinter;
 import com.cubrid.plcsql.compiler.PcsLexerEx;
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
 import com.cubrid.plcsql.compiler.visitor.TypeChecker;
@@ -105,7 +105,8 @@ public class TestMain {
         // ------------------------------------------
         // typechecking
 
-        TypeChecker typeChecker = new TypeChecker(converter.symbolStack, null); // TODO: replace null
+        TypeChecker typeChecker =
+                new TypeChecker(converter.symbolStack, null); // TODO: replace null
         typeChecker.visitUnit(unit);
 
         if (verbose) {
@@ -286,7 +287,8 @@ public class TestMain {
                 // ------------------------------------------
                 // typechecking
 
-                TypeChecker typeChecker = new TypeChecker(converter.symbolStack, null); // TODO: replace null
+                TypeChecker typeChecker =
+                        new TypeChecker(converter.symbolStack, null); // TODO: replace null
                 typeChecker.visitUnit(unit);
 
                 System.out.println(
@@ -320,7 +322,8 @@ public class TestMain {
                 System.out.println(" - success");
             } catch (Throwable e) {
                 if (e instanceof SemanticError) {
-                    System.err.println("Semantic Error on line " + ((SemanticError) e).lineNo + ":");
+                    System.err.println(
+                            "Semantic Error on line " + ((SemanticError) e).lineNo + ":");
                 }
 
                 e.printStackTrace();

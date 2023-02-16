@@ -33,7 +33,6 @@ package com.cubrid.plcsql.compiler;
 import com.cubrid.plcsql.compiler.ast.TypeSpec;
 import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 import com.cubrid.plcsql.compiler.ast.TypeSpecVariadic;
-
 import java.util.List;
 
 public class Coerce {
@@ -41,6 +40,7 @@ public class Coerce {
     public String funcName;
 
     public Coerce() {}
+
     public Coerce(String funcName) {
         this.funcName = funcName;
     }
@@ -50,9 +50,9 @@ public class Coerce {
     }
 
     public static Coerce getCoerce(TypeSpec from, TypeSpec to) {
-        if (to.equals(TypeSpecSimple.OBJECT) ||
-            from.equals(TypeSpecSimple.NULL) ||
-            from.equals(to)) {
+        if (to.equals(TypeSpecSimple.OBJECT)
+                || from.equals(TypeSpecSimple.NULL)
+                || from.equals(to)) {
             return IDENTITY;
         }
 
@@ -93,8 +93,9 @@ public class Coerce {
 
     private static class Identity extends Coerce {
         public String toJavaCode(String exprJavaCode) {
-            return exprJavaCode;    // no coercion
+            return exprJavaCode; // no coercion
         }
     }
+
     private static Coerce IDENTITY = new Identity();
 }

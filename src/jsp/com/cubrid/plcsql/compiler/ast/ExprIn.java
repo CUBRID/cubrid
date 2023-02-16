@@ -30,12 +30,9 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
-import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprIn extends Expr {
 
@@ -56,8 +53,7 @@ public class ExprIn extends Expr {
 
     @Override
     public String toJavaCode() {
-        return tmpl
-                .replace("  %'TARGET'%", Misc.indentLines(target.toJavaCode(), 1))
+        return tmpl.replace("  %'TARGET'%", Misc.indentLines(target.toJavaCode(), 1))
                 .replace("  %'IN-ELEMENTS'%", Misc.indentLines(inElements.toJavaCode(",\n"), 1));
     }
 
@@ -65,9 +61,6 @@ public class ExprIn extends Expr {
     // Private
     // --------------------------------------------------
 
-    private static final String tmpl = Misc.combineLines(
-        "opIn(",
-        "  %'TARGET'%,",
-        "  %'IN-ELEMENTS'%",
-        ")");
+    private static final String tmpl =
+            Misc.combineLines("opIn(", "  %'TARGET'%,", "  %'IN-ELEMENTS'%", ")");
 }

@@ -30,13 +30,10 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
-import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.Scope;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprLocalFuncCall extends Expr {
 
@@ -51,7 +48,8 @@ public class ExprLocalFuncCall extends Expr {
     public final DeclFunc decl;
     public final boolean prefixDeclBlock;
 
-    public ExprLocalFuncCall(ParserRuleContext ctx, String name, NodeList<Expr> args, Scope scope, DeclFunc decl) {
+    public ExprLocalFuncCall(
+            ParserRuleContext ctx, String name, NodeList<Expr> args, Scope scope, DeclFunc decl) {
         super(ctx);
 
         this.name = name;
@@ -69,11 +67,7 @@ public class ExprLocalFuncCall extends Expr {
         if (args.nodes.size() == 0) {
             return block + name + "()";
         } else {
-            return block
-                    + name
-                    + "(\n"
-                    + Misc.indentLines(decl.argsToJavaCode(args), 1)
-                    + "\n)";
+            return block + name + "(\n" + Misc.indentLines(decl.argsToJavaCode(args), 1) + "\n)";
         }
     }
 

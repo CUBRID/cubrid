@@ -30,9 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
 import com.cubrid.plcsql.compiler.Coerce;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class Expr extends AstNode {
 

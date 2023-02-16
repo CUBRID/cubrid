@@ -30,13 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-
-import com.cubrid.plcsql.compiler.Misc;
-
-import java.util.Map;
-import java.util.HashMap;
 
 public class TypeSpecVariadic extends TypeSpec {
 
@@ -44,13 +38,15 @@ public class TypeSpecVariadic extends TypeSpec {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
-        assert false: "unreachable";  // cannot be a part of an AST: only in a symbol table for CUBRID predefined functions
+        assert false
+                : "unreachable"; // cannot be a part of an AST: only in a symbol table for CUBRID
+        // predefined functions
         throw new RuntimeException("unreachable");
     }
 
     @Override
     public String toJavaSignature() {
-        assert false: "unreachable";  // cannot be a parameter or return type of a stored procedure
+        assert false : "unreachable"; // cannot be a parameter or return type of a stored procedure
         throw new RuntimeException("unreachable");
     }
 

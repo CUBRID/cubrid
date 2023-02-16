@@ -30,12 +30,9 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
-import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprCase extends Expr {
 
@@ -48,7 +45,8 @@ public class ExprCase extends Expr {
     public final NodeList<CaseExpr> whenParts;
     public final Expr elsePart;
 
-    public ExprCase(ParserRuleContext ctx, Expr selector, NodeList<CaseExpr> whenParts, Expr elsePart) {
+    public ExprCase(
+            ParserRuleContext ctx, Expr selector, NodeList<CaseExpr> whenParts, Expr elsePart) {
         super(ctx);
 
         this.selector = selector;
@@ -64,8 +62,9 @@ public class ExprCase extends Expr {
 
         if (TypeSpecSimple.NULL.equals(resultType)) {
             if (elsePart == null) { // TODO
-                assert false: "every case has null and else-part is absent: not implemented yet";
-                throw new RuntimeException("every case has null and else-part is absent: not implemented yet");
+                assert false : "every case has null and else-part is absent: not implemented yet";
+                throw new RuntimeException(
+                        "every case has null and else-part is absent: not implemented yet");
             } else {
                 return "null";
             }
@@ -76,8 +75,7 @@ public class ExprCase extends Expr {
             } else {
                 elseCode = elsePart.toJavaCode();
             }
-            return tmpl
-                    .replace("%'SELECTOR-TYPE'%", selectorType.toJavaCode())
+            return tmpl.replace("%'SELECTOR-TYPE'%", selectorType.toJavaCode())
                     .replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
                     .replace("%'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(), 2, true))
                     .replace("    %'ELSE-PART'%", Misc.indentLines(elseCode, 2))

@@ -30,9 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
 import com.cubrid.plcsql.compiler.Scope;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class Decl extends AstNode {
 
@@ -56,4 +55,3 @@ public abstract class Decl extends AstNode {
 
     protected Scope scope;
 }
-

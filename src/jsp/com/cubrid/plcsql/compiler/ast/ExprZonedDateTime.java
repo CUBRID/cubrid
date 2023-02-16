@@ -30,13 +30,10 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
-import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-
 import com.cubrid.plcsql.compiler.DateTimeParser;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.time.ZonedDateTime;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprZonedDateTime extends Expr {
 

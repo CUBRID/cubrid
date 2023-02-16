@@ -30,13 +30,10 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
-import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.sql.*;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class Unit extends AstNode {
 
@@ -50,7 +47,8 @@ public class Unit extends AstNode {
     public final String importsStr;
     public final DeclRoutine routine;
 
-    public Unit(ParserRuleContext ctx,
+    public Unit(
+            ParserRuleContext ctx,
             boolean autonomousTransaction,
             boolean connectionRequired,
             String importsStr,

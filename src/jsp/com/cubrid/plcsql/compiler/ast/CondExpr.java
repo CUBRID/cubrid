@@ -30,12 +30,9 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
-import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class CondExpr extends AstNode {
 
@@ -43,7 +40,6 @@ public class CondExpr extends AstNode {
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitCondExpr(this);
     }
-
 
     public final Expr cond;
     public final Expr expr;

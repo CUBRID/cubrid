@@ -30,12 +30,9 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
-import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class StmtForIterLoop extends Stmt {
 
@@ -52,7 +49,8 @@ public class StmtForIterLoop extends Stmt {
     public final Expr step;
     public final NodeList<Stmt> stmts;
 
-    public StmtForIterLoop(ParserRuleContext ctx,
+    public StmtForIterLoop(
+            ParserRuleContext ctx,
             DeclLabel declLabel,
             DeclForIter iter,
             boolean reverse,

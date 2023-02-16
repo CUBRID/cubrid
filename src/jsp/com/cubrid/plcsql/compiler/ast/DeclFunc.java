@@ -30,10 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
-import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class DeclFunc extends DeclRoutine {
 
@@ -42,7 +40,8 @@ public class DeclFunc extends DeclRoutine {
         return visitor.visitDeclFunc(this);
     }
 
-   public DeclFunc(ParserRuleContext ctx,
+    public DeclFunc(
+            ParserRuleContext ctx,
             String name,
             NodeList<DeclParam> paramList,
             TypeSpec retType,
@@ -51,10 +50,8 @@ public class DeclFunc extends DeclRoutine {
         super(ctx, name, paramList, retType, decls, body);
     }
 
-    public DeclFunc(ParserRuleContext ctx,
-            String name,
-            NodeList<DeclParam> paramList,
-            TypeSpec retType) {
+    public DeclFunc(
+            ParserRuleContext ctx, String name, NodeList<DeclParam> paramList, TypeSpec retType) {
         super(ctx, name, paramList, retType, null, null);
     }
 

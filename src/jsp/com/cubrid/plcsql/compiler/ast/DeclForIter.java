@@ -30,10 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
-import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class DeclForIter extends DeclId {
 
@@ -48,7 +46,7 @@ public class DeclForIter extends DeclId {
     // TODO: separate Symbol from AstNode. Remove 'extends Decl' and the following method
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
-        assert false: "unreachable";
+        assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
 

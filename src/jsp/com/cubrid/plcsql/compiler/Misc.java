@@ -30,10 +30,9 @@
 
 package com.cubrid.plcsql.compiler;
 
+import java.io.PrintStream;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.Token;
-
-import java.io.PrintStream;
 
 public class Misc {
 
