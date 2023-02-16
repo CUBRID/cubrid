@@ -11617,6 +11617,8 @@ pt_check_server_extension (PARSER_CONTEXT * parser, PT_NODE * stmt)
     case PT_INTERSECTION:
     case PT_UNION:
     case PT_SELECT:
+    case PT_CREATE_ENTITY:
+    case PT_ALTER:
       break;
 
     default:
