@@ -50,18 +50,6 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         visit(node.routine);
         return null;
     }
-    private TypeSpec visitDeclRoutine(DeclRoutine node) {
-        visitNodeList(node.paramList);
-        if (node.retType != null) {
-            visit(node.retType);
-        }
-        if (node.decls != null) {
-            visitNodeList(node.decls);
-        }
-        assert node.body != null;   // syntactically guaranteed
-        visitBody(node.body);
-        return null;
-    }
 
     @Override
     public TypeSpec visitBody(Body node) {
@@ -140,9 +128,6 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     public TypeSpec visitDeclParamOut(DeclParamOut node) {
         visitDeclParam(node);
         return null;
-    }
-    private void visitDeclParam(DeclParam node) {
-        visit(node.typeSpec);
     }
 
     @Override
@@ -378,22 +363,6 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         return TypeSpecSimple.LIST;
     }
 
-    private void checkRoutineCall(DeclRoutine decl, List<Expr> args) {
-        int len = args.size();
-        for (int i = 0; i < len; i++) {
-            Expr arg = args.get(i);
-            TypeSpec argType = visit(arg);
-            TypeSpec paramType = decl.paramList.nodes.get(i).typeSpec();
-            assert paramType != null;   // TODO: paramType can be null if variadic parameters are introduced
-            Coerce c = Coerce.getCoerce(argType, paramType);
-            if (c == null) {
-                throw new SemanticError(arg.lineNo(),   // s214
-                    String.format("argument %d to %s call has an incompatible type", i + 1, decl.name));
-            }
-            arg.setCoerce(c);
-        }
-    }
-
     @Override
     public TypeSpec visitExprLocalFuncCall(ExprLocalFuncCall node) {
         checkRoutineCall(node.decl, node.args.nodes);
@@ -443,7 +412,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     public TypeSpec visitExprTrue(ExprTrue node) {
         return TypeSpecSimple.BOOLEAN;
     }
-    // ----
+
     @Override
     public TypeSpec visitExprUnaryOp(ExprUnaryOp node) {
         TypeSpec operandType = visit(node.operand);
@@ -726,6 +695,39 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     private TypeSpec getCommonType(TypeSpec l, TypeSpec r) {
         return l.equals(r) ? l : null;  // TODO: complete
+    }
+
+    private void visitDeclParam(DeclParam node) {
+        visit(node.typeSpec);
+    }
+
+    private TypeSpec visitDeclRoutine(DeclRoutine node) {
+        visitNodeList(node.paramList);
+        if (node.retType != null) {
+            visit(node.retType);
+        }
+        if (node.decls != null) {
+            visitNodeList(node.decls);
+        }
+        assert node.body != null;   // syntactically guaranteed
+        visitBody(node.body);
+        return null;
+    }
+
+    private void checkRoutineCall(DeclRoutine decl, List<Expr> args) {
+        int len = args.size();
+        for (int i = 0; i < len; i++) {
+            Expr arg = args.get(i);
+            TypeSpec argType = visit(arg);
+            TypeSpec paramType = decl.paramList.nodes.get(i).typeSpec();
+            assert paramType != null;   // TODO: paramType can be null if variadic parameters are introduced
+            Coerce c = Coerce.getCoerce(argType, paramType);
+            if (c == null) {
+                throw new SemanticError(arg.lineNo(),   // s214
+                    String.format("argument %d to %s call has an incompatible type", i + 1, decl.name));
+            }
+            arg.setCoerce(c);
+        }
     }
 }
 

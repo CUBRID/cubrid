@@ -37,7 +37,7 @@ import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 
 import com.cubrid.plcsql.compiler.Misc;
 
-public class CondStmt extends Stmt {
+public class CondStmt extends AstNode {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {

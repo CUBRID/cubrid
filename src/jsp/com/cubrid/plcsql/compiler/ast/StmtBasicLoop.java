@@ -68,12 +68,12 @@ public class StmtBasicLoop extends Stmt {
     // NOTE: why I use 'while(opNot(false))' instead of simpler 'while(true)':
     // Compiling Java code below with javac causes 'unreachable statement' error
     //     while (true) {
-    //         continue;
+    //         ... // no break
     //     }
     //     ... // a statement
-    // However the following does not
+    // However, compiling the following does not
     //     while (opNot(false)) {
-    //         continue;
+    //         ... // no break
     //     }
     //     ... // a statement
     // It seems that static analysis of javac does not go beyond method call boundaries

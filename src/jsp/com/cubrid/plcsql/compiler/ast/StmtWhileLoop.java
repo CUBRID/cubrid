@@ -58,9 +58,17 @@ public class StmtWhileLoop extends Stmt {
 
     @Override
     public String toJavaCode() {
+        String condStr;
+        if (cond == ExprTrue.SINGLETON) {
+            // to avoid unreachable statement check of javac
+            condStr = "opNot(false)";
+        } else {
+            condStr = cond.toJavaCode();
+        }
+
         return tmpl.replace(
                         "%'OPT-LABEL'%", declLabel == null ? "// no label" : declLabel.toJavaCode())
-                .replace("%'EXPRESSION'%", cond.toJavaCode())
+                .replace("%'EXPRESSION'%", condStr)
                 .replace("  %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 1));
     }
 
