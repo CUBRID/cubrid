@@ -138,26 +138,12 @@ tran_server::boot (const char *db_name)
 }
 
 void
-tran_server::push_request (size_t idx, tran_to_page_request reqid, std::string &&payload)
-{
-  assert (idx < m_page_server_conn_vec.size());
-  m_page_server_conn_vec[idx]->push_request (reqid, std::move (payload));
-}
-
-int
-tran_server::send_receive (size_t idx, tran_to_page_request reqid, std::string &&payload_in,
-			   std::string &payload_out) const
-{
-  assert (idx < m_page_server_conn_vec.size());
-  return m_page_server_conn_vec[idx]->send_receive (reqid, std::move (payload_in), payload_out);
-}
-
-void
 tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
 {
   std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
 
-  push_request (0, reqid, std::move (payload));
+  // we assume that 0-th conn is the main connection
+  m_page_server_conn_vec[0]->push_request (reqid, std::move (payload));
 }
 
 int
@@ -165,7 +151,8 @@ tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in,
 {
   std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
 
-  return send_receive (0, reqid, std::move (payload_in), payload_out);
+  // we assume that 0-th conn is the main connection
+  return m_page_server_conn_vec[0]->send_receive (reqid, std::move (payload_in), payload_out);
 }
 
 int
