@@ -394,6 +394,25 @@ tran_server::connection_handler::get_request_handlers ()
   std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map;
   return handlers_map;
 }
+void
+tran_server::connection_handler::receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip)
+{
+  // TODO add a mutex
+  auto &conn_vec = m_ts.m_page_server_conn_vec;
+  auto it = conn_vec.begin();
+  for (; it != conn_vec.end(); it++)
+    {
+      // TODO trigger the main connection change procedure when it was the main connection
+      if (it->get () == this)
+	{
+	  conn_vec.erase (it);
+	}
+    }
+
+  assert (it != conn_vec.end ());
+
+  disconnect ();
+}
 
 void
 tran_server::connection_handler::push_request (tran_to_page_request reqid, std::string &&payload)

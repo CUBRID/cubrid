@@ -111,6 +111,8 @@ class tran_server
 
       private:
 	// Request handlers for requests in common
+	void receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip);
+
 
       private:
 	std::unique_ptr<page_server_conn_t> m_conn;
