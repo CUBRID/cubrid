@@ -14144,6 +14144,9 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       int class_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       int att_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       char md5_str[32 + 1] = { '\0' };
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK) && !defined(SUPPORT_KEY_DUP_LEVEL_FK_NAME)
+      bool is_fk = false;
+#endif
 
       switch (type)
 	{
@@ -14158,6 +14161,9 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  break;
 	case DB_CONSTRAINT_FOREIGN_KEY:
 	  prefix = "fk_";
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK) && !defined(SUPPORT_KEY_DUP_LEVEL_FK_NAME)
+	  is_fk = true;
+#endif
 	  break;
 	case DB_CONSTRAINT_NOT_NULL:
 	  prefix = "n_";
@@ -14189,8 +14195,8 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       for (ptr = att_names; (*ptr != NULL) && (i < n_attrs); ptr++, i++)
 	{
 	  int ptr_size = 0;
-#if defined(SUPPORT_KEY_DUP_LEVEL_TEST_FK_NAME)
-	  if (IS_RESERVED_INDEX_ATTR_NAME (*ptr) && memcmp (prefix, "fk_", 4) == 0)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK) && !defined(SUPPORT_KEY_DUP_LEVEL_FK_NAME)
+	  if (is_fk && IS_RESERVED_INDEX_ATTR_NAME (*ptr))
 	    {
 	      continue;
 	    }
@@ -14235,8 +14241,8 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 
 	  for (ptr = att_names, i = 0; i < n_attrs; ptr++, i++)
 	    {
-#if defined(SUPPORT_KEY_DUP_LEVEL_TEST_FK_NAME)
-	      if (IS_RESERVED_INDEX_ATTR_NAME (*ptr) && memcmp (prefix, "fk_", 4) == 0)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK) && !defined(SUPPORT_KEY_DUP_LEVEL_FK_NAME)
+	      if (is_fk && IS_RESERVED_INDEX_ATTR_NAME (*ptr))
 		{
 		  continue;
 		}
@@ -14308,8 +14314,8 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  /* n_attrs is already limited to MAX_ATTR_IN_AUTO_GEN_NAME here */
 	  for (ptr = att_names; i < n_attrs; ptr++, i++)
 	    {
-#if defined(SUPPORT_KEY_DUP_LEVEL_TEST_FK_NAME)
-	      if (IS_RESERVED_INDEX_ATTR_NAME (*ptr) && memcmp (prefix, "fk_", 4) == 0)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK) && !defined(SUPPORT_KEY_DUP_LEVEL_FK_NAME)
+	      if (is_fk && IS_RESERVED_INDEX_ATTR_NAME (*ptr))
 		{
 		  continue;
 		}

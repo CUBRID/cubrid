@@ -4173,7 +4173,17 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	      attp++;
 	      namep++;
 	    }
-
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK) && defined(SUPPORT_KEY_DUP_LEVEL_FK_NAME)
+	  /* In the case of FK, reserved index columns are ignored when comparing identical configurations. */
+	  if (*attp && IS_RESERVED_INDEX_ATTR_NAME ((*attp)->header.name))
+	    {
+	      attp++;
+	    }
+	  if (*namep && IS_RESERVED_INDEX_ATTR_NAME (*namep))
+	    {
+	      namep++;
+	    }
+#endif
 	  /* not allowed redundant one */
 	  if (!*attp && !*namep)
 	    {
@@ -4222,10 +4232,6 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	{
 	  if (IS_RESERVED_INDEX_ATTR_NAME ((*attp)->header.name))
 	    {
-	      if (new_cons == DB_CONSTRAINT_FOREIGN_KEY && cons->type != SM_CONSTRAINT_FOREIGN_KEY)	// ctshim, FK!
-		{
-		  continue;
-		}
 	      attp++;
 	      len++;
 	      con_index_start--;
@@ -4236,10 +4242,6 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	{
 	  if (IS_RESERVED_INDEX_ATTR_NAME (*namep))
 	    {
-	      if (cons->type == SM_CONSTRAINT_FOREIGN_KEY && new_cons != DB_CONSTRAINT_FOREIGN_KEY)	// ctshim, FK!
-		{
-		  continue;
-		}
 	      namep++;
 	      new_len++;
 	      new_index_start--;

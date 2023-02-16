@@ -10807,8 +10807,7 @@ column_other_constraint_def
 			    constraint->info.constraint.un.foreign_key.update_action = TO_NUMBER (CONTAINER_AT_1 ($7));	/* update_action */
 			    constraint->info.constraint.un.foreign_key.referenced_class = $5;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
-                            printf("REFERENCE\n");
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)                            
                             pt_get_dup_mode_level(false, $3,  &constraint->info.constraint.un.foreign_key.dupkey_mode, &constraint->info.constraint.un.foreign_key.dupkey_hash_level);
 #endif  
 
@@ -21459,6 +21458,10 @@ opt_index_dup_level
                { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DEDUPLICATE_ WITH index_dup_mode opt_index_level ); 
                  $$ = $3 | ($4 << 16);
                }
+        | DEDUPLICATE_ OFF_
+               { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DEDUPLICATE_ OFF_ ); 
+                 $$ =  DUP_MODE_NONE;
+               }               
         ;
 
 index_dup_mode
