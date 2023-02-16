@@ -37,6 +37,8 @@
 
 #include "dup_key.h"
 
+#define OID_2_BIGINT(oidptr) (((oidptr)->volid << 48) | ((oidptr)->pageid << 16) | (oidptr)->slotid)
+
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 
 static DB_DOMAIN *
@@ -174,7 +176,7 @@ dk_heap_midxkey_get_reserved_index_value (int att_id, OID * rec_oid, DB_VALUE * 
       if (level == 0)
 	{
 	  /* db_make_oid (value, rec_oid); */
-	  db_make_bigint (value, *((DB_BIGINT *) rec_oid));
+	  db_make_bigint (value, OID_2_BIGINT (rec_oid));
 	}
       else if (hash_mod_val > SHRT_MAX)
 	{

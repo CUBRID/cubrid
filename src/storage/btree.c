@@ -6164,6 +6164,9 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   btree_scan.is_fk_remake = is_newly;
 #endif
   error_code = btree_range_scan (thread_p, &btree_scan, btree_range_scan_find_fk_any_object);
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+  btree_scan.is_fk_remake = false;
+#endif
   assert (error_code == NO_ERROR || er_errid () != NO_ERROR);
 
   /* Output found object. */
@@ -25888,6 +25891,8 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
       if (bts->is_fk_remake)
 	{
+	  /* Go to next key. 
+	   * Mark the key as consumed and let btree_range_scan_advance_over_filtered_keys handle it. */
 	  bts->key_status = BTS_KEY_IS_CONSUMED;
 	}
       else
