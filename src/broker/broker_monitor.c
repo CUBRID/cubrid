@@ -40,13 +40,6 @@
 #include <winsock2.h>
 #include <windows.h>
 #include <conio.h>
-#else
-#if defined(AIX)
-#define _BOOL
-#include <curses.h>
-#else
-#include <curses.h>
-#endif
 #endif
 
 #if defined(WINDOWS)
@@ -380,8 +373,6 @@ str_to_screen (const char *msg)
 #ifdef WINDOWS
   DWORD size;
   (void) WriteConsole (h_console, msg, strlen (msg), &size, NULL);
-#else
-  (void) addstr (msg);
 #endif
 }
 
@@ -440,8 +431,6 @@ get_char (void)
 	}
     }
   return 0;
-#else
-  return getch ();
 #endif
 }
 
@@ -453,10 +442,6 @@ main (int argc, char **argv)
   int num_broker, master_shm_id;
   int err, i;
   char *br_vector;
-#if defined(WINDOWS)
-#else
-  WINDOW *win;
-#endif
   time_t time_old, time_cur;
   double elapsed_time;
   char cmd[PATH_MAX] = { 0, };
