@@ -5187,7 +5187,7 @@ pgbuf_is_temporary_volume (VOLID volid)
   /* Later edit: replication threads are also being present on passive transaction server - which has
    * to deal with temporary volumes. Thus, restrict the test to page server context only and leave
    * original answer for all transaction servers */
-  if (is_page_server () && cubthread::get_entry ().type == TT_REPLICATION)
+  if (is_page_server () && cubthread::get_entry ().type == TT_REPLICATION_PS)
     {
       return false;
     }

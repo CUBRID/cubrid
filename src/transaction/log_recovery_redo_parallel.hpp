@@ -64,7 +64,8 @@ namespace cublog
       /* - worker_count: the number of parallel tasks to spin that consume jobs
        */
       redo_parallel (unsigned a_worker_count, bool a_do_monitor_min_unapplied_log_lsa,
-		     const log_lsa &a_start_main_thread_log_lsa, const log_rv_redo_context &copy_context);
+		     const log_lsa &a_start_main_thread_log_lsa, const log_rv_redo_context &copy_context,
+		     thread_type replication_thread_type);
 
       redo_parallel (const redo_parallel &) = delete;
       redo_parallel (redo_parallel &&) = delete;
