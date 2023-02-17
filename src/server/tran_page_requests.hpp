@@ -29,7 +29,6 @@ enum class tran_to_page_request
   SEND_LOG_PAGE_FETCH,
   SEND_DATA_PAGE_FETCH,
   SEND_DISCONNECT_MSG, /* response-less */
-  SEND_DISCONNECT_COMPLETE_MSG, /* response-less, asynchronous response for SEND_DISCONNECT_COMPLETE_MSG */
 
   // Active only
   SEND_LOG_PRIOR_LIST, /* response-less */
@@ -47,7 +46,7 @@ enum class page_to_tran_request
   RESPOND,
 
   // Common
-  SEND_DISCONNECT_MSG, /* response-less, will be answered with SEND_DISCONNECT_COMPLETE_MSG asynchronously */
+  SEND_DISCONNECT_REQUEST_MSG, /* response-less, will be answered with SEND_DISCONNECT_COMPLETE_MSG asynchronously */
 
   // Active only
   SEND_SAVED_LSA,

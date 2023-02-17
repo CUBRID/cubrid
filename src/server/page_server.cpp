@@ -331,7 +331,7 @@ page_server::connection_handler::remove_prior_sender_sink ()
 void
 page_server::connection_handler::push_disconnection_request ()
 {
-  push_request (page_to_tran_request::SEND_DISCONNECT_MSG, std::string ());
+  push_request (page_to_tran_request::SEND_DISCONNECT_REQUEST_MSG, std::string ());
 }
 
 page_server::async_disconnect_handler::async_disconnect_handler ()
