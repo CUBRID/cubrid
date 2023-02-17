@@ -3152,15 +3152,6 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
   bool do_rollback = false;
   SM_INDEX_STATUS saved_index_status = SM_NORMAL_INDEX;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(KEEP_REBUILD_POLICY)
-  char *reserved_col_name_ptr = NULL;
-  int reserved_index_col_pos = -1;
-  int alloc_cnt = 0;
-#else
-  int alloc_cnt = 0;
-#endif
-
-
   /* TODO refactor this code, the code in create_or_drop_index_helper and the code in do_drop_index in order to remove
    * duplicate code */
 
@@ -3233,16 +3224,10 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
       nnames++;
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(KEEP_REBUILD_POLICY)
-  alloc_cnt = nnames + 1;	// Support for free space in preparation for additional columns
-#else
-  alloc_cnt = nnames;
-#endif
-
-  attnames = (char **) malloc ((alloc_cnt + 1) * sizeof (const char *));
+  attnames = (char **) malloc ((nnames + 1) * sizeof (const char *));
   if (attnames == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (alloc_cnt + 1) * sizeof (const char *));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (nnames + 1) * sizeof (const char *));
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error_exit;
     }
@@ -3263,26 +3248,15 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error_exit;
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(KEEP_REBUILD_POLICY)
-      if (IS_RESERVED_INDEX_ATTR_NAME (attnames[i]))
-	{
-	  assert (reserved_index_col_pos == -1);
-	  reserved_index_col_pos = i;
-	  reserved_col_name_ptr = attnames[i];
-	}
-#endif
     }
   attnames[i] = NULL;
-#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(KEEP_REBUILD_POLICY)
-  attnames[i + 1] = NULL;
-#endif
 
   if (idx->asc_desc)
     {
-      asc_desc = (int *) malloc ((alloc_cnt) * sizeof (int));
+      asc_desc = (int *) malloc ((nnames) * sizeof (int));
       if (asc_desc == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_cnt * sizeof (int));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nnames * sizeof (int));
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error_exit;
 	}
@@ -3291,19 +3265,16 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  asc_desc[i] = idx->asc_desc[i];
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(KEEP_REBUILD_POLICY)
-      asc_desc[i] = 0;
-#endif
     }
 
   if (original_ctype == DB_CONSTRAINT_INDEX)
     {
       assert (idx->attrs_prefix_length);
 
-      attrs_prefix_length = (int *) malloc ((alloc_cnt) * sizeof (int));
+      attrs_prefix_length = (int *) malloc ((nnames) * sizeof (int));
       if (attrs_prefix_length == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_cnt * sizeof (int));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nnames * sizeof (int));
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error_exit;
 	}
@@ -3312,9 +3283,6 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  attrs_prefix_length[i] = idx->attrs_prefix_length[i];
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(KEEP_REBUILD_POLICY)
-      attrs_prefix_length[i] = -1;
-#endif
     }
 
   if (idx->filter_predicate)
@@ -3413,23 +3381,6 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
       goto error_exit;
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(KEEP_REBUILD_POLICY)
-  if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (original_ctype)
-#if !defined(SUPPORT_KEY_DUP_LEVEL_FK)
-      && original_ctype != SM_CONSTRAINT_FOREIGN_KEY
-#endif
-    )
-    {
-      error = dk_alter_rebuild_index_level_adjust (original_ctype, &statement->info.index, attnames, asc_desc,
-						   attrs_prefix_length, func_index_info, &reserved_index_col_pos,
-						   nnames, SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (original_ctype));
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-    }
-#endif
-
   error =
     sm_add_constraint (obj, original_ctype, index_name, (const char **) attnames, asc_desc, attrs_prefix_length, false,
 		       p_pred_index_info, func_index_info, comment_str, saved_index_status);
@@ -3471,24 +3422,8 @@ end:
     {
       for (i = 0; attnames[i]; i++)
 	{
-#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(KEEP_REBUILD_POLICY)
-	  if (reserved_col_name_ptr == attnames[i])
-	    {
-	      reserved_col_name_ptr = NULL;
-	    }
-#endif
 	  free_and_init (attnames[i]);
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL) && !defined(KEEP_REBUILD_POLICY)
-      /* attnames[reserved_index_col_pos] can be removed from dk_alter_rebuild_index_level_adjust().
-       * In this case, attnames[x] is set to NULL, but the actual memory was not freed. 
-       * Even if attnames[x] is set to NULL, reserved_col_name_ptr tells you the memory address you have allocated.
-       */
-      if (reserved_col_name_ptr)
-	{
-	  free_and_init (reserved_col_name_ptr);
-	}
-#endif
       free_and_init (attnames);
     }
 

@@ -321,10 +321,10 @@ dk_find_sm_reserved_index_attribute (int att_id, const char *att_name)
   return st_sm_atts[mode - 1][level];
 }
 
-int
-dk_alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO * idx_info, char **attnames,
-				     int *asc_desc, int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info,
-				     int *reserved_index_col_pos, int nnames, bool is_reverse)
+void
+dk_create_index_level_remove_adjust (DB_CONSTRAINT_TYPE ctype, char **attnames, int *asc_desc,
+				     int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info,
+				     int reserved_index_col_pos, int nnames)
 {
   int func_no_args = 0;
 
@@ -338,108 +338,35 @@ dk_alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_IN
   assert (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != DB_CONSTRAINT_FOREIGN_KEY);
   assert (asc_desc != NULL);
 #endif
-  assert (reserved_index_col_pos != NULL);
 
-  if (idx_info->dupkey_mode <= DUP_MODE_OVFL_LEVEL_NOT_SET)
-    {
-      /* no action */
-      return NO_ERROR;
-    }
 
-  if (idx_info->dupkey_mode == DUP_MODE_NONE)
-    {
-      if (*reserved_index_col_pos != -1)
-	{			// remove hidden column   
-	  // If memory release is actually required, it is performed in do_alter_index_rebuild().                
-	  attnames[*reserved_index_col_pos] = NULL;
+  if (reserved_index_col_pos != -1)
+    {				// remove hidden column   
+      attnames[reserved_index_col_pos] = NULL;
 
-	  assert (!func_index_info || (func_index_info && func_index_info->attr_index_start > 0));
-	  if (func_index_info && func_index_info->attr_index_start > 0)
-	    {
-	      func_no_args = nnames - *reserved_index_col_pos;
-	      if (func_no_args > 0)
-		{
-		  memmove (asc_desc + *reserved_index_col_pos, asc_desc + (*reserved_index_col_pos + 1),
-			   (func_no_args * sizeof (asc_desc[0])));
-		  if (attrs_prefix_length)
-		    {
-		      memmove (attrs_prefix_length + *reserved_index_col_pos,
-			       attrs_prefix_length + (*reserved_index_col_pos + 1),
-			       (func_no_args * sizeof (attrs_prefix_length[0])));
-		    }
-		  memmove (attnames + *reserved_index_col_pos, attnames + (*reserved_index_col_pos + 1),
-			   (func_no_args * sizeof (attnames[0])));
-
-		  attnames[nnames - 1] = NULL;
-		  func_index_info->attr_index_start--;
-		}
-	    }
-	  *reserved_index_col_pos = -1;
-	}
-
-      return NO_ERROR;
-    }
-
-  assert (idx_info->dupkey_mode != DUP_MODE_NONE && idx_info->dupkey_mode != DUP_MODE_OVFL_LEVEL_NOT_SET);
-  assert (idx_info->dupkey_hash_level >= OVFL_LEVEL_MIN && idx_info->dupkey_hash_level <= OVFL_LEVEL_MAX);
-
-  if (*reserved_index_col_pos != -1)
-    {				// reset level       
-      if (attrs_prefix_length)
+      assert (!func_index_info || (func_index_info && func_index_info->attr_index_start > 0));
+      if (func_index_info && func_index_info->attr_index_start > 0)
 	{
-	  attrs_prefix_length[*reserved_index_col_pos] = -1;
-	}
-
-      asc_desc[*reserved_index_col_pos] = (is_reverse ? 1 : 0);
-      strcpy (attnames[*reserved_index_col_pos],
-	      (char *) GET_RESERVED_INDEX_ATTR_NAME (idx_info->dupkey_mode, idx_info->dupkey_hash_level));
-    }
-  else
-    {				// append hidden column
-      if (func_index_info && func_index_info->attr_index_start >= 0)
-	{
-	  func_no_args = nnames - func_index_info->attr_index_start;
+	  func_no_args = nnames - reserved_index_col_pos;
 	  if (func_no_args > 0)
 	    {
-	      memmove (asc_desc + (func_index_info->attr_index_start + 1),
-		       asc_desc + func_index_info->attr_index_start, func_no_args * sizeof (asc_desc[0]));
+	      memmove (asc_desc + reserved_index_col_pos, asc_desc + (reserved_index_col_pos + 1),
+		       (func_no_args * sizeof (asc_desc[0])));
 	      if (attrs_prefix_length)
 		{
-		  memmove (attrs_prefix_length + (func_index_info->attr_index_start + 1),
-			   attrs_prefix_length + func_index_info->attr_index_start,
-			   func_no_args * sizeof (attrs_prefix_length[0]));
+		  memmove (attrs_prefix_length + reserved_index_col_pos,
+			   attrs_prefix_length + (reserved_index_col_pos + 1),
+			   (func_no_args * sizeof (attrs_prefix_length[0])));
 		}
-	      memmove (attnames + (func_index_info->attr_index_start + 1),
-		       attnames + func_index_info->attr_index_start, func_no_args * sizeof (attnames[0]));
+	      memmove (attnames + reserved_index_col_pos, attnames + (reserved_index_col_pos + 1),
+		       (func_no_args * sizeof (attnames[0])));
+
+	      attnames[nnames - 1] = NULL;
+	      func_index_info->attr_index_start--;
 	    }
-
-	  *reserved_index_col_pos = func_index_info->attr_index_start++;
 	}
-      else
-	{
-	  *reserved_index_col_pos = nnames;
-	}
-
-      if (attrs_prefix_length)
-	{
-	  attrs_prefix_length[*reserved_index_col_pos] = -1;
-	}
-
-      asc_desc[*reserved_index_col_pos] = (is_reverse ? 1 : 0);
-      /* do_alter_index_rebuild() is using strdup(). The same treatment method shall be followed. */
-      attnames[*reserved_index_col_pos] =
-	strdup ((char *) GET_RESERVED_INDEX_ATTR_NAME (idx_info->dupkey_mode, idx_info->dupkey_hash_level));
-      attnames[nnames + 1] = NULL;
-
-      if (attnames[*reserved_index_col_pos] == NULL)
-	{
-	  char *str = (char *) GET_RESERVED_INDEX_ATTR_NAME (idx_info->dupkey_mode, idx_info->dupkey_hash_level);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (strlen (str) + 1) * sizeof (char));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
+      reserved_index_col_pos = -1;
     }
-
-  return NO_ERROR;
 }
 
 void

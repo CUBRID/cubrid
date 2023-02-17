@@ -153,10 +153,10 @@ extern void *dk_find_or_reserved_index_attribute (int att_id);
 #if !defined(SERVER_MODE)
 extern SM_ATTRIBUTE *dk_find_sm_reserved_index_attribute (int att_id, const char *att_name);
 
-extern int dk_alter_rebuild_index_level_adjust (DB_CONSTRAINT_TYPE ctype, const PT_INDEX_INFO * idx_info,
-						char **attnames, int *asc_desc, int *attrs_prefix_length,
-						SM_FUNCTION_INFO * func_index_info, int *reserved_index_col_pos,
-						int nnames, bool is_reverse);
+
+extern void dk_create_index_level_remove_adjust (DB_CONSTRAINT_TYPE ctype, char **attnames, int *asc_desc,
+						 int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info,
+						 int reserved_index_col_pos, int nnames);
 extern void dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int *asc_desc,
 					  int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames,
 					  bool is_reverse);

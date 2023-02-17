@@ -4081,6 +4081,7 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
       if (IS_RESERVED_INDEX_ATTR_NAME (*namep))
 	{
 	  reserved_index_col_pos = nnames;
+	  break;
 	}
     }
 
@@ -4119,13 +4120,9 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
 
       if (!*attp)
 	{
-	  PT_INDEX_INFO idx_info;
-
-	  // For indexes that use prefixes, it does not reach here.
-	  idx_info.dupkey_mode = DUP_MODE_NONE;
-	  dk_alter_rebuild_index_level_adjust (new_cons, &idx_info, att_names, asc_desc, NULL, func_index_info,
-					       &reserved_index_col_pos, nnames,
-					       SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (cons->type));
+	  // For indexes that use prefixes, it does not reach here.     
+	  dk_create_index_level_remove_adjust (new_cons, att_names, asc_desc, NULL, func_index_info,
+					       reserved_index_col_pos, nnames);
 
 	  return;
 	}

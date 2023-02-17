@@ -438,7 +438,11 @@ static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
 static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-static void pt_get_dup_mode_level(bool is_rebuild, int mode_level, short* mode, short* level);
+static void pt_get_dup_mode_level(int mode_level, short* mode, short* level);
+
+#define MAKE_MODE_LEVEL(m, l)          ((m) | ((l) << 16))
+#define GET_MODE_FROM_MODE_LEVEL(ml)   ((ml) & 0x0000FFFF)
+#define GET_LEVEL_FROM_MODE_LEVEL(ml)  ((ml) >> 16)
 
 #define CHECK_RESERVED_IDX_ATTR_NAME(nm)  do {  \
    if((nm) && IS_RESERVED_INDEX_ATTR_NAME((nm)->info.name.original))   \
@@ -2840,7 +2844,7 @@ create_stmt
 			    node->info.index.column_names = col;
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-                            pt_get_dup_mode_level(false, $13,  &node->info.index.dupkey_mode, &node->info.index.dupkey_hash_level);
+                            pt_get_dup_mode_level($13,  &node->info.index.dupkey_mode, &node->info.index.dupkey_hash_level);
 #endif                            
 
 			    node->info.index.comment = $14;
@@ -3670,8 +3674,7 @@ alter_stmt
 	  opt_where_clause				/* 11 */
 	  opt_comment_spec				/* 12 */
 	  REBUILD					/* 13 */
-          opt_index_dup_level                           /* 14 */
-		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER ~ INDEX ~ REBUILD);
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER ~ INDEX ~ );
 
 			PT_NODE *node = parser_pop_hint_node ();
 			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
@@ -3732,10 +3735,6 @@ alter_stmt
 			    node->info.index.column_names = col;
 			    node->info.index.where = $11;
 			    node->info.index.comment = $12;                            
-#if defined(SUPPORT_KEY_DUP_LEVEL)                            
-                            pt_get_dup_mode_level(true, $14, &node->info.index.dupkey_mode, &node->info.index.dupkey_hash_level);
-#endif                            
-
 			    $$ = node;
 			    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			  }
@@ -9634,7 +9633,7 @@ foreign_key_constraint
 			    node->info.constraint.un.foreign_key.attrs = $5;
 
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
-                            pt_get_dup_mode_level(false, $7,  &node->info.constraint.un.foreign_key.dupkey_mode, &node->info.constraint.un.foreign_key.dupkey_hash_level);
+                            pt_get_dup_mode_level($7,  &node->info.constraint.un.foreign_key.dupkey_mode, &node->info.constraint.un.foreign_key.dupkey_hash_level);
 #endif
 			    node->info.constraint.un.foreign_key.referenced_attrs = $10;
 			    node->info.constraint.un.foreign_key.match_type = PT_MATCH_REGULAR;
@@ -10412,7 +10411,7 @@ attr_index_def
 			      }
 			  }
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-                        pt_get_dup_mode_level(false, $5,  &node->info.index.dupkey_mode, &node->info.index.dupkey_hash_level);
+                        pt_get_dup_mode_level($5,  &node->info.index.dupkey_mode, &node->info.index.dupkey_hash_level);
 #endif                            
 			node->info.index.column_names = col;
 			node->info.index.index_status = SM_NORMAL_INDEX;
@@ -10808,7 +10807,7 @@ column_other_constraint_def
 			    constraint->info.constraint.un.foreign_key.referenced_class = $5;
 
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)                            
-                            pt_get_dup_mode_level(false, $3,  &constraint->info.constraint.un.foreign_key.dupkey_mode, &constraint->info.constraint.un.foreign_key.dupkey_hash_level);
+                            pt_get_dup_mode_level($3,  &constraint->info.constraint.un.foreign_key.dupkey_mode, &constraint->info.constraint.un.foreign_key.dupkey_hash_level);
 #endif  
 
 			    constraint->info.constraint.type = PT_CONSTRAIN_FOREIGN_KEY;
@@ -21456,7 +21455,7 @@ opt_index_dup_level
                }
         | DEDUPLICATE_ WITH index_dup_mode opt_index_level
                { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DEDUPLICATE_ WITH index_dup_mode opt_index_level ); 
-                 $$ = $3 | ($4 << 16);
+                 $$ = MAKE_MODE_LEVEL($3, $4);
                }
         | DEDUPLICATE_ OFF_
                { DBG_TRACE_GRAMMAR(opt_index_dup_level,  DEDUPLICATE_ OFF_ ); 
@@ -27663,26 +27662,17 @@ pt_ct_check_select (char* p, char *perr_msg)
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 
 #include "system_parameter.h"
-static void pt_get_dup_mode_level(bool is_rebuild, int mode_level, short* mode, short* level)
+static void pt_get_dup_mode_level(int mode_level, short* mode, short* level)
 {       
     if(mode_level == DUP_MODE_OVFL_LEVEL_NOT_SET)
       { 
-        if(is_rebuild)
-        {
-           *mode = DUP_MODE_OVFL_LEVEL_NOT_SET;
-           *level = 0;
-        }
-        else
-        {
-           *mode = prm_get_integer_value (PRM_ID_AUTO_DEDUP_MODE);
-           *level = prm_get_integer_value (PRM_ID_AUTO_DEDUP_LEVEL);
-        }
+        *mode = prm_get_integer_value (PRM_ID_AUTO_DEDUP_MODE);
+        *level = prm_get_integer_value (PRM_ID_AUTO_DEDUP_LEVEL);
       }
     else
      {
-        *mode = mode_level & 0x0000FFFF;
-        *level = (mode_level >> 16);
+        *mode = GET_MODE_FROM_MODE_LEVEL(mode_level);
+        *level = GET_LEVEL_FROM_MODE_LEVEL(mode_level);
      }
 }
 #endif
-
