@@ -489,6 +489,8 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
   er_log_debug (ARG_FILE_LINE, "Active transaction server connected to this page server. Channel id: %s.\n",
 		channel_id.c_str ());
 
+  std::lock_guard lk_guard (m_conn_mutex);
+
   if (m_active_tran_server_conn != nullptr)
     {
       // When [A]TS crashes there are two possibilities:
@@ -515,7 +517,11 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
   er_log_debug (ARG_FILE_LINE, "Passive transaction server connected to this page server. Channel id: %s.\n",
 		channel_id.c_str ());
 
-  m_passive_tran_server_conn.emplace_back (new connection_handler (chn, transaction_server_type::PASSIVE, *this));
+  {
+    std::lock_guard lk_guard (m_conn_mutex);
+
+    m_passive_tran_server_conn.emplace_back (new connection_handler (chn, transaction_server_type::PASSIVE, *this));
+  }
 
   m_pts_mvcc_tracker.init_oldest_active_mvccid (channel_id);
 }
@@ -540,14 +546,18 @@ void
 page_server::disconnect_tran_server_async (const connection_handler *conn)
 {
   assert (conn != nullptr);
+
+  std::lock_guard lk_guard (m_conn_mutex);
+
   if (conn == m_active_tran_server_conn.get ())
     {
+      er_log_debug (ARG_FILE_LINE, "Page server disconnected from active transaction server with channel id: %s.\n",
+		    conn->get_connection_id ().c_str ());
       m_async_disconnect_handler.disconnect (std::move (m_active_tran_server_conn));
       assert (m_active_tran_server_conn == nullptr);
     }
   else
     {
-      bool passive_tran_server_found { false };
       for (auto it = m_passive_tran_server_conn.begin (); it != m_passive_tran_server_conn.end (); ++it)
 	{
 	  if (conn == it->get ())
@@ -557,17 +567,17 @@ page_server::disconnect_tran_server_async (const connection_handler *conn)
 	      m_async_disconnect_handler.disconnect (std::move (*it));
 	      assert (*it == nullptr);
 	      m_passive_tran_server_conn.erase (it);
-	      passive_tran_server_found = true;
 	      break;
 	    }
 	}
-      assert (passive_tran_server_found);
     }
 }
 
 void
 page_server::disconnect_all_tran_server ()
 {
+  std::lock_guard lk_guard (m_conn_mutex);
+
   disconnect_active_tran_server ();
 
   if (m_passive_tran_server_conn.empty ())
