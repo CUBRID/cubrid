@@ -4081,7 +4081,6 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
       if (IS_RESERVED_INDEX_ATTR_NAME (*namep))
 	{
 	  reserved_index_col_pos = nnames;
-	  break;
 	}
     }
 
