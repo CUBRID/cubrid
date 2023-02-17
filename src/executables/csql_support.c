@@ -276,7 +276,7 @@ csql_invoke_formatter ()
   filesys::auto_delete_file after_file_del (after_filename.c_str ());
   filesys::auto_close_file after_file (after_fileptr);
 
-  char *cmd = csql_get_tmp_buf (strlen (csql_Formatter_cmd + 1 + before_filename.size () + 1 + after_filename.size ()));
+  char *cmd = csql_get_tmp_buf (strlen (csql_Formatter_cmd) + 1 + before_filename.size () + 1 + after_filename.size ());
   if (cmd == NULL)
     {
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
@@ -306,6 +306,7 @@ csql_invoke_formatter ()
     }
 
   csql_edit_contents_clear ();
+  free_and_init (cmd);
 
   if (csql_edit_read_file (after_file.get ()) == CSQL_FAILURE)
     {
@@ -364,7 +365,7 @@ csql_invoke_system_editor (const char *argument)
     }
 
   /* invoke the system editor */
-  char *cmd = csql_get_tmp_buf (strlen (csql_Editor_cmd + 1 + filename.size ()));
+  char *cmd = csql_get_tmp_buf (strlen (csql_Editor_cmd) + 1 + filename.size ());
   if (cmd == NULL)
     {
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
@@ -376,6 +377,7 @@ csql_invoke_system_editor (const char *argument)
 
   /* initialize editor buffer */
   csql_edit_contents_clear ();
+  free_and_init (cmd);
 
 
   file.reset (fopen (filename.c_str (), "r"));
@@ -853,58 +855,25 @@ csql_check_server_down (void)
  * csql_get_tmp_buf()
  *   return: a pointer to a buffer for temporary formatting
  *   size(in): the number of characters required
- *
- * Note:
- *   This routine frees sprintf() users from having to worry
- *   too much about how much space they'll need; just call
- *   this with the number of characters required, and you'll
- *   get something that you don't have to worry about
- *   managing.
- *
- *   Don't free the pointer you get back from this routine
  */
 char *
 csql_get_tmp_buf (size_t size)
 {
-  static char buf[1024];
   static char *bufp = NULL;
   static size_t bufsize = 0;
 
-  if (size + 1 < sizeof (buf))
+  bufsize = size + 1;
+  bufp = (char *) malloc (bufsize);
+
+  if (bufp == NULL)
     {
-      return buf;
+      csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
+      bufsize = 0;
+      return NULL;
     }
   else
     {
-      /*
-       * buf isn't big enough, so see if we have an already-malloc'ed
-       * thing that is big enough.  If so, use it; if not, free it if
-       * it exists, and then allocate a big enough one.
-       */
-      if (size + 1 < bufsize)
-	{
-	  return bufp;
-	}
-      else
-	{
-	  if (bufp)
-	    {
-	      free_and_init (bufp);
-	      bufsize = 0;
-	    }
-	  bufsize = size + 1;
-	  bufp = (char *) malloc (bufsize);
-	  if (bufp == NULL)
-	    {
-	      csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
-	      bufsize = 0;
-	      return NULL;
-	    }
-	  else
-	    {
-	      return bufp;
-	    }
-	}
+      return bufp;
     }
 }
 

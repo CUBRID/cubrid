@@ -1666,6 +1666,7 @@ csql_print_buffer (void)
    */
   sprintf (cmd, "(%s) <%s", csql_Print_cmd, filename.c_str ());
   csql_invoke_system (cmd);
+  free_and_init (cmd);
 
   csql_display_msg (csql_get_message (CSQL_STAT_EDITOR_PRINTED_TEXT));
 }
