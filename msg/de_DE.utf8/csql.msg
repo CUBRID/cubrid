@@ -155,7 +155,7 @@ $ csql help messages
    ;EXit                        - Programm beenden.\n\
 \n\
    ;CLear                       - Befehlspuffer leeren.\n\
-   ;EDIT   [format/fmt]         - System-Editor mit oder ohne Formatierung des Befehlspuffer aufrufen.\n\
+   ;EDIT   [format/fmt]         - System-Editor [nach dem Formatierer] mit dem Befehlspuffer.\n\
    ;LISt                        - Inhalt eines Befehlspuffer anzeigen.\n\
 \n\
    ;RUn                         - SQL in Befehlspuffer ausführen.\n\
@@ -166,11 +166,11 @@ $ csql help messages
    ;AUtocommit [ON|OFF]         - aktivieren/deaktivieren des Auto-Commit-Modus.\n\
    ;REStart                     - Datenbank neustarten.\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - Standard-Shell, -Editor, -Printer, -Pager und -Formatierer setzen\n\
-   ;EDITOR_Cmd   [editor-cmd]     Befehl für eine neue, oder die aktuelle Anzeigen\n\
-   ;PRINT_Cmd    [print-cmd]      einzeln, jeweils.\n\
-   ;PAger_cmd    [pager-cmd]\n\
-   ;FOrmatter_cmd[formatter-cmd]\n\
+   ;SHELL_Cmd     [shell-cmd]   - Standard-Shell, -Editor, -Printer, -Pager und -Formatierer setzen\n\
+   ;EDITOR_Cmd    [editor-cmd]    Befehl für eine neue, oder die aktuelle Anzeigen\n\
+   ;PRINT_Cmd     [print-cmd]     einzeln, jeweils.\n\
+   ;PAger_cmd     [pager-cmd]\n\
+   ;FOrmatter_cmd [formatter-cmd]\n\
 \n\
    ;DATE                        - lokale Uhrzeit und Datum anzeigen.\n\
    ;DATAbase                    - den Namen der zugegriffenen Datenbank anzeigen.\n\

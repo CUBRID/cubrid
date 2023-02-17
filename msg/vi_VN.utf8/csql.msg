@@ -154,7 +154,7 @@ $ csql help messages
    ;EXit                        - exit program.\n\
 \n\
    ;CLear                       - clear command buffer.\n\
-   ;EDIT   [format/fmt]         - invoke system editor with or without formatting the command buffer.\n\
+   ;EDIT   [format/fmt]         - invoke system editor [after formatter] with command buffer.\n\
    ;LISt                        - display the content of command buffer.\n\
 \n\
    ;RUn                         - execute sql in command buffer.\n\
@@ -165,11 +165,11 @@ $ csql help messages
    ;AUtocommit [ON|OFF]         - enable/disable auto commit mode.\n\
    ;REStart                     - restart database.\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - set default shell, editor, print, pager and formatter\n\
-   ;EDITOR_Cmd   [editor-cmd]     command to new one, or display the current\n\
-   ;PRINT_Cmd    [print-cmd]      one, respectively.\n\
-   ;PAger_cmd    [pager-cmd]\n\
-   ;FOrmatter_cmd[formatter-cmd]\n\
+   ;SHELL_Cmd     [shell-cmd]   - set default shell, editor, print, pager and formatter\n\
+   ;EDITOR_Cmd    [editor-cmd]    command to new one, or display the current\n\
+   ;PRINT_Cmd     [print-cmd]     one, respectively.\n\
+   ;PAger_cmd     [pager-cmd]\n\
+   ;FOrmatter_cmd [formatter-cmd]\n\
 \n\
    ;DATE                        - display the local time, date.\n\
    ;DATAbase                    - display the name of database being accessed.\n\

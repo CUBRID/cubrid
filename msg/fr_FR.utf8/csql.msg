@@ -154,7 +154,7 @@ $ csql help messages
    ;EXit                        - quitte le programme.\n\
 \n\
    ;CLear                       - efface le tampon de commande.\n\
-   ;EDIT   [format/fmt]         - invoque éditeur système avec ou sans formater le tampon de commande.\n\
+   ;EDIT   [format/fmt]         - invoque éditeur système [après le formateur] avec le tampon de commande.\n\
    ;LISt                        - affiche le contenu de tampon de commande.\n\
 \n\
    ;RUn                         - exécute sql de tampon de commande.\n\
@@ -165,11 +165,11 @@ $ csql help messages
    ;AUtocommit [ON|OFF]         - active/désactive la validation automatique des transactions.\n\
    ;REStart                     - redémarre la base de données.\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - définit nouveau commande par défaut pour shell,\n\
-   ;EDITOR_Cmd   [editor-cmd]     éditeur, affiche, paginateur et formatter, ou afficher la \n\
-   ;PRINT_Cmd    [print-cmd]      commande de courrant.\n\
-   ;PAger_cmd    [pager-cmd]\n\
-   ;FOrmatter_cmd[formatter-cmd]\n\
+   ;SHELL_Cmd     [shell-cmd]   - définit nouveau commande par défaut pour shell,\n\
+   ;EDITOR_Cmd    [editor-cmd]    éditeur, affiche, paginateur et formatter, ou afficher la \n\
+   ;PRINT_Cmd     [print-cmd]     commande de courrant.\n\
+   ;PAger_cmd     [pager-cmd]\n\
+   ;FOrmatter_cmd [formatter-cmd]\n\
 \n\
    ;DATE                        - affiche l'heure et la date locales.\n\
    ;DATAbase                    - affiche le nom de la base de données en cours d'accès.\n\

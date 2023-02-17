@@ -154,7 +154,7 @@ $ csql help messages
    ;EXit                        - 終了。\n\
 \n\
    ;CLear                       - コマンドバッファーの内容を消す。\n\
-   ;EDIT   [format/fmt]         - コマンド バッファをフォーマットして、またはフォーマットせずに、システム エディタを起動します。\n\
+   ;EDIT   [format/fmt]         - コマンドバッファを使用して[フォーマッタの後に]システムエディタを呼び出します。\n\
    ;LISt                        - コマンドバッファーの内容を出力。\n\
 \n\
    ;RUn                         - コマンドバッファーを実行。\n\
@@ -165,11 +165,11 @@ $ csql help messages
    ;AUtocommit [ON|OFF]         - 自動コミットモードを設定。／解除。\n\
    ;REStart                     - データベースリスタート。\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - 既存に設定したシェルを設定／表示する。\n\
-   ;EDITOR_Cmd   [editor-cmd]   - 既存に設定したエディターを設定／表示する。\n\
-   ;PRINT_Cmd    [print-cmd]    - 既存に設定したプリントを設定／表示する。\n\
-   ;PAger_cmd    [pager-cmd]    - 既存に設定したページャーを設定／表示する。\n\
-   ;FOrmatter_cmd[formatter-cmd]- 既存に設定したフォーマッタを設定/表示する。\n\
+   ;SHELL_Cmd     [shell-cmd]   - 既存に設定したシェルを設定／表示する。\n\
+   ;EDITOR_Cmd    [editor-cmd]  - 既存に設定したエディターを設定／表示する。\n\
+   ;PRINT_Cmd     [print-cmd]   - 既存に設定したプリントを設定／表示する。\n\
+   ;PAger_cmd     [pager-cmd]   - 既存に設定したページャーを設定／表示する。\n\
+   ;FOrmatter_cmd [formatter-cmd] - 既存に設定したフォーマッタを設定/表示する。\n\
 \n\
    ;DATE                        - 地域の日付、時間を出力。\n\
    ;DATAbase                    - アクセスしているデータベース名を出力。\n\

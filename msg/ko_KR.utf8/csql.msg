@@ -153,7 +153,7 @@ $ csql help messages
    ;EXit                        - 종료.\n\
 \n\
    ;CLear                       - 명령어 버퍼 내용을 지움.\n\
-   ;EDIT   [format/fmt]         - 명령어 버퍼를 포맷하거나, 하지 않고 편집.\n\
+   ;EDIT   [format/fmt]         - 명령어 버퍼 [포맷 후] 편집.\n\
    ;LISt                        - 명령어 버퍼 내용 출력.\n\
 \n\
    ;RUn                         - 명령어 버퍼 실행.\n\
@@ -163,11 +163,11 @@ $ csql help messages
    ;AUtocommit [ON|OFF]         - 자동 커밋 모드 설정|해제.\n\
    ;REStart                     - 데이터베이스 재시작.\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - 내정된 쉘을 설정하거나 보여줌.\n\
-   ;EDITOR_Cmd   [editor-cmd]   - 내정된 편집기를 설정하거나 보여줌.\n\
-   ;PRINT_Cmd    [print-cmd]    - 내정된 프린트 명령어를 설정하거나 보여줌.\n\
-   ;PAger_cmd    [pager-cmd]    - 내정된 페이지 구분기를 설정하거나 보여줌.\n\
-   ;FOrmatter_cmd[formatter-cmd]- 내정된 포맷터를 설정하거나 보여줌.\n\
+   ;SHELL_Cmd     [shell-cmd]   - 내정된 쉘을 설정하거나 보여줌.\n\
+   ;EDITOR_Cmd    [editor-cmd]  - 내정된 편집기를 설정하거나 보여줌.\n\
+   ;PRINT_Cmd     [print-cmd]   - 내정된 프린트 명령어를 설정하거나 보여줌.\n\
+   ;PAger_cmd     [pager-cmd]   - 내정된 페이지 구분기를 설정하거나 보여줌.\n\
+   ;FOrmatter_cmd [formatter-cmd] - 내정된 포맷터를 설정하거나 보여줌.\n\
 \n\
    ;DATE                        - 지역 날짜, 시간 출력.\n\
    ;DATAbase                    - 접근 중인 데이터베이스 이름 출력.\n\
