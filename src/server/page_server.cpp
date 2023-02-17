@@ -574,8 +574,20 @@ page_server::disconnect_tran_server_async (const connection_handler *conn)
 void
 page_server::disconnect_all_tran_server ()
 {
-  disconnect_active_tran_server ();
+  /* request disconnection from ATS */
+  if (m_active_tran_server_conn == nullptr)
+    {
+      er_log_debug (ARG_FILE_LINE, "disconnect_all_tran_server: Active transaction server is not connected.\n");
+    }
+  else
+    {
+      er_log_debug (ARG_FILE_LINE, "disconnect_all_tran_server:"
+		    " Request disconnection from active transaction server connection with channel id: %s.\n",
+		    m_active_tran_server_conn->get_connection_id ().c_str ());
+      m_active_tran_server_conn.reset (nullptr);
+    }
 
+  /* request disconnection from all PTSes */
   if (m_passive_tran_server_conn.empty ())
     {
       er_log_debug (ARG_FILE_LINE, "disconnect_all_tran_server: No passive transaction server connected.\n");
@@ -585,12 +597,11 @@ page_server::disconnect_all_tran_server ()
       for (size_t i = 0; i < m_passive_tran_server_conn.size (); i++)
 	{
 	  er_log_debug (ARG_FILE_LINE, "disconnect_all_tran_server:"
-			" Disconnected passive transaction server with channel id: %s.\n",
+			"Request disconnectoin from passive transaction server with channel id: %s.\n",
 			m_passive_tran_server_conn[i]->get_connection_id ().c_str ());
 	  m_passive_tran_server_conn[i]->remove_prior_sender_sink ();
-	  m_passive_tran_server_conn[i].reset (nullptr);
+	  m_passive_tran_server_conn[i]->push_disconnection_request ();
 	}
-      m_passive_tran_server_conn.clear ();
     }
 }
 
