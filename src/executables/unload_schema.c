@@ -188,6 +188,8 @@ static bool emit_methods (print_output & output_ctx, DB_OBJECT * class_, const c
 static int ex_contains_object_reference (DB_VALUE * value);
 static void emit_attribute_def (print_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier);
 static void emit_unique_def (print_output & output_ctx, DB_OBJECT * class_, const char *class_type);
+static void emit_primary_key_def (print_output & output_ctx, DB_OBJECT * class_, const char *class_type);
+static void emit_primary_and_unique_def (print_output & output_ctx, DB_OBJECT * class_, const char *class_type);
 static void emit_reverse_unique_def (print_output & output_ctx, DB_OBJECT * class_);
 static void emit_index_def (print_output & output_ctx, DB_OBJECT * class_);
 static void emit_domain_def (print_output & output_ctx, DB_DOMAIN * domains);
@@ -2056,12 +2058,10 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
   int unique_flag = 0;
   int reverse_unique_flag = 0;
   int index_flag = 0;
-  DB_VALUE cur_val, started_val, min_val, max_val, inc_val, sr_name;
-  const char *name, *start_with;
+  const char *name;
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
   char *serial_name = NULL;
-  char str_buf[NUMERIC_MAX_STRING_SIZE];
 
   attribute_list = db_get_attributes (class_);
 
@@ -2247,124 +2247,15 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
       output_ctx (";\n");
     }
 
-  for (a = first_attribute; a != NULL; a = db_attribute_next (a))
+  if (unique_flag)
     {
-      if (db_attribute_class (a) == class_)
-	{
-	  /* update attribute's auto increment serial object */
-	  if (a->auto_increment != NULL)
-	    {
-	      int sr_error = NO_ERROR;
-
-	      db_make_null (&sr_name);
-	      db_make_null (&cur_val);
-	      db_make_null (&started_val);
-	      db_make_null (&min_val);
-	      db_make_null (&max_val);
-	      db_make_null (&inc_val);
-
-	      sr_error = db_get (a->auto_increment, "unique_name", &sr_name);
-	      if (sr_error < 0)
-		{
-		  continue;
-		}
-
-	      sr_error = db_get (a->auto_increment, "current_val", &cur_val);
-	      if (sr_error < 0)
-		{
-		  pr_clear_value (&sr_name);
-		  continue;
-		}
-
-	      sr_error = db_get (a->auto_increment, "increment_val", &inc_val);
-	      if (sr_error < 0)
-		{
-		  pr_clear_value (&sr_name);
-		  continue;
-		}
-
-	      sr_error = db_get (a->auto_increment, "min_val", &min_val);
-	      if (sr_error < 0)
-		{
-		  pr_clear_value (&sr_name);
-		  continue;
-		}
-
-	      sr_error = db_get (a->auto_increment, "max_val", &max_val);
-	      if (sr_error < 0)
-		{
-		  pr_clear_value (&sr_name);
-		  continue;
-		}
-
-	      sr_error = db_get (a->auto_increment, "started", &started_val);
-	      if (sr_error < 0)
-		{
-		  pr_clear_value (&sr_name);
-		  continue;
-		}
-
-	      if (db_get_int (&started_val) == 1)
-		{
-		  DB_VALUE diff_val, answer_val;
-
-		  db_make_null (&diff_val);
-		  sr_error = numeric_db_value_sub (&max_val, &cur_val, &diff_val);
-		  if (sr_error == ER_IT_DATA_OVERFLOW)
-		    {
-		      // max - cur might be flooded.
-		      diff_val = max_val;
-		      er_clear ();
-		    }
-		  else if (sr_error != NO_ERROR)
-		    {
-		      pr_clear_value (&sr_name);
-		      continue;
-		    }
-		  sr_error = numeric_db_value_compare (&inc_val, &diff_val, &answer_val);
-		  if (sr_error != NO_ERROR)
-		    {
-		      pr_clear_value (&sr_name);
-		      continue;
-		    }
-		  /* auto_increment is always non-cyclic */
-		  if (db_get_int (&answer_val) > 0)
-		    {
-		      pr_clear_value (&sr_name);
-		      continue;
-		    }
-
-		  sr_error = numeric_db_value_add (&cur_val, &inc_val, &answer_val);
-		  if (sr_error != NO_ERROR)
-		    {
-		      pr_clear_value (&sr_name);
-		      continue;
-		    }
-
-		  pr_clear_value (&cur_val);
-		  cur_val = answer_val;
-		}
-
-	      start_with = numeric_db_value_print (&cur_val, str_buf);
-	      if (start_with[0] == '\0')
-		{
-		  start_with = "NULL";
-		}
-
-	      SPLIT_USER_SPECIFIED_NAME (db_get_string (&sr_name), owner_name, serial_name);
-	      output_ctx ("ALTER SERIAL %s%s%s.%s%s%s START WITH %s;\n",
-			  PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (serial_name), start_with);
-
-	      pr_clear_value (&sr_name);
-	    }
-	}
-    }
-
-  if (split_schema_files == false)
-    {
-      if (unique_flag)
+      if (split_schema_files)
 	{
 	  emit_unique_def (output_ctx, class_, class_type);
+	}
+      else
+	{
+	  emit_primary_and_unique_def (output_ctx, class_, class_type);
 	}
     }
 
@@ -2804,8 +2695,6 @@ emit_attribute_def (print_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRIBU
     }
 }
 
-
-
 /*
  * emit_unique_def - emit the unique constraint definitions for this class
  *    return: void
@@ -2813,6 +2702,246 @@ emit_attribute_def (print_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRIBU
  */
 static void
 emit_unique_def (print_output & output_ctx, DB_OBJECT * class_, const char *class_type)
+{
+  DB_CONSTRAINT *constraint_list, *constraint;
+  DB_ATTRIBUTE **atts, **att;
+  bool has_inherited_atts;
+  int num_printed = 0;
+  const char *name, *class_name;
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char *class_name_p = NULL;
+  int not_online = 0;
+
+  class_name = db_get_class_name (class_);
+
+  /* First we must check if there is a unique one without the online index tag. */
+
+  constraint_list = db_get_constraints (class_);
+  if (constraint_list == NULL)
+    {
+      return;
+    }
+
+  for (constraint = constraint_list; constraint != NULL && not_online == 0;
+       constraint = db_constraint_next (constraint))
+    {
+      if (db_constraint_type (constraint) != DB_CONSTRAINT_UNIQUE)
+	{
+	  continue;
+	}
+
+      if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  /* Skip the unique index definitions for online indexes. */
+	  continue;
+	}
+      not_online++;
+    }
+
+  if (not_online == 0)
+    {
+      /* We need to return and not print anything. */
+      return;
+    }
+
+  SPLIT_USER_SPECIFIED_NAME (class_name, owner_name, class_name_p);
+  output_ctx ("ALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (owner_name),
+	      PRINT_IDENTIFIER (class_name_p));
+
+  for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
+    {
+      if (db_constraint_type (constraint) != DB_CONSTRAINT_UNIQUE)
+	{
+	  continue;
+	}
+
+      if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  /* Skip the unique index definitions for online indexes. */
+	  continue;
+	}
+
+      atts = db_constraint_attributes (constraint);
+      has_inherited_atts = false;
+
+      for (att = atts; *att != NULL; att++)
+	{
+	  if (db_attribute_class (*att) != class_)
+	    {
+	      has_inherited_atts = true;
+	      break;
+	    }
+	}
+
+      if (!has_inherited_atts)
+	{
+	  if (num_printed > 0)
+	    {
+	      output_ctx (",\n");
+	    }
+
+	  if (constraint->type == SM_CONSTRAINT_UNIQUE)
+	    {
+	      output_ctx ("       CONSTRAINT [%s] UNIQUE(", constraint->name);
+
+	      int i;
+	      for (att = atts, i = 0; *att != NULL; att++, i++)
+		{
+		  name = db_attribute_name (*att);
+		  if (att != atts)
+		    {
+		      output_ctx (", ");
+		    }
+
+		  output_ctx ("%s%s%s", PRINT_IDENTIFIER (name));
+
+		  if (constraint->asc_desc != NULL && constraint->asc_desc[i] != 0)
+		    {
+		      output_ctx ("%s", " DESC");
+		    }
+		}
+	      output_ctx (")");
+
+	      if (constraint->comment != NULL && constraint->comment[0] != '\0')
+		{
+		  output_ctx (" ");
+		  help_print_describe_comment (output_ctx, constraint->comment);
+		}
+	      ++num_printed;
+	    }
+	}
+    }
+  output_ctx (";\n");
+}
+
+/*
+ * emit_primary_key_def - emit the primary key constraint definitions for this class
+ *    return: void
+ *    class(in): the class to emit the attributes for
+ */
+static void
+emit_primary_key_def (print_output & output_ctx, DB_OBJECT * class_, const char *class_type)
+{
+  DB_CONSTRAINT *constraint_list, *constraint;
+  DB_ATTRIBUTE **atts, **att;
+  bool has_inherited_atts;
+  int num_printed = 0;
+  const char *name, *class_name;
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char *class_name_p = NULL;
+  int not_online = 0;
+  int i = 0;
+
+  class_name = db_get_class_name (class_);
+
+  /* First we must check if there is a unique one without the online index tag. */
+
+  constraint_list = db_get_constraints (class_);
+  if (constraint_list == NULL)
+    {
+      return;
+    }
+
+  for (constraint = constraint_list; constraint != NULL && not_online == 0;
+       constraint = db_constraint_next (constraint))
+    {
+      if (db_constraint_type (constraint) != DB_CONSTRAINT_PRIMARY_KEY)
+	{
+	  continue;
+	}
+
+      if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  /* Skip the unique index definitions for online indexes. */
+	  continue;
+	}
+      not_online++;
+    }
+
+  if (not_online == 0)
+    {
+      /* We need to return and not print anything. */
+      return;
+    }
+
+  output_ctx ("\n");
+
+  SPLIT_USER_SPECIFIED_NAME (class_name, owner_name, class_name_p);
+  output_ctx ("ALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (owner_name),
+	      PRINT_IDENTIFIER (class_name_p));
+
+  for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
+    {
+      if (db_constraint_type (constraint) != DB_CONSTRAINT_UNIQUE
+	  && db_constraint_type (constraint) != DB_CONSTRAINT_PRIMARY_KEY)
+	{
+	  continue;
+	}
+
+      if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  /* Skip the unique index definitions for online indexes. */
+	  continue;
+	}
+
+      atts = db_constraint_attributes (constraint);
+      has_inherited_atts = false;
+
+      for (att = atts; *att != NULL; att++)
+	{
+	  if (db_attribute_class (*att) != class_)
+	    {
+	      has_inherited_atts = true;
+	      break;
+	    }
+	}
+
+      if (!has_inherited_atts)
+	{
+	  if (constraint->type == SM_CONSTRAINT_PRIMARY_KEY)
+	    {
+	      if (num_printed > 0)
+		{
+		  output_ctx (",\n");
+		}
+
+	      output_ctx ("       CONSTRAINT [%s] PRIMARY KEY(", constraint->name);
+
+	      for (att = atts, i = 0; *att != NULL; att++, i++)
+		{
+		  name = db_attribute_name (*att);
+		  if (att != atts)
+		    {
+		      output_ctx (", ");
+		    }
+
+		  output_ctx ("%s%s%s", PRINT_IDENTIFIER (name));
+
+		  if (constraint->asc_desc != NULL && constraint->asc_desc[i] != 0)
+		    {
+		      output_ctx ("%s", " DESC");
+		    }
+		}
+	      output_ctx (")");
+	      if (constraint->comment != NULL && constraint->comment[0] != '\0')
+		{
+		  output_ctx (" ");
+		  help_print_describe_comment (output_ctx, constraint->comment);
+		}
+	      ++num_printed;
+	    }
+	}
+    }
+  output_ctx (";\n");
+}
+
+/*
+ * emit_primary_and_unique_def - emit the primary key and unique constraint definitions for this class
+ *    return: void
+ *    class(in): the class to emit the attributes for
+ */
+static void
+emit_primary_and_unique_def (print_output & output_ctx, DB_OBJECT * class_, const char *class_type)
 {
   DB_CONSTRAINT *constraint_list, *constraint;
   DB_ATTRIBUTE **atts, **att;
@@ -4587,7 +4716,7 @@ emit_primary_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 		  pk_flag = 1;
 		  is_vclass = db_is_vclass (cl->op);
 		  class_type = (is_vclass > 0) ? "VCLASS" : "CLASS";
-		  emit_unique_def (output_ctx, cl->op, class_type);
+		  emit_primary_key_def (output_ctx, cl->op, class_type);
 		}
 	    }
 	}
