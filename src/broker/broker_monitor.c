@@ -92,6 +92,8 @@
 #define         CLIENT_MONITOR_FLAG_MASK     0x10
 #define         UNUSABLE_DATABASES_FLAG_MASK 0x20
 
+#define         WATCH_CMD	"watch"
+
 #if defined(WINDOWS) && !defined(PRId64)
 #define PRId64 "lld"
 #endif
@@ -459,6 +461,7 @@ main (int argc, char **argv)
 #endif
   time_t time_old, time_cur;
   double elapsed_time;
+  char cmd[PATH_MAX] = { 0, };
 
   if (argc == 2 && strcmp (argv[1], "--version") == 0)
     {
@@ -519,9 +522,18 @@ main (int argc, char **argv)
 	}
 //  FillConsoleOutputCharacter(h_console, ' ', scr_info.dwSize.X * scr_info.dwSize.Y, top_left_pos, &size);
 #else
-      win = initscr ();
-      timeout (refresh_sec * 1000);
-      noecho ();
+      snprintf (cmd, PATH_MAX, "%s -t -n %d", WATCH_CMD, refresh_sec);
+
+      for (i = 0; i < argc; i++)
+	{
+	  strcat (cmd, " ");
+	  strcat (cmd, argv[i]);
+	}
+
+      free (br_vector);
+      err = system (cmd);
+
+      return 0;
 #endif
     }
 
@@ -722,6 +734,7 @@ get_args (int argc, char *argv[], char *br_vector)
 #endif
 
   char optchars[] = "hbqts:l:fmcSPu";
+  char zero[2] = "0";
 
   display_job_queue = false;
   refresh_sec = 0;
@@ -741,6 +754,12 @@ get_args (int argc, char *argv[], char *br_vector)
 	  break;
 	case 's':
 	  refresh_sec = atoi (optarg);
+#if !defined(WINDOWS)
+	  if (refresh_sec != 0)
+	    {
+	      memcpy (optarg, zero, 2);
+	    }
+#endif
 	  break;
 	case 'b':
 	  monitor_flag |= BROKER_MONITOR_FLAG_MASK;
