@@ -348,14 +348,12 @@ static const char *get_status_string (T_APPL_SERVER_INFO * as_info_p, char appl_
 static void get_cpu_usage_string (char *buf_p, float usage);
 
 
-#if defined(WINDOWS)
 static void move (int x, int y);
 static void refresh ();
 static void clear ();
 static void clrtobot ();
 static void clrtoeol ();
 static void endwin ();
-#endif
 
 static int metadata_monitor (double elapsed_time);
 static int client_monitor (void);
@@ -1961,6 +1959,36 @@ endwin ()
 {
   clear ();
   move (0, 0);
+}
+#else
+static void
+move (int x, int y)
+{
+}
+
+static void
+refresh ()
+{
+}
+
+static void
+clear ()
+{
+}
+
+static void
+clrtobot ()
+{
+}
+
+static void
+clrtoeol ()
+{
+}
+
+static void
+endwin ()
+{
 }
 #endif
 
