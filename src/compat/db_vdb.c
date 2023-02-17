@@ -619,6 +619,17 @@ db_compile_statement_local (DB_SESSION * session)
       return er_errid ();
     }
 
+  /* from synonym */
+  if (statement->flag.has_remote_server_name)
+    {
+      pt_check_server_extension (parser, statement);
+      if (pt_has_error (parser))
+	{
+	  pt_report_to_ersys_with_statement (parser, PT_SYNTAX, statement);
+	  return er_errid ();
+	}
+    }
+
   if (seed == 0)
     {
       srand48 (seed = (long) time (NULL));

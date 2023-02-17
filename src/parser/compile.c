@@ -67,6 +67,7 @@ struct pt_class_locks
   int *only_all;
   LOCK *locks;
   LC_PREFETCH_FLAGS *flags;
+  bool has_remote_server;
 };
 
 enum pt_order_by_adjustment
@@ -431,7 +432,7 @@ PT_NODE *
 pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_CLASS_LOCKS lcks;
-  PT_NODE *node = NULL;
+  PT_NODE *node = NULL, *spec;
   LOCK lock_rr_tran = NULL_LOCK;
   LC_FIND_CLASSNAME find_result;
 
@@ -548,6 +549,11 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
   lcks.num_classes = 0;
 
   (void) parser_walk_tree (parser, statement, pt_find_lck_classes, &lcks, NULL, NULL);
+  if (lcks.has_remote_server)
+    {
+      statement->flag.has_remote_server_name = 1;
+      goto cleanup;
+    }
 
   if (!pt_has_error (parser)
       && (find_result =
@@ -746,11 +752,22 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
   synonym_mop = db_find_synonym (class_name);
   if (synonym_mop != NULL)
     {
+      char *r;
+
       class_name = db_get_synonym_target_name (synonym_mop, target_name, DB_MAX_IDENTIFIER_LENGTH);
       if (class_name == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
 	  return error;
+	}
+      if ((r = (char *) strchr (class_name, '@')) != NULL)
+	{
+	  /* remote table */
+	  *r = 0;
+	  spec->info.spec.entity_name->info.name.original = pt_append_string (parser, NULL, class_name);
+	  spec->info.spec.remote_server_name = parser_new_node (parser, PT_NAME);
+	  spec->info.spec.remote_server_name->info.name.original = pt_append_string (parser, NULL, r + 1);
+	  lcks->has_remote_server = true;
 	}
     }
   else

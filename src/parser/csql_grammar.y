@@ -653,6 +653,7 @@ int g_original_buffer_len;
 %type <node> class_name_without_dot
 %type <node> class_name
 %type <node> class_name_list
+%type <node> class_name_for_synonym
 %type <node> trigger_name_without_dot
 %type <node> trigger_name
 %type <node> trigger_name_list
@@ -3128,7 +3129,7 @@ create_stmt
 	  	{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_CREATE); }	/* 4 */
 	  synonym_name_without_dot	/* 5 */
 	  For				/* 6 */
-	  class_name			/* 7 */
+	  class_name_for_synonym 	/* 7 */
 	  opt_comment_spec		/* 8 */
 	  	{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace opt_access_modifier SYNONYM synonym_name_without_dot For class_name opt_comment_spec);
@@ -3155,6 +3156,20 @@ create_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	;
+class_name_for_synonym
+	: class_name
+		{ $$ = $1; }
+	| class_name_with_server_name
+		{
+		  PT_NODE *cname = CONTAINER_AT_0 ($1);
+		  PT_NODE *sname = CONTAINER_AT_1 ($1);
+
+		  cname->info.name.original = pt_append_string (this_parser, cname->info.name.original, "@");
+		  cname->info.name.original = pt_append_string (this_parser, cname->info.name.original, sname->info.name.original);
+
+		  $$ = cname;
+		}
 	;
 
 opt_serial_option_list
