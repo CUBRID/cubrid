@@ -5190,7 +5190,7 @@ pgbuf_is_temporary_volume (VOLID volid)
   /* Later edit: replication threads are also being present on passive transaction server - which has
    * to deal with temporary volumes. Thus, restrict the test to page server context only and leave
    * original answer for all transaction servers */
-  if (is_page_server () && cubthread::get_entry ().get_thread_type () == TT_REPLICATION_PS)
+  if (is_page_server () && cubthread::get_entry ().type == TT_REPLICATION_PS)
     {
       return false;
     }
@@ -14396,7 +14396,7 @@ pgbuf_has_any_non_vacuum_waiters (PAGE_PTR pgptr)
   thread_entry_p = bufptr->next_wait_thrd;
   while (thread_entry_p != NULL)
     {
-      if (thread_entry_p->get_thread_type () != TT_VACUUM_WORKER)
+      if (thread_entry_p->type != TT_VACUUM_WORKER)
 	{
 	  return true;
 	}

@@ -3283,7 +3283,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
       thread_p = thread_get_thread_entry_info ();
     }
 
-  assert (thread_p->get_thread_type () != TT_LOADDB);
+  assert (thread_p->type != TT_LOADDB);
 
   thrd_entry = thread_p;
 
@@ -5972,7 +5972,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
     }
 #endif
 
-  if (thread_p->get_thread_type () == TT_LOADDB)
+  if (thread_p->type == TT_LOADDB)
     {
       // load worker don't lock; they rely on session transaction locks
       if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
@@ -7001,7 +7001,7 @@ lock_get_object_lock (const OID * oid, const OID * class_oid)
       return NULL_LOCK;
     }
 
-  if (thread_p->get_thread_type () == thread_type::TT_LOADDB)
+  if (thread_p->type == thread_type::TT_LOADDB)
     {
       /* Loaddb workers does not acquire locks. Get tran_index of loaddb workers manager thread. */
       tran_index = thread_p->conn_entry->get_tran_index ();
@@ -7115,7 +7115,7 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock)
       return ER_LK_BAD_ARGUMENT;
     }
 
-  if (thread_p->get_thread_type () == thread_type::TT_LOADDB)
+  if (thread_p->type == thread_type::TT_LOADDB)
     {
       /* Loaddb workers does not acquire locks. Get tran_index of loaddb workers manager thread. */
       tran_index = thread_p->conn_entry->get_tran_index ();
@@ -7379,7 +7379,7 @@ lock_get_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid)
       return NULL;
     }
 
-  if (thread_p->get_thread_type () == thread_type::TT_LOADDB)
+  if (thread_p->type == thread_type::TT_LOADDB)
     {
       /* Loaddb workers does not acquire locks. Get tran_index of loaddb workers manager thread. */
       tran_index = thread_p->conn_entry->get_tran_index ();

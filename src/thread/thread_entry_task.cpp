@@ -134,7 +134,7 @@ namespace cubthread
   system_worker_entry_manager::on_recycle (entry &context)
   {
     // thread type is 'not' reset in the parent, checked here
-    assert (context.get_thread_type () == m_thread_type);
+    assert (context.type == m_thread_type);
     // transaction index is reset in parent
     context.tran_index = LOG_SYSTEM_TRAN_INDEX;
   }

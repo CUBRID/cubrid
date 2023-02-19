@@ -155,36 +155,21 @@ bool
 vacuum_is_thread_vacuum (const THREAD_ENTRY * thread_p)
 {
   assert (thread_p != NULL);
-  if (thread_p != nullptr)
-    {
-      const thread_type tt = thread_p->get_thread_type ();
-      return tt == TT_VACUUM_MASTER || tt == TT_VACUUM_WORKER;
-    }
-  return false;
+  return thread_p != NULL && (thread_p->type == TT_VACUUM_MASTER || thread_p->type == TT_VACUUM_WORKER);
 }
 
 bool
 vacuum_is_thread_vacuum_worker (const THREAD_ENTRY * thread_p)
 {
   assert (thread_p != NULL);
-  if (thread_p != nullptr)
-    {
-      const thread_type tt = thread_p->get_thread_type ();
-      return tt == TT_VACUUM_WORKER;
-    }
-  return false;
+  return thread_p != NULL && thread_p->type == TT_VACUUM_WORKER;
 }
 
 bool
 vacuum_is_thread_vacuum_master (const THREAD_ENTRY * thread_p)
 {
   assert (thread_p != NULL);
-  if (thread_p != nullptr)
-    {
-      const thread_type tt = thread_p->get_thread_type ();
-      return tt == TT_VACUUM_MASTER;
-    }
-  return false;
+  return thread_p != NULL && thread_p->type == TT_VACUUM_MASTER;
 }
 
 /* Get a vacuum worker's state */

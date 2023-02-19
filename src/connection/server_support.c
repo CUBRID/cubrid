@@ -3216,7 +3216,7 @@ css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & 
   CSS_CONN_ENTRY *conn_p;
   bool does_belong = false;
 
-  if (caller_thread == &thread_ref || thread_ref.get_thread_type () != TT_WORKER)
+  if (caller_thread == &thread_ref || thread_ref.type != TT_WORKER)
     {
       // not what we need
       return;

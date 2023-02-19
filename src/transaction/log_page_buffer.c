@@ -2418,7 +2418,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
       if (logpb_fetch_from_archive (thread_p, pageid, log_pgptr, NULL, NULL, true) == NULL)
 	{
 #if defined (SERVER_MODE)
-	  if (thread_p != NULL && thread_p->get_thread_type () == TT_VACUUM_MASTER)
+	  if (thread_p != NULL && thread_p->type == TT_VACUUM_MASTER)
 	    {
 	      vacuum_er_log_error (VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_ARCHIVES,
 				   "Failed to fetch page %lld from archives.", pageid);
@@ -2457,7 +2457,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
 		  if (logpb_fetch_from_archive (thread_p, pageid, log_pgptr, NULL, NULL, true) == NULL)
 		    {
 #if defined (SERVER_MODE)
-		      if (thread_p != NULL && thread_p->get_thread_type () == TT_VACUUM_MASTER)
+		      if (thread_p != NULL && thread_p->type == TT_VACUUM_MASTER)
 			{
 			  vacuum_er_log_error (VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_ARCHIVES,
 					       "Failed to fetch page %lld from archives.", pageid);
@@ -3720,14 +3720,11 @@ logpb_write_append_pages_to_disk (THREAD_ENTRY * thread_p)
 #endif
 
 #if defined(SERVER_MODE)
-  if (thread_p != nullptr)
+  if (thread_p && thread_p->type != TT_DAEMON && thread_p->type != TT_VACUUM_MASTER
+      && thread_p->type != TT_VACUUM_WORKER)
     {
-      const thread_type tt = thread_p->get_thread_type ();
-      if (tt != TT_DAEMON && tt != TT_VACUUM_MASTER && tt != TT_VACUUM_WORKER)
-	{
-	  /* set event logging parameter */
-	  thread_p->event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
-	}
+      /* set event logging parameter */
+      thread_p->event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
     }
 #endif /* SERVER_MODE */
 
@@ -4306,14 +4303,11 @@ logpb_write_append_pages_to_disk (THREAD_ENTRY * thread_p)
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
-  if (thread_p != nullptr)
+  if (thread_p && thread_p->type != TT_DAEMON && thread_p->type != TT_VACUUM_MASTER
+      && thread_p->type != TT_VACUUM_WORKER)
     {
-      const thread_type tt = thread_p->get_thread_type ();
-      if (tt != TT_DAEMON && tt != TT_VACUUM_MASTER && tt != TT_VACUUM_WORKER)
-	{
-	  /* reset event logging parameter */
-	  thread_p->event_stats.trace_log_flush_time = 0;
-	}
+      /* reset event logging parameter */
+      thread_p->event_stats.trace_log_flush_time = 0;
     }
 #endif /* SERVER_MODE */
 
@@ -4328,14 +4322,11 @@ error:
   logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logpb_write_append_pages_to_disk");
 
 #if defined(SERVER_MODE)
-  if (thread_p != nullptr)
+  if (thread_p && thread_p->type != TT_DAEMON && thread_p->type != TT_VACUUM_MASTER
+      && thread_p->type != TT_VACUUM_WORKER)
     {
-      const thread_type tt = thread_p->get_thread_type ();
-      if (tt != TT_DAEMON && tt != TT_VACUUM_MASTER && tt != TT_VACUUM_WORKER)
-	{
-	  /* reset event logging parameter */
-	  thread_p->event_stats.trace_log_flush_time = 0;
-	}
+      /* reset event logging parameter */
+      thread_p->event_stats.trace_log_flush_time = 0;
     }
 #endif /* SERVER_MODE */
 

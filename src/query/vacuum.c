@@ -7639,7 +7639,7 @@ vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, thread_type & save_typ
     {
       thread_p = thread_get_thread_entry_info ();
     }
-  save_type = thread_p->get_thread_type ();
+  save_type = thread_p->type;
   thread_p->set_thread_type (TT_VACUUM_MASTER);
   thread_p->vacuum_worker = &vacuum_Master;
   if (thread_p->get_system_tdes () == NULL)
@@ -7662,7 +7662,7 @@ vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker
     {
       thread_p = thread_get_thread_entry_info ();
     }
-  save_type = thread_p->get_thread_type ();
+  save_type = thread_p->type;
   thread_p->set_thread_type (TT_VACUUM_WORKER);
   thread_p->vacuum_worker = worker;
   if (vacuum_worker_allocate_resources (thread_p, thread_p->vacuum_worker) != NO_ERROR)

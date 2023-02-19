@@ -215,9 +215,7 @@ namespace cubthread
       // The rules of thumbs is to always use private members. Until a complete refactoring, these members will remain
       // public
       int index;			/* thread entry index */
-    private:
       thread_type type;		/* thread type */
-    public:
       thread_id_t emulate_tid;	/* emulated thread id; applies to non-worker threads, when works on behalf of a worker
 				   * thread */
       int client_id;		/* client id whom this thread is responding */
@@ -349,10 +347,10 @@ namespace cubthread
       lockfree::tran::index pull_lf_tran_index ();
       lockfree::tran::index get_lf_tran_index ();
 
-      inline thread_type get_thread_type () const
-      {
-	return type;
-      }
+//      inline thread_type get_thread_type () const
+//      {
+//	return type;
+//      }
       void set_thread_type (thread_type type);
 
     private:
