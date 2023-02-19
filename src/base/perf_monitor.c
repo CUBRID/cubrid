@@ -1874,7 +1874,7 @@ perfmon_get_module_type (THREAD_ENTRY * thread_p)
       thread_p = thread_get_thread_entry_info ();
     }
 
-  switch (thread_p->type)
+  switch (thread_p->get_thread_type ())
     {
     case TT_WORKER:
     case TT_RECOVERY:

@@ -215,7 +215,9 @@ namespace cubthread
       // The rules of thumbs is to always use private members. Until a complete refactoring, these members will remain
       // public
       int index;			/* thread entry index */
+    private:
       thread_type type;		/* thread type */
+    public:
       thread_id_t emulate_tid;	/* emulated thread id; applies to non-worker threads, when works on behalf of a worker
 				   * thread */
       int client_id;		/* client id whom this thread is responding */
@@ -347,6 +349,12 @@ namespace cubthread
       lockfree::tran::index pull_lf_tran_index ();
       lockfree::tran::index get_lf_tran_index ();
 
+      inline thread_type get_thread_type () const
+      {
+	return type;
+      }
+      void set_thread_type (thread_type type);
+
     private:
       void clear_resources (void);
 
@@ -365,6 +373,11 @@ namespace cubthread
       log_system_tdes *m_systdes;
 
       lockfree::tran::index m_lf_tran_index;
+
+    public:
+      // TODO: if true, instructs page buffer's internal unfix mechanism to not affect page hotness
+      // member introduced temporarily to allow to activate/de-activate this mechanism based on a sysparam
+      bool m_page_buffer_ignore_unfix;
   };
 
 } // namespace cubthread

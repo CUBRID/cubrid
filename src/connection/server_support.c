@@ -999,7 +999,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 
   pthread_mutex_unlock (&thread_p->tran_index_lock);
 
-  thread_p->type = TT_SERVER;	/* server thread */
+  thread_p->set_thread_type (TT_SERVER);	/* server thread */
 
   css_peer_alive_timeout = 5000;
   poll_timeout = 100;
@@ -3216,7 +3216,7 @@ css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & 
   CSS_CONN_ENTRY *conn_p;
   bool does_belong = false;
 
-  if (caller_thread == &thread_ref || thread_ref.type != TT_WORKER)
+  if (caller_thread == &thread_ref || thread_ref.get_thread_type () != TT_WORKER)
     {
       // not what we need
       return;

@@ -714,6 +714,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_RECOVERY_PARALLEL_TASK_DEBUG "recovery_parallel_task_debug"
 #define PRM_NAME_REPLICATION_PARALLEL_COUNT "replication_parallel_count"
 #define PRM_NAME_REPLICATION_COMPRESS_PAGES_TRANSFER "replication_compress_pages_transfer"
+#define PRM_NAME_REPLICATION_PTS_THREAD_IGNORE_UNFIX "replication_pts_thread_ignore_unfix"
 
 #define PRM_NAME_REMOTE_STORAGE "remote_storage"
 #define PRM_NAME_DUMP_FILE_CACHE "dump_fileio_cache_after_boot"
@@ -2364,8 +2365,12 @@ static int prm_replication_parallel_count_upper_value = 32;
 static int prm_replication_parallel_count_lower_value = 0;
 
 static unsigned int prm_replication_compress_pages_transfer_flag = 0;
-static const bool prm_replication_compress_pages_transfer_default = true;
+static const bool prm_replication_compress_pages_transfer_default = false;
 bool PRM_REPLICATION_COMPRESS_PAGES_TRANSFER_VALUE = prm_replication_compress_pages_transfer_default;
+
+static unsigned int prm_replication_pts_thread_ignore_unfix_flag = 0;
+static const bool prm_replication_pts_thread_ignore_unfix_default = false;
+bool PRM_REPLICATION_PTS_THREAD_IGNORE_UNFIX_VALUE = prm_replication_pts_thread_ignore_unfix_default;
 
 static bool prm_remote_storage_default = false;
 bool PRM_REMOTE_STORAGE_CURRENT_VALUE = prm_remote_storage_default;
@@ -6305,11 +6310,23 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_REPLICATION_COMPRESS_PAGES_TRANSFER,
    PRM_NAME_REPLICATION_COMPRESS_PAGES_TRANSFER,
-   (PRM_FOR_SERVER),
+   (PRM_HIDDEN | PRM_FOR_SERVER),
    PRM_BOOLEAN,
    &prm_replication_compress_pages_transfer_flag,
    (void *) &prm_replication_compress_pages_transfer_default,
    (void *) &PRM_REPLICATION_COMPRESS_PAGES_TRANSFER_VALUE,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_REPLICATION_PTS_THREAD_IGNORE_UNFIX,
+   PRM_NAME_REPLICATION_PTS_THREAD_IGNORE_UNFIX,
+   (PRM_HIDDEN | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_replication_pts_thread_ignore_unfix_flag,
+   (void *) &prm_replication_pts_thread_ignore_unfix_default,
+   (void *) &PRM_REPLICATION_PTS_THREAD_IGNORE_UNFIX_VALUE,
    (void *) NULL,
    (void *) NULL,
    (char *) NULL,

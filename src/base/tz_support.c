@@ -4680,7 +4680,8 @@ tz_get_server_tz_region_session (void)
 
   thread_p = thread_get_thread_entry_info ();
 
-  if (thread_p->type == TT_DAEMON && thread_p->is_cdc_daemon && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
+  if (thread_p->get_thread_type () == TT_DAEMON && thread_p->is_cdc_daemon
+      && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
     {
       return &tz_Region_system;
     }
@@ -4697,7 +4698,7 @@ tz_get_server_tz_region_session (void)
 	      session_tz_region = session_get_session_tz_region (worker_thread_p);
 	    }
 	}
-      else if (thread_p->type == TT_VACUUM_WORKER)
+      else if (thread_p->get_thread_type () == TT_VACUUM_WORKER)
 	{
 	  /* just use system region */
 	  session_tz_region = &tz_Region_system;

@@ -555,7 +555,7 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
   idx++;
 
   /* Type */
-  db_make_string (&vals[idx], thread_type_to_string (thrd->type));
+  db_make_string (&vals[idx], thread_type_to_string (thrd->get_thread_type ()));
   idx++;
 
   /* Status */

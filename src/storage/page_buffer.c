@@ -277,8 +277,11 @@ pgbuf_bcb_flag_is_invalid_victim (int flag)
 #define PGBUF_AOUT_NOT_FOUND  -2
 
 #if defined (SERVER_MODE)
-/* vacuum workers and checkpoint thread should not contribute to promoting a bcb as active/hot */
-#define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) VACUUM_IS_THREAD_VACUUM_WORKER (th)
+/* these thread types must not contribute to promoting a bcb as active/hot:
+ *  - vacuum
+ *  - passive (replica) transaction server replication
+ */
+#define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) (VACUUM_IS_THREAD_VACUUM_WORKER (th) || th->m_page_buffer_ignore_unfix)
 #else
 #define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) false
 #endif
@@ -5187,7 +5190,7 @@ pgbuf_is_temporary_volume (VOLID volid)
   /* Later edit: replication threads are also being present on passive transaction server - which has
    * to deal with temporary volumes. Thus, restrict the test to page server context only and leave
    * original answer for all transaction servers */
-  if (is_page_server () && cubthread::get_entry ().type == TT_REPLICATION_PS)
+  if (is_page_server () && cubthread::get_entry ().get_thread_type () == TT_REPLICATION_PS)
     {
       return false;
     }
@@ -6405,6 +6408,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	      /* note: this is most often accessed code and must be highly optimized! */
 	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 		{
+		  //_er_log_debug (ARG_FILE_LINE, "crsdbg pgbuf_unlatch_bcb_upon_unfix PGBUF_LRU_1_ZONE");
 		  /* do nothing */
 		  /* ... except collecting statistics */
 		  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_KEEP_VAC);
@@ -6434,6 +6438,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	       * (if bcb's are old enough). */
 	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 		{
+		  //_er_log_debug (ARG_FILE_LINE, "crsdbg pgbuf_unlatch_bcb_upon_unfix PGBUF_LRU_2_ZONE");
 		  /* do nothing */
 		  /* ... except collecting statistics */
 		  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_TWO_KEEP_VAC);
@@ -6469,6 +6474,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	    case PGBUF_LRU_3_ZONE:
 	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 		{
+		  //_er_log_debug (ARG_FILE_LINE, "crsdbg pgbuf_unlatch_bcb_upon_unfix PGBUF_LRU_3_ZONE");
 		  if (!pgbuf_bcb_avoid_victim (bufptr) && pgbuf_assign_direct_victim (thread_p, bufptr))
 		    {
 		      /* assigned victim directly */
@@ -6560,6 +6566,7 @@ pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int threa
 
   if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
     {
+      //_er_log_debug (ARG_FILE_LINE, "crsdbg pgbuf_unlatch_void_zone_bcb 01");
       /* we are not registering unfix for activity and we are not boosting or moving bcb's */
       if (aout_list_id == PGBUF_AOUT_NOT_FOUND)
 	{
@@ -6606,6 +6613,7 @@ pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int threa
     {
       if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 	{
+	  //_er_log_debug (ARG_FILE_LINE, "crsdbg pgbuf_unlatch_void_zone_bcb 02");
 	  /* add to top of current private list */
 	  pgbuf_lru_add_new_bcb_to_top (thread_p, bcb, thread_private_lru_index);
 	  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_PRIVATE_TOP_VAC);
@@ -6639,6 +6647,10 @@ pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int threa
     {
       pgbuf_bcb_register_hit_for_lru (bcb);
     }
+//  else
+//    {
+//      _er_log_debug (ARG_FILE_LINE, "crsdbg pgbuf_unlatch_void_zone_bcb 03");
+//    }
 }
 
 /*
@@ -9160,6 +9172,10 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 	       * becomes relevant. */
 	      restrict_other = PGBUF_LRU_LIST_IS_OVER_QUOTA_WITH_BUFFER (lru_list);
 	    }
+//        else
+//          {
+//              _er_log_debug (ARG_FILE_LINE, "crsdbg pgbuf_get_victim");
+//          }
 	  searched_own = true;
 	}
     }
@@ -14380,7 +14396,7 @@ pgbuf_has_any_non_vacuum_waiters (PAGE_PTR pgptr)
   thread_entry_p = bufptr->next_wait_thrd;
   while (thread_entry_p != NULL)
     {
-      if (thread_entry_p->type != TT_VACUUM_WORKER)
+      if (thread_entry_p->get_thread_type () != TT_VACUUM_WORKER)
 	{
 	  return true;
 	}
