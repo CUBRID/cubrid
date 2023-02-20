@@ -47,8 +47,7 @@ page_server::~page_server ()
   // when/if needed connections can be moved here to the disconnect handler and that one waited for
   assert (m_active_tran_server_conn == nullptr);
   assert (m_passive_tran_server_conn.size () == 0);
-
-  m_async_disconnect_handler.terminate ();
+  assert (m_async_disconnect_handler.is_terminated());
 }
 
 page_server::connection_handler::connection_handler (cubcomm::channel &chn, transaction_server_type server_type,
@@ -378,6 +377,12 @@ page_server::async_disconnect_handler::terminate ()
   m_queue_cv.notify_one ();
 }
 
+bool
+page_server::async_disconnect_handler::is_terminated ()
+{
+  return m_terminate.load ();
+}
+
 void
 page_server::async_disconnect_handler::disconnect_loop ()
 {
@@ -636,6 +641,8 @@ page_server::disconnect_all_tran_server ()
 
   er_log_debug (ARG_FILE_LINE,
 		"disconnect_all_tran_server: Now all connections are disconnected or disconnected in progress. \n");
+
+  m_async_disconnect_handler.terminate ();
 }
 
 bool
