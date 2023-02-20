@@ -625,16 +625,7 @@ page_server::disconnect_all_tran_server ()
   constexpr std::chrono::milliseconds ms_50 { 50 }; // 50ms
   auto no_conn_alive_pred = [this]
   {
-    if (m_active_tran_server_conn != nullptr)
-      {
-	return false;
-      }
-
-    if (!m_passive_tran_server_conn.empty())
-      {
-	return false;
-      }
-    return true;
+    return m_active_tran_server_conn == nullptr && m_passive_tran_server_conn.empty();
   };
 
   er_log_debug (ARG_FILE_LINE,
