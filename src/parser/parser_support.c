@@ -3527,6 +3527,28 @@ pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level
 }
 
 /*
+ * pt_set_pred_order ()
+ *          - set predicate order number
+ *   parser(in):
+ *   post_pred(in):
+ */
+
+void
+pt_set_pred_order (PARSER_CONTEXT * parser, PT_NODE * post_pred)
+{
+  PT_NODE *pred;
+
+  /* set pred_order + 1 to post_pred */
+  for (pred = post_pred; pred; pred = pred->next)
+    {
+      if (pt_is_expr_node (pred))
+	{
+	  pred->info.expr.pred_order++;
+	}
+    }
+}
+
+/*
  * pt_has_nullable_term () - check if tree has an nullable term
  *				   node somewhere
  *   return: true if tree has nullable term

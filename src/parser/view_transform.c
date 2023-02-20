@@ -3817,6 +3817,9 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 	}
       else
 	{
+	  /* Set predicates to be evaluated later */
+	  pt_set_pred_order (parser, push_term_list);
+
 	  /* push into WHERE clause */
 	  query->info.query.q.select.where = parser_append_node (push_term_list, query->info.query.q.select.where);
 	}
@@ -9924,6 +9927,10 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 	{
 	  (*where_part)->info.expr.paren_type = 1;
 	}
+
+      /* Set predicates to be evaluated later */
+      pt_set_pred_order (parser, class_where_part);
+
       /* The "where clause" is in the form of a list of CNF "and" terms. In order to "and" together the view's "where
        * clause" with the statement's, we must maintain this list of terms. Using a 'PT_AND' node here will have the
        * effect of losing the "and" terms on the tail of either list. */
@@ -10586,6 +10593,9 @@ mq_inline_view_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * d
 	{
 	  (*where_part)->info.expr.paren_type = 1;
 	}
+      /* Set predicates to be evaluated later */
+      pt_set_pred_order (parser, class_where_part);
+
       /* The "where clause" is in the form of a list of CNF "and" terms. In order to "and" together the view's "where
        * clause" with the statement's, we must maintain this list of terms. Using a 'PT_AND' node here will have the
        * effect of losing the "and" terms on the tail of either list. */

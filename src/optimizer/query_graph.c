@@ -1724,6 +1724,7 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
   QO_TERM_IDX (term) = env->nterms;
   QO_TERM_MULTI_COL_SEGS (term) = NULL;	/* init */
   QO_TERM_MULTI_COL_CNT (term) = 0;	/* init */
+  QO_TERM_PRED_ORDER (term) = pt_is_expr_node (conjunct) ? conjunct->info.expr.pred_order : 0;
 
   env->nterms++;
 
@@ -5999,6 +6000,7 @@ qo_exchange (QO_TERM * t0, QO_TERM * t1)
   FLAG_EXCHANGE (t0->flag, t1->flag);
   INT_PTR_EXCHANGE (t0->multi_col_segs, t1->multi_col_segs);
   INT_EXCHANGE (t0->multi_col_cnt, t1->multi_col_cnt);
+  INT_EXCHANGE (t0->pred_order, t1->pred_order);
   /*
    * DON'T exchange the 'idx' values!
    */
@@ -6065,14 +6067,24 @@ qo_discover_edges (QO_ENV * env)
 	    }
 	}
     }
-  /* sort sarg-term on selectivity as descending order */
+  /* sort sarg-term on pred_order desc, selectivity desc, rank desc */
   for (t1 = i; t1 < env->nterms - 1; t1++)
     {
       term1 = QO_ENV_TERM (env, t1);
       for (t2 = t1 + 1; t2 < env->nterms; t2++)
 	{
 	  term2 = QO_ENV_TERM (env, t2);
-	  if (QO_TERM_SELECTIVITY (term1) < QO_TERM_SELECTIVITY (term2))
+
+	  if (QO_TERM_PRED_ORDER (term1) < QO_TERM_PRED_ORDER (term2))
+	    {
+	      qo_exchange (term1, term2);
+	    }
+	  else if ((QO_TERM_PRED_ORDER (term1) == QO_TERM_PRED_ORDER (term2)) && (QO_TERM_SELECTIVITY (term1) < QO_TERM_SELECTIVITY (term2)))
+	    {
+	      qo_exchange (term1, term2);
+	    }
+	  else if ((QO_TERM_PRED_ORDER (term1) == QO_TERM_PRED_ORDER (term2)) && (QO_TERM_SELECTIVITY (term1) == QO_TERM_SELECTIVITY (term2))
+		   && QO_TERM_RANK (term1) < QO_TERM_RANK (term1))
 	    {
 	      qo_exchange (term1, term2);
 	    }
@@ -9022,6 +9034,11 @@ qo_term_dump (QO_TERM * term, FILE * f)
 	  parser->print_db_value = saved_func;
 	}
       break;
+    }
+
+  if (QO_TERM_PRED_ORDER (term) > 0)
+    {
+      fprintf (f, " (ord %d)", QO_TERM_PRED_ORDER (term));
     }
   fprintf (f, " (sel %g)", QO_TERM_SELECTIVITY (term));
 
