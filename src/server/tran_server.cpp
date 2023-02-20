@@ -141,6 +141,10 @@ void
 tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
 {
   std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
+  if (m_page_server_conn_vec.empty())
+    {
+      return; // has been disconncted already
+    }
 
   // we assume that 0-th conn is the main connection
   m_page_server_conn_vec[0]->push_request (reqid, std::move (payload));
@@ -150,6 +154,10 @@ int
 tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out)
 {
   std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
+  if (m_page_server_conn_vec.empty())
+    {
+      return NO_ERROR; // has been disconncted already
+    }
 
   // we assume that 0-th conn is the main connection
   return m_page_server_conn_vec[0]->send_receive (reqid, std::move (payload_in), payload_out);
