@@ -622,21 +622,20 @@ page_server::disconnect_all_tran_server ()
    *
    * If they are being disconnecting, they will be waited for by m_async_disconnect_handler.terminate (); during ~page_server ().
    */
-  constexpr std::chrono::milliseconds ms_50 { 50 }; // 50ms
   auto no_conn_alive_pred = [this]
   {
     return m_active_tran_server_conn == nullptr && m_passive_tran_server_conn.empty();
   };
 
   er_log_debug (ARG_FILE_LINE,
-		"disconnect_all_tran_server: Start waiting until all connections are disconencted or disconnected in progress. \n");
+		"disconnect_all_tran_server: Start waiting until all connections are disconnected or disconnected in progress. \n");
 
   std::unique_lock ulock { m_conn_mutex };
-  m_conn_cv.wait_for (ulock, ms_50, no_conn_alive_pred);
+  m_conn_cv.wait (ulock,  no_conn_alive_pred);
   assert (m_active_tran_server_conn == nullptr && m_passive_tran_server_conn.empty());
 
   er_log_debug (ARG_FILE_LINE,
-		"disconnect_all_tran_server: Start waiting until all connections are disconencted or disconnected in progress. \n");
+		"disconnect_all_tran_server: Nowall connections are disconnected or disconnected in progress. \n");
 }
 
 bool

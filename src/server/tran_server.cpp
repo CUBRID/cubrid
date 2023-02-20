@@ -453,7 +453,8 @@ tran_server::connection_handler::disconnect ()
 
   const int payload = static_cast<int> (m_ts.m_conn_type);
   std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
-  er_log_debug (ARG_FILE_LINE, "Transaction server starts disconnecting from the page servers.");
+  er_log_debug (ARG_FILE_LINE, "Transaction server is disconnecting from the page server with channel id: %s \n",
+		get_channel_id ().c_str ());
 
   push_request (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
 }
