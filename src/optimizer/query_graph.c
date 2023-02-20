@@ -6079,11 +6079,13 @@ qo_discover_edges (QO_ENV * env)
 	    {
 	      qo_exchange (term1, term2);
 	    }
-	  else if ((QO_TERM_PRED_ORDER (term1) == QO_TERM_PRED_ORDER (term2)) && (QO_TERM_SELECTIVITY (term1) < QO_TERM_SELECTIVITY (term2)))
+	  else if ((QO_TERM_PRED_ORDER (term1) == QO_TERM_PRED_ORDER (term2))
+		   && (QO_TERM_SELECTIVITY (term1) < QO_TERM_SELECTIVITY (term2)))
 	    {
 	      qo_exchange (term1, term2);
 	    }
-	  else if ((QO_TERM_PRED_ORDER (term1) == QO_TERM_PRED_ORDER (term2)) && (QO_TERM_SELECTIVITY (term1) == QO_TERM_SELECTIVITY (term2))
+	  else if ((QO_TERM_PRED_ORDER (term1) == QO_TERM_PRED_ORDER (term2))
+		   && (QO_TERM_SELECTIVITY (term1) == QO_TERM_SELECTIVITY (term2))
 		   && QO_TERM_RANK (term1) < QO_TERM_RANK (term1))
 	    {
 	      qo_exchange (term1, term2);
