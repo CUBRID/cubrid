@@ -494,27 +494,29 @@ loaddb: 데이터베이스에 객체 및 스키마 적재\n\
 사용법: %1$s loaddb [옵션] 데이터베이스 이름[@호스트]\n\
 \n\
 옵션:\n\
-  -S, --SA-mode                      독립 모드 실행\n\
-  -C, --CS-mode                      클라이언트 서버 모드 실행\n\
-  -u, --user=ID                      데이터베이스 접근에 관한 사용자 이름; 기본값: "public"\n\
-  -p, --password=PASS                사용자 패스워드; 기본값: 없음\n\
-      --data-file-check-only         데이터 파일을 로딩하지 않고 신택스만 검사; 기본값: 아니오\n\
-  -l, --load-only                    신택스 체크없이 데이터 파일 로딩; SA_MODE만 지원\n\
-      --estimated-size=NUMBER        인스턴스의 대략적인 개수; 기본값: 5000\n\
-  -v, --verbose                      많은 상태 정보를 출력; 기본값: 출력하지 않음\n\
-  -c, --periodic-commit=COUNT        주기적인 커밋에 대한 카운트; 기본값: 적재 중 커밋하지 않음(SA_MODE)\n\
-      --no-oid                       OID 사용 안 함\n\
-      --no-statistics                로딩 후에 통계 정보 갱신하지 않음\n\
-  -s, --schema-file=FILE[:LINE]      파일[:라인] 정보로 스키마 생성\n\
-  -i, --index-file=FILE[:LINE]       파일[:라인] 정보로 인덱스 생성\n\
-      --trigger-file=FILE[:LINE]     파일[:라인] 정보로 트리거 생성\n\
-  -d, --data-file=FILE               적재할 데이터 파일\n\
-  -t, --table=TABLE                  데이터를 적재할 테이블 이름; 데이터 파일에 테이블 정보가 없는 경우 사용\n\
-      --error-control-file=FILE      적재 시 발생하는 에러에 대한 제어 파일\n\
-      --ignore-class-file=FILE       적재하지 않을 클래스 이름이 있는 파일\n\
-      --no-user-specified-name       소유자 이름 없이 객체 이름으로 CLASS, SERIAL 및 TRIGGER를 찾음.\n\
-                                     CUBRID 11.2 전 버전에서 생성된 파일을 불러오기 위함.\n\
-      --schema-file-list=FILE        이 파일의 내용은 loaddb에서 사용할 스키마 파일 이름 목록이다. loaddb는 위에서부터 순차적으로 실행된다.\n
+  -S, --SA-mode                  독립 모드 실행\n\
+  -C, --CS-mode                  클라이언트 서버 모드 실행\n\
+  -u, --user=ID                  데이터베이스 접근에 관한 사용자 이름; 기본값: "public"\n\
+  -p, --password=PASS            사용자 패스워드; 기본값: 없음\n\
+      --data-file-check-only     데이터 파일을 로딩하지 않고 신택스만 검사; 기본값: 아니오\n\
+  -l, --load-only                신택스 체크없이 데이터 파일 로딩; SA_MODE만 지원\n\
+      --estimated-size=NUMBER    인스턴스의 대략적인 개수; 기본값: 5000\n\
+  -v, --verbose                  많은 상태 정보를 출력; 기본값: 출력하지 않음\n\
+  -c, --periodic-commit=COUNT    주기적인 커밋에 대한 카운트; 기본값: 적재 중 커밋하지 않음(SA_MODE)\n\
+      --no-oid                   OID 사용 안 함\n\
+      --no-statistics            로딩 후에 통계 정보 갱신하지 않음\n\
+  -s, --schema-file=FILE[:LINE]  파일[:라인] 정보로 스키마 생성\n\
+  -i, --index-file=FILE[:LINE]   파일[:라인] 정보로 인덱스 생성\n\
+      --trigger-file=FILE[:LINE] 파일[:라인] 정보로 트리거 생성\n\
+  -d, --data-file=FILE           적재할 데이터 파일\n\
+  -t, --table=TABLE              데이터를 적재할 테이블 이름; 데이터 파일에 테이블 정보가 없는 경우 사용\n\
+      --error-control-file=FILE  적재 시 발생하는 에러에 대한 제어 파일\n\
+      --ignore-class-file=FILE   적재하지 않을 클래스 이름이 있는 파일\n\
+      --no-user-specified-name   소유자 이름 없이 객체 이름으로 CLASS, SERIAL 및 TRIGGER를 찾음.\n\
+                                 CUBRID 11.2 전 버전에서 생성된 파일을 불러오기 위함.\n\
+      --schema-file-list=FILE    이 파일의 내용은 loaddb에서 사용할 스키마 파일 이름 목록이다.\n\
+                                 loaddb는 위에서부터 순차적으로 실행된다.\n
+
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 cached-pages 값이 유효하지 않습니다.\n
