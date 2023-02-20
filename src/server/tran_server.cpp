@@ -390,6 +390,12 @@ tran_server::connection_handler::get_request_handlers ()
   // Insert handlers specific to all transaction servers here.
   // For now, there are no such handlers; return an empty map.
   std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map;
+
+  auto disconnect_request_handler = std::bind (&tran_server::connection_handler::receive_disconnect_request, this,
+				    std::placeholders::_1);
+
+  handlers_map.insert (std::make_pair (page_to_tran_request::SEND_DISCONNECT_REQUEST_MSG, disconnect_request_handler));
+
   return handlers_map;
 }
 void
