@@ -514,7 +514,12 @@ main (int argc, char **argv)
 	}
 
       free (br_vector);
-      err = system (cmd);
+
+      if (system (cmd) != 0)
+	{
+	  fprintf (stderr, "%s: -s option require Linux command: '%s'\n", argv[0], WATCH_CMD);
+	  fprintf (stderr, "Install the '%s' command to use this option.\n", WATCH_CMD);
+	}
 
       return 0;
 #endif
