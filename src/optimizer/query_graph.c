@@ -6067,7 +6067,7 @@ qo_discover_edges (QO_ENV * env)
 	    }
 	}
     }
-  /* sort sarg-term on pred_order asc, selectivity desc, rank asc */
+  /* sort sarg-term on pred_order desc, selectivity asc, rank desc */
   for (t1 = i; t1 < env->nterms - 1; t1++)
     {
       term1 = QO_ENV_TERM (env, t1);
