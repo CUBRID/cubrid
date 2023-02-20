@@ -50,10 +50,10 @@ static FILE *loaddb_log_file;
 int interrupt_query = false;
 bool load_interrupted = false;
 
-typedef struct t_mulitload_schema_file_info T_MULTILOAD_SCHEMA_FILE_INFO;
-struct t_mulitload_schema_file_info
+typedef struct t_schema_file_list_info T_SCHEMA_FILE_LIST_INFO;
+struct t_schema_file_list_info
 {
-  char schema_file_name[100];
+  char schema_file_name[PATH_MAX];
   FILE *schema_fp;
 };
 
@@ -77,8 +77,9 @@ static int load_has_authorization (const std::string & class_name, DB_AUTH au_ty
 /* *INDENT-ON* */
 static int load_object_file (load_args * args, int *exit_status);
 static void print_er_msg ();
-static T_MULTILOAD_SCHEMA_FILE_INFO **ldr_check_multi_files (std::string & file_name, int &num_files, int &error_code);
-static void ldr_free_and_fclose (T_MULTILOAD_SCHEMA_FILE_INFO ** file_list, int num);
+
+static T_SCHEMA_FILE_LIST_INFO **ldr_check_file_list (std::string & file_name, int &num_files, int &error_code);
+static void ldr_free_and_fclose (T_SCHEMA_FILE_LIST_INFO ** file_list, int num);
 static int ldr_load_schema_file (FILE * schema_fp, int schema_file_start_line, load_args args);
 
 /*
@@ -179,7 +180,7 @@ ldr_validate_object_file (const char *argv0, load_args * args)
   if (args->input_file.empty () && args->object_file.empty ())
     {
       /* if schema/index file are specified, process them only */
-      if (args->schema_file.empty () && args->multiload_schema_file.empty () && args->index_file.empty ())
+      if (args->schema_file.empty () && args->schema_file_list.empty () && args->index_file.empty ())
 	{
 	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 	  load_usage (argv0);
@@ -488,7 +489,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   int error = NO_ERROR;
   /* set to static to avoid compiler warning (clobbered by longjump) */
   FILE *schema_file = NULL;
-  T_MULTILOAD_SCHEMA_FILE_INFO **multiload_schema_file = NULL;
+  T_SCHEMA_FILE_LIST_INFO **schema_file_list = NULL;
   FILE *index_file = NULL;
   FILE *trigger_file = NULL;
   FILE *error_file = NULL;
@@ -504,7 +505,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   const char *msg_format;
   obt_Enable_autoincrement = false;
   load_args args;
-  int num_multiload_schema_files = 0;
+  int num_schema_file_list = 0;
   int schema_file_start_line = 1, index_file_start_line = 1, trigger_file_start_line = 1;
 
   get_loaddb_args (arg_map, &args);
@@ -606,8 +607,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       goto error_return;
     }
 
-  multiload_schema_file = ldr_check_multi_files (args.multiload_schema_file, num_multiload_schema_files, error);
-  if (error != NO_ERROR && multiload_schema_file == NULL)
+  schema_file_list = ldr_check_file_list (args.schema_file_list, num_schema_file_list, error);
+  if (error != NO_ERROR && schema_file_list == NULL)
     {
       status = 2;
       goto error_return;
@@ -706,26 +707,26 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 #endif
 
   /* if multiload schema file is specified, do schema loading */
-  if (multiload_schema_file != NULL && num_multiload_schema_files > 0)
+  if (schema_file_list != NULL && num_schema_file_list > 0)
     {
       int start_line;
-      for (int i = 0; i < num_multiload_schema_files; i++)
+      for (int i = 0; i < num_schema_file_list; i++)
 	{
-	  print_log_msg (1, "\nStart %s file loading.\n", multiload_schema_file[i]->schema_file_name);
+	  print_log_msg (1, "\nStart %s file loading.\n", schema_file_list[i]->schema_file_name);
 
 	  start_line = 1;
 
-	  if (multiload_schema_file[i]->schema_fp != NULL)
+	  if (schema_file_list[i]->schema_fp != NULL)
 	    {
-	      status = ldr_load_schema_file (multiload_schema_file[i]->schema_fp, start_line, args);
+	      status = ldr_load_schema_file (schema_file_list[i]->schema_fp, start_line, args);
 
 	      if (status != 0)
 		{
 		  goto error_return;
 		}
 
-	      fclose (multiload_schema_file[i]->schema_fp);
-	      multiload_schema_file[i]->schema_fp = NULL;
+	      fclose (schema_file_list[i]->schema_fp);
+	      schema_file_list[i]->schema_fp = NULL;
 	    }
 	}
     }
@@ -870,9 +871,9 @@ error_return:
     {
       fclose (loaddb_log_file);
     }
-  if (multiload_schema_file != NULL)
+  if (schema_file_list != NULL)
     {
-      ldr_free_and_fclose (multiload_schema_file, num_multiload_schema_files);
+      ldr_free_and_fclose (schema_file_list, num_schema_file_list);
     }
 
   logddl_destroy ();
@@ -1091,7 +1092,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   char *error_file = utility_get_option_string_value (arg_map, LOAD_ERROR_CONTROL_FILE_S, 0);
   char *table_name = utility_get_option_string_value (arg_map, LOAD_TABLE_NAME_S, 0);
   char *ignore_class_file = utility_get_option_string_value (arg_map, LOAD_IGNORE_CLASS_S, 0);
-  char *mulitload_schema_file = utility_get_option_string_value (arg_map, LOAD_MULTILOAD_SCHEMA_FILE_S, 0);
+  char *schema_file_list = utility_get_option_string_value (arg_map, LOAD_SCHEMA_FILE_LIST_S, 0);
 
   args->volume = volume ? volume : empty;
   args->input_file = input_file ? input_file : empty;
@@ -1123,7 +1124,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->table_name = table_name ? table_name : empty;
   args->ignore_class_file = ignore_class_file ? ignore_class_file : empty;
   args->no_user_specified_name = utility_get_option_bool_value (arg_map, LOAD_NO_USER_SPECIFIED_NAME_S);
-  args->multiload_schema_file = mulitload_schema_file ? mulitload_schema_file : empty;
+  args->schema_file_list = schema_file_list ? schema_file_list : empty;
 }
 
 static void
@@ -1360,30 +1361,29 @@ load_object_file (load_args * args, int *exit_status)
   return split (args->periodic_commit, args->object_file, c_handler, b_handler);
 }
 
-static T_MULTILOAD_SCHEMA_FILE_INFO **
-ldr_check_multi_files (std::string & file_name, int &num_files, int &error_code)
+static T_SCHEMA_FILE_LIST_INFO **
+ldr_check_file_list (std::string & file_name, int &num_files, int &error_code)
 {
-  FILE *multi_schema_fp = NULL;
-  T_MULTILOAD_SCHEMA_FILE_INFO *schema_object_file = NULL;
-  T_MULTILOAD_SCHEMA_FILE_INFO **schema_info = NULL;
-  T_MULTILOAD_SCHEMA_FILE_INFO **new_schema_info = NULL;
+  FILE *schema_fp;
+  T_SCHEMA_FILE_LIST_INFO *schema_object_file = NULL;
+  T_SCHEMA_FILE_LIST_INFO **schema_info = NULL;
+  T_SCHEMA_FILE_LIST_INFO **new_schema_info = NULL;
   char buffer[PATH_MAX] = { 0, };
   std::string read_file_name = "";
 
   error_code = NO_ERROR;
 
-  multi_schema_fp = ldr_check_file (file_name, error_code);
-
-  if (error_code != NO_ERROR && multi_schema_fp == NULL)
+  schema_fp = ldr_check_file (file_name, error_code);
+  if (error_code != NO_ERROR && schema_fp == NULL)
     {
       goto error_return;
     }
-  else if (multi_schema_fp == NULL)
+  else if (schema_fp == NULL)
     {
       return NULL;
     }
 
-  while (fgets ((char *) buffer, LINE_MAX, multi_schema_fp) != NULL)
+  while (fgets ((char *) buffer, LINE_MAX, schema_fp) != NULL)
     {
       trim (buffer);
 
@@ -1394,33 +1394,32 @@ ldr_check_multi_files (std::string & file_name, int &num_files, int &error_code)
 
       if (schema_info == NULL)
 	{
-	  schema_info = (T_MULTILOAD_SCHEMA_FILE_INFO **) malloc (sizeof (T_MULTILOAD_SCHEMA_FILE_INFO *));
+	  schema_info = (T_SCHEMA_FILE_LIST_INFO **) malloc (sizeof (T_SCHEMA_FILE_LIST_INFO *));
 	  if (schema_info == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      sizeof (T_MULTILOAD_SCHEMA_FILE_INFO *));
+		      sizeof (T_SCHEMA_FILE_LIST_INFO *));
 	      goto error_return;
 	    }
 	}
       else
 	{
 	  new_schema_info =
-	    (T_MULTILOAD_SCHEMA_FILE_INFO **) realloc (schema_info,
-						       sizeof (T_MULTILOAD_SCHEMA_FILE_INFO *) * (num_files + 1));
+	    (T_SCHEMA_FILE_LIST_INFO **) realloc (schema_info, sizeof (T_SCHEMA_FILE_LIST_INFO *) * (num_files + 1));
 	  if (new_schema_info == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      sizeof (T_MULTILOAD_SCHEMA_FILE_INFO *) * (num_files + 1));
+		      sizeof (T_SCHEMA_FILE_LIST_INFO *) * (num_files + 1));
 	      goto error_return;
 	    }
 
 	  schema_info = new_schema_info;
 	}
 
-      schema_object_file = (T_MULTILOAD_SCHEMA_FILE_INFO *) malloc (sizeof (T_MULTILOAD_SCHEMA_FILE_INFO));
+      schema_object_file = (T_SCHEMA_FILE_LIST_INFO *) malloc (sizeof (T_SCHEMA_FILE_LIST_INFO));
       if (schema_object_file == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (T_MULTILOAD_SCHEMA_FILE_INFO));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (T_SCHEMA_FILE_LIST_INFO));
 	  goto error_return;
 	}
 
@@ -1440,26 +1439,26 @@ ldr_check_multi_files (std::string & file_name, int &num_files, int &error_code)
   if (schema_info == NULL)
     {
       const char *msg_format =
-	msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_EMPTY_MULTILOAD_SCHEMA_FILE);
+	msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_EMPTY_SCHEMA_FILE_LIST);
       print_log_msg (1, msg_format, file_name.c_str ());
       util_log_write_errstr (msg_format, file_name.c_str ());
       goto error_return;
     }
 
-  if (multi_schema_fp != NULL)
+  if (schema_fp != NULL)
     {
-      fclose (multi_schema_fp);
-      multi_schema_fp = NULL;
+      fclose (schema_fp);
+      schema_fp = NULL;
     }
 
   return schema_info;
 
 error_return:
 
-  if (multi_schema_fp != NULL)
+  if (schema_fp != NULL)
     {
-      fclose (multi_schema_fp);
-      multi_schema_fp = NULL;
+      fclose (schema_fp);
+      schema_fp = NULL;
     }
 
   ldr_free_and_fclose (schema_info, num_files);
@@ -1470,7 +1469,7 @@ error_return:
 }
 
 static void
-ldr_free_and_fclose (T_MULTILOAD_SCHEMA_FILE_INFO ** file_list, int num)
+ldr_free_and_fclose (T_SCHEMA_FILE_LIST_INFO ** file_list, int num)
 {
   int i;
 

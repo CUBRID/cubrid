@@ -514,7 +514,7 @@ loaddb: 데이터베이스에 객체 및 스키마 적재\n\
       --ignore-class-file=FILE       적재하지 않을 클래스 이름이 있는 파일\n\
       --no-user-specified-name       소유자 이름 없이 객체 이름으로 CLASS, SERIAL 및 TRIGGER를 찾음.\n\
                                      CUBRID 11.2 전 버전에서 생성된 파일을 불러오기 위함.\n\
-      --multiload-schema-file=FILE   여러개 schema file을 로드하기 위한 파일, 해당 파일의 내용은 unloaddb의--split-schema-file 옵션으로 생성된 schema file 이여야 한다.\n
+      --schema-file-list=FILE        이 파일의 내용은 loaddb에서 사용할 스키마 파일 이름 목록이다. loaddb는 위에서부터 순차적으로 실행된다.\n
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 cached-pages 값이 유효하지 않습니다.\n

@@ -503,7 +503,7 @@ typedef enum
   LOADDB_MSG_TABLE_IS_MISSING = 120,
   LOADDB_MSG_IGNORED_CLASS = 121,
   LOADDB_MSG_EXCEED_MAX_USER_LEN = 122,
-  LOADDB_MSG_EMPTY_MULTILOAD_SCHEMA_FILE = 123,
+  LOADDB_MSG_EMPTY_SCHEMA_FILE_LIST = 123,
 
   LOADDB_MSG_USAGE = 124
 } MSGCAT_LOADDB_MSG;
@@ -1318,8 +1318,8 @@ typedef struct _ha_config
 #define LOAD_COMPARE_STORAGE_ORDER_L            "compare-storage-order"
 #define LOAD_NO_USER_SPECIFIED_NAME_S           11825
 #define LOAD_NO_USER_SPECIFIED_NAME_L           "no-user-specified-name"
-#define LOAD_MULTILOAD_SCHEMA_FILE_S            11826
-#define LOAD_MULTILOAD_SCHEMA_FILE_L            "multiload-schema-file"
+#define LOAD_SCHEMA_FILE_LIST_S                 11826
+#define LOAD_SCHEMA_FILE_LIST_L                 "schema-file-list"
 
 /* unloaddb option list */
 #define UNLOAD_INPUT_CLASS_FILE_S               'i'
