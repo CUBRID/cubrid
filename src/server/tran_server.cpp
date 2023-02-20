@@ -1,6 +1,6 @@
 /*
  * Copyright 2008 Search Solution Corporation
- * Copyright 2016 CUBRID Corporation
+e * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -143,7 +143,7 @@ tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
   std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
   if (m_page_server_conn_vec.empty())
     {
-      return; // has been disconncted already
+      return; // All connections have been disconnected already
     }
 
   // we assume that 0-th conn is the main connection
@@ -156,7 +156,7 @@ tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in,
   std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
   if (m_page_server_conn_vec.empty())
     {
-      return NO_ERROR; // has been disconncted already
+      return NO_ERROR; // All connections have been disconnected already
     }
 
   // we assume that 0-th conn is the main connection
@@ -464,6 +464,7 @@ tran_server::connection_handler::disconnect ()
   const int payload = static_cast<int> (m_ts.m_conn_type);
   std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
   push_request (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
+  // SEND_DISCONNECT_MSG must be the last msg becuase the PS which received this msg may release all related resources.
 
   er_log_debug (ARG_FILE_LINE, "Disconnected from the page server with channel id: %s \n",
 		get_channel_id ().c_str ());
