@@ -32,6 +32,8 @@
 #ident "$Id$"
 
 #include "dbtype_def.h"
+#include "object_domain.h"
+#include "porting_inline.hpp"
 
 #include <cassert>
 #include <cstdio>
@@ -277,9 +279,9 @@ extern PR_TYPE *pr_type_from_id (DB_TYPE id);
 extern PR_TYPE *pr_find_type (const char *name);
 extern const char *pr_type_name (DB_TYPE id);
 
-extern bool pr_is_set_type (DB_TYPE type);
-extern int pr_is_string_type (DB_TYPE type);
-extern int pr_is_prefix_key_type (DB_TYPE type);
+STATIC_INLINE bool pr_is_set_type (DB_TYPE type) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int pr_is_string_type (DB_TYPE type) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int pr_is_prefix_key_type (DB_TYPE type) __attribute__ ((ALWAYS_INLINE));
 extern int pr_is_variable_type (DB_TYPE type);
 
 /* Size calculators */
@@ -354,6 +356,52 @@ extern int pr_Enable_string_compression;
 // *INDENT-OFF*
 #define MIDXKEY_BOUNDBITS_INIT(bufptr, nbytes)  do { if(nbytes > 0) { memset ((bufptr), 0x00, (nbytes)); } } while(0)
 // *INDENT-ON*
+
+/*
+ * pr_is_set_type - Test to see if a type identifier is one of the set types.
+ *    return: non-zero if type is one of the set types
+ *    type(in):
+ * Note:
+ *    Since there is an unfortunate amount of special processing for
+ *    the set types, this takes care of comparing against all three types.
+ */
+STATIC_INLINE bool
+pr_is_set_type (DB_TYPE type)
+{
+  return TP_IS_SET_TYPE (type) || type == DB_TYPE_VOBJ;
+}
+
+/*
+ * pr_is_string_type - Test to see if a type identifier is one of the string
+ * types.
+ *    return: non-zero if type is one of the string types
+ *    type(in):  type to check
+ */
+STATIC_INLINE int
+pr_is_string_type (DB_TYPE type)
+{
+  int status = 0;
+
+  if (type == DB_TYPE_VARCHAR || type == DB_TYPE_CHAR || type == DB_TYPE_VARNCHAR || type == DB_TYPE_NCHAR
+      || type == DB_TYPE_VARBIT || type == DB_TYPE_BIT)
+    {
+      status = 1;
+    }
+
+  return status;
+}
+
+/*
+ * pr_is_prefix_key_type -
+ * types.
+ *    return:
+ *    type(in):  type to check
+ */
+STATIC_INLINE int
+pr_is_prefix_key_type (DB_TYPE type)
+{
+  return (type == DB_TYPE_MIDXKEY || pr_is_string_type (type));
+}
 
 //////////////////////////////////////////////////////////////////////////
 // Inline/template implementation
