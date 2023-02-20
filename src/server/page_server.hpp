@@ -243,6 +243,7 @@ class page_server
   private: // members
     connection_handler_uptr_t m_active_tran_server_conn;
     std::vector<connection_handler_uptr_t> m_passive_tran_server_conn;
+    std::mutex m_conn_mutex; // for the thread-safe connection and disconnection
 
     std::unique_ptr<cublog::replicator> m_replicator;
 
