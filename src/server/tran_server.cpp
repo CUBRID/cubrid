@@ -401,7 +401,10 @@ tran_server::connection_handler::get_request_handlers ()
 void
 tran_server::connection_handler::receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip)
 {
+  er_log_debug (ARG_FILE_LINE, "A page server requests to disconnect. channel id: %s \n", get_channel_id ().c_str ());
+
   auto &conn_vec = m_ts.m_page_server_conn_vec;
+
   {
     std::lock_guard<std::shared_mutex> lk_guard (m_ts.m_page_server_conn_vec_mtx);
 
