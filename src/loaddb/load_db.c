@@ -39,6 +39,15 @@
 #include <fstream>
 #include <thread>
 
+
+#define fclose_and_init(fp) \
+        do { \
+          if ((fp)) { \
+          fclose ((fp)); \
+          (fp) = NULL; \
+          } \
+	} while (0)
+
 const int LOAD_INDEX_MIN_SORT_BUFFER_PAGES = 8192;
 const char *LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING = "8192";
 const char *LOADDB_LOG_FILENAME_SUFFIX = "loaddb.log";
@@ -634,7 +643,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     }
   else if (object_file != NULL)
     {
-      fclose (object_file);
+      fclose_and_init (object_file);
     }
 
   if (!args.ignore_class_file.empty ())
@@ -681,7 +690,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  goto error_return;
 	}
       er_filter_fileset (error_file);
-      fclose (error_file);
+      fclose_and_init (error_file);
       get_ignored_errors (args.m_ignored_errors);
     }
 
@@ -725,8 +734,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 		  goto error_return;
 		}
 
-	      fclose (schema_file_list[i]->schema_fp);
-	      schema_file_list[i]->schema_fp = NULL;
+	      fclose_and_init (schema_file_list[i]->schema_fp);
 	    }
 	}
     }
@@ -743,8 +751,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  goto error_return;
 	}
 
-      fclose (schema_file);
-      schema_file = NULL;
+      fclose_and_init (schema_file);
     }
 
   if (!args.object_file.empty ())
@@ -802,8 +809,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       print_log_msg (1, "Index loading from %s finished.\n", args.index_file.c_str ());
       db_commit_transaction ();
 
-      fclose (index_file);
-      index_file = NULL;
+      fclose_and_init (index_file);
 
       logddl_set_err_code (error);
       logddl_write_end ();
@@ -837,8 +843,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       print_log_msg (1, "Trigger loading from %s finished.\n", args.trigger_file.c_str ());
       db_commit_transaction ();
 
-      fclose (trigger_file);
-      trigger_file = NULL;
+      fclose_and_init (trigger_file);
 
       logddl_set_err_code (error);
       logddl_write_end ();
@@ -848,7 +853,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   (void) db_end_session ();
   (void) db_shutdown ();
 
-  fclose (loaddb_log_file);
+  fclose_and_init (loaddb_log_file);
 
   logddl_destroy ();
 
@@ -857,19 +862,19 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 error_return:
   if (schema_file != NULL)
     {
-      fclose (schema_file);
+      fclose_and_init (schema_file);
     }
   if (index_file != NULL)
     {
-      fclose (index_file);
+      fclose_and_init (index_file);
     }
   if (trigger_file != NULL)
     {
-      fclose (trigger_file);
+      fclose_and_init (trigger_file);
     }
   if (loaddb_log_file != NULL)
     {
-      fclose (loaddb_log_file);
+      fclose_and_init (loaddb_log_file);
     }
   if (schema_file_list != NULL)
     {
@@ -1447,8 +1452,7 @@ ldr_check_file_list (std::string & file_name, int &num_files, int &error_code)
 
   if (schema_fp != NULL)
     {
-      fclose (schema_fp);
-      schema_fp = NULL;
+      fclose_and_init (schema_fp);
     }
 
   return schema_info;
@@ -1457,8 +1461,7 @@ error_return:
 
   if (schema_fp != NULL)
     {
-      fclose (schema_fp);
-      schema_fp = NULL;
+      fclose_and_init (schema_fp);
     }
 
   ldr_free_and_fclose (schema_info, num_files);
@@ -1479,8 +1482,7 @@ ldr_free_and_fclose (T_SCHEMA_FILE_LIST_INFO ** file_list, int num)
 	{
 	  if (file_list[i]->schema_fp != NULL)
 	    {
-	      fclose (file_list[i]->schema_fp);
-	      file_list[i]->schema_fp = NULL;
+	      fclose_and_init (file_list[i]->schema_fp);
 	    }
 
 	  if (file_list[i] != NULL)
