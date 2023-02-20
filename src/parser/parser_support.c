@@ -3530,7 +3530,7 @@ pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level
  * pt_set_pred_order ()
  *          - set predicate order number
  *   parser(in):
- *   post_pred(in):
+ *   pre_pred(in):
  */
 
 void
@@ -3538,8 +3538,8 @@ pt_set_pred_order (PARSER_CONTEXT * parser, PT_NODE * pre_pred)
 {
   PT_NODE *pred;
 
-  /* set pred_order + 1 to post_pred */
-  for (pred = post_pred; pred; pred = pred->next)
+  /* set pred_order + 1 to pre_pred */
+  for (pred = pre_pred; pred; pred = pred->next)
     {
       if (pt_is_expr_node (pred))
 	{
