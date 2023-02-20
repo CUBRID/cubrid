@@ -401,10 +401,9 @@ tran_server::connection_handler::get_request_handlers ()
 void
 tran_server::connection_handler::receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip)
 {
-  er_log_debug (ARG_FILE_LINE, "A page server requests to disconnect. channel id: %s \n", get_channel_id ().c_str ());
+  std::unique_ptr<tran_server::connection_handler> uptr;
 
   auto &conn_vec = m_ts.m_page_server_conn_vec;
-
   {
     std::lock_guard<std::shared_mutex> lk_guard (m_ts.m_page_server_conn_vec_mtx);
 
@@ -414,6 +413,7 @@ tran_server::connection_handler::receive_disconnect_request (page_server_conn_t:
 	// TODO trigger the main connection change procedure when it was the main connection
 	if (it->get () == this)
 	  {
+	    uptr = std::move (*it); // to ensure this instance is not destroyed by the end of this function.
 	    conn_vec.erase (it);
 	  }
       }
@@ -453,13 +453,13 @@ void
 tran_server::connection_handler::disconnect ()
 {
   // All msg generators have to stop beforehad to make sure SEND_DISCONNECT_MSG is the last msg.
-
-  er_log_debug (ARG_FILE_LINE, "Transaction server is disconnecting from the page server with channel id: %s \n",
-		get_channel_id ().c_str ());
-
   const int payload = static_cast<int> (m_ts.m_conn_type);
   std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
   push_request (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
+
+  er_log_debug (ARG_FILE_LINE, "Disconnected from the page server with channel id: %s \n",
+		get_channel_id ().c_str ());
+
 }
 
 const std::string

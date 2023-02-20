@@ -635,7 +635,7 @@ page_server::disconnect_all_tran_server ()
   assert (m_active_tran_server_conn == nullptr && m_passive_tran_server_conn.empty());
 
   er_log_debug (ARG_FILE_LINE,
-		"disconnect_all_tran_server: Nowall connections are disconnected or disconnected in progress. \n");
+		"disconnect_all_tran_server: Now all connections are disconnected or disconnected in progress. \n");
 }
 
 bool
