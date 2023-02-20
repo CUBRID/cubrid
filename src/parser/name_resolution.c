@@ -5076,6 +5076,8 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
   return NO_ERROR;
 }
 
+#define MAX_LEN_CONNECTION_URL	512
+
 static int
 pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_REMOTE_TBL_COLS * rmt_tbl_cols)
 {
@@ -5087,6 +5089,9 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
   PT_DBLINK_INFO *dblink_table = &dblink->info.dblink_table;
   char *table_name = dblink_table->remote_table_name;
 
+  char *find;
+  char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
+
   char *url = (char *) dblink_table->url->info.value.data_value.str->bytes;
   char *user = (char *) dblink_table->user->info.value.data_value.str->bytes;
   char *passwd = (char *) dblink_table->pwd->info.value.data_value.str->bytes;
@@ -5094,8 +5099,19 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 
   assert (dblink_table->cols == NULL);
 
+  find = strstr (url, ":?");
+
+  if (find)
+    {
+      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", url, "&__gateway=true");
+    }
+  else
+    {
+      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", url, "?__gateway=true");
+    }
+
   req = -1;
-  conn = cci_connect_with_url_ex (url, user, passwd, &cci_error);
+  conn = cci_connect_with_url_ex (conn_url, user, passwd, &cci_error);
   if (conn < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, cci_error.err_msg);
