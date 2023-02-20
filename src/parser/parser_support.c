@@ -3534,7 +3534,7 @@ pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level
  */
 
 void
-pt_set_pred_order (PARSER_CONTEXT * parser, PT_NODE * post_pred)
+pt_set_pred_order (PARSER_CONTEXT * parser, PT_NODE * pre_pred)
 {
   PT_NODE *pred;
 
