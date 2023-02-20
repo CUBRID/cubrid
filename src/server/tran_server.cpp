@@ -454,11 +454,11 @@ tran_server::connection_handler::disconnect ()
 {
   // All msg generators have to stop beforehad to make sure SEND_DISCONNECT_MSG is the last msg.
 
-  const int payload = static_cast<int> (m_ts.m_conn_type);
-  std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
   er_log_debug (ARG_FILE_LINE, "Transaction server is disconnecting from the page server with channel id: %s \n",
 		get_channel_id ().c_str ());
 
+  const int payload = static_cast<int> (m_ts.m_conn_type);
+  std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
   push_request (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
 }
 
