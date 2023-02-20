@@ -581,6 +581,9 @@ qo_optimize_helper (QO_ENV * env)
 			       pt_continue_walk, NULL);
     }
 
+  get_local_subqueries (env, tree);
+  get_rank (env);
+
   /* finish the rest of the opt structures */
   qo_discover_edges (env);
 
@@ -590,8 +593,6 @@ qo_optimize_helper (QO_ENV * env)
    */
   qo_assign_eq_classes (env);
 
-  get_local_subqueries (env, tree);
-  get_rank (env);
   qo_discover_indexes (env);
   qo_discover_partitions (env);
   qo_discover_sort_limit_nodes (env);
@@ -6067,7 +6068,7 @@ qo_discover_edges (QO_ENV * env)
 	    }
 	}
     }
-  /* sort sarg-term on pred_order desc, selectivity asc, rank desc */
+  /* sort sarg-term on pred_order desc, selectivity asc, rank asc */
   for (t1 = i; t1 < env->nterms - 1; t1++)
     {
       term1 = QO_ENV_TERM (env, t1);
@@ -6086,7 +6087,7 @@ qo_discover_edges (QO_ENV * env)
 	    }
 	  else if ((QO_TERM_PRED_ORDER (term1) == QO_TERM_PRED_ORDER (term2))
 		   && (QO_TERM_SELECTIVITY (term1) == QO_TERM_SELECTIVITY (term2))
-		   && QO_TERM_RANK (term1) < QO_TERM_RANK (term1))
+		   && QO_TERM_RANK (term1) > QO_TERM_RANK (term2))
 	    {
 	      qo_exchange (term1, term2);
 	    }
