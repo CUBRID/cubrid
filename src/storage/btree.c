@@ -7464,17 +7464,8 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT
   db_make_null (&INFO->max_key);
 
   if (node_type == BTREE_NON_LEAF_NODE)
-    {				/* a non-leaf page */
-      if (key_cnt < 0)
-	{
-	  btree_dump_page (thread_p, stdout, class_oid_p, btid, btname, pg_ptr, pg_vpid, 2, 2);
-
-	  snprintf (err_buf, LINE_MAX, "btree_verify_subtree: node key count underflow: %d\n", key_cnt);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
-	  valid = DISK_INVALID;
-	  goto error;
-	}
-
+    {
+      /* a non-leaf page */
       INFO2.key_area_len = 0;
       db_make_null (&INFO2.max_key);
 
