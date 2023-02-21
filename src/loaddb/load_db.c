@@ -186,6 +186,13 @@ ldr_validate_object_file (const char *argv0, load_args * args)
       return ER_FAILED;
     }
 
+  if (args->schema_file.empty () == false && args->schema_file_list.empty () == false)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      load_usage (argv0);
+      return ER_FAILED;
+    }
+
   if (args->input_file.empty () && args->object_file.empty ())
     {
       /* if schema/index file are specified, process them only */
