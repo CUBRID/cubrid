@@ -556,7 +556,8 @@ opciones validas:\n\
       --use-delimiter         utilizar '"' donde un identificador empieza y acaba; estandar: no utilizar\n\
   -S, --SA-mode               modo de ejecucion independiente\n\
   -C, --CS-mode               modo de ejecucion cliente-servidor\n\
-      --datafile-per-class    crear un archivo de objeto para cada clase; estandar: inhabilitado\n
+      --datafile-per-class    crear un archivo de objeto para cada clase; estandar: inhabilitado\n\
+      --split-schema-files    dividir la información del esquema por objeto y generar cada archivo; Predeterminado: generar un archivo de esquema con todos los objetos\n
 
 
 

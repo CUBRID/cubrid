@@ -571,7 +571,8 @@ opţiuni valide:\n\
                                  implicit: nu se foloseşte delimitator\n\
   -S, --SA-mode                  mod de execuţie independent\n\
   -C, --CS-mode                  mod de execuţie client-server\n\
-      --datafile-per-class       creează un fişier obiect pentru fieacre clasă; implicit: dezactivat\n
+      --datafile-per-class       creează un fişier obiect pentru fieacre clasă; implicit: dezactivat\n\
+      --split-schema-files       împărțiți informațiile de schemă pe obiect și generați fiecare fișier; Implicit: generați un fișier de schemă cu toate obiectele\n
 
 
 

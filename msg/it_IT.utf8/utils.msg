@@ -556,7 +556,8 @@ opzioni valide:\n\
       --use-delimiter         usa '"' dove un identificatore inizia e termina; predefinito: don't use\n\
   -S, --SA-mode               modalità di esecuzione stand-alone\n\
   -C, --CS-mode               modalità di esecuzione client-server\n\
-      --datafile-per-class    creare un file oggetto per ogni classe; predefinito: non attivo\n
+      --datafile-per-class    creare un file oggetto per ogni classe; predefinito: non attivo\n\
+      --split-schema-files    dividere le informazioni sullo schema per oggetto e generare ciascun file; Predefinito: genera un file schema con tutti gli oggetti\n
 
 
 
