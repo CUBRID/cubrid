@@ -33,6 +33,7 @@
 #include <io.h>
 #else /* !WINDOWS */
 #include <pwd.h>
+#include <editline.h>
 #endif /* !WINDOWS */
 #include "porting.h"
 #include "csql.h"
@@ -1335,4 +1336,12 @@ csql_errmsg (int code)
 	}
       return (csql_get_message (CSQL_E_UNKNOWN_TEXT));
     }
+}
+
+void
+stifle_history (int max_history_size)
+{
+  el_hist_size = max_history_size;
+
+  return;
 }
