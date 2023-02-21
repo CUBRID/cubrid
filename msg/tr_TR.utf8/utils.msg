@@ -552,7 +552,8 @@ geçerli seçenekler:\n\
       --use-delimiter         kullanımı '"' bir tanımlayıcı nereden başlayıp nerede bittiği; varsayılan: kullanmayın\n\
   -S, --SA-mode               stand-alone modu yürütme\n\
   -C, --CS-mode               istemci-sunucu modunda yürütme\n\
-      --datafile-per-class    her sınıf için bir nesne dosyası oluşturmak; varsayılan: devre dışı\n
+      --datafile-per-class    her sınıf için bir nesne dosyası oluşturmak; varsayılan: devre dışı\n\
+      --split-schema-files    şema bilgilerini nesneye göre ayırın ve her dosyayı oluşturun; Varsayılan: tüm nesnelerle bir şema dosyası oluştur\n
 
 
 
