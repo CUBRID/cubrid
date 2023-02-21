@@ -409,27 +409,22 @@ tran_server::connection_handler::get_request_handlers ()
 void
 tran_server::connection_handler::receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip)
 {
-  std::unique_ptr<tran_server::connection_handler> uptr;
-
-  auto &conn_vec = m_ts.m_page_server_conn_vec;
-  {
-    std::lock_guard<std::shared_mutex> lk_guard (m_ts.m_page_server_conn_vec_mtx);
-
-    auto it = conn_vec.begin();
-    for (; it != conn_vec.end(); it++)
-      {
-	// TODO trigger the main connection change procedure when it was the main connection
-	if (it->get () == this)
-	  {
-	    uptr = std::move (*it); // to ensure this instance is not destroyed by the end of this function.
-	    conn_vec.erase (it);
-	  }
-      }
-
-    assert (it != conn_vec.end ());
-  }
+  std::lock_guard<std::shared_mutex> lk_guard (m_ts.m_page_server_conn_vec_mtx);
 
   disconnect ();
+  auto &conn_vec = m_ts.m_page_server_conn_vec;
+  auto it = conn_vec.begin();
+  for (; it != conn_vec.end(); it++)
+    {
+      // TODO trigger the main connection change procedure when it was the main connection
+      if (it->get () == this)
+	{
+	  m_ts.m_async_disconnect_handler.disconnect (std::move (*it));
+	  assert (*it == nullptr);
+	  conn_vec.erase (it);
+	}
+    }
+  assert (it != conn_vec.end ());
 }
 
 void

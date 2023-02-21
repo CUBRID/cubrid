@@ -23,6 +23,7 @@
 #include "communication_server_channel.hpp"
 #include "request_sync_client_server.hpp"
 #include "tran_page_requests.hpp"
+#include "async_disconnect_handler.hpp"
 
 #include <string>
 #include <vector>
@@ -116,7 +117,6 @@ class tran_server
 	// Request handlers for requests in common
 	void receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip);
 
-
       private:
 	std::unique_ptr<page_server_conn_t> m_conn;
     };
@@ -142,6 +142,8 @@ class tran_server
     std::vector<cubcomm::node> m_connection_list;
     std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
     std::shared_mutex m_page_server_conn_vec_mtx;
+
+    async_disconnect_handler<connection_handler> m_async_disconnect_handler;
 
     cubcomm::server_server m_conn_type;
 };
