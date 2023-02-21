@@ -126,7 +126,7 @@ void passive_tran_server::start_log_replicator (const log_lsa &start_lsa, const 
 
   // passive transaction server executes replication synchronously, for the time being, due to complexity of
   // executing it in parallel while also providing a consistent view of the data
-  m_replicator.reset (new cublog::atomic_replicator (start_lsa, prev_lsa));
+  m_replicator.reset (new cublog::atomic_replicator (start_lsa, prev_lsa, TT_REPLICATION_PTS));
 }
 
 void passive_tran_server::send_and_receive_stop_log_prior_dispatch ()
@@ -164,7 +164,7 @@ void passive_tran_server::send_oldest_active_mvccid (cubthread::entry &)
 {
   std::string request_message;
 
-  const auto new_oldest_active_mvccid = log_Gl.mvcc_table.update_global_oldest_visible();
+  const auto new_oldest_active_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
   if (new_oldest_active_mvccid == m_oldest_active_mvccid)
     {
       return;
