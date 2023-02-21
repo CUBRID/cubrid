@@ -565,11 +565,15 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_DEALLOC_CNT, "Num_data_page_avoid_dealloc"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_VICTIM_CNT, "Num_data_page_avoid_victim"),
 
-  /* Scalability statistics */
+  /* Scalability statistics - specific to: Page Server, Passive Transaction Server */
   /* Peek time in msec taken for the log to be transferred, processed an applied on the page server */
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_REDO_REPL_DELAY, "Redo_replication_delay_msec"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_REDO_REPL_LOG_REDO_SYNC, "Redo_replication_log_redo_sync"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_REDO_FUNC_EXEC, "Log_redo_func_exec"),
+  /* Scalability statistics - specific to: Page Server */
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_COMPR_HEAP_PAGES_TRANSF_COMPRESSED, "Compr_heap_pages_transf_compressed"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_COMPR_HEAP_PAGES_TRANSF_UNCOMPRESSED, "Compr_heap_pages_transf_uncompressed"),
+  PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_COMPR_HEAP_PAGES_TRANSF_RATIO, "Compr_heap_pages_transf_ratio"),
 
   /* Array type statistics */
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_COUNTERS, "Num_data_page_fix_ext", &f_dump_in_file_Num_data_page_fix_ext,
@@ -1793,6 +1797,10 @@ perfmon_server_calc_stats (UINT64 * stats)
   stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_TOTAL_TIME_10USEC].start_offset] = 100 * total_promote_time / 1000;
   stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_SUCCESS].start_offset] *= 100;
   stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_FAILED].start_offset] *= 100;
+
+  stats[pstat_Metadata[PSTAT_COMPR_HEAP_PAGES_TRANSF_RATIO].start_offset] =
+    SAFE_DIV (stats[pstat_Metadata[PSTAT_COMPR_HEAP_PAGES_TRANSF_COMPRESSED].start_offset] * 100 * 100,
+	      stats[pstat_Metadata[PSTAT_COMPR_HEAP_PAGES_TRANSF_UNCOMPRESSED].start_offset]);
 
 #if defined (SERVER_MODE)
   pgbuf_peek_stats (&(stats[pstat_Metadata[PSTAT_PB_FIXED_CNT].start_offset]),
