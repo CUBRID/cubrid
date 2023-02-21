@@ -26,6 +26,8 @@
 
 #include "dbtype_def.h"
 #include <stdio.h>
+#include <vector>
+#include <string>
 
 typedef enum
 {
@@ -45,6 +47,7 @@ struct extract_context
 
   /* working */
   int has_indexes;
+  std::vector<std::string> schema_file_list;
   DB_OBJLIST *classes;
   DB_OBJLIST *vclass_list_has_using_index;
 
@@ -55,6 +58,7 @@ struct extract_context
     output_dirname(NULL),
     output_prefix(NULL),
     has_indexes (0),
+    schema_file_list(NULL),
     classes (NULL),
     vclass_list_has_using_index (NULL)
   {

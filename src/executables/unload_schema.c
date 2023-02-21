@@ -62,6 +62,7 @@
 #define SCHEMA_NAME	  "_schema"
 #define TRIGGER_NAME	  "_trigger"
 #define INDEX_NAME	  "_indexes"
+#define SCHEMA_INFO        "_schema_info"
 
 #define CLASS_SUFFIX          "_class"
 #define FK_SUFFIX             "_fk"
@@ -222,6 +223,10 @@ static int extract_pk (extract_context & ctxt);
 static int extract_fk (extract_context & ctxt);
 static int extract_grant (extract_context & ctxt);
 static void emit_primary_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
+static int create_schema_info (extract_context & ctxt);
+static int create_filename_schema_info (const char *output_dirname, const char *output_prefix, char *output_filename_p,
+					const size_t filename_size);
+
 /*
  * CLASS DEPENDENCY ORDERING
  *
@@ -4155,6 +4160,13 @@ create_filename_indexes (const char *output_dirname, const char *output_prefix,
 }
 
 static int
+create_filename_schema_info (const char *output_dirname, const char *output_prefix,
+			     char *output_filename_p, const size_t filename_size)
+{
+  return create_filename (output_dirname, output_prefix, SCHEMA_INFO, output_filename_p, filename_size);
+}
+
+static int
 create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
 		 char *output_filename_p, const size_t filename_size)
 {
@@ -4202,6 +4214,7 @@ extract_user (extract_context & ctxt)
   FILE *output_file = NULL;
   int err = NO_ERROR;
   char output_filename[PATH_MAX * 2] = { '\0' };
+  char output_schema_info[PATH_MAX * 2] = { '\0' };
 
   if (required_class_only == true && ctxt.do_auth)
     {
@@ -4214,6 +4227,12 @@ extract_user (extract_context & ctxt)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
       return ER_FAILED;
+    }
+
+  if (snprintf
+      (output_schema_info, sizeof (output_schema_info) - 1, "%s%s%s", ctxt.output_prefix, SCHEMA_NAME, USER_SUFFIX) > 0)
+    {
+      ctxt.schema_file_list.push_back (output_schema_info);
     }
 
   output_file = fopen_ex (output_filename, "w");
@@ -4246,6 +4265,7 @@ extract_serial (extract_context & ctxt)
 {
   FILE *output_file = NULL;
   char output_filename[PATH_MAX * 2] = { '\0' };
+  char output_schema_info[PATH_MAX * 2] = { '\0' };
 
   if (required_class_only == true)
     {
@@ -4258,6 +4278,13 @@ extract_serial (extract_context & ctxt)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
       return ER_FAILED;
+    }
+
+  if (snprintf
+      (output_schema_info, sizeof (output_schema_info) - 1, "%s%s%s", ctxt.output_prefix, SCHEMA_NAME,
+       SERIAL_SUFFIX) > 0)
+    {
+      ctxt.schema_file_list.push_back (output_schema_info);
     }
 
   output_file = fopen_ex (output_filename, "w");
@@ -4295,6 +4322,7 @@ extract_synonym (extract_context & ctxt)
 {
   FILE *output_file = NULL;
   char output_filename[PATH_MAX * 2] = { '\0' };
+  char output_schema_info[PATH_MAX * 2] = { '\0' };
 
   if (create_filename
       (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, SYNONYM_SUFFIX, output_filename,
@@ -4302,6 +4330,13 @@ extract_synonym (extract_context & ctxt)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
       return ER_FAILED;
+    }
+
+  if (snprintf
+      (output_schema_info, sizeof (output_schema_info) - 1, "%s%s%s", ctxt.output_prefix, SCHEMA_NAME,
+       SYNONYM_SUFFIX) > 0)
+    {
+      ctxt.schema_file_list.push_back (output_schema_info);
     }
 
   output_file = fopen_ex (output_filename, "w");
@@ -4340,6 +4375,7 @@ extract_procedure (extract_context & ctxt)
   FILE *output_file = NULL;
   int err = NO_ERROR;
   char output_filename[PATH_MAX * 2] = { '\0' };
+  char output_schema_info[PATH_MAX * 2] = { '\0' };
 
   if (create_filename
       (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, PROCEDURE_SUFFIX, output_filename,
@@ -4347,6 +4383,13 @@ extract_procedure (extract_context & ctxt)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
       return ER_FAILED;
+    }
+
+  if (snprintf
+      (output_schema_info, sizeof (output_schema_info) - 1, "%s%s%s", ctxt.output_prefix, SCHEMA_NAME,
+       PROCEDURE_SUFFIX) > 0)
+    {
+      ctxt.schema_file_list.push_back (output_schema_info);
     }
 
   output_file = fopen_ex (output_filename, "w");
@@ -4380,6 +4423,7 @@ extract_server (extract_context & ctxt)
   FILE *output_file = NULL;
   int err = NO_ERROR;
   char output_filename[PATH_MAX * 2] = { '\0' };
+  char output_schema_info[PATH_MAX * 2] = { '\0' };
 
   if (create_filename
       (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, SERVER_SUFFIX, output_filename,
@@ -4387,6 +4431,13 @@ extract_server (extract_context & ctxt)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
       return ER_FAILED;
+    }
+
+  if (snprintf
+      (output_schema_info, sizeof (output_schema_info) - 1, "%s%s%s", ctxt.output_prefix, SCHEMA_NAME,
+       SERVER_SUFFIX) > 0)
+    {
+      ctxt.schema_file_list.push_back (output_schema_info);
     }
 
   output_file = fopen_ex (output_filename, "w");
@@ -4420,6 +4471,7 @@ extract_class (extract_context & ctxt)
   FILE *output_file = NULL;
   int err = NO_ERROR;
   char output_filename[PATH_MAX * 2] = { '\0' };
+  char output_schema_info[PATH_MAX * 2] = { '\0' };
 
   if (create_filename
       (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, CLASS_SUFFIX, output_filename,
@@ -4427,6 +4479,13 @@ extract_class (extract_context & ctxt)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
       return ER_FAILED;
+    }
+
+  if (snprintf
+      (output_schema_info, sizeof (output_schema_info) - 1, "%s%s%s", ctxt.output_prefix, SCHEMA_NAME,
+       CLASS_SUFFIX) > 0)
+    {
+      ctxt.schema_file_list.push_back (output_schema_info);
     }
 
   output_file = fopen_ex (output_filename, "w");
@@ -4478,6 +4537,7 @@ extract_vclass (extract_context & ctxt)
   FILE *output_file = NULL;
   int err = NO_ERROR;
   char output_filename[PATH_MAX * 2] = { '\0' };
+  char output_schema_info[PATH_MAX * 2] = { '\0' };
 
   if (create_filename
       (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, VCLASS_SUFFIX, output_filename,
@@ -4485,6 +4545,13 @@ extract_vclass (extract_context & ctxt)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
       return ER_FAILED;
+    }
+
+  if (snprintf
+      (output_schema_info, sizeof (output_schema_info) - 1, "%s%s%s", ctxt.output_prefix, SCHEMA_NAME,
+       VCLASS_SUFFIX) > 0)
+    {
+      ctxt.schema_file_list.push_back (output_schema_info);
     }
 
   output_file = fopen_ex (output_filename, "w");
@@ -4536,12 +4603,19 @@ extract_pk (extract_context & ctxt)
   FILE *output_file = NULL;
   int err = NO_ERROR;
   char output_filename[PATH_MAX * 2] = { '\0' };
+  char output_schema_info[PATH_MAX * 2] = { '\0' };
 
   if (create_filename
       (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, PK_SUFFIX, output_filename, sizeof (output_filename)) != 0)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
       return ER_FAILED;
+    }
+
+  if (snprintf
+      (output_schema_info, sizeof (output_schema_info) - 1, "%s%s%s", ctxt.output_prefix, SCHEMA_NAME, PK_SUFFIX) > 0)
+    {
+      ctxt.schema_file_list.push_back (output_schema_info);
     }
 
   output_file = fopen_ex (output_filename, "w");
@@ -4592,12 +4666,19 @@ extract_fk (extract_context & ctxt)
   FILE *output_file = NULL;
   int err = NO_ERROR;
   char output_filename[PATH_MAX * 2] = { '\0' };
+  char output_schema_info[PATH_MAX * 2] = { '\0' };
 
   if (create_filename
       (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, FK_SUFFIX, output_filename, sizeof (output_filename)) != 0)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
       return ER_FAILED;
+    }
+
+  if (snprintf
+      (output_schema_info, sizeof (output_schema_info) - 1, "%s%s%s", ctxt.output_prefix, SCHEMA_NAME, FK_SUFFIX) > 0)
+    {
+      ctxt.schema_file_list.push_back (output_schema_info);
     }
 
   output_file = fopen_ex (output_filename, "w");
@@ -4644,6 +4725,7 @@ extract_grant (extract_context & ctxt)
   FILE *output_file = NULL;
   int err = NO_ERROR;
   char output_filename[PATH_MAX * 2] = { '\0' };
+  char output_schema_info[PATH_MAX * 2] = { '\0' };
 
   if (create_filename
       (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, GRANT_SUFFIX, output_filename,
@@ -4651,6 +4733,13 @@ extract_grant (extract_context & ctxt)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
       return ER_FAILED;
+    }
+
+  if (snprintf
+      (output_schema_info, sizeof (output_schema_info) - 1, "%s%s%s", ctxt.output_prefix, SCHEMA_NAME,
+       GRANT_SUFFIX) > 0)
+    {
+      ctxt.schema_file_list.push_back (output_schema_info);
     }
 
   output_file = fopen_ex (output_filename, "w");
@@ -4807,6 +4896,11 @@ extract_split_schema_files (extract_context & ctxt)
       err_count++;
     }
 
+  if (create_schema_info (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
+
   return err_count;
 }
 
@@ -4859,6 +4953,72 @@ get_classes (extract_context & ctxt, print_output & output_ctx)
 	}
       return err;
     }
+
+  return err;
+}
+
+static int
+create_schema_info (extract_context & ctxt)
+{
+  size_t total_len = 0;
+  FILE *output_file = NULL;
+  int err = NO_ERROR;
+  char output_filename[PATH_MAX * 2] = { '\0' };
+  char order_str[PATH_MAX * 2] = { '\0' };
+  const char *loading_order[] =
+    { "_schema_user", "_schema_class", "_schema_vclass", "_schema_serial", "_schema_procedure", "_schema_server",
+    "_schema_pk", "_schema_fk", "_schema_grant", "_schema_synonym"
+  };
+
+  const size_t len = sizeof (loading_order) / sizeof (loading_order[0]);
+
+  if (create_filename_schema_info (ctxt.output_dirname, ctxt.output_prefix, output_filename, sizeof (output_filename))
+      != 0)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", output_filename, strerror (errno));
+      return ER_FAILED;
+    }
+
+  file_print_output output_ctx (output_file);
+
+  for (size_t i = 0; i < len; i++)
+    {
+      total_len = strlen (ctxt.output_prefix) + strlen (loading_order[i]) + 1;
+      if (total_len > sizeof (order_str))
+	{
+	  err = ER_FAILED;
+	  break;
+	}
+
+      order_str[0] = '\0';
+      strcat (order_str, ctxt.output_prefix);
+      strcat (order_str, loading_order[i]);
+      order_str[strlen (ctxt.output_prefix) + strlen (loading_order[i]) + 1] = '\0';
+
+      for (std::size_t j = 0; j < ctxt.schema_file_list.size (); j++)
+	{
+	  if (strcmp (order_str, ctxt.schema_file_list[j].c_str ()) == 0)
+	    {
+	      output_ctx ("%s\n", ctxt.schema_file_list[j].c_str ());
+	      break;
+	    }
+	}
+    }
+
+  if (output_file != NULL)
+    {
+      fclose (output_file);
+      output_file = NULL;
+    }
+
+  ctxt.schema_file_list.clear ();
 
   return err;
 }
