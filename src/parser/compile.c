@@ -447,6 +447,10 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
+  /* for synonym and dblink server name processing */
+  lcks.has_remote_server = false;
+  statement->flag.has_remote_server_name = 0;
+
   switch (statement->node_type)
     {
     case PT_DELETE:
