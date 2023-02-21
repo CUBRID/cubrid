@@ -5031,7 +5031,11 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
   dblink_table->qstr = val;
 
   assert (dblink_table->cols == NULL);
-  assert (dblink_table->sel_list);
+
+  if (dblink_table->sel_list == NULL)
+    {
+      return ER_FAILED;
+    }
 
   PT_NODE *attr_def_node = NULL;
   PT_NODE *id_node;

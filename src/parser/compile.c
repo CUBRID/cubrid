@@ -767,10 +767,24 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
       if ((r = (char *) strchr (class_name, '@')) != NULL)
 	{
 	  /* remote table */
+	  char *synonym_name, *s;
+
+	  /* for alias */
+	  synonym_name = (char *) spec->info.spec.entity_name->info.name.original;
+	  if ((s = (char *) strchr (synonym_name, '.')) != NULL)
+	    {
+	      synonym_name = s + 1;
+	    }
+
 	  *r = 0;
 	  spec->info.spec.entity_name->info.name.original = pt_append_string (parser, NULL, class_name);
 	  spec->info.spec.remote_server_name = parser_new_node (parser, PT_NAME);
 	  spec->info.spec.remote_server_name->info.name.original = pt_append_string (parser, NULL, r + 1);
+	  if (spec->info.spec.range_var == NULL)
+	    {
+	      spec->info.spec.range_var = parser_new_node (parser, PT_NAME);
+	      spec->info.spec.range_var->info.name.original = pt_append_string (parser, NULL, synonym_name);
+	    }
 	  lcks->has_remote_server = true;
 	}
     }
