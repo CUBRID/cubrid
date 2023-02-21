@@ -4896,10 +4896,7 @@ extract_split_schema_files (extract_context & ctxt)
       err_count++;
     }
 
-  if (create_schema_info (ctxt) != NO_ERROR)
-    {
-      err_count++;
-    }
+  create_schema_info (ctxt);
 
   return err_count;
 }
