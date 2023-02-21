@@ -553,7 +553,8 @@ valid options:\n\
       --use-delimiter         use '"' where an identifier begins and ends; default: don't use\n\
   -S, --SA-mode               stand-alone mode execution\n\
   -C, --CS-mode               client-server mode execution\n\
-      --datafile-per-class    create a object file for each class; default: disabled\n
+      --datafile-per-class    create a object file for each class; default: disabled\n\
+      --split-schema-files    Split schema information by object and generate each file; Default: generate one schema file with all objects\n
 
 
 
