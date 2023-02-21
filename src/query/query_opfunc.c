@@ -378,7 +378,7 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, bool clear_compressed_st
 	}
 
       val_size = pr_data_writeval_disk_size (dbval_p);
-      OR_BUF_INIT (buf, val_p, val_size);
+      or_init (&buf, val_p, val_size);
       rc = pr_type->data_writeval (&buf, dbval_p);
 
       if (rc != NO_ERROR)
@@ -6363,7 +6363,7 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * li
 	    }
 
 	  flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tuple_record.tpl, i, &ptr, &length);
-	  OR_BUF_INIT (buf, ptr, length);
+	  or_init (&buf, ptr, length);
 	  if (flag == V_BOUND)
 	    {
 	      if (pr_type_p->data_readval (&buf, value_list->val, domain_p, -1, true, NULL, 0) != NO_ERROR)

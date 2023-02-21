@@ -256,7 +256,7 @@
 	{ \
 	  size -= DB_ALIGN (DISK_VPID_SIZE, BTREE_MAX_ALIGN); \
 	} \
-      OR_BUF_INIT (buf, (btree_rec)->data, size); \
+      or_init (&buf, (btree_rec)->data, size); \
     } \
   while (false)
 
@@ -1914,38 +1914,6 @@ btree_get_node_level (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
   return header->node_level;
 }
 #endif
-
-/*
- * btree_clear_key_value () -
- *   return: cleared flag
- *   clear_flag (in/out):
- *   key_value (in/out):
- */
-bool
-btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value)
-{
-  if (*clear_flag == true || key_value->need_clear == true)
-    {
-      pr_clear_value (key_value);
-      *clear_flag = false;
-    }
-  // also set null
-  db_make_null (key_value);
-  return *clear_flag;
-}
-
-/*
- * btree_init_temp_key_value () -
- *   return: void
- *   clear_flag (in/out):
- *   key_value (in/out):
- */
-void
-btree_init_temp_key_value (bool * clear_flag, DB_VALUE * key_value)
-{
-  db_make_null (key_value);
-  *clear_flag = false;
-}
 
 /*
  * btree_create_overflow_key_file () - Create file for overflow keyes
@@ -21434,7 +21402,7 @@ btree_pack_object (char *ptr, BTID_INT * btid_int, BTREE_NODE_TYPE node_type, RE
 {
   OR_BUF buffer;
 
-  OR_BUF_INIT (buffer, record->data, record->area_size);
+  or_init (&buffer, record->data, record->area_size);
   buffer.ptr = ptr;
 
   if (btree_or_put_object (&buffer, btid_int, node_type, object_info) != NO_ERROR)
@@ -27529,7 +27497,7 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
 	  VPID vpid_key = VPID_INITIALIZER;
 	  int rc = NO_ERROR;
 
-	  OR_BUF_INIT (buf_vpid_key, record.data + record.length - DISK_VPID_ALIGNED_SIZE, DISK_VPID_ALIGNED_SIZE);
+	  or_init (&buf_vpid_key, record.data + record.length - DISK_VPID_ALIGNED_SIZE, DISK_VPID_ALIGNED_SIZE);
 	  vpid_key.pageid = or_get_int (&buf_vpid_key, &rc);
 	  vpid_key.volid = or_get_short (&buf_vpid_key, &rc);
 
