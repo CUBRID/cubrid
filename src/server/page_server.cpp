@@ -489,6 +489,10 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
   er_log_debug (ARG_FILE_LINE, "Active transaction server connected to this page server. Channel id: %s.\n",
 		channel_id.c_str ());
 
+  // Even if the functions set_active_tran_server_connection and set_passive_tran_server_connection are
+  // called from the same thread (master-server connection handler) the mutex is actually needed.
+  // The usage of the mutex is to synchronize with the disconnects which are trigered from each connection
+  // handler's connection threads (inbound or outbound).
   std::lock_guard lk_guard (m_conn_mutex);
 
   if (m_active_tran_server_conn != nullptr)
@@ -518,6 +522,10 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
 		channel_id.c_str ());
 
   {
+    // Even if the functions set_active_tran_server_connection and set_passive_tran_server_connection are
+    // called from the same thread (master-server connection handler) the mutex is actually needed.
+    // The usage of the mutex is to synchronize with the disconnects which are trigered from each connection
+    // handler's connection threads (inbound or outbound).
     std::lock_guard lk_guard (m_conn_mutex);
 
     m_passive_tran_server_conn.emplace_back (new connection_handler (chn, transaction_server_type::PASSIVE, *this));
