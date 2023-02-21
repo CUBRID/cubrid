@@ -36,16 +36,8 @@ async_disconnect_handler<T_CONN_HANDLER>::async_disconnect_handler ()
 template <typename T_CONN_HANDLER>
 async_disconnect_handler<T_CONN_HANDLER>::~async_disconnect_handler ()
 {
-  if (m_terminate.load () && m_thread.joinable ())
-    {
-      m_thread.join ();
-    }
-  else
-    {
-      assert (m_terminate.load ());
-    }
-
-  assert (m_disconnect_queue.empty ());
+  // Call terminate() before the resources that handlers in this can aceess is released. For example, page_server::connection_handler accesses page_server::m_responder, which is released during shutdown.
+  assert (m_terminate.load ());
 }
 
 template <typename T_CONN_HANDLER>
@@ -72,6 +64,17 @@ async_disconnect_handler<T_CONN_HANDLER>::terminate ()
 {
   m_terminate.store (true);
   m_queue_cv.notify_one ();
+
+  if ( m_thread.joinable ())
+    {
+      m_thread.join ();
+    }
+  else
+    {
+      assert (m_terminate.load ());
+    }
+
+  assert (m_disconnect_queue.empty ());
 }
 
 template <typename T_CONN_HANDLER>
