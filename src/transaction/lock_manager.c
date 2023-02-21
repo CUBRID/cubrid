@@ -6614,6 +6614,7 @@ lock_unlock_object_donot_move_to_non2pl (THREAD_ENTRY * thread_p, const OID * oi
   lock_unlock_object_lock_internal (thread_p, oid, class_oid, lock, false, false);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * lock_remove_object_lock - Removes a lock on the specified object
  *   return:
@@ -6628,6 +6629,7 @@ lock_remove_object_lock (THREAD_ENTRY * thread_p, const OID * oid, const OID * c
 {
   lock_unlock_object_lock_internal (thread_p, oid, class_oid, lock, true, false);
 }
+#endif
 
 /*
  * lock_unlock_object - Unlock an object according to transaction isolation level
