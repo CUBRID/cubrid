@@ -40,7 +40,6 @@
 #include "error_manager.h"
 #include "file_io.h"
 #include "mem_block.hpp"
-#include "object_domain.h"
 #include "object_representation.h"
 #include "set_object.h"
 #include "string_buffer.hpp"
@@ -8674,52 +8673,6 @@ pr_type_name (DB_TYPE id)
     }
 
   return name;
-}
-
-/*
- * pr_is_set_type - Test to see if a type identifier is one of the set types.
- *    return: non-zero if type is one of the set types
- *    type(in):
- * Note:
- *    Since there is an unfortunate amount of special processing for
- *    the set types, this takes care of comparing against all three types.
- */
-bool
-pr_is_set_type (DB_TYPE type)
-{
-  return TP_IS_SET_TYPE (type) || type == DB_TYPE_VOBJ;
-}
-
-/*
- * pr_is_string_type - Test to see if a type identifier is one of the string
- * types.
- *    return: non-zero if type is one of the string types
- *    type(in):  type to check
- */
-int
-pr_is_string_type (DB_TYPE type)
-{
-  int status = 0;
-
-  if (type == DB_TYPE_VARCHAR || type == DB_TYPE_CHAR || type == DB_TYPE_VARNCHAR || type == DB_TYPE_NCHAR
-      || type == DB_TYPE_VARBIT || type == DB_TYPE_BIT)
-    {
-      status = 1;
-    }
-
-  return status;
-}
-
-/*
- * pr_is_prefix_key_type -
- * types.
- *    return:
- *    type(in):  type to check
- */
-int
-pr_is_prefix_key_type (DB_TYPE type)
-{
-  return (type == DB_TYPE_MIDXKEY || pr_is_string_type (type));
 }
 
 /*
