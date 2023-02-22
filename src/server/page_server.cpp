@@ -36,7 +36,7 @@
 #include <functional>
 #include <thread>
 
-page_server ps_Gl;
+std::unique_ptr<page_server> ps_Gl;
 
 page_server::~page_server ()
 {

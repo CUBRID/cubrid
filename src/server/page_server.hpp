@@ -249,7 +249,7 @@ class page_server
     pts_mvcc_tracker m_pts_mvcc_tracker;
 };
 
-extern page_server ps_Gl;
+extern std::unique_ptr<page_server> ps_Gl;
 
 #endif // !_PAGE_SERVER_HPP_
 

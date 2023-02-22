@@ -3487,7 +3487,7 @@ log_pack_log_boot_info (THREAD_ENTRY &thread_r, std::string &payload_in_out,
     prev_lsa = log_Gl.append.prev_lsa;
 
     // most recent trantable snapshot lsa
-    most_recent_trantable_snapshot_lsa = ps_Gl.get_replicator().get_most_recent_trantable_snapshot_lsa ();
+    most_recent_trantable_snapshot_lsa = ps_Gl->get_replicator().get_most_recent_trantable_snapshot_lsa ();
     payload_in_out.append(reinterpret_cast<const char *> (&most_recent_trantable_snapshot_lsa),
 			  sizeof (log_lsa));
 
