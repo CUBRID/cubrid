@@ -137,7 +137,7 @@ set(WITH_LIBEXPAT_URL "https://github.com/libexpat/libexpat/releases/download/R_
 set(WITH_LIBJANSSON_URL "http://www.digip.org/jansson/releases/jansson-2.10.tar.gz")
 
 # editline library sources URL
-set(WITH_LIBEDIT_URL "http://thrysoee.dk/editline/libedit-20170329-3.1.tar.gz")
+set(WITH_LIBEDIT_URL "https://github.com/CUBRID/editline/releases/download/1.17.1.csql.1/editline-1.17.1.csql.1.tar.gz")
 
 # rapidjson library sources URL
 set(WITH_RAPIDJSON_URL "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz")
@@ -1051,7 +1051,7 @@ endif(UNIX)
 if(UNIX)
   if(WITH_LIBEDIT STREQUAL "EXTERNAL")
     set(LIBEDIT_TARGET libedit)
-    set(LIBEDIT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libedit.a)
+    set(LIBEDIT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libeditline.a)
     set(LIBEDIT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
     ADD_BY_PRODUCTS_VARIABLE ("LIBEDIT" ${LIBEDIT_LIBS})
     externalproject_add(${LIBEDIT_TARGET}
@@ -1060,7 +1060,7 @@ if(UNIX)
       LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    "LDFLAGS=-L${CMAKE_CURRENT_BINARY_DIR}/external/lib" ${DEFAULT_CONFIGURE_OPTS}
+      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBEDIT_BYPRODUCTS}"
