@@ -11637,6 +11637,9 @@ pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, S
 
   PT_QUERY_INFO *query = &query_stmt->info.query;
   PT_NODE *from_tbl = query_stmt->info.query.q.select.from;
+  bool has_synonym = false;
+
+  parser_walk_tree (parser, query_stmt, pt_convert_dblink_synonym, &has_synonym, NULL, NULL);
 
   while (from_tbl)
     {
