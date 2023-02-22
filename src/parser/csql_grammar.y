@@ -454,6 +454,7 @@ static void pt_get_dup_mode_level(int mode_level, short* mode, short* level);
 } while(0)
 #else
 #define CHECK_RESERVED_IDX_ATTR_NAME(nm)
+#define MAKE_MODE_LEVEL(m, l)  (DUP_MODE_OVFL_LEVEL_NOT_SET)
 #endif // #if defined(SUPPORT_KEY_DUP_LEVEL)
 
 #define push_msg(a) _push_msg(a, __LINE__)
@@ -21471,8 +21472,12 @@ index_dup_mode
 
 opt_index_level
         : /* empty */
-		{ DBG_TRACE_GRAMMAR(opt_index_level, : );                  
+		{ DBG_TRACE_GRAMMAR(opt_index_level, : );     
+#if defined(SUPPORT_KEY_DUP_LEVEL)                             
                   $$ = prm_get_integer_value (PRM_ID_AUTO_DEDUP_LEVEL);
+#else
+                  $$ = 0;                        
+#endif                  
                 }
 	| LEVEL UNSIGNED_INTEGER
 		{ DBG_TRACE_GRAMMAR(opt_index_level, | LEVEL UNSIGNED_INTEGER ); 

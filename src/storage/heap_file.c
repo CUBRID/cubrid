@@ -12058,6 +12058,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
     {
       indexp = &classrepr->indexes[j];
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+      // We cannot make a PK with a function. Therefore, only the last member is checked.
       if (is_check_foreign && IS_RESERVED_INDEX_ATTR_ID (indexp->atts[indexp->n_atts - 1]->id))
 	{
 	  if (indexp->n_atts == 2)
@@ -12105,6 +12106,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 		{
 		  indexp = &classrepr->indexes[j];
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+		  // We cannot make a PK with a function. Therefore, only the last member is checked.
 		  if (is_check_foreign && IS_RESERVED_INDEX_ATTR_ID (indexp->atts[indexp->n_atts - 1]->id))
 		    {
 		      if (indexp->n_atts == 2 && indexp->atts[0]->id == search_attrepr->id)
@@ -12498,6 +12500,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
       num_atts = index->func_index_info->attr_index_start + 1;
     }
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+  // We cannot make a PK with a function. Therefore, only the last member is checked.
   if (is_check_foreign && IS_RESERVED_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
     {
       assert (func_res == NULL);
@@ -13002,6 +13005,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
   *btid = index->btid;
 
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+  // We cannot make a PK with a function. Therefore, only the last member is checked.
   if (is_check_foreign && IS_RESERVED_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
     {
       assert (index->type == BTREE_FOREIGN_KEY);

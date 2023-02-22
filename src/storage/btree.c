@@ -326,6 +326,11 @@ struct btree_stats_env
   BTREE_STATS *stat_info;
   int pkeys_val_num;
   DB_VALUE pkeys_val[BTREE_STATS_PKEYS_NUM];	/* partial key-value */
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+  DB_VALUE old_key_val;
+  int ignore_diff_pos;
+#endif
 };
 
 typedef struct show_index_scan_ctx SHOW_INDEX_SCAN_CTX;
@@ -6678,6 +6683,51 @@ exit_on_error:
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+static bool
+btree_is_same_key_for_stats (BTREE_STATS_ENV * env, DB_VALUE * key_value)
+{
+  if (env->ignore_diff_pos != -1)
+    {
+      db_value_print_console (&(env->old_key_val), false, "old_key_val=");
+      db_value_print_console (key_value, true, ", cur_key=");
+
+      if (btree_multicol_key_get_first_not_null_pos (key_value) == env->ignore_diff_pos)
+	{
+	  return true;
+	}
+
+      if (env->stat_info->keys == 0)
+	{
+	  pr_clear_value (&(env->old_key_val));
+	  pr_clone_value (key_value, &(env->old_key_val));
+	  return false;
+	}
+
+      {
+	int merged_prefix = pr_midxkey_common_prefix (&(env->old_key_val), key_value);
+	if (env->ignore_diff_pos == merged_prefix)
+	  {
+	    return true;
+	  }
+
+	pr_clear_value (&(env->old_key_val));
+	pr_clone_value (key_value, &(env->old_key_val));
+	/*  
+	   int cmp = btree_compare_key (&(env->old_key_val), key_value, BTS->btid_int.key_type, 1, 1, NULL);
+	   if (cmp != DB_EQ)
+	   {
+	   pr_clear_value(&(env->old_key_val));
+	   pr_clone_value (key_value, &(env->old_key_val));
+	   }
+	 */
+      }
+    }
+
+  return false;
+}
+#endif
+
 /*
  * btree_get_stats_key () -
  *   return: NO_ERROR
@@ -6732,6 +6782,12 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 	  goto exit_on_error;
 	}
 
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+      if (btree_is_same_key_for_stats (env, &key_value))
+	{
+	  goto end;
+	}
+#endif
       /* Is there any visible objects? */
       max_visible_oids = 1;
       ret =
@@ -6825,6 +6881,12 @@ count_keys:
 	  goto exit_on_error;
 	}
 
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+      if ((mvcc_snapshot == NULL) && btree_is_same_key_for_stats (env, &key_value))
+	{
+	  goto end;
+	}
+#endif
       /* get pkeys info */
       ret = btree_get_stats_midxkey (thread_p, env, db_get_midxkey (&key_value));
       if (ret != NO_ERROR)
@@ -7140,7 +7202,11 @@ btree_get_btid_from_file (THREAD_ENTRY * thread_p, const VFID * vfid, BTID * bti
  * total number of pages, number of keys and the height of the tree.
  */
 int
-btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_fullscan)
+btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_fullscan
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+		 , int reserved_index_col_pos
+#endif
+  )
 {
   int npages;
   BTREE_STATS_ENV stat_env, *env;
@@ -7189,6 +7255,11 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
     {
       db_make_null (&(env->pkeys_val[i]));
     }
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+  db_make_null (&(env->old_key_val));
+  env->ignore_diff_pos = reserved_index_col_pos;
+#endif
 
   root_vpid.pageid = env->stat_info->btid.root_pageid;	/* read root page */
   root_vpid.volid = env->stat_info->btid.vfid.volid;
@@ -7267,6 +7338,11 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
     {
       ret = btree_get_stats_with_AR_sampling (thread_p, env);
     }
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+  pr_clear_value (&(env->old_key_val));
+  env->ignore_diff_pos = -1;
+#endif
 
   if (ret != NO_ERROR)
     {
@@ -18389,6 +18465,42 @@ btree_multicol_key_is_null (DB_VALUE * key)
   return status;
 }
 
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+int
+btree_multicol_key_get_first_not_null_pos (DB_VALUE * key)
+{
+  DB_MIDXKEY *midxkey;
+  unsigned char *bits;
+  int nbytes, i;
+
+  if (DB_VALUE_TYPE (key) == DB_TYPE_MIDXKEY)
+    {
+      assert (!DB_IS_NULL (key));
+
+      midxkey = db_get_midxkey (key);
+      assert (midxkey != NULL);
+
+      /* ncolumns == -1 means already constructing step */
+      if (midxkey && midxkey->ncolumns != -1)
+	{
+	  bits = (unsigned char *) midxkey->buf;
+	  for (i = 0; i < midxkey->ncolumns; i++)
+	    {
+	      if (!OR_MULTI_ATT_IS_UNBOUND (midxkey->buf, i))
+		{
+		  return i;
+		}
+	    }
+	}
+      if (midxkey->min_max_val.position != -1)
+	{
+	  return midxkey->min_max_val.position;
+	}
+    }
+
+  return -1;
+}
+#endif
 /*
  * btree_multicol_key_has_null () -
  *   return: Return true if DB_VALUE is a multi-column key and has a NULL element in it and false otherwise.

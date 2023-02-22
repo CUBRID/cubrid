@@ -2411,7 +2411,22 @@ db_get_btree_statistics (DB_CONSTRAINT * cons, int *num_leaf_pages, int *num_tot
   stat.pkeys_size = 0;		/* do not request pkeys info */
   stat.pkeys = NULL;
 
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+  int reserved_index_col_pos = -1;
+  DB_ATTRIBUTE **atts = db_constraint_attributes (cons);
+
+  for (int i = 0; atts[i]; i++)
+    {
+      if (IS_RESERVED_INDEX_ATTR_ID (atts[i]->id))
+	{
+	  reserved_index_col_pos = i;
+	}
+    }
+
+  errcode = btree_get_statistics (btid, &stat, reserved_index_col_pos);
+#else
   errcode = btree_get_statistics (btid, &stat);
+#endif
   if (errcode != NO_ERROR)
     {
       return errcode;

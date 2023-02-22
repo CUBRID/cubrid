@@ -4096,6 +4096,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
       if (index->n_atts > 1)
 	{
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)	// ctshim MATCH TYPE
+	  // We cannot make a PK with a function. Therefore, only the last member is checked.
 	  if (index->n_atts == 2 && IS_RESERVED_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
 	    {
 	      assert (DB_VALUE_TYPE (key_dbvalue) != DB_TYPE_MIDXKEY);
@@ -4291,6 +4292,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	  is_newly = false;
+	  // We cannot make a PK with a function. Therefore, only the last member is checked.
 	  if (num_attrs > 1 && IS_RESERVED_INDEX_ATTR_ID (attr_ids[num_attrs - 1]))
 	    {
 	      assert ((num_attrs - 1) == index->n_atts);
@@ -4668,6 +4670,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	  is_newly = false;
+	  // We cannot make a PK with a function. Therefore, only the last member is checked.
 	  if (num_attrs > 1 && IS_RESERVED_INDEX_ATTR_ID (attr_ids[num_attrs - 1]))
 	    {
 	      assert ((num_attrs - 1) == index->n_atts);

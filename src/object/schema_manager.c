@@ -10892,6 +10892,7 @@ check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs, co
       for (i = 0, n_attrs = 0; key_attrs[i] != NULL; i++, n_attrs++);
 
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+      // We cannot make a PK with a function. Therefore, only the last member is checked.
       if (n_attrs > 1 && IS_RESERVED_INDEX_ATTR_ID (key_attrs[n_attrs - 1]->id))
 	{
 	  n_attrs--;

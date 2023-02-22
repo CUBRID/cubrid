@@ -118,6 +118,9 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
   int lk_grant_code = 0;
   int nobjs_from_unique_index = 0;
   CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+  CResvBtidMap btid_pos_map (thread_p);
+#endif
 
   thread_p->push_resource_tracks ();
 
@@ -191,7 +194,11 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
       goto end;
     }
 
-  error_code = partition_get_partition_oids (thread_p, class_id_p, &partitions, &count);
+  error_code = partition_get_partition_oids (thread_p, class_id_p, &partitions, &count
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+					     , &btid_pos_map
+#endif
+    );
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -248,7 +255,11 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
 	  assert_release (btree_stats_p->pkeys_size > 0);
 	  assert_release (btree_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
 
-	  if (btree_get_stats (thread_p, btree_stats_p, with_fullscan) != NO_ERROR)
+	  if (btree_get_stats (thread_p, btree_stats_p, with_fullscan
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+			       , btid_pos_map.find (&btree_stats_p->btid)
+#endif
+	      ) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -330,6 +341,10 @@ end:
     {
       free_and_init (class_name);
     }
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+  btid_pos_map.clear ();
+#endif
 
   thread_p->pop_resource_tracks ();
 

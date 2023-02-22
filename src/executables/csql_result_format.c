@@ -35,6 +35,10 @@
 #include "unicode_support.h"
 
 #include "dbtype.h"
+#if defined(PRE_DEF_CBRD_24663)	// [CBRD-24663]
+#include "string_buffer.hpp"
+#include "db_value_printer.hpp"
+#endif
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1844,6 +1848,21 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
       }
       break;
 
+#if defined(PRE_DEF_CBRD_24663)	// // [CBRD-24663]
+    case DB_TYPE_MIDXKEY:
+      {
+	string_buffer sb;
+	sb.clear ();
+	db_sprint_value (value, sb);
+	result = duplicate_string (sb.get_buffer ());
+	if (result)
+	  {
+	    len = strlen (result);
+	  }
+	sb.clear ();
+      }
+      break;
+#endif
     default:
       {
 	char temp_buffer[256];

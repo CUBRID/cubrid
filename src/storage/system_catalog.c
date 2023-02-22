@@ -5463,7 +5463,11 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid, DISK_REPR * r
       goto exit_cleanup;
     }
 
-  error = partition_get_partition_oids (thread_p, class_oid, &partitions, &count);
+  error = partition_get_partition_oids (thread_p, class_oid, &partitions, &count
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+					, NULL
+#endif
+    );
   if (error != NO_ERROR)
     {
       goto exit_cleanup;
