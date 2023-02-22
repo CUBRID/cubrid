@@ -236,7 +236,9 @@ extern "C"
 
     S_CMD_TRACE,
 
-    S_CMD_SINGLELINE
+    S_CMD_SINGLELINE,
+
+    S_CMD_CONNECT
   } SESSION_CMD;
 
 /* iq_ function return status */
@@ -368,6 +370,8 @@ extern "C"
 
   extern char *string_to_string (const char *string_value, char string_delimiter, char string_introducer, int length,
 				 int *result_length, bool plain_string, bool change_single_quote);
+
+  extern int csql_arg_copy (CSQL_ARGUMENT * src, CSQL_ARGUMENT * dest);
 
 #ifdef __cplusplus
 }

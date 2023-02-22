@@ -70,6 +70,10 @@
 #include "ddl_log.h"
 #include "network_histogram.hpp"
 #include "host_lookup.h"
+#include "object_accessor.h"
+#include "network_interface_cl.h"
+#include "dbtype_def.h"
+#include "boot_cl.h"
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */
@@ -1452,6 +1456,195 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       if (csql_Is_interactive)
 	{
 	  fprintf (csql_Output_fp, "SINGLELINE IS %s\n", (csql_arg->single_line_execution ? "ON" : "OFF"));
+	}
+
+      break;
+
+    case S_CMD_CONNECT:
+      /*dbname_cpy can be stored DB name+ @ + remote hostname + \0 */
+      char dbname_cpy[MAXLOGNAME + CUB_MAXHOSTNAMELEN + 2];
+      char username_cpy[DB_MAX_USER_LENGTH + 1];
+      char host_cpy[DB_MAX_USER_LENGTH + 1];
+      const char *delim = " @\n";
+      char *save_ptr_strtok = NULL;
+      char *db_name = NULL;
+      char *user_name = NULL;
+      char *host_name = NULL;
+      char *p = NULL;
+      CSQL_ARGUMENT csql_new_arg;
+
+      /*find @hostname */
+      host_name = strchr (argument, '@');
+      if (host_name != NULL)
+	{
+	  if (*(host_name + 1) == '\0')
+	    {
+	      host_name = NULL;
+	    }
+	  else
+	    {
+	      host_name += 1;
+	    }
+	}
+
+      if (host_name != NULL)
+	{
+	  if (strcasecmp ("127.0.0.1", host_name + 1) == 0 || strcasecmp ("localhost", host_name + 1) == 0
+	      || strcasecmp (boot_get_host_name (), host_name + 1) == 0
+	      || strcasecmp (boot_get_ip (), host_name + 1) == 0)
+	    {
+	      *host_name = '\0';
+	    }
+	}
+
+      strcpy (dbname_cpy, argument);
+      strcpy (username_cpy, argument);
+      /*find db name following the user name */
+      db_name = strchr (dbname_cpy, ' ');
+      if (db_name != NULL)
+	{
+	  if (*(db_name + 1) == '\0')
+	    {
+	      db_name = NULL;
+	    }
+	  else
+	    {
+	      db_name += 1;
+	    }
+	}
+      user_name = strtok_r (username_cpy, delim, &save_ptr_strtok);
+
+      memset (&csql_new_arg, 0, sizeof (CSQL_ARGUMENT));
+
+
+      /*connect to same DB user or not */
+      if ((db_name == NULL || strcasecmp (csql_arg->db_name, db_name) == 0) && csql_Database_connected == TRUE)
+	{
+
+	  if (!au_is_dba_group_member (Au_user))
+	    {
+
+	      error_code = au_login (user_name, NULL, false);
+	      if (csql_Is_interactive && db_error_code () == ER_AU_INVALID_PASSWORD)
+		{
+		  p = getpass ((char *) csql_get_message (CSQL_PASSWD_PROMPT_TEXT));
+		  error_code = au_login (user_name, p, false);
+		}
+	    }
+	  else
+	    {
+	      error_code = au_login (user_name, NULL, false);
+	    }
+	  if (error_code == NO_ERROR)
+	    {
+	      error_code = clogin_user (user_name);
+	    }
+	  else
+	    {
+	      csql_display_csql_err (0, 0);
+	    }
+	  if (error_code == NO_ERROR)
+	    {
+	      csql_arg_copy (&csql_new_arg, csql_arg);
+	      csql_new_arg.user_name = strdup (user_name);
+	      csql_new_arg.db_name = strdup (csql_arg->db_name);
+	      if (p == NULL || p[0] == '\0')
+		{
+		  csql_new_arg.passwd = (char *) NULL;	/* to fit into db_login protocol */
+		}
+	      else
+		{
+		  csql_new_arg.passwd = strdup (p);
+		}
+
+
+	      memcpy (csql_arg, &csql_new_arg, sizeof (CSQL_ARGUMENT));
+	    }
+
+	}
+      else
+	{
+#if defined(CS_MODE)
+	  memset (boot_Host_connected, 0, sizeof (boot_Host_connected));
+#endif /* CS_MODE */
+	  csql_arg_copy (&csql_new_arg, csql_arg);
+
+	  if (db_name == NULL)
+	    {
+
+	    }
+
+	  if (csql_Database_connected)
+	    {
+	      csql_Database_connected = false;
+	      db_end_session ();
+	      db_shutdown ();
+	    }
+	  er_init ("./csql.err", ER_NEVER_EXIT);
+	  if (db_restart_ex (UTIL_CSQL_NAME, db_name, user_name, NULL, NULL, db_get_client_type ()) != NO_ERROR)
+	    {
+	      p = getpass ((char *) csql_get_message (CSQL_PASSWD_PROMPT_TEXT));
+
+	      /* try again */
+	      if (db_restart_ex (UTIL_CSQL_NAME, db_name, user_name, p, NULL, db_get_client_type ()) != NO_ERROR)
+		{
+		  csql_Error_code = CSQL_ERR_SQL_ERROR;
+		  csql_display_csql_err (0, 0);
+		  csql_check_server_down ();
+		}
+	      else
+		{
+		  /*login success with password */
+
+		  csql_new_arg.user_name = strdup (user_name);
+		  csql_new_arg.db_name = strdup (db_name);
+		  memcpy (csql_arg, &csql_new_arg, sizeof (CSQL_ARGUMENT));
+
+		  if (p[0] == '\0')
+		    {
+		      csql_arg->passwd = (char *) NULL;	/* to fit into db_login protocol */
+		    }
+		  else
+		    {
+		      csql_arg->passwd = strdup (p);
+		    }
+
+		  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
+		    {
+		      au_sysadm_disable ();
+		    }
+		  csql_Database_connected = true;
+
+		  if (csql_arg->trigger_action_flag == false)
+		    {
+		      db_disable_trigger ();
+		    }
+
+		  csql_display_msg (csql_get_message (CSQL_STAT_RESTART_TEXT));
+		}
+	    }
+	  else
+	    {
+	      /*login success without password */
+	      csql_new_arg.user_name = strdup (user_name);
+	      csql_new_arg.db_name = strdup (db_name);
+	      csql_arg->passwd = (char *) NULL;
+	      memcpy (csql_arg, &csql_new_arg, sizeof (CSQL_ARGUMENT));
+
+	      if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
+		{
+		  au_sysadm_disable ();
+		}
+	      csql_Database_connected = true;
+
+	      if (csql_arg->trigger_action_flag == false)
+		{
+		  db_disable_trigger ();
+		}
+
+	      csql_display_msg (csql_get_message (CSQL_STAT_RESTART_TEXT));
+	    }
+
 	}
 
       break;
@@ -3314,6 +3507,37 @@ get_host_ip (unsigned char *ip_addr)
 
   ip = inet_ntoa (*(struct in_addr *) *hp->h_addr_list);
   memcpy (ip_addr, ip, strlen (ip));
+
+  return 0;
+}
+
+int
+csql_arg_copy (CSQL_ARGUMENT * dest, CSQL_ARGUMENT * src)
+{
+
+  dest->sa_mode = src->sa_mode;
+  dest->cs_mode = src->cs_mode;
+  dest->single_line_execution = src->single_line_execution;
+  dest->column_output = src->column_output;
+  dest->line_output = src->line_output;
+  dest->read_only = src->read_only;
+  dest->auto_commit = src->auto_commit;
+  dest->nopager = src->nopager;
+  dest->continue_on_error = src->continue_on_error;
+  dest->sysadm = src->sysadm;
+  dest->write_on_standby = src->write_on_standby;
+  dest->trigger_action_flag = src->trigger_action_flag;
+  dest->plain_output = src->plain_output;
+  dest->skip_column_names = src->skip_column_names;
+  dest->skip_vacuum = src->skip_vacuum;
+  dest->string_width = src->string_width;
+  dest->query_output = src->query_output;
+  dest->column_delimiter = src->column_delimiter;
+  dest->column_enclosure = src->column_enclosure;
+  dest->loaddb_output = src->loaddb_output;
+#if defined(CSQL_NO_LONGGING)
+  dest->no_logging = src->no_logging;
+#endif /* CSQL_NO_LONGGING */
 
   return 0;
 }
