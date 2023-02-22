@@ -6689,13 +6689,16 @@ btree_is_same_key_for_stats (BTREE_STATS_ENV * env, DB_VALUE * key_value)
 {
   if (env->ignore_diff_pos != -1)
     {
-      db_value_print_console (&(env->old_key_val), false, "old_key_val=");
-      db_value_print_console (key_value, true, ", cur_key=");
+      // ctshim  
+      //db_value_print_console (&(env->old_key_val), false, "old_key_val=");
+      //db_value_print_console (key_value, true, ", cur_key=");
 
+#if !defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE_2ND)
       if (btree_multicol_key_get_first_not_null_pos (key_value) == env->ignore_diff_pos)
 	{
 	  return true;
 	}
+#endif
 
       if (env->stat_info->keys == 0)
 	{
@@ -6713,14 +6716,6 @@ btree_is_same_key_for_stats (BTREE_STATS_ENV * env, DB_VALUE * key_value)
 
 	pr_clear_value (&(env->old_key_val));
 	pr_clone_value (key_value, &(env->old_key_val));
-	/*  
-	   int cmp = btree_compare_key (&(env->old_key_val), key_value, BTS->btid_int.key_type, 1, 1, NULL);
-	   if (cmp != DB_EQ)
-	   {
-	   pr_clear_value(&(env->old_key_val));
-	   pr_clone_value (key_value, &(env->old_key_val));
-	   }
-	 */
       }
     }
 

@@ -28,7 +28,7 @@
 // This file is a temporary file.
 // Once the code is applied, we will remove it.
 
-//#define SUPPORT_KEY_DUP_LEVEL
+#define SUPPORT_KEY_DUP_LEVEL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 
 // view(db_index, db_index_key), show index statement
@@ -40,8 +40,9 @@
 #define SUPPORT_KEY_DUP_LEVEL_FK_NAME
 
 #define SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE
+#define SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE_2ND
 
-//#define PRE_DEF_CBRD_24663
+#define PRE_DEF_CBRD_24663
 #endif
 
 /* TODO:

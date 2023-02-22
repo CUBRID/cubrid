@@ -12490,6 +12490,9 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
   int error = NO_ERROR;
   TP_DOMAIN *set_domain = NULL;
   TP_DOMAIN *next_domain = NULL;
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE_2ND)
+  int null_field_cnt = 0;
+#endif
 
   assert (index != NULL);
 
@@ -12499,6 +12502,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
     {
       num_atts = index->func_index_info->attr_index_start + 1;
     }
+
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
   // We cannot make a PK with a function. Therefore, only the last member is checked.
   if (is_check_foreign && IS_RESERVED_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
@@ -12526,6 +12530,12 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	      func_domain->type->index_writeval (&buf, func_res);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	    }
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE_2ND)
+	  else
+	    {
+	      null_field_cnt++;
+	    }
+#endif
 
 	  if (key_domain != NULL)
 	    {
@@ -12561,10 +12571,19 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 #if defined(SUPPORT_KEY_DUP_LEVEL)
       if (IS_RESERVED_INDEX_ATTR_ID (atts[i]->id))
 	{
-	  dk_heap_midxkey_get_reserved_index_value (atts[i]->id, rec_oid, &value);
-	  atts[i]->domain->type->index_writeval (&buf, &value);
-	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-	  //  In this case, there is no need to clean them up using pr_clear_value().     
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE_2ND)
+	  if (null_field_cnt == k)	// (num_atts - 1) ?  ctshim
+	    {
+	      /* no action */ ;
+	    }
+	  else
+#endif
+	    {
+	      dk_heap_midxkey_get_reserved_index_value (atts[i]->id, rec_oid, &value);
+	      atts[i]->domain->type->index_writeval (&buf, &value);
+	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	      //  In this case, there is no need to clean them up using pr_clear_value().     
+	    }
 	}
       else
 	{
@@ -12575,7 +12594,12 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	      atts[i]->domain->type->index_writeval (&buf, &value);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	    }
-
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE_2ND)
+	  else
+	    {
+	      null_field_cnt++;
+	    }
+#endif
 	  if (DB_NEED_CLEAR (&value))
 	    {
 	      pr_clear_value (&value);
@@ -12682,6 +12706,9 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
   DB_VALUE value;
   OR_BUF buf;
   int error = NO_ERROR;
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE_2ND)
+  int null_field_cnt = 0;
+#endif
 
   /*
    * Make sure that we have the needed cached representation.
@@ -12725,6 +12752,12 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	      domain->type->index_writeval (&buf, func_res);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	    }
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE_2ND)
+	  else
+	    {
+	      null_field_cnt++;
+	    }
+#endif
 	  if (++k == num_vals)
 	    {
 	      break;
@@ -12733,11 +12766,20 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
       if (IS_RESERVED_INDEX_ATTR_ID (att_ids[i]))
 	{
-	  att = (OR_ATTRIBUTE *) dk_find_or_reserved_index_attribute (att_ids[i]);
-	  dk_heap_midxkey_get_reserved_index_value (att_ids[i], rec_oid, &value);
-	  att->domain->type->index_writeval (&buf, &value);
-	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-	  //  In this case, there is no need to clean them up using pr_clear_value().     
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE_2ND)
+	  if (null_field_cnt == k)	// (num_vals - 1) ?  ctshim  비트를체크해서 처리하는 방법 검토
+	    {
+	      /* no action */ ;
+	    }
+	  else
+#endif
+	    {
+	      att = (OR_ATTRIBUTE *) dk_find_or_reserved_index_attribute (att_ids[i]);
+	      dk_heap_midxkey_get_reserved_index_value (att_ids[i], rec_oid, &value);
+	      att->domain->type->index_writeval (&buf, &value);
+	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	      //  In this case, there is no need to clean them up using pr_clear_value().     
+	    }
 	}
       else
 	{
@@ -12750,6 +12792,12 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	      att->domain->type->index_writeval (&buf, &value);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	    }
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE_2ND)
+	  else
+	    {
+	      null_field_cnt++;
+	    }
+#endif
 
 	  if (DB_NEED_CLEAR (&value))
 	    {
