@@ -6700,23 +6700,17 @@ btree_is_same_key_for_stats (BTREE_STATS_ENV * env, DB_VALUE * key_value)
 	}
 #endif
 
-      if (env->stat_info->keys == 0)
+      if (!DB_IS_NULL (&(env->old_key_val)))
 	{
-	  pr_clear_value (&(env->old_key_val));
-	  pr_clone_value (key_value, &(env->old_key_val));
-	  return false;
+	  int merged_prefix = pr_midxkey_common_prefix (&(env->old_key_val), key_value);
+	  if (env->ignore_diff_pos == merged_prefix)
+	    {
+	      return true;
+	    }
 	}
 
-      {
-	int merged_prefix = pr_midxkey_common_prefix (&(env->old_key_val), key_value);
-	if (env->ignore_diff_pos == merged_prefix)
-	  {
-	    return true;
-	  }
-
-	pr_clear_value (&(env->old_key_val));
-	pr_clone_value (key_value, &(env->old_key_val));
-      }
+      pr_clear_value (&(env->old_key_val));
+      pr_clone_value (key_value, &(env->old_key_val));
     }
 
   return false;
