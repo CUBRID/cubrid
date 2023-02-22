@@ -281,7 +281,7 @@ csql_invoke_formatter ()
 
 
   /* invoke the formatter command */
-  char *cmd = csql_get_tmp_buf (strlen (csql_Formatter_cmd) + 1 + before_filename.size () + 1 + after_filename.size ());
+  char *cmd = csql_get_tmp_buf (strlen (csql_Formatter_cmd) + 1 + before_filename.size () + 3 + after_filename.size ());
   if (cmd == NULL)
     {
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
