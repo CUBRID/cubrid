@@ -1338,6 +1338,7 @@ csql_errmsg (int code)
     }
 }
 
+#if !defined(WINDOWS)
 void
 stifle_history (int max_history_size)
 {
@@ -1345,3 +1346,4 @@ stifle_history (int max_history_size)
 
   return;
 }
+#endif /* !WINDOWS */
