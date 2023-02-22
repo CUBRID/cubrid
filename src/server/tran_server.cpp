@@ -351,6 +351,8 @@ tran_server::disconnect_all_page_servers ()
     }
   m_page_server_conn_vec.clear ();
   er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from all page servers.");
+
+  m_async_disconnect_handler.terminate ();
 }
 
 bool
@@ -412,6 +414,7 @@ tran_server::connection_handler::receive_disconnect_request (page_server_conn_t:
   std::lock_guard<std::shared_mutex> lk_guard (m_ts.m_page_server_conn_vec_mtx);
 
   disconnect ();
+
   auto &conn_vec = m_ts.m_page_server_conn_vec;
   auto it = conn_vec.begin();
   for (; it != conn_vec.end(); it++)
