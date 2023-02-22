@@ -252,6 +252,7 @@ csql_invoke_system (const char *command)
 int
 csql_invoke_formatter ()
 {
+  /*create an unique file in tmp folder and open it for writing */
   auto[before_filename, before_fileptr] = filesys::open_temp_file ("bef_fmt_");
   if (before_fileptr == NULL)
     {
@@ -266,7 +267,9 @@ csql_invoke_formatter ()
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
       return CSQL_FAILURE;
     }
+  fclose (before_file.release ());
 
+  /*create an unique file in tmp folder */
   auto[after_filename, after_fileptr] = filesys::open_temp_file ("aft_fmt_");
   if (after_fileptr == NULL)
     {
@@ -276,6 +279,8 @@ csql_invoke_formatter ()
   filesys::auto_delete_file after_file_del (after_filename.c_str ());
   filesys::auto_close_file after_file (after_fileptr);
 
+
+  /* invoke the formatter command */
   char *cmd = csql_get_tmp_buf (strlen (csql_Formatter_cmd) + 1 + before_filename.size () + 1 + after_filename.size ());
   if (cmd == NULL)
     {
@@ -285,6 +290,18 @@ csql_invoke_formatter ()
   fclose (after_file.release ());
   sprintf (cmd, "%s %s > %s", csql_Formatter_cmd, before_filename.c_str (), after_filename.c_str ());
 
+  if (system (cmd) != 0)
+    {
+      free_and_init (cmd);
+      csql_Error_code = CSQL_ERR_FORMAT;
+      return CSQL_FAILURE;
+    }
+
+  /* initialize editor buffer */
+  csql_edit_contents_clear ();
+  free_and_init (cmd);
+
+  /*remove the file that saved before formatting command buffer */
   before_file.reset (fopen (before_filename.c_str (), "r"));
   if (!before_file)
     {
@@ -292,6 +309,7 @@ csql_invoke_formatter ()
       return CSQL_FAILURE;
     }
 
+  /*remove the file that saved after formatting command buffer */
   after_file.reset (fopen (after_filename.c_str (), "r"));
   if (!after_file)
     {
@@ -299,15 +317,7 @@ csql_invoke_formatter ()
       return CSQL_FAILURE;
     }
 
-  if (system (cmd) != 0)
-    {
-      csql_Error_code = CSQL_ERR_FORMAT;
-      return CSQL_FAILURE;
-    }
-
-  csql_edit_contents_clear ();
-  free_and_init (cmd);
-
+  /* read the formatted file into editor */
   if (csql_edit_read_file (after_file.get ()) == CSQL_FAILURE)
     {
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
