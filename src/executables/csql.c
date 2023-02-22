@@ -1480,6 +1480,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  if (*(host_name + 1) == '\0')
 	    {
 	      host_name = NULL;
+	      printf ("err\n");
+	      return DO_CMD_SUCCESS;
 	    }
 	  else
 	    {
@@ -1506,6 +1508,9 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  if (*(db_name + 1) == '\0')
 	    {
 	      db_name = NULL;
+	      printf ("err\n");
+	      return DO_CMD_SUCCESS;
+	      //need to set err
 	    }
 	  else
 	    {
@@ -1513,9 +1518,15 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	    }
 	}
       user_name = strtok_r (username_cpy, delim, &save_ptr_strtok);
+      if (user_name == NULL)
+	{
+	  //error or public
+	  printf ("err\n");
+	  return DO_CMD_SUCCESS;
+
+	}
 
       memset (&csql_new_arg, 0, sizeof (CSQL_ARGUMENT));
-
 
       /*connect to same DB user or not */
       if ((db_name == NULL || strcasecmp (csql_arg->db_name, db_name) == 0) && csql_Database_connected == TRUE)
@@ -1559,6 +1570,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 
 
 	      memcpy (csql_arg, &csql_new_arg, sizeof (CSQL_ARGUMENT));
+	      fprintf (csql_Output_fp, "CONNECTED : %s %s\n", csql_arg->user_name, csql_arg->db_name);
 	    }
 
 	}
@@ -1569,9 +1581,10 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 #endif /* CS_MODE */
 	  csql_arg_copy (&csql_new_arg, csql_arg);
 
+	  /*Failed to access other host or db and then access formal db_name */
 	  if (db_name == NULL)
 	    {
-
+	      db_name = strdup (csql_arg->db_name);
 	    }
 
 	  if (csql_Database_connected)
@@ -1620,7 +1633,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 		      db_disable_trigger ();
 		    }
 
-		  csql_display_msg (csql_get_message (CSQL_STAT_RESTART_TEXT));
+		  fprintf (csql_Output_fp, "CONNECTED : %s %s\n", csql_arg->user_name, csql_arg->db_name);
 		}
 	    }
 	  else
@@ -1642,7 +1655,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 		  db_disable_trigger ();
 		}
 
-	      csql_display_msg (csql_get_message (CSQL_STAT_RESTART_TEXT));
+	      fprintf (csql_Output_fp, "CONNECTED : %s %s\n", csql_arg->user_name, csql_arg->db_name);
 	    }
 
 	}
