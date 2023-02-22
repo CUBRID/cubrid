@@ -30,25 +30,26 @@
 
 package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.ast.DeclFunc;
-import com.cubrid.plcsql.compiler.ast.DeclProc;
 import com.cubrid.plcsql.compiler.ast.TypeSpec;
-import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 
-public class GlobalTypeInfo {
-    public TypeSpec getTableColumnType(String table, String column) {
-        return TypeSpecSimple.INTEGER;  // TODO
+import java.util.LinkedHashMap;
+import java.util.List;
+
+public class StaticSqlTagged {
+
+    public enum Kind {
+        SELECT,
+        INSERT,
+        UPDATE,
+        DELETE,
+        MERGE,
+        REPLACE,
+        TRUNCATE
     }
 
-    public DeclFunc getDeclFunc(String name) {
-        return null;    // TODO
-    }
-
-    public DeclProc getDeclProc(String name) {
-        return null;    // TODO
-    }
-
-    public boolean isSerial(String name) {
-        return false;   // TODO
-    }
+    Kind kind;
+    String rewrittenSql;
+    LinkedHashMap<String, TypeSpec> hostVars;
+    LinkedHashMap<String, TypeSpec> selectList;
+    List<String> intoVars;  // can be null
 }

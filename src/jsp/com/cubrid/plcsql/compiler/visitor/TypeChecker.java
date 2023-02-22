@@ -36,6 +36,8 @@ import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.ast.*;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 
 public class TypeChecker extends AstVisitor<TypeSpec> {
 
@@ -70,10 +72,10 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitTypeSpecPercent(TypeSpecPercent node) {
-        // TODO: requries server API
-        // node.setResolvedType(gti.getTableColumnType(node.table, node.column));
-        assert false : "server semantic API required: not implemented yet";
-        throw new RuntimeException("server semantic API required: not implemented yet");
+        TypeSpec ty = gti.getTableColumnType(node.table, node.column);
+        assert ty != null;
+        node.setResolvedType(ty);
+        return null;
     }
 
     @Override
@@ -201,7 +203,11 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitDeclCursor(DeclCursor node) {
         visitNodeList(node.paramList);
-        return null;
+
+        // TODO: requires server API
+        assert false : "server semantic API required: not implemented yet";
+        throw new RuntimeException("server semantic API required: not implemented yet");
+        //return null;
     }
 
     @Override
@@ -338,16 +344,40 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprField(ExprField node) {
-        // TODO: requires server API
-        assert false : "server semantic API required: not implemented yet";
-        throw new RuntimeException("server semantic API required: not implemented yet");
+        TypeSpec ret;
+
+        DeclId declId = node.record.decl;
+        assert declId instanceof DeclForRecord;
+        DeclForRecord declForRecord = (DeclForRecord) declId;
+        if (declForRecord.forDynamicSql) {
+            ret = TypeSpecSimple.UNKNOWN;
+        } else if (declForRecord.columns != null) {
+
+            // this record is for a static SQL
+
+            ret = declForRecord.columns.get(node.fieldName);
+            if (ret == null) {
+                throw new SemanticError(
+                        node.lineNo(), // s400
+                        String.format(
+                                "no such column '%s' in the query result",
+                                node.fieldName));
+            }
+        } else {
+            assert false: "unreachable";
+            throw new RuntimeException("unreachable");
+        }
+
+        return ret;
     }
 
     @Override
     public TypeSpec visitExprGlobalFuncCall(ExprGlobalFuncCall node) {
-        // TODO: requires server API
-        assert false : "server semantic API required: not implemented yet";
-        throw new RuntimeException("server semantic API required: not implemented yet");
+        DeclFunc declFunc = gti.getDeclFunc(node.name);
+        assert declFunc != null;
+
+        checkRoutineCall(declFunc, node.args.nodes);
+        return declFunc.retType;
     }
 
     @Override
@@ -359,9 +389,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         } else if (node.decl instanceof DeclForIter) {
             return TypeSpecSimple.INTEGER;
         } else if (node.decl instanceof DeclForRecord) {
-            // TODO: requires server API
-            assert false : "server semantic API required: not implemented yet";
-            throw new RuntimeException("server semantic API required: not implemented yet");
+            assert false : "unreachable";
+            throw new RuntimeException("unreachable");
         } else {
             assert false : "unreachable";
             throw new RuntimeException("unreachable");
@@ -434,9 +463,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprSerialVal(ExprSerialVal node) {
-        // TODO: requries server API
-        assert false : "server semantic API required: not implemented yet";
-        throw new RuntimeException("server semantic API required: not implemented yet");
+        assert gti.isSerial(node.name);
+        return TypeSpecSimple.BIGDECIMAL; // TODO: apply precision and scale
     }
 
     @Override
@@ -545,17 +573,49 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitStmtCursorFetch(StmtCursorFetch node) {
+
         TypeSpec idType = visit(node.id);
         if (idType.equals(TypeSpecSimple.CURSOR)) {
-            // TODO: requires server API
-            assert false : "server semantic API required: not implemented yet";
-            throw new RuntimeException("server semantic API required: not implemented yet");
+
+            List<Coerce> coerces = new ArrayList<>();
+
+            DeclCursor declCursor = (DeclCursor) node.id.decl;
+            LinkedHashMap<String, TypeSpec> columns = declCursor.columns;
+            assert columns != null;
+
+            int len = node.intoVars.nodes.size();
+            if (columns.size() < len) {
+                throw new SemanticError(    // TODO: verify what happens in Oracle
+                        node.lineNo(), // s401
+                        "the number of columns of the cursor is less than the number of into-variables");
+            }
+            int i = 0;
+            for (String column: columns.keySet()) {
+                TypeSpec columnType = columns.get(column);
+                ExprId intoVar = node.intoVars.nodes.get(i);
+                Coerce c = Coerce.getCoerce(columnType, ((DeclVarLike) intoVar.decl).typeSpec());
+                if (c == null) {
+                    throw new SemanticError(
+                            intoVar.lineNo(), // s402
+                            String.format("the type of column %d of the cursor is not compatible with the variable %s",
+                                i + 1, intoVar.name));
+                }
+                coerces.add(c);
+
+                i++;
+                if (i == len) {
+                    break;
+                }
+            }
+            node.setCoerces(coerces);
+
         } else if (idType.equals(TypeSpecSimple.REFCURSOR)) {
             // nothing to do more,
         } else {
             assert false : "unreachable"; // by earlier check
             throw new RuntimeException("unreachable");
         }
+
         return null;
     }
 
@@ -595,12 +655,15 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                         node.sql.lineNo(), // s221
                         "SQL in the EXECUTE IMMEDIATE statement must be of the STRING type");
             }
+        } else {
+            // host variables must have types that are compatible with the required types
+
+            // In case of a select statement,
+            // select list must have a larger number than the into variables
+            // and types compatible with the declared types of into variables
         }
 
-        // TODO: requires server API
-        assert false : "server semantic API required: not implemented yet";
-        throw new RuntimeException("server semantic API required: not implemented yet");
-        // return null;
+        return null;
     }
 
     @Override
@@ -652,22 +715,24 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                         node.sql.lineNo(), // s225
                         "SQL in the EXECUTE IMMEDIATE statement must be of the STRING type");
             }
+        } else {
+            // TODO: check if it is a SELECT statement
+
+            // TODO: requires server API
+            assert false : "server semantic API required: not implemented yet";
+            throw new RuntimeException("server semantic API required: not implemented yet");
         }
 
-        // TODO: check if it is a SELECT statement
-
-        // TODO: requires server API
-        assert false : "server semantic API required: not implemented yet";
-        throw new RuntimeException("server semantic API required: not implemented yet");
-        // return null;
+        return null;
     }
 
     @Override
     public TypeSpec visitStmtGlobalProcCall(StmtGlobalProcCall node) {
-        // TODO: requires server API
-        assert false : "server semantic API required: not implemented yet";
-        throw new RuntimeException("server semantic API required: not implemented yet");
-        // return null;
+        DeclProc declProc = gti.getDeclProc(node.name);
+        assert declProc != null;
+
+        checkRoutineCall(declProc, node.args.nodes);
+        return null;
     }
 
     @Override

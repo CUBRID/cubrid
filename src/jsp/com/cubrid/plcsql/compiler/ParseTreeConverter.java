@@ -1281,7 +1281,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             symbolStack.putDecl(label, declLabel);
         }
 
-        DeclForRecord declForRecord = new DeclForRecord(ctx.for_cursor().record_name(), record);
+        DeclForRecord declForRecord = new DeclForRecord(ctx.for_cursor().record_name(), record, false);
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
@@ -1324,7 +1324,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             symbolStack.putDecl(label, declLabel);
         }
 
-        DeclForRecord declForRecord = new DeclForRecord(recNameCtx, record);
+        DeclForRecord declForRecord = new DeclForRecord(recNameCtx, record, false);
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
@@ -1374,7 +1374,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             symbolStack.putDecl(label, declLabel);
         }
 
-        DeclForRecord declForRecord = new DeclForRecord(recNameCtx, record);
+        DeclForRecord declForRecord = new DeclForRecord(recNameCtx, record, true);
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());

@@ -31,6 +31,7 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class DeclCursor extends DeclId {
@@ -47,6 +48,8 @@ public class DeclCursor extends DeclId {
 
     public int[] paramRefCounts;
     public int[] usedValuesMap;
+
+    public LinkedHashMap<String, TypeSpec> columns = null;
 
     public DeclCursor(
             ParserRuleContext ctx,
@@ -78,6 +81,10 @@ public class DeclCursor extends DeclId {
                 sql.toJavaCode(),
                 Arrays.toString(paramRefCounts),
                 Arrays.toString(usedValuesMap));
+    }
+
+    public void setColumns(LinkedHashMap<String, TypeSpec> columns) {
+        this.columns = columns;
     }
 
     // --------------------------------------------------
