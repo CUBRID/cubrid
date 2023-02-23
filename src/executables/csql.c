@@ -1367,8 +1367,6 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
     case S_CMD_HISTORY_READ:
 
 #if !defined(WINDOWS)
-      hist_line = 0;
-      hist_ptr_temp = NULL;
 
       if (csql_Is_interactive)
 	{
@@ -1377,37 +1375,21 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	      int i = atoi (argument);
 	      if (i > 0)
 		{
-		  while ((hist_ptr = el_prev_hist ()) != NULL)
+		  if (History[i - 1] != NULL)
 		    {
-		      hist_ptr_temp = hist_ptr;
-		    }
-		  hist_ptr = hist_ptr_temp;
 
-		  do
-		    {
-		      if (hist_ptr != NULL)
+		      if (csql_edit_contents_append (History[i - 1], true) != CSQL_SUCCESS)
 			{
-			  if (i == ++hist_line)
-			    {
-			      if (csql_edit_contents_append (hist_ptr, true) != CSQL_SUCCESS)
-				{
-				  return DO_CMD_FAILURE;
-				}
-			      else
-				{
-				  break;
-				}
-			    }
-			  else if (i < hist_line)
-			    {
-
-			      fprintf (csql_Error_fp, "ERROR: Invalid history number(%s).\n", argument);
-			      break;
-			    }
-
+			  return DO_CMD_FAILURE;
 			}
 		    }
-		  while ((hist_ptr = el_next_hist ()) != NULL && i >= hist_line);
+		  else
+		    {
+
+		      fprintf (csql_Error_fp, "ERROR: Invalid history number(%s).\n", argument);
+		      break;
+		    }
+
 		}
 	      else
 		{
@@ -1432,26 +1414,16 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
     case S_CMD_HISTORY_LIST:
 
 #if !defined(WINDOWS)
-      hist_line = 0;
-      hist_ptr_temp = NULL;
 
-      if (csql_Is_interactive)
+      if (csql_Is_interactive && history_length () > 0)
 	{
-	  while ((hist_ptr = el_prev_hist ()) != NULL)
-	    {
-	      hist_ptr_temp = hist_ptr;
-	    }
-	  hist_ptr = hist_ptr_temp;
 
-	  do
+	  for (int i = 0; i < history_length (); i++)
 	    {
-	      if (hist_ptr != NULL)
-		{
-		  fprintf (csql_Output_fp, "----< %d >----\n", ++hist_line);
-		  fprintf (csql_Output_fp, "%s\n\n", hist_ptr);
-		}
+	      fprintf (csql_Output_fp, "----< %d >----\n", i + 1);
+	      fprintf (csql_Output_fp, "%s\n\n", History[i]);
 	    }
-	  while ((hist_ptr = el_next_hist ()) != NULL);
+
 	}
 #else
       if (csql_Is_interactive)
@@ -1790,7 +1762,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   bool do_abort_transaction = false;	/* flag for transaction abort */
   PT_NODE *statement = NULL;
   char sql_text[DDL_LOG_BUFFER_SIZE] = { 0 };
-  char prompt_cpy[100];		/*static char csql_Prompt[100] */
   char *line_ptr;
 
   csql_Num_failures = 0;
@@ -1842,13 +1813,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       logddl_set_csql_input_type (CSQL_INPUT_TYPE_EDITOR);
     }
 
-  strcpy (prompt_cpy, stmts);
-  line_ptr = strchr (prompt_cpy, '\n');
-  if (line_ptr != NULL)
-    {
-      *prompt_cpy = '\0';
-    }
-
   /*
    * Make sure that there weren't any syntax errors; if there were, the
    * entire concept of "compile next statement" doesn't make sense, and
@@ -1861,7 +1825,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 #if !defined(WINDOWS)
       if ((stmts != NULL) && (csql_Is_interactive))
 	{
-	  add_history (prompt_cpy);
+	  add_history (stmts);
 	}
 #endif /* !WINDOWS */
       goto error;
@@ -1872,7 +1836,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 #if !defined(WINDOWS)
       if ((total >= 1) && (stmts != NULL) && (csql_Is_interactive))
 	{
-	  add_history (prompt_cpy);
+	  add_history (stmts);
 	}
 #endif /* !WINDOWS */
 

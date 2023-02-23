@@ -900,6 +900,8 @@ csql_edit_contents_get ()
     {
       return ((char *) "");
     }
+  if (csql_Edit_contents.contents[csql_Edit_contents.data_size - 1] == '\n')
+    csql_Edit_contents.contents[csql_Edit_contents.data_size - 1] = 0;
   return csql_Edit_contents.contents;
 }
 
