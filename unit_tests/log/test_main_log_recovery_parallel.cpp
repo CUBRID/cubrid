@@ -107,7 +107,8 @@ void execute_test (const log_recovery_test_config &a_test_config,
 
   const log_lsa start_log_lsa = global_values.get_lsa_log ();
   REQUIRE ((!start_log_lsa.is_max () && !start_log_lsa.is_null ()));
-  cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count, true, start_log_lsa, dummy_redo_context);
+  cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count, true, start_log_lsa, dummy_redo_context,
+      TT_REPLICATION_PS);
 
   for (size_t idx = 0u; idx < a_test_config.redo_job_count; ++idx)
     {

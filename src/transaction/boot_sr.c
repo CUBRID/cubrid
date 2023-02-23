@@ -2529,8 +2529,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (get_server_type () == SERVER_TYPE_PAGE)
     {
       const log_lsa next_io_lsa = log_Gl.append.get_nxio_lsa ();
-      ps_Gl.start_log_replicator (next_io_lsa);
-      ps_Gl.init_request_responder ();
+      ps_Gl->start_log_replicator (next_io_lsa);
+      ps_Gl->init_request_responder ();
     }
 #endif // SERVER_MODE
 
@@ -3175,9 +3175,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   if (get_server_type () == SERVER_TYPE_PAGE)
     {
       log_Gl.finalize_log_prior_receiver ();	// stop receiving log before log_final()
-      ps_Gl.disconnect_all_tran_server ();
-      ps_Gl.finish_replication_during_shutdown (*thread_p);
-      ps_Gl.finalize_request_responder ();
+      ps_Gl->disconnect_all_tran_server ();
+      ps_Gl->finish_replication_during_shutdown (*thread_p);
+      ps_Gl->finalize_request_responder ();
     }
   else if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {

@@ -25,6 +25,7 @@
 #include "server_request_responder.hpp"
 #include "server_type_enum.hpp"
 #include "tran_page_requests.hpp"
+#include "async_disconnect_handler.hpp"
 
 #include <memory>
 
@@ -170,36 +171,6 @@ class page_server
     };
     using connection_handler_uptr_t = std::unique_ptr<connection_handler>;
 
-    /* helper class with the task of destroying connnection handlers and, by this,
-     * also waiting for the receive and transmit threads inside the handlers to terminate
-     */
-    class async_disconnect_handler
-    {
-      public:
-	async_disconnect_handler ();
-
-	async_disconnect_handler (const async_disconnect_handler &) = delete;
-	async_disconnect_handler (async_disconnect_handler &&) = delete;
-
-	~async_disconnect_handler ();
-
-	async_disconnect_handler &operator = (const async_disconnect_handler &) = delete;
-	async_disconnect_handler &operator = (async_disconnect_handler &&) = delete;
-
-	void disconnect (connection_handler_uptr_t &&handler);
-	void terminate ();
-
-      private:
-	void disconnect_loop ();
-
-      private:
-	std::atomic_bool m_terminate;
-	std::queue<connection_handler_uptr_t> m_disconnect_queue;
-	std::mutex m_queue_mtx;
-	std::condition_variable m_queue_cv;
-	std::thread m_thread;
-    };
-
     /*
      * helper class to track the active oldest mvccids of each Page Transaction Server.
      * This provides the globally oldest active mvcc id to the vacuum on ATS.
@@ -240,16 +211,14 @@ class page_server
   private: // members
     connection_handler_uptr_t m_active_tran_server_conn;
     std::vector<connection_handler_uptr_t> m_passive_tran_server_conn;
+    std::mutex m_conn_mutex; // for the thread-safe connection and disconnection
 
     std::unique_ptr<cublog::replicator> m_replicator;
 
     std::unique_ptr<responder_t> m_responder;
 
-    async_disconnect_handler m_async_disconnect_handler;
+    async_disconnect_handler<connection_handler> m_async_disconnect_handler;
     pts_mvcc_tracker m_pts_mvcc_tracker;
 };
 
-extern page_server ps_Gl;
-
 #endif // !_PAGE_SERVER_HPP_
-

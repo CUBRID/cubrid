@@ -720,8 +720,10 @@ thread_type_to_string (thread_type type)
       return "SYSTEM_WORKER";
     case TT_RECOVERY:
       return "RECOVERY";
-    case TT_REPLICATION:
-      return "REPLICATION";
+    case TT_REPLICATION_PS:
+      return "REPLICATION_PS";
+    case TT_REPLICATION_PTS:
+      return "REPLICATION_PTS";
     case TT_NONE:
       return "NONE";
     }

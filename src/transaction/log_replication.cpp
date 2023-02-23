@@ -66,7 +66,8 @@ namespace cublog
    * replicator - definition
    *********************************************************************/
 
-  replicator::replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode, int parallel_count)
+  replicator::replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode, int parallel_count,
+			  thread_type replication_thread_type)
     : m_bookkeep_mvcc { is_page_server () }
     , m_replicate_mvcc { is_passive_transaction_server () }
     , m_redo_lsa { start_redo_lsa }
@@ -89,7 +90,7 @@ namespace cublog
 	m_reusable_jobs.reset (new cublog::reusable_jobs_stack ());
 	m_reusable_jobs->initialize (parallel_count);
 	m_parallel_replication_redo.reset (
-		new cublog::redo_parallel (parallel_count, true, m_redo_lsa, m_redo_context));
+		new cublog::redo_parallel (parallel_count, true, m_redo_lsa, m_redo_context, replication_thread_type));
       }
 
     if (m_replicate_mvcc)
@@ -107,7 +108,7 @@ namespace cublog
       new cubthread::entry_callable_task (std::move (func_exec))
     };
 
-    m_daemon_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (TT_REPLICATION);
+    m_daemon_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (replication_thread_type);
 
     // NOTE: make sure any internal structure which is a requirement to functioning is initialized
     // before the daemon to avoid seldom-occuring race conditions
