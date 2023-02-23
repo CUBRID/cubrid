@@ -10439,12 +10439,6 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	  }
 	else
 	  {
-	    /* for dblink server name */
-	    const char *target_name = node->info.synonym.target_name->info.name.original;
-	    if (strchr (target_name, '@') != NULL)
-	      {
-		target_owner_name = sc_current_schema_name ();
-	      }
 	    assert (target_owner_name != NULL);
 	    PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, target_owner_name);
 	  }
@@ -11290,17 +11284,15 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
       remote_ins = 1;
     }
 
-  if (remote_ins)
+  if (has_synonym)
     {
-      if (has_synonym)
-	{
-	  /* node need alias for insert */
-	  parser_free_node (parser, node->info.insert.spec->info.spec.range_var);
-	  node->info.insert.spec->info.spec.range_var = NULL;
-	  sql_user_text = parser_print_tree (parser, node);
-	}
-      pt_convert_dblink_dml_query (parser, node, sql_user_text, /* always 0 */ 0, remote_ins, snl);
+      /* node need alias for insert */
+      parser_free_node (parser, node->info.insert.spec->info.spec.range_var);
+      node->info.insert.spec->info.spec.range_var = NULL;
+      sql_user_text = parser_print_tree (parser, node);
     }
+
+  pt_convert_dblink_dml_query (parser, node, sql_user_text, (remote_ins == 0), remote_ins, snl);
 
   return;
 }
@@ -11465,10 +11457,10 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
     {
     case PT_INSERT:
       into_spec = node->info.insert.spec;
-      //assert (sel = node->info.insert.value_clauses->info.node_list.list);
-      if (sel->node_type == PT_SELECT)
+      sel = node->info.insert.value_clauses;
+      if (sel->info.node_list.list && sel->info.node_list.list->node_type == PT_SELECT)
 	{
-	  upd_spec = sel->info.query.q.select.from;
+	  upd_spec = sel->info.node_list.list->info.query.q.select.from;
 	}
       break;
     case PT_DELETE:
@@ -11656,10 +11648,27 @@ pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, S
     {
       parser_walk_tree (parser, from_tbl, pt_get_server_name_list, snl, NULL, NULL);
 
-      if (from_tbl->info.spec.entity_name && from_tbl->info.spec.remote_server_name)
+      if (from_tbl->info.spec.entity_name->node_type == PT_SPEC)
+	{			// case: FROM (t1, t2) 
+	  for (PT_NODE * node = from_tbl->info.spec.entity_name; node; node = node->next)
+	    {
+	      assert (node->info.spec.entity_name->node_type == PT_NAME);
+	      if (node->info.spec.entity_name && node->info.spec.remote_server_name)
+		{
+		  node = pt_mk_spec_derived_dblink_table (parser, node);
+		  has_dblink = true;
+		}
+	    }
+	}
+      else
 	{
-	  from_tbl = pt_mk_spec_derived_dblink_table (parser, from_tbl);
-	  has_dblink = true;
+	  assert (from_tbl->info.spec.entity_name->node_type == PT_NAME);
+
+	  if (from_tbl->info.spec.entity_name && from_tbl->info.spec.remote_server_name)
+	    {
+	      from_tbl = pt_mk_spec_derived_dblink_table (parser, from_tbl);
+	      has_dblink = true;
+	    }
 	}
 
       from_tbl = from_tbl->next;
@@ -11669,7 +11678,7 @@ pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, S
 }
 
 static PT_NODE *
-pt_convert_server (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_convert_select (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   SERVER_NAME_LIST *snl = (SERVER_NAME_LIST *) arg;
 
@@ -11683,7 +11692,22 @@ pt_convert_server (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 	  parser_walk_tree (parser, node, pt_check_dblink_query, NULL, NULL, NULL);
 	}
       break;
+    default:
+      break;
+    }
 
+  return node;
+}
+
+static PT_NODE *
+pt_convert_dml (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  SERVER_NAME_LIST *snl = (SERVER_NAME_LIST *) arg;
+
+  assert (continue_walk && parser && node);
+
+  switch (node->node_type)
+    {
     case PT_INSERT:
       pt_convert_dblink_insert_query (parser, node, node->sql_user_text, snl);
       break;
@@ -11729,22 +11753,22 @@ pt_check_server_extension (PARSER_CONTEXT * parser, PT_NODE * stmt)
     case PT_DELETE:
     case PT_UPDATE:
     case PT_MERGE:
+    case PT_CREATE_ENTITY:
+    case PT_ALTER:
+      parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_dml, &snl);
+      if (pt_has_error (parser))
+	{
+	  return;
+	}
+      break;
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
     case PT_UNION:
     case PT_SELECT:
-    case PT_CREATE_ENTITY:
-    case PT_ALTER:
-      break;
-
+      parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_select, &snl);
+      return;
     default:
       /* no action */
-      return;
-    }
-
-  parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_server, &snl);
-  if (pt_has_error (parser))
-    {
       return;
     }
 

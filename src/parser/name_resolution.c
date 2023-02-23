@@ -4997,6 +4997,8 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 
   assert (dblink_table->qstr != NULL);
   assert (class_spec->range_var != NULL);
+  assert (class_spec->only_all == PT_ONLY);
+  assert (class_spec->except_list == NULL);
 
   pt_check_column_list (parser, class_spec->range_var->info.name.original, dblink_table, rmt_cols);
 
@@ -5013,7 +5015,15 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
   var_buf = pt_append_varchar (parser, var_buf, pt_build_select_list_4_dblink (parser, dblink_table->sel_list));
 
   // from table
-  var_buf = pt_append_nulstring (parser, var_buf, " FROM ");
+  if (class_spec->meta_class == PT_META_CLASS)
+    {
+      var_buf = pt_append_nulstring (parser, var_buf, " FROM CLASS ");
+    }
+  else
+    {
+      var_buf = pt_append_nulstring (parser, var_buf, " FROM ");
+    }
+
   var_buf = pt_append_varchar (parser, var_buf, pt_print_bytes (parser, entity_name));
 
   // table alias : ~ from tbl@srv t

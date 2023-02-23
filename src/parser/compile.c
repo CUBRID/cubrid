@@ -432,7 +432,7 @@ PT_NODE *
 pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_CLASS_LOCKS lcks;
-  PT_NODE *node = NULL, *spec;
+  PT_NODE *node = NULL;
   LOCK lock_rr_tran = NULL_LOCK;
   LC_FIND_CLASSNAME find_result;
 
@@ -756,8 +756,6 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
   synonym_mop = db_find_synonym (class_name);
   if (synonym_mop != NULL)
     {
-      char *r;
-
       class_name = db_get_synonym_target_name (synonym_mop, target_name, DB_MAX_IDENTIFIER_LENGTH);
       if (class_name == NULL)
 	{

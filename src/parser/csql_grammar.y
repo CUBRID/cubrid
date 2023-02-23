@@ -647,6 +647,7 @@ int g_original_buffer_len;
 %type <node> only_all_class_spec_list
 %type <node> meta_class_spec
 %type <node> only_all_class_spec
+%type <node> only_all_class_spec_with_server
 %type <node> object_name
 %type <node> user_specified_name_without_dot
 %type <node> user_specified_name
@@ -896,6 +897,7 @@ int g_original_buffer_len;
 %type <node> from_id_list
 %type <node> to_id_list
 %type <node> only_class_name
+%type <node> only_class_name_or_with_server_name
 %type <node> grant_head
 %type <node> grant_cmd
 %type <node> revoke_cmd
@@ -3129,7 +3131,7 @@ create_stmt
 	  	{ push_msg (MSGCAT_SYNTAX_SYNONYM_INVALID_CREATE); }	/* 4 */
 	  synonym_name_without_dot	/* 5 */
 	  For				/* 6 */
-	  class_name_for_synonym 	/* 7 */
+	  class_name_for_synonym   	/* 7 */
 	  opt_comment_spec		/* 8 */
 	  	{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace opt_access_modifier SYNONYM synonym_name_without_dot For class_name opt_comment_spec);
@@ -3157,6 +3159,7 @@ create_stmt
 
 		DBG_PRINT}}
 	;
+
 class_name_for_synonym
 	: class_name
 		{ $$ = $1; }
@@ -3167,6 +3170,9 @@ class_name_for_synonym
 
 		  cname->info.name.original = pt_append_string (this_parser, cname->info.name.original, "@");
 		  cname->info.name.original = pt_append_string (this_parser, cname->info.name.original, sname->info.name.original);
+
+		  // Set automatically assign a user name.
+		  PT_NAME_INFO_SET_FLAG (cname, PT_NAME_INFO_USER_SPECIFIED);
 
 		  $$ = cname;
 		}
@@ -4070,8 +4076,14 @@ only_class_name
 	| user_specified_name
 		{ DBG_TRACE_GRAMMAR(only_class_name, | user_specified_name);
                   $$ = $1; }
+	;
+
+only_class_name_or_with_server_name
+        : only_class_name
+               { DBG_TRACE_GRAMMAR(only_class_name_or_with_server_name, : only_class_name);
+                  $$ = $1; }
         | class_name_with_server_name
-                {{ DBG_TRACE_GRAMMAR(only_class_name, | class_name_with_server_name);
+                {{ DBG_TRACE_GRAMMAR(only_class_name_or_with_server_name, | class_name_with_server_name);
 
                         PT_NODE *scs = parser_new_node (this_parser, PT_SPEC);
 			if (scs)
@@ -5337,6 +5349,13 @@ class_spec
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| only_all_class_spec_with_server
+		{{ DBG_TRACE_GRAMMAR(class_spec, : only_all_class_spec_with_server );
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| '(' only_all_class_spec_list ')'
 		{{ DBG_TRACE_GRAMMAR(class_spec, | '(' only_all_class_spec_list ')' );
 
@@ -5376,14 +5395,49 @@ meta_class_spec
 			  {
 			    ocs->info.spec.entity_name = $2;
 			    ocs->info.spec.only_all = PT_ONLY;
-			    ocs->info.spec.meta_class = PT_CLASS;
+			    ocs->info.spec.meta_class = PT_META_CLASS;
 			  }
 
-			if (ocs)
-			  ocs->info.spec.meta_class = PT_META_CLASS;
 			$$ = ocs;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
+		DBG_PRINT}}
+        | CLASS class_name_with_server_name
+                {{DBG_TRACE_GRAMMAR(meta_class_spec, : CLASS class_name_with_server_name );
+                       PT_NODE *ocs = parser_new_node (this_parser, PT_SPEC);
+			if (ocs)
+			  {
+                            ocs->info.spec.entity_name = CONTAINER_AT_0 ($2);
+			    /* for DBLink DML */
+                            ocs->info.spec.remote_server_name = CONTAINER_AT_1 ($2);
+			    ocs->info.spec.only_all = PT_ONLY;
+                            ocs->info.spec.meta_class = PT_META_CLASS;
+			  }
+
+                        $$ = ocs;
+                DBG_PRINT}}
+	;
+
+only_all_class_spec_with_server
+	: class_name_with_server_name opt_partition_spec
+		{{ DBG_TRACE_GRAMMAR(only_all_class_spec_with_server, : class_name_with_server_name opt_partition_spec );
+                       PT_NODE *ocs = parser_new_node (this_parser, PT_SPEC);
+			if (ocs)
+			  {
+                            ocs->info.spec.entity_name = CONTAINER_AT_0 ($1);
+			    /* for DBLink DML */
+                            ocs->info.spec.remote_server_name = CONTAINER_AT_1 ($1);
+
+			    ocs->info.spec.only_all = PT_ONLY;
+			    ocs->info.spec.meta_class = PT_CLASS;
+			    if ($2)
+		   	      {
+			        ocs->info.spec.partition = $2;
+			      }
+			   }
+
+			$$ = ocs;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	;
 
@@ -5391,25 +5445,18 @@ only_all_class_spec
 	: only_class_name opt_partition_spec
 		{{ DBG_TRACE_GRAMMAR(only_all_class_spec, : only_class_name opt_partition_spec );
                        PT_NODE *ocs = NULL;
-			/* for DBLink DML */
-                        if($1 && $1->node_type == PT_SPEC)
-                        {
-                              ocs = $1;
-                        }
-                        else
-                        {
-                           ocs = parser_new_node (this_parser, PT_SPEC);
-			   if (ocs)
-			    {
-			      ocs->info.spec.entity_name = $1;
-			      ocs->info.spec.only_all = PT_ONLY;
-			      ocs->info.spec.meta_class = PT_CLASS;
-			      if ($2)
-			      {
-				ocs->info.spec.partition = $2;
-			      }
-			    }
-                        }
+
+                       ocs = parser_new_node (this_parser, PT_SPEC);
+		       if (ocs)
+			 {
+			   ocs->info.spec.entity_name = $1;
+			   ocs->info.spec.only_all = PT_ONLY;
+			   ocs->info.spec.meta_class = PT_CLASS;
+			   if ($2)
+			     {
+			       ocs->info.spec.partition = $2;
+			     }
+			  }
 
 			$$ = ocs;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -6751,10 +6798,10 @@ replace_stmt_keyword
 insert_set_stmt_header
 	: opt_hint_list
 	  opt_into
-	  only_class_name
+	  only_class_name_or_with_server_name
 	  SET
 	  insert_assignment_list
-		{{ DBG_TRACE_GRAMMAR(insert_set_stmt_header, : opt_hint_list opt_into only_class_name SET insert_assignment_list);
+		{{ DBG_TRACE_GRAMMAR(insert_set_stmt_header, : opt_hint_list opt_into only_class_name_or_with_server_name SET insert_assignment_list);
 
 			PT_NODE *ins = parser_pop_hint_node ();
 			PT_NODE *ocs = NULL;
@@ -6905,10 +6952,10 @@ replace_name_clause
 insert_name_clause_header
 	: opt_hint_list
 	  opt_into
-	  only_class_name
+	  only_class_name_or_with_server_name
 	  opt_partition_spec
 	  opt_attr_list
-		{{ DBG_TRACE_GRAMMAR(insert_name_clause_header, : opt_hint_list opt_into only_class_name opt_partition_spec opt_attr_list);
+		{{ DBG_TRACE_GRAMMAR(insert_name_clause_header, : opt_hint_list opt_into only_class_name_or_with_server_name opt_partition_spec opt_attr_list);
 
 			PT_NODE *ins = parser_pop_hint_node ();
 			PT_NODE *ocs = NULL;
@@ -24346,8 +24393,8 @@ opt_alter_synonym
 			$$ = NULL;
 
 		DBG_PRINT}}
-	| For class_name
-		{{ DBG_TRACE_GRAMMAR(opt_alter_syonnym, : For class_name);
+	| For class_name_for_synonym
+		{{ DBG_TRACE_GRAMMAR(opt_alter_syonnym, : For class_name_for_synonym);
 
 			$$ = $2;
 
