@@ -347,10 +347,6 @@ namespace cubthread
       lockfree::tran::index pull_lf_tran_index ();
       lockfree::tran::index get_lf_tran_index ();
 
-//      inline thread_type get_thread_type () const
-//      {
-//	return type;
-//      }
       void set_thread_type (thread_type type);
 
     private:
