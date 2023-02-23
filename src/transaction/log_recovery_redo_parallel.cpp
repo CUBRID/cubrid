@@ -599,16 +599,19 @@ namespace cublog
    *********************************************************************/
 
   redo_parallel::redo_parallel (unsigned a_task_count, bool a_do_monitor_min_unapplied_log_lsa,
-				const log_lsa &a_start_main_thread_log_lsa, const log_rv_redo_context &copy_context)
+				const log_lsa &a_start_main_thread_log_lsa, const log_rv_redo_context &copy_context,
+				thread_type recovery_or_replication_thread_type)
     : m_task_count { a_task_count }
     , m_task_state_bookkeeping { a_task_count }
     , m_worker_pool { nullptr }
     , m_min_unapplied_log_lsa_calculation { a_do_monitor_min_unapplied_log_lsa, a_start_main_thread_log_lsa, m_redo_tasks }
   {
     assert (a_task_count > 0);
+    assert (TT_RECOVERY == recovery_or_replication_thread_type ||
+	    TT_REPLICATION_PS == recovery_or_replication_thread_type);
 
-    const thread_type tt = log_is_in_crash_recovery () ? TT_RECOVERY : TT_REPLICATION;
-    m_pool_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (tt);
+    m_pool_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (
+				     recovery_or_replication_thread_type);
 
     do_init_worker_pool (a_task_count);
     do_init_tasks (a_task_count, a_do_monitor_min_unapplied_log_lsa, copy_context);

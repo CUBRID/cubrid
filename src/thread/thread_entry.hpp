@@ -131,7 +131,9 @@ enum thread_type
   TT_VACUUM_WORKER,
   TT_SYSTEM_WORKER,
   TT_RECOVERY,
-  TT_REPLICATION,
+  // specifically for scalability transactional log replication
+  TT_REPLICATION_PS,
+  TT_REPLICATION_PTS,
   TT_NONE
 };
 

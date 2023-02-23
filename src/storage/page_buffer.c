@@ -5187,7 +5187,7 @@ pgbuf_is_temporary_volume (VOLID volid)
   /* Later edit: replication threads are also being present on passive transaction server - which has
    * to deal with temporary volumes. Thus, restrict the test to page server context only and leave
    * original answer for all transaction servers */
-  if (is_page_server () && cubthread::get_entry ().type == TT_REPLICATION)
+  if (is_page_server () && cubthread::get_entry ().type == TT_REPLICATION_PS)
     {
       return false;
     }
@@ -8497,7 +8497,7 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       // TODO: FIXME
       // The transaction server boots and reads pages before initializing its log module and before knowing a safe target
       // LSA for replication. A way of knowing this target LSA is required, but disable this wait until that's fixed.
-      ps_Gl.get_replicator ().wait_past_target_lsa (target_repl_lsa);
+      ps_Gl->get_replicator ().wait_past_target_lsa (target_repl_lsa);
     }
 
   int error = NO_ERROR;

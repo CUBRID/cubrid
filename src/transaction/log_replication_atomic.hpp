@@ -67,7 +67,8 @@ namespace cublog
   class atomic_replicator : public replicator
   {
     public:
-      atomic_replicator (const log_lsa &start_redo_lsa, const log_lsa &prev_redo_lsa);
+      atomic_replicator (const log_lsa &start_redo_lsa, const log_lsa &prev_redo_lsa,
+			 thread_type replication_thread_type);
 
       atomic_replicator (const atomic_replicator &) = delete;
       atomic_replicator (atomic_replicator &&) = delete;

@@ -36,8 +36,6 @@
 #include <functional>
 #include <thread>
 
-page_server ps_Gl;
-
 page_server::~page_server ()
 {
   assert (m_replicator == nullptr);
@@ -173,7 +171,7 @@ void
 page_server::connection_handler::handle_oldest_active_mvccid_request (tran_server_conn_t::sequenced_payload &a_sp)
 {
   assert (m_server_type == transaction_server_type::ACTIVE);
-  const MVCCID oldest_mvccid = m_ps.m_pts_mvcc_tracker.get_global_oldest_active_mvccid();
+  const MVCCID oldest_mvccid = m_ps.m_pts_mvcc_tracker.get_global_oldest_active_mvccid ();
 
   std::string response_message;
   response_message.append (reinterpret_cast<const char *> (&oldest_mvccid), sizeof (oldest_mvccid));
@@ -209,7 +207,7 @@ page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_
 {
   assert (m_server_type == transaction_server_type::PASSIVE);
 
-  const auto oldest_mvccid = *reinterpret_cast<const MVCCID *> (a_sp.pull_payload().c_str());
+  const auto oldest_mvccid = *reinterpret_cast<const MVCCID *> (a_sp.pull_payload ().c_str ());
 
   m_ps.m_pts_mvcc_tracker.update_oldest_active_mvccid (get_connection_id (), oldest_mvccid);
 }
@@ -341,7 +339,7 @@ void page_server::pts_mvcc_tracker::init_oldest_active_mvccid (const std::string
    * before, the entry must have been removed when the PTS disconnected or when the connection
    *  to the PTS was aborted.
    */
-  assert (m_pts_oldest_active_mvccids.find (pts_channel_id) == m_pts_oldest_active_mvccids.end());
+  assert (m_pts_oldest_active_mvccids.find (pts_channel_id) == m_pts_oldest_active_mvccids.end ());
 
   /*
    * MVCCID_ALL_VISIBLE means that it hasn't yet received. It will prevent the ATS to run vacuum.
@@ -363,7 +361,7 @@ void page_server::pts_mvcc_tracker::update_oldest_active_mvccid (const std::stri
    * 2. It is updated by the PTS only when it move foward.
    *    Without update, it is MVCCID_ALL_VISIBLE by default, which is lower than any mvccid assigned.
    */
-  assert (m_pts_oldest_active_mvccids.find (pts_channel_id) != m_pts_oldest_active_mvccids.end());
+  assert (m_pts_oldest_active_mvccids.find (pts_channel_id) != m_pts_oldest_active_mvccids.end ());
   assert (m_pts_oldest_active_mvccids[pts_channel_id] < mvccid);
 
   m_pts_oldest_active_mvccids[pts_channel_id] = mvccid;
@@ -378,14 +376,14 @@ void page_server::pts_mvcc_tracker::update_oldest_active_mvccid (const std::stri
     {
       ss << " " << it.second;
     }
-  er_log_debug (ARG_FILE_LINE, ss.str().c_str());
+  er_log_debug (ARG_FILE_LINE, ss.str ().c_str ());
 #endif
 }
 void page_server::pts_mvcc_tracker::delete_oldest_active_mvccid (const std::string &pts_channel_id)
 {
   std::lock_guard<std::mutex> lockg { m_pts_oldest_active_mvccids_mtx };
   /* The entry is already created when ths PTS is connected. */
-  assert (m_pts_oldest_active_mvccids.find (pts_channel_id) != m_pts_oldest_active_mvccids.end());
+  assert (m_pts_oldest_active_mvccids.find (pts_channel_id) != m_pts_oldest_active_mvccids.end ());
   m_pts_oldest_active_mvccids.erase (pts_channel_id);
 }
 
@@ -422,6 +420,10 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
   er_log_debug (ARG_FILE_LINE, "Active transaction server connected to this page server. Channel id: %s.\n",
 		channel_id.c_str ());
 
+  // Even if the functions set_active_tran_server_connection and set_passive_tran_server_connection are
+  // called from the same thread (master-server connection handler) the mutex is actually needed.
+  // The usage of the mutex is to synchronize with the disconnects which are trigered from each connection
+  // handler's connection threads (inbound or outbound).
   std::lock_guard lk_guard { m_conn_mutex };
 
   if (m_active_tran_server_conn != nullptr)
@@ -451,6 +453,10 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
 		channel_id.c_str ());
 
   {
+    // Even if the functions set_active_tran_server_connection and set_passive_tran_server_connection are
+    // called from the same thread (master-server connection handler) the mutex is actually needed.
+    // The usage of the mutex is to synchronize with the disconnects which are trigered from each connection
+    // handler's connection threads (inbound or outbound).
     std::lock_guard lk_guard { m_conn_mutex };
 
     m_passive_tran_server_conn.emplace_back (new connection_handler (chn, transaction_server_type::PASSIVE, *this));
@@ -608,7 +614,7 @@ page_server::start_log_replicator (const log_lsa &start_lsa)
 
   const int replication_parallel_count = prm_get_integer_value (PRM_ID_REPLICATION_PARALLEL_COUNT);
   assert (replication_parallel_count >= 0);
-  m_replicator.reset (new cublog::replicator (start_lsa, RECOVERY_PAGE, replication_parallel_count));
+  m_replicator.reset (new cublog::replicator (start_lsa, RECOVERY_PAGE, replication_parallel_count, TT_REPLICATION_PS));
 }
 
 void
