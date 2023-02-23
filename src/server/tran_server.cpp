@@ -356,14 +356,14 @@ tran_server::disconnect_all_page_servers ()
 
   for (const auto &conn : m_page_server_conn_vec)
     {
-      er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from page server with channel id: %s.\n",
-		    conn->get_channel_id ().c_str ());
       conn->prepare_disconnection ();
     }
   m_page_server_conn_vec.clear ();
-  er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from all page servers.");
 
+  // Wait until all disconnection reuqest are handled.
   m_async_disconnect_handler.terminate ();
+
+  er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from all page servers.");
 }
 
 bool
@@ -483,7 +483,7 @@ tran_server::connection_handler::prepare_disconnection ()
   push_request (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
   // After sending SEND_DISCONNECT_MSG, the page server may release all resources releated to this connection.
 
-  er_log_debug (ARG_FILE_LINE, "Disconnected from the page server with channel id: %s \n",
+  er_log_debug (ARG_FILE_LINE, "Transaction server is disconnected from the page server with channel id: %s \n",
 		get_channel_id ().c_str ());
 
 }
