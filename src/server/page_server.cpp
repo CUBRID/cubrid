@@ -36,8 +36,6 @@
 #include <functional>
 #include <thread>
 
-page_server ps_Gl;
-
 page_server::~page_server ()
 {
   assert (m_replicator == nullptr);
@@ -328,78 +326,6 @@ page_server::connection_handler::remove_prior_sender_sink ()
     }
 }
 
-page_server::async_disconnect_handler::async_disconnect_handler ()
-  : m_terminate { false }
-{
-  m_thread = std::thread (&page_server::async_disconnect_handler::disconnect_loop, std::ref (*this));
-}
-
-page_server::async_disconnect_handler::~async_disconnect_handler ()
-{
-  if (m_terminate.load () && m_thread.joinable ())
-    {
-      m_thread.join ();
-    }
-  else
-    {
-      assert (m_terminate.load ());
-    }
-
-  assert (m_disconnect_queue.empty ());
-}
-
-void
-page_server::async_disconnect_handler::disconnect (connection_handler_uptr_t &&handler)
-{
-  if (!m_terminate.load ())
-    {
-      std::unique_lock<std::mutex> ulock { m_queue_mtx };
-      m_disconnect_queue.emplace (std::move (handler));
-      ulock.unlock ();
-      m_queue_cv.notify_one ();
-    }
-  else
-    {
-      // cannot ask for disconnect after termination
-      assert (false);
-    }
-}
-
-void
-page_server::async_disconnect_handler::terminate ()
-{
-  m_terminate.store (true);
-  m_queue_cv.notify_one ();
-}
-
-void
-page_server::async_disconnect_handler::disconnect_loop ()
-{
-  constexpr std::chrono::seconds one_second { 1 };
-
-  std::queue<connection_handler_uptr_t> disconnect_work_buffer;
-  while (!m_terminate.load ())
-    {
-      {
-	std::unique_lock<std::mutex> ulock { m_queue_mtx };
-	if (!m_queue_cv.wait_for (ulock, one_second,
-				  [this] { return !m_disconnect_queue.empty () || m_terminate.load (); }))
-	  {
-	    continue;
-	  }
-
-	m_disconnect_queue.swap (disconnect_work_buffer);
-      }
-
-      while (!disconnect_work_buffer.empty ())
-	{
-	  connection_handler_uptr_t &front = disconnect_work_buffer.front ();
-	  front.reset (nullptr);
-	  disconnect_work_buffer.pop ();
-	}
-    }
-}
-
 void page_server::pts_mvcc_tracker::init_oldest_active_mvccid (const std::string &pts_channel_id)
 {
   std::lock_guard<std::mutex> lockg { m_pts_oldest_active_mvccids_mtx };
@@ -489,6 +415,12 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
   er_log_debug (ARG_FILE_LINE, "Active transaction server connected to this page server. Channel id: %s.\n",
 		channel_id.c_str ());
 
+  // Even if the functions set_active_tran_server_connection and set_passive_tran_server_connection are
+  // called from the same thread (master-server connection handler) the mutex is actually needed.
+  // The usage of the mutex is to synchronize with the disconnects which are trigered from each connection
+  // handler's connection threads (inbound or outbound).
+  std::lock_guard lk_guard (m_conn_mutex);
+
   if (m_active_tran_server_conn != nullptr)
     {
       // When [A]TS crashes there are two possibilities:
@@ -515,7 +447,15 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
   er_log_debug (ARG_FILE_LINE, "Passive transaction server connected to this page server. Channel id: %s.\n",
 		channel_id.c_str ());
 
-  m_passive_tran_server_conn.emplace_back (new connection_handler (chn, transaction_server_type::PASSIVE, *this));
+  {
+    // Even if the functions set_active_tran_server_connection and set_passive_tran_server_connection are
+    // called from the same thread (master-server connection handler) the mutex is actually needed.
+    // The usage of the mutex is to synchronize with the disconnects which are trigered from each connection
+    // handler's connection threads (inbound or outbound).
+    std::lock_guard lk_guard (m_conn_mutex);
+
+    m_passive_tran_server_conn.emplace_back (new connection_handler (chn, transaction_server_type::PASSIVE, *this));
+  }
 
   m_pts_mvcc_tracker.init_oldest_active_mvccid (channel_id);
 }
@@ -540,14 +480,18 @@ void
 page_server::disconnect_tran_server_async (const connection_handler *conn)
 {
   assert (conn != nullptr);
+
+  std::lock_guard lk_guard (m_conn_mutex);
+
   if (conn == m_active_tran_server_conn.get ())
     {
+      er_log_debug (ARG_FILE_LINE, "Page server disconnected from active transaction server with channel id: %s.\n",
+		    conn->get_connection_id ().c_str ());
       m_async_disconnect_handler.disconnect (std::move (m_active_tran_server_conn));
       assert (m_active_tran_server_conn == nullptr);
     }
   else
     {
-      bool passive_tran_server_found { false };
       for (auto it = m_passive_tran_server_conn.begin (); it != m_passive_tran_server_conn.end (); ++it)
 	{
 	  if (conn == it->get ())
@@ -557,17 +501,17 @@ page_server::disconnect_tran_server_async (const connection_handler *conn)
 	      m_async_disconnect_handler.disconnect (std::move (*it));
 	      assert (*it == nullptr);
 	      m_passive_tran_server_conn.erase (it);
-	      passive_tran_server_found = true;
 	      break;
 	    }
 	}
-      assert (passive_tran_server_found);
     }
 }
 
 void
 page_server::disconnect_all_tran_server ()
 {
+  std::lock_guard lk_guard (m_conn_mutex);
+
   disconnect_active_tran_server ();
 
   if (m_passive_tran_server_conn.empty ())

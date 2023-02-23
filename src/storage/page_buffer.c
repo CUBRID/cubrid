@@ -8509,7 +8509,7 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       // TODO: FIXME
       // The transaction server boots and reads pages before initializing its log module and before knowing a safe target
       // LSA for replication. A way of knowing this target LSA is required, but disable this wait until that's fixed.
-      ps_Gl.get_replicator ().wait_past_target_lsa (target_repl_lsa);
+      ps_Gl->get_replicator ().wait_past_target_lsa (target_repl_lsa);
     }
 
   int error = NO_ERROR;

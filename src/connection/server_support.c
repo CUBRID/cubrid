@@ -2634,7 +2634,7 @@ css_process_server_server_connect (SOCKET master_fd)
 	  break;
 	}
       // *INDENT-ON*
-      ps_Gl.set_active_tran_server_connection (std::move (chn));
+      ps_Gl->set_active_tran_server_connection (std::move (chn));
       break;
     case cubcomm::server_server::CONNECT_PASSIVE_TRAN_TO_PAGE_SERVER:
       // *INDENT-OFF*
@@ -2644,7 +2644,7 @@ css_process_server_server_connect (SOCKET master_fd)
           break;
         }
       // *INDENT-ON*
-      ps_Gl.set_passive_tran_server_connection (std::move (chn));
+      ps_Gl->set_passive_tran_server_connection (std::move (chn));
       break;
     default:
       assert (false);
