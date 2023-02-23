@@ -95,10 +95,10 @@ active_tran_server::connection_handler::get_request_handlers ()
 }
 
 void
-active_tran_server::connection_handler::disconnect ()
+active_tran_server::connection_handler::prepare_disconnection ()
 {
   remove_prior_sender_sink ();
-  tran_server::connection_handler::disconnect ();
+  tran_server::connection_handler::prepare_disconnection ();
 }
 
 void

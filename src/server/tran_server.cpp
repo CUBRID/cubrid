@@ -358,7 +358,7 @@ tran_server::disconnect_all_page_servers ()
     {
       er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from page server with channel id: %s.\n",
 		    conn->get_channel_id ().c_str ());
-      conn->disconnect ();
+      conn->prepare_disconnection ();
     }
   m_page_server_conn_vec.clear ();
   er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from all page servers.");
@@ -445,7 +445,7 @@ tran_server::connection_handler::receive_disconnect_request (page_server_conn_t:
     assert (conn_found);
   }
 
-  disconnect (); // TODO: change the name appropriately like prepare_disconnect ();
+  prepare_disconnection ();
   m_ts.m_async_disconnect_handler.disconnect (std::move (conn_sptr));
 }
 
@@ -475,13 +475,13 @@ tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::
 }
 
 void
-tran_server::connection_handler::disconnect ()
+tran_server::connection_handler::prepare_disconnection ()
 {
   // All msg generators have to stop beforehad to make sure SEND_DISCONNECT_MSG is the last msg.
   const int payload = static_cast<int> (m_ts.m_conn_type);
   std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
   push_request (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
-  // SEND_DISCONNECT_MSG must be the last msg becuase the PS which received this msg may release all related resources.
+  // After sending SEND_DISCONNECT_MSG, the page server may release all resources releated to this connection.
 
   er_log_debug (ARG_FILE_LINE, "Disconnected from the page server with channel id: %s \n",
 		get_channel_id ().c_str ());
