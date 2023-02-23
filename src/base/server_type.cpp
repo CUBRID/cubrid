@@ -104,6 +104,8 @@ void set_server_type (SERVER_TYPE type)
 
 #if defined (SERVER_MODE)
 
+std::unique_ptr<page_server> ps_Gl;
+
 int init_server_type (const char *db_name)
 {
   int er_code = NO_ERROR;
