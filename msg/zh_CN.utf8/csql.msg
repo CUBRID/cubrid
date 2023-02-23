@@ -112,6 +112,7 @@ $ These 3 should be blank
 194 无效的命令选项组合.
 196 发生了一个未定义的错误.
 197 当输出被重定向时，';edit' 是不被允许的.
+198 格式化失败.
 
 203 <%1$s> 
 204 <父类> 
@@ -153,7 +154,7 @@ $ csql help messages
    ;EXit                        - 退出程序.\n\
 \n\
    ;CLear                       - 清理命令缓冲区.\n\
-   ;EDIT                        - 对命令缓冲区调用系统编辑器.\n\
+   ;EDIT   [format/fmt]         - 使用命令缓冲区调用系统编辑器 [在格式化程序之后].\n\
    ;LISt                        - 显示当前命令缓冲区的内容.\n\
 \n\
    ;RUn                         - 执行命令缓冲区的sql.\n\
@@ -164,10 +165,11 @@ $ csql help messages
    ;AUtocommit [ON|OFF]         - 启用/停用自动提交模式.\n\
    ;REStart                     - 重新启动数据库.\n\
 \n\
-   ;SHELL_Cmd  [shell-cmd]      - 设置默认的shell或显示当前设置.\n\
-   ;EDITOR_Cmd [editor-cmd]     - 设置默认编辑器或显示当前设置.\n\
-   ;PRINT_Cmd  [print-cmd]      - 设置默认print或显示当前设置.\n\
-   ;PAger_cmd  [pager-cmd]      - 设置默认分页程序或显示当前设置\n\
+   ;SHELL_Cmd     [shell-cmd]   - 设置默认的shell或显示当前设置.\n\
+   ;EDITOR_Cmd    [editor-cmd]  - 设置默认编辑器或显示当前设置.\n\
+   ;PRINT_Cmd     [print-cmd]   - 设置默认print或显示当前设置.\n\
+   ;PAger_cmd     [pager-cmd]   - 设置默认分页程序或显示当前设置\n\
+   ;FOrmatter_cmd [formatter-cmd] - 设置或显示默认格式化程序.\n\
 \n\
    ;DATE                        - 显示本地时间,日期.\n\
    ;DATAbase                    - 显示正被访问的数据库名.\n\
