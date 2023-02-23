@@ -3398,13 +3398,10 @@ CResvBtidMap::clear ()
     }
 }
 
-bool CResvBtidMap::add (BTID * btid, int pos)
+bool
+CResvBtidMap::add (BTID * btid, int pos)
 {
-  BTID *
-    pb;
-  int *
-    pi;
-
+  // ctshim
   if (m_alloc_sz == 0)
     {
       m_pbtid = (BTID *) db_private_alloc (m_thread, 10 * sizeof (BTID));
