@@ -63,7 +63,7 @@ struct trigger_description
   void fprint (FILE *file);
 };
 
-int tr_dump_trigger (extract_context & ctxt, print_output &output_ctx, DB_OBJECT *trigger_object);
-int tr_dump_selective_triggers (extract_context & ctxt, print_output &output_ctx, DB_OBJLIST *classes);
+int tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *trigger_object);
+int tr_dump_selective_triggers (extract_context &ctxt, print_output &output_ctx, DB_OBJLIST *classes);
 
 #endif // _TRIGGER_DESCRIPTION_HPP_
