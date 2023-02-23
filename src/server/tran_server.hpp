@@ -103,11 +103,12 @@ class tran_server
 	int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
 
 	/* Do all needed job to disconnect in advance:
-	 * e.g.) stop msg generators, send SEND_DISCONNECT_MSG to the page server
+	 * e.g.) stop connection-specific msg generators, send SEND_DISCONNECT_MSG to the page server
 	 *
 	 * It's acutally done in the ~connection_handler() to release resources for the connection
 	 * such as its socket, internal send/receive threads.
 	 * And this is usually done in m_async_disconnect_handler.
+	 *
 	 */
 	virtual void prepare_disconnection ();
 	const std::string get_channel_id () const;

@@ -515,7 +515,7 @@ page_server::disconnect_tran_server_async (const connection_handler *conn)
 }
 
 void
-page_server::disconnect_all_tran_server ()
+page_server::disconnect_all_tran_servers ()
 {
   /* request disconnection from ATS */
   if (m_active_tran_server_conn == nullptr)

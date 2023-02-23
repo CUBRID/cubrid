@@ -93,7 +93,7 @@ class page_server
 
     void set_active_tran_server_connection (cubcomm::channel &&chn);
     void set_passive_tran_server_connection (cubcomm::channel &&chn);
-    void disconnect_all_tran_server ();
+    void disconnect_all_tran_servers ();
     void push_request_to_active_tran_server (page_to_tran_request reqid, std::string &&payload);
     cublog::replicator &get_replicator ();
     void start_log_replicator (const log_lsa &start_lsa);

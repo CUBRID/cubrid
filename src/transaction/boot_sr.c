@@ -3181,7 +3181,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
        *    stop communication with tran_server first to prevent the ATS from pushing log prior nodes 
        *    to finalized receiver.
        */
-      ps_Gl->disconnect_all_tran_server ();
+      ps_Gl->disconnect_all_tran_servers ();
       log_Gl.finalize_log_prior_receiver ();	// stop receiving log before log_final()
       ps_Gl->finish_replication_during_shutdown (*thread_p);
       ps_Gl->finalize_request_responder ();
