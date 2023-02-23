@@ -175,7 +175,7 @@ static void extractobjects_cleanup (void);
 static void extractobjects_term_handler (int sig);
 static bool mark_referenced_domain (SM_CLASS * class_ptr, int *num_set);
 static void gauge_alarm_handler (int sig);
-static int process_class (int cl_no);
+static int process_class (extract_context & ctxt, int cl_no);
 static int process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class);
 static int process_set (DB_SET * set);
 static int process_value (DB_VALUE * value);
@@ -433,7 +433,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
  *    exec_name(in): utility name
  */
 int
-extract_objects (const char *exec_name, const char *output_dirname, const char *output_prefix)
+extract_objects (extract_context & ctxt, const char *exec_name, const char *output_dirname, const char *output_prefix)
 {
   int i, error;
   HFID *hfid;
@@ -632,6 +632,14 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 	  fprintf (stdout, "%s%s%s\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
 #endif /* CUBRID_DEBUG */
 
+	  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+
+	  if ((ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+	      && strcasecmp (owner_name, ctxt.login_user) != 0)
+	    {
+	      continue;
+	    }
+
 	  fh_put (cl_table, ws_oid (class_table->mops[i]), &i);
 	  if (input_filename)
 	    {
@@ -661,13 +669,24 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 
 	  if (!datafile_per_class && (!required_class_only || IS_CLASS_REQUESTED (i)))
 	    {
-	      SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
-	      if (text_print
-		  (obj_out, NULL, 0, "%cid %s%s%s.%s%s%s %d\n", '%', PRINT_IDENTIFIER (owner_name),
-		   PRINT_IDENTIFIER (class_name), i) != NO_ERROR)
+	      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
 		{
-		  status = 1;
-		  goto end;
+		  if (text_print
+		      (obj_out, NULL, 0, "%cid %s%s%s.%s%s%s %d\n", '%', PRINT_IDENTIFIER (owner_name),
+		       PRINT_IDENTIFIER (class_name), i) != NO_ERROR)
+		    {
+		      status = 1;
+		      goto end;
+		    }
+		}
+	      else
+		{
+		  if (text_print (obj_out, NULL, 0, "%cid %s%s%s %d\n", '%', PRINT_IDENTIFIER (class_name), i) !=
+		      NO_ERROR)
+		    {
+		      status = 1;
+		      goto end;
+		    }
 		}
 	    }
 
@@ -921,7 +940,7 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 		    }
 		}
 
-	      ret_val = process_class (i);
+	      ret_val = process_class (ctxt, i);
 
 	      if (datafile_per_class && IS_CLASS_REQUESTED (i))
 		{
@@ -1040,7 +1059,7 @@ gauge_alarm_handler (int sig)
  *    cl_no(in): class object index for class_table
  */
 static int
-process_class (int cl_no)
+process_class (extract_context & ctxt, int cl_no)
 {
   int error = NO_ERROR;
   DB_OBJECT *class_ = class_table->mops[cl_no];
@@ -1113,10 +1132,19 @@ process_class (int cl_no)
       if (v == 0)
 	{
 	  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
-	  CHECK_PRINT_ERROR (text_print
-			     (obj_out, NULL, 0, "%cclass %s%s%s.%s%s%s shared (%s%s%s", '%',
-			      PRINT_IDENTIFIER (owner_name),
-			      PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
+	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
+	    {
+	      CHECK_PRINT_ERROR (text_print
+				 (obj_out, NULL, 0, "%cclass %s%s%s.%s%s%s shared (%s%s%s", '%',
+				  PRINT_IDENTIFIER (owner_name),
+				  PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
+	    }
+	  else
+	    {
+	      CHECK_PRINT_ERROR (text_print
+				 (obj_out, NULL, 0, "%cclass %s%s%s shared (%s%s%s", '%',
+				  PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
+	    }
 	}
       else
 	{
@@ -1165,10 +1193,19 @@ process_class (int cl_no)
       if (v == 0)
 	{
 	  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
-	  CHECK_PRINT_ERROR (text_print
-			     (obj_out, NULL, 0, "%cclass %s%s%s.%s%s%s class (%s%s%s", '%',
-			      PRINT_IDENTIFIER (owner_name),
-			      PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
+	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
+	    {
+	      CHECK_PRINT_ERROR (text_print
+				 (obj_out, NULL, 0, "%cclass %s%s%s.%s%s%s class (%s%s%s", '%',
+				  PRINT_IDENTIFIER (owner_name),
+				  PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
+	    }
+	  else
+	    {
+	      CHECK_PRINT_ERROR (text_print
+				 (obj_out, NULL, 0, "%cclass %s%s%s class (%s%s%s", '%',
+				  PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
+	    }
 	}
       else
 	{
@@ -1205,9 +1242,17 @@ process_class (int cl_no)
     }
 
   SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
-  CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, (v) ? "\n%cclass %s%s%s.%s%s%s ("	/* new line */
-				 : "%cclass %s%s%s.%s%s%s (", '%', PRINT_IDENTIFIER (owner_name),
-				 PRINT_IDENTIFIER (class_name)));
+  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
+    {
+      CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, (v) ? "\n%cclass %s%s%s.%s%s%s ("	/* new line */
+				     : "%cclass %s%s%s.%s%s%s (", '%', PRINT_IDENTIFIER (owner_name),
+				     PRINT_IDENTIFIER (class_name)));
+    }
+  else
+    {
+      CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, (v) ? "\n%cclass %s%s%s ("	/* new line */
+				     : "%cclass %s%s%s (", '%', PRINT_IDENTIFIER (class_name)));
+    }
 
   v = 0;
   attribute = class_ptr->ordered_attributes;

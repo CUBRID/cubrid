@@ -80,7 +80,8 @@ extern int extract_classes_to_file (extract_context & ctxt);
 extern int extract_triggers (extract_context & ctxt, print_output & output_ctx);
 extern int extract_triggers_to_file (extract_context & ctxt, const char *output_filename);
 extern int extract_indexes_to_file (extract_context & ctxt, const char *output_filename);
-extern int extract_objects (const char *exec_name, const char *output_dirname, const char *output_prefix);
+
+extern int extract_objects (extract_context & ctxt, const char *exec_name, const char *output_dirname, const char *output_prefix);
 
 extern int create_filename_schema (const char *output_dirname, const char *output_prefix,
 				   char *output_filename_p, const size_t filename_size);
