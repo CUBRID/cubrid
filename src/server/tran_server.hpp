@@ -140,10 +140,10 @@ class tran_server
 
   private:
     std::vector<cubcomm::node> m_connection_list;
-    std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
+    std::vector<std::shared_ptr<connection_handler>> m_page_server_conn_vec;
     std::shared_mutex m_page_server_conn_vec_mtx;
 
-    async_disconnect_handler<connection_handler> m_async_disconnect_handler;
+    async_disconnect_handler<std::shared_ptr<connection_handler>> m_async_disconnect_handler;
 
     cubcomm::server_server m_conn_type;
 };

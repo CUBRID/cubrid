@@ -23,26 +23,26 @@
 #include <cassert>
 #include <chrono>
 
-template class async_disconnect_handler<page_server::connection_handler>;
-template class async_disconnect_handler<tran_server::connection_handler>;
+template class async_disconnect_handler<std::unique_ptr<page_server::connection_handler>>;
+template class async_disconnect_handler<std::shared_ptr<tran_server::connection_handler>>;
 
-template <typename T_CONN_HANDLER>
-async_disconnect_handler<T_CONN_HANDLER>::async_disconnect_handler ()
+template <typename T_CONN_HANDLER_PTR>
+async_disconnect_handler<T_CONN_HANDLER_PTR>::async_disconnect_handler ()
   : m_terminate { false }
 {
   m_thread = std::thread (&async_disconnect_handler::disconnect_loop, std::ref (*this));
 }
 
-template <typename T_CONN_HANDLER>
-async_disconnect_handler<T_CONN_HANDLER>::~async_disconnect_handler ()
+template <typename T_CONN_HANDLER_PTR>
+async_disconnect_handler<T_CONN_HANDLER_PTR>::~async_disconnect_handler ()
 {
   // Call terminate() before the resources that handlers in this can aceess is released. For example, page_server::connection_handler accesses page_server::m_responder, which is released during shutdown.
   assert (m_terminate.load ());
 }
 
-template <typename T_CONN_HANDLER>
+template <typename T_CONN_HANDLER_PTR>
 void
-async_disconnect_handler<T_CONN_HANDLER>::disconnect (connection_handler_uptr_t &&handler)
+async_disconnect_handler<T_CONN_HANDLER_PTR>::disconnect (connection_handler_ptr_t &&handler)
 {
   if (!m_terminate.load ())
     {
@@ -58,9 +58,9 @@ async_disconnect_handler<T_CONN_HANDLER>::disconnect (connection_handler_uptr_t 
     }
 }
 
-template <typename T_CONN_HANDLER>
+template <typename T_CONN_HANDLER_PTR>
 void
-async_disconnect_handler<T_CONN_HANDLER>::terminate ()
+async_disconnect_handler<T_CONN_HANDLER_PTR>::terminate ()
 {
   m_terminate.store (true);
   m_queue_cv.notify_one ();
@@ -77,13 +77,13 @@ async_disconnect_handler<T_CONN_HANDLER>::terminate ()
   assert (m_disconnect_queue.empty ());
 }
 
-template <typename T_CONN_HANDLER>
+template <typename T_CONN_HANDLER_PTR>
 void
-async_disconnect_handler<T_CONN_HANDLER>::disconnect_loop ()
+async_disconnect_handler<T_CONN_HANDLER_PTR>::disconnect_loop ()
 {
   constexpr std::chrono::seconds one_second { 1 };
 
-  std::queue<connection_handler_uptr_t> disconnect_work_buffer;
+  std::queue<connection_handler_ptr_t> disconnect_work_buffer;
   while (!m_terminate.load ())
     {
       {
@@ -99,16 +99,16 @@ async_disconnect_handler<T_CONN_HANDLER>::disconnect_loop ()
 
       while (!disconnect_work_buffer.empty ())
 	{
-	  connection_handler_uptr_t &front = disconnect_work_buffer.front ();
-	  front.reset (nullptr);
+	  connection_handler_ptr_t &front = disconnect_work_buffer.front ();
+	  front.reset ();
 	  disconnect_work_buffer.pop ();
 	}
     }
 }
 
-template <typename T_CONN_HANDLER>
+template <typename T_CONN_HANDLER_PTR>
 bool
-async_disconnect_handler<T_CONN_HANDLER>::is_terminated ()
+async_disconnect_handler<T_CONN_HANDLER_PTR>::is_terminated ()
 {
   return m_terminate.load();
 }
