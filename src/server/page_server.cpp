@@ -548,12 +548,12 @@ page_server::disconnect_all_tran_servers ()
     }
 
   /*
-   *  m_active_tran_server_conn == nullptr : the connection for the ATS is disconnected or being disconncted (by async_disconnect_handler)
-   *  the connection for a PTS is not in m_passive_tran_server_conn : the connection is disconnected or being disconnected (by async_disconnect_handler)
+   *  m_active_tran_server_conn == nullptr : the connection for the ATS has been disconnected or disconncted in progress (by async_disconnect_handler)
+   *  the connection for a PTS is not in m_passive_tran_server_conn : the connection has been disconnected or disconnected in progress(by async_disconnect_handler)
    *
-   *  The disconnection from a TS starts when tran_to_page_request::SEND_DISCONNECT_MSG is arrived from the TS. It's tiggered by page_to_tran_request::SEND_DISCONNECT_REQUEST_MSG from this page server or just initiated by the TS itself.
+   *  The disconnection from a TS starts when tran_to_page_request::SEND_DISCONNECT_MSG is arrived from the TS. It's either tiggered by page_to_tran_request::SEND_DISCONNECT_REQUEST_MSG from this page server or just initiated by the TS itself.
    *
-   * If they are being disconnecting, they will be waited for by m_async_disconnect_handler.terminate (); during ~page_server ().
+   * If the disconnection is underway, they will be waited for by m_async_disconnect_handler.terminate () below.
    */
   auto no_conn_alive_pred = [this]
   {

@@ -152,8 +152,8 @@ class tran_server
     /*
      * When disconnecting a connection by m_async_disconnect_handler,
      * a connection can be accessed to communicate in push_request and send_receive.
-     * To preven them from accessing a destoyed connection, the shared_ptr is used.
-     * Dependting on schedeuling, a connection can be rarely detroyed after its coomunication in functions above.
+     * To prevent them from accessing a destroyed connection, the shared_ptr is used.
+     * Depending on scheduling, a connection can be rarely destroyed after its communication in the functions above.
      */
     std::vector<std::shared_ptr<connection_handler>> m_page_server_conn_vec;
     std::shared_mutex m_page_server_conn_vec_mtx; // For excluiveness between communication and disconnection.
