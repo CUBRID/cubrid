@@ -3480,7 +3480,7 @@ partition_get_partition_oids (THREAD_ENTRY * thread_p, const OID * class_oid, OI
       for (i = 0; i < classrepr->n_indexes; i++)
 	{
 	  index_ptr = classrepr->indexes + i;
-	  if (index_ptr->n_atts > 1)
+	  if (index_ptr->n_atts <= 1)
 	    {
 	      if (index_ptr->func_index_info == NULL)
 		{		// If no function is included, only the last member is checked.
@@ -3489,11 +3489,11 @@ partition_get_partition_oids (THREAD_ENTRY * thread_p, const OID * class_oid, OI
 		      btid_pos_map->add (&(index_ptr->btid), (index_ptr->n_atts - 1));
 		    }
 		}
-	      else
+	      else if (index_ptr->func_index_info->attr_index_start > 0)
 		{		// Check the (attr_index_start -1)th member.
 		  if (IS_RESERVED_INDEX_ATTR_ID (index_ptr->atts[index_ptr->func_index_info->attr_index_start - 1]->id))
 		    {
-		      btid_pos_map->add (&(index_ptr->btid), (index_ptr->n_atts - 1));
+		      btid_pos_map->add (&(index_ptr->btid), index_ptr->func_index_info->attr_index_start);
 		    }
 		}
 	    }
