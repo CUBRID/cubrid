@@ -10439,6 +10439,12 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	  }
 	else
 	  {
+	    /* for dblink server name */
+	    const char *target_name = node->info.synonym.target_name->info.name.original;
+	    if (strchr (target_name, '@') != NULL)
+	      {
+		target_owner_name = sc_current_schema_name ();
+	      }
 	    assert (target_owner_name != NULL);
 	    PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, target_owner_name);
 	  }
@@ -11284,10 +11290,13 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
       remote_ins = 1;
     }
 
-  if (remote_ins && node->info.insert.value_clauses->info.node_list.list->node_type == PT_SELECT)
+  if (remote_ins)
     {
       if (has_synonym)
 	{
+	  /* node need alias for insert */
+	  parser_free_node (parser, node->info.insert.spec->info.spec.range_var);
+	  node->info.insert.spec->info.spec.range_var = NULL;
 	  sql_user_text = parser_print_tree (parser, node);
 	}
       pt_convert_dblink_dml_query (parser, node, sql_user_text, /* always 0 */ 0, remote_ins, snl);
@@ -11450,15 +11459,17 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
   int tmp_local_cnt = snl->local_cnt;
   int tmp_server_cnt = snl->server_cnt;
 
-  PT_NODE *sel, *spec, *tbl_spec = NULL, *into_spec = NULL, *upd_spec, *server;
+  PT_NODE *sel, *spec, *tbl_spec = NULL, *into_spec = NULL, *upd_spec = NULL, *server;
 
   switch (node->node_type)
     {
     case PT_INSERT:
       into_spec = node->info.insert.spec;
-      assert (sel = node->info.insert.value_clauses->info.node_list.list);
-      assert (sel->node_type == PT_SELECT);
-      upd_spec = sel->info.query.q.select.from;
+      //assert (sel = node->info.insert.value_clauses->info.node_list.list);
+      if (sel->node_type == PT_SELECT)
+	{
+	  upd_spec = sel->info.query.q.select.from;
+	}
       break;
     case PT_DELETE:
       upd_spec = node->info.delete_.spec;
