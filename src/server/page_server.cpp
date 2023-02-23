@@ -36,8 +36,6 @@
 #include <functional>
 #include <thread>
 
-page_server ps_Gl;
-
 page_server::~page_server ()
 {
   assert (m_replicator == nullptr);

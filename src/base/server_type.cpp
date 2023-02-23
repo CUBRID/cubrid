@@ -104,6 +104,8 @@ void set_server_type (SERVER_TYPE type)
 
 #if defined (SERVER_MODE)
 
+std::unique_ptr<page_server> ps_Gl;
+
 int init_server_type (const char *db_name)
 {
   int er_code = NO_ERROR;
@@ -160,6 +162,7 @@ int init_server_type (const char *db_name)
     }
   else if (g_server_type == SERVER_TYPE_PAGE)
     {
+      ps_Gl.reset (new page_server());
       // page server needs a log prior receiver
       log_Gl.initialize_log_prior_receiver ();
     }
@@ -217,7 +220,8 @@ void finalize_server_type ()
     }
   else if (get_server_type () == SERVER_TYPE_PAGE)
     {
-      ps_Gl.disconnect_all_tran_server ();
+      ps_Gl->disconnect_all_tran_server ();
+      ps_Gl.reset (nullptr);
     }
   else
     {

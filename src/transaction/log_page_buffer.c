@@ -4344,7 +4344,7 @@ logpb_send_flushed_lsa_to_ats ()
     }
   // *INDENT-OFF*
   std::string message (reinterpret_cast<const char *> (&saved_lsa), sizeof (saved_lsa));
-  ps_Gl.push_request_to_active_tran_server (page_to_tran_request::SEND_SAVED_LSA, std::move (message));
+  ps_Gl->push_request_to_active_tran_server (page_to_tran_request::SEND_SAVED_LSA, std::move (message));
   // *INDENT-ON*
 }
 #endif // SERVER_MODE
@@ -7309,7 +7309,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   if (get_server_type () == SERVER_TYPE_PAGE && LOG_ISRESTARTED ())
     {
       // Wait the replication to catch up first
-      ps_Gl.get_replicator ().wait_past_target_lsa (new_chkpt_lsa);
+      ps_Gl->get_replicator ().wait_past_target_lsa (new_chkpt_lsa);
     }
 #endif // SERVER_MODE == not SA_MODE
 
