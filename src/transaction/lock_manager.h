@@ -206,9 +206,6 @@ extern int lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid, cons
 				  LOCK lock, int cond_flag);
 extern int lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK class_lock);
 extern int lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern void lock_remove_object_lock (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock);
-#endif
 extern void lock_unlock_object_donot_move_to_non2pl (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
 						     LOCK lock);
 extern void lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock, bool force);
