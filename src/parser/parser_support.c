@@ -11624,10 +11624,13 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
   if (into_spec)
     {
       into_spec->info.spec.remote_server_name = ct;
+      pt_resolve_server_names (parser, into_spec);
     }
-  else
+
+  if (upd_spec)
     {
       upd_spec->info.spec.remote_server_name = ct;
+      pt_resolve_server_names (parser, upd_spec);
     }
 
   return;

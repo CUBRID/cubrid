@@ -1110,8 +1110,8 @@ pt_bind_spec_attrs (PARSER_CONTEXT * parser, PT_NODE * spec)
     }
 }
 
-static int
-resolve_server_names (PARSER_CONTEXT * parser, PT_NODE * spec)
+int
+pt_resolve_server_names (PARSER_CONTEXT * parser, PT_NODE * spec)
 {
   int ret = NO_ERROR;
 
@@ -1271,7 +1271,7 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
       else if (spec->info.spec.remote_server_name &&
 	       (spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML))
 	{
-	  if (resolve_server_names (parser, spec) != NO_ERROR)
+	  if (pt_resolve_server_names (parser, spec) != NO_ERROR)
 	    {
 	      return;
 	    }

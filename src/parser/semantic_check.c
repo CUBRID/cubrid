@@ -11427,9 +11427,6 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	}
 #endif /* 0 */
 
-      sc_info_ptr->system_class = false;
-      node = pt_resolve_names (parser, node, sc_info_ptr);
-
       if (!pt_has_error (parser))
 	{
 	  if ((node->node_type == PT_INSERT && node->info.insert.spec->info.spec.remote_server_name)
@@ -11440,6 +11437,9 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	      break;
 	    }
 	}
+
+      sc_info_ptr->system_class = false;
+      node = pt_resolve_names (parser, node, sc_info_ptr);
 
       if (!pt_has_error (parser))
 	{
