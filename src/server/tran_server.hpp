@@ -97,7 +97,7 @@ class tran_server
 	connection_handler &operator= (const connection_handler &) = delete;
 	connection_handler &operator= (connection_handler &&) = delete;
 
-	~connection_handler ();
+	virtual ~connection_handler ();
 
 	void push_request (tran_to_page_request reqid, std::string &&payload);
 	int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
