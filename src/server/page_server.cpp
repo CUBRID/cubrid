@@ -540,7 +540,7 @@ page_server::disconnect_all_tran_servers ()
       for (size_t i = 0; i < m_passive_tran_server_conn.size (); i++)
 	{
 	  er_log_debug (ARG_FILE_LINE, "disconnect_all_tran_server:"
-			"Request disconnectoin from passive transaction server with channel id: %s.\n",
+			"Request disconnection from passive transaction server with channel id: %s.\n",
 			m_passive_tran_server_conn[i]->get_connection_id ().c_str ());
 	  m_passive_tran_server_conn[i]->remove_prior_sender_sink ();
 	  m_passive_tran_server_conn[i]->push_disconnection_request ();
@@ -548,7 +548,7 @@ page_server::disconnect_all_tran_servers ()
     }
 
   er_log_debug (ARG_FILE_LINE,
-		"disconnect_all_tran_server: Wait until all connections are disconnected or disconnected in progress. \n");
+		"disconnect_all_tran_server: Wait until all connections are disconnected or disconnected in progress.\n");
 
   /*
    *  m_active_tran_server_conn == nullptr : the connection for the ATS has been disconnected or disconncted in progress (by async_disconnect_handler)
