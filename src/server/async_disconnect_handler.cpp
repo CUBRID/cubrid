@@ -65,7 +65,7 @@ async_disconnect_handler<T_CONN_HANDLER_PTR>::terminate ()
   m_terminate.store (true);
   m_queue_cv.notify_one ();
 
-  if ( m_thread.joinable ())
+  if (m_thread.joinable ())
     {
       m_thread.join ();
     }

@@ -547,6 +547,9 @@ page_server::disconnect_all_tran_servers ()
 	}
     }
 
+  er_log_debug (ARG_FILE_LINE,
+		"disconnect_all_tran_server: Wait until all connections are disconnected or disconnected in progress. \n");
+
   /*
    *  m_active_tran_server_conn == nullptr : the connection for the ATS has been disconnected or disconncted in progress (by async_disconnect_handler)
    *  the connection for a PTS is not in m_passive_tran_server_conn : the connection has been disconnected or disconnected in progress(by async_disconnect_handler)
@@ -555,20 +558,22 @@ page_server::disconnect_all_tran_servers ()
    *
    * If the disconnection is underway, they will be waited for by m_async_disconnect_handler.terminate () below.
    */
-  auto no_conn_alive_pred = [this]
   {
-    return m_active_tran_server_conn == nullptr && m_passive_tran_server_conn.empty();
-  };
+    auto no_conn_alive_pred = [this]
+    {
+      return m_active_tran_server_conn == nullptr && m_passive_tran_server_conn.empty();
+    };
+
+    std::unique_lock ulock { m_conn_mutex };
+    m_conn_cv.wait (ulock,  no_conn_alive_pred);
+
+    /* Every connection is pushed to m_async_disconnect_handler or has been disconnected by it */
+    assert (m_active_tran_server_conn == nullptr && m_passive_tran_server_conn.empty());
+  }
+
 
   er_log_debug (ARG_FILE_LINE,
-		"disconnect_all_tran_server: Start waiting until all connections are disconnected or disconnected in progress. \n");
-
-  std::unique_lock ulock { m_conn_mutex };
-  m_conn_cv.wait (ulock,  no_conn_alive_pred);
-  assert (m_active_tran_server_conn == nullptr && m_passive_tran_server_conn.empty());
-
-  er_log_debug (ARG_FILE_LINE,
-		"disconnect_all_tran_server: Now all connections are disconnected or disconnected in progress. \n");
+		"disconnect_all_tran_server: All connections are disconnected or disconnected in progress. \n");
 
   m_async_disconnect_handler.terminate ();
 }
