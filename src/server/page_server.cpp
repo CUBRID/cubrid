@@ -565,7 +565,7 @@ page_server::disconnect_all_tran_servers ()
     };
 
     std::unique_lock ulock { m_conn_mutex };
-    m_conn_cv.wait (ulock,  no_conn_alive_pred);
+    m_conn_cv.wait (ulock, no_conn_alive_pred);
 
     /* Every connection is pushed to m_async_disconnect_handler or has been disconnected by it */
     assert (m_active_tran_server_conn == nullptr && m_passive_tran_server_conn.empty());
@@ -573,7 +573,7 @@ page_server::disconnect_all_tran_servers ()
 
 
   er_log_debug (ARG_FILE_LINE,
-		"disconnect_all_tran_server: All connections are disconnected or disconnected in progress. \n");
+		"disconnect_all_tran_server: All connections are disconnected or disconnected in progress.\n");
 
   m_async_disconnect_handler.terminate ();
 }

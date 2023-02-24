@@ -360,7 +360,7 @@ tran_server::disconnect_all_page_servers ()
     }
   m_page_server_conn_vec.clear ();
 
-  // Wait until all disconnection reuqest are handled.
+  // Wait until all disconnection reuqests are handled.
   m_async_disconnect_handler.terminate ();
 
   er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from all page servers.");
