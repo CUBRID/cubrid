@@ -11651,26 +11651,29 @@ pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, S
     {
       parser_walk_tree (parser, from_tbl, pt_get_server_name_list, snl, NULL, NULL);
 
-      if (from_tbl->info.spec.entity_name->node_type == PT_SPEC)
-	{			// case: FROM (t1, t2) 
-	  for (PT_NODE * node = from_tbl->info.spec.entity_name; node; node = node->next)
-	    {
-	      assert (node->info.spec.entity_name->node_type == PT_NAME);
-	      if (node->info.spec.entity_name && node->info.spec.remote_server_name)
+      if (from_tbl->info.spec.entity_name)
+	{
+	  if (from_tbl->info.spec.entity_name->node_type == PT_SPEC)
+	    {			// case: FROM (t1, t2) 
+	      for (PT_NODE * node = from_tbl->info.spec.entity_name; node; node = node->next)
 		{
-		  node = pt_mk_spec_derived_dblink_table (parser, node);
-		  has_dblink = true;
+		  assert (node->info.spec.entity_name->node_type == PT_NAME);
+		  if (node->info.spec.entity_name && node->info.spec.remote_server_name)
+		    {
+		      node = pt_mk_spec_derived_dblink_table (parser, node);
+		      has_dblink = true;
+		    }
 		}
 	    }
-	}
-      else
-	{
-	  assert (from_tbl->info.spec.entity_name->node_type == PT_NAME);
-
-	  if (from_tbl->info.spec.entity_name && from_tbl->info.spec.remote_server_name)
+	  else
 	    {
-	      from_tbl = pt_mk_spec_derived_dblink_table (parser, from_tbl);
-	      has_dblink = true;
+	      assert (from_tbl->info.spec.entity_name->node_type == PT_NAME);
+
+	      if (from_tbl->info.spec.entity_name && from_tbl->info.spec.remote_server_name)
+		{
+		  from_tbl = pt_mk_spec_derived_dblink_table (parser, from_tbl);
+		  has_dblink = true;
+		}
 	    }
 	}
 
