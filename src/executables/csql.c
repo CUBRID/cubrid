@@ -1485,7 +1485,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  if (*(host_name + 1) == '\0')
 	    {
 	      host_name = NULL;
-	      printf ("err\n");
+	      csql_Error_code = CSQL_ERR_CONNECT;
+	      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
 	      return DO_CMD_SUCCESS;
 	    }
 	  else
@@ -1513,7 +1514,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  if (*(db_name + 1) == '\0')
 	    {
 	      db_name = NULL;
-	      printf ("err\n");
+	      csql_Error_code = CSQL_ERR_CONNECT;
+	      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
 	      return DO_CMD_SUCCESS;
 	      //need to set err
 	    }
@@ -1525,8 +1527,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       user_name = strtok_r (username_cpy, delim, &save_ptr_strtok);
       if (user_name == NULL)
 	{
-	  //error or public
-	  printf ("err\n");
+	  csql_Error_code = CSQL_ERR_CONNECT;
+	  nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
 	  return DO_CMD_SUCCESS;
 
 	}
@@ -1609,6 +1611,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 		  csql_Error_code = CSQL_ERR_SQL_ERROR;
 		  csql_display_csql_err (0, 0);
 		  csql_check_server_down ();
+
+		  fprintf (csql_Output_fp, "SQL session is disconnected");
 		}
 	      else
 		{
