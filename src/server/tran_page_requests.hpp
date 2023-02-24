@@ -46,7 +46,7 @@ enum class page_to_tran_request
   RESPOND,
 
   // Common
-  SEND_DISCONNECT_REQUEST_MSG, /* response-less, will be answered with SEND_DISCONNECT_COMPLETE_MSG asynchronously */
+  SEND_DISCONNECT_REQUEST_MSG, /* response-less, will be answered with SEND_DISCONNECT_MSG asynchronously */
 
   // Active only
   SEND_SAVED_LSA,
