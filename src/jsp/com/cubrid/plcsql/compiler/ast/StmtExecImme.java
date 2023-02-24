@@ -31,7 +31,7 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
-import com.cubrid.plcsql.compiler.StaticSqlTagged;
+import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -48,7 +48,7 @@ public class StmtExecImme extends Stmt {
     public final NodeList<ExprId> intoVarList;
     public final NodeList<? extends Expr> usedExprList;
 
-    public StaticSqlTagged staticSql;
+    public StaticSql staticSql;
 
     public StmtExecImme(
             ParserRuleContext ctx,

@@ -31,25 +31,26 @@
 package com.cubrid.plcsql.compiler;
 
 import com.cubrid.plcsql.compiler.ast.TypeSpec;
+import com.cubrid.plcsql.compiler.ast.ExprId;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 
-public class StaticSqlTagged {
+public class StaticSql {
 
-    public enum Kind {
-        SELECT,
-        INSERT,
-        UPDATE,
-        DELETE,
-        MERGE,
-        REPLACE,
-        TRUNCATE
+    public SqlWithSemantics.Kind kind;
+    public String rewritten;
+    public LinkedHashMap<ExprId, TypeSpec> hostVars;
+    public LinkedHashMap<String, TypeSpec> selectList;
+    public List<ExprId> intoVars;  // can be null
+
+    StaticSql(SqlWithSemantics.Kind kind, String rewritten, LinkedHashMap<ExprId, TypeSpec> hostVars,
+        LinkedHashMap<String, TypeSpec> selectList, List<ExprId> intoVars) {
+
+        this.kind = kind;
+        this.rewritten = rewritten;
+        this.hostVars = hostVars;
+        this.selectList = selectList;
+        this.intoVars = intoVars;
     }
-
-    Kind kind;
-    String rewrittenSql;
-    LinkedHashMap<String, TypeSpec> hostVars;
-    LinkedHashMap<String, TypeSpec> selectList;
-    List<String> intoVars;  // can be null
 }

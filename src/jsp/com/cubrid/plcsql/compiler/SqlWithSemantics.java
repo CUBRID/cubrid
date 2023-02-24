@@ -28,52 +28,38 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
+import com.cubrid.plcsql.compiler.ast.TypeSpec;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 
-public class DeclForRecord extends DeclId {
+public class SqlWithSemantics {
 
-    public final String name;
-    public final boolean forDynamicSql;
-
-    public LinkedHashMap<String, TypeSpec> fields = null;
-
-    public DeclForRecord(ParserRuleContext ctx, String name, boolean forDynamicSql) {
-        super(ctx);
-
-        this.name = name;
-        this.forDynamicSql = forDynamicSql;
+    public enum Kind {
+        SELECT,
+        INSERT,
+        UPDATE,
+        DELETE,
+        MERGE,
+        REPLACE,
+        TRUNCATE
     }
 
-    // TODO: separate Symbol from AstNode. Remove 'extends Decl' and the following method
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        assert false : "unreachable";
-        throw new RuntimeException("unreachable");
-    }
+    public Kind kind;
+    public String rewritten;
+    public LinkedHashMap<String, String> hostVars;  // host variables and the SQL types required in their places
+    public LinkedHashMap<String, String> selectList;// (only for select statements) columns and their SQL types
+    public List<String> intoVars;  // (only for select stetements with an into-clause) into variables
 
-    @Override
-    public String kind() {
-        return "for-loop-record";
-    }
+    SqlWithSemantics(Kind kind, String rewritten, LinkedHashMap<String, String> hostVars,
+        LinkedHashMap<String, String> selectList, List<String> intoVars) {
 
-    @Override
-    public String toJavaCode() {
-        // unreachable: currently, used only in for-dynamic-sql-loop, not in any ordinary declration
-        // list
-        assert false;
-        throw new RuntimeException("unreachable");
+        this.kind = kind;
+        this.rewritten = rewritten;
+        this.hostVars = hostVars;
+        this.selectList = selectList;
+        this.intoVars = intoVars;
     }
-
-    public void setFields(LinkedHashMap<String, TypeSpec> fields) {
-        this.fields = fields;
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }
