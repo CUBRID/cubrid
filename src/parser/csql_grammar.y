@@ -14084,8 +14084,8 @@ opt_from_clause
 			    node->info.query.q.select.with_increment = $10;
 			    node->info.query.id = (UINTPTR) node;
 
-			if (node->info.query.all_distinct != PT_ALL)
-			  is_dummy_select = false;	/* not dummy */
+			    if (node->info.query.all_distinct != PT_ALL)
+			      is_dummy_select = false;	/* not dummy */
 			  }
 
 			if (is_dummy_select == true)

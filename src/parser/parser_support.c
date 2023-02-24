@@ -11171,7 +11171,7 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *has_sy
 {
   char *class_name;
   char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  MOP synonym_mop;
+  MOP synonym_mop = NULL;
   int error = NO_ERROR;
 
   if (spec->node_type != PT_SPEC || spec->info.spec.remote_server_name != NULL || spec->info.spec.entity_name == NULL)
@@ -11214,6 +11214,16 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *has_sy
 	      spec->info.spec.range_var->info.name.original = pt_append_string (parser, NULL, synonym_name);
 	    }
 	  *(bool *) has_synonym = true;
+	}
+    }
+  else
+    {
+/* synonym_mop == NULL */
+      ASSERT_ERROR_AND_SET (error);
+      if (error == ER_SYNONYM_NOT_EXIST)
+	{
+	  er_clear ();
+	  error = NO_ERROR;
 	}
     }
 
@@ -11575,7 +11585,6 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
   assert (sql_user_text && sql_user_text[0]);
   if (sql_user_text)
     {
-      sql_user_text = parser_print_tree (parser, node);
       val->info.value.data_value.str = pt_make_remote_query (parser, sql_user_text, snl);
       PT_NODE_PRINT_VALUE_TO_TEXT (parser, val);
     }
@@ -11651,32 +11660,13 @@ pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, S
     {
       parser_walk_tree (parser, from_tbl, pt_get_server_name_list, snl, NULL, NULL);
 
-      if (from_tbl->info.spec.entity_name)
+      if (from_tbl->info.spec.entity_name && from_tbl->info.spec.remote_server_name)
 	{
-	  if (from_tbl->info.spec.entity_name->node_type == PT_SPEC)
-	    {			// case: FROM (t1, t2) 
-	      for (PT_NODE * node = from_tbl->info.spec.entity_name; node; node = node->next)
-		{
-		  assert (node->info.spec.entity_name->node_type == PT_NAME);
-		  if (node->info.spec.entity_name && node->info.spec.remote_server_name)
-		    {
-		      node = pt_mk_spec_derived_dblink_table (parser, node);
-		      has_dblink = true;
-		    }
-		}
-	    }
-	  else
-	    {
-	      assert (from_tbl->info.spec.entity_name->node_type == PT_NAME);
+	  assert (from_tbl->info.spec.entity_name->node_type == PT_NAME);
 
-	      if (from_tbl->info.spec.entity_name && from_tbl->info.spec.remote_server_name)
-		{
-		  from_tbl = pt_mk_spec_derived_dblink_table (parser, from_tbl);
-		  has_dblink = true;
-		}
-	    }
+	  from_tbl = pt_mk_spec_derived_dblink_table (parser, from_tbl);
+	  has_dblink = true;
 	}
-
       from_tbl = from_tbl->next;
     }
 
