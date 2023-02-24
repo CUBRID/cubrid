@@ -3480,7 +3480,7 @@ partition_get_partition_oids (THREAD_ENTRY * thread_p, const OID * class_oid, OI
       for (i = 0; i < classrepr->n_indexes; i++)
 	{
 	  index_ptr = classrepr->indexes + i;
-	  if (index_ptr->n_atts <= 1)
+	  if (index_ptr->n_atts > 1)
 	    {
 	      if (index_ptr->func_index_info == NULL)
 		{		// If no function is included, only the last member is checked.
