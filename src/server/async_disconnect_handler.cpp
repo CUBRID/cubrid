@@ -71,7 +71,7 @@ async_disconnect_handler<T_CONN_HANDLER_PTR>::terminate ()
     }
   else
     {
-      assert (m_terminate.load ());
+      assert (false);
     }
 
   assert (m_disconnect_queue.empty ());
