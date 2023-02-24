@@ -6492,12 +6492,13 @@ exit_on_error:
 static int
 btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSHOT * mvcc_snapshot)
 {
-  BTREE_SCAN *BTS;
+  BTREE_SCAN *bts;
   RECDES rec;
   DB_VALUE key_value;
   LEAF_REC leaf_pnt;
   bool clear_key = false;
   int offset;
+  int max_visible_oids, num_visible_oids;
   int ret = NO_ERROR;
 
   assert (env != NULL);
@@ -6506,18 +6507,15 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 
   if (mvcc_snapshot != NULL)
     {
-      int max_visible_oids = 1;
-      int num_visible_oids = 0;
+      bts = &(env->btree_scan);
 
-      BTS = &(env->btree_scan);
-
-      if (BTS->C_page == NULL)
+      if (bts->C_page == NULL)
 	{
 	  goto exit_on_error;
 	}
 
-      assert (BTS->slot_id > 0);
-      if (spage_get_record (thread_p, BTS->C_page, BTS->slot_id, &rec, PEEK) != S_SUCCESS)
+      assert (bts->slot_id > 0);
+      if (spage_get_record (thread_p, bts->C_page, bts->slot_id, &rec, PEEK) != S_SUCCESS)
 	{
 	  goto exit_on_error;
 	}
@@ -6531,7 +6529,7 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
       /* read key-value */
       assert (clear_key == false);
 
-      if (btree_read_record (thread_p, &BTS->btid_int, BTS->C_page, &rec, &key_value, (void *) &leaf_pnt,
+      if (btree_read_record (thread_p, &bts->btid_int, bts->C_page, &rec, &key_value, (void *) &leaf_pnt,
 			     BTREE_LEAF_NODE, &clear_key, &offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -6539,8 +6537,9 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 
       /* Is there any visible objects? */
       max_visible_oids = 1;
+      num_visible_oids = 0;
       ret =
-	btree_get_num_visible_from_leaf_and_ovf (thread_p, &BTS->btid_int, &rec, offset, &leaf_pnt, &max_visible_oids,
+	btree_get_num_visible_from_leaf_and_ovf (thread_p, &bts->btid_int, &rec, offset, &leaf_pnt, &max_visible_oids,
 						 mvcc_snapshot, &num_visible_oids);
       if (ret != NO_ERROR)
 	{
@@ -6596,15 +6595,15 @@ count_keys:
 	  goto end;
 	}
 
-      BTS = &(env->btree_scan);
+      bts = &(env->btree_scan);
 
-      if (BTS->C_page == NULL)
+      if (bts->C_page == NULL)
 	{
 	  goto exit_on_error;
 	}
 
-      assert (BTS->slot_id > 0);
-      if (spage_get_record (thread_p, BTS->C_page, BTS->slot_id, &rec, PEEK) != S_SUCCESS)
+      assert (bts->slot_id > 0);
+      if (spage_get_record (thread_p, bts->C_page, bts->slot_id, &rec, PEEK) != S_SUCCESS)
 	{
 	  goto exit_on_error;
 	}
@@ -6624,7 +6623,7 @@ count_keys:
 
       assert (clear_key == false);
 
-      if (btree_read_record (thread_p, &BTS->btid_int, BTS->C_page, &rec, &key_value, (void *) &leaf_pnt,
+      if (btree_read_record (thread_p, &bts->btid_int, bts->C_page, &rec, &key_value, (void *) &leaf_pnt,
 			     BTREE_LEAF_NODE, &clear_key, &offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -16357,7 +16356,7 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   bool is_visible = false;
   DB_VALUE key_value, *value_p = &key_value;
   BTREE_ROOT_HEADER *root_header = NULL;
-  BTREE_SCAN btree_scan, *BTS;
+  BTREE_SCAN btree_scan, *bts;
   int ret = NO_ERROR;
   MVCC_SNAPSHOT *mvcc_snapshot;
 
@@ -16369,10 +16368,10 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   db_make_null (key);
   btree_init_temp_key_value (&clear_key, &key_value);
 
-  BTS = &btree_scan;
-  BTREE_INIT_SCAN (BTS);
+  bts = &btree_scan;
+  BTREE_INIT_SCAN (bts);
 
-  BTS->btid_int.sys_btid = btid;
+  bts->btid_int.sys_btid = btid;
 
   root_vpid.pageid = btid->root_pageid;
   root_vpid.volid = btid->vfid.volid;
@@ -16391,7 +16390,7 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       goto exit_on_error;
     }
 
-  ret = btree_glean_root_header_info (thread_p, root_header, &BTS->btid_int, true);
+  ret = btree_glean_root_header_info (thread_p, root_header, &bts->btid_int, true);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -16403,21 +16402,21 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
    * in case of desc domain index,
    * we have to find the min/max key in opposite order.
    */
-  if (BTS->btid_int.key_type->is_desc)
+  if (bts->btid_int.key_type->is_desc)
     {
       find_min_key = !find_min_key;
     }
 
   if (find_min_key)
     {
-      BTS->use_desc_index = 0;
+      bts->use_desc_index = 0;
     }
   else
     {
-      BTS->use_desc_index = 1;
+      bts->use_desc_index = 1;
     }
 
-  ret = btree_find_lower_bound_leaf (thread_p, BTS, NULL);
+  ret = btree_find_lower_bound_leaf (thread_p, bts, NULL);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -16430,11 +16429,11 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
   mvcc_snapshot->snapshot_fnc = mvcc_satisfies_snapshot;
 
-  while (!BTREE_END_OF_SCAN (BTS))
+  while (!BTREE_END_OF_SCAN (bts))
     {
       /* get a visible key on mvcc */
       ret =
-	btree_is_key_visible (thread_p, &BTS->btid_int, BTS->C_page, mvcc_snapshot, BTS->slot_id, &is_visible,
+	btree_is_key_visible (thread_p, &bts->btid_int, bts->C_page, mvcc_snapshot, bts->slot_id, &is_visible,
 			      &key_value);
 
       if (ret != NO_ERROR)
@@ -16460,7 +16459,7 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	    }
 	}
 
-      ret = btree_find_next_index_record (thread_p, BTS);
+      ret = btree_find_next_index_record (thread_p, bts);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -16477,19 +16476,19 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
 end:
 
-  if (BTS->P_page != NULL)
+  if (bts->P_page != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, BTS->P_page);
+      pgbuf_unfix_and_init (thread_p, bts->P_page);
     }
 
-  if (BTS->C_page != NULL)
+  if (bts->C_page != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, BTS->C_page);
+      pgbuf_unfix_and_init (thread_p, bts->C_page);
     }
 
-  if (BTS->O_page != NULL)
+  if (bts->O_page != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, BTS->O_page);
+      pgbuf_unfix_and_init (thread_p, bts->O_page);
     }
 
   if (root_page_ptr)
