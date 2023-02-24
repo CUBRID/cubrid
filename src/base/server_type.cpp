@@ -215,7 +215,6 @@ void finalize_server_type ()
 	  assert (ats_Gl != nullptr);
 	  ats_Gl = nullptr;
 	}
-      ts_Gl->disconnect_all_page_servers ();
       ts_Gl.reset (nullptr);
     }
   else if (get_server_type () == SERVER_TYPE_PAGE)
