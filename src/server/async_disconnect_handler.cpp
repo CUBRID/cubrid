@@ -79,7 +79,7 @@ async_disconnect_handler<T_CONN_HANDLER>::disconnect_loop ()
   constexpr std::chrono::seconds one_second { 1 };
 
   std::queue<connection_handler_uptr_t> disconnect_work_buffer;
-  while (!m_terminate.load ())
+  while (!m_terminate.load () || !m_disconnect_queue.empty())
     {
       {
 	std::unique_lock<std::mutex> ulock { m_queue_mtx };
