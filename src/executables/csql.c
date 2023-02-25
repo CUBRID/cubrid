@@ -1486,8 +1486,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	    {
 	      host_name = NULL;
 	      csql_Error_code = CSQL_ERR_CONNECT;
-	      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
-	      return DO_CMD_SUCCESS;
+	      return DO_CMD_FAILURE;
 	    }
 	  else
 	    {
@@ -1497,9 +1496,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 
       if (host_name != NULL)
 	{
-	  if (strcasecmp ("127.0.0.1", host_name + 1) == 0 || strcasecmp ("localhost", host_name + 1) == 0
-	      || strcasecmp (boot_get_host_name (), host_name + 1) == 0
-	      || strcasecmp (boot_get_ip (), host_name + 1) == 0)
+	  if (strcasecmp ("127.0.0.1", host_name) == 0 || strcasecmp ("localhost", host_name) == 0
+	      || strcasecmp (boot_get_host_name (), host_name) == 0 || strcasecmp (boot_get_ip (), host_name) == 0)
 	    {
 	      *host_name = '\0';
 	    }
@@ -1508,16 +1506,14 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       strcpy (dbname_cpy, argument);
       strcpy (username_cpy, argument);
       /*find db name following the user name */
-      db_name = strchr (dbname_cpy, ' ');
+      db_name = strrchr (dbname_cpy, ' ');
       if (db_name != NULL)
 	{
 	  if (*(db_name + 1) == '\0')
 	    {
 	      db_name = NULL;
 	      csql_Error_code = CSQL_ERR_CONNECT;
-	      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
-	      return DO_CMD_SUCCESS;
-	      //need to set err
+	      return DO_CMD_FAILURE;
 	    }
 	  else
 	    {
@@ -1528,12 +1524,12 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       if (user_name == NULL)
 	{
 	  csql_Error_code = CSQL_ERR_CONNECT;
-	  nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
-	  return DO_CMD_SUCCESS;
+	  return DO_CMD_FAILURE;
 
 	}
 
       memset (&csql_new_arg, 0, sizeof (CSQL_ARGUMENT));
+      csql_arg_copy (&csql_new_arg, csql_arg);
 
       /*connect to same DB user or not */
       if ((db_name == NULL || strcasecmp (csql_arg->db_name, db_name) == 0) && csql_Database_connected == TRUE)
@@ -1559,11 +1555,10 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	    }
 	  else
 	    {
-	      csql_display_csql_err (0, 0);
+	      return DO_CMD_FAILURE;
 	    }
 	  if (error_code == NO_ERROR)
 	    {
-	      csql_arg_copy (&csql_new_arg, csql_arg);
 	      csql_new_arg.user_name = strdup (user_name);
 	      csql_new_arg.db_name = strdup (csql_arg->db_name);
 	      if (p == NULL || p[0] == '\0')
@@ -1575,7 +1570,6 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 		  csql_new_arg.passwd = strdup (p);
 		}
 
-
 	      memcpy (csql_arg, &csql_new_arg, sizeof (CSQL_ARGUMENT));
 	      fprintf (csql_Output_fp, "CONNECTED : %s %s\n", csql_arg->user_name, csql_arg->db_name);
 	    }
@@ -1586,7 +1580,6 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 #if defined(CS_MODE)
 	  memset (boot_Host_connected, 0, sizeof (boot_Host_connected));
 #endif /* CS_MODE */
-	  csql_arg_copy (&csql_new_arg, csql_arg);
 
 	  /*Failed to access other host or db and then access formal db_name */
 	  if (db_name == NULL)
@@ -1609,10 +1602,10 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	      if (db_restart_ex (UTIL_CSQL_NAME, db_name, user_name, p, NULL, db_get_client_type ()) != NO_ERROR)
 		{
 		  csql_Error_code = CSQL_ERR_SQL_ERROR;
-		  csql_display_csql_err (0, 0);
 		  csql_check_server_down ();
 
-		  fprintf (csql_Output_fp, "SQL session is disconnected");
+		  fprintf (csql_Output_fp, "SQL session is disconnected\n");
+		  return DO_CMD_FAILURE;
 		}
 	      else
 		{
