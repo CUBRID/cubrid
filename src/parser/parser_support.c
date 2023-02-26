@@ -11749,8 +11749,6 @@ pt_check_server_extension (PARSER_CONTEXT * parser, PT_NODE * stmt)
     case PT_DELETE:
     case PT_UPDATE:
     case PT_MERGE:
-    case PT_CREATE_ENTITY:
-    case PT_ALTER:
       parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_dml, &snl);
       if (pt_has_error (parser))
 	{
@@ -11761,6 +11759,8 @@ pt_check_server_extension (PARSER_CONTEXT * parser, PT_NODE * stmt)
     case PT_INTERSECTION:
     case PT_UNION:
     case PT_SELECT:
+    case PT_CREATE_ENTITY:
+    case PT_ALTER:
       parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_select, &snl);
       return;
     default:
