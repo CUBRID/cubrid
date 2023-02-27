@@ -61,7 +61,7 @@ bool include_references = false;
 bool required_class_only = false;
 bool datafile_per_class = false;
 bool split_schema_files = false;
-bool same_as_dba = false;
+bool is_as_dba = false;
 LIST_MOPS *class_table = NULL;
 DB_OBJECT **req_class_table = NULL;
 
@@ -139,7 +139,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
     }
 
   split_schema_files = utility_get_option_string_value (arg_map, UNLOAD_SPLIT_SCHEMA_FILES_S, 0);
-  same_as_dba = utility_get_option_string_value (arg_map, UNLOAD_SAME_AS_DBA_S, 0);
+  is_as_dba = utility_get_option_string_value (arg_map, UNLOAD_AS_DBA_S, 0);
 
   /* depreciated */
   utility_get_option_bool_value (arg_map, UNLOAD_USE_DELIMITER_S);
@@ -287,13 +287,13 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  if (same_as_dba == true)
+  if (is_as_dba == true)
     {
       unload_context.is_dba_group_member = au_is_dba_group_member (Au_user);
 
       if (unload_context.is_dba_group_member == false)
 	{
-	  fprintf (stderr, "\n--%s is an option available only when the user is a DBA Group.\n", UNLOAD_SAME_AS_DBA_L);
+	  fprintf (stderr, "\n--%s is an option available only when the user is a DBA Group.\n", UNLOAD_AS_DBA_L);
 	  goto end;
 	}
     }

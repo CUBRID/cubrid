@@ -556,7 +556,8 @@ options valids:\n\
   -S, --SA-mode                   exécution en mode autonome\n\
   -C, --CS-mode                   exécution en mode client-serveur\n\
       --datafile-per-class        créer un fichier objet pour chaque classe; par défaut: désactivé\n\
-      --split-schema-files        diviser les informations de schéma par objet et générer chaque fichier ; Par défaut : générer un fichier de schéma avec tous les objets\n
+      --split-schema-files        diviser les informations de schéma par objet et générer chaque fichier ; Par défaut : générer un fichier de schéma avec tous les objets\n\
+      --as-dba                    Si l'utilisateur de connexion est membre du groupe DBA, extrayez le même fichier de schéma que le DBA.\n
 
 
 

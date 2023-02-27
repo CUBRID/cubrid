@@ -553,7 +553,8 @@ geçerli seçenekler:\n\
   -S, --SA-mode               stand-alone modu yürütme\n\
   -C, --CS-mode               istemci-sunucu modunda yürütme\n\
       --datafile-per-class    her sınıf için bir nesne dosyası oluşturmak; varsayılan: devre dışı\n\
-      --split-schema-files    şema bilgilerini nesneye göre ayırın ve her dosyayı oluşturun; Varsayılan: tüm nesnelerle bir şema dosyası oluştur\n
+      --split-schema-files    şema bilgilerini nesneye göre ayırın ve her dosyayı oluşturun; Varsayılan: tüm nesnelerle bir şema dosyası oluştur\n\
+      --as-dba                Oturum açan kullanıcı DBA grubunun bir üyesiyse, DBA ile aynı şema dosyasını ayıklayın.\n
 
 
 

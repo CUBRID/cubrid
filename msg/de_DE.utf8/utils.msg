@@ -553,7 +553,8 @@ gültige Optionen:\n\
   -S, --SA-mode                Stand-Alone-Ausführung\n\
   -C, --CS-mode                Client-Server-Ausführung\n\
       --datafile-per-class     eine Objektdatei für jede Klasse erzeugen; Standard: inaktiv\n\
-      --split-schema-files     Schemainformationen nach Objekt aufteilen und jede Datei generieren; Standard: Eine Schemadatei mit allen Objekten generieren\n
+      --split-schema-files     Schemainformationen nach Objekt aufteilen und jede Datei generieren; Standard: Eine Schemadatei mit allen Objekten generieren\n\
+      --as-dba                 Als de ingelogde gebruiker lid is van de DBA-groep, pak dan hetzelfde schemabestand uit als de DBA.\n
 
 
 
