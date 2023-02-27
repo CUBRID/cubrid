@@ -107,9 +107,8 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
 {
   const active_tran_server *const ats = dynamic_cast<active_tran_server *> (&m_ts); // to access m_node_vec
   auto &node_vec = ats->m_node_vec;
-
-  assert (node_vec.size() > 0);
-
+  auto quorum = node_vec.size() / 2 + 1;
+  std::vector<log_lsa> collected_flushed_lsa;
   std::string message = a_ip.pull_payload ();
   log_lsa flushed_lsa;
 
@@ -119,9 +118,6 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
   assert (flushed_lsa > m_node.get_flushed_lsa ());
 
   m_node.set_flushed_lsa (flushed_lsa);
-
-  auto quorum = node_vec.size() / 2 + 1;
-  std::vector<log_lsa> collected_flushed_lsa;
 
   for (const auto &node : node_vec)
     {
