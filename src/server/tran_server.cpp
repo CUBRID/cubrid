@@ -436,6 +436,19 @@ const std::string
 tran_server::connection_handler::get_channel_id () const
 {
   return m_conn->get_underlying_channel_id ();
+
+}
+
+void
+tran_server::page_server_node::set_flushed_lsa (log_lsa lsa)
+{
+  m_flushed_lsa.store (lsa);
+}
+
+log_lsa
+tran_server::page_server_node::get_flushed_lsa ()
+{
+  return m_flushed_lsa.load ();
 }
 
 void
