@@ -1499,7 +1499,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  if (strcasecmp ("127.0.0.1", host_name) == 0 || strcasecmp ("localhost", host_name) == 0
 	      || strcasecmp (boot_get_host_name (), host_name) == 0 || strcasecmp (boot_get_ip (), host_name) == 0)
 	    {
-	      *host_name = '\0';
+	      *(host_name-1) = '\0';
 	    }
 	}
 
