@@ -287,6 +287,21 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
+  if (same_as_dba == true)
+    {
+      unload_context.is_dba_group_member = au_is_dba_group_member (Au_user);
+
+      if (unload_context.is_dba_group_member == false)
+	{
+	  fprintf (stderr, "\n--%s is an option available only when the user is a DBA Group.\n", UNLOAD_SAME_AS_DBA_L);
+	  goto end;
+	}
+    }
+  else
+    {
+      unload_context.is_dba_user = ws_is_same_object (Au_dba_user, Au_user);
+    }
+
   if (!status && (do_schema || !do_objects))
     {
       char indexes_output_filename[PATH_MAX * 2] = { '\0' };
@@ -313,22 +328,6 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       unload_context.login_user = user;
       unload_context.output_prefix = output_prefix;
 
-      if (same_as_dba == true)
-	{
-	  unload_context.is_dba_group_member = au_is_dba_group_member (Au_user);
-
-	  if (unload_context.is_dba_group_member == false)
-	    {
-	      fprintf (stderr, "\n--%s is an option available only when the user is a DBA Group.\n",
-		       UNLOAD_SAME_AS_DBA_L);
-	      goto end;
-	    }
-	}
-      else
-	{
-	  unload_context.is_dba_user = ws_is_same_object (Au_dba_user, Au_user);
-	}
-
       if (extract_classes_to_file (unload_context) != 0)
 	{
 	  status = 1;
@@ -350,7 +349,11 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   AU_SAVE_AND_ENABLE (au_save);
   if (!status && (do_objects || !do_schema))
     {
-      if (extract_objects (unload_context, exec_name, output_dirname, output_prefix))
+      unload_context.exec_name = exec_name;
+      unload_context.login_user = user;
+      unload_context.output_prefix = output_prefix;
+
+      if (extract_objects (unload_context, output_dirname))
 	{
 	  status = 1;
 	}

@@ -433,7 +433,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
  *    exec_name(in): utility name
  */
 int
-extract_objects (extract_context & ctxt, const char *exec_name, const char *output_dirname, const char *output_prefix)
+extract_objects (extract_context & ctxt, const char *output_dirname)
 {
   int i, error;
   HFID *hfid;
@@ -496,12 +496,12 @@ extract_objects (extract_context & ctxt, const char *exec_name, const char *outp
 	{
 	  return 1;
 	}
-      snprintf (output_filename, PATH_MAX - 1, "%s/%s%s", output_dirname, output_prefix, OBJECT_SUFFIX);
+      snprintf (output_filename, PATH_MAX - 1, "%s/%s%s", output_dirname, ctxt.output_prefix, OBJECT_SUFFIX);
 
       obj_out->fp = fopen_ex (output_filename, "wb");
       if (obj_out->fp == NULL)
 	{
-	  fprintf (stderr, "%s: %s.\n\n", exec_name, strerror (errno));
+	  fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
 	  free_and_init (output_filename);
 	  return errno;
 	}
@@ -899,7 +899,7 @@ extract_objects (extract_context & ctxt, const char *exec_name, const char *outp
    * Dump the object definitions
    */
   total_approximate_class_objects = est_objects;
-  snprintf (unloadlog_filename, sizeof (unloadlog_filename) - 1, "%s_unloaddb.log", output_prefix);
+  snprintf (unloadlog_filename, sizeof (unloadlog_filename) - 1, "%s_unloaddb.log", ctxt.output_prefix);
   unloadlog_file = fopen (unloadlog_filename, "w+");
   if (unloadlog_file != NULL)
     {
@@ -929,7 +929,7 @@ extract_objects (extract_context & ctxt, const char *exec_name, const char *outp
 		      goto end;
 		    }
 
-		  snprintf (outfile, PATH_MAX - 1, "%s/%s_%s%s", output_dirname, output_prefix,
+		  snprintf (outfile, PATH_MAX - 1, "%s/%s_%s%s", output_dirname, ctxt.output_prefix,
 			    sm_ch_name ((MOBJ) class_ptr), OBJECT_SUFFIX);
 
 		  obj_out->fp = fopen_ex (outfile, "wb");
