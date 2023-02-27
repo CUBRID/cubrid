@@ -136,8 +136,8 @@ class tran_server
     class page_server_node
     {
       public:
-	page_server_node (cubcomm::node &&conn_node) :
-	  m_conn_node { conn_node }
+	page_server_node (cubcomm::node &&conn_node)
+	  : m_conn_node { conn_node }
 	{ }
 	page_server_node () = delete;
 
@@ -148,7 +148,9 @@ class tran_server
 	page_server_node &operator= (page_server_node &&) = delete;
 
 	void set_flushed_lsa (log_lsa lsa);
-	log_lsa get_flushed_lsa ();
+	log_lsa get_flushed_lsa () const;
+
+	cubcomm::node get_conn_node () const;
 
       private:
 	cubcomm::node m_conn_node;
@@ -157,7 +159,7 @@ class tran_server
   private:
     int init_page_server_hosts (const char *db_name);
     int get_boot_info_from_page_server ();
-    int connect_to_page_server (const cubcomm::node &node, const char *db_name);
+    int connect_to_page_server (const page_server_node &node, const char *db_name);
 
     /* send request to a specific connection */
     void push_request (size_t idx, tran_to_page_request reqid, std::string &&payload);
@@ -167,7 +169,7 @@ class tran_server
     int parse_page_server_hosts_config (std::string &hosts);
 
   private:
-    std::vector<cubcomm::node> m_connection_list;
+    std::vector<std::unique_ptr<page_server_node>> m_node_vec;
     cubcomm::server_server m_conn_type;
 };
 
