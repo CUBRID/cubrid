@@ -6055,7 +6055,7 @@ xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf, int buf_size)
 	{
 	  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, NULL, &btid, NULL);
 	  status = ER_BTREE_UNIQUE_FAILED;
-    break;
+	  break;
 	}
     }
 
