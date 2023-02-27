@@ -3415,6 +3415,12 @@ CResvBtidMap::add (BTID * btid, int pos)
       m_alloc_sz += 10;
     }
 
+  if (m_pbtid == NULL || m_ppos == NULL)
+    {
+      //ER_OUT_OF_VIRTUAL_MEMORY;
+      assert_release (false);
+    }
+
   //memcpy(pbtid + used_cnt, btid, sizeof(BTID));
   m_pbtid[m_used_cnt] = *btid;
   m_ppos[m_used_cnt] = pos;

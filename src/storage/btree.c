@@ -6687,31 +6687,30 @@ exit_on_error:
 static bool
 btree_is_same_key_for_stats (BTREE_STATS_ENV * env, DB_VALUE * key_value)
 {
-  if (env->ignore_diff_pos != -1)
-    {
-      // ctshim  
-      //db_value_print_console (&(env->old_key_val), false, "old_key_val=");
-      //db_value_print_console (key_value, true, ", cur_key=");
+  assert (env->ignore_diff_pos > 0);
+
+  // ctshim  
+  //db_value_print_console (&(env->old_key_val), false, "old_key_val=");
+  //db_value_print_console (key_value, true, ", cur_key=");
 
 #if !defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE_2ND)
-      if (btree_multicol_key_get_first_not_null_pos (key_value) == env->ignore_diff_pos)
+  if (btree_multicol_key_get_first_not_null_pos (key_value) == env->ignore_diff_pos)
+    {
+      return true;
+    }
+#endif
+
+  if (!DB_IS_NULL (&(env->old_key_val)))
+    {
+      int merged_prefix = pr_midxkey_common_prefix (&(env->old_key_val), key_value);
+      if (env->ignore_diff_pos == merged_prefix)
 	{
 	  return true;
 	}
-#endif
-
-      if (!DB_IS_NULL (&(env->old_key_val)))
-	{
-	  int merged_prefix = pr_midxkey_common_prefix (&(env->old_key_val), key_value);
-	  if (env->ignore_diff_pos == merged_prefix)
-	    {
-	      return true;
-	    }
-	}
-
-      pr_clear_value (&(env->old_key_val));
-      pr_clone_value (key_value, &(env->old_key_val));
     }
+
+  pr_clear_value (&(env->old_key_val));
+  pr_clone_value (key_value, &(env->old_key_val));
 
   return false;
 }
@@ -6772,7 +6771,7 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 	}
 
 #if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-      if (btree_is_same_key_for_stats (env, &key_value))
+      if (env->ignore_diff_pos != -1 && btree_is_same_key_for_stats (env, &key_value))
 	{
 	  goto end;
 	}
@@ -6871,8 +6870,9 @@ count_keys:
 	}
 
 #if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-      if ((mvcc_snapshot == NULL) && btree_is_same_key_for_stats (env, &key_value))
+      if ((mvcc_snapshot == NULL) && (env->ignore_diff_pos != -1) && btree_is_same_key_for_stats (env, &key_value))
 	{
+	  env->stat_info->keys--;
 	  goto end;
 	}
 #endif
