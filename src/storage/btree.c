@@ -6045,16 +6045,17 @@ xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf, int buf_size)
   bufp = buf;
   buf_endptr = (buf + buf_size);
 
-  while ((bufp < buf_endptr) && (status == NO_ERROR))
+  while (bufp < buf_endptr)
     {
       /* unpack the BTID */
       bufp = or_unpack_btid (bufp, &btid);
 
       /* check if the btree is unique */
-      if ((status == NO_ERROR) && (xbtree_test_unique (thread_p, &btid) != 1))
+      if (xbtree_test_unique (thread_p, &btid) != 1)
 	{
 	  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, NULL, &btid, NULL);
 	  status = ER_BTREE_UNIQUE_FAILED;
+    break;
 	}
     }
 
