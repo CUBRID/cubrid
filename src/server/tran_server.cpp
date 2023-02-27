@@ -288,9 +288,9 @@ tran_server::get_boot_info_from_page_server ()
 }
 
 int
-tran_server::connect_to_page_server (const page_server_node &server_node, const char *db_name)
+tran_server::connect_to_page_server (page_server_node &server_node, const char *db_name)
 {
-  cubcomm::node conn_node = server_node.get_conn_node ();
+  const cubcomm::node conn_node = server_node.get_conn_node ();
   auto ps_conn_error_lambda = [&conn_node] ()
   {
     er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, conn_node.get_host ().c_str ());
@@ -333,7 +333,7 @@ tran_server::connect_to_page_server (const page_server_node &server_node, const 
 
   // NOTE: only the base class part (cubcomm::channel) of a cubcomm::server_channel instance is
   // moved as argument below
-  m_page_server_conn_vec.emplace_back (create_connection_handler (std::move (srv_chn), *this));
+  m_page_server_conn_vec.emplace_back (create_connection_handler (std::move (srv_chn), server_node, *this));
 
   return NO_ERROR;
 }
@@ -369,9 +369,10 @@ tran_server::uses_remote_storage () const
   return false;
 }
 
-tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tran_server &ts,
+tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, page_server_node &node, tran_server &ts,
     request_handlers_map_t &&request_handlers)
-  : m_ts { ts }
+  : m_node { node }
+  , m_ts { ts }
 {
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 24;   // Arbitrarily chosen
   // TODO: to reduce contention as much as possible, should be equal to the maximum number
