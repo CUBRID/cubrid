@@ -154,7 +154,7 @@ typedef enum
   LOCK_RESOURCE_INSTANCE,	/* An instance resource */
   LOCK_RESOURCE_CLASS,		/* A class resource */
   LOCK_RESOURCE_ROOT_CLASS,	/* A root class resource */
-  LOCK_RESOURCE_OBJECT		/* An object resource */
+  LOCK_RESOURCE_OBJECT		/* An object resource: used when the type of locking resource is unknown or undetermined. */
 } LOCK_RESOURCE_TYPE;
 
 /*
