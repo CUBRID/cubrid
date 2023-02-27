@@ -4502,7 +4502,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, const LOG_LSA * flush_lsa)
 	  log_Gl.wait_flushed_lsa (*flush_lsa);
 	  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
 	    {
-	      _er_log_debug (ARG_FILE_LINE, "Page server committed LSA = %lld|%d.\n", LSA_AS_ARGS (&log_Gl.m_max_ps_flushed_lsa));
+	      _er_log_debug (ARG_FILE_LINE, "Page server quorum committed LSA = %lld|%d.\n", LSA_AS_ARGS (&log_Gl.m_quorum_ps_flushed_lsa));
 	    }
 	}
       // *INDENT-ON*

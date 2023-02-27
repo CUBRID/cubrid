@@ -720,7 +720,7 @@ struct log_global
 
   std::mutex m_ps_lsa_mutex;
   std::condition_variable m_ps_lsa_cv;
-  LOG_LSA m_max_ps_flushed_lsa = NULL_LSA;
+  LOG_LSA m_quorum_ps_flushed_lsa = NULL_LSA;
 
   log_global ();
   ~log_global ();
@@ -731,7 +731,7 @@ struct log_global
   cublog::prior_recver &get_log_prior_receiver ();
 #endif // SERVER_MODE
 
-  void update_max_ps_flushed_lsa (const LOG_LSA & lsa);
+  void update_quorum_ps_flushed_lsa (const LOG_LSA & lsa);
   void wait_flushed_lsa (const log_lsa & flush_lsa);
 
   // *INDENT-ON*

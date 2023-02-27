@@ -137,13 +137,13 @@ class tran_server
 
       protected:
 	tran_server &m_ts;
+	page_server_node &m_node; // in tran_server::m_node_vec;
 
       private:
 	// Request handlers for requests in common
 
       private:
 	std::unique_ptr<page_server_conn_t> m_conn;
-	page_server_node &m_node; // in tran_server::m_node_vec;
     };
 
   protected:
@@ -158,6 +158,7 @@ class tran_server
 
   protected:
     std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
+    std::vector<std::unique_ptr<page_server_node>> m_node_vec;
 
   private:
     int init_page_server_hosts (const char *db_name);
@@ -172,7 +173,6 @@ class tran_server
     int parse_page_server_hosts_config (std::string &hosts);
 
   private:
-    std::vector<std::unique_ptr<page_server_node>> m_node_vec;
     cubcomm::server_server m_conn_type;
 };
 
