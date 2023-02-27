@@ -115,6 +115,7 @@ namespace cubload
     std::vector<int> m_ignored_errors;
     static const int PERIODIC_COMMIT_DEFAULT_VALUE = 10240;
     bool no_user_specified_name;
+    std::string schema_file_list;
   };
 
   /*
