@@ -175,6 +175,10 @@ namespace cublog
 
       void forcibly_remove_sequence (TRANID trid);
 
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+      void check_vpid_not_part_of_any_sequence (VPID vpid);
+#endif
+
     private: // methods
       void start_sequence_internal (TRANID trid, LOG_LSA start_lsa, const log_rv_redo_context &redo_context);
 
@@ -233,6 +237,8 @@ namespace cublog
 	  void decrease_or_remove_for_transaction (TRANID trid, VPID vpid);
 
 	  void check_absent_for_transaction (TRANID trid) const;
+
+	  void check_vpid_not_part_of_any_sequence (VPID vpid) const;
 
 	private: // types
 	  using vpid_map_type = std::map<VPID, int>;
