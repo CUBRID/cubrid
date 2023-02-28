@@ -3477,15 +3477,6 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
     {
       /* Make the intermediate value */
       db_make_numeric (dest, num, precision, scale);
-      ret =
-	numeric_coerce_num_to_num (db_locate_numeric (dest), DB_VALUE_PRECISION (dest), DB_VALUE_SCALE (dest),
-				   desired_precision, desired_scale, num);
-      if (ret != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-
-      db_make_numeric (dest, num, desired_precision, desired_scale);
     }
 
   if (ret == ER_IT_DATA_OVERFLOW)

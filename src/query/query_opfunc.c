@@ -5832,32 +5832,22 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 
   switch (type1)
     {
+      DB_VALUE dbval_tmp1;
+      DB_VALUE dbval_tmp2;
+      DB_VALUE result_tmp;
+      DB_DATA_STATUS data_status;
+
     case DB_TYPE_SHORT:
-      error = qdata_divide_short_to_dbval (dbval1_p, dbval2_p, result_p);
-      break;
-
     case DB_TYPE_INTEGER:
-      error = qdata_divide_int_to_dbval (dbval1_p, dbval2_p, result_p);
-      break;
-
     case DB_TYPE_BIGINT:
-      error = qdata_divide_bigint_to_dbval (dbval1_p, dbval2_p, result_p);
-      break;
-
     case DB_TYPE_FLOAT:
-      error = qdata_divide_float_to_dbval (dbval1_p, dbval2_p, result_p);
-      break;
-
     case DB_TYPE_DOUBLE:
-      error = qdata_divide_double_to_dbval (dbval1_p, dbval2_p, result_p);
-      break;
-
     case DB_TYPE_NUMERIC:
-      error = qdata_divide_numeric_to_dbval (dbval1_p, dbval2_p, result_p);
-      break;
-
     case DB_TYPE_MONETARY:
-      error = qdata_divide_monetary_to_dbval (dbval1_p, dbval2_p, result_p);
+      tp_value_auto_cast (dbval1_p, &dbval_tmp1, &tp_Double_domain);
+      tp_value_auto_cast (dbval2_p, &dbval_tmp2, &tp_Double_domain);
+      qdata_divide_double_to_dbval (&dbval_tmp1, &dbval_tmp2, &result_tmp);
+      numeric_db_value_coerce_to_num (&result_tmp, result_p, &data_status);
       break;
 
     case DB_TYPE_SET:

@@ -767,6 +767,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  goto error;
 	}
+      regu_var->domain->precision = arithptr->value->domain.numeric_info.precision;
+      regu_var->domain->scale = arithptr->value->domain.numeric_info.scale;
       break;
 
 #if defined(ENABLE_UNUSED_FUNCTION)
