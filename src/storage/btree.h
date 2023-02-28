@@ -372,6 +372,9 @@ struct btree_capacity
 {
   int dis_key_cnt;		/* Distinct key count (in leaf pages) */
   int64_t tot_val_cnt;		/* Total number of values stored in tree */
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+  int decompress_dis_key_cnt;
+#endif
   int avg_val_per_key;		/* Average number of values (OIDs) per key */
   int leaf_pg_cnt;		/* Leaf page count */
   int nleaf_pg_cnt;		/* NonLeaf page count */
@@ -691,7 +694,11 @@ extern int btree_estimate_total_numpages (THREAD_ENTRY * thread_p, int dis_key_c
 					  int *blt_pgcnt_est, int *blt_wrs_pgcnt_est);
 #endif
 
-extern int btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc);
+extern int btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+				 , int ignore_diff_pos
+#endif
+  );
 extern int btree_physical_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * oid, OID * class_oid,
 				  int *unique, int op_type, btree_unique_stats * unique_stat_info);
 extern int btree_vacuum_insert_mvccid (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid,

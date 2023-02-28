@@ -1246,7 +1246,11 @@ static DISK_ISVALID btree_check_page_key (THREAD_ENTRY * thread_p, const OID * c
 static DISK_ISVALID btree_check_pages (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, VPID * pg_vpid);
 static DISK_ISVALID btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT * btid,
 					  const char *btname, PAGE_PTR pg_ptr, VPID * pg_vpid, BTREE_NODE_INFO * INFO);
-static int btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, BTREE_CAPACITY * cpc);
+static int btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, BTREE_CAPACITY * cpc
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+				       , BTREE_STATS_ENV * env
+#endif
+  );
 static void btree_print_space (FILE * fp, int n);
 static int btree_delete_meta_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, int slot_id);
 static int btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR Q, PAGE_PTR R);
@@ -7245,11 +7249,6 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
       db_make_null (&(env->pkeys_val[i]));
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-  db_make_null (&(env->old_key_val));
-  env->ignore_diff_pos = reserved_index_col_pos;
-#endif
-
   root_vpid.pageid = env->stat_info->btid.root_pageid;	/* read root page */
   root_vpid.volid = env->stat_info->btid.vfid.volid;
 
@@ -7317,6 +7316,11 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
     {
       env->stat_info->pkeys[i] = 0;	/* clear old stats */
     }
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+  db_make_null (&(env->old_key_val));
+  env->ignore_diff_pos = reserved_index_col_pos;
+#endif
 
   if (with_fullscan || npages <= STATS_SAMPLING_THRESHOLD)
     {
@@ -8730,7 +8734,11 @@ btree_keyoid_checkscan_end (THREAD_ENTRY * thread_p, BTREE_CHECKSCAN * btscan)
  *   cpc(in):
  */
 static int
-btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, BTREE_CAPACITY * cpc)
+btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, BTREE_CAPACITY * cpc
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+			    , BTREE_STATS_ENV * env
+#endif
+  )
 {
   RECDES rec;			/* Page record descriptor */
   int free_space;		/* Total free space of the Page */
@@ -8798,7 +8806,11 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
 #endif /* !NDEBUG */
 
-	  ret = btree_get_subtree_capacity (thread_p, btid, page, &cpc2);
+	  ret = btree_get_subtree_capacity (thread_p, btid, page, &cpc2
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+					    , env
+#endif
+	    );
 	  pgbuf_unfix_and_init (thread_p, page);
 	  if (ret != NO_ERROR)
 	    {
@@ -8808,6 +8820,9 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	  /* form the cpc structure for a non-leaf node page */
 	  cpc->dis_key_cnt += cpc2.dis_key_cnt;
 	  cpc->tot_val_cnt += cpc2.tot_val_cnt;
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+	  cpc->decompress_dis_key_cnt += cpc2.decompress_dis_key_cnt;
+#endif
 	  cpc->leaf_pg_cnt += cpc2.leaf_pg_cnt;
 	  cpc->nleaf_pg_cnt += cpc2.nleaf_pg_cnt;
 	  cpc->tot_pg_cnt += cpc2.tot_pg_cnt;
@@ -8835,6 +8850,9 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
     {				/* a leaf page */
       /* form the cpc structure for a leaf node page */
       cpc->dis_key_cnt = key_cnt;
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+      cpc->decompress_dis_key_cnt = 0;
+#endif
       cpc->leaf_pg_cnt = 1;
       cpc->height = 1;
       for (i = 1; i <= cpc->dis_key_cnt; i++)
@@ -8851,6 +8869,14 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	    {
 	      goto exit_on_error;
 	    }
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+	  if (env->ignore_diff_pos == -1 || !btree_is_same_key_for_stats (env, &key1))
+	    {
+	      cpc->decompress_dis_key_cnt++;
+	    }
+#endif
+
 	  cpc->sum_key_len += btree_get_disk_size_of_key (&key1);
 	  btree_clear_key_value (&clear_key, &key1);
 
@@ -8960,13 +8986,23 @@ exit_on_error:
  * Note: Form and return index capacity/space related information
  */
 int
-btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc)
+btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+		      , int ignore_diff_pos
+#endif
+  )
 {
   VPID root_vpid;		/* root page identifier */
   PAGE_PTR root = NULL;		/* root page pointer */
   BTID_INT btid_int;
   BTREE_ROOT_HEADER *root_header = NULL;
   int ret = NO_ERROR;
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+  BTREE_STATS_ENV stats_env;
+  /* This routine uses only old_key_val and ignore_diff_pos among the members of the structure. */
+  memset (&stats_env, 0x00, sizeof (stats_env));
+#endif
 
   /* read root page */
   root_vpid.pageid = btid->root_pageid;
@@ -8994,8 +9030,20 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
       goto exit_on_error;
     }
 
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+  db_make_null (&(stats_env.old_key_val));
+  stats_env.ignore_diff_pos = ignore_diff_pos;
+#endif
   /* traverse the tree and store the capacity info */
-  ret = btree_get_subtree_capacity (thread_p, &btid_int, root, cpc);
+  ret = btree_get_subtree_capacity (thread_p, &btid_int, root, cpc
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+				    , &stats_env
+#endif
+    );
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+  pr_clear_value (&(stats_env.old_key_val));
+#endif
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -9011,6 +9059,10 @@ exit_on_error:
     {
       pgbuf_unfix_and_init (thread_p, root);
     }
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+  pr_clear_value (&(stats_env.old_key_val));
+#endif
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -9031,11 +9083,18 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
   char *class_name = NULL;
   FILE_DESCRIPTORS fdes;
   char buf[256] = { 0 };
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+  int ignore_diff_pos = -1;
+#endif
 
   assert (fp != NULL && btid != NULL);
 
   /* get index capacity information */
-  ret = btree_index_capacity (thread_p, btid, &cpc);
+  ret = btree_index_capacity (thread_p, btid, &cpc
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+			      , ignore_diff_pos
+#endif
+    );
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -9071,6 +9130,9 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
   /* dump the capacity information */
   fprintf (fp, "\nDistinct Key Count: %d\n", cpc.dis_key_cnt);
   fprintf (fp, "Total Value Count: %lld\n", cpc.tot_val_cnt);
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+  fprintf (fp, "\nDecompress Distinct Key Count: %d\n", cpc.decompress_dis_key_cnt);
+#endif
   fprintf (fp, "Average Value Count Per Key: %d\n", cpc.avg_val_per_key);
   fprintf (fp, "Total Page Count: %d\n", cpc.tot_pg_cnt + cpc.ovfl_oid_pg.tot_pg_cnt);
   fprintf (fp, "Leaf Page Count: %d\n", cpc.leaf_pg_cnt);
@@ -22320,7 +22382,9 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
   VPID root_vpid;
   char buf[256] = { 0 };
   BTID *btid_p = NULL;
-
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+  int ignore_diff_pos = -1;
+#endif
   assert_release (index_p != NULL);
 
   /* get btree capacity */
@@ -22334,7 +22398,31 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
       goto cleanup;
     }
 
-  error = btree_index_capacity (thread_p, btid_p, &cpc);
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+  if (index_p->n_atts > 1)
+    {
+      if (index_p->func_index_info == NULL)
+	{
+	  if (IS_RESERVED_INDEX_ATTR_ID (index_p->atts[index_p->n_atts - 1]->id))
+	    {
+	      ignore_diff_pos = index_p->n_atts - 1;
+	    }
+	}
+      else if (index_p->func_index_info->attr_index_start > 0)
+	{			// Check the (attr_index_start -1)th member.
+	  if (IS_RESERVED_INDEX_ATTR_ID (index_p->atts[index_p->func_index_info->attr_index_start - 1]->id))
+	    {
+	      ignore_diff_pos = index_p->func_index_info->attr_index_start;
+	    }
+	}
+    }
+#endif
+
+  error = btree_index_capacity (thread_p, btid_p, &cpc
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+				, ignore_diff_pos
+#endif
+    );
   if (error != NO_ERROR)
     {
       goto cleanup;
@@ -22370,6 +22458,11 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
 
   // {"Total_value", "bigint"}
   db_make_bigint (out_values[idx++], cpc.tot_val_cnt);
+
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+  //  {"Decompress_distinct_key", "int"},
+  db_make_int (out_values[idx++], cpc.decompress_dis_key_cnt);
+#endif
 
   // {"Avg_num_value_per_key", "int"}
   db_make_int (out_values[idx++], cpc.avg_val_per_key);
