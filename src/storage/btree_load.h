@@ -217,7 +217,15 @@ struct btree_root_header
     int num_nulls:10;		/* extend 10 bit for num_nulls */
     int num_keys:10;		/* extend 10 bit for num_keys */
   } _64;
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+  struct
+  {
+    int rev_level:16;		/* Btree revision level */
+    int decomoress_attr_idx:16;
+  } _32;
+#else
   int rev_level;		/* Btree revision level */
+#endif
   VFID ovfid;			/* Overflow file */
   MVCCID creator_mvccid;	/* MVCCID of creator transaction. */
 

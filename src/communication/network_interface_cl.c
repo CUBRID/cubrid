@@ -5729,7 +5729,11 @@ stats_update_all_statistics (int with_fullscan)
  * NOTE:
  */
 int
-btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk)
+btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk
+#if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
+		 , int decompress_attr_idx
+#endif
+  )
 {
 #if defined(CS_MODE)
   int error = NO_ERROR;
@@ -5743,6 +5747,9 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
 
   domain_size = or_packed_domain_size (key_type, 0);
   request_size = OR_BTID_ALIGNED_SIZE + domain_size + OR_OID_SIZE + OR_INT_SIZE + OR_INT_SIZE;
+#if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
+  request_size += OR_INT_SIZE;
+#endif
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -5756,6 +5763,9 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
   ptr = or_pack_oid (ptr, class_oid);
   ptr = or_pack_int (ptr, attr_id);
   ptr = or_pack_int (ptr, unique_pk);
+#if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
+  ptr = or_pack_int (ptr, decompress_attr_idx);
+#endif
 
   req_error =
     net_client_request (NET_SERVER_BTREE_ADDINDEX, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
@@ -5782,7 +5792,11 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  btid = xbtree_add_index (thread_p, btid, key_type, class_oid, attr_id, unique_pk, 0, 0, 0);
+  btid = xbtree_add_index (thread_p, btid, key_type, class_oid, attr_id, unique_pk, 0, 0, 0
+#if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
+			   , decompress_attr_idx
+#endif
+    );
   if (btid == NULL)
     {
       assert (er_errid () != NO_ERROR);
