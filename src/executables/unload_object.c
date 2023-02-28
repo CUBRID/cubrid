@@ -456,6 +456,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
   char unloadlog_filename[PATH_MAX];
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
+  char owner_str[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   /* register new signal handlers */
   prev_intr_handler = os_set_signal_handler (SIGINT, extractobjects_term_handler);
@@ -669,24 +670,15 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
 
 	  if (!datafile_per_class && (!required_class_only || IS_CLASS_REQUESTED (i)))
 	    {
-	      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
+	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), owner_str,
+				sizeof (owner_str));
+
+	      if (text_print
+		  (obj_out, NULL, 0, "%cid %s%s%s%s %d\n", '%', owner_str,
+		   PRINT_IDENTIFIER (class_name), i) != NO_ERROR)
 		{
-		  if (text_print
-		      (obj_out, NULL, 0, "%cid %s%s%s.%s%s%s %d\n", '%', PRINT_IDENTIFIER (owner_name),
-		       PRINT_IDENTIFIER (class_name), i) != NO_ERROR)
-		    {
-		      status = 1;
-		      goto end;
-		    }
-		}
-	      else
-		{
-		  if (text_print (obj_out, NULL, 0, "%cid %s%s%s %d\n", '%', PRINT_IDENTIFIER (class_name), i) !=
-		      NO_ERROR)
-		    {
-		      status = 1;
-		      goto end;
-		    }
+		  status = 1;
+		  goto end;
 		}
 	    }
 
@@ -1088,6 +1080,8 @@ process_class (extract_context & ctxt, int cl_no)
   time_t start = 0;
 #endif
   int total;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+
   LC_FETCH_VERSION_TYPE fetch_type = latest_image_flag ? LC_FETCH_CURRENT_VERSION : LC_FETCH_MVCC_VERSION;
 
   /*
@@ -1132,19 +1126,13 @@ process_class (extract_context & ctxt, int cl_no)
       if (v == 0)
 	{
 	  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
-	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	    {
-	      CHECK_PRINT_ERROR (text_print
-				 (obj_out, NULL, 0, "%cclass %s%s%s.%s%s%s shared (%s%s%s", '%',
-				  PRINT_IDENTIFIER (owner_name),
-				  PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
-	    }
-	  else
-	    {
-	      CHECK_PRINT_ERROR (text_print
-				 (obj_out, NULL, 0, "%cclass %s%s%s shared (%s%s%s", '%',
-				  PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
-	    }
+
+	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			    sizeof (output_owner));
+
+	  CHECK_PRINT_ERROR (text_print
+			     (obj_out, NULL, 0, "%cclass %s%s%s%s shared (%s%s%s", '%',
+			      output_owner, PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
 	}
       else
 	{
@@ -1193,19 +1181,13 @@ process_class (extract_context & ctxt, int cl_no)
       if (v == 0)
 	{
 	  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
-	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	    {
-	      CHECK_PRINT_ERROR (text_print
-				 (obj_out, NULL, 0, "%cclass %s%s%s.%s%s%s class (%s%s%s", '%',
-				  PRINT_IDENTIFIER (owner_name),
-				  PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
-	    }
-	  else
-	    {
-	      CHECK_PRINT_ERROR (text_print
-				 (obj_out, NULL, 0, "%cclass %s%s%s class (%s%s%s", '%',
-				  PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
-	    }
+
+	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			    sizeof (output_owner));
+
+	  CHECK_PRINT_ERROR (text_print
+			     (obj_out, NULL, 0, "%cclass %s%s%s%s class (%s%s%s", '%',
+			      output_owner, PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
 	}
       else
 	{
@@ -1242,17 +1224,11 @@ process_class (extract_context & ctxt, int cl_no)
     }
 
   SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
-  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-    {
-      CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, (v) ? "\n%cclass %s%s%s.%s%s%s ("	/* new line */
-				     : "%cclass %s%s%s.%s%s%s (", '%', PRINT_IDENTIFIER (owner_name),
-				     PRINT_IDENTIFIER (class_name)));
-    }
-  else
-    {
-      CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, (v) ? "\n%cclass %s%s%s ("	/* new line */
-				     : "%cclass %s%s%s (", '%', PRINT_IDENTIFIER (class_name)));
-    }
+
+  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner, sizeof (output_owner));
+
+  CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, (v) ? "\n%cclass %s%s%s%s ("	/* new line */
+				 : "%cclass %s%s%s%s (", '%', output_owner, PRINT_IDENTIFIER (class_name)));
 
   v = 0;
   attribute = class_ptr->ordered_attributes;

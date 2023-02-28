@@ -705,6 +705,8 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
     "[cyclic], " "[started], " "[cached_num], " "[comment] "
     "from [db_serial] where [class_name] is null and [att_name] is null and owner.name='%s'";
 
+  output_ctx ("\n");
+
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
     {
       uppercase_user_size = intl_identifier_upper_string_size (ctxt.login_user);
@@ -946,6 +948,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
   size_t uppercase_user_size = 0;
   size_t query_size = 0;
   char *query = NULL;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   // *INDENT-OFF*
   const char *query_all = "SELECT [name], "
@@ -972,6 +975,8 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
   query_error.err_posno = 0;
 
   AU_DISABLE (save);
+
+  output_ctx ("\n");
 
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
     {
@@ -1096,17 +1101,13 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 	      output_ctx ("CREATE PRIVATE");
 	    }
 
-	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	    {
-	      output_ctx (" SYNONYM %s%s%s.%s%s%s FOR %s%s%s.%s%s%s", PRINT_IDENTIFIER (synonym_owner_name),
-			  PRINT_IDENTIFIER (synonym_name), PRINT_IDENTIFIER (target_owner_name),
-			  PRINT_IDENTIFIER (target_name));
-	    }
-	  else
-	    {
-	      output_ctx (" SYNONYM %s%s%s FOR %s%s%s.%s%s%s", PRINT_IDENTIFIER (synonym_name),
-			  PRINT_IDENTIFIER (target_owner_name), PRINT_IDENTIFIER (target_name));
-	    }
+	  PRINT_OWNER_NAME (synonym_owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			    sizeof (output_owner));
+
+	  output_ctx (" SYNONYM %s%s%s%s FOR %s%s%s.%s%s%s", output_owner,
+		      PRINT_IDENTIFIER (synonym_name), PRINT_IDENTIFIER (target_owner_name),
+		      PRINT_IDENTIFIER (target_name));
+
 	  if (DB_IS_NULL (&values[SYNONYM_COMMENT]) == false)
 	    {
 	      output_ctx (" COMMENT ");
@@ -1754,6 +1755,7 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
   bool has_using_index;
   bool change_vclass_spec;
   int i;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   /*
    * pass 1, emit NULL spec lists for vclasses that have attribute
@@ -1822,15 +1824,12 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 		{
 		  null_spec = pt_print_query_spec_no_list (parser, *query_ptr);
 		  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-		  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-		    {
-		      output_ctx ("ALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ; \n", PRINT_IDENTIFIER (owner_name),
-				  PRINT_IDENTIFIER (class_name), null_spec);
-		    }
-		  else
-		    {
-		      output_ctx ("ALTER VCLASS %s%s%s ADD QUERY %s ; \n", PRINT_IDENTIFIER (class_name), null_spec);	// check airnet add query 에 owner가 있음, 삭제 필요함 
-		    }
+
+		  PRINT_OWNER_NAME (output_owner, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				    sizeof (output_owner));
+
+		  output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ; \n", output_owner,
+			      PRINT_IDENTIFIER (class_name), null_spec);
 		}
 	      parser_free_parser (parser);
 	    }
@@ -1868,29 +1867,19 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
 	  if (change_vclass_spec)
 	    {			/* change the existing spec lists */
-	      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-		{
-		  output_ctx ("ALTER VCLASS %s%s%s.%s%s%s CHANGE QUERY %d %s ;\n", PRINT_IDENTIFIER (owner_name),
-			      PRINT_IDENTIFIER (class_name), i, db_query_spec_string (s));
-		}
-	      else
-		{
-		  output_ctx ("ALTER VCLASS %s%s%s CHANGE QUERY %d %s ;\n", PRINT_IDENTIFIER (class_name), i,
-			      db_query_spec_string (s));
-		}
+	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				sizeof (output_owner));
+
+	      output_ctx ("ALTER VCLASS %s%s%s%s CHANGE QUERY %d %s ;\n", output_owner,
+			  PRINT_IDENTIFIER (class_name), i, db_query_spec_string (s));
 	    }
 	  else
 	    {			/* emit the usual statements */
-	      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-		{
-		  output_ctx ("ALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ;\n", PRINT_IDENTIFIER (owner_name),
-			      PRINT_IDENTIFIER (class_name), db_query_spec_string (s));
-		}
-	      else
-		{
-		  output_ctx ("ALTER VCLASS %s%s%s ADD QUERY %s ;\n", PRINT_IDENTIFIER (class_name),
-			      db_query_spec_string (s));
-		}
+	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				sizeof (output_owner));
+
+	      output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ;\n", output_owner,
+			  PRINT_IDENTIFIER (class_name), db_query_spec_string (s));
 	    }
 	}
     }
@@ -1918,6 +1907,7 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
   const char *null_spec;
   bool change_vclass_spec;
   int i;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   output_ctx ("\n\n");
 
@@ -1961,15 +1951,12 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
 	    {
 	      null_spec = pt_print_query_spec_no_list (parser, *query_ptr);
 	      SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-	      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-		{
-		  output_ctx ("ALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ; \n", PRINT_IDENTIFIER (owner_name),
-			      PRINT_IDENTIFIER (class_name), null_spec);
-		}
-	      else
-		{
-		  output_ctx ("ALTER VCLASS %s%s%s ADD QUERY %s ; \n", PRINT_IDENTIFIER (class_name), null_spec);
-		}
+
+	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				sizeof (output_owner));
+
+	      output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ; \n", output_owner,
+			  PRINT_IDENTIFIER (class_name), null_spec);
 	    }
 	  parser_free_parser (parser);
 	}
@@ -1996,30 +1983,19 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
 	  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
 	  if (change_vclass_spec)
 	    {			/* change the existing spec lists */
-	      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-		{
-		  output_ctx ("ALTER VCLASS %s%s%s.%s%s%s CHANGE QUERY %d %s ;\n", PRINT_IDENTIFIER (owner_name),
-			      PRINT_IDENTIFIER (class_name), i, db_query_spec_string (s));
-		}
-	      else
-		{
-		  output_ctx ("ALTER VCLASS %s%s%s.%s%s%s CHANGE QUERY %d %s ;\n", PRINT_IDENTIFIER (owner_name),
-			      PRINT_IDENTIFIER (class_name), i, db_query_spec_string (s));
-		}
+	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				sizeof (output_owner));
+
+	      output_ctx ("ALTER VCLASS %s%s%s%s CHANGE QUERY %d %s ;\n", output_owner,
+			  PRINT_IDENTIFIER (class_name), i, db_query_spec_string (s));
 	    }
 	  else
 	    {			/* emit the usual statements */
-	      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-		{
-		  output_ctx ("ALTER VCLASS %s%s%s.%s%s%s ADD QUERY %s ;\n", PRINT_IDENTIFIER (owner_name),
-			      PRINT_IDENTIFIER (class_name), db_query_spec_string (s));
-		}
-	      else
-		{
-		  output_ctx ("ALTER VCLASS %s%s%s ADD QUERY %s ;\n", PRINT_IDENTIFIER (class_name),
-			      db_query_spec_string (s));
-		}
+	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				sizeof (output_owner));
 
+	      output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ;\n", output_owner,
+			  PRINT_IDENTIFIER (class_name), db_query_spec_string (s));
 	    }
 	}
     }
@@ -2042,6 +2018,7 @@ emit_superclasses (extract_context & ctxt, print_output & output_ctx, DB_OBJECT 
   const char *name;
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   supers = db_get_superclasses (class_);
   if (supers != NULL)
@@ -2054,15 +2031,11 @@ emit_superclasses (extract_context & ctxt, print_output & output_ctx, DB_OBJECT 
 	}
 
       SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	{
-	  output_ctx ("ALTER %s %s%s%s.%s%s%s ADD SUPERCLASS ", class_type, PRINT_IDENTIFIER (owner_name),
-		      PRINT_IDENTIFIER (class_name));
-	}
-      else
-	{
-	  output_ctx ("ALTER %s %s%s%s ADD SUPERCLASS ", class_type, PRINT_IDENTIFIER (class_name));
-	}
+
+      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			sizeof (output_owner));
+
+      output_ctx ("ALTER %s %s%s%s%s ADD SUPERCLASS ", class_type, output_owner, PRINT_IDENTIFIER (class_name));
 
       for (s = supers; s != NULL; s = s->next)
 	{
@@ -2073,14 +2046,11 @@ emit_superclasses (extract_context & ctxt, print_output & output_ctx, DB_OBJECT 
 	    }
 
 	  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	    {
-	      output_ctx ("%s%s%s.%s%s%s", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
-	    }
-	  else
-	    {
-	      output_ctx ("%s%s%s", PRINT_IDENTIFIER (class_name));
-	    }
+
+	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			    sizeof (output_owner));
+
+	  output_ctx ("%s%s%s%s", output_owner, PRINT_IDENTIFIER (class_name));
 	}
 
       output_ctx (";\n");
@@ -2110,21 +2080,18 @@ emit_resolutions (extract_context & ctxt, print_output & output_ctx, DB_OBJECT *
   const char *name;
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   resolution_list = db_get_resolutions (class_);
   if (resolution_list != NULL)
     {
       name = db_get_class_name (class_);
       SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	{
-	  output_ctx ("ALTER %s %s%s%s.%s%s%s INHERIT", class_type, PRINT_IDENTIFIER (owner_name),
-		      PRINT_IDENTIFIER (class_name));
-	}
-      else
-	{
-	  output_ctx ("ALTER %s %s%s%s INHERIT", class_type, PRINT_IDENTIFIER (class_name));
-	}
+
+      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			sizeof (output_owner));
+
+      output_ctx ("ALTER %s %s%s%s%s INHERIT", class_type, output_owner, PRINT_IDENTIFIER (class_name));
 
       for (; resolution_list != NULL; resolution_list = db_resolution_next (resolution_list))
 	{
@@ -2162,6 +2129,7 @@ emit_resolution_def (extract_context & ctxt, print_output & output_ctx, DB_RESOL
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name_p = NULL;
   DB_OBJECT *class_;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   class_ = db_resolution_class (resolution);
   if (class_ == NULL)
@@ -2188,30 +2156,20 @@ emit_resolution_def (extract_context & ctxt, print_output & output_ctx, DB_RESOL
     {
     case INSTANCE_RESOLUTION:
       {
-	if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	  {
-	    output_ctx ("       %s%s%s OF %s%s%s.%s%s%s", PRINT_IDENTIFIER (name), PRINT_IDENTIFIER (owner_name),
-			PRINT_IDENTIFIER (class_name_p));
-	  }
-	else
-	  {
-	    output_ctx ("       %s%s%s OF%s%s%s", PRINT_IDENTIFIER (name), PRINT_IDENTIFIER (class_name_p));
-	  }
+	PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			  sizeof (output_owner));
 
+	output_ctx ("       %s%s%s OF %s%s%s%s", PRINT_IDENTIFIER (name), output_owner,
+		    PRINT_IDENTIFIER (class_name_p));
 	break;
       }
     case CLASS_RESOLUTION:
       {
-	if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	  {
-	    output_ctx ("CLASS  %s%s%s OF %s%s%s.%s%s%s", PRINT_IDENTIFIER (name), PRINT_IDENTIFIER (owner_name),
-			PRINT_IDENTIFIER (class_name_p));
-	  }
-	else
-	  {
-	    output_ctx ("CLASS  %s%s%s OF %s%s%s", PRINT_IDENTIFIER (name), PRINT_IDENTIFIER (class_name_p));
-	  }
+	PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			  sizeof (output_owner));
 
+	output_ctx ("CLASS  %s%s%s OF %s%s%s%s", PRINT_IDENTIFIER (name), output_owner,
+		    PRINT_IDENTIFIER (class_name_p));
 	break;
       }
     }
@@ -2255,6 +2213,7 @@ emit_instance_attributes (extract_context & ctxt, print_output & output_ctx, DB_
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
   char *serial_name = NULL;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   attribute_list = db_get_attributes (class_);
 
@@ -2387,15 +2346,11 @@ emit_instance_attributes (extract_context & ctxt, print_output & output_ctx, DB_
 	    }
 
 	  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	    {
-	      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE ", class_type, PRINT_IDENTIFIER (owner_name),
-			  PRINT_IDENTIFIER (class_name));
-	    }
-	  else
-	    {
-	      output_ctx ("ALTER %s %s%s%s ADD ATTRIBUTE ", class_type, PRINT_IDENTIFIER (class_name));
-	    }
+
+	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			    sizeof (output_owner));
+
+	  output_ctx ("ALTER %s %s%s%s%s ADD ATTRIBUTE ", class_type, output_owner, PRINT_IDENTIFIER (class_name));
 
 	  if (db_attribute_is_shared (a))
 	    {
@@ -2421,15 +2376,11 @@ emit_instance_attributes (extract_context & ctxt, print_output & output_ctx, DB_
   else
     {
       SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	{
-	  output_ctx ("ALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (owner_name),
-		      PRINT_IDENTIFIER (class_name));
-	}
-      else
-	{
-	  output_ctx ("ALTER %s %s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (class_name));
-	}
+
+      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			sizeof (output_owner));
+
+      output_ctx ("ALTER %s %s%s%s%s ADD ATTRIBUTE\n", class_type, output_owner, PRINT_IDENTIFIER (class_name));
 
       for (a = first_attribute; a != NULL; a = db_attribute_next (a))
 	{
@@ -2489,6 +2440,7 @@ emit_class_attributes (extract_context & ctxt, print_output & output_ctx, DB_OBJ
   const char *name;
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   class_attribute_list = db_get_class_attributes (class_);
   first_class_attribute = NULL;
@@ -2505,15 +2457,11 @@ emit_class_attributes (extract_context & ctxt, print_output & output_ctx, DB_OBJ
     {
       name = db_get_class_name (class_);
       SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	{
-	  output_ctx ("ALTER %s %s%s%s.%s%s%s ADD CLASS ATTRIBUTE \n", class_type, PRINT_IDENTIFIER (owner_name),
-		      PRINT_IDENTIFIER (class_name));
-	}
-      else
-	{
-	  output_ctx ("ALTER %s %s%s%s ADD CLASS ATTRIBUTE \n", class_type, PRINT_IDENTIFIER (class_name));
-	}
+
+      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			sizeof (output_owner));
+
+      output_ctx ("ALTER %s %s%s%s%s ADD CLASS ATTRIBUTE \n", class_type, output_owner, PRINT_IDENTIFIER (class_name));
 
       for (a = first_class_attribute; a != NULL; a = db_attribute_next (a))
 	{
@@ -2644,6 +2592,7 @@ emit_methods (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * cla
   const char *name;
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   method_list = db_get_methods (class_);
   class_method_list = db_get_class_methods (class_);
@@ -2670,15 +2619,11 @@ emit_methods (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * cla
     {
       name = db_get_class_name (class_);
       SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	{
-	  output_ctx ("ALTER %s %s%s%s.%s%s%s ADD METHOD\n", class_type, PRINT_IDENTIFIER (owner_name),
-		      PRINT_IDENTIFIER (class_name));
-	}
-      else
-	{
-	  output_ctx ("ALTER %s %s%s%s ADD METHOD\n", class_type, PRINT_IDENTIFIER (class_name));
-	}
+
+      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			sizeof (output_owner));
+
+      output_ctx ("ALTER %s %s%s%s%s ADD METHOD\n", class_type, output_owner, PRINT_IDENTIFIER (class_name));
 
       for (m = first_method; m != NULL; m = db_method_next (m))
 	{
@@ -2702,15 +2647,11 @@ emit_methods (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * cla
     {
       name = db_get_class_name (class_);
       SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	{
-	  output_ctx ("ALTER %s %s%s%s.%s%s%s ADD METHOD\n", class_type, PRINT_IDENTIFIER (owner_name),
-		      PRINT_IDENTIFIER (class_name));
-	}
-      else
-	{
-	  output_ctx ("ALTER %s %s%s%s ADD METHOD\n", class_type, PRINT_IDENTIFIER (class_name));
-	}
+
+      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			sizeof (output_owner));
+
+      output_ctx ("ALTER %s %s%s%s%s ADD METHOD\n", class_type, output_owner, PRINT_IDENTIFIER (class_name));
 
       for (m = first_class_method; m != NULL; m = db_method_next (m))
 	{
@@ -2940,6 +2881,7 @@ emit_unique_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * 
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name_p = NULL;
   int not_online = 0;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   class_name = db_get_class_name (class_);
 
@@ -2974,15 +2916,10 @@ emit_unique_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * 
     }
 
   SPLIT_USER_SPECIFIED_NAME (class_name, owner_name, class_name_p);
-  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-    {
-      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (owner_name),
-		  PRINT_IDENTIFIER (class_name_p));
-    }
-  else
-    {
-      output_ctx ("ALTER %s %s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (class_name_p));
-    }
+
+  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner, sizeof (output_owner));
+
+  output_ctx ("ALTER %s %s%s%s%s ADD ATTRIBUTE\n", class_type, output_owner, PRINT_IDENTIFIER (class_name_p));
 
   for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
     {
@@ -3067,6 +3004,7 @@ emit_primary_key_def (extract_context & ctxt, print_output & output_ctx, DB_OBJE
   char *class_name_p = NULL;
   int not_online = 0;
   int i = 0;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   class_name = db_get_class_name (class_);
 
@@ -3103,15 +3041,10 @@ emit_primary_key_def (extract_context & ctxt, print_output & output_ctx, DB_OBJE
   output_ctx ("\n");
 
   SPLIT_USER_SPECIFIED_NAME (class_name, owner_name, class_name_p);
-  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-    {
-      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (owner_name),
-		  PRINT_IDENTIFIER (class_name_p));
-    }
-  else
-    {
-      output_ctx ("ALTER %s %s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (class_name_p));
-    }
+
+  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner, sizeof (output_owner));
+
+  output_ctx ("ALTER %s %s%s%s%s ADD ATTRIBUTE\n", class_type, output_owner, PRINT_IDENTIFIER (class_name_p));
 
   for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
     {
@@ -3195,6 +3128,7 @@ emit_primary_and_unique_def (extract_context & ctxt, print_output & output_ctx, 
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name_p = NULL;
   int not_online = 0;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   class_name = db_get_class_name (class_);
 
@@ -3230,15 +3164,10 @@ emit_primary_and_unique_def (extract_context & ctxt, print_output & output_ctx, 
     }
 
   SPLIT_USER_SPECIFIED_NAME (class_name, owner_name, class_name_p);
-  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-    {
-      output_ctx ("ALTER %s %s%s%s.%s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (owner_name),
-		  PRINT_IDENTIFIER (class_name_p));
-    }
-  else
-    {
-      output_ctx ("ALTER %s %s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (class_name_p));
-    }
+
+  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner, sizeof (output_owner));
+
+  output_ctx ("ALTER %s %s%s%s%s ADD ATTRIBUTE\n", class_type, output_owner, PRINT_IDENTIFIER (class_name_p));
 
   for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
     {
@@ -3327,6 +3256,7 @@ emit_reverse_unique_def (extract_context & ctxt, print_output & output_ctx, DB_O
   const char *name;
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   constraint_list = db_get_constraints (class_);
   if (constraint_list == NULL)
@@ -3363,16 +3293,12 @@ emit_reverse_unique_def (extract_context & ctxt, print_output & output_ctx, DB_O
 	{
 	  name = db_get_class_name (class_);
 	  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	    {
-	      output_ctx ("CREATE REVERSE UNIQUE INDEX %s%s%s on %s%s%s.%s%s%s (", PRINT_IDENTIFIER (constraint->name),
-			  PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
-	    }
-	  else
-	    {
-	      output_ctx ("CREATE REVERSE UNIQUE INDEX %s%s%s on %s%s%s (", PRINT_IDENTIFIER (constraint->name),
-			  PRINT_IDENTIFIER (class_name));
-	    }
+
+	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			    sizeof (output_owner));
+
+	  output_ctx ("CREATE REVERSE UNIQUE INDEX %s%s%s on %s%s%s%s (", PRINT_IDENTIFIER (constraint->name),
+		      output_owner, PRINT_IDENTIFIER (class_name));
 
 	  for (att = atts; *att != NULL; att++)
 	    {
@@ -3410,6 +3336,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
   const int *asc_desc;
   const int *prefix_length;
   int k, n_attrs = 0;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   constraint_list = db_get_constraints (class_);
   if (constraint_list == NULL)
@@ -3459,47 +3386,28 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
       SPLIT_USER_SPECIFIED_NAME (cls_name, owner_name, class_name);
       if (constraint->func_index_info)
 	{
-	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	    {
-	      output_ctx ("CREATE %s%sINDEX %s%s%s ON %s%s%s.%s%s%s (",
-			  (ctype == DB_CONSTRAINT_REVERSE_INDEX
-			   || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "REVERSE " : "", (ctype == DB_CONSTRAINT_UNIQUE
-											 || ctype ==
-											 DB_CONSTRAINT_REVERSE_UNIQUE) ?
-			  "UNIQUE " : "", PRINT_FUNCTION_INDEX_NAME (constraint->name), PRINT_IDENTIFIER (owner_name),
-			  PRINT_IDENTIFIER (class_name));
-	    }
-	  else
-	    {
-	      output_ctx ("CREATE %s%sINDEX %s%s%s ON %s%s%s (",
-			  (ctype == DB_CONSTRAINT_REVERSE_INDEX
-			   || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "REVERSE " : "", (ctype == DB_CONSTRAINT_UNIQUE
-											 || ctype ==
-											 DB_CONSTRAINT_REVERSE_UNIQUE) ?
-			  "UNIQUE " : "", PRINT_FUNCTION_INDEX_NAME (constraint->name), PRINT_IDENTIFIER (class_name));
-	    }
+	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			    sizeof (output_owner));
+
+	  output_ctx ("CREATE %s%sINDEX %s%s%s ON %s%s%s%s (",
+		      (ctype == DB_CONSTRAINT_REVERSE_INDEX
+		       || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "REVERSE " : "", (ctype == DB_CONSTRAINT_UNIQUE
+										     || ctype ==
+										     DB_CONSTRAINT_REVERSE_UNIQUE) ?
+		      "UNIQUE " : "", PRINT_FUNCTION_INDEX_NAME (constraint->name), output_owner,
+		      PRINT_IDENTIFIER (class_name));
 	}
       else
 	{
-	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	    {
-	      output_ctx ("CREATE %s%sINDEX %s%s%s ON %s%s%s.%s%s%s (",
-			  (ctype == DB_CONSTRAINT_REVERSE_INDEX
-			   || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "REVERSE " : "", (ctype == DB_CONSTRAINT_UNIQUE
-											 || ctype ==
-											 DB_CONSTRAINT_REVERSE_UNIQUE) ?
-			  "UNIQUE " : "", PRINT_IDENTIFIER (constraint->name), PRINT_IDENTIFIER (owner_name),
-			  PRINT_IDENTIFIER (class_name));
-	    }
-	  else
-	    {
-	      output_ctx ("CREATE %s%sINDEX %s%s%s ON %s%s%s (",
-			  (ctype == DB_CONSTRAINT_REVERSE_INDEX
-			   || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "REVERSE " : "", (ctype == DB_CONSTRAINT_UNIQUE
-											 || ctype ==
-											 DB_CONSTRAINT_REVERSE_UNIQUE) ?
-			  "UNIQUE " : "", PRINT_IDENTIFIER (constraint->name), PRINT_IDENTIFIER (class_name));
-	    }
+	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			    sizeof (output_owner));
+
+	  output_ctx ("CREATE %s%sINDEX %s%s%s ON %s%s%s%s (",
+		      (ctype == DB_CONSTRAINT_REVERSE_INDEX
+		       || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "REVERSE " : "", (ctype == DB_CONSTRAINT_UNIQUE
+										     || ctype ==
+										     DB_CONSTRAINT_REVERSE_UNIQUE) ?
+		      "UNIQUE " : "", PRINT_IDENTIFIER (constraint->name), output_owner, PRINT_IDENTIFIER (class_name));
 	}
 
       asc_desc = NULL;		/* init */
@@ -3628,6 +3536,7 @@ emit_domain_def (extract_context & ctxt, print_output & output_ctx, DB_DOMAIN * 
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
   const char *json_schema;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   for (domain = domains; domain != NULL; domain = db_domain_next (domain))
     {
@@ -3649,15 +3558,11 @@ emit_domain_def (extract_context & ctxt, print_output & output_ctx, DB_DOMAIN * 
 	    {
 	      name = db_get_class_name (class_);
 	      SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-	      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-		{
-		  output_ctx ("%s%s%s.%s%s%s", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
-		}
-	      else
-		{
-		  output_ctx ("%s%s%s", PRINT_IDENTIFIER (class_name));
-		}
 
+	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				sizeof (output_owner));
+
+	      output_ctx ("%s%s%s%s", output_owner, PRINT_IDENTIFIER (class_name));
 	    }
 	}
       else
@@ -3957,6 +3862,7 @@ emit_partition_info (extract_context & ctxt, print_output & output_ctx, MOP clso
   char *class_name = NULL;
   SM_CLASS *class_, *subclass;
   DB_OBJLIST *user;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   if (clsobj == NULL)
     {
@@ -3970,15 +3876,10 @@ emit_partition_info (extract_context & ctxt, print_output & output_ctx, MOP clso
     }
 
   SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-    {
-      output_ctx ("\nALTER CLASS %s%s%s.%s%s%s ", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
-    }
-  else
-    {
-      output_ctx ("\nALTER CLASS %s%s%s ", PRINT_IDENTIFIER (class_name));
-    }
 
+  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner, sizeof (output_owner));
+
+  output_ctx ("\nALTER CLASS %s%s%s%s ", output_owner, PRINT_IDENTIFIER (class_name));
   output_ctx ("\nPARTITION BY ");
 
   if (class_->partition->expr != NULL)
@@ -4246,6 +4147,7 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
   MOP ref_clsop;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   for (cl = classes; cl != NULL; cl = cl->next)
     {
@@ -4276,16 +4178,11 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	    }
 
 	  SPLIT_USER_SPECIFIED_NAME (cls_name, owner_name, class_name);
-	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	    {
-	      output_ctx ("ALTER CLASS %s%s%s.%s%s%s ADD", PRINT_IDENTIFIER (owner_name),
-			  PRINT_IDENTIFIER (class_name));
-	    }
-	  else
-	    {
-	      output_ctx ("ALTER CLASS %s%s%s ADD", PRINT_IDENTIFIER (class_name));
-	    }
 
+	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			    sizeof (output_owner));
+
+	  output_ctx ("ALTER CLASS %s%s%s%s ADD", output_owner, PRINT_IDENTIFIER (class_name));
 	  output_ctx (" CONSTRAINT [%s] FOREIGN KEY(", constraint->name);
 
 	  for (att = atts; *att != NULL; att++)
@@ -4301,15 +4198,11 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 
 	  ref_clsop = ws_mop (&(constraint->fk_info->ref_class_oid), NULL);
 	  SPLIT_USER_SPECIFIED_NAME (db_get_class_name (ref_clsop), owner_name, class_name);
-	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	    {
-	      output_ctx (" REFERENCES %s%s%s.%s%s%s ", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
-	    }
-	  else
-	    {
-	      output_ctx (" REFERENCES %s%s%s ", PRINT_IDENTIFIER (class_name));
-	    }
 
+	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			    sizeof (output_owner));
+
+	  output_ctx (" REFERENCES %s%s%s%s ", output_owner, PRINT_IDENTIFIER (class_name));
 	  output_ctx ("ON DELETE %s ", classobj_describe_foreign_key_action (constraint->fk_info->delete_action));
 	  output_ctx ("ON UPDATE %s ", classobj_describe_foreign_key_action (constraint->fk_info->update_action));
 
@@ -4341,6 +4234,7 @@ export_server (extract_context & ctxt, print_output & output_ctx)
   size_t uppercase_user_size = 0;
   size_t query_size = 0;
   char *query = NULL;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   const char *attr_names[SERVER_VALUE_INDEX_MAX] = {
     "link_name", "host", "port", "db_name", "user_name", "password", "properties", "comment", "owner_name", "owner_obj"
@@ -4353,6 +4247,8 @@ export_server (extract_context & ctxt, print_output & output_ctx)
   const char *query_user =
     "SELECT [link_name], [host], [port], [db_name], [user_name], [password], [properties], [comment],"
     "[owner].[name] [owner_name], [owner] [owner_obj] FROM [_db_server] WHERE [link_name] IS NOT NULL and [owner].[name]='%s'";
+
+  output_ctx ("\n");
 
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
     {
@@ -4441,15 +4337,10 @@ export_server (extract_context & ctxt, print_output & output_ctx)
 	  else
 	    {
 	      owner_name = (char *) db_get_string (values + 8);
-	      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-		{
-		  output_ctx ("CREATE SERVER [%s].[%s] (", owner_name, srv_name);
-		}
-	      else
-		{
-		  output_ctx ("CREATE SERVER [%s] (", srv_name);
-		}
+	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				sizeof (output_owner));
 
+	      output_ctx ("CREATE SERVER %s[%s] (", output_owner, srv_name);
 	      output_ctx ("\n\t HOST= '%s'", (char *) db_get_string (values + 1));
 	      output_ctx (",\n\t PORT= %d", db_get_int (values + 2));
 

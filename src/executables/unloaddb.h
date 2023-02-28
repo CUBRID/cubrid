@@ -61,6 +61,18 @@ extern int lo_count;
 #define PRINT_IDENTIFIER_WITH_QUOTE(s) "\"", (s), "\""
 #define PRINT_FUNCTION_INDEX_NAME(s) "\"", (s), "\""
 
+#define PRINT_OWNER_NAME(owner, print, output_owner, output_len) \
+do \
+  { \
+  size_t total_len = strlen (owner) + 4; \
+  assert (strlen ((owner)) < STATIC_CAST (int, output_len)); \
+  if (print) \
+      snprintf (output_owner, total_len, "%s%s%s%s", PRINT_IDENTIFIER (owner), "."); \
+  else \
+    strcpy(output_owner, ""); \
+  } \
+while (0)
+
 /* 
  * name is user_specified_name.
  * owner_name must be a char array of size DB_MAX_IDENTIFIER_LENGTH to copy user_specified_name.
