@@ -153,7 +153,7 @@ $ csql help messages
    ;EXit                        - 종료.\n\
 \n\
    ;CLear                       - 명령어 버퍼 내용을 지움.\n\
-   ;EDIT   [format/fmt]         - 명령어 버퍼 편집.\n\
+   ;EDIT   [format/fmt]         - 명령어 버퍼 [포맷 후] 편집.\n\
    ;LISt                        - 명령어 버퍼 내용 출력.\n\
 \n\
    ;RUn                         - 명령어 버퍼 실행.\n\
