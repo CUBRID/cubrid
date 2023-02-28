@@ -5669,7 +5669,6 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
   root_header->_32.rev_level = BTREE_CURRENT_REV_LEVEL;
   root_header->_32.decomoress_attr_idx = decompress_attr_idx;
-  //  root_header->rev_level = (decompress_attr_idx == -1) ? BTREE_CURRENT_REV_LEVEL : decompress_attr_idx;
 #else
   root_header->rev_level = BTREE_CURRENT_REV_LEVEL;
 #endif
@@ -8867,13 +8866,15 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
   else
     {				/* a leaf page */
       /* form the cpc structure for a leaf node page */
-      cpc->dis_key_cnt = key_cnt;
 #if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-      cpc->decompress_dis_key_cnt = 0;
+      cpc->dis_key_cnt = 0;
+      cpc->decompress_dis_key_cnt = key_cnt;
+#else
+      cpc->dis_key_cnt = key_cnt;
 #endif
       cpc->leaf_pg_cnt = 1;
       cpc->height = 1;
-      for (i = 1; i <= cpc->dis_key_cnt; i++)
+      for (i = 1; i <= key_cnt; i++)
 	{
 	  if (spage_get_record (thread_p, pg_ptr, i, &rec, PEEK) != S_SUCCESS)
 	    {
@@ -8891,7 +8892,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 #if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
 	  if (env->ignore_diff_pos == -1 || !btree_is_same_key_for_stats (env, &key1))
 	    {
-	      cpc->decompress_dis_key_cnt++;
+	      cpc->dis_key_cnt++;
 	    }
 #endif
 
