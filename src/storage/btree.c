@@ -8261,7 +8261,7 @@ btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid, b
   /* if the break statement occurs due to an error, the lock acquired immediately before should be released. */
   if (!OID_ISNULL (&class_oid))
     {
-      lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, FILE_GET_TRACKER_LOCK_MODE (FILE_BTREE), true);
+      lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, IX_LOCK, true);
     }
 
   return valid;
