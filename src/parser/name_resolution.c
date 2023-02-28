@@ -1009,13 +1009,7 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	  else if (table->node_type == PT_DBLINK_TABLE)
 	    {
 	      assert (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE);
-	      if (table->info.dblink_table.is_name)
-		{
-		  if (pt_resolve_dblink_server_name (parser, table) != NO_ERROR)
-		    {
-		      return;
-		    }
-		}
+	      assert (table->info.dblink_table.is_name == false || table->info.dblink_table.url != NULL);
 
 	      table->info.dblink_table.cols =
 		parser_walk_tree (parser, table->info.dblink_table.cols, pt_bind_name_to_spec, spec, NULL, NULL);
@@ -4282,6 +4276,18 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      if (!node->info.spec.id)
 		{
 		  node->info.spec.id = (UINTPTR) node;
+		}
+
+	      if (derived_table->node_type == PT_DBLINK_TABLE)
+		{
+		  assert (node->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE);
+		  if (derived_table->info.dblink_table.is_name && derived_table->info.dblink_table.url == NULL)
+		    {
+		      if (pt_resolve_dblink_server_name (parser, derived_table) != NO_ERROR)
+			{
+			  return NULL;
+			}
+		    }
 		}
 
 	      parser_walk_tree (parser, derived_table, pt_flat_spec_pre, info, pt_continue_walk, NULL);
