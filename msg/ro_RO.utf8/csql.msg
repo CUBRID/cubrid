@@ -113,6 +113,7 @@ $ These 3 should be blank
 196 O eroare nedefinită s-a produs.
 197 ';edit' nu este permis când output-ul este redirecţionat.
 198 Formatul a eșuat.
+199 Nume de utilizator/parolă/nume db/nume de gazdă invalid; autentificare refuzată.
 
 203 <%1$s> 
 204 <SuperClase> 

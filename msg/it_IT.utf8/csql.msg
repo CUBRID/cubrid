@@ -113,6 +113,7 @@ $ Questi 3 dovrebbe essere vuoto
 196 Un errore sconosciuto si è verificato.
 197 ';edit' non è consentita quando l'output è stato reindirizzato.
 198 Formato non riuscito.
+199 Nome utente/password/databasename/hostname non validi; accesso negato.
 
 203 <%1$s> 
 204 <Super Classes> 

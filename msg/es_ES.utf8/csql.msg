@@ -113,6 +113,7 @@ $ Estos 3 deberian ser vacias.
 196 Un error no definido ha ocurrido.
 197 ';edit' no es permitido cuando salida ha sido redireccionada.
 198 Error en el formato.
+199 Nombre de usuario/contraseña/nombre de base de datos/nombre de host no válidos; inicio de sesión denegado.
 
 203 <%1$s> 
 204 <Super Clases> 
