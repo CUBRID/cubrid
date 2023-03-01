@@ -86,6 +86,7 @@ extern int numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int sr
 				      DB_C_NUMERIC dest_num);
 
 extern int numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_stat);
+extern int numeric_db_value_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_stat);
 extern int numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_stat);
 extern int numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest);
 extern char *numeric_db_value_print (const DB_VALUE * val, char *buf);
