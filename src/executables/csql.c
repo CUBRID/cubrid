@@ -3455,20 +3455,12 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   /*connect to same DB user or not */
   if ((db_name == NULL || strcasecmp (csql_arg->db_name, db_name) == 0) && csql_Database_connected == TRUE)
     {
-      if (!au_is_dba_group_member (Au_user))
+      error_code = au_login (user_name, NULL, false);
+      if (csql_Is_interactive && db_error_code () == ER_AU_INVALID_PASSWORD)
 	{
-	  error_code = au_login (user_name, NULL, false);
-	  if (csql_Is_interactive && db_error_code () == ER_AU_INVALID_PASSWORD)
-	    {
-	      p = getpass ((char *) csql_get_message (CSQL_PASSWD_PROMPT_TEXT));
-	      error_code = au_login (user_name, p, false);
-	    }
+	  p = getpass ((char *) csql_get_message (CSQL_PASSWD_PROMPT_TEXT));
+	  error_code = au_login (user_name, p, false);
 	}
-      else
-	{
-	  error_code = au_login (user_name, NULL, false);
-	}
-
       if (error_code == NO_ERROR)
 	{
 	  error_code = clogin_user (user_name);
