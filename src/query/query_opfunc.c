@@ -5835,19 +5835,38 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       DB_VALUE dbval_tmp1;
       DB_VALUE dbval_tmp2;
       DB_VALUE result_tmp;
-      DB_DATA_STATUS data_status;
+      DB_DATA_STATUS status;
 
     case DB_TYPE_SHORT:
     case DB_TYPE_INTEGER:
     case DB_TYPE_BIGINT:
-    case DB_TYPE_FLOAT:
-    case DB_TYPE_DOUBLE:
-    case DB_TYPE_NUMERIC:
-    case DB_TYPE_MONETARY:
       tp_value_auto_cast (dbval1_p, &dbval_tmp1, &tp_Double_domain);
       tp_value_auto_cast (dbval2_p, &dbval_tmp2, &tp_Double_domain);
-      qdata_divide_double_to_dbval (&dbval_tmp1, &dbval_tmp2, &result_tmp);
-      numeric_db_value_to_num (&result_tmp, result_p, &data_status);
+      if ((error = qdata_divide_double_to_dbval (&dbval_tmp1, &dbval_tmp2, &result_tmp)) != NO_ERROR)
+	{
+	  break;
+	}
+      error = numeric_db_value_to_num (&result_tmp, result_p, &status);
+      if (status == DATA_STATUS_TRUNCATED)
+	{
+	  *result_p = result_tmp;
+	}
+      break;
+
+    case DB_TYPE_NUMERIC:
+      error = qdata_divide_numeric_to_dbval (dbval1_p, dbval2_p, result_p);
+      break;
+
+    case DB_TYPE_MONETARY:
+      error = qdata_divide_monetary_to_dbval (dbval1_p, dbval2_p, result_p);
+      break;
+
+    case DB_TYPE_FLOAT:
+      error = qdata_divide_float_to_dbval (dbval1_p, dbval2_p, result_p);
+      break;
+
+    case DB_TYPE_DOUBLE:
+      error = qdata_divide_double_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
 
     case DB_TYPE_SET:
