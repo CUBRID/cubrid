@@ -2798,7 +2798,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 		{
 		  /* no action */ ;
 		}
-	      else if ((idx_info->dupkey_mode != DUP_MODE_NONE)
+	      else if ((idx_info->dupkey_mode != COMPRESS_INDEX_MODE_NONE)
 		       && !SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != SM_CONSTRAINT_FOREIGN_KEY)
 		{
 		  has_reserved_index_col = true;
@@ -7519,7 +7519,7 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
     {
       /* no action */ ;
     }
-  else if (fk_info->dupkey_mode != DUP_MODE_NONE)
+  else if (fk_info->dupkey_mode != COMPRESS_INDEX_MODE_NONE)
     {
       att_names[i++] = (char *) GET_RESERVED_INDEX_ATTR_NAME (fk_info->dupkey_mode, fk_info->dupkey_hash_level);
     }

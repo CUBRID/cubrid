@@ -211,13 +211,16 @@ int is_dblink_query_string = 0;
 [cC][oO][lL][uU][mM][nN][sS]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return COLUMNS; }
-[cC][oO][mM][mM][eE][nN][tT]					{ begin_token(yytext);
+[cC][oO][mM][mM][eE][nN][tT]					        { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return COMMENT; }
 [cC][oO][mM][mM][iI][tT]						{ begin_token(yytext);   return COMMIT; }
 [cC][oO][mM][mM][iI][tT][tT][eE][dD]					{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return COMMITTED; }
+[cC][oO][mM][pP][rR][eE][sS]		 			        { begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return COMPRESS_; }                                                                                
 [cC][oO][nN][nN][eE][cC][tT]						{ begin_token(yytext);   return CONNECT; }
 [cC][oO][nN][nN][eE][cC][tT][_][bB][yY][_][iI][sS][cC][yY][cC][lL][eE]	{ begin_token(yytext);   return CONNECT_BY_ISCYCLE; }
 [cC][oO][nN][nN][eE][cC][tT][_][bB][yY][_][iI][sS][lL][eE][aA][fF]	{ begin_token(yytext);   return CONNECT_BY_ISLEAF; }
@@ -281,9 +284,6 @@ int is_dblink_query_string = 0;
 [dD][eE][cC][rR][eE][mM][eE][nN][tT]					{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return DECREMENT; }
-[dD][eE][dD][uU][pP][lL][iI][cC][aA][tT][eE]				{ begin_token(yytext);
-                                                                                csql_yylval.cptr = pt_makename(yytext);
-                                                                                return DEDUPLICATE_; }
 [dD][eE][fF][aA][uU][lL][tT]						{ begin_token(yytext);   return DEFAULT; }
 [dD][eE][fF][eE][rR][rR][aA][bB][lL][eE]				{ begin_token(yytext);   return DEFERRABLE; }
 [dD][eE][fF][eE][rR][rR][eE][dD]					{ begin_token(yytext);   return DEFERRED; }
@@ -402,6 +402,9 @@ int is_dblink_query_string = 0;
 [hH][eE][aA][pP]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return HEAP; }
+[hH][iI][gG][hH]							{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return HIGH_; }                                                                                
 [hH][oO][sS][tT]					                { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return HOST; }
@@ -594,6 +597,7 @@ int is_dblink_query_string = 0;
 										csql_yylval.cptr = pt_makename(yytext);
 										return LOG; }
 [lL][oO][oO][pP]							{ begin_token(yytext);   return LOOP; }
+[lL][oO][wW] 							        { begin_token(yytext);   return LOW_; }
 [lL][oO][wW][eE][rR]							{ begin_token(yytext);   return LOWER; }
 [mM][aA][tT][cC][hH]							{ begin_token(yytext);   return MATCH; }
 [mM][aA][tT][cC][hH][eE][dD]						{ begin_token(yytext);	 return MATCHED; }
@@ -612,6 +616,7 @@ int is_dblink_query_string = 0;
 										return MEMBERS; }
 [mM][eE][rR][gG][eE]							{ begin_token(yytext);	 return MERGE; }
 [mM][eE][tT][hH][oO][dD]						{ begin_token(yytext);   return METHOD; }
+[mM][eE][dD][iI][uU][mM]						{ begin_token(yytext);   return MEDIUM_; }
 [mM][iI][lL][lL][iI][sS][eE][cC][oO][nN][dD]				{ begin_token(yytext);   return MILLISECOND_; }
 [mM][iI][nN][uU][tT][eE]						{ begin_token(yytext);   return MINUTE_; }
 [mM][iI][nN][uU][tT][eE]_[mM][iI][lL][lL][iI][sS][eE][cC][oO][nN][dD]	{ begin_token(yytext);   return MINUTE_MILLISECOND; }
@@ -677,9 +682,6 @@ int is_dblink_query_string = 0;
 										csql_yylval.cptr = pt_makename(yytext);
 										return OFFSET; }
 [oO][nN]								{ begin_token(yytext);   return ON_; }                                                                                
-[oO][iIN][dD]								{ begin_token(yytext);   
-                                                                                csql_yylval.cptr = pt_makename(yytext);
-                                                                                return OID_; }
 [oO][nN][lL][iI][nN][eE]						{ begin_token(yytext);   
                                                                                 csql_yylval.cptr = pt_makename(yytext);
                                                                                 return ONLINE; }
@@ -705,10 +707,6 @@ int is_dblink_query_string = 0;
 [pP][aA][gG][eE]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return PAGE; }
-[pP][aA][gG][eE][iI][dD]						{ begin_token(yytext);
-										csql_yylval.cptr = pt_makename(yytext);
-										return PAGEID_; }
-
                                                                                 
 [pP][aA][rR][aA][lL][lL][eE][lL]					{ begin_token(yytext);
                                                                                 csql_yylval.cptr = pt_makename(yytext);
