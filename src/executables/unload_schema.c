@@ -164,7 +164,7 @@ static int order_classes (DB_OBJLIST ** class_list, DB_OBJLIST ** order_list, in
 static void emit_cycle_warning (print_output & output_ctx);
 static void force_one_class (print_output & output_ctx, DB_OBJLIST ** class_list, DB_OBJLIST ** order_list);
 static DB_OBJLIST *get_ordered_classes (print_output & output_ctx, MOP * class_table);
-static void emit_class_owner (extract_context & ctxt, print_output & output_ctx, MOP class_);
+static void emit_class_owner (print_output & output_ctx, MOP class_);
 static int export_serial (extract_context & ctxt, print_output & output_ctx);
 static int emit_indexes (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes, int has_indexes,
 			 DB_OBJLIST * vclass_list_has_using_index);
@@ -646,7 +646,7 @@ get_ordered_classes (print_output & output_ctx, MOP * class_table)
  *    class(in): class MOP
  */
 static void
-emit_class_owner (extract_context & ctxt, print_output & output_ctx, MOP class_)
+emit_class_owner (print_output & output_ctx, MOP class_)
 {
   const char *classname;
   MOP owner;
@@ -1574,7 +1574,7 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
        */
       if (ctxt.do_auth)
 	{
-	  emit_class_owner (ctxt, output_ctx, cl->op);
+	  emit_class_owner (output_ctx, cl->op);
 	}
 
       output_ctx ("\n");
