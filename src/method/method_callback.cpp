@@ -165,10 +165,9 @@ namespace cubmethod
     query_handler *handler = get_query_handler_by_id (request.handler_id);
     if (handler == nullptr)
       {
-	// not prepared
-
 	// TODO: proper error code
 	m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+  assert (false); // the error should have been handled in prepare function
       }
     else
       {
