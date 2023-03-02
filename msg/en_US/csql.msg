@@ -164,6 +164,9 @@ $ csql help messages
    ;ROllback                    - roll back the current transaction.\n\
    ;AUtocommit [ON|OFF]         - enable/disable auto commit mode.\n\
    ;REStart                     - restart database.\n\
+   ;CHeckpoint                  - execute the checkpoint.\n\
+   ;Killtran                    - check the transaction status information\n\
+                                  or terminate a specific transaction.\n\
 \n\
    ;SHELL_Cmd     [shell-cmd]   - set default shell, editor, print, pager and formatter\n\
    ;EDITOR_Cmd    [editor-cmd]    command to new one, or display the current\n\
@@ -188,6 +191,13 @@ $ csql help messages
    ;HISTORYRead <history_num>   - read entry on the history number into command buffer.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - enable/disable single-line mode.\n\
+   ;Connect [user-name] [database-name]@[host-name]\n\
+                                - connect user, database, host.\n\ 
+   ;.Hist [ON/OFF]              - start/stop collecting statistics information in CSQL.\n\
+   ;.Clear_hist                 - clear the CSQL statistics information in the buffer.\n\
+   ;.Dump_hist                  - display the CSQL statistics information in CSQL.\n\
+   ;.X_hist                     - display the CSQL statistics information in CSQL\n\
+                                  with statistics data initialized.\n\
    ;HElp                        - display this help message.\n\n
 
 232 <Constraints> 
