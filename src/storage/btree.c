@@ -4620,6 +4620,7 @@ btree_dump_root_header (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR page_ptr)
   fprintf (fp, " OVFID: %d|%d\n", root_header->ovfid.fileid, root_header->ovfid.volid);
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
   fprintf (fp, " Btree Revision Level: %d\n", root_header->_32.rev_level);
+  fprintf (fp, " Btree Decompress position: %d\n", root_header->_32.decomoress_attr_idx);
 #else
   fprintf (fp, " Btree Revision Level: %d\n", root_header->rev_level);
 #endif
@@ -5851,6 +5852,7 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_
 
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
   btid->rev_level = root_header->_32.rev_level;
+  btid->decomoress_attr_idx = root_header->_32.decomoress_attr_idx;
 #else
   btid->rev_level = root_header->rev_level;
 #endif

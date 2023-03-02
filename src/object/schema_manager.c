@@ -10606,9 +10606,6 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
   int unique_pk = 0;
   int not_null = 0;
   int reverse = 0;
-#if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
-  int decompress_attr_idx = -1;
-#endif
 
   if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type))
     {
@@ -10757,32 +10754,33 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
 	}
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
-  decompress_attr_idx = -1;
-  if (n_attrs > 1)
-    {
-      if (function_index && function_index->attr_index_start > 0)
-	{
-	  if (IS_RESERVED_INDEX_ATTR_ID (attrs[function_index->attr_index_start - 1]->id))
-	    {
-	      decompress_attr_idx = function_index->attr_index_start;
-	    }
-	}
-      else
-	{
-	  if (IS_RESERVED_INDEX_ATTR_ID (attrs[n_attrs - 1]->id))
-	    {
-	      decompress_attr_idx = n_attrs - 1;
-	    }
-	}
-    }
-#endif
-
   /* If there are no instances, then call btree_add_index() to create an empty index, otherwise call
    * btree_load_index () to load all of the instances (including applicable subclasses) into a new B-tree */
   // TODO: optimize has_instances case
   if (!class_->load_index_from_heap || !has_instances || index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
+#if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
+      int decompress_attr_idx = -1;
+
+      if (n_attrs > 1)
+	{
+	  if (function_index && function_index->attr_index_start > 0)
+	    {
+	      if (IS_RESERVED_INDEX_ATTR_ID (attrs[function_index->attr_index_start - 1]->id))
+		{
+		  decompress_attr_idx = function_index->attr_index_start;
+		}
+	    }
+	  else
+	    {
+	      if (IS_RESERVED_INDEX_ATTR_ID (attrs[n_attrs - 1]->id))
+		{
+		  decompress_attr_idx = n_attrs - 1;
+		}
+	    }
+	}
+#endif
+
       error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
 			       , decompress_attr_idx

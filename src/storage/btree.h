@@ -130,6 +130,9 @@ struct btid_int
   char *copy_buf;		/* index key copy_buf pointer info; derived from INDX_SCAN_ID.copy_buf */
   int copy_buf_len;		/* index key copy_buf length info; derived from INDX_SCAN_ID.copy_buf_len */
   int rev_level;
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+  int decomoress_attr_idx;
+#endif
   OID topclass_oid;		/* class oid for which index is created */
 };
 
