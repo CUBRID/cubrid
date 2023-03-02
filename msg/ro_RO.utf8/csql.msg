@@ -154,7 +154,7 @@ $ csql help messages
    ;EXit                        - închide aplicaţia.\n\
 \n\
    ;CLear                       - goleşte buffer-ul de comenzi.\n\
-   ;EDIT   [format/fmt]         - invocă editorul de sistem [după formatator] cu bufferul de comandă.\n\   
+   ;EDIT   [format/fmt]         - invocă editorul de sistem [după formatator] cu bufferul de comandă.\n\
    ;LISt                        - afişează conţinutul buffer-ului de comenzi.\n\
 \n\
    ;RUn                         - execută instrucţiunile SQL din buffer-ul de comenzi.\n\
