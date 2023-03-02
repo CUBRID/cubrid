@@ -4620,7 +4620,7 @@ btree_dump_root_header (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR page_ptr)
   fprintf (fp, " OVFID: %d|%d\n", root_header->ovfid.fileid, root_header->ovfid.volid);
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
   fprintf (fp, " Btree Revision Level: %d\n", root_header->_32.rev_level);
-  fprintf (fp, " Btree Decompress position: %d\n", root_header->_32.decomoress_attr_idx);
+  fprintf (fp, " Btree Decompress position: %d\n", GET_DECOMPRESS_IDX_HEADER (root_header));
 #else
   fprintf (fp, " Btree Revision Level: %d\n", root_header->rev_level);
 #endif
@@ -5596,7 +5596,7 @@ BTID *
 xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id,
 		  int unique_pk, long long num_oids, long long num_nulls, long long num_keys
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
-		  , int decompress_attr_idx
+		  , int decompress_attr_pos
 #endif
   )
 {
@@ -5669,7 +5669,7 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
   VFID_SET_NULL (&(root_header->ovfid));
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
   root_header->_32.rev_level = BTREE_CURRENT_REV_LEVEL;
-  root_header->_32.decomoress_attr_idx = decompress_attr_idx;
+  SET_DECOMPRESS_IDX_HEADER (root_header, decompress_attr_pos);
 #else
   root_header->rev_level = BTREE_CURRENT_REV_LEVEL;
 #endif
@@ -5852,7 +5852,7 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_
 
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
   btid->rev_level = root_header->_32.rev_level;
-  btid->decomoress_attr_idx = root_header->_32.decomoress_attr_idx;
+  btid->decompress_attr_idx = GET_DECOMPRESS_IDX_HEADER (root_header);
 #else
   btid->rev_level = root_header->rev_level;
 #endif
@@ -6716,17 +6716,10 @@ btree_is_same_key_for_stats (BTREE_STATS_ENV * env, DB_VALUE * key_value)
   //db_value_print_console (&(env->old_key_val), false, "old_key_val=");
   //db_value_print_console (key_value, true, ", cur_key=");
 
-#if !defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE_2ND)
-  if (btree_multicol_key_get_first_not_null_pos (key_value) == env->ignore_diff_pos)
-    {
-      return true;
-    }
-#endif
-
   if (!DB_IS_NULL (&(env->old_key_val)))
     {
-      int merged_prefix = pr_midxkey_common_prefix (&(env->old_key_val), key_value);
-      if (env->ignore_diff_pos == merged_prefix)
+      int same_prefix = pr_midxkey_common_prefix (&(env->old_key_val), key_value);
+      if (env->ignore_diff_pos == same_prefix)
 	{
 	  return true;
 	}
@@ -7214,11 +7207,7 @@ btree_get_btid_from_file (THREAD_ENTRY * thread_p, const VFID * vfid, BTID * bti
  * total number of pages, number of keys and the height of the tree.
  */
 int
-btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_fullscan
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-		 , int reserved_index_col_pos
-#endif
-  )
+btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_fullscan)
 {
   int npages;
   BTREE_STATS_ENV stat_env, *env;
@@ -7338,7 +7327,7 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
 
 #if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
   db_make_null (&(env->old_key_val));
-  env->ignore_diff_pos = reserved_index_col_pos;
+  env->ignore_diff_pos = env->btree_scan.btid_int.decompress_attr_idx;
 #endif
 
   if (with_fullscan || npages <= STATS_SAMPLING_THRESHOLD)
@@ -9049,7 +9038,7 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
 
 #if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
   db_make_null (&(stats_env.old_key_val));
-  stats_env.ignore_diff_pos = root_header->_32.decomoress_attr_idx;
+  stats_env.ignore_diff_pos = GET_DECOMPRESS_IDX_HEADER (root_header);
 #endif
   /* traverse the tree and store the capacity info */
   ret = btree_get_subtree_capacity (thread_p, &btid_int, root, cpc
@@ -18526,42 +18515,6 @@ btree_multicol_key_is_null (DB_VALUE * key)
   return status;
 }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-int
-btree_multicol_key_get_first_not_null_pos (DB_VALUE * key)
-{
-  DB_MIDXKEY *midxkey;
-  unsigned char *bits;
-  int nbytes, i;
-
-  if (DB_VALUE_TYPE (key) == DB_TYPE_MIDXKEY)
-    {
-      assert (!DB_IS_NULL (key));
-
-      midxkey = db_get_midxkey (key);
-      assert (midxkey != NULL);
-
-      /* ncolumns == -1 means already constructing step */
-      if (midxkey && midxkey->ncolumns != -1)
-	{
-	  bits = (unsigned char *) midxkey->buf;
-	  for (i = 0; i < midxkey->ncolumns; i++)
-	    {
-	      if (!OR_MULTI_ATT_IS_UNBOUND (midxkey->buf, i))
-		{
-		  return i;
-		}
-	    }
-	}
-      if (midxkey->min_max_val.position != -1)
-	{
-	  return midxkey->min_max_val.position;
-	}
-    }
-
-  return -1;
-}
-#endif
 /*
  * btree_multicol_key_has_null () -
  *   return: Return true if DB_VALUE is a multi-column key and has a NULL element in it and false otherwise.

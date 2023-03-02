@@ -548,9 +548,6 @@ struct sm_class_constraint
   const char *comment;
   SM_CONSTRAINT_EXTRA_FLAG extra_status;
   SM_INDEX_STATUS index_status;
-#if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
-  int decompress_attr_idx;	// ctshim
-#endif
 };
 
 /*

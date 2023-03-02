@@ -235,7 +235,7 @@ extern int stats_update_all_statistics (int with_fullscan);
 
 extern int btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
-			    , int decompress_attr_idx
+			    , int decompress_attr_pos
 #endif
   );
 extern int btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * class_oids, int n_classes,
@@ -290,11 +290,7 @@ extern void logtb_dump_trantable (FILE * outfp);
 
 extern int heap_get_class_num_objects_pages (HFID * hfid, int approximation, int *nobjs, int *npages);
 
-extern int btree_get_statistics (BTID * btid, BTREE_STATS * stat_info
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-				 , int reserved_index_col_pos
-#endif
-  );
+extern int btree_get_statistics (BTID * btid, BTREE_STATS * stat_info);
 extern int btree_get_index_key_type (BTID btid, TP_DOMAIN ** key_type_p);
 extern int db_local_transaction_id (DB_VALUE * trid);
 extern int qp_get_server_info (PARSER_CONTEXT * parser, int server_info_bits);

@@ -3368,83 +3368,6 @@ partition_new_scancache (PRUNING_CONTEXT * pcontext)
   return &node->scan_cache;
 }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-CResvBtidMap::CResvBtidMap (THREAD_ENTRY * thread_p)
-{
-  m_thread = thread_p;
-
-  m_pbtid = NULL;
-  m_ppos = NULL;
-  m_alloc_sz = m_used_cnt = 0;
-}
-
-CResvBtidMap::~CResvBtidMap ()
-{
-  clear ();
-}
-
-void
-CResvBtidMap::clear ()
-{
-  if (m_pbtid)
-    {
-      db_private_free (m_thread, m_pbtid);
-      m_pbtid = NULL;
-    }
-  if (m_ppos)
-    {
-      db_private_free (m_thread, m_ppos);
-      m_ppos = NULL;
-    }
-}
-
-bool
-CResvBtidMap::add (BTID * btid, int pos)
-{
-  // ctshim
-  if (m_alloc_sz == 0)
-    {
-      m_pbtid = (BTID *) db_private_alloc (m_thread, 10 * sizeof (BTID));
-      m_ppos = (int *) db_private_alloc (m_thread, 10 * sizeof (int));
-      m_alloc_sz = 10;
-    }
-  else if (m_alloc_sz <= m_used_cnt)
-    {
-      m_pbtid = (BTID *) db_private_realloc (m_thread, m_pbtid, (m_alloc_sz + 10) * sizeof (BTID));
-      m_ppos = (int *) db_private_realloc (m_thread, m_ppos, (m_alloc_sz + 10) * sizeof (int));
-      m_alloc_sz += 10;
-    }
-
-  if (m_pbtid == NULL || m_ppos == NULL)
-    {
-      //ER_OUT_OF_VIRTUAL_MEMORY;
-      assert_release (false);
-    }
-
-  //memcpy(pbtid + used_cnt, btid, sizeof(BTID));
-  m_pbtid[m_used_cnt] = *btid;
-  m_ppos[m_used_cnt] = pos;
-  m_used_cnt++;
-
-  return true;
-}
-
-int
-CResvBtidMap::find (BTID * btid)
-{
-  for (int i = 0; i < m_used_cnt; i++)
-    {
-      if (m_pbtid[i].root_pageid = btid->root_pageid
-	  && (m_pbtid[i].vfid.fileid == btid->vfid.fileid && m_pbtid[i].vfid.volid == btid->vfid.volid))
-	{
-	  return m_ppos[i];
-	}
-    }
-
-  return -1;
-}
-#endif
-
 /*
  * partition_get_partition_oids () - get OIDs of partition classes
  * return : error code or NO_ERROR
@@ -3454,11 +3377,7 @@ CResvBtidMap::find (BTID * btid)
  * count (in/out)	   : number of partitions
  */
 int
-partition_get_partition_oids (THREAD_ENTRY * thread_p, const OID * class_oid, OID ** partition_oids, int *count
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-			      , CResvBtidMap * btid_pos_map
-#endif
-  )
+partition_get_partition_oids (THREAD_ENTRY * thread_p, const OID * class_oid, OID ** partition_oids, int *count)
 {
   int error = NO_ERROR;
   PRUNING_CONTEXT context;
@@ -3478,34 +3397,6 @@ partition_get_partition_oids (THREAD_ENTRY * thread_p, const OID * class_oid, OI
     {
       goto cleanup;
     }
-
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-  if (btid_pos_map)
-    {
-      OR_INDEX *index_ptr;
-      for (i = 0; i < classrepr->n_indexes; i++)
-	{
-	  index_ptr = classrepr->indexes + i;
-	  if (index_ptr->n_atts > 1)
-	    {
-	      if (index_ptr->func_index_info == NULL)
-		{		// If no function is included, only the last member is checked.
-		  if (IS_RESERVED_INDEX_ATTR_ID (index_ptr->atts[index_ptr->n_atts - 1]->id))
-		    {
-		      btid_pos_map->add (&(index_ptr->btid), (index_ptr->n_atts - 1));
-		    }
-		}
-	      else if (index_ptr->func_index_info->attr_index_start > 0)
-		{		// Check the (attr_index_start -1)th member.
-		  if (IS_RESERVED_INDEX_ATTR_ID (index_ptr->atts[index_ptr->func_index_info->attr_index_start - 1]->id))
-		    {
-		      btid_pos_map->add (&(index_ptr->btid), index_ptr->func_index_info->attr_index_start);
-		    }
-		}
-	    }
-	}
-    }
-#endif
 
   if (classrepr->has_partition_info > 0)
     {

@@ -92,26 +92,6 @@ struct pruning_context
   bool is_from_cache;		/* true if this context is cached */
 };
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-class CResvBtidMap
-{
-private:
-  THREAD_ENTRY * m_thread;
-  BTID *m_pbtid;
-  int *m_ppos;
-  int m_alloc_sz;
-  int m_used_cnt;
-
-public:
-    CResvBtidMap (THREAD_ENTRY * thread_p);
-   ~CResvBtidMap ();
-
-  void clear ();
-  bool add (BTID * btid, int pos);
-  int find (BTID * btid);
-};
-#endif
-
 extern void partition_init_pruning_context (PRUNING_CONTEXT * pinfo);
 
 extern int partition_load_pruning_context (THREAD_ENTRY * thread_p, const OID * class_oid, int pruning_type,
@@ -143,11 +123,7 @@ extern int partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * k
 					BTID * btid);
 
 extern int partition_get_partition_oids (THREAD_ENTRY * thread_p, const OID * class_oid, OID ** partition_oids,
-					 int *count
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-					 , CResvBtidMap * btid_pos_map
-#endif
-  );
+					 int *count);
 
 extern int partition_load_aggregate_helper (PRUNING_CONTEXT * pcontext, access_spec_node * spec, int pruned_count,
 					    BTID * root_btid, HIERARCHY_AGGREGATE_HELPER * helper);

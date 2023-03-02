@@ -4039,7 +4039,7 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   int attr_id, unique_pk;
   char *ptr;
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
-  int decompress_attr_idx = -1;
+  int decompress_attr_pos = -1;
 #endif
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -4050,12 +4050,12 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   ptr = or_unpack_int (ptr, &attr_id);
   ptr = or_unpack_int (ptr, &unique_pk);
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
-  ptr = or_unpack_int (ptr, &decompress_attr_idx);
+  ptr = or_unpack_int (ptr, &decompress_attr_pos);
 #endif
 
   return_btid = xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
-				  , decompress_attr_idx
+				  , decompress_attr_pos
 #endif
     );
   if (return_btid == NULL)
@@ -7526,26 +7526,15 @@ sbtree_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-  int reserved_index_col_pos = -1;
-#endif
 
   ptr = or_unpack_btid (request, &stat_info.btid);
   assert_release (!BTID_IS_NULL (&stat_info.btid));
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-  ptr = or_unpack_int (ptr, &reserved_index_col_pos);
-#endif
-
 
   stat_info.keys = 0;
   stat_info.pkeys_size = 0;	/* do not request pkeys info */
   stat_info.pkeys = NULL;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-  success = btree_get_stats (thread_p, &stat_info, STATS_WITH_SAMPLING, reserved_index_col_pos);
-#else
   success = btree_get_stats (thread_p, &stat_info, STATS_WITH_SAMPLING);
-#endif
   if (success != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);

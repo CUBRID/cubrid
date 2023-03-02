@@ -169,6 +169,15 @@ extern char *dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_m
 extern void dk_reserved_index_attribute_initialized ();
 extern void dk_reserved_index_attribute_finalized ();
 
+
+#if defined(SERVER_MODE) || defined(SA_MODE)
+extern int dk_get_decompress_position (int n_attrs, int *attr_ids, int func_attr_index_start);
+#endif
+
+#if !defined(SERVER_MODE)
+extern int dk_sm_decompress_position (int n_attrs, SM_ATTRIBUTE ** attrs, SM_FUNCTION_INFO * function_index);
+#endif
+
 /* ******************************************************** */
 #endif /* #if !defined(SUPPORT_KEY_DUP_LEVEL) */
 /* ******************************************************** */

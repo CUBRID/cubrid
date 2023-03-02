@@ -5731,7 +5731,7 @@ stats_update_all_statistics (int with_fullscan)
 int
 btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
-		 , int decompress_attr_idx
+		 , int decompress_attr_pos
 #endif
   )
 {
@@ -5764,7 +5764,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
   ptr = or_pack_int (ptr, attr_id);
   ptr = or_pack_int (ptr, unique_pk);
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
-  ptr = or_pack_int (ptr, decompress_attr_idx);
+  ptr = or_pack_int (ptr, decompress_attr_pos);
 #endif
 
   req_error =
@@ -5794,7 +5794,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
 
   btid = xbtree_add_index (thread_p, btid, key_type, class_oid, attr_id, unique_pk, 0, 0, 0
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
-			   , decompress_attr_idx
+			   , decompress_attr_pos
 #endif
     );
   if (btid == NULL)
@@ -8204,11 +8204,7 @@ heap_get_class_num_objects_pages (HFID * hfid, int approximation, int *nobjs, in
  * NOTE:
  */
 int
-btree_get_statistics (BTID * btid, BTREE_STATS * stat_info
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-		      , int reserved_index_col_pos
-#endif
-  )
+btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
 {
 #if defined(CS_MODE)
   int req_error, status = ER_FAILED;
@@ -8220,12 +8216,7 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
-
   ptr = or_pack_btid (request, btid);
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-  ptr = or_pack_int (ptr, reserved_index_col_pos);
-#endif
-
   req_error =
     net_client_request (NET_SERVER_BTREE_GET_STATISTICS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
 			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
@@ -8260,11 +8251,7 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info
       stat_info->pkeys_size = 0;	/* do not request pkeys info */
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-  success = btree_get_stats (thread_p, stat_info, STATS_WITH_SAMPLING, reserved_index_col_pos);
-#else
   success = btree_get_stats (thread_p, stat_info, STATS_WITH_SAMPLING);
-#endif
 
   assert_release (stat_info->leafs > 0);
   assert_release (stat_info->pages > 0);

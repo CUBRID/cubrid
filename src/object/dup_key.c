@@ -466,4 +466,73 @@ dk_reserved_index_attribute_finalized ()
 #endif
 }
 
+
+#if defined(SERVER_MODE) || defined(SA_MODE)
+int
+dk_get_decompress_position (int n_attrs, int *attr_ids, int func_attr_index_start)
+{
+  if (n_attrs > 1)
+    {
+      if (func_attr_index_start != -1)
+	{
+	  if ((func_attr_index_start > 0) && IS_RESERVED_INDEX_ATTR_ID (attr_ids[func_attr_index_start - 1]))
+	    {
+	      return func_attr_index_start;
+	    }
+	}
+      else if (IS_RESERVED_INDEX_ATTR_ID (attr_ids[n_attrs - 1]))
+	{
+	  return n_attrs - 1;
+	}
+    }
+
+  return -1;
+}
+
+int
+dk_or_decompress_position (int n_attrs, OR_ATTRIBUTE ** attrs, OR_FUNCTION_INDEX * function_index)
+{
+  if (n_attrs > 1)
+    {
+      if (function_index)
+	{
+	  if ((function_index->attr_index_start > 0)
+	      && IS_RESERVED_INDEX_ATTR_ID (attrs[function_index->attr_index_start - 1]->id))
+	    {
+	      return function_index->attr_index_start;
+	    }
+	}
+      else if (IS_RESERVED_INDEX_ATTR_ID (attrs[n_attrs - 1]->id))
+	{
+	  return n_attrs - 1;
+	}
+    }
+
+  return -1;
+}
+#endif
+
+#if !defined(SERVER_MODE)
+int
+dk_sm_decompress_position (int n_attrs, SM_ATTRIBUTE ** attrs, SM_FUNCTION_INFO * function_index)
+{
+  if (n_attrs > 1)
+    {
+      if (function_index)
+	{
+	  if ((function_index->attr_index_start > 0)
+	      && IS_RESERVED_INDEX_ATTR_ID (attrs[function_index->attr_index_start - 1]->id))
+	    {
+	      return function_index->attr_index_start;
+	    }
+	}
+      else if (IS_RESERVED_INDEX_ATTR_ID (attrs[n_attrs - 1]->id))
+	{
+	  return n_attrs - 1;
+	}
+    }
+
+  return -1;
+}
+#endif
 #endif // #if defined(SUPPORT_KEY_DUP_LEVEL)

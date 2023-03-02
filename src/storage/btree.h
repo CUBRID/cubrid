@@ -131,7 +131,7 @@ struct btid_int
   int copy_buf_len;		/* index key copy_buf length info; derived from INDX_SCAN_ID.copy_buf_len */
   int rev_level;
 #if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-  int decomoress_attr_idx;
+  int decompress_attr_idx;
 #endif
   OID topclass_oid;		/* class oid for which index is created */
 };
@@ -680,11 +680,7 @@ extern int btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid, lo
 					long long *key_cnt);
 extern int btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p, BTID * btid, long long *oid_cnt,
 						  long long *null_cnt, long long *key_cnt);
-extern int btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_fullscan
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-			    , int reserved_index_col_pos
-#endif
-  );
+extern int btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_fullscan);
 extern int btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * pkey_btid);
 extern DISK_ISVALID btree_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * idx_btid);
 extern DISK_ISVALID btree_check_all (THREAD_ENTRY * thread_p);
@@ -710,10 +706,6 @@ extern int btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_ke
 extern int btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_STATS * unique_stat_info,
 						   bool only_active_tran);
 extern int btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, int flag_minkey);
-
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-extern int btree_multicol_key_get_first_not_null_pos (DB_VALUE * key);
-#endif
 
 extern bool btree_multicol_key_is_null (DB_VALUE * key);
 extern int btree_multicol_key_has_null (DB_VALUE * key);

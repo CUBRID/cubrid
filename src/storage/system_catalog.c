@@ -5451,6 +5451,22 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid, DISK_REPR * r
   if (TP_DOMAIN_TYPE (p_stat_info->key_type) == DB_TYPE_MIDXKEY)
     {
       key_size = tp_domain_size (p_stat_info->key_type->setdomain);
+#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+      for (i = 0; i < cls_rep->n_indexes; i++)
+	{
+	  OR_INDEX *index = cls_rep->indexes + i;
+	  if (BTID_IS_EQUAL (&(index->btid), btid))
+	    {
+	      extern int dk_or_decompress_position (int n_attrs, OR_ATTRIBUTE ** attrs,
+						    OR_FUNCTION_INDEX * function_index);
+	      if (dk_or_decompress_position (index->n_atts, index->atts, index->func_index_info) >= 0)
+		{		// Avoid providing information about columns added with compression options.
+		  key_size--;
+		}
+	      break;
+	    }
+	}
+#endif
     }
   else
     {
@@ -5463,11 +5479,7 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid, DISK_REPR * r
       goto exit_cleanup;
     }
 
-  error = partition_get_partition_oids (thread_p, class_oid, &partitions, &count
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-					, NULL
-#endif
-    );
+  error = partition_get_partition_oids (thread_p, class_oid, &partitions, &count);
   if (error != NO_ERROR)
     {
       goto exit_cleanup;

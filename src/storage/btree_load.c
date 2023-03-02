@@ -927,24 +927,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   VFID_SET_NULL (&btid_int.ovfid);
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
-  btid_int.decomoress_attr_idx = -1;
-  if (n_attrs > 1)
-    {
-      if (func_attr_index_start != -1)
-	{
-	  if (IS_RESERVED_INDEX_ATTR_ID (attr_ids[func_attr_index_start - 1]))
-	    {
-	      btid_int.decomoress_attr_idx = func_attr_index_start;
-	    }
-	}
-      else
-	{
-	  if (IS_RESERVED_INDEX_ATTR_ID (attr_ids[n_attrs - 1]))
-	    {
-	      btid_int.decomoress_attr_idx = n_attrs - 1;
-	    }
-	}
-    }
+  btid_int.decompress_attr_idx = -1;
+  btid_int.decompress_attr_idx = dk_get_decompress_position (n_attrs, attr_ids, func_attr_index_start);
 #endif
   COPY_OID (&btid_int.topclass_oid, &class_oids[0]);
 
@@ -1168,7 +1152,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       if (xbtree_add_index (thread_p, btid, key_type, &class_oids[0], attr_ids[0], unique_pk, sort_args->n_oids,
 			    sort_args->n_nulls, load_args->n_keys
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
-			    , btid_int.decomoress_attr_idx
+			    , btid_int.decompress_attr_idx
 #endif
 	  ) == NULL)
 	{
@@ -1943,7 +1927,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   root_header->ovfid = load_args->btid->ovfid;	/* structure copy */
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
   root_header->_32.rev_level = BTREE_CURRENT_REV_LEVEL;
-  root_header->_32.decomoress_attr_idx = load_args->btid->decomoress_attr_idx;
+  SET_DECOMPRESS_IDX_HEADER (root_header, load_args->btid->decompress_attr_idx);
 #else
   root_header->rev_level = BTREE_CURRENT_REV_LEVEL;
 #endif
@@ -4639,7 +4623,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   bool old_check_intr;
   SORT_ARGS tmp_args;
 #if 0				//defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
-  int decompress_attr_idx = -1;
+  int decompress_attr_pos = -1;
 #endif
 
   memset (&tmp_args, 0x00, sizeof (SORT_ARGS));
@@ -4673,25 +4657,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   VFID_SET_NULL (&btid_int.ovfid);
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
-  if (n_attrs > 1)
-    {
-      if (func_attr_index_start != -1)
-	{
-	  if (IS_RESERVED_INDEX_ATTR_ID (attr_ids[func_attr_index_start - 1]))
-	    {
-	      //decompress_attr_idx = func_attr_index_start;
-	      btid_int.decomoress_attr_idx = func_attr_index_start;
-	    }
-	}
-      else
-	{
-	  if (IS_RESERVED_INDEX_ATTR_ID (attr_ids[n_attrs - 1]))
-	    {
-	      //decompress_attr_idx = n_attrs - 1;
-	      btid_int.decomoress_attr_idx = n_attrs - 1;
-	    }
-	}
-    }
+  btid_int.decompress_attr_idx = dk_get_decompress_position (n_attrs, attr_ids, func_attr_index_start);
 #endif
   COPY_OID (&btid_int.topclass_oid, &class_oids[0]);
   /*
