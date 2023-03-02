@@ -45,6 +45,9 @@ typedef enum
 
 #define OVFL_LEVEL_MIN       (0)
 #define OVFL_LEVEL_MAX       (16)
+#define COMPRESS_INDEX_MOD_VAL_MIN (0)
+#define COMPRESS_INDEX_MOD_VAL_MAX (32767)
+
 
 #define DUP_MODE_OVFL_LEVEL_NOT_SET   (-1)
 

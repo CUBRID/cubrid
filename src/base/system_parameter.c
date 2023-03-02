@@ -1202,11 +1202,11 @@ bool PRM_USE_COMPRESS_INDEX_MODE_OID = false;
 static bool prm_use_compress_index_mode_oid_default = false;
 static unsigned int prm_use_compress_index_mode_oid_flag = 0;
 
-int PRM_COMPRESS_INDEX_MODE = COMPRESS_INDEX_MODE_NONE;
-static int prm_compress_index_mode_default = COMPRESS_INDEX_MODE_NONE;
+int PRM_COMPRESS_INDEX_MODE = COMPRESS_INDEX_MODE_HIGH;
+static int prm_compress_index_mode_default = COMPRESS_INDEX_MODE_HIGH;
 static unsigned int prm_compress_index_mode_flag = 0;
-static int prm_compress_index_mode_lower = COMPRESS_INDEX_MODE_NONE;
-static int prm_compress_index_mode_upper = (COMPRESS_INDEX_MODE_LAST - 1);
+static int prm_compress_index_mode_lower = COMPRESS_INDEX_MODE_HIGH;
+static int prm_compress_index_mode_upper = COMPRESS_INDEX_MODE_LOW;
 
 int PRM_COMPRESS_INDEX_MOD_VAL = OVFL_LEVEL_MIN;
 static int prm_compress_index_mod_val_default = OVFL_LEVEL_MIN;
