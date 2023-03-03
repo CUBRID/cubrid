@@ -219,6 +219,7 @@ struct hb_ping_host_entry
   HB_PING_HOST_ENTRY **prev;
 
   char host_name[CUB_MAXHOSTNAMELEN];
+  int port;
   int ping_result;
 };
 
@@ -393,6 +394,7 @@ extern void hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd
 extern void hb_get_node_info_string (char **str, bool verbose_yn);
 extern void hb_get_process_info_string (char **str, bool verbose_yn);
 extern void hb_get_ping_host_info_string (char **str);
+extern void hb_get_tcp_ping_host_info_string (char **str);
 extern void hb_get_admin_info_string (char **str);
 extern void hb_kill_all_heartbeat_process (char **str);
 
