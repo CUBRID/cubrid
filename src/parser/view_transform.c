@@ -1777,8 +1777,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   /* subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation */
   if (subquery->info.query.order_by
       && (pt_has_inst_num (parser, pred) || pt_has_analytic (parser, mainquery)
-	  || pt_has_order_sensitive_agg (parser, mainquery) ||
-	  pt_has_expr_of_inst_in_sel_list (parser, select_list)))
+	  || pt_has_order_sensitive_agg (parser, mainquery) || pt_has_expr_of_inst_in_sel_list (parser, select_list)))
     {
       /* not pushable */
       return NON_PUSHABLE;
@@ -2155,7 +2154,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 
   statement->info.query.order_by = parser_append_node (order_by, statement->info.query.order_by);
 
-   /* generate orderby_num(), inst_num() */
+  /* generate orderby_num(), inst_num() */
   if (!(ord_num = parser_new_node (parser, PT_EXPR)) || !(ins_num = parser_new_node (parser, PT_EXPR)))
     {
       if (ord_num)
