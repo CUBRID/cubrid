@@ -554,8 +554,9 @@ static void free_class_users (CLASS_USER * users);
 static CLASS_USER *find_or_add_user (CLASS_AUTH * auth, MOP user_obj);
 static int add_class_grant (CLASS_AUTH * auth, MOP source, MOP user, int cache);
 static int build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop);
-static void issue_grant_statement (print_output & output_ctx, CLASS_AUTH * auth, CLASS_GRANT * grant, int authbits);
-static int class_grant_loop (print_output & output_ctx, CLASS_AUTH * auth);
+static void issue_grant_statement (extract_context & ctxt, print_output & output_ctx, CLASS_AUTH * auth,
+				   CLASS_GRANT * grant, int authbits);
+static int class_grant_loop (extract_context & ctxt, print_output & output_ctx, CLASS_AUTH * auth);
 
 static void au_print_cache (int cache, FILE * fp);
 static void au_print_grant_entry (DB_SET * grants, int grant_index, FILE * fp);
@@ -7499,38 +7500,87 @@ au_get_user_name (MOP obj)
  *   output_ctx(in/out): print context
  */
 int
-au_export_users (print_output & output_ctx)
+au_export_users (extract_context & ctxt, print_output & output_ctx)
 {
-  int error;
+  int error = NO_ERROR;
   DB_SET *direct_groups = NULL;
   DB_VALUE value, gvalue;
   MOP user = NULL, pwd = NULL;
   int g, gcard;
   const char *uname = NULL, *str = NULL, *gname = NULL, *comment = NULL;
-  char passbuf[AU_MAX_PASSWORD_BUF];
+  char passbuf[AU_MAX_PASSWORD_BUF] = { '\0' };
   char *query = NULL;
   size_t query_size;
-  DB_QUERY_RESULT *query_result;
+  DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
   DB_VALUE user_val;
-  const char *qp1 = "select [%s] from [%s];";
-  char encrypt_mode = 0x00;
+  DB_VALUE user_group[2] = { 0, };
+  const char *dba_query = "select [%s] from [%s];";
+  const char *user_query = "select [%s] from [%s] where name='%s';";
+  const char *group_query =
+    "select u.name, [t].[g].name from [db_user] [u], TABLE([u].[groups]) [t]([g]) where [t].[g].name = '%s';";
+  char encrypt_mode = ENCODE_PREFIX_DEFAULT;
+  char *upper_case_name = NULL;
+  size_t upper_case_name_size = 0;
 
-  query_size = strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2;
-  query = (char *) malloc (query_size);
-  if (query == NULL)
+  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      query_size = strlen (dba_query) + strlen (AU_USER_CLASS_NAME) * 2;
+      query = (char *) malloc (query_size);
+      if (query == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      sprintf (query, dba_query, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
     }
+  else
+    {
+      upper_case_name_size = intl_identifier_upper_string_size (ctxt.login_user);
+      upper_case_name = (char *) malloc (upper_case_name_size + 1);
+      if (upper_case_name == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, upper_case_name_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
 
-  sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
+      intl_identifier_upper (ctxt.login_user, upper_case_name);
+
+      query_size = strlen (user_query) + strlen (AU_USER_CLASS_NAME) * 2 + strlen (upper_case_name);
+      query = (char *) malloc (query_size);
+      if (query == NULL)
+	{
+	  if (upper_case_name != NULL)
+	    {
+	      free_and_init (upper_case_name);
+	    }
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      sprintf (query, user_query, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME, upper_case_name);
+    }
 
   error = db_compile_and_execute_local (query, &query_result, &query_error);
   /* error is row count if not negative. */
-  if (error < 0)
+  if (error < NO_ERROR)
     {
-      free_and_init (query);
+      if (upper_case_name != NULL)
+	{
+	  free_and_init (upper_case_name);
+	}
+
+      if (query != NULL)
+	{
+	  free_and_init (query);
+	}
+
+      if (query_result != NULL)
+	{
+	  db_query_end (query_result);
+	  query_result = NULL;
+	}
       return error;
     }
 
@@ -7552,7 +7602,7 @@ au_export_users (print_output & output_ctx)
 
       uname = au_get_user_name (user);
       strcpy (passbuf, "");
-      encrypt_mode = 0x00;
+      encrypt_mode = ENCODE_PREFIX_DEFAULT;
 
       /* retrieve password */
       error = obj_get (user, "password", &value);
@@ -7671,90 +7721,235 @@ au_export_users (print_output & output_ctx)
       /* remember, these were allocated in the workspace */
       if (uname != NULL)
 	{
-	  ws_free_string (uname);
+	  ws_free_string_and_init (uname);
 	}
       if (comment != NULL)
 	{
-	  ws_free_string (comment);
+	  ws_free_string_and_init (comment);
 	}
     }
 
   /* group hierarchy */
-  if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
+  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
     {
-      output_ctx ("call [find_user]('PUBLIC') on class [db_user] to [g_public];\n");
-      do
+      if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
 	{
-	  if (db_query_get_tuple_value (query_result, 0, &user_val) != NO_ERROR)
+	  do
 	    {
-	      continue;
-	    }
-
-	  if (DB_IS_NULL (&user_val))
-	    {
-	      user = NULL;
-	    }
-	  else
-	    {
-	      user = db_get_object (&user_val);
-	    }
-
-	  uname = au_get_user_name (user);
-	  if (uname == NULL)
-	    {
-	      continue;
-	    }
-
-	  if (au_get_set (user, "direct_groups", &direct_groups) != NO_ERROR)
-	    {
-	      ws_free_string (uname);
-	      continue;
-	    }
-
-	  gcard = set_cardinality (direct_groups);
-	  for (g = 0; g < gcard && !error; g++)
-	    {
-	      if (set_get_element (direct_groups, g, &gvalue) != NO_ERROR)
+	      if (db_query_get_tuple_value (query_result, 0, &user_val) != NO_ERROR)
 		{
 		  continue;
 		}
 
-	      if (ws_is_same_object (db_get_object (&gvalue), Au_public_user))
+	      if (DB_IS_NULL (&user_val))
 		{
-		  continue;
-		}
-
-	      error = obj_get (db_get_object (&gvalue), "name", &value);
-	      if (error != NO_ERROR)
-		{
-		  continue;
-		}
-
-	      if (DB_IS_NULL (&value))
-		{
-		  gname = NULL;
+		  user = NULL;
 		}
 	      else
 		{
-		  gname = db_get_string (&value);
+		  user = db_get_object (&user_val);
+		}
+
+	      uname = au_get_user_name (user);
+	      if (uname == NULL)
+		{
+		  continue;
+		}
+
+	      if (au_get_set (user, "direct_groups", &direct_groups) != NO_ERROR)
+		{
+		  ws_free_string_and_init (uname);
+		  continue;
+		}
+
+	      gcard = set_cardinality (direct_groups);
+	      for (g = 0; g < gcard && !error; g++)
+		{
+		  if (set_get_element (direct_groups, g, &gvalue) != NO_ERROR)
+		    {
+		      continue;
+		    }
+
+		  if (ws_is_same_object (db_get_object (&gvalue), Au_public_user))
+		    {
+		      continue;
+		    }
+
+		  error = obj_get (db_get_object (&gvalue), "name", &value);
+		  if (error != NO_ERROR)
+		    {
+		      continue;
+		    }
+
+		  if (DB_IS_NULL (&value))
+		    {
+		      gname = NULL;
+		    }
+		  else
+		    {
+		      gname = db_get_string (&value);
+		    }
+
+		  if (gname != NULL)
+		    {
+		      output_ctx ("call [find_user]('%s') on class [db_user] to [g_%s];\n", gname, gname);
+		      output_ctx ("call [add_member]('%s') on [g_%s];\n", uname, gname);
+		    }
+		}
+
+	      set_free (direct_groups);
+	      if (uname != NULL)
+		{
+		  ws_free_string_and_init (uname);
 		}
 
 	      if (gname != NULL)
 		{
-		  output_ctx ("call [find_user]('%s') on class [db_user] to [g_%s];\n", gname, gname);
-		  output_ctx ("call [add_member]('%s') on [g_%s];\n", uname, gname);
-		  ws_free_string (gname);
+		  ws_free_string_and_init (gname);
 		}
 	    }
-
-	  set_free (direct_groups);
-	  ws_free_string (uname);
+	  while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
 	}
-      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
-    }
 
-  db_query_end (query_result);
-  free_and_init (query);
+      if (query_result != NULL)
+	{
+	  db_query_end (query_result);
+	  query_result = NULL;
+	}
+
+      if (upper_case_name != NULL)
+	{
+	  free_and_init (upper_case_name);
+	}
+
+      if (query != NULL)
+	{
+	  free_and_init (query);
+	}
+
+    }
+  else
+    {
+      // Initializing memory used by user query ("select [%s] from [%s] where name='%s';")
+      if (query_result != NULL)
+	{
+	  db_query_end (query_result);
+	  query_result = NULL;
+	}
+
+      if (upper_case_name != NULL)
+	{
+	  free_and_init (upper_case_name);
+	}
+
+      if (query != NULL)
+	{
+	  free_and_init (query);
+	}
+
+      upper_case_name_size = intl_identifier_upper_string_size (ctxt.login_user);
+      upper_case_name = (char *) malloc (upper_case_name_size + 1);
+      if (upper_case_name == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, upper_case_name_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      intl_identifier_upper (ctxt.login_user, upper_case_name);
+
+      query_size = strlen (group_query) + strlen (upper_case_name);
+      query = (char *) malloc (query_size);
+      if (query == NULL)
+	{
+	  if (upper_case_name != NULL)
+	    {
+	      free_and_init (upper_case_name);
+	    }
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      sprintf (query, group_query, upper_case_name);
+
+      error = db_compile_and_execute_local (query, &query_result, &query_error);
+
+      /* error is row count if not negative. */
+      if (error < NO_ERROR)
+	{
+	  if (query_result != NULL)
+	    {
+	      db_query_end (query_result);
+	      query_result = NULL;
+	    }
+
+	  if (upper_case_name != NULL)
+	    {
+	      free_and_init (upper_case_name);
+	    }
+
+	  if (query != NULL)
+	    {
+	      free_and_init (query);
+	    }
+	  return error;
+	}
+
+      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+	{
+	  if (db_query_get_tuple_value (query_result, 0, &user_group[0]) != NO_ERROR)
+	    {
+	      continue;
+	    }
+
+	  if (db_query_get_tuple_value (query_result, 1, &user_group[1]) != NO_ERROR)
+	    {
+	      continue;
+	    }
+
+	  if (DB_IS_NULL (&user_group[0]) == false)
+	    {
+	      uname = db_get_string (&user_group[0]);
+	    }
+
+	  if (DB_IS_NULL (&user_group[1]) == false)
+	    {
+	      gname = db_get_string (&user_group[1]);
+	    }
+
+	  if (uname != NULL && gname != NULL)
+	    {
+	      output_ctx ("call [find_user]('%s') on class [db_user] to [g_%s];\n", gname, gname);
+	      output_ctx ("call [add_member]('%s') on [g_%s];\n", uname, gname);
+	    }
+
+	  if (uname != NULL)
+	    {
+	      ws_free_string_and_init (uname);
+	    }
+
+	  if (gname != NULL)
+	    {
+	      ws_free_string_and_init (gname);
+	    }
+	}
+
+      if (query_result != NULL)
+	{
+	  db_query_end (query_result);
+	  query_result = NULL;
+	}
+
+      if (upper_case_name != NULL)
+	{
+	  free_and_init (upper_case_name);
+	}
+
+      if (query != NULL)
+	{
+	  free_and_init (query);
+	}
+    }
 
   return (error);
 }
@@ -8051,7 +8246,8 @@ build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop)
  *   quoted_id_flag(in):
  */
 static void
-issue_grant_statement (print_output & output_ctx, CLASS_AUTH * auth, CLASS_GRANT * grant, int authbits)
+issue_grant_statement (extract_context & ctxt, print_output & output_ctx, CLASS_AUTH * auth, CLASS_GRANT * grant,
+		       int authbits)
 {
   const char *gtype;
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
@@ -8091,7 +8287,16 @@ issue_grant_statement (print_output & output_ctx, CLASS_AUTH * auth, CLASS_GRANT
   username = au_get_user_name (grant->user->obj);
 
   output_ctx ("GRANT %s ON ", gtype);
-  output_ctx ("[%s].[%s]", owner_name, class_name);
+
+  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
+    {
+      output_ctx ("[%s].[%s]", owner_name, class_name);
+    }
+  else
+    {
+      output_ctx ("[%s]", class_name);
+    }
+
   if (username != NULL)
     {
       output_ctx (" TO [%s]", username);
@@ -8137,7 +8342,7 @@ issue_grant_statement (print_output & output_ctx, CLASS_AUTH * auth, CLASS_GRANT
  * TODO : LP64
  */
 static int
-class_grant_loop (print_output & output_ctx, CLASS_AUTH * auth)
+class_grant_loop (extract_context & ctxt, print_output & output_ctx, CLASS_AUTH * auth)
 {
 #define AU_MIN_BIT 1		/* AU_SELECT */
 #define AU_MAX_BIT 0x40		/* AU_EXECUTE */
@@ -8167,7 +8372,7 @@ class_grant_loop (print_output & output_ctx, CLASS_AUTH * auth)
 		    {
 		      if (!ws_is_same_object (auth->users->obj, grant->user->obj))
 			{
-			  issue_grant_statement (output_ctx, auth, grant, authbits);
+			  issue_grant_statement (ctxt, output_ctx, auth, grant, authbits);
 			}
 
 		      /* turn on grant bits in the granted user */
@@ -8215,7 +8420,7 @@ class_grant_loop (print_output & output_ctx, CLASS_AUTH * auth)
  *   quoted_id_flag(in):
  */
 int
-au_export_grants (print_output & output_ctx, MOP class_mop)
+au_export_grants (extract_context & ctxt, print_output & output_ctx, MOP class_mop)
 {
   int error = NO_ERROR;
   CLASS_AUTH cl_auth;
@@ -8236,7 +8441,7 @@ au_export_grants (print_output & output_ctx, MOP class_mop)
   if (error == NO_ERROR)
     {
       /* loop through the grant list, issuing grant statements */
-      while ((statements = class_grant_loop (output_ctx, &cl_auth)))
+      while ((statements = class_grant_loop (ctxt, output_ctx, &cl_auth)))
 	;
 
       for (u = cl_auth.users, ecount = 0; u != NULL; u = u->next)
