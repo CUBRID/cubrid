@@ -535,6 +535,7 @@ extern "C"
   extern bool pt_has_order_sensitive_agg (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_inst_or_orderby_num (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_inst_num (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_has_expr_of_inst_in_sel_list (PARSER_CONTEXT * parser, PT_NODE * select_list);
   extern bool pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node);
   extern void pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level);
   extern bool pt_has_nullable_term (PARSER_CONTEXT * parser, PT_NODE * node);
