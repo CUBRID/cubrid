@@ -6663,7 +6663,7 @@ exit_on_error:
 static int
 btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env)
 {
-  BTREE_SCAN *bts;
+  BTREE_SCAN *BTS;
   int n, i;
   bool found;
   int key_cnt;
@@ -6676,8 +6676,8 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
   assert (env != NULL);
   assert (env->stat_info != NULL);
 
-  bts = &(env->btree_scan);
-  bts->use_desc_index = 0;	/* init */
+  BTS = &(env->btree_scan);
+  BTS->use_desc_index = 0;	/* init */
 
   for (n = 0; n < STATS_SAMPLING_THRESHOLD; n++)
     {
@@ -6686,9 +6686,9 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	  break;		/* found all samples */
 	}
 
-      bts->C_page =
-	btree_find_AR_sampling_leaf (thread_p, bts->btid_int.sys_btid, &bts->C_vpid, env->stat_info, &found);
-      if (bts->C_page == NULL)
+      BTS->C_page =
+	btree_find_AR_sampling_leaf (thread_p, BTS->btid_int.sys_btid, &BTS->C_vpid, env->stat_info, &found);
+      if (BTS->C_page == NULL)
 	{
 	  goto exit_on_error;
 	}
@@ -6696,10 +6696,10 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
       /* found sampling leaf page */
       if (found)
 	{
-	  key_cnt = btree_node_number_of_keys (thread_p, bts->C_page);
+	  key_cnt = btree_node_number_of_keys (thread_p, BTS->C_page);
 
 #if !defined(NDEBUG)
-	  header = btree_get_node_header (thread_p, bts->C_page);
+	  header = btree_get_node_header (thread_p, BTS->C_page);
 
 	  assert (header != NULL);
 	  assert (header->node_level == 1);	/* BTREE_LEAF_NODE */
@@ -6707,10 +6707,10 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 
 	  env->stat_info->leafs++;
 
-	  bts->slot_id = 1;
-	  bts->oid_pos = 0;
+	  BTS->slot_id = 1;
+	  BTS->oid_pos = 0;
 
-	  assert_release (bts->slot_id <= key_cnt);
+	  assert_release (BTS->slot_id <= key_cnt);
 
 	  for (i = 0; i < key_cnt; i++)
 	    {
@@ -6721,7 +6721,7 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 		}
 
 	      /* get the next index record */
-	      ret = btree_find_next_index_record (thread_p, bts);
+	      ret = btree_find_next_index_record (thread_p, BTS);
 	      if (ret != NO_ERROR)
 		{
 		  goto exit_on_error;
@@ -6729,19 +6729,19 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	    }
 	}
 
-      if (bts->P_page != NULL)
+      if (BTS->P_page != NULL)
 	{
-	  pgbuf_unfix_and_init (thread_p, bts->P_page);
+	  pgbuf_unfix_and_init (thread_p, BTS->P_page);
 	}
 
-      if (bts->C_page != NULL)
+      if (BTS->C_page != NULL)
 	{
-	  pgbuf_unfix_and_init (thread_p, bts->C_page);
+	  pgbuf_unfix_and_init (thread_p, BTS->C_page);
 	}
 
-      if (bts->O_page != NULL)
+      if (BTS->O_page != NULL)
 	{
-	  pgbuf_unfix_and_init (thread_p, bts->O_page);
+	  pgbuf_unfix_and_init (thread_p, BTS->O_page);
 	}
     }				/* for (n = 0; ... ) */
 
@@ -6774,19 +6774,19 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 
 end:
 
-  if (bts->P_page != NULL)
+  if (BTS->P_page != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, bts->P_page);
+      pgbuf_unfix_and_init (thread_p, BTS->P_page);
     }
 
-  if (bts->C_page != NULL)
+  if (BTS->C_page != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, bts->C_page);
+      pgbuf_unfix_and_init (thread_p, BTS->C_page);
     }
 
-  if (bts->O_page != NULL)
+  if (BTS->O_page != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, bts->O_page);
+      pgbuf_unfix_and_init (thread_p, BTS->O_page);
     }
 
   return ret;
