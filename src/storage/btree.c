@@ -6507,15 +6507,15 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 
   if (mvcc_snapshot != NULL)
     {
-      bts = &(env->btree_scan);
+      BTS = &(env->btree_scan);
 
-      if (bts->C_page == NULL)
+      if (BTS->C_page == NULL)
 	{
 	  goto exit_on_error;
 	}
 
-      assert (bts->slot_id > 0);
-      if (spage_get_record (thread_p, bts->C_page, bts->slot_id, &rec, PEEK) != S_SUCCESS)
+      assert (BTS->slot_id > 0);
+      if (spage_get_record (thread_p, BTS->C_page, BTS->slot_id, &rec, PEEK) != S_SUCCESS)
 	{
 	  goto exit_on_error;
 	}
@@ -6529,7 +6529,7 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
       /* read key-value */
       assert (clear_key == false);
 
-      if (btree_read_record (thread_p, &bts->btid_int, bts->C_page, &rec, &key_value, (void *) &leaf_pnt,
+      if (btree_read_record (thread_p, &BTS->btid_int, BTS->C_page, &rec, &key_value, (void *) &leaf_pnt,
 			     BTREE_LEAF_NODE, &clear_key, &offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -6539,7 +6539,7 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
       max_visible_oids = 1;
       num_visible_oids = 0;
       ret =
-	btree_get_num_visible_from_leaf_and_ovf (thread_p, &bts->btid_int, &rec, offset, &leaf_pnt, &max_visible_oids,
+	btree_get_num_visible_from_leaf_and_ovf (thread_p, &BTS->btid_int, &rec, offset, &leaf_pnt, &max_visible_oids,
 						 mvcc_snapshot, &num_visible_oids);
       if (ret != NO_ERROR)
 	{
@@ -6595,15 +6595,15 @@ count_keys:
 	  goto end;
 	}
 
-      bts = &(env->btree_scan);
+      BTS = &(env->btree_scan);
 
-      if (bts->C_page == NULL)
+      if (BTS->C_page == NULL)
 	{
 	  goto exit_on_error;
 	}
 
-      assert (bts->slot_id > 0);
-      if (spage_get_record (thread_p, bts->C_page, bts->slot_id, &rec, PEEK) != S_SUCCESS)
+      assert (BTS->slot_id > 0);
+      if (spage_get_record (thread_p, BTS->C_page, BTS->slot_id, &rec, PEEK) != S_SUCCESS)
 	{
 	  goto exit_on_error;
 	}
@@ -6623,7 +6623,7 @@ count_keys:
 
       assert (clear_key == false);
 
-      if (btree_read_record (thread_p, &bts->btid_int, bts->C_page, &rec, &key_value, (void *) &leaf_pnt,
+      if (btree_read_record (thread_p, &BTS->btid_int, BTS->C_page, &rec, &key_value, (void *) &leaf_pnt,
 			     BTREE_LEAF_NODE, &clear_key, &offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
 	{
 	  goto exit_on_error;
