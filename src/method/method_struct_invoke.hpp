@@ -43,14 +43,15 @@ namespace cubmethod
   struct header : public cubpacking::packable_object
   {
     header () = delete;
-    header (int command, uint64_t id);
+    header (uint64_t id, int command, int flag);
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
-    int command;
     uint64_t id;
+    int command;
+    int flag;
   };
 
   /*
@@ -60,6 +61,7 @@ namespace cubmethod
   {
     prepare_args () = delete;
     prepare_args (METHOD_TYPE type, std::vector<std::reference_wrapper<DB_VALUE>> &args);
+    prepare_args (METHOD_TYPE type, std::vector<std::reference_wrapper<DB_VALUE>> &args, METHOD_GROUP_ID id);
     ~prepare_args () = default;
 
     void pack (cubpacking::packer &serializator) const override;
@@ -68,6 +70,7 @@ namespace cubmethod
 
     METHOD_TYPE type;
     std::vector<std::reference_wrapper<DB_VALUE>> &args;
+    METHOD_GROUP_ID group_id;
   };
 
   /*
@@ -91,12 +94,13 @@ namespace cubmethod
   struct invoke_java : public cubpacking::packable_object
   {
     invoke_java () = delete;
-    invoke_java (method_sig_node *sig);
+    invoke_java (METHOD_GROUP_ID group_id, method_sig_node *sig);
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
+    METHOD_GROUP_ID group_id;
     std::string signature;
     int num_args;
     std::vector<int> arg_pos;

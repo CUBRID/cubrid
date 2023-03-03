@@ -37,9 +37,10 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 // header
 //////////////////////////////////////////////////////////////////////////
-  header::header (int c, uint64_t i)
-    : command (c)
-    , id (i)
+  header::header (uint64_t i, int c, int f)
+    : id (i)
+    , command (c)
+    , flag (f)
   {
     //
   }
@@ -47,30 +48,39 @@ namespace cubmethod
   void
   header::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_int (command);
     serializator.pack_bigint (id);
+    serializator.pack_int (command);
+    serializator.pack_int (flag);
   }
 
   size_t
   header::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_int_size (start_offset); // command
-    size += serializator.get_packed_bigint_size (size); // id
+    size_t size = serializator.get_packed_bigint_size (start_offset); // id
+    size += serializator.get_packed_int_size (size); // command
+    size += serializator.get_packed_int_size (size); // flag
     return size;
   }
 
   void
   header::unpack (cubpacking::unpacker &deserializator)
   {
-    deserializator.unpack_int (command);
     deserializator.unpack_bigint (id);
+    deserializator.unpack_int (command);
+    deserializator.unpack_int (flag);
   }
 
 //////////////////////////////////////////////////////////////////////////
 // Common structure implementation
 //////////////////////////////////////////////////////////////////////////
   prepare_args::prepare_args (METHOD_TYPE type, std::vector<std::reference_wrapper<DB_VALUE>> &vec)
-    : type (type), args (vec)
+    : type (type), args (vec), group_id (-1)
+  {
+    //
+  }
+
+  prepare_args::prepare_args (METHOD_TYPE type, std::vector<std::reference_wrapper<DB_VALUE>> &vec, METHOD_GROUP_ID id)
+    : type (type), args (vec), group_id (id)
   {
     //
   }
@@ -78,6 +88,7 @@ namespace cubmethod
   void
   prepare_args::pack (cubpacking::packer &serializator) const
   {
+    serializator.pack_bigint (group_id);
     switch (type)
       {
       case METHOD_TYPE_INSTANCE_METHOD:
@@ -113,7 +124,8 @@ namespace cubmethod
   size_t
   prepare_args::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_int_size (start_offset);	// arg count
+    size_t size = serializator.get_packed_bigint_size (start_offset);	// group id
+    size += serializator.get_packed_int_size (size);	// arg count
     switch (type)
       {
       case METHOD_TYPE_INSTANCE_METHOD:
@@ -176,7 +188,8 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 // Method Java
 //////////////////////////////////////////////////////////////////////////
-  invoke_java::invoke_java (method_sig_node *sig)
+  invoke_java::invoke_java (METHOD_GROUP_ID id, method_sig_node *sig)
+  : group_id (id)
   {
     signature.assign (sig->method_name);
     num_args = sig->num_method_args;
@@ -198,6 +211,7 @@ namespace cubmethod
   void
   invoke_java::pack (cubpacking::packer &serializator) const
   {
+    serializator.pack_bigint (group_id);
     serializator.pack_string (signature);
     serializator.pack_int (num_args);
 
@@ -221,7 +235,8 @@ namespace cubmethod
   size_t
   invoke_java::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_string_size (signature, start_offset); // signature
+    size_t size = serializator.get_packed_bigint_size (start_offset); // group_id
+    size += serializator.get_packed_string_size (signature, size); // signature
     size += serializator.get_packed_int_size (size); // num_args
 
     for (int i = 0; i < num_args; i++)

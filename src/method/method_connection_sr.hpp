@@ -20,8 +20,8 @@
  * method_connection_sr.hpp
  */
 
-#ifndef _METHOD_CONNECTION_HPP_
-#define _METHOD_CONNECTION_HPP_
+#ifndef _METHOD_CONNECTION_SR_HPP_
+#define _METHOD_CONNECTION_SR_HPP_
 
 #ident "$Id$"
 
@@ -32,9 +32,7 @@
 #include <functional>
 
 #include "porting.h"
-
-#include "mem_block.hpp" /* cubmem::block */
-#include "packer.hpp" /* packing_packer */
+#include "method_connection.hpp"
 
 // thread_entry.hpp
 namespace cubthread
@@ -42,19 +40,15 @@ namespace cubthread
   class entry;
 }
 
+namespace cubmem
+{
+  class block;
+}
+
 namespace cubmethod
 {
   using xs_callback_func = std::function <int (cubmem::block &)>;
   using xs_callback_func_with_sock = std::function <int (SOCKET socket, cubmem::block &)>;
-
-  template <typename ... Args>
-  cubmem::extensible_block mcon_method_pack_data (Args &&... args)
-  {
-    packing_packer packer;
-    cubmem::extensible_block eb;
-    packer.set_buffer_and_pack_all (eb, std::forward<Args> (args)...);
-    return eb;
-  }
 
   //////////////////////////////////////////////////////////////////////////
   // Interface to communicate with CAS
@@ -65,24 +59,9 @@ namespace cubmethod
   template <typename ... Args>
   int method_send_data_to_client (cubthread::entry *thread_p, Args &&... args)
   {
-    cubmem::extensible_block b = std::move (mcon_method_pack_data (std::forward<Args> (args)...));
+    cubmem::extensible_block b = std::move (mcon_pack_data (std::forward<Args> (args)...));
     return xs_send (thread_p, b);
-  }
-
-  //////////////////////////////////////////////////////////////////////////
-  // Interface to communicate with Java SP Server
-  //////////////////////////////////////////////////////////////////////////
-  int mcon_send_buffer_to_java (SOCKET socket, cubmem::block &blk);
-
-  template <typename ... Args>
-  int mcon_send_data_to_java (SOCKET socket, Args &&... args)
-  {
-    packing_packer packer;
-    cubmem::extensible_block eb;
-    packer.set_buffer_and_pack_all (eb, std::forward<Args> (args)...);
-    cubmem::block b (packer.get_current_size (), eb.get_ptr ());
-    return mcon_send_buffer_to_java (socket, b);
   }
 }
 
-#endif // _METHOD_CONNECTION_HPP_
+#endif // _METHOD_CONNECTION_SR_HPP_
