@@ -1558,7 +1558,6 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
-    case PT_DIVIDE:
     case PT_MODULUS:
       num = 0;
 
@@ -1570,6 +1569,26 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       /* arg2 */
       sig.arg2_type.type = pt_arg_type::GENERIC;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
+
+      sig.return_type.type = pt_arg_type::GENERIC;
+      sig.return_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_DIVIDE:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::GENERIC;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
+      /* arg2 */
+      sig.arg2_type.type = pt_arg_type::GENERIC;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
+
       sig.return_type.type = pt_arg_type::NORMAL;
       sig.return_type.val.type = PT_TYPE_NUMERIC;
       def->overloads[num++] = sig;

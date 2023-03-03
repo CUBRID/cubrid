@@ -3378,7 +3378,7 @@ numeric_db_value_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_
   double adouble = db_get_double (src);
 
   *data_status = DATA_STATUS_OK;
-  ret = numeric_internal_double_to_num (adouble, DB_VALUE_SCALE (dest), num, &precision, &scale);
+  ret = numeric_internal_double_to_num (adouble, 0, num, &precision, &scale);
 
   db_make_numeric (dest, num, precision, scale);
 
@@ -3386,6 +3386,8 @@ numeric_db_value_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_
     {
       *data_status = DATA_STATUS_TRUNCATED;
     }
+
+  return ret;
 }
 
 /*

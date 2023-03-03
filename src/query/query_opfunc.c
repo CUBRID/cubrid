@@ -5830,16 +5830,19 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       return ER_FAILED;
     }
 
+  DB_VALUE dbval_tmp1;
+  DB_VALUE dbval_tmp2;
+  DB_VALUE result_tmp;
+  DB_DATA_STATUS status;
   switch (type1)
     {
-      DB_VALUE dbval_tmp1;
-      DB_VALUE dbval_tmp2;
-      DB_VALUE result_tmp;
-      DB_DATA_STATUS status;
-
     case DB_TYPE_SHORT:
     case DB_TYPE_INTEGER:
     case DB_TYPE_BIGINT:
+    case DB_TYPE_NUMERIC:
+    case DB_TYPE_MONETARY:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
       tp_value_auto_cast (dbval1_p, &dbval_tmp1, &tp_Double_domain);
       tp_value_auto_cast (dbval2_p, &dbval_tmp2, &tp_Double_domain);
       if ((error = qdata_divide_double_to_dbval (&dbval_tmp1, &dbval_tmp2, &result_tmp)) != NO_ERROR)
@@ -5847,26 +5850,13 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 	  break;
 	}
       error = numeric_db_value_to_num (&result_tmp, result_p, &status);
-      if (status == DATA_STATUS_TRUNCATED)
+      if (error == NO_ERROR
+	  && domain_p != NULL && domain_p->precision == DB_MAX_NUMERIC_PRECISION && domain_p->scale == 0)
 	{
-	  *result_p = result_tmp;
+	  domain_p->precision = result_p->domain.numeric_info.precision;
+	  domain_p->scale = result_p->domain.numeric_info.scale;
+	  return NO_ERROR;
 	}
-      break;
-
-    case DB_TYPE_NUMERIC:
-      error = qdata_divide_numeric_to_dbval (dbval1_p, dbval2_p, result_p);
-      break;
-
-    case DB_TYPE_MONETARY:
-      error = qdata_divide_monetary_to_dbval (dbval1_p, dbval2_p, result_p);
-      break;
-
-    case DB_TYPE_FLOAT:
-      error = qdata_divide_float_to_dbval (dbval1_p, dbval2_p, result_p);
-      break;
-
-    case DB_TYPE_DOUBLE:
-      error = qdata_divide_double_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
 
     case DB_TYPE_SET:
