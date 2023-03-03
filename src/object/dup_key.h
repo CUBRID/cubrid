@@ -39,17 +39,14 @@
 typedef enum
 {
   COMPRESS_INDEX_MODE_NONE = 0,
-  DUP_MODE_PAGEID,
-  COMPRESS_INDEX_MODE_LAST
+  COMPRESS_INDEX_MODE_SET
 } EN_DUP_MODE;
 
-#define OVFL_LEVEL_MIN       (0)
-#define OVFL_LEVEL_MAX       (16)
-#define COMPRESS_INDEX_MOD_VAL_MIN (0)
-#define COMPRESS_INDEX_MOD_VAL_MAX (32767)
+#define COMPRESS_INDEX_MOD_LEVEL_ZERO     (0)
+#define COMPRESS_INDEX_MOD_LEVEL_MIN      (1)
+#define COMPRESS_INDEX_MOD_LEVEL_MAX      (16)
+#define COMPRESS_INDEX_MOD_LEVEL_DEFAULT  (10)
 
-
-#define DUP_MODE_OVFL_LEVEL_NOT_SET   (-1)
 
 /* ******************************************************** */
 #if !defined(SUPPORT_KEY_DUP_LEVEL)
@@ -71,7 +68,7 @@ typedef enum
 
 #define RESERVED_INDEX_ATTR_NAME_PREFIX_PAGEID  "p_"
 
-#define COUNT_OF_DUP_LEVEL (OVFL_LEVEL_MAX + 1)
+#define COUNT_OF_DUP_LEVEL (COMPRESS_INDEX_MOD_LEVEL_MAX + 1)
 
 static const char *st_reserved_index_col_name[COUNT_OF_DUP_LEVEL] = {
 /* *INDENT-OFF* */
@@ -96,31 +93,29 @@ RESERVED_INDEX_ATTR_NAME_PREFIX  RESERVED_INDEX_ATTR_NAME_PREFIX_PAGEID "16"
 };
 
 // *INDENT-OFF*
-#define GET_RESERVED_INDEX_ATTR_NAME(mode, level)   (st_reserved_index_col_name[(level)])
-#define MK_RESERVED_INDEX_ATTR_ID(mode, level)      (RESERVED_INDEX_ATTR_ID_BASE - ((mode) | ((level) << 4)))
-#define GET_RESERVED_INDEX_ATTR_MODE(attid)         ((RESERVED_INDEX_ATTR_ID_BASE - (attid)) & 0x0000000F)
-#define GET_RESERVED_INDEX_ATTR_LEVEL(attid)        ((RESERVED_INDEX_ATTR_ID_BASE - (attid)) >> 4)
+#define GET_RESERVED_INDEX_ATTR_NAME(level)   (st_reserved_index_col_name[(level)])
+#define MK_RESERVED_INDEX_ATTR_ID(level)      (RESERVED_INDEX_ATTR_ID_BASE - ((level) << 4))
+#define GET_RESERVED_INDEX_ATTR_LEVEL(attid)  ((RESERVED_INDEX_ATTR_ID_BASE - (attid)) >> 4)
 
-#define GET_RESERVED_INDEX_ATTR_MODE_LEVEL_FROM_NAME(name, mode, level)  do {                                   \
+#define GET_RESERVED_INDEX_ATTR_MODE_LEVEL_FROM_NAME(name, level)  do {                                         \
         char chx, ch_mode;                                                                                      \
         if(sscanf ((name) + RESERVED_INDEX_ATTR_NAME_PREFIX_LEN, "%c_%02d%c", &(ch_mode), &(level), &chx) != 2) \
           {  assert(false); }                                                                                   \
-        assert(((level) >= OVFL_LEVEL_MIN) && ((level) <= OVFL_LEVEL_MAX));                                     \
+        assert(((level) >= COMPRESS_INDEX_MOD_LEVEL_ZERO) && ((level) <= COMPRESS_INDEX_MOD_LEVEL_MAX));        \
         switch(ch_mode)                                                                                         \
         {                                                                                                       \
-           case RESERVED_INDEX_ATTR_NAME_PREFIX_PAGEID[0]: (mode) = DUP_MODE_PAGEID; break;                     \
+           case RESERVED_INDEX_ATTR_NAME_PREFIX_PAGEID[0]:  break;                                              \
            default: assert(false);                                                                              \
         }                                                                                                       \
  } while(0)
- // *INDENT-ON*
+// *INDENT-ON*
 
-#define MAX_RESERVED_INDEX_ATTR_ID  MK_RESERVED_INDEX_ATTR_ID(DUP_MODE_PAGEID, OVFL_LEVEL_MIN)
-#define MIN_RESERVED_INDEX_ATTR_ID  MK_RESERVED_INDEX_ATTR_ID((COMPRESS_INDEX_MODE_LAST-1), OVFL_LEVEL_MAX)
+#define MAX_RESERVED_INDEX_ATTR_ID  MK_RESERVED_INDEX_ATTR_ID(COMPRESS_INDEX_MOD_LEVEL_ZERO)
+#define MIN_RESERVED_INDEX_ATTR_ID  MK_RESERVED_INDEX_ATTR_ID(COMPRESS_INDEX_MOD_LEVEL_MAX)
 
 #define IS_RESERVED_INDEX_ATTR_ID(id)      ((id) >= MIN_RESERVED_INDEX_ATTR_ID &&  (id) <= MAX_RESERVED_INDEX_ATTR_ID)
 #define IS_RESERVED_INDEX_ATTR_NAME(name)  \
         (((name)[0] == '_') && !memcmp ((name), RESERVED_INDEX_ATTR_NAME_PREFIX, RESERVED_INDEX_ATTR_NAME_PREFIX_LEN))
-
 
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
@@ -129,6 +124,7 @@ extern int dk_heap_midxkey_get_reserved_index_value (int att_id, OID * rec_oid, 
 // The actual return type is OR_ATTRIBUTE*.
 // But, here it is treated as void* due to collision with C++. (error: template with C linkage)
 extern void *dk_find_or_reserved_index_attribute (int att_id);
+extern int dk_get_decompress_position (int n_attrs, int *attr_ids, int func_attr_index_start);
 #endif
 
 #if !defined(SERVER_MODE)
@@ -143,21 +139,13 @@ extern void dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char *
 					  bool is_reverse);
 
 extern char *dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupkey_hash_level);
+extern int dk_sm_decompress_position (int n_attrs, SM_ATTRIBUTE ** attrs, SM_FUNCTION_INFO * function_index);
 #endif
 
-
+extern char *dk_get_compress_index_attr_name (int level, char **ppbuf);
 
 extern void dk_reserved_index_attribute_initialized ();
 extern void dk_reserved_index_attribute_finalized ();
-
-
-#if defined(SERVER_MODE) || defined(SA_MODE)
-extern int dk_get_decompress_position (int n_attrs, int *attr_ids, int func_attr_index_start);
-#endif
-
-#if !defined(SERVER_MODE)
-extern int dk_sm_decompress_position (int n_attrs, SM_ATTRIBUTE ** attrs, SM_FUNCTION_INFO * function_index);
-#endif
 
 /* ******************************************************** */
 #endif /* #if !defined(SUPPORT_KEY_DUP_LEVEL) */

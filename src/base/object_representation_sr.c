@@ -3995,9 +3995,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 #if defined(SUPPORT_KEY_DUP_LEVEL)
   else if (IS_RESERVED_INDEX_ATTR_ID (attr_id) && (attr_index == ORC_ATT_NAME_INDEX))
     {
-      *string =
-	(char *) GET_RESERVED_INDEX_ATTR_NAME (GET_RESERVED_INDEX_ATTR_MODE (attr_id),
-					       GET_RESERVED_INDEX_ATTR_LEVEL (attr_id));
+      *string = (char *) GET_RESERVED_INDEX_ATTR_NAME (GET_RESERVED_INDEX_ATTR_LEVEL (attr_id));
       *alloced_string = 0;
     }
 #endif

@@ -438,11 +438,12 @@ static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
 static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-static void pt_get_dup_mode_level(int mode_level, short* mode, short* level);
+static void pt_get_compress_mode_level(int mode_level, short* mode, short* level);
 
-#define MAKE_MODE_LEVEL(m, l)          ((m) | ((l) << 16))
-#define GET_MODE_FROM_MODE_LEVEL(ml)   ((ml) & 0x0000FFFF)
-#define GET_LEVEL_FROM_MODE_LEVEL(ml)  ((ml) >> 16)
+#define COMPRESS_MODE_NOT_SET          (-1)
+#define MAKE_COMPRESS_MODE_LEVEL(m, l) ((m) | ((l) << 8))
+#define GET_COMPRESS_MODE(ml)   ((ml) & 0x000000FF)
+#define GET_COMPRESS_LEVEL(ml)  ((ml) >> 8)
 
 #define CHECK_RESERVED_IDX_ATTR_NAME(nm)  do {  \
    if((nm) && IS_RESERVED_INDEX_ATTR_NAME((nm)->info.name.original))   \
@@ -454,7 +455,7 @@ static void pt_get_dup_mode_level(int mode_level, short* mode, short* level);
 } while(0)
 #else
 #define CHECK_RESERVED_IDX_ATTR_NAME(nm)
-#define MAKE_MODE_LEVEL(m, l)  (DUP_MODE_OVFL_LEVEL_NOT_SET)
+#define MAKE_COMPRESS_MODE_LEVEL(m, l)  (-1)
 #endif // #if defined(SUPPORT_KEY_DUP_LEVEL)
 
 #define push_msg(a) _push_msg(a, __LINE__)
@@ -634,6 +635,7 @@ int g_original_buffer_len;
 %type <number> opt_encrypt_algorithm
 %type <number> opt_access_modifier
 %type <number> opt_index_compress_mode
+%type <number> opt_index_compress_mod_val
 /*}}}*/
 
 /* define rule type (node) */
@@ -2844,7 +2846,7 @@ create_stmt
 			    node->info.index.column_names = col;
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-                            pt_get_dup_mode_level($13,  &node->info.index.dupkey_mode, &node->info.index.dupkey_hash_level);
+                            pt_get_compress_mode_level($13,  &node->info.index.dupkey_mode, &node->info.index.dupkey_hash_level);
 #endif                            
 
 			    node->info.index.comment = $14;
@@ -9633,7 +9635,7 @@ foreign_key_constraint
 			    node->info.constraint.un.foreign_key.attrs = $5;
 
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
-                            pt_get_dup_mode_level($7,  &node->info.constraint.un.foreign_key.dupkey_mode, &node->info.constraint.un.foreign_key.dupkey_hash_level);
+                            pt_get_compress_mode_level($7,  &node->info.constraint.un.foreign_key.dupkey_mode, &node->info.constraint.un.foreign_key.dupkey_hash_level);
 #endif
 			    node->info.constraint.un.foreign_key.referenced_attrs = $10;
 			    node->info.constraint.un.foreign_key.match_type = PT_MATCH_REGULAR;
@@ -10411,7 +10413,7 @@ attr_index_def
 			      }
 			  }
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-                        pt_get_dup_mode_level($5,  &node->info.index.dupkey_mode, &node->info.index.dupkey_hash_level);
+                        pt_get_compress_mode_level($5,  &node->info.index.dupkey_mode, &node->info.index.dupkey_hash_level);
 #endif                            
 			node->info.index.column_names = col;
 			node->info.index.index_status = SM_NORMAL_INDEX;
@@ -10807,7 +10809,7 @@ column_other_constraint_def
 			    constraint->info.constraint.un.foreign_key.referenced_class = $5;
 
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)                            
-                            pt_get_dup_mode_level($3,  &constraint->info.constraint.un.foreign_key.dupkey_mode, &constraint->info.constraint.un.foreign_key.dupkey_hash_level);
+                            pt_get_compress_mode_level($3,  &constraint->info.constraint.un.foreign_key.dupkey_mode, &constraint->info.constraint.un.foreign_key.dupkey_hash_level);
 #endif  
 
 			    constraint->info.constraint.type = PT_CONSTRAIN_FOREIGN_KEY;
@@ -21450,22 +21452,48 @@ opt_encrypt_algorithm
 
 opt_index_compress_mode
         :  /* empty */
-	       { DBG_TRACE_GRAMMAR(opt_index_dup_level, : ); 
-                 $$ = DUP_MODE_OVFL_LEVEL_NOT_SET;
+	       { DBG_TRACE_GRAMMAR(opt_index_compress_mode, : ); 
+                 $$ = COMPRESS_MODE_NOT_SET;
                }
         | COMPRESS_ HIGH_
-               { DBG_TRACE_GRAMMAR(opt_index_dup_level,  COMPRESS_ opt_index_compress_mode); 
-                 $$ = MAKE_MODE_LEVEL(COMPRESS_INDEX_MODE_NONE, OVFL_LEVEL_MIN);
-               }
-        | COMPRESS_ MEDIUM_
-               { DBG_TRACE_GRAMMAR(opt_index_dup_level,  COMPRESS_ opt_index_compress_mode); 
-                 $$ = MAKE_MODE_LEVEL(DUP_MODE_PAGEID, prm_get_integer_value (PRM_ID_COMPRESS_INDEX_MOD_VAL));
+               { DBG_TRACE_GRAMMAR(opt_index_compress_mode,  | COMPRESS_ HIGH_); 
+                 $$ = MAKE_COMPRESS_MODE_LEVEL(COMPRESS_INDEX_MODE_HIGH, COMPRESS_INDEX_MOD_LEVEL_ZERO);
                }
         | COMPRESS_ LOW_
-               { DBG_TRACE_GRAMMAR(opt_index_dup_level,  COMPRESS_ opt_index_compress_mode); 
-                 $$ = MAKE_MODE_LEVEL(DUP_MODE_PAGEID, OVFL_LEVEL_MIN);
-               }           
+               { DBG_TRACE_GRAMMAR(opt_index_compress_mode,  | COMPRESS_ LOW_); 
+                 $$ = MAKE_COMPRESS_MODE_LEVEL(COMPRESS_INDEX_MODE_LOW, COMPRESS_INDEX_MOD_LEVEL_ZERO);
+               }   
+        | COMPRESS_ MEDIUM_ opt_index_compress_mod_val
+               { DBG_TRACE_GRAMMAR(opt_index_compress_mode,  | COMPRESS_ MEDIUM_ opt_index_compress_mod_val); 
+                 $$ = MAKE_COMPRESS_MODE_LEVEL(COMPRESS_INDEX_MODE_MEDIUM, $3);
+               }        
         ;
+
+opt_index_compress_mod_val
+        : /* empty */
+		{ DBG_TRACE_GRAMMAR(opt_index_compress_mod_val, : );     
+#if defined(SUPPORT_KEY_DUP_LEVEL)                             
+                  $$ = prm_get_integer_value (PRM_ID_COMPRESS_INDEX_MOD_VAL);
+#else
+                  $$ = 0;                        
+#endif                  
+                }
+	| '(' UNSIGNED_INTEGER ')'
+		{ DBG_TRACE_GRAMMAR(opt_index_compress_mod_val, | (LEVEL UNSIGNED_INTEGER) ); 
+                  int int_val = -1;
+                  // ctshim to do error code
+                  if (parse_int (&int_val, $2, 10) != 0)
+		      {
+			PT_ERRORmf (this_parser, $2, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_UNSIGNED_INT32, $2);
+		      }
+                  else if(int_val < COMPRESS_INDEX_MOD_LEVEL_MIN || int_val > COMPRESS_INDEX_MOD_LEVEL_MAX)
+                      {                          
+                        PT_ERRORmf2 (this_parser, $2, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_LEVEL, 
+                                     COMPRESS_INDEX_MOD_LEVEL_MIN, COMPRESS_INDEX_MOD_LEVEL_MAX);
+                      }
+   	          $$ = int_val;                  
+                  DBG_PRINT}
+	;
 
 opt_comment_spec
 	: /* empty */
@@ -27639,32 +27667,37 @@ pt_ct_check_select (char* p, char *perr_msg)
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 
 #include "system_parameter.h"
-static void pt_get_dup_mode_level(int mode_level, short* mode, short* level)
-{       
-    if(mode_level == DUP_MODE_OVFL_LEVEL_NOT_SET)
-      {
-        switch(prm_get_integer_value (PRM_ID_COMPRESS_INDEX_MODE))
-        {
-           case COMPRESS_INDEX_MODE_LOW :
-               *mode = DUP_MODE_PAGEID;
-               *level = OVFL_LEVEL_MIN;
-               break;
-           case COMPRESS_INDEX_MODE_MEDIUM :
-               *mode = DUP_MODE_PAGEID;
-               *level = prm_get_integer_value (PRM_ID_COMPRESS_INDEX_MOD_VAL);
-               break;
-           case COMPRESS_INDEX_MODE_HIGH :
-               *mode = COMPRESS_INDEX_MODE_NONE;
-               *level = OVFL_LEVEL_MIN;
-               break;
-           default:
-                assert(0);
-        }        
-      }
+static void pt_get_compress_mode_level(int mode_level, short* mode, short* level)
+{   
+    int type, mod_val;
+
+    if(mode_level == COMPRESS_MODE_NOT_SET)
+    {
+        type = prm_get_integer_value (PRM_ID_COMPRESS_INDEX_MODE);
+        mod_val = prm_get_integer_value (PRM_ID_COMPRESS_INDEX_MOD_VAL);
+    }   
     else
-     {
-        *mode = GET_MODE_FROM_MODE_LEVEL(mode_level);
-        *level = GET_LEVEL_FROM_MODE_LEVEL(mode_level);
-     }
+    {
+        type = GET_COMPRESS_MODE(mode_level);
+        mod_val = GET_COMPRESS_LEVEL(mode_level);
+    }   
+
+    switch(type)
+      {
+        case COMPRESS_INDEX_MODE_HIGH :
+             *mode = COMPRESS_INDEX_MODE_NONE;
+             *level = COMPRESS_INDEX_MOD_LEVEL_ZERO;
+             break;
+        case COMPRESS_INDEX_MODE_LOW :
+             *mode = COMPRESS_INDEX_MODE_SET;
+             *level = COMPRESS_INDEX_MOD_LEVEL_ZERO;
+             break;        
+        case COMPRESS_INDEX_MODE_MEDIUM :
+             *mode = COMPRESS_INDEX_MODE_SET;
+             *level = mod_val;
+             break;
+        default:
+             assert(0);
+      }             
 }
 #endif

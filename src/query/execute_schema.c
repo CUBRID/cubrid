@@ -2794,12 +2794,8 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	{
 	  if (idx_info->prefix_length == NULL)
 	    {
-	      if (idx_info->dupkey_mode <= DUP_MODE_OVFL_LEVEL_NOT_SET)
-		{
-		  /* no action */ ;
-		}
-	      else if ((idx_info->dupkey_mode != COMPRESS_INDEX_MODE_NONE)
-		       && !SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != SM_CONSTRAINT_FOREIGN_KEY)
+	      if ((idx_info->dupkey_mode != COMPRESS_INDEX_MODE_NONE)
+		  && !SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != SM_CONSTRAINT_FOREIGN_KEY)
 		{
 		  has_reserved_index_col = true;
 		  nnames++;
@@ -7515,13 +7511,9 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
     }
 
 #if defined(SUPPORT_KEY_DUP_LEVEL_FK)
-  if (fk_info->dupkey_mode <= DUP_MODE_OVFL_LEVEL_NOT_SET)
+  if (fk_info->dupkey_mode != COMPRESS_INDEX_MODE_NONE)
     {
-      /* no action */ ;
-    }
-  else if (fk_info->dupkey_mode != COMPRESS_INDEX_MODE_NONE)
-    {
-      att_names[i++] = (char *) GET_RESERVED_INDEX_ATTR_NAME (fk_info->dupkey_mode, fk_info->dupkey_hash_level);
+      att_names[i++] = (char *) GET_RESERVED_INDEX_ATTR_NAME (fk_info->dupkey_hash_level);
     }
 #endif
   att_names[i] = NULL;

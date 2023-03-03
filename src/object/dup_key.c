@@ -43,12 +43,11 @@
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 
 static DB_DOMAIN *
-get_reserved_index_attr_domain_type (int mode, int level)
+get_reserved_index_attr_domain_type (int level)
 {
-  int hash_mod_val = 1 << level;	// like pow(2, level);
-  assert (mode == DUP_MODE_PAGEID);
+  int mod_val = 1 << level;	// like pow(2, level);
 
-  if (level == 0 || hash_mod_val > SHRT_MAX)
+  if (level == COMPRESS_INDEX_MOD_LEVEL_ZERO || mod_val > SHRT_MAX)
     {
       return &tp_Integer_domain;	//tp_domain_construct (DB_TYPE_INTEGER, NULL, DB_INTEGER_PRECISION, 0, NULL);
     }
@@ -64,11 +63,11 @@ static void
 dk_or_attribute_initialized ()
 {
   int att_id;
-  int mode, level;
+  int level;
 
 #ifndef NDEBUG
   OR_ATTRIBUTE *att;
-  int mode2, level2;
+  int level2;
   const char *reserved_name;
   OID rec_oid = OID_INITIALIZER;
   DB_VALUE v;
@@ -76,31 +75,26 @@ dk_or_attribute_initialized ()
   int cnt = 0;
 #endif
 
-  mode = DUP_MODE_PAGEID;
-  for (level = OVFL_LEVEL_MIN; level <= OVFL_LEVEL_MAX; level++)
+  for (level = COMPRESS_INDEX_MOD_LEVEL_ZERO; level <= COMPRESS_INDEX_MOD_LEVEL_MAX; level++)
     {
-      att_id = MK_RESERVED_INDEX_ATTR_ID (mode, level);
+      att_id = MK_RESERVED_INDEX_ATTR_ID (level);
       st_or_atts[level].id = att_id;
-      st_or_atts[level].domain = get_reserved_index_attr_domain_type (mode, level);
+      st_or_atts[level].domain = get_reserved_index_attr_domain_type (level);
       st_or_atts[level].type = st_or_atts[level].domain->type->id;
 
 #ifndef NDEBUG
       cnt++;
-      reserved_name = GET_RESERVED_INDEX_ATTR_NAME (mode, level);
-      domain = get_reserved_index_attr_domain_type (mode, level);
+      reserved_name = GET_RESERVED_INDEX_ATTR_NAME (level);
+      domain = get_reserved_index_attr_domain_type (level);
       dk_heap_midxkey_get_reserved_index_value (att_id, &rec_oid, &v);
 
-      mode2 = GET_RESERVED_INDEX_ATTR_MODE (att_id);
       level2 = GET_RESERVED_INDEX_ATTR_LEVEL (att_id);
 
-      assert (mode == mode2);
       assert (level == level2);
-
       assert (IS_RESERVED_INDEX_ATTR_ID (att_id) == true);
       assert (IS_RESERVED_INDEX_ATTR_NAME (reserved_name) == true);
 
-      GET_RESERVED_INDEX_ATTR_MODE_LEVEL_FROM_NAME (reserved_name, mode2, level2);
-      assert (mode == mode2);
+      GET_RESERVED_INDEX_ATTR_MODE_LEVEL_FROM_NAME (reserved_name, level2);
       assert (level == level2);
 #endif // #ifndef NDEBUG
     }
@@ -116,12 +110,10 @@ dk_or_attribute_initialized ()
 void *
 dk_find_or_reserved_index_attribute (int att_id)
 {
-  int mode = GET_RESERVED_INDEX_ATTR_MODE (att_id);
   int level = GET_RESERVED_INDEX_ATTR_LEVEL (att_id);
 
-  assert (mode > COMPRESS_INDEX_MODE_NONE && mode < COMPRESS_INDEX_MODE_LAST);
-  assert (level >= OVFL_LEVEL_MIN && level <= OVFL_LEVEL_MAX);
-
+  assert (IS_RESERVED_INDEX_ATTR_ID (att_id));
+  assert (level >= COMPRESS_INDEX_MOD_LEVEL_ZERO && level <= COMPRESS_INDEX_MOD_LEVEL_MAX);
   assert (st_or_atts_init == true);
 
   return (void *) &(st_or_atts[level]);
@@ -132,20 +124,18 @@ dk_heap_midxkey_get_reserved_index_value (int att_id, OID * rec_oid, DB_VALUE * 
 {
   // The rec_oid may be NULL when the index of the UNIQUE attribute is an index. 
   // In that case, however, it cannot entered here.
-  assert_release (rec_oid != NULL);
-
   int hash_mod_val;
   short level = GET_RESERVED_INDEX_ATTR_LEVEL (att_id);
-  short mode = GET_RESERVED_INDEX_ATTR_MODE (att_id);
 
-  assert (mode == DUP_MODE_PAGEID);
+  assert_release (rec_oid != NULL);
+  assert (IS_RESERVED_INDEX_ATTR_ID (att_id));
 
   hash_mod_val = 1 << level;	// like pow(2, level);
 
 #ifndef NDEBUG
   if (prm_get_bool_value (PRM_ID_USE_COMPRESS_INDEX_MODE_OID_TEST))
     {
-      if (level == 0)
+      if (level == COMPRESS_INDEX_MOD_LEVEL_ZERO)
 	{
 	  db_make_int (value, (int) (OID_PSEUDO_KEY (rec_oid) % SHRT_MAX));
 	}
@@ -162,7 +152,7 @@ dk_heap_midxkey_get_reserved_index_value (int att_id, OID * rec_oid, DB_VALUE * 
     }
 #endif
 
-  if (level == 0)
+  if (level == COMPRESS_INDEX_MOD_LEVEL_ZERO)
     {
       db_make_int (value, rec_oid->pageid);
     }
@@ -187,13 +177,11 @@ static bool st_sm_atts_init = false;
 static void
 dk_sm_attribute_finalized ()
 {
-  int mode, level;
+  int level;
 
   if (st_sm_atts_init)
     {
-      mode = DUP_MODE_PAGEID;
-
-      for (level = OVFL_LEVEL_MIN; level <= OVFL_LEVEL_MAX; level++)
+      for (level = COMPRESS_INDEX_MOD_LEVEL_ZERO; level <= COMPRESS_INDEX_MOD_LEVEL_MAX; level++)
 	{
 	  if (st_sm_atts[level])
 	    {
@@ -201,7 +189,6 @@ dk_sm_attribute_finalized ()
 	      st_sm_atts[level] = NULL;
 	    }
 	}
-
       st_sm_atts_init = false;
     }
 }
@@ -210,47 +197,39 @@ static void
 dk_sm_attribute_initialized ()
 {
   int error_code = NO_ERROR;
-  int mode, level;
+  int level;
   const char *reserved_name = NULL;
   SM_ATTRIBUTE *att;
   DB_DOMAIN *domain = NULL;
 
-  assert (prm_get_integer_value (PRM_ID_COMPRESS_INDEX_MODE) >= COMPRESS_INDEX_MODE_NONE
-	  && prm_get_integer_value (PRM_ID_COMPRESS_INDEX_MODE) < COMPRESS_INDEX_MODE_LAST);
-  assert (prm_get_integer_value (PRM_ID_COMPRESS_INDEX_MOD_VAL) >= OVFL_LEVEL_MIN
-	  && prm_get_integer_value (PRM_ID_COMPRESS_INDEX_MOD_VAL) <= OVFL_LEVEL_MAX);
-
-  for (mode = COMPRESS_INDEX_MODE_NONE + 1; mode < COMPRESS_INDEX_MODE_LAST; mode++)
+  for (level = COMPRESS_INDEX_MOD_LEVEL_ZERO; level <= COMPRESS_INDEX_MOD_LEVEL_MAX; level++)
     {
-      for (level = OVFL_LEVEL_MIN; level <= OVFL_LEVEL_MAX; level++)
+      reserved_name = GET_RESERVED_INDEX_ATTR_NAME (level);
+      domain = get_reserved_index_attr_domain_type (level);
+      if (domain == NULL)
 	{
-	  reserved_name = GET_RESERVED_INDEX_ATTR_NAME (mode, level);
-	  domain = get_reserved_index_attr_domain_type (mode, level);
-	  if (domain == NULL)
-	    {
-	      assert (false);
-	      ERROR0 (error_code, ER_FAILED);
-	      goto error_exit;
-	    }
-
-	  att = classobj_make_attribute (reserved_name, domain->type, ID_ATTRIBUTE);
-	  if (att == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      error_code = er_errid ();
-	      goto error_exit;
-	    }
-
-	  /* Flag this attribute as new so that we can initialize the original_value properly.  
-	   * Make sure this isn't saved on disk ! */
-	  att->flags |= SM_ATTFLAG_NEW;
-	  att->class_mop = NULL;
-	  att->domain = domain;
-	  att->auto_increment = NULL;
-	  att->id = MK_RESERVED_INDEX_ATTR_ID (mode, level);
-
-	  st_sm_atts[level] = att;
+	  assert (false);
+	  ERROR0 (error_code, ER_FAILED);
+	  goto error_exit;
 	}
+
+      att = classobj_make_attribute (reserved_name, domain->type, ID_ATTRIBUTE);
+      if (att == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error_code = er_errid ();
+	  goto error_exit;
+	}
+
+      /* Flag this attribute as new so that we can initialize the original_value properly.  
+       * Make sure this isn't saved on disk ! */
+      att->flags |= SM_ATTFLAG_NEW;
+      att->class_mop = NULL;
+      att->domain = domain;
+      att->auto_increment = NULL;
+      att->id = MK_RESERVED_INDEX_ATTR_ID (level);
+
+      st_sm_atts[level] = att;
     }
 
   st_sm_atts_init = true;
@@ -266,21 +245,20 @@ error_exit:
 SM_ATTRIBUTE *
 dk_find_sm_reserved_index_attribute (int att_id, const char *att_name)
 {
-  int mode, level, idx;
+  int level, idx;
 
   assert ((att_id != -1) || (att_name && *att_name));
-
   if (att_id != -1)
     {
-      mode = GET_RESERVED_INDEX_ATTR_MODE (att_id);
+      assert (IS_RESERVED_INDEX_ATTR_ID (att_id));
       level = GET_RESERVED_INDEX_ATTR_LEVEL (att_id);
     }
   else
     {
-      GET_RESERVED_INDEX_ATTR_MODE_LEVEL_FROM_NAME (att_name, mode, level);
+      GET_RESERVED_INDEX_ATTR_MODE_LEVEL_FROM_NAME (att_name, level);
     }
-  assert (mode > COMPRESS_INDEX_MODE_NONE && mode < COMPRESS_INDEX_MODE_LAST);
-  assert (level >= OVFL_LEVEL_MIN && level <= OVFL_LEVEL_MAX);
+
+  assert (level >= COMPRESS_INDEX_MOD_LEVEL_ZERO && level <= COMPRESS_INDEX_MOD_LEVEL_MAX);
   assert (st_reserved_index_col_name[level] != NULL);
   assert (st_sm_atts_init == true);
 
@@ -304,7 +282,6 @@ dk_create_index_level_remove_adjust (DB_CONSTRAINT_TYPE ctype, char **attnames, 
   assert (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != DB_CONSTRAINT_FOREIGN_KEY);
   assert (asc_desc != NULL);
 #endif
-
 
   if (reserved_index_col_pos != -1)
     {				// remove hidden column   
@@ -342,9 +319,9 @@ dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, i
   int reserved_index_col_pos;
 
   assert (asc_desc != NULL);
-
-  assert (idx_info->dupkey_mode != COMPRESS_INDEX_MODE_NONE && idx_info->dupkey_mode != DUP_MODE_OVFL_LEVEL_NOT_SET);
-  assert (idx_info->dupkey_hash_level >= OVFL_LEVEL_MIN && idx_info->dupkey_hash_level <= OVFL_LEVEL_MAX);
+  assert (idx_info->dupkey_mode != COMPRESS_INDEX_MODE_NONE);
+  assert (idx_info->dupkey_hash_level >= COMPRESS_INDEX_MOD_LEVEL_ZERO
+	  && idx_info->dupkey_hash_level <= COMPRESS_INDEX_MOD_LEVEL_MAX);
 
   if (func_index_info)
     {
@@ -373,8 +350,7 @@ dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, i
     {
       attrs_prefix_length[reserved_index_col_pos] = -1;
     }
-  attnames[reserved_index_col_pos] =
-    (char *) GET_RESERVED_INDEX_ATTR_NAME (idx_info->dupkey_mode, idx_info->dupkey_hash_level);
+  attnames[reserved_index_col_pos] = (char *) GET_RESERVED_INDEX_ATTR_NAME (idx_info->dupkey_hash_level);
   asc_desc[reserved_index_col_pos] = (is_reverse ? 1 : 0);
 
   attnames[nnames + 1] = NULL;
@@ -384,55 +360,30 @@ char *
 dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupkey_hash_level)
 {
   int len = 0;
-  char *pstr_mode;
 
-  assert ((dupkey_mode >= DUP_MODE_OVFL_LEVEL_NOT_SET) && (dupkey_mode < COMPRESS_INDEX_MODE_LAST));
+  assert (dupkey_mode == COMPRESS_INDEX_MODE_SET);
 
   buf[0] = '\0';
-  if (dupkey_mode <= COMPRESS_INDEX_MODE_NONE)
+  if (dupkey_mode == COMPRESS_INDEX_MODE_NONE)
     {
-      /* case DUP_MODE_OVFL_LEVEL_NOT_SET: 
-       *     It entered to output an error message due to a parsing error. */
-      assert ((dupkey_mode == COMPRESS_INDEX_MODE_NONE)
-	      || (dupkey_mode == DUP_MODE_OVFL_LEVEL_NOT_SET && dupkey_hash_level == 0));
-      return buf;
+      len = snprintf (buf, buf_size, " compress high");
     }
-
-  pstr_mode = (dupkey_mode == DUP_MODE_PAGEID) ? (char *) "PAGEID" : (char *) "OID";
-  if (dupkey_hash_level == OVFL_LEVEL_MIN)
+  else if (dupkey_mode == COMPRESS_INDEX_MODE_SET)
     {
-      len = snprintf (buf, buf_size, " deduplicate with %s", (char *) pstr_mode);
-    }
-  else
-    {
-      len = snprintf (buf, buf_size, " deduplicate with %s level %d", (char *) pstr_mode, dupkey_hash_level);
+      if (dupkey_hash_level == COMPRESS_INDEX_MOD_LEVEL_ZERO)
+	{
+	  len = snprintf (buf, buf_size, " compress low");
+	}
+      else
+	{
+	  len = snprintf (buf, buf_size, " compress medium(%d)", dupkey_hash_level);
+	}
     }
 
   assert (len < buf_size);
   return buf;
 }
 #endif // #if !defined(SERVER_MODE)
-
-void
-dk_reserved_index_attribute_initialized ()
-{
-#if defined(SERVER_MODE) || defined(SA_MODE)
-  dk_or_attribute_initialized ();
-#endif
-
-#if !defined(SERVER_MODE)
-  dk_sm_attribute_initialized ();
-#endif
-}
-
-void
-dk_reserved_index_attribute_finalized ()
-{
-#if !defined(SERVER_MODE)
-  dk_sm_attribute_finalized ();
-#endif
-}
-
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
 int
@@ -502,4 +453,31 @@ dk_sm_decompress_position (int n_attrs, SM_ATTRIBUTE ** attrs, SM_FUNCTION_INFO 
   return -1;
 }
 #endif
+
+char *
+dk_get_compress_index_attr_name (int level, char **ppbuf)
+{
+  return NULL;
+}
+
+void
+dk_reserved_index_attribute_initialized ()
+{
+#if defined(SERVER_MODE) || defined(SA_MODE)
+  dk_or_attribute_initialized ();
+#endif
+
+#if !defined(SERVER_MODE)
+  dk_sm_attribute_initialized ();
+#endif
+}
+
+void
+dk_reserved_index_attribute_finalized ()
+{
+#if !defined(SERVER_MODE)
+  dk_sm_attribute_finalized ();
+#endif
+}
+
 #endif // #if defined(SUPPORT_KEY_DUP_LEVEL)

@@ -218,7 +218,7 @@ int is_dblink_query_string = 0;
 [cC][oO][mM][mM][iI][tT][tT][eE][dD]					{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return COMMITTED; }
-[cC][oO][mM][pP][rR][eE][sS]		 			        { begin_token(yytext);
+[cC][oO][mM][pP][rR][eE][sS][sS]	 			        { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return COMPRESS_; }                                                                                
 [cC][oO][nN][nN][eE][cC][tT]						{ begin_token(yytext);   return CONNECT; }

@@ -3038,7 +3038,7 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 	  if (k == (n_attrs - 1) && IS_RESERVED_INDEX_ATTR_ID ((*att)->id))
 	    {
-	      int mode = GET_RESERVED_INDEX_ATTR_MODE ((*att)->id);
+	      int mode = COMPRESS_INDEX_MODE_SET;
 	      int level = GET_RESERVED_INDEX_ATTR_LEVEL ((*att)->id);
 	      dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), mode, level);
 	      break;

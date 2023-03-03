@@ -757,9 +757,8 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 #if defined(SUPPORT_KEY_DUP_LEVEL)
       if (k == (n_attrs - 1) && IS_RESERVED_INDEX_ATTR_ID ((*attribute_p)->id))
 	{
-	  int mode = GET_RESERVED_INDEX_ATTR_MODE ((*attribute_p)->id);
 	  int level = GET_RESERVED_INDEX_ATTR_LEVEL ((*attribute_p)->id);
-	  dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), mode, level);
+	  dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_SET, level);
 	  n_attrs--;
 	  break;
 	}
