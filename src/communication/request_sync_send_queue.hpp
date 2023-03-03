@@ -108,7 +108,6 @@ namespace cubcomm
       std::condition_variable m_queue_condvar;    // Notify request consumers
 
       send_queue_error_handler m_error_handler;
-      bool m_abort_further_processing;
   };
 
   // The request_queue_autosend automatically sends requests pushed into request_sync_send_queue
@@ -160,12 +159,10 @@ namespace cubcomm
       send_queue_error_handler &&error_handler)
     : m_client (client)
     , m_error_handler { std::move (error_handler) }
-    , m_abort_further_processing { false }
   {
     // as per the specification of the 'poll' system function, the error handling in this class
     // relies on the connection channel's timeout to be positive
     assert (m_client.get_channel ().get_max_timeout_in_ms () >= 0);
-    //m_client.get_channel ().get_max_timeout_in_ms ();
   }
 
   template <typename ReqClient, typename ReqPayload>
@@ -189,9 +186,8 @@ namespace cubcomm
   void
   request_sync_send_queue<ReqClient, ReqPayload>::send_queue (queue_type &q)
   {
-    // send all requests in q
-
-    while (!q.empty () && !m_abort_further_processing)
+    bool abort_further_processing { false };
+    while (!q.empty () && !abort_further_processing)
       {
 	typename queue_type::const_reference queue_front = q.front ();
 
@@ -215,12 +211,14 @@ namespace cubcomm
 	    if (static_cast<bool> (queue_front.m_error_handler))
 	      {
 		// if present, invoke custom/specific handler first
-		queue_front.m_error_handler (err_code, m_abort_further_processing);
+		// error handler can instruct that further processing is to be stopped (IoC)
+		queue_front.m_error_handler (err_code, abort_further_processing);
 	      }
 	    else if (static_cast<bool> (m_error_handler))
 	      {
 		// if present, invoke generic (fail-back) handler
-		m_error_handler (err_code, m_abort_further_processing);
+		// error handler can instruct that further processing is to be stopped (IoC)
+		m_error_handler (err_code, abort_further_processing);
 	      }
 	    else
 	      {
@@ -231,9 +229,9 @@ namespace cubcomm
 	q.pop ();
       }
 
-    if (m_abort_further_processing)
+    if (abort_further_processing)
       {
-	// discard all remaining items as there is nothing else can be done
+	// discard all remaining items as there is nothing else that can be done
 	while (!q.empty ())
 	  {
 	    q.pop ();
@@ -315,6 +313,8 @@ namespace cubcomm
 	// Check shutdown flag every 10 milliseconds
 	m_req_queue.wait_not_empty_and_send_all (requests, ten_millis);
       }
+
+    // TODO: what if there are still pending requests at this point?
   }
 
   template <typename ReqQueue>
