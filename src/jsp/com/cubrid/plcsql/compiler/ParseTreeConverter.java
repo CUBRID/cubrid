@@ -1946,10 +1946,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         pcsToJavaTypeMap.put("CHAR", "java.lang.String");
         pcsToJavaTypeMap.put("VARCHAR", "java.lang.String");
+        pcsToJavaTypeMap.put("CHAR VARYING", "java.lang.String");
         pcsToJavaTypeMap.put("STRING", "java.lang.String");
 
         pcsToJavaTypeMap.put("NUMERIC", "java.math.BigDecimal");
         pcsToJavaTypeMap.put("DECIMAL", "java.math.BigDecimal");
+
         pcsToJavaTypeMap.put("SHORT", "java.lang.Short");
         pcsToJavaTypeMap.put("SMALLINT", "java.lang.Short");
         pcsToJavaTypeMap.put("INT", "java.lang.Integer");
