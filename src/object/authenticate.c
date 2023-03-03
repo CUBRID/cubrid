@@ -7678,18 +7678,24 @@ au_export_users (extract_context & ctxt, print_output & output_ctx)
 	    {
 	      if (!strlen (passbuf))
 		{
-		  output_ctx ("call [add_user]('%s', '') on class [db_root];\n", uname);
+		  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
+		    {
+		      output_ctx ("call [add_user]('%s', '') on class [db_root];\n", uname);
+		    }
 		}
 	      else
 		{
-		  output_ctx ("call [add_user]('%s', '') on class [db_root] to [auser];\n", uname);
-		  if (encrypt_mode == ENCODE_PREFIX_DES)
+		  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
 		    {
-		      output_ctx ("call [set_password_encoded]('%s') on [auser];\n", passbuf);
-		    }
-		  else
-		    {
-		      output_ctx ("call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
+		      output_ctx ("call [add_user]('%s', '') on class [db_root] to [auser];\n", uname);
+		      if (encrypt_mode == ENCODE_PREFIX_DES)
+			{
+			  output_ctx ("call [set_password_encoded]('%s') on [auser];\n", passbuf);
+			}
+		      else
+			{
+			  output_ctx ("call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
+			}
 		    }
 		}
 	    }
