@@ -16356,7 +16356,7 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   bool is_visible = false;
   DB_VALUE key_value, *value_p = &key_value;
   BTREE_ROOT_HEADER *root_header = NULL;
-  BTREE_SCAN btree_scan, *bts;
+  BTREE_SCAN btree_scan, *BTS;
   int ret = NO_ERROR;
   MVCC_SNAPSHOT *mvcc_snapshot;
 
@@ -16368,10 +16368,10 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   db_make_null (key);
   btree_init_temp_key_value (&clear_key, &key_value);
 
-  bts = &btree_scan;
-  BTREE_INIT_SCAN (bts);
+  BTS = &btree_scan;
+  BTREE_INIT_SCAN (BTS);
 
-  bts->btid_int.sys_btid = btid;
+  BTS->btid_int.sys_btid = btid;
 
   root_vpid.pageid = btid->root_pageid;
   root_vpid.volid = btid->vfid.volid;
@@ -16390,7 +16390,7 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       goto exit_on_error;
     }
 
-  ret = btree_glean_root_header_info (thread_p, root_header, &bts->btid_int, true);
+  ret = btree_glean_root_header_info (thread_p, root_header, &BTS->btid_int, true);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -16402,21 +16402,21 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
    * in case of desc domain index,
    * we have to find the min/max key in opposite order.
    */
-  if (bts->btid_int.key_type->is_desc)
+  if (BTS->btid_int.key_type->is_desc)
     {
       find_min_key = !find_min_key;
     }
 
   if (find_min_key)
     {
-      bts->use_desc_index = 0;
+      BTS->use_desc_index = 0;
     }
   else
     {
-      bts->use_desc_index = 1;
+      BTS->use_desc_index = 1;
     }
 
-  ret = btree_find_lower_bound_leaf (thread_p, bts, NULL);
+  ret = btree_find_lower_bound_leaf (thread_p, BTS, NULL);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -16429,11 +16429,11 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
   mvcc_snapshot->snapshot_fnc = mvcc_satisfies_snapshot;
 
-  while (!BTREE_END_OF_SCAN (bts))
+  while (!BTREE_END_OF_SCAN (BTS))
     {
       /* get a visible key on mvcc */
       ret =
-	btree_is_key_visible (thread_p, &bts->btid_int, bts->C_page, mvcc_snapshot, bts->slot_id, &is_visible,
+	btree_is_key_visible (thread_p, &BTS->btid_int, BTS->C_page, mvcc_snapshot, BTS->slot_id, &is_visible,
 			      &key_value);
 
       if (ret != NO_ERROR)
@@ -16459,7 +16459,7 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	    }
 	}
 
-      ret = btree_find_next_index_record (thread_p, bts);
+      ret = btree_find_next_index_record (thread_p, BTS);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -16476,19 +16476,19 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
 end:
 
-  if (bts->P_page != NULL)
+  if (BTS->P_page != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, bts->P_page);
+      pgbuf_unfix_and_init (thread_p, BTS->P_page);
     }
 
-  if (bts->C_page != NULL)
+  if (BTS->C_page != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, bts->C_page);
+      pgbuf_unfix_and_init (thread_p, BTS->C_page);
     }
 
-  if (bts->O_page != NULL)
+  if (BTS->O_page != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, bts->O_page);
+      pgbuf_unfix_and_init (thread_p, BTS->O_page);
     }
 
   if (root_page_ptr)
