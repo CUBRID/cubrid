@@ -33,11 +33,6 @@
 
 #define SUPPORT_KEY_DUP_LEVEL_BTREE
 
-// view(db_index, db_index_key), show index statement
-//#define ENABLE_SHOW_HIDDEN_ATTR
-
-//#define SUPPORT_KEY_DUP_LEVEL_IGNORE_MODE_LEVEL
-
 #define SUPPORT_KEY_DUP_LEVEL_FK
 #define SUPPORT_KEY_DUP_LEVEL_FK_NAME
 

@@ -21962,18 +21962,10 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 	  if (IS_RESERVED_INDEX_ATTR_ID (att_id))
 	    {
-#if defined(ENABLE_SHOW_HIDDEN_ATTR)
-	      int level = GET_RESERVED_INDEX_ATTR_LEVEL (att_id);
-	      char *reserved_col_name = (char *) GET_RESERVED_INDEX_ATTR_NAME (level);
-
-	      db_make_string (out_values[4], reserved_col_name);
-	      qexec_end_one_iteration (thread_p, xasl, xasl_state, &tplrec);
-#else
 	      /* clear alloced DB_VALUEs */
 	      pr_clear_value (out_values[5]);
 	      pr_clear_value (out_values[9]);
 	      continue;
-#endif
 	    }
 	  else
 	    {

@@ -4146,10 +4146,6 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
   SM_ATTRIBUTE **attp;
   const char **namep;
   int i, len, order;
-#if defined(SUPPORT_KEY_DUP_LEVEL_IGNORE_MODE_LEVEL)
-  int new_len = 0;
-  int new_index_start, con_index_start;
-#endif
 
   /* for foreign key, need to check redundancy first */
   if (new_cons == DB_CONSTRAINT_FOREIGN_KEY)
@@ -4216,35 +4212,6 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	  len++;		/* increase name number */
 	}
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_IGNORE_MODE_LEVEL)
-      if (func_index_info)
-	{
-	  con_index_start = cons->func_index_info->attr_index_start;
-	  new_index_start = func_index_info->attr_index_start;
-	}
-
-      new_len = len;
-      if (*attp)
-	{
-	  if (IS_RESERVED_INDEX_ATTR_NAME ((*attp)->header.name))
-	    {
-	      attp++;
-	      len++;
-	      con_index_start--;
-	    }
-	}
-
-      if (*namep)
-	{
-	  if (IS_RESERVED_INDEX_ATTR_NAME (*namep))
-	    {
-	      namep++;
-	      new_len++;
-	      new_index_start--;
-	    }
-	}
-#endif
-
       if (*attp || *namep || classobj_is_possible_constraint (cons->type, new_cons))
 	{
 	  continue;
@@ -4252,16 +4219,6 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 
       for (i = 0; i < len; i++)
 	{
-#if defined(SUPPORT_KEY_DUP_LEVEL_IGNORE_MODE_LEVEL)
-	  if (i >= new_len)
-	    {
-	      if ((i + 1) == len)
-		{
-		  i++;		/* set matched */
-		}
-	      break;
-	    }
-#endif
 	  /* if not specified, ascending order */
 	  order = (asc_desc ? asc_desc[i] : 0);
 	  assert (order == 0 || order == 1);
@@ -4293,11 +4250,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	{
 	  /* expr_str are printed tree, identifiers are already lower case */
 	  if ((func_index_info->col_id != cons->func_index_info->col_id)
-#if defined(SUPPORT_KEY_DUP_LEVEL_IGNORE_MODE_LEVEL)
-	      || (new_index_start != con_index_start)
-#else
 	      || (func_index_info->attr_index_start != cons->func_index_info->attr_index_start)
-#endif
 	      || (func_index_info->fi_domain->is_desc != cons->func_index_info->fi_domain->is_desc)
 	      || (strcmp (func_index_info->expr_str, cons->func_index_info->expr_str) != 0))
 	    {

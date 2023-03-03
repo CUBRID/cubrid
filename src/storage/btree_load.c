@@ -927,7 +927,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   VFID_SET_NULL (&btid_int.ovfid);
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
 #if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
-  btid_int.decompress_attr_idx = -1;
   btid_int.decompress_attr_idx = dk_get_decompress_position (n_attrs, attr_ids, func_attr_index_start);
 #endif
   COPY_OID (&btid_int.topclass_oid, &class_oids[0]);
