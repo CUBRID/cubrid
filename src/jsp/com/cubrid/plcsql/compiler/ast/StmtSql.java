@@ -35,11 +35,11 @@ import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtExecImme extends Stmt {
+public class StmtSql extends Stmt {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitStmtExecImme(this);
+        return visitor.visitStmtSql(this);
     }
 
     public final boolean isDynamic;
@@ -48,9 +48,9 @@ public class StmtExecImme extends Stmt {
     public final NodeList<ExprId> intoVarList;
     public final NodeList<? extends Expr> usedExprList;
 
-    public StaticSql staticSql;
+    public StaticSql optStaticSql;
 
-    public StmtExecImme(
+    public StmtSql(
             ParserRuleContext ctx,
             boolean isDynamic,
             int level,

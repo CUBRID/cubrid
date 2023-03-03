@@ -218,7 +218,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         String errorVar = typeCheckHostVars(node.staticSql.hostVars);
         if (errorVar != null) {
             throw new SemanticError(
-                    node.sql.lineNo(), // s403
+                    node.sql.lineNo(), // s400
                     "host variable " + errorVar + " does not have a compatible type in the SQL statement");
         }
 
@@ -366,14 +366,14 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         DeclForRecord declForRecord = (DeclForRecord) declId;
         if (declForRecord.forDynamicSql) {
             ret = TypeSpecSimple.UNKNOWN;
-        } else if (declForRecord.fields != null) {
+        } else if (declForRecord.fieldTypes != null) {
 
             // this record is for a static SQL
 
-            ret = declForRecord.fields.get(node.fieldName);
+            ret = declForRecord.fieldTypes.get(node.fieldName);
             if (ret == null) {
                 throw new SemanticError(
-                        node.lineNo(), // s400
+                        node.lineNo(), // s401
                         String.format(
                                 "no such column '%s' in the query result",
                                 node.fieldName));
@@ -599,10 +599,10 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             LinkedHashMap<String, TypeSpec> selectList = declCursor.staticSql.selectList;
 
             int len = node.intoVars.nodes.size();
-            if (selectList.size() < len) {
+            if (selectList.size() != len) {
                 throw new SemanticError(    // TODO: verify what happens in Oracle
-                        node.lineNo(), // s401
-                        "the number of columns of the cursor is less than the number of into-variables");
+                        node.lineNo(), // s402
+                        "the number of columns of the cursor must be equal the number of into-variables");
             }
             int i = 0;
             for (String column: selectList.keySet()) {
@@ -611,7 +611,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                 Coerce c = Coerce.getCoerce(columnType, ((DeclVarLike) intoVar.decl).typeSpec());
                 if (c == null) {
                     throw new SemanticError(
-                            intoVar.lineNo(), // s402
+                            intoVar.lineNo(), // s403
                             String.format("the type of column %d of the cursor is not compatible with the variable %s",
                                 i + 1, intoVar.name));
                 }
@@ -661,7 +661,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     }
 
     @Override
-    public TypeSpec visitStmtExecImme(StmtExecImme node) {
+    public TypeSpec visitStmtSql(StmtSql node) {
 
         if (node.isDynamic) {
             TypeSpec sqlType = visit(node.sql);
@@ -676,13 +676,13 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             // In case of a select statement,
             // select list must have a larger number than the into variables
             // and types compatible with the declared types of into variables
-            assert node.staticSql != null;
-            StaticSql staticSql = node.staticSql;
+            assert node.optStaticSql != null;
+            StaticSql staticSql = node.optStaticSql;
 
             String errorVar = typeCheckHostVars(staticSql.hostVars);
             if (errorVar != null) {
                 throw new SemanticError(
-                        node.lineNo(), // s406
+                        node.lineNo(), // s404
                         "host variable " + errorVar + " does not have a compatible type in the SQL statement");
             }
 
@@ -690,10 +690,10 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
                 // TODO: do this in earlier check stage
                 assert staticSql.kind == SqlWithSemantics.Kind.SELECT;
-                if (staticSql.selectList.size() < staticSql.intoVars.size()) {
+                if (staticSql.selectList.size() != staticSql.intoVars.size()) {
                     throw new SemanticError(
                             node.lineNo(),
-                            "into-variables are fewer than the columns queried by the SELECT statement");
+                            "number of into-variables must be equal to the number of columns queried");
                 }
 
                 // check types of into-variables
@@ -707,7 +707,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                     TypeSpec tyIntoVar = visitExprId(intoVar);
                     Coerce c = Coerce.getCoerce(tyColumn, tyIntoVar);
                     if (c == null) {
-                        throw new SemanticError(    // s407
+                        throw new SemanticError(    // s405
                             node.lineNo(),
                             "into-variable " + intoVar.name + " cannot be used in the place due to type mismatch");
                     }
@@ -772,19 +772,19 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                         "SQL in the EXECUTE IMMEDIATE statement must be of the STRING type");
             }
         } else {
-            assert node.staticSql != null;
-            assert node.staticSql.intoVars == null; // by earlier check
+            assert node.optStaticSql != null;
+            assert node.optStaticSql.intoVars == null; // by earlier check
 
-            if (node.staticSql.kind != SqlWithSemantics.Kind.SELECT) {  // TODO: do this in earlier check stage
+            if (node.optStaticSql.kind != SqlWithSemantics.Kind.SELECT) {  // TODO: do this in earlier check stage
                 throw new SemanticError(
                         node.sql.lineNo(),
                         "for-loop is only possible for SELECT statements");
             }
 
-            String errorVar = typeCheckHostVars(node.staticSql.hostVars);
+            String errorVar = typeCheckHostVars(node.optStaticSql.hostVars);
             if (errorVar != null) {
                 throw new SemanticError(
-                        node.sql.lineNo(), // s404
+                        node.sql.lineNo(), // s406
                         "host variable " + errorVar + " does not have a compatible type in the SQL statement");
             }
         }
@@ -838,7 +838,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         String errorVar = typeCheckHostVars(node.staticSql.hostVars);
         if (errorVar != null) {
             throw new SemanticError(
-                    node.sql.lineNo(), // s405
+                    node.sql.lineNo(), // s407
                     "host variable " + errorVar + " does not have a compatible type in the SQL statement");
         }
 

@@ -49,7 +49,7 @@ public class StmtForSqlLoop extends Stmt {
     public final NodeList<? extends Expr> usedExprList;
     public final NodeList<Stmt> stmts;
 
-    public StaticSql staticSql;
+    public StaticSql optStaticSql;
 
     public StmtForSqlLoop(
             ParserRuleContext ctx,

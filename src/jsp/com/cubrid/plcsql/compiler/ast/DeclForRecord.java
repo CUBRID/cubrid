@@ -40,7 +40,7 @@ public class DeclForRecord extends DeclId {
     public final String name;
     public final boolean forDynamicSql;
 
-    public LinkedHashMap<String, TypeSpec> fields = null;
+    public LinkedHashMap<String, TypeSpec> fieldTypes = null;
 
     public DeclForRecord(ParserRuleContext ctx, String name, boolean forDynamicSql) {
         super(ctx);
@@ -69,8 +69,8 @@ public class DeclForRecord extends DeclId {
         throw new RuntimeException("unreachable");
     }
 
-    public void setFields(LinkedHashMap<String, TypeSpec> fields) {
-        this.fields = fields;
+    public void setFieldTypes(LinkedHashMap<String, TypeSpec> fieldTypes) {
+        this.fieldTypes = fieldTypes;
     }
 
     // --------------------------------------------------

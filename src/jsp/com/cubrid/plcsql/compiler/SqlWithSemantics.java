@@ -49,7 +49,7 @@ public class SqlWithSemantics {
 
     public Kind kind;
     public String rewritten;
-    public LinkedHashMap<String, String> hostVars;  // host variables and the SQL types required in their places
+    public LinkedHashMap<String, String> hostVars;  // host variables and their SQL types required in their locations
     public LinkedHashMap<String, String> selectList;// (only for select statements) columns and their SQL types
     public List<String> intoVars;  // (only for select stetements with an into-clause) into variables
 

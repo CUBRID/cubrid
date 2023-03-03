@@ -128,7 +128,7 @@ public abstract class AstVisitor<R> {
 
     public abstract R visitStmtCursorOpen(StmtCursorOpen node);
 
-    public abstract R visitStmtExecImme(StmtExecImme node);
+    public abstract R visitStmtSql(StmtSql node);
 
     public abstract R visitStmtForCursorLoop(StmtForCursorLoop node);
 

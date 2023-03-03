@@ -1533,7 +1533,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public StmtExecImme visitData_manipulation_language_statements(
+    public StmtSql visitData_manipulation_language_statements(
             Data_manipulation_language_statementsContext ctx) {
 
         connectionRequired = true;
@@ -1551,7 +1551,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         int level = symbolStack.getCurrentScope().level + 1;
         String sql = StringEscapeUtils.escapeJava(stringifier.sbuf.toString());
-        return new StmtExecImme(
+        return new StmtSql(
                 ctx,
                 false,
                 level,
@@ -1776,7 +1776,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public StmtExecImme visitExecute_immediate(Execute_immediateContext ctx) {
+    public StmtSql visitExecute_immediate(Execute_immediateContext ctx) {
 
         connectionRequired = true;
         addToImports("java.sql.*");
@@ -1800,7 +1800,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         int level = symbolStack.getCurrentScope().level + 1;
-        return new StmtExecImme(ctx, true, level, dynSql, intoVarList, usedExprList);
+        return new StmtSql(ctx, true, level, dynSql, intoVarList, usedExprList);
     }
 
     @Override
