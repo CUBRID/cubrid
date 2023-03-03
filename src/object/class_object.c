@@ -4165,7 +4165,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	      attp++;
 	      namep++;
 	    }
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK) && defined(SUPPORT_KEY_DUP_LEVEL_FK_NAME)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	  /* In the case of FK, reserved index columns are ignored when comparing identical configurations. */
 	  if (*attp && IS_RESERVED_INDEX_ATTR_NAME ((*attp)->header.name))
 	    {

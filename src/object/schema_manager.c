@@ -14149,7 +14149,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       int class_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       int att_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       char md5_str[32 + 1] = { '\0' };
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK) && defined(SUPPORT_KEY_DUP_LEVEL_FK_NAME)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
       bool is_fk = false;
 #endif
 
@@ -14166,7 +14166,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  break;
 	case DB_CONSTRAINT_FOREIGN_KEY:
 	  prefix = "fk_";
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK) && defined(SUPPORT_KEY_DUP_LEVEL_FK_NAME)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	  is_fk = true;
 #endif
 	  break;
@@ -14200,7 +14200,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       for (ptr = att_names; (*ptr != NULL) && (i < n_attrs); ptr++, i++)
 	{
 	  int ptr_size = 0;
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK) && defined(SUPPORT_KEY_DUP_LEVEL_FK_NAME)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	  if (is_fk && IS_RESERVED_INDEX_ATTR_NAME (*ptr))
 	    {
 	      continue;
@@ -14246,7 +14246,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 
 	  for (ptr = att_names, i = 0; i < n_attrs; ptr++, i++)
 	    {
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK) && defined(SUPPORT_KEY_DUP_LEVEL_FK_NAME)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	      if (is_fk && IS_RESERVED_INDEX_ATTR_NAME (*ptr))
 		{
 		  continue;
@@ -14319,7 +14319,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  /* n_attrs is already limited to MAX_ATTR_IN_AUTO_GEN_NAME here */
 	  for (ptr = att_names; i < n_attrs; ptr++, i++)
 	    {
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK) && defined(SUPPORT_KEY_DUP_LEVEL_FK_NAME)
+#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	      if (is_fk && IS_RESERVED_INDEX_ATTR_NAME (*ptr))
 		{
 		  continue;
