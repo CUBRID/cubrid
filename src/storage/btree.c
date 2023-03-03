@@ -6492,7 +6492,7 @@ exit_on_error:
 static int
 btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSHOT * mvcc_snapshot)
 {
-  BTREE_SCAN *bts;
+  BTREE_SCAN *BTS;
   RECDES rec;
   DB_VALUE key_value;
   LEAF_REC leaf_pnt;
