@@ -6705,26 +6705,29 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	  assert (header->node_level == 1);	/* BTREE_LEAF_NODE */
 #endif
 
-	  env->stat_info->leafs++;
-
-	  BTS->slot_id = 1;
-	  BTS->oid_pos = 0;
-
-	  assert_release (BTS->slot_id <= key_cnt);
-
-	  for (i = 0; i < key_cnt; i++)
+	  if (key_cnt > 0)
 	    {
-	      ret = btree_get_stats_key (thread_p, env, NULL);
-	      if (ret != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
+	      env->stat_info->leafs++;
 
-	      /* get the next index record */
-	      ret = btree_find_next_index_record (thread_p, BTS);
-	      if (ret != NO_ERROR)
+	      BTS->slot_id = 1;
+	      BTS->oid_pos = 0;
+
+	      assert_release (BTS->slot_id <= key_cnt);
+
+	      for (i = 0; i < key_cnt; i++)
 		{
-		  goto exit_on_error;
+		  ret = btree_get_stats_key (thread_p, env, NULL);
+		  if (ret != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
+
+		  /* get the next index record */
+		  ret = btree_find_next_index_record (thread_p, BTS);
+		  if (ret != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
 		}
 	    }
 	}
