@@ -26,40 +26,32 @@
 
 namespace cublog
 {
-  constexpr int BUF_LEN_MAX = 2048;
+  constexpr int BUF_LEN_MAX = 1<<14;
 
   /*********************************************************************
    * atomic_replication_helper function definitions                    *
    *********************************************************************/
 
-  int
-  atomic_replication_helper::append_log (THREAD_ENTRY *thread_p, TRANID tranid,
-					 LOG_LSA lsa, LOG_RCVINDEX rcvindex, VPID vpid)
+  void
+  atomic_replication_helper::append_log (TRANID tranid, LOG_LSA lsa, LOG_RCVINDEX rcvindex, VPID vpid)
   {
     const auto sequence_it = m_sequences_map.find (tranid);
     if (sequence_it == m_sequences_map.cend ())
       {
 	assert (false);
-	return ER_FAILED;
+	return;
       }
 
     atomic_log_sequence &sequence = sequence_it->second;
-    int error_code = sequence.append_log (thread_p, lsa, rcvindex, vpid
+    sequence.append_log (lsa, rcvindex, vpid
 #ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
-					  , m_vpid_bk
+			 , m_vpid_bk
 #endif
-					 );
-    if (error_code != NO_ERROR)
-      {
-	return error_code;
-      }
-
+			);
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
 	dump ("helper::append_log");
       }
-
-    return NO_ERROR;
   }
 
   void
@@ -361,65 +353,23 @@ namespace cublog
     m_start_lsa = start_lsa;
   }
 
-  int
-  atomic_replication_helper::atomic_log_sequence::append_log (THREAD_ENTRY *thread_p,
-      LOG_LSA lsa, LOG_RCVINDEX rcvindex, VPID vpid
+  void
+  atomic_replication_helper::atomic_log_sequence::append_log (LOG_LSA lsa, LOG_RCVINDEX rcvindex, VPID vpid
 #ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
       , vpid_bookeeping &vpid_bk
 #endif
 							     )
   {
-    PAGE_PTR page_p = nullptr;
-    // bookkeeping fixes page, keeps all info regarding how the page was fixed (either
-    // regular fix or ordered fix) and only returns back the pointer to the page
-    const int err_code = m_page_ptr_bookkeeping.fix_page (thread_p, vpid, rcvindex, page_p);
-    if (err_code != NO_ERROR)
-      {
-	// failing to fix the page just leaves it unfixed and does not affect overall
-	// functioning of the atomic replication sequence;
-	er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] heap page cannot be fixed, cannot add new log record"
-		      "with LSA %lld|%d to atomic sequences started at LSA %lld|%d\n",
-		      LSA_AS_ARGS (&lsa), LSA_AS_ARGS (&m_start_lsa));
-
-	// TODO:
-	//  - what happens if there is more than one log record pertaining to the same page
-	//    in an atomic sequnce and, for example, for the first log record, the page fails
-	//    to be fixed but succeeds for the second log record
-	//  - what if, while the atomic sequence is in progress with a page having failed to
-	//    be fixed, a client transactions manages to fix the page; IOW, how is the progress
-	//    of the "highest processed LSA" working wrt atomic replication sequences
-
-	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
-	  {
-	    char buf[BUF_LEN_MAX];
-
-	    const int written = snprintf (buf, (size_t) BUF_LEN_MAX,
-					  "  _FAIL_ trid=%d  LSA = %lld|%d  vpid = %d|%d  rcvindex = %s\n",
-					  m_trid, LSA_AS_ARGS (&lsa), VPID_AS_ARGS (&vpid),
-					  rv_rcvindex_string (rcvindex));
-	    assert (BUF_LEN_MAX > written);
-
-	    m_full_dump_stream << buf; // dump to buffer already ends with newline
-	  }
-
-	assert (page_p == nullptr);
-      }
-    else
-      {
-	assert (page_p != nullptr);
+    const atomic_log_entry &new_entry = m_log_vec.emplace_back (lsa, vpid, rcvindex);
 
 #ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
-	vpid_bk.add_or_increase_for_transaction (m_trid, vpid);
+    vpid_bk.add_or_increase_for_transaction (m_trid, vpid);
 #endif
 
-	const atomic_log_entry &new_entry = m_log_vec.emplace_back (lsa, vpid, rcvindex, page_p);
-	if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
-	  {
-	    new_entry.dump_to_stream (m_full_dump_stream, m_trid);
-	  }
+    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+      {
+	new_entry.dump_to_stream (m_full_dump_stream, m_trid);
       }
-
-    return err_code;
   }
 
   void
@@ -449,7 +399,7 @@ namespace cublog
       }
 
     // search backwards for the first non-control log record entry
-    atomic_log_entry_vector_type::const_iterator first_work_log_it = m_log_vec.cend ();
+    atomic_log_entry_vector_type::iterator first_work_log_it = m_log_vec.end ();
     --first_work_log_it; // last in vector, must be work
     if (first_work_log_it->is_control ())
       {
@@ -469,26 +419,76 @@ namespace cublog
     assert (!first_work_log_it->is_control ());
 
     // debug check, all entries before the first non-control must be control entries
-    assert (std::all_of (m_log_vec.cbegin (), first_work_log_it,
+    assert (std::all_of (m_log_vec.begin (), first_work_log_it,
 			 [] (const atomic_log_entry &entry)
     {
       return entry.is_control ();
     }));
 
-    for (atomic_log_entry_vector_type::const_iterator apply_it = first_work_log_it
-	 ; apply_it != m_log_vec.cend (); ++apply_it)
-      {
-	const atomic_log_entry &log_entry = *apply_it;
-	assert (!log_entry.is_control ());
-	log_entry.apply_log_redo (thread_p, m_redo_context);
-	m_page_ptr_bookkeeping.unfix_page (thread_p, log_entry.m_vpid);
+    {
+      page_ptr_bookkeeping page_ptr_bookkeeping;
+
+      // as a fist step, fix all pages in this subsequence
+      // the reason: if one atomic sequence has more than one log record for the same
+      // page, this will only fix the page once and unfix it only once when the last
+      // log record for the page has been applied (instead of the more
+      // straightforward approach to fix-unfix-fix-unfix)
+      //
+      for (atomic_log_entry_vector_type::iterator apply_it = first_work_log_it
+	   ; apply_it != m_log_vec.end (); ++apply_it)
+	{
+	  atomic_log_entry &log_entry = *apply_it;
+
+	  // bookkeeping fixes page, keeps all info regarding how the page was fixed (either
+	  // regular fix or ordered fix) and only returns back the pointer to the page
+	  int err_code = page_ptr_bookkeeping.fix_page (thread_p, log_entry.m_vpid,
+			 log_entry.m_rcvindex, log_entry.m_page_ptr);
+	  if (err_code != NO_ERROR)
+	    {
+	      // failing to fix the page just leaves it unfixed and does not affect overall
+	      // functioning of the atomic replication sequence;
+	      er_log_debug (ARG_FILE_LINE, "[ATOMIC_REPL] vpid = %d|%d (LSA = %lld|%d) not fixed"
+			    " for seq started at LSA = %lld|%d\n",
+			    VPID_AS_ARGS (&log_entry.m_vpid), LSA_AS_ARGS (&log_entry.m_lsa),
+			    LSA_AS_ARGS (&m_start_lsa));
+
+	      assert (log_entry.m_page_ptr == nullptr);
+	    }
+	  else
+	    {
+	      assert (log_entry.m_page_ptr != nullptr);
+	    }
+	}
+
+      // then, apply and unfix (the bookkeeping will actually keep track and unfix the pages at the right moment)
+      //
+      for (atomic_log_entry_vector_type::iterator apply_it = first_work_log_it
+	   ; apply_it != m_log_vec.end (); ++apply_it)
+	{
+	  const atomic_log_entry &log_entry = *apply_it;
+	  assert (!log_entry.is_control ());
+	  // only apply and unfix if it was actually fixed
+	  if (log_entry.m_page_ptr != nullptr)
+	    {
+	      log_entry.apply_log_redo (thread_p, m_redo_context);
+	      page_ptr_bookkeeping.unfix_page (thread_p, log_entry.m_vpid);
+
+	      log_entry.m_page_ptr == nullptr;
+	    }
 
 #ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
-	vpid_bk.decrease_or_remove_for_transaction (m_trid, log_entry.m_vpid);
+	  // NOTE: there is still a logic gap here:
+	  //  - the vpid bookkeeping mechanism accounts for every VPID and warns (ie: asserts/crashes) if
+	  //    vpids are accessed concurrently between two atomic sequences of two different transactions
+	  //  - however, if the page for that VPID cannot be fixed (ie: because it is not already in the
+	  //    page buffer) there should be no warning/assert/crash
+	  //  - however, this is of lesser importance
+	  vpid_bk.decrease_or_remove_for_transaction (m_trid, log_entry.m_vpid);
 #endif
-      }
+	}
+    }
 
-    m_log_vec.erase (first_work_log_it, m_log_vec.cend ());
+    m_log_vec.erase (first_work_log_it, m_log_vec.end ());
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
       {
@@ -843,19 +843,18 @@ namespace cublog
    *********************************************************************************************************/
 
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::atomic_log_entry (
-	  LOG_LSA lsa, VPID vpid, LOG_RCVINDEX rcvindex, PAGE_PTR page_ptr)
+	  LOG_LSA lsa, VPID vpid, LOG_RCVINDEX rcvindex)
     : m_vpid { vpid }
     , m_rectype { LOG_LARGER_LOGREC_TYPE }
     , m_lsa { lsa }
     , m_rcvindex { rcvindex }
     , m_sysop_end_type { (LOG_SYSOP_END_TYPE)-1 }
     , m_sysop_end_last_parent_lsa { NULL_LSA }
-    , m_page_ptr { page_ptr }
+    , m_page_ptr { nullptr }
   {
     assert (!VPID_ISNULL (&m_vpid));
     assert (m_lsa != NULL_LSA);
     assert (0 <= m_rcvindex && m_rcvindex <= RV_LAST_LOGID);
-    assert (m_page_ptr != nullptr);
   }
 
   atomic_replication_helper::atomic_log_sequence::atomic_log_entry::atomic_log_entry (
@@ -897,6 +896,7 @@ namespace cublog
     std::swap (m_rcvindex, that.m_rcvindex);
     std::swap (m_sysop_end_type, that.m_sysop_end_type);
     std::swap (m_sysop_end_last_parent_lsa, that.m_sysop_end_last_parent_lsa);
+    assert (that.m_page_ptr == nullptr);
     std::swap (m_page_ptr, that.m_page_ptr);
   }
 
@@ -909,7 +909,8 @@ namespace cublog
     std::swap (m_rcvindex, that.m_rcvindex);
     std::swap (m_sysop_end_type, that.m_sysop_end_type);
     std::swap (m_sysop_end_last_parent_lsa, that.m_sysop_end_last_parent_lsa);
-    std::swap (m_page_ptr, that.m_page_ptr);
+    assert (this->m_page_ptr == nullptr);
+    assert (that.m_page_ptr == nullptr);
     return *this;
   }
 
