@@ -184,7 +184,8 @@ namespace cubcomm
 
     // if the receiving thread terminated, there will not be any more responses
     // unblock all waiting client thread - they will receive errors
-    m_response_broker.terminate ();
+    //m_response_broker.terminate ();
+    m_response_broker.terminate_blocking ();
 
     // at this point, the page server async responder must be waited for to terminate
     // processing all async requests
