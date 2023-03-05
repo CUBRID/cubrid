@@ -234,7 +234,7 @@ extern int stats_update_statistics (OID * classoid, int with_fullscan);
 extern int stats_update_all_statistics (int with_fullscan);
 
 extern int btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk
-#if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
+#if defined(SUPPORT_COMPRESS_MODE)
 			    , int decompress_attr_pos
 #endif
   );

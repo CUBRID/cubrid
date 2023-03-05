@@ -5730,7 +5730,7 @@ stats_update_all_statistics (int with_fullscan)
  */
 int
 btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk
-#if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
+#if defined(SUPPORT_COMPRESS_MODE)
 		 , int decompress_attr_pos
 #endif
   )
@@ -5747,7 +5747,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
 
   domain_size = or_packed_domain_size (key_type, 0);
   request_size = OR_BTID_ALIGNED_SIZE + domain_size + OR_OID_SIZE + OR_INT_SIZE + OR_INT_SIZE;
-#if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
+#if defined(SUPPORT_COMPRESS_MODE)
   request_size += OR_INT_SIZE;
 #endif
 
@@ -5763,7 +5763,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
   ptr = or_pack_oid (ptr, class_oid);
   ptr = or_pack_int (ptr, attr_id);
   ptr = or_pack_int (ptr, unique_pk);
-#if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
+#if defined(SUPPORT_COMPRESS_MODE)
   ptr = or_pack_int (ptr, decompress_attr_pos);
 #endif
 
@@ -5793,7 +5793,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
   THREAD_ENTRY *thread_p = enter_server ();
 
   btid = xbtree_add_index (thread_p, btid, key_type, class_oid, attr_id, unique_pk, 0, 0, 0
-#if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
+#if defined(SUPPORT_COMPRESS_MODE)
 			   , decompress_attr_pos
 #endif
     );

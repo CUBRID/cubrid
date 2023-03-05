@@ -4618,7 +4618,7 @@ btree_dump_root_header (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR page_ptr)
     }
   fprintf (fp, "\n");
   fprintf (fp, " OVFID: %d|%d\n", root_header->ovfid.fileid, root_header->ovfid.volid);
-#if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
+#if defined(SUPPORT_COMPRESS_MODE)
   fprintf (fp, " Btree Revision Level: %d\n", root_header->_32.rev_level);
   fprintf (fp, " Btree Decompress position: %d\n", GET_DECOMPRESS_IDX_HEADER (root_header));
 #else
@@ -5595,7 +5595,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 BTID *
 xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id,
 		  int unique_pk, long long num_oids, long long num_nulls, long long num_keys
-#if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
+#if defined(SUPPORT_COMPRESS_MODE)
 		  , int decompress_attr_pos
 #endif
   )
@@ -5667,7 +5667,7 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
   COPY_OID (&(root_header->topclass_oid), class_oid);
 
   VFID_SET_NULL (&(root_header->ovfid));
-#if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
+#if defined(SUPPORT_COMPRESS_MODE)
   root_header->_32.rev_level = BTREE_CURRENT_REV_LEVEL;
   SET_DECOMPRESS_IDX_HEADER (root_header, decompress_attr_pos);
 #else
@@ -5850,7 +5850,7 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_
       btid->nonleaf_key_type = btree_generate_prefix_domain (btid);
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
+#if defined(SUPPORT_COMPRESS_MODE)
   btid->rev_level = root_header->_32.rev_level;
   btid->decompress_attr_idx = GET_DECOMPRESS_IDX_HEADER (root_header);
 #else

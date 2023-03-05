@@ -28,10 +28,10 @@
 // This file is a temporary file.
 // Once the code is applied, we will remove it.
 
+#define SUPPORT_COMPRESS_MODE
+
 #define SUPPORT_KEY_DUP_LEVEL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-
-#define SUPPORT_KEY_DUP_LEVEL_BTREE
 
 #define SUPPORT_KEY_DUP_LEVEL_FK
 

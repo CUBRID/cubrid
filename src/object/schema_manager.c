@@ -10760,7 +10760,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
   if (!class_->load_index_from_heap || !has_instances || index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
       error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk
-#if defined(SUPPORT_KEY_DUP_LEVEL_BTREE)
+#if defined(SUPPORT_COMPRESS_MODE)
 			       , dk_sm_decompress_position (n_attrs, attrs, function_index)
 #endif
 	);
