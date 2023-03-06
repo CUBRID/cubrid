@@ -96,6 +96,13 @@ RESERVED_INDEX_ATTR_NAME_PREFIX  "16"
 #define COMPRESS_LEVEL_SHIFT_RIGHT(v)  ((v) >> 4)
 #define MK_RESERVED_INDEX_ATTR_ID(level)      (((int)RESERVED_INDEX_ATTR_ID_BASE) - COMPRESS_LEVEL_SHIFT_LEFT((level)))
 #define GET_RESERVED_INDEX_ATTR_LEVEL(attid)  (COMPRESS_LEVEL_SHIFT_RIGHT(((int)RESERVED_INDEX_ATTR_ID_BASE) - (attid)))
+
+#define GET_RESERVED_INDEX_ATTR_MODE_LEVEL_FROM_NAME(name, level)  do {                                         \
+        char chx;                                                                                               \
+        if(sscanf ((name) + RESERVED_INDEX_ATTR_NAME_PREFIX_LEN, "%02d%c", &(level), &chx) != 1)                \
+          {  assert(false); }                                                                                   \
+        assert(((level) >= COMPRESS_INDEX_MOD_LEVEL_ZERO) && ((level) <= COMPRESS_INDEX_MOD_LEVEL_MAX));        \
+ } while(0)
 // *INDENT-ON*
 
 #define MAX_RESERVED_INDEX_ATTR_ID  MK_RESERVED_INDEX_ATTR_ID(COMPRESS_INDEX_MOD_LEVEL_ZERO)

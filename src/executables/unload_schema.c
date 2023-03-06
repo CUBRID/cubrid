@@ -2960,10 +2960,6 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	  continue;		/* same index skip */
 	}
 
-#if defined(SUPPORT_COMPRESS_MODE)
-      reserved_col_buf[0] = '\0';
-#endif
-
       SPLIT_USER_SPECIFIED_NAME (cls_name, owner_name, class_name);
       if (constraint->func_index_info)
 	{
@@ -3010,6 +3006,22 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	      n_attrs++;
 	    }
 	}
+
+#if defined(SUPPORT_COMPRESS_MODE)
+      reserved_col_buf[0] = '\0';
+      if ((n_attrs > 1) && IS_RESERVED_INDEX_ATTR_ID (atts[n_attrs - 1]->id))
+	{
+	  dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_SET,
+					GET_RESERVED_INDEX_ATTR_LEVEL (atts[n_attrs - 1]->id));
+	  n_attrs--;		/* Hidden column should not be displayed. */
+	}
+      else if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
+	{
+	  dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_NONE,
+					COMPRESS_INDEX_MOD_LEVEL_ZERO);
+	}
+#endif
+
       k = 0;
       for (att = atts; k < n_attrs; att++)
 	{
@@ -3035,15 +3047,6 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 		}
 	    }
 	  att_name = db_attribute_name (*att);
-#if defined(SUPPORT_COMPRESS_MODE)
-	  if (k == (n_attrs - 1) && IS_RESERVED_INDEX_ATTR_ID ((*att)->id))
-	    {
-	      int mode = COMPRESS_INDEX_MODE_SET;
-	      int level = GET_RESERVED_INDEX_ATTR_LEVEL ((*att)->id);
-	      dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), mode, level);
-	      break;
-	    }
-#endif
 	  if (k > 0)
 	    {
 	      output_ctx (", ");
@@ -3711,6 +3714,9 @@ emit_foreign_key (print_output & output_ctx, DB_OBJLIST * classes)
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
   MOP ref_clsop;
+#if defined(SUPPORT_COMPRESS_MODE)
+  char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
+#endif
 
   for (cl = classes; cl != NULL; cl = cl->next)
     {
@@ -3730,6 +3736,13 @@ emit_foreign_key (print_output & output_ctx, DB_OBJLIST * classes)
 	    {
 	      if (db_attribute_class (*att) != cl->op)
 		{
+#if defined(SUPPORT_COMPRESS_MODE)	// ctshim
+		  att_name = db_attribute_name (*att);
+		  if (IS_RESERVED_INDEX_ATTR_NAME (att_name))
+		    {
+		      break;
+		    }
+#endif
 		  has_inherited_atts = true;
 		  break;
 		}
@@ -3745,19 +3758,45 @@ emit_foreign_key (print_output & output_ctx, DB_OBJLIST * classes)
 
 	  output_ctx (" CONSTRAINT [%s] FOREIGN KEY(", constraint->name);
 
+#if defined(SUPPORT_COMPRESS_MODE)
+	  reserved_col_buf[0] = '\0';
+#endif
 	  for (att = atts; *att != NULL; att++)
 	    {
 	      att_name = db_attribute_name (*att);
+#if defined(SUPPORT_COMPRESS_MODE)
+	      if (IS_RESERVED_INDEX_ATTR_NAME (att_name))
+		{
+		  int level;
+		  int mode = COMPRESS_INDEX_MODE_SET;
+
+		  assert (att[1] == NULL);
+
+		  GET_RESERVED_INDEX_ATTR_MODE_LEVEL_FROM_NAME (att_name, level);
+		  dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), mode, level);
+		  break;
+		}
+#endif
 	      if (att != atts)
 		{
 		  output_ctx (", ");
 		}
+
 	      output_ctx ("%s%s%s", PRINT_IDENTIFIER (att_name));
 	    }
 	  output_ctx (")");
 
 	  ref_clsop = ws_mop (&(constraint->fk_info->ref_class_oid), NULL);
 	  SPLIT_USER_SPECIFIED_NAME (db_get_class_name (ref_clsop), owner_name, class_name);
+
+#if defined(SUPPORT_COMPRESS_MODE)	// ctshim
+	  if (reserved_col_buf[0] == '\0')
+	    {
+	      dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_NONE,
+					    COMPRESS_INDEX_MOD_LEVEL_ZERO);
+	    }
+	  output_ctx (" %s", reserved_col_buf);
+#endif
 	  output_ctx (" REFERENCES %s%s%s.%s%s%s ", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
 	  output_ctx ("ON DELETE %s ", classobj_describe_foreign_key_action (constraint->fk_info->delete_action));
 	  output_ctx ("ON UPDATE %s ", classobj_describe_foreign_key_action (constraint->fk_info->update_action));

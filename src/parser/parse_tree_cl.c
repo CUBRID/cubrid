@@ -7319,6 +7319,7 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
       dk_print_reserved_index_info (buf, sizeof (buf), p->info.index.dupkey_mode, p->info.index.dupkey_hash_level);
       if (buf[0])
 	{
+	  b = pt_append_nulstring (parser, b, " ");
 	  b = pt_append_nulstring (parser, b, buf);
 	}
     }

@@ -37,15 +37,7 @@
 
 #include "dup_key.h"
 
-// *INDENT-OFF*
-#define GET_RESERVED_INDEX_ATTR_MODE_LEVEL_FROM_NAME(name, level)  do {                                         \
-        char chx;                                                                                               \
-        if(sscanf ((name) + RESERVED_INDEX_ATTR_NAME_PREFIX_LEN, "%02d%c", &(level), &chx) != 1)                \
-          {  assert(false); }                                                                                   \
-        assert(((level) >= COMPRESS_INDEX_MOD_LEVEL_ZERO) && ((level) <= COMPRESS_INDEX_MOD_LEVEL_MAX));        \
- } while(0)
-// *INDENT-ON*
-
+#if defined(SUPPORT_COMPRESS_MODE)
 
 #if 0
 // The higher the "level", the more compressed it should be. Close to mode "HIGH".
@@ -56,7 +48,6 @@
 #define CALC_MOD_VALUE_FROM_LEVEL(lv)   (1 << (lv))
 #endif
 
-#if defined(SUPPORT_COMPRESS_MODE)
 static DB_DOMAIN *
 get_reserved_index_attr_domain_type (int level)
 {
@@ -377,17 +368,17 @@ dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupk
   buf[0] = '\0';
   if (dupkey_mode == COMPRESS_INDEX_MODE_NONE)
     {
-      len = snprintf (buf, buf_size, " compress high");
+      len = snprintf (buf, buf_size, "COMPRESS HIGH");
     }
   else if (dupkey_mode == COMPRESS_INDEX_MODE_SET)
     {
       if (dupkey_hash_level == COMPRESS_INDEX_MOD_LEVEL_ZERO)
 	{
-	  len = snprintf (buf, buf_size, " compress low");
+	  len = snprintf (buf, buf_size, "COMPRESS LOW");
 	}
       else
 	{
-	  len = snprintf (buf, buf_size, " compress medium(%d)", dupkey_hash_level);
+	  len = snprintf (buf, buf_size, "COMPRESS MEDIUM(%d)", dupkey_hash_level);
 	}
     }
 
