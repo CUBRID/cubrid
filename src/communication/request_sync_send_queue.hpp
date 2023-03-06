@@ -108,6 +108,7 @@ namespace cubcomm
       std::condition_variable m_queue_condvar;    // Notify request consumers
 
       send_queue_error_handler m_error_handler;
+      bool m_abort_further_processing;
   };
 
   // The request_queue_autosend automatically sends requests pushed into request_sync_send_queue
@@ -159,6 +160,7 @@ namespace cubcomm
       send_queue_error_handler &&error_handler)
     : m_client (client)
     , m_error_handler { std::move (error_handler) }
+    , m_abort_further_processing { false }
   {
     // as per the specification of the 'poll' system function, the error handling in this class
     // relies on the connection channel's timeout to be positive
@@ -186,8 +188,7 @@ namespace cubcomm
   void
   request_sync_send_queue<ReqClient, ReqPayload>::send_queue (queue_type &q)
   {
-    bool abort_further_processing { false };
-    while (!q.empty () && !abort_further_processing)
+    while (!q.empty () && !m_abort_further_processing)
       {
 	typename queue_type::const_reference queue_front = q.front ();
 
@@ -212,13 +213,13 @@ namespace cubcomm
 	      {
 		// if present, invoke custom/specific handler first
 		// error handler can instruct that further processing is to be stopped (Inversion of Control)
-		queue_front.m_error_handler (err_code, abort_further_processing);
+		queue_front.m_error_handler (err_code, m_abort_further_processing);
 	      }
 	    else if (static_cast<bool> (m_error_handler))
 	      {
 		// if present, invoke generic (fail-back) handler
 		// error handler can instruct that further processing is to be stopped (Inversion of Control)
-		m_error_handler (err_code, abort_further_processing);
+		m_error_handler (err_code, m_abort_further_processing);
 	      }
 	    else
 	      {
@@ -229,7 +230,7 @@ namespace cubcomm
 	q.pop ();
       }
 
-    if (abort_further_processing)
+    if (m_abort_further_processing)
       {
 	// discard all remaining items as there is nothing else that can be done
 	while (!q.empty ())
