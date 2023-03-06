@@ -3371,48 +3371,44 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   char *user_name_ptr = NULL;
   char *host_name_ptr = NULL;
   char *p = NULL;
+  const char *err_msg;
   int error_code;
   CSQL_ARGUMENT csql_new_arg;
 
-  /*verify @hostname */
-  host_name_ptr = strchr (argument, '@');
-  if (host_name_ptr != NULL)
+  if (argument == NULL)
     {
-      if (*(host_name_ptr + 1) == '\0')
-	{
-	  host_name_ptr = NULL;
-	  csql_Error_code = CSQL_ERR_CONNECT;
-	  return DO_CMD_FAILURE;
-	}
+      err_msg = (*csql_get_message) (CSQL_MSG_TOO_FEW_ARGS);
+      fprintf (stderr, err_msg);
+      return DO_CMD_SUCCESS;
+    }
+
+  /*verify @hostname */
+  if ((host_name_ptr = strchr (argument, '@')) != NULL && (*(host_name_ptr + 1) == '\0'))
+    {
+      csql_Error_code = CSQL_ERR_CONNECT;
+      return DO_CMD_FAILURE;
     }
 
   strcpy (dbname, argument);
   strcpy (username, argument);
 
   /*find db name following the user name */
-  db_name_ptr = strrchr (dbname, ' ');
+  if ((db_name_ptr = strrchr (dbname, ' ')) != NULL && (*(db_name_ptr + 1) == '\0'))
+    {
+      csql_Error_code = CSQL_ERR_CONNECT;
+      return DO_CMD_FAILURE;
+    }
   if (db_name_ptr != NULL)
     {
-      if (*(db_name_ptr + 1) == '\0')
-	{
-	  db_name_ptr = NULL;
-	  csql_Error_code = CSQL_ERR_CONNECT;
-	  return DO_CMD_FAILURE;
-	}
-      else
-	{
-	  db_name_ptr += 1;
-	}
+      db_name_ptr += 1;
     }
 
-  user_name_ptr = strtok_r (username, delim, &save_ptr_strtok);
-  if (user_name_ptr == NULL)
+  if ((user_name_ptr = strtok_r (username, delim, &save_ptr_strtok)) == NULL)
     {
       csql_Error_code = CSQL_ERR_CONNECT;
       return DO_CMD_FAILURE;
     }
 
-  memset (&csql_new_arg, 0, sizeof (CSQL_ARGUMENT));
   memcpy (&csql_new_arg, csql_arg, sizeof (CSQL_ARGUMENT));
 
 #if defined(CS_MODE)
