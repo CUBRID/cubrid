@@ -3431,6 +3431,8 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
     }
 
   er_init ("./csql.err", ER_NEVER_EXIT);
+  csql_new_arg.passwd = (char *) NULL;
+
   if (db_restart_ex (UTIL_CSQL_NAME, db_name_ptr, user_name_ptr, NULL, NULL, db_get_client_type ()) != NO_ERROR)
     {
       if (csql_Is_interactive && db_error_code () == ER_AU_INVALID_PASSWORD)
@@ -3445,40 +3447,14 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 
 	      return DO_CMD_FAILURE;
 	    }
+
+	  if (p[0] == '\0')
+	    {
+	      csql_new_arg.passwd = (char *) NULL;	/* to fit into db_login protocol */
+	    }
 	  else
 	    {
-	      /*login success with password */
-	      csql_new_arg.user_name = strdup (user_name_ptr);
-	      csql_new_arg.db_name = strdup (db_name_ptr);
-
-	      if (p[0] == '\0')
-		{
-		  csql_new_arg.passwd = (char *) NULL;	/* to fit into db_login protocol */
-		}
-	      else
-		{
-		  csql_new_arg.passwd = strdup (p);
-		}
-
-	      FREE_MEM ((char *) csql_arg->user_name);
-	      FREE_MEM ((char *) csql_arg->db_name);
-	      FREE_MEM ((char *) csql_arg->passwd);
-
-	      memcpy (csql_arg, &csql_new_arg, sizeof (CSQL_ARGUMENT));
-
-	      if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
-		{
-		  au_sysadm_disable ();
-		}
-	      csql_Database_connected = true;
-
-	      if (csql_arg->trigger_action_flag == false)
-		{
-		  db_disable_trigger ();
-		}
-
-	      fprintf (csql_Output_fp, "CONNECTED : %s %s\n", csql_arg->user_name, csql_arg->db_name);
-//            fprintf (csql_Output_fp, "Connected.\n");
+	      csql_new_arg.passwd = strdup (p);
 	    }
 	}
       else
@@ -3489,33 +3465,33 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 
 	}
     }
-  else
+
+/*If login is success, copy csql_new_arg to csql_arg*/
+  csql_new_arg.user_name = strdup (user_name_ptr);
+  csql_new_arg.db_name = strdup (db_name_ptr);
+
+  FREE_MEM ((char *) csql_arg->user_name);
+  FREE_MEM ((char *) csql_arg->db_name);
+  FREE_MEM ((char *) csql_arg->passwd);
+
+  memcpy (csql_arg, &csql_new_arg, sizeof (CSQL_ARGUMENT));
+
+  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
-      /*login success without password */
-      csql_new_arg.user_name = strdup (user_name_ptr);
-      csql_new_arg.db_name = strdup (db_name_ptr);
-      csql_new_arg.passwd = (char *) NULL;
+      au_sysadm_disable ();
+    }
+  csql_Database_connected = true;
 
-      FREE_MEM ((char *) csql_arg->user_name);
-      FREE_MEM ((char *) csql_arg->db_name);
-      FREE_MEM ((char *) csql_arg->passwd);
-
-      memcpy (csql_arg, &csql_new_arg, sizeof (CSQL_ARGUMENT));
-
-      if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
-	{
-	  au_sysadm_disable ();
-	}
-      csql_Database_connected = true;
-
-      if (csql_arg->trigger_action_flag == false)
-	{
-	  db_disable_trigger ();
-	}
+  if (csql_arg->trigger_action_flag == false)
+    {
+      db_disable_trigger ();
+    }
 
 //            fprintf (csql_Output_fp, "Connected.\n");
-      fprintf (csql_Output_fp, "CONNECTED : %s %s\n", csql_arg->user_name, csql_arg->db_name);
-    }
+  fprintf (csql_Output_fp, "CONNECTED : %s %s\n", csql_arg->user_name, csql_arg->db_name);
+
+
+/*If connect is success, copy csql_new_arg to csql_arg*/
 
   return DO_CMD_SUCCESS;
 }
