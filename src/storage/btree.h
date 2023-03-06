@@ -130,7 +130,7 @@ struct btid_int
   char *copy_buf;		/* index key copy_buf pointer info; derived from INDX_SCAN_ID.copy_buf */
   int copy_buf_len;		/* index key copy_buf length info; derived from INDX_SCAN_ID.copy_buf_len */
   int rev_level;
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
   int decompress_attr_idx;
 #endif
   OID topclass_oid;		/* class oid for which index is created */
@@ -375,7 +375,7 @@ struct btree_capacity
 {
   int dis_key_cnt;		/* Distinct key count (in leaf pages) */
   int64_t tot_val_cnt;		/* Total number of values stored in tree */
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
   int decompress_dis_key_cnt;
 #endif
   int avg_val_per_key;		/* Average number of values (OIDs) per key */

@@ -5451,7 +5451,7 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid, DISK_REPR * r
   if (TP_DOMAIN_TYPE (p_stat_info->key_type) == DB_TYPE_MIDXKEY)
     {
       key_size = tp_domain_size (p_stat_info->key_type->setdomain);
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
       for (i = 0; i < cls_rep->n_indexes; i++)
 	{
 	  OR_INDEX *index = cls_rep->indexes + i;

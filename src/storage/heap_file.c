@@ -12491,8 +12491,8 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
   int error = NO_ERROR;
   TP_DOMAIN *set_domain = NULL;
   TP_DOMAIN *next_domain = NULL;
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-  int write_field_cnt = 0;
+#if defined(SUPPORT_COMPRESS_MODE)
+  int not_null_field_cnt = 0;
 #endif
 
   assert (index != NULL);
@@ -12530,8 +12530,8 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	    {
 	      func_domain->type->index_writeval (&buf, func_res);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-	      write_field_cnt++;
+#if defined(SUPPORT_COMPRESS_MODE)
+	      not_null_field_cnt++;
 #endif
 	    }
 
@@ -12569,8 +12569,8 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 #if defined(SUPPORT_KEY_DUP_LEVEL)
       if (IS_RESERVED_INDEX_ATTR_ID (atts[i]->id))
 	{
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-	  if (write_field_cnt > 0)
+#if defined(SUPPORT_COMPRESS_MODE)
+	  if (not_null_field_cnt > 0)
 #endif
 	    {
 	      dk_heap_midxkey_get_reserved_index_value (atts[i]->id, rec_oid, &value);
@@ -12587,8 +12587,8 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	    {
 	      atts[i]->domain->type->index_writeval (&buf, &value);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-	      write_field_cnt++;
+#if defined(SUPPORT_COMPRESS_MODE)
+	      not_null_field_cnt++;
 #endif
 	    }
 
@@ -12697,8 +12697,8 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
   DB_VALUE value;
   OR_BUF buf;
   int error = NO_ERROR;
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-  int write_field_cnt = 0;
+#if defined(SUPPORT_COMPRESS_MODE)
+  int not_null_field_cnt = 0;
 #endif
 
   /*
@@ -12742,8 +12742,8 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	      TP_DOMAIN *domain = tp_domain_resolve_default ((DB_TYPE) func_res->domain.general_info.type);
 	      domain->type->index_writeval (&buf, func_res);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-	      write_field_cnt++;
+#if defined(SUPPORT_COMPRESS_MODE)
+	      not_null_field_cnt++;
 #endif
 	    }
 
@@ -12755,8 +12755,8 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
       if (IS_RESERVED_INDEX_ATTR_ID (att_ids[i]))
 	{
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-	  if (write_field_cnt > 0)
+#if defined(SUPPORT_COMPRESS_MODE)
+	  if (not_null_field_cnt > 0)
 #endif
 	    {
 	      att = (OR_ATTRIBUTE *) dk_find_or_reserved_index_attribute (att_ids[i]);
@@ -12776,8 +12776,8 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	    {
 	      att->domain->type->index_writeval (&buf, &value);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-	      write_field_cnt++;
+#if defined(SUPPORT_COMPRESS_MODE)
+	      not_null_field_cnt++;
 #endif
 	    }
 

@@ -217,13 +217,13 @@ struct btree_root_header
     int num_nulls:10;		/* extend 10 bit for num_nulls */
     int num_keys:10;		/* extend 10 bit for num_keys */
   } _64;
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
-#define SET_DECOMPRESS_IDX_HEADER(hdr, idx)  ((hdr)->_32.decompress_attr_idx = ((idx) + 1))
-#define GET_DECOMPRESS_IDX_HEADER(hdr)       ((hdr)->_32.decompress_attr_idx - 1)
+#if defined(SUPPORT_COMPRESS_MODE)
   struct
   {
     int rev_level:16;		/* Btree revision level */
     int decompress_attr_idx:16;
+#define SET_DECOMPRESS_IDX_HEADER(hdr, idx)  ((hdr)->_32.decompress_attr_idx = ((idx) + 1))
+#define GET_DECOMPRESS_IDX_HEADER(hdr)       ((hdr)->_32.decompress_attr_idx - 1)
   } _32;
 #else
   int rev_level;		/* Btree revision level */

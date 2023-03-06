@@ -327,7 +327,7 @@ struct btree_stats_env
   int pkeys_val_num;
   DB_VALUE pkeys_val[BTREE_STATS_PKEYS_NUM];	/* partial key-value */
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
   DB_VALUE old_key_val;
   int ignore_diff_pos;
 #endif
@@ -1247,7 +1247,7 @@ static DISK_ISVALID btree_check_pages (THREAD_ENTRY * thread_p, BTID_INT * btid,
 static DISK_ISVALID btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT * btid,
 					  const char *btname, PAGE_PTR pg_ptr, VPID * pg_vpid, BTREE_NODE_INFO * INFO);
 static int btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, BTREE_CAPACITY * cpc
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
 				       , BTREE_STATS_ENV * env
 #endif
   );
@@ -6706,15 +6706,11 @@ exit_on_error:
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
 static bool
 btree_is_same_key_for_stats (BTREE_STATS_ENV * env, DB_VALUE * key_value)
 {
   assert (env->ignore_diff_pos > 0);
-
-  // ctshim  
-  //db_value_print_console (&(env->old_key_val), false, "old_key_val=");
-  //db_value_print_console (key_value, true, ", cur_key=");
 
   if (!DB_IS_NULL (&(env->old_key_val)))
     {
@@ -6727,7 +6723,6 @@ btree_is_same_key_for_stats (BTREE_STATS_ENV * env, DB_VALUE * key_value)
 
   pr_clear_value (&(env->old_key_val));
   pr_clone_value (key_value, &(env->old_key_val));
-
   return false;
 }
 #endif
@@ -6786,7 +6781,7 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 	  goto exit_on_error;
 	}
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
       if (env->ignore_diff_pos != -1 && btree_is_same_key_for_stats (env, &key_value))
 	{
 	  goto end;
@@ -6885,7 +6880,7 @@ count_keys:
 	  goto exit_on_error;
 	}
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
       if ((mvcc_snapshot == NULL) && (env->ignore_diff_pos != -1) && btree_is_same_key_for_stats (env, &key_value))
 	{
 	  env->stat_info->keys--;
@@ -7325,7 +7320,7 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
       env->stat_info->pkeys[i] = 0;	/* clear old stats */
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
   db_make_null (&(env->old_key_val));
   env->ignore_diff_pos = env->btree_scan.btid_int.decompress_attr_idx;
 #endif
@@ -7340,7 +7335,7 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
       ret = btree_get_stats_with_AR_sampling (thread_p, env);
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
   pr_clear_value (&(env->old_key_val));
   env->ignore_diff_pos = -1;
 #endif
@@ -8743,7 +8738,7 @@ btree_keyoid_checkscan_end (THREAD_ENTRY * thread_p, BTREE_CHECKSCAN * btscan)
  */
 static int
 btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, BTREE_CAPACITY * cpc
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
 			    , BTREE_STATS_ENV * env
 #endif
   )
@@ -8815,7 +8810,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 #endif /* !NDEBUG */
 
 	  ret = btree_get_subtree_capacity (thread_p, btid, page, &cpc2
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
 					    , env
 #endif
 	    );
@@ -8828,7 +8823,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	  /* form the cpc structure for a non-leaf node page */
 	  cpc->dis_key_cnt += cpc2.dis_key_cnt;
 	  cpc->tot_val_cnt += cpc2.tot_val_cnt;
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
 	  cpc->decompress_dis_key_cnt += cpc2.decompress_dis_key_cnt;
 #endif
 	  cpc->leaf_pg_cnt += cpc2.leaf_pg_cnt;
@@ -8857,7 +8852,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
   else
     {				/* a leaf page */
       /* form the cpc structure for a leaf node page */
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
       cpc->dis_key_cnt = 0;
       cpc->decompress_dis_key_cnt = key_cnt;
 #else
@@ -8880,7 +8875,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	      goto exit_on_error;
 	    }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
 	  if (env->ignore_diff_pos == -1 || !btree_is_same_key_for_stats (env, &key1))
 	    {
 	      cpc->dis_key_cnt++;
@@ -9004,7 +8999,7 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
   BTREE_ROOT_HEADER *root_header = NULL;
   int ret = NO_ERROR;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
   BTREE_STATS_ENV stats_env;
   /* This routine uses only old_key_val and ignore_diff_pos among the members of the structure. */
   memset (&stats_env, 0x00, sizeof (stats_env));
@@ -9036,18 +9031,18 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
       goto exit_on_error;
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
   db_make_null (&(stats_env.old_key_val));
   stats_env.ignore_diff_pos = GET_DECOMPRESS_IDX_HEADER (root_header);
 #endif
   /* traverse the tree and store the capacity info */
   ret = btree_get_subtree_capacity (thread_p, &btid_int, root, cpc
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
 				    , &stats_env
 #endif
     );
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
   pr_clear_value (&(stats_env.old_key_val));
 #endif
   if (ret != NO_ERROR)
@@ -9066,7 +9061,7 @@ exit_on_error:
       pgbuf_unfix_and_init (thread_p, root);
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
   pr_clear_value (&(stats_env.old_key_val));
 #endif
 
@@ -9129,7 +9124,7 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
   /* dump the capacity information */
   fprintf (fp, "\nDistinct Key Count: %d\n", cpc.dis_key_cnt);
   fprintf (fp, "Total Value Count: %lld\n", cpc.tot_val_cnt);
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
   fprintf (fp, "Decompress Distinct Key Count: %d\n", cpc.decompress_dis_key_cnt);
 #endif
   fprintf (fp, "Average Value Count Per Key: %d\n", cpc.avg_val_per_key);
@@ -22395,7 +22390,7 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
   // {"Total_value", "bigint"}
   db_make_bigint (out_values[idx++], cpc.tot_val_cnt);
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_CARDINALITY_IGNORE)
+#if defined(SUPPORT_COMPRESS_MODE)
   //  {"Decompress_distinct_key", "int"},
   db_make_int (out_values[idx++], cpc.decompress_dis_key_cnt);
 #endif
