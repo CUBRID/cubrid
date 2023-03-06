@@ -2405,6 +2405,7 @@ struct pt_expr_info
   bool is_order_dependent;	/* true if expression is order dependent */
   PT_TYPE_ENUM recursive_type;	/* common type for recursive expression arguments (like PT_GREATEST, PT_LEAST,...) */
   int coll_modifier;		/* collation modifier = collation + 1 */
+  int pred_order;		/* for view-merge or predicate-push. pred is ordered by pred_order in qo_discover_edges */
 };
 
 /* FILE PATH INFO */
@@ -3300,8 +3301,6 @@ struct pt_pointer_info
 {
   PT_NODE *node;		/* original node pointer */
   PT_POINTER_TYPE type;		/* pointer type (normal pointer/reference) */
-  double sel;			/* selectivity factor of the predicate */
-  int rank;			/* rank factor for the same selectivity */
   bool do_walk;			/* apply walk on node bool */
 };
 

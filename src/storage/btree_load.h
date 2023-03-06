@@ -29,6 +29,7 @@
 #include <assert.h>
 
 #include "btree.h"
+#include "dbtype.h"
 #include "object_representation_constants.h"
 #include "error_manager.h"
 #include "storage_common.h"
@@ -271,8 +272,8 @@ extern void btree_rv_nodehdr_dump (FILE * fp, int length, void *data);
 extern void btree_rv_mvcc_save_increments (const BTID * btid, long long key_delta, long long oid_delta,
 					   long long null_delta, RECDES * recdes);
 
-extern bool btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value);
-extern void btree_init_temp_key_value (bool * clear_flag, DB_VALUE * key_value);
+STATIC_INLINE bool btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void btree_init_temp_key_value (bool * clear_flag, DB_VALUE * key_value) __attribute__ ((ALWAYS_INLINE));
 extern int btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid);
 extern int btree_init_overflow_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, BTREE_OVERFLOW_HEADER * ovf_header);
 extern int btree_init_node_header (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PTR page_ptr,
@@ -297,5 +298,37 @@ extern int btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * k
 				       TP_DOMAIN * key_domain);
 
 extern int btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid, int col_idx, int *asc_desc);
+
+/*
+ * btree_clear_key_value () -
+ *   return: cleared flag
+ *   clear_flag (in/out):
+ *   key_value (in/out):
+ */
+STATIC_INLINE bool
+btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value)
+{
+  if (*clear_flag == true || key_value->need_clear == true)
+    {
+      pr_clear_value (key_value);
+      *clear_flag = false;
+    }
+  // also set null
+  db_make_null (key_value);
+  return *clear_flag;
+}
+
+/*
+ * btree_init_temp_key_value () -
+ *   return: void
+ *   clear_flag (in/out):
+ *   key_value (in/out):
+ */
+STATIC_INLINE void
+btree_init_temp_key_value (bool * clear_flag, DB_VALUE * key_value)
+{
+  db_make_null (key_value);
+  *clear_flag = false;
+}
 
 #endif /* _BTREE_LOAD_H_ */

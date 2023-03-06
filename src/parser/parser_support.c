@@ -3527,6 +3527,55 @@ pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level
 }
 
 /*
+ * pt_set_pred_order ()
+ *          - set predicate order number
+ *   parser(in):
+ *   pre_pred(in):
+ *   pre_order(in):
+ */
+
+void
+pt_set_pred_order (PARSER_CONTEXT * parser, PT_NODE * pre_pred, int pre_order)
+{
+  PT_NODE *pred;
+
+  /* set pred_order + pre_order to pre_pred */
+  for (pred = pre_pred; pred; pred = pred->next)
+    {
+      if (pt_is_expr_node (pred))
+	{
+	  pred->info.expr.pred_order += pre_order;
+	}
+    }
+}
+
+/*
+ * pt_get_max_pred_order ()
+ *          - get max predicate order number
+ *   parser(in):
+ *   pred(in):
+ */
+
+int
+pt_get_max_pred_order (PARSER_CONTEXT * parser, PT_NODE * predicate)
+{
+  PT_NODE *pred;
+  int max_pred_order = 0;
+
+  for (pred = predicate; pred; pred = pred->next)
+    {
+      if (pt_is_expr_node (pred))
+	{
+	  if (pred->info.expr.pred_order > max_pred_order)
+	    {
+	      max_pred_order = pred->info.expr.pred_order;
+	    }
+	}
+    }
+  return max_pred_order;
+}
+
+/*
  * pt_has_nullable_term () - check if tree has an nullable term
  *				   node somewhere
  *   return: true if tree has nullable term

@@ -31,7 +31,6 @@
 #include "btree_load.h"
 
 #include "btree.h"
-#include "dbtype.h"
 #include "external_sort.h"
 #include "heap_file.h"
 #include "log_append.hpp"

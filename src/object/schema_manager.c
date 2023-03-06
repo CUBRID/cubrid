@@ -4308,6 +4308,76 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 }
 
 /*
+ * sm_update_statistics_without_gathering_stats () - fetch the statistics and
+ *    						     cache them with the class.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   classop(in): class object
+ *   with_fullscan(in): true iff WITH FULLSCAN
+ *
+ * NOTE: We will delay updating statistics until a transaction is committed
+ *       when it is requested during other processing, such as
+ *       "alter table ...." or "create index ...".
+ */
+int
+sm_update_statistics_without_gathering_stats (MOP classop, bool with_fullscan)
+{
+  int error = NO_ERROR, is_class = 0;
+  SM_CLASS *class_;
+
+  assert_release (classop != NULL);
+
+  /* only try to get statistics if we know the class has been flushed if it has a temporary oid, it isn't flushed and
+   * there are no statistics */
+
+  if (classop != NULL && !OID_ISTEMP (WS_OID (classop)))
+    {
+      is_class = locator_is_class (classop, DB_FETCH_QUERY_READ);
+      if (is_class < 0)
+	{
+	  return is_class;
+	}
+    }
+  if (is_class > 0)
+    {
+
+      /* make sure the workspace is flushed before calculating stats */
+      if (locator_flush_all_instances (classop, DONT_DECACHE) != NO_ERROR)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+
+      if (classop->object != NULL)
+	{			/* check cache */
+	  /* why are we checking authorization here ? */
+	  error = au_fetch_class_force (classop, &class_, AU_FETCH_READ);
+	  if (error == NO_ERROR)
+	    {
+	      if (class_->stats != NULL)
+		{
+		  stats_free_statistics (class_->stats);
+		  class_->stats = NULL;
+		}
+
+	      /* make sure the class is flushed before acquiring stats, see comments above in
+	       * sm_get_class_with_statistics */
+	      if (locator_flush_class (classop) != NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  return (er_errid ());
+		}
+
+	      /* get the new ones, should do this at the same time as the update operation to avoid two server
+	       * calls */
+	      error = stats_get_statistics (WS_OID (classop), 0, &class_->stats);
+	    }
+	}
+    }
+
+  return error;
+}
+
+/*
  * sm_update_all_statistics() - Update the statistics for all classes
  * 			        in the database.
  *   with_fullscan(in): true iff WITH FULLSCAN
@@ -12960,7 +13030,7 @@ update_subclasses (DB_OBJLIST * subclasses)
 		    }
 		  else if (!class_->dont_decache_constraints_or_flush && class_->class_type == SM_CLASS_CT)
 		    {
-		      error = sm_update_statistics (sub->op, STATS_WITH_SAMPLING);
+		      error = sm_update_statistics_without_gathering_stats (sub->op, STATS_WITH_SAMPLING);
 		    }
 
 		  classobj_free_template (class_->new_);
@@ -13307,7 +13377,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   /* All objects are updated, now we can update class statistics also. */
   if (template_->class_type == SM_CLASS_CT)
     {
-      error = sm_update_statistics (template_->op, STATS_WITH_SAMPLING);
+      error = sm_update_statistics_without_gathering_stats (template_->op, STATS_WITH_SAMPLING);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
@@ -14013,7 +14083,7 @@ sm_drop_index (MOP classop, const char *constraint_name)
 	  goto severe_error;
 	}
 
-      if (sm_update_statistics (classop, STATS_WITH_SAMPLING) != NO_ERROR)
+      if (sm_update_statistics_without_gathering_stats (classop, STATS_WITH_SAMPLING) != NO_ERROR)
 	{
 	  goto severe_error;
 	}
@@ -14876,7 +14946,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	      goto error_exit;
 	    }
 
-	  error = sm_update_statistics (newmop, STATS_WITH_SAMPLING);
+	  error = sm_update_statistics_without_gathering_stats (newmop, STATS_WITH_SAMPLING);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
