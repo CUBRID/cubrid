@@ -9634,7 +9634,7 @@ foreign_key_constraint
 			    node->info.constraint.type = PT_CONSTRAIN_FOREIGN_KEY;
 			    node->info.constraint.un.foreign_key.attrs = $5;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
                             pt_get_compress_mode_level($7,  &node->info.constraint.un.foreign_key.dupkey_mode, &node->info.constraint.un.foreign_key.dupkey_hash_level);
 #endif
 			    node->info.constraint.un.foreign_key.referenced_attrs = $10;
@@ -10808,7 +10808,7 @@ column_other_constraint_def
 			    constraint->info.constraint.un.foreign_key.update_action = TO_NUMBER (CONTAINER_AT_1 ($7));	/* update_action */
 			    constraint->info.constraint.un.foreign_key.referenced_class = $5;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)                            
+#if defined(SUPPORT_COMPRESS_MODE)                            
                             pt_get_compress_mode_level($3,  &constraint->info.constraint.un.foreign_key.dupkey_mode, &constraint->info.constraint.un.foreign_key.dupkey_hash_level);
 #endif  
 

@@ -272,16 +272,11 @@ dk_create_index_level_remove_adjust (DB_CONSTRAINT_TYPE ctype, char **attnames, 
 {
   int func_no_args = 0;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
   assert (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype));
   if (ctype != DB_CONSTRAINT_FOREIGN_KEY)
     {
       assert (asc_desc != NULL);
     }
-#else
-  assert (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != DB_CONSTRAINT_FOREIGN_KEY);
-  assert (asc_desc != NULL);
-#endif
 
   if (reserved_index_col_pos != -1)
     {				// remove hidden column   

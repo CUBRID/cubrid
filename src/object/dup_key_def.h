@@ -33,8 +33,6 @@
 #define SUPPORT_KEY_DUP_LEVEL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 
-#define SUPPORT_KEY_DUP_LEVEL_FK
-
 
 #define PRE_DEF_CBRD_24663
 #endif

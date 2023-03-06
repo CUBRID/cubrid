@@ -5992,7 +5992,7 @@ error_return:
 }
 
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 int
 btree_check_remake_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
 				key_val_range * kv_range, bool * is_newly)
@@ -6134,8 +6134,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   assert (class_oid != NULL);
   assert (found_oid != NULL);
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
-  //DB_VALUE new_key1, new_key2;
+#if defined(SUPPORT_COMPRESS_MODE)
   bool is_newly = false;
 
   db_make_null (&kv_range.key1);
@@ -6151,7 +6150,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   /* Find if key has any objects. */
 
   /* Define range of scan. */
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
   if (!is_newly)
     {
       pr_share_value (key, &kv_range.key1);
@@ -6178,7 +6177,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
       if (is_newly)
 	{
 	  pr_clear_value (&kv_range.key1);
@@ -6188,11 +6187,11 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
       return error_code;
     }
   /* Execute scan. */
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
   btree_scan.is_fk_remake = is_newly;
 #endif
   error_code = btree_range_scan (thread_p, &btree_scan, btree_range_scan_find_fk_any_object);
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
   btree_scan.is_fk_remake = false;
 #endif
   assert (error_code == NO_ERROR || er_errid () != NO_ERROR);
@@ -6212,7 +6211,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
     }
 #endif /* SERVER_MODE */
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
   if (is_newly)
     {
       pr_clear_value (&kv_range.key1);
@@ -26013,20 +26012,16 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       /* Key was fully consumed. We are here because no object was found. Since this key was the only one of interest,
        * scan can be stopped. */
       assert (OID_ISNULL (&((BTREE_FIND_FK_OBJECT *) bts->bts_other)->found_oid));
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
       if (bts->is_fk_remake)
 	{
 	  /* Go to next key. 
 	   * Mark the key as consumed and let btree_range_scan_advance_over_filtered_keys handle it. */
 	  bts->key_status = BTS_KEY_IS_CONSUMED;
+	  return NO_ERROR;
 	}
-      else
-	{
-	  bts->end_scan = true;
-	}
-#else
-      bts->end_scan = true;
 #endif
+      bts->end_scan = true;
     }
   return NO_ERROR;
 }

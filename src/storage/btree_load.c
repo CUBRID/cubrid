@@ -3944,7 +3944,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   BTREE_SCAN_PART partitions[MAX_PARTITIONS];
   bool has_nulls = false;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
   bool has_reserved_index_col = false;
   DB_VALUE new_fk_key[2];
   DB_VALUE *fk_key_ptr = &fk_key;
@@ -4117,7 +4117,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  continue;
 	}
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
       if (has_reserved_index_col)
 	{
 	  assert (!DB_IS_NULL (&fk_key));
@@ -4334,7 +4334,7 @@ end:
   btree_clear_key_value (&clear_fk_key, &fk_key);
   btree_clear_key_value (&clear_pk_key, &pk_key);
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
   pr_clear_value (&(new_fk_key[0]));
   pr_clear_value (&(new_fk_key[1]));
 #endif

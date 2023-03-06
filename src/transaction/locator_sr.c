@@ -4043,7 +4043,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
   num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 					      , true
 #endif
     );
@@ -4075,7 +4075,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 	heap_attrvalue_get_key (thread_p, i, &index_attrinfo, recdes, &btid, &dbvalue, aligned_buf, NULL, NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				, inst_oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 				, true
 #endif
 #endif
@@ -4095,7 +4095,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
        */
       if (index->n_atts > 1)
 	{
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)	// ctshim MATCH TYPE
+#if defined(SUPPORT_COMPRESS_MODE)
 	  // We cannot make a PK with a function. Therefore, only the last member is checked.
 	  if (index->n_atts == 2 && IS_RESERVED_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
 	    {
@@ -4235,7 +4235,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   OID found_oid;
   BTREE_ISCAN_OID_LIST oid_list;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
   bool is_newly = false;
 #endif
 
@@ -4290,7 +4290,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	      goto error3;
 	    }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 	  is_newly = false;
 	  // We cannot make a PK with a function. Therefore, only the last member is checked.
 	  if (num_attrs > 1 && IS_RESERVED_INDEX_ATTR_ID (attr_ids[num_attrs - 1]))
@@ -4343,7 +4343,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	  scan_init_index_scan (&isid, &oid_list, mvcc_snapshot);
 	  is_upd_scan_init = false;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 	  if (!is_newly)
 	    {
 	      pr_clone_value (key, &key_val_range.key1);
@@ -4614,7 +4614,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   OID found_oid;
   BTREE_ISCAN_OID_LIST oid_list;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
   bool is_newly = false;
 #endif
 
@@ -4668,7 +4668,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	      goto error3;
 	    }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 	  is_newly = false;
 	  // We cannot make a PK with a function. Therefore, only the last member is checked.
 	  if (num_attrs > 1 && IS_RESERVED_INDEX_ATTR_ID (attr_ids[num_attrs - 1]))
@@ -4722,7 +4722,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	  scan_init_index_scan (&isid, &oid_list, mvcc_snapshot);
 
 	  is_upd_scan_init = false;
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 	  if (!is_newly)
 	    {
 	      pr_clone_value (key, &key_val_range.key1);
@@ -7821,7 +7821,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
    *  Return the number of indexed attributes found.
    */
   num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 					      , false
 #endif
     );
@@ -7894,7 +7894,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 				(func_preds ? &func_preds[i] : NULL), NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				, inst_oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 				, false
 #endif
 #endif
@@ -8349,7 +8349,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   aligned_oldbuf = PTR_ALIGN (oldbuf, MAX_ALIGNMENT);
 
   new_num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &space_attrinfo[0], &new_idx_info
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 						  , false
 #endif
     );
@@ -8361,7 +8361,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   new_attrinfo = &space_attrinfo[0];
 
   old_num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &space_attrinfo[1], &old_idx_info
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 						  , false
 #endif
     );
@@ -8524,7 +8524,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 				NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				, oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 				, false
 #endif
 #endif
@@ -8534,7 +8534,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 				&key_domain
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				, oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 				, false
 #endif
 #endif
@@ -8819,7 +8819,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 				    aligned_oldbuf, NULL, &key_domain
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				    , oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 				    , false
 #endif
 #endif
@@ -9009,7 +9009,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
    *  Return the number of indexed attributes found.
    */
   num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 					      , false
 #endif
     );
@@ -9078,7 +9078,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 					NULL, NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 					, &inst_oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 					, false
 #endif
 #endif
@@ -9108,7 +9108,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 				    NULL, NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 				    , &inst_oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 				    , false
 #endif
 #endif
@@ -9532,7 +9532,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 					    NULL, NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 					    , &inst_oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 					    , false
 #endif
 #endif
@@ -9989,7 +9989,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 		heap_attrvalue_get_key (thread_p, index_id, &attr_info, &peek, btid, &dbvalue, aligned_buf, NULL, NULL
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 					, &inst_oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 					, false
 #endif
 #endif
@@ -10453,7 +10453,7 @@ locator_check_class (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * peek, HF
   int *attrs_prefix_length = NULL;
 
   if (heap_attrinfo_start_with_index (thread_p, class_oid, peek, &attr_info, &idx_info
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 				      , false
 #endif
       ) < 0)

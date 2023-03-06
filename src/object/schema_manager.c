@@ -9550,7 +9550,7 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 	      /*
 	       * Try to find a corresponding attribute in the flattened template
 	       */
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 	      if (IS_RESERVED_INDEX_ATTR_ID (attrs[i]->id))
 		{
 		  assert (attrs[i + 1] == NULL);
@@ -10895,7 +10895,7 @@ check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs, co
     {
       for (i = 0, n_attrs = 0; key_attrs[i] != NULL; i++, n_attrs++);
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
       // We cannot make a PK with a function. Therefore, only the last member is checked.
       if (n_attrs > 1 && IS_RESERVED_INDEX_ATTR_ID (key_attrs[n_attrs - 1]->id))
 	{
@@ -14149,7 +14149,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       int class_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       int att_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       char md5_str[32 + 1] = { '\0' };
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
       bool is_fk = false;
 #endif
 
@@ -14166,7 +14166,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  break;
 	case DB_CONSTRAINT_FOREIGN_KEY:
 	  prefix = "fk_";
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 	  is_fk = true;
 #endif
 	  break;
@@ -14200,7 +14200,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       for (ptr = att_names; (*ptr != NULL) && (i < n_attrs); ptr++, i++)
 	{
 	  int ptr_size = 0;
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 	  if (is_fk && IS_RESERVED_INDEX_ATTR_NAME (*ptr))
 	    {
 	      continue;
@@ -14246,7 +14246,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 
 	  for (ptr = att_names, i = 0; i < n_attrs; ptr++, i++)
 	    {
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 	      if (is_fk && IS_RESERVED_INDEX_ATTR_NAME (*ptr))
 		{
 		  continue;
@@ -14319,7 +14319,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  /* n_attrs is already limited to MAX_ATTR_IN_AUTO_GEN_NAME here */
 	  for (ptr = att_names; i < n_attrs; ptr++, i++)
 	    {
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 	      if (is_fk && IS_RESERVED_INDEX_ATTR_NAME (*ptr))
 		{
 		  continue;

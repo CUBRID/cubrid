@@ -7510,7 +7510,7 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
       att_names[i++] = p->info.name.original;
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
   if (fk_info->dupkey_mode != COMPRESS_INDEX_MODE_NONE)
     {
       att_names[i++] = (char *) GET_RESERVED_INDEX_ATTR_NAME (fk_info->dupkey_hash_level);
@@ -7600,7 +7600,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
       return NO_ERROR;
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
   buf_size = (max_attrs + 2) * sizeof (char *);
 #else
   buf_size = (max_attrs + 1) * sizeof (char *);

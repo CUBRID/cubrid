@@ -695,7 +695,7 @@ static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, 
 					 TP_DOMAIN ** key_domain
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 					 , OID * rec_oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 					 , bool is_check_foreign
 #endif
 #endif
@@ -11996,7 +11996,7 @@ heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACH
  *   attr_info(in):
  *   idx_info(in):
  */
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 int
 heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * class_recdes,
 				HEAP_CACHE_ATTRINFO * attr_info, HEAP_IDX_ELEMENTS_INFO * idx_info,
@@ -12057,7 +12057,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
   for (j = 0; j < *num_btids; j++)
     {
       indexp = &classrepr->indexes[j];
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
       // We cannot make a PK with a function. Therefore, only the last member is checked.
       if (is_check_foreign && (indexp->n_atts > 1) && IS_RESERVED_INDEX_ATTR_ID (indexp->atts[indexp->n_atts - 1]->id))
 	{
@@ -12071,8 +12071,8 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	    }
 	}
       else
-	{
 #endif
+	{
 	  if (indexp->n_atts == 1)
 	    {
 	      idx_info->has_single_col = 1;
@@ -12081,9 +12081,8 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	    {
 	      idx_info->has_multi_col = 1;
 	    }
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 	}
-#endif
+
       /* check for already found both */
       if (idx_info->has_single_col && idx_info->has_multi_col)
 	{
@@ -12105,7 +12104,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	      for (j = 0; j < *num_btids; j++)
 		{
 		  indexp = &classrepr->indexes[j];
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 		  // We cannot make a PK with a function. Therefore, only the last member is checked.
 		  if (is_check_foreign && (indexp->n_atts > 1)
 		      && IS_RESERVED_INDEX_ATTR_ID (indexp->atts[indexp->n_atts - 1]->id))
@@ -12117,16 +12116,14 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 			}
 		    }
 		  else
-		    {
 #endif
+		    {
 		      if (indexp->n_atts == 1 && indexp->atts[0]->id == search_attrepr->id)
 			{
 			  set_attrids[num_found_attrs++] = search_attrepr->id;
 			  break;
 			}
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
 		    }
-#endif
 		}
 	    }
 	}			/* for (i = 0 ...) */
@@ -12251,7 +12248,7 @@ heap_classrepr_find_index_id (OR_CLASSREP * classrepr, const BTID * btid)
   return id;
 }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 int
 heap_get_reserved_attr_by_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, ATTR_ID * last_attrid,
 				int *last_asc_desc, TP_DOMAIN ** tpdomain)
@@ -12477,7 +12474,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 		      DB_VALUE * func_res, TP_DOMAIN * func_domain, TP_DOMAIN ** key_domain
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 		      , OID * rec_oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 		      , bool is_check_foreign
 #endif
 #endif
@@ -12504,7 +12501,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
       num_atts = index->func_index_info->attr_index_start + 1;
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
   // We cannot make a PK with a function. Therefore, only the last member is checked.
   if (is_check_foreign && (index->n_atts > 1) && IS_RESERVED_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
     {
@@ -12988,7 +12985,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 			TP_DOMAIN ** key_domain
 #if defined(SUPPORT_KEY_DUP_LEVEL)
 			, OID * rec_oid
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 			, bool is_check_foreign
 #endif
 #endif
@@ -13032,7 +13029,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
   n_atts = index->n_atts;
   *btid = index->btid;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
   // We cannot make a PK with a function. Therefore, only the last member is checked.
   if (is_check_foreign && (index->n_atts > 1) && IS_RESERVED_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
     {
@@ -13087,7 +13084,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
       midxkey.min_max_val.position = -1;
 
 #if defined(SUPPORT_KEY_DUP_LEVEL)
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
       if (heap_midxkey_key_get
 	  (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain, rec_oid, is_check_foreign) == NULL)
 #else

@@ -3251,7 +3251,7 @@ struct pt_foreign_key_info
   PT_MISC_TYPE match_type;	/* full or partial */
   PT_MISC_TYPE delete_action;
   PT_MISC_TYPE update_action;
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
   short dupkey_mode;		/* refer to enDupMode */
   short dupkey_hash_level;	/* 0 : no hash, others : hash size */
 #endif

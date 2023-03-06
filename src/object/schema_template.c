@@ -2266,7 +2266,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
       if (constraint == SM_ATTFLAG_FOREIGN_KEY)
 	{
-#if defined(SUPPORT_KEY_DUP_LEVEL_FK)
+#if defined(SUPPORT_COMPRESS_MODE)
 	  error = smt_check_foreign_key (template_, constraint_name, atts,
 					 ((reserved_index_col_pos == -1) ? n_atts : (n_atts - 1)), fk_info);
 #else
