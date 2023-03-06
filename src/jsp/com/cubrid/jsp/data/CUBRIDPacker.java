@@ -127,7 +127,7 @@ public class CUBRIDPacker {
         }
     }
 
-    public void packPrimitiveBytes (ByteBuffer b) {
+    public void packPrimitiveBytes(ByteBuffer b) {
         buffer.put(b.array(), 0, b.position());
     }
 
@@ -227,9 +227,9 @@ public class CUBRIDPacker {
         }
     }
 
-    private void align(int size) {
+    public void align(int size) {
         int currentPosition = buffer.position();
-        int newPosition = DataUtilities.alignedPosition(buffer, size);
+        int newPosition = DataUtilities.alignedPosition(currentPosition, size);
 
         ensureSpace(newPosition - currentPosition);
         if (newPosition - currentPosition > 0) {

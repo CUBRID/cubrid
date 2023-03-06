@@ -280,7 +280,7 @@ public class ExecuteThread extends Thread {
         receiveBuffer();
 
         /* read header */
-        Header header = new Header (unpacker);
+        Header header = new Header(unpacker);
 
         setStatus(ExecuteThreadStatus.IDLE);
         return header;
@@ -296,7 +296,7 @@ public class ExecuteThread extends Thread {
         input.readFully(bytes);
 
         ensureReadBufferSpace(size);
-        
+
         unpacker.setBuffer(readbuffer);
 
         readbuffer.clear(); // always clear
@@ -306,7 +306,7 @@ public class ExecuteThread extends Thread {
         return unpacker;
     }
 
-    public CUBRIDUnpacker getUnpacker () {
+    public CUBRIDUnpacker getUnpacker() {
         return unpacker;
     }
 
@@ -367,12 +367,12 @@ public class ExecuteThread extends Thread {
 
         resultBuffer.clear(); /* prepare to put */
         packer.setBuffer(resultBuffer);
-        
+
         if (connection != null) {
-            packer.packInt (REQ_CODE_DESTROY);
+            packer.packInt(REQ_CODE_DESTROY);
             connection = null;
         } else {
-            packer.packInt (REQ_CODE_END);
+            packer.packInt(REQ_CODE_END);
         }
         output.writeInt(resultBuffer.position());
         output.write(resultBuffer.array(), 0, resultBuffer.position());
@@ -403,7 +403,8 @@ public class ExecuteThread extends Thread {
         resultBuffer.clear(); /* prepare to put */
         packer.setBuffer(resultBuffer);
 
-        packer.packInt (REQ_CODE_RESULT);
+        packer.packInt(REQ_CODE_RESULT);
+        packer.align(DataUtilities.MAX_ALIGNMENT);
         packer.packValue(resolvedResult, procedure.getReturnType(), this.charSet);
         returnOutArgs(procedure, packer);
         resultBuffer = packer.getBuffer();
@@ -417,8 +418,9 @@ public class ExecuteThread extends Thread {
         resultBuffer.clear(); /* prepare to put */
         packer.setBuffer(resultBuffer);
 
-        packer.packInt (REQ_CODE_INTERNAL_JDBC);
-        packer.packPrimitiveBytes (buffer);
+        packer.packInt(REQ_CODE_INTERNAL_JDBC);
+        packer.align(DataUtilities.MAX_ALIGNMENT);
+        packer.packPrimitiveBytes(buffer);
         resultBuffer = packer.getBuffer();
 
         output.writeInt(resultBuffer.position());
@@ -431,6 +433,7 @@ public class ExecuteThread extends Thread {
         packer.setBuffer(resultBuffer);
 
         packer.packInt(REQ_CODE_ERROR);
+        packer.align(DataUtilities.MAX_ALIGNMENT);
         packer.packValue(new Integer(1), DBType.DB_INT, this.charSet);
         packer.packValue(exception, DBType.DB_STRING, this.charSet);
 

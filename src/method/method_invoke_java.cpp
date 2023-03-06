@@ -98,8 +98,9 @@ namespace cubmethod
 	    packing_unpacker unpacker (response_blk);
 	    unpacker.unpack_int (start_code);
 
-	    cubmem::block payload_blk ((size_t) (unpacker.get_buffer_end() - unpacker.get_curr_ptr()),
-				       (char *) unpacker.get_curr_ptr ());
+	    char *aligned_ptr = PTR_ALIGN (unpacker.get_curr_ptr(), MAX_ALIGNMENT);
+	    cubmem::block payload_blk ((size_t) (unpacker.get_buffer_end() - aligned_ptr),
+				       aligned_ptr);
 	    m_group->get_data_queue().emplace (std::move (payload_blk));
 
 	    /* processing */
@@ -319,13 +320,13 @@ namespace cubmethod
     db_parameter_info *parameter_info = m_group->get_db_parameter_info ();
     if (parameter_info)
       {
-  cubmem::block blk = mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, *parameter_info);
+	cubmem::block blk = mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, *parameter_info);
 	error = mcon_send_data_to_java (m_group->get_socket(), header, blk);
       }
     else
       {
-  cubmem::block blk = mcon_pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
-					ARG_FILE_LINE);
+	cubmem::block blk = mcon_pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+			    ARG_FILE_LINE);
 	error = mcon_send_data_to_java (m_group->get_socket(), header, blk);
       }
     return error;
@@ -427,7 +428,7 @@ namespace cubmethod
   {
     int error = NO_ERROR;
     int code = METHOD_CALLBACK_FETCH;
-    std::int64_t qid;
+    std::uint64_t qid;
     int pos;
     int fetch_count;
     int fetch_flag;
@@ -622,8 +623,8 @@ namespace cubmethod
 	{
 	  cursor->change_owner (m_group->get_thread_entry ());
 
-    UINT64 s_id = m_group->get_thread_entry ()->conn_entry->session_id;
-    cubmethod::header header (s_id, SP_CODE_INTERNAL_JDBC /* default */, 1);
+	  UINT64 s_id = m_group->get_thread_entry ()->conn_entry->session_id;
+	  cubmethod::header header (s_id, SP_CODE_INTERNAL_JDBC /* default */, 1);
 	  return mcon_send_data_to_java (m_group->get_socket(), header, b);
 	}
       else
