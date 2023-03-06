@@ -718,7 +718,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_USE_COMPRESS_INDEX_MODE_OID_TEST  "use_compress_index_mode_oid_test"
 #define PRM_NAME_COMPRESS_INDEX_MODE      "compress_index_mode"
-#define PRM_NAME_COMPRESS_INDEX_MOD_VAL   "compress_index_mod_level"
+#define PRM_NAME_COMPRESS_INDEX_MOD_LEVEL "compress_index_mod_level"
 
 
 /*
@@ -1208,11 +1208,11 @@ static unsigned int prm_compress_index_mode_flag = 0;
 static int prm_compress_index_mode_lower = COMPRESS_INDEX_MODE_HIGH;
 static int prm_compress_index_mode_upper = COMPRESS_INDEX_MODE_LOW;
 
-int PRM_COMPRESS_INDEX_MOD_VAL = COMPRESS_INDEX_MOD_LEVEL_DEFAULT;
-static int prm_compress_index_mod_val_default = COMPRESS_INDEX_MOD_LEVEL_DEFAULT;
-static unsigned int prm_compress_index_mod_val_flag = 0;
-static int prm_compress_index_mod_val_lower = COMPRESS_INDEX_MOD_LEVEL_MIN;
-static int prm_compress_index_mod_val_upper = COMPRESS_INDEX_MOD_LEVEL_MAX;
+int PRM_COMPRESS_INDEX_MOD_LEVEL = COMPRESS_INDEX_MOD_LEVEL_DEFAULT;
+static int prm_compress_index_mod_level_default = COMPRESS_INDEX_MOD_LEVEL_DEFAULT;
+static unsigned int prm_compress_index_mod_level_flag = 0;
+static int prm_compress_index_mod_level_lower = COMPRESS_INDEX_MOD_LEVEL_MIN;
+static int prm_compress_index_mod_level_upper = COMPRESS_INDEX_MOD_LEVEL_MAX;
 #endif
 
 int PRM_DEFAULT_WEEK_FORMAT = 0;
@@ -6205,15 +6205,15 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_COMPRESS_INDEX_MOD_VAL,
-   PRM_NAME_COMPRESS_INDEX_MOD_VAL,
+  {PRM_ID_COMPRESS_INDEX_MOD_LEVEL,
+   PRM_NAME_COMPRESS_INDEX_MOD_LEVEL,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_INTEGER,
-   &prm_compress_index_mod_val_flag,
-   (void *) &prm_compress_index_mod_val_default,
-   (void *) &PRM_COMPRESS_INDEX_MOD_VAL,
-   (void *) &prm_compress_index_mod_val_upper,
-   (void *) &prm_compress_index_mod_val_lower,
+   &prm_compress_index_mod_level_flag,
+   (void *) &prm_compress_index_mod_level_default,
+   (void *) &PRM_COMPRESS_INDEX_MOD_LEVEL,
+   (void *) &prm_compress_index_mod_level_upper,
+   (void *) &prm_compress_index_mod_level_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

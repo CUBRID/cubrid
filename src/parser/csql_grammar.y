@@ -453,7 +453,8 @@ static void pt_get_compress_mode_level(int mode_level, short* mode, short* level
                                      (nm)->info.name.original, RESERVED_INDEX_ATTR_NAME_PREFIX);  \
    } \
 } while(0)
-#else
+#else // #if defined(SUPPORT_COMPRESS_MODE)
+#define COMPRESS_MODE_NOT_SET          (-1)
 #define CHECK_RESERVED_IDX_ATTR_NAME(nm)
 #define MAKE_COMPRESS_MODE_LEVEL(m, l)  (-1)
 #endif // #if defined(SUPPORT_COMPRESS_MODE)
@@ -635,7 +636,7 @@ int g_original_buffer_len;
 %type <number> opt_encrypt_algorithm
 %type <number> opt_access_modifier
 %type <number> opt_index_compress_mode
-%type <number> opt_index_compress_mod_val
+%type <number> opt_index_compress_mod_level
 /*}}}*/
 
 /* define rule type (node) */
@@ -21463,25 +21464,24 @@ opt_index_compress_mode
                { DBG_TRACE_GRAMMAR(opt_index_compress_mode,  | COMPRESS_ LOW_); 
                  $$ = MAKE_COMPRESS_MODE_LEVEL(COMPRESS_INDEX_MODE_LOW, COMPRESS_INDEX_MOD_LEVEL_ZERO);
                }   
-        | COMPRESS_ MEDIUM_ opt_index_compress_mod_val
-               { DBG_TRACE_GRAMMAR(opt_index_compress_mode,  | COMPRESS_ MEDIUM_ opt_index_compress_mod_val); 
+        | COMPRESS_ MEDIUM_ opt_index_compress_mod_level
+               { DBG_TRACE_GRAMMAR(opt_index_compress_mode,  | COMPRESS_ MEDIUM_ opt_index_compress_mod_level); 
                  $$ = MAKE_COMPRESS_MODE_LEVEL(COMPRESS_INDEX_MODE_MEDIUM, $3);
                }        
         ;
 
-opt_index_compress_mod_val
+opt_index_compress_mod_level
         : /* empty */
-		{ DBG_TRACE_GRAMMAR(opt_index_compress_mod_val, : );     
+		{ DBG_TRACE_GRAMMAR(opt_index_compress_mod_level, : );     
 #if defined(SUPPORT_COMPRESS_MODE)                             
-                  $$ = prm_get_integer_value (PRM_ID_COMPRESS_INDEX_MOD_VAL);
+                  $$ = prm_get_integer_value (PRM_ID_COMPRESS_INDEX_MOD_LEVEL);
 #else
                   $$ = 0;                        
 #endif                  
                 }
 	| '(' UNSIGNED_INTEGER ')'
-		{ DBG_TRACE_GRAMMAR(opt_index_compress_mod_val, | (LEVEL UNSIGNED_INTEGER) ); 
-                  int int_val = -1;
-                  // ctshim to do error code
+		{ DBG_TRACE_GRAMMAR(opt_index_compress_mod_level, | (LEVEL UNSIGNED_INTEGER) ); 
+                  int int_val = -1;                  
                   if (parse_int (&int_val, $2, 10) != 0)
 		      {
 			PT_ERRORmf (this_parser, $2, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_UNSIGNED_INT32, $2);
@@ -27674,7 +27674,7 @@ static void pt_get_compress_mode_level(int mode_level, short* mode, short* level
     if(mode_level == COMPRESS_MODE_NOT_SET)
     {
         type = prm_get_integer_value (PRM_ID_COMPRESS_INDEX_MODE);
-        mod_val = prm_get_integer_value (PRM_ID_COMPRESS_INDEX_MOD_VAL);
+        mod_val = prm_get_integer_value (PRM_ID_COMPRESS_INDEX_MOD_LEVEL);
     }   
     else
     {
