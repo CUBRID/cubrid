@@ -191,6 +191,12 @@ ldr_validate_object_file (const char *argv0, load_args * args)
 			|| args->schema_file.empty () == false
 			|| args->schema_file_list.empty () == false || args->trigger_file.empty () == false))
     {
+      fprintf (stderr, "In loaddb CS mode (-C, --CS-mode), only object loading is possible.\n");
+      return ER_FAILED;
+    }
+
+  if (args->schema_file.empty () == false && args->schema_file_list.empty () == false)
+    {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
       load_usage (argv0);
       return ER_FAILED;
