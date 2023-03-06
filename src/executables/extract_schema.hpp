@@ -64,7 +64,7 @@ struct extract_context
     is_dba_user (false),
     is_dba_group_member (false),
     has_indexes (0),
-    schema_file_list(NULL),
+    schema_file_list(),
     classes (NULL),
     vclass_list_has_using_index (NULL)
   {
