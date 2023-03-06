@@ -644,7 +644,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
   const int *asc_desc;
   const int *prefix_length;
   int k, n_attrs = 0;
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
   char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
 #endif
 
@@ -754,7 +754,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	{
 	  break;
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
       if (k == (n_attrs - 1) && IS_RESERVED_INDEX_ATTR_ID ((*attribute_p)->id))
 	{
 	  int level = GET_RESERVED_INDEX_ATTR_LEVEL ((*attribute_p)->id);
@@ -791,17 +791,18 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
     }
 
   m_buf (")");
-#if defined(SUPPORT_KEY_DUP_LEVEL)
-  if (reserved_col_buf[0])
-    {
-      m_buf ("%s", reserved_col_buf);
-    }
-#endif
 
   if (constraint.filter_predicate && constraint.filter_predicate->pred_string)
     {
       m_buf (" WHERE %s", constraint.filter_predicate->pred_string);
     }
+
+#if defined(SUPPORT_COMPRESS_MODE)
+  if (reserved_col_buf[0])
+    {
+      m_buf ("%s", reserved_col_buf);
+    }
+#endif
 
   if (constraint.type == SM_CONSTRAINT_FOREIGN_KEY && constraint.fk_info)
     {

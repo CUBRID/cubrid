@@ -49,14 +49,14 @@ typedef enum
 
 
 /* ******************************************************** */
-#if !defined(SUPPORT_KEY_DUP_LEVEL)
+#if !defined(SUPPORT_COMPRESS_MODE)
 /* ******************************************************** */
 
 #define IS_RESERVED_INDEX_ATTR_ID(id)      (false)
 #define IS_RESERVED_INDEX_ATTR_NAME(name)  (false)
 
 /* ******************************************************** */
-#else /* #if !defined(SUPPORT_KEY_DUP_LEVEL) */
+#else /* #if !defined(SUPPORT_COMPRESS_MODE) */
 /* ******************************************************** */
 
 #define RESERVED_INDEX_ATTR_ID_BASE    (-28480000)
@@ -148,7 +148,7 @@ extern void dk_reserved_index_attribute_initialized ();
 extern void dk_reserved_index_attribute_finalized ();
 
 /* ******************************************************** */
-#endif /* #if !defined(SUPPORT_KEY_DUP_LEVEL) */
+#endif /* #if !defined(SUPPORT_COMPRESS_MODE) */
 /* ******************************************************** */
 
 #endif /* _DUP_KEY_H_ */

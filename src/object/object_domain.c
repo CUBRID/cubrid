@@ -668,7 +668,7 @@ tp_init (void)
 
   tp_Initialized = true;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
   dk_reserved_index_attribute_initialized ();
 #endif
 

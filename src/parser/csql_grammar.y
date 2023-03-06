@@ -437,7 +437,7 @@ static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
 
 static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
 static void pt_get_compress_mode_level(int mode_level, short* mode, short* level);
 
 #define COMPRESS_MODE_NOT_SET          (-1)
@@ -456,7 +456,7 @@ static void pt_get_compress_mode_level(int mode_level, short* mode, short* level
 #else
 #define CHECK_RESERVED_IDX_ATTR_NAME(nm)
 #define MAKE_COMPRESS_MODE_LEVEL(m, l)  (-1)
-#endif // #if defined(SUPPORT_KEY_DUP_LEVEL)
+#endif // #if defined(SUPPORT_COMPRESS_MODE)
 
 #define push_msg(a) _push_msg(a, __LINE__)
 
@@ -2845,7 +2845,7 @@ create_stmt
 			    node->info.index.where = $12;
 			    node->info.index.column_names = col;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
                             pt_get_compress_mode_level($13,  &node->info.index.dupkey_mode, &node->info.index.dupkey_hash_level);
 #endif                            
 
@@ -10412,7 +10412,7 @@ attr_index_def
 				  }
 			      }
 			  }
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
                         pt_get_compress_mode_level($5,  &node->info.index.dupkey_mode, &node->info.index.dupkey_hash_level);
 #endif                            
 			node->info.index.column_names = col;
@@ -21472,7 +21472,7 @@ opt_index_compress_mode
 opt_index_compress_mod_val
         : /* empty */
 		{ DBG_TRACE_GRAMMAR(opt_index_compress_mod_val, : );     
-#if defined(SUPPORT_KEY_DUP_LEVEL)                             
+#if defined(SUPPORT_COMPRESS_MODE)                             
                   $$ = prm_get_integer_value (PRM_ID_COMPRESS_INDEX_MOD_VAL);
 #else
                   $$ = 0;                        
@@ -27664,7 +27664,7 @@ pt_ct_check_select (char* p, char *perr_msg)
    return false;
 }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
 
 #include "system_parameter.h"
 static void pt_get_compress_mode_level(int mode_level, short* mode, short* level)

@@ -1932,15 +1932,15 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 	    }
 
 	  att_id = db_get_int (&att_val);
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
 	  if (IS_RESERVED_INDEX_ATTR_ID (att_id))
 	    {
 	      index->atts[index->n_atts] = (OR_ATTRIBUTE *) dk_find_or_reserved_index_attribute (att_id);
 	      (index->n_atts)++;
 	    }
 	  else
-	    {
 #endif
+	    {
 	      for (j = 0, att = rep->attributes; j < rep->n_attributes; j++, att++)
 		{
 		  if (att->id == att_id)
@@ -1950,9 +1950,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 		      break;
 		    }
 		}
-#if defined(SUPPORT_KEY_DUP_LEVEL)
 	    }
-#endif
 	}
 
       /* asc_desc info */
@@ -2129,7 +2127,7 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
   OR_ATTRIBUTE *ptr = NULL;
   int size;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
   assert (!IS_RESERVED_INDEX_ATTR_ID (att_id));
 #endif
 
@@ -2252,7 +2250,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
       assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
       att_id = db_get_int (&att_val);	/* The first attrID */
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
       if (IS_RESERVED_INDEX_ATTR_ID (att_id))
 	{
 	  /* { btid, reserved_index_attrID, asc_desc, [attrID, asc_desc]+, {fk_info} or {key prefix length}, status, comment} */
@@ -3992,7 +3990,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	    }
 	}
     }
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
   else if (IS_RESERVED_INDEX_ATTR_ID (attr_id) && (attr_index == ORC_ATT_NAME_INDEX))
     {
       *string = (char *) GET_RESERVED_INDEX_ATTR_NAME (GET_RESERVED_INDEX_ATTR_LEVEL (attr_id));

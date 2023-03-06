@@ -7305,7 +7305,14 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
   b = pt_append_varchar (parser, b, r2);
   b = pt_append_nulstring (parser, b, ") ");
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+  if (p->info.index.where != NULL)
+    {
+      r4 = pt_print_and_list (parser, p->info.index.where);
+      b = pt_append_nulstring (parser, b, " where ");
+      b = pt_append_varchar (parser, b, r4);
+    }
+
+#if defined(SUPPORT_COMPRESS_MODE)
   if (p->info.index.unique == false)
     {
       char buf[64] = { 0x00, };
@@ -7316,13 +7323,6 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
     }
 #endif
-
-  if (p->info.index.where != NULL)
-    {
-      r4 = pt_print_and_list (parser, p->info.index.where);
-      b = pt_append_nulstring (parser, b, " where ");
-      b = pt_append_varchar (parser, b, r4);
-    }
 
   if (p->info.index.comment != NULL)
     {

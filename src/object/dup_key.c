@@ -40,7 +40,7 @@
 #define OID_2_BIGINT(oidptr) (((oidptr)->volid << 48) | ((oidptr)->pageid << 16) | (oidptr)->slotid)
 
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
 
 static DB_DOMAIN *
 get_reserved_index_attr_domain_type (int level)
@@ -356,8 +356,6 @@ dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupk
 {
   int len = 0;
 
-  assert (dupkey_mode == COMPRESS_INDEX_MODE_SET);
-
   buf[0] = '\0';
   if (dupkey_mode == COMPRESS_INDEX_MODE_NONE)
     {
@@ -475,4 +473,4 @@ dk_reserved_index_attribute_finalized ()
 #endif
 }
 
-#endif // #if defined(SUPPORT_KEY_DUP_LEVEL)
+#endif // #if defined(SUPPORT_COMPRESS_MODE)

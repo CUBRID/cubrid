@@ -1197,7 +1197,7 @@ bool PRM_ANSI_QUOTES = true;
 static bool prm_ansi_quotes_default = true;
 static unsigned int prm_ansi_quotes_flag = 0;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
 bool PRM_USE_COMPRESS_INDEX_MODE_OID = false;
 static bool prm_use_compress_index_mode_oid_default = false;
 static unsigned int prm_use_compress_index_mode_oid_flag = 0;
@@ -6181,7 +6181,7 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
   {PRM_ID_USE_COMPRESS_INDEX_MODE_OID_TEST,
    PRM_NAME_USE_COMPRESS_INDEX_MODE_OID_TEST,
    (PRM_FOR_CLIENT | PRM_HIDDEN),
@@ -6380,7 +6380,7 @@ static KEYVAL regexp_engine_words[] = {
 };
 /* *INDENT-ON* */
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
 static KEYVAL compress_mode_words[] = {
   {"high", COMPRESS_INDEX_MODE_HIGH},
   {"medium", COMPRESS_INDEX_MODE_MEDIUM},
@@ -8338,7 +8338,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 	{
 	  keyvalp = prm_keyword (PRM_GET_INT (prm->value), NULL, regexp_engine_words, DIM (regexp_engine_words));
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_COMPRESS_INDEX_MODE) == 0)
 	{
 	  keyvalp = prm_keyword (PRM_GET_INT (prm->value), NULL, compress_mode_words, DIM (compress_mode_words));
@@ -8648,7 +8648,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
 	{
 	  keyvalp = prm_keyword (value.i, NULL, regexp_engine_words, DIM (regexp_engine_words));
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_COMPRESS_INDEX_MODE) == 0)
 	{
 	  keyvalp = prm_keyword (value.i, NULL, compress_mode_words, DIM (compress_mode_words));
@@ -9870,7 +9870,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	  {
 	    keyvalp = prm_keyword (-1, value, regexp_engine_words, DIM (regexp_engine_words));
 	  }
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
 	else if (intl_mbs_casecmp (prm->name, PRM_NAME_COMPRESS_INDEX_MODE) == 0)
 	  {
 	    keyvalp = prm_keyword (-1, value, compress_mode_words, DIM (compress_mode_words));

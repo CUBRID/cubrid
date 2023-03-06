@@ -2443,7 +2443,7 @@ ws_final (void)
   MOP mop, next;
   unsigned int slot;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
   dk_reserved_index_attribute_finalized ();
 #endif
 

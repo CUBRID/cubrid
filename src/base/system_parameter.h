@@ -467,7 +467,7 @@ enum param_id
   PRM_ID_REGEXP_ENGINE,
   /* change PRM_LAST_ID when adding new system parameters */
 #include "dup_key_def.h"
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
   PRM_ID_USE_COMPRESS_INDEX_MODE_OID_TEST,
   PRM_ID_COMPRESS_INDEX_MODE,
   PRM_ID_COMPRESS_INDEX_MOD_VAL,

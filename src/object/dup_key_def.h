@@ -30,12 +30,9 @@
 
 #define SUPPORT_COMPRESS_MODE
 
-#define SUPPORT_KEY_DUP_LEVEL
-#if defined(SUPPORT_KEY_DUP_LEVEL)
 
 
 #define PRE_DEF_CBRD_24663
-#endif
 
 /* TODO:
  * 1. heap_attrvalue_get_key, heap_midxkey_key_get 에서 파라메터 제거하고 <match type> 점검에 대한 공통루틴 이용할까?

@@ -869,7 +869,7 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p, OR_VA
 	    }
 
 	  id = db_get_int (&key_atts[1].value);
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
 	  if (IS_RESERVED_INDEX_ATTR_ID (id))
 	    {
 	      DB_VALUE tmp_val;
@@ -884,8 +884,8 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p, OR_VA
 		}
 	    }
 	  else
-	    {
 #endif
+	    {
 	      for (ids = id_val_p->sub.value, k = 0; k < id_val_p->sub.count; k++)
 		{
 		  id_atts = ids[k].sub.value;
@@ -895,9 +895,7 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p, OR_VA
 		      pr_clone_value (&id_atts[1].value, &key_atts[1].value);
 		    }
 		}
-#if defined(SUPPORT_KEY_DUP_LEVEL)
 	    }
-#endif
 	}
     }
 

@@ -2785,7 +2785,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	    }
 	}
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
       bool has_reserved_index_col = false;
 
       // Class or shared attributes are not considered. These are not indexed columns.
@@ -2840,7 +2840,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	  i++;
 	  c = c->next;
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
       if (has_reserved_index_col)
 	{
 	  nnames--;		// get count of real columns, except hidden column
@@ -2871,7 +2871,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	      func_index_info->attr_index_start = nnames - idx_info->func_no_args;
 	    }
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
       if (has_reserved_index_col)
 	{
 	  dk_create_index_level_adjust (idx_info, attnames, asc_desc, attrs_prefix_length, func_index_info, nnames,

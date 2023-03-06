@@ -2572,7 +2572,7 @@ classobj_find_attribute_list (SM_ATTRIBUTE * attlist, const char *name, int id)
 	      return att;
 	    }
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
       if (IS_RESERVED_INDEX_ATTR_NAME (name))
 	{
 	  return dk_find_sm_reserved_index_attribute (-1, name);
@@ -2588,7 +2588,7 @@ classobj_find_attribute_list (SM_ATTRIBUTE * attlist, const char *name, int id)
 	      return att;
 	    }
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
       if (IS_RESERVED_INDEX_ATTR_ID (id))
 	{
 	  return dk_find_sm_reserved_index_attribute (id, NULL);
@@ -4064,7 +4064,7 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_
   return key_type;
 }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
 static void
 classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAINT_TYPE new_cons,
 					  char **att_names, int *asc_desc, SM_FUNCTION_INFO * func_index_info)
@@ -8175,7 +8175,7 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char **out_shared
       return error;
     }
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
   if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type))
     {
       classobj_check_attr_in_unique_constraint (constraints, constraint_type, (char **) att_names, (int *) asc_desc,

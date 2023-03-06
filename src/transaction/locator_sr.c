@@ -4073,11 +4073,8 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
       /* must be updated when key_prefix_length will be added for FK and PK */
       key_dbvalue =
 	heap_attrvalue_get_key (thread_p, i, &index_attrinfo, recdes, &btid, &dbvalue, aligned_buf, NULL, NULL
-#if defined(SUPPORT_KEY_DUP_LEVEL)
-				, inst_oid
 #if defined(SUPPORT_COMPRESS_MODE)
-				, true
-#endif
+				, inst_oid, true
 #endif
 	);
       if (key_dbvalue == NULL)
@@ -7892,11 +7889,8 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
       key_dbvalue =
 	heap_attrvalue_get_key (thread_p, i, &index_attrinfo, recdes, &btid, &dbvalue, aligned_buf,
 				(func_preds ? &func_preds[i] : NULL), NULL
-#if defined(SUPPORT_KEY_DUP_LEVEL)
-				, inst_oid
 #if defined(SUPPORT_COMPRESS_MODE)
-				, false
-#endif
+				, inst_oid, false
 #endif
 	);
       if (key_dbvalue == NULL)
@@ -8522,21 +8516,15 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
       new_key =
 	heap_attrvalue_get_key (thread_p, i, new_attrinfo, new_recdes, &new_btid, &new_dbvalue, aligned_newbuf, NULL,
 				NULL
-#if defined(SUPPORT_KEY_DUP_LEVEL)
-				, oid
 #if defined(SUPPORT_COMPRESS_MODE)
-				, false
-#endif
+				, oid, false
 #endif
 	);
       old_key =
 	heap_attrvalue_get_key (thread_p, i, old_attrinfo, old_recdes, &old_btid, &old_dbvalue, aligned_oldbuf, NULL,
 				&key_domain
-#if defined(SUPPORT_KEY_DUP_LEVEL)
-				, oid
 #if defined(SUPPORT_COMPRESS_MODE)
-				, false
-#endif
+				, oid, false
 #endif
 	);
 
@@ -8817,11 +8805,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  repl_old_key =
 	    heap_attrvalue_get_key (thread_p, pk_btid_index, old_attrinfo, old_recdes, &old_btid, &old_dbvalue,
 				    aligned_oldbuf, NULL, &key_domain
-#if defined(SUPPORT_KEY_DUP_LEVEL)
-				    , oid
 #if defined(SUPPORT_COMPRESS_MODE)
-				    , false
-#endif
+				    , oid, false
 #endif
 	    );
 	  if (repl_old_key == NULL)
@@ -9076,11 +9061,8 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 	      dbvalue_ptr =
 		heap_attrvalue_get_key (thread_p, i, &index_attrinfo, &copy_rec, &inst_btid, &dbvalue, aligned_buf,
 					NULL, NULL
-#if defined(SUPPORT_KEY_DUP_LEVEL)
-					, &inst_oid
 #if defined(SUPPORT_COMPRESS_MODE)
-					, false
-#endif
+					, &inst_oid, false
 #endif
 		);
 	      if (dbvalue_ptr == NULL)
@@ -9106,11 +9088,8 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 	  dbvalue_ptr =
 	    heap_attrvalue_get_key (thread_p, key_index, &index_attrinfo, &copy_rec, &inst_btid, &dbvalue, aligned_buf,
 				    NULL, NULL
-#if defined(SUPPORT_KEY_DUP_LEVEL)
-				    , &inst_oid
 #if defined(SUPPORT_COMPRESS_MODE)
-				    , false
-#endif
+				    , &inst_oid, false
 #endif
 	    );
 	}
@@ -9530,11 +9509,8 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
       if ((n_attr_ids == 1 && heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &record, &attr_info) != NO_ERROR)
 	  || (key = heap_attrvalue_get_key (thread_p, index_id, &attr_info, &record, &btid_info, &dbvalue, aligned_buf,
 					    NULL, NULL
-#if defined(SUPPORT_KEY_DUP_LEVEL)
-					    , &inst_oid
 #if defined(SUPPORT_COMPRESS_MODE)
-					    , false
-#endif
+					    , &inst_oid, false
 #endif
 	      )) == NULL)
 	{
@@ -9987,11 +9963,8 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 	      ||
 	      ((key =
 		heap_attrvalue_get_key (thread_p, index_id, &attr_info, &peek, btid, &dbvalue, aligned_buf, NULL, NULL
-#if defined(SUPPORT_KEY_DUP_LEVEL)
-					, &inst_oid
 #if defined(SUPPORT_COMPRESS_MODE)
-					, false
-#endif
+					, &inst_oid, false
 #endif
 		)) == NULL))
 	    {
@@ -12545,7 +12518,7 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid, OID 
     }
 
   key = heap_attrvalue_get_key (thread_p, index_id, attr_info_p, recdes, &tmp_btid, &dbvalue, aligned_buf, NULL, NULL
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
 				, NULL
 #endif
     );

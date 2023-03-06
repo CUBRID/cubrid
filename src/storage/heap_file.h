@@ -507,11 +507,8 @@ extern OR_ATTRIBUTE *heap_locate_last_attrepr (ATTR_ID attrid, HEAP_CACHE_ATTRIN
 extern DB_VALUE *heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTRINFO * idx_attrinfo,
 					 RECDES * recdes, BTID * btid, DB_VALUE * db_value, char *buf,
 					 FUNC_PRED_UNPACK_INFO * func_indx_preds, TP_DOMAIN ** key_domain
-#if defined(SUPPORT_KEY_DUP_LEVEL)
-					 , OID * rec_oid
 #if defined(SUPPORT_COMPRESS_MODE)
-					 , bool is_check_foreign
-#endif
+					 , OID * rec_oid, bool is_check_foreign
 #endif
   );
 

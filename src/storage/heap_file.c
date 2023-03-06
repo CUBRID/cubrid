@@ -693,17 +693,14 @@ static OR_ATTRIBUTE *heap_locate_attribute (ATTR_ID attrid, HEAP_CACHE_ATTRINFO 
 static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 					 HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, TP_DOMAIN * func_domain,
 					 TP_DOMAIN ** key_domain
-#if defined(SUPPORT_KEY_DUP_LEVEL)
-					 , OID * rec_oid
 #if defined(SUPPORT_COMPRESS_MODE)
-					 , bool is_check_foreign
-#endif
+					 , OID * rec_oid, bool is_check_foreign
 #endif
   );
 static DB_MIDXKEY *heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey,
 					      int *att_ids, HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res,
 					      int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
 					      , OID * rec_oid
 #endif
   );
@@ -9544,7 +9541,7 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 	   (attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
 	    attr_info->last_classrepr->n_class_attrs))
     {
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
       i = -1;
       if (requested_num_attrs == attr_info->last_classrepr->n_attributes + 1)
 	{
@@ -9557,8 +9554,8 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 	}
 
       if (i < 0)
-	{
 #endif
+	{
 #if 1
 	  assert (false);
 #else
@@ -9568,9 +9565,7 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 	  requested_num_attrs =
 	    attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
 	    attr_info->last_classrepr->n_class_attrs;
-#if defined(SUPPORT_KEY_DUP_LEVEL)
 	}
-#endif
     }
 
   if (requested_num_attrs > 0)
@@ -9697,7 +9692,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	  /* Case that we want all attributes */
 	  value->attrid = search_attrepr[curr_attr].id;
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
       else if (IS_RESERVED_INDEX_ATTR_ID (value->attrid))
 	{
 	  // In this case, in case of reserved_attr_id in heap_attrvalue_read(), skip should be processed.
@@ -10083,7 +10078,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   volatile int disk_length = -1;
   int ret = NO_ERROR;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
   if (IS_RESERVED_INDEX_ATTR_ID (value->attrid))
     {
       /* In the case of reserved_index_attr_id, there is no content that actually exists in HEAP.
@@ -12472,11 +12467,8 @@ heap_attrvalue_get_index (int value_index, ATTR_ID * attrid, int *n_btids, BTID 
 static DB_MIDXKEY *
 heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, HEAP_CACHE_ATTRINFO * attrinfo,
 		      DB_VALUE * func_res, TP_DOMAIN * func_domain, TP_DOMAIN ** key_domain
-#if defined(SUPPORT_KEY_DUP_LEVEL)
-		      , OID * rec_oid
 #if defined(SUPPORT_COMPRESS_MODE)
-		      , bool is_check_foreign
-#endif
+		      , OID * rec_oid, bool is_check_foreign
 #endif
   )
 {
@@ -12563,12 +12555,10 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	{
 	  break;
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
       if (IS_RESERVED_INDEX_ATTR_ID (atts[i]->id))
 	{
-#if defined(SUPPORT_COMPRESS_MODE)
 	  if (not_null_field_cnt > 0)
-#endif
 	    {
 	      dk_heap_midxkey_get_reserved_index_value (atts[i]->id, rec_oid, &value);
 	      atts[i]->domain->type->index_writeval (&buf, &value);
@@ -12683,7 +12673,7 @@ static DB_MIDXKEY *
 heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey, int *att_ids,
 			   HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, int func_col_id,
 			   int func_attr_index_start, TP_DOMAIN * midxkey_domain
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
 			   , OID * rec_oid
 #endif
   )
@@ -12749,12 +12739,10 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	      break;
 	    }
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
       if (IS_RESERVED_INDEX_ATTR_ID (att_ids[i]))
 	{
-#if defined(SUPPORT_COMPRESS_MODE)
 	  if (not_null_field_cnt > 0)
-#endif
 	    {
 	      att = (OR_ATTRIBUTE *) dk_find_or_reserved_index_attribute (att_ids[i]);
 	      dk_heap_midxkey_get_reserved_index_value (att_ids[i], rec_oid, &value);
@@ -12901,7 +12889,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 
       if (heap_midxkey_key_generate (thread_p, recdes, &midxkey, att_ids, attr_info, fi_res, fi_col_id,
 				     fi_attr_index_start, midxkey_domain
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
 				     , cur_oid
 #endif
 	  ) == NULL)
@@ -12983,11 +12971,8 @@ DB_VALUE *
 heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTRINFO * idx_attrinfo, RECDES * recdes,
 			BTID * btid, DB_VALUE * db_value, char *buf, FUNC_PRED_UNPACK_INFO * func_indx_pred,
 			TP_DOMAIN ** key_domain
-#if defined(SUPPORT_KEY_DUP_LEVEL)
-			, OID * rec_oid
 #if defined(SUPPORT_COMPRESS_MODE)
-			, bool is_check_foreign
-#endif
+			, OID * rec_oid, bool is_check_foreign
 #endif
   )
 {
@@ -13083,13 +13068,9 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 
       midxkey.min_max_val.position = -1;
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
 #if defined(SUPPORT_COMPRESS_MODE)
       if (heap_midxkey_key_get
 	  (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain, rec_oid, is_check_foreign) == NULL)
-#else
-      if (heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain, rec_oid) == NULL)
-#endif
 #else
       if (heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain) == NULL)
 #endif

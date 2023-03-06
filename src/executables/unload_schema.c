@@ -2911,7 +2911,7 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
   const int *asc_desc;
   const int *prefix_length;
   int k, n_attrs = 0;
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
   char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
 #endif
 
@@ -2960,7 +2960,7 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	  continue;		/* same index skip */
 	}
 
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
       reserved_col_buf[0] = '\0';
 #endif
 
@@ -3035,7 +3035,7 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 		}
 	    }
 	  att_name = db_attribute_name (*att);
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
 	  if (k == (n_attrs - 1) && IS_RESERVED_INDEX_ATTR_ID ((*att)->id))
 	    {
 	      int mode = COMPRESS_INDEX_MODE_SET;
@@ -3069,24 +3069,7 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	    }
 	  k++;
 	}
-#if defined(SUPPORT_KEY_DUP_LEVEL)
-      if (reserved_col_buf[0])
-	{
-	  output_ctx (") %s", reserved_col_buf);
-	}
-      else
-	{
-	  output_ctx (")");
-	}
 
-      if (constraint->filter_predicate)
-	{
-	  if (constraint->filter_predicate->pred_string)
-	    {
-	      output_ctx (" where %s", constraint->filter_predicate->pred_string);
-	    }
-	}
-#else
       if (constraint->filter_predicate)
 	{
 	  if (constraint->filter_predicate->pred_string)
@@ -3094,11 +3077,17 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	      output_ctx (") where %s", constraint->filter_predicate->pred_string);
 	    }
 	}
+#if defined(SUPPORT_COMPRESS_MODE)
+      if (reserved_col_buf[0])
+	{
+	  output_ctx (") %s", reserved_col_buf);
+	}
+#endif
       else
 	{
 	  output_ctx (")");
 	}
-#endif
+
       if (constraint->comment != NULL && constraint->comment[0] != '\0')
 	{
 	  output_ctx (" ");

@@ -2098,7 +2098,7 @@ struct pt_index_info
   bool unique;			/* UNIQUE specified? */
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
   int ib_threads;
-#if defined(SUPPORT_KEY_DUP_LEVEL)
+#if defined(SUPPORT_COMPRESS_MODE)
   short dupkey_mode;		/* refer to enDupMode */
   short dupkey_hash_level;	/* 0 : no hash, others : hash size */
 #endif
