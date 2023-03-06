@@ -211,13 +211,13 @@ namespace cubcomm
 	    if (static_cast<bool> (queue_front.m_error_handler))
 	      {
 		// if present, invoke custom/specific handler first
-		// error handler can instruct that further processing is to be stopped (IoC)
+		// error handler can instruct that further processing is to be stopped (Inversion of Control)
 		queue_front.m_error_handler (err_code, abort_further_processing);
 	      }
 	    else if (static_cast<bool> (m_error_handler))
 	      {
 		// if present, invoke generic (fail-back) handler
-		// error handler can instruct that further processing is to be stopped (IoC)
+		// error handler can instruct that further processing is to be stopped (Inversion of Control)
 		m_error_handler (err_code, abort_further_processing);
 	      }
 	    else

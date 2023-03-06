@@ -22,7 +22,6 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
-#include "error_manager.h"
 #include <limits>
 #include <mutex>
 #include <unordered_map>
@@ -64,8 +63,7 @@ namespace cubcomm
 
       std::tuple<T_PAYLOAD, T_ERROR> get_response (response_sequence_number a_rsn);
 
-      //void terminate ();
-      void terminate_blocking ();
+      void notify_terminate_and_wait ();
 
     private:
       struct bucket
@@ -85,7 +83,6 @@ namespace cubcomm
 
 	  std::tuple<T_PAYLOAD, T_ERROR> get_response (response_sequence_number a_rsn);
 
-	  //void notify_terminate ();
 	  void notify_terminate_and_wait ();
 
 	private:
@@ -167,19 +164,9 @@ namespace cubcomm
     return get_bucket (a_rsn).get_response (a_rsn);
   }
 
-//  template <typename T_PAYLOAD, typename T_ERROR>
-//  void
-//  response_broker<T_PAYLOAD, T_ERROR>::terminate ()
-//  {
-//    for (auto &bucket : m_buckets)
-//      {
-//	bucket.notify_terminate ();
-//      }
-//  }
-
   template <typename T_PAYLOAD, typename T_ERROR>
   void
-  response_broker<T_PAYLOAD, T_ERROR>::terminate_blocking ()
+  response_broker<T_PAYLOAD, T_ERROR>::notify_terminate_and_wait ()
   {
     for (auto &bucket : m_buckets)
       {
@@ -258,7 +245,6 @@ namespace cubcomm
   {
     constexpr std::chrono::milliseconds millis_100 { 100 };
 
-    _er_log_debug (ARG_FILE_LINE, "crsdbg: bucket::get_response entered %d\n", (int)a_rsn);
     {
       std::unique_lock<std::mutex> ulock (m_mutex);
 
@@ -283,40 +269,28 @@ namespace cubcomm
 		std::move (ent.m_payload ),
 		std::move (ent.m_error)
 	      };
+
 	      m_response_payloads.erase (found_it);
 	      return payload_or_error;
 	    }
 
-	  // upon termination we have the possibility to implement a configurable behaviour:
+	  // NOTE: when terminate is invoked there is the possibility to implement a configurable behaviour:
 	  //  - either abort and return error - as done below
-	  //  - or continue waiting - with a timeout - until the request is serviced
+	  //  - or continue waiting - with a timeout - until the request is serviced by the peer server
 	}
     }
 
-    // upon terminate, error response will be returned
+    // if here, terminate was specified and there is at most one thread to notify
     m_terminate_condvar.notify_one ();
-    _er_log_debug (ARG_FILE_LINE, "crsdbg: bucket::get_response notify_one %d\n", (int)a_rsn);
+
+    // upon terminate, error response will be returned
     return std::make_tuple (T_PAYLOAD (), m_error);
   }
-
-//  template <typename T_PAYLOAD, typename T_ERROR>
-//  void
-//  response_broker<T_PAYLOAD, T_ERROR>::bucket::notify_terminate ()
-//  {
-//    {
-//      std::lock_guard<std::mutex> lockg (m_mutex);
-//      m_terminate = true;
-//    }
-//    // notify all because there is more than one thread waiting for data on the same bucket
-//    // ideally, with an adequately sized bucket pool, the contention should be minimal
-//    m_condvar.notify_all ();
-//  }
 
   template <typename T_PAYLOAD, typename T_ERROR>
   void
   response_broker<T_PAYLOAD, T_ERROR>::bucket::notify_terminate_and_wait ()
   {
-    _er_log_debug (ARG_FILE_LINE, "crsdbg: bucket::notify_terminate_and_wait 01\n");
     {
       std::lock_guard<std::mutex> lockg (m_mutex);
       m_terminate = true;
@@ -324,24 +298,20 @@ namespace cubcomm
     // notify all because there is more than one thread waiting for data on the same bucket
     // ideally, with an adequately sized bucket pool, the contention should be minimal
     m_condvar.notify_all ();
-    _er_log_debug (ARG_FILE_LINE, "crsdbg: bucket::notify_terminate_and_wait 02\n");
 
     // wait for all requests to either be serviced or timeout
     constexpr std::chrono::milliseconds millis_50 { 50 };
 
     auto condvar_pred = [this] ()
     {
-      _er_log_debug (ARG_FILE_LINE, "crsdbg: bucket::notify_terminate_and_wait 03\n");
       return m_response_payloads.empty ();
     };
 
     std::unique_lock<std::mutex> payloads_container_ulock (m_mutex);
     while (!m_terminate_condvar.wait_for (payloads_container_ulock, millis_50, condvar_pred))
       {
-	_er_log_debug (ARG_FILE_LINE, "crsdbg: bucket::notify_terminate_and_wait 04\n");
+	// NOTE: a configurable timeout can be introduced here
       }
-
-    _er_log_debug (ARG_FILE_LINE, "crsdbg: bucket::notify_terminate_and_wait 05\n");
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>

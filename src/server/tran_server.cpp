@@ -371,7 +371,7 @@ tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tra
     request_handlers_map_t &&request_handlers)
   : m_ts { ts }
 {
-  constexpr size_t RESPONSE_PARTITIONING_SIZE = 128;   // Arbitrarily chosen
+  constexpr size_t RESPONSE_PARTITIONING_SIZE = 24;   // Arbitrarily chosen
   // TODO: to reduce contention as much as possible, should be equal to the maximum number
   // of active transactions that the system allows (PRM_ID_CSS_MAX_CLIENTS) + 1
 
