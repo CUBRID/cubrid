@@ -7464,17 +7464,8 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT
   db_make_null (&INFO->max_key);
 
   if (node_type == BTREE_NON_LEAF_NODE)
-    {				/* a non-leaf page */
-      if (key_cnt < 0)
-	{
-	  btree_dump_page (thread_p, stdout, class_oid_p, btid, btname, pg_ptr, pg_vpid, 2, 2);
-
-	  snprintf (err_buf, LINE_MAX, "btree_verify_subtree: node key count underflow: %d\n", key_cnt);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
-	  valid = DISK_INVALID;
-	  goto error;
-	}
-
+    {
+      /* a non-leaf page */
       INFO2.key_area_len = 0;
       db_make_null (&INFO2.max_key);
 
@@ -15533,10 +15524,10 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
    *
    *  case 1: P_page == NULL, C_page == first_page       x do not fix 1 next page
    *  case 2: P_page == first_page, C_page == NULL       x can't fix 1 next page
-   *  case 3: P_page == first_page, C_page != first_pag  o fix 1 next
+   *  case 3: P_page == first_page, C_page != first_page  o fix 1 next
    *  case 4: P_page == NULL, C_page == NULL             o can't fix N next, unfix N-1 prev
    *  case 5: P_page == NULL, C_page != first_page       o fix N next, unfix N-1 prev
-   *  other case: imppossible (assert)
+   *  other case: impossible (assert)
    *
    *  in case of 3, 4, 5, unfix first_page
    */

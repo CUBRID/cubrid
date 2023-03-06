@@ -164,7 +164,7 @@ static int order_classes (DB_OBJLIST ** class_list, DB_OBJLIST ** order_list, in
 static void emit_cycle_warning (print_output & output_ctx);
 static void force_one_class (print_output & output_ctx, DB_OBJLIST ** class_list, DB_OBJLIST ** order_list);
 static DB_OBJLIST *get_ordered_classes (print_output & output_ctx, MOP * class_table);
-static void emit_class_owner (print_output & output_ctx, MOP class_);
+static void emit_class_owner (extract_context & ctxt, print_output & output_ctx, MOP class_);
 static int export_serial (extract_context & ctxt, print_output & output_ctx);
 static int emit_indexes (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes, int has_indexes,
 			 DB_OBJLIST * vclass_list_has_using_index);
@@ -646,7 +646,7 @@ get_ordered_classes (print_output & output_ctx, MOP * class_table)
  *    class(in): class MOP
  */
 static void
-emit_class_owner (print_output & output_ctx, MOP class_)
+emit_class_owner (extract_context & ctxt, print_output & output_ctx, MOP class_)
 {
   const char *classname;
   MOP owner;
@@ -662,8 +662,11 @@ emit_class_owner (print_output & output_ctx, MOP class_)
 	    {
 	      if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && db_get_string (&value) != NULL)
 		{
-		  output_ctx ("call [change_owner]('%s', '%s') on class [db_root];\n",
-			      sm_remove_qualifier_name (classname), db_get_string (&value));
+		  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
+		    {
+		      output_ctx ("call [change_owner]('%s', '%s') on class [db_root];\n",
+				  sm_remove_qualifier_name (classname), db_get_string (&value));
+		    }
 		}
 	      db_value_clear (&value);
 	    }
@@ -899,8 +902,12 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
 	      desc_value_print (output_ctx, &values[SERIAL_COMMENT]);
 	    }
 	  output_ctx (";\n");
-	  output_ctx ("call [change_serial_owner] ('%s', '%s') on class [db_serial];\n\n",
-		      db_get_string (&values[SERIAL_NAME]), db_get_string (&values[SERIAL_OWNER_NAME]));
+
+	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
+	    {
+	      output_ctx ("call [change_serial_owner] ('%s', '%s') on class [db_serial];\n\n",
+			  db_get_string (&values[SERIAL_NAME]), db_get_string (&values[SERIAL_OWNER_NAME]));
+	    }
 
 	  db_value_clear (&diff_value);
 	  db_value_clear (&answer_value);
@@ -1574,7 +1581,7 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
        */
       if (ctxt.do_auth)
 	{
-	  emit_class_owner (output_ctx, cl->op);
+	  emit_class_owner (ctxt, output_ctx, cl->op);
 	}
 
       output_ctx ("\n");
@@ -4118,8 +4125,11 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
 	  continue;
 	}
 
-      output_ctx ("call [change_sp_owner]('%s', '%s') on class [db_root];\n", db_get_string (&sp_name_val),
-		  db_get_string (&owner_name_val));
+      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
+	{
+	  output_ctx ("call [change_sp_owner]('%s', '%s') on class [db_root];\n", db_get_string (&sp_name_val),
+		      db_get_string (&owner_name_val));
+	}
 
       db_value_clear (&owner_name_val);
     }
