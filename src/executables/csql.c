@@ -3485,6 +3485,13 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 //            fprintf (csql_Output_fp, "Connected.\n");
 	    }
 	}
+      else
+	{
+	  csql_Error_code = CSQL_ERR_SQL_ERROR;
+
+	  return DO_CMD_FAILURE;
+
+	}
     }
   else
     {
