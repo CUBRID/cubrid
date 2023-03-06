@@ -2127,10 +2127,7 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
   OR_ATTRIBUTE *ptr = NULL;
   int size;
 
-#if defined(SUPPORT_COMPRESS_MODE)
   assert (!IS_RESERVED_INDEX_ATTR_ID (att_id));
-#endif
-
   /* Find the attribute with the matching attribute ID */
   for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
     {

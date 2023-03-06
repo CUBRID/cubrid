@@ -37,7 +37,14 @@
 
 #include "dup_key.h"
 
-#define OID_2_BIGINT(oidptr) (((oidptr)->volid << 48) | ((oidptr)->pageid << 16) | (oidptr)->slotid)
+// *INDENT-OFF*
+#define GET_RESERVED_INDEX_ATTR_MODE_LEVEL_FROM_NAME(name, level)  do {                                         \
+        char chx;                                                                                               \
+        if(sscanf ((name) + RESERVED_INDEX_ATTR_NAME_PREFIX_LEN, "%02d%c", &(level), &chx) != 1)                \
+          {  assert(false); }                                                                                   \
+        assert(((level) >= COMPRESS_INDEX_MOD_LEVEL_ZERO) && ((level) <= COMPRESS_INDEX_MOD_LEVEL_MAX));        \
+ } while(0)
+// *INDENT-ON*
 
 
 #if defined(SUPPORT_COMPRESS_MODE)

@@ -13019,7 +13019,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
   if (is_check_foreign && (index->n_atts > 1) && IS_RESERVED_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
     {
       assert (index->type == BTREE_FOREIGN_KEY);
-      n_atts--;			//-----------------   
+      n_atts--;
     }
 #endif
 
