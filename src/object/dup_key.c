@@ -47,23 +47,29 @@
 // *INDENT-ON*
 
 
-#if defined(SUPPORT_COMPRESS_MODE)
+#if 0
+// The higher the "level", the more compressed it should be. Close to mode "HIGH".
+#define CALC_MOD_VALUE_FROM_LEVEL(lv)   (1 << ((COMPRESS_INDEX_MOD_LEVEL_MAX + 1) - (lv)))
+#else
+//The higher the "level" value, the weaker the compression.
+// like pow(2, (lv));
+#define CALC_MOD_VALUE_FROM_LEVEL(lv)   (1 << (lv))
+#endif
 
+#if defined(SUPPORT_COMPRESS_MODE)
 static DB_DOMAIN *
 get_reserved_index_attr_domain_type (int level)
 {
-  int mod_val = 1 << level;	// like pow(2, level);
-
-  if (level == COMPRESS_INDEX_MOD_LEVEL_ZERO || mod_val > SHRT_MAX)
+  if (level == COMPRESS_INDEX_MOD_LEVEL_ZERO)
     {
-      return &tp_Integer_domain;	//tp_domain_construct (DB_TYPE_INTEGER, NULL, DB_INTEGER_PRECISION, 0, NULL);
+      return &tp_Integer_domain;
     }
 
-  return &tp_Short_domain;	//tp_domain_construct (DB_TYPE_SHORT, NULL, DB_SHORT_PRECISION, 0, NULL);           
+  return (CALC_MOD_VALUE_FROM_LEVEL (level) > SHRT_MAX) ? &tp_Integer_domain : &tp_Short_domain;
 }
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
-static OR_ATTRIBUTE st_or_atts[COUNT_OF_DUP_LEVEL];
+static OR_ATTRIBUTE st_or_atts[COUNT_OF_COMPRESS_INDEX_MOD_LEVEL];
 static bool st_or_atts_init = false;
 
 static void
@@ -131,13 +137,10 @@ dk_heap_midxkey_get_reserved_index_value (int att_id, OID * rec_oid, DB_VALUE * 
 {
   // The rec_oid may be NULL when the index of the UNIQUE attribute is an index. 
   // In that case, however, it cannot entered here.
-  int hash_mod_val;
   short level = GET_RESERVED_INDEX_ATTR_LEVEL (att_id);
 
   assert_release (rec_oid != NULL);
   assert (IS_RESERVED_INDEX_ATTR_ID (att_id));
-
-  hash_mod_val = 1 << level;	// like pow(2, level);
 
 #ifndef NDEBUG
   if (prm_get_bool_value (PRM_ID_USE_COMPRESS_INDEX_MODE_OID_TEST))
@@ -146,13 +149,17 @@ dk_heap_midxkey_get_reserved_index_value (int att_id, OID * rec_oid, DB_VALUE * 
 	{
 	  db_make_int (value, (int) (OID_PSEUDO_KEY (rec_oid) % SHRT_MAX));
 	}
-      else if (hash_mod_val > SHRT_MAX)
-	{
-	  db_make_int (value, (int) (OID_PSEUDO_KEY (rec_oid) % hash_mod_val));
-	}
       else
 	{
-	  db_make_short (value, (short) (OID_PSEUDO_KEY (rec_oid) % hash_mod_val));
+	  int mod_val = CALC_MOD_VALUE_FROM_LEVEL (level);
+	  if (mod_val > SHRT_MAX)
+	    {
+	      db_make_int (value, (int) (OID_PSEUDO_KEY (rec_oid) % mod_val));
+	    }
+	  else
+	    {
+	      db_make_short (value, (short) (OID_PSEUDO_KEY (rec_oid) % mod_val));
+	    }
 	}
 
       return NO_ERROR;
@@ -163,13 +170,17 @@ dk_heap_midxkey_get_reserved_index_value (int att_id, OID * rec_oid, DB_VALUE * 
     {
       db_make_int (value, rec_oid->pageid);
     }
-  else if (hash_mod_val > SHRT_MAX)
-    {
-      db_make_int (value, (int) (rec_oid->pageid % hash_mod_val));
-    }
   else
     {
-      db_make_short (value, (short) (rec_oid->pageid % hash_mod_val));
+      int mod_val = CALC_MOD_VALUE_FROM_LEVEL (level);
+      if (mod_val > SHRT_MAX)
+	{
+	  db_make_int (value, (int) (rec_oid->pageid % mod_val));
+	}
+      else
+	{
+	  db_make_short (value, (short) (rec_oid->pageid % mod_val));
+	}
     }
 
   return NO_ERROR;
@@ -178,7 +189,7 @@ dk_heap_midxkey_get_reserved_index_value (int att_id, OID * rec_oid, DB_VALUE * 
 
 #if !defined(SERVER_MODE)
 
-static SM_ATTRIBUTE *st_sm_atts[COUNT_OF_DUP_LEVEL];
+static SM_ATTRIBUTE *st_sm_atts[COUNT_OF_COMPRESS_INDEX_MOD_LEVEL];
 static bool st_sm_atts_init = false;
 
 static void
