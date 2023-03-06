@@ -66,7 +66,7 @@ public class StmtForCursorLoop extends StmtCursorOpen {
     public String toJavaCode() {
         DeclCursor decl = (DeclCursor) cursor.decl;
         String dupCursorArgStr = getDupCursorArgStr(decl.paramRefCounts);
-        String hostValuesStr = getHostValuesStr(decl.usedValuesMap, decl.paramRefCounts);
+        String hostValuesStr = getHostValuesStr(decl.paramMarks, decl.paramRefCounts);
         return tmplStmt.replace("  %'DUPLICATE-CURSOR-ARG'%", Misc.indentLines(dupCursorArgStr, 1))
                 .replace("%'CURSOR'%", cursor.toJavaCode())
                 .replace("%'HOST-VALUES'%", Misc.indentLines(hostValuesStr, 2, true))

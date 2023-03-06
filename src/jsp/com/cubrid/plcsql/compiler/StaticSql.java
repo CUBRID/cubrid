@@ -32,21 +32,24 @@ package com.cubrid.plcsql.compiler;
 
 import com.cubrid.plcsql.compiler.ast.TypeSpec;
 import com.cubrid.plcsql.compiler.ast.ExprId;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 
 public class StaticSql {
 
-    public SqlWithSemantics.Kind kind;
-    public String rewritten;
-    public LinkedHashMap<ExprId, TypeSpec> hostVars;
-    public LinkedHashMap<String, TypeSpec> selectList;
-    public List<ExprId> intoVars;  // can be null
+    public final ParserRuleContext ctx;
+    public final SqlWithSemantics.Kind kind;
+    public final String rewritten;
+    public final LinkedHashMap<ExprId, TypeSpec> hostVars;
+    public final LinkedHashMap<String, TypeSpec> selectList;
+    public final List<ExprId> intoVars;  // can be null
 
-    StaticSql(SqlWithSemantics.Kind kind, String rewritten, LinkedHashMap<ExprId, TypeSpec> hostVars,
-        LinkedHashMap<String, TypeSpec> selectList, List<ExprId> intoVars) {
+    StaticSql(ParserRuleContext ctx, SqlWithSemantics.Kind kind, String rewritten,
+        LinkedHashMap<ExprId, TypeSpec> hostVars, LinkedHashMap<String, TypeSpec> selectList, List<ExprId> intoVars) {
 
+        this.ctx = ctx;
         this.kind = kind;
         this.rewritten = rewritten;
         this.hostVars = hostVars;

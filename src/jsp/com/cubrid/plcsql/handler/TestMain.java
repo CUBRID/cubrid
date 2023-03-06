@@ -91,7 +91,7 @@ public class TestMain {
         // ------------------------------------------
         // converting
 
-        ParseTreeConverter converter = new ParseTreeConverter();
+        ParseTreeConverter converter = new ParseTreeConverter(null);    // TODO: replace null
         Unit unit = (Unit) converter.visit(ret);
 
         if (verbose) {
@@ -275,7 +275,7 @@ public class TestMain {
                 // ------------------------------------------
                 // converting parse tree to AST
 
-                ParseTreeConverter converter = new ParseTreeConverter();
+                ParseTreeConverter converter = new ParseTreeConverter(null);    // TODO: replace null
                 Unit unit = (Unit) converter.visit(tree);
 
                 System.out.println(

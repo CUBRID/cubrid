@@ -34,32 +34,21 @@ import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
+import java.util.List;
 
-public class StmtSql extends Stmt {
+public abstract class StmtSql extends Stmt {
 
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitStmtSql(this);
-    }
-
-    public final boolean isDynamic;
+    public final boolean dynamic;
     public final int level;
     public final Expr sql;
-    public final NodeList<ExprId> intoVarList;
-    public final NodeList<? extends Expr> usedExprList;
+    public final List<ExprId> intoVarList;
+    public final List<? extends Expr> usedExprList;
 
-    public StaticSql optStaticSql;
-
-    public StmtSql(
-            ParserRuleContext ctx,
-            boolean isDynamic,
-            int level,
-            Expr sql,
-            NodeList<ExprId> intoVarList,
-            NodeList<? extends Expr> usedExprList) {
+    public StmtSql(ParserRuleContext ctx, boolean dynamic,
+            int level, Expr sql, List<ExprId> intoVarList, List<? extends Expr> usedExprList) {
         super(ctx);
 
-        this.isDynamic = isDynamic;
+        this.dynamic = dynamic;
         this.level = level;
         this.sql = sql;
         this.intoVarList = intoVarList;
@@ -68,22 +57,20 @@ public class StmtSql extends Stmt {
 
     @Override
     public String toJavaCode() {
-        String setUsedValuesStr = Common.getSetUsedValuesStr(usedExprList);
+        String setUsedExprStr = Common.getSetUsedExprStr(usedExprList);
 
         if (intoVarList == null) {
-            // DML statement TODO: check it is not a Select statement
-            return tmplDml.replace("%'KIND'%", isDynamic ? "dynamic" : "static")
+            return tmplDml.replace("%'KIND'%", dynamic ? "dynamic" : "static")
                     .replace("%'SQL'%", sql.toJavaCode())
-                    .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedValuesStr, 1))
+                    .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedExprStr, 1))
                     .replace("%'LEVEL'%", "" + level);
         } else {
-            // Select statement TODO: check it.
             String setResultsStr = getSetResultsStr(intoVarList);
             String setNullsStr = getSetNullsStr(intoVarList);
             return tmplSelect
-                    .replace("%'KIND'%", isDynamic ? "dynamic" : "static")
+                    .replace("%'KIND'%", dynamic ? "dynamic" : "static")
                     .replace("%'SQL'%", sql.toJavaCode())
-                    .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedValuesStr, 1))
+                    .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedExprStr, 1))
                     .replace("      %'SET-RESULTS'%", Misc.indentLines(setResultsStr, 3))
                     .replace("    %'SET-NULLS'%", Misc.indentLines(setNullsStr, 2))
                     .replace("%'LEVEL'%", "" + level);
@@ -132,16 +119,16 @@ public class StmtSql extends Stmt {
                     "  stmt_%'LEVEL'%.close();",
                     "}");
 
-    private static String getSetResultsStr(NodeList<ExprId> idList) {
+    private static String getSetResultsStr(List<ExprId> idList) {
 
         StringBuffer sbuf = new StringBuffer();
-        int size = idList.nodes.size();
+        int size = idList.size();
         for (int i = 0; i < size; i++) {
             if (i > 0) {
                 sbuf.append("\n");
             }
 
-            ExprId id = idList.nodes.get(i);
+            ExprId id = idList.get(i);
             assert id.decl instanceof DeclVar || id.decl instanceof DeclParamOut
                     : "only variables or out-parameters can be used in into-clauses";
 
@@ -155,16 +142,16 @@ public class StmtSql extends Stmt {
         return sbuf.toString();
     }
 
-    private static String getSetNullsStr(NodeList<ExprId> idList) {
+    private static String getSetNullsStr(List<ExprId> idList) {
 
         StringBuffer sbuf = new StringBuffer();
-        int size = idList.nodes.size();
+        int size = idList.size();
         for (int i = 0; i < size; i++) {
             if (i > 0) {
                 sbuf.append("\n");
             }
 
-            ExprId id = idList.nodes.get(i);
+            ExprId id = idList.get(i);
             sbuf.append(String.format("%s = null;", id.toJavaCode()));
         }
 

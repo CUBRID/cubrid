@@ -32,6 +32,7 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.util.Arrays;
+import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class DeclCursor extends DeclId {
@@ -43,29 +44,24 @@ public class DeclCursor extends DeclId {
 
     public final String name;
     public final NodeList<DeclParam> paramList;
-    public final ExprStr sql;
-    public final NodeList<ExprId> usedVars;
+    public final StaticSql staticSql;
 
     public int[] paramRefCounts;
-    public int[] usedValuesMap;
-
-    public StaticSql staticSql;
+    public int[] paramMarks;
 
     public DeclCursor(
             ParserRuleContext ctx,
             String name,
             NodeList<DeclParam> paramList,
-            ExprStr sql,
-            NodeList<ExprId> usedVars) {
+            StaticSql staticSql) {
         super(ctx);
 
         assert paramList != null;
         this.name = name;
         this.paramList = paramList;
-        this.sql = sql;
-        this.usedVars = usedVars;
+        this.staticSql = staticSql;
 
-        setHostValuesMap(paramList, usedVars);
+        setHostValuesMap(paramList, staticSql.hostVars.keySet());
     }
 
     @Override
@@ -76,32 +72,39 @@ public class DeclCursor extends DeclId {
     @Override
     public String toJavaCode() {
         return String.format(
-                "final Query %s = new Query(%s);\n  // param-ref-counts: %s\n  // used-values-map: %s",
+                "final Query %s = new Query(\"%s\");\n  // param-ref-counts: %s\n  // param-marks: %s",
                 name,
-                sql.toJavaCode(),
+                staticSql.rewritten,
                 Arrays.toString(paramRefCounts),
-                Arrays.toString(usedValuesMap));
+                Arrays.toString(paramMarks));
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
-    private void setHostValuesMap(NodeList<DeclParam> paramList, NodeList<ExprId> usedVars) {
+    private void setHostValuesMap(NodeList<DeclParam> paramList, Set<ExprId> hostVars) {
+
+        // NOTE: hostVars preserves its insertion order because it is the keys of a LinkedHashMap
+        // TODO: check this
 
         int paramSize = paramList.nodes.size();
-        int usedSize = usedVars == null ? 0 : usedVars.nodes.size();
+        int hostVarSize = hostVars == null ? 0 : hostVars.size();
 
-        paramRefCounts = new int[paramSize]; // NOTE: filled with zeros
-        usedValuesMap = new int[usedSize]; // NOTE: filled with zeros
+        paramRefCounts = new int[paramSize];    // NOTE: filled with zeros
+        paramMarks = new int[hostVarSize];      // NOTE: filled with zeros
 
-        for (int i = 0; i < paramSize; i++) {
-            DeclParam di = paramList.nodes.get(i);
-            for (int j = 0; j < usedSize; j++) {
-                DeclId dj = usedVars.nodes.get(j).decl;
-                if (di == dj) { // NOTE: reference equality
-                    usedValuesMap[j] = -(i + 1);
-                    paramRefCounts[i]++;
+        if (paramSize > 0 && hostVarSize > 0) {
+            for (int i = 0; i < paramSize; i++) {
+                DeclParam di = paramList.nodes.get(i);
+                int j = 0;
+                for (ExprId var: hostVars) {
+                    DeclId dj = var.decl;
+                    if (di == dj) {             // NOTE: reference equality
+                        paramMarks[j] = (i + 1);
+                        paramRefCounts[i]++;
+                    }
+                    j++;
                 }
             }
         }

@@ -57,10 +57,10 @@ public class StmtGlobalProcCall extends Stmt {
     @Override
     public String toJavaCode() {
         String dynSql = getDynSql(name, args.nodes.size());
-        String setUsedValuesStr = Common.getSetUsedValuesStr(args);
+        String setUsedExprStr = Common.getSetUsedExprStr(args.nodes);
         return tmplStmt.replace("%'PROC-NAME'%", name)
                 .replace("%'DYNAMIC-SQL'%", dynSql)
-                .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedValuesStr, 1))
+                .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedExprStr, 1))
                 .replace("%'LEVEL'%", "" + level);
     }
 

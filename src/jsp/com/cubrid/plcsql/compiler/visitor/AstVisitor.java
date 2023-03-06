@@ -128,13 +128,17 @@ public abstract class AstVisitor<R> {
 
     public abstract R visitStmtCursorOpen(StmtCursorOpen node);
 
-    public abstract R visitStmtSql(StmtSql node);
+    public abstract R visitStmtExecImme(StmtExecImme node);
+
+    public abstract R visitStmtStaticSql(StmtStaticSql node);
 
     public abstract R visitStmtForCursorLoop(StmtForCursorLoop node);
 
     public abstract R visitStmtForIterLoop(StmtForIterLoop node);
 
-    public abstract R visitStmtForSqlLoop(StmtForSqlLoop node);
+    public abstract R visitStmtForStaticSqlLoop(StmtForStaticSqlLoop node);
+
+    public abstract R visitStmtForExecImmeLoop(StmtForExecImmeLoop node);
 
     public abstract R visitStmtGlobalProcCall(StmtGlobalProcCall node);
 

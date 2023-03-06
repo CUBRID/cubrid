@@ -30,40 +30,24 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-import java.util.LinkedHashMap;
+public class StmtExecImme extends StmtSql {
 
-public class DeclForRecord extends DeclId {
-
-    public final String name;
-    public final LinkedHashMap<String, TypeSpec> fieldTypes;
-
-    public DeclForRecord(ParserRuleContext ctx, String name, LinkedHashMap<String, TypeSpec> fieldTypes) {
-        super(ctx);
-
-        this.name = name;
-        this.fieldTypes = fieldTypes;
-    }
-
-    // TODO: separate Symbol from AstNode. Remove 'extends Decl' and the following method
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
-        assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        return visitor.visitStmtExecImme(this);
     }
 
-    @Override
-    public String kind() {
-        return "for-loop-record";
-    }
-
-    @Override
-    public String toJavaCode() {
-        // unreachable: currently, used only in for-dynamic-sql-loop, not in any ordinary declration
-        // list
-        assert false;
-        throw new RuntimeException("unreachable");
+    public StmtExecImme(
+            ParserRuleContext ctx,
+            int level,
+            Expr dynamicSql,
+            NodeList<ExprId> intoVarList,
+            NodeList<? extends Expr> usedExprList) {
+        super(ctx, true, level, dynamicSql, intoVarList.nodes, usedExprList.nodes);
     }
 }

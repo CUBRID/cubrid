@@ -43,24 +43,28 @@ public class StmtOpenFor extends Stmt {
     }
 
     public final ExprId id;
-    public final ExprStr sql;
-    public final NodeList<ExprId> usedVars;
+    public final StaticSql staticSql;
 
-    public StaticSql staticSql;
 
-    public StmtOpenFor(ParserRuleContext ctx, ExprId id, ExprStr sql, NodeList<ExprId> usedVars) {
+    public StmtOpenFor(ParserRuleContext ctx, ExprId id, StaticSql staticSql) {
         super(ctx);
 
         this.id = id;
-        this.sql = sql;
-        this.usedVars = usedVars;
+        this.staticSql = staticSql;
     }
 
     @Override
     public String toJavaCode() {
+
+        StringBuffer sbuf = new StringBuffer();
+        for (ExprId var: staticSql.hostVars.keySet()) {
+            sbuf.append(",\n");
+            sbuf.append(var.toJavaCode());
+        }
+
         return tmplStmt.replace("%'REF-CURSOR'%", id.toJavaCode())
-                .replace("%'QUERY'%", sql.toJavaCode())
-                .replace("    %'HOST-VARIABLES'%", Misc.indentLines(usedVars.toJavaCode(",\n"), 2));
+                .replace("%'QUERY'%", '"' + staticSql.rewritten + '"')
+                .replace("%'HOST-VARIABLES'%", Misc.indentLines(sbuf.toString(), 2, true));
     }
 
     // --------------------------------------------------
@@ -71,8 +75,6 @@ public class StmtOpenFor extends Stmt {
             Misc.combineLines(
                     "{ // open-for statement",
                     "  %'REF-CURSOR'% = new Query(%'QUERY'%);",
-                    "  %'REF-CURSOR'%.open(conn,",
-                    "    %'HOST-VARIABLES'%",
-                    "  );",
+                    "  %'REF-CURSOR'%.open(conn%'HOST-VARIABLES'%);",
                     "}");
 }
