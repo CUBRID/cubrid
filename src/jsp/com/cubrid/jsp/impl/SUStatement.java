@@ -1,5 +1,6 @@
 package com.cubrid.jsp.impl;
 
+import com.cubrid.jsp.Server;
 import com.cubrid.jsp.data.CallInfo;
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;

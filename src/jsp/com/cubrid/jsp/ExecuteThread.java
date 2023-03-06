@@ -38,6 +38,7 @@ import com.cubrid.jsp.data.DataUtilities;
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
+import com.cubrid.jsp.protocol.Header;
 import com.cubrid.jsp.value.Value;
 import com.cubrid.jsp.value.ValueUtilities;
 import java.io.BufferedInputStream;
@@ -167,11 +168,11 @@ public class ExecuteThread extends Thread {
     @Override
     public void run() {
         /* main routine handling stored procedure */
-        int requestCode = -1;
+        Header header = null;
         while (!Thread.interrupted()) {
             try {
-                requestCode = listenCommand();
-                switch (requestCode) {
+                header = listenCommand();
+                switch (header.code) {
                         /* the following two request codes are for processing java stored procedure routine */
                     case REQ_CODE_PREPARE_ARGS:
                         {
@@ -183,38 +184,40 @@ public class ExecuteThread extends Thread {
                             processStoredProcedure();
                             break;
                         }
-                    case REQ_CODE_DESTROY:
-                        {
-                            destroyJDBCResources();
-                            Thread.currentThread().interrupt();
-                            break;
-                        }
 
                         /* the following request codes are for javasp utility */
                     case REQ_CODE_UTIL_PING:
                         {
                             String ping = Server.getServerName();
-                            output.writeInt(ping.length());
-                            output.writeBytes(ping);
+
+                            resultBuffer.clear(); /* prepare to put */
+                            packer.setBuffer(resultBuffer);
+                            packer.packString(ping);
+                            resultBuffer = packer.getBuffer();
+
+                            output.writeInt(resultBuffer.position());
+                            output.write(resultBuffer.array(), 0, resultBuffer.position());
                             output.flush();
                             break;
                         }
                     case REQ_CODE_UTIL_STATUS:
                         {
-                            String dbName = Server.getServerName();
-                            List<String> vm_args = Server.getJVMArguments();
-                            int length = DataUtilities.getLengthtoSend(dbName) + 12;
-                            for (String arg : vm_args) {
-                                length += DataUtilities.getLengthtoSend(arg) + 4;
-                            }
-                            output.writeInt(length);
-                            output.writeInt(Server.getServerPort());
-                            DataUtilities.packAndSendRawString(dbName, output);
+                            // TODO: create a packable class for status
+                            resultBuffer.clear(); /* prepare to put */
+                            packer.setBuffer(resultBuffer);
 
-                            output.writeInt(vm_args.size());
+                            packer.packInt(Server.getServerPort());
+                            packer.packString(Server.getServerName());
+                            List<String> vm_args = Server.getJVMArguments();
+                            packer.packInt(vm_args.size());
                             for (String arg : vm_args) {
-                                DataUtilities.packAndSendRawString(arg, output);
+                                packer.packString(arg);
                             }
+
+                            resultBuffer = packer.getBuffer();
+
+                            output.writeInt(resultBuffer.position());
+                            output.write(resultBuffer.array(), 0, resultBuffer.position());
                             output.flush();
                             break;
                         }
@@ -273,14 +276,14 @@ public class ExecuteThread extends Thread {
         closeSocket();
     }
 
-    private int listenCommand() throws Exception {
+    private Header listenCommand() throws Exception {
         receiveBuffer();
 
         /* read header */
-        int command = unpacker.unpackInt();
+        Header header = new Header (unpacker);
 
         setStatus(ExecuteThreadStatus.IDLE);
-        return command;
+        return header;
     }
 
     public CUBRIDUnpacker receiveBuffer() throws IOException {
@@ -293,12 +296,17 @@ public class ExecuteThread extends Thread {
         input.readFully(bytes);
 
         ensureReadBufferSpace(size);
+        
         unpacker.setBuffer(readbuffer);
 
         readbuffer.clear(); // always clear
         readbuffer.put(bytes);
         readbuffer.flip(); /* prepare to read */
 
+        return unpacker;
+    }
+
+    public CUBRIDUnpacker getUnpacker () {
         return unpacker;
     }
 
@@ -357,15 +365,18 @@ public class ExecuteThread extends Thread {
     private void destroyJDBCResources() throws SQLException, IOException {
         setStatus(ExecuteThreadStatus.DESTROY);
 
+        resultBuffer.clear(); /* prepare to put */
+        packer.setBuffer(resultBuffer);
+        
         if (connection != null) {
-            output.writeInt(REQ_CODE_DESTROY);
-            output.flush();
-            // TODO: connection.destroy();
+            packer.packInt (REQ_CODE_DESTROY);
             connection = null;
         } else {
-            output.writeInt(REQ_CODE_END);
-            output.flush();
+            packer.packInt (REQ_CODE_END);
         }
+        output.writeInt(resultBuffer.position());
+        output.write(resultBuffer.array(), 0, resultBuffer.position());
+        output.flush();
     }
 
     private void returnOutArgs(StoredProcedure sp, CUBRIDPacker packer)
@@ -392,43 +403,39 @@ public class ExecuteThread extends Thread {
         resultBuffer.clear(); /* prepare to put */
         packer.setBuffer(resultBuffer);
 
+        packer.packInt (REQ_CODE_RESULT);
         packer.packValue(resolvedResult, procedure.getReturnType(), this.charSet);
         returnOutArgs(procedure, packer);
         resultBuffer = packer.getBuffer();
 
-        output.writeInt(REQ_CODE_RESULT);
         output.writeInt(resultBuffer.position());
         output.write(resultBuffer.array(), 0, resultBuffer.position());
         output.flush();
     }
 
     public void sendCommand(ByteBuffer buffer) throws IOException {
-        output.writeInt(REQ_CODE_INTERNAL_JDBC);
-        if (buffer != null) {
-            output.writeInt(buffer.position());
-            output.write(buffer.array(), 0, buffer.position());
-        }
-        output.flush();
-    }
+        resultBuffer.clear(); /* prepare to put */
+        packer.setBuffer(resultBuffer);
 
-    public void sendCall() throws IOException {
-        if (compareStatus(ExecuteThreadStatus.INVOKE)) {
-            setStatus(ExecuteThreadStatus.CALL);
-            output.writeInt(REQ_CODE_INTERNAL_JDBC);
-            output.flush();
-        }
+        packer.packInt (REQ_CODE_INTERNAL_JDBC);
+        packer.packPrimitiveBytes (buffer);
+        resultBuffer = packer.getBuffer();
+
+        output.writeInt(resultBuffer.position());
+        output.write(resultBuffer.array(), 0, resultBuffer.position());
+        output.flush();
     }
 
     private void sendError(String exception, Socket socket) throws IOException {
         resultBuffer.clear();
         packer.setBuffer(resultBuffer);
 
+        packer.packInt(REQ_CODE_ERROR);
         packer.packValue(new Integer(1), DBType.DB_INT, this.charSet);
         packer.packValue(exception, DBType.DB_STRING, this.charSet);
 
         resultBuffer = packer.getBuffer();
 
-        output.writeInt(REQ_CODE_ERROR);
         output.writeInt(resultBuffer.position());
         output.write(resultBuffer.array(), 0, resultBuffer.position());
         output.flush();

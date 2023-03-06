@@ -27,6 +27,7 @@
 #include "dbtype_def.h"
 
 #include "method_connection_sr.hpp"
+#include "method_connection_java.hpp"
 #include "method_struct_parameter_info.hpp"
 #include "method_struct_invoke.hpp"
 #include "method_struct_value.hpp"
@@ -44,11 +45,11 @@
 
 namespace cubmethod
 {
-
   method_invoke_java::method_invoke_java (method_invoke_group *group, method_sig_node *method_sig)
     : method_invoke (group, method_sig)
   {
-    m_header = new cubmethod::header (METHOD_REQUEST_CALLBACK /* default */, (uint64_t) this);
+    UINT64 s_id = group->get_thread_entry ()->conn_entry->session_id;
+    m_header = new cubmethod::header (s_id, METHOD_REQUEST_CALLBACK /* default */, 0);
   }
 
   method_invoke_java::~method_invoke_java ()
@@ -60,11 +61,23 @@ namespace cubmethod
   {
     int error = NO_ERROR;
 
-    cubmethod::header header (SP_CODE_INVOKE /* default */, static_cast <uint64_t> (m_group->get_id()));
-    cubmethod::invoke_java arg (m_method_sig);
-    error = mcon_send_data_to_java (m_group->get_socket (), header, arg);
+    UINT64 s_id = m_group->get_thread_entry ()->conn_entry->session_id;
+    cubmethod::header header (s_id, SP_CODE_INVOKE /* default */, 1);
+    cubmethod::invoke_java arg (m_group->get_id (), m_method_sig);
 
+    error = mcon_send_data_to_java (m_group->get_socket (), header, arg);
     return error;
+  }
+
+  static int
+  method_interrupt_handler (cubthread::entry *thread_p)
+  {
+    cubmethod::runtime_context *rctx = cubmethod::get_rctx (thread_p);
+    if (rctx && rctx->is_interrupted ())
+      {
+	return rctx->get_interrupt_id ();
+      }
+    return NO_ERROR;
   }
 
   int
@@ -76,110 +89,60 @@ namespace cubmethod
     do
       {
 	/* read request code */
-
+	cubmem::block response_blk;
 	int nbytes = -1;
-	do
+	auto interrupt_f = std::bind (method_interrupt_handler, thread_p);
+	error_code = mcon_read_data_from_java (m_group->get_socket(), response_blk, interrupt_f);
+	if (error_code == NO_ERROR)
 	  {
-	    // to check interrupt
-	    cubmethod::runtime_context *rctx = cubmethod::get_rctx (thread_p);
-	    if (rctx && rctx->is_interrupted ())
+	    packing_unpacker unpacker (response_blk);
+	    unpacker.unpack_int (start_code);
+
+	    cubmem::block payload_blk ((size_t) (unpacker.get_buffer_end() - unpacker.get_curr_ptr()),
+				       (char *) unpacker.get_curr_ptr ());
+	    m_group->get_data_queue().emplace (std::move (payload_blk));
+
+	    /* processing */
+	    if (start_code == SP_CODE_INTERNAL_JDBC)
 	      {
-		return rctx->get_interrupt_id ();
+		error_code = callback_dispatch (*thread_p);
+	      }
+	    else if (start_code == SP_CODE_RESULT)
+	      {
+		error_code = receive_result (arg_base, returnval);
+	      }
+	    else if (start_code == SP_CODE_ERROR)
+	      {
+		error_code = receive_error ();
+		db_make_null (&returnval);
+	      }
+	    else
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
+			start_code);
+		error_code = ER_SP_NETWORK_ERROR;
 	      }
 
-	    nbytes = jsp_readn (m_group->get_socket(), (char *) &start_code, (int) sizeof (int));
+	    if (m_group->get_data_queue().empty() == false)
+	      {
+		m_group->get_data_queue().pop ();
+	      }
 	  }
-	while (nbytes < 0 && errno == ETIMEDOUT);
 
-	if (nbytes != (int) sizeof (int))
+	// free phase
+	if (response_blk.dim > 0)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
-		    nbytes);
-	    return ER_SP_NETWORK_ERROR;
+	    free (response_blk.ptr);
 	  }
 
-	start_code = ntohl (start_code);
-
-	/* read size of buffer to allocate and data */
-	error_code = alloc_response (thread_p);
 	if (error_code != NO_ERROR)
 	  {
 	    break;
-	  }
-
-	/* processing */
-	if (start_code == SP_CODE_INTERNAL_JDBC)
-	  {
-	    error_code = callback_dispatch (*thread_p);
-	  }
-	else if (start_code == SP_CODE_RESULT)
-	  {
-	    error_code = receive_result (arg_base, returnval);
-	  }
-	else if (start_code == SP_CODE_ERROR)
-	  {
-	    error_code = receive_error ();
-	    db_make_null (&returnval);
-	  }
-	else
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
-		    start_code);
-	    error_code = ER_SP_NETWORK_ERROR;
-	  }
-
-	if (m_group->get_data_queue().empty() == false)
-	  {
-	    m_group->get_data_queue().pop ();
 	  }
       }
     while (error_code == NO_ERROR && start_code == SP_CODE_INTERNAL_JDBC);
 
     return error_code;
-  }
-
-  int
-  method_invoke_java::alloc_response (cubthread::entry *thread_p)
-  {
-    int res_size;
-
-    cubmem::extensible_block blk;
-
-    int nbytes = -1;
-    do
-      {
-	// to check interrupt
-	cubmethod::runtime_context *rctx = cubmethod::get_rctx (thread_p);
-	if (rctx && rctx->is_interrupted ())
-	  {
-	    return rctx->get_interrupt_id ();
-	  }
-
-	nbytes = jsp_readn (m_group->get_socket(), (char *) &res_size, (int) sizeof (int));
-      }
-    while (nbytes < 0 && errno == ETIMEDOUT);
-
-    if (nbytes != (int) sizeof (int))
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
-		nbytes);
-	return ER_SP_NETWORK_ERROR;
-      }
-    res_size = ntohl (res_size);
-
-    blk.extend_to (res_size);
-
-    nbytes = css_readn (m_group->get_socket(), blk.get_ptr (), res_size, -1);
-    if (nbytes != res_size)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
-		nbytes);
-	return ER_SP_NETWORK_ERROR;
-      }
-
-    m_group->get_data_queue().emplace (std::move (blk));
-
-    return NO_ERROR;
   }
 
   int
@@ -194,8 +157,8 @@ namespace cubmethod
 	return ER_FAILED;
       }
 
-    cubmem::extensible_block &ext_blk = m_group->get_data_queue().front ();
-    packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
+    cubmem::block &blk = m_group->get_data_queue().front ();
+    packing_unpacker unpacker (blk);
 
     dbvalue_java value_unpacker;
     db_make_null (&returnval);
@@ -242,36 +205,20 @@ namespace cubmethod
   int
   method_invoke_java::receive_error ()
   {
-    DB_VALUE error_value, error_msg;
-
-    db_make_null (&error_value);
-    db_make_null (&error_msg);
-
     // check queue
     if (m_group->get_data_queue().empty() == true)
       {
 	return ER_FAILED;
       }
 
-    cubmem::extensible_block &ext_blk = m_group->get_data_queue().front ();
-    packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
+    cubmem::block &blk = m_group->get_data_queue().front ();
 
-    dbvalue_java value_unpacker;
+    packing_unpacker unpacker (blk);
 
-    // error value
-    value_unpacker.value = &error_value;
-    value_unpacker.unpack (unpacker);
+    std::string error_msg;
+    unpacker.unpack_string (error_msg);
 
-    // error message
-    value_unpacker.value = &error_msg;
-    value_unpacker.unpack (unpacker);
-
-    const char *error_str = db_get_string (&error_msg);
-    m_group->set_error_msg (error_str ? std::string (error_str) : "");
-
-    db_value_clear (&error_value);
-    db_value_clear (&error_msg);
-
+    m_group->set_error_msg (error_msg);
     return ER_FAILED;
   }
 
@@ -286,8 +233,8 @@ namespace cubmethod
 	return ER_FAILED;
       }
 
-    cubmem::extensible_block &ext_blk = m_group->get_data_queue().front ();
-    packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
+    cubmem::block &blk = m_group->get_data_queue().front ();
+    packing_unpacker unpacker (blk);
 
     int code;
     unpacker.unpack_int (code);
@@ -367,15 +314,19 @@ namespace cubmethod
 	m_group->set_db_parameter_info (parameter_info);
       }
 
+    UINT64 s_id = m_group->get_thread_entry ()->conn_entry->session_id;
+    cubmethod::header header (s_id, SP_CODE_INTERNAL_JDBC /* default */, 1);
     db_parameter_info *parameter_info = m_group->get_db_parameter_info ();
     if (parameter_info)
       {
-	error = mcon_send_data_to_java (m_group->get_socket(), METHOD_RESPONSE_SUCCESS, *parameter_info);
+  cubmem::block blk = mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, *parameter_info);
+	error = mcon_send_data_to_java (m_group->get_socket(), header, blk);
       }
     else
       {
-	error = mcon_send_data_to_java (m_group->get_socket(), METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+  cubmem::block blk = mcon_pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
 					ARG_FILE_LINE);
+	error = mcon_send_data_to_java (m_group->get_socket(), header, blk);
       }
     return error;
   }
@@ -410,8 +361,9 @@ namespace cubmethod
 
 	  m_group->register_client_handler (info.handle_id);
 	}
-
-      error = mcon_send_buffer_to_java (m_group->get_socket(), b);
+      UINT64 s_id = m_group->get_thread_entry ()->conn_entry->session_id;
+      cubmethod::header header (s_id, SP_CODE_INTERNAL_JDBC /* default */, 1);
+      error = mcon_send_data_to_java (m_group->get_socket (), header, b);
       return error;
     };
 
@@ -457,7 +409,9 @@ namespace cubmethod
 	    }
 	}
 
-      error = mcon_send_buffer_to_java (m_group->get_socket(), b);
+      UINT64 s_id = m_group->get_thread_entry ()->conn_entry->session_id;
+      cubmethod::header header (s_id, SP_CODE_INTERNAL_JDBC /* default */, 1);
+      error = mcon_send_data_to_java (m_group->get_socket (), header, b);
       return error;
     };
 
@@ -473,7 +427,7 @@ namespace cubmethod
   {
     int error = NO_ERROR;
     int code = METHOD_CALLBACK_FETCH;
-    std::uint64_t qid;
+    std::int64_t qid;
     int pos;
     int fetch_count;
     int fetch_flag;
@@ -523,7 +477,11 @@ namespace cubmethod
 	  }
 	i++;
       }
-    error = mcon_send_data_to_java (m_group->get_socket (), METHOD_RESPONSE_SUCCESS, info);
+
+    UINT64 s_id = m_group->get_thread_entry ()->conn_entry->session_id;
+    cubmethod::header header (s_id, SP_CODE_INTERNAL_JDBC /* default */, 1);
+    cubmem::block blk = mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, info);
+    error = mcon_send_data_to_java (m_group->get_socket (), header, blk);
     return error;
   }
 
@@ -541,7 +499,14 @@ namespace cubmethod
 	return error;
       }
 
-    error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
+    auto java_lambda = [&] (cubmem::block & b)
+    {
+      UINT64 s_id = m_group->get_thread_entry ()->conn_entry->session_id;
+      cubmethod::header header (s_id, SP_CODE_INTERNAL_JDBC /* default */, 1);
+      return mcon_send_data_to_java (m_group->get_socket(), header, b);
+    };
+
+    error = xs_receive (&thread_ref, java_lambda);
     return error;
   }
 
@@ -561,7 +526,14 @@ namespace cubmethod
 	return error;
       }
 
-    error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
+    auto java_lambda = [&] (cubmem::block & b)
+    {
+      UINT64 s_id = m_group->get_thread_entry ()->conn_entry->session_id;
+      cubmethod::header header (s_id, SP_CODE_INTERNAL_JDBC /* default */, 1);
+      return mcon_send_data_to_java (m_group->get_socket(), header, b);
+    };
+
+    error = xs_receive (&thread_ref, java_lambda);
     return error;
   }
 
@@ -580,7 +552,14 @@ namespace cubmethod
 	return error;
       }
 
-    error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
+    auto java_lambda = [&] (cubmem::block & b)
+    {
+      UINT64 s_id = m_group->get_thread_entry ()->conn_entry->session_id;
+      cubmethod::header header (s_id, SP_CODE_INTERNAL_JDBC /* default */, 1);
+      return mcon_send_data_to_java (m_group->get_socket(), header, b);
+    };
+
+    error = xs_receive (&thread_ref, java_lambda);
     return error;
   }
 
@@ -603,7 +582,14 @@ namespace cubmethod
 	return error;
       }
 
-    error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
+    auto java_lambda = [&] (cubmem::block & b)
+    {
+      UINT64 s_id = m_group->get_thread_entry ()->conn_entry->session_id;
+      cubmethod::header header (s_id, SP_CODE_INTERNAL_JDBC /* default */, 1);
+      return mcon_send_data_to_java (m_group->get_socket(), header, b);
+    };
+
+    error = xs_receive (&thread_ref, java_lambda);
     return error;
   }
 
@@ -635,7 +621,10 @@ namespace cubmethod
       if (cursor)
 	{
 	  cursor->change_owner (m_group->get_thread_entry ());
-	  return mcon_send_buffer_to_java (m_group->get_socket(), b);
+
+    UINT64 s_id = m_group->get_thread_entry ()->conn_entry->session_id;
+    cubmethod::header header (s_id, SP_CODE_INTERNAL_JDBC /* default */, 1);
+	  return mcon_send_data_to_java (m_group->get_socket(), header, b);
 	}
       else
 	{
@@ -662,14 +651,14 @@ namespace cubmethod
 	return error;
       }
 
-    error = xs_receive (&thread_ref, m_group->get_socket (), bypass_block);
+    auto java_lambda = [&] (cubmem::block & b)
+    {
+      UINT64 s_id = m_group->get_thread_entry ()->conn_entry->session_id;
+      cubmethod::header header (s_id, SP_CODE_INTERNAL_JDBC /* default */, 1);
+      return mcon_send_data_to_java (m_group->get_socket(), header, b);
+    };
+
+    error = xs_receive (&thread_ref, java_lambda);
     return error;
   }
-
-  int
-  method_invoke_java::bypass_block (SOCKET socket, cubmem::block &b)
-  {
-    return mcon_send_buffer_to_java (socket, b);
-  }
-
 } // namespace cubmethod

@@ -43,6 +43,7 @@ namespace cubmethod
   struct header : public cubpacking::packable_object
   {
     header () = delete;
+    explicit header (cubpacking::unpacker &unpacker);
     header (uint64_t id, int command, int flag);
 
     void pack (cubpacking::packer &serializator) const override;

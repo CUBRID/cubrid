@@ -29,6 +29,8 @@
 
 #include "dbtype.h"
 
+#include "method_struct_invoke.hpp"
+
 #if !defined (SERVER_MODE)
 #include "authenticate.h"	/* AU_ENABLE, AU_DISABLE */
 #include "dbi.h"		/* db_enable_modification(), db_disable_modification() */
@@ -50,7 +52,6 @@
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "method_invoke_group.hpp"
-#include "method_struct_invoke.hpp"
 #include "thread_compat.hpp"
 #endif
 
@@ -197,13 +198,13 @@ int
 method_dispatch_internal (packing_unpacker &unpacker)
 {
   int error = NO_ERROR;
-  int method_dispatch_code;
-  unpacker.unpack_int (method_dispatch_code);
+
+  cubmethod::header header (unpacker);
 
   if (error == NO_ERROR)
     {
       int save_auth = 0;
-      switch (method_dispatch_code)
+      switch (header.command)
 	{
 	case METHOD_REQUEST_ARG_PREPARE:
 	  error = method_prepare_arguments (unpacker);
@@ -221,9 +222,8 @@ method_dispatch_internal (packing_unpacker &unpacker)
 	  break;
 	case METHOD_REQUEST_END:
 	{
-	  uint64_t id;
 	  std::vector <int> handlers;
-	  unpacker.unpack_all (id, handlers);
+	  unpacker.unpack_all (handlers);
 	  for (int i = 0; i < handlers.size (); i++)
 	    {
 	      cubmethod::get_callback_handler()->free_query_handle (handlers[i], false);
@@ -254,6 +254,9 @@ method_invoke_builtin (packing_unpacker &unpacker, DB_VALUE &result)
   METHOD_SIG sig;
 
   unpacker.unpack_bigint (id);
+
+
+
   sig.unpack (unpacker);
 
   auto search = runtime_args.find (id);

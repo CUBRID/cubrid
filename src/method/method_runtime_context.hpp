@@ -51,7 +51,6 @@ namespace cubmethod
 
   using THREAD_ENTRY_IDX = int;
   using QUERY_ID = std::uint64_t;
-  using METHOD_GROUP_ID = std::uint64_t;
 
   class runtime_context
   {

@@ -127,6 +127,10 @@ public class CUBRIDPacker {
         }
     }
 
+    public void packPrimitiveBytes (ByteBuffer b) {
+        buffer.put(b.array(), 0, b.position());
+    }
+
     // TODO: legacy implementation, this function will be modified
     public void packValue(Object result, int ret_type, String charset)
             throws UnsupportedEncodingException {

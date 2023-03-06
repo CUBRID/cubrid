@@ -203,6 +203,10 @@ public class Server {
         loggingThread.log(exceptionAsString);
     }
 
+    public static void log(String str) {
+        loggingThread.log(str);
+    }
+
     public void setShutdown() {
         shutdown.set(true);
     }

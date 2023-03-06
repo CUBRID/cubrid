@@ -53,11 +53,10 @@ namespace cubmethod
   int
   callback_handler::callback_dispatch (packing_unpacker &unpacker)
   {
-    int64_t id;
-    int code;
-    unpacker.unpack_all (id, code);
-
     m_error_ctx.clear ();
+
+    int code;
+    unpacker.unpack_int(code);
 
     int error = NO_ERROR;
     switch (code)

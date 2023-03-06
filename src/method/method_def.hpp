@@ -30,6 +30,8 @@
 
 #define METHOD_MAX_RECURSION_DEPTH 15
 
+using METHOD_GROUP_ID = std::uint64_t;
+
 typedef enum
 {
   METHOD_SUCCESS = 1,

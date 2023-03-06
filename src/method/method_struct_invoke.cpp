@@ -45,6 +45,11 @@ namespace cubmethod
     //
   }
 
+  header::header (cubpacking::unpacker &unpacker)
+  {
+    unpack (unpacker);
+  }
+
   void
   header::pack (cubpacking::packer &serializator) const
   {

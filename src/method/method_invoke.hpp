@@ -101,7 +101,6 @@ namespace cubmethod
 		      DB_VALUE &result) override;
 
     private:
-      int alloc_response (cubthread::entry *thread_p);
       int receive_result (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base,
 			  DB_VALUE &returnval);
       int receive_error ();
