@@ -558,7 +558,8 @@ valid options:\n\
   -S, --SA-mode               stand-alone mode execution\n\
   -C, --CS-mode               client-server mode execution\n\
       --datafile-per-class    create a object file for each class; default: disabled\n\
-      --split-schema-files    split schema information by object and generate each file; Default: generate one schema file with all objects\n
+      --split-schema-files    split schema information by object and generate each file; Default: generate one schema file with all objects\n\
+      --as-dba                If the login user is a member of the DBA group, extract the same schema file as the DBA.\n
 
 
 $set 14 MSGCAT_UTIL_SET_COMPACTDB

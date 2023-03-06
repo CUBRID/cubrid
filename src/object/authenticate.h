@@ -42,6 +42,7 @@
 #include "class_object.h"
 #include "databases_file.h"
 #include "object_fetch.h"
+#include "extract_schema.hpp"
 
 
 class print_output;
@@ -253,8 +254,8 @@ extern void au_link_static_methods (void);
 
 /* migration utilities */
 
-extern int au_export_users (print_output & output_ctx);
-extern int au_export_grants (print_output & output_ctx, MOP class_mop);
+extern int au_export_users (extract_context & ctxt, print_output & output_ctx);
+extern int au_export_grants (extract_context & ctxt, print_output & output_ctx, MOP class_mop);
 
 extern int au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth);
 
