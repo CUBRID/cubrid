@@ -2171,6 +2171,8 @@ hb_add_tcp_ping_host (char *host_name, int port)
   HB_PING_HOST_ENTRY *p;
   HB_PING_HOST_ENTRY **first_pp;
 
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "%s:%d is added to the TCP PING list.\n", host_name, port);
+
   if (host_name == NULL)
     {
       return NULL;
@@ -2295,6 +2297,7 @@ hb_cluster_load_tcp_ping_host_list (char *ha_ping_host_list)
 
   if (ha_ping_host_list == NULL)
     {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "ha_tcp_ping_hosts=NULL\n");
       return 0;
     }
 
@@ -2321,7 +2324,7 @@ hb_cluster_load_tcp_ping_host_list (char *ha_ping_host_list)
 
       if (strcmp (host_p, "0.0.0.0") == 0)
 	{
-	  snprintf (buf, sizeof (buf), "We do not allow 0.0.0.0 as a ping hosts, excluded");
+	  snprintf (buf, sizeof (buf), "We do not allow 0.0.0.0 as a tcp ping hosts, excluded");
 	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, buf);
 	}
       else
@@ -2334,6 +2337,9 @@ hb_cluster_load_tcp_ping_host_list (char *ha_ping_host_list)
 	  num_hosts++;
 	}
     }
+
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "ha_tcp_ping_hosts=%s is parsed into %d host:port.\n",
+		       ha_ping_host_list, num_hosts);
 
   return num_hosts;
 }
@@ -4841,7 +4847,13 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
       if (hb_cluster_check_valid_ping_server () == false)
 	{
 	  pthread_mutex_unlock (&hb_Cluster->lock);
+	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "TCP PING is failed to initialize.\n");
 	  return ER_FAILED;
+	}
+
+      if (hb_Cluster->num_ping_hosts)
+	{
+	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "TCP PING is initialized successfully.\n");
 	}
     }
 
@@ -6696,6 +6708,8 @@ hb_check_tcp_ping (const char *host, int port)
     }
 
   css_shutdown_socket (sfd);
+
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "TCP PING is success on host %s, port %d.\n", host, port);
 
   return HB_PING_SUCCESS;
 }
