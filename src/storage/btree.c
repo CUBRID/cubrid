@@ -15533,10 +15533,10 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
    *
    *  case 1: P_page == NULL, C_page == first_page       x do not fix 1 next page
    *  case 2: P_page == first_page, C_page == NULL       x can't fix 1 next page
-   *  case 3: P_page == first_page, C_page != first_pag  o fix 1 next
+   *  case 3: P_page == first_page, C_page != first_page  o fix 1 next
    *  case 4: P_page == NULL, C_page == NULL             o can't fix N next, unfix N-1 prev
    *  case 5: P_page == NULL, C_page != first_page       o fix N next, unfix N-1 prev
-   *  other case: imppossible (assert)
+   *  other case: impossible (assert)
    *
    *  in case of 3, 4, 5, unfix first_page
    */
