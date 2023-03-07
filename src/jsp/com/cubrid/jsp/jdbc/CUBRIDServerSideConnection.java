@@ -31,7 +31,7 @@
 
 package com.cubrid.jsp.jdbc;
 
-import com.cubrid.jsp.ExecuteThread;
+import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.data.DBParameterInfo;
 import com.cubrid.jsp.impl.SUConnection;
 import cubrid.jdbc.jci.CUBRIDIsolationLevel;
@@ -64,7 +64,7 @@ import java.util.concurrent.Executor;
  * @version 2.0
  */
 public class CUBRIDServerSideConnection implements Connection {
-    private ExecuteThread thread = null;
+    private Context ctx = null;
 
     protected CUBRIDServerSideDatabaseMetaData mdata = null;
     protected List<Statement> statements = null;
@@ -74,8 +74,8 @@ public class CUBRIDServerSideConnection implements Connection {
     private int holdability;
     private Properties clientInfo = null;
 
-    public CUBRIDServerSideConnection(ExecuteThread thread) {
-        this.thread = thread;
+    public CUBRIDServerSideConnection(Context ctx) {
+        this.ctx = ctx;
 
         holdability =
                 ResultSet.HOLD_CURSORS_OVER_COMMIT; // default value, there is no meaning for the
@@ -87,7 +87,7 @@ public class CUBRIDServerSideConnection implements Connection {
 
     public SUConnection getSUConnection() {
         if (suConn == null) {
-            suConn = new SUConnection(thread);
+            suConn = new SUConnection(ctx);
         }
         return suConn;
     }
@@ -178,9 +178,15 @@ public class CUBRIDServerSideConnection implements Connection {
     }
 
     public void close() throws SQLException {
-        /* Becuase It is assume that Java SP Server always connecting with DB Server directly, It should not be closed */
+        /*
+         * Becuase It is assume that Java SP Server always connecting with DB Server
+         * directly, It should not be closed
+         */
         /* Here, only the JDBC resources are cleaned up */
-        /* The connection is not actually terminated or database resources such as query handlers and result sets are removed. */
+        /*
+         * The connection is not actually terminated or database resources such as query
+         * handlers and result sets are removed.
+         */
         if (statements != null) {
             for (Statement s : statements) {
                 s.close();

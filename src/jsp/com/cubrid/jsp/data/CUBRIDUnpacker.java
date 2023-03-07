@@ -39,6 +39,10 @@ import java.util.Calendar;
 public class CUBRIDUnpacker {
     private ByteBuffer buffer;
 
+    public CUBRIDUnpacker() {
+        this.buffer = null;
+    }
+
     public CUBRIDUnpacker(ByteBuffer buffer) {
         this.buffer = buffer;
     }
@@ -130,16 +134,16 @@ public class CUBRIDUnpacker {
         return len;
     }
 
-    public ByteBuffer unpackBuffer () {
+    public ByteBuffer unpackBuffer() {
         align(DataUtilities.INT_ALIGNMENT);
 
         int size = buffer.getInt();
         if (size > 0) {
             byte[] buf = new byte[size];
             buffer.get(buf);
-            
+
             align(DataUtilities.INT_ALIGNMENT);
-            return ByteBuffer.wrap (buf);
+            return ByteBuffer.wrap(buf);
         } else {
             return ByteBuffer.allocate(0);
         }
@@ -368,5 +372,13 @@ public class CUBRIDUnpacker {
 
     public void align(int size) {
         DataUtilities.align(buffer, size);
+    }
+
+    public int getCurrentPosition() {
+        return buffer.position();
+    }
+
+    public int getCurrentLimit() {
+        return buffer.limit();
     }
 }
