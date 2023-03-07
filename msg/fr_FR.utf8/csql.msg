@@ -113,7 +113,6 @@ $ Ces 3 doit être vide
 196 Erreur de type inconnu s'est produite.
 197 ';edit' n'est pas autorisée lorsque la sortie a été redirigée.
 198 Le formatage a échoué.
-199 Nom d'utilisateur/mot de passe/nom de base de données/nom d'hôte non valide ; connexion refusée.
 
 203 <%1$s> 
 204 <Super Classes> 

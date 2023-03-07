@@ -113,7 +113,6 @@ $ Diese 3 sollten leer sein
 196 Ein unbekannter Fehler ist aufgetreten.
 197 ';edit' ist nicht zulässig, wenn die Ausgabe umgeleitet wurde.
 198 Formatieren fehlgeschlagen.
-199 Ungültiger Benutzername/Passwort/Datenbankname/Hostname; Anmeldung verweigert.
 
 203 <%1$s> 
 204 <Oberklassen> 

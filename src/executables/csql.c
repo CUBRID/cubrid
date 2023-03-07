@@ -3385,7 +3385,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   /*verify @hostname */
   if ((host_name_ptr = strchr (argument, '@')) != NULL && (*(host_name_ptr + 1) == '\0'))
     {
-      csql_Error_code = CSQL_ERR_CONNECT;
+      csql_Error_code = CSQL_ERR_SQL_ERROR;
       return DO_CMD_FAILURE;
     }
 
@@ -3395,17 +3395,21 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   /*find db name following the user name */
   if ((db_name_ptr = strrchr (dbname, ' ')) != NULL && (*(db_name_ptr + 1) == '\0'))
     {
-      csql_Error_code = CSQL_ERR_CONNECT;
+      csql_Error_code = CSQL_ERR_SQL_ERROR;
       return DO_CMD_FAILURE;
     }
   if (db_name_ptr != NULL)
     {
       db_name_ptr += 1;
     }
+  else
+    {
+      db_name_ptr = strdup (csql_arg->db_name);
+    }
 
   if ((user_name_ptr = strtok_r (username, delim, &save_ptr_strtok)) == NULL)
     {
-      csql_Error_code = CSQL_ERR_CONNECT;
+      csql_Error_code = CSQL_ERR_SQL_ERROR;
       return DO_CMD_FAILURE;
     }
 
@@ -3416,10 +3420,6 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 #endif /* CS_MODE */
 
   /*Failed to access other host or db and then access formal db_name */
-  if (db_name_ptr == NULL)
-    {
-      db_name_ptr = strdup (csql_arg->db_name);
-    }
 
   if (csql_Database_connected)
     {
@@ -3427,7 +3427,6 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
       db_end_session ();
       db_shutdown ();
 
-      fprintf (csql_Output_fp, "Warning: current CSQL session is disconnected.\n");
     }
 
   er_init ("./csql.err", ER_NEVER_EXIT);
@@ -3444,6 +3443,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 	    {
 	      csql_Error_code = CSQL_ERR_SQL_ERROR;
 	      csql_check_server_down ();
+	      fprintf (csql_Output_fp, "Warning: current CSQL session is disconnected.\n");
 
 	      return DO_CMD_FAILURE;
 	    }
@@ -3460,6 +3460,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
       else
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
+	  fprintf (csql_Output_fp, "Warning: current CSQL session is disconnected.\n");
 
 	  return DO_CMD_FAILURE;
 
@@ -3470,6 +3471,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   csql_new_arg.user_name = strdup (user_name_ptr);
   csql_new_arg.db_name = strdup (db_name_ptr);
 
+  FREE_MEM ((char *) db_name_ptr);
   FREE_MEM ((char *) csql_arg->user_name);
   FREE_MEM ((char *) csql_arg->db_name);
   FREE_MEM ((char *) csql_arg->passwd);
@@ -3487,8 +3489,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
       db_disable_trigger ();
     }
 
-//            fprintf (csql_Output_fp, "Connected.\n");
-  fprintf (csql_Output_fp, "CONNECTED : %s %s\n", csql_arg->user_name, csql_arg->db_name);
+  fprintf (csql_Output_fp, "Connected.\n");
 
 
 /*If connect is success, copy csql_new_arg to csql_arg*/

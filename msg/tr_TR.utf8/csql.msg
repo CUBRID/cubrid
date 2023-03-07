@@ -113,7 +113,6 @@ $  Bu 3 boş bırakılmalı
 196 Tanımlanamayan bir hata oluıtu.
 197 Çıkış yönlendirildişinde ';edit' izin verilmez.
 198 Biçimlendirme başarısız oldu.
-199 Geçersiz kullanıcı adı/parola/databasename/hostname; giriş reddedildi.
 
 203 <%1$s> 
 204 <Super Classes> 
