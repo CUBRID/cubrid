@@ -2099,8 +2099,8 @@ struct pt_index_info
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
   int ib_threads;
 #if defined(SUPPORT_COMPRESS_MODE)
-  short dupkey_mode;		/* refer to enDupMode */
-  short dupkey_hash_level;	/* 0 : no hash, others : hash size */
+  short compress_mode;		/* refer to EN_DUP_MODE */
+  short compress_level;		/* 0 : not use modular, others : mod by pow(2,compress_level) */
 #endif
 };
 
@@ -3253,8 +3253,8 @@ struct pt_foreign_key_info
   PT_MISC_TYPE delete_action;
   PT_MISC_TYPE update_action;
 #if defined(SUPPORT_COMPRESS_MODE)
-  short dupkey_mode;		/* refer to enDupMode */
-  short dupkey_hash_level;	/* 0 : no hash, others : hash size */
+  short compress_mode;		/* refer to EN_DUP_MODE */
+  short compress_level;		/* 0 : not use modular, others : mod by pow(2,compress_level) */
 #endif
 };
 

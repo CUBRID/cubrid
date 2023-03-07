@@ -92,10 +92,8 @@ RESERVED_INDEX_ATTR_NAME_PREFIX  "16"
 
 // *INDENT-OFF*
 #define GET_RESERVED_INDEX_ATTR_NAME(level)   (st_reserved_index_col_name[(level)])
-#define COMPRESS_LEVEL_SHIFT_LEFT(v)   ((v) << 4)
-#define COMPRESS_LEVEL_SHIFT_RIGHT(v)  ((v) >> 4)
-#define MK_RESERVED_INDEX_ATTR_ID(level)      (((int)RESERVED_INDEX_ATTR_ID_BASE) - COMPRESS_LEVEL_SHIFT_LEFT((level)))
-#define GET_RESERVED_INDEX_ATTR_LEVEL(attid)  (COMPRESS_LEVEL_SHIFT_RIGHT(((int)RESERVED_INDEX_ATTR_ID_BASE) - (attid)))
+#define MK_RESERVED_INDEX_ATTR_ID(level)      (((int)RESERVED_INDEX_ATTR_ID_BASE) - (level))
+#define GET_RESERVED_INDEX_ATTR_LEVEL(attid)  (((int)RESERVED_INDEX_ATTR_ID_BASE) - (attid))
 
 #define GET_RESERVED_INDEX_ATTR_MODE_LEVEL_FROM_NAME(name, level)  do {                                         \
         char chx;                                                                                               \
@@ -133,7 +131,7 @@ extern void dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char *
 					  int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames,
 					  bool is_reverse);
 
-extern char *dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupkey_hash_level);
+extern char *dk_print_reserved_index_info (char *buf, int buf_size, int compress_mode, int compress_level);
 extern int dk_sm_decompress_position (int n_attrs, SM_ATTRIBUTE ** attrs, SM_FUNCTION_INFO * function_index);
 #endif
 

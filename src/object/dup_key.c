@@ -325,9 +325,9 @@ dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, i
   int reserved_index_col_pos;
 
   assert (asc_desc != NULL);
-  assert (idx_info->dupkey_mode != COMPRESS_INDEX_MODE_NONE);
-  assert (idx_info->dupkey_hash_level >= COMPRESS_INDEX_MOD_LEVEL_ZERO
-	  && idx_info->dupkey_hash_level <= COMPRESS_INDEX_MOD_LEVEL_MAX);
+  assert (idx_info->compress_mode != COMPRESS_INDEX_MODE_NONE);
+  assert (idx_info->compress_level >= COMPRESS_INDEX_MOD_LEVEL_ZERO
+	  && idx_info->compress_level <= COMPRESS_INDEX_MOD_LEVEL_MAX);
 
   if (func_index_info)
     {
@@ -356,31 +356,31 @@ dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, i
     {
       attrs_prefix_length[reserved_index_col_pos] = -1;
     }
-  attnames[reserved_index_col_pos] = (char *) GET_RESERVED_INDEX_ATTR_NAME (idx_info->dupkey_hash_level);
+  attnames[reserved_index_col_pos] = (char *) GET_RESERVED_INDEX_ATTR_NAME (idx_info->compress_level);
   asc_desc[reserved_index_col_pos] = (is_reverse ? 1 : 0);
 
   attnames[nnames + 1] = NULL;
 }
 
 char *
-dk_print_reserved_index_info (char *buf, int buf_size, int dupkey_mode, int dupkey_hash_level)
+dk_print_reserved_index_info (char *buf, int buf_size, int compress_mode, int compress_level)
 {
   int len = 0;
 
   buf[0] = '\0';
-  if (dupkey_mode == COMPRESS_INDEX_MODE_NONE)
+  if (compress_mode == COMPRESS_INDEX_MODE_NONE)
     {
       len = snprintf (buf, buf_size, "COMPRESS HIGH");
     }
-  else if (dupkey_mode == COMPRESS_INDEX_MODE_SET)
+  else if (compress_mode == COMPRESS_INDEX_MODE_SET)
     {
-      if (dupkey_hash_level == COMPRESS_INDEX_MOD_LEVEL_ZERO)
+      if (compress_level == COMPRESS_INDEX_MOD_LEVEL_ZERO)
 	{
 	  len = snprintf (buf, buf_size, "COMPRESS LOW");
 	}
       else
 	{
-	  len = snprintf (buf, buf_size, "COMPRESS MEDIUM(%d)", dupkey_hash_level);
+	  len = snprintf (buf, buf_size, "COMPRESS MEDIUM(%d)", compress_level);
 	}
     }
 
