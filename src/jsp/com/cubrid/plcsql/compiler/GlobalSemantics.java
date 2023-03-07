@@ -30,36 +30,31 @@
 
 package com.cubrid.plcsql.compiler;
 
+import com.cubrid.plcsql.compiler.ast.DeclFunc;
+import com.cubrid.plcsql.compiler.ast.DeclProc;
 import com.cubrid.plcsql.compiler.ast.TypeSpec;
-
-import java.util.LinkedHashMap;
+import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 import java.util.List;
 
-public class SqlWithSemantics {
+public class GlobalSemantics {
 
-    public enum Kind {
-        SELECT,
-        INSERT,
-        UPDATE,
-        DELETE,
-        MERGE,
-        REPLACE,
-        TRUNCATE
+    public GlobalSemantics(List<ServerAPI.Quest> answered) {
+        // TODO
     }
 
-    public Kind kind;
-    public String rewritten;
-    public LinkedHashMap<String, String> hostVars;  // host variables and their SQL types required in their locations
-    public LinkedHashMap<String, String> selectList;// (only for select statements) columns and their SQL types
-    public List<String> intoVars;  // (only for select stetements with an into-clause) into variables
+    public TypeSpec getTableColumnType(String table, String column) {
+        return TypeSpecSimple.INTEGER;  // TODO
+    }
 
-    SqlWithSemantics(Kind kind, String rewritten, LinkedHashMap<String, String> hostVars,
-        LinkedHashMap<String, String> selectList, List<String> intoVars) {
+    public DeclFunc getDeclFunc(String name) {
+        return null;    // TODO
+    }
 
-        this.kind = kind;
-        this.rewritten = rewritten;
-        this.hostVars = hostVars;
-        this.selectList = selectList;
-        this.intoVars = intoVars;
+    public DeclProc getDeclProc(String name) {
+        return null;    // TODO
+    }
+
+    public boolean isSerial(String name) {
+        return false;   // TODO
     }
 }

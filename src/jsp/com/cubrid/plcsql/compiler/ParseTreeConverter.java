@@ -55,8 +55,9 @@ import org.apache.commons.text.StringEscapeUtils;
 public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     public final SymbolStack symbolStack = new SymbolStack();
+    public final LinkedHashMap<ParserRuleContext, ServerAPI.Quest> semanticQuestions = new LinkedHashMap<>();
 
-    public ParseTreeConverter(Map<ParserRuleContext, SqlWithSemantics> staticSqls) {
+    public ParseTreeConverter(Map<ParserRuleContext, SqlSemantics> staticSqls) {
         this.staticSqls = staticSqls;
     }
 
@@ -860,9 +861,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             }
         }
 
-        SqlWithSemantics sws = staticSqls.get(ctx.s_select_statement());
+        SqlSemantics sws = staticSqls.get(ctx.s_select_statement());
         assert sws != null;
-        if (sws.kind != SqlWithSemantics.Kind.SELECT) {
+        if (sws.kind != SqlSemantics.Kind.SELECT) {
             throw new SemanticError(
                     Misc.getLineOf(ctx.s_select_statement()), // s054
                     "SQL in a cursor definition must be a SELECT statement");
@@ -1310,9 +1311,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         String record = Misc.getNormalizedText(recNameCtx);
 
-        SqlWithSemantics sws = staticSqls.get(selectCtx);
+        SqlSemantics sws = staticSqls.get(selectCtx);
         assert sws != null;
-        if (sws.kind != SqlWithSemantics.Kind.SELECT) {
+        if (sws.kind != SqlSemantics.Kind.SELECT) {
             throw new SemanticError(
                     Misc.getLineOf(selectCtx), // s058
                     "static SQL in a FOR loop must be a SELECT statement");
@@ -1540,9 +1541,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         connectionRequired = true;
         addToImports("java.sql.*");
 
-        SqlWithSemantics sws = staticSqls.get(ctx);
+        SqlSemantics sws = staticSqls.get(ctx);
         StaticSql staticSql = checkAndConvertStaticSql(sws, ctx);
-        if (staticSql.kind == SqlWithSemantics.Kind.SELECT) {
+        if (staticSql.kind == SqlSemantics.Kind.SELECT) {
             if (staticSql.intoVars == null) {
                 throw new SemanticError(
                         Misc.getLineOf(ctx), // s055
@@ -1694,9 +1695,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     "identifier in a open-for statement must be of the SYS_REFCURSOR type");
         }
 
-        SqlWithSemantics sws = staticSqls.get(ctx.s_select_statement());
+        SqlSemantics sws = staticSqls.get(ctx.s_select_statement());
         assert sws != null;
-        if (sws.kind != SqlWithSemantics.Kind.SELECT) {
+        if (sws.kind != SqlSemantics.Kind.SELECT) {
             throw new SemanticError(
                     Misc.getLineOf(ctx.s_select_statement()), // s057
                     "SQL in an OPEN-FOR statement must be a SELECT statement");
@@ -1950,8 +1951,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         pcsToJavaTypeMap.put("BOOLEAN", "java.lang.Boolean");
 
         pcsToJavaTypeMap.put("CHAR", "java.lang.String");
+        pcsToJavaTypeMap.put("CHARACTER", "java.lang.String");
         pcsToJavaTypeMap.put("VARCHAR", "java.lang.String");
         pcsToJavaTypeMap.put("CHAR VARYING", "java.lang.String");
+        pcsToJavaTypeMap.put("CHARACTER VARYING", "java.lang.String");
         pcsToJavaTypeMap.put("STRING", "java.lang.String");
 
         pcsToJavaTypeMap.put("NUMERIC", "java.math.BigDecimal");
@@ -1997,7 +2000,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return StringEscapeUtils.escapeJava(val);
     }
 
-    private final Map<ParserRuleContext, SqlWithSemantics> staticSqls;
+    private final Map<ParserRuleContext, SqlSemantics> staticSqls;
     private final Set<String> imports = new TreeSet<>();
 
     private boolean autonomousTransaction = false;
@@ -2116,7 +2119,16 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
     }
 
-    private StaticSql checkAndConvertStaticSql(SqlWithSemantics sws, ParserRuleContext ctx) {
+    private String getNormalizedTypeName(String sqlType) {
+        int idx = sqlType.indexOf('(');
+        if (idx >= 0) {
+            sqlType = sqlType.substring(0, idx);    // cut length or precision and scale.
+        }
+
+        return sqlType.toUpperCase();
+    }
+
+    private StaticSql checkAndConvertStaticSql(SqlSemantics sws, ParserRuleContext ctx) {
 
         LinkedHashMap<ExprId, TypeSpec> hostVars = new LinkedHashMap<>();
         LinkedHashMap<String, TypeSpec> selectList = null;
@@ -2125,7 +2137,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         // check (name-binding) and convert host variables used in the SQL
         for (String var: sws.hostVars.keySet()) {
             String sqlType = sws.hostVars.get(var);
-            sqlType = sqlType.toUpperCase();
+            sqlType = getNormalizedTypeName(sqlType);
 
             var = Misc.getNormalizedText(var);
             ExprId id = visitNonFuncIdentifier(var, ctx);
@@ -2140,12 +2152,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             hostVars.put(id, javaType);
         }
 
-        if (sws.kind == SqlWithSemantics.Kind.SELECT) {
+        if (sws.kind == SqlSemantics.Kind.SELECT) {
 
             // convert select list
             selectList = new LinkedHashMap<>();
             for (String col: sws.selectList.keySet()) {
                 String sqlType = sws.selectList.get(col);
+                sqlType = getNormalizedTypeName(sqlType);
 
                 col = Misc.getNormalizedText(col);
                 TypeSpec javaType = TypeSpec.of(pcsToJavaTypeMap.get(sqlType));

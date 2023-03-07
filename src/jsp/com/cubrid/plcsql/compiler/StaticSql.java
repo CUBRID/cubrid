@@ -40,13 +40,13 @@ import java.util.List;
 public class StaticSql {
 
     public final ParserRuleContext ctx;
-    public final SqlWithSemantics.Kind kind;
+    public final SqlSemantics.Kind kind;
     public final String rewritten;
     public final LinkedHashMap<ExprId, TypeSpec> hostVars;
     public final LinkedHashMap<String, TypeSpec> selectList;
     public final List<ExprId> intoVars;  // can be null
 
-    StaticSql(ParserRuleContext ctx, SqlWithSemantics.Kind kind, String rewritten,
+    StaticSql(ParserRuleContext ctx, SqlSemantics.Kind kind, String rewritten,
         LinkedHashMap<ExprId, TypeSpec> hostVars, LinkedHashMap<String, TypeSpec> selectList, List<ExprId> intoVars) {
 
         this.ctx = ctx;
