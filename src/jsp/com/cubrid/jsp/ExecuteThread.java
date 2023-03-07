@@ -53,7 +53,6 @@ import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.sql.SQLException;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class ExecuteThread extends Thread {
 
@@ -92,8 +91,6 @@ public class ExecuteThread extends Thread {
     private CUBRIDUnpacker unpacker = new CUBRIDUnpacker();
     private CUBRIDPacker packer;
 
-    private AtomicInteger status = new AtomicInteger(ExecuteThreadStatus.IDLE.getValue());
-
     private StoredProcedure storedProcedure = null;
     private PrepareArgs prepareArgs = null;
 
@@ -127,22 +124,6 @@ public class ExecuteThread extends Thread {
         client = null;
         output = null;
         // charSet = null;
-    }
-
-    public void setStatus(Integer value) {
-        this.status.set(value);
-    }
-
-    public void setStatus(ExecuteThreadStatus value) {
-        this.status.set(value.getValue());
-    }
-
-    public Integer getStatus() {
-        return status.get();
-    }
-
-    public boolean compareStatus(ExecuteThreadStatus value) {
-        return (status.get() == value.getValue());
     }
 
     public void setCharSet(String conCharsetName) {
@@ -228,7 +209,6 @@ public class ExecuteThread extends Thread {
                 ContextManager.deregisterThread(Thread.currentThread().getId());
             } catch (Throwable e) {
                 if (e instanceof IOException) {
-                    setStatus(ExecuteThreadStatus.END);
                     /*
                      * CAS disconnects socket
                      * 1) end of the procedure successfully by calling jsp_close_internal_connection
@@ -237,7 +217,6 @@ public class ExecuteThread extends Thread {
                      */
                     break;
                 } else {
-                    setStatus(ExecuteThreadStatus.ERROR);
                     Throwable throwable = e;
                     if (e instanceof InvocationTargetException) {
                         throwable = ((InvocationTargetException) e).getTargetException();
@@ -276,8 +255,6 @@ public class ExecuteThread extends Thread {
                         unpacker.getCurrentPosition(),
                         unpacker.getCurrentLimit() - unpacker.getCurrentPosition());
         ctx.getInboundQueue().add(payloadBuffer);
-
-        setStatus(ExecuteThreadStatus.IDLE);
         return header;
     }
 
@@ -317,17 +294,11 @@ public class ExecuteThread extends Thread {
         unpacker.setBuffer(ctx.getInboundQueue().take());
         long id = unpacker.unpackBigint();
 
-        setStatus(ExecuteThreadStatus.PARSE);
         StoredProcedure procedure = makeStoredProcedure(unpacker);
-
-        setStatus(ExecuteThreadStatus.INVOKE);
         Value result = procedure.invoke();
 
         /* send results */
-        setStatus(ExecuteThreadStatus.RESULT);
         sendResult(result, procedure);
-
-        setStatus(ExecuteThreadStatus.IDLE);
     }
 
     private StoredProcedure makeStoredProcedure(CUBRIDUnpacker unpacker) throws Exception {
