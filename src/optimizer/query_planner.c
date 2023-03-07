@@ -8342,11 +8342,9 @@ qo_search_planner (QO_PLANNER * planner)
   {
     bool has_hint;
     PT_HINT_ENUM *hint;
-    PT_NODE *node = NULL;
 
     if (plan->use_iscan_descending == true && qo_plan_multi_range_opt (plan) == false)
       {
-	/* */
 	qo_set_use_desc (plan);
       }
 
@@ -8356,48 +8354,48 @@ qo_search_planner (QO_PLANNER * planner)
     hint = &(tree->info.query.q.select.hint);
     has_hint = (*hint & PT_HINT_USE_IDX_DESC) > 0;
 
-    if (has_hint == NULL)
+    if (has_hint)
       {
-	goto end;
-      }
+	PT_NODE *node = NULL;
 
-    /* check direction of the first order by column. */
-    node = tree->info.query.order_by;
-    if (node != NULL && tree->info.query.q.select.connect_by == NULL)
-      {
-	/* if we have order by and the hint, we allow the hint only if we have order by descending on first column.
-	 * Otherwise we clear it */
-	if (node->info.sort_spec.asc_or_desc == PT_ASC)
+	/* check direction of the first order by column. */
+	node = tree->info.query.order_by;
+	if (node != NULL && tree->info.query.q.select.connect_by == NULL)
 	  {
-	    *hint = (PT_HINT_ENUM) (*hint & ~PT_HINT_USE_IDX_DESC);
+	    /* if we have order by and the hint, we allow the hint only if we have order by descending on first column.
+	     * Otherwise we clear it */
+	    if (node->info.sort_spec.asc_or_desc == PT_ASC)
+	      {
+		*hint = (PT_HINT_ENUM) (*hint & ~PT_HINT_USE_IDX_DESC);
+	      }
+	    else if (qo_plan_multi_range_opt (plan) == true && plan->use_iscan_descending == false)
+	      {
+		/* CBRD-24636
+		 *
+		 * When checking MRO (Multi Range Optimization) in the qo_check_iscan_for_multi_range_opt() function,
+		 * It verify that the index used for scan contains all order by columns in the right order
+		 * and with the right ordering (or reversed ordering).
+		 * 
+		 * If use_iscan_descending is false when performing MRO (Multi Range Optimization), it means that
+		 * the order of the columns in the index and the order of the columns in order by are not the same
+		 * in reverse order.
+		 * 
+		 * Because it is not the same in the reverse order, the PT_HINT_USE_IDX_DESC hint cannot be applied.
+		 */
+		*hint = (PT_HINT_ENUM) (*hint & ~PT_HINT_USE_IDX_DESC);
+	      }
 	  }
-	else if (qo_plan_multi_range_opt (plan) == true && plan->use_iscan_descending == false)
-	  {
-	    /* CBRD-24636
-	     *
-	     * When checking MRO (Multi Range Optimization) in the qo_check_iscan_for_multi_range_opt() function,
-	     * It verify that the index used for scan contains all order by columns in the right order
-	     * and with the right ordering (or reversed ordering).
-	     * 
-	     * If use_iscan_descending is false when performing MRO (Multi Range Optimization), it means that
-	     * the order of the columns in the index and the order of the columns in order by are not the same
-	     * in reverse order.
-	     * 
-	     * Because it is not the same in the reverse order, the PT_HINT_USE_IDX_DESC hint cannot be applied.
-	     */
-	    *hint = (PT_HINT_ENUM) (*hint & ~PT_HINT_USE_IDX_DESC);
-	  }
-      }
 
-    /* check direction of the first order by column. */
-    node = tree->info.query.q.select.group_by;
-    if (node != NULL && node->flag.with_rollup == NULL)
-      {
-	/* if we have group by and the hint, we allow the hint only if we have group by descending on first column.
-	 * Otherwise we clear it */
-	if (node->info.sort_spec.asc_or_desc == PT_ASC)
+	/* check direction of the first order by column. */
+	node = tree->info.query.q.select.group_by;
+	if (node != NULL && node->flag.with_rollup == NULL)
 	  {
-	    *hint = (PT_HINT_ENUM) (*hint & ~PT_HINT_USE_IDX_DESC);
+	    /* if we have group by and the hint, we allow the hint only if we have group by descending on first column.
+	     * Otherwise we clear it */
+	    if (node->info.sort_spec.asc_or_desc == PT_ASC)
+	      {
+		*hint = (PT_HINT_ENUM) (*hint & ~PT_HINT_USE_IDX_DESC);
+	      }
 	  }
       }
   }
