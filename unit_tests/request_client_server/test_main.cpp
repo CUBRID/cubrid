@@ -769,7 +769,6 @@ TEST_CASE ("Test response broker without responses and with terminate/abort", ""
 
   constexpr size_t BUCKET_COUNT = 30;
   constexpr size_t REQUEST_RESPONSE_THREAD_COUNT = 300; // more than the bucket count
-  constexpr size_t REQUEST_COUNT = 4200;
 
   cubcomm::response_sequence_number_generator rsn_gen;
   cubcomm::response_broker<cubcomm::response_sequence_number, css_error_code> broker (BUCKET_COUNT, NO_ERRORS,
