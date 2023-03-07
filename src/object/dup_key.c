@@ -81,22 +81,22 @@ dk_or_attribute_initialized ()
 
   for (level = COMPRESS_INDEX_MOD_LEVEL_ZERO; level <= COMPRESS_INDEX_MOD_LEVEL_MAX; level++)
     {
-      att_id = MK_RESERVED_INDEX_ATTR_ID (level);
+      att_id = MK_COMPRESS_INDEX_ATTR_ID (level);
       st_or_atts[level].id = att_id;
       st_or_atts[level].domain = get_reserved_index_attr_domain_type (level);
       st_or_atts[level].type = st_or_atts[level].domain->type->id;
 
 #ifndef NDEBUG
       cnt++;
-      reserved_name = GET_RESERVED_INDEX_ATTR_NAME (level);
+      reserved_name = GET_COMPRESS_INDEX_ATTR_NAME (level);
       domain = get_reserved_index_attr_domain_type (level);
       dk_heap_midxkey_get_reserved_index_value (att_id, &rec_oid, &v);
 
-      level2 = GET_RESERVED_INDEX_ATTR_LEVEL (att_id);
+      level2 = GET_COMPRESS_INDEX_ATTR_LEVEL (att_id);
 
       assert (level == level2);
-      assert (IS_RESERVED_INDEX_ATTR_ID (att_id) == true);
-      assert (IS_RESERVED_INDEX_ATTR_NAME (reserved_name) == true);
+      assert (IS_COMPRESS_INDEX_ATTR_ID (att_id) == true);
+      assert (IS_COMPRESS_INDEX_ATTR_NAME (reserved_name) == true);
 
       GET_RESERVED_INDEX_ATTR_MODE_LEVEL_FROM_NAME (reserved_name, level2);
       assert (level == level2);
@@ -114,9 +114,9 @@ dk_or_attribute_initialized ()
 void *
 dk_find_or_reserved_index_attribute (int att_id)
 {
-  int level = GET_RESERVED_INDEX_ATTR_LEVEL (att_id);
+  int level = GET_COMPRESS_INDEX_ATTR_LEVEL (att_id);
 
-  assert (IS_RESERVED_INDEX_ATTR_ID (att_id));
+  assert (IS_COMPRESS_INDEX_ATTR_ID (att_id));
   assert (level >= COMPRESS_INDEX_MOD_LEVEL_ZERO && level <= COMPRESS_INDEX_MOD_LEVEL_MAX);
   assert (st_or_atts_init == true);
 
@@ -128,10 +128,10 @@ dk_heap_midxkey_get_reserved_index_value (int att_id, OID * rec_oid, DB_VALUE * 
 {
   // The rec_oid may be NULL when the index of the UNIQUE attribute is an index. 
   // In that case, however, it cannot entered here.
-  short level = GET_RESERVED_INDEX_ATTR_LEVEL (att_id);
+  short level = GET_COMPRESS_INDEX_ATTR_LEVEL (att_id);
 
   assert_release (rec_oid != NULL);
-  assert (IS_RESERVED_INDEX_ATTR_ID (att_id));
+  assert (IS_COMPRESS_INDEX_ATTR_ID (att_id));
 
 #ifndef NDEBUG
 #define OID_2_BIGINT(oidptr) (((oidptr)->volid << 48) | ((oidptr)->pageid << 16) | (oidptr)->slotid)
@@ -215,7 +215,7 @@ dk_sm_attribute_initialized ()
 
   for (level = COMPRESS_INDEX_MOD_LEVEL_ZERO; level <= COMPRESS_INDEX_MOD_LEVEL_MAX; level++)
     {
-      reserved_name = GET_RESERVED_INDEX_ATTR_NAME (level);
+      reserved_name = GET_COMPRESS_INDEX_ATTR_NAME (level);
       domain = get_reserved_index_attr_domain_type (level);
       if (domain == NULL)
 	{
@@ -238,7 +238,7 @@ dk_sm_attribute_initialized ()
       att->class_mop = NULL;
       att->domain = domain;
       att->auto_increment = NULL;
-      att->id = MK_RESERVED_INDEX_ATTR_ID (level);
+      att->id = MK_COMPRESS_INDEX_ATTR_ID (level);
 
       st_sm_atts[level] = att;
     }
@@ -261,8 +261,8 @@ dk_find_sm_reserved_index_attribute (int att_id, const char *att_name)
   assert ((att_id != -1) || (att_name && *att_name));
   if (att_id != -1)
     {
-      assert (IS_RESERVED_INDEX_ATTR_ID (att_id));
-      level = GET_RESERVED_INDEX_ATTR_LEVEL (att_id);
+      assert (IS_COMPRESS_INDEX_ATTR_ID (att_id));
+      level = GET_COMPRESS_INDEX_ATTR_LEVEL (att_id);
     }
   else
     {
@@ -356,7 +356,7 @@ dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, i
     {
       attrs_prefix_length[reserved_index_col_pos] = -1;
     }
-  attnames[reserved_index_col_pos] = (char *) GET_RESERVED_INDEX_ATTR_NAME (idx_info->compress_level);
+  attnames[reserved_index_col_pos] = (char *) GET_COMPRESS_INDEX_ATTR_NAME (idx_info->compress_level);
   asc_desc[reserved_index_col_pos] = (is_reverse ? 1 : 0);
 
   attnames[nnames + 1] = NULL;
@@ -397,12 +397,12 @@ dk_get_decompress_position (int n_attrs, int *attr_ids, int func_attr_index_star
     {
       if (func_attr_index_start != -1)
 	{
-	  if ((func_attr_index_start > 0) && IS_RESERVED_INDEX_ATTR_ID (attr_ids[func_attr_index_start - 1]))
+	  if ((func_attr_index_start > 0) && IS_COMPRESS_INDEX_ATTR_ID (attr_ids[func_attr_index_start - 1]))
 	    {
 	      return func_attr_index_start;
 	    }
 	}
-      else if (IS_RESERVED_INDEX_ATTR_ID (attr_ids[n_attrs - 1]))
+      else if (IS_COMPRESS_INDEX_ATTR_ID (attr_ids[n_attrs - 1]))
 	{
 	  return n_attrs - 1;
 	}
@@ -419,12 +419,12 @@ dk_or_decompress_position (int n_attrs, OR_ATTRIBUTE ** attrs, OR_FUNCTION_INDEX
       if (function_index)
 	{
 	  if ((function_index->attr_index_start > 0)
-	      && IS_RESERVED_INDEX_ATTR_ID (attrs[function_index->attr_index_start - 1]->id))
+	      && IS_COMPRESS_INDEX_ATTR_ID (attrs[function_index->attr_index_start - 1]->id))
 	    {
 	      return function_index->attr_index_start;
 	    }
 	}
-      else if (IS_RESERVED_INDEX_ATTR_ID (attrs[n_attrs - 1]->id))
+      else if (IS_COMPRESS_INDEX_ATTR_ID (attrs[n_attrs - 1]->id))
 	{
 	  return n_attrs - 1;
 	}
@@ -443,12 +443,12 @@ dk_sm_decompress_position (int n_attrs, SM_ATTRIBUTE ** attrs, SM_FUNCTION_INFO 
       if (function_index)
 	{
 	  if ((function_index->attr_index_start > 0)
-	      && IS_RESERVED_INDEX_ATTR_ID (attrs[function_index->attr_index_start - 1]->id))
+	      && IS_COMPRESS_INDEX_ATTR_ID (attrs[function_index->attr_index_start - 1]->id))
 	    {
 	      return function_index->attr_index_start;
 	    }
 	}
-      else if (IS_RESERVED_INDEX_ATTR_ID (attrs[n_attrs - 1]->id))
+      else if (IS_COMPRESS_INDEX_ATTR_ID (attrs[n_attrs - 1]->id))
 	{
 	  return n_attrs - 1;
 	}

@@ -9621,7 +9621,7 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 	       * Try to find a corresponding attribute in the flattened template
 	       */
 #if defined(SUPPORT_COMPRESS_MODE)
-	      if (IS_RESERVED_INDEX_ATTR_ID (attrs[i]->id))
+	      if (IS_COMPRESS_INDEX_ATTR_ID (attrs[i]->id))
 		{
 		  assert (attrs[i + 1] == NULL);
 		  continue;
@@ -10055,7 +10055,7 @@ build_storage_order (SM_CLASS * class_, SM_TEMPLATE * flat)
 	  /* if the ids are the same, use it without looking at the name, this is how rename works */
 	  if (new_att->id != -1)
 	    {
-	      assert (!IS_RESERVED_INDEX_ATTR_ID (new_att->id));
+	      assert (!IS_COMPRESS_INDEX_ATTR_ID (new_att->id));
 	      if (new_att->id == current->id)
 		{
 		  found = new_att;
@@ -10967,7 +10967,7 @@ check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs, co
 
 #if defined(SUPPORT_COMPRESS_MODE)
       // We cannot make a PK with a function. Therefore, only the last member is checked.
-      if (n_attrs > 1 && IS_RESERVED_INDEX_ATTR_ID (key_attrs[n_attrs - 1]->id))
+      if (n_attrs > 1 && IS_COMPRESS_INDEX_ATTR_ID (key_attrs[n_attrs - 1]->id))
 	{
 	  n_attrs--;
 	}
@@ -14271,7 +14271,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	{
 	  int ptr_size = 0;
 #if defined(SUPPORT_COMPRESS_MODE)
-	  if (is_fk && IS_RESERVED_INDEX_ATTR_NAME (*ptr))
+	  if (is_fk && IS_COMPRESS_INDEX_ATTR_NAME (*ptr))
 	    {
 	      continue;
 	    }
@@ -14317,7 +14317,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  for (ptr = att_names, i = 0; i < n_attrs; ptr++, i++)
 	    {
 #if defined(SUPPORT_COMPRESS_MODE)
-	      if (is_fk && IS_RESERVED_INDEX_ATTR_NAME (*ptr))
+	      if (is_fk && IS_COMPRESS_INDEX_ATTR_NAME (*ptr))
 		{
 		  continue;
 		}
@@ -14390,7 +14390,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  for (ptr = att_names; i < n_attrs; ptr++, i++)
 	    {
 #if defined(SUPPORT_COMPRESS_MODE)
-	      if (is_fk && IS_RESERVED_INDEX_ATTR_NAME (*ptr))
+	      if (is_fk && IS_COMPRESS_INDEX_ATTR_NAME (*ptr))
 		{
 		  continue;
 		}

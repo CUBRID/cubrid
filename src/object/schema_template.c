@@ -142,7 +142,7 @@ smt_find_reserved_index_attribute (SM_TEMPLATE * template_, const char *name, SM
       return error_code;
     }
 
-  if (!IS_RESERVED_INDEX_ATTR_NAME (name))
+  if (!IS_COMPRESS_INDEX_ATTR_NAME (name))
     {
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
@@ -2067,7 +2067,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
       while (att_names[n_atts] != NULL)
 	{
 #if defined(SUPPORT_COMPRESS_MODE)
-	  if (IS_RESERVED_INDEX_ATTR_NAME (att_names[n_atts]))
+	  if (IS_COMPRESS_INDEX_ATTR_NAME (att_names[n_atts]))
 	    {
 	      reserved_index_col_pos = n_atts;
 	    }

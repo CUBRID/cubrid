@@ -870,12 +870,12 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p, OR_VA
 
 	  id = db_get_int (&key_atts[1].value);
 #if defined(SUPPORT_COMPRESS_MODE)
-	  if (IS_RESERVED_INDEX_ATTR_ID (id))
+	  if (IS_COMPRESS_INDEX_ATTR_ID (id))
 	    {
 	      DB_VALUE tmp_val;
-	      int ovfl_level = GET_RESERVED_INDEX_ATTR_LEVEL (id);
+	      int ovfl_level = GET_COMPRESS_INDEX_ATTR_LEVEL (id);
 
-	      db_make_string (&tmp_val, GET_RESERVED_INDEX_ATTR_NAME (ovfl_level));
+	      db_make_string (&tmp_val, GET_COMPRESS_INDEX_ATTR_NAME (ovfl_level));
 	      pr_clear_value (&key_atts[1].value);
 	      pr_clone_value (&tmp_val, &key_atts[1].value);
 	      if (tmp_val.need_clear)

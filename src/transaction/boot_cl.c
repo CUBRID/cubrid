@@ -5656,7 +5656,7 @@ boot_define_view_index (void)
 #if defined(SUPPORT_COMPRESS_MODE)
           "NVL2((SELECT 1 FROM _db_index_key [k] WHERE [k].index_of.class_of = [i].class_of "
                                                    "AND [k].index_of.index_name = [i].[index_name] "
-                                                   "AND [k].key_attr_name LIKE " RESERVED_INDEX_ATTR_NAME_LIKE_PATTERN
+                                                   "AND [k].key_attr_name LIKE " COMPRESS_INDEX_ATTR_NAME_LIKE_PATTERN
                  "), ([i].[key_count] - 1), [i].[key_count]) AS [key_count], "
 #else
 	  "[i].[key_count] AS [key_count], "
@@ -5837,7 +5837,7 @@ boot_define_view_index_key (void)
 		"AND [au].[auth_type] = 'SELECT'"
 #if defined(SUPPORT_COMPRESS_MODE)
              ")"
-          ") AND [k].[key_attr_name] NOT LIKE " RESERVED_INDEX_ATTR_NAME_LIKE_PATTERN,
+          ") AND [k].[key_attr_name] NOT LIKE " COMPRESS_INDEX_ATTR_NAME_LIKE_PATTERN,
 #else                
 	    ")",
 #endif            

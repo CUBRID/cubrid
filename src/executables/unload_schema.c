@@ -3453,10 +3453,10 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
       reserved_col_buf[0] = '\0';
       if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
 	{
-	  if ((n_attrs > 1) && IS_RESERVED_INDEX_ATTR_ID (atts[n_attrs - 1]->id))
+	  if ((n_attrs > 1) && IS_COMPRESS_INDEX_ATTR_ID (atts[n_attrs - 1]->id))
 	    {
 	      dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_SET,
-					    GET_RESERVED_INDEX_ATTR_LEVEL (atts[n_attrs - 1]->id));
+					    GET_COMPRESS_INDEX_ATTR_LEVEL (atts[n_attrs - 1]->id));
 	      n_attrs--;	/* Hidden column should not be displayed. */
 	    }
 	  else if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
@@ -4210,9 +4210,9 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	    {
 	      if (db_attribute_class (*att) != cl->op)
 		{
-#if defined(SUPPORT_COMPRESS_MODE)	// ctshim
+#if defined(SUPPORT_COMPRESS_MODE)
 		  att_name = db_attribute_name (*att);
-		  if (IS_RESERVED_INDEX_ATTR_NAME (att_name))
+		  if (IS_COMPRESS_INDEX_ATTR_NAME (att_name))
 		    {
 		      assert (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (constraint->type));
 		      assert (att[1] == NULL);
@@ -4244,7 +4244,7 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	    {
 	      att_name = db_attribute_name (*att);
 #if defined(SUPPORT_COMPRESS_MODE)
-	      if (IS_RESERVED_INDEX_ATTR_NAME (att_name))
+	      if (IS_COMPRESS_INDEX_ATTR_NAME (att_name))
 		{
 		  int level;
 		  int mode = COMPRESS_INDEX_MODE_SET;
@@ -4268,7 +4268,7 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	  ref_clsop = ws_mop (&(constraint->fk_info->ref_class_oid), NULL);
 	  SPLIT_USER_SPECIFIED_NAME (db_get_class_name (ref_clsop), owner_name, class_name);
 
-#if defined(SUPPORT_COMPRESS_MODE)	// ctshim
+#if defined(SUPPORT_COMPRESS_MODE)
 	  if (reserved_col_buf[0] == '\0')
 	    {
 	      dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_NONE,

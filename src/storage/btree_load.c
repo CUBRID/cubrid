@@ -3953,7 +3953,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   if (sort_args->n_attrs > 1)
     {
       // We cannot make a PK with a function. Therefore, only the last member is checked.  
-      has_reserved_index_col = IS_RESERVED_INDEX_ATTR_ID (sort_args->attr_ids[sort_args->n_attrs - 1]);
+      has_reserved_index_col = IS_COMPRESS_INDEX_ATTR_ID (sort_args->attr_ids[sort_args->n_attrs - 1]);
       if (has_reserved_index_col)
 	{
 	  fk_key_ptr = &(new_fk_key[0]);

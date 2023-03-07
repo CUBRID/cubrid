@@ -4094,7 +4094,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 	{
 #if defined(SUPPORT_COMPRESS_MODE)
 	  // We cannot make a PK with a function. Therefore, only the last member is checked.
-	  if (index->n_atts == 2 && IS_RESERVED_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
+	  if (index->n_atts == 2 && IS_COMPRESS_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
 	    {
 	      assert (DB_VALUE_TYPE (key_dbvalue) != DB_TYPE_MIDXKEY);
 	      has_null = DB_IS_NULL (key_dbvalue);
@@ -4290,7 +4290,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 #if defined(SUPPORT_COMPRESS_MODE)
 	  is_newly = false;
 	  // We cannot make a PK with a function. Therefore, only the last member is checked.
-	  if (num_attrs > 1 && IS_RESERVED_INDEX_ATTR_ID (attr_ids[num_attrs - 1]))
+	  if (num_attrs > 1 && IS_COMPRESS_INDEX_ATTR_ID (attr_ids[num_attrs - 1]))
 	    {
 	      assert ((num_attrs - 1) == index->n_atts);
 
@@ -4668,7 +4668,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 #if defined(SUPPORT_COMPRESS_MODE)
 	  is_newly = false;
 	  // We cannot make a PK with a function. Therefore, only the last member is checked.
-	  if (num_attrs > 1 && IS_RESERVED_INDEX_ATTR_ID (attr_ids[num_attrs - 1]))
+	  if (num_attrs > 1 && IS_COMPRESS_INDEX_ATTR_ID (attr_ids[num_attrs - 1]))
 	    {
 	      assert ((num_attrs - 1) == index->n_atts);
 

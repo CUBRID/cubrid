@@ -5980,7 +5980,7 @@ btree_check_remake_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE *
     {
       num_attrs = heap_get_reserved_attr_by_btid (thread_p, class_oid, btid, &last_attrid, &last_asc_desc, NULL);
       assert (num_attrs > 0);
-      if (!IS_RESERVED_INDEX_ATTR_ID (last_attrid))
+      if (!IS_COMPRESS_INDEX_ATTR_ID (last_attrid))
 	{
 	  goto clear_pos;
 	}
@@ -6010,7 +6010,7 @@ btree_check_remake_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE *
     {
       num_attrs = heap_get_reserved_attr_by_btid (thread_p, class_oid, btid, &last_attrid, &last_asc_desc, &tp_dom);
       assert (num_attrs > 0);
-      if (!IS_RESERVED_INDEX_ATTR_ID (last_attrid))
+      if (!IS_COMPRESS_INDEX_ATTR_ID (last_attrid))
 	{
 	  goto clear_pos;
 	}

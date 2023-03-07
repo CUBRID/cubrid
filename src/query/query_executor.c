@@ -21892,7 +21892,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  index_att = index->atts[j];
 	  att_id = index_att->id;
 
-	  assert (att_id >= 0 || IS_RESERVED_INDEX_ATTR_ID (att_id));
+	  assert (att_id >= 0 || IS_COMPRESS_INDEX_ATTR_ID (att_id));
 	  if (index_position == function_index_pos)
 	    {
 	      /* function position in index founded, compute attribute position in index */
@@ -21950,7 +21950,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 	  /* Column_name */
 #if defined(SUPPORT_COMPRESS_MODE)
-	  if (IS_RESERVED_INDEX_ATTR_ID (att_id))
+	  if (IS_COMPRESS_INDEX_ATTR_ID (att_id))
 	    {
 	      /* clear alloced DB_VALUEs */
 	      pr_clear_value (out_values[5]);

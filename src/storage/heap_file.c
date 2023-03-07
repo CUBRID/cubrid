@@ -9547,7 +9547,7 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 	{
 	  // Check for indexes containing all columns in the table
 	  // It does not consider indexes containing shared or class attributes.
-	  for (i = requested_num_attrs - 1; i >= 0 && !IS_RESERVED_INDEX_ATTR_ID (attrids[i]); i--)
+	  for (i = requested_num_attrs - 1; i >= 0 && !IS_COMPRESS_INDEX_ATTR_ID (attrids[i]); i--)
 	    {
 	      /* empty */ ;
 	    }
@@ -9693,7 +9693,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	  value->attrid = search_attrepr[curr_attr].id;
 	}
 #if defined(SUPPORT_COMPRESS_MODE)
-      else if (IS_RESERVED_INDEX_ATTR_ID (value->attrid))
+      else if (IS_COMPRESS_INDEX_ATTR_ID (value->attrid))
 	{
 	  // In this case, in case of reserved_attr_id in heap_attrvalue_read(), skip should be processed.
 	  value->attr_type = HEAP_INSTANCE_ATTR;
@@ -10079,7 +10079,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   int ret = NO_ERROR;
 
 #if defined(SUPPORT_COMPRESS_MODE)
-  if (IS_RESERVED_INDEX_ATTR_ID (value->attrid))
+  if (IS_COMPRESS_INDEX_ATTR_ID (value->attrid))
     {
       /* In the case of reserved_index_attr_id, there is no content that actually exists in HEAP.
        * Therefore, the read operation is skipped and success is returned. */
@@ -12054,7 +12054,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
       indexp = &classrepr->indexes[j];
 #if defined(SUPPORT_COMPRESS_MODE)
       // We cannot make a PK with a function. Therefore, only the last member is checked.
-      if (is_check_foreign && (indexp->n_atts > 1) && IS_RESERVED_INDEX_ATTR_ID (indexp->atts[indexp->n_atts - 1]->id))
+      if (is_check_foreign && (indexp->n_atts > 1) && IS_COMPRESS_INDEX_ATTR_ID (indexp->atts[indexp->n_atts - 1]->id))
 	{
 	  if (indexp->n_atts == 2)
 	    {
@@ -12102,7 +12102,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 #if defined(SUPPORT_COMPRESS_MODE)
 		  // We cannot make a PK with a function. Therefore, only the last member is checked.
 		  if (is_check_foreign && (indexp->n_atts > 1)
-		      && IS_RESERVED_INDEX_ATTR_ID (indexp->atts[indexp->n_atts - 1]->id))
+		      && IS_COMPRESS_INDEX_ATTR_ID (indexp->atts[indexp->n_atts - 1]->id))
 		    {
 		      if (indexp->n_atts == 2 && indexp->atts[0]->id == search_attrepr->id)
 			{
@@ -12495,7 +12495,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 
 #if defined(SUPPORT_COMPRESS_MODE)
   // We cannot make a PK with a function. Therefore, only the last member is checked.
-  if (is_check_foreign && (index->n_atts > 1) && IS_RESERVED_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
+  if (is_check_foreign && (index->n_atts > 1) && IS_COMPRESS_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
     {
       assert (func_res == NULL);
       num_atts--;
@@ -12556,7 +12556,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	  break;
 	}
 #if defined(SUPPORT_COMPRESS_MODE)
-      if (IS_RESERVED_INDEX_ATTR_ID (atts[i]->id))
+      if (IS_COMPRESS_INDEX_ATTR_ID (atts[i]->id))
 	{
 	  if (not_null_field_cnt > 0)
 	    {
@@ -12740,7 +12740,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	    }
 	}
 #if defined(SUPPORT_COMPRESS_MODE)
-      if (IS_RESERVED_INDEX_ATTR_ID (att_ids[i]))
+      if (IS_COMPRESS_INDEX_ATTR_ID (att_ids[i]))
 	{
 	  if (not_null_field_cnt > 0)
 	    {
@@ -13016,7 +13016,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 
 #if defined(SUPPORT_COMPRESS_MODE)
   // We cannot make a PK with a function. Therefore, only the last member is checked.
-  if (is_check_foreign && (index->n_atts > 1) && IS_RESERVED_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
+  if (is_check_foreign && (index->n_atts > 1) && IS_COMPRESS_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
     {
       assert (index->type == BTREE_FOREIGN_KEY);
       n_atts--;

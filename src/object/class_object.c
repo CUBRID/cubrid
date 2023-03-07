@@ -2573,7 +2573,7 @@ classobj_find_attribute_list (SM_ATTRIBUTE * attlist, const char *name, int id)
 	    }
 	}
 #if defined(SUPPORT_COMPRESS_MODE)
-      if (IS_RESERVED_INDEX_ATTR_NAME (name))
+      if (IS_COMPRESS_INDEX_ATTR_NAME (name))
 	{
 	  return dk_find_sm_reserved_index_attribute (-1, name);
 	}
@@ -2589,7 +2589,7 @@ classobj_find_attribute_list (SM_ATTRIBUTE * attlist, const char *name, int id)
 	    }
 	}
 #if defined(SUPPORT_COMPRESS_MODE)
-      if (IS_RESERVED_INDEX_ATTR_ID (id))
+      if (IS_COMPRESS_INDEX_ATTR_ID (id))
 	{
 	  return dk_find_sm_reserved_index_attribute (id, NULL);
 	}
@@ -4078,7 +4078,7 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
   int reserved_index_col_pos = -1;
   for (nnames = 0, namep = att_names; *namep; namep++, nnames++)
     {
-      if (IS_RESERVED_INDEX_ATTR_NAME (*namep))
+      if (IS_COMPRESS_INDEX_ATTR_NAME (*namep))
 	{
 	  reserved_index_col_pos = nnames;
 	}
@@ -4167,11 +4167,11 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	    }
 #if defined(SUPPORT_COMPRESS_MODE)
 	  /* In the case of FK, reserved index columns are ignored when comparing identical configurations. */
-	  if (*attp && IS_RESERVED_INDEX_ATTR_NAME ((*attp)->header.name))
+	  if (*attp && IS_COMPRESS_INDEX_ATTR_NAME ((*attp)->header.name))
 	    {
 	      attp++;
 	    }
-	  if (*namep && IS_RESERVED_INDEX_ATTR_NAME (*namep))
+	  if (*namep && IS_COMPRESS_INDEX_ATTR_NAME (*namep))
 	    {
 	      namep++;
 	    }
@@ -6646,7 +6646,7 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate, SM_CLASS_CONSTRAINT * const
 	      goto error_exit;
 	    }
 #if defined(SUPPORT_COMPRESS_MODE)
-	  if (count > 1 && IS_RESERVED_INDEX_ATTR_NAME (att_names[count - 1]))
+	  if (count > 1 && IS_COMPRESS_INDEX_ATTR_NAME (att_names[count - 1]))
 	    {
 	      count--;
 	    }

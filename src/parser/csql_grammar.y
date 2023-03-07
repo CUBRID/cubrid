@@ -446,11 +446,11 @@ static void pt_get_compress_mode_level(int mode_level, short* mode, short* level
 #define GET_COMPRESS_LEVEL(ml)  ((ml) >> 8)
 
 #define CHECK_RESERVED_IDX_ATTR_NAME(nm)  do {  \
-   if((nm) && IS_RESERVED_INDEX_ATTR_NAME((nm)->info.name.original))   \
+   if((nm) && IS_COMPRESS_INDEX_ATTR_NAME((nm)->info.name.original))   \
    {                                     \
       PT_ERRORf2 (this_parser, (nm), "Attribute name [%s] is not allowed." \
                                      "Names starting with \"%s\" are reserved by CUBRID.", \
-                                     (nm)->info.name.original, RESERVED_INDEX_ATTR_NAME_PREFIX);  \
+                                     (nm)->info.name.original, COMPRESS_INDEX_ATTR_NAME_PREFIX);  \
    } \
 } while(0)
 #else // #if defined(SUPPORT_COMPRESS_MODE)

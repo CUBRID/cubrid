@@ -52,63 +52,63 @@ typedef enum
 #if !defined(SUPPORT_COMPRESS_MODE)
 /* ******************************************************** */
 
-#define IS_RESERVED_INDEX_ATTR_ID(id)      (false)
-#define IS_RESERVED_INDEX_ATTR_NAME(name)  (false)
+#define IS_COMPRESS_INDEX_ATTR_ID(id)      (false)
+#define IS_COMPRESS_INDEX_ATTR_NAME(name)  (false)
 
 /* ******************************************************** */
 #else /* #if !defined(SUPPORT_COMPRESS_MODE) */
 /* ******************************************************** */
 
-#define RESERVED_INDEX_ATTR_ID_BASE    (0x8A8B8C90)	//  (1970566000)
-#define RESERVED_INDEX_ATTR_NAME_PREFIX        "_cub_idx_col_"
-#define RESERVED_INDEX_ATTR_NAME_LIKE_PATTERN  "'_cub_idx_col_%%'"
+#define COMPRESS_INDEX_ATTR_ID_BASE    (0x8A8B8C90)	//  (-1970566000)
+#define COMPRESS_INDEX_ATTR_NAME_PREFIX        "_compress_"
+#define COMPRESS_INDEX_ATTR_NAME_LIKE_PATTERN  "'_compress_%%'"
 
-#define RESERVED_INDEX_ATTR_NAME_PREFIX_LEN  (13)	// strlen(RESERVED_INDEX_ATTR_NAME_PREFIX)
+#define COMPRESS_INDEX_ATTR_NAME_PREFIX_LEN  (10)	// strlen(COMPRESS_INDEX_ATTR_NAME_PREFIX)
 #define RESERVED_INDEX_ATTR_NAME_BUF_SIZE    (255)
 
 #define COUNT_OF_COMPRESS_INDEX_MOD_LEVEL (COMPRESS_INDEX_MOD_LEVEL_MAX + 1)
 
 static const char *st_reserved_index_col_name[COUNT_OF_COMPRESS_INDEX_MOD_LEVEL] = {
 /* *INDENT-OFF* */
-RESERVED_INDEX_ATTR_NAME_PREFIX  "00",
-RESERVED_INDEX_ATTR_NAME_PREFIX  "01",
-RESERVED_INDEX_ATTR_NAME_PREFIX  "02",
-RESERVED_INDEX_ATTR_NAME_PREFIX  "03",
-RESERVED_INDEX_ATTR_NAME_PREFIX  "04",
-RESERVED_INDEX_ATTR_NAME_PREFIX  "05",
-RESERVED_INDEX_ATTR_NAME_PREFIX  "06",
-RESERVED_INDEX_ATTR_NAME_PREFIX  "07",
-RESERVED_INDEX_ATTR_NAME_PREFIX  "08",
-RESERVED_INDEX_ATTR_NAME_PREFIX  "09",
-RESERVED_INDEX_ATTR_NAME_PREFIX  "10",
-RESERVED_INDEX_ATTR_NAME_PREFIX  "11",
-RESERVED_INDEX_ATTR_NAME_PREFIX  "12",
-RESERVED_INDEX_ATTR_NAME_PREFIX  "13",
-RESERVED_INDEX_ATTR_NAME_PREFIX  "14",
-RESERVED_INDEX_ATTR_NAME_PREFIX  "15",
-RESERVED_INDEX_ATTR_NAME_PREFIX  "16"
+COMPRESS_INDEX_ATTR_NAME_PREFIX  "00",
+COMPRESS_INDEX_ATTR_NAME_PREFIX  "01",
+COMPRESS_INDEX_ATTR_NAME_PREFIX  "02",
+COMPRESS_INDEX_ATTR_NAME_PREFIX  "03",
+COMPRESS_INDEX_ATTR_NAME_PREFIX  "04",
+COMPRESS_INDEX_ATTR_NAME_PREFIX  "05",
+COMPRESS_INDEX_ATTR_NAME_PREFIX  "06",
+COMPRESS_INDEX_ATTR_NAME_PREFIX  "07",
+COMPRESS_INDEX_ATTR_NAME_PREFIX  "08",
+COMPRESS_INDEX_ATTR_NAME_PREFIX  "09",
+COMPRESS_INDEX_ATTR_NAME_PREFIX  "10",
+COMPRESS_INDEX_ATTR_NAME_PREFIX  "11",
+COMPRESS_INDEX_ATTR_NAME_PREFIX  "12",
+COMPRESS_INDEX_ATTR_NAME_PREFIX  "13",
+COMPRESS_INDEX_ATTR_NAME_PREFIX  "14",
+COMPRESS_INDEX_ATTR_NAME_PREFIX  "15",
+COMPRESS_INDEX_ATTR_NAME_PREFIX  "16"
 /* *INDENT-ON* */
 };
 
 // *INDENT-OFF*
-#define GET_RESERVED_INDEX_ATTR_NAME(level)   (st_reserved_index_col_name[(level)])
-#define MK_RESERVED_INDEX_ATTR_ID(level)      (((int)RESERVED_INDEX_ATTR_ID_BASE) - (level))
-#define GET_RESERVED_INDEX_ATTR_LEVEL(attid)  (((int)RESERVED_INDEX_ATTR_ID_BASE) - (attid))
+#define GET_COMPRESS_INDEX_ATTR_NAME(level)   (st_reserved_index_col_name[(level)])
+#define MK_COMPRESS_INDEX_ATTR_ID(level)      (((int)COMPRESS_INDEX_ATTR_ID_BASE) - (level))
+#define GET_COMPRESS_INDEX_ATTR_LEVEL(attid)  (((int)COMPRESS_INDEX_ATTR_ID_BASE) - (attid))
 
 #define GET_RESERVED_INDEX_ATTR_MODE_LEVEL_FROM_NAME(name, level)  do {                                         \
         char chx;                                                                                               \
-        if(sscanf ((name) + RESERVED_INDEX_ATTR_NAME_PREFIX_LEN, "%02d%c", &(level), &chx) != 1)                \
+        if(sscanf ((name) + COMPRESS_INDEX_ATTR_NAME_PREFIX_LEN, "%02d%c", &(level), &chx) != 1)                \
           {  assert(false); }                                                                                   \
         assert(((level) >= COMPRESS_INDEX_MOD_LEVEL_ZERO) && ((level) <= COMPRESS_INDEX_MOD_LEVEL_MAX));        \
  } while(0)
 // *INDENT-ON*
 
-#define MAX_RESERVED_INDEX_ATTR_ID  MK_RESERVED_INDEX_ATTR_ID(COMPRESS_INDEX_MOD_LEVEL_ZERO)
-#define MIN_RESERVED_INDEX_ATTR_ID  MK_RESERVED_INDEX_ATTR_ID(COMPRESS_INDEX_MOD_LEVEL_MAX)
+#define MAX_COMPRESS_INDEX_ATTR_ID  MK_COMPRESS_INDEX_ATTR_ID(COMPRESS_INDEX_MOD_LEVEL_ZERO)
+#define MIN_COMPRESS_INDEX_ATTR_ID  MK_COMPRESS_INDEX_ATTR_ID(COMPRESS_INDEX_MOD_LEVEL_MAX)
 
-#define IS_RESERVED_INDEX_ATTR_ID(id)      ((id) >= MIN_RESERVED_INDEX_ATTR_ID &&  (id) <= MAX_RESERVED_INDEX_ATTR_ID)
-#define IS_RESERVED_INDEX_ATTR_NAME(name)  \
-        (((name)[0] == '_') && !memcmp ((name), RESERVED_INDEX_ATTR_NAME_PREFIX, RESERVED_INDEX_ATTR_NAME_PREFIX_LEN))
+#define IS_COMPRESS_INDEX_ATTR_ID(id)      ((id) >= MIN_COMPRESS_INDEX_ATTR_ID &&  (id) <= MAX_COMPRESS_INDEX_ATTR_ID)
+#define IS_COMPRESS_INDEX_ATTR_NAME(name)  \
+        (((name)[0] == '_') && !memcmp ((name), COMPRESS_INDEX_ATTR_NAME_PREFIX, COMPRESS_INDEX_ATTR_NAME_PREFIX_LEN))
 
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
@@ -143,5 +143,6 @@ extern void dk_reserved_index_attribute_finalized ();
 /* ******************************************************** */
 #endif /* #if !defined(SUPPORT_COMPRESS_MODE) */
 /* ******************************************************** */
+
 
 #endif /* _DUP_KEY_H_ */
