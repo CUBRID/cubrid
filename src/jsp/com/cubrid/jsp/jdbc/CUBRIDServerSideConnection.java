@@ -64,7 +64,7 @@ import java.util.concurrent.Executor;
  * @version 2.0
  */
 public class CUBRIDServerSideConnection implements Connection {
-    private Context ctx = null;
+    private Context context = null;
 
     protected CUBRIDServerSideDatabaseMetaData mdata = null;
     protected List<Statement> statements = null;
@@ -72,10 +72,9 @@ public class CUBRIDServerSideConnection implements Connection {
 
     private int transactionIsolation;
     private int holdability;
-    private Properties clientInfo = null;
 
     public CUBRIDServerSideConnection(Context ctx) {
-        this.ctx = ctx;
+        this.context = ctx;
 
         holdability =
                 ResultSet.HOLD_CURSORS_OVER_COMMIT; // default value, there is no meaning for the
@@ -87,42 +86,42 @@ public class CUBRIDServerSideConnection implements Connection {
 
     public SUConnection getSUConnection() {
         if (suConn == null) {
-            suConn = new SUConnection(ctx);
+            suConn = new SUConnection(context);
         }
         return suConn;
     }
 
     protected void requestDBParameter() throws IOException, SQLException {
-        DBParameterInfo info = getSUConnection().getDBParameter();
+        Properties clientInfo = context.getClientInfo();
+        if (clientInfo.contains("type") == false) {
+            DBParameterInfo info = getSUConnection().getDBParameter();
 
-        switch (info.tran_isolation) {
-            case CUBRIDIsolationLevel.TRAN_READ_COMMITTED:
-                transactionIsolation = TRANSACTION_READ_COMMITTED;
-                break;
+            switch (info.tran_isolation) {
+                case CUBRIDIsolationLevel.TRAN_READ_COMMITTED:
+                    transactionIsolation = TRANSACTION_READ_COMMITTED;
+                    break;
 
-            case CUBRIDIsolationLevel.TRAN_REPEATABLE_READ:
-                transactionIsolation = TRANSACTION_REPEATABLE_READ;
-                break;
+                case CUBRIDIsolationLevel.TRAN_REPEATABLE_READ:
+                    transactionIsolation = TRANSACTION_REPEATABLE_READ;
+                    break;
 
-            case CUBRIDIsolationLevel.TRAN_SERIALIZABLE:
-                transactionIsolation = TRANSACTION_SERIALIZABLE;
-                break;
+                case CUBRIDIsolationLevel.TRAN_SERIALIZABLE:
+                    transactionIsolation = TRANSACTION_SERIALIZABLE;
+                    break;
 
-            default:
-                transactionIsolation = TRANSACTION_NONE;
-                break;
+                default:
+                    transactionIsolation = TRANSACTION_NONE;
+                    break;
+            }
+
+            clientInfo.put("type", String.valueOf(info.clientIds.clientType));
+            clientInfo.put("program", info.clientIds.programName);
+            clientInfo.put("host", info.clientIds.hostName);
+            clientInfo.put("login", info.clientIds.loginName);
+            clientInfo.put("user", info.clientIds.dbUser);
+            clientInfo.put("ip", info.clientIds.clientIp);
+            clientInfo.put("pid", String.valueOf(info.clientIds.processId));
         }
-
-        // TODO: lock timeout?
-
-        clientInfo = new Properties();
-        clientInfo.put("type", String.valueOf(info.clientIds.clientType));
-        clientInfo.put("program", info.clientIds.programName);
-        clientInfo.put("host", info.clientIds.hostName);
-        clientInfo.put("login", info.clientIds.loginName);
-        clientInfo.put("user", info.clientIds.dbUser);
-        clientInfo.put("ip", info.clientIds.clientIp);
-        clientInfo.put("pid", String.valueOf(info.clientIds.processId));
     }
 
     /* To manage List<Statement> statements */
@@ -231,13 +230,11 @@ public class CUBRIDServerSideConnection implements Connection {
     }
 
     public int getTransactionIsolation() throws SQLException {
-        if (transactionIsolation == TRANSACTION_NONE) {
-            try {
-                requestDBParameter();
-            } catch (IOException e) {
-                throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
-                        CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
-            }
+        try {
+            requestDBParameter();
+        } catch (IOException e) {
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
         }
 
         return transactionIsolation;
@@ -411,16 +408,14 @@ public class CUBRIDServerSideConnection implements Connection {
 
     /* JDK 1.6 */
     public Properties getClientInfo() throws SQLException {
-        if (clientInfo == null) {
-            try {
-                requestDBParameter();
-            } catch (IOException e) {
-                throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
-                        CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
-            }
+        try {
+            requestDBParameter();
+        } catch (IOException e) {
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
         }
 
-        return clientInfo;
+        return context.getClientInfo();
     }
 
     /* JDK 1.6 */
