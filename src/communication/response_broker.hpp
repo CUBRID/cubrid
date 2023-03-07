@@ -185,8 +185,11 @@ namespace cubcomm
   template <typename T_PAYLOAD, typename T_ERROR>
   response_broker<T_PAYLOAD, T_ERROR>::bucket::~bucket ()
   {
-    // NOTE: might not hold in the event that a peer server crashes before consuming a response;
-    // in which case the response will linger on in the queue indefinitely
+    // NOTE:
+    //  - might not hold in the event that a peer server crashes before providing a response;
+    //  - currently this is either implemented (or not) in the application layers above;
+    //  - if it were to be sorted out at this level, a timeout must be added after which an
+    //    error is returned to the waiting thread
     assert (m_response_payloads.empty ());
   }
 
@@ -273,11 +276,22 @@ namespace cubcomm
 	      m_response_payloads.erase (found_it);
 	      return payload_or_error;
 	    }
-
-	  // NOTE: when terminate is invoked there is the possibility to implement a configurable behaviour:
-	  //  - either abort and return error - as done below
-	  //  - or continue waiting - with a timeout - until the request is serviced by the peer server
 	}
+
+      // terminate called; from here on - damage control
+
+      // NOTE: when terminate is invoked there is the possibility to implement a configurable behaviour:
+      //  - either abort and return error - as done below
+      //  - or continue waiting - with a timeout - until the request is serviced by the peer server
+
+      // still under lock, erase the entry from the container to validate termination condition
+      m_response_payloads.erase (found_it);
+
+      // NOTE: a [benign] race condition can happen here between the moment the container is emptied
+      // and the error result is actually returned to the waiting thread; however, the occurence of that
+      // depends very much on the way the resources are stopped globally in the upper application layers (eg:
+      // maybe the client transactions - threads - are stopped and waited for before the communication
+      // infrastructure is torn down
     }
 
     // if here, terminate was specified and there is at most one thread to notify
