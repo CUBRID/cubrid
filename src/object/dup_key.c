@@ -134,11 +134,13 @@ dk_heap_midxkey_get_reserved_index_value (int att_id, OID * rec_oid, DB_VALUE * 
   assert (IS_RESERVED_INDEX_ATTR_ID (att_id));
 
 #ifndef NDEBUG
+#define OID_2_BIGINT(oidptr) (((oidptr)->volid << 48) | ((oidptr)->pageid << 16) | (oidptr)->slotid)
+
   if (prm_get_bool_value (PRM_ID_USE_COMPRESS_INDEX_MODE_OID_TEST))
     {
       if (level == COMPRESS_INDEX_MOD_LEVEL_ZERO)
 	{
-	  db_make_int (value, (int) (OID_PSEUDO_KEY (rec_oid) % SHRT_MAX));
+	  db_make_int (value, (int) (OID_2_BIGINT (rec_oid) % SHRT_MAX));
 	}
       else
 	{

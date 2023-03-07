@@ -3451,16 +3451,19 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 
 #if defined(SUPPORT_COMPRESS_MODE)
       reserved_col_buf[0] = '\0';
-      if ((n_attrs > 1) && IS_RESERVED_INDEX_ATTR_ID (atts[n_attrs - 1]->id))
+      if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
 	{
-	  dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_SET,
-					GET_RESERVED_INDEX_ATTR_LEVEL (atts[n_attrs - 1]->id));
-	  n_attrs--;		/* Hidden column should not be displayed. */
-	}
-      else if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
-	{
-	  dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_NONE,
-					COMPRESS_INDEX_MOD_LEVEL_ZERO);
+	  if ((n_attrs > 1) && IS_RESERVED_INDEX_ATTR_ID (atts[n_attrs - 1]->id))
+	    {
+	      dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_SET,
+					    GET_RESERVED_INDEX_ATTR_LEVEL (atts[n_attrs - 1]->id));
+	      n_attrs--;	/* Hidden column should not be displayed. */
+	    }
+	  else if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
+	    {
+	      dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_NONE,
+					    COMPRESS_INDEX_MOD_LEVEL_ZERO);
+	    }
 	}
 #endif
 
@@ -4211,6 +4214,8 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 		  att_name = db_attribute_name (*att);
 		  if (IS_RESERVED_INDEX_ATTR_NAME (att_name))
 		    {
+		      assert (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (constraint->type));
+		      assert (att[1] == NULL);
 		      break;
 		    }
 #endif
