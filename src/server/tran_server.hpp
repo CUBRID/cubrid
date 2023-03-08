@@ -90,6 +90,7 @@ class tran_server
       public:
 	page_server_node (const cubcomm::node &&conn_node)
 	  : m_conn_node { conn_node }
+	  , m_saved_lsa { NULL_LSA }
 	{ }
 	page_server_node () = delete;
 
