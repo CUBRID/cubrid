@@ -79,7 +79,7 @@ async_disconnect_handler<T_CONN_HANDLER>::disconnect_loop ()
   constexpr std::chrono::seconds one_second { 1 };
 
   std::queue<connection_handler_uptr_t> disconnect_work_buffer;
-  while (!m_terminate.load () || !m_disconnect_queue.empty())
+  while (!m_terminate.load ())
     {
       {
 	std::unique_lock<std::mutex> ulock { m_queue_mtx };
@@ -92,11 +92,12 @@ async_disconnect_handler<T_CONN_HANDLER>::disconnect_loop ()
 	m_disconnect_queue.swap (disconnect_work_buffer);
       }
 
-      while (!disconnect_work_buffer.empty ())
-	{
-	  connection_handler_uptr_t &front = disconnect_work_buffer.front ();
-	  front.reset (nullptr);
-	  disconnect_work_buffer.pop ();
-	}
+      disconnect_work_buffer = {};; // clear
+    }
+
+  // clear requests added after swapped to m_disconnect_queue before termination.
+  if (!m_disconnect_queue.empty ())
+    {
+      m_disconnect_queue = {}; // clear
     }
 }
