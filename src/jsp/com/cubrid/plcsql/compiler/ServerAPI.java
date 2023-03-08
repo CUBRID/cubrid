@@ -41,13 +41,13 @@ public class ServerAPI {
         return getMockSqlSemantics(sqlTexts);
     }
 
-    public static List<Quest> getGlobalSemantics(List<Quest> quests) {
-        return getMockGlobalSemantics(quests);
+    public static List<Question> getGlobalSemantics(List<Question> questions) {
+        return getMockGlobalSemantics(questions);
     }
 
     // --------------------------------------------------------
 
-    public class Quest {
+    public static class Question {
         public int errCode;
         public String errMsg;
 
@@ -57,7 +57,7 @@ public class ServerAPI {
         }
     }
 
-    public class ProcedureSignature extends Quest {
+    public static class ProcedureSignature extends Question {
 
         public ProcedureSignature(String name) {
             this.name = name;
@@ -71,12 +71,13 @@ public class ServerAPI {
         public String[] paramTypes;    // SQL types of parameters
 
         private void setAnswer(int[] outPositions, String[] paramTypes) {
+            assert outPositions.length == paramTypes.length;
             this.outPositions = outPositions;
             this.paramTypes = paramTypes;
         }
     }
 
-    public class FunctionSignature extends Quest {
+    public static class FunctionSignature extends Question {
 
         public FunctionSignature(String name) {
             this.name = name;
@@ -91,13 +92,14 @@ public class ServerAPI {
         public String retType;         // SQL type
 
         private void setAnswer(int[] outPositions, String[] paramTypes, String retType) {
+            assert outPositions.length == paramTypes.length;
             this.outPositions = outPositions;
             this.paramTypes = paramTypes;
             this.retType = retType;
         }
     }
 
-    public class SerialOrNot extends Quest {
+    public static class SerialOrNot extends Question {
 
         public SerialOrNot(String name) {
             this.name = name;
@@ -106,15 +108,10 @@ public class ServerAPI {
         // intput
         public String name;
 
-        // output
-        public boolean isSerial;
-
-        private void setAnswer(boolean isSerial) {
-            this.isSerial = isSerial;
-        }
+        // no separate output: the existence or absence of an error is the output
     }
 
-    public class ColumnType extends Quest {
+    public static class ColumnType extends Question {
 
         public ColumnType(String table, String column) {
             this.table = table;
@@ -196,11 +193,11 @@ public class ServerAPI {
     private static final int[] MOCK_OUT_POS = new int[] { 0, 1, 1 };
     private static final String[] MOCK_PARAM_TYPES = new String[] { "INTEGER", "VARCHAR", "FLOAT" };
 
-    private static List<Quest> getMockGlobalSemantics(List<Quest> quests) {
+    private static List<Question> getMockGlobalSemantics(List<Question> questions) {
 
         // MOCK
 
-        for (Quest q: quests) {
+        for (Question q: questions) {
             if (q instanceof ProcedureSignature) {
                 ProcedureSignature ps = (ProcedureSignature) q;
                 if (ps.name.equals("MY_PROC")) {
@@ -218,7 +215,7 @@ public class ServerAPI {
             } else if (q instanceof SerialOrNot) {
                 SerialOrNot sn = (SerialOrNot) q;
                 if (sn.name.equals("MY_SERIAL")) {
-                    sn.setAnswer(true);
+                    // OK
                 } else {
                     sn.setError(302, "no such serial:" + sn.name);
                 }
@@ -236,6 +233,6 @@ public class ServerAPI {
             }
         }
 
-        return quests;
+        return questions;
     }
 }

@@ -34,7 +34,6 @@ import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.Coerce;
 import com.cubrid.plcsql.compiler.SqlSemantics;
 import com.cubrid.plcsql.compiler.StaticSql;
-import com.cubrid.plcsql.compiler.GlobalSemantics;
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.ast.*;
@@ -44,9 +43,8 @@ import java.util.LinkedHashMap;
 
 public class TypeChecker extends AstVisitor<TypeSpec> {
 
-    public TypeChecker(SymbolStack symbolStack, GlobalSemantics gs) {
+    public TypeChecker(SymbolStack symbolStack) {
         this.symbolStack = symbolStack;
-        this.gs = gs;
     }
 
     @Override
@@ -75,9 +73,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitTypeSpecPercent(TypeSpecPercent node) {
-        TypeSpec ty = gs.getTableColumnType(node.table, node.column);
-        assert ty != null;
-        node.setResolvedType(ty);
+        assert node.resolvedType != null;
         return null;
     }
 
@@ -381,11 +377,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprGlobalFuncCall(ExprGlobalFuncCall node) {
-        DeclFunc declFunc = gs.getDeclFunc(node.name);
-        assert declFunc != null;
-
-        checkRoutineCall(declFunc, node.args.nodes);
-        return declFunc.retType;
+        assert node.decl != null;
+        checkRoutineCall(node.decl, node.args.nodes);
+        return node.decl.retType;
     }
 
     @Override
@@ -471,7 +465,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprSerialVal(ExprSerialVal node) {
-        assert gs.isSerial(node.name);
+        assert node.verified;
         return TypeSpecSimple.BIGDECIMAL; // TODO: apply precision and scale
     }
 
@@ -772,10 +766,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitStmtGlobalProcCall(StmtGlobalProcCall node) {
-        DeclProc declProc = gs.getDeclProc(node.name);
-        assert declProc != null;
-
-        checkRoutineCall(declProc, node.args.nodes);
+        assert node.decl != null;
+        checkRoutineCall(node.decl, node.args.nodes);
         return null;
     }
 
@@ -886,7 +878,6 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     // ------------------------------------------------------------------
 
     private SymbolStack symbolStack;
-    private GlobalSemantics gs;
 
     private TypeSpec caseSelectorType;
 

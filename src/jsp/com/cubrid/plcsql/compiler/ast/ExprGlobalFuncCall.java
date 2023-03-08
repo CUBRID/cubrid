@@ -44,6 +44,8 @@ public class ExprGlobalFuncCall extends Expr {
     public final String name;
     public final NodeList<Expr> args;
 
+    public DeclFunc decl;
+
     public ExprGlobalFuncCall(ParserRuleContext ctx, String name, NodeList<Expr> args) {
         super(ctx);
 

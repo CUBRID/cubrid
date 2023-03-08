@@ -45,6 +45,8 @@ public class StmtGlobalProcCall extends Stmt {
     public final String name;
     public final NodeList<Expr> args;
 
+    public DeclProc decl;
+
     public StmtGlobalProcCall(ParserRuleContext ctx, int level, String name, NodeList<Expr> args) {
         super(ctx);
 

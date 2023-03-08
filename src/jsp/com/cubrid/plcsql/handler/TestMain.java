@@ -31,7 +31,6 @@
 package com.cubrid.plcsql.handler;
 
 import com.cubrid.jsp.data.CompileInfo;
-import com.cubrid.plcsql.compiler.GlobalSemantics;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.ServerAPI;
 import com.cubrid.plcsql.compiler.SqlSemantics;
@@ -116,7 +115,7 @@ public class TestMain {
         // typechecking
 
         TypeChecker typeChecker =
-                new TypeChecker(converter.symbolStack, null); // TODO: replace null
+                new TypeChecker(converter.symbolStack);
         typeChecker.visitUnit(unit);
 
         if (verbose) {
@@ -304,6 +303,7 @@ public class TestMain {
                 Iterator<SqlSemantics> iterSql = sqlSemantics.iterator();
                 for (ParserRuleContext ctx: ssc.staticSqlTexts.keySet()) {
                     SqlSemantics ss = iterSql.next();
+                    assert ss != null;
                     if (ss.errCode == 0) {
                         staticSqls.put(ctx, ss);
                     } else {
@@ -334,15 +334,7 @@ public class TestMain {
                 // . signature of a global procedure/function
                 // . whether a name represent a serial or not
                 // . type of a table column
-                List<ServerAPI.Quest> quests = new ArrayList(converter.semanticQuestions.values());
-                List<ServerAPI.Quest> answered = ServerAPI.getGlobalSemantics(quests);
-                Iterator<ServerAPI.Quest> iterQuests = answered.iterator();
-                for (ParserRuleContext ctx: converter.semanticQuestions.keySet()) {
-                    ServerAPI.Quest q = iterQuests.next();
-                    if (q.errCode != 0) {
-                        throw new SemanticError(Misc.getLineOf(ctx), q.errMsg);    // s410
-                    }
-                }
+                converter.askServerSemanticQuestions();
 
                 System.out.println(
                         String.format(
@@ -353,9 +345,7 @@ public class TestMain {
                 // ------------------------------------------
                 // typechecking
 
-                GlobalSemantics gs = new GlobalSemantics(answered);
-                TypeChecker typeChecker =
-                        new TypeChecker(converter.symbolStack, gs);
+                TypeChecker typeChecker = new TypeChecker(converter.symbolStack);
                 typeChecker.visitUnit(unit);
 
                 System.out.println(

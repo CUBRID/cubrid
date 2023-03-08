@@ -49,6 +49,8 @@ public class ExprSerialVal extends Expr {
     public final String name;
     public final SerialVal mode; // CURR_VAL or NEXT_VAL
 
+    public boolean verified;
+
     public ExprSerialVal(ParserRuleContext ctx, String name, SerialVal mode) {
         super(ctx);
 
