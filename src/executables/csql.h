@@ -321,7 +321,6 @@ extern "C"
 
   extern void csql_display_msg (const char *string);
   extern void csql_exit (int exit_status);
-  extern int csql (const char *argv0, CSQL_ARGUMENT * csql_arg);
 
   extern const char *csql_get_message (int message_index);
 
