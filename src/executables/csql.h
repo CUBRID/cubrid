@@ -321,6 +321,7 @@ extern "C"
 
   extern void csql_display_msg (const char *string);
   extern void csql_exit (int exit_status);
+  extern int csql (const char *argv0, CSQL_ARGUMENT * csql_arg);
 
   extern const char *csql_get_message (int message_index);
 
@@ -375,8 +376,6 @@ extern "C"
 
   extern char *string_to_string (const char *string_value, char string_delimiter, char string_introducer, int length,
 				 int *result_length, bool plain_string, bool change_single_quote);
-
-  extern int csql_arg_copy (CSQL_ARGUMENT * src, CSQL_ARGUMENT * dest);
 
 #ifdef __cplusplus
 }
