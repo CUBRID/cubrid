@@ -119,20 +119,19 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
   m_node.set_saved_lsa (saved_lsa);
 
   /*
-   * Gather all PS'es saved_lsa and sort it in descending order.
-   * The "the total node count - quorum'th element is the consensus LSA, upon which the majority (quorumn) of PS agrees.
-   * [10, 9, "6", 5, 5] -> "6" is the consensus LSA.
+   * Gather all PS'es saved_lsa and sort it in ascending order.
+   * The <total_node_count - quorum>'th element is the consensus LSA, upon which the majority (quorumn) of PS agrees.
+   * [5, 5, 6, 9, 10] -> "6" is the consensus LSA.
+   * [9, 10] -> "9"
    */
   for (const auto &node : node_vec)
     {
       collected_saved_lsa.emplace_back (node->get_saved_lsa ());
     }
-  std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end (),
-	     std::greater<log_lsa> ());
+  std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end ());
 
-  log_lsa consensus_lsa = collected_saved_lsa[total_node_cnt - 1];
-
-  if (log_Gl.m_ps_consensus_flushed_lsa < consensus_lsa)
+  const log_lsa consensus_lsa = collected_saved_lsa[total_node_cnt - quorum];
+  if (log_Gl.get_ps_consensus_flushed_lsa () < consensus_lsa)
     {
       log_Gl.update_ps_consensus_flushed_lsa (consensus_lsa);
     }
@@ -140,11 +139,11 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
   if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
     {
       std::stringstream ss;
-      log_lsa consensus_lsa = log_Gl.get_ps_consensus_flushed_lsa ();
+      const log_lsa consensus_lsa = log_Gl.get_ps_consensus_flushed_lsa ();
 
       ss << "[COMMIT CONFIRM] Received saved LSA = " << saved_lsa.pageid << "|" << saved_lsa.offset;
       ss << ", Node count = " << total_node_cnt << ", Quorum = " << quorum << ", Consensus LSA = ";
-      ss << saved_lsa.pageid << "|" << saved_lsa.offset << std::endl;
+      ss << consensus_lsa.pageid << "|" << consensus_lsa.offset << std::endl;
       ss << "Collected saved lsa list = [ ";
       for (const auto &lsa : collected_saved_lsa)
 	{

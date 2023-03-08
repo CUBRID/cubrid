@@ -4499,11 +4499,17 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, const LOG_LSA * flush_lsa)
       // *INDENT-OFF*
       if (get_server_type () == SERVER_TYPE_TRANSACTION && ts_Gl->is_page_server_connected ())
 	{
-	  log_Gl.wait_flushed_lsa (*flush_lsa);
 	  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
 	    {
+	      _er_log_debug (ARG_FILE_LINE, "[[COMMIT CONFIRM] Wait until consenesus LSA gets larger than or equal to %lld|%d.\n", LSA_AS_ARGS (flush_lsa));
+	    }
+	  
+          log_Gl.wait_flushed_lsa (*flush_lsa);
+	  
+          if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
+	    {
               log_lsa consensus_lsa = log_Gl.get_ps_consensus_flushed_lsa ();
-	      _er_log_debug (ARG_FILE_LINE, "Page server consensus committed LSA = %lld|%d.\n", LSA_AS_ARGS (&consensus_lsa));
+	      _er_log_debug (ARG_FILE_LINE, "[[COMMIT CONFIRM]] Page server consensus committed LSA = %lld|%d.\n", LSA_AS_ARGS (&consensus_lsa));
 	    }
 	}
       // *INDENT-ON*
