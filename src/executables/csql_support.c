@@ -239,9 +239,99 @@ csql_invoke_system (const char *command)
     }
 }
 
+
+/*
+ * csql_invoke_formatter()
+ *   return: CSQL_SUCCESS/CSQL_FAILURE
+ *
+ * Note:
+ *   copy command editor buffer into temporary file and
+ *   invoke formatter. After the format is finished,
+ *   read the file into editor buffer.
+ */
+int
+csql_invoke_formatter ()
+{
+  /*create an unique file in tmp folder and open it for writing */
+  auto[before_filename, before_fileptr] = filesys::open_temp_file ("bef_fmt_");
+  if (before_fileptr == NULL)
+    {
+      csql_Error_code = CSQL_ERR_OS_ERROR;
+      return CSQL_FAILURE;
+    }
+  filesys::auto_delete_file before_file_del (before_filename.c_str ());
+  filesys::auto_close_file before_file (before_fileptr);
+
+  if (csql_edit_write_file (before_file.get ()) == CSQL_FAILURE)
+    {
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return CSQL_FAILURE;
+    }
+  fclose (before_file.release ());
+
+  /*create an unique file in tmp folder */
+  auto[after_filename, after_fileptr] = filesys::open_temp_file ("aft_fmt_");
+  if (after_fileptr == NULL)
+    {
+      csql_Error_code = CSQL_ERR_OS_ERROR;
+      return CSQL_FAILURE;
+    }
+  filesys::auto_delete_file after_file_del (after_filename.c_str ());
+  filesys::auto_close_file after_file (after_fileptr);
+
+
+  /* invoke the formatter command */
+  char *cmd = csql_get_tmp_buf (strlen (csql_Formatter_cmd) + 1 + before_filename.size () + 3 + after_filename.size ());
+  if (cmd == NULL)
+    {
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return CSQL_FAILURE;
+    }
+  fclose (after_file.release ());
+  sprintf (cmd, "%s %s > %s", csql_Formatter_cmd, before_filename.c_str (), after_filename.c_str ());
+
+  if (system (cmd) != 0)
+    {
+      free_and_init (cmd);
+      csql_Error_code = CSQL_ERR_FORMAT;
+      return CSQL_FAILURE;
+    }
+
+  /* initialize editor buffer */
+  csql_edit_contents_clear ();
+  free_and_init (cmd);
+
+  /*remove the file that saved before formatting command buffer */
+  before_file.reset (fopen (before_filename.c_str (), "r"));
+  if (!before_file)
+    {
+      csql_Error_code = CSQL_ERR_OS_ERROR;
+      return CSQL_FAILURE;
+    }
+
+  /*remove the file that saved after formatting command buffer */
+  after_file.reset (fopen (after_filename.c_str (), "r"));
+  if (!after_file)
+    {
+      csql_Error_code = CSQL_ERR_OS_ERROR;
+      return CSQL_FAILURE;
+    }
+
+  /* read the formatted file into editor */
+  if (csql_edit_read_file (after_file.get ()) == CSQL_FAILURE)
+    {
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+      return CSQL_FAILURE;
+    }
+
+  return CSQL_SUCCESS;
+}
+
+
 /*
  * csql_invoke_system_editor()
  *   return: CSQL_SUCCESS/CSQL_FAILURE
+ *   argument: eidt session command argument input
  *
  * Note:
  *   copy command editor buffer into temporary file and
@@ -249,13 +339,21 @@ csql_invoke_system (const char *command)
  *   edit is finished, read the file into editor buffer
  */
 int
-csql_invoke_system_editor (void)
+csql_invoke_system_editor (const char *argument)
 {
   if (!iq_output_device_is_a_tty ())
     {
       csql_Error_code = CSQL_ERR_CANT_EDIT;
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
       return CSQL_FAILURE;
+    }
+
+  if (csql_Formatter_cmd[0] != '\0' && argument && (!strcasecmp (argument, "format") || !strcasecmp (argument, "fmt")))
+    {
+      if (csql_invoke_formatter () != CSQL_SUCCESS)
+	{
+	  return CSQL_FAILURE;
+	}
     }
 
   /* create an unique file in tmp folder and open it for writing */
@@ -277,7 +375,7 @@ csql_invoke_system_editor (void)
     }
 
   /* invoke the system editor */
-  char *cmd = csql_get_tmp_buf (strlen (csql_Editor_cmd + 1 + filename.size ()));
+  char *cmd = csql_get_tmp_buf (strlen (csql_Editor_cmd) + 1 + filename.size ());
   if (cmd == NULL)
     {
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
@@ -289,6 +387,8 @@ csql_invoke_system_editor (void)
 
   /* initialize editor buffer */
   csql_edit_contents_clear ();
+  free_and_init (cmd);
+
 
   file.reset (fopen (filename.c_str (), "r"));
   if (!file)
@@ -765,58 +865,25 @@ csql_check_server_down (void)
  * csql_get_tmp_buf()
  *   return: a pointer to a buffer for temporary formatting
  *   size(in): the number of characters required
- *
- * Note:
- *   This routine frees sprintf() users from having to worry
- *   too much about how much space they'll need; just call
- *   this with the number of characters required, and you'll
- *   get something that you don't have to worry about
- *   managing.
- *
- *   Don't free the pointer you get back from this routine
  */
 char *
 csql_get_tmp_buf (size_t size)
 {
-  static char buf[1024];
   static char *bufp = NULL;
   static size_t bufsize = 0;
 
-  if (size + 1 < sizeof (buf))
+  bufsize = size + 1;
+  bufp = (char *) malloc (bufsize);
+
+  if (bufp == NULL)
     {
-      return buf;
+      csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
+      bufsize = 0;
+      return NULL;
     }
   else
     {
-      /*
-       * buf isn't big enough, so see if we have an already-malloc'ed
-       * thing that is big enough.  If so, use it; if not, free it if
-       * it exists, and then allocate a big enough one.
-       */
-      if (size + 1 < bufsize)
-	{
-	  return bufp;
-	}
-      else
-	{
-	  if (bufp)
-	    {
-	      free_and_init (bufp);
-	      bufsize = 0;
-	    }
-	  bufsize = size + 1;
-	  bufp = (char *) malloc (bufsize);
-	  if (bufp == NULL)
-	    {
-	      csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
-	      bufsize = 0;
-	      return NULL;
-	    }
-	  else
-	    {
-	      return bufp;
-	    }
-	}
+      return bufp;
     }
 }
 
@@ -1297,7 +1364,8 @@ static CSQL_ERR_MSG_MAP csql_Err_msg_map[] = {
   {CSQL_ERR_INVALID_ARG_COMBINATION, CSQL_E_INVALIDARGCOM_TEXT},
   {CSQL_ERR_CANT_EDIT, CSQL_E_CANT_EDIT_TEXT},
   {CSQL_ERR_INFO_CMD_HELP, CSQL_HELP_INFOCMD_TEXT},
-  {CSQL_ERR_CLASS_NAME_MISSED, CSQL_E_CLASSNAMEMISSED_TEXT}
+  {CSQL_ERR_CLASS_NAME_MISSED, CSQL_E_CLASSNAMEMISSED_TEXT},
+  {CSQL_ERR_FORMAT, CSQL_E_FORMAT_TEXT}
 };
 
 /*
