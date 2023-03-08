@@ -3371,8 +3371,6 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   char *host_name_ptr = NULL;
   char *p = NULL;
   const char *err_msg;
-  int error_code;
-  bool mem_alloc = false;
   CSQL_ARGUMENT csql_new_arg;
 
   if (argument == NULL)
@@ -3389,7 +3387,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
       return DO_CMD_FAILURE;
     }
 
-  strcpy (buf, argument);
+  strncpy (buf, argument, sizeof (argument));
 
   if ((user_name_ptr = strtok_r (buf, delim, &save_ptr_strtok)) == NULL)
     {
