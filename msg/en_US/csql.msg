@@ -163,10 +163,9 @@ $ csql help messages
    ;COMmit                      - commit the current transaction.\n\
    ;ROllback                    - roll back the current transaction.\n\
    ;AUtocommit [ON|OFF]         - enable/disable auto commit mode.\n\
-   ;REStart                     - restart database.\n\
-   ;CHeckpoint                  - execute the checkpoint.\n\
-   ;Killtran                    - check the transaction status information\n\
-                                  or terminate a specific transaction.\n\
+   ;REStart                     - reconnect to the target database in a CSQL session.\n\
+   ;CHeckpoint                  - execute the checkpoint.(CSQL with --sysadm only)\n\
+   ;Killtran                    - check or abort specific transaction.\n\
 \n\
    ;SHELL_Cmd     [shell-cmd]   - set default shell, editor, print, pager and formatter\n\
    ;EDITOR_Cmd    [editor-cmd]    command to new one, or display the current\n\
@@ -179,7 +178,7 @@ $ csql help messages
    ;SChema class-name           - display schema information of a class.\n\
    ;TRIgger [`*'|trigger-name]  - display trigger definition.\n\
    ;Get system_parameter        - get the value of a system parameter.\n\
-   ;SEt system_parameter=value  - set the value of a system parameter.\n\
+   ;SEt system_parameter=value  - set the value of a system parameter.(DBA only)\n\
    ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
    ;COLumn-width [name]=[width] - set width that a specific column is displayed.\n\
    ;PLan [simple/detail/off]    - show query execution plan.\n\
@@ -191,13 +190,12 @@ $ csql help messages
    ;HISTORYRead <history_num>   - read entry on the history number into command buffer.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - enable/disable single-line mode.\n\
-   ;Connect [user-name] [database-name]@[host-name]\n\
+   ;Connect [username] [dbname]@[hostname]\n\
                                 - connect user, database, host.\n\ 
-   ;.Hist [ON/OFF]              - start/stop collecting statistics information in CSQL.\n\
+   ;.Hist [ON/OFF]              - start/stop collecting statistics information in CSQL.(DBA only)\n\
    ;.Clear_hist                 - clear the CSQL statistics information in the buffer.\n\
    ;.Dump_hist                  - display the CSQL statistics information in CSQL.\n\
-   ;.X_hist                     - display the CSQL statistics information in CSQL\n\
-                                  with statistics data initialized.\n\
+   ;.X_hist                     - display the CSQL statistics information in CSQL with statistics data initialized.\n\
    ;HElp                        - display this help message.\n\n
 
 232 <Constraints> 
