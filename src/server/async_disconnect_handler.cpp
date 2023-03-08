@@ -92,7 +92,7 @@ async_disconnect_handler<T_CONN_HANDLER>::disconnect_loop ()
 	m_disconnect_queue.swap (disconnect_work_buffer);
       }
 
-      disconnect_work_buffer = {};; // clear
+      disconnect_work_buffer = {}; // clear
     }
 
   // clear requests added after swapped to m_disconnect_queue before termination.
