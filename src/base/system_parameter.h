@@ -466,7 +466,7 @@ enum param_id
   PRM_ID_QMGR_MAX_QUERY_PER_TRAN,
   PRM_ID_REGEXP_ENGINE,
   /* change PRM_LAST_ID when adding new system parameters */
-#include "dup_key_def.h"
+#include "decompress_index_def.h"
 #if defined(SUPPORT_COMPRESS_MODE)
   PRM_ID_USE_COMPRESS_INDEX_MODE_OID_TEST,
   PRM_ID_COMPRESS_INDEX_MODE,

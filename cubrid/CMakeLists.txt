@@ -246,7 +246,7 @@ set(QUERY_HEADERS
   )
 
 set(OBJECT_SOURCES
-  ${OBJECT_DIR}/dup_key.c
+  ${OBJECT_DIR}/decompress_index.c
   ${OBJECT_DIR}/elo.c
   ${OBJECT_DIR}/lob_locator.cpp
   ${OBJECT_DIR}/object_domain.c

@@ -18,15 +18,15 @@
 
 
 /*
- * dup_key.h - Definition for management of duplicate key indexes
+ * decompress_index.h - Definition for management of duplicate key indexes
  */
 
-#ifndef _DUP_KEY_H_
-#define _DUP_KEY_H_
+#ifndef _DECOMPRESS_INDEX_H_
+#define _DECOMPRESS_INDEX_H_
 
 #ident "$Id$"
 
-#include "dup_key_def.h"
+#include "decompress_index_def.h"
 
 #if !defined(SERVER_MODE)
 #include "parse_tree.h"
@@ -145,4 +145,4 @@ extern void dk_reserved_index_attribute_finalized ();
 /* ******************************************************** */
 
 
-#endif /* _DUP_KEY_H_ */
+#endif /* _DECOMPRESS_INDEX_H_ */

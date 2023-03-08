@@ -41,7 +41,7 @@
 #include "string_opfunc.h"
 #include "system_parameter.h"
 
-#include "dup_key_def.h"
+#include "decompress_index_def.h"
 
 // forward definitions
 struct json_t;

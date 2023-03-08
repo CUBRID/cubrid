@@ -32,7 +32,7 @@
 
 #include "language_support.h"
 #if defined(SUPPORT_COMPRESS_MODE)
-#include "dup_key.h"
+#include "decompress_index.h"
 #endif
 
 namespace cubmethod

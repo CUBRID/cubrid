@@ -17,7 +17,7 @@
  */
 
 /*
- * dup_key.c - Support duplicate key index
+ * decompress_index.c - Support duplicate key index
  */
 
 #ident "$Id$"
@@ -35,7 +35,7 @@
 #include "object_representation_sr.h"
 #endif
 
-#include "dup_key.h"
+#include "decompress_index.h"
 
 #if defined(SUPPORT_COMPRESS_MODE)
 
