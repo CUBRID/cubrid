@@ -140,8 +140,11 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
   if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
     {
       std::stringstream ss;
+      log_lsa consensus_lsa = log_Gl.get_ps_consensus_flushed_lsa ();
+
       ss << "[COMMIT CONFIRM] Received saved LSA = " << saved_lsa.pageid << "|" << saved_lsa.offset;
-      ss << " Node count = " << total_node_cnt << " Quorum = " << quorum << " " << std::endl;
+      ss << ", Node count = " << total_node_cnt << ", Quorum = " << quorum << ", Consensus LSA = ";
+      ss << saved_lsa.pageid << "|" << saved_lsa.offset << std::endl;
       ss << "Collected saved lsa list = [ ";
       for (const auto &lsa : collected_saved_lsa)
 	{

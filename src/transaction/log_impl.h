@@ -732,6 +732,7 @@ struct log_global
 #endif // SERVER_MODE
 
   void update_ps_consensus_flushed_lsa (const LOG_LSA & lsa);
+  log_lsa get_ps_consensus_flushed_lsa ();
   void wait_flushed_lsa (const log_lsa & flush_lsa);
 
   // *INDENT-ON*

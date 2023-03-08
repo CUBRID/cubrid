@@ -112,6 +112,13 @@ log_global::update_ps_consensus_flushed_lsa (const LOG_LSA &lsa)
   m_ps_lsa_cv.notify_all ();
 }
 
+log_lsa
+log_global::get_ps_consensus_flushed_lsa ()
+{
+  std::unique_lock<std::mutex> lock (m_ps_lsa_mutex);
+  return m_ps_consensus_flushed_lsa;
+}
+
 void
 log_global::wait_flushed_lsa (const log_lsa &flush_lsa)
 {
