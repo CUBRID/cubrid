@@ -31,13 +31,22 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class CondExpr implements AstNode {
+public class CondExpr extends AstNode {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitCondExpr(this);
+    }
 
     public final Expr cond;
     public final Expr expr;
 
-    public CondExpr(Expr cond, Expr expr) {
+    public CondExpr(ParserRuleContext ctx, Expr cond, Expr expr) {
+        super(ctx);
+
         this.cond = cond;
         this.expr = expr;
     }

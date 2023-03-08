@@ -69,9 +69,9 @@ public class TempSqlStringifier extends PcsParserBaseListener {
                 if (withinIntoClause) {
                     assert !(decl instanceof DeclParamIn)
                             : "in-parameter " + txt + " cannot be used in into-clauses";
-                    intoVars.nodes.add(new ExprId(var, symbolStack.getCurrentScope(), decl));
+                    intoVars.nodes.add(new ExprId(null, var, symbolStack.getCurrentScope(), decl));
                 } else {
-                    usedVars.nodes.add(new ExprId(var, symbolStack.getCurrentScope(), decl));
+                    usedVars.nodes.add(new ExprId(null, var, symbolStack.getCurrentScope(), decl));
                     sbuf.append(" ?");
                 }
                 return;

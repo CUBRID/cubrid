@@ -30,11 +30,21 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class StmtContinue implements Stmt {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
+
+public class StmtContinue extends Stmt {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtContinue(this);
+    }
 
     public final DeclLabel declLabel;
 
-    public StmtContinue(DeclLabel declLabel) {
+    public StmtContinue(ParserRuleContext ctx, DeclLabel declLabel) {
+        super(ctx);
+
         this.declLabel = declLabel;
     }
 
@@ -44,7 +54,7 @@ public class StmtContinue implements Stmt {
         if (declLabel == null) {
             return "continue;";
         } else {
-            return String.format("continue $%s_%d;", declLabel.name, declLabel.scope.level);
+            return String.format("continue %s_%d;", declLabel.name, declLabel.scope.level);
         }
     }
 

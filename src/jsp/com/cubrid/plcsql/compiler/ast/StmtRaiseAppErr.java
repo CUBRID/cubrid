@@ -30,12 +30,22 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class StmtRaiseAppErr implements Stmt {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
+
+public class StmtRaiseAppErr extends Stmt {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtRaiseAppErr(this);
+    }
 
     public final Expr errCode;
     public final Expr errMsg;
 
-    public StmtRaiseAppErr(Expr errCode, Expr errMsg) {
+    public StmtRaiseAppErr(ParserRuleContext ctx, Expr errCode, Expr errMsg) {
+        super(ctx);
+
         this.errCode = errCode;
         this.errMsg = errMsg;
     }
@@ -44,9 +54,9 @@ public class StmtRaiseAppErr implements Stmt {
     public String toJavaCode() {
         /* TODO
         return String.format(
-                "throw new $$APP_ERROR(%s, %s);", errCode.toJavaCode(), errMsg.toJavaCode());
+                "throw new $APP_ERROR(%s, %s);", errCode.toJavaCode(), errMsg.toJavaCode());
                 */
-        return String.format("throw new $$APP_ERROR();");
+        return String.format("throw new $APP_ERROR();");
     }
 
     // --------------------------------------------------

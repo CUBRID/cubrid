@@ -32,8 +32,38 @@ package com.cubrid.plcsql.compiler;
 
 import java.io.PrintStream;
 import org.antlr.v4.runtime.ParserRuleContext;
+import org.antlr.v4.runtime.Token;
 
 public class Misc {
+
+    public enum RoutineType {
+        FUNC,
+        PROC,
+    }
+
+    public static int getLineOf(ParserRuleContext ctx) {
+        if (ctx == null) {
+            return 0;
+        }
+
+        Token start = null;
+        while (true) {
+            start = ctx.getStart();
+            if (start == null) {
+                ctx = ctx.getParent();
+                assert ctx != null;
+            } else {
+                break;
+            }
+        }
+        assert start != null;
+
+        return start.getLine();
+    }
+
+    public static String getNormalizedText(ParserRuleContext ctx) {
+        return peelId(ctx.getText().toUpperCase());
+    }
 
     public static void printIndent(PrintStream out, int indents) {
 

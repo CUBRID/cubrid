@@ -30,7 +30,32 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public interface AstNode {
+import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-    public String toJavaCode();
+public abstract class AstNode {
+
+    public ParserRuleContext ctx;
+
+    public abstract String toJavaCode();
+
+    public abstract <R> R accept(AstVisitor<R> visitor);
+
+    public AstNode(ParserRuleContext ctx) {
+        if (ctx != null) {
+            this.ctx = ctx;
+            this.lineNo = Misc.getLineOf(ctx);
+        }
+    }
+
+    public int lineNo() {
+        return lineNo;
+    }
+
+    // ---------------------------------------------------
+    // Private
+    // ---------------------------------------------------
+
+    private int lineNo;
 }

@@ -30,10 +30,30 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public abstract class DeclId extends Decl {
-    public DeclId(ParserRuleContext ctx) {
-        super(ctx);
+public class ExprFloat extends Expr {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprFloat(this);
     }
+
+    public final String val;
+
+    public ExprFloat(ParserRuleContext ctx, String val) {
+        super(ctx);
+
+        this.val = val;
+    }
+
+    @Override
+    public String toJavaCode() {
+        return "new BigDecimal(" + val + ")";
+    }
+
+    // --------------------------------------------------
+    // Private
+    // --------------------------------------------------
 }

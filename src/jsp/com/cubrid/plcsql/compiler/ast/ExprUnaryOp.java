@@ -31,21 +31,30 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprUnaryOp implements Expr {
+public class ExprUnaryOp extends Expr {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprUnaryOp(this);
+    }
 
     public final String opStr;
-    public final Expr o;
+    public final Expr operand;
 
-    public ExprUnaryOp(String opStr, Expr o) {
+    public ExprUnaryOp(ParserRuleContext ctx, String opStr, Expr operand) {
+        super(ctx);
+
         this.opStr = opStr;
-        this.o = o;
+        this.operand = operand;
     }
 
     @Override
     public String toJavaCode() {
         return tmpl.replace("%'OPERATION'%", opStr)
-                .replace("  %'OPERAND'%", Misc.indentLines(o.toJavaCode(), 1));
+                .replace("  %'OPERAND'%", Misc.indentLines(operand.toJavaCode(), 1));
     }
 
     // --------------------------------------------------

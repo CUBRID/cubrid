@@ -31,13 +31,22 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.DateTimeParser;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.time.LocalDate;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprDate implements Expr {
+public class ExprDate extends Expr {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprDate(this);
+    }
 
     public final LocalDate date;
 
-    public ExprDate(LocalDate date) {
+    public ExprDate(ParserRuleContext ctx, LocalDate date) {
+        super(ctx);
+
         this.date = date;
     }
 

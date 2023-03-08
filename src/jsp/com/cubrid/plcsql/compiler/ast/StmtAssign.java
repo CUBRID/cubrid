@@ -30,19 +30,29 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class StmtAssign implements Stmt {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-    public final ExprId target;
+public class StmtAssign extends Stmt {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtAssign(this);
+    }
+
+    public final ExprId var;
     public final Expr val;
 
-    public StmtAssign(ExprId target, Expr val) {
-        this.target = target;
+    public StmtAssign(ParserRuleContext ctx, ExprId var, Expr val) {
+        super(ctx);
+
+        this.var = var;
         this.val = val;
     }
 
     @Override
     public String toJavaCode() {
-        return String.format("%s = %s;", target.toJavaCode(), val.toJavaCode());
+        return String.format("%s = %s;", var.toJavaCode(), val.toJavaCode());
     }
 
     // --------------------------------------------------

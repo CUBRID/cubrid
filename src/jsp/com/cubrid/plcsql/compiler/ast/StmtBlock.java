@@ -31,14 +31,23 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtBlock implements Stmt {
+public class StmtBlock extends Stmt {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtBlock(this);
+    }
 
     public final String block;
     public final NodeList<Decl> decls;
     public final Body body;
 
-    public StmtBlock(String block, NodeList<Decl> decls, Body body) {
+    public StmtBlock(ParserRuleContext ctx, String block, NodeList<Decl> decls, Body body) {
+        super(ctx);
+
         this.block = block;
         this.decls = decls;
         this.body = body;

@@ -30,17 +30,30 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DeclConst extends DeclBase implements DeclId {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
+
+public class DeclConst extends DeclVarLike {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitDeclConst(this);
+    }
 
     public final String name;
     public final TypeSpec typeSpec;
+    public final boolean notNull;
     public final Expr val;
 
-    public DeclConst(String name, TypeSpec typeSpec, Expr val) {
+    public DeclConst(
+            ParserRuleContext ctx, String name, TypeSpec typeSpec, boolean notNull, Expr val) {
+        super(ctx);
+
         assert val != null;
 
         this.name = name;
         this.typeSpec = typeSpec;
+        this.notNull = notNull;
         this.val = val;
     }
 
@@ -49,13 +62,13 @@ public class DeclConst extends DeclBase implements DeclId {
     }
 
     @Override
-    public String typeStr() {
+    public String kind() {
         return "constant";
     }
 
     @Override
     public String toJavaCode() {
-        return String.format("%s $%s = %s;", typeSpec.toJavaCode(), name, val.toJavaCode());
+        return String.format("%s %s = %s;", typeSpec.toJavaCode(), name, val.toJavaCode());
     }
 
     // --------------------------------------------------

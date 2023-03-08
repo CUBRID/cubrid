@@ -31,13 +31,17 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprCast implements Expr {
+public class ExprCast extends Expr {
 
     public final Expr expr;
     public String ty = null;
 
-    public ExprCast(Expr expr) {
+    public ExprCast(ParserRuleContext ctx, Expr expr) {
+        super(ctx);
+
         this.expr = expr;
     }
 
@@ -50,6 +54,12 @@ public class ExprCast implements Expr {
             assert false
                     : "target type of an ExprCast is set to " + ty + " with already set " + this.ty;
         }
+    }
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
     }
 
     @Override

@@ -30,17 +30,27 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class ExprStr implements Expr {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
+
+public class ExprStr extends Expr {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprStr(this);
+    }
 
     public final String val;
 
-    public ExprStr(String val) {
+    public ExprStr(ParserRuleContext ctx, String val) {
+        super(ctx);
+
         this.val = val;
     }
 
     @Override
     public String toJavaCode() {
-        return '"' + val + '"'; // TODO: do I have to escape val?
+        return '"' + val + '"';
     }
 
     // --------------------------------------------------

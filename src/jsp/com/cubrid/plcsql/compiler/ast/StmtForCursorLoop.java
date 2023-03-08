@@ -31,25 +31,31 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class StmtForCursorLoop extends StmtCursorOpen {
 
-    // public final int level;
-    // public final ExprId cursor;
-    // public final NodeList<Expr> args;
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtForCursorLoop(this);
+    }
+
     public final String label;
     public final String record;
     public final NodeList<Stmt> stmts;
 
     public StmtForCursorLoop(
-            int level,
+            ParserRuleContext ctx,
             ExprId cursor,
             NodeList<Expr> args,
             String label,
             String record,
             NodeList<Stmt> stmts) {
 
-        super(level, cursor, args);
+        super(ctx, cursor, args);
+
+        assert args != null;
 
         this.label = label;
         this.record = record;
@@ -66,7 +72,7 @@ public class StmtForCursorLoop extends StmtCursorOpen {
                 .replace("%'HOST-VALUES'%", Misc.indentLines(hostValuesStr, 2, true))
                 .replace("%'RECORD'%", record)
                 .replace("%'LABEL'%", label == null ? "// no label" : label + "_%'LEVEL'%:")
-                .replace("%'LEVEL'%", "" + level)
+                .replace("%'LEVEL'%", "" + cursor.scope.level)
                 .replace("    %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 2));
     }
 
@@ -79,9 +85,9 @@ public class StmtForCursorLoop extends StmtCursorOpen {
                     "{ // for loop with a cursor",
                     "  %'DUPLICATE-CURSOR-ARG'%",
                     "  %'CURSOR'%.open(conn%'HOST-VALUES'%);",
-                    "  ResultSet $%'RECORD'%_r%'LEVEL'% = %'CURSOR'%.rs;",
+                    "  ResultSet %'RECORD'%_r%'LEVEL'% = %'CURSOR'%.rs;",
                     "  %'LABEL'%",
-                    "  while ($%'RECORD'%_r%'LEVEL'%.next()) {",
+                    "  while (%'RECORD'%_r%'LEVEL'%.next()) {",
                     "    %'STATEMENTS'%",
                     "  }",
                     "  %'CURSOR'%.close();",

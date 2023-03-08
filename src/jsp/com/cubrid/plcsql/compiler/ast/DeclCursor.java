@@ -27,12 +27,18 @@
  * OF SUCH DAMAGE.
  *
  */
-
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.util.Arrays;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class DeclCursor extends DeclBase implements DeclId {
+public class DeclCursor extends DeclId {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitDeclCursor(this);
+    }
 
     public final String name;
     public final NodeList<DeclParam> paramList;
@@ -43,7 +49,14 @@ public class DeclCursor extends DeclBase implements DeclId {
     public int[] usedValuesMap;
 
     public DeclCursor(
-            String name, NodeList<DeclParam> paramList, ExprStr sql, NodeList<ExprId> usedVars) {
+            ParserRuleContext ctx,
+            String name,
+            NodeList<DeclParam> paramList,
+            ExprStr sql,
+            NodeList<ExprId> usedVars) {
+        super(ctx);
+
+        assert paramList != null;
         this.name = name;
         this.paramList = paramList;
         this.sql = sql;
@@ -52,20 +65,15 @@ public class DeclCursor extends DeclBase implements DeclId {
         setHostValuesMap(paramList, usedVars);
     }
 
-    public TypeSpec typeSpec() {
-        assert false : "unreachable"; // cursors do not appear alone in a program
-        throw new RuntimeException("unreachable");
-    }
-
     @Override
-    public String typeStr() {
+    public String kind() {
         return "cursor";
     }
 
     @Override
     public String toJavaCode() {
         return String.format(
-                "final Query $%s = new Query(%s);\n  // param-ref-counts: %s\n  // used-values-map: %s",
+                "final Query %s = new Query(%s);\n  // param-ref-counts: %s\n  // used-values-map: %s",
                 name,
                 sql.toJavaCode(),
                 Arrays.toString(paramRefCounts),
@@ -78,7 +86,7 @@ public class DeclCursor extends DeclBase implements DeclId {
 
     private void setHostValuesMap(NodeList<DeclParam> paramList, NodeList<ExprId> usedVars) {
 
-        int paramSize = paramList == null ? 0 : paramList.nodes.size();
+        int paramSize = paramList.nodes.size();
         int usedSize = usedVars == null ? 0 : usedVars.nodes.size();
 
         paramRefCounts = new int[paramSize]; // NOTE: filled with zeros

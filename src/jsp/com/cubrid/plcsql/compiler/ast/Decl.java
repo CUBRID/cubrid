@@ -31,11 +31,27 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Scope;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public interface Decl extends AstNode {
-    void setScope(Scope scope);
+public abstract class Decl extends AstNode {
 
-    Scope scope();
+    public abstract String kind();
 
-    String typeStr();
+    public Decl(ParserRuleContext ctx) {
+        super(ctx);
+    }
+
+    public void setScope(Scope scope) {
+        this.scope = scope;
+    }
+
+    public Scope scope() {
+        return scope;
+    }
+
+    // -----------------------------------------
+    // Private
+    // -----------------------------------------
+
+    protected Scope scope;
 }

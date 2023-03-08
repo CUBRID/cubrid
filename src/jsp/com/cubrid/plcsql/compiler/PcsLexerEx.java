@@ -36,6 +36,7 @@ import org.antlr.v4.runtime.Token;
 
 public class PcsLexerEx extends PcsLexer {
     private boolean collect = true;
+    private boolean putSpace = false;
     private StringBuffer sbuf = new StringBuffer();
 
     public PcsLexerEx(CharStream input) {
@@ -54,10 +55,18 @@ public class PcsLexerEx extends PcsLexer {
                     collect = false;
                     break;
                 case SPACES:
-                    sbuf.append(' ');
+                    if (putSpace) {
+                        sbuf.append(' ');
+                        putSpace = false;
+                    }
+                    break;
+                case SINGLE_LINE_COMMENT:
+                case SINGLE_LINE_COMMENT2:
+                case MULTI_LINE_COMMENT:
                     break;
                 default:
                     sbuf.append(ret.getText().toUpperCase());
+                    putSpace = true;
             }
         }
 

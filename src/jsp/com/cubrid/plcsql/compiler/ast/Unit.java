@@ -31,31 +31,32 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.sql.*;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class Unit implements AstNode {
+public class Unit extends AstNode {
 
-    public enum TargetKind {
-        FUNCTION,
-        PROCEDURE
-    };
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitUnit(this);
+    }
 
-    public final TargetKind targetKind;
     public final boolean autonomousTransaction;
     public final boolean connectionRequired;
     public final String importsStr;
     public final DeclRoutine routine;
 
     public Unit(
-            TargetKind targetKind,
+            ParserRuleContext ctx,
             boolean autonomousTransaction,
             boolean connectionRequired,
             String importsStr,
             DeclRoutine routine) {
+        super(ctx);
 
-        assert routine.level == 1;
+        assert routine.scope.level == 1;
 
-        this.targetKind = targetKind;
         this.autonomousTransaction = autonomousTransaction;
         this.connectionRequired = connectionRequired;
         this.importsStr = importsStr;
@@ -66,7 +67,7 @@ public class Unit implements AstNode {
 
         String ret;
         if (routine.paramList == null) {
-            ret = String.format("%s.$%s()", getClassName(), routine.name);
+            ret = String.format("%s.%s()", getClassName(), routine.name);
         } else {
             boolean first = true;
             StringBuffer sbuf = new StringBuffer();
@@ -80,13 +81,13 @@ public class Unit implements AstNode {
                 sbuf.append(dp.toJavaSignature());
             }
 
-            ret = String.format("%s.$%s(%s)", getClassName(), routine.name, sbuf.toString());
+            ret = String.format("%s.%s(%s)", getClassName(), routine.name, sbuf.toString());
         }
 
-        if (targetKind == TargetKind.FUNCTION) {
-            return (ret + " return " + routine.retType.toJavaSignature());
-        } else {
+        if (routine.isProcedure()) {
             return ret;
+        } else {
+            return (ret + " return " + routine.retType.toJavaSignature());
         }
     }
 
@@ -107,8 +108,7 @@ public class Unit implements AstNode {
                 routine.decls == null
                         ? "// no declarations"
                         : tmplDeclClass
-                                .replace("%'BLOCK'%", routine.name.toLowerCase())
-                                .replace("%'LEVEL'%", "" + routine.level)
+                                .replace("%'BLOCK'%", routine.getDeclBlockName())
                                 .replace(
                                         "  %'DECLARATIONS'%",
                                         Misc.indentLines(routine.decls.toJavaCode(), 1));
@@ -133,12 +133,7 @@ public class Unit implements AstNode {
     public String getClassName() {
 
         if (className == null) {
-            String kindStr =
-                    (targetKind == TargetKind.FUNCTION)
-                            ? "Func"
-                            : (targetKind == TargetKind.PROCEDURE) ? "Proc" : null;
-            assert kindStr != null;
-
+            String kindStr = routine.isProcedure() ? "Proc" : "Func";
             className = String.format("%s_%s", kindStr, routine.name);
         }
 
@@ -156,12 +151,11 @@ public class Unit implements AstNode {
                     "",
                     "public class %'CLASS-NAME'% {",
                     "",
-                    "  public static %'RETURN-TYPE'% $%'METHOD-NAME'%(",
+                    "  public static %'RETURN-TYPE'% %'METHOD-NAME'%(",
                     "      %'PARAMETERS'%",
                     "    ) throws Exception {",
                     "",
-                    // "    Long[] sql_rowcount = new Long[] { -1L };",
-                    "    Integer[] sql_rowcount = new Integer[] { -1 };",
+                    "    Long[] sql_rowcount = new Long[] { -1L };",
                     "    %'GET-CONNECTION'%",
                     "",
                     "    %'DECL-CLASS'%",
@@ -181,7 +175,7 @@ public class Unit implements AstNode {
                     "  Decl_of_%'BLOCK'%() throws Exception {};",
                     "  %'DECLARATIONS'%",
                     "}",
-                    "Decl_of_%'BLOCK'% %'BLOCK'%_%'LEVEL'% = new Decl_of_%'BLOCK'%();");
+                    "Decl_of_%'BLOCK'% %'BLOCK'% = new Decl_of_%'BLOCK'%();");
 
     private String className;
 }

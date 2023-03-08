@@ -34,8 +34,10 @@ import com.cubrid.jsp.data.CompileInfo;
 import com.cubrid.plcsql.compiler.ParseTreeConverter;
 import com.cubrid.plcsql.compiler.ParseTreePrinter;
 import com.cubrid.plcsql.compiler.PcsLexerEx;
+import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
+import com.cubrid.plcsql.compiler.visitor.TypeChecker;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -45,51 +47,49 @@ import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
 
 public class TestMain {
+
     public static CompileInfo compilePLCSQL(String in, boolean verbose) {
         long t0 = 0, t = 0;
-        CodePointCharStream stream = CharStreams.fromString(in);
         CompileInfo info = new CompileInfo();
 
         if (verbose) {
             t0 = System.currentTimeMillis();
         }
 
+        // ------------------------------------------
+        // preparing parser
+
         ANTLRInputStream input = new ANTLRInputStream(in);
-
-        if (verbose) {
-            System.out.println(
-                    String.format(
-                            "  creating ANTLRInputStream: %f sec",
-                            ((t = System.currentTimeMillis()) - t0) / 1000.0));
-            t0 = t;
-        }
-
         PcsLexerEx lexer = new PcsLexerEx(input);
         CommonTokenStream tokens = new CommonTokenStream(lexer);
         PcsParser parser = new PcsParser(tokens);
-
         SyntaxErrorIndicator sei = new SyntaxErrorIndicator();
         parser.addErrorListener(sei);
 
         if (verbose) {
             System.out.println(
                     String.format(
-                            "  creating PcsLexerEx: %f sec",
+                            "preparing parser: %f sec",
                             ((t = System.currentTimeMillis()) - t0) / 1000.0));
             t0 = t;
         }
 
-        ParseTree ret = parser.sql_script();
-        if (ret == null) {
-            return info;
-        }
+        // ------------------------------------------
+        // parsing
 
+        ParseTree ret = parser.sql_script();
         if (verbose) {
             System.out.println(
                     String.format(
                             "parsing: %f sec", ((t = System.currentTimeMillis()) - t0) / 1000.0));
             t0 = t;
         }
+        if (ret == null) {
+            return info;
+        }
+
+        // ------------------------------------------
+        // converting
 
         ParseTreeConverter converter = new ParseTreeConverter();
         Unit unit = (Unit) converter.visit(ret);
@@ -101,6 +101,23 @@ public class TestMain {
                             ((t = System.currentTimeMillis()) - t0) / 1000.0));
             t0 = t;
         }
+
+        // ------------------------------------------
+        // typechecking
+
+        TypeChecker typeChecker =
+                new TypeChecker(converter.symbolStack, null); // TODO: replace null
+        typeChecker.visitUnit(unit);
+
+        if (verbose) {
+            System.out.println(
+                    String.format(
+                            "typechecking: %f sec",
+                            ((t = System.currentTimeMillis()) - t0) / 1000.0));
+            t0 = t;
+        }
+
+        // ------------------------------------------
 
         info.translated = unit.toJavaCode();
         info.sqlTemplate = String.format(lexer.getCreateSqlTemplate(), unit.getJavaSignature());
@@ -120,12 +137,6 @@ public class TestMain {
             throw new RuntimeException(inFilePath + " is not a file");
         }
 
-        System.out.println(
-                String.format(
-                        "  creating File: %f sec",
-                        ((t = System.currentTimeMillis()) - t0) / 1000.0));
-        t0 = t;
-
         FileInputStream in;
         try {
             in = new FileInputStream(f);
@@ -133,24 +144,12 @@ public class TestMain {
             throw new RuntimeException(e);
         }
 
-        System.out.println(
-                String.format(
-                        "  creating FileInputStream: %f sec",
-                        ((t = System.currentTimeMillis()) - t0) / 1000.0));
-        t0 = t;
-
         ANTLRInputStream input;
         try {
             input = new ANTLRInputStream(in);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-
-        System.out.println(
-                String.format(
-                        "  creating ANTLRInputStream: %f sec",
-                        ((t = System.currentTimeMillis()) - t0) / 1000.0));
-        t0 = t;
 
         PcsLexerEx lexer = new PcsLexerEx(input);
         CommonTokenStream tokens = new CommonTokenStream(lexer);
@@ -161,7 +160,7 @@ public class TestMain {
 
         System.out.println(
                 String.format(
-                        "  creating PcsLexerEx: %f sec",
+                        "  preparing parser: %f sec",
                         ((t = System.currentTimeMillis()) - t0) / 1000.0));
         t0 = t;
 
@@ -214,15 +213,34 @@ public class TestMain {
 
         long t, t0;
 
-        int failCnt = 0;
-        for (int i = 0; i < args.length; i++) {
+        boolean optPrintParseTree = false;
 
-            System.out.println(String.format("file #%d: %s", i, args[i]));
+        int i;
+        for (i = 0; i < args.length; i++) {
+            String arg = args[i];
+            if (arg.startsWith("-")) {
+                if ("-p".equals(arg)) {
+                    optPrintParseTree = true;
+                } else {
+                    throw new RuntimeException("unknown option " + arg);
+                }
+            } else {
+                break;
+            }
+        }
+
+        int failCnt = 0;
+        for (int j = i; j < args.length; j++) {
+
+            System.out.println(String.format("file #%d: %s", j - i, args[j]));
 
             try {
                 t0 = System.currentTimeMillis();
 
-                String infile = args[i];
+                // ------------------------------------------
+                // parsing
+
+                String infile = args[j];
                 String[] sqlTemplate = new String[1];
                 ParseTree tree = parse(infile, sqlTemplate);
                 if (tree == null) {
@@ -237,24 +255,28 @@ public class TestMain {
 
                 PrintStream out;
 
-                // walk with a pretty printer to print parse tree
-                out = getParseTreePrinterOutStream(i);
-                ParseTreePrinter pp = new ParseTreePrinter(out, infile);
-                ParseTreeWalker.DEFAULT.walk(pp, tree);
-                out.close();
+                // ------------------------------------------
+                // printing parse tree (optional)
 
-                System.out.println(
-                        String.format(
-                                "printing: %f sec",
-                                ((t = System.currentTimeMillis()) - t0) / 1000.0));
-                t0 = t;
+                if (optPrintParseTree) {
+                    // walk with a pretty printer to print parse tree
+                    out = getParseTreePrinterOutStream(j - i);
+                    ParseTreePrinter pp = new ParseTreePrinter(out, infile);
+                    ParseTreeWalker.DEFAULT.walk(pp, tree);
+                    out.close();
+
+                    System.out.println(
+                            String.format(
+                                    "printing: %f sec",
+                                    ((t = System.currentTimeMillis()) - t0) / 1000.0));
+                    t0 = t;
+                }
+
+                // ------------------------------------------
+                // converting parse tree to AST
 
                 ParseTreeConverter converter = new ParseTreeConverter();
                 Unit unit = (Unit) converter.visit(tree);
-                out = getJavaCodeOutStream(unit.getClassName());
-                out.println(String.format("// seq=%05d, input-file=%s", i, infile));
-                out.print(unit.toJavaCode());
-                out.close();
 
                 System.out.println(
                         String.format(
@@ -262,12 +284,50 @@ public class TestMain {
                                 ((t = System.currentTimeMillis()) - t0) / 1000.0));
                 t0 = t;
 
+                // ------------------------------------------
+                // typechecking
+
+                TypeChecker typeChecker =
+                        new TypeChecker(converter.symbolStack, null); // TODO: replace null
+                typeChecker.visitUnit(unit);
+
                 System.out.println(
-                        "temp: " + String.format(sqlTemplate[0], unit.getJavaSignature()));
+                        String.format(
+                                "typechecking: %f sec",
+                                ((t = System.currentTimeMillis()) - t0) / 1000.0));
+                t0 = t;
+
+                // ------------------------------------------
+                // generating Java file
+
+                out = getJavaCodeOutStream(unit.getClassName());
+                out.println(String.format("// seq=%05d, input-file=%s", j - i, infile));
+                out.print(unit.toJavaCode());
+
+                System.out.println(
+                        String.format(
+                                "generating Java file: %f sec",
+                                ((t = System.currentTimeMillis()) - t0) / 1000.0));
+                t0 = t;
+
+                // ------------------------------------------
+
+                out.close();
+
+                /*
+                System.out.println(
+                        "create statement: " + String.format(sqlTemplate[0], unit.getJavaSignature()));
+                 */
+
                 System.out.println(" - success");
             } catch (Throwable e) {
+                if (e instanceof SemanticError) {
+                    System.err.println(
+                            "Semantic Error on line " + ((SemanticError) e).lineNo + ":");
+                }
+
                 e.printStackTrace();
-                System.out.println(" - failure");
+                System.err.println(" - failure");
                 failCnt++;
             }
         }

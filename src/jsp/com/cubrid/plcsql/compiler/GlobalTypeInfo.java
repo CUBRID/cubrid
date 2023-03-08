@@ -28,18 +28,14 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.Scope;
+import com.cubrid.plcsql.compiler.ast.TypeSpec;
 
-public abstract class DeclBase implements Decl {
-    public Scope scope;
-
-    public void setScope(Scope scope) {
-        this.scope = scope;
-    }
-
-    public Scope scope() {
-        return scope;
+public class GlobalTypeInfo {
+    public TypeSpec getTableColumnType(String table, String column) {
+        // TODO
+        assert false : "not implemented yet";
+        throw new RuntimeException("not implemented yet");
     }
 }

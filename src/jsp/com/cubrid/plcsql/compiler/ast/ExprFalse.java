@@ -30,15 +30,20 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class ExprFalse implements Expr {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 
-    public static ExprFalse instance() {
-        return singleton;
+public class ExprFalse extends Expr {
+
+    public static final ExprFalse SINGLETON = new ExprFalse();
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprFalse(this);
     }
 
-    private static ExprFalse singleton = new ExprFalse();
-
-    private ExprFalse() {}
+    private ExprFalse() {
+        super(null);
+    }
 
     @Override
     public String toJavaCode() {

@@ -31,14 +31,24 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtGlobalProcCall implements Stmt {
+public class StmtGlobalProcCall extends Stmt {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtGlobalProcCall(this);
+    }
 
     public final int level;
     public final String name;
     public final NodeList<Expr> args;
 
-    public StmtGlobalProcCall(int level, String name, NodeList<Expr> args) {
+    public StmtGlobalProcCall(ParserRuleContext ctx, int level, String name, NodeList<Expr> args) {
+        super(ctx);
+
+        assert args != null;
         this.level = level;
         this.name = name;
         this.args = args;
@@ -46,7 +56,7 @@ public class StmtGlobalProcCall implements Stmt {
 
     @Override
     public String toJavaCode() {
-        String dynSql = getDynSql(name, args == null ? 0 : args.nodes.size());
+        String dynSql = getDynSql(name, args.nodes.size());
         String setUsedValuesStr = Common.getSetUsedValuesStr(args);
         return tmplStmt.replace("%'PROC-NAME'%", name)
                 .replace("%'DYNAMIC-SQL'%", dynSql)

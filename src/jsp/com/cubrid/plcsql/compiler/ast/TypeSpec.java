@@ -30,15 +30,33 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class TypeSpec implements AstNode {
+public abstract class TypeSpec extends AstNode {
 
-    public final String fullName;
     public final String name;
 
-    public TypeSpec(String fullName) {
-        this.fullName = fullName;
-        String[] split = fullName.split("\\.");
-        name = split[split.length - 1];
+    public TypeSpec(String name) {
+        super(null);
+        this.name = name;
+    }
+
+    public static TypeSpec of(String name) {
+        if (name.endsWith("[]")) {
+            String elemName = name.substring(0, name.length() - 2);
+            TypeSpecSimple elem = TypeSpecSimple.of(elemName);
+            if (elem == null) {
+                return null;
+            } else {
+                return new TypeSpecVariadic(elem);
+            }
+        } else {
+            return TypeSpecSimple.of(name);
+        }
+    }
+
+    @Override
+    public boolean equals(Object that) {
+        return this == that; // Actually, this is the same as equals of Object class.
+        // I just wanted to be explicit.
     }
 
     @Override
@@ -46,11 +64,5 @@ public class TypeSpec implements AstNode {
         return name;
     }
 
-    public String toJavaSignature() {
-        return fullName;
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
+    public abstract String toJavaSignature();
 }

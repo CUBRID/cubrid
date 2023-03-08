@@ -31,27 +31,34 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtForSqlLoop implements Stmt {
+public class StmtForSqlLoop extends Stmt {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtForSqlLoop(this);
+    }
 
     public final boolean isDynamic;
-    public final int level;
     public final String label;
-    public final String record;
+    public final DeclForRecord record;
     public final Expr sql;
     public final NodeList<? extends Expr> usedExprList;
     public final NodeList<Stmt> stmts;
 
     public StmtForSqlLoop(
+            ParserRuleContext ctx,
             boolean isDynamic,
-            int level,
             String label,
-            String record,
+            DeclForRecord record,
             Expr sql,
             NodeList<? extends Expr> usedExprList,
             NodeList<Stmt> stmts) {
+        super(ctx);
+
         this.isDynamic = isDynamic;
-        this.level = level;
         this.label = label;
         this.record = record;
         this.sql = sql;
@@ -65,9 +72,9 @@ public class StmtForSqlLoop implements Stmt {
         return tmplStmt.replace("%'KIND'%", isDynamic ? "dynamic" : "static")
                 .replace("%'SQL'%", sql.toJavaCode())
                 .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedValuesStr, 1))
-                .replace("%'RECORD'%", record)
+                .replace("%'RECORD'%", record.name)
                 .replace("%'LABEL'%", label == null ? "// no label" : label + "_%'LEVEL'%:")
-                .replace("%'LEVEL'%", "" + level)
+                .replace("%'LEVEL'%", "" + record.scope.level)
                 .replace("    %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 2));
     }
 
@@ -81,9 +88,9 @@ public class StmtForSqlLoop implements Stmt {
                     "  String sql_%'LEVEL'% = %'SQL'%;",
                     "  PreparedStatement stmt_%'LEVEL'% = conn.prepareStatement(sql_%'LEVEL'%);",
                     "  %'SET-USED-VALUES'%",
-                    "  ResultSet $%'RECORD'%_r%'LEVEL'% = stmt_%'LEVEL'%.executeQuery();",
+                    "  ResultSet %'RECORD'%_r%'LEVEL'% = stmt_%'LEVEL'%.executeQuery();",
                     "  %'LABEL'%",
-                    "  while ($%'RECORD'%_r%'LEVEL'%.next()) {",
+                    "  while (%'RECORD'%_r%'LEVEL'%.next()) {",
                     "    %'STATEMENTS'%",
                     "  }",
                     "  stmt_%'LEVEL'%.close();",

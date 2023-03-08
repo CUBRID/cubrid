@@ -30,16 +30,23 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class StmtNull implements Stmt {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-    public StmtNull() {}
+// TODO: can use singleton
+public class StmtNull extends Stmt {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtNull(this);
+    }
+
+    public StmtNull(ParserRuleContext ctx) {
+        super(ctx);
+    }
 
     @Override
     public String toJavaCode() {
         return ";";
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

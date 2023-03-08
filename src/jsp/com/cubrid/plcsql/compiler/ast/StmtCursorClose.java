@@ -30,17 +30,27 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class StmtCursorClose implements Stmt {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-    public final ExprId cursor;
+public class StmtCursorClose extends Stmt {
 
-    public StmtCursorClose(ExprId cursor) {
-        this.cursor = cursor;
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtCursorClose(this);
+    }
+
+    public final ExprId id;
+
+    public StmtCursorClose(ParserRuleContext ctx, ExprId id) {
+        super(ctx);
+
+        this.id = id;
     }
 
     @Override
     public String toJavaCode() {
-        return cursor.toJavaCode() + ".close();";
+        return id.toJavaCode() + ".close();";
     }
 
     // --------------------------------------------------

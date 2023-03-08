@@ -30,21 +30,28 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DeclForRecord extends DeclBase implements DeclId {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
+
+public class DeclForRecord extends DeclId {
 
     public final String name;
 
-    public DeclForRecord(String name) {
+    public DeclForRecord(ParserRuleContext ctx, String name) {
+        super(ctx);
+
         this.name = name;
     }
 
-    public TypeSpec typeSpec() {
-        assert false : "unreachable"; // records without field do not appear in a program
+    // TODO: separate Symbol from AstNode. Remove 'extends Decl' and the following method
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
 
     @Override
-    public String typeStr() {
+    public String kind() {
         return "for-loop-record";
     }
 

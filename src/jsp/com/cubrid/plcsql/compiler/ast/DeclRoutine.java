@@ -31,35 +31,42 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import java.util.ArrayList;
+import java.util.List;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class DeclRoutine extends DeclBase {
+public abstract class DeclRoutine extends Decl {
 
     public final String name;
     public final NodeList<DeclParam> paramList;
     public final TypeSpec retType;
     public NodeList<Decl> decls;
     public Body body;
-    public int level;
 
     public DeclRoutine(
+            ParserRuleContext ctx,
             String name,
             NodeList<DeclParam> paramList,
             TypeSpec retType,
             NodeList<Decl> decls,
-            Body body,
-            int level) {
+            Body body) {
+        super(ctx);
+
+        assert paramList != null;
 
         this.name = name;
         this.paramList = paramList;
         this.retType = retType;
         this.decls = decls;
         this.body = body;
-        this.level = level;
     }
 
-    @Override
-    public String typeStr() {
-        return "function";
+    public String getDeclBlockName() {
+        return name.toLowerCase() + '_' + (scope.level + 1);
+    }
+
+    public boolean isProcedure() {
+        return (retType == null);
     }
 
     @Override
@@ -69,12 +76,11 @@ public class DeclRoutine extends DeclBase {
                 decls == null
                         ? "// no declarations"
                         : tmplDeclClass
-                                .replace("%'BLOCK'%", name.toLowerCase())
-                                .replace("%'LEVEL'%", "" + level)
+                                .replace("%'BLOCK'%", getDeclBlockName())
                                 .replace(
                                         "  %'DECLARATIONS'%",
                                         Misc.indentLines(decls.toJavaCode(), 1));
-        String strParams = paramList == null ? "// no parameters" : paramList.toJavaCode(",\n");
+        String strParams = paramList.toJavaCode(",\n");
 
         return tmplFuncBody
                 .replace("%'RETURN-TYPE'%", retType == null ? "void" : retType.toJavaCode())
@@ -84,9 +90,16 @@ public class DeclRoutine extends DeclBase {
                 .replace("%'METHOD-NAME'%", name);
     }
 
-    // --------------------------------------------------
-    // Package
-    // --------------------------------------------------
+    public List<TypeSpec> getParamTypes() {
+
+        List<TypeSpec> ret = new ArrayList<TypeSpec>();
+
+        for (DeclParam param : paramList.nodes) {
+            ret.add(param.typeSpec());
+        }
+
+        return ret;
+    }
 
     public String argsToJavaCode(NodeList<Expr> args) {
 
@@ -121,7 +134,7 @@ public class DeclRoutine extends DeclBase {
 
     private static final String tmplFuncBody =
             Misc.combineLines(
-                    "%'RETURN-TYPE'% $%'METHOD-NAME'%(",
+                    "%'RETURN-TYPE'% %'METHOD-NAME'%(",
                     "    %'PARAMETERS'%",
                     "  ) throws Exception {",
                     "",
@@ -136,5 +149,5 @@ public class DeclRoutine extends DeclBase {
                     "  Decl_of_%'BLOCK'%() throws Exception {};",
                     "  %'DECLARATIONS'%",
                     "}",
-                    "Decl_of_%'BLOCK'% %'BLOCK'%_%'LEVEL'% = new Decl_of_%'BLOCK'%();");
+                    "Decl_of_%'BLOCK'% %'BLOCK'% = new Decl_of_%'BLOCK'%();");
 }

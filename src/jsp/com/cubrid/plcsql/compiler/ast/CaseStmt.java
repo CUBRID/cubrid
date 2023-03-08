@@ -31,13 +31,22 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class CaseStmt implements AstNode {
+public class CaseStmt extends AstNode {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitCaseStmt(this);
+    }
 
     public final Expr val;
     public final NodeList<Stmt> stmts;
 
-    public CaseStmt(Expr val, NodeList<Stmt> stmts) {
+    public CaseStmt(ParserRuleContext ctx, Expr val, NodeList<Stmt> stmts) {
+        super(ctx);
+
         this.val = val;
         this.stmts = stmts;
     }
@@ -54,6 +63,6 @@ public class CaseStmt implements AstNode {
 
     private static final String tmpl =
             Misc.combineLines(
-                    "if (Objects.equals(selector_%'LEVEL'%, %'VALUE'%)) {",
+                    "if (Boolean.TRUE.equals(opEq(selector_%'LEVEL'%, %'VALUE'%))) {",
                     "  %'STATEMENTS'%", "}");
 }

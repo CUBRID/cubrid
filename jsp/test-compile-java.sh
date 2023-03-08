@@ -39,7 +39,7 @@ find $TARGET -type f | sort | while read line; do
     if [ "$line" != "${line%.java}" ]; then
         echo "# $n. compiling $line"
         log=${line%.java}.log
-        if javac -cp $SPLIB $line >& $log; then
+        if javac -cp $SPLIB:$JARDIR/lib/* $line >& $log; then
             echo " - success"
         else
             echo " - failure"

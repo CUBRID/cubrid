@@ -30,22 +30,28 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DeclForIter extends DeclBase implements DeclId {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
+
+public class DeclForIter extends DeclId {
 
     public final String name;
-    public final TypeSpec typeSpec;
 
-    public DeclForIter(String name) {
+    public DeclForIter(ParserRuleContext ctx, String name) {
+        super(ctx);
+
         this.name = name;
-        typeSpec = new TypeSpec("Integer");
     }
 
-    public TypeSpec typeSpec() {
-        return typeSpec;
+    // TODO: separate Symbol from AstNode. Remove 'extends Decl' and the following method
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
     }
 
     @Override
-    public String typeStr() {
+    public String kind() {
         return "for-loop-iterator";
     }
 

@@ -31,13 +31,22 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprIn implements Expr {
+public class ExprIn extends Expr {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprIn(this);
+    }
 
     public final Expr target;
     public final NodeList<Expr> inElements;
 
-    public ExprIn(Expr target, NodeList<Expr> inElements) {
+    public ExprIn(ParserRuleContext ctx, Expr target, NodeList<Expr> inElements) {
+        super(ctx);
+
         this.target = target;
         this.inElements = inElements;
     }

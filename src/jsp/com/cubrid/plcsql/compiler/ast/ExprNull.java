@@ -30,15 +30,20 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class ExprNull implements Expr {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 
-    public static ExprNull instance() {
-        return singleton;
+public class ExprNull extends Expr {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprNull(this);
     }
 
-    private static ExprNull singleton = new ExprNull();
+    public static final ExprNull SINGLETON = new ExprNull();
 
-    private ExprNull() {}
+    private ExprNull() {
+        super(null);
+    }
 
     @Override
     public String toJavaCode() {

@@ -31,8 +31,15 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtCase implements Stmt {
+public class StmtCase extends Stmt {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtCase(this);
+    }
 
     public final int level;
     public final Expr selector;
@@ -40,7 +47,13 @@ public class StmtCase implements Stmt {
     public final NodeList<Stmt> elsePart;
 
     public StmtCase(
-            int level, Expr selector, NodeList<CaseStmt> whenParts, NodeList<Stmt> elsePart) {
+            ParserRuleContext ctx,
+            int level,
+            Expr selector,
+            NodeList<CaseStmt> whenParts,
+            NodeList<Stmt> elsePart) {
+        super(ctx);
+
         this.level = level;
         this.selector = selector;
         this.whenParts = whenParts;
@@ -50,39 +63,38 @@ public class StmtCase implements Stmt {
     @Override
     public String toJavaCode() {
 
+        assert selectorType != null;
+
+        String elseCode;
         if (elsePart == null) {
-            return tmplStmtCaseNoElsePart
-                    .replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
-                    .replace(
-                            "  %'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(" else "), 1))
-                    .replace("%'LEVEL'%", "" + level) // level replacement must go last
-            ;
+            elseCode = "throw new CASE_NOT_FOUND();";
         } else {
-            return tmplStmtCase
-                    .replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
-                    .replace(
-                            "  %'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(" else "), 1))
-                    .replace("    %'ELSE-PART'%", Misc.indentLines(elsePart.toJavaCode(), 2))
-                    .replace("%'LEVEL'%", "" + level) // level replacement must go last
-            ;
+            elseCode = elsePart.toJavaCode();
         }
+
+        return tmplStmtCase
+                .replace("%'SELECTOR-TYPE'%", selectorType.toJavaCode())
+                .replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
+                .replace("  %'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(" else "), 1))
+                .replace("    %'ELSE-PART'%", Misc.indentLines(elseCode, 2))
+                .replace("%'LEVEL'%", "" + level) // level replacement must go last
+        ;
+    }
+
+    public void setSelectorType(TypeSpec ty) {
+        this.selectorType = ty;
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
-    private static final String tmplStmtCaseNoElsePart =
-            Misc.combineLines(
-                    "{",
-                    "  Object selector_%'LEVEL'% = %'SELECTOR-VALUE'%;",
-                    "  %'WHEN-PARTS'%",
-                    "}");
+    private TypeSpec selectorType;
 
     private static final String tmplStmtCase =
             Misc.combineLines(
                     "{",
-                    "  Object selector_%'LEVEL'% = %'SELECTOR-VALUE'%;",
+                    "  %'SELECTOR-TYPE'% selector_%'LEVEL'% = %'SELECTOR-VALUE'%;",
                     "  %'WHEN-PARTS'% else {",
                     "    %'ELSE-PART'%",
                     "  }",

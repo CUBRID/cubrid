@@ -32,8 +32,15 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.Scope;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtLocalProcCall implements Stmt {
+public class StmtLocalProcCall extends Stmt {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtLocalProcCall(this);
+    }
 
     public final String name;
     public final NodeList<Expr> args;
@@ -41,7 +48,11 @@ public class StmtLocalProcCall implements Stmt {
     public final DeclProc decl;
     public final boolean prefixDeclBlock;
 
-    public StmtLocalProcCall(String name, NodeList<Expr> args, Scope scope, DeclProc decl) {
+    public StmtLocalProcCall(
+            ParserRuleContext ctx, String name, NodeList<Expr> args, Scope scope, DeclProc decl) {
+        super(ctx);
+
+        assert args != null;
         this.name = name;
         this.args = args;
         this.scope = scope;
@@ -54,15 +65,10 @@ public class StmtLocalProcCall implements Stmt {
 
         String block = prefixDeclBlock ? decl.scope().block + "." : "";
 
-        if (args == null || args.nodes.size() == 0) {
-            return block + "$" + name + "();";
+        if (args.nodes.size() == 0) {
+            return block + name + "();";
         } else {
-            return block
-                    + "$"
-                    + name
-                    + "(\n"
-                    + Misc.indentLines(decl.argsToJavaCode(args), 1)
-                    + "\n);";
+            return block + name + "(\n" + Misc.indentLines(decl.argsToJavaCode(args), 1) + "\n);";
         }
     }
 

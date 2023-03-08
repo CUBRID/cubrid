@@ -30,7 +30,19 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class StmtCommit implements Stmt {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
+
+public class StmtCommit extends Stmt {
+
+    public StmtCommit(ParserRuleContext ctx) {
+        super(ctx);
+    }
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtCommit(this);
+    }
 
     @Override
     public String toJavaCode() {

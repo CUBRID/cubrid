@@ -31,22 +31,31 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtOpenFor implements Stmt {
+public class StmtOpenFor extends Stmt {
 
-    public final ExprId refCursor;
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtOpenFor(this);
+    }
+
+    public final ExprId id;
     public final ExprStr sql;
     public final NodeList<ExprId> usedVars;
 
-    public StmtOpenFor(ExprId refCursor, ExprStr sql, NodeList<ExprId> usedVars) {
-        this.refCursor = refCursor;
+    public StmtOpenFor(ParserRuleContext ctx, ExprId id, ExprStr sql, NodeList<ExprId> usedVars) {
+        super(ctx);
+
+        this.id = id;
         this.sql = sql;
         this.usedVars = usedVars;
     }
 
     @Override
     public String toJavaCode() {
-        return tmplStmt.replace("%'REF-CURSOR'%", refCursor.toJavaCode())
+        return tmplStmt.replace("%'REF-CURSOR'%", id.toJavaCode())
                 .replace("%'QUERY'%", sql.toJavaCode())
                 .replace("    %'HOST-VARIABLES'%", Misc.indentLines(usedVars.toJavaCode(",\n"), 2));
     }

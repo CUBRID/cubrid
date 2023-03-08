@@ -30,7 +30,19 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class ExprSqlRowCount implements Expr {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
+
+public class ExprSqlRowCount extends Expr {
+
+    public ExprSqlRowCount(ParserRuleContext ctx) {
+        super(ctx);
+    }
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprSqlRowCount(this);
+    }
 
     @Override
     public String toJavaCode() {

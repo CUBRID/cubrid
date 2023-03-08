@@ -30,11 +30,21 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class StmtRaise implements Stmt {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
+
+public class StmtRaise extends Stmt {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtRaise(this);
+    }
 
     public final ExName exName;
 
-    public StmtRaise(ExName exName) {
+    public StmtRaise(ParserRuleContext ctx, ExName exName) {
+        super(ctx);
+
         this.exName = exName;
     }
 
@@ -43,9 +53,9 @@ public class StmtRaise implements Stmt {
         if (exName == null) {
             return "throw new Exception();";
         } else if (exName.prefixDeclBlock) {
-            return String.format("throw %s.new $%s();", exName.decl.scope().block, exName.name);
+            return String.format("throw %s.new %s();", exName.decl.scope().block, exName.name);
         } else {
-            return String.format("throw new $%s();", exName.name);
+            return String.format("throw new %s();", exName.name);
         }
     }
 

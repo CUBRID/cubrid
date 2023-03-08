@@ -30,15 +30,28 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DeclVar extends DeclBase implements DeclId {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
+
+public class DeclVar extends DeclVarLike {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitDeclVar(this);
+    }
 
     public final String name;
     public final TypeSpec typeSpec;
+    public final boolean notNull;
     public final Expr val;
 
-    public DeclVar(String name, TypeSpec typeSpec, Expr val) {
+    public DeclVar(
+            ParserRuleContext ctx, String name, TypeSpec typeSpec, boolean notNull, Expr val) {
+        super(ctx);
+
         this.name = name;
         this.typeSpec = typeSpec;
+        this.notNull = notNull;
         this.val = val;
     }
 
@@ -47,7 +60,7 @@ public class DeclVar extends DeclBase implements DeclId {
     }
 
     @Override
-    public String typeStr() {
+    public String kind() {
         return "variable";
     }
 
@@ -55,13 +68,9 @@ public class DeclVar extends DeclBase implements DeclId {
     public String toJavaCode() {
         String ty = typeSpec.toJavaCode();
         if (val == null) {
-            return String.format("%s[] $%s = new %s[] { null };", ty, name, ty);
+            return String.format("%s[] %s = new %s[] { null };", ty, name, ty);
         } else {
-            return String.format("%s[] $%s = new %s[] { %s };", ty, name, ty, val.toJavaCode());
+            return String.format("%s[] %s = new %s[] { %s };", ty, name, ty, val.toJavaCode());
         }
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

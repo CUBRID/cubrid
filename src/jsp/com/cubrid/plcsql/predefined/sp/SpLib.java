@@ -48,49 +48,42 @@ import org.apache.commons.collections4.multiset.HashMultiSet;
 
 public class SpLib {
 
-    public static class $$APP_ERROR extends RuntimeException {}
+    public static class $APP_ERROR extends RuntimeException {}
 
-    public static class $CASE_NOT_FOUND extends RuntimeException {}
+    public static class CASE_NOT_FOUND extends RuntimeException {}
 
-    public static class $CURSOR_ALREADY_OPEN extends RuntimeException {}
+    public static class CURSOR_ALREADY_OPEN extends RuntimeException {}
 
-    public static class $DUP_VAL_ON_INDEX extends RuntimeException {}
+    public static class DUP_VAL_ON_INDEX extends RuntimeException {}
 
-    public static class $INVALID_CURSOR extends RuntimeException {}
+    public static class INVALID_CURSOR extends RuntimeException {}
 
-    public static class $LOGIN_DENIED extends RuntimeException {}
+    public static class LOGIN_DENIED extends RuntimeException {}
 
-    public static class $NO_DATA_FOUND extends RuntimeException {}
+    public static class NO_DATA_FOUND extends RuntimeException {}
 
-    public static class $PROGRAM_ERROR extends RuntimeException {}
+    public static class PROGRAM_ERROR extends RuntimeException {}
 
-    public static class $ROWTYPE_MISMATCH extends RuntimeException {}
+    public static class ROWTYPE_MISMATCH extends RuntimeException {}
 
-    public static class $STORAGE_ERROR extends RuntimeException {}
+    public static class STORAGE_ERROR extends RuntimeException {}
 
-    public static class $TOO_MANY_ROWS extends RuntimeException {}
+    public static class TOO_MANY_ROWS extends RuntimeException {}
 
-    public static class $VALUE_ERROR extends RuntimeException {}
+    public static class VALUE_ERROR extends RuntimeException {}
 
-    public static class $ZERO_DIVIDE extends RuntimeException {}
+    public static class ZERO_DIVIDE extends RuntimeException {}
 
-    public static String $SQLERRM = null;
-    public static Integer $SQLCODE = null;
-    public static LocalDate $SYSDATE = null;
-    public static Integer $NATIVE = null;
+    public static String SQLERRM = null;
+    public static Integer SQLCODE = null;
+    public static LocalDate SYSDATE = null;
 
-    public static void $PUT_LINE(Object s) {
+    public static Object raiseCaseNotFound() {
+        throw new CASE_NOT_FOUND();
+    }
+
+    public static void PUT_LINE(Object s) {
         System.out.println(s);
-    }
-
-    // TODO: remove
-    public static Integer $OPEN_CURSOR() {
-        return -1;
-    }
-
-    // TODO: remove
-    public static Integer $LAST_ERROR_POSITION() {
-        return -1;
     }
 
     public static class Query {
@@ -263,7 +256,105 @@ public class SpLib {
 
     // ====================================
     // comparison equal
-    public static Boolean opEq(Object l, Object r) {
+    public static Boolean opEq(Boolean l, Boolean r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(BigDecimal l, BigDecimal r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(Short l, Short r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(Integer l, Integer r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(Long l, Long r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(Float l, Float r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(Double l, Double r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(LocalTime l, LocalTime r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(LocalDate l, LocalDate r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(ZonedDateTime l, ZonedDateTime r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(LocalDateTime l, LocalDateTime r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(Set l, Set r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(MultiSet l, MultiSet r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    public static Boolean opEq(List l, List r) {
         if (l == null || r == null) {
             return null;
         }
@@ -1074,6 +1165,13 @@ public class SpLib {
 
     // ====================================
     // between
+    public static Boolean opBetween(Boolean o, Boolean lower, Boolean upper) {
+        if (o == null || lower == null || upper == null) {
+            return null;
+        }
+        return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
+    }
+
     public static Boolean opBetween(String o, String lower, String upper) {
         if (o == null || lower == null || upper == null) {
             return null;

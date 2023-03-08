@@ -31,14 +31,23 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprBetween implements Expr {
+public class ExprBetween extends Expr {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprBetween(this);
+    }
 
     public final Expr target;
     public final Expr lowerBound;
     public final Expr upperBound;
 
-    public ExprBetween(Expr target, Expr lowerBound, Expr upperBound) {
+    public ExprBetween(ParserRuleContext ctx, Expr target, Expr lowerBound, Expr upperBound) {
+        super(ctx);
+
         this.target = target;
         this.lowerBound = lowerBound;
         this.upperBound = upperBound;

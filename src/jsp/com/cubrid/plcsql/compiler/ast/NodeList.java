@@ -30,19 +30,27 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.util.ArrayList;
 import java.util.List;
 
-public class NodeList<N extends AstNode> implements AstNode {
+public class NodeList<N extends AstNode> extends AstNode {
 
     public final List<N> nodes = new ArrayList<>();
 
-    public NodeList() {}
+    public NodeList() {
+        super(null);
+    }
 
     public NodeList<N> addNode(N p) {
         assert p != null;
         nodes.add(p);
         return this;
+    }
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitNodeList(this);
     }
 
     @Override

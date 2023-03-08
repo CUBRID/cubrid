@@ -31,45 +31,51 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Scope;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprId implements Expr {
+public class ExprId extends Expr {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprId(this);
+    }
 
     public final String name;
     public final Scope scope;
     public final DeclId decl;
     public boolean prefixDeclBlock;
 
-    public ExprId(String name, Scope scope, DeclId decl) {
+    public ExprId(ParserRuleContext ctx, String name, Scope scope, DeclId decl) {
+        super(ctx);
+
         this.name = name;
         this.scope = scope;
         this.decl = decl;
-        prefixDeclBlock =
-                (decl == null)
-                        ? false
-                        : decl.scope().declDone; // decl == null is temporary TODO fix it.
+        prefixDeclBlock = decl.scope().declDone;
     }
 
     @Override
     public String toJavaCode() {
         if (decl instanceof DeclParamOut) {
-            return String.format("$%s[0]", name);
+            return String.format("%s[0]", name);
         } else if (decl instanceof DeclParamIn) {
-            return String.format("$%s", name);
+            return String.format("%s", name);
         } else if (decl instanceof DeclForIter) {
-            return String.format("$%s_i%d", name, decl.scope().level);
+            return String.format("%s_i%d", name, decl.scope().level);
         } else if (decl instanceof DeclForRecord) {
-            return String.format("$%s_r%d", name, decl.scope().level);
+            return String.format("%s_r%d", name, decl.scope().level);
         } else if (decl instanceof DeclConst || decl instanceof DeclCursor) {
             if (prefixDeclBlock) {
-                return String.format("%s.$%s", decl.scope().block, name);
+                return String.format("%s.%s", decl.scope().block, name);
             } else {
-                return String.format("$%s", name);
+                return String.format("%s", name);
             }
         } else if (decl instanceof DeclVar) {
             if (prefixDeclBlock) {
-                return String.format("%s.$%s[0]", decl.scope().block, name);
+                return String.format("%s.%s[0]", decl.scope().block, name);
             } else {
-                return String.format("$%s[0]", name);
+                return String.format("%s[0]", name);
             }
         } else {
             assert false;
@@ -79,12 +85,12 @@ public class ExprId implements Expr {
 
     public String toJavaCodeForOutParam() {
         if (decl instanceof DeclParamOut) {
-            return String.format("$%s", name);
+            return String.format("%s", name);
         } else if (decl instanceof DeclVar) {
             if (prefixDeclBlock) {
-                return String.format("%s.$%s", decl.scope().block, name);
+                return String.format("%s.%s", decl.scope().block, name);
             } else {
-                return String.format("$%s", name);
+                return String.format("%s", name);
             }
         } else {
             assert false;
