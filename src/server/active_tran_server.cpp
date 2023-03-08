@@ -106,9 +106,9 @@ void
 active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip)
 {
   auto &node_vec = dynamic_cast<active_tran_server *> (&m_ts)->m_node_vec; // casting to access m_node_vec
-  const auto total_node_cnt = node_vec.size();
+  const auto total_node_cnt = node_vec.size ();
   const auto quorum = total_node_cnt / 2 + 1; // For now, it's fixed to the number of the majority.
-  std::vector<log_lsa> collected_saved_lsa (total_node_cnt);
+  std::vector<log_lsa> collected_saved_lsa;
   std::string message = a_ip.pull_payload ();
   log_lsa saved_lsa;
 
@@ -127,8 +127,8 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
     {
       collected_saved_lsa.emplace_back (node->get_saved_lsa ());
     }
-  std::sort (collected_saved_lsa.begin(), collected_saved_lsa.end(),
-	     std::greater<log_lsa>());
+  std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end (),
+	     std::greater<log_lsa> ());
 
   log_lsa consensus_lsa = collected_saved_lsa[total_node_cnt - 1];
 
@@ -140,8 +140,9 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
   if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
     {
       std::stringstream ss;
-      ss << "[COMMIT CONFIRM] Received saved LSA = " << saved_lsa.pageid << "|" << saved_lsa.offset << std::endl;
-      ss << " Quorum = " << quorum << ", Collected saved lsa list = [ ";
+      ss << "[COMMIT CONFIRM] Received saved LSA = " << saved_lsa.pageid << "|" << saved_lsa.offset;
+      ss << " Node count = " << total_node_cnt << " Quorum = " << quorum << " " << std::endl;
+      ss << "Collected saved lsa list = [ ";
       for (const auto &lsa : collected_saved_lsa)
 	{
 	  ss << lsa.pageid << "|" << lsa.offset << " ";
