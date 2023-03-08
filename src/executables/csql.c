@@ -87,7 +87,7 @@
 #define FREE_MEM(PTR)           \
         do {                    \
           if (PTR) {            \
-            free(PTR);          \
+          free(PTR);            \
           }                     \
         } while (0)
 
@@ -3363,16 +3363,16 @@ static int
 csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 {
   /*dbname can be stored DB name+ @ + remote hostname + \0 */
-  char dbname[MAXLOGNAME + CUB_MAXHOSTNAMELEN + 2];
-  char username[DB_MAX_USER_LENGTH + 1];
-  const char *delim = " @\n";
+  char buf[DB_MAX_USER_LENGTH + MAXLOGNAME + CUB_MAXHOSTNAMELEN + 1];
+  const char *delim = " \n";
   char *save_ptr_strtok = NULL;
-  char *db_name_ptr = NULL;
+  const char *db_name_ptr = NULL;
   char *user_name_ptr = NULL;
   char *host_name_ptr = NULL;
   char *p = NULL;
   const char *err_msg;
   int error_code;
+  bool mem_alloc = false;
   CSQL_ARGUMENT csql_new_arg;
 
   if (argument == NULL)
@@ -3389,28 +3389,19 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
       return DO_CMD_FAILURE;
     }
 
-  strcpy (dbname, argument);
-  strcpy (username, argument);
+  strcpy (buf, argument);
+
+  if ((user_name_ptr = strtok_r (buf, delim, &save_ptr_strtok)) == NULL)
+    {
+      csql_Error_code = CSQL_ERR_SQL_ERROR;
+      return DO_CMD_FAILURE;
+    }
 
   /*find db name following the user name */
-  if ((db_name_ptr = strrchr (dbname, ' ')) != NULL && (*(db_name_ptr + 1) == '\0'))
+  db_name_ptr = strtok_r (NULL, delim, &save_ptr_strtok);
+  if (db_name_ptr == NULL)
     {
-      csql_Error_code = CSQL_ERR_SQL_ERROR;
-      return DO_CMD_FAILURE;
-    }
-  if (db_name_ptr != NULL)
-    {
-      db_name_ptr += 1;
-    }
-  else
-    {
-      db_name_ptr = strdup (csql_arg->db_name);
-    }
-
-  if ((user_name_ptr = strtok_r (username, delim, &save_ptr_strtok)) == NULL)
-    {
-      csql_Error_code = CSQL_ERR_SQL_ERROR;
-      return DO_CMD_FAILURE;
+      db_name_ptr = csql_arg->db_name;
     }
 
   memcpy (&csql_new_arg, csql_arg, sizeof (CSQL_ARGUMENT));
@@ -3471,7 +3462,6 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   csql_new_arg.user_name = strdup (user_name_ptr);
   csql_new_arg.db_name = strdup (db_name_ptr);
 
-  FREE_MEM ((char *) db_name_ptr);
   FREE_MEM ((char *) csql_arg->user_name);
   FREE_MEM ((char *) csql_arg->db_name);
   FREE_MEM ((char *) csql_arg->passwd);
