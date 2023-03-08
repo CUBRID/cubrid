@@ -496,6 +496,7 @@ uso: %1$s loaddb [OPZIONE] nome-database[@host]\n\
 opzioni valide:\n\
   -S, --SA-mode                  modalità di esecuzione autonoma\n\
   -C, --CS-mode                  modalità di esecuzione client-server\n\
+                                 ATTENZIONE: In modalità client-server, è possibile caricare solo file di dati (-d, --data-file=FILE).\n\
   -u, --user=ID                  user ID per l'accesso al database; predefinito: "public"\n\
   -p, --password=PASS            password utente; predefinito: nessuno\n\
       --data-file-check-only     check syntax for data file without load; default: disabled\n\

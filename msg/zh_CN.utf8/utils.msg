@@ -496,6 +496,7 @@ loaddb: 将对象和结构导入到数据库.\n\
 可用选项:\n\
   -S, --SA-mode                  单机模式执行\n\
   -C, --CS-mode                  客户端-服务器模式执行\n\
+                                 警告：在客户端-服务器模式下，只能加载数据文件(-d, --data-file=FILE)。\n\
   -u, --user=ID                  用于访问数据库的用户ID; 默认: "public"\n\
   -p, --password=PASS            用户密码; 默认: 空\n\
       --data-file-check-only     对数据文件只进行语法检查不加载数据; 默认: disabled\n\
