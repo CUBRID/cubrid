@@ -8,7 +8,7 @@
     </configurations>
     <dependencies>
         <dependency org="cubrid" name="cubrid-jdbc" rev="latest.integration" conf="runtime->default"/>
-        <dependency org="com.kohlschutter.junixsocket" name="junixsocket-core" rev="2.4.0" conf="runtime->default"/>
-        <dependency org="com.kohlschutter.junixsocket" name="junixsocket-server" rev="2.4.0" conf="runtime->default"/>
+        <dependency org="com.kohlschutter.junixsocket" name="junixsocket-core" rev="2.6.2" conf="runtime->default"/>
+        <dependency org="com.kohlschutter.junixsocket" name="junixsocket-server" rev="2.6.2" conf="runtime->default"/>
     </dependencies>
 </ivy-module>
