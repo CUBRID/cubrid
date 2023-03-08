@@ -50,9 +50,9 @@ template <typename T_CONN_HANDLER>
 void
 async_disconnect_handler<T_CONN_HANDLER>::disconnect (connection_handler_uptr_t &&handler)
 {
+  std::unique_lock<std::mutex> ulock { m_queue_mtx };
   if (!m_terminate.load ())
     {
-      std::unique_lock<std::mutex> ulock { m_queue_mtx };
       m_disconnect_queue.emplace (std::move (handler));
       ulock.unlock ();
       m_queue_cv.notify_one ();
