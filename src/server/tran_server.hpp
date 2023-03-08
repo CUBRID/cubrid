@@ -136,8 +136,8 @@ class tran_server
 	virtual request_handlers_map_t get_request_handlers ();
 
       protected:
-	tran_server &m_ts;
 	page_server_node &m_node; // in tran_server::m_node_vec;
+	tran_server &m_ts;
 
       private:
 	// Request handlers for requests in common
