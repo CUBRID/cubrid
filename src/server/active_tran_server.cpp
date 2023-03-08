@@ -108,7 +108,7 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
   auto &node_vec = dynamic_cast<active_tran_server *> (&m_ts)->m_node_vec; // casting to access m_node_vec
   const auto total_node_cnt = node_vec.size();
   const auto quorum = total_node_cnt / 2 + 1; // For now, it's fixed to the number of the majority.
-  std::vector<log_lsa> collected_saved_lsa;
+  std::vector<log_lsa> collected_saved_lsa (total_node_cnt);
   std::string message = a_ip.pull_payload ();
   log_lsa saved_lsa;
 
@@ -120,7 +120,7 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
 
   /*
    * Gather all PS'es saved_lsa and sort it in descending order.
-   * The "the total node count - quorum]'th element is the consensus LSA, upon which the majority (quorumn) of PS agrees.
+   * The "the total node count - quorum'th element is the consensus LSA, upon which the majority (quorumn) of PS agrees.
    * [10, 9, "6", 5, 5] -> "6" is the consensus LSA.
    */
   for (const auto &node : node_vec)
