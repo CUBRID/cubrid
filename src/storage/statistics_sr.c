@@ -110,7 +110,7 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
   DISK_ATTR *disk_attr_p = NULL;
   BTREE_STATS *btree_stats_p = NULL;
   OID dir_oid;
-  int npages, nobjs, length;
+  int npages, estimated_nobjs;
   char *class_name = NULL;
   int i, j;
   OID *partitions = NULL;
@@ -229,11 +229,26 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
     }
   (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, NO_ERROR);
 
-  /* get npages and nobjs. do not use estimation, get correct info */
-  npages = nobjs = length = 0;
-  heap_get_num_objects (thread_p, &(cls_info_p->ci_hfid), &npages, &nobjs, &length);
+  npages = estimated_nobjs = 0;
+
+  /* do not use estimated npages, get correct info */
+  if (file_get_num_user_pages (thread_p, &(cls_info_p->ci_hfid.vfid), &npages) != NO_ERROR)
+    {
+      goto error;
+    }
+  assert (npages > 0);
   cls_info_p->ci_tot_pages = MAX (npages, 0);
-  cls_info_p->ci_tot_objects = MAX (nobjs, 0);
+
+  estimated_nobjs = heap_estimate_num_objects (thread_p, &(cls_info_p->ci_hfid));
+  if (estimated_nobjs == -1)
+    {
+      /* cannot get estimates from the heap, use old info */
+      assert (cls_info_p->ci_tot_objects >= 0);
+    }
+  else
+    {
+      cls_info_p->ci_tot_objects = estimated_nobjs;
+    }
 
   /* update the index statistics for each attribute */
 
