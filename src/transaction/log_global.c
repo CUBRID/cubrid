@@ -103,11 +103,11 @@ log_global::~log_global ()
 }
 
 void
-log_global::update_quorum_ps_flushed_lsa (const LOG_LSA &lsa)
+log_global::update_ps_consensus_flushed_lsa (const LOG_LSA &lsa)
 {
   {
     std::unique_lock<std::mutex> lock (m_ps_lsa_mutex);
-    m_quorum_ps_flushed_lsa = lsa;
+    m_ps_consensus_flushed_lsa = lsa;
   } // lock.unlock ();
   m_ps_lsa_cv.notify_all ();
 }
@@ -115,13 +115,13 @@ log_global::update_quorum_ps_flushed_lsa (const LOG_LSA &lsa)
 void
 log_global::wait_flushed_lsa (const log_lsa &flush_lsa)
 {
-  if (m_quorum_ps_flushed_lsa >= flush_lsa)
+  if (m_ps_consensus_flushed_lsa >= flush_lsa)
     {
       // already flushed
       return;
     }
   std::unique_lock<std::mutex> lock (m_ps_lsa_mutex);
-  m_ps_lsa_cv.wait (lock, [flush_lsa, this] { return m_quorum_ps_flushed_lsa >= flush_lsa; });
+  m_ps_lsa_cv.wait (lock, [flush_lsa, this] { return m_ps_consensus_flushed_lsa >= flush_lsa; });
 }
 
 #if defined (SERVER_MODE)

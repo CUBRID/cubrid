@@ -99,14 +99,14 @@ class tran_server
 	page_server_node &operator= (const page_server_node &) = delete;
 	page_server_node &operator= (page_server_node &&) = delete;
 
-	void set_flushed_lsa (log_lsa lsa);
-	log_lsa get_flushed_lsa () const;
+	void set_saved_lsa (log_lsa lsa);
+	log_lsa get_saved_lsa () const;
 
 	cubcomm::node get_conn_node () const;
 
       private:
 	const cubcomm::node m_conn_node;
-	std::atomic<log_lsa> m_flushed_lsa;
+	std::atomic<log_lsa> m_saved_lsa;
     };
 
     class connection_handler

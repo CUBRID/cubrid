@@ -443,15 +443,15 @@ tran_server::connection_handler::get_channel_id () const
 }
 
 void
-tran_server::page_server_node::set_flushed_lsa (log_lsa lsa)
+tran_server::page_server_node::set_saved_lsa (log_lsa lsa)
 {
-  m_flushed_lsa.store (lsa);
+  m_saved_lsa.store (lsa);
 }
 
 log_lsa
-tran_server::page_server_node::get_flushed_lsa () const
+tran_server::page_server_node::get_saved_lsa () const
 {
-  return m_flushed_lsa.load ();
+  return m_saved_lsa.load ();
 }
 
 cubcomm::node

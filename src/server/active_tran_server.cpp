@@ -108,39 +108,39 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
   const active_tran_server *const ats = dynamic_cast<active_tran_server *> (&m_ts); // to access m_node_vec
   auto &node_vec = ats->m_node_vec;
   auto quorum = node_vec.size() / 2 + 1;
-  std::vector<log_lsa> collected_flushed_lsa;
+  std::vector<log_lsa> collected_saved_lsa;
   std::string message = a_ip.pull_payload ();
-  log_lsa flushed_lsa;
+  log_lsa saved_lsa;
 
   assert (sizeof (log_lsa) == message.size ());
-  std::memcpy (&flushed_lsa, message.c_str (), sizeof (log_lsa));
+  std::memcpy (&saved_lsa, message.c_str (), sizeof (log_lsa));
 
-  assert (flushed_lsa > m_node.get_flushed_lsa ());
+  assert (saved_lsa > m_node.get_saved_lsa ());
 
-  m_node.set_flushed_lsa (flushed_lsa);
+  m_node.set_saved_lsa (saved_lsa);
 
   for (const auto &node : node_vec)
     {
-      collected_flushed_lsa.emplace_back (node->get_flushed_lsa ());
+      collected_saved_lsa.emplace_back (node->get_saved_lsa ());
     }
-  std::sort (collected_flushed_lsa.begin(), collected_flushed_lsa.end(),
+  std::sort (collected_saved_lsa.begin(), collected_saved_lsa.end(),
 	     std::greater<log_lsa>());
 
-  assert (quorum - 1 < collected_flushed_lsa.size());
+  assert (quorum - 1 < collected_saved_lsa.size());
 
-  log_lsa quorum_lsa = collected_flushed_lsa[quorum - 1];
+  log_lsa quorum_lsa = collected_saved_lsa[quorum - 1];
 
-  if (log_Gl.m_quorum_ps_flushed_lsa < quorum_lsa)
+  if (log_Gl.m_ps_consensus_flushed_lsa < quorum_lsa)
     {
-      log_Gl.update_quorum_ps_flushed_lsa (quorum_lsa);
+      log_Gl.update_ps_consensus_flushed_lsa (quorum_lsa);
     }
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
     {
       std::stringstream ss;
-      ss << "[COMMIT CONFIRM] Received flushed LSA = " << flushed_lsa.pageid << "|" << flushed_lsa.offset << std::endl;
-      ss << " Quorum = " << quorum << ", Collected flushed lsa list = [ ";
-      for (const auto &lsa : collected_flushed_lsa)
+      ss << "[COMMIT CONFIRM] Received saved LSA = " << saved_lsa.pageid << "|" << saved_lsa.offset << std::endl;
+      ss << " Quorum = " << quorum << ", Collected saved lsa list = [ ";
+      for (const auto &lsa : collected_saved_lsa)
 	{
 	  ss << lsa.pageid << "|" << lsa.offset << " ";
 	}
