@@ -647,7 +647,6 @@ int g_original_buffer_len;
 %type <node> only_all_class_spec_list
 %type <node> meta_class_spec
 %type <node> only_all_class_spec
-%type <node> only_all_class_spec_with_server
 %type <node> object_name
 %type <node> user_specified_name_without_dot
 %type <node> user_specified_name
@@ -5349,13 +5348,6 @@ class_spec
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| only_all_class_spec_with_server
-		{{ DBG_TRACE_GRAMMAR(class_spec, : only_all_class_spec_with_server );
-
-			$$ = $1;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
 	| '(' only_all_class_spec_list ')'
 		{{ DBG_TRACE_GRAMMAR(class_spec, | '(' only_all_class_spec_list ')' );
 
@@ -5416,29 +5408,6 @@ meta_class_spec
 
                         $$ = ocs;
                 DBG_PRINT}}
-	;
-
-only_all_class_spec_with_server
-	: class_name_with_server_name opt_partition_spec
-		{{ DBG_TRACE_GRAMMAR(only_all_class_spec_with_server, : class_name_with_server_name opt_partition_spec );
-                       PT_NODE *ocs = parser_new_node (this_parser, PT_SPEC);
-			if (ocs)
-			  {
-                            ocs->info.spec.entity_name = CONTAINER_AT_0 ($1);
-			    /* for DBLink DML */
-                            ocs->info.spec.remote_server_name = CONTAINER_AT_1 ($1);
-
-			    ocs->info.spec.only_all = PT_ONLY;
-			    ocs->info.spec.meta_class = PT_CLASS;
-			    if ($2)
-		   	      {
-			        ocs->info.spec.partition = $2;
-			      }
-			   }
-
-			$$ = ocs;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
 	;
 
 only_all_class_spec
