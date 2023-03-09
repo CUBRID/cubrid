@@ -237,6 +237,7 @@ static PT_NODE *qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group
 static int qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg);
 static void qo_set_use_desc (QO_PLAN * plan);
 static int qo_set_orderby_skip (QO_PLAN * plan, void *arg);
+static int qo_unset_hint_use_desc_idx (QO_PLAN * plan, void *arg);
 static int qo_validate_indexes_for_orderby (QO_PLAN * plan, void *arg);
 static int qo_unset_multi_range_optimization (QO_PLAN * plan, void *arg);
 static bool qo_plan_is_orderby_skip_candidate (QO_PLAN * plan);
@@ -820,6 +821,33 @@ qo_set_orderby_skip (QO_PLAN * plan, void *arg)
   return NO_ERROR;
 }
 
+static int
+qo_unset_hint_use_desc_idx (QO_PLAN * plan, void *arg)
+{
+  if (qo_is_interesting_order_scan (plan))
+    {
+      if (plan->plan_un.scan.index && plan->plan_un.scan.index->head)
+	{
+	  if (plan->plan_un.scan.index->head->use_descending)
+	    {
+	      /* We no longer need to set the USE_DESC_IDX hint if the planner wants a descending index, because the
+	       * requirement is copied to each scan_ptr's index info at XASL generation.
+	       * plan->info->env->pt_tree->info.query.q.select.hint |= PT_HINT_USE_IDX_DESC;
+	       */
+	    }
+	  else if (plan->plan_un.scan.index->head->orderby_skip || qo_is_index_mro_scan (plan))
+	    {
+	      if (plan->info->env != NULL)
+		{
+		  plan->info->env->pt_tree->info.query.q.select.hint &= ~PT_HINT_USE_IDX_DESC;
+		}
+	    }
+	}
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * qo_validate_indexes_for_orderby () - wrapper function for
  *					qo_validate_index_for_orderby
@@ -1005,27 +1033,8 @@ qo_top_plan_new (QO_PLAN * plan)
 			  orderby_skip = pt_sort_spec_cover (plan->iscan_sort_list, order_by);
 
 			  /* try using a reverse scan */
-			  if (orderby_skip)
+			  if (!orderby_skip)
 			    {
-			      /* CBRD-24636
-			       *
-			       * orderby_skip is true because the column order of the index used for the scan
-			       * and the column order of order by are the same without reverse order.
-			       * So the PT_HINT_USE_IDX_DESC hint should not be applied.
-			       */
-
-			      PT_HINT_ENUM *hint = &(tree->info.query.q.select.hint);
-			      bool has_hint = (*hint & PT_HINT_USE_IDX_DESC) > 0;
-
-			      if (has_hint)
-				{
-				  *hint = (PT_HINT_ENUM) (*hint & ~PT_HINT_USE_IDX_DESC);
-				}
-			    }
-			  else
-			    {
-			      /* Checks whether orderby_skip is true when the column order of the index used
-			       * for the scan is reversed (ASC -> DESC). */
 			      orderby_skip = qo_check_orderby_skip_descending (plan);
 
 			      if (orderby_skip)
@@ -8333,72 +8342,45 @@ qo_search_planner (QO_PLANNER * planner)
     }
   plan = broken ? NULL : qo_combine_partitions (planner, &remaining_subqueries);
 
+  /* if we have use_desc_idx hint and order by or group by, do some checking */
+
   if (plan == NULL)
     {
       goto end;
     }
 
-  /* if we have use_desc_idx hint and order by or group by, do some checking */
-  {
-    bool has_hint;
-    PT_HINT_ENUM *hint;
+  if (plan->use_iscan_descending == true && qo_plan_multi_range_opt (plan) == false)
+    {
+      qo_set_use_desc (plan);
+    }
 
-    if (plan->use_iscan_descending == true && qo_plan_multi_range_opt (plan) == false)
-      {
-	qo_set_use_desc (plan);
-      }
+  tree = QO_ENV_PT_TREE (planner->env);
+  assert (tree != NULL);
 
-    tree = QO_ENV_PT_TREE (planner->env);
-    assert (tree != NULL);
+  if (tree->info.query.q.select.hint & PT_HINT_USE_IDX_DESC)
+    {
+      /* check direction of the first order by column. */
+      if (tree->info.query.order_by != NULL && tree->info.query.q.select.connect_by == NULL)
+	{
+	  /* if we have order by and the hint, we allow the hint only if we have order by descending on first column.
+	   * Otherwise we clear it */
+	  if (tree->info.query.order_by->info.sort_spec.asc_or_desc == PT_ASC)
+	    {
+	      tree->info.query.q.select.hint &= ~PT_HINT_USE_IDX_DESC;
+	    }
+	}
 
-    hint = &(tree->info.query.q.select.hint);
-    has_hint = (*hint & PT_HINT_USE_IDX_DESC) > 0;
-
-    if (has_hint)
-      {
-	PT_NODE *node = NULL;
-
-	/* check direction of the first order by column. */
-	node = tree->info.query.order_by;
-	if (node != NULL && tree->info.query.q.select.connect_by == NULL)
-	  {
-	    /* if we have order by and the hint, we allow the hint only if we have order by descending on first column.
-	     * Otherwise we clear it */
-	    if (node->info.sort_spec.asc_or_desc == PT_ASC)
-	      {
-		*hint = (PT_HINT_ENUM) (*hint & ~PT_HINT_USE_IDX_DESC);
-	      }
-	    else if (qo_plan_multi_range_opt (plan) == true && plan->use_iscan_descending == false)
-	      {
-		/* CBRD-24636
-		 *
-		 * When checking MRO (Multi Range Optimization) in the qo_check_iscan_for_multi_range_opt() function,
-		 * It verify that the index used for scan contains all order by columns in the right order
-		 * and with the right ordering (or reversed ordering).
-		 * 
-		 * If use_iscan_descending is false when performing MRO (Multi Range Optimization), it means that
-		 * the order of the columns in the index and the order of the columns in order by are not the same
-		 * in reverse order.
-		 * 
-		 * Because it is not the same in the reverse order, the PT_HINT_USE_IDX_DESC hint cannot be applied.
-		 */
-		*hint = (PT_HINT_ENUM) (*hint & ~PT_HINT_USE_IDX_DESC);
-	      }
-	  }
-
-	/* check direction of the first order by column. */
-	node = tree->info.query.q.select.group_by;
-	if (node != NULL && node->flag.with_rollup == NULL)
-	  {
-	    /* if we have group by and the hint, we allow the hint only if we have group by descending on first column.
-	     * Otherwise we clear it */
-	    if (node->info.sort_spec.asc_or_desc == PT_ASC)
-	      {
-		*hint = (PT_HINT_ENUM) (*hint & ~PT_HINT_USE_IDX_DESC);
-	      }
-	  }
-      }
-  }
+      /* check direction of the first order by column. */
+      if (tree->info.query.q.select.group_by != NULL && tree->info.query.q.select.group_by->flag.with_rollup == false)
+	{
+	  /* if we have group by and the hint, we allow the hint only if we have group by descending on first column.
+	   * Otherwise we clear it */
+	  if (tree->info.query.q.select.group_by->info.sort_spec.asc_or_desc == PT_ASC)
+	    {
+	      tree->info.query.q.select.hint &= ~PT_HINT_USE_IDX_DESC;
+	    }
+	}
+    }
 
   /* some indexes may be marked with multi range optimization (as candidates) However, if the chosen top plan is not
    * marked as using multi range optimization it means that the optimization has been invalidated, or maybe another
@@ -8413,27 +8395,7 @@ qo_search_planner (QO_PLANNER * planner)
 	}
     }
 
-  if (qo_is_interesting_order_scan (plan))
-    {
-      if (plan->plan_un.scan.index && plan->plan_un.scan.index->head)
-	{
-	  if (plan->plan_un.scan.index->head->use_descending)
-	    {
-	      /* We no longer need to set the USE_DESC_IDX hint if the planner wants a descending index, because the
-	       * requirement is copied to each scan_ptr's index info at XASL generation.
-	       * plan->info->env->pt_tree->info.query.q.select.hint |= PT_HINT_USE_IDX_DESC;
-	       */
-	    }
-	  else if (plan->plan_un.scan.index->head->orderby_skip || qo_is_index_mro_scan (plan))
-	    {
-	      if (plan->info->env != NULL)
-		{
-		  plan->info->env->pt_tree->info.query.q.select.hint =
-		    (PT_HINT_ENUM) (plan->info->env->pt_tree->info.query.q.select.hint & ~PT_HINT_USE_IDX_DESC);
-		}
-	    }
-	}
-    }
+  qo_walk_plan_tree (plan, qo_unset_hint_use_desc_idx, NULL);
 
 end:
 
