@@ -28,42 +28,32 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import com.cubrid.plcsql.compiler.ast.TypeSpec;
+import com.cubrid.plcsql.compiler.ast.ExprId;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 
-public class DeclForRecord extends DeclId {
+public class StaticSql {
 
-    public final String name;
-    public final LinkedHashMap<String, TypeSpec> fieldTypes;
+    public final ParserRuleContext ctx;
+    public final SqlSemantics.Kind kind;
+    public final String rewritten;
+    public final LinkedHashMap<ExprId, TypeSpec> hostVars;
+    public final LinkedHashMap<String, TypeSpec> selectList;
+    public final List<ExprId> intoVars;  // can be null
 
-    public DeclForRecord(ParserRuleContext ctx, String name, LinkedHashMap<String, TypeSpec> fieldTypes) {
-        super(ctx);
+    StaticSql(ParserRuleContext ctx, SqlSemantics.Kind kind, String rewritten,
+        LinkedHashMap<ExprId, TypeSpec> hostVars, LinkedHashMap<String, TypeSpec> selectList, List<ExprId> intoVars) {
 
-        this.name = name;
-        this.fieldTypes = fieldTypes;
-    }
-
-    // TODO: separate Symbol from AstNode. Remove 'extends Decl' and the following method
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        assert false : "unreachable";
-        throw new RuntimeException("unreachable");
-    }
-
-    @Override
-    public String kind() {
-        return "for-loop-record";
-    }
-
-    @Override
-    public String toJavaCode() {
-        // unreachable: currently, used only in for-dynamic-sql-loop, not in any ordinary declration
-        // list
-        assert false;
-        throw new RuntimeException("unreachable");
+        this.ctx = ctx;
+        this.kind = kind;
+        this.rewritten = rewritten;
+        this.hostVars = hostVars;
+        this.selectList = selectList;
+        this.intoVars = intoVars;
     }
 }

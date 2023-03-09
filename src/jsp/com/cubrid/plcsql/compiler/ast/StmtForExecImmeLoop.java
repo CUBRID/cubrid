@@ -31,56 +31,24 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtGlobalProcCall extends Stmt {
+public class StmtForExecImmeLoop extends StmtForSqlLoop {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitStmtGlobalProcCall(this);
+        return visitor.visitStmtForExecImmeLoop(this);
     }
 
-    public final int level;
-    public final String name;
-    public final NodeList<Expr> args;
-
-    public DeclProc decl;
-
-    public StmtGlobalProcCall(ParserRuleContext ctx, int level, String name, NodeList<Expr> args) {
-        super(ctx);
-
-        assert args != null;
-        this.level = level;
-        this.name = name;
-        this.args = args;
-    }
-
-    @Override
-    public String toJavaCode() {
-        String dynSql = getDynSql(name, args.nodes.size());
-        String setUsedExprStr = Common.getSetUsedExprStr(args.nodes);
-        return tmplStmt.replace("%'PROC-NAME'%", name)
-                .replace("%'DYNAMIC-SQL'%", dynSql)
-                .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedExprStr, 1))
-                .replace("%'LEVEL'%", "" + level);
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmplStmt =
-            Misc.combineLines(
-                    "{ // global procedure call: %'PROC-NAME'%",
-                    "  String dynSql_%'LEVEL'% = \"%'DYNAMIC-SQL'%\";",
-                    "  CallableStatement stmt_%'LEVEL'% = conn.prepareCall(dynSql_%'LEVEL'%);",
-                    "  %'SET-USED-VALUES'%",
-                    "  stmt_%'LEVEL'%.execute();",
-                    "  stmt_%'LEVEL'%.close();",
-                    "}");
-
-    private static String getDynSql(String name, int argCount) {
-        return String.format("call %s(%s)", name, Common.getQuestionMarks(argCount));
+    public StmtForExecImmeLoop(
+            ParserRuleContext ctx,
+            String label,
+            DeclForRecord record,
+            Expr dynamicSql,
+            NodeList<? extends Expr> usedExprList,
+            NodeList<Stmt> stmts) {
+        super(ctx, true, label, record, dynamicSql, usedExprList.nodes, stmts);
     }
 }

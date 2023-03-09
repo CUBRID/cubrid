@@ -31,8 +31,11 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.Coerce;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
+
+import java.util.List;
 
 public class StmtCursorFetch extends Stmt {
 
@@ -58,9 +61,15 @@ public class StmtCursorFetch extends Stmt {
                 .replace("    %'SET-INTO-VARIABLES'%", Misc.indentLines(setIntoVarsStr, 2));
     }
 
+    public void setCoerces(List<Coerce> coerces) {
+        this.coerces = coerces;
+    }
+
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
+
+    private List<Coerce> coerces;
 
     private static final String tmplStmt =
             Misc.combineLines(

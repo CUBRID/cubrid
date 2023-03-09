@@ -256,6 +256,7 @@ fetch_statement
 
 open_for_statement
     : OPEN identifier FOR s_select_statement
+    //| OPEN identifier FOR dyn_sql using_clause?   TODO
     ;
 
 transaction_control_statements

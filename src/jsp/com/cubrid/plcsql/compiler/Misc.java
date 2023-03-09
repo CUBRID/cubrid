@@ -65,6 +65,10 @@ public class Misc {
         return peelId(ctx.getText().toUpperCase());
     }
 
+    public static String getNormalizedText(String s) {
+        return peelId(s.toUpperCase());
+    }
+
     public static void printIndent(PrintStream out, int indents) {
 
         for (int i = 0; i < indents; i++) {

@@ -34,7 +34,7 @@ import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 
 public class TypeSpecPercent extends TypeSpec {
 
-    private TypeSpec resolvedType;
+    public TypeSpec resolvedType;
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
@@ -45,21 +45,16 @@ public class TypeSpecPercent extends TypeSpec {
     public final String column;
 
     public TypeSpecPercent(String table, String column) {
-        super("%TODO-TypeSpecPercent%"); // name unknown yet
+        super("%ERROR%");
         this.table = table;
         this.column = column;
-    }
-
-    public void setResolvedType(TypeSpec resolvedType) {
-        this.resolvedType = resolvedType;
     }
 
     @Override
     public String toJavaSignature() {
         if (resolvedType == null) {
-            // assert false;    // TODO: restore these two lines
-            // throw new RuntimeException("unreachable");
-            return super.toJavaCode();
+            assert false;
+            throw new RuntimeException("unreachable");
         } else {
             return resolvedType.toJavaSignature();
         }
@@ -68,9 +63,8 @@ public class TypeSpecPercent extends TypeSpec {
     @Override
     public String toJavaCode() {
         if (resolvedType == null) {
-            // assert false;    // TODO: restore these two lines
-            // throw new RuntimeException("unreachable");
-            return super.toJavaCode();
+            assert false;
+            throw new RuntimeException("unreachable");
         } else {
             return resolvedType.toJavaCode();
         }

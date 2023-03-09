@@ -28,42 +28,51 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
+import com.cubrid.plcsql.compiler.ast.TypeSpec;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 
-public class DeclForRecord extends DeclId {
+public class SqlSemantics {
 
-    public final String name;
-    public final LinkedHashMap<String, TypeSpec> fieldTypes;
-
-    public DeclForRecord(ParserRuleContext ctx, String name, LinkedHashMap<String, TypeSpec> fieldTypes) {
-        super(ctx);
-
-        this.name = name;
-        this.fieldTypes = fieldTypes;
+    public enum Kind {
+        SELECT,
+        INSERT,
+        UPDATE,
+        DELETE,
+        MERGE,
+        REPLACE,
+        TRUNCATE
     }
 
-    // TODO: separate Symbol from AstNode. Remove 'extends Decl' and the following method
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+    // for error return
+    public int errCode;     // non-zero if error
+    public String errMsg;
+
+    SqlSemantics(int errCode, String errMsg) {
+        assert errCode != 0;
+        this.errCode = errCode;
+        this.errMsg = errMsg;
     }
 
-    @Override
-    public String kind() {
-        return "for-loop-record";
-    }
+    // for normal return
+    public Kind kind;
+    public String rewritten;
+    public LinkedHashMap<String, String> hostVars;  // host variables and their SQL types required in their locations
+    public LinkedHashMap<String, String> selectList;// (only for select statements) columns and their SQL types
+    public List<String> intoVars;  // (only for select stetements with an into-clause) into variables
 
-    @Override
-    public String toJavaCode() {
-        // unreachable: currently, used only in for-dynamic-sql-loop, not in any ordinary declration
-        // list
-        assert false;
-        throw new RuntimeException("unreachable");
+    SqlSemantics(Kind kind, String rewritten,
+            LinkedHashMap<String, String> hostVars,
+            LinkedHashMap<String, String> selectList,
+            List<String> intoVars) {
+
+        this.kind = kind;
+        this.rewritten = rewritten;
+        this.hostVars = hostVars;
+        this.selectList = selectList;
+        this.intoVars = intoVars;
     }
 }

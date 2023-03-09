@@ -31,6 +31,10 @@
 package com.cubrid.plcsql.handler;
 
 import com.cubrid.jsp.data.CompileInfo;
+import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.ServerAPI;
+import com.cubrid.plcsql.compiler.SqlSemantics;
+import com.cubrid.plcsql.compiler.StaticSqlCollector;
 import com.cubrid.plcsql.compiler.ParseTreeConverter;
 import com.cubrid.plcsql.compiler.ParseTreePrinter;
 import com.cubrid.plcsql.compiler.PcsLexerEx;
@@ -45,6 +49,11 @@ import java.io.IOException;
 import java.io.PrintStream;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
 
 public class TestMain {
 
@@ -91,7 +100,7 @@ public class TestMain {
         // ------------------------------------------
         // converting
 
-        ParseTreeConverter converter = new ParseTreeConverter();
+        ParseTreeConverter converter = new ParseTreeConverter(null);    // TODO: replace null
         Unit unit = (Unit) converter.visit(ret);
 
         if (verbose) {
@@ -106,7 +115,7 @@ public class TestMain {
         // typechecking
 
         TypeChecker typeChecker =
-                new TypeChecker(converter.symbolStack, null); // TODO: replace null
+                new TypeChecker(converter.symbolStack);
         typeChecker.visitUnit(unit);
 
         if (verbose) {
@@ -273,9 +282,45 @@ public class TestMain {
                 }
 
                 // ------------------------------------------
+                // collect Static SQL in the parse tree
+
+                StaticSqlCollector ssc = new StaticSqlCollector();
+                ParseTreeWalker.DEFAULT.walk(ssc, tree);
+
+                System.out.println(
+                        String.format(
+                                "collecting Static SQL: %f sec",
+                                ((t = System.currentTimeMillis()) - t0) / 1000.0));
+                t0 = t;
+
+                // ------------------------------------------
+                // call server API for each SQL to get its semantic information
+
+                List<String> sqlTexts = new ArrayList(ssc.staticSqlTexts.values());
+                List<SqlSemantics> sqlSemantics = ServerAPI.getSqlSemantics(sqlTexts);
+
+                Map<ParserRuleContext, SqlSemantics> staticSqls = new HashMap<>();
+                Iterator<SqlSemantics> iterSql = sqlSemantics.iterator();
+                for (ParserRuleContext ctx: ssc.staticSqlTexts.keySet()) {
+                    SqlSemantics ss = iterSql.next();
+                    assert ss != null;
+                    if (ss.errCode == 0) {
+                        staticSqls.put(ctx, ss);
+                    } else {
+                        throw new SemanticError(Misc.getLineOf(ctx), ss.errMsg);    // s410
+                    }
+                }
+
+                System.out.println(
+                        String.format(
+                                "analyzing Static SQL: %f sec",
+                                ((t = System.currentTimeMillis()) - t0) / 1000.0));
+                t0 = t;
+
+                // ------------------------------------------
                 // converting parse tree to AST
 
-                ParseTreeConverter converter = new ParseTreeConverter();
+                ParseTreeConverter converter = new ParseTreeConverter(staticSqls);
                 Unit unit = (Unit) converter.visit(tree);
 
                 System.out.println(
@@ -285,10 +330,22 @@ public class TestMain {
                 t0 = t;
 
                 // ------------------------------------------
+                // ask server semantic infomation
+                // . signature of a global procedure/function
+                // . whether a name represent a serial or not
+                // . type of a table column
+                converter.askServerSemanticQuestions();
+
+                System.out.println(
+                        String.format(
+                                "asking server global semantics : %f sec",
+                                ((t = System.currentTimeMillis()) - t0) / 1000.0));
+                t0 = t;
+
+                // ------------------------------------------
                 // typechecking
 
-                TypeChecker typeChecker =
-                        new TypeChecker(converter.symbolStack, null); // TODO: replace null
+                TypeChecker typeChecker = new TypeChecker(converter.symbolStack);
                 typeChecker.visitUnit(unit);
 
                 System.out.println(

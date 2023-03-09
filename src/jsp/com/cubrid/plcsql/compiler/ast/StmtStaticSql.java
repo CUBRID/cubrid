@@ -28,14 +28,31 @@
  *
  */
 
-package com.cubrid.plcsql.compiler;
+package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.ast.TypeSpec;
+import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.StaticSql;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
+import java.util.ArrayList;
 
-public class GlobalTypeInfo {
-    public TypeSpec getTableColumnType(String table, String column) {
-        // TODO
-        assert false : "not implemented yet";
-        throw new RuntimeException("not implemented yet");
+public class StmtStaticSql extends StmtSql {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtStaticSql(this);
+    }
+
+    public final StaticSql staticSql;
+
+    public StmtStaticSql( ParserRuleContext ctx,
+            int level, StaticSql staticSql) {
+
+        super(ctx, false, level,
+            new ExprStr(staticSql.ctx, staticSql.rewritten),
+            staticSql.intoVars,
+            new ArrayList(staticSql.hostVars.keySet()));
+
+        this.staticSql = staticSql;
     }
 }

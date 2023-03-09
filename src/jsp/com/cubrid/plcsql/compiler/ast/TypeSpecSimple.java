@@ -74,9 +74,12 @@ public class TypeSpecSimple extends TypeSpec {
     static {
         final String[] javaTypes =
                 new String[] {
-                    "java.lang.Object",
-                    "..Null", // not an actual java type
-                    "..Cursor", // not an actual java type
+                    "..Null",       // not an actual java type
+                    "..Cursor",     // not an actual java type
+                    "..Unknown",    // not an actual java type
+
+                    "java.lang.Object", // only appears in the operators
+
                     "java.lang.Boolean",
                     "java.lang.String",
                     "java.math.BigDecimal",
@@ -101,9 +104,11 @@ public class TypeSpecSimple extends TypeSpec {
         }
     }
 
-    public static TypeSpecSimple OBJECT = of("java.lang.Object");
     public static TypeSpecSimple NULL = of("..Null");
     public static TypeSpecSimple CURSOR = of("..Cursor");
+    public static TypeSpecSimple UNKNOWN = of("..Unknown");
+
+    public static TypeSpecSimple OBJECT = of("java.lang.Object");
 
     public static TypeSpecSimple BOOLEAN = of("java.lang.Boolean");
     public static TypeSpecSimple STRING = of("java.lang.String");
