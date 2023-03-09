@@ -31,10 +31,8 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
-import com.cubrid.plcsql.compiler.StaticSql;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
 import java.util.List;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class StmtSql extends Stmt {
 
@@ -44,8 +42,13 @@ public abstract class StmtSql extends Stmt {
     public final List<ExprId> intoVarList;
     public final List<? extends Expr> usedExprList;
 
-    public StmtSql(ParserRuleContext ctx, boolean dynamic,
-            int level, Expr sql, List<ExprId> intoVarList, List<? extends Expr> usedExprList) {
+    public StmtSql(
+            ParserRuleContext ctx,
+            boolean dynamic,
+            int level,
+            Expr sql,
+            List<ExprId> intoVarList,
+            List<? extends Expr> usedExprList) {
         super(ctx);
 
         this.dynamic = dynamic;

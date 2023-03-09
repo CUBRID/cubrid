@@ -30,8 +30,6 @@
 
 package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.ast.TypeSpec;
-
 import java.util.LinkedHashMap;
 import java.util.List;
 
@@ -48,7 +46,7 @@ public class SqlSemantics {
     }
 
     // for error return
-    public int errCode;     // non-zero if error
+    public int errCode; // non-zero if error
     public String errMsg;
 
     SqlSemantics(int errCode, String errMsg) {
@@ -60,11 +58,15 @@ public class SqlSemantics {
     // for normal return
     public Kind kind;
     public String rewritten;
-    public LinkedHashMap<String, String> hostVars;  // host variables and their SQL types required in their locations
-    public LinkedHashMap<String, String> selectList;// (only for select statements) columns and their SQL types
-    public List<String> intoVars;  // (only for select stetements with an into-clause) into variables
+    public LinkedHashMap<String, String>
+            hostVars; // host variables and their SQL types required in their locations
+    public LinkedHashMap<String, String>
+            selectList; // (only for select statements) columns and their SQL types
+    public List<String> intoVars; // (only for select stetements with an into-clause) into variables
 
-    SqlSemantics(Kind kind, String rewritten,
+    SqlSemantics(
+            Kind kind,
+            String rewritten,
             LinkedHashMap<String, String> hostVars,
             LinkedHashMap<String, String> selectList,
             List<String> intoVars) {

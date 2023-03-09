@@ -30,10 +30,9 @@
 
 package com.cubrid.plcsql.compiler;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.ArrayList;
-import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ServerAPI {
 
@@ -64,11 +63,11 @@ public class ServerAPI {
         }
 
         // input
-        public String name;     // procedure name
+        public String name; // procedure name
 
         // output
-        public int[] outPositions;     // 1 for out/in-out parameters, otherwise 0
-        public String[] paramTypes;    // SQL types of parameters
+        public int[] outPositions; // 1 for out/in-out parameters, otherwise 0
+        public String[] paramTypes; // SQL types of parameters
 
         private void setAnswer(int[] outPositions, String[] paramTypes) {
             assert outPositions.length == paramTypes.length;
@@ -84,12 +83,12 @@ public class ServerAPI {
         }
 
         // input
-        public String name;     // function name
+        public String name; // function name
 
         // output
-        public int[] outPositions;     // 1 for out/in-out parameters, otherwise 0
-        public String[] paramTypes;    // SQL types of parameters
-        public String retType;         // SQL type
+        public int[] outPositions; // 1 for out/in-out parameters, otherwise 0
+        public String[] paramTypes; // SQL types of parameters
+        public String retType; // SQL type
 
         private void setAnswer(int[] outPositions, String[] paramTypes, String retType) {
             assert outPositions.length == paramTypes.length;
@@ -123,7 +122,7 @@ public class ServerAPI {
         public String column;
 
         // output
-        public String type;    // SQL type if the column exists, otherwise null
+        public String type; // SQL type if the column exists, otherwise null
 
         private void setAnswer(String type) {
             this.type = type;
@@ -140,7 +139,7 @@ public class ServerAPI {
 
         List<SqlSemantics> ret = new ArrayList<>();
 
-        for (String sql: sqlTexts) {
+        for (String sql : sqlTexts) {
             sql = sql.toUpperCase();
 
             if (sql.startsWith("SELECT")) {
@@ -156,7 +155,6 @@ public class ServerAPI {
                 selectList.put("CODE", "INTEGER");
                 selectList.put("NAME", "CHARACTER VARYING(40)");
 
-
                 List<String> intoVars;
                 if (sql.indexOf("INTO") < 0) {
                     intoVars = null;
@@ -166,10 +164,13 @@ public class ServerAPI {
                     intoVars.add("M");
                 }
 
-                ret.add(new SqlSemantics(
-                    SqlSemantics.Kind.SELECT,
-                    "select code, name from athlete where gender = ? and nation_code = ?",
-                    hostVars, selectList, intoVars));
+                ret.add(
+                        new SqlSemantics(
+                                SqlSemantics.Kind.SELECT,
+                                "select code, name from athlete where gender = ? and nation_code = ?",
+                                hostVars,
+                                selectList,
+                                intoVars));
 
             } else if (sql.startsWith("INSERT")) {
                 // insert into athlete(name, gender) values (n, g);
@@ -178,10 +179,13 @@ public class ServerAPI {
                 hostVars.put("N", "CHARACTER VARYING(40)");
                 hostVars.put("G", "CHARACTER(1)");
 
-                ret.add(new SqlSemantics(
-                    SqlSemantics.Kind.INSERT,
-                    "insert into athlete(name, gender) values (?, ?)",
-                    hostVars, null, null));
+                ret.add(
+                        new SqlSemantics(
+                                SqlSemantics.Kind.INSERT,
+                                "insert into athlete(name, gender) values (?, ?)",
+                                hostVars,
+                                null,
+                                null));
             } else {
                 ret.add(new SqlSemantics(300, "mock error"));
             }
@@ -190,14 +194,14 @@ public class ServerAPI {
         return ret;
     }
 
-    private static final int[] MOCK_OUT_POS = new int[] { 0, 1, 1 };
-    private static final String[] MOCK_PARAM_TYPES = new String[] { "INTEGER", "VARCHAR", "FLOAT" };
+    private static final int[] MOCK_OUT_POS = new int[] {0, 1, 1};
+    private static final String[] MOCK_PARAM_TYPES = new String[] {"INTEGER", "VARCHAR", "FLOAT"};
 
     private static List<Question> getMockGlobalSemantics(List<Question> questions) {
 
         // MOCK
 
-        for (Question q: questions) {
+        for (Question q : questions) {
             if (q instanceof ProcedureSignature) {
                 ProcedureSignature ps = (ProcedureSignature) q;
                 if (ps.name.equals("MY_PROC")) {
@@ -229,7 +233,7 @@ public class ServerAPI {
                     ct.setError(303, "no such table column:" + s);
                 }
             } else {
-                assert false: "unreachable";
+                assert false : "unreachable";
             }
         }
 

@@ -30,16 +30,15 @@
 
 package com.cubrid.plcsql.compiler.visitor;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.Coerce;
-import com.cubrid.plcsql.compiler.SqlSemantics;
-import com.cubrid.plcsql.compiler.StaticSql;
+import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.SemanticError;
+import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.ast.*;
-import java.util.List;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 
 public class TypeChecker extends AstVisitor<TypeSpec> {
 
@@ -210,7 +209,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (errorVar != null) {
             throw new SemanticError(
                     node.lineNo(), // s400
-                    "host variable " + errorVar + " does not have a compatible type in the SQL statement");
+                    "host variable "
+                            + errorVar
+                            + " does not have a compatible type in the SQL statement");
         }
 
         return null;
@@ -362,9 +363,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             if (ret == null) {
                 throw new SemanticError(
                         node.lineNo(), // s401
-                        String.format(
-                                "no such column '%s' in the query result",
-                                node.fieldName));
+                        String.format("no such column '%s' in the query result", node.fieldName));
             }
         } else {
             // this record is for a dynamic SQL
@@ -587,20 +586,21 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
             int len = node.intoVars.nodes.size();
             if (selectList.size() != len) {
-                throw new SemanticError(    // TODO: verify what happens in Oracle
+                throw new SemanticError( // TODO: verify what happens in Oracle
                         node.lineNo(), // s402
                         "the number of columns of the cursor must be equal the number of into-variables");
             }
             int i = 0;
-            for (String column: selectList.keySet()) {
+            for (String column : selectList.keySet()) {
                 TypeSpec columnType = selectList.get(column);
                 ExprId intoVar = node.intoVars.nodes.get(i);
                 Coerce c = Coerce.getCoerce(columnType, ((DeclVarLike) intoVar.decl).typeSpec());
                 if (c == null) {
                     throw new SemanticError(
                             intoVar.lineNo(), // s403
-                            String.format("the type of column %d of the cursor is not compatible with the variable %s",
-                                i + 1, intoVar.name));
+                            String.format(
+                                    "the type of column %d of the cursor is not compatible with the variable %s",
+                                    i + 1, intoVar.name));
                 }
                 coerces.add(c);
 
@@ -667,7 +667,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (errorVar != null) {
             throw new SemanticError(
                     node.lineNo(), // s404
-                    "host variable " + errorVar + " does not have a compatible type in the SQL statement");
+                    "host variable "
+                            + errorVar
+                            + " does not have a compatible type in the SQL statement");
         }
 
         if (staticSql.intoVars != null) {
@@ -680,20 +682,21 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
             // check types of into-variables
             int i = 0;
-            for (String column: staticSql.selectList.keySet()) {
+            for (String column : staticSql.selectList.keySet()) {
                 TypeSpec tyColumn = staticSql.selectList.get(column);
                 ExprId intoVar = staticSql.intoVars.get(i);
                 TypeSpec tyIntoVar = visitExprId(intoVar);
                 Coerce c = Coerce.getCoerce(tyColumn, tyIntoVar);
                 if (c == null) {
-                    throw new SemanticError(    // s405
-                        Misc.getLineOf(staticSql.ctx),
-                        "into-variable " + intoVar.name + " cannot be used in the place due to type mismatch");
+                    throw new SemanticError( // s405
+                            Misc.getLineOf(staticSql.ctx),
+                            "into-variable "
+                                    + intoVar.name
+                                    + " cannot be used in the place due to type mismatch");
                 }
 
                 i++;
             }
-
         }
 
         return null;
@@ -803,7 +806,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (errorVar != null) {
             throw new SemanticError(
                     Misc.getLineOf(node.staticSql.ctx), // s407
-                    "host variable " + errorVar + " does not have a compatible type in the SQL statement");
+                    "host variable "
+                            + errorVar
+                            + " does not have a compatible type in the SQL statement");
         }
 
         return null;
@@ -928,7 +933,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     private String typeCheckHostVars(LinkedHashMap<ExprId, TypeSpec> hostVars) {
 
-        for (ExprId id: hostVars.keySet()) {
+        for (ExprId id : hostVars.keySet()) {
             TypeSpec ty = visitExprId(id);
             TypeSpec tyRequired = hostVars.get(id);
             Coerce c = Coerce.getCoerce(ty, tyRequired);

@@ -45,7 +45,6 @@ public class StmtOpenFor extends Stmt {
     public final ExprId id;
     public final StaticSql staticSql;
 
-
     public StmtOpenFor(ParserRuleContext ctx, ExprId id, StaticSql staticSql) {
         super(ctx);
 
@@ -57,7 +56,7 @@ public class StmtOpenFor extends Stmt {
     public String toJavaCode() {
 
         StringBuffer sbuf = new StringBuffer();
-        for (ExprId var: staticSql.hostVars.keySet()) {
+        for (ExprId var : staticSql.hostVars.keySet()) {
             sbuf.append(",\n");
             sbuf.append(var.toJavaCode());
         }

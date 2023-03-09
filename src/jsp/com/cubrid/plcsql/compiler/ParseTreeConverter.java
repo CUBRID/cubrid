@@ -41,15 +41,14 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.LinkedHashMap;
 import org.antlr.v4.runtime.ParserRuleContext;
-import org.antlr.v4.runtime.tree.ParseTreeWalker;
 import org.apache.commons.text.StringEscapeUtils;
 
 // parse tree --> AST converter
@@ -61,7 +60,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         this.staticSqls = staticSqls;
     }
 
-    private String makeParamList(NodeList<DeclParam> paramList, String name, int[] outPositions, String[] paramTypes) {
+    private String makeParamList(
+            NodeList<DeclParam> paramList, String name, int[] outPositions, String[] paramTypes) {
 
         int len = outPositions.length;
         assert len == paramTypes.length;
@@ -112,14 +112,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     public void askServerSemanticQuestions() {
         List<ServerAPI.Question> questions = new ArrayList(semanticQuestions.values());
-        List<ServerAPI.Question> answered = ServerAPI.getGlobalSemantics(questions);    // this may take a long time
+        List<ServerAPI.Question> answered =
+                ServerAPI.getGlobalSemantics(questions); // this may take a long time
 
         Iterator<ServerAPI.Question> iterQuestions = answered.iterator();
-        for (AstNode node: semanticQuestions.keySet()) {
+        for (AstNode node : semanticQuestions.keySet()) {
             ServerAPI.Question q = iterQuestions.next();
             assert q != null;
             if (q.errCode != 0) {
-                throw new SemanticError(node.lineNo(), q.errMsg);    // s411
+                throw new SemanticError(node.lineNo(), q.errMsg); // s411
             }
 
             if (q instanceof ServerAPI.ProcedureSignature) {
@@ -128,8 +129,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 NodeList<DeclParam> paramList = new NodeList<>();
                 String err = makeParamList(paramList, ps.name, ps.outPositions, ps.paramTypes);
                 if (err != null) {
-                    throw new SemanticError(    // s412
-                        node.lineNo(), err);
+                    throw new SemanticError( // s412
+                            node.lineNo(), err);
                 }
 
                 assert node instanceof StmtGlobalProcCall;
@@ -138,19 +139,19 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
                 int errCode = checkArguments(gpc.args, paramList);
                 if (errCode < 0) {
-                    throw new SemanticError(    // s413
-                        node.lineNo(),
-                        "the number of arguments to procedure "
-                                + ps.name
-                                + " does not match the number of the procedure's declared formal parameters");
+                    throw new SemanticError( // s413
+                            node.lineNo(),
+                            "the number of arguments to procedure "
+                                    + ps.name
+                                    + " does not match the number of the procedure's declared formal parameters");
                 } else if (errCode > 0) {
-                    throw new SemanticError(    // s414
-                        node.lineNo(),
-                        "argument "
-                                + errCode
-                                + " to the procedure "
-                                + ps.name
-                                + " must be assignable to because it is to an out-parameter");
+                    throw new SemanticError( // s414
+                            node.lineNo(),
+                            "argument "
+                                    + errCode
+                                    + " to the procedure "
+                                    + ps.name
+                                    + " must be assignable to because it is to an out-parameter");
                 }
 
                 gpc.decl = new DeclProc(null, ps.name, paramList);
@@ -161,8 +162,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 NodeList<DeclParam> paramList = new NodeList<>();
                 String err = makeParamList(paramList, fs.name, fs.outPositions, fs.paramTypes);
                 if (err != null) {
-                    throw new SemanticError(    // s415
-                        node.lineNo(), err);
+                    throw new SemanticError( // s415
+                            node.lineNo(), err);
                 }
 
                 assert node instanceof ExprGlobalFuncCall;
@@ -171,26 +172,29 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
                 int errCode = checkArguments(gfc.args, paramList);
                 if (errCode < 0) {
-                    throw new SemanticError(    // s416
-                        node.lineNo(),
-                        "the number of arguments to function "
-                                + fs.name
-                                + " does not match the number of the function's declared formal parameters");
+                    throw new SemanticError( // s416
+                            node.lineNo(),
+                            "the number of arguments to function "
+                                    + fs.name
+                                    + " does not match the number of the function's declared formal parameters");
                 } else if (errCode > 0) {
-                    throw new SemanticError(    // s417
-                        node.lineNo(),
-                        "argument "
-                                + errCode
-                                + " to the function "
-                                + fs.name
-                                + " must be assignable to because it is to an out-parameter");
+                    throw new SemanticError( // s417
+                            node.lineNo(),
+                            "argument "
+                                    + errCode
+                                    + " to the function "
+                                    + fs.name
+                                    + " must be assignable to because it is to an out-parameter");
                 }
 
                 String sqlType = getNormalizedTypeName(fs.retType);
                 String javaType = getJavaType(sqlType);
                 if (javaType == null) {
-                    throw new SemanticError(    // s418
-                        node.lineNo(), "the function uses unsupported type " + sqlType + " as its return type");
+                    throw new SemanticError( // s418
+                            node.lineNo(),
+                            "the function uses unsupported type "
+                                    + sqlType
+                                    + " as its return type");
                 }
                 TypeSpec retType = TypeSpecSimple.of(javaType);
                 assert retType != null;
@@ -207,9 +211,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 String sqlType = getNormalizedTypeName(ct.type);
                 String javaType = getJavaType(sqlType);
                 if (javaType == null) {
-                    throw new SemanticError(    // s419
-                        node.lineNo(), "the table column " + ct.table + "." + ct.column +
-                        " has an unsupported type " + sqlType);
+                    throw new SemanticError( // s419
+                            node.lineNo(),
+                            "the table column "
+                                    + ct.table
+                                    + "."
+                                    + ct.column
+                                    + " has an unsupported type "
+                                    + sqlType);
                 }
                 TypeSpec ty = TypeSpecSimple.of(javaType);
                 assert ty != null;
@@ -217,10 +226,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 assert node instanceof TypeSpecPercent;
                 ((TypeSpecPercent) node).resolvedType = ty;
             } else {
-                assert false: "unreachable";
+                assert false : "unreachable";
             }
         }
-
     }
 
     @Override
@@ -736,12 +744,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
                 String recordText = Misc.getNormalizedText(ctx.record);
                 // do not push a symbol table: no nested structure
-                Expr ret = new ExprSerialVal(
-                        ctx,
-                        recordText,
-                        fieldName.equals("CURRENT_VALUE")
-                                ? ExprSerialVal.SerialVal.CURR_VAL
-                                : ExprSerialVal.SerialVal.NEXT_VAL);
+                Expr ret =
+                        new ExprSerialVal(
+                                ctx,
+                                recordText,
+                                fieldName.equals("CURRENT_VALUE")
+                                        ? ExprSerialVal.SerialVal.CURR_VAL
+                                        : ExprSerialVal.SerialVal.NEXT_VAL);
                 semanticQuestions.put(ret, new ServerAPI.SerialOrNot(recordText));
                 return ret;
             } else {
@@ -1339,8 +1348,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             symbolStack.putDecl(declLabel.name, declLabel);
         }
 
-        Expr cond =
-                visitExpression(ctx.expression());
+        Expr cond = visitExpression(ctx.expression());
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
         controlFlowBlocked =
                 false; // every loop is assumed not to block control flow in generated Java code
@@ -1456,7 +1464,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         DeclForRecord declForRecord =
-            new DeclForRecord(ctx.for_cursor().record_name(), record, declCursor.staticSql.selectList);
+                new DeclForRecord(
+                        ctx.for_cursor().record_name(), record, declCursor.staticSql.selectList);
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
@@ -1547,7 +1556,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             symbolStack.putDecl(label, declLabel);
         }
 
-        DeclForRecord declForRecord = new DeclForRecord(recNameCtx, record, null);  // null: unknown field types
+        DeclForRecord declForRecord =
+                new DeclForRecord(recNameCtx, record, null); // null: unknown field types
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
@@ -1706,7 +1716,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public StmtStaticSql visitData_manipulation_language_statements(Data_manipulation_language_statementsContext ctx) {
+    public StmtStaticSql visitData_manipulation_language_statements(
+            Data_manipulation_language_statementsContext ctx) {
 
         connectionRequired = true;
         addToImports("java.sql.*");
@@ -1720,7 +1731,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                         Misc.getLineOf(ctx), // s055
                         "SELECT statement must have an into-clause");
             }
-            for (ExprId var: staticSql.intoVars) {
+            for (ExprId var : staticSql.intoVars) {
                 if (!isAssignableTo(var)) {
                     throw new SemanticError(
                             Misc.getLineOf(ctx), // s056
@@ -2176,7 +2187,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     // Private
     // --------------------------------------------------------
 
-    private final LinkedHashMap<AstNode, ServerAPI.Question> semanticQuestions = new LinkedHashMap<>();
+    private final LinkedHashMap<AstNode, ServerAPI.Question> semanticQuestions =
+            new LinkedHashMap<>();
 
     private final Map<ParserRuleContext, SqlSemantics> staticSqls;
     private final Set<String> imports = new TreeSet<>();
@@ -2303,7 +2315,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     private String getNormalizedTypeName(String sqlType) {
         int idx = sqlType.indexOf('(');
         if (idx >= 0) {
-            sqlType = sqlType.substring(0, idx);    // cut length or precision and scale.
+            sqlType = sqlType.substring(0, idx); // cut length or precision and scale.
         }
 
         return sqlType.toUpperCase();
@@ -2316,7 +2328,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         ArrayList<ExprId> intoVars = null;
 
         // check (name-binding) and convert host variables used in the SQL
-        for (String var: sws.hostVars.keySet()) {
+        for (String var : sws.hostVars.keySet()) {
             String sqlType = sws.hostVars.get(var);
             sqlType = getNormalizedTypeName(sqlType);
 
@@ -2337,7 +2349,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
             // convert select list
             selectList = new LinkedHashMap<>();
-            for (String col: sws.selectList.keySet()) {
+            for (String col : sws.selectList.keySet()) {
                 String sqlType = sws.selectList.get(col);
                 sqlType = getNormalizedTypeName(sqlType);
 
@@ -2350,7 +2362,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             // check (name-binding) and convert into-variables used in the SQL
             if (sws.intoVars != null) {
                 intoVars = new ArrayList<>();
-                for (String var: sws.intoVars) {
+                for (String var : sws.intoVars) {
                     var = Misc.getNormalizedText(var);
                     ExprId id = visitNonFuncIdentifier(var, ctx);
                     if (id == null) {
@@ -2366,5 +2378,4 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String rewritten = StringEscapeUtils.escapeJava(sws.rewritten);
         return new StaticSql(ctx, sws.kind, rewritten, hostVars, selectList, intoVars);
     }
-
 }

@@ -74,12 +74,10 @@ public class TypeSpecSimple extends TypeSpec {
     static {
         final String[] javaTypes =
                 new String[] {
-                    "..Null",       // not an actual java type
-                    "..Cursor",     // not an actual java type
-                    "..Unknown",    // not an actual java type
-
+                    "..Null", // not an actual java type
+                    "..Cursor", // not an actual java type
+                    "..Unknown", // not an actual java type
                     "java.lang.Object", // only appears in the operators
-
                     "java.lang.Boolean",
                     "java.lang.String",
                     "java.math.BigDecimal",

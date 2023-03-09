@@ -91,16 +91,16 @@ public class DeclCursor extends DeclId {
         int paramSize = paramList.nodes.size();
         int hostVarSize = hostVars == null ? 0 : hostVars.size();
 
-        paramRefCounts = new int[paramSize];    // NOTE: filled with zeros
-        paramMarks = new int[hostVarSize];      // NOTE: filled with zeros
+        paramRefCounts = new int[paramSize]; // NOTE: filled with zeros
+        paramMarks = new int[hostVarSize]; // NOTE: filled with zeros
 
         if (paramSize > 0 && hostVarSize > 0) {
             for (int i = 0; i < paramSize; i++) {
                 DeclParam di = paramList.nodes.get(i);
                 int j = 0;
-                for (ExprId var: hostVars) {
+                for (ExprId var : hostVars) {
                     DeclId dj = var.decl;
-                    if (di == dj) {             // NOTE: reference equality
+                    if (di == dj) { // NOTE: reference equality
                         paramMarks[j] = (i + 1);
                         paramRefCounts[i]++;
                     }

@@ -30,12 +30,11 @@
 
 package com.cubrid.plcsql.compiler;
 
-import org.antlr.v4.runtime.Token;
+import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
+import com.cubrid.plcsql.compiler.antlrgen.PcsParserBaseListener;
+import java.util.LinkedHashMap;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.tree.TerminalNode;
-import java.util.LinkedHashMap;
-import com.cubrid.plcsql.compiler.antlrgen.PcsParserBaseListener;
-import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
 
 public class StaticSqlCollector extends PcsParserBaseListener {
 
@@ -55,14 +54,16 @@ public class StaticSqlCollector extends PcsParserBaseListener {
     }
 
     @Override
-    public void enterData_manipulation_language_statements(PcsParser.Data_manipulation_language_statementsContext ctx) {
+    public void enterData_manipulation_language_statements(
+            PcsParser.Data_manipulation_language_statementsContext ctx) {
         level++;
         assert level == 1;
         startCollect();
     }
 
     @Override
-    public void exitData_manipulation_language_statements(PcsParser.Data_manipulation_language_statementsContext ctx) {
+    public void exitData_manipulation_language_statements(
+            PcsParser.Data_manipulation_language_statementsContext ctx) {
         level--;
         assert level == 0;
         stopCollect(ctx);
@@ -72,7 +73,8 @@ public class StaticSqlCollector extends PcsParserBaseListener {
     public void enterS_select_statement(PcsParser.S_select_statementContext ctx) {
         level++;
         if (level == 1) {
-            startCollect(); // s_select_statement can be a decendant of data_manipulation_language_statements
+            startCollect(); // s_select_statement can be a decendant of
+            // data_manipulation_language_statements
         }
     }
 

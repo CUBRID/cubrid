@@ -32,13 +32,13 @@ package com.cubrid.plcsql.handler;
 
 import com.cubrid.jsp.data.CompileInfo;
 import com.cubrid.plcsql.compiler.Misc;
-import com.cubrid.plcsql.compiler.ServerAPI;
-import com.cubrid.plcsql.compiler.SqlSemantics;
-import com.cubrid.plcsql.compiler.StaticSqlCollector;
 import com.cubrid.plcsql.compiler.ParseTreeConverter;
 import com.cubrid.plcsql.compiler.ParseTreePrinter;
 import com.cubrid.plcsql.compiler.PcsLexerEx;
 import com.cubrid.plcsql.compiler.SemanticError;
+import com.cubrid.plcsql.compiler.ServerAPI;
+import com.cubrid.plcsql.compiler.SqlSemantics;
+import com.cubrid.plcsql.compiler.StaticSqlCollector;
 import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
 import com.cubrid.plcsql.compiler.visitor.TypeChecker;
@@ -47,13 +47,13 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintStream;
-import org.antlr.v4.runtime.*;
-import org.antlr.v4.runtime.tree.*;
 import java.util.ArrayList;
-import java.util.Map;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import org.antlr.v4.runtime.*;
+import org.antlr.v4.runtime.tree.*;
 
 public class TestMain {
 
@@ -100,7 +100,7 @@ public class TestMain {
         // ------------------------------------------
         // converting
 
-        ParseTreeConverter converter = new ParseTreeConverter(null);    // TODO: replace null
+        ParseTreeConverter converter = new ParseTreeConverter(null); // TODO: replace null
         Unit unit = (Unit) converter.visit(ret);
 
         if (verbose) {
@@ -114,8 +114,7 @@ public class TestMain {
         // ------------------------------------------
         // typechecking
 
-        TypeChecker typeChecker =
-                new TypeChecker(converter.symbolStack);
+        TypeChecker typeChecker = new TypeChecker(converter.symbolStack);
         typeChecker.visitUnit(unit);
 
         if (verbose) {
@@ -301,13 +300,13 @@ public class TestMain {
 
                 Map<ParserRuleContext, SqlSemantics> staticSqls = new HashMap<>();
                 Iterator<SqlSemantics> iterSql = sqlSemantics.iterator();
-                for (ParserRuleContext ctx: ssc.staticSqlTexts.keySet()) {
+                for (ParserRuleContext ctx : ssc.staticSqlTexts.keySet()) {
                     SqlSemantics ss = iterSql.next();
                     assert ss != null;
                     if (ss.errCode == 0) {
                         staticSqls.put(ctx, ss);
                     } else {
-                        throw new SemanticError(Misc.getLineOf(ctx), ss.errMsg);    // s410
+                        throw new SemanticError(Misc.getLineOf(ctx), ss.errMsg); // s410
                     }
                 }
 

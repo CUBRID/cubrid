@@ -30,11 +30,10 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
 import java.util.ArrayList;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class StmtStaticSql extends StmtSql {
 
@@ -45,13 +44,15 @@ public class StmtStaticSql extends StmtSql {
 
     public final StaticSql staticSql;
 
-    public StmtStaticSql( ParserRuleContext ctx,
-            int level, StaticSql staticSql) {
+    public StmtStaticSql(ParserRuleContext ctx, int level, StaticSql staticSql) {
 
-        super(ctx, false, level,
-            new ExprStr(staticSql.ctx, staticSql.rewritten),
-            staticSql.intoVars,
-            new ArrayList(staticSql.hostVars.keySet()));
+        super(
+                ctx,
+                false,
+                level,
+                new ExprStr(staticSql.ctx, staticSql.rewritten),
+                staticSql.intoVars,
+                new ArrayList(staticSql.hostVars.keySet()));
 
         this.staticSql = staticSql;
     }

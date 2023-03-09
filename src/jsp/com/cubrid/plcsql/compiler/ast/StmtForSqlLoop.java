@@ -31,10 +31,8 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
-import com.cubrid.plcsql.compiler.StaticSql;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
 import java.util.List;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class StmtForSqlLoop extends Stmt {
 
