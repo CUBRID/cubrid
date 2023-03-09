@@ -46,6 +46,8 @@ public class StmtExecImme extends StmtSql {
             Expr dynamicSql,
             NodeList<ExprId> intoVarList,
             NodeList<? extends Expr> usedExprList) {
-        super(ctx, true, level, dynamicSql, intoVarList.nodes, usedExprList.nodes);
+        super(ctx, true, level, dynamicSql,
+            intoVarList == null ? null : intoVarList.nodes,
+            usedExprList == null ? null : usedExprList.nodes);
     }
 }

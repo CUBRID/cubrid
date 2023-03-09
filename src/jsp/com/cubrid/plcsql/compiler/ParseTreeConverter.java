@@ -1211,7 +1211,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public AstNode visitContinue_statement(Continue_statementContext ctx) {
+    public Stmt visitContinue_statement(Continue_statementContext ctx) {
 
         if (!within(ctx, Loop_statementContext.class)) {
             throw new SemanticError(
@@ -1238,12 +1238,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             return new StmtContinue(ctx, declLabel);
         } else {
             Expr cond = visitExpression(ctx.expression());
-            return new CondStmt(ctx, cond, new StmtContinue(ctx, declLabel));
+            CondStmt cs = new CondStmt(ctx, cond, new StmtContinue(ctx, declLabel));
+            return new StmtIf(ctx, true, new NodeList<CondStmt>().addNode(cs), null);
         }
     }
 
     @Override
-    public AstNode visitExit_statement(Exit_statementContext ctx) {
+    public Stmt visitExit_statement(Exit_statementContext ctx) {
 
         if (!within(ctx, Loop_statementContext.class)) {
             throw new SemanticError(
@@ -1270,7 +1271,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             return new StmtBreak(ctx, declLabel);
         } else {
             Expr cond = visitExpression(ctx.expression());
-            return new CondStmt(ctx, cond, new StmtBreak(ctx, declLabel));
+            CondStmt cs = new CondStmt(ctx, cond, new StmtBreak(ctx, declLabel));
+            return new StmtIf(ctx, true, new NodeList<CondStmt>().addNode(cs), null);
         }
     }
 

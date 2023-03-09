@@ -504,7 +504,7 @@ numeric_type
     ;
 
 char_type
-    : (CHAR | VARCHAR) ( '(' length=UNSIGNED_INTEGER ')' )?
+    : (CHAR | CHARACTER | VARCHAR | CHAR VARYING | CHARACTER VARYING) ( '(' length=UNSIGNED_INTEGER ')' )?
     ;
 
 simple_type

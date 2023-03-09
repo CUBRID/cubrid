@@ -207,21 +207,21 @@ public class ServerAPI {
                 if (ps.name.equals("MY_PROC")) {
                     ps.setAnswer(MOCK_OUT_POS, MOCK_PARAM_TYPES);
                 } else {
-                    ps.setError(300, "no such procedure:" + ps.name);
+                    ps.setError(300, "no such procedure: " + ps.name);
                 }
             } else if (q instanceof FunctionSignature) {
                 FunctionSignature fs = (FunctionSignature) q;
                 if (fs.name.equals("MY_FUNC")) {
                     fs.setAnswer(MOCK_OUT_POS, MOCK_PARAM_TYPES, "VARCHAR");
                 } else {
-                    fs.setError(301, "no such function:" + fs.name);
+                    fs.setError(301, "no such function: " + fs.name);
                 }
             } else if (q instanceof SerialOrNot) {
                 SerialOrNot sn = (SerialOrNot) q;
                 if (sn.name.equals("MY_SERIAL")) {
                     // OK
                 } else {
-                    sn.setError(302, "no such serial:" + sn.name);
+                    sn.setError(302, "no such serial: " + sn.name);
                 }
 
             } else if (q instanceof ColumnType) {
@@ -230,7 +230,7 @@ public class ServerAPI {
                 if (s.equals("MY_TABLE.MY_COLUMN")) {
                     ct.setAnswer("VARCHAR");
                 } else {
-                    ct.setError(303, "no such table column:" + s);
+                    ct.setError(303, "no such table column: " + s);
                 }
             } else {
                 assert false : "unreachable";
