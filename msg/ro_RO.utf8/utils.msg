@@ -508,6 +508,7 @@ utilizare: %1$s loaddb [OPŢIUNI] nume-bază-de-date[@host]\n\
 opţiuni valide:\n\
   -S, --SA-mode                     mod de execuţie independent\n\
   -C, --CS-mode                     mod de execuţie client-server\n\
+                                    AVERTISMENT: În modul client-server, numai fișierul de date (-d, --data-file=FILE) poate fi încărcat.\n\
   -u, --user=ID                     ID de utilizator pentru acces la baza de date; implicit: "public"\n\
   -p, --password=PAROLA             parola de utilizator; implicit: nulă\n\
       --data-file-check-only        verifică sintaxa fișierului fără a-l încărca; implicit: dezactivat\n\
@@ -572,7 +573,8 @@ opţiuni valide:\n\
   -S, --SA-mode                  mod de execuţie independent\n\
   -C, --CS-mode                  mod de execuţie client-server\n\
       --datafile-per-class       creează un fişier obiect pentru fieacre clasă; implicit: dezactivat\n\
-      --split-schema-files       împărțiți informațiile de schemă pe obiect și generați fiecare fișier; Implicit: generați un fișier de schemă cu toate obiectele\n
+      --split-schema-files       împărțiți informațiile de schemă pe obiect și generați fiecare fișier; Implicit: generați un fișier de schemă cu toate obiectele\n\
+      --as-dba                   Dacă utilizatorul de conectare este membru al grupului DBA, extrageți același fișier de schemă ca și DBA.\n
 
 
 

@@ -186,6 +186,15 @@ ldr_validate_object_file (const char *argv0, load_args * args)
       return ER_FAILED;
     }
 
+  if (args->cs_mode && (args->load_only == true
+			|| args->index_file.empty () == false
+			|| args->schema_file.empty () == false
+			|| args->schema_file_list.empty () == false || args->trigger_file.empty () == false))
+    {
+      fprintf (stderr, "In loaddb CS mode (-C, --CS-mode), only object loading is possible.\n");
+      return ER_FAILED;
+    }
+
   if (args->schema_file.empty () == false && args->schema_file_list.empty () == false)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
@@ -1117,6 +1126,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->disable_statistics = utility_get_option_bool_value (arg_map, LOAD_NO_STATISTICS_S);
   args->periodic_commit = utility_get_option_int_value (arg_map, LOAD_PERIODIC_COMMIT_S);
   args->verbose_commit = args->periodic_commit > 0;
+  args->cs_mode = utility_get_option_bool_value (arg_map, LOAD_CS_MODE_S);
 
   /* *INDENT-OFF* */
   if (args->periodic_commit == 0)
