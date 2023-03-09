@@ -712,6 +712,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_REGEXP_ENGINE "regexp_engine"
 
+#define PRM_NAME_ORACLE_STYLE_NUMBER_RETURN "oracle_style_number_return"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2362,6 +2364,10 @@ static int prm_regexp_engine_lower = cubregex::engine_type::LIB_CPPSTD;
 static int prm_regexp_engine_upper = cubregex::engine_type::LIB_RE2;
 static unsigned int prm_regexp_engine_flag = 0;
 /* *INDENT-ON* */
+
+bool PRM_ORACLE_STYLE_NUMBER_RETURN = false;
+static bool prm_oracle_style_number_return_default = false;
+static unsigned int prm_oracle_style_number_return_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6178,6 +6184,17 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_REGEXP_ENGINE,
    (void *) &prm_regexp_engine_upper,
    (void *) &prm_regexp_engine_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ORACLE_STYLE_NUMBER_RETURN,
+   PRM_NAME_ORACLE_STYLE_NUMBER_RETURN,
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   PRM_BOOLEAN,
+   &prm_oracle_style_number_return_flag,
+   (void *) &prm_oracle_style_number_return_default,
+   (void *) &PRM_ORACLE_STYLE_NUMBER_RETURN,
+   (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

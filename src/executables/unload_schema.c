@@ -1195,23 +1195,11 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
    * convert the class table into an ordered class list, would be better
    * if we just built the initial list rather than using the table.
    */
-  ctxt.classes = get_ordered_classes (schema_output_ctx, NULL);
-  if (ctxt.classes == NULL)
-    {
-      if (db_error_code () != NO_ERROR)
-	{
-	  return 1;
-	}
-      else
-	{
-	  fprintf (stderr, "%s: Unknown database error occurs " "but may not be database error.\n\n", ctxt.exec_name);
-	  return 1;
-	}
-    }
+  err_count = get_classes (ctxt, schema_output_ctx);
 
-  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+  if (err_count != NO_ERROR)
     {
-      filter_user_classes (&ctxt.classes, ctxt.login_user);
+      return 1;
     }
 
   /*
@@ -5286,24 +5274,33 @@ get_classes (extract_context & ctxt, print_output & output_ctx)
   ctxt.classes = get_ordered_classes (output_ctx, NULL);
   if (ctxt.classes == NULL)
     {
-      if (db_error_code () != NO_ERROR)
-	{
-	  err = ER_FAILED;
-	}
-      else
-	{
-	  fprintf (stderr, "%s: Unknown database error occurs " "but may not be database error.\n\n", ctxt.exec_name);
-	  err = ER_FAILED;
-	}
-      return err;
+      goto no_data;
     }
 
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
     {
       filter_user_classes (&ctxt.classes, ctxt.login_user);
+      if (ctxt.classes == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NODATA_TOBE_UNLOADED, 0);
+	  goto no_data;
+	}
     }
 
   er_clear ();
+  return err;
+
+no_data:
+  if (db_error_code () != NO_ERROR)
+    {
+      err = ER_FAILED;
+    }
+  else
+    {
+      fprintf (stderr, "%s: Unknown database error occurs " "but may not be database error.\n\n", ctxt.exec_name);
+      err = ER_FAILED;
+    }
+
   return err;
 }
 
