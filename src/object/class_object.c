@@ -4096,7 +4096,7 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
 	  continue;
 	}
 
-      if (!cons->attributes || !att_names)
+      if (!cons->attributes)
 	{
 	  continue;
 	}
@@ -4105,19 +4105,19 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
 	{
 	  for (namep = att_names; *namep; namep++)
 	    {
-	      if (!intl_identifier_casecmp ((*attp)->header.name, *namep))
+	      if (intl_identifier_casecmp ((*attp)->header.name, *namep) == 0)
 		{
 		  break;
 		}
 	    }
 
-	  if (!*namep)
+	  if (*namep == NULL)
 	    {
-	      break;
+	      break;		/* not found */
 	    }
 	}
 
-      if (!*attp)
+      if (*attp == NULL)
 	{
 	  // For indexes that use prefixes, it does not reach here.     
 	  dk_create_index_level_remove_adjust (new_cons, att_names, asc_desc, NULL, func_index_info,
@@ -4188,77 +4188,75 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
     {
       if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type) == false)
 	{
-	  continue;
-	}
-
-      if (((filter_predicate && !cons->filter_predicate) || (!filter_predicate && cons->filter_predicate))
-	  || ((func_index_info && !cons->func_index_info) || (!func_index_info && cons->func_index_info)))
-	{
-	  continue;
-	}
-
-      attp = cons->attributes;
-      namep = att_names;
-      if (!attp || !namep)
-	{
-	  continue;
-	}
-
-      len = 0;			/* init */
-      while (*attp && *namep && !intl_identifier_casecmp ((*attp)->header.name, *namep))
-	{
-	  attp++;
-	  namep++;
-	  len++;		/* increase name number */
-	}
-
-      if (*attp || *namep || classobj_is_possible_constraint (cons->type, new_cons))
-	{
-	  continue;
-	}
-
-      for (i = 0; i < len; i++)
-	{
-	  /* if not specified, ascending order */
-	  order = (asc_desc ? asc_desc[i] : 0);
-	  assert (order == 0 || order == 1);
-	  if (order != cons->asc_desc[i])
-	    {
-	      break;		/* not match */
-	    }
-	}
-
-      if (i != len)
-	{
-	  continue;
-	}
-
-      if (filter_predicate)
-	{
-	  if (!filter_predicate->pred_string || !cons->filter_predicate->pred_string)
+	  if (((filter_predicate && !cons->filter_predicate) || (!filter_predicate && cons->filter_predicate))
+	      || ((func_index_info && !cons->func_index_info) || (!func_index_info && cons->func_index_info)))
 	    {
 	      continue;
 	    }
 
-	  if (strcmp (filter_predicate->pred_string, cons->filter_predicate->pred_string))
+	  attp = cons->attributes;
+	  namep = att_names;
+	  if (!attp || !namep)
 	    {
 	      continue;
 	    }
-	}
 
-      if (func_index_info)
-	{
-	  /* expr_str are printed tree, identifiers are already lower case */
-	  if ((func_index_info->col_id != cons->func_index_info->col_id)
-	      || (func_index_info->attr_index_start != cons->func_index_info->attr_index_start)
-	      || (func_index_info->fi_domain->is_desc != cons->func_index_info->fi_domain->is_desc)
-	      || (strcmp (func_index_info->expr_str, cons->func_index_info->expr_str) != 0))
+	  len = 0;		/* init */
+	  while (*attp && *namep && !intl_identifier_casecmp ((*attp)->header.name, *namep))
+	    {
+	      attp++;
+	      namep++;
+	      len++;		/* increase name number */
+	    }
+
+	  if (*attp || *namep || classobj_is_possible_constraint (cons->type, new_cons))
 	    {
 	      continue;
 	    }
-	}
 
-      break;
+	  for (i = 0; i < len; i++)
+	    {
+	      /* if not specified, ascending order */
+	      order = (asc_desc ? asc_desc[i] : 0);
+	      assert (order == 0 || order == 1);
+	      if (order != cons->asc_desc[i])
+		{
+		  break;	/* not match */
+		}
+	    }
+
+	  if (i != len)
+	    {
+	      continue;
+	    }
+
+	  if (filter_predicate)
+	    {
+	      if (!filter_predicate->pred_string || !cons->filter_predicate->pred_string)
+		{
+		  continue;
+		}
+
+	      if (strcmp (filter_predicate->pred_string, cons->filter_predicate->pred_string))
+		{
+		  continue;
+		}
+	    }
+
+	  if (func_index_info)
+	    {
+	      /* expr_str are printed tree, identifiers are already lower case */
+	      if ((func_index_info->attr_index_start != cons->func_index_info->attr_index_start)
+		  || (func_index_info->col_id != cons->func_index_info->col_id)
+		  || (func_index_info->fi_domain->is_desc != cons->func_index_info->fi_domain->is_desc)
+		  || (strcmp (func_index_info->expr_str, cons->func_index_info->expr_str) != 0))
+		{
+		  continue;
+		}
+	    }
+
+	  return cons;
+	}
     }
 
   return cons;
@@ -6646,12 +6644,11 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate, SM_CLASS_CONSTRAINT * const
 	      goto error_exit;
 	    }
 #if defined(SUPPORT_COMPRESS_MODE)
-	  if (count > 1 && IS_COMPRESS_INDEX_ATTR_NAME (att_names[count - 1]))
-	    {
-	      count--;
-	    }
-#endif
+	  assert (((count > 1
+		    && IS_COMPRESS_INDEX_ATTR_NAME (att_names[count - 1])) ? (count - 1) : count) == count_ref);
+#else
 	  assert (count == count_ref);
+#endif
 	}
       else
 	{
