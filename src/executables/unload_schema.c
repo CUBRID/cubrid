@@ -3441,13 +3441,15 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
       reserved_col_buf[0] = '\0';
       if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
 	{
-	  if ((n_attrs > 1) && IS_COMPRESS_INDEX_ATTR_ID (atts[n_attrs - 1]->id))
+	  k = dk_sm_decompress_position (n_attrs, atts, constraint->func_index_info);
+
+	  if ((k != -1) && IS_COMPRESS_INDEX_ATTR_ID (atts[k]->id))
 	    {
 	      dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_SET,
-					    GET_COMPRESS_INDEX_ATTR_LEVEL (atts[n_attrs - 1]->id));
+					    GET_COMPRESS_INDEX_ATTR_LEVEL (atts[k]->id));
 	      n_attrs--;	/* Hidden column should not be displayed. */
 	    }
-	  else if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
+	  else
 	    {
 	      dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_NONE,
 					    COMPRESS_INDEX_MOD_LEVEL_ZERO);

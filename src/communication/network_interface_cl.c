@@ -8216,7 +8216,9 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
+
   ptr = or_pack_btid (request, btid);
+
   req_error =
     net_client_request (NET_SERVER_BTREE_GET_STATISTICS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
 			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
