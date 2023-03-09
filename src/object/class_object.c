@@ -4188,16 +4188,16 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
     {
       if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type))
 	{
-	  if (((filter_predicate && !cons->filter_predicate) || (!filter_predicate && cons->filter_predicate))
-	      || ((func_index_info && !cons->func_index_info) || (!func_index_info && cons->func_index_info)))
+	  attp = cons->attributes;
+	  namep = att_names;
+	  assert (namep != NULL);
+	  if (!attp)
 	    {
 	      continue;
 	    }
 
-	  attp = cons->attributes;
-	  namep = att_names;
-          assert(namep != NULL);
-	  if (!attp)
+	  if (((filter_predicate && !cons->filter_predicate) || (!filter_predicate && cons->filter_predicate))
+	      || ((func_index_info && !cons->func_index_info) || (!func_index_info && cons->func_index_info)))
 	    {
 	      continue;
 	    }
