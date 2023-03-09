@@ -122,7 +122,8 @@ namespace cubmethod
 
       static int bypass_block (SOCKET socket, cubmem::block &b);
 
-      cubmethod::header *m_header;
+      cubmethod::header m_client_header; // header sending to cubridcs
+      cubmethod::header m_java_header; // header sending to cub_javasp
   };
 
 } // namespace cubmethod

@@ -37,10 +37,10 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 // header
 //////////////////////////////////////////////////////////////////////////
-  header::header (uint64_t i, int c, int f)
+  header::header (uint64_t i, int c, int r)
     : id (i)
     , command (c)
-    , flag (f)
+    , req_id (r)
   {
     //
   }
@@ -55,7 +55,7 @@ namespace cubmethod
   {
     serializator.pack_bigint (id);
     serializator.pack_int (command);
-    serializator.pack_int (flag);
+    serializator.pack_int (req_id);
   }
 
   size_t
@@ -63,7 +63,7 @@ namespace cubmethod
   {
     size_t size = serializator.get_packed_bigint_size (start_offset); // id
     size += serializator.get_packed_int_size (size); // command
-    size += serializator.get_packed_int_size (size); // flag
+    size += serializator.get_packed_int_size (size); // req_id
     return size;
   }
 
@@ -72,7 +72,7 @@ namespace cubmethod
   {
     deserializator.unpack_bigint (id);
     deserializator.unpack_int (command);
-    deserializator.unpack_int (flag);
+    deserializator.unpack_int (req_id);
   }
 
 //////////////////////////////////////////////////////////////////////////
@@ -194,7 +194,7 @@ namespace cubmethod
 // Method Java
 //////////////////////////////////////////////////////////////////////////
   invoke_java::invoke_java (METHOD_GROUP_ID id, method_sig_node *sig)
-  : group_id (id)
+    : group_id (id)
   {
     signature.assign (sig->method_name);
     num_args = sig->num_method_args;

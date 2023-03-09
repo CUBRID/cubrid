@@ -88,7 +88,10 @@ namespace cubmethod
       std::queue<cubmem::block> &get_data_queue ();
       cubmethod::runtime_context *get_runtime_context ();
       connection_pool &get_connection_pool ();
-      SESSION_ID get_session_id () const { return m_sid; }
+      SESSION_ID get_session_id () const
+      {
+	return m_sid;
+      }
 
       bool is_running () const;
       bool is_for_scan () const;
@@ -108,6 +111,11 @@ namespace cubmethod
       db_parameter_info *get_db_parameter_info () const;
 
       void set_db_parameter_info (db_parameter_info *param_info);
+
+      inline METHOD_REQ_ID get_and_increment_request_id ()
+      {
+	return m_rctx->get_and_increment_request_id();
+      }
 
     private:
       void destory_all_cursors ();

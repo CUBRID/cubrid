@@ -52,6 +52,7 @@ namespace cubmethod
     , m_interrupt_id (NO_ERROR)
     , m_is_running (false)
     , m_conn_pool (METHOD_MAX_RECURSION_DEPTH + 1)
+    , m_req_id {0}
   {
     //
   }
