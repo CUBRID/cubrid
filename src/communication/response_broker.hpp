@@ -200,7 +200,9 @@ namespace cubcomm
     {
       std::lock_guard<std::mutex> lk_guard (m_mutex);
 
+      assert (!m_terminate);
       assert (m_response_payloads.find (a_rsn) == m_response_payloads.cend ());
+
       payload_or_error_type &ent = m_response_payloads[a_rsn];
       ent.m_response_or_error_present = false;
     }
@@ -213,6 +215,8 @@ namespace cubcomm
   {
     {
       std::lock_guard<std::mutex> lk_guard (m_mutex);
+
+      assert (!m_terminate);
 
       payload_or_error_type &ent = m_response_payloads[a_rsn];
       assert (!ent.m_response_or_error_present);
@@ -231,6 +235,8 @@ namespace cubcomm
   {
     {
       std::lock_guard<std::mutex> lockg (m_mutex);
+
+      assert (!m_terminate);
 
       payload_or_error_type &ent = m_response_payloads[a_rsn];
       assert (!ent.m_response_or_error_present);
