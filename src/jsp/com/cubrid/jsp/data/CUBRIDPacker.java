@@ -128,6 +128,7 @@ public class CUBRIDPacker {
     }
 
     public void packPrimitiveBytes(ByteBuffer b) {
+        ensureSpace(b.position());
         buffer.put(b.array(), 0, b.position());
     }
 
