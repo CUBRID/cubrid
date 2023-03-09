@@ -711,9 +711,6 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
    * Single column constraints (NOT 0) are displayed along with
    * the attributes.
    */
-#if defined(SUPPORT_COMPRESS_MODE)
-  int chk_idx;
-#endif
   this->constraints = 0;	/* initialize */
   if (class_->constraints != NULL)
     {
