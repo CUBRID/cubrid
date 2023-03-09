@@ -58,11 +58,18 @@ namespace cubmethod
     //
   }
 
+  const cubmethod::header &
+  method_invoke_java::get_next_java_header (cubmethod::header &header)
+  {
+    header.req_id = m_group->get_and_increment_request_id ();
+    return header;
+  }
+
   int method_invoke_java::invoke (cubthread::entry *thread_p, std::vector<std::reference_wrapper<DB_VALUE>> &arg_base)
   {
     int error = NO_ERROR;
 
-    cubmethod::header header (m_group->get_session_id (), SP_CODE_INVOKE, 0);
+    cubmethod::header header (m_group->get_session_id (), SP_CODE_INVOKE, m_group->get_and_increment_request_id ());
     cubmethod::invoke_java arg (m_group->get_id (), m_method_sig);
 
     error = mcon_send_data_to_java (m_group->get_socket (), header, arg);
@@ -319,13 +326,13 @@ namespace cubmethod
     if (parameter_info)
       {
 	cubmem::block blk = mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, *parameter_info);
-	error = mcon_send_data_to_java (m_group->get_socket(), m_java_header, blk);
+	error = mcon_send_data_to_java (m_group->get_socket(), get_next_java_header (m_java_header), blk);
       }
     else
       {
 	cubmem::block blk = mcon_pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
 			    ARG_FILE_LINE);
-	error = mcon_send_data_to_java (m_group->get_socket(), m_java_header, blk);
+	error = mcon_send_data_to_java (m_group->get_socket(), get_next_java_header (m_java_header), blk);
       }
     return error;
   }
@@ -361,7 +368,7 @@ namespace cubmethod
 	  m_group->register_client_handler (info.handle_id);
 	}
 
-      error = mcon_send_data_to_java (m_group->get_socket (), m_java_header, b);
+      error = mcon_send_data_to_java (m_group->get_socket (), get_next_java_header (m_java_header), b);
       return error;
     };
 
@@ -407,8 +414,7 @@ namespace cubmethod
 	    }
 	}
 
-      m_java_header.command = SP_CODE_INTERNAL_JDBC;
-      error = mcon_send_data_to_java (m_group->get_socket (), m_java_header, b);
+      error = mcon_send_data_to_java (m_group->get_socket (), get_next_java_header (m_java_header), b);
       return error;
     };
 
@@ -476,7 +482,7 @@ namespace cubmethod
       }
 
     cubmem::block blk = mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, info);
-    error = mcon_send_data_to_java (m_group->get_socket (), m_java_header, blk);
+    error = mcon_send_data_to_java (m_group->get_socket (), get_next_java_header (m_java_header), blk);
     return error;
   }
 
@@ -496,7 +502,7 @@ namespace cubmethod
 
     auto java_lambda = [&] (cubmem::block & b)
     {
-      return mcon_send_data_to_java (m_group->get_socket(), m_java_header, b);
+      return mcon_send_data_to_java (m_group->get_socket(), get_next_java_header (m_java_header), b);
     };
 
     error = xs_receive (&thread_ref, java_lambda);
@@ -521,7 +527,7 @@ namespace cubmethod
 
     auto java_lambda = [&] (cubmem::block & b)
     {
-      return mcon_send_data_to_java (m_group->get_socket(), m_java_header, b);
+      return mcon_send_data_to_java (m_group->get_socket(), get_next_java_header (m_java_header), b);
     };
 
     error = xs_receive (&thread_ref, java_lambda);
@@ -545,7 +551,7 @@ namespace cubmethod
 
     auto java_lambda = [&] (cubmem::block & b)
     {
-      return mcon_send_data_to_java (m_group->get_socket(), m_java_header, b);
+      return mcon_send_data_to_java (m_group->get_socket(), get_next_java_header (m_java_header), b);
     };
 
     error = xs_receive (&thread_ref, java_lambda);
@@ -573,7 +579,7 @@ namespace cubmethod
 
     auto java_lambda = [&] (cubmem::block & b)
     {
-      return mcon_send_data_to_java (m_group->get_socket(), m_java_header, b);
+      return mcon_send_data_to_java (m_group->get_socket(), get_next_java_header (m_java_header), b);
     };
 
     error = xs_receive (&thread_ref, java_lambda);
@@ -608,7 +614,7 @@ namespace cubmethod
       if (cursor)
 	{
 	  cursor->change_owner (m_group->get_thread_entry ());
-	  return mcon_send_data_to_java (m_group->get_socket(), m_java_header, b);
+	  return mcon_send_data_to_java (m_group->get_socket(), get_next_java_header (m_java_header), b);
 	}
       else
 	{
@@ -637,7 +643,7 @@ namespace cubmethod
 
     auto java_lambda = [&] (cubmem::block & b)
     {
-      return mcon_send_data_to_java (m_group->get_socket(), m_java_header, b);
+      return mcon_send_data_to_java (m_group->get_socket(), get_next_java_header (m_java_header), b);
     };
 
     error = xs_receive (&thread_ref, java_lambda);

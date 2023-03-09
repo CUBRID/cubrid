@@ -120,7 +120,9 @@ namespace cubmethod
 
       void erase_query_cursor (const std::uint64_t query_id);
 
-      static int bypass_block (SOCKET socket, cubmem::block &b);
+
+
+      const cubmethod::header &get_next_java_header (cubmethod::header &header);
 
       cubmethod::header m_client_header; // header sending to cubridcs
       cubmethod::header m_java_header; // header sending to cub_javasp
