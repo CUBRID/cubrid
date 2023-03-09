@@ -43,9 +43,7 @@ import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
 import com.cubrid.plcsql.compiler.visitor.TypeChecker;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.IOException;
 import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -122,7 +120,9 @@ public class TestMain {
             }
         }
 
-        System.out.println(String.format("total: %d, success: %d, failure: %d", total, (total - failCnt), failCnt));
+        System.out.println(
+                String.format(
+                        "total: %d, success: %d, failure: %d", total, (total - failCnt), failCnt));
     }
 
     // ------------------------------------------------------------------
@@ -198,7 +198,8 @@ public class TestMain {
         return t;
     }
 
-    private static CompileInfo compileInner(CharStream input, int optionFlags, int seq, String infile) {
+    private static CompileInfo compileInner(
+            CharStream input, int optionFlags, int seq, String infile) {
 
         boolean verbose = (optionFlags & OPT_VERBOSE) > 0;
 
