@@ -3988,10 +3988,14 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	}
     }
 #if defined(SUPPORT_COMPRESS_MODE)
-  else if (IS_COMPRESS_INDEX_ATTR_ID (attr_id) && (attr_index == ORC_ATT_NAME_INDEX))
+  else
     {
-      *string = (char *) GET_COMPRESS_INDEX_ATTR_NAME (GET_COMPRESS_INDEX_ATTR_LEVEL (attr_id));
       *alloced_string = 0;
+      *string = NULL;
+      if (IS_COMPRESS_INDEX_ATTR_ID (attr_id) && (attr_index == ORC_ATT_NAME_INDEX))
+	{
+	  *string = (char *) GET_COMPRESS_INDEX_ATTR_NAME (GET_COMPRESS_INDEX_ATTR_LEVEL (attr_id));
+	}
     }
 #endif
 
