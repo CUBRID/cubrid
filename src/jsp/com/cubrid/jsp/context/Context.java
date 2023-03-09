@@ -27,7 +27,7 @@ public class Context {
     // CAS client information connecting with this Context
     private Properties clientInfo = null;
 
-    // TODO: dynamic classLoader
+    // TODO: dynamic classLoader for a session
 
     public Context(long id) {
         sessionId = id;
