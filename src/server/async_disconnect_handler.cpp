@@ -96,6 +96,8 @@ async_disconnect_handler<T_CONN_HANDLER>::disconnect_loop ()
     }
 
   // clear requests added after swapped to m_disconnect_queue before termination.
+
+  std::unique_lock<std::mutex> ulock { m_queue_mtx };
   if (!m_disconnect_queue.empty ())
     {
       m_disconnect_queue = {}; // clear
