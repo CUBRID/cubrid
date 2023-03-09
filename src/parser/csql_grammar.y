@@ -5402,20 +5402,6 @@ meta_class_spec
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-        | CLASS class_name_with_server_name
-                {{DBG_TRACE_GRAMMAR(meta_class_spec, : CLASS class_name_with_server_name );
-                       PT_NODE *ocs = parser_new_node (this_parser, PT_SPEC);
-			if (ocs)
-			  {
-                            ocs->info.spec.entity_name = CONTAINER_AT_0 ($2);
-			    /* for DBLink DML */
-                            ocs->info.spec.remote_server_name = CONTAINER_AT_1 ($2);
-			    ocs->info.spec.only_all = PT_ONLY;
-                            ocs->info.spec.meta_class = PT_META_CLASS;
-			  }
-
-                        $$ = ocs;
-                DBG_PRINT}}
 	;
 
 only_all_class_spec_with_server
