@@ -2,6 +2,7 @@ package com.cubrid.jsp.context;
 
 import com.cubrid.jsp.ExecuteThread;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
+import com.cubrid.jsp.protocol.Header;
 import java.nio.ByteBuffer;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -12,8 +13,8 @@ public class Context {
     // To recognize unique DB session
     private long sessionId = -1;
 
-    // If transaction ID is changed, The server-side connection must be reset
-    private long transactionId = -1;
+    // request Id (for future)
+    private int prevRequestId = 0;
 
     // charset
     private String charSet = "UTF-8";
@@ -34,14 +35,6 @@ public class Context {
 
     public long getSessionId() {
         return sessionId;
-    }
-
-    public long getTransactionId() {
-        return transactionId;
-    }
-
-    public void setTransactionId(long transactionId) {
-        this.transactionId = transactionId;
     }
 
     public synchronized Connection getConnection() {
@@ -73,6 +66,25 @@ public class Context {
 
     public String getCharset() {
         return charSet;
+    }
+
+    public void checkHeader(Header header) {
+        if (prevRequestId > header.requestId) {
+            // not incremented
+            // a new session is started with the same session Id or the trasaction is ended
+            clear();
+        }
+        prevRequestId = header.requestId;
+    }
+
+    public void clear() {
+        try {
+            closeConnection(connection);
+        } catch (Exception e) {
+            // ignore
+        } finally {
+            connection = null;
+        }
     }
 
     // TODO: move this function to proper place

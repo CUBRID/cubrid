@@ -50,13 +50,4 @@ public class ContextManager {
         }
         return null;
     }
-
-    public static Context getContextofCurrentThread() {
-        Long threadId = Thread.currentThread().getId();
-        Long ctxId = ContextManager.getContextIdByThreadId(threadId);
-        if (ctxId != null) {
-            return contextMap.get(ctxId);
-        }
-        return null;
-    }
 }

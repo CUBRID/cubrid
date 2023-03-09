@@ -212,7 +212,6 @@ public class ExecuteThread extends Thread {
                     /*
                      * CAS disconnects socket
                      * 1) end of the procedure successfully by calling jsp_close_internal_connection
-                     * ()
                      * 2) socket is in invalid status. we do not have to deal with it here.
                      */
                     break;
@@ -248,6 +247,7 @@ public class ExecuteThread extends Thread {
         /* read header */
         Header header = new Header(unpacker);
         ctx = ContextManager.getContext(header.id);
+        ctx.checkHeader(header);
 
         ByteBuffer payloadBuffer =
                 ByteBuffer.wrap(
