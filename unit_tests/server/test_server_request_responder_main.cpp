@@ -29,7 +29,7 @@ struct test_thread_init_final
 {
   test_thread_init_final ()
   {
-    initialize_fake_system_parameters();
+    initialize_fake_system_parameters ();
 
     THREAD_ENTRY *thread_p = NULL;
     cubthread::initialize (thread_p);

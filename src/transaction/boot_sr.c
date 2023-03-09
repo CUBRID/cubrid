@@ -2529,8 +2529,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (get_server_type () == SERVER_TYPE_PAGE)
     {
       const log_lsa next_io_lsa = log_Gl.append.get_nxio_lsa ();
-      ps_Gl.start_log_replicator (next_io_lsa);
-      ps_Gl.init_request_responder ();
+      ps_Gl->start_log_replicator (next_io_lsa);
+      ps_Gl->init_request_responder ();
     }
 #endif // SERVER_MODE
 
@@ -3175,9 +3175,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   if (get_server_type () == SERVER_TYPE_PAGE)
     {
       log_Gl.finalize_log_prior_receiver ();	// stop receiving log before log_final()
-      ps_Gl.disconnect_all_tran_server ();
-      ps_Gl.finish_replication_during_shutdown (*thread_p);
-      ps_Gl.finalize_request_responder ();
+      ps_Gl->disconnect_all_tran_server ();
+      ps_Gl->finish_replication_during_shutdown (*thread_p);
+      ps_Gl->finalize_request_responder ();
     }
   else if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
@@ -3193,15 +3193,14 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 	  //  - finalize log infrastructure
 	  //    - done in: shutdown server routine
 	  //  - stop sending messages to page server (eg: oldest MVCCID updates)
-	  //    - done in:
-	  //        shutdown server routine
-	  //          -> boot_server_all_finalize
-	  //            -> finalize_server_type
-	  //              -> and then polymorphically in the transaction server object
-	  //                disconnect_page_server routine right before sending
-	  //                the final disconnect message to Page Server(s)
+	  //    - done in: shutdown server routine
+	  //      -> and then polymorphically in the transaction server object
+	  //         disconnect_all_page_servers routine right before sending
+	  //         the final disconnect message to Page Server(s)
 	  //  - send the final disconnect message to Page Server(s)
-	  //    - done in : tran_server::disconnect_page_server
+	  //    - done in: shutdown server routine
+	  //      -> tran_server::disconnect_all_page_servers
+	  //        -> tran_server::connection_handler::disconnect
 	  //  - delete the Passive Transaction Server object
 	  //    - done in: finalize_server_type
 
@@ -3218,22 +3217,30 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 	  pts_ptr->finish_replication_during_shutdown (*thread_p);
 	}
 
+      ts_Gl->disconnect_all_page_servers ();
+
       // shutdown order for Active Transaction Server:
       //  - finalize log infrastructure
-      //    - done in: shutdown server routine
-      //  - the log prior messages will stop being dispatched to the Page Server(s)
+      //    - done in: shutdown server routine (this routine)
+      //  - the log prior messages will stop being dispatched to the connected Page Server(s)
       //    by virtue of the client transactions and other daemons being stopped
       //    and, thus, no log will be produced anymore
       //    - log prior messages are being dispatched from Active Transaction Server towards
       //      Page Server(s) semi-synchronously via the prior_sender::send_list routine
-      //  - send the final disconnect message to Page Server(s)
+      //  - unregister log prior sinks (used to dispatch produced transactional log to connected
+      //    Page Servers:
+      //    - done in: shutdown server routine (this routine)
+      //      -> tran_server::disconnect_all_page_servers
+      //      -> active_tran_server::connection_handler::disconnect
+      //  - send the final disconnect message to all connected Page Server(s)
+      //    - done in: shutdown server routine (this routine)
+      //      -> tran_server::disconnect_all_page_servers
+      //      -> active_tran_server::connection_handler::disconnect
+      //  - delete the Active Transaction Server object
       //    - done in:
-      //        shutdown server routine
+      //        shutdown server routine (this routine)
       //          -> boot_server_all_finalize
       //            -> finalize_server_type
-      //              -> tran_server::disconnect_page_server
-      //  - delete the Active Transaction Server object
-      //    - done in: finalize_server_type
     }
 #endif
 

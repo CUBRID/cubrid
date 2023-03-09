@@ -136,6 +136,8 @@ class server_request_responder<T_CONN>::task : public cubthread::entry_task
     task (server_request_responder &request_responder, connection_t &a_conn_ref,
 	  sequenced_payload_t &&a_sp, handler_func_t &&a_func);
 
+    ~task () override;
+
     task (const task &) = delete;
     task (task &&) = delete;
 
@@ -281,6 +283,12 @@ server_request_responder<T_CONN>::task::task (server_request_responder &request_
   , m_sequenced_payload (std::move (a_sp))
   , m_function (std::move (a_func))
 {
+}
+
+template<typename T_CONN>
+server_request_responder<T_CONN>::task::~task ()
+{
+  m_function = nullptr;
 }
 
 template<typename T_CONN>

@@ -21035,20 +21035,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   RECDES forward_recdes;
   OID forward_oid;
   int rc;
-  bool atomic_replication_flag = false;
 
   LOG_TDES *tdes = NULL;
-
-  // *INDENT-OFF*
-  // To ensure that, if started, the atomic replication area will also end.
-  scope_exit <std::function<void (void)>> log_on_exit ([&thread_p, &atomic_replication_flag]()
-  {
-    if (atomic_replication_flag == true)
-     {
-        log_append_empty_record (thread_p, LOG_END_ATOMIC_REPL, NULL);
-     }
-  });
-  // *INDENT-ON*
 
   /* check input */
   assert (context != NULL);
@@ -21309,16 +21297,6 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
       /*
-       * When update_old_forward is true it signifies that only the forward page will be modified.
-       * In all other cases two or more pages are changed and need to be marked as atomic for replication.
-       */
-      if (!update_old_forward)
-	{
-	  log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
-	  atomic_replication_flag = true;
-	}
-
-      /*
        * Update old home record (if necessary)
        */
       if (update_old_home)
@@ -21484,10 +21462,6 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       /*
        * Delete home record
        */
-      //The following changes will apply to multiple pages, so they must be marked as atomic for replication.
-      log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
-      atomic_replication_flag = true;
-
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
 				&context->home_recdes, is_reusable, NULL);
 
@@ -21557,7 +21531,6 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   int error_code = NO_ERROR;
 
   LOG_TDES *tdes = NULL;
-  bool atomic_replication_flag = false;
 
   /* check input */
   assert (context != NULL);
@@ -21565,17 +21538,6 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   assert (context->type == HEAP_OPERATION_DELETE);
   assert (context->home_page_watcher_p != NULL);
   assert (context->home_page_watcher_p->pgptr != NULL);
-
-  // *INDENT-OFF*
-  // To ensure that, if started, the atomic replication area will also end.
-  scope_exit <std::function<void (void)>> log_on_exit ([&thread_p, &atomic_replication_flag]()
-  {
-    if (atomic_replication_flag == true)
-     {
-        log_append_empty_record (thread_p, LOG_END_ATOMIC_REPL, NULL);
-     }
-  });
-  // *INDENT-ON*
 
   if (context->do_supplemental_log)
     {
@@ -21736,8 +21698,6 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  /*
 	   * Relocation necessary
 	   */
-	  log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
-	  atomic_replication_flag = true;
 	  LOG_DATA_ADDR rec_address;
 
 	  /* insertion of built record */
@@ -22000,6 +21960,17 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->overflow_page_watcher_p != NULL);
 
+   // *INDENT-OFF*
+   // To ensure that, if started, the atomic replication area will also end.
+   scope_exit <std::function<void (void)>> log_on_exit ([&thread_p, &atomic_replication_flag]()
+   {
+     if (atomic_replication_flag == true)
+      {
+         log_append_empty_record (thread_p, LOG_END_ATOMIC_REPL, NULL);
+      }
+   });
+   // *INDENT-ON*
+
   if (context->do_supplemental_log)
     {
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
@@ -22018,9 +21989,6 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
-  // All situations will modify more than one page, so they are all marked as atomic for replication.
-  log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
-  atomic_replication_flag = true;
   if (is_mvcc_op)
     {
       /* log old overflow record and set prev version lsa */
@@ -22071,6 +22039,9 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   /* Proceed with the update. the new record is prepared and for mvcc it should have the prev version lsa set */
   if (heap_is_big_length (context->recdes_p->length))
     {
+      log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
+      atomic_replication_flag = true;
+
       /* overflow -> overflow update */
       is_old_home_updated = false;
 
@@ -22194,10 +22165,6 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   /* Fall through to exit. */
 
 exit:
-  if (atomic_replication_flag == true)
-    {
-      log_append_empty_record (thread_p, LOG_END_ATOMIC_REPL, NULL);
-    }
 
   return error_code;
 }
@@ -22234,6 +22201,17 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   assert (context->home_page_watcher_p != NULL);
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->forward_page_watcher_p != NULL);
+
+   // *INDENT-OFF*
+   // To ensure that, if started, the atomic replication area will also end.
+   scope_exit <std::function<void (void)>> log_on_exit ([&thread_p, &atomic_replication_flag]()
+   {
+     if (atomic_replication_flag == true)
+      {
+         log_append_empty_record (thread_p, LOG_END_ATOMIC_REPL, NULL);
+      }
+   });
+   // *INDENT-ON*
 
   if (context->do_supplemental_log)
     {
@@ -22285,8 +22263,6 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   /* all the cases that modify more than one page will be marked with the atomic replication start log record */
   if (heap_is_big_length (context->recdes_p->length))
     {
-      log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
-      atomic_replication_flag = true;
       /* insert new overflow record */
       if (heap_ovf_insert (thread_p, &context->hfid, &new_forward_oid, context->recdes_p) == NULL)
 	{
@@ -22312,9 +22288,6 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   else if (!fits_in_forward && !fits_in_home)
     {
       /* insert a new forward record */
-      log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
-      atomic_replication_flag = true;
-
       if (is_mvcc_op)
 	{
 	  /* necessary later to set prev version, which is required only for mvcc objects */
@@ -22349,8 +22322,6 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
     }
   else if (fits_in_home)
     {
-      log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
-      atomic_replication_flag = true;
       /* updated forward record fits in home page */
       context->recdes_p->type = REC_HOME;
       new_home_recdes = *context->recdes_p;
@@ -22473,7 +22444,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
    */
   if (update_old_forward)
     {
-      /* 
+      /*
        * Updating forward record and setting prev_version_lsa have to be atomic
        * if the home record (REC_RELOCATION) is not updated.
        */
@@ -22544,12 +22515,6 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
 exit:
 
-  //To ensure that, if started, the atomic replication area will also end.
-  if (atomic_replication_flag == true)
-    {
-      log_append_empty_record (thread_p, LOG_END_ATOMIC_REPL, NULL);
-    }
-
   if (newhome_pg_watcher_p != NULL && newhome_pg_watcher_p->pgptr != NULL)
     {
       /* newhome_pg_watcher is used only locally; must be unfixed */
@@ -22587,6 +22552,17 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->forward_page_watcher_p != NULL);
 
+   // *INDENT-OFF*
+   // To ensure that, if started, the atomic replication area will also end.
+   scope_exit <std::function<void (void)>> log_on_exit ([&thread_p, &atomic_replication_flag]()
+   {
+     if (atomic_replication_flag == true)
+      {
+         log_append_empty_record (thread_p, LOG_END_ATOMIC_REPL, NULL);
+      }
+   });
+   // *INDENT-ON*
+
   if (context->do_supplemental_log)
     {
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
@@ -22623,9 +22599,6 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
   if (heap_is_big_length (context->recdes_p->length))
     {
-      /* record will be converted to a bigone and more pages will be affected */
-      log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
-      atomic_replication_flag = true;
       /* fix header page */
       error_code = heap_fix_header_page (thread_p, context);
       if (error_code != NO_ERROR)
@@ -22658,9 +22631,6 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   else if (!spage_is_updatable (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
 				context->recdes_p->length))
     {
-      /* record will be converted to a relocation and two pages will be afected */
-      log_append_empty_record (thread_p, LOG_START_ATOMIC_REPL, NULL);
-      atomic_replication_flag = true;
       /* insert new home */
 
       if (is_mvcc_op)
@@ -22734,7 +22704,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       HEAP_PERF_TRACK_PREPARE (thread_p, context);
     }
 
-  /* 
+  /*
    * Updating home record and setting prev_version_lsa have to be atomic.
    * The prev_version_lsa could be updated on the forward record,
    * but it can't be seen until the home record is updated.
@@ -22796,11 +22766,6 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   /* Fall through to exit. */
 
 exit:
-
-  if (atomic_replication_flag == true)
-    {
-      log_append_empty_record (thread_p, LOG_END_ATOMIC_REPL, NULL);
-    }
 
   if (newhome_pg_watcher_p != NULL && newhome_pg_watcher_p->pgptr != NULL)
     {

@@ -42,31 +42,18 @@ passive_tran_server::get_remote_storage_config ()
   return true;
 }
 
-void
-passive_tran_server::on_boot ()
+passive_tran_server::connection_handler::request_handlers_map_t
+passive_tran_server::connection_handler::get_request_handlers ()
 {
-  assert (is_passive_transaction_server ());
-}
+  /* start from the request handlers in common on ATS and PTS */
+  auto  handlers_map = tran_server::connection_handler::get_request_handlers ();
 
-tran_server::request_handlers_map_t
-passive_tran_server::get_request_handlers ()
-{
-  std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map =
-	  tran_server::get_request_handlers ();
-
-  auto from_ps_log_prior_list_handler = std::bind (&passive_tran_server::receive_log_prior_list,
-					std::ref (*this), std::placeholders::_1);
+  auto from_ps_log_prior_list_handler = std::bind (&passive_tran_server::connection_handler::receive_log_prior_list,
+					this, std::placeholders::_1);
   handlers_map.insert (std::make_pair (page_to_tran_request::SEND_TO_PTS_LOG_PRIOR_LIST,
 				       from_ps_log_prior_list_handler));
 
   return handlers_map;
-}
-
-void
-passive_tran_server::receive_log_prior_list (page_server_conn_t::sequenced_payload &a_ip)
-{
-  std::string message = a_ip.pull_payload ();
-  log_Gl.get_log_prior_receiver ().push_message (std::move (message));
 }
 
 void
@@ -133,13 +120,13 @@ passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
   return NO_ERROR;
 }
 
-void passive_tran_server::start_log_replicator (const log_lsa &start_lsa)
+void passive_tran_server::start_log_replicator (const log_lsa &start_lsa, const log_lsa &prev_lsa)
 {
   assert (m_replicator == nullptr);
 
   // passive transaction server executes replication synchronously, for the time being, due to complexity of
   // executing it in parallel while also providing a consistent view of the data
-  m_replicator.reset (new cublog::atomic_replicator (start_lsa));
+  m_replicator.reset (new cublog::atomic_replicator (start_lsa, prev_lsa, TT_REPLICATION_PTS));
 }
 
 void passive_tran_server::send_and_receive_stop_log_prior_dispatch ()
@@ -177,7 +164,7 @@ void passive_tran_server::send_oldest_active_mvccid (cubthread::entry &)
 {
   std::string request_message;
 
-  const auto new_oldest_active_mvccid = log_Gl.mvcc_table.update_global_oldest_visible();
+  const auto new_oldest_active_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
   if (new_oldest_active_mvccid == m_oldest_active_mvccid)
     {
       return;
@@ -210,4 +197,18 @@ void passive_tran_server::finish_replication_during_shutdown (cubthread::entry &
 void passive_tran_server::wait_replication_past_target_lsa (LOG_LSA lsa)
 {
   m_replicator->wait_past_target_lsa (lsa);
+}
+
+passive_tran_server::connection_handler *
+passive_tran_server::create_connection_handler (cubcomm::channel &&chn, tran_server &ts) const
+{
+  // passive_tran_server::connection_handler
+  return new connection_handler (std::move (chn), ts);
+}
+
+void
+passive_tran_server::connection_handler::receive_log_prior_list (page_server_conn_t::sequenced_payload &a_ip)
+{
+  std::string message = a_ip.pull_payload ();
+  log_Gl.get_log_prior_receiver ().push_message (std::move (message));
 }

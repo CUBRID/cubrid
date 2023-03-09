@@ -1616,6 +1616,7 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
   passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
   assert (pts_ptr != nullptr);
   log_lsa replication_start_redo_lsa = NULL_LSA;
+  log_lsa replication_prev_redo_lsa = NULL_LSA;
   {
     LOG_CS_ENTER (thread_p);
     // *INDENT-OFF*
@@ -1646,6 +1647,7 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
       // while still holding prior LSA lock, initialize passive transaction server replication
       // with a LSA that ensures that no record is lost (ie: while still holding the mutex)
       replication_start_redo_lsa = log_Gl.append.get_nxio_lsa ();
+      replication_prev_redo_lsa = log_Gl.append.prev_lsa;
     }
     // prior lists from page server are being received now
 
@@ -1673,12 +1675,13 @@ log_initialize_passive_tran_server (THREAD_ENTRY * thread_p)
   // prior lists are consumed and flushed to log pages
 
   assert (!replication_start_redo_lsa.is_null ());
+  assert (!replication_prev_redo_lsa.is_null ());
 
   log_daemons_init ();
 
   pts_ptr->start_oldest_active_mvccid_sender ();
 
-  pts_ptr->start_log_replicator (replication_start_redo_lsa);
+  pts_ptr->start_log_replicator (replication_start_redo_lsa, replication_prev_redo_lsa);
 
   // NOTE: make sure not to re-define trantable here; already defined in boot_restart_server
   // re-defining trabtable here, will reset all transaction info (which is not needed, see below) together
@@ -3484,7 +3487,7 @@ log_pack_log_boot_info (THREAD_ENTRY &thread_r, std::string &payload_in_out,
     prev_lsa = log_Gl.append.prev_lsa;
 
     // most recent trantable snapshot lsa
-    most_recent_trantable_snapshot_lsa = ps_Gl.get_replicator().get_most_recent_trantable_snapshot_lsa ();
+    most_recent_trantable_snapshot_lsa = ps_Gl->get_replicator().get_most_recent_trantable_snapshot_lsa ();
     payload_in_out.append(reinterpret_cast<const char *> (&most_recent_trantable_snapshot_lsa),
 			  sizeof (log_lsa));
 

@@ -22,6 +22,9 @@
 #include "log_prior_send.hpp"
 #include "tran_server.hpp"
 
+#include <vector>
+#include <memory>
+
 class active_tran_server : public tran_server
 {
   public:
@@ -33,19 +36,40 @@ class active_tran_server : public tran_server
     MVCCID get_oldest_active_mvccid_from_page_server () const;
 
   private:
-    void on_boot () final override;
+    class connection_handler : public tran_server::connection_handler
+    {
+      public:
+	connection_handler () = delete;
+	connection_handler (cubcomm::channel &&chn, tran_server &ts);
+
+	connection_handler (const connection_handler &) = delete;
+	connection_handler (connection_handler &&) = delete;
+
+	connection_handler &operator= (const connection_handler &) = delete;
+	connection_handler &operator= (connection_handler &&) = delete;
+
+	void disconnect () final override;
+
+      private:
+	request_handlers_map_t get_request_handlers () final override;
+	void remove_prior_sender_sink ();
+
+	// request handlers
+	void receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip);
+
+      private:
+	cublog::prior_sender::sink_hook_t m_prior_sender_sink_hook_func;
+    };
+
+  private:
     bool get_remote_storage_config () final override;
 
-    request_handlers_map_t get_request_handlers () final override;
-
-    void receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip);
-
     void stop_outgoing_page_server_messages () final override;
+    connection_handler *create_connection_handler (cubcomm::channel &&chn,
+	tran_server &ts) const final override;
 
   private:
     bool m_uses_remote_storage = false;
-
-    cublog::prior_sender::sink_hook_t m_prior_sender_sink_hook_func;
 };
 
 #endif // !_ACTIVE_TRAN_SERVER_HPP_

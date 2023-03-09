@@ -37,7 +37,7 @@ tran_server::~tran_server ()
   assert (is_transaction_server () || m_page_server_conn_vec.empty ());
   if (is_transaction_server () && !m_page_server_conn_vec.empty ())
     {
-      disconnect_page_server ();
+      disconnect_all_page_servers ();
     }
 }
 
@@ -133,9 +133,34 @@ tran_server::boot (const char *db_name)
 	}
     }
 
-  on_boot ();
-
   return NO_ERROR;
+}
+
+void
+tran_server::push_request (size_t idx, tran_to_page_request reqid, std::string &&payload)
+{
+  assert (idx < m_page_server_conn_vec.size());
+  m_page_server_conn_vec[idx]->push_request (reqid, std::move (payload));
+}
+
+int
+tran_server::send_receive (size_t idx, tran_to_page_request reqid, std::string &&payload_in,
+			   std::string &payload_out) const
+{
+  assert (idx < m_page_server_conn_vec.size());
+  return m_page_server_conn_vec[idx]->send_receive (reqid, std::move (payload_in), payload_out);
+}
+
+void
+tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
+{
+  push_request (0, reqid, std::move (payload));
+}
+
+int
+tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const
+{
+  return send_receive (0, reqid, std::move (payload_in), payload_out);
 }
 
 int
@@ -199,15 +224,13 @@ tran_server::init_page_server_hosts (const char *db_name)
   bool failed_conn = false;
   for (const cubcomm::node &node : m_connection_list)
     {
-      const int local_exit_code = connect_to_page_server (node, db_name);
-      if (local_exit_code == NO_ERROR)
+      exit_code = connect_to_page_server (node, db_name);
+      if (exit_code == NO_ERROR)
 	{
 	  ++valid_connection_count;
-	  exit_code = NO_ERROR;
 	}
       else
 	{
-	  exit_code = local_exit_code;
 	  failed_conn = true;
 	  er_log_debug (ARG_FILE_LINE, "Failed to connect to host: %s port: %d\n", node.get_host ().c_str (), node.get_port ());
 	}
@@ -217,7 +240,9 @@ tran_server::init_page_server_hosts (const char *db_name)
     {
       //at least one valid host exists clear the error remaining from previous failing ones
       er_clear ();
+      exit_code = NO_ERROR;
     }
+
   // validate connections vs. config
   //
   if (valid_connection_count == 0 && uses_remote_storage)
@@ -303,41 +328,26 @@ tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_n
   er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
 
-  constexpr size_t RESPONSE_PARTITIONING_SIZE = 24;   // Arbitrarily chosen
-  // TODO: to reduce contention as much as possible, should be equal to the maximum number
-  // of active transactions that the system allows (PRM_ID_CSS_MAX_CLIENTS) + 1
 
-  cubcomm::send_queue_error_handler no_transaction_handler { nullptr };
-  // Transaction server will use message specific error handlers.
-  // Implementation will assert that an error handler is present if needed.
-
-  // NOTE: only the base class part (cubcomm::server) of a cubcomm::server_server instance is
+  // NOTE: only the base class part (cubcomm::channel) of a cubcomm::server_channel instance is
   // moved as argument below
-  m_page_server_conn_vec.emplace_back (
-	  new page_server_conn_t (std::move (srv_chn), get_request_handlers (), tran_to_page_request::RESPOND,
-				  page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE,
-				  std::move (no_transaction_handler)));
-  m_page_server_conn_vec.back ()->start ();
+  m_page_server_conn_vec.emplace_back (create_connection_handler (std::move (srv_chn), *this));
 
   return NO_ERROR;
 }
 
 void
-tran_server::disconnect_page_server ()
+tran_server::disconnect_all_page_servers ()
 {
   assert_is_tran_server ();
 
   stop_outgoing_page_server_messages ();
 
-  const int payload = static_cast<int> (m_conn_type);
-  std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
-  er_log_debug (ARG_FILE_LINE, "Transaction server starts disconnecting from the page servers.");
-
-  for (size_t i = 0; i < m_page_server_conn_vec.size (); i++)
+  for (const auto &conn : m_page_server_conn_vec)
     {
       er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from page server with channel id: %s.\n",
-		    m_page_server_conn_vec[i]->get_underlying_channel_id ().c_str ());
-      m_page_server_conn_vec[i]->push (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
+		    conn->get_channel_id ().c_str ());
+      conn->disconnect ();
     }
   m_page_server_conn_vec.clear ();
   er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from all page servers.");
@@ -357,23 +367,45 @@ tran_server::uses_remote_storage () const
   return false;
 }
 
-void
-tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
+tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tran_server &ts,
+    request_handlers_map_t &&request_handlers)
+  : m_ts { ts }
 {
-  if (!is_page_server_connected ())
-    {
-      return;
-    }
+  constexpr size_t RESPONSE_PARTITIONING_SIZE = 24;   // Arbitrarily chosen
+  // TODO: to reduce contention as much as possible, should be equal to the maximum number
+  // of active transactions that the system allows (PRM_ID_CSS_MAX_CLIENTS) + 1
 
-  m_page_server_conn_vec[0]->push (reqid, std::move (payload));
+  cubcomm::send_queue_error_handler no_transaction_handler { nullptr };
+  // Transaction server will use message specific error handlers.
+  // Implementation will assert that an error handler is present if needed.
+
+  m_conn.reset (new page_server_conn_t (std::move (chn), std::move (request_handlers), tran_to_page_request::RESPOND,
+					page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (no_transaction_handler)));
+
+  assert (m_conn != nullptr);
+  m_conn->start ();
+}
+
+tran_server::connection_handler::request_handlers_map_t
+tran_server::connection_handler::get_request_handlers ()
+{
+  // Insert handlers specific to all transaction servers here.
+  // For now, there are no such handlers; return an empty map.
+  std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map;
+  return handlers_map;
+}
+
+void
+tran_server::connection_handler::push_request (tran_to_page_request reqid, std::string &&payload)
+{
+  m_conn->push (reqid, std::move (payload));
 }
 
 int
-tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const
+tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::string &&payload_in,
+    std::string &payload_out) const
 {
-  assert (is_page_server_connected ());
-
-  const css_error_code error_code = m_page_server_conn_vec[0]->send_recv (reqid, std::move (payload_in), payload_out);
+  const css_error_code error_code = m_conn->send_recv (reqid, std::move (payload_in), payload_out);
   // NOTE: enhance error handling when:
   //  - more than one page server will be handled
   //  - fail-over will be implemented
@@ -388,13 +420,22 @@ tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in,
   return NO_ERROR;
 }
 
-tran_server::request_handlers_map_t
-tran_server::get_request_handlers ()
+void
+tran_server::connection_handler::disconnect ()
 {
-  // Insert handlers specific to all transaction servers here.
-  // For now, there are no such handlers; return an empty map.
-  std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t> handlers_map;
-  return handlers_map;
+  // All msg generators have to stop beforehad to make sure SEND_DISCONNECT_MSG is the last msg.
+
+  const int payload = static_cast<int> (m_ts.m_conn_type);
+  std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
+  er_log_debug (ARG_FILE_LINE, "Transaction server starts disconnecting from the page servers.");
+
+  push_request (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
+}
+
+const std::string
+tran_server::connection_handler::get_channel_id () const
+{
+  return m_conn->get_underlying_channel_id ();
 }
 
 void

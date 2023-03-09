@@ -1345,8 +1345,8 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1274 Invalid server option "%s".
 1275 Page %1d|%2d is ahead of replication. Page LSA is %3lld|%4d, replication LSA is %5lld|%6d.
 1276 Connected page server cannot be reached anymore.
-1277 Error reserved for scalability development.
-1278 Error reserved for scalability development.
+1277 Atomic replication error: %s.
+1278 Decompression failed (%s).
 1279 Error reserved for scalability development.
 1280 Error reserved for scalability development.
 1281 Error reserved for scalability development.
@@ -1371,7 +1371,7 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1298 Récupération des logs : la phase de la DEOD est lancée. Pages de journal à défaire : %1$lld, transactions à défaire : %2$d.
 1299 Récupération des logs : %1$s La phase est en cours d'achèvement.
 1300 Récupération des billes : %1$s La phase est terminée.
-1301 Récupération du journal : %1$s progrès : (%2$lld/%3$lld), %4$.2f pourcent, temps écoulé : %5$.2f (s), temps restant estimé : %6$.2f (s).
+1301 Récupération du journal : %1$s progrès : (%2$lld/%3$lld), %4$.2f pourcent, temps écoulé : %5$.2f (s), temps restant estimé : %6$.2f (s).
 
 1302 dblink - %1$s
 1303 dblink - invalid number of columns specified.
@@ -1410,7 +1410,7 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 
 1333 Heure invalide (%1$s) pour démarrer le flashback. Le temps doit être défini entre (%2$s) et (%3$s).
 1334 Impossible de trouver la classe à flashback (%1$s).
-1335 Trop de transactions pour revenir en arrière. Moins de %1$d transactions peuvent faire l'objet d'un flashback.
+1335 Trop de transactions pour revenir en arrière. Moins de %1$d transactions peuvent faire l'objet d'un flashback.
 1336 Impossible de prendre en charge le flashback pour cette classe (nom : %1$s , OID : %2$d|%3$d|%4$d). Le schéma de classe a été modifié.
 1337 L'enregistrement de journal n'existe pas (lsa : %1$lld|%2$d). Le volume du journal d'archivage a été supprimé.
 1338 Flashback est déjà en cours d'exécution. Flashback ne peut pas être exécuté par plus d'un utilisateur à la fois.

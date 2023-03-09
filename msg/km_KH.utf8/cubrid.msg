@@ -1345,8 +1345,8 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1274 Invalid server option "%s".
 1275 Page %1d|%2d is ahead of replication. Page LSA is %3lld|%4d, replication LSA is %5lld|%6d.
 1276 Connected page server cannot be reached anymore.
-1277 Error reserved for scalability development.
-1278 Error reserved for scalability development.
+1277 Atomic replication error: %s.
+1278 Decompression failed (%s).
 1279 Error reserved for scalability development.
 1280 Error reserved for scalability development.
 1281 Error reserved for scalability development.

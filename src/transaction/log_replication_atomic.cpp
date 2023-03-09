@@ -25,8 +25,10 @@
 namespace cublog
 {
 
-  atomic_replicator::atomic_replicator (const log_lsa &start_redo_lsa)
-    : replicator (start_redo_lsa, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, 0)
+  atomic_replicator::atomic_replicator (const log_lsa &start_redo_lsa, const log_lsa &prev_redo_lsa,
+					thread_type replication_thread_type)
+    : replicator (start_redo_lsa, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, 0, replication_thread_type)
+    , m_processed_lsa { prev_redo_lsa }
     , m_lowest_unapplied_lsa { start_redo_lsa }
   {
 
@@ -58,7 +60,11 @@ namespace cublog
 	(void) m_redo_context.m_reader.set_lsa_and_fetch_page (m_redo_lsa);
 
 	const LOG_RECORD_HEADER header = m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_RECORD_HEADER> ();
-	set_lowest_unapplied_lsa ();
+
+	{
+	  std::unique_lock<std::mutex> lock (m_processed_lsa_mutex);
+	  m_processed_lsa = m_redo_lsa;
+	}
 
 	switch (header.type)
 	  {
@@ -134,6 +140,7 @@ namespace cublog
 		&& m_atomic_helper.all_log_entries_are_control (header.trid))
 	      {
 		m_atomic_helper.forcibly_remove_sequence (header.trid);
+		set_lowest_unapplied_lsa ();
 	      }
 
 	    if (m_replicate_mvcc)
@@ -179,6 +186,7 @@ namespace cublog
 
 	    m_atomic_helper.append_control_log_sysop_end (
 		    &thread_entry, header.trid, m_redo_lsa, log_rec.type, log_rec.lastparent_lsa);
+	    set_lowest_unapplied_lsa ();
 
 	    read_and_bookkeep_mvcc_vacuum<LOG_REC_SYSOP_END> (header.back_lsa, m_redo_lsa, log_rec, false);
 	    if (m_replicate_mvcc)
@@ -222,6 +230,7 @@ namespace cublog
 
 	  m_redo_lsa = header.forw_lsa;
 	}
+	set_lowest_unapplied_lsa ();
 
 	// to accurately track progress and avoid clients to wait for too long, notify each change
 	m_redo_lsa_condvar.notify_all ();
@@ -261,7 +270,7 @@ namespace cublog
 	    const VPID log_vpid = log_rv_get_log_rec_vpid<T> (record_info.m_logrec);
 	    // return code ignored because it refers to failure to fix heap page
 	    // this is expected in the context of passive transaction server
-	    (void) m_atomic_helper.append_log (&thread_entry, rec_header.trid, rec_lsa, rcvindex, log_vpid);
+	    m_atomic_helper.append_log (rec_header.trid, rec_lsa, rcvindex, log_vpid);
 	  }
 	else
 	  {
@@ -269,6 +278,13 @@ namespace cublog
 		m_parallel_replication_redo, *m_reusable_jobs.get (), m_perf_stat_idle);
 	  }
       }
+  }
+
+  log_lsa
+  atomic_replicator::get_highest_processed_lsa () const
+  {
+    std::lock_guard<std::mutex> lockg (m_processed_lsa_mutex);
+    return m_processed_lsa;
   }
 
   log_lsa
@@ -281,6 +297,10 @@ namespace cublog
   void
   atomic_replicator::set_lowest_unapplied_lsa ()
   {
+    // this function must be called when any change happens that affects the calculated value:
+    //  - redo lsa value changes
+    //  - an atomic sequence is created or removed
+
     assert (!LSA_ISNULL (&m_redo_lsa));
     const LOG_LSA helper_lowest_unapplied_lsa = m_atomic_helper.get_the_lowest_start_lsa ();
     assert (!LSA_ISNULL (&helper_lowest_unapplied_lsa));

@@ -66,7 +66,8 @@ namespace cublog
    * replicator - definition
    *********************************************************************/
 
-  replicator::replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode, int parallel_count)
+  replicator::replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode, int parallel_count,
+			  thread_type replication_thread_type)
     : m_bookkeep_mvcc { is_page_server () }
     , m_replicate_mvcc { is_passive_transaction_server () }
     , m_redo_lsa { start_redo_lsa }
@@ -89,7 +90,7 @@ namespace cublog
 	m_reusable_jobs.reset (new cublog::reusable_jobs_stack ());
 	m_reusable_jobs->initialize (parallel_count);
 	m_parallel_replication_redo.reset (
-		new cublog::redo_parallel (parallel_count, true, m_redo_lsa, m_redo_context));
+		new cublog::redo_parallel (parallel_count, true, m_redo_lsa, m_redo_context, replication_thread_type));
       }
 
     if (m_replicate_mvcc)
@@ -107,7 +108,7 @@ namespace cublog
       new cubthread::entry_callable_task (std::move (func_exec))
     };
 
-    m_daemon_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (TT_REPLICATION);
+    m_daemon_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (replication_thread_type);
 
     // NOTE: make sure any internal structure which is a requirement to functioning is initialized
     // before the daemon to avoid seldom-occuring race conditions
@@ -494,7 +495,6 @@ namespace cublog
   void
   replicator::wait_past_target_lsa (const log_lsa &a_target_lsa)
   {
-    // TODO: needs to be refactored to work with the new replicators flavors
     if (m_parallel_replication_redo == nullptr)
       {
 	// sync
@@ -515,30 +515,6 @@ namespace cublog
   replicator::get_most_recent_trantable_snapshot_lsa () const
   {
     return m_most_recent_trantable_snapshot_lsa.load ();
-  }
-
-  log_lsa
-  replicator::get_highest_processed_lsa () const
-  {
-    std::lock_guard<std::mutex> lockg (m_redo_lsa_mutex);
-    return m_redo_lsa;
-  }
-
-  log_lsa
-  replicator::get_lowest_unapplied_lsa () const
-  {
-    assert (false);
-    // TODO: needs to be refactored to work with the new replicators flavors
-    if (m_parallel_replication_redo == nullptr)
-      {
-	// sync
-	return get_highest_processed_lsa ();
-      }
-
-    // a different value will return from here when the atomic replicator is added
-    // for now this part should not be reached
-    assert (false);
-    return MAX_LSA;
   }
 
   /*********************************************************************
