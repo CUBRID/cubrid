@@ -10664,7 +10664,7 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
   if (req_info->need_auto_commit == TRAN_AUTOCOMMIT)
     {
-      cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_committed ()? "(local)" : "(server)");
+      cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_committed ()? "(server)" : "(local)");
       err_code = ux_end_tran (CCI_TRAN_COMMIT, true);
       cas_log_write (0, false, "auto_commit %d", err_code);
       logddl_set_msg ("auto_commit %d", err_code);

@@ -126,10 +126,15 @@ namespace cubmethod
 	  }
 	else
 	  {
-	    if (handler->prepare (sql, flag) == NO_ERROR)
+	    int error = handler->prepare (sql, flag);
+	    if (error == NO_ERROR)
 	      {
 		// add to statement handler cache
 		m_sql_handler_map.emplace (sql, handler->get_id ());
+	      }
+	    else
+	      {
+		m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
 	      }
 	  }
       }
@@ -161,12 +166,13 @@ namespace cubmethod
     if (handler == nullptr)
       {
 	// TODO: proper error code
-	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
-	return ER_FAILED;
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+	assert (false); // the error should have been handled in prepare function
       }
     else
       {
-	if (handler->execute (request) == NO_ERROR)
+	int error = handler->execute (request);
+	if (error == NO_ERROR)
 	  {
 	    /* register query_id for out resultset */
 	    const cubmethod::query_result &qresult = handler->get_result ();
@@ -176,10 +182,25 @@ namespace cubmethod
 		m_qid_handler_map[qid] = request.handler_id;
 	      }
 	  }
-      }
+	else
+	  {
+	    /* XASL cache is not found */
+	    if (error == ER_QPROC_INVALID_XASLNODE)
+	      {
+		m_error_ctx.clear ();
+		handler->prepare_retry ();
+		error = handler->execute (request);
+	      }
 
-    /* DDL audit */
-    logddl_write_end ();
+	    if (error != NO_ERROR)
+	      {
+		m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	      }
+	  }
+
+	/* DDL audit */
+	logddl_write_end ();
+      }
 
     if (m_error_ctx.has_error ())
       {
