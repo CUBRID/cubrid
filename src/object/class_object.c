@@ -4186,7 +4186,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 
   for (cons = cons_list; cons; cons = cons->next)
     {
-      if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type) == false)
+      if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type))
 	{
 	  if (((filter_predicate && !cons->filter_predicate) || (!filter_predicate && cons->filter_predicate))
 	      || ((func_index_info && !cons->func_index_info) || (!func_index_info && cons->func_index_info)))
@@ -4196,7 +4196,8 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 
 	  attp = cons->attributes;
 	  namep = att_names;
-	  if (!attp || !namep)
+          assert(namep != NULL);
+	  if (!attp)
 	    {
 	      continue;
 	    }
