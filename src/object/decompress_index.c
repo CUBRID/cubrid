@@ -279,7 +279,7 @@ dk_find_sm_reserved_index_attribute (int att_id, const char *att_name)
 void
 dk_create_index_level_remove_adjust (DB_CONSTRAINT_TYPE ctype, char **attnames, int *asc_desc,
 				     int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info,
-				     int reserved_index_col_pos, int nnames)
+				     int compress_index_col_pos, int nnames)
 {
   int func_no_args = 0;
 
@@ -289,32 +289,32 @@ dk_create_index_level_remove_adjust (DB_CONSTRAINT_TYPE ctype, char **attnames, 
       assert (asc_desc != NULL);
     }
 
-  if (reserved_index_col_pos != -1)
+  if (compress_index_col_pos != -1)
     {				// remove hidden column   
-      attnames[reserved_index_col_pos] = NULL;
+      attnames[compress_index_col_pos] = NULL;
 
       assert (!func_index_info || (func_index_info && func_index_info->attr_index_start > 0));
       if (func_index_info && func_index_info->attr_index_start > 0)
 	{
-	  func_no_args = nnames - reserved_index_col_pos;
+	  func_no_args = nnames - compress_index_col_pos;
 	  if (func_no_args > 0)
 	    {
-	      memmove (asc_desc + reserved_index_col_pos, asc_desc + (reserved_index_col_pos + 1),
+	      memmove (asc_desc + compress_index_col_pos, asc_desc + (compress_index_col_pos + 1),
 		       (func_no_args * sizeof (asc_desc[0])));
 	      if (attrs_prefix_length)
 		{
-		  memmove (attrs_prefix_length + reserved_index_col_pos,
-			   attrs_prefix_length + (reserved_index_col_pos + 1),
+		  memmove (attrs_prefix_length + compress_index_col_pos,
+			   attrs_prefix_length + (compress_index_col_pos + 1),
 			   (func_no_args * sizeof (attrs_prefix_length[0])));
 		}
-	      memmove (attnames + reserved_index_col_pos, attnames + (reserved_index_col_pos + 1),
+	      memmove (attnames + compress_index_col_pos, attnames + (compress_index_col_pos + 1),
 		       (func_no_args * sizeof (attnames[0])));
 
 	      attnames[nnames - 1] = NULL;
 	      func_index_info->attr_index_start--;
 	    }
 	}
-      reserved_index_col_pos = -1;
+      compress_index_col_pos = -1;
     }
 }
 
@@ -322,7 +322,7 @@ void
 dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int *asc_desc,
 			      int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames, bool is_reverse)
 {
-  int reserved_index_col_pos;
+  int compress_index_col_pos;
 
   assert (asc_desc != NULL);
   assert (idx_info->compress_mode != COMPRESS_INDEX_MODE_NONE);
@@ -345,19 +345,19 @@ dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, i
 		   attnames + func_index_info->attr_index_start, idx_info->func_no_args * sizeof (attnames[0]));
 	}
 
-      reserved_index_col_pos = func_index_info->attr_index_start++;
+      compress_index_col_pos = func_index_info->attr_index_start++;
     }
   else
     {
-      reserved_index_col_pos = nnames;
+      compress_index_col_pos = nnames;
     }
 
   if (attrs_prefix_length)
     {
-      attrs_prefix_length[reserved_index_col_pos] = -1;
+      attrs_prefix_length[compress_index_col_pos] = -1;
     }
-  attnames[reserved_index_col_pos] = (char *) GET_COMPRESS_INDEX_ATTR_NAME (idx_info->compress_level);
-  asc_desc[reserved_index_col_pos] = (is_reverse ? 1 : 0);
+  attnames[compress_index_col_pos] = (char *) GET_COMPRESS_INDEX_ATTR_NAME (idx_info->compress_level);
+  asc_desc[compress_index_col_pos] = (is_reverse ? 1 : 0);
 
   attnames[nnames + 1] = NULL;
 }

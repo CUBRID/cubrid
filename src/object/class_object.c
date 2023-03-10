@@ -4075,16 +4075,16 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
   int nnames;
 
   // If there is a column corresponding to PK among the attributes constituting the index, the reserved_index_column is not added.
-  int reserved_index_col_pos = -1;
+  int compress_index_col_pos = -1;
   for (nnames = 0, namep = att_names; *namep; namep++, nnames++)
     {
       if (IS_COMPRESS_INDEX_ATTR_NAME (*namep))
 	{
-	  reserved_index_col_pos = nnames;
+	  compress_index_col_pos = nnames;
 	}
     }
 
-  if (reserved_index_col_pos == -1)
+  if (compress_index_col_pos == -1)
     {
       return;
     }
@@ -4121,7 +4121,7 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
 	{
 	  // For indexes that use prefixes, it does not reach here.     
 	  dk_create_index_level_remove_adjust (new_cons, att_names, asc_desc, NULL, func_index_info,
-					       reserved_index_col_pos, nnames);
+					       compress_index_col_pos, nnames);
 
 	  return;
 	}

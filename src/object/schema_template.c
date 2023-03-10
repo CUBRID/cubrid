@@ -128,7 +128,7 @@ static SM_CLASS_CONSTRAINT *smt_find_constraint (SM_TEMPLATE * ctemplate, const 
 
 #if defined(SUPPORT_COMPRESS_MODE)
 static int
-smt_find_reserved_index_attribute (SM_TEMPLATE * template_, const char *name, SM_ATTRIBUTE ** attp)
+smt_find_compress_index_attribute (SM_TEMPLATE * template_, const char *name, SM_ATTRIBUTE ** attp)
 {
   int error_code = NO_ERROR;
   SM_ATTRIBUTE *att = NULL;
@@ -158,7 +158,7 @@ smt_find_reserved_index_attribute (SM_TEMPLATE * template_, const char *name, SM
   att = dk_find_sm_reserved_index_attribute (-1, name);
   if (att == NULL)
     {
-      assert (false);
+      assert_release (false);
       ERROR0 (error_code, ER_FAILED);
     }
 
@@ -2047,7 +2047,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   bool has_nulls = false;
   bool is_secondary_index = false;
 #if defined(SUPPORT_COMPRESS_MODE)
-  int reserved_index_col_pos = -1;
+  int compress_index_col_pos = -1;
 #endif
   assert (template_ != NULL);
 
@@ -2069,7 +2069,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 #if defined(SUPPORT_COMPRESS_MODE)
 	  if (IS_COMPRESS_INDEX_ATTR_NAME (att_names[n_atts]))
 	    {
-	      reserved_index_col_pos = n_atts;
+	      compress_index_col_pos = n_atts;
 	    }
 #endif
 	  n_atts++;
@@ -2077,7 +2077,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
     }
 
 #if defined(SUPPORT_COMPRESS_MODE)
-  if ((n_atts == 0) || ((n_atts == 1) && (reserved_index_col_pos != -1)))
+  if ((n_atts == 0) || ((n_atts == 1) && (compress_index_col_pos != -1)))
 #else
   if (n_atts == 0)
 #endif
@@ -2124,9 +2124,9 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   for (i = 0; i < n_atts && error == NO_ERROR; i++)
     {
 #if defined(SUPPORT_COMPRESS_MODE)
-      if (reserved_index_col_pos == i)
+      if (compress_index_col_pos == i)
 	{
-	  error = smt_find_reserved_index_attribute (template_, att_names[i], &atts[i]);
+	  error = smt_find_compress_index_attribute (template_, att_names[i], &atts[i]);
 	  continue;
 	}
 #endif
@@ -2268,7 +2268,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 	{
 #if defined(SUPPORT_COMPRESS_MODE)
 	  error = smt_check_foreign_key (template_, constraint_name, atts,
-					 ((reserved_index_col_pos == -1) ? n_atts : (n_atts - 1)), fk_info);
+					 ((compress_index_col_pos == -1) ? n_atts : (n_atts - 1)), fk_info);
 #else
 	  error = smt_check_foreign_key (template_, constraint_name, atts, n_atts, fk_info);
 #endif
