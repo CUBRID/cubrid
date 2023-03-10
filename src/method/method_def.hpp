@@ -135,7 +135,12 @@ struct method_sig_node
 
   void freemem ();
 
+  method_sig_node &operator= (const method_sig_node &rhs);
+
   method_sig_node ();
+  method_sig_node (method_sig_node &&); // move constructor
+  method_sig_node (const method_sig_node &obj); // copy constructor
+  ~method_sig_node ();
 };
 
 struct method_sig_list : public cubpacking::packable_object
