@@ -2786,7 +2786,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	}
 
 #if defined(SUPPORT_COMPRESS_MODE)
-      bool has_reserved_index_col = false;
+      bool has_compress_index_col = false;
 
       // Class or shared attributes are not considered. These are not indexed columns.
       // Also, The prefix index is also not supported.(The prefix index  will be deprecated.)
@@ -2794,7 +2794,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	{
 	  if ((idx_info->prefix_length == NULL) && (idx_info->compress_mode != COMPRESS_INDEX_MODE_NONE))
 	    {
-	      has_reserved_index_col = true;
+	      has_compress_index_col = true;
 	      nnames++;
 	    }
 	}
@@ -2837,7 +2837,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	  c = c->next;
 	}
 #if defined(SUPPORT_COMPRESS_MODE)
-      if (has_reserved_index_col)
+      if (has_compress_index_col)
 	{
 	  nnames--;		// get count of real columns, except hidden column
 	}
@@ -2868,7 +2868,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	    }
 	}
 #if defined(SUPPORT_COMPRESS_MODE)
-      if (has_reserved_index_col)
+      if (has_compress_index_col)
 	{
 	  dk_create_index_level_adjust (idx_info, attnames, asc_desc, attrs_prefix_length, func_index_info, nnames,
 					SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (ctype));
@@ -7508,6 +7508,7 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
 #if defined(SUPPORT_COMPRESS_MODE)
   if (fk_info->compress_mode != COMPRESS_INDEX_MODE_NONE)
     {
+      // adjust for FK: add compress_index_attr column
       att_names[i++] = (char *) GET_COMPRESS_INDEX_ATTR_NAME (fk_info->compress_level);
     }
 #endif

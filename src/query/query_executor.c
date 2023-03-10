@@ -21893,6 +21893,13 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  att_id = index_att->id;
 	  assert (att_id >= 0 || IS_COMPRESS_INDEX_ATTR_ID (att_id));
 
+#if defined(SUPPORT_COMPRESS_MODE)
+	  if (IS_COMPRESS_INDEX_ATTR_ID (att_id))
+	    {
+	      assert ((j + 1) == num_idx_att);
+	      break;
+	    }
+#endif
 	  if (index_position == function_index_pos)
 	    {
 	      /* function position in index founded, compute attribute position in index */
@@ -21949,25 +21956,13 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	    }
 
 	  /* Column_name */
-#if defined(SUPPORT_COMPRESS_MODE)
-	  if (IS_COMPRESS_INDEX_ATTR_ID (att_id))
+	  for (k = 0; k < rep->n_attributes; k++)
 	    {
-	      /* clear alloced DB_VALUEs */
-	      pr_clear_value (out_values[5]);
-	      pr_clear_value (out_values[9]);
-	      continue;
-	    }
-	  else
-#endif
-	    {
-	      for (k = 0; k < rep->n_attributes; k++)
+	      if (att_id == attr_ids[k])
 		{
-		  if (att_id == attr_ids[k])
-		    {
-		      db_make_string (out_values[4], attr_names[k]);
-		      qexec_end_one_iteration (thread_p, xasl, xasl_state, &tplrec);
-		      break;
-		    }
+		  db_make_string (out_values[4], attr_names[k]);
+		  qexec_end_one_iteration (thread_p, xasl, xasl_state, &tplrec);
+		  break;
 		}
 	    }
 

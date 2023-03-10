@@ -2212,12 +2212,13 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
       if (constraint == SM_ATTFLAG_FOREIGN_KEY)
 	{
-#if defined(SUPPORT_COMPRESS_MODE)
 	  error = smt_check_foreign_key (template_, constraint_name, atts,
-					 ((compress_index_col_pos == -1) ? n_atts : (n_atts - 1)), fk_info);
+#if defined(SUPPORT_COMPRESS_MODE)
+					 ((compress_index_col_pos == -1) ? n_atts : (n_atts - 1)),
 #else
-	  error = smt_check_foreign_key (template_, constraint_name, atts, n_atts, fk_info);
+					 n_atts,
 #endif
+					 fk_info);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_return;
