@@ -2795,7 +2795,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	  if (idx_info->prefix_length == NULL)
 	    {
 	      if ((idx_info->compress_mode != COMPRESS_INDEX_MODE_NONE)
-		  && !SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != SM_CONSTRAINT_FOREIGN_KEY)
+		  && !DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != DB_CONSTRAINT_FOREIGN_KEY)
 		{
 		  has_reserved_index_col = true;
 		  nnames++;
@@ -7595,187 +7595,187 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 	}
     }
 
-  if (max_attrs == 0)
+  if (max_attrs > 0)
     {
-      return NO_ERROR;
-    }
-
 #if defined(SUPPORT_COMPRESS_MODE)
-  buf_size = (max_attrs + 2) * sizeof (char *);
+      // If there is an FK, one more space is allocated in advance because compress_index_attr information will be added.
+      // max_attrs +  [ compress_index_attr ] + NULL
+      buf_size = (max_attrs + 2) * sizeof (char *);
 #else
-  buf_size = (max_attrs + 1) * sizeof (char *);
+      buf_size = (max_attrs + 1) * sizeof (char *);
 #endif
-  att_names = (char **) malloc (buf_size);
+      att_names = (char **) malloc (buf_size);
 
-  if (att_names == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  for (cnstr = constraints; cnstr != NULL; cnstr = cnstr->next)
-    {
-      if (cnstr->info.constraint.type == PT_CONSTRAIN_UNIQUE)
+      if (att_names == NULL)
 	{
-	  PT_NODE *p;
-	  int i, n_atts;
-	  int class_attributes = 0;
-	  char *constraint_name = NULL;
-	  DB_CONSTRAINT_TYPE constraint_type = DB_CONSTRAINT_UNIQUE;
-	  int *asc_desc = NULL;
-	  char *comment = NULL;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
 
-	  n_atts = pt_length_of_list (cnstr->info.constraint.un.unique.attrs);
-
-	  asc_desc = (int *) malloc (n_atts * sizeof (int));
-	  if (asc_desc == NULL)
+      for (cnstr = constraints; cnstr != NULL; cnstr = cnstr->next)
+	{
+	  if (cnstr->info.constraint.type == PT_CONSTRAIN_UNIQUE)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (n_atts * sizeof (int)));
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto constraint_error;
-	    }
+	      PT_NODE *p;
+	      int i, n_atts;
+	      int class_attributes = 0;
+	      char *constraint_name = NULL;
+	      DB_CONSTRAINT_TYPE constraint_type = DB_CONSTRAINT_UNIQUE;
+	      int *asc_desc = NULL;
+	      char *comment = NULL;
 
-	  if (PT_NAME_INFO_IS_FLAGED (cnstr->info.constraint.un.unique.attrs, PT_NAME_INFO_DESC))
-	    {
-	      constraint_type = DB_CONSTRAINT_REVERSE_UNIQUE;
-	    }
+	      n_atts = pt_length_of_list (cnstr->info.constraint.un.unique.attrs);
 
-	  i = 0;
-	  for (p = cnstr->info.constraint.un.unique.attrs; p; p = p->next)
-	    {
-	      asc_desc[i] = PT_NAME_INFO_IS_FLAGED (p, PT_NAME_INFO_DESC) ? 1 : 0;
-	      att_names[i++] = (char *) p->info.name.original;
-
-	      /* Determine if the unique constraint is being applied to class or normal attributes.  The way
-	       * the parser currently works, all multi-column constraints will be on normal attributes and it's
-	       * therefore impossible for a constraint to contain both class and normal attributes. */
-	      if (p->info.name.meta_class == PT_META_ATTR)
+	      asc_desc = (int *) malloc (n_atts * sizeof (int));
+	      if (asc_desc == NULL)
 		{
-		  class_attributes = 1;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (n_atts * sizeof (int)));
+		  error = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto constraint_error;
 		}
 
-	      /* We keep DB_CONSTRAINT_REVERSE_UNIQUE only if all columns are marked as DESC. */
-	      if (!PT_NAME_INFO_IS_FLAGED (p, PT_NAME_INFO_DESC))
+	      if (PT_NAME_INFO_IS_FLAGED (cnstr->info.constraint.un.unique.attrs, PT_NAME_INFO_DESC))
 		{
-		  constraint_type = DB_CONSTRAINT_UNIQUE;
+		  constraint_type = DB_CONSTRAINT_REVERSE_UNIQUE;
 		}
-	    }
-	  att_names[i] = NULL;
 
-	  /* Get the constraint name (if supplied) */
-	  if (cnstr->info.constraint.name)
-	    {
-	      constraint_name = (char *) cnstr->info.constraint.name->info.name.original;
-	    }
+	      i = 0;
+	      for (p = cnstr->info.constraint.un.unique.attrs; p; p = p->next)
+		{
+		  asc_desc[i] = PT_NAME_INFO_IS_FLAGED (p, PT_NAME_INFO_DESC) ? 1 : 0;
+		  att_names[i++] = (char *) p->info.name.original;
 
-	  constraint_name =
-	    sm_produce_constraint_name_tmpl (ctemplate, constraint_type, (const char **) att_names, asc_desc,
-					     constraint_name);
-	  if (constraint_name == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
+		  /* Determine if the unique constraint is being applied to class or normal attributes.  The way
+		   * the parser currently works, all multi-column constraints will be on normal attributes and it's
+		   * therefore impossible for a constraint to contain both class and normal attributes. */
+		  if (p->info.name.meta_class == PT_META_ATTR)
+		    {
+		      class_attributes = 1;
+		    }
+
+		  /* We keep DB_CONSTRAINT_REVERSE_UNIQUE only if all columns are marked as DESC. */
+		  if (!PT_NAME_INFO_IS_FLAGED (p, PT_NAME_INFO_DESC))
+		    {
+		      constraint_type = DB_CONSTRAINT_UNIQUE;
+		    }
+		}
+	      att_names[i] = NULL;
+
+	      /* Get the constraint name (if supplied) */
+	      if (cnstr->info.constraint.name)
+		{
+		  constraint_name = (char *) cnstr->info.constraint.name->info.name.original;
+		}
+
+	      constraint_name =
+		sm_produce_constraint_name_tmpl (ctemplate, constraint_type, (const char **) att_names, asc_desc,
+						 constraint_name);
+	      if (constraint_name == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		  free_and_init (asc_desc);
+		  goto constraint_error;
+		}
+
+	      if (cnstr->info.constraint.comment != NULL)
+		{
+		  assert (cnstr->info.constraint.comment->node_type == PT_VALUE);
+		  comment = (char *) PT_VALUE_GET_BYTES (cnstr->info.constraint.comment);
+		}
+
+	      error = smt_add_constraint (ctemplate, constraint_type, constraint_name, (const char **) att_names,
+					  asc_desc, NULL, class_attributes, NULL, NULL, NULL, comment, SM_NORMAL_INDEX);
+
+	      free_and_init (constraint_name);
 	      free_and_init (asc_desc);
-	      goto constraint_error;
-	    }
-
-	  if (cnstr->info.constraint.comment != NULL)
-	    {
-	      assert (cnstr->info.constraint.comment->node_type == PT_VALUE);
-	      comment = (char *) PT_VALUE_GET_BYTES (cnstr->info.constraint.comment);
-	    }
-
-	  error = smt_add_constraint (ctemplate, constraint_type, constraint_name, (const char **) att_names,
-				      asc_desc, NULL, class_attributes, NULL, NULL, NULL, comment, SM_NORMAL_INDEX);
-
-	  free_and_init (constraint_name);
-	  free_and_init (asc_desc);
-	  if (error != NO_ERROR)
-	    {
-	      goto constraint_error;
-	    }
-	}
-      else if (cnstr->info.constraint.type == PT_CONSTRAIN_PRIMARY_KEY)
-	{
-	  PT_NODE *p;
-	  int i, n_atts;
-	  int class_attributes = 0;
-	  char *constraint_name = NULL;
-	  int *asc_desc = NULL;
-	  char *comment = NULL;
-
-	  n_atts = pt_length_of_list (cnstr->info.constraint.un.primary_key.attrs);
-
-	  asc_desc = (int *) malloc (n_atts * sizeof (int));
-	  if (asc_desc == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (n_atts * sizeof (int)));
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto constraint_error;
-	    }
-
-	  i = 0;
-	  for (p = cnstr->info.constraint.un.primary_key.attrs; p; p = p->next)
-	    {
-	      asc_desc[i] = PT_NAME_INFO_IS_FLAGED (p, PT_NAME_INFO_DESC) ? 1 : 0;
-	      att_names[i++] = (char *) p->info.name.original;
-
-	      /* Determine if the unique constraint is being applied to class or normal attributes.  The way
-	       * the parser currently works, all multi-column constraints will be on normal attributes and it's
-	       * therefore impossible for a constraint to contain both class and normal attributes. */
-	      if (p->info.name.meta_class == PT_META_ATTR)
+	      if (error != NO_ERROR)
 		{
-		  class_attributes = 1;
+		  goto constraint_error;
 		}
 	    }
-	  att_names[i] = NULL;
-
-	  /* Get the constraint name (if supplied) */
-	  if (cnstr->info.constraint.name)
+	  else if (cnstr->info.constraint.type == PT_CONSTRAIN_PRIMARY_KEY)
 	    {
-	      constraint_name = (char *) cnstr->info.constraint.name->info.name.original;
-	    }
+	      PT_NODE *p;
+	      int i, n_atts;
+	      int class_attributes = 0;
+	      char *constraint_name = NULL;
+	      int *asc_desc = NULL;
+	      char *comment = NULL;
 
-	  constraint_name =
-	    sm_produce_constraint_name_tmpl (ctemplate, DB_CONSTRAINT_PRIMARY_KEY, (const char **) att_names,
-					     asc_desc, constraint_name);
-	  if (constraint_name == NULL)
-	    {
+	      n_atts = pt_length_of_list (cnstr->info.constraint.un.primary_key.attrs);
+
+	      asc_desc = (int *) malloc (n_atts * sizeof (int));
+	      if (asc_desc == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (n_atts * sizeof (int)));
+		  error = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto constraint_error;
+		}
+
+	      i = 0;
+	      for (p = cnstr->info.constraint.un.primary_key.attrs; p; p = p->next)
+		{
+		  asc_desc[i] = PT_NAME_INFO_IS_FLAGED (p, PT_NAME_INFO_DESC) ? 1 : 0;
+		  att_names[i++] = (char *) p->info.name.original;
+
+		  /* Determine if the unique constraint is being applied to class or normal attributes.  The way
+		   * the parser currently works, all multi-column constraints will be on normal attributes and it's
+		   * therefore impossible for a constraint to contain both class and normal attributes. */
+		  if (p->info.name.meta_class == PT_META_ATTR)
+		    {
+		      class_attributes = 1;
+		    }
+		}
+	      att_names[i] = NULL;
+
+	      /* Get the constraint name (if supplied) */
+	      if (cnstr->info.constraint.name)
+		{
+		  constraint_name = (char *) cnstr->info.constraint.name->info.name.original;
+		}
+
+	      constraint_name =
+		sm_produce_constraint_name_tmpl (ctemplate, DB_CONSTRAINT_PRIMARY_KEY, (const char **) att_names,
+						 asc_desc, constraint_name);
+	      if (constraint_name == NULL)
+		{
+		  free_and_init (asc_desc);
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		  goto constraint_error;
+		}
+
+	      if (cnstr->info.constraint.comment != NULL)
+		{
+		  assert (cnstr->info.constraint.comment->node_type == PT_VALUE);
+		  comment = (char *) PT_VALUE_GET_BYTES (cnstr->info.constraint.comment);
+		}
+
+	      error = smt_add_constraint (ctemplate, DB_CONSTRAINT_PRIMARY_KEY, constraint_name,
+					  (const char **) att_names, asc_desc, NULL, class_attributes, NULL, NULL,
+					  NULL, comment, SM_NORMAL_INDEX);
+
+	      free_and_init (constraint_name);
 	      free_and_init (asc_desc);
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
-	      goto constraint_error;
+
+	      if (error != NO_ERROR)
+		{
+		  goto constraint_error;
+		}
 	    }
-
-	  if (cnstr->info.constraint.comment != NULL)
+	  else if (cnstr->info.constraint.type == PT_CONSTRAIN_FOREIGN_KEY)
 	    {
-	      assert (cnstr->info.constraint.comment->node_type == PT_VALUE);
-	      comment = (char *) PT_VALUE_GET_BYTES (cnstr->info.constraint.comment);
-	    }
-
-	  error = smt_add_constraint (ctemplate, DB_CONSTRAINT_PRIMARY_KEY, constraint_name,
-				      (const char **) att_names, asc_desc, NULL, class_attributes, NULL, NULL,
-				      NULL, comment, SM_NORMAL_INDEX);
-
-	  free_and_init (constraint_name);
-	  free_and_init (asc_desc);
-
-	  if (error != NO_ERROR)
-	    {
-	      goto constraint_error;
+	      error = add_foreign_key (ctemplate, cnstr, (const char **) att_names);
+	      if (error != NO_ERROR)
+		{
+		  goto constraint_error;
+		}
 	    }
 	}
-      else if (cnstr->info.constraint.type == PT_CONSTRAIN_FOREIGN_KEY)
-	{
-	  error = add_foreign_key (ctemplate, cnstr, (const char **) att_names);
-	  if (error != NO_ERROR)
-	    {
-	      goto constraint_error;
-	    }
-	}
+
+      free_and_init (att_names);
     }
-
-  free_and_init (att_names);
 
 
   return (error);
