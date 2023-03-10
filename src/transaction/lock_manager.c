@@ -817,10 +817,8 @@ lock_res_key_copy (void *src, void *dest)
       break;
 
     case LOCK_RESOURCE_OBJECT:
-      /* nothing, it's a free object */
-      break;
-
     default:
+      /* something is wrong */
       assert (false);
       return ER_FAILED;
     }
