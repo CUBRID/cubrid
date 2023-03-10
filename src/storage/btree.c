@@ -6498,6 +6498,7 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
   LEAF_REC leaf_pnt;
   bool clear_key = false;
   int offset;
+  int max_visible_oids, num_visible_oids;
   int ret = NO_ERROR;
 
   assert (env != NULL);
@@ -6506,9 +6507,6 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 
   if (mvcc_snapshot != NULL)
     {
-      int max_visible_oids = 1;
-      int num_visible_oids = 0;
-
       BTS = &(env->btree_scan);
 
       if (BTS->C_page == NULL)
@@ -6539,6 +6537,7 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 
       /* Is there any visible objects? */
       max_visible_oids = 1;
+      num_visible_oids = 0;
       ret =
 	btree_get_num_visible_from_leaf_and_ovf (thread_p, &BTS->btid_int, &rec, offset, &leaf_pnt, &max_visible_oids,
 						 mvcc_snapshot, &num_visible_oids);
