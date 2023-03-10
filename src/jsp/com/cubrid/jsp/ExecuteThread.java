@@ -282,7 +282,6 @@ public class ExecuteThread extends Thread {
 
     private void processPrepare() throws Exception {
         unpacker.setBuffer(ctx.getInboundQueue().take());
-        long id = unpacker.unpackBigint();
         if (prepareArgs == null) {
             prepareArgs = new PrepareArgs(unpacker);
         } else {

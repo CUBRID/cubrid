@@ -6,6 +6,7 @@ import com.cubrid.jsp.value.Value;
 
 public class PrepareArgs {
 
+    private long groupId = -1;
     private Value[] arguments = null;
 
     public PrepareArgs(CUBRIDUnpacker unpacker) throws TypeMismatchException {
@@ -29,6 +30,7 @@ public class PrepareArgs {
     }
 
     public void readArgs(CUBRIDUnpacker unpacker) throws TypeMismatchException {
+        groupId = unpacker.unpackBigint();
         int argCount = unpacker.unpackInt();
 
         if (arguments == null || argCount != arguments.length) {
