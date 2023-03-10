@@ -203,8 +203,5 @@ public abstract class AstVisitor<R> {
     # actually no ast nodes
     DeclForIter
     DeclForRecord
-
-    # dummies
-    ExprCast
      */
 }

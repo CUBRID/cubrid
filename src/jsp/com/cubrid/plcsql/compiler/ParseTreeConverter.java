@@ -779,12 +779,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         DeclFunc decl = symbolStack.getDeclFunc(name);
         if (decl == null) {
 
-            for (Expr arg : args.nodes) {
-                if (arg instanceof ExprCast) {
-                    ((ExprCast) arg).setTargetType("Object");
-                }
-            }
-
             connectionRequired = true;
             addToImports("java.sql.*");
 
@@ -817,8 +811,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                                         + name
                                         + " must be assignable to because it is to an out-parameter");
                     }
-                } else if (arg instanceof ExprCast) {
-                    ((ExprCast) arg).setTargetType(dp.typeSpec().name);
                 }
 
                 i++;
@@ -985,9 +977,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = Misc.getNormalizedText(ctx.identifier());
         TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
         Expr val = visitDefault_value_part(ctx.default_value_part());
-        if (val instanceof ExprCast) {
-            ((ExprCast) val).setTargetType(ty.name);
-        }
 
         DeclConst ret = new DeclConst(ctx, name, ty, ctx.NOT() != null, val);
         symbolStack.putDecl(name, ret);
@@ -1012,9 +1001,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = Misc.getNormalizedText(ctx.identifier());
         TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
         Expr val = visitDefault_value_part(ctx.default_value_part());
-        if (val instanceof ExprCast) {
-            ((ExprCast) val).setTargetType(ty.name);
-        }
 
         DeclVar ret = new DeclVar(ctx, name, ty, ctx.NOT() != null, val);
         symbolStack.putDecl(name, ret);
@@ -1443,17 +1429,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                             + " does not match the number of its declared formal parameters");
         }
 
-        int i = 0;
-        for (Expr arg : args.nodes) {
-
-            if (arg instanceof ExprCast) {
-                DeclParam dp = declCursor.paramList.nodes.get(i);
-                ((ExprCast) arg).setTargetType(dp.typeSpec().name);
-            }
-
-            i++;
-        }
-
         String record = Misc.getNormalizedText(ctx.for_cursor().record_name());
 
         String label;
@@ -1797,17 +1772,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                             + " does not match the number of its declared formal parameters");
         }
 
-        int i = 0;
-        for (Expr arg : args.nodes) {
-
-            if (arg instanceof ExprCast) {
-                DeclParam dp = decl.paramList.nodes.get(i);
-                ((ExprCast) arg).setTargetType(dp.typeSpec().name);
-            }
-
-            i++;
-        }
-
         return new StmtCursorOpen(ctx, cursor, args);
     }
 
@@ -1915,12 +1879,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         DeclProc decl = symbolStack.getDeclProc(name);
         if (decl == null) {
 
-            for (Expr arg : args.nodes) {
-                if (arg instanceof ExprCast) {
-                    ((ExprCast) arg).setTargetType("Object");
-                }
-            }
-
             connectionRequired = true;
             addToImports("java.sql.*");
 
@@ -1954,9 +1912,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                                         + name
                                         + " must be a variable or out-parameter because it is to an out-parameter");
                     }
-
-                } else if (arg instanceof ExprCast) {
-                    ((ExprCast) arg).setTargetType(dp.typeSpec().name);
                 }
 
                 i++;
