@@ -8258,7 +8258,7 @@ btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid, b
 	  break;
 	}
     }
-  /* if the break statement occurs due to an error, the lock acquired immediately before should be released. */
+  /* if the break statement occurs due to an error, the acquired lock should be released. */
   if (!OID_ISNULL (&class_oid))
     {
       lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, IX_LOCK, true);
@@ -8319,7 +8319,7 @@ btree_check_all (THREAD_ENTRY * thread_p)
 
   if (!OID_ISNULL (&class_oid))
     {
-      lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_S_LOCK, true);
+      lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, IX_LOCK, true);
     }
   return allvalid;
 }
