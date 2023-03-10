@@ -2792,14 +2792,10 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
       // Also, The prefix index is also not supported.(The prefix index  will be deprecated.)
       if (ctype == DB_CONSTRAINT_INDEX || ctype == DB_CONSTRAINT_REVERSE_INDEX)
 	{
-	  if (idx_info->prefix_length == NULL)
+	  if ((idx_info->prefix_length == NULL) && (idx_info->compress_mode != COMPRESS_INDEX_MODE_NONE))
 	    {
-	      if ((idx_info->compress_mode != COMPRESS_INDEX_MODE_NONE)
-		  && !DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype) && ctype != DB_CONSTRAINT_FOREIGN_KEY)
-		{
-		  has_reserved_index_col = true;
-		  nnames++;
-		}
+	      has_reserved_index_col = true;
+	      nnames++;
 	    }
 	}
 #endif
