@@ -3363,7 +3363,7 @@ static int
 csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 {
   /*dbname can be stored DB name+ @ + remote hostname + \0 */
-  char buf[DB_MAX_USER_LENGTH + MAXLOGNAME + CUB_MAXHOSTNAMELEN + 1];
+  char buf[DB_MAX_USER_LENGTH + DB_NAME_LEN + CUB_MAXHOSTNAMELEN + 1];
   const char *delim = " \n";
   char *save_ptr_strtok = NULL;
   const char *db_name_ptr = NULL;
@@ -3380,14 +3380,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
       return DO_CMD_SUCCESS;
     }
 
-  /*verify @hostname */
-  if ((host_name_ptr = strchr (argument, '@')) != NULL && (*(host_name_ptr + 1) == '\0'))
-    {
-      csql_Error_code = CSQL_ERR_SQL_ERROR;
-      return DO_CMD_FAILURE;
-    }
-
-  strncpy (buf, argument, sizeof (argument));
+  strncpy (buf, argument, sizeof (buf) - 1);
 
   if ((user_name_ptr = strtok_r (buf, delim, &save_ptr_strtok)) == NULL)
     {
