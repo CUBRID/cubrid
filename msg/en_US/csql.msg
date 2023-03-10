@@ -190,7 +190,7 @@ $ csql help messages
    ;HISTORYRead <history_num>   - read entry on the history number into command buffer.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - enable/disable single-line mode.\n\
-   ;Connect [username] [dbname]@[hostname]\n\
+   ;Connect [username] [dbname][@hostname]\n\
                                 - connect user, database, host.\n\ 
    ;.Hist [ON/OFF]              - start/stop collecting statistics information in CSQL(DBA only).\n\
    ;.Clear_hist                 - clear the CSQL statistics information in the buffer.\n\
