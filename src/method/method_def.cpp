@@ -36,6 +36,8 @@ method_sig_node::~method_sig_node ()
 
 method_sig_node::method_sig_node (method_sig_node &&obj)
 {
+  next = std::move (obj.next);
+
   method_name = obj.method_name;
   method_type = obj.method_type;
   method_arg_pos = obj.method_arg_pos;
@@ -65,6 +67,16 @@ method_sig_node::method_sig_node (method_sig_node &&obj)
 
 method_sig_node::method_sig_node (const method_sig_node &obj)
 {
+  if (obj.next != nullptr)
+    {
+      next = (METHOD_SIG *) db_private_alloc (NULL, sizeof (METHOD_SIG));
+      *next = * (obj.next);
+    }
+  else
+    {
+      next = nullptr;
+    }
+
   if (obj.method_name != nullptr)
     {
       int method_name_len = strlen (obj.method_name);
@@ -194,6 +206,16 @@ method_sig_node::operator= (const method_sig_node &obj)
 {
   if (this != &obj)
     {
+      if (obj.next != nullptr)
+	{
+	  next = (METHOD_SIG *) db_private_alloc (NULL, sizeof (METHOD_SIG));
+	  *next = * (obj.next);
+	}
+      else
+	{
+	  next = nullptr;
+	}
+
       if (obj.method_name != nullptr)
 	{
 	  int method_name_len = strlen (obj.method_name);
