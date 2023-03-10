@@ -21891,8 +21891,8 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	{
 	  index_att = index->atts[j];
 	  att_id = index_att->id;
-
 	  assert (att_id >= 0 || IS_COMPRESS_INDEX_ATTR_ID (att_id));
+
 	  if (index_position == function_index_pos)
 	    {
 	      /* function position in index founded, compute attribute position in index */

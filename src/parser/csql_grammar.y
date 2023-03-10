@@ -445,7 +445,7 @@ static void pt_get_compress_mode_level(int mode_level, short* mode, short* level
 #define GET_COMPRESS_MODE(ml)   ((ml) & 0x000000FF)
 #define GET_COMPRESS_LEVEL(ml)  ((ml) >> 8)
 
-#define CHECK_RESERVED_IDX_ATTR_NAME(nm)  do {  \
+#define CHECK_COMPRESS_INDEX_ATTR_NAME(nm)  do {  \
    if((nm) && IS_COMPRESS_INDEX_ATTR_NAME((nm)->info.name.original))   \
    {                                     \
       PT_ERRORf2 (this_parser, (nm), "Attribute name [%s] is not allowed." \
@@ -455,7 +455,7 @@ static void pt_get_compress_mode_level(int mode_level, short* mode, short* level
 } while(0)
 #else // #if defined(SUPPORT_COMPRESS_MODE)
 #define COMPRESS_MODE_NOT_SET          (-1)
-#define CHECK_RESERVED_IDX_ATTR_NAME(nm)
+#define CHECK_COMPRESS_INDEX_ATTR_NAME(nm)
 #define MAKE_COMPRESS_MODE_LEVEL(m, l)  (-1)
 #endif // #if defined(SUPPORT_COMPRESS_MODE)
 
@@ -10223,7 +10223,7 @@ view_attr_def
 			    node->info.attr_def.attr_name = $1;
 			    node->info.attr_def.comment = $2;
 			    node->info.attr_def.attr_type = PT_NORMAL;
-                            CHECK_RESERVED_IDX_ATTR_NAME($1);
+                            CHECK_COMPRESS_INDEX_ATTR_NAME($1);
 			  }
 
 			$$ = node;
@@ -10449,7 +10449,7 @@ attr_def_one
 				PT_NAME_INFO_SET_FLAG (node->info.attr_def.attr_name,
 						       PT_NAME_INFO_EXTERNAL);
 			      }
-                            CHECK_RESERVED_IDX_ATTR_NAME($1);
+                            CHECK_COMPRESS_INDEX_ATTR_NAME($1);
 			  }
 
 			parser_save_attr_def_one (node);
@@ -11104,7 +11104,7 @@ attr_def_comment
 				attr_node->info.attr_def.attr_name = $1;
 				attr_node->info.attr_def.comment = $3;
 				attr_node->info.attr_def.attr_type = parser_attr_type;
-                                CHECK_RESERVED_IDX_ATTR_NAME($1);
+                                CHECK_COMPRESS_INDEX_ATTR_NAME($1);
 			  }
 
 			$$ = attr_node;
@@ -24271,7 +24271,7 @@ dblink_column_definition
                         {
                                 node->info.attr_def.size_constraint = dt->info.data_type.precision;
                         }
-                        CHECK_RESERVED_IDX_ATTR_NAME($1);
+                        CHECK_COMPRESS_INDEX_ATTR_NAME($1);
                 }
 
                 $$ = node;
