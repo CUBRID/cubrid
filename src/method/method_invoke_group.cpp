@@ -190,8 +190,8 @@ namespace cubmethod
 	  case METHOD_TYPE_INSTANCE_METHOD:
 	  case METHOD_TYPE_CLASS_METHOD:
 	  {
-	    cubmethod::header header (get_session_id(), METHOD_REQUEST_ARG_PREPARE, m_id);
-	    cubmethod::prepare_args arg (elem, arg_base);
+	    cubmethod::header header (get_session_id(), METHOD_REQUEST_ARG_PREPARE, get_and_increment_request_id ());
+	    cubmethod::prepare_args arg (m_id, elem, arg_base);
 	    error = method_send_data_to_client (m_thread_p, header, arg);
 	    break;
 	  }
@@ -208,9 +208,9 @@ namespace cubmethod
 		optimized_arg_base[i] = (!is_used) ? std::ref (null_val) : optimized_arg_base[i];
 	      }
 
-	    // send to Java SP Server
-	    cubmethod::header header (get_session_id(), SP_CODE_PREPARE_ARGS, 1);
-	    cubmethod::prepare_args arg (elem, optimized_arg_base, m_id);
+	    // send to Java SP Servers
+	    cubmethod::header header (get_session_id(), SP_CODE_PREPARE_ARGS, get_and_increment_request_id ());
+	    cubmethod::prepare_args arg (m_id, elem, optimized_arg_base);
 
 	    error = mcon_send_data_to_java (get_socket (), header, arg);
 	    break;

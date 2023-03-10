@@ -78,14 +78,8 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 // Common structure implementation
 //////////////////////////////////////////////////////////////////////////
-  prepare_args::prepare_args (METHOD_TYPE type, std::vector<std::reference_wrapper<DB_VALUE>> &vec)
-    : type (type), args (vec), group_id (-1)
-  {
-    //
-  }
-
-  prepare_args::prepare_args (METHOD_TYPE type, std::vector<std::reference_wrapper<DB_VALUE>> &vec, METHOD_GROUP_ID id)
-    : type (type), args (vec), group_id (id)
+  prepare_args::prepare_args (METHOD_GROUP_ID id, METHOD_TYPE type, std::vector<std::reference_wrapper<DB_VALUE>> &vec)
+    : group_id (id), type (type), args (vec)
   {
     //
   }
@@ -164,8 +158,9 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 // Method Builtin (C Language Method)
 //////////////////////////////////////////////////////////////////////////
-  invoke_builtin::invoke_builtin (method_sig_node *sig)
-    : sig (sig)
+  invoke_builtin::invoke_builtin (METHOD_GROUP_ID g_id, method_sig_node *sig)
+    : group_id (g_id)
+    , sig (sig)
   {
     //
   }
@@ -173,20 +168,23 @@ namespace cubmethod
   void
   invoke_builtin::pack (cubpacking::packer &serializator) const
   {
+    serializator.pack_bigint (group_id);
     sig->pack (serializator);
   }
 
   void
   invoke_builtin::unpack (cubpacking::unpacker &deserializator)
   {
-    // TODO: unpacking is not necessary
-    assert (false);
+    deserializator.unpack_bigint (group_id);
+    sig = new METHOD_SIG ();
+    sig->unpack (deserializator);
   }
 
   size_t
   invoke_builtin::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = sig->get_packed_size (serializator, start_offset); // sig
+    size_t size = serializator.get_packed_bigint_size (start_offset); //group id
+    size += sig->get_packed_size (serializator, size); // sig
     return size;
   }
 

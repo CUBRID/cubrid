@@ -250,20 +250,13 @@ static int
 method_invoke_builtin (packing_unpacker &unpacker, DB_VALUE &result)
 {
   int error = NO_ERROR;
-  UINT64 id;
-  METHOD_SIG sig;
 
-  unpacker.unpack_bigint (id);
-
-
-
-  sig.unpack (unpacker);
-
-  auto search = runtime_args.find (id);
+  cubmethod::invoke_builtin ib (unpacker);
+  auto search = runtime_args.find (ib.group_id);
   if (search != runtime_args.end())
     {
       std::vector<DB_VALUE> &args = search->second;
-      error = method_invoke_builtin_internal (result, args, &sig);
+      error = method_invoke_builtin_internal (result, args, ib.sig);
       if (error == NO_ERROR)
 	{
 	  /* send a result value to server */
@@ -275,7 +268,7 @@ method_invoke_builtin (packing_unpacker &unpacker, DB_VALUE &result)
       error = ER_GENERIC_ERROR;
     }
 
-  sig.freemem ();
+  delete ib.sig;
   return error;
 }
 

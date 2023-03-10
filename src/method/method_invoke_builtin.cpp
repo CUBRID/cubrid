@@ -43,7 +43,7 @@ namespace cubmethod
   {
     int error = NO_ERROR;
     cubmethod::header header (m_group->get_session_id(), METHOD_REQUEST_INVOKE /* default */, 0);
-    cubmethod::invoke_builtin arg (m_method_sig);
+    cubmethod::invoke_builtin arg (m_group->get_id (), m_method_sig);
     error = method_send_data_to_client (thread_p, header, arg);
     return error;
   }
