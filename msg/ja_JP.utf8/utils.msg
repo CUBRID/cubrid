@@ -496,6 +496,7 @@ loaddb: データベースにオブジェクトやスキーマロード\n\
 オプション:\n\
   -S, --SA-mode                  独立モードで実行\n\
   -C, --CS-mode                  クライアントーサーバモードで実行\n\
+                                 警告: クライアント サーバー モードでは、データ ファイル (-d、--data-file=FILE) のみをロードできます。\n\
   -u, --user=ID                  データベースアクセスに関するユーザー名; デフォルト: 「public」\n\
   -p, --password=PASS            ユーザーパスワード; デフォルト: なし\n\
       --data-file-check-only     check syntax for data file without load; default: disabled\n\
