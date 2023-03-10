@@ -3363,7 +3363,7 @@ static int
 csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 {
   /*dbname can be stored DB name+ @ + remote hostname + \0 */
-  char buf[DB_MAX_USER_LENGTH + DB_NAME_LEN + CUB_MAXHOSTNAMELEN + 1];
+  char buf[DB_MAX_USER_LENGTH + DB_NAME_LEN + CUB_MAXHOSTNAMELEN + 1] = { 0, };
   const char *delim = " \n";
   char *save_ptr_strtok = NULL;
   const char *db_name_ptr = NULL;
