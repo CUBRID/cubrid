@@ -35,11 +35,24 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class Expr extends AstNode {
 
+    public Coerce coerce;
+
     public Expr(ParserRuleContext ctx) {
         super(ctx);
     }
 
     public void setCoerce(Coerce c) {
-        // TODO
+        this.coerce = c;
+    }
+
+    public abstract String exprToJavaCode();
+
+    @Override
+    public final String toJavaCode() {
+        if (coerce == null) {
+            return "/* no coerce */ " + exprToJavaCode();   // comment for debug TODO: erase the comment sometime
+        } else {
+            return coerce.toJavaCode(exprToJavaCode());
+        }
     }
 }

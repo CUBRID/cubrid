@@ -35,25 +35,17 @@ import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 import com.cubrid.plcsql.compiler.ast.TypeSpecVariadic;
 import java.util.List;
 
-public class Coerce {
+public abstract class Coerce {
 
-    public String funcName;
-
-    public Coerce() {}
-
-    public Coerce(String funcName) {
-        this.funcName = funcName;
-    }
-
-    public String toJavaCode(String exprJavaCode) {
-        return String.format("%s(%s)", funcName, exprJavaCode);
-    }
+    public abstract String toJavaCode(String exprJavaCode);
 
     public static Coerce getCoerce(TypeSpec from, TypeSpec to) {
         if (to.equals(TypeSpecSimple.OBJECT)
                 || from.equals(TypeSpecSimple.NULL)
                 || from.equals(to)) {
             return IDENTITY;
+        } else if (from.equals(TypeSpecSimple.OBJECT)) {
+            return new DownCast(to);
         }
 
         // TODO: fill other cases
@@ -91,11 +83,24 @@ public class Coerce {
     // cases
     // ----------------------------------------------
 
-    private static class Identity extends Coerce {
+    public static class Identity extends Coerce {
+        @Override
         public String toJavaCode(String exprJavaCode) {
             return exprJavaCode; // no coercion
         }
     }
+    public static Coerce IDENTITY = new Identity();
 
-    private static Coerce IDENTITY = new Identity();
+    public static class DownCast extends Coerce {
+        public TypeSpec to;
+
+        public DownCast(TypeSpec to) {
+            this.to = to;
+        }
+
+        @Override
+        public String toJavaCode(String exprJavaCode) {
+            return String.format("(%s) %s", to.toJavaCode(), exprJavaCode);
+        }
+    }
 }

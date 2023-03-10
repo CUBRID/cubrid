@@ -59,7 +59,7 @@ public class ExprSerialVal extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
 
         return tmplSerialVal
                 .replace("%'SERIAL-NAME'%", name)

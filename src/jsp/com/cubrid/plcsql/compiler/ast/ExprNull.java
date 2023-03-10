@@ -46,7 +46,7 @@ public class ExprNull extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
         return "null";
     }
 

@@ -54,7 +54,7 @@ public class ExprLike extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
         return tmpl.replace("  %'TARGET'%", Misc.indentLines(target.toJavaCode(), 1))
                 .replace("  %'PATTERN'%", Misc.indentLines(pattern.toJavaCode(), 1))
                 .replace(

@@ -55,7 +55,7 @@ public class ExprGlobalFuncCall extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
 
         int argSize = args.nodes.size();
         String dynSql = getDynSql(name, argSize);

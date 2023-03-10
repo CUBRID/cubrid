@@ -63,7 +63,7 @@ public class ExprCast extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
         if (ty == null) {
             return String.format(
                     "((%%TODO-ExprCast%%) (%s))", Misc.indentLines(expr.toJavaCode(), 1, true));

@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.Coerce;
 import com.cubrid.plcsql.compiler.Misc;
 import java.util.List;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -80,9 +81,15 @@ public abstract class StmtSql extends Stmt {
         }
     }
 
+    public void setCoerces(List<Coerce> coerces) {
+        this.coerces = coerces;
+    }
+
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
+
+    private List<Coerce> coerces;   // TODO: consider coerces for static SELECT statements
 
     private static final String tmplDml =
             Misc.combineLines(

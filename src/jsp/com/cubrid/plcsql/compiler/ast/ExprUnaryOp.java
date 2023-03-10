@@ -52,7 +52,7 @@ public class ExprUnaryOp extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
         return tmpl.replace("%'OPERATION'%", opStr)
                 .replace("  %'OPERAND'%", Misc.indentLines(operand.toJavaCode(), 1));
     }

@@ -262,6 +262,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                             + "' cannot be applied to the argument types");
         }
 
+        // TODO: coerce
+
         return binOp.retType;
     }
 
@@ -284,14 +286,18 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                 commonType = getCommonType(commonType, ty);
             }
         }
-        if (node.elsePart != null) {
+        if (node.elsePart == null) {
+            if (commonType.equals(TypeSpecSimple.NULL)) {
+                commonType = TypeSpecSimple.OBJECT; // cannot be a specific Java type: there is no Null type in Java
+            }
+        } else {
             TypeSpec ty = visit(node.elsePart);
             commonType = getCommonType(commonType, ty);
         }
 
-        caseSelectorType = saveCaseSelectorType; // restore
-
         node.setResultType(commonType);
+
+        caseSelectorType = saveCaseSelectorType; // restore
         return commonType;
     }
 
@@ -306,7 +312,11 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                 commonType = getCommonType(commonType, ty);
             }
         }
-        if (node.elsePart != null) {
+        if (node.elsePart == null) {
+            if (commonType.equals(TypeSpecSimple.NULL)) {
+                commonType = TypeSpecSimple.OBJECT; // cannot be a specific Java type: there is no Null type in Java
+            }
+        } else {
             TypeSpec ty = visit(node.elsePart);
             commonType = getCommonType(commonType, ty);
         }
@@ -368,7 +378,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         } else {
             // this record is for a dynamic SQL
 
-            ret = TypeSpecSimple.UNKNOWN;
+            ret = TypeSpecSimple.OBJECT;    // cannot be a specific Java type: type unknown at compile time
         }
 
         return ret;
@@ -499,6 +509,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                             + node.opStr.toLowerCase()
                             + "' cannot be applied to the argument type");
         }
+
+        // TODO: coerce
+
         return unaryOp.retType;
     }
 
@@ -516,6 +529,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             throw new SemanticError(
                     node.val.lineNo(), // s216
                     "assigned value has incompatible type with the variable's type");
+        } else {
+            node.val.setCoerce(c);
         }
 
         return null;
@@ -601,8 +616,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                             String.format(
                                     "the type of column %d of the cursor is not compatible with the variable %s",
                                     i + 1, intoVar.name));
+                } else {
+                    coerces.add(c);
                 }
-                coerces.add(c);
 
                 i++;
             }
@@ -634,8 +650,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                     throw new SemanticError(
                             arg.lineNo(), // s219
                             String.format("argument %d to cursor has an incompatible type", i + 1));
+                } else {
+                    arg.setCoerce(c);
                 }
-                arg.setCoerce(c);
             }
         } else {
             assert false : "unreachable"; // by earlier check
@@ -680,6 +697,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                         "number of into-variables must be equal to the number of columns queried");
             }
 
+            List<Coerce> coerces = new ArrayList<>();
+
             // check types of into-variables
             int i = 0;
             for (String column : staticSql.selectList.keySet()) {
@@ -693,10 +712,13 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                             "into-variable "
                                     + intoVar.name
                                     + " cannot be used in the place due to type mismatch");
+                } else {
+                    coerces.add(c);
                 }
 
                 i++;
             }
+            node.setCoerces(coerces);
         }
 
         return null;
@@ -849,8 +871,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                 throw new SemanticError(
                         node.retVal.lineNo(), // s217
                         "return value has a type incompatible with the return type");
+            } else {
+                node.retVal.setCoerce(c);
             }
-            node.retVal.setCoerce(c);
         }
         return null;
     }
@@ -926,8 +949,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                         String.format(
                                 "argument %d to %s call has an incompatible type",
                                 i + 1, decl.name));
+            } else {
+                arg.setCoerce(c);
             }
-            arg.setCoerce(c);
         }
     }
 
@@ -939,6 +963,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             Coerce c = Coerce.getCoerce(ty, tyRequired);
             if (c == null) {
                 return id.name;
+            } else {
+                // TODO: drop this coerce? only allow identity and upcast?
             }
         }
 
