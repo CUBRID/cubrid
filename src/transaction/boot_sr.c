@@ -3217,6 +3217,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 	  pts_ptr->finish_replication_during_shutdown (*thread_p);
 	}
 
+      ts_Gl->stop_outgoing_page_server_messages ();
       ts_Gl->disconnect_all_page_servers ();
 
       // shutdown order for Active Transaction Server:
