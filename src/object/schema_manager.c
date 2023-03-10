@@ -14273,7 +14273,9 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 #if defined(SUPPORT_COMPRESS_MODE)
 	  if (is_fk && IS_COMPRESS_INDEX_ATTR_NAME (*ptr))
 	    {
-	      continue;
+	      n_attrs--;	/* Do not include compress_index_attr name in the FK name */
+	      assert (i == n_attrs);
+	      break;
 	    }
 #endif
 	  do_desc = false;	/* init */
@@ -14316,12 +14318,6 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 
 	  for (ptr = att_names, i = 0; i < n_attrs; ptr++, i++)
 	    {
-#if defined(SUPPORT_COMPRESS_MODE)
-	      if (is_fk && IS_COMPRESS_INDEX_ATTR_NAME (*ptr))
-		{
-		  continue;
-		}
-#endif
 	      strcat (name_all, *ptr);
 	      if (asc_desc && !DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (type) && asc_desc[i] == 1)
 		{
@@ -14389,12 +14385,6 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  /* n_attrs is already limited to MAX_ATTR_IN_AUTO_GEN_NAME here */
 	  for (ptr = att_names; i < n_attrs; ptr++, i++)
 	    {
-#if defined(SUPPORT_COMPRESS_MODE)
-	      if (is_fk && IS_COMPRESS_INDEX_ATTR_NAME (*ptr))
-		{
-		  continue;
-		}
-#endif
 	      do_desc = false;	/* init */
 	      if (asc_desc)
 		{
