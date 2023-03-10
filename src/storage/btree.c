@@ -6696,7 +6696,6 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
       if (found)
 	{
 	  key_cnt = btree_node_number_of_keys (thread_p, BTS->C_page);
-	  assert_release (key_cnt >= 0);
 
 #if !defined(NDEBUG)
 	  header = btree_get_node_header (thread_p, BTS->C_page);
