@@ -299,14 +299,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                         Misc.getLineOf(ctx), // s000
                         "undeclared id " + Misc.getNormalizedText(ctx.identifier()));
             }
-            if (!(id.decl instanceof DeclVarLike)) {
+            if (!(id.decl instanceof DeclIdTyped)) {
                 throw new SemanticError(
                         Misc.getLineOf(ctx), // s001
                         Misc.getNormalizedText(ctx.identifier())
                                 + " must be a procedure/function parameter, variable, or constant");
             }
 
-            return ((DeclVarLike) id.decl).typeSpec();
+            return ((DeclIdTyped) id.decl).typeSpec();
         } else {
             // case table.column%TYPE
             String table = Misc.getNormalizedText(ctx.table_name());
@@ -1873,7 +1873,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     Misc.getLineOf(ctx.identifier()), // s041
                     "identifier in a open-for statement must be assignable-to");
         }
-        if (!((DeclVarLike) refCursor.decl).typeSpec().equals(TypeSpecSimple.REFCURSOR)) {
+        if (!((DeclIdTyped) refCursor.decl).typeSpec().equals(TypeSpecSimple.REFCURSOR)) {
             throw new SemanticError(
                     Misc.getLineOf(ctx.identifier()), // s042
                     "identifier in a open-for statement must be of the SYS_REFCURSOR type");
@@ -2127,7 +2127,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         DeclId decl = id.decl;
         return (decl instanceof DeclCursor
                 || ((decl instanceof DeclVar || decl instanceof DeclParam)
-                        && ((DeclVarLike) decl).typeSpec().equals(TypeSpecSimple.REFCURSOR)));
+                        && ((DeclIdTyped) decl).typeSpec().equals(TypeSpecSimple.REFCURSOR)));
     }
 
     private static final Map<String, String> pcsToJavaTypeMap = new TreeMap<>();

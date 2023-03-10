@@ -383,8 +383,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprId(ExprId node) {
-        if (node.decl instanceof DeclVarLike) {
-            return ((DeclVarLike) node.decl).typeSpec();
+        if (node.decl instanceof DeclIdTyped) {
+            return ((DeclIdTyped) node.decl).typeSpec();
         } else if (node.decl instanceof DeclCursor) {
             return TypeSpecSimple.CURSOR;
         } else if (node.decl instanceof DeclForIter) {
@@ -510,7 +510,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitStmtAssign(StmtAssign node) {
         TypeSpec valType = visit(node.val);
-        TypeSpec varType = ((DeclVarLike) node.var.decl).typeSpec();
+        TypeSpec varType = ((DeclIdTyped) node.var.decl).typeSpec();
         Coerce c = Coerce.getCoerce(valType, varType);
         if (c == null) {
             throw new SemanticError(
@@ -594,7 +594,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             for (String column : selectList.keySet()) {
                 TypeSpec columnType = selectList.get(column);
                 ExprId intoVar = node.intoVars.nodes.get(i);
-                Coerce c = Coerce.getCoerce(columnType, ((DeclVarLike) intoVar.decl).typeSpec());
+                Coerce c = Coerce.getCoerce(columnType, ((DeclIdTyped) intoVar.decl).typeSpec());
                 if (c == null) {
                     throw new SemanticError(
                             intoVar.lineNo(), // s403

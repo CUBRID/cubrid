@@ -195,7 +195,7 @@ public abstract class AstVisitor<R> {
     DeclId
     DeclParam
     DeclRoutine
-    DeclVarLike
+    DeclIdTyped
     Expr
     Stmt
     TypeSpec

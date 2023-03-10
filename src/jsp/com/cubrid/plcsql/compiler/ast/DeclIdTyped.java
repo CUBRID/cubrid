@@ -32,10 +32,10 @@ package com.cubrid.plcsql.compiler.ast;
 
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public abstract class DeclVarLike extends DeclId {
+public abstract class DeclIdTyped extends DeclId {
     public abstract TypeSpec typeSpec();
 
-    public DeclVarLike(ParserRuleContext ctx) {
+    public DeclIdTyped(ParserRuleContext ctx) {
         super(ctx);
     }
 }
