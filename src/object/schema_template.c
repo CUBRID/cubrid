@@ -126,60 +126,6 @@ static SM_CLASS_CONSTRAINT *smt_find_constraint (SM_TEMPLATE * ctemplate, const 
  * a lot of the error checking code in every function.
 */
 
-#if defined(SUPPORT_COMPRESS_MODE)
-static int
-smt_find_compress_index_attribute (SM_TEMPLATE * template_, const char *name, SM_ATTRIBUTE ** attp)
-{
-  int error_code = NO_ERROR;
-  SM_ATTRIBUTE *att = NULL;
-
-  *attp = NULL;
-
-#ifndef NDEBUG
-  if (!sm_check_name (name))
-    {
-      ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
-    }
-
-  if (!IS_COMPRESS_INDEX_ATTR_NAME (name))
-    {
-      ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
-    }
-
-  error_code = check_namespace (template_, name, false);
-  if (error_code != NO_ERROR)
-    {
-      goto error_exit;
-    }
-#endif
-
-  att = dk_find_sm_reserved_index_attribute (-1, name);
-  if (att == NULL)
-    {
-      assert_release (false);
-      ERROR0 (error_code, ER_FAILED);
-    }
-
-  if (error_code != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
-  *attp = att;
-  return error_code;
-
-error_exit:
-  if (att)
-    {
-      classobj_free_attribute (att);
-    }
-
-  return error_code;
-}
-#endif
-
 /*
  * smt_find_attribute() - Locate an instance, shared or class attribute
  *    in a template. Signal an error if not found.
@@ -2126,7 +2072,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 #if defined(SUPPORT_COMPRESS_MODE)
       if (compress_index_col_pos == i)
 	{
-	  error = smt_find_compress_index_attribute (template_, att_names[i], &atts[i]);
+	  atts[i] = dk_find_sm_reserved_index_attribute (-1, att_names[i]);
 	  continue;
 	}
 #endif
