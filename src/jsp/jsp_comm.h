@@ -61,7 +61,7 @@ struct javasp_status_info
 {
   int pid;
   int port;
-  std::string db_name;
+    std::string db_name;
   // *INDENT-OFF*
   std::vector < std::string > vm_args;
   // *INDENT-ON*

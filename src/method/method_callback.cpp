@@ -56,7 +56,7 @@ namespace cubmethod
     m_error_ctx.clear ();
 
     int code;
-    unpacker.unpack_int(code);
+    unpacker.unpack_int (code);
 
     int error = NO_ERROR;
     switch (code)

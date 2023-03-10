@@ -3,9 +3,9 @@ package com.cubrid.jsp.protocol;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 
 public class Header {
-    
+
     public static final int EMPTY_SESSION_ID = 0;
-    public static final int BYTES = getHeaderSize ();
+    public static final int BYTES = getHeaderSize();
 
     public long id; // DB SESSION ID
     public int code; // code
@@ -32,7 +32,7 @@ public class Header {
         return "Header [id=" + id + ", code=" + code + ", rid=" + requestId + "]";
     }
 
-    public static int getHeaderSize () {
+    public static int getHeaderSize() {
         return 16;
     }
 }

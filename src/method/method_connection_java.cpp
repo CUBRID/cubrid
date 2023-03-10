@@ -72,8 +72,8 @@ namespace cubmethod
 		    nbytes);
 	    return er_errid ();
 	  }
-    
-    b = std::move (ext_blk);
+
+	b = std::move (ext_blk);
       }
     return NO_ERROR;
   }
@@ -124,10 +124,10 @@ namespace cubmethod
 	  }
 
 	nbytes = jsp_readn (socket, (char *) &res_size, OR_INT_SIZE);
-  if (nbytes < 0 && errno == ETIMEDOUT)
-    {
-      continue;
-    }
+	if (nbytes < 0 && errno == ETIMEDOUT)
+	  {
+	    continue;
+	  }
 	else if (nbytes != OR_INT_SIZE)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
@@ -151,10 +151,10 @@ namespace cubmethod
 	    ext_blk.extend_to (res_size);
 
 	    nbytes = jsp_readn (socket, ext_blk.get_ptr (), res_size);
-      if (nbytes < 0 && errno == ETIMEDOUT)
-      {
-        continue;
-      }
+	    if (nbytes < 0 && errno == ETIMEDOUT)
+	      {
+		continue;
+	      }
 	    else if (nbytes != res_size)
 	      {
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
