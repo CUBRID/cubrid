@@ -162,8 +162,8 @@ $ csql help messages
    ;ROllback                    - 진행 중인 트랜잭션 철회.\n\
    ;AUtocommit [ON|OFF]         - 자동 커밋 모드 설정|해제.\n\
    ;REStart                     - CSQL 세션에서 현재 데이터베이스에 다시 연결.\n\
-   ;CHeckpoint                  - 체크포인트를 실행합니다(--sysadm이 있는 CSQL만 해당).\n\
-   ;Killtran                    - 트랜잭션 상태 정보를 확인하거나 특정 트랜잭션을 종료.(--sysadm이 있는 CSQL만 해당).\n\
+   ;CHeckpoint                  - 체크포인트를 실행합니다(--sysadm로 접속한 경우만 해당).\n\
+   ;Killtran                    - 트랜잭션 상태 정보를 확인하거나 특정 트랜잭션을 종료.(--sysadm로 접속한 경우만 해당).\n\
 \n\
    ;SHELL_Cmd    [shell-cmd]    - 내정된 쉘을 설정하거나 보여줌.\n\
    ;EDITOR_Cmd   [editor-cmd]   - 내정된 편집기를 설정하거나 보여줌.\n\
