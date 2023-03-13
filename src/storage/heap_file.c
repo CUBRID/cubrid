@@ -12056,7 +12056,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	    {
 	      idx_info->has_single_col = 1;
 	    }
-	  else if (indexp->n_atts > 2)
+	  else
 	    {
 	      idx_info->has_multi_col = 1;
 	    }
