@@ -4295,8 +4295,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	      assert ((num_attrs - 1) == index->n_atts);
 
 	      error_code =
-		btree_check_remake_foreign_key (thread_p, &fkref->self_btid, key, &fkref->self_oid, &key_val_range,
-						&is_newly);
+		btree_remake_foreign_key_with_PK (thread_p, &fkref->self_btid, key, &fkref->self_oid, &key_val_range,
+						  &is_newly);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -4673,8 +4673,8 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	      assert ((num_attrs - 1) == index->n_atts);
 
 	      error_code =
-		btree_check_remake_foreign_key (thread_p, &fkref->self_btid, key, &fkref->self_oid, &key_val_range,
-						&is_newly);
+		btree_remake_foreign_key_with_PK (thread_p, &fkref->self_btid, key, &fkref->self_oid, &key_val_range,
+						  &is_newly);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();

@@ -328,8 +328,8 @@ struct btree_stats_env
   DB_VALUE pkeys_val[BTREE_STATS_PKEYS_NUM];	/* partial key-value */
 
 #if defined(SUPPORT_COMPRESS_MODE)
-  DB_VALUE old_key_val;
-  int ignore_diff_pos;
+  DB_VALUE prev_key_val;
+  int same_prefix_len;
 #endif
 };
 
@@ -5962,8 +5962,8 @@ error_return:
 
 #if defined(SUPPORT_COMPRESS_MODE)
 int
-btree_check_remake_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
-				key_val_range * kv_range, bool * is_newly)
+btree_remake_foreign_key_with_PK (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
+				  key_val_range * kv_range, bool * is_newly)
 {
   DB_MIDXKEY midxkey;
   TP_DOMAIN *tp_dom = NULL;
@@ -5974,16 +5974,22 @@ btree_check_remake_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE *
   int i, last_asc_desc, num_attrs;
   int ret = NO_ERROR;
 
+  /* PK         ===> FK
+     id             {id, NULL(OID)}
+     {id, v}        {id, v, NULL(OID)}
+   */
+
   *is_newly = false;
 
   if (key->domain.general_info.type == DB_TYPE_MIDXKEY)
     {
-      num_attrs = heap_get_reserved_attr_by_btid (thread_p, class_oid, btid, &last_attrid, &last_asc_desc, NULL);
+      num_attrs = heap_get_compress_attr_by_btid (thread_p, class_oid, btid, &last_attrid, &last_asc_desc, NULL);
       assert (num_attrs > 0);
       if (!IS_COMPRESS_INDEX_ATTR_ID (last_attrid))
 	{
 	  goto clear_pos;
 	}
+
       assert ((num_attrs - 1) == key->data.midxkey.ncolumns);
 
       /* allocate key buffer */
@@ -6008,12 +6014,13 @@ btree_check_remake_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE *
     }
   else
     {
-      num_attrs = heap_get_reserved_attr_by_btid (thread_p, class_oid, btid, &last_attrid, &last_asc_desc, &tp_dom);
+      num_attrs = heap_get_compress_attr_by_btid (thread_p, class_oid, btid, &last_attrid, &last_asc_desc, &tp_dom);
       assert (num_attrs > 0);
       if (!IS_COMPRESS_INDEX_ATTR_ID (last_attrid))
 	{
 	  goto clear_pos;
 	}
+
       assert (num_attrs == 2);
       assert (tp_dom != NULL);
 
@@ -6107,7 +6114,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
 
   db_make_null (&kv_range.key1);
   db_make_null (&kv_range.key2);
-  error_code = btree_check_remake_foreign_key (thread_p, btid, key, class_oid, &kv_range, &is_newly);
+  error_code = btree_remake_foreign_key_with_PK (thread_p, btid, key, class_oid, &kv_range, &is_newly);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -6677,19 +6684,18 @@ exit_on_error:
 static bool
 btree_is_same_key_for_stats (BTREE_STATS_ENV * env, DB_VALUE * key_value)
 {
-  assert (env->ignore_diff_pos > 0);
+  assert (env->same_prefix_len > 0);
 
-  if (!DB_IS_NULL (&(env->old_key_val)))
+  if (!DB_IS_NULL (&(env->prev_key_val)))
     {
-      int same_prefix = pr_midxkey_common_prefix (&(env->old_key_val), key_value);
-      if (env->ignore_diff_pos == same_prefix)
+      if (pr_midxkey_common_prefix (&(env->prev_key_val), key_value) == env->same_prefix_len)
 	{
 	  return true;
 	}
     }
 
-  pr_clear_value (&(env->old_key_val));
-  pr_clone_value (key_value, &(env->old_key_val));
+  pr_clear_value (&(env->prev_key_val));
+  pr_clone_value (key_value, &(env->prev_key_val));
   return false;
 }
 #endif
@@ -6749,7 +6755,7 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 	}
 
 #if defined(SUPPORT_COMPRESS_MODE)
-      if (env->ignore_diff_pos != -1 && btree_is_same_key_for_stats (env, &key_value))
+      if (env->same_prefix_len != -1 && btree_is_same_key_for_stats (env, &key_value))
 	{
 	  goto end;
 	}
@@ -6848,7 +6854,7 @@ count_keys:
 	}
 
 #if defined(SUPPORT_COMPRESS_MODE)
-      if ((mvcc_snapshot == NULL) && (env->ignore_diff_pos != -1) && btree_is_same_key_for_stats (env, &key_value))
+      if ((env->same_prefix_len != -1) && btree_is_same_key_for_stats (env, &key_value))
 	{
 	  env->stat_info->keys--;
 	  goto end;
@@ -7288,8 +7294,8 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
     }
 
 #if defined(SUPPORT_COMPRESS_MODE)
-  db_make_null (&(env->old_key_val));
-  env->ignore_diff_pos = env->btree_scan.btid_int.decompress_attr_idx;
+  db_make_null (&(env->prev_key_val));
+  env->same_prefix_len = env->btree_scan.btid_int.decompress_attr_idx;
 #endif
 
   if (with_fullscan || npages <= STATS_SAMPLING_THRESHOLD)
@@ -7303,8 +7309,8 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
     }
 
 #if defined(SUPPORT_COMPRESS_MODE)
-  pr_clear_value (&(env->old_key_val));
-  env->ignore_diff_pos = -1;
+  pr_clear_value (&(env->prev_key_val));
+  env->same_prefix_len = -1;
 #endif
 
   if (ret != NO_ERROR)
@@ -8834,14 +8840,14 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	    }
 
 #if defined(SUPPORT_COMPRESS_MODE)
-	  if (env->ignore_diff_pos == -1 || !btree_is_same_key_for_stats (env, &key1))
+	  if (env->same_prefix_len == -1 || !btree_is_same_key_for_stats (env, &key1))
 	    {
 	      cpc->dis_key_cnt++;
-              cpc->sum_key_len += btree_get_disk_size_of_key (&key1);
+	      cpc->sum_key_len += btree_get_disk_size_of_key (&key1);
 	    }
 #else
 	  cpc->sum_key_len += btree_get_disk_size_of_key (&key1);
-#endif          
+#endif
 	  btree_clear_key_value (&clear_key, &key1);
 
 	  /* find the value (OID) count for the record */
@@ -8960,7 +8966,7 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
 
 #if defined(SUPPORT_COMPRESS_MODE)
   BTREE_STATS_ENV stats_env;
-  /* This routine uses only old_key_val and ignore_diff_pos among the members of the structure. */
+  /* This routine uses only prev_key_val and same_prefix_len among the members of the structure. */
   memset (&stats_env, 0x00, sizeof (stats_env));
 #endif
 
@@ -8991,8 +8997,8 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
     }
 
 #if defined(SUPPORT_COMPRESS_MODE)
-  db_make_null (&(stats_env.old_key_val));
-  stats_env.ignore_diff_pos = GET_DECOMPRESS_IDX_HEADER (root_header);
+  db_make_null (&(stats_env.prev_key_val));
+  stats_env.same_prefix_len = GET_DECOMPRESS_IDX_HEADER (root_header);
 #endif
   /* traverse the tree and store the capacity info */
   ret = btree_get_subtree_capacity (thread_p, &btid_int, root, cpc
@@ -9002,7 +9008,7 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
     );
 
 #if defined(SUPPORT_COMPRESS_MODE)
-  pr_clear_value (&(stats_env.old_key_val));
+  pr_clear_value (&(stats_env.prev_key_val));
 #endif
   if (ret != NO_ERROR)
     {
@@ -9019,10 +9025,6 @@ exit_on_error:
     {
       pgbuf_unfix_and_init (thread_p, root);
     }
-
-#if defined(SUPPORT_COMPRESS_MODE)
-  pr_clear_value (&(stats_env.old_key_val));
-#endif
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }

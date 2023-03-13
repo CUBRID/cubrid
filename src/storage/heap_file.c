@@ -12245,7 +12245,7 @@ heap_classrepr_find_index_id (OR_CLASSREP * classrepr, const BTID * btid)
 
 #if defined(SUPPORT_COMPRESS_MODE)
 int
-heap_get_reserved_attr_by_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, ATTR_ID * last_attrid,
+heap_get_compress_attr_by_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, ATTR_ID * last_attrid,
 				int *last_asc_desc, TP_DOMAIN ** tpdomain)
 {
   OR_CLASSREP *classrepr = NULL;

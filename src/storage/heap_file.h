@@ -491,7 +491,7 @@ extern int heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_
 #endif
 
 #if defined(SUPPORT_COMPRESS_MODE)
-extern int heap_get_reserved_attr_by_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, ATTR_ID * last_attrid,
+extern int heap_get_compress_attr_by_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, ATTR_ID * last_attrid,
 					   int *last_asc_desc, TP_DOMAIN ** tpdomain);
 #endif
 extern int heap_attrinfo_start_with_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid,
