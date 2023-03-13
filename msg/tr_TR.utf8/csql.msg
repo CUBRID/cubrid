@@ -190,7 +190,7 @@ $ csql help messages
    ;HISTORYRead <history_num>   - komut buffer içine geçmiş numarası üzerinde giriş okuyun.\n\
    ;TRAce [ON/OFF] [text/json]  - sql otomatik iz etkinleştirmek/devre dışı.\n\
    ;SIngleline [ON|OFF]         - tek hat modunu etkinleştir/devre dışı bırak.\n\
-   ;Connect [username] [dbname][@hostname]\n\
+   ;Connect username [dbname | dbname@hostname]\n\
                                 - kullanıcıyı, veritabanını, ana bilgisayarı bağlayın.\n\ 
    ;.Hist [ON/OFF]              - CSQL'de istatistik bilgisi toplamayı başlat/durdur (yalnızca DBA mevcuttur).\n\
    ;.Clear_hist                 - tampondaki CSQL istatistik bilgilerini temizler.\n\

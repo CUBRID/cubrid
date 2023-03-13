@@ -190,7 +190,7 @@ $ csql help messages
    ;HISTORYRead <history_num>   - ヒストリー番号のクエリをコマンドバッファーにセーブする。\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - 単線モードの有効化/無効化.\n\
-   ;Connect [username] [dbname][@hostname]\n\
+   ;Connect username [dbname | dbname@hostname]\n\
                                 - ユーザー、データベース、ホストを接続します。\n\ 
    ;.Hist [ON/OFF]              - CSQL で統計情報の収集を開始/停止します (DBA のみ利用可能)。\n\
    ;.Clear_hist                 - バッファ内の CSQL 統計情報をクリアします。\n\

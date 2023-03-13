@@ -190,7 +190,7 @@ $ csql help messages
    ;HISTORYRead <history_num>   - lit l 'entrée sur le numéro d'historique dans le tampon de commande.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - activer/désactiver le mode monoligne.\n\
-   ;Connect [username] [dbname][@hostname]\n\
+   ;Connect username [dbname | dbname@hostname]\n\
                                 - connecter l'utilisateur, la base de données, l'hôte.\n\ 
    ;.Hist [ON/OFF]              - démarrer/arrêter la collecte d'informations statistiques dans CSQL (DBA disponible uniquement).\n\
    ;.Clear_hist                 - effacer les informations statistiques CSQL dans la mémoire tampon.\n\
