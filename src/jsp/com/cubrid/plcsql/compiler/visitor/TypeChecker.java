@@ -599,12 +599,6 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             assert declCursor.staticSql != null;
             LinkedHashMap<String, TypeSpec> selectList = declCursor.staticSql.selectList;
 
-            int len = node.intoVars.nodes.size();
-            if (selectList.size() != len) {
-                throw new SemanticError( // TODO: verify what happens in Oracle
-                        node.lineNo(), // s402
-                        "the number of columns of the cursor must be equal the number of into-variables");
-            }
             int i = 0;
             for (String column : selectList.keySet()) {
                 TypeSpec columnType = selectList.get(column);
@@ -690,12 +684,6 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         }
 
         if (staticSql.intoVars != null) {
-
-            if (staticSql.selectList.size() != staticSql.intoVars.size()) {
-                throw new SemanticError(
-                        Misc.getLineOf(staticSql.ctx),
-                        "number of into-variables must be equal to the number of columns queried");
-            }
 
             List<Coerce> coerces = new ArrayList<>();
 

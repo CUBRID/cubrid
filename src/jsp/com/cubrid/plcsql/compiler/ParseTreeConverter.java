@@ -1817,6 +1817,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             intoVars.addNode(id);
         }
 
+        if (cursor.decl instanceof DeclCursor) {
+            if (intoVars.nodes.size() != ((DeclCursor) cursor.decl).staticSql.selectList.size()) {
+                throw new SemanticError( // TODO: verify what happens in Oracle
+                        cursor.lineNo(), // s059
+                        "the number of columns of the cursor must be equal the number of into-variables");
+            }
+        }
+
         return new StmtCursorFetch(ctx, cursor, intoVars);
     }
 
@@ -2318,6 +2326,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
             // check (name-binding) and convert into-variables used in the SQL
             if (sws.intoVars != null) {
+
+                if (sws.intoVars.size() != sws.selectList.size()) {
+                    throw new SemanticError(
+                            Misc.getLineOf(ctx), // s420
+                            "the length of select list is different the length of into-variables");
+                }
+
                 intoVars = new ArrayList<>();
                 for (String var : sws.intoVars) {
                     var = Misc.getNormalizedText(var);
