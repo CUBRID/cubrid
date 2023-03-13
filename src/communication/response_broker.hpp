@@ -57,12 +57,13 @@ namespace cubcomm
       response_broker &operator = (const response_broker &) = delete;
       response_broker &operator = (response_broker &&) = delete;
 
+      void register_request (response_sequence_number a_rsn);
       void register_response (response_sequence_number a_rsn, T_PAYLOAD &&a_payload);
       void register_error (response_sequence_number a_rsn, T_ERROR &&a_error);
 
       std::tuple<T_PAYLOAD, T_ERROR> get_response (response_sequence_number a_rsn);
 
-      void terminate ();
+      void notify_terminate_and_wait ();
 
     private:
       struct bucket
@@ -76,18 +77,20 @@ namespace cubcomm
 	  bucket &operator = (const bucket &) = delete;
 	  bucket &operator = (bucket &&) = delete;
 
+	  void register_request (response_sequence_number a_rsn);
 	  void register_response (response_sequence_number a_rsn, T_PAYLOAD &&a_payload);
 	  void register_error (response_sequence_number a_rsn, T_ERROR &&a_error);
 
 	  std::tuple<T_PAYLOAD, T_ERROR> get_response (response_sequence_number a_rsn);
 
-	  void terminate ();
+	  void notify_terminate_and_wait ();
 
 	private:
 	  struct payload_or_error_type
 	  {
 	    T_PAYLOAD m_payload;
 	    T_ERROR m_error;
+	    bool m_response_or_error_present = false;
 	  };
 
 	  using response_payload_container_type = std::unordered_map<response_sequence_number, payload_or_error_type>;
@@ -96,11 +99,13 @@ namespace cubcomm
 	  const T_ERROR m_no_error;
 	  const T_ERROR m_error;
 
+	  // mutex and condition variable protecting the response payloads container
 	  std::mutex m_mutex;
 	  std::condition_variable m_condvar;
 	  response_payload_container_type m_response_payloads;
 
 	  bool m_terminate;
+	  std::condition_variable m_terminate_condvar;
       };
 
       bucket &get_bucket (response_sequence_number rsn);
@@ -133,6 +138,13 @@ namespace cubcomm
 
   template <typename T_PAYLOAD, typename T_ERROR>
   void
+  response_broker<T_PAYLOAD, T_ERROR>::register_request (response_sequence_number a_rsn)
+  {
+    get_bucket (a_rsn).register_request (a_rsn);
+  }
+
+  template <typename T_PAYLOAD, typename T_ERROR>
+  void
   response_broker<T_PAYLOAD, T_ERROR>::register_response (response_sequence_number a_rsn, T_PAYLOAD &&a_payload)
   {
     get_bucket (a_rsn).register_response (a_rsn, std::move (a_payload));
@@ -146,12 +158,19 @@ namespace cubcomm
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
+  std::tuple<T_PAYLOAD, T_ERROR>
+  response_broker<T_PAYLOAD, T_ERROR>::get_response (response_sequence_number a_rsn)
+  {
+    return get_bucket (a_rsn).get_response (a_rsn);
+  }
+
+  template <typename T_PAYLOAD, typename T_ERROR>
   void
-  response_broker<T_PAYLOAD, T_ERROR>::terminate ()
+  response_broker<T_PAYLOAD, T_ERROR>::notify_terminate_and_wait ()
   {
     for (auto &bucket : m_buckets)
       {
-	bucket.terminate ();
+	bucket.notify_terminate_and_wait ();
       }
   }
 
@@ -166,9 +185,28 @@ namespace cubcomm
   template <typename T_PAYLOAD, typename T_ERROR>
   response_broker<T_PAYLOAD, T_ERROR>::bucket::~bucket ()
   {
-    // NOTE: might not hold in the event that a peer server crashes before consuming a response;
-    // in which case the response will linger on in the queue indefinitely
+    // NOTE:
+    //  - might not hold in the event that a peer server crashes before providing a response;
+    //  - currently this is either implemented (or not) in the application layers above;
+    //  - if it were to be sorted out at this level, a timeout must be added after which an
+    //    error is returned to the waiting thread
     assert (m_response_payloads.empty ());
+  }
+
+  template <typename T_PAYLOAD, typename T_ERROR>
+  void
+  response_broker<T_PAYLOAD, T_ERROR>::bucket::register_request (response_sequence_number a_rsn)
+  {
+    {
+      std::lock_guard<std::mutex> lk_guard (m_mutex);
+
+      assert (!m_terminate);
+      assert (m_response_payloads.find (a_rsn) == m_response_payloads.cend ());
+
+      payload_or_error_type &ent = m_response_payloads[a_rsn];
+      ent.m_response_or_error_present = false;
+    }
+    // don't notify anything because there is no-one interested in this (the request has not even been flown out yet)
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
@@ -178,9 +216,13 @@ namespace cubcomm
     {
       std::lock_guard<std::mutex> lk_guard (m_mutex);
 
+      assert (!m_terminate);
+
       payload_or_error_type &ent = m_response_payloads[a_rsn];
+      assert (!ent.m_response_or_error_present);
       ent.m_payload = std::move (a_payload);
       ent.m_error = m_no_error;
+      ent.m_response_or_error_present = true;
     }
     // notify all because there is more than one thread waiting for data on the same bucket
     // ideally, with an adequately sized bucket pool, the contention should be minimal
@@ -194,19 +236,16 @@ namespace cubcomm
     {
       std::lock_guard<std::mutex> lockg (m_mutex);
 
+      assert (!m_terminate);
+
       payload_or_error_type &ent = m_response_payloads[a_rsn];
+      assert (!ent.m_response_or_error_present);
       ent.m_error = std::move (a_error);
+      ent.m_response_or_error_present = true;
     }
     // notify all because there is more than one thread waiting for data on the same bucket
     // ideally, with an adequately sized bucket pool, the contention should be minimal
     m_condvar.notify_all ();
-  }
-
-  template <typename T_PAYLOAD, typename T_ERROR>
-  std::tuple<T_PAYLOAD, T_ERROR>
-  response_broker<T_PAYLOAD, T_ERROR>::get_response (response_sequence_number a_rsn)
-  {
-    return get_bucket (a_rsn).get_response (a_rsn);
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
@@ -216,32 +255,53 @@ namespace cubcomm
     constexpr std::chrono::milliseconds millis_100 { 100 };
 
     {
-      typename response_payload_container_type::iterator found_it { m_response_payloads.end () };
+      std::unique_lock<std::mutex> ulock (m_mutex);
 
-      auto condvar_pred = [this, &found_it, a_rsn] ()
+      // nobody else but us should access this payload container but must be accessed locked
+      typename response_payload_container_type::iterator found_it = m_response_payloads.find (a_rsn);
+      payload_or_error_type &ent = (*found_it).second;
+
+      auto condvar_pred = [&ent] ()
       {
-	found_it = m_response_payloads.find (a_rsn);
-	return (found_it != m_response_payloads.end ());
+	return ent.m_response_or_error_present;
       };
 
-      std::unique_lock<std::mutex> ulock (m_mutex);
       // a way out in case neither value nor error is registered as a response
       // which can happen in case - eg - that the connection is dropped
       while (!m_terminate)
 	{
 	  if (m_condvar.wait_for (ulock, millis_100, condvar_pred))
 	    {
-	      assert (found_it != m_response_payloads.end ());
+	      assert (ent.m_response_or_error_present);
 	      std::tuple<T_PAYLOAD, T_ERROR> payload_or_error
 	      {
-		std::move ((*found_it).second.m_payload ),
-		std::move ((*found_it).second.m_error)
+		std::move (ent.m_payload ),
+		std::move (ent.m_error)
 	      };
+
 	      m_response_payloads.erase (found_it);
 	      return payload_or_error;
 	    }
 	}
+
+      // terminate called; from here on - damage control
+
+      // NOTE: when terminate is invoked there is the possibility to implement a configurable behaviour:
+      //  - either abort and return error - as done below
+      //  - or continue waiting - with a timeout - until the request is serviced by the peer server
+
+      // still under lock, erase the entry from the container to validate termination condition
+      m_response_payloads.erase (found_it);
+
+      // NOTE: a [benign] race condition can happen here between the moment the container is emptied
+      // and the error result is actually returned to the waiting thread; however, the occurence of that
+      // depends very much on the way the resources are stopped globally in the upper application layers (eg:
+      // maybe the client transactions - threads - are stopped and waited for before the communication
+      // infrastructure is torn down
     }
+
+    // if here, terminate was specified and there is at most one thread to notify
+    m_terminate_condvar.notify_one ();
 
     // upon terminate, error response will be returned
     return std::make_tuple (T_PAYLOAD (), m_error);
@@ -249,7 +309,7 @@ namespace cubcomm
 
   template <typename T_PAYLOAD, typename T_ERROR>
   void
-  response_broker<T_PAYLOAD, T_ERROR>::bucket::terminate ()
+  response_broker<T_PAYLOAD, T_ERROR>::bucket::notify_terminate_and_wait ()
   {
     {
       std::lock_guard<std::mutex> lockg (m_mutex);
@@ -258,6 +318,20 @@ namespace cubcomm
     // notify all because there is more than one thread waiting for data on the same bucket
     // ideally, with an adequately sized bucket pool, the contention should be minimal
     m_condvar.notify_all ();
+
+    // wait for all requests to either be serviced or timeout
+    constexpr std::chrono::milliseconds millis_50 { 50 };
+
+    auto condvar_pred = [this] ()
+    {
+      return m_response_payloads.empty ();
+    };
+
+    std::unique_lock<std::mutex> payloads_container_ulock (m_mutex);
+    while (!m_terminate_condvar.wait_for (payloads_container_ulock, millis_50, condvar_pred))
+      {
+	// NOTE: a configurable timeout can be introduced here
+      }
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
