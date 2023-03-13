@@ -4288,7 +4288,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  ASSERT_ERROR ();
 		  goto error3;
 		}
-	      num_attrs--;
+	      num_attrs--;	/* ignore compress_index_attr */
 	    }
 #endif
 	  assert (num_attrs == index->n_atts);
@@ -4666,7 +4666,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  ASSERT_ERROR ();
 		  goto error3;
 		}
-	      num_attrs--;
+	      num_attrs--;	/* ignore compress_index_attr */
 	    }
 #endif
 	  assert (num_attrs == index->n_atts);

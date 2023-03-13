@@ -9542,30 +9542,29 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 	    attr_info->last_classrepr->n_class_attrs))
     {
 #if defined(SUPPORT_COMPRESS_MODE)
-      i = -1;
-      if (requested_num_attrs == attr_info->last_classrepr->n_attributes + 1)
+      for (i = requested_num_attrs - 1; i >= 0 && !IS_COMPRESS_INDEX_ATTR_ID (attrids[i]); i--)
 	{
-	  // Check for indexes containing all columns in the table
-	  // It does not consider indexes containing shared or class attributes.
-	  for (i = requested_num_attrs - 1; i >= 0 && !IS_COMPRESS_INDEX_ATTR_ID (attrids[i]); i--)
-	    {
-	      /* empty */ ;
-	    }
+	  /* empty */ ;
 	}
 
-      if (i < 0)
+      i = (i < 0) ? 0 : 1;
 #endif
+
+#ifndef NDEBUG
+      if (requested_num_attrs >
+	  (attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
+	   attr_info->last_classrepr->n_class_attrs) + i)
 	{
-#if 1
-	  assert (false);
-#else
 	  fprintf (stdout, " XXX There are not that many attributes. Num_attrs = %d, Num_requested_attrs = %d\n",
 		   attr_info->last_classrepr->n_attributes, requested_num_attrs);
-#endif
-	  requested_num_attrs =
-	    attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
-	    attr_info->last_classrepr->n_class_attrs;
 	}
+#endif
+      requested_num_attrs =
+	attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
+	attr_info->last_classrepr->n_class_attrs;
+#if defined(SUPPORT_COMPRESS_MODE)
+      requested_num_attrs += i;
+#endif
     }
 
   if (requested_num_attrs > 0)
@@ -12272,6 +12271,7 @@ heap_get_compress_attr_by_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID *
   num_found_attrs = classrepr->indexes[index_id].n_atts;
   if (num_found_attrs > 0)
     {
+      /* FK has no function index information. */
       *last_attrid = classrepr->indexes[index_id].atts[num_found_attrs - 1]->id;
       *last_asc_desc = classrepr->indexes[index_id].asc_desc[num_found_attrs - 1];
       if (tpdomain)
