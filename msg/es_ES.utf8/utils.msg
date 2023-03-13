@@ -496,6 +496,7 @@ uso: %1$s loaddb [OPTION] database-name[@host]\n\
 opciones validas:\n\
   -S, --SA-mode                  modo de ejecucion independiente\n\
   -C, --CS-mode                  modo de ejecucion cliente-servidor\n\
+                                 ADVERTENCIA: En el modo cliente-servidor, solo se puede cargar el archivo de datos (-d, --data-file=FILE).\n\
   -u, --user=ID                  ID de utilizador para acceso a la base de datos; estandar: "public"\n\
   -p, --password=PASS            contrasena de utilizador; estandar: ninguna\n\
       --data-file-check-only     check syntax for data file without load; default: disabled\n\
@@ -557,7 +558,8 @@ opciones validas:\n\
   -S, --SA-mode               modo de ejecucion independiente\n\
   -C, --CS-mode               modo de ejecucion cliente-servidor\n\
       --datafile-per-class    crear un archivo de objeto para cada clase; estandar: inhabilitado\n\
-      --split-schema-files    dividir la información del esquema por objeto y generar cada archivo; Predeterminado: generar un archivo de esquema con todos los objetos\n
+      --split-schema-files    dividir la información del esquema por objeto y generar cada archivo; Predeterminado: generar un archivo de esquema con todos los objetos\n\
+      --as-dba                Si el usuario de inicio de sesión es miembro del grupo DBA, extraiga el mismo archivo de esquema que el DBA.\n
 
 
 

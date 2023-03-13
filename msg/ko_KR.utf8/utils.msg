@@ -496,6 +496,7 @@ loaddb: 데이터베이스에 객체 및 스키마 적재\n\
 옵션:\n\
   -S, --SA-mode                  독립 모드 실행\n\
   -C, --CS-mode                  클라이언트 서버 모드 실행\n\
+                                 경고: 클라이언트 서버 모드에서는 데이터 파일(-d, --data-file=FILE)만 로드 할 수 있습니다.
   -u, --user=ID                  데이터베이스 접근에 관한 사용자 이름; 기본값: "public"\n\
   -p, --password=PASS            사용자 패스워드; 기본값: 없음\n\
       --data-file-check-only     데이터 파일을 로딩하지 않고 신택스만 검사; 기본값: 아니오\n\
@@ -557,8 +558,8 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
   -S, --SA-mode               독립 모드 실행\n\
   -C, --CS-mode               클라이언트 서버 모드 실행\n\
       --datafile-per-class    각 클래스별 오브젝트 파일 생성; 기본값:한 개의 오브젝트 파일생성\n\
-      --split-schema-files    스키마 정보를 오브젝트별로 분리하여 각각의 파일로 생성; 기본값: 모든 오브젝트가 포함된 한 개의 스키마 파일 생성\n
-
+      --split-schema-files    스키마 정보를 오브젝트별로 분리하여 각각의 파일로 생성; 기본값: 모든 오브젝트가 포함된 한 개의 스키마 파일 생성\n\
+      --as-dba                로그인 사용자가 DBA 그룹의 구성원인 경우 DBA와 동일한 스키마 파일을 추출합니다.\n
 
 $set 14 MSGCAT_UTIL_SET_COMPACTDB
 11 \n패스 1\n\n

@@ -496,6 +496,7 @@ Anwendung: %1$s loaddb [OPTION] Datenbanknamen[@host]\n\
 gültige Optionen:\n\
   -S, --SA-mode                    Stand-Alone-Ausführung\n\
   -C, --CS-mode                    Client-Server-Ausführung\n\
+                                   WAARSCHUWING: In client-servermodus kan alleen databestand (-d, --data-file=FILE) worden geladen.\n\
   -u, --user=ID                    Benutzer ID für Datenbankzugang; Standard: "public"\n\
   -p, --password=PASSWORT          Benutzerpasswort; Standard: keinen\n\
       --data-file-check-only       Syntaxprüfung der Datei ohne Ladung; Standard: inaktiv\n\
@@ -557,7 +558,8 @@ gültige Optionen:\n\
   -S, --SA-mode                Stand-Alone-Ausführung\n\
   -C, --CS-mode                Client-Server-Ausführung\n\
       --datafile-per-class     eine Objektdatei für jede Klasse erzeugen; Standard: inaktiv\n\
-      --split-schema-files     Schemainformationen nach Objekt aufteilen und jede Datei generieren; Standard: Eine Schemadatei mit allen Objekten generieren\n
+      --split-schema-files     Schemainformationen nach Objekt aufteilen und jede Datei generieren; Standard: Eine Schemadatei mit allen Objekten generieren\n\
+      --as-dba                 Als de ingelogde gebruiker lid is van de DBA-groep, pak dan hetzelfde schemabestand uit als de DBA.\n
 
 
 

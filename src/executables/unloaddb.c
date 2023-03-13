@@ -61,6 +61,7 @@ bool include_references = false;
 bool required_class_only = false;
 bool datafile_per_class = false;
 bool split_schema_files = false;
+bool is_as_dba = false;
 LIST_MOPS *class_table = NULL;
 DB_OBJECT **req_class_table = NULL;
 
@@ -138,6 +139,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
     }
 
   split_schema_files = utility_get_option_string_value (arg_map, UNLOAD_SPLIT_SCHEMA_FILES_S, 0);
+  is_as_dba = utility_get_option_string_value (arg_map, UNLOAD_AS_DBA_S, 0);
 
   /* depreciated */
   utility_get_option_bool_value (arg_map, UNLOAD_USE_DELIMITER_S);
@@ -285,6 +287,21 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
+  if (is_as_dba == true)
+    {
+      unload_context.is_dba_group_member = au_is_dba_group_member (Au_user);
+
+      if (unload_context.is_dba_group_member == false)
+	{
+	  fprintf (stderr, "\n--%s is an option available only when the user is a DBA Group.\n", UNLOAD_AS_DBA_L);
+	  goto end;
+	}
+    }
+  else
+    {
+      unload_context.is_dba_user = ws_is_same_object (Au_dba_user, Au_user);
+    }
+
   if (!status && (do_schema || !do_objects))
     {
       char indexes_output_filename[PATH_MAX * 2] = { '\0' };
@@ -308,6 +325,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       unload_context.do_auth = 1;
       unload_context.storage_order = order;
       unload_context.exec_name = exec_name;
+      unload_context.login_user = user;
       unload_context.output_prefix = output_prefix;
 
       if (extract_classes_to_file (unload_context) != 0)
@@ -331,7 +349,11 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   AU_SAVE_AND_ENABLE (au_save);
   if (!status && (do_objects || !do_schema))
     {
-      if (extract_objects (exec_name, output_dirname, output_prefix))
+      unload_context.exec_name = exec_name;
+      unload_context.login_user = user;
+      unload_context.output_prefix = output_prefix;
+
+      if (extract_objects (unload_context, output_dirname))
 	{
 	  status = 1;
 	}
