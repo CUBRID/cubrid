@@ -4128,7 +4128,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  if (fk_key.data.midxkey.ncolumns > 2)
 	    {
 	      pr_clone_value (&fk_key, new_ptr);
-	      /* Disguise the last column as missing. 
+	      /* Fakes the last column(compress_index_attr) as if it doesn't exist. 
 	       * To do this, reduce the number of columns.
 	       * Modify bitmap information for btree_multicol_key_is_null() function. */
 	      new_ptr->data.midxkey.ncolumns--;
@@ -4141,7 +4141,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	    }
 
 	  if (btree_compare_key (fk_key_ptr, new_ptr, pk_bt_scan.btid_int.key_type, 1, 1, NULL) == DB_EQ)
-	    {
+	    {			/* Remove the added compress_index_attr and it can be the same key. */
 	      continue;
 	    }
 

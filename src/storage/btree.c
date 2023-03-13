@@ -8837,10 +8837,11 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	  if (env->ignore_diff_pos == -1 || !btree_is_same_key_for_stats (env, &key1))
 	    {
 	      cpc->dis_key_cnt++;
+              cpc->sum_key_len += btree_get_disk_size_of_key (&key1);
 	    }
-#endif
-
+#else
 	  cpc->sum_key_len += btree_get_disk_size_of_key (&key1);
+#endif          
 	  btree_clear_key_value (&clear_key, &key1);
 
 	  /* find the value (OID) count for the record */
