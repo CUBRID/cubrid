@@ -2072,7 +2072,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 #if defined(SUPPORT_COMPRESS_MODE)
       if (compress_index_col_pos == i)
 	{
-	  atts[i] = dk_find_sm_reserved_index_attribute (-1, att_names[i]);
+	  atts[i] = dk_find_sm_compress_index_attribute (-1, att_names[i]);
 	  continue;
 	}
 #endif

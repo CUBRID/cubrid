@@ -2575,7 +2575,7 @@ classobj_find_attribute_list (SM_ATTRIBUTE * attlist, const char *name, int id)
 #if defined(SUPPORT_COMPRESS_MODE)
       if (IS_COMPRESS_INDEX_ATTR_NAME (name))
 	{
-	  return dk_find_sm_reserved_index_attribute (-1, name);
+	  return dk_find_sm_compress_index_attribute (-1, name);
 	}
 #endif
     }
@@ -2591,7 +2591,7 @@ classobj_find_attribute_list (SM_ATTRIBUTE * attlist, const char *name, int id)
 #if defined(SUPPORT_COMPRESS_MODE)
       if (IS_COMPRESS_INDEX_ATTR_ID (id))
 	{
-	  return dk_find_sm_reserved_index_attribute (id, NULL);
+	  return dk_find_sm_compress_index_attribute (id, NULL);
 	}
 #endif
     }

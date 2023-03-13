@@ -2444,7 +2444,7 @@ ws_final (void)
   unsigned int slot;
 
 #if defined(SUPPORT_COMPRESS_MODE)
-  dk_reserved_index_attribute_finalized ();
+  dk_compress_index_attribute_finalized ();
 #endif
 
   tr_final ();

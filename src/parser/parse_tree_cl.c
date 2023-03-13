@@ -7316,7 +7316,7 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.index.unique == false)
     {
       char buf[64] = { 0x00, };
-      dk_print_reserved_index_info (buf, sizeof (buf), p->info.index.compress_mode, p->info.index.compress_level);
+      dk_print_compress_index_info (buf, sizeof (buf), p->info.index.compress_mode, p->info.index.compress_level);
       if (buf[0])
 	{
 	  b = pt_append_nulstring (parser, b, " ");

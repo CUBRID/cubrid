@@ -1935,7 +1935,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 #if defined(SUPPORT_COMPRESS_MODE)
 	  if (IS_COMPRESS_INDEX_ATTR_ID (att_id))
 	    {
-	      index->atts[index->n_atts] = (OR_ATTRIBUTE *) dk_find_or_reserved_index_attribute (att_id);
+	      index->atts[index->n_atts] = (OR_ATTRIBUTE *) dk_find_or_compress_index_attribute (att_id);
 	      (index->n_atts)++;
 	    }
 	  else

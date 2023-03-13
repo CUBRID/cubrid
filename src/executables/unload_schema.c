@@ -3445,13 +3445,13 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 
 	  if ((k != -1) && IS_COMPRESS_INDEX_ATTR_ID (atts[k]->id))
 	    {
-	      dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_SET,
+	      dk_print_compress_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_SET,
 					    GET_COMPRESS_INDEX_ATTR_LEVEL (atts[k]->id));
 	      n_attrs--;	/* Hidden column should not be displayed. */
 	    }
 	  else
 	    {
-	      dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_NONE,
+	      dk_print_compress_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_NONE,
 					    COMPRESS_INDEX_MOD_LEVEL_ZERO);
 	    }
 	}
@@ -4241,8 +4241,8 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 
 		  assert (att[1] == NULL);
 
-		  GET_RESERVED_INDEX_ATTR_MODE_LEVEL_FROM_NAME (att_name, level);
-		  dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), mode, level);
+		  GET_COMPRESS_INDEX_ATTR_MODE_LEVEL_FROM_NAME (att_name, level);
+		  dk_print_compress_index_info (reserved_col_buf, sizeof (reserved_col_buf), mode, level);
 		  break;
 		}
 #endif
@@ -4261,7 +4261,7 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 #if defined(SUPPORT_COMPRESS_MODE)
 	  if (reserved_col_buf[0] == '\0')
 	    {
-	      dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_NONE,
+	      dk_print_compress_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_NONE,
 					    COMPRESS_INDEX_MOD_LEVEL_ZERO);
 	    }
 	  output_ctx (" %s", reserved_col_buf);

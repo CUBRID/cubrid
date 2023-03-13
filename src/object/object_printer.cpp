@@ -759,7 +759,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	{
 	  assert (k == (n_attrs - 1));
 	  int level = GET_COMPRESS_INDEX_ATTR_LEVEL ((*attribute_p)->id);
-	  dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_SET, level);
+	  dk_print_compress_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_SET, level);
 
 	  /* Since there is no hidden column in the contents to be described in the REFERENCE clause. */
 	  n_attrs--;
@@ -807,7 +807,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
     }
   else if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (constraint.type))
     {
-      dk_print_reserved_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_NONE,
+      dk_print_compress_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_NONE,
 				    COMPRESS_INDEX_MOD_LEVEL_ZERO);
       m_buf (" %s", reserved_col_buf);
     }

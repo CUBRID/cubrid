@@ -3587,24 +3587,20 @@ compare_driver (const void *first, const void *second, void *arg)
 #if !defined(NDEBUG)
       for (i = 0, dom = key_type->setdomain; dom; dom = dom->next, i++);
       assert (i == key_type->precision);
-#endif
 
       if (sort_args->func_index_info != NULL)
 	{
-#if defined(SUPPORT_COMPRESS_MODE)
 	  /* In the following cases, the precision may be smaller than n_attrs.  
 	   * create index idx on tbl(left(s2, v1),v3); 
 	   * So, remove the assert().  */
 	  //assert (sort_args->n_attrs <= key_type->precision);
-#else
-	  assert (sort_args->n_attrs <= key_type->precision);
-#endif
 	}
       else
 	{
 	  assert (sort_args->n_attrs == key_type->precision);
 	}
       assert (key_type->setdomain != NULL);
+#endif
 
       for (i = 0, dom = key_type->setdomain; i < key_type->precision && dom; i++, dom = dom->next)
 	{

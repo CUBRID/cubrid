@@ -68,7 +68,7 @@ typedef enum
 
 #define COUNT_OF_COMPRESS_INDEX_MOD_LEVEL (COMPRESS_INDEX_MOD_LEVEL_MAX + 1)
 
-static const char *st_reserved_index_col_name[COUNT_OF_COMPRESS_INDEX_MOD_LEVEL] = {
+static const char *dk_reserved_compress_index_col_name[COUNT_OF_COMPRESS_INDEX_MOD_LEVEL] = {
 /* *INDENT-OFF* */
 COMPRESS_INDEX_ATTR_NAME_PREFIX  "00",
 COMPRESS_INDEX_ATTR_NAME_PREFIX  "01",
@@ -91,11 +91,11 @@ COMPRESS_INDEX_ATTR_NAME_PREFIX  "16"
 };
 
 // *INDENT-OFF*
-#define GET_COMPRESS_INDEX_ATTR_NAME(level)   (st_reserved_index_col_name[(level)])
+#define GET_COMPRESS_INDEX_ATTR_NAME(level)   (dk_reserved_compress_index_col_name[(level)])
 #define MK_COMPRESS_INDEX_ATTR_ID(level)      (((int)COMPRESS_INDEX_ATTR_ID_BASE) - (level))
 #define GET_COMPRESS_INDEX_ATTR_LEVEL(attid)  (((int)COMPRESS_INDEX_ATTR_ID_BASE) - (attid))
 
-#define GET_RESERVED_INDEX_ATTR_MODE_LEVEL_FROM_NAME(name, level)  do {                                         \
+#define GET_COMPRESS_INDEX_ATTR_MODE_LEVEL_FROM_NAME(name, level)  do {                                         \
         char chx;                                                                                               \
         if(sscanf ((name) + COMPRESS_INDEX_ATTR_NAME_PREFIX_LEN, "%02d%c", &(level), &chx) != 1)                \
           {  assert(false); }                                                                                   \
@@ -112,33 +112,29 @@ COMPRESS_INDEX_ATTR_NAME_PREFIX  "16"
 
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
-extern int dk_heap_midxkey_get_reserved_index_value (int att_id, OID * rec_oid, DB_VALUE * value);
+extern int dk_heap_midxkey_get_compress_index_value (int att_id, OID * rec_oid, DB_VALUE * value);
 
 // The actual return type is OR_ATTRIBUTE*.
 // But, here it is treated as void* due to collision with C++. (error: template with C linkage)
-extern void *dk_find_or_reserved_index_attribute (int att_id);
+extern void *dk_find_or_compress_index_attribute (int att_id);
 extern int dk_get_decompress_position (int n_attrs, int *attr_ids, int func_attr_index_start);
 #endif
 
 #if !defined(SERVER_MODE)
-extern SM_ATTRIBUTE *dk_find_sm_reserved_index_attribute (int att_id, const char *att_name);
-
-
+// SM_ATTRIBUTE and DB_ATTRIBUTE are the same thing
+extern SM_ATTRIBUTE *dk_find_sm_compress_index_attribute (int att_id, const char *att_name);
 extern void dk_create_index_level_remove_adjust (DB_CONSTRAINT_TYPE ctype, char **attnames, int *asc_desc,
 						 int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info,
 						 int compress_index_col_pos, int nnames);
 extern void dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int *asc_desc,
 					  int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames,
 					  bool is_reverse);
-
-extern char *dk_print_reserved_index_info (char *buf, int buf_size, int compress_mode, int compress_level);
+extern char *dk_print_compress_index_info (char *buf, int buf_size, int compress_mode, int compress_level);
 extern int dk_sm_decompress_position (int n_attrs, SM_ATTRIBUTE ** attrs, SM_FUNCTION_INFO * function_index);
 #endif
 
-extern char *dk_get_compress_index_attr_name (int level, char **ppbuf);
-
-extern void dk_reserved_index_attribute_initialized ();
-extern void dk_reserved_index_attribute_finalized ();
+extern void dk_compress_index_attribute_initialized ();
+extern void dk_compress_index_attribute_finalized ();
 
 /* ******************************************************** */
 #endif /* #if !defined(SUPPORT_COMPRESS_MODE) */

@@ -9699,7 +9699,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	  value->attr_type = HEAP_INSTANCE_ATTR;
 	  if (islast_reset == true)
 	    {
-	      value->last_attrepr = (OR_ATTRIBUTE *) dk_find_or_reserved_index_attribute (value->attrid);
+	      value->last_attrepr = (OR_ATTRIBUTE *) dk_find_or_compress_index_attribute (value->attrid);
 	      if (value->state == HEAP_UNINIT_ATTRVALUE)
 		{
 		  db_value_domain_init (&value->dbvalue, value->last_attrepr->type,
@@ -9708,7 +9708,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	    }
 	  else
 	    {
-	      value->read_attrepr = (OR_ATTRIBUTE *) dk_find_or_reserved_index_attribute (value->attrid);
+	      value->read_attrepr = (OR_ATTRIBUTE *) dk_find_or_compress_index_attribute (value->attrid);
 	    }
 	  num_found_attrs++;
 	  continue;
@@ -12560,7 +12560,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	{
 	  if (not_null_field_cnt > 0)
 	    {
-	      dk_heap_midxkey_get_reserved_index_value (atts[i]->id, rec_oid, &value);
+	      dk_heap_midxkey_get_compress_index_value (atts[i]->id, rec_oid, &value);
 	      atts[i]->domain->type->index_writeval (&buf, &value);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	      //  In this case, there is no need to clean them up using pr_clear_value().     
@@ -12744,8 +12744,8 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	{
 	  if (not_null_field_cnt > 0)
 	    {
-	      att = (OR_ATTRIBUTE *) dk_find_or_reserved_index_attribute (att_ids[i]);
-	      dk_heap_midxkey_get_reserved_index_value (att_ids[i], rec_oid, &value);
+	      att = (OR_ATTRIBUTE *) dk_find_or_compress_index_attribute (att_ids[i]);
+	      dk_heap_midxkey_get_compress_index_value (att_ids[i], rec_oid, &value);
 	      att->domain->type->index_writeval (&buf, &value);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	      //  In this case, there is no need to clean them up using pr_clear_value().     

@@ -3829,15 +3829,6 @@ catalog_assign_attribute (THREAD_ENTRY * thread_p, DISK_ATTR * disk_attr_p, CATA
 	}
       /* init */
       memset (disk_attr_p->bt_stats, 0, sizeof (BTREE_STATS) * n_btstats);
-#if 0
-      /* init */
-
-      for (i = 0; i < n_btstats; i++)
-	{
-	  btree_stats_p = &disk_attr_p->bt_stats[i];
-	  btree_stats_p->pkeys = NULL;
-	}
-#endif
 
       /* fetch all B+tree index statistics of the attribute */
       for (i = 0; i < n_btstats; i++)
@@ -3993,16 +3984,6 @@ catalog_get_representation (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID r
 	}
       /* init */
       memset (disk_repr_p->fixed, 0, sizeof (DISK_ATTR) * disk_repr_p->n_fixed);
-#if 0
-      /* init */
-      for (i = 0; i < disk_repr_p->n_fixed; i++)
-	{
-	  disk_attr_p = &disk_repr_p->fixed[i];
-	  disk_attr_p->value = NULL;
-	  disk_attr_p->bt_stats = NULL;
-	  disk_attr_p->n_btstats = 0;
-	}
-#endif
     }
   else
     {
@@ -4018,16 +3999,6 @@ catalog_get_representation (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID r
 	}
       /* init */
       memset (disk_repr_p->variable, 0, sizeof (DISK_ATTR) * disk_repr_p->n_variable);
-#if 0
-      /* init */
-      for (i = 0; i < disk_repr_p->n_variable; i++)
-	{
-	  disk_attr_p = &disk_repr_p->variable[i];
-	  disk_attr_p->value = NULL;
-	  disk_attr_p->bt_stats = NULL;
-	  disk_attr_p->n_btstats = 0;
-	}
-#endif
     }
   else
     {
