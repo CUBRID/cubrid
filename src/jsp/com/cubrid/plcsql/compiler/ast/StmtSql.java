@@ -97,7 +97,7 @@ public abstract class StmtSql extends Stmt {
                     "  String dynSql_%'LEVEL'% = %'SQL'%;",
                     "  PreparedStatement stmt_%'LEVEL'% = conn.prepareStatement(dynSql_%'LEVEL'%);",
                     "  %'SET-USED-VALUES'%",
-                    "  sql_rowcount[0] = stmt_%'LEVEL'%.executeUpdate();",
+                    "  sql_rowcount[0] = (long) stmt_%'LEVEL'%.executeUpdate();",
                     "  stmt_%'LEVEL'%.close();",
                     "}");
 

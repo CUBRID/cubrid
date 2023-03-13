@@ -2330,7 +2330,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 if (sws.intoVars.size() != sws.selectList.size()) {
                     throw new SemanticError(
                             Misc.getLineOf(ctx), // s420
-                            "the length of select list is different the length of into-variables");
+                            "the length of select list is different from the length of into-variables");
                 }
 
                 intoVars = new ArrayList<>();
