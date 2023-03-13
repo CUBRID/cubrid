@@ -420,6 +420,8 @@ namespace cubmethod
       {
 	if (is_free)
 	  {
+	    m_sql_handler_map.erase (m_query_handlers[id]->get_sql_stmt());
+
 	    delete m_query_handlers[id];
 	    m_query_handlers[id] = nullptr;
 	  }
