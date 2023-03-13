@@ -164,7 +164,9 @@ $ csql help messages
    ;COMmit                      - aktuelle Transaktion verpflichten.\n\
    ;ROllback                    - aktuelle Transaktion rückgängig machen.\n\
    ;AUtocommit [ON|OFF]         - aktivieren/deaktivieren des Auto-Commit-Modus.\n\
-   ;REStart                     - Datenbank neustarten.\n\
+   ;REStart                     - Verbinden Sie sich erneut mit der aktuellen Datenbank in einer CSQL-Sitzung.\n\
+   ;CHeckpoint                  - Führen Sie den Prüfpunkt aus (nur CSQL mit --sysadm).\n\
+   ;Killtran                    - Bestimmte Transaktion prüfen oder abbrechen (nur CSQL mit --sysadm).\n\
 \n\
    ;SHELL_Cmd     [shell-cmd]   - Standard-Shell, -Editor, -Printer, -Pager und -Formatierer setzen\n\
    ;EDITOR_Cmd    [editor-cmd]    Befehl für eine neue, oder die aktuelle Anzeigen\n\
@@ -189,6 +191,12 @@ $ csql help messages
    ;HISTORYRead <history_num>   - Eintrag über die Verlaufszahl in den Befehlspuffer schreiben.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - Single-Line-Modus aktivieren/deaktivieren.\n\
+   ;Connect [username] [dbname][@hostname]\n\
+                                - Benutzer, Datenbank, Host verbinden.\n\ 
+   ;.Hist [ON/OFF]              - Sammeln von Statistikinformationen in CSQL starten/stoppen (nur verfügbarer DBA).\n\
+   ;.Clear_hist                 - Löschen Sie die SQL Statistikinformationen im Puffer.\n\
+   ;.Dump_hist                  - Anzeige der CSQL-Statistikinformationen in CSQL.\n\
+   ;.X_hist                     - Anzeige der CSQL-Statistikinformationen in CSQL mit initialisierten Statistikdaten.\n\
    ;HElp                        - Hilfe anzeigen.\n\n
 
 232 <Beschränkungen> 

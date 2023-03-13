@@ -163,7 +163,7 @@ $ csql help messages
    ;COMmit                      - commit the current transaction.\n\
    ;ROllback                    - roll back the current transaction.\n\
    ;AUtocommit [ON|OFF]         - enable/disable auto commit mode.\n\
-   ;REStart                     - reconnect to the target database in a CSQL session.\n\
+   ;REStart                     - reconnect to the current database in a CSQL session.\n\
    ;CHeckpoint                  - execute the checkpoint(CSQL with --sysadm only).\n\
    ;Killtran                    - check or abort specific transaction(CSQL with --sysadm only).\n\
 \n\
@@ -192,7 +192,7 @@ $ csql help messages
    ;SIngleline [ON|OFF]         - enable/disable single-line mode.\n\
    ;Connect [username] [dbname][@hostname]\n\
                                 - connect user, database, host.\n\ 
-   ;.Hist [ON/OFF]              - start/stop collecting statistics information in CSQL(DBA only).\n\
+   ;.Hist [ON/OFF]              - start/stop collecting statistics information in CSQL(available DBA only).\n\
    ;.Clear_hist                 - clear the CSQL statistics information in the buffer.\n\
    ;.Dump_hist                  - display the CSQL statistics information in CSQL.\n\
    ;.X_hist                     - display the CSQL statistics information in CSQL with statistics data initialized.\n\

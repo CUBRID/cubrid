@@ -161,7 +161,9 @@ $ csql help messages
    ;COMmit                      - ���� ���� Ʈ����� Ŀ��.\n\
    ;ROllback                    - ���� ���� Ʈ����� öȸ.\n\
    ;AUtocommit [ON|OFF]         - �ڵ� Ŀ�� ��� ����|����.\n\
-   ;REStart                     - �����ͺ��̽� �����.\n\
+   ;REStart                     - CSQL ¼¼¼Ç¿¡¼ ÇöÀç µ¥ÀÌÅÍº£ÀÌ½º¿¡ ´Ù½Ã ¿¬°á.\n\
+   ;CHeckpoint                  - Ã¼Å©Æ÷ÀÎÆ®¸¦ ½ÇÇàÇÕ´Ï´Ù(--sysadmÀÌ ÀÖ´Â CSQL¸¸ ÇØ´ç).\n\
+   ;Killtran                    - Æ¯Á¤ Æ®·£Àè¼ÇÀ» È®ÀÎÇÏ°Å³ª Áß´ÜÇÕ´Ï´Ù(--sysadmÀÌ ÀÖ´Â CSQL¸¸ ÇØ´ç).\n\
 \n\
    ;SHELL_Cmd     [shell-cmd]   - ������ ���� �����ϰų� ������.\n\
    ;EDITOR_Cmd    [editor-cmd]  - ������ �����⸦ �����ϰų� ������.\n\
@@ -185,6 +187,12 @@ $ csql help messages
    ;HISTORYRead <history_num>   - �����丮 ��ȣ�� �ش�Ǵ� ������ ���ɾ� ���ۿ� �ø�.\n\
    ;TRAce [ON|OFF] [text/json]  - ���� �ڵ� Ʈ���̽� ����|����.\n\
    ;SIngleline [ON|OFF]         - �̱� ���� ��� Ȱ��ȭ|��Ȱ��ȭ.\n\
+   ;Connect [username] [dbname][@hostname]\n\
+                                - »ç¿ëÀÚ, µ¥ÀÌÅÍº£ÀÌ½º, È£½ºÆ®¿¡ ¿¬°á.\n\
+   ;.Hist [ON/OFF]              - CSQL¿¡¼ Åë°è Á¤º¸ ¼öÁý ½ÃÀÛ|ÁßÁö(DBA ¸¸ °¡´É).\n\
+   ;.Clear_hist                 - ¹öÆÛ¿¡ ÀÖ´Â CSQL Åë°è Á¤º¸¸¦ »èÁ¦.\n\
+   ;.Dump_hist                  - CSQL¿¡¼ CSQL Åë°è Á¤º¸¸¦ Ç¥½Ã.\n\
+   ;.X_hist                     - Åë°è µ¥ÀÌÅÍ¸¦ ÃÊ±âÈÇÏ¿© CSQL¿¡¼ CSQL Åë°è Á¤º¸¸¦ Ç¥½Ã.\n\
    ;HElp                        - ���� �޽��� ���.\n\n
 
 232 <�������> 
