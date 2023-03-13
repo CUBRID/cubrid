@@ -3194,8 +3194,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 	  //    - done in: shutdown server routine
 	  //  - stop sending messages to page server (eg: oldest MVCCID updates)
 	  //    - done in: shutdown server routine
-	  //      -> and then polymorphically in the transaction server object
-	  //         disconnect_all_page_servers routine right before sending
+	  //      -> polymorphically in right before sending
 	  //         the final disconnect message to Page Server(s)
 	  //  - send the final disconnect message to Page Server(s)
 	  //    - done in: shutdown server routine
