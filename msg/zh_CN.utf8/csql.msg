@@ -92,6 +92,7 @@ $ These 3 should be blank
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 给出的参数太少.
 
 145 <帮助: 类的结构>
 146 无
