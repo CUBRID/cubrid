@@ -761,6 +761,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                     "SQL in the EXECUTE IMMEDIATE must be of the STRING type");
         }
 
+        visitNodeList(node.stmts);
+
         return null;
     }
 
@@ -773,6 +775,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                     node.lineNo(), // s406
                     "host variable " + errorVar + " does not have a compatible type in the SQL");
         }
+
+        visitNodeList(node.stmts);
 
         return null;
     }

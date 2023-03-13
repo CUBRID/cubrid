@@ -864,9 +864,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        if (whenParts.nodes.size() > 0) {
-            addToImports("java.util.Objects");
-        }
         return new ExprCase(ctx, selector, whenParts, elsePart);
     }
 

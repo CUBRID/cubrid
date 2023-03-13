@@ -50,7 +50,7 @@ public abstract class Expr extends AstNode {
     @Override
     public final String toJavaCode() {
         if (coerce == null) {
-            return "/* no coerce */ " + exprToJavaCode();   // comment for debug TODO: erase the comment sometime
+            return "/* null coerce */ " + exprToJavaCode();
         } else {
             return coerce.toJavaCode(exprToJavaCode());
         }

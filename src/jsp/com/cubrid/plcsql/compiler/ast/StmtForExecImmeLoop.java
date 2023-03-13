@@ -47,6 +47,6 @@ public class StmtForExecImmeLoop extends StmtForSqlLoop {
             Expr dynamicSql,
             NodeList<? extends Expr> usedExprList,
             NodeList<Stmt> stmts) {
-        super(ctx, true, label, record, dynamicSql, usedExprList.nodes, stmts);
+        super(ctx, true, label, record, dynamicSql, usedExprList == null ? null : usedExprList.nodes, stmts);
     }
 }

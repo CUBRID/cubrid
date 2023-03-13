@@ -65,7 +65,7 @@ public abstract class StmtSql extends Stmt {
 
         if (intoVarList == null) {
             return tmplDml.replace("%'KIND'%", dynamic ? "dynamic" : "static")
-                    .replace("%'SQL'%", sql.toJavaCode())
+                    .replace("%'SQL'%", Misc.indentLines(sql.toJavaCode(), 1, true))
                     .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedExprStr, 1))
                     .replace("%'LEVEL'%", "" + level);
         } else {
@@ -73,7 +73,7 @@ public abstract class StmtSql extends Stmt {
             String setNullsStr = getSetNullsStr(intoVarList);
             return tmplSelect
                     .replace("%'KIND'%", dynamic ? "dynamic" : "static")
-                    .replace("%'SQL'%", sql.toJavaCode())
+                    .replace("%'SQL'%", Misc.indentLines(sql.toJavaCode(), 1, true))
                     .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedExprStr, 1))
                     .replace("      %'SET-RESULTS'%", Misc.indentLines(setResultsStr, 3))
                     .replace("    %'SET-NULLS'%", Misc.indentLines(setNullsStr, 2))

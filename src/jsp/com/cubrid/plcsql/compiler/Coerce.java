@@ -45,6 +45,7 @@ public abstract class Coerce {
                 || from.equals(to)) {
             return IDENTITY;
         } else if (from.equals(TypeSpecSimple.OBJECT)) {
+            assert !to.equals(TypeSpecSimple.OBJECT);
             return new DownCast(to);
         }
 
