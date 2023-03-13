@@ -6242,16 +6242,17 @@ xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf, int buf_size)
   bufp = buf;
   buf_endptr = (buf + buf_size);
 
-  while ((bufp < buf_endptr) && (status == NO_ERROR))
+  while (bufp < buf_endptr)
     {
       /* unpack the BTID */
       bufp = or_unpack_btid (bufp, &btid);
 
       /* check if the btree is unique */
-      if ((status == NO_ERROR) && (xbtree_test_unique (thread_p, &btid) != 1))
+      if (xbtree_test_unique (thread_p, &btid) != 1)
 	{
 	  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, NULL, &btid, NULL);
 	  status = ER_BTREE_UNIQUE_FAILED;
+	  break;
 	}
     }
 
@@ -6681,11 +6682,15 @@ exit_on_error:
 }
 
 #if defined(SUPPORT_COMPRESS_MODE)
-static bool
+static inline bool
 btree_is_same_key_for_stats (BTREE_STATS_ENV * env, DB_VALUE * key_value)
 {
-  assert (env->same_prefix_len > 0);
+  if (env->same_prefix_len == -1)
+    {
+      return false;
+    }
 
+  assert (env->same_prefix_len > 0);
   if (!DB_IS_NULL (&(env->prev_key_val)))
     {
       if (pr_midxkey_common_prefix (&(env->prev_key_val), key_value) == env->same_prefix_len)
@@ -6755,7 +6760,7 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 	}
 
 #if defined(SUPPORT_COMPRESS_MODE)
-      if (env->same_prefix_len != -1 && btree_is_same_key_for_stats (env, &key_value))
+      if (btree_is_same_key_for_stats (env, &key_value))
 	{
 	  goto end;
 	}
@@ -6854,7 +6859,7 @@ count_keys:
 	}
 
 #if defined(SUPPORT_COMPRESS_MODE)
-      if ((env->same_prefix_len != -1) && btree_is_same_key_for_stats (env, &key_value))
+      if (btree_is_same_key_for_stats (env, &key_value))
 	{
 	  env->stat_info->keys--;
 	  goto end;
@@ -8840,7 +8845,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	    }
 
 #if defined(SUPPORT_COMPRESS_MODE)
-	  if (env->same_prefix_len == -1 || !btree_is_same_key_for_stats (env, &key1))
+	  if (!btree_is_same_key_for_stats (env, &key1))
 	    {
 	      cpc->dis_key_cnt++;
 	      cpc->sum_key_len += btree_get_disk_size_of_key (&key1);
