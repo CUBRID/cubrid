@@ -178,7 +178,7 @@ namespace cubmethod
 	    const cubmethod::query_result &qresult = handler->get_result();
 	    if (qresult.stmt_type == CUBRID_STMT_SELECT)
 	      {
-		uint64_t qid = (uint64_t) handler->get_execute_info ().qresult_info.query_id;
+		uint64_t qid = (uint64_t) handler->get_query_id ();
 		m_qid_handler_map[qid] = request.handler_id;
 	      }
 	  }
@@ -415,9 +415,12 @@ namespace cubmethod
       {
 	return;
       }
-
     if (m_query_handlers[id] != nullptr)
       {
+	if (m_query_handlers[id]->get_query_id () != -1)
+	  {
+	    m_qid_handler_map.erase (m_query_handlers[id]->get_query_id ());
+	  }
 	if (is_free)
 	  {
 	    m_sql_handler_map.erase (m_query_handlers[id]->get_sql_stmt());
