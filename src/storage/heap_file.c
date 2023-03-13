@@ -10081,7 +10081,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 #if defined(SUPPORT_COMPRESS_MODE)
   if (IS_COMPRESS_INDEX_ATTR_ID (value->attrid))
     {
-      /* In the case of reserved_index_attr_id, there is no content that actually exists in HEAP.
+      /* In the case of compress_index_attr_id, there is no content that actually exists in HEAP.
        * Therefore, the read operation is skipped and success is returned. */
       return NO_ERROR;
     }
@@ -11991,16 +11991,13 @@ heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACH
  *   attr_info(in):
  *   idx_info(in):
  */
+int
+heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * class_recdes,
+				HEAP_CACHE_ATTRINFO * attr_info, HEAP_IDX_ELEMENTS_INFO * idx_info
 #if defined(SUPPORT_COMPRESS_MODE)
-int
-heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * class_recdes,
-				HEAP_CACHE_ATTRINFO * attr_info, HEAP_IDX_ELEMENTS_INFO * idx_info,
-				bool is_check_foreign)
-#else
-int
-heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * class_recdes,
-				HEAP_CACHE_ATTRINFO * attr_info, HEAP_IDX_ELEMENTS_INFO * idx_info)
+				, bool is_check_foreign
 #endif
+  )
 {
   ATTR_ID guess_attrids[HEAP_GUESS_NUM_INDEXED_ATTRS];
   ATTR_ID *set_attrids;
