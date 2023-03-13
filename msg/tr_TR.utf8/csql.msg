@@ -165,7 +165,7 @@ $ csql help messages
    ;AUtocommit [ON|OFF]         - otomatik tamamlama modunu etkinleştirme / devre dışı bırakma.\n\
    ;REStart                     - CSQL oturumunda hedef veritabanına yeniden bağlanın.\n\
    ;CHeckpoint                  - kontrol noktasını yürütün (yalnızca --sysadm ile CSQL).\n\
-   ;Killtran                    - belirli işlemi kontrol edin veya iptal edin (yalnızca --sysadm ile CSQL).\n\
+   ;Killtran                    - işlem durumu bilgilerini kontrol edin veya belirli bir işlemi sonlandırın. (yalnızca --sysadm ile CSQL).\n\
 \n\
    ;SHELL_Cmd     [shell-cmd]   - varsayılan dış kabuğu ayarla, editör, yazdır, çağrı cihazı ve biçimlendirici\n\
    ;EDITOR_Cmd    [editor-cmd]    yeni bir tane komut ver veya geçerli olanı görüntüle\n\

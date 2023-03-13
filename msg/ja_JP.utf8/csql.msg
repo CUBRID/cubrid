@@ -165,7 +165,7 @@ $ csql help messages
    ;AUtocommit [ON|OFF]         - 自動コミットモードを設定。／解除。\n\
    ;REStart                     - CSQL セッションで現在のデータベースに再接続します。\n\
    ;CHeckpoint                  - チェックポイントを実行します (--sysadm を指定した CSQL のみ)。\n\
-   ;Killtran                    - 特定のトランザクションをチェックまたは中止します (--sysadm を指定した CSQL のみ)。\n\
+   ;Killtran                    - トランザクションステータス情報を確認するか、特定のトランザクションを終了します (--sysadm を指定した CSQL のみ)。\n\
 \n\
    ;SHELL_Cmd     [shell-cmd]   - 既存に設定したシェルを設定／表示する。\n\
    ;EDITOR_Cmd    [editor-cmd]  - 既存に設定したエディターを設定／表示する。\n\

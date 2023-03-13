@@ -165,7 +165,7 @@ $ messaggi di aiuto csql
    ;AUtocommit [ON|OFF]         - attivare/disattivare la modalità di auto-commit.\n\
    ;REStart                     - riconnettersi al database corrente in una sessione CSQL.\n\
    ;CHeckpoint                  - esegue il checkpoint (solo CSQL con --sysadm).\n\
-   ;Killtran                    - controlla o interrompe una transazione specifica (solo CSQL con --sysadm).\n\
+   ;Killtran                    - controlla le informazioni sullo stato della transazione o termina una transazione specifica (solo CSQL con --sysadm).\n\
 \n\
    ;SHELL_Cmd     [shell-cmd]   - impostare la shell predefinito, editor, stampa, pager e formattatore\n\
    ;EDITOR_Cmd    [editor-cmd]    comando a uno nuovo, o la visualizzazione corrente\n\

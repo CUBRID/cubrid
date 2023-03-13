@@ -165,7 +165,7 @@ $ csql help messages
    ;AUtocommit [ON|OFF]         - active/désactive la validation automatique des transactions.\n\
    ;REStart                     - reconnectez-vous à la base de données actuelle dans une session CSQL.\n\
    ;CHeckpoint                  - exécutez le point de contrôle (CSQL avec --sysadm uniquement).\n\
-   ;Killtran                    - vérifier ou abandonner une transaction spécifique (CSQL avec --sysadm uniquement).\n\
+   ;Killtran                    - vérifiez les informations sur l'état de la transaction ou terminez une transaction spécifique. (CSQL avec --sysadm uniquement).\n\
 \n\
    ;SHELL_Cmd     [shell-cmd]   - définit nouveau commande par défaut pour shell,\n\
    ;EDITOR_Cmd    [editor-cmd]    éditeur, affiche, paginateur et formatter, ou afficher la \n\

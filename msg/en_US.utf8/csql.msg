@@ -164,8 +164,8 @@ $ csql help messages
    ;ROllback                    - roll back the current transaction.\n\
    ;AUtocommit [ON|OFF]         - enable/disable auto commit mode.\n\
    ;REStart                     - reconnect to the current database in a CSQL session.\n\
-   ;CHeckpoint - execute the checkpoint(CSQL with --sysadm only).\n\
-   ;Killtran - check or abort specific transaction(CSQL with --sysadm only).\n\
+   ;CHeckpoint                  - execute the checkpoint(CSQL with --sysadm only).\n\
+   ;Killtran                    - check transaction status information or end a specific transaction.(CSQL with --sysadm only).\n\
 \n\
    ;SHELL_Cmd     [shell-cmd]   - set default shell, editor, print, pager and formatter\n\
    ;EDITOR_Cmd    [editor-cmd]    command to new one, or display the current\n\

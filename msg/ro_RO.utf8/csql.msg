@@ -165,7 +165,7 @@ $ csql help messages
    ;AUtocommit [ON|OFF]         - activează/dezactivează modul "auto commit".\n\
    ;REStart                     - reconectați-vă la baza de date țintă într-o sesiune CSQL.\n\
    ;CHeckpoint                  - executați punctul de control (numai CSQL cu --sysadm).\n\
-   ;Killtran                    - verificați sau anulați o anumită tranzacție (numai CSQL cu --sysadm).\n\
+   ;Killtran                    - vizualizați informații despre starea tranzacției sau încheiați o anumită tranzacție. (numai CSQL cu --sysadm).\n\
 \n\
    ;SHELL_Cmd     [shell-cmd]   - schimbă comenzile implicite pentru shell, editor,\n\
    ;EDITOR_Cmd    [editor-cmd]    afişare, paginator şi formatator cu comenzi noi, respectiv \n\

@@ -165,7 +165,7 @@ $ csql help messages
    ;AUtocommit [ON|OFF]         - 启用/停用自动提交模式.\n\
    ;REStart                     - 在 CSQL 会话中重新连接到当前数据库.\n\
    ;CHeckpoint                  - 执行检查点（仅带 --sysadm 的 CSQL）.\n\
-   ;Killtran                    - 检查或中止特定事务（仅限带有 --sysadm 的 CSQL）.\n\
+   ;Killtran                    - 检查交易状态信息或结束特定交易（仅限带有 --sysadm 的 CSQL）.\n\
 \n\
    ;SHELL_Cmd     [shell-cmd]   - 设置默认的shell或显示当前设置.\n\
    ;EDITOR_Cmd    [editor-cmd]  - 设置默认编辑器或显示当前设置.\n\

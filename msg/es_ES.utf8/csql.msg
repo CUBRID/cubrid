@@ -165,7 +165,7 @@ $ csql help messages
    ;AUtocommit [ON|OFF]         - habilitar / deshabilitar modo cometer auto.\n\
    ;REStart                     - volver a conectarse a la base de datos actual en una sesión de CSQL.\n\
    ;CHeckpoint                  - ejecutar el punto de control(CSQL solo con --sysadm).\n\
-   ;Killtran                    - verificar o cancelar una transacción específica(CSQL solo con --sysadm).\n\
+   ;Killtran                    - verifique la información del estado de la transacción o finalice una transacción específica(CSQL solo con --sysadm).\n\
 \n\
    ;SHELL_Cmd     [shell-cmd]   - ajusta estandar shell, editor, impresora, pager y formateador\n\
    ;EDITOR_Cmd    [editor-cmd]    comandar a una nueva, o mostrar la actual\n\
