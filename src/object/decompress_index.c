@@ -94,7 +94,50 @@ dk_find_or_compress_index_attribute (int att_id)
 }
 
 int
-dk_heap_midxkey_get_compress_index_value (int att_id, OID * rec_oid, DB_VALUE * value)
+dk_get_decompress_position (int n_attrs, int *attr_ids, int func_attr_index_start)
+{
+  if (n_attrs > 1)
+    {
+      if (func_attr_index_start != -1)
+	{
+	  if ((func_attr_index_start > 0) && IS_COMPRESS_INDEX_ATTR_ID (attr_ids[func_attr_index_start - 1]))
+	    {
+	      return func_attr_index_start;
+	    }
+	}
+      else if (IS_COMPRESS_INDEX_ATTR_ID (attr_ids[n_attrs - 1]))
+	{
+	  return n_attrs - 1;
+	}
+    }
+
+  return -1;
+}
+
+int
+dk_or_decompress_position (int n_attrs, OR_ATTRIBUTE ** attrs, OR_FUNCTION_INDEX * function_index)
+{
+  if (n_attrs > 1)
+    {
+      if (function_index)
+	{
+	  if ((function_index->attr_index_start > 0)
+	      && IS_COMPRESS_INDEX_ATTR_ID (attrs[function_index->attr_index_start - 1]->id))
+	    {
+	      return function_index->attr_index_start;
+	    }
+	}
+      else if (IS_COMPRESS_INDEX_ATTR_ID (attrs[n_attrs - 1]->id))
+	{
+	  return n_attrs - 1;
+	}
+    }
+
+  return -1;
+}
+
+int
+dk_get_compress_index_value (OID * rec_oid, int att_id, DB_VALUE * value)
 {
   // The rec_oid may be NULL when the index of the UNIQUE attribute is an index. 
   // In that case, however, it cannot entered here.
@@ -149,48 +192,6 @@ dk_heap_midxkey_get_compress_index_value (int att_id, OID * rec_oid, DB_VALUE * 
   return NO_ERROR;
 }
 
-int
-dk_get_decompress_position (int n_attrs, int *attr_ids, int func_attr_index_start)
-{
-  if (n_attrs > 1)
-    {
-      if (func_attr_index_start != -1)
-	{
-	  if ((func_attr_index_start > 0) && IS_COMPRESS_INDEX_ATTR_ID (attr_ids[func_attr_index_start - 1]))
-	    {
-	      return func_attr_index_start;
-	    }
-	}
-      else if (IS_COMPRESS_INDEX_ATTR_ID (attr_ids[n_attrs - 1]))
-	{
-	  return n_attrs - 1;
-	}
-    }
-
-  return -1;
-}
-
-int
-dk_or_decompress_position (int n_attrs, OR_ATTRIBUTE ** attrs, OR_FUNCTION_INDEX * function_index)
-{
-  if (n_attrs > 1)
-    {
-      if (function_index)
-	{
-	  if ((function_index->attr_index_start > 0)
-	      && IS_COMPRESS_INDEX_ATTR_ID (attrs[function_index->attr_index_start - 1]->id))
-	    {
-	      return function_index->attr_index_start;
-	    }
-	}
-      else if (IS_COMPRESS_INDEX_ATTR_ID (attrs[n_attrs - 1]->id))
-	{
-	  return n_attrs - 1;
-	}
-    }
-
-  return -1;
-}
 #endif // #if defined(SERVER_MODE) || defined(SA_MODE)
 //=============================================================================
 
@@ -291,6 +292,28 @@ dk_find_sm_compress_index_attribute (int att_id, const char *att_name)
   assert (st_sm_atts_init == true);
 
   return st_sm_atts[level];
+}
+
+int
+dk_sm_decompress_position (int n_attrs, SM_ATTRIBUTE ** attrs, SM_FUNCTION_INFO * function_index)
+{
+  if (n_attrs > 1)
+    {
+      if (function_index)
+	{
+	  if ((function_index->attr_index_start > 0)
+	      && IS_COMPRESS_INDEX_ATTR_ID (attrs[function_index->attr_index_start - 1]->id))
+	    {
+	      return function_index->attr_index_start;
+	    }
+	}
+      else if (IS_COMPRESS_INDEX_ATTR_ID (attrs[n_attrs - 1]->id))
+	{
+	  return (n_attrs - 1);
+	}
+    }
+
+  return -1;
 }
 
 void
@@ -405,27 +428,6 @@ dk_print_compress_index_info (char *buf, int buf_size, int compress_mode, int co
   return buf;
 }
 
-int
-dk_sm_decompress_position (int n_attrs, SM_ATTRIBUTE ** attrs, SM_FUNCTION_INFO * function_index)
-{
-  if (n_attrs > 1)
-    {
-      if (function_index)
-	{
-	  if ((function_index->attr_index_start > 0)
-	      && IS_COMPRESS_INDEX_ATTR_ID (attrs[function_index->attr_index_start - 1]->id))
-	    {
-	      return function_index->attr_index_start;
-	    }
-	}
-      else if (IS_COMPRESS_INDEX_ATTR_ID (attrs[n_attrs - 1]->id))
-	{
-	  return (n_attrs - 1);
-	}
-    }
-
-  return -1;
-}
 #endif // #if !defined(SERVER_MODE)
 //=============================================================================
 

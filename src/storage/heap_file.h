@@ -40,7 +40,6 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 #include "tde.h"
-#include "decompress_index_def.h"
 
 // forward declarations
 class multi_index_unique_stats;

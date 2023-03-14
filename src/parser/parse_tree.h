@@ -41,7 +41,6 @@
 #include "string_opfunc.h"
 #include "system_parameter.h"
 
-#include "decompress_index_def.h"
 
 // forward definitions
 struct json_t;
@@ -2093,13 +2092,14 @@ struct pt_index_info
   PT_ALTER_CODE code;
 
   int func_pos;			/* the position of the expression in the function index's column list */
-  int func_no_args;		/* number of arguments in the function index expression */
+  int func_no_args;		/* number of arguments in the function index expression
+				 * Appears only in function index expressions, excluding constants.  */
   bool reverse;			/* REVERSE */
   bool unique;			/* UNIQUE specified? */
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
   int ib_threads;
 #if defined(SUPPORT_COMPRESS_MODE)
-  short compress_mode;		/* refer to EN_DUP_MODE */
+  short compress_mode;		/* refer to EN_COMPRESS_INDEX_MODE */
   short compress_level;		/* 0 : not use modular, others : mod by pow(2,compress_level) */
 #endif
 };
@@ -3253,7 +3253,7 @@ struct pt_foreign_key_info
   PT_MISC_TYPE delete_action;
   PT_MISC_TYPE update_action;
 #if defined(SUPPORT_COMPRESS_MODE)
-  short compress_mode;		/* refer to EN_DUP_MODE */
+  short compress_mode;		/* refer to EN_COMPRESS_INDEX_MODE */
   short compress_level;		/* 0 : not use modular, others : mod by pow(2,compress_level) */
 #endif
 };

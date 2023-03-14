@@ -26,8 +26,6 @@
 
 #ident "$Id$"
 
-#include "decompress_index_def.h"
-
 #if !defined(SERVER_MODE)
 #include "parse_tree.h"
 #endif
@@ -40,7 +38,7 @@ typedef enum
 {
   COMPRESS_INDEX_MODE_NONE = 0,
   COMPRESS_INDEX_MODE_SET
-} EN_DUP_MODE;
+} EN_COMPRESS_INDEX_MODE;
 
 #define COMPRESS_INDEX_MOD_LEVEL_ZERO     (0)
 #define COMPRESS_INDEX_MOD_LEVEL_MIN      (1)
@@ -112,7 +110,7 @@ COMPRESS_INDEX_ATTR_NAME_PREFIX  "16"
 
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
-extern int dk_heap_midxkey_get_compress_index_value (int att_id, OID * rec_oid, DB_VALUE * value);
+extern int dk_get_compress_index_value (OID * rec_oid, int att_id, DB_VALUE * value);
 
 // The actual return type is OR_ATTRIBUTE*.
 // But, here it is treated as void* due to collision with C++. (error: template with C linkage)

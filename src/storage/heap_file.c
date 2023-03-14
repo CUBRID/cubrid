@@ -12557,7 +12557,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	{
 	  if (not_null_field_cnt > 0)
 	    {
-	      dk_heap_midxkey_get_compress_index_value (atts[i]->id, rec_oid, &value);
+	      dk_get_compress_index_value (rec_oid, atts[i]->id, &value);
 	      atts[i]->domain->type->index_writeval (&buf, &value);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	      //  In this case, there is no need to clean them up using pr_clear_value().     
@@ -12742,7 +12742,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	  if (not_null_field_cnt > 0)
 	    {
 	      att = (OR_ATTRIBUTE *) dk_find_or_compress_index_attribute (att_ids[i]);
-	      dk_heap_midxkey_get_compress_index_value (att_ids[i], rec_oid, &value);
+	      dk_get_compress_index_value (rec_oid, att_ids[i], &value);
 	      att->domain->type->index_writeval (&buf, &value);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	      //  In this case, there is no need to clean them up using pr_clear_value().     
