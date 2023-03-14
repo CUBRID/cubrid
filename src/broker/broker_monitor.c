@@ -515,7 +515,7 @@ main (int argc, char **argv)
 
       free (br_vector);
 
-      if (system (cmd) != 0)
+      if (system (cmd) == 32512)
 	{
 	  fprintf (stderr, "%s: -s option require Linux command: '%s'\n", argv[0], WATCH_CMD);
 	  fprintf (stderr, "Install the '%s' command to use this option.\n", WATCH_CMD);
