@@ -502,7 +502,7 @@ add_library(cubridcs SHARED
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
-target_compile_definitions(cubridcs PRIVATE CS_MODE ${COMMON_DEFS})
+target_compile_definitions(cubridcs PRIVATE CS_MODE CUBRID_EXPORTING ${COMMON_DEFS})
 if(NOT USE_CUBRID_ENV)
   target_compile_definitions(cubridcs PRIVATE ${DIR_DEFS})
 endif(NOT USE_CUBRID_ENV)

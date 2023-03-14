@@ -296,7 +296,7 @@ namespace cubmethod
 
     if (!is_end_query)
       {
-	cubmethod::header header (get_session_id(), METHOD_REQUEST_END, get_id());
+	cubmethod::header header (get_session_id(), METHOD_REQUEST_END, get_and_increment_request_id ());
 	std::vector<int> handler_vec (m_handler_set.begin (), m_handler_set.end ());
 	error = method_send_data_to_client (m_thread_p, header, handler_vec);
 	m_handler_set.clear ();
