@@ -9474,7 +9474,7 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 {
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   bool getall;			/* Want all attribute values */
-  int i;
+  int i = 0;
   int ret = NO_ERROR;
 
   if (requested_num_attrs == 0)
