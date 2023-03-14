@@ -379,10 +379,11 @@ namespace cubmethod
 	  }
       }
 
-    query_handler *handler = new query_handler (m_error_ctx, idx);
+    query_handler *handler = new (std::nothrow) query_handler (m_error_ctx, idx);
     if (handler == nullptr)
       {
 	assert (false);
+	return handler;
       }
 
     if (idx < handler_size)
