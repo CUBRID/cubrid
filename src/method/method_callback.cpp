@@ -418,12 +418,14 @@ namespace cubmethod
       }
     if (m_query_handlers[id] != nullptr)
       {
+	// clear <query ID -> handler ID>
 	if (m_query_handlers[id]->get_query_id () != -1)
 	  {
 	    m_qid_handler_map.erase (m_query_handlers[id]->get_query_id ());
 	  }
 	if (is_free)
 	  {
+	    // clear <SQL string -> handler ID>
 	    m_sql_handler_map.erase (m_query_handlers[id]->get_sql_stmt());
 
 	    delete m_query_handlers[id];
