@@ -512,7 +512,7 @@ if(WIN32)
   set_target_properties(cubrid PROPERTIES OUTPUT_NAME libcubrid)
 endif(WIN32)
 
-target_compile_definitions(cubrid PRIVATE SERVER_MODE ${COMMON_DEFS})
+target_compile_definitions(cubrid PRIVATE SERVER_MODE CUBRID_EXPORTING ${COMMON_DEFS})
 if(NOT USE_CUBRID_ENV)
   target_compile_definitions(cubrid PRIVATE ${DIR_DEFS})
 endif(NOT USE_CUBRID_ENV)
