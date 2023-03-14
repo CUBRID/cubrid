@@ -198,7 +198,6 @@ else(UNIX)
 endif(UNIX)
 
 set(JAVASP_SERVER_SOURCES
-  ${METHOD_DIR}/method_connection_java.cpp
   ${EXECUTABLES_DIR}/javasp.cpp
 )
 SET_SOURCE_FILES_PROPERTIES(

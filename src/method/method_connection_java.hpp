@@ -23,6 +23,8 @@
 #ifndef _METHOD_CONNECTION_JAVA_HPP_
 #define _METHOD_CONNECTION_JAVA_HPP_
 
+#include "porting.h"
+
 #include "method_connection.hpp"
 
 #include <functional>
@@ -38,7 +40,7 @@ namespace cubmethod
   //////////////////////////////////////////////////////////////////////////
   // Interface to communicate with Java SP Server
   //////////////////////////////////////////////////////////////////////////
-  int mcon_send_buffer_to_java (SOCKET socket, cubmem::block &blk);
+  EXPORT_IMPORT int mcon_send_buffer_to_java (SOCKET socket, cubmem::block &blk);
 
   template <typename ... Args>
   int mcon_send_data_to_java (SOCKET socket, Args &&... args)
@@ -49,10 +51,10 @@ namespace cubmethod
     return status;
   }
 
-  int mcon_read_data_from_java (const SOCKET socket, cubmem::extensible_block &b);
+  EXPORT_IMPORT int mcon_read_data_from_java (const SOCKET socket, cubmem::extensible_block &b);
 
-  int mcon_read_data_from_java (const SOCKET socket, cubmem::block &b);
-  int mcon_read_data_from_java (const SOCKET socket, cubmem::block &b, const mcon_callback_func &interrupt_func);
+  EXPORT_IMPORT int mcon_read_data_from_java (const SOCKET socket, cubmem::block &b);
+  EXPORT_IMPORT int mcon_read_data_from_java (const SOCKET socket, cubmem::block &b, const mcon_callback_func &interrupt_func);
 }
 
 #endif // _METHOD_CONNECTION_JAVA_HPP_
