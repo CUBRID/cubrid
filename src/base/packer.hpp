@@ -23,6 +23,8 @@
 #ifndef _PACKER_HPP_
 #define _PACKER_HPP_
 
+#include "porting.h"
+
 #include "dbtype_def.h"
 #include "mem_block.hpp"
 
@@ -48,7 +50,7 @@ namespace cubpacking
  */
 namespace cubpacking
 {
-  class packer
+  class EXPORT_IMPORT packer
   {
     public:
       packer ();
@@ -194,7 +196,7 @@ namespace cubpacking
       char *m_ptr;
   };
 
-  class unpacker
+  class EXPORT_IMPORT unpacker
   {
     public:
       unpacker () = default;

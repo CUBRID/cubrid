@@ -21,6 +21,7 @@
 
 #include <string>
 
+#include "porting.h"
 #include "method_def.hpp"
 #include "mem_block.hpp"
 #include "packable_object.hpp"
@@ -40,7 +41,7 @@ namespace cubmethod
   /*
    * request data header
    */
-  struct header : public cubpacking::packable_object
+  struct EXPORT_IMPORT header : public cubpacking::packable_object
   {
     header () = delete;
     explicit header (cubpacking::unpacker &unpacker);
