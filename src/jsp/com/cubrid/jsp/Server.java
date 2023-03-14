@@ -33,6 +33,8 @@ package com.cubrid.jsp;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.net.ServerSocket;
@@ -40,8 +42,6 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.logging.FileHandler;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.newsclub.net.unix.AFUNIXServerSocket;
 import org.newsclub.net.unix.AFUNIXSocketAddress;
@@ -64,6 +64,8 @@ public class Server {
 
     private static Server serverInstance = null;
 
+    private static LoggingThread loggingThread = null;
+
     private Server(
             String name, String path, String version, String rPath, String uPath, String port)
             throws IOException, ClassNotFoundException {
@@ -76,6 +78,16 @@ public class Server {
         ServerSocket serverSocket = null;
         int port_number = Integer.parseInt(port);
         try {
+            String logFilePath =
+                    rootPath
+                            + File.separatorChar
+                            + LOG_DIR
+                            + File.separatorChar
+                            + serverName
+                            + "_java.log";
+            loggingThread = new LoggingThread(logFilePath);
+            loggingThread.start();
+
             if (OSValidator.IS_UNIX && port_number == -1) {
                 final File socketFile = new File(udsPath);
                 if (socketFile.exists()) {
@@ -182,6 +194,7 @@ public class Server {
     public static void stop(int status) {
         getServer().setShutdown();
         getServer().stopSocketListener();
+        loggingThread.interrupt();
         System.exit(status);
     }
 
@@ -190,30 +203,10 @@ public class Server {
     }
 
     public static void log(Throwable ex) {
-        FileHandler logHandler = null;
-
-        try {
-            logHandler =
-                    new FileHandler(
-                            rootPath
-                                    + File.separatorChar
-                                    + LOG_DIR
-                                    + File.separatorChar
-                                    + serverName
-                                    + "_java.log",
-                            true);
-            logger.addHandler(logHandler);
-            logger.log(Level.SEVERE, "", ex);
-        } catch (Throwable e) {
-        } finally {
-            if (logHandler != null) {
-                try {
-                    logHandler.close();
-                    logger.removeHandler(logHandler);
-                } catch (Throwable e) {
-                }
-            }
-        }
+        StringWriter sw = new StringWriter();
+        ex.printStackTrace(new PrintWriter(sw));
+        String exceptionAsString = sw.toString();
+        loggingThread.log(exceptionAsString);
     }
 
     public void setShutdown() {

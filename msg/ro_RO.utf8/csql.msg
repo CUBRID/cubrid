@@ -112,6 +112,7 @@ $ These 3 should be blank
 194 Combinaţie invalidă de argumente (optiuni) de linie de comandă.
 196 O eroare nedefinită s-a produs.
 197 ';edit' nu este permis când output-ul este redirecţionat.
+198 Formatul a eșuat.
 
 203 <%1$s> 
 204 <SuperClase> 
@@ -153,7 +154,7 @@ $ csql help messages
    ;EXit                        - închide aplicaţia.\n\
 \n\
    ;CLear                       - goleşte buffer-ul de comenzi.\n\
-   ;EDIT                        - invocă editorul sistemului pentru buffer-ul de comenzi.\n\
+   ;EDIT   [format/fmt]         - invocă editorul de sistem [după formatator] cu bufferul de comandă.\n\
    ;LISt                        - afişează conţinutul buffer-ului de comenzi.\n\
 \n\
    ;RUn                         - execută instrucţiunile SQL din buffer-ul de comenzi.\n\
@@ -164,10 +165,11 @@ $ csql help messages
    ;AUtocommit [ON|OFF]         - activează/dezactivează modul "auto commit".\n\
    ;REStart                     - reporneşte baza de date.\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - schimbă comenzile implicite pentru shell, editor,\n\
-   ;EDITOR_Cmd   [editor-cmd]     afişare şi paginator cu comenzi noi, respectiv \n\
-   ;PRINT_Cmd    [print-cmd]      afişează comanda curentă.\n\
-   ;PAger_cmd    [pager-cmd]\n\
+   ;SHELL_Cmd     [shell-cmd]   - schimbă comenzile implicite pentru shell, editor,\n\
+   ;EDITOR_Cmd    [editor-cmd]    afişare, paginator şi formatator cu comenzi noi, respectiv \n\
+   ;PRINT_Cmd     [print-cmd]     afişează comanda curentă.\n\
+   ;PAger_cmd     [pager-cmd]\n\
+   ;FOrmatter_cmd [formatter-cmd]\n\
 \n\
    ;DATE                        - afişează ora şi data locală.\n\
    ;DATAbase                    - afişează numele bazei de date accesate.\n\
