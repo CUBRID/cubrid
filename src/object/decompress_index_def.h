@@ -30,6 +30,4 @@
 
 #define SUPPORT_COMPRESS_MODE
 
-//#define PRE_DEF_CBRD_24663
-
 #endif // _DUP_KEY_DEF_H_

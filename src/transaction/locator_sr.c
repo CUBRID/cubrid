@@ -4093,13 +4093,19 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
       if (index->n_atts > 1)
 	{
 #if defined(SUPPORT_COMPRESS_MODE)
-	  if (DB_VALUE_TYPE (key_dbvalue) == DB_TYPE_MIDXKEY)
+	  /* If (index->n_atts > 1), it must be multiple keys, 
+	   * but it can be a single key except for compress_index_attr. */
+
+	  // We cannot make a PK with a function. Therefore, only the last member is checked.
+	  if (index->n_atts == 2 && IS_COMPRESS_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
 	    {
-	      has_null = btree_multicol_key_has_null (key_dbvalue);
+	      assert (DB_VALUE_TYPE (key_dbvalue) != DB_TYPE_MIDXKEY);
+	      has_null = DB_IS_NULL (key_dbvalue);
 	    }
 	  else
 	    {
-	      has_null = DB_IS_NULL (key_dbvalue);
+	      assert (DB_VALUE_TYPE (key_dbvalue) == DB_TYPE_MIDXKEY || DB_VALUE_TYPE (key_dbvalue) == DB_TYPE_NULL);
+	      has_null = btree_multicol_key_has_null (key_dbvalue);
 	    }
 #else
 	  has_null = btree_multicol_key_has_null (key_dbvalue);
