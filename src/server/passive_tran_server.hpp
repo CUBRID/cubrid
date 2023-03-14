@@ -44,7 +44,6 @@ class passive_tran_server : public tran_server
     log_lsa get_lowest_unapplied_lsa () const;
     void finish_replication_during_shutdown (cubthread::entry &thread_entry);
     void wait_replication_past_target_lsa (LOG_LSA lsa);
-    void stop_outgoing_page_server_messages () final override;
 
   private:
     class connection_handler : public tran_server::connection_handler
@@ -75,6 +74,7 @@ class passive_tran_server : public tran_server
     bool uses_remote_storage () const final override;
     bool get_remote_storage_config () final override;
 
+    void stop_outgoing_page_server_messages () final override;
     connection_handler *create_connection_handler (cubcomm::channel &&chn,
 	tran_server &ts) const final override;
 

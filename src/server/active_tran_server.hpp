@@ -34,7 +34,6 @@ class active_tran_server : public tran_server
 
     bool uses_remote_storage () const final override;
     MVCCID get_oldest_active_mvccid_from_page_server () const;
-    void stop_outgoing_page_server_messages () final override;
 
   private:
     class connection_handler : public tran_server::connection_handler
@@ -65,6 +64,7 @@ class active_tran_server : public tran_server
   private:
     bool get_remote_storage_config () final override;
 
+    void stop_outgoing_page_server_messages () final override;
     connection_handler *create_connection_handler (cubcomm::channel &&chn,
 	tran_server &ts) const final override;
 
