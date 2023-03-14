@@ -80,7 +80,7 @@ public class ExprCase extends Expr {
             String elseCode;
             if (elsePart == null) {
                 if (resultType.equals(TypeSpecSimple.OBJECT)) {
-                    elseCode = "raiseCaseNotFound()";   // no need to cast
+                    elseCode = "raiseCaseNotFound()"; // no need to cast
                 } else {
                     elseCode = "(%'RESULT-TYPE'%) raiseCaseNotFound()";
                 }

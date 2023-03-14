@@ -90,6 +90,7 @@ public abstract class Coerce {
             return exprJavaCode; // no coercion
         }
     }
+
     public static Coerce IDENTITY = new Identity();
 
     public static class DownCast extends Coerce {

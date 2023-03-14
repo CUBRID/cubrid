@@ -288,7 +288,10 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         }
         if (node.elsePart == null) {
             if (commonType.equals(TypeSpecSimple.NULL)) {
-                commonType = TypeSpecSimple.OBJECT; // cannot be a specific Java type: there is no Null type in Java
+                commonType =
+                        TypeSpecSimple
+                                .OBJECT; // cannot be a specific Java type: there is no Null type in
+                // Java
             }
         } else {
             TypeSpec ty = visit(node.elsePart);
@@ -314,7 +317,10 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         }
         if (node.elsePart == null) {
             if (commonType.equals(TypeSpecSimple.NULL)) {
-                commonType = TypeSpecSimple.OBJECT; // cannot be a specific Java type: there is no Null type in Java
+                commonType =
+                        TypeSpecSimple
+                                .OBJECT; // cannot be a specific Java type: there is no Null type in
+                // Java
             }
         } else {
             TypeSpec ty = visit(node.elsePart);
@@ -378,7 +384,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         } else {
             // this record is for a dynamic SQL
 
-            ret = TypeSpecSimple.OBJECT;    // cannot be a specific Java type: type unknown at compile time
+            ret =
+                    TypeSpecSimple
+                            .OBJECT; // cannot be a specific Java type: type unknown at compile time
         }
 
         return ret;

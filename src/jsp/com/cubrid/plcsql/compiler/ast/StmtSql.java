@@ -89,7 +89,7 @@ public abstract class StmtSql extends Stmt {
     // Private
     // --------------------------------------------------
 
-    private List<Coerce> coerces;   // TODO: consider coerces for static SELECT statements
+    private List<Coerce> coerces; // TODO: consider coerces for static SELECT statements
 
     private static final String tmplDml =
             Misc.combineLines(

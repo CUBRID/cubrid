@@ -83,11 +83,10 @@ public class TypeSpecSimple extends TypeSpec {
     static {
         final String[] javaTypes =
                 new String[] {
-                    "Null",     // not an actual java type
-                    "Cursor",   // not an actual java type
-
-                    "java.lang.Object",     // (1) used as an argument type of some operators in SpLib
-                                            // (2) used as an expression type when a specific Java type cannot be given
+                    "Null", // not an actual java type
+                    "Cursor", // not an actual java type
+                    "java.lang.Object", // (1) used as an argument type of some operators in SpLib
+                    // (2) used as an expression type when a specific Java type cannot be given
                     "java.lang.Boolean",
                     "java.lang.String",
                     "java.math.BigDecimal",
