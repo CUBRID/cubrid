@@ -11241,6 +11241,12 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
   else
     {
       /* the domains don't match, must attempt coercion */
+      if (attr_val->domain.general_info.type == DB_TYPE_NUMERIC
+	  && value->last_attrepr->domain->type->id == DB_TYPE_NUMERIC)
+	{
+	  value->last_attrepr->domain->precision = attr_val->domain.numeric_info.precision;
+	  value->last_attrepr->domain->scale = attr_val->domain.numeric_info.scale;
+	}
       dom_status = tp_value_auto_cast (attr_val, &value->dbvalue, value->last_attrepr->domain);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
