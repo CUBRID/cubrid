@@ -582,7 +582,7 @@ db_compile_statement_local (DB_SESSION * session)
   pt_reset_error (parser);
 
   // @server
-  pt_check_server_extension (parser, statement);
+  pt_rewrite_for_dblink (parser, statement);
   if (pt_has_error (parser))
     {				// TODO: error number and  error_type
       pt_report_to_ersys_with_statement (parser, PT_SYNTAX, statement);

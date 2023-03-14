@@ -11737,7 +11737,7 @@ pt_convert_dml (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 // *INDENT-ON*     
 
 void
-pt_check_server_extension (PARSER_CONTEXT * parser, PT_NODE * stmt)
+pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   SERVER_NAME_LIST snl;
 
