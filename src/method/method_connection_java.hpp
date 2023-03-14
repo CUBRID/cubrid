@@ -54,7 +54,8 @@ namespace cubmethod
   EXPORT_IMPORT int mcon_read_data_from_java (const SOCKET socket, cubmem::extensible_block &b);
 
   EXPORT_IMPORT int mcon_read_data_from_java (const SOCKET socket, cubmem::block &b);
-  EXPORT_IMPORT int mcon_read_data_from_java (const SOCKET socket, cubmem::block &b, const mcon_callback_func &interrupt_func);
+  EXPORT_IMPORT int mcon_read_data_from_java (const SOCKET socket, cubmem::block &b,
+      const mcon_callback_func &interrupt_func);
 }
 
 #endif // _METHOD_CONNECTION_JAVA_HPP_
