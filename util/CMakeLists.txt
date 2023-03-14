@@ -197,7 +197,7 @@ else(UNIX)
   target_link_libraries(loadjava LINK_PRIVATE cubridcs)
 endif(UNIX)
 
-set(JAVASP_SERVER_SOURCES
+set(JAVASP_SERVER_SOURCES 
   ${EXECUTABLES_DIR}/javasp.cpp
 )
 SET_SOURCE_FILES_PROPERTIES(
