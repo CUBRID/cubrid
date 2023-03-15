@@ -73,7 +73,7 @@ tran_server::parse_server_host (const std::string &host)
   m_ps_hostname = host.substr (0, col_pos);
   er_log_debug (ARG_FILE_LINE, "Page server hosts: %s port: %d\n", m_ps_hostname.c_str (), port);
 
-  m_connection_list.emplace_back (new page_server_node ({ port, m_ps_hostname }));
+  m_connection_list.emplace_back ({ port, m_ps_hostname });
 
   return NO_ERROR;
 }
@@ -434,18 +434,6 @@ tran_server::connection_handler::get_channel_id () const
 {
   return m_conn->get_underlying_channel_id ();
 
-}
-
-void
-tran_server::page_server_node::set_saved_lsa (log_lsa lsa)
-{
-  m_saved_lsa.store (lsa);
-}
-
-log_lsa
-tran_server::page_server_node::get_saved_lsa () const
-{
-  return m_saved_lsa.load ();
 }
 
 void

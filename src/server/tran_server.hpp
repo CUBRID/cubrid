@@ -111,7 +111,6 @@ class tran_server
 	virtual request_handlers_map_t get_request_handlers ();
 
       protected:
-	page_server_node &m_node; // in tran_server::m_node_vec;
 	tran_server &m_ts;
 
       private:
@@ -129,33 +128,7 @@ class tran_server
 
   protected:
     std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
-    std::vector<std::unique_ptr<page_server_node>> m_node_vec;
 
-  private:
-    /*
-     * The permanent data of each page server is stored and served regardless of connection.
-     */
-    class page_server_node
-    {
-      public:
-	page_server_node (cubcomm::node &&conn_node) :
-	  m_conn_node { conn_node }
-	{ }
-	page_server_node () = delete;
-
-	page_server_node (const page_server_node &) = delete;
-	page_server_node (page_server_node &&) = delete;
-
-	page_server_node &operator= (const page_server_node &) = delete;
-	page_server_node &operator= (page_server_node &&) = delete;
-
-	void set_flushed_lsa (log_lsa lsa);
-	log_lsa get_flushed_lsa ();
-
-      private:
-	cubcomm::node m_conn_node;
-	std::atomic<log_lsa> m_flushed_lsa;
-    };
   private:
     int init_page_server_hosts (const char *db_name);
     int get_boot_info_from_page_server ();
