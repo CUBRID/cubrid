@@ -85,34 +85,6 @@ class tran_server
     virtual void stop_outgoing_page_server_messages () = 0;
 
   protected:
-    /*
-     * The permanent data of each page server is stored and served regardless of connection.
-     */
-    class page_server_node
-    {
-      public:
-	page_server_node (const cubcomm::node &&conn_node)
-	  : m_conn_node { conn_node }
-	  , m_saved_lsa { NULL_LSA }
-	{ }
-	page_server_node () = delete;
-
-	page_server_node (const page_server_node &) = delete;
-	page_server_node (page_server_node &&) = delete;
-
-	page_server_node &operator= (const page_server_node &) = delete;
-	page_server_node &operator= (page_server_node &&) = delete;
-
-	void set_saved_lsa (log_lsa lsa);
-	log_lsa get_saved_lsa () const;
-
-	cubcomm::node get_conn_node () const;
-
-      private:
-	const cubcomm::node m_conn_node;
-	std::atomic<log_lsa> m_saved_lsa;
-    };
-
     class connection_handler
     {
       public:
@@ -134,8 +106,7 @@ class tran_server
 	const std::string get_channel_id () const;
 
       protected:
-	connection_handler (cubcomm::channel &&chn, page_server_node &node, tran_server &ts,
-			    request_handlers_map_t &&request_handlers);
+	connection_handler (cubcomm::channel &&chn, tran_server &ts, request_handlers_map_t &&request_handlers);
 
 	virtual request_handlers_map_t get_request_handlers ();
 
@@ -151,8 +122,7 @@ class tran_server
     };
 
   protected:
-    virtual connection_handler *create_connection_handler (cubcomm::channel &&chn, page_server_node &node,
-	tran_server &ts) const = 0;
+    virtual connection_handler *create_connection_handler (cubcomm::channel &&chn, tran_server &ts) const = 0;
 
     // Booting functions that require specialization
     virtual bool get_remote_storage_config () = 0;
@@ -162,9 +132,36 @@ class tran_server
     std::vector<std::unique_ptr<page_server_node>> m_node_vec;
 
   private:
+    /*
+     * The permanent data of each page server is stored and served regardless of connection.
+     */
+    class page_server_node
+    {
+      public:
+	page_server_node (cubcomm::node &&conn_node)
+	  : m_conn_node { conn_node }
+	{ }
+	page_server_node () = delete;
+
+	page_server_node (const page_server_node &) = delete;
+	page_server_node (page_server_node &&) = delete;
+
+	page_server_node &operator= (const page_server_node &) = delete;
+	page_server_node &operator= (page_server_node &&) = delete;
+
+	void set_flushed_lsa (log_lsa lsa);
+	log_lsa get_flushed_lsa () const;
+
+	cubcomm::node get_conn_node () const;
+
+      private:
+	cubcomm::node m_conn_node;
+	std::atomic<log_lsa> m_flushed_lsa;
+    };
+  private:
     int init_page_server_hosts (const char *db_name);
     int get_boot_info_from_page_server ();
-    int connect_to_page_server (page_server_node &node, const char *db_name);
+    int connect_to_page_server (const page_server_node &node, const char *db_name);
 
     /* send request to a specific connection */
     void push_request (size_t idx, tran_to_page_request reqid, std::string &&payload);
