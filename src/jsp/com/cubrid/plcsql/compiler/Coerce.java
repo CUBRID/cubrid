@@ -31,9 +31,9 @@
 package com.cubrid.plcsql.compiler;
 
 import com.cubrid.plcsql.compiler.ast.TypeSpec;
+import com.cubrid.plcsql.compiler.ast.TypeSpecPercent;
 import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 import com.cubrid.plcsql.compiler.ast.TypeSpecVariadic;
-import com.cubrid.plcsql.compiler.ast.TypeSpecPercent;
 import java.util.List;
 
 public abstract class Coerce {
