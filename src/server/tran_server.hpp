@@ -105,6 +105,8 @@ class tran_server
 	virtual void disconnect ();
 	const std::string get_channel_id () const;
 
+	virtual log_lsa get_saved_lsa () const = 0; // used in active_tran_server
+
       protected:
 	connection_handler (cubcomm::channel &&chn, tran_server &ts, request_handlers_map_t &&request_handlers);
 
@@ -127,6 +129,7 @@ class tran_server
     virtual bool get_remote_storage_config () = 0;
 
   protected:
+    std::vector<cubcomm::node> m_connection_list;
     std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
 
   private:
@@ -142,7 +145,6 @@ class tran_server
     int parse_page_server_hosts_config (std::string &hosts);
 
   private:
-    std::vector<cubcomm::node> m_connection_list;
     cubcomm::server_server m_conn_type;
 };
 
