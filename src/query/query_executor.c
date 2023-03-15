@@ -1543,7 +1543,11 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 	    case F_REGEXP_REPLACE:
 	    case F_REGEXP_SUBSTR:
 	      {
-		delete regu_var->value.funcp->tmp_obj->compiled_regex;
+		if (regu_var->value.funcp->tmp_obj->compiled_regex)
+		  {
+		    delete regu_var->value.funcp->tmp_obj->compiled_regex;
+		    regu_var->value.funcp->tmp_obj->compiled_regex = NULL;
+		  }
 	      }
 	      break;
 	    default:
@@ -1760,7 +1764,11 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_rlike->case_sensitive, is_final);
 
 	    /* free memory of compiled regex */
-	    cubregex::clear (et_rlike->compiled_regex, et_rlike->compiled_pattern);
+	    if (et_rlike->compiled_regex)
+	      {
+		delete et_rlike->compiled_regex;
+		et_rlike->compiled_regex = NULL;
+	      }
 	  }
 	  break;
 	}
@@ -7876,11 +7884,11 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	      specp = xptr->spec_list;
 	      assert (specp);
 
-	      /* count(*) query will scan an index but does not have a data-filter */
+	      /* count(*) query will scan an index but does not have a data-filter(where, if_pred, after_join_pred) */
 	      if (specp->next == NULL && specp->access == ACCESS_METHOD_INDEX
 		  && specp->s.cls_node.cls_regu_list_pred == NULL && specp->where_pred == NULL
 		  && !specp->indexptr->use_iss && !SCAN_IS_INDEX_MRO (&specp->s_id.s.isid)
-		  && !xptr->if_pred /* no if predicates */ )
+		  && !xptr->after_join_pred && !xptr->if_pred)
 		{
 		  /* there are two optimization for query having count() only
 		   * 1. Skip saving data to temporary files.
@@ -16274,7 +16282,7 @@ qexec_get_tuple_column_value (QFILE_TUPLE tpl, int index, DB_VALUE * valp, tp_do
 	  return ER_FAILED;
 	}
 
-      OR_BUF_INIT (buf, ptr, length);
+      or_init (&buf, ptr, length);
 
       if (pr_type->data_readval (&buf, valp, domain, -1, false, NULL, 0) != NO_ERROR)
 	{
@@ -20911,7 +20919,7 @@ qexec_analytic_sort_key_header_load (ANALYTIC_FUNCTION_STATE * func_state, bool 
     {
       length = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p);
       tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
-      OR_BUF_INIT (buf, tuple_p, length);
+      or_init (&buf, tuple_p, length);
 
       rc =
 	func_state->func_p->domain->type->data_readval (&buf, func_state->func_p->value, func_state->func_p->domain, -1,

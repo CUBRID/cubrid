@@ -184,7 +184,7 @@ namespace cubcomm
 
     // if the receiving thread terminated, there will not be any more responses
     // unblock all waiting client thread - they will receive errors
-    m_response_broker.terminate ();
+    m_response_broker.notify_terminate_and_wait ();
 
     // at this point, the page server async responder must be waited for to terminate
     // processing all async requests
@@ -245,7 +245,6 @@ namespace cubcomm
   {
     // Get a unique sequence number of response and group with the payload
     const response_sequence_number rsn = m_rsn_generator.get_unique_number ();
-    sequenced_payload seq_payload (rsn, std::move (a_request_payload));
 
     send_queue_error_handler error_handler_ftor = [&rsn, this] (
 		css_error_code error_code, bool &abort_further_processing)
@@ -254,8 +253,15 @@ namespace cubcomm
       this->m_response_broker.register_error (rsn, std::move (error_code));
     };
 
+    // a round-trip request is sent with the subsequent 'push' function call
+    // however, from the moment it is sent and until the response arrives, there must be
+    // a trace of a request in 'this';
+    // otherwise, the only, at runtime, indication is that a thread waits for a condition variable
+    // add an upfront entry in the broker such that all roundtrip requests are accounted for
+    m_response_broker.register_request (rsn);
+
     // Send the request
-    m_queue->push (a_outgoing_message_id, std::move (seq_payload), std::move (error_handler_ftor));
+    m_queue->push (a_outgoing_message_id, { rsn, std::move (a_request_payload) }, std::move (error_handler_ftor));
     // function is non-blocking, it will just push the message to be sent.
     // The following broker response getter is the blocking part.
 

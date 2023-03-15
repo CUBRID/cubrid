@@ -49,6 +49,7 @@ extern bool do_objects;
 extern bool ignore_err_flag;
 extern bool required_class_only;
 extern bool datafile_per_class;
+extern bool split_schema_files;
 extern LIST_MOPS *class_table;
 extern DB_OBJECT **req_class_table;
 extern int is_req_class (DB_OBJECT * class_);
@@ -59,6 +60,18 @@ extern int lo_count;
 #define PRINT_IDENTIFIER(s) "[", (s), "]"
 #define PRINT_IDENTIFIER_WITH_QUOTE(s) "\"", (s), "\""
 #define PRINT_FUNCTION_INDEX_NAME(s) "\"", (s), "\""
+
+#define PRINT_OWNER_NAME(owner, print, output_owner, output_len) \
+do \
+  { \
+  size_t total_len = strlen (owner) + 4; \
+  assert (strlen ((owner)) < STATIC_CAST (int, output_len)); \
+  if (print) \
+      snprintf (output_owner, total_len, "%s%s%s%s", PRINT_IDENTIFIER (owner), "."); \
+  else \
+    strcpy(output_owner, ""); \
+  } \
+while (0)
 
 /* 
  * name is user_specified_name.
@@ -75,12 +88,12 @@ extern int lo_count;
 	  } \
 	while (0)
 
-extern int extract_classes_to_file (extract_context & ctxt, const char *output_filename);
+extern int extract_classes_to_file (extract_context & ctxt);
 extern int extract_triggers (extract_context & ctxt, print_output & output_ctx);
 extern int extract_triggers_to_file (extract_context & ctxt, const char *output_filename);
 extern int extract_indexes_to_file (extract_context & ctxt, const char *output_filename);
-extern int extract_classes (extract_context & ctxt, print_output & schema_output_ctx);
-extern int extract_objects (const char *exec_name, const char *output_dirname, const char *output_prefix);
+
+extern int extract_objects (extract_context & ctxt, const char *output_dirname);
 
 extern int create_filename_schema (const char *output_dirname, const char *output_prefix,
 				   char *output_filename_p, const size_t filename_size);

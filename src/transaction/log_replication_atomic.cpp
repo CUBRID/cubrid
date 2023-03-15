@@ -265,17 +265,19 @@ namespace cublog
       }
     else
       {
+	const VPID log_vpid = log_rv_get_log_rec_vpid<T> (record_info.m_logrec);
 	if (m_atomic_helper.is_part_of_atomic_replication (rec_header.trid))
 	  {
-	    const VPID log_vpid = log_rv_get_log_rec_vpid<T> (record_info.m_logrec);
 	    // return code ignored because it refers to failure to fix heap page
 	    // this is expected in the context of passive transaction server
 	    m_atomic_helper.append_log (rec_header.trid, rec_lsa, rcvindex, log_vpid);
 	  }
 	else
 	  {
-	    log_rv_redo_record_sync_or_dispatch_async (&thread_entry, m_redo_context, record_info,
-		m_parallel_replication_redo, *m_reusable_jobs.get (), m_perf_stat_idle);
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+	    m_atomic_helper.check_vpid_not_part_of_any_sequence (log_vpid);
+#endif
+	    log_rv_redo_record_sync<T> (&thread_entry, m_redo_context, record_info, log_vpid);
 	  }
       }
   }

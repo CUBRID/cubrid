@@ -847,6 +847,7 @@ extern void perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buf
 extern void perfmon_get_current_times (time_t * cpu_usr_time, time_t * cpu_sys_time, time_t * elapsed_time);
 
 extern int perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats);
+extern int perfmon_calc_diff_stats_for_trace (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats);
 extern int perfmon_initialize (int num_trans);
 extern void perfmon_finalize (void);
 extern int perfmon_get_number_of_statistic_values (void);
