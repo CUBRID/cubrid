@@ -53,11 +53,10 @@ namespace cubmethod
   int
   callback_handler::callback_dispatch (packing_unpacker &unpacker)
   {
-    int64_t id;
-    int code;
-    unpacker.unpack_all (id, code);
-
     m_error_ctx.clear ();
+
+    int code;
+    unpacker.unpack_int (code);
 
     int error = NO_ERROR;
     switch (code)
@@ -126,10 +125,15 @@ namespace cubmethod
 	  }
 	else
 	  {
-	    if (handler->prepare (sql, flag) == NO_ERROR)
+	    int error = handler->prepare (sql, flag);
+	    if (error == NO_ERROR)
 	      {
 		// add to statement handler cache
 		m_sql_handler_map.emplace (sql, handler->get_id ());
+	      }
+	    else
+	      {
+		m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
 	      }
 	  }
       }
@@ -161,8 +165,8 @@ namespace cubmethod
     if (handler == nullptr)
       {
 	// TODO: proper error code
-	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
-	return ER_FAILED;
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+	assert (false); // the error should have been handled in prepare function
       }
     else
       {
@@ -180,14 +184,22 @@ namespace cubmethod
 	else
 	  {
 	    /* XASL cache is not found */
-	    m_error_ctx.clear ();
-	    handler->prepare_retry ();
-	    handler->execute (request);
-	  }
-      }
+	    if (error == ER_QPROC_INVALID_XASLNODE)
+	      {
+		m_error_ctx.clear ();
+		handler->prepare_retry ();
+		error = handler->execute (request);
+	      }
 
-    /* DDL audit */
-    logddl_write_end ();
+	    if (error != NO_ERROR)
+	      {
+		m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	      }
+	  }
+
+	/* DDL audit */
+	logddl_write_end ();
+      }
 
     if (m_error_ctx.has_error())
       {

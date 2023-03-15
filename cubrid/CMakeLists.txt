@@ -265,6 +265,7 @@ set(JSP_SOURCES
   )
 
 set(METHOD_SOURCES
+  ${METHOD_DIR}/method_connection_java.cpp
   ${METHOD_DIR}/method_connection_sr.cpp
   ${METHOD_DIR}/method_connection_pool.cpp
   ${METHOD_DIR}/method_compile.cpp
@@ -340,10 +341,11 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
   ${STORAGE_DIR}/btree_unique.cpp
+  ${STORAGE_DIR}/byte_order.c
   ${STORAGE_DIR}/catalog_class.c
   ${STORAGE_DIR}/compactdb_sr.c
-  ${STORAGE_DIR}/double_write_buffer.c
   ${STORAGE_DIR}/disk_manager.c
+  ${STORAGE_DIR}/double_write_buffer.c
   ${STORAGE_DIR}/es.c
   ${STORAGE_DIR}/es_common.c
   ${STORAGE_DIR}/es_posix.c
@@ -511,7 +513,7 @@ if(WIN32)
   set_target_properties(cubrid PROPERTIES OUTPUT_NAME libcubrid)
 endif(WIN32)
 
-target_compile_definitions(cubrid PRIVATE SERVER_MODE ${COMMON_DEFS})
+target_compile_definitions(cubrid PRIVATE SERVER_MODE CUBRID_EXPORTING ${COMMON_DEFS})
 if(NOT USE_CUBRID_ENV)
   target_compile_definitions(cubrid PRIVATE ${DIR_DEFS})
 endif(NOT USE_CUBRID_ENV)

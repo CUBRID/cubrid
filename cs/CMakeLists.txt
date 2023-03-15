@@ -327,13 +327,14 @@ set(TRANSACTION_HEADERS
   )
 
 set(STORAGE_SOURCES
-  ${STORAGE_DIR}/storage_common.c
+  ${STORAGE_DIR}/byte_order.c
+  ${STORAGE_DIR}/es.c
+  ${STORAGE_DIR}/es_common.c
+  ${STORAGE_DIR}/es_posix.c
+  ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/statistics_cl.c
-  ${STORAGE_DIR}/file_io.c
-  ${STORAGE_DIR}/es_common.c
-  ${STORAGE_DIR}/es.c
-  ${STORAGE_DIR}/es_posix.c
+  ${STORAGE_DIR}/storage_common.c
   ${STORAGE_DIR}/tde.c
   )
 
@@ -501,7 +502,7 @@ add_library(cubridcs SHARED
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
-target_compile_definitions(cubridcs PRIVATE CS_MODE ${COMMON_DEFS})
+target_compile_definitions(cubridcs PRIVATE CS_MODE CUBRID_EXPORTING ${COMMON_DEFS})
 if(NOT USE_CUBRID_ENV)
   target_compile_definitions(cubridcs PRIVATE ${DIR_DEFS})
 endif(NOT USE_CUBRID_ENV)

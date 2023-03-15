@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation.
+ *
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -28,25 +28,52 @@
  * OF SUCH DAMAGE.
  *
  */
+
 package com.cubrid.jsp;
 
-public enum ExecuteThreadStatus {
-    IDLE(0),
-    PARSE(1),
-    INVOKE(2),
-    CALL(3),
-    RESULT(4),
-    DESTROY(5),
-    ERROR(-1),
-    END(-2);
+import java.io.IOException;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.logging.FileHandler;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
-    private int status;
+public class LoggingThread extends Thread {
+    private final Logger logger = Logger.getLogger("com.cubrid.jsp");
 
-    ExecuteThreadStatus(int status) {
-        this.status = status;
+    private FileHandler logHandler = null;
+    private LinkedBlockingQueue<String> logQueue = new LinkedBlockingQueue<String>();
+    private Level logginLevel = Level.SEVERE;
+
+    public LoggingThread(String path) throws SecurityException, IOException {
+        super();
+        logHandler = new FileHandler(path, true);
+        logger.addHandler(logHandler);
     }
 
-    public int getValue() {
-        return this.status;
+    @Override
+    public void run() {
+        while (Thread.interrupted() == false) {
+            try {
+                String logString = logQueue.take();
+                logger.log(logginLevel, logString);
+            } catch (InterruptedException e) {
+                break;
+            }
+        }
+
+        if (logHandler != null) {
+            try {
+                logHandler.close();
+                logger.removeHandler(logHandler);
+            } catch (Throwable e) {
+            }
+        }
+    }
+
+    public void log(String str) {
+        try {
+            logQueue.put(str);
+        } catch (InterruptedException e) {
+        }
     }
 }

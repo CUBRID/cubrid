@@ -127,6 +127,11 @@ public class CUBRIDPacker {
         }
     }
 
+    public void packPrimitiveBytes(ByteBuffer b) {
+        ensureSpace(b.position());
+        buffer.put(b.array(), 0, b.position());
+    }
+
     // TODO: legacy implementation, this function will be modified
     public void packValue(Object result, int ret_type, String charset)
             throws UnsupportedEncodingException {
@@ -223,9 +228,9 @@ public class CUBRIDPacker {
         }
     }
 
-    private void align(int size) {
+    public void align(int size) {
         int currentPosition = buffer.position();
-        int newPosition = DataUtilities.alignedPosition(buffer, size);
+        int newPosition = DataUtilities.alignedPosition(currentPosition, size);
 
         ensureSpace(newPosition - currentPosition);
         if (newPosition - currentPosition > 0) {

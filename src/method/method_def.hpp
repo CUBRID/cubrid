@@ -30,6 +30,9 @@
 
 #define METHOD_MAX_RECURSION_DEPTH 15
 
+using METHOD_GROUP_ID = std::uint64_t;
+using METHOD_REQ_ID = int;
+
 typedef enum
 {
   METHOD_SUCCESS = 1,
@@ -132,7 +135,12 @@ struct method_sig_node
 
   void freemem ();
 
+  method_sig_node &operator= (const method_sig_node &rhs);
+
   method_sig_node ();
+  method_sig_node (method_sig_node &&); // move constructor
+  method_sig_node (const method_sig_node &obj); // copy constructor
+  ~method_sig_node ();
 };
 
 struct method_sig_list : public cubpacking::packable_object

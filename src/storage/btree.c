@@ -256,7 +256,7 @@
 	{ \
 	  size -= DB_ALIGN (DISK_VPID_SIZE, BTREE_MAX_ALIGN); \
 	} \
-      OR_BUF_INIT (buf, (btree_rec)->data, size); \
+      or_init (&buf, (btree_rec)->data, size); \
     } \
   while (false)
 
@@ -1914,38 +1914,6 @@ btree_get_node_level (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
   return header->node_level;
 }
 #endif
-
-/*
- * btree_clear_key_value () -
- *   return: cleared flag
- *   clear_flag (in/out):
- *   key_value (in/out):
- */
-bool
-btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value)
-{
-  if (*clear_flag == true || key_value->need_clear == true)
-    {
-      pr_clear_value (key_value);
-      *clear_flag = false;
-    }
-  // also set null
-  db_make_null (key_value);
-  return *clear_flag;
-}
-
-/*
- * btree_init_temp_key_value () -
- *   return: void
- *   clear_flag (in/out):
- *   key_value (in/out):
- */
-void
-btree_init_temp_key_value (bool * clear_flag, DB_VALUE * key_value)
-{
-  db_make_null (key_value);
-  *clear_flag = false;
-}
 
 /*
  * btree_create_overflow_key_file () - Create file for overflow keyes
@@ -7496,17 +7464,8 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT
   db_make_null (&INFO->max_key);
 
   if (node_type == BTREE_NON_LEAF_NODE)
-    {				/* a non-leaf page */
-      if (key_cnt < 0)
-	{
-	  btree_dump_page (thread_p, stdout, class_oid_p, btid, btname, pg_ptr, pg_vpid, 2, 2);
-
-	  snprintf (err_buf, LINE_MAX, "btree_verify_subtree: node key count underflow: %d\n", key_cnt);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
-	  valid = DISK_INVALID;
-	  goto error;
-	}
-
+    {
+      /* a non-leaf page */
       INFO2.key_area_len = 0;
       db_make_null (&INFO2.max_key);
 
@@ -15565,10 +15524,10 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
    *
    *  case 1: P_page == NULL, C_page == first_page       x do not fix 1 next page
    *  case 2: P_page == first_page, C_page == NULL       x can't fix 1 next page
-   *  case 3: P_page == first_page, C_page != first_pag  o fix 1 next
+   *  case 3: P_page == first_page, C_page != first_page  o fix 1 next
    *  case 4: P_page == NULL, C_page == NULL             o can't fix N next, unfix N-1 prev
    *  case 5: P_page == NULL, C_page != first_page       o fix N next, unfix N-1 prev
-   *  other case: imppossible (assert)
+   *  other case: impossible (assert)
    *
    *  in case of 3, 4, 5, unfix first_page
    */
@@ -21434,7 +21393,7 @@ btree_pack_object (char *ptr, BTID_INT * btid_int, BTREE_NODE_TYPE node_type, RE
 {
   OR_BUF buffer;
 
-  OR_BUF_INIT (buffer, record->data, record->area_size);
+  or_init (&buffer, record->data, record->area_size);
   buffer.ptr = ptr;
 
   if (btree_or_put_object (&buffer, btid_int, node_type, object_info) != NO_ERROR)
@@ -27529,7 +27488,7 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
 	  VPID vpid_key = VPID_INITIALIZER;
 	  int rc = NO_ERROR;
 
-	  OR_BUF_INIT (buf_vpid_key, record.data + record.length - DISK_VPID_ALIGNED_SIZE, DISK_VPID_ALIGNED_SIZE);
+	  or_init (&buf_vpid_key, record.data + record.length - DISK_VPID_ALIGNED_SIZE, DISK_VPID_ALIGNED_SIZE);
 	  vpid_key.pageid = or_get_int (&buf_vpid_key, &rc);
 	  vpid_key.volid = or_get_short (&buf_vpid_key, &rc);
 
