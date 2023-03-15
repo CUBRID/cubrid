@@ -73,7 +73,7 @@ tran_server::parse_server_host (const std::string &host)
   m_ps_hostname = host.substr (0, col_pos);
   er_log_debug (ARG_FILE_LINE, "Page server hosts: %s port: %d\n", m_ps_hostname.c_str (), port);
 
-  m_node_vec.emplace_back (new page_server_node ({ port, m_ps_hostname }));
+  m_connection_list.emplace_back (new page_server_node ({ port, m_ps_hostname }));
 
   return NO_ERROR;
 }
@@ -203,7 +203,7 @@ tran_server::init_page_server_hosts (const char *db_name)
     }
 
   int exit_code = parse_page_server_hosts_config (hosts);
-  if (m_node_vec.empty ())
+  if (m_connection_list.empty ())
     {
       // no valid hosts
       int exit_code = ER_HOST_PORT_PARAMETER;
@@ -221,9 +221,9 @@ tran_server::init_page_server_hosts (const char *db_name)
   //
   int valid_connection_count = 0;
   bool failed_conn = false;
-  for (const auto &node : m_node_vec)
+  for (const cubcomm::node &node : m_connection_list)
     {
-      exit_code = connect_to_page_server (*node.get(), db_name);
+      exit_code = connect_to_page_server (node, db_name);
       if (exit_code == NO_ERROR)
 	{
 	  ++valid_connection_count;
@@ -231,8 +231,7 @@ tran_server::init_page_server_hosts (const char *db_name)
       else
 	{
 	  failed_conn = true;
-	  er_log_debug (ARG_FILE_LINE, "Failed to connect to host: %s port: %d\n", node->get_conn_node().get_host ().c_str (),
-			node->get_conn_node().get_port ());
+	  er_log_debug (ARG_FILE_LINE, "Failed to connect to host: %s port: %d\n", node.get_host ().c_str (), node.get_port ());
 	}
     }
 
@@ -287,12 +286,11 @@ tran_server::get_boot_info_from_page_server ()
 }
 
 int
-tran_server::connect_to_page_server (const page_server_node &server_node, const char *db_name)
+tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_name)
 {
-  cubcomm::node conn_node = server_node.get_conn_node ();
-  auto ps_conn_error_lambda = [&conn_node] ()
+  auto ps_conn_error_lambda = [&node] ()
   {
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, conn_node.get_host ().c_str ());
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, node.get_host ().c_str ());
     return ER_NET_PAGESERVER_CONNECTION;
   };
 
@@ -304,7 +302,7 @@ tran_server::connect_to_page_server (const page_server_node &server_node, const 
 
   srv_chn.set_channel_name ("TS_PS_comm");
 
-  css_error_code comm_error_code = srv_chn.connect (conn_node.get_host ().c_str (), conn_node.get_port (),
+  css_error_code comm_error_code = srv_chn.connect (node.get_host ().c_str (), node.get_port (),
 				   CMD_SERVER_SERVER_CONNECT);
   if (comm_error_code != css_error_code::NO_ERRORS)
     {
@@ -448,12 +446,6 @@ log_lsa
 tran_server::page_server_node::get_saved_lsa () const
 {
   return m_saved_lsa.load ();
-}
-
-cubcomm::node
-tran_server::page_server_node::get_conn_node () const
-{
-  return m_conn_node;
 }
 
 void
