@@ -142,6 +142,11 @@ log_global::update_ps_consensus_flushed_lsa ()
   assert (is_active_transaction_server ());
 
   const log_lsa consensus_lsa = get_active_tran_server_ptr ()->compute_consensus_lsa ();
+  if (consensus_lsa == NULL_LSA)
+  {
+    return; // quorum unsatisfied; TODO logging
+  }
+
   {
     std::unique_lock<std::mutex> lock (m_ps_lsa_mutex);
 
