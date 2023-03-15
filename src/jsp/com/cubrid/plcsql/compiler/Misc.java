@@ -33,6 +33,7 @@ package com.cubrid.plcsql.compiler;
 import java.io.PrintStream;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.Token;
+import org.antlr.v4.runtime.tree.ParseTree;
 
 public class Misc {
 
@@ -61,8 +62,23 @@ public class Misc {
         return start.getLine();
     }
 
-    public static String getNormalizedText(ParserRuleContext ctx) {
-        return peelId(ctx.getText().toUpperCase());
+    public static String getNormalizedText(ParseTree ctx) {
+        assert ctx != null;
+        int children = ctx.getChildCount();
+
+        if (children <= 1) {
+            return peelId(ctx.getText().toUpperCase());
+        } else {
+            StringBuffer sbuf = new StringBuffer();
+            for (int i = 0; i < children; i++) {
+                if (i > 0) {
+                    sbuf.append(' ');
+                }
+                ParseTree child = ctx.getChild(i);
+                sbuf.append(getNormalizedText(child));
+            }
+            return sbuf.toString();
+        }
     }
 
     public static String getNormalizedText(String s) {

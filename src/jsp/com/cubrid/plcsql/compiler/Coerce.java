@@ -33,6 +33,7 @@ package com.cubrid.plcsql.compiler;
 import com.cubrid.plcsql.compiler.ast.TypeSpec;
 import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 import com.cubrid.plcsql.compiler.ast.TypeSpecVariadic;
+import com.cubrid.plcsql.compiler.ast.TypeSpecPercent;
 import java.util.List;
 
 public abstract class Coerce {
@@ -40,6 +41,16 @@ public abstract class Coerce {
     public abstract String toJavaCode(String exprJavaCode);
 
     public static Coerce getCoerce(TypeSpec from, TypeSpec to) {
+
+        if (from instanceof TypeSpecPercent) {
+            from = ((TypeSpecPercent) from).resolvedType;
+            assert from != null;
+        }
+        if (to instanceof TypeSpecPercent) {
+            to = ((TypeSpecPercent) to).resolvedType;
+            assert to != null;
+        }
+
         if (to.equals(TypeSpecSimple.OBJECT)
                 || from.equals(TypeSpecSimple.NULL)
                 || from.equals(to)) {

@@ -348,7 +348,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public TypeSpecSimple visitSimple_type(Simple_typeContext ctx) {
         String pcsType = Misc.getNormalizedText(ctx);
-        return TypeSpecSimple.of(getJavaType(pcsType));
+        String javaType = getJavaType(pcsType);
+        assert javaType != null : "no java type for PL/CSQL type " + pcsType;
+        return TypeSpecSimple.of(javaType);
     }
 
     @Override
@@ -478,16 +480,18 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitLike_exp(Like_expContext ctx) {
+
         Expr target = visitExpression(ctx.like_expression());
         ExprStr pattern = visitQuoted_string(ctx.pattern);
         ExprStr escape = ctx.escape == null ? null : visitQuoted_string(ctx.escape);
 
-        assert pattern != null; // by syntax
-
-        if (escape != null && escape.val.length() != 1) {
-            throw new SemanticError(
-                    Misc.getLineOf(ctx.escape), // s002
-                    "the escape does not consist of a single character");
+        if (escape != null) {
+            String escapeStr = StringEscapeUtils.unescapeJava(escape.val);
+            if (escapeStr.length() != 1) {
+                throw new SemanticError(
+                        Misc.getLineOf(ctx.escape), // s002
+                        "the escape does not consist of a single character");
+            }
         }
 
         Expr expr = new ExprLike(ctx, target, pattern, escape);
@@ -593,7 +597,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public Expr visitDate_exp(Date_expContext ctx) {
         String s = ctx.quoted_string().getText();
-        s = quotedStrToJavaStr(s);
+        s = unquoteStr(s);
         LocalDate date = DateTimeParser.DateLiteral.parse(s);
         if (date == null) {
             throw new SemanticError(
@@ -607,7 +611,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public Expr visitTime_exp(Time_expContext ctx) {
         String s = ctx.quoted_string().getText();
-        s = quotedStrToJavaStr(s);
+        s = unquoteStr(s);
         LocalTime time = DateTimeParser.TimeLiteral.parse(s);
         if (time == null) {
             throw new SemanticError(
@@ -627,7 +631,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public Expr visitDatetime_exp(Datetime_expContext ctx) {
         String s = ctx.quoted_string().getText();
-        s = quotedStrToJavaStr(s);
+        s = unquoteStr(s);
         LocalDateTime datetime = DateTimeParser.DatetimeLiteral.parse(s);
         if (datetime == null) {
             throw new SemanticError(
@@ -700,12 +704,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             assert false : "unreachable"; // by syntax
             throw new RuntimeException("unreachable");
         }
-    }
-
-    @Override
-    public ExprStr visitStr_exp(Str_expContext ctx) {
-        String val = ctx.quoted_string().getText();
-        return new ExprStr(ctx, quotedStrToJavaStr(val));
     }
 
     @Override
@@ -1806,6 +1804,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         NodeList<ExprId> intoVars = new NodeList<>();
         for (IdentifierContext v : ctx.identifier()) {
             ExprId id = visitNonFuncIdentifier(v);
+            if (id == null) {
+                throw new SemanticError(
+                        Misc.getLineOf(idCtx), // s060
+                        "undeclared id " + Misc.getNormalizedText(v));
+            }
             if (!isAssignableTo(id)) {
                 throw new SemanticError(
                         Misc.getLineOf(v), // s039
@@ -2132,6 +2135,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         pcsToJavaTypeMap.put("MULTISET", "org.apache.commons.collections4.MultiSet");
         pcsToJavaTypeMap.put("LIST", "java.util.List");
         pcsToJavaTypeMap.put("SEQUENCE", "java.util.List");
+
         pcsToJavaTypeMap.put("SYS_REFCURSOR", "com.cubrid.plcsql.predefined.sp.SpLib.Query");
     }
 
@@ -2139,10 +2143,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return (id.decl instanceof DeclVar || id.decl instanceof DeclParamOut);
     }
 
-    private static String quotedStrToJavaStr(String val) {
+    private static String unquoteStr(String val) {
         val = val.substring(1, val.length() - 1); // strip enclosing '
-        val = val.replace("''", "'");
-        return StringEscapeUtils.escapeJava(val);
+        return val.replace("''", "'");
+    }
+
+    private static String quotedStrToJavaStr(String val) {
+        return StringEscapeUtils.escapeJava(unquoteStr(val));
     }
 
     // --------------------------------------------------------
@@ -2247,7 +2254,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     private ExprZonedDateTime parseZonedDateTime(
             ParserRuleContext ctx, String s, boolean forDatetime, String originType) {
 
-        s = quotedStrToJavaStr(s);
+        s = unquoteStr(s);
         ZonedDateTime timestamp = DateTimeParser.ZonedDateTimeLiteral.parse(s, forDatetime);
         if (timestamp == null) {
             throw new SemanticError(
