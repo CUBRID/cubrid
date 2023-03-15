@@ -59,6 +59,7 @@ class active_tran_server : public tran_server
 
       private:
 	cublog::prior_sender::sink_hook_t m_prior_sender_sink_hook_func;
+	log_lsa m_saved_lsa;
     };
 
   private:
