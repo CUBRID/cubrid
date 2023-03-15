@@ -70,9 +70,7 @@
 #include "ddl_log.h"
 #include "network_histogram.hpp"
 #include "host_lookup.h"
-#include "object_accessor.h"
 #include "network_interface_cl.h"
-#include "dbtype_def.h"
 #include "boot_cl.h"
 
 #if defined(WINDOWS)
