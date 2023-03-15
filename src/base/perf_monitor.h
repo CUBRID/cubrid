@@ -137,10 +137,10 @@ typedef enum
 
 /* PAGE_TYPE x (PAGE_COUNT + COMPR_RATIO_x_100) */
 #define PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE \
-  (PERF_PAGE_CNT * PERF_SERVED_COMPR_CNT)
+  (PERF_PAGE_CNT * PERF_SERVED_COMPR_PAGE_TYPE_CNT)
 
 #define PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_OFFSET(page_type, count_or_compress_ratio_index) \
-  ((page_type) * 2) + (count_or_compress_ratio_index)
+  ((page_type) * PERF_SERVED_COMPR_PAGE_TYPE_CNT) + (count_or_compress_ratio_index)
 
 #define SAFE_DIV(a, b) ((b) == 0 ? 0 : (a) / (b))
 
@@ -281,7 +281,7 @@ typedef enum
   PERF_SERVED_COMPR_COUNT = 0,	/* per page type, this many pages have been compressed and served by page server */
   PERF_SERVED_COMPR_RATIO,	/* per page type, the average ratio of pages compressed and served by page server */
 
-  PERF_SERVED_COMPR_CNT
+  PERF_SERVED_COMPR_PAGE_TYPE_CNT
 } PERF_SERVED_COMPR_PAGE_TYPE;
 
 typedef enum

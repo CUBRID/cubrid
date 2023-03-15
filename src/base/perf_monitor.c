@@ -186,6 +186,10 @@ static void perfmon_stat_dump_in_buffer_thread_daemon_stats (const UINT64 * stat
 static void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
 static void perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
 
+static void perfmon_stat_dump_in_buffer_served_compr_page_type_impl (char *&buf_ptr, int &buf_len,
+								     const int page_type, const UINT64 page_count,
+								     const UINT64 accumulated_ratio);
+
 static void perfmon_dbg_check_metadata_definition ();
 
 STATIC_INLINE size_t thread_stats_count (void) __attribute__ ((ALWAYS_INLINE));
@@ -4392,10 +4396,10 @@ f_load_served_compr_page_type_counters (void)
   return PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE;
 }
 
-void
-f_dump_in_buffer_served_compr_page_type_impl (char *&buf_ptr, int &buf_len,
-					      const int page_type,
-					      const UINT64 page_count, const UINT64 accumulated_ratio)
+static void
+perfmon_stat_dump_in_buffer_served_compr_page_type_impl (char *&buf_ptr, int &buf_len,
+							 const int page_type, const UINT64 page_count,
+							 const UINT64 accumulated_ratio)
 {
   int written = 0;
 
@@ -4441,7 +4445,7 @@ f_dump_in_file_served_compr_page_type_counters (FILE * f_ptr, const UINT64 * sta
 	assert (offset < PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE);
 	assert ((offset + PERF_SERVED_COMPR_RATIO) < PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE);	// offset for accumulated ratio
 
-	const UINT64 counter = stats_ptr[offset];
+	const UINT64 counter = stats_ptr[offset + PERF_SERVED_COMPR_COUNT];
 	const UINT64 accumulated_ratio = stats_ptr[offset + PERF_SERVED_COMPR_RATIO];
 	if (counter == 0 && accumulated_ratio == 0)
 	  {
@@ -4450,7 +4454,8 @@ f_dump_in_file_served_compr_page_type_counters (FILE * f_ptr, const UINT64 * sta
 
 	char *buf_ptr = buf;
 	int buf_len = BUF_LEN_MAX;
-	f_dump_in_buffer_served_compr_page_type_impl (buf_ptr, buf_len, page_type, counter, accumulated_ratio);
+	perfmon_stat_dump_in_buffer_served_compr_page_type_impl (buf_ptr, buf_len, page_type, counter,
+								 accumulated_ratio);
 
 	fprintf (f_ptr, "%s", buf);
       }
@@ -4476,14 +4481,15 @@ f_dump_in_buffer_served_compr_page_type_counters (char **s, const UINT64 * stats
 	  assert (offset < PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE);
 	  assert ((offset + PERF_SERVED_COMPR_RATIO) < PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE);	// offset for accumulated ratio
 
-	  const UINT64 counter = stats_ptr[offset];
+	  const UINT64 counter = stats_ptr[offset + PERF_SERVED_COMPR_COUNT];
 	  const UINT64 accumulated_ratio = stats_ptr[offset + PERF_SERVED_COMPR_RATIO];
 	  if (counter == 0 && accumulated_ratio == 0)
 	    {
 	      continue;
 	    }
 
-	  f_dump_in_buffer_served_compr_page_type_impl (*s, *remaining_size, page_type, counter, accumulated_ratio);
+	  perfmon_stat_dump_in_buffer_served_compr_page_type_impl (*s, *remaining_size, page_type, counter,
+								   accumulated_ratio);
 	}
     }
 }
