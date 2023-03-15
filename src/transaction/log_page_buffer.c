@@ -4508,8 +4508,8 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, const LOG_LSA * flush_lsa)
 	  
           if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
 	    {
-              log_lsa consensus_lsa = log_Gl.get_ps_consensus_flushed_lsa ();
-	      _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Page server consensus committed LSA = %lld|%d.\n", LSA_AS_ARGS (&consensus_lsa));
+              std::lock_guard<std::mutex> lock_guard (log_Gl.m_ps_lsa_mutex);
+	      _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Page server consensus committed LSA = %lld|%d.\n", LSA_AS_ARGS (&log_Gl.m_ps_consensus_flushed_lsa));
 	    }
 	}
       // *INDENT-ON*

@@ -32,6 +32,8 @@
 #include "mvcc_table.hpp"
 #include "porting.h"
 #include "storage_common.h"
+#include "server_type.hpp"
+#include "active_tran_server.hpp"
 
 #include <limits.h>
 #include <stddef.h>
@@ -102,23 +104,7 @@ log_global::~log_global ()
   delete writer_info;
 }
 
-void
-log_global::update_ps_consensus_flushed_lsa (const LOG_LSA &lsa)
-{
-  {
-    std::unique_lock<std::mutex> lock (m_ps_lsa_mutex);
-    m_ps_consensus_flushed_lsa = lsa;
-  } // lock.unlock ();
-  m_ps_lsa_cv.notify_all ();
-}
-
-log_lsa
-log_global::get_ps_consensus_flushed_lsa ()
-{
-  std::unique_lock<std::mutex> lock (m_ps_lsa_mutex);
-  return m_ps_consensus_flushed_lsa;
-}
-
+#if defined (SERVER_MODE)
 void
 log_global::wait_flushed_lsa (const log_lsa &flush_lsa)
 {
@@ -131,7 +117,6 @@ log_global::wait_flushed_lsa (const log_lsa &flush_lsa)
   m_ps_lsa_cv.wait (lock, [flush_lsa, this] { return m_ps_consensus_flushed_lsa >= flush_lsa; });
 }
 
-#if defined (SERVER_MODE)
 void
 log_global::initialize_log_prior_receiver ()
 {
@@ -149,6 +134,25 @@ log_global::get_log_prior_receiver ()
 {
   assert (m_prior_recver != nullptr);
   return *m_prior_recver;
+}
+
+void
+log_global::update_ps_consensus_flushed_lsa ()
+{
+  assert (is_active_transaction_server ());
+
+  const log_lsa consensus_lsa = get_active_tran_server_ptr ()->compute_consensus_lsa ();
+  {
+    std::unique_lock<std::mutex> lock (m_ps_lsa_mutex);
+
+    assert (m_ps_consensus_flushed_lsa <= consensus_lsa);
+    if (m_ps_consensus_flushed_lsa < consensus_lsa)
+      {
+        m_ps_consensus_flushed_lsa = consensus_lsa;
+      }
+  }
+
+  m_ps_lsa_cv.notify_all ();
 }
 #endif // SERVER_MODE
 // *INDENT-ON*

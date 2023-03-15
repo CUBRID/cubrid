@@ -86,7 +86,24 @@ active_tran_server::compute_consensus_lsa () const
    */
   std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end ());
 
-  return collected_saved_lsa[total_node_cnt - quorum];
+  const auto consensus_lsa = collected_saved_lsa[total_node_cnt - quorum];
+
+  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
+    {
+      std::stringstream ss;
+
+      ss << "compute_consensus_lsa - Node count = " << total_node_cnt << ", Quorum = " << quorum << ", Consensus LSA = ";
+      ss << consensus_lsa.pageid << "|" << consensus_lsa.offset << std::endl;
+      ss << "Collected saved lsa list = [ ";
+      for (const auto &lsa : collected_saved_lsa)
+	{
+	  ss << lsa.pageid << "|" << lsa.offset << " ";
+	}
+      ss << "]" << std::endl;
+      _er_log_debug (ARG_FILE_LINE, ss.str ().c_str ());
+    }
+
+  return consensus_lsa;
 }
 
 bool
