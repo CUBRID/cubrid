@@ -251,6 +251,13 @@ namespace cublog
 #endif
   }
 
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+  void atomic_replication_helper::check_vpid_not_part_of_any_sequence (VPID vpid)
+  {
+    m_vpid_bk.check_vpid_not_part_of_any_sequence (vpid);
+  }
+#endif
+
   void
   atomic_replication_helper::dump (const char *message) const
   {
@@ -321,6 +328,15 @@ namespace cublog
   void atomic_replication_helper::vpid_bookeeping::check_absent_for_transaction (TRANID trid) const
   {
     assert (m_usage_map.find (trid) == m_usage_map.cend ());
+  }
+
+  void atomic_replication_helper::vpid_bookeeping::check_vpid_not_part_of_any_sequence (VPID vpid) const
+  {
+    for (const std::pair<TRANID, vpid_map_type> &tran_pair : m_usage_map)
+      {
+	const vpid_map_type &tran_vpids = tran_pair.second;
+	assert_release (tran_vpids.find (vpid) == tran_vpids.cend ());
+      }
   }
 #endif
 

@@ -165,7 +165,6 @@ namespace cubcomm
     // as per the specification of the 'poll' system function, the error handling in this class
     // relies on the connection channel's timeout to be positive
     assert (m_client.get_channel ().get_max_timeout_in_ms () >= 0);
-    //m_client.get_channel ().get_max_timeout_in_ms ();
   }
 
   template <typename ReqClient, typename ReqPayload>
@@ -189,8 +188,6 @@ namespace cubcomm
   void
   request_sync_send_queue<ReqClient, ReqPayload>::send_queue (queue_type &q)
   {
-    // send all requests in q
-
     while (!q.empty () && !m_abort_further_processing)
       {
 	typename queue_type::const_reference queue_front = q.front ();
@@ -215,11 +212,13 @@ namespace cubcomm
 	    if (static_cast<bool> (queue_front.m_error_handler))
 	      {
 		// if present, invoke custom/specific handler first
+		// error handler can instruct that further processing is to be stopped (Inversion of Control)
 		queue_front.m_error_handler (err_code, m_abort_further_processing);
 	      }
 	    else if (static_cast<bool> (m_error_handler))
 	      {
 		// if present, invoke generic (fail-back) handler
+		// error handler can instruct that further processing is to be stopped (Inversion of Control)
 		m_error_handler (err_code, m_abort_further_processing);
 	      }
 	    else
@@ -233,7 +232,7 @@ namespace cubcomm
 
     if (m_abort_further_processing)
       {
-	// discard all remaining items as there is nothing else can be done
+	// discard all remaining items as there is nothing else that can be done
 	while (!q.empty ())
 	  {
 	    q.pop ();
@@ -315,6 +314,8 @@ namespace cubcomm
 	// Check shutdown flag every 10 milliseconds
 	m_req_queue.wait_not_empty_and_send_all (requests, ten_millis);
       }
+
+    // TODO: what if there are still pending requests at this point?
   }
 
   template <typename ReqQueue>
