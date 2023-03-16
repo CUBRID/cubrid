@@ -66,6 +66,7 @@ public class MessageBuffer {
         clearBuilder();
         lines.clear();
         size = 0;
+        status = STATUS_FAILURE;
     }
 
     public void putLine(String str) {
@@ -93,30 +94,34 @@ public class MessageBuffer {
 
     public String getLine() {
         String res = null;
-        if (lines.size() == 0) {
-            if (builder != null && builder.length() > 0) {
-                res = builder.toString();
-                status = STATUS_SUCCESS;
+        if (isEnabled) {
+            if (lines.size() == 0) {
+                if (builder != null && builder.length() > 0) {
+                    res = builder.toString();
+                    status = STATUS_SUCCESS;
+                } else {
+                    status = STATUS_FAILURE;
+                }
             } else {
-                status = STATUS_FAILURE;
+                res = lines.pollFirst();
+                status = STATUS_SUCCESS;
             }
-        } else {
-            res = lines.pollFirst();
-            status = STATUS_SUCCESS;
         }
         return res;
     }
 
     public String[] getLines(int num) {
-        if (lines.size() < num) {
-            num = lines.size();
-        }
-
         String[] outputs = null;
-        if (num > 0) {
-            outputs = new String[num];
-            for (int i = 0; i < num; i++) {
-                outputs[i] = lines.pollFirst();
+        if (isEnabled) {
+            if (lines.size() < num) {
+                num = lines.size();
+            }
+
+            if (num > 0) {
+                outputs = new String[num];
+                for (int i = 0; i < num; i++) {
+                    outputs[i] = lines.pollFirst();
+                }
             }
         }
         return outputs;
