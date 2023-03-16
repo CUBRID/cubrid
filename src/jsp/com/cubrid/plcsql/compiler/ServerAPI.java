@@ -162,6 +162,9 @@ public class ServerAPI {
                     intoVars = new ArrayList<>();
                     intoVars.add("C");
                     intoVars.add("M");
+                    if (sql.indexOf("C , M , E") >= 0) {
+                        intoVars.add("E");  // to cause error s402
+                    }
                 }
 
                 ret.add(
@@ -196,6 +199,7 @@ public class ServerAPI {
 
     private static final int[] MOCK_OUT_POS = new int[] {0, 1, 1};
     private static final String[] MOCK_PARAM_TYPES = new String[] {"INTEGER", "VARCHAR", "FLOAT"};
+    private static final String[] ERR_PARAM_TYPES = new String[] {"INTEGER", "BLOB", "CLOB"};
 
     private static List<Question> getMockGlobalSemantics(List<Question> questions) {
 
@@ -206,22 +210,28 @@ public class ServerAPI {
                 ProcedureSignature ps = (ProcedureSignature) q;
                 if (ps.name.equals("MY_PROC")) {
                     ps.setAnswer(MOCK_OUT_POS, MOCK_PARAM_TYPES);
+                } else if (ps.name.equals("ERR_PROC")) {
+                    ps.setAnswer(MOCK_OUT_POS, ERR_PARAM_TYPES);    // to cause error s412
                 } else {
-                    ps.setError(300, "no such procedure: " + ps.name);
+                    ps.setError(300, "no such procedure " + ps.name);
                 }
             } else if (q instanceof FunctionSignature) {
                 FunctionSignature fs = (FunctionSignature) q;
                 if (fs.name.equals("MY_FUNC")) {
                     fs.setAnswer(MOCK_OUT_POS, MOCK_PARAM_TYPES, "VARCHAR");
+                } else if (fs.name.equals("ERR_FUNC")) {
+                    fs.setAnswer(MOCK_OUT_POS, ERR_PARAM_TYPES, "VARCHAR");     // to cause error s415
+                } else if (fs.name.equals("ERR_FUNC_2")) {
+                    fs.setAnswer(MOCK_OUT_POS, MOCK_PARAM_TYPES, "BLOB");       // to cause error s418
                 } else {
-                    fs.setError(301, "no such function: " + fs.name);
+                    fs.setError(301, "no such function " + fs.name);
                 }
             } else if (q instanceof SerialOrNot) {
                 SerialOrNot sn = (SerialOrNot) q;
                 if (sn.name.equals("MY_SERIAL")) {
                     // OK
                 } else {
-                    sn.setError(302, "no such serial: " + sn.name);
+                    sn.setError(302, "no such serial " + sn.name);
                 }
 
             } else if (q instanceof ColumnType) {
@@ -229,8 +239,10 @@ public class ServerAPI {
                 String s = ct.table + "." + ct.column;
                 if (s.equals("MY_TABLE.MY_COLUMN")) {
                     ct.setAnswer("VARCHAR");
+                } else if (s.equals("ERR_TABLE.ERR_COLUMN")) {
+                    ct.setAnswer("BLOB");   // to cause error s410
                 } else {
-                    ct.setError(303, "no such table column: " + s);
+                    ct.setError(303, "no such table column " + s);
                 }
             } else {
                 assert false : "unreachable";
