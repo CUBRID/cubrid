@@ -66,7 +66,10 @@ namespace cubmethod
     SESSION_ID s_id = thread_ref.conn_entry->session_id;
     header header (s_id, SP_CODE_COMPILE, ctx.get_and_increment_request_id ());
     SOCKET socket = conn->get_socket ();
+<<<<<<< HEAD
 
+=======
+>>>>>>> 24204274e (draft implemetnation of DBMS_OUTPUT builtin module)
     {
       error = mcon_send_data_to_java (socket, header, verbose, program);
       if (error != NO_ERROR)
