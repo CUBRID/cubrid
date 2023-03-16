@@ -144,7 +144,7 @@ log_global::update_ps_consensus_flushed_lsa ()
   const log_lsa consensus_lsa = get_active_tran_server_ptr ()->compute_consensus_lsa ();
   if (consensus_lsa == NULL_LSA)
   {
-    return; // quorum unsatisfied; TODO logging
+    return; // The number of connected node are less than the quorum
   }
 
   {
