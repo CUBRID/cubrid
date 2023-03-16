@@ -20,6 +20,7 @@
 
 #include "jsp_comm.h"
 #include "method_connection_sr.hpp"
+#include "method_connection_java.hpp"
 #include "byte_order.h"
 #include "connection_support.h"
 
@@ -28,7 +29,7 @@ namespace cubmethod
   int invoke_compile (runtime_context &ctx, const std::string program, const bool &verbose, cubmem::extensible_block &blk)
   {
     connection *conn = ctx.get_connection_pool().claim();
-    header header (SP_CODE_COMPILE, 0);
+    header header (DB_EMPTY_SESSION, SP_CODE_COMPILE, 0);
 
     SOCKET socket = conn->get_socket ();
     int error = mcon_send_data_to_java (socket, header, verbose, program);
