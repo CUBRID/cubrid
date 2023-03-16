@@ -912,8 +912,7 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              sovrascrivere class file, se esiste, niente predefinito\n\
-  -p, --package                nome pacchetto java, vuoto se non specificato\n\
+  -y, --overwrite              sovrascrivere class file, se esiste, niente predefinito\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Impossibile aprire il file di output '%1$s'\n
