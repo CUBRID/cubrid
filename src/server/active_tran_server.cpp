@@ -63,9 +63,9 @@ active_tran_server::get_oldest_active_mvccid_from_page_server () const
 log_lsa
 active_tran_server::compute_consensus_lsa () const
 {
-  const auto total_node_cnt = m_connection_list.size ();
-  const auto quorum = total_node_cnt / 2 + 1; // For now, it's fixed to the number of the majority.
-  size_t cur_node_cnt;
+  const int total_node_cnt = m_connection_list.size ();
+  const int quorum = total_node_cnt / 2 + 1; // For now, it's fixed to the number of the majority.
+  int cur_node_cnt;
   std::vector<log_lsa> collected_saved_lsa;
 
   // TODO The next block has to be exclusive with connection and disconnection
@@ -98,18 +98,20 @@ active_tran_server::compute_consensus_lsa () const
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
     {
-      std::stringstream ss;
-
-      ss << "compute_consensus_lsa - total node count = " << total_node_cnt << ", current node count = " << cur_node_cnt <<
-	 ", quorum = " << quorum << ", consensus LSA = ";
-      ss << consensus_lsa.pageid << "|" << consensus_lsa.offset << std::endl;
-      ss << "Collected saved lsa list = [ ";
+      constexpr int BUF_SIZE = 1024;
+      char msg_buf[BUF_SIZE];
+      int n = 0;
+      n = snprintf (msg_buf, BUF_SIZE,
+		    "compute_consensus_lsa - total node count = %d, current node count = %d, quorum = %d, consensus LSA = %lld|%d\n",
+		    total_node_cnt, cur_node_cnt, quorum, LSA_AS_ARGS (&consensus_lsa));
+      n += snprintf (msg_buf + n, BUF_SIZE - n, "Collected saved lsa list = [ ");
       for (const auto &lsa : collected_saved_lsa)
 	{
-	  ss << lsa.pageid << "|" << lsa.offset << " ";
+	  n += snprintf (msg_buf + n, BUF_SIZE - n, "%lld|%d ", LSA_AS_ARGS (&lsa));
 	}
-      ss << "]" << std::endl;
-      _er_log_debug (ARG_FILE_LINE, ss.str ().c_str ());
+      snprintf (msg_buf + n, BUF_SIZE - n, "]\n");
+      assert (n < BUF_SIZE);
+      _er_log_debug (ARG_FILE_LINE, msg_buf);
     }
 
   return consensus_lsa;
