@@ -131,7 +131,7 @@ copy_file (const fs::path &java_dir_path)
 	    }
 	}
 
-      // remove a previous file (to update modified time of the JAVA directory: CBRD-24695)
+      // remove the previous file (to update modified time of the JAVA directory: CBRD-24695)
       if (is_exists && fs::is_directory (class_file_path) == false)
 	{
 	  fs::remove (class_file_path);
