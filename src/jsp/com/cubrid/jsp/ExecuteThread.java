@@ -55,6 +55,7 @@ import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.util.List;
 
@@ -163,7 +164,7 @@ public class ExecuteThread extends Thread {
 
                     case REQ_CODE_COMPILE:
                         {
-                            id = unpacker.unpackBigint();
+                            unpacker.setBuffer(ctx.getInboundQueue().take());
                             boolean verbose = unpacker.unpackBool();
                             String inSource = unpacker.unpackCString();
 

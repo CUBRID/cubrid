@@ -20,43 +20,36 @@
 
 #include "jsp_comm.h"
 #include "method_connection_sr.hpp"
+#include "method_connection_java.hpp"
 #include "byte_order.h"
 #include "connection_support.h"
 
 namespace cubmethod
 {
-  int invoke_compile (runtime_context &ctx, const std::string program, const bool &verbose, cubmem::extensible_block &blk)
+  int invoke_compile (runtime_context &ctx, const std::string &program, const bool &verbose,
+		      cubmem::extensible_block &blk)
   {
+    int error = NO_ERROR;
     connection *conn = ctx.get_connection_pool().claim();
-    header header (SP_CODE_COMPILE, 0);
+    header header (DB_EMPTY_SESSION, SP_CODE_COMPILE, 0);
 
     SOCKET socket = conn->get_socket ();
-    int error = mcon_send_data_to_java (socket, header, verbose, program);
+    {
+      error = mcon_send_data_to_java (socket, header, verbose, program);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
 
-    int nbytes = -1;
+      error = cubmethod::mcon_read_data_from_java (socket, blk);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
 
-    int res_size = 0;
-    nbytes = jsp_readn (socket, (char *) &res_size, OR_INT_SIZE);
-    if (nbytes != OR_INT_SIZE)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
-		nbytes);
-	return ER_SP_NETWORK_ERROR;
-      }
-    res_size = ntohl (res_size);
-
-    blk.extend_to (res_size);
-
-    nbytes = jsp_readn (socket, blk.get_ptr (), res_size);
-    if (nbytes != res_size)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
-		nbytes);
-	return ER_SP_NETWORK_ERROR;
-      }
-
+exit:
     ctx.get_connection_pool().retire (conn, true);
-
     return error;
   }
 };

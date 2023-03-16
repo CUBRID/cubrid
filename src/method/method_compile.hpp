@@ -32,7 +32,7 @@
 
 namespace cubmethod
 {
-  int invoke_compile (runtime_context &ctx, const std::string program, const bool &verbose,
+  int invoke_compile (runtime_context &ctx, const std::string &program, const bool &verbose,
 		      cubmem::extensible_block &blk);
 }
 
