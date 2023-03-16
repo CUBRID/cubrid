@@ -164,7 +164,6 @@ public class ExecuteThread extends Thread {
 
                     case REQ_CODE_COMPILE:
                         {
-                            id = unpacker.unpackBigint();
                             boolean verbose = unpacker.unpackBool();
                             String inSource = unpacker.unpackCString();
 
