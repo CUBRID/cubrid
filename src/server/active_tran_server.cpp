@@ -88,9 +88,11 @@ active_tran_server::compute_consensus_lsa () const
   }
   /*
    * Gather all PS'es saved_lsa and sort it in ascending order.
-   * The <total_node_count - quorum>'th element is the consensus LSA, upon which the majority (quorumn) of PS agrees.
-   * [5, 5, 6, 9, 10] -> "6" is the consensus LSA.
-   * [9, 10] -> "9"
+   * The <cur_node_count - quorum>'th element is the consensus LSA, upon which the majority (quorumn) of PS agrees.
+   * total: 5, cur: 5 - [5, 5, 6, 9, 10] -> "6" is the consensus LSA.
+   * total: 2, cur: 2 - [9, 10] -> "9"
+   * total: 5, cur: 4 - [5, 6, 9, 10] -> "6"
+   * total: 3, cur: 2 - [9, 10] -> "9"
    */
   std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end ());
 
