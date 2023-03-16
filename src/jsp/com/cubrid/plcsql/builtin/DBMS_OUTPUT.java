@@ -66,8 +66,11 @@ public class DBMS_OUTPUT {
         String[] strs = c.getMessageBuffer().getLines(cnt[0]);
 
         StringBuilder builder = new StringBuilder();
-        for (String s : strs) {
-            builder.append(s);
+
+        if (strs != null) {
+            for (String s : strs) {
+                builder.append(s);
+            }
         }
 
         cnt[0] = strs.length;
