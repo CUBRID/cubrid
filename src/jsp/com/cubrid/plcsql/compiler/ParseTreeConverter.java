@@ -293,12 +293,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         if (ctx.table_name() == null) {
             // case variable%TYPE
-            ExprId id = visitNonFuncIdentifier(ctx.identifier());
-            if (id == null) {
-                throw new SemanticError(
-                        Misc.getLineOf(ctx), // s000
-                        "undeclared id " + Misc.getNormalizedText(ctx.identifier()));
-            }
+            ExprId id = visitNonFuncIdentifier(ctx.identifier());   // s000: undeclared id
             if (!(id.decl instanceof DeclIdTyped)) {
                 throw new SemanticError(
                         Misc.getLineOf(ctx), // s001
@@ -732,31 +727,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         String fieldName = Misc.getNormalizedText(ctx.field);
 
-        ExprId record = visitNonFuncIdentifier(ctx.record);
-        if (record == null) {
-            // NOTE: decl can be null if ctx.record is a serial
-            if (fieldName.equals("CURRENT_VALUE") || fieldName.equals("NEXT_VALUE")) {
-
-                connectionRequired = true;
-                addToImports("java.sql.*");
-
-                String recordText = Misc.getNormalizedText(ctx.record);
-                // do not push a symbol table: no nested structure
-                Expr ret =
-                        new ExprSerialVal(
-                                ctx,
-                                recordText,
-                                fieldName.equals("CURRENT_VALUE")
-                                        ? ExprSerialVal.SerialVal.CURR_VAL
-                                        : ExprSerialVal.SerialVal.NEXT_VAL);
-                semanticQuestions.put(ret, new ServerAPI.SerialOrNot(recordText));
-                return ret;
-            } else {
-                throw new SemanticError(
-                        Misc.getLineOf(ctx.record), // s007
-                        "undeclared id " + Misc.getNormalizedText(ctx.record));
-            }
-        } else {
+        try {
+            ExprId record = visitNonFuncIdentifier(ctx.record);
             if (!(record.decl instanceof DeclForRecord)) {
                 throw new SemanticError(
                         Misc.getLineOf(ctx.record), // s008
@@ -765,6 +737,34 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
             Scope scope = symbolStack.getCurrentScope();
             return new ExprField(ctx, record, fieldName);
+
+        } catch (SemanticError e) {
+
+            String msg = e.getMessage();
+            if (msg.startsWith("undeclared id")) {
+
+                if (fieldName.equals("CURRENT_VALUE") || fieldName.equals("NEXT_VALUE")) {
+
+                    connectionRequired = true;
+                    addToImports("java.sql.*");
+
+                    String recordText = Misc.getNormalizedText(ctx.record);
+                    // do not push a symbol table: no nested structure
+                    Expr ret =
+                            new ExprSerialVal(
+                                    ctx,
+                                    recordText,
+                                    fieldName.equals("CURRENT_VALUE")
+                                            ? ExprSerialVal.SerialVal.CURR_VAL
+                                            : ExprSerialVal.SerialVal.NEXT_VAL);
+                    semanticQuestions.put(ret, new ServerAPI.SerialOrNot(recordText));
+                    return ret;
+                } else {
+                    throw e;    // s007: undeclared id ...
+                }
+            } else {
+                throw e;
+            }
         }
     }
 
@@ -868,12 +868,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitCursor_attr_exp(Cursor_attr_expContext ctx) {
 
-        ExprId cursor = visitNonFuncIdentifier(ctx.cursor_exp().identifier());
-        if (cursor == null) {
-            throw new SemanticError(
-                    Misc.getLineOf(ctx), // s011
-                    "undeclared id " + Misc.getNormalizedText(ctx.cursor_exp().identifier()));
-        }
+        ExprId cursor = visitNonFuncIdentifier(ctx.cursor_exp().identifier());  // s011: undeclared id ...
         if (!isCursorOrRefcursor(cursor)) {
             throw new SemanticError(
                     Misc.getLineOf(ctx), // s012
@@ -1147,12 +1142,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public StmtAssign visitAssignment_statement(Assignment_statementContext ctx) {
 
-        ExprId var = visitNonFuncIdentifier(ctx.identifier());
-        if (var == null) {
-            throw new SemanticError(
-                    Misc.getLineOf(ctx.identifier()), // s018
-                    "undeclared id " + Misc.getNormalizedText(ctx.identifier()));
-        }
+        ExprId var = visitNonFuncIdentifier(ctx.identifier());  // s018: undeclared id ...
         if (!isAssignableTo(var)) {
             throw new SemanticError(
                     Misc.getLineOf(ctx.identifier()), // s019
@@ -1401,12 +1391,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.pushSymbolTable("for_cursor_loop", null);
 
         IdentifierContext idCtx = ctx.for_cursor().cursor_exp().identifier();
-        ExprId cursor = visitNonFuncIdentifier(idCtx);
-        if (cursor == null) {
-            throw new SemanticError(
-                    Misc.getLineOf(idCtx), // s024
-                    "undeclared id " + Misc.getNormalizedText(idCtx));
-        }
+        ExprId cursor = visitNonFuncIdentifier(idCtx);  // s024: undeclared id ...
         if (!(cursor.decl instanceof DeclCursor)) {
             throw new SemanticError(
                     Misc.getLineOf(idCtx), // s025
@@ -1721,12 +1706,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         IdentifierContext idCtx = ctx.cursor_exp().identifier();
 
-        ExprId cursor = visitNonFuncIdentifier(idCtx);
-        if (cursor == null) {
-            throw new SemanticError(
-                    Misc.getLineOf(idCtx), // s032
-                    "undeclared id " + Misc.getNormalizedText(idCtx));
-        }
+        ExprId cursor = visitNonFuncIdentifier(idCtx);  // s032: undeclared id ...
         if (!isCursorOrRefcursor(cursor)) {
             throw new SemanticError(
                     Misc.getLineOf(idCtx), // s033
@@ -1744,12 +1724,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         IdentifierContext idCtx = ctx.cursor_exp().identifier();
 
-        ExprId cursor = visitNonFuncIdentifier(idCtx);
-        if (cursor == null) {
-            throw new SemanticError(
-                    Misc.getLineOf(idCtx), // s034
-                    "undeclared id " + Misc.getNormalizedText(idCtx));
-        }
+        ExprId cursor = visitNonFuncIdentifier(idCtx);  // s034: undeclared id ...
         if (!(cursor.decl instanceof DeclCursor)) {
             throw new SemanticError(
                     Misc.getLineOf(idCtx), // s035
@@ -1789,12 +1764,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public AstNode visitFetch_statement(Fetch_statementContext ctx) {
 
         IdentifierContext idCtx = ctx.cursor_exp().identifier();
-        ExprId cursor = visitNonFuncIdentifier(idCtx);
-        if (cursor == null) {
-            throw new SemanticError(
-                    Misc.getLineOf(idCtx), // s037
-                    "undeclared id " + Misc.getNormalizedText(idCtx));
-        }
+        ExprId cursor = visitNonFuncIdentifier(idCtx);  // s037: undeclared id ...
         if (!isCursorOrRefcursor(cursor)) {
             throw new SemanticError(
                     Misc.getLineOf(idCtx), // s038
@@ -1803,12 +1773,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         NodeList<ExprId> intoVars = new NodeList<>();
         for (IdentifierContext v : ctx.identifier()) {
-            ExprId id = visitNonFuncIdentifier(v);
-            if (id == null) {
-                throw new SemanticError(
-                        Misc.getLineOf(idCtx), // s060
-                        "undeclared id " + Misc.getNormalizedText(v));
-            }
+            ExprId id = visitNonFuncIdentifier(v);  // s060: undeclared id ...
             if (!isAssignableTo(id)) {
                 throw new SemanticError(
                         Misc.getLineOf(v), // s039
@@ -1834,12 +1799,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         connectionRequired = true;
         addToImports("java.sql.*");
 
-        ExprId refCursor = visitNonFuncIdentifier(ctx.identifier());
-        if (refCursor == null) {
-            throw new SemanticError(
-                    Misc.getLineOf(ctx.identifier()), // s040
-                    "undeclared id " + Misc.getNormalizedText(ctx.identifier()));
-        }
+        ExprId refCursor = visitNonFuncIdentifier(ctx.identifier());    // s040: undeclared id ...
         if (!isAssignableTo(refCursor)) {
             throw new SemanticError(
                     Misc.getLineOf(ctx.identifier()), // s041
@@ -1999,12 +1959,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         NodeList<ExprId> ret = new NodeList<>();
 
         for (IdentifierContext c : ctx.identifier()) {
-            ExprId id = visitNonFuncIdentifier(c);
-            if (id == null) {
-                throw new SemanticError(
-                        Misc.getLineOf(c), // s047
-                        "undeclared id " + Misc.getNormalizedText(c));
-            }
+            ExprId id = visitNonFuncIdentifier(c);  // s047: undeclared id ...
             if (!isAssignableTo(id)) {
                 throw new SemanticError(
                         Misc.getLineOf(c), // s048
@@ -2172,18 +2127,25 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     private ExprId visitNonFuncIdentifier(String name, ParserRuleContext ctx) {
+        ExprId ret;
         Decl decl = symbolStack.getDeclForIdExpr(name);
         if (decl == null) {
-            return null;
+            ret = null;   // no such id at all
         } else if (decl instanceof DeclId) {
             Scope scope = symbolStack.getCurrentScope();
             return new ExprId(ctx, name, scope, (DeclId) decl);
         } else if (decl instanceof DeclFunc) {
-            return null;
+            ret = null;   // the name represents a function in its scope
+        } else {
+            assert false: "unreachable";
+            throw new RuntimeException("unreachable");
         }
 
-        assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        if (ret == null) {
+            throw new SemanticError(Misc.getLineOf(ctx), "undeclared id " + name);
+        } else {
+            return ret;
+        }
     }
 
     private void previsitRoutine_definition(Routine_definitionContext ctx) {
@@ -2302,12 +2264,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             sqlType = getNormalizedTypeName(sqlType);
 
             var = Misc.getNormalizedText(var);
-            ExprId id = visitNonFuncIdentifier(var, ctx);
-            if (id == null) {
-                throw new SemanticError(
-                        Misc.getLineOf(ctx), // s408
-                        "undeclared id " + var + " in the static SQL");
-            }
+            ExprId id = visitNonFuncIdentifier(var, ctx);   // s408: undeclared id ...
 
             TypeSpec javaType = TypeSpec.of(pcsToJavaTypeMap.get(sqlType));
             assert javaType != null;
@@ -2340,12 +2297,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 intoVars = new ArrayList<>();
                 for (String var : sws.intoVars) {
                     var = Misc.getNormalizedText(var);
-                    ExprId id = visitNonFuncIdentifier(var, ctx);
-                    if (id == null) {
-                        throw new SemanticError(
-                                Misc.getLineOf(ctx), // s409
-                                "undeclared id " + var + " in the static SQL");
-                    }
+                    ExprId id = visitNonFuncIdentifier(var, ctx);   // s409: undeclared id ...
                     intoVars.add(id);
                 }
             }
