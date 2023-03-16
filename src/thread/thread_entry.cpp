@@ -25,7 +25,7 @@
 #include "adjustable_array.h"
 #include "critical_section.h"  // for INF_WAIT
 #include "critical_section_tracker.hpp"
-#include "error_manager.h"
+//#include "error_manager.h"
 #include "fault_injection.h"
 #include "list_file.h"
 #include "lock_free.h"
@@ -438,9 +438,14 @@ namespace cubthread
 
     if (type == TT_REPLICATION_PTS)
       {
-	m_page_buffer_ignore_unfix = prm_get_bool_value (PRM_ID_REPLICATION_PTS_THREAD_IGNORE_UNFIX);
-//	_er_log_debug (ARG_FILE_LINE, "crsdbg set_thread_type TT_REPLICATION_PTS m_page_buffer_ignore_unfix = %d",
-//		       m_page_buffer_ignore_unfix);
+	assert (!m_page_buffer_ignore_unfix);
+	m_page_buffer_ignore_unfix = prm_get_bool_value (PRM_ID_SCAL_PERF_PTS_REPL_THREAD_IGNORE_UNFIX);
+      }
+
+    if (type == TT_REPLICATION_PS)
+      {
+	assert (!m_page_buffer_ignore_unfix);
+	m_page_buffer_ignore_unfix = prm_get_bool_value (PRM_ID_SCAL_PERF_PS_REPL_THREAD_IGNORE_UNFIX);
       }
   }
 

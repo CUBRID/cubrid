@@ -51,6 +51,8 @@
 #include "vacuum.h"
 #include "vpid_utilities.hpp"
 
+#define CRSDBG
+
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
@@ -6408,7 +6410,9 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	      /* note: this is most often accessed code and must be highly optimized! */
 	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 		{
-		  //_er_log_debug (ARG_FILE_LINE, "crsdbg pgbuf_unlatch_bcb_upon_unfix PGBUF_LRU_1_ZONE");
+#ifdef CRSDBG
+		  er_print_callstack (ARG_FILE_LINE, "crsdbg pgbuf_unlatch_bcb_upon_unfix PGBUF_LRU_1_ZONE");
+#endif
 		  /* do nothing */
 		  /* ... except collecting statistics */
 		  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_KEEP_VAC);
@@ -6438,7 +6442,9 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	       * (if bcb's are old enough). */
 	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 		{
-		  //_er_log_debug (ARG_FILE_LINE, "crsdbg pgbuf_unlatch_bcb_upon_unfix PGBUF_LRU_2_ZONE");
+#ifdef CRSDBG
+		  er_print_callstack (ARG_FILE_LINE, "crsdbg pgbuf_unlatch_bcb_upon_unfix PGBUF_LRU_2_ZONE");
+#endif
 		  /* do nothing */
 		  /* ... except collecting statistics */
 		  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_TWO_KEEP_VAC);
@@ -6474,7 +6480,9 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	    case PGBUF_LRU_3_ZONE:
 	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 		{
-		  //_er_log_debug (ARG_FILE_LINE, "crsdbg pgbuf_unlatch_bcb_upon_unfix PGBUF_LRU_3_ZONE");
+#ifdef CRSDBG
+		  er_print_callstack (ARG_FILE_LINE, "crsdbg pgbuf_unlatch_bcb_upon_unfix PGBUF_LRU_3_ZONE");
+#endif
 		  if (!pgbuf_bcb_avoid_victim (bufptr) && pgbuf_assign_direct_victim (thread_p, bufptr))
 		    {
 		      /* assigned victim directly */
@@ -6566,7 +6574,9 @@ pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int threa
 
   if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
     {
-      //_er_log_debug (ARG_FILE_LINE, "crsdbg pgbuf_unlatch_void_zone_bcb 01");
+#ifdef CRSDBG
+      er_print_callstack (ARG_FILE_LINE, "crsdbg pgbuf_unlatch_void_zone_bcb 01");
+#endif
       /* we are not registering unfix for activity and we are not boosting or moving bcb's */
       if (aout_list_id == PGBUF_AOUT_NOT_FOUND)
 	{
@@ -6613,7 +6623,9 @@ pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int threa
     {
       if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 	{
-	  //_er_log_debug (ARG_FILE_LINE, "crsdbg pgbuf_unlatch_void_zone_bcb 02");
+#ifdef CRSDBG
+	  er_print_callstack (ARG_FILE_LINE, "crsdbg pgbuf_unlatch_void_zone_bcb 02");
+#endif
 	  /* add to top of current private list */
 	  pgbuf_lru_add_new_bcb_to_top (thread_p, bcb, thread_private_lru_index);
 	  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_PRIVATE_TOP_VAC);
@@ -6647,10 +6659,12 @@ pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int threa
     {
       pgbuf_bcb_register_hit_for_lru (bcb);
     }
-//  else
-//    {
-//      _er_log_debug (ARG_FILE_LINE, "crsdbg pgbuf_unlatch_void_zone_bcb 03");
-//    }
+#ifdef CRSDBG
+  else
+    {
+      er_print_callstack (ARG_FILE_LINE, "crsdbg pgbuf_unlatch_void_zone_bcb 03");
+    }
+#endif
 }
 
 /*
@@ -9179,10 +9193,12 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 	       * becomes relevant. */
 	      restrict_other = PGBUF_LRU_LIST_IS_OVER_QUOTA_WITH_BUFFER (lru_list);
 	    }
-//        else
-//          {
-//              _er_log_debug (ARG_FILE_LINE, "crsdbg pgbuf_get_victim");
-//          }
+#ifdef CRSDBG
+        else
+          {
+              er_print_callstack (ARG_FILE_LINE, "crsdbg pgbuf_get_victim");
+          }
+#endif
 	  searched_own = true;
 	}
     }
