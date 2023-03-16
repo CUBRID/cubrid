@@ -172,6 +172,11 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
   assert (saved_lsa > get_saved_lsa ()); // increasing monotonically
   set_saved_lsa (saved_lsa);
 
+  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
+    {
+      _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Received LSA = %lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
+    }
+
   log_Gl.update_ps_consensus_flushed_lsa ();
 }
 

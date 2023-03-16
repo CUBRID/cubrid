@@ -73,7 +73,9 @@ tran_server::parse_server_host (const std::string &host)
   m_ps_hostname = host.substr (0, col_pos);
   er_log_debug (ARG_FILE_LINE, "Page server hosts: %s port: %d\n", m_ps_hostname.c_str (), port);
 
-  m_connection_list.emplace_back (port, m_ps_hostname);
+
+  cubcomm::node conn{port, m_ps_hostname};
+  m_connection_list.push_back (conn);
 
   return NO_ERROR;
 }
@@ -433,7 +435,6 @@ const std::string
 tran_server::connection_handler::get_channel_id () const
 {
   return m_conn->get_underlying_channel_id ();
-
 }
 
 void
