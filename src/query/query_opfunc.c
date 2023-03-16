@@ -5762,6 +5762,7 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
   TP_DOMAIN *cast_dom1 = NULL;
   TP_DOMAIN *cast_dom2 = NULL;
   TP_DOMAIN_STATUS dom_status;
+  bool is_numeric_cast = false;
 
   DB_VALUE dbval_tmp1;
   DB_VALUE dbval_tmp2;
@@ -5797,6 +5798,14 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       /* cast number to DOUBLE */
       cast_dom1 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
       cast_dom2 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+    }
+  else if (TP_IS_FIXED_NUMBER_TYPE (type1) || TP_IS_FIXED_NUMBER_TYPE (type2))
+    {
+      /* cast number to DOUBLE */
+      cast_dom1 = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+      cast_dom2 = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+
+      is_numeric_cast = true;
     }
 
   if (cast_dom2 != NULL)
@@ -5837,10 +5846,35 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 
   switch (type1)
     {
+    case DB_TYPE_SHORT:
+      if ((error = qdata_divide_short_to_dbval (dbval1_p, dbval2_p, result_p)) == NO_ERROR)
+	{
+	  return qdata_coerce_result_to_domain (result_p, domain_p);
+	}
+    case DB_TYPE_INTEGER:
+      if ((error = qdata_divide_int_to_dbval (dbval1_p, dbval2_p, result_p)) == NO_ERROR)
+	{
+	  return qdata_coerce_result_to_domain (result_p, domain_p);
+	}
+    case DB_TYPE_BIGINT:
+      if ((error = qdata_divide_bigint_to_dbval (dbval1_p, dbval2_p, result_p)) == NO_ERROR)
+	{
+	  return qdata_coerce_result_to_domain (result_p, domain_p);
+	}
+      break;
+
     case DB_TYPE_NUMERIC:
       if ((error = qdata_divide_numeric_to_dbval (dbval1_p, dbval2_p, result_p)) == NO_ERROR)
 	{
-	  return qdata_coerce_result_to_domain (result_p, domain_p);
+	  if (is_numeric_cast && domain_p)
+	    {
+	      domain_p->precision = result_p->domain.numeric_info.precision;
+	      domain_p->scale = result_p->domain.numeric_info.scale;
+	    }
+	  else
+	    {
+	      return qdata_coerce_result_to_domain (result_p, domain_p);
+	    }
 	}
       break;
 
@@ -5851,11 +5885,20 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 	}
       break;
 
-    case DB_TYPE_SHORT:
-    case DB_TYPE_INTEGER:
-    case DB_TYPE_BIGINT:
     case DB_TYPE_FLOAT:
+      if ((error = qdata_divide_float_to_dbval (dbval1_p, dbval2_p, result_p)) == NO_ERROR)
+	{
+	  return qdata_coerce_result_to_domain (result_p, domain_p);
+	}
+      break;
+
     case DB_TYPE_DOUBLE:
+      if ((error = qdata_divide_double_to_dbval (dbval1_p, dbval2_p, result_p)) == NO_ERROR)
+	{
+	  return qdata_coerce_result_to_domain (result_p, domain_p);
+	}
+      break;
+#if 0 
       dom_status = tp_value_auto_cast (dbval1_p, &dbval_tmp1, &tp_Double_domain);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -5879,14 +5922,15 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 	{
 	  break;
 	}
-
+/*
       if (domain_p)
 	{
 	  domain_p->precision = result_p->domain.numeric_info.precision;
 	  domain_p->scale = result_p->domain.numeric_info.scale;
 	}
+*/
       break;
-
+#endif
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:

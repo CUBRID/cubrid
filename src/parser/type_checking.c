@@ -1589,8 +1589,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.arg2_type.type = pt_arg_type::GENERIC;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
 
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_NUMERIC;
+      sig.return_type.type = pt_arg_type::GENERIC;
+      sig.return_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
@@ -6234,6 +6234,13 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
   else
     {
       expr->type_enum = pt_expr_get_return_type (expr, sig);
+      if (op == PT_DIVIDE)
+	{
+	  if (expr->type_enum == PT_TYPE_INTEGER || expr->type_enum == PT_TYPE_BIGINT || expr->type_enum == PT_TYPE_SMALLINT)
+	    {
+	      expr->type_enum = PT_TYPE_NUMERIC;
+	    }
+	}
     }
 
   /* re-read arguments to include the wrapped-cast */
