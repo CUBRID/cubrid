@@ -163,7 +163,7 @@ public class ServerAPI {
                     intoVars.add("C");
                     intoVars.add("M");
                     if (sql.indexOf("C , M , E") >= 0) {
-                        intoVars.add("E");  // to cause error s402
+                        intoVars.add("E"); // to cause error s402
                     }
                 }
 
@@ -211,7 +211,7 @@ public class ServerAPI {
                 if (ps.name.equals("MY_PROC")) {
                     ps.setAnswer(MOCK_OUT_POS, MOCK_PARAM_TYPES);
                 } else if (ps.name.equals("ERR_PROC")) {
-                    ps.setAnswer(MOCK_OUT_POS, ERR_PARAM_TYPES);    // to cause error s412
+                    ps.setAnswer(MOCK_OUT_POS, ERR_PARAM_TYPES); // to cause error s412
                 } else {
                     ps.setError(300, "no such procedure " + ps.name);
                 }
@@ -220,9 +220,9 @@ public class ServerAPI {
                 if (fs.name.equals("MY_FUNC")) {
                     fs.setAnswer(MOCK_OUT_POS, MOCK_PARAM_TYPES, "VARCHAR");
                 } else if (fs.name.equals("ERR_FUNC")) {
-                    fs.setAnswer(MOCK_OUT_POS, ERR_PARAM_TYPES, "VARCHAR");     // to cause error s415
+                    fs.setAnswer(MOCK_OUT_POS, ERR_PARAM_TYPES, "VARCHAR"); // to cause error s415
                 } else if (fs.name.equals("ERR_FUNC_2")) {
-                    fs.setAnswer(MOCK_OUT_POS, MOCK_PARAM_TYPES, "BLOB");       // to cause error s418
+                    fs.setAnswer(MOCK_OUT_POS, MOCK_PARAM_TYPES, "BLOB"); // to cause error s418
                 } else {
                     fs.setError(301, "no such function " + fs.name);
                 }
@@ -240,7 +240,7 @@ public class ServerAPI {
                 if (s.equals("MY_TABLE.MY_COLUMN")) {
                     ct.setAnswer("VARCHAR");
                 } else if (s.equals("ERR_TABLE.ERR_COLUMN")) {
-                    ct.setAnswer("BLOB");   // to cause error s410
+                    ct.setAnswer("BLOB"); // to cause error s410
                 } else {
                     ct.setError(303, "no such table column " + s);
                 }

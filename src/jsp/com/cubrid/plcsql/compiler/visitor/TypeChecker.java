@@ -204,7 +204,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         assert node.staticSql.intoVars == null; // by earlier check
 
         visitNodeList(node.paramList);
-        typeCheckHostVars(node.staticSql);  // s400
+        typeCheckHostVars(node.staticSql); // s400
         return null;
     }
 
@@ -642,7 +642,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                 if (c == null) {
                     throw new SemanticError(
                             arg.lineNo(), // s219
-                            String.format("argument %d to the cursor has an incompatible type", i + 1));
+                            String.format(
+                                    "argument %d to the cursor has an incompatible type", i + 1));
                 } else {
                     arg.setCoerce(c);
                 }
@@ -672,7 +673,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
         StaticSql staticSql = node.staticSql;
 
-        typeCheckHostVars(staticSql);   // s404
+        typeCheckHostVars(staticSql); // s404
         if (staticSql.intoVars != null) {
 
             List<Coerce> coerces = new ArrayList<>();
@@ -759,7 +760,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitStmtForStaticSqlLoop(StmtForStaticSqlLoop node) {
 
-        typeCheckHostVars(node.staticSql);  // s406
+        typeCheckHostVars(node.staticSql); // s406
         visitNodeList(node.stmts);
         return null;
     }
@@ -799,7 +800,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         assert node.staticSql != null;
         assert node.staticSql.intoVars == null; // by earlier check
 
-        typeCheckHostVars(node.staticSql);  // s407
+        typeCheckHostVars(node.staticSql); // s407
         return null;
     }
 

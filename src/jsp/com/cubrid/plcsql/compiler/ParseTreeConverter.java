@@ -243,13 +243,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         if (ctx.table_name() == null) {
             // case variable%TYPE
-            ExprId id = visitNonFuncIdentifier(ctx.identifier());   // s000: undeclared id
+            ExprId id = visitNonFuncIdentifier(ctx.identifier()); // s000: undeclared id
             if (!(id.decl instanceof DeclIdTyped)) {
                 throw new SemanticError(
                         Misc.getLineOf(ctx), // s001
-                        id.name +
-                            " may not use %TYPE because it is neither a parameter of a " +
-                            "procedure/function, variable, nor constant");
+                        id.name
+                                + " may not use %TYPE because it is neither a parameter of a "
+                                + "procedure/function, variable, nor constant");
             }
 
             return ((DeclIdTyped) id.decl).typeSpec();
@@ -711,7 +711,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     semanticQuestions.put(ret, new ServerAPI.SerialOrNot(recordText));
                     return ret;
                 } else {
-                    throw e;    // s007: undeclared id ...
+                    throw e; // s007: undeclared id ...
                 }
             } else {
                 throw e;
@@ -819,12 +819,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitCursor_attr_exp(Cursor_attr_expContext ctx) {
 
-        ExprId cursor = visitNonFuncIdentifier(ctx.cursor_exp().identifier());  // s011: undeclared id ...
+        ExprId cursor =
+                visitNonFuncIdentifier(ctx.cursor_exp().identifier()); // s011: undeclared id ...
         if (!isCursorOrRefcursor(cursor)) {
             throw new SemanticError(
                     Misc.getLineOf(ctx), // s012
-                    "cursor attributes may not be read from " + cursor.name +
-                    " which is neither a cursor nor a cursor reference");
+                    "cursor attributes may not be read from "
+                            + cursor.name
+                            + " which is neither a cursor nor a cursor reference");
         }
 
         ExprCursorAttr.Attr attr =
@@ -968,7 +970,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         SqlSemantics sws = staticSqls.get(ctx.s_select_statement());
         assert sws != null;
-        assert sws.kind == SqlSemantics.Kind.SELECT;    // by syntax
+        assert sws.kind == SqlSemantics.Kind.SELECT; // by syntax
         if (sws.intoVars != null) {
             throw new SemanticError(
                     Misc.getLineOf(ctx.s_select_statement()), // s015
@@ -1090,7 +1092,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public StmtAssign visitAssignment_statement(Assignment_statementContext ctx) {
 
-        ExprId var = visitNonFuncIdentifier(ctx.identifier());  // s018: undeclared id ...
+        ExprId var = visitNonFuncIdentifier(ctx.identifier()); // s018: undeclared id ...
         if (!isAssignableTo(var)) {
             throw new SemanticError(
                     Misc.getLineOf(ctx.identifier()), // s019
@@ -1339,7 +1341,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.pushSymbolTable("for_cursor_loop", null);
 
         IdentifierContext idCtx = ctx.for_cursor().cursor_exp().identifier();
-        ExprId cursor = visitNonFuncIdentifier(idCtx);  // s024: undeclared id ...
+        ExprId cursor = visitNonFuncIdentifier(idCtx); // s024: undeclared id ...
         if (!(cursor.decl instanceof DeclCursor)) {
             throw new SemanticError(
                     Misc.getLineOf(idCtx), // s025
@@ -1397,7 +1399,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         SqlSemantics sws = staticSqls.get(selectCtx);
         assert sws != null;
-        assert sws.kind == SqlSemantics.Kind.SELECT;    // by syntax
+        assert sws.kind == SqlSemantics.Kind.SELECT; // by syntax
         if (sws.intoVars != null) {
             throw new SemanticError(
                     Misc.getLineOf(selectCtx), // s027
@@ -1650,11 +1652,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         IdentifierContext idCtx = ctx.cursor_exp().identifier();
 
-        ExprId cursor = visitNonFuncIdentifier(idCtx);  // s032: undeclared id ...
+        ExprId cursor = visitNonFuncIdentifier(idCtx); // s032: undeclared id ...
         if (!isCursorOrRefcursor(cursor)) {
             throw new SemanticError(
                     Misc.getLineOf(idCtx), // s033
-                    cursor.name + " may not be closed because it is neither a cursor nor a cursor reference");
+                    cursor.name
+                            + " may not be closed because it is neither a cursor nor a cursor reference");
         }
 
         return new StmtCursorClose(ctx, cursor);
@@ -1668,7 +1671,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         IdentifierContext idCtx = ctx.cursor_exp().identifier();
 
-        ExprId cursor = visitNonFuncIdentifier(idCtx);  // s034: undeclared id ...
+        ExprId cursor = visitNonFuncIdentifier(idCtx); // s034: undeclared id ...
         if (!(cursor.decl instanceof DeclCursor)) {
             throw new SemanticError(
                     Misc.getLineOf(idCtx), // s035
@@ -1708,16 +1711,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public AstNode visitFetch_statement(Fetch_statementContext ctx) {
 
         IdentifierContext idCtx = ctx.cursor_exp().identifier();
-        ExprId cursor = visitNonFuncIdentifier(idCtx);  // s037: undeclared id ...
+        ExprId cursor = visitNonFuncIdentifier(idCtx); // s037: undeclared id ...
         if (!isCursorOrRefcursor(cursor)) {
             throw new SemanticError(
                     Misc.getLineOf(idCtx), // s038
-                    cursor.name + " may not be fetched becaused it is neither a cursor nor a cursor reference");
+                    cursor.name
+                            + " may not be fetched becaused it is neither a cursor nor a cursor reference");
         }
 
         NodeList<ExprId> intoVars = new NodeList<>();
         for (IdentifierContext v : ctx.identifier()) {
-            ExprId id = visitNonFuncIdentifier(v);  // s060: undeclared id ...
+            ExprId id = visitNonFuncIdentifier(v); // s060: undeclared id ...
             if (!isAssignableTo(id)) {
                 throw new SemanticError(
                         Misc.getLineOf(v), // s039
@@ -1743,7 +1747,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         connectionRequired = true;
         addToImports("java.sql.*");
 
-        ExprId refCursor = visitNonFuncIdentifier(ctx.identifier());    // s040: undeclared id ...
+        ExprId refCursor = visitNonFuncIdentifier(ctx.identifier()); // s040: undeclared id ...
         if (!isAssignableTo(refCursor)) {
             throw new SemanticError(
                     Misc.getLineOf(ctx.identifier()), // s041
@@ -1757,7 +1761,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         SqlSemantics sws = staticSqls.get(ctx.s_select_statement());
         assert sws != null;
-        assert sws.kind == SqlSemantics.Kind.SELECT;    // by syntax
+        assert sws.kind == SqlSemantics.Kind.SELECT; // by syntax
         if (sws.intoVars != null) {
             throw new SemanticError(
                     Misc.getLineOf(ctx.s_select_statement()), // s043
@@ -1899,7 +1903,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         NodeList<ExprId> ret = new NodeList<>();
 
         for (IdentifierContext c : ctx.identifier()) {
-            ExprId id = visitNonFuncIdentifier(c);  // s047: undeclared id ...
+            ExprId id = visitNonFuncIdentifier(c); // s047: undeclared id ...
             if (!isAssignableTo(id)) {
                 throw new SemanticError(
                         Misc.getLineOf(c), // s048
@@ -2070,14 +2074,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         ExprId ret;
         Decl decl = symbolStack.getDeclForIdExpr(name);
         if (decl == null) {
-            ret = null;   // no such id at all
+            ret = null; // no such id at all
         } else if (decl instanceof DeclId) {
             Scope scope = symbolStack.getCurrentScope();
             return new ExprId(ctx, name, scope, (DeclId) decl);
         } else if (decl instanceof DeclFunc) {
-            ret = null;   // the name represents a function in its scope
+            ret = null; // the name represents a function in its scope
         } else {
-            assert false: "unreachable";
+            assert false : "unreachable";
             throw new RuntimeException("unreachable");
         }
 
@@ -2204,7 +2208,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             sqlType = getNormalizedTypeName(sqlType);
 
             var = Misc.getNormalizedText(var);
-            ExprId id = visitNonFuncIdentifier(var, ctx);   // s408: undeclared id ...
+            ExprId id = visitNonFuncIdentifier(var, ctx); // s408: undeclared id ...
 
             TypeSpec javaType = TypeSpec.of(pcsToJavaTypeMap.get(sqlType));
             assert javaType != null;
@@ -2237,7 +2241,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 intoVars = new ArrayList<>();
                 for (String var : sws.intoVars) {
                     var = Misc.getNormalizedText(var);
-                    ExprId id = visitNonFuncIdentifier(var, ctx);   // s409: undeclared id ...
+                    ExprId id = visitNonFuncIdentifier(var, ctx); // s409: undeclared id ...
                     intoVars.add(id);
                 }
             }
@@ -2296,5 +2300,4 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         return 0;
     }
-
 }
