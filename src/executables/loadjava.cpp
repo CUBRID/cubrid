@@ -110,7 +110,7 @@ copy_file (const fs::path &java_dir_path)
 {
   try
     {
-      fs::path src_path = fs::path (Src_class);
+      fs::path src_path = std::filesystem::canonical (Src_class);
       if (fs::exists (src_path) == false)
 	{
 	  return ER_FAILED;
@@ -118,7 +118,9 @@ copy_file (const fs::path &java_dir_path)
 
       std::string class_file_name = src_path.filename().generic_string();
       fs::path class_file_path = java_dir_path / class_file_name;
-      if (Force_overwrite == false && fs::exists (class_file_path) == true)
+
+      bool is_exists = fs::exists (class_file_path);
+      if (Force_overwrite == false && is_exists == true)
 	{
 	  fprintf (stdout, "'%s' is exist. overwrite? (y/n): ", class_file_path.c_str ());
 	  char c = getchar ();
@@ -127,6 +129,12 @@ copy_file (const fs::path &java_dir_path)
 	      fprintf (stdout, "loadjava is canceled\n");
 	      return NO_ERROR;
 	    }
+	}
+
+      // remove a previous file (to update modified time of the JAVA directory: CBRD-24695)
+      if (is_exists && fs::is_directory (class_file_path) == false)
+	{
+	  fs::remove (class_file_path);
 	}
 
       const auto copyOptions = fs::copy_options::overwrite_existing;
@@ -138,6 +146,27 @@ copy_file (const fs::path &java_dir_path)
       return ER_FAILED;
     }
 
+  return NO_ERROR;
+}
+
+static int
+create_java_directories (const fs::path &java_dir_path)
+{
+  try
+    {
+      if (fs::exists (java_dir_path) == false)
+	{
+	  fs::create_directories (java_dir_path);
+	  fs::permissions (java_dir_path,
+			   fs::perms::owner_all | fs::perms::group_read | fs::perms::others_read,
+			   fs::perm_options::add);	// mkdir (java_dir_path, 0744)
+	}
+    }
+  catch (fs::filesystem_error &e)
+    {
+      fprintf (stderr, "can't create directory: %s. %s\n", java_dir_path.generic_string ().c_str (), e.what ());
+      return ER_FAILED;
+    }
   return NO_ERROR;
 }
 
@@ -174,6 +203,11 @@ main (int argc, char *argv[])
 
   // e.g. $CUBRID/demodb/java
   java_dir_path.append (JAVA_DIR);
+
+  if (create_java_directories (java_dir_path) != NO_ERROR)
+    {
+      goto error;
+    }
 
   if (copy_file (java_dir_path) != NO_ERROR)
     {
