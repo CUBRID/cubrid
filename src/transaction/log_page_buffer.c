@@ -4501,7 +4501,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, const LOG_LSA * flush_lsa)
 	{
 	  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
 	    {
-	      _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Wait until consenesus LSA gets larger than or equal to %lld|%d.\n", LSA_AS_ARGS (flush_lsa));
+	      _er_log_debug (ARG_FILE_LINE, "Wait until consenesus LSA gets larger than or equal to %lld|%d.\n", LSA_AS_ARGS (flush_lsa));
 	    }
 	  
           log_Gl.wait_flushed_lsa (*flush_lsa);
@@ -4509,7 +4509,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, const LOG_LSA * flush_lsa)
           if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
 	    {
               std::lock_guard<std::mutex> lock_guard (log_Gl.m_ps_lsa_mutex);
-	      _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Page server consensus committed LSA = %lld|%d.\n", LSA_AS_ARGS (&log_Gl.m_ps_consensus_flushed_lsa));
+	      _er_log_debug (ARG_FILE_LINE, "Page server committed LSA = %lld|%d.\n", LSA_AS_ARGS (&log_Gl.m_ps_consensus_flushed_lsa));
 	    }
 	}
       // *INDENT-ON*

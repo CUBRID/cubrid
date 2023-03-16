@@ -65,12 +65,20 @@ active_tran_server::compute_consensus_lsa () const
 {
   const auto total_node_cnt = m_connection_list.size ();
   const auto quorum = total_node_cnt / 2 + 1; // For now, it's fixed to the number of the majority.
+  size_t cur_node_cnt;
   std::vector<log_lsa> collected_saved_lsa;
 
   // TODO The next block has to be exclusive with connection and disconnection
   {
-    if (m_page_server_conn_vec.size () < quorum)
+    cur_node_cnt = m_page_server_conn_vec.size ();
+    if (cur_node_cnt < quorum)
       {
+	if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
+	  {
+	    _er_log_debug (ARG_FILE_LINE,
+			   "compute_consensus_lsa - Quorum unsatisfied: total node count = %d, curreunt node count = %d, quorum = %d\n",
+			   total_node_cnt, cur_node_cnt, quorum);
+	  }
 	return NULL_LSA;
       }
     for (const auto &conn : m_page_server_conn_vec)
@@ -92,7 +100,8 @@ active_tran_server::compute_consensus_lsa () const
     {
       std::stringstream ss;
 
-      ss << "compute_consensus_lsa - Node count = " << total_node_cnt << ", Quorum = " << quorum << ", Consensus LSA = ";
+      ss << "compute_consensus_lsa - total node count = " << total_node_cnt << ", current node count = " << cur_node_cnt <<
+	 ", quorum = " << quorum << ", consensus LSA = ";
       ss << consensus_lsa.pageid << "|" << consensus_lsa.offset << std::endl;
       ss << "Collected saved lsa list = [ ";
       for (const auto &lsa : collected_saved_lsa)
@@ -159,6 +168,8 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
 
   assert (saved_lsa > get_saved_lsa ()); // increasing monotonically
   set_saved_lsa (saved_lsa);
+
+  log_Gl.update_ps_consensus_flushed_lsa ();
 }
 
 void
