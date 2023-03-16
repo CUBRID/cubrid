@@ -256,254 +256,254 @@ extern "C"
   typedef struct
   {
     /* Execution statistics for the file io */
-    unsigned int file_num_creates;
-    unsigned int file_num_removes;
-    unsigned int file_num_ioreads;
-    unsigned int file_num_iowrites;
-    unsigned int file_num_iosynches;
-    unsigned int file_num_page_allocs;
-    unsigned int file_num_page_deallocs;
+    uint64_t file_num_creates;
+    uint64_t file_num_removes;
+    uint64_t file_num_ioreads;
+    uint64_t file_num_iowrites;
+    uint64_t file_num_iosynches;
+    uint64_t file_num_page_allocs;
+    uint64_t file_num_page_deallocs;
 
     /* Execution statistics for the page buffer manager */
-    unsigned int pb_num_fetches;
-    unsigned int pb_num_dirties;
-    unsigned int pb_num_ioreads;
-    unsigned int pb_num_iowrites;
-    unsigned int pb_num_hash_anchor_waits;
-    unsigned int pb_time_hash_anchor_wait;
+    uint64_t pb_num_fetches;
+    uint64_t pb_num_dirties;
+    uint64_t pb_num_ioreads;
+    uint64_t pb_num_iowrites;
+    uint64_t pb_num_hash_anchor_waits;
+    uint64_t pb_time_hash_anchor_wait;
     /* peeked stats */
-    unsigned int pb_fixed_cnt;
-    unsigned int pb_dirty_cnt;
-    unsigned int pb_lru1_cnt;
-    unsigned int pb_lru2_cnt;
-    unsigned int pb_lru3_cnt;
-    unsigned int pb_avoid_dealloc_cnt;
-    unsigned int pb_avoid_victim_cnt;
-    unsigned int pb_victim_cand_cnt;
+    uint64_t pb_fixed_cnt;
+    uint64_t pb_dirty_cnt;
+    uint64_t pb_lru1_cnt;
+    uint64_t pb_lru2_cnt;
+    uint64_t pb_lru3_cnt;
+    uint64_t pb_avoid_dealloc_cnt;
+    uint64_t pb_avoid_victim_cnt;
+    uint64_t pb_victim_cand_cnt;
 
     /* Execution statistics for the log manager */
-    unsigned int log_num_fetches;
-    unsigned int log_num_ioreads;
-    unsigned int log_num_iowrites;
-    unsigned int log_num_appendrecs;
-    unsigned int log_num_archives;
-    unsigned int log_num_start_checkpoints;
-    unsigned int log_num_end_checkpoints;
-    unsigned int log_num_wals;
-    unsigned int log_num_replacements;
-    unsigned int log_num_iowrites_for_replacement;
+    uint64_t log_num_fetches;
+    uint64_t log_num_ioreads;
+    uint64_t log_num_iowrites;
+    uint64_t log_num_appendrecs;
+    uint64_t log_num_archives;
+    uint64_t log_num_start_checkpoints;
+    uint64_t log_num_end_checkpoints;
+    uint64_t log_num_wals;
+    uint64_t log_num_replacements;
+    uint64_t log_num_iowrites_for_replacement;
 
     /* Execution statistics for the lock manager */
-    unsigned int lk_num_acquired_on_pages;
-    unsigned int lk_num_acquired_on_objects;
-    unsigned int lk_num_converted_on_pages;
-    unsigned int lk_num_converted_on_objects;
-    unsigned int lk_num_re_requested_on_pages;
-    unsigned int lk_num_re_requested_on_objects;
-    unsigned int lk_num_waited_on_pages;
-    unsigned int lk_num_waited_on_objects;
-    unsigned int lk_num_waited_time_on_objects;
+    uint64_t lk_num_acquired_on_pages;
+    uint64_t lk_num_acquired_on_objects;
+    uint64_t lk_num_converted_on_pages;
+    uint64_t lk_num_converted_on_objects;
+    uint64_t lk_num_re_requested_on_pages;
+    uint64_t lk_num_re_requested_on_objects;
+    uint64_t lk_num_waited_on_pages;
+    uint64_t lk_num_waited_on_objects;
+    uint64_t lk_num_waited_time_on_objects;
 
     /* Execution statistics for transactions */
-    unsigned int tran_num_commits;
-    unsigned int tran_num_rollbacks;
-    unsigned int tran_num_savepoints;
-    unsigned int tran_num_start_topops;
-    unsigned int tran_num_end_topops;
-    unsigned int tran_num_interrupts;
+    uint64_t tran_num_commits;
+    uint64_t tran_num_rollbacks;
+    uint64_t tran_num_savepoints;
+    uint64_t tran_num_start_topops;
+    uint64_t tran_num_end_topops;
+    uint64_t tran_num_interrupts;
 
     /* Execution statistics for the btree manager */
-    unsigned int bt_num_inserts;
-    unsigned int bt_num_deletes;
-    unsigned int bt_num_updates;
-    unsigned int bt_num_covered;
-    unsigned int bt_num_noncovered;
-    unsigned int bt_num_resumes;
-    unsigned int bt_num_multi_range_opt;
-    unsigned int bt_num_splits;
-    unsigned int bt_num_merges;
-    unsigned int bt_num_get_stats;
+    uint64_t bt_num_inserts;
+    uint64_t bt_num_deletes;
+    uint64_t bt_num_updates;
+    uint64_t bt_num_covered;
+    uint64_t bt_num_noncovered;
+    uint64_t bt_num_resumes;
+    uint64_t bt_num_multi_range_opt;
+    uint64_t bt_num_splits;
+    uint64_t bt_num_merges;
+    uint64_t bt_num_get_stats;
 
     /* Execution statistics for the heap manager */
-    unsigned int heap_num_stats_sync_bestspace;
+    uint64_t heap_num_stats_sync_bestspace;
 
     /* Execution statistics for the query manager */
-    unsigned int qm_num_selects;
-    unsigned int qm_num_inserts;
-    unsigned int qm_num_deletes;
-    unsigned int qm_num_updates;
-    unsigned int qm_num_sscans;
-    unsigned int qm_num_iscans;
-    unsigned int qm_num_lscans;
-    unsigned int qm_num_setscans;
-    unsigned int qm_num_methscans;
-    unsigned int qm_num_nljoins;
-    unsigned int qm_num_mjoins;
-    unsigned int qm_num_objfetches;
-    unsigned int qm_num_holdable_cursors;
+    uint64_t qm_num_selects;
+    uint64_t qm_num_inserts;
+    uint64_t qm_num_deletes;
+    uint64_t qm_num_updates;
+    uint64_t qm_num_sscans;
+    uint64_t qm_num_iscans;
+    uint64_t qm_num_lscans;
+    uint64_t qm_num_setscans;
+    uint64_t qm_num_methscans;
+    uint64_t qm_num_nljoins;
+    uint64_t qm_num_mjoins;
+    uint64_t qm_num_objfetches;
+    uint64_t qm_num_holdable_cursors;
 
     /* Execution statistics for external sort */
-    unsigned int sort_num_io_pages;
-    unsigned int sort_num_data_pages;
+    uint64_t sort_num_io_pages;
+    uint64_t sort_num_data_pages;
 
     /* Execution statistics for network communication */
-    unsigned int net_num_requests;
+    uint64_t net_num_requests;
 
     /* flush control stat */
-    unsigned int fc_num_log_pages;
-    unsigned int fc_num_pages;
-    unsigned int fc_tokens;
+    uint64_t fc_num_log_pages;
+    uint64_t fc_num_pages;
+    uint64_t fc_tokens;
 
     /* prior lsa info */
-    unsigned int prior_lsa_list_size;
-    unsigned int prior_lsa_list_maxed;
-    unsigned int prior_lsa_list_removed;
+    uint64_t prior_lsa_list_size;
+    uint64_t prior_lsa_list_maxed;
+    uint64_t prior_lsa_list_removed;
 
     /* best space info */
-    unsigned int hf_stats_bestspace_entries;
-    unsigned int hf_stats_bestspace_maxed;
+    uint64_t hf_stats_bestspace_entries;
+    uint64_t hf_stats_bestspace_maxed;
 
     /* HA replication delay */
-    unsigned int ha_repl_delay;
+    uint64_t ha_repl_delay;
 
     /* Execution statistics for Plan cache */
-    unsigned int pc_num_add;
-    unsigned int pc_num_lookup;
-    unsigned int pc_num_hit;
-    unsigned int pc_num_miss;
-    unsigned int pc_num_full;
-    unsigned int pc_num_delete;
-    unsigned int pc_num_invalid_xasl_id;
-    unsigned int pc_num_query_string_hash_entries;
-    unsigned int pc_num_xasl_id_hash_entries;
-    unsigned int pc_num_class_oid_hash_entries;
-    unsigned int vac_num_vacuumed_log_pages;
-    unsigned int vac_num_to_vacuum_log_pages;
-    unsigned int vac_num_prefetch_requests_log_pages;
-    unsigned int vac_num_prefetch_hits_log_pages;
+    uint64_t pc_num_add;
+    uint64_t pc_num_lookup;
+    uint64_t pc_num_hit;
+    uint64_t pc_num_miss;
+    uint64_t pc_num_full;
+    uint64_t pc_num_delete;
+    uint64_t pc_num_invalid_xasl_id;
+    uint64_t pc_num_query_string_hash_entries;
+    uint64_t pc_num_xasl_id_hash_entries;
+    uint64_t pc_num_class_oid_hash_entries;
+    uint64_t vac_num_vacuumed_log_pages;
+    uint64_t vac_num_to_vacuum_log_pages;
+    uint64_t vac_num_prefetch_requests_log_pages;
+    uint64_t vac_num_prefetch_hits_log_pages;
 
-    unsigned int heap_home_inserts;
-    unsigned int heap_big_inserts;
-    unsigned int heap_assign_inserts;
-    unsigned int heap_home_deletes;
-    unsigned int heap_home_mvcc_deletes;
-    unsigned int heap_home_to_rel_deletes;
-    unsigned int heap_home_to_big_deletes;
-    unsigned int heap_rel_deletes;
-    unsigned int heap_rel_mvcc_deletes;
-    unsigned int heap_rel_to_home_deletes;
-    unsigned int heap_rel_to_big_deletes;
-    unsigned int heap_rel_to_rel_deletes;
-    unsigned int heap_big_deletes;
-    unsigned int heap_big_mvcc_deletes;
-    unsigned int heap_new_ver_inserts;
-    unsigned int heap_home_updates;
-    unsigned int heap_home_to_rel_updates;
-    unsigned int heap_home_to_big_updates;
-    unsigned int heap_rel_updates;
-    unsigned int heap_rel_to_home_updates;
-    unsigned int heap_rel_to_rel_updates;
-    unsigned int heap_rel_to_big_updates;
-    unsigned int heap_big_updates;
-    unsigned int heap_home_vacuums;
-    unsigned int heap_big_vacuums;
-    unsigned int heap_rel_vacuums;
-    unsigned int heap_insid_vacuums;
-    unsigned int heap_remove_vacuums;
-    unsigned int heap_next_ver_vacuums;
+    uint64_t heap_home_inserts;
+    uint64_t heap_big_inserts;
+    uint64_t heap_assign_inserts;
+    uint64_t heap_home_deletes;
+    uint64_t heap_home_mvcc_deletes;
+    uint64_t heap_home_to_rel_deletes;
+    uint64_t heap_home_to_big_deletes;
+    uint64_t heap_rel_deletes;
+    uint64_t heap_rel_mvcc_deletes;
+    uint64_t heap_rel_to_home_deletes;
+    uint64_t heap_rel_to_big_deletes;
+    uint64_t heap_rel_to_rel_deletes;
+    uint64_t heap_big_deletes;
+    uint64_t heap_big_mvcc_deletes;
+    uint64_t heap_new_ver_inserts;
+    uint64_t heap_home_updates;
+    uint64_t heap_home_to_rel_updates;
+    uint64_t heap_home_to_big_updates;
+    uint64_t heap_rel_updates;
+    uint64_t heap_rel_to_home_updates;
+    uint64_t heap_rel_to_rel_updates;
+    uint64_t heap_rel_to_big_updates;
+    uint64_t heap_big_updates;
+    uint64_t heap_home_vacuums;
+    uint64_t heap_big_vacuums;
+    uint64_t heap_rel_vacuums;
+    uint64_t heap_insid_vacuums;
+    uint64_t heap_remove_vacuums;
+    uint64_t heap_next_ver_vacuums;
 
     /* Track heap modify. */
-    unsigned int heap_insert_prepare;
-    unsigned int heap_insert_execute;
-    unsigned int heap_insert_log;
-    unsigned int heap_delete_prepare;
-    unsigned int heap_delete_execute;
-    unsigned int heap_delete_log;
-    unsigned int heap_update_prepare;
-    unsigned int heap_update_execute;
-    unsigned int heap_update_log;
-    unsigned int heap_vacuum_prepare;
-    unsigned int heap_vacuum_execute;
-    unsigned int heap_vacuum_log;
+    uint64_t heap_insert_prepare;
+    uint64_t heap_insert_execute;
+    uint64_t heap_insert_log;
+    uint64_t heap_delete_prepare;
+    uint64_t heap_delete_execute;
+    uint64_t heap_delete_log;
+    uint64_t heap_update_prepare;
+    uint64_t heap_update_execute;
+    uint64_t heap_update_log;
+    uint64_t heap_vacuum_prepare;
+    uint64_t heap_vacuum_execute;
+    uint64_t heap_vacuum_log;
 
-    unsigned int bt_find_unique_cnt;
-    unsigned int bt_range_search_cnt;
-    unsigned int bt_insert_cnt;
-    unsigned int bt_delete_cnt;
-    unsigned int bt_mvcc_delete_cnt;
-    unsigned int bt_mark_delete_cnt;
-    unsigned int bt_update_sk_cnt;
-    unsigned int bt_undo_insert_cnt;
-    unsigned int bt_undo_delete_cnt;
-    unsigned int bt_undo_mvcc_delete_cnt;
-    unsigned int bt_undo_update_sk_cnt;
-    unsigned int bt_vacuum_cnt;
-    unsigned int bt_vacuum_insid_cnt;
-    unsigned int bt_vacuum_update_sk_cnt;
-    unsigned int bt_fix_ovf_oids_cnt;
-    unsigned int bt_unique_rlocks_cnt;
-    unsigned int bt_unique_wlocks_cnt;
+    uint64_t bt_find_unique_cnt;
+    uint64_t bt_range_search_cnt;
+    uint64_t bt_insert_cnt;
+    uint64_t bt_delete_cnt;
+    uint64_t bt_mvcc_delete_cnt;
+    uint64_t bt_mark_delete_cnt;
+    uint64_t bt_update_sk_cnt;
+    uint64_t bt_undo_insert_cnt;
+    uint64_t bt_undo_delete_cnt;
+    uint64_t bt_undo_mvcc_delete_cnt;
+    uint64_t bt_undo_update_sk_cnt;
+    uint64_t bt_vacuum_cnt;
+    uint64_t bt_vacuum_insid_cnt;
+    uint64_t bt_vacuum_update_sk_cnt;
+    uint64_t bt_fix_ovf_oids_cnt;
+    uint64_t bt_unique_rlocks_cnt;
+    uint64_t bt_unique_wlocks_cnt;
 
-    unsigned int bt_find_unique;
-    unsigned int bt_range_search;
-    unsigned int bt_insert;
-    unsigned int bt_delete;
-    unsigned int bt_mvcc_delete;
-    unsigned int bt_mark_delete;
-    unsigned int bt_update_sk;
-    unsigned int bt_undo_insert;
-    unsigned int bt_undo_delete;
-    unsigned int bt_undo_mvcc_delete;
-    unsigned int bt_undo_update_sk;
-    unsigned int bt_vacuum;
-    unsigned int bt_vacuum_insid;
-    unsigned int bt_vacuum_update_sk;
+    uint64_t bt_find_unique;
+    uint64_t bt_range_search;
+    uint64_t bt_insert;
+    uint64_t bt_delete;
+    uint64_t bt_mvcc_delete;
+    uint64_t bt_mark_delete;
+    uint64_t bt_update_sk;
+    uint64_t bt_undo_insert;
+    uint64_t bt_undo_delete;
+    uint64_t bt_undo_mvcc_delete;
+    uint64_t bt_undo_update_sk;
+    uint64_t bt_vacuum;
+    uint64_t bt_vacuum_insid;
+    uint64_t bt_vacuum_update_sk;
 
-    unsigned int bt_traverse;
-    unsigned int bt_find_unique_traverse;
-    unsigned int bt_range_search_traverse;
-    unsigned int bt_insert_traverse;
-    unsigned int bt_delete_traverse;
-    unsigned int bt_mvcc_delete_traverse;
-    unsigned int bt_mark_delete_traverse;
-    unsigned int bt_update_sk_traverse;
-    unsigned int bt_undo_insert_traverse;
-    unsigned int bt_undo_delete_traverse;
-    unsigned int bt_undo_mvcc_delete_traverse;
-    unsigned int bt_undo_update_sk_traverse;
-    unsigned int bt_vacuum_traverse;
-    unsigned int bt_vacuum_insid_traverse;
-    unsigned int bt_vacuum_update_sk_traverse;
+    uint64_t bt_traverse;
+    uint64_t bt_find_unique_traverse;
+    uint64_t bt_range_search_traverse;
+    uint64_t bt_insert_traverse;
+    uint64_t bt_delete_traverse;
+    uint64_t bt_mvcc_delete_traverse;
+    uint64_t bt_mark_delete_traverse;
+    uint64_t bt_update_sk_traverse;
+    uint64_t bt_undo_insert_traverse;
+    uint64_t bt_undo_delete_traverse;
+    uint64_t bt_undo_mvcc_delete_traverse;
+    uint64_t bt_undo_update_sk_traverse;
+    uint64_t bt_vacuum_traverse;
+    uint64_t bt_vacuum_insid_traverse;
+    uint64_t bt_vacuum_update_sk_traverse;
 
-    unsigned int bt_fix_ovf_oids;
-    unsigned int bt_unique_rlocks;
-    unsigned int bt_unique_wlocks;
+    uint64_t bt_fix_ovf_oids;
+    uint64_t bt_unique_rlocks;
+    uint64_t bt_unique_wlocks;
 
-    unsigned int vac_master;
-    unsigned int vac_worker_process_log;
-    unsigned int vac_worker_execute;
+    uint64_t vac_master;
+    uint64_t vac_worker_process_log;
+    uint64_t vac_worker_execute;
 
     /* Other statistics */
-    unsigned int pb_hit_ratio;
+    uint64_t pb_hit_ratio;
     /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
 
-    unsigned int log_hit_ratio;
+    uint64_t log_hit_ratio;
     /* ((log_num_fetches - log_num_fetch_ioreads) x 100 / log_num_fetches) x 100 */
 
-    unsigned int vacuum_data_hit_ratio;
+    uint64_t vacuum_data_hit_ratio;
 
-    unsigned int pb_vacuum_efficiency;
+    uint64_t pb_vacuum_efficiency;
 
-    unsigned int pb_vacuum_fetch_ratio;
+    uint64_t pb_vacuum_fetch_ratio;
 
     /* MNT_SERVER_EXEC_STATS: pb_page_lock_acquire_time_10usec */
-    unsigned int pb_page_lock_acquire_time_msec;
+    uint64_t pb_page_lock_acquire_time_msec;
     /* MNT_SERVER_EXEC_STATS: pb_page_hold_acquire_time_10usec */
-    unsigned int pb_page_hold_acquire_time_msec;
+    uint64_t pb_page_hold_acquire_time_msec;
     /* MNT_SERVER_EXEC_STATS: pb_page_fix_acquire_time_10usec */
-    unsigned int pb_page_fix_acquire_time_msec;
+    uint64_t pb_page_fix_acquire_time_msec;
 
-    unsigned int pb_page_allocate_time_ratio;
+    uint64_t pb_page_allocate_time_ratio;
   } T_CM_DB_EXEC_STAT;
 
   int cm_get_db_proc_stat (const char *db_name, T_CM_DB_PROC_STAT * stat, T_CM_ERROR * err_buf);

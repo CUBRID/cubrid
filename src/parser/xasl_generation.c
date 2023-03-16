@@ -1425,7 +1425,6 @@ pt_make_pred_term_rlike (REGU_VARIABLE * arg1, REGU_VARIABLE * arg2, REGU_VARIAB
   et_rlike->pattern = arg2;
   et_rlike->case_sensitive = case_sensitive;
   et_rlike->compiled_regex = NULL;
-  et_rlike->compiled_pattern = NULL;
 
   return pred;
 }

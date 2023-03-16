@@ -191,6 +191,16 @@ namespace cubmethod
   }
 
   int
+  query_handler::prepare_retry ()
+  {
+    if (is_prepared ())
+      {
+	return prepare (m_sql_stmt, m_prepare_flag);
+      }
+    return ER_FAILED;
+  }
+
+  int
   query_handler::execute (const execute_request &request)
   {
     int error = NO_ERROR;
@@ -663,7 +673,6 @@ namespace cubmethod
     int n = db_execute_and_keep_statement (m_session, stmt_id, &result);
     if (n < 0)
       {
-	m_error_ctx.set_error (n, NULL, __FILE__, __LINE__);
 	return ER_FAILED;
       }
     else if (result != NULL)

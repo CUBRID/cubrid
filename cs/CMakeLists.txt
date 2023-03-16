@@ -250,11 +250,12 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/regu_var.cpp
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
+  ${QUERY_DIR}/string_regex_std.cpp
+  ${QUERY_DIR}/string_regex_re2.cpp
   ${QUERY_DIR}/xasl_to_stream.c
   )
 set(QUERY_HEADERS
   ${QUERY_DIR}/query_monitoring.hpp
-  ${QUERY_DIR}/string_regex.hpp
 )
 
 set(OBJECT_SOURCES
@@ -341,13 +342,14 @@ set(TRANSACTION_HEADERS
   )
 
 set(STORAGE_SOURCES
-  ${STORAGE_DIR}/storage_common.c
+  ${STORAGE_DIR}/byte_order.c
+  ${STORAGE_DIR}/es.c
+  ${STORAGE_DIR}/es_common.c
+  ${STORAGE_DIR}/es_posix.c
+  ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/statistics_cl.c
-  ${STORAGE_DIR}/file_io.c
-  ${STORAGE_DIR}/es_common.c
-  ${STORAGE_DIR}/es.c
-  ${STORAGE_DIR}/es_posix.c
+  ${STORAGE_DIR}/storage_common.c
   ${STORAGE_DIR}/tde.c
   ${STORAGE_DIR}/vpid_utilities.cpp
   )

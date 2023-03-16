@@ -174,6 +174,13 @@
     } \
   while (0)
 
+#define ERROR_SET_ERROR_ONLY(code) \
+  do \
+    { \
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, (code), 0); \
+    } \
+  while (0)
+
 /*
  * custom assert macro for release mode
  */
