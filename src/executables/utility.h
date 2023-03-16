@@ -383,8 +383,7 @@ typedef enum
 /* Message id in the set MSGCAT_UTIL_SET_LOADJAVA */
 typedef enum
 {
-  LOADJAVA_ARG_FORCE_OVERWRITE = 5,
-  LOADJAVA_ARG_FORCE_OVERWRITE_HELP = 6
+  LOADJAVA_MSG_USAGE = 60
 } MSGCAT_LOADJAVA_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_COMPACTDB */
@@ -877,6 +876,7 @@ typedef struct _ha_config
 #define UTIL_COPYLOGDB          "copylogdb" UTIL_EXE_EXT
 #define UTIL_APPLYLOGDB         "applylogdb" UTIL_EXE_EXT
 #define UTIL_JAVASP_NAME        "cub_javasp" UTIL_EXE_EXT
+#define UTIL_PLCSQL_HELPER_NAME "plcsql_helper" UTIL_EXE_EXT
 
 #define PROPERTY_ON             "on"
 #define PROPERTY_OFF            "off"

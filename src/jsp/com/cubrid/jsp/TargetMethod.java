@@ -205,7 +205,7 @@ public class TargetMethod {
             throws SecurityException, NoSuchMethodException, ClassNotFoundException {
         Class<?> c = getClass(className);
         if (c == null) {
-            throw new ClassNotFoundException (className);
+            throw new ClassNotFoundException(className);
         }
         Method m = c.getMethod(methodName, argsTypes);
         return m;

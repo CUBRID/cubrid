@@ -46,8 +46,8 @@ import java.util.stream.Stream;
 public class StoredProcedureClassLoader extends URLClassLoader {
     private static volatile StoredProcedureClassLoader instance = null;
 
-    private static final String ROOT_PATH = Server.getSpPath() + "/java/";
-    private static final Path root = Paths.get(ROOT_PATH);
+    public static final String ROOT_PATH = Server.getSpPath() + "/java/";
+    public static final Path root = Paths.get(ROOT_PATH);
 
     private FileTime lastModified = null;
 

@@ -28,15 +28,12 @@
  *
  */
 
-package com.cubrid.jsp.test;
+package com.cubrid.plcsql.compiler.ast;
 
-import static org.junit.Assert.assertTrue;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-import org.junit.Test;
-
-public class TestSample {
-    @Test
-    public void evaluatesExpression() {
-        assertTrue(true);
+public abstract class DeclId extends Decl {
+    public DeclId(ParserRuleContext ctx) {
+        super(ctx);
     }
 }
