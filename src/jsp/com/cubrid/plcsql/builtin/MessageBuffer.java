@@ -73,7 +73,6 @@ public class MessageBuffer {
             if (str != null) {
                 lines.add(str);
             }
-            lines.add(System.lineSeparator());
         }
     }
 
@@ -88,8 +87,6 @@ public class MessageBuffer {
             if (builder.length() > 0) {
                 putLine(builder.toString());
                 clearBuilder();
-            } else {
-                putLine(null);
             }
         }
     }
