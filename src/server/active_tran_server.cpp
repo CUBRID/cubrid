@@ -111,6 +111,7 @@ active_tran_server::compute_consensus_lsa () const
 	}
       snprintf (msg_buf + n, BUF_SIZE - n, "]\n");
       assert (n < BUF_SIZE);
+
       _er_log_debug (ARG_FILE_LINE, msg_buf);
     }
 
