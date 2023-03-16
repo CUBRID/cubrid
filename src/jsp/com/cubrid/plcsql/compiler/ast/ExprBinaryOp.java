@@ -31,14 +31,23 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprBinaryOp implements Expr {
+public class ExprBinaryOp extends Expr {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprBinaryOp(this);
+    }
 
     public final String opStr;
     public final Expr left;
     public final Expr right;
 
-    public ExprBinaryOp(String opStr, Expr left, Expr right) {
+    public ExprBinaryOp(ParserRuleContext ctx, String opStr, Expr left, Expr right) {
+        super(ctx);
+
         this.opStr = opStr;
         this.left = left;
         this.right = right;

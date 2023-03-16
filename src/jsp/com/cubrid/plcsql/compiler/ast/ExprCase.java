@@ -31,16 +31,24 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprCase implements Expr {
+public class ExprCase extends Expr {
 
-    public final int level;
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprCase(this);
+    }
+
     public final Expr selector;
     public final NodeList<CaseExpr> whenParts;
     public final Expr elsePart;
 
-    public ExprCase(int level, Expr selector, NodeList<CaseExpr> whenParts, Expr elsePart) {
-        this.level = level;
+    public ExprCase(
+            ParserRuleContext ctx, Expr selector, NodeList<CaseExpr> whenParts, Expr elsePart) {
+        super(ctx);
+
         this.selector = selector;
         this.whenParts = whenParts;
         this.elsePart = elsePart;
@@ -49,23 +57,51 @@ public class ExprCase implements Expr {
     @Override
     public String toJavaCode() {
 
-        return tmpl.replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
-                .replace("%'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(), 2, true))
-                .replace(
-                        "    %'ELSE-PART'%",
-                        Misc.indentLines(elsePart == null ? "null" : elsePart.toJavaCode(), 2))
-                .replace("%'LEVEL'%", "" + level) // level replacement must go last
-        ;
+        assert selectorType != null;
+        assert resultType != null;
+
+        if (TypeSpecSimple.NULL.equals(resultType)) {
+            if (elsePart == null) { // TODO
+                assert false : "every case has null and else-part is absent: not implemented yet";
+                throw new RuntimeException(
+                        "every case has null and else-part is absent: not implemented yet");
+            } else {
+                return "null";
+            }
+        } else {
+            String elseCode;
+            if (elsePart == null) {
+                elseCode = "(%'RESULT-TYPE'%) raiseCaseNotFound()";
+            } else {
+                elseCode = elsePart.toJavaCode();
+            }
+            return tmpl.replace("%'SELECTOR-TYPE'%", selectorType.toJavaCode())
+                    .replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
+                    .replace("%'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(), 2, true))
+                    .replace("    %'ELSE-PART'%", Misc.indentLines(elseCode, 2))
+                    .replace("%'RESULT-TYPE'%", resultType.toJavaCode());
+        }
+    }
+
+    public void setSelectorType(TypeSpec ty) {
+        this.selectorType = ty;
+    }
+
+    public void setResultType(TypeSpec ty) {
+        this.resultType = ty;
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
+    private TypeSpec selectorType;
+    private TypeSpec resultType;
+
     private static final String tmpl =
             Misc.combineLines(
-                    "(new Object() { Object invoke(Object selector_%'LEVEL'%) throws Exception { // simple case expression",
+                    "(new Object() { %'RESULT-TYPE'% invoke(%'SELECTOR-TYPE'% selector) throws Exception { // simple case expression",
                     "  return %'WHEN-PARTS'%",
                     "    %'ELSE-PART'%;",
-                    "} }.invoke(%'SELECTOR-VALUE'%))");
+                    "}}.invoke(%'SELECTOR-VALUE'%))");
 }

@@ -30,10 +30,26 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 
-public abstract class DeclId extends Decl {
-    public DeclId(ParserRuleContext ctx) {
-        super(ctx);
+public class TypeSpecNumeric extends TypeSpec {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitTypeSpecNumeric(this);
+    }
+
+    public final int precision;
+    public final int scale;
+
+    public TypeSpecNumeric(int precision, int scale) {
+        super("BigDecimal");
+        this.precision = precision;
+        this.scale = scale;
+    }
+
+    @Override
+    public String toJavaSignature() {
+        return "java.math.BigDecimal";
     }
 }

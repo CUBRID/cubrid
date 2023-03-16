@@ -28,12 +28,14 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler;
 
-import org.antlr.v4.runtime.ParserRuleContext;
+public class SemanticError extends RuntimeException {
 
-public abstract class DeclId extends Decl {
-    public DeclId(ParserRuleContext ctx) {
-        super(ctx);
+    public final int lineNo;
+
+    public SemanticError(int lineNo, String msg) {
+        super(msg);
+        this.lineNo = lineNo;
     }
 }

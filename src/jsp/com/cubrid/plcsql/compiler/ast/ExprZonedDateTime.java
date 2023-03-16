@@ -31,14 +31,23 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.DateTimeParser;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.time.ZonedDateTime;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprZonedDateTime implements Expr {
+public class ExprZonedDateTime extends Expr {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprZonedDateTime(this);
+    }
 
     public final ZonedDateTime time;
     public final String originType;
 
-    public ExprZonedDateTime(ZonedDateTime time, String originType) {
+    public ExprZonedDateTime(ParserRuleContext ctx, ZonedDateTime time, String originType) {
+        super(ctx);
+
         this.time = time;
         this.originType = originType;
     }

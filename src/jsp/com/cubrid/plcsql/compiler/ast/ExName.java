@@ -31,19 +31,32 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Scope;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExName implements AstNode {
+public class ExName extends AstNode {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExName(this);
+    }
 
     public final String name;
     public final Scope scope;
     public final DeclException decl;
     public final boolean prefixDeclBlock;
 
-    public ExName(String name, Scope scope, DeclException decl) {
+    public ExName(ParserRuleContext ctx, String name, Scope scope, DeclException decl) {
+        super(ctx);
+
         this.name = name;
         this.scope = scope;
         this.decl = decl;
         prefixDeclBlock = (decl == null) ? false : decl.scope().declDone;
+    }
+
+    public ExName(ParserRuleContext ctx, String name) {
+        this(ctx, name, null, null);
     }
 
     @Override

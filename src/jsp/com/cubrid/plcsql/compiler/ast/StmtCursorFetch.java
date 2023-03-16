@@ -31,21 +31,30 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtCursorFetch implements Stmt {
+public class StmtCursorFetch extends Stmt {
 
-    public final ExprId cursor;
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtCursorFetch(this);
+    }
+
+    public final ExprId id;
     public final NodeList<ExprId> intoVars;
 
-    public StmtCursorFetch(ExprId cursor, NodeList<ExprId> intoVars) {
-        this.cursor = cursor;
+    public StmtCursorFetch(ParserRuleContext ctx, ExprId id, NodeList<ExprId> intoVars) {
+        super(ctx);
+
+        this.id = id;
         this.intoVars = intoVars;
     }
 
     @Override
     public String toJavaCode() {
         String setIntoVarsStr = getSetIntoVarsStr(intoVars);
-        return tmplStmt.replace("%'CURSOR'%", cursor.toJavaCode())
+        return tmplStmt.replace("%'CURSOR'%", id.toJavaCode())
                 .replace("    %'SET-INTO-VARIABLES'%", Misc.indentLines(setIntoVarsStr, 2));
     }
 
@@ -79,7 +88,7 @@ public class StmtCursorFetch implements Stmt {
             sbuf.append(
                     String.format(
                             "%s = (%s) rs.getObject(%d);",
-                            id.toJavaCode(), id.decl.typeSpec().name, i + 1));
+                            id.toJavaCode(), ((DeclVarLike) id.decl).typeSpec().name, i + 1));
 
             i++;
         }

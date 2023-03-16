@@ -30,12 +30,24 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class StmtReturn implements Stmt {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
+
+public class StmtReturn extends Stmt {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtReturn(this);
+    }
 
     public final Expr retVal;
+    public final TypeSpec retType;
 
-    public StmtReturn(Expr retVal) {
+    public StmtReturn(ParserRuleContext ctx, Expr retVal, TypeSpec retType) {
+        super(ctx);
+
         this.retVal = retVal;
+        this.retType = retType;
     }
 
     @Override
@@ -46,8 +58,4 @@ public class StmtReturn implements Stmt {
             return "return " + retVal.toJavaCode() + ";";
         }
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

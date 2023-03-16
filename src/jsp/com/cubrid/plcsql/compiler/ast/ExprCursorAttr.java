@@ -30,19 +30,42 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class ExprCursorAttr implements Expr {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-    public final ExprId cursor;
-    public final String attribute;
+public class ExprCursorAttr extends Expr {
 
-    public ExprCursorAttr(ExprId cursor, String attribute) {
-        this.cursor = cursor;
-        this.attribute = attribute;
+    public enum Attr {
+        ISOPEN("isOpen"),
+        FOUND("found"),
+        NOTFOUND("notFound"),
+        ROWCOUNT("rowCount");
+
+        Attr(String method) {
+            this.method = method;
+        }
+
+        private String method;
+    }
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprCursorAttr(this);
+    }
+
+    public final ExprId id;
+    public final Attr attr;
+
+    public ExprCursorAttr(ParserRuleContext ctx, ExprId id, Attr attr) {
+        super(ctx);
+
+        this.id = id;
+        this.attr = attr;
     }
 
     @Override
     public String toJavaCode() {
-        return cursor.toJavaCode() + "." + attribute + "()";
+        return id.toJavaCode() + "." + attr.method + "()";
     }
 
     // --------------------------------------------------

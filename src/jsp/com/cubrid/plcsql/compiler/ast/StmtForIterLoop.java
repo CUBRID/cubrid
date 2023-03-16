@@ -31,12 +31,18 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtForIterLoop implements Stmt {
+public class StmtForIterLoop extends Stmt {
 
-    public final int level;
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtForIterLoop(this);
+    }
+
     public final DeclLabel declLabel;
-    public final String iter;
+    public final DeclForIter iter;
     public final boolean reverse;
     public final Expr lowerBound;
     public final Expr upperBound;
@@ -44,16 +50,16 @@ public class StmtForIterLoop implements Stmt {
     public final NodeList<Stmt> stmts;
 
     public StmtForIterLoop(
-            int level,
+            ParserRuleContext ctx,
             DeclLabel declLabel,
-            String iter,
+            DeclForIter iter,
             boolean reverse,
             Expr lowerBound,
             Expr upperBound,
             Expr step,
             NodeList<Stmt> stmts) {
+        super(ctx);
 
-        this.level = level;
         this.declLabel = declLabel;
         this.iter = iter;
         this.reverse = reverse;
@@ -69,9 +75,9 @@ public class StmtForIterLoop implements Stmt {
         String labelStr = declLabel == null ? "// no label" : declLabel.toJavaCode();
 
         return (reverse ? tmplForIterReverse : tmplForIter)
-                .replace("%'LEVEL'%", "" + level)
+                .replace("%'LEVEL'%", "" + iter.scope.level)
                 .replace("  %'OPT-LABEL'%", Misc.indentLines(labelStr, 1))
-                .replace("%'ITER'%", iter)
+                .replace("%'ITER'%", iter.name)
                 .replace("%'LOWER-BOUND'%", lowerBound.toJavaCode())
                 .replace("%'UPPER-BOUND'%", upperBound.toJavaCode())
                 .replace("%'STEP'%", step == null ? "1" : step.toJavaCode())
@@ -88,7 +94,7 @@ public class StmtForIterLoop implements Stmt {
                     "  int upper_%'LEVEL'% = %'UPPER-BOUND'%;",
                     "  int step_%'LEVEL'% = %'STEP'%;",
                     "  %'OPT-LABEL'%",
-                    "  for (int $%'ITER'%_i%'LEVEL'% = %'LOWER-BOUND'%; $%'ITER'%_i%'LEVEL'% <= upper_%'LEVEL'%; $%'ITER'%_i%'LEVEL'% += step_%'LEVEL'%) {",
+                    "  for (int %'ITER'%_i%'LEVEL'% = %'LOWER-BOUND'%; %'ITER'%_i%'LEVEL'% <= upper_%'LEVEL'%; %'ITER'%_i%'LEVEL'% += step_%'LEVEL'%) {",
                     "    %'STATEMENTS'%",
                     "  }",
                     "}");
@@ -99,7 +105,7 @@ public class StmtForIterLoop implements Stmt {
                     "  int lower_%'LEVEL'% = %'LOWER-BOUND'%;",
                     "  int step_%'LEVEL'% = %'STEP'%;",
                     "  %'OPT-LABEL'%",
-                    "  for (int $%'ITER'%_i%'LEVEL'% = %'UPPER-BOUND'%; $%'ITER'%_i%'LEVEL'% >= lower_%'LEVEL'%; $%'ITER'%_i%'LEVEL'% -= step_%'LEVEL'%) {",
+                    "  for (int %'ITER'%_i%'LEVEL'% = %'UPPER-BOUND'%; %'ITER'%_i%'LEVEL'% >= lower_%'LEVEL'%; %'ITER'%_i%'LEVEL'% -= step_%'LEVEL'%) {",
                     "    %'STATEMENTS'%",
                     "  }",
                     "}");

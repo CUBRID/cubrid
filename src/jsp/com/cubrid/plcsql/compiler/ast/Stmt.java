@@ -30,4 +30,10 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public interface Stmt extends AstNode {}
+import org.antlr.v4.runtime.ParserRuleContext;
+
+public abstract class Stmt extends AstNode {
+    public Stmt(ParserRuleContext ctx) {
+        super(ctx);
+    }
+}

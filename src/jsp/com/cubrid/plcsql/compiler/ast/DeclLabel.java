@@ -30,22 +30,32 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DeclLabel extends DeclBase {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
+
+public class DeclLabel extends Decl {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitDeclLabel(this);
+    }
 
     public final String name;
 
-    public DeclLabel(String name) {
+    public DeclLabel(ParserRuleContext ctx, String name) {
+        super(ctx);
+
         this.name = name;
     }
 
     @Override
-    public String typeStr() {
+    public String kind() {
         return "label";
     }
 
     @Override
     public String toJavaCode() {
-        return String.format("$%s_%d:", name, scope.level);
+        return String.format("%s_%d:", name, scope.level);
     }
 
     // --------------------------------------------------

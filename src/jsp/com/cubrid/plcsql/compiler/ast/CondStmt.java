@@ -31,19 +31,28 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class CondStmt implements Stmt {
+public class CondStmt extends AstNode {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitCondStmt(this);
+    }
 
     public final Expr cond;
     public final NodeList<Stmt> stmts;
 
-    public CondStmt(Expr cond, NodeList<Stmt> stmts) {
+    public CondStmt(ParserRuleContext ctx, Expr cond, NodeList<Stmt> stmts) {
+        super(ctx);
+
         this.cond = cond;
         this.stmts = stmts;
     }
 
-    public CondStmt(Expr cond, Stmt stmt) {
-        this(cond, new NodeList<Stmt>().addNode(stmt));
+    public CondStmt(ParserRuleContext ctx, Expr cond, Stmt stmt) {
+        this(ctx, cond, new NodeList<Stmt>().addNode(stmt));
     }
 
     @Override

@@ -30,25 +30,31 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DeclException extends DeclBase {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
+
+public class DeclException extends Decl {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitDeclException(this);
+    }
 
     public final String name;
 
-    public DeclException(String name) {
+    public DeclException(ParserRuleContext ctx, String name) {
+        super(ctx);
+
         this.name = name;
     }
 
     @Override
-    public String typeStr() {
+    public String kind() {
         return "exception";
     }
 
     @Override
     public String toJavaCode() {
-        return "class $" + name + " extends RuntimeException {}";
+        return "class " + name + " extends RuntimeException {}";
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

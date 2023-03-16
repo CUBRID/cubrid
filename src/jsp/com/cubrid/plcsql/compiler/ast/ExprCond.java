@@ -31,26 +31,59 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprCond implements Expr {
+public class ExprCond extends Expr {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprCond(this);
+    }
 
     public final NodeList<CondExpr> condParts;
     public final Expr elsePart;
 
-    public ExprCond(NodeList<CondExpr> condParts, Expr elsePart) {
+    public ExprCond(ParserRuleContext ctx, NodeList<CondExpr> condParts, Expr elsePart) {
+        super(ctx);
+
         this.condParts = condParts;
         this.elsePart = elsePart;
     }
 
     @Override
     public String toJavaCode() {
-        return tmpl.replace("%'COND-PARTS'%", condParts.toJavaCode())
-                .replace("%'ELSE-PART'%", elsePart == null ? "null" : elsePart.toJavaCode());
+
+        if (TypeSpecSimple.NULL.equals(resultType)) {
+            if (elsePart == null) { // TODO
+                assert false : "every case has null and else-part is absent: not implemented yet";
+                throw new RuntimeException(
+                        "every case has null and else-part is absent: not implemented yet");
+            } else {
+                return "null";
+            }
+        } else {
+            String elseCode;
+            if (elsePart == null) {
+                elseCode = "(%'RESULT-TYPE'%) raiseCaseNotFound()";
+            } else {
+                elseCode = elsePart.toJavaCode();
+            }
+            return tmpl.replace("%'COND-PARTS'%", condParts.toJavaCode())
+                    .replace("%'ELSE-PART'%", elseCode)
+                    .replace("%'RESULT-TYPE'%", resultType.toJavaCode());
+        }
+    }
+
+    public void setResultType(TypeSpec ty) {
+        this.resultType = ty;
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
+
+    private TypeSpec resultType;
 
     private static final String tmpl = Misc.combineLines("(%'COND-PARTS'%", "%'ELSE-PART'%)");
 }

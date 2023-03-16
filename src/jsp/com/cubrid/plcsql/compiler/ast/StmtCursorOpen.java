@@ -31,17 +31,25 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtCursorOpen implements Stmt {
+public class StmtCursorOpen extends Stmt {
 
-    public final int level;
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtCursorOpen(this);
+    }
+
     public final ExprId cursor;
     public final NodeList<Expr> args;
 
-    public StmtCursorOpen(int level, ExprId cursor, NodeList<Expr> args) {
-        assert cursor.decl instanceof DeclCursor;
+    public StmtCursorOpen(ParserRuleContext ctx, ExprId cursor, NodeList<Expr> args) {
+        super(ctx);
 
-        this.level = level;
+        assert cursor.decl instanceof DeclCursor;
+        assert args != null;
+
         this.cursor = cursor;
         this.args = args;
     }
@@ -54,7 +62,7 @@ public class StmtCursorOpen implements Stmt {
         return tmplStmt.replace("  %'DUPLICATE-CURSOR-ARG'%", Misc.indentLines(dupCursorArgStr, 1))
                 .replace("  %'CURSOR'%", Misc.indentLines(cursor.toJavaCode(), 1))
                 .replace("%'HOST-VALUES'%", Misc.indentLines(hostValuesStr, 2, true))
-                .replace("%'LEVEL'%", "" + level);
+                .replace("%'LEVEL'%", "" + cursor.scope.level);
     }
 
     // --------------------------------------------------

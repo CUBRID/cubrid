@@ -32,31 +32,15 @@ options {
 }
 
 sql_script
-    : unit_statement EOF
+    : create_routine EOF
     ;
 
-unit_statement
-    : create_function
-    | create_procedure
+create_routine
+    : CREATE (OR REPLACE)? routine_definition
     ;
 
-create_function
-    : CREATE (OR REPLACE)? FUNCTION identifier '(' parameter_list? ')' RETURN type_spec
-      (IS | AS) seq_of_declare_specs? body ';'
-    ;
-
-create_procedure
-    : CREATE (OR REPLACE)? PROCEDURE identifier '(' parameter_list? ')'
-      (IS | AS) seq_of_declare_specs? body ';'
-    ;
-
-function_body
-    : FUNCTION identifier '(' parameter_list? ')' RETURN type_spec
-      (IS | AS) seq_of_declare_specs? body ';'
-    ;
-
-procedure_body
-    : PROCEDURE identifier '(' parameter_list? ')'
+routine_definition
+    : (PROCEDURE | FUNCTION) identifier ( ('(' parameter_list ')')? | '(' ')' ) (RETURN type_spec)?
       (IS | AS) seq_of_declare_specs? body ';'
     ;
 
@@ -81,8 +65,7 @@ declare_spec
     : pragma_declaration
     | item_declaration
     | cursor_definition
-    | procedure_body
-    | function_body
+    | routine_definition
     ;
 
 item_declaration
@@ -100,7 +83,7 @@ constant_declaration
     ;
 
 cursor_definition
-    : CURSOR identifier '(' parameter_list? ')' IS s_select_statement ';'
+    : CURSOR identifier ( ('(' parameter_list ')')? | '(' ')' ) IS s_select_statement ';'
     ;
 
 exception_declaration
@@ -149,7 +132,7 @@ into_clause
     ;
 
 assignment_statement
-    : assignment_target ':=' expression
+    : identifier ':=' expression
     ;
 
 continue_statement
@@ -268,11 +251,11 @@ open_statement
     ;
 
 fetch_statement
-    : FETCH cursor_exp INTO variable_name (',' variable_name)*
+    : FETCH cursor_exp INTO identifier (',' identifier)*
     ;
 
 open_for_statement
-    : OPEN variable_name FOR s_select_statement
+    : OPEN identifier FOR s_select_statement
     ;
 
 transaction_control_statements
@@ -305,13 +288,8 @@ unary_logical_expression
     ;
 
 relational_expression
-    : is_null_expression                                                # relational_expression_prime
+    : between_expression                                                # relational_expression_prime
     | relational_expression relational_operator relational_expression   # rel_exp
-    ;
-
-is_null_expression
-    : between_expression                    # is_null_expression_prime
-    | is_null_expression IS NOT? NULL_      # is_null_exp
     ;
 
 between_expression
@@ -325,8 +303,13 @@ in_expression
     ;
 
 like_expression
-    : concatenation                                                         # like_expression_prime
-    | like_expression NOT? LIKE like_expression (ESCAPE like_expression)?   # like_exp
+    : is_null_expression                                                                # like_expression_prime
+    | like_expression NOT? LIKE pattern=quoted_string (ESCAPE escape=quoted_string)?    # like_exp
+    ;
+
+is_null_expression
+    : concatenation                         # is_null_expression_prime
+    | is_null_expression IS NOT? NULL_      # is_null_exp
     ;
 
 concatenation
@@ -391,7 +374,7 @@ case_expression
     ;
 
 simple_case_expression
-    : CASE expression simple_case_expression_when_part+ case_expression_else_part? END CASE?
+    : CASE expression simple_case_expression_when_part+ case_expression_else_part? END
     ;
 
 simple_case_expression_when_part
@@ -399,7 +382,7 @@ simple_case_expression_when_part
     ;
 
 searched_case_expression
-    : CASE searched_case_expression_when_part+ case_expression_else_part? END CASE?
+    : CASE searched_case_expression_when_part+ case_expression_else_part? END
     ;
 
 searched_case_expression_when_part
@@ -428,7 +411,7 @@ err_msg
     ;
 
 simple_case_statement
-    : CASE expression simple_case_statement_when_part+  case_statement_else_part? END CASE?
+    : CASE expression simple_case_statement_when_part+  case_statement_else_part? END CASE
     ;
 
 simple_case_statement_when_part
@@ -436,7 +419,7 @@ simple_case_statement_when_part
     ;
 
 searched_case_statement
-    : CASE searched_case_statement_when_part+ case_statement_else_part? END CASE?
+    : CASE searched_case_statement_when_part+ case_statement_else_part? END CASE
     ;
 
 searched_case_statement_when_part
@@ -475,15 +458,7 @@ exception_name
     : identifier
     ;
 
-variable_name
-    : identifier
-    ;
-
 index_name
-    : identifier
-    ;
-
-assignment_target
     : identifier
     ;
 
@@ -502,11 +477,6 @@ table_name
 
 column_name
     : identifier
-    | table_name '.' identifier
-    ;
-
-column_list
-    : column_name (',' column_name)*
     ;
 
 function_argument
@@ -518,17 +488,27 @@ argument
     ;
 
 type_spec
-    : native_datatype precision_part?
-    ;
-
-precision_part
-    : '(' numeric (',' numeric)? ')'
+    : native_datatype                               # native_type_spec
+    | (table_name '.')? identifier PERCENT_TYPE     # percent_type_spec
     ;
 
 native_datatype
+    : numeric_type
+    | char_type
+    | simple_type
+    ;
+
+numeric_type
+    : (NUMERIC | DECIMAL | DEC) ('(' precision=UNSIGNED_INTEGER (',' scale=UNSIGNED_INTEGER)? ')')?
+    ;
+
+char_type
+    : (CHAR | VARCHAR) ( '(' length=UNSIGNED_INTEGER ')' )?
+    ;
+
+simple_type
     : BOOLEAN
-    | CHAR | VARCHAR | STRING
-    | NUMERIC | DECIMAL | DEC
+    | STRING
     | SHORT | SMALLINT
     | INT | INTEGER
     | BIGINT
@@ -538,14 +518,15 @@ native_datatype
     | TIME
     | TIMESTAMP
     | DATETIME
+    /* TODO: restore the following four lines
     | TIMESTAMPLTZ
     | TIMESTAMPTZ
     | DATETIMELTZ
     | DATETIMETZ
+     */
     | SET
     | MULTISET
-    | LIST
-    | SEQUENCE
+    | LIST | SEQUENCE
     | SYS_REFCURSOR
     ;
 
@@ -554,10 +535,12 @@ literal
     | TIME quoted_string            # time_exp
     | TIMESTAMP quoted_string       # timestamp_exp
     | DATETIME quoted_string        # datetime_exp
+    /* TODO: restore the following four lines
     | TIMESTAMPTZ quoted_string     # timestamptz_exp
     | TIMESTAMPLTZ quoted_string    # timestampltz_exp
     | DATETIMETZ quoted_string      # datetimetz_exp
     | DATETIMELTZ quoted_string     # datetimeltz_exp
+     */
     | numeric                       # num_exp
     | quoted_string                 # str_exp
     | NULL_                         # null_exp

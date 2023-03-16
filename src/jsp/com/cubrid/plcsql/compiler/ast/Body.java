@@ -31,18 +31,33 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class Body implements AstNode {
+public class Body extends AstNode {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitBody(this);
+    }
 
     public final NodeList<Stmt> stmts;
     public final NodeList<ExHandler> exHandlers;
+    public final String label;
 
-    public Body(NodeList<Stmt> stmts, NodeList<ExHandler> exHandlers) {
+    public Body(
+            ParserRuleContext ctx,
+            NodeList<Stmt> stmts,
+            NodeList<ExHandler> exHandlers,
+            String label) {
+        super(ctx);
+
         assert stmts != null; // stmts cannot be null by the syntax
         assert exHandlers != null; // see visitBody() in ParseTreeConverter
 
         this.stmts = stmts;
         this.exHandlers = exHandlers;
+        this.label = label;
     }
 
     @Override

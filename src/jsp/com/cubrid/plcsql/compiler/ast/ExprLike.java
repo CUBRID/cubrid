@@ -31,14 +31,23 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprLike implements Expr {
+public class ExprLike extends Expr {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprLike(this);
+    }
 
     public final Expr target;
-    public final Expr pattern;
-    public final Expr escape;
+    public final ExprStr pattern;
+    public final ExprStr escape;
 
-    public ExprLike(Expr target, Expr pattern, Expr escape) {
+    public ExprLike(ParserRuleContext ctx, Expr target, ExprStr pattern, ExprStr escape) {
+        super(ctx);
+
         this.target = target;
         this.pattern = pattern;
         this.escape = escape;

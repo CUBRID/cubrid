@@ -30,11 +30,21 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class StmtBreak implements Stmt {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
+
+public class StmtBreak extends Stmt {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtBreak(this);
+    }
 
     public final DeclLabel declLabel;
 
-    public StmtBreak(DeclLabel declLabel) {
+    public StmtBreak(ParserRuleContext ctx, DeclLabel declLabel) {
+        super(ctx);
+
         this.declLabel = declLabel;
     }
 
@@ -44,7 +54,7 @@ public class StmtBreak implements Stmt {
         if (declLabel == null) {
             return "break;";
         } else {
-            return String.format("break $%s_%d;", declLabel.name, declLabel.scope.level);
+            return String.format("break %s_%d;", declLabel.name, declLabel.scope.level);
         }
     }
 

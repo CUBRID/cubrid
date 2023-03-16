@@ -30,7 +30,19 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class StmtRollback implements Stmt {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
+
+public class StmtRollback extends Stmt {
+
+    public StmtRollback(ParserRuleContext ctx) {
+        super(ctx);
+    }
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtRollback(this);
+    }
 
     @Override
     public String toJavaCode() {

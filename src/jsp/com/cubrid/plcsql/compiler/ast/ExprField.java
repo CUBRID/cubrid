@@ -30,12 +30,22 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class ExprField implements Expr {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
+
+public class ExprField extends Expr {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprField(this);
+    }
 
     public final ExprId record;
     public String fieldName;
 
-    public ExprField(ExprId record, String fieldName) {
+    public ExprField(ParserRuleContext ctx, ExprId record, String fieldName) {
+        super(ctx);
+
         this.record = record;
         this.fieldName = fieldName;
     }

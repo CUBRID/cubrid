@@ -30,13 +30,22 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.time.LocalTime;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprTime implements Expr {
+public class ExprTime extends Expr {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprTime(this);
+    }
 
     public final LocalTime time;
 
-    public ExprTime(LocalTime time) {
+    public ExprTime(ParserRuleContext ctx, LocalTime time) {
+        super(ctx);
+
         this.time = time;
     }
 

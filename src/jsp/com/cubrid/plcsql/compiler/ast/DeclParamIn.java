@@ -30,28 +30,28 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DeclParamIn extends DeclBase implements DeclParam {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-    public final String name;
-    public final TypeSpec typeSpec;
+public class DeclParamIn extends DeclParam {
 
-    public DeclParamIn(String name, TypeSpec typeSpec) {
-        this.name = name;
-        this.typeSpec = typeSpec;
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitDeclParamIn(this);
     }
 
-    public TypeSpec typeSpec() {
-        return typeSpec;
+    public DeclParamIn(ParserRuleContext ctx, String name, TypeSpec typeSpec) {
+        super(ctx, name, typeSpec);
     }
 
     @Override
-    public String typeStr() {
+    public String kind() {
         return "in-parameter";
     }
 
     @Override
     public String toJavaCode() {
-        return String.format("%s $%s", typeSpec.toJavaCode(), name);
+        return String.format("%s %s", typeSpec.toJavaCode(), name);
     }
 
     public String toJavaSignature() {

@@ -30,20 +30,12 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DummyExpr implements Expr {
+import org.antlr.v4.runtime.ParserRuleContext;
 
-    public final String kind;
+public abstract class DeclVarLike extends DeclId {
+    public abstract TypeSpec typeSpec();
 
-    public DummyExpr(String kind) {
-        this.kind = kind;
+    public DeclVarLike(ParserRuleContext ctx) {
+        super(ctx);
     }
-
-    @Override
-    public String toJavaCode() {
-        return "%TODO-Expr(" + kind + ")%";
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

@@ -31,24 +31,34 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtExecImme implements Stmt {
+public class StmtExecImme extends Stmt {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtExecImme(this);
+    }
 
     public final boolean isDynamic;
     public final int level;
-    public final Expr dynSql;
+    public final Expr sql;
     public final NodeList<ExprId> intoVarList;
     public final NodeList<? extends Expr> usedExprList;
 
     public StmtExecImme(
+            ParserRuleContext ctx,
             boolean isDynamic,
             int level,
-            Expr dynSql,
+            Expr sql,
             NodeList<ExprId> intoVarList,
             NodeList<? extends Expr> usedExprList) {
+        super(ctx);
+
         this.isDynamic = isDynamic;
         this.level = level;
-        this.dynSql = dynSql;
+        this.sql = sql;
         this.intoVarList = intoVarList;
         this.usedExprList = usedExprList;
     }
@@ -60,7 +70,7 @@ public class StmtExecImme implements Stmt {
         if (intoVarList == null) {
             // DML statement TODO: check it is not a Select statement
             return tmplDml.replace("%'KIND'%", isDynamic ? "dynamic" : "static")
-                    .replace("%'SQL'%", dynSql.toJavaCode())
+                    .replace("%'SQL'%", sql.toJavaCode())
                     .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedValuesStr, 1))
                     .replace("%'LEVEL'%", "" + level);
         } else {
@@ -69,7 +79,7 @@ public class StmtExecImme implements Stmt {
             String setNullsStr = getSetNullsStr(intoVarList);
             return tmplSelect
                     .replace("%'KIND'%", isDynamic ? "dynamic" : "static")
-                    .replace("%'SQL'%", dynSql.toJavaCode())
+                    .replace("%'SQL'%", sql.toJavaCode())
                     .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedValuesStr, 1))
                     .replace("      %'SET-RESULTS'%", Misc.indentLines(setResultsStr, 3))
                     .replace("    %'SET-NULLS'%", Misc.indentLines(setNullsStr, 2))
@@ -87,7 +97,6 @@ public class StmtExecImme implements Stmt {
                     "  String dynSql_%'LEVEL'% = %'SQL'%;",
                     "  PreparedStatement stmt_%'LEVEL'% = conn.prepareStatement(dynSql_%'LEVEL'%);",
                     "  %'SET-USED-VALUES'%",
-                    // "  sql_rowcount[0] = (Long) stmt_%'LEVEL'%.executeUpdate();",
                     "  sql_rowcount[0] = stmt_%'LEVEL'%.executeUpdate();",
                     "  stmt_%'LEVEL'%.close();",
                     "}");
@@ -109,15 +118,12 @@ public class StmtExecImme implements Stmt {
                     "    }",
                     "  }",
                     "  if (i%'LEVEL'% == 0) {",
-                    // "    sql_rowcount[0] = 0L;",
-                    "    sql_rowcount[0] = 0;",
+                    "    sql_rowcount[0] = 0L;",
                     "    %'SET-NULLS'%",
                     "  } else if (i%'LEVEL'% == 1) {",
-                    // "    sql_rowcount[0] = 1L;",
-                    "    sql_rowcount[0] = 1;",
+                    "    sql_rowcount[0] = 1L;",
                     "  } else {",
-                    // "    sql_rowcount[0] = 1L; // Surprise? Refer to the Spec.",
-                    "    sql_rowcount[0] = 1; // Surprise? Refer to the Spec.",
+                    "    sql_rowcount[0] = 1L; // Surprise? Refer to the Spec.",
                     "    throw new RuntimeException(\"too many rows\");",
                     "  }",
                     "  stmt_%'LEVEL'%.close();",
@@ -136,7 +142,7 @@ public class StmtExecImme implements Stmt {
             assert id.decl instanceof DeclVar || id.decl instanceof DeclParamOut
                     : "only variables or out-parameters can be used in into-clauses";
 
-            String ty = id.decl.typeSpec().name;
+            String ty = ((DeclVarLike) id.decl).typeSpec().name;
 
             sbuf.append(
                     String.format(

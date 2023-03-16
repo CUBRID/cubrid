@@ -30,20 +30,36 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class DummyStmt implements Stmt {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 
-    public final String kind;
+public class TypeSpecVariadic extends TypeSpec {
 
-    public DummyStmt(String kind) {
-        this.kind = kind;
+    public final TypeSpecSimple elem;
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        assert false
+                : "unreachable"; // cannot be a part of an AST: only in a symbol table for CUBRID
+        // predefined functions
+        throw new RuntimeException("unreachable");
     }
 
     @Override
-    public String toJavaCode() {
-        return "//%TODO-Stmt(" + kind + ")%";
+    public String toJavaSignature() {
+        assert false : "unreachable"; // cannot be a parameter or return type of a stored procedure
+        throw new RuntimeException("unreachable");
     }
 
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || this.getClass() != o.getClass()) {
+            return false;
+        }
+        return this.elem.equals(((TypeSpecVariadic) o).elem);
+    }
+
+    public TypeSpecVariadic(TypeSpecSimple elem) {
+        super(elem.name + "[]");
+        this.elem = elem;
+    }
 }

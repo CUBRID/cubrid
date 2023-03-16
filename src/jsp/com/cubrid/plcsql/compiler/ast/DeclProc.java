@@ -30,19 +30,31 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
+
 public class DeclProc extends DeclRoutine {
 
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitDeclProc(this);
+    }
+
     public DeclProc(
+            ParserRuleContext ctx,
             String name,
             NodeList<DeclParam> paramList,
             NodeList<Decl> decls,
-            Body body,
-            int level) {
-        super(name, paramList, null, decls, body, level);
+            Body body) {
+        super(ctx, name, paramList, null, decls, body);
+    }
+
+    public DeclProc(ParserRuleContext ctx, String name, NodeList<DeclParam> paramList) {
+        super(ctx, name, paramList, null, null, null);
     }
 
     @Override
-    public String typeStr() {
+    public String kind() {
         return "procedure";
     }
 

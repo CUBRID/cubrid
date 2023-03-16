@@ -31,24 +31,42 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtWhileLoop implements Stmt {
+public class StmtWhileLoop extends Stmt {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtWhileLoop(this);
+    }
 
     public final DeclLabel declLabel;
-    public final Expr expr;
+    public final Expr cond;
     public final NodeList<Stmt> stmts;
 
-    public StmtWhileLoop(DeclLabel declLabel, Expr expr, NodeList<Stmt> stmts) {
+    public StmtWhileLoop(
+            ParserRuleContext ctx, DeclLabel declLabel, Expr cond, NodeList<Stmt> stmts) {
+        super(ctx);
+
         this.declLabel = declLabel;
-        this.expr = expr;
+        this.cond = cond;
         this.stmts = stmts;
     }
 
     @Override
     public String toJavaCode() {
+        String condStr;
+        if (cond == ExprTrue.SINGLETON) {
+            // to avoid unreachable statement check of javac
+            condStr = "opNot(false)";
+        } else {
+            condStr = cond.toJavaCode();
+        }
+
         return tmpl.replace(
                         "%'OPT-LABEL'%", declLabel == null ? "// no label" : declLabel.toJavaCode())
-                .replace("%'EXPRESSION'%", expr.toJavaCode())
+                .replace("%'EXPRESSION'%", condStr)
                 .replace("  %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 1));
     }
 

@@ -31,14 +31,23 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.util.List;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExHandler implements AstNode {
+public class ExHandler extends AstNode {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExHandler(this);
+    }
 
     public final List<ExName> exNames;
     public final NodeList<Stmt> stmts;
 
-    public ExHandler(List<ExName> exNames, NodeList<Stmt> stmts) {
+    public ExHandler(ParserRuleContext ctx, List<ExName> exNames, NodeList<Stmt> stmts) {
+        super(ctx);
+
         this.exNames = exNames;
         this.stmts = stmts;
     }
@@ -59,9 +68,9 @@ public class ExHandler implements AstNode {
             if ("OTHERS".equals(ex.name)) {
                 sbuf.append("Throwable");
             } else if (ex.prefixDeclBlock) {
-                sbuf.append("Decl_of_" + ex.decl.scope().block + ".$" + ex.name);
+                sbuf.append("Decl_of_" + ex.decl.scope().block + "." + ex.name);
             } else {
-                sbuf.append("$" + ex.name);
+                sbuf.append(ex.name);
             }
         }
 

@@ -30,16 +30,42 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-public class ExprNum implements Expr {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
+
+public class ExprUint extends Expr {
+
+    public enum Type {
+        BIGDECIMAL,
+        LONG,
+        INTEGER
+    }
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprUint(this);
+    }
 
     public final String val;
+    public final Type ty;
 
-    public ExprNum(String val) {
+    public ExprUint(ParserRuleContext ctx, String val, Type ty) {
+        super(ctx);
+
         this.val = val;
+        this.ty = ty;
     }
 
     @Override
     public String toJavaCode() {
+        switch (ty) {
+            case BIGDECIMAL:
+                return "new BigDecimal(\"" + val + "\")";
+            case LONG:
+                return "new Long(" + val + "L)";
+            case INTEGER:
+                return "new Integer(" + val + ")";
+        }
         return val;
     }
 

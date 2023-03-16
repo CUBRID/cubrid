@@ -31,13 +31,22 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtBasicLoop implements Stmt {
+public class StmtBasicLoop extends Stmt {
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtBasicLoop(this);
+    }
 
     public final DeclLabel declLabel;
     public final NodeList<Stmt> stmts;
 
-    public StmtBasicLoop(DeclLabel declLabel, NodeList<Stmt> stmts) {
+    public StmtBasicLoop(ParserRuleContext ctx, DeclLabel declLabel, NodeList<Stmt> stmts) {
+        super(ctx);
+
         this.declLabel = declLabel;
         this.stmts = stmts;
     }
@@ -53,6 +62,19 @@ public class StmtBasicLoop implements Stmt {
     // Private
     // --------------------------------------------------
 
+    // NOTE: why I use 'while(opNot(false))' instead of simpler 'while(true)':
+    // Compiling Java code below with javac causes 'unreachable statement' error
+    //     while (true) {
+    //         ... // no break
+    //     }
+    //     ... // a statement
+    // However, compiling the following does not
+    //     while (opNot(false)) {
+    //         ... // no break
+    //     }
+    //     ... // a statement
+    // It seems that static analysis of javac does not go beyond method call boundaries
+
     private static final String tmpl =
-            Misc.combineLines("%'OPT-LABEL'%", "while (true) {", "  %'STATEMENTS'%", "}");
+            Misc.combineLines("%'OPT-LABEL'%", "while (opNot(false)) {", "  %'STATEMENTS'%", "}");
 }
