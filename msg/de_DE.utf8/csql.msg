@@ -192,7 +192,7 @@ $ csql help messages
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - Single-Line-Modus aktivieren/deaktivieren.\n\
    ;Connect username [dbname | dbname@hostname]\n\
-                                - benutzer, Datenbank, Host verbinden.\n\ 
+                                - sich als Benutzername mit der aktuellen oder anderen Datenbanken verbinden..\n\ 
    ;.Hist [ON/OFF]              - sammeln von Statistikinformationen in CSQL starten/stoppen (nur verfügbarer DBA).\n\
    ;.Clear_hist                 - löschen Sie die SQL Statistikinformationen im Puffer.\n\
    ;.Dump_hist                  - anzeige der CSQL-Statistikinformationen in CSQL.\n\

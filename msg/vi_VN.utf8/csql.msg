@@ -191,7 +191,7 @@ $ csql help messages
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - bật/tắt chế độ một dòng.\n\
    ;Connect username [dbname | dbname@hostname]\n\
-                                - connect user, database, host.\n\
+                                - connect to the current or other databases as a username.\n\
    ;.Hist [ON/OFF]              - start/stop collecting statistics information in CSQL(available DBA only).\n\
    ;.Clear_hist                 - clear the CSQL statistics information in the buffer.\n\
    ;.Dump_hist                  - display the CSQL statistics information in CSQL.\n\

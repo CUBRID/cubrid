@@ -188,7 +188,7 @@ $ csql help messages
    ;TRAce [ON|OFF] [text/json]  - 쿼리 자동 트레이스 설정|해제.\n\
    ;SIngleline [ON|OFF]         - 싱글 라인 모드 활성화|비활성화.\n\
    ;Connect username [dbname | dbname@hostname]\n\
-                                - 사용자, 데이터베이스, 호스트에 연결.\n\
+                                - 현재 또는 다른 데이터베이스에 사용자 이름으로 연결.\n\
    ;.Hist [ON/OFF]              - CSQL에서 통계 정보 수집 시작|중지(DBA 만 가능).\n\
    ;.Clear_hist                 - 버퍼에 있는 CSQL 통계 정보를 삭제.\n\
    ;.Dump_hist                  - CSQL에서 CSQL 통계 정보를 표시.\n\
