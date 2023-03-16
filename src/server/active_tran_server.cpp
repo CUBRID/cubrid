@@ -94,7 +94,7 @@ active_tran_server::compute_consensus_lsa () const
    */
   std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end ());
 
-  const auto consensus_lsa = collected_saved_lsa[total_node_cnt - quorum];
+  const auto consensus_lsa = collected_saved_lsa[cur_node_cnt - quorum];
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
     {
