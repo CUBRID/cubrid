@@ -8559,6 +8559,13 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
         {
           perfmon_add_stat (&thread_r, PSTAT_COMPR_HEAP_PAGES_TRANSF_COMPRESSED, (UINT64)compressed_data_size);
           perfmon_add_stat (&thread_r, PSTAT_COMPR_HEAP_PAGES_TRANSF_UNCOMPRESSED, (UINT64)IO_PAGESIZE);
+
+          // depending on a separate activation flag, the function will extract discrete detailed btree page types
+          // the functionality profiled here is not interested in that (all btree page types have
+          // the same structure - slotted)
+          const PERF_PAGE_TYPE perf_page_type = pgbuf_get_page_type_for_stat (&thread_r, page_ptr);
+          const float compressed_ratio_multiplied = ((float)compressed_data_size/(float)IO_PAGESIZE) * 100. * 100.;
+          perfmon_compr_page_type (&thread_r, (int)perf_page_type, (int)compressed_ratio_multiplied);
         }
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))

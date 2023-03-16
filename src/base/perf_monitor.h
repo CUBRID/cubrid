@@ -67,9 +67,10 @@ typedef enum
   PERFMON_ACTIVATION_FLAG_FLUSHED_BLOCK_VOLUMES = 0x00000080,
   PERFMON_ACTIVATION_FLAG_LOG_RECOVERY_REDO_MAIN = 0x00000100,
   PERFMON_ACTIVATION_FLAG_LOG_RECOVERY_REDO_ASYNC = 0x00000200,
+  PERFMON_ACTIVATION_FLAG_SERVED_COMPR_PAGE_TYPE = 0x00000400,
 
   /* must update when adding new conditions */
-  PERFMON_ACTIVATION_FLAG_LAST = PERFMON_ACTIVATION_FLAG_LOG_RECOVERY_REDO_ASYNC,
+  PERFMON_ACTIVATION_FLAG_LAST = PERFMON_ACTIVATION_FLAG_SERVED_COMPR_PAGE_TYPE,
 
   PERFMON_ACTIVATION_FLAG_MAX_VALUE = (PERFMON_ACTIVATION_FLAG_LAST << 1) - 1
 } PERFMON_ACTIVATION_FLAG;
@@ -133,6 +134,13 @@ typedef enum
 
 #define PERF_OBJ_LOCK_STAT_COUNTERS (SCH_M_LOCK + 1)
 #define PERF_DWB_FLUSHED_BLOCK_VOLUMES_CNT 10
+
+/* PAGE_TYPE x (PAGE_COUNT + COMPR_RATIO_x_100) */
+#define PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE \
+  (PERF_PAGE_CNT * PERF_SERVED_COMPR_PAGE_TYPE_CNT)
+
+#define PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_OFFSET(page_type, count_or_compress_ratio_index) \
+  ((page_type) * PERF_SERVED_COMPR_PAGE_TYPE_CNT) + (count_or_compress_ratio_index)
 
 #define SAFE_DIV(a, b) ((b) == 0 ? 0 : (a) / (b))
 
@@ -267,6 +275,14 @@ typedef enum
 
   PERF_SNAPSHOT_VISIBILITY_CNT
 } PERF_SNAPSHOT_VISIBILITY;
+
+typedef enum
+{
+  PERF_SERVED_COMPR_COUNT = 0,	/* per page type, this many pages have been compressed and served by page server */
+  PERF_SERVED_COMPR_RATIO,	/* per page type, the average ratio of pages compressed and served by page server */
+
+  PERF_SERVED_COMPR_PAGE_TYPE_CNT
+} PERF_SERVED_COMPR_PAGE_TYPE;
 
 typedef enum
 {
@@ -659,6 +675,7 @@ typedef enum
   PSTAT_THREAD_DAEMON_STATS,
   PSTAT_DWB_FLUSHED_BLOCK_NUM_VOLUMES,
   PSTAT_LOAD_THREAD_STATS,
+  PSTAT_SERVED_COMPR_PAGE_TYPE_COUNTERS,
 
   /* IMPORTANT: only add complex statistics here; non-complex statistics
    * should be added before the complex entries; dump to file/buffer internal
@@ -836,7 +853,7 @@ extern void perfmon_finalize (void);
 extern int perfmon_get_number_of_statistic_values (void);
 extern UINT64 *perfmon_allocate_values (void);
 extern char *perfmon_allocate_packed_values_buffer (void);
-extern void perfmon_copy_values (UINT64 * src, UINT64 * dest);
+extern void perfmon_copy_values (UINT64 * dest, const UINT64 * src);
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 extern void perfmon_start_watch (THREAD_ENTRY * thread_p);
@@ -1492,6 +1509,8 @@ extern void perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type
 					  int cond_type, UINT64 amount);
 extern void perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility);
 extern void perfmon_db_flushed_block_volumes (THREAD_ENTRY * thread_p, int num_volumes);
+
+extern void perfmon_compr_page_type (THREAD_ENTRY * thread_p, int page_type, int ratio);
 
 #endif /* SERVER_MODE || SA_MODE */
 
