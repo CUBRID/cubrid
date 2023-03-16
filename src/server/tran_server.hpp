@@ -129,6 +129,11 @@ class tran_server
     virtual bool get_remote_storage_config () = 0;
 
   protected:
+    /*
+     * Static information about available page server connection peers.
+     * For now, this information is static. In the future this can be maintained dinamically (eg: via cluster
+     * management sofware).
+     */
     std::vector<cubcomm::node> m_connection_list;
     std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
 

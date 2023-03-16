@@ -59,7 +59,7 @@ passive_tran_server::connection_handler::get_request_handlers ()
 log_lsa
 passive_tran_server::connection_handler::get_saved_lsa () const
 {
-  assert (false);
+  assert (false); // Only used in active transaction server
 }
 
 void

@@ -73,7 +73,6 @@ tran_server::parse_server_host (const std::string &host)
   m_ps_hostname = host.substr (0, col_pos);
   er_log_debug (ARG_FILE_LINE, "Page server hosts: %s port: %d\n", m_ps_hostname.c_str (), port);
 
-
   cubcomm::node conn{port, m_ps_hostname};
   m_connection_list.push_back (conn);
 
