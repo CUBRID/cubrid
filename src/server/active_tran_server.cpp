@@ -103,12 +103,14 @@ active_tran_server::compute_consensus_lsa () const
       constexpr int BUF_SIZE = 1024;
       char msg_buf[BUF_SIZE];
       int n = 0;
+      // cppcheck-suppress [wrongPrintfScanfArgNum]
       n = snprintf (msg_buf, BUF_SIZE,
 		    "compute_consensus_lsa - total node count = %d, current node count = %d, quorum = %d, consensus LSA = %lld|%d\n",
 		    total_node_cnt, cur_node_cnt, quorum, LSA_AS_ARGS (&consensus_lsa));
       n += snprintf (msg_buf + n, BUF_SIZE - n, "Collected saved lsa list = [ ");
       for (const auto &lsa : collected_saved_lsa)
 	{
+	  // cppcheck-suppress [wrongPrintfScanfArgNum]
 	  n += snprintf (msg_buf + n, BUF_SIZE - n, "%lld|%d ", LSA_AS_ARGS (&lsa));
 	}
       snprintf (msg_buf + n, BUF_SIZE - n, "]\n");
