@@ -190,7 +190,7 @@ $ csql help messages
    ;HISTORYRead <history_num>   - 将histroy_num所对应的内容读取到命令缓冲区.\n\
    ;TRAce [ON/OFF] [text/json]  - 启用/禁用 sql auto trace.\n\
    ;SIngleline [ON|OFF]         - 启用/禁用单行模式.\n\
-   ;Connect username [dbname | dbname@hostname]\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
                                 - 作为用户名连接到当前或其他数据库.\n\ 
    ;.Hist [ON/OFF]              - 开始/停止收集 CSQL 中的统计信息（仅限 DBA）.\n\
    ;.Clear_hist                 - 清除缓冲区中的 CSQL 统计信息.\n\

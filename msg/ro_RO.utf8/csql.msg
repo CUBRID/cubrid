@@ -191,7 +191,7 @@ $ csql help messages
                                   specificată prin parametru.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - activați/dezactivați modul cu o singură linie.\n\
-   ;Connect username [dbname | dbname@hostname]\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
                                 - conectați-vă la bazele de date curente sau la alte baze de date ca nume de utilizator.\n\ 
    ;.Hist [ON/OFF]              - porniți/opriți colectarea informațiilor statistice în CSQL (doar DBA disponibil).\n\
    ;.Clear_hist                 - ștergeți informațiile statistice CSQL din buffer.\n\
