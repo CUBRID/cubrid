@@ -25,7 +25,6 @@
 #include "adjustable_array.h"
 #include "critical_section.h"  // for INF_WAIT
 #include "critical_section_tracker.hpp"
-//#include "error_manager.h"
 #include "fault_injection.h"
 #include "list_file.h"
 #include "lock_free.h"
