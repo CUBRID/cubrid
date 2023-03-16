@@ -163,7 +163,9 @@ $ csql help messages
    ;COMmit                      - 提交当前事务.\n\
    ;ROllback                    - 回滚当前事务.\n\
    ;AUtocommit [ON|OFF]         - 启用/停用自动提交模式.\n\
-   ;REStart                     - 重新启动数据库.\n\
+   ;REStart                     - 在 CSQL 会话中重新连接到当前数据库.\n\
+   ;CHeckpoint                  - 执行检查点（仅带 --sysadm 的 CSQL）.\n\
+   ;Killtran                    - 检查交易状态信息或结束特定交易（仅限带有 --sysadm 的 CSQL）.\n\
 \n\
    ;SHELL_Cmd     [shell-cmd]   - 设置默认的shell或显示当前设置.\n\
    ;EDITOR_Cmd    [editor-cmd]  - 设置默认编辑器或显示当前设置.\n\
@@ -188,6 +190,12 @@ $ csql help messages
    ;HISTORYRead <history_num>   - 将histroy_num所对应的内容读取到命令缓冲区.\n\
    ;TRAce [ON/OFF] [text/json]  - 启用/禁用 sql auto trace.\n\
    ;SIngleline [ON|OFF]         - 启用/禁用单行模式.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - 作为用户名连接到当前或其他数据库.\n\ 
+   ;.Hist [ON/OFF]              - 开始/停止收集 CSQL 中的统计信息（仅限 DBA）.\n\
+   ;.Clear_hist                 - 清除缓冲区中的 CSQL 统计信息.\n\
+   ;.Dump_hist                  - 在CSQL中显示CSQL统计信息.\n\
+   ;.X_hist                     - 在 CSQL 中显示 CSQL 统计信息，并初始化统计数据.\n\
    ;HElp                        - 显示帮助信息.\n\n
 
 232 <系统规定参数> 
