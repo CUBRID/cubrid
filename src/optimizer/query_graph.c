@@ -7404,13 +7404,16 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	  nseg_idx = 0;
 
 	  /* count the number of columns on this constraint */
-	  for (col_num = 0; consp->attributes[col_num]; col_num++)
-	    {
-	      ;
-	    }
 	  if (consp->func_index_info)
 	    {
 	      col_num = consp->func_index_info->attr_index_start + 1;
+	    }
+	  else
+	    {
+	      for (col_num = 0; consp->attributes[col_num]; col_num++)
+		{
+		  ;
+		}
 	    }
 
 	  if (col_num <= NELEMENTS)

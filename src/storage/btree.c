@@ -7293,10 +7293,8 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
   env->stat_info->height = 0;
   env->stat_info->keys = 0;
 
-  for (i = 0; i < env->pkeys_val_num; i++)
-    {
-      env->stat_info->pkeys[i] = 0;	/* clear old stats */
-    }
+  /* clear old stats */
+  memset (env->stat_info->pkeys, 0x00, env->pkeys_val_num * sizeof (env->stat_info->pkeys[0]));
 
 #if defined(SUPPORT_COMPRESS_MODE)
   db_make_null (&(env->prev_key_val));

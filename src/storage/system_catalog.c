@@ -1568,10 +1568,7 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p, BTREE_STATS * btree_sta
     }
 
   assert (btree_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
-  for (i = 0; i < btree_stats_p->pkeys_size; i++)
-    {
-      btree_stats_p->pkeys[i] = 0;
-    }
+  memset (btree_stats_p->pkeys, 0x00, btree_stats_p->pkeys_size * sizeof (int));
 
 exit_on_end:
 
