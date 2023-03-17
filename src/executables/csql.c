@@ -3370,7 +3370,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   char *host_name_ptr = NULL;
   char *p = NULL;
   const char *err_msg;
-  CSQL_ARGUMENT csql_new_arg;
+  CSQL_ARGUMENT csql_new_arg = {0, };
 
   if (argument == NULL)
     {
@@ -3441,6 +3441,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
       else
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
+	  csql_check_server_down ();
 	  fprintf (csql_Output_fp, "Warning: current CSQL session is disconnected.\n");
 
 	  return DO_CMD_FAILURE;
