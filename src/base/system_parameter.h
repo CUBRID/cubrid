@@ -467,8 +467,9 @@ enum param_id
   PRM_ID_REGEXP_ENGINE,
   PRM_ID_ORACLE_STYLE_NUMBER_RETURN,
   PRM_ID_HA_TCP_PING_HOSTS,
+  PRM_ID_HA_PING_TIMEOUT,
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_HA_TCP_PING_HOSTS
+  PRM_LAST_ID = PRM_ID_HA_PING_TIMEOUT
 };
 typedef enum param_id PARAM_ID;
 

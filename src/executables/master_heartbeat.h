@@ -262,6 +262,7 @@ struct hb_cluster
 
   HB_PING_HOST_ENTRY *ping_hosts;
   int num_ping_hosts;
+  int ping_timeout;
 
   HB_UI_NODE_ENTRY *ui_nodes;
   int num_ui_nodes;

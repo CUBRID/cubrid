@@ -128,7 +128,7 @@ static int hb_hostname_n_port_to_sockaddr (const char *host, int port, struct so
 
 /* common */
 static int hb_check_ping (const char *host);
-static int hb_check_tcp_ping (const char *host, int port);
+static int hb_check_tcp_ping (const char *host, int port, int timeout);
 
 /* cluster jobs queue */
 static HB_JOB_ENTRY *hb_cluster_job_dequeue (void);
@@ -318,9 +318,9 @@ static HB_JOB_FUNC hb_resource_jobs[] = {
           "   %-20s %s\n"
 
 #define HA_TCP_PING_HOSTS_INFO_FORMAT_STRING       \
-        " HA-Ping Host Info (TCP PING check %s)\n"
+        " HA-Ping Host/Port Info (TCP PING check %s)\n"
 #define HA_TCP_PING_HOSTS_FORMAT_STRING        \
-          "   %-20s:%d %s\n"
+          "   %-20s %-10d %s\n"
 
 #define HA_ADMIN_INFO_FORMAT_STRING                \
         " HA-Admin Info\n"
@@ -992,7 +992,7 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
 	    }
 	  else
 	    {
-	      ping_result = hb_check_tcp_ping (ping_host->host_name, ping_host->port);
+	      ping_result = hb_check_tcp_ping (ping_host->host_name, ping_host->port, hb_Cluster->ping_timeout);
 	    }
 
 	  ping_host->ping_result = ping_result;
@@ -1416,7 +1416,7 @@ hb_cluster_check_valid_ping_server (void)
 	}
       else
 	{
-	  ping_host->ping_result = hb_check_tcp_ping (ping_host->host_name, ping_host->port);
+	  ping_host->ping_result = hb_check_tcp_ping (ping_host->host_name, ping_host->port, hb_Cluster->ping_timeout);
 	}
 
       if (ping_host->ping_result == HB_PING_SUCCESS)
@@ -2312,14 +2312,24 @@ hb_cluster_load_tcp_ping_host_list (char *ha_ping_host_list)
 	}
 
       port_p = strstr (host_p, ":");
-      if (port_p == NULL)
+      if (port_p == NULL || port_p == host_p)
 	{
 	  break;
 	}
       else
 	{
 	  *port_p = '\0';
-	  port_p++;
+
+	  do
+	    {
+	      port_p++;
+	    }
+	  while (*port_p == ' ');
+
+	  if (*port_p == '-')
+	    {
+	      break;
+	    }
 	}
 
       if (strcmp (host_p, "0.0.0.0") == 0)
@@ -4843,6 +4853,7 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
       /* The ha_tcp_ping_hosts can be used instead of the ha_ping_hosts in case the ICMP protocol is disabled.
          However, both system parameters cannot be set at the same time and the ha_tcp_ping_hosts works only when the ha_ping_hosts is not set. */
       hb_Cluster->num_ping_hosts = hb_cluster_load_tcp_ping_host_list (prm_get_string_value (PRM_ID_HA_TCP_PING_HOSTS));
+      hb_Cluster->ping_timeout = prm_get_integer_value (PRM_ID_HA_PING_TIMEOUT);
 
       if (hb_cluster_check_valid_ping_server () == false)
 	{
@@ -5300,6 +5311,7 @@ hb_cluster_cleanup (void)
   hb_cluster_remove_all_ping_hosts (hb_Cluster->ping_hosts);
   hb_Cluster->ping_hosts = NULL;
   hb_Cluster->num_ping_hosts = 0;
+  hb_Cluster->ping_timeout = 0;
 
   hb_cluster_remove_all_ui_nodes (hb_Cluster->ui_nodes);
   hb_Cluster->ui_nodes = NULL;
@@ -5398,7 +5410,7 @@ hb_ping_result_string (int ping_result)
 static int
 hb_reload_config (void)
 {
-  int rv, old_num_nodes, old_num_ping_hosts, error;
+  int rv, old_num_nodes, old_num_ping_hosts, old_ping_timeout, error;
   HB_NODE_ENTRY *old_nodes;
   HB_NODE_ENTRY *old_node, *old_myself, *old_master, *new_node;
   HB_PING_HOST_ENTRY *old_ping_hosts;
@@ -5425,6 +5437,7 @@ hb_reload_config (void)
   /* backup old ping hosts */
   hb_list_move ((HB_LIST **) (&old_ping_hosts), (HB_LIST **) (&hb_Cluster->ping_hosts));
   old_num_ping_hosts = hb_Cluster->num_ping_hosts;
+  old_ping_timeout = hb_Cluster->ping_timeout;
 
   hb_Cluster->ping_hosts = NULL;
 
@@ -5451,6 +5464,7 @@ hb_reload_config (void)
       /* The ha_tcp_ping_hosts can be used instead of the ha_ping_hosts in case the ICMP protocol is disabled.
          However, both system parameters cannot be set at the same time and the ha_tcp_ping_hosts works only when the ha_ping_hosts is not set. */
       hb_Cluster->num_ping_hosts = hb_cluster_load_tcp_ping_host_list (prm_get_string_value (PRM_ID_HA_TCP_PING_HOSTS));
+      hb_Cluster->ping_timeout = prm_get_integer_value (PRM_ID_HA_PING_TIMEOUT);
 
       if (hb_cluster_check_valid_ping_server () == false)
 	{
@@ -5521,6 +5535,7 @@ reconfig_error:
 
 /* restore ping hosts */
   hb_Cluster->num_ping_hosts = old_num_ping_hosts;
+  hb_Cluster->ping_timeout = old_ping_timeout;
 
   hb_cluster_remove_all_ping_hosts (hb_Cluster->ping_hosts);
 
@@ -5782,7 +5797,7 @@ hb_get_tcp_ping_host_info_string (char **str)
   buf_size += required_size;
 
   required_size = strlen (HA_TCP_PING_HOSTS_FORMAT_STRING);
-  required_size += 6;
+  required_size += 10;
   required_size += CUB_MAXHOSTNAMELEN;
   required_size += HB_PING_STR_SIZE;	/* length of ping test result */
   required_size *= hb_Cluster->num_ping_hosts;
@@ -6678,7 +6693,7 @@ hb_check_ping (const char *host)
  *
  */
 static int
-hb_check_tcp_ping (const char *host, int port)
+hb_check_tcp_ping (const char *host, int port, int timeout)
 {
   char buf[128];
   HB_NODE_ENTRY *node;
@@ -6696,12 +6711,12 @@ hb_check_tcp_ping (const char *host, int port)
 	}
     }
 
-  sfd = css_tcp_client_open_with_timeout (host, port, 1000);
+  sfd = css_tcp_client_open_with_timeout (host, port, timeout);
 
   if (IS_INVALID_SOCKET (sfd))
     {
       /* ping failed */
-      snprintf (buf, sizeof (buf), "TCP PING failed for host %s, port %d", host, port);
+      snprintf (buf, sizeof (buf), "TCP PING failed for host %s, port %d, timeout %d", host, port, timeout);
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, buf);
 
       return HB_PING_FAILURE;
@@ -6709,7 +6724,7 @@ hb_check_tcp_ping (const char *host, int port)
 
   css_shutdown_socket (sfd);
 
-  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "TCP PING is success on host %s, port %d.\n", host, port);
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "TCP PING is success on host %s, port %d, timeout %d.\n", host, port, timeout);
 
   return HB_PING_SUCCESS;
 }
@@ -6781,14 +6796,14 @@ hb_help_sprint_tcp_ping_host_info (char *buffer, int max_length)
   p +=
     snprintf (p, MAX ((last - p), 0),
 	      "------------------------------" "--------------------------------------------------\n");
-  p += snprintf (p, MAX ((last - p), 0), "%-20s %-20s\n", "hostname", "TCP PING check result");
+  p += snprintf (p, MAX ((last - p), 0), "%-20s %-10s %-20s\n", "hostname", "port", "TCP PING check result");
   p +=
     snprintf (p, MAX ((last - p), 0),
 	      "------------------------------" "--------------------------------------------------\n");
   for (ping_host = hb_Cluster->ping_hosts; ping_host; ping_host = ping_host->next)
     {
       p +=
-	snprintf (p, MAX ((last - p), 0), "%-20s:%d %-20s\n", ping_host->host_name, ping_host->port,
+	snprintf (p, MAX ((last - p), 0), "%-20s %-10d %-20s\n", ping_host->host_name, ping_host->port,
 		  hb_ping_result_string (ping_host->ping_result));
     }
   p +=

@@ -379,6 +379,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_TCP_PING_HOSTS "ha_tcp_ping_hosts"
 
+#define PRM_NAME_HA_PING_TIMEOUT "ha_ping_timeout"
+
 #define PRM_NAME_HA_APPLYLOGDB_RETRY_ERROR_LIST "ha_applylogdb_retry_error_list"
 
 #define PRM_NAME_HA_APPLYLOGDB_IGNORE_ERROR_LIST "ha_applylogdb_ignore_error_list"
@@ -1455,6 +1457,12 @@ static unsigned int prm_ha_ping_hosts_flag = 0;
 const char *PRM_HA_TCP_PING_HOSTS = "";
 static const char *prm_ha_tcp_ping_hosts_default = NULL;
 static unsigned int prm_ha_tcp_ping_hosts_flag = 0;
+
+int PRM_HA_PING_TIMEOUT = 1000;
+static int prm_ha_ping_timeout_default = 1000;
+static int prm_ha_ping_timeout_upper = INT_MAX;
+static int prm_ha_ping_timeout_lower = 0;
+static unsigned int prm_ha_ping_timeout_flag = 0;
 
 int *PRM_HA_APPLYLOGDB_RETRY_ERROR_LIST = int_list_initial;
 static bool *prm_ha_applylogdb_retry_error_list_default = NULL;
@@ -6189,6 +6197,18 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_ha_tcp_ping_hosts_default,
    (void *) &PRM_HA_TCP_PING_HOSTS,
    (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HA_PING_TIMEOUT,
+   PRM_NAME_HA_PING_TIMEOUT,
+   (PRM_FOR_CLIENT | PRM_RELOADABLE | PRM_FOR_HA | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_ha_ping_timeout_flag,
+   (void *) &prm_ha_ping_timeout_default,
+   (void *) &PRM_HA_PING_TIMEOUT,
+   (void *) &prm_ha_ping_timeout_upper,
+   (void *) &prm_ha_ping_timeout_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
