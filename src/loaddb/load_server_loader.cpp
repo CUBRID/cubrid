@@ -700,7 +700,7 @@ namespace cubload
 
     insert_errors_filtered = has_errors_filtered_for_insert (m_session.get_args().m_ignored_errors);
 
-    if (insert_errors_filtered)
+    if (insert_errors_filtered || !HA_DISABLED ())
       {
 	// In case of possible errors filtered for insert we disable the unique optimization
 	for (size_t i = 0; i < m_recdes_collected.size (); i++)
