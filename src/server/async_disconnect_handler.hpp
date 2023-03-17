@@ -29,11 +29,10 @@
 /* helper class with the task of destroying connnection handlers and, by this,
  * also waiting for the receive and transmit threads inside the handlers to terminate
  */
-template <typename T_CONN_HANDLER_PTR>
+template <typename T_CONN_HANDLER>
 class async_disconnect_handler
 {
-    // T_CONN_HANDLER_PTR can be any smart pointer type
-    using connection_handler_ptr_t = T_CONN_HANDLER_PTR;
+    using connection_handler_uptr_t = std::unique_ptr<T_CONN_HANDLER>;
 
   public:
     async_disconnect_handler ();
@@ -46,7 +45,7 @@ class async_disconnect_handler
     async_disconnect_handler &operator = (const async_disconnect_handler &) = delete;
     async_disconnect_handler &operator = (async_disconnect_handler &&) = delete;
 
-    void disconnect (connection_handler_ptr_t &&handler);
+    void disconnect (connection_handler_uptr_t &&handler);
     void terminate ();
 
     bool is_terminated ();
@@ -56,7 +55,7 @@ class async_disconnect_handler
 
   private:
     std::atomic_bool m_terminate;
-    std::queue<connection_handler_ptr_t> m_disconnect_queue;
+    std::queue<connection_handler_uptr_t> m_disconnect_queue;
     std::mutex m_queue_mtx;
     std::condition_variable m_queue_cv;
     std::thread m_thread;

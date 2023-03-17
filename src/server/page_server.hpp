@@ -221,7 +221,7 @@ class page_server
 
     std::unique_ptr<responder_t> m_responder;
 
-    async_disconnect_handler<connection_handler_uptr_t> m_async_disconnect_handler;
+    async_disconnect_handler<connection_handler> m_async_disconnect_handler;
     pts_mvcc_tracker m_pts_mvcc_tracker;
 };
 
