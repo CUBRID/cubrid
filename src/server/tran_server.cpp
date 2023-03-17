@@ -140,38 +140,27 @@ tran_server::boot (const char *db_name)
 void
 tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
 {
-  std::shared_ptr<connection_handler> conn_sptr;
+  std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
+  if (m_page_server_conn_vec.empty())
+    {
+      return; // All connections have been disconnected already
+    }
 
-  {
-    std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
-    if (m_page_server_conn_vec.empty())
-      {
-	return; // All connections have been disconnected already
-      }
-
-    // we assume that 0-th conn is the main connection
-    conn_sptr = m_page_server_conn_vec[0];
-  }
-
-  conn_sptr->push_request (reqid, std::move (payload));
+  // we assume that 0-th conn is the main connection
+  m_page_server_conn_vec[0]->push_request (reqid, std::move (payload));
 }
 
 int
 tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out)
 {
-  std::shared_ptr<connection_handler> conn_sptr;
+  std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
+  if (m_page_server_conn_vec.empty())
+    {
+      return NO_ERROR; // All connections have been disconnected already
+    }
 
-  {
-    std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
-    if (m_page_server_conn_vec.empty())
-      {
-	return NO_ERRORS; // All connections have been disconnected already
-      }
-
-    // we assume that 0-th conn is the main connection
-    conn_sptr = m_page_server_conn_vec[0];
-  }
-  return conn_sptr->send_receive (reqid, std::move (payload_in), payload_out);
+  // we assume that 0-th conn is the main connection
+  return m_page_server_conn_vec[0]->send_receive (reqid, std::move (payload_in), payload_out);
 }
 
 int
@@ -422,31 +411,22 @@ tran_server::connection_handler::get_request_handlers ()
 void
 tran_server::connection_handler::receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip)
 {
-  std::shared_ptr<connection_handler> conn_sptr;
-  auto &conn_vec = m_ts.m_page_server_conn_vec;
-
-  {
-    std::lock_guard<std::shared_mutex> lk_guard { m_ts.m_page_server_conn_vec_mtx };
-
-    bool conn_found = false;
-    auto it = conn_vec.begin();
-    for (; it != conn_vec.end(); it++)
-      {
-	// TODO trigger the main connection change procedure when it was the main connection.
-	// TODO handle the case it's the last connection.
-	if (it->get () == this)
-	  {
-	    conn_sptr = std::move (*it);
-	    conn_vec.erase (it);
-	    conn_found = true;
-	    break;
-	  }
-      }
-    assert (conn_found);
-  }
-
   prepare_disconnection ();
-  m_ts.m_async_disconnect_handler.disconnect (std::move (conn_sptr));
+
+  std::lock_guard<std::shared_mutex> lk_guard (m_ts.m_page_server_conn_vec_mtx);
+  auto &conn_vec = m_ts.m_page_server_conn_vec;
+  auto it = conn_vec.begin();
+  for (; it != conn_vec.end(); it++)
+    {
+      // TODO trigger the main connection change procedure when it was the main connection
+      if (it->get () == this)
+	{
+	  m_ts.m_async_disconnect_handler.disconnect (std::move (*it));
+	  assert (*it == nullptr);
+	  conn_vec.erase (it);
+	}
+    }
+  assert (it != conn_vec.end ());
 }
 
 void
