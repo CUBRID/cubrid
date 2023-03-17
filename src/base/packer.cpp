@@ -42,39 +42,7 @@ namespace cubpacking
   //
   // static function declarations
   //
-  static void fatal_error_log (const char *ptr, const char *endptr, const size_t amount);
-
   static void check_range (const char *ptr, const char *endptr, const size_t amount);
-
-  static void fatal_error_log (const char *fmt, ...)
-  {
-    const char *msglog;
-    char msg[LINE_MAX];
-
-    va_list ap;
-
-    va_start (ap, fmt);
-
-    /* call er_set() to print call stack to the log */
-    vsnprintf (msg, LINE_MAX, fmt, ap);
-    er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 1, fmt);
-
-    /*
-     * If error message log is different from terminal or /dev/null..indicate
-     * that additional information can be found in the error log file
-     */
-    msglog = er_get_msglog_filename ();
-    if (msglog != NULL && strcmp (msglog, "/dev/null") != 0)
-      {
-	fprintf (stderr, "Please consult error_log file = %s for additional information\n", msglog);
-      }
-
-    fflush (stderr);
-    fflush (stdout);
-
-    va_end (ap);
-    abort ();
-  }
 
   //
   // static function definitions
@@ -84,7 +52,8 @@ namespace cubpacking
     assert (ptr + amount <= endptr);
     if (ptr + amount > endptr)
       {
-	fatal_error_log ("Unexpected amount of received data");
+	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_ENOUGH_DATA_SIZE, 0);
+	abort ();
       }
   }
 
