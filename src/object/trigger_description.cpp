@@ -235,7 +235,7 @@ void trigger_description::fprint (FILE *file)
  *    quoted_id_flag(in):
  */
 int
-tr_dump_trigger (print_output &output_ctx, DB_OBJECT *trigger_object)
+tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *trigger_object)
 {
   int error = NO_ERROR;
   TR_TRIGGER *trigger;
@@ -285,7 +285,14 @@ tr_dump_trigger (print_output &output_ctx, DB_OBJECT *trigger_object)
 	    }
 	  class_name = sm_remove_qualifier_name (name);
 	  output_ctx (" ON ");
-	  output_ctx ("[%s].[%s]", owner_name, class_name);
+	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
+	    {
+	      output_ctx ("[%s].[%s]", owner_name, class_name);
+	    }
+	  else
+	    {
+	      output_ctx ("[%s]", class_name);
+	    }
 
 	  if (trigger->attribute != NULL)
 	    {
@@ -348,7 +355,7 @@ tr_dump_trigger (print_output &output_ctx, DB_OBJECT *trigger_object)
  *    classes(in):
  */
 int
-tr_dump_selective_triggers (print_output &output_ctx, DB_OBJLIST *classes)
+tr_dump_selective_triggers (extract_context &ctxt, print_output &output_ctx, DB_OBJLIST *classes)
 {
   int error = NO_ERROR;
   TR_TRIGGER *trigger;
@@ -415,7 +422,7 @@ tr_dump_selective_triggers (print_output &output_ctx, DB_OBJLIST *classes)
 		    {
 		      if (trigger->status != TR_STATUS_INVALID)
 			{
-			  tr_dump_trigger (output_ctx, trigger_object);
+			  tr_dump_trigger (ctxt, output_ctx, trigger_object);
 			  output_ctx ("call [change_trigger_owner]('%s'," " '%s') on class [db_root];\n\n",
 				      sm_remove_qualifier_name (trigger->name), get_user_name (trigger->owner));
 			}

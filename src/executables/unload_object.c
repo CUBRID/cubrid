@@ -175,7 +175,7 @@ static void extractobjects_cleanup (void);
 static void extractobjects_term_handler (int sig);
 static bool mark_referenced_domain (SM_CLASS * class_ptr, int *num_set);
 static void gauge_alarm_handler (int sig);
-static int process_class (int cl_no);
+static int process_class (extract_context & ctxt, int cl_no);
 static int process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class);
 static int process_set (DB_SET * set);
 static int process_value (DB_VALUE * value);
@@ -433,7 +433,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
  *    exec_name(in): utility name
  */
 int
-extract_objects (const char *exec_name, const char *output_dirname, const char *output_prefix)
+extract_objects (extract_context & ctxt, const char *output_dirname)
 {
   int i, error;
   HFID *hfid;
@@ -456,6 +456,7 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
   char unloadlog_filename[PATH_MAX];
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
+  char owner_str[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   /* register new signal handlers */
   prev_intr_handler = os_set_signal_handler (SIGINT, extractobjects_term_handler);
@@ -496,12 +497,12 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 	{
 	  return 1;
 	}
-      snprintf (output_filename, PATH_MAX - 1, "%s/%s%s", output_dirname, output_prefix, OBJECT_SUFFIX);
+      snprintf (output_filename, PATH_MAX - 1, "%s/%s%s", output_dirname, ctxt.output_prefix, OBJECT_SUFFIX);
 
       obj_out->fp = fopen_ex (output_filename, "wb");
       if (obj_out->fp == NULL)
 	{
-	  fprintf (stderr, "%s: %s.\n\n", exec_name, strerror (errno));
+	  fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
 	  free_and_init (output_filename);
 	  return errno;
 	}
@@ -632,6 +633,14 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 	  fprintf (stdout, "%s%s%s\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
 #endif /* CUBRID_DEBUG */
 
+	  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+
+	  if ((ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+	      && strcasecmp (owner_name, ctxt.login_user) != 0)
+	    {
+	      continue;
+	    }
+
 	  fh_put (cl_table, ws_oid (class_table->mops[i]), &i);
 	  if (input_filename)
 	    {
@@ -661,9 +670,11 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 
 	  if (!datafile_per_class && (!required_class_only || IS_CLASS_REQUESTED (i)))
 	    {
-	      SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), owner_str,
+				sizeof (owner_str));
+
 	      if (text_print
-		  (obj_out, NULL, 0, "%cid %s%s%s.%s%s%s %d\n", '%', PRINT_IDENTIFIER (owner_name),
+		  (obj_out, NULL, 0, "%cid %s%s%s%s %d\n", '%', owner_str,
 		   PRINT_IDENTIFIER (class_name), i) != NO_ERROR)
 		{
 		  status = 1;
@@ -880,7 +891,7 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
    * Dump the object definitions
    */
   total_approximate_class_objects = est_objects;
-  snprintf (unloadlog_filename, sizeof (unloadlog_filename) - 1, "%s_unloaddb.log", output_prefix);
+  snprintf (unloadlog_filename, sizeof (unloadlog_filename) - 1, "%s_unloaddb.log", ctxt.output_prefix);
   unloadlog_file = fopen (unloadlog_filename, "w+");
   if (unloadlog_file != NULL)
     {
@@ -910,7 +921,7 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 		      goto end;
 		    }
 
-		  snprintf (outfile, PATH_MAX - 1, "%s/%s_%s%s", output_dirname, output_prefix,
+		  snprintf (outfile, PATH_MAX - 1, "%s/%s_%s%s", output_dirname, ctxt.output_prefix,
 			    sm_ch_name ((MOBJ) class_ptr), OBJECT_SUFFIX);
 
 		  obj_out->fp = fopen_ex (outfile, "wb");
@@ -921,7 +932,7 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 		    }
 		}
 
-	      ret_val = process_class (i);
+	      ret_val = process_class (ctxt, i);
 
 	      if (datafile_per_class && IS_CLASS_REQUESTED (i))
 		{
@@ -1040,7 +1051,7 @@ gauge_alarm_handler (int sig)
  *    cl_no(in): class object index for class_table
  */
 static int
-process_class (int cl_no)
+process_class (extract_context & ctxt, int cl_no)
 {
   int error = NO_ERROR;
   DB_OBJECT *class_ = class_table->mops[cl_no];
@@ -1069,6 +1080,8 @@ process_class (int cl_no)
   time_t start = 0;
 #endif
   int total;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+
   LC_FETCH_VERSION_TYPE fetch_type = latest_image_flag ? LC_FETCH_CURRENT_VERSION : LC_FETCH_MVCC_VERSION;
 
   /*
@@ -1113,10 +1126,13 @@ process_class (int cl_no)
       if (v == 0)
 	{
 	  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+
+	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			    sizeof (output_owner));
+
 	  CHECK_PRINT_ERROR (text_print
-			     (obj_out, NULL, 0, "%cclass %s%s%s.%s%s%s shared (%s%s%s", '%',
-			      PRINT_IDENTIFIER (owner_name),
-			      PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
+			     (obj_out, NULL, 0, "%cclass %s%s%s%s shared (%s%s%s", '%',
+			      output_owner, PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
 	}
       else
 	{
@@ -1165,10 +1181,13 @@ process_class (int cl_no)
       if (v == 0)
 	{
 	  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+
+	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			    sizeof (output_owner));
+
 	  CHECK_PRINT_ERROR (text_print
-			     (obj_out, NULL, 0, "%cclass %s%s%s.%s%s%s class (%s%s%s", '%',
-			      PRINT_IDENTIFIER (owner_name),
-			      PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
+			     (obj_out, NULL, 0, "%cclass %s%s%s%s class (%s%s%s", '%',
+			      output_owner, PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
 	}
       else
 	{
@@ -1205,9 +1224,11 @@ process_class (int cl_no)
     }
 
   SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
-  CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, (v) ? "\n%cclass %s%s%s.%s%s%s ("	/* new line */
-				 : "%cclass %s%s%s.%s%s%s (", '%', PRINT_IDENTIFIER (owner_name),
-				 PRINT_IDENTIFIER (class_name)));
+
+  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner, sizeof (output_owner));
+
+  CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, (v) ? "\n%cclass %s%s%s%s ("	/* new line */
+				 : "%cclass %s%s%s%s (", '%', output_owner, PRINT_IDENTIFIER (class_name)));
 
   v = 0;
   attribute = class_ptr->ordered_attributes;

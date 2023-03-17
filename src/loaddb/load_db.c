@@ -39,6 +39,15 @@
 #include <fstream>
 #include <thread>
 
+
+#define fclose_and_init(fp) \
+        do { \
+          if ((fp)) { \
+          fclose ((fp)); \
+          (fp) = NULL; \
+          } \
+	} while (0)
+
 const int LOAD_INDEX_MIN_SORT_BUFFER_PAGES = 8192;
 const char *LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING = "8192";
 const char *LOADDB_LOG_FILENAME_SUFFIX = "loaddb.log";
@@ -49,6 +58,13 @@ static FILE *loaddb_log_file;
 
 int interrupt_query = false;
 bool load_interrupted = false;
+
+typedef struct t_schema_file_list_info T_SCHEMA_FILE_LIST_INFO;
+struct t_schema_file_list_info
+{
+  char schema_file_name[PATH_MAX];
+  FILE *schema_fp;
+};
 
 static int ldr_validate_object_file (const char *argv0, load_args * args);
 static int ldr_get_start_line_no (std::string & file_name);
@@ -70,6 +86,10 @@ static int load_has_authorization (const std::string & class_name, DB_AUTH au_ty
 /* *INDENT-ON* */
 static int load_object_file (load_args * args, int *exit_status);
 static void print_er_msg ();
+
+static T_SCHEMA_FILE_LIST_INFO **ldr_check_file_list (std::string & file_name, int &num_files, int &error_code);
+static void ldr_free_and_fclose (T_SCHEMA_FILE_LIST_INFO ** file_list, int num);
+static int ldr_load_schema_file (FILE * schema_fp, int schema_file_start_line, load_args args);
 
 /*
  * print_log_msg - print log message
@@ -166,10 +186,26 @@ ldr_validate_object_file (const char *argv0, load_args * args)
       return ER_FAILED;
     }
 
+  if (args->cs_mode && (args->load_only == true
+			|| args->index_file.empty () == false
+			|| args->schema_file.empty () == false
+			|| args->schema_file_list.empty () == false || args->trigger_file.empty () == false))
+    {
+      fprintf (stderr, "In loaddb CS mode (-C, --CS-mode), only object loading is possible.\n");
+      return ER_FAILED;
+    }
+
+  if (args->schema_file.empty () == false && args->schema_file_list.empty () == false)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      load_usage (argv0);
+      return ER_FAILED;
+    }
+
   if (args->input_file.empty () && args->object_file.empty ())
     {
       /* if schema/index file are specified, process them only */
-      if (args->schema_file.empty () && args->index_file.empty ())
+      if (args->schema_file.empty () && args->schema_file_list.empty () && args->index_file.empty ())
 	{
 	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 	  load_usage (argv0);
@@ -478,6 +514,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   int error = NO_ERROR;
   /* set to static to avoid compiler warning (clobbered by longjump) */
   FILE *schema_file = NULL;
+  T_SCHEMA_FILE_LIST_INFO **schema_file_list = NULL;
   FILE *index_file = NULL;
   FILE *trigger_file = NULL;
   FILE *error_file = NULL;
@@ -493,6 +530,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   const char *msg_format;
   obt_Enable_autoincrement = false;
   load_args args;
+  int num_schema_file_list = 0;
   int schema_file_start_line = 1, index_file_start_line = 1, trigger_file_start_line = 1;
 
   get_loaddb_args (arg_map, &args);
@@ -593,6 +631,14 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       status = 2;
       goto error_return;
     }
+
+  schema_file_list = ldr_check_file_list (args.schema_file_list, num_schema_file_list, error);
+  if (error != NO_ERROR && schema_file_list == NULL)
+    {
+      status = 2;
+      goto error_return;
+    }
+
   index_file = ldr_check_file (args.index_file, error);
   if (error != NO_ERROR && index_file == NULL)
     {
@@ -613,7 +659,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     }
   else if (object_file != NULL)
     {
-      fclose (object_file);
+      fclose_and_init (object_file);
     }
 
   if (!args.ignore_class_file.empty ())
@@ -660,7 +706,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  goto error_return;
 	}
       er_filter_fileset (error_file);
-      fclose (error_file);
+      fclose_and_init (error_file);
       get_ignored_errors (args.m_ignored_errors);
     }
 
@@ -685,68 +731,43 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     }
 #endif
 
+  /* if multiload schema file is specified, do schema loading */
+  if (schema_file_list != NULL && num_schema_file_list > 0)
+    {
+      int start_line;
+      for (int i = 0; i < num_schema_file_list; i++)
+	{
+	  print_log_msg (1, "\nStart %s file loading.\n", schema_file_list[i]->schema_file_name);
+
+	  start_line = 1;
+
+	  if (schema_file_list[i]->schema_fp != NULL)
+	    {
+	      status = ldr_load_schema_file (schema_file_list[i]->schema_fp, start_line, args);
+
+	      if (status != 0)
+		{
+		  goto error_return;
+		}
+
+	      fclose_and_init (schema_file_list[i]->schema_fp);
+	    }
+	}
+    }
+
   /* if schema file is specified, do schema loading */
   if (schema_file != NULL)
     {
       print_log_msg (1, "\nStart schema loading.\n");
 
-      logddl_set_loaddb_file_type (LOADDB_FILE_TYPE_SCHEMA);
-      logddl_set_load_filename (args.schema_file.c_str ());
-      /*
-       * CUBRID 8.2 should be compatible with earlier versions of CUBRID.
-       * Therefore, we do not perform user authentication when the loader
-       * is executing by DBA group user.
-       */
-      if (au_is_dba_group_member (Au_user))
-	{
-	  AU_DISABLE (au_save);
-	}
+      status = ldr_load_schema_file (schema_file, schema_file_start_line, args);
 
-      if (ldr_exec_query_from_file (args.schema_file.c_str (), schema_file, &schema_file_start_line, &args) != NO_ERROR)
+      if (status != 0)
 	{
-	  print_log_msg (1, "\nError occurred during schema loading." "\nAborting current transaction...");
-	  msg_format = "Error occurred during schema loading." "Aborting current transaction...\n";
-	  util_log_write_errstr (msg_format);
-	  status = 3;
-	  db_end_session ();
-	  db_shutdown ();
-	  print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_SCHEMA_FILE_S,
-			 args.schema_file.c_str (), schema_file_start_line);
-	  logddl_write_end ();
 	  goto error_return;
 	}
 
-      if (au_is_dba_group_member (Au_user))
-	{
-	  AU_ENABLE (au_save);
-	}
-
-      print_log_msg (1, "Schema loading from %s finished.\n", args.schema_file.c_str ());
-
-      /* update catalog statistics */
-      AU_DISABLE (au_save);
-      sm_update_all_catalog_statistics (STATS_WITH_FULLSCAN);
-      AU_ENABLE (au_save);
-
-      print_log_msg (1, "Statistics for Catalog classes have been updated.\n\n");
-
-      if (args.compare_storage_order)
-	{
-	  if (ldr_compare_storage_order (schema_file) != NO_ERROR)
-	    {
-	      status = 3;
-	      db_end_session ();
-	      db_shutdown ();
-	      print_log_msg (1, "\nAborting current transaction...\n");
-	      goto error_return;
-	    }
-	}
-
-      db_commit_transaction ();
-      fclose (schema_file);
-      schema_file = NULL;
-
-      logddl_write_end ();
+      fclose_and_init (schema_file);
     }
 
   if (!args.object_file.empty ())
@@ -804,6 +825,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       print_log_msg (1, "Index loading from %s finished.\n", args.index_file.c_str ());
       db_commit_transaction ();
 
+      fclose_and_init (index_file);
+
       logddl_set_err_code (error);
       logddl_write_end ();
     }
@@ -836,26 +859,17 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       print_log_msg (1, "Trigger loading from %s finished.\n", args.trigger_file.c_str ());
       db_commit_transaction ();
 
+      fclose_and_init (trigger_file);
+
       logddl_set_err_code (error);
       logddl_write_end ();
-    }
-
-  if (index_file != NULL)
-    {
-      fclose (index_file);
-      index_file = NULL;
-    }
-  if (trigger_file != NULL)
-    {
-      fclose (trigger_file);
-      trigger_file = NULL;
     }
 
   print_log_msg ((int) args.verbose, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLOSING));
   (void) db_end_session ();
   (void) db_shutdown ();
 
-  fclose (loaddb_log_file);
+  fclose_and_init (loaddb_log_file);
 
   logddl_destroy ();
 
@@ -864,19 +878,23 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 error_return:
   if (schema_file != NULL)
     {
-      fclose (schema_file);
+      fclose_and_init (schema_file);
     }
   if (index_file != NULL)
     {
-      fclose (index_file);
+      fclose_and_init (index_file);
     }
   if (trigger_file != NULL)
     {
-      fclose (trigger_file);
+      fclose_and_init (trigger_file);
     }
   if (loaddb_log_file != NULL)
     {
-      fclose (loaddb_log_file);
+      fclose_and_init (loaddb_log_file);
+    }
+  if (schema_file_list != NULL)
+    {
+      ldr_free_and_fclose (schema_file_list, num_schema_file_list);
     }
 
   logddl_destroy ();
@@ -1095,6 +1113,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   char *error_file = utility_get_option_string_value (arg_map, LOAD_ERROR_CONTROL_FILE_S, 0);
   char *table_name = utility_get_option_string_value (arg_map, LOAD_TABLE_NAME_S, 0);
   char *ignore_class_file = utility_get_option_string_value (arg_map, LOAD_IGNORE_CLASS_S, 0);
+  char *schema_file_list = utility_get_option_string_value (arg_map, LOAD_SCHEMA_FILE_LIST_S, 0);
 
   args->volume = volume ? volume : empty;
   args->input_file = input_file ? input_file : empty;
@@ -1107,6 +1126,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->disable_statistics = utility_get_option_bool_value (arg_map, LOAD_NO_STATISTICS_S);
   args->periodic_commit = utility_get_option_int_value (arg_map, LOAD_PERIODIC_COMMIT_S);
   args->verbose_commit = args->periodic_commit > 0;
+  args->cs_mode = utility_get_option_bool_value (arg_map, LOAD_CS_MODE_S);
 
   /* *INDENT-OFF* */
   if (args->periodic_commit == 0)
@@ -1126,6 +1146,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->table_name = table_name ? table_name : empty;
   args->ignore_class_file = ignore_class_file ? ignore_class_file : empty;
   args->no_user_specified_name = utility_get_option_bool_value (arg_map, LOAD_NO_USER_SPECIFIED_NAME_S);
+  args->schema_file_list = schema_file_list ? schema_file_list : empty;
 }
 
 static void
@@ -1360,4 +1381,197 @@ load_object_file (load_args * args, int *exit_status)
 
   // here we are sure that object_file exists since it was validated by loaddb_internal function
   return split (args->periodic_commit, args->object_file, c_handler, b_handler);
+}
+
+static T_SCHEMA_FILE_LIST_INFO **
+ldr_check_file_list (std::string & file_name, int &num_files, int &error_code)
+{
+  FILE *schema_fp;
+  T_SCHEMA_FILE_LIST_INFO *schema_object_file = NULL;
+  T_SCHEMA_FILE_LIST_INFO **schema_info = NULL;
+  T_SCHEMA_FILE_LIST_INFO **new_schema_info = NULL;
+  char buffer[PATH_MAX] = { 0, };
+  std::string read_file_name = "";
+
+  error_code = NO_ERROR;
+
+  schema_fp = ldr_check_file (file_name, error_code);
+  if (error_code != NO_ERROR && schema_fp == NULL)
+    {
+      goto error_return;
+    }
+  else if (schema_fp == NULL)
+    {
+      return NULL;
+    }
+
+  while (fgets ((char *) buffer, LINE_MAX, schema_fp) != NULL)
+    {
+      trim (buffer);
+
+      if (buffer[0] == '\0')
+	{
+	  continue;
+	}
+
+      if (schema_info == NULL)
+	{
+	  schema_info = (T_SCHEMA_FILE_LIST_INFO **) malloc (sizeof (T_SCHEMA_FILE_LIST_INFO *));
+	  if (schema_info == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      sizeof (T_SCHEMA_FILE_LIST_INFO *));
+	      goto error_return;
+	    }
+	}
+      else
+	{
+	  new_schema_info =
+	    (T_SCHEMA_FILE_LIST_INFO **) realloc (schema_info, sizeof (T_SCHEMA_FILE_LIST_INFO *) * (num_files + 1));
+	  if (new_schema_info == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      sizeof (T_SCHEMA_FILE_LIST_INFO *) * (num_files + 1));
+	      goto error_return;
+	    }
+
+	  schema_info = new_schema_info;
+	}
+
+      schema_object_file = (T_SCHEMA_FILE_LIST_INFO *) malloc (sizeof (T_SCHEMA_FILE_LIST_INFO));
+      if (schema_object_file == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (T_SCHEMA_FILE_LIST_INFO));
+	  goto error_return;
+	}
+
+      schema_info[num_files] = schema_object_file;
+
+      num_files++;
+
+      strcpy (schema_object_file->schema_file_name, buffer);
+      read_file_name = buffer;
+      schema_object_file->schema_fp = ldr_check_file (read_file_name, error_code);
+      if (error_code != NO_ERROR && schema_object_file->schema_fp == NULL)
+	{
+	  goto error_return;
+	}
+    }
+
+  if (schema_info == NULL)
+    {
+      const char *msg_format =
+	msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_EMPTY_SCHEMA_FILE_LIST);
+      print_log_msg (1, msg_format, file_name.c_str ());
+      util_log_write_errstr (msg_format, file_name.c_str ());
+      goto error_return;
+    }
+
+  if (schema_fp != NULL)
+    {
+      fclose_and_init (schema_fp);
+    }
+
+  return schema_info;
+
+error_return:
+
+  if (schema_fp != NULL)
+    {
+      fclose_and_init (schema_fp);
+    }
+
+  ldr_free_and_fclose (schema_info, num_files);
+
+  error_code = ER_FAILED;
+  num_files = 0;
+  return NULL;
+}
+
+static void
+ldr_free_and_fclose (T_SCHEMA_FILE_LIST_INFO ** file_list, int num)
+{
+  int i;
+
+  if (file_list != NULL)
+    {
+      for (i = 0; i < num; i++)
+	{
+	  if (file_list[i]->schema_fp != NULL)
+	    {
+	      fclose_and_init (file_list[i]->schema_fp);
+	    }
+
+	  if (file_list[i] != NULL)
+	    {
+	      free_and_init (file_list[i]);
+	    }
+	}
+      free_and_init (file_list);
+    }
+}
+
+static int
+ldr_load_schema_file (FILE * schema_fp, int schema_file_start_line, load_args args)
+{
+  const char *msg_format = NULL;
+  int status = 0;
+  int au_save = 0;
+
+  logddl_set_loaddb_file_type (LOADDB_FILE_TYPE_SCHEMA);
+  logddl_set_load_filename (args.schema_file.c_str ());
+  /*
+   * CUBRID 8.2 should be compatible with earlier versions of CUBRID.
+   * Therefore, we do not perform user authentication when the loader
+   * is executing by DBA group user.
+   */
+  if (au_is_dba_group_member (Au_user))
+    {
+      AU_DISABLE (au_save);
+    }
+
+  if (ldr_exec_query_from_file (args.schema_file.c_str (), schema_fp, &schema_file_start_line, &args) != NO_ERROR)
+    {
+      print_log_msg (1, "\nError occurred during schema loading." "\nAborting current transaction...");
+      msg_format = "Error occurred during schema loading." "Aborting current transaction...\n";
+      util_log_write_errstr (msg_format);
+      status = 3;
+      db_end_session ();
+      db_shutdown ();
+      print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_SCHEMA_FILE_S,
+		     args.schema_file.c_str (), schema_file_start_line);
+      logddl_write_end ();
+      return status;
+    }
+
+  if (au_is_dba_group_member (Au_user))
+    {
+      AU_ENABLE (au_save);
+    }
+
+  print_log_msg (1, "Schema loading from %s finished.\n", args.schema_file.c_str ());
+
+  /* update catalog statistics */
+  AU_DISABLE (au_save);
+  sm_update_all_catalog_statistics (STATS_WITH_FULLSCAN);
+  AU_ENABLE (au_save);
+
+  print_log_msg (1, "Statistics for Catalog classes have been updated.\n\n");
+
+  if (args.compare_storage_order)
+    {
+      if (ldr_compare_storage_order (schema_fp) != NO_ERROR)
+	{
+	  status = 3;
+	  db_end_session ();
+	  db_shutdown ();
+	  print_log_msg (1, "\nAborting current transaction...\n");
+	  return status;
+	}
+    }
+
+  db_commit_transaction ();
+
+  logddl_write_end ();
+  return status;
 }

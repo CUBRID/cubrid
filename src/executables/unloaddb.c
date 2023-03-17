@@ -60,6 +60,8 @@ bool include_references = false;
 
 bool required_class_only = false;
 bool datafile_per_class = false;
+bool split_schema_files = false;
+bool is_as_dba = false;
 LIST_MOPS *class_table = NULL;
 DB_OBJECT **req_class_table = NULL;
 
@@ -93,7 +95,6 @@ unload_usage (const char *argv0)
 int
 unloaddb (UTIL_FUNCTION_ARG * arg)
 {
-  char output_filename_schema[PATH_MAX * 2];
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   const char *exec_name = arg->command_name;
   char er_msg_file[PATH_MAX];
@@ -137,6 +138,9 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       order = FOLLOW_ATTRIBUTE_ORDER;
     }
 
+  split_schema_files = utility_get_option_string_value (arg_map, UNLOAD_SPLIT_SCHEMA_FILES_S, 0);
+  is_as_dba = utility_get_option_string_value (arg_map, UNLOAD_AS_DBA_S, 0);
+
   /* depreciated */
   utility_get_option_bool_value (arg_map, UNLOAD_USE_DELIMITER_S);
 
@@ -154,12 +158,9 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       output_prefix = database_name;
     }
 
-  /* create here the first filename to raise error early in case output file is incorrect */
-  if (create_filename_schema (output_dirname, output_prefix, output_filename_schema,
-			      sizeof (output_filename_schema)) != 0)
+  if (output_dirname != NULL)
     {
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
-      goto end;
+      unload_context.output_dirname = output_dirname;
     }
 
   /* error message log file */
@@ -286,17 +287,25 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  if (!status && (do_schema || !do_objects))
+  if (is_as_dba == true)
     {
-      char indexes_output_filename[PATH_MAX * 2];
-      char trigger_output_filename[PATH_MAX * 2];
+      unload_context.is_dba_group_member = au_is_dba_group_member (Au_user);
 
-      if (create_filename_schema (output_dirname, output_prefix, output_filename_schema,
-				  sizeof (output_filename_schema)) != 0)
+      if (unload_context.is_dba_group_member == false)
 	{
-	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+	  fprintf (stderr, "\n--%s is an option available only when the user is a DBA Group.\n", UNLOAD_AS_DBA_L);
 	  goto end;
 	}
+    }
+  else
+    {
+      unload_context.is_dba_user = ws_is_same_object (Au_dba_user, Au_user);
+    }
+
+  if (!status && (do_schema || !do_objects))
+    {
+      char indexes_output_filename[PATH_MAX * 2] = { '\0' };
+      char trigger_output_filename[PATH_MAX * 2] = { '\0' };
 
       if (create_filename_trigger (output_dirname, output_prefix, trigger_output_filename,
 				   sizeof (trigger_output_filename)) != 0)
@@ -316,7 +325,10 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       unload_context.do_auth = 1;
       unload_context.storage_order = order;
       unload_context.exec_name = exec_name;
-      if (extract_classes_to_file (unload_context, output_filename_schema) != 0)
+      unload_context.login_user = user;
+      unload_context.output_prefix = output_prefix;
+
+      if (extract_classes_to_file (unload_context) != 0)
 	{
 	  status = 1;
 	}
@@ -337,7 +349,11 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   AU_SAVE_AND_ENABLE (au_save);
   if (!status && (do_objects || !do_schema))
     {
-      if (extract_objects (exec_name, output_dirname, output_prefix))
+      unload_context.exec_name = exec_name;
+      unload_context.login_user = user;
+      unload_context.output_prefix = output_prefix;
+
+      if (extract_objects (unload_context, output_dirname))
 	{
 	  status = 1;
 	}
