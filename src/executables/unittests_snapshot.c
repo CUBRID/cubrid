@@ -161,7 +161,7 @@ logtb_initialize_mvcc_testing (int num_threads, THREAD_ENTRY ** thread_array)
   for (i = 0; i < num_threads; i++)
     {
       thread_p = *thread_array + i;
-      thread_p->type = TT_WORKER;	/* init */
+      thread_p->set_thread_type (TT_WORKER);	/* init */
       thread_p->index = i;
       thread_p->tran_index = i + 1;	/* quick fix to avoid issue in logtb_get_mvcc_snapshot - LOG_SYSTEM_TRAN_INDEX */
     }

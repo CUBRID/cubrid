@@ -44,9 +44,9 @@ template <typename T_CONN_HANDLER>
 void
 async_disconnect_handler<T_CONN_HANDLER>::disconnect (connection_handler_uptr_t &&handler)
 {
+  std::unique_lock<std::mutex> ulock { m_queue_mtx };
   if (!m_terminate.load ())
     {
-      std::unique_lock<std::mutex> ulock { m_queue_mtx };
       m_disconnect_queue.emplace (std::move (handler));
       ulock.unlock ();
       m_queue_cv.notify_one ();
@@ -97,12 +97,15 @@ async_disconnect_handler<T_CONN_HANDLER>::disconnect_loop ()
 	m_disconnect_queue.swap (disconnect_work_buffer);
       }
 
-      while (!disconnect_work_buffer.empty ())
-	{
-	  connection_handler_uptr_t &front = disconnect_work_buffer.front ();
-	  front.reset (nullptr);
-	  disconnect_work_buffer.pop ();
-	}
+      disconnect_work_buffer = {}; // clear
+    }
+
+  // clear requests added after swapped to m_disconnect_queue before termination.
+
+  std::unique_lock<std::mutex> ulock { m_queue_mtx };
+  if (!m_disconnect_queue.empty ())
+    {
+      m_disconnect_queue = {}; // clear
     }
 }
 

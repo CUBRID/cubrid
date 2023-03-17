@@ -676,6 +676,17 @@ TEST_CASE ("Test response sequence number generator", "")
     }
 }
 
+TEST_CASE ("Test response broker with idle terminate", "")
+{
+  constexpr size_t BUCKET_COUNT = 30;
+
+  cubcomm::response_broker<cubcomm::response_sequence_number, css_error_code> broker (BUCKET_COUNT, NO_ERRORS,
+      ERROR_ON_READ);
+
+  // terminate broker without doing anything
+  broker.notify_terminate_and_wait ();
+}
+
 TEST_CASE ("Test response broker", "")
 {
   // Test threads simulating requesters and a thread registering responses.
@@ -726,6 +737,7 @@ TEST_CASE ("Test response broker", "")
 	  {
 	    cubcomm::response_sequence_number rsn = rsn_gen.get_unique_number ();
 
+	    broker.register_request (rsn);
 	    {
 	      std::lock_guard<std::mutex> lkguard (request_mutex);
 	      requested_rsn.push_back (rsn);
@@ -746,6 +758,46 @@ TEST_CASE ("Test response broker", "")
   for (auto &it : requester_threads)
     {
       it.join ();
+    }
+
+  broker.notify_terminate_and_wait ();
+}
+
+TEST_CASE ("Test response broker without responses and with terminate/abort", "")
+{
+  // a set of requester threads each posts a request and waits for a response that never arrives
+
+  constexpr size_t BUCKET_COUNT = 30;
+  constexpr size_t REQUEST_RESPONSE_THREAD_COUNT = 300; // more than the bucket count
+
+  cubcomm::response_sequence_number_generator rsn_gen;
+  cubcomm::response_broker<cubcomm::response_sequence_number, css_error_code> broker (BUCKET_COUNT, NO_ERRORS,
+      ERROR_ON_READ);
+
+  // a set of threads each registers and waits for one request
+  std::array<std::thread, REQUEST_RESPONSE_THREAD_COUNT> request_response_threads;
+  for (auto &thr : request_response_threads)
+    {
+      thr = std::thread ([&] ()
+      {
+	cubcomm::response_sequence_number rsn = rsn_gen.get_unique_number ();
+	broker.register_request (rsn);
+
+	const auto [ response, error_code ] = broker.get_response (rsn);
+	REQUIRE (error_code == ERROR_ON_READ);
+	REQUIRE (response == cubcomm::response_sequence_number ());
+      }
+			);
+    }
+
+  // cautiously wait for all threads to have reached the get_response call
+  std::this_thread::sleep_for (std::chrono::milliseconds (50));
+
+  broker.notify_terminate_and_wait ();
+
+  for (auto &thr : request_response_threads)
+    {
+      thr.join ();
     }
 }
 

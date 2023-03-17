@@ -5149,7 +5149,14 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  return;
 	}
-      xperfmon_server_copy_stats (thread_p, base_stats);
+      if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
+	{
+	  xperfmon_server_copy_stats (thread_p, base_stats);
+	}
+      else
+	{
+	  xperfmon_server_copy_stats_for_trace (thread_p, base_stats);
+	}
 
       tsc_getticks (&start_tick);
 
@@ -5392,8 +5399,16 @@ null_list:
 	      goto exit;
 	    }
 
-	  xperfmon_server_copy_stats (thread_p, current_stats);
-	  perfmon_calc_diff_stats (diff_stats, current_stats, base_stats);
+	  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
+	    {
+	      xperfmon_server_copy_stats (thread_p, current_stats);
+	      perfmon_calc_diff_stats (diff_stats, current_stats, base_stats);
+	    }
+	  else
+	    {
+	      xperfmon_server_copy_stats_for_trace (thread_p, current_stats);
+	      perfmon_calc_diff_stats_for_trace (diff_stats, current_stats, base_stats);
+	    }
 
 	  if (response_time >= trace_slow_msec)
 	    {
@@ -10840,7 +10855,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   LC_FIND_CLASSNAME status;
 
-  FLASHBACK_SUMMARY_CONTEXT context = { LSA_INITIALIZER, LSA_INITIALIZER, NULL, 0, 0, };
+  FLASHBACK_SUMMARY_CONTEXT context = { LSA_INITIALIZER, LSA_INITIALIZER, NULL, 0, 0, {}, {} };
 
   time_t start_time = 0;
   time_t end_time = 0;
@@ -11006,7 +11021,8 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   int threshold_to_remove_archive = 0;
 
-  FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER, };
+  FLASHBACK_LOGINFO_CONTEXT context =
+    { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER, {}, {} };
 
   /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
 

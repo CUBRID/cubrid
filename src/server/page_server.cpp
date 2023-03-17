@@ -119,9 +119,12 @@ page_server::connection_handler::~connection_handler ()
 {
   assert (!m_prior_sender_sink_hook_func);
 
+  // blocking call
+  // internally, this will also wait pending outgoing roundtrip (send-receive) requests
   m_conn->stop_incoming_communication_thread ();
 
-  // wait async responder to finish processing in-flight requests
+  // blocking call
+  // wait async responder to finish processing in-flight incoming roundtrip requests
   m_ps.get_responder ().wait_connection_to_become_idle (m_conn.get ());
 
   m_conn->stop_outgoing_communication_thread ();

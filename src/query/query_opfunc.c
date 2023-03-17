@@ -378,7 +378,7 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, bool clear_compressed_st
 	}
 
       val_size = pr_data_writeval_disk_size (dbval_p);
-      OR_BUF_INIT (buf, val_p, val_size);
+      or_init (&buf, val_p, val_size);
       rc = pr_type->data_writeval (&buf, dbval_p);
 
       if (rc != NO_ERROR)
@@ -6363,7 +6363,7 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * li
 	    }
 
 	  flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tuple_record.tpl, i, &ptr, &length);
-	  OR_BUF_INIT (buf, ptr, length);
+	  or_init (&buf, ptr, length);
 	  if (flag == V_BOUND)
 	    {
 	      if (pr_type_p->data_readval (&buf, value_list->val, domain_p, -1, true, NULL, 0) != NO_ERROR)
@@ -8538,7 +8538,7 @@ qdata_regexp_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_
     assert (index == no_args);
 
     // *INDENT-OFF*
-    std::function<int(DB_VALUE*, DB_VALUE*[], const int, cub_regex_object**, char**)> regexp_func;
+    std::function<int(DB_VALUE*, DB_VALUE*[], const int, cub_compiled_regex**)> regexp_func;
     switch (function_p->ftype)
     {
       case F_REGEXP_COUNT:
@@ -8568,8 +8568,8 @@ qdata_regexp_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_
 	function_p->tmp_obj->compiled_regex = new cub_compiled_regex ();
       }
 
-    cub_compiled_regex *compiled_regex = function_p->tmp_obj->compiled_regex;
-    error_status = regexp_func (function_p->value, args, no_args, &compiled_regex->regex, &compiled_regex->pattern);
+    cub_compiled_regex *&compiled_regex = function_p->tmp_obj->compiled_regex;
+    error_status = regexp_func (function_p->value, args, no_args, &compiled_regex);
     if (error_status != NO_ERROR)
       {
 	goto exit;

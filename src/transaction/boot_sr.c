@@ -2231,7 +2231,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #if defined (SA_MODE)
   // Initialize java stored procedure server for standalone mode
   jsp = prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE);
-  if (jsp)
+  if (jsp && !jsp_jvm_is_loaded ())
     {
       jsp_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
       error_code = jsp_start_server (db_name, db->pathname, jsp_port);
@@ -3200,20 +3200,13 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 	  //  - finalize log infrastructure
 	  //    - done in: shutdown server routine
 	  //  - stop sending messages to page server (eg: oldest MVCCID updates)
-	  //    - done in:
-	  //        shutdown server routine
-	  //          -> boot_server_all_finalize
-	  //            -> finalize_server_type
-	  //              -> and then polymorphically in the transaction server object
-	  //                disconnect_all_page_servers routine right before sending
-	  //                the final disconnect message to Page Server(s)
+	  //    - done in: shutdown server routine
+	  //      -> polymorphically right before sending
+	  //         the final disconnect message to Page Server(s)
 	  //  - send the final disconnect message to Page Server(s)
-	  //    - done in:
-	  //        shutdown server routine (this routine)
-	  //          -> boot_server_all_finalize
-	  //            -> finalize_server_type
-	  //              -> tran_server::disconnect_all_page_servers
-	  //                -> tran_server::connection_handler::disconnect
+	  //    - done in: shutdown server routine
+	  //      -> tran_server::disconnect_all_page_servers
+	  //        -> tran_server::connection_handler::disconnect
 	  //  - delete the Passive Transaction Server object
 	  //    - done in: finalize_server_type
 
@@ -3230,6 +3223,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 	  pts_ptr->finish_replication_during_shutdown (*thread_p);
 	}
 
+      ts_Gl->stop_outgoing_page_server_messages ();
+      ts_Gl->disconnect_all_page_servers ();
+
       // shutdown order for Active Transaction Server:
       //  - finalize log infrastructure
       //    - done in: shutdown server routine (this routine)
@@ -3240,19 +3236,13 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
       //      Page Server(s) semi-synchronously via the prior_sender::send_list routine
       //  - unregister log prior sinks (used to dispatch produced transactional log to connected
       //    Page Servers:
-      //    - done in:
-      //        shutdown server routine (this routine)
-      //          -> boot_server_all_finalize
-      //            -> finalize_server_type
-      //              -> tran_server::disconnect_all_page_servers
-      //                -> active_tran_server::connection_handler::disconnect
+      //    - done in: shutdown server routine (this routine)
+      //      -> tran_server::disconnect_all_page_servers
+      //      -> active_tran_server::connection_handler::disconnect
       //  - send the final disconnect message to all connected Page Server(s)
-      //    - done in:
-      //        shutdown server routine (this routine)
-      //          -> boot_server_all_finalize
-      //            -> finalize_server_type
-      //              -> tran_server::disconnect_all_page_servers
-      //                -> tran_server::connection_handler::disconnect
+      //    - done in: shutdown server routine (this routine)
+      //      -> tran_server::disconnect_all_page_servers
+      //      -> active_tran_server::connection_handler::disconnect
       //  - delete the Active Transaction Server object
       //    - done in:
       //        shutdown server routine (this routine)

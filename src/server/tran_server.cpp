@@ -341,8 +341,6 @@ tran_server::disconnect_all_page_servers ()
 {
   assert_is_tran_server ();
 
-  stop_outgoing_page_server_messages ();
-
   for (const auto &conn : m_page_server_conn_vec)
     {
       conn->prepare_disconnection ();

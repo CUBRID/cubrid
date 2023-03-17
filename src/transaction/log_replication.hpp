@@ -111,9 +111,11 @@ namespace cublog
       mutable std::condition_variable m_redo_lsa_condvar;
       log_rv_redo_context m_redo_context;
 
+    private:
       std::unique_ptr<cublog::reusable_jobs_stack> m_reusable_jobs;
       std::unique_ptr<cublog::redo_parallel> m_parallel_replication_redo;
 
+    protected:
       /* perf data for processing log redo on the page server - the synchronous part:
        *  - if the infrastructure to apply recovery log redo in parallel is used, it does not
        *    include the calling of the redo function as that part will be
@@ -127,12 +129,11 @@ namespace cublog
       /*
        */
       std::atomic<log_lsa> m_most_recent_trantable_snapshot_lsa;
-
-    protected:
       /* does not record anything; needed just to please reused recovery infrastructure
        */
       perf_stats m_perf_stat_idle;
 
+    protected:
       std::unique_ptr<cublog::replicator_mvcc> m_replicator_mvccid;
   };
 }

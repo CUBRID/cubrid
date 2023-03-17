@@ -10218,7 +10218,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
       /*
        * Read the value according to disk information that was found
        */
-      OR_BUF_INIT2 (buf, disk_data, disk_length);
+      or_init (&buf, disk_data, disk_length);
       buf.error_abort = 1;
 
       switch (_setjmp (buf.env))
@@ -11643,7 +11643,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 resize_and_start:
 
   new_recdes->resize_buffer (expected_size);
-  OR_BUF_INIT2 (orep, new_recdes->get_data_for_modify (), (int) expected_size);
+  or_init (&orep, new_recdes->get_data_for_modify (), (int) expected_size);
+  orep.error_abort = 1;
   buf = &orep;
 
   switch (_setjmp (buf->env))
