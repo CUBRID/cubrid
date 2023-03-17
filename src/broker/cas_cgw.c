@@ -2570,7 +2570,7 @@ cgw_rewrite_query (char *src_query, char **sql)
   SQLSMALLINT col_name_length = 0;
   SQLHSTMT hstmt = NULL;
 
-  ALLOC_COPY (source, src_query);
+  ALLOC_COPY_STRLEN (source, src_query);
 
   end = strstr (source, REWRITE_DELIMITER_FROM);
   if (end == NULL)

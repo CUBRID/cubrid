@@ -163,7 +163,7 @@ net_init_env (char *port_name)
   return (sock_fd);
 }
 
-#ifndef LIBCAS_FOR_JSP
+
 #if defined(WINDOWS)
 SOCKET
 net_connect_proxy (int proxy_id)
@@ -254,7 +254,7 @@ net_connect_proxy (void)
   net_error_flag = 0;
   return (fd);
 }
-#endif /* LIBCAS_FOR_JSP */
+
 
 SOCKET
 net_connect_client (SOCKET srv_sock_fd)
