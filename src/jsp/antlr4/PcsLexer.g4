@@ -270,6 +270,7 @@ SUM:                          S U M ;
 STDDEV:                       S T D D E V ;
 VAR_:                         V A R '_' ;
 VARIANCE:                     V A R I A N C E ;
+VARYING:                      V A R Y I N G ;
 LEAST:                        L E A S T ;
 GREATEST:                     G R E A T E S T ;
 TO_DATE:                      T O '_' D A T E ;

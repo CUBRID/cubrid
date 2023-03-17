@@ -28,14 +28,14 @@
  *
  */
 
-package com.cubrid.plcsql.compiler;
+package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.ast.TypeSpec;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class GlobalTypeInfo {
-    public TypeSpec getTableColumnType(String table, String column) {
-        // TODO
-        assert false : "not implemented yet";
-        throw new RuntimeException("not implemented yet");
+public abstract class DeclIdTyped extends DeclId {
+    public abstract TypeSpec typeSpec();
+
+    public DeclIdTyped(ParserRuleContext ctx) {
+        super(ctx);
     }
 }

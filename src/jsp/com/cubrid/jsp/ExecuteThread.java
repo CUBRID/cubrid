@@ -174,7 +174,7 @@ public class ExecuteThread extends Thread {
                                 resultBuffer.clear(); /* prepare to put */
                                 packer.setBuffer(resultBuffer);
                                 packer.packString(info.translated);
-                                packer.packString(info.sqlTemplate);
+                                packer.packString(info.createStmt);
 
                                 String javaFilePath =
                                         StoredProcedureClassLoader.ROOT_PATH

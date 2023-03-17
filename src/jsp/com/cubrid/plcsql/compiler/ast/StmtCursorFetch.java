@@ -30,8 +30,10 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.Coerce;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.util.List;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class StmtCursorFetch extends Stmt {
@@ -58,9 +60,15 @@ public class StmtCursorFetch extends Stmt {
                 .replace("    %'SET-INTO-VARIABLES'%", Misc.indentLines(setIntoVarsStr, 2));
     }
 
+    public void setCoerces(List<Coerce> coerces) {
+        this.coerces = coerces;
+    }
+
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
+
+    private List<Coerce> coerces;
 
     private static final String tmplStmt =
             Misc.combineLines(
@@ -71,7 +79,7 @@ public class StmtCursorFetch extends Stmt {
                     "  } else if (rs.next()) {",
                     "    %'SET-INTO-VARIABLES'%",
                     "  } else {",
-                    "    ; // TODO: what to do? setting nulls to into-variables? ",
+                    "    ; // TODO: what to do? setting nulls to into-variables?",
                     "  }",
                     "}");
 
@@ -88,7 +96,7 @@ public class StmtCursorFetch extends Stmt {
             sbuf.append(
                     String.format(
                             "%s = (%s) rs.getObject(%d);",
-                            id.toJavaCode(), ((DeclVarLike) id.decl).typeSpec().name, i + 1));
+                            id.toJavaCode(), ((DeclIdTyped) id.decl).typeSpec().name, i + 1));
 
             i++;
         }

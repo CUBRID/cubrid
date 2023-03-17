@@ -30,11 +30,24 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.Coerce;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprCond extends Expr {
+
+    @Override
+    public void setCoerce(Coerce c) {
+
+        if (c instanceof Coerce.DownCast) {
+            assert resultType.equals(TypeSpecSimple.OBJECT);
+            resultType = ((Coerce.DownCast) c).to;
+            super.setCoerce(Coerce.IDENTITY);
+        } else {
+            super.setCoerce(c);
+        }
+    }
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
@@ -52,20 +65,19 @@ public class ExprCond extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
 
         if (TypeSpecSimple.NULL.equals(resultType)) {
-            if (elsePart == null) { // TODO
-                assert false : "every case has null and else-part is absent: not implemented yet";
-                throw new RuntimeException(
-                        "every case has null and else-part is absent: not implemented yet");
-            } else {
-                return "null";
-            }
+            assert elsePart != null;
+            return "null";
         } else {
             String elseCode;
             if (elsePart == null) {
-                elseCode = "(%'RESULT-TYPE'%) raiseCaseNotFound()";
+                if (resultType.equals(TypeSpecSimple.OBJECT)) {
+                    elseCode = "raiseCaseNotFound()"; // no need to cast
+                } else {
+                    elseCode = "(%'RESULT-TYPE'%) raiseCaseNotFound()";
+                }
             } else {
                 elseCode = elsePart.toJavaCode();
             }

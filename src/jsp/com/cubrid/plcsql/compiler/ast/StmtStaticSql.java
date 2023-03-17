@@ -30,36 +30,30 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.util.ArrayList;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprUnaryOp extends Expr {
+public class StmtStaticSql extends StmtSql {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitExprUnaryOp(this);
+        return visitor.visitStmtStaticSql(this);
     }
 
-    public final String opStr;
-    public final Expr operand;
+    public final StaticSql staticSql;
 
-    public ExprUnaryOp(ParserRuleContext ctx, String opStr, Expr operand) {
-        super(ctx);
+    public StmtStaticSql(ParserRuleContext ctx, int level, StaticSql staticSql) {
 
-        this.opStr = opStr;
-        this.operand = operand;
+        super(
+                ctx,
+                false,
+                level,
+                new ExprStr(staticSql.ctx, staticSql.rewritten),
+                staticSql.intoVars,
+                new ArrayList(staticSql.hostVars.keySet()));
+
+        this.staticSql = staticSql;
     }
-
-    @Override
-    public String exprToJavaCode() {
-        return tmpl.replace("%'OPERATION'%", opStr)
-                .replace("  %'OPERAND'%", Misc.indentLines(operand.toJavaCode(), 1));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl = Misc.combineLines("op%'OPERATION'%(", "  %'OPERAND'%", ")");
 }

@@ -31,16 +31,20 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.util.LinkedHashMap;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class DeclForRecord extends DeclId {
 
     public final String name;
+    public final LinkedHashMap<String, TypeSpec> fieldTypes;
 
-    public DeclForRecord(ParserRuleContext ctx, String name) {
+    public DeclForRecord(
+            ParserRuleContext ctx, String name, LinkedHashMap<String, TypeSpec> fieldTypes) {
         super(ctx);
 
         this.name = name;
+        this.fieldTypes = fieldTypes;
     }
 
     // TODO: separate Symbol from AstNode. Remove 'extends Decl' and the following method
@@ -62,8 +66,4 @@ public class DeclForRecord extends DeclId {
         assert false;
         throw new RuntimeException("unreachable");
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

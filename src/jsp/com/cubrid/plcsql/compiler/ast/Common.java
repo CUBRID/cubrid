@@ -31,26 +31,27 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import java.util.List;
 
 class Common {
 
-    static String getSetUsedValuesStr(NodeList<? extends Expr> exprList) {
-        return getSetUsedValuesStr(exprList, 1);
+    static String getSetUsedExprStr(List<? extends Expr> exprList) {
+        return getSetUsedExprStr(exprList, 1);
     }
 
-    static String getSetUsedValuesStr(NodeList<? extends Expr> exprList, int startIndex) {
+    static String getSetUsedExprStr(List<? extends Expr> exprList, int startIndex) {
 
-        if (exprList == null || exprList.nodes.size() == 0) {
+        if (exprList == null || exprList.size() == 0) {
             return "// no used values";
         }
 
         StringBuffer sbuf = new StringBuffer();
-        int size = exprList.nodes.size();
+        int size = exprList.size();
         for (int i = 0; i < size; i++) {
             if (i > 0) {
                 sbuf.append("\n");
             }
-            Expr expr = exprList.nodes.get(i);
+            Expr expr = exprList.get(i);
             sbuf.append(
                     tmplSetObject
                             .replace("%'INDEX'%", "" + (i + startIndex))

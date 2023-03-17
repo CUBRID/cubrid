@@ -28,38 +28,53 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.Misc;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
+import java.util.LinkedHashMap;
+import java.util.List;
 
-public class ExprUnaryOp extends Expr {
+public class SqlSemantics {
 
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitExprUnaryOp(this);
+    public enum Kind {
+        SELECT,
+        INSERT,
+        UPDATE,
+        DELETE,
+        MERGE,
+        REPLACE,
+        TRUNCATE
     }
 
-    public final String opStr;
-    public final Expr operand;
+    // for error return
+    public int errCode; // non-zero if error
+    public String errMsg;
 
-    public ExprUnaryOp(ParserRuleContext ctx, String opStr, Expr operand) {
-        super(ctx);
-
-        this.opStr = opStr;
-        this.operand = operand;
+    SqlSemantics(int errCode, String errMsg) {
+        assert errCode != 0;
+        this.errCode = errCode;
+        this.errMsg = errMsg;
     }
 
-    @Override
-    public String exprToJavaCode() {
-        return tmpl.replace("%'OPERATION'%", opStr)
-                .replace("  %'OPERAND'%", Misc.indentLines(operand.toJavaCode(), 1));
+    // for normal return
+    public Kind kind;
+    public String rewritten;
+    public LinkedHashMap<String, String>
+            hostVars; // host variables and their SQL types required in their locations
+    public LinkedHashMap<String, String>
+            selectList; // (only for select statements) columns and their SQL types
+    public List<String> intoVars; // (only for select stetements with an into-clause) into variables
+
+    SqlSemantics(
+            Kind kind,
+            String rewritten,
+            LinkedHashMap<String, String> hostVars,
+            LinkedHashMap<String, String> selectList,
+            List<String> intoVars) {
+
+        this.kind = kind;
+        this.rewritten = rewritten;
+        this.hostVars = hostVars;
+        this.selectList = selectList;
+        this.intoVars = intoVars;
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl = Misc.combineLines("op%'OPERATION'%(", "  %'OPERAND'%", ")");
 }

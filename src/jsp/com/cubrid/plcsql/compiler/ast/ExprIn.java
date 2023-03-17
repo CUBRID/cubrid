@@ -52,7 +52,7 @@ public class ExprIn extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
         return tmpl.replace("  %'TARGET'%", Misc.indentLines(target.toJavaCode(), 1))
                 .replace("  %'IN-ELEMENTS'%", Misc.indentLines(inElements.toJavaCode(",\n"), 1));
     }

@@ -28,38 +28,36 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.Misc;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import com.cubrid.plcsql.compiler.ast.ExprId;
+import com.cubrid.plcsql.compiler.ast.TypeSpec;
+import java.util.LinkedHashMap;
+import java.util.List;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprUnaryOp extends Expr {
+public class StaticSql {
 
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitExprUnaryOp(this);
+    public final ParserRuleContext ctx;
+    public final SqlSemantics.Kind kind;
+    public final String rewritten;
+    public final LinkedHashMap<ExprId, TypeSpec> hostVars;
+    public final LinkedHashMap<String, TypeSpec> selectList;
+    public final List<ExprId> intoVars; // can be null
+
+    StaticSql(
+            ParserRuleContext ctx,
+            SqlSemantics.Kind kind,
+            String rewritten,
+            LinkedHashMap<ExprId, TypeSpec> hostVars,
+            LinkedHashMap<String, TypeSpec> selectList,
+            List<ExprId> intoVars) {
+
+        this.ctx = ctx;
+        this.kind = kind;
+        this.rewritten = rewritten;
+        this.hostVars = hostVars;
+        this.selectList = selectList;
+        this.intoVars = intoVars;
     }
-
-    public final String opStr;
-    public final Expr operand;
-
-    public ExprUnaryOp(ParserRuleContext ctx, String opStr, Expr operand) {
-        super(ctx);
-
-        this.opStr = opStr;
-        this.operand = operand;
-    }
-
-    @Override
-    public String exprToJavaCode() {
-        return tmpl.replace("%'OPERATION'%", opStr)
-                .replace("  %'OPERAND'%", Misc.indentLines(operand.toJavaCode(), 1));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl = Misc.combineLines("op%'OPERATION'%(", "  %'OPERAND'%", ")");
 }

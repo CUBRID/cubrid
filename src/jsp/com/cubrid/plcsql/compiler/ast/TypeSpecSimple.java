@@ -59,11 +59,20 @@ public class TypeSpecSimple extends TypeSpec {
     // ------------------------------------------------------------------
 
     private TypeSpecSimple(String fullJavaType) {
-        super(getSimpleName(fullJavaType));
+        super(getJavaCode(fullJavaType));
         this.fullJavaType = fullJavaType;
     }
 
-    private static String getSimpleName(String fullJavaType) {
+    private static String getJavaCode(String fullJavaType) {
+
+        // internal types
+        if (fullJavaType.equals("Null")) {
+            return "Object";
+        } else if (fullJavaType.equals("Cursor")) {
+            return "%ERROR%";
+        }
+
+        // normal types
         String[] split = fullJavaType.split("\\.");
         assert split.length > 2;
         return split[split.length - 1];
@@ -74,9 +83,10 @@ public class TypeSpecSimple extends TypeSpec {
     static {
         final String[] javaTypes =
                 new String[] {
-                    "java.lang.Object",
-                    "..Null", // not an actual java type
-                    "..Cursor", // not an actual java type
+                    "Null", // not an actual java type
+                    "Cursor", // not an actual java type
+                    "java.lang.Object", // (1) used as an argument type of some operators in SpLib
+                    // (2) used as an expression type when a specific Java type cannot be given
                     "java.lang.Boolean",
                     "java.lang.String",
                     "java.math.BigDecimal",
@@ -101,9 +111,10 @@ public class TypeSpecSimple extends TypeSpec {
         }
     }
 
+    public static TypeSpecSimple NULL = of("Null");
+    public static TypeSpecSimple CURSOR = of("Cursor");
+
     public static TypeSpecSimple OBJECT = of("java.lang.Object");
-    public static TypeSpecSimple NULL = of("..Null");
-    public static TypeSpecSimple CURSOR = of("..Cursor");
 
     public static TypeSpecSimple BOOLEAN = of("java.lang.Boolean");
     public static TypeSpecSimple STRING = of("java.lang.String");
