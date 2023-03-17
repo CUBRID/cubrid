@@ -3370,7 +3370,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   char *host_name_ptr = NULL;
   char *p = NULL;
   const char *err_msg;
-  CSQL_ARGUMENT csql_new_arg = {0, };
+  CSQL_ARGUMENT csql_new_arg = { 0, };
 
   if (argument == NULL)
     {
