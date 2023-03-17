@@ -163,7 +163,9 @@ $ csql help messages
    ;COMmit                      - valide la transaction en cours.\n\
    ;ROllback                    - annule la transaction en cours.\n\
    ;AUtocommit [ON|OFF]         - active/désactive la validation automatique des transactions.\n\
-   ;REStart                     - redémarre la base de données.\n\
+   ;REStart                     - reconnectez-vous à la base de données actuelle dans une session CSQL.\n\
+   ;CHeckpoint                  - exécutez le point de contrôle (CSQL avec --sysadm uniquement).\n\
+   ;Killtran                    - vérifiez les informations sur l'état de la transaction ou terminez une transaction spécifique. (CSQL avec --sysadm uniquement).\n\
 \n\
    ;SHELL_Cmd     [shell-cmd]   - définit nouveau commande par défaut pour shell,\n\
    ;EDITOR_Cmd    [editor-cmd]    éditeur, affiche, paginateur et formatter, ou afficher la \n\
@@ -188,6 +190,12 @@ $ csql help messages
    ;HISTORYRead <history_num>   - lit l 'entrée sur le numéro d'historique dans le tampon de commande.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - activer/désactiver le mode monoligne.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - se connecter à la base de données actuelle ou à d'autres bases de données en tant que nom d'utilisateur.\n\ 
+   ;.Hist [ON/OFF]              - démarrer/arrêter la collecte d'informations statistiques dans CSQL (DBA disponible uniquement).\n\
+   ;.Clear_hist                 - effacer les informations statistiques CSQL dans la mémoire tampon.\n\
+   ;.Dump_hist                  - afficher les informations statistiques CSQL dans CSQL.\n\
+   ;.X_hist                     - afficher les informations statistiques CSQL dans CSQL avec les données statistiques initialisées.\n\
    ;HElp                        - affiche ce message d'aide.\n\n
 
 232 <Constraints> 

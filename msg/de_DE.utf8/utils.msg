@@ -496,6 +496,7 @@ Anwendung: %1$s loaddb [OPTION] Datenbanknamen[@host]\n\
 gültige Optionen:\n\
   -S, --SA-mode                    Stand-Alone-Ausführung\n\
   -C, --CS-mode                    Client-Server-Ausführung\n\
+                                   WAARSCHUWING: In client-servermodus kan alleen databestand (-d, --data-file=FILE) worden geladen.\n\
   -u, --user=ID                    Benutzer ID für Datenbankzugang; Standard: "public"\n\
   -p, --password=PASSWORT          Benutzerpasswort; Standard: keinen\n\
       --data-file-check-only       Syntaxprüfung der Datei ohne Ladung; Standard: inaktiv\n\
@@ -907,8 +908,11 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 2 erforderlicher Argument, kein Standardwert
 3 Java-Klassendatei
 4 erforderlicher Argument, kein Standardwert
-5 force-overwrite
-6 Klassendatei, wenn vorhanden, überschreiben, Standard nein
+60 \
+Usage: loadjava [OPTION] database-name java-class-file\n\
+\n\
+valid options:\n\
+  -y, --overwrite              Klassendatei, wenn vorhanden, überschreiben, Standard nein\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Ausgangdatei '%1$s' kann nicht geöffnet werden\n

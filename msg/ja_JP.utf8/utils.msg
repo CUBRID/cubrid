@@ -496,6 +496,7 @@ loaddb: データベースにオブジェクトやスキーマロード\n\
 オプション:\n\
   -S, --SA-mode                  独立モードで実行\n\
   -C, --CS-mode                  クライアントーサーバモードで実行\n\
+                                 警告: クライアント サーバー モードでは、データ ファイル (-d、--data-file=FILE) のみをロードできます。\n\
   -u, --user=ID                  データベースアクセスに関するユーザー名; デフォルト: 「public」\n\
   -p, --password=PASS            ユーザーパスワード; デフォルト: なし\n\
       --data-file-check-only     check syntax for data file without load; default: disabled\n\
@@ -907,8 +908,11 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 2 必須パラメーター; デフォルト: なし
 3 ジャバークラスーファイル
 4 必須パラメーター; デフォルト: なし
-5 強制ーオーバーライト
-6 クラスファイルがもう存在したらオーバーライトする。; デフォルト: オーバーライトしない
+60 \
+Usage: loadjava [OPTION] database-name java-class-file\n\
+\n\
+valid options:\n\
+  -y, --overwrite              クラスファイルがもう存在したらオーバーライトする。; デフォルト: オーバーライトしない\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 出力ファイル「%1$s」が開けません。\n
