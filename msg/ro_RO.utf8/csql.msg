@@ -164,7 +164,9 @@ $ csql help messages
    ;COMmit                      - finalizează(commit) tranzacţia curentă.\n\
    ;ROllback                    - derulează înapoi tranzacţia curentă.\n\
    ;AUtocommit [ON|OFF]         - activează/dezactivează modul "auto commit".\n\
-   ;REStart                     - reporneşte baza de date.\n\
+   ;REStart                     - reconectați-vă la baza de date țintă într-o sesiune CSQL.\n\
+   ;CHeckpoint                  - executați punctul de control (numai CSQL cu --sysadm).\n\
+   ;Killtran                    - vizualizați informații despre starea tranzacției sau încheiați o anumită tranzacție. (numai CSQL cu --sysadm).\n\
 \n\
    ;SHELL_Cmd     [shell-cmd]   - schimbă comenzile implicite pentru shell, editor,\n\
    ;EDITOR_Cmd    [editor-cmd]    afişare, paginator şi formatator cu comenzi noi, respectiv \n\
@@ -190,6 +192,12 @@ $ csql help messages
                                   specificată prin parametru.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - activați/dezactivați modul cu o singură linie.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - conectați-vă la bazele de date curente sau la alte baze de date ca nume de utilizator.\n\ 
+   ;.Hist [ON/OFF]              - porniți/opriți colectarea informațiilor statistice în CSQL (doar DBA disponibil).\n\
+   ;.Clear_hist                 - ștergeți informațiile statistice CSQL din buffer.\n\
+   ;.Dump_hist                  - afișați informațiile statistice CSQL în CSQL.\n\
+   ;.X_hist                     - afișați informațiile statistice CSQL în CSQL cu datele statistice inițializate.\n\
    ;HElp                        - afişează acest mesaj de ajutor.\n\n
 
 232 <Constrângeri> 

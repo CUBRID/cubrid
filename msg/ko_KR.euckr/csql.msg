@@ -162,7 +162,9 @@ $ csql help messages
    ;COMmit                      - 진행 중인 트랜잭션 커밋.\n\
    ;ROllback                    - 진행 중인 트랜잭션 철회.\n\
    ;AUtocommit [ON|OFF]         - 자동 커밋 모드 설정|해제.\n\
-   ;REStart                     - 데이터베이스 재시작.\n\
+   ;REStart                     - CSQL 세션에서 현재 데이터베이스에 다시 연결.\n\
+   ;CHeckpoint                  - 체크포인트를 실행합니다(--sysadm으로 접속한 경우만 해당).\n\
+   ;Killtran                    - 트랜잭션 상태 정보를 확인하거나 특정 트랜잭션을 종료.(--sysadm으로 접속한 경우만 해당).\n\
 \n\
    ;SHELL_Cmd    [shell-cmd]    - 내정된 쉘을 설정하거나 보여줌.\n\
    ;EDITOR_Cmd   [editor-cmd]   - 내정된 편집기를 설정하거나 보여줌.\n\
@@ -186,6 +188,12 @@ $ csql help messages
    ;HISTORYRead <history_num>   - 히스토리 번호에 해당되는 쿼리를 명령어 버퍼에 올림.\n\
    ;TRAce [ON|OFF] [text/json]  - 쿼리 자동 트레이스 설정|해제.\n\
    ;SIngleline [ON|OFF]         - 싱글 라인 모드 활성화|비활성화.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - 현재 또는 다른 데이터베이스에 사용자 이름으로 연결.\n\
+   ;.Hist [ON/OFF]              - CSQL에서 통계 정보 수집 시작|중지(DBA 만 가능).\n\
+   ;.Clear_hist                 - 버퍼에 있는 CSQL 통계 정보를 삭제.\n\
+   ;.Dump_hist                  - CSQL에서 CSQL 통계 정보를 표시.\n\
+   ;.X_hist                     - 통계 데이터를 초기화하여 CSQL에서 CSQL 통계 정보를 표시.\n\
    ;HElp                        - 도움말 메시지 출력.\n\n
 
 232 <제약사항> 

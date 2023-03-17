@@ -164,7 +164,9 @@ $ csql help messages
    ;COMmit                      - 進行中のトランザクションをコミット。\n\
    ;ROllback                    - 進行中のトランザクションをロールバック。\n\
    ;AUtocommit [ON|OFF]         - 自動コミットモードを設定。／解除。\n\
-   ;REStart                     - データベースリスタート。\n\
+   ;REStart                     - CSQL セッションで現在のデータベースに再接続します。\n\
+   ;CHeckpoint                  - チェックポイントを実行します (--sysadm を指定した CSQL のみ)。\n\
+   ;Killtran                    - トランザクションステータス情報を確認するか、特定のトランザクションを終了します (--sysadm を指定した CSQL のみ)。\n\
 \n\
    ;SHELL_Cmd     [shell-cmd]   - 既存に設定したシェルを設定／表示する。\n\
    ;EDITOR_Cmd    [editor-cmd]  - 既存に設定したエディターを設定／表示する。\n\
@@ -189,6 +191,12 @@ $ csql help messages
    ;HISTORYRead <history_num>   - ヒストリー番号のクエリをコマンドバッファーにセーブする。\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - 単線モードの有効化/無効化.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - ユーザー名として現在のデータベースまたは他のデータベースに接続します。\n\ 
+   ;.Hist [ON/OFF]              - CSQL で統計情報の収集を開始/停止します (DBA のみ利用可能)。\n\
+   ;.Clear_hist                 - バッファ内の CSQL 統計情報をクリアします。\n\
+   ;.Dump_hist                  - CSQL 統計情報を CSQL で表示します。\n\
+   ;.X_hist                     - 統計データが初期化された CSQL で CSQL 統計情報を表示します。\n\
    ;HElp                        - ヘルプメッセージ出力。\n\n
 
 232 <制約事項> 
