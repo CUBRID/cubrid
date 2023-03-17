@@ -49,7 +49,7 @@ public class SqlSemantics {
     public int errCode; // non-zero if error
     public String errMsg;
 
-    SqlSemantics(int errCode, String errMsg) {
+    public SqlSemantics(int errCode, String errMsg) {
         assert errCode != 0;
         this.errCode = errCode;
         this.errMsg = errMsg;
