@@ -2817,7 +2817,6 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       csql_Error_code = CSQL_ERR_OS_ERROR;
       goto error;
     }
-  er_set_print_property (ER_PRINT_TO_CONSOLE);
 
   /*
    * login and restart database
@@ -2876,6 +2875,8 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 	  goto error;
 	}
     }
+
+  er_set_print_property (ER_PRINT_TO_CONSOLE);
 
   logddl_init (APP_NAME_CSQL);
   logddl_check_ddl_audit_param ();
