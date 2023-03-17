@@ -25,7 +25,6 @@
 #include "adjustable_array.h"
 #include "critical_section.h"  // for INF_WAIT
 #include "critical_section_tracker.hpp"
-#include "error_manager.h"
 #include "fault_injection.h"
 #include "list_file.h"
 #include "lock_free.h"
@@ -35,6 +34,7 @@
 #include "memory_alloc.h"
 #include "page_buffer.h"
 #include "resource_tracker.hpp"
+#include "system_parameter.h"
 
 #include <cstring>
 #include <sstream>
@@ -144,6 +144,7 @@ namespace cubthread
     , m_csect_tracker (*new cubsync::critical_section_tracker (ENABLE_TRACKERS))
     , m_systdes (NULL)
     , m_lf_tran_index (lockfree::tran::INVALID_INDEX)
+    , m_page_buffer_ignore_unfix { false }
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
       {
@@ -428,6 +429,23 @@ namespace cubthread
   entry::get_lf_tran_index ()
   {
     return m_lf_tran_index;
+  }
+
+  void entry::set_thread_type (const thread_type type)
+  {
+    this->type = type;
+
+    if (type == TT_REPLICATION_PTS)
+      {
+	assert (!m_page_buffer_ignore_unfix);
+	m_page_buffer_ignore_unfix = prm_get_bool_value (PRM_ID_SCAL_PERF_PTS_REPL_THREAD_IGNORE_UNFIX);
+      }
+
+    if (type == TT_REPLICATION_PS)
+      {
+	assert (!m_page_buffer_ignore_unfix);
+	m_page_buffer_ignore_unfix = prm_get_bool_value (PRM_ID_SCAL_PERF_PS_REPL_THREAD_IGNORE_UNFIX);
+      }
   }
 
 } // namespace cubthread

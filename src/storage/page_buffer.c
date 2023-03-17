@@ -277,8 +277,12 @@ pgbuf_bcb_flag_is_invalid_victim (int flag)
 #define PGBUF_AOUT_NOT_FOUND  -2
 
 #if defined (SERVER_MODE)
-/* vacuum workers and checkpoint thread should not contribute to promoting a bcb as active/hot */
-#define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) VACUUM_IS_THREAD_VACUUM_WORKER (th)
+/* these thread types must not contribute to promoting a bcb as active/hot:
+ *  - vacuum
+ *  - passive (replica) transaction server replication (activated by a sysparam)
+ *  - page server replication (activated by a sysparam)
+ */
+#define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) (VACUUM_IS_THREAD_VACUUM_WORKER (th) || th->m_page_buffer_ignore_unfix)
 #else
 #define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) false
 #endif
