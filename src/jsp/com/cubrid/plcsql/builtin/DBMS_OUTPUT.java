@@ -68,8 +68,11 @@ public class DBMS_OUTPUT {
         StringBuilder builder = new StringBuilder();
 
         if (strs != null) {
-            for (String s : strs) {
-                builder.append(s);
+            for (int i = 0; i < strs.length; i++) {
+                builder.append(strs[i]);
+                if (i != strs.length - 1) {
+                    builder.append(System.lineSeparator());
+                }
             }
         }
 
