@@ -1473,7 +1473,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_CONNECT:
-      if (csql_arg->sysadm != true)
+      if ((csql_arg->sysadm != true) && (csql_arg->sa_mode != true))
 	{
 	  error_code = csql_connect ((argument[0] == '\0') ? NULL : argument, csql_arg);
 	  if (error_code != NO_ERROR)
@@ -1484,7 +1484,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
       else
 	{
-	  fprintf (csql_Output_fp, "CONNECT session command cannot support --sysadm mode\n");
+	  fprintf (csql_Output_fp, "CONNECT session command cannot support --SA-mode and --sysadm mode\n");
 	}
     }
 
@@ -3370,7 +3370,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   char *host_name_ptr = NULL;
   char *p = NULL;
   const char *err_msg;
-  CSQL_ARGUMENT csql_new_arg = { 0, };
+  CSQL_ARGUMENT csql_new_arg;
 
   if (argument == NULL)
     {
@@ -3378,6 +3378,8 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
       fprintf (stderr, err_msg);
       return DO_CMD_SUCCESS;
     }
+
+  memset (&csql_new_arg, 0, sizeof csql_new_arg);
 
   strncpy (buf, argument, sizeof (buf) - 1);
 
