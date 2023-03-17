@@ -138,35 +138,4 @@ namespace cubmethod
     return error;
   }
 #endif
-
-  //////////////////////////////////////////////////////////////////////////
-  // Interface to communicate with Java SP Server
-  //////////////////////////////////////////////////////////////////////////
-
-  int mcon_send_buffer_to_java (SOCKET socket, cubmem::block &blk)
-  {
-    int error = NO_ERROR;
-    OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
-    char *request = OR_ALIGNED_BUF_START (a_request);
-
-    int request_size = (int) blk.dim;
-    or_pack_int (request, request_size);
-
-    int nbytes = jsp_writen (socket, request, OR_INT_SIZE);
-    if (nbytes != OR_INT_SIZE)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-	error = er_errid ();
-	return error;
-      }
-
-    nbytes = jsp_writen (socket, blk.ptr, blk.dim);
-    if (nbytes != (int) blk.dim)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-	error = er_errid ();
-      }
-    return error;
-  }
-
 } // namespace cubmethod

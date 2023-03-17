@@ -27,6 +27,7 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
+#include <atomic>
 #include <unordered_map>
 #include <unordered_set>
 #include <deque>
@@ -51,7 +52,6 @@ namespace cubmethod
 
   using THREAD_ENTRY_IDX = int;
   using QUERY_ID = std::uint64_t;
-  using METHOD_GROUP_ID = std::uint64_t;
 
   class runtime_context
   {
@@ -91,6 +91,11 @@ namespace cubmethod
 
       bool is_running ();
 
+      inline METHOD_REQ_ID get_and_increment_request_id ()
+      {
+	return m_req_id++;
+      }
+
       connection_pool &get_connection_pool ();
 
     private:
@@ -111,6 +116,8 @@ namespace cubmethod
       invoke_group_stack_type m_deferred_free_stack;
 
       connection_pool m_conn_pool;
+
+      std::atomic <METHOD_REQ_ID> m_req_id;
 
       bool m_is_interrupted;
       int m_interrupt_id;
