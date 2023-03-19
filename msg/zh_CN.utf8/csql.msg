@@ -112,6 +112,7 @@ $ These 3 should be blank
 194 无效的命令选项组合.
 196 发生了一个未定义的错误.
 197 当输出被重定向时，';edit' 是不被允许的.
+198 格式化失败.
 
 203 <%1$s> 
 204 <父类> 
@@ -153,7 +154,7 @@ $ csql help messages
    ;EXit                        - 退出程序.\n\
 \n\
    ;CLear                       - 清理命令缓冲区.\n\
-   ;EDIT                        - 对命令缓冲区调用系统编辑器.\n\
+   ;EDIT   [format/fmt]         - 使用命令缓冲区调用系统编辑器 [在格式化程序之后].\n\
    ;LISt                        - 显示当前命令缓冲区的内容.\n\
 \n\
    ;RUn                         - 执行命令缓冲区的sql.\n\
@@ -162,12 +163,15 @@ $ csql help messages
    ;COMmit                      - 提交当前事务.\n\
    ;ROllback                    - 回滚当前事务.\n\
    ;AUtocommit [ON|OFF]         - 启用/停用自动提交模式.\n\
-   ;REStart                     - 重新启动数据库.\n\
+   ;REStart                     - 在 CSQL 会话中重新连接到当前数据库.\n\
+   ;CHeckpoint                  - 执行检查点（仅带 --sysadm 的 CSQL）.\n\
+   ;Killtran                    - 检查交易状态信息或结束特定交易（仅限带有 --sysadm 的 CSQL）.\n\
 \n\
-   ;SHELL_Cmd  [shell-cmd]      - 设置默认的shell或显示当前设置.\n\
-   ;EDITOR_Cmd [editor-cmd]     - 设置默认编辑器或显示当前设置.\n\
-   ;PRINT_Cmd  [print-cmd]      - 设置默认print或显示当前设置.\n\
-   ;PAger_cmd  [pager-cmd]      - 设置默认分页程序或显示当前设置\n\
+   ;SHELL_Cmd     [shell-cmd]   - 设置默认的shell或显示当前设置.\n\
+   ;EDITOR_Cmd    [editor-cmd]  - 设置默认编辑器或显示当前设置.\n\
+   ;PRINT_Cmd     [print-cmd]   - 设置默认print或显示当前设置.\n\
+   ;PAger_cmd     [pager-cmd]   - 设置默认分页程序或显示当前设置\n\
+   ;FOrmatter_cmd [formatter-cmd] - 设置或显示默认格式化程序.\n\
 \n\
    ;DATE                        - 显示本地时间,日期.\n\
    ;DATAbase                    - 显示正被访问的数据库名.\n\
@@ -185,6 +189,13 @@ $ csql help messages
    ;HISTORYList                 - 显示已经执行的查询列表.\n\
    ;HISTORYRead <history_num>   - 将histroy_num所对应的内容读取到命令缓冲区.\n\
    ;TRAce [ON/OFF] [text/json]  - 启用/禁用 sql auto trace.\n\
+   ;SIngleline [ON|OFF]         - 启用/禁用单行模式.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - 作为用户名连接到当前或其他数据库.\n\ 
+   ;.Hist [ON/OFF]              - 开始/停止收集 CSQL 中的统计信息（仅限 DBA）.\n\
+   ;.Clear_hist                 - 清除缓冲区中的 CSQL 统计信息.\n\
+   ;.Dump_hist                  - 在CSQL中显示CSQL统计信息.\n\
+   ;.X_hist                     - 在 CSQL 中显示 CSQL 统计信息，并初始化统计数据.\n\
    ;HElp                        - 显示帮助信息.\n\n
 
 232 <系统规定参数> 

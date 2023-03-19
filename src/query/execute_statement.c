@@ -11685,7 +11685,7 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
   bound_bits = midxkey.buf;
   key_ptr = bound_bits + bitmap_size;
 
-  OR_BUF_INIT (buf, key_ptr, buf_size - bitmap_size);
+  or_init (&buf, key_ptr, buf_size - bitmap_size);
   MIDXKEY_BOUNDBITS_INIT (bound_bits, bitmap_size);
 
   for (i = 0, attr = constraint->attributes; *attr != NULL; attr++, i++)
@@ -20435,8 +20435,15 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (alter->xbits.bit_dbname)
     {
-      assert (alter->dbname->node_type == PT_NAME);
-      pt = (char *) alter->dbname->info.name.original;
+      assert (alter->dbname->node_type == PT_NAME || alter->dbname->node_type == PT_VALUE);
+      if (alter->dbname->node_type == PT_VALUE)
+	{
+	  pt = (char *) PT_VALUE_GET_BYTES (alter->dbname);
+	}
+      else
+	{
+	  pt = (char *) alter->dbname->info.name.original;
+	}
 
       assert (pt && *pt);
       db_make_string (&value, pt);
@@ -20450,8 +20457,15 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (alter->xbits.bit_user)
     {
-      assert (alter->user->node_type == PT_NAME);
-      pt = (char *) alter->user->info.name.original;
+      assert (alter->user->node_type == PT_NAME || alter->user->node_type == PT_VALUE);
+      if (alter->user->node_type == PT_VALUE)
+	{
+	  pt = (char *) PT_VALUE_GET_BYTES (alter->user);
+	}
+      else
+	{
+	  pt = (char *) alter->user->info.name.original;
+	}
 
       assert (pt && *pt);
       db_make_string (&value, pt);

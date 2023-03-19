@@ -182,7 +182,7 @@ add_executable(cubrid_rel ${CUBRID_REL_SOURCES})
 target_link_libraries(cubrid_rel LINK_PRIVATE cubridsa)
 
 
-set(LOADJAVA_SOURCES ${EXECUTABLES_DIR}/loadjava.c)
+set(LOADJAVA_SOURCES ${EXECUTABLES_DIR}/loadjava.cpp)
 SET_SOURCE_FILES_PROPERTIES(
   ${LOADJAVA_SOURCES}
   PROPERTIES LANGUAGE CXX
@@ -193,6 +193,7 @@ endif(WIN32)
 add_executable(loadjava ${LOADJAVA_SOURCES})
 if(UNIX)
   target_link_libraries(loadjava LINK_PRIVATE cubridsa)
+  target_link_libraries(loadjava PUBLIC stdc++fs)
 else(UNIX)
   target_link_libraries(loadjava LINK_PRIVATE cubridcs)
 endif(UNIX)

@@ -24,7 +24,7 @@
 #define _STRING_REGEX_HPP_
 
 #include <regex>
-#include <re2/re2.h>
+#include "re2/re2.h"
 
 #include "error_manager.h"
 #include "intl_support.h"
@@ -63,7 +63,7 @@ namespace cubregex
 
     compiled_regex ()
       : type (LIB_NONE)
-      , compiled (nullptr)
+      , compiled {nullptr}
       , pattern ()
       , flags (0)
       , codeset (INTL_CODESET_NONE)
@@ -74,8 +74,7 @@ namespace cubregex
   };
 
   /* related to system parameter */
-  bool check_regexp_engine_prm (const char *param_name);
-  engine_type get_engine_type_by_name (const char *param_name);
+  const char *get_engine_name (const engine_type &type);
 
   /*
   * compile() - Compile regex object

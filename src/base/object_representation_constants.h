@@ -41,9 +41,16 @@
 #define OR_BYTE_SIZE            1
 #define OR_SHORT_SIZE           2
 #define OR_INT_SIZE             4
+#define OR_INT64_SIZE           8
 #define OR_BIGINT_SIZE          8
 #define OR_FLOAT_SIZE           4
 #define OR_DOUBLE_SIZE          8
+
+#if __WORDSIZE == 32
+#define OR_PTR_SIZE             4
+#else /* __WORDSIZE == 32 */
+#define OR_PTR_SIZE             8
+#endif /* __WORDSIZE == 64 */
 
 #define OR_BIGINT_ALIGNED_SIZE  (OR_BIGINT_SIZE + MAX_ALIGNMENT)
 #define OR_DOUBLE_ALIGNED_SIZE  (OR_DOUBLE_SIZE + MAX_ALIGNMENT)
