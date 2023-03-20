@@ -23,17 +23,46 @@
 #ifndef _METHOD_COMPILE_HPP_
 #define _METHOD_COMPILE_HPP_
 
-#include "method_invoke.hpp"
-
-#include "method_runtime_context.hpp"
 #include "mem_block.hpp"
+#include "packer.hpp"
+#include "packable_object.hpp"
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "method_invoke.hpp"
+#include "method_runtime_context.hpp"
+#endif
+
+#include <vector>
 #include <string>
 
 namespace cubmethod
 {
-  int invoke_compile (runtime_context &ctx, const std::string program, const bool &verbose,
+  struct EXPORT_IMPORT sql_semantics : public cubpacking::packable_object
+  {
+    sql_semantics ();
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+
+    int idx;
+    int sql_type;
+    std::string rewritten_query;
+
+    std::vector <column_info> columns;
+
+    std::vector <std::string> hv_names;
+    std::vector <std::string> hv_types;
+
+    std::vector <std::string> into_vars;
+  };
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  int invoke_compile (const cubthread::entry &thread, runtime_context &ctx, const std::string &program,
+		      const bool &verbose,
 		      cubmem::extensible_block &blk);
+#endif
+
 }
 
 #endif //_METHOD_COMPILE_HPP_

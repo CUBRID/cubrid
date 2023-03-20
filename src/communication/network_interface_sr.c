@@ -11139,7 +11139,7 @@ splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   cubmem::extensible_block ext_blk;
   if (ctx)
     {
-      error = cubmethod::invoke_compile (*ctx, input_string, verbose, ext_blk);
+      error = cubmethod::invoke_compile (*thread_p, *ctx, input_string, verbose, ext_blk);
     }
 
   // Error code and is_ignored.
