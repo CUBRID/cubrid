@@ -1916,38 +1916,6 @@ btree_get_node_level (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
 #endif
 
 /*
- * btree_clear_key_value () -
- *   return: cleared flag
- *   clear_flag (in/out):
- *   key_value (in/out):
- */
-bool
-btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value)
-{
-  if (*clear_flag == true || key_value->need_clear == true)
-    {
-      pr_clear_value (key_value);
-      *clear_flag = false;
-    }
-  // also set null
-  db_make_null (key_value);
-  return *clear_flag;
-}
-
-/*
- * btree_init_temp_key_value () -
- *   return: void
- *   clear_flag (in/out):
- *   key_value (in/out):
- */
-void
-btree_init_temp_key_value (bool * clear_flag, DB_VALUE * key_value)
-{
-  db_make_null (key_value);
-  *clear_flag = false;
-}
-
-/*
  * btree_create_overflow_key_file () - Create file for overflow keyes
  *
  * return   : Error code
@@ -6077,16 +6045,17 @@ xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf, int buf_size)
   bufp = buf;
   buf_endptr = (buf + buf_size);
 
-  while ((bufp < buf_endptr) && (status == NO_ERROR))
+  while (bufp < buf_endptr)
     {
       /* unpack the BTID */
       bufp = or_unpack_btid (bufp, &btid);
 
       /* check if the btree is unique */
-      if ((status == NO_ERROR) && (xbtree_test_unique (thread_p, &btid) != 1))
+      if (xbtree_test_unique (thread_p, &btid) != 1)
 	{
 	  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, NULL, &btid, NULL);
 	  status = ER_BTREE_UNIQUE_FAILED;
+	  break;
 	}
     }
 
@@ -6530,6 +6499,7 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
   LEAF_REC leaf_pnt;
   bool clear_key = false;
   int offset;
+  int max_visible_oids, num_visible_oids;
   int ret = NO_ERROR;
 
   assert (env != NULL);
@@ -6538,9 +6508,6 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 
   if (mvcc_snapshot != NULL)
     {
-      int max_visible_oids = 1;
-      int num_visible_oids = 0;
-
       BTS = &(env->btree_scan);
 
       if (BTS->C_page == NULL)
@@ -6571,6 +6538,7 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 
       /* Is there any visible objects? */
       max_visible_oids = 1;
+      num_visible_oids = 0;
       ret =
 	btree_get_num_visible_from_leaf_and_ovf (thread_p, &BTS->btid_int, &rec, offset, &leaf_pnt, &max_visible_oids,
 						 mvcc_snapshot, &num_visible_oids);
@@ -6729,7 +6697,6 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
       if (found)
 	{
 	  key_cnt = btree_node_number_of_keys (thread_p, BTS->C_page);
-	  assert_release (key_cnt >= 0);
 
 #if !defined(NDEBUG)
 	  header = btree_get_node_header (thread_p, BTS->C_page);
@@ -7496,17 +7463,8 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT
   db_make_null (&INFO->max_key);
 
   if (node_type == BTREE_NON_LEAF_NODE)
-    {				/* a non-leaf page */
-      if (key_cnt < 0)
-	{
-	  btree_dump_page (thread_p, stdout, class_oid_p, btid, btname, pg_ptr, pg_vpid, 2, 2);
-
-	  snprintf (err_buf, LINE_MAX, "btree_verify_subtree: node key count underflow: %d\n", key_cnt);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
-	  valid = DISK_INVALID;
-	  goto error;
-	}
-
+    {
+      /* a non-leaf page */
       INFO2.key_area_len = 0;
       db_make_null (&INFO2.max_key);
 
@@ -8290,9 +8248,10 @@ btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid, b
 	  break;
 	}
     }
+  /* if the break statement occurs due to an error, the acquired lock should be released. */
   if (!OID_ISNULL (&class_oid))
     {
-      lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_S_LOCK, true);
+      lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, IX_LOCK, true);
     }
 
   return valid;
@@ -8350,7 +8309,7 @@ btree_check_all (THREAD_ENTRY * thread_p)
 
   if (!OID_ISNULL (&class_oid))
     {
-      lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_S_LOCK, true);
+      lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, IX_LOCK, true);
     }
   return allvalid;
 }
@@ -15565,10 +15524,10 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
    *
    *  case 1: P_page == NULL, C_page == first_page       x do not fix 1 next page
    *  case 2: P_page == first_page, C_page == NULL       x can't fix 1 next page
-   *  case 3: P_page == first_page, C_page != first_pag  o fix 1 next
+   *  case 3: P_page == first_page, C_page != first_page  o fix 1 next
    *  case 4: P_page == NULL, C_page == NULL             o can't fix N next, unfix N-1 prev
    *  case 5: P_page == NULL, C_page != first_page       o fix N next, unfix N-1 prev
-   *  other case: imppossible (assert)
+   *  other case: impossible (assert)
    *
    *  in case of 3, 4, 5, unfix first_page
    */
