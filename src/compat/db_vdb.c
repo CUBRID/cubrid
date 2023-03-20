@@ -585,7 +585,7 @@ db_compile_statement_local (DB_SESSION * session)
   pt_rewrite_for_dblink (parser, statement);
   if (pt_has_error (parser))
     {				// TODO: error number and  error_type
-      pt_report_to_ersys_with_statement (parser, PT_SYNTAX, statement);
+      pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
       return er_errid ();
     }
 
