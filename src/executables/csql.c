@@ -161,6 +161,7 @@ char csql_Scratch_text[SCRATCH_TEXT_LEN];
 int csql_Error_code = NO_ERROR;
 
 static char csql_Prompt[100];
+static char csql_Prompt_offline[100];
 static char csql_Name[100];
 
 /*
@@ -494,6 +495,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   char *line_read_alloced = NULL;
   bool is_first_read_line = true;
   bool read_whole_line;
+  char *prompt;
 
   /* check in string block or comment block or identifier block */
   bool is_in_block = false;
@@ -575,13 +577,15 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 
   for (line_no = 1;; line_no++)
     {
-      if (db_Connect_status != DB_CONNECTION_STATUS_CONNECTED)
+      if (db_Connect_status == DB_CONNECTION_STATUS_CONNECTED)
+	{
+	  prompt = csql_Prompt;
+	}
+      else
 	{
 	  csql_Database_connected = false;
-	  fputs ("!", csql_Output_fp);
+	  prompt = csql_Prompt_offline;
 	}
-
-      read_whole_line = false;
 
       memset (line_buf, 0, LINE_BUFFER_SIZE);
       memset (utf8_line_buf, 0, INTL_UTF8_MAX_CHAR_SIZE * LINE_BUFFER_SIZE);
@@ -592,7 +596,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  fputs (csql_Prompt, csql_Output_fp);	/* display prompt */
 	  line_read = fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
 #else
-	  if ((line_read = readline (csql_Prompt)) != NULL)
+	  if ((line_read = readline (prompt)) != NULL)
 	    {
 	      if (line_read_alloced != NULL)
 		{
@@ -1473,7 +1477,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_CONNECT:
-      if ((csql_arg->sysadm != true) && (csql_arg->sa_mode != true))
+      if (csql_arg->sysadm != true)
 	{
 	  error_code = csql_connect ((argument[0] == '\0') ? NULL : argument, csql_arg);
 	  if (error_code != NO_ERROR)
@@ -1484,7 +1488,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
       else
 	{
-	  fprintf (csql_Output_fp, "CONNECT session command cannot support --SA-mode and --sysadm mode\n");
+	  fprintf (csql_Output_fp, "CONNECT session command cannot supports --sysadm mode\n");
 	}
     }
 
@@ -2800,6 +2804,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
     {
       strncat (csql_Prompt, " ", avail_size);
     }
+  snprintf (csql_Prompt_offline, sizeof (csql_Prompt_offline), "!%s", csql_Prompt);
   strncpy_bufsize (csql_Name, csql_get_message (CSQL_NAME));
 
   /* as we must use db_open_file_name() to open the input file, it is necessary to be opening csql_Input_fp at this
@@ -3394,6 +3399,14 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   if (db_name_ptr == NULL)
     {
       db_name_ptr = csql_arg->db_name;
+    }
+  else
+    {
+      if (csql_arg->sa_mode == true)
+	{
+	  fprintf (csql_Output_fp, "CONNECT session command allows the login with only user name in the --SA-mode.\n");
+	  return DO_CMD_SUCCESS;
+	}
     }
 
   memcpy (&csql_new_arg, csql_arg, sizeof (CSQL_ARGUMENT));
