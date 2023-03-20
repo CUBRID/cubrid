@@ -9089,7 +9089,7 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
   fprintf (fp, "\nDistinct Key Count: %d\n", cpc.dis_key_cnt);
   fprintf (fp, "Total Value Count: %lld\n", cpc.tot_val_cnt);
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-  fprintf (fp, "Decompress Distinct Key Count: %d\n", cpc.deduplicate_dis_key_cnt);
+  fprintf (fp, "Deduplicate Distinct Key Count: %d\n", cpc.deduplicate_dis_key_cnt);
 #endif
   fprintf (fp, "Average Value Count Per Key: %d\n", cpc.avg_val_per_key);
   fprintf (fp, "Total Page Count: %d\n", cpc.tot_pg_cnt + cpc.ovfl_oid_pg.tot_pg_cnt);
@@ -22355,7 +22355,7 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
   db_make_bigint (out_values[idx++], cpc.tot_val_cnt);
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-  //  {"Decompress_distinct_key", "int"},
+  //  {"Deduplicate_distinct_key", "int"},
   db_make_int (out_values[idx++], cpc.deduplicate_dis_key_cnt);
 #endif
 
