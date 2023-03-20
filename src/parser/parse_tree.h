@@ -524,6 +524,12 @@ struct json_t;
             } \
         } while (0)
 
+#define PT_IS_DBLINK_DML_QUERY(n) \
+	((n->node_type == PT_INSERT && n->info.insert.spec->info.spec.remote_server_name) \
+        || (n->node_type == PT_DELETE && n->info.delete_.spec->info.spec.remote_server_name) \
+        || (n->node_type == PT_UPDATE && n->info.update.spec->info.spec.remote_server_name) \
+        || (n->node_type == PT_MERGE && n->info.merge.into->info.spec.remote_server_name))
+
 #if !defined (SERVER_MODE)
 /* the following defines support host variable binding for internal statements.
    internal statements can be generated on TEXT handling, and these statements

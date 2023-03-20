@@ -581,10 +581,15 @@ db_compile_statement_local (DB_SESSION * session)
   /* forget about any previous parsing errors, if any */
   pt_reset_error (parser);
 
-  // @server
+  /*
+     pt_rewrite_for_dblink:
+     the dblink with remote-table-name@server-name should be converted as
+     1) pure remote-DML query like UPDATE remote-table-name SET ...
+     2) SELECT ... FROM DBLink (server-name, 'SELECT ... ')
+   */
   pt_rewrite_for_dblink (parser, statement);
   if (pt_has_error (parser))
-    {				// TODO: error number and  error_type
+    {
       pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
       return er_errid ();
     }
@@ -666,10 +671,11 @@ db_compile_statement_local (DB_SESSION * session)
 	}
     }
 
-  if ((statement->node_type == PT_INSERT && statement->info.insert.spec->info.spec.remote_server_name)
-      || (statement->node_type == PT_DELETE && statement->info.delete_.spec->info.spec.remote_server_name)
-      || (statement->node_type == PT_UPDATE && statement->info.update.spec->info.spec.remote_server_name)
-      || (statement->node_type == PT_MERGE && statement->info.merge.into->info.spec.remote_server_name))
+  /*
+     the remote-DML of dblink must not execute mq_translate
+     because the query of remote-DML should be executed at remote server side
+   */
+  if (PT_IS_DBLINK_DML_QUERY (statement))
     {
       ;
     }
