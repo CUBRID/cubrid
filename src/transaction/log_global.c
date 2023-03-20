@@ -118,25 +118,6 @@ log_global::wait_flushed_lsa (const log_lsa &flush_lsa)
 }
 
 void
-log_global::initialize_log_prior_receiver ()
-{
-  m_prior_recver = std::make_unique<cublog::prior_recver> (prior_info);
-}
-
-void
-log_global::finalize_log_prior_receiver ()
-{
-  m_prior_recver.reset (nullptr);
-}
-
-cublog::prior_recver &
-log_global::get_log_prior_receiver ()
-{
-  assert (m_prior_recver != nullptr);
-  return *m_prior_recver;
-}
-
-void
 log_global::update_ps_consensus_flushed_lsa ()
 {
   assert (is_active_transaction_server ());
@@ -158,6 +139,25 @@ log_global::update_ps_consensus_flushed_lsa ()
   }
 
   m_ps_lsa_cv.notify_all ();
+}
+
+void
+log_global::initialize_log_prior_receiver ()
+{
+  m_prior_recver = std::make_unique<cublog::prior_recver> (prior_info);
+}
+
+void
+log_global::finalize_log_prior_receiver ()
+{
+  m_prior_recver.reset (nullptr);
+}
+
+cublog::prior_recver &
+log_global::get_log_prior_receiver ()
+{
+  assert (m_prior_recver != nullptr);
+  return *m_prior_recver;
 }
 #endif // SERVER_MODE
 // *INDENT-ON*
