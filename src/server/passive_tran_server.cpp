@@ -60,6 +60,7 @@ log_lsa
 passive_tran_server::connection_handler::get_saved_lsa () const
 {
   assert (false); // Only used in active transaction server
+  return NULL_LSA;
 }
 
 void
