@@ -22,9 +22,9 @@
 #include "log_prior_send.hpp"
 #include "tran_server.hpp"
 
-#include <vector>
-#include <memory>
 #include <atomic>
+#include <memory>
+#include <vector>
 
 class active_tran_server : public tran_server
 {

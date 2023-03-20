@@ -22,6 +22,7 @@
 
 #ident "$Id$"
 
+#include "active_tran_server.hpp"
 #include "config.h"
 #include "file_io.h"
 #include "log_append.hpp"
@@ -31,9 +32,8 @@
 #include "log_writer.h"
 #include "mvcc_table.hpp"
 #include "porting.h"
-#include "storage_common.h"
 #include "server_type.hpp"
-#include "active_tran_server.hpp"
+#include "storage_common.h"
 
 #include <limits.h>
 #include <stddef.h>

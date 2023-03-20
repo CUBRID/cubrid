@@ -21,9 +21,9 @@
 
 #include "communication_node.hpp"
 #include "communication_server_channel.hpp"
+#include "log_lsa.hpp"
 #include "request_sync_client_server.hpp"
 #include "tran_page_requests.hpp"
-#include "log_lsa.hpp"
 
 #include <string>
 #include <vector>
