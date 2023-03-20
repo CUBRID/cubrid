@@ -1488,7 +1488,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
       else
 	{
-	  fprintf (csql_Output_fp, "CONNECT session command cannot supports --sysadm mode\n");
+	  fprintf (csql_Output_fp, "CONNECT session command does not support --sysadm mode\n");
 	}
     }
 
@@ -3404,7 +3404,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
     {
       if (csql_arg->sa_mode == true)
 	{
-	  fprintf (csql_Output_fp, "CONNECT session command allows the login with only user name in the --SA-mode.\n");
+	  fprintf (csql_Output_fp, "Cannot connect to other DB in the --SA-mode.\n");
 	  return DO_CMD_SUCCESS;
 	}
     }
