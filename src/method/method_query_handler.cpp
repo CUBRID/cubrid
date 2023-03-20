@@ -24,6 +24,7 @@
 #include "method_query_util.hpp"
 #include "method_schema_info.hpp"
 #include "object_primitive.h"
+#include "optimizer.h" /* qo_get_optimization_param, qo_set_optimization_param */
 
 /* from jsp_cl.c */
 extern void jsp_set_prepare_call ();
@@ -198,6 +199,21 @@ namespace cubmethod
 	return prepare (m_sql_stmt, m_prepare_flag);
       }
     return ER_FAILED;
+  }
+
+  int
+  query_handler::prepare_compile (const std::string &sql)
+  {
+    int level;
+    qo_get_optimization_param (&level, QO_PARAM_LEVEL);
+    qo_set_optimization_param (NULL, QO_PARAM_LEVEL, 2);
+
+    int error = prepare (sql, 0);
+
+    // restore
+    qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
+
+    return error;
   }
 
   int
