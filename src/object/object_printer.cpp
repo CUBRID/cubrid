@@ -644,7 +644,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
   const int *asc_desc;
   const int *prefix_length;
   int k, n_attrs = 0;
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
 #endif
 
@@ -754,12 +754,12 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	{
 	  break;
 	}
-#if defined(SUPPORT_COMPRESS_MODE)
-      if (IS_COMPRESS_INDEX_ATTR_ID ((*attribute_p)->id))
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      if (IS_DEDUPLICATE_KEY_ATTR_ID ((*attribute_p)->id))
 	{
 	  assert (k == (n_attrs - 1));
-	  int level = GET_COMPRESS_INDEX_ATTR_LEVEL ((*attribute_p)->id);
-	  dk_print_compress_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_SET, level);
+	  int level = GET_DEDUPLICATE_KEY_ATTR_LEVEL ((*attribute_p)->id);
+	  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_MODE_SET, level);
 
 	  /* Since there is no hidden column in the contents to be described in the REFERENCE clause. */
 	  n_attrs--;
@@ -800,15 +800,15 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
       m_buf (" WHERE %s", constraint.filter_predicate->pred_string);
     }
 
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   if (reserved_col_buf[0])
     {
       m_buf (" %s", reserved_col_buf);
     }
   else if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (constraint.type))
     {
-      dk_print_compress_index_info (reserved_col_buf, sizeof (reserved_col_buf), COMPRESS_INDEX_MODE_NONE,
-				    COMPRESS_INDEX_MOD_LEVEL_ZERO);
+      dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_MODE_NONE,
+				     DEDUPLICATE_KEY_LEVEL_ZERO);
       m_buf (" %s", reserved_col_buf);
     }
 #endif

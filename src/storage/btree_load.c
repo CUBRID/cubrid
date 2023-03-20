@@ -925,8 +925,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   btid_int.key_type = key_type;
   VFID_SET_NULL (&btid_int.ovfid);
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
-#if defined(SUPPORT_COMPRESS_MODE)
-  btid_int.decompress_attr_idx = dk_get_decompress_position (n_attrs, attr_ids, func_attr_index_start);
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  btid_int.deduplicate_key_idx = dk_get_deduplicate_key_position (n_attrs, attr_ids, func_attr_index_start);
 #endif
   COPY_OID (&btid_int.topclass_oid, &class_oids[0]);
 
@@ -1149,8 +1149,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       BTID_SET_NULL (btid);
       if (xbtree_add_index (thread_p, btid, key_type, &class_oids[0], attr_ids[0], unique_pk, sort_args->n_oids,
 			    sort_args->n_nulls, load_args->n_keys
-#if defined(SUPPORT_COMPRESS_MODE)
-			    , btid_int.decompress_attr_idx
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+			    , btid_int.deduplicate_key_idx
 #endif
 	  ) == NULL)
 	{
@@ -1923,9 +1923,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   COPY_OID (&(root_header->topclass_oid), &load_args->btid->topclass_oid);
 
   root_header->ovfid = load_args->btid->ovfid;	/* structure copy */
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   root_header->_32.rev_level = BTREE_CURRENT_REV_LEVEL;
-  SET_DECOMPRESS_IDX_HEADER (root_header, load_args->btid->decompress_attr_idx);
+  SET_DECOMPRESS_IDX_HEADER (root_header, load_args->btid->deduplicate_key_idx);
 #else
   root_header->rev_level = BTREE_CURRENT_REV_LEVEL;
 #endif
@@ -3939,8 +3939,8 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   BTREE_SCAN_PART partitions[MAX_PARTITIONS];
   bool has_nulls = false;
 
-#if defined(SUPPORT_COMPRESS_MODE)
-  bool has_compress_index_col = false;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  bool has_deduplicate_key_col = false;
   DB_VALUE new_fk_key[2];
   DB_VALUE *fk_key_ptr = &fk_key;
 
@@ -3949,8 +3949,8 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   if (sort_args->n_attrs > 1)
     {
       // We cannot make a PK with a function. Therefore, only the last member is checked.  
-      has_compress_index_col = IS_COMPRESS_INDEX_ATTR_ID (sort_args->attr_ids[sort_args->n_attrs - 1]);
-      if (has_compress_index_col)
+      has_deduplicate_key_col = IS_DEDUPLICATE_KEY_ATTR_ID (sort_args->attr_ids[sort_args->n_attrs - 1]);
+      if (has_deduplicate_key_col)
 	{
 	  fk_key_ptr = &(new_fk_key[0]);
 	}
@@ -4112,8 +4112,8 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  continue;
 	}
 
-#if defined(SUPPORT_COMPRESS_MODE)
-      if (has_compress_index_col)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      if (has_deduplicate_key_col)
 	{
 	  assert (!DB_IS_NULL (&fk_key));
 	  assert (DB_VALUE_DOMAIN_TYPE (&fk_key) == DB_TYPE_MIDXKEY);
@@ -4128,7 +4128,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  if (fk_key.data.midxkey.ncolumns > 2)
 	    {
 	      pr_clone_value (&fk_key, new_ptr);
-	      /* Fakes the last column(compress_index_attr) as if it doesn't exist. 
+	      /* Fakes the last column(deduplicate_key_attr) as if it doesn't exist. 
 	       * To do this, reduce the number of columns.
 	       * Modify bitmap information for btree_multicol_key_is_null() function. */
 	      new_ptr->data.midxkey.ncolumns--;
@@ -4141,7 +4141,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	    }
 
 	  if (btree_compare_key (fk_key_ptr, new_ptr, pk_bt_scan.btid_int.key_type, 1, 1, NULL) == DB_EQ)
-	    {			/* Remove the added compress_index_attr and it can be the same key. */
+	    {			/* Remove the added deduplicate_key_attr and it can be the same key. */
 	      continue;
 	    }
 
@@ -4329,7 +4329,7 @@ end:
   btree_clear_key_value (&clear_fk_key, &fk_key);
   btree_clear_key_value (&clear_pk_key, &pk_key);
 
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   pr_clear_value (&(new_fk_key[0]));
   pr_clear_value (&(new_fk_key[1]));
 #endif
@@ -4647,8 +4647,8 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   btid_int.key_type = key_type;
   VFID_SET_NULL (&btid_int.ovfid);
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
-#if defined(SUPPORT_COMPRESS_MODE)
-  btid_int.decompress_attr_idx = dk_get_decompress_position (n_attrs, attr_ids, func_attr_index_start);
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  btid_int.deduplicate_key_idx = dk_get_deduplicate_key_position (n_attrs, attr_ids, func_attr_index_start);
 #endif
   COPY_OID (&btid_int.topclass_oid, &class_oids[0]);
   /*

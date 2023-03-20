@@ -718,9 +718,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
 
-#define PRM_NAME_USE_COMPRESS_INDEX_MODE_OID_TEST  "use_compress_index_mode_oid_test"
-#define PRM_NAME_COMPRESS_INDEX_MODE      "compress_index_mode"
-#define PRM_NAME_COMPRESS_INDEX_MOD_LEVEL "compress_index_mod_level"
+#define PRM_NAME_USE_DEDUPLICATE_KEY_MODE_OID_TEST  "use_deduplicate_key_mode_oid_test"
+#define PRM_NAME_DEDUPLICATE_KEY_MODE      "deduplicate_key_mode"
+#define PRM_NAME_DEDUPLICATE_KEY_LEVEL     "deduplicate_key_level"
 
 
 /*
@@ -1199,22 +1199,22 @@ bool PRM_ANSI_QUOTES = true;
 static bool prm_ansi_quotes_default = true;
 static unsigned int prm_ansi_quotes_flag = 0;
 
-#if defined(SUPPORT_COMPRESS_MODE)
-bool PRM_USE_COMPRESS_INDEX_MODE_OID = false;
-static bool prm_use_compress_index_mode_oid_default = false;
-static unsigned int prm_use_compress_index_mode_oid_flag = 0;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+bool PRM_USE_DEDUPLICATE_KEY_MODE_OID = false;
+static bool prm_use_deduplicate_key_mode_oid_default = false;
+static unsigned int prm_use_deduplicate_key_mode_oid_flag = 0;
 
-int PRM_COMPRESS_INDEX_MODE = COMPRESS_INDEX_MODE_HIGH;
-static int prm_compress_index_mode_default = COMPRESS_INDEX_MODE_HIGH;
-static unsigned int prm_compress_index_mode_flag = 0;
-static int prm_compress_index_mode_lower = COMPRESS_INDEX_MODE_HIGH;
-static int prm_compress_index_mode_upper = COMPRESS_INDEX_MODE_LOW;
+int PRM_DEDUPLICATE_KEY_MODE = DEDUPLICATE_KEY_MODE_OFF;
+static int prm_deduplicate_key_mode_default = DEDUPLICATE_KEY_MODE_OFF;
+static unsigned int prm_deduplicate_key_mode_flag = 0;
+static int prm_deduplicate_key_mode_lower = DEDUPLICATE_KEY_MODE_OFF;
+static int prm_deduplicate_key_mode_upper = DEDUPLICATE_KEY_MODE_ON;
 
-int PRM_COMPRESS_INDEX_MOD_LEVEL = COMPRESS_INDEX_MOD_LEVEL_DEFAULT;
-static int prm_compress_index_mod_level_default = COMPRESS_INDEX_MOD_LEVEL_DEFAULT;
-static unsigned int prm_compress_index_mod_level_flag = 0;
-static int prm_compress_index_mod_level_lower = COMPRESS_INDEX_MOD_LEVEL_MIN;
-static int prm_compress_index_mod_level_upper = COMPRESS_INDEX_MOD_LEVEL_MAX;
+int PRM_DEDUPLICATE_KEY_MOD_LEVEL = DEDUPLICATE_KEY_LEVEL_DEFAULT;
+static int prm_deduplicate_key_level_default = DEDUPLICATE_KEY_LEVEL_DEFAULT;
+static unsigned int prm_deduplicate_key_level_flag = 0;
+static int prm_deduplicate_key_level_lower = DEDUPLICATE_KEY_LEVEL_MIN;
+static int prm_deduplicate_key_level_upper = DEDUPLICATE_KEY_LEVEL_MAX;
 #endif
 
 int PRM_DEFAULT_WEEK_FORMAT = 0;
@@ -6198,39 +6198,39 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-#if defined(SUPPORT_COMPRESS_MODE)
-  {PRM_ID_USE_COMPRESS_INDEX_MODE_OID_TEST,
-   PRM_NAME_USE_COMPRESS_INDEX_MODE_OID_TEST,
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  {PRM_ID_USE_DEDUPLICATE_KEY_MODE_OID_TEST,
+   PRM_NAME_USE_DEDUPLICATE_KEY_MODE_OID_TEST,
    (PRM_FOR_CLIENT | PRM_HIDDEN),
    PRM_BOOLEAN,
-   &prm_use_compress_index_mode_oid_flag,
-   (void *) &prm_use_compress_index_mode_oid_default,
-   (void *) &PRM_USE_COMPRESS_INDEX_MODE_OID,
+   &prm_use_deduplicate_key_mode_oid_flag,
+   (void *) &prm_use_deduplicate_key_mode_oid_default,
+   (void *) &PRM_USE_DEDUPLICATE_KEY_MODE_OID,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_COMPRESS_INDEX_MODE,
-   PRM_NAME_COMPRESS_INDEX_MODE,
+  {PRM_ID_DEDUPLICATE_KEY_MODE,
+   PRM_NAME_DEDUPLICATE_KEY_MODE,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_KEYWORD,
-   &prm_compress_index_mode_flag,
-   (void *) &prm_compress_index_mode_default,
-   (void *) &PRM_COMPRESS_INDEX_MODE,
-   (void *) &prm_compress_index_mode_upper,
-   (void *) &prm_compress_index_mode_lower,
+   &prm_deduplicate_key_mode_flag,
+   (void *) &prm_deduplicate_key_mode_default,
+   (void *) &PRM_DEDUPLICATE_KEY_MODE,
+   (void *) &prm_deduplicate_key_mode_upper,
+   (void *) &prm_deduplicate_key_mode_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_COMPRESS_INDEX_MOD_LEVEL,
-   PRM_NAME_COMPRESS_INDEX_MOD_LEVEL,
+  {PRM_ID_DEDUPLICATE_KEY_LEVEL,
+   PRM_NAME_DEDUPLICATE_KEY_LEVEL,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_INTEGER,
-   &prm_compress_index_mod_level_flag,
-   (void *) &prm_compress_index_mod_level_default,
-   (void *) &PRM_COMPRESS_INDEX_MOD_LEVEL,
-   (void *) &prm_compress_index_mod_level_upper,
-   (void *) &prm_compress_index_mod_level_lower,
+   &prm_deduplicate_key_level_flag,
+   (void *) &prm_deduplicate_key_level_default,
+   (void *) &PRM_DEDUPLICATE_KEY_MOD_LEVEL,
+   (void *) &prm_deduplicate_key_level_upper,
+   (void *) &prm_deduplicate_key_level_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -6397,11 +6397,10 @@ static KEYVAL regexp_engine_words[] = {
 };
 /* *INDENT-ON* */
 
-#if defined(SUPPORT_COMPRESS_MODE)
-static KEYVAL compress_mode_words[] = {
-  {"high", COMPRESS_INDEX_MODE_HIGH},
-  {"medium", COMPRESS_INDEX_MODE_MEDIUM},
-  {"low", COMPRESS_INDEX_MODE_LOW}
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+static KEYVAL deduplicate_key_mode_words[] = {
+  {"off", DEDUPLICATE_KEY_MODE_OFF},
+  {"on", DEDUPLICATE_KEY_MODE_ON}
 };
 #endif
 
@@ -8355,10 +8354,11 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 	{
 	  keyvalp = prm_keyword (PRM_GET_INT (prm->value), NULL, regexp_engine_words, DIM (regexp_engine_words));
 	}
-#if defined(SUPPORT_COMPRESS_MODE)
-      else if (intl_mbs_casecmp (prm->name, PRM_NAME_COMPRESS_INDEX_MODE) == 0)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_DEDUPLICATE_KEY_MODE) == 0)
 	{
-	  keyvalp = prm_keyword (PRM_GET_INT (prm->value), NULL, compress_mode_words, DIM (compress_mode_words));
+	  keyvalp =
+	    prm_keyword (PRM_GET_INT (prm->value), NULL, deduplicate_key_mode_words, DIM (deduplicate_key_mode_words));
 	}
 #endif
       else
@@ -8665,10 +8665,10 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
 	{
 	  keyvalp = prm_keyword (value.i, NULL, regexp_engine_words, DIM (regexp_engine_words));
 	}
-#if defined(SUPPORT_COMPRESS_MODE)
-      else if (intl_mbs_casecmp (prm->name, PRM_NAME_COMPRESS_INDEX_MODE) == 0)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_DEDUPLICATE_KEY_MODE) == 0)
 	{
-	  keyvalp = prm_keyword (value.i, NULL, compress_mode_words, DIM (compress_mode_words));
+	  keyvalp = prm_keyword (value.i, NULL, deduplicate_key_mode_words, DIM (deduplicate_key_mode_words));
 	}
 #endif
       else
@@ -9887,10 +9887,10 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	  {
 	    keyvalp = prm_keyword (-1, value, regexp_engine_words, DIM (regexp_engine_words));
 	  }
-#if defined(SUPPORT_COMPRESS_MODE)
-	else if (intl_mbs_casecmp (prm->name, PRM_NAME_COMPRESS_INDEX_MODE) == 0)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	else if (intl_mbs_casecmp (prm->name, PRM_NAME_DEDUPLICATE_KEY_MODE) == 0)
 	  {
-	    keyvalp = prm_keyword (-1, value, compress_mode_words, DIM (compress_mode_words));
+	    keyvalp = prm_keyword (-1, value, deduplicate_key_mode_words, DIM (deduplicate_key_mode_words));
 	  }
 #endif
 	else

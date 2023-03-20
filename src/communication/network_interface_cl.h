@@ -234,8 +234,8 @@ extern int stats_update_statistics (OID * classoid, int with_fullscan);
 extern int stats_update_all_statistics (int with_fullscan);
 
 extern int btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk
-#if defined(SUPPORT_COMPRESS_MODE)
-			    , int decompress_attr_pos
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+			    , int deduplicate_key_pos
 #endif
   );
 extern int btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * class_oids, int n_classes,

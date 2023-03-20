@@ -5653,10 +5653,10 @@ boot_define_view_index (void)
 	  "CASE [i].[is_reverse] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_reverse], "
 	  "[i].[class_of].[class_name] AS [class_name], "
 	  "CAST ([i].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
           "NVL2((SELECT 1 FROM _db_index_key [k] WHERE [k].index_of.class_of = [i].class_of "
                                                    "AND [k].index_of.index_name = [i].[index_name] "
-                                                   "AND [k].key_attr_name LIKE " COMPRESS_INDEX_ATTR_NAME_LIKE_PATTERN
+                                                   "AND [k].key_attr_name LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN
                  "), ([i].[key_count] - 1), [i].[key_count]) AS [key_count], "
 #else
 	  "[i].[key_count] AS [key_count], "
@@ -5797,7 +5797,7 @@ boot_define_view_index_key (void)
 	  /* CT_INDEXKEY_NAME */
 	  "[%s] AS [k] "
 	"WHERE "
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
           "("
 #endif        
 	  "{'DBA'} SUBSETEQ ("
@@ -5835,9 +5835,9 @@ boot_define_view_index_key (void)
 		      "[u].[name] = CURRENT_USER"
 		  ") "
 		"AND [au].[auth_type] = 'SELECT'"
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
              ")"
-          ") AND [k].[key_attr_name] NOT LIKE " COMPRESS_INDEX_ATTR_NAME_LIKE_PATTERN,
+          ") AND [k].[key_attr_name] NOT LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN,
 #else                
 	    ")",
 #endif            

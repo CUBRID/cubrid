@@ -9620,8 +9620,8 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 	      /*
 	       * Try to find a corresponding attribute in the flattened template
 	       */
-#if defined(SUPPORT_COMPRESS_MODE)
-	      if (IS_COMPRESS_INDEX_ATTR_ID (attrs[i]->id))
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	      if (IS_DEDUPLICATE_KEY_ATTR_ID (attrs[i]->id))
 		{
 		  assert (attrs[i + 1] == NULL);
 		  continue;
@@ -10055,7 +10055,7 @@ build_storage_order (SM_CLASS * class_, SM_TEMPLATE * flat)
 	  /* if the ids are the same, use it without looking at the name, this is how rename works */
 	  if (new_att->id != -1)
 	    {
-	      assert (!IS_COMPRESS_INDEX_ATTR_ID (new_att->id));
+	      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (new_att->id));
 	      if (new_att->id == current->id)
 		{
 		  found = new_att;
@@ -10830,8 +10830,8 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
   if (!class_->load_index_from_heap || !has_instances || index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
       error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk
-#if defined(SUPPORT_COMPRESS_MODE)
-			       , dk_sm_decompress_position (n_attrs, attrs, function_index)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+			       , dk_sm_deduplicate_key_position (n_attrs, attrs, function_index)
 #endif
 	);
     }
@@ -10965,9 +10965,9 @@ check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs, co
     {
       for (i = 0, n_attrs = 0; key_attrs[i] != NULL; i++, n_attrs++);
 
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       // We cannot make a PK with a function. Therefore, only the last member is checked.
-      if (n_attrs > 1 && IS_COMPRESS_INDEX_ATTR_ID (key_attrs[n_attrs - 1]->id))
+      if (n_attrs > 1 && IS_DEDUPLICATE_KEY_ATTR_ID (key_attrs[n_attrs - 1]->id))
 	{
 	  n_attrs--;
 	}
@@ -14219,7 +14219,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       int class_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       int att_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       char md5_str[32 + 1] = { '\0' };
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       bool is_fk = false;
 #endif
 
@@ -14236,7 +14236,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  break;
 	case DB_CONSTRAINT_FOREIGN_KEY:
 	  prefix = "fk_";
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	  is_fk = true;
 #endif
 	  break;
@@ -14270,10 +14270,10 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       for (ptr = att_names; (*ptr != NULL) && (i < n_attrs); ptr++, i++)
 	{
 	  int ptr_size = 0;
-#if defined(SUPPORT_COMPRESS_MODE)
-	  if (is_fk && IS_COMPRESS_INDEX_ATTR_NAME (*ptr))
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	  if (is_fk && IS_DEDUPLICATE_KEY_ATTR_NAME (*ptr))
 	    {
-	      n_attrs--;	/* Do not include compress_index_attr name in the FK name */
+	      n_attrs--;	/* Do not include deduplicate_key_attr name in the FK name */
 	      assert (i == n_attrs);
 	      break;
 	    }

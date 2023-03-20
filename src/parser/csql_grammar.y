@@ -437,27 +437,27 @@ static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
 
 static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 
-#if defined(SUPPORT_COMPRESS_MODE)
-static void pt_get_compress_mode_level(int mode_level, short* mode, short* level);
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+static void pt_get_deduplicate_key_mode_level(int mode_level, short* mode, short* level);
 
 #define COMPRESS_MODE_NOT_SET          (-1)
 #define MAKE_COMPRESS_MODE_LEVEL(m, l) ((m) | ((l) << 8))
 #define GET_COMPRESS_MODE(ml)   ((ml) & 0x000000FF)
 #define GET_COMPRESS_LEVEL(ml)  ((ml) >> 8)
 
-#define CHECK_COMPRESS_INDEX_ATTR_NAME(nm)  do {  \
-   if((nm) && IS_COMPRESS_INDEX_ATTR_NAME((nm)->info.name.original))   \
+#define CHECK_DEDUPLICATE_KEY_ATTR_NAME(nm)  do {  \
+   if((nm) && IS_DEDUPLICATE_KEY_ATTR_NAME((nm)->info.name.original))   \
    {                                     \
       PT_ERRORf2 (this_parser, (nm), "Attribute name [%s] is not allowed." \
                                      "Names starting with \"%s\" are reserved by CUBRID.", \
-                                     (nm)->info.name.original, COMPRESS_INDEX_ATTR_NAME_PREFIX);  \
+                                     (nm)->info.name.original, DEDUPLICATE_KEY_ATTR_NAME_PREFIX);  \
    } \
 } while(0)
-#else // #if defined(SUPPORT_COMPRESS_MODE)
+#else // #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 #define COMPRESS_MODE_NOT_SET          (-1)
-#define CHECK_COMPRESS_INDEX_ATTR_NAME(nm)
+#define CHECK_DEDUPLICATE_KEY_ATTR_NAME(nm)
 #define MAKE_COMPRESS_MODE_LEVEL(m, l)  (-1)
-#endif // #if defined(SUPPORT_COMPRESS_MODE)
+#endif // #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 
 #define push_msg(a) _push_msg(a, __LINE__)
 
@@ -635,8 +635,8 @@ int g_original_buffer_len;
 %type <boolean> opt_analytic_ignore_nulls
 %type <number> opt_encrypt_algorithm
 %type <number> opt_access_modifier
-%type <number> opt_index_compress_mode
-%type <number> opt_index_compress_mod_level
+%type <number> opt_deduplicate_key_mode
+%type <number> opt_deduplicate_key_level
 /*}}}*/
 
 /* define rule type (node) */
@@ -1675,11 +1675,7 @@ int g_original_buffer_len;
 %token <cptr> UTF8_STRING
 %token <cptr> IPV4_ADDRESS
 
-%token <cptr> COMPRESS_
-%token <cptr> HIGH_
-%token <cptr> LOW_
-%token <cptr> MEDIUM_
-
+%token <cptr> DEDUPLICATE_KEY
 
 /*}}}*/
 
@@ -2715,7 +2711,7 @@ create_stmt
 	  only_class_name				/* 10 */
 	  index_column_name_list			/* 11 */
 	  opt_where_clause				/* 12 */
-          opt_index_compress_mode                       /* 13 */
+          opt_deduplicate_key_mode                      /* 13 */
 	  opt_comment_spec				/* 14 */
 	  opt_with_online				/* 15 */
 	  opt_invisible					/* 16 */
@@ -2846,8 +2842,8 @@ create_stmt
 			    node->info.index.where = $12;
 			    node->info.index.column_names = col;
 
-#if defined(SUPPORT_COMPRESS_MODE)
-                            pt_get_compress_mode_level($13,  &node->info.index.compress_mode, &node->info.index.compress_level);
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+                            pt_get_deduplicate_key_mode_level($13,  &node->info.index.dedup_key_mode, &node->info.index.dedup_key_level);
 #endif                            
 
 			    node->info.index.comment = $14;
@@ -9620,7 +9616,7 @@ foreign_key_constraint
 	  KEY 						/* 2 */
 	  opt_identifier				/* 3 */
 	  '(' index_column_identifier_list ')'		/* 4, 5, 6 */
-          opt_index_compress_mode                       /* 7 */
+          opt_deduplicate_key_mode                      /* 7 */
 	  REFERENCES					/* 8 */
 	  user_specified_name				/* 9 */
 	  opt_paren_attr_list				/* 10 */
@@ -9635,8 +9631,8 @@ foreign_key_constraint
 			    node->info.constraint.type = PT_CONSTRAIN_FOREIGN_KEY;
 			    node->info.constraint.un.foreign_key.attrs = $5;
 
-#if defined(SUPPORT_COMPRESS_MODE)
-                            pt_get_compress_mode_level($7,  &node->info.constraint.un.foreign_key.compress_mode, &node->info.constraint.un.foreign_key.compress_level);
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+                            pt_get_deduplicate_key_mode_level($7,  &node->info.constraint.un.foreign_key.dedup_key_mode, &node->info.constraint.un.foreign_key.dedup_key_level);
 #endif
 			    node->info.constraint.un.foreign_key.referenced_attrs = $10;
 			    node->info.constraint.un.foreign_key.match_type = PT_MATCH_REGULAR;
@@ -10223,7 +10219,7 @@ view_attr_def
 			    node->info.attr_def.attr_name = $1;
 			    node->info.attr_def.comment = $2;
 			    node->info.attr_def.attr_type = PT_NORMAL;
-                            CHECK_COMPRESS_INDEX_ATTR_NAME($1);
+                            CHECK_DEDUPLICATE_KEY_ATTR_NAME($1);
 			  }
 
 			$$ = node;
@@ -10358,7 +10354,7 @@ attr_index_def
 	  identifier                /* 2 */
 	  index_column_name_list    /* 3 */
 	  opt_where_clause          /* 4 */
-          opt_index_compress_mode   /* 5 */
+          opt_deduplicate_key_mode  /* 5 */
 	  opt_comment_spec          /* 6 */
 	  opt_invisible             /* 7 */
 		{{ DBG_TRACE_GRAMMAR(attr_index_def, : index_or_key identifier index_column_name_list opt_where_clause opt_comment_spec opt_invisible);
@@ -10413,8 +10409,8 @@ attr_index_def
 				  }
 			      }
 			  }
-#if defined(SUPPORT_COMPRESS_MODE)
-                        pt_get_compress_mode_level($5,  &node->info.index.compress_mode, &node->info.index.compress_level);
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+                        pt_get_deduplicate_key_mode_level($5,  &node->info.index.dedup_key_mode, &node->info.index.dedup_key_level);
 #endif                            
 			node->info.index.column_names = col;
 			node->info.index.index_status = SM_NORMAL_INDEX;
@@ -10449,7 +10445,7 @@ attr_def_one
 				PT_NAME_INFO_SET_FLAG (node->info.attr_def.attr_name,
 						       PT_NAME_INFO_EXTERNAL);
 			      }
-                            CHECK_COMPRESS_INDEX_ATTR_NAME($1);
+                            CHECK_DEDUPLICATE_KEY_ATTR_NAME($1);
 			  }
 
 			parser_save_attr_def_one (node);
@@ -10789,7 +10785,7 @@ column_other_constraint_def
 		DBG_PRINT}}
 	| opt_constraint_id			/* 1 */
 	  opt_foreign_key			/* 2 */
-          opt_index_compress_mode               /* 3 */
+          opt_deduplicate_key_mode              /* 3 */
 	  REFERENCES				/* 4 */
 	  class_name				/* 5 */
 	  opt_paren_attr_list			/* 6 */
@@ -10809,8 +10805,8 @@ column_other_constraint_def
 			    constraint->info.constraint.un.foreign_key.update_action = TO_NUMBER (CONTAINER_AT_1 ($7));	/* update_action */
 			    constraint->info.constraint.un.foreign_key.referenced_class = $5;
 
-#if defined(SUPPORT_COMPRESS_MODE)                            
-                            pt_get_compress_mode_level($3,  &constraint->info.constraint.un.foreign_key.compress_mode, &constraint->info.constraint.un.foreign_key.compress_level);
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)                            
+                            pt_get_deduplicate_key_mode_level($3,  &constraint->info.constraint.un.foreign_key.dedup_key_mode, &constraint->info.constraint.un.foreign_key.dedup_key_level);
 #endif  
 
 			    constraint->info.constraint.type = PT_CONSTRAIN_FOREIGN_KEY;
@@ -11104,7 +11100,7 @@ attr_def_comment
 				attr_node->info.attr_def.attr_name = $1;
 				attr_node->info.attr_def.comment = $3;
 				attr_node->info.attr_def.attr_type = parser_attr_type;
-                                CHECK_COMPRESS_INDEX_ATTR_NAME($1);
+                                CHECK_DEDUPLICATE_KEY_ATTR_NAME($1);
 			  }
 
 			$$ = attr_node;
@@ -21451,47 +21447,43 @@ opt_encrypt_algorithm
       $$ = 2; }   /* TDE_ALGORITHM_ARIA */
   ;
 
-opt_index_compress_mode
+opt_deduplicate_key_mode
         :  /* empty */
-	       { DBG_TRACE_GRAMMAR(opt_index_compress_mode, : ); 
+	       { DBG_TRACE_GRAMMAR(opt_deduplicate_key_mode, : ); 
                  $$ = COMPRESS_MODE_NOT_SET;
                }
-        | COMPRESS_ HIGH_
-               { DBG_TRACE_GRAMMAR(opt_index_compress_mode,  | COMPRESS_ HIGH_); 
-                 $$ = MAKE_COMPRESS_MODE_LEVEL(COMPRESS_INDEX_MODE_HIGH, COMPRESS_INDEX_MOD_LEVEL_ZERO);
+        | DEDUPLICATE_KEY OFF_
+               { DBG_TRACE_GRAMMAR(opt_deduplicate_key_mode,  | DEDUPLICATE_KEY OFF_); 
+                 $$ = MAKE_COMPRESS_MODE_LEVEL(DEDUPLICATE_KEY_MODE_OFF, DEDUPLICATE_KEY_LEVEL_ZERO);
                }
-        | COMPRESS_ LOW_
-               { DBG_TRACE_GRAMMAR(opt_index_compress_mode,  | COMPRESS_ LOW_); 
-                 $$ = MAKE_COMPRESS_MODE_LEVEL(COMPRESS_INDEX_MODE_LOW, COMPRESS_INDEX_MOD_LEVEL_ZERO);
-               }   
-        | COMPRESS_ MEDIUM_ opt_index_compress_mod_level
-               { DBG_TRACE_GRAMMAR(opt_index_compress_mode,  | COMPRESS_ MEDIUM_ opt_index_compress_mod_level); 
-                 $$ = MAKE_COMPRESS_MODE_LEVEL(COMPRESS_INDEX_MODE_MEDIUM, $3);
+        | DEDUPLICATE_KEY ON_ opt_deduplicate_key_level
+               { DBG_TRACE_GRAMMAR(opt_deduplicate_key_mode,  | DEDUPLICATE_KEY MEDIUM_ opt_deduplicate_key_level); 
+                 $$ = $3;
                }        
         ;
 
-opt_index_compress_mod_level
+opt_deduplicate_key_level
         : /* empty */
-		{ DBG_TRACE_GRAMMAR(opt_index_compress_mod_level, : );     
-#if defined(SUPPORT_COMPRESS_MODE)                             
-                  $$ = prm_get_integer_value (PRM_ID_COMPRESS_INDEX_MOD_LEVEL);
+		{ DBG_TRACE_GRAMMAR(opt_deduplicate_key_level, : );                      
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)                                               
+                  $$ = MAKE_COMPRESS_MODE_LEVEL(DEDUPLICATE_KEY_MODE_ON, DEDUPLICATE_KEY_LEVEL_ZERO); 
 #else
                   $$ = 0;                        
 #endif                  
                 }
 	| '(' UNSIGNED_INTEGER ')'
-		{ DBG_TRACE_GRAMMAR(opt_index_compress_mod_level, | (LEVEL UNSIGNED_INTEGER) ); 
+		{ DBG_TRACE_GRAMMAR(opt_deduplicate_key_level, | (LEVEL UNSIGNED_INTEGER) ); 
                   int int_val = -1;                  
                   if (parse_int (&int_val, $2, 10) != 0)
 		      {
 			PT_ERRORmf (this_parser, $2, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_UNSIGNED_INT32, $2);
 		      }
-                  else if(int_val < COMPRESS_INDEX_MOD_LEVEL_MIN || int_val > COMPRESS_INDEX_MOD_LEVEL_MAX)
+                  else if(int_val < DEDUPLICATE_KEY_LEVEL_MIN || int_val > DEDUPLICATE_KEY_LEVEL_MAX)
                       {                          
                         PT_ERRORmf2 (this_parser, $2, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_LEVEL, 
-                                     COMPRESS_INDEX_MOD_LEVEL_MIN, COMPRESS_INDEX_MOD_LEVEL_MAX);
+                                     DEDUPLICATE_KEY_LEVEL_MIN, DEDUPLICATE_KEY_LEVEL_MAX);
                       }
-   	          $$ = int_val;                  
+                  $$ = MAKE_COMPRESS_MODE_LEVEL(DEDUPLICATE_KEY_MODE_ON, int_val);
                   DBG_PRINT}
 	;
 
@@ -22242,7 +22234,6 @@ identifier
 	| COLUMNS                {{ DBG_TRACE_GRAMMAR(identifier, | COLUMNS            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| COMMENT                {{ DBG_TRACE_GRAMMAR(identifier, | COMMENT            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| COMMITTED              {{ DBG_TRACE_GRAMMAR(identifier, | COMMITTED          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| COMPRESS_              {{ DBG_TRACE_GRAMMAR(identifier, | COMPRESS_          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| COST                   {{ DBG_TRACE_GRAMMAR(identifier, | COST               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| CRITICAL               {{ DBG_TRACE_GRAMMAR(identifier, | CRITICAL           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| CUME_DIST              {{ DBG_TRACE_GRAMMAR(identifier, | CUME_DIST          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -22251,7 +22242,8 @@ identifier
 	| DBLINK                 {{ DBG_TRACE_GRAMMAR(identifier, | DBLINK             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DBNAME                 {{ DBG_TRACE_GRAMMAR(identifier, | DBNAME             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DECREMENT              {{ DBG_TRACE_GRAMMAR(identifier, | DECREMENT          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 
-	| DENSE_RANK             {{ DBG_TRACE_GRAMMAR(identifier, | DENSE_RANK         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+       	| DEDUPLICATE_KEY        {{ DBG_TRACE_GRAMMAR(identifier, | DEDUPLICATE_KEY    ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 	
+        | DENSE_RANK             {{ DBG_TRACE_GRAMMAR(identifier, | DENSE_RANK         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DISK_SIZE              {{ DBG_TRACE_GRAMMAR(identifier, | DISK_SIZE          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DONT_REUSE_OID         {{ DBG_TRACE_GRAMMAR(identifier, | DONT_REUSE_OID     ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ELT                    {{ DBG_TRACE_GRAMMAR(identifier, | ELT                ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -22272,8 +22264,7 @@ identifier
 	| GT_LT_                 {{ DBG_TRACE_GRAMMAR(identifier, | GT_LT_             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| HASH                   {{ DBG_TRACE_GRAMMAR(identifier, | HASH               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| HEADER                 {{ DBG_TRACE_GRAMMAR(identifier, | HEADER             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| HEAP                   {{ DBG_TRACE_GRAMMAR(identifier, | HEAP               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-        | HIGH_                  {{ DBG_TRACE_GRAMMAR(identifier, | HIGH_              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| HEAP                   {{ DBG_TRACE_GRAMMAR(identifier, | HEAP               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}        
 	| HOST                   {{ DBG_TRACE_GRAMMAR(identifier, | HOST               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| IFNULL                 {{ DBG_TRACE_GRAMMAR(identifier, | IFNULL             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| INACTIVE               {{ DBG_TRACE_GRAMMAR(identifier, | INACTIVE           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -22322,12 +22313,10 @@ identifier
 	| LCASE                  {{ DBG_TRACE_GRAMMAR(identifier, | LCASE              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| LEAD                   {{ DBG_TRACE_GRAMMAR(identifier, | LEAD               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| LOCK_                  {{ DBG_TRACE_GRAMMAR(identifier, | LOCK_              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| LOG                    {{ DBG_TRACE_GRAMMAR(identifier, | LOG                ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-        | LOW_                   {{ DBG_TRACE_GRAMMAR(identifier, | LOW_               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| LOG                    {{ DBG_TRACE_GRAMMAR(identifier, | LOG                ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}        
 	| MAXIMUM                {{ DBG_TRACE_GRAMMAR(identifier, | MAXIMUM            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| MAXVALUE               {{ DBG_TRACE_GRAMMAR(identifier, | MAXVALUE           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| MEDIAN                 {{ DBG_TRACE_GRAMMAR(identifier, | MEDIAN             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| MEDIUM_                {{ DBG_TRACE_GRAMMAR(identifier, | MEDIUM_            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 
+	| MEDIAN                 {{ DBG_TRACE_GRAMMAR(identifier, | MEDIAN             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}	
 	| MEMBERS                {{ DBG_TRACE_GRAMMAR(identifier, | MEMBERS            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| MINVALUE               {{ DBG_TRACE_GRAMMAR(identifier, | MINVALUE           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NAME                   {{ DBG_TRACE_GRAMMAR(identifier, | NAME               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -24271,7 +24260,7 @@ dblink_column_definition
                         {
                                 node->info.attr_def.size_constraint = dt->info.data_type.precision;
                         }
-                        CHECK_COMPRESS_INDEX_ATTR_NAME($1);
+                        CHECK_DEDUPLICATE_KEY_ATTR_NAME($1);
                 }
 
                 $$ = node;
@@ -27664,17 +27653,17 @@ pt_ct_check_select (char* p, char *perr_msg)
    return false;
 }
 
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 
 #include "system_parameter.h"
-static void pt_get_compress_mode_level(int mode_level, short* mode, short* level)
+static void pt_get_deduplicate_key_mode_level(int mode_level, short* mode, short* level)
 {   
     int type, mod_val;
 
     if(mode_level == COMPRESS_MODE_NOT_SET)
     {
-        type = prm_get_integer_value (PRM_ID_COMPRESS_INDEX_MODE);
-        mod_val = prm_get_integer_value (PRM_ID_COMPRESS_INDEX_MOD_LEVEL);
+        type = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_MODE);
+        mod_val = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
     }   
     else
     {
@@ -27684,16 +27673,12 @@ static void pt_get_compress_mode_level(int mode_level, short* mode, short* level
 
     switch(type)
       {
-        case COMPRESS_INDEX_MODE_HIGH :
-             *mode = COMPRESS_INDEX_MODE_NONE;
-             *level = COMPRESS_INDEX_MOD_LEVEL_ZERO;
+        case DEDUPLICATE_KEY_MODE_OFF :
+             *mode = DEDUPLICATE_KEY_MODE_NONE;
+             *level = DEDUPLICATE_KEY_LEVEL_ZERO;
              break;
-        case COMPRESS_INDEX_MODE_LOW :
-             *mode = COMPRESS_INDEX_MODE_SET;
-             *level = COMPRESS_INDEX_MOD_LEVEL_ZERO;
-             break;        
-        case COMPRESS_INDEX_MODE_MEDIUM :
-             *mode = COMPRESS_INDEX_MODE_SET;
+        case DEDUPLICATE_KEY_MODE_ON :
+             *mode = DEDUPLICATE_KEY_MODE_SET;
              *level = mod_val;
              break;
         default:

@@ -10367,7 +10367,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       BTID_COPY (&btid, &index->btid);
       key_dbvalue =
 	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 				, NULL, false
 #endif
 	);
@@ -10601,7 +10601,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 
       key_dbvalue =
 	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 				, NULL, false
 #endif
 	);
@@ -11047,7 +11047,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   if (insert->has_uniques && (insert->do_replace || odku_assignments != NULL))
     {
       if (heap_attrinfo_start_with_index (thread_p, &class_oid, NULL, &index_attr_info, &idx_info
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 					  , false
 #endif
 	  ) < 0)
@@ -21891,10 +21891,10 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	{
 	  index_att = index->atts[j];
 	  att_id = index_att->id;
-	  assert (att_id >= 0 || IS_COMPRESS_INDEX_ATTR_ID (att_id));
+	  assert (att_id >= 0 || IS_DEDUPLICATE_KEY_ATTR_ID (att_id));
 
-#if defined(SUPPORT_COMPRESS_MODE)
-	  if (IS_COMPRESS_INDEX_ATTR_ID (att_id))
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	  if (IS_DEDUPLICATE_KEY_ATTR_ID (att_id))
 	    {
 	      assert ((j + 1) == num_idx_att);
 	      break;

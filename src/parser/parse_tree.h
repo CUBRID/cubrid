@@ -2098,9 +2098,9 @@ struct pt_index_info
   bool unique;			/* UNIQUE specified? */
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
   int ib_threads;
-#if defined(SUPPORT_COMPRESS_MODE)
-  short compress_mode;		/* refer to EN_COMPRESS_INDEX_MODE */
-  short compress_level;		/* 0 : not use modular, others : mod by pow(2,compress_level) */
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  short dedup_key_mode;		/* refer to EN_COMPRESS_INDEX_MODE */
+  short dedup_key_level;	/* 0 : not use modular, others : mod by pow(2,dedup_key_level) */
 #endif
 };
 
@@ -3252,9 +3252,9 @@ struct pt_foreign_key_info
   PT_MISC_TYPE match_type;	/* full or partial */
   PT_MISC_TYPE delete_action;
   PT_MISC_TYPE update_action;
-#if defined(SUPPORT_COMPRESS_MODE)
-  short compress_mode;		/* refer to EN_COMPRESS_INDEX_MODE */
-  short compress_level;		/* 0 : not use modular, others : mod by pow(2,compress_level) */
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  short dedup_key_mode;		/* refer to EN_COMPRESS_INDEX_MODE */
+  short dedup_key_level;	/* 0 : not use modular, others : mod by pow(2,dedup_key_level) */
 #endif
 };
 

@@ -4038,8 +4038,8 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   OID class_oid;
   int attr_id, unique_pk;
   char *ptr;
-#if defined(SUPPORT_COMPRESS_MODE)
-  int decompress_attr_pos = -1;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  int deduplicate_key_pos = -1;
 #endif
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -4049,13 +4049,13 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_int (ptr, &attr_id);
   ptr = or_unpack_int (ptr, &unique_pk);
-#if defined(SUPPORT_COMPRESS_MODE)
-  ptr = or_unpack_int (ptr, &decompress_attr_pos);
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  ptr = or_unpack_int (ptr, &deduplicate_key_pos);
 #endif
 
   return_btid = xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0
-#if defined(SUPPORT_COMPRESS_MODE)
-				  , decompress_attr_pos
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+				  , deduplicate_key_pos
 #endif
     );
   if (return_btid == NULL)

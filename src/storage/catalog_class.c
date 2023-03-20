@@ -869,12 +869,12 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p, OR_VA
 	    }
 
 	  id = db_get_int (&key_atts[1].value);
-#if defined(SUPPORT_COMPRESS_MODE)
-	  if (IS_COMPRESS_INDEX_ATTR_ID (id))
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	  if (IS_DEDUPLICATE_KEY_ATTR_ID (id))
 	    {
 	      DB_VALUE tmp_val;
 
-	      db_make_string (&tmp_val, GET_COMPRESS_INDEX_ATTR_NAME (GET_COMPRESS_INDEX_ATTR_LEVEL (id)));
+	      db_make_string (&tmp_val, GET_DEDUPLICATE_KEY_ATTR_NAME (GET_DEDUPLICATE_KEY_ATTR_LEVEL (id)));
 	      pr_clear_value (&key_atts[1].value);
 	      pr_clone_value (&tmp_val, &key_atts[1].value);
 	      if (tmp_val.need_clear)

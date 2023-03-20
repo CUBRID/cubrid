@@ -313,7 +313,7 @@ extern int pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index,
 					  char **prev_ptrp);
 extern int pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
 				    struct tp_domain *dbvals_domain_list);
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 extern int pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
 					      struct tp_domain *dbvals_domain_list, int tail_null_cnt);
 #endif

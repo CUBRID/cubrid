@@ -445,7 +445,7 @@ metadata_of_index_capacity (SHOW_ONLY_ALL flag)
     {"Btid", "varchar(64)"},
     {"Num_distinct_key", "int"},
     {"Total_value", "bigint"},
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
     {"Decompress_distinct_key", "int"},
 #endif
     {"Avg_num_value_per_key", "int"},

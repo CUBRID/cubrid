@@ -725,10 +725,10 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	       * itself and belong to the parent table. But show create table will only print the constraints which
 	       * belong to the table itself.
 	       */
-#if defined(SUPPORT_COMPRESS_MODE)
-	      assert ( (c->attributes[0] && IS_COMPRESS_INDEX_ATTR_ID (c->attributes[0]->id)) ? (c->attributes[1] != NULL) : true);
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	      assert ( (c->attributes[0] && IS_DEDUPLICATE_KEY_ATTR_ID (c->attributes[0]->id)) ? (c->attributes[1] != NULL) : true);
 	      if (include_inherited
-		  || (c->attributes[0] && c->attributes[ ((IS_COMPRESS_INDEX_ATTR_ID (c->attributes[0]->id)) ? 1 : 0)]->class_mop == op))
+		  || (c->attributes[0] && c->attributes[ ((IS_DEDUPLICATE_KEY_ATTR_ID (c->attributes[0]->id)) ? 1 : 0)]->class_mop == op))
 #else
 	      if (include_inherited
 		  || (c->attributes[0] != NULL && c->attributes[0]->class_mop == op))
@@ -755,10 +755,10 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    {
 	      if (SM_IS_CONSTRAINT_INDEX_FAMILY (c->type))
 		{
-#if defined(SUPPORT_COMPRESS_MODE)
-		  assert ( (c->attributes[0] && IS_COMPRESS_INDEX_ATTR_ID (c->attributes[0]->id)) ? (c->attributes[1] != NULL) : true);
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+		  assert ( (c->attributes[0] && IS_DEDUPLICATE_KEY_ATTR_ID (c->attributes[0]->id)) ? (c->attributes[1] != NULL) : true);
 		  if (include_inherited
-		      || (c->attributes[0] && c->attributes[ ((IS_COMPRESS_INDEX_ATTR_ID (c->attributes[0]->id)) ? 1 : 0)]->class_mop == op))
+		      || (c->attributes[0] && c->attributes[ ((IS_DEDUPLICATE_KEY_ATTR_ID (c->attributes[0]->id)) ? 1 : 0)]->class_mop == op))
 #else
 		  if (include_inherited
 		      || (c->attributes[0] != NULL && c->attributes[0]->class_mop == op))

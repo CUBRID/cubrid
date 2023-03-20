@@ -693,14 +693,14 @@ static OR_ATTRIBUTE *heap_locate_attribute (ATTR_ID attrid, HEAP_CACHE_ATTRINFO 
 static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 					 HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, TP_DOMAIN * func_domain,
 					 TP_DOMAIN ** key_domain
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 					 , OID * rec_oid, bool is_check_foreign
 #endif
   );
 static DB_MIDXKEY *heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey,
 					      int *att_ids, HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res,
 					      int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 					      , OID * rec_oid
 #endif
   );
@@ -9541,8 +9541,8 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 	   (attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
 	    attr_info->last_classrepr->n_class_attrs))
     {
-#if defined(SUPPORT_COMPRESS_MODE)
-      for (i = requested_num_attrs - 1; i >= 0 && !IS_COMPRESS_INDEX_ATTR_ID (attrids[i]); i--)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      for (i = requested_num_attrs - 1; i >= 0 && !IS_DEDUPLICATE_KEY_ATTR_ID (attrids[i]); i--)
 	{
 	  /* empty */ ;
 	}
@@ -9562,7 +9562,7 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
       requested_num_attrs =
 	attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
 	attr_info->last_classrepr->n_class_attrs;
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       requested_num_attrs += i;
 #endif
     }
@@ -9691,14 +9691,14 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	  /* Case that we want all attributes */
 	  value->attrid = search_attrepr[curr_attr].id;
 	}
-#if defined(SUPPORT_COMPRESS_MODE)
-      else if (IS_COMPRESS_INDEX_ATTR_ID (value->attrid))
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      else if (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid))
 	{
 	  // In this case, in case of reserved_attr_id in heap_attrvalue_read(), skip should be processed.
 	  value->attr_type = HEAP_INSTANCE_ATTR;
 	  if (islast_reset == true)
 	    {
-	      value->last_attrepr = (OR_ATTRIBUTE *) dk_find_or_compress_index_attribute (value->attrid);
+	      value->last_attrepr = (OR_ATTRIBUTE *) dk_find_or_deduplicate_key_attribute (value->attrid);
 	      if (value->state == HEAP_UNINIT_ATTRVALUE)
 		{
 		  db_value_domain_init (&value->dbvalue, value->last_attrepr->type,
@@ -9707,7 +9707,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	    }
 	  else
 	    {
-	      value->read_attrepr = (OR_ATTRIBUTE *) dk_find_or_compress_index_attribute (value->attrid);
+	      value->read_attrepr = (OR_ATTRIBUTE *) dk_find_or_deduplicate_key_attribute (value->attrid);
 	    }
 	  num_found_attrs++;
 	  continue;
@@ -10077,10 +10077,10 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   volatile int disk_length = -1;
   int ret = NO_ERROR;
 
-#if defined(SUPPORT_COMPRESS_MODE)
-  if (IS_COMPRESS_INDEX_ATTR_ID (value->attrid))
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  if (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid))
     {
-      /* In the case of compress_index_attr_id, there is no content that actually exists in HEAP.
+      /* In the case of deduplicate_key_attr_id, there is no content that actually exists in HEAP.
        * Therefore, the read operation is skipped and success is returned. */
       return NO_ERROR;
     }
@@ -11993,7 +11993,7 @@ heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACH
 int
 heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * class_recdes,
 				HEAP_CACHE_ATTRINFO * attr_info, HEAP_IDX_ELEMENTS_INFO * idx_info
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 				, bool is_check_foreign
 #endif
   )
@@ -12048,9 +12048,9 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
   for (j = 0; j < *num_btids; j++)
     {
       indexp = &classrepr->indexes[j];
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       // We cannot make a PK with a function. Therefore, only the last member is checked.
-      if (is_check_foreign && (indexp->n_atts > 1) && IS_COMPRESS_INDEX_ATTR_ID (indexp->atts[indexp->n_atts - 1]->id))
+      if (is_check_foreign && (indexp->n_atts > 1) && IS_DEDUPLICATE_KEY_ATTR_ID (indexp->atts[indexp->n_atts - 1]->id))
 	{
 	  if (indexp->n_atts == 2)
 	    {
@@ -12095,10 +12095,10 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	      for (j = 0; j < *num_btids; j++)
 		{
 		  indexp = &classrepr->indexes[j];
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 		  // We cannot make a PK with a function. Therefore, only the last member is checked.
 		  if (is_check_foreign && (indexp->n_atts > 1)
-		      && IS_COMPRESS_INDEX_ATTR_ID (indexp->atts[indexp->n_atts - 1]->id))
+		      && IS_DEDUPLICATE_KEY_ATTR_ID (indexp->atts[indexp->n_atts - 1]->id))
 		    {
 		      if (indexp->n_atts == 2 && indexp->atts[0]->id == search_attrepr->id)
 			{
@@ -12239,7 +12239,7 @@ heap_classrepr_find_index_id (OR_CLASSREP * classrepr, const BTID * btid)
   return id;
 }
 
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 int
 heap_get_compress_attr_by_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, ATTR_ID * last_attrid,
 				int *last_asc_desc, TP_DOMAIN ** tpdomain)
@@ -12464,7 +12464,7 @@ heap_attrvalue_get_index (int value_index, ATTR_ID * attrid, int *n_btids, BTID 
 static DB_MIDXKEY *
 heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, HEAP_CACHE_ATTRINFO * attrinfo,
 		      DB_VALUE * func_res, TP_DOMAIN * func_domain, TP_DOMAIN ** key_domain
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 		      , OID * rec_oid, bool is_check_foreign
 #endif
   )
@@ -12477,7 +12477,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
   int error = NO_ERROR;
   TP_DOMAIN *set_domain = NULL;
   TP_DOMAIN *next_domain = NULL;
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   int not_null_field_cnt = 0;
 #endif
 
@@ -12490,9 +12490,9 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
       num_atts = index->func_index_info->attr_index_start + 1;
     }
 
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   // We cannot make a PK with a function. Therefore, only the last member is checked.
-  if (is_check_foreign && (index->n_atts > 1) && IS_COMPRESS_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
+  if (is_check_foreign && (index->n_atts > 1) && IS_DEDUPLICATE_KEY_ATTR_ID (index->atts[index->n_atts - 1]->id))
     {
       assert (func_res == NULL);
       num_atts--;
@@ -12516,7 +12516,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	    {
 	      func_domain->type->index_writeval (&buf, func_res);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	      not_null_field_cnt++;
 #endif
 	    }
@@ -12552,12 +12552,12 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	{
 	  break;
 	}
-#if defined(SUPPORT_COMPRESS_MODE)
-      if (IS_COMPRESS_INDEX_ATTR_ID (atts[i]->id))
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      if (IS_DEDUPLICATE_KEY_ATTR_ID (atts[i]->id))
 	{
 	  if (not_null_field_cnt > 0)
 	    {
-	      dk_get_compress_index_value (rec_oid, atts[i]->id, &value);
+	      dk_get_deduplicate_key_value (rec_oid, atts[i]->id, &value);
 	      atts[i]->domain->type->index_writeval (&buf, &value);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	      //  In this case, there is no need to clean them up using pr_clear_value().     
@@ -12571,7 +12571,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	    {
 	      atts[i]->domain->type->index_writeval (&buf, &value);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	      not_null_field_cnt++;
 #endif
 	    }
@@ -12670,7 +12670,7 @@ static DB_MIDXKEY *
 heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey, int *att_ids,
 			   HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, int func_col_id,
 			   int func_attr_index_start, TP_DOMAIN * midxkey_domain
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 			   , OID * rec_oid
 #endif
   )
@@ -12681,7 +12681,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
   DB_VALUE value;
   OR_BUF buf;
   int error = NO_ERROR;
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   int not_null_field_cnt = 0;
 #endif
 
@@ -12726,7 +12726,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	      TP_DOMAIN *domain = tp_domain_resolve_default ((DB_TYPE) func_res->domain.general_info.type);
 	      domain->type->index_writeval (&buf, func_res);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	      not_null_field_cnt++;
 #endif
 	    }
@@ -12736,13 +12736,13 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	      break;
 	    }
 	}
-#if defined(SUPPORT_COMPRESS_MODE)
-      if (IS_COMPRESS_INDEX_ATTR_ID (att_ids[i]))
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      if (IS_DEDUPLICATE_KEY_ATTR_ID (att_ids[i]))
 	{
 	  if (not_null_field_cnt > 0)
 	    {
-	      att = (OR_ATTRIBUTE *) dk_find_or_compress_index_attribute (att_ids[i]);
-	      dk_get_compress_index_value (rec_oid, att_ids[i], &value);
+	      att = (OR_ATTRIBUTE *) dk_find_or_deduplicate_key_attribute (att_ids[i]);
+	      dk_get_deduplicate_key_value (rec_oid, att_ids[i], &value);
 	      att->domain->type->index_writeval (&buf, &value);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	      //  In this case, there is no need to clean them up using pr_clear_value().     
@@ -12758,7 +12758,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	    {
 	      att->domain->type->index_writeval (&buf, &value);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	      not_null_field_cnt++;
 #endif
 	    }
@@ -12886,7 +12886,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 
       if (heap_midxkey_key_generate (thread_p, recdes, &midxkey, att_ids, attr_info, fi_res, fi_col_id,
 				     fi_attr_index_start, midxkey_domain
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 				     , cur_oid
 #endif
 	  ) == NULL)
@@ -12968,7 +12968,7 @@ DB_VALUE *
 heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTRINFO * idx_attrinfo, RECDES * recdes,
 			BTID * btid, DB_VALUE * db_value, char *buf, FUNC_PRED_UNPACK_INFO * func_indx_pred,
 			TP_DOMAIN ** key_domain
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 			, OID * rec_oid, bool is_check_foreign
 #endif
   )
@@ -13011,9 +13011,9 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
   n_atts = index->n_atts;
   *btid = index->btid;
 
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   // We cannot make a PK with a function. Therefore, only the last member is checked.
-  if (is_check_foreign && (index->n_atts > 1) && IS_COMPRESS_INDEX_ATTR_ID (index->atts[index->n_atts - 1]->id))
+  if (is_check_foreign && (index->n_atts > 1) && IS_DEDUPLICATE_KEY_ATTR_ID (index->atts[index->n_atts - 1]->id))
     {
       assert (index->type == BTREE_FOREIGN_KEY);
       n_atts--;
@@ -13065,7 +13065,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 
       midxkey.min_max_val.position = -1;
 
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       if (heap_midxkey_key_get
 	  (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain, rec_oid, is_check_foreign) == NULL)
 #else

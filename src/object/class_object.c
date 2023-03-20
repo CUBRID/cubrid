@@ -2572,10 +2572,10 @@ classobj_find_attribute_list (SM_ATTRIBUTE * attlist, const char *name, int id)
 	      return att;
 	    }
 	}
-#if defined(SUPPORT_COMPRESS_MODE)
-      if (IS_COMPRESS_INDEX_ATTR_NAME (name))
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      if (IS_DEDUPLICATE_KEY_ATTR_NAME (name))
 	{
-	  return dk_find_sm_compress_index_attribute (-1, name);
+	  return dk_find_sm_deduplicate_key_attribute (-1, name);
 	}
 #endif
     }
@@ -2588,10 +2588,10 @@ classobj_find_attribute_list (SM_ATTRIBUTE * attlist, const char *name, int id)
 	      return att;
 	    }
 	}
-#if defined(SUPPORT_COMPRESS_MODE)
-      if (IS_COMPRESS_INDEX_ATTR_ID (id))
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      if (IS_DEDUPLICATE_KEY_ATTR_ID (id))
 	{
-	  return dk_find_sm_compress_index_attribute (id, NULL);
+	  return dk_find_sm_deduplicate_key_attribute (id, NULL);
 	}
 #endif
     }
@@ -4064,7 +4064,7 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_
   return key_type;
 }
 
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 static void
 classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAINT_TYPE new_cons,
 					  char **att_names, int *asc_desc, SM_FUNCTION_INFO * func_index_info)
@@ -4075,16 +4075,16 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
   int nnames;
 
   // If there is a column corresponding to PK among the attributes constituting the index, the reserved_index_column is not added.
-  int compress_index_col_pos = -1;
+  int deduplicate_key_col_pos = -1;
   for (nnames = 0, namep = att_names; *namep; namep++, nnames++)
     {
-      if (IS_COMPRESS_INDEX_ATTR_NAME (*namep))
+      if (IS_DEDUPLICATE_KEY_ATTR_NAME (*namep))
 	{
-	  compress_index_col_pos = nnames;
+	  deduplicate_key_col_pos = nnames;
 	}
     }
 
-  if (compress_index_col_pos == -1)
+  if (deduplicate_key_col_pos == -1)
     {
       return;
     }
@@ -4121,7 +4121,7 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
 	{
 	  // For indexes that use prefixes, it does not reach here.     
 	  dk_create_index_level_remove_adjust (new_cons, att_names, asc_desc, NULL, func_index_info,
-					       compress_index_col_pos, nnames);
+					       deduplicate_key_col_pos, nnames);
 
 	  return;
 	}
@@ -4165,13 +4165,13 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	      attp++;
 	      namep++;
 	    }
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	  /* In the case of FK, reserved index columns are ignored when comparing identical configurations. */
-	  if (*attp && IS_COMPRESS_INDEX_ATTR_NAME ((*attp)->header.name))
+	  if (*attp && IS_DEDUPLICATE_KEY_ATTR_NAME ((*attp)->header.name))
 	    {
 	      attp++;
 	    }
-	  if (*namep && IS_COMPRESS_INDEX_ATTR_NAME (*namep))
+	  if (*namep && IS_DEDUPLICATE_KEY_ATTR_NAME (*namep))
 	    {
 	      namep++;
 	    }
@@ -6643,9 +6643,9 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate, SM_CLASS_CONSTRAINT * const
 	    {
 	      goto error_exit;
 	    }
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	  assert (((count > 1
-		    && IS_COMPRESS_INDEX_ATTR_NAME (att_names[count - 1])) ? (count - 1) : count) == count_ref);
+		    && IS_DEDUPLICATE_KEY_ATTR_NAME (att_names[count - 1])) ? (count - 1) : count) == count_ref);
 #else
 	  assert (count == count_ref);
 #endif
@@ -8172,7 +8172,7 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char **out_shared
       return error;
     }
 
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type))
     {
       classobj_check_attr_in_unique_constraint (constraints, constraint_type, (char **) att_names, (int *) asc_desc,

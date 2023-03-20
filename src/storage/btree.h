@@ -130,8 +130,8 @@ struct btid_int
   char *copy_buf;		/* index key copy_buf pointer info; derived from INDX_SCAN_ID.copy_buf */
   int copy_buf_len;		/* index key copy_buf length info; derived from INDX_SCAN_ID.copy_buf_len */
   int rev_level;
-#if defined(SUPPORT_COMPRESS_MODE)
-  int decompress_attr_idx;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  int deduplicate_key_idx;
 #endif
   OID topclass_oid;		/* class oid for which index is created */
 };
@@ -245,7 +245,7 @@ struct btree_scan
   bool is_btid_int_valid;
   bool is_scan_started;
   bool force_restart_from_root;
-#if 1				/* defined(SUPPORT_COMPRESS_MODE) */
+#if 1				/* defined(SUPPORT_DEDUPLICATE_KEY_MODE) */
   bool is_fk_remake;
 #endif
   PERF_UTIME_TRACKER time_track;
@@ -375,8 +375,8 @@ struct btree_capacity
 {
   int dis_key_cnt;		/* Distinct key count (in leaf pages) */
   int64_t tot_val_cnt;		/* Total number of values stored in tree */
-#if defined(SUPPORT_COMPRESS_MODE)
-  int decompress_dis_key_cnt;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  int deduplicate_dis_key_cnt;
 #endif
   int avg_val_per_key;		/* Average number of values (OIDs) per key */
   int leaf_pg_cnt;		/* Leaf page count */
@@ -667,7 +667,7 @@ typedef int BTREE_RANGE_SCAN_PROCESS_KEY_FUNC (THREAD_ENTRY * thread_p, BTREE_SC
 
 extern int btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
 				   OID * found_oid);
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 extern int btree_remake_foreign_key_with_PK (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
 					     key_val_range * kv_range, bool * is_newly);
 #endif

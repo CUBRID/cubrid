@@ -45,7 +45,7 @@
 #include "object_representation_constants.h"
 #include "porting_inline.hpp"
 #include "storage_common.h"
-#include "decompress_index.h"
+#include "deduplicate_key.h"
 
 // forward declarations
 struct log_lsa;

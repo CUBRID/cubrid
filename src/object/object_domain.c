@@ -668,8 +668,8 @@ tp_init (void)
 
   tp_Initialized = true;
 
-#if defined(SUPPORT_COMPRESS_MODE)
-  dk_compress_index_attribute_initialized ();
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  dk_deduplicate_key_attribute_initialized ();
 #endif
 
   return NO_ERROR;

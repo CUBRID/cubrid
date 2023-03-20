@@ -17,7 +17,7 @@
  */
 
 /*
- * decompress_index.c - Support duplicate key index
+ * deduplicate_key.h - Support duplicate key index
  */
 
 #ident "$Id$"
@@ -35,13 +35,13 @@
 #include "object_representation_sr.h"
 #endif
 
-#include "decompress_index.h"
+#include "deduplicate_key.h"
 
-#if defined(SUPPORT_COMPRESS_MODE)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 
 #if 0
 // The higher the "level", the more compressed it should be. Close to mode "HIGH".
-#define CALC_MOD_VALUE_FROM_LEVEL(lv)   (1 << ((COMPRESS_INDEX_MOD_LEVEL_MAX + 1) - (lv)))
+#define CALC_MOD_VALUE_FROM_LEVEL(lv)   (1 << ((DEDUPLICATE_KEY_LEVEL_MAX + 1) - (lv)))
 #else
 //The higher the "level" value, the weaker the compression.
 // like pow(2, (lv));
@@ -51,7 +51,7 @@
 static DB_DOMAIN *
 get_reserved_index_attr_domain_type (int level)
 {
-  if (level == COMPRESS_INDEX_MOD_LEVEL_ZERO)
+  if (level == DEDUPLICATE_KEY_LEVEL_ZERO)
     {
       return &tp_Integer_domain;
     }
@@ -61,7 +61,7 @@ get_reserved_index_attr_domain_type (int level)
 
 //=============================================================================
 #if defined(SERVER_MODE) || defined(SA_MODE)
-static OR_ATTRIBUTE st_or_atts[COUNT_OF_COMPRESS_INDEX_MOD_LEVEL];
+static OR_ATTRIBUTE st_or_atts[COUNT_OF_DEDUPLICATE_KEY_LEVEL];
 static bool st_or_atts_init = false;
 
 static void
@@ -70,9 +70,9 @@ dk_or_attribute_initialized ()
   int att_id;
   int level;
 
-  for (level = COMPRESS_INDEX_MOD_LEVEL_ZERO; level <= COMPRESS_INDEX_MOD_LEVEL_MAX; level++)
+  for (level = DEDUPLICATE_KEY_LEVEL_ZERO; level <= DEDUPLICATE_KEY_LEVEL_MAX; level++)
     {
-      att_id = MK_COMPRESS_INDEX_ATTR_ID (level);
+      att_id = MK_DEDUPLICATE_KEY_ATTR_ID (level);
       st_or_atts[level].id = att_id;
       st_or_atts[level].domain = get_reserved_index_attr_domain_type (level);
       st_or_atts[level].type = st_or_atts[level].domain->type->id;
@@ -82,30 +82,30 @@ dk_or_attribute_initialized ()
 }
 
 void *
-dk_find_or_compress_index_attribute (int att_id)
+dk_find_or_deduplicate_key_attribute (int att_id)
 {
-  int level = GET_COMPRESS_INDEX_ATTR_LEVEL (att_id);
+  int level = GET_DEDUPLICATE_KEY_ATTR_LEVEL (att_id);
 
-  assert (IS_COMPRESS_INDEX_ATTR_ID (att_id));
-  assert (level >= COMPRESS_INDEX_MOD_LEVEL_ZERO && level <= COMPRESS_INDEX_MOD_LEVEL_MAX);
+  assert (IS_DEDUPLICATE_KEY_ATTR_ID (att_id));
+  assert (level >= DEDUPLICATE_KEY_LEVEL_ZERO && level <= DEDUPLICATE_KEY_LEVEL_MAX);
   assert (st_or_atts_init == true);
 
   return (void *) &(st_or_atts[level]);
 }
 
 int
-dk_get_decompress_position (int n_attrs, int *attr_ids, int func_attr_index_start)
+dk_get_deduplicate_key_position (int n_attrs, int *attr_ids, int func_attr_index_start)
 {
   if (n_attrs > 1)
     {
       if (func_attr_index_start != -1)
 	{
-	  if ((func_attr_index_start > 0) && IS_COMPRESS_INDEX_ATTR_ID (attr_ids[func_attr_index_start - 1]))
+	  if ((func_attr_index_start > 0) && IS_DEDUPLICATE_KEY_ATTR_ID (attr_ids[func_attr_index_start - 1]))
 	    {
 	      return func_attr_index_start;
 	    }
 	}
-      else if (IS_COMPRESS_INDEX_ATTR_ID (attr_ids[n_attrs - 1]))
+      else if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_ids[n_attrs - 1]))
 	{
 	  return n_attrs - 1;
 	}
@@ -115,19 +115,19 @@ dk_get_decompress_position (int n_attrs, int *attr_ids, int func_attr_index_star
 }
 
 int
-dk_or_decompress_position (int n_attrs, OR_ATTRIBUTE ** attrs, OR_FUNCTION_INDEX * function_index)
+dk_or_deduplicate_key_position (int n_attrs, OR_ATTRIBUTE ** attrs, OR_FUNCTION_INDEX * function_index)
 {
   if (n_attrs > 1)
     {
       if (function_index)
 	{
 	  if ((function_index->attr_index_start > 0)
-	      && IS_COMPRESS_INDEX_ATTR_ID (attrs[function_index->attr_index_start - 1]->id))
+	      && IS_DEDUPLICATE_KEY_ATTR_ID (attrs[function_index->attr_index_start - 1]->id))
 	    {
 	      return function_index->attr_index_start;
 	    }
 	}
-      else if (IS_COMPRESS_INDEX_ATTR_ID (attrs[n_attrs - 1]->id))
+      else if (IS_DEDUPLICATE_KEY_ATTR_ID (attrs[n_attrs - 1]->id))
 	{
 	  return n_attrs - 1;
 	}
@@ -137,21 +137,21 @@ dk_or_decompress_position (int n_attrs, OR_ATTRIBUTE ** attrs, OR_FUNCTION_INDEX
 }
 
 int
-dk_get_compress_index_value (OID * rec_oid, int att_id, DB_VALUE * value)
+dk_get_deduplicate_key_value (OID * rec_oid, int att_id, DB_VALUE * value)
 {
   // The rec_oid may be NULL when the index of the UNIQUE attribute is an index. 
   // In that case, however, it cannot entered here.
-  short level = GET_COMPRESS_INDEX_ATTR_LEVEL (att_id);
+  short level = GET_DEDUPLICATE_KEY_ATTR_LEVEL (att_id);
 
   assert_release (rec_oid != NULL);
-  assert (IS_COMPRESS_INDEX_ATTR_ID (att_id));
+  assert (IS_DEDUPLICATE_KEY_ATTR_ID (att_id));
 
 #ifndef NDEBUG
 #define OID_2_BIGINT(oidptr) (((oidptr)->volid << 48) | ((oidptr)->pageid << 16) | (oidptr)->slotid)
 
-  if (prm_get_bool_value (PRM_ID_USE_COMPRESS_INDEX_MODE_OID_TEST))
+  if (prm_get_bool_value (PRM_ID_USE_DEDUPLICATE_KEY_MODE_OID_TEST))
     {
-      if (level == COMPRESS_INDEX_MOD_LEVEL_ZERO)
+      if (level == DEDUPLICATE_KEY_LEVEL_ZERO)
 	{
 	  db_make_int (value, (int) (OID_2_BIGINT (rec_oid) % SHRT_MAX));
 	}
@@ -172,7 +172,7 @@ dk_get_compress_index_value (OID * rec_oid, int att_id, DB_VALUE * value)
     }
 #endif
 
-  if (level == COMPRESS_INDEX_MOD_LEVEL_ZERO)
+  if (level == DEDUPLICATE_KEY_LEVEL_ZERO)
     {
       db_make_int (value, rec_oid->pageid);
     }
@@ -199,7 +199,7 @@ dk_get_compress_index_value (OID * rec_oid, int att_id, DB_VALUE * value)
 #if !defined(SERVER_MODE)
 
 // SM_ATTRIBUTE and DB_ATTRIBUTE are the same thing.
-static SM_ATTRIBUTE *st_sm_atts[COUNT_OF_COMPRESS_INDEX_MOD_LEVEL];
+static SM_ATTRIBUTE *st_sm_atts[COUNT_OF_DEDUPLICATE_KEY_LEVEL];
 static bool st_sm_atts_init = false;
 
 static void
@@ -209,7 +209,7 @@ dk_sm_attribute_finalized ()
 
   if (st_sm_atts_init)
     {
-      for (level = COMPRESS_INDEX_MOD_LEVEL_ZERO; level <= COMPRESS_INDEX_MOD_LEVEL_MAX; level++)
+      for (level = DEDUPLICATE_KEY_LEVEL_ZERO; level <= DEDUPLICATE_KEY_LEVEL_MAX; level++)
 	{
 	  if (st_sm_atts[level])
 	    {
@@ -230,9 +230,9 @@ dk_sm_attribute_initialized ()
   SM_ATTRIBUTE *att;
   DB_DOMAIN *domain = NULL;
 
-  for (level = COMPRESS_INDEX_MOD_LEVEL_ZERO; level <= COMPRESS_INDEX_MOD_LEVEL_MAX; level++)
+  for (level = DEDUPLICATE_KEY_LEVEL_ZERO; level <= DEDUPLICATE_KEY_LEVEL_MAX; level++)
     {
-      reserved_name = GET_COMPRESS_INDEX_ATTR_NAME (level);
+      reserved_name = GET_DEDUPLICATE_KEY_ATTR_NAME (level);
       domain = get_reserved_index_attr_domain_type (level);
       if (domain == NULL)
 	{
@@ -255,7 +255,7 @@ dk_sm_attribute_initialized ()
       att->class_mop = NULL;
       att->domain = domain;
       att->auto_increment = NULL;
-      att->id = MK_COMPRESS_INDEX_ATTR_ID (level);
+      att->id = MK_DEDUPLICATE_KEY_ATTR_ID (level);
 
       st_sm_atts[level] = att;
     }
@@ -272,42 +272,42 @@ error_exit:
 }
 
 SM_ATTRIBUTE *
-dk_find_sm_compress_index_attribute (int att_id, const char *att_name)
+dk_find_sm_deduplicate_key_attribute (int att_id, const char *att_name)
 {
   int level, idx;
 
   assert ((att_id != -1) || (att_name && *att_name));
   if (att_id != -1)
     {
-      assert (IS_COMPRESS_INDEX_ATTR_ID (att_id));
-      level = GET_COMPRESS_INDEX_ATTR_LEVEL (att_id);
+      assert (IS_DEDUPLICATE_KEY_ATTR_ID (att_id));
+      level = GET_DEDUPLICATE_KEY_ATTR_LEVEL (att_id);
     }
   else
     {
-      GET_COMPRESS_INDEX_ATTR_MODE_LEVEL_FROM_NAME (att_name, level);
+      GET_DEDUPLICATE_KEY_ATTR_MODE_LEVEL_FROM_NAME (att_name, level);
     }
 
-  assert (level >= COMPRESS_INDEX_MOD_LEVEL_ZERO && level <= COMPRESS_INDEX_MOD_LEVEL_MAX);
-  assert (dk_reserved_compress_index_col_name[level] != NULL);
+  assert (level >= DEDUPLICATE_KEY_LEVEL_ZERO && level <= DEDUPLICATE_KEY_LEVEL_MAX);
+  assert (dk_reserved_deduplicate_key_index_col_name[level] != NULL);
   assert (st_sm_atts_init == true);
 
   return st_sm_atts[level];
 }
 
 int
-dk_sm_decompress_position (int n_attrs, SM_ATTRIBUTE ** attrs, SM_FUNCTION_INFO * function_index)
+dk_sm_deduplicate_key_position (int n_attrs, SM_ATTRIBUTE ** attrs, SM_FUNCTION_INFO * function_index)
 {
   if (n_attrs > 1)
     {
       if (function_index)
 	{
 	  if ((function_index->attr_index_start > 0)
-	      && IS_COMPRESS_INDEX_ATTR_ID (attrs[function_index->attr_index_start - 1]->id))
+	      && IS_DEDUPLICATE_KEY_ATTR_ID (attrs[function_index->attr_index_start - 1]->id))
 	    {
 	      return function_index->attr_index_start;
 	    }
 	}
-      else if (IS_COMPRESS_INDEX_ATTR_ID (attrs[n_attrs - 1]->id))
+      else if (IS_DEDUPLICATE_KEY_ATTR_ID (attrs[n_attrs - 1]->id))
 	{
 	  return (n_attrs - 1);
 	}
@@ -319,7 +319,7 @@ dk_sm_decompress_position (int n_attrs, SM_ATTRIBUTE ** attrs, SM_FUNCTION_INFO 
 void
 dk_create_index_level_remove_adjust (DB_CONSTRAINT_TYPE ctype, char **attnames, int *asc_desc,
 				     int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info,
-				     int compress_index_col_pos, int nnames)
+				     int deduplicate_key_col_pos, int nnames)
 {
   int func_no_args = 0;
 
@@ -329,32 +329,32 @@ dk_create_index_level_remove_adjust (DB_CONSTRAINT_TYPE ctype, char **attnames, 
       assert (asc_desc != NULL);
     }
 
-  if (compress_index_col_pos != -1)
+  if (deduplicate_key_col_pos != -1)
     {				// remove hidden column   
-      attnames[compress_index_col_pos] = NULL;
+      attnames[deduplicate_key_col_pos] = NULL;
 
       assert (!func_index_info || (func_index_info && func_index_info->attr_index_start > 0));
       if (func_index_info && func_index_info->attr_index_start > 0)
 	{
-	  func_no_args = nnames - compress_index_col_pos;
+	  func_no_args = nnames - deduplicate_key_col_pos;
 	  if (func_no_args > 0)
 	    {
-	      memmove (asc_desc + compress_index_col_pos, asc_desc + (compress_index_col_pos + 1),
+	      memmove (asc_desc + deduplicate_key_col_pos, asc_desc + (deduplicate_key_col_pos + 1),
 		       (func_no_args * sizeof (asc_desc[0])));
 	      if (attrs_prefix_length)
 		{
-		  memmove (attrs_prefix_length + compress_index_col_pos,
-			   attrs_prefix_length + (compress_index_col_pos + 1),
+		  memmove (attrs_prefix_length + deduplicate_key_col_pos,
+			   attrs_prefix_length + (deduplicate_key_col_pos + 1),
 			   (func_no_args * sizeof (attrs_prefix_length[0])));
 		}
-	      memmove (attnames + compress_index_col_pos, attnames + (compress_index_col_pos + 1),
+	      memmove (attnames + deduplicate_key_col_pos, attnames + (deduplicate_key_col_pos + 1),
 		       (func_no_args * sizeof (attnames[0])));
 
 	      attnames[nnames - 1] = NULL;
 	      func_index_info->attr_index_start--;
 	    }
 	}
-      compress_index_col_pos = -1;
+      deduplicate_key_col_pos = -1;
     }
 }
 
@@ -362,12 +362,12 @@ void
 dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int *asc_desc,
 			      int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames, bool is_reverse)
 {
-  int compress_index_col_pos;
+  int deduplicate_key_col_pos;
 
   assert (asc_desc != NULL);
-  assert (idx_info->compress_mode != COMPRESS_INDEX_MODE_NONE);
-  assert (idx_info->compress_level >= COMPRESS_INDEX_MOD_LEVEL_ZERO
-	  && idx_info->compress_level <= COMPRESS_INDEX_MOD_LEVEL_MAX);
+  assert (idx_info->dedup_key_mode != DEDUPLICATE_KEY_MODE_NONE);
+  assert (idx_info->dedup_key_level >= DEDUPLICATE_KEY_LEVEL_ZERO
+	  && idx_info->dedup_key_level <= DEDUPLICATE_KEY_LEVEL_MAX);
 
   if (func_index_info)
     {
@@ -385,42 +385,42 @@ dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, i
 		   attnames + func_index_info->attr_index_start, idx_info->func_no_args * sizeof (attnames[0]));
 	}
 
-      compress_index_col_pos = func_index_info->attr_index_start++;
+      deduplicate_key_col_pos = func_index_info->attr_index_start++;
     }
   else
     {
-      compress_index_col_pos = nnames;
+      deduplicate_key_col_pos = nnames;
     }
 
   if (attrs_prefix_length)
     {
-      attrs_prefix_length[compress_index_col_pos] = -1;
+      attrs_prefix_length[deduplicate_key_col_pos] = -1;
     }
-  attnames[compress_index_col_pos] = (char *) GET_COMPRESS_INDEX_ATTR_NAME (idx_info->compress_level);
-  asc_desc[compress_index_col_pos] = (is_reverse ? 1 : 0);
+  attnames[deduplicate_key_col_pos] = (char *) GET_DEDUPLICATE_KEY_ATTR_NAME (idx_info->dedup_key_level);
+  asc_desc[deduplicate_key_col_pos] = (is_reverse ? 1 : 0);
 
   attnames[nnames + 1] = NULL;
 }
 
 char *
-dk_print_compress_index_info (char *buf, int buf_size, int compress_mode, int compress_level)
+dk_print_deduplicate_key_info (char *buf, int buf_size, int dedup_key_mode, int dedup_key_level)
 {
   int len = 0;
 
   buf[0] = '\0';
-  if (compress_mode == COMPRESS_INDEX_MODE_NONE)
+  if (dedup_key_mode == DEDUPLICATE_KEY_MODE_NONE)
     {
-      len = snprintf (buf, buf_size, "COMPRESS HIGH");
+      len = snprintf (buf, buf_size, "DEDUPLICATE_KEY OFF");
     }
-  else if (compress_mode == COMPRESS_INDEX_MODE_SET)
+  else if (dedup_key_mode == DEDUPLICATE_KEY_MODE_SET)
     {
-      if (compress_level == COMPRESS_INDEX_MOD_LEVEL_ZERO)
+      if (dedup_key_level == DEDUPLICATE_KEY_LEVEL_ZERO)
 	{
-	  len = snprintf (buf, buf_size, "COMPRESS LOW");
+	  len = snprintf (buf, buf_size, "DEDUPLICATE_KEY ON");
 	}
       else
 	{
-	  len = snprintf (buf, buf_size, "COMPRESS MEDIUM(%d)", compress_level);
+	  len = snprintf (buf, buf_size, "DEDUPLICATE_KEY ON(%d)", dedup_key_level);
 	}
     }
 
@@ -433,7 +433,7 @@ dk_print_compress_index_info (char *buf, int buf_size, int compress_mode, int co
 
 
 void
-dk_compress_index_attribute_initialized ()
+dk_deduplicate_key_attribute_initialized ()
 {
 #if defined(SERVER_MODE) || defined(SA_MODE)
   dk_or_attribute_initialized ();
@@ -445,11 +445,11 @@ dk_compress_index_attribute_initialized ()
 }
 
 void
-dk_compress_index_attribute_finalized ()
+dk_deduplicate_key_attribute_finalized ()
 {
 #if !defined(SERVER_MODE)
   dk_sm_attribute_finalized ();
 #endif
 }
 
-#endif // #if defined(SUPPORT_COMPRESS_MODE)
+#endif // #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
