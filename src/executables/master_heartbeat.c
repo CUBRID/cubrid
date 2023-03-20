@@ -1410,7 +1410,7 @@ hb_cluster_check_valid_ping_server (void)
 
   for (ping_host = hb_Cluster->ping_hosts; ping_host; ping_host = ping_host->next)
     {
-      if (ping_host->port == 0)	// prm_get_string_value (PRM_ID_HA_PING_HOSTS) != NULL
+      if (prm_get_string_value (PRM_ID_HA_PING_HOSTS))
 	{
 	  ping_host->ping_result = hb_check_ping (ping_host->host_name);
 	}
