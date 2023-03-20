@@ -160,6 +160,10 @@ namespace cublog
       // add a new log record as part of an already existing atomic replication
       // sequence (be it sysop or non-sysop)
       void append_log (TRANID tranid, LOG_LSA lsa, LOG_RCVINDEX rcvindex, VPID vpid);
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+      bool check_and_force_enque_as_part_of_existing_sequence (TRANID tranid, LOG_LSA lsa,
+	  LOG_RCVINDEX rcvindex, VPID vpid);
+#endif
 
       bool is_part_of_atomic_replication (TRANID tranid) const;
       bool all_log_entries_are_control (TRANID tranid) const;
@@ -175,9 +179,9 @@ namespace cublog
 
       void forcibly_remove_sequence (TRANID trid);
 
-#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
-      void check_vpid_not_part_of_any_sequence (VPID vpid);
-#endif
+//#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+//      void check_vpid_not_part_of_any_sequence (VPID vpid);
+//#endif
 
     private: // methods
       void start_sequence_internal (TRANID trid, LOG_LSA start_lsa, const log_rv_redo_context &redo_context);
@@ -238,7 +242,8 @@ namespace cublog
 
 	  void check_absent_for_transaction (TRANID trid) const;
 
-	  void check_vpid_not_part_of_any_sequence (VPID vpid) const;
+//	  void check_vpid_not_part_of_any_sequence (VPID vpid) const;
+	  bool is_vpid_part_of_any_sequence (VPID vpid, TRANID &trid) const;
 
 	private: // types
 	  using vpid_map_type = std::map<VPID, int>;
@@ -270,7 +275,7 @@ namespace cublog
 	  void append_log (LOG_LSA lsa, LOG_RCVINDEX rcvindex, VPID vpid
 #ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
 			   , vpid_bookeeping &vpid_bk
-#endif
+#endif // TODO: move assignment to bookkeeping in upstream function
 			  );
 
 	  void apply_and_unfix (THREAD_ENTRY *thread_p

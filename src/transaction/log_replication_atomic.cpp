@@ -275,9 +275,18 @@ namespace cublog
 	else
 	  {
 #ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
-	    m_atomic_helper.check_vpid_not_part_of_any_sequence (log_vpid);
-#endif
+	    //m_atomic_helper.check_vpid_not_part_of_any_sequence (log_vpid);
+	    // TODO: if intermingled with an atomic sequences, enqueue to be executed after the active
+	    // atomic sequence concludes with: rec_header.trid, rec_lsa, rcvindex, log_vpid )
+	    // but if another sequenc
+	    if (!m_atomic_helper.check_and_force_enque_as_part_of_existing_sequence (rec_header.trid, rec_lsa,
+		rcvindex, log_vpid))
+	      {
+		log_rv_redo_record_sync<T> (&thread_entry, m_redo_context, record_info, log_vpid);
+	      }
+#else
 	    log_rv_redo_record_sync<T> (&thread_entry, m_redo_context, record_info, log_vpid);
+#endif
 	  }
       }
   }
