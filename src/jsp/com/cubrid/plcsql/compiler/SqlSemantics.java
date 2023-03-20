@@ -35,16 +35,6 @@ import java.util.List;
 
 public class SqlSemantics {
 
-    public enum Kind {
-        SELECT,
-        INSERT,
-        UPDATE,
-        DELETE,
-        MERGE,
-        REPLACE,
-        TRUNCATE
-    }
-
     // for error return
     public int errCode; // non-zero if error
     public String errMsg;
@@ -56,7 +46,7 @@ public class SqlSemantics {
     }
 
     // for normal return
-    public Kind kind;
+    public int kind;
     public String rewritten;
     public LinkedHashMap<String, String>
             hostVars; // host variables and their SQL types required in their locations
@@ -65,7 +55,7 @@ public class SqlSemantics {
     public List<String> intoVars; // (only for select stetements with an into-clause) into variables
 
     SqlSemantics(
-            Kind kind,
+            int kind,
             String rewritten,
             LinkedHashMap<String, String> hostVars,
             LinkedHashMap<String, String> selectList,

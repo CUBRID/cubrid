@@ -970,7 +970,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         SqlSemantics sws = staticSqls.get(ctx.s_select_statement());
         assert sws != null;
-        assert sws.kind == SqlSemantics.Kind.SELECT; // by syntax
+        assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
         if (sws.intoVars != null) {
             throw new SemanticError(
                     Misc.getLineOf(ctx.s_select_statement()), // s015
@@ -1399,7 +1399,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         SqlSemantics sws = staticSqls.get(selectCtx);
         assert sws != null;
-        assert sws.kind == SqlSemantics.Kind.SELECT; // by syntax
+        assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
         if (sws.intoVars != null) {
             throw new SemanticError(
                     Misc.getLineOf(selectCtx), // s027
@@ -1628,7 +1628,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         SqlSemantics sws = staticSqls.get(ctx);
         assert sws != null;
         StaticSql staticSql = checkAndConvertStaticSql(sws, ctx);
-        if (staticSql.kind == SqlSemantics.Kind.SELECT) {
+        if (staticSql.kind == ServerConstants.CUBRID_STMT_SELECT) {
             if (staticSql.intoVars == null) {
                 throw new SemanticError(
                         Misc.getLineOf(ctx), // s055
@@ -1761,7 +1761,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         SqlSemantics sws = staticSqls.get(ctx.s_select_statement());
         assert sws != null;
-        assert sws.kind == SqlSemantics.Kind.SELECT; // by syntax
+        assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
         if (sws.intoVars != null) {
             throw new SemanticError(
                     Misc.getLineOf(ctx.s_select_statement()), // s043
@@ -2215,7 +2215,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             hostVars.put(id, javaType);
         }
 
-        if (sws.kind == SqlSemantics.Kind.SELECT) {
+        if (sws.kind == ServerConstants.CUBRID_STMT_SELECT) {
 
             // convert select list
             selectList = new LinkedHashMap<>();
