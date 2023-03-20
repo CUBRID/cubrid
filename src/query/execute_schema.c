@@ -10508,9 +10508,6 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
       PT_NODE *att;
       const char *att_name;
 
-      att = attribute->info.attr_def.attr_name;
-      att_name = att->info.name.original;
-
       switch (attribute->type_enum)
 	{
 	case PT_TYPE_INTEGER:
@@ -10525,6 +10522,9 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	    }
 
 	default:
+	  att = attribute->info.attr_def.attr_name;
+	  att_name = att->info.name.original;
+
 	  PT_ERRORmf (parser, att, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_AUTO_INCREMENT_DOMAIN, att_name);
 	  error = ER_PT_SEMANTIC;
 	  goto exit;
