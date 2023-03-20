@@ -347,6 +347,8 @@ namespace cubthread
       lockfree::tran::index pull_lf_tran_index ();
       lockfree::tran::index get_lf_tran_index ();
 
+      void set_thread_type (thread_type type);
+
     private:
       void clear_resources (void);
 
@@ -365,6 +367,11 @@ namespace cubthread
       log_system_tdes *m_systdes;
 
       lockfree::tran::index m_lf_tran_index;
+
+    public:
+      // TODO: if true, instructs page buffer's internal unfix mechanism to not affect page hotness
+      // member introduced temporarily to allow to activate/de-activate this mechanism based on a sysparam
+      bool m_page_buffer_ignore_unfix;
   };
 
 } // namespace cubthread

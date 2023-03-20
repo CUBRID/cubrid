@@ -99,6 +99,15 @@ namespace cubthread
   {
   }
 
+  void
+  entry::set_thread_type (thread_type type)
+  {
+    // if these two are ever used in unit tests, see actual implementation of the function
+    assert (type != TT_REPLICATION_PS && type != TT_REPLICATION_PTS);
+
+    this->type = type;
+  }
+
 } // namespace cubthread
 
 // needed by:
