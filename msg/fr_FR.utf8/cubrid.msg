@@ -1437,7 +1437,16 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 Dernière erreur
+1355 %1$s "%2$s" est un format invalide à la ligne %3$d du fichier "%4$s".
+1356 Le nom d'hôte "%1$s" est trop long, il doit être inférieur ou égal à 256 à la ligne %2$d du fichier "%3$s".
+1357 Le nom d'hôte "%1$s" existe déjà, un nom d'hôte ne peut pas être dupliqué avec d'autres adresses IP à la ligne %2$d du fichier "%3$s".
+1358 L'adresse IP et le nom d'hôte doivent être écrits entièrement à la ligne %1$d du fichier "%2$s".
+1359 Impossible de rechercher "%1$s" dans cubrid_hosts.conf.
+1360 Une erreur s'est produite lors de l'utilisation de l'hôte défini par l'utilisateur.
+
+1361 Le fichier "%1$s" est introuvable.
+
+1362 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
@@ -1601,6 +1610,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 133 Utilisation non valide de DROP SYNONYM.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
 134 Utilisation non valide de RENAME SYNONYM.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
 135 Aucune option spécifiée pour ALTER SYNONYM.
+136 Maximum length of a server dbname is %1$d bytes.
+137 Maximum length of a server user is %1$d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Mémoire épuisée.
@@ -2002,6 +2013,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 80 La valeur de niveau d'isolement dans MVCC doit être 'read committed', 'repeatable read' ou 'serializable'.
 81 '%1$s' est un objet 'auto_increment', qui n'est pas autorisé à être modifié comme 'serial'.
 82 JSON invalide: '%1$s'.
+83 Vclass %1$s is not updatable. Please check if any of its related classes are marked as REUSE_OID.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** cache invalide ***

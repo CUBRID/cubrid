@@ -24,7 +24,7 @@ on:
 jobs:
   license:
     name: license
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
       - uses: jitterbit/get-changed-files@v1
@@ -66,15 +66,18 @@ jobs:
           test $result = "PASS" # if non-zero, fail
   pr-style:
     name: pr-style
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: deepakputhraya/action-pr-title@master
         with:
           regex: '^\[[A-Z]+-\d+\]\s.+' # Regex the title should match.
   code-style:
     name: code-style
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
+    env:
+      working-directory: .github/workflows
     steps:
+      - uses: actions/checkout@v2
       - name: Install packages
         run: |
           # dependencies to build GNU indent
@@ -90,7 +93,14 @@ jobs:
           ./configure
           sudo make -j install
           cd ..
-      - uses: actions/checkout@v2
+
+          # download google-java-format-1.7-all-deps.jar
+          wget https://github.com/google/google-java-format/releases/download/google-java-format-1.7/google-java-format-1.7-all-deps.jar
+        working-directory: ${{ env.working-directory }}
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'adopt'
+          java-version: '8'
       - id: files
         uses: jitterbit/get-changed-files@v1
         continue-on-error: true
@@ -106,10 +116,10 @@ jobs:
         if: ${{ failure() }}
         uses: reviewdog/action-suggester@v1
         with:
-          tool_name: code-style (indent, astyle)
+          tool_name: code-style (indent, astyle, google-java-format)
   cppcheck:
     name: cppcheck
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - name: Install packages
         run: |

@@ -254,7 +254,6 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
   T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
-  char *admin_log2;
 
   if (br_num <= 0)
     {
@@ -275,11 +274,20 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 
   if (admin_log_file != NULL)
     {
-      admin_log2 = strdup (admin_log_file);
-      if (admin_log2)
+      char buf[BROKER_PATH_MAX] = { 0, };
+
+#if defined (WINDOWS)
+      if (_fullpath (buf, admin_log_file, BROKER_PATH_MAX) == NULL)
 	{
-	  broker_create_dir (dirname (admin_log2));
-	  free (admin_log2);
+	  buf[0] = '\0';
+	}
+#else
+      snprintf (buf, BROKER_PATH_MAX, "%s", admin_log_file);
+#endif /* WINDOWS */
+
+      if (buf[0] != '\0')
+	{
+	  broker_create_dir (dirname (buf));
 	}
     }
 

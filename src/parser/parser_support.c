@@ -3354,6 +3354,44 @@ pt_has_inst_num (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_has_expr_of_inst_in_sel_list () - check if tree has an EXPR node having INST_NUM in select list
+ *   return: true if tree has EXPR node having INST_NUM
+ *   parser(in):
+ *   node(in):
+ */
+bool
+pt_has_expr_of_inst_in_sel_list (PARSER_CONTEXT * parser, PT_NODE * select_list)
+{
+  PT_NODE *save_next, *col;
+
+  /*
+   * FIXME!! : remove this check after expanding syntax related to orderby_num().
+   * This check is needed because the syntax below is not supported.
+   * 'select orderby_num() + 10 ...'
+   * Check MSGCAT_SEMANTIC_ORDERBYNUM_SELECT_LIST_ERR error code
+   * In XASL Generator, 'ordbynum_val' must be created as a regular variable, not db_value.
+   */
+  col = select_list;
+  while (col)
+    {
+      /* cut off next */
+      save_next = col->next;
+      col->next = NULL;
+
+      if (!PT_IS_INSTNUM (col) && pt_has_inst_num (parser, col))
+	{
+	  /* find expr of instnum */
+	  col->next = save_next;
+	  return true;
+	}
+      col->next = save_next;
+      col = col->next;
+    }
+
+  return false;
+}
+
+/*
  * pt_has_inst_in_where_and_select_list ()
  *          - check if tree has an INST_NUM or ORDERBY_NUM or GROUPBY_NUM node in where and select_list
  *   return: true if tree has INST_NUM/ORDERBY_NUM
@@ -3486,6 +3524,55 @@ pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level
     default:
       break;
     }
+}
+
+/*
+ * pt_set_pred_order ()
+ *          - set predicate order number
+ *   parser(in):
+ *   pre_pred(in):
+ *   pre_order(in):
+ */
+
+void
+pt_set_pred_order (PARSER_CONTEXT * parser, PT_NODE * pre_pred, int pre_order)
+{
+  PT_NODE *pred;
+
+  /* set pred_order + pre_order to pre_pred */
+  for (pred = pre_pred; pred; pred = pred->next)
+    {
+      if (pt_is_expr_node (pred))
+	{
+	  pred->info.expr.pred_order += pre_order;
+	}
+    }
+}
+
+/*
+ * pt_get_max_pred_order ()
+ *          - get max predicate order number
+ *   parser(in):
+ *   pred(in):
+ */
+
+int
+pt_get_max_pred_order (PARSER_CONTEXT * parser, PT_NODE * predicate)
+{
+  PT_NODE *pred;
+  int max_pred_order = 0;
+
+  for (pred = predicate; pred; pred = pred->next)
+    {
+      if (pt_is_expr_node (pred))
+	{
+	  if (pred->info.expr.pred_order > max_pred_order)
+	    {
+	      max_pred_order = pred->info.expr.pred_order;
+	    }
+	}
+    }
+  return max_pred_order;
 }
 
 /*

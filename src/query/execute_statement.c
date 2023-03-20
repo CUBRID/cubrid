@@ -89,6 +89,7 @@
 #include "tz_support.h"
 #include "dbtype.h"
 #include "crypt_opfunc.h"
+#include "method_callback.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -4588,6 +4589,7 @@ do_commit (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* Row count should be reset to -1 for explicit commits (i.e: commit statements) but should not be reset in
    * AUTO_COMMIT mode. This is the best place to reset it for commit statements. */
   db_update_row_count_cache (-1);
+  cubmethod::get_callback_handler ()->free_query_handle_all (true);
   return tran_commit (statement->info.commit_work.retain_lock ? true : false);
 }
 
@@ -4639,6 +4641,8 @@ do_rollback (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  db_value_clear (&val);
 	}
     }
+
+  cubmethod::get_callback_handler ()->free_query_handle_all (true);
 
   return error;
 }
@@ -11621,7 +11625,6 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
   DB_MIDXKEY midxkey;
   SM_ATTRIBUTE **attr = NULL;
   int buf_size = 0, bitmap_size = 0, i, error = NO_ERROR, attr_count = 0;
-  unsigned char *bits;
   char *bound_bits = NULL, *key_ptr = NULL;
   OR_BUF buf;
   DB_VALUE *val = NULL;
@@ -11682,15 +11685,8 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
   bound_bits = midxkey.buf;
   key_ptr = bound_bits + bitmap_size;
 
-  OR_BUF_INIT (buf, key_ptr, buf_size - bitmap_size);
-  if (bitmap_size > 0)
-    {
-      bits = (unsigned char *) bound_bits;
-      for (i = 0; i < bitmap_size; i++)
-	{
-	  bits[i] = (unsigned char) 0;
-	}
-    }
+  or_init (&buf, key_ptr, buf_size - bitmap_size);
+  MIDXKEY_BOUNDBITS_INIT (bound_bits, bitmap_size);
 
   for (i = 0, attr = constraint->attributes; *attr != NULL; attr++, i++)
     {
@@ -20138,8 +20134,11 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   pval = NULL;
 
   /* DBNAME */
-  assert (create_server->dbname->node_type == PT_NAME);
-  attr_val[2] = (char *) create_server->dbname->info.name.original;
+  assert (create_server->dbname->node_type == PT_NAME || create_server->dbname->node_type == PT_VALUE);
+  // *INDENT-OFF* 
+  attr_val[2] = (create_server->dbname->node_type == PT_NAME) ? (char *) create_server->dbname->info.name.original
+                                                              : (char *) PT_VALUE_GET_BYTES (create_server->dbname);
+  // *INDENT-ON* 
   if (attr_val[2] == NULL)
     {
       error = ER_FAILED;
@@ -20147,8 +20146,11 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* USER */
-  assert (create_server->user->node_type == PT_NAME);
-  attr_val[3] = (char *) create_server->user->info.name.original;
+  assert (create_server->user->node_type == PT_NAME || create_server->user->node_type == PT_VALUE);
+  // *INDENT-OFF* 
+  attr_val[3] = (create_server->user->node_type == PT_NAME) ? (char *) create_server->user->info.name.original
+                                                            : (char *) PT_VALUE_GET_BYTES (create_server->user);
+  // *INDENT-ON* 
   if (attr_val[3] == NULL)
     {
       error = ER_FAILED;
@@ -20433,8 +20435,15 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (alter->xbits.bit_dbname)
     {
-      assert (alter->dbname->node_type == PT_NAME);
-      pt = (char *) alter->dbname->info.name.original;
+      assert (alter->dbname->node_type == PT_NAME || alter->dbname->node_type == PT_VALUE);
+      if (alter->dbname->node_type == PT_VALUE)
+	{
+	  pt = (char *) PT_VALUE_GET_BYTES (alter->dbname);
+	}
+      else
+	{
+	  pt = (char *) alter->dbname->info.name.original;
+	}
 
       assert (pt && *pt);
       db_make_string (&value, pt);
@@ -20448,8 +20457,15 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (alter->xbits.bit_user)
     {
-      assert (alter->user->node_type == PT_NAME);
-      pt = (char *) alter->user->info.name.original;
+      assert (alter->user->node_type == PT_NAME || alter->user->node_type == PT_VALUE);
+      if (alter->user->node_type == PT_VALUE)
+	{
+	  pt = (char *) PT_VALUE_GET_BYTES (alter->user);
+	}
+      else
+	{
+	  pt = (char *) alter->user->info.name.original;
+	}
 
       assert (pt && *pt);
       db_make_string (&value, pt);

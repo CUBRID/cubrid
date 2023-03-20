@@ -44,6 +44,7 @@ namespace cubmethod
     , m_max_col_size (-1)
     , m_has_result_set (false)
     , m_is_occupied (false)
+    , m_query_id (-1)
     , m_prepare_info ()
     , m_execute_info ()
     , m_prepare_call_info ()
@@ -94,6 +95,12 @@ namespace cubmethod
   query_handler::get_statement_type () const
   {
     return m_stmt_type;
+  }
+
+  uint64_t
+  query_handler::get_query_id () const
+  {
+    return m_query_id;
   }
 
   int
@@ -191,6 +198,16 @@ namespace cubmethod
   }
 
   int
+  query_handler::prepare_retry ()
+  {
+    if (is_prepared ())
+      {
+	return prepare (m_sql_stmt, m_prepare_flag);
+      }
+    return ER_FAILED;
+  }
+
+  int
   query_handler::execute (const execute_request &request)
   {
     int error = NO_ERROR;
@@ -217,6 +234,7 @@ namespace cubmethod
 	/* set max_col_size */
 	m_max_col_size = max_col_size;
 	m_execute_info.handle_id = get_id ();
+	m_query_id = m_execute_info.qresult_info.query_id;
 
 	/* include column info? */
 	if (db_check_single_query (m_session) != NO_ERROR) /* ER_IT_MULTIPLE_STATEMENT */
@@ -614,6 +632,7 @@ namespace cubmethod
       }
 
     m_has_result_set = false;
+    m_query_id = -1;
   }
 
   int
@@ -663,7 +682,6 @@ namespace cubmethod
     int n = db_execute_and_keep_statement (m_session, stmt_id, &result);
     if (n < 0)
       {
-	m_error_ctx.set_error (n, NULL, __FILE__, __LINE__);
 	return ER_FAILED;
       }
     else if (result != NULL)

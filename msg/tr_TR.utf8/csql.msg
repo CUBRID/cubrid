@@ -112,6 +112,7 @@ $  Bu 3 boş bırakılmalı
 194 Komut satırı argümanlarının geçersiz kombinasyonu (seçenekler).
 196 Tanımlanamayan bir hata oluıtu.
 197 Çıkış yönlendirildişinde ';edit' izin verilmez.
+198 Biçimlendirme başarısız oldu.
 
 203 <%1$s> 
 204 <Super Classes> 
@@ -153,7 +154,7 @@ $ csql help messages
    ;EXit                        - programdan çık.\n\
 \n\
    ;CLear                       - komut buffer temizle.\n\
-   ;EDIT                        - komut buffer ile sistem editörü çağırmak.\n\
+   ;EDIT   [format/fmt]         - komut arabelleği ile [biçimlendiriciden sonra] sistem düzenleyicisini çağırın.\n\
    ;LISt                        - komut buffwe içerik görüntüle.\n\
 \n\
    ;RUn                         - komut buffer içinde SQL yürüt.\n\
@@ -162,12 +163,15 @@ $ csql help messages
    ;COMmit                      - geçerli işlemleri iıle.\n\
    ;ROllback                    - geçerli işlemleri geri iıle.\n\
    ;AUtocommit [ON|OFF]         - otomatik tamamlama modunu etkinleştirme / devre dışı bırakma.\n\
-   ;REStart                     - veritabanını yeniden başlat.\n\
+   ;REStart                     - CSQL oturumunda hedef veritabanına yeniden bağlanın.\n\
+   ;CHeckpoint                  - kontrol noktasını yürütün (yalnızca --sysadm ile CSQL).\n\
+   ;Killtran                    - işlem durumu bilgilerini kontrol edin veya belirli bir işlemi sonlandırın. (yalnızca --sysadm ile CSQL).\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - varsayılan dış kabuğu ayarla, editör, yazdır ve çağrı cihazı\n\
-   ;EDITOR_Cmd   [editor-cmd]     yeni bir tane komut ver veya geçerli olanı görüntüle\n\
-   ;PRINT_Cmd    [print-cmd]      bir, sırasıyla.\n\
-   ;PAger_cmd    [pager-cmd]\n\
+   ;SHELL_Cmd     [shell-cmd]   - varsayılan dış kabuğu ayarla, editör, yazdır, çağrı cihazı ve biçimlendirici\n\
+   ;EDITOR_Cmd    [editor-cmd]    yeni bir tane komut ver veya geçerli olanı görüntüle\n\
+   ;PRINT_Cmd     [print-cmd]     bir, sırasıyla.\n\
+   ;PAger_cmd     [pager-cmd]\n\
+   ;FOrmatter_cmd [formatter-cmd]\n\
 \n\
    ;DATE                        - yerel saat görüntüle, tarih.\n\
    ;DATAbase                    - veritabanı erişilen adını görüntüler.\n\
@@ -185,6 +189,13 @@ $ csql help messages
    ;HISTORYList                 - çalıştırılan sorguların listesini görüntüleyebilir.\n\
    ;HISTORYRead <history_num>   - komut buffer içine geçmiş numarası üzerinde giriş okuyun.\n\
    ;TRAce [ON/OFF] [text/json]  - sql otomatik iz etkinleştirmek/devre dışı.\n\
+   ;SIngleline [ON|OFF]         - tek hat modunu etkinleştir/devre dışı bırak.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - mevcut veya diğer veritabanlarına bir kullanıcı adı olarak bağlanın.\n\ 
+   ;.Hist [ON/OFF]              - CSQL'de istatistik bilgisi toplamayı başlat/durdur (yalnızca DBA mevcuttur).\n\
+   ;.Clear_hist                 - tampondaki CSQL istatistik bilgilerini temizler.\n\
+   ;.Dump_hist                  - CSQL istatistik bilgilerini CSQL'de görüntüler.\n\
+   ;.X_hist                     - CSQL'de CSQL istatistik bilgilerini, istatistik verileri başlatıldı.\n\
    ;HElp                        - yardım mesajını görüntüler.\n\n
 
 232 <Constraints> 

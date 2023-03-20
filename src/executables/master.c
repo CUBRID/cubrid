@@ -1128,6 +1128,7 @@ main (int argc, char **argv)
   char *errlog = NULL;
   int status = EXIT_SUCCESS;
   const char *msg_format;
+  bool util_config_ret;
 
   if (utility_initialize () != NO_ERROR)
     {
@@ -1145,6 +1146,8 @@ main (int argc, char **argv)
     }
 #endif /* WINDOWS */
 
+  util_config_ret = master_util_config_startup ((argc > 1) ? argv[1] : NULL, &port_id);
+
   if (GETHOSTNAME (hostname, CUB_MAXHOSTNAMELEN) == 0)
     {
       /* css_gethostname won't null-terminate if the name is overlong.  Put in a guaranteed null-terminator of our own
@@ -1160,7 +1163,7 @@ main (int argc, char **argv)
       status = EXIT_FAILURE;
       goto cleanup;
     }
-  if (master_util_config_startup ((argc > 1) ? argv[1] : NULL, &port_id) == false)
+  if (util_config_ret == false)
     {
       msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_NO_PARAMETERS);
       css_master_error (msg_format);

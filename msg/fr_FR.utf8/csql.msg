@@ -112,6 +112,7 @@ $ Ces 3 doit être vide
 194 Combinaison incorrecte d'arguments de ligne de commande (options).
 196 Erreur de type inconnu s'est produite.
 197 ';edit' n'est pas autorisée lorsque la sortie a été redirigée.
+198 Le formatage a échoué.
 
 203 <%1$s> 
 204 <Super Classes> 
@@ -153,7 +154,7 @@ $ csql help messages
    ;EXit                        - quitte le programme.\n\
 \n\
    ;CLear                       - efface le tampon de commande.\n\
-   ;EDIT                        - invoque éditeur du système avec tampon de commande.\n\
+   ;EDIT   [format/fmt]         - invoque éditeur système [après le formateur] avec le tampon de commande.\n\
    ;LISt                        - affiche le contenu de tampon de commande.\n\
 \n\
    ;RUn                         - exécute sql de tampon de commande.\n\
@@ -162,12 +163,15 @@ $ csql help messages
    ;COMmit                      - valide la transaction en cours.\n\
    ;ROllback                    - annule la transaction en cours.\n\
    ;AUtocommit [ON|OFF]         - active/désactive la validation automatique des transactions.\n\
-   ;REStart                     - redémarre la base de données.\n\
+   ;REStart                     - reconnectez-vous à la base de données actuelle dans une session CSQL.\n\
+   ;CHeckpoint                  - exécutez le point de contrôle (CSQL avec --sysadm uniquement).\n\
+   ;Killtran                    - vérifiez les informations sur l'état de la transaction ou terminez une transaction spécifique. (CSQL avec --sysadm uniquement).\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - définit nouveau commande par défaut pour shell,\n\
-   ;EDITOR_Cmd   [editor-cmd]     éditeur, affiche et paginateur, ou afficher la \n\
-   ;PRINT_Cmd    [print-cmd]      commande de courrant.\n\
-   ;PAger_cmd    [pager-cmd]\n\
+   ;SHELL_Cmd     [shell-cmd]   - définit nouveau commande par défaut pour shell,\n\
+   ;EDITOR_Cmd    [editor-cmd]    éditeur, affiche, paginateur et formatter, ou afficher la \n\
+   ;PRINT_Cmd     [print-cmd]     commande de courrant.\n\
+   ;PAger_cmd     [pager-cmd]\n\
+   ;FOrmatter_cmd [formatter-cmd]\n\
 \n\
    ;DATE                        - affiche l'heure et la date locales.\n\
    ;DATAbase                    - affiche le nom de la base de données en cours d'accès.\n\
@@ -185,6 +189,13 @@ $ csql help messages
    ;HISTORYList                 - affiche la liste des requêtes exécutées.\n\
    ;HISTORYRead <history_num>   - lit l 'entrée sur le numéro d'historique dans le tampon de commande.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
+   ;SIngleline [ON|OFF]         - activer/désactiver le mode monoligne.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - se connecter à la base de données actuelle ou à d'autres bases de données en tant que nom d'utilisateur.\n\ 
+   ;.Hist [ON/OFF]              - démarrer/arrêter la collecte d'informations statistiques dans CSQL (DBA disponible uniquement).\n\
+   ;.Clear_hist                 - effacer les informations statistiques CSQL dans la mémoire tampon.\n\
+   ;.Dump_hist                  - afficher les informations statistiques CSQL dans CSQL.\n\
+   ;.X_hist                     - afficher les informations statistiques CSQL dans CSQL avec les données statistiques initialisées.\n\
    ;HElp                        - affiche ce message d'aide.\n\n
 
 232 <Constraints> 

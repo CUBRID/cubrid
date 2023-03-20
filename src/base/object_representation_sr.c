@@ -1873,7 +1873,6 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
   int i, j, e;
   int att_id, att_cnt;
   OR_ATTRIBUTE *att;
-  OR_ATTRIBUTE *ptr = NULL;
   OR_INDEX *index;
   DB_VALUE stat_val;
 
@@ -1933,16 +1932,15 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 
 	  att_id = db_get_int (&att_val);
 
-	  for (j = 0, att = rep->attributes, ptr = NULL; j < rep->n_attributes && ptr == NULL; j++, att++)
+	  for (j = 0, att = rep->attributes; j < rep->n_attributes; j++, att++)
 	    {
 	      if (att->id == att_id)
 		{
-		  ptr = att;
-		  index->atts[index->n_atts] = ptr;
+		  index->atts[index->n_atts] = att;
 		  (index->n_atts)++;
+		  break;
 		}
 	    }
-
 	}
 
       /* asc_desc info */
@@ -2120,11 +2118,12 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
   int size;
 
   /* Find the attribute with the matching attribute ID */
-  for (i = 0, att = rep->attributes; i < rep->n_attributes && ptr == NULL; i++, att++)
+  for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
     {
       if (att->id == att_id)
 	{
 	  ptr = att;
+	  break;
 	}
     }
 
@@ -3926,7 +3925,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	}
       else
 	{
-	  OR_BUF_INIT (buffer, attr, -1);
+	  or_init (&buffer, attr, -1);
 
 	  rc = or_get_varchar_compression_lengths (&buffer, &compressed_length, &decompressed_length);
 	  if (rc != NO_ERROR)
@@ -4138,7 +4137,7 @@ or_replace_rep_id (RECDES * record, int repid)
   char mvcc_flag;
   bool is_bound_bit = false;
 
-  OR_BUF_INIT (orep, record->data, record->area_size);
+  or_init (&orep, record->data, record->area_size);
   buf = &orep;
 
   mvcc_flag = or_mvcc_get_flag (record);
@@ -4278,7 +4277,7 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
       HEAP_MOVE_INSIDE_RECORD (record, new_mvcc_size, old_mvcc_size);
     }
 
-  OR_BUF_INIT (orep, record->data, record->area_size);
+  or_init (&orep, record->data, record->area_size);
   buf = &orep;
 
   error =
@@ -4341,7 +4340,7 @@ or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int boun
 
   assert (record != NULL && record->data != NULL && record->length == 0);
 
-  OR_BUF_INIT (orep, record->data, record->area_size);
+  or_init (&orep, record->data, record->area_size);
   buf = &orep;
 
   error =
@@ -4455,7 +4454,7 @@ or_mvcc_set_flag (RECDES * record, char flags)
   /* Set new mvcc flags */
   repid_and_flag += ((flags & OR_MVCC_FLAG_MASK) << OR_MVCC_FLAG_SHIFT_BITS);
 
-  OR_BUF_INIT (orep, record->data, record->area_size);
+  or_init (&orep, record->data, record->area_size);
   buf = &orep;
   buf->ptr = buf->buffer + OR_REP_OFFSET;
   or_put_int (buf, repid_and_flag);
