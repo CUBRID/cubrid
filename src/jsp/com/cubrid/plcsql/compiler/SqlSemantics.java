@@ -30,6 +30,9 @@
 
 package com.cubrid.plcsql.compiler;
 
+import com.cubrid.jsp.data.CUBRIDUnpacker;
+import com.cubrid.jsp.data.ColumnInfo;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 
@@ -54,7 +57,7 @@ public class SqlSemantics {
             selectList; // (only for select statements) columns and their SQL types
     public List<String> intoVars; // (only for select stetements with an into-clause) into variables
 
-    SqlSemantics(
+    public SqlSemantics(
             int kind,
             String rewritten,
             LinkedHashMap<String, String> hostVars,
@@ -66,5 +69,33 @@ public class SqlSemantics {
         this.hostVars = hostVars;
         this.selectList = selectList;
         this.intoVars = intoVars;
+    }
+
+    public SqlSemantics(CUBRIDUnpacker unpacker) {
+        this.kind = Kind.fromValue(unpacker.unpackInt());
+        this.rewritten = unpacker.unpackCString();
+
+        hostVars = new LinkedHashMap<>();
+        selectList = new LinkedHashMap<>();
+        intoVars = new ArrayList<>();
+        columnInfos = new ArrayList<>();
+
+        int selectListCnt = unpacker.unpackInt();
+        for (int i = 0; i < selectListCnt; i++) {
+            columnInfos.add(new ColumnInfo(unpacker));
+        }
+
+        int hostVarsCnt = unpacker.unpackInt();
+        for (int i = 0; i < hostVarsCnt; i++) {
+            String var = unpacker.unpackCString();
+            String type = unpacker.unpackCString();
+            hostVars.put(var, type);
+        }
+
+        int intoVarsCnt = unpacker.unpackInt();
+        for (int i = 0; i < intoVarsCnt; i++) {
+            String var = unpacker.unpackCString();
+            intoVars.add(var);
+        }
     }
 }

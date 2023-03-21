@@ -29,6 +29,7 @@
 
 #include "api_compat.h" /* DB_SESSION */
 #include "parser.h"
+#include "db.h"
 
 #include "object_primitive.h"
 #include "oid.h"
@@ -406,14 +407,15 @@ namespace cubmethod
 	    const prepare_info &info = handler->get_prepare_info ();
 
 	    semantics.sql_type = info.stmt_type;
-	    semantics.rewritten_query = parser_print_tree (db_session->parser, db_session->statements[0]);
+	    semantics.rewritten_query = parser_print_tree (db_get_parser (db_session), db_get_statement (db_session, 0));
 
 	    const std::vector<column_info> &column_infos = info.column_infos;
 	    for (const column_info &c_info : column_infos)
 	      {
 		semantics.columns.emplace_back (c_info);
 	      }
-	    // TODO for host variables
+
+	    // TODO: for host variables
 	    // TP_DOMAIN** host_var_expected_domains = db_session->parser->host_var_expected_domains;
 	  }
 	else

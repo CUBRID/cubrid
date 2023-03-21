@@ -21,6 +21,7 @@
 #include "jsp_comm.h"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
+#include "method_runtime_context.hpp"
 #include "method_connection_sr.hpp"
 #include "method_connection_java.hpp"
 #include "byte_order.h"
@@ -30,11 +31,20 @@
 namespace cubmethod
 {
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  int callback_get_sql_semantics (const cubthread::entry &thread_ref, const runtime_context &ctx,
-				  const Socket java_socket, packing_unpacker &unpacker)
+  int callback_get_sql_semantics (cubthread::entry &thread_ref, runtime_context &ctx,
+				  const SOCKET java_socket, packing_unpacker &unpacker)
   {
-    connection *conn = ctx.get_connection_pool().claim();
-    header header (DB_EMPTY_SESSION, SP_CODE_COMPILE, 0);
+    int error = NO_ERROR;
+    sql_semantics_request request;
+    unpacker.unpack_all (request);
+
+    SESSION_ID s_id = thread_ref.conn_entry->session_id;
+    header header (s_id, METHOD_REQUEST_CALLBACK, ctx.get_and_increment_request_id ());
+    error = method_send_data_to_client (&thread_ref, header, request.code, request);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
 
     auto reponse_lambda = [&] (cubmem::block & b)
     {
@@ -46,7 +56,7 @@ namespace cubmethod
     return error;
   }
 
-  int invoke_compile (const cubthread::entry &thread_ref, runtime_context &ctx, const std::string &program,
+  int invoke_compile (cubthread::entry &thread_ref, runtime_context &ctx, const std::string &program,
 		      const bool &verbose, cubmem::extensible_block &out_blk)
   {
     int error = NO_ERROR;
@@ -138,14 +148,14 @@ exit:
 	  }
 
 	serializator.pack_int (hv_names.size ());
-	for (int i = 0; i < hv_names.size (); i++)
+	for (int i = 0; i < (int) hv_names.size (); i++)
 	  {
 	    serializator.pack_string (hv_names[i]);
 	    serializator.pack_string (hv_types[i]);
 	  }
 
 	serializator.pack_int (into_vars.size ());
-	for (int i = 0; i < into_vars.size (); i++)
+	for (int i = 0; i < (int) into_vars.size (); i++)
 	  {
 	    serializator.pack_string (into_vars[i]);
 	  }
@@ -171,7 +181,7 @@ exit:
 	  }
 
 	size += serializator.get_packed_int_size (size); // hv size
-	for (int i = 0; i < hv_names.size (); i++)
+	for (int i = 0; i < (int) hv_names.size (); i++)
 	  {
 	    size += serializator.get_packed_string_size (hv_names[i], size);
 	    size += serializator.get_packed_string_size (hv_types[i], size);
@@ -179,7 +189,7 @@ exit:
 
 
 	size += serializator.get_packed_int_size (size); // into_vars size
-	for (int i = 0; i < into_vars.size (); i++)
+	for (int i = 0; i < (int) into_vars.size (); i++)
 	  {
 	    size += serializator.get_packed_string_size (into_vars[i], size);
 	  }
@@ -226,6 +236,47 @@ exit:
 	    deserializator.unpack_string (s);
 	    into_vars.push_back (s);
 	  }
+      }
+  }
+
+  sql_semantics_request::sql_semantics_request ()
+  {
+    code = METHOD_CALLBACK_GET_SQL_SEMNATICS;
+  }
+
+  void
+  sql_semantics_request::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_int (sqls.size ());
+    for (int i = 0; i < (int) sqls.size (); i++)
+      {
+	serializator.pack_string (sqls[i]);
+      }
+  }
+
+  size_t
+  sql_semantics_request::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = serializator.get_packed_int_size (start_offset); // size
+    for (int i = 0; i < (int) sqls.size (); i++)
+      {
+	size += serializator.get_packed_string_size (sqls[i], size);
+      }
+
+    return size;
+  }
+
+  void
+  sql_semantics_request::unpack (cubpacking::unpacker &deserializator)
+  {
+    int size;
+    deserializator.unpack_int (size);
+
+    std::string s;
+    for (int i = 0; i < size; i++)
+      {
+	deserializator.unpack_string (s);
+	sqls.push_back (s);
       }
   }
 }
