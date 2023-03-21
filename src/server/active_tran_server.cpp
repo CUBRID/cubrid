@@ -181,6 +181,7 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
       _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Received LSA = %lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
     }
 
+  // wake up threads waiting in wait_flushed_lsa();
   log_Gl.update_ps_consensus_flushed_lsa ();
 }
 

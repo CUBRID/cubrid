@@ -720,7 +720,8 @@ struct log_global
 
   std::mutex m_ps_lsa_mutex;
   std::condition_variable m_ps_lsa_cv;
-  LOG_LSA m_ps_consensus_flushed_lsa = NULL_LSA; // The quorum (number of the majority) of PS have done flushing log recrods until this.
+  std::atomic<bool> m_ps_lsa_up_to_date;
+  LOG_LSA m_ps_consensus_flushed_lsa; // The quorum (number of the majority) of PS have done flushing log recrods until this.
 
   log_global ();
   ~log_global ();

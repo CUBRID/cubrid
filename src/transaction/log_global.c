@@ -78,6 +78,8 @@ log_global::log_global ()
   , mvcc_table ()
   , unique_stats_table GLOBAL_UNIQUE_STATS_TABLE_INITIALIZER
   , m_prior_sender ()
+  , m_ps_lsa_up_to_date (false)
+  , m_ps_consensus_flushed_lsa (NULL_LSA)
 {
 }
 // *INDENT-ON*
@@ -109,23 +111,7 @@ void
 log_global::update_ps_consensus_flushed_lsa ()
 {
   assert (is_active_transaction_server ());
-
-  const log_lsa consensus_lsa = get_active_tran_server_ptr ()->compute_consensus_lsa ();
-  if (consensus_lsa == NULL_LSA)
-  {
-    return; // The number of connected node are less than the quorum
-  }
-
-  {
-    std::unique_lock<std::mutex> lock (m_ps_lsa_mutex);
-
-    assert (m_ps_consensus_flushed_lsa <= consensus_lsa);
-    if (m_ps_consensus_flushed_lsa < consensus_lsa)
-      {
-        m_ps_consensus_flushed_lsa = consensus_lsa;
-      }
-  }
-
+  m_ps_lsa_up_to_date.store (false);
   m_ps_lsa_cv.notify_all ();
 }
 
@@ -133,12 +119,24 @@ void
 log_global::wait_flushed_lsa (const log_lsa &flush_lsa)
 {
   std::unique_lock<std::mutex> lock (m_ps_lsa_mutex);
-  if (m_ps_consensus_flushed_lsa >= flush_lsa)
+  while (m_ps_consensus_flushed_lsa < flush_lsa)
     {
-      // already flushed
-      return;
+      if (!m_ps_lsa_up_to_date.exchange (true)) 
+      {
+        const log_lsa consensus_lsa = get_active_tran_server_ptr ()->compute_consensus_lsa ();
+        if (consensus_lsa == NULL_LSA)
+        {
+          continue; // The number of connected nodes is less than the quorum
+        }
+        assert (m_ps_consensus_flushed_lsa <= consensus_lsa);
+
+        m_ps_consensus_flushed_lsa = consensus_lsa;
+      }
+      else 
+      {
+        m_ps_lsa_cv.wait (lock);
+      }
     }
-  m_ps_lsa_cv.wait (lock, [flush_lsa, this] { return m_ps_consensus_flushed_lsa >= flush_lsa; });
 }
 
 void
