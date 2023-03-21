@@ -33,6 +33,6 @@ package com.cubrid.jsp.data;
 
 public class CompileInfo {
     public String translated;
-    public String sqlTemplate;
+    public String createStmt;
     public String className;
 }

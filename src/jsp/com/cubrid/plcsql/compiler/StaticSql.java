@@ -30,12 +30,34 @@
 
 package com.cubrid.plcsql.compiler;
 
+import com.cubrid.plcsql.compiler.ast.ExprId;
 import com.cubrid.plcsql.compiler.ast.TypeSpec;
+import java.util.LinkedHashMap;
+import java.util.List;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class GlobalTypeInfo {
-    public TypeSpec getTableColumnType(String table, String column) {
-        // TODO
-        assert false : "not implemented yet";
-        throw new RuntimeException("not implemented yet");
+public class StaticSql {
+
+    public final ParserRuleContext ctx;
+    public final int kind;
+    public final String rewritten;
+    public final LinkedHashMap<ExprId, TypeSpec> hostVars;
+    public final LinkedHashMap<String, TypeSpec> selectList;
+    public final List<ExprId> intoVars; // can be null
+
+    StaticSql(
+            ParserRuleContext ctx,
+            int kind,
+            String rewritten,
+            LinkedHashMap<ExprId, TypeSpec> hostVars,
+            LinkedHashMap<String, TypeSpec> selectList,
+            List<ExprId> intoVars) {
+
+        this.ctx = ctx;
+        this.kind = kind;
+        this.rewritten = rewritten;
+        this.hostVars = hostVars;
+        this.selectList = selectList;
+        this.intoVars = intoVars;
     }
 }

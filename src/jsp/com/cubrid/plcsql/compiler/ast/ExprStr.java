@@ -49,7 +49,7 @@ public class ExprStr extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
         return '"' + val + '"';
     }
 

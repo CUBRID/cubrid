@@ -31,34 +31,29 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.util.List;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtForSqlLoop extends Stmt {
+public abstract class StmtForSqlLoop extends Stmt {
 
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitStmtForSqlLoop(this);
-    }
-
-    public final boolean isDynamic;
+    public final boolean dynamic;
     public final String label;
     public final DeclForRecord record;
     public final Expr sql;
-    public final NodeList<? extends Expr> usedExprList;
+    public final List<? extends Expr> usedExprList;
     public final NodeList<Stmt> stmts;
 
     public StmtForSqlLoop(
             ParserRuleContext ctx,
-            boolean isDynamic,
+            boolean dynamic,
             String label,
             DeclForRecord record,
             Expr sql,
-            NodeList<? extends Expr> usedExprList,
+            List<? extends Expr> usedExprList,
             NodeList<Stmt> stmts) {
         super(ctx);
 
-        this.isDynamic = isDynamic;
+        this.dynamic = dynamic;
         this.label = label;
         this.record = record;
         this.sql = sql;
@@ -68,8 +63,8 @@ public class StmtForSqlLoop extends Stmt {
 
     @Override
     public String toJavaCode() {
-        String setUsedValuesStr = Common.getSetUsedValuesStr(usedExprList);
-        return tmplStmt.replace("%'KIND'%", isDynamic ? "dynamic" : "static")
+        String setUsedValuesStr = Common.getSetUsedExprStr(usedExprList);
+        return tmplStmt.replace("%'KIND'%", dynamic ? "dynamic" : "static")
                 .replace("%'SQL'%", sql.toJavaCode())
                 .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedValuesStr, 1))
                 .replace("%'RECORD'%", record.name)

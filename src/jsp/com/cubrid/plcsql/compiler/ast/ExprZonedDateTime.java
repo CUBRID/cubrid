@@ -53,7 +53,7 @@ public class ExprZonedDateTime extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
 
         if (time.equals(DateTimeParser.nullDatetimeUTC)) {
             return String.format(

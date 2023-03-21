@@ -51,7 +51,7 @@ public class ExprDatetime extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
         if (time.equals(DateTimeParser.nullDatetime)) {
             return "LocalDateTime.MAX";
         } else {

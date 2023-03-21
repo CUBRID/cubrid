@@ -45,7 +45,7 @@ public class ExprSqlRowCount extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
         return "sql_rowcount[0]";
     }
 

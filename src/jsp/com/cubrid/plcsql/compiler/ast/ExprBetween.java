@@ -54,7 +54,7 @@ public class ExprBetween extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
         return tmpl.replace("  %'TARGET'%", Misc.indentLines(target.toJavaCode(), 1))
                 .replace("  %'LOWER-BOUND'%", Misc.indentLines(lowerBound.toJavaCode(), 1))
                 .replace("  %'UPPER-BOUND'%", Misc.indentLines(upperBound.toJavaCode(), 1));

@@ -28,38 +28,43 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.Misc;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
+import java.util.LinkedHashMap;
+import java.util.List;
 
-public class ExprUnaryOp extends Expr {
+public class SqlSemantics {
 
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitExprUnaryOp(this);
+    // for error return
+    public int errCode; // non-zero if error
+    public String errMsg;
+
+    public SqlSemantics(int errCode, String errMsg) {
+        assert errCode != 0;
+        this.errCode = errCode;
+        this.errMsg = errMsg;
     }
 
-    public final String opStr;
-    public final Expr operand;
+    // for normal return
+    public int kind;
+    public String rewritten;
+    public LinkedHashMap<String, String>
+            hostVars; // host variables and their SQL types required in their locations
+    public LinkedHashMap<String, String>
+            selectList; // (only for select statements) columns and their SQL types
+    public List<String> intoVars; // (only for select stetements with an into-clause) into variables
 
-    public ExprUnaryOp(ParserRuleContext ctx, String opStr, Expr operand) {
-        super(ctx);
+    SqlSemantics(
+            int kind,
+            String rewritten,
+            LinkedHashMap<String, String> hostVars,
+            LinkedHashMap<String, String> selectList,
+            List<String> intoVars) {
 
-        this.opStr = opStr;
-        this.operand = operand;
+        this.kind = kind;
+        this.rewritten = rewritten;
+        this.hostVars = hostVars;
+        this.selectList = selectList;
+        this.intoVars = intoVars;
     }
-
-    @Override
-    public String exprToJavaCode() {
-        return tmpl.replace("%'OPERATION'%", opStr)
-                .replace("  %'OPERAND'%", Misc.indentLines(operand.toJavaCode(), 1));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl = Misc.combineLines("op%'OPERATION'%(", "  %'OPERAND'%", ")");
 }

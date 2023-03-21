@@ -33,7 +33,7 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class DeclConst extends DeclVarLike {
+public class DeclConst extends DeclIdTyped {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
@@ -68,7 +68,7 @@ public class DeclConst extends DeclVarLike {
 
     @Override
     public String toJavaCode() {
-        return String.format("%s %s = %s;", typeSpec.toJavaCode(), name, val.toJavaCode());
+        return String.format("final %s %s = %s;", typeSpec.toJavaCode(), name, val.toJavaCode());
     }
 
     // --------------------------------------------------
