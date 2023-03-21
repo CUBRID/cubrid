@@ -39,14 +39,9 @@
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 
-#if 0
-// The higher the "level", the more compressed it should be. Close to mode "HIGH".
+
+// The higher the level, the more severe the duplicate.
 #define CALC_MOD_VALUE_FROM_LEVEL(lv)   (1 << ((DEDUPLICATE_KEY_LEVEL_MAX + 1) - (lv)))
-#else
-//The higher the "level" value, the weaker the compression.
-// like pow(2, (lv));
-#define CALC_MOD_VALUE_FROM_LEVEL(lv)   (1 << (lv))
-#endif
 
 static DB_DOMAIN *
 get_reserved_index_attr_domain_type (int level)
