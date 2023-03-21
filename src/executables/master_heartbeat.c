@@ -2145,7 +2145,7 @@ hb_add_ping_host (char *host_name)
     {
       strncpy (p->host_name, host_name, sizeof (p->host_name) - 1);
       p->host_name[sizeof (p->host_name) - 1] = '\0';
-      p->port = 0;
+      p->port = -1;
       p->ping_result = HB_PING_UNKNOWN;
       p->next = NULL;
       p->prev = NULL;
@@ -2174,11 +2174,6 @@ hb_add_tcp_ping_host (char *host_name, int port)
   MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "%s:%d is added to the TCP PING list.\n", host_name, port);
 
   if (host_name == NULL)
-    {
-      return NULL;
-    }
-
-  if (port < 1 || port > USHRT_MAX)
     {
       return NULL;
     }
@@ -2281,6 +2276,65 @@ hb_cluster_load_ping_host_list (char *ha_ping_host_list)
 }
 
 /*
+ * hb_port_str_to_num() -
+ *   return: port number converted from port string or -1 in case of failure to convert
+ *
+ *   port_p(in):
+ */
+static int
+hb_port_str_to_num (char *port_p)
+{
+  int i = 0, num_count = 0;
+  int port = -1;
+  bool is_space_after_numbers = false;
+
+  if (port_p == NULL || *port_p == '\0')
+    {
+      goto error;
+    }
+
+  while (*(port_p + i) != '\0')
+    {
+      if ((*port_p >= '0' && *port_p <= '9'))
+	{
+	  i++;
+	  num_count++;
+
+	  if (num_count > 5 || is_space_after_numbers == true)	/* The port number cannot exceed 5 digits. */
+	    {
+	      goto error;
+	    }
+	}
+      else if (*port_p == ' ')
+	{
+	  i++;
+
+	  if (num_count > 1)	/* atoi("80 80") returns 80. It needs an exception handling */
+	    {
+	      is_space_after_numbers = true;
+	    }
+	}
+      else
+	{
+	  goto error;
+	}
+    }
+
+  port = atoi (port_p);
+
+  if (port < 1 || port > USHRT_MAX)
+    {
+      goto error;
+    }
+
+  return port;
+
+error:
+
+  return -1;
+}
+
+/*
  * hb_cluster_load_tcp_ping_host_list() -
  *   return: number of tcp ping hosts
  *
@@ -2289,7 +2343,7 @@ hb_cluster_load_ping_host_list (char *ha_ping_host_list)
 static int
 hb_cluster_load_tcp_ping_host_list (char *ha_ping_host_list)
 {
-  int num_hosts = 0;
+  int num_hosts = 0, port = -1;
   char host_list[LINE_MAX];
   char *host_list_p, *host_p, *host_pp;
   char *port_p;
@@ -2319,14 +2373,11 @@ hb_cluster_load_tcp_ping_host_list (char *ha_ping_host_list)
       else
 	{
 	  *port_p = '\0';
+	  port_p++;
 
-	  do
-	    {
-	      port_p++;
-	    }
-	  while (*port_p == ' ');
+	  port = hb_port_str_to_num (port_p);
 
-	  if (*port_p == '-')
+	  if (port == -1)
 	    {
 	      break;
 	    }
@@ -2339,7 +2390,7 @@ hb_cluster_load_tcp_ping_host_list (char *ha_ping_host_list)
 	}
       else
 	{
-	  if (hb_add_tcp_ping_host (host_p, atoi (port_p)) == NULL)
+	  if (hb_add_tcp_ping_host (host_p, port) == NULL)
 	    {
 	      break;
 	    }
@@ -4850,10 +4901,9 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
 
   if (hb_Cluster->num_ping_hosts == 0)
     {
-      /* The ha_tcp_ping_hosts can be used instead of the ha_ping_hosts in case the ICMP protocol is disabled.
-         However, both system parameters cannot be set at the same time and the ha_tcp_ping_hosts works only when the ha_ping_hosts is not set. */
+      /* The ha_tcp_ping_hosts can be used instead of the ha_ping_hosts in case the ICMP protocol is disabled. To use TCP ping, ha_ping_hosts should not be set because ha_ping_hosts has a higher priority than ha_tcp_ping_hosts. */
       hb_Cluster->num_ping_hosts = hb_cluster_load_tcp_ping_host_list (prm_get_string_value (PRM_ID_HA_TCP_PING_HOSTS));
-      hb_Cluster->ping_timeout = prm_get_integer_value (PRM_ID_HA_PING_TIMEOUT);
+      hb_Cluster->ping_timeout = prm_get_integer_value (PRM_ID_HA_PING_TIMEOUT) * 1000;	/* change to msecs */
 
       if (hb_cluster_check_valid_ping_server () == false)
 	{
@@ -5461,10 +5511,9 @@ hb_reload_config (void)
   /* reload tcp ping hosts */
   if (hb_Cluster->num_ping_hosts == 0)
     {
-      /* The ha_tcp_ping_hosts can be used instead of the ha_ping_hosts in case the ICMP protocol is disabled.
-         However, both system parameters cannot be set at the same time and the ha_tcp_ping_hosts works only when the ha_ping_hosts is not set. */
+      /* The ha_tcp_ping_hosts can be used instead of the ha_ping_hosts in case the ICMP protocol is disabled. To use TCP ping, ha_ping_hosts should not be set because ha_ping_hosts has a higher priority than ha_tcp_ping_hosts. */
       hb_Cluster->num_ping_hosts = hb_cluster_load_tcp_ping_host_list (prm_get_string_value (PRM_ID_HA_TCP_PING_HOSTS));
-      hb_Cluster->ping_timeout = prm_get_integer_value (PRM_ID_HA_PING_TIMEOUT);
+      hb_Cluster->ping_timeout = prm_get_integer_value (PRM_ID_HA_PING_TIMEOUT) * 1000;	/* change to msecs */
 
       if (hb_cluster_check_valid_ping_server () == false)
 	{
@@ -6716,7 +6765,7 @@ hb_check_tcp_ping (const char *host, int port, int timeout)
   if (IS_INVALID_SOCKET (sfd))
     {
       /* ping failed */
-      snprintf (buf, sizeof (buf), "TCP PING failed for host %s, port %d, timeout %d", host, port, timeout);
+      snprintf (buf, sizeof (buf), "TCP PING failed for host %s, port %d, timeout %d msecs", host, port, timeout);
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, buf);
 
       return HB_PING_FAILURE;
@@ -6724,7 +6773,7 @@ hb_check_tcp_ping (const char *host, int port, int timeout)
 
   css_shutdown_socket (sfd);
 
-  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "TCP PING is success on host %s, port %d, timeout %d.\n", host, port, timeout);
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "TCP PING is success on host %s, port %d, timeout %d msecs.\n", host, port, timeout);
 
   return HB_PING_SUCCESS;
 }

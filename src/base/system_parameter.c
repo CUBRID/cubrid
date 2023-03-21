@@ -1458,9 +1458,9 @@ const char *PRM_HA_TCP_PING_HOSTS = "";
 static const char *prm_ha_tcp_ping_hosts_default = NULL;
 static unsigned int prm_ha_tcp_ping_hosts_flag = 0;
 
-int PRM_HA_PING_TIMEOUT = 1000;
-static int prm_ha_ping_timeout_default = 1000;
-static int prm_ha_ping_timeout_upper = INT_MAX;
+int PRM_HA_PING_TIMEOUT = PRM_TCP_CONNECTION_TIMEOUT;
+static int prm_ha_ping_timeout_default = prm_tcp_connection_timeout_default;	/* NOTE: It is difficult to determine an accurate default value for TCP connection timeout, so the default value of the connection_time system parameter is followed. */
+static int prm_ha_ping_timeout_upper = INT_MAX / 1000;	/* divided by msecs */
 static int prm_ha_ping_timeout_lower = 0;
 static unsigned int prm_ha_ping_timeout_flag = 0;
 

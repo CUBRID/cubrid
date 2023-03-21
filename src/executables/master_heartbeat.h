@@ -219,7 +219,7 @@ struct hb_ping_host_entry
   HB_PING_HOST_ENTRY **prev;
 
   char host_name[CUB_MAXHOSTNAMELEN];
-  int port;
+  int port;			/* TCP ping only */
   int ping_result;
 };
 
@@ -262,7 +262,7 @@ struct hb_cluster
 
   HB_PING_HOST_ENTRY *ping_hosts;
   int num_ping_hosts;
-  int ping_timeout;
+  int ping_timeout;		/* TCP ping only */
 
   HB_UI_NODE_ENTRY *ui_nodes;
   int num_ui_nodes;
