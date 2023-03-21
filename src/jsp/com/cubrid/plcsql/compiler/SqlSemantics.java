@@ -30,26 +30,48 @@
 
 package com.cubrid.plcsql.compiler;
 
+import com.cubrid.jsp.data.CUBRIDUnpacker;
+import com.cubrid.jsp.data.ColumnInfo;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 
 public class SqlSemantics {
 
     public enum Kind {
-        SELECT,
-        INSERT,
-        UPDATE,
-        DELETE,
-        MERGE,
-        REPLACE,
-        TRUNCATE
+        SELECT(21),
+        INSERT(20),
+        UPDATE(22),
+        DELETE(23),
+        MERGE(57),
+        REPLACE(21), // special stmt of INSERT
+        TRUNCATE(52);
+
+        private final int value;
+
+        private Kind(int value) {
+            this.value = value;
+        }
+
+        public int getValue() {
+            return value;
+        }
+
+        public static Kind fromValue(int id) {
+            for (Kind type : values()) {
+                if (type.getValue() == id) {
+                    return type;
+                }
+            }
+            return null;
+        }
     }
 
     // for error return
     public int errCode; // non-zero if error
     public String errMsg;
 
-    SqlSemantics(int errCode, String errMsg) {
+    public SqlSemantics(int errCode, String errMsg) {
         assert errCode != 0;
         this.errCode = errCode;
         this.errMsg = errMsg;
@@ -64,7 +86,9 @@ public class SqlSemantics {
             selectList; // (only for select statements) columns and their SQL types
     public List<String> intoVars; // (only for select stetements with an into-clause) into variables
 
-    SqlSemantics(
+    public List<ColumnInfo> columnInfos;
+
+    public SqlSemantics(
             Kind kind,
             String rewritten,
             LinkedHashMap<String, String> hostVars,
@@ -76,5 +100,33 @@ public class SqlSemantics {
         this.hostVars = hostVars;
         this.selectList = selectList;
         this.intoVars = intoVars;
+    }
+
+    public SqlSemantics(CUBRIDUnpacker unpacker) {
+        this.kind = Kind.fromValue(unpacker.unpackInt());
+        this.rewritten = unpacker.unpackCString();
+
+        hostVars = new LinkedHashMap<>();
+        selectList = new LinkedHashMap<>();
+        intoVars = new ArrayList<>();
+        columnInfos = new ArrayList<>();
+
+        int selectListCnt = unpacker.unpackInt();
+        for (int i = 0; i < selectListCnt; i++) {
+            columnInfos.add(new ColumnInfo(unpacker));
+        }
+
+        int hostVarsCnt = unpacker.unpackInt();
+        for (int i = 0; i < hostVarsCnt; i++) {
+            String var = unpacker.unpackCString();
+            String type = unpacker.unpackCString();
+            hostVars.put(var, type);
+        }
+
+        int intoVarsCnt = unpacker.unpackInt();
+        for (int i = 0; i < intoVarsCnt; i++) {
+            String var = unpacker.unpackCString();
+            intoVars.add(var);
+        }
     }
 }

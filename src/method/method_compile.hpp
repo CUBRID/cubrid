@@ -26,6 +26,7 @@
 #include "mem_block.hpp"
 #include "packer.hpp"
 #include "packable_object.hpp"
+#include "method_struct_query.hpp"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "method_invoke.hpp"
@@ -57,8 +58,20 @@ namespace cubmethod
     std::vector <std::string> into_vars;
   };
 
+  struct EXPORT_IMPORT sql_semantics_request : public cubpacking::packable_object
+  {
+    sql_semantics_request ();
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+
+    int code;
+    std::vector <std::string> sqls;
+  };
+
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  int invoke_compile (const cubthread::entry &thread, runtime_context &ctx, const std::string &program,
+  int invoke_compile (cubthread::entry &thread, runtime_context &ctx, const std::string &program,
 		      const bool &verbose,
 		      cubmem::extensible_block &blk);
 #endif

@@ -42,6 +42,7 @@ import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.protocol.Header;
 import com.cubrid.jsp.protocol.PrepareArgs;
+import com.cubrid.jsp.protocol.RequestCode;
 import com.cubrid.jsp.value.Value;
 import com.cubrid.jsp.value.ValueUtilities;
 import com.cubrid.plcsql.handler.TestMain;
@@ -62,23 +63,6 @@ import java.util.List;
 public class ExecuteThread extends Thread {
 
     public static String charSet = "UTF-8";
-
-    private static final int REQ_CODE_INVOKE_SP = 0x01;
-    private static final int REQ_CODE_RESULT = 0x02;
-    private static final int REQ_CODE_ERROR = 0x04;
-    private static final int REQ_CODE_INTERNAL_JDBC = 0x08;
-
-    // private static final int REQ_CODE_DESTROY = 0x10;
-    // private static final int REQ_CODE_END = 0x20;
-
-    private static final int REQ_CODE_PREPARE_ARGS = 0x40;
-
-    private static final int REQ_CODE_COMPILE = 0x80;
-
-    private static final int REQ_CODE_UTIL_PING = 0xDE;
-    private static final int REQ_CODE_UTIL_STATUS = 0xEE;
-    private static final int REQ_CODE_UTIL_TERMINATE_THREAD = 0xFE;
-    private static final int REQ_CODE_UTIL_TERMINATE_SERVER = 0xFF; // to shutdown javasp server
 
     private Socket client;
 
@@ -150,75 +134,26 @@ public class ExecuteThread extends Thread {
                          * the following two request codes are for processing java stored procedure
                          * routine
                          */
-                    case REQ_CODE_PREPARE_ARGS:
+                    case RequestCode.PREPARE_ARGS:
                         {
                             processPrepare();
                             break;
                         }
-                    case REQ_CODE_INVOKE_SP:
+                    case RequestCode.INVOKE_SP:
                         {
                             processStoredProcedure();
                             ctx = null;
                             break;
                         }
 
-                    case REQ_CODE_COMPILE:
+                    case RequestCode.COMPILE:
                         {
-                            unpacker.setBuffer(ctx.getInboundQueue().take());
-                            boolean verbose = unpacker.unpackBool();
-                            String inSource = unpacker.unpackCString();
-
-                            try {
-                                CompileInfo info = TestMain.compilePLCSQL(inSource, verbose);
-
-                                resultBuffer.clear(); /* prepare to put */
-                                packer.setBuffer(resultBuffer);
-                                packer.packString(info.translated);
-                                packer.packString(info.createStmt);
-
-                                String javaFilePath =
-                                        StoredProcedureClassLoader.ROOT_PATH
-                                                + info.className
-                                                + ".java";
-                                File file = new File(javaFilePath);
-                                FileOutputStream fos = new FileOutputStream(file, false);
-                                fos.write(info.translated.getBytes(Charset.forName("UTF-8")));
-                                fos.close();
-
-                                String cubrid_env_root = Server.getRootPath();
-                                String command =
-                                        "javac "
-                                                + javaFilePath
-                                                + " -cp "
-                                                + cubrid_env_root
-                                                + "/java/splib.jar";
-
-                                Process proc = Runtime.getRuntime().exec(command);
-                                proc.getErrorStream().close();
-                                proc.getInputStream().close();
-                                proc.getOutputStream().close();
-                                proc.waitFor();
-
-                                if (proc.exitValue() != 0) {
-                                    // TODO
-                                    throw new RuntimeException(command);
-                                }
-
-                                resultBuffer = packer.getBuffer();
-
-                                output.writeInt(resultBuffer.position());
-                                output.write(resultBuffer.array(), 0, resultBuffer.position());
-                                output.flush();
-                            } catch (Exception e) {
-                                output.writeInt(0);
-                                output.flush();
-                                throw new RuntimeException(e);
-                            }
+                            processCompile();
                             break;
                         }
 
                         /* the following request codes are for javasp utility */
-                    case REQ_CODE_UTIL_PING:
+                    case RequestCode.UTIL_PING:
                         {
                             String ping = Server.getServerName();
 
@@ -230,7 +165,7 @@ public class ExecuteThread extends Thread {
                             writeBuffer(resultBuffer);
                             break;
                         }
-                    case REQ_CODE_UTIL_STATUS:
+                    case RequestCode.UTIL_STATUS:
                         {
                             // TODO: create a packable class for status
                             resultBuffer.clear(); /* prepare to put */
@@ -248,7 +183,7 @@ public class ExecuteThread extends Thread {
                             writeBuffer(resultBuffer);
                             break;
                         }
-                    case REQ_CODE_UTIL_TERMINATE_THREAD:
+                    case RequestCode.UTIL_TERMINATE_THREAD:
                         {
                             // hacky way.. If thread is terminated and socket is closed immediately,
                             // "ping" or "status" command does not work properly
@@ -256,7 +191,7 @@ public class ExecuteThread extends Thread {
                             Thread.currentThread().interrupt();
                             break;
                         }
-                    case REQ_CODE_UTIL_TERMINATE_SERVER:
+                    case RequestCode.UTIL_TERMINATE_SERVER:
                         {
                             Server.stop(0);
                             break;
@@ -362,6 +297,54 @@ public class ExecuteThread extends Thread {
         sendResult(result, procedure);
     }
 
+    private void processCompile() throws Exception {
+        unpacker.setBuffer(ctx.getInboundQueue().take());
+        boolean verbose = unpacker.unpackBool();
+        String inSource = unpacker.unpackCString();
+
+        try {
+            CompileInfo info = TestMain.compilePLCSQL(inSource, verbose);
+
+            resultBuffer.clear(); /* prepare to put */
+            packer.setBuffer(resultBuffer);
+
+            packer.packInt(RequestCode.COMPILE);
+            packer.packString(info.translated);
+            packer.packString(info.createStmt);
+
+            String javaFilePath = StoredProcedureClassLoader.ROOT_PATH + info.className + ".java";
+            File file = new File(javaFilePath);
+            FileOutputStream fos = new FileOutputStream(file, false);
+            fos.write(info.translated.getBytes(Charset.forName("UTF-8")));
+            fos.close();
+
+            String cubrid_env_root = Server.getRootPath();
+            String command =
+                    "javac " + javaFilePath + " -cp " + cubrid_env_root + "/java/splib.jar";
+
+            Process proc = Runtime.getRuntime().exec(command);
+            proc.getErrorStream().close();
+            proc.getInputStream().close();
+            proc.getOutputStream().close();
+            proc.waitFor();
+
+            if (proc.exitValue() != 0) {
+                // TODO
+                throw new RuntimeException(command);
+            }
+
+            resultBuffer = packer.getBuffer();
+
+            output.writeInt(resultBuffer.position());
+            output.write(resultBuffer.array(), 0, resultBuffer.position());
+            output.flush();
+        } catch (Exception e) {
+            output.writeInt(0);
+            output.flush();
+            throw new RuntimeException(e);
+        }
+    }
+
     private StoredProcedure makeStoredProcedure(CUBRIDUnpacker unpacker) throws Exception {
         String methodSig = unpacker.unpackCString();
         int paramCount = unpacker.unpackInt();
@@ -409,10 +392,22 @@ public class ExecuteThread extends Thread {
         resultBuffer.clear(); /* prepare to put */
         packer.setBuffer(resultBuffer);
 
-        packer.packInt(REQ_CODE_RESULT);
+        packer.packInt(RequestCode.RESULT);
         packer.align(DataUtilities.MAX_ALIGNMENT);
         packer.packValue(resolvedResult, procedure.getReturnType(), this.charSet);
         returnOutArgs(procedure, packer);
+
+        resultBuffer = packer.getBuffer();
+        writeBuffer(resultBuffer);
+    }
+
+    public void sendCommand(int code, ByteBuffer buffer) throws IOException {
+        resultBuffer.clear(); /* prepare to put */
+        packer.setBuffer(resultBuffer);
+
+        packer.packInt(code);
+        packer.align(DataUtilities.MAX_ALIGNMENT);
+        packer.packPrimitiveBytes(buffer);
 
         resultBuffer = packer.getBuffer();
         writeBuffer(resultBuffer);
@@ -422,7 +417,7 @@ public class ExecuteThread extends Thread {
         resultBuffer.clear(); /* prepare to put */
         packer.setBuffer(resultBuffer);
 
-        packer.packInt(REQ_CODE_INTERNAL_JDBC);
+        packer.packInt(RequestCode.INTERNAL_JDBC);
         packer.align(DataUtilities.MAX_ALIGNMENT);
         packer.packPrimitiveBytes(buffer);
 
@@ -434,7 +429,7 @@ public class ExecuteThread extends Thread {
         resultBuffer.clear();
         packer.setBuffer(resultBuffer);
 
-        packer.packInt(REQ_CODE_ERROR);
+        packer.packInt(RequestCode.ERROR);
         packer.align(DataUtilities.MAX_ALIGNMENT);
         packer.packValue(new Integer(1), DBType.DB_INT, this.charSet);
         packer.packValue(exception, DBType.DB_STRING, this.charSet);
