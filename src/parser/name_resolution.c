@@ -2952,7 +2952,10 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       save = node->info.insert.odku_assignments;
       node->info.insert.odku_assignments = NULL;
 
-      parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+      if (node->info.insert.spec->info.spec.remote_server_name == NULL)
+	{
+	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+	}
 
       /* Check for double assignments */
       pt_no_double_insert_assignments (parser, node);
@@ -4530,7 +4533,6 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 			      pt_short_print_l (parser, node->info.spec.as_attr_list));
 		}
 	    }
-	  /* dblink query */
 	  else if (PT_SPEC_IS_DERIVED (node))
 	    {
 	      PT_NODE *derived_table = node->info.spec.derived_table;
