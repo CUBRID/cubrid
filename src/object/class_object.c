@@ -4072,7 +4072,7 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
   SM_CLASS_CONSTRAINT *cons;
   SM_ATTRIBUTE **attp;
   char **namep;
-  int nnames;
+  int nnames, cols_non_func;
 
   // If there is a column corresponding to PK among the attributes constituting the index, the reserved_index_column is not added.
   int deduplicate_key_col_pos = -1;
@@ -4089,6 +4089,8 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
       return;
     }
 
+  cols_non_func = (func_index_info) ? func_index_info->attr_index_start : nnames;
+
   for (cons = cons_list; cons; cons = cons->next)
     {
       if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (cons->type) == false)
@@ -4103,15 +4105,17 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
 
       for (attp = cons->attributes; *attp; attp++)
 	{
-	  for (namep = att_names; *namep; namep++)
+	  bool found = false;
+	  for (int idx = 0, namep = att_names; *namep && idx < cols_non_func; namep++, idx++)
 	    {
 	      if (intl_identifier_casecmp ((*attp)->header.name, *namep) == 0)
 		{
+		  found = true;
 		  break;
 		}
 	    }
 
-	  if (*namep == NULL)
+	  if (found == false)
 	    {
 	      break;		/* not found */
 	    }
