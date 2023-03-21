@@ -6773,7 +6773,8 @@ hb_check_tcp_ping (const char *host, int port, int timeout)
 
   css_shutdown_socket (sfd);
 
-  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "TCP PING is success on host %s, port %d, timeout %d msecs.\n", host, port, timeout);
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "TCP PING is success on host %s, port %d, timeout %d msecs.\n", host, port,
+		       timeout);
 
   return HB_PING_SUCCESS;
 }
