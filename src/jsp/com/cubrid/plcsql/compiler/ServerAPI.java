@@ -82,7 +82,7 @@ public class ServerAPI {
         public int errCode;
         public String errMsg;
 
-        protected void setError(int errCode, String errMsg) {
+        public void setError(int errCode, String errMsg) {
             this.errCode = errCode;
             this.errMsg = errMsg;
         }
@@ -101,7 +101,7 @@ public class ServerAPI {
         public int[] outPositions; // 1 for out/in-out parameters, otherwise 0
         public String[] paramTypes; // SQL types of parameters
 
-        private void setAnswer(int[] outPositions, String[] paramTypes) {
+        public void setAnswer(int[] outPositions, String[] paramTypes) {
             assert outPositions.length == paramTypes.length;
             this.outPositions = outPositions;
             this.paramTypes = paramTypes;
@@ -122,7 +122,7 @@ public class ServerAPI {
         public String[] paramTypes; // SQL types of parameters
         public String retType; // SQL type
 
-        private void setAnswer(int[] outPositions, String[] paramTypes, String retType) {
+        public void setAnswer(int[] outPositions, String[] paramTypes, String retType) {
             assert outPositions.length == paramTypes.length;
             this.outPositions = outPositions;
             this.paramTypes = paramTypes;
@@ -156,7 +156,7 @@ public class ServerAPI {
         // output
         public String type; // SQL type if the column exists, otherwise null
 
-        private void setAnswer(String type) {
+        public void setAnswer(String type) {
             this.type = type;
         }
     }
@@ -194,7 +194,7 @@ public class ServerAPI {
 
                 ret.add(
                         new SqlSemantics(
-                                SqlSemantics.Kind.SELECT,
+                                ServerConstants.CUBRID_STMT_SELECT,
                                 "select code, name from athlete where gender = ? and nation_code = ?",
                                 hostVars,
                                 selectList,
@@ -209,7 +209,7 @@ public class ServerAPI {
 
                 ret.add(
                         new SqlSemantics(
-                                SqlSemantics.Kind.INSERT,
+                                ServerConstants.CUBRID_STMT_INSERT,
                                 "insert into athlete(name, gender) values (?, ?)",
                                 hostVars,
                                 null,

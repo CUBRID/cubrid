@@ -28,36 +28,15 @@
  *
  */
 
-package com.cubrid.plcsql.compiler;
+package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.ast.ExprId;
-import com.cubrid.plcsql.compiler.ast.TypeSpec;
-import java.util.LinkedHashMap;
-import java.util.List;
-import org.antlr.v4.runtime.ParserRuleContext;
+public class ServerConstants {
 
-public class StaticSql {
-
-    public final ParserRuleContext ctx;
-    public final int kind;
-    public final String rewritten;
-    public final LinkedHashMap<ExprId, TypeSpec> hostVars;
-    public final LinkedHashMap<String, TypeSpec> selectList;
-    public final List<ExprId> intoVars; // can be null
-
-    StaticSql(
-            ParserRuleContext ctx,
-            int kind,
-            String rewritten,
-            LinkedHashMap<ExprId, TypeSpec> hostVars,
-            LinkedHashMap<String, TypeSpec> selectList,
-            List<ExprId> intoVars) {
-
-        this.ctx = ctx;
-        this.kind = kind;
-        this.rewritten = rewritten;
-        this.hostVars = hostVars;
-        this.selectList = selectList;
-        this.intoVars = intoVars;
-    }
+    // kinds of SQL statements that are supported in Static SQL
+    public static final int CUBRID_STMT_INSERT      = 20;   // REPLACE too
+    public static final int CUBRID_STMT_SELECT      = 21;
+    public static final int CUBRID_STMT_UPDATE      = 22;
+    public static final int CUBRID_STMT_DELETE      = 23;
+    public static final int CUBRID_STMT_TRUNCATE    = 52;
+    public static final int CUBRID_STMT_MERGE       = 57;
 }
