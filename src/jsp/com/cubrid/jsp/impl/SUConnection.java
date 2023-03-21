@@ -31,7 +31,7 @@
 
 package com.cubrid.jsp.impl;
 
-import com.cubrid.jsp.ExecuteThread;
+import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.DBParameterInfo;
@@ -49,6 +49,7 @@ import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConstants;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorCode;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorManager;
+import com.cubrid.jsp.protocol.Header;
 import cubrid.sql.CUBRIDOID;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -56,17 +57,26 @@ import java.sql.SQLException;
 
 public class SUConnection {
 
-    ExecuteThread thread = null;
+    Context ctx = null;
     ByteBuffer outputBuffer = ByteBuffer.allocate(4096);
 
-    public SUConnection(ExecuteThread t) {
-        thread = t;
+    public SUConnection(Context t) {
+        ctx = t;
     }
 
     public CUBRIDUnpacker request(ByteBuffer buffer) throws IOException, SQLException {
-        thread.sendCommand(buffer);
+        Context.getCurrentExecuteThread().sendCommand(buffer);
         buffer.clear();
-        CUBRIDUnpacker unpacker = thread.receiveBuffer();
+
+        ByteBuffer responseBuffer = Context.getCurrentExecuteThread().receiveBuffer();
+
+        CUBRIDUnpacker unpacker = new CUBRIDUnpacker(responseBuffer);
+
+        /* read header, dummy */
+        Header header = new Header(unpacker);
+
+        ByteBuffer payload = unpacker.unpackBuffer();
+        unpacker.setBuffer(payload);
 
         int responseCode = unpacker.unpackInt();
         if (responseCode != 0) {

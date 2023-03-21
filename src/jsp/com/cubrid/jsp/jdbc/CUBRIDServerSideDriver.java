@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp.jdbc;
 
+import com.cubrid.jsp.context.ContextManager;
 import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.Driver;
@@ -78,22 +79,9 @@ public class CUBRIDServerSideDriver implements Driver {
             return null;
         }
 
-        Connection conn = null;
-        try {
-            Thread t = Thread.currentThread();
-            conn =
-                    (Connection)
-                            invoke(
-                                    "com.cubrid.jsp.ExecuteThread",
-                                    "createConnection",
-                                    null,
-                                    t,
-                                    null);
-        } catch (Exception e) {
-            /* do nothing. The exception will be dealt with in ExecuteThread */
-        }
-
-        return conn;
+        Thread t = Thread.currentThread();
+        Long ctxId = ContextManager.getContextIdByThreadId(t.getId());
+        return ContextManager.getContext(ctxId).getConnection();
     }
 
     @Override

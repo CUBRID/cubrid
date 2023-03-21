@@ -46,7 +46,7 @@ typedef enum
   SP_CODE_RESULT = 0x02,
   SP_CODE_ERROR = 0x04,
   SP_CODE_INTERNAL_JDBC = 0x08,
-  SP_CODE_DESTROY = 0x10,
+  // SP_CODE_DESTROY = 0x10,
   // SP_CODE_END = 0x20,
   SP_CODE_PREPARE_ARGS = 0x40,
 
@@ -63,7 +63,7 @@ struct javasp_status_info
 {
   int pid;
   int port;
-  char *db_name;
+    std::string db_name;
   // *INDENT-OFF*
   std::vector < std::string > vm_args;
   // *INDENT-ON*
@@ -73,10 +73,11 @@ struct javasp_status_info
 extern "C"
 {
 #endif
-  SOCKET jsp_connect_server (const char *db_name, int server_port);
-  void jsp_disconnect_server (SOCKET & sockfd);
-  int jsp_writen (SOCKET fd, const void *vptr, int n);
-  int jsp_readn (SOCKET fd, void *vptr, int n);
+  EXPORT_IMPORT SOCKET jsp_connect_server (const char *db_name, int server_port);
+  EXPORT_IMPORT void jsp_disconnect_server (SOCKET & sockfd);
+  EXPORT_IMPORT int jsp_writen (SOCKET fd, const void *vptr, int n);
+  EXPORT_IMPORT int jsp_readn (SOCKET fd, void *vptr, int n);
+  EXPORT_IMPORT int jsp_readn_with_timeout (SOCKET fd, void *vptr, int n, int timeout);
 
   int jsp_ping (SOCKET fd);
   char *jsp_get_socket_file_path (const char *db_name);
