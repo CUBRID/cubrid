@@ -2295,7 +2295,7 @@ hb_port_str_to_num (char *port_p)
 
   while (*(port_p + i) != '\0')
     {
-      if ((*port_p >= '0' && *port_p <= '9'))
+      if (*port_p >= '0' && *port_p <= '9')
 	{
 	  i++;
 	  num_count++;
