@@ -35,6 +35,7 @@
 #include "method_error.hpp"
 #include "method_oid_handler.hpp"
 #include "method_query_handler.hpp"
+#include "method_struct_invoke.hpp"
 #include "method_struct_query.hpp"
 
 #include "transaction_cl.h"

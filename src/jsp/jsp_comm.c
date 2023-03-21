@@ -189,6 +189,12 @@ jsp_readn (SOCKET fd, void *vptr, int n)
 }
 
 int
+jsp_readn_with_timeout (SOCKET fd, void *vptr, int n, int timeout)
+{
+  return css_readn (fd, (char *) vptr, n, timeout);
+}
+
+int
 jsp_ping (SOCKET fd)
 {
   char buffer[DB_MAX_IDENTIFIER_LENGTH];
