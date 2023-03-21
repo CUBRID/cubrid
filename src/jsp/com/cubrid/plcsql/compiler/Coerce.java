@@ -31,29 +31,33 @@
 package com.cubrid.plcsql.compiler;
 
 import com.cubrid.plcsql.compiler.ast.TypeSpec;
+import com.cubrid.plcsql.compiler.ast.TypeSpecPercent;
 import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 import com.cubrid.plcsql.compiler.ast.TypeSpecVariadic;
 import java.util.List;
 
-public class Coerce {
+public abstract class Coerce {
 
-    public String funcName;
-
-    public Coerce() {}
-
-    public Coerce(String funcName) {
-        this.funcName = funcName;
-    }
-
-    public String toJavaCode(String exprJavaCode) {
-        return String.format("%s(%s)", funcName, exprJavaCode);
-    }
+    public abstract String toJavaCode(String exprJavaCode);
 
     public static Coerce getCoerce(TypeSpec from, TypeSpec to) {
+
+        if (from instanceof TypeSpecPercent) {
+            from = ((TypeSpecPercent) from).resolvedType;
+            assert from != null;
+        }
+        if (to instanceof TypeSpecPercent) {
+            to = ((TypeSpecPercent) to).resolvedType;
+            assert to != null;
+        }
+
         if (to.equals(TypeSpecSimple.OBJECT)
                 || from.equals(TypeSpecSimple.NULL)
                 || from.equals(to)) {
             return IDENTITY;
+        } else if (from.equals(TypeSpecSimple.OBJECT)) {
+            assert !to.equals(TypeSpecSimple.OBJECT);
+            return new DownCast(to);
         }
 
         // TODO: fill other cases
@@ -91,11 +95,25 @@ public class Coerce {
     // cases
     // ----------------------------------------------
 
-    private static class Identity extends Coerce {
+    public static class Identity extends Coerce {
+        @Override
         public String toJavaCode(String exprJavaCode) {
             return exprJavaCode; // no coercion
         }
     }
 
-    private static Coerce IDENTITY = new Identity();
+    public static Coerce IDENTITY = new Identity();
+
+    public static class DownCast extends Coerce {
+        public TypeSpec to;
+
+        public DownCast(TypeSpec to) {
+            this.to = to;
+        }
+
+        @Override
+        public String toJavaCode(String exprJavaCode) {
+            return String.format("(%s) %s", to.toJavaCode(), exprJavaCode);
+        }
+    }
 }

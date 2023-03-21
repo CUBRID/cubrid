@@ -41,25 +41,25 @@ public class StmtIf extends Stmt {
         return visitor.visitStmtIf(this);
     }
 
-    public final boolean forSearchedCaseStmt;
+    public final boolean forIfStmt;
     public final NodeList<CondStmt> condStmtParts;
     public final NodeList<Stmt> elsePart;
 
     public StmtIf(
             ParserRuleContext ctx,
-            boolean forSearchedCaseStmt,
+            boolean forIfStmt,
             NodeList<CondStmt> condStmtParts,
             NodeList<Stmt> elsePart) {
         super(ctx);
 
-        this.forSearchedCaseStmt = forSearchedCaseStmt;
+        this.forIfStmt = forIfStmt;
         this.condStmtParts = condStmtParts;
         this.elsePart = elsePart;
     }
 
     @Override
     public String toJavaCode() {
-        if (!forSearchedCaseStmt && elsePart == null) {
+        if (forIfStmt && elsePart == null) {
             return condStmtParts.toJavaCode(" else ");
         } else {
 

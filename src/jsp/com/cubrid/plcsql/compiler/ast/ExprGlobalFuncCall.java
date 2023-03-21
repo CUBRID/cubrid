@@ -44,6 +44,8 @@ public class ExprGlobalFuncCall extends Expr {
     public final String name;
     public final NodeList<Expr> args;
 
+    public DeclFunc decl;
+
     public ExprGlobalFuncCall(ParserRuleContext ctx, String name, NodeList<Expr> args) {
         super(ctx);
 
@@ -53,7 +55,7 @@ public class ExprGlobalFuncCall extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
 
         int argSize = args.nodes.size();
         String dynSql = getDynSql(name, argSize);
@@ -62,6 +64,7 @@ public class ExprGlobalFuncCall extends Expr {
 
         return tmplStmt.replace("%'FUNC-NAME'%", name)
                 .replace("%'DYNAMIC-SQL'%", dynSql)
+                .replace("%'RETURN-TYPE'%", decl.retType.toJavaCode())
                 .replace("%'PARAMETERS'%", paramStr)
                 .replace("    %'SET-USED-VALUES'%", Misc.indentLines(setUsedValuesStr, 2))
                 .replace("  %'ARGUMENTS'%", Misc.indentLines(args.toJavaCode(",\n"), 1));
@@ -74,13 +77,13 @@ public class ExprGlobalFuncCall extends Expr {
     private static final String tmplStmt =
             Misc.combineLines(
                     "(new Object() { // global function call: %'FUNC-NAME'%",
-                    "  Object invoke(%'PARAMETERS'%) throws Exception {",
+                    "  %'RETURN-TYPE'% invoke(%'PARAMETERS'%) throws Exception {",
                     "    String dynSql = \"%'DYNAMIC-SQL'%\";",
                     "    CallableStatement stmt = conn.prepareCall(dynSql);",
                     "    stmt.registerOutParameter(1, java.sql.Types.OTHER);",
                     "    %'SET-USED-VALUES'%",
                     "    stmt.execute();",
-                    "    Object ret = stmt.getObject(1);",
+                    "    %'RETURN-TYPE'% ret = (%'RETURN-TYPE'%) stmt.getObject(1);",
                     "    stmt.close();",
                     "    return ret;",
                     "  }",

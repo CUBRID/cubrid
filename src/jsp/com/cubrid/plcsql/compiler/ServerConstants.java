@@ -28,38 +28,15 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.Misc;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
+public class ServerConstants {
 
-public class ExprUnaryOp extends Expr {
-
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitExprUnaryOp(this);
-    }
-
-    public final String opStr;
-    public final Expr operand;
-
-    public ExprUnaryOp(ParserRuleContext ctx, String opStr, Expr operand) {
-        super(ctx);
-
-        this.opStr = opStr;
-        this.operand = operand;
-    }
-
-    @Override
-    public String exprToJavaCode() {
-        return tmpl.replace("%'OPERATION'%", opStr)
-                .replace("  %'OPERAND'%", Misc.indentLines(operand.toJavaCode(), 1));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl = Misc.combineLines("op%'OPERATION'%(", "  %'OPERAND'%", ")");
+    // kinds of SQL statements that are supported in Static SQL
+    public static final int CUBRID_STMT_INSERT      = 20;   // REPLACE too
+    public static final int CUBRID_STMT_SELECT      = 21;
+    public static final int CUBRID_STMT_UPDATE      = 22;
+    public static final int CUBRID_STMT_DELETE      = 23;
+    public static final int CUBRID_STMT_TRUNCATE    = 52;
+    public static final int CUBRID_STMT_MERGE       = 57;
 }

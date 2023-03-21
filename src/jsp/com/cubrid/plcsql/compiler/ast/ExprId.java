@@ -56,7 +56,7 @@ public class ExprId extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
         if (decl instanceof DeclParamOut) {
             return String.format("%s[0]", name);
         } else if (decl instanceof DeclParamIn) {
@@ -83,6 +83,7 @@ public class ExprId extends Expr {
         }
     }
 
+    // TODO: coerce?
     public String toJavaCodeForOutParam() {
         if (decl instanceof DeclParamOut) {
             return String.format("%s", name);

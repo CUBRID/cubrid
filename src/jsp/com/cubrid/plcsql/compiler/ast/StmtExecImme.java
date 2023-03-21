@@ -30,141 +30,28 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtExecImme extends Stmt {
+public class StmtExecImme extends StmtSql {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitStmtExecImme(this);
     }
 
-    public final boolean isDynamic;
-    public final int level;
-    public final Expr sql;
-    public final NodeList<ExprId> intoVarList;
-    public final NodeList<? extends Expr> usedExprList;
-
     public StmtExecImme(
             ParserRuleContext ctx,
-            boolean isDynamic,
             int level,
-            Expr sql,
+            Expr dynamicSql,
             NodeList<ExprId> intoVarList,
             NodeList<? extends Expr> usedExprList) {
-        super(ctx);
-
-        this.isDynamic = isDynamic;
-        this.level = level;
-        this.sql = sql;
-        this.intoVarList = intoVarList;
-        this.usedExprList = usedExprList;
-    }
-
-    @Override
-    public String toJavaCode() {
-        String setUsedValuesStr = Common.getSetUsedValuesStr(usedExprList);
-
-        if (intoVarList == null) {
-            // DML statement TODO: check it is not a Select statement
-            return tmplDml.replace("%'KIND'%", isDynamic ? "dynamic" : "static")
-                    .replace("%'SQL'%", sql.toJavaCode())
-                    .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedValuesStr, 1))
-                    .replace("%'LEVEL'%", "" + level);
-        } else {
-            // Select statement TODO: check it.
-            String setResultsStr = getSetResultsStr(intoVarList);
-            String setNullsStr = getSetNullsStr(intoVarList);
-            return tmplSelect
-                    .replace("%'KIND'%", isDynamic ? "dynamic" : "static")
-                    .replace("%'SQL'%", sql.toJavaCode())
-                    .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedValuesStr, 1))
-                    .replace("      %'SET-RESULTS'%", Misc.indentLines(setResultsStr, 3))
-                    .replace("    %'SET-NULLS'%", Misc.indentLines(setNullsStr, 2))
-                    .replace("%'LEVEL'%", "" + level);
-        }
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmplDml =
-            Misc.combineLines(
-                    "{ // %'KIND'% SQL statement",
-                    "  String dynSql_%'LEVEL'% = %'SQL'%;",
-                    "  PreparedStatement stmt_%'LEVEL'% = conn.prepareStatement(dynSql_%'LEVEL'%);",
-                    "  %'SET-USED-VALUES'%",
-                    "  sql_rowcount[0] = stmt_%'LEVEL'%.executeUpdate();",
-                    "  stmt_%'LEVEL'%.close();",
-                    "}");
-
-    private static final String tmplSelect =
-            Misc.combineLines(
-                    "{ // %'KIND'% Select statement",
-                    "  String dynSql_%'LEVEL'% = %'SQL'%;",
-                    "  PreparedStatement stmt_%'LEVEL'% = conn.prepareStatement(dynSql_%'LEVEL'%);",
-                    "  %'SET-USED-VALUES'%",
-                    "  ResultSet r%'LEVEL'% = stmt_%'LEVEL'%.executeQuery();",
-                    "  int i%'LEVEL'% = 0;",
-                    "  while (r%'LEVEL'%.next()) {",
-                    "    i%'LEVEL'%++;",
-                    "    if (i%'LEVEL'% > 1) {",
-                    "      break;",
-                    "    } else {",
-                    "      %'SET-RESULTS'%",
-                    "    }",
-                    "  }",
-                    "  if (i%'LEVEL'% == 0) {",
-                    "    sql_rowcount[0] = 0L;",
-                    "    %'SET-NULLS'%",
-                    "  } else if (i%'LEVEL'% == 1) {",
-                    "    sql_rowcount[0] = 1L;",
-                    "  } else {",
-                    "    sql_rowcount[0] = 1L; // Surprise? Refer to the Spec.",
-                    "    throw new RuntimeException(\"too many rows\");",
-                    "  }",
-                    "  stmt_%'LEVEL'%.close();",
-                    "}");
-
-    private static String getSetResultsStr(NodeList<ExprId> idList) {
-
-        StringBuffer sbuf = new StringBuffer();
-        int size = idList.nodes.size();
-        for (int i = 0; i < size; i++) {
-            if (i > 0) {
-                sbuf.append("\n");
-            }
-
-            ExprId id = idList.nodes.get(i);
-            assert id.decl instanceof DeclVar || id.decl instanceof DeclParamOut
-                    : "only variables or out-parameters can be used in into-clauses";
-
-            String ty = ((DeclVarLike) id.decl).typeSpec().name;
-
-            sbuf.append(
-                    String.format(
-                            "%s = (%s) r%%'LEVEL'%%.getObject(%d);", id.toJavaCode(), ty, i + 1));
-        }
-
-        return sbuf.toString();
-    }
-
-    private static String getSetNullsStr(NodeList<ExprId> idList) {
-
-        StringBuffer sbuf = new StringBuffer();
-        int size = idList.nodes.size();
-        for (int i = 0; i < size; i++) {
-            if (i > 0) {
-                sbuf.append("\n");
-            }
-
-            ExprId id = idList.nodes.get(i);
-            sbuf.append(String.format("%s = null;", id.toJavaCode()));
-        }
-
-        return sbuf.toString();
+        super(
+                ctx,
+                true,
+                level,
+                dynamicSql,
+                intoVarList == null ? null : intoVarList.nodes,
+                usedExprList == null ? null : usedExprList.nodes);
     }
 }

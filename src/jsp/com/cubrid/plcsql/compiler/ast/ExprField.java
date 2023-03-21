@@ -51,7 +51,7 @@ public class ExprField extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
         return record.toJavaCode() + ".getObject(\"" + fieldName + "\")";
     }
 

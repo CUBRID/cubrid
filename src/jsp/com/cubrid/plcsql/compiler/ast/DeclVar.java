@@ -33,7 +33,7 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class DeclVar extends DeclVarLike {
+public class DeclVar extends DeclIdTyped {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {

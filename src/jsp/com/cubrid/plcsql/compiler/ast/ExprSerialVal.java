@@ -49,6 +49,8 @@ public class ExprSerialVal extends Expr {
     public final String name;
     public final SerialVal mode; // CURR_VAL or NEXT_VAL
 
+    public boolean verified;
+
     public ExprSerialVal(ParserRuleContext ctx, String name, SerialVal mode) {
         super(ctx);
 
@@ -57,7 +59,7 @@ public class ExprSerialVal extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
 
         return tmplSerialVal
                 .replace("%'SERIAL-NAME'%", name)
@@ -73,16 +75,16 @@ public class ExprSerialVal extends Expr {
     private static final String tmplSerialVal =
             Misc.combineLines(
                     "(new Object() {",
-                    "  int getSerialVal() throws Exception {",
-                    "    int ret;",
+                    "  BigDecimal getSerialVal() throws Exception {",
+                    "    BigDecimal ret;",
                     "    String dynSql = \"select %'SERIAL-NAME'%.%'SERIAL-VAL'%\";",
                     "    PreparedStatement stmt = conn.prepareStatement(dynSql);",
                     "    ResultSet r = stmt.executeQuery();",
                     "    if (r.next()) {",
-                    "      ret = r.getInt(1);",
+                    "      ret = r.getBigDecimal(1);",
                     "    } else {",
                     "      assert false; // serial value must be present",
-                    "      ret = -1;",
+                    "      ret = null;",
                     "    }",
                     "    stmt.close();",
                     "    return ret;",
