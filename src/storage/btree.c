@@ -6720,6 +6720,7 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
   LEAF_REC leaf_pnt;
   bool clear_key = false;
   int offset;
+  int max_visible_oids, num_visible_oids;
   int ret = NO_ERROR;
 
   assert (env != NULL);
@@ -6728,9 +6729,6 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 
   if (mvcc_snapshot != NULL)
     {
-      int max_visible_oids = 1;
-      int num_visible_oids = 0;
-
       BTS = &(env->btree_scan);
 
       if (BTS->C_page == NULL)
@@ -6767,6 +6765,7 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 #endif
       /* Is there any visible objects? */
       max_visible_oids = 1;
+      num_visible_oids = 0;
       ret =
 	btree_get_num_visible_from_leaf_and_ovf (thread_p, &BTS->btid_int, &rec, offset, &leaf_pnt, &max_visible_oids,
 						 mvcc_snapshot, &num_visible_oids);
@@ -6932,7 +6931,6 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
       if (found)
 	{
 	  key_cnt = btree_node_number_of_keys (thread_p, BTS->C_page);
-	  assert_release (key_cnt >= 0);
 
 #if !defined(NDEBUG)
 	  header = btree_get_node_header (thread_p, BTS->C_page);
@@ -8492,9 +8490,10 @@ btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid, b
 	  break;
 	}
     }
+  /* if the break statement occurs due to an error, the acquired lock should be released. */
   if (!OID_ISNULL (&class_oid))
     {
-      lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_S_LOCK, true);
+      lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, IX_LOCK, true);
     }
 
   return valid;
@@ -8552,7 +8551,7 @@ btree_check_all (THREAD_ENTRY * thread_p)
 
   if (!OID_ISNULL (&class_oid))
     {
-      lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_S_LOCK, true);
+      lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, IX_LOCK, true);
     }
   return allvalid;
 }
