@@ -1210,8 +1210,8 @@ static unsigned int prm_deduplicate_key_mode_flag = 0;
 static int prm_deduplicate_key_mode_lower = DEDUPLICATE_KEY_MODE_OFF;
 static int prm_deduplicate_key_mode_upper = DEDUPLICATE_KEY_MODE_ON;
 
-int PRM_DEDUPLICATE_KEY_MOD_LEVEL = DEDUPLICATE_KEY_LEVEL_DEFAULT;
-static int prm_deduplicate_key_level_default = DEDUPLICATE_KEY_LEVEL_DEFAULT;
+int PRM_DEDUPLICATE_KEY_MOD_LEVEL = DEDUPLICATE_KEY_LEVEL_NONE;
+static int prm_deduplicate_key_level_default = DEDUPLICATE_KEY_LEVEL_NONE;
 static unsigned int prm_deduplicate_key_level_flag = 0;
 static int prm_deduplicate_key_level_lower = DEDUPLICATE_KEY_LEVEL_MIN;
 static int prm_deduplicate_key_level_upper = DEDUPLICATE_KEY_LEVEL_MAX;

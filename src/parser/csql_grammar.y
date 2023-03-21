@@ -21454,7 +21454,7 @@ opt_deduplicate_key_mode
                }
         | DEDUPLICATE_KEY OFF_
                { DBG_TRACE_GRAMMAR(opt_deduplicate_key_mode,  | DEDUPLICATE_KEY OFF_); 
-                 $$ = MAKE_COMPRESS_MODE_LEVEL(DEDUPLICATE_KEY_MODE_OFF, DEDUPLICATE_KEY_LEVEL_ZERO);
+                 $$ = MAKE_COMPRESS_MODE_LEVEL(DEDUPLICATE_KEY_MODE_OFF, DEDUPLICATE_KEY_LEVEL_NONE);
                }
         | DEDUPLICATE_KEY ON_ opt_deduplicate_key_level
                { DBG_TRACE_GRAMMAR(opt_deduplicate_key_mode,  | DEDUPLICATE_KEY MEDIUM_ opt_deduplicate_key_level); 
@@ -21466,7 +21466,7 @@ opt_deduplicate_key_level
         : /* empty */
 		{ DBG_TRACE_GRAMMAR(opt_deduplicate_key_level, : );                      
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)                                               
-                  $$ = MAKE_COMPRESS_MODE_LEVEL(DEDUPLICATE_KEY_MODE_ON, DEDUPLICATE_KEY_LEVEL_ZERO); 
+                  $$ = MAKE_COMPRESS_MODE_LEVEL(DEDUPLICATE_KEY_MODE_ON, DEDUPLICATE_KEY_LEVEL_NONE); 
 #else
                   $$ = 0;                        
 #endif                  
@@ -27675,7 +27675,7 @@ static void pt_get_deduplicate_key_mode_level(int mode_level, short* mode, short
       {
         case DEDUPLICATE_KEY_MODE_OFF :
              *mode = DEDUPLICATE_KEY_MODE_NONE;
-             *level = DEDUPLICATE_KEY_LEVEL_ZERO;
+             *level = DEDUPLICATE_KEY_LEVEL_NONE;
              break;
         case DEDUPLICATE_KEY_MODE_ON :
              *mode = DEDUPLICATE_KEY_MODE_SET;

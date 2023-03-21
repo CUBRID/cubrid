@@ -3452,7 +3452,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	  else
 	    {
 	      dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_MODE_NONE,
-					     DEDUPLICATE_KEY_LEVEL_ZERO);
+					     DEDUPLICATE_KEY_LEVEL_NONE);
 	    }
 	}
 #endif
@@ -4262,7 +4262,7 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	  if (reserved_col_buf[0] == '\0')
 	    {
 	      dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_MODE_NONE,
-					     DEDUPLICATE_KEY_LEVEL_ZERO);
+					     DEDUPLICATE_KEY_LEVEL_NONE);
 	    }
 	  output_ctx (" %s", reserved_col_buf);
 #endif
