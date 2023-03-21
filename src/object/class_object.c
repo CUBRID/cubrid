@@ -4105,8 +4105,9 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
 
       for (attp = cons->attributes; *attp; attp++)
 	{
+	  int idx;
 	  bool found = false;
-	  for (int idx = 0, namep = att_names; *namep && idx < cols_non_func; namep++, idx++)
+	  for (idx = 0, namep = att_names; *namep && idx < cols_non_func; namep++, idx++)
 	    {
 	      if (intl_identifier_casecmp ((*attp)->header.name, *namep) == 0)
 		{
