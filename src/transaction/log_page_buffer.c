@@ -4496,7 +4496,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, const LOG_LSA * flush_lsa)
       // *INDENT-OFF*
       if (get_server_type () == SERVER_TYPE_TRANSACTION && ts_Gl->is_page_server_connected ())
 	{
-          quourm_consenesus_er_log ("Wait until consenesus LSA gets larger than or equal to %lld|%d.\n", LSA_AS_ARGS (flush_lsa));
+          quourm_consenesus_er_log ("Wait until page server flushed LSA gets larger than or equal to %lld|%d.\n", LSA_AS_ARGS (flush_lsa));
 	  
           log_Gl.wait_for_ps_flushed_lsa (*flush_lsa);
 	}
