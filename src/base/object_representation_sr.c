@@ -3994,7 +3994,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
       *string = NULL;
       if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id) && (attr_index == ORC_ATT_NAME_INDEX))
 	{
-	  *string = (char *) GET_DEDUPLICATE_KEY_ATTR_NAME (GET_DEDUPLICATE_KEY_ATTR_LEVEL (attr_id));
+	  *string = dk_get_deduplicate_key_attr_name (GET_DEDUPLICATE_KEY_ATTR_LEVEL (attr_id));
 	}
     }
 #endif

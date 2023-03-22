@@ -39,9 +39,10 @@
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 
-
 // The higher the level, the more severe the deduplicate.
 #define CALC_MOD_VALUE_FROM_LEVEL(lv)   (1 << (lv))
+
+static char dk_reserved_deduplicate_key_attr_name[COUNT_OF_DEDUPLICATE_KEY_LEVEL][DEDUPLICATE_KEY_ATTR_NAME_LEN];
 
 static DB_DOMAIN *
 get_reserved_index_attr_domain_type (int level)
@@ -73,6 +74,39 @@ dk_or_attribute_initialized ()
       st_or_atts[idx].domain = get_reserved_index_attr_domain_type (level);
       st_or_atts[idx].type = st_or_atts[idx].domain->type->id;
     }
+
+#ifndef NDEBUG
+  int lv1, lv2;
+  char *attr_name;
+  char *ptr;
+
+  for (level = DEDUPLICATE_KEY_LEVEL_MIN; level <= DEDUPLICATE_KEY_LEVEL_MAX; level++)
+    {
+
+      att_id = MK_DEDUPLICATE_KEY_ATTR_ID (level);
+      lv1 = GET_DEDUPLICATE_KEY_ATTR_LEVEL (att_id);
+      attr_name = dk_get_deduplicate_key_attr_name (lv1);
+      GET_DEDUPLICATE_KEY_ATTR_MODE_LEVEL_FROM_NAME (attr_name, lv2);
+      if (!IS_DEDUPLICATE_KEY_ATTR_ID (att_id))
+	{
+	  assert (0);
+	}
+      if (!IS_DEDUPLICATE_KEY_ATTR_NAME (attr_name))
+	{
+	  assert (0);
+	}
+      if (lv1 != lv2 || lv1 != level)
+	{
+	  assert (0);
+	}
+
+      ptr = dk_get_deduplicate_key_attr_name (GET_DEDUPLICATE_KEY_ATTR_LEVEL (att_id));
+      if (strcmp (attr_name, ptr))
+	{
+	  assert (0);
+	}
+    }
+#endif
 
   st_or_atts_init = true;
 }
@@ -229,7 +263,7 @@ dk_sm_attribute_initialized ()
 
   for (level = DEDUPLICATE_KEY_LEVEL_MIN; level <= DEDUPLICATE_KEY_LEVEL_MAX; level++)
     {
-      reserved_name = GET_DEDUPLICATE_KEY_ATTR_NAME (level);
+      reserved_name = dk_get_deduplicate_key_attr_name (level);
       domain = get_reserved_index_attr_domain_type (level);
       if (domain == NULL)
 	{
@@ -285,7 +319,7 @@ dk_find_sm_deduplicate_key_attribute (int att_id, const char *att_name)
     }
 
   assert (level >= DEDUPLICATE_KEY_LEVEL_MIN && level <= DEDUPLICATE_KEY_LEVEL_MAX);
-  assert (dk_reserved_deduplicate_key_index_col_name[level] != NULL);
+  assert (dk_reserved_deduplicate_key_attr_name[level] != NULL);
   assert (st_sm_atts_init == true);
 
   return st_sm_atts[LEVEL_2_IDX (level)];
@@ -393,7 +427,7 @@ dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, i
     {
       attrs_prefix_length[deduplicate_key_col_pos] = -1;
     }
-  attnames[deduplicate_key_col_pos] = (char *) GET_DEDUPLICATE_KEY_ATTR_NAME (idx_info->dedup_key_level);
+  attnames[deduplicate_key_col_pos] = dk_get_deduplicate_key_attr_name (idx_info->dedup_key_level);
   asc_desc[deduplicate_key_col_pos] = (is_reverse ? 1 : 0);
 
   attnames[nnames + 1] = NULL;
@@ -427,13 +461,19 @@ dk_print_deduplicate_key_info (char *buf, int buf_size, int dedup_key_mode, int 
 
 #endif // #if !defined(SERVER_MODE)
 //=============================================================================
+char *
+dk_get_deduplicate_key_attr_name (int level)
+{
+  char *p = dk_reserved_deduplicate_key_attr_name[LEVEL_2_IDX ((level))];
+  return p;
+}
 
 void
 dk_deduplicate_key_attribute_initialized ()
 {
   for (int level = DEDUPLICATE_KEY_LEVEL_MIN; level <= DEDUPLICATE_KEY_LEVEL_MAX; level++)
     {
-      sprintf (dk_reserved_deduplicate_key_index_col_name[LEVEL_2_IDX (level)], "%s%02d",
+      sprintf (dk_reserved_deduplicate_key_attr_name[LEVEL_2_IDX (level)], "%s%02d",
 	       DEDUPLICATE_KEY_ATTR_NAME_PREFIX, level);
     }
 

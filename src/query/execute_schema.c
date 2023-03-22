@@ -7509,7 +7509,7 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
   if (fk_info->dedup_key_mode != DEDUPLICATE_KEY_MODE_NONE)
     {
       // adjust for FK: add deduplicate_key_attr column
-      att_names[i++] = (char *) GET_DEDUPLICATE_KEY_ATTR_NAME (fk_info->dedup_key_level);
+      att_names[i++] = dk_get_deduplicate_key_attr_name (fk_info->dedup_key_level);
     }
 #endif
   att_names[i] = NULL;

@@ -65,11 +65,9 @@ typedef enum
 
 #define COUNT_OF_DEDUPLICATE_KEY_LEVEL (DEDUPLICATE_KEY_LEVEL_MAX - DEDUPLICATE_KEY_LEVEL_MIN + 1)
 
-static char dk_reserved_deduplicate_key_index_col_name[COUNT_OF_DEDUPLICATE_KEY_LEVEL][DEDUPLICATE_KEY_ATTR_NAME_LEN];
 
 // *INDENT-OFF*
 #define LEVEL_2_IDX(lv)  ((lv) - DEDUPLICATE_KEY_LEVEL_MIN)
-#define GET_DEDUPLICATE_KEY_ATTR_NAME(level)   (dk_reserved_deduplicate_key_index_col_name[LEVEL_2_IDX((level))])
 #define MK_DEDUPLICATE_KEY_ATTR_ID(level)      (((int)DEDUPLICATE_KEY_ATTR_ID_BASE) - (level))
 #define GET_DEDUPLICATE_KEY_ATTR_LEVEL(attid)  (((int)DEDUPLICATE_KEY_ATTR_ID_BASE) - (attid))
 
@@ -111,6 +109,7 @@ extern char *dk_print_deduplicate_key_info (char *buf, int buf_size, int dedup_k
 extern int dk_sm_deduplicate_key_position (int n_attrs, SM_ATTRIBUTE ** attrs, SM_FUNCTION_INFO * function_index);
 #endif
 
+extern char *dk_get_deduplicate_key_attr_name (int level);
 extern void dk_deduplicate_key_attribute_initialized ();
 extern void dk_deduplicate_key_attribute_finalized ();
 

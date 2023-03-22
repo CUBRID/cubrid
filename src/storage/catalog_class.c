@@ -874,7 +874,7 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p, OR_VA
 	    {
 	      DB_VALUE tmp_val;
 
-	      db_make_string (&tmp_val, GET_DEDUPLICATE_KEY_ATTR_NAME (GET_DEDUPLICATE_KEY_ATTR_LEVEL (id)));
+	      db_make_string (&tmp_val, dk_get_deduplicate_key_attr_name (GET_DEDUPLICATE_KEY_ATTR_LEVEL (id)));
 	      pr_clear_value (&key_atts[1].value);
 	      pr_clone_value (&tmp_val, &key_atts[1].value);
 	      if (tmp_val.need_clear)
