@@ -517,7 +517,11 @@ ini_parse_line (char *input_line, char *section, char *key, char *value)
 	{
 	  sprintf (section, "%c%s", leading_char, ini_str_trim (section + 1));
 	}
-      strcpy (section, ini_str_lower (section));
+
+      if (leading_char != '@')
+	{
+	  strcpy (section, ini_str_lower (section));
+	}
       status = LINE_SECTION;
     }
   else if (sscanf (line, "%[^=] = \"%[^\"]\"", key, value) == 2 || sscanf (line, "%[^=] = '%[^\']'", key, value) == 2
