@@ -787,7 +787,7 @@ ini_hassec (const char *key)
  * Note:
  */
 int
-ini_seccmp (const char *key1, const char *key2)
+ini_seccmp (const char *key1, const char *key2, bool ignore_case)
 {
   const char *s1 = strchr (key1, ':');
   const char *s2 = strchr (key2, ':');
@@ -816,7 +816,12 @@ ini_seccmp (const char *key1, const char *key2)
       return 0;
     }
 
-  if (strncasecmp (key1, key2, key1_sec_len) == 0)
+  if (ignore_case && strncasecmp (key1, key2, key1_sec_len) == 0)
+    {
+      return key1_sec_len;
+    }
+
+  if (ignore_case == false && strncmp (key1, key2, key1_sec_len) == 0)
     {
       return key1_sec_len;
     }
