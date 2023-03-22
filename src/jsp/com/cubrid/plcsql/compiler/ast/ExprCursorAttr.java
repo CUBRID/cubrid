@@ -64,7 +64,7 @@ public class ExprCursorAttr extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
         return id.toJavaCode() + "." + attr.method + "()";
     }
 

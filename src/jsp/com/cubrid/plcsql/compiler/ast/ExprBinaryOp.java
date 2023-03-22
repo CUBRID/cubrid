@@ -54,7 +54,7 @@ public class ExprBinaryOp extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
         return tmpl.replace("%'OPERATION'%", opStr)
                 .replace("  %'LEFT-OPERAND'%", Misc.indentLines(left.toJavaCode(), 1))
                 .replace("  %'RIGHT-OPERAND'%", Misc.indentLines(right.toJavaCode(), 1));

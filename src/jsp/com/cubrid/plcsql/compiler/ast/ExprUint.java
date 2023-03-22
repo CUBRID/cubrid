@@ -57,7 +57,7 @@ public class ExprUint extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
         switch (ty) {
             case BIGDECIMAL:
                 return "new BigDecimal(\"" + val + "\")";

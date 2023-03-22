@@ -256,6 +256,7 @@ fetch_statement
 
 open_for_statement
     : OPEN identifier FOR s_select_statement
+    //| OPEN identifier FOR dyn_sql using_clause?   TODO
     ;
 
 transaction_control_statements
@@ -503,7 +504,7 @@ numeric_type
     ;
 
 char_type
-    : (CHAR | VARCHAR) ( '(' length=UNSIGNED_INTEGER ')' )?
+    : (CHAR | CHARACTER | VARCHAR | CHAR VARYING | CHARACTER VARYING) ( '(' length=UNSIGNED_INTEGER ')' )?
     ;
 
 simple_type

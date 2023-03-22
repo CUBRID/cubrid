@@ -51,7 +51,7 @@ public class ExprList extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
         return "Arrays.asList(\n" + Misc.indentLines(elems.toJavaCode(",\n"), 1) + "\n)";
     }
 

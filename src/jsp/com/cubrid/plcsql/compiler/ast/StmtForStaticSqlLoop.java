@@ -30,12 +30,35 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.StaticSql;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.util.ArrayList;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public abstract class DeclVarLike extends DeclId {
-    public abstract TypeSpec typeSpec();
+public class StmtForStaticSqlLoop extends StmtForSqlLoop {
 
-    public DeclVarLike(ParserRuleContext ctx) {
-        super(ctx);
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtForStaticSqlLoop(this);
+    }
+
+    public final StaticSql staticSql;
+
+    public StmtForStaticSqlLoop(
+            ParserRuleContext ctx,
+            String label,
+            DeclForRecord record,
+            StaticSql staticSql,
+            NodeList<Stmt> stmts) {
+        super(
+                ctx,
+                false,
+                label,
+                record,
+                new ExprStr(staticSql.ctx, staticSql.rewritten),
+                new ArrayList(staticSql.hostVars.keySet()),
+                stmts);
+
+        this.staticSql = staticSql;
     }
 }

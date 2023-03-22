@@ -42,7 +42,7 @@ public class ExprTrue extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
         return "true";
     }
 

@@ -32,6 +32,7 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.util.ArrayList;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class StmtCursorOpen extends Stmt {
@@ -58,7 +59,7 @@ public class StmtCursorOpen extends Stmt {
     public String toJavaCode() {
         DeclCursor decl = (DeclCursor) cursor.decl;
         String dupCursorArgStr = getDupCursorArgStr(decl.paramRefCounts);
-        String hostValuesStr = getHostValuesStr(decl.usedValuesMap, decl.paramRefCounts);
+        String hostValuesStr = getHostValuesStr(decl.paramMarks, decl.paramRefCounts);
         return tmplStmt.replace("  %'DUPLICATE-CURSOR-ARG'%", Misc.indentLines(dupCursorArgStr, 1))
                 .replace("  %'CURSOR'%", Misc.indentLines(cursor.toJavaCode(), 1))
                 .replace("%'HOST-VALUES'%", Misc.indentLines(hostValuesStr, 2, true))
@@ -108,29 +109,31 @@ public class StmtCursorOpen extends Stmt {
         }
     }
 
-    protected String getHostValuesStr(int[] usedValuesMap, int[] paramRefCounts) {
+    protected String getHostValuesStr(int[] paramMarks, int[] paramRefCounts) {
 
-        int size = usedValuesMap.length;
+        int size = paramMarks.length;
         if (size == 0) {
             return "/* no used host values */";
         } else {
             DeclCursor decl = (DeclCursor) cursor.decl;
             StringBuffer sbuf = new StringBuffer();
+            ArrayList<ExprId> hostVars = new ArrayList<>(decl.staticSql.hostVars.keySet());
             for (int i = 0; i < size; i++) {
                 sbuf.append(",\n");
-                int m = usedValuesMap[i];
-                if (m < 0) {
-                    int k = -m - 1;
+                int m = paramMarks[i];
+                if (m > 0) {
+                    int k = m - 1;
                     if (paramRefCounts[k] > 1) {
-                        // parameter-k appears more than one times in the select statement
+                        // parameter-k appears more than once in the select statement
                         sbuf.append("a" + k + "_%'LEVEL'%");
                     } else {
                         assert paramRefCounts[k] == 1;
                         sbuf.append(args.nodes.get(k).toJavaCode());
                     }
                 } else {
-                    ExprId var = decl.usedVars.nodes.get(i);
-                    var.prefixDeclBlock = (var.decl == null) ? false : var.decl.scope().declDone;
+                    ExprId var = hostVars.get(i);
+                    assert var.decl != null;
+                    var.prefixDeclBlock = var.decl.scope().declDone;
                     sbuf.append(var.toJavaCode());
                 }
             }

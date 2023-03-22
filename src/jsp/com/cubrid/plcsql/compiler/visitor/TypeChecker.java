@@ -31,17 +31,19 @@
 package com.cubrid.plcsql.compiler.visitor;
 
 import com.cubrid.plcsql.compiler.Coerce;
-import com.cubrid.plcsql.compiler.GlobalTypeInfo;
+import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.SemanticError;
+import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.ast.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 public class TypeChecker extends AstVisitor<TypeSpec> {
 
-    public TypeChecker(SymbolStack symbolStack, GlobalTypeInfo gti) {
+    public TypeChecker(SymbolStack symbolStack) {
         this.symbolStack = symbolStack;
-        this.gti = gti;
     }
 
     @Override
@@ -70,10 +72,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitTypeSpecPercent(TypeSpecPercent node) {
-        // TODO: requries server API
-        // node.setResolvedType(gti.getTableColumnType(node.table, node.column));
-        assert false : "server semantic API required: not implemented yet";
-        throw new RuntimeException("server semantic API required: not implemented yet");
+        assert node.resolvedType != null;
+        return null;
     }
 
     @Override
@@ -110,7 +110,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (!caseCondType.equals(TypeSpecSimple.BOOLEAN)) {
             throw new SemanticError(
                     node.cond.lineNo(), // s202
-                    "type of the condition must be boolean");
+                    "the condition must be boolean");
         }
         return visit(node.expr);
     }
@@ -149,14 +149,14 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             if (node.notNull && valType.equals(TypeSpecSimple.NULL)) {
                 throw new SemanticError(
                         node.val.lineNo(), // s204
-                        "not null variables may not have null as its initial value");
+                        "NOT NULL variables may not have null as their initial value");
             }
 
             Coerce c = Coerce.getCoerce(valType, node.typeSpec);
             if (c == null) {
                 throw new SemanticError(
                         node.val.lineNo(), // s205
-                        "the initial value's type is not compatible with the variable's declared type");
+                        "type of the initial value is not compatible with the variable's declared type");
             } else {
                 node.val.setCoerce(c);
             }
@@ -173,14 +173,14 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (node.notNull && valType.equals(TypeSpecSimple.NULL)) {
             throw new SemanticError(
                     node.val.lineNo(), // s206
-                    "not null constants may not have null as its initial value");
+                    "NOT NULL constants may not have null as their initial value");
         }
 
         Coerce c = Coerce.getCoerce(valType, node.typeSpec);
         if (c == null) {
             throw new SemanticError(
                     node.val.lineNo(), // s207
-                    "the initial value's type is not compatible with the constant's declared type");
+                    "type of the initial value is not compatible with the constant's declared type");
         } else {
             node.val.setCoerce(c);
         }
@@ -200,7 +200,11 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitDeclCursor(DeclCursor node) {
+
+        assert node.staticSql.intoVars == null; // by earlier check
+
         visitNodeList(node.paramList);
+        typeCheckHostVars(node.staticSql); // s400
         return null;
     }
 
@@ -222,7 +226,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (!areComparableTypes(targetType, lowerType)) {
             throw new SemanticError(
                     node.lowerBound.lineNo(), // s208
-                    "lower bound has an incomparable type in the 'between' expression");
+                    "lower bound has an incomparable type in the BETWEEN expression");
         }
 
         TypeSpec upperType = visit(node.upperBound);
@@ -230,7 +234,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (!areComparableTypes(targetType, upperType)) {
             throw new SemanticError(
                     node.upperBound.lineNo(), // s209
-                    "upper bound has an incomparable type in the 'between' expression");
+                    "upper bound has an incomparable type in the BETWEEN expression");
         }
 
         return TypeSpecSimple.BOOLEAN;
@@ -244,10 +248,12 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (binOp == null) {
             throw new SemanticError(
                     node.lineNo(), // s210
-                    "binary operator '"
-                            + node.opStr.toLowerCase()
-                            + "' cannot be applied to the argument types");
+                    "binary operator "
+                            + node.opStr.toUpperCase()
+                            + " cannot be applied to the argument types");
         }
+
+        // TODO: coerce
 
         return binOp.retType;
     }
@@ -271,14 +277,21 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                 commonType = getCommonType(commonType, ty);
             }
         }
-        if (node.elsePart != null) {
+        if (node.elsePart == null) {
+            if (commonType.equals(TypeSpecSimple.NULL)) {
+                commonType =
+                        TypeSpecSimple
+                                .OBJECT; // cannot be a specific Java type: there is no Null type in
+                // Java
+            }
+        } else {
             TypeSpec ty = visit(node.elsePart);
             commonType = getCommonType(commonType, ty);
         }
 
-        caseSelectorType = saveCaseSelectorType; // restore
-
         node.setResultType(commonType);
+
+        caseSelectorType = saveCaseSelectorType; // restore
         return commonType;
     }
 
@@ -293,7 +306,14 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                 commonType = getCommonType(commonType, ty);
             }
         }
-        if (node.elsePart != null) {
+        if (node.elsePart == null) {
+            if (commonType.equals(TypeSpecSimple.NULL)) {
+                commonType =
+                        TypeSpecSimple
+                                .OBJECT; // cannot be a specific Java type: there is no Null type in
+                // Java
+            }
+        } else {
             TypeSpec ty = visit(node.elsePart);
             commonType = getCommonType(commonType, ty);
         }
@@ -338,30 +358,49 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprField(ExprField node) {
-        // TODO: requires server API
-        assert false : "server semantic API required: not implemented yet";
-        throw new RuntimeException("server semantic API required: not implemented yet");
+        TypeSpec ret;
+
+        DeclId declId = node.record.decl;
+        assert declId instanceof DeclForRecord;
+        DeclForRecord declForRecord = (DeclForRecord) declId;
+        if (declForRecord.fieldTypes != null) {
+            // this record is for a static SQL
+
+            ret = declForRecord.fieldTypes.get(node.fieldName);
+            if (ret == null) {
+                throw new SemanticError(
+                        node.lineNo(), // s401
+                        String.format("no such column '%s' in the query result", node.fieldName));
+            }
+        } else {
+            // this record is for a dynamic SQL
+
+            ret =
+                    TypeSpecSimple
+                            .OBJECT; // cannot be a specific Java type: type unknown at compile time
+        }
+
+        return ret;
     }
 
     @Override
     public TypeSpec visitExprGlobalFuncCall(ExprGlobalFuncCall node) {
-        // TODO: requires server API
-        assert false : "server semantic API required: not implemented yet";
-        throw new RuntimeException("server semantic API required: not implemented yet");
+        assert node.decl != null;
+        checkRoutineCall(node.decl, node.args.nodes);
+        return node.decl.retType;
     }
 
     @Override
     public TypeSpec visitExprId(ExprId node) {
-        if (node.decl instanceof DeclVarLike) {
-            return ((DeclVarLike) node.decl).typeSpec();
+        if (node.decl instanceof DeclIdTyped) {
+            return ((DeclIdTyped) node.decl).typeSpec();
         } else if (node.decl instanceof DeclCursor) {
             return TypeSpecSimple.CURSOR;
         } else if (node.decl instanceof DeclForIter) {
             return TypeSpecSimple.INTEGER;
         } else if (node.decl instanceof DeclForRecord) {
-            // TODO: requires server API
-            assert false : "server semantic API required: not implemented yet";
-            throw new RuntimeException("server semantic API required: not implemented yet");
+            assert false : "unreachable";
+            throw new RuntimeException("unreachable");
         } else {
             assert false : "unreachable";
             throw new RuntimeException("unreachable");
@@ -390,7 +429,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (!targetType.equals(TypeSpecSimple.STRING)) {
             throw new SemanticError(
                     node.target.lineNo(), // s213
-                    "tested expression is not of the String type");
+                    "tested expression is not of STRING type");
         }
         return TypeSpecSimple.BOOLEAN;
     }
@@ -434,9 +473,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprSerialVal(ExprSerialVal node) {
-        // TODO: requries server API
-        assert false : "server semantic API required: not implemented yet";
-        throw new RuntimeException("server semantic API required: not implemented yet");
+        assert node.verified;
+        return TypeSpecSimple.BIGDECIMAL; // TODO: apply precision and scale
     }
 
     @Override
@@ -466,10 +504,13 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (unaryOp == null) {
             throw new SemanticError(
                     node.lineNo(), // s215
-                    "the unary operator '"
-                            + node.opStr.toLowerCase()
-                            + "' cannot be applied to the argument type");
+                    "unary operator "
+                            + node.opStr.toUpperCase()
+                            + " cannot be applied to the argument type");
         }
+
+        // TODO: coerce
+
         return unaryOp.retType;
     }
 
@@ -481,12 +522,14 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitStmtAssign(StmtAssign node) {
         TypeSpec valType = visit(node.val);
-        TypeSpec varType = ((DeclVarLike) node.var.decl).typeSpec();
+        TypeSpec varType = ((DeclIdTyped) node.var.decl).typeSpec();
         Coerce c = Coerce.getCoerce(valType, varType);
         if (c == null) {
             throw new SemanticError(
                     node.val.lineNo(), // s216
-                    "assigned value has incompatible type with the variable's type");
+                    "type of the value is not compatible with the variable's type");
+        } else {
+            node.val.setCoerce(c);
         }
 
         return null;
@@ -545,25 +588,50 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitStmtCursorFetch(StmtCursorFetch node) {
+
         TypeSpec idType = visit(node.id);
         if (idType.equals(TypeSpecSimple.CURSOR)) {
-            // TODO: requires server API
-            assert false : "server semantic API required: not implemented yet";
-            throw new RuntimeException("server semantic API required: not implemented yet");
+
+            List<Coerce> coerces = new ArrayList<>();
+
+            DeclCursor declCursor = (DeclCursor) node.id.decl;
+            assert declCursor.staticSql != null;
+            LinkedHashMap<String, TypeSpec> selectList = declCursor.staticSql.selectList;
+
+            int i = 0;
+            for (String column : selectList.keySet()) {
+                TypeSpec columnType = selectList.get(column);
+                ExprId intoVar = node.intoVars.nodes.get(i);
+                Coerce c = Coerce.getCoerce(columnType, ((DeclIdTyped) intoVar.decl).typeSpec());
+                if (c == null) {
+                    throw new SemanticError(
+                            intoVar.lineNo(), // s403
+                            String.format(
+                                    "type of column %d of the cursor is not compatible with the type of variable %s",
+                                    i + 1, intoVar.name));
+                } else {
+                    coerces.add(c);
+                }
+
+                i++;
+            }
+            node.setCoerces(coerces);
+
         } else if (idType.equals(TypeSpecSimple.REFCURSOR)) {
             // nothing to do more,
         } else {
             assert false : "unreachable"; // by earlier check
             throw new RuntimeException("unreachable");
         }
+
         return null;
     }
 
     @Override
     public TypeSpec visitStmtCursorOpen(StmtCursorOpen node) {
         TypeSpec idType = visit(node.cursor);
-        DeclCursor declCursor = (DeclCursor) node.cursor.decl;
         if (idType.equals(TypeSpecSimple.CURSOR)) {
+            DeclCursor declCursor = (DeclCursor) node.cursor.decl;
             int len = node.args.nodes.size();
             for (int i = 0; i < len; i++) {
                 Expr arg = node.args.nodes.get(i);
@@ -574,9 +642,11 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                 if (c == null) {
                     throw new SemanticError(
                             arg.lineNo(), // s219
-                            String.format("argument %d to cursor has an incompatible type", i + 1));
+                            String.format(
+                                    "argument %d to the cursor has an incompatible type", i + 1));
+                } else {
+                    arg.setCoerce(c);
                 }
-                arg.setCoerce(c);
             }
         } else {
             assert false : "unreachable"; // by earlier check
@@ -588,19 +658,49 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitStmtExecImme(StmtExecImme node) {
 
-        if (node.isDynamic) {
-            TypeSpec sqlType = visit(node.sql);
-            if (!sqlType.equals(TypeSpecSimple.STRING)) {
-                throw new SemanticError(
-                        node.sql.lineNo(), // s221
-                        "SQL in the EXECUTE IMMEDIATE statement must be of the STRING type");
-            }
+        TypeSpec sqlType = visit(node.sql);
+        if (!sqlType.equals(TypeSpecSimple.STRING)) {
+            throw new SemanticError(
+                    node.sql.lineNo(), // s221
+                    "SQL in the EXECUTE IMMEDIATE statement must be of STRING type");
         }
 
-        // TODO: requires server API
-        assert false : "server semantic API required: not implemented yet";
-        throw new RuntimeException("server semantic API required: not implemented yet");
-        // return null;
+        return null;
+    }
+
+    @Override
+    public TypeSpec visitStmtStaticSql(StmtStaticSql node) {
+
+        StaticSql staticSql = node.staticSql;
+
+        typeCheckHostVars(staticSql); // s404
+        if (staticSql.intoVars != null) {
+
+            List<Coerce> coerces = new ArrayList<>();
+
+            // check types of into-variables
+            int i = 0;
+            for (String column : staticSql.selectList.keySet()) {
+                TypeSpec tyColumn = staticSql.selectList.get(column);
+                ExprId intoVar = staticSql.intoVars.get(i);
+                TypeSpec tyIntoVar = visitExprId(intoVar);
+                Coerce c = Coerce.getCoerce(tyColumn, tyIntoVar);
+                if (c == null) {
+                    throw new SemanticError( // s405
+                            Misc.getLineOf(staticSql.ctx),
+                            "into-variable "
+                                    + intoVar.name
+                                    + " cannot be used there due to its incompatible type");
+                } else {
+                    coerces.add(c);
+                }
+
+                i++;
+            }
+            node.setCoerces(coerces);
+        }
+
+        return null;
     }
 
     @Override
@@ -618,14 +718,14 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (!TypeSpecSimple.INTEGER.equals(ty)) {
             throw new SemanticError(
                     node.lowerBound.lineNo(), // s222
-                    "lower bound of for loop must be of the INTEGER type");
+                    "lower bounds of for loops must be of INTEGER type");
         }
 
         ty = visit(node.upperBound);
         if (!TypeSpecSimple.INTEGER.equals(ty)) {
             throw new SemanticError(
                     node.upperBound.lineNo(), // s223
-                    "upper bound of for loop must be of the INTEGER type");
+                    "upper bounds of for loops must be of INTEGER type");
         }
 
         if (node.step != null) {
@@ -633,7 +733,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             if (!TypeSpecSimple.INTEGER.equals(ty)) {
                 throw new SemanticError(
                         node.step.lineNo(), // s224
-                        "step of for loop must be of the INTEGER type");
+                        "steps of for loops must be of INTEGER type");
             }
         }
 
@@ -643,31 +743,33 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     }
 
     @Override
-    public TypeSpec visitStmtForSqlLoop(StmtForSqlLoop node) {
+    public TypeSpec visitStmtForExecImmeLoop(StmtForExecImmeLoop node) {
 
-        if (node.isDynamic) {
-            TypeSpec sqlType = visit(node.sql);
-            if (!sqlType.equals(TypeSpecSimple.STRING)) {
-                throw new SemanticError(
-                        node.sql.lineNo(), // s225
-                        "SQL in the EXECUTE IMMEDIATE statement must be of the STRING type");
-            }
+        TypeSpec sqlType = visit(node.sql);
+        if (!sqlType.equals(TypeSpecSimple.STRING)) {
+            throw new SemanticError(
+                    node.sql.lineNo(), // s225
+                    "SQL in EXECUTE IMMEDIATE statements must be of STRING type");
         }
 
-        // TODO: check if it is a SELECT statement
+        visitNodeList(node.stmts);
 
-        // TODO: requires server API
-        assert false : "server semantic API required: not implemented yet";
-        throw new RuntimeException("server semantic API required: not implemented yet");
-        // return null;
+        return null;
+    }
+
+    @Override
+    public TypeSpec visitStmtForStaticSqlLoop(StmtForStaticSqlLoop node) {
+
+        typeCheckHostVars(node.staticSql); // s406
+        visitNodeList(node.stmts);
+        return null;
     }
 
     @Override
     public TypeSpec visitStmtGlobalProcCall(StmtGlobalProcCall node) {
-        // TODO: requires server API
-        assert false : "server semantic API required: not implemented yet";
-        throw new RuntimeException("server semantic API required: not implemented yet");
-        // return null;
+        assert node.decl != null;
+        checkRoutineCall(node.decl, node.args.nodes);
+        return null;
     }
 
     @Override
@@ -695,10 +797,11 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         TypeSpec ty = visitExprId(node.id);
         assert ty.equals(TypeSpecSimple.REFCURSOR); // by earlier check
 
-        // TODO: requires server API
-        assert false : "server semantic API required: not implemented yet";
-        throw new RuntimeException("server semantic API required: not implemented yet");
-        // return null;
+        assert node.staticSql != null;
+        assert node.staticSql.intoVars == null; // by earlier check
+
+        typeCheckHostVars(node.staticSql); // s407
+        return null;
     }
 
     @Override
@@ -714,14 +817,14 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (!ty.equals(TypeSpecSimple.INTEGER)) {
             throw new SemanticError(
                     node.errCode.lineNo(), // s220
-                    "error code must be an integer");
+                    "error codes must be an integer");
         }
 
         ty = visit(node.errMsg);
         if (!ty.equals(TypeSpecSimple.STRING)) {
             throw new SemanticError(
                     node.errMsg.lineNo(), // s218
-                    "error message must be a string");
+                    "error messages must be a string");
         }
 
         return null;
@@ -735,9 +838,10 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             if (c == null) {
                 throw new SemanticError(
                         node.retVal.lineNo(), // s217
-                        "return value has a type incompatible with the return type");
+                        "type of the return value is not compatible with the return type");
+            } else {
+                node.retVal.setCoerce(c);
             }
-            node.retVal.setCoerce(c);
         }
         return null;
     }
@@ -753,7 +857,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (!condType.equals(TypeSpecSimple.BOOLEAN)) {
             throw new SemanticError(
                     node.cond.lineNo(), // s211
-                    "condition expressions of while loops must be of the BOOLEAN type");
+                    "while loops' condition must be of BOOLEAN type");
         }
         visitNodeList(node.stmts);
         return null;
@@ -770,7 +874,6 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     // ------------------------------------------------------------------
 
     private SymbolStack symbolStack;
-    private GlobalTypeInfo gti;
 
     private TypeSpec caseSelectorType;
 
@@ -812,10 +915,32 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                 throw new SemanticError(
                         arg.lineNo(), // s214
                         String.format(
-                                "argument %d to %s call has an incompatible type",
+                                "argument %d to the call of %s has an incompatible type",
                                 i + 1, decl.name));
+            } else {
+                arg.setCoerce(c);
             }
-            arg.setCoerce(c);
+        }
+    }
+
+    private void typeCheckHostVars(StaticSql staticSql) {
+
+        assert staticSql.ctx != null;
+
+        LinkedHashMap<ExprId, TypeSpec> hostVars = staticSql.hostVars;
+        for (ExprId id : hostVars.keySet()) {
+            TypeSpec ty = visitExprId(id);
+            TypeSpec tyRequired = hostVars.get(id);
+            Coerce c = Coerce.getCoerce(ty, tyRequired);
+            if (c == null) {
+                throw new SemanticError(
+                        Misc.getLineOf(staticSql.ctx),
+                        "host variable "
+                                + id.name
+                                + " does not have a compatible type in the SQL statement");
+            } else {
+                // no more use of the coerce
+            }
         }
     }
 }

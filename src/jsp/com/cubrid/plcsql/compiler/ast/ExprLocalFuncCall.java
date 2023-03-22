@@ -60,7 +60,7 @@ public class ExprLocalFuncCall extends Expr {
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
 
         String block = prefixDeclBlock ? decl.scope().block + "." : "";
 
