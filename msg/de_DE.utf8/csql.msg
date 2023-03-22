@@ -190,6 +190,12 @@ $ csql help messages
    ;HISTORYRead <history_num>   - Eintrag über die Verlaufszahl in den Befehlspuffer schreiben.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - Single-Line-Modus aktivieren/deaktivieren.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - sich als Benutzername mit der aktuellen oder anderen Datenbanken verbinden..\n\
+   ;.Hist [ON/OFF]              - sammeln von Statistikinformationen in CSQL starten/stoppen (nur verfügbarer DBA).\n\
+   ;.Clear_hist                 - löschen Sie die SQL Statistikinformationen im Puffer.\n\
+   ;.Dump_hist                  - anzeige der CSQL-Statistikinformationen in CSQL.\n\
+   ;.X_hist                     - anzeige der CSQL-Statistikinformationen in CSQL mit initialisierten Statistikdaten.\n\
    ;HElp                        - Hilfe anzeigen.\n\n
 
 232 <Beschränkungen> 
