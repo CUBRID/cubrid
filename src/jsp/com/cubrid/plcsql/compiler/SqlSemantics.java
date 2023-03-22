@@ -30,49 +30,14 @@
 
 package com.cubrid.plcsql.compiler;
 
-<<<<<<< HEAD
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.ColumnInfo;
 import java.util.ArrayList;
-=======
->>>>>>> upstream/feature/plcsql
 import java.util.LinkedHashMap;
 import java.util.List;
 
 public class SqlSemantics {
 
-<<<<<<< HEAD
-    public enum Kind {
-        SELECT(21),
-        INSERT(20),
-        UPDATE(22),
-        DELETE(23),
-        MERGE(57),
-        REPLACE(21), // special stmt of INSERT
-        TRUNCATE(52);
-
-        private final int value;
-
-        private Kind(int value) {
-            this.value = value;
-        }
-
-        public int getValue() {
-            return value;
-        }
-
-        public static Kind fromValue(int id) {
-            for (Kind type : values()) {
-                if (type.getValue() == id) {
-                    return type;
-                }
-            }
-            return null;
-        }
-    }
-
-=======
->>>>>>> upstream/feature/plcsql
     // for error return
     public int errCode; // non-zero if error
     public String errMsg;
@@ -84,11 +49,7 @@ public class SqlSemantics {
     }
 
     // for normal return
-<<<<<<< HEAD
-    public Kind kind;
-=======
     public int kind;
->>>>>>> upstream/feature/plcsql
     public String rewritten;
     public LinkedHashMap<String, String>
             hostVars; // host variables and their SQL types required in their locations
@@ -96,15 +57,10 @@ public class SqlSemantics {
             selectList; // (only for select statements) columns and their SQL types
     public List<String> intoVars; // (only for select stetements with an into-clause) into variables
 
-<<<<<<< HEAD
     public List<ColumnInfo> columnInfos;
 
     public SqlSemantics(
-            Kind kind,
-=======
-    SqlSemantics(
             int kind,
->>>>>>> upstream/feature/plcsql
             String rewritten,
             LinkedHashMap<String, String> hostVars,
             LinkedHashMap<String, String> selectList,
@@ -116,10 +72,9 @@ public class SqlSemantics {
         this.selectList = selectList;
         this.intoVars = intoVars;
     }
-<<<<<<< HEAD
 
     public SqlSemantics(CUBRIDUnpacker unpacker) {
-        this.kind = Kind.fromValue(unpacker.unpackInt());
+        this.kind = unpacker.unpackInt();
         this.rewritten = unpacker.unpackCString();
 
         hostVars = new LinkedHashMap<>();
@@ -145,6 +100,4 @@ public class SqlSemantics {
             intoVars.add(var);
         }
     }
-=======
->>>>>>> upstream/feature/plcsql
 }
