@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler;
 
-<<<<<<< HEAD
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
@@ -40,8 +39,6 @@ import com.cubrid.jsp.protocol.SqlSemanticsRequest;
 import com.cubrid.jsp.protocol.SqlSemanticsResponse;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-=======
->>>>>>> upstream/feature/plcsql
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -49,7 +46,6 @@ import java.util.List;
 public class ServerAPI {
 
     public static List<SqlSemantics> getSqlSemantics(List<String> sqlTexts) {
-<<<<<<< HEAD
         if (sqlTexts == null) {
             return null;
         }
@@ -74,9 +70,6 @@ public class ServerAPI {
             // TODO
             return null;
         }
-=======
-        return getMockSqlSemantics(sqlTexts);
->>>>>>> upstream/feature/plcsql
     }
 
     public static List<Question> getGlobalSemantics(List<Question> questions) {

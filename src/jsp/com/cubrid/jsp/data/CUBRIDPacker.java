@@ -128,13 +128,10 @@ public class CUBRIDPacker {
         }
     }
 
-<<<<<<< HEAD
     public void packPackableObject(PackableObject o) {
         o.pack(this);
     }
 
-=======
->>>>>>> upstream/feature/plcsql
     public void packPrimitiveBytes(ByteBuffer b) {
         ensureSpace(b.position());
         buffer.put(b.array(), 0, b.position());

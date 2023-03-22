@@ -30,12 +30,9 @@
 
 package com.cubrid.plcsql.compiler;
 
-<<<<<<< HEAD
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.ColumnInfo;
 import java.util.ArrayList;
-=======
->>>>>>> upstream/feature/plcsql
 import java.util.LinkedHashMap;
 import java.util.List;
 
@@ -60,13 +57,9 @@ public class SqlSemantics {
             selectList; // (only for select statements) columns and their SQL types
     public List<String> intoVars; // (only for select stetements with an into-clause) into variables
 
-<<<<<<< HEAD
     public List<ColumnInfo> columnInfos;
 
     public SqlSemantics(
-=======
-    SqlSemantics(
->>>>>>> upstream/feature/plcsql
             int kind,
             String rewritten,
             LinkedHashMap<String, String> hostVars,
@@ -79,7 +72,6 @@ public class SqlSemantics {
         this.selectList = selectList;
         this.intoVars = intoVars;
     }
-<<<<<<< HEAD
 
     public SqlSemantics(CUBRIDUnpacker unpacker) {
         this.kind = unpacker.unpackInt();
@@ -108,6 +100,4 @@ public class SqlSemantics {
             intoVars.add(var);
         }
     }
-=======
->>>>>>> upstream/feature/plcsql
 }
