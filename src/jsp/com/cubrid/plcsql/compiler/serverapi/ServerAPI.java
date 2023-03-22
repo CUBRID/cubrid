@@ -30,11 +30,10 @@
 
 package com.cubrid.plcsql.compiler.serverapi;
 
+import com.cubrid.jsp.data.ColumnInfo;
+import com.cubrid.jsp.data.DBType;
 import java.util.ArrayList;
 import java.util.List;
-
-import com.cubrid.jsp.data.DBType;
-import com.cubrid.jsp.data.ColumnInfo;
 
 public class ServerAPI {
 
@@ -154,20 +153,24 @@ public class ServerAPI {
 
                 List<PlParamInfo> hostVars = new ArrayList<>();
 
-                hostVars.add(new PlParamInfo("G",    // name
-                    ServerConstants.PARAM_MODE_IN,   // mode
-                    DBType.DB_CHAR,                  // type
-                    1,                               // prec
-                    (short) 0,                               // scale
-                    ServerConstants.CUBRID_CHARSET_UTF8)    // charset
-                );
-                hostVars.add(new PlParamInfo("N",    // name
-                    ServerConstants.PARAM_MODE_IN,   // mode
-                    DBType.DB_CHAR,                  // type
-                    3,                               // prec
-                    (short) 0,                               // scale
-                    ServerConstants.CUBRID_CHARSET_UTF8)    // charset
-                );
+                hostVars.add(
+                        new PlParamInfo(
+                                "G", // name
+                                ServerConstants.PARAM_MODE_IN, // mode
+                                DBType.DB_CHAR, // type
+                                1, // prec
+                                (short) 0, // scale
+                                ServerConstants.CUBRID_CHARSET_UTF8) // charset
+                        );
+                hostVars.add(
+                        new PlParamInfo(
+                                "N", // name
+                                ServerConstants.PARAM_MODE_IN, // mode
+                                DBType.DB_CHAR, // type
+                                3, // prec
+                                (short) 0, // scale
+                                ServerConstants.CUBRID_CHARSET_UTF8) // charset
+                        );
 
                 List<ColumnInfo> selectList = new ArrayList<>();
 
@@ -208,20 +211,24 @@ public class ServerAPI {
 
                 List<PlParamInfo> hostVars = new ArrayList<>();
 
-                hostVars.add(new PlParamInfo("N",    // name
-                    ServerConstants.PARAM_MODE_IN,   // mode
-                    DBType.DB_STRING,                // type
-                    40,                              // prec
-                    (short) -1,                              // scale
-                    ServerConstants.CUBRID_CHARSET_UTF8)    // charset
-                );
-                hostVars.add(new PlParamInfo("N",    // name
-                    ServerConstants.PARAM_MODE_IN,   // mode
-                    DBType.DB_CHAR,                  // type
-                    1,                               // prec
-                    (short) -1,                              // scale
-                    ServerConstants.CUBRID_CHARSET_UTF8)    // charset
-                );
+                hostVars.add(
+                        new PlParamInfo(
+                                "N", // name
+                                ServerConstants.PARAM_MODE_IN, // mode
+                                DBType.DB_STRING, // type
+                                40, // prec
+                                (short) -1, // scale
+                                ServerConstants.CUBRID_CHARSET_UTF8) // charset
+                        );
+                hostVars.add(
+                        new PlParamInfo(
+                                "N", // name
+                                ServerConstants.PARAM_MODE_IN, // mode
+                                DBType.DB_CHAR, // type
+                                1, // prec
+                                (short) -1, // scale
+                                ServerConstants.CUBRID_CHARSET_UTF8) // charset
+                        );
 
                 ret.add(
                         new SqlSemantics(
@@ -239,65 +246,77 @@ public class ServerAPI {
         return ret;
     }
 
-    private static final PlParamInfo[] MOCK_PARAM_TYPES = new PlParamInfo[] {
-        new PlParamInfo(null,                       // name
-                    ServerConstants.PARAM_MODE_IN,  // mode
-                    DBType.DB_INT,                  // type
-                    -1,                             // prec
-                    (short) -1,                             // scale
-                    (byte) -1),                            // charset
-        new PlParamInfo(null,                       // name
-                    ServerConstants.PARAM_MODE_OUT, // mode
-                    DBType.DB_STRING,               // type
-                    -1,                              // prec
-                    (short) -1,                             // scale
-                    (byte) -1),                            // charset
-        new PlParamInfo(null,                       // name
-                    ServerConstants.PARAM_MODE_OUT, // mode
-                    DBType.DB_FLOAT,                // type
-                    -1,                             // prec
-                    (short) -1,                             // scale
-                    (byte) -1)                            // charset
-    };
-    private static final PlParamInfo[] ERR_PARAM_TYPES = new PlParamInfo[] {
-        new PlParamInfo(null,                       // name
-                    ServerConstants.PARAM_MODE_IN,  // mode
-                    DBType.DB_INT,                  // type
-                    -1,                             // prec
-                    (short) -1,                             // scale
-                    (byte) -1),                            // charset
-        new PlParamInfo(null,                       // name
-                    ServerConstants.PARAM_MODE_OUT, // mode
-                    DBType.DB_DATETIMELTZ,          // type
-                    -1,                             // prec
-                    (short) -1,                             // scale
-                    (byte) -1),                            // charset
-        new PlParamInfo(null,                       // name
-                    ServerConstants.PARAM_MODE_OUT, // mode
-                    DBType.DB_TIMESTAMPLTZ,         // type
-                    -1,                             // prec
-                    (short) -1,                             // scale
-                    (byte) -1)                            // charset
-    };
-    private static final PlParamInfo mockType = new PlParamInfo(null,                       // name
+    private static final PlParamInfo[] MOCK_PARAM_TYPES =
+            new PlParamInfo[] {
+                new PlParamInfo(
+                        null, // name
+                        ServerConstants.PARAM_MODE_IN, // mode
+                        DBType.DB_INT, // type
+                        -1, // prec
+                        (short) -1, // scale
+                        (byte) -1), // charset
+                new PlParamInfo(
+                        null, // name
+                        ServerConstants.PARAM_MODE_OUT, // mode
+                        DBType.DB_STRING, // type
+                        -1, // prec
+                        (short) -1, // scale
+                        (byte) -1), // charset
+                new PlParamInfo(
+                        null, // name
+                        ServerConstants.PARAM_MODE_OUT, // mode
+                        DBType.DB_FLOAT, // type
+                        -1, // prec
+                        (short) -1, // scale
+                        (byte) -1) // charset
+            };
+    private static final PlParamInfo[] ERR_PARAM_TYPES =
+            new PlParamInfo[] {
+                new PlParamInfo(
+                        null, // name
+                        ServerConstants.PARAM_MODE_IN, // mode
+                        DBType.DB_INT, // type
+                        -1, // prec
+                        (short) -1, // scale
+                        (byte) -1), // charset
+                new PlParamInfo(
+                        null, // name
+                        ServerConstants.PARAM_MODE_OUT, // mode
+                        DBType.DB_DATETIMELTZ, // type
+                        -1, // prec
+                        (short) -1, // scale
+                        (byte) -1), // charset
+                new PlParamInfo(
+                        null, // name
+                        ServerConstants.PARAM_MODE_OUT, // mode
+                        DBType.DB_TIMESTAMPLTZ, // type
+                        -1, // prec
+                        (short) -1, // scale
+                        (byte) -1) // charset
+            };
+    private static final PlParamInfo mockType =
+            new PlParamInfo(
+                    null, // name
                     (byte) -1, // mode
-                    DBType.DB_STRING,               // type
-                    -1,                              // prec
-                    (short) -1,                             // scale
-                    (byte) -1);                            // charset
-    private static final PlParamInfo errType = new PlParamInfo(null,                       // name
+                    DBType.DB_STRING, // type
+                    -1, // prec
+                    (short) -1, // scale
+                    (byte) -1); // charset
+    private static final PlParamInfo errType =
+            new PlParamInfo(
+                    null, // name
                     (byte) -1, // mode
-                    DBType.DB_DATETIMELTZ,          // type
-                    -1,                             // prec
-                    (short) -1,                             // scale
-                    (byte) -1);                             // charset
+                    DBType.DB_DATETIMELTZ, // type
+                    -1, // prec
+                    (short) -1, // scale
+                    (byte) -1); // charset
     private static final ColumnInfo mockColType = new ColumnInfo();
     private static final ColumnInfo errColType = new ColumnInfo();
+
     static {
         mockColType.type = DBType.DB_STRING;
         errColType.type = DBType.DB_DATETIMELTZ;
     }
-
 
     private static List<Question> getMockGlobalSemantics(List<Question> questions) {
 

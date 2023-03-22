@@ -32,17 +32,14 @@ package com.cubrid.plcsql.compiler;
 
 import static com.cubrid.plcsql.compiler.antlrgen.PcsParser.*;
 
-import com.cubrid.plcsql.compiler.antlrgen.PcsParserBaseVisitor;
-import com.cubrid.plcsql.compiler.ast.*;
-
-import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
-import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
-import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
-import com.cubrid.plcsql.compiler.serverapi.PlParamInfo;
-
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;
-
+import com.cubrid.plcsql.compiler.antlrgen.PcsParserBaseVisitor;
+import com.cubrid.plcsql.compiler.ast.*;
+import com.cubrid.plcsql.compiler.serverapi.PlParamInfo;
+import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
+import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
+import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDate;
@@ -76,7 +73,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         int seqNo = -1;
         Iterator<AstNode> iterNodes = semanticQuestions.keySet().iterator();
-        for (ServerAPI.Question q: answered) {
+        for (ServerAPI.Question q : answered) {
 
             assert q.seqNo >= 0;
 
@@ -2210,69 +2207,98 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     private String getSqlTypeNameFromCode(int sqlTypeCode) {
         String ret = null;
-        switch (sqlTypeCode) {      // got from com.cubrid.jsp.data.DBType
+        switch (sqlTypeCode) { // got from com.cubrid.jsp.data.DBType
             case DBType.DB_NULL:
-                ret = "NULL"; break;
+                ret = "NULL";
+                break;
             case DBType.DB_INT:
-                ret = "INT"; break;
+                ret = "INT";
+                break;
             case DBType.DB_FLOAT:
-                ret = "FLOAT"; break;
+                ret = "FLOAT";
+                break;
             case DBType.DB_DOUBLE:
-                ret = "DOUBLE"; break;
+                ret = "DOUBLE";
+                break;
             case DBType.DB_STRING:
-                ret = "STRING"; break;
+                ret = "STRING";
+                break;
             case DBType.DB_OBJECT:
-                ret = "OBJECT"; break;
+                ret = "OBJECT";
+                break;
             case DBType.DB_SET:
-                ret = "SET"; break;
+                ret = "SET";
+                break;
             case DBType.DB_MULTISET:
-                ret = "MULTISET"; break;
+                ret = "MULTISET";
+                break;
             case DBType.DB_SEQUENCE:
-                ret = "SEQUENCE"; break;
+                ret = "SEQUENCE";
+                break;
             case DBType.DB_TIME:
-                ret = "TIME"; break;
+                ret = "TIME";
+                break;
             case DBType.DB_TIMESTAMP:
-                ret = "TIMESTAMP"; break;
+                ret = "TIMESTAMP";
+                break;
             case DBType.DB_DATE:
-                ret = "DATE"; break;
+                ret = "DATE";
+                break;
             case DBType.DB_MONETARY:
-                ret = "MONETARY"; break;
+                ret = "MONETARY";
+                break;
             case DBType.DB_SHORT:
-                ret = "SHORT"; break;
+                ret = "SHORT";
+                break;
             case DBType.DB_NUMERIC:
-                ret = "NUMERIC"; break;
+                ret = "NUMERIC";
+                break;
             case DBType.DB_OID:
-                ret = "OID"; break;
+                ret = "OID";
+                break;
             case DBType.DB_CHAR:
-                ret = "CHAR"; break;
+                ret = "CHAR";
+                break;
             case DBType.DB_RESULTSET:
-                ret = "RESULTSET"; break;
+                ret = "RESULTSET";
+                break;
             case DBType.DB_BIGINT:
-                ret = "BIGINT"; break;
+                ret = "BIGINT";
+                break;
             case DBType.DB_DATETIME:
-                ret = "DATETIME"; break;
+                ret = "DATETIME";
+                break;
 
             case DBType.DB_BIT:
-                ret = "BIT"; break;
+                ret = "BIT";
+                break;
             case DBType.DB_VARBIT:
-                ret = "VARBIT"; break;
+                ret = "VARBIT";
+                break;
 
             case DBType.DB_BLOB:
-                ret = "BLOB"; break;
+                ret = "BLOB";
+                break;
             case DBType.DB_CLOB:
-                ret = "CLOB"; break;
+                ret = "CLOB";
+                break;
             case DBType.DB_ENUMERATION:
-                ret = "ENUMERATION"; break;
+                ret = "ENUMERATION";
+                break;
             case DBType.DB_TIMESTAMPTZ:
-                ret = "TIMESTAMPTZ"; break;
+                ret = "TIMESTAMPTZ";
+                break;
             case DBType.DB_TIMESTAMPLTZ:
-                ret = "TIMESTAMPLTZ"; break;
+                ret = "TIMESTAMPLTZ";
+                break;
             case DBType.DB_DATETIMETZ:
-                ret = "DATETIMETZ"; break;
+                ret = "DATETIMETZ";
+                break;
             case DBType.DB_DATETIMELTZ:
-                ret = "DATETIMELTZ"; break;
+                ret = "DATETIMELTZ";
+                break;
             default:
-                assert false: "unreachable";
+                assert false : "unreachable";
                 throw new RuntimeException("unreachable");
         }
 
@@ -2286,7 +2312,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         ArrayList<ExprId> intoVars = null;
 
         // check (name-binding) and convert host variables used in the SQL
-        for (PlParamInfo pi: sws.hostVars) {
+        for (PlParamInfo pi : sws.hostVars) {
             String sqlType = getSqlTypeNameFromCode(pi.type);
 
             String var = Misc.getNormalizedText(pi.name);
@@ -2301,7 +2327,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
             // convert select list
             selectList = new LinkedHashMap<>();
-            for (ColumnInfo ci: sws.selectList) {
+            for (ColumnInfo ci : sws.selectList) {
                 String sqlType = getSqlTypeNameFromCode(ci.type);
 
                 String col = Misc.getNormalizedText(ci.colName);
@@ -2332,8 +2358,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return new StaticSql(ctx, sws.kind, rewritten, hostVars, selectList, intoVars);
     }
 
-    private String makeParamList(
-            NodeList<DeclParam> paramList, String name, PlParamInfo[] params) {
+    private String makeParamList(NodeList<DeclParam> paramList, String name, PlParamInfo[] params) {
 
         int len = params.length;
         for (int i = 0; i < len; i++) {

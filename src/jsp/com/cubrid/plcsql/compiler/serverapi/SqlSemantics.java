@@ -31,8 +31,6 @@
 package com.cubrid.plcsql.compiler.serverapi;
 
 import com.cubrid.jsp.data.ColumnInfo;
-
-import java.util.LinkedHashMap;
 import java.util.List;
 
 public class SqlSemantics {
@@ -53,9 +51,10 @@ public class SqlSemantics {
     // for normal return
     public int kind;
     public String rewritten;
-    public List<PlParamInfo> hostVars;  // host variables and their SQL types required in their locations
+    public List<PlParamInfo>
+            hostVars; // host variables and their SQL types required in their locations
     public List<ColumnInfo> selectList; // (only for select statements) columns and their SQL types
-    public List<String> intoVars;       // (only for select stetements with an into-clause) into variables
+    public List<String> intoVars; // (only for select stetements with an into-clause) into variables
 
     SqlSemantics(
             int seqNo,
