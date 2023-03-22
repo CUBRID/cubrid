@@ -24,6 +24,8 @@
 #include "method_runtime_context.hpp"
 #include "method_connection_sr.hpp"
 #include "method_connection_java.hpp"
+#endif
+
 #include "byte_order.h"
 #include "connection_support.h"
 #include "method_def.hpp"
