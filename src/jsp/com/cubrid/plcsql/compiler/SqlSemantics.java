@@ -57,6 +57,8 @@ public class SqlSemantics {
             selectList; // (only for select statements) columns and their SQL types
     public List<String> intoVars; // (only for select stetements with an into-clause) into variables
 
+    public List<ColumnInfo> columnInfos;
+
     public SqlSemantics(
             int kind,
             String rewritten,
@@ -72,7 +74,7 @@ public class SqlSemantics {
     }
 
     public SqlSemantics(CUBRIDUnpacker unpacker) {
-        this.kind = Kind.fromValue(unpacker.unpackInt());
+        this.kind = unpacker.unpackInt();
         this.rewritten = unpacker.unpackCString();
 
         hostVars = new LinkedHashMap<>();
