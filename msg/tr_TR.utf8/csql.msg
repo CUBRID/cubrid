@@ -92,6 +92,7 @@ $  Bu 3 boş bırakılmalı
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 Çok az argüman verildi.
 
 145 <Help: Bir Sınıf Şeması>
 146 none
