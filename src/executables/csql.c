@@ -70,6 +70,8 @@
 #include "ddl_log.h"
 #include "network_histogram.hpp"
 #include "host_lookup.h"
+#include "network_interface_cl.h"
+#include "boot_cl.h"
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */
@@ -78,6 +80,14 @@
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
+#define DB_NAME_LEN MAXLOGNAME
+#define FREE_MEM(PTR)           \
+        do {                    \
+          if (PTR) {            \
+          free(PTR);            \
+          }                     \
+        } while (0)
 
 /* input type specification for csql_execute_statements() */
 enum
@@ -151,6 +161,7 @@ char csql_Scratch_text[SCRATCH_TEXT_LEN];
 int csql_Error_code = NO_ERROR;
 
 static char csql_Prompt[100];
+static char csql_Prompt_offline[100];
 static char csql_Name[100];
 
 /*
@@ -226,6 +237,7 @@ static void csql_set_trace (const char *arg_str);
 static void csql_display_trace (void);
 static bool csql_is_auto_commit_requested (const CSQL_ARGUMENT * csql_arg);
 static int get_host_ip (unsigned char *ip_addr);
+static int csql_connect (char *argument, CSQL_ARGUMENT * csql_arg);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(WINDOWS)
@@ -483,6 +495,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   char *line_read_alloced = NULL;
   bool is_first_read_line = true;
   bool read_whole_line;
+  char *prompt;
 
   /* check in string block or comment block or identifier block */
   bool is_in_block = false;
@@ -564,13 +577,15 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 
   for (line_no = 1;; line_no++)
     {
-      if (db_Connect_status != DB_CONNECTION_STATUS_CONNECTED)
+      if (db_Connect_status == DB_CONNECTION_STATUS_CONNECTED)
+	{
+	  prompt = csql_Prompt;
+	}
+      else
 	{
 	  csql_Database_connected = false;
-	  fputs ("!", csql_Output_fp);
+	  prompt = csql_Prompt_offline;
 	}
-
-      read_whole_line = false;
 
       memset (line_buf, 0, LINE_BUFFER_SIZE);
       memset (utf8_line_buf, 0, INTL_UTF8_MAX_CHAR_SIZE * LINE_BUFFER_SIZE);
@@ -581,7 +596,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  fputs (csql_Prompt, csql_Output_fp);	/* display prompt */
 	  line_read = fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
 #else
-	  if ((line_read = readline (csql_Prompt)) != NULL)
+	  if ((line_read = readline (prompt)) != NULL)
 	    {
 	      if (line_read_alloced != NULL)
 		{
@@ -1460,6 +1475,21 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
 
       break;
+
+    case S_CMD_CONNECT:
+      if (csql_arg->sysadm != true)
+	{
+	  error_code = csql_connect ((argument[0] == '\0') ? NULL : argument, csql_arg);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
+	  break;
+	}
+      else
+	{
+	  fprintf (csql_Output_fp, "CONNECT session command does not support --sysadm mode\n");
+	}
     }
 
   return DO_CMD_SUCCESS;
@@ -2774,6 +2804,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
     {
       strncat (csql_Prompt, " ", avail_size);
     }
+  snprintf (csql_Prompt_offline, sizeof (csql_Prompt_offline), "!%s", csql_Prompt);
   strncpy_bufsize (csql_Name, csql_get_message (CSQL_NAME));
 
   /* as we must use db_open_file_name() to open the input file, it is necessary to be opening csql_Input_fp at this
@@ -3329,4 +3360,134 @@ get_host_ip (unsigned char *ip_addr)
   memcpy (ip_addr, ip, strlen (ip));
 
   return 0;
+}
+
+static int
+csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
+{
+  /*dbname can be stored DB name+ @ + remote hostname + \0 */
+  char buf[DB_MAX_USER_LENGTH + DB_NAME_LEN + CUB_MAXHOSTNAMELEN + 1] = { 0, };
+  const char *delim = " \n";
+  char *save_ptr_strtok = NULL;
+  const char *db_name_ptr = NULL;
+  char *user_name_ptr = NULL;
+  char *host_name_ptr = NULL;
+  char *p = NULL;
+  const char *err_msg;
+  CSQL_ARGUMENT csql_new_arg;
+
+  if (argument == NULL)
+    {
+      err_msg = (*csql_get_message) (CSQL_MSG_TOO_FEW_ARGS);
+      fprintf (stderr, err_msg);
+      return DO_CMD_SUCCESS;
+    }
+
+  memset (&csql_new_arg, 0, sizeof csql_new_arg);
+
+  strncpy (buf, argument, sizeof (buf) - 1);
+
+  if ((user_name_ptr = strtok_r (buf, delim, &save_ptr_strtok)) == NULL)
+    {
+      csql_Error_code = CSQL_ERR_SQL_ERROR;
+      return DO_CMD_FAILURE;
+    }
+
+  /*find db name following the user name */
+  db_name_ptr = strtok_r (NULL, delim, &save_ptr_strtok);
+  if (db_name_ptr == NULL)
+    {
+      db_name_ptr = csql_arg->db_name;
+    }
+  else
+    {
+      if (csql_arg->sa_mode == true)
+	{
+	  fprintf (csql_Output_fp, "Cannot connect to other DB in the --SA-mode.\n");
+	  return DO_CMD_SUCCESS;
+	}
+    }
+
+  memcpy (&csql_new_arg, csql_arg, sizeof (CSQL_ARGUMENT));
+
+#if defined(CS_MODE)
+  memset (boot_Host_connected, 0, sizeof (boot_Host_connected));
+#endif /* CS_MODE */
+
+  /*Failed to access other host or db and then access formal db_name */
+
+  if (csql_Database_connected)
+    {
+      csql_Database_connected = false;
+      db_end_session ();
+      db_shutdown ();
+
+    }
+
+  er_init ("./csql.err", ER_NEVER_EXIT);
+  csql_new_arg.passwd = (char *) NULL;
+
+  if (db_restart_ex (UTIL_CSQL_NAME, db_name_ptr, user_name_ptr, NULL, NULL, db_get_client_type ()) != NO_ERROR)
+    {
+      if (csql_Is_interactive && db_error_code () == ER_AU_INVALID_PASSWORD)
+	{
+	  p = getpass ((char *) csql_get_message (CSQL_PASSWD_PROMPT_TEXT));
+
+	  /* try again */
+	  if (db_restart_ex (UTIL_CSQL_NAME, db_name_ptr, user_name_ptr, p, NULL, db_get_client_type ()) != NO_ERROR)
+	    {
+	      csql_Error_code = CSQL_ERR_SQL_ERROR;
+	      csql_check_server_down ();
+	      fprintf (csql_Output_fp, "Warning: current CSQL session is disconnected.\n");
+
+	      return DO_CMD_FAILURE;
+	    }
+
+	  if (p[0] == '\0')
+	    {
+	      csql_new_arg.passwd = (char *) NULL;	/* to fit into db_login protocol */
+	    }
+	  else
+	    {
+	      csql_new_arg.passwd = strdup (p);
+	    }
+	}
+      else
+	{
+	  csql_Error_code = CSQL_ERR_SQL_ERROR;
+	  csql_check_server_down ();
+	  fprintf (csql_Output_fp, "Warning: current CSQL session is disconnected.\n");
+
+	  return DO_CMD_FAILURE;
+
+	}
+    }
+
+/*If login is success, copy csql_new_arg to csql_arg*/
+  csql_new_arg.user_name = strdup (user_name_ptr);
+  csql_new_arg.db_name = strdup (db_name_ptr);
+
+  FREE_MEM ((char *) csql_arg->user_name);
+  FREE_MEM ((char *) csql_arg->db_name);
+  FREE_MEM ((char *) csql_arg->passwd);
+
+  memcpy (csql_arg, &csql_new_arg, sizeof (CSQL_ARGUMENT));
+
+  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
+    {
+      au_sysadm_disable ();
+    }
+  csql_Database_connected = true;
+
+  if (csql_arg->trigger_action_flag == false)
+    {
+      db_disable_trigger ();
+    }
+
+  fprintf (csql_Output_fp, "Connected.\n");
+
+
+/*If connect is success, copy csql_new_arg to csql_arg*/
+
+  return DO_CMD_SUCCESS;
 }
