@@ -28,15 +28,15 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler;
 
 public class ServerConstants {
 
     // kinds of SQL statements that are supported in Static SQL
-    public static final int CUBRID_STMT_INSERT      = 20;   // REPLACE too
-    public static final int CUBRID_STMT_SELECT      = 21;
-    public static final int CUBRID_STMT_UPDATE      = 22;
-    public static final int CUBRID_STMT_DELETE      = 23;
-    public static final int CUBRID_STMT_TRUNCATE    = 52;
-    public static final int CUBRID_STMT_MERGE       = 57;
+    public static final int CUBRID_STMT_INSERT = 20; // REPLACE too
+    public static final int CUBRID_STMT_SELECT = 21;
+    public static final int CUBRID_STMT_UPDATE = 22;
+    public static final int CUBRID_STMT_DELETE = 23;
+    public static final int CUBRID_STMT_TRUNCATE = 52;
+    public static final int CUBRID_STMT_MERGE = 57;
 }
