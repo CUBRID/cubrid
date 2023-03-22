@@ -118,9 +118,10 @@ log_global::wakeup_ps_flush_waiters ()
 void
 log_global::wait_for_ps_flushed_lsa (const log_lsa &flush_lsa)
 {
-  std::unique_lock<std::mutex> lock (m_ps_lsa_mutex);
+  std::unique_lock<std::mutex> ulock (m_ps_lsa_mutex);
   while (m_ps_consensus_flushed_lsa < flush_lsa)
     {
+      // Only who notices it's out-dated first updates the consensus lsa.
       if (!m_ps_lsa_up_to_date.exchange (true)) 
       {
         const log_lsa consensus_lsa = get_active_tran_server_ptr ()->compute_consensus_lsa ();
@@ -134,7 +135,7 @@ log_global::wait_for_ps_flushed_lsa (const log_lsa &flush_lsa)
       }
       else 
       {
-        m_ps_lsa_cv.wait (lock);
+        m_ps_lsa_cv.wait (ulock);
       }
     }
 }
