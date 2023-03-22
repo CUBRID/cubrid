@@ -24,8 +24,11 @@
 #include "method_runtime_context.hpp"
 #include "method_connection_sr.hpp"
 #include "method_connection_java.hpp"
+<<<<<<< HEAD
 #endif
 
+=======
+>>>>>>> upstream/feature/plcsql
 #include "byte_order.h"
 #include "connection_support.h"
 #include "method_def.hpp"
@@ -36,6 +39,7 @@ namespace cubmethod
   int callback_get_sql_semantics (cubthread::entry &thread_ref, runtime_context &ctx,
 				  const SOCKET java_socket, packing_unpacker &unpacker)
   {
+<<<<<<< HEAD
     int error = NO_ERROR;
     sql_semantics_request request;
     unpacker.unpack_all (request);
@@ -57,6 +61,10 @@ namespace cubmethod
     error = xs_receive (&thread_ref, reponse_lambda);
     return error;
   }
+=======
+    connection *conn = ctx.get_connection_pool().claim();
+    header header (DB_EMPTY_SESSION, SP_CODE_COMPILE, 0);
+>>>>>>> upstream/feature/plcsql
 
   int invoke_compile (cubthread::entry &thread_ref, runtime_context &ctx, const std::string &program,
 		      const bool &verbose, cubmem::extensible_block &out_blk)

@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler;
 
+<<<<<<< HEAD
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
@@ -39,6 +40,8 @@ import com.cubrid.jsp.protocol.SqlSemanticsRequest;
 import com.cubrid.jsp.protocol.SqlSemanticsResponse;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+=======
+>>>>>>> upstream/feature/plcsql
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,6 +49,7 @@ import java.util.List;
 public class ServerAPI {
 
     public static List<SqlSemantics> getSqlSemantics(List<String> sqlTexts) {
+<<<<<<< HEAD
         if (sqlTexts == null) {
             return null;
         }
@@ -70,6 +74,9 @@ public class ServerAPI {
             // TODO
             return null;
         }
+=======
+        return getMockSqlSemantics(sqlTexts);
+>>>>>>> upstream/feature/plcsql
     }
 
     public static List<Question> getGlobalSemantics(List<Question> questions) {
@@ -166,12 +173,25 @@ public class ServerAPI {
     // -----------------------------------------
 
     private static List<SqlSemantics> getMockSqlSemantics(List<String> sqlTexts) {
+<<<<<<< HEAD
+=======
+
+        // MOCK
+
+>>>>>>> upstream/feature/plcsql
         List<SqlSemantics> ret = new ArrayList<>();
 
         for (String sql : sqlTexts) {
             sql = sql.toUpperCase();
 
             if (sql.startsWith("SELECT")) {
+<<<<<<< HEAD
+=======
+                // select code, name from athlete where gender = g and nation_code = n;
+                // or
+                // select code, name into c, m from athlete where gender = g and nation_code = n;
+
+>>>>>>> upstream/feature/plcsql
                 LinkedHashMap<String, String> hostVars = new LinkedHashMap<>();
                 hostVars.put("G", "CHARACTER(1)");
                 hostVars.put("N", "CHARACTER(3)");
