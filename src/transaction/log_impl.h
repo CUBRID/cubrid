@@ -60,6 +60,7 @@
 #include "recovery.h"
 #include "release_string.h"
 #include "storage_common.h"
+#include "system_parameter.h"
 #include "tde.h"
 #include "thread_entry.hpp"
 #include "transaction_transient.hpp"
@@ -984,6 +985,10 @@ extern bool cdc_Logging;
 #define LOG_THREAD_TRAN_MSG "(thr=%d, trid=%d)"
 #define LOG_THREAD_TRAN_ARGS(thread_p) thread_get_current_entry_index (), LOG_FIND_CURRENT_TDES (thread_p)
 #endif /* SERVER_MODE */
+
+#define quourm_consenesus_er_log(msg, ...) \
+  if (prm_get_bool_value (PRM_ID_ER_LOG_QUORUM_CONSENSUS)) \
+    _er_log_debug (ARG_FILE_LINE, "[QUORUM CONSENSUS] " msg, __VA_ARGS__)
 
 extern int logpb_initialize_pool (THREAD_ENTRY * thread_p);
 extern void logpb_finalize_pool (THREAD_ENTRY * thread_p);

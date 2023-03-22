@@ -73,12 +73,8 @@ active_tran_server::compute_consensus_lsa () const
     cur_node_cnt = m_page_server_conn_vec.size ();
     if (cur_node_cnt < quorum)
       {
-	if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
-	  {
-	    _er_log_debug (ARG_FILE_LINE,
-			   "compute_consensus_lsa - Quorum unsatisfied: total node count = %d, curreunt node count = %d, quorum = %d\n",
-			   total_node_cnt, cur_node_cnt, quorum);
-	  }
+	quourm_consenesus_er_log ("compute_consensus_lsa - Quorum unsatisfied: total node count = %d, curreunt node count = %d, quorum = %d\n",
+				  total_node_cnt, cur_node_cnt, quorum);
 	return NULL_LSA;
       }
     for (const auto &conn : m_page_server_conn_vec)
@@ -98,7 +94,7 @@ active_tran_server::compute_consensus_lsa () const
 
   const auto consensus_lsa = collected_saved_lsa[cur_node_cnt - quorum];
 
-  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
+  if (prm_get_bool_value (PRM_ID_ER_LOG_QUORUM_CONSENSUS))
     {
       constexpr int BUF_SIZE = 1024;
       char msg_buf[BUF_SIZE];
@@ -116,7 +112,7 @@ active_tran_server::compute_consensus_lsa () const
       snprintf (msg_buf + n, BUF_SIZE - n, "]\n");
       assert (n < BUF_SIZE);
 
-      _er_log_debug (ARG_FILE_LINE, msg_buf);
+      quourm_consenesus_er_log ("%s", msg_buf);
     }
 
   return consensus_lsa;
@@ -176,10 +172,7 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
   assert (saved_lsa > get_saved_lsa ()); // increasing monotonically
   set_saved_lsa (saved_lsa);
 
-  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
-    {
-      _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Received LSA = %lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
-    }
+  quourm_consenesus_er_log ("Received saved LSA = %lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
 
   log_Gl.wakeup_ps_flush_waiters ();
 }

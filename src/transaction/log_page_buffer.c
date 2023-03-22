@@ -4338,10 +4338,7 @@ void
 logpb_send_flushed_lsa_to_ats ()
 {
   const log_lsa saved_lsa = log_Gl.append.get_nxio_lsa ();
-  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
-    {
-      _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Send saved LSA=%lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
-    }
+  quourm_consenesus_er_log ("Send saved LSA=%lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
   // *INDENT-OFF*
   std::string message (reinterpret_cast<const char *> (&saved_lsa), sizeof (saved_lsa));
   ps_Gl->push_request_to_active_tran_server (page_to_tran_request::SEND_SAVED_LSA, std::move (message));
@@ -4499,18 +4496,9 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, const LOG_LSA * flush_lsa)
       // *INDENT-OFF*
       if (get_server_type () == SERVER_TYPE_TRANSACTION && ts_Gl->is_page_server_connected ())
 	{
-	  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
-	    {
-	      _er_log_debug (ARG_FILE_LINE, "Wait until consenesus LSA gets larger than or equal to %lld|%d.\n", LSA_AS_ARGS (flush_lsa));
-	    }
+          quourm_consenesus_er_log ("Wait until consenesus LSA gets larger than or equal to %lld|%d.\n", LSA_AS_ARGS (flush_lsa));
 	  
           log_Gl.wait_for_ps_flushed_lsa (*flush_lsa);
-	  
-          if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
-	    {
-              std::lock_guard<std::mutex> lock_guard (log_Gl.m_ps_lsa_mutex);
-	      _er_log_debug (ARG_FILE_LINE, "Page server committed LSA = %lld|%d.\n", LSA_AS_ARGS (&log_Gl.m_ps_consensus_flushed_lsa));
-	    }
 	}
       // *INDENT-ON*
     }
