@@ -36,8 +36,8 @@ import com.cubrid.plcsql.compiler.ParseTreeConverter;
 import com.cubrid.plcsql.compiler.ParseTreePrinter;
 import com.cubrid.plcsql.compiler.PcsLexerEx;
 import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.ServerAPI;
-import com.cubrid.plcsql.compiler.SqlSemantics;
+import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
+import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
 import com.cubrid.plcsql.compiler.StaticSqlCollector;
 import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
@@ -250,18 +250,31 @@ public class TestMain {
         // call server API for each SQL to get its semantic information
 
         List<String> sqlTexts = new ArrayList(ssc.staticSqlTexts.values());
-        List<SqlSemantics> sqlSemantics = ServerAPI.getSqlSemantics(sqlTexts);
+        List<SqlSemantics> sqlSemantics = ServerAPI.getSqlSemantics(sqlTexts);// server interaction  may take a long time
 
+        int seqNo = -1;
+        Iterator<ParserRuleContext> iterCtx = ssc.staticSqlTexts.keySet().iterator();
         Map<ParserRuleContext, SqlSemantics> staticSqls = new HashMap<>();
-        Iterator<SqlSemantics> iterSql = sqlSemantics.iterator();
-        for (ParserRuleContext ctx : ssc.staticSqlTexts.keySet()) {
-            SqlSemantics ss = iterSql.next();
-            assert ss != null;
+        for (SqlSemantics ss: sqlSemantics) {
+
+            assert ss.seqNo >= 0;
+
+            ParserRuleContext ctx = null;
+            while (true) {
+                ctx = iterCtx.next();
+                assert ctx != null;
+                seqNo++;
+                if (seqNo == ss.seqNo) {
+                    break;
+                }
+            }
+
             if (ss.errCode == 0) {
                 staticSqls.put(ctx, ss);
             } else {
                 throw new SemanticError(Misc.getLineOf(ctx), ss.errMsg); // s410
             }
+
         }
 
         if (verbose) {

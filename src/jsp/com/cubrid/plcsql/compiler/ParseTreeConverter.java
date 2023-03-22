@@ -34,6 +34,15 @@ import static com.cubrid.plcsql.compiler.antlrgen.PcsParser.*;
 
 import com.cubrid.plcsql.compiler.antlrgen.PcsParserBaseVisitor;
 import com.cubrid.plcsql.compiler.ast.*;
+
+import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
+import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
+import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
+import com.cubrid.plcsql.compiler.serverapi.PlParamInfo;
+
+import com.cubrid.jsp.data.ColumnInfo;
+import com.cubrid.jsp.data.DBType;
+
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDate;
@@ -65,10 +74,22 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         List<ServerAPI.Question> answered =
                 ServerAPI.getGlobalSemantics(questions); // this may take a long time
 
-        Iterator<ServerAPI.Question> iterQuestions = answered.iterator();
-        for (AstNode node : semanticQuestions.keySet()) {
-            ServerAPI.Question q = iterQuestions.next();
-            assert q != null;
+        int seqNo = -1;
+        Iterator<AstNode> iterNodes = semanticQuestions.keySet().iterator();
+        for (ServerAPI.Question q: answered) {
+
+            assert q.seqNo >= 0;
+
+            AstNode node = null;
+            while (true) {
+                node = iterNodes.next();
+                assert node != null;
+                seqNo++;
+                if (seqNo == q.seqNo) {
+                    break;
+                }
+            }
+
             if (q.errCode != 0) {
                 throw new SemanticError(node.lineNo(), q.errMsg); // s411
             }
@@ -77,7 +98,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 ServerAPI.ProcedureSignature ps = (ServerAPI.ProcedureSignature) q;
 
                 NodeList<DeclParam> paramList = new NodeList<>();
-                String err = makeParamList(paramList, ps.name, ps.outPositions, ps.paramTypes);
+                String err = makeParamList(paramList, ps.name, ps.params);
                 if (err != null) {
                     throw new SemanticError( // s412
                             node.lineNo(), err);
@@ -110,7 +131,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 ServerAPI.FunctionSignature fs = (ServerAPI.FunctionSignature) q;
 
                 NodeList<DeclParam> paramList = new NodeList<>();
-                String err = makeParamList(paramList, fs.name, fs.outPositions, fs.paramTypes);
+                String err = makeParamList(paramList, fs.name, fs.params);
                 if (err != null) {
                     throw new SemanticError( // s415
                             node.lineNo(), err);
@@ -137,7 +158,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                                     + " must be assignable to because it is to an OUT parameter");
                 }
 
-                String sqlType = getNormalizedTypeName(fs.retType);
+                String sqlType = getSqlTypeNameFromCode(fs.retType.type);
                 String javaType = getJavaType(sqlType);
                 if (javaType == null) {
                     throw new SemanticError( // s418
@@ -158,7 +179,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             } else if (q instanceof ServerAPI.ColumnType) {
                 ServerAPI.ColumnType ct = (ServerAPI.ColumnType) q;
 
-                String sqlType = getNormalizedTypeName(ct.type);
+                String sqlType = getSqlTypeNameFromCode(ct.colType.type);
                 String javaType = getJavaType(sqlType);
                 if (javaType == null) {
                     throw new SemanticError( // s410
@@ -2187,13 +2208,75 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
     }
 
-    private String getNormalizedTypeName(String sqlType) {
-        int idx = sqlType.indexOf('(');
-        if (idx >= 0) {
-            sqlType = sqlType.substring(0, idx); // cut length or precision and scale.
+    private String getSqlTypeNameFromCode(int sqlTypeCode) {
+        String ret = null;
+        switch (sqlTypeCode) {      // got from com.cubrid.jsp.data.DBType
+            case DBType.DB_NULL:
+                ret = "NULL"; break;
+            case DBType.DB_INT:
+                ret = "INT"; break;
+            case DBType.DB_FLOAT:
+                ret = "FLOAT"; break;
+            case DBType.DB_DOUBLE:
+                ret = "DOUBLE"; break;
+            case DBType.DB_STRING:
+                ret = "STRING"; break;
+            case DBType.DB_OBJECT:
+                ret = "OBJECT"; break;
+            case DBType.DB_SET:
+                ret = "SET"; break;
+            case DBType.DB_MULTISET:
+                ret = "MULTISET"; break;
+            case DBType.DB_SEQUENCE:
+                ret = "SEQUENCE"; break;
+            case DBType.DB_TIME:
+                ret = "TIME"; break;
+            case DBType.DB_TIMESTAMP:
+                ret = "TIMESTAMP"; break;
+            case DBType.DB_DATE:
+                ret = "DATE"; break;
+            case DBType.DB_MONETARY:
+                ret = "MONETARY"; break;
+            case DBType.DB_SHORT:
+                ret = "SHORT"; break;
+            case DBType.DB_NUMERIC:
+                ret = "NUMERIC"; break;
+            case DBType.DB_OID:
+                ret = "OID"; break;
+            case DBType.DB_CHAR:
+                ret = "CHAR"; break;
+            case DBType.DB_RESULTSET:
+                ret = "RESULTSET"; break;
+            case DBType.DB_BIGINT:
+                ret = "BIGINT"; break;
+            case DBType.DB_DATETIME:
+                ret = "DATETIME"; break;
+
+            case DBType.DB_BIT:
+                ret = "BIT"; break;
+            case DBType.DB_VARBIT:
+                ret = "VARBIT"; break;
+
+            case DBType.DB_BLOB:
+                ret = "BLOB"; break;
+            case DBType.DB_CLOB:
+                ret = "CLOB"; break;
+            case DBType.DB_ENUMERATION:
+                ret = "ENUMERATION"; break;
+            case DBType.DB_TIMESTAMPTZ:
+                ret = "TIMESTAMPTZ"; break;
+            case DBType.DB_TIMESTAMPLTZ:
+                ret = "TIMESTAMPLTZ"; break;
+            case DBType.DB_DATETIMETZ:
+                ret = "DATETIMETZ"; break;
+            case DBType.DB_DATETIMELTZ:
+                ret = "DATETIMELTZ"; break;
+            default:
+                assert false: "unreachable";
+                throw new RuntimeException("unreachable");
         }
 
-        return sqlType.toUpperCase();
+        return ret;
     }
 
     private StaticSql checkAndConvertStaticSql(SqlSemantics sws, ParserRuleContext ctx) {
@@ -2203,11 +2286,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         ArrayList<ExprId> intoVars = null;
 
         // check (name-binding) and convert host variables used in the SQL
-        for (String var : sws.hostVars.keySet()) {
-            String sqlType = sws.hostVars.get(var);
-            sqlType = getNormalizedTypeName(sqlType);
+        for (PlParamInfo pi: sws.hostVars) {
+            String sqlType = getSqlTypeNameFromCode(pi.type);
 
-            var = Misc.getNormalizedText(var);
+            String var = Misc.getNormalizedText(pi.name);
             ExprId id = visitNonFuncIdentifier(var, ctx); // s408: undeclared id ...
 
             TypeSpec javaType = TypeSpec.of(pcsToJavaTypeMap.get(sqlType));
@@ -2219,11 +2301,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
             // convert select list
             selectList = new LinkedHashMap<>();
-            for (String col : sws.selectList.keySet()) {
-                String sqlType = sws.selectList.get(col);
-                sqlType = getNormalizedTypeName(sqlType);
+            for (ColumnInfo ci: sws.selectList) {
+                String sqlType = getSqlTypeNameFromCode(ci.type);
 
-                col = Misc.getNormalizedText(col);
+                String col = Misc.getNormalizedText(ci.colName);
                 TypeSpec javaType = TypeSpec.of(pcsToJavaTypeMap.get(sqlType));
                 assert javaType != null;
                 selectList.put(col, javaType);
@@ -2252,14 +2333,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     private String makeParamList(
-            NodeList<DeclParam> paramList, String name, int[] outPositions, String[] paramTypes) {
+            NodeList<DeclParam> paramList, String name, PlParamInfo[] params) {
 
-        int len = outPositions.length;
-        assert len == paramTypes.length;
-
+        int len = params.length;
         for (int i = 0; i < len; i++) {
 
-            String sqlType = getNormalizedTypeName(paramTypes[i]);
+            String sqlType = getSqlTypeNameFromCode(params[i].type);
             String javaType = getJavaType(sqlType);
             if (javaType == null) {
                 return name + " uses unsupported type " + sqlType + " for parameter " + (i + 1);
@@ -2267,7 +2346,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             TypeSpec paramType = TypeSpecSimple.of(javaType);
             assert paramType != null;
 
-            if (outPositions[i] > 0) {
+            if ((params[i].mode & ServerConstants.PARAM_MODE_OUT) > 0) {
                 paramList.nodes.add(new DeclParamOut(null, "p" + i, paramType));
             } else {
                 paramList.nodes.add(new DeclParamIn(null, "p" + i, paramType));
