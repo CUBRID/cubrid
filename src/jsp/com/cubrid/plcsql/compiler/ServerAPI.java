@@ -166,25 +166,12 @@ public class ServerAPI {
     // -----------------------------------------
 
     private static List<SqlSemantics> getMockSqlSemantics(List<String> sqlTexts) {
-<<<<<<< HEAD
-=======
-
-        // MOCK
-
->>>>>>> upstream/feature/plcsql
         List<SqlSemantics> ret = new ArrayList<>();
 
         for (String sql : sqlTexts) {
             sql = sql.toUpperCase();
 
             if (sql.startsWith("SELECT")) {
-<<<<<<< HEAD
-=======
-                // select code, name from athlete where gender = g and nation_code = n;
-                // or
-                // select code, name into c, m from athlete where gender = g and nation_code = n;
-
->>>>>>> upstream/feature/plcsql
                 LinkedHashMap<String, String> hostVars = new LinkedHashMap<>();
                 hostVars.put("G", "CHARACTER(1)");
                 hostVars.put("N", "CHARACTER(3)");
