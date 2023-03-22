@@ -191,7 +191,7 @@ $ csql help messages
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - 単線モードの有効化/無効化.\n\
    ;CONnect username [dbname | dbname@hostname]\n\
-                                - ユーザー名として現在のデータベースまたは他のデータベースに接続します。\n\ 
+                                - ユーザー名として現在のデータベースまたは他のデータベースに接続します。\n\
    ;.Hist [ON/OFF]              - CSQL で統計情報の収集を開始/停止します (DBA のみ利用可能)。\n\
    ;.Clear_hist                 - バッファ内の CSQL 統計情報をクリアします。\n\
    ;.Dump_hist                  - CSQL 統計情報を CSQL で表示します。\n\
