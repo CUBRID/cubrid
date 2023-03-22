@@ -4504,7 +4504,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, const LOG_LSA * flush_lsa)
 	      _er_log_debug (ARG_FILE_LINE, "Wait until consenesus LSA gets larger than or equal to %lld|%d.\n", LSA_AS_ARGS (flush_lsa));
 	    }
 	  
-          log_Gl.wait_flushed_lsa (*flush_lsa);
+          log_Gl.wait_for_ps_flushed_lsa (*flush_lsa);
 	  
           if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
 	    {

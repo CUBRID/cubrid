@@ -108,7 +108,7 @@ log_global::~log_global ()
 
 #if defined (SERVER_MODE)
 void
-log_global::update_ps_consensus_flushed_lsa ()
+log_global::wakeup_ps_flush_waiters ()
 {
   assert (is_active_transaction_server ());
   m_ps_lsa_up_to_date.store (false);
@@ -116,7 +116,7 @@ log_global::update_ps_consensus_flushed_lsa ()
 }
 
 void
-log_global::wait_flushed_lsa (const log_lsa &flush_lsa)
+log_global::wait_for_ps_flushed_lsa (const log_lsa &flush_lsa)
 {
   std::unique_lock<std::mutex> lock (m_ps_lsa_mutex);
   while (m_ps_consensus_flushed_lsa < flush_lsa)

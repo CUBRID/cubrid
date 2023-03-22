@@ -730,8 +730,8 @@ struct log_global
   void initialize_log_prior_receiver ();
   void finalize_log_prior_receiver ();
   cublog::prior_recver &get_log_prior_receiver ();
-  void wait_flushed_lsa (const log_lsa & flush_lsa);
-  void update_ps_consensus_flushed_lsa ();
+  void wait_for_ps_flushed_lsa (const log_lsa & flush_lsa);
+  void wakeup_ps_flush_waiters ();
 #endif // SERVER_MODE
   // *INDENT-ON*
 };
