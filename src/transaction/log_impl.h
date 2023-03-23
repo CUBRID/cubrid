@@ -988,7 +988,7 @@ extern bool cdc_Logging;
 
 #define quorum_consenesus_er_log(msg, ...) \
   if (prm_get_bool_value (PRM_ID_ER_LOG_QUORUM_CONSENSUS)) \
-    _er_log_debug (ARG_FILE_LINE, "[QUORUM CONSENSUS] " msg, __VA_ARGS__)
+    _er_log_debug (ARG_FILE_LINE, "[QUORUM_CONSENSUS] " msg, __VA_ARGS__)
 
 extern int logpb_initialize_pool (THREAD_ENTRY * thread_p);
 extern void logpb_finalize_pool (THREAD_ENTRY * thread_p);
