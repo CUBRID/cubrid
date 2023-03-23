@@ -21,6 +21,7 @@
 
 #include "communication_node.hpp"
 #include "communication_server_channel.hpp"
+#include "log_lsa.hpp"
 #include "request_sync_client_server.hpp"
 #include "tran_page_requests.hpp"
 
@@ -80,6 +81,9 @@ class tran_server
     bool is_page_server_connected () const;
     virtual bool uses_remote_storage () const;
 
+    // Before disconnecting page server, make sure no message is being sent anymore to the page server.
+    virtual void stop_outgoing_page_server_messages () = 0;
+
   protected:
     class connection_handler
     {
@@ -100,6 +104,8 @@ class tran_server
 
 	virtual void disconnect ();
 	const std::string get_channel_id () const;
+
+	virtual log_lsa get_saved_lsa () const = 0; // used in active_tran_server
 
       protected:
 	connection_handler (cubcomm::channel &&chn, tran_server &ts, request_handlers_map_t &&request_handlers);
@@ -122,10 +128,13 @@ class tran_server
     // Booting functions that require specialization
     virtual bool get_remote_storage_config () = 0;
 
-    // Before disconnecting page server, make sure no message is being sent anymore to the page server.
-    virtual void stop_outgoing_page_server_messages () = 0;
-
   protected:
+    /*
+     * Static information about available page server connection peers.
+     * For now, this information is static. In the future this can be maintained dinamically (eg: via cluster
+     * management sofware).
+     */
+    std::vector<cubcomm::node> m_connection_list;
     std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
 
   private:
@@ -141,7 +150,6 @@ class tran_server
     int parse_page_server_hosts_config (std::string &hosts);
 
   private:
-    std::vector<cubcomm::node> m_connection_list;
     cubcomm::server_server m_conn_type;
 };
 

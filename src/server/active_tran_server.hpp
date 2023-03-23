@@ -22,8 +22,9 @@
 #include "log_prior_send.hpp"
 #include "tran_server.hpp"
 
-#include <vector>
+#include <atomic>
 #include <memory>
+#include <vector>
 
 class active_tran_server : public tran_server
 {
@@ -34,6 +35,7 @@ class active_tran_server : public tran_server
 
     bool uses_remote_storage () const final override;
     MVCCID get_oldest_active_mvccid_from_page_server () const;
+    log_lsa compute_consensus_lsa ();
 
   private:
     class connection_handler : public tran_server::connection_handler
@@ -57,8 +59,11 @@ class active_tran_server : public tran_server
 	// request handlers
 	void receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip);
 
+	log_lsa get_saved_lsa () const override final;
+
       private:
 	cublog::prior_sender::sink_hook_t m_prior_sender_sink_hook_func;
+	std::atomic<log_lsa> m_saved_lsa;
     };
 
   private:

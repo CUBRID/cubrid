@@ -76,7 +76,7 @@ namespace cubload
     driver *driver = m_driver_pool.claim ();
 
     context.m_loaddb_driver = driver;
-    context.type = TT_LOADDB;
+    context.set_thread_type (TT_LOADDB);
   }
 
   void worker_context_manager::on_retire (cubthread::entry &context)

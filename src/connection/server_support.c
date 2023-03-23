@@ -999,7 +999,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 
   pthread_mutex_unlock (&thread_p->tran_index_lock);
 
-  thread_p->type = TT_SERVER;	/* server thread */
+  thread_p->set_thread_type (TT_SERVER);	/* server thread */
 
   css_peer_alive_timeout = 5000;
   poll_timeout = 100;

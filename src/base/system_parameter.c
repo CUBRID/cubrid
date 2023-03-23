@@ -710,7 +710,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_ER_LOG_PRIOR_TRANSFER "er_log_prior_transfer"
 #define PRM_NAME_ER_LOG_COMM_REQUEST "er_log_comm_request"
 #define PRM_NAME_ER_LOG_COMM_CHANNEL "er_log_comm_channel"
-#define PRM_NAME_ER_LOG_COMMIT_CONFIRM "er_log_commit_confirm"
+#define PRM_NAME_ER_LOG_QUORUM_CONSENSUS "er_log_quorum_consensus"
 #define PRM_NAME_ER_LOG_CALC_REPL_DELAY "er_log_calculate_replication_delay"
 #define PRM_NAME_ER_LOG_MVCC_REPL_DEBUG "er_log_mvcc_repl_debug"
 #define PRM_NAME_ER_LOG_PTS_ATOMIC_REPL_DEBUG "er_log_pts_atomic_repl_debug"
@@ -719,6 +719,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_RECOVERY_PARALLEL_TASK_DEBUG "recovery_parallel_task_debug"
 #define PRM_NAME_REPLICATION_PARALLEL_COUNT "replication_parallel_count"
 #define PRM_NAME_REPLICATION_COMPRESS_PAGES_TRANSFER "replication_compress_pages_transfer"
+#define PRM_NAME_SCAL_PERF_PTS_REPL_THREAD_IGNORE_UNFIX "scal_perf_pts_repl_thread_ignore_unfix"
+#define PRM_NAME_SCAL_PERF_PS_REPL_THREAD_IGNORE_UNFIX "scal_perf_ps_repl_thread_ignore_unfix"
 
 #define PRM_NAME_REMOTE_STORAGE "remote_storage"
 #define PRM_NAME_DUMP_FILE_CACHE "dump_fileio_cache_after_boot"
@@ -2344,9 +2346,9 @@ bool PRM_ER_LOG_COMM_CHANNEL = false;
 static bool prm_er_log_comm_channel_default = false;
 static unsigned int prm_er_log_comm_channel_flag = 0;
 
-bool PRM_ER_LOG_COMMIT_CONFIRM = false;
-static bool prm_er_log_commit_confirm_default = false;
-static unsigned int prm_er_log_commit_confirm_flag = 0;
+bool PRM_ER_LOG_QUORUM_CONSENSUS = false;
+static bool prm_er_log_quorum_consensus_default = false;
+static unsigned int prm_er_log_quorum_consensus_flag = 0;
 
 bool PRM_ER_LOG_READ_LOG_PAGE = true;
 static bool prm_er_log_read_log_page_default = false;
@@ -2385,8 +2387,16 @@ static int prm_replication_parallel_count_upper_value = 32;
 static int prm_replication_parallel_count_lower_value = 0;
 
 static unsigned int prm_replication_compress_pages_transfer_flag = 0;
-static const bool prm_replication_compress_pages_transfer_default = true;
+static const bool prm_replication_compress_pages_transfer_default = false;
 bool PRM_REPLICATION_COMPRESS_PAGES_TRANSFER_VALUE = prm_replication_compress_pages_transfer_default;
+
+static unsigned int prm_scal_perf_pts_repl_thread_ignore_unfix_flag = 0;
+static const bool prm_scal_perf_pts_repl_thread_ignore_unfix_default = false;
+bool PRM_SCAL_PERF_PTS_REPL_THREAD_IGNORE_UNFIX_VALUE = prm_scal_perf_pts_repl_thread_ignore_unfix_default;
+
+static unsigned int prm_scal_perf_ps_repl_thread_ignore_unfix_flag = 0;
+static const bool prm_scal_perf_ps_repl_thread_ignore_unfix_default = false;
+bool PRM_SCAL_PERF_PS_REPL_THREAD_IGNORE_UNFIX_VALUE = prm_scal_perf_ps_repl_thread_ignore_unfix_default;
 
 static bool prm_remote_storage_default = false;
 bool PRM_REMOTE_STORAGE_CURRENT_VALUE = prm_remote_storage_default;
@@ -6227,13 +6237,13 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_ER_LOG_COMMIT_CONFIRM,
-   PRM_NAME_ER_LOG_COMMIT_CONFIRM,
+  {PRM_ID_ER_LOG_QUORUM_CONSENSUS,
+   PRM_NAME_ER_LOG_QUORUM_CONSENSUS,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
-   &prm_er_log_commit_confirm_flag,
-   (void *) &prm_er_log_commit_confirm_default,
-   (void *) &PRM_ER_LOG_COMMIT_CONFIRM,
+   &prm_er_log_quorum_consensus_flag,
+   (void *) &prm_er_log_quorum_consensus_default,
+   (void *) &PRM_ER_LOG_QUORUM_CONSENSUS,
    (void *) NULL,
    (void *) NULL,
    (char *) NULL,
@@ -6338,11 +6348,35 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_REPLICATION_COMPRESS_PAGES_TRANSFER,
    PRM_NAME_REPLICATION_COMPRESS_PAGES_TRANSFER,
-   (PRM_FOR_SERVER),
+   (PRM_HIDDEN | PRM_FOR_SERVER),
    PRM_BOOLEAN,
    &prm_replication_compress_pages_transfer_flag,
    (void *) &prm_replication_compress_pages_transfer_default,
    (void *) &PRM_REPLICATION_COMPRESS_PAGES_TRANSFER_VALUE,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_SCAL_PERF_PTS_REPL_THREAD_IGNORE_UNFIX,
+   PRM_NAME_SCAL_PERF_PTS_REPL_THREAD_IGNORE_UNFIX,
+   (PRM_HIDDEN | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_scal_perf_pts_repl_thread_ignore_unfix_flag,
+   (void *) &prm_scal_perf_pts_repl_thread_ignore_unfix_default,
+   (void *) &PRM_SCAL_PERF_PTS_REPL_THREAD_IGNORE_UNFIX_VALUE,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_SCAL_PERF_PS_REPL_THREAD_IGNORE_UNFIX,
+   PRM_NAME_SCAL_PERF_PS_REPL_THREAD_IGNORE_UNFIX,
+   (PRM_HIDDEN | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_scal_perf_ps_repl_thread_ignore_unfix_flag,
+   (void *) &prm_scal_perf_ps_repl_thread_ignore_unfix_default,
+   (void *) &PRM_SCAL_PERF_PS_REPL_THREAD_IGNORE_UNFIX_VALUE,
    (void *) NULL,
    (void *) NULL,
    (char *) NULL,

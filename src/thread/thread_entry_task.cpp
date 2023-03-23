@@ -40,7 +40,7 @@ namespace cubthread
 
     // for backward compatibility
     context.register_id ();
-    context.type = TT_WORKER;
+    context.set_thread_type (TT_WORKER);
 #if defined (SERVER_MODE)
     context.m_status = entry::status::TS_RUN;
     context.shutdown = false;
@@ -100,7 +100,7 @@ namespace cubthread
   void
   daemon_entry_manager::on_create (entry &context)
   {
-    context.type = TT_DAEMON;
+    context.set_thread_type (TT_DAEMON);
     context.tran_index = LOG_SYSTEM_TRAN_INDEX;
 
     on_daemon_create (context);
@@ -126,7 +126,7 @@ namespace cubthread
   void
   system_worker_entry_manager::on_create (entry &context)
   {
-    context.type = m_thread_type;
+    context.set_thread_type (m_thread_type);
     context.tran_index = LOG_SYSTEM_TRAN_INDEX;
   }
 

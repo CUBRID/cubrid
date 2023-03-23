@@ -760,7 +760,7 @@ vacuum_init_thread_context (cubthread::entry &context, thread_type type, VACUUM_
 {
   assert (worker != NULL);
 
-  context.type = type;
+  context.set_thread_type (type);
   context.vacuum_worker = worker;
   context.check_interrupt = false;
 
@@ -7640,7 +7640,7 @@ vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, thread_type & save_typ
       thread_p = thread_get_thread_entry_info ();
     }
   save_type = thread_p->type;
-  thread_p->type = TT_VACUUM_MASTER;
+  thread_p->set_thread_type (TT_VACUUM_MASTER);
   thread_p->vacuum_worker = &vacuum_Master;
   if (thread_p->get_system_tdes () == NULL)
     {
@@ -7663,7 +7663,7 @@ vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker
       thread_p = thread_get_thread_entry_info ();
     }
   save_type = thread_p->type;
-  thread_p->type = TT_VACUUM_WORKER;
+  thread_p->set_thread_type (TT_VACUUM_WORKER);
   thread_p->vacuum_worker = worker;
   if (vacuum_worker_allocate_resources (thread_p, thread_p->vacuum_worker) != NO_ERROR)
     {
@@ -7688,7 +7688,7 @@ vacuum_restore_thread (THREAD_ENTRY * thread_p, thread_type save_type)
     {
       thread_p = thread_get_thread_entry_info ();
     }
-  thread_p->type = save_type;
+  thread_p->set_thread_type (save_type);
   thread_p->vacuum_worker = NULL;
   thread_p->retire_system_worker ();
   thread_p->tran_index = LOG_SYSTEM_TRAN_INDEX;	// restore tran_index
