@@ -60,6 +60,7 @@
 #include "recovery.h"
 #include "release_string.h"
 #include "storage_common.h"
+#include "system_parameter.h"
 #include "tde.h"
 #include "thread_entry.hpp"
 #include "transaction_transient.hpp"
@@ -718,10 +719,13 @@ struct log_global
   std::unique_ptr<cublog::prior_recver> m_prior_recver = nullptr;
 #endif // SERVER_MODE = !SA_MODE
 
-  std::mutex m_ps_lsa_mutex;
-  std::condition_variable m_ps_lsa_cv;
-  LOG_LSA m_max_ps_flushed_lsa = NULL_LSA;
+  private:
+    std::mutex m_ps_lsa_mutex;
+    std::condition_variable m_ps_lsa_cv;
+    std::atomic<bool> m_ps_lsa_up_to_date;
+    LOG_LSA m_ps_consensus_flushed_lsa; // The quorum (number of the majority) of PS have done flushing log recrods until this.
 
+  public:
   log_global ();
   ~log_global ();
 
@@ -729,11 +733,9 @@ struct log_global
   void initialize_log_prior_receiver ();
   void finalize_log_prior_receiver ();
   cublog::prior_recver &get_log_prior_receiver ();
+  void wait_for_ps_flushed_lsa (const log_lsa & flush_lsa);
+  void wakeup_ps_flush_waiters ();
 #endif // SERVER_MODE
-
-  void update_max_ps_flushed_lsa (const LOG_LSA & lsa);
-  void wait_flushed_lsa (const log_lsa & flush_lsa);
-
   // *INDENT-ON*
 };
 
@@ -985,6 +987,10 @@ extern bool cdc_Logging;
 #define LOG_THREAD_TRAN_MSG "(thr=%d, trid=%d)"
 #define LOG_THREAD_TRAN_ARGS(thread_p) thread_get_current_entry_index (), LOG_FIND_CURRENT_TDES (thread_p)
 #endif /* SERVER_MODE */
+
+#define quorum_consenesus_er_log(msg, ...) \
+  if (prm_get_bool_value (PRM_ID_ER_LOG_QUORUM_CONSENSUS)) \
+    _er_log_debug (ARG_FILE_LINE, "[QUORUM_CONSENSUS] " msg, __VA_ARGS__)
 
 extern int logpb_initialize_pool (THREAD_ENTRY * thread_p);
 extern void logpb_finalize_pool (THREAD_ENTRY * thread_p);

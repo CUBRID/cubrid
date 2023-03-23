@@ -37,7 +37,7 @@ active_tran_server::uses_remote_storage () const
 }
 
 MVCCID
-active_tran_server::get_oldest_active_mvccid_from_page_server ()
+active_tran_server::get_oldest_active_mvccid_from_page_server () const
 {
   std::string response_message;
   const int error_code = send_receive (tran_to_page_request::GET_OLDEST_ACTIVE_MVCCID, std::string (), response_message);
@@ -60,6 +60,64 @@ active_tran_server::get_oldest_active_mvccid_from_page_server ()
   return oldest_mvccid;
 }
 
+log_lsa
+active_tran_server::compute_consensus_lsa ()
+{
+  const int total_node_cnt = m_connection_list.size ();
+  const int quorum = total_node_cnt / 2 + 1; // For now, it's fixed to the number of the majority.
+  int cur_node_cnt;
+  std::vector<log_lsa> collected_saved_lsa;
+
+  // TODO The next block has to be exclusive with connection and disconnection
+  {
+    cur_node_cnt = m_page_server_conn_vec.size ();
+    if (cur_node_cnt < quorum)
+      {
+	quorum_consenesus_er_log ("compute_consensus_lsa - Quorum unsatisfied: total node count = %d, curreunt node count = %d, quorum = %d\n",
+				  total_node_cnt, cur_node_cnt, quorum);
+	return NULL_LSA;
+      }
+    for (const auto &conn : m_page_server_conn_vec)
+      {
+	collected_saved_lsa.emplace_back (conn->get_saved_lsa ());
+      }
+  }
+  /*
+   * Gather all PS'es saved_lsa and sort it in ascending order.
+   * The <cur_node_count - quorum>'th element is the consensus LSA, upon which the majority (quorumn) of PS agrees.
+   * total: 5, cur: 5 - [5, 5, 6, 9, 10] -> "6" is the consensus LSA.
+   * total: 2, cur: 2 - [9, 10] -> "9"
+   * total: 5, cur: 4 - [5, 6, 9, 10] -> "6"
+   * total: 3, cur: 2 - [9, 10] -> "9"
+   */
+  std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end ());
+
+  const auto consensus_lsa = collected_saved_lsa[cur_node_cnt - quorum];
+
+  if (prm_get_bool_value (PRM_ID_ER_LOG_QUORUM_CONSENSUS))
+    {
+      constexpr int BUF_SIZE = 1024;
+      char msg_buf[BUF_SIZE];
+      int n = 0;
+      // cppcheck-suppress [wrongPrintfScanfArgNum]
+      n = snprintf (msg_buf, BUF_SIZE,
+		    "compute_consensus_lsa - total node count = %d, current node count = %d, quorum = %d, consensus LSA = %lld|%d\n",
+		    total_node_cnt, cur_node_cnt, quorum, LSA_AS_ARGS (&consensus_lsa));
+      n += snprintf (msg_buf + n, BUF_SIZE - n, "Collected saved lsa list = [ ");
+      for (const auto &lsa : collected_saved_lsa)
+	{
+	  // cppcheck-suppress [wrongPrintfScanfArgNum]
+	  n += snprintf (msg_buf + n, BUF_SIZE - n, "%lld|%d ", LSA_AS_ARGS (&lsa));
+	}
+      snprintf (msg_buf + n, BUF_SIZE - n, "]\n");
+      assert (n < BUF_SIZE);
+
+      quorum_consenesus_er_log ("%s", msg_buf);
+    }
+
+  return consensus_lsa;
+}
+
 bool
 active_tran_server::get_remote_storage_config ()
 {
@@ -74,6 +132,7 @@ active_tran_server::stop_outgoing_page_server_messages ()
 
 active_tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tran_server &ts)
   : tran_server::connection_handler (std::move (chn), ts, get_request_handlers ())
+  , m_saved_lsa { NULL_LSA }
 {
   m_prior_sender_sink_hook_func = std::bind (&tran_server::connection_handler::push_request, this,
 				  tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1);
@@ -110,15 +169,18 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
   assert (sizeof (log_lsa) == message.size ());
   std::memcpy (&saved_lsa, message.c_str (), sizeof (log_lsa));
 
-  if (log_Gl.m_max_ps_flushed_lsa < saved_lsa)
-    {
-      log_Gl.update_max_ps_flushed_lsa (saved_lsa);
-    }
+  assert (saved_lsa > get_saved_lsa ()); // increasing monotonically
+  m_saved_lsa.store (saved_lsa);
 
-  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
-    {
-      _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Received LSA = %lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
-    }
+  quorum_consenesus_er_log ("Received saved LSA = %lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
+
+  log_Gl.wakeup_ps_flush_waiters ();
+}
+
+log_lsa
+active_tran_server::connection_handler::get_saved_lsa () const
+{
+  return m_saved_lsa.load ();
 }
 
 void

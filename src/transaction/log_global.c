@@ -22,6 +22,7 @@
 
 #ident "$Id$"
 
+#include "active_tran_server.hpp"
 #include "config.h"
 #include "file_io.h"
 #include "log_append.hpp"
@@ -31,6 +32,7 @@
 #include "log_writer.h"
 #include "mvcc_table.hpp"
 #include "porting.h"
+#include "server_type.hpp"
 #include "storage_common.h"
 
 #include <limits.h>
@@ -76,6 +78,8 @@ log_global::log_global ()
   , mvcc_table ()
   , unique_stats_table GLOBAL_UNIQUE_STATS_TABLE_INITIALIZER
   , m_prior_sender ()
+  , m_ps_lsa_up_to_date (false)
+  , m_ps_consensus_flushed_lsa (NULL_LSA)
 {
 }
 // *INDENT-ON*
@@ -102,29 +106,41 @@ log_global::~log_global ()
   delete writer_info;
 }
 
+#if defined (SERVER_MODE)
 void
-log_global::update_max_ps_flushed_lsa (const LOG_LSA &lsa)
+log_global::wakeup_ps_flush_waiters ()
 {
-  {
-    std::unique_lock<std::mutex> lock (m_ps_lsa_mutex);
-    m_max_ps_flushed_lsa = lsa;
-  } // lock.unlock ();
+  assert (is_active_transaction_server ());
+  m_ps_lsa_up_to_date.store (false);
   m_ps_lsa_cv.notify_all ();
 }
 
 void
-log_global::wait_flushed_lsa (const log_lsa &flush_lsa)
+log_global::wait_for_ps_flushed_lsa (const log_lsa &flush_lsa)
 {
-  if (m_max_ps_flushed_lsa >= flush_lsa)
+  std::unique_lock<std::mutex> ulock (m_ps_lsa_mutex);
+  while (m_ps_consensus_flushed_lsa < flush_lsa)
     {
-      // already flushed
-      return;
+      // Only who first notices it's out-dated updates the consensus lsa.
+      if (!m_ps_lsa_up_to_date.exchange (true)) 
+      {
+        const log_lsa consensus_lsa = get_active_tran_server_ptr ()->compute_consensus_lsa ();
+        if (consensus_lsa == NULL_LSA)
+        {
+          continue; // The number of connected nodes is less than the quorum
+        }
+        assert (m_ps_consensus_flushed_lsa <= consensus_lsa);
+
+        m_ps_consensus_flushed_lsa = consensus_lsa;
+      }
+      else 
+      {
+        m_ps_lsa_cv.wait (ulock);
+      }
     }
-  std::unique_lock<std::mutex> lock (m_ps_lsa_mutex);
-  m_ps_lsa_cv.wait (lock, [flush_lsa, this] { return m_max_ps_flushed_lsa >= flush_lsa; });
+  quorum_consenesus_er_log ("Quorum satisfied: page server flushed LSA = %lld|%d.\n", LSA_AS_ARGS (&log_Gl.m_ps_consensus_flushed_lsa));
 }
 
-#if defined (SERVER_MODE)
 void
 log_global::initialize_log_prior_receiver ()
 {

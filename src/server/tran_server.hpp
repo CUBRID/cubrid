@@ -21,6 +21,7 @@
 
 #include "communication_node.hpp"
 #include "communication_server_channel.hpp"
+#include "log_lsa.hpp"
 #include "request_sync_client_server.hpp"
 #include "tran_page_requests.hpp"
 #include "async_disconnect_handler.hpp"
@@ -116,6 +117,8 @@ class tran_server
 	virtual void prepare_disconnection ();
 	const std::string get_channel_id () const;
 
+	virtual log_lsa get_saved_lsa () const = 0; // used in active_tran_server
+
       protected:
 	connection_handler (cubcomm::channel &&chn, tran_server &ts, request_handlers_map_t &&request_handlers);
 
@@ -139,6 +142,12 @@ class tran_server
     virtual bool get_remote_storage_config () = 0;
 
   protected:
+    /*
+     * Static information about available page server connection peers.
+     * For now, this information is static. In the future this can be maintained dinamically (eg: via cluster
+     * management sofware).
+     */
+    std::vector<cubcomm::node> m_connection_list;
     std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
     std::shared_mutex m_page_server_conn_vec_mtx;
 
@@ -151,11 +160,14 @@ class tran_server
     int parse_page_server_hosts_config (std::string &hosts);
 
   private:
+    <<<<<<< HEAD
     std::vector<cubcomm::node> m_connection_list;
 
     async_disconnect_handler<connection_handler> m_async_disconnect_handler;
 
-    cubcomm::server_server m_conn_type;
+    =======
+	    >>>>>>> scalability_dev
+	    cubcomm::server_server m_conn_type;
 };
 
 #endif // !_tran_server_HPP_

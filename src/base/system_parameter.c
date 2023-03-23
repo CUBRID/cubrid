@@ -706,7 +706,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_ER_LOG_PRIOR_TRANSFER "er_log_prior_transfer"
 #define PRM_NAME_ER_LOG_COMM_REQUEST "er_log_comm_request"
 #define PRM_NAME_ER_LOG_COMM_CHANNEL "er_log_comm_channel"
-#define PRM_NAME_ER_LOG_COMMIT_CONFIRM "er_log_commit_confirm"
+#define PRM_NAME_ER_LOG_QUORUM_CONSENSUS "er_log_quorum_consensus"
 #define PRM_NAME_ER_LOG_CALC_REPL_DELAY "er_log_calculate_replication_delay"
 #define PRM_NAME_ER_LOG_MVCC_REPL_DEBUG "er_log_mvcc_repl_debug"
 #define PRM_NAME_ER_LOG_PTS_ATOMIC_REPL_DEBUG "er_log_pts_atomic_repl_debug"
@@ -2332,9 +2332,9 @@ bool PRM_ER_LOG_COMM_CHANNEL = false;
 static bool prm_er_log_comm_channel_default = false;
 static unsigned int prm_er_log_comm_channel_flag = 0;
 
-bool PRM_ER_LOG_COMMIT_CONFIRM = false;
-static bool prm_er_log_commit_confirm_default = false;
-static unsigned int prm_er_log_commit_confirm_flag = 0;
+bool PRM_ER_LOG_QUORUM_CONSENSUS = false;
+static bool prm_er_log_quorum_consensus_default = false;
+static unsigned int prm_er_log_quorum_consensus_flag = 0;
 
 bool PRM_ER_LOG_READ_LOG_PAGE = true;
 static bool prm_er_log_read_log_page_default = false;
@@ -6223,13 +6223,13 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_ER_LOG_COMMIT_CONFIRM,
-   PRM_NAME_ER_LOG_COMMIT_CONFIRM,
+  {PRM_ID_ER_LOG_QUORUM_CONSENSUS,
+   PRM_NAME_ER_LOG_QUORUM_CONSENSUS,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
-   &prm_er_log_commit_confirm_flag,
-   (void *) &prm_er_log_commit_confirm_default,
-   (void *) &PRM_ER_LOG_COMMIT_CONFIRM,
+   &prm_er_log_quorum_consensus_flag,
+   (void *) &prm_er_log_quorum_consensus_default,
+   (void *) &PRM_ER_LOG_QUORUM_CONSENSUS,
    (void *) NULL,
    (void *) NULL,
    (char *) NULL,
