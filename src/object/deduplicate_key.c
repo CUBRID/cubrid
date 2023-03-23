@@ -76,6 +76,8 @@ dk_or_attribute_initialized ()
     }
 
 #ifndef NDEBUG
+  /* Check whether the macro that creates or extracts the attribute name and ID for the deduplicate_key
+   * for the specified level operates normally. */
   int lv1, lv2;
   char *attr_name;
   char *ptr;
@@ -339,7 +341,9 @@ dk_create_index_level_remove_adjust (DB_CONSTRAINT_TYPE ctype, char **attnames, 
     }
 
   if (deduplicate_key_col_pos != -1)
-    {				// remove hidden column   
+    {
+      // remove hidden column         
+      assert (nnames > 0);
       attnames[deduplicate_key_col_pos] = NULL;
 
       assert (!func_index_info || (func_index_info && func_index_info->attr_index_start > 0));
@@ -373,6 +377,7 @@ dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, i
 {
   int deduplicate_key_col_pos;
 
+  assert (nnames > 0);
   assert (asc_desc != NULL);
   assert (idx_info->dedup_key_mode != DEDUPLICATE_KEY_MODE_NONE);
   assert (idx_info->dedup_key_level >= DEDUPLICATE_KEY_LEVEL_MIN
