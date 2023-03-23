@@ -315,6 +315,9 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      bt_statsp->key_type = NULL;
 	      bt_statsp->pkeys_size = 0;
 	      bt_statsp->pkeys = NULL;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	      bt_statsp->dedup_idx = -1;
+#endif
 
 #if 0				/* reserved for future use */
 	      for (k = 0; k < BTREE_STATS_RESERVED_NUM; k++)
@@ -365,6 +368,9 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      if (TP_DOMAIN_TYPE (bt_statsp->key_type) == DB_TYPE_MIDXKEY)
 		{
 		  bt_statsp->pkeys_size = tp_domain_size (bt_statsp->key_type->setdomain);
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+		  bt_statsp->dedup_idx = btid_int.deduplicate_key_idx;
+#endif
 		}
 	      else
 		{

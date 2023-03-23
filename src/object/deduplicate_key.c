@@ -145,28 +145,6 @@ dk_get_deduplicate_key_position (int n_attrs, int *attr_ids, int func_attr_index
 }
 
 int
-dk_or_deduplicate_key_position (int n_attrs, OR_ATTRIBUTE ** attrs, OR_FUNCTION_INDEX * function_index)
-{
-  if (n_attrs > 1)
-    {
-      if (function_index)
-	{
-	  if ((function_index->attr_index_start > 0)
-	      && IS_DEDUPLICATE_KEY_ATTR_ID (attrs[function_index->attr_index_start - 1]->id))
-	    {
-	      return function_index->attr_index_start;
-	    }
-	}
-      else if (IS_DEDUPLICATE_KEY_ATTR_ID (attrs[n_attrs - 1]->id))
-	{
-	  return n_attrs - 1;
-	}
-    }
-
-  return -1;
-}
-
-int
 dk_get_deduplicate_key_value (OID * rec_oid, int att_id, DB_VALUE * value)
 {
   // The rec_oid may be NULL when the index of the UNIQUE attribute is an index. 
