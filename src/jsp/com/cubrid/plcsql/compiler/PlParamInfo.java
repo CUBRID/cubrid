@@ -28,7 +28,7 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.serverapi;
+package com.cubrid.plcsql.compiler;
 
 public class PlParamInfo {
 

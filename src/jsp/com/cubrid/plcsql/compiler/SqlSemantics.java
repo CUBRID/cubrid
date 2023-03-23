@@ -28,27 +28,47 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.serverapi;
+package com.cubrid.plcsql.compiler;
 
-public class ServerConstants {
+import com.cubrid.jsp.data.ColumnInfo;
+import java.util.List;
 
-    // kinds of SQL statements that are supported in Static SQL
-    public static final int CUBRID_STMT_INSERT = 20; // REPLACE too
-    public static final int CUBRID_STMT_SELECT = 21;
-    public static final int CUBRID_STMT_UPDATE = 22;
-    public static final int CUBRID_STMT_DELETE = 23;
-    public static final int CUBRID_STMT_TRUNCATE = 52;
-    public static final int CUBRID_STMT_MERGE = 57;
+public class SqlSemantics {
 
-    // parameter mode flags - got from com.cubrid.jsp.impl.SUBindParameter
-    public static final byte PARAM_MODE_UNKNOWN = 0;
-    public static final byte PARAM_MODE_IN = 1;
-    public static final byte PARAM_MODE_OUT = 2;
+    public int seqNo;
 
-    // CUBRID charset = got from got from com.cubrid.jsp.data.ColumnInfo::getJavaCharsetName()
-    public static final byte CUBRID_CHARSET_ASCII = 0;
-    public static final byte CUBRID_CHARSET_BINARY = 2;
-    public static final byte CUBRID_CHARSET_ISO_8859_1 = 3;
-    public static final byte CUBRID_CHARSET_EUC_KR = 4;
-    public static final byte CUBRID_CHARSET_UTF8 = 5;
+    // for error return
+    public int errCode; // non-zero if error
+    public String errMsg;
+
+    public SqlSemantics(int seqNo, int errCode, String errMsg) {
+        assert errCode != 0;
+        this.seqNo = seqNo;
+        this.errCode = errCode;
+        this.errMsg = errMsg;
+    }
+
+    // for normal return
+    public int kind;
+    public String rewritten;
+    public List<PlParamInfo>
+            hostVars; // host variables and their SQL types required in their locations
+    public List<ColumnInfo> selectList; // (only for select statements) columns and their SQL types
+    public List<String> intoVars; // (only for select stetements with an into-clause) into variables
+
+    SqlSemantics(
+            int seqNo,
+            int kind,
+            String rewritten,
+            List<PlParamInfo> hostVars,
+            List<ColumnInfo> selectList,
+            List<String> intoVars) {
+
+        this.seqNo = seqNo;
+        this.kind = kind;
+        this.rewritten = rewritten;
+        this.hostVars = hostVars;
+        this.selectList = selectList;
+        this.intoVars = intoVars;
+    }
 }
