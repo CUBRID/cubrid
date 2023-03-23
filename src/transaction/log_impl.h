@@ -719,11 +719,13 @@ struct log_global
   std::unique_ptr<cublog::prior_recver> m_prior_recver = nullptr;
 #endif // SERVER_MODE = !SA_MODE
 
-  std::mutex m_ps_lsa_mutex;
-  std::condition_variable m_ps_lsa_cv;
-  std::atomic<bool> m_ps_lsa_up_to_date;
-  LOG_LSA m_ps_consensus_flushed_lsa; // The quorum (number of the majority) of PS have done flushing log recrods until this.
+  private:
+    std::mutex m_ps_lsa_mutex;
+    std::condition_variable m_ps_lsa_cv;
+    std::atomic<bool> m_ps_lsa_up_to_date;
+    LOG_LSA m_ps_consensus_flushed_lsa; // The quorum (number of the majority) of PS have done flushing log recrods until this.
 
+  public:
   log_global ();
   ~log_global ();
 
