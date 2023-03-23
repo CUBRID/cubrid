@@ -59,7 +59,6 @@ class active_tran_server : public tran_server
 	// request handlers
 	void receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip);
 
-	void set_saved_lsa (const log_lsa lsa);
 	log_lsa get_saved_lsa () const override final;
 
       private:
