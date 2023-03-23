@@ -909,9 +909,12 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 1 database-name
 2 Gerekli bağımsız değişkeni, bir varsayılanı yok
 3 java sınıf dosyası
-4 Gerekli bağımsız değişkeni, bir varsayılanı yok
-5 zorlamak - üzerine yazmak
-6 varsa sınıf dosyanın üzerine yazmak, varsayılan yok
+4 Gerekli bağımsız değişkeni, bir varsayılanı 
+60 \
+Usage: loadjava [OPTION] database-name java-class-file\n\
+\n\
+valid options:\n\
+  -y, --overwrite              varsa sınıf dosyanın üzerine yazmak, varsayılan yok\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Çıktı dosyası '%1$s' açılamıyor \n
