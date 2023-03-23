@@ -61,6 +61,8 @@ class passive_tran_server : public tran_server
 	connection_handler &operator= (const connection_handler &) = delete;
 	connection_handler &operator= (connection_handler &&) = delete;
 
+	log_lsa get_saved_lsa () const override final;
+
       private:
 	request_handlers_map_t get_request_handlers () final override;
 

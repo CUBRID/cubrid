@@ -56,6 +56,13 @@ passive_tran_server::connection_handler::get_request_handlers ()
   return handlers_map;
 }
 
+log_lsa
+passive_tran_server::connection_handler::get_saved_lsa () const
+{
+  assert (false); // Only used in active transaction server
+  return NULL_LSA;
+}
+
 void
 passive_tran_server::stop_outgoing_page_server_messages ()
 {
@@ -174,7 +181,6 @@ void passive_tran_server::send_oldest_active_mvccid (cubthread::entry &)
   request_message.append (reinterpret_cast<const char *> (&m_oldest_active_mvccid), sizeof (m_oldest_active_mvccid));
   push_request (tran_to_page_request::SEND_OLDEST_ACTIVE_MVCCID, std::move (request_message));
 }
-
 
 log_lsa passive_tran_server::get_highest_processed_lsa () const
 {
