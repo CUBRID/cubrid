@@ -61,7 +61,7 @@ active_tran_server::get_oldest_active_mvccid_from_page_server () const
 }
 
 log_lsa
-active_tran_server::compute_consensus_lsa () const
+active_tran_server::compute_consensus_lsa ()
 {
   const int total_node_cnt = m_connection_list.size ();
   const int quorum = total_node_cnt / 2 + 1; // For now, it's fixed to the number of the majority.
@@ -73,7 +73,7 @@ active_tran_server::compute_consensus_lsa () const
     cur_node_cnt = m_page_server_conn_vec.size ();
     if (cur_node_cnt < quorum)
       {
-	quourm_consenesus_er_log ("compute_consensus_lsa - Quorum unsatisfied: total node count = %d, curreunt node count = %d, quorum = %d\n",
+	quorum_consenesus_er_log ("compute_consensus_lsa - Quorum unsatisfied: total node count = %d, curreunt node count = %d, quorum = %d\n",
 				  total_node_cnt, cur_node_cnt, quorum);
 	return NULL_LSA;
       }
@@ -112,7 +112,7 @@ active_tran_server::compute_consensus_lsa () const
       snprintf (msg_buf + n, BUF_SIZE - n, "]\n");
       assert (n < BUF_SIZE);
 
-      quourm_consenesus_er_log ("%s", msg_buf);
+      quorum_consenesus_er_log ("%s", msg_buf);
     }
 
   return consensus_lsa;
@@ -172,7 +172,7 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
   assert (saved_lsa > get_saved_lsa ()); // increasing monotonically
   m_saved_lsa.store (saved_lsa);
 
-  quourm_consenesus_er_log ("Received saved LSA = %lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
+  quorum_consenesus_er_log ("Received saved LSA = %lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
 
   log_Gl.wakeup_ps_flush_waiters ();
 }

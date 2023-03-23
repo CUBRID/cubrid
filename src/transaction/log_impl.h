@@ -986,7 +986,7 @@ extern bool cdc_Logging;
 #define LOG_THREAD_TRAN_ARGS(thread_p) thread_get_current_entry_index (), LOG_FIND_CURRENT_TDES (thread_p)
 #endif /* SERVER_MODE */
 
-#define quourm_consenesus_er_log(msg, ...) \
+#define quorum_consenesus_er_log(msg, ...) \
   if (prm_get_bool_value (PRM_ID_ER_LOG_QUORUM_CONSENSUS)) \
     _er_log_debug (ARG_FILE_LINE, "[QUORUM CONSENSUS] " msg, __VA_ARGS__)
 

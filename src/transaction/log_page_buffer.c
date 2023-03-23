@@ -4338,7 +4338,7 @@ void
 logpb_send_flushed_lsa_to_ats ()
 {
   const log_lsa saved_lsa = log_Gl.append.get_nxio_lsa ();
-  quourm_consenesus_er_log ("Send saved LSA=%lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
+  quorum_consenesus_er_log ("Send saved LSA=%lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
   // *INDENT-OFF*
   std::string message (reinterpret_cast<const char *> (&saved_lsa), sizeof (saved_lsa));
   ps_Gl->push_request_to_active_tran_server (page_to_tran_request::SEND_SAVED_LSA, std::move (message));
@@ -4496,7 +4496,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, const LOG_LSA * flush_lsa)
       // *INDENT-OFF*
       if (get_server_type () == SERVER_TYPE_TRANSACTION && ts_Gl->is_page_server_connected ())
 	{
-          quourm_consenesus_er_log ("Wait until page server flushed LSA gets larger than or equal to %lld|%d.\n", LSA_AS_ARGS (flush_lsa));
+          quorum_consenesus_er_log ("Wait until page server flushed LSA gets larger than or equal to %lld|%d.\n", LSA_AS_ARGS (flush_lsa));
 	  
           log_Gl.wait_for_ps_flushed_lsa (*flush_lsa);
 	}

@@ -138,7 +138,7 @@ log_global::wait_for_ps_flushed_lsa (const log_lsa &flush_lsa)
         m_ps_lsa_cv.wait (ulock);
       }
     }
-  quourm_consenesus_er_log ("Quorum satisfied: page server flushed LSA = %lld|%d.\n", LSA_AS_ARGS (&log_Gl.m_ps_consensus_flushed_lsa));
+  quorum_consenesus_er_log ("Quorum satisfied: page server flushed LSA = %lld|%d.\n", LSA_AS_ARGS (&log_Gl.m_ps_consensus_flushed_lsa));
 }
 
 void
