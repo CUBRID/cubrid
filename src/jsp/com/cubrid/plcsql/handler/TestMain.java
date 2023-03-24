@@ -250,13 +250,26 @@ public class TestMain {
         // call server API for each SQL to get its semantic information
 
         List<String> sqlTexts = new ArrayList(ssc.staticSqlTexts.values());
-        List<SqlSemantics> sqlSemantics = ServerAPI.getSqlSemantics(sqlTexts);
+        List<SqlSemantics> sqlSemantics =
+                ServerAPI.getSqlSemantics(sqlTexts); // server interaction  may take a long time
 
+        int seqNo = -1;
+        Iterator<ParserRuleContext> iterCtx = ssc.staticSqlTexts.keySet().iterator();
         Map<ParserRuleContext, SqlSemantics> staticSqls = new HashMap<>();
-        Iterator<SqlSemantics> iterSql = sqlSemantics.iterator();
-        for (ParserRuleContext ctx : ssc.staticSqlTexts.keySet()) {
-            SqlSemantics ss = iterSql.next();
-            assert ss != null;
+        for (SqlSemantics ss : sqlSemantics) {
+
+            assert ss.seqNo >= 0;
+
+            ParserRuleContext ctx = null;
+            while (true) {
+                ctx = iterCtx.next();
+                assert ctx != null;
+                seqNo++;
+                if (seqNo == ss.seqNo) {
+                    break;
+                }
+            }
+
             if (ss.errCode == 0) {
                 staticSqls.put(ctx, ss);
             } else {
