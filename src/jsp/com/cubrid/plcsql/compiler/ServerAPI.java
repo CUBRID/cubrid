@@ -30,8 +30,9 @@
 
 package com.cubrid.plcsql.compiler;
 
+import com.cubrid.jsp.data.ColumnInfo;
+import com.cubrid.jsp.data.DBType;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 
 public class ServerAPI {
@@ -47,10 +48,12 @@ public class ServerAPI {
     // --------------------------------------------------------
 
     public static class Question {
+        public int seqNo = -1;
         public int errCode;
         public String errMsg;
 
-        public void setError(int errCode, String errMsg) {
+        public void setError(int seqNo, int errCode, String errMsg) {
+            this.seqNo = seqNo;
             this.errCode = errCode;
             this.errMsg = errMsg;
         }
@@ -66,13 +69,11 @@ public class ServerAPI {
         public String name; // procedure name
 
         // output
-        public int[] outPositions; // 1 for out/in-out parameters, otherwise 0
-        public String[] paramTypes; // SQL types of parameters
+        public PlParamInfo[] params;
 
-        public void setAnswer(int[] outPositions, String[] paramTypes) {
-            assert outPositions.length == paramTypes.length;
-            this.outPositions = outPositions;
-            this.paramTypes = paramTypes;
+        public void setAnswer(int seqNo, PlParamInfo[] params) {
+            this.seqNo = seqNo;
+            this.params = params;
         }
     }
 
@@ -86,14 +87,12 @@ public class ServerAPI {
         public String name; // function name
 
         // output
-        public int[] outPositions; // 1 for out/in-out parameters, otherwise 0
-        public String[] paramTypes; // SQL types of parameters
-        public String retType; // SQL type
+        public PlParamInfo[] params; // 1 for out/in-out parameters, otherwise 0
+        public PlParamInfo retType; // SQL type
 
-        public void setAnswer(int[] outPositions, String[] paramTypes, String retType) {
-            assert outPositions.length == paramTypes.length;
-            this.outPositions = outPositions;
-            this.paramTypes = paramTypes;
+        public void setAnswer(int seqNo, PlParamInfo[] params, PlParamInfo retType) {
+            this.seqNo = seqNo;
+            this.params = params;
             this.retType = retType;
         }
     }
@@ -108,6 +107,9 @@ public class ServerAPI {
         public String name;
 
         // no separate output: the existence or absence of an error is the output
+        public void setAnswer(int seqNo) {
+            this.seqNo = seqNo;
+        }
     }
 
     public static class ColumnType extends Question {
@@ -122,10 +124,11 @@ public class ServerAPI {
         public String column;
 
         // output
-        public String type; // SQL type if the column exists, otherwise null
+        public ColumnInfo colType; // SQL type if the column exists, otherwise null
 
-        public void setAnswer(String type) {
-            this.type = type;
+        public void setAnswer(int seqNo, ColumnInfo colType) {
+            this.seqNo = seqNo;
+            this.colType = colType;
         }
     }
 
@@ -139,6 +142,7 @@ public class ServerAPI {
 
         List<SqlSemantics> ret = new ArrayList<>();
 
+        int seqNo = 0;
         for (String sql : sqlTexts) {
             sql = sql.toUpperCase();
 
@@ -147,13 +151,39 @@ public class ServerAPI {
                 // or
                 // select code, name into c, m from athlete where gender = g and nation_code = n;
 
-                LinkedHashMap<String, String> hostVars = new LinkedHashMap<>();
-                hostVars.put("G", "CHARACTER(1)");
-                hostVars.put("N", "CHARACTER(3)");
+                List<PlParamInfo> hostVars = new ArrayList<>();
 
-                LinkedHashMap<String, String> selectList = new LinkedHashMap<>();
-                selectList.put("CODE", "INTEGER");
-                selectList.put("NAME", "CHARACTER VARYING(40)");
+                hostVars.add(
+                        new PlParamInfo(
+                                "G", // name
+                                ServerConstants.PARAM_MODE_IN, // mode
+                                DBType.DB_CHAR, // type
+                                1, // prec
+                                (short) 0, // scale
+                                ServerConstants.CUBRID_CHARSET_UTF8) // charset
+                        );
+                hostVars.add(
+                        new PlParamInfo(
+                                "N", // name
+                                ServerConstants.PARAM_MODE_IN, // mode
+                                DBType.DB_CHAR, // type
+                                3, // prec
+                                (short) 0, // scale
+                                ServerConstants.CUBRID_CHARSET_UTF8) // charset
+                        );
+
+                List<ColumnInfo> selectList = new ArrayList<>();
+
+                ColumnInfo codeInfo = new ColumnInfo();
+                codeInfo.colName = "CODE";
+                codeInfo.type = DBType.DB_INT;
+                selectList.add(codeInfo);
+
+                ColumnInfo nameInfo = new ColumnInfo();
+                nameInfo.colName = "NAME";
+                nameInfo.type = DBType.DB_STRING;
+                nameInfo.prec = 40;
+                selectList.add(nameInfo);
 
                 List<String> intoVars;
                 if (sql.indexOf("INTO") < 0) {
@@ -169,6 +199,7 @@ public class ServerAPI {
 
                 ret.add(
                         new SqlSemantics(
+                                seqNo++,
                                 ServerConstants.CUBRID_STMT_SELECT,
                                 "select code, name from athlete where gender = ? and nation_code = ?",
                                 hostVars,
@@ -178,71 +209,158 @@ public class ServerAPI {
             } else if (sql.startsWith("INSERT")) {
                 // insert into athlete(name, gender) values (n, g);
 
-                LinkedHashMap<String, String> hostVars = new LinkedHashMap<>();
-                hostVars.put("N", "CHARACTER VARYING(40)");
-                hostVars.put("G", "CHARACTER(1)");
+                List<PlParamInfo> hostVars = new ArrayList<>();
+
+                hostVars.add(
+                        new PlParamInfo(
+                                "N", // name
+                                ServerConstants.PARAM_MODE_IN, // mode
+                                DBType.DB_STRING, // type
+                                40, // prec
+                                (short) -1, // scale
+                                ServerConstants.CUBRID_CHARSET_UTF8) // charset
+                        );
+                hostVars.add(
+                        new PlParamInfo(
+                                "N", // name
+                                ServerConstants.PARAM_MODE_IN, // mode
+                                DBType.DB_CHAR, // type
+                                1, // prec
+                                (short) -1, // scale
+                                ServerConstants.CUBRID_CHARSET_UTF8) // charset
+                        );
 
                 ret.add(
                         new SqlSemantics(
+                                seqNo++,
                                 ServerConstants.CUBRID_STMT_INSERT,
                                 "insert into athlete(name, gender) values (?, ?)",
                                 hostVars,
                                 null,
                                 null));
             } else {
-                ret.add(new SqlSemantics(300, "mock error"));
+                ret.add(new SqlSemantics(seqNo++, 300, "mock error"));
             }
         }
 
         return ret;
     }
 
-    private static final int[] MOCK_OUT_POS = new int[] {0, 1, 1};
-    private static final String[] MOCK_PARAM_TYPES = new String[] {"INTEGER", "VARCHAR", "FLOAT"};
-    private static final String[] ERR_PARAM_TYPES = new String[] {"INTEGER", "BLOB", "CLOB"};
+    private static final PlParamInfo[] MOCK_PARAM_TYPES =
+            new PlParamInfo[] {
+                new PlParamInfo(
+                        null, // name
+                        ServerConstants.PARAM_MODE_IN, // mode
+                        DBType.DB_INT, // type
+                        -1, // prec
+                        (short) -1, // scale
+                        (byte) -1), // charset
+                new PlParamInfo(
+                        null, // name
+                        ServerConstants.PARAM_MODE_OUT, // mode
+                        DBType.DB_STRING, // type
+                        -1, // prec
+                        (short) -1, // scale
+                        (byte) -1), // charset
+                new PlParamInfo(
+                        null, // name
+                        ServerConstants.PARAM_MODE_OUT, // mode
+                        DBType.DB_FLOAT, // type
+                        -1, // prec
+                        (short) -1, // scale
+                        (byte) -1) // charset
+            };
+    private static final PlParamInfo[] ERR_PARAM_TYPES =
+            new PlParamInfo[] {
+                new PlParamInfo(
+                        null, // name
+                        ServerConstants.PARAM_MODE_IN, // mode
+                        DBType.DB_INT, // type
+                        -1, // prec
+                        (short) -1, // scale
+                        (byte) -1), // charset
+                new PlParamInfo(
+                        null, // name
+                        ServerConstants.PARAM_MODE_OUT, // mode
+                        DBType.DB_DATETIMELTZ, // type
+                        -1, // prec
+                        (short) -1, // scale
+                        (byte) -1), // charset
+                new PlParamInfo(
+                        null, // name
+                        ServerConstants.PARAM_MODE_OUT, // mode
+                        DBType.DB_TIMESTAMPLTZ, // type
+                        -1, // prec
+                        (short) -1, // scale
+                        (byte) -1) // charset
+            };
+    private static final PlParamInfo mockType =
+            new PlParamInfo(
+                    null, // name
+                    (byte) -1, // mode
+                    DBType.DB_STRING, // type
+                    -1, // prec
+                    (short) -1, // scale
+                    (byte) -1); // charset
+    private static final PlParamInfo errType =
+            new PlParamInfo(
+                    null, // name
+                    (byte) -1, // mode
+                    DBType.DB_DATETIMELTZ, // type
+                    -1, // prec
+                    (short) -1, // scale
+                    (byte) -1); // charset
+    private static final ColumnInfo mockColType = new ColumnInfo();
+    private static final ColumnInfo errColType = new ColumnInfo();
+
+    static {
+        mockColType.type = DBType.DB_STRING;
+        errColType.type = DBType.DB_DATETIMELTZ;
+    }
 
     private static List<Question> getMockGlobalSemantics(List<Question> questions) {
 
         // MOCK
 
+        int seqNo = 0;
         for (Question q : questions) {
             if (q instanceof ProcedureSignature) {
                 ProcedureSignature ps = (ProcedureSignature) q;
                 if (ps.name.equals("MY_PROC")) {
-                    ps.setAnswer(MOCK_OUT_POS, MOCK_PARAM_TYPES);
+                    ps.setAnswer(seqNo++, MOCK_PARAM_TYPES);
                 } else if (ps.name.equals("ERR_PROC")) {
-                    ps.setAnswer(MOCK_OUT_POS, ERR_PARAM_TYPES); // to cause error s412
+                    ps.setAnswer(seqNo++, ERR_PARAM_TYPES); // to cause error s412
                 } else {
-                    ps.setError(300, "no such procedure " + ps.name);
+                    ps.setError(seqNo++, 300, "no such procedure " + ps.name);
                 }
             } else if (q instanceof FunctionSignature) {
                 FunctionSignature fs = (FunctionSignature) q;
                 if (fs.name.equals("MY_FUNC")) {
-                    fs.setAnswer(MOCK_OUT_POS, MOCK_PARAM_TYPES, "VARCHAR");
+                    fs.setAnswer(seqNo++, MOCK_PARAM_TYPES, mockType);
                 } else if (fs.name.equals("ERR_FUNC")) {
-                    fs.setAnswer(MOCK_OUT_POS, ERR_PARAM_TYPES, "VARCHAR"); // to cause error s415
+                    fs.setAnswer(seqNo++, ERR_PARAM_TYPES, mockType); // to cause error s415
                 } else if (fs.name.equals("ERR_FUNC_2")) {
-                    fs.setAnswer(MOCK_OUT_POS, MOCK_PARAM_TYPES, "BLOB"); // to cause error s418
+                    fs.setAnswer(seqNo++, MOCK_PARAM_TYPES, errType); // to cause error s418
                 } else {
-                    fs.setError(301, "no such function " + fs.name);
+                    fs.setError(seqNo++, 301, "no such function " + fs.name);
                 }
             } else if (q instanceof SerialOrNot) {
                 SerialOrNot sn = (SerialOrNot) q;
                 if (sn.name.equals("MY_SERIAL")) {
-                    // OK
+                    sn.setAnswer(seqNo++);
                 } else {
-                    sn.setError(302, "no such serial " + sn.name);
+                    sn.setError(seqNo++, 302, "no such serial " + sn.name);
                 }
 
             } else if (q instanceof ColumnType) {
                 ColumnType ct = (ColumnType) q;
                 String s = ct.table + "." + ct.column;
                 if (s.equals("MY_TABLE.MY_COLUMN")) {
-                    ct.setAnswer("VARCHAR");
+                    ct.setAnswer(seqNo++, mockColType);
                 } else if (s.equals("ERR_TABLE.ERR_COLUMN")) {
-                    ct.setAnswer("BLOB"); // to cause error s410
+                    ct.setAnswer(seqNo++, errColType); // to cause error s410
                 } else {
-                    ct.setError(303, "no such table column " + s);
+                    ct.setError(seqNo++, 303, "no such table column " + s);
                 }
             } else {
                 assert false : "unreachable";

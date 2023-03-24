@@ -30,45 +30,23 @@
 
 package com.cubrid.plcsql.compiler;
 
-import com.cubrid.jsp.data.ColumnInfo;
-import java.util.List;
+public class PlParamInfo {
 
-public class SqlSemantics {
+    public final String name;
 
-    public int seqNo;
+    public final byte mode;
 
-    // for error return
-    public int errCode; // non-zero if error
-    public String errMsg;
+    public final int type;
+    public final int prec;
+    public final short scale;
+    public final byte charset;
 
-    public SqlSemantics(int seqNo, int errCode, String errMsg) {
-        assert errCode != 0;
-        this.seqNo = seqNo;
-        this.errCode = errCode;
-        this.errMsg = errMsg;
-    }
-
-    // for normal return
-    public int kind;
-    public String rewritten;
-    public List<PlParamInfo>
-            hostVars; // host variables and their SQL types required in their locations
-    public List<ColumnInfo> selectList; // (only for select statements) columns and their SQL types
-    public List<String> intoVars; // (only for select stetements with an into-clause) into variables
-
-    SqlSemantics(
-            int seqNo,
-            int kind,
-            String rewritten,
-            List<PlParamInfo> hostVars,
-            List<ColumnInfo> selectList,
-            List<String> intoVars) {
-
-        this.seqNo = seqNo;
-        this.kind = kind;
-        this.rewritten = rewritten;
-        this.hostVars = hostVars;
-        this.selectList = selectList;
-        this.intoVars = intoVars;
+    public PlParamInfo(String name, byte mode, int type, int prec, short scale, byte charset) {
+        this.name = name;
+        this.mode = mode;
+        this.type = type;
+        this.prec = prec;
+        this.scale = scale;
+        this.charset = charset;
     }
 }
