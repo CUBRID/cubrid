@@ -160,14 +160,9 @@ class tran_server
     int parse_page_server_hosts_config (std::string &hosts);
 
   private:
-    <<<<<<< HEAD
-    std::vector<cubcomm::node> m_connection_list;
-
     async_disconnect_handler<connection_handler> m_async_disconnect_handler;
 
-    =======
-	    >>>>>>> scalability_dev
-	    cubcomm::server_server m_conn_type;
+    cubcomm::server_server m_conn_type;
 };
 
 #endif // !_tran_server_HPP_

@@ -34,7 +34,7 @@ class active_tran_server : public tran_server
     }
 
     bool uses_remote_storage () const final override;
-    MVCCID get_oldest_active_mvccid_from_page_server () const;
+    MVCCID get_oldest_active_mvccid_from_page_server ();
     log_lsa compute_consensus_lsa ();
 
   private:
