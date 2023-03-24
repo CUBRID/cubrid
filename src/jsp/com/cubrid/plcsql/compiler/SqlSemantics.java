@@ -33,8 +33,6 @@ package com.cubrid.plcsql.compiler;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.ColumnInfo;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import com.cubrid.jsp.data.ColumnInfo;
 import java.util.List;
 
 public class SqlSemantics {
@@ -82,27 +80,32 @@ public class SqlSemantics {
         this.kind = unpacker.unpackInt();
         this.rewritten = unpacker.unpackCString();
 
-        hostVars = new LinkedHashMap<>();
-        selectList = new LinkedHashMap<>();
+        hostVars = new ArrayList<>();
+        selectList = new ArrayList<>();
         intoVars = new ArrayList<>();
-        columnInfos = new ArrayList<>();
 
         int selectListCnt = unpacker.unpackInt();
         for (int i = 0; i < selectListCnt; i++) {
-            columnInfos.add(new ColumnInfo(unpacker));
+            selectList.add(new ColumnInfo(unpacker));
         }
 
+        // TODO
         int hostVarsCnt = unpacker.unpackInt();
+        /*
         for (int i = 0; i < hostVarsCnt; i++) {
             String var = unpacker.unpackCString();
             String type = unpacker.unpackCString();
-            hostVars.put(var, type);
+            hostVars.add(var, type);
         }
+        */
 
+        // TODO
         int intoVarsCnt = unpacker.unpackInt();
+        /*
         for (int i = 0; i < intoVarsCnt; i++) {
             String var = unpacker.unpackCString();
             intoVars.add(var);
         }
+        */
     }
 }
