@@ -33,14 +33,14 @@ package com.cubrid.plcsql.compiler;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
+import com.cubrid.jsp.data.ColumnInfo;
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.protocol.Header;
 import com.cubrid.jsp.protocol.RequestCode;
 import com.cubrid.jsp.protocol.SqlSemanticsRequest;
 import com.cubrid.jsp.protocol.SqlSemanticsResponse;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import com.cubrid.jsp.data.ColumnInfo;
-import com.cubrid.jsp.data.DBType;
 import java.util.ArrayList;
 import java.util.List;
 
