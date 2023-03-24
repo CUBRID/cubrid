@@ -6297,6 +6297,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_STATDUMP_FORCE_ADD_INT_MAX,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
 };
 
