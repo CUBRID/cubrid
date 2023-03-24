@@ -92,6 +92,7 @@ $ These 3 should be blank
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 Too few arguments given.\n
 
 145 <Help: Schema of a Class>
 146 none
@@ -191,7 +192,7 @@ $ csql help messages
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - enable/disable single-line mode.\n\
    ;CONnect username [dbname | dbname@hostname]\n\
-                                - connect to the current or other databases as a username.\n\ 
+                                - connect to the current or other databases as a username.\n\
    ;.Hist [ON/OFF]              - start/stop collecting statistics information in CSQL(available DBA only).\n\
    ;.Clear_hist                 - clear the CSQL statistics information in the buffer.\n\
    ;.Dump_hist                  - display the CSQL statistics information in CSQL.\n\
