@@ -368,7 +368,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 
 	      if (shm_proxy_p == NULL)
 		{
-		  sprintf (admin_err_msg, "%s: failed to initialize proxy shared memory.", br_info->name);
+		  sprintf (admin_err_msg, "%s: failed to initialize proxy shared memory.", br_info[i].name);
 
 		  res = -1;
 		  break;
@@ -384,7 +384,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 	  shm_as_p = broker_shm_initialize_shm_as (&(shm_br->br_info[i]), shm_proxy_p);
 	  if (shm_as_p == NULL)
 	    {
-	      sprintf (admin_err_msg, "%s: failed to initialize appl server shared memory.", br_info->name);
+	      sprintf (admin_err_msg, "%s: failed to initialize appl server shared memory.", br_info[i].name);
 
 	      res = -1;
 	      break;
