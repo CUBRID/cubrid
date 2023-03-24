@@ -65,6 +65,7 @@ public class ServerAPI {
             ByteBuffer payload = unpacker.unpackBuffer();
             unpacker.setBuffer(payload);
 
+            int status = unpacker.unpackInt();
             SqlSemanticsResponse response = new SqlSemanticsResponse(unpacker);
             return response.semantics;
         } catch (IOException e) {
