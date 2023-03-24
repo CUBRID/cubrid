@@ -13,10 +13,12 @@ public class SqlSemanticsRequest implements PackableObject {
 
     public void pack(CUBRIDPacker packer) {
         if (sqlTexts != null) {
-            packer.packBigInt(sqlTexts.size());
+            packer.packInt(sqlTexts.size());
             for (String s : sqlTexts) {
                 packer.packString(s);
             }
+        } else {
+            packer.packInt(0);
         }
     }
 }
