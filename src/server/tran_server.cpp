@@ -143,6 +143,7 @@ tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
   std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
   if (m_page_server_conn_vec.empty())
     {
+      assert_release (false);
       return; // All connections have been disconnected already
     }
 
@@ -153,14 +154,25 @@ tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
 int
 tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out)
 {
+  int err_code = NO_ERROR;
   std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
-  if (m_page_server_conn_vec.empty())
-    {
-      return NO_ERROR; // All connections have been disconnected already
-    }
+  m_page_server_conn_vec_cv.wait (s_lock, [&] ()
+  {
+    if (m_page_server_conn_vec.empty())
+      {
+	// TODO shoud be handled: may shutdown this tran server, or wait for a qualified connection is established.
+	assert_release (false);
+	return true;
+      }
 
-  // we assume that 0-th conn is the main connection
-  return m_page_server_conn_vec[0]->send_receive (reqid, std::move (payload_in), payload_out);
+    // we assume that 0-th conn is the main connection
+    err_code =  m_page_server_conn_vec[0]->send_receive (reqid, std::move (payload_in), payload_out);
+    // when an error occurs, it expects the main connection to be changed soon and will retry with the new one.
+    // TODO: timeout is needed.
+    return err_code == NO_ERROR;
+  });
+
+  return err_code;
 }
 
 int
@@ -349,6 +361,7 @@ tran_server::disconnect_all_page_servers ()
       }
     m_page_server_conn_vec.clear ();
   }
+  m_page_server_conn_vec_cv.notify_all ();
 
   // Wait until all disconnection reuqests are handled.
   m_async_disconnect_handler.terminate ();
@@ -414,19 +427,23 @@ tran_server::connection_handler::receive_disconnect_request (page_server_conn_t:
 {
   prepare_disconnection ();
 
-  std::lock_guard<std::shared_mutex> lk_guard (m_ts.m_page_server_conn_vec_mtx);
-  auto &conn_vec = m_ts.m_page_server_conn_vec;
-  auto it = conn_vec.begin ();
-  for (; it != conn_vec.end (); it++)
-    {
-      // TODO trigger the main connection change procedure when it was the main connection
-      if (it->get () == this)
-	{
-	  m_ts.m_async_disconnect_handler.disconnect (std::move (*it));
-	  assert (*it == nullptr);
-	  conn_vec.erase (it);
-	}
-    }
+  {
+    std::lock_guard<std::shared_mutex> lk_guard (m_ts.m_page_server_conn_vec_mtx);
+    auto &conn_vec = m_ts.m_page_server_conn_vec;
+    auto it = conn_vec.begin ();
+    for (; it != conn_vec.end (); it++)
+      {
+	// TODO trigger the main connection change procedure when it was the main connection
+	if (it->get () == this)
+	  {
+	    m_ts.m_async_disconnect_handler.disconnect (std::move (*it));
+	    assert (*it == nullptr);
+	    conn_vec.erase (it);
+	  }
+      }
+  }
+  m_ts.m_page_server_conn_vec_cv.notify_all ();
+
   // It's possible that the connection is already cleared in disconnect_all_page_servers()
 }
 

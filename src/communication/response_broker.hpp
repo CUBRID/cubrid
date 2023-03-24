@@ -306,8 +306,6 @@ namespace cubcomm
       // depends very much on the way the resources are stopped globally in the upper application layers (eg:
       // maybe the client transactions - threads - are stopped and waited for before the communication
       // infrastructure is torn down
-
-      // TODO I guess an error should be set here
     }
 
     // if here, terminate was specified and there is at most one thread to notify
