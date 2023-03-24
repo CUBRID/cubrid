@@ -192,7 +192,7 @@ $ csql help messages
    ;TRAce [ON/OFF] [text/json]  - sql otomatik iz etkinleştirmek/devre dışı.\n\
    ;SIngleline [ON|OFF]         - tek hat modunu etkinleştir/devre dışı bırak.\n\
    ;CONnect username [dbname | dbname@hostname]\n\
-                                - mevcut veya diğer veritabanlarına bir kullanıcı adı olarak bağlanın.\n\ 
+                                - mevcut veya diğer veritabanlarına bir kullanıcı adı olarak bağlanın.\n\
    ;.Hist [ON/OFF]              - CSQL'de istatistik bilgisi toplamayı başlat/durdur (yalnızca DBA mevcuttur).\n\
    ;.Clear_hist                 - tampondaki CSQL istatistik bilgilerini temizler.\n\
    ;.Dump_hist                  - CSQL istatistik bilgilerini CSQL'de görüntüler.\n\
