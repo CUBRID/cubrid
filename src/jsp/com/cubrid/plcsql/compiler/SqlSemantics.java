@@ -77,20 +77,28 @@ public class SqlSemantics {
     }
 
     public SqlSemantics(CUBRIDUnpacker unpacker) {
+        this.seqNo = unpacker.unpackInt();
         this.kind = unpacker.unpackInt();
         this.rewritten = unpacker.unpackCString();
 
-        hostVars = new ArrayList<>();
-        selectList = new ArrayList<>();
-        intoVars = new ArrayList<>();
+        if (this.kind < 0) {
+            this.errCode = this.kind;
+            this.errMsg = this.rewritten;
+        }
 
         int selectListCnt = unpacker.unpackInt();
-        for (int i = 0; i < selectListCnt; i++) {
-            selectList.add(new ColumnInfo(unpacker));
+        if (selectListCnt > 0) {
+            selectList = new ArrayList<>();
+            for (int i = 0; i < selectListCnt; i++) {
+                selectList.add(new ColumnInfo(unpacker));
+            }
         }
 
         // TODO
         int hostVarsCnt = unpacker.unpackInt();
+        if (hostVarsCnt > 0) {
+            hostVars = new ArrayList<>();
+        }
         /*
         for (int i = 0; i < hostVarsCnt; i++) {
             String var = unpacker.unpackCString();
@@ -101,6 +109,9 @@ public class SqlSemantics {
 
         // TODO
         int intoVarsCnt = unpacker.unpackInt();
+        if (intoVarsCnt > 0) {
+            intoVars = new ArrayList<>();
+        }
         /*
         for (int i = 0; i < intoVarsCnt; i++) {
             String var = unpacker.unpackCString();

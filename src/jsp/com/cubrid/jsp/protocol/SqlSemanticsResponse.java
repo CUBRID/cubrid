@@ -15,12 +15,12 @@ public class SqlSemanticsResponse implements UnPackableObject {
 
     @Override
     public void unpack(CUBRIDUnpacker unpacker) {
-        int size = (int) unpacker.unpackBigint();
+        int size = unpacker.unpackInt();
         if (size > 0) {
             semantics = new ArrayList<SqlSemantics>(size);
             for (int i = 0; i < size; i++) {
-                int idx = unpacker.unpackInt();
-                semantics.set(idx, new SqlSemantics(unpacker));
+                SqlSemantics s = new SqlSemantics(unpacker);
+                semantics.add(s);
             }
         }
     }
