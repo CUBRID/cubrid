@@ -3498,7 +3498,7 @@ proxy_activate (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy_p, T_SHM_APPL
       proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, i);
 
       snprintf (proxy_info_p->access_log_file, CONF_LOG_FILE_LEN - 1, "%s/%s_%d.access", CUBRID_BASE_DIR,
-		br_info_p->name, i);
+		br_info_p->name, (i + 1));
       dir_repath (proxy_info_p->access_log_file, CONF_LOG_FILE_LEN);
 
       proxy_info_p->cur_proxy_log_mode = br_info_p->proxy_log_mode;
