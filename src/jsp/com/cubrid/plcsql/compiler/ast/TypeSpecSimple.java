@@ -85,8 +85,11 @@ public class TypeSpecSimple extends TypeSpec {
                 new String[] {
                     "Null", // not an actual java type
                     "Cursor", // not an actual java type
-                    "java.lang.Object", // (1) used as an argument type of some operators in SpLib
+
+                    // (1) used as an argument type of some operators in SpLib
                     // (2) used as an expression type when a specific Java type cannot be given
+                    "java.lang.Object", 
+
                     "java.lang.Boolean",
                     "java.lang.String",
                     "java.math.BigDecimal",
@@ -99,9 +102,11 @@ public class TypeSpecSimple extends TypeSpec {
                     "java.time.LocalTime",
                     "java.time.ZonedDateTime",
                     "java.time.LocalDateTime",
+                    /* TODO: restore later
                     "java.util.Set",
                     "org.apache.commons.collections4.MultiSet",
                     "java.util.List",
+                     */
                     "com.cubrid.plcsql.predefined.sp.SpLib.Query"
                 };
 
@@ -128,9 +133,11 @@ public class TypeSpecSimple extends TypeSpec {
     public static TypeSpecSimple LOCALTIME = of("java.time.LocalTime");
     public static TypeSpecSimple ZONEDDATETIME = of("java.time.ZonedDateTime");
     public static TypeSpecSimple LOCALDATETIME = of("java.time.LocalDateTime");
+    /* TODO: restore later
     public static TypeSpecSimple SET = of("java.util.Set");
     public static TypeSpecSimple MULTISET = of("org.apache.commons.collections4.MultiSet");
     public static TypeSpecSimple LIST = of("java.util.List");
+     */
 
     public static TypeSpecSimple REFCURSOR = of("com.cubrid.plcsql.predefined.sp.SpLib.Query");
 }

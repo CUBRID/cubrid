@@ -370,6 +370,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             opStr = "Lt";
         } else if (op.GT() != null) {
             opStr = "Gt";
+        /* TODO: restore later
         } else if (op.SETEQ() != null) {
             opStr = "SetEq";
         } else if (op.SETNEQ() != null) {
@@ -382,6 +383,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             opStr = "SupersetEq";
         } else if (op.SUBSETEQ() != null) {
             opStr = "SubsetEq";
+         */
         }
         if (opStr == null) {
             assert false : "unreachable"; // by syntax
@@ -868,12 +870,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return visitExpression(ctx.expression());
     }
 
+    /* TODO: restore later
     @Override
     public Expr visitList_exp(List_expContext ctx) {
         NodeList<Expr> elems = visitExpressions(ctx.expressions());
         addToImports("java.util.Arrays");
         return new ExprList(ctx, elems);
     }
+     */
 
     @Override
     public NodeList<Decl> visitSeq_of_declare_specs(Seq_of_declare_specsContext ctx) {
@@ -2037,17 +2041,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         pcsToJavaTypeMap.put("TIMESTAMP", "java.time.ZonedDateTime");
         pcsToJavaTypeMap.put("DATETIME", "java.time.LocalDateTime");
 
-        /* TODO: restore the following four lines
+        /* TODO: restore later
         pcsToJavaTypeMap.put("TIMESTAMPTZ", "java.time.ZonedDateTime");
         pcsToJavaTypeMap.put("TIMESTAMPLTZ", "java.time.ZonedDateTime");
         pcsToJavaTypeMap.put("DATETIMETZ", "java.time.ZonedDateTime");
         pcsToJavaTypeMap.put("DATETIMELTZ", "java.time.ZonedDateTime");
-         */
 
         pcsToJavaTypeMap.put("SET", "java.util.Set");
         pcsToJavaTypeMap.put("MULTISET", "org.apache.commons.collections4.MultiSet");
         pcsToJavaTypeMap.put("LIST", "java.util.List");
         pcsToJavaTypeMap.put("SEQUENCE", "java.util.List");
+         */
 
         pcsToJavaTypeMap.put("SYS_REFCURSOR", "com.cubrid.plcsql.predefined.sp.SpLib.Query");
     }
