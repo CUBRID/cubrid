@@ -341,11 +341,14 @@ tran_server::disconnect_all_page_servers ()
 {
   assert_is_tran_server ();
 
-  for (const auto &conn : m_page_server_conn_vec)
-    {
-      conn->prepare_disconnection ();
-    }
-  m_page_server_conn_vec.clear ();
+  {
+    std::lock_guard<std::shared_mutex> lk_guard (m_page_server_conn_vec_mtx);
+    for (const auto &conn : m_page_server_conn_vec)
+      {
+	conn->prepare_disconnection ();
+      }
+    m_page_server_conn_vec.clear ();
+  }
 
   // Wait until all disconnection reuqests are handled.
   m_async_disconnect_handler.terminate ();
@@ -413,8 +416,8 @@ tran_server::connection_handler::receive_disconnect_request (page_server_conn_t:
 
   std::lock_guard<std::shared_mutex> lk_guard (m_ts.m_page_server_conn_vec_mtx);
   auto &conn_vec = m_ts.m_page_server_conn_vec;
-  auto it = conn_vec.begin();
-  for (; it != conn_vec.end(); it++)
+  auto it = conn_vec.begin ();
+  for (; it != conn_vec.end (); it++)
     {
       // TODO trigger the main connection change procedure when it was the main connection
       if (it->get () == this)
@@ -424,7 +427,7 @@ tran_server::connection_handler::receive_disconnect_request (page_server_conn_t:
 	  conn_vec.erase (it);
 	}
     }
-  assert (it != conn_vec.end ());
+  // It's possible that the connection is already cleared in disconnect_all_page_servers()
 }
 
 void
@@ -455,6 +458,8 @@ tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::
 void
 tran_server::connection_handler::prepare_disconnection ()
 {
+  m_conn->stop_response_broker ();
+
   // All msg generators have to stop beforehad to make sure SEND_DISCONNECT_MSG is the last msg.
   const int payload = static_cast<int> (m_ts.m_conn_type);
   std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
