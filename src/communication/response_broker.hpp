@@ -216,7 +216,11 @@ namespace cubcomm
     {
       std::lock_guard<std::mutex> lk_guard (m_mutex);
 
-      assert (!m_terminate);
+      if (m_terminate)
+	{
+	  // it has been terminated. the entry may have been erased or will be erased soon.
+	  return;
+	}
 
       payload_or_error_type &ent = m_response_payloads[a_rsn];
       assert (!ent.m_response_or_error_present);
@@ -236,7 +240,11 @@ namespace cubcomm
     {
       std::lock_guard<std::mutex> lockg (m_mutex);
 
-      assert (!m_terminate);
+      if (m_terminate)
+	{
+	  // it has been terminated. the entry may have been erased or will be erased soon.
+	  return;
+	}
 
       payload_or_error_type &ent = m_response_payloads[a_rsn];
       assert (!ent.m_response_or_error_present);
@@ -298,6 +306,8 @@ namespace cubcomm
       // depends very much on the way the resources are stopped globally in the upper application layers (eg:
       // maybe the client transactions - threads - are stopped and waited for before the communication
       // infrastructure is torn down
+
+      // TODO I guess an error should be set here
     }
 
     // if here, terminate was specified and there is at most one thread to notify
