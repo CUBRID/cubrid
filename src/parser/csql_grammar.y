@@ -644,6 +644,7 @@ int g_original_buffer_len;
 %type <node> join_condition
 %type <node> class_spec_list
 %type <node> class_spec
+%type <node> class_spec_without_server_name
 %type <node> only_all_class_spec_list
 %type <node> meta_class_spec
 %type <node> only_all_class_spec
@@ -3170,7 +3171,8 @@ class_name_for_synonym
 
 		  cname->info.name.original = pt_append_string (this_parser, cname->info.name.original, "@");
 		  cname->info.name.original = pt_append_string (this_parser, cname->info.name.original, sname->info.name.original);
-
+                  parser_free_tree(this_parser, sname);
+                  
 		  // Set automatically assign a user name.
 		  PT_NAME_INFO_SET_FLAG (cname, PT_NAME_INFO_USER_SPECIFIED);
 
@@ -4243,8 +4245,8 @@ as_or_to
 	;
 
 truncate_stmt
-	: TRUNCATE opt_table_type class_spec opt_cascade
-		{{ DBG_TRACE_GRAMMAR(truncate_stmt, : TRUNCATE opt_table_type class_spec opt_cascade);
+	: TRUNCATE opt_table_type class_spec_without_server_name opt_cascade
+		{{ DBG_TRACE_GRAMMAR(truncate_stmt, : TRUNCATE opt_table_type class_spec_without_server_name opt_cascade);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_TRUNCATE);
 			if (node)
@@ -5325,17 +5327,34 @@ opt_as
 	;
 
 class_spec_list
-	: class_spec_list  ',' class_spec
+	: class_spec_list  ',' class_spec_without_server_name
 		{{ DBG_TRACE_GRAMMAR(class_spec_list, : class_spec_list  ',' class_spec );
 
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| class_spec
+	| class_spec_without_server_name
 		{{ DBG_TRACE_GRAMMAR(class_spec_list, | class_spec );
 
 			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+class_spec_without_server_name
+        : only_all_class_spec
+		{{ DBG_TRACE_GRAMMAR(class_spec, : only_all_class_spec );
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| '(' only_all_class_spec_list ')'
+		{{ DBG_TRACE_GRAMMAR(class_spec, | '(' only_all_class_spec_list ')' );
+
+			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -5405,8 +5424,8 @@ meta_class_spec
 	;
 
 only_all_class_spec_with_server
-	: class_name_with_server_name opt_partition_spec
-		{{ DBG_TRACE_GRAMMAR(only_all_class_spec_with_server, : class_name_with_server_name opt_partition_spec );
+	: class_name_with_server_name
+		{{ DBG_TRACE_GRAMMAR(only_all_class_spec_with_server, : class_name_with_server_name);
                        PT_NODE *ocs = parser_new_node (this_parser, PT_SPEC);
 			if (ocs)
 			  {
@@ -5416,10 +5435,6 @@ only_all_class_spec_with_server
 
 			    ocs->info.spec.only_all = PT_ONLY;
 			    ocs->info.spec.meta_class = PT_CLASS;
-			    if ($2)
-		   	      {
-			        ocs->info.spec.partition = $2;
-			      }
 			   }
 
 			$$ = ocs;
