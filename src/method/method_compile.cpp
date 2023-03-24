@@ -42,7 +42,7 @@ namespace cubmethod
 
     SESSION_ID s_id = thread_ref.conn_entry->session_id;
     header header (s_id, METHOD_REQUEST_CALLBACK, ctx.get_and_increment_request_id ());
-    error = method_send_data_to_client (&thread_ref, header, request.code, request);
+    error = method_send_data_to_client (&thread_ref, header, request);
     if (error != NO_ERROR)
       {
 	return error;
@@ -79,8 +79,9 @@ namespace cubmethod
 	{
 	  cubmem::block response_blk;
 	  error = cubmethod::mcon_read_data_from_java (socket, response_blk);
-	  if (error != NO_ERROR)
+	  if (error != NO_ERROR || response_blk.dim == 0)
 	    {
+	      error = ER_FAILED;
 	      goto exit;
 	    }
 
@@ -249,6 +250,7 @@ exit:
   void
   sql_semantics_request::pack (cubpacking::packer &serializator) const
   {
+    serializator.pack_int (code);
     serializator.pack_int (sqls.size ());
     for (int i = 0; i < (int) sqls.size (); i++)
       {
@@ -259,7 +261,8 @@ exit:
   size_t
   sql_semantics_request::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_int_size (start_offset); // size
+    size_t size = serializator.get_packed_int_size (start_offset); // code
+    size += serializator.get_packed_int_size (size); // size
     for (int i = 0; i < (int) sqls.size (); i++)
       {
 	size += serializator.get_packed_string_size (sqls[i], size);
@@ -271,6 +274,7 @@ exit:
   void
   sql_semantics_request::unpack (cubpacking::unpacker &deserializator)
   {
+    code = METHOD_CALLBACK_GET_SQL_SEMNATICS;
     int size;
     deserializator.unpack_int (size);
 
@@ -281,4 +285,33 @@ exit:
 	sqls.push_back (s);
       }
   }
+
+  void
+  sql_semantics_response::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_int (semantics.size ());
+    for (int i = 0; i < (int) semantics.size (); i++)
+      {
+	semantics[i].pack (serializator);
+      }
+  }
+
+  size_t
+  sql_semantics_response::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = serializator.get_packed_int_size (start_offset); // sizes
+    for (int i = 0; i < (int) semantics.size (); i++)
+      {
+	size += semantics[i].get_packed_size (serializator, size);
+      }
+
+    return size;
+  }
+
+  void
+  sql_semantics_response::unpack (cubpacking::unpacker &deserializator)
+  {
+    //
+  }
+
 }

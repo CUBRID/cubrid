@@ -70,6 +70,17 @@ namespace cubmethod
     std::vector <std::string> sqls;
   };
 
+  struct EXPORT_IMPORT sql_semantics_response : public cubpacking::packable_object
+  {
+    sql_semantics_response () = default;
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+
+    std::vector <sql_semantics> semantics;
+  };
+
 #if defined (SERVER_MODE) || defined (SA_MODE)
   int invoke_compile (cubthread::entry &thread, runtime_context &ctx, const std::string &program,
 		      const bool &verbose,

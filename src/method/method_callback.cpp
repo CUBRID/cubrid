@@ -379,13 +379,13 @@ namespace cubmethod
   int
   callback_handler::get_sql_semantics (packing_unpacker &unpacker)
   {
-    std::vector<std::string> sqls;
-    unpacker.unpack_all (sqls);
+    sql_semantics_request request;
+    unpacker.unpack_all (request);
     int i = -1;
     int error = NO_ERROR;
 
     std::vector<sql_semantics> semantics_vec;
-    for (const std::string s : sqls)
+    for (const std::string s : request.sqls)
       {
 	i++;
 	query_handler *handler = new_query_handler ();
@@ -414,7 +414,6 @@ namespace cubmethod
 	      {
 		semantics.columns.emplace_back (c_info);
 	      }
-
 	    // TODO: for host variables
 	    // TP_DOMAIN** host_var_expected_domains = db_session->parser->host_var_expected_domains;
 	  }
@@ -437,13 +436,16 @@ namespace cubmethod
 	  }
       }
 
+    sql_semantics_response response;
+    response.semantics = std::move (semantics_vec);
+
     if (error == NO_ERROR)
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, semantics_vec);
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, response);
       }
     else
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, semantics_vec);
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, response);
       }
   }
 
