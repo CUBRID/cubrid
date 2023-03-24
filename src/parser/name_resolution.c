@@ -338,6 +338,9 @@ public:
       }
   }
 
+  remote_tbl_cols (const remote_tbl_cols &) = delete;
+  remote_tbl_cols & operator= (const remote_tbl_cols &) = delete;
+
   S_REMOTE_COL_ATTR *get_col_attr (char *name)
   {
     S_REMOTE_COL_ATTR *attr = NULL;
@@ -4898,7 +4901,7 @@ pt_mk_attr_def_node (PARSER_CONTEXT * parser, PT_NODE * name_node, S_REMOTE_TBL_
 }
 
 static PARSER_VARCHAR *
-pt_build_select_list_4_dblink (PARSER_CONTEXT * parser, PT_NODE * col_list)
+pt_build_select_list_for_dblink (PARSER_CONTEXT * parser, PT_NODE * col_list)
 {
   PARSER_VARCHAR *tvc = 0x00;
   int custom_print_saved = parser->custom_print;
@@ -5014,7 +5017,7 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
   // select * from dblink_t1@remote_srv1;
   PARSER_VARCHAR *var_buf = 0;
   var_buf = pt_append_nulstring (parser, var_buf, "SELECT ");
-  var_buf = pt_append_varchar (parser, var_buf, pt_build_select_list_4_dblink (parser, dblink_table->sel_list));
+  var_buf = pt_append_varchar (parser, var_buf, pt_build_select_list_for_dblink (parser, dblink_table->sel_list));
 
   // from table
   if (class_spec->meta_class == PT_META_CLASS)
@@ -11485,7 +11488,7 @@ pt_get_column_name_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 }
 
 static void
-pt_get_cols_4_dblink (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, PT_NODE * node_list)
+pt_get_cols_for_dblink (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, PT_NODE * node_list)
 {
   if (node_list == NULL)
     {
@@ -11496,8 +11499,7 @@ pt_get_cols_4_dblink (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, PT_NODE 
       return;
     }
 
-  (void) parser_walk_tree (parser, node_list,
-			   pt_get_column_name_pre, plkcol, pt_get_column_name_post, /*plkcol */ NULL);
+  (void) parser_walk_tree (parser, node_list, pt_get_column_name_pre, plkcol, NULL, NULL);
 }
 
 static void
@@ -11526,12 +11528,12 @@ pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
 	      lkcol.col_list = table->info.dblink_table.sel_list;
 
 	      lkcol.tbl_name_node = spec->info.spec.range_var;
-	      pt_get_cols_4_dblink (parser, &lkcol, query->q.select.list);
-	      pt_get_cols_4_dblink (parser, &lkcol, query->q.select.where);
-	      pt_get_cols_4_dblink (parser, &lkcol, spec->info.spec.on_cond);
-	      pt_get_cols_4_dblink (parser, &lkcol, query->q.select.having);
-	      pt_get_cols_4_dblink (parser, &lkcol, query->q.select.group_by);
-	      pt_get_cols_4_dblink (parser, &lkcol, query->order_by);
+	      pt_get_cols_for_dblink (parser, &lkcol, query->q.select.list);
+	      pt_get_cols_for_dblink (parser, &lkcol, query->q.select.where);
+	      pt_get_cols_for_dblink (parser, &lkcol, spec->info.spec.on_cond);
+	      pt_get_cols_for_dblink (parser, &lkcol, query->q.select.having);
+	      pt_get_cols_for_dblink (parser, &lkcol, query->q.select.group_by);
+	      pt_get_cols_for_dblink (parser, &lkcol, query->order_by);
 	      PARSER_VARCHAR *q = 0;
 	      for (PT_NODE * col = lkcol.col_list; col; col = col->next)
 		{
