@@ -178,7 +178,6 @@ static int spage_get_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p, SPAGE
 static int spage_get_total_saved_spaces (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, PAGE_PTR page_p);
 static void spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p, FILE * fp, VPID * vpid);
 static int spage_compare_slot_offset (const void *arg1, const void *arg2);
-static bool spage_is_slotted_page_type (PAGE_TYPE ptype);
 
 static int spage_check_space (THREAD_ENTRY * thread_p, PAGE_PTR page_p, SPAGE_HEADER * page_header_p, int space);
 static void spage_set_slot (SPAGE_SLOT * slot_p, int offset, int length, INT16 type);
@@ -1137,7 +1136,7 @@ spage_compare_slot_offset (const void *arg1, const void *arg2)
  *
  *   ptype(in): page type
  */
-static bool
+bool
 spage_is_slotted_page_type (PAGE_TYPE ptype)
 {
   switch (ptype)

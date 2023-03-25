@@ -47,6 +47,7 @@
 #include "resource_tracker.hpp"
 #include "show_scan.h"
 #include "dbtype.h"
+#include "slotted_page.h"
 #include "server_type.hpp"
 #include "vacuum.h"
 #include "vpid_utilities.hpp"
@@ -8561,6 +8562,14 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
 
       if (perfmon_is_perf_tracking ())
         {
+          const PAGE_TYPE ptype = pgbuf_get_page_ptype (&thread_r, page_ptr);
+          const bool is_slotted = spage_is_slotted_page_type (ptype);
+          bool needs_compact = false;
+          if (is_slotted)
+            {
+              needs_compact = spage_need_compact(&thread_r, page_ptr);
+            }
+
           perfmon_add_stat (&thread_r, PSTAT_COMPR_HEAP_PAGES_TRANSF_COMPRESSED, (UINT64)compressed_data_size);
           perfmon_add_stat (&thread_r, PSTAT_COMPR_HEAP_PAGES_TRANSF_UNCOMPRESSED, (UINT64)IO_PAGESIZE);
 
@@ -8569,7 +8578,8 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
           // the same structure - slotted)
           const PERF_PAGE_TYPE perf_page_type = pgbuf_get_page_type_for_stat (&thread_r, page_ptr);
           const float compressed_ratio_multiplied = ((float)compressed_data_size/(float)IO_PAGESIZE) * 100. * 100.;
-          perfmon_compr_page_type (&thread_r, (int)perf_page_type, (int)compressed_ratio_multiplied);
+          perfmon_compr_page_type (&thread_r, (int)perf_page_type, (int)compressed_ratio_multiplied,
+                                   is_slotted, needs_compact);
         }
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
