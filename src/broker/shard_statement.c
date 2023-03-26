@@ -828,7 +828,7 @@ shard_stmt_set_hint_list (T_SHARD_STMT * stmt_p)
   hint_p = sp_get_first_hint (stmt_p->parser);
   while (hint_p != NULL)
     {
-       hint_type = hint_p->hint_type;
+      hint_type = hint_p->hint_type;
 
       /* currently only support HT_KEY and HT_ID */
       if (hint_type != HT_KEY && hint_type != HT_ID && hint_type != HT_VAL)
