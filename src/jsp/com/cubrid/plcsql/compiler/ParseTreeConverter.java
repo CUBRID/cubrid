@@ -2178,7 +2178,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
     }
 
-    private ExprZonedDateTime parseZonedDateTime(
+    private ExprTimestamp parseZonedDateTime(
             ParserRuleContext ctx, String s, boolean forDatetime, String originType) {
 
         s = unquoteStr(s);
@@ -2188,7 +2188,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     Misc.getLineOf(ctx), // s052
                     String.format("invalid %s string: %s", originType, s));
         }
-        return new ExprZonedDateTime(ctx, timestamp, originType);
+        return new ExprTimestamp(ctx, timestamp, originType);
     }
 
     private boolean within(ParserRuleContext ctx, Class ctxClass) {

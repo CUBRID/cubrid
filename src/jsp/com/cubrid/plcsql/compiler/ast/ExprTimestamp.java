@@ -35,17 +35,17 @@ import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.time.ZonedDateTime;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprZonedDateTime extends Expr {
+public class ExprTimestamp extends Expr {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitExprZonedDateTime(this);
+        return visitor.visitExprTimestamp(this);
     }
 
     public final ZonedDateTime time;
     public final String originType;
 
-    public ExprZonedDateTime(ParserRuleContext ctx, ZonedDateTime time, String originType) {
+    public ExprTimestamp(ParserRuleContext ctx, ZonedDateTime time, String originType) {
         super(ctx);
 
         this.time = time;
@@ -56,21 +56,17 @@ public class ExprZonedDateTime extends Expr {
     public String exprToJavaCode() {
 
         if (time.equals(DateTimeParser.nullDatetimeUTC)) {
-            return String.format(
-                    "ZonedDateTime.of(LocalDateTime.MAX, ZoneOffset.of(\"Z\")) /* %s */",
-                    originType);
+            return "new Timestamp(0 - 1900, 0, 1, 0, 0, 0, 0)";     // TODO: check actual value from the server
         } else {
             return String.format(
-                    "ZonedDateTime.of(%d, %d, %d, %d, %d, %d, %d, ZoneOffset.of(\"%s\")) /* %s */",
+                    "new Timestamp(%d - 1900, %d - 1, %d, %d, %d, %d, %d)",
                     time.getYear(),
                     time.getMonthValue(),
                     time.getDayOfMonth(),
                     time.getHour(),
                     time.getMinute(),
                     time.getSecond(),
-                    time.getNano(),
-                    time.getOffset().getId(),
-                    originType);
+                    time.getNano());
         }
     }
 

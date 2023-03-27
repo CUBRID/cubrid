@@ -108,7 +108,7 @@ public abstract class AstVisitor<R> {
 
     public abstract R visitExprUnaryOp(ExprUnaryOp node);
 
-    public abstract R visitExprZonedDateTime(ExprZonedDateTime node);
+    public abstract R visitExprTimestamp(ExprTimestamp node);
 
     public abstract R visitStmtAssign(StmtAssign node);
 
