@@ -3826,7 +3826,6 @@ struct parser_context
 						 * session. */
   int host_var_count;		/* number of input host variables */
   int auto_param_count;		/* number of auto parameterized variables */
-  int late_bound_var_count;	/* number of late bound host variables */
 
   int dbval_cnt;		/* to be assigned to XASL */
   int line, column;		/* current input line and column */
