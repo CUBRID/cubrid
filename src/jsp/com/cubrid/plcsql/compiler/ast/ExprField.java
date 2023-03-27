@@ -64,7 +64,7 @@ public class ExprField extends Expr {
             nameOfGetMethod = ((TypeSpecSimple) type).nameOfGetMethod;
             assert nameOfGetMethod != null;
         } else {
-            assert false: "unreachable";
+            assert false : "unreachable";
         }
 
         return String.format("%s.%s(\"%s\")", record.toJavaCode(), nameOfGetMethod, fieldName);

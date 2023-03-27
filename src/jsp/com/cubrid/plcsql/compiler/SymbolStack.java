@@ -131,11 +131,7 @@ public class SymbolStack {
                             null,
                             "PUT_LINE",
                             new NodeList<DeclParam>()
-                                    .addNode(
-                                            new DeclParamIn(
-                                                    null,
-                                                    "s",
-                                                    TypeSpecSimple.OBJECT)),
+                                    .addNode(new DeclParamIn(null, "s", TypeSpecSimple.OBJECT)),
                             null,
                             null);
             putDeclTo(predefinedSymbols, "PUT_LINE", dp);
@@ -143,29 +139,13 @@ public class SymbolStack {
             // add constants TODO implement SQLERRM and SQLCODE properly
             DeclConst dc =
                     new DeclConst(
-                            null,
-                            "SQLERRM",
-                            TypeSpecSimple.STRING,
-                            false,
-                            ExprNull.SINGLETON);
+                            null, "SQLERRM", TypeSpecSimple.STRING, false, ExprNull.SINGLETON);
             putDeclTo(predefinedSymbols, "SQLERRM", dc);
 
-            dc =
-                    new DeclConst(
-                            null,
-                            "SQLCODE",
-                            TypeSpecSimple.INT,
-                            false,
-                            ExprNull.SINGLETON);
+            dc = new DeclConst(null, "SQLCODE", TypeSpecSimple.INT, false, ExprNull.SINGLETON);
             putDeclTo(predefinedSymbols, "SQLCODE", dc);
 
-            dc =
-                    new DeclConst(
-                            null,
-                            "SYSDATE",
-                            TypeSpecSimple.DATE,
-                            false,
-                            ExprNull.SINGLETON);
+            dc = new DeclConst(null, "SYSDATE", TypeSpecSimple.DATE, false, ExprNull.SINGLETON);
             putDeclTo(predefinedSymbols, "SYSDATE", dc);
         }
     }

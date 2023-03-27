@@ -56,33 +56,36 @@ public class TypeSpecSimple extends TypeSpec {
     }
 
     // the following two are not actual Java types but only for internal type checking
-    public static TypeSpecSimple NULL =         new TypeSpecSimple(null, null);
-    public static TypeSpecSimple CURSOR =       new TypeSpecSimple(null, null);
+    public static TypeSpecSimple NULL = new TypeSpecSimple(null, null);
+    public static TypeSpecSimple CURSOR = new TypeSpecSimple(null, null);
 
     // (1) used as an argument type of some operators in SpLib
     // (2) used as an expression type when a specific Java type cannot be given
-    public static TypeSpecSimple OBJECT =       new TypeSpecSimple("java.lang.Object", "getObject");
+    public static TypeSpecSimple OBJECT = new TypeSpecSimple("java.lang.Object", "getObject");
 
-    public static TypeSpecSimple BOOLEAN =      new TypeSpecSimple("java.lang.Boolean", "getBoolean");
-    public static TypeSpecSimple STRING =       new TypeSpecSimple("java.lang.String", "getString");
-    public static TypeSpecSimple NUMERIC =   new TypeSpecSimple("java.math.BigDecimal", "getBigDecimal");
-    public static TypeSpecSimple SHORT =        new TypeSpecSimple("java.lang.Short", "getShort");
-    public static TypeSpecSimple INT =      new TypeSpecSimple("java.lang.Integer", "getInt");
-    public static TypeSpecSimple BIGINT =         new TypeSpecSimple("java.lang.Long", "getLong");
-    public static TypeSpecSimple FLOAT =        new TypeSpecSimple("java.lang.Float", "getFloat");
-    public static TypeSpecSimple DOUBLE =       new TypeSpecSimple("java.lang.Double", "getDouble");
-    public static TypeSpecSimple DATE =         new TypeSpecSimple("java.sql.Date", "getDate");
-    public static TypeSpecSimple TIME =         new TypeSpecSimple("java.sql.Time", "getTime");
-    public static TypeSpecSimple TIMESTAMP =    new TypeSpecSimple("java.sql.Timestamp", "getTimestamp");
-    public static TypeSpecSimple DATETIME =     new TypeSpecSimple("java.sql.Timestamp", "getTimestamp");
-    public static TypeSpecSimple SYS_REFCURSOR =    new TypeSpecSimple("com.cubrid.plcsql.predefined.sp.SpLib.Query", null);
+    public static TypeSpecSimple BOOLEAN = new TypeSpecSimple("java.lang.Boolean", "getBoolean");
+    public static TypeSpecSimple STRING = new TypeSpecSimple("java.lang.String", "getString");
+    public static TypeSpecSimple NUMERIC =
+            new TypeSpecSimple("java.math.BigDecimal", "getBigDecimal");
+    public static TypeSpecSimple SHORT = new TypeSpecSimple("java.lang.Short", "getShort");
+    public static TypeSpecSimple INT = new TypeSpecSimple("java.lang.Integer", "getInt");
+    public static TypeSpecSimple BIGINT = new TypeSpecSimple("java.lang.Long", "getLong");
+    public static TypeSpecSimple FLOAT = new TypeSpecSimple("java.lang.Float", "getFloat");
+    public static TypeSpecSimple DOUBLE = new TypeSpecSimple("java.lang.Double", "getDouble");
+    public static TypeSpecSimple DATE = new TypeSpecSimple("java.sql.Date", "getDate");
+    public static TypeSpecSimple TIME = new TypeSpecSimple("java.sql.Time", "getTime");
+    public static TypeSpecSimple TIMESTAMP =
+            new TypeSpecSimple("java.sql.Timestamp", "getTimestamp");
+    public static TypeSpecSimple DATETIME =
+            new TypeSpecSimple("java.sql.Timestamp", "getTimestamp");
+    public static TypeSpecSimple SYS_REFCURSOR =
+            new TypeSpecSimple("com.cubrid.plcsql.predefined.sp.SpLib.Query", null);
 
     /* TODO: restore later
     public static TypeSpecSimple SET = of("java.util.Set");
     public static TypeSpecSimple MULTISET = of("org.apache.commons.collections4.MultiSet");
     public static TypeSpecSimple LIST = of("java.util.List");
      */
-
 
     // ------------------------------------------------------------------
     // Private
@@ -112,7 +115,7 @@ public class TypeSpecSimple extends TypeSpec {
     private static final Map<String, TypeSpecSimple> javaNameToSpec = new HashMap<>();
 
     private static void register(TypeSpecSimple spec) {
-        javaNameToSpec.put(spec.fullJavaType, spec); 
+        javaNameToSpec.put(spec.fullJavaType, spec);
     }
 
     static {
