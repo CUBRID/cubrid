@@ -250,6 +250,13 @@ or_put_value (OR_BUF *, DB_VALUE *, int, int, int)
   return 0;
 }
 
+void
+er_set (int, const char *, const int, int, int, ...)
+{
+  assert (false);
+  // nop
+}
+
 // checkpoint_info
 void
 cublog::checkpoint_info::pack (cubpacking::packer &serializer) const

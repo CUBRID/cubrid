@@ -92,6 +92,7 @@ $ Questi 3 dovrebbe essere vuoto
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 Argomenti forniti troppo pochi.
 
 145 <Aiuto: Schema di Classe>
 146 nessuno
@@ -163,7 +164,9 @@ $ messaggi di aiuto csql
    ;COMmit                      - commit della transazione corrente.\n\
    ;ROllback                    - roll back della transazione corrente.\n\
    ;AUtocommit [ON|OFF]         - attivare/disattivare la modalità di auto-commit.\n\
-   ;REStart                     - riavviare il database.\n\
+   ;REStart                     - riconnettersi al database corrente in una sessione CSQL.\n\
+   ;CHeckpoint                  - esegue il checkpoint (solo CSQL con --sysadm).\n\
+   ;Killtran                    - controlla le informazioni sullo stato della transazione o termina una transazione specifica (solo CSQL con --sysadm).\n\
 \n\
    ;SHELL_Cmd     [shell-cmd]   - impostare la shell predefinito, editor, stampa, pager e formattatore\n\
    ;EDITOR_Cmd    [editor-cmd]    comando a uno nuovo, o la visualizzazione corrente\n\
@@ -188,6 +191,12 @@ $ messaggi di aiuto csql
    ;HISTORYRead <history_num>   - leggere la voce del numero storia in buffer dei comandi.\n\
    ;TRAce [ON/OFF] [text/json]  - attivare/disattivare sql auto trace.\n\
    ;SIngleline [ON|OFF]         - abilitare/disabilitare la modalità a riga singola.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - connettersi al database corrente o ad altri come nome utente.\n\
+   ;.Hist [ON/OFF]              - avvia/arresta la raccolta di informazioni statistiche in CSQL (disponibile solo DBA).\n\
+   ;.Clear_hist                 - cancella le informazioni statistiche CSQL nel buffer.\n\
+   ;.Dump_hist                  - visualizza le informazioni statistiche CSQL in CSQL.\n\
+   ;.X_hist                     - visualizza le informazioni statistiche CSQL in CSQL con i dati statistici inizializzati.\n\
    ;HElp                        - visualizza questo messaggio di aiuto.\n\n
 
 232 <Vincoli> 

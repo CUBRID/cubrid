@@ -76,3 +76,10 @@ or_put_value (OR_BUF *, DB_VALUE *, int, int, int)
   assert (false);
   return 0;
 }
+
+void
+er_set (int, const char *, const int, int, int, ...)
+{
+  assert (false);
+  // nop
+}
