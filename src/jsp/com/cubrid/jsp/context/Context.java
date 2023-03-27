@@ -32,7 +32,10 @@ public class Context {
 
     // message buffer for DBMS_OUTPUT
     private MessageBuffer messageBuffer;
+
     public Context(long id) {
+        sessionId = id;
+    }
 
     public long getSessionId() {
         return sessionId;
