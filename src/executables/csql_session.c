@@ -131,7 +131,7 @@ static SESSION_CMD_TABLE csql_Session_cmd_table[] = {
 
   {"connect", S_CMD_CONNECT, CMD_EMPTY_FLAG},
 
-  {"server output", S_CMD_SERVER_OUTPUT, CMD_CHECK_CONNECT}
+  {"server-output", S_CMD_SERVER_OUTPUT, CMD_CHECK_CONNECT}
 };
 
 /*
