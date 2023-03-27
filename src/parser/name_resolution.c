@@ -2995,9 +2995,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		pt_reset_error (parser);
 
 		PT_NODE *hostvar = parser_new_node (parser, PT_HOST_VAR);
-		hostvar->info.host_var.str = pt_append_string (parser, NULL, "?");
+		hostvar->info.host_var.str = pt_append_string (parser, NULL, node->info.name.original);
 		hostvar->info.host_var.var_type = PT_HOST_IN;
-		hostvar->etc = (void *) pt_append_string (parser, NULL, node->info.name.original);
+		// hostvar->etc = (void *) pt_append_string (parser, NULL, node->info.name.original);
 		hostvar->info.host_var.index = parser->host_var_count;
 		hostvar->type_enum = PT_TYPE_MAYBE;
 

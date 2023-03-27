@@ -350,18 +350,16 @@ exit:
     serializator.pack_int (scale);
     serializator.pack_int (charset);
 
-    dbvalue_java sp_val;
-    if (value == NULL)
+    if (value != NULL)
       {
+	dbvalue_java sp_val;
+	serializator.pack_int (1);
 	sp_val.value = value;
 	sp_val.pack (serializator);
       }
     else
       {
-	DB_VALUE dummy;
-	db_make_null (&dummy);
-	sp_val.value = &dummy;
-	sp_val.pack (serializator);
+	serializator.pack_int (0);
       }
   }
 
@@ -377,17 +375,11 @@ exit:
     size += serializator.get_packed_int_size (size); // scale
     size += serializator.get_packed_int_size (size); // charset
 
-    dbvalue_java sp_val;
-    if (value == NULL)
+    size += serializator.get_packed_int_size (size); // value is null
+    if (value != NULL)
       {
+	dbvalue_java sp_val;
 	sp_val.value = value;
-	size += sp_val.get_packed_size (serializator, size);
-      }
-    else
-      {
-	DB_VALUE dummy;
-	db_make_null (&dummy);
-	sp_val.value = &dummy;
 	size += sp_val.get_packed_size (serializator, size);
       }
 

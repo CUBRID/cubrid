@@ -66,11 +66,15 @@ public class PlParamInfo {
         this.prec = unpacker.unpackInt();
         this.scale = (short) unpacker.unpackInt();
         this.charset = (byte) unpacker.unpackInt();
-        try {
-            this.value = unpacker.unpackValue(type, mode, type);
-        } catch (TypeMismatchException e) {
-            // TODO
-            this.value = new NullValue();
+
+        int has_value = unpacker.unpackInt();
+        if (has_value == 1) {
+            try {
+                this.value = unpacker.unpackValue(type, mode, type);
+            } catch (TypeMismatchException e) {
+                // TODO: error handling?
+                this.value = new NullValue();
+            }
         }
     }
 }

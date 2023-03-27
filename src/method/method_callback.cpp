@@ -415,8 +415,8 @@ namespace cubmethod
 		semantics.columns.emplace_back (c_info);
 	      }
 
-	    int input_markers_cnt = db_number_of_input_markers (db_session, 0);
-	    DB_MARKER *marker = db_get_input_markers (db_session, 0);
+	    int input_markers_cnt = db_number_of_input_markers (db_session, 1);
+	    DB_MARKER *marker = db_get_input_markers (db_session, 1);
 
 	    std::vector <pl_parameter_info> &param_info = semantics.hvs;
 	    if (input_markers_cnt > 0)
@@ -429,9 +429,9 @@ namespace cubmethod
 		    pl_parameter_info &info = param_info[idx];
 
 		    info.mode = 1;
-		    if (marker->etc)
+		    if (marker->info.host_var.str)
 		      {
-			info.name = std::string ((char *) marker->etc);
+			info.name = std::string ((char *) marker->info.host_var.str);
 		      }
 
 		    TP_DOMAIN *hv_expected_domain = db_session->parser->host_var_expected_domains[idx];
