@@ -6537,7 +6537,7 @@ static void prm_check_environment (void);
 static int prm_check_parameters (void);
 static SYSPRM_ERR sysprm_validate_escape_char_parameters (const SYSPRM_ASSIGN_VALUE * assignment_list);
 static int prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, bool reload,
-				const char *file, const int load_flags);
+				const char *file, const int load_flags, bool ignore_case);
 static int prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, const bool reload,
 					const int load_flags);
 static void prm_report_bad_entry (const char *key, int line, int err, const char *where);
@@ -7021,10 +7021,11 @@ sysprm_reload_and_init (const char *db_name, const char *conf_file)
  *   reload(in):
  *   file(in):
  *   load_flags(in):
+ *   ignore_case(in):
  */
 static int
 prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, bool reload, const char *file,
-		     const int load_flags)
+		     const int load_flags, bool ignore_case)
 {
   int i, error;
   int sec_len;
@@ -7056,7 +7057,7 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
 
       if (ini_hassec (key))
 	{
-	  sec_len = ini_seccmp (key, section);
+	  sec_len = ini_seccmp (key, section, ignore_case);
 	  if (!sec_len)
 	    {
 	      continue;
@@ -7240,33 +7241,33 @@ prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, con
       return PRM_ERR_FILE_ERR;
     }
 
-  error = prm_load_by_section (ini, "common", true, reload, prm_file_name, load_flags);
+  error = prm_load_by_section (ini, "common", true, reload, prm_file_name, load_flags, true);
   if (error == NO_ERROR && SYSPRM_LOAD_IS_IGNORE_HA (load_flags) && db_name != NULL && *db_name != '\0')
     {
       snprintf (sec_name, LINE_MAX, "@%s", db_name);
-      error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, load_flags);
+      error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, load_flags, false);
     }
 
 #if defined (SA_MODE)
   if (error == NO_ERROR)
     {
-      error = prm_load_by_section (ini, "standalone", true, reload, prm_file_name, load_flags);
+      error = prm_load_by_section (ini, "standalone", true, reload, prm_file_name, load_flags, true);
     }
 #endif /* SA_MODE */
 
   if (error == NO_ERROR && SYSPRM_LOAD_IS_IGNORE_HA (load_flags))
     {
-      error = prm_load_by_section (ini, "service", false, reload, prm_file_name, load_flags);
+      error = prm_load_by_section (ini, "service", false, reload, prm_file_name, load_flags, true);
     }
   if (error == NO_ERROR && !SYSPRM_LOAD_IS_IGNORE_HA (load_flags) && PRM_HA_MODE != HA_MODE_OFF
       && GETHOSTNAME (host_name, CUB_MAXHOSTNAMELEN) == 0)
     {
       snprintf (sec_name, LINE_MAX, "%%%s|*", host_name);
-      error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, load_flags);
+      error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, load_flags, true);
       if (error == NO_ERROR && getlogin_r (user_name, CUB_MAXHOSTNAMELEN) == 0)
 	{
 	  snprintf (sec_name, LINE_MAX, "%%%s|%s", host_name, user_name);
-	  error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, load_flags);
+	  error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, load_flags, true);
 	}
     }
 
