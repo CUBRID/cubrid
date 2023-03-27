@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.predefined.sp;
 
+import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
 import java.math.BigDecimal;
 import java.sql.*;
 import java.time.LocalDate;
@@ -37,10 +38,14 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.PatternSyntaxException;
-
-import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
+import org.apache.commons.collections4.MultiSet;
+import org.apache.commons.collections4.multiset.HashMultiSet;
 
 public class SpLib {
 
@@ -336,7 +341,6 @@ public class SpLib {
         return l.equals(r);
     }
 
-    /* TODO: restore later
     public static Boolean opEq(Set l, Set r) {
         if (l == null || r == null) {
             return null;
@@ -357,7 +361,6 @@ public class SpLib {
         }
         return l.equals(r);
     }
-     */
 
     // ====================================
     // comparison null safe equal
@@ -458,7 +461,6 @@ public class SpLib {
         return l.compareTo(r) <= 0;
     }
 
-    /* TODO: restore later
     public static Boolean opLe(Set l, Set r) {
         if (l == null || r == null) {
             return null;
@@ -481,7 +483,6 @@ public class SpLib {
         }
         return compareLists(l, r) <= 0;
     }
-     */
 
     // ====================================
     // comparison greater than or equal to (>=)
@@ -562,7 +563,6 @@ public class SpLib {
         return l.compareTo(r) >= 0;
     }
 
-    /* TODO: restore later
     public static Boolean opGe(Set l, Set r) {
         if (l == null || r == null) {
             return null;
@@ -585,7 +585,6 @@ public class SpLib {
         }
         return compareLists(l, r) >= 0;
     }
-     */
 
     // ====================================
     // comparison less than (<)
@@ -666,7 +665,6 @@ public class SpLib {
         return l.compareTo(r) < 0;
     }
 
-    /*
     public static Boolean opLt(Set l, Set r) {
         if (l == null || r == null) {
             return null;
@@ -687,7 +685,6 @@ public class SpLib {
         }
         return compareLists(l, r) < 0;
     }
-     */
 
     // ====================================
     // comparison greater than (>)
@@ -768,7 +765,6 @@ public class SpLib {
         return l.compareTo(r) > 0;
     }
 
-    /* TODO: restore later
     public static Boolean opGt(Set l, Set r) {
         if (l == null || r == null) {
             return null;
@@ -789,9 +785,7 @@ public class SpLib {
         }
         return compareLists(l, r) > 0;
     }
-     */
 
-    /*
     // ====================================
     // comparison set equal
     public static Boolean opSetEq(Set l, Set r) {
@@ -1169,7 +1163,6 @@ public class SpLib {
         SetOrder o = compareMultiSets(l, list2MultiSet(r));
         return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
     }
-    */
 
     // ====================================
     // between
@@ -1314,7 +1307,6 @@ public class SpLib {
         }
         return l * r;
     }
-    /*
     // sets
     public static Set opMult(Set l, Set r) {
         if (l == null || r == null) {
@@ -1378,7 +1370,6 @@ public class SpLib {
         }
         return intersectMultiSets(list2MultiSet(l), list2MultiSet(r));
     }
-    */
 
     // ====================================
     // /
@@ -1541,7 +1532,6 @@ public class SpLib {
         }
         return l.plusSeconds(r.longValue());
     }
-    /*
     // sets
     public static Set opAdd(Set l, Set r) {
         if (l == null || r == null) {
@@ -1605,7 +1595,6 @@ public class SpLib {
         }
         return concatLists(l, r);
     }
-    */
 
     // ====================================
     // -
@@ -1748,7 +1737,6 @@ public class SpLib {
         }
         return opSubtract(l.toLocalDateTime(), r);
     }
-    /*
     // sets
     public static Set opSubtract(Set l, Set r) {
         if (l == null || r == null) {
@@ -1812,7 +1800,6 @@ public class SpLib {
         }
         return diffMultiSets(list2MultiSet(l), list2MultiSet(r));
     }
-     */
 
     // ====================================
     // ||
@@ -1937,7 +1924,6 @@ public class SpLib {
         return sbuf.toString();
     }
 
-    /* TODO: restore later
     // set and multiset ordering
     enum SetOrder {
         EQUAL,
@@ -2096,5 +2082,4 @@ public class SpLib {
         }
         return ret;
     }
-     */
 }
