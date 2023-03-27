@@ -58,8 +58,16 @@ public class ExprField extends Expr {
 
     @Override
     public String exprToJavaCode() {
-        //return String.format("%s.%s(\"%s\")", record.toJavaCode(), type.getMethodName(), fieldName);
-        return record.toJavaCode() + ".getObject(\"" + fieldName + "\")";
+
+        String nameOfGetMethod = null;
+        if (type instanceof TypeSpecSimple) {
+            nameOfGetMethod = ((TypeSpecSimple) type).nameOfGetMethod;
+            assert nameOfGetMethod != null;
+        } else {
+            assert false: "unreachable";
+        }
+
+        return String.format("%s.%s(\"%s\")", record.toJavaCode(), nameOfGetMethod, fieldName);
     }
 
     // --------------------------------------------------
