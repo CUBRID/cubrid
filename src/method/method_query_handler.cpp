@@ -214,13 +214,13 @@ namespace cubmethod
   query_handler::prepare_compile (const std::string &sql)
   {
     int level;
-    //qo_get_optimization_param (&level, QO_PARAM_LEVEL);
-    //qo_set_optimization_param (NULL, QO_PARAM_LEVEL, 2);
+    qo_get_optimization_param (&level, QO_PARAM_LEVEL);
+    qo_set_optimization_param (NULL, QO_PARAM_LEVEL, 2);
 
     int error = prepare (sql, PREPARE_STATIC_SQL);
 
     // restore
-    //qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
+    qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
 
     return error;
   }
