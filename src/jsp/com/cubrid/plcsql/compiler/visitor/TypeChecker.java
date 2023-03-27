@@ -434,11 +434,13 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         return TypeSpecSimple.BOOLEAN;
     }
 
+    /* TODO: restore later
     @Override
     public TypeSpec visitExprList(ExprList node) {
         visitNodeList(node.elems);
         return TypeSpecSimple.LIST;
     }
+     */
 
     @Override
     public TypeSpec visitExprLocalFuncCall(ExprLocalFuncCall node) {
