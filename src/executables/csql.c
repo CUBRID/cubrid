@@ -239,6 +239,8 @@ static bool csql_is_auto_commit_requested (const CSQL_ARGUMENT * csql_arg);
 static int get_host_ip (unsigned char *ip_addr);
 static int csql_connect (char *argument, CSQL_ARGUMENT * csql_arg);
 
+static void csql_print_server_output (const CSQL_ARGUMENT * csql_arg);
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(WINDOWS)
 /*
@@ -749,6 +751,10 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	    {
 	      /* single-line-oriented execution */
 	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, line_no);
+	      if (csql_arg->pl_server_output)
+		{
+		  csql_print_server_output (csql_arg);
+		}
 	      csql_edit_contents_clear ();
 	      if (csql_Is_interactive)
 		{
@@ -945,10 +951,19 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       /* Command stuffs */
     case S_CMD_RUN:
       csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, -1);
+      if (csql_arg->pl_server_output)
+	{
+	  csql_print_server_output (csql_arg);
+	}
+
       break;
 
     case S_CMD_XRUN:
       csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, -1);
+      if (csql_arg->pl_server_output)
+	{
+	  csql_print_server_output (csql_arg);
+	}
       csql_edit_contents_clear ();
       break;
 
@@ -1490,6 +1505,18 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  fprintf (csql_Output_fp, "CONNECT session command does not support --sysadm mode\n");
 	}
+
+    case S_CMD_SERVER_OUTPUT:
+      if (!strcasecmp (argument, "on"))
+	{
+	  csql_execute_statements (csql_arg, STRING_INPUT, "CALL enable (50000);", -1);
+	  csql_arg->pl_server_output = true;
+	}
+      else if (!strcasecmp (argument, "off"))
+	{
+	  csql_arg->pl_server_output = false;
+	  csql_execute_statements (csql_arg, STRING_INPUT, "CALL disable ();", -1);
+	}
     }
 
   return DO_CMD_SUCCESS;
@@ -1765,6 +1792,44 @@ display_error (DB_SESSION * session, int stmt_start_line_no)
       /* let users read this message before the next overwrites */
       sleep (3);
     }
+}
+
+static void
+csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
+{
+  int status = 0;
+  do
+    {
+      int errors =
+	csql_execute_statements (csql_arg, STRING_INPUT, "CALL get_line (:pl_output_str, :pl_output_status)", -1);
+      if (errors != 0)
+	{
+	  break;
+	}
+      DB_VALUE *status_val = pt_find_value_of_label ("pl_output_status");
+      if (status_val)
+	{
+	  status = db_get_int (status_val);
+	  if (status == 0)
+	    {
+	      DB_VALUE *str_val = pt_find_value_of_label ("pl_output_str");
+	      if (str_val)
+		{
+		  const char *str = db_get_string (str_val);
+		  fprintf (csql_Output_fp, "%s\n", str);
+		}
+	      else
+		{
+		  status = 1;
+		}
+	    }
+	}
+      else
+	{
+	  status = 1;
+	}
+    }
+  while (status == 0);
 }
 
 /*
