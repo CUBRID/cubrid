@@ -700,6 +700,7 @@ namespace cubload
 
     insert_errors_filtered = has_errors_filtered_for_insert (m_session.get_args().m_ignored_errors);
 
+    /* The locator_multi_insert_force() sometimes creates the data page-based log record instead of the record-based log record. In HA, it means that the replication log cannot have an accurate LSA for each insert by loaddb. */
     if (insert_errors_filtered || !HA_DISABLED ())
       {
 	// In case of possible errors filtered for insert we disable the unique optimization
