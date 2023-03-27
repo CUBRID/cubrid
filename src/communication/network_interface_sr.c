@@ -11139,13 +11139,14 @@ splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   cubmem::extensible_block ext_blk;
   if (ctx)
     {
-      error = cubmethod::invoke_compile (*ctx, input_string, verbose, ext_blk);
+      error = cubmethod::invoke_compile (*thread_p, *ctx, input_string, verbose, ext_blk);
     }
 
   // Error code and is_ignored.
-  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *ptr = or_pack_int (reply, ext_blk.get_size ());
+  char *ptr = or_pack_int (reply, (int) END_CALLBACK);
+  ptr = or_pack_int (ptr, ext_blk.get_size ());
   ptr = or_pack_int (ptr, error);
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),

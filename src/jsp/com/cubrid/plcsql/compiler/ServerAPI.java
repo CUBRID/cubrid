@@ -30,15 +30,48 @@
 
 package com.cubrid.plcsql.compiler;
 
+import com.cubrid.jsp.context.Context;
+import com.cubrid.jsp.data.CUBRIDPacker;
+import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;
+import com.cubrid.jsp.protocol.Header;
+import com.cubrid.jsp.protocol.RequestCode;
+import com.cubrid.jsp.protocol.SqlSemanticsRequest;
+import com.cubrid.jsp.protocol.SqlSemanticsResponse;
+import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
 public class ServerAPI {
 
     public static List<SqlSemantics> getSqlSemantics(List<String> sqlTexts) {
-        return getMockSqlSemantics(sqlTexts);
+        if (sqlTexts == null) {
+            return null;
+        }
+
+        try {
+            CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
+            SqlSemanticsRequest request = new SqlSemanticsRequest(sqlTexts);
+            packer.packPackableObject(request);
+            Context.getCurrentExecuteThread()
+                    .sendCommand(RequestCode.REQUEST_SQL_SEMANTICS, packer.getBuffer());
+
+            ByteBuffer responseBuffer = Context.getCurrentExecuteThread().receiveBuffer();
+            CUBRIDUnpacker unpacker = new CUBRIDUnpacker(responseBuffer);
+
+            Header header = new Header(unpacker);
+            ByteBuffer payload = unpacker.unpackBuffer();
+            unpacker.setBuffer(payload);
+
+            int status = unpacker.unpackInt();
+            SqlSemanticsResponse response = new SqlSemanticsResponse(unpacker);
+            return response.semantics;
+        } catch (IOException e) {
+            // TODO
+            return null;
+        }
     }
 
     public static List<Question> getGlobalSemantics(List<Question> questions) {
@@ -137,9 +170,6 @@ public class ServerAPI {
     // -----------------------------------------
 
     private static List<SqlSemantics> getMockSqlSemantics(List<String> sqlTexts) {
-
-        // MOCK
-
         List<SqlSemantics> ret = new ArrayList<>();
 
         int seqNo = 0;
