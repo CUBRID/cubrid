@@ -98,6 +98,9 @@ public class SqlSemantics {
         int hostVarsCnt = unpacker.unpackInt();
         if (hostVarsCnt > 0) {
             hostVars = new ArrayList<>();
+            for (int i = 0; i < hostVarsCnt; i++) {
+                hostVars.add(new PlParamInfo(unpacker));
+            }
         }
         /*
         for (int i = 0; i < hostVarsCnt; i++) {

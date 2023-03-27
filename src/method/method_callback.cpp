@@ -27,8 +27,8 @@
 #include "method_query_util.hpp"
 #include "method_struct_oid_info.hpp"
 
-#include "api_compat.h" /* DB_SESSION */
 #include "parser.h"
+#include "api_compat.h" /* DB_SESSION */
 #include "db.h"
 
 #include "object_primitive.h"
@@ -414,8 +414,38 @@ namespace cubmethod
 	      {
 		semantics.columns.emplace_back (c_info);
 	      }
-	    // TODO: for host variables
-	    // TP_DOMAIN** host_var_expected_domains = db_session->parser->host_var_expected_domains;
+
+	    int input_markers_cnt = db_number_of_input_markers (db_session, 0);
+	    DB_MARKER *marker = db_get_input_markers (db_session, 0);
+
+	    std::vector <pl_parameter_info> &param_info = semantics.hvs;
+	    if (input_markers_cnt > 0)
+	      {
+		param_info.resize (input_markers_cnt);
+		while (marker)
+		  {
+		    int idx = marker->info.host_var.index;
+
+		    pl_parameter_info &info = param_info[idx];
+
+		    info.mode = 1;
+		    if (marker->etc)
+		      {
+			info.name = std::string ((char *) marker->etc);
+		      }
+
+		    TP_DOMAIN *hv_expected_domain = db_session->parser->host_var_expected_domains[idx];
+
+		    // TODO: set type?!
+
+		    info.type = TP_DOMAIN_TYPE (hv_expected_domain);
+		    info.precision = db_domain_precision (hv_expected_domain);
+		    info.scale = (short) db_domain_scale (hv_expected_domain);
+		    info.charset = db_domain_codeset (hv_expected_domain);
+
+		    marker = db_marker_next (marker);
+		  }
+	      }
 	  }
 	else
 	  {

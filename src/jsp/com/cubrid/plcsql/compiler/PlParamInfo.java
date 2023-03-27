@@ -30,16 +30,23 @@
 
 package com.cubrid.plcsql.compiler;
 
+import com.cubrid.jsp.data.CUBRIDUnpacker;
+import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.jsp.value.NullValue;
+import com.cubrid.jsp.value.Value;
+
 public class PlParamInfo {
 
-    public final String name;
+    public String name;
 
-    public final byte mode;
+    public byte mode;
 
-    public final int type;
-    public final int prec;
-    public final short scale;
-    public final byte charset;
+    public int type;
+    public int prec;
+    public short scale;
+    public byte charset;
+
+    public Value value;
 
     public PlParamInfo(String name, byte mode, int type, int prec, short scale, byte charset) {
         this.name = name;
@@ -48,5 +55,22 @@ public class PlParamInfo {
         this.prec = prec;
         this.scale = scale;
         this.charset = charset;
+        this.value = new NullValue();
+    }
+
+    public PlParamInfo(CUBRIDUnpacker unpacker) {
+        this.mode = (byte) unpacker.unpackInt();
+        this.name = unpacker.unpackCString();
+
+        this.type = unpacker.unpackInt();
+        this.prec = unpacker.unpackInt();
+        this.scale = (short) unpacker.unpackInt();
+        this.charset = (byte) unpacker.unpackInt();
+        try {
+            this.value = unpacker.unpackValue(type, mode, type);
+        } catch (TypeMismatchException e) {
+            // TODO
+            this.value = new NullValue();
+        }
     }
 }

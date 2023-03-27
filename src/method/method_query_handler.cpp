@@ -18,6 +18,8 @@
 
 #include "method_query_handler.hpp"
 
+#include "parser.h"
+#include "api_compat.h" /* DB_SESSION */
 #include "db.h"
 #include "dbi.h"
 #include "dbtype.h"
@@ -212,13 +214,13 @@ namespace cubmethod
   query_handler::prepare_compile (const std::string &sql)
   {
     int level;
-    qo_get_optimization_param (&level, QO_PARAM_LEVEL);
-    qo_set_optimization_param (NULL, QO_PARAM_LEVEL, 2);
+    //qo_get_optimization_param (&level, QO_PARAM_LEVEL);
+    //qo_set_optimization_param (NULL, QO_PARAM_LEVEL, 2);
 
-    int error = prepare (sql, 0);
+    int error = prepare (sql, PREPARE_STATIC_SQL);
 
     // restore
-    qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
+    //qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
 
     return error;
   }
@@ -781,6 +783,11 @@ namespace cubmethod
     if (flag & PREPARE_XASL_CACHE_PINNED)
       {
 	db_session_set_xasl_cache_pinned (m_session, true, false);
+      }
+
+    if (flag & PREPARE_STATIC_SQL)
+      {
+	get_db_session()->parser->flag.do_late_binding = 1;
       }
 
     m_stmt_type = CUBRID_STMT_NONE;
