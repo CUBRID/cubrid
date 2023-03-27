@@ -92,6 +92,7 @@ $ These 3 should be blank
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 给出的参数太少.
 
 145 <帮助: 类的结构>
 146 无
@@ -191,7 +192,7 @@ $ csql help messages
    ;TRAce [ON/OFF] [text/json]  - 启用/禁用 sql auto trace.\n\
    ;SIngleline [ON|OFF]         - 启用/禁用单行模式.\n\
    ;CONnect username [dbname | dbname@hostname]\n\
-                                - 作为用户名连接到当前或其他数据库.\n\ 
+                                - 作为用户名连接到当前或其他数据库.\n\
    ;.Hist [ON/OFF]              - 开始/停止收集 CSQL 中的统计信息（仅限 DBA）.\n\
    ;.Clear_hist                 - 清除缓冲区中的 CSQL 统计信息.\n\
    ;.Dump_hist                  - 在CSQL中显示CSQL统计信息.\n\
