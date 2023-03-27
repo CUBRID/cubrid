@@ -39,17 +39,17 @@ public abstract class TypeSpec extends AstNode {
         this.name = name;
     }
 
-    public static TypeSpec of(String name) {
-        if (name.endsWith("[]")) {
-            String elemName = name.substring(0, name.length() - 2);
-            TypeSpecSimple elem = TypeSpecSimple.of(elemName);
+    public static TypeSpec ofJavaName(String javaType) {
+        if (javaType.endsWith("[]")) {
+            String elemType = javaType.substring(0, javaType.length() - 2);
+            TypeSpecSimple elem = TypeSpecSimple.ofJavaName(elemType);
             if (elem == null) {
                 return null;
             } else {
                 return new TypeSpecVariadic(elem);
             }
         } else {
-            return TypeSpecSimple.of(name);
+            return TypeSpecSimple.ofJavaName(javaType);
         }
     }
 

@@ -42,10 +42,11 @@ public class TypeSpecSimple extends TypeSpec {
     }
 
     public final String fullJavaType;
+    public final String nameOfGetMethod;
 
-    public static TypeSpecSimple of(String s) {
-        TypeSpecSimple ret = singletons.get(s);
-        assert ret != null : "wrong java type " + s;
+    public static TypeSpecSimple ofJavaName(String javaType) {
+        TypeSpecSimple ret = javaNameToSpec.get(javaType);
+        assert ret != null : "wrong Java type " + javaType;
         return ret;
     }
 
@@ -54,13 +55,46 @@ public class TypeSpecSimple extends TypeSpec {
         return fullJavaType;
     }
 
+    // the following two are not actual Java types but only for internal type checking
+    public static TypeSpecSimple NULL = new TypeSpecSimple("Null", null);
+    public static TypeSpecSimple CURSOR = new TypeSpecSimple("Cursor", null);
+
+    // (1) used as an argument type of some operators in SpLib
+    // (2) used as an expression type when a specific Java type cannot be given
+    public static TypeSpecSimple OBJECT = new TypeSpecSimple("java.lang.Object", "getObject");
+
+    public static TypeSpecSimple BOOLEAN = new TypeSpecSimple("java.lang.Boolean", "getBoolean");
+    public static TypeSpecSimple STRING = new TypeSpecSimple("java.lang.String", "getString");
+    public static TypeSpecSimple NUMERIC =
+            new TypeSpecSimple("java.math.BigDecimal", "getBigDecimal");
+    public static TypeSpecSimple SHORT = new TypeSpecSimple("java.lang.Short", "getShort");
+    public static TypeSpecSimple INT = new TypeSpecSimple("java.lang.Integer", "getInt");
+    public static TypeSpecSimple BIGINT = new TypeSpecSimple("java.lang.Long", "getLong");
+    public static TypeSpecSimple FLOAT = new TypeSpecSimple("java.lang.Float", "getFloat");
+    public static TypeSpecSimple DOUBLE = new TypeSpecSimple("java.lang.Double", "getDouble");
+    public static TypeSpecSimple DATE = new TypeSpecSimple("java.sql.Date", "getDate");
+    public static TypeSpecSimple TIME = new TypeSpecSimple("java.sql.Time", "getTime");
+    public static TypeSpecSimple TIMESTAMP =
+            new TypeSpecSimple("java.sql.Timestamp", "getTimestamp");
+    public static TypeSpecSimple DATETIME =
+            new TypeSpecSimple("java.sql.Timestamp", "getTimestamp");
+    public static TypeSpecSimple SYS_REFCURSOR =
+            new TypeSpecSimple("com.cubrid.plcsql.predefined.sp.SpLib.Query", null);
+
+    /* TODO: restore later
+    public static TypeSpecSimple SET = of("java.util.Set");
+    public static TypeSpecSimple MULTISET = of("org.apache.commons.collections4.MultiSet");
+    public static TypeSpecSimple LIST = of("java.util.List");
+     */
+
     // ------------------------------------------------------------------
     // Private
     // ------------------------------------------------------------------
 
-    private TypeSpecSimple(String fullJavaType) {
+    private TypeSpecSimple(String fullJavaType, String nameOfGetMethod) {
         super(getJavaCode(fullJavaType));
         this.fullJavaType = fullJavaType;
+        this.nameOfGetMethod = nameOfGetMethod;
     }
 
     private static String getJavaCode(String fullJavaType) {
@@ -78,59 +112,26 @@ public class TypeSpecSimple extends TypeSpec {
         return split[split.length - 1];
     }
 
-    private static final Map<String, TypeSpecSimple> singletons = new HashMap<>();
+    private static final Map<String, TypeSpecSimple> javaNameToSpec = new HashMap<>();
 
-    static {
-        final String[] javaTypes =
-                new String[] {
-                    "Null", // not an actual java type
-                    "Cursor", // not an actual java type
-                    "java.lang.Object", // (1) used as an argument type of some operators in SpLib
-                    // (2) used as an expression type when a specific Java type cannot be given
-                    "java.lang.Boolean",
-                    "java.lang.String",
-                    "java.math.BigDecimal",
-                    "java.lang.Short",
-                    "java.lang.Integer",
-                    "java.lang.Long",
-                    "java.lang.Float",
-                    "java.lang.Double",
-                    "java.time.LocalDate",
-                    "java.time.LocalTime",
-                    "java.time.ZonedDateTime",
-                    "java.time.LocalDateTime",
-                    "java.util.Set",
-                    "org.apache.commons.collections4.MultiSet",
-                    "java.util.List",
-                    "com.cubrid.plcsql.predefined.sp.SpLib.Query"
-                };
-
-        for (String jt : javaTypes) {
-            TypeSpecSimple r = singletons.put(jt, new TypeSpecSimple(jt));
-            assert r == null; // no duplicate
-        }
+    private static void register(TypeSpecSimple spec) {
+        javaNameToSpec.put(spec.fullJavaType, spec);
     }
 
-    public static TypeSpecSimple NULL = of("Null");
-    public static TypeSpecSimple CURSOR = of("Cursor");
-
-    public static TypeSpecSimple OBJECT = of("java.lang.Object");
-
-    public static TypeSpecSimple BOOLEAN = of("java.lang.Boolean");
-    public static TypeSpecSimple STRING = of("java.lang.String");
-    public static TypeSpecSimple BIGDECIMAL = of("java.math.BigDecimal");
-    public static TypeSpecSimple SHORT = of("java.lang.Short");
-    public static TypeSpecSimple INTEGER = of("java.lang.Integer");
-    public static TypeSpecSimple LONG = of("java.lang.Long");
-    public static TypeSpecSimple FLOAT = of("java.lang.Float");
-    public static TypeSpecSimple DOUBLE = of("java.lang.Double");
-    public static TypeSpecSimple LOCALDATE = of("java.time.LocalDate");
-    public static TypeSpecSimple LOCALTIME = of("java.time.LocalTime");
-    public static TypeSpecSimple ZONEDDATETIME = of("java.time.ZonedDateTime");
-    public static TypeSpecSimple LOCALDATETIME = of("java.time.LocalDateTime");
-    public static TypeSpecSimple SET = of("java.util.Set");
-    public static TypeSpecSimple MULTISET = of("org.apache.commons.collections4.MultiSet");
-    public static TypeSpecSimple LIST = of("java.util.List");
-
-    public static TypeSpecSimple REFCURSOR = of("com.cubrid.plcsql.predefined.sp.SpLib.Query");
+    static {
+        register(OBJECT);
+        register(BOOLEAN);
+        register(STRING);
+        register(NUMERIC);
+        register(SHORT);
+        register(INT);
+        register(BIGINT);
+        register(FLOAT);
+        register(DOUBLE);
+        register(DATE);
+        register(TIME);
+        register(TIMESTAMP);
+        register(DATETIME);
+        register(SYS_REFCURSOR);
+    }
 }
