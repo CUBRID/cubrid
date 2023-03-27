@@ -372,7 +372,18 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                         node.lineNo(), // s401
                         String.format("no such column '%s' in the query result", node.fieldName));
             } else {
+
                 node.setType(ret);
+
+                int i = 1;
+                for (String c: declForRecord.fieldTypes.keySet()) {
+                    if (c.equals(node.fieldName)) {
+                        break;
+                    }
+                    i++;
+                }
+                assert i <= declForRecord.fieldTypes.size();
+                node.setColIndex(i);
             }
         } else {
             // this record is for a dynamic SQL

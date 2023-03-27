@@ -39,6 +39,10 @@ public class ExprField extends Expr {
         this.type = type;
     }
 
+    public void setColIndex(int colIndex) {
+        this.colIndex = colIndex;
+    }
+
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitExprField(this);
@@ -46,8 +50,6 @@ public class ExprField extends Expr {
 
     public final ExprId record;
     public final String fieldName;
-
-    public TypeSpec type;
 
     public ExprField(ParserRuleContext ctx, ExprId record, String fieldName) {
         super(ctx);
@@ -59,19 +61,35 @@ public class ExprField extends Expr {
     @Override
     public String exprToJavaCode() {
 
-        String nameOfGetMethod = null;
-        if (type instanceof TypeSpecSimple) {
-            nameOfGetMethod = ((TypeSpecSimple) type).nameOfGetMethod;
-            assert nameOfGetMethod != null;
+        if (colIndex > 0) {
+
+            // record is for a Static SQL
+            //
+            assert type != null;
+            String nameOfGetMethod = null;
+            if (type instanceof TypeSpecSimple) {
+                nameOfGetMethod = ((TypeSpecSimple) type).nameOfGetMethod;
+                assert nameOfGetMethod != null;
+            } else {
+                assert false : "unreachable";
+            }
+
+            return String.format("%s.%s(%d)", record.toJavaCode(), nameOfGetMethod, colIndex);
         } else {
-            assert false : "unreachable";
+
+            // record is for a Dynamic SQL
+            //
+            assert type == null;
+            return String.format("%s.getObject(\"%s\")", record.toJavaCode(), fieldName);
         }
 
-        return String.format("%s.%s(\"%s\")", record.toJavaCode(), nameOfGetMethod, fieldName);
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
+
+    private TypeSpec type;
+    private int colIndex;
 
 }
