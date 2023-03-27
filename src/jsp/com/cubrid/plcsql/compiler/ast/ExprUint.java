@@ -36,9 +36,9 @@ import org.antlr.v4.runtime.ParserRuleContext;
 public class ExprUint extends Expr {
 
     public enum Type {
-        BIGDECIMAL,
-        LONG,
-        INTEGER
+        NUMERIC,
+        BIGINT,
+        INT
     }
 
     @Override
@@ -59,11 +59,11 @@ public class ExprUint extends Expr {
     @Override
     public String exprToJavaCode() {
         switch (ty) {
-            case BIGDECIMAL:
+            case NUMERIC:
                 return "new BigDecimal(\"" + val + "\")";
-            case LONG:
+            case BIGINT:
                 return "new Long(" + val + "L)";
-            case INTEGER:
+            case INT:
                 return "new Integer(" + val + ")";
         }
         return val;

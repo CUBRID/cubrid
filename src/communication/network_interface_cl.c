@@ -10910,7 +10910,7 @@ plcsql_transfer_file (const std::string & input_file, const bool & verbose, std:
 						      (int) packer.get_current_size (),
 						      reply, OR_ALIGNED_BUF_SIZE (a_reply), &data_reply,
 						      &data_reply_size);
-  if (!req_error)
+  if (req_error != NO_ERROR)
     {
       goto error;
     }

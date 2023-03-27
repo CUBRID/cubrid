@@ -304,14 +304,6 @@ public class ExecuteThread extends Thread {
 
         try {
             CompileInfo info = TestMain.compilePLCSQL(inSource, verbose);
-
-            resultBuffer.clear(); /* prepare to put */
-            packer.setBuffer(resultBuffer);
-
-            packer.packInt(RequestCode.COMPILE);
-            packer.packString(info.translated);
-            packer.packString(info.createStmt);
-
             String javaFilePath = StoredProcedureClassLoader.ROOT_PATH + info.className + ".java";
             File file = new File(javaFilePath);
             FileOutputStream fos = new FileOutputStream(file, false);
@@ -333,12 +325,13 @@ public class ExecuteThread extends Thread {
                 throw new RuntimeException(command);
             }
 
-            resultBuffer = packer.getBuffer();
+            CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
+            packer.packString(info.translated);
+            packer.packString(info.createStmt);
 
-            output.writeInt(resultBuffer.position());
-            output.write(resultBuffer.array(), 0, resultBuffer.position());
-            output.flush();
+            Context.getCurrentExecuteThread().sendCommand(RequestCode.COMPILE, packer.getBuffer());
         } catch (Exception e) {
+            // TODO: error handling
             output.writeInt(0);
             output.flush();
             throw new RuntimeException(e);
