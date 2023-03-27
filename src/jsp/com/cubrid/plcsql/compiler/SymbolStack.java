@@ -97,7 +97,7 @@ public class SymbolStack {
                         for (Class pt : paramTypes) {
                             String typeName = pt.getTypeName();
                             // System.out.println("  " + typeName);
-                            TypeSpec paramType = TypeSpec.of(typeName);
+                            TypeSpec paramType = TypeSpec.ofJavaName(typeName);
                             assert paramType != null;
 
                             DeclParamIn p = new DeclParamIn(null, "p" + i, paramType);
@@ -108,7 +108,7 @@ public class SymbolStack {
                         // return type
                         String typeName = m.getReturnType().getTypeName();
                         // System.out.println("  =>" + typeName);
-                        TypeSpec retType = TypeSpec.of(typeName);
+                        TypeSpec retType = TypeSpec.ofJavaName(typeName);
                         assert retType != null;
 
                         // add op
@@ -135,7 +135,7 @@ public class SymbolStack {
                                             new DeclParamIn(
                                                     null,
                                                     "s",
-                                                    TypeSpecSimple.of("java.lang.Object"))),
+                                                    TypeSpecSimple.OBJECT)),
                             null,
                             null);
             putDeclTo(predefinedSymbols, "PUT_LINE", dp);
@@ -145,7 +145,7 @@ public class SymbolStack {
                     new DeclConst(
                             null,
                             "SQLERRM",
-                            TypeSpecSimple.of("java.lang.String"),
+                            TypeSpecSimple.STRING,
                             false,
                             ExprNull.SINGLETON);
             putDeclTo(predefinedSymbols, "SQLERRM", dc);
@@ -154,7 +154,7 @@ public class SymbolStack {
                     new DeclConst(
                             null,
                             "SQLCODE",
-                            TypeSpecSimple.of("java.lang.Integer"),
+                            TypeSpecSimple.INT,
                             false,
                             ExprNull.SINGLETON);
             putDeclTo(predefinedSymbols, "SQLCODE", dc);
@@ -163,7 +163,7 @@ public class SymbolStack {
                     new DeclConst(
                             null,
                             "SYSDATE",
-                            TypeSpecSimple.of("java.time.LocalDate"),
+                            TypeSpecSimple.DATE,
                             false,
                             ExprNull.SINGLETON);
             putDeclTo(predefinedSymbols, "SYSDATE", dc);

@@ -35,13 +35,19 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprField extends Expr {
 
+    public void setType(TypeSpec type) {
+        this.type = type;
+    }
+
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitExprField(this);
     }
 
     public final ExprId record;
-    public String fieldName;
+    public final String fieldName;
+
+    public TypeSpec type;
 
     public ExprField(ParserRuleContext ctx, ExprId record, String fieldName) {
         super(ctx);
@@ -52,6 +58,7 @@ public class ExprField extends Expr {
 
     @Override
     public String exprToJavaCode() {
+        //return String.format("%s.%s(\"%s\")", record.toJavaCode(), type.getMethodName(), fieldName);
         return record.toJavaCode() + ".getObject(\"" + fieldName + "\")";
     }
 
