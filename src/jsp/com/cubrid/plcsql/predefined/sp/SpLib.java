@@ -46,6 +46,8 @@ import java.util.regex.PatternSyntaxException;
 import org.apache.commons.collections4.MultiSet;
 import org.apache.commons.collections4.multiset.HashMultiSet;
 
+import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
+
 public class SpLib {
 
     public static class $APP_ERROR extends RuntimeException {}
@@ -83,7 +85,7 @@ public class SpLib {
     }
 
     public static void PUT_LINE(Object s) {
-        System.out.println(s);
+        DBMS_OUTPUT.putLine(s.toString());
     }
 
     public static class Query {
