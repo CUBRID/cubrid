@@ -376,7 +376,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                 node.setType(ret);
 
                 int i = 1;
-                for (String c: declForRecord.fieldTypes.keySet()) {
+                for (String c : declForRecord.fieldTypes.keySet()) {
                     if (c.equals(node.fieldName)) {
                         break;
                     }
