@@ -559,6 +559,16 @@ ini_parse_line (char *input_line, char *section, char *key, char *value)
       /* Generate syntax error */
       status = LINE_ERROR;
     }
+
+  if (strcmp (key, "shard_db_password") == 0 && strlen (value) > 0)
+    {
+      char dummy[512];
+
+      if (sscanf (line, "%[^=] = %[^ \t]", dummy, value) != 2)
+	{
+	  status = LINE_ERROR;
+	}
+    }
   return status;
 }
 
