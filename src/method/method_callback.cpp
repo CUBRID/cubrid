@@ -23,8 +23,13 @@
 #include "ddl_log.h"
 
 #include "method_def.hpp"
+#include "method_compile.hpp"
 #include "method_query_util.hpp"
 #include "method_struct_oid_info.hpp"
+
+#include "api_compat.h" /* DB_SESSION */
+#include "parser.h"
+#include "db.h"
 
 #include "object_primitive.h"
 #include "oid.h"
@@ -84,6 +89,14 @@ namespace cubmethod
 	break;
       case METHOD_CALLBACK_GET_GENERATED_KEYS:
 	error = generated_keys (unpacker);
+	break;
+
+      /* compilation */
+      case METHOD_CALLBACK_GET_SQL_SEMNATICS:
+	error = get_sql_semantics (unpacker);
+	break;
+      case METHOD_CALLBACK_GET_GLOBAL_SEMANTICS:
+	error = get_global_semantics (unpacker);
 	break;
       default:
 	assert (false);
@@ -358,6 +371,89 @@ namespace cubmethod
       {
 	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, result);
       }
+  }
+
+//////////////////////////////////////////////////////////////////////////
+// Compile
+//////////////////////////////////////////////////////////////////////////
+  int
+  callback_handler::get_sql_semantics (packing_unpacker &unpacker)
+  {
+    sql_semantics_request request;
+    unpacker.unpack_all (request);
+    int i = -1;
+    int error = NO_ERROR;
+
+    std::vector<sql_semantics> semantics_vec;
+    for (const std::string s : request.sqls)
+      {
+	i++;
+	query_handler *handler = new_query_handler ();
+	if (handler == nullptr)
+	  {
+	    break;
+	  }
+
+	sql_semantics semantics;
+	semantics.idx = i;
+
+	er_clear ();
+	m_error_ctx.clear ();
+
+	error = handler->prepare_compile (s);
+	if (error == NO_ERROR && m_error_ctx.has_error () == false)
+	  {
+	    DB_SESSION *db_session = handler->get_db_session ();
+	    const prepare_info &info = handler->get_prepare_info ();
+
+	    semantics.sql_type = info.stmt_type;
+	    semantics.rewritten_query = parser_print_tree (db_get_parser (db_session), db_get_statement (db_session, 0));
+
+	    const std::vector<column_info> &column_infos = info.column_infos;
+	    for (const column_info &c_info : column_infos)
+	      {
+		semantics.columns.emplace_back (c_info);
+	      }
+	    // TODO: for host variables
+	    // TP_DOMAIN** host_var_expected_domains = db_session->parser->host_var_expected_domains;
+	  }
+	else
+	  {
+	    // clear previous infos
+	    semantics_vec.clear ();
+
+	    error = ER_FAILED;
+	    semantics.sql_type = m_error_ctx.get_error ();
+	    semantics.rewritten_query = m_error_ctx.get_error_msg ();
+	  }
+
+	semantics_vec.push_back (semantics);
+	free_query_handle (handler->get_id (), true);
+
+	if (error != NO_ERROR)
+	  {
+	    break;
+	  }
+      }
+
+    sql_semantics_response response;
+    response.semantics = std::move (semantics_vec);
+
+    if (error == NO_ERROR)
+      {
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, response);
+      }
+    else
+      {
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, response);
+      }
+  }
+
+  int
+  callback_handler::get_global_semantics (packing_unpacker &unpacker)
+  {
+    // TODO
+    return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, ER_FAILED, "dummy");
   }
 
 //////////////////////////////////////////////////////////////////////////

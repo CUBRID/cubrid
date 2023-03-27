@@ -30,17 +30,22 @@
 
 package com.cubrid.plcsql.compiler;
 
-import java.util.LinkedHashMap;
+import com.cubrid.jsp.data.CUBRIDUnpacker;
+import com.cubrid.jsp.data.ColumnInfo;
+import java.util.ArrayList;
 import java.util.List;
 
 public class SqlSemantics {
+
+    public int seqNo;
 
     // for error return
     public int errCode; // non-zero if error
     public String errMsg;
 
-    public SqlSemantics(int errCode, String errMsg) {
+    public SqlSemantics(int seqNo, int errCode, String errMsg) {
         assert errCode != 0;
+        this.seqNo = seqNo;
         this.errCode = errCode;
         this.errMsg = errMsg;
     }
@@ -48,23 +53,70 @@ public class SqlSemantics {
     // for normal return
     public int kind;
     public String rewritten;
-    public LinkedHashMap<String, String>
+    public List<PlParamInfo>
             hostVars; // host variables and their SQL types required in their locations
-    public LinkedHashMap<String, String>
-            selectList; // (only for select statements) columns and their SQL types
+    public List<ColumnInfo> selectList; // (only for select statements) columns and their SQL types
     public List<String> intoVars; // (only for select stetements with an into-clause) into variables
 
-    SqlSemantics(
+    public List<ColumnInfo> columnInfos;
+
+    public SqlSemantics(
+            int seqNo,
             int kind,
             String rewritten,
-            LinkedHashMap<String, String> hostVars,
-            LinkedHashMap<String, String> selectList,
+            List<PlParamInfo> hostVars,
+            List<ColumnInfo> selectList,
             List<String> intoVars) {
 
+        this.seqNo = seqNo;
         this.kind = kind;
         this.rewritten = rewritten;
         this.hostVars = hostVars;
         this.selectList = selectList;
         this.intoVars = intoVars;
+    }
+
+    public SqlSemantics(CUBRIDUnpacker unpacker) {
+        this.seqNo = unpacker.unpackInt();
+        this.kind = unpacker.unpackInt();
+        this.rewritten = unpacker.unpackCString();
+
+        if (this.kind < 0) {
+            this.errCode = this.kind;
+            this.errMsg = this.rewritten;
+        }
+
+        int selectListCnt = unpacker.unpackInt();
+        if (selectListCnt > 0) {
+            selectList = new ArrayList<>();
+            for (int i = 0; i < selectListCnt; i++) {
+                selectList.add(new ColumnInfo(unpacker));
+            }
+        }
+
+        // TODO
+        int hostVarsCnt = unpacker.unpackInt();
+        if (hostVarsCnt > 0) {
+            hostVars = new ArrayList<>();
+        }
+        /*
+        for (int i = 0; i < hostVarsCnt; i++) {
+            String var = unpacker.unpackCString();
+            String type = unpacker.unpackCString();
+            hostVars.add(var, type);
+        }
+        */
+
+        // TODO
+        int intoVarsCnt = unpacker.unpackInt();
+        if (intoVarsCnt > 0) {
+            intoVars = new ArrayList<>();
+        }
+        /*
+        for (int i = 0; i < intoVarsCnt; i++) {
+            String var = unpacker.unpackCString();
+            intoVars.add(var);
+        }
+        */
     }
 }

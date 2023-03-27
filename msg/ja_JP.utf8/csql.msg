@@ -92,6 +92,7 @@ $ These 3 should be blank
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 指定された引数が少なすぎます。
 
 145 <ヘルプ: クラススキーマ>
 146 なし
@@ -188,6 +189,15 @@ $ csql help messages
    ;HISTORYRead <history_num>   - ヒストリー番号のクエリをコマンドバッファーにセーブする。\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - 単線モードの有効化/無効化.\n\
+<<<<<<< HEAD
+=======
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - ユーザー名として現在のデータベースまたは他のデータベースに接続します。\n\
+   ;.Hist [ON/OFF]              - CSQL で統計情報の収集を開始/停止します (DBA のみ利用可能)。\n\
+   ;.Clear_hist                 - バッファ内の CSQL 統計情報をクリアします。\n\
+   ;.Dump_hist                  - CSQL 統計情報を CSQL で表示します。\n\
+   ;.X_hist                     - 統計データが初期化された CSQL で CSQL 統計情報を表示します。\n\
+>>>>>>> upstream/feature/plcsql
    ;HElp                        - ヘルプメッセージ出力。\n\n
 
 232 <制約事項> 

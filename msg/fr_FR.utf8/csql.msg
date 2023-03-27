@@ -92,6 +92,7 @@ $ Ces 3 doit être vide
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 Trop peu d'arguments donnés.
 
 145 <Aide: Schéma d'une classe>
 146 aucun
@@ -188,6 +189,15 @@ $ csql help messages
    ;HISTORYRead <history_num>   - lit l 'entrée sur le numéro d'historique dans le tampon de commande.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - activer/désactiver le mode monoligne.\n\
+<<<<<<< HEAD
+=======
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - se connecter à la base de données actuelle ou à d'autres bases de données en tant que nom d'utilisateur.\n\
+   ;.Hist [ON/OFF]              - démarrer/arrêter la collecte d'informations statistiques dans CSQL (DBA disponible uniquement).\n\
+   ;.Clear_hist                 - effacer les informations statistiques CSQL dans la mémoire tampon.\n\
+   ;.Dump_hist                  - afficher les informations statistiques CSQL dans CSQL.\n\
+   ;.X_hist                     - afficher les informations statistiques CSQL dans CSQL avec les données statistiques initialisées.\n\
+>>>>>>> upstream/feature/plcsql
    ;HElp                        - affiche ce message d'aide.\n\n
 
 232 <Constraints> 
