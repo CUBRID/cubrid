@@ -813,6 +813,11 @@ receiver_thr_f (void *arg)
 #endif
 
 #if defined(LINUX)
+  if (br_shard_flag == ON)
+    {
+      SLEEP_MILISEC (0, 700);
+    }
+
   timeout = 5;
   setsockopt (sock_fd, IPPROTO_TCP, TCP_DEFER_ACCEPT, (char *) &timeout, sizeof (timeout));
 #endif /* LINUX */
