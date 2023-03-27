@@ -35,13 +35,21 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprField extends Expr {
 
+    public void setType(TypeSpec type) {
+        this.type = type;
+    }
+
+    public void setColIndex(int colIndex) {
+        this.colIndex = colIndex;
+    }
+
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitExprField(this);
     }
 
     public final ExprId record;
-    public String fieldName;
+    public final String fieldName;
 
     public ExprField(ParserRuleContext ctx, ExprId record, String fieldName) {
         super(ctx);
@@ -52,11 +60,34 @@ public class ExprField extends Expr {
 
     @Override
     public String exprToJavaCode() {
-        return record.toJavaCode() + ".getObject(\"" + fieldName + "\")";
+
+        if (colIndex > 0) {
+
+            // record is for a Static SQL
+            //
+            assert type != null;
+            String nameOfGetMethod = null;
+            if (type instanceof TypeSpecSimple) {
+                nameOfGetMethod = ((TypeSpecSimple) type).nameOfGetMethod;
+                assert nameOfGetMethod != null;
+            } else {
+                assert false : "unreachable";
+            }
+
+            return String.format("%s.%s(%d)", record.toJavaCode(), nameOfGetMethod, colIndex);
+        } else {
+
+            // record is for a Dynamic SQL
+            //
+            assert type == null;
+            return String.format("%s.getObject(\"%s\")", record.toJavaCode(), fieldName);
+        }
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
+    private TypeSpec type;
+    private int colIndex;
 }

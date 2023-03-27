@@ -338,7 +338,7 @@ atom
     | SQL PERCENT_ROWCOUNT                      # sql_rowcount_exp  // this must go before the cursor_attr_exp line
     | cursor_exp ( PERCENT_ISOPEN | PERCENT_FOUND | PERCENT_NOTFOUND | PERCENT_ROWCOUNT )   # cursor_attr_exp
     | '(' expression ')'                        # paren_exp
-    | '{' expressions '}'                       # list_exp
+    //| '{' expressions '}'                       # list_exp    TODO: restore later
     ;
 
 function_call
@@ -353,12 +353,14 @@ relational_operator
     | '>='
     | '<'
     | '>'
+    /* TODO: restore later
     | SETEQ
     | SETNEQ
     | SUPERSET
     | SUBSET
     | SUPERSETEQ
     | SUBSETEQ
+     */
     ;
 
 in_elements
@@ -524,10 +526,10 @@ simple_type
     | TIMESTAMPTZ
     | DATETIMELTZ
     | DATETIMETZ
-     */
     | SET
     | MULTISET
     | LIST | SEQUENCE
+     */
     | SYS_REFCURSOR
     ;
 

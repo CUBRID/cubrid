@@ -252,7 +252,7 @@ public class ServerAPI {
                         );
                 hostVars.add(
                         new PlParamInfo(
-                                "N", // name
+                                "G", // name
                                 ServerConstants.PARAM_MODE_IN, // mode
                                 DBType.DB_CHAR, // type
                                 1, // prec

@@ -152,16 +152,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 }
 
                 String sqlType = getSqlTypeNameFromCode(fs.retType.type);
-                String javaType = getJavaType(sqlType);
-                if (javaType == null) {
+                TypeSpec retType = getTypeSpec(sqlType);
+                if (retType == null) {
                     throw new SemanticError( // s418
                             node.lineNo(),
                             "the function uses unsupported type "
                                     + sqlType
                                     + " as its return type");
                 }
-                TypeSpec retType = TypeSpecSimple.of(javaType);
-                assert retType != null;
 
                 gfc.decl = new DeclFunc(null, fs.name, paramList, retType);
 
@@ -173,8 +171,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 ServerAPI.ColumnType ct = (ServerAPI.ColumnType) q;
 
                 String sqlType = getSqlTypeNameFromCode(ct.colType.type);
-                String javaType = getJavaType(sqlType);
-                if (javaType == null) {
+                TypeSpec ty = getTypeSpec(sqlType);
+                if (ty == null) {
                     throw new SemanticError( // s410
                             node.lineNo(),
                             "the table column "
@@ -184,8 +182,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                                     + " has an unsupported type "
                                     + sqlType);
                 }
-                TypeSpec ty = TypeSpecSimple.of(javaType);
-                assert ty != null;
 
                 assert node instanceof TypeSpecPercent;
                 ((TypeSpecPercent) node).resolvedType = ty;
@@ -296,21 +292,21 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         // TODO: restore two lines below
         // addToImports("java.math.BigDecimal");
         // return new TypeSpecNumeric(precision, scale);
-        return TypeSpecSimple.of(getJavaType("NUMERIC")); // ignore precision and scale for now
+        return TypeSpecSimple.NUMERIC; // ignore precision and scale for now
     }
 
     @Override
     public TypeSpecSimple visitChar_type(Char_typeContext ctx) {
         // ignore length for now
-        return TypeSpecSimple.of("java.lang.String");
+        return TypeSpecSimple.STRING;
     }
 
     @Override
     public TypeSpecSimple visitSimple_type(Simple_typeContext ctx) {
         String pcsType = Misc.getNormalizedText(ctx);
-        String javaType = getJavaType(pcsType);
-        assert javaType != null : "no java type for PL/CSQL type " + pcsType;
-        return TypeSpecSimple.of(javaType);
+        TypeSpecSimple ret = getTypeSpec(pcsType);
+        assert ret != null : "invalid PL/CSQL type " + pcsType;
+        return ret;
     }
 
     @Override
@@ -370,18 +366,20 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             opStr = "Lt";
         } else if (op.GT() != null) {
             opStr = "Gt";
-        } else if (op.SETEQ() != null) {
-            opStr = "SetEq";
-        } else if (op.SETNEQ() != null) {
-            opStr = "SetNeq";
-        } else if (op.SUPERSET() != null) {
-            opStr = "Superset";
-        } else if (op.SUBSET() != null) {
-            opStr = "Subset";
-        } else if (op.SUPERSETEQ() != null) {
-            opStr = "SupersetEq";
-        } else if (op.SUBSETEQ() != null) {
-            opStr = "SubsetEq";
+            /* TODO: restore later
+            } else if (op.SETEQ() != null) {
+                opStr = "SetEq";
+            } else if (op.SETNEQ() != null) {
+                opStr = "SetNeq";
+            } else if (op.SUPERSET() != null) {
+                opStr = "Superset";
+            } else if (op.SUBSET() != null) {
+                opStr = "Subset";
+            } else if (op.SUPERSETEQ() != null) {
+                opStr = "SupersetEq";
+            } else if (op.SUBSETEQ() != null) {
+                opStr = "SubsetEq";
+             */
         }
         if (opStr == null) {
             assert false : "unreachable"; // by syntax
@@ -641,11 +639,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                         "number of digits of an integer literal may not exceed 38");
             } else if (bi.compareTo(BIGINT_MAX) > 0) {
                 addToImports("java.math.BigDecimal");
-                ty = ExprUint.Type.BIGDECIMAL;
+                ty = ExprUint.Type.NUMERIC;
             } else if (bi.compareTo(INT_MAX) > 0) {
-                ty = ExprUint.Type.LONG;
+                ty = ExprUint.Type.BIGINT;
             } else {
-                ty = ExprUint.Type.INTEGER;
+                ty = ExprUint.Type.INT;
             }
 
             return new ExprUint(ctx, bi.toString(), ty);
@@ -868,12 +866,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return visitExpression(ctx.expression());
     }
 
+    /* TODO: restore later
     @Override
     public Expr visitList_exp(List_expContext ctx) {
         NodeList<Expr> elems = visitExpressions(ctx.expressions());
         addToImports("java.util.Arrays");
         return new ExprList(ctx, elems);
     }
+     */
 
     @Override
     public NodeList<Decl> visitSeq_of_declare_specs(Seq_of_declare_specsContext ctx) {
@@ -1767,7 +1767,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     Misc.getLineOf(ctx.identifier()), // s041
                     "identifier in an OPEN-FOR statement must be assignable to");
         }
-        if (!((DeclIdTyped) refCursor.decl).typeSpec().equals(TypeSpecSimple.REFCURSOR)) {
+        if (!((DeclIdTyped) refCursor.decl).typeSpec().equals(TypeSpecSimple.SYS_REFCURSOR)) {
             throw new SemanticError(
                     Misc.getLineOf(ctx.identifier()), // s042
                     "identifier in an OPEN-FOR statement must be of SYS_REFCURSOR type");
@@ -2003,53 +2003,59 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         DeclId decl = id.decl;
         return (decl instanceof DeclCursor
                 || ((decl instanceof DeclVar || decl instanceof DeclParam)
-                        && ((DeclIdTyped) decl).typeSpec().equals(TypeSpecSimple.REFCURSOR)));
+                        && ((DeclIdTyped) decl).typeSpec().equals(TypeSpecSimple.SYS_REFCURSOR)));
     }
 
-    private static final Map<String, String> pcsToJavaTypeMap = new TreeMap<>();
+    private static final Map<String, TypeSpecSimple> typeSpecs = new TreeMap<>();
 
     static {
-        pcsToJavaTypeMap.put("BOOLEAN", "java.lang.Boolean");
+        typeSpecs.put("BOOLEAN", TypeSpecSimple.BOOLEAN);
 
-        pcsToJavaTypeMap.put("CHAR", "java.lang.String");
-        pcsToJavaTypeMap.put("CHARACTER", "java.lang.String");
-        pcsToJavaTypeMap.put("VARCHAR", "java.lang.String");
-        pcsToJavaTypeMap.put("CHAR VARYING", "java.lang.String");
-        pcsToJavaTypeMap.put("CHARACTER VARYING", "java.lang.String");
-        pcsToJavaTypeMap.put("STRING", "java.lang.String");
+        typeSpecs.put("CHAR", TypeSpecSimple.STRING);
+        typeSpecs.put("CHARACTER", TypeSpecSimple.STRING);
+        typeSpecs.put("VARCHAR", TypeSpecSimple.STRING);
+        typeSpecs.put("CHAR VARYING", TypeSpecSimple.STRING);
+        typeSpecs.put("CHARACTER VARYING", TypeSpecSimple.STRING);
+        typeSpecs.put("STRING", TypeSpecSimple.STRING);
 
-        pcsToJavaTypeMap.put("NUMERIC", "java.math.BigDecimal");
-        pcsToJavaTypeMap.put("DECIMAL", "java.math.BigDecimal");
+        typeSpecs.put("NUMERIC", TypeSpecSimple.NUMERIC);
+        typeSpecs.put("DECIMAL", TypeSpecSimple.NUMERIC);
 
-        pcsToJavaTypeMap.put("SHORT", "java.lang.Short");
-        pcsToJavaTypeMap.put("SMALLINT", "java.lang.Short");
-        pcsToJavaTypeMap.put("INT", "java.lang.Integer");
-        pcsToJavaTypeMap.put("INTEGER", "java.lang.Integer");
-        pcsToJavaTypeMap.put("BIGINT", "java.lang.Long");
+        typeSpecs.put("SHORT", TypeSpecSimple.SHORT);
+        typeSpecs.put("SMALLINT", TypeSpecSimple.SHORT);
 
-        pcsToJavaTypeMap.put("FLOAT", "java.lang.Float");
-        pcsToJavaTypeMap.put("REAL", "java.lang.Float");
-        pcsToJavaTypeMap.put("DOUBLE", "java.lang.Double");
-        pcsToJavaTypeMap.put("DOUBLE PRECISION", "java.lang.Double");
+        typeSpecs.put("INT", TypeSpecSimple.INT);
+        typeSpecs.put("INTEGER", TypeSpecSimple.INT);
 
-        pcsToJavaTypeMap.put("DATE", "java.time.LocalDate");
-        pcsToJavaTypeMap.put("TIME", "java.time.LocalTime");
-        pcsToJavaTypeMap.put("TIMESTAMP", "java.time.ZonedDateTime");
-        pcsToJavaTypeMap.put("DATETIME", "java.time.LocalDateTime");
+        typeSpecs.put("BIGINT", TypeSpecSimple.BIGINT);
 
-        /* TODO: restore the following four lines
-        pcsToJavaTypeMap.put("TIMESTAMPTZ", "java.time.ZonedDateTime");
-        pcsToJavaTypeMap.put("TIMESTAMPLTZ", "java.time.ZonedDateTime");
-        pcsToJavaTypeMap.put("DATETIMETZ", "java.time.ZonedDateTime");
-        pcsToJavaTypeMap.put("DATETIMELTZ", "java.time.ZonedDateTime");
+        typeSpecs.put("FLOAT", TypeSpecSimple.FLOAT);
+        typeSpecs.put("REAL", TypeSpecSimple.FLOAT);
+
+        typeSpecs.put("DOUBLE", TypeSpecSimple.DOUBLE);
+        typeSpecs.put("DOUBLE PRECISION", TypeSpecSimple.DOUBLE);
+
+        typeSpecs.put("DATE", TypeSpecSimple.DATE);
+
+        typeSpecs.put("TIME", TypeSpecSimple.TIME);
+
+        typeSpecs.put("TIMESTAMP", TypeSpecSimple.TIMESTAMP);
+
+        typeSpecs.put("DATETIME", TypeSpecSimple.DATETIME);
+
+        typeSpecs.put("SYS_REFCURSOR", TypeSpecSimple.SYS_REFCURSOR);
+
+        /* TODO: restore later
+        typeSpecs.put("TIMESTAMPTZ", ...);
+        typeSpecs.put("TIMESTAMPLTZ", ...);
+        typeSpecs.put("DATETIMETZ", ...);
+        typeSpecs.put("DATETIMELTZ", ...);
+
+        typeSpecs.put("SET", ...);
+        typeSpecs.put("MULTISET", ...);
+        typeSpecs.put("LIST", ...);
+        typeSpecs.put("SEQUENCE", ...);
          */
-
-        pcsToJavaTypeMap.put("SET", "java.util.Set");
-        pcsToJavaTypeMap.put("MULTISET", "org.apache.commons.collections4.MultiSet");
-        pcsToJavaTypeMap.put("LIST", "java.util.List");
-        pcsToJavaTypeMap.put("SEQUENCE", "java.util.List");
-
-        pcsToJavaTypeMap.put("SYS_REFCURSOR", "com.cubrid.plcsql.predefined.sp.SpLib.Query");
     }
 
     private static boolean isAssignableTo(ExprId id) {
@@ -2140,27 +2146,28 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     private void addToImports(String i) {
-        // System.out.println("temp: i = " + i);
-        imports.add(i);
+
+        assert i != null;
+
+        if ("com.cubrid.plcsql.predefined.sp.SpLib.Query".equals(i)) {
+            // no need to import Cursor now
+        } else if (i.startsWith("java.lang.")
+                && i.lastIndexOf('.') == 9) { // 9:the index of the second '.'
+            // no need to import java.lang.*
+        } else {
+            imports.add(i);
+        }
     }
 
-    private String getJavaType(String pcsType) {
-        String javaType = pcsToJavaTypeMap.get(pcsType);
-        if (javaType == null) {
+    private TypeSpecSimple getTypeSpec(String pcsType) {
+        TypeSpecSimple typeSpec = typeSpecs.get(pcsType);
+        if (typeSpec == null) {
             return null;
         }
 
-        if ("com.cubrid.plcsql.predefined.sp.SpLib.Query".equals(javaType)) {
-            // no need to import Cursor now
-        } else if (javaType.startsWith("java.lang.")
-                && javaType.lastIndexOf('.') == 9) { // 9:the index of the second '.'
-            // no need to import java.lang.*
-        } else {
-            // if it is not in the java.lang package
-            addToImports(javaType);
-        }
+        addToImports(typeSpec.fullJavaType);
 
-        return javaType;
+        return typeSpec;
     }
 
     private Expr visitExpression(ParserRuleContext ctx) {
@@ -2180,10 +2187,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             throw new SemanticError(
                     Misc.getLineOf(ctx), // s052
                     String.format("invalid %s string: %s", originType, s));
-        }
-        addToImports("java.time.ZoneOffset");
-        if (timestamp.equals(DateTimeParser.nullDatetimeUTC)) {
-            addToImports("java.time.LocalDateTime");
         }
         return new ExprZonedDateTime(ctx, timestamp, originType);
     }
@@ -2308,15 +2311,18 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         ArrayList<ExprId> intoVars = null;
 
         // check (name-binding) and convert host variables used in the SQL
-        for (PlParamInfo pi : sws.hostVars) {
-            String sqlType = getSqlTypeNameFromCode(pi.type);
 
-            String var = Misc.getNormalizedText(pi.name);
-            ExprId id = visitNonFuncIdentifier(var, ctx); // s408: undeclared id ...
+        if (sws.hostVars != null) {
+            for (PlParamInfo pi : sws.hostVars) {
+                String sqlType = getSqlTypeNameFromCode(pi.type);
 
-            TypeSpec javaType = TypeSpec.of(pcsToJavaTypeMap.get(sqlType));
-            assert javaType != null;
-            hostVars.put(id, javaType);
+                String var = Misc.getNormalizedText(pi.name);
+                ExprId id = visitNonFuncIdentifier(var, ctx); // s408: undeclared id ...
+
+                TypeSpec typeSpec = typeSpecs.get(sqlType);
+                assert typeSpec != null;
+                hostVars.put(id, typeSpec);
+            }
         }
 
         if (sws.kind == ServerConstants.CUBRID_STMT_SELECT) {
@@ -2327,9 +2333,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 String sqlType = getSqlTypeNameFromCode(ci.type);
 
                 String col = Misc.getNormalizedText(ci.colName);
-                TypeSpec javaType = TypeSpec.of(pcsToJavaTypeMap.get(sqlType));
-                assert javaType != null;
-                selectList.put(col, javaType);
+                TypeSpec typeSpec = typeSpecs.get(sqlType);
+                assert typeSpec != null;
+                selectList.put(col, typeSpec);
             }
 
             // check (name-binding) and convert into-variables used in the SQL
@@ -2360,12 +2366,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         for (int i = 0; i < len; i++) {
 
             String sqlType = getSqlTypeNameFromCode(params[i].type);
-            String javaType = getJavaType(sqlType);
-            if (javaType == null) {
+            TypeSpec paramType = getTypeSpec(sqlType);
+            if (paramType == null) {
                 return name + " uses unsupported type " + sqlType + " for parameter " + (i + 1);
             }
-            TypeSpec paramType = TypeSpecSimple.of(javaType);
-            assert paramType != null;
 
             if ((params[i].mode & ServerConstants.PARAM_MODE_OUT) > 0) {
                 paramList.nodes.add(new DeclParamOut(null, "p" + i, paramType));

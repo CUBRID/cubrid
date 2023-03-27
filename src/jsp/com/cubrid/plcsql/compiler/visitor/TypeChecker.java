@@ -326,7 +326,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     public TypeSpec visitExprCursorAttr(ExprCursorAttr node) {
         TypeSpec idType = visitExprId(node.id);
         assert (idType.equals(TypeSpecSimple.CURSOR)
-                || idType.equals(TypeSpecSimple.REFCURSOR)); // by earlier check
+                || idType.equals(TypeSpecSimple.SYS_REFCURSOR)); // by earlier check
 
         switch (node.attr) {
             case ISOPEN:
@@ -334,7 +334,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             case NOTFOUND:
                 return TypeSpecSimple.BOOLEAN;
             case ROWCOUNT:
-                return TypeSpecSimple.LONG;
+                return TypeSpecSimple.BIGINT;
             default:
                 assert false : "unreachable";
                 throw new RuntimeException("unreachable");
@@ -343,12 +343,12 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprDate(ExprDate node) {
-        return TypeSpecSimple.LOCALDATE;
+        return TypeSpecSimple.DATE;
     }
 
     @Override
     public TypeSpec visitExprDatetime(ExprDatetime node) {
-        return TypeSpecSimple.LOCALDATETIME;
+        return TypeSpecSimple.DATETIME;
     }
 
     @Override
@@ -371,6 +371,19 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                 throw new SemanticError(
                         node.lineNo(), // s401
                         String.format("no such column '%s' in the query result", node.fieldName));
+            } else {
+
+                node.setType(ret);
+
+                int i = 1;
+                for (String c : declForRecord.fieldTypes.keySet()) {
+                    if (c.equals(node.fieldName)) {
+                        break;
+                    }
+                    i++;
+                }
+                assert i <= declForRecord.fieldTypes.size();
+                node.setColIndex(i);
             }
         } else {
             // this record is for a dynamic SQL
@@ -397,7 +410,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         } else if (node.decl instanceof DeclCursor) {
             return TypeSpecSimple.CURSOR;
         } else if (node.decl instanceof DeclForIter) {
-            return TypeSpecSimple.INTEGER;
+            return TypeSpecSimple.INT;
         } else if (node.decl instanceof DeclForRecord) {
             assert false : "unreachable";
             throw new RuntimeException("unreachable");
@@ -434,11 +447,13 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         return TypeSpecSimple.BOOLEAN;
     }
 
+    /* TODO: restore later
     @Override
     public TypeSpec visitExprList(ExprList node) {
         visitNodeList(node.elems);
         return TypeSpecSimple.LIST;
     }
+     */
 
     @Override
     public TypeSpec visitExprLocalFuncCall(ExprLocalFuncCall node) {
@@ -454,12 +469,12 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitExprUint(ExprUint node) {
         switch (node.ty) {
-            case BIGDECIMAL:
-                return TypeSpecSimple.BIGDECIMAL;
-            case LONG:
-                return TypeSpecSimple.LONG;
-            case INTEGER:
-                return TypeSpecSimple.INTEGER;
+            case NUMERIC:
+                return TypeSpecSimple.NUMERIC;
+            case BIGINT:
+                return TypeSpecSimple.BIGINT;
+            case INT:
+                return TypeSpecSimple.INT;
             default:
                 assert false : "unreachable";
                 throw new RuntimeException("unreachable");
@@ -468,18 +483,18 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprFloat(ExprFloat node) {
-        return TypeSpecSimple.BIGDECIMAL; // TODO: apply precision and scale
+        return TypeSpecSimple.NUMERIC; // TODO: apply precision and scale
     }
 
     @Override
     public TypeSpec visitExprSerialVal(ExprSerialVal node) {
         assert node.verified;
-        return TypeSpecSimple.BIGDECIMAL; // TODO: apply precision and scale
+        return TypeSpecSimple.NUMERIC; // TODO: apply precision and scale
     }
 
     @Override
     public TypeSpec visitExprSqlRowCount(ExprSqlRowCount node) {
-        return TypeSpecSimple.LONG;
+        return TypeSpecSimple.BIGINT;
     }
 
     @Override
@@ -489,7 +504,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprTime(ExprTime node) {
-        return TypeSpecSimple.LOCALTIME;
+        return TypeSpecSimple.TIME;
     }
 
     @Override
@@ -516,7 +531,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprZonedDateTime(ExprZonedDateTime node) {
-        return TypeSpecSimple.ZONEDDATETIME;
+        return TypeSpecSimple.TIMESTAMP;
     }
 
     @Override
@@ -582,7 +597,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     public TypeSpec visitStmtCursorClose(StmtCursorClose node) {
         TypeSpec idType = visit(node.id);
         assert (idType.equals(TypeSpecSimple.CURSOR)
-                || idType.equals(TypeSpecSimple.REFCURSOR)); // by earlier check
+                || idType.equals(TypeSpecSimple.SYS_REFCURSOR)); // by earlier check
         return null;
     }
 
@@ -617,7 +632,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             }
             node.setCoerces(coerces);
 
-        } else if (idType.equals(TypeSpecSimple.REFCURSOR)) {
+        } else if (idType.equals(TypeSpecSimple.SYS_REFCURSOR)) {
             // nothing to do more,
         } else {
             assert false : "unreachable"; // by earlier check
@@ -715,25 +730,25 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         TypeSpec ty;
 
         ty = visit(node.lowerBound);
-        if (!TypeSpecSimple.INTEGER.equals(ty)) {
+        if (!TypeSpecSimple.INT.equals(ty)) {
             throw new SemanticError(
                     node.lowerBound.lineNo(), // s222
-                    "lower bounds of for loops must be of INTEGER type");
+                    "lower bounds of for loops must be of INT type");
         }
 
         ty = visit(node.upperBound);
-        if (!TypeSpecSimple.INTEGER.equals(ty)) {
+        if (!TypeSpecSimple.INT.equals(ty)) {
             throw new SemanticError(
                     node.upperBound.lineNo(), // s223
-                    "upper bounds of for loops must be of INTEGER type");
+                    "upper bounds of for loops must be of INT type");
         }
 
         if (node.step != null) {
             ty = visit(node.step);
-            if (!TypeSpecSimple.INTEGER.equals(ty)) {
+            if (!TypeSpecSimple.INT.equals(ty)) {
                 throw new SemanticError(
                         node.step.lineNo(), // s224
-                        "steps of for loops must be of INTEGER type");
+                        "steps of for loops must be of INT type");
             }
         }
 
@@ -795,7 +810,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitStmtOpenFor(StmtOpenFor node) {
         TypeSpec ty = visitExprId(node.id);
-        assert ty.equals(TypeSpecSimple.REFCURSOR); // by earlier check
+        assert ty.equals(TypeSpecSimple.SYS_REFCURSOR); // by earlier check
 
         assert node.staticSql != null;
         assert node.staticSql.intoVars == null; // by earlier check
@@ -814,10 +829,10 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         TypeSpec ty;
 
         ty = visit(node.errCode);
-        if (!ty.equals(TypeSpecSimple.INTEGER)) {
+        if (!ty.equals(TypeSpecSimple.INT)) {
             throw new SemanticError(
                     node.errCode.lineNo(), // s220
-                    "error codes must be an integer");
+                    "error codes must be an INT");
         }
 
         ty = visit(node.errMsg);
