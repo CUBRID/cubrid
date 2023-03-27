@@ -679,6 +679,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
 
+#define PRM_NAME_STATDUMP_FORCE_ADD_INT_MAX "statdump_force_add_int_max"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -2276,6 +2278,10 @@ static unsigned int prm_first_log_pageid_flag = 0;
 bool PRM_USE_STAT_ESTIMATION = true;
 static bool prm_use_stat_estimation_default = true;
 static unsigned int prm_use_stat_estimation_flag = 0;
+
+bool PRM_STATDUMP_FORCE_ADD_INT_MAX = false;
+static bool prm_statdump_force_add_int_max_default = false;
+static unsigned int prm_statdump_force_add_int_max_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5853,6 +5859,17 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_use_stat_estimation_flag,
    (void *) &prm_use_stat_estimation_default,
    (void *) &PRM_USE_STAT_ESTIMATION,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STATDUMP_FORCE_ADD_INT_MAX,
+   PRM_NAME_STATDUMP_FORCE_ADD_INT_MAX,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_statdump_force_add_int_max_flag,
+   (void *) &prm_statdump_force_add_int_max_default,
+   (void *) &PRM_STATDUMP_FORCE_ADD_INT_MAX,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
