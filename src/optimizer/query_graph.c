@@ -7643,7 +7643,8 @@ qo_discover_indexes (QO_ENV * env)
 	   * sequential scan is needed).
 	   */
 	  if (!PT_IS_SPEC_FLAG_SET (QO_NODE_ENTITY_SPEC (nodep),
-				    (PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN)))
+				    (PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN |
+				     PT_SPEC_FLAG_SAMPLING_SCAN)))
 	    {
 	      qo_find_node_indexes (env, nodep);
 	      if (0 < QO_NODE_INFO_N (nodep) && QO_NODE_INDEXES (nodep) != NULL)

@@ -89,7 +89,8 @@ typedef enum
   S_HEAP_PAGE_SCAN,		/* scans heap pages and queries for page information */
   S_INDX_KEY_INFO_SCAN,		/* scans b-tree and queries for key info */
   S_INDX_NODE_INFO_SCAN,	/* scans b-tree nodes for info */
-  S_DBLINK_SCAN			/* scans dblink */
+  S_DBLINK_SCAN,		/* scans dblink */
+  S_HEAP_SAMPLING_SCAN		/* scans sampling data */
 } SCAN_TYPE;
 
 typedef struct dblink_scan_id DBLINK_SCAN_ID;
@@ -116,6 +117,7 @@ struct heap_scan_id
   bool scanrange_inited;
   DB_VALUE **cache_recordinfo;	/* cache for record information */
   regu_variable_list_node *recordinfo_regu_list;	/* regulator variable list for record info */
+  int sampling_skip_cnt;	/* for sampling statistics */
 };				/* Regular Heap File Scan Identifier */
 
 typedef struct heap_page_scan_id HEAP_PAGE_SCAN_ID;

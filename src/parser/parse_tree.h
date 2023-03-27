@@ -1352,6 +1352,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_PUSH_PRED  0x200000000ULL	/* do not push predicates */
 #define  PT_HINT_NO_MERGE  0x400000000ULL	/* do not merge view or in-line view */
 #define  PT_HINT_NO_ELIMINATE_JOIN  0x800000000ULL	/* do not eliminate join */
+#define  PT_HINT_SAMPLING_SCAN  0x1000000000ULL	/* SELECT sampling data instead of full data */
 
 /* Codes for error messages */
 typedef enum
@@ -1679,7 +1680,8 @@ typedef enum
   PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN = 0x200,	/* one of the spec's indexes will be scanned for b-tree node info */
   PT_SPEC_FLAG_MVCC_COND_REEV = 0x400,	/* the spec is used in mvcc condition reevaluation */
   PT_SPEC_FLAG_MVCC_ASSIGN_REEV = 0x800,	/* the spec is used in UPDATE assignment reevaluation */
-  PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE = 0x1000	/* the spec was checked and does not have any uniques */
+  PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE = 0x1000,	/* the spec was checked and does not have any uniques */
+  PT_SPEC_FLAG_SAMPLING_SCAN = 0x2000	/* spec for sampling scan */
 } PT_SPEC_FLAG;
 
 typedef enum

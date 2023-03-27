@@ -697,7 +697,8 @@ typedef enum
   ACCESS_METHOD_SEQUENTIAL_RECORD_INFO,	/* sequential scan that will read record info */
   ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN,	/* sequential scan access that only scans pages without accessing record data */
   ACCESS_METHOD_INDEX_KEY_INFO,	/* indexed access to obtain key information */
-  ACCESS_METHOD_INDEX_NODE_INFO	/* indexed access to obtain b-tree node info */
+  ACCESS_METHOD_INDEX_NODE_INFO,	/* indexed access to obtain b-tree node info */
+  ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN	/* sequential sampling scan */
 } ACCESS_METHOD;
 
 #define IS_ANY_INDEX_ACCESS(access_) \

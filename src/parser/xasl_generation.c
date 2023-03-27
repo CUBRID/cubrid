@@ -12356,6 +12356,10 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		{
 		  access_method = ACCESS_METHOD_SEQUENTIAL_RECORD_INFO;
 		}
+	      else if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_SAMPLING_SCAN))
+		{
+		  access_method = ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN;
+		}
 	      else if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PAGE_INFO_SCAN))
 		{
 		  access_method = ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN;

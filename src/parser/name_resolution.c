@@ -1739,6 +1739,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      node->info.query.q.select.from->info.spec.flag =
 		(PT_SPEC_FLAG) (node->info.query.q.select.from->info.spec.flag | PT_SPEC_FLAG_RECORD_INFO_SCAN);
 	    }
+	  else if (node->info.query.q.select.hint & PT_HINT_SAMPLING_SCAN)
+	    {
+	      /* mark spec to scan for sampling scan */
+	      node->info.query.q.select.from->info.spec.flag =
+		(PT_SPEC_FLAG) (node->info.query.q.select.from->info.spec.flag | PT_SPEC_FLAG_SAMPLING_SCAN);
+	    }
 	  else if (node->info.query.q.select.hint & PT_HINT_SELECT_PAGE_INFO)
 	    {
 	      /* mark spec to scan for heap page headers */

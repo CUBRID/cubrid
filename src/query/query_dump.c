@@ -444,6 +444,8 @@ qdump_access_method_string (ACCESS_METHOD access)
       return "index";
     case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
       return "sequential record info";
+    case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
+      return "sequential sampling scan";
     case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
       return "sequential page scan";
     default:

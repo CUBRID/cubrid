@@ -14150,6 +14150,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, q, "SELECT_RECORD_INFO ");
 	    }
 
+	  if (p->info.query.q.select.hint & PT_HINT_SAMPLING_SCAN)
+	    {
+	      q = pt_append_nulstring (parser, q, "SAMPLING_SCAN ");
+	    }
+
 	  if (p->info.query.q.select.hint & PT_HINT_SELECT_PAGE_INFO)
 	    {
 	      q = pt_append_nulstring (parser, q, "SELECT_PAGE_INFO ");
