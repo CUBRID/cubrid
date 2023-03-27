@@ -10906,10 +10906,10 @@ plcsql_transfer_file (const std::string & input_file, const bool & verbose, std:
 
   OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int req_error =
-    net_client_request_method_callback (NET_SERVER_PLCSQL_TRANSFER_FILE, eb.get_ptr (),
-					(int) packer.get_current_size (),
-					reply, OR_ALIGNED_BUF_SIZE (a_reply), &data_reply, &data_reply_size);
+  int req_error = net_client_request_method_callback (NET_SERVER_PLCSQL_TRANSFER_FILE, eb.get_ptr (),
+						      (int) packer.get_current_size (),
+						      reply, OR_ALIGNED_BUF_SIZE (a_reply), &data_reply,
+						      &data_reply_size);
   if (!req_error)
     {
       goto error;
