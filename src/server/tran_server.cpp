@@ -159,6 +159,12 @@ tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in,
   int err_code = NO_ERROR;
   std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
 
+  /*
+   *  send_receive () on a connection could fail when it is disconnected while waiting for its response.
+   *  In this case, it waits and retries with the expectation that the main connection will be changed.
+   *  - Normal disconnection: in receive_disconnect_request() and disconnect_all_page_servers()
+   *  - Abnormal disconnection: in the error handler, here, or somewhere else (TODO)
+   */
   m_page_server_conn_vec_cv.wait (s_lock, [&] ()
   {
     if (m_page_server_conn_vec.empty())
@@ -376,20 +382,31 @@ tran_server::disconnect_all_page_servers ()
 void
 tran_server::disconnect_page_server_async (const connection_handler *conn)
 {
-  std::lock_guard<std::shared_mutex> lk_guard (m_page_server_conn_vec_mtx);
+  std::unique_lock<std::shared_mutex> ulock (m_page_server_conn_vec_mtx);
   auto &conn_vec = m_page_server_conn_vec;
+  auto it = conn_vec.begin ();
 
-  for (auto it = conn_vec.begin (); it != conn_vec.end (); it++)
+  assert_release (conn_vec.size() >= 2);  // For now, at least one connection must be left.
+
+  for (; it != conn_vec.end (); it++)
     {
       if (it->get () == conn)
 	{
+	  if (it == conn_vec.begin ())
+	    {
+	      // We assume that the first one in the vector is the main connection.
+	      _er_log_debug (ARG_FILE_LINE, "Change the main connection from %s to %s\n", (*it)->get_channel_id ().c_str (),
+			     (* (it + 1))->get_channel_id ().c_str ());
+	    }
+
 	  m_async_disconnect_handler.disconnect (std::move (*it));
 	  assert (*it == nullptr);
 	  conn_vec.erase (it);
-	  break;
 	}
     }
+  ulock.unlock ();
   // It's possible that the connection is already cleared in disconnect_all_page_servers()
+  m_page_server_conn_vec_cv.notify_all ();
 }
 
 bool
