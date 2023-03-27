@@ -10904,24 +10904,40 @@ plcsql_transfer_file (const std::string & input_file, const bool & verbose, std:
 
   packer.set_buffer_and_pack_all (eb, verbose, input_file);
 
-  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int req_error = net_client_request2 (NET_SERVER_PLCSQL_TRANSFER_FILE, eb.get_ptr (), (int) packer.get_current_size (),
-				       reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_reply_size);
+  int req_error = net_client_request_method_callback (NET_SERVER_PLCSQL_TRANSFER_FILE, eb.get_ptr (),
+						      (int) packer.get_current_size (),
+						      reply, OR_ALIGNED_BUF_SIZE (a_reply), &data_reply,
+						      &data_reply_size);
   if (!req_error)
     {
-      ptr = or_unpack_int (reply, &data_reply_size);
-      ptr = or_unpack_int (ptr, &rc);
-      if (data_reply_size > 0)
-	{
-	  packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-	  unpacker.unpack_all (output_file, sql);
-	  rc = NO_ERROR;
-	}
-      else
-	{
-	  rc = ER_FAILED;
-	}
+      goto error;
+    }
+
+  /* consumes dummy reply */
+  int dummy;
+  ptr = or_unpack_int (reply, &dummy);
+  ptr = or_unpack_int (ptr, &dummy);
+  ptr = or_unpack_int (ptr, &dummy);
+
+  /* receive result values / error */
+  if (data_reply != NULL)
+    {
+      packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
+      unpacker.unpack_all (output_file, sql);
+      rc = NO_ERROR;
+    }
+
+error:
+  // TODO error handling
+  if (req_error != NO_ERROR)
+    {
+      //
+    }
+
+  if (data_reply != NULL)
+    {
       free_and_init (data_reply);
     }
 
