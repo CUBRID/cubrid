@@ -44,7 +44,7 @@ jobs:
           path: cubrid
       - run:
           name: Build
-          command: scl enable devtoolset-9 -- /entrypoint.sh build
+          command: scl enable devtoolset-8 -- /entrypoint.sh build
       - persist_to_workspace:
           root: .
           paths:
