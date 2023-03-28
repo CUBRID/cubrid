@@ -12894,6 +12894,8 @@ qdata_save_agg_hentry_to_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_KEY * key
   DB_VALUE tuple_count;
   int tuple_size = QFILE_TUPLE_LENGTH_SIZE;
   int col = 0, i;
+  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  int error = NO_ERROR;
 
   /* build tuple descriptor */
   for (i = 0; i < key->val_count; i++)
@@ -12919,12 +12921,34 @@ qdata_save_agg_hentry_to_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_KEY * key
   list_id->tpl_descr.f_valp[col++] = &tuple_count;
   tuple_size += qdata_get_tuple_value_size_from_dbval (&tuple_count);
 
-  /* add to list file */
   list_id->tpl_descr.tpl_size = tuple_size;
-  qfile_generate_tuple_into_list (thread_p, list_id, T_NORMAL);
+  /* add to list file */
+  if (tuple_size <= QFILE_MAX_TUPLE_SIZE_IN_PAGE)
+    {
+      qfile_generate_tuple_into_list (thread_p, list_id, T_NORMAL);
+    }
+  else
+    {
+      error = qfile_copy_tuple_descr_to_tuple (thread_p, &list_id->tpl_descr, &tplrec);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      error = qfile_add_tuple_to_list (thread_p, list_id, tplrec.tpl);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
+
+cleanup:
+  if (tplrec.tpl != NULL)
+    {
+      db_private_free (thread_p, tplrec.tpl);
+    }
 
   /* all ok */
-  return NO_ERROR;
+  return error;
 }
 
 /*
