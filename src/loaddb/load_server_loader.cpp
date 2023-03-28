@@ -118,7 +118,28 @@ namespace cubload
     LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
     LC_FIND_CLASSNAME found_again = LC_CLASSNAME_EXIST;
 
-    found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
+    if (strchr (class_name, '.') || utility_check_system_class_name (class_name))
+      {
+	found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
+      }
+    else
+      {
+	/* Added for backwards compatibility.
+	 *
+	 * In versions lower than 11.2, the schema name is not specified in the unloaded object file.
+	 * So, if the schema name is not specified, the schema name of the current session must be specified.
+	 */
+
+	char user_specified_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
+	const char *user_name = m_session.get_args ().user_name.c_str ();
+	assert (user_name != NULL);
+
+	snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", user_name, class_name);
+
+	found = xlocator_find_class_oid (&thread_ref, user_specified_name, &class_oid, BU_LOCK);
+      }
+
     if (found == LC_CLASSNAME_EXIST)
       {
 	return found;
@@ -679,7 +700,8 @@ namespace cubload
 
     insert_errors_filtered = has_errors_filtered_for_insert (m_session.get_args().m_ignored_errors);
 
-    if (insert_errors_filtered)
+    /* The locator_multi_insert_force() sometimes creates the data page-based log record instead of the record-based log record. In HA, it means that the replication log cannot have an accurate LSA for each insert by loaddb. */
+    if (insert_errors_filtered || !HA_DISABLED ())
       {
 	// In case of possible errors filtered for insert we disable the unique optimization
 	for (size_t i = 0; i < m_recdes_collected.size (); i++)

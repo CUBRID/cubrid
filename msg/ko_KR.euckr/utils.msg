@@ -488,13 +488,15 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 120 데이터 파일이 '%%class'을 포함하거나 '--table' 옵션이 주어져야 합니다.\n
 121 무시된 테이블 %1$s.\n
 122 사용자 이름의 최대 길이는 %1$d 바이트 입니다.\n
-123 \
+123 %1$s 은 빈 파일 입니다.\n
+124 \
 loaddb: 데이터베이스에 객체 및 스키마 적재\n\
 사용법: %1$s loaddb [옵션] 데이터베이스 이름[@호스트]\n\
 \n\
 옵션:\n\
   -S, --SA-mode                  독립 모드 실행\n\
   -C, --CS-mode                  클라이언트 서버 모드 실행\n\
+                                 경고: 클라이언트 서버 모드에서는 데이터 파일(-d, --data-file=FILE)만 로드 할 수 있습니다.\n\
   -u, --user=ID                  데이터베이스 접근에 관한 사용자 이름; 기본값: "public"\n\
   -p, --password=PASS            사용자 패스워드; 기본값: 없음\n\
       --data-file-check-only     데이터 파일을 로딩하지 않고 신택스만 검사; 기본값: 아니오\n\
@@ -512,7 +514,10 @@ loaddb: 데이터베이스에 객체 및 스키마 적재\n\
       --error-control-file=FILE  적재 시 발생하는 에러에 대한 제어 파일\n\
       --ignore-class-file=FILE   적재하지 않을 클래스 이름이 있는 파일\n\
       --no-user-specified-name   소유자 이름 없이 객체 이름으로 CLASS, SERIAL 및 TRIGGER를 찾음.\n\
-                                 CUBRID 11.2 전 버전에서 생성된 파일을 불러오기 위함.\n
+                                 CUBRID 11.2 전 버전에서 생성된 파일을 불러오기 위함.\n\
+      --schema-file-list=FILE    이 파일의 내용은 loaddb에서 사용할 스키마 파일 이름 목록이다.\n\
+                                 loaddb는 위에서부터 순차적으로 실행된다.\n\
+                                 경고: -s 옵션과 함께 사용 할 수 없습니다.\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
@@ -552,7 +557,9 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
       --use-delimiter         식별자 처음과 끝에 '"' 사용; 기본값: 사용 안 함\n\
   -S, --SA-mode               독립 모드 실행\n\
   -C, --CS-mode               클라이언트 서버 모드 실행\n\
-      --datafile-per-class    각 클래스별 오브젝트 파일 생성; 기본값:한 개의 오브젝트 파일생성\n
+      --datafile-per-class    각 클래스별 오브젝트 파일 생성; 기본값:한 개의 오브젝트 파일생성\n\
+      --split-schema-files    스키마 정보를 오브젝트별로 분리하여 각각의 파일로 생성; 기본값: 모든 오브젝트가 포함된 한 개의 스키마 파일 생성\n\
+      --as-dba                로그인 사용자가 DBA 그룹의 구성원인 경우 DBA와 동일한 스키마 파일을 추출합니다.\n
 
 
 
@@ -674,7 +681,7 @@ addvoldb: 데이터베이스 볼륨 파일을 추가\n\
       --db-volume-size=SIZE        추가될 볼륨의 크기; 기본값: 설정에서 읽음\n\
       --max-writesize-in-sec=SIZE  초당 추가될 볼륨의 크기. (예. 512K, 1M, 10M); 기본값: 사용하지 않음; 최소값: 160K\n\
   -n, --volume-name=NAME           볼륨 이름; 기본값: "db"_ext1 과 같은 이름을 생성\n\
-  -F, --file-path=PATH             데이터베이스 파일에 대한 볼륨 패스; 기본값: 현재 디렉터리\n\
+  -F, --file-path=PATH             데이터베이스 파일에 대한 볼륨 패스; 기본값: volume_extension_path\n\
       --comment=COMMENT            볼륨 주석; 기본값: 없음\n\
   -p, --purpose=PURPOSE            볼륨 사용 용도; 다음과 같은 값이 허용됨\n\
                                            DATA - 데이터 볼륨\n\
@@ -901,8 +908,12 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 2 필수 인자; 기본값: 없음
 3 java-class-file
 4 필수 인자; 기본값: 없음
-5 force-overwrite
-6 클래스 파일이 이미 존재하면 덮어씀; 기본값: 덮어쓰지 않음
+60 \
+Usage: loadjava [OPTION] database-name java-class-file\n\
+\n\
+valid options:\n\
+  -y, --overwrite              클래스 파일이 이미 존재하면 덮어씀; 기본값: 덮어쓰지 않음\n\
+  -p, --package                Java 패키지 이름; 지정하지 않으면 빈 문자열\n\
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 출력 파일 '%1$s'을 열 수 없습니다\n

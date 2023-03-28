@@ -1,5 +1,4 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation.
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -28,25 +27,13 @@
  * OF SUCH DAMAGE.
  *
  */
-package com.cubrid.jsp;
 
-public enum ExecuteThreadStatus {
-    IDLE(0),
-    PARSE(1),
-    INVOKE(2),
-    CALL(3),
-    RESULT(4),
-    DESTROY(5),
-    ERROR(-1),
-    END(-2);
+package com.cubrid.plcsql.compiler.ast;
 
-    private int status;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-    ExecuteThreadStatus(int status) {
-        this.status = status;
-    }
-
-    public int getValue() {
-        return this.status;
+public abstract class DeclId extends Decl {
+    public DeclId(ParserRuleContext ctx) {
+        super(ctx);
     }
 }

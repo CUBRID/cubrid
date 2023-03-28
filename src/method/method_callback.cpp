@@ -23,8 +23,13 @@
 #include "ddl_log.h"
 
 #include "method_def.hpp"
+#include "method_compile.hpp"
 #include "method_query_util.hpp"
 #include "method_struct_oid_info.hpp"
+
+#include "parser.h"
+#include "api_compat.h" /* DB_SESSION */
+#include "db.h"
 
 #include "object_primitive.h"
 #include "oid.h"
@@ -53,11 +58,10 @@ namespace cubmethod
   int
   callback_handler::callback_dispatch (packing_unpacker &unpacker)
   {
-    int64_t id;
-    int code;
-    unpacker.unpack_all (id, code);
-
     m_error_ctx.clear ();
+
+    int code;
+    unpacker.unpack_int (code);
 
     int error = NO_ERROR;
     switch (code)
@@ -88,6 +92,14 @@ namespace cubmethod
 	break;
       case METHOD_CALLBACK_GET_GENERATED_KEYS:
 	error = generated_keys (unpacker);
+	break;
+
+      /* compilation */
+      case METHOD_CALLBACK_GET_SQL_SEMNATICS:
+	error = get_sql_semantics (unpacker);
+	break;
+      case METHOD_CALLBACK_GET_GLOBAL_SEMANTICS:
+	error = get_global_semantics (unpacker);
 	break;
       default:
 	assert (false);
@@ -162,10 +174,15 @@ namespace cubmethod
 	  }
 	else
 	  {
-	    if (handler->prepare (sql, flag) == NO_ERROR)
+	    int error = handler->prepare (sql, flag);
+	    if (error == NO_ERROR)
 	      {
 		// add to statement handler cache
 		m_sql_handler_map.emplace (sql, handler->get_id ());
+	      }
+	    else
+	      {
+		m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
 	      }
 	  }
       }
@@ -197,25 +214,41 @@ namespace cubmethod
     if (handler == nullptr)
       {
 	// TODO: proper error code
-	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
-	return ER_FAILED;
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+	assert (false); // the error should have been handled in prepare function
       }
     else
       {
-	if (handler->execute (request) == NO_ERROR)
+	int error = handler->execute (request);
+	if (error == NO_ERROR)
 	  {
 	    /* register query_id for out resultset */
 	    const cubmethod::query_result &qresult = handler->get_result();
 	    if (qresult.stmt_type == CUBRID_STMT_SELECT)
 	      {
-		uint64_t qid = (uint64_t) handler->get_execute_info ().qresult_info.query_id;
+		uint64_t qid = (uint64_t) handler->get_query_id ();
 		m_qid_handler_map[qid] = request.handler_id;
 	      }
 	  }
-      }
+	else
+	  {
+	    /* XASL cache is not found */
+	    if (error == ER_QPROC_INVALID_XASLNODE)
+	      {
+		m_error_ctx.clear ();
+		handler->prepare_retry ();
+		error = handler->execute (request);
+	      }
 
-    /* DDL audit */
-    logddl_write_end ();
+	    if (error != NO_ERROR)
+	      {
+		m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	      }
+	  }
+
+	/* DDL audit */
+	logddl_write_end ();
+      }
 
     if (m_error_ctx.has_error())
       {
@@ -377,6 +410,119 @@ namespace cubmethod
   }
 
 //////////////////////////////////////////////////////////////////////////
+// Compile
+//////////////////////////////////////////////////////////////////////////
+  int
+  callback_handler::get_sql_semantics (packing_unpacker &unpacker)
+  {
+    sql_semantics_request request;
+    unpacker.unpack_all (request);
+    int i = -1;
+    int error = NO_ERROR;
+
+    std::vector<sql_semantics> semantics_vec;
+    for (const std::string s : request.sqls)
+      {
+	i++;
+	query_handler *handler = new_query_handler ();
+	if (handler == nullptr)
+	  {
+	    break;
+	  }
+
+	sql_semantics semantics;
+	semantics.idx = i;
+
+	er_clear ();
+	m_error_ctx.clear ();
+
+	error = handler->prepare_compile (s);
+	if (error == NO_ERROR && m_error_ctx.has_error () == false)
+	  {
+	    DB_SESSION *db_session = handler->get_db_session ();
+	    const prepare_info &info = handler->get_prepare_info ();
+
+	    semantics.sql_type = info.stmt_type;
+	    semantics.rewritten_query = parser_print_tree (db_get_parser (db_session), db_get_statement (db_session, 0));
+
+	    const std::vector<column_info> &column_infos = info.column_infos;
+	    for (const column_info &c_info : column_infos)
+	      {
+		semantics.columns.emplace_back (c_info);
+	      }
+
+	    int input_markers_cnt = db_number_of_input_markers (db_session, 1);
+	    DB_MARKER *marker = db_get_input_markers (db_session, 1);
+
+	    std::vector <pl_parameter_info> &param_info = semantics.hvs;
+	    if (input_markers_cnt > 0)
+	      {
+		param_info.resize (input_markers_cnt);
+		while (marker)
+		  {
+		    int idx = marker->info.host_var.index;
+
+		    pl_parameter_info &info = param_info[idx];
+
+		    info.mode = 1;
+		    if (marker->info.host_var.str)
+		      {
+			info.name = std::string ((char *) marker->info.host_var.str);
+		      }
+
+		    TP_DOMAIN *hv_expected_domain = db_session->parser->host_var_expected_domains[idx];
+
+		    // TODO: set type?!
+
+		    info.type = TP_DOMAIN_TYPE (hv_expected_domain);
+		    info.precision = db_domain_precision (hv_expected_domain);
+		    info.scale = (short) db_domain_scale (hv_expected_domain);
+		    info.charset = db_domain_codeset (hv_expected_domain);
+
+		    marker = db_marker_next (marker);
+		  }
+	      }
+	  }
+	else
+	  {
+	    // clear previous infos
+	    semantics_vec.clear ();
+
+	    error = ER_FAILED;
+	    semantics.sql_type = m_error_ctx.get_error ();
+	    semantics.rewritten_query = m_error_ctx.get_error_msg ();
+	  }
+
+	semantics_vec.push_back (semantics);
+	free_query_handle (handler->get_id (), true);
+
+	if (error != NO_ERROR)
+	  {
+	    break;
+	  }
+      }
+
+    sql_semantics_response response;
+    response.semantics = std::move (semantics_vec);
+
+    if (error == NO_ERROR)
+      {
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, response);
+      }
+    else
+      {
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, response);
+      }
+  }
+
+  int
+  callback_handler::get_global_semantics (packing_unpacker &unpacker)
+  {
+    // TODO
+    return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, ER_FAILED, "dummy");
+  }
+
+//////////////////////////////////////////////////////////////////////////
 // Managing Query Handler Table
 //////////////////////////////////////////////////////////////////////////
 
@@ -394,10 +540,11 @@ namespace cubmethod
 	  }
       }
 
-    query_handler *handler = new query_handler (m_error_ctx, idx);
+    query_handler *handler = new (std::nothrow) query_handler (m_error_ctx, idx);
     if (handler == nullptr)
       {
 	assert (false);
+	return handler;
       }
 
     if (idx < handler_size)
@@ -430,11 +577,18 @@ namespace cubmethod
       {
 	return;
       }
-
     if (m_query_handlers[id] != nullptr)
       {
+	// clear <query ID -> handler ID>
+	if (m_query_handlers[id]->get_query_id () != -1)
+	  {
+	    m_qid_handler_map.erase (m_query_handlers[id]->get_query_id ());
+	  }
 	if (is_free)
 	  {
+	    // clear <SQL string -> handler ID>
+	    m_sql_handler_map.erase (m_query_handlers[id]->get_sql_stmt());
+
 	    delete m_query_handlers[id];
 	    m_query_handlers[id] = nullptr;
 	  }

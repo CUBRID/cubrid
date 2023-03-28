@@ -237,11 +237,12 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/regu_var.cpp
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
+  ${QUERY_DIR}/string_regex_std.cpp
+  ${QUERY_DIR}/string_regex_re2.cpp
   ${QUERY_DIR}/xasl_to_stream.c
   )
 set(QUERY_HEADERS
   ${QUERY_DIR}/query_monitoring.hpp
-  ${QUERY_DIR}/string_regex.hpp
 )
 
 set(OBJECT_SOURCES
@@ -283,6 +284,7 @@ set(JSP_SOURCES
 
 set(METHOD_SOURCES
   ${METHOD_DIR}/method_connection_cl.cpp
+  ${METHOD_DIR}/method_compile.cpp
   ${METHOD_DIR}/method_callback.cpp
   ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_error.cpp
@@ -326,13 +328,14 @@ set(TRANSACTION_HEADERS
   )
 
 set(STORAGE_SOURCES
-  ${STORAGE_DIR}/storage_common.c
+  ${STORAGE_DIR}/byte_order.c
+  ${STORAGE_DIR}/es.c
+  ${STORAGE_DIR}/es_common.c
+  ${STORAGE_DIR}/es_posix.c
+  ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/statistics_cl.c
-  ${STORAGE_DIR}/file_io.c
-  ${STORAGE_DIR}/es_common.c
-  ${STORAGE_DIR}/es.c
-  ${STORAGE_DIR}/es_posix.c
+  ${STORAGE_DIR}/storage_common.c
   ${STORAGE_DIR}/tde.c
   )
 
@@ -500,7 +503,7 @@ add_library(cubridcs SHARED
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
-target_compile_definitions(cubridcs PRIVATE CS_MODE ${COMMON_DEFS})
+target_compile_definitions(cubridcs PRIVATE CS_MODE CUBRID_EXPORTING ${COMMON_DEFS})
 if(NOT USE_CUBRID_ENV)
   target_compile_definitions(cubridcs PRIVATE ${DIR_DEFS})
 endif(NOT USE_CUBRID_ENV)

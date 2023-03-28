@@ -8,21 +8,33 @@
     ================
     -->
     <property name="src.dir" value="src/jsp"/>
-    <property name="build.dir" value="bin"/>
+    <property name="build.dir" value="build"/>
+    <property name="report.dir" value="report"/>
     <property name="classes.dir" location="${build.dir}/classes"/>
 
-    <property name="test.src.path" value="com/cubrid/jsp/test"/>
+    <property name="unit-test.path" value="${src.dir}/unit-test"/>
+    <property name="test.server.path" value="com/cubrid/jsp"/>
+    <property name="test.splib.path" value="com/cubrid/plcsql/predefined"/>
     <property name="test.classes.dir" location="${build.dir}/test-classes"/>
-    <property name="test.reports.dir" location="${build.dir}/test-reports"/>
+    <property name="test.reports.dir" location="${report.dir}/test-reports"/>
 
-    <property name="ivy.reports.dir"  location="${build.dir}/ivy-reports"/>
+    <property name="plcsql.antlr.lexer" value="${src.dir}/antlr4/PcsLexer.g4"/>
+    <property name="plcsql.antlr.grammar" value="${src.dir}/antlr4/PcsParser.g4"/>
+    <property name="plcsql.antlr.sql" value="${src.dir}/antlr4/SqlParser.g4"/>
+    <property name="plcsql.antlrgen.dir" value="antlrgen"/>
+    <property name="plcsql.predefined.path" value="com/cubrid/plcsql/predefined"/>
+    <property name="plcsql.predefined.sp.path" value="${plcsql.predefined.path}/sp"/>
+    <property name="plcsql.predefined.classes.dir" location="${build.dir}/plcsql-predefined-classes"/>
+
+    <property name="ivy.reports.dir"  location="${report.dir}/ivy-reports"/>
 
     <property name="external.dir" value="external"/>
     <property name="ivy.install.version" value="2.4.0" />
     <property name="ivy.install.dir" value="${external.dir}"/>
 
     <property name="dist.main.class" value="com.cubrid.jsp.Server"/>
-    <property name="dist.jar" value="jspserver.jar"/>
+    <property name="dist.main.jar" value="jspserver.jar"/>
+    <property name="dist.splib.jar" value="splib.jar"/>
     <property name="dist.lib" value="lib"/>
 
     <!--
@@ -56,34 +68,54 @@
         <mkdir dir="${build.dir}"/>
         <mkdir dir="${classes.dir}"/>
         <mkdir dir="${test.classes.dir}"/>
+        <mkdir dir="${plcsql.predefined.classes.dir}"/>
         <mkdir dir="${test.reports.dir}"/>
         <mkdir dir="${ivy.reports.dir}"/>
     </target>
 
     <target name="compile" depends="init">
+
         <ivy:retrieve pattern="${dist.lib}/[artifact]-[revision].[ext]" conf="runtime"/>
-        <javac srcdir="${src.dir}" destdir="${classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="runtime.path">
+
+        <!-- run ANTLR to generate Java files from its grammar files -->
+        <delete dir="${plcsql.antlrgen.dir}"/>
+        <mkdir dir="${plcsql.antlrgen.dir}"/>
+        <java classname="org.antlr.v4.Tool" failonerror= "true" classpathref="runtime.path"
+                args="-listener -visitor -o ${plcsql.antlrgen.dir}">
+            <arg value="${plcsql.antlr.lexer}"/>
+            <arg value="${plcsql.antlr.grammar}"/>
+            <arg value="${plcsql.antlr.sql}"/>
+        </java>
+
+        <javac destdir="${classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="runtime.path">
+            <src path="${src.dir}"/>
+            <src path="${plcsql.antlrgen.dir}"/>
             <include name="**/*.java"/>
-            <exclude name="${test.src.path}/*.java"/>
+            <exclude name="unit-test/**/*.java"/>
+            <exclude name="${plcsql.predefined.sp.path}/*.java"/>
+        </javac>
+
+        <javac destdir="${plcsql.predefined.classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="runtime.path">
+            <src path="${src.dir}"/>
+            <exclude name="unit-test/**/*.java"/>
+            <include name="${plcsql.predefined.path}/**/*.java"/>
         </javac>
     </target>
 
     <target name="clean">
         <delete failonerror="false" includeEmptyDirs="true">
             <fileset dir="${external.dir}"/>
-            <fileset dir="${ivy.reports.dir}"/>
-            <fileset dir="${test.reports.dir}"/>
-            <fileset dir="${test.classes.dir}"/>
-            <fileset dir="${classes.dir}"/>
             <fileset dir="${build.dir}"/>
-            <fileset file="${dist.jar}"/>
+            <fileset dir="${report.dir}"/>
+            <fileset file="${dist.main.jar}"/>
         </delete>
     </target>
 
-    <target name="test-junit" depends="init">
+    <target name="test-jsp" depends="init">
         <ivy:retrieve pattern="${dist.lib}/[artifact]-[revision].[ext]" conf="test"/>
-        <javac srcdir="${src.dir}" destdir="${test.classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" classpathref="test.path">
-            <include name="${test.src.path}/*.java"/>
+        <javac srcdir="${unit-test.path}" destdir="${test.classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8">
+            <classpath refid="test.path"/>
+            <include name="${test.server.path}/*.java"/>
         </javac>
 
         <junit printsummary="yes" haltonfailure="no">
@@ -93,8 +125,8 @@
             <classpath path="${classes.dir}" />
             <formatter type="xml"/>
             <batchtest todir="${test.reports.dir}">
-                <fileset dir="${src.dir}">
-                    <include name="${test.src.path}/*.java"/>
+                <fileset dir="${unit-test.path}">
+                    <include name="${test.server.path}/**/*.java"/>
                 </fileset>
             </batchtest>
         </junit>
@@ -107,14 +139,42 @@
         </junitreport>
     </target>
 
+    <target name="test-splib" depends="init">
+        <ivy:retrieve pattern="${dist.lib}/[artifact]-[revision].[ext]" conf="test"/>
+
+        <javac srcdir="${unit-test.path}" destdir="${test.classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" >
+            <classpath refid="test.path"/>
+            <classpath path="${plcsql.predefined.classes.dir}" />
+            <include name="${test.splib.path}/**/*.java"/>
+        </javac>
+
+        <junit printsummary="yes" haltonfailure="no">
+            <classpath refid="runtime.path" />
+            <classpath refid="test.path" />
+            <classpath path="${test.classes.dir}" />
+            <classpath path="${plcsql.predefined.classes.dir}" />
+            <!--
+             -->
+            <formatter type="xml"/>
+            <batchtest todir="${test.reports.dir}">
+                <fileset dir="${unit-test.path}">
+                    <include name="${test.splib.path}/**/*.java"/>
+                </fileset>
+            </batchtest>
+        </junit>
+    </target>
+
     <target name="dist" depends="compile">
-        <manifestclasspath property="jar.classpath" jarfile="${dist.jar}">
+        <jar jarfile="${dist.splib.jar}" basedir="${plcsql.predefined.classes.dir}"/>
+
+        <manifestclasspath property="jar.classpath" jarfile="${dist.main.jar}">
             <classpath>
                 <fileset dir="${dist.lib}" includes="*.jar"/>
+                <fileset dir="." includes="splib.jar"/>
             </classpath>
         </manifestclasspath>
 
-        <jar jarfile="${dist.jar}" basedir="${classes.dir}">
+        <jar jarfile="${dist.main.jar}" basedir="${classes.dir}">
             <manifest>
                     <attribute name="Main-Class" value="${dist.main.class}"/>
                     <attribute name="Class-Path" value="${jar.classpath}"/>

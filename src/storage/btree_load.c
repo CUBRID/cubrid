@@ -31,7 +31,6 @@
 #include "btree_load.h"
 
 #include "btree.h"
-#include "dbtype.h"
 #include "external_sort.h"
 #include "heap_file.h"
 #include "log_append.hpp"
@@ -3631,8 +3630,8 @@ compare_driver (const void *first, const void *second, void *arg)
       OR_BUF buf_val1, buf_val2;
       DB_VALUE val1, val2;
 
-      OR_BUF_INIT (buf_val1, mem1, -1);
-      OR_BUF_INIT (buf_val2, mem2, -1);
+      or_init (&buf_val1, mem1, -1);
+      or_init (&buf_val2, mem2, -1);
 
       if (key_type->type->data_readval (&buf_val1, &val1, key_type, -1, false, NULL, 0) != NO_ERROR)
 	{

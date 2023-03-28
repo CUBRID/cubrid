@@ -89,6 +89,7 @@
 #include "thread_worker_pool.hpp"	// for cubthread::system_core_count
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
+#include "string_regex.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -375,6 +376,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_HA_MAX_HEARTBEAT_GAP "ha_max_heartbeat_gap"
 
 #define PRM_NAME_HA_PING_HOSTS "ha_ping_hosts"
+
+#define PRM_NAME_HA_TCP_PING_HOSTS "ha_tcp_ping_hosts"
+
+#define PRM_NAME_HA_PING_TIMEOUT "ha_ping_timeout"
 
 #define PRM_NAME_HA_APPLYLOGDB_RETRY_ERROR_LIST "ha_applylogdb_retry_error_list"
 
@@ -709,9 +714,15 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_QMGR_MAX_QUERY_PER_TRAN "max_query_per_tran"
 
+#define PRM_NAME_REGEXP_ENGINE "regexp_engine"
+
+#define PRM_NAME_ORACLE_STYLE_NUMBER_RETURN "oracle_style_number_return"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
+
+#define PRM_NAME_STATDUMP_FORCE_ADD_INT_MAX "statdump_force_add_int_max"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -1444,6 +1455,16 @@ static unsigned int prm_ha_max_heartbeat_gap_flag = 0;
 const char *PRM_HA_PING_HOSTS = "";
 static const char *prm_ha_ping_hosts_default = NULL;
 static unsigned int prm_ha_ping_hosts_flag = 0;
+
+const char *PRM_HA_TCP_PING_HOSTS = "";
+static const char *prm_ha_tcp_ping_hosts_default = NULL;
+static unsigned int prm_ha_tcp_ping_hosts_flag = 0;
+
+int PRM_HA_PING_TIMEOUT = PRM_TCP_CONNECTION_TIMEOUT;
+static int prm_ha_ping_timeout_default = prm_tcp_connection_timeout_default;	/* NOTE: It is difficult to determine an accurate default value for TCP connection timeout, so the default value of the connection_time system parameter is followed. */
+static int prm_ha_ping_timeout_upper = INT_MAX / 1000;	/* divided by msecs */
+static int prm_ha_ping_timeout_lower = 0;
+static unsigned int prm_ha_ping_timeout_flag = 0;
 
 int *PRM_HA_APPLYLOGDB_RETRY_ERROR_LIST = int_list_initial;
 static bool *prm_ha_applylogdb_retry_error_list_default = NULL;
@@ -2210,15 +2231,17 @@ static bool prm_heap_info_cache_logging_default = false;
 static unsigned int prm_heap_info_cache_logging_flag = 0;
 
 int PRM_TDE_DEFAULT_ALGORITHM = TDE_ALGORITHM_AES;
-static int prm_tde_default_algorithm = TDE_ALGORITHM_AES;
+static int prm_tde_algorithm_default = TDE_ALGORITHM_AES;
+static int prm_tde_algorithm_upper = TDE_ALGORITHM_ARIA;
+static int prm_tde_algorithm_lower = TDE_ALGORITHM_NONE;
 static unsigned int prm_tde_default_algorithm_flag = 0;
 
 int PRM_ER_LOG_TDE = false;
 static int prm_er_log_tde_default = false;
 static unsigned int prm_er_log_tde_flag = 0;
 
-bool PRM_JAVA_STORED_PROCEDURE = false;
-static bool prm_java_stored_procedure_default = false;
+bool PRM_JAVA_STORED_PROCEDURE = true;
+static bool prm_java_stored_procedure_default = true;
 static unsigned int prm_java_stored_procedure_flag = 0;
 
 int PRM_JAVA_STORED_PROCEDURE_PORT = 0;
@@ -2326,6 +2349,22 @@ static int prm_max_query_per_tran_default = 100;
 static int prm_max_query_per_tran_lower = 1;
 static int prm_max_query_per_tran_upper = SHRT_MAX;
 static unsigned int prm_max_query_per_tran_flag = 0;
+
+/* *INDENT-OFF* */
+int PRM_REGEXP_ENGINE = cubregex::engine_type::LIB_RE2;
+static int prm_regexp_engine_default = cubregex::engine_type::LIB_RE2;
+static int prm_regexp_engine_lower = cubregex::engine_type::LIB_CPPSTD;
+static int prm_regexp_engine_upper = cubregex::engine_type::LIB_RE2;
+static unsigned int prm_regexp_engine_flag = 0;
+/* *INDENT-ON* */
+
+bool PRM_ORACLE_STYLE_NUMBER_RETURN = false;
+static bool prm_oracle_style_number_return_default = false;
+static unsigned int prm_oracle_style_number_return_flag = 0;
+
+bool PRM_STATDUMP_FORCE_ADD_INT_MAX = false;
+static bool prm_statdump_force_add_int_max_default = false;
+static unsigned int prm_statdump_force_add_int_max_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5875,9 +5914,9 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_CLIENT | PRM_FOR_SERVER),
    PRM_KEYWORD,
    &prm_tde_default_algorithm_flag,
-   (void *) &prm_tde_default_algorithm,
+   (void *) &prm_tde_algorithm_default,
    (void *) &PRM_TDE_DEFAULT_ALGORITHM,
-   (void *) NULL, (void *) NULL,
+   (void *) &prm_tde_algorithm_upper, (void *) &prm_tde_algorithm_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -6132,6 +6171,63 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_max_query_per_tran_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_REGEXP_ENGINE,
+   PRM_NAME_REGEXP_ENGINE,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_KEYWORD,
+   &prm_regexp_engine_flag,
+   (void *) &prm_regexp_engine_default,
+   (void *) &PRM_REGEXP_ENGINE,
+   (void *) &prm_regexp_engine_upper,
+   (void *) &prm_regexp_engine_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ORACLE_STYLE_NUMBER_RETURN,
+   PRM_NAME_ORACLE_STYLE_NUMBER_RETURN,
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   PRM_BOOLEAN,
+   &prm_oracle_style_number_return_flag,
+   (void *) &prm_oracle_style_number_return_default,
+   (void *) &PRM_ORACLE_STYLE_NUMBER_RETURN,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HA_TCP_PING_HOSTS,
+   PRM_NAME_HA_TCP_PING_HOSTS,
+   (PRM_FOR_CLIENT | PRM_RELOADABLE | PRM_FOR_HA),
+   PRM_STRING,
+   &prm_ha_tcp_ping_hosts_flag,
+   (void *) &prm_ha_tcp_ping_hosts_default,
+   (void *) &PRM_HA_TCP_PING_HOSTS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HA_PING_TIMEOUT,
+   PRM_NAME_HA_PING_TIMEOUT,
+   (PRM_FOR_CLIENT | PRM_RELOADABLE | PRM_FOR_HA | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_ha_ping_timeout_flag,
+   (void *) &prm_ha_ping_timeout_default,
+   (void *) &PRM_HA_PING_TIMEOUT,
+   (void *) &prm_ha_ping_timeout_upper,
+   (void *) &prm_ha_ping_timeout_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STATDUMP_FORCE_ADD_INT_MAX,
+   PRM_NAME_STATDUMP_FORCE_ADD_INT_MAX,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_statdump_force_add_int_max_flag,
+   (void *) &prm_statdump_force_add_int_max_default,
+   (void *) &PRM_STATDUMP_FORCE_ADD_INT_MAX,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
 };
 
@@ -6286,6 +6382,14 @@ static KEYVAL tde_algorithm_words[] = {
   {"aes", TDE_ALGORITHM_AES},
   {"aria", TDE_ALGORITHM_ARIA}
 };
+
+/* *INDENT-OFF* */
+using namespace cubregex;
+static KEYVAL regexp_engine_words[] = {
+  {get_engine_name(engine_type::LIB_CPPSTD), engine_type::LIB_CPPSTD},
+  {get_engine_name(engine_type::LIB_RE2), engine_type::LIB_RE2}
+};
+/* *INDENT-ON* */
 
 static const char *compat_mode_values_PRM_ANSI_QUOTES[COMPAT_ORACLE + 2] = {
   NULL,				/* COMPAT_CUBRID */
@@ -8233,6 +8337,10 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 	{
 	  keyvalp = prm_keyword (PRM_GET_INT (prm->value), NULL, tde_algorithm_words, DIM (tde_algorithm_words));
 	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_REGEXP_ENGINE) == 0)
+	{
+	  keyvalp = prm_keyword (PRM_GET_INT (prm->value), NULL, regexp_engine_words, DIM (regexp_engine_words));
+	}
       else
 	{
 	  assert (false);
@@ -8532,6 +8640,10 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_TDE_DEFAULT_ALGORITHM) == 0)
 	{
 	  keyvalp = prm_keyword (value.i, NULL, tde_algorithm_words, DIM (tde_algorithm_words));
+	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_REGEXP_ENGINE) == 0)
+	{
+	  keyvalp = prm_keyword (value.i, NULL, regexp_engine_words, DIM (regexp_engine_words));
 	}
       else
 	{
@@ -9744,6 +9856,10 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	else if (intl_mbs_casecmp (prm->name, PRM_NAME_TDE_DEFAULT_ALGORITHM) == 0)
 	  {
 	    keyvalp = prm_keyword (-1, value, tde_algorithm_words, DIM (tde_algorithm_words));
+	  }
+	else if (intl_mbs_casecmp (prm->name, PRM_NAME_REGEXP_ENGINE) == 0)
+	  {
+	    keyvalp = prm_keyword (-1, value, regexp_engine_words, DIM (regexp_engine_words));
 	  }
 	else
 	  {
@@ -12662,3 +12778,98 @@ sysprm_update_cached_session_param_val (const PARAM_ID prm_id)
     }
 }
 #endif /* CS_MODE */
+
+#if defined (WINDOWS)
+/*
+ * prm_get_integer_value () - get the value of a parameter of type integer
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ *
+ * NOTE: keywords are stored as integers
+ */
+int
+prm_get_integer_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (PRM_IS_INTEGER (&prm_Def[prm_id]) || PRM_IS_KEYWORD (&prm_Def[prm_id]));
+
+  return PRM_GET_INT (prm_get_value (prm_id));
+}
+
+/*
+ * prm_get_bool_value () - get the value of a parameter of type bool
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+bool
+prm_get_bool_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (PRM_IS_BOOLEAN (&prm_Def[prm_id]));
+
+  return PRM_GET_BOOL (prm_get_value (prm_id));
+}
+
+/*
+ * prm_get_float_value () - get the value of a parameter of type float
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+float
+prm_get_float_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (PRM_IS_FLOAT (&prm_Def[prm_id]));
+
+  return PRM_GET_FLOAT (prm_get_value (prm_id));
+}
+
+/*
+ * prm_get_string_value () - get the value of a parameter of type string
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+char *
+prm_get_string_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (PRM_IS_STRING (&prm_Def[prm_id]));
+
+  return PRM_GET_STRING (prm_get_value (prm_id));
+}
+
+/*
+ * prm_get_integer_list_value () - get the value of a parameter of type
+ *				   integer list
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+int *
+prm_get_integer_list_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (PRM_IS_INTEGER_LIST (&prm_Def[prm_id]));
+
+  return PRM_GET_INTEGER_LIST (prm_get_value (prm_id));
+}
+
+/*
+ * prm_get_bigint_value () - get the value of a parameter of type size
+ *
+ * return      : value
+ * prm_id (in) : parameter id
+ */
+UINT64
+prm_get_bigint_value (PARAM_ID prm_id)
+{
+  assert (prm_id <= PRM_LAST_ID);
+  assert (PRM_IS_BIGINT (&prm_Def[prm_id]));
+
+  return PRM_GET_BIGINT (prm_get_value (prm_id));
+}
+#endif /* window */

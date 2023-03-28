@@ -101,6 +101,7 @@ static SESSION_CMD_TABLE csql_Session_cmd_table[] = {
   {"print_cmd", S_CMD_PRINT_CMD, CMD_EMPTY_FLAG},
   {"pager_cmd", S_CMD_PAGER_CMD, CMD_EMPTY_FLAG},
   {"nopager", S_CMD_NOPAGER_CMD, CMD_EMPTY_FLAG},
+  {"formatter_cmd", S_CMD_FORMATTER_CMD, CMD_EMPTY_FLAG},
   {"column-width", S_CMD_COLUMN_WIDTH, CMD_EMPTY_FLAG},
   {"string-width", S_CMD_STRING_WIDTH, CMD_EMPTY_FLAG},
   {"set", S_CMD_SET_PARAM, CMD_CHECK_CONNECT},
@@ -124,7 +125,11 @@ static SESSION_CMD_TABLE csql_Session_cmd_table[] = {
   {"historyread", S_CMD_HISTORY_READ, CMD_EMPTY_FLAG},
   {"historylist", S_CMD_HISTORY_LIST, CMD_EMPTY_FLAG},
 
-  {"trace", S_CMD_TRACE, CMD_CHECK_CONNECT}
+  {"trace", S_CMD_TRACE, CMD_CHECK_CONNECT},
+
+  {"singleline", S_CMD_SINGLELINE, CMD_EMPTY_FLAG},
+
+  {"connect", S_CMD_CONNECT, CMD_EMPTY_FLAG}
 };
 
 /*

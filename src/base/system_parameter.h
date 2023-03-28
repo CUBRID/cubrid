@@ -33,6 +33,7 @@
 #include "error_manager.h"
 #include "error_code.h"
 #include "porting.h"
+#include "porting_inline.hpp"
 
 typedef enum
 {
@@ -463,8 +464,13 @@ enum param_id
   PRM_ID_FLASHBACK_WIN_SIZE,	/* Hidden parameter For QA test */
   PRM_ID_USE_USER_HOSTS,
   PRM_ID_QMGR_MAX_QUERY_PER_TRAN,
+  PRM_ID_REGEXP_ENGINE,
+  PRM_ID_ORACLE_STYLE_NUMBER_RETURN,
+  PRM_ID_HA_TCP_PING_HOSTS,
+  PRM_ID_HA_PING_TIMEOUT,
+  PRM_ID_STATDUMP_FORCE_ADD_INT_MAX,	/* Hidden parameter for QA only */
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_QMGR_MAX_QUERY_PER_TRAN
+  PRM_LAST_ID = PRM_ID_STATDUMP_FORCE_ADD_INT_MAX
 };
 typedef enum param_id PARAM_ID;
 
@@ -745,6 +751,22 @@ extern "C"
   extern int sysprm_set_error (SYSPRM_ERR rc, const char *data);
   extern int sysprm_get_session_parameters_count (void);
 
+#if defined (WINDOWS)
+  /* FIXME!!! Segmentation fault when using inline function on Window. Temporarily, disable inline functions on Window. */
+  extern int prm_get_integer_value (PARAM_ID prm_id);
+  extern bool prm_get_bool_value (PARAM_ID prm_id);
+  extern float prm_get_float_value (PARAM_ID prm_id);
+  extern char *prm_get_string_value (PARAM_ID prm_id);
+  extern int *prm_get_integer_list_value (PARAM_ID prm_id);
+  extern UINT64 prm_get_bigint_value (PARAM_ID prm_id);
+#else				/* window */
+  STATIC_INLINE int prm_get_integer_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE bool prm_get_bool_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE float prm_get_float_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE char *prm_get_string_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE int *prm_get_integer_list_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));
+  STATIC_INLINE UINT64 prm_get_bigint_value (PARAM_ID prm_id) __attribute__ ((ALWAYS_INLINE));
+
 /*
  * prm_get_integer_value () - get the value of a parameter of type integer
  *
@@ -753,7 +775,7 @@ extern "C"
  *
  * NOTE: keywords are stored as integers
  */
-  inline int prm_get_integer_value (PARAM_ID prm_id)
+  STATIC_INLINE int prm_get_integer_value (PARAM_ID prm_id)
   {
     assert (prm_id <= PRM_LAST_ID);
     assert (PRM_IS_INTEGER (&prm_Def[prm_id]) || PRM_IS_KEYWORD (&prm_Def[prm_id]));
@@ -776,7 +798,7 @@ extern "C"
  * return      : value
  * prm_id (in) : parameter id
  */
-  inline bool prm_get_bool_value (PARAM_ID prm_id)
+  STATIC_INLINE bool prm_get_bool_value (PARAM_ID prm_id)
   {
     assert (prm_id <= PRM_LAST_ID);
     assert (PRM_IS_BOOLEAN (&prm_Def[prm_id]));
@@ -799,7 +821,7 @@ extern "C"
  * return      : value
  * prm_id (in) : parameter id
  */
-  inline float prm_get_float_value (PARAM_ID prm_id)
+  STATIC_INLINE float prm_get_float_value (PARAM_ID prm_id)
   {
     assert (prm_id <= PRM_LAST_ID);
     assert (PRM_IS_FLOAT (&prm_Def[prm_id]));
@@ -822,7 +844,7 @@ extern "C"
  * return      : value
  * prm_id (in) : parameter id
  */
-  inline char *prm_get_string_value (PARAM_ID prm_id)
+  STATIC_INLINE char *prm_get_string_value (PARAM_ID prm_id)
   {
     assert (prm_id <= PRM_LAST_ID);
     assert (PRM_IS_STRING (&prm_Def[prm_id]));
@@ -846,7 +868,7 @@ extern "C"
  * return      : value
  * prm_id (in) : parameter id
  */
-  inline int *prm_get_integer_list_value (PARAM_ID prm_id)
+  STATIC_INLINE int *prm_get_integer_list_value (PARAM_ID prm_id)
   {
     assert (prm_id <= PRM_LAST_ID);
     assert (PRM_IS_INTEGER_LIST (&prm_Def[prm_id]));
@@ -869,7 +891,7 @@ extern "C"
  * return      : value
  * prm_id (in) : parameter id
  */
-  inline UINT64 prm_get_bigint_value (PARAM_ID prm_id)
+  STATIC_INLINE UINT64 prm_get_bigint_value (PARAM_ID prm_id)
   {
     assert (prm_id <= PRM_LAST_ID);
     assert (PRM_IS_BIGINT (&prm_Def[prm_id]));
@@ -886,8 +908,12 @@ extern "C"
 #endif /* SERVER_MODE */
   }
 
+#endif /* window */
+
 #ifdef __cplusplus
 }
 #endif
+
+
 
 #endif /* _SYSTEM_PARAMETER_H_ */

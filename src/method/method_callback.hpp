@@ -35,6 +35,7 @@
 #include "method_error.hpp"
 #include "method_oid_handler.hpp"
 #include "method_query_handler.hpp"
+#include "method_struct_invoke.hpp"
 #include "method_struct_query.hpp"
 
 #include "transaction_cl.h"
@@ -93,6 +94,10 @@ namespace cubmethod
       int oid_put (packing_unpacker &unpacker);
       int oid_cmd (packing_unpacker &unpacker);
       int collection_cmd (packing_unpacker &unpacker);
+
+      /* handle relace to compile */
+      int get_sql_semantics (packing_unpacker &unpacker);
+      int get_global_semantics (packing_unpacker &unpacker);
 
       /* ported from cas_handle */
       query_handler *new_query_handler ();

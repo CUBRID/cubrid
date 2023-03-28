@@ -18,7 +18,7 @@ test_defaults: &test_defaults
         environment:
           _JAVA_OPTIONS: -Xmx1g
         command: |
-          ulimit -c 0
+          ulimit -c 1
           /entrypoint.sh checkout
           circleci tests glob cubrid-testcases/$TEST_SUITE/_* | circleci tests split | tee tc.list
           find cubrid-testcases/$TEST_SUITE/_* -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
@@ -29,8 +29,8 @@ test_defaults: &test_defaults
           mkdir -p /tmp/logs
           mv -f CUBRID/log /tmp/logs/cubrid_log
           mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
-          #find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
-          dmesg > /tmp/logs/dmesg.out
+          find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
+          #dmesg > /tmp/logs/dmesg.out
         when: on_fail
     - store_test_results:
         path: /tmp/tests
@@ -84,36 +84,6 @@ jobs:
     parallelism: 8
     <<: *test_defaults
 
-  build_ol:
-    <<: *oraclelinux
-    environment:
-      MAKEFLAGS: -j 10
-    resource_class: large
-    steps:
-      - checkout
-      - run:
-          name: Submodules
-          command: |
-            git submodule sync
-            git submodule update --init
-      - run:
-          name: Build
-          command: |
-            mkdir -p /tmp/build_logs
-            scl enable devtoolset-8 -- /entrypoint.sh build
-            mv -f build.log /tmp/build_logs
-      - run:
-          name: Commits
-          command: |
-            mkdir -p /tmp/build_logs
-            git log | head -n 1000 > commits.log || true
-            mv -f commits.log /tmp/build_logs
-      - persist_to_workspace:
-          root: .
-          paths:
-            - CUBRID
-      - store_artifacts:
-          path: /tmp/build_logs
   test_medium_ol:
     <<: *oraclelinux
     environment:
@@ -141,10 +111,9 @@ workflows:
           requires:
             - build
 
-      - build_ol
       - test_medium_ol:
           requires:
-            - build_ol
+            - build
       - test_sql_ol:
           requires:
-            - build_ol
+            - build

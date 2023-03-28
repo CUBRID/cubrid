@@ -222,7 +222,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
       dbval_size = pr_data_writeval_disk_size (&dbval);
       if (dbval_size > 0 && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)) != NULL)
 	{
-	  OR_BUF_INIT (buf, disk_repr_p, dbval_size);
+	  or_init (&buf, disk_repr_p, dbval_size);
 	  error = pr_type_p->data_writeval (&buf, &dbval);
 	  if (error != NO_ERROR)
 	    {

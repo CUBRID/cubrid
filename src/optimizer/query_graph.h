@@ -705,6 +705,9 @@ struct qo_term
   int *multi_col_segs;
   int multi_col_cnt;
 
+  /* for view-merge or predicate-push. pred is ordered by pred_order desc in qo_discover_edges */
+  int pred_order;
+
   /*
    * WARNING!!! WARNING!!! WARNING!!!
    *
@@ -736,6 +739,7 @@ struct qo_term
 #define QO_TERM_FLAG(t)	        (t)->flag
 #define QO_TERM_MULTI_COL_SEGS(t)  (t)->multi_col_segs
 #define QO_TERM_MULTI_COL_CNT(t)   (t)->multi_col_cnt
+#define QO_TERM_PRED_ORDER(t)   (t)->pred_order
 
 
 #define QO_TERM_EQUAL_OP             1	/* is equal op ? */
