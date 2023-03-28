@@ -69,7 +69,6 @@ add_custom_command(TARGET splib_unittest
 
 install(FILES
   ${CMAKE_CURRENT_BINARY_DIR}/jspserver.jar
-  ${CMAKE_CURRENT_BINARY_DIR}/splib.jar
   ${JSP_DIR}/logging.properties
   DESTINATION ${CUBRID_JAVADIR}
 )

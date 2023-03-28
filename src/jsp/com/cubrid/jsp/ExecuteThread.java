@@ -312,7 +312,7 @@ public class ExecuteThread extends Thread {
 
             String cubrid_env_root = Server.getRootPath();
             String command =
-                    "javac " + javaFilePath + " -cp " + cubrid_env_root + "/java/splib.jar";
+                    "javac " + javaFilePath + " -cp " + cubrid_env_root + "/java/jspserver.jar";
 
             Process proc = Runtime.getRuntime().exec(command);
             proc.getErrorStream().close();

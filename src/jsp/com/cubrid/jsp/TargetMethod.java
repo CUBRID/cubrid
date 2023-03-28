@@ -77,7 +77,23 @@ public class TargetMethod {
 
     private Class<?> getClass(String name) throws ClassNotFoundException {
         ClassLoader cl = StoredProcedureClassLoader.getInstance();
-        return cl.loadClass(name);
+        Class<?> c = null;
+        try {
+            c = cl.loadClass(name);
+            return c;
+        } catch (ClassNotFoundException e) {
+            //
+        }
+
+        // TODO: CBRD-24514
+        try {
+            c = Server.class.getClassLoader().loadClass(name);
+            return c;
+        } catch (ClassNotFoundException e) {
+            //
+        }
+
+        return c;
     }
 
     private Class<?>[] classesFor(String args) throws ClassNotFoundException, ExecuteException {

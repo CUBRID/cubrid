@@ -47,7 +47,7 @@ import java.util.List;
 public class ServerAPI {
 
     public static List<SqlSemantics> getSqlSemantics(List<String> sqlTexts) {
-        if (sqlTexts == null) {
+        if (sqlTexts == null || sqlTexts.size() == 0) {
             return null;
         }
 
@@ -69,7 +69,7 @@ public class ServerAPI {
             SqlSemanticsResponse response = new SqlSemanticsResponse(unpacker);
             return response.semantics;
         } catch (IOException e) {
-            // TODO
+            // TODO: error handling
             return null;
         }
     }
