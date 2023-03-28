@@ -129,7 +129,9 @@ static SESSION_CMD_TABLE csql_Session_cmd_table[] = {
 
   {"singleline", S_CMD_SINGLELINE, CMD_EMPTY_FLAG},
 
-  {"connect", S_CMD_CONNECT, CMD_EMPTY_FLAG}
+  {"connect", S_CMD_CONNECT, CMD_EMPTY_FLAG},
+
+  {"server-output", S_CMD_SERVER_OUTPUT, CMD_CHECK_CONNECT}
 };
 
 /*

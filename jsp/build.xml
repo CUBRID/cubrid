@@ -22,9 +22,8 @@
     <property name="plcsql.antlr.grammar" value="${src.dir}/antlr4/PcsParser.g4"/>
     <property name="plcsql.antlr.sql" value="${src.dir}/antlr4/SqlParser.g4"/>
     <property name="plcsql.antlrgen.dir" value="antlrgen"/>
-    <property name="plcsql.predefined.path" value="com/cubrid/plcsql/predefined"/>
+    <property name="plcsql.predefined.path" value="${src.dir}/com/cubrid/plcsql/predefined"/>
     <property name="plcsql.predefined.sp.path" value="${plcsql.predefined.path}/sp"/>
-    <property name="plcsql.predefined.classes.dir" location="${build.dir}/plcsql-predefined-classes"/>
 
     <property name="ivy.reports.dir"  location="${report.dir}/ivy-reports"/>
 
@@ -34,7 +33,6 @@
 
     <property name="dist.main.class" value="com.cubrid.jsp.Server"/>
     <property name="dist.main.jar" value="jspserver.jar"/>
-    <property name="dist.splib.jar" value="splib.jar"/>
     <property name="dist.lib" value="lib"/>
 
     <!--
@@ -68,7 +66,6 @@
         <mkdir dir="${build.dir}"/>
         <mkdir dir="${classes.dir}"/>
         <mkdir dir="${test.classes.dir}"/>
-        <mkdir dir="${plcsql.predefined.classes.dir}"/>
         <mkdir dir="${test.reports.dir}"/>
         <mkdir dir="${ivy.reports.dir}"/>
     </target>
@@ -93,12 +90,6 @@
             <include name="**/*.java"/>
             <exclude name="unit-test/**/*.java"/>
             <exclude name="${plcsql.predefined.sp.path}/*.java"/>
-        </javac>
-
-        <javac destdir="${plcsql.predefined.classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="runtime.path">
-            <src path="${src.dir}"/>
-            <exclude name="unit-test/**/*.java"/>
-            <include name="${plcsql.predefined.path}/**/*.java"/>
         </javac>
     </target>
 
@@ -144,7 +135,6 @@
 
         <javac srcdir="${unit-test.path}" destdir="${test.classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" >
             <classpath refid="test.path"/>
-            <classpath path="${plcsql.predefined.classes.dir}" />
             <include name="${test.splib.path}/**/*.java"/>
         </javac>
 
@@ -152,7 +142,6 @@
             <classpath refid="runtime.path" />
             <classpath refid="test.path" />
             <classpath path="${test.classes.dir}" />
-            <classpath path="${plcsql.predefined.classes.dir}" />
             <!--
              -->
             <formatter type="xml"/>
@@ -165,12 +154,9 @@
     </target>
 
     <target name="dist" depends="compile">
-        <jar jarfile="${dist.splib.jar}" basedir="${plcsql.predefined.classes.dir}"/>
-
         <manifestclasspath property="jar.classpath" jarfile="${dist.main.jar}">
             <classpath>
                 <fileset dir="${dist.lib}" includes="*.jar"/>
-                <fileset dir="." includes="splib.jar"/>
             </classpath>
         </manifestclasspath>
 

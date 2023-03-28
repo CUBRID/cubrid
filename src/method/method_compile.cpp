@@ -28,7 +28,9 @@
 
 #include "byte_order.h"
 #include "connection_support.h"
+#include "dbtype.h"		/* db_value_* */
 #include "method_def.hpp"
+#include "method_struct_value.hpp"
 
 namespace cubmethod
 {
@@ -58,6 +60,15 @@ namespace cubmethod
     return error;
   }
 
+  int callback_get_global_semantics (cubthread::entry &thread_ref, runtime_context &ctx,
+				     const SOCKET java_socket, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+
+
+    return error;
+  }
+
   int invoke_compile (cubthread::entry &thread_ref, runtime_context &ctx, const std::string &program,
 		      const bool &verbose, cubmem::extensible_block &out_blk)
   {
@@ -66,7 +77,6 @@ namespace cubmethod
     SESSION_ID s_id = thread_ref.conn_entry->session_id;
     header header (s_id, SP_CODE_COMPILE, ctx.get_and_increment_request_id ());
     SOCKET socket = conn->get_socket ();
-
     {
       error = mcon_send_data_to_java (socket, header, verbose, program);
       if (error != NO_ERROR)
@@ -150,11 +160,10 @@ exit:
 	    columns[i].pack (serializator);
 	  }
 
-	serializator.pack_int (hv_names.size ());
-	for (int i = 0; i < (int) hv_names.size (); i++)
+	serializator.pack_int (hvs.size ());
+	for (int i = 0; i < (int) hvs.size(); i++)
 	  {
-	    serializator.pack_string (hv_names[i]);
-	    serializator.pack_string (hv_types[i]);
+	    hvs[i].pack (serializator);
 	  }
 
 	serializator.pack_int (into_vars.size ());
@@ -183,13 +192,13 @@ exit:
 	      }
 	  }
 
-	size += serializator.get_packed_int_size (size); // hv size
-	for (int i = 0; i < (int) hv_names.size (); i++)
+	if (hvs.size() > 0) // host variables
 	  {
-	    size += serializator.get_packed_string_size (hv_names[i], size);
-	    size += serializator.get_packed_string_size (hv_types[i], size);
+	    for (int i = 0; i < (int) hvs.size(); i++)
+	      {
+		size += hvs[i].get_packed_size (serializator, size);
+	      }
 	  }
-
 
 	size += serializator.get_packed_int_size (size); // into_vars size
 	for (int i = 0; i < (int) into_vars.size (); i++)
@@ -223,15 +232,17 @@ exit:
 
 	int hv_size = 0;
 	deserializator.unpack_int (hv_size);
-	std::string s;
-	for (int i = 0; i < hv_size; i++)
+
+	if (hv_size > 0)
 	  {
-	    deserializator.unpack_string (s);
-	    hv_names.push_back (s);
-	    deserializator.unpack_string (s);
-	    hv_types.push_back (s);
+	    hvs.resize (hv_size);
+	    for (int i = 0; i < (int) hv_size; i++)
+	      {
+		hvs[i].unpack (deserializator);
+	      }
 	  }
 
+	std::string s;
 	int into_vars_size = 0;
 	deserializator.unpack_int (into_vars_size);
 	for (int i = 0; i < into_vars_size; i++)
@@ -313,5 +324,73 @@ exit:
   {
     //
   }
+
+  pl_parameter_info::pl_parameter_info ()
+  {
+    name = "?";
+    mode = 0;
+    type = DB_TYPE_NULL;
+    precision = 0;
+    scale = 0;
+    charset = 0;
+
+    value = NULL;
+  }
+
+  void
+  pl_parameter_info::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_int (mode);
+
+    serializator.pack_string (name);
+
+    serializator.pack_int (type);
+    serializator.pack_int (precision);
+    serializator.pack_int (scale);
+    serializator.pack_int (charset);
+
+    if (value != NULL)
+      {
+	dbvalue_java sp_val;
+	serializator.pack_int (1);
+	sp_val.value = value;
+	sp_val.pack (serializator);
+      }
+    else
+      {
+	serializator.pack_int (0);
+      }
+  }
+
+  size_t
+  pl_parameter_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = serializator.get_packed_int_size (start_offset); // mode
+
+    size += serializator.get_packed_string_size (name, size);
+
+    size += serializator.get_packed_int_size (size); // type
+    size += serializator.get_packed_int_size (size); // precision
+    size += serializator.get_packed_int_size (size); // scale
+    size += serializator.get_packed_int_size (size); // charset
+
+    size += serializator.get_packed_int_size (size); // value is null
+    if (value != NULL)
+      {
+	dbvalue_java sp_val;
+	sp_val.value = value;
+	size += sp_val.get_packed_size (serializator, size);
+      }
+
+    return size;
+  }
+
+  void
+  pl_parameter_info::unpack (cubpacking::unpacker &deserializator)
+  {
+    //
+  }
+
+
 
 }

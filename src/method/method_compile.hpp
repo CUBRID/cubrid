@@ -38,6 +38,8 @@
 
 namespace cubmethod
 {
+  struct pl_parameter_info;
+
   struct EXPORT_IMPORT sql_semantics : public cubpacking::packable_object
   {
     sql_semantics ();
@@ -51,10 +53,7 @@ namespace cubmethod
     std::string rewritten_query;
 
     std::vector <column_info> columns;
-
-    std::vector <std::string> hv_names;
-    std::vector <std::string> hv_types;
-
+    std::vector <pl_parameter_info> hvs;
     std::vector <std::string> into_vars;
   };
 
@@ -79,6 +78,25 @@ namespace cubmethod
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
     std::vector <sql_semantics> semantics;
+  };
+
+  struct EXPORT_IMPORT pl_parameter_info : public cubpacking::packable_object
+  {
+    pl_parameter_info ();
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+
+    int mode; // TODO: 0 - Unknown, 1 - IN, 2 - OUT, 3 - IN/OUT
+    std::string name;
+
+    int type;
+    int precision;
+    int scale;
+    int charset;
+
+    DB_VALUE *value; // only for auto parameterized
   };
 
 #if defined (SERVER_MODE) || defined (SA_MODE)

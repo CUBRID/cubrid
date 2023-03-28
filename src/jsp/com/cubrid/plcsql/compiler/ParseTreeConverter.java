@@ -2040,7 +2040,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         typeSpecs.put("TIME", TypeSpecSimple.TIME);
 
         typeSpecs.put("TIMESTAMP", TypeSpecSimple.TIMESTAMP);
-
         typeSpecs.put("DATETIME", TypeSpecSimple.DATETIME);
 
         typeSpecs.put("SYS_REFCURSOR", TypeSpecSimple.SYS_REFCURSOR);
@@ -2311,7 +2310,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         ArrayList<ExprId> intoVars = null;
 
         // check (name-binding) and convert host variables used in the SQL
-
         if (sws.hostVars != null) {
             for (PlParamInfo pi : sws.hostVars) {
                 String sqlType = getSqlTypeNameFromCode(pi.type);

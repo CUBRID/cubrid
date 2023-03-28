@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.predefined.sp;
 
+import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
 import java.math.BigDecimal;
 import java.sql.*;
 import java.sql.Date;
@@ -80,7 +81,7 @@ public class SpLib {
     }
 
     public static void PUT_LINE(Object s) {
-        System.out.println(s);
+        DBMS_OUTPUT.putLine(s.toString());
     }
 
     public static class Query {

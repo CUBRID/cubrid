@@ -30,6 +30,7 @@
 #include <map>
 
 #include "dbtype.h"
+#include "dbtype_def.h"
 #include "mem_block.hpp"
 #include "method_error.hpp"
 #include "method_query_result.hpp"
@@ -45,7 +46,8 @@ namespace cubmethod
     PREPARE_QUERY_INFO = 0x04,
     PREPARE_HOLDABLE = 0x08,
     PREPARE_XASL_CACHE_PINNED = 0x10,
-    PREPARE_CALL = 0x40
+    PREPARE_CALL = 0x40,
+    PREPARE_STATIC_SQL = 0x80 /* custom for method_callback, used by PL/CSQL compiler */
   };
 
   enum EXEC_FLAG

@@ -3,6 +3,7 @@ package com.cubrid.jsp.context;
 import com.cubrid.jsp.ExecuteThread;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
 import com.cubrid.jsp.protocol.Header;
+import com.cubrid.plcsql.builtin.MessageBuffer;
 import java.nio.ByteBuffer;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -28,6 +29,9 @@ public class Context {
     private Properties clientInfo = null;
 
     // TODO: dynamic classLoader for a session
+
+    // message buffer for DBMS_OUTPUT
+    private MessageBuffer messageBuffer;
 
     public Context(long id) {
         sessionId = id;
@@ -85,6 +89,13 @@ public class Context {
         } finally {
             connection = null;
         }
+    }
+
+    public MessageBuffer getMessageBuffer() {
+        if (messageBuffer == null) {
+            messageBuffer = new MessageBuffer();
+        }
+        return messageBuffer;
     }
 
     // TODO: move this function to proper place

@@ -82,7 +82,6 @@ public class ExprField extends Expr {
             assert type == null;
             return String.format("%s.getObject(\"%s\")", record.toJavaCode(), fieldName);
         }
-
     }
 
     // --------------------------------------------------
@@ -91,5 +90,4 @@ public class ExprField extends Expr {
 
     private TypeSpec type;
     private int colIndex;
-
 }
