@@ -32,6 +32,10 @@
 package com.cubrid.jsp.data;
 
 public class CompileInfo {
+    public int errCode; // 0: no error, < 0: error
+    public int errLine;
+    public String errMsg;
+
     public String translated;
     public String createStmt;
     public String className;
