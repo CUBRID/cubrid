@@ -83,6 +83,7 @@ namespace cubmethod
   struct EXPORT_IMPORT pl_parameter_info : public cubpacking::packable_object
   {
     pl_parameter_info ();
+    ~pl_parameter_info ();
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
@@ -96,7 +97,7 @@ namespace cubmethod
     int scale;
     int charset;
 
-    DB_VALUE *value; // only for auto parameterized
+    DB_VALUE value; // only for auto parameterized
   };
 
 #if defined (SERVER_MODE) || defined (SA_MODE)

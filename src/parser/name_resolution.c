@@ -2995,11 +2995,13 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		pt_reset_error (parser);
 
 		PT_NODE *hostvar = parser_new_node (parser, PT_HOST_VAR);
-		hostvar->info.host_var.str = pt_append_string (parser, NULL, node->info.name.original);
+		hostvar->info.host_var.str = pt_append_string (parser, NULL, "?");
+		hostvar->info.host_var.label = pt_append_string (parser, NULL, node->info.name.original);
+
 		hostvar->info.host_var.var_type = PT_HOST_IN;
-		// hostvar->etc = (void *) pt_append_string (parser, NULL, node->info.name.original);
+
 		hostvar->info.host_var.index = parser->host_var_count;
-		hostvar->type_enum = PT_TYPE_MAYBE;
+		hostvar->type_enum = DB_TYPE_UNKNOWN;
 
 		// Expand parser->host_variables by realloc
 		int count_to_realloc = parser->host_var_count + 1;
@@ -3027,6 +3029,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		parser->host_var_expected_domains = larger_host_var_expected_domains;
 
 		db_make_null (&parser->host_variables[parser->host_var_count]);
+		parser->host_var_expected_domains[parser->host_var_count] = pt_type_enum_to_db_domain (PT_TYPE_NONE);
 
 		++parser->host_var_count;
 		larger_host_variables = NULL;
@@ -3035,7 +3038,10 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		PT_NODE_MOVE_NUMBER_OUTERLINK (hostvar, node);
 
 		parser_free_tree (parser, node);
+
 		node = hostvar;
+
+		/* don't visit leaves */
 		*continue_walk = PT_LIST_WALK;
 	      }
 	    else

@@ -2472,6 +2472,7 @@ struct pt_host_var_info
   const char *str;		/* ??? */
   PT_MISC_TYPE var_type;	/* PT_HOST_IN, PT_HOST_OUT, */
   int index;			/* for PT_HOST_VAR ordering */
+  const char *label;
 };
 
 /* Info for lists of PT_NODE */
