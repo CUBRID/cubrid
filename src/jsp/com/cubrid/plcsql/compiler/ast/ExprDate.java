@@ -53,7 +53,7 @@ public class ExprDate extends Expr {
     @Override
     public String exprToJavaCode() {
         if (date.equals(DateTimeParser.nullDate)) {
-            return "new Date(0 - 1900, 0, 1)"; // TODO: check actual value from the server
+            return "new Date(0 - 1900, 0 - 1, 0)";
         } else {
             return String.format(
                     "new Date(%d - 1900, %d - 1, %d)",

@@ -56,7 +56,7 @@ public class ExprTimestamp extends Expr {
     public String exprToJavaCode() {
 
         if (time.equals(DateTimeParser.nullDatetimeUTC)) {
-            return "new Timestamp(0 - 1900, 0, 1, 0, 0, 0, 0)"; // TODO: check actual value from the
+            return "new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0)";
             // server
         } else {
             return String.format(
