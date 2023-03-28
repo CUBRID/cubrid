@@ -11374,34 +11374,34 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
     {
       for (spec = node->info.delete_.spec; spec; spec = spec->next)
 	{
-	  if (spec->info.spec.remote_server_name)
+	  if (spec->info.spec.range_var
+	      && strcmp (spec->info.spec.range_var->info.name.original, del->info.name.original) == 0)
 	    {
-	      if (spec->info.spec.range_var
-		  && strcmp (spec->info.spec.range_var->info.name.original, del->info.name.original) == 0)
+	      if (spec->info.spec.remote_server_name)
 		{
 		  remote_del++;
-		  break;
-		}
-	    }
-	  else
-	    {
-	      if (spec->info.spec.range_var)
-		{
-		  if (strcmp (spec->info.spec.range_var->info.name.original, del->info.name.original) == 0)
-		    {
-		      local_del++;
-		      break;
-		    }
 		}
 	      else
 		{
-		  assert (spec->info.spec.entity_name);
-		  if (strcmp (spec->info.spec.entity_name->info.name.original, del->info.name.original) == 0)
+		  local_del++;
+		}
+	      break;
+	    }
+	  else
+	    {
+	      assert (spec->info.spec.entity_name);
+	      if (strcmp (spec->info.spec.entity_name->info.name.original, del->info.name.original) == 0)
+		{
+		  if (spec->info.spec.remote_server_name)
+		    {
+		      remote_del++;
+		    }
+		  else
 		    {
 		      local_del++;
-		      break;
 		    }
 		}
+	      break;
 	    }
 	}
 
@@ -11425,7 +11425,6 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
 
   return;
 }
-
 
 static void
 pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text, SERVER_NAME_LIST * snl)
