@@ -2311,7 +2311,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         ArrayList<ExprId> intoVars = null;
 
         // check (name-binding) and convert host variables used in the SQL
-
         if (sws.hostVars != null) {
             for (PlParamInfo pi : sws.hostVars) {
                 String sqlType = getSqlTypeNameFromCode(pi.type);
