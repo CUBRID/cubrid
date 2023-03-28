@@ -94,29 +94,18 @@ public class SqlSemantics {
             }
         }
 
-        // TODO
         int hostVarsCnt = unpacker.unpackInt();
         if (hostVarsCnt > 0) {
             hostVars = new ArrayList<>();
+            for (int i = 0; i < hostVarsCnt; i++) {
+                hostVars.add(new PlParamInfo(unpacker));
+            }
         }
-        /*
-        for (int i = 0; i < hostVarsCnt; i++) {
-            String var = unpacker.unpackCString();
-            String type = unpacker.unpackCString();
-            hostVars.add(var, type);
-        }
-        */
 
         // TODO
         int intoVarsCnt = unpacker.unpackInt();
         if (intoVarsCnt > 0) {
             intoVars = new ArrayList<>();
         }
-        /*
-        for (int i = 0; i < intoVarsCnt; i++) {
-            String var = unpacker.unpackCString();
-            intoVars.add(var);
-        }
-        */
     }
 }

@@ -256,24 +256,27 @@ public class TestMain {
         int seqNo = -1;
         Iterator<ParserRuleContext> iterCtx = ssc.staticSqlTexts.keySet().iterator();
         Map<ParserRuleContext, SqlSemantics> staticSqls = new HashMap<>();
-        for (SqlSemantics ss : sqlSemantics) {
 
-            assert ss.seqNo >= 0;
+        if (sqlSemantics != null) {
+            for (SqlSemantics ss : sqlSemantics) {
 
-            ParserRuleContext ctx = null;
-            while (true) {
-                ctx = iterCtx.next();
-                assert ctx != null;
-                seqNo++;
-                if (seqNo == ss.seqNo) {
-                    break;
+                assert ss.seqNo >= 0;
+
+                ParserRuleContext ctx = null;
+                while (true) {
+                    ctx = iterCtx.next();
+                    assert ctx != null;
+                    seqNo++;
+                    if (seqNo == ss.seqNo) {
+                        break;
+                    }
                 }
-            }
 
-            if (ss.errCode == 0) {
-                staticSqls.put(ctx, ss);
-            } else {
-                throw new SemanticError(Misc.getLineOf(ctx), ss.errMsg); // s410
+                if (ss.errCode == 0) {
+                    staticSqls.put(ctx, ss);
+                } else {
+                    throw new SemanticError(Misc.getLineOf(ctx), ss.errMsg); // s410
+                }
             }
         }
 
