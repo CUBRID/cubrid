@@ -333,8 +333,9 @@ public class SpLib {
     }
      */
     public static Boolean opEq(ZonedDateTime l, ZonedDateTime r) {
-        // cannot be called actually, but only to register this operator with a parameter type TIMESTAMP
-        assert false: "unreachable";
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
 
@@ -469,8 +470,9 @@ public class SpLib {
     }
      */
     public static Boolean opLe(ZonedDateTime l, ZonedDateTime r) {
-        // cannot be called actually, but only to register this operator with a parameter type TIMESTAMP
-        assert false: "unreachable";
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
 
@@ -580,8 +582,9 @@ public class SpLib {
     }
      */
     public static Boolean opGe(ZonedDateTime l, ZonedDateTime r) {
-        // cannot be called actually, but only to register this operator with a parameter type TIMESTAMP
-        assert false: "unreachable";
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
 
@@ -691,8 +694,9 @@ public class SpLib {
     }
      */
     public static Boolean opLt(ZonedDateTime l, ZonedDateTime r) {
-        // cannot be called actually, but only to register this operator with a parameter type TIMESTAMP
-        assert false: "unreachable";
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
 
@@ -800,8 +804,9 @@ public class SpLib {
     }
      */
     public static Boolean opGt(ZonedDateTime l, ZonedDateTime r) {
-        // cannot be called actually, but only to register this operator with a parameter type TIMESTAMP
-        assert false: "unreachable";
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
 
@@ -1296,8 +1301,9 @@ public class SpLib {
     }
      */
     public static Boolean opBetween(ZonedDateTime o, ZonedDateTime lower, ZonedDateTime upper) {
-        // cannot be called actually, but only to register this operator with a parameter type TIMESTAMP
-        assert false: "unreachable";
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
 
@@ -1592,8 +1598,9 @@ public class SpLib {
     }
      */
     public static ZonedDateTime opAdd(ZonedDateTime l, Integer r) {
-        // cannot be called actually, but only to register this operator with a parameter type TIMESTAMP
-        assert false: "unreachable";
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
 
@@ -1743,8 +1750,9 @@ public class SpLib {
     }
      */
     public static Long opSubtract(ZonedDateTime l, ZonedDateTime r) {
-        // cannot be called actually, but only to register this operator with a parameter type TIMESTAMP
-        assert false: "unreachable";
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
 
@@ -1788,13 +1796,16 @@ public class SpLib {
     }
      */
     public static ZonedDateTime opSubtract(ZonedDateTime l, Integer r) {
-        // cannot be called actually, but only to register this operator with a parameter type TIMESTAMP
-        assert false: "unreachable";
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
+
     public static Long opSubtract(Date l, ZonedDateTime r) {
-        // cannot be called actually, but only to register this operator with a parameter type TIMESTAMP
-        assert false: "unreachable";
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
 
@@ -1838,20 +1849,23 @@ public class SpLib {
     }
      */
     public static Long opSubtract(Timestamp l, ZonedDateTime r) {
-        // cannot be called actually, but only to register this operator with a parameter type TIMESTAMP
-        assert false: "unreachable";
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
 
     public static Long opSubtract(ZonedDateTime l, Date r) {
-        // cannot be called actually, but only to register this operator with a parameter type TIMESTAMP
-        assert false: "unreachable";
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
 
     public static Long opSubtract(ZonedDateTime l, Timestamp r) {
-        // cannot be called actually, but only to register this operator with a parameter type TIMESTAMP
-        assert false: "unreachable";
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
     /*

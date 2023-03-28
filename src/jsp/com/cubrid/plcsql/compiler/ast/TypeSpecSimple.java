@@ -131,8 +131,8 @@ public class TypeSpecSimple extends TypeSpec {
         register(DATE);
         register(TIME);
 
-        //register(TIMESTAMP);   // has the same java type as DATETIME
-        javaNameToSpec.put("java.time.ZonedDateTime", TIMESTAMP);   // kind of a trick
+        // register(TIMESTAMP);   // has the same java type as DATETIME
+        javaNameToSpec.put("java.time.ZonedDateTime", TIMESTAMP); // kind of a trick
 
         register(DATETIME);
         register(SYS_REFCURSOR);

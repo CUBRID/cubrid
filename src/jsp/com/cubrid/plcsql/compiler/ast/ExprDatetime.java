@@ -53,7 +53,8 @@ public class ExprDatetime extends Expr {
     @Override
     public String exprToJavaCode() {
         if (time.equals(DateTimeParser.nullDatetime)) {
-            return "new Timestamp(0 - 1900, 0, 1, 0, 0, 0, 0)";     // TODO: check actual value from the server
+            return "new Timestamp(0 - 1900, 0, 1, 0, 0, 0, 0)"; // TODO: check actual value from the
+            // server
         } else {
             return String.format(
                     "new Timestamp(%d - 1900, %d - 1, %d, %d, %d, %d, %d)",
