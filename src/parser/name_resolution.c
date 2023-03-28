@@ -3036,9 +3036,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
 		parser_free_tree (parser, node);
 		node = hostvar;
+		*continue_walk = PT_LIST_WALK;
 	      }
-
-	    *continue_walk = PT_STOP_WALK;
+	    else
+	      {
+		*continue_walk = PT_STOP_WALK;
+	      }
 	  }
       }
       break;
