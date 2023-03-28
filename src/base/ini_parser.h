@@ -49,7 +49,7 @@ extern void ini_parser_free (INI_TABLE * ini);
 extern int ini_findsec (INI_TABLE * ini, const char *sec);
 extern char *ini_getsecname (INI_TABLE * ini, int n, int *lineno);
 extern int ini_hassec (const char *key);
-extern int ini_seccmp (const char *key1, const char *key2);
+extern int ini_seccmp (const char *key1, const char *key2, bool ignore_case);
 
 extern const char *ini_getstr (INI_TABLE * ini, const char *sec, const char *key, const char *def, int *lineno);
 extern int ini_getint (INI_TABLE * ini, const char *sec, const char *key, int def, int *lineno);
