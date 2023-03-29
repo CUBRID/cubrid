@@ -2870,8 +2870,21 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       if (has_deduplicate_key_col)
 	{
-	  dk_create_index_level_adjust (idx_info, attnames, asc_desc, attrs_prefix_length, func_index_info, nnames,
-					SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (ctype));
+	  SM_CLASS *class_ = NULL;
+	  assert ((ctype == DB_CONSTRAINT_INDEX) || (ctype == DB_CONSTRAINT_REVERSE_INDEX));
+
+	  error = au_fetch_class (obj, &class_, AU_FETCH_READ, AU_INDEX);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
+	  if (class_->constraints == NULL
+	      || !classobj_check_attr_in_unique_constraint (class_->constraints, attnames, func_index_info))
+	    {
+	      dk_create_index_level_adjust (idx_info, attnames, asc_desc, attrs_prefix_length, func_index_info,
+					    nnames, SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (ctype));
+	    }
 	}
 #endif
     }

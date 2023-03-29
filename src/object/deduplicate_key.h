@@ -99,9 +99,6 @@ extern int dk_get_deduplicate_key_position (int n_attrs, int *attr_ids, int func
 #if !defined(SERVER_MODE)
 // SM_ATTRIBUTE and DB_ATTRIBUTE are the same thing
 extern SM_ATTRIBUTE *dk_find_sm_deduplicate_key_attribute (int att_id, const char *att_name);
-extern void dk_create_index_level_remove_adjust (DB_CONSTRAINT_TYPE ctype, char **attnames, int *asc_desc,
-						 int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info,
-						 int deduplicate_key_col_pos, int nnames);
 extern void dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int *asc_desc,
 					  int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames,
 					  bool is_reverse);

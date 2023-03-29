@@ -4065,30 +4065,16 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_
 }
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-static void
-classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAINT_TYPE new_cons,
-					  char **att_names, int *asc_desc, SM_FUNCTION_INFO * func_index_info)
+bool
+classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, char **att_names,
+					  SM_FUNCTION_INFO * func_index_info)
 {
   SM_CLASS_CONSTRAINT *cons;
   SM_ATTRIBUTE **attp;
   char **namep;
   int nnames, cols_non_func;
 
-  // If there is a column corresponding to PK among the attributes constituting the index, the reserved_index_column is not added.
-  int deduplicate_key_col_pos = -1;
-  for (nnames = 0, namep = att_names; *namep; namep++, nnames++)
-    {
-      if (IS_DEDUPLICATE_KEY_ATTR_NAME (*namep))
-	{
-	  deduplicate_key_col_pos = nnames;
-	}
-    }
-
-  if (deduplicate_key_col_pos == -1)
-    {
-      return;
-    }
-
+  // If there is a column corresponding to PK among the attributes constituting the index, the deduplicate_key_column is not added.
   cols_non_func = (func_index_info) ? func_index_info->attr_index_start : nnames;
 
   for (cons = cons_list; cons; cons = cons->next)
@@ -4097,8 +4083,7 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
 	{
 	  continue;
 	}
-
-      if (!cons->attributes)
+      else if (!cons->attributes)
 	{
 	  continue;
 	}
@@ -4124,13 +4109,11 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, DB_CO
 
       if (*attp == NULL)
 	{
-	  // For indexes that use prefixes, it does not reach here.     
-	  dk_create_index_level_remove_adjust (new_cons, att_names, asc_desc, NULL, func_index_info,
-					       deduplicate_key_col_pos, nnames);
-
-	  return;
+	  return true;
 	}
     }
+
+  return false;
 }
 #endif
 /*
@@ -8176,14 +8159,6 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char **out_shared
       ERROR2 (error, ER_SM_INDEX_EXISTS, class_name, existing_con->name);
       return error;
     }
-
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-  if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type))
-    {
-      classobj_check_attr_in_unique_constraint (constraints, constraint_type, (char **) att_names, (int *) asc_desc,
-						(SM_FUNCTION_INFO *) func_index_info);
-    }
-#endif
 
   existing_con =
     classobj_find_constraint_by_attrs (constraints, constraint_type, att_names, asc_desc, filter_index,

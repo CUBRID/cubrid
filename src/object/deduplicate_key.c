@@ -328,50 +328,6 @@ dk_sm_deduplicate_key_position (int n_attrs, SM_ATTRIBUTE ** attrs, SM_FUNCTION_
 }
 
 void
-dk_create_index_level_remove_adjust (DB_CONSTRAINT_TYPE ctype, char **attnames, int *asc_desc,
-				     int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info,
-				     int deduplicate_key_col_pos, int nnames)
-{
-  int func_no_args = 0;
-
-  assert (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype));
-  if (ctype != DB_CONSTRAINT_FOREIGN_KEY)
-    {
-      assert (asc_desc != NULL);
-    }
-
-  if (deduplicate_key_col_pos != -1)
-    {
-      // remove hidden column         
-      assert (nnames > 0);
-      attnames[deduplicate_key_col_pos] = NULL;
-
-      assert (!func_index_info || (func_index_info && func_index_info->attr_index_start > 0));
-      if (func_index_info && func_index_info->attr_index_start > 0)
-	{
-	  func_no_args = nnames - deduplicate_key_col_pos;
-	  if (func_no_args > 0)
-	    {
-	      memmove (asc_desc + deduplicate_key_col_pos, asc_desc + (deduplicate_key_col_pos + 1),
-		       (func_no_args * sizeof (asc_desc[0])));
-	      if (attrs_prefix_length)
-		{
-		  memmove (attrs_prefix_length + deduplicate_key_col_pos,
-			   attrs_prefix_length + (deduplicate_key_col_pos + 1),
-			   (func_no_args * sizeof (attrs_prefix_length[0])));
-		}
-	      memmove (attnames + deduplicate_key_col_pos, attnames + (deduplicate_key_col_pos + 1),
-		       (func_no_args * sizeof (attnames[0])));
-
-	      attnames[nnames - 1] = NULL;
-	      func_index_info->attr_index_start--;
-	    }
-	}
-      deduplicate_key_col_pos = -1;
-    }
-}
-
-void
 dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int *asc_desc,
 			      int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames, bool is_reverse)
 {

@@ -2266,7 +2266,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
 	   */
           // *INDENT-ON*
 	  assert (seq_size >= 8);
-	  i = 3; // index of attrID (for first real column)
+	  i = 3;		// index of attrID (for first real column)
 	  if (set_get_element_nocopy (constraint_seq, i, &att_val) == NO_ERROR)
 	    {
 	      assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
