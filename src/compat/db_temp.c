@@ -526,7 +526,6 @@ dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name, const char **a
 {
   int error = NO_ERROR;
   char *name;
-  SM_CLASS_CONSTRAINT *temp_cons = NULL;
   SM_FOREIGN_KEY_INFO fk_info;
 
   name = sm_produce_constraint_name_tmpl (def, DB_CONSTRAINT_FOREIGN_KEY, attnames, NULL, constraint_name);
@@ -547,11 +546,6 @@ dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name, const char **a
       error = smt_add_constraint (def, DB_CONSTRAINT_FOREIGN_KEY, name, attnames, NULL, NULL, 0, &fk_info, NULL, NULL,
 				  comment, SM_NORMAL_INDEX);
       free_and_init (name);
-    }
-
-  if (def->op == NULL && temp_cons != NULL)
-    {
-      classobj_free_class_constraints (temp_cons);
     }
 
   return error;
