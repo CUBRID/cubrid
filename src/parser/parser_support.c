@@ -11359,7 +11359,7 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
 static void
 pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text, SERVER_NAME_LIST * snl)
 {
-  PT_NODE *del, *spec;
+  PT_NODE *target, *spec;
   int remote_del = 0, local_del = 0;
   bool has_synonym = false;
 
@@ -11369,28 +11369,15 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
       return;
     }
 
-  del = node->info.delete_.target_classes;
-  while (del)
+  target = node->info.delete_.target_classes;
+  while (target)
     {
       for (spec = node->info.delete_.spec; spec; spec = spec->next)
 	{
-	  if (spec->info.spec.range_var
-	      && strcmp (spec->info.spec.range_var->info.name.original, del->info.name.original) == 0)
+	  if (spec->info.spec.range_var)
 	    {
-	      if (spec->info.spec.remote_server_name)
-		{
-		  remote_del++;
-		}
-	      else
-		{
-		  local_del++;
-		}
-	      break;
-	    }
-	  else
-	    {
-	      assert (spec->info.spec.entity_name);
-	      if (strcmp (spec->info.spec.entity_name->info.name.original, del->info.name.original) == 0)
+	      /* checking alias for remote/local table */
+	      if (strcmp (spec->info.spec.range_var->info.name.original, target->info.name.original) == 0)
 		{
 		  if (spec->info.spec.remote_server_name)
 		    {
@@ -11400,8 +11387,24 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
 		    {
 		      local_del++;
 		    }
+		  break;
 		}
-	      break;
+	    }
+	  else
+	    {
+	      if (spec->info.spec.entity_name
+		  && strcmp (spec->info.spec.entity_name->info.name.original, target->info.name.original) == 0)
+		{
+		  if (spec->info.spec.remote_server_name)
+		    {
+		      remote_del++;
+		    }
+		  else
+		    {
+		      local_del++;
+		    }
+		  break;
+		}
 	    }
 	}
 
@@ -11409,11 +11412,11 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
 	{
 	  /* not matched: error case */
 	  PT_ERRORmf (parser, node->info.delete_.spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST,
-		      del->info.name.original);
+		      target->info.name.original);
 	  return;
 	}
 
-      del = del->next;
+      target = target->next;
     }
 
   if (has_synonym)
@@ -11509,7 +11512,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
   int tmp_local_cnt = snl->local_cnt;
   int tmp_server_cnt = snl->server_cnt;
 
-  PT_NODE *sel, *spec, *tbl_spec = NULL, *into_spec = NULL, *upd_spec = NULL, *server;
+  PT_NODE *sel = NULL, *spec, *tbl_spec = NULL, *into_spec = NULL, *upd_spec = NULL, *server;
 
   switch (node->node_type)
     {
@@ -11544,9 +11547,9 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
     {
       if (tbl_spec->info.spec.derived_table)
 	{
-	  tbl_spec = tbl_spec->next;
-	  continue;
+	  sel = tbl_spec->info.spec.derived_table;
 	}
+
       if (tbl_spec->info.spec.remote_server_name)
 	{
 	  sel = parser_new_node (parser, PT_SELECT);
@@ -11562,12 +11565,16 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
 	  sel->info.query.q.select.from = spec;
 	  tbl_spec->info.spec.derived_table = sel;
 	  tbl_spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
+	}
 
+      if (sel)
+	{
 	  if (pt_convert_dblink_select_query (parser, sel, snl))
 	    {
 	      parser_walk_tree (parser, sel, pt_check_dblink_query, NULL, NULL, NULL);
 	    }
 	}
+
       tbl_spec = tbl_spec->next;
     }
 
