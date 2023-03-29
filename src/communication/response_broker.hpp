@@ -321,6 +321,10 @@ namespace cubcomm
   {
     {
       std::lock_guard<std::mutex> lockg (m_mutex);
+      if (m_terminate)
+	{
+	  return; // it has been terminated. the entry may have been erased or will be erased soon.
+	}
       m_terminate = true;
     }
     // notify all because there is more than one thread waiting for data on the same bucket

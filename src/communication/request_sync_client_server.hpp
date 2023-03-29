@@ -191,6 +191,8 @@ namespace cubcomm
     // stop receiving thread such that fresh requests are not received anymore
     m_conn->stop_thread ();
 
+    stop_response_broker ();
+
     // at this point, the page server async responder must be waited for to terminate
     // processing all async requests
   }
