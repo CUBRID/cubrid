@@ -15621,9 +15621,20 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
       qfile_close_scan (thread_p, &lfscan_id);
 
-      if (scan_reset_scan_block (thread_p, &xasl->spec_list->s_id) == S_ERROR)
+      if (xasl->spec_list->s_id.type == S_INDX_SCAN && SCAN_IS_INDEX_COVERED (&xasl->spec_list->s_id.s.isid))
 	{
-	  GOTO_EXIT_ON_ERROR;
+	  INDX_SCAN_ID *isidp = &xasl->spec_list->s_id.s.isid;
+
+	  /* close current list and start a new one */
+	  qfile_close_scan (thread_p, isidp->indx_cov.lsid);
+	  qfile_destroy_list (thread_p, isidp->indx_cov.list_id);
+	  isidp->indx_cov.list_id =
+	    qfile_open_list (thread_p, isidp->indx_cov.type_list, NULL, isidp->indx_cov.query_id, 0,
+			     isidp->indx_cov.list_id);
+	  if (isidp->indx_cov.list_id == NULL)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
 	}
 
       if (qp_lfscan != S_END)
