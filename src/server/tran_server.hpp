@@ -143,7 +143,6 @@ class tran_server
     std::vector<cubcomm::node> m_connection_list;
     std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
     std::shared_mutex m_page_server_conn_vec_mtx;
-    std::condition_variable_any m_page_server_conn_vec_cv;
 
   private:
     int init_page_server_hosts (const char *db_name);
