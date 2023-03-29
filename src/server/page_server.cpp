@@ -520,7 +520,7 @@ page_server::disconnect_tran_server_async (const connection_handler *conn)
 void
 page_server::disconnect_all_tran_servers ()
 {
-  /* request disconnection from ATS */
+  /* Request the ATS to disconnect */
   if (m_active_tran_server_conn == nullptr)
     {
       er_log_debug (ARG_FILE_LINE, "disconnect_all_tran_server: Active transaction server is not connected.\n");
@@ -533,7 +533,7 @@ page_server::disconnect_all_tran_servers ()
       m_active_tran_server_conn->push_disconnection_request ();
     }
 
-  /* request disconnection from all PTSes */
+  /* Request all PTSes to disconnect */
   if (m_passive_tran_server_conn.empty ())
     {
       er_log_debug (ARG_FILE_LINE, "disconnect_all_tran_server: No passive transaction server connected.\n");
