@@ -2525,7 +2525,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    goto error;
 	  }
 
-	if (target_domain == NULL)
+	if (target_domain && target_domain->type->id == DB_TYPE_CHAR && DB_IS_NULL (peek_left) || target_domain == NULL)
 	  {
 	    TP_DOMAIN *arg1, *arg2, *arg3, tmp_arg1, tmp_arg2, tmp_arg3;
 
