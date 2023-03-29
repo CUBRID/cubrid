@@ -9927,6 +9927,8 @@ static void
 pt_check_into_clause_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * qry, int into_cnt)
 {
   // set external into labels in parser context
+  PT_NODE *into = qry->info.query.into_list;
+
   char **external_into_label = (char **) malloc (into_cnt * sizeof (char *));
   for (int i = 0; i < into_cnt; i++)
     {
