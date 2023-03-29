@@ -206,8 +206,6 @@
 #define SOCKET_TIMEOUT_SEC	2
 #endif
 
-#define SHARD_CAS_WARMUP_MSEC	900
-
 /* server state */
 enum SERVER_STATE
 {
@@ -815,11 +813,6 @@ receiver_thr_f (void *arg)
 #endif
 
 #if defined(LINUX)
-  if (br_shard_flag == ON)
-    {
-      SLEEP_MILISEC (0, SHARD_CAS_WARMUP_MSEC);
-    }
-
   timeout = 5;
   setsockopt (sock_fd, IPPROTO_TCP, TCP_DEFER_ACCEPT, (char *) &timeout, sizeof (timeout));
 #endif /* LINUX */
