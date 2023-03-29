@@ -36,7 +36,7 @@ async_disconnect_handler<T_CONN_HANDLER>::async_disconnect_handler ()
 template <typename T_CONN_HANDLER>
 async_disconnect_handler<T_CONN_HANDLER>::~async_disconnect_handler ()
 {
-  // Call terminate() before the resources that can be aceessed during destroying T_CONN_HANDLER_PTR is released. For example, page_server::~connection_handler accesses page_server::m_responder, which is released during shutdown.
+  // it's terminated explicitely in advance so all disconnection requests have been handled.
   assert (m_terminate.load ());
 }
 
