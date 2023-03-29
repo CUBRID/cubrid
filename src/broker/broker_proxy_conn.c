@@ -380,7 +380,7 @@ retry:
     if (shm_proxy_p->num_proxy > 0 && fd < 0 && retry_count++ < PROXY_SVR_CON_RETRY_COUNT)
       {
 	pthread_mutex_unlock (&proxy_conn_mutex);
-	SLEEP_MILISEC (0, PROXY_WAIT_RETRY_MSEC);
+	SLEEP_MILISEC (0, PROXY_SVR_CON_RETRY_MSEC);
 	goto retry;
       }
 
