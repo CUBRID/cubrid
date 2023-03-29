@@ -143,7 +143,7 @@ tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
   std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
   if (m_page_server_conn_vec.empty ())
     {
-      assert_release (false); // TODO some error-handling is neede such as shutdown
+      assert_release (false); // TODO some error-handling is needed such as shutdown
       return; // All connections have been disconnected already
     }
 
@@ -157,7 +157,7 @@ tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in,
   std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
   if (m_page_server_conn_vec.empty())
     {
-      assert_release (false); // TODO some error-handling is neede such as shutdown
+      assert_release (false); // TODO some error-handling is needed such as shutdown
       return ER_FAILED; // All connections have been disconnected already
     }
 
@@ -342,12 +342,12 @@ tran_server::disconnect_all_page_servers ()
 {
   assert_is_tran_server ();
 
+  // We assumes that no threads are waiting for response at this moment so that m_conn->stop_response_broker() is not needed.
   std::vector<std::unique_ptr<connection_handler>> conn_vec;
   {
     std::lock_guard<std::shared_mutex> lk_guard (m_page_server_conn_vec_mtx);
     m_page_server_conn_vec.swap (conn_vec);
   }
-
   // finalize connections out of the mutex, m_page_server_conn_vec_mtx, since it joins request handler thread internally, and receive_disconnect_request() also acquires the lock of the mutex.
   conn_vec.clear ();
 
