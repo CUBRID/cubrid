@@ -17037,7 +17037,7 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
     }
 
   /* check sampling scan */
-  if (xasl->spec_list->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
+  if (xasl->spec_list && xasl->spec_list->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
     {
       XASL_SET_FLAG (xasl, XASL_SAMPLING_SCAN);
     }
