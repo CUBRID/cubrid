@@ -587,6 +587,8 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  prompt = csql_Prompt_offline;
 	}
 
+      read_whole_line = false;
+
       memset (line_buf, 0, LINE_BUFFER_SIZE);
       memset (utf8_line_buf, 0, INTL_UTF8_MAX_CHAR_SIZE * LINE_BUFFER_SIZE);
 
@@ -1484,12 +1486,12 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	    {
 	      return error_code;
 	    }
-	  break;
 	}
       else
 	{
 	  fprintf (csql_Output_fp, "CONNECT session command does not support --sysadm mode\n");
 	}
+      break;
     }
 
   return DO_CMD_SUCCESS;
