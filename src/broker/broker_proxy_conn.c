@@ -43,6 +43,9 @@ T_PROXY_CONN broker_Proxy_conn = {
   NULL				/* proxy_sockfd */
 };
 
+#define	PROXY_SVR_CON_RETRY_COUNT	3
+#define	PROXY_SVR_CON_RETRY_MSEC	400
+
 pthread_mutex_t proxy_conn_mutex;
 
 static void broker_free_all_proxy_conn_ent (void);
@@ -325,12 +328,14 @@ broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p)
 #else /* WINDOWS */
   T_PROXY_CONN_ENT *ent_p;
   SOCKET fd = INVALID_SOCKET;
+  int retry_count = 0;
 
   if (broker_Proxy_conn.max_num_proxy < 0)
     {
       return INVALID_SOCKET;
     }
 
+retry:
   pthread_mutex_lock (&proxy_conn_mutex);
 #endif /* !WINDOWS */
   for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy; proxy_index++)
@@ -371,6 +376,14 @@ broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p)
 	  min_cur_client = cur_client;
 	}
     }
+
+    if (shm_proxy_p->num_proxy > 0 && fd < 0 && retry_count++ < PROXY_SVR_CON_RETRY_COUNT)
+      {
+	pthread_mutex_unlock (&proxy_conn_mutex);
+	SLEEP_MILISEC (0, PROXY_WAIT_RETRY_MSEC);
+	goto retry;
+      }
+
 #if !defined(WINDOWS)
   pthread_mutex_unlock (&proxy_conn_mutex);
 #endif /* !WINDOWS */
