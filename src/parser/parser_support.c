@@ -11512,17 +11512,19 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
   int tmp_local_cnt = snl->local_cnt;
   int tmp_server_cnt = snl->server_cnt;
 
-  PT_NODE *sel = NULL, *spec, *tbl_spec = NULL, *into_spec = NULL, *upd_spec = NULL, *server;
+  PT_NODE *sub_sel = NULL;	/* for select sub-query */
+  PT_NODE *spec, *tbl_spec = NULL, *into_spec = NULL, *upd_spec = NULL, *server;
 
   switch (node->node_type)
     {
     case PT_INSERT:
       into_spec = node->info.insert.spec;
-      sel = node->info.insert.value_clauses;
-      if (sel->info.node_list.list && sel->info.node_list.list->node_type == PT_SELECT)
+      sub_sel = node->info.insert.value_clauses;
+      if (sub_sel->info.node_list.list && sub_sel->info.node_list.list->node_type == PT_SELECT)
 	{
-	  upd_spec = sel->info.node_list.list->info.query.q.select.from;
+	  upd_spec = sub_sel->info.node_list.list->info.query.q.select.from;
 	}
+      sub_sel = NULL;
       break;
     case PT_DELETE:
       upd_spec = node->info.delete_.spec;
@@ -11547,14 +11549,14 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
     {
       if (tbl_spec->info.spec.derived_table)
 	{
-	  sel = tbl_spec->info.spec.derived_table;
+	  sub_sel = tbl_spec->info.spec.derived_table;
 	}
 
       if (tbl_spec->info.spec.remote_server_name)
 	{
-	  sel = parser_new_node (parser, PT_SELECT);
-	  sel->info.query.q.select.list = parser_new_node (parser, PT_VALUE);
-	  sel->info.query.q.select.list->type_enum = PT_TYPE_STAR;
+	  sub_sel = parser_new_node (parser, PT_SELECT);
+	  sub_sel->info.query.q.select.list = parser_new_node (parser, PT_VALUE);
+	  sub_sel->info.query.q.select.list->type_enum = PT_TYPE_STAR;
 	  spec = parser_new_node (parser, PT_SPEC);
 	  spec->info.spec.only_all = PT_ONLY;
 	  spec->info.spec.meta_class = PT_CLASS;
@@ -11562,16 +11564,16 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
 	  spec->info.spec.entity_name = tbl_spec->info.spec.entity_name;
 	  tbl_spec->info.spec.remote_server_name = NULL;
 	  tbl_spec->info.spec.entity_name = NULL;
-	  sel->info.query.q.select.from = spec;
-	  tbl_spec->info.spec.derived_table = sel;
+	  sub_sel->info.query.q.select.from = spec;
+	  tbl_spec->info.spec.derived_table = sub_sel;
 	  tbl_spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
 	}
 
-      if (sel)
+      if (sub_sel)
 	{
-	  if (pt_convert_dblink_select_query (parser, sel, snl))
+	  if (sub_sel->node_type == PT_SELECT && pt_convert_dblink_select_query (parser, sub_sel, snl))
 	    {
-	      parser_walk_tree (parser, sel, pt_check_dblink_query, NULL, NULL, NULL);
+	      parser_walk_tree (parser, sub_sel, pt_check_dblink_query, NULL, NULL, NULL);
 	    }
 	}
 
