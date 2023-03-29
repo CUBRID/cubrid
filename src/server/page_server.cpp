@@ -124,10 +124,6 @@ page_server::connection_handler::~connection_handler ()
   m_conn->stop_incoming_communication_thread ();
 
   // blocking call
-  // wait all response are servered or terminated.
-  m_conn->stop_response_broker ();
-
-  // blocking call
   // wait async responder to finish processing in-flight incoming roundtrip requests
   m_ps.get_responder ().wait_connection_to_become_idle (m_conn.get ());
 
