@@ -20358,6 +20358,8 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
   tree = parser_walk_tree (parser, tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
   /* do constant folding */
   tree = parser_walk_tree (parser, tree, pt_fold_constants_pre, NULL, pt_fold_constants_post, sc_info_ptr);
+  /* do type checking again */
+  tree = parser_walk_tree (parser, tree, pt_fold_constants_pre, NULL, pt_fold_constants_post, sc_info_ptr);
   if (pt_has_error (parser))
     {
       tree = NULL;
