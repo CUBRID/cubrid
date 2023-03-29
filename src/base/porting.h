@@ -43,13 +43,15 @@
 #endif
 
 #if defined (WINDOWS)
-#define IMPORT_VAR 	__declspec(dllimport)
-#define EXPORT_VAR 	__declspec(dllexport)
-#include <WinBase.h>
+#ifdef _EXPORTING
+#define EXPORT_IMPORT    __declspec(dllexport)
 #else
-#define IMPORT_VAR 	extern
-#define EXPORT_VAR
+#define EXPORT_IMPORT    __declspec(dllimport)
 #endif
+#else /* WINDOWS */
+  // all symbols are exported by default
+#define EXPORT_IMPORT
+#endif /* WINDOWS */
 
 #if defined (WINDOWS)
 #define L_cuserid 9

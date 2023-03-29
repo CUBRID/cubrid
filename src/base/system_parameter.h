@@ -462,8 +462,11 @@ enum param_id
   PRM_ID_FLASHBACK_MAX_TRANSACTION,	/* Hidden parameter For QA test */
   PRM_ID_FLASHBACK_WIN_SIZE,	/* Hidden parameter For QA test */
   PRM_ID_REGEXP_ENGINE,
+  PRM_ID_HA_TCP_PING_HOSTS,
+  PRM_ID_HA_PING_TIMEOUT,
+  PRM_ID_STATDUMP_FORCE_ADD_INT_MAX,
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_REGEXP_ENGINE
+  PRM_LAST_ID = PRM_ID_STATDUMP_FORCE_ADD_INT_MAX
 };
 typedef enum param_id PARAM_ID;
 

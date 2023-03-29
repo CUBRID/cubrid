@@ -126,10 +126,15 @@ namespace cubmethod
 	  }
 	else
 	  {
-	    if (handler->prepare (sql, flag) == NO_ERROR)
+	    int error = handler->prepare (sql, flag);
+	    if (error == NO_ERROR)
 	      {
 		// add to statement handler cache
 		m_sql_handler_map.emplace (sql, handler->get_id ());
+	      }
+	    else
+	      {
+		m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
 	      }
 	  }
       }
@@ -159,8 +164,8 @@ namespace cubmethod
     if (handler == nullptr)
       {
 	// TODO: proper error code
-	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
-	return ER_FAILED;
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+	assert (false); // the error should have been handled in prepare function
       }
     else
       {
@@ -171,21 +176,29 @@ namespace cubmethod
 	    const cubmethod::query_result &qresult = handler->get_result();
 	    if (qresult.stmt_type == CUBRID_STMT_SELECT)
 	      {
-		uint64_t qid = (uint64_t) handler->get_execute_info ().qresult_info.query_id;
+		uint64_t qid = (uint64_t) handler->get_query_id ();
 		m_qid_handler_map[qid] = request.handler_id;
 	      }
 	  }
 	else
 	  {
 	    /* XASL cache is not found */
-	    m_error_ctx.clear ();
-	    handler->prepare_retry ();
-	    handler->execute (request);
-	  }
-      }
+	    if (error == ER_QPROC_INVALID_XASLNODE)
+	      {
+		m_error_ctx.clear ();
+		handler->prepare_retry ();
+		error = handler->execute (request);
+	      }
 
-    /* DDL audit */
-    logddl_write_end ();
+	    if (error != NO_ERROR)
+	      {
+		m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	      }
+	  }
+
+	/* DDL audit */
+	logddl_write_end ();
+      }
 
     if (m_error_ctx.has_error())
       {
@@ -364,10 +377,11 @@ namespace cubmethod
 	  }
       }
 
-    query_handler *handler = new query_handler (m_error_ctx, idx);
+    query_handler *handler = new (std::nothrow) query_handler (m_error_ctx, idx);
     if (handler == nullptr)
       {
 	assert (false);
+	return handler;
       }
 
     if (idx < handler_size)
@@ -400,11 +414,18 @@ namespace cubmethod
       {
 	return;
       }
-
     if (m_query_handlers[id] != nullptr)
       {
+	// clear <query ID -> handler ID>
+	if (m_query_handlers[id]->get_query_id () != -1)
+	  {
+	    m_qid_handler_map.erase (m_query_handlers[id]->get_query_id ());
+	  }
 	if (is_free)
 	  {
+	    // clear <SQL string -> handler ID>
+	    m_sql_handler_map.erase (m_query_handlers[id]->get_sql_stmt());
+
 	    delete m_query_handlers[id];
 	    m_query_handlers[id] = nullptr;
 	  }
@@ -463,29 +484,4 @@ namespace cubmethod
   {
     return &handler;
   }
-}
-
-int
-method_make_out_rs (DB_BIGINT query_id)
-{
-  cubmethod::callback_handler *callback_handler = cubmethod::get_callback_handler ();
-  cubmethod::query_handler *query_handler = callback_handler->get_query_handler_by_query_id (query_id);
-
-  if (query_handler != nullptr)
-    {
-      const cubmethod::query_result &qresult = query_handler->get_result();
-
-      DB_QUERY_TYPE *column_info = db_get_query_type_list (query_handler->get_db_session(), qresult.stmt_id);
-      return ux_create_srv_handle_with_method_query_result (
-		     qresult.result,
-		     qresult.stmt_type,
-		     qresult.num_column,
-		     column_info,
-		     true
-	     );
-    }
-  else
-    {
-      return -1;
-    }
 }

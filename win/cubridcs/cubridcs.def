@@ -4,9 +4,6 @@ EXPORTS
 ; functions
 ;
 	basename_r
-    cas_default_isolation_level
-    cas_default_lock_timeout
-    cas_send_result_flag
     cfg_find_db
     cfg_free_directory
     char_isdigit
@@ -952,11 +949,6 @@ EXPORTS
   mht_1strhash
   mht_compare_strings_are_equal
   mht_rem
-
-;
-; method
-;
-  method_make_out_rs
 
 ;
 ; cubrid_log.h

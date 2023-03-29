@@ -69,7 +69,7 @@ namespace cubmethod
    * how to use
    *
    */
-  class query_handler
+  class EXPORT_IMPORT query_handler
   {
     public:
       query_handler (error_context &ctx, int id);
@@ -90,6 +90,8 @@ namespace cubmethod
       int get_id () const;
       std::string get_sql_stmt () const;
       int get_statement_type () const;
+
+      uint64_t get_query_id () const;
 
       int get_num_markers ();
       bool get_is_occupied ();
@@ -159,6 +161,9 @@ namespace cubmethod
 
       /* statement handler cache */
       bool m_is_occupied; // Is occupied by CUBRIDServerSideStatement
+
+      /* query id */
+      uint64_t m_query_id;
 
       /* results */
       prepare_info m_prepare_info;
