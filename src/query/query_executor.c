@@ -13217,9 +13217,17 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   QFILE_LIST_ID *output = NULL;
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
   BUILDVALUE_PROC_NODE *buildvalue = &xasl->proc.buildvalue;
+  sampling_info *sampling = NULL;
+
+  /* check sampling scan */
+  if (XASL_IS_FLAGED (xasl, XASL_SAMPLING_SCAN) && xasl->spec_list)
+    {
+      /* 확인 확인  Need to consider partition table */
+      sampling = &xasl->spec_list->s_id.s.hsid.sampling;
+    }
 
   /* make final pass on aggregate list nodes */
-  if (buildvalue->agg_list && qdata_finalize_aggregate_list (thread_p, buildvalue->agg_list, false) != NO_ERROR)
+  if (buildvalue->agg_list && qdata_finalize_aggregate_list (thread_p, buildvalue->agg_list, false, sampling) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -17536,7 +17544,7 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
 
   assert (gbstate->g_dim[N].d_flag != GROUPBY_DIM_FLAG_NONE);
 
-  error_code = qdata_finalize_aggregate_list (thread_p, gbstate->g_dim[N].d_agg_list, keep_list_file);
+  error_code = qdata_finalize_aggregate_list (thread_p, gbstate->g_dim[N].d_agg_list, keep_list_file, NULL);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

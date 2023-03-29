@@ -1178,7 +1178,7 @@ cleanup:
  */
 int
 qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
-			       bool keep_list_file)
+			       bool keep_list_file, sampling_info *sampling)
 {
   int error = NO_ERROR;
   AGGREGATE_TYPE *agg_p;
@@ -1206,6 +1206,13 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   db_make_null (&varval);
   db_make_null (&dval);
 
+  /* check sampling scan */
+  int sampling_weight = 1;
+  if (sampling)
+    {
+      sampling_weight = sampling->total_page_cnt / sampling->read_page_cnt;
+    }
+
   for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
     {
       TP_DOMAIN *tmp_domain_ptr = NULL;
@@ -1219,7 +1226,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
       /* set count-star aggregate values */
       if (agg_p->function == PT_COUNT_STAR)
 	{
-	  db_make_bigint (agg_p->accumulator.value, agg_p->accumulator.curr_cnt);
+	  db_make_bigint (agg_p->accumulator.value, agg_p->accumulator.curr_cnt * sampling_weight);
 	}
 
       /* the value of groupby_num() remains unchanged; it will be changed while evaluating groupby_num predicates
@@ -1310,7 +1317,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	      if (agg_p->function == PT_COUNT)
 		{
-		  db_make_bigint (agg_p->accumulator.value, list_id_p->tuple_cnt);
+		  db_make_bigint (agg_p->accumulator.value, list_id_p->tuple_cnt * sampling_weight);
 		}
 	      else
 		{

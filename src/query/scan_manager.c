@@ -2844,13 +2844,17 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   hsidp->cache_recordinfo = cache_recordinfo;
   hsidp->recordinfo_regu_list = regu_list_recordinfo;
 
-  /* for scampling statistics. skip_cnt = (total_page / sampling_page) - 1 */
+  /* for scampling statistics.  */
   if (scan_type == S_HEAP_SAMPLING_SCAN)
     {
       int total_pages;
+      
       file_get_num_user_pages (thread_p, &hfid->vfid, &total_pages);
-      hsidp->sampling_skip_cnt = MAX ((total_pages / 1000), 1);
-      printf ("hsidp->sampling_skip_cnt : %d total_pages : %d\n", hsidp->sampling_skip_cnt, total_pages);
+      /* skip_cnt = (total_page / sampling_page) */
+      hsidp->sampling.skip_cnt = MAX ((total_pages / 1000), 1);
+      hsidp->sampling.total_page_cnt = 0;
+      hsidp->sampling.read_page_cnt = 0;
+      printf ("hsidp->sampling->skip_cnt : %d total_pages : %d\n", hsidp->sampling.skip_cnt, total_pages);
     }
 
   return NO_ERROR;
@@ -5227,7 +5231,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		{
 		  sp_scan =
 		    heap_next_sampling (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes,
-					&hsidp->scan_cache, is_peeking, hsidp->sampling_skip_cnt);
+					&hsidp->scan_cache, is_peeking, &hsidp->sampling);
 		}
 	      else
 		{

@@ -379,6 +379,14 @@ struct heap_get_context
 				 * (like serial increment) require WRITE mode */
 };
 
+typedef struct sampling_info SAMPLING_INFO;
+struct sampling_info
+{
+  int skip_cnt;			/* for sampling statistics */
+  int total_page_cnt;		/* number of total pages(read pages + skipped pages) */
+  int read_page_cnt;		/* number of read pages */
+};
+
 /* Forward definition. */
 struct mvcc_reev_data;
 extern int mvcc_header_size_lookup[8];
@@ -412,7 +420,7 @@ extern SCAN_CODE heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * cl
 			    RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
 extern SCAN_CODE heap_next_sampling (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 				     RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
-				     int sampling_skip_cnt);
+				     sampling_info * sampling);
 extern SCAN_CODE heap_next_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 					RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
 					DB_VALUE ** cache_recordinfo);

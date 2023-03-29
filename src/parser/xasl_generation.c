@@ -17036,6 +17036,12 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
       buildvalue = &xasl->proc.buildvalue;
     }
 
+  /* check sampling scan */
+  if (xasl->spec_list->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
+    {
+      XASL_SET_FLAG (xasl, XASL_SAMPLING_SCAN);
+    }
+
   /* save info for derived table size estimation */
   xasl->projected_size = 1;
   xasl->cardinality = 1.0;
