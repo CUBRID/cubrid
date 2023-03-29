@@ -73,6 +73,8 @@ static int rv;
 
 #define GET_NTH_OID(oid_setp, n) ((OID *)((OID *)(oid_setp) + (n)))
 
+#define NUMBER_OF_SAMPLING_PAGES 1000
+
 /* ISS_RANGE_DETAILS stores information about the two ranges we use
  * interchangeably in Index Skip Scan mode: along with the real range, we
  * use a "fake" one to obtain the next value for the index's first column.
@@ -2844,14 +2846,14 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   hsidp->cache_recordinfo = cache_recordinfo;
   hsidp->recordinfo_regu_list = regu_list_recordinfo;
 
-  /* for scampling statistics.  */
+  /* for scampling statistics. */
   if (scan_type == S_HEAP_SAMPLING_SCAN)
     {
       int total_pages;
 
       file_get_num_user_pages (thread_p, &hfid->vfid, &total_pages);
       /* skip_cnt = (total_page / sampling_page) */
-      hsidp->sampling.skip_cnt = MAX ((total_pages / 1000), 1);
+      hsidp->sampling.skip_cnt = MAX ((total_pages / NUMBER_OF_SAMPLING_PAGES), 1);
       hsidp->sampling.total_page_cnt = 0;
       hsidp->sampling.read_page_cnt = 0;
       printf ("hsidp->sampling->skip_cnt : %d total_pages : %d\n", hsidp->sampling.skip_cnt, total_pages);
