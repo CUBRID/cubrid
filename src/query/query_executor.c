@@ -15621,6 +15621,11 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
       qfile_close_scan (thread_p, &lfscan_id);
 
+      if (scan_reset_scan_block (thread_p, &xasl->spec_list->s_id) == S_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
       if (qp_lfscan != S_END)
 	{
 	  GOTO_EXIT_ON_ERROR;
