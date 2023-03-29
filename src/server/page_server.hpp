@@ -125,7 +125,7 @@ class page_server
 
 	void remove_prior_sender_sink ();
 
-	// request disconnection from this connection (TS)
+	// request disconnection of this connection (TS)
 	void push_disconnection_request ();
 
       private:
