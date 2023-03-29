@@ -7546,6 +7546,7 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
 	  free_cons = check_cons;
 	}
 
+      att_names[i] = NULL;
       if (check_cons == NULL || !classobj_check_attr_in_unique_constraint (check_cons, (char **) att_names, NULL))
 	{
 	  // adjust for FK: add deduplicate_key_attr column
