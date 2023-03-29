@@ -2545,7 +2545,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    target_domain = tp_infer_common_domain (arg1, arg2);
 
 	    arg3 = NULL;
-	    if (peek_third)
+	    if (target_domain == NULL && peek_third)
 	      {
 		TP_DOMAIN *tmp_domain;
 
