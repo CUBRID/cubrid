@@ -33,19 +33,16 @@ package com.cubrid.plcsql.predefined.sp;
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
 import java.math.BigDecimal;
 import java.sql.*;
+import java.sql.Date;
+import java.sql.Time;
+import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.regex.PatternSyntaxException;
-import org.apache.commons.collections4.MultiSet;
-import org.apache.commons.collections4.multiset.HashMultiSet;
 
 public class SpLib {
 
@@ -77,7 +74,7 @@ public class SpLib {
 
     public static String SQLERRM = null;
     public static Integer SQLCODE = null;
-    public static LocalDate SYSDATE = null;
+    public static Date SYSDATE = null;
 
     public static Object raiseCaseNotFound() {
         throw new CASE_NOT_FOUND();
@@ -313,34 +310,43 @@ public class SpLib {
         return l.equals(r);
     }
 
-    public static Boolean opEq(LocalTime l, LocalTime r) {
+    public static Boolean opEq(Time l, Time r) {
         if (l == null || r == null) {
             return null;
         }
         return l.equals(r);
     }
 
-    public static Boolean opEq(LocalDate l, LocalDate r) {
+    public static Boolean opEq(Date l, Date r) {
         if (l == null || r == null) {
             return null;
         }
         return l.equals(r);
     }
 
+    /*
     public static Boolean opEq(ZonedDateTime l, ZonedDateTime r) {
         if (l == null || r == null) {
             return null;
         }
         return l.equals(r);
     }
+     */
+    public static Boolean opEq(ZonedDateTime l, ZonedDateTime r) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
 
-    public static Boolean opEq(LocalDateTime l, LocalDateTime r) {
+    public static Boolean opEq(Timestamp l, Timestamp r) {
         if (l == null || r == null) {
             return null;
         }
         return l.equals(r);
     }
 
+    /* TODO: restore later
     public static Boolean opEq(Set l, Set r) {
         if (l == null || r == null) {
             return null;
@@ -361,6 +367,7 @@ public class SpLib {
         }
         return l.equals(r);
     }
+     */
 
     // ====================================
     // comparison null safe equal
@@ -433,34 +440,43 @@ public class SpLib {
         return l <= r;
     }
 
-    public static Boolean opLe(LocalDate l, LocalDate r) {
+    public static Boolean opLe(Date l, Date r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) <= 0;
     }
 
-    public static Boolean opLe(LocalTime l, LocalTime r) {
+    public static Boolean opLe(Time l, Time r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) <= 0;
     }
 
-    public static Boolean opLe(LocalDateTime l, LocalDateTime r) {
+    public static Boolean opLe(Timestamp l, Timestamp r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) <= 0;
     }
 
+    /*
     public static Boolean opLe(ZonedDateTime l, ZonedDateTime r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) <= 0;
     }
+     */
+    public static Boolean opLe(ZonedDateTime l, ZonedDateTime r) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
 
+    /* TODO: restore later
     public static Boolean opLe(Set l, Set r) {
         if (l == null || r == null) {
             return null;
@@ -483,6 +499,7 @@ public class SpLib {
         }
         return compareLists(l, r) <= 0;
     }
+     */
 
     // ====================================
     // comparison greater than or equal to (>=)
@@ -535,34 +552,43 @@ public class SpLib {
         return l >= r;
     }
 
-    public static Boolean opGe(LocalDate l, LocalDate r) {
+    public static Boolean opGe(Date l, Date r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) >= 0;
     }
 
-    public static Boolean opGe(LocalTime l, LocalTime r) {
+    public static Boolean opGe(Time l, Time r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) >= 0;
     }
 
-    public static Boolean opGe(LocalDateTime l, LocalDateTime r) {
+    public static Boolean opGe(Timestamp l, Timestamp r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) >= 0;
     }
 
+    /*
     public static Boolean opGe(ZonedDateTime l, ZonedDateTime r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) >= 0;
     }
+     */
+    public static Boolean opGe(ZonedDateTime l, ZonedDateTime r) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
 
+    /* TODO: restore later
     public static Boolean opGe(Set l, Set r) {
         if (l == null || r == null) {
             return null;
@@ -585,6 +611,7 @@ public class SpLib {
         }
         return compareLists(l, r) >= 0;
     }
+     */
 
     // ====================================
     // comparison less than (<)
@@ -637,34 +664,43 @@ public class SpLib {
         return l < r;
     }
 
-    public static Boolean opLt(LocalDate l, LocalDate r) {
+    public static Boolean opLt(Date l, Date r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) < 0;
     }
 
-    public static Boolean opLt(LocalTime l, LocalTime r) {
+    public static Boolean opLt(Time l, Time r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) < 0;
     }
 
-    public static Boolean opLt(LocalDateTime l, LocalDateTime r) {
+    public static Boolean opLt(Timestamp l, Timestamp r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) < 0;
     }
 
+    /*
     public static Boolean opLt(ZonedDateTime l, ZonedDateTime r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) < 0;
     }
+     */
+    public static Boolean opLt(ZonedDateTime l, ZonedDateTime r) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
 
+    /*
     public static Boolean opLt(Set l, Set r) {
         if (l == null || r == null) {
             return null;
@@ -685,6 +721,7 @@ public class SpLib {
         }
         return compareLists(l, r) < 0;
     }
+     */
 
     // ====================================
     // comparison greater than (>)
@@ -737,34 +774,43 @@ public class SpLib {
         return l > r;
     }
 
-    public static Boolean opGt(LocalDate l, LocalDate r) {
+    public static Boolean opGt(Date l, Date r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) > 0;
     }
 
-    public static Boolean opGt(LocalTime l, LocalTime r) {
+    public static Boolean opGt(Time l, Time r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) > 0;
     }
 
-    public static Boolean opGt(LocalDateTime l, LocalDateTime r) {
+    public static Boolean opGt(Timestamp l, Timestamp r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) > 0;
     }
 
+    /*
     public static Boolean opGt(ZonedDateTime l, ZonedDateTime r) {
         if (l == null || r == null) {
             return null;
         }
         return l.compareTo(r) > 0;
     }
+     */
+    public static Boolean opGt(ZonedDateTime l, ZonedDateTime r) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
 
+    /* TODO: restore later
     public static Boolean opGt(Set l, Set r) {
         if (l == null || r == null) {
             return null;
@@ -785,7 +831,9 @@ public class SpLib {
         }
         return compareLists(l, r) > 0;
     }
+     */
 
+    /*
     // ====================================
     // comparison set equal
     public static Boolean opSetEq(Set l, Set r) {
@@ -1163,6 +1211,7 @@ public class SpLib {
         SetOrder o = compareMultiSets(l, list2MultiSet(r));
         return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
     }
+    */
 
     // ====================================
     // between
@@ -1222,32 +1271,40 @@ public class SpLib {
         return o >= lower && o <= upper;
     }
 
-    public static Boolean opBetween(LocalDate o, LocalDate lower, LocalDate upper) {
+    public static Boolean opBetween(Date o, Date lower, Date upper) {
         if (o == null || lower == null || upper == null) {
             return null;
         }
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
-    public static Boolean opBetween(LocalTime o, LocalTime lower, LocalTime upper) {
+    public static Boolean opBetween(Time o, Time lower, Time upper) {
         if (o == null || lower == null || upper == null) {
             return null;
         }
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
-    public static Boolean opBetween(LocalDateTime o, LocalDateTime lower, LocalDateTime upper) {
+    public static Boolean opBetween(Timestamp o, Timestamp lower, Timestamp upper) {
         if (o == null || lower == null || upper == null) {
             return null;
         }
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
+    /*
     public static Boolean opBetween(ZonedDateTime o, ZonedDateTime lower, ZonedDateTime upper) {
         if (o == null || lower == null || upper == null) {
             return null;
         }
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
+    }
+     */
+    public static Boolean opBetween(ZonedDateTime o, ZonedDateTime lower, ZonedDateTime upper) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
     }
 
     // ====================================
@@ -1307,6 +1364,7 @@ public class SpLib {
         }
         return l * r;
     }
+    /*
     // sets
     public static Set opMult(Set l, Set r) {
         if (l == null || r == null) {
@@ -1370,6 +1428,7 @@ public class SpLib {
         }
         return intersectMultiSets(list2MultiSet(l), list2MultiSet(r));
     }
+    */
 
     // ====================================
     // /
@@ -1505,33 +1564,47 @@ public class SpLib {
         return l + r;
     }
 
-    public static LocalTime opAdd(LocalTime l, Integer r) {
+    public static Time opAdd(Time l, Integer r) {
         if (l == null || r == null) {
             return null;
         }
-        return l.plusSeconds(r.longValue());
+        LocalTime llt = l.toLocalTime();
+        return Time.valueOf(llt.plusSeconds(r.longValue()));
     }
 
-    public static LocalDate opAdd(LocalDate l, Integer r) {
+    public static Date opAdd(Date l, Integer r) {
         if (l == null || r == null) {
             return null;
         }
-        return l.plusDays(r.longValue());
+
+        LocalDate lld = l.toLocalDate();
+        return Date.valueOf(lld.plusDays(r.longValue()));
     }
 
-    public static LocalDateTime opAdd(LocalDateTime l, Integer r) {
+    public static Timestamp opAdd(Timestamp l, Integer r) {
         if (l == null || r == null) {
             return null;
         }
-        return l.plus(r.longValue(), ChronoUnit.MILLIS);
+        LocalDateTime lldt = l.toLocalDateTime();
+        return Timestamp.valueOf(lldt.plus(r.longValue(), ChronoUnit.MILLIS));
     }
 
+    /*
     public static ZonedDateTime opAdd(ZonedDateTime l, Integer r) {
         if (l == null || r == null) {
             return null;
         }
         return l.plusSeconds(r.longValue());
     }
+     */
+    public static ZonedDateTime opAdd(ZonedDateTime l, Integer r) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
+    /*
     // sets
     public static Set opAdd(Set l, Set r) {
         if (l == null || r == null) {
@@ -1595,6 +1668,7 @@ public class SpLib {
         }
         return concatLists(l, r);
     }
+    */
 
     // ====================================
     // -
@@ -1640,55 +1714,73 @@ public class SpLib {
         return l - r;
     }
 
-    public static Long opSubtract(LocalTime l, LocalTime r) {
+    public static Long opSubtract(Time l, Time r) {
         if (l == null || r == null) {
             return null;
         }
-        return r.until(l, ChronoUnit.SECONDS);
+        LocalTime llt = l.toLocalTime();
+        LocalTime rlt = r.toLocalTime();
+        return rlt.until(llt, ChronoUnit.SECONDS);
     }
 
-    public static Long opSubtract(LocalDate l, LocalDate r) {
+    public static Long opSubtract(Date l, Date r) {
         if (l == null || r == null) {
             return null;
         }
-        return r.until(l, ChronoUnit.DAYS);
+        LocalDate lld = l.toLocalDate();
+        LocalDate rld = r.toLocalDate();
+        return rld.until(lld, ChronoUnit.DAYS);
     }
 
-    public static Long opSubtract(LocalDateTime l, LocalDateTime r) {
+    public static Long opSubtract(Timestamp l, Timestamp r) {
         if (l == null || r == null) {
             return null;
         }
-        return r.until(l, ChronoUnit.MILLIS);
+        LocalDateTime lldt = l.toLocalDateTime();
+        LocalDateTime rldt = r.toLocalDateTime();
+        return rldt.until(lldt, ChronoUnit.MILLIS);
     }
 
+    /*
     public static Long opSubtract(ZonedDateTime l, ZonedDateTime r) {
         if (l == null || r == null) {
             return null;
         }
         return r.until(l, ChronoUnit.SECONDS);
     }
+     */
+    public static Long opSubtract(ZonedDateTime l, ZonedDateTime r) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
 
-    public static LocalTime opSubtract(LocalTime l, Integer r) {
+    public static Time opSubtract(Time l, Integer r) {
         if (l == null || r == null) {
             return null;
         }
-        return l.minusSeconds(r.longValue());
+        LocalTime llt = l.toLocalTime();
+        return Time.valueOf(llt.minusSeconds(r.longValue()));
     }
 
-    public static LocalDate opSubtract(LocalDate l, Integer r) {
+    public static Date opSubtract(Date l, Integer r) {
         if (l == null || r == null) {
             return null;
         }
-        return l.minusDays(r.longValue());
+        LocalDate lld = l.toLocalDate();
+        return Date.valueOf(lld.minusDays(r.longValue()));
     }
 
-    public static LocalDateTime opSubtract(LocalDateTime l, Integer r) {
+    public static Timestamp opSubtract(Timestamp l, Integer r) {
         if (l == null || r == null) {
             return null;
         }
-        return l.minus(r.longValue(), ChronoUnit.MILLIS);
+        LocalDateTime lldt = l.toLocalDateTime();
+        return Timestamp.valueOf(lldt.minus(r.longValue(), ChronoUnit.MILLIS));
     }
 
+    /*
     public static ZonedDateTime opSubtract(ZonedDateTime l, Integer r) {
         if (l == null || r == null) {
             return null;
@@ -1702,21 +1794,39 @@ public class SpLib {
         }
         return opSubtract(ZonedDateTime.of(l, LocalTime.MIN, r.getZone()), r);
     }
+     */
+    public static ZonedDateTime opSubtract(ZonedDateTime l, Integer r) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
 
-    public static Long opSubtract(LocalDate l, LocalDateTime r) {
+    public static Long opSubtract(Date l, ZonedDateTime r) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
+    public static Long opSubtract(Date l, Timestamp r) {
         if (l == null || r == null) {
             return null;
         }
-        return opSubtract(LocalDateTime.of(l, LocalTime.MIN), r);
+
+        LocalDate lld = l.toLocalDate();
+        return opSubtract(Timestamp.valueOf(LocalDateTime.of(lld, LocalTime.MIN)), r);
     }
 
-    public static Long opSubtract(LocalDateTime l, LocalDate r) {
+    public static Long opSubtract(Timestamp l, Date r) {
         if (l == null || r == null) {
             return null;
         }
-        return opSubtract(l, LocalDateTime.of(r, LocalTime.MIN));
+        LocalDate rld = r.toLocalDate();
+        return opSubtract(l, Timestamp.valueOf(LocalDateTime.of(rld, LocalTime.MIN)));
     }
 
+    /*
     public static Long opSubtract(LocalDateTime l, ZonedDateTime r) {
         if (l == null || r == null) {
             return null;
@@ -1737,6 +1847,28 @@ public class SpLib {
         }
         return opSubtract(l.toLocalDateTime(), r);
     }
+     */
+    public static Long opSubtract(Timestamp l, ZonedDateTime r) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
+    public static Long opSubtract(ZonedDateTime l, Date r) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
+    public static Long opSubtract(ZonedDateTime l, Timestamp r) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+    /*
     // sets
     public static Set opSubtract(Set l, Set r) {
         if (l == null || r == null) {
@@ -1800,6 +1932,7 @@ public class SpLib {
         }
         return diffMultiSets(list2MultiSet(l), list2MultiSet(r));
     }
+     */
 
     // ====================================
     // ||
@@ -1924,6 +2057,7 @@ public class SpLib {
         return sbuf.toString();
     }
 
+    /* TODO: restore later
     // set and multiset ordering
     enum SetOrder {
         EQUAL,
@@ -2082,4 +2216,5 @@ public class SpLib {
         }
         return ret;
     }
+     */
 }
