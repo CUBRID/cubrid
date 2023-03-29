@@ -50,7 +50,7 @@ class active_tran_server : public tran_server
 	connection_handler &operator= (const connection_handler &) = delete;
 	connection_handler &operator= (connection_handler &&) = delete;
 
-	void prepare_disconnection () final override;
+	~connection_handler ();
 
       private:
 	request_handlers_map_t get_request_handlers () final override;
