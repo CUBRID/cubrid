@@ -2525,7 +2525,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    goto error;
 	  }
 
-	if (target_domain && target_domain->type->id == DB_TYPE_CHAR && DB_IS_NULL (peek_left) || target_domain == NULL)
+	//if (target_domain && target_domain->type->id == DB_TYPE_CHAR && DB_IS_NULL (peek_left) || target_domain == NULL)
+	if (DB_IS_NULL (peek_left) || target_domain == NULL)
 	  {
 	    TP_DOMAIN *arg1, *arg2, *arg3, tmp_arg1, tmp_arg2, tmp_arg3;
 
@@ -2539,8 +2540,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 		goto error;
 	      }
 
-	    arg1 = tp_domain_resolve_value (peek_left, &tmp_arg1);
-	    arg2 = tp_domain_resolve_value (peek_right, &tmp_arg2);
+	    arg1 = tp_domain_resolve_value (peek_left, NULL);
+	    arg2 = tp_domain_resolve_value (peek_right, NULL);
 
 	    target_domain = tp_infer_common_domain (arg1, arg2);
 
@@ -2549,7 +2550,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      {
 		TP_DOMAIN *tmp_domain;
 
-		arg3 = tp_domain_resolve_value (peek_third, &tmp_arg3);
+		arg3 = tp_domain_resolve_value (peek_third, NULL);
 		tmp_domain = tp_infer_common_domain (target_domain, arg3);
 
 		target_domain = tmp_domain;
