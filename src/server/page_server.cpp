@@ -493,7 +493,7 @@ page_server::disconnect_tran_server_async (const connection_handler *conn)
 
   if (conn == m_active_tran_server_conn.get ())
     {
-      er_log_debug (ARG_FILE_LINE, "Page server disconnected from active transaction server with channel id: %s.\n",
+      er_log_debug (ARG_FILE_LINE, "The active transaction server is disconnected. Channel id: %s.\n",
 		    conn->get_connection_id ().c_str ());
       m_async_disconnect_handler.disconnect (std::move (m_active_tran_server_conn));
       assert (m_active_tran_server_conn == nullptr);
@@ -504,7 +504,7 @@ page_server::disconnect_tran_server_async (const connection_handler *conn)
 	{
 	  if (conn == it->get ())
 	    {
-	      er_log_debug (ARG_FILE_LINE, "Page server disconnected from passive transaction server with channel id: %s.\n",
+	      er_log_debug (ARG_FILE_LINE, "The passive transaction server is disconnected. Channel id: %s.\n",
 			    (*it)->get_connection_id ().c_str ());
 	      m_async_disconnect_handler.disconnect (std::move (*it));
 	      assert (*it == nullptr);
