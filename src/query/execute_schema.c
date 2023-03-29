@@ -7521,8 +7521,41 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   if (fk_info->dedup_key_mode != DEDUPLICATE_KEY_MODE_NONE)
     {
-      // adjust for FK: add deduplicate_key_attr column
-      att_names[i++] = dk_get_deduplicate_key_attr_name (fk_info->dedup_key_level);
+      SM_CLASS *class_ = NULL;
+      SM_CLASS_CONSTRAINT *free_cons = NULL;
+      SM_CLASS_CONSTRAINT *check_cons;
+
+      if (ctemplate->op != NULL)
+	{
+	  error = au_fetch_class (ctemplate->op, &class_, AU_FETCH_READ, AU_INDEX);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  check_cons = class_->constraints;
+	}
+      else
+	{
+	  error = classobj_make_class_constraints (ctemplate->properties, ctemplate->attributes, &check_cons);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  free_cons = check_cons;
+	}
+
+      if (check_cons == NULL || !classobj_check_attr_in_unique_constraint (check_cons, (char **) att_names, NULL))
+	{
+	  // adjust for FK: add deduplicate_key_attr column
+	  att_names[i++] = dk_get_deduplicate_key_attr_name (fk_info->dedup_key_level);
+	}
+
+      if (free_cons != NULL)
+	{
+	  classobj_free_class_constraints (free_cons);
+	}
     }
 #endif
   att_names[i] = NULL;
