@@ -392,10 +392,8 @@ tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tra
 
 tran_server::connection_handler::~connection_handler ()
 {
-  m_conn->stop_incoming_communication_thread ();
-
   send_disconnect_request ();
-
+  m_conn->stop_incoming_communication_thread ();
   m_conn->stop_outgoing_communication_thread ();
 
   er_log_debug (ARG_FILE_LINE, "Transaction server is disconnected from the page server with channel id: %s \n",
@@ -434,6 +432,7 @@ tran_server::connection_handler::receive_disconnect_request (page_server_conn_t:
 	    m_ts.m_async_disconnect_handler.disconnect (std::move (*it));
 	    assert (*it == nullptr);
 	    conn_vec.erase (it);
+	    break;
 	  }
       }
   }
