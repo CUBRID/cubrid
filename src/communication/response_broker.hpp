@@ -323,7 +323,7 @@ namespace cubcomm
       std::lock_guard<std::mutex> lockg (m_mutex);
       if (m_terminate)
 	{
-	  return; // it has been terminated. the entry may have been erased or will be erased soon.
+	  return; // it has been already terminated.
 	}
       m_terminate = true;
     }
