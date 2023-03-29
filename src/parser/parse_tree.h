@@ -3861,6 +3861,9 @@ struct parser_context
 
   int max_print_len;		/* for pt_short_print */
 
+  char **external_into_label;
+  int external_into_label_cnt;
+
   struct
   {
     unsigned has_internal_error:1;	/* 0 or 1 */

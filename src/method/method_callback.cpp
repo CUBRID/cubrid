@@ -446,6 +446,20 @@ namespace cubmethod
 		    marker = db_marker_next (marker);
 		  }
 	      }
+
+	    // into variable
+	    char **external_into_label = db_session->parser->external_into_label;
+	    if (external_into_label)
+	      {
+		for (int i = 0; i < db_session->parser->external_into_label_cnt; i++)
+		  {
+		    semantics.into_vars.push_back (external_into_label[i]);
+		    free (external_into_label[i]);
+		  }
+		free (external_into_label);
+	      }
+	    db_session->parser->external_into_label = NULL;
+	    db_session->parser->external_into_label_cnt = 0;
 	  }
 	else
 	  {
