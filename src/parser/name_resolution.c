@@ -10565,7 +10565,7 @@ pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
   hostvar->info.host_var.label = pt_append_string (parser, NULL, name_node->info.name.original);
   hostvar->info.host_var.var_type = PT_HOST_IN;
   hostvar->info.host_var.index = parser->host_var_count;
-  hostvar->type_enum = DB_TYPE_UNKNOWN;
+  hostvar->type_enum = PT_TYPE_NONE;
 
   // Expand parser->host_variables by realloc
   int count_to_realloc = parser->host_var_count + 1;
@@ -10592,7 +10592,7 @@ pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
   parser->host_var_expected_domains = larger_host_var_expected_domains;
 
   db_make_null (&parser->host_variables[parser->host_var_count]);
-  parser->host_var_expected_domains[parser->host_var_count] = pt_type_enum_to_db_domain (PT_TYPE_UNKNOWN);
+  parser->host_var_expected_domains[parser->host_var_count] = pt_type_enum_to_db_domain (PT_TYPE_NONE);
 
   ++parser->host_var_count;
   larger_host_variables = NULL;
@@ -10601,5 +10601,5 @@ pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
   PT_NODE_MOVE_NUMBER_OUTERLINK (hostvar, name_node);
   parser_free_tree (parser, name_node);
 
-  return host_var;
+  return hostvar;
 }
