@@ -2988,7 +2988,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  }
 	else
 	  {
-	    if (parser->flag.do_late_binding == 1 && er_errid () == ER_OBJ_INVALID_ATTRIBUTE)
+	    if (parser->flag.is_parsing_static_sql == 1 && er_errid () == ER_OBJ_INVALID_ATTRIBUTE)
 	      {
 		// do late binding to check the name by PL/CSQL compiler.
 		er_clear ();
