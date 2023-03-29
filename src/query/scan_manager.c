@@ -2848,7 +2848,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   if (scan_type == S_HEAP_SAMPLING_SCAN)
     {
       int total_pages;
-      
+
       file_get_num_user_pages (thread_p, &hfid->vfid, &total_pages);
       /* skip_cnt = (total_page / sampling_page) */
       hsidp->sampling.skip_cnt = MAX ((total_pages / 1000), 1);

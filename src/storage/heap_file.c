@@ -8055,7 +8055,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
 			  /* skip pages */
 			  if (heap_vpid_skip_next (thread_p, hfid, &curr_page_watcher, &old_page_watcher,
-				                   sampling->skip_cnt, &vpid, scan_cache) == S_ERROR)
+						   sampling->skip_cnt, &vpid, scan_cache) == S_ERROR)
 			    {
 			      return S_ERROR;
 			    }
@@ -8073,7 +8073,8 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		    {
 		      if (sampling)
 			{
-			  printf ("total_page : %d, read_page : %d\n", sampling->total_page_cnt, sampling->read_page_cnt);
+			  printf ("total_page : %d, read_page : %d\n", sampling->total_page_cnt,
+				  sampling->read_page_cnt);
 			}
 
 		      /* must be last page, end scanning */
@@ -18702,8 +18703,7 @@ SCAN_CODE
 heap_next_sampling (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 		    HEAP_SCANCACHE * scan_cache, int ispeeking, sampling_info * sampling)
 {
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL,
-			     sampling);
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL, sampling);
 }
 
 /*
