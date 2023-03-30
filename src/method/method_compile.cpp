@@ -326,15 +326,19 @@ exit:
   }
 
   pl_parameter_info::pl_parameter_info ()
+    : mode (0)
+    , name ("?")
+    , type (DB_TYPE_NULL)
+    , precision (0)
+    , scale (0)
+    , charset (0)
   {
-    name = "?";
-    mode = 0;
-    type = DB_TYPE_NULL;
-    precision = 0;
-    scale = 0;
-    charset = 0;
+    db_make_null (&value);
+  }
 
-    value = NULL;
+  pl_parameter_info::~pl_parameter_info ()
+  {
+    db_value_clear (&value);
   }
 
   void
@@ -349,11 +353,11 @@ exit:
     serializator.pack_int (scale);
     serializator.pack_int (charset);
 
-    if (value != NULL)
+    if (value.domain.general_info.is_null == 0)
       {
 	dbvalue_java sp_val;
 	serializator.pack_int (1);
-	sp_val.value = value;
+	sp_val.value = (DB_VALUE *) &value;
 	sp_val.pack (serializator);
       }
     else
@@ -375,10 +379,10 @@ exit:
     size += serializator.get_packed_int_size (size); // charset
 
     size += serializator.get_packed_int_size (size); // value is null
-    if (value != NULL)
+    if (value.domain.general_info.is_null == 0)
       {
 	dbvalue_java sp_val;
-	sp_val.value = value;
+	sp_val.value = (DB_VALUE *) &value;
 	size += sp_val.get_packed_size (serializator, size);
       }
 
@@ -390,7 +394,4 @@ exit:
   {
     //
   }
-
-
-
 }

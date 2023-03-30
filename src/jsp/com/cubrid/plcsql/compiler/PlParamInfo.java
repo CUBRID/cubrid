@@ -70,7 +70,8 @@ public class PlParamInfo {
         int has_value = unpacker.unpackInt();
         if (has_value == 1) {
             try {
-                this.value = unpacker.unpackValue(type, mode, type);
+                int paramType = unpacker.unpackInt();
+                this.value = unpacker.unpackValue(paramType);
             } catch (TypeMismatchException e) {
                 // TODO: error handling?
                 this.value = new NullValue();

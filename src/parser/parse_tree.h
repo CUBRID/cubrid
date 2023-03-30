@@ -2472,6 +2472,7 @@ struct pt_host_var_info
   const char *str;		/* ??? */
   PT_MISC_TYPE var_type;	/* PT_HOST_IN, PT_HOST_OUT, */
   int index;			/* for PT_HOST_VAR ordering */
+  const char *label;
 };
 
 /* Info for lists of PT_NODE */
@@ -3861,6 +3862,9 @@ struct parser_context
 
   int max_print_len;		/* for pt_short_print */
 
+  char **external_into_label;
+  int external_into_label_cnt;
+
   struct
   {
     unsigned has_internal_error:1;	/* 0 or 1 */
@@ -3886,7 +3890,7 @@ struct parser_context
     unsigned return_generated_keys:1;
     unsigned is_system_generated_stmt:1;
     unsigned is_auto_commit:1;	/* set to true, if auto commit. */
-    unsigned do_late_binding:1;	/* do late binding for a name */
+    unsigned is_parsing_static_sql:1;	/* For PL/CSQL's static SQL: parameterize PL/CSQL variable symbols (to host variable) */
   } flag;
 };
 

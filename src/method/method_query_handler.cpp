@@ -787,7 +787,7 @@ namespace cubmethod
 
     if (flag & PREPARE_STATIC_SQL)
       {
-	get_db_session()->parser->flag.do_late_binding = 1;
+	get_db_session()->parser->flag.is_parsing_static_sql = 1;
       }
 
     m_stmt_type = CUBRID_STMT_NONE;
