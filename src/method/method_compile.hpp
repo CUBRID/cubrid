@@ -40,6 +40,23 @@ namespace cubmethod
 {
   struct pl_parameter_info;
 
+  struct EXPORT_IMPORT compile_info : public cubpacking::packable_object
+  {
+    compile_info ();
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+
+    int err_code;
+    int err_line;
+    std::string err_msg;
+
+    std::string translated_code;
+    std::string register_stmt;
+    std::string java_class_name;
+  };
+
   struct EXPORT_IMPORT sql_semantics : public cubpacking::packable_object
   {
     sql_semantics ();

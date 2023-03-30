@@ -138,6 +138,70 @@ exit:
 #endif
 
 //////////////////////////////////////////////////////////////////////////
+// compile info
+//////////////////////////////////////////////////////////////////////////
+  compile_info::compile_info ()
+  : err_code (-1)
+  , err_line (0)
+  {
+    //
+  }
+
+  void
+  compile_info::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_int (err_code);
+    if (err_code == 0)
+    {
+    serializator.pack_int (err_line);
+    serializator.pack_string (err_msg);
+    }
+    else
+    {
+    serializator.pack_string (translated_code);
+        serializator.pack_string (register_stmt);
+            serializator.pack_string (java_class_name);
+    }
+  }
+
+  size_t
+  compile_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = serializator.get_packed_int_size (start_offset); // err_code
+
+    if (err_code == 0)
+    {
+      size += serializator.get_packed_int_size (size); // err_line
+      size += serializator.get_packed_string_size (err_msg, size); // err_msg
+    }
+    else
+    {
+      size += serializator.get_packed_string_size (translated_code, size); // translated_code
+      size += serializator.get_packed_string_size (register_stmt, size); // register_stmt
+      size += serializator.get_packed_string_size (java_class_name, size); // java_class_name
+    }
+
+    return size;
+  }
+
+  void
+  compile_info::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_int (err_code);
+    if (err_code == 0)
+    {
+      deserializator.unpack_int (err_line);
+      deserializator.unpack_string (err_msg);
+    }
+    else
+    {
+      deserializator.unpack_string (translated_code);
+      deserializator.unpack_string (register_stmt);
+      deserializator.unpack_string (java_class_name);
+    }
+  }
+
+//////////////////////////////////////////////////////////////////////////
 // sql semantics
 //////////////////////////////////////////////////////////////////////////
   sql_semantics::sql_semantics ()

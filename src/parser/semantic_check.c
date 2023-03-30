@@ -9979,7 +9979,7 @@ pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry)
       PT_ERRORmf2 (parser, into, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COL_CNT_NE_INTO_CNT, col_cnt, tgt_cnt);
     }
 
-  if (parser->flag.do_late_binding)
+  if (parser->flag.is_parsing_static_sql == 1)
     {
       pt_check_into_clause_for_static_sql (parser, qry, tgt_cnt);
     }
