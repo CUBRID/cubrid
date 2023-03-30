@@ -63,6 +63,7 @@ SL_INFO sl_Info;
 
 static FILE *log_fp;
 static FILE *catalog_fp;
+static int sql_log_keep_cnt = 0;
 static char sql_log_base_path[PATH_MAX];
 static char sql_catalog_path[PATH_MAX];
 
@@ -78,6 +79,7 @@ static DB_VALUE *sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assi
 
 static FILE *sl_open_next_file (FILE * old_fp);
 static FILE *sl_log_open (void);
+static int sl_remove_oldest_file (void);
 static int sl_read_catalog (void);
 static int sl_write_catalog (void);
 static int create_dir (const char *new_dir);
@@ -171,15 +173,27 @@ sl_init (const char *db_name, const char *repl_log_path)
 {
   char tmp_log_path[PATH_MAX];
   char basename_buf[PATH_MAX];
+  char *sql_log_path = NULL;
 
   memset (&sl_Info, 0, sizeof (sl_Info));
 
-  snprintf (tmp_log_path, PATH_MAX, "%s/sql_log/", repl_log_path);
-  create_dir (tmp_log_path);
-
   strcpy (basename_buf, repl_log_path);
-  snprintf (sql_log_base_path, PATH_MAX, "%s/sql_log/%s.sql.log", repl_log_path, basename (basename_buf));
-  snprintf (sql_catalog_path, PATH_MAX, "%s/%s_applylogdb.sql.info", repl_log_path, db_name);
+
+  sql_log_path = prm_get_string_value (PRM_ID_HA_SQL_LOG_PATH);
+  if (sql_log_path != NULL)
+    {
+      snprintf (tmp_log_path, PATH_MAX, "%s/sql_log", sql_log_path);
+      snprintf (sql_log_base_path, PATH_MAX, "%s/%s.sql.log", tmp_log_path, basename (basename_buf));
+      snprintf (sql_catalog_path, PATH_MAX, "%s/%s_applylogdb.sql.info", sql_log_path, db_name);
+    }
+  else
+    {
+      snprintf (tmp_log_path, PATH_MAX, "%s/sql_log", repl_log_path);
+      snprintf (sql_log_base_path, PATH_MAX, "%s/%s.sql.log", tmp_log_path, basename (basename_buf));
+      snprintf (sql_catalog_path, PATH_MAX, "%s/%s_applylogdb.sql.info", repl_log_path, db_name);
+    }
+
+  create_dir (tmp_log_path);
 
   sl_Info.curr_file_id = 0;
   sl_Info.last_inserted_sql_id = 0;
@@ -200,6 +214,8 @@ sl_init (const char *db_name, const char *repl_log_path)
     {
       return ER_FAILED;
     }
+
+  sql_log_keep_cnt = prm_get_integer_value (PRM_ID_HA_SQL_LOG_KEEP_COUNT);
 
   return NO_ERROR;
 }
@@ -546,6 +562,11 @@ sl_write_sql (string_buffer & query, string_buffer * select)
   if (ftell (log_fp) >= SL_LOG_FILE_MAX_SIZE)
     {
       log_fp = sl_open_next_file (log_fp);
+
+      if (sql_log_keep_cnt != 0 && sl_Info.curr_file_id >= sql_log_keep_cnt)
+	{
+	  sl_remove_oldest_file ();
+	}
     }
 
   return NO_ERROR;
@@ -612,6 +633,30 @@ sl_open_next_file (FILE * old_fp)
   return new_fp;
 }
 
+/*
+ * sl_remove_oldest_file() - remove oldest sql log file
+ *   return: error code
+ *
+ * Note:
+ *   This function is related to the ha_sql_log_keep_count hidden system parameter.
+ *   If this is set to zero, then sql log files are not deleted.
+ *   If this is set to non-zero, then only that number of sql log files are kept.
+ */
+static int
+sl_remove_oldest_file (void)
+{
+  int oldest_file_id;
+  char oldest_file_path[PATH_MAX];
+
+  oldest_file_id = sl_Info.curr_file_id - sql_log_keep_cnt;
+
+  snprintf (oldest_file_path, PATH_MAX - 1, "%s.%d", sql_log_base_path, oldest_file_id);
+
+  unlink (oldest_file_path);
+
+  return NO_ERROR;
+}
+
 static int
 create_dir (const char *new_dir)
 {
@@ -642,6 +687,10 @@ create_dir (const char *new_dir)
 	{
 	  if (mkdir (path, 0777) < 0)
 	    {
+	      er_stack_push ();
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, new_dir);
+	      er_stack_pop ();
+
 	      return ER_FAILED;
 	    }
 	}
