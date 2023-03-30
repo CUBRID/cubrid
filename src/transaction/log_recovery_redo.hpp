@@ -27,6 +27,7 @@
 #include "page_buffer.h"
 #include "perf_monitor_trackers.hpp"
 #include "scope_exit.hpp"
+#include "slotted_page.h"
 #include "system_parameter.h"
 #include "type_helper.hpp"
 
@@ -671,6 +672,17 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
   {
     if (rcv.pgptr != nullptr)
       {
+	const PAGE_TYPE ptype = pgbuf_get_page_ptype (thread_p, rcv.pgptr);
+	const bool is_slotted = spage_is_slotted_page_type (ptype);
+	if (is_slotted)
+	  {
+	    const bool needs_compacting = spage_need_compact (thread_p, rcv.pgptr);
+	    if (needs_compacting)
+	      {
+		(void) spage_compact_and_zero_out_free_space (thread_p, rcv.pgptr);
+	      }
+	  }
+
 	pgbuf_unfix_and_init (thread_p, rcv.pgptr);
       }
   });

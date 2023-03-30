@@ -147,6 +147,7 @@ extern int spage_max_record_size (void);
 extern int spage_check_slot_owner (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid);
 extern bool spage_is_slotted_page_type (PAGE_TYPE ptype);
 extern int spage_compact (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
+extern int spage_compact_and_zero_out_free_space (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern bool spage_is_valid_anchor_type (const INT16 anchor_type);
 extern const char *spage_anchor_flag_string (const INT16 anchor_type);
 extern const char *spage_alignment_string (unsigned short alignment);

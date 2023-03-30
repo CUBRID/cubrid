@@ -26,12 +26,16 @@ vpid_lsa_consistency_check::check (const vpid &a_vpid, const log_lsa &a_log_lsa)
 {
   std::lock_guard<std::mutex> lck (mtx);
   const vpid_key_t key {a_vpid.volid, a_vpid.pageid};
-  const auto map_it =  consistency_check_map.find (key);
+  auto map_it =  consistency_check_map.find (key);
   if (map_it != consistency_check_map.cend ())
     {
       assert ((*map_it).second < a_log_lsa);
+      (*map_it).second = a_log_lsa;
     }
-  consistency_check_map.emplace (key, a_log_lsa);
+  else
+    {
+      consistency_check_map.emplace (key, a_log_lsa);
+    }
 }
 
 void

@@ -1272,6 +1272,26 @@ spage_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
   return NO_ERROR;
 }
 
+int
+spage_compact_and_zero_out_free_space (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
+{
+  assert (page_p != nullptr);
+
+  int error_code = spage_compact (thread_p, page_p);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  const SPAGE_HEADER *const page_header_p = (const SPAGE_HEADER *) page_p;
+
+  assert (page_header_p->cont_free == page_header_p->total_free);
+  memset ((void *) page_p + page_header_p->offset_to_free_area, 0,
+			     page_header_p->total_free);
+
+  return NO_ERROR;
+}
+
 /*
  * spage_find_free_slot () -
  *   return: void
