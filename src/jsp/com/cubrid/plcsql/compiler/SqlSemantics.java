@@ -102,10 +102,12 @@ public class SqlSemantics {
             }
         }
 
-        // TODO
         int intoVarsCnt = unpacker.unpackInt();
         if (intoVarsCnt > 0) {
             intoVars = new ArrayList<>();
+            for (int i = 0; i < intoVarsCnt; i++) {
+                intoVars.add(unpacker.unpackCString());
+            }
         }
     }
 }
