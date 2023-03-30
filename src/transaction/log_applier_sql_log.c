@@ -638,9 +638,8 @@ sl_open_next_file (FILE * old_fp)
  *   return: error code
  *
  * Note:
- *   This function is related to the ha_sql_log_keep_count hidden system parameter.
- *   If this is set to zero, then sql log files are not deleted.
- *   If this is set to non-zero, then only that number of sql log files are kept.
+ *   This function is related to the ha_sql_log_keep_count system parameter.
+ *   This system parameter can be set from 2 to 5 and only that number of sql log files are kept.
  */
 static int
 sl_remove_oldest_file (void)

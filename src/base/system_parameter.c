@@ -1493,8 +1493,8 @@ static unsigned int prm_ha_sql_log_path_flag = 0;
 
 int PRM_HA_SQL_LOG_KEEP_COUNT = 2;
 static int prm_ha_sql_log_keep_count_default = 2;
-static int prm_ha_sql_log_keep_count_upper = INT_MAX;
-static int prm_ha_sql_log_keep_count_lower = 0;
+static int prm_ha_sql_log_keep_count_upper = 5;
+static int prm_ha_sql_log_keep_count_lower = 2;
 static unsigned int prm_ha_sql_log_keep_count_flag = 0;
 
 int PRM_HA_SQL_LOG_MAX_SIZE_IN_MB = INT_MIN;
@@ -6245,7 +6245,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_HA_SQL_LOG_PATH,
    PRM_NAME_HA_SQL_LOG_PATH,
-   (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_FOR_HA),
    PRM_STRING,
    &prm_ha_sql_log_path_flag,
    (void *) &prm_ha_sql_log_path_default,
@@ -6256,7 +6256,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_HA_SQL_LOG_KEEP_COUNT,
    PRM_NAME_HA_SQL_LOG_KEEP_COUNT,
-   (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_FOR_HA),
    PRM_INTEGER,
    &prm_ha_sql_log_keep_count_flag,
    (void *) &prm_ha_sql_log_keep_count_default,
