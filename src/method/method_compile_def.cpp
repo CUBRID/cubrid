@@ -40,7 +40,7 @@ namespace cubmethod
   compile_info::pack (cubpacking::packer &serializator) const
   {
     serializator.pack_int (err_code);
-    if (err_code == 0)
+    if (err_code < 0)
       {
 	serializator.pack_int (err_line);
 	serializator.pack_string (err_msg);
@@ -58,7 +58,7 @@ namespace cubmethod
   {
     size_t size = serializator.get_packed_int_size (start_offset); // err_code
 
-    if (err_code == 0)
+    if (err_code < 0)
       {
 	size += serializator.get_packed_int_size (size); // err_line
 	size += serializator.get_packed_string_size (err_msg, size); // err_msg
@@ -77,7 +77,7 @@ namespace cubmethod
   compile_info::unpack (cubpacking::unpacker &deserializator)
   {
     deserializator.unpack_int (err_code);
-    if (err_code == 0)
+    if (err_code < 0)
       {
 	deserializator.unpack_int (err_line);
 	deserializator.unpack_string (err_msg);
@@ -291,7 +291,8 @@ namespace cubmethod
 
   pl_parameter_info::~pl_parameter_info ()
   {
-    db_value_clear (&value);
+    // db_value_clear (&value);
+    // db_make_null (&value);
   }
 
   void

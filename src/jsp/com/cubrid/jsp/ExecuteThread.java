@@ -302,39 +302,39 @@ public class ExecuteThread extends Thread {
         boolean verbose = unpacker.unpackBool();
         String inSource = unpacker.unpackCString();
 
+        CompileInfo info = null;
         try {
-            CompileInfo info = TestMain.compilePLCSQL(inSource, verbose);
-            String javaFilePath = StoredProcedureClassLoader.ROOT_PATH + info.className + ".java";
-            File file = new File(javaFilePath);
-            FileOutputStream fos = new FileOutputStream(file, false);
-            fos.write(info.translated.getBytes(Charset.forName("UTF-8")));
-            fos.close();
+            info = TestMain.compilePLCSQL(inSource, verbose);
+            if (info.errCode == 0) {
+                String javaFilePath =
+                        StoredProcedureClassLoader.ROOT_PATH + info.className + ".java";
+                File file = new File(javaFilePath);
+                FileOutputStream fos = new FileOutputStream(file, false);
+                fos.write(info.translated.getBytes(Charset.forName("UTF-8")));
+                fos.close();
 
-            String cubrid_env_root = Server.getRootPath();
-            String command =
-                    "javac " + javaFilePath + " -cp " + cubrid_env_root + "/java/jspserver.jar";
+                String cubrid_env_root = Server.getRootPath();
+                String command =
+                        "javac " + javaFilePath + " -cp " + cubrid_env_root + "/java/jspserver.jar";
 
-            Process proc = Runtime.getRuntime().exec(command);
-            proc.getErrorStream().close();
-            proc.getInputStream().close();
-            proc.getOutputStream().close();
-            proc.waitFor();
+                Process proc = Runtime.getRuntime().exec(command);
+                proc.getErrorStream().close();
+                proc.getInputStream().close();
+                proc.getOutputStream().close();
+                proc.waitFor();
 
-            if (proc.exitValue() != 0) {
-                // TODO
-                throw new RuntimeException(command);
+                if (proc.exitValue() != 0) {
+                    // TODO
+                    throw new RuntimeException(command);
+                }
             }
-
-            CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
-            packer.packString(info.translated);
-            packer.packString(info.createStmt);
-
-            Context.getCurrentExecuteThread().sendCommand(RequestCode.COMPILE, packer.getBuffer());
         } catch (Exception e) {
-            // TODO: error handling
-            output.writeInt(0);
-            output.flush();
+            info = new CompileInfo(-1, -1, "unknown error");
             throw new RuntimeException(e);
+        } finally {
+            CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
+            info.pack(packer);
+            Context.getCurrentExecuteThread().sendCommand(RequestCode.COMPILE, packer.getBuffer());
         }
     }
 

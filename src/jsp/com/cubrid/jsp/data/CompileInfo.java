@@ -60,7 +60,7 @@ public class CompileInfo implements PackableObject {
     @Override
     public void pack(CUBRIDPacker packer) {
         packer.packInt(errCode);
-        if (errCode == 0) {
+        if (errCode < 0) {
             packer.packInt(errLine);
             packer.packString(errMsg);
         } else {
