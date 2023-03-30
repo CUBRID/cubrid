@@ -849,7 +849,7 @@ boot_initialize_lob_path (const char *path_arg, const char *db_path, char *path_
 	{
 	  // Directory does not exist
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, lob_dir_path);
-	  if (mkdir (lob_dir_path, 0777) < 0)
+	  if (mkdir (lob_dir_path, 0700) < 0)
 	    {
 	      cub_dirname_r (lob_dir_path, absolute_path_buf, PATH_MAX);
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", absolute_path_buf);
