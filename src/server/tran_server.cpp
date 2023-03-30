@@ -157,6 +157,7 @@ int
 tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out)
 {
   int err_code = NO_ERROR;
+  constexpr auto timeout_1m = std::chrono::minutes { 1 };  // 1m, TODO: should be configurable.
   std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
 
   /*
@@ -165,7 +166,9 @@ tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in,
    *  - Normal disconnection: in receive_disconnect_request() and disconnect_all_page_servers()
    *  - Abnormal disconnection: in the error handler, here, or somewhere else (TODO)
    */
-  m_main_conn_cv.wait (s_lock, [&] ()
+
+  // TODO: exits when a thread waiting on it (transaction or whatever) stops. Then, it should wake up periodically and check it.
+  m_main_conn_cv.wait_for (s_lock, timeout_1m, [&] ()
   {
     if (m_page_server_conn_vec.empty())
       {
@@ -176,7 +179,6 @@ tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in,
     // we assume that 0-th conn is the main connection
     err_code =  m_page_server_conn_vec[0]->send_receive (reqid, std::move (payload_in), payload_out);
     // when an error occurs, it expects the main connection to be changed soon and will retry with the new one.
-    // TODO: timeout is needed.
     return err_code == NO_ERROR;
   });
 
