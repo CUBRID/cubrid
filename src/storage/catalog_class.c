@@ -30,6 +30,7 @@
 #include "system_catalog.h"
 
 #include "btree.h"		// for single/multi ops
+#include "deduplicate_key.h"
 #include "error_manager.h"
 #include "heap_file.h"
 #include "transform.h"

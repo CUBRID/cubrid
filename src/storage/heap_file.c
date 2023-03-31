@@ -35,6 +35,7 @@
 
 #include "heap_file.h"
 
+#include "deduplicate_key.h"
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "record_descriptor.hpp"

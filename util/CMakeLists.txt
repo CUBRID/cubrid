@@ -210,7 +210,6 @@ if(WIN32)
 endif(WIN32)
 add_executable(cub_javasp ${JAVASP_SERVER_SOURCES})
 target_link_libraries(cub_javasp LINK_PRIVATE cubridsa)
-target_include_directories(cub_javasp PRIVATE ${EP_INCLUDES})
 
 set(CUB_ADMIN_SOURCES
   ${EXECUTABLES_DIR}/util_admin.c

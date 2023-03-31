@@ -34,6 +34,7 @@
 #include "query_executor.h"
 
 #include "binaryheap.h"
+#include "deduplicate_key.h"
 #include "porting.h"
 #include "error_manager.h"
 #include "partition_sr.h"

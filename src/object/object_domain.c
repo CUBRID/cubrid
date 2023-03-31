@@ -35,6 +35,7 @@
 #include <assert.h>
 
 #include "area_alloc.h"
+#include "deduplicate_key.h"
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"

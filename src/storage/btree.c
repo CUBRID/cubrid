@@ -27,6 +27,7 @@
 #include "btree_load.h"
 #include "config.h"
 #include "db_value_printer.hpp"
+#include "deduplicate_key.h"
 #include "file_manager.h"
 #include "slotted_page.h"
 #include "log_append.hpp"

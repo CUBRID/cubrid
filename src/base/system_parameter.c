@@ -46,6 +46,7 @@
 
 #include "porting.h"
 #include "chartype.h"
+#include "deduplicate_key.h"
 #include "misc_string.h"
 #include "error_manager.h"
 #include "storage_common.h"
