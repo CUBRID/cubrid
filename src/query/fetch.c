@@ -2542,7 +2542,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    arg1 = tp_domain_resolve_value (peek_left, &tmp_arg1);
 	    arg2 = tp_domain_resolve_value (peek_right, &tmp_arg2);
 
-	    target_domain = tp_infer_common_domain (arg1, arg2);
+	    t_dom = tp_infer_common_domain (arg1, arg2);
+	    target_domain->precision = t_dom->precision;
 
 	    arg3 = NULL;
 	    if (target_domain == NULL && peek_third)
