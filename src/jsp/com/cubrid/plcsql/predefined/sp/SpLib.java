@@ -31,6 +31,8 @@
 package com.cubrid.plcsql.predefined.sp;
 
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
+import com.cubrid.plcsql.compiler.CoercionScheme;
+import com.cubrid.plcsql.compiler.annotation.Operator;
 import java.math.BigDecimal;
 import java.sql.*;
 import java.sql.Date;
@@ -145,6 +147,7 @@ public class SpLib {
 
     // ====================================
     // boolean not
+    @Operator(coercionScheme=CoercionScheme.Individual)
     public static Boolean opNot(Boolean l) {
         if (l == null) {
             return null;
@@ -154,12 +157,14 @@ public class SpLib {
 
     // ====================================
     // is null
+    @Operator(coercionScheme=CoercionScheme.Individual)
     public static Boolean opIsNull(Object l) {
         return (l == null);
     }
 
     // ====================================
     // arithmetic negative
+    @Operator(coercionScheme=CoercionScheme.Individual)
     public static Short opNeg(Short l) {
         if (l == null) {
             return null;
@@ -167,6 +172,7 @@ public class SpLib {
         return ((short) -l);
     }
 
+    @Operator(coercionScheme=CoercionScheme.Individual)
     public static Integer opNeg(Integer l) {
         if (l == null) {
             return null;
@@ -174,6 +180,7 @@ public class SpLib {
         return -l;
     }
 
+    @Operator(coercionScheme=CoercionScheme.Individual)
     public static Long opNeg(Long l) {
         if (l == null) {
             return null;
@@ -181,6 +188,7 @@ public class SpLib {
         return -l;
     }
 
+    @Operator(coercionScheme=CoercionScheme.Individual)
     public static BigDecimal opNeg(BigDecimal l) {
         if (l == null) {
             return null;
@@ -188,6 +196,7 @@ public class SpLib {
         return l.negate();
     }
 
+    @Operator(coercionScheme=CoercionScheme.Individual)
     public static Float opNeg(Float l) {
         if (l == null) {
             return null;
@@ -195,6 +204,7 @@ public class SpLib {
         return -l;
     }
 
+    @Operator(coercionScheme=CoercionScheme.Individual)
     public static Double opNeg(Double l) {
         if (l == null) {
             return null;
@@ -204,6 +214,7 @@ public class SpLib {
 
     // ====================================
     // bitwise compliment
+    @Operator(coercionScheme=CoercionScheme.Individual)
     public static Long opBitCompli(Short l) {
         if (l == null) {
             return null;
@@ -211,6 +222,7 @@ public class SpLib {
         return ~l.longValue();
     }
 
+    @Operator(coercionScheme=CoercionScheme.Individual)
     public static Long opBitCompli(Integer l) {
         if (l == null) {
             return null;
@@ -218,6 +230,7 @@ public class SpLib {
         return ~l.longValue();
     }
 
+    @Operator(coercionScheme=CoercionScheme.Individual)
     public static Long opBitCompli(Long l) {
         if (l == null) {
             return null;
@@ -227,6 +240,7 @@ public class SpLib {
 
     // ====================================
     // boolean and
+    @Operator(coercionScheme=CoercionScheme.Individual)
     public static Boolean opAnd(Boolean l, Boolean r) {
         if (l == null || r == null) {
             return null;
@@ -236,6 +250,7 @@ public class SpLib {
 
     // ====================================
     // boolean or
+    @Operator(coercionScheme=CoercionScheme.Individual)
     public static Boolean opOr(Boolean l, Boolean r) {
         if (l == null || r == null) {
             return null;
@@ -245,6 +260,7 @@ public class SpLib {
 
     // ====================================
     // boolean xor
+    @Operator(coercionScheme=CoercionScheme.Individual)
     public static Boolean opXor(Boolean l, Boolean r) {
         if (l == null || r == null) {
             return null;
@@ -254,84 +270,64 @@ public class SpLib {
 
     // ====================================
     // comparison equal
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static Boolean opEq(Boolean l, Boolean r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static Boolean opEq(String l, String r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static Boolean opEq(BigDecimal l, BigDecimal r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static Boolean opEq(Short l, Short r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static Boolean opEq(Integer l, Integer r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static Boolean opEq(Long l, Long r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static Boolean opEq(Float l, Float r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static Boolean opEq(Double l, Double r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static Boolean opEq(Time l, Time r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static Boolean opEq(Date l, Date r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
     /*
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static Boolean opEq(ZonedDateTime l, ZonedDateTime r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
      */
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static Boolean opEq(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
@@ -339,136 +335,266 @@ public class SpLib {
         throw new RuntimeException("unreachable");
     }
 
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static Boolean opEq(Timestamp l, Timestamp r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
     /* TODO: restore later
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static Boolean opEq(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static Boolean opEq(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static Boolean opEq(List l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
      */
 
     // ====================================
     // comparison null safe equal
-    public static Boolean opNullSafeEq(Object l, Object r) {
-        if (l == null) {
-            return (r == null);
-        } else if (r == null) {
-            return (l == null);
-        }
-        return l.equals(r);
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNullSafeEq(Boolean l, Boolean r) {
+        return commonOpNullSafeEq(l, r);
     }
 
-    // ====================================
-    // comparison not equal
-    public static Boolean opNeq(Object l, Object r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return !l.equals(r);
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNullSafeEq(String l, String r) {
+        return commonOpNullSafeEq(l, r);
     }
 
-    // ====================================
-    // comparison less than or equal to (<=)
-    public static Boolean opLe(String l, String r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) <= 0;
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNullSafeEq(BigDecimal l, BigDecimal r) {
+        return commonOpNullSafeEq(l, r);
     }
 
-    public static Boolean opLe(Short l, Short r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l <= r;
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNullSafeEq(Short l, Short r) {
+        return commonOpNullSafeEq(l, r);
     }
 
-    public static Boolean opLe(Integer l, Integer r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l <= r;
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNullSafeEq(Integer l, Integer r) {
+        return commonOpNullSafeEq(l, r);
     }
 
-    public static Boolean opLe(Long l, Long r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l <= r;
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNullSafeEq(Long l, Long r) {
+        return commonOpNullSafeEq(l, r);
     }
 
-    public static Boolean opLe(BigDecimal l, BigDecimal r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) <= 0;
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNullSafeEq(Float l, Float r) {
+        return commonOpNullSafeEq(l, r);
     }
 
-    public static Boolean opLe(Float l, Float r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l <= r;
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNullSafeEq(Double l, Double r) {
+        return commonOpNullSafeEq(l, r);
     }
 
-    public static Boolean opLe(Double l, Double r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l <= r;
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNullSafeEq(Time l, Time r) {
+        return commonOpNullSafeEq(l, r);
     }
 
-    public static Boolean opLe(Date l, Date r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) <= 0;
-    }
-
-    public static Boolean opLe(Time l, Time r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) <= 0;
-    }
-
-    public static Boolean opLe(Timestamp l, Timestamp r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) <= 0;
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNullSafeEq(Date l, Date r) {
+        return commonOpNullSafeEq(l, r);
     }
 
     /*
-    public static Boolean opLe(ZonedDateTime l, ZonedDateTime r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) <= 0;
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNullSafeEq(ZonedDateTime l, ZonedDateTime r) {
+        return commonOpNullSafeEq(l, r);
     }
      */
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNullSafeEq(ZonedDateTime l, ZonedDateTime r) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNullSafeEq(Timestamp l, Timestamp r) {
+        return commonOpNullSafeEq(l, r);
+    }
+
+    /* TODO: restore later
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNullSafeEq(Set l, Set r) {
+        return commonOpNullSafeEq(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNullSafeEq(MultiSet l, MultiSet r) {
+        return commonOpNullSafeEq(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNullSafeEq(List l, List r) {
+        return commonOpNullSafeEq(l, r);
+    }
+     */
+
+    // ====================================
+    // comparison not equal
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNeq(Boolean l, Boolean r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNeq(String l, String r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNeq(BigDecimal l, BigDecimal r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNeq(Short l, Short r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNeq(Integer l, Integer r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNeq(Long l, Long r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNeq(Float l, Float r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNeq(Double l, Double r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNeq(Time l, Time r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNeq(Date l, Date r) {
+        return commonOpNeq(l, r);
+    }
+
+    /*
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNeq(ZonedDateTime l, ZonedDateTime r) {
+        return commonOpNeq(l, r);
+    }
+     */
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNeq(ZonedDateTime l, ZonedDateTime r) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNeq(Timestamp l, Timestamp r) {
+        return commonOpNeq(l, r);
+    }
+
+    /* TODO: restore later
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNeq(Set l, Set r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNeq(MultiSet l, MultiSet r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opNeq(List l, List r) {
+        return commonOpNeq(l, r);
+    }
+     */
+
+    // ====================================
+    // comparison less than or equal to (<=)
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opLe(String l, String r) {
+        return commonOpLe(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opLe(Short l, Short r) {
+        return commonOpLe(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opLe(Integer l, Integer r) {
+        return commonOpLe(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opLe(Long l, Long r) {
+        return commonOpLe(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opLe(BigDecimal l, BigDecimal r) {
+        return commonOpLe(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opLe(Float l, Float r) {
+        return commonOpLe(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opLe(Double l, Double r) {
+        return commonOpLe(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opLe(Date l, Date r) {
+        return commonOpLe(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opLe(Time l, Time r) {
+        return commonOpLe(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opLe(Timestamp l, Timestamp r) {
+        return commonOpLe(l, r);
+    }
+
+    /*
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
+    public static Boolean opLe(ZonedDateTime l, ZonedDateTime r) {
+        return commonOpLe(l, r);
+    }
+     */
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static Boolean opLe(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
@@ -477,6 +603,7 @@ public class SpLib {
     }
 
     /* TODO: restore later
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static Boolean opLe(Set l, Set r) {
         if (l == null || r == null) {
             return null;
@@ -485,6 +612,7 @@ public class SpLib {
         return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static Boolean opLe(MultiSet l, MultiSet r) {
         if (l == null || r == null) {
             return null;
@@ -493,6 +621,7 @@ public class SpLib {
         return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ComparisonOperator)
     public static <E extends Comparable<E>> Boolean opLe(List<E> l, List<E> r) {
         if (l == null || r == null) {
             return null;
@@ -504,81 +633,48 @@ public class SpLib {
     // ====================================
     // comparison greater than or equal to (>=)
     public static Boolean opGe(String l, String r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) >= 0;
+        return commonOpGe(l, r);
     }
 
     public static Boolean opGe(Short l, Short r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l >= r;
+        return commonOpGe(l, r);
     }
 
     public static Boolean opGe(Integer l, Integer r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l >= r;
+        return commonOpGe(l, r);
     }
 
     public static Boolean opGe(Long l, Long r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l >= r;
+        return commonOpGe(l, r);
     }
 
     public static Boolean opGe(BigDecimal l, BigDecimal r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) >= 0;
+        return commonOpGe(l, r);
     }
 
     public static Boolean opGe(Float l, Float r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l >= r;
+        return commonOpGe(l, r);
     }
 
     public static Boolean opGe(Double l, Double r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l >= r;
+        return commonOpGe(l, r);
     }
 
     public static Boolean opGe(Date l, Date r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) >= 0;
+        return commonOpGe(l, r);
     }
 
     public static Boolean opGe(Time l, Time r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) >= 0;
+        return commonOpGe(l, r);
     }
 
     public static Boolean opGe(Timestamp l, Timestamp r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) >= 0;
+        return commonOpGe(l, r);
     }
 
     /*
     public static Boolean opGe(ZonedDateTime l, ZonedDateTime r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) >= 0;
+        return commonOpGe(l, r);
     }
      */
     public static Boolean opGe(ZonedDateTime l, ZonedDateTime r) {
@@ -616,81 +712,48 @@ public class SpLib {
     // ====================================
     // comparison less than (<)
     public static Boolean opLt(String l, String r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) < 0;
+        return commonOpLt(l, r);
     }
 
     public static Boolean opLt(Short l, Short r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l < r;
+        return commonOpLt(l, r);
     }
 
     public static Boolean opLt(Integer l, Integer r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l < r;
+        return commonOpLt(l, r);
     }
 
     public static Boolean opLt(Long l, Long r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l < r;
+        return commonOpLt(l, r);
     }
 
     public static Boolean opLt(BigDecimal l, BigDecimal r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) < 0;
+        return commonOpLt(l, r);
     }
 
     public static Boolean opLt(Float l, Float r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l < r;
+        return commonOpLt(l, r);
     }
 
     public static Boolean opLt(Double l, Double r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l < r;
+        return commonOpLt(l, r);
     }
 
     public static Boolean opLt(Date l, Date r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) < 0;
+        return commonOpLt(l, r);
     }
 
     public static Boolean opLt(Time l, Time r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) < 0;
+        return commonOpLt(l, r);
     }
 
     public static Boolean opLt(Timestamp l, Timestamp r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) < 0;
+        return commonOpLt(l, r);
     }
 
     /*
     public static Boolean opLt(ZonedDateTime l, ZonedDateTime r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) < 0;
+        return commonOpLt(l, r);
     }
      */
     public static Boolean opLt(ZonedDateTime l, ZonedDateTime r) {
@@ -726,81 +789,48 @@ public class SpLib {
     // ====================================
     // comparison greater than (>)
     public static Boolean opGt(String l, String r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) > 0;
+        return commonOpGt(l, r);
     }
 
     public static Boolean opGt(Short l, Short r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l > r;
+        return commonOpGt(l, r);
     }
 
     public static Boolean opGt(Integer l, Integer r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l > r;
+        return commonOpGt(l, r);
     }
 
     public static Boolean opGt(Long l, Long r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l > r;
+        return commonOpGt(l, r);
     }
 
     public static Boolean opGt(BigDecimal l, BigDecimal r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) > 0;
+        return commonOpGt(l, r);
     }
 
     public static Boolean opGt(Float l, Float r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l > r;
+        return commonOpGt(l, r);
     }
 
     public static Boolean opGt(Double l, Double r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l > r;
+        return commonOpGt(l, r);
     }
 
     public static Boolean opGt(Date l, Date r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) > 0;
+        return commonOpGt(l, r);
     }
 
     public static Boolean opGt(Time l, Time r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) > 0;
+        return commonOpGt(l, r);
     }
 
     public static Boolean opGt(Timestamp l, Timestamp r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) > 0;
+        return commonOpGt(l, r);
     }
 
     /*
     public static Boolean opGt(ZonedDateTime l, ZonedDateTime r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) > 0;
+        return commonOpGt(l, r);
     }
      */
     public static Boolean opGt(ZonedDateTime l, ZonedDateTime r) {
@@ -1215,6 +1245,7 @@ public class SpLib {
 
     // ====================================
     // between
+    @Operator(coercionScheme=CoercionScheme.BetweenOperator)
     public static Boolean opBetween(Boolean o, Boolean lower, Boolean upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1222,6 +1253,7 @@ public class SpLib {
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
+    @Operator(coercionScheme=CoercionScheme.BetweenOperator)
     public static Boolean opBetween(String o, String lower, String upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1229,6 +1261,7 @@ public class SpLib {
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
+    @Operator(coercionScheme=CoercionScheme.BetweenOperator)
     public static Boolean opBetween(Short o, Short lower, Short upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1236,6 +1269,7 @@ public class SpLib {
         return o >= lower && o <= upper;
     }
 
+    @Operator(coercionScheme=CoercionScheme.BetweenOperator)
     public static Boolean opBetween(Integer o, Integer lower, Integer upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1243,6 +1277,7 @@ public class SpLib {
         return o >= lower && o <= upper;
     }
 
+    @Operator(coercionScheme=CoercionScheme.BetweenOperator)
     public static Boolean opBetween(Long o, Long lower, Long upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1250,6 +1285,7 @@ public class SpLib {
         return o >= lower && o <= upper;
     }
 
+    @Operator(coercionScheme=CoercionScheme.BetweenOperator)
     public static Boolean opBetween(BigDecimal o, BigDecimal lower, BigDecimal upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1257,6 +1293,7 @@ public class SpLib {
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
+    @Operator(coercionScheme=CoercionScheme.BetweenOperator)
     public static Boolean opBetween(Float o, Float lower, Float upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1264,6 +1301,7 @@ public class SpLib {
         return o >= lower && o <= upper;
     }
 
+    @Operator(coercionScheme=CoercionScheme.BetweenOperator)
     public static Boolean opBetween(Double o, Double lower, Double upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1271,6 +1309,7 @@ public class SpLib {
         return o >= lower && o <= upper;
     }
 
+    @Operator(coercionScheme=CoercionScheme.BetweenOperator)
     public static Boolean opBetween(Date o, Date lower, Date upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1278,6 +1317,7 @@ public class SpLib {
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
+    @Operator(coercionScheme=CoercionScheme.BetweenOperator)
     public static Boolean opBetween(Time o, Time lower, Time upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1285,6 +1325,7 @@ public class SpLib {
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
+    @Operator(coercionScheme=CoercionScheme.BetweenOperator)
     public static Boolean opBetween(Timestamp o, Timestamp lower, Timestamp upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1293,6 +1334,7 @@ public class SpLib {
     }
 
     /*
+    @Operator(coercionScheme=CoercionScheme.BetweenOperator)
     public static Boolean opBetween(ZonedDateTime o, ZonedDateTime lower, ZonedDateTime upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1300,6 +1342,7 @@ public class SpLib {
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
      */
+    @Operator(coercionScheme=CoercionScheme.BetweenOperator)
     public static Boolean opBetween(ZonedDateTime o, ZonedDateTime lower, ZonedDateTime upper) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
@@ -1309,12 +1352,13 @@ public class SpLib {
 
     // ====================================
     // in
+    @Operator(coercionScheme=CoercionScheme.InOperator)
     public static Boolean opIn(Object o, Object... list) {
         if (o == null || list == null) {
             return null;
         }
         for (Object p : list) {
-            if (Objects.equals(o, p)) {
+            if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
                 return true;
             }
         }
@@ -1323,6 +1367,7 @@ public class SpLib {
 
     // ====================================
     // *
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Short opMult(Short l, Short r) {
         if (l == null || r == null) {
             return null;
@@ -1330,6 +1375,7 @@ public class SpLib {
         return (short) (l * r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Integer opMult(Integer l, Integer r) {
         if (l == null || r == null) {
             return null;
@@ -1337,6 +1383,7 @@ public class SpLib {
         return l * r;
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Long opMult(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1344,6 +1391,7 @@ public class SpLib {
         return l * r;
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static BigDecimal opMult(BigDecimal l, BigDecimal r) {
         if (l == null || r == null) {
             return null;
@@ -1351,6 +1399,7 @@ public class SpLib {
         return l.multiply(r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Float opMult(Float l, Float r) {
         if (l == null || r == null) {
             return null;
@@ -1358,6 +1407,7 @@ public class SpLib {
         return l * r;
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Double opMult(Double l, Double r) {
         if (l == null || r == null) {
             return null;
@@ -1432,6 +1482,7 @@ public class SpLib {
 
     // ====================================
     // /
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Short opDiv(Short l, Short r) {
         if (l == null || r == null) {
             return null;
@@ -1439,6 +1490,7 @@ public class SpLib {
         return (short) (l / r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Integer opDiv(Integer l, Integer r) {
         if (l == null || r == null) {
             return null;
@@ -1446,6 +1498,7 @@ public class SpLib {
         return l / r;
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Long opDiv(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1453,6 +1506,7 @@ public class SpLib {
         return l / r;
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static BigDecimal opDiv(BigDecimal l, BigDecimal r) {
         if (l == null || r == null) {
             return null;
@@ -1460,6 +1514,7 @@ public class SpLib {
         return l.divide(r, BigDecimal.ROUND_HALF_UP);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Float opDiv(Float l, Float r) {
         if (l == null || r == null) {
             return null;
@@ -1467,6 +1522,7 @@ public class SpLib {
         return l / r;
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Double opDiv(Double l, Double r) {
         if (l == null || r == null) {
             return null;
@@ -1476,6 +1532,7 @@ public class SpLib {
 
     // ====================================
     // DIV
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Short opDivInt(Short l, Short r) {
         if (l == null || r == null) {
             return null;
@@ -1483,6 +1540,7 @@ public class SpLib {
         return (short) (l / r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Integer opDivInt(Integer l, Integer r) {
         if (l == null || r == null) {
             return null;
@@ -1490,6 +1548,7 @@ public class SpLib {
         return l / r;
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Long opDivInt(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1499,6 +1558,7 @@ public class SpLib {
 
     // ====================================
     // MOD
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Short opMod(Short l, Short r) {
         if (l == null || r == null) {
             return null;
@@ -1506,6 +1566,7 @@ public class SpLib {
         return (short) (l % r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Integer opMod(Integer l, Integer r) {
         if (l == null || r == null) {
             return null;
@@ -1513,6 +1574,7 @@ public class SpLib {
         return l % r;
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Long opMod(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1522,6 +1584,7 @@ public class SpLib {
 
     // ====================================
     // +
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Short opAdd(Short l, Short r) {
         if (l == null || r == null) {
             return null;
@@ -1529,6 +1592,7 @@ public class SpLib {
         return (short) (l + r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Integer opAdd(Integer l, Integer r) {
         if (l == null || r == null) {
             return null;
@@ -1536,6 +1600,7 @@ public class SpLib {
         return l + r;
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Long opAdd(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1543,6 +1608,7 @@ public class SpLib {
         return l + r;
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static BigDecimal opAdd(BigDecimal l, BigDecimal r) {
         if (l == null || r == null) {
             return null;
@@ -1550,6 +1616,7 @@ public class SpLib {
         return l.add(r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Float opAdd(Float l, Float r) {
         if (l == null || r == null) {
             return null;
@@ -1557,6 +1624,7 @@ public class SpLib {
         return l + r;
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Double opAdd(Double l, Double r) {
         if (l == null || r == null) {
             return null;
@@ -1564,7 +1632,8 @@ public class SpLib {
         return l + r;
     }
 
-    public static Time opAdd(Time l, Integer r) {
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
+    public static Time opAdd(Time l, Long r) {
         if (l == null || r == null) {
             return null;
         }
@@ -1572,7 +1641,13 @@ public class SpLib {
         return Time.valueOf(llt.plusSeconds(r.longValue()));
     }
 
-    public static Date opAdd(Date l, Integer r) {
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
+    public static Time opAdd(Long l, Time r) {
+        return opAdd(r, l);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
+    public static Date opAdd(Date l, Long r) {
         if (l == null || r == null) {
             return null;
         }
@@ -1581,7 +1656,13 @@ public class SpLib {
         return Date.valueOf(lld.plusDays(r.longValue()));
     }
 
-    public static Timestamp opAdd(Timestamp l, Integer r) {
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
+    public static Date opAdd(Long l, Date r) {
+        return opAdd(r, l);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
+    public static Timestamp opAdd(Timestamp l, Long r) {
         if (l == null || r == null) {
             return null;
         }
@@ -1589,20 +1670,35 @@ public class SpLib {
         return Timestamp.valueOf(lldt.plus(r.longValue(), ChronoUnit.MILLIS));
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
+    public static Timestamp opAdd(Long l, Timestamp r) {
+        return opAdd(r, l);
+    }
+
     /*
-    public static ZonedDateTime opAdd(ZonedDateTime l, Integer r) {
+    public static ZonedDateTime opAdd(ZonedDateTime l, Long r) {
         if (l == null || r == null) {
             return null;
         }
         return l.plusSeconds(r.longValue());
     }
      */
-    public static ZonedDateTime opAdd(ZonedDateTime l, Integer r) {
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
+    public static ZonedDateTime opAdd(ZonedDateTime l, Long r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
+
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
+    public static Timestamp opAdd(Long l, ZonedDateTime r) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
 
     /*
     // sets
@@ -1672,6 +1768,7 @@ public class SpLib {
 
     // ====================================
     // -
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Short opSubtract(Short l, Short r) {
         if (l == null || r == null) {
             return null;
@@ -1679,6 +1776,7 @@ public class SpLib {
         return (short) (l - r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Integer opSubtract(Integer l, Integer r) {
         if (l == null || r == null) {
             return null;
@@ -1686,6 +1784,7 @@ public class SpLib {
         return l - r;
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Long opSubtract(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1693,6 +1792,7 @@ public class SpLib {
         return l - r;
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static BigDecimal opSubtract(BigDecimal l, BigDecimal r) {
         if (l == null || r == null) {
             return null;
@@ -1700,6 +1800,7 @@ public class SpLib {
         return l.subtract(r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Float opSubtract(Float l, Float r) {
         if (l == null || r == null) {
             return null;
@@ -1707,6 +1808,7 @@ public class SpLib {
         return l - r;
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Double opSubtract(Double l, Double r) {
         if (l == null || r == null) {
             return null;
@@ -1714,6 +1816,7 @@ public class SpLib {
         return l - r;
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Long opSubtract(Time l, Time r) {
         if (l == null || r == null) {
             return null;
@@ -1723,6 +1826,7 @@ public class SpLib {
         return rlt.until(llt, ChronoUnit.SECONDS);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Long opSubtract(Date l, Date r) {
         if (l == null || r == null) {
             return null;
@@ -1732,6 +1836,7 @@ public class SpLib {
         return rld.until(lld, ChronoUnit.DAYS);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Long opSubtract(Timestamp l, Timestamp r) {
         if (l == null || r == null) {
             return null;
@@ -1749,6 +1854,7 @@ public class SpLib {
         return r.until(l, ChronoUnit.SECONDS);
     }
      */
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Long opSubtract(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
@@ -1756,6 +1862,7 @@ public class SpLib {
         throw new RuntimeException("unreachable");
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Time opSubtract(Time l, Integer r) {
         if (l == null || r == null) {
             return null;
@@ -1764,6 +1871,7 @@ public class SpLib {
         return Time.valueOf(llt.minusSeconds(r.longValue()));
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Date opSubtract(Date l, Integer r) {
         if (l == null || r == null) {
             return null;
@@ -1772,6 +1880,7 @@ public class SpLib {
         return Date.valueOf(lld.minusDays(r.longValue()));
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Timestamp opSubtract(Timestamp l, Integer r) {
         if (l == null || r == null) {
             return null;
@@ -1795,6 +1904,7 @@ public class SpLib {
         return opSubtract(ZonedDateTime.of(l, LocalTime.MIN, r.getZone()), r);
     }
      */
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static ZonedDateTime opSubtract(ZonedDateTime l, Integer r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
@@ -1802,6 +1912,7 @@ public class SpLib {
         throw new RuntimeException("unreachable");
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Long opSubtract(Date l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
@@ -1809,6 +1920,7 @@ public class SpLib {
         throw new RuntimeException("unreachable");
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Long opSubtract(Date l, Timestamp r) {
         if (l == null || r == null) {
             return null;
@@ -1818,6 +1930,7 @@ public class SpLib {
         return opSubtract(Timestamp.valueOf(LocalDateTime.of(lld, LocalTime.MIN)), r);
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Long opSubtract(Timestamp l, Date r) {
         if (l == null || r == null) {
             return null;
@@ -1848,6 +1961,7 @@ public class SpLib {
         return opSubtract(l.toLocalDateTime(), r);
     }
      */
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Long opSubtract(Timestamp l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
@@ -1855,6 +1969,7 @@ public class SpLib {
         throw new RuntimeException("unreachable");
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Long opSubtract(ZonedDateTime l, Date r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
@@ -1862,6 +1977,7 @@ public class SpLib {
         throw new RuntimeException("unreachable");
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithmeticOperator)
     public static Long opSubtract(ZonedDateTime l, Timestamp r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
@@ -1936,6 +2052,7 @@ public class SpLib {
 
     // ====================================
     // ||
+    @Operator(coercionScheme=CoercionScheme.Individual)
     public static String opConcat(Object l, Object r) {
         if (l == null || r == null) {
             return null;
@@ -1945,6 +2062,7 @@ public class SpLib {
 
     // ====================================
     // <<
+    @Operator(coercionScheme=CoercionScheme.BitwiseOperator)
     public static Long opBitShiftLeft(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1954,6 +2072,7 @@ public class SpLib {
 
     // ====================================
     // >>
+    @Operator(coercionScheme=CoercionScheme.BitwiseOperator)
     public static Long opBitShiftRight(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1963,6 +2082,7 @@ public class SpLib {
 
     // ====================================
     // &
+    @Operator(coercionScheme=CoercionScheme.BitwiseOperator)
     public static Long opBitAnd(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1972,6 +2092,7 @@ public class SpLib {
 
     // ====================================
     // ^
+    @Operator(coercionScheme=CoercionScheme.BitwiseOperator)
     public static Long opBitXor(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1981,6 +2102,7 @@ public class SpLib {
 
     // ====================================
     // |
+    @Operator(coercionScheme=CoercionScheme.BitwiseOperator)
     public static Long opBitOr(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1990,6 +2112,7 @@ public class SpLib {
 
     // ====================================
     // like
+    @Operator(coercionScheme=CoercionScheme.Individual)
     public static Boolean opLike(String s, String pattern, String escape) {
         assert pattern != null;
         assert escape == null || escape.length() == 1;
@@ -2007,11 +2130,284 @@ public class SpLib {
         }
     }
 
+    // ------------------------------------
+    // coercions
+    // ------------------------------------
+
+    public static Date castDatetimeToDate(Timestamp e) {
+        return null;    // TODO
+    }
+    public static Time castDatetimeToTime(Timestamp e) {
+        return null;    // TODO
+    }
+    public static Timestamp castDatetimeToTimestamp(Timestamp e) {
+        return null;    // TODO
+    }
+    public static String castDatetimeToString(Timestamp e) {
+        return null;    // TODO
+    }
+
+    public static Timestamp castDateToDatetime(Date e) {
+        return null;    // TODO
+    }
+    public static Timestamp castDateToTimestamp(Date e) {
+        return null;    // TODO
+    }
+    public static String castDateToString(Date e) {
+        return null;    // TODO
+    }
+
+    public static String castTimeToString(Time e) {
+        return null;    // TODO
+    }
+
+    public static Timestamp castTimestampToDatetime(Timestamp e) {
+        return null;    // TODO
+    }
+    public static Date castTimestampToDate(Timestamp e) {
+        return null;    // TODO
+    }
+    public static Time castTimestampToTime(Timestamp e) {
+        return null;    // TODO
+    }
+    public static String castTimestampToString(Timestamp e) {
+        return null;    // TODO
+    }
+
+    public static Time castDoubleToTime(Double e) {
+        return null;    // TODO
+    }
+    public static Timestamp castDoubleToTimestamp(Double e) {
+        return null;    // TODO
+    }
+    public static Integer castDoubleToInt(Double e) {
+        return null;    // TODO
+    }
+    public static Short castDoubleToShort(Double e) {
+        return null;    // TODO
+    }
+    public static String castDoubleToString(Double e) {
+        return null;    // TODO
+    }
+    public static Float castDoubleToFloat(Double e) {
+        return null;    // TODO
+    }
+    public static BigDecimal castDoubleToNumeric(Double e) {
+        return null;    // TODO
+    }
+    public static Long castDoubleToBigint(Double e) {
+        return null;    // TODO
+    }
+
+    public static Time castFloatToTime(Float e) {
+        return null;    // TODO
+    }
+    public static Timestamp castFloatToTimestamp(Float e) {
+        return null;    // TODO
+    }
+    public static Integer castFloatToInt(Float e) {
+        return null;    // TODO
+    }
+    public static Short castFloatToShort(Float e) {
+        return null;    // TODO
+    }
+    public static String castFloatToString(Float e) {
+        return null;    // TODO
+    }
+    public static Double castFloatToDouble(Float e) {
+        return null;    // TODO
+    }
+    public static BigDecimal castFloatToNumeric(Float e) {
+        return null;    // TODO
+    }
+    public static Long castFloatToBigint(Float e) {
+        return null;    // TODO
+    }
+
+    public static Timestamp castNumericToTimestamp(BigDecimal e) {
+        return null;    // TODO
+    }
+    public static Integer castNumericToInt(BigDecimal e) {
+        return null;    // TODO
+    }
+    public static Short castNumericToShort(BigDecimal e) {
+        return null;    // TODO
+    }
+    public static String castNumericToString(BigDecimal e) {
+        return null;    // TODO
+    }
+    public static Double castNumericToDouble(BigDecimal e) {
+        return null;    // TODO
+    }
+    public static Float castNumericToFloat(BigDecimal e) {
+        return null;    // TODO
+    }
+    public static Long castNumericToBigint(BigDecimal e) {
+        return null;    // TODO
+    }
+
+    public static Time castBigintToTime(Long e) {
+        return null;    // TODO
+    }
+    public static Timestamp castBigintToTimestamp(Long e) {
+        return null;    // TODO
+    }
+    public static Integer castBigintToInt(Long e) {
+        return null;    // TODO
+    }
+    public static Short castBigintToShort(Long e) {
+        return null;    // TODO
+    }
+    public static String castBigintToString(Long e) {
+        return null;    // TODO
+    }
+    public static Double castBigintToDouble(Long e) {
+        return null;    // TODO
+    }
+    public static Float castBigintToFloat(Long e) {
+        return null;    // TODO
+    }
+    public static BigDecimal castBigintToNumeric(Long e) {
+        return null;    // TODO
+    }
+
+    public static Time castIntToTime(Integer e) {
+        return null;    // TODO
+    }
+    public static Timestamp castIntToTimestamp(Integer e) {
+        return null;    // TODO
+    }
+    public static Short castIntToShort(Integer e) {
+        return null;    // TODO
+    }
+    public static String castIntToString(Integer e) {
+        return null;    // TODO
+    }
+    public static Double castIntToDouble(Integer e) {
+        return null;    // TODO
+    }
+    public static Float castIntToFloat(Integer e) {
+        return null;    // TODO
+    }
+    public static BigDecimal castIntToNumeric(Integer e) {
+        return null;    // TODO
+    }
+    public static Long castIntToBigint(Integer e) {
+        return null;    // TODO
+    }
+
+    public static Time castShortToTime(Short e) {
+        return null;    // TODO
+    }
+    public static Timestamp castShortToTimestamp(Short e) {
+        return null;    // TODO
+    }
+    public static Integer castShortToInt(Short e) {
+        return null;    // TODO
+    }
+    public static String castShortToString(Short e) {
+        return null;    // TODO
+    }
+    public static Double castShortToDouble(Short e) {
+        return null;    // TODO
+    }
+    public static Float castShortToFloat(Short e) {
+        return null;    // TODO
+    }
+    public static BigDecimal castShortToNumeric(Short e) {
+        return null;    // TODO
+    }
+    public static Long castShortToBigint(Short e) {
+        return null;    // TODO
+    }
+
+    public static Timestamp castStringToDatetime(String e) {
+        return null;    // TODO
+    }
+    public static Date castStringToDate(String e) {
+        return null;    // TODO
+    }
+    public static Time castStringToTime(String e) {
+        return null;    // TODO
+    }
+    public static Timestamp castStringToTimestamp(String e) {
+        return null;    // TODO
+    }
+    public static Integer castStringToInt(String e) {
+        return null;    // TODO
+    }
+    public static Short castStringToShort(String e) {
+        return null;    // TODO
+    }
+    public static Double castStringToDouble(String e) {
+        return null;    // TODO
+    }
+    public static Float castStringToFloat(String e) {
+        return null;    // TODO
+    }
+    public static BigDecimal castStringToNumeric(String e) {
+        return null;    // TODO
+    }
+    public static Long castStringToBigint(String e) {
+        return null;    // TODO
+    }
+
     // ------------------------------------------------
     // Private
     // ------------------------------------------------
 
-    static String getRegexForLike(String pattern, String escape) {
+    private static Boolean commonOpEq(Object l, Object r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    private static Boolean commonOpNullSafeEq(Object l, Object r) {
+        if (l == null) {
+            return (r == null);
+        } else if (r == null) {
+            return (l == null);
+        }
+        return l.equals(r);
+    }
+
+    private static Boolean commonOpNeq(Object l, Object r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return !l.equals(r);
+    }
+
+    private static Boolean commonOpLe(Comparable l, Comparable r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.compareTo(r) <= 0;
+    }
+
+    private static Boolean commonOpLt(Comparable l, Comparable r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.compareTo(r) < 0;
+    }
+
+    private static Boolean commonOpGe(Comparable l, Comparable r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.compareTo(r) >= 0;
+    }
+
+    private static Boolean commonOpGt(Comparable l, Comparable r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.compareTo(r) > 0;
+    }
+
+    private static String getRegexForLike(String pattern, String escape) {
 
         StringBuffer sbuf = new StringBuffer();
 
@@ -2217,4 +2613,5 @@ public class SpLib {
         return ret;
     }
      */
+
 }

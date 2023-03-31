@@ -41,6 +41,7 @@ public class TypeSpecSimple extends TypeSpec {
         return visitor.visitTypeSpecSimple(this);
     }
 
+    public final String name;
     public final String fullJavaType;
     public final String nameOfGetMethod;
 
@@ -56,30 +57,30 @@ public class TypeSpecSimple extends TypeSpec {
     }
 
     // the following two are not actual Java types but only for internal type checking
-    public static TypeSpecSimple NULL = new TypeSpecSimple("Null", null);
-    public static TypeSpecSimple CURSOR = new TypeSpecSimple("Cursor", null);
+    public static TypeSpecSimple NULL = new TypeSpecSimple("Null", "Null", null);
+    public static TypeSpecSimple CURSOR = new TypeSpecSimple("Cursor", "Cursor", null);
 
     // (1) used as an argument type of some operators in SpLib
     // (2) used as an expression type when a specific Java type cannot be given
-    public static TypeSpecSimple OBJECT = new TypeSpecSimple("java.lang.Object", "getObject");
+    public static TypeSpecSimple OBJECT = new TypeSpecSimple("Object", "java.lang.Object", "getObject");
 
-    public static TypeSpecSimple BOOLEAN = new TypeSpecSimple("java.lang.Boolean", "getBoolean");
-    public static TypeSpecSimple STRING = new TypeSpecSimple("java.lang.String", "getString");
+    public static TypeSpecSimple BOOLEAN = new TypeSpecSimple("Boolean", "java.lang.Boolean", "getBoolean");
+    public static TypeSpecSimple STRING = new TypeSpecSimple("String", "java.lang.String", "getString");
     public static TypeSpecSimple NUMERIC =
-            new TypeSpecSimple("java.math.BigDecimal", "getBigDecimal");
-    public static TypeSpecSimple SHORT = new TypeSpecSimple("java.lang.Short", "getShort");
-    public static TypeSpecSimple INT = new TypeSpecSimple("java.lang.Integer", "getInt");
-    public static TypeSpecSimple BIGINT = new TypeSpecSimple("java.lang.Long", "getLong");
-    public static TypeSpecSimple FLOAT = new TypeSpecSimple("java.lang.Float", "getFloat");
-    public static TypeSpecSimple DOUBLE = new TypeSpecSimple("java.lang.Double", "getDouble");
-    public static TypeSpecSimple DATE = new TypeSpecSimple("java.sql.Date", "getDate");
-    public static TypeSpecSimple TIME = new TypeSpecSimple("java.sql.Time", "getTime");
+            new TypeSpecSimple("Numeric", "java.math.BigDecimal", "getBigDecimal");
+    public static TypeSpecSimple SHORT = new TypeSpecSimple("Short", "java.lang.Short", "getShort");
+    public static TypeSpecSimple INT = new TypeSpecSimple("Int", "java.lang.Integer", "getInt");
+    public static TypeSpecSimple BIGINT = new TypeSpecSimple("Bigint", "java.lang.Long", "getLong");
+    public static TypeSpecSimple FLOAT = new TypeSpecSimple("Float", "java.lang.Float", "getFloat");
+    public static TypeSpecSimple DOUBLE = new TypeSpecSimple("Double", "java.lang.Double", "getDouble");
+    public static TypeSpecSimple DATE = new TypeSpecSimple("Date", "java.sql.Date", "getDate");
+    public static TypeSpecSimple TIME = new TypeSpecSimple("Time", "java.sql.Time", "getTime");
     public static TypeSpecSimple TIMESTAMP =
-            new TypeSpecSimple("java.sql.Timestamp", "getTimestamp");
+            new TypeSpecSimple("Timestamp", "java.sql.Timestamp", "getTimestamp");
     public static TypeSpecSimple DATETIME =
-            new TypeSpecSimple("java.sql.Timestamp", "getTimestamp");
+            new TypeSpecSimple("Datetime", "java.sql.Timestamp", "getTimestamp");
     public static TypeSpecSimple SYS_REFCURSOR =
-            new TypeSpecSimple("com.cubrid.plcsql.predefined.sp.SpLib.Query", null);
+            new TypeSpecSimple("Sys_refcursor", "com.cubrid.plcsql.predefined.sp.SpLib.Query", null);
 
     /* TODO: restore later
     public static TypeSpecSimple SET = of("java.util.Set");
@@ -91,8 +92,9 @@ public class TypeSpecSimple extends TypeSpec {
     // Private
     // ------------------------------------------------------------------
 
-    private TypeSpecSimple(String fullJavaType, String nameOfGetMethod) {
+    private TypeSpecSimple(String name, String fullJavaType, String nameOfGetMethod) {
         super(getJavaCode(fullJavaType));
+        this.name = name;
         this.fullJavaType = fullJavaType;
         this.nameOfGetMethod = nameOfGetMethod;
     }

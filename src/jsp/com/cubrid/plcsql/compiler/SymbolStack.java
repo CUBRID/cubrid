@@ -92,7 +92,7 @@ public class SymbolStack {
                         // parameter types
                         Class[] paramTypes = m.getParameterTypes();
                         NodeList<DeclParam> params = new NodeList<>();
-                        ;
+
                         int i = 0;
                         for (Class pt : paramTypes) {
                             String typeName = pt.getTypeName();

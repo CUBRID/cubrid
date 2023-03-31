@@ -386,11 +386,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             throw new RuntimeException("unreachable");
         }
 
-        String ty = null;
-        if (opStr.equals("Eq") || opStr.equals("NullSafeEq") || opStr.equals("Neq")) {
-            ty = "Object";
-        }
-
         Expr l = visitExpression(ctx.relational_expression(0));
         Expr r = visitExpression(ctx.relational_expression(1));
 
