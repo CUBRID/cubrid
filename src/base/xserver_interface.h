@@ -175,7 +175,7 @@ extern bool logtb_has_updated (THREAD_ENTRY * thread_p);
 extern BTID *xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id,
 			       int unique_pk, long long num_oids, long long num_nulls, long long num_keys
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-			       , int deduplicate_key_attr_pos
+			       , int deduplicate_key_pos
 #endif
   );
 extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP_DOMAIN * key_type,

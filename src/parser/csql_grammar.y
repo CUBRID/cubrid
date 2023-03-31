@@ -27654,8 +27654,6 @@ pt_ct_check_select (char* p, char *perr_msg)
 }
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-
-#include "system_parameter.h"
 static void pt_get_deduplicate_key_mode_level(int mode_level, short* mode, short* level)
 {   
     int type, mod_val;
