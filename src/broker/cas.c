@@ -1721,7 +1721,7 @@ cas_free (bool from_sighandler)
 	    }
 	  else
 	    {
-	      cas_log_open_and_write (broker_name .0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)",
+	      cas_log_open_and_write (broker_name, 0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)",
 				      as_info->pdh_workset / ONE_K, shm_appl->appl_server_hard_limit / ONE_K);
 	    }
 	}
