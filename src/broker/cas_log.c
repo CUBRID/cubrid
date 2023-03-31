@@ -569,11 +569,15 @@ cas_log_open_and_write (char *br_name, unsigned int seq_num, bool unit_start, co
 
   if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      if (br_name != NULL)
+      if (log_filepath[0] == '\0')
 	{
-	  if (log_filepath[0] == '\0')
+	  if (br_name != NULL)
 	    {
 	      make_sql_log_filename (FID_SQL_LOG_DIR, log_filepath, BROKER_PATH_MAX, br_name);
+	    }
+	  else
+	    {
+	      return;
 	    }
 	}
 
