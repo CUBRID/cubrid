@@ -42,6 +42,7 @@
 #include "dmalloc.h"
 #endif /* DMALLOC */
 #include "error_manager.h"
+#include "deduplicate_key.h"
 #include "fetch.h"
 #include "filter_pred_cache.h"
 #include "heap_file.h"

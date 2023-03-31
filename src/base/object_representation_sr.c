@@ -29,6 +29,7 @@
 #include "btree_load.h"
 #include "config.h"
 #include "dbtype.h"
+#include "deduplicate_key.h"
 #include "error_manager.h"
 #include "object_primitive.h"
 #include "object_representation.h"

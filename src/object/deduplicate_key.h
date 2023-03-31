@@ -28,7 +28,10 @@
 
 #if !defined(SERVER_MODE)
 #include "parse_tree.h"
+#include "oid.h"
 #endif
+
+#include "dbtype_def.h"
 
 #define DEDUPLICATE_KEY_MODE_OFF     (0)
 #define DEDUPLICATE_KEY_MODE_ON      (1)
