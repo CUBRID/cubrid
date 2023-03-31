@@ -1699,21 +1699,46 @@ cas_free (bool from_sighandler)
     {
       if ((as_info->pid == as_info->pdh_pid) && (as_info->pdh_workset > shm_appl->appl_server_max_size))
 	{
-	  cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED MAX SIZE (%dM)",
-				 as_info->pdh_workset / ONE_K, shm_appl->appl_server_max_size / ONE_K);
+	  if (cas_log_get_fd_status () == CAS_LOG_FD_OPENED)
+	    {
+	      cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED MAX SIZE (%dM)",
+				     as_info->pdh_workset / ONE_K, shm_appl->appl_server_max_size / ONE_K);
+	    }
+	  else
+	    {
+	      cas_log_open_and_write (broker_name, 0, true,
+				      "CAS MEMORY USAGE (%dM) HAS EXCEEDED MAX SIZE (%dM)",
+				      as_info->pdh_workset / ONE_K, shm_appl->appl_server_max_size / ONE_K);
+	    }
 	}
 
       if ((as_info->pid == as_info->pdh_pid) && (as_info->pdh_workset > shm_appl->appl_server_hard_limit))
 	{
-	  cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)",
-				 as_info->pdh_workset / ONE_K, shm_appl->appl_server_hard_limit / ONE_K);
+	  if (cas_log_get_fd_status () == CAS_LOG_FD_OPENED)
+	    {
+	      cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)",
+				     as_info->pdh_workset / ONE_K, shm_appl->appl_server_hard_limit / ONE_K);
+	    }
+	  else
+	    {
+	      cas_log_open_and_write (broker_name, 0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)",
+				      as_info->pdh_workset / ONE_K, shm_appl->appl_server_hard_limit / ONE_K);
+	    }
 	}
     }
   else
     {
       if (cas_req_count > 500)
 	{
-	  cas_log_write_and_end (0, true, "CAS REQUEST COUNT (%d) HAS EXCEEDED MAX LIMIT (%d)", cas_req_count, 500);
+	  if (cas_log_get_fd_status () == CAS_LOG_FD_OPENED)
+	    {
+	      cas_log_write_and_end (0, true, "CAS REQUEST COUNT (%d) HAS EXCEEDED MAX LIMIT (%d)", cas_req_count, 500);
+	    }
+	  else
+	    {
+	      cas_log_open_and_write (broker_name, 0, true, "CAS REQUEST COUNT (%d) HAS EXCEEDED MAX LIMIT (%d)",
+				      cas_req_count, 500);
+	    }
 	}
     }
 #else /* WINDOWS */
@@ -1727,18 +1752,42 @@ cas_free (bool from_sighandler)
 #endif
   if (as_info->psize > max_process_size)
     {
-      cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED MAX SIZE (%dM)", as_info->psize / ONE_K,
-			     max_process_size / ONE_K);
+
+      if (cas_log_get_fd_status () == CAS_LOG_FD_OPENED)
+	{
+	  cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED MAX SIZE (%dM)", as_info->psize / ONE_K,
+				 max_process_size / ONE_K);
+	}
+      else
+	{
+	  cas_log_open_and_write (broker_name, 0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED MAX SIZE (%dM)",
+				  as_info->psize / ONE_K, max_process_size / ONE_K);
+	}
     }
 
   if (as_info->psize > shm_appl->appl_server_hard_limit)
     {
-      cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)", as_info->psize / ONE_K,
-			     shm_appl->appl_server_hard_limit / ONE_K);
+      if (cas_log_get_fd_status () == CAS_LOG_FD_OPENED)
+	{
+	  cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)",
+				 as_info->psize / ONE_K, shm_appl->appl_server_hard_limit / ONE_K);
+	}
+      else
+	{
+	  cas_log_open_and_write (broker_name, 0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)",
+				  as_info->psize / ONE_K, shm_appl->appl_server_hard_limit / ONE_K);
+	}
     }
 #endif /* !WINDOWS */
+  if (cas_log_get_fd_status () == CAS_LOG_FD_OPENED)
+    {
+      cas_log_write_and_end (0, true, "CAS TERMINATED pid %d", getpid ());
+    }
+  else
+    {
+      cas_log_open_and_write (broker_name, 0, true, "CAS TERMINATED pid %d", getpid ());
+    }
 
-  cas_log_write_and_end (0, true, "CAS TERMINATED pid %d", getpid ());
   cas_log_close (true);
   cas_slow_log_close ();
   logddl_destroy ();
