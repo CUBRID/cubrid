@@ -27662,7 +27662,7 @@ static void pt_get_deduplicate_key_mode_level(int mode_level, short* mode, short
 
     if(mode_level == COMPRESS_MODE_NOT_SET)
     {
-        type = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_MODE);
+        type = prm_get_bool_value (PRM_ID_DEDUPLICATE_KEY_MODE) ? DEDUPLICATE_KEY_MODE_ON : DEDUPLICATE_KEY_MODE_OFF;
         mod_val = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
     }   
     else

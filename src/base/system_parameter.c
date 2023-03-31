@@ -6266,7 +6266,7 @@ SYSPRM_PARAM prm_Def[] = {
   {PRM_ID_DEDUPLICATE_KEY_MODE,
    PRM_NAME_DEDUPLICATE_KEY_MODE,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
-   PRM_KEYWORD,
+   PRM_BOOLEAN,
    &prm_deduplicate_key_mode_flag,
    (void *) &prm_deduplicate_key_mode_default,
    (void *) &PRM_DEDUPLICATE_KEY_MODE,
@@ -6449,13 +6449,6 @@ static KEYVAL regexp_engine_words[] = {
   {get_engine_name(engine_type::LIB_RE2), engine_type::LIB_RE2}
 };
 /* *INDENT-ON* */
-
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-static KEYVAL deduplicate_key_mode_words[] = {
-  {"off", DEDUPLICATE_KEY_MODE_OFF},
-  {"on", DEDUPLICATE_KEY_MODE_ON}
-};
-#endif
 
 static const char *compat_mode_values_PRM_ANSI_QUOTES[COMPAT_ORACLE + 2] = {
   NULL,				/* COMPAT_CUBRID */
@@ -8408,13 +8401,6 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 	{
 	  keyvalp = prm_keyword (PRM_GET_INT (prm->value), NULL, regexp_engine_words, DIM (regexp_engine_words));
 	}
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-      else if (intl_mbs_casecmp (prm->name, PRM_NAME_DEDUPLICATE_KEY_MODE) == 0)
-	{
-	  keyvalp =
-	    prm_keyword (PRM_GET_INT (prm->value), NULL, deduplicate_key_mode_words, DIM (deduplicate_key_mode_words));
-	}
-#endif
       else
 	{
 	  assert (false);
@@ -8719,12 +8705,6 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
 	{
 	  keyvalp = prm_keyword (value.i, NULL, regexp_engine_words, DIM (regexp_engine_words));
 	}
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-      else if (intl_mbs_casecmp (prm->name, PRM_NAME_DEDUPLICATE_KEY_MODE) == 0)
-	{
-	  keyvalp = prm_keyword (value.i, NULL, deduplicate_key_mode_words, DIM (deduplicate_key_mode_words));
-	}
-#endif
       else
 	{
 	  assert (false);
@@ -9941,12 +9921,6 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	  {
 	    keyvalp = prm_keyword (-1, value, regexp_engine_words, DIM (regexp_engine_words));
 	  }
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-	else if (intl_mbs_casecmp (prm->name, PRM_NAME_DEDUPLICATE_KEY_MODE) == 0)
-	  {
-	    keyvalp = prm_keyword (-1, value, deduplicate_key_mode_words, DIM (deduplicate_key_mode_words));
-	  }
-#endif
 	else
 	  {
 	    assert (false);
