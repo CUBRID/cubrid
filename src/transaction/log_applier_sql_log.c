@@ -41,6 +41,7 @@
 #include "set_object.h"
 #include "schema_manager.h"
 #include "dbtype.h"
+#include "file_io.h"
 
 #include "db_value_printer.hpp"
 #include "mem_block.hpp"
@@ -63,7 +64,7 @@ SL_INFO sl_Info;
 
 static FILE *log_fp;
 static FILE *catalog_fp;
-static int sql_log_keep_cnt = 0;
+static int sql_log_max_cnt = 0;
 static char sql_log_base_path[PATH_MAX];
 static char sql_catalog_path[PATH_MAX];
 
@@ -82,7 +83,7 @@ static FILE *sl_log_open (void);
 static int sl_remove_oldest_file (void);
 static int sl_read_catalog (void);
 static int sl_write_catalog (void);
-static int create_dir (const char *new_dir);
+static int sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_size);
 
 static char *
 trim_single_quote (char *str, size_t len)
@@ -171,29 +172,17 @@ sl_read_catalog (void)
 int
 sl_init (const char *db_name, const char *repl_log_path)
 {
-  char tmp_log_path[PATH_MAX];
-  char basename_buf[PATH_MAX];
-  char *sql_log_path = NULL;
+  char sql_log_path[PATH_MAX];
+
+  if (sl_create_sql_log_dir (repl_log_path, sql_log_path, sizeof (sql_log_path)) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  snprintf (sql_log_base_path, PATH_MAX, "%s/%s.sql.log", sql_log_path, basename ((char *) repl_log_path));
+  snprintf (sql_catalog_path, PATH_MAX, "%s/%s_applylogdb.sql.info", dirname (sql_log_path), db_name);
 
   memset (&sl_Info, 0, sizeof (sl_Info));
-
-  strcpy (basename_buf, repl_log_path);
-
-  sql_log_path = prm_get_string_value (PRM_ID_HA_SQL_LOG_PATH);
-  if (sql_log_path != NULL)
-    {
-      snprintf (tmp_log_path, PATH_MAX, "%s/sql_log", sql_log_path);
-      snprintf (sql_log_base_path, PATH_MAX, "%s/%s.sql.log", tmp_log_path, basename (basename_buf));
-      snprintf (sql_catalog_path, PATH_MAX, "%s/%s_applylogdb.sql.info", sql_log_path, db_name);
-    }
-  else
-    {
-      snprintf (tmp_log_path, PATH_MAX, "%s/sql_log", repl_log_path);
-      snprintf (sql_log_base_path, PATH_MAX, "%s/%s.sql.log", tmp_log_path, basename (basename_buf));
-      snprintf (sql_catalog_path, PATH_MAX, "%s/%s_applylogdb.sql.info", repl_log_path, db_name);
-    }
-
-  create_dir (tmp_log_path);
 
   sl_Info.curr_file_id = 0;
   sl_Info.last_inserted_sql_id = 0;
@@ -215,7 +204,7 @@ sl_init (const char *db_name, const char *repl_log_path)
       return ER_FAILED;
     }
 
-  sql_log_keep_cnt = prm_get_integer_value (PRM_ID_HA_SQL_LOG_KEEP_COUNT);
+  sql_log_max_cnt = prm_get_integer_value (PRM_ID_HA_SQL_LOG_MAX_COUNT);
 
   return NO_ERROR;
 }
@@ -563,9 +552,12 @@ sl_write_sql (string_buffer & query, string_buffer * select)
     {
       log_fp = sl_open_next_file (log_fp);
 
-      if (sql_log_keep_cnt != 0 && sl_Info.curr_file_id >= sql_log_keep_cnt)
+      if (sl_Info.curr_file_id >= sql_log_max_cnt)
 	{
-	  sl_remove_oldest_file ();
+	  if (sl_remove_oldest_file () != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
 	}
     }
 
@@ -638,7 +630,7 @@ sl_open_next_file (FILE * old_fp)
  *   return: error code
  *
  * Note:
- *   This function is related to the ha_sql_log_keep_count system parameter.
+ *   This function is related to the ha_sql_log_max_count system parameter.
  *   This system parameter can be set from 2 to 5 and only that number of sql log files are kept.
  */
 static int
@@ -647,7 +639,7 @@ sl_remove_oldest_file (void)
   int oldest_file_id;
   char oldest_file_path[PATH_MAX];
 
-  oldest_file_id = sl_Info.curr_file_id - sql_log_keep_cnt;
+  oldest_file_id = sl_Info.curr_file_id - sql_log_max_cnt;
 
   snprintf (oldest_file_path, PATH_MAX - 1, "%s.%d", sql_log_base_path, oldest_file_id);
 
@@ -656,48 +648,122 @@ sl_remove_oldest_file (void)
   return NO_ERROR;
 }
 
+/*
+ * sl_create_sql_log_dir() - verify and create the SQL log path
+ *   return: NO_ERROR or ER_FAILED
+ *     repl_log_path(in): log volume path for apply (default path)
+ *     path_buf(out): SQL log path
+ *     path_buf_size(in): path_buf size
+ *
+ * Note:
+ *   This function is related to the ha_sql_log_path system parameter.
+ *   The SQL log path can be changed by setting this. If the path set in it fails to verify, then the default path is used.
+ */
 static int
-create_dir (const char *new_dir)
+sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_size)
 {
-  char *p, path[PATH_MAX];
+  int path_len;
+  const char *log_path = NULL;
+  char *p = NULL;
+  char tmp_log_path[PATH_MAX], er_msg[PATH_MAX];
 
-  if (new_dir == NULL)
+  assert (repl_log_path != NULL && path_buf != NULL && path_buf_size >= PATH_MAX);
+
+  log_path = prm_get_string_value (PRM_ID_HA_SQL_LOG_PATH);
+  if (log_path != NULL && *log_path != '\0')
     {
+      if (!IS_ABS_PATH (log_path))
+	{
+	  snprintf (tmp_log_path, sizeof (tmp_log_path), "%s%s%s", repl_log_path, FILEIO_PATH_SEPARATOR (repl_log_path),
+		    log_path);
+
+	  log_path = tmp_log_path;
+	}
+
+      /*
+       * NOTE: the purpose of the realpath() call
+       *   1. convert a relative path to an absolute path
+       *   2. convert a symbolic link to a real path
+       *   3. check the existence of the path(log_path var)
+       */
+      log_path = realpath (log_path, path_buf);
+      if (log_path == NULL)
+	{
+	  snprintf (er_msg, sizeof (er_msg),
+		    "Invalid path \'%s\' is set to the %s (%s); The default path \'%s\' is used",
+		    prm_get_string_value (PRM_ID_HA_SQL_LOG_PATH), prm_get_name (PRM_ID_HA_SQL_LOG_PATH),
+		    strerror (errno), repl_log_path);
+
+	  er_stack_push ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, er_msg);
+	  er_stack_pop ();
+
+	  // NOTE: The default path is used; the path set in the ha_sql_log_path is ignored.
+	  log_path = repl_log_path;
+	}
+    }
+  else
+    {
+      log_path = repl_log_path;
+    }
+
+  if (log_path == path_buf)	// when the realpath() call succeeds
+    {
+      path_len = strlen (log_path);
+
+      snprintf (path_buf + path_len, path_buf_size - path_len, "%s%s", FILEIO_PATH_SEPARATOR (log_path), "sql_log");
+    }
+  else
+    {
+      snprintf (path_buf, path_buf_size, "%s%s%s", log_path, FILEIO_PATH_SEPARATOR (log_path), "sql_log");
+    }
+
+  if (strlen (path_buf) >= path_buf_size - 1)
+    {
+      snprintf (er_msg, sizeof (er_msg), "Too long the SQL log path \'%s\'", path_buf);
+
+      er_stack_push ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, er_msg);
+      er_stack_pop ();
+
       return ER_FAILED;
     }
 
-  strcpy (path, new_dir);
-
-  p = path;
-  if (path[0] == '/')
+  p = path_buf;
+  if (*p == PATH_SEPARATOR)
     {
-      p = path + 1;
+      p++;
     }
 
   while (p != NULL)
     {
-      p = strchr (p, '/');
+      p = strchr (p, PATH_SEPARATOR);
       if (p != NULL)
 	{
 	  *p = '\0';
 	}
 
-      if (access (path, F_OK) < 0)
+      if (access (path_buf, F_OK) < 0)
 	{
-	  if (mkdir (path, 0777) < 0)
+	  if (mkdir (path_buf, 0777) < 0)
 	    {
+	      snprintf (er_msg, sizeof (er_msg), "Failed to create SQL log directory \'%s\' (%s)", path_buf,
+			strerror (errno));
+
 	      er_stack_push ();
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, new_dir);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, er_msg);
 	      er_stack_pop ();
 
 	      return ER_FAILED;
 	    }
 	}
+
       if (p != NULL)
 	{
-	  *p = '/';
+	  *p = PATH_SEPARATOR;
 	  p++;
 	}
     }
+
   return NO_ERROR;
 }

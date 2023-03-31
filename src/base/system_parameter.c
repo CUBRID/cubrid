@@ -393,7 +393,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_SQL_LOG_PATH "ha_sql_log_path"
 
-#define PRM_NAME_HA_SQL_LOG_KEEP_COUNT "ha_sql_log_keep_count"
+#define PRM_NAME_HA_SQL_LOG_MAX_COUNT "ha_sql_log_max_count"
 
 #define PRM_NAME_HA_COPY_LOG_MAX_ARCHIVES "ha_copy_log_max_archives"
 
@@ -1491,11 +1491,11 @@ const char *PRM_HA_SQL_LOG_PATH = "";
 static char *prm_ha_sql_log_path_default = NULL;
 static unsigned int prm_ha_sql_log_path_flag = 0;
 
-int PRM_HA_SQL_LOG_KEEP_COUNT = 2;
-static int prm_ha_sql_log_keep_count_default = 2;
-static int prm_ha_sql_log_keep_count_upper = 5;
-static int prm_ha_sql_log_keep_count_lower = 2;
-static unsigned int prm_ha_sql_log_keep_count_flag = 0;
+int PRM_HA_SQL_LOG_MAX_COUNT = 2;
+static int prm_ha_sql_log_max_count_default = 2;
+static int prm_ha_sql_log_max_count_upper = 5;
+static int prm_ha_sql_log_max_count_lower = 2;
+static unsigned int prm_ha_sql_log_max_count_flag = 0;
 
 int PRM_HA_SQL_LOG_MAX_SIZE_IN_MB = INT_MIN;
 static int prm_ha_sql_log_max_size_in_mb_default = 50;
@@ -6254,15 +6254,15 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_HA_SQL_LOG_KEEP_COUNT,
-   PRM_NAME_HA_SQL_LOG_KEEP_COUNT,
+  {PRM_ID_HA_SQL_LOG_MAX_COUNT,
+   PRM_NAME_HA_SQL_LOG_MAX_COUNT,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
    PRM_INTEGER,
-   &prm_ha_sql_log_keep_count_flag,
-   (void *) &prm_ha_sql_log_keep_count_default,
-   (void *) &PRM_HA_SQL_LOG_KEEP_COUNT,
-   (void *) &prm_ha_sql_log_keep_count_upper,
-   (void *) &prm_ha_sql_log_keep_count_lower,
+   &prm_ha_sql_log_max_count_flag,
+   (void *) &prm_ha_sql_log_max_count_default,
+   (void *) &PRM_HA_SQL_LOG_MAX_COUNT,
+   (void *) &prm_ha_sql_log_max_count_upper,
+   (void *) &prm_ha_sql_log_max_count_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}

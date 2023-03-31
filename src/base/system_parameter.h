@@ -470,9 +470,9 @@ enum param_id
   PRM_ID_HA_PING_TIMEOUT,
   PRM_ID_STATDUMP_FORCE_ADD_INT_MAX,	/* Hidden parameter for QA only */
   PRM_ID_HA_SQL_LOG_PATH,
-  PRM_ID_HA_SQL_LOG_KEEP_COUNT,
+  PRM_ID_HA_SQL_LOG_MAX_COUNT,
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_HA_SQL_LOG_KEEP_COUNT
+  PRM_LAST_ID = PRM_ID_HA_SQL_LOG_MAX_COUNT
 };
 typedef enum param_id PARAM_ID;
 
