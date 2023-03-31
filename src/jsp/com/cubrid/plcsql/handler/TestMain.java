@@ -58,7 +58,13 @@ public class TestMain {
     public static CompileInfo compilePLCSQL(String in, boolean verbose) {
         int optionFlags = verbose ? OPT_VERBOSE : 0;
         CharStream input = CharStreams.fromString(in);
-        return compileInner(input, optionFlags, 0, null);
+        try {
+            return compileInner(input, optionFlags, 0, null);
+        } catch (SemanticError e) {
+            // TODO: define an error code list
+            CompileInfo err = new CompileInfo(-1, e.lineNo, e.getMessage());
+            return err;
+        }
     }
 
     public static void main(String[] args) {
@@ -318,11 +324,11 @@ public class TestMain {
         // ------------------------------------------
         //
 
-        CompileInfo info = new CompileInfo();
-        info.translated = unit.toJavaCode();
-        info.createStmt = String.format(sqlTemplate[0], unit.getJavaSignature());
-        info.className = unit.getClassName();
-
+        CompileInfo info =
+                new CompileInfo(
+                        unit.toJavaCode(),
+                        String.format(sqlTemplate[0], unit.getJavaSignature()),
+                        unit.getClassName());
         return info;
     }
 

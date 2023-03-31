@@ -10890,8 +10890,7 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 }
 
 int
-plcsql_transfer_file (const std::string & input_file, const bool & verbose, std::string & output_file,
-		      std::string & sql)
+plcsql_transfer_file (const std::string & input_file, const bool & verbose, PLCSQL_COMPILE_INFO & compile_info)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
@@ -10925,7 +10924,7 @@ plcsql_transfer_file (const std::string & input_file, const bool & verbose, std:
   if (data_reply != NULL)
     {
       packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-      unpacker.unpack_all (output_file, sql);
+      unpacker.unpack_all (compile_info);
       rc = NO_ERROR;
     }
 
