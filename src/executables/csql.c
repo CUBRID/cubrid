@@ -1486,12 +1486,12 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	    {
 	      return error_code;
 	    }
-	  break;
 	}
       else
 	{
 	  fprintf (csql_Output_fp, "CONNECT session command does not support --sysadm mode\n");
 	}
+      break;
     }
 
   return DO_CMD_SUCCESS;
