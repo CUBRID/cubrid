@@ -5654,10 +5654,20 @@ boot_define_view_index (void)
 	  "[i].[class_of].[class_name] AS [class_name], "
 	  "CAST ([i].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-          "NVL2((SELECT 1 FROM _db_index_key [k] WHERE [k].index_of.class_of = [i].class_of "
-                                                   "AND [k].index_of.index_name = [i].[index_name] "
-                                                   "AND [k].key_attr_name LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN
-                 "), ([i].[key_count] - 1), [i].[key_count]) AS [key_count], "
+	  "NVL2 ("
+	      "("
+		"SELECT 1 "
+		"FROM "
+		  /* CT_INDEXKEY_NAME */
+		  "[%s] [k] "
+		"WHERE "
+		  "[k].index_of.class_of = [i].class_of "
+		  "AND [k].index_of.index_name = [i].[index_name] "
+		  "AND [k].key_attr_name LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN
+	      "), "
+	      "([i].[key_count] - 1), "
+	      "[i].[key_count]"
+	    ") AS [key_count], "
 #else
 	  "[i].[key_count] AS [key_count], "
 #endif          
@@ -5712,7 +5722,10 @@ boot_define_view_index (void)
 		      "[u].[name] = CURRENT_USER"
 		  ") "
 		"AND [au].[auth_type] = 'SELECT'"
-	    ")",
+	    ")",            
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	CT_INDEXKEY_NAME,
+#endif            
 	CT_INDEX_NAME,
 	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
@@ -5798,49 +5811,48 @@ boot_define_view_index_key (void)
 	  "[%s] AS [k] "
 	"WHERE "
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-          "("
+          "[k].[key_attr_name] NOT LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN,
+          "AND ("
 #endif        
-	  "{'DBA'} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[k].[index_of].[class_of].[owner].[name]} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[k].[index_of].[class_of]} SUBSETEQ ("
-	      "SELECT "
-		"SUM (SET {[au].[class_of]}) "
-	      "FROM "
-		/* CT_CLASSAUTH_NAME */
-		"[%s] AS [au] "
-	      "WHERE "
-		"{[au].[grantee].[name]} SUBSETEQ ("
-		    "SELECT "
-		      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		    "FROM "
-		      /* AU_USER_CLASS_NAME */
-		      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		    "WHERE "
-		      "[u].[name] = CURRENT_USER"
-		  ") "
-		"AND [au].[auth_type] = 'SELECT'"
+	      "{'DBA'} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
+	      "OR {[k].[index_of].[class_of].[owner].[name]} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
+	      "OR {[k].[index_of].[class_of]} SUBSETEQ ("
+		  "SELECT "
+		    "SUM (SET {[au].[class_of]}) "
+		  "FROM "
+		    /* CT_CLASSAUTH_NAME */
+		    "[%s] AS [au] "
+		  "WHERE "
+		    "{[au].[grantee].[name]} SUBSETEQ ("
+			"SELECT "
+			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+			"FROM "
+			  /* AU_USER_CLASS_NAME */
+			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+			"WHERE "
+			  "[u].[name] = CURRENT_USER"
+		      ") "
+		    "AND [au].[auth_type] = 'SELECT'"
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-             ")"
-          ") AND [k].[key_attr_name] NOT LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN,
-#else                
+		")"
+#endif
 	    ")",
-#endif            
 	CT_INDEXKEY_NAME,
 	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
