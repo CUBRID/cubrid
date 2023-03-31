@@ -31,8 +31,42 @@
 
 package com.cubrid.jsp.data;
 
-public class CompileInfo {
+import com.cubrid.jsp.protocol.PackableObject;
+
+public class CompileInfo implements PackableObject {
+    public int errCode = -1; // 0: no error, < 0: error
+    public int errLine;
+    public String errMsg;
+
     public String translated;
     public String createStmt;
     public String className;
+
+    public CompileInfo(int code, int line, String msg) {
+        assert code < 0;
+
+        errCode = code;
+        errLine = line;
+        errMsg = msg;
+    }
+
+    public CompileInfo(String translated, String stmt, String name) {
+        errCode = 0;
+        this.translated = translated;
+        this.createStmt = stmt;
+        this.className = name;
+    }
+
+    @Override
+    public void pack(CUBRIDPacker packer) {
+        packer.packInt(errCode);
+        if (errCode < 0) {
+            packer.packInt(errLine);
+            packer.packString(errMsg);
+        } else {
+            packer.packString(translated);
+            packer.packString(createStmt);
+            packer.packString(className);
+        }
+    }
 }

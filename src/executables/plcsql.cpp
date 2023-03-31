@@ -35,16 +35,21 @@
 #include "dbi.h"
 #include "db_client_type.hpp"
 #include "error_manager.h"
+
+#define CS_MODE
 #include "network_interface_cl.h"
+
 #include "porting.h"
 #include "utility.h"
 
 namespace fs = std::filesystem;
 
+// input
 static std::string input_string;
-static std::string output_string;
-static std::string sql;
 static bool verbose = false;
+
+// output
+static PLCSQL_COMPILE_INFO compile_info;
 
 #define DB_PLCSQL_AS_ARGS(arg) \
   arg.db_name.data(), arg.user_name.data(), arg.passwd.data(), NULL, DB_CLIENT_TYPE_PLCSQL_HELPER
@@ -249,20 +254,31 @@ main (int argc, char *argv[])
 
     PLCSQL_LOG ("[Compile PL/CSQL]");
     /* Call network interface API to send a input file (PL/CSQL program) */
-    if (plcsql_transfer_file (input_string, verbose, output_string, sql) != NO_ERROR)
+    if (plcsql_transfer_file (input_string, verbose, compile_info) != NO_ERROR)
       {
 	PLCSQL_LOG ("Transferring or Translating PL/CSQL program is failed");
 	goto exit_on_end;
       }
 
-    PLCSQL_LOG ("[Output File]");
-    PLCSQL_LOG (output_string);
+    if (compile_info.err_code == 0)
+      {
+	PLCSQL_LOG ("[Output File]");
+	PLCSQL_LOG (compile_info.translated_code);
 
-    PLCSQL_LOG ("[Stored Routine Definition]");
-    PLCSQL_LOG (sql);
+	PLCSQL_LOG ("[Stored Routine Definition]");
+	PLCSQL_LOG (compile_info.register_stmt);
+      }
+    else
+      {
+	PLCSQL_LOG ("[Compile Error Info]");
+	PLCSQL_LOG ("error at : " << compile_info.err_line);
+	PLCSQL_LOG ("error message : " << compile_info.err_msg);
+	goto exit_on_end;
+      }
 
     // Execute SQL
     {
+      const std::string &sql = compile_info.register_stmt;
       if (sql.empty ())
 	{
 	  PLCSQL_LOG_FORCE ("Invalid SQL string");

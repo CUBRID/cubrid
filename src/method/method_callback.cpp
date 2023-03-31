@@ -407,7 +407,10 @@ namespace cubmethod
 	    const prepare_info &info = handler->get_prepare_info ();
 
 	    semantics.sql_type = info.stmt_type;
-	    semantics.rewritten_query = parser_print_tree (db_get_parser (db_session), db_get_statement (db_session, 0));
+
+	    PARSER_CONTEXT *parser = db_get_parser (db_session);
+	    PT_NODE *stmt = db_get_statement (db_session, 0);
+	    semantics.rewritten_query = parser_print_tree (parser, stmt);
 
 	    const std::vector<column_info> &column_infos = info.column_infos;
 	    for (const column_info &c_info : column_infos)
@@ -415,37 +418,70 @@ namespace cubmethod
 		semantics.columns.emplace_back (c_info);
 	      }
 
-	    int input_markers_cnt = db_number_of_input_markers (db_session, 1);
+	    int markers_cnt = parser->host_var_count + parser->auto_param_count;
 	    DB_MARKER *marker = db_get_input_markers (db_session, 1);
 
-	    std::vector <pl_parameter_info> &param_info = semantics.hvs;
-	    if (input_markers_cnt > 0)
+	    if (markers_cnt > 0)
 	      {
-		param_info.resize (input_markers_cnt);
+		semantics.hvs.resize (markers_cnt);
+
 		while (marker)
 		  {
 		    int idx = marker->info.host_var.index;
-
-		    pl_parameter_info &info = param_info[idx];
-
-		    info.mode = 1;
-		    if (marker->info.host_var.str)
+		    semantics.hvs[idx].mode = 1;
+		    if (marker->info.host_var.label)
 		      {
-			info.name = std::string ((char *) marker->info.host_var.str);
+			semantics.hvs[idx].name.assign ((char *) marker->info.host_var.label);
 		      }
 
-		    TP_DOMAIN *hv_expected_domain = db_session->parser->host_var_expected_domains[idx];
+		    TP_DOMAIN *hv_expected_domain = NULL;
+		    if (parser->host_var_count <= idx)
+		      {
+			// auto parameterized
+			hv_expected_domain = marker->expected_domain;
+		      }
+		    else
+		      {
+			hv_expected_domain = db_session->parser->host_var_expected_domains[idx];
+		      }
 
-		    // TODO: set type?!
+		    // safe guard
+		    if (hv_expected_domain == NULL)
+		      {
+			hv_expected_domain = pt_node_to_db_domain (parser, marker, NULL);
+		      }
 
-		    info.type = TP_DOMAIN_TYPE (hv_expected_domain);
-		    info.precision = db_domain_precision (hv_expected_domain);
-		    info.scale = (short) db_domain_scale (hv_expected_domain);
-		    info.charset = db_domain_codeset (hv_expected_domain);
+		    semantics.hvs[idx].type = TP_DOMAIN_TYPE (hv_expected_domain);
+		    semantics.hvs[idx].precision = db_domain_precision (hv_expected_domain);
+		    semantics.hvs[idx].scale = (short) db_domain_scale (hv_expected_domain);
+		    semantics.hvs[idx].charset = db_domain_codeset (hv_expected_domain);
+
+		    if (db_session->parser->host_variables[idx].domain.general_info.is_null == 0)
+		      {
+			pr_clone_value (& (db_session->parser->host_variables[idx]), & (semantics.hvs[idx].value));
+		      }
+		    else
+		      {
+			db_make_null (& (semantics.hvs[idx].value));
+		      }
 
 		    marker = db_marker_next (marker);
 		  }
 	      }
+
+	    // into variable
+	    char **external_into_label = db_session->parser->external_into_label;
+	    if (external_into_label)
+	      {
+		for (int i = 0; i < db_session->parser->external_into_label_cnt; i++)
+		  {
+		    semantics.into_vars.push_back (external_into_label[i]);
+		    free (external_into_label[i]);
+		  }
+		free (external_into_label);
+	      }
+	    db_session->parser->external_into_label = NULL;
+	    db_session->parser->external_into_label_cnt = 0;
 	  }
 	else
 	  {

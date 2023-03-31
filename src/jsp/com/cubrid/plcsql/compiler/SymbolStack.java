@@ -290,6 +290,10 @@ public class SymbolStack {
         return getDecl(DeclProc.class, name);
     }
 
+    DeclVar getDeclVar(String name) {
+        return getDecl(DeclVar.class, name);
+    }
+
     DeclFunc getDeclFunc(String name) {
         DeclFunc ret = getDecl(DeclFunc.class, name);
         if (ret == null) {

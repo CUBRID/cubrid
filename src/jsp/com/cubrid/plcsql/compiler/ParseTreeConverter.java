@@ -2307,12 +2307,19 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         // check (name-binding) and convert host variables used in the SQL
         if (sws.hostVars != null) {
             for (PlParamInfo pi : sws.hostVars) {
-                String sqlType = getSqlTypeNameFromCode(pi.type);
+                TypeSpec typeSpec = null;
+                String varName = Misc.getNormalizedText(pi.name);
+                if (pi.name.equals("?") == false && pi.type == DBType.DB_NULL) {
+                    // set PL/CSQL variable's type
+                    DeclVar var = symbolStack.getDeclVar(varName);
+                    typeSpec = var.typeSpec;
+                } else {
+                    String sqlType = getSqlTypeNameFromCode(pi.type);
+                    typeSpec = typeSpecs.get(sqlType);
+                }
 
-                String var = Misc.getNormalizedText(pi.name);
-                ExprId id = visitNonFuncIdentifier(var, ctx); // s408: undeclared id ...
+                ExprId id = visitNonFuncIdentifier(varName, ctx); // s408: undeclared id ...
 
-                TypeSpec typeSpec = typeSpecs.get(sqlType);
                 assert typeSpec != null;
                 hostVars.put(id, typeSpec);
             }

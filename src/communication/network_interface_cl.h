@@ -54,6 +54,7 @@
 #include "method_def.hpp"
 #include "dynamic_array.h"
 #include "flashback_cl.h"
+#include "method_compile_def.hpp"
 
 // forward declarations
 #if defined (SA_MODE)
@@ -451,7 +452,7 @@ extern int flashback_get_loginfo (int trid, char *user, OID * classlist, int num
 
 /* PL/CSQL */
 EXPORT_IMPORT extern int plcsql_transfer_file (const std::string & input_file, const bool & verbose,
-					       std::string & output_file, std::string & sql);
+					       PLCSQL_COMPILE_INFO & compile_info);
 
 
 #endif /* _NETWORK_INTERFACE_CL_H_ */
