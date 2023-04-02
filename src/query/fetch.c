@@ -2527,7 +2527,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
 	if (target_domain == NULL)
 	  {
-	    TP_DOMAIN *arg1, *arg2, *arg3, tmp_arg1, tmp_arg2, tmp_arg3, *t_dom;
+	    TP_DOMAIN *arg1, *arg2, *arg3, tmp_arg1, tmp_arg2, tmp_arg3;
 
 	    if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
 	      {
@@ -2542,11 +2542,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    arg1 = tp_domain_resolve_value (peek_left, &tmp_arg1);
 	    arg2 = tp_domain_resolve_value (peek_right, &tmp_arg2);
 
-	    t_dom = tp_infer_common_domain (arg1, arg2);
-	    target_domain->precision = t_dom->precision;
+	    target_domain = tp_infer_common_domain (arg1, arg2);
 
 	    arg3 = NULL;
-	    if (target_domain == NULL && peek_third)
+	    if (peek_third)
 	      {
 		TP_DOMAIN *tmp_domain;
 
