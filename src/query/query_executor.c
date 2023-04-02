@@ -15643,9 +15643,9 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  /* close current list and start a new one */
 	  qfile_close_scan (thread_p, isidp->indx_cov.lsid);
 	  qfile_destroy_list (thread_p, isidp->indx_cov.list_id);
+	  QFILE_FREE_AND_INIT_LIST_ID (isidp->indx_cov.list_id);
 	  isidp->indx_cov.list_id =
-	    qfile_open_list (thread_p, isidp->indx_cov.type_list, NULL, isidp->indx_cov.query_id, 0,
-			     isidp->indx_cov.list_id);
+	    qfile_open_list (thread_p, isidp->indx_cov.type_list, NULL, isidp->indx_cov.query_id, 0);
 	  if (isidp->indx_cov.list_id == NULL)
 	    {
 	      GOTO_EXIT_ON_ERROR;
