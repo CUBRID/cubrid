@@ -8468,7 +8468,6 @@ pgbuf_request_data_page_from_page_server (THREAD_ENTRY & thread_r, const VPID * 
   return error_code;
 }
 
-// *INDENT-OFF*
 void
 /*
  * pgbuf_respond_data_fetch_page_request - Page Server responds to a request for a heap page
@@ -8481,20 +8480,24 @@ void
  *    - a system parameter
  *    - if the compression algorighm was not able to compress the data, the page is sent uncompressed
  */
+// *INDENT-OFF*
 pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payload_in_out)
+// *INDENT-ON*
 {
   assert (is_page_server ());
 
   // Unpack the message data
+  // *INDENT-OFF*
   cubpacking::unpacker message_upk (payload_in_out.c_str (), payload_in_out.size ());
   VPID vpid;
   vpid_utils::unpack (message_upk, vpid);
 
   LOG_LSA target_repl_lsa;
   cublog::lsa_utils::unpack (message_upk, target_repl_lsa);
+  // *INDENT-ON*
   int packed_fetch_mode;
-  message_upk.unpack_int (packed_fetch_mode);
-  const PAGE_FETCH_MODE fetch_mode = static_cast<PAGE_FETCH_MODE> (packed_fetch_mode);
+    message_upk.unpack_int (packed_fetch_mode);
+  const PAGE_FETCH_MODE fetch_mode = static_cast < PAGE_FETCH_MODE > (packed_fetch_mode);
 
   // Fetch data page. But first make sure that replication hits its target LSA
   if (!target_repl_lsa.is_null ())
@@ -8512,19 +8515,23 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       ASSERT_NO_ERROR ();
       //The found page was deallocated already
       error = ER_PB_BAD_PAGEID;
+      // *INDENT-OFF*
       payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
+      // *INDENT-ON*
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
-        {
-          _er_log_debug (ARG_FILE_LINE,
-                         "[READ DATA] Error fixing page during recovery: vpid = %d|%d, target_repl_lsa = %lld|%d\n",
-                         error, VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
-        }
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "[READ DATA] Error fixing page during recovery: vpid = %d|%d, target_repl_lsa = %lld|%d\n",
+			 error, VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
+	}
     }
   else if (page_ptr == nullptr)
     {
       ASSERT_ERROR_AND_SET (error);
       // respond with the error
+      // *INDENT-OFF*
       payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
+      // *INDENT-ON*
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
@@ -8540,7 +8547,9 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       assert (io_pgptr != nullptr);
 
       // pack NO_ERROR first
+      // *INDENT-OFF*
       payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
+      // *INDENT-ON*
 
       // compress data that is sent over; there are 3 cases:
       //  - compression setting on and data compressed successfully
@@ -8549,54 +8558,52 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       // the first
       const char *compressed_data = nullptr;
       int compressed_data_size = 0;
-      pgbuf_compress_page(thread_r, reinterpret_cast<const void *> (io_pgptr), IO_PAGESIZE,
-                          compressed_data, compressed_data_size);
+      pgbuf_compress_page (thread_r, reinterpret_cast < const void *>(io_pgptr), IO_PAGESIZE,
+			   compressed_data, compressed_data_size);
 
       // add compressed size
-      const PGLENGTH compressed_length = (PGLENGTH)compressed_data_size;
-      payload_in_out.append (reinterpret_cast<const char *> (&compressed_length),
-                             sizeof (PGLENGTH));
+      const PGLENGTH compressed_length = (PGLENGTH) compressed_data_size;
+      payload_in_out.append (reinterpret_cast < const char *>(&compressed_length), sizeof (PGLENGTH));
 
       // add io_page
       payload_in_out.append (compressed_data, (size_t) compressed_data_size);
 
       if (perfmon_is_perf_tracking ())
-        {
-          const PAGE_TYPE ptype = pgbuf_get_page_ptype (&thread_r, page_ptr);
-          const bool is_slotted = spage_is_slotted_page_type (ptype);
-          bool needs_compact = false;
-          if (is_slotted)
-            {
-              needs_compact = spage_need_compact(&thread_r, page_ptr);
-            }
+	{
+	  perfmon_add_stat (&thread_r, PSTAT_COMPR_HEAP_PAGES_TRANSF_COMPRESSED, (UINT64) compressed_data_size);
+	  perfmon_add_stat (&thread_r, PSTAT_COMPR_HEAP_PAGES_TRANSF_UNCOMPRESSED, (UINT64) IO_PAGESIZE);
 
-          perfmon_add_stat (&thread_r, PSTAT_COMPR_HEAP_PAGES_TRANSF_COMPRESSED, (UINT64)compressed_data_size);
-          perfmon_add_stat (&thread_r, PSTAT_COMPR_HEAP_PAGES_TRANSF_UNCOMPRESSED, (UINT64)IO_PAGESIZE);
+	  // only investigate for extended logging if active
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_SERVED_COMPR_PAGE_TYPE))
+	    {
+	      const PAGE_TYPE ptype = pgbuf_get_page_ptype (&thread_r, page_ptr);
+	      const bool is_slotted = spage_is_slotted_page_type (ptype);
+	      const bool needs_compact = is_slotted && spage_need_compact (&thread_r, page_ptr);
 
-          // depending on a separate activation flag, the function will extract discrete detailed btree page types
-          // the functionality profiled here is not interested in that (all btree page types have
-          // the same structure - slotted)
-          const PERF_PAGE_TYPE perf_page_type = pgbuf_get_page_type_for_stat (&thread_r, page_ptr);
-          const float compressed_ratio_multiplied = ((float)compressed_data_size/(float)IO_PAGESIZE) * 100. * 100.;
-          perfmon_compr_page_type (&thread_r, (int)perf_page_type, (int)compressed_ratio_multiplied,
-                                   is_slotted, needs_compact);
-        }
+	      // depending on a separate extended activation flag, the function will extract discrete
+	      // detailed btree page types the functionality profiled here is not interested in that
+	      const PERF_PAGE_TYPE perf_page_type = pgbuf_get_page_type_for_stat (&thread_r, page_ptr);
+	      const float compressed_ratio_multiplied =
+		((float) compressed_data_size / (float) IO_PAGESIZE) * 100. * 100.;
+	      perfmon_compr_page_type (&thread_r, (int) perf_page_type, (int) compressed_ratio_multiplied,
+				       needs_compact);
+	    }
+	}
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
 			 "[READ DATA] Successful while fixing page: vpid = %d|%d, lsa = %lld|%d,"
 			 " target_repl_lsa = %lld|%d\n"
-	                 "    compr_size = %d, ratio = %.2lf\n",
-			 VPID_AS_ARGS (&vpid), LSA_AS_ARGS(&io_pgptr->prv.lsa), LSA_AS_ARGS (&target_repl_lsa),
-	                 (int) compressed_data_size, ((double)compressed_data_size/(double)IO_PAGESIZE) * 100.);
+			 "    compr_size = %d, ratio = %.2lf\n",
+			 VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&io_pgptr->prv.lsa), LSA_AS_ARGS (&target_repl_lsa),
+			 (int) compressed_data_size, ((double) compressed_data_size / (double) IO_PAGESIZE) * 100.);
 	}
 
       // only unfix after having used casted IO page ptr for logging
       pgbuf_unfix (&thread_r, page_ptr);
     }
 }
-// *INDENT-ON*
 
 void
 pgbuf_compress_page (THREAD_ENTRY & thread_r, const void *data_in, int data_in_size,

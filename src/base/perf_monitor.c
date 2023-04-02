@@ -186,11 +186,9 @@ static void perfmon_stat_dump_in_buffer_thread_daemon_stats (const UINT64 * stat
 static void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
 static void perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
 
-static bool perfmon_stat_dump_in_buffer_served_compr_page_type_impl (char *&buf_ptr, int &buf_len, int page_type,
+static void perfmon_stat_dump_in_buffer_served_compr_page_type_impl (char *&buf_ptr, int &buf_len, int page_type,
 								     UINT64 page_count, UINT64 accumulated_ratio,
-								     UINT64 slotted_count,
-								     UINT64 slotted_needs_compact_count
-								     /*, const UINT64 * stats_ptr */ );
+								     UINT64 slotted_needs_compact_count);
 
 static void perfmon_dbg_check_metadata_definition ();
 
@@ -4398,28 +4396,12 @@ f_load_served_compr_page_type_counters (void)
   return PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE;
 }
 
-static bool
+static void
 perfmon_stat_dump_in_buffer_served_compr_page_type_impl (char *&buf_ptr, int &buf_len, int page_type,
 							 UINT64 page_count, UINT64 accumulated_ratio,
-							 UINT64 slotted_count, UINT64 slotted_needs_compact_count
-							 /*, const UINT64 * stats_ptr */ )
+							 UINT64 slotted_needs_compact_count)
 {
   int written = 0;
-
-//  const int offset = PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_OFFSET (page_type, PERF_SERVED_COMPR_COUNT);
-//  assert (offset < PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE);
-//  // offset for accumulated ratio
-//  assert ((offset + PERF_SERVED_COMPR_RATIO) < PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE);
-
-//  const UINT64 page_count = stats_ptr[offset + PERF_SERVED_COMPR_COUNT];
-//  const UINT64 accumulated_ratio = stats_ptr[offset + PERF_SERVED_COMPR_RATIO];
-//  const UINT64 slotted_count = stats_ptr[offset + PERF_SERVED_COMPR_SLOTTED];
-//  const UINT64 slotted_needs_compact_count = stats_ptr[offset + PERF_SERVED_COMPR_SLOTTED_NEEDS_COMPACT];
-
-//  if (page_count == 0 && accumulated_ratio == 0 && slotted_count == 0 && slotted_needs_compact_count == 0)
-//    {
-//      return false;
-//    }
 
   // page_count
   const char *const page_type_name = perfmon_stat_page_type_name (page_type);
@@ -4432,7 +4414,7 @@ perfmon_stat_dump_in_buffer_served_compr_page_type_impl (char *&buf_ptr, int &bu
   if (buf_len <= 0)
     {
       assert (false);
-      return false;
+      return;
     }
 
   // accumulated_ratio
@@ -4446,20 +4428,7 @@ perfmon_stat_dump_in_buffer_served_compr_page_type_impl (char *&buf_ptr, int &bu
   if (buf_len <= 0)
     {
       assert (false);
-      return false;
-    }
-
-  // slotted count
-  written = snprintf (buf_ptr, (size_t) buf_len, "%-18s,SLOTTED       = %10llu\n",
-		      page_type_name, (long long unsigned int) slotted_count);
-  assert (written > 0);
-  buf_ptr += written;
-  assert (buf_len > written);
-  buf_len -= written;
-  if (buf_len <= 0)
-    {
-      assert (false);
-      return false;
+      return;
     }
 
   // slotted needs compact
@@ -4472,10 +4441,8 @@ perfmon_stat_dump_in_buffer_served_compr_page_type_impl (char *&buf_ptr, int &bu
   if (buf_len <= 0)
     {
       assert (false);
-      return false;
+      return;
     }
-
-  return true;
 }
 
 void
@@ -4495,26 +4462,21 @@ f_dump_in_file_served_compr_page_type_counters (FILE * f_ptr, const UINT64 * sta
       {
 	const int offset = PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_OFFSET (page_type, PERF_SERVED_COMPR_COUNT);
 	assert (offset < PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE);
-	assert ((offset + PERF_SERVED_COMPR_RATIO) < PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE);	// offset for accumulated ratio
+	assert ((offset + PERF_SERVED_COMPR_RATIO) < PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE);
+	assert ((offset + PERF_SERVED_COMPR_SLOTTED_NEEDS_COMPACT) < PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE);
 
 	const UINT64 page_count = stats_ptr[offset + PERF_SERVED_COMPR_COUNT];
 	const UINT64 accumulated_ratio = stats_ptr[offset + PERF_SERVED_COMPR_RATIO];
-	const UINT64 slotted_count = stats_ptr[offset + PERF_SERVED_COMPR_SLOTTED];
 	const UINT64 slotted_needs_compact_count = stats_ptr[offset + PERF_SERVED_COMPR_SLOTTED_NEEDS_COMPACT];
-	if (page_count == 0 && accumulated_ratio == 0 && slotted_count == 0 && slotted_needs_compact_count == 0)
+	if (page_count == 0 && accumulated_ratio == 0 && slotted_needs_compact_count == 0)
 	  {
 	    continue;
 	  }
 
 	char *buf_ptr = buf;
 	int buf_len = BUF_LEN_MAX;
-	(void) perfmon_stat_dump_in_buffer_served_compr_page_type_impl (buf_ptr, buf_len, page_type, page_count,
-									accumulated_ratio, slotted_count,
-									slotted_needs_compact_count
-									/*, stats_ptr */ );
-//        {
-//          continue;
-//        }
+	perfmon_stat_dump_in_buffer_served_compr_page_type_impl (buf_ptr, buf_len, page_type, page_count,
+								 accumulated_ratio, slotted_needs_compact_count);
 	fprintf (f_ptr, "%s", buf);
       }
   }
@@ -4537,31 +4499,29 @@ f_dump_in_buffer_served_compr_page_type_counters (char **s, const UINT64 * stats
 	{
 	  const int offset = PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_OFFSET (page_type, PERF_SERVED_COMPR_COUNT);
 	  assert (offset < PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE);
-	  assert ((offset + PERF_SERVED_COMPR_RATIO) < PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE);	// offset for accumulated ratio
+	  assert ((offset + PERF_SERVED_COMPR_RATIO) < PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE);
+	  assert ((offset + PERF_SERVED_COMPR_SLOTTED_NEEDS_COMPACT) < PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE);
 
 	  const UINT64 page_count = stats_ptr[offset + PERF_SERVED_COMPR_COUNT];
 	  const UINT64 accumulated_ratio = stats_ptr[offset + PERF_SERVED_COMPR_RATIO];
-	  const UINT64 slotted_count = stats_ptr[offset + PERF_SERVED_COMPR_SLOTTED];
 	  const UINT64 slotted_needs_compact_count = stats_ptr[offset + PERF_SERVED_COMPR_SLOTTED_NEEDS_COMPACT];
-	  if (page_count == 0 && accumulated_ratio == 0 && slotted_count == 0 && slotted_needs_compact_count == 0)
+	  if (page_count == 0 && accumulated_ratio == 0 && slotted_needs_compact_count == 0)
 	    {
 	      continue;
 	    }
 
-	  (void) perfmon_stat_dump_in_buffer_served_compr_page_type_impl (*s, *remaining_size, page_type, page_count,
-									  accumulated_ratio, slotted_count,
-									  slotted_needs_compact_count
-									  /*, stats_ptr */ );
+	  perfmon_stat_dump_in_buffer_served_compr_page_type_impl (*s, *remaining_size, page_type, page_count,
+								   accumulated_ratio, slotted_needs_compact_count);
 	}
     }
 }
 
 /*
- *   perfmon_db_flushed_block_volumes -
+ *   perfmon_compr_page_type -
  *   return: none
  */
 void
-perfmon_compr_page_type (THREAD_ENTRY * thread_p, int page_type, int ratio, bool is_slotted, bool needs_compact)
+perfmon_compr_page_type (THREAD_ENTRY * thread_p, int page_type, int ratio, bool needs_compact)
 {
   assert (pstat_Global.initialized);
 
@@ -4574,15 +4534,13 @@ perfmon_compr_page_type (THREAD_ENTRY * thread_p, int page_type, int ratio, bool
 
   {
     const int offset = PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_OFFSET (page_type, PERF_SERVED_COMPR_COUNT);
-    assert (offset < PERF_PAGE_PROMOTE_COUNTERS);
-    assert ((offset + PERF_SERVED_COMPR_RATIO) < PERF_PAGE_PROMOTE_COUNTERS);
+    assert (offset < PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE);
+    assert ((offset + PERF_SERVED_COMPR_RATIO) < PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE);
+    assert ((offset + PERF_SERVED_COMPR_SLOTTED_NEEDS_COMPACT) < PERF_SERVED_COMPR_PAGE_TYPE_COUNTERS_SIZE);
 
     perfmon_add_stat_at_offset (thread_p, PSTAT_SERVED_COMPR_PAGE_TYPE_COUNTERS, offset, 1);
     perfmon_add_stat_at_offset (thread_p, PSTAT_SERVED_COMPR_PAGE_TYPE_COUNTERS,
 				(offset + PERF_SERVED_COMPR_RATIO), ratio);
-    assert ((needs_compact && is_slotted) || !needs_compact);
-    perfmon_add_stat_at_offset (thread_p, PSTAT_SERVED_COMPR_PAGE_TYPE_COUNTERS,
-				(offset + PERF_SERVED_COMPR_SLOTTED), (is_slotted ? 1 : 0));
     perfmon_add_stat_at_offset (thread_p, PSTAT_SERVED_COMPR_PAGE_TYPE_COUNTERS,
 				(offset + PERF_SERVED_COMPR_SLOTTED_NEEDS_COMPACT), (needs_compact ? 1 : 0));
   }
