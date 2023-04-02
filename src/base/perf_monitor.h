@@ -278,8 +278,12 @@ typedef enum
 
 typedef enum
 {
-  PERF_SERVED_COMPR_COUNT = 0,	/* per page type, this many pages have been compressed and served by page server */
-  PERF_SERVED_COMPR_RATIO,	/* per page type, the average ratio of pages compressed and served by page server */
+  /* per page type, this many pages have been compressed and served by page server */
+  PERF_SERVED_COMPR_COUNT = 0,
+  /* per page type, the average ratio of pages compressed and served by page server */
+  PERF_SERVED_COMPR_RATIO,
+  /* per page type, whether the page being server needs to be compacted or not; for non-slotted
+   * pages, the value is zero and irrelevant */
   PERF_SERVED_COMPR_SLOTTED_NEEDS_COMPACT,
 
   PERF_SERVED_COMPR_PAGE_TYPE_CNT
