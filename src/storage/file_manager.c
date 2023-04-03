@@ -6671,7 +6671,7 @@ file_get_num_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid, int *n_user
  * n_user_pages_out (out) : Output number of user pages of class
  */
 int
-file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * cls_oid, int *total_pages, bool *partition_yn)
+file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * cls_oid, int *total_pages, bool * partition_yn)
 {
   int count = 0, part_pages = 0;
   OID *partitions = NULL;
