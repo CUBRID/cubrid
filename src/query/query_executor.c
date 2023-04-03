@@ -13222,7 +13222,6 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   /* check sampling scan */
   if (XASL_IS_FLAGED (xasl, XASL_SAMPLING_SCAN) && xasl->spec_list)
     {
-      /* 확인 확인  Need to consider partition table */
       sampling = &xasl->spec_list->s_id.s.hsid.sampling;
     }
 
