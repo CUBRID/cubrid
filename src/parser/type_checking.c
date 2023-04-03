@@ -11415,13 +11415,6 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	{
 	  collation_flag = TP_DOMAIN_COLL_NORMAL;
 	}
-#if 1
-      if (arg1_prec == DB_MAX_STRING_LENGTH && arg1->node_type == PT_HOST_VAR)
-	{
-	  arg1_prec = -1;
-	  arg1_dec_prec = 0;
-	}
-#endif
     }
   else if (arg1 && arg1->type_enum == PT_TYPE_INTEGER)
     {
@@ -11465,13 +11458,6 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       arg2_prec = arg2->data_type->info.data_type.precision;
       arg2_dec_prec = arg2->data_type->info.data_type.dec_precision;
       arg2_units = arg2->data_type->info.data_type.units;
-#if 1
-      if (arg2_prec == DB_MAX_STRING_LENGTH && arg2->node_type == PT_HOST_VAR)
-	{
-	  arg2_prec = -1;
-	  arg2_dec_prec = 0;
-	}
-#endif
       if (PT_HAS_COLLATION (arg2->type_enum) && arg2->data_type->info.data_type.collation_flag != TP_DOMAIN_COLL_LEAVE)
 	{
 	  collation_flag = TP_DOMAIN_COLL_NORMAL;
