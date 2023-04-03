@@ -26,6 +26,7 @@
 #include "method_compile.hpp"
 #include "method_query_util.hpp"
 #include "method_struct_oid_info.hpp"
+#include "method_schema_info.hpp"
 
 #include "parser.h"
 #include "api_compat.h" /* DB_SESSION */
@@ -89,6 +90,12 @@ namespace cubmethod
 	break;
       case METHOD_CALLBACK_GET_GENERATED_KEYS:
 	error = generated_keys (unpacker);
+	break;
+
+      /* schema info */
+      case METHOD_CALLBACK_GET_SCHEMA_INFO:
+	// error = get_schema_info (unpacker);
+	assert (false);
 	break;
 
       /* compilation */
@@ -374,6 +381,24 @@ namespace cubmethod
   }
 
 //////////////////////////////////////////////////////////////////////////
+// Schema Info
+//////////////////////////////////////////////////////////////////////////
+  /*
+  int
+  callback_handler::get_schema_info (packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+
+    schema_info_handler sch_handler (m_error_ctx);
+
+
+
+
+    return error;
+  }
+  */
+
+//////////////////////////////////////////////////////////////////////////
 // Compile
 //////////////////////////////////////////////////////////////////////////
   int
@@ -515,11 +540,88 @@ namespace cubmethod
       }
   }
 
+  static int
+  get_procedure_info (global_semantics_question& question, global_semantics_response_procedure& res) 
+  {
+    DB_OBJECT *mop_p;
+    DB_VALUE return_type;
+    int err;
+    int save;
+    char* name = question.name.c_str ();
+
+    AU_DISABLE (save);
+    {
+    mop_p = jsp_find_stored_procedure (name);
+    if (mop_p == NULL)
+      {
+        assert (er_errid () != NO_ERROR);
+        err = er_errid ();
+        goto exit;
+      }
+
+    err = db_get (mop_p, SP_ATTR_RETURN_TYPE, &return_type);
+    if (err != NO_ERROR)
+      {
+        goto exit;
+      }
+    }
+
+    pl_parameter_info ret_info;
+
+    
+
+exit:
+    AU_ENABLE (save);
+    er_clear ();
+    return err;
+  }
+
   int
   callback_handler::get_global_semantics (packing_unpacker &unpacker)
   {
-    // TODO
-    return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, ER_FAILED, "dummy");
+    int error = NO_ERROR;
+    global_semantics_request request;
+    unpacker.unpack_all (request);
+
+    global_semantics_response response;
+
+    for (global_semantics_question& question : request.qsqs) 
+    {
+      switch (question.type) 
+      {
+        case 1: // PROCEDURE
+          global_semantics_response_procedure procedure_res;
+          error = get_procedure_info (question, procedure_res);
+          response.push_back (procedure_res);
+          break;
+        case 2: // FUNCTION
+
+          break;
+        case 3: // SERIAL
+          
+          break;
+        case 4: // COLUMN
+
+          break;
+        default:
+          assert (false);
+          break;
+      }
+
+      if (error != NO_ERROR)
+      {
+        break;
+      }
+    }
+
+    if (error == NO_ERROR)
+      {
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, response);
+      }
+    else
+      {
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, response);
+      }
   }
 
 //////////////////////////////////////////////////////////////////////////

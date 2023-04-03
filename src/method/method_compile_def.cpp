@@ -348,4 +348,178 @@ namespace cubmethod
   {
     //
   }
+
+//////////////////////////////////////////////////////////////////////////
+// global semantics
+//////////////////////////////////////////////////////////////////////////
+
+#define GLOBAL_SEMANTICS_QUESTION_PACKER_ARGS() \
+  type, name
+
+#define GLOBAL_SEMANTICS_REQUEST_PACKER_ARGS() \
+  qsqs
+
+  void
+  global_semantics_question::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_all (GLOBAL_SEMANTICS_QUESTION_PACKER_ARGS());
+  }
+
+  size_t
+  global_semantics_question::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    return serializator.get_all_packed_size_starting_offset (start_offset, GLOBAL_SEMANTICS_QUESTION_PACKER_ARGS ());
+  }
+
+  void
+  global_semantics_question::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (GLOBAL_SEMANTICS_QUESTION_PACKER_ARGS ());
+  }
+
+  void
+  global_semantics_request::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_all (GLOBAL_SEMANTICS_REQUEST_PACKER_ARGS());
+  }
+
+  size_t
+  global_semantics_request::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    return serializator.get_all_packed_size_starting_offset (start_offset, GLOBAL_SEMANTICS_REQUEST_PACKER_ARGS ());
+  }
+
+  void
+  global_semantics_request::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (GLOBAL_SEMANTICS_REQUEST_PACKER_ARGS ());
+  }
+
+#define GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS() \
+  idx, err_id, err_msg
+
+#define GLOBAL_SEMANTICS_RESPONSE_PROCEDURE_PACKER_ARGS() \
+  GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS(), args
+
+#define GLOBAL_SEMANTICS_RESPONSE_FUNCTION_PACKER_ARGS() \
+  GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS(), ret, args
+
+#define GLOBAL_SEMANTICS_RESPONSE_SERIAL_PACKER_ARGS() \
+  GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS()
+
+#define GLOBAL_SEMANTICS_RESPONSE_COLUMN_PACKER_ARGS() \
+  GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS(), c_info
+
+  void
+  global_semantics_response_common::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_all (GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS());
+  }
+
+  size_t
+  global_semantics_response_common::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    return serializator.get_all_packed_size_starting_offset (start_offset, GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS ());
+  }
+
+  void
+  global_semantics_response_common::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS ());
+  }
+
+  void
+  global_semantics_response_procedure::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_all (GLOBAL_SEMANTICS_RESPONSE_PROCEDURE_PACKER_ARGS());
+  }
+
+  size_t
+  global_semantics_response_procedure::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    return serializator.get_all_packed_size_starting_offset (start_offset,
+	   GLOBAL_SEMANTICS_RESPONSE_PROCEDURE_PACKER_ARGS ());
+  }
+
+  void
+  global_semantics_response_procedure::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_PROCEDURE_PACKER_ARGS ());
+  }
+
+  void
+  global_semantics_response_function::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_all (GLOBAL_SEMANTICS_RESPONSE_FUNCTION_PACKER_ARGS());
+  }
+
+  size_t
+  global_semantics_response_function::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    return serializator.get_all_packed_size_starting_offset (start_offset,
+	   GLOBAL_SEMANTICS_RESPONSE_FUNCTION_PACKER_ARGS ());
+  }
+
+  void
+  global_semantics_response_function::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_FUNCTION_PACKER_ARGS ());
+  }
+
+  void
+  global_semantics_response_serial::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_all (GLOBAL_SEMANTICS_RESPONSE_SERIAL_PACKER_ARGS());
+  }
+
+  size_t
+  global_semantics_response_serial::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    return serializator.get_all_packed_size_starting_offset (start_offset, GLOBAL_SEMANTICS_RESPONSE_SERIAL_PACKER_ARGS ());
+  }
+
+  void
+  global_semantics_response_serial::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_SERIAL_PACKER_ARGS ());
+  }
+
+  void
+  global_semantics_response_column::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_all (GLOBAL_SEMANTICS_RESPONSE_COLUMN_PACKER_ARGS());
+  }
+
+  size_t
+  global_semantics_response_column::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    return serializator.get_all_packed_size_starting_offset (start_offset, GLOBAL_SEMANTICS_RESPONSE_COLUMN_PACKER_ARGS ());
+  }
+
+  void
+  global_semantics_response_column::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_COLUMN_PACKER_ARGS ());
+  }
+
+#define GLOBAL_SEMANTICS_RESPONSE_PACKER_ARGS() \
+  qs
+
+  void
+  global_semantics_response::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_all (GLOBAL_SEMANTICS_RESPONSE_PACKER_ARGS());
+  }
+
+  size_t
+  global_semantics_response::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    return serializator.get_all_packed_size_starting_offset (start_offset, GLOBAL_SEMANTICS_RESPONSE_PACKER_ARGS ());
+  }
+
+  void
+  global_semantics_response::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_PACKER_ARGS ());
+  }
 }
