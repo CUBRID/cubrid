@@ -382,9 +382,8 @@ struct heap_get_context
 typedef struct sampling_info SAMPLING_INFO;
 struct sampling_info
 {
-  int skip_cnt;			/* for sampling statistics */
-  int total_page_cnt;		/* number of total pages(read pages + skipped pages) */
-  int read_page_cnt;		/* number of read pages */
+  int weight;			/* for sampling statistics */
+  bool partition_yn;		/* check if partition table */
 };
 
 /* Forward definition. */

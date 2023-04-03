@@ -6502,7 +6502,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}
       else if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
 	{
-	  /* open a sequential heap file scan that reads record info */
+	  /* open a sequential heap file sampling scan */
 	  scan_type = S_HEAP_SAMPLING_SCAN;
 	  indx_info = NULL;
 	}
@@ -6546,7 +6546,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 					    curr_spec->s.cls_node.num_attrs_rest, curr_spec->s.cls_node.attrids_rest,
 					    curr_spec->s.cls_node.cache_rest, scan_type,
 					    curr_spec->s.cls_node.cache_reserved,
-					    curr_spec->s.cls_node.cls_regu_list_reserved);
+					    curr_spec->s.cls_node.cls_regu_list_reserved, false);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -6977,13 +6977,13 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	{
 	  /* initialize the scan_id for partitioned classes */
 	  if (xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL
-	      || xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
+	      || xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
+	      || xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
 	    {
 	      class_oid = &xasl->curr_spec->s_id.s.hsid.cls_oid;
 	      class_hfid = &xasl->curr_spec->s_id.s.hsid.hfid;
 	    }
-	  else if (xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN
-		   || xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
+	  else if (xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
 	    {
 	      class_oid = &xasl->curr_spec->s_id.s.hpsid.cls_oid;
 	      class_hfid = &xasl->curr_spec->s_id.s.hpsid.hfid;
@@ -7715,7 +7715,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 			     spec->s.cls_node.num_attrs_pred, spec->s.cls_node.attrids_pred,
 			     spec->s.cls_node.cache_pred, spec->s.cls_node.num_attrs_rest,
 			     spec->s.cls_node.attrids_rest, spec->s.cls_node.cache_rest,
-			     scan_type, spec->s.cls_node.cache_reserved, spec->s.cls_node.cls_regu_list_reserved);
+			     scan_type, spec->s.cls_node.cache_reserved, spec->s.cls_node.cls_regu_list_reserved, true);
     }
   else if (spec->type == TARGET_CLASS && spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
     {

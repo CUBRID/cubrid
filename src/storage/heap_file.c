@@ -8049,13 +8049,9 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		    {
 		      if (sampling)
 			{
-			  /* increase number of total pages and read pages */
-			  sampling->total_page_cnt = sampling->total_page_cnt + sampling->skip_cnt;
-			  sampling->read_page_cnt++;
-
 			  /* skip pages */
 			  if (heap_vpid_skip_next (thread_p, hfid, &curr_page_watcher, &old_page_watcher,
-						   sampling->skip_cnt, &vpid, scan_cache) == S_ERROR)
+						   sampling->weight, &vpid, scan_cache) == S_ERROR)
 			    {
 			      return S_ERROR;
 			    }
@@ -8071,12 +8067,6 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		  oid.slotid = -1;
 		  if (oid.pageid == NULL_PAGEID)
 		    {
-		      if (sampling)
-			{
-			  printf ("total_page : %d, read_page : %d\n", sampling->total_page_cnt,
-				  sampling->read_page_cnt);
-			}
-
 		      /* must be last page, end scanning */
 		      OID_SET_NULL (next_oid);
 		      if (old_page_watcher.pgptr != NULL)

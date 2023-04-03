@@ -1196,6 +1196,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   PR_TYPE *pr_type_p;
   OR_BUF buf;
   double dbl;
+  int sampling_weight = 1;
 
   db_make_null (&sqr_val);
   db_make_null (&dbval);
@@ -1207,10 +1208,10 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   db_make_null (&dval);
 
   /* check sampling scan */
-  int sampling_weight = 1;
   if (sampling)
     {
-      sampling_weight = sampling->total_page_cnt / sampling->read_page_cnt;
+      assert (sampling->weight > 0);
+      sampling_weight = sampling->weight;
     }
 
   for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)

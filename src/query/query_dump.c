@@ -2346,6 +2346,13 @@ qdump_print_xasl (xasl_node * xasl_p)
 	  nflag++;
 	}
 
+      if (XASL_IS_FLAGED (xasl_p, XASL_SAMPLING_SCAN))
+	{
+	  XASL_CLEAR_FLAG (xasl_p, XASL_SAMPLING_SCAN);
+	  fprintf (foutput, "%sXASL_SAMPLING_SCAN", (nflag ? "|" : ""));
+	  nflag++;
+	}
+
       if (xasl_p->flag)
 	{
 	  fprintf (foutput, "%d%s", xasl_p->flag, (nflag ? "|" : ""));

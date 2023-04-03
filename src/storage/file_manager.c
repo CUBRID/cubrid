@@ -63,6 +63,7 @@
 #endif /* SERVER_MODE */
 #include "fault_injection.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "partition_sr.h"
 
 /************************************************************************/
 /* Define structures, globals, and macro's                              */
@@ -6657,6 +6658,68 @@ file_get_num_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid, int *n_user
 
   *n_user_pages_out = fhead->n_page_user;
   pgbuf_unfix (thread_p, page_fhead);
+
+  return NO_ERROR;
+}
+
+/*
+ * file_get_num_total_user_pages () - Output number of user pages in class
+ *
+ * return                 : Error code
+ * thread_p (in)          : Thread entry
+ * OID (in)               : Class identifier
+ * n_user_pages_out (out) : Output number of user pages of class
+ */
+int
+file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * cls_oid, int *total_pages, bool *partition_yn)
+{
+  int count = 0, part_pages = 0;
+  OID *partitions = NULL;
+  CLS_INFO *cls_info_p = NULL;
+
+  if (partition_get_partition_oids (thread_p, cls_oid, &partitions, &count) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (count > 0)
+    {
+      /* partition table */
+      for (int i = 0; i < count; i++)
+	{
+	  cls_info_p = catalog_get_class_info (thread_p, &partitions[i], NULL);
+	  if (cls_info_p == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+	  if (file_get_num_user_pages (thread_p, &(cls_info_p->ci_hfid.vfid), &part_pages) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  *total_pages += part_pages;
+	}
+
+      if (partition_yn)
+	{
+	  *partition_yn = true;
+	}
+    }
+  else
+    {
+      cls_info_p = catalog_get_class_info (thread_p, cls_oid, NULL);
+      if (cls_info_p == NULL)
+	{
+	  return ER_FAILED;
+	}
+      if (file_get_num_user_pages (thread_p, &(cls_info_p->ci_hfid.vfid), total_pages) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      if (partition_yn)
+	{
+	  *partition_yn = true;
+	}
+    }
 
   return NO_ERROR;
 }

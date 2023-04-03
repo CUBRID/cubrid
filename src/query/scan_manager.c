@@ -2801,7 +2801,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     regu_variable_list_node * regu_list_rest, int num_attrs_pred, ATTR_ID * attrids_pred,
 		     HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest, ATTR_ID * attrids_rest,
 		     HEAP_CACHE_ATTRINFO * cache_rest, SCAN_TYPE scan_type, DB_VALUE ** cache_recordinfo,
-		     regu_variable_list_node * regu_list_recordinfo)
+		     regu_variable_list_node * regu_list_recordinfo, bool is_partition_table)
 {
   HEAP_SCAN_ID *hsidp;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -2847,16 +2847,16 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   hsidp->recordinfo_regu_list = regu_list_recordinfo;
 
   /* for scampling statistics. */
-  if (scan_type == S_HEAP_SAMPLING_SCAN)
+  if (scan_type == S_HEAP_SAMPLING_SCAN && !is_partition_table)
     {
-      int total_pages;
+      int total_pages = 0;
+      if (file_get_num_total_user_pages (thread_p, cls_oid, &total_pages, &hsidp->sampling.partition_yn) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
 
-      file_get_num_user_pages (thread_p, &hfid->vfid, &total_pages);
-      /* skip_cnt = (total_page / sampling_page) */
-      hsidp->sampling.skip_cnt = MAX ((total_pages / NUMBER_OF_SAMPLING_PAGES), 1);
-      hsidp->sampling.total_page_cnt = 0;
-      hsidp->sampling.read_page_cnt = 0;
-      printf ("hsidp->sampling->skip_cnt : %d total_pages : %d\n", hsidp->sampling.skip_cnt, total_pages);
+      /* sampling_weight = total_page / sampling_page */
+      hsidp->sampling.weight = MAX ((total_pages / NUMBER_OF_SAMPLING_PAGES), 1);
     }
 
   return NO_ERROR;

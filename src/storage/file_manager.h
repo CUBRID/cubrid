@@ -188,6 +188,7 @@ extern int file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid,
 extern int file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FILE_TYPE file_type_hint);
 
 extern int file_get_num_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid, int *n_user_pages_out);
+extern int file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * class_oid, int * n_user_pages_out, bool * partition_yn);
 extern DISK_ISVALID file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup);
 extern int file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE * ftype_out);
 extern int file_is_temp (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_temp);
