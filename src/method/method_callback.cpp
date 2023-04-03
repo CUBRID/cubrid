@@ -541,34 +541,34 @@ namespace cubmethod
   }
 
   static int
-  get_procedure_info (global_semantics_question& question, global_semantics_response_procedure& res) 
+  get_procedure_info (global_semantics_question &question, global_semantics_response_procedure &res)
   {
     DB_OBJECT *mop_p;
     DB_VALUE return_type;
     int err;
     int save;
-    char* name = question.name.c_str ();
+    char *name = question.name.c_str ();
 
     AU_DISABLE (save);
     {
-    mop_p = jsp_find_stored_procedure (name);
-    if (mop_p == NULL)
-      {
-        assert (er_errid () != NO_ERROR);
-        err = er_errid ();
-        goto exit;
-      }
+      mop_p = jsp_find_stored_procedure (name);
+      if (mop_p == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  err = er_errid ();
+	  goto exit;
+	}
 
-    err = db_get (mop_p, SP_ATTR_RETURN_TYPE, &return_type);
-    if (err != NO_ERROR)
-      {
-        goto exit;
-      }
+      err = db_get (mop_p, SP_ATTR_RETURN_TYPE, &return_type);
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
     }
 
     pl_parameter_info ret_info;
 
-    
+
 
 exit:
     AU_ENABLE (save);
@@ -585,34 +585,34 @@ exit:
 
     global_semantics_response response;
 
-    for (global_semantics_question& question : request.qsqs) 
-    {
-      switch (question.type) 
+    for (global_semantics_question &question : request.qsqs)
       {
-        case 1: // PROCEDURE
-          global_semantics_response_procedure procedure_res;
-          error = get_procedure_info (question, procedure_res);
-          response.push_back (procedure_res);
-          break;
-        case 2: // FUNCTION
+	switch (question.type)
+	  {
+	  case 1: // PROCEDURE
+	    global_semantics_response_procedure procedure_res;
+	    error = get_procedure_info (question, procedure_res);
+	    response.push_back (procedure_res);
+	    break;
+	  case 2: // FUNCTION
 
-          break;
-        case 3: // SERIAL
-          
-          break;
-        case 4: // COLUMN
+	    break;
+	  case 3: // SERIAL
 
-          break;
-        default:
-          assert (false);
-          break;
+	    break;
+	  case 4: // COLUMN
+
+	    break;
+	  default:
+	    assert (false);
+	    break;
+	  }
+
+	if (error != NO_ERROR)
+	  {
+	    break;
+	  }
       }
-
-      if (error != NO_ERROR)
-      {
-        break;
-      }
-    }
 
     if (error == NO_ERROR)
       {
