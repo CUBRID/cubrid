@@ -110,6 +110,8 @@ public abstract class AstVisitor<R> {
 
     public abstract R visitExprTimestamp(ExprTimestamp node);
 
+    public abstract R visitExprAutoParam(ExprAutoParam node);
+
     public abstract R visitStmtAssign(StmtAssign node);
 
     public abstract R visitStmtBasicLoop(StmtBasicLoop node);
