@@ -30,6 +30,8 @@
 
 #include <vector>
 #include <string>
+#include <algorithm>
+#include <memory>
 
 namespace cubmethod
 {
@@ -110,6 +112,78 @@ namespace cubmethod
     int charset;
 
     DB_VALUE value; // only for auto parameterized
+  };
+
+  struct EXPORT_IMPORT global_semantics_question : public cubpacking::packable_object
+  {
+    global_semantics_question () = default;
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+
+    int type;
+    std::string name; // procedure, function, serial, column
+  };
+
+  struct EXPORT_IMPORT global_semantics_request : public cubpacking::packable_object
+  {
+    global_semantics_request ();
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+
+    int code;
+    std::vector <global_semantics_question> qsqs;
+  };
+
+  struct EXPORT_IMPORT global_semantics_response_common : public cubpacking::packable_object
+  {
+    global_semantics_response_common () = default;
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+
+    int idx;
+    int err_id;
+    std::string err_msg;
+  };
+
+  struct EXPORT_IMPORT global_semantics_response_udpf : public global_semantics_response_common
+  {
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+
+    pl_parameter_info ret;
+    std::vector <pl_parameter_info> args;
+  };
+
+  struct EXPORT_IMPORT global_semantics_response_serial : public global_semantics_response_common
+  {
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+  };
+
+  struct EXPORT_IMPORT global_semantics_response_column : public global_semantics_response_common
+  {
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+
+    column_info c_info;
+  };
+
+  struct EXPORT_IMPORT global_semantics_response : public cubpacking::packable_object
+  {
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+
+    std::vector <std::unique_ptr<global_semantics_response_common>> qs;
   };
 }
 

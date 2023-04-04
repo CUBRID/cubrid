@@ -292,6 +292,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         // TODO: restore two lines below
         // addToImports("java.math.BigDecimal");
         // return new TypeSpecNumeric(precision, scale);
+        addToImports("java.math.BigDecimal");
         return TypeSpecSimple.NUMERIC; // ignore precision and scale for now
     }
 
@@ -2396,6 +2397,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     private String makeParamList(NodeList<DeclParam> paramList, String name, PlParamInfo[] params) {
+        if (params == null) {
+            return null;
+        }
 
         int len = params.length;
         for (int i = 0; i < len; i++) {
@@ -2417,7 +2421,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     private int checkArguments(NodeList<Expr> args, NodeList<DeclParam> params) {
-
         if (params.nodes.size() != args.nodes.size()) {
             return -1;
         }
