@@ -553,7 +553,7 @@ page_server::disconnect_all_tran_servers ()
 		"disconnect_all_tran_server: Wait until all connections are disconnected.\n");
 
   /*
-   *  m_active_tran_server_conn == nullptr : The ATS has been disconnected or disconncted in progress (by async_disconnect_handler)
+   *  m_active_tran_server_conn == nullptr : The ATS has been disconnected or disconnected in progress (by async_disconnect_handler)
    *  The connection for a PTS is not in m_passive_tran_server_conn : the PTS has been disconnected or disconnected in progress(by async_disconnect_handler)
    *
    *  The disconnection of a TS starts when tran_to_page_request::SEND_DISCONNECT_MSG is arrived from the TS. It's either tiggered by page_to_tran_request::SEND_DISCONNECT_REQUEST_MSG from this page server or just initiated by the TS itself.
