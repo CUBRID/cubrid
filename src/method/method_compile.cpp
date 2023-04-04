@@ -27,16 +27,14 @@
 namespace cubmethod
 {
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  int callback_get_sql_semantics (cubthread::entry &thread_ref, runtime_context &ctx,
-				  const SOCKET java_socket, packing_unpacker &unpacker)
+  int callback_send_and_receive (cubthread::entry &thread_ref, runtime_context &ctx,
+				 const SOCKET java_socket, cubpacking::packable_object &obj)
   {
     int error = NO_ERROR;
-    sql_semantics_request request;
-    unpacker.unpack_all (request);
 
     SESSION_ID s_id = thread_ref.conn_entry->session_id;
     header header (s_id, METHOD_REQUEST_CALLBACK, ctx.get_and_increment_request_id ());
-    error = method_send_data_to_client (&thread_ref, header, request);
+    error = method_send_data_to_client (&thread_ref, header, obj);
     if (error != NO_ERROR)
       {
 	return error;
@@ -49,15 +47,6 @@ namespace cubmethod
     };
 
     error = xs_receive (&thread_ref, reponse_lambda);
-    return error;
-  }
-
-  int callback_get_global_semantics (cubthread::entry &thread_ref, runtime_context &ctx,
-				     const SOCKET java_socket, packing_unpacker &unpacker)
-  {
-    int error = NO_ERROR;
-
-
     return error;
   }
 
@@ -97,15 +86,30 @@ namespace cubmethod
 	  switch (code)
 	    {
 	    case METHOD_REQUEST_COMPILE:
+	    {
 	      out_blk.extend_to (payload_blk.dim);
 	      std::memcpy (out_blk.get_ptr (), payload_blk.ptr, payload_blk.dim);
 	      error = NO_ERROR;
 	      break;
+	    }
 
 	    case METHOD_REQUEST_SQL_SEMANTICS:
+	    {
 	      packing_unpacker respone_unpacker (payload_blk);
-	      error = callback_get_sql_semantics (thread_ref, ctx, socket, respone_unpacker);
+	      sql_semantics_request request;
+	      respone_unpacker.unpack_all (request);
+	      error = callback_send_and_receive (thread_ref, ctx, socket, request);
 	      break;
+	    }
+
+	    case METHOD_REQUEST_GLOBAL_SEMANTICS:
+	    {
+	      packing_unpacker respone_unpacker (payload_blk);
+	      global_semantics_request request;
+	      respone_unpacker.unpack_all (request);
+	      error = callback_send_and_receive (thread_ref, ctx, socket, request);
+	      break;
+	    }
 	    }
 
 	  // free phase
