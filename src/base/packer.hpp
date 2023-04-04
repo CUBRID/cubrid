@@ -328,7 +328,7 @@ namespace cubpacking
   size_t
   packer::get_packed_size_overloaded (const std::vector<T> container, const size_t curr_offset)
   {
-    size_t size = get_packed_int_size (curr_offset);
+    size_t size = get_packed_bigint_size (curr_offset);
 
     for (const T &t: container)
       {
@@ -342,8 +342,8 @@ namespace cubpacking
   void
   packer::pack_overloaded (const std::vector<T> &container)
   {
-    const int count = container.size ();
-    pack_int (count);
+    const size_t count = container.size ();
+    pack_bigint (count);
     for (const T &t : container)
       {
 	pack_overloaded (t);
@@ -462,8 +462,8 @@ namespace cubpacking
   void
   unpacker::unpack_overloaded (std::vector<T> &container)
   {
-    int count;
-    unpack_int (count);
+    int64_t count;
+    unpack_bigint (count);
 
     if (count > 0)
       {
