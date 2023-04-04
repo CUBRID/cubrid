@@ -278,9 +278,12 @@ typedef enum
 
 typedef enum
 {
-  PERF_SERVED_COMPR_COUNT = 0,	/* per page type, this many pages have been compressed and served by page server */
-  PERF_SERVED_COMPR_RATIO,	/* per page type, the average ratio of pages compressed and served by page server */
-  PERF_SERVED_COMPR_SLOTTED,
+  /* per page type, this many pages have been compressed and served by page server */
+  PERF_SERVED_COMPR_COUNT = 0,
+  /* per page type, the average ratio of pages compressed and served by page server */
+  PERF_SERVED_COMPR_RATIO,
+  /* per page type, whether the page being served needs to be compacted or not; for non-slotted
+   * pages, the value is zero and irrelevant */
   PERF_SERVED_COMPR_SLOTTED_NEEDS_COMPACT,
 
   PERF_SERVED_COMPR_PAGE_TYPE_CNT
@@ -1512,8 +1515,7 @@ extern void perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type
 extern void perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility);
 extern void perfmon_db_flushed_block_volumes (THREAD_ENTRY * thread_p, int num_volumes);
 
-extern void perfmon_compr_page_type (THREAD_ENTRY * thread_p, int page_type, int ratio, bool is_slotted,
-				     bool needs_compact);
+extern void perfmon_compr_page_type (THREAD_ENTRY * thread_p, int page_type, int ratio, bool needs_compact);
 
 #endif /* SERVER_MODE || SA_MODE */
 
