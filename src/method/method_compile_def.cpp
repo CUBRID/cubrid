@@ -208,7 +208,7 @@ namespace cubmethod
 
   sql_semantics_request::sql_semantics_request ()
   {
-    code = METHOD_CALLBACK_GET_SQL_SEMNATICS;
+    code = METHOD_CALLBACK_GET_SQL_SEMANTICS;
   }
 
   void
@@ -238,7 +238,7 @@ namespace cubmethod
   void
   sql_semantics_request::unpack (cubpacking::unpacker &deserializator)
   {
-    code = METHOD_CALLBACK_GET_SQL_SEMNATICS;
+    code = METHOD_CALLBACK_GET_SQL_SEMANTICS;
     int size;
     deserializator.unpack_int (size);
 
@@ -380,13 +380,22 @@ namespace cubmethod
   void
   global_semantics_request::pack (cubpacking::packer &serializator) const
   {
+    serializator.pack_int (code);
     serializator.pack_all (GLOBAL_SEMANTICS_REQUEST_PACKER_ARGS());
+  }
+
+  global_semantics_request::global_semantics_request ()
+    : code (METHOD_CALLBACK_GET_GLOBAL_SEMANTICS)
+  {
+    //
   }
 
   size_t
   global_semantics_request::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    return serializator.get_all_packed_size_starting_offset (start_offset, GLOBAL_SEMANTICS_REQUEST_PACKER_ARGS ());
+    size_t size = serializator.get_packed_int_size (start_offset); // code
+    size += serializator.get_all_packed_size_starting_offset (size, GLOBAL_SEMANTICS_REQUEST_PACKER_ARGS ());
+    return size;
   }
 
   void
@@ -480,24 +489,34 @@ namespace cubmethod
     deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_COLUMN_PACKER_ARGS ());
   }
 
-#define GLOBAL_SEMANTICS_RESPONSE_PACKER_ARGS() \
-  qs
-
   void
   global_semantics_response::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_all (GLOBAL_SEMANTICS_RESPONSE_PACKER_ARGS());
+    serializator.pack_bigint (qs.size ());
+
+    for (const auto &res : qs)
+      {
+	(*res).pack (serializator);
+      }
   }
 
   size_t
   global_semantics_response::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    return serializator.get_all_packed_size_starting_offset (start_offset, GLOBAL_SEMANTICS_RESPONSE_PACKER_ARGS ());
+    size_t size = serializator.get_packed_bigint_size (start_offset);	// size
+
+    for (const auto &res : qs)
+      {
+	size += (*res).get_packed_size (serializator, size);
+      }
+
+    return size;
   }
 
   void
   global_semantics_response::unpack (cubpacking::unpacker &deserializator)
   {
-    deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_PACKER_ARGS ());
+    //
+    assert (false);
   }
 }

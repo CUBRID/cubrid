@@ -106,7 +106,7 @@ namespace cubmethod
 	break;
 
       /* compilation */
-      case METHOD_CALLBACK_GET_SQL_SEMNATICS:
+      case METHOD_CALLBACK_GET_SQL_SEMANTICS:
 	error = get_sql_semantics (unpacker);
 	break;
       case METHOD_CALLBACK_GET_GLOBAL_SEMANTICS:
@@ -648,11 +648,14 @@ exit:
     const char *serial_name = question.name.c_str ();
     serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
-    serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, serial_name);
+    char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+    sm_user_specified_name (serial_name, realname, DB_MAX_IDENTIFIER_LENGTH);
+
+    serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, realname);
     if (serial_mop == NULL)
       {
 	result = ER_QPROC_SERIAL_NOT_FOUND;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_name);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, realname);
       }
 
     res.err_id = result;
@@ -760,6 +763,9 @@ exit:
 
     global_semantics_response response;
 
+    std::vector <std::unique_ptr<global_semantics_response_common>> &qs_ptr = response.qs;
+
+    int i = 0;
     for (global_semantics_question &question : request.qsqs)
       {
 	switch (question.type)
@@ -767,29 +773,26 @@ exit:
 	  case 1: // PROCEDURE
 	  case 2: // FUNCTION
 	  {
-	    global_semantics_response_udpf udpf_res;
-	    error = get_user_defined_procedure_function_info (question, udpf_res);
-
-	    udpf_res.idx = request.qsqs.size ();
-	    response.qs.push_back (std::move (udpf_res));
+	    auto res_ptr = std::make_unique <global_semantics_response_udpf> ();
+	    res_ptr->idx = i++;
+	    error = get_user_defined_procedure_function_info (question, *res_ptr);
+	    qs_ptr.push_back (std::move (res_ptr));
 	    break;
 	  }
 	  case 3: // SERIAL
 	  {
-	    global_semantics_response_serial serial_res;
-	    error = get_serial_info (question, serial_res);
-
-	    serial_res.idx = request.qsqs.size ();
-	    response.qs.push_back (std::move (serial_res));
+	    auto res_ptr = std::make_unique <global_semantics_response_serial> ();
+	    res_ptr->idx = i++;
+	    error = get_serial_info (question, *res_ptr);
+	    qs_ptr.push_back (std::move (res_ptr));
 	    break;
 	  }
 	  case 4: // COLUMN
 	  {
-	    global_semantics_response_column column_res;
-	    error = get_column_info (question, column_res);
-
-	    column_res.idx = request.qsqs.size ();
-	    response.qs.push_back (std::move (column_res));
+	    auto res_ptr = std::make_unique <global_semantics_response_column> ();
+	    res_ptr->idx = i++;
+	    error = get_column_info (question, *res_ptr);
+	    qs_ptr.push_back (std::move (res_ptr));
 	    break;
 	  }
 	  default:
@@ -799,7 +802,9 @@ exit:
 	    error = error_response.err_id = ER_FAILED;
 	    error_response.err_msg = "Invalid request type";
 	    error_response.idx = request.qsqs.size ();
-	    response.qs.push_back (std::move (error_response));
+	    auto res_ptr = std::make_unique <global_semantics_response_common> (error_response);
+	    res_ptr->idx = i++;
+	    qs_ptr.push_back (std::move (res_ptr));
 	    break;
 	  }
 	  }

@@ -31,6 +31,7 @@
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <memory>
 
 namespace cubmethod
 {
@@ -127,12 +128,13 @@ namespace cubmethod
 
   struct EXPORT_IMPORT global_semantics_request : public cubpacking::packable_object
   {
-    global_semantics_request () = default;
+    global_semantics_request ();
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
+    int code;
     std::vector <global_semantics_question> qsqs;
   };
 
@@ -181,7 +183,7 @@ namespace cubmethod
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
-    std::vector <global_semantics_response_common> qs;
+    std::vector <std::unique_ptr<global_semantics_response_common>> qs;
   };
 }
 
