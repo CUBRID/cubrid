@@ -37,6 +37,9 @@
 
 #include "transaction_cl.h"
 
+#include "jsp_cl.h"
+#include "authenticate.h"
+
 extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT *result, int stmt_type, int num_column,
     DB_QUERY_TYPE *column_info, bool is_holdable);
 
@@ -547,7 +550,7 @@ namespace cubmethod
     DB_VALUE return_type;
     int err;
     int save;
-    char *name = question.name.c_str ();
+    const char *name = question.name.c_str ();
 
     AU_DISABLE (save);
     {
@@ -565,10 +568,6 @@ namespace cubmethod
 	  goto exit;
 	}
     }
-
-    pl_parameter_info ret_info;
-
-
 
 exit:
     AU_ENABLE (save);
@@ -590,18 +589,20 @@ exit:
 	switch (question.type)
 	  {
 	  case 1: // PROCEDURE
+	  {
 	    global_semantics_response_procedure procedure_res;
 	    error = get_procedure_info (question, procedure_res);
-	    response.push_back (procedure_res);
+	    response.qs.push_back (std::move (procedure_res));
 	    break;
+	  }
 	  case 2: // FUNCTION
-
+	    ;
 	    break;
 	  case 3: // SERIAL
-
+	    ;
 	    break;
 	  case 4: // COLUMN
-
+	    ;
 	    break;
 	  default:
 	    assert (false);

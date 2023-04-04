@@ -30,6 +30,7 @@
 
 #include <vector>
 #include <string>
+#include <algorithm>
 
 namespace cubmethod
 {
@@ -189,7 +190,7 @@ namespace cubmethod
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
-    std::vector <std::refrence_wrapper<global_semantics_response_common>> qs;
+    std::vector <global_semantics_response_common> qs;
   };
 }
 
