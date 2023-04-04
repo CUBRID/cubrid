@@ -45,7 +45,6 @@ page_server::~page_server ()
   // when/if needed connections can be moved here to the disconnect handler and that one waited for
   assert (m_active_tran_server_conn == nullptr);
   assert (m_passive_tran_server_conn.size () == 0);
-  assert (m_async_disconnect_handler.is_terminated());
 }
 
 page_server::connection_handler::connection_handler (cubcomm::channel &chn, transaction_server_type server_type,

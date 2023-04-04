@@ -108,10 +108,3 @@ async_disconnect_handler<T_CONN_HANDLER>::disconnect_loop ()
       m_disconnect_queue = {}; // clear
     }
 }
-
-template <typename T_CONN_HANDLER>
-bool
-async_disconnect_handler<T_CONN_HANDLER>::is_terminated ()
-{
-  return m_terminate.load();
-}

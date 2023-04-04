@@ -48,8 +48,6 @@ class async_disconnect_handler
     void disconnect (connection_handler_uptr_t &&handler);
     void terminate ();
 
-    bool is_terminated ();
-
   private:
     void disconnect_loop ();
 
