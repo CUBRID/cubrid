@@ -219,6 +219,7 @@ namespace cubcomm
       if (m_terminate)
 	{
 	  // it has been terminated. the entry may have been erased or will be erased soon.
+	  // See the get_response(). If the way to deal with termincation is chnaged as described in the function, this has to be changed along.
 	  return;
 	}
 
@@ -243,6 +244,7 @@ namespace cubcomm
       if (m_terminate)
 	{
 	  // it has been terminated. the entry may have been erased or will be erased soon.
+	  // See the get_response(). If the way to deal with termincation is chnaged as described in the function, this has to be changed along.
 	  return;
 	}
 
