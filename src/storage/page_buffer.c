@@ -47,6 +47,7 @@
 #include "resource_tracker.hpp"
 #include "show_scan.h"
 #include "dbtype.h"
+#include "slotted_page.h"
 #include "server_type.hpp"
 #include "vacuum.h"
 #include "vpid_utilities.hpp"
@@ -8493,7 +8494,7 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
   cublog::lsa_utils::unpack (message_upk, target_repl_lsa);
   int packed_fetch_mode;
   message_upk.unpack_int (packed_fetch_mode);
-  const PAGE_FETCH_MODE fetch_mode = static_cast<PAGE_FETCH_MODE> (packed_fetch_mode);
+  const PAGE_FETCH_MODE fetch_mode = static_cast < PAGE_FETCH_MODE > (packed_fetch_mode);
 
   // Fetch data page. But first make sure that replication hits its target LSA
   if (!target_repl_lsa.is_null ())
@@ -8513,11 +8514,11 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       error = ER_PB_BAD_PAGEID;
       payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
-        {
-          _er_log_debug (ARG_FILE_LINE,
-                         "[READ DATA] Error fixing page during recovery: vpid = %d|%d, target_repl_lsa = %lld|%d\n",
-                         error, VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
-        }
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "[READ DATA] Error fixing page during recovery: vpid = %d|%d, target_repl_lsa = %lld|%d\n",
+			 error, VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&target_repl_lsa));
+	}
     }
   else if (page_ptr == nullptr)
     {
@@ -8548,38 +8549,46 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       // the first
       const char *compressed_data = nullptr;
       int compressed_data_size = 0;
-      pgbuf_compress_page(thread_r, reinterpret_cast<const void *> (io_pgptr), IO_PAGESIZE,
-                          compressed_data, compressed_data_size);
+      pgbuf_compress_page (thread_r, reinterpret_cast < const void *>(io_pgptr), IO_PAGESIZE,
+			   compressed_data, compressed_data_size);
 
       // add compressed size
-      const PGLENGTH compressed_length = (PGLENGTH)compressed_data_size;
-      payload_in_out.append (reinterpret_cast<const char *> (&compressed_length),
-                             sizeof (PGLENGTH));
+      const PGLENGTH compressed_length = (PGLENGTH) compressed_data_size;
+      payload_in_out.append (reinterpret_cast<const char *> (&compressed_length), sizeof (PGLENGTH));
 
       // add io_page
       payload_in_out.append (compressed_data, (size_t) compressed_data_size);
 
       if (perfmon_is_perf_tracking ())
-        {
-          perfmon_add_stat (&thread_r, PSTAT_COMPR_HEAP_PAGES_TRANSF_COMPRESSED, (UINT64)compressed_data_size);
-          perfmon_add_stat (&thread_r, PSTAT_COMPR_HEAP_PAGES_TRANSF_UNCOMPRESSED, (UINT64)IO_PAGESIZE);
+	{
+	  perfmon_add_stat (&thread_r, PSTAT_COMPR_HEAP_PAGES_TRANSF_COMPRESSED, (UINT64) compressed_data_size);
+	  perfmon_add_stat (&thread_r, PSTAT_COMPR_HEAP_PAGES_TRANSF_UNCOMPRESSED, (UINT64) IO_PAGESIZE);
 
-          // depending on a separate activation flag, the function will extract discrete detailed btree page types
-          // the functionality profiled here is not interested in that (all btree page types have
-          // the same structure - slotted)
-          const PERF_PAGE_TYPE perf_page_type = pgbuf_get_page_type_for_stat (&thread_r, page_ptr);
-          const float compressed_ratio_multiplied = ((float)compressed_data_size/(float)IO_PAGESIZE) * 100. * 100.;
-          perfmon_compr_page_type (&thread_r, (int)perf_page_type, (int)compressed_ratio_multiplied);
-        }
+	  // only investigate for extended logging if active
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_SERVED_COMPR_PAGE_TYPE))
+	    {
+	      const PAGE_TYPE ptype = pgbuf_get_page_ptype (&thread_r, page_ptr);
+	      const bool is_slotted = spage_is_slotted_page_type (ptype);
+	      const bool needs_compact = is_slotted && spage_need_compact (&thread_r, page_ptr);
+
+	      // depending on a separate extended activation flag, the function will extract discrete
+	      // detailed btree page types the functionality profiled here is not interested in that
+	      const PERF_PAGE_TYPE perf_page_type = pgbuf_get_page_type_for_stat (&thread_r, page_ptr);
+	      const float compressed_ratio_multiplied =
+		((float) compressed_data_size / (float) IO_PAGESIZE) * 100. * 100.;
+	      perfmon_compr_page_type (&thread_r, (int) perf_page_type, (int) compressed_ratio_multiplied,
+				       needs_compact);
+	    }
+	}
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
 			 "[READ DATA] Successful while fixing page: vpid = %d|%d, lsa = %lld|%d,"
 			 " target_repl_lsa = %lld|%d\n"
-	                 "    compr_size = %d, ratio = %.2lf\n",
-			 VPID_AS_ARGS (&vpid), LSA_AS_ARGS(&io_pgptr->prv.lsa), LSA_AS_ARGS (&target_repl_lsa),
-	                 (int) compressed_data_size, ((double)compressed_data_size/(double)IO_PAGESIZE) * 100.);
+			 "    compr_size = %d, ratio = %.2lf\n",
+			 VPID_AS_ARGS (&vpid), LSA_AS_ARGS (&io_pgptr->prv.lsa), LSA_AS_ARGS (&target_repl_lsa),
+			 (int) compressed_data_size, ((double) compressed_data_size / (double) IO_PAGESIZE) * 100.);
 	}
 
       // only unfix after having used casted IO page ptr for logging
