@@ -168,7 +168,9 @@ public class ServerAPI {
         public void unpack(CUBRIDUnpacker unpacker) {
             super.unpack(unpacker);
             if (errCode == 0) {
-                int paramSize = unpacker.unpackInt();
+                PlParamInfo dummy = new PlParamInfo(unpacker);
+
+                int paramSize = (int) unpacker.unpackBigint();
                 if (paramSize > 0) {
                     params = new PlParamInfo[paramSize];
                     for (int i = 0; i < params.length; i++) {
@@ -209,7 +211,7 @@ public class ServerAPI {
             if (errCode == 0) {
                 retType = new PlParamInfo(unpacker);
 
-                int paramSize = unpacker.unpackInt();
+                int paramSize = (int) unpacker.unpackBigint();
                 if (paramSize > 0) {
                     params = new PlParamInfo[paramSize];
                     for (int i = 0; i < params.length; i++) {
