@@ -8468,6 +8468,7 @@ pgbuf_request_data_page_from_page_server (THREAD_ENTRY & thread_r, const VPID * 
   return error_code;
 }
 
+// *INDENT-OFF*
 void
 /*
  * pgbuf_respond_data_fetch_page_request - Page Server responds to a request for a heap page
@@ -8480,23 +8481,19 @@ void
  *    - a system parameter
  *    - if the compression algorighm was not able to compress the data, the page is sent uncompressed
  */
-// *INDENT-OFF*
 pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payload_in_out)
-// *INDENT-ON*
 {
   assert (is_page_server ());
 
   // Unpack the message data
-  // *INDENT-OFF*
   cubpacking::unpacker message_upk (payload_in_out.c_str (), payload_in_out.size ());
   VPID vpid;
   vpid_utils::unpack (message_upk, vpid);
 
   LOG_LSA target_repl_lsa;
   cublog::lsa_utils::unpack (message_upk, target_repl_lsa);
-  // *INDENT-ON*
   int packed_fetch_mode;
-    message_upk.unpack_int (packed_fetch_mode);
+  message_upk.unpack_int (packed_fetch_mode);
   const PAGE_FETCH_MODE fetch_mode = static_cast < PAGE_FETCH_MODE > (packed_fetch_mode);
 
   // Fetch data page. But first make sure that replication hits its target LSA
@@ -8515,9 +8512,7 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       ASSERT_NO_ERROR ();
       //The found page was deallocated already
       error = ER_PB_BAD_PAGEID;
-      // *INDENT-OFF*
       payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
-      // *INDENT-ON*
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
@@ -8529,9 +8524,7 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
     {
       ASSERT_ERROR_AND_SET (error);
       // respond with the error
-      // *INDENT-OFF*
       payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
-      // *INDENT-ON*
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
@@ -8547,9 +8540,7 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       assert (io_pgptr != nullptr);
 
       // pack NO_ERROR first
-      // *INDENT-OFF*
       payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
-      // *INDENT-ON*
 
       // compress data that is sent over; there are 3 cases:
       //  - compression setting on and data compressed successfully
@@ -8563,7 +8554,7 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
 
       // add compressed size
       const PGLENGTH compressed_length = (PGLENGTH) compressed_data_size;
-      payload_in_out.append (reinterpret_cast < const char *>(&compressed_length), sizeof (PGLENGTH));
+      payload_in_out.append (reinterpret_cast<const char *> (&compressed_length), sizeof (PGLENGTH));
 
       // add io_page
       payload_in_out.append (compressed_data, (size_t) compressed_data_size);
@@ -8604,6 +8595,7 @@ pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payl
       pgbuf_unfix (&thread_r, page_ptr);
     }
 }
+// *INDENT-ON*
 
 void
 pgbuf_compress_page (THREAD_ENTRY & thread_r, const void *data_in, int data_in_size,
