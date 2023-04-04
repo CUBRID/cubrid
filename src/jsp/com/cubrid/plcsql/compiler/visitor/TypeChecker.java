@@ -536,8 +536,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprAutoParam(ExprAutoParam node) {
-        assert false: "unreachable";
-        throw new RuntimeException("unreachable");
+        return TypeSpecSimple.NULL; // NOTE: For now, auto parameters' types are not checked and this is OK
     }
 
     @Override

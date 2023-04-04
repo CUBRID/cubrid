@@ -52,24 +52,25 @@ public class ExprAutoParam extends Expr {
     }
 
     public final Value val;
+    public final int ty;
 
-    public ExprAutoParam(ParserRuleContext ctx, Value val) {
+    public ExprAutoParam(ParserRuleContext ctx, Value val, int ty) {
         super(ctx);
 
         this.val = val;
+        this.ty = ty;
     }
 
     @Override
     public String exprToJavaCode() {
 
-        int type = val.getDbType();
-        if (type == DBType.DB_NULL) {
+        if (ty == DBType.DB_NULL) {
             return "null";
         }
 
         Object javaObj;
         try {
-            javaObj = ValueUtilities.resolveValue(type, val);
+            javaObj = ValueUtilities.resolveValue(ty, val);
         } catch (TypeMismatchException e) {
             throw new RuntimeException("Internal Error", e);
         }
@@ -77,7 +78,7 @@ public class ExprAutoParam extends Expr {
             return "null";
         }
 
-        switch (type) {
+        switch (ty) {
             case DBType.DB_CHAR:
             case DBType.DB_STRING:
                 assert javaObj instanceof String;

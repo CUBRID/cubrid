@@ -63,6 +63,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     public void askServerSemanticQuestions() {
+        if (semanticQuestions.size() == 0) {
+            return; // nothing to do
+        }
+
         List<ServerAPI.Question> questions = new ArrayList(semanticQuestions.values());
         List<ServerAPI.Question> answered =
                 ServerAPI.getGlobalSemantics(questions); // this may take a long time
@@ -2339,14 +2343,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 if (pi.name.equals("?")) {
                     // auto parameter
                     assert pi.value != null;
-                    if (!isSupportedDbType(pi.value.getDbType())) {
+                    if (!isSupportedDbType(pi.type)) {
                         throw new SemanticError(
                                 Misc.getLineOf(ctx),    // s419
                                 "the Static SQL contains a constant value of an unsupported type " +
-                                    getSqlTypeNameFromCode(pi.value.getDbType()));
+                                    getSqlTypeNameFromCode(pi.type));
                     }
 
-                    hostExpr = new ExprAutoParam(ctx, pi.value);
+                    hostExpr = new ExprAutoParam(ctx, pi.value, pi.type);
                     hostExprs.put(hostExpr, null);   // null: type check is not necessary for auto parameters
 
                 } else {
