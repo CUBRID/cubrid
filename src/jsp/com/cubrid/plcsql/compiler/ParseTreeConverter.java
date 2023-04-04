@@ -292,6 +292,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         // TODO: restore two lines below
         // addToImports("java.math.BigDecimal");
         // return new TypeSpecNumeric(precision, scale);
+        addToImports("java.math.BigDecimal");
         return TypeSpecSimple.NUMERIC; // ignore precision and scale for now
     }
 
