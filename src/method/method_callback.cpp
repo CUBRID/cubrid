@@ -692,9 +692,13 @@ exit:
 	  out_name = name.substr (prev, cur - prev);
 	  prev = cur + 1;
 	}
+      else
+	{
+	  out_name = name.substr (prev);
+	}
     };
 
-    size_t prev = 0, cur;
+    size_t prev = 0, cur = 0;
     int dot_cnt = std::count (name.begin (), name.end(), '.');
     if (dot_cnt == 2) // with owner name
       {
@@ -708,6 +712,7 @@ exit:
     char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
     sm_user_specified_name (class_name_with_owner.c_str (), realname, DB_MAX_IDENTIFIER_LENGTH);
 
+    transform (attr_name.begin(), attr_name.end(), attr_name.begin(), ::tolower);
     DB_ATTRIBUTE *attr = db_get_attribute_by_name (realname, attr_name.c_str ());
     if (attr == NULL)
       {
