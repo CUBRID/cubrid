@@ -12,9 +12,10 @@ public class GlobalSemanticsRequest implements PackableObject {
         this.questions = questions;
     }
 
+    @Override
     public void pack(CUBRIDPacker packer) {
         if (questions != null) {
-            packer.packInt(questions.size());
+            packer.packBigInt(questions.size());
             for (Question q : questions) {
                 q.pack(packer);
             }

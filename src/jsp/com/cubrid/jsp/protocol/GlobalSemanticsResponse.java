@@ -15,7 +15,7 @@ public class GlobalSemanticsResponse implements UnPackableObject {
 
     @Override
     public void unpack(CUBRIDUnpacker unpacker) {
-        int size = unpacker.unpackInt();
+        int size = (int) unpacker.unpackBigint();
         if (size > 0) {
             for (int i = 0; i < size; i++) {
                 semantics.get(i).unpack(unpacker);
