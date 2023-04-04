@@ -1,4 +1,4 @@
-create or replace function test_types() return string as
+create or replace function demo_global_semantics_type() return string as
 v_name athlete.name%TYPE;
 g char(1) := 'M';
 n char(3) := 'KOR';
