@@ -398,10 +398,7 @@ namespace cubmethod
 #define GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS() \
   idx, err_id, err_msg
 
-#define GLOBAL_SEMANTICS_RESPONSE_PROCEDURE_PACKER_ARGS() \
-  GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS(), args
-
-#define GLOBAL_SEMANTICS_RESPONSE_FUNCTION_PACKER_ARGS() \
+#define GLOBAL_SEMANTICS_RESPONSE_UDPF_PACKER_ARGS() \
   GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS(), ret, args
 
 #define GLOBAL_SEMANTICS_RESPONSE_SERIAL_PACKER_ARGS() \
@@ -429,41 +426,22 @@ namespace cubmethod
   }
 
   void
-  global_semantics_response_procedure::pack (cubpacking::packer &serializator) const
+  global_semantics_response_udpf::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_all (GLOBAL_SEMANTICS_RESPONSE_PROCEDURE_PACKER_ARGS());
+    serializator.pack_all (GLOBAL_SEMANTICS_RESPONSE_UDPF_PACKER_ARGS());
   }
 
   size_t
-  global_semantics_response_procedure::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  global_semantics_response_udpf::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     return serializator.get_all_packed_size_starting_offset (start_offset,
-	   GLOBAL_SEMANTICS_RESPONSE_PROCEDURE_PACKER_ARGS ());
+	   GLOBAL_SEMANTICS_RESPONSE_UDPF_PACKER_ARGS ());
   }
 
   void
-  global_semantics_response_procedure::unpack (cubpacking::unpacker &deserializator)
+  global_semantics_response_udpf::unpack (cubpacking::unpacker &deserializator)
   {
-    deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_PROCEDURE_PACKER_ARGS ());
-  }
-
-  void
-  global_semantics_response_function::pack (cubpacking::packer &serializator) const
-  {
-    serializator.pack_all (GLOBAL_SEMANTICS_RESPONSE_FUNCTION_PACKER_ARGS());
-  }
-
-  size_t
-  global_semantics_response_function::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
-  {
-    return serializator.get_all_packed_size_starting_offset (start_offset,
-	   GLOBAL_SEMANTICS_RESPONSE_FUNCTION_PACKER_ARGS ());
-  }
-
-  void
-  global_semantics_response_function::unpack (cubpacking::unpacker &deserializator)
-  {
-    deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_FUNCTION_PACKER_ARGS ());
+    deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_UDPF_PACKER_ARGS ());
   }
 
   void

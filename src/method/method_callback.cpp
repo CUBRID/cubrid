@@ -39,6 +39,10 @@
 
 #include "jsp_cl.h"
 #include "authenticate.h"
+#include "set_object.h"
+#include "transform.h"
+#include "execute_statement.h"
+#include "schema_manager.h"
 
 extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT *result, int stmt_type, int num_column,
     DB_QUERY_TYPE *column_info, bool is_holdable);
@@ -543,12 +547,13 @@ namespace cubmethod
       }
   }
 
+  // TODO: move it to proper place
   static int
-  get_procedure_info (global_semantics_question &question, global_semantics_response_procedure &res)
+  get_user_defined_procedure_function_info (global_semantics_question &question, global_semantics_response_udpf &res)
   {
     DB_OBJECT *mop_p;
     DB_VALUE return_type;
-    int err;
+    int err = NO_ERROR;
     int save;
     const char *name = question.name.c_str ();
 
@@ -562,16 +567,187 @@ namespace cubmethod
 	  goto exit;
 	}
 
-      err = db_get (mop_p, SP_ATTR_RETURN_TYPE, &return_type);
-      if (err != NO_ERROR)
+      DB_VALUE temp;
+      int num_args = -1;
+      err = db_get (mop_p, SP_ATTR_ARG_COUNT, &temp);
+      if (err == NO_ERROR)
+	{
+	  num_args = db_get_int (&temp);
+	}
+
+      pr_clear_value (&temp);
+      if (num_args == -1)
 	{
 	  goto exit;
+	}
+
+      DB_VALUE args;
+      /* arg_mode, arg_type */
+      err = db_get (mop_p, SP_ATTR_ARGS, &args);
+      if (err == NO_ERROR)
+	{
+	  DB_SET *param_set = db_get_set (&args);
+	  DB_VALUE mode, arg_type;
+	  int i;
+	  for (i = 0; i < num_args; i++)
+	    {
+	      pl_parameter_info param_info;
+	      set_get_element (param_set, i, &temp);
+	      DB_OBJECT *arg_mop_p = db_get_object (&temp);
+	      if (arg_mop_p)
+		{
+		  if (db_get (arg_mop_p, SP_ATTR_MODE, &mode) == NO_ERROR)
+		    {
+		      param_info.mode = db_get_int (&mode);
+		    }
+
+		  if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
+		    {
+		      param_info.type = db_get_int (&arg_type);
+		    }
+
+		  pr_clear_value (&mode);
+		  pr_clear_value (&arg_type);
+		  pr_clear_value (&temp);
+		}
+	      else
+		{
+		  break;
+		}
+	    }
+	  pr_clear_value (&args);
+	}
+
+      if (db_get (mop_p, SP_ATTR_RETURN_TYPE, &return_type) == NO_ERROR)
+	{
+	  res.ret.type = db_get_int (&return_type);
+	  pr_clear_value (&return_type);
 	}
     }
 
 exit:
     AU_ENABLE (save);
+
+    res.err_id = err;
+    if (err != NO_ERROR)
+      {
+	res.err_msg = er_msg ();
+      }
+
     er_clear ();
+    return err;
+  }
+
+  static int
+  get_serial_info (global_semantics_question &question, global_semantics_response_serial &res)
+  {
+    int result = NO_ERROR;
+    MOP serial_class_mop, serial_mop;
+    DB_IDENTIFIER serial_obj_id;
+
+    const char *serial_name = question.name.c_str ();
+    serial_class_mop = sm_find_class (CT_SERIAL_NAME);
+
+    serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, serial_name);
+    if (serial_mop == NULL)
+      {
+	result = ER_QPROC_SERIAL_NOT_FOUND;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_name);
+      }
+
+    res.err_id = result;
+    if (result != NO_ERROR)
+      {
+	res.err_msg = er_msg ();
+      }
+
+    er_clear();
+    return result;
+  }
+
+  static int
+  get_column_info (global_semantics_question &question, global_semantics_response_column &res)
+  {
+    int err = NO_ERROR;
+
+    const std::string &name = question.name;
+    if (name.empty () == true)
+      {
+	err = res.err_id = ER_FAILED;
+	res.err_msg = "Invalid parameter";
+      }
+
+    std::string owner_name;
+    std::string class_name;
+    std::string attr_name;
+
+    auto split_str = [] (const std::string& name, size_t &prev, size_t &cur, std::string& out_name)
+    {
+      cur = name.find ('.', prev);
+      if (cur != std::string::npos)
+	{
+	  out_name = name.substr (prev, cur - prev);
+	  prev = cur + 1;
+	}
+    };
+
+    size_t prev = 0, cur;
+    int dot_cnt = std::count (name.begin (), name.end(), '.');
+    if (dot_cnt == 2) // with owner name
+      {
+	split_str (name, prev, cur, owner_name);
+      }
+
+    split_str (name, prev, cur, class_name);
+    split_str (name, prev, cur, attr_name);
+
+    std::string class_name_with_owner = owner_name + class_name;
+    char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+    sm_user_specified_name (class_name_with_owner.c_str (), realname, DB_MAX_IDENTIFIER_LENGTH);
+
+    DB_ATTRIBUTE *attr = db_get_attribute_by_name (realname, attr_name.c_str ());
+    if (attr == NULL)
+      {
+	err = res.err_id = ER_FAILED;
+	res.err_msg = "Failed to get attribute information";
+      }
+    else
+      {
+	DB_DOMAIN *domain = db_attribute_domain (attr);
+	int precision = db_domain_precision (domain);
+	short scale = db_domain_scale (domain);
+	char charset = db_domain_codeset (domain);
+	int db_type = TP_DOMAIN_TYPE (domain);
+	int set_type = DB_TYPE_NULL;
+
+	if (TP_IS_SET_TYPE (db_type))
+	  {
+	    set_type = get_set_domain (domain, precision, scale, charset);
+	  }
+
+	char auto_increment = db_attribute_is_auto_increment (attr);
+	char unique_key = db_attribute_is_unique (attr);
+	char primary_key = db_attribute_is_primary_key (attr);
+	char reverse_index = db_attribute_is_reverse_indexed (attr);
+	char reverse_unique = db_attribute_is_reverse_unique (attr);
+	char foreign_key = db_attribute_is_foreign_key (attr);
+	char shared = db_attribute_is_shared (attr);
+
+	const char *c_attr_name = db_attribute_name (attr);
+
+	std::string attr_name_string (c_attr_name? c_attr_name : "");
+	std::string class_name_string (realname? realname : "");
+
+	std::string default_value_string = get_column_default_as_string (attr);
+
+	column_info info (db_type, set_type, scale, precision, charset,
+			  attr_name_string, default_value_string,
+			  auto_increment, unique_key, primary_key, reverse_index, reverse_unique, foreign_key, shared,
+			  attr_name_string, class_name_string, false);
+
+	res.c_info = std::move (info);
+      }
+
     return err;
   }
 
@@ -589,24 +765,43 @@ exit:
 	switch (question.type)
 	  {
 	  case 1: // PROCEDURE
+	  case 2: // FUNCTION
 	  {
-	    global_semantics_response_procedure procedure_res;
-	    error = get_procedure_info (question, procedure_res);
-	    response.qs.push_back (std::move (procedure_res));
+	    global_semantics_response_udpf udpf_res;
+	    error = get_user_defined_procedure_function_info (question, udpf_res);
+
+	    udpf_res.idx = request.qsqs.size ();
+	    response.qs.push_back (std::move (udpf_res));
 	    break;
 	  }
-	  case 2: // FUNCTION
-	    ;
-	    break;
 	  case 3: // SERIAL
-	    ;
+	  {
+	    global_semantics_response_serial serial_res;
+	    error = get_serial_info (question, serial_res);
+
+	    serial_res.idx = request.qsqs.size ();
+	    response.qs.push_back (std::move (serial_res));
 	    break;
+	  }
 	  case 4: // COLUMN
-	    ;
+	  {
+	    global_semantics_response_column column_res;
+	    error = get_column_info (question, column_res);
+
+	    column_res.idx = request.qsqs.size ();
+	    response.qs.push_back (std::move (column_res));
 	    break;
+	  }
 	  default:
+	  {
 	    assert (false);
+	    global_semantics_response_common error_response;
+	    error = error_response.err_id = ER_FAILED;
+	    error_response.err_msg = "Invalid request type";
+	    error_response.idx = request.qsqs.size ();
+	    response.qs.push_back (std::move (error_response));
 	    break;
+	  }
 	  }
 
 	if (error != NO_ERROR)

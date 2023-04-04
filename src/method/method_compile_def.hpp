@@ -149,16 +149,7 @@ namespace cubmethod
     std::string err_msg;
   };
 
-  struct EXPORT_IMPORT global_semantics_response_procedure : public global_semantics_response_common
-  {
-    void pack (cubpacking::packer &serializator) const override;
-    void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
-
-    std::vector <pl_parameter_info> args;
-  };
-
-  struct EXPORT_IMPORT global_semantics_response_function : public global_semantics_response_common
+  struct EXPORT_IMPORT global_semantics_response_udpf : public global_semantics_response_common
   {
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
