@@ -56,7 +56,7 @@ public class StmtOpenFor extends Stmt {
     public String toJavaCode() {
 
         StringBuffer sbuf = new StringBuffer();
-        for (Expr e: staticSql.hostExprs.keySet()) {
+        for (Expr e : staticSql.hostExprs.keySet()) {
             sbuf.append(",\n");
             sbuf.append(e.toJavaCode());
         }

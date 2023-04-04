@@ -536,7 +536,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprAutoParam(ExprAutoParam node) {
-        return TypeSpecSimple.NULL; // NOTE: For now, auto parameters' types are not checked and this is OK
+        return TypeSpecSimple
+                .NULL; // NOTE: For now, auto parameters' types are not checked and this is OK
     }
 
     @Override
@@ -948,7 +949,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         assert staticSql.ctx != null;
 
         LinkedHashMap<Expr, TypeSpec> hostExprs = staticSql.hostExprs;
-        for (Expr e: hostExprs.keySet()) {
+        for (Expr e : hostExprs.keySet()) {
             TypeSpec ty = visit(e);
             TypeSpec tyRequired = hostExprs.get(e);
             if (tyRequired != null) {
@@ -964,7 +965,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                                     + id.name
                                     + " does not have a compatible type in the SQL statement");
                 } else {
-                    // no more use of the coerce: coercion (if not an identity) will be done in the server
+                    // no more use of the coerce: coercion (if not an identity) will be done in the
+                    // server
                 }
             }
         }

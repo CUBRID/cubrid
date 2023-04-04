@@ -98,7 +98,7 @@ public class DeclCursor extends DeclId {
             for (int i = 0; i < paramSize; i++) {
                 DeclParam di = paramList.nodes.get(i);
                 int j = 0;
-                for (Expr e: hostExprs) {
+                for (Expr e : hostExprs) {
                     if (e instanceof ExprId) {
                         ExprId var = (ExprId) e;
                         DeclId dj = var.decl;

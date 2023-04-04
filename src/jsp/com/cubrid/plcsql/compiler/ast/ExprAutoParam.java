@@ -30,19 +30,17 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.jsp.data.DBType;
+import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.value.Value;
 import com.cubrid.jsp.value.ValueUtilities;
-import com.cubrid.jsp.exception.TypeMismatchException;
-import com.cubrid.jsp.data.DBType;
-import com.cubrid.plcsql.compiler.ast.Expr;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
-import org.apache.commons.text.StringEscapeUtils;
-
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
+import org.antlr.v4.runtime.ParserRuleContext;
+import org.apache.commons.text.StringEscapeUtils;
 
 public class ExprAutoParam extends Expr {
 
@@ -112,7 +110,7 @@ public class ExprAutoParam extends Expr {
                 assert javaObj instanceof Timestamp;
                 return String.format("Timestamp.valueOf(\"%s\")", javaObj);
             default:
-                assert false: "unreachable";
+                assert false : "unreachable";
                 throw new RuntimeException("unreachable");
         }
     }

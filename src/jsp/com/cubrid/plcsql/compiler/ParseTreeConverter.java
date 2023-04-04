@@ -2345,13 +2345,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     assert pi.value != null;
                     if (!isSupportedDbType(pi.type)) {
                         throw new SemanticError(
-                                Misc.getLineOf(ctx),    // s419
-                                "the Static SQL contains a constant value of an unsupported type " +
-                                    getSqlTypeNameFromCode(pi.type));
+                                Misc.getLineOf(ctx), // s419
+                                "the Static SQL contains a constant value of an unsupported type "
+                                        + getSqlTypeNameFromCode(pi.type));
                     }
 
                     hostExpr = new ExprAutoParam(ctx, pi.value, pi.type);
-                    hostExprs.put(hostExpr, null);   // null: type check is not necessary for auto parameters
+                    hostExprs.put(
+                            hostExpr,
+                            null); // null: type check is not necessary for auto parameters
 
                 } else {
                     // host variable
