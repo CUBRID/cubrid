@@ -95,7 +95,10 @@ namespace cubmethod
       int oid_cmd (packing_unpacker &unpacker);
       int collection_cmd (packing_unpacker &unpacker);
 
-      /* handle relace to compile */
+      /* handle related to meda data */
+      // int get_schema_info (packing_unpacker &unpacker);
+
+      /* handle related to compile */
       int get_sql_semantics (packing_unpacker &unpacker);
       int get_global_semantics (packing_unpacker &unpacker);
 

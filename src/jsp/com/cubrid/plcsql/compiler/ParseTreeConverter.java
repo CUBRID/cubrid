@@ -292,6 +292,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         // TODO: restore two lines below
         // addToImports("java.math.BigDecimal");
         // return new TypeSpecNumeric(precision, scale);
+        addToImports("java.math.BigDecimal");
         return TypeSpecSimple.NUMERIC; // ignore precision and scale for now
     }
 
@@ -2040,7 +2041,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         typeSpecs.put("TIME", TypeSpecSimple.TIME);
 
         typeSpecs.put("TIMESTAMP", TypeSpecSimple.TIMESTAMP);
-
         typeSpecs.put("DATETIME", TypeSpecSimple.DATETIME);
 
         typeSpecs.put("SYS_REFCURSOR", TypeSpecSimple.SYS_REFCURSOR);
@@ -2178,7 +2178,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
     }
 
-    private ExprZonedDateTime parseZonedDateTime(
+    private ExprTimestamp parseZonedDateTime(
             ParserRuleContext ctx, String s, boolean forDatetime, String originType) {
 
         s = unquoteStr(s);
@@ -2188,7 +2188,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     Misc.getLineOf(ctx), // s052
                     String.format("invalid %s string: %s", originType, s));
         }
-        return new ExprZonedDateTime(ctx, timestamp, originType);
+        return new ExprTimestamp(ctx, timestamp, originType);
     }
 
     private boolean within(ParserRuleContext ctx, Class ctxClass) {
@@ -2313,12 +2313,19 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         // check (name-binding) and convert host variables used in the SQL
         if (sws.hostVars != null) {
             for (PlParamInfo pi : sws.hostVars) {
-                String sqlType = getSqlTypeNameFromCode(pi.type);
+                TypeSpec typeSpec = null;
+                String varName = Misc.getNormalizedText(pi.name);
+                if (pi.name.equals("?") == false && pi.type == DBType.DB_NULL) {
+                    // set PL/CSQL variable's type
+                    DeclVar var = symbolStack.getDeclVar(varName);
+                    typeSpec = var.typeSpec;
+                } else {
+                    String sqlType = getSqlTypeNameFromCode(pi.type);
+                    typeSpec = typeSpecs.get(sqlType);
+                }
 
-                String var = Misc.getNormalizedText(pi.name);
-                ExprId id = visitNonFuncIdentifier(var, ctx); // s408: undeclared id ...
+                ExprId id = visitNonFuncIdentifier(varName, ctx); // s408: undeclared id ...
 
-                TypeSpec typeSpec = typeSpecs.get(sqlType);
                 assert typeSpec != null;
                 hostVars.put(id, typeSpec);
             }
@@ -2360,6 +2367,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     private String makeParamList(NodeList<DeclParam> paramList, String name, PlParamInfo[] params) {
+        if (params == null) {
+            return null;
+        }
 
         int len = params.length;
         for (int i = 0; i < len; i++) {
@@ -2381,7 +2391,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     private int checkArguments(NodeList<Expr> args, NodeList<DeclParam> params) {
-
         if (params.nodes.size() != args.nodes.size()) {
             return -1;
         }

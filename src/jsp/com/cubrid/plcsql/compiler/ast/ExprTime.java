@@ -52,7 +52,7 @@ public class ExprTime extends Expr {
     @Override
     public String exprToJavaCode() {
         return String.format(
-                "LocalTime.of(%d, %d, %d)", time.getHour(), time.getMinute(), time.getSecond());
+                "new Time(%d, %d, %d)", time.getHour(), time.getMinute(), time.getSecond());
     }
 
     // --------------------------------------------------

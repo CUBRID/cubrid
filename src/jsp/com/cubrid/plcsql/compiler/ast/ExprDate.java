@@ -53,10 +53,10 @@ public class ExprDate extends Expr {
     @Override
     public String exprToJavaCode() {
         if (date.equals(DateTimeParser.nullDate)) {
-            return "LocalDate.MAX";
+            return "new Date(0 - 1900, 0 - 1, 0)";
         } else {
             return String.format(
-                    "LocalDate.of(%d, %d, %d)",
+                    "new Date(%d - 1900, %d - 1, %d)",
                     date.getYear(), date.getMonthValue(), date.getDayOfMonth());
         }
     }

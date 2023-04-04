@@ -35,10 +35,14 @@ import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;
+import com.cubrid.jsp.protocol.GlobalSemanticsRequest;
+import com.cubrid.jsp.protocol.GlobalSemanticsResponse;
 import com.cubrid.jsp.protocol.Header;
+import com.cubrid.jsp.protocol.PackableObject;
 import com.cubrid.jsp.protocol.RequestCode;
 import com.cubrid.jsp.protocol.SqlSemanticsRequest;
 import com.cubrid.jsp.protocol.SqlSemanticsResponse;
+import com.cubrid.jsp.protocol.UnPackableObject;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -47,7 +51,7 @@ import java.util.List;
 public class ServerAPI {
 
     public static List<SqlSemantics> getSqlSemantics(List<String> sqlTexts) {
-        if (sqlTexts == null) {
+        if (sqlTexts == null || sqlTexts.size() == 0) {
             return null;
         }
 
@@ -69,18 +73,47 @@ public class ServerAPI {
             SqlSemanticsResponse response = new SqlSemanticsResponse(unpacker);
             return response.semantics;
         } catch (IOException e) {
-            // TODO
+            // TODO: error handling
             return null;
         }
     }
 
     public static List<Question> getGlobalSemantics(List<Question> questions) {
-        return getMockGlobalSemantics(questions);
+        if (questions == null || questions.size() == 0) {
+            return null;
+        }
+
+        try {
+            CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
+            GlobalSemanticsRequest request = new GlobalSemanticsRequest(questions);
+            packer.packPackableObject(request);
+            Context.getCurrentExecuteThread()
+                    .sendCommand(RequestCode.REQUEST_GLOBAL_SEMANTICS, packer.getBuffer());
+
+            ByteBuffer responseBuffer = Context.getCurrentExecuteThread().receiveBuffer();
+            CUBRIDUnpacker unpacker = new CUBRIDUnpacker(responseBuffer);
+
+            Header header = new Header(unpacker);
+            ByteBuffer payload = unpacker.unpackBuffer();
+            unpacker.setBuffer(payload);
+
+            int status = unpacker.unpackInt();
+            GlobalSemanticsResponse response = new GlobalSemanticsResponse(questions, unpacker);
+            return response.getResponse();
+        } catch (IOException e) {
+            // TODO: error handling
+            return null;
+        }
     }
 
     // --------------------------------------------------------
 
-    public static class Question {
+    public static final int QUESTION_PROCEDURE = 1;
+    public static final int QUESTION_FUNCTION = 2;
+    public static final int QUESTION_SERIAL = 3;
+    public static final int QUESTION_COLUMN = 4;
+
+    public abstract static class Question implements PackableObject, UnPackableObject {
         public int seqNo = -1;
         public int errCode;
         public String errMsg;
@@ -89,6 +122,22 @@ public class ServerAPI {
             this.seqNo = seqNo;
             this.errCode = errCode;
             this.errMsg = errMsg;
+        }
+
+        @Override
+        public void pack(CUBRIDPacker packer) {
+            packer.packInt(getType());
+        }
+
+        @Override
+        public void unpack(CUBRIDUnpacker unpacker) {
+            seqNo = unpacker.unpackInt();
+            errCode = unpacker.unpackInt();
+            errMsg = unpacker.unpackCString();
+        }
+
+        public int getType() {
+            return -1;
         }
     }
 
@@ -107,6 +156,33 @@ public class ServerAPI {
         public void setAnswer(int seqNo, PlParamInfo[] params) {
             this.seqNo = seqNo;
             this.params = params;
+        }
+
+        @Override
+        public void pack(CUBRIDPacker packer) {
+            super.pack(packer);
+            packer.packString(name);
+        }
+
+        @Override
+        public void unpack(CUBRIDUnpacker unpacker) {
+            super.unpack(unpacker);
+            if (errCode == 0) {
+                PlParamInfo dummy = new PlParamInfo(unpacker);
+
+                int paramSize = (int) unpacker.unpackBigint();
+                if (paramSize > 0) {
+                    params = new PlParamInfo[paramSize];
+                    for (int i = 0; i < params.length; i++) {
+                        params[i] = new PlParamInfo(unpacker);
+                    }
+                }
+            }
+        }
+
+        @Override
+        public int getType() {
+            return QUESTION_PROCEDURE;
         }
     }
 
@@ -128,6 +204,33 @@ public class ServerAPI {
             this.params = params;
             this.retType = retType;
         }
+
+        @Override
+        public void unpack(CUBRIDUnpacker unpacker) {
+            super.unpack(unpacker);
+            if (errCode == 0) {
+                retType = new PlParamInfo(unpacker);
+
+                int paramSize = (int) unpacker.unpackBigint();
+                if (paramSize > 0) {
+                    params = new PlParamInfo[paramSize];
+                    for (int i = 0; i < params.length; i++) {
+                        params[i] = new PlParamInfo(unpacker);
+                    }
+                }
+            }
+        }
+
+        @Override
+        public void pack(CUBRIDPacker packer) {
+            super.pack(packer);
+            packer.packString(name);
+        }
+
+        @Override
+        public int getType() {
+            return QUESTION_FUNCTION;
+        }
     }
 
     public static class SerialOrNot extends Question {
@@ -142,6 +245,17 @@ public class ServerAPI {
         // no separate output: the existence or absence of an error is the output
         public void setAnswer(int seqNo) {
             this.seqNo = seqNo;
+        }
+
+        @Override
+        public void pack(CUBRIDPacker packer) {
+            super.pack(packer);
+            packer.packString(name);
+        }
+
+        @Override
+        public int getType() {
+            return QUESTION_SERIAL;
         }
     }
 
@@ -162,6 +276,26 @@ public class ServerAPI {
         public void setAnswer(int seqNo, ColumnInfo colType) {
             this.seqNo = seqNo;
             this.colType = colType;
+        }
+
+        @Override
+        public void unpack(CUBRIDUnpacker unpacker) {
+            super.unpack(unpacker);
+            if (errCode == 0) {
+                colType = new ColumnInfo(unpacker);
+            }
+        }
+
+        @Override
+        public void pack(CUBRIDPacker packer) {
+            super.pack(packer);
+            String name = table + "." + column;
+            packer.packString(name);
+        }
+
+        @Override
+        public int getType() {
+            return QUESTION_COLUMN;
         }
     }
 

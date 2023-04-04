@@ -530,7 +530,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     }
 
     @Override
-    public TypeSpec visitExprZonedDateTime(ExprZonedDateTime node) {
+    public TypeSpec visitExprTimestamp(ExprTimestamp node) {
         return TypeSpecSimple.TIMESTAMP;
     }
 

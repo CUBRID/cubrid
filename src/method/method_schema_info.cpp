@@ -34,6 +34,17 @@
 
 namespace cubmethod
 {
+  schema_info_handler::schema_info_handler (error_context &ctx)
+    : m_error_ctx (ctx)
+  {
+    //
+  }
+
+  schema_info_handler::~schema_info_handler ()
+  {
+    close_and_free_session ();
+  }
+
   schema_info
   schema_info_handler::get_schema_info (int schema_type, std::string &arg1, std::string &arg2, int flag)
   {
