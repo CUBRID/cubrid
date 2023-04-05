@@ -519,6 +519,8 @@ page_server::disconnect_tran_server_async (const connection_handler *conn)
 void
 page_server::disconnect_all_tran_servers ()
 {
+  std::unique_lock ulock { m_conn_mutex };
+
   /* Request the ATS to disconnect */
   if (m_active_tran_server_conn == nullptr)
     {
@@ -560,18 +562,17 @@ page_server::disconnect_all_tran_servers ()
    *
    *  If some disconnections are underway, they will be waited for at the m_async_disconnect_handler.terminate () below.
    */
+  auto no_conn_alive_pred = [this]
   {
-    auto no_conn_alive_pred = [this]
-    {
-      return m_active_tran_server_conn == nullptr && m_passive_tran_server_conn.empty();
-    };
+    return m_active_tran_server_conn == nullptr && m_passive_tran_server_conn.empty();
+  };
 
-    std::unique_lock ulock { m_conn_mutex };
-    m_conn_cv.wait (ulock, no_conn_alive_pred);
+  m_conn_cv.wait (ulock, no_conn_alive_pred);
 
-    /* All connections are pushed to m_async_disconnect_handler. */
-    assert (m_active_tran_server_conn == nullptr && m_passive_tran_server_conn.empty());
-  }
+  /* All connections are pushed to m_async_disconnect_handler. */
+  assert (m_active_tran_server_conn == nullptr && m_passive_tran_server_conn.empty());
+
+  ulock.unlock ();
 
   m_async_disconnect_handler.terminate ();
 
