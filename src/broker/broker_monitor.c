@@ -48,6 +48,9 @@
 #include <sys/types.h>
 #include <regex.h>
 #include <sys/time.h>
+#include <fcntl.h>
+#include <termio.h>
+#include <dlfcn.h>
 #endif
 
 #include "cubrid_getopt.h"
@@ -84,8 +87,6 @@
 #define         METADATA_MONITOR_FLAG_MASK   0x08
 #define         CLIENT_MONITOR_FLAG_MASK     0x10
 #define         UNUSABLE_DATABASES_FLAG_MASK 0x20
-
-#define         WATCH_CMD	"watch"
 
 #if defined(WINDOWS) && !defined(PRId64)
 #define PRId64 "lld"
@@ -340,13 +341,49 @@ static const char *get_sql_log_mode_string (T_SQL_LOG_MODE_VALUE mode);
 static const char *get_status_string (T_APPL_SERVER_INFO * as_info_p, char appl_server);
 static void get_cpu_usage_string (char *buf_p, float usage);
 
-
 static void move (int x, int y);
 static void refresh ();
 static void clear ();
 static void clrtobot ();
 static void clrtoeol ();
 static void endwin ();
+
+#if !defined (WINDOWS)
+static int getch ();
+static void *initscr ();
+static void noecho ();
+static void timeout (int delay);
+static void addstr (const char *);
+static int putchar_tc (int tc);
+
+static int stdin_noblock (void);
+static int stdin_block (void);
+static void stdin_echo (void);
+static void stdin_noecho (void);
+static int get_timeout (void);
+
+typedef char *(*tgoto_func_t) (const char *cap, int col, int row);
+typedef int (*tgetent_func_t) (char *bp, const char *name);
+typedef int (*tgetflag_func_t) (char *id);
+typedef int (*tgetnum_func_t) (char *id);
+typedef char *(*tgetstr_func_t) (char *id, char **area);
+typedef int (*tputs_func_t) (const char *str, int affcnt, int (*putc)(int));
+
+tgoto_func_t tgoto;
+tgetent_func_t tgetent;
+tgetflag_func_t tgetflag;
+tgetnum_func_t tgetnum;
+tgetstr_func_t tgetstr;
+tputs_func_t tputs;
+
+int Stdin_timer = 0;
+static char *cm = NULL;
+static char *cd = NULL;
+static char *ce = NULL;
+static char *cl = NULL;
+
+struct termios oterm;
+#endif
 
 static int metadata_monitor (double elapsed_time);
 static int client_monitor (void);
@@ -373,6 +410,8 @@ str_to_screen (const char *msg)
 #ifdef WINDOWS
   DWORD size;
   (void) WriteConsole (h_console, msg, strlen (msg), &size, NULL);
+#else
+  (void) addstr (msg);
 #endif
 }
 
@@ -431,6 +470,8 @@ get_char (void)
 	}
     }
   return 0;
+#else
+  return getch ();
 #endif
 }
 
@@ -444,7 +485,10 @@ main (int argc, char **argv)
   char *br_vector;
   time_t time_old, time_cur;
   double elapsed_time;
-  char cmd[PATH_MAX] = { 0, };
+
+#if !defined (WINDOWS)
+void *win;
+#endif
 
   if (argc == 2 && strcmp (argv[1], "--version") == 0)
     {
@@ -505,23 +549,9 @@ main (int argc, char **argv)
 	}
 //  FillConsoleOutputCharacter(h_console, ' ', scr_info.dwSize.X * scr_info.dwSize.Y, top_left_pos, &size);
 #else
-      snprintf (cmd, PATH_MAX, "%s -t -n %d", WATCH_CMD, refresh_sec);
-
-      for (i = 0; i < argc; i++)
-	{
-	  strcat (cmd, " ");
-	  strcat (cmd, argv[i]);
-	}
-
-      free (br_vector);
-
-      if (system (cmd) == 32512)
-	{
-	  fprintf (stderr, "%s: -s option require Linux command: '%s'\n", argv[0], WATCH_CMD);
-	  fprintf (stderr, "Install the '%s' command to use this option.\n", WATCH_CMD);
-	}
-
-      return 0;
+      win = initscr ();
+      timeout (refresh_sec * 1000);
+      noecho ();
 #endif
     }
 
@@ -722,7 +752,6 @@ get_args (int argc, char *argv[], char *br_vector)
 #endif
 
   char optchars[] = "hbqts:l:fmcSPu";
-  char zero[2] = "0";
 
   display_job_queue = false;
   refresh_sec = 0;
@@ -742,12 +771,6 @@ get_args (int argc, char *argv[], char *br_vector)
 	  break;
 	case 's':
 	  refresh_sec = atoi (optarg);
-#if !defined(WINDOWS)
-	  if (refresh_sec != 0)
-	    {
-	      memcpy (optarg, zero, 2);
-	    }
-#endif
 	  break;
 	case 'b':
 	  monitor_flag |= BROKER_MONITOR_FLAG_MASK;
@@ -1952,34 +1975,224 @@ endwin ()
 }
 #else
 static void
-move (int x, int y)
-{
-}
-
-static void
 refresh ()
 {
 }
 
-static void
-clear ()
+int putchar_tc (int tc)
 {
+	// write(1, &tc, 1);
+	putchar (tc);
+	fflush (stdout);
+	return (0);
+}
+
+static void
+move (int x, int y)
+{
+  tputs (tgoto (cm, x, y), 1, putchar_tc);
 }
 
 static void
 clrtobot ()
 {
+  tputs (cd, 1, putchar);
 }
 
 static void
 clrtoeol ()
 {
+  tputs (ce, 1, putchar_tc);
 }
 
 static void
 endwin ()
 {
+  tcsetattr (0, TCSAFLUSH, &oterm);
+  clear ();
+  move (0, 0);
 }
+
+static void
+addstr (const char * str)
+{
+  if (str == NULL)
+    {
+    	return;
+    }
+
+  fprintf (stdout, str);
+  fflush (stdout);
+}
+
+static int
+getch ()
+{
+  fd_set readfds;
+  struct timeval tv;
+  int fd = fileno (stdin);
+  int timeout = get_timeout ();
+  int ret = -1;
+
+  if (timeout == 0)
+    {
+      timeout = 30 * 10000;
+    }
+  tv.tv_sec = timeout / 1000;
+  tv.tv_usec = timeout % 1000;
+
+  FD_ZERO(&readfds);
+  FD_SET(fd, &readfds);
+
+  ret = select (fd + 1, &readfds, (fd_set *)0, (fd_set *)0, &tv);
+
+  if (ret <= 0)
+    {
+      return -1;
+    }
+
+  return fgetc (stdin);
+}
+
+static void
+clear ()
+{
+  tputs (cl, 1, putchar_tc); 
+}
+
+static int
+stdin_noblock ()
+{
+  struct termios term;
+
+  if (tcgetattr(fileno (stdin), &term) < 0)
+    {
+      return -1;
+    }
+
+  oterm = term;
+  term.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+  term.c_oflag &= ~(OPOST);
+  term.c_cflag |= (CS8);
+  term.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+
+  /* control chars - set return condition: min number of bytes and timer */
+  term.c_cc[VMIN] = 5; term.c_cc[VTIME] = 8; /* after 5 bytes or .8 seconds
+                                                after first byte seen      */
+  term.c_cc[VMIN] = 0; term.c_cc[VTIME] = 0; /* immediate - anything       */
+  term.c_cc[VMIN] = 2; term.c_cc[VTIME] = 0; /* after two bytes, no timer  */
+  term.c_cc[VMIN] = 0; term.c_cc[VTIME] = 8; /* after a byte or .8 seconds */
+
+  /* put terminal in raw mode after flushing */
+  if (tcsetattr (0, TCSAFLUSH, &term) < 0)
+    {
+      return -2;
+    }
+
+  return 0;
+}
+
+static int
+stdin_block ()
+{
+  int flags;
+
+  if ((flags = fcntl (fileno (stdin), F_GETFL)) < 0)
+    {
+      return -8888;
+    }
+
+  return fcntl (fileno (stdin), F_SETFL, flags & ~O_NONBLOCK);
+}
+
+void stdin_echo ()
+{
+
+}
+
+void stdin_noecho ()
+{
+  struct termio term;
+  int ret;
+  int fd = fileno (stdin);
+
+  ret = ioctl(fd, TCGETA, &term);
+}
+
+static int
+get_timeout ()
+{
+  return Stdin_timer;
+}
+
+static void
+timeout (int delay)
+{
+   Stdin_timer = delay < 0 ? 0 : delay;
+}
+
+static void
+noecho ()
+{
+}
+
+static void *
+initscr ()
+{
+  void *dl_handle = NULL;
+  char tinfo_so [512];
+  int ret = -1;
+
+  sprintf (tinfo_so, "libtinfo.so.%d", 5);
+  if ((dl_handle = dlopen (tinfo_so, RTLD_LAZY)) == NULL)
+    {
+  	return NULL;
+    }
+
+  if ((tgoto = (tgoto_func_t) dlsym(dl_handle, "tgoto")) == NULL)
+    {
+	return NULL;
+    }
+
+  if ((tgetent = (tgetent_func_t) dlsym(dl_handle, "tgetent")) == NULL)
+    {
+	return NULL;
+    }
+
+  if ((tgetflag = (tgetflag_func_t) dlsym(dl_handle, "tgetent")) == NULL)
+    {
+	return NULL;
+    }
+
+  if ((tgetnum = (tgetnum_func_t) dlsym(dl_handle, "tgetnum")) == NULL)
+    {
+	return NULL;
+    }
+
+  if ((tgetstr = (tgetstr_func_t) dlsym(dl_handle, "tgetstr")) == NULL)
+    {
+	return NULL;
+    }
+
+  if ((tputs = (tputs_func_t) dlsym(dl_handle, "tputs")) == NULL)
+    {
+	return NULL;
+    }
+
+  cm = tgetstr ("cm", NULL);
+  cd = tgetstr ("cd", NULL);
+  ce = tgetstr ("ce", NULL);
+  cl = tgetstr ("cl", NULL);
+
+  if ((ret = stdin_noblock ()) < 0)
+    {
+      return NULL;
+    }
+
+  return dl_handle;
+}
+
+
 #endif
 
 static int
