@@ -645,6 +645,9 @@ s_constant // !!!
       (TO ( DAY | HOUR | MINUTE | SECOND ('(' UNSIGNED_INTEGER ')')?))?
     | s_numeric
     | DATE s_quoted_string
+    | TIME s_quoted_string
+    | DATETIME s_quoted_string
+    | TIMESTAMP s_quoted_string
     | s_quoted_string
     | NULL_
     | TRUE
