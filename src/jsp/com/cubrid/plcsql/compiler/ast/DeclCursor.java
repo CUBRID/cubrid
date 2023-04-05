@@ -61,7 +61,7 @@ public class DeclCursor extends DeclId {
         this.paramList = paramList;
         this.staticSql = staticSql;
 
-        setHostValuesMap(paramList, staticSql.hostVars.keySet());
+        setHostValuesMap(paramList, staticSql.hostExprs.keySet());
     }
 
     @Override
@@ -83,26 +83,29 @@ public class DeclCursor extends DeclId {
     // Private
     // --------------------------------------------------
 
-    private void setHostValuesMap(NodeList<DeclParam> paramList, Set<ExprId> hostVars) {
+    private void setHostValuesMap(NodeList<DeclParam> paramList, Set<Expr> hostExprs) {
 
-        // NOTE: hostVars preserves its insertion order because it is the keys of a LinkedHashMap
+        // NOTE: hostExprs preserves its insertion order because it is the keys of a LinkedHashMap
         // TODO: check this
 
         int paramSize = paramList.nodes.size();
-        int hostVarSize = hostVars == null ? 0 : hostVars.size();
+        int hostExprSize = hostExprs == null ? 0 : hostExprs.size();
 
         paramRefCounts = new int[paramSize]; // NOTE: filled with zeros
-        paramMarks = new int[hostVarSize]; // NOTE: filled with zeros
+        paramMarks = new int[hostExprSize]; // NOTE: filled with zeros
 
-        if (paramSize > 0 && hostVarSize > 0) {
+        if (paramSize > 0 && hostExprSize > 0) {
             for (int i = 0; i < paramSize; i++) {
                 DeclParam di = paramList.nodes.get(i);
                 int j = 0;
-                for (ExprId var : hostVars) {
-                    DeclId dj = var.decl;
-                    if (di == dj) { // NOTE: reference equality
-                        paramMarks[j] = (i + 1);
-                        paramRefCounts[i]++;
+                for (Expr e : hostExprs) {
+                    if (e instanceof ExprId) {
+                        ExprId var = (ExprId) e;
+                        DeclId dj = var.decl;
+                        if (di == dj) { // NOTE: reference equality
+                            paramMarks[j] = (i + 1);
+                            paramRefCounts[i]++;
+                        }
                     }
                     j++;
                 }

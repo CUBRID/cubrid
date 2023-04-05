@@ -52,7 +52,7 @@ public class StmtStaticSql extends StmtSql {
                 level,
                 new ExprStr(staticSql.ctx, staticSql.rewritten),
                 staticSql.intoVars,
-                new ArrayList(staticSql.hostVars.keySet()));
+                new ArrayList(staticSql.hostExprs.keySet()));
 
         this.staticSql = staticSql;
     }
