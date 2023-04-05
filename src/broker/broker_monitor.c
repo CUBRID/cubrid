@@ -349,17 +349,16 @@ static void clrtoeol ();
 static void endwin ();
 
 #if !defined (WINDOWS)
+#define TINFO_HIGH_VERSION      10
+#define TINFO_LOW_VERSION       5
+
 static int getch ();
 static void *initscr ();
 static void noecho ();
 static void timeout (int delay);
 static void addstr (const char *);
-static int putchar_tc (int tc);
 
 static int stdin_noblock (void);
-static int stdin_block (void);
-static void stdin_echo (void);
-static void stdin_noecho (void);
 static int get_timeout (void);
 
 typedef char *(*tgoto_func_t) (const char *cap, int col, int row);
@@ -381,6 +380,8 @@ static char *cm = NULL;
 static char *cd = NULL;
 static char *ce = NULL;
 static char *cl = NULL;
+
+void *dl_handle = NULL;
 
 struct termios oterm;
 #endif
@@ -1979,18 +1980,10 @@ refresh ()
 {
 }
 
-int putchar_tc (int tc)
-{
-	// write(1, &tc, 1);
-	putchar (tc);
-	fflush (stdout);
-	return (0);
-}
-
 static void
 move (int x, int y)
 {
-  tputs (tgoto (cm, x, y), 1, putchar_tc);
+  tputs (tgoto (cm, x, y), 1, putchar);
 }
 
 static void
@@ -2002,7 +1995,7 @@ clrtobot ()
 static void
 clrtoeol ()
 {
-  tputs (ce, 1, putchar_tc);
+  tputs (ce, 1, putchar);
 }
 
 static void
@@ -2011,6 +2004,12 @@ endwin ()
   tcsetattr (0, TCSAFLUSH, &oterm);
   clear ();
   move (0, 0);
+
+  if (dl_handle != NULL)
+  {
+    dlclose (dl_handle);
+    dl_handle = NULL;
+  }
 }
 
 static void
@@ -2018,7 +2017,7 @@ addstr (const char * str)
 {
   if (str == NULL)
     {
-    	return;
+      return;
     }
 
   fprintf (stdout, str);
@@ -2034,10 +2033,11 @@ getch ()
   int timeout = get_timeout ();
   int ret = -1;
 
-  if (timeout == 0)
+  if (timeout == 0) /* temp code for test */
     {
       timeout = 30 * 10000;
     }
+
   tv.tv_sec = timeout / 1000;
   tv.tv_usec = timeout % 1000;
 
@@ -2057,7 +2057,7 @@ getch ()
 static void
 clear ()
 {
-  tputs (cl, 1, putchar_tc); 
+  tputs (cl, 1, putchar);
 }
 
 static int
@@ -2071,17 +2071,13 @@ stdin_noblock ()
     }
 
   oterm = term;
-  term.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
-  term.c_oflag &= ~(OPOST);
+
+  term.c_iflag &= ~(BRKINT | INPCK | ISTRIP | IXON);
   term.c_cflag |= (CS8);
   term.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
 
-  /* control chars - set return condition: min number of bytes and timer */
-  term.c_cc[VMIN] = 5; term.c_cc[VTIME] = 8; /* after 5 bytes or .8 seconds
-                                                after first byte seen      */
-  term.c_cc[VMIN] = 0; term.c_cc[VTIME] = 0; /* immediate - anything       */
-  term.c_cc[VMIN] = 2; term.c_cc[VTIME] = 0; /* after two bytes, no timer  */
-  term.c_cc[VMIN] = 0; term.c_cc[VTIME] = 8; /* after a byte or .8 seconds */
+  term.c_cc[VMIN] = 0;
+  term.c_cc[VTIME] = 8; /* after a byte or .8 seconds */
 
   /* put terminal in raw mode after flushing */
   if (tcsetattr (0, TCSAFLUSH, &term) < 0)
@@ -2090,33 +2086,6 @@ stdin_noblock ()
     }
 
   return 0;
-}
-
-static int
-stdin_block ()
-{
-  int flags;
-
-  if ((flags = fcntl (fileno (stdin), F_GETFL)) < 0)
-    {
-      return -8888;
-    }
-
-  return fcntl (fileno (stdin), F_SETFL, flags & ~O_NONBLOCK);
-}
-
-void stdin_echo ()
-{
-
-}
-
-void stdin_noecho ()
-{
-  struct termio term;
-  int ret;
-  int fd = fileno (stdin);
-
-  ret = ioctl(fd, TCGETA, &term);
 }
 
 static int
@@ -2139,44 +2108,65 @@ noecho ()
 static void *
 initscr ()
 {
-  void *dl_handle = NULL;
-  char tinfo_so [512];
+  char tinfo_so[PATH_MAX];
+  int major_version;
   int ret = -1;
 
-  sprintf (tinfo_so, "libtinfo.so.%d", 5);
-  if ((dl_handle = dlopen (tinfo_so, RTLD_LAZY)) == NULL)
+  for (major_version = TINFO_HIGH_VERSION; major_version >= TINFO_LOW_VERSION; major_version--)
     {
-  	return NULL;
+      sprintf (tinfo_so, "libtinfo.so.%d", major_version);
+      if ((dl_handle = dlopen (tinfo_so, RTLD_LAZY)) != NULL)
+        {
+          break;
+        }
+    }
+
+  if (dl_handle == NULL)
+    {
+      fprintf (stderr, "ERROR: Cannot load tinfo library. Please install tinfo library.\n");
+      return NULL;
     }
 
   if ((tgoto = (tgoto_func_t) dlsym(dl_handle, "tgoto")) == NULL)
     {
-	return NULL;
+      fprintf (stderr, "ERROR: Cannot find 'tgoto' function in %s.\n", tinfo_so);
+      return NULL;
     }
 
   if ((tgetent = (tgetent_func_t) dlsym(dl_handle, "tgetent")) == NULL)
     {
-	return NULL;
+      fprintf (stderr, "ERROR: Cannot find 'tgetent' function in %s.\n", tinfo_so);
+      return NULL;
     }
 
-  if ((tgetflag = (tgetflag_func_t) dlsym(dl_handle, "tgetent")) == NULL)
+  if ((tgetflag = (tgetflag_func_t) dlsym(dl_handle, "tgetflag")) == NULL)
     {
-	return NULL;
+      fprintf (stderr, "ERROR: Cannot find 'tgetflag' function in %s.\n", tinfo_so);
+      return NULL;
     }
 
   if ((tgetnum = (tgetnum_func_t) dlsym(dl_handle, "tgetnum")) == NULL)
     {
-	return NULL;
+      fprintf (stderr, "ERROR: Cannot find 'tgetnum' function in %s.\n", tinfo_so);
+      return NULL;
     }
 
   if ((tgetstr = (tgetstr_func_t) dlsym(dl_handle, "tgetstr")) == NULL)
     {
-	return NULL;
+      fprintf (stderr, "ERROR: Cannot find 'tgetstr' function in %s.\n", tinfo_so);
+      return NULL;
     }
 
   if ((tputs = (tputs_func_t) dlsym(dl_handle, "tputs")) == NULL)
     {
-	return NULL;
+      fprintf (stderr, "ERROR: Cannot find 'tputs' function in %s.\n", tinfo_so);
+      return NULL;
+    }
+
+  if (tgetent (NULL, "xterm") != 1)
+    {
+      fprintf (stderr, "ERROR: Cannot find TERM type.");
+      return NULL;
     }
 
   cm = tgetstr ("cm", NULL);
@@ -2186,13 +2176,15 @@ initscr ()
 
   if ((ret = stdin_noblock ()) < 0)
     {
+      fprintf (stderr, "ERROR: Cannot set terminal: error = %d", ret);
+      dlclose (dl_handle);
       return NULL;
     }
 
+  clear ();
+
   return dl_handle;
 }
-
-
 #endif
 
 static int
