@@ -63,6 +63,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     public void askServerSemanticQuestions() {
+        if (semanticQuestions.size() == 0) {
+            return; // nothing to do
+        }
+
         List<ServerAPI.Question> questions = new ArrayList(semanticQuestions.values());
         List<ServerAPI.Question> answered =
                 ServerAPI.getGlobalSemantics(questions); // this may take a long time
@@ -292,6 +296,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         // TODO: restore two lines below
         // addToImports("java.math.BigDecimal");
         // return new TypeSpecNumeric(precision, scale);
+        addToImports("java.math.BigDecimal");
         return TypeSpecSimple.NUMERIC; // ignore precision and scale for now
     }
 
@@ -2008,13 +2013,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         typeSpecs.put("CHAR", TypeSpecSimple.STRING);
         typeSpecs.put("CHARACTER", TypeSpecSimple.STRING);
+
         typeSpecs.put("VARCHAR", TypeSpecSimple.STRING);
         typeSpecs.put("CHAR VARYING", TypeSpecSimple.STRING);
         typeSpecs.put("CHARACTER VARYING", TypeSpecSimple.STRING);
         typeSpecs.put("STRING", TypeSpecSimple.STRING);
-
-        typeSpecs.put("NUMERIC", TypeSpecSimple.NUMERIC);
-        typeSpecs.put("DECIMAL", TypeSpecSimple.NUMERIC);
 
         typeSpecs.put("SHORT", TypeSpecSimple.SHORT);
         typeSpecs.put("SMALLINT", TypeSpecSimple.SHORT);
@@ -2023,6 +2026,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         typeSpecs.put("INTEGER", TypeSpecSimple.INT);
 
         typeSpecs.put("BIGINT", TypeSpecSimple.BIGINT);
+
+        typeSpecs.put("NUMERIC", TypeSpecSimple.NUMERIC);
+        typeSpecs.put("DECIMAL", TypeSpecSimple.NUMERIC);
 
         typeSpecs.put("FLOAT", TypeSpecSimple.FLOAT);
         typeSpecs.put("REAL", TypeSpecSimple.FLOAT);
@@ -2034,8 +2040,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         typeSpecs.put("TIME", TypeSpecSimple.TIME);
 
-        typeSpecs.put("TIMESTAMP", TypeSpecSimple.TIMESTAMP);
         typeSpecs.put("DATETIME", TypeSpecSimple.DATETIME);
+
+        typeSpecs.put("TIMESTAMP", TypeSpecSimple.TIMESTAMP);
 
         typeSpecs.put("SYS_REFCURSOR", TypeSpecSimple.SYS_REFCURSOR);
 
@@ -2198,6 +2205,27 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
     }
 
+    private boolean isSupportedDbType(int sqlTypeCode) {
+        switch (sqlTypeCode) {
+            case DBType.DB_NULL:
+            case DBType.DB_CHAR:
+            case DBType.DB_STRING:
+            case DBType.DB_SHORT:
+            case DBType.DB_INT:
+            case DBType.DB_BIGINT:
+            case DBType.DB_NUMERIC:
+            case DBType.DB_FLOAT:
+            case DBType.DB_DOUBLE:
+            case DBType.DB_DATE:
+            case DBType.DB_TIME:
+            case DBType.DB_DATETIME:
+            case DBType.DB_TIMESTAMP:
+                return true;
+        }
+
+        return false;
+    }
+
     private String getSqlTypeNameFromCode(int sqlTypeCode) {
         String ret = null;
         switch (sqlTypeCode) { // got from com.cubrid.jsp.data.DBType
@@ -2291,8 +2319,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 ret = "DATETIMELTZ";
                 break;
             default:
-                assert false : "unreachable";
-                throw new RuntimeException("unreachable");
+                ret = "<Unknown>";
         }
 
         return ret;
@@ -2300,28 +2327,38 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     private StaticSql checkAndConvertStaticSql(SqlSemantics sws, ParserRuleContext ctx) {
 
-        LinkedHashMap<ExprId, TypeSpec> hostVars = new LinkedHashMap<>();
+        LinkedHashMap<Expr, TypeSpec> hostExprs = new LinkedHashMap<>();
         LinkedHashMap<String, TypeSpec> selectList = null;
         ArrayList<ExprId> intoVars = null;
 
         // check (name-binding) and convert host variables used in the SQL
-        if (sws.hostVars != null) {
-            for (PlParamInfo pi : sws.hostVars) {
-                TypeSpec typeSpec = null;
-                String varName = Misc.getNormalizedText(pi.name);
-                if (pi.name.equals("?") == false && pi.type == DBType.DB_NULL) {
-                    // set PL/CSQL variable's type
-                    DeclVar var = symbolStack.getDeclVar(varName);
-                    typeSpec = var.typeSpec;
+        if (sws.hostExprs != null) {
+            for (PlParamInfo pi : sws.hostExprs) {
+                Expr hostExpr;
+                if (pi.name.equals("?")) {
+                    // auto parameter
+                    assert pi.value != null;
+                    if (!isSupportedDbType(pi.type)) {
+                        throw new SemanticError(
+                                Misc.getLineOf(ctx), // s419
+                                "the Static SQL contains a constant value of an unsupported type "
+                                        + getSqlTypeNameFromCode(pi.type));
+                    }
+
+                    hostExpr = new ExprAutoParam(ctx, pi.value, pi.type);
+                    hostExprs.put(
+                            hostExpr,
+                            null); // null: type check is not necessary for auto parameters
+
                 } else {
-                    String sqlType = getSqlTypeNameFromCode(pi.type);
-                    typeSpec = typeSpecs.get(sqlType);
+                    // host variable
+                    String varName = Misc.getNormalizedText(pi.name);
+                    ExprId id = visitNonFuncIdentifier(varName, ctx); // s408: undeclared id ...
+
+                    // TODO: replace the following null with meaningful type information
+                    // (type required in the location of this host var) after augmenting server API
+                    hostExprs.put(id, null);
                 }
-
-                ExprId id = visitNonFuncIdentifier(varName, ctx); // s408: undeclared id ...
-
-                assert typeSpec != null;
-                hostVars.put(id, typeSpec);
             }
         }
 
@@ -2357,10 +2394,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         String rewritten = StringEscapeUtils.escapeJava(sws.rewritten);
-        return new StaticSql(ctx, sws.kind, rewritten, hostVars, selectList, intoVars);
+        return new StaticSql(ctx, sws.kind, rewritten, hostExprs, selectList, intoVars);
     }
 
     private String makeParamList(NodeList<DeclParam> paramList, String name, PlParamInfo[] params) {
+        if (params == null) {
+            return null;
+        }
 
         int len = params.length;
         for (int i = 0; i < len; i++) {
@@ -2382,7 +2422,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     private int checkArguments(NodeList<Expr> args, NodeList<DeclParam> params) {
-
         if (params.nodes.size() != args.nodes.size()) {
             return -1;
         }

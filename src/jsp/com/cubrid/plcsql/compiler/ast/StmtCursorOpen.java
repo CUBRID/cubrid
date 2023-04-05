@@ -117,7 +117,7 @@ public class StmtCursorOpen extends Stmt {
         } else {
             DeclCursor decl = (DeclCursor) cursor.decl;
             StringBuffer sbuf = new StringBuffer();
-            ArrayList<ExprId> hostVars = new ArrayList<>(decl.staticSql.hostVars.keySet());
+            ArrayList<Expr> hostExprs = new ArrayList<>(decl.staticSql.hostExprs.keySet());
             for (int i = 0; i < size; i++) {
                 sbuf.append(",\n");
                 int m = paramMarks[i];
@@ -131,10 +131,13 @@ public class StmtCursorOpen extends Stmt {
                         sbuf.append(args.nodes.get(k).toJavaCode());
                     }
                 } else {
-                    ExprId var = hostVars.get(i);
-                    assert var.decl != null;
-                    var.prefixDeclBlock = var.decl.scope().declDone;
-                    sbuf.append(var.toJavaCode());
+                    Expr e = hostExprs.get(i);
+                    if (e instanceof ExprId) {
+                        ExprId var = (ExprId) e;
+                        assert var.decl != null;
+                        var.prefixDeclBlock = var.decl.scope().declDone;
+                    }
+                    sbuf.append(e.toJavaCode());
                 }
             }
             return sbuf.toString();

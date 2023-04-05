@@ -56,7 +56,7 @@ public class StmtForStaticSqlLoop extends StmtForSqlLoop {
                 label,
                 record,
                 new ExprStr(staticSql.ctx, staticSql.rewritten),
-                new ArrayList(staticSql.hostVars.keySet()),
+                new ArrayList(staticSql.hostExprs.keySet()),
                 stmts);
 
         this.staticSql = staticSql;

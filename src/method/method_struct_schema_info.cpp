@@ -22,6 +22,32 @@
 
 namespace cubmethod
 {
+  schema_info_request::schema_info_request ()
+  {
+    //
+  }
+
+#define SCHEMA_INFO_REQUEST_PACKER_ARGS() \
+  type, arg1, arg2, flag
+
+  void
+  schema_info_request::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_all (SCHEMA_INFO_REQUEST_PACKER_ARGS());
+  }
+
+  void
+  schema_info_request::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (SCHEMA_INFO_REQUEST_PACKER_ARGS ());
+  }
+
+  size_t
+  schema_info_request::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    return serializator.get_all_packed_size_starting_offset (start_offset, SCHEMA_INFO_REQUEST_PACKER_ARGS ());
+  }
+
   static std::vector<column_info> get_schema_table_meta ();
   static std::vector<column_info> get_schema_query_spec_meta ();
   static std::vector<column_info> get_schema_attr_meta ();

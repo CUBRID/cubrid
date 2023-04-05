@@ -54,7 +54,8 @@ public class SqlSemantics {
     public int kind;
     public String rewritten;
     public List<PlParamInfo>
-            hostVars; // host variables and their SQL types required in their locations
+            hostExprs; // host variables and auto parameters and their SQL types required in their
+    // locations
     public List<ColumnInfo> selectList; // (only for select statements) columns and their SQL types
     public List<String> intoVars; // (only for select stetements with an into-clause) into variables
 
@@ -64,14 +65,14 @@ public class SqlSemantics {
             int seqNo,
             int kind,
             String rewritten,
-            List<PlParamInfo> hostVars,
+            List<PlParamInfo> hostExprs,
             List<ColumnInfo> selectList,
             List<String> intoVars) {
 
         this.seqNo = seqNo;
         this.kind = kind;
         this.rewritten = rewritten;
-        this.hostVars = hostVars;
+        this.hostExprs = hostExprs;
         this.selectList = selectList;
         this.intoVars = intoVars;
     }
@@ -96,9 +97,9 @@ public class SqlSemantics {
 
         int hostVarsCnt = unpacker.unpackInt();
         if (hostVarsCnt > 0) {
-            hostVars = new ArrayList<>();
+            hostExprs = new ArrayList<>();
             for (int i = 0; i < hostVarsCnt; i++) {
-                hostVars.add(new PlParamInfo(unpacker));
+                hostExprs.add(new PlParamInfo(unpacker));
             }
         }
 
