@@ -357,21 +357,16 @@ static void *initscr ();
 static void noecho ();
 static void timeout (int delay);
 static void addstr (const char *);
-
 static int stdin_noblock (void);
 static int get_timeout (void);
 
 typedef char *(*tgoto_func_t) (const char *cap, int col, int row);
 typedef int (*tgetent_func_t) (char *bp, const char *name);
-typedef int (*tgetflag_func_t) (char *id);
-typedef int (*tgetnum_func_t) (char *id);
 typedef char *(*tgetstr_func_t) (char *id, char **area);
 typedef int (*tputs_func_t) (const char *str, int affcnt, int (*putc) (int));
 
 tgoto_func_t tgoto;
 tgetent_func_t tgetent;
-tgetflag_func_t tgetflag;
-tgetnum_func_t tgetnum;
 tgetstr_func_t tgetstr;
 tputs_func_t tputs;
 
@@ -2138,18 +2133,6 @@ initscr ()
   if ((tgetent = (tgetent_func_t) dlsym (dl_handle, "tgetent")) == NULL)
     {
       fprintf (stderr, "ERROR: Cannot find 'tgetent' function in %s.\n", tinfo_so);
-      return NULL;
-    }
-
-  if ((tgetflag = (tgetflag_func_t) dlsym (dl_handle, "tgetflag")) == NULL)
-    {
-      fprintf (stderr, "ERROR: Cannot find 'tgetflag' function in %s.\n", tinfo_so);
-      return NULL;
-    }
-
-  if ((tgetnum = (tgetnum_func_t) dlsym (dl_handle, "tgetnum")) == NULL)
-    {
-      fprintf (stderr, "ERROR: Cannot find 'tgetnum' function in %s.\n", tinfo_so);
       return NULL;
     }
 
