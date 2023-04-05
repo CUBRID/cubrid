@@ -2044,7 +2044,7 @@ getch ()
   FD_ZERO (&readfds);
   FD_SET (fd, &readfds);
 
-  ret = select (fd + 1, &readfds, (fd_set *)0, (fd_set *)0, &tv);
+  ret = select (fd + 1, &readfds, (fd_set *) 0, (fd_set *) 0, &tv);
 
   if (ret <= 0)
     {
