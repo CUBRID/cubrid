@@ -721,6 +721,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_REPLICATION_COMPRESS_PAGES_TRANSFER "replication_compress_pages_transfer"
 #define PRM_NAME_SCAL_PERF_PTS_REPL_THREAD_IGNORE_UNFIX "scal_perf_pts_repl_thread_ignore_unfix"
 #define PRM_NAME_SCAL_PERF_PS_REPL_THREAD_IGNORE_UNFIX "scal_perf_ps_repl_thread_ignore_unfix"
+#define PRM_NAME_SCAL_PERF_PS_REPL_SPAGE_COMPACT "scal_perf_ps_repl_spage_compact"
 
 #define PRM_NAME_REMOTE_STORAGE "remote_storage"
 #define PRM_NAME_DUMP_FILE_CACHE "dump_fileio_cache_after_boot"
@@ -2397,6 +2398,10 @@ bool PRM_SCAL_PERF_PTS_REPL_THREAD_IGNORE_UNFIX_VALUE = prm_scal_perf_pts_repl_t
 static unsigned int prm_scal_perf_ps_repl_thread_ignore_unfix_flag = 0;
 static const bool prm_scal_perf_ps_repl_thread_ignore_unfix_default = false;
 bool PRM_SCAL_PERF_PS_REPL_THREAD_IGNORE_UNFIX_VALUE = prm_scal_perf_ps_repl_thread_ignore_unfix_default;
+
+static unsigned int prm_scal_perf_ps_repl_spage_compact_flag = 0;
+static const bool prm_scal_perf_ps_repl_spage_compact_default = false;
+bool PRM_SCAL_PERF_PS_REPL_SPAGE_COMPACT_VALUE = prm_scal_perf_ps_repl_spage_compact_default;
 
 static bool prm_remote_storage_default = false;
 bool PRM_REMOTE_STORAGE_CURRENT_VALUE = prm_remote_storage_default;
@@ -6377,6 +6382,18 @@ SYSPRM_PARAM prm_Def[] = {
    &prm_scal_perf_ps_repl_thread_ignore_unfix_flag,
    (void *) &prm_scal_perf_ps_repl_thread_ignore_unfix_default,
    (void *) &PRM_SCAL_PERF_PS_REPL_THREAD_IGNORE_UNFIX_VALUE,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_SCAL_PERF_PS_REPL_SPAGE_COMPACT,
+   PRM_NAME_SCAL_PERF_PS_REPL_SPAGE_COMPACT,
+   (PRM_HIDDEN | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_scal_perf_ps_repl_spage_compact_flag,
+   (void *) &prm_scal_perf_ps_repl_spage_compact_default,
+   (void *) &PRM_SCAL_PERF_PS_REPL_SPAGE_COMPACT_VALUE,
    (void *) NULL,
    (void *) NULL,
    (char *) NULL,

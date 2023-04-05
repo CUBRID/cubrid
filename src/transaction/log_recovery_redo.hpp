@@ -39,10 +39,14 @@ struct log_rv_redo_context
   const LOG_LSA m_end_redo_lsa = NULL_LSA;
   const PAGE_FETCH_MODE m_page_fetch_mode = RECOVERY_PAGE;
   const log_reader::fetch_mode m_reader_fetch_page_mode = log_reader::fetch_mode::FORCE;
+  // TODO: temporary tuning parameter to drive whether Page Server replication
+  // performs slotted page compacting or not
+  const bool m_spage_unfix_compact = false;
 
   log_rv_redo_context () = delete;
   log_rv_redo_context (const log_lsa &end_redo_lsa, PAGE_FETCH_MODE page_fetch_mode,
-		       log_reader::fetch_mode reader_fetch_page_mode);
+		       log_reader::fetch_mode reader_fetch_page_mode,
+		       bool spage_unfix_compact);
   ~log_rv_redo_context ();
 
   log_rv_redo_context (const log_rv_redo_context &that);
@@ -668,18 +672,22 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
   LOG_RCV rcv;
   /* will take care of unfixing the page, will be correctly de-allocated as it is the same
    * storage class as 'rcv' and allocated on the stack after 'rcv' */
-  scope_exit <std::function<void (void)>> unfix_rcv_pgptr ([&thread_p, &rcv] ()
+  const bool unfix_compact { redo_context.m_spage_unfix_compact };
+  scope_exit <std::function<void (void)>> unfix_rcv_pgptr ([&thread_p, &rcv, unfix_compact, rcv_vpid] ()
   {
     if (rcv.pgptr != nullptr)
       {
-	const PAGE_TYPE ptype = pgbuf_get_page_ptype (thread_p, rcv.pgptr);
-	const bool is_slotted = spage_is_slotted_page_type (ptype);
-	if (is_slotted)
+	if (unfix_compact)
 	  {
-	    const bool needs_compacting = spage_need_compact (thread_p, rcv.pgptr);
-	    if (needs_compacting)
+	    const PAGE_TYPE ptype = pgbuf_get_page_ptype (thread_p, rcv.pgptr);
+	    const bool is_slotted = spage_is_slotted_page_type (ptype);
+	    if (is_slotted)
 	      {
-		(void) spage_compact_and_zero_out_free_space (thread_p, rcv.pgptr);
+		const bool needs_compacting = spage_need_compact (thread_p, rcv.pgptr);
+		if (needs_compacting)
+		  {
+		    (void) spage_compact_and_zero_out_free_space (thread_p, rcv.pgptr);
+		  }
 	      }
 	  }
 

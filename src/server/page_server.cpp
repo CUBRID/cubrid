@@ -576,7 +576,10 @@ page_server::start_log_replicator (const log_lsa &start_lsa)
 
   const int replication_parallel_count = prm_get_integer_value (PRM_ID_REPLICATION_PARALLEL_COUNT);
   assert (replication_parallel_count >= 0);
-  m_replicator.reset (new cublog::replicator (start_lsa, RECOVERY_PAGE, replication_parallel_count, TT_REPLICATION_PS));
+  const bool spage_compact = prm_get_bool_value (PRM_ID_SCAL_PERF_PS_REPL_SPAGE_COMPACT);
+  m_replicator.reset (
+	  new cublog::replicator (start_lsa, RECOVERY_PAGE, replication_parallel_count,
+				  TT_REPLICATION_PS, spage_compact));
 }
 
 void

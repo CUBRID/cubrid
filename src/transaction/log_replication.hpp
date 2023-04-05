@@ -56,7 +56,7 @@ namespace cublog
     public:
       replicator () = delete;
       replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode, int parallel_count,
-		  thread_type replication_thread_type);
+		  thread_type replication_thread_type, bool spage_unfix_compact);
 
       replicator (const replicator &) = delete;
       replicator (replicator &&) = delete;

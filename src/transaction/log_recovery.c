@@ -3449,7 +3449,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 {
   LOG_LSA lsa;			/* LSA of log record to redo */
 
-  log_rv_redo_context redo_context (context.get_end_redo_lsa (), RECOVERY_PAGE, log_reader::fetch_mode::NORMAL);
+  log_rv_redo_context redo_context (context.get_end_redo_lsa (), RECOVERY_PAGE, log_reader::fetch_mode::NORMAL, false);
 
   volatile TRANID tran_id;
   volatile LOG_RECTYPE log_rtype;

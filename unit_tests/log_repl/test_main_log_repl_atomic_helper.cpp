@@ -512,7 +512,7 @@ fake_system_parameters_initialize_type::fake_system_parameters_initialize_type (
 }
 
 test_spec_type::test_spec_type ()
-  : m_log_redo_context { NULL_LSA, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, log_reader::fetch_mode::FORCE }
+  : m_log_redo_context { NULL_LSA, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, log_reader::fetch_mode::FORCE, false }
 {
   m_thread_p = new THREAD_ENTRY;
 
@@ -919,15 +919,17 @@ logpb_fetch_page (THREAD_ENTRY * /*thread_p*/, const LOG_LSA * /*req_lsa*/, LOG_
 }
 
 log_rv_redo_context::log_rv_redo_context (const log_lsa &end_redo_lsa, PAGE_FETCH_MODE page_fetch_mode,
-    log_reader::fetch_mode reader_fetch_page_mode)
+    log_reader::fetch_mode reader_fetch_page_mode, bool spage_unfix_compact)
   : m_end_redo_lsa { end_redo_lsa }
   , m_page_fetch_mode { page_fetch_mode }
   , m_reader_fetch_page_mode { reader_fetch_page_mode }
+  , m_spage_unfix_compact { spage_unfix_compact }
 {
 }
 
 log_rv_redo_context::log_rv_redo_context (const log_rv_redo_context &that)
-  : log_rv_redo_context { that.m_end_redo_lsa, that.m_page_fetch_mode, that.m_reader_fetch_page_mode }
+  : log_rv_redo_context { that.m_end_redo_lsa, that.m_page_fetch_mode, that.m_reader_fetch_page_mode,
+			  that.m_spage_unfix_compact }
 {
 }
 

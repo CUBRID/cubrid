@@ -89,7 +89,7 @@ void execute_test (const log_recovery_test_config &a_test_config,
   ux_ut_database db_online { new ut_database (a_database_config) };
   ux_ut_database db_recovery { new ut_database (a_database_config) };
 
-  log_rv_redo_context dummy_redo_context (NULL_LSA, RECOVERY_PAGE, log_reader::fetch_mode::NORMAL);
+  log_rv_redo_context dummy_redo_context (NULL_LSA, RECOVERY_PAGE, log_reader::fetch_mode::NORMAL, false );
 
   // infrastructure to check progress of the test
   //

@@ -67,12 +67,12 @@ namespace cublog
    *********************************************************************/
 
   replicator::replicator (const log_lsa &start_redo_lsa, PAGE_FETCH_MODE page_fetch_mode, int parallel_count,
-			  thread_type replication_thread_type)
+			  thread_type replication_thread_type, bool spage_unfix_compact)
     : m_bookkeep_mvcc { is_page_server () }
     , m_replicate_mvcc { is_passive_transaction_server () }
     , m_redo_lsa { start_redo_lsa }
     , m_replication_active { true }
-    , m_redo_context { NULL_LSA, page_fetch_mode, log_reader::fetch_mode::FORCE }
+    , m_redo_context { NULL_LSA, page_fetch_mode, log_reader::fetch_mode::FORCE, spage_unfix_compact }
     , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
     , m_most_recent_trantable_snapshot_lsa { NULL_LSA }
     , m_perf_stat_idle { cublog::perf_stats::do_not_record_t {} }

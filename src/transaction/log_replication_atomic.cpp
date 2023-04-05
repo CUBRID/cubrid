@@ -27,7 +27,7 @@ namespace cublog
 
   atomic_replicator::atomic_replicator (const log_lsa &start_redo_lsa, const log_lsa &prev_redo_lsa,
 					thread_type replication_thread_type)
-    : replicator (start_redo_lsa, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, 0, replication_thread_type)
+    : replicator (start_redo_lsa, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, 0, replication_thread_type, false)
     , m_processed_lsa { prev_redo_lsa }
     , m_lowest_unapplied_lsa { start_redo_lsa }
   {
