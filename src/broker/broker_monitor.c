@@ -2028,23 +2028,25 @@ static int
 getch ()
 {
   fd_set readfds;
-  struct timeval tv;
+  struct timeval tv, *tv_p = &tv;
   int fd = fileno (stdin);
   int timeout = get_timeout ();
   int ret = -1;
 
-  if (timeout == 0)		/* temp code for test */
+  if (timeout < 0)
     {
-      timeout = 30 * 10000;
+      tv_p = NULL;
     }
-
-  tv.tv_sec = timeout / 1000;
-  tv.tv_usec = timeout % 1000;
+  else
+    {
+      tv.tv_sec = timeout / 1000;
+      tv.tv_usec = timeout % 1000;
+    }
 
   FD_ZERO (&readfds);
   FD_SET (fd, &readfds);
 
-  ret = select (fd + 1, &readfds, (fd_set *) 0, (fd_set *) 0, &tv);
+  ret = select (fd + 1, &readfds, (fd_set *) 0, (fd_set *) 0, tv_p);
 
   if (ret <= 0)
     {
