@@ -375,7 +375,7 @@ dblink_make_date_time_tz (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE_TZ 
 }
 
 static int
-dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars)
+dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars)
 {
   int i, n, ret;
   T_CCI_PARAM_INFO *param;
@@ -529,7 +529,7 @@ dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd, DBLINK_HOST_VAR
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_UNSUPPORTED_TYPE, 1, "unknown");
 	  return ER_DBLINK_UNSUPPORTED_TYPE;
 	}
-      ret = cci_bind_param (scan_info->stmt_handle, n + 1, a_type, value, u_type, 0);
+      ret = cci_bind_param (stmt_handle, n + 1, a_type, value, u_type, 0);
       if (ret < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_INVALID_BIND_PARAM, 0);
@@ -538,6 +538,71 @@ dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd, DBLINK_HOST_VAR
     }
 
   return S_SUCCESS;
+}
+
+int
+dblink_execute_query (struct access_spec_node *spec, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars)
+{
+  int ret = NO_ERROR, result, conn_handle, stmt_handle;
+  T_CCI_ERROR err_buf;
+  char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
+  char *user_name = spec->s.dblink_node.conn_user;
+  char *password = spec->s.dblink_node.conn_password;
+  char *sql_text = spec->s.dblink_node.conn_sql;
+
+  char *find = strstr (spec->s.dblink_node.conn_url, ":?");
+  if (find)
+    {
+      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", spec->s.dblink_node.conn_url, "&__gateway=true");
+    }
+  else
+    {
+      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", spec->s.dblink_node.conn_url, "?__gateway=true");
+    }
+
+  conn_handle = cci_connect_with_url_ex (conn_url, user_name, password, &err_buf);
+  if (conn_handle < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      goto error_exit;
+    }
+  else
+    {
+      cci_set_autocommit (conn_handle, CCI_AUTOCOMMIT_TRUE);
+      stmt_handle = cci_prepare (conn_handle, sql_text, 0, &err_buf);
+      if (stmt_handle < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  goto error_exit;
+	}
+
+      if (host_vars->count > 0)
+	{
+	  if ((ret = dblink_bind_param (stmt_handle, vd, host_vars)) < 0)
+	    {
+	      return ret;
+	    }
+	}
+
+      result = cci_execute (stmt_handle, 0, 0, &err_buf);
+      if (result < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  goto error_exit;
+	}
+
+      ret = cci_disconnect (conn_handle, &err_buf);
+      if (ret < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  goto error_exit;
+	}
+    }
+
+  return result;
+
+error_exit:
+  return ER_DBLINK;
 }
 
 /*
@@ -589,7 +654,7 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 
       if (host_vars->count > 0)
 	{
-	  if ((ret = dblink_bind_param (scan_info, vd, host_vars)) < 0)
+	  if ((ret = dblink_bind_param (scan_info->stmt_handle, vd, host_vars)) < 0)
 	    {
 	      return ret;
 	    }
