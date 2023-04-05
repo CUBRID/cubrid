@@ -338,6 +338,26 @@ tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_n
 }
 
 void
+tran_server::disconnect_page_server_async (const connection_handler *conn)
+{
+  std::lock_guard<std::shared_mutex> lk_guard (m_page_server_conn_vec_mtx);
+  auto &conn_vec = m_page_server_conn_vec;
+
+  auto it = conn_vec.begin ();
+  for (; it != conn_vec.end (); it++)
+    {
+      if (it->get () == conn)
+	{
+	  m_async_disconnect_handler.disconnect (std::move (*it));
+	  assert (*it == nullptr);
+	  conn_vec.erase (it);
+	  break;
+	}
+    }
+  // It's possible that the connection is already cleared in disconnect_all_page_servers()
+}
+
+void
 tran_server::disconnect_all_page_servers ()
 {
   assert_is_tran_server ();
@@ -420,23 +440,7 @@ tran_server::connection_handler::receive_disconnect_request (page_server_conn_t:
 {
   m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
 
-  {
-    std::lock_guard<std::shared_mutex> lk_guard (m_ts.m_page_server_conn_vec_mtx);
-    auto &conn_vec = m_ts.m_page_server_conn_vec;
-
-    auto it = conn_vec.begin ();
-    for (; it != conn_vec.end (); it++)
-      {
-	if (it->get () == this)
-	  {
-	    m_ts.m_async_disconnect_handler.disconnect (std::move (*it));
-	    assert (*it == nullptr);
-	    conn_vec.erase (it);
-	    break;
-	  }
-      }
-  }
-  // It's possible that the connection is already cleared in disconnect_all_page_servers()
+  m_ts.disconnect_page_server_async (this);
 }
 
 void

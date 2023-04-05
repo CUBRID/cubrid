@@ -148,6 +148,7 @@ class tran_server
     int init_page_server_hosts (const char *db_name);
     int get_boot_info_from_page_server ();
     int connect_to_page_server (const cubcomm::node &node, const char *db_name);
+    void disconnect_page_server_async (const connection_handler *conn);
 
     int parse_server_host (const std::string &host);
     int parse_page_server_hosts_config (std::string &hosts);
