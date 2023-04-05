@@ -363,8 +363,7 @@ tran_server::disconnect_page_server_async (const connection_handler *conn)
   std::lock_guard<std::shared_mutex> lk_guard (m_page_server_conn_vec_mtx);
   auto &conn_vec = m_page_server_conn_vec;
 
-  auto it = conn_vec.begin ();
-  for (; it != conn_vec.end (); it++)
+  for (auto it = conn_vec.begin (); it != conn_vec.end (); it++)
     {
       if (it->get () == conn)
 	{
