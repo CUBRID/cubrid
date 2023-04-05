@@ -475,7 +475,9 @@ static void lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_ind
 static void lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr, THREAD_ENTRY * thread_p, int tran_index,
 					      LK_RES * res, LOCK lock);
 static void lock_initialize_entry_as_non2pl (LK_ENTRY * entry_ptr, int tran_index, LK_RES * res, LOCK lock);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static void lock_initialize_resource (LK_RES * res_ptr);
+#endif
 static void lock_initialize_resource_as_allocated (LK_RES * res_ptr, LOCK lock);
 static unsigned int lock_get_hash_value (const OID * oid, int htsize);
 static int lock_initialize_tran_lock_table (void);
@@ -815,10 +817,8 @@ lock_res_key_copy (void *src, void *dest)
       break;
 
     case LOCK_RESOURCE_OBJECT:
-      /* nothing, it's a free object */
-      break;
-
     default:
+      /* something is wrong */
       assert (false);
       return ER_FAILED;
     }
@@ -960,6 +960,7 @@ lock_initialize_entry_as_non2pl (LK_ENTRY * entry_ptr, int tran_index, LK_RES * 
   entry_ptr->instant_lock_count = 0;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /* initialize lock resource as free state */
 static void
 lock_initialize_resource (LK_RES * res_ptr)
@@ -975,6 +976,7 @@ lock_initialize_resource (LK_RES * res_ptr)
   res_ptr->non2pl = NULL;
   res_ptr->hash_next = NULL;
 }
+#endif
 
 /* initialize lock resource as allocated state */
 static void

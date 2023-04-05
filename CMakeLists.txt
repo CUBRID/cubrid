@@ -137,7 +137,7 @@ set(WITH_LIBEXPAT_URL "https://github.com/libexpat/libexpat/releases/download/R_
 set(WITH_LIBJANSSON_URL "http://www.digip.org/jansson/releases/jansson-2.10.tar.gz")
 
 # editline library sources URL
-set(WITH_LIBEDIT_URL "https://github.com/CUBRID/libedit/archive/refs/tags/csql_v1.0.tar.gz")
+set(WITH_LIBEDIT_URL "https://github.com/CUBRID/libedit/archive/refs/tags/csql_v1.1.tar.gz")
 
 # rapidjson library sources URL
 set(WITH_RAPIDJSON_URL "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz")

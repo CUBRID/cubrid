@@ -138,6 +138,12 @@ extern char *query_Plan_dump_filename;
 extern FILE *query_Plan_dump_fp;
 extern bool query_Plan_dump_fp_open;
 
+extern ACCESS_SPEC_TYPE *pt_make_dblink_access_spec (ACCESS_METHOD access,
+						     PRED_EXPR * where_pred,
+						     REGU_VARIABLE_LIST pred_list,
+						     REGU_VARIABLE_LIST attr_list, char *url, char *user,
+						     char *password, int host_var_count, int *host_var_index,
+						     char *sql);
 extern REGU_VARIABLE *pt_to_regu_variable (PARSER_CONTEXT * p, PT_NODE * node, UNBOX unbox);
 extern PRED_EXPR *pt_to_pred_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 extern PRED_EXPR *pt_to_pred_expr_with_arg (PARSER_CONTEXT * parser, PT_NODE * node_list, int *argp);
@@ -148,8 +154,8 @@ extern TP_DOMAIN *pt_xasl_type_enum_to_domain (const PT_TYPE_ENUM type);
 extern TP_DOMAIN *pt_xasl_node_to_domain (PARSER_CONTEXT * parser, const PT_NODE * node);
 extern PT_NODE *pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * select_list,
 				     PT_NODE * from, PT_NODE * with, PT_NODE * class_specs, PT_NODE * where,
-				     PT_NODE * using_index, PT_NODE * order_by, PT_NODE * orderby_for, int server_op,
-				     SCAN_OPERATION_TYPE scan_op_type);
+				     PT_NODE * using_index, PT_NODE * order_by, PT_NODE * orderby_for,
+				     int server_op, SCAN_OPERATION_TYPE scan_op_type);
 extern XASL_NODE *pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * node);
 extern PRED_EXPR_WITH_CONTEXT *pt_to_pred_with_context (PARSER_CONTEXT * parser, PT_NODE * filter_pred, PT_NODE * spec);
 extern XASL_NODE *pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);

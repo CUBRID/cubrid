@@ -2880,6 +2880,7 @@ set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_
       break;
 
     case PT_DBLINK_TABLE:
+    case PT_DBLINK_TABLE_DML:
       *continue_walk = PT_LIST_WALK;
       break;
 
