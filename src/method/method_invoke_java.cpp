@@ -651,4 +651,28 @@ namespace cubmethod
     error = xs_receive (&thread_ref, java_lambda);
     return error;
   }
+
+  int
+  method_invoke_java::callback_end_transaction (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_END_TRANSACTION;
+    int command; // commit or abort
+
+    unpacker.unpack_all (command);
+    error = method_send_data_to_client (&thread_ref, m_client_header, code, command);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+
+    auto java_lambda = [&] (cubmem::block & b)
+    {
+      return mcon_send_data_to_java (m_group->get_socket(), get_next_java_header (m_java_header), b);
+    };
+
+    error = xs_receive (&thread_ref, java_lambda);
+    return error;
+  }
+
 } // namespace cubmethod
