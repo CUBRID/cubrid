@@ -28,6 +28,9 @@ public class Context {
     // CAS client information connecting with this Context
     private Properties clientInfo = null;
 
+    // Connection Properties
+    private Properties connectionInfo = null;
+
     // TODO: dynamic classLoader for a session
 
     // message buffer for DBMS_OUTPUT
@@ -41,8 +44,9 @@ public class Context {
         return sessionId;
     }
 
-    public synchronized Connection getConnection() {
+    public synchronized Connection getConnection(Properties prop) {
         if (this.connection == null) {
+            this.connectionInfo = prop;
             this.connection = new CUBRIDServerSideConnection(this);
         }
         return connection;
