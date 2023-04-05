@@ -562,21 +562,17 @@ page_server::disconnect_all_tran_servers ()
    *
    *  If some disconnections are underway, they will be waited for at the m_async_disconnect_handler.terminate () below.
    */
-  auto no_conn_alive_pred = [this]
+  constexpr auto millis_20 = std::chrono::milliseconds { 20 };
+  while (!m_conn_cv.wait_for (ulock, millis_20, [this]
   {
     return m_active_tran_server_conn == nullptr && m_passive_tran_server_conn.empty();
-  };
-
-  m_conn_cv.wait (ulock, no_conn_alive_pred);
-
-  /* All connections are pushed to m_async_disconnect_handler. */
-  assert (m_active_tran_server_conn == nullptr && m_passive_tran_server_conn.empty());
+    }));
 
   ulock.unlock ();
 
   m_async_disconnect_handler.terminate ();
 
-  er_log_debug (ARG_FILE_LINE, "disconnect_all_tran_server: All connections are disconnected.\n");
+  er_log_debug (ARG_FILE_LINE, "disconnect_all_tran_server: All connections have been disconnected.\n");
 }
 
 bool
