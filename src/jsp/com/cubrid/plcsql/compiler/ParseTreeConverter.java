@@ -1638,7 +1638,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         connectionRequired = true;
         addToImports("java.sql.*");
-
         SqlSemantics sws = staticSqls.get(ctx);
         assert sws != null;
         StaticSql staticSql = checkAndConvertStaticSql(sws, ctx);
@@ -2155,6 +2154,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         } else if (i.startsWith("java.lang.")
                 && i.lastIndexOf('.') == 9) { // 9:the index of the second '.'
             // no need to import java.lang.*
+        } else if (i.startsWith("Null")) {
+            // NULL type is not a java type but an internal type for convenience in typechecking.
         } else {
             imports.add(i);
         }
@@ -2334,7 +2335,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         // check (name-binding) and convert host variables used in the SQL
         if (sws.hostExprs != null) {
             for (PlParamInfo pi : sws.hostExprs) {
-                Expr hostExpr;
                 if (pi.name.equals("?")) {
                     // auto parameter
                     assert pi.value != null;
@@ -2345,9 +2345,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                                         + getSqlTypeNameFromCode(pi.type));
                     }
 
-                    hostExpr = new ExprAutoParam(ctx, pi.value, pi.type);
+                    ExprAutoParam autoParam = new ExprAutoParam(ctx, pi.value, pi.type);
+                    addToImports(autoParam.getTypeSpec().fullJavaType);
                     hostExprs.put(
-                            hostExpr,
+                            autoParam,
                             null); // null: type check is not necessary for auto parameters
 
                 } else {
