@@ -545,7 +545,12 @@ main (int argc, char **argv)
 	}
 //  FillConsoleOutputCharacter(h_console, ' ', scr_info.dwSize.X * scr_info.dwSize.Y, top_left_pos, &size);
 #else
-      win = initscr ();
+      if ((win = initscr ()) == NULL)
+	{
+	  fprintf (stderr, "fail to initialize tinfo library\n");
+	  return 127;
+	}
+
       timeout (refresh_sec * 1000);
       noecho ();
 #endif
