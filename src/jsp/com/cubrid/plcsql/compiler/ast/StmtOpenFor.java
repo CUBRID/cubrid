@@ -56,9 +56,9 @@ public class StmtOpenFor extends Stmt {
     public String toJavaCode() {
 
         StringBuffer sbuf = new StringBuffer();
-        for (ExprId var : staticSql.hostVars.keySet()) {
+        for (Expr e : staticSql.hostExprs.keySet()) {
             sbuf.append(",\n");
-            sbuf.append(var.toJavaCode());
+            sbuf.append(e.toJavaCode());
         }
 
         return tmplStmt.replace("%'REF-CURSOR'%", id.toJavaCode())

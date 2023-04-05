@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler;
 
+import com.cubrid.plcsql.compiler.ast.Expr;
 import com.cubrid.plcsql.compiler.ast.ExprId;
 import com.cubrid.plcsql.compiler.ast.TypeSpec;
 import java.util.LinkedHashMap;
@@ -41,7 +42,7 @@ public class StaticSql {
     public final ParserRuleContext ctx;
     public final int kind;
     public final String rewritten;
-    public final LinkedHashMap<ExprId, TypeSpec> hostVars;
+    public final LinkedHashMap<Expr, TypeSpec> hostExprs;
     public final LinkedHashMap<String, TypeSpec> selectList;
     public final List<ExprId> intoVars; // can be null
 
@@ -49,14 +50,14 @@ public class StaticSql {
             ParserRuleContext ctx,
             int kind,
             String rewritten,
-            LinkedHashMap<ExprId, TypeSpec> hostVars,
+            LinkedHashMap<Expr, TypeSpec> hostExprs,
             LinkedHashMap<String, TypeSpec> selectList,
             List<ExprId> intoVars) {
 
         this.ctx = ctx;
         this.kind = kind;
         this.rewritten = rewritten;
-        this.hostVars = hostVars;
+        this.hostExprs = hostExprs;
         this.selectList = selectList;
         this.intoVars = intoVars;
     }

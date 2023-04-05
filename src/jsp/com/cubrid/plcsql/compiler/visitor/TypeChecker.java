@@ -204,7 +204,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         assert node.staticSql.intoVars == null; // by earlier check
 
         visitNodeList(node.paramList);
-        typeCheckHostVars(node.staticSql); // s400
+        typeCheckHostExprs(node.staticSql); // s400
         return null;
     }
 
@@ -535,6 +535,12 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     }
 
     @Override
+    public TypeSpec visitExprAutoParam(ExprAutoParam node) {
+        return TypeSpecSimple
+                .NULL; // NOTE: For now, auto parameters' types are not checked and this is OK
+    }
+
+    @Override
     public TypeSpec visitStmtAssign(StmtAssign node) {
         TypeSpec valType = visit(node.val);
         TypeSpec varType = ((DeclIdTyped) node.var.decl).typeSpec();
@@ -688,7 +694,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
         StaticSql staticSql = node.staticSql;
 
-        typeCheckHostVars(staticSql); // s404
+        typeCheckHostExprs(staticSql); // s404
         if (staticSql.intoVars != null) {
 
             List<Coerce> coerces = new ArrayList<>();
@@ -775,7 +781,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitStmtForStaticSqlLoop(StmtForStaticSqlLoop node) {
 
-        typeCheckHostVars(node.staticSql); // s406
+        typeCheckHostExprs(node.staticSql); // s406
         visitNodeList(node.stmts);
         return null;
     }
@@ -815,7 +821,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         assert node.staticSql != null;
         assert node.staticSql.intoVars == null; // by earlier check
 
-        typeCheckHostVars(node.staticSql); // s407
+        typeCheckHostExprs(node.staticSql); // s407
         return null;
     }
 
@@ -938,23 +944,30 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         }
     }
 
-    private void typeCheckHostVars(StaticSql staticSql) {
+    private void typeCheckHostExprs(StaticSql staticSql) {
 
         assert staticSql.ctx != null;
 
-        LinkedHashMap<ExprId, TypeSpec> hostVars = staticSql.hostVars;
-        for (ExprId id : hostVars.keySet()) {
-            TypeSpec ty = visitExprId(id);
-            TypeSpec tyRequired = hostVars.get(id);
-            Coerce c = Coerce.getCoerce(ty, tyRequired);
-            if (c == null) {
-                throw new SemanticError(
-                        Misc.getLineOf(staticSql.ctx),
-                        "host variable "
-                                + id.name
-                                + " does not have a compatible type in the SQL statement");
-            } else {
-                // no more use of the coerce
+        LinkedHashMap<Expr, TypeSpec> hostExprs = staticSql.hostExprs;
+        for (Expr e : hostExprs.keySet()) {
+            TypeSpec ty = visit(e);
+            TypeSpec tyRequired = hostExprs.get(e);
+            if (tyRequired != null) {
+                // NOTE: Unreachable for now but for future extension
+                assert e instanceof ExprId;
+
+                ExprId id = (ExprId) e;
+                Coerce c = Coerce.getCoerce(ty, tyRequired);
+                if (c == null) {
+                    throw new SemanticError(
+                            Misc.getLineOf(staticSql.ctx),
+                            "host variable "
+                                    + id.name
+                                    + " does not have a compatible type in the SQL statement");
+                } else {
+                    // no more use of the coerce: coercion (if not an identity) will be done in the
+                    // server
+                }
             }
         }
     }
