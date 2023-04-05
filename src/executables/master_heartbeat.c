@@ -2308,7 +2308,7 @@ hb_port_str_to_num (char *port_p)
 	}
       else if (*p == ' ')
 	{
-	  if (num_count > 1)	/* atoi("80 80") returns 80. It needs an exception handling */
+	  if (num_count >= 1)	/* atoi("80 80") returns 80. It needs an exception handling */
 	    {
 	      is_space_after_numbers = true;
 	    }
