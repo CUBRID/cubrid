@@ -366,7 +366,7 @@ typedef int (*tgetent_func_t) (char *bp, const char *name);
 typedef int (*tgetflag_func_t) (char *id);
 typedef int (*tgetnum_func_t) (char *id);
 typedef char *(*tgetstr_func_t) (char *id, char **area);
-typedef int (*tputs_func_t) (const char *str, int affcnt, int (*putc)(int));
+typedef int (*tputs_func_t) (const char *str, int affcnt, int (*putc) (int));
 
 tgoto_func_t tgoto;
 tgetent_func_t tgetent;
@@ -488,7 +488,7 @@ main (int argc, char **argv)
   double elapsed_time;
 
 #if !defined (WINDOWS)
-void *win;
+  void *win;
 #endif
 
   if (argc == 2 && strcmp (argv[1], "--version") == 0)
@@ -2006,14 +2006,14 @@ endwin ()
   move (0, 0);
 
   if (dl_handle != NULL)
-  {
-    dlclose (dl_handle);
-    dl_handle = NULL;
-  }
+    {
+      dlclose (dl_handle);
+      dl_handle = NULL;
+    }
 }
 
 static void
-addstr (const char * str)
+addstr (const char *str)
 {
   if (str == NULL)
     {
@@ -2033,7 +2033,7 @@ getch ()
   int timeout = get_timeout ();
   int ret = -1;
 
-  if (timeout == 0) /* temp code for test */
+  if (timeout == 0)		/* temp code for test */
     {
       timeout = 30 * 10000;
     }
@@ -2041,8 +2041,8 @@ getch ()
   tv.tv_sec = timeout / 1000;
   tv.tv_usec = timeout % 1000;
 
-  FD_ZERO(&readfds);
-  FD_SET(fd, &readfds);
+  FD_ZERO (&readfds);
+  FD_SET (fd, &readfds);
 
   ret = select (fd + 1, &readfds, (fd_set *)0, (fd_set *)0, &tv);
 
@@ -2065,7 +2065,7 @@ stdin_noblock ()
 {
   struct termios term;
 
-  if (tcgetattr(fileno (stdin), &term) < 0)
+  if (tcgetattr (fileno (stdin), &term) < 0)
     {
       return -1;
     }
@@ -2077,7 +2077,7 @@ stdin_noblock ()
   term.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
 
   term.c_cc[VMIN] = 0;
-  term.c_cc[VTIME] = 8; /* after a byte or .8 seconds */
+  term.c_cc[VTIME] = 8;		/* after a byte or .8 seconds */
 
   /* put terminal in raw mode after flushing */
   if (tcsetattr (0, TCSAFLUSH, &term) < 0)
@@ -2097,7 +2097,7 @@ get_timeout ()
 static void
 timeout (int delay)
 {
-   Stdin_timer = delay < 0 ? 0 : delay;
+  Stdin_timer = delay < 0 ? 0 : delay;
 }
 
 static void
@@ -2116,9 +2116,9 @@ initscr ()
     {
       sprintf (tinfo_so, "libtinfo.so.%d", major_version);
       if ((dl_handle = dlopen (tinfo_so, RTLD_LAZY)) != NULL)
-        {
-          break;
-        }
+	{
+	  break;
+	}
     }
 
   if (dl_handle == NULL)
@@ -2127,37 +2127,37 @@ initscr ()
       return NULL;
     }
 
-  if ((tgoto = (tgoto_func_t) dlsym(dl_handle, "tgoto")) == NULL)
+  if ((tgoto = (tgoto_func_t) dlsym (dl_handle, "tgoto")) == NULL)
     {
       fprintf (stderr, "ERROR: Cannot find 'tgoto' function in %s.\n", tinfo_so);
       return NULL;
     }
 
-  if ((tgetent = (tgetent_func_t) dlsym(dl_handle, "tgetent")) == NULL)
+  if ((tgetent = (tgetent_func_t) dlsym (dl_handle, "tgetent")) == NULL)
     {
       fprintf (stderr, "ERROR: Cannot find 'tgetent' function in %s.\n", tinfo_so);
       return NULL;
     }
 
-  if ((tgetflag = (tgetflag_func_t) dlsym(dl_handle, "tgetflag")) == NULL)
+  if ((tgetflag = (tgetflag_func_t) dlsym (dl_handle, "tgetflag")) == NULL)
     {
       fprintf (stderr, "ERROR: Cannot find 'tgetflag' function in %s.\n", tinfo_so);
       return NULL;
     }
 
-  if ((tgetnum = (tgetnum_func_t) dlsym(dl_handle, "tgetnum")) == NULL)
+  if ((tgetnum = (tgetnum_func_t) dlsym (dl_handle, "tgetnum")) == NULL)
     {
       fprintf (stderr, "ERROR: Cannot find 'tgetnum' function in %s.\n", tinfo_so);
       return NULL;
     }
 
-  if ((tgetstr = (tgetstr_func_t) dlsym(dl_handle, "tgetstr")) == NULL)
+  if ((tgetstr = (tgetstr_func_t) dlsym (dl_handle, "tgetstr")) == NULL)
     {
       fprintf (stderr, "ERROR: Cannot find 'tgetstr' function in %s.\n", tinfo_so);
       return NULL;
     }
 
-  if ((tputs = (tputs_func_t) dlsym(dl_handle, "tputs")) == NULL)
+  if ((tputs = (tputs_func_t) dlsym (dl_handle, "tputs")) == NULL)
     {
       fprintf (stderr, "ERROR: Cannot find 'tputs' function in %s.\n", tinfo_so);
       return NULL;
