@@ -517,7 +517,11 @@ ini_parse_line (char *input_line, char *section, char *key, char *value)
 	{
 	  sprintf (section, "%c%s", leading_char, ini_str_trim (section + 1));
 	}
-      strcpy (section, ini_str_lower (section));
+
+      if (leading_char != '@')
+	{
+	  strcpy (section, ini_str_lower (section));
+	}
       status = LINE_SECTION;
     }
   else if (sscanf (line, "%[^=] = \"%[^\"]\"", key, value) == 2 || sscanf (line, "%[^=] = '%[^\']'", key, value) == 2
@@ -783,7 +787,7 @@ ini_hassec (const char *key)
  * Note:
  */
 int
-ini_seccmp (const char *key1, const char *key2)
+ini_seccmp (const char *key1, const char *key2, bool ignore_case)
 {
   const char *s1 = strchr (key1, ':');
   const char *s2 = strchr (key2, ':');
@@ -812,7 +816,12 @@ ini_seccmp (const char *key1, const char *key2)
       return 0;
     }
 
-  if (strncasecmp (key1, key2, key1_sec_len) == 0)
+  if (ignore_case && strncasecmp (key1, key2, key1_sec_len) == 0)
+    {
+      return key1_sec_len;
+    }
+
+  if (ignore_case == false && strncmp (key1, key2, key1_sec_len) == 0)
     {
       return key1_sec_len;
     }

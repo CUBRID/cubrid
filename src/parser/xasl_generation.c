@@ -5434,7 +5434,7 @@ pt_make_cselect_access_spec (XASL_NODE * xasl, METHOD_SIG_LIST * method_sig_list
  *   access(in):
  *   attr_list(in):
  */
-static ACCESS_SPEC_TYPE *
+ACCESS_SPEC_TYPE *
 pt_make_dblink_access_spec (ACCESS_METHOD access,
 			    PRED_EXPR * where_pred,
 			    REGU_VARIABLE_LIST pred_list,
@@ -18460,6 +18460,49 @@ outofmem:
 
 }
 
+static XASL_NODE *
+pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * spec)
+{
+  assert (parser != NULL && spec != NULL);
+
+  XASL_NODE *xasl = regu_xasl_node_alloc (INSERT_PROC);
+  if (xasl == NULL)
+    {
+      return NULL;
+    }
+
+  PT_NODE *server_spec = spec->info.spec.remote_server_name;
+  PT_DBLINK_INFO *pdblink = &(server_spec->info.dblink_table);
+
+  assert (server_spec->node_type == PT_DBLINK_TABLE_DML);
+  assert (server_spec->info.dblink_table.is_name);
+
+  if (pdblink->host_vars.count > 0)
+    {
+      pdblink->host_vars.index = (int *) parser_alloc (parser, pdblink->host_vars.count * sizeof (int));
+      if (pdblink->host_vars.index == NULL)
+	{
+	  assert (false);
+	}
+
+      for (int i = 0; i < pdblink->host_vars.count; i++)
+	{
+	  pdblink->host_vars.index[i] = i;
+	}
+    }
+
+  char *sql =
+    (char *) (pdblink->rewritten ? pdblink->rewritten->bytes : pdblink->qstr->info.value.data_value.str->bytes);
+
+  xasl->spec_list =
+    pt_make_dblink_access_spec (ACCESS_METHOD_SEQUENTIAL, NULL, NULL, NULL,
+				(char *) pdblink->url->info.value.data_value.str->bytes,
+				(char *) pdblink->user->info.value.data_value.str->bytes,
+				(char *) pdblink->pwd->info.value.data_value.str->bytes,
+				pdblink->host_vars.count, pdblink->host_vars.index, (char *) sql);
+  return xasl;
+}
+
 /*
  * pt_to_insert_xasl () - Converts an insert parse tree to an XASL tree for insert server execution.
  *
@@ -18492,6 +18535,13 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       statement = parser_walk_tree (parser, statement, pt_null_xasl, NULL, NULL, NULL);
     }
+
+  if (statement->info.insert.spec && statement->info.insert.spec->info.spec.remote_server_name)
+    {
+      return pt_to_xasl_for_dblink (parser, statement->info.insert.spec);
+    }
+
+  char *name = (char *) statement->info.insert.spec->info.spec.entity_name->info.name.original;
 
   has_uniques = statement->info.insert.has_uniques;
   non_null_attrs = statement->info.insert.non_null_attrs;
@@ -20217,6 +20267,11 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   class_specs = statement->info.delete_.class_specs;
   with = statement->info.delete_.with;
 
+  if (from && from->info.spec.remote_server_name)
+    {
+      return pt_to_xasl_for_dblink (parser, from);
+    }
+
   if (from && from->node_type == PT_SPEC && from->info.spec.range_var)
     {
       PT_NODE *select_node, *select_list = NULL;
@@ -20832,6 +20887,11 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
   order_by = statement->info.update.order_by;
   orderby_for = statement->info.update.orderby_for;
   with = statement->info.update.with;
+
+  if (from && from->info.spec.remote_server_name)
+    {
+      return pt_to_xasl_for_dblink (parser, from);
+    }
 
   /* flush all classes */
   p = from;
@@ -25251,11 +25311,18 @@ XASL_NODE *
 pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_upd_attrs,
 		  PT_NODE ** non_null_ins_attrs, PT_NODE * default_expr_attrs)
 {
+  assert (parser != NULL && statement != NULL);
+
   XASL_NODE *xasl, *xptr;
   XASL_NODE *update_xasl = NULL, *insert_xasl = NULL;
   OID *oid = NULL;
   int error = NO_ERROR;
   bool insert_only = (statement->info.merge.flags & PT_MERGE_INFO_INSERT_ONLY);
+
+  if (statement->info.merge.into && statement->info.merge.into->info.spec.remote_server_name)
+    {
+      return pt_to_xasl_for_dblink (parser, statement->info.merge.into);
+    }
 
   xasl = regu_xasl_node_alloc (MERGE_PROC);
   if (xasl == NULL)
