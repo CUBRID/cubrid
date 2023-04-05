@@ -536,7 +536,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprAutoParam(ExprAutoParam node) {
-        return node.getTypeSpec();  // NOTE: unused yet
+        return node.getTypeSpec(); // NOTE: unused yet
     }
 
     @Override
