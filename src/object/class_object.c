@@ -4134,6 +4134,13 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
   SM_ATTRIBUTE **attp;
   const char **namep;
   int i, len, order;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  int new_len = 0;
+  int new_index_start, con_index_start;
+  bool is_uk_new, is_compare_except_dedup_key = false;
+#define IS_TYPE_COMPARE_EXCEPT_DEDUP_KEY(type)  \
+                 (SM_IS_CONSTRAINT_UNIQUE_FAMILY ((type)) || ((type) == DB_CONSTRAINT_FOREIGN_KEY))
+#endif
 
   /* for foreign key, need to check redundancy first */
   if (new_cons == DB_CONSTRAINT_FOREIGN_KEY)
@@ -4172,79 +4179,135 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	}
     }
 
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  is_uk_new = IS_TYPE_COMPARE_EXCEPT_DEDUP_KEY (new_cons);
+#endif
+
   for (cons = cons_list; cons; cons = cons->next)
     {
-      if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type))
+      if (!SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type))
 	{
-	  attp = cons->attributes;
-	  namep = att_names;
-	  assert (namep != NULL);
-	  if (!attp)
-	    {
-	      continue;
-	    }
-	  if (((filter_predicate && !cons->filter_predicate) || (!filter_predicate && cons->filter_predicate))
-	      || ((func_index_info && !cons->func_index_info) || (!func_index_info && cons->func_index_info)))
-	    {
-	      continue;
-	    }
-
-	  len = 0;		/* init */
-	  while (*attp && *namep && !intl_identifier_casecmp ((*attp)->header.name, *namep))
-	    {
-	      attp++;
-	      namep++;
-	      len++;		/* increase name number */
-	    }
-
-	  if (*attp || *namep || classobj_is_possible_constraint (cons->type, new_cons))
-	    {
-	      continue;
-	    }
-
-	  for (i = 0; i < len; i++)
-	    {
-	      /* if not specified, ascending order */
-	      order = (asc_desc ? asc_desc[i] : 0);
-	      assert (order == 0 || order == 1);
-	      if (order != cons->asc_desc[i])
-		{
-		  break;	/* not match */
-		}
-	    }
-
-	  if (i != len)
-	    {
-	      continue;
-	    }
-
-	  if (filter_predicate)
-	    {
-	      if (!filter_predicate->pred_string || !cons->filter_predicate->pred_string)
-		{
-		  continue;
-		}
-
-	      if (strcmp (filter_predicate->pred_string, cons->filter_predicate->pred_string))
-		{
-		  continue;
-		}
-	    }
-
-	  if (func_index_info)
-	    {
-	      /* expr_str are printed tree, identifiers are already lower case */
-	      if ((func_index_info->attr_index_start != cons->func_index_info->attr_index_start)
-		  || (func_index_info->col_id != cons->func_index_info->col_id)
-		  || (func_index_info->fi_domain->is_desc != cons->func_index_info->fi_domain->is_desc)
-		  || (strcmp (func_index_info->expr_str, cons->func_index_info->expr_str) != 0))
-		{
-		  continue;
-		}
-	    }
-
-	  return cons;
+	  continue;
 	}
+      attp = cons->attributes;
+      namep = att_names;
+      assert (namep != NULL);
+      if (!attp)
+	{
+	  continue;
+	}
+      if (((filter_predicate && !cons->filter_predicate) || (!filter_predicate && cons->filter_predicate))
+	  || ((func_index_info && !cons->func_index_info) || (!func_index_info && cons->func_index_info)))
+	{
+	  continue;
+	}
+
+      len = 0;			/* init */
+      while (*attp && *namep && !intl_identifier_casecmp ((*attp)->header.name, *namep))
+	{
+	  attp++;
+	  namep++;
+	  len++;		/* increase name number */
+	}
+
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      is_compare_except_dedup_key = is_uk_new || IS_TYPE_COMPARE_EXCEPT_DEDUP_KEY (cons->type);
+
+      if (func_index_info)
+	{
+	  con_index_start = cons->func_index_info->attr_index_start;
+	  new_index_start = func_index_info->attr_index_start;
+	}
+
+      if (is_compare_except_dedup_key)
+	{
+	  new_len = len;
+	  if (*attp)
+	    {
+	      if (IS_DEDUPLICATE_KEY_ATTR_NAME ((*attp)->header.name))
+		{
+		  attp++;
+		  len++;
+		  con_index_start--;
+		}
+	    }
+
+	  if (*namep)
+	    {
+	      if (IS_DEDUPLICATE_KEY_ATTR_NAME (*namep))
+		{
+		  namep++;
+		  new_len++;
+		  new_index_start--;
+		}
+	    }
+	}
+#endif
+
+      if (*attp || *namep || classobj_is_possible_constraint (cons->type, new_cons))
+	{
+	  continue;
+	}
+
+      for (i = 0; i < len; i++)
+	{
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	  if (is_compare_except_dedup_key)
+	    {
+	      if (i >= new_len)
+		{
+		  if ((i + 1) == len)
+		    {
+		      i++;	/* set matched */
+		    }
+		  break;
+		}
+	    }
+#endif
+	  /* if not specified, ascending order */
+	  order = (asc_desc ? asc_desc[i] : 0);
+	  assert (order == 0 || order == 1);
+	  if (order != cons->asc_desc[i])
+	    {
+	      break;		/* not match */
+	    }
+	}
+
+      if (i != len)
+	{
+	  continue;
+	}
+
+      if (filter_predicate)
+	{
+	  if (!filter_predicate->pred_string || !cons->filter_predicate->pred_string)
+	    {
+	      continue;
+	    }
+
+	  if (strcmp (filter_predicate->pred_string, cons->filter_predicate->pred_string))
+	    {
+	      continue;
+	    }
+	}
+
+      if (func_index_info)
+	{
+	  /* expr_str are printed tree, identifiers are already lower case */
+	  if ((func_index_info->col_id != cons->func_index_info->col_id)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE) && defined(NEW_DEV)
+	      || (new_index_start != con_index_start)
+#else
+	      || (func_index_info->attr_index_start != cons->func_index_info->attr_index_start)
+#endif
+	      || (func_index_info->fi_domain->is_desc != cons->func_index_info->fi_domain->is_desc)
+	      || (strcmp (func_index_info->expr_str, cons->func_index_info->expr_str) != 0))
+	    {
+	      continue;
+	    }
+	}
+
+      return cons;
     }
 
   return cons;
@@ -8039,7 +8102,7 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj, SM_COMPONENT * com
  *          share  : share index with existed index;
  *          new idx: create new index;
  *          error  : not share index and return error msg.
- *      3. filter_predicate and func_index_info were checked in classbj_find_constraint_by_attors().
+ *      3. filter_predicate and func_index_info were checked in classobj_find_constraint_by_attrs().
  *      4. The fact that existing_con is not NULL means that there are the same indexes, 
  *         from the count and order of attributes, order direction, function index composition, and filter conditions.
  * +---------------+-------------------------------------------------------+
