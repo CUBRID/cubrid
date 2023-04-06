@@ -168,25 +168,25 @@ public class SymbolStack {
 
     private static DeclFunc getPredefinedFunc(
             Map<String, OverloadedFunc> map, String name, TypeSpec... argTypes) {
-        OverloadedFunc overload = map.get(name);
-        if (overload == null) {
+        OverloadedFunc overloads = map.get(name);
+        if (overloads == null) {
             return null;
         } else {
-            return overload.get(Arrays.asList(argTypes));
+            return overloads.get(Arrays.asList(argTypes));
         }
     }
 
     private static void putPredefinedFunc(
             Map<String, OverloadedFunc> map, String name, DeclFunc df) {
 
-        OverloadedFunc overload = map.get(name);
-        if (overload == null) {
-            overload = new OverloadedFunc();
-            map.put(name, overload);
+        OverloadedFunc overloads = map.get(name);
+        if (overloads == null) {
+            overloads = new OverloadedFunc();
+            map.put(name, overloads);
         }
 
         df.setScope(predefinedSymbols.scope);
-        overload.put(df);
+        overloads.put(df);
     }
 
     // -----------------------------------------------------------------------------
@@ -419,12 +419,7 @@ public class SymbolStack {
     // OverloadedFunc class corresponds to operators (+, -, etc) and system provided functions
     // (substr, trim, etc)
     // which can be overloaded unlike user defined procedures and functions.
-    // It implements DeclId in order to be inserted ids map for system provided functions.
-    private static class OverloadedFunc extends Decl {
-
-        OverloadedFunc() {
-            super(null);
-        }
+    private static class OverloadedFunc {
 
         private final Map<List<TypeSpec>, DeclFunc> overloads =
                 new HashMap<>(); // (arg types --> func decl) map
@@ -449,24 +444,6 @@ public class SymbolStack {
                 }
             }
             return ret;
-        }
-
-        // TODO: separate Symbol from AstNode. Remove 'extends Decl' and the following methods
-        @Override
-        public <R> R accept(AstVisitor<R> visitor) {
-            assert false : "unreachable";
-            throw new RuntimeException("unreachable");
-        }
-
-        @Override
-        public String kind() {
-            return "operator";
-        }
-
-        @Override
-        public String toJavaCode() {
-            assert false : "unreachable";
-            throw new RuntimeException("unreachagle");
         }
     }
 }

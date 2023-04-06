@@ -62,7 +62,7 @@ public enum CoercionScheme {
         }
     },
 
-    BitwiseOperator {
+    BitOperator {
         public List<Coerce> getCoercions(List<TypeSpec> argTypes, List<TypeSpec> paramTypes) {
             return null;    // TODO
         }

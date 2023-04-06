@@ -2061,7 +2061,7 @@ public class SpLib {
 
     // ====================================
     // <<
-    @Operator(coercionScheme=CoercionScheme.BitwiseOperator)
+    @Operator(coercionScheme=CoercionScheme.BitOperator)
     public static Long opBitShiftLeft(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -2071,7 +2071,7 @@ public class SpLib {
 
     // ====================================
     // >>
-    @Operator(coercionScheme=CoercionScheme.BitwiseOperator)
+    @Operator(coercionScheme=CoercionScheme.BitOperator)
     public static Long opBitShiftRight(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -2081,7 +2081,7 @@ public class SpLib {
 
     // ====================================
     // &
-    @Operator(coercionScheme=CoercionScheme.BitwiseOperator)
+    @Operator(coercionScheme=CoercionScheme.BitOperator)
     public static Long opBitAnd(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -2091,7 +2091,7 @@ public class SpLib {
 
     // ====================================
     // ^
-    @Operator(coercionScheme=CoercionScheme.BitwiseOperator)
+    @Operator(coercionScheme=CoercionScheme.BitOperator)
     public static Long opBitXor(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -2101,7 +2101,7 @@ public class SpLib {
 
     // ====================================
     // |
-    @Operator(coercionScheme=CoercionScheme.BitwiseOperator)
+    @Operator(coercionScheme=CoercionScheme.BitOperator)
     public static Long opBitOr(Long l, Long r) {
         if (l == null || r == null) {
             return null;
