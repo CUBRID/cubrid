@@ -5811,8 +5811,11 @@ boot_define_view_index_key (void)
 	  "[%s] AS [k] "
 	"WHERE "
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-          "[k].[key_attr_name] NOT LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN
-          "AND ("
+          "("
+              "[k].[key_attr_name] IS NULL " 
+              "OR [k].[key_attr_name] NOT LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN
+          ")"
+          " AND ("
 #endif        
 	      "{'DBA'} SUBSETEQ ("
 		  "SELECT "
