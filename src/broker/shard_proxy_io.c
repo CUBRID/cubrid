@@ -3626,8 +3626,6 @@ proxy_cas_alloc_by_ctx (int client_id, int shard_id, int cas_id, int ctx_cid, un
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Invalid shard/CAS id is requested. " "(shard_id:%d, cas_id:%d). ", shard_id,
 		 cas_id);
 
-      assert (false);
-
       return NULL;
     }
 
