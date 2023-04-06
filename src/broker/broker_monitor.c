@@ -547,6 +547,11 @@ main (int argc, char **argv)
 #else
       if ((win = initscr ()) == NULL)
 	{
+	  if (dl_handle != NULL)
+	    {
+	      dlclose (dl_handle);
+	      dl_handle = NULL;
+	    }
 	  fprintf (stderr, "fail to initialize tinfo library\n");
 	  return 127;
 	}
