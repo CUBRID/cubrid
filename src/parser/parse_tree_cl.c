@@ -12605,8 +12605,18 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
   PT_NODE *crt_list = NULL;
   bool is_first_list = true, multiple_values_insert = false;
 
+  // TODO: [PL/CSQL] need refactoring
+  unsigned int save_custom = parser->custom_print;
+  if (parser->flag.is_parsing_static_sql == 1)
+    {
+      parser->custom_print |= PT_SUPPRESS_RESOLVED;
+      parser->custom_print & ~PT_PRINT_ALIAS;
+    }
+
   r1 = pt_print_bytes (parser, p->info.insert.spec);
   r2 = pt_print_bytes_l (parser, p->info.insert.attr_list);
+
+  parser->custom_print = save_custom;
 
   if (p->info.insert.is_subinsert == PT_IS_SUBINSERT)
     {
