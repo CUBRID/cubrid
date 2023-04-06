@@ -186,7 +186,8 @@ static PT_NODE *mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node, v
 static PT_NODE *mq_rewrite_agg_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static bool mq_conditionally_add_objects (PARSER_CONTEXT * parser, PT_NODE * flat, DB_OBJECT *** classes, int *index,
 					  int *max);
-static PT_UPDATABILITY mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** classes, int *i);
+static PT_UPDATABILITY mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** classes, int *i,
+					   int *max);
 static PT_NODE *mq_substitute_select_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec,
 						   PT_NODE * class_);
 static PT_NODE *mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
@@ -3790,6 +3791,7 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
   PARSER_VARCHAR *rewritten = NULL;
   PARSER_VARCHAR *pushed_pred, *query_str, *col_list;
   unsigned int save_custom;
+  int max_pred_order;
 
   if (query == NULL || term_list == NULL)
     {
@@ -3817,6 +3819,10 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 	}
       else
 	{
+	  /* Set predicates to be evaluated first */
+	  max_pred_order = pt_get_max_pred_order (parser, push_term_list);
+	  pt_set_pred_order (parser, query->info.query.q.select.where, max_pred_order + 1);
+
 	  /* push into WHERE clause */
 	  query->info.query.q.select.where = parser_append_node (push_term_list, query->info.query.q.select.where);
 	}
@@ -5335,6 +5341,13 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 	  flat = from->info.spec.flat_entity_list;
 	  if (flat == NULL)
 	    {
+	      if (from_spec->remote_server_name)
+		{
+		  assert (from_spec->remote_server_name->node_type == PT_DBLINK_TABLE_DML);
+		  last = &temp->next;
+		  continue;
+		}
+
 	      assert (false);
 	      return NULL;
 	    }
@@ -9924,6 +9937,10 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 	{
 	  (*where_part)->info.expr.paren_type = 1;
 	}
+
+      /* Set predicates to be evaluated first */
+      pt_set_pred_order (parser, class_where_part, 1);
+
       /* The "where clause" is in the form of a list of CNF "and" terms. In order to "and" together the view's "where
        * clause" with the statement's, we must maintain this list of terms. Using a 'PT_AND' node here will have the
        * effect of losing the "and" terms on the tail of either list. */
@@ -10586,6 +10603,9 @@ mq_inline_view_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * d
 	{
 	  (*where_part)->info.expr.paren_type = 1;
 	}
+      /* Set predicates to be evaluated first */
+      pt_set_pred_order (parser, class_where_part, 1);
+
       /* The "where clause" is in the form of a list of CNF "and" terms. In order to "and" together the view's "where
        * clause" with the statement's, we must maintain this list of terms. Using a 'PT_AND' node here will have the
        * effect of losing the "and" terms on the tail of either list. */

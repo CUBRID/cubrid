@@ -92,6 +92,7 @@ $ These 3 should be blank
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 Too few arguments given.\n
 
 145 <Help: Schema of a Class>
 146 none
@@ -112,6 +113,7 @@ $ These 3 should be blank
 194 Invalid combination of command line arguments (options).
 196 An undefined error has occurred.
 197 ';edit' is not allowed when output has been redirected.
+198 Format failed.
 
 203 <%1$s> 
 204 <Super Classes> 
@@ -153,7 +155,7 @@ $ csql help messages
    ;EXit                        - exit program.\n\
 \n\
    ;CLear                       - clear command buffer.\n\
-   ;EDIT                        - invoke system editor with command buffer.\n\
+   ;EDIT   [format/fmt]         - invoke system editor [after formatter] with command buffer.\n\
    ;LISt                        - display the content of command buffer.\n\
 \n\
    ;RUn                         - execute sql in command buffer.\n\
@@ -162,12 +164,15 @@ $ csql help messages
    ;COMmit                      - commit the current transaction.\n\
    ;ROllback                    - roll back the current transaction.\n\
    ;AUtocommit [ON|OFF]         - enable/disable auto commit mode.\n\
-   ;REStart                     - restart database.\n\
+   ;REStart                     - reconnect to the current database in a CSQL session.\n\
+   ;CHeckpoint                  - execute the checkpoint(CSQL with --sysadm only).\n\
+   ;Killtran                    - check transaction status information or end a specific transaction.(CSQL with --sysadm only).\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - set default shell, editor, print and pager\n\
-   ;EDITOR_Cmd   [editor-cmd]     command to new one, or display the current\n\
-   ;PRINT_Cmd    [print-cmd]      one, respectively.\n\
-   ;PAger_cmd    [pager-cmd]\n\
+   ;SHELL_Cmd     [shell-cmd]   - set default shell, editor, print, pager and formatter\n\
+   ;EDITOR_Cmd    [editor-cmd]    command to new one, or display the current\n\
+   ;PRINT_Cmd     [print-cmd]     one, respectively.\n\
+   ;PAger_cmd     [pager-cmd]\n\
+   ;FOrmatter_cmd [formatter-cmd]\n\
 \n\
    ;DATE                        - display the local time, date.\n\
    ;DATAbase                    - display the name of database being accessed.\n\
@@ -186,6 +191,12 @@ $ csql help messages
    ;HISTORYRead <history_num>   - read entry on the history number into command buffer.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - enable/disable single-line mode.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - connect to the current or other databases as a username.\n\
+   ;.Hist [ON/OFF]              - start/stop collecting statistics information in CSQL(available DBA only).\n\
+   ;.Clear_hist                 - clear the CSQL statistics information in the buffer.\n\
+   ;.Dump_hist                  - display the CSQL statistics information in CSQL.\n\
+   ;.X_hist                     - display the CSQL statistics information in CSQL with statistics data initialized.\n\
    ;HElp                        - display this help message.\n\n
 
 232 <Constraints> 

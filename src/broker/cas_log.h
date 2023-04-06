@@ -33,6 +33,15 @@ typedef enum
   ACL_REJECTED
 } ACCESS_LOG_TYPE;
 
+typedef enum
+{
+  CAS_LOG_FD_NONE,
+  CAS_LOG_FD_OPENING,
+  CAS_LOG_FD_OPENED,
+  CAS_LOG_FD_CLOSING,
+  CAS_LOG_FD_CLOSED
+} CAS_LOG_FD_STATUS;
+
 extern void cas_log_open (char *br_name);
 extern void cas_log_reset (char *br_name);
 extern void cas_log_close (bool flag);
@@ -51,7 +60,14 @@ extern void cas_log_write2 (const char *fmt, ...);
 extern void cas_log_write_value_string (char *value, int size);
 extern void cas_log_write_query_string (char *query, int size, int *pwd_offset_ptr);
 extern void cas_log_write_client_ip (const unsigned char *ip_addr);
+#if 1				// ctshim
 extern void cas_log_write_query_string_nonl (char *query, int size, int *pwd_offset_ptr);
+#else
+extern void cas_log_write_query_string_nonl (char *query, int size);
+#endif
+extern void cas_log_open_and_write (char *br_name, unsigned int seq_num, bool unit_start, const char *fmt, ...);
+extern CAS_LOG_FD_STATUS cas_log_get_fd_status (void);
+
 
 #define ARG_FILE_LINE   __FILE__, __LINE__
 #if defined (NDEBUG)

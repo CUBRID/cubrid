@@ -92,6 +92,7 @@ $ These 3 should be blank
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 指定された引数が少なすぎます。
 
 145 <ヘルプ: クラススキーマ>
 146 なし
@@ -112,6 +113,7 @@ $ These 3 should be blank
 194 コマンドオプションが正しくありません。
 196 正義されていないエラー発生。
 197 出力が再指定された場合、「;edit」コマンドは使えません。
+198 フォーマットに失敗しました。
 
 203 <%1$s> 
 204 <上位クラス> 
@@ -153,7 +155,7 @@ $ csql help messages
    ;EXit                        - 終了。\n\
 \n\
    ;CLear                       - コマンドバッファーの内容を消す。\n\
-   ;EDIT                        - コマンドバッファーを編集。\n\
+   ;EDIT   [format/fmt]         - コマンドバッファを使用して[フォーマッタの後に]システムエディタを呼び出します。\n\
    ;LISt                        - コマンドバッファーの内容を出力。\n\
 \n\
    ;RUn                         - コマンドバッファーを実行。\n\
@@ -162,12 +164,15 @@ $ csql help messages
    ;COMmit                      - 進行中のトランザクションをコミット。\n\
    ;ROllback                    - 進行中のトランザクションをロールバック。\n\
    ;AUtocommit [ON|OFF]         - 自動コミットモードを設定。／解除。\n\
-   ;REStart                     - データベースリスタート。\n\
+   ;REStart                     - CSQL セッションで現在のデータベースに再接続します。\n\
+   ;CHeckpoint                  - チェックポイントを実行します (--sysadm を指定した CSQL のみ)。\n\
+   ;Killtran                    - トランザクションステータス情報を確認するか、特定のトランザクションを終了します (--sysadm を指定した CSQL のみ)。\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - 既存に設定したシェルを設定／表示する。\n\
-   ;EDITOR_Cmd   [editor-cmd]   - 既存に設定したエディターを設定／表示する。\n\
-   ;PRINT_Cmd    [print-cmd]    - 既存に設定したプリントを設定／表示する。\n\
-   ;PAger_cmd    [pager-cmd]    - 既存に設定したページャーを設定／表示する。\n\
+   ;SHELL_Cmd     [shell-cmd]   - 既存に設定したシェルを設定／表示する。\n\
+   ;EDITOR_Cmd    [editor-cmd]  - 既存に設定したエディターを設定／表示する。\n\
+   ;PRINT_Cmd     [print-cmd]   - 既存に設定したプリントを設定／表示する。\n\
+   ;PAger_cmd     [pager-cmd]   - 既存に設定したページャーを設定／表示する。\n\
+   ;FOrmatter_cmd [formatter-cmd] - 既存に設定したフォーマッタを設定/表示する。\n\
 \n\
    ;DATE                        - 地域の日付、時間を出力。\n\
    ;DATAbase                    - アクセスしているデータベース名を出力。\n\
@@ -186,6 +191,12 @@ $ csql help messages
    ;HISTORYRead <history_num>   - ヒストリー番号のクエリをコマンドバッファーにセーブする。\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - 単線モードの有効化/無効化.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - ユーザー名として現在のデータベースまたは他のデータベースに接続します。\n\
+   ;.Hist [ON/OFF]              - CSQL で統計情報の収集を開始/停止します (DBA のみ利用可能)。\n\
+   ;.Clear_hist                 - バッファ内の CSQL 統計情報をクリアします。\n\
+   ;.Dump_hist                  - CSQL 統計情報を CSQL で表示します。\n\
+   ;.X_hist                     - 統計データが初期化された CSQL で CSQL 統計情報を表示します。\n\
    ;HElp                        - ヘルプメッセージ出力。\n\n
 
 232 <制約事項> 

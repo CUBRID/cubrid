@@ -94,6 +94,7 @@ static char cas_log_error_flag;
 static FILE *log_fp = NULL, *slow_log_fp = NULL;
 static char log_filepath[BROKER_PATH_MAX], slow_log_filepath[BROKER_PATH_MAX];
 static INT64 saved_log_fpos = 0;
+static CAS_LOG_FD_STATUS cas_log_fd_status = CAS_LOG_FD_NONE;
 
 static size_t cas_fwrite (const void *ptr, size_t size, size_t nmemb, FILE * stream);
 static INT64 cas_ftell (FILE * stream);
@@ -184,6 +185,7 @@ cas_log_open (char *br_name)
 	}
 
       /* note: in "a+" mode, output is always appended */
+      cas_log_fd_status = CAS_LOG_FD_OPENING;
       log_fp = cas_fopen (log_filepath, "r+");
       if (log_fp != NULL)
 	{
@@ -200,6 +202,7 @@ cas_log_open (char *br_name)
 	{
 	  setvbuf (log_fp, sql_log_buffer, _IOFBF, SQL_LOG_BUFFER_SIZE);
 	}
+      cas_log_fd_status = CAS_LOG_FD_OPENED;
     }
   else
     {
@@ -244,7 +247,9 @@ cas_log_close (bool flag)
 	  cas_fseek (log_fp, saved_log_fpos, SEEK_SET);
 	  cas_ftruncate (cas_fileno (log_fp), saved_log_fpos);
 	}
+      cas_log_fd_status = CAS_LOG_FD_CLOSING;
       cas_fclose (log_fp);
+      cas_log_fd_status = CAS_LOG_FD_CLOSED;
       log_fp = NULL;
       saved_log_fpos = 0;
     }
@@ -556,6 +561,52 @@ cas_log_write_and_end (unsigned int seq_num, bool unit_start, const char *fmt, .
       cas_log_end (SQL_LOG_MODE_ALL, -1, -1);
     }
 
+}
+
+void
+cas_log_open_and_write (char *br_name, unsigned int seq_num, bool unit_start, const char *fmt, ...)
+{
+  FILE *fp = NULL;
+  va_list ap;
+
+  if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
+    {
+      if (log_filepath[0] == '\0')
+	{
+	  if (br_name != NULL)
+	    {
+	      make_sql_log_filename (FID_SQL_LOG_DIR, log_filepath, BROKER_PATH_MAX, br_name);
+	    }
+	  else
+	    {
+	      return;
+	    }
+	}
+
+      fp = cas_fopen (log_filepath, "a");
+      if (fp == NULL)
+	{
+	  fp = cas_fopen (log_filepath, "w");
+	  if (fp == NULL)
+	    {
+	      return;
+	    }
+	}
+
+      va_start (ap, fmt);
+      cas_log_write_internal (fp, NULL, seq_num, (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL), fmt, ap);
+      va_end (ap);
+      cas_fputc ('\n', fp);
+
+      fclose (fp);
+      fp = NULL;
+    }
+}
+
+CAS_LOG_FD_STATUS
+cas_log_get_fd_status (void)
+{
+  return cas_log_fd_status;
 }
 
 static void

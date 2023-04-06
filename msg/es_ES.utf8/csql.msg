@@ -92,6 +92,7 @@ $ Estos 3 deberian ser vacias.
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 Se han dado muy pocos argumentos.
 
 145 <Ayuda: Esquema de una Clase>
 146 ninguna
@@ -112,6 +113,7 @@ $ Estos 3 deberian ser vacias.
 194 Combinacion no valida de argumentos de linea de comando (opciones).
 196 Un error no definido ha ocurrido.
 197 ';edit' no es permitido cuando salida ha sido redireccionada.
+198 Error en el formato.
 
 203 <%1$s> 
 204 <Super Clases> 
@@ -153,7 +155,7 @@ $ csql help messages
    ;EXit                        - salir del programa.\n\
 \n\
    ;CLear                       - limpia bufer de comando.\n\
-   ;EDIT                        - invocar editor de sistema con bufer de comando.\n\
+   ;EDIT   [format/fmt]         - invoque el editor del sistema [después del formateador] con el búfer de comandos.\n\
    ;LISt                        - mostrar el contenido del bufer de comando.\n\
 \n\
    ;RUn                         - ejecutar sql en bufer de comando.\n\
@@ -162,12 +164,15 @@ $ csql help messages
    ;COMmit                      - cometer transaccion actual.\n\
    ;ROllback                    - hacer retroceder la transaccion actual.\n\
    ;AUtocommit [ON|OFF]         - habilitar / deshabilitar modo cometer auto.\n\
-   ;REStart                     - reinicializar base de datos.\n\
+   ;REStart                     - volver a conectarse a la base de datos actual en una sesión de CSQL.\n\
+   ;CHeckpoint                  - ejecutar el punto de control(CSQL solo con --sysadm).\n\
+   ;Killtran                    - verifique la información del estado de la transacción o finalice una transacción específica(CSQL solo con --sysadm).\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - ajusta estandar shell, editor, impresora y pager\n\
-   ;EDITOR_Cmd   [editor-cmd]     comandar a una nueva, o mostrar la actual\n\
-   ;PRINT_Cmd    [print-cmd]      respectivamente.\n\
-   ;PAger_cmd    [pager-cmd]\n\
+   ;SHELL_Cmd     [shell-cmd]   - ajusta estandar shell, editor, impresora, pager y formateador\n\
+   ;EDITOR_Cmd    [editor-cmd]    comandar a una nueva, o mostrar la actual\n\
+   ;PRINT_Cmd     [print-cmd]     respectivamente.\n\
+   ;PAger_cmd     [pager-cmd]\n\
+   ;FOrmatter_cmd [formatter-cmd]\n\
 \n\
    ;DATE                        - mostrar el tiempo local, fecha.\n\
    ;DATAbase                    - mostrar el nombre de la base de datos que esta accesada.\n\
@@ -186,6 +191,12 @@ $ csql help messages
    ;HISTORYRead <history_num>   - leer entrada sobre el numero de historia en bufer de comando.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - habilitar/deshabilitar el modo de una sola línea.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - conectarse a la base de datos actual o de otro tipo como nombre de usuario.\n\
+   ;.Hist [ON/OFF]              - iniciar/detener la recopilación de información estadística en CSQL (solo DBA disponible).\n\
+   ;.Clear_hist                 - borre la información de estadísticas de CSQL en el búfer.\n\
+   ;.Dump_hist                  - muestra la información de estadísticas de CSQL en CSQL.\n\
+   ;.X_hist                     - muestra la información de estadísticas de CSQL en CSQL con datos de estadísticas inicializados.\n\
    ;HElp                        - mostrar este mensaje de ayuda.\n\n
 
 232 <Restricciones>
