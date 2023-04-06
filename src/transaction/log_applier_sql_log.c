@@ -652,12 +652,11 @@ sl_remove_oldest_file (void)
  * sl_create_sql_log_dir() - verify and create the SQL log path
  *   return: NO_ERROR or ER_FAILED
  *     repl_log_path(in): log volume path for apply (default path)
- *     path_buf(out): SQL log path
- *     path_buf_size(in): path_buf size
+ *     path_buf(out): SQL log path buffer
+ *     path_buf_size(in): buffer size
  *
  * Note:
- *   This function is related to the ha_sql_log_path system parameter.
- *   The SQL log path can be changed by setting this. If the path set in it fails to verify, then the default path is used.
+ *   This function is related to the ha_sql_log_path system parameter. The SQL log path can be changed by setting this.
  */
 static int
 sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_size)
@@ -665,7 +664,7 @@ sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_s
   int path_len;
   const char *log_path = NULL;
   char *p = NULL;
-  char tmp_log_path[PATH_MAX], er_msg[PATH_MAX];
+  char er_msg[PATH_MAX];
 
   assert (repl_log_path != NULL && path_buf != NULL && path_buf_size >= PATH_MAX);
 
@@ -674,32 +673,9 @@ sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_s
     {
       if (!IS_ABS_PATH (log_path))
 	{
-	  snprintf (tmp_log_path, sizeof (tmp_log_path), "%s%s%s", repl_log_path, FILEIO_PATH_SEPARATOR (repl_log_path),
-		    log_path);
+	  snprintf (path_buf, path_buf_size, "%s%s%s", repl_log_path, FILEIO_PATH_SEPARATOR (repl_log_path), log_path);
 
-	  log_path = tmp_log_path;
-	}
-
-      /*
-       * NOTE: the purpose of the realpath() call
-       *   1. convert a relative path to an absolute path
-       *   2. convert a symbolic link to a real path
-       *   3. check the existence of the path(log_path var)
-       */
-      log_path = realpath (log_path, path_buf);
-      if (log_path == NULL)
-	{
-	  snprintf (er_msg, sizeof (er_msg),
-		    "Invalid path \'%s\' is set to the %s (%s); The default path \'%s\' is used",
-		    prm_get_string_value (PRM_ID_HA_SQL_LOG_PATH), prm_get_name (PRM_ID_HA_SQL_LOG_PATH),
-		    strerror (errno), repl_log_path);
-
-	  er_stack_push ();
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, er_msg);
-	  er_stack_pop ();
-
-	  // NOTE: The default path is used; the path set in the ha_sql_log_path is ignored.
-	  log_path = repl_log_path;
+	  log_path = path_buf;
 	}
     }
   else
@@ -707,7 +683,7 @@ sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_s
       log_path = repl_log_path;
     }
 
-  if (log_path == path_buf)	// when the realpath() call succeeds
+  if (log_path == path_buf)
     {
       path_len = strlen (log_path);
 
@@ -743,18 +719,21 @@ sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_s
 	  *p = '\0';
 	}
 
-      if (access (path_buf, F_OK) < 0)
+      if (strcmp (basename (path_buf), ".") && strcmp (basename (path_buf), ".."))
 	{
-	  if (mkdir (path_buf, 0777) < 0)
+	  if (access (path_buf, F_OK) < 0)
 	    {
-	      snprintf (er_msg, sizeof (er_msg), "Failed to create SQL log directory \'%s\' (%s)", path_buf,
-			strerror (errno));
+	      if (mkdir (path_buf, 0777) < 0)
+		{
+		  snprintf (er_msg, sizeof (er_msg), "Failed to create SQL log directory \'%s\' (%s)", path_buf,
+			    strerror (errno));
 
-	      er_stack_push ();
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, er_msg);
-	      er_stack_pop ();
+		  er_stack_push ();
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, er_msg);
+		  er_stack_pop ();
 
-	      return ER_FAILED;
+		  return ER_FAILED;
+		}
 	    }
 	}
 
