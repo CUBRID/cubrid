@@ -535,9 +535,12 @@ extern "C"
   extern bool pt_has_order_sensitive_agg (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_inst_or_orderby_num (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_inst_num (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_has_expr_of_inst_in_sel_list (PARSER_CONTEXT * parser, PT_NODE * select_list);
   extern bool pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_inst_or_orderby_num_in_where (PARSER_CONTEXT * parser, PT_NODE * node);
   extern void pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level);
+  extern void pt_set_pred_order (PARSER_CONTEXT * parser, PT_NODE * pre_pred, int pre_order);
+  extern int pt_get_max_pred_order (PARSER_CONTEXT * parser, PT_NODE * pred);
   extern bool pt_has_nullable_term (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_define_vars (PARSER_CONTEXT * parser, PT_NODE * stmt);
   extern PT_NODE *pt_is_define_vars (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -677,6 +680,12 @@ extern "C"
   extern const char *pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * name);
   extern const char *pt_get_name_with_qualifier_removed (const char *name);
   extern const char *pt_get_name_without_current_user_name (const char *name);
+
+  extern void pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt);
+  extern PT_NODE *pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+
+  extern int pt_resolve_server_names (PARSER_CONTEXT * parser, PT_NODE * spec);
+
 #ifdef __cplusplus
 }
 #endif

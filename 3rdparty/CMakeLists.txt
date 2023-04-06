@@ -19,7 +19,7 @@ set(WITH_FLEX_URL "https://github.com/westes/flex/files/981163/flex-2.6.4.tar.gz
 set(WITH_BISON_URL "https://ftp.gnu.org/gnu/bison/bison-3.4.1.tar.gz") # bison
 set(WITH_LIBEXPAT_URL "https://github.com/libexpat/libexpat/releases/download/R_2_2_5/expat-2.2.5.tar.bz2") # expat library sources URL
 set(WITH_LIBJANSSON_URL "http://www.digip.org/jansson/releases/jansson-2.10.tar.gz")                        # jansson library sources URL
-set(WITH_LIBEDIT_URL "http://thrysoee.dk/editline/libedit-20170329-3.1.tar.gz")                             # editline library sources URL
+set(WITH_LIBEDIT_URL "https://github.com/CUBRID/libedit/archive/refs/tags/csql_v1.0.tar.gz")                             # editline library sources URL
 set(WITH_RAPIDJSON_URL "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz")                        # rapidjson library sources URL
 set(WITH_LIBOPENSSL_URL "https://www.openssl.org/source/old/1.1.1/openssl-1.1.1f.tar.gz")                   # openssl library sources URL
 set(WITH_LIBUNIXODBC_URL "https://ftp.osuosl.org/pub/blfs/conglomeration/unixODBC/unixODBC-2.3.9.tar.gz")                                   # unixODBC library sources URL
@@ -38,7 +38,6 @@ endif()
 set(WITH_LIBEXPAT     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with expat library (default: EXTERNAL)")
 set(WITH_LIBJANSSON   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with jansson library (default: EXTERNAL)")
 set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editline library (default: EXTERNAL)")
-set(WITH_LIBNCURSES   "${WITH_SYSTEM_PREFIX}" CACHE STRING "Build with ncurses library (default: SYSTEM)")
 set(WITH_LIBOPENSSL   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with openssl library (default: EXTERNAL)")
 set(WITH_LIBUNIXODBC  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with unixODBC library (default: EXTERNAL)")
 set(WITH_RE2          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with re2 library (default: EXTERNAL)")
@@ -47,7 +46,6 @@ message(STATUS "Build with flex and bison library: ${WITH_LIBFLEXBISON}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
 message(STATUS "Build with jansson library: ${WITH_LIBJANSSON}")
 message(STATUS "Build with editline library: ${WITH_LIBEDIT}")
-message(STATUS "Build with Curses library: ${WITH_LIBNCURSES}")
 message(STATUS "Build with openssl library: ${WITH_LIBOPENSSL}")
 message(STATUS "Build with unixODBC library: ${WITH_LIBUNIXODBC}")
 message(STATUS "Build with RE2 library: ${WITH_RE2}")
@@ -243,43 +241,6 @@ endif()
 list(APPEND EP_INCLUDES ${LIBJANSSON_INCLUDES})
 list(APPEND EP_LIBS ${LIBJANSSON_LIBS})
 
-# WITH_LIBNCURSES can have multiple values with different meanings
-# on Linux:
-# * "SYSTEM"   - uses ncurses installed in the system (for more info check https://cmake.org/cmake/help/v3.10/module/FindCurses.html)
-if(UNIX)
-  include (CheckLibraryExists)
-  set(LIBNCURSES_TARGET libncurses)
-  if(WITH_LIBNCURSES STREQUAL "SYSTEM")
-    include(FindCurses)
-    find_package(Curses REQUIRED)
-    CHECK_LIBRARY_EXISTS("${CURSES_LIBRARIES}" wtimeout "" LIBNCURSES_HAS_WTIMEOUT)
-    if(NOT LIBNCURSES_HAS_WTIMEOUT)
-      message(STATUS "search for tinfo library")
-      find_library(TINFO_LIBRARY NAMES tinfo)
-      if(TINFO_LIBRARY)
-        message(STATUS "found tinfo library")
-        CHECK_LIBRARY_EXISTS("${TINFO_LIBRARY}" wtimeout "" TINFO_HAS_WTIMEOUT)
-        if(TINFO_HAS_WTIMEOUT)
-          set(CURSES_LIBRARIES ${CURSES_LIBRARIES} ${TINFO_LIBRARY})
-        else(TINFO_HAS_WTIMEOUT)
-          message(FATAL_ERROR "tinfo library does not have wtimeout")
-        endif(TINFO_HAS_WTIMEOUT)
-      else(TINFO_LIBRARY)
-        message(FATAL_ERROR "no tinfo library")
-      endif(TINFO_LIBRARY)
-    endif(NOT LIBNCURSES_HAS_WTIMEOUT)
-  else(WITH_LIBNCURSES STREQUAL "SYSTEM")
-    message(FATAL_ERROR "Invalid WITH_LIBNCURSES option value ${WITH_LIBNCURSES}")
-  endif(WITH_LIBNCURSES STREQUAL "SYSTEM")
-  
-  set(LIBNCURSES_INCLUDES "${CURSES_INCLUDE_DIRS}")
-  if (NOT DEFINED ${LIBNCURSES_INCLUDES})
-    set(LIBNCURSES_INCLUDES "${CURSES_INCLUDE_DIR}") # backward compatibility
-  endif (NOT DEFINED ${LIBNCURSES_INCLUDES})
-  set(LIBNCURSES_LIBS "${CURSES_LIBRARIES}")
-endif(UNIX)
-
-
 # WITH_LIBEDIT can have multiple values with different meanings
 # on Linux:
 # * "EXTERNAL" - (default) builds editline library from URL stored in ${WITH_LIBEDIT_URL} uses the library created by the build
@@ -301,7 +262,7 @@ if(UNIX)
       LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
+      CONFIGURE_COMMAND    "LDFLAGS=-L${3RDPARTY_LIBS_DIR}" ${DEFAULT_CONFIGURE_OPTS} LIBS=-ldl
       BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBEDIT_BYPRODUCTS}"

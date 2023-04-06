@@ -254,7 +254,6 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
   T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
-  char *admin_log2;
 
   if (br_num <= 0)
     {
@@ -275,11 +274,20 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 
   if (admin_log_file != NULL)
     {
-      admin_log2 = strdup (admin_log_file);
-      if (admin_log2)
+      char buf[BROKER_PATH_MAX] = { 0, };
+
+#if defined (WINDOWS)
+      if (_fullpath (buf, admin_log_file, BROKER_PATH_MAX) == NULL)
 	{
-	  broker_create_dir (dirname (admin_log2));
-	  free (admin_log2);
+	  buf[0] = '\0';
+	}
+#else
+      snprintf (buf, BROKER_PATH_MAX, "%s", admin_log_file);
+#endif /* WINDOWS */
+
+      if (buf[0] != '\0')
+	{
+	  broker_create_dir (dirname (buf));
 	}
     }
 
@@ -360,7 +368,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 
 	      if (shm_proxy_p == NULL)
 		{
-		  sprintf (admin_err_msg, "%s: failed to initialize proxy shared memory.", br_info->name);
+		  sprintf (admin_err_msg, "%s: failed to initialize proxy shared memory.", br_info[i].name);
 
 		  res = -1;
 		  break;
@@ -376,7 +384,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 	  shm_as_p = broker_shm_initialize_shm_as (&(shm_br->br_info[i]), shm_proxy_p);
 	  if (shm_as_p == NULL)
 	    {
-	      sprintf (admin_err_msg, "%s: failed to initialize appl server shared memory.", br_info->name);
+	      sprintf (admin_err_msg, "%s: failed to initialize appl server shared memory.", br_info[i].name);
 
 	      res = -1;
 	      break;
@@ -3490,7 +3498,7 @@ proxy_activate (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy_p, T_SHM_APPL
       proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, i);
 
       snprintf (proxy_info_p->access_log_file, CONF_LOG_FILE_LEN - 1, "%s/%s_%d.access", CUBRID_BASE_DIR,
-		br_info_p->name, i);
+		br_info_p->name, (i + 1));
       dir_repath (proxy_info_p->access_log_file, CONF_LOG_FILE_LEN);
 
       proxy_info_p->cur_proxy_log_mode = br_info_p->proxy_log_mode;

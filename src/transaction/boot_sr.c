@@ -4103,7 +4103,7 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 	  else
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, p);
-	      if (mkdir (p, 0777) < 0)
+	      if (mkdir (p, 0700) < 0)
 		{
 		  cub_dirname_r (p, fixed_pathbuf, PATH_MAX);
 		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", fixed_pathbuf);

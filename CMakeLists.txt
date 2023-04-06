@@ -232,9 +232,9 @@ if(UNIX)
     endif(WITH_SOURCES)
 
     # set has-style
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--hash-style=both")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--hash-style=both")
-    set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,--hash-style=both")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--hash-style=both -static-libstdc++")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--hash-style=both -static-libstdc++")
+    set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,--hash-style=both -static-libstdc++")
 
   else(CMAKE_COMPILER_IS_GNUCC)
     message(FATAL_ERROR "We currently do not support ${CMAKE_CXX_COMPILER_ID} compiler")
@@ -363,9 +363,9 @@ if(CMAKE_BUILD_TYPE MATCHES "Coverage")
     CACHE STRING "Flags used by the c++ compiler during coverage build." FORCE)
   set(CMAKE_C_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage -D_GCOV"
     CACHE STRING "Flags used by the c compiler during coverage build." FORCE)
-  set(CMAKE_EXE_LINKER_FLAGS_COVERAGE ""
+  set(CMAKE_EXE_LINKER_FLAGS_COVERAGE "-static-libstdc++"
     CACHE STRING "Flags used for linking binaries during coverage build." FORCE)
-  set(CMAKE_SHARED_LINKER_FLAGS_COVERAGE ""
+  set(CMAKE_SHARED_LINKER_FLAGS_COVERAGE "-static-libstdc++"
     CACHE STRING "Flags used for shared libraries during coverage build." FORCE)
 
   mark_as_advanced(

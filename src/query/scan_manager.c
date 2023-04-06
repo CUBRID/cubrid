@@ -1756,7 +1756,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   nullmap_ptr = midxkey.buf;
   key_ptr = nullmap_ptr + nullmap_size;
 
-  OR_BUF_INIT (buf, key_ptr, buf_size - nullmap_size);
+  or_init (&buf, key_ptr, buf_size - nullmap_size);
   MIDXKEY_BOUNDBITS_INIT (nullmap_ptr, nullmap_size);
 
   /* generate multi columns key (values -> midxkey.buf) */
@@ -8368,8 +8368,8 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
       vtype1 = REGU_VARIABLE_GET_TYPE (&probe->value);
       vtype2 = REGU_VARIABLE_GET_TYPE (&build->value);
 
-      if (((vtype1 == DB_TYPE_OBJECT || vtype1 == DB_TYPE_VOBJ) && vtype2 == DB_TYPE_OID) ||
-	  ((vtype2 == DB_TYPE_OBJECT || vtype2 == DB_TYPE_VOBJ) && vtype1 == DB_TYPE_OID))
+      if ((vtype1 == DB_TYPE_OBJECT && vtype2 == DB_TYPE_OID) || (vtype2 == DB_TYPE_OBJECT && vtype1 == DB_TYPE_OID)
+	  || (vtype1 == DB_TYPE_VOBJ || vtype2 == DB_TYPE_VOBJ))
 	{
 	  return HASH_METH_NOT_USE;
 	}
