@@ -2242,6 +2242,7 @@ hb_cluster_load_ping_host_list (char *ha_ping_host_list)
   int num_hosts = 0;
   char host_list[LINE_MAX];
   char *host_list_p, *host_p, *host_pp;
+  char buf[128];
 
   if (ha_ping_host_list == NULL)
     {
@@ -2258,8 +2259,16 @@ hb_cluster_load_ping_host_list (char *ha_ping_host_list)
 	  break;
 	}
 
-      hb_add_ping_host (host_p);
-      num_hosts++;
+      if (strcmp (host_p, "0.0.0.0") == 0)
+	{
+	  snprintf (buf, sizeof (buf), "We do not allow 0.0.0.0 as a ping hosts, excluded");
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, buf);
+	}
+      else
+	{
+	  hb_add_ping_host (host_p);
+	  num_hosts++;
+	}
     }
 
   return num_hosts;
@@ -2274,20 +2283,21 @@ hb_cluster_load_ping_host_list (char *ha_ping_host_list)
 static int
 hb_port_str_to_num (char *port_p)
 {
-  int i = 0, num_count = 0;
-  int port = -1;
+  int num_count = 0, port = -1;
   bool is_space_after_numbers = false;
+  char *p;
 
-  if (port_p == NULL || *port_p == '\0')
+  p = port_p;
+
+  if (p == NULL || *p == '\0')
     {
       goto error;
     }
 
-  while (*(port_p + i) != '\0')
+  while (*p != '\0')
     {
-      if (*port_p >= '0' && *port_p <= '9')
+      if (*p >= '0' && *p <= '9')
 	{
-	  i++;
 	  num_count++;
 
 	  if (num_count > 5 || is_space_after_numbers == true)	/* The port number cannot exceed 5 digits. */
@@ -2295,11 +2305,9 @@ hb_port_str_to_num (char *port_p)
 	      goto error;
 	    }
 	}
-      else if (*port_p == ' ')
+      else if (*p == ' ')
 	{
-	  i++;
-
-	  if (num_count > 1)	/* atoi("80 80") returns 80. It needs an exception handling */
+	  if (num_count >= 1)	/* atoi("80 80") returns 80. It needs an exception handling */
 	    {
 	      is_space_after_numbers = true;
 	    }
@@ -2308,6 +2316,8 @@ hb_port_str_to_num (char *port_p)
 	{
 	  goto error;
 	}
+
+      p++;
     }
 
   port = atoi (port_p);
@@ -2349,7 +2359,7 @@ hb_cluster_load_tcp_ping_host_list (char *ha_ping_host_list)
 
   for (host_list_p = host_list;; host_list_p = NULL)
     {
-      host_p = strtok_r (host_list_p, " ,", &host_pp);
+      host_p = strtok_r (host_list_p, ",", &host_pp);
       if (host_p == NULL)
 	{
 	  break;
