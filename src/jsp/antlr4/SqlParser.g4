@@ -244,6 +244,10 @@ s_merge_insert_clause
       s_values_clause s_where_clause?
     ;
 
+s_truncate_statement
+    : TRUNCATE TABLE? s_table_ref CASCADE?
+    ;
+
 s_selected_tableview
     : (s_tableview_name | '(' s_select_statement ')') s_table_alias?
     ;
@@ -729,6 +733,7 @@ s_non_reserved_keywords_pre12c // !!!
     | BREADTH
     | BYTE
     | CASE
+    | CASCADE
     | CHARACTER
     | CHR
     | CONNECT_BY_ROOT
