@@ -727,6 +727,10 @@ end:
 
   if (ctx_p->free_context)
     {
+      if (proxy_context_direct_send_error (ctx_p) < 0)
+	{
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to send error message");
+	}
       proxy_context_free (ctx_p);
     }
 

@@ -4919,6 +4919,32 @@ proxy_convert_error_code (int error_ind, int error_code, char *driver_info, T_BR
   return error_code;
 }
 
+int
+proxy_context_direct_send_error (T_PROXY_CONTEXT * ctx_p)
+{
+  T_CLIENT_IO *cli_io_p = NULL;
+  T_SOCKET_IO *sock_io_p = NULL;
+
+  cli_io_p = proxy_client_io_find_by_ctx (ctx_p->client_id, ctx_p->cid, ctx_p->uid);
+  if (cli_io_p == NULL)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to find client. " "(client_id:%d, context id:%d, context uid:%u).",
+		 ctx_p->client_id, ctx_p->cid, ctx_p->uid);
+
+      return -1;
+    }
+
+  sock_io_p = proxy_socket_io_find (cli_io_p->fd);
+  if (sock_io_p == NULL)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to find socket entry. (fd:%d).", cli_io_p->fd);
+      return -1;
+    }
+
+  proxy_socket_io_write (sock_io_p);
+  return 0;
+}
+
 #if defined(LINUX)
 static int
 proxy_get_max_socket (void)

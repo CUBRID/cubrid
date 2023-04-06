@@ -1227,8 +1227,7 @@ relay_prepare_request:
       proxy_event_free (event_p);
       event_p = NULL;
 
-      if (ctx_p->shard_id != PROXY_INVALID_SHARD
-	  && (ctx_p->shard_id >= 0 && ctx_p->shard_id < proxy_Shard_io.max_shard))
+      if (ctx_p->shard_id != PROXY_INVALID_SHARD)
 	{
 	  EXIT_FUNC ();
 	  goto free_context;
