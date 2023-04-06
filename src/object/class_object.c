@@ -4138,8 +4138,6 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
   int new_len = 0;
   int new_index_start, con_index_start;
   bool is_uk_new, is_compare_except_dedup_key = false;
-#define IS_TYPE_COMPARE_EXCEPT_DEDUP_KEY(type)  \
-                 (SM_IS_CONSTRAINT_UNIQUE_FAMILY ((type)) || ((type) == DB_CONSTRAINT_FOREIGN_KEY))
 #endif
 
   /* for foreign key, need to check redundancy first */
@@ -4180,7 +4178,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
     }
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-  is_uk_new = IS_TYPE_COMPARE_EXCEPT_DEDUP_KEY (new_cons);
+  is_uk_new = SM_IS_CONSTRAINT_UNIQUE_FAMILY (new_cons);
 #endif
 
   for (cons = cons_list; cons; cons = cons->next)
@@ -4211,7 +4209,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	}
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-      is_compare_except_dedup_key = is_uk_new || IS_TYPE_COMPARE_EXCEPT_DEDUP_KEY (cons->type);
+      is_compare_except_dedup_key = is_uk_new || SM_IS_CONSTRAINT_UNIQUE_FAMILY (cons->type);
 
       if (func_index_info)
 	{
