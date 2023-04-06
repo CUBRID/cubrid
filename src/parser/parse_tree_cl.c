@@ -8514,8 +8514,11 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r1, *r2;
 
+  unsigned int save_custom = parser->custom_print;
+  parser->custom_print |= PT_SUPPRESS_RESOLVED;
   r1 = pt_print_bytes_l (parser, p->info.delete_.target_classes);
   r2 = pt_print_bytes_spec_list (parser, p->info.delete_.spec);
+  parser->custom_print = save_custom;
 
   if (p->info.delete_.with != NULL)
     {
@@ -15332,11 +15335,15 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_nulstring (parser, b, " */ ");
     }
 
+  unsigned int save_custom = parser->custom_print;
   if (!IS_UPDATE_OBJ (p))
     {
       /* print the spec list */
+      parser->custom_print |= PT_SUPPRESS_RESOLVED;
+      parser->custom_print &= ~PT_PRINT_ALIAS;
       r1 = pt_print_bytes_spec_list (parser, p->info.update.spec);
       b = pt_append_varchar (parser, b, r1);
+      parser->custom_print = save_custom;
     }
   else
     {
@@ -15344,6 +15351,7 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_nulstring (parser, b, "object ");
       b = pt_append_varchar (parser, b, r1);
     }
+
   r1 = pt_print_bytes_l (parser, p->info.update.assignment);
   b = pt_append_nulstring (parser, b, " set ");
   b = pt_append_varchar (parser, b, r1);
