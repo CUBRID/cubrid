@@ -2172,7 +2172,6 @@ initscr ()
   if ((ret = stdin_noblock ()) < 0)
     {
       fprintf (stderr, "ERROR: Cannot set terminal: error = %d", ret);
-      dlclose (dl_handle);
       return NULL;
     }
 
