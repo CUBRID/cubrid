@@ -145,6 +145,7 @@ namespace cubmethod
 	      }
 	  }
 
+	size += serializator.get_packed_int_size (size); // hvs size
 	if (hvs.size() > 0) // host variables
 	  {
 	    for (int i = 0; i < (int) hvs.size(); i++)
@@ -154,9 +155,12 @@ namespace cubmethod
 	  }
 
 	size += serializator.get_packed_int_size (size); // into_vars size
-	for (int i = 0; i < (int) into_vars.size (); i++)
+	if (into_vars.size() > 0) // host variables
 	  {
-	    size += serializator.get_packed_string_size (into_vars[i], size);
+	    for (int i = 0; i < (int) into_vars.size (); i++)
+	      {
+		size += serializator.get_packed_string_size (into_vars[i], size);
+	      }
 	  }
       }
 
