@@ -40,6 +40,13 @@
 #include <winsock2.h>
 #include <windows.h>
 #include <conio.h>
+#else
+#if defined(AIX)
+#define _BOOL
+#include <curses.h>
+#else
+#include <curses.h>
+#endif
 #endif
 
 #if defined(WINDOWS)
@@ -84,8 +91,6 @@
 #define         METADATA_MONITOR_FLAG_MASK   0x08
 #define         CLIENT_MONITOR_FLAG_MASK     0x10
 #define         UNUSABLE_DATABASES_FLAG_MASK 0x20
-
-#define         WATCH_CMD	"watch"
 
 #if defined(WINDOWS) && !defined(PRId64)
 #define PRId64 "lld"
@@ -341,12 +346,14 @@ static const char *get_status_string (T_APPL_SERVER_INFO * as_info_p, char appl_
 static void get_cpu_usage_string (char *buf_p, float usage);
 
 
+#if defined(WINDOWS)
 static void move (int x, int y);
 static void refresh ();
 static void clear ();
 static void clrtobot ();
 static void clrtoeol ();
 static void endwin ();
+#endif
 
 static int metadata_monitor (double elapsed_time);
 static int client_monitor (void);
@@ -373,6 +380,8 @@ str_to_screen (const char *msg)
 #ifdef WINDOWS
   DWORD size;
   (void) WriteConsole (h_console, msg, strlen (msg), &size, NULL);
+#else
+  (void) addstr (msg);
 #endif
 }
 
@@ -431,6 +440,8 @@ get_char (void)
 	}
     }
   return 0;
+#else
+  return getch ();
 #endif
 }
 
@@ -442,9 +453,12 @@ main (int argc, char **argv)
   int num_broker, master_shm_id;
   int err, i;
   char *br_vector;
+#if defined(WINDOWS)
+#else
+  WINDOW *win;
+#endif
   time_t time_old, time_cur;
   double elapsed_time;
-  char cmd[PATH_MAX] = { 0, };
 
   if (argc == 2 && strcmp (argv[1], "--version") == 0)
     {
@@ -505,23 +519,9 @@ main (int argc, char **argv)
 	}
 //  FillConsoleOutputCharacter(h_console, ' ', scr_info.dwSize.X * scr_info.dwSize.Y, top_left_pos, &size);
 #else
-      snprintf (cmd, PATH_MAX, "%s -t -n %d", WATCH_CMD, refresh_sec);
-
-      for (i = 0; i < argc; i++)
-	{
-	  strcat (cmd, " ");
-	  strcat (cmd, argv[i]);
-	}
-
-      free (br_vector);
-
-      if (system (cmd) == 32512)
-	{
-	  fprintf (stderr, "%s: -s option require Linux command: '%s'\n", argv[0], WATCH_CMD);
-	  fprintf (stderr, "Install the '%s' command to use this option.\n", WATCH_CMD);
-	}
-
-      return 0;
+      win = initscr ();
+      timeout (refresh_sec * 1000);
+      noecho ();
 #endif
     }
 
@@ -722,7 +722,6 @@ get_args (int argc, char *argv[], char *br_vector)
 #endif
 
   char optchars[] = "hbqts:l:fmcSPu";
-  char zero[2] = "0";
 
   display_job_queue = false;
   refresh_sec = 0;
@@ -742,12 +741,6 @@ get_args (int argc, char *argv[], char *br_vector)
 	  break;
 	case 's':
 	  refresh_sec = atoi (optarg);
-#if !defined(WINDOWS)
-	  if (refresh_sec != 0)
-	    {
-	      memcpy (optarg, zero, 2);
-	    }
-#endif
 	  break;
 	case 'b':
 	  monitor_flag |= BROKER_MONITOR_FLAG_MASK;
@@ -1949,36 +1942,6 @@ endwin ()
 {
   clear ();
   move (0, 0);
-}
-#else
-static void
-move (int x, int y)
-{
-}
-
-static void
-refresh ()
-{
-}
-
-static void
-clear ()
-{
-}
-
-static void
-clrtobot ()
-{
-}
-
-static void
-clrtoeol ()
-{
-}
-
-static void
-endwin ()
-{
 }
 #endif
 
