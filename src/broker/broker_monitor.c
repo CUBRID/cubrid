@@ -40,13 +40,6 @@
 #include <winsock2.h>
 #include <windows.h>
 #include <conio.h>
-#else
-#if defined(AIX)
-#define _BOOL
-#include <curses.h>
-#else
-#include <curses.h>
-#endif
 #endif
 
 #if defined(WINDOWS)
@@ -55,6 +48,9 @@
 #include <sys/types.h>
 #include <regex.h>
 #include <sys/time.h>
+#include <fcntl.h>
+#include <termio.h>
+#include <dlfcn.h>
 #endif
 
 #include "cubrid_getopt.h"
@@ -345,14 +341,44 @@ static const char *get_sql_log_mode_string (T_SQL_LOG_MODE_VALUE mode);
 static const char *get_status_string (T_APPL_SERVER_INFO * as_info_p, char appl_server);
 static void get_cpu_usage_string (char *buf_p, float usage);
 
-
-#if defined(WINDOWS)
 static void move (int x, int y);
 static void refresh ();
 static void clear ();
 static void clrtobot ();
 static void clrtoeol ();
 static void endwin ();
+
+#if !defined (WINDOWS)
+#define TINFO_HIGH_VERSION      10
+#define TINFO_LOW_VERSION       5
+
+static int getch ();
+static void *initscr ();
+static void noecho ();
+static void timeout (int delay);
+static void addstr (const char *);
+static int stdin_noblock (void);
+static int get_timeout (void);
+
+typedef char *(*tgoto_func_t) (const char *cap, int col, int row);
+typedef int (*tgetent_func_t) (char *bp, const char *name);
+typedef char *(*tgetstr_func_t) (char *id, char **area);
+typedef int (*tputs_func_t) (const char *str, int affcnt, int (*putc) (int));
+
+tgoto_func_t tgoto;
+tgetent_func_t tgetent;
+tgetstr_func_t tgetstr;
+tputs_func_t tputs;
+
+int Stdin_timer = 0;
+static char *cm = NULL;
+static char *cd = NULL;
+static char *ce = NULL;
+static char *cl = NULL;
+
+void *dl_handle = NULL;
+
+struct termios oterm;
 #endif
 
 static int metadata_monitor (double elapsed_time);
@@ -455,7 +481,7 @@ main (int argc, char **argv)
   char *br_vector;
 #if defined(WINDOWS)
 #else
-  WINDOW *win;
+  void *win;
 #endif
   time_t time_old, time_cur;
   double elapsed_time;
@@ -519,7 +545,12 @@ main (int argc, char **argv)
 	}
 //  FillConsoleOutputCharacter(h_console, ' ', scr_info.dwSize.X * scr_info.dwSize.Y, top_left_pos, &size);
 #else
-      win = initscr ();
+      if ((win = initscr ()) == NULL)
+	{
+	  fprintf (stderr, "fail to initialize tinfo library\n");
+	  return 127;
+	}
+
       timeout (refresh_sec * 1000);
       noecho ();
 #endif
@@ -1942,6 +1973,207 @@ endwin ()
 {
   clear ();
   move (0, 0);
+}
+#else
+static void
+refresh ()
+{
+}
+
+static void
+move (int x, int y)
+{
+  tputs (tgoto (cm, x, y), 1, putchar);
+}
+
+static void
+clrtobot ()
+{
+  tputs (cd, 1, putchar);
+}
+
+static void
+clrtoeol ()
+{
+  tputs (ce, 1, putchar);
+}
+
+static void
+endwin ()
+{
+  tcsetattr (0, TCSAFLUSH, &oterm);
+  clear ();
+  move (0, 0);
+
+  if (dl_handle != NULL)
+    {
+      dlclose (dl_handle);
+      dl_handle = NULL;
+    }
+}
+
+static void
+addstr (const char *str)
+{
+  if (str == NULL)
+    {
+      return;
+    }
+
+  fprintf (stdout, str);
+  fflush (stdout);
+}
+
+static int
+getch ()
+{
+  fd_set readfds;
+  struct timeval tv, *tv_p = &tv;
+  int fd = fileno (stdin);
+  int timeout = get_timeout ();
+  int ret = -1;
+
+  if (timeout < 0)
+    {
+      tv_p = NULL;
+    }
+  else
+    {
+      tv.tv_sec = timeout / 1000;
+      tv.tv_usec = timeout % 1000;
+    }
+
+  FD_ZERO (&readfds);
+  FD_SET (fd, &readfds);
+
+  ret = select (fd + 1, &readfds, (fd_set *) 0, (fd_set *) 0, tv_p);
+
+  if (ret <= 0)
+    {
+      return -1;
+    }
+
+  return fgetc (stdin);
+}
+
+static void
+clear ()
+{
+  tputs (cl, 1, putchar);
+}
+
+static int
+stdin_noblock ()
+{
+  struct termios term;
+
+  if (tcgetattr (fileno (stdin), &term) < 0)
+    {
+      return -1;
+    }
+
+  oterm = term;
+
+  term.c_iflag &= ~(BRKINT | INPCK | ISTRIP | IXON);
+  term.c_cflag |= (CS8);
+  term.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+
+  term.c_cc[VMIN] = 0;
+  term.c_cc[VTIME] = 8;		/* after a byte or .8 seconds */
+
+  /* put terminal in raw mode after flushing */
+  if (tcsetattr (0, TCSAFLUSH, &term) < 0)
+    {
+      return -2;
+    }
+
+  return 0;
+}
+
+static int
+get_timeout ()
+{
+  return Stdin_timer;
+}
+
+static void
+timeout (int delay)
+{
+  Stdin_timer = delay < 0 ? 0 : delay;
+}
+
+static void
+noecho ()
+{
+}
+
+static void *
+initscr ()
+{
+  char tinfo_so[PATH_MAX];
+  int major_version;
+  int ret = -1;
+
+  for (major_version = TINFO_HIGH_VERSION; major_version >= TINFO_LOW_VERSION; major_version--)
+    {
+      sprintf (tinfo_so, "libtinfo.so.%d", major_version);
+      if ((dl_handle = dlopen (tinfo_so, RTLD_LAZY)) != NULL)
+	{
+	  break;
+	}
+    }
+
+  if (dl_handle == NULL)
+    {
+      fprintf (stderr, "ERROR: Cannot load tinfo library. Please install tinfo library.\n");
+      return NULL;
+    }
+
+  if ((tgoto = (tgoto_func_t) dlsym (dl_handle, "tgoto")) == NULL)
+    {
+      fprintf (stderr, "ERROR: Cannot find 'tgoto' function in %s.\n", tinfo_so);
+      return NULL;
+    }
+
+  if ((tgetent = (tgetent_func_t) dlsym (dl_handle, "tgetent")) == NULL)
+    {
+      fprintf (stderr, "ERROR: Cannot find 'tgetent' function in %s.\n", tinfo_so);
+      return NULL;
+    }
+
+  if ((tgetstr = (tgetstr_func_t) dlsym (dl_handle, "tgetstr")) == NULL)
+    {
+      fprintf (stderr, "ERROR: Cannot find 'tgetstr' function in %s.\n", tinfo_so);
+      return NULL;
+    }
+
+  if ((tputs = (tputs_func_t) dlsym (dl_handle, "tputs")) == NULL)
+    {
+      fprintf (stderr, "ERROR: Cannot find 'tputs' function in %s.\n", tinfo_so);
+      return NULL;
+    }
+
+  if (tgetent (NULL, "xterm") != 1)
+    {
+      fprintf (stderr, "ERROR: Cannot find TERM type.");
+      return NULL;
+    }
+
+  cm = tgetstr ("cm", NULL);
+  cd = tgetstr ("cd", NULL);
+  ce = tgetstr ("ce", NULL);
+  cl = tgetstr ("cl", NULL);
+
+  if ((ret = stdin_noblock ()) < 0)
+    {
+      fprintf (stderr, "ERROR: Cannot set terminal: error = %d", ret);
+      dlclose (dl_handle);
+      return NULL;
+    }
+
+  clear ();
+
+  return dl_handle;
 }
 #endif
 
