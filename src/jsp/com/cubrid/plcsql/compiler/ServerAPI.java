@@ -167,15 +167,17 @@ public class ServerAPI {
         @Override
         public void unpack(CUBRIDUnpacker unpacker) {
             super.unpack(unpacker);
-            if (errCode == 0) {
-                PlParamInfo dummy = new PlParamInfo(unpacker);
+            if (errCode < 0) {
+                return;
+            }
 
-                int paramSize = (int) unpacker.unpackBigint();
-                if (paramSize > 0) {
-                    params = new PlParamInfo[paramSize];
-                    for (int i = 0; i < params.length; i++) {
-                        params[i] = new PlParamInfo(unpacker);
-                    }
+            PlParamInfo dummy = new PlParamInfo(unpacker);
+
+            int paramSize = (int) unpacker.unpackBigint();
+            if (paramSize > 0) {
+                params = new PlParamInfo[paramSize];
+                for (int i = 0; i < params.length; i++) {
+                    params[i] = new PlParamInfo(unpacker);
                 }
             }
         }
@@ -208,15 +210,17 @@ public class ServerAPI {
         @Override
         public void unpack(CUBRIDUnpacker unpacker) {
             super.unpack(unpacker);
-            if (errCode == 0) {
-                retType = new PlParamInfo(unpacker);
+            if (errCode < 0) {
+                return;
+            }
 
-                int paramSize = (int) unpacker.unpackBigint();
-                if (paramSize > 0) {
-                    params = new PlParamInfo[paramSize];
-                    for (int i = 0; i < params.length; i++) {
-                        params[i] = new PlParamInfo(unpacker);
-                    }
+            retType = new PlParamInfo(unpacker);
+
+            int paramSize = (int) unpacker.unpackBigint();
+            if (paramSize > 0) {
+                params = new PlParamInfo[paramSize];
+                for (int i = 0; i < params.length; i++) {
+                    params[i] = new PlParamInfo(unpacker);
                 }
             }
         }
@@ -281,9 +285,11 @@ public class ServerAPI {
         @Override
         public void unpack(CUBRIDUnpacker unpacker) {
             super.unpack(unpacker);
-            if (errCode == 0) {
-                colType = new ColumnInfo(unpacker);
+            if (errCode < 0) {
+                return;
             }
+
+            colType = new ColumnInfo(unpacker);
         }
 
         @Override

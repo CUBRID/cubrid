@@ -799,10 +799,7 @@ namespace cubmethod
 	  {
 	    close_and_free_session ();
 	  }
-	else
-	  {
-	    m_error_ctx.set_error (stmt_id, db_error_string (1), __FILE__, __LINE__);
-	  }
+	m_error_ctx.set_error (stmt_id, db_error_string (1), __FILE__, __LINE__);
 	m_is_prepared = false;
 	return ER_FAILED;
       }

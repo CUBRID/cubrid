@@ -43,6 +43,7 @@ BOTH:                         B O T H ;
 BREADTH:                      B R E A D T H ;
 BY:                           B Y ;
 BYTE:                         B Y T E ;
+CASCADE:                      C A S E C A D E ;
 CASE:                         C A S E ;
 CHARACTER:                    C H A R A C T E R ;
 CHAR:                         C H A R ;
