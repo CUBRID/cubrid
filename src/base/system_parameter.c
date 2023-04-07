@@ -709,6 +709,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_QMGR_MAX_QUERY_PER_TRAN "max_query_per_tran"
 
+#define PRM_NAME_PL_TRANSACTION_CONTROL "pl_transaction_control"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2326,6 +2328,10 @@ static int prm_max_query_per_tran_default = 100;
 static int prm_max_query_per_tran_lower = 1;
 static int prm_max_query_per_tran_upper = SHRT_MAX;
 static unsigned int prm_max_query_per_tran_flag = 0;
+
+bool PRM_PL_TRANSACTION_CONTROL = true;
+static bool prm_pl_transaction_control_default = true;
+static unsigned int prm_pl_transaction_control_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6132,7 +6138,18 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_max_query_per_tran_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PL_TRANSACTION_CONTROL,
+   PRM_NAME_PL_TRANSACTION_CONTROL,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_BOOLEAN,
+   &prm_pl_transaction_control_flag,
+   (void *) &prm_pl_transaction_control_default,
+   (void *) &PRM_PL_TRANSACTION_CONTROL,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 static int num_session_parameters = 0;
