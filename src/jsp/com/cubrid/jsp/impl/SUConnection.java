@@ -330,7 +330,7 @@ public class SUConnection {
                 (type == true)
                         ? CUBRIDServerSideConstants.END_TRAN_COMMIT
                         : CUBRIDServerSideConstants.END_TRAN_ROLLBACK);
-        CUBRIDUnpacker unpacker = request(outputBuffer);
+        CUBRIDUnpacker unpacker = request(packer.getBuffer());
         unpacker.unpackInt();
     }
 
