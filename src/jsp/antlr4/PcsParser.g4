@@ -233,6 +233,7 @@ data_manipulation_language_statements
     | s_update_statement
     | s_delete_statement
     | s_insert_statement
+    | s_truncate_statement
     ;
 
 cursor_manipulation_statements

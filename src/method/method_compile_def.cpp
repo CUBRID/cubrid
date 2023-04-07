@@ -145,6 +145,7 @@ namespace cubmethod
 	      }
 	  }
 
+	size += serializator.get_packed_int_size (size); // hvs size
 	if (hvs.size() > 0) // host variables
 	  {
 	    for (int i = 0; i < (int) hvs.size(); i++)
@@ -154,9 +155,12 @@ namespace cubmethod
 	  }
 
 	size += serializator.get_packed_int_size (size); // into_vars size
-	for (int i = 0; i < (int) into_vars.size (); i++)
+	if (into_vars.size() > 0) // host variables
 	  {
-	    size += serializator.get_packed_string_size (into_vars[i], size);
+	    for (int i = 0; i < (int) into_vars.size (); i++)
+	      {
+		size += serializator.get_packed_string_size (into_vars[i], size);
+	      }
 	  }
       }
 
@@ -291,8 +295,7 @@ namespace cubmethod
 
   pl_parameter_info::~pl_parameter_info ()
   {
-    // db_value_clear (&value);
-    // db_make_null (&value);
+    //
   }
 
   void
@@ -416,6 +419,14 @@ namespace cubmethod
 #define GLOBAL_SEMANTICS_RESPONSE_COLUMN_PACKER_ARGS() \
   GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS(), c_info
 
+  global_semantics_response_common::global_semantics_response_common ()
+    : idx (-1)
+    , err_id (0)
+    , err_msg {}
+  {
+    //
+  }
+
   void
   global_semantics_response_common::pack (cubpacking::packer &serializator) const
   {
@@ -432,6 +443,13 @@ namespace cubmethod
   global_semantics_response_common::unpack (cubpacking::unpacker &deserializator)
   {
     deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS ());
+  }
+
+  global_semantics_response_udpf::global_semantics_response_udpf ()
+    : ret ()
+    , args {}
+  {
+    //
   }
 
   void
@@ -471,6 +489,12 @@ namespace cubmethod
     deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_SERIAL_PACKER_ARGS ());
   }
 
+  global_semantics_response_column::global_semantics_response_column ()
+    : c_info ()
+  {
+    //
+  }
+
   void
   global_semantics_response_column::pack (cubpacking::packer &serializator) const
   {
@@ -496,7 +520,7 @@ namespace cubmethod
 
     for (const auto &res : qs)
       {
-	(*res).pack (serializator);
+	res->pack (serializator);
       }
   }
 
@@ -507,7 +531,7 @@ namespace cubmethod
 
     for (const auto &res : qs)
       {
-	size += (*res).get_packed_size (serializator, size);
+	size += res->get_packed_size (serializator, size);
       }
 
     return size;

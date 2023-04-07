@@ -804,8 +804,6 @@ exit:
 
     global_semantics_response response;
 
-    std::vector <std::unique_ptr<global_semantics_response_common>> &qs_ptr = response.qs;
-
     int i = 0;
     for (global_semantics_question &question : request.qsqs)
       {
@@ -817,7 +815,7 @@ exit:
 	    auto res_ptr = std::make_unique <global_semantics_response_udpf> ();
 	    res_ptr->idx = i++;
 	    error = get_user_defined_procedure_function_info (question, *res_ptr);
-	    qs_ptr.push_back (std::move (res_ptr));
+	    response.qs.push_back (std::move (res_ptr));
 	    break;
 	  }
 	  case 3: // SERIAL
@@ -825,7 +823,7 @@ exit:
 	    auto res_ptr = std::make_unique <global_semantics_response_serial> ();
 	    res_ptr->idx = i++;
 	    error = get_serial_info (question, *res_ptr);
-	    qs_ptr.push_back (std::move (res_ptr));
+	    response.qs.push_back (std::move (res_ptr));
 	    break;
 	  }
 	  case 4: // COLUMN
@@ -833,7 +831,7 @@ exit:
 	    auto res_ptr = std::make_unique <global_semantics_response_column> ();
 	    res_ptr->idx = i++;
 	    error = get_column_info (question, *res_ptr);
-	    qs_ptr.push_back (std::move (res_ptr));
+	    response.qs.push_back (std::move (res_ptr));
 	    break;
 	  }
 	  default:
@@ -845,7 +843,7 @@ exit:
 	    error_response.idx = request.qsqs.size ();
 	    auto res_ptr = std::make_unique <global_semantics_response_common> (error_response);
 	    res_ptr->idx = i++;
-	    qs_ptr.push_back (std::move (res_ptr));
+	    response.qs.push_back (std::move (res_ptr));
 	    break;
 	  }
 	  }
