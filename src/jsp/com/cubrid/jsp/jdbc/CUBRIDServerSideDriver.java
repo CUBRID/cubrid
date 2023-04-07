@@ -88,7 +88,7 @@ public class CUBRIDServerSideDriver implements Driver {
             return null;
         }
 
-        setDefaultProperties (info);
+        setDefaultProperties(info);
 
         // parse property
         String prop = matcher.group(1);
@@ -129,8 +129,8 @@ public class CUBRIDServerSideDriver implements Driver {
         }
     }
 
-    private void setDefaultProperties (Properties info) {
-        info.setProperty("transaction_control", "n");
+    private void setDefaultProperties(Properties info) {
+        info.setProperty("transaction_control", "false");
     }
 
     @Override

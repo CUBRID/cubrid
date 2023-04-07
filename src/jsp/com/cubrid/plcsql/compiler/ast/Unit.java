@@ -97,9 +97,14 @@ public class Unit extends AstNode {
         String strGetConn;
         if (connectionRequired) {
             strGetConn =
-                    tmplGetConn.replace(
-                            "%'AUTONOMOUS-TRANSACTION'%",
-                            autonomousTransaction ? "?autonomous_transaction=true" : "");
+                    tmplGetConn
+                            .replace(
+                                    "%'TRANSACTION-CONTROL'%",
+                                    "transaction_control=true") // In PL/CSQL, enable TCL as a
+                                                                // default
+                            .replace(
+                                    "%'AUTONOMOUS-TRANSACTION'%",
+                                    autonomousTransaction ? "autonomous_transaction=false" : "");
         } else {
             strGetConn = "// connection not required";
         }
@@ -167,7 +172,7 @@ public class Unit extends AstNode {
     private static final String tmplGetConn =
             Misc.combineLines(
                     "Connection conn = DriverManager.getConnection"
-                            + "(\"jdbc:default:connection:%'AUTONOMOUS-TRANSACTION'%\");");
+                            + "(\"jdbc:default:connection::?%'TRANSACTION-CONTROL'%:%'AUTONOMOUS-TRANSACTION'%\");");
 
     private static final String tmplDeclClass =
             Misc.combineLines(

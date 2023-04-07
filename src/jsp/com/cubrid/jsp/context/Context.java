@@ -105,17 +105,17 @@ public class Context {
         return messageBuffer;
     }
 
-    public void setTransactionControl (boolean tc) {
+    public void setTransactionControl(boolean tc) {
         this.transaction_control = tc;
     }
 
-    public boolean canTransactionControl () {
+    public boolean canTransactionControl() {
         if (transaction_control) {
             return true;
         }
 
         String tcProp = connectionInfo.getProperty("transaction_control");
-        if (tcProp != null && "y".equalsIgnoreCase(tcProp)) {
+        if (tcProp != null && "true".equalsIgnoreCase(tcProp)) {
             return true;
         }
 
