@@ -357,6 +357,9 @@ public class ExecuteThread extends Thread {
         }
         int returnType = unpacker.unpackInt();
 
+        boolean transaction_control = unpacker.unpackBool();
+        getCurrentContext().setTransactionControl(transaction_control);
+
         storedProcedure = new StoredProcedure(methodSig, methodArgs, returnType);
         return storedProcedure;
     }

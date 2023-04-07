@@ -45,10 +45,12 @@
 
 namespace cubmethod
 {
-  method_invoke_java::method_invoke_java (method_invoke_group *group, method_sig_node *method_sig)
+  method_invoke_java::method_invoke_java (method_invoke_group *group, method_sig_node *method_sig,
+					  bool transaction_control)
     : method_invoke (group, method_sig)
     , m_client_header (group->get_session_id (), METHOD_REQUEST_CALLBACK /* default */, 0)
     , m_java_header (group->get_session_id (), SP_CODE_INTERNAL_JDBC /* default */, 0)
+    , m_transaction_control (transaction_control)
   {
     //
   }
@@ -70,7 +72,7 @@ namespace cubmethod
     int error = NO_ERROR;
 
     cubmethod::header header (m_group->get_session_id (), SP_CODE_INVOKE, m_group->get_and_increment_request_id ());
-    cubmethod::invoke_java arg (m_group->get_id (), m_method_sig);
+    cubmethod::invoke_java arg (m_group->get_id (), m_method_sig, m_transaction_control);
 
     error = mcon_send_data_to_java (m_group->get_socket (), header, arg);
     return error;

@@ -93,7 +93,7 @@ namespace cubmethod
   {
     public:
       method_invoke_java () = delete;
-      method_invoke_java (method_invoke_group *group, method_sig_node *method_sig);
+      method_invoke_java (method_invoke_group *group, method_sig_node *method_sig, bool transaction_control);
       ~method_invoke_java ();
 
       int invoke (cubthread::entry *thread_p, std::vector<std::reference_wrapper<DB_VALUE>> &arg_base) override;
@@ -121,12 +121,12 @@ namespace cubmethod
 
       void erase_query_cursor (const std::uint64_t query_id);
 
-
-
       const cubmethod::header &get_next_java_header (cubmethod::header &header);
 
       cubmethod::header m_client_header; // header sending to cubridcs
       cubmethod::header m_java_header; // header sending to cub_javasp
+
+      bool m_transaction_control;
   };
 
 } // namespace cubmethod

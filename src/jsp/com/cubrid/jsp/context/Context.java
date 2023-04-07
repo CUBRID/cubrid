@@ -28,6 +28,9 @@ public class Context {
     // CAS client information connecting with this Context
     private Properties clientInfo = null;
 
+    // Whether SP is able to process TCL (commit, rollback). (default: false)
+    private boolean transaction_control = false;
+
     // Connection Properties
     private Properties connectionInfo = null;
 
@@ -100,6 +103,23 @@ public class Context {
             messageBuffer = new MessageBuffer();
         }
         return messageBuffer;
+    }
+
+    public void setTransactionControl (boolean tc) {
+        this.transaction_control = tc;
+    }
+
+    public boolean canTransactionControl () {
+        if (transaction_control) {
+            return true;
+        }
+
+        String tcProp = connectionInfo.getProperty("transaction_control");
+        if (tcProp != null && "y".equalsIgnoreCase(tcProp)) {
+            return true;
+        }
+
+        return false;
     }
 
     // TODO: move this function to proper place

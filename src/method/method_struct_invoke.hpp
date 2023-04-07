@@ -100,7 +100,7 @@ namespace cubmethod
   struct invoke_java : public cubpacking::packable_object
   {
     invoke_java () = delete;
-    invoke_java (METHOD_GROUP_ID group_id, method_sig_node *sig);
+    invoke_java (METHOD_GROUP_ID group_id, method_sig_node *sig, bool tc);
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
@@ -113,6 +113,8 @@ namespace cubmethod
     std::vector<int> arg_mode;
     std::vector<int> arg_type;
     int result_type;
+
+    bool transaction_control; // TODO: wrap it with proper structs
   };
 } // namespace cubmethod
 
