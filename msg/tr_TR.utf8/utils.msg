@@ -496,6 +496,7 @@ kullanım: %1$s loaddb [SEÇENEK] database-name[@host]\n\
 geçerli seçenekler:\n\
   -S, --SA-mode                  stand-alone modu yürütme\n\
   -C, --CS-mode                  istemci-sunucu modunda yürütme\n\
+                                 UYARI: İstemci-sunucu modunda, yalnızca veri dosyası(-d, --data-file=DOSYA) yüklenebilir.\n\
   -u, --user=ID                  veritabanı erişimi için kullanıcı kimliği; varsayılan: "public"\n\
   -p, --password=PASS            kullanıcı şifresi; varsayılan: hiçbir\n\
       --data-file-check-only     check syntax for data file without load; default: disabled\n\
@@ -906,9 +907,12 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 1 database-name
 2 Gerekli bağımsız değişkeni, bir varsayılanı yok
 3 java sınıf dosyası
-4 Gerekli bağımsız değişkeni, bir varsayılanı yok
-5 zorlamak - üzerine yazmak
-6 varsa sınıf dosyanın üzerine yazmak, varsayılan yok
+4 Gerekli bağımsız değişkeni, bir varsayılanı 
+60 \
+Usage: loadjava [OPTION] database-name java-class-file\n\
+\n\
+valid options:\n\
+  -y, --overwrite              varsa sınıf dosyanın üzerine yazmak, varsayılan yok\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Çıktı dosyası '%1$s' açılamıyor \n

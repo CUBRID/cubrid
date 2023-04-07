@@ -508,6 +508,7 @@ utilizare: %1$s loaddb [OPŢIUNI] nume-bază-de-date[@host]\n\
 opţiuni valide:\n\
   -S, --SA-mode                     mod de execuţie independent\n\
   -C, --CS-mode                     mod de execuţie client-server\n\
+                                    AVERTISMENT: În modul client-server, numai fișierul de date (-d, --data-file=FILE) poate fi încărcat.\n\
   -u, --user=ID                     ID de utilizator pentru acces la baza de date; implicit: "public"\n\
   -p, --password=PAROLA             parola de utilizator; implicit: nulă\n\
       --data-file-check-only        verifică sintaxa fișierului fără a-l încărca; implicit: dezactivat\n\
@@ -924,8 +925,11 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 2 argument obligatoriu, fără valoare implicită
 3 java-class-file
 4 argument obligatoriu, fără valoare implicită
-5 force-overwrite
-6 suprascrie fişierul de clasă dacă exista, implicit nu
+60 \
+Usage: loadjava [OPTION] database-name java-class-file\n\
+\n\
+valid options:\n\
+  -y, --overwrite              suprascrie fişierul de clasă dacă exista, implicit nu\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Fişierul de ieşire '%1$s' nu a putut fi deschis\n

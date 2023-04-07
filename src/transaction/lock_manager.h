@@ -154,7 +154,7 @@ typedef enum
   LOCK_RESOURCE_INSTANCE,	/* An instance resource */
   LOCK_RESOURCE_CLASS,		/* A class resource */
   LOCK_RESOURCE_ROOT_CLASS,	/* A root class resource */
-  LOCK_RESOURCE_OBJECT		/* An object resource */
+  LOCK_RESOURCE_OBJECT		/* An object resource. Obsolete */
 } LOCK_RESOURCE_TYPE;
 
 /*
@@ -202,8 +202,6 @@ extern int lock_object_wait_msecs (THREAD_ENTRY * thread_p, const OID * oid, con
 extern int lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock, int cond_flag);
 extern int lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * superclass_oid, LOCK lock,
 			  int cond_flag);
-extern int lock_object_with_btid (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, const BTID * btid,
-				  LOCK lock, int cond_flag);
 extern int lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK class_lock);
 extern int lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint);
 extern void lock_unlock_object_donot_move_to_non2pl (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,

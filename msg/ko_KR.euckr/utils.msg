@@ -496,6 +496,7 @@ loaddb: 데이터베이스에 객체 및 스키마 적재\n\
 옵션:\n\
   -S, --SA-mode                  독립 모드 실행\n\
   -C, --CS-mode                  클라이언트 서버 모드 실행\n\
+                                 경고: 클라이언트 서버 모드에서는 데이터 파일(-d, --data-file=FILE)만 로드 할 수 있습니다.\n\
   -u, --user=ID                  데이터베이스 접근에 관한 사용자 이름; 기본값: "public"\n\
   -p, --password=PASS            사용자 패스워드; 기본값: 없음\n\
       --data-file-check-only     데이터 파일을 로딩하지 않고 신택스만 검사; 기본값: 아니오\n\
@@ -907,8 +908,11 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 2 필수 인자; 기본값: 없음
 3 java-class-file
 4 필수 인자; 기본값: 없음
-5 force-overwrite
-6 클래스 파일이 이미 존재하면 덮어씀; 기본값: 덮어쓰지 않음
+60 \
+Usage: loadjava [OPTION] database-name java-class-file\n\
+\n\
+valid options:\n\
+  -y, --overwrite              클래스 파일이 이미 존재하면 덮어씀; 기본값: 덮어쓰지 않음\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 출력 파일 '%1$s'을 열 수 없습니다\n

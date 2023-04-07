@@ -530,6 +530,8 @@ if(UNIX)
 else(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
+# for dblink
+target_link_libraries(cubridcs cascci)
 
 add_dependencies(cubridcs gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
 add_dependencies(cubridcs ${EP_TARGETS})

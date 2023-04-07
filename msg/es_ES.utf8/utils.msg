@@ -496,6 +496,7 @@ uso: %1$s loaddb [OPTION] database-name[@host]\n\
 opciones validas:\n\
   -S, --SA-mode                  modo de ejecucion independiente\n\
   -C, --CS-mode                  modo de ejecucion cliente-servidor\n\
+                                 ADVERTENCIA: En el modo cliente-servidor, solo se puede cargar el archivo de datos (-d, --data-file=FILE).\n\
   -u, --user=ID                  ID de utilizador para acceso a la base de datos; estandar: "public"\n\
   -p, --password=PASS            contrasena de utilizador; estandar: ninguna\n\
       --data-file-check-only     check syntax for data file without load; default: disabled\n\
@@ -907,8 +908,11 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 2 argumento pedido, no hay estandar
 3 archivo-de-clase-java
 4 argumento pedido, no hay estandar
-5 forzar sobrescribir
-6 sobrescribir archivo de clase si existe, estandar no
+60 \
+Usage: loadjava [OPTION] database-name java-class-file\n\
+\n\
+valid options:\n\
+  -y, --overwrite              sobrescribir archivo de clase si existe, estandar no\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 No se puede abrir archivo de salida '%1$s'\n
