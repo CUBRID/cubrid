@@ -295,8 +295,7 @@ namespace cubmethod
 
   pl_parameter_info::~pl_parameter_info ()
   {
-    // db_value_clear (&value);
-    // db_make_null (&value);
+    //
   }
 
   void
@@ -420,6 +419,14 @@ namespace cubmethod
 #define GLOBAL_SEMANTICS_RESPONSE_COLUMN_PACKER_ARGS() \
   GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS(), c_info
 
+  global_semantics_response_common::global_semantics_response_common ()
+    : idx (-1)
+    , err_id (0)
+    , err_msg {}
+  {
+    //
+  }
+
   void
   global_semantics_response_common::pack (cubpacking::packer &serializator) const
   {
@@ -436,6 +443,13 @@ namespace cubmethod
   global_semantics_response_common::unpack (cubpacking::unpacker &deserializator)
   {
     deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_COMMON_PACKER_ARGS ());
+  }
+
+  global_semantics_response_udpf::global_semantics_response_udpf ()
+    : ret ()
+    , args {}
+  {
+    //
   }
 
   void
@@ -473,6 +487,12 @@ namespace cubmethod
   global_semantics_response_serial::unpack (cubpacking::unpacker &deserializator)
   {
     deserializator.unpack_all (GLOBAL_SEMANTICS_RESPONSE_SERIAL_PACKER_ARGS ());
+  }
+
+  global_semantics_response_column::global_semantics_response_column ()
+    : c_info ()
+  {
+    //
   }
 
   void

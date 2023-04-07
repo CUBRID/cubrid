@@ -140,7 +140,7 @@ namespace cubmethod
 
   struct EXPORT_IMPORT global_semantics_response_common : public cubpacking::packable_object
   {
-    global_semantics_response_common () = default;
+    global_semantics_response_common ();
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
@@ -153,6 +153,8 @@ namespace cubmethod
 
   struct EXPORT_IMPORT global_semantics_response_udpf : public global_semantics_response_common
   {
+    global_semantics_response_udpf ();
+
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
@@ -170,6 +172,8 @@ namespace cubmethod
 
   struct EXPORT_IMPORT global_semantics_response_column : public global_semantics_response_common
   {
+    global_semantics_response_column ();
+
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
