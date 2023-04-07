@@ -62,7 +62,11 @@ template <typename T_CONN_HANDLER>
 void
 async_disconnect_handler<T_CONN_HANDLER>::terminate ()
 {
-  m_terminate.store (true);
+  if (m_terminate.exchange (true))
+    {
+      return; // have been terminated already
+    }
+
   m_queue_cv.notify_one ();
 
   if (m_thread.joinable ())

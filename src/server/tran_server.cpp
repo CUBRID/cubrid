@@ -35,6 +35,8 @@ static void assert_is_tran_server ();
 
 tran_server::~tran_server ()
 {
+  m_async_disconnect_handler.terminate ();
+
   assert (is_transaction_server () || m_page_server_conn_vec.empty ());
   if (is_transaction_server () && !m_page_server_conn_vec.empty ())
     {
