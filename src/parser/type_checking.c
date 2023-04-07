@@ -6236,9 +6236,10 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
       expr->type_enum = pt_expr_get_return_type (expr, sig);
       if (op == PT_DIVIDE)
 	{
-	  if (expr->type_enum == PT_TYPE_INTEGER || expr->type_enum == PT_TYPE_BIGINT || expr->type_enum == PT_TYPE_SMALLINT)
+	  if (expr->type_enum == PT_TYPE_INTEGER || expr->type_enum == PT_TYPE_BIGINT
+	      || expr->type_enum == PT_TYPE_SMALLINT)
 	    {
-	      expr->type_enum = PT_TYPE_NUMERIC;
+	      expr->type_enum = PT_TYPE_DOUBLE;
 	    }
 	}
     }

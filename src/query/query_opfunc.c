@@ -5799,11 +5799,11 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       cast_dom1 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
       cast_dom2 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
     }
-  else if (TP_IS_FIXED_NUMBER_TYPE (type1) || TP_IS_FIXED_NUMBER_TYPE (type2))
+  else if (TP_IS_FIXED_NUMBER_TYPE (type1) && TP_IS_FIXED_NUMBER_TYPE (type2))
     {
       /* cast number to DOUBLE */
-      cast_dom1 = tp_domain_resolve_default (DB_TYPE_NUMERIC);
-      cast_dom2 = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+      cast_dom1 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+      cast_dom2 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
       is_numeric_cast = true;
     }
@@ -5851,11 +5851,13 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 	{
 	  return qdata_coerce_result_to_domain (result_p, domain_p);
 	}
+      break;
     case DB_TYPE_INTEGER:
       if ((error = qdata_divide_int_to_dbval (dbval1_p, dbval2_p, result_p)) == NO_ERROR)
 	{
 	  return qdata_coerce_result_to_domain (result_p, domain_p);
 	}
+      break;
     case DB_TYPE_BIGINT:
       if ((error = qdata_divide_bigint_to_dbval (dbval1_p, dbval2_p, result_p)) == NO_ERROR)
 	{
@@ -5866,15 +5868,7 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
     case DB_TYPE_NUMERIC:
       if ((error = qdata_divide_numeric_to_dbval (dbval1_p, dbval2_p, result_p)) == NO_ERROR)
 	{
-	  if (is_numeric_cast && domain_p)
-	    {
-	      domain_p->precision = result_p->domain.numeric_info.precision;
-	      domain_p->scale = result_p->domain.numeric_info.scale;
-	    }
-	  else
-	    {
-	      return qdata_coerce_result_to_domain (result_p, domain_p);
-	    }
+	  return qdata_coerce_result_to_domain (result_p, domain_p);
 	}
       break;
 
@@ -5898,7 +5892,7 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 	  return qdata_coerce_result_to_domain (result_p, domain_p);
 	}
       break;
-#if 0 
+#if 0
       dom_status = tp_value_auto_cast (dbval1_p, &dbval_tmp1, &tp_Double_domain);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
