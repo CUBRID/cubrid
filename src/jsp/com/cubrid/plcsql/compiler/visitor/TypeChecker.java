@@ -244,16 +244,14 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     public TypeSpec visitExprBinaryOp(ExprBinaryOp node) {
         TypeSpec leftType = visit(node.left);
         TypeSpec rightType = visit(node.right);
-        DeclFunc binOp = symbolStack.getOperator("op" + node.opStr, leftType, rightType);
-        if (binOp == null) {
-            throw new SemanticError(
-                    node.lineNo(), // s210
-                    "binary operator "
-                            + node.opStr.toUpperCase()
-                            + " cannot be applied to the argument types");
-        }
 
-        // TODO: coerce
+        // in the following line, s210 (no match), s226 (ambiguous matches)
+        List<Coerce> outCoercions = new ArrayList<>();
+        DeclFunc binOp = symbolStack.getOperator(outCoercions, "op" + node.opStr, node.lineNo(), leftType, rightType);
+        assert binOp != null;
+
+        node.left.setCoerce(outCoercions.get(0));
+        node.right.setCoerce(outCoercions.get(1));
 
         return binOp.retType;
     }
@@ -515,16 +513,13 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitExprUnaryOp(ExprUnaryOp node) {
         TypeSpec operandType = visit(node.operand);
-        DeclFunc unaryOp = symbolStack.getOperator("op" + node.opStr, operandType);
-        if (unaryOp == null) {
-            throw new SemanticError(
-                    node.lineNo(), // s215
-                    "unary operator "
-                            + node.opStr.toUpperCase()
-                            + " cannot be applied to the argument type");
-        }
 
-        // TODO: coerce
+        // in the following line, s215 (no match), s227 (ambiguous matches)
+        List<Coerce> outCoercions = new ArrayList<>();
+        DeclFunc unaryOp = symbolStack.getOperator(outCoercions, "op" + node.opStr, node.lineNo(), operandType);
+        assert unaryOp != null;
+
+        node.operand.setCoerce(outCoercions.get(0));
 
         return unaryOp.retType;
     }

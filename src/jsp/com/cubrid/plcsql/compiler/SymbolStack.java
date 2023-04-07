@@ -34,6 +34,7 @@ import static com.cubrid.plcsql.compiler.antlrgen.PcsParser.*;
 
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import com.cubrid.plcsql.compiler.annotation.Operator;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
@@ -66,8 +67,8 @@ public class SymbolStack {
                     "VALUE_ERROR",
                     "ZERO_DIVIDE");
 
-    private static final Map<String, OverloadedFunc> operators = new HashMap<>();
-    private static final Map<String, OverloadedFunc> cubridFuncs = new HashMap<>();
+    private static final Map<String, FuncOverloads> operators = new HashMap<>();
+    private static final Map<String, FuncOverloads> cubridFuncs = new HashMap<>();
     private static SymbolTable predefinedSymbols =
             new SymbolTable(new Scope(null, null, "%predefined_0", 0));
 
@@ -88,6 +89,9 @@ public class SymbolStack {
                     String name = m.getName();
                     if (name.startsWith("op")) {
                         // System.out.println("temp: " + m.getName());
+
+                        Operator opAnnot = m.getAnnotation(Operator.class);
+                        assert opAnnot != null;
 
                         // parameter types
                         Class[] paramTypes = m.getParameterTypes();
@@ -113,7 +117,7 @@ public class SymbolStack {
 
                         // add op
                         DeclFunc op = new DeclFunc(null, name, params, retType);
-                        putOperator(name, op);
+                        putOperator(name, op, opAnnot.coercionScheme());
                     }
                 }
             }
@@ -150,43 +154,12 @@ public class SymbolStack {
         }
     }
 
-    private static void putOperator(String name, DeclFunc df) {
-        putPredefinedFunc(operators, name, df);
+    public static DeclFunc getOperator(List<Coerce> outCoercions, String name, int lineNoOfCall, TypeSpec... argTypes) {
+        return getFuncOverload(outCoercions, operators, name, lineNoOfCall, argTypes);
     }
 
-    public static DeclFunc getOperator(String name, TypeSpec... argTypes) {
-        return getPredefinedFunc(operators, name, argTypes);
-    }
-
-    private static void putCubridFunc(String name, DeclFunc df) {
-        putPredefinedFunc(cubridFuncs, name, df);
-    }
-
-    public static DeclFunc getCubridFunc(String name, TypeSpec... argTypes) {
-        return getPredefinedFunc(cubridFuncs, name, argTypes);
-    }
-
-    private static DeclFunc getPredefinedFunc(
-            Map<String, OverloadedFunc> map, String name, TypeSpec... argTypes) {
-        OverloadedFunc overloads = map.get(name);
-        if (overloads == null) {
-            return null;
-        } else {
-            return overloads.get(Arrays.asList(argTypes));
-        }
-    }
-
-    private static void putPredefinedFunc(
-            Map<String, OverloadedFunc> map, String name, DeclFunc df) {
-
-        OverloadedFunc overloads = map.get(name);
-        if (overloads == null) {
-            overloads = new OverloadedFunc();
-            map.put(name, overloads);
-        }
-
-        df.setScope(predefinedSymbols.scope);
-        overloads.put(df);
+    public static DeclFunc getCubridFunc(List<Coerce> outCoercions, String name, int lineNoOfCall, TypeSpec... argTypes) {
+        return getFuncOverload(outCoercions, cubridFuncs, name, lineNoOfCall, argTypes);
     }
 
     // -----------------------------------------------------------------------------
@@ -296,9 +269,11 @@ public class SymbolStack {
 
     DeclFunc getDeclFunc(String name) {
         DeclFunc ret = getDecl(DeclFunc.class, name);
+        return ret;
+        /* TODO: restore
         if (ret == null) {
             // search the predefined functions too
-            OverloadedFunc overloaded = cubridFuncs.get(name);
+            FuncOverloads overloaded = cubridFuncs.get(name);
             if (overloaded == null) {
                 return null;
             } else {
@@ -311,13 +286,16 @@ public class SymbolStack {
         } else {
             return ret;
         }
+         */
     }
 
     DeclFunc getDeclFunc(String name, List<TypeSpec> argTypes) {
         DeclFunc ret = getDecl(DeclFunc.class, name);
+        return ret;
+        /* TODO: restore
         if (ret == null) {
             // search the predefined functions too
-            OverloadedFunc overloaded = cubridFuncs.get(name);
+            FuncOverloads overloaded = cubridFuncs.get(name);
             if (overloaded == null) {
                 return null;
             } else {
@@ -330,6 +308,7 @@ public class SymbolStack {
                 return null;
             }
         }
+         */
     }
 
     DeclException getDeclException(String name) {
@@ -369,6 +348,39 @@ public class SymbolStack {
     private SymbolTable currSymbolTable;
 
     private LinkedList<SymbolTable> symbolTableStack = new LinkedList<>();
+
+    private static void putOperator(String name, DeclFunc df, CoercionScheme cs) {
+        putFuncOverload(operators, name, df, cs);
+    }
+
+    private static void putCubridFunc(String name, DeclFunc df) {
+        putFuncOverload(cubridFuncs, name, df, CoercionScheme.Individual);
+    }
+
+    private static DeclFunc getFuncOverload(List<Coerce> outCoercions, 
+            Map<String, FuncOverloads> map, String name, int lineNoOfCall, TypeSpec... argTypes) {
+        FuncOverloads overloads = map.get(name);
+        if (overloads == null) {
+            return null;
+        } else {
+            return overloads.get(outCoercions, Arrays.asList(argTypes), lineNoOfCall);
+        }
+    }
+
+    private static void putFuncOverload(
+            Map<String, FuncOverloads> map, String name, DeclFunc df, CoercionScheme cs) {
+
+        FuncOverloads overloads = map.get(name);
+        if (overloads == null) {
+            overloads = new FuncOverloads(name, cs);
+            map.put(name, overloads);
+        } else {
+            assert overloads.coercionScheme == cs;
+        }
+
+        df.setScope(predefinedSymbols.scope);
+        overloads.put(df);
+    }
 
     private static class SymbolTable {
         final Scope scope;
@@ -416,13 +428,14 @@ public class SymbolStack {
         return null;
     }
 
-    // OverloadedFunc class corresponds to operators (+, -, etc) and system provided functions
-    // (substr, trim, etc)
-    // which can be overloaded unlike user defined procedures and functions.
-    private static class OverloadedFunc {
+    // FuncOverloads class corresponds to operators (+, -, etc) and system provided functions
+    // (substr, trim, etc) which can be overloaded for argument types unlike user defined procedures and functions.
+    private static class FuncOverloads {
 
-        private final Map<List<TypeSpec>, DeclFunc> overloads =
-                new HashMap<>(); // (arg types --> func decl) map
+        FuncOverloads(String name, CoercionScheme cs) {
+            this.name = name;
+            this.coercionScheme = cs;
+        }
 
         void put(DeclFunc decl) {
             List<TypeSpec> paramTypes =
@@ -435,15 +448,67 @@ public class SymbolStack {
             assert old == null;
         }
 
-        DeclFunc get(List<TypeSpec> argTypes) {
-            DeclFunc ret = null;
+        DeclFunc get(List<Coerce> outCoercions, List<TypeSpec> argTypes, int lineNoOfCall) {
+
+            DeclFunc bestFit = null;
+            List<Coerce> bestCoercions = null;
             for (Map.Entry<List<TypeSpec>, DeclFunc> e : overloads.entrySet()) {
-                if (Coerce.matchTypeLists(argTypes, e.getKey())) {
-                    assert ret == null; // TODO: remove this assert when ready
-                    ret = e.getValue();
+
+                List<Coerce> coercions = coercionScheme.getCoercions(argTypes, e.getKey());
+                if (coercions != null) {
+                    assert argTypes.size() == coercions.size();
+
+                    if (bestFit == null) {
+                        bestFit = e.getValue();
+                        bestCoercions = coercions;
+                    } else {
+                        int r = compareCoercionLists(coercions, bestCoercions);
+                        switch (r) {
+                            case 1:
+                                // better fit found
+                                bestFit = e.getValue();
+                                bestCoercions = coercions;
+                                break;
+                            case 0:
+                                // ambiguous
+                                throw new SemanticError(lineNoOfCall,
+                                    "ambiguous overloads of function " + name +
+                                    " found for the argument types: noe of them fits better than the other");
+                                    // TODO: show the types in the error msg
+                            case -1:
+                                // do nothing for a worse fit
+                                break;
+                            default:
+                                assert false: "unreachable";
+                                throw new RuntimeException("unreachable");
+                        }
+                    }
                 }
+
             }
-            return ret;
+
+            if (bestFit == null) {
+                throw new SemanticError(lineNoOfCall,
+                    "argument types are not compatible in the call of function " + name);
+            } else {
+                assert bestCoercions != null;
+                outCoercions.addAll(bestCoercions);
+                return bestFit;
+            }
+        }
+
+        // ---------------------------------------------------------
+        //
+        // ---------------------------------------------------------
+
+        private final Map<List<TypeSpec>, DeclFunc> overloads =
+                new HashMap<>(); // (arg types --> func decl) map
+        private final CoercionScheme coercionScheme;
+        private final String name;
+
+        private static int compareCoercionLists(List<Coerce> l, List<Coerce> r) {
+            return 0;   // TODO
         }
     }
+
 }
