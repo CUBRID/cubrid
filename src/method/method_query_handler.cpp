@@ -18,12 +18,15 @@
 
 #include "method_query_handler.hpp"
 
+#include "parser.h"
+#include "api_compat.h" /* DB_SESSION */
 #include "db.h"
 #include "dbi.h"
 #include "dbtype.h"
 #include "method_query_util.hpp"
 #include "method_schema_info.hpp"
 #include "object_primitive.h"
+#include "optimizer.h" /* qo_get_optimization_param, qo_set_optimization_param */
 
 /* from jsp_cl.c */
 extern void jsp_set_prepare_call ();
@@ -44,6 +47,7 @@ namespace cubmethod
     , m_max_col_size (-1)
     , m_has_result_set (false)
     , m_is_occupied (false)
+    , m_query_id (-1)
     , m_prepare_info ()
     , m_execute_info ()
     , m_prepare_call_info ()
@@ -94,6 +98,12 @@ namespace cubmethod
   query_handler::get_statement_type () const
   {
     return m_stmt_type;
+  }
+
+  uint64_t
+  query_handler::get_query_id () const
+  {
+    return m_query_id;
   }
 
   int
@@ -191,6 +201,31 @@ namespace cubmethod
   }
 
   int
+  query_handler::prepare_retry ()
+  {
+    if (is_prepared ())
+      {
+	return prepare (m_sql_stmt, m_prepare_flag);
+      }
+    return ER_FAILED;
+  }
+
+  int
+  query_handler::prepare_compile (const std::string &sql)
+  {
+    int level;
+    qo_get_optimization_param (&level, QO_PARAM_LEVEL);
+    qo_set_optimization_param (NULL, QO_PARAM_LEVEL, 2);
+
+    int error = prepare (sql, PREPARE_STATIC_SQL);
+
+    // restore
+    qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
+
+    return error;
+  }
+
+  int
   query_handler::execute (const execute_request &request)
   {
     int error = NO_ERROR;
@@ -217,6 +252,7 @@ namespace cubmethod
 	/* set max_col_size */
 	m_max_col_size = max_col_size;
 	m_execute_info.handle_id = get_id ();
+	m_query_id = m_execute_info.qresult_info.query_id;
 
 	/* include column info? */
 	if (db_check_single_query (m_session) != NO_ERROR) /* ER_IT_MULTIPLE_STATEMENT */
@@ -614,6 +650,7 @@ namespace cubmethod
       }
 
     m_has_result_set = false;
+    m_query_id = -1;
   }
 
   int
@@ -663,7 +700,6 @@ namespace cubmethod
     int n = db_execute_and_keep_statement (m_session, stmt_id, &result);
     if (n < 0)
       {
-	m_error_ctx.set_error (n, NULL, __FILE__, __LINE__);
 	return ER_FAILED;
       }
     else if (result != NULL)
@@ -747,6 +783,11 @@ namespace cubmethod
     if (flag & PREPARE_XASL_CACHE_PINNED)
       {
 	db_session_set_xasl_cache_pinned (m_session, true, false);
+      }
+
+    if (flag & PREPARE_STATIC_SQL)
+      {
+	get_db_session()->parser->flag.is_parsing_static_sql = 1;
       }
 
     m_stmt_type = CUBRID_STMT_NONE;

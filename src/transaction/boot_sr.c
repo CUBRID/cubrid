@@ -2294,7 +2294,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #if defined (SA_MODE)
   // Initialize java stored procedure server for standalone mode
   jsp = prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE);
-  if (jsp)
+  if (jsp && !jsp_jvm_is_loaded ())
     {
       jsp_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
       error_code = jsp_start_server (db_name, db->pathname, jsp_port);
@@ -4103,7 +4103,7 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 	  else
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, p);
-	      if (mkdir (p, 0777) < 0)
+	      if (mkdir (p, 0700) < 0)
 		{
 		  cub_dirname_r (p, fixed_pathbuf, PATH_MAX);
 		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", fixed_pathbuf);

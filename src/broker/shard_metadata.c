@@ -712,7 +712,7 @@ shard_metadata_validate_key_range_internal (T_SHARD_KEY * key_p, T_SHM_SHARD_CON
       prv_range_max = range_p->max;
     }
 
-  if ((modular >= 1) && (prv_range_max > modular))
+  if ((modular >= 1) && (prv_range_max > modular - 1))
     {
       SHARD_ERR ("%s: shard range max (%d, modular %d) is invalid.\n", key_p->key_column, range_p->max, modular);
       return -1;

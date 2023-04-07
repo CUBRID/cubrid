@@ -92,6 +92,7 @@ $ These 3 should be blank
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 Prea puține argumente date.
 
 145 <Ajutor: Schema unei clase>
 146 vid
@@ -112,6 +113,7 @@ $ These 3 should be blank
 194 Combinaţie invalidă de argumente (optiuni) de linie de comandă.
 196 O eroare nedefinită s-a produs.
 197 ';edit' nu este permis când output-ul este redirecţionat.
+198 Formatul a eșuat.
 
 203 <%1$s> 
 204 <SuperClase> 
@@ -153,7 +155,7 @@ $ csql help messages
    ;EXit                        - închide aplicaţia.\n\
 \n\
    ;CLear                       - goleşte buffer-ul de comenzi.\n\
-   ;EDIT                        - invocă editorul sistemului pentru buffer-ul de comenzi.\n\
+   ;EDIT   [format/fmt]         - invocă editorul de sistem [după formatator] cu bufferul de comandă.\n\
    ;LISt                        - afişează conţinutul buffer-ului de comenzi.\n\
 \n\
    ;RUn                         - execută instrucţiunile SQL din buffer-ul de comenzi.\n\
@@ -162,12 +164,15 @@ $ csql help messages
    ;COMmit                      - finalizează(commit) tranzacţia curentă.\n\
    ;ROllback                    - derulează înapoi tranzacţia curentă.\n\
    ;AUtocommit [ON|OFF]         - activează/dezactivează modul "auto commit".\n\
-   ;REStart                     - reporneşte baza de date.\n\
+   ;REStart                     - reconectați-vă la baza de date țintă într-o sesiune CSQL.\n\
+   ;CHeckpoint                  - executați punctul de control (numai CSQL cu --sysadm).\n\
+   ;Killtran                    - vizualizați informații despre starea tranzacției sau încheiați o anumită tranzacție. (numai CSQL cu --sysadm).\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - schimbă comenzile implicite pentru shell, editor,\n\
-   ;EDITOR_Cmd   [editor-cmd]     afişare şi paginator cu comenzi noi, respectiv \n\
-   ;PRINT_Cmd    [print-cmd]      afişează comanda curentă.\n\
-   ;PAger_cmd    [pager-cmd]\n\
+   ;SHELL_Cmd     [shell-cmd]   - schimbă comenzile implicite pentru shell, editor,\n\
+   ;EDITOR_Cmd    [editor-cmd]    afişare, paginator şi formatator cu comenzi noi, respectiv \n\
+   ;PRINT_Cmd     [print-cmd]     afişează comanda curentă.\n\
+   ;PAger_cmd     [pager-cmd]\n\
+   ;FOrmatter_cmd [formatter-cmd]\n\
 \n\
    ;DATE                        - afişează ora şi data locală.\n\
    ;DATAbase                    - afişează numele bazei de date accesate.\n\
@@ -186,6 +191,13 @@ $ csql help messages
    ;HISTORYRead <history_num>   - citeşte în buffer-ul de comenzi înregistrarea din istoric\n\
                                   specificată prin parametru.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
+   ;SIngleline [ON|OFF]         - activați/dezactivați modul cu o singură linie.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - conectați-vă la bazele de date curente sau la alte baze de date ca nume de utilizator.\n\
+   ;.Hist [ON/OFF]              - porniți/opriți colectarea informațiilor statistice în CSQL (doar DBA disponibil).\n\
+   ;.Clear_hist                 - ștergeți informațiile statistice CSQL din buffer.\n\
+   ;.Dump_hist                  - afișați informațiile statistice CSQL în CSQL.\n\
+   ;.X_hist                     - afișați informațiile statistice CSQL în CSQL cu datele statistice inițializate.\n\
    ;HElp                        - afişează acest mesaj de ajutor.\n\n
 
 232 <Constrângeri> 

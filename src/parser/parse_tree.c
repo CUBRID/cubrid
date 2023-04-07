@@ -1225,6 +1225,9 @@ parser_create_parser (void)
   parser->max_print_len = 0;
   parser->flag.is_auto_commit = 0;
 
+  parser->external_into_label = NULL;
+  parser->external_into_label_cnt = 0;
+
   return parser;
 }
 

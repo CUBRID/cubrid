@@ -9918,6 +9918,32 @@ pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void 
 }
 
 /*
+ * pt_check_into_clause_for_static_sql ()
+ *   return:  none
+ *   parser(in): the parser context used to derive the statement
+ *   qry(in): a SELECT/UNION/INTERSECTION/DIFFERENCE statement
+ */
+static void
+pt_check_into_clause_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * qry, int into_cnt)
+{
+  // set external into labels in parser context
+  PT_NODE *into = qry->info.query.into_list;
+
+  char **external_into_label = (char **) malloc (into_cnt * sizeof (char *));
+  for (int i = 0; i < into_cnt; i++)
+    {
+      external_into_label[i] = (char *) malloc (sizeof (char) * 255);
+      strncpy (external_into_label[i], into->info.name.original, 254);
+      into = into->next;
+    }
+  parser->external_into_label_cnt = into_cnt;
+  parser->external_into_label = external_into_label;
+
+  parser_free_tree (parser, qry->info.query.into_list);
+  qry->info.query.into_list = NULL;
+}
+
+/*
  * pt_check_into_clause () - check arity of any into_clause
  *                           equals arity of query
  *   return:  none
@@ -9951,6 +9977,11 @@ pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry)
   if (tgt_cnt != col_cnt)
     {
       PT_ERRORmf2 (parser, into, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COL_CNT_NE_INTO_CNT, col_cnt, tgt_cnt);
+    }
+
+  if (parser->flag.is_parsing_static_sql == 1)
+    {
+      pt_check_into_clause_for_static_sql (parser, qry, tgt_cnt);
     }
 }
 
@@ -10825,6 +10856,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       break;
 
     case PT_DBLINK_TABLE:
+    case PT_DBLINK_TABLE_DML:
       if (pt_has_error (parser))
 	{
 	  break;
@@ -11425,6 +11457,17 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	  pt_resolve_update_external (parser, node);
 	}
 #endif /* 0 */
+
+      if (!pt_has_error (parser))
+	{
+	  if ((node->node_type == PT_INSERT && node->info.insert.spec->info.spec.remote_server_name)
+	      || (node->node_type == PT_DELETE && node->info.delete_.spec->info.spec.remote_server_name)
+	      || (node->node_type == PT_UPDATE && node->info.update.spec->info.spec.remote_server_name)
+	      || (node->node_type == PT_MERGE && node->info.merge.into->info.spec.remote_server_name))
+	    {
+	      break;
+	    }
+	}
 
       sc_info_ptr->system_class = false;
       node = pt_resolve_names (parser, node, sc_info_ptr);
@@ -13798,9 +13841,22 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
       return NULL;
     }
 
-#if 0				/* to disable TEXT */
-  pt_resolve_insert_external (parser, ins);
-#endif /* 0 */
+  if (stmt->node_type == PT_INSERT)
+    {
+      if (stmt->info.insert.spec && stmt->info.insert.spec->info.spec.remote_server_name)
+	{
+	  assert (stmt->info.insert.spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML);
+	  return stmt;
+	}
+    }
+  else if (stmt->node_type == PT_MERGE)
+    {
+      if (stmt->info.merge.into && stmt->info.merge.into->info.spec.remote_server_name)
+	{
+	  assert (stmt->info.merge.into->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML);
+	  return stmt;
+	}
+    }
 
   if (stmt->node_type == PT_INSERT)
     {

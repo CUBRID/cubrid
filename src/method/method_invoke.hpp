@@ -101,7 +101,6 @@ namespace cubmethod
 		      DB_VALUE &result) override;
 
     private:
-      int alloc_response (cubthread::entry *thread_p);
       int receive_result (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base,
 			  DB_VALUE &returnval);
       int receive_error ();
@@ -122,9 +121,12 @@ namespace cubmethod
 
       void erase_query_cursor (const std::uint64_t query_id);
 
-      static int bypass_block (SOCKET socket, cubmem::block &b);
 
-      cubmethod::header *m_header;
+
+      const cubmethod::header &get_next_java_header (cubmethod::header &header);
+
+      cubmethod::header m_client_header; // header sending to cubridcs
+      cubmethod::header m_java_header; // header sending to cub_javasp
   };
 
 } // namespace cubmethod

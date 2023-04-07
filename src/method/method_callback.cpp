@@ -23,13 +23,26 @@
 #include "ddl_log.h"
 
 #include "method_def.hpp"
+#include "method_compile.hpp"
 #include "method_query_util.hpp"
 #include "method_struct_oid_info.hpp"
+#include "method_schema_info.hpp"
+
+#include "parser.h"
+#include "api_compat.h" /* DB_SESSION */
+#include "db.h"
 
 #include "object_primitive.h"
 #include "oid.h"
 
 #include "transaction_cl.h"
+
+#include "jsp_cl.h"
+#include "authenticate.h"
+#include "set_object.h"
+#include "transform.h"
+#include "execute_statement.h"
+#include "schema_manager.h"
 
 extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT *result, int stmt_type, int num_column,
     DB_QUERY_TYPE *column_info, bool is_holdable);
@@ -53,11 +66,10 @@ namespace cubmethod
   int
   callback_handler::callback_dispatch (packing_unpacker &unpacker)
   {
-    int64_t id;
-    int code;
-    unpacker.unpack_all (id, code);
-
     m_error_ctx.clear ();
+
+    int code;
+    unpacker.unpack_int (code);
 
     int error = NO_ERROR;
     switch (code)
@@ -88,6 +100,20 @@ namespace cubmethod
 	break;
       case METHOD_CALLBACK_GET_GENERATED_KEYS:
 	error = generated_keys (unpacker);
+	break;
+
+      /* schema info */
+      case METHOD_CALLBACK_GET_SCHEMA_INFO:
+	// error = get_schema_info (unpacker);
+	assert (false);
+	break;
+
+      /* compilation */
+      case METHOD_CALLBACK_GET_SQL_SEMANTICS:
+	error = get_sql_semantics (unpacker);
+	break;
+      case METHOD_CALLBACK_GET_GLOBAL_SEMANTICS:
+	error = get_global_semantics (unpacker);
 	break;
       default:
 	assert (false);
@@ -162,10 +188,15 @@ namespace cubmethod
 	  }
 	else
 	  {
-	    if (handler->prepare (sql, flag) == NO_ERROR)
+	    int error = handler->prepare (sql, flag);
+	    if (error == NO_ERROR)
 	      {
 		// add to statement handler cache
 		m_sql_handler_map.emplace (sql, handler->get_id ());
+	      }
+	    else
+	      {
+		m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
 	      }
 	  }
       }
@@ -197,25 +228,41 @@ namespace cubmethod
     if (handler == nullptr)
       {
 	// TODO: proper error code
-	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_MORE_MEMORY, NULL, __FILE__, __LINE__);
-	return ER_FAILED;
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
+	assert (false); // the error should have been handled in prepare function
       }
     else
       {
-	if (handler->execute (request) == NO_ERROR)
+	int error = handler->execute (request);
+	if (error == NO_ERROR)
 	  {
 	    /* register query_id for out resultset */
 	    const cubmethod::query_result &qresult = handler->get_result();
 	    if (qresult.stmt_type == CUBRID_STMT_SELECT)
 	      {
-		uint64_t qid = (uint64_t) handler->get_execute_info ().qresult_info.query_id;
+		uint64_t qid = (uint64_t) handler->get_query_id ();
 		m_qid_handler_map[qid] = request.handler_id;
 	      }
 	  }
-      }
+	else
+	  {
+	    /* XASL cache is not found */
+	    if (error == ER_QPROC_INVALID_XASLNODE)
+	      {
+		m_error_ctx.clear ();
+		handler->prepare_retry ();
+		error = handler->execute (request);
+	      }
 
-    /* DDL audit */
-    logddl_write_end ();
+	    if (error != NO_ERROR)
+	      {
+		m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	      }
+	  }
+
+	/* DDL audit */
+	logddl_write_end ();
+      }
 
     if (m_error_ctx.has_error())
       {
@@ -377,6 +424,449 @@ namespace cubmethod
   }
 
 //////////////////////////////////////////////////////////////////////////
+// Schema Info
+//////////////////////////////////////////////////////////////////////////
+  /*
+  int
+  callback_handler::get_schema_info (packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+
+    schema_info_handler sch_handler (m_error_ctx);
+
+
+
+
+    return error;
+  }
+  */
+
+//////////////////////////////////////////////////////////////////////////
+// Compile
+//////////////////////////////////////////////////////////////////////////
+  int
+  callback_handler::get_sql_semantics (packing_unpacker &unpacker)
+  {
+    sql_semantics_request request;
+    unpacker.unpack_all (request);
+    int i = -1;
+    int error = NO_ERROR;
+
+    std::vector<sql_semantics> semantics_vec;
+    for (const std::string s : request.sqls)
+      {
+	i++;
+	query_handler *handler = new_query_handler ();
+	if (handler == nullptr)
+	  {
+	    break;
+	  }
+
+	sql_semantics semantics;
+	semantics.idx = i;
+
+	er_clear ();
+	m_error_ctx.clear ();
+
+	error = handler->prepare_compile (s);
+	if (error == NO_ERROR && m_error_ctx.has_error () == false)
+	  {
+	    DB_SESSION *db_session = handler->get_db_session ();
+	    const prepare_info &info = handler->get_prepare_info ();
+
+	    semantics.sql_type = info.stmt_type;
+
+	    PARSER_CONTEXT *parser = db_get_parser (db_session);
+	    PT_NODE *stmt = db_get_statement (db_session, 0);
+	    semantics.rewritten_query = parser_print_tree (parser, stmt);
+
+	    const std::vector<column_info> &column_infos = info.column_infos;
+	    for (const column_info &c_info : column_infos)
+	      {
+		semantics.columns.emplace_back (c_info);
+	      }
+
+	    int markers_cnt = parser->host_var_count + parser->auto_param_count;
+	    DB_MARKER *marker = db_get_input_markers (db_session, 1);
+
+	    if (markers_cnt > 0)
+	      {
+		semantics.hvs.resize (markers_cnt);
+
+		while (marker)
+		  {
+		    int idx = marker->info.host_var.index;
+		    semantics.hvs[idx].mode = 1;
+		    if (marker->info.host_var.label)
+		      {
+			semantics.hvs[idx].name.assign ((char *) marker->info.host_var.label);
+		      }
+
+		    TP_DOMAIN *hv_expected_domain = NULL;
+		    if (parser->host_var_count <= idx)
+		      {
+			// auto parameterized
+			hv_expected_domain = marker->expected_domain;
+		      }
+		    else
+		      {
+			hv_expected_domain = db_session->parser->host_var_expected_domains[idx];
+		      }
+
+		    // safe guard
+		    if (hv_expected_domain == NULL)
+		      {
+			hv_expected_domain = pt_node_to_db_domain (parser, marker, NULL);
+		      }
+
+		    semantics.hvs[idx].type = TP_DOMAIN_TYPE (hv_expected_domain);
+		    semantics.hvs[idx].precision = db_domain_precision (hv_expected_domain);
+		    semantics.hvs[idx].scale = (short) db_domain_scale (hv_expected_domain);
+		    semantics.hvs[idx].charset = db_domain_codeset (hv_expected_domain);
+
+		    if (db_session->parser->host_variables[idx].domain.general_info.is_null == 0)
+		      {
+			pr_clone_value (& (db_session->parser->host_variables[idx]), & (semantics.hvs[idx].value));
+		      }
+		    else
+		      {
+			db_make_null (& (semantics.hvs[idx].value));
+		      }
+
+		    marker = db_marker_next (marker);
+		  }
+	      }
+
+	    // into variable
+	    char **external_into_label = db_session->parser->external_into_label;
+	    if (external_into_label)
+	      {
+		for (int i = 0; i < db_session->parser->external_into_label_cnt; i++)
+		  {
+		    semantics.into_vars.push_back (external_into_label[i]);
+		    free (external_into_label[i]);
+		  }
+		free (external_into_label);
+	      }
+	    db_session->parser->external_into_label = NULL;
+	    db_session->parser->external_into_label_cnt = 0;
+	  }
+	else
+	  {
+	    // clear previous infos
+	    semantics_vec.clear ();
+
+	    error = ER_FAILED;
+	    semantics.sql_type = m_error_ctx.get_error ();
+	    semantics.rewritten_query = m_error_ctx.get_error_msg ();
+	  }
+
+	semantics_vec.push_back (semantics);
+	free_query_handle (handler->get_id (), true);
+
+	if (error != NO_ERROR)
+	  {
+	    break;
+	  }
+      }
+
+    sql_semantics_response response;
+    response.semantics = std::move (semantics_vec);
+
+    if (error == NO_ERROR)
+      {
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, response);
+      }
+    else
+      {
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, response);
+      }
+  }
+
+  // TODO: move it to proper place
+  static int
+  get_user_defined_procedure_function_info (global_semantics_question &question, global_semantics_response_udpf &res)
+  {
+    DB_OBJECT *mop_p;
+    DB_VALUE return_type;
+    int err = NO_ERROR;
+    int save;
+    const char *name = question.name.c_str ();
+
+    AU_DISABLE (save);
+    {
+      mop_p = jsp_find_stored_procedure (name);
+      if (mop_p == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  err = er_errid ();
+	  goto exit;
+	}
+
+      DB_VALUE temp;
+      int num_args = -1;
+      err = db_get (mop_p, SP_ATTR_ARG_COUNT, &temp);
+      if (err == NO_ERROR)
+	{
+	  num_args = db_get_int (&temp);
+	}
+
+      pr_clear_value (&temp);
+      if (num_args == -1)
+	{
+	  goto exit;
+	}
+
+      DB_VALUE args;
+      /* arg_mode, arg_type */
+      err = db_get (mop_p, SP_ATTR_ARGS, &args);
+      if (err == NO_ERROR)
+	{
+	  DB_SET *param_set = db_get_set (&args);
+	  DB_VALUE mode, arg_type;
+	  int i;
+	  for (i = 0; i < num_args; i++)
+	    {
+	      pl_parameter_info param_info;
+	      set_get_element (param_set, i, &temp);
+	      DB_OBJECT *arg_mop_p = db_get_object (&temp);
+	      if (arg_mop_p)
+		{
+		  if (db_get (arg_mop_p, SP_ATTR_MODE, &mode) == NO_ERROR)
+		    {
+		      param_info.mode = db_get_int (&mode);
+		    }
+
+		  if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
+		    {
+		      param_info.type = db_get_int (&arg_type);
+		    }
+
+		  pr_clear_value (&mode);
+		  pr_clear_value (&arg_type);
+		  pr_clear_value (&temp);
+		}
+	      else
+		{
+		  break;
+		}
+	    }
+	  pr_clear_value (&args);
+	}
+
+      if (db_get (mop_p, SP_ATTR_RETURN_TYPE, &return_type) == NO_ERROR)
+	{
+	  res.ret.type = db_get_int (&return_type);
+	  pr_clear_value (&return_type);
+	}
+    }
+
+exit:
+    AU_ENABLE (save);
+
+    res.err_id = err;
+    if (err != NO_ERROR)
+      {
+	res.err_msg = er_msg ();
+      }
+
+    er_clear ();
+    return err;
+  }
+
+  static int
+  get_serial_info (global_semantics_question &question, global_semantics_response_serial &res)
+  {
+    int result = NO_ERROR;
+    MOP serial_class_mop, serial_mop;
+    DB_IDENTIFIER serial_obj_id;
+
+    const char *serial_name = question.name.c_str ();
+    serial_class_mop = sm_find_class (CT_SERIAL_NAME);
+
+    char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+    sm_user_specified_name (serial_name, realname, DB_MAX_IDENTIFIER_LENGTH);
+
+    serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, realname);
+    if (serial_mop == NULL)
+      {
+	result = ER_QPROC_SERIAL_NOT_FOUND;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, realname);
+      }
+
+    res.err_id = result;
+    if (result != NO_ERROR)
+      {
+	res.err_msg = er_msg ();
+      }
+
+    er_clear();
+    return result;
+  }
+
+  static int
+  get_column_info (global_semantics_question &question, global_semantics_response_column &res)
+  {
+    int err = NO_ERROR;
+
+    const std::string &name = question.name;
+    if (name.empty () == true)
+      {
+	err = res.err_id = ER_FAILED;
+	res.err_msg = "Invalid parameter";
+      }
+
+    std::string owner_name;
+    std::string class_name;
+    std::string attr_name;
+
+    auto split_str = [] (const std::string& name, size_t &prev, size_t &cur, std::string& out_name)
+    {
+      cur = name.find ('.', prev);
+      if (cur != std::string::npos)
+	{
+	  out_name = name.substr (prev, cur - prev);
+	  prev = cur + 1;
+	}
+      else
+	{
+	  out_name = name.substr (prev);
+	}
+    };
+
+    size_t prev = 0, cur = 0;
+    int dot_cnt = std::count (name.begin (), name.end(), '.');
+    if (dot_cnt == 2) // with owner name
+      {
+	split_str (name, prev, cur, owner_name);
+      }
+
+    split_str (name, prev, cur, class_name);
+    split_str (name, prev, cur, attr_name);
+
+    std::string class_name_with_owner = owner_name + class_name;
+    char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+    sm_user_specified_name (class_name_with_owner.c_str (), realname, DB_MAX_IDENTIFIER_LENGTH);
+
+    transform (attr_name.begin(), attr_name.end(), attr_name.begin(), ::tolower);
+    DB_ATTRIBUTE *attr = db_get_attribute_by_name (realname, attr_name.c_str ());
+    if (attr == NULL)
+      {
+	err = res.err_id = ER_FAILED;
+	res.err_msg = "Failed to get attribute information";
+      }
+    else
+      {
+	DB_DOMAIN *domain = db_attribute_domain (attr);
+	int precision = db_domain_precision (domain);
+	short scale = db_domain_scale (domain);
+	char charset = db_domain_codeset (domain);
+	int db_type = TP_DOMAIN_TYPE (domain);
+	int set_type = DB_TYPE_NULL;
+
+	if (TP_IS_SET_TYPE (db_type))
+	  {
+	    set_type = get_set_domain (domain, precision, scale, charset);
+	  }
+
+	char auto_increment = db_attribute_is_auto_increment (attr);
+	char unique_key = db_attribute_is_unique (attr);
+	char primary_key = db_attribute_is_primary_key (attr);
+	char reverse_index = db_attribute_is_reverse_indexed (attr);
+	char reverse_unique = db_attribute_is_reverse_unique (attr);
+	char foreign_key = db_attribute_is_foreign_key (attr);
+	char shared = db_attribute_is_shared (attr);
+
+	const char *c_attr_name = db_attribute_name (attr);
+
+	std::string attr_name_string (c_attr_name? c_attr_name : "");
+	std::string class_name_string (realname? realname : "");
+
+	std::string default_value_string = get_column_default_as_string (attr);
+
+	column_info info (db_type, set_type, scale, precision, charset,
+			  attr_name_string, default_value_string,
+			  auto_increment, unique_key, primary_key, reverse_index, reverse_unique, foreign_key, shared,
+			  attr_name_string, class_name_string, false);
+
+	res.c_info = std::move (info);
+      }
+
+    return err;
+  }
+
+  int
+  callback_handler::get_global_semantics (packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    global_semantics_request request;
+    unpacker.unpack_all (request);
+
+    global_semantics_response response;
+
+    std::vector <std::unique_ptr<global_semantics_response_common>> &qs_ptr = response.qs;
+
+    int i = 0;
+    for (global_semantics_question &question : request.qsqs)
+      {
+	switch (question.type)
+	  {
+	  case 1: // PROCEDURE
+	  case 2: // FUNCTION
+	  {
+	    auto res_ptr = std::make_unique <global_semantics_response_udpf> ();
+	    res_ptr->idx = i++;
+	    error = get_user_defined_procedure_function_info (question, *res_ptr);
+	    qs_ptr.push_back (std::move (res_ptr));
+	    break;
+	  }
+	  case 3: // SERIAL
+	  {
+	    auto res_ptr = std::make_unique <global_semantics_response_serial> ();
+	    res_ptr->idx = i++;
+	    error = get_serial_info (question, *res_ptr);
+	    qs_ptr.push_back (std::move (res_ptr));
+	    break;
+	  }
+	  case 4: // COLUMN
+	  {
+	    auto res_ptr = std::make_unique <global_semantics_response_column> ();
+	    res_ptr->idx = i++;
+	    error = get_column_info (question, *res_ptr);
+	    qs_ptr.push_back (std::move (res_ptr));
+	    break;
+	  }
+	  default:
+	  {
+	    assert (false);
+	    global_semantics_response_common error_response;
+	    error = error_response.err_id = ER_FAILED;
+	    error_response.err_msg = "Invalid request type";
+	    error_response.idx = request.qsqs.size ();
+	    auto res_ptr = std::make_unique <global_semantics_response_common> (error_response);
+	    res_ptr->idx = i++;
+	    qs_ptr.push_back (std::move (res_ptr));
+	    break;
+	  }
+	  }
+
+	if (error != NO_ERROR)
+	  {
+	    break;
+	  }
+      }
+
+    if (error == NO_ERROR)
+      {
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, response);
+      }
+    else
+      {
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, response);
+      }
+  }
+
+//////////////////////////////////////////////////////////////////////////
 // Managing Query Handler Table
 //////////////////////////////////////////////////////////////////////////
 
@@ -394,10 +884,11 @@ namespace cubmethod
 	  }
       }
 
-    query_handler *handler = new query_handler (m_error_ctx, idx);
+    query_handler *handler = new (std::nothrow) query_handler (m_error_ctx, idx);
     if (handler == nullptr)
       {
 	assert (false);
+	return handler;
       }
 
     if (idx < handler_size)
@@ -430,11 +921,18 @@ namespace cubmethod
       {
 	return;
       }
-
     if (m_query_handlers[id] != nullptr)
       {
+	// clear <query ID -> handler ID>
+	if (m_query_handlers[id]->get_query_id () != -1)
+	  {
+	    m_qid_handler_map.erase (m_query_handlers[id]->get_query_id ());
+	  }
 	if (is_free)
 	  {
+	    // clear <SQL string -> handler ID>
+	    m_sql_handler_map.erase (m_query_handlers[id]->get_sql_stmt());
+
 	    delete m_query_handlers[id];
 	    m_query_handlers[id] = nullptr;
 	  }

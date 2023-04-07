@@ -26,6 +26,8 @@
 
 #include "dbtype_def.h"
 #include <stdio.h>
+#include <vector>
+#include <string>
 
 typedef enum
 {
@@ -33,15 +35,22 @@ typedef enum
   FOLLOW_ATTRIBUTE_ORDER = 1
 } EMIT_STORAGE_ORDER;
 
+// *INDENT-OFF*
 struct extract_context
 {
   /* input */
   int do_auth;
   EMIT_STORAGE_ORDER storage_order;
   const char *exec_name;
+  const char *login_user;
+  const char *output_dirname;
+  const char *output_prefix;
+  bool is_dba_user;
+  bool is_dba_group_member;
 
   /* working */
   int has_indexes;
+  std::vector<std::string> schema_file_list;
   DB_OBJLIST *classes;
   DB_OBJLIST *vclass_list_has_using_index;
 
@@ -49,7 +58,13 @@ struct extract_context
     do_auth (0),
     storage_order (FOLLOW_STORAGE_ORDER),
     exec_name (NULL),
+    login_user(NULL),
+    output_dirname(NULL),
+    output_prefix(NULL),
+    is_dba_user (false),
+    is_dba_group_member (false),
     has_indexes (0),
+    schema_file_list(),
     classes (NULL),
     vclass_list_has_using_index (NULL)
   {
@@ -57,5 +72,5 @@ struct extract_context
 
   void clear_schema_workspace (void);
 };
-
+// *INDENT-ON*
 #endif /* _EXTRACT_SCHEMA_HPP_ */

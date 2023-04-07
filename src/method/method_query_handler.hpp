@@ -30,6 +30,7 @@
 #include <map>
 
 #include "dbtype.h"
+#include "dbtype_def.h"
 #include "mem_block.hpp"
 #include "method_error.hpp"
 #include "method_query_result.hpp"
@@ -45,7 +46,8 @@ namespace cubmethod
     PREPARE_QUERY_INFO = 0x04,
     PREPARE_HOLDABLE = 0x08,
     PREPARE_XASL_CACHE_PINNED = 0x10,
-    PREPARE_CALL = 0x40
+    PREPARE_CALL = 0x40,
+    PREPARE_STATIC_SQL = 0x80 /* custom for method_callback, used by PL/CSQL compiler */
   };
 
   enum EXEC_FLAG
@@ -77,6 +79,9 @@ namespace cubmethod
 
       /* request */
       int prepare (std::string sql, int flag);
+      int prepare_retry ();
+      int prepare_compile (const std::string &sql);
+
       int execute (const execute_request &request);
       get_generated_keys_info generated_keys ();
 
@@ -89,6 +94,8 @@ namespace cubmethod
       int get_id () const;
       std::string get_sql_stmt () const;
       int get_statement_type () const;
+
+      uint64_t get_query_id () const;
 
       int get_num_markers ();
       bool get_is_occupied ();
@@ -158,6 +165,9 @@ namespace cubmethod
 
       /* statement handler cache */
       bool m_is_occupied; // Is occupied by CUBRIDServerSideStatement
+
+      /* query id */
+      uint64_t m_query_id;
 
       /* results */
       prepare_info m_prepare_info;

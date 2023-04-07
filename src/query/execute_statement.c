@@ -89,6 +89,7 @@
 #include "tz_support.h"
 #include "dbtype.h"
 #include "crypt_opfunc.h"
+#include "method_callback.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -4588,6 +4589,7 @@ do_commit (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* Row count should be reset to -1 for explicit commits (i.e: commit statements) but should not be reset in
    * AUTO_COMMIT mode. This is the best place to reset it for commit statements. */
   db_update_row_count_cache (-1);
+  cubmethod::get_callback_handler ()->free_query_handle_all (true);
   return tran_commit (statement->info.commit_work.retain_lock ? true : false);
 }
 
@@ -4639,6 +4641,8 @@ do_rollback (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  db_value_clear (&val);
 	}
     }
+
+  cubmethod::get_callback_handler ()->free_query_handle_all (true);
 
   return error;
 }
@@ -5696,17 +5700,24 @@ check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func, PARSER_CONTEXT * pa
 	  if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
 	    {
 	      flat = node->info.spec.flat_entity_list;
-	      class_ = (flat ? flat->info.name.db_object : NULL);
-	      if (class_ == NULL)
+	      if (node->info.spec.remote_server_name)
 		{
-		  PT_INTERNAL_ERROR (parser, "invalid spec id");
-		  result = ER_FAILED;
-		  goto exit;
+		  result = NO_ERROR;
 		}
-	      result = tr_prepare_statement (&state, event, class_, 0, NULL);
-	      if (result != NO_ERROR)
+	      else
 		{
-		  goto exit;
+		  class_ = (flat ? flat->info.name.db_object : NULL);
+		  if (class_ == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "invalid spec id");
+		      result = ER_FAILED;
+		      goto exit;
+		    }
+		  result = tr_prepare_statement (&state, event, class_, 0, NULL);
+		  if (result != NO_ERROR)
+		    {
+		      goto exit;
+		    }
 		}
 	    }
 	  node = node->next;
@@ -5715,8 +5726,17 @@ check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func, PARSER_CONTEXT * pa
 
     case TR_EVENT_STATEMENT_INSERT:
       flat = (statement->info.insert.spec) ? statement->info.insert.spec->info.spec.flat_entity_list : NULL;
-      class_ = (flat) ? flat->info.name.db_object : NULL;
-      result = tr_prepare_statement (&state, event, class_, 0, NULL);
+
+      if (statement->info.insert.spec && statement->info.insert.spec->info.spec.flat_entity_list == NULL
+	  && statement->info.insert.spec->info.spec.remote_server_name)
+	{
+	  result = NO_ERROR;
+	}
+      else
+	{
+	  class_ = (flat) ? flat->info.name.db_object : NULL;
+	  result = tr_prepare_statement (&state, event, class_, 0, NULL);
+	}
       break;
 
     case TR_EVENT_STATEMENT_UPDATE:
@@ -6980,9 +7000,11 @@ static int update_object_tuple (PARSER_CONTEXT * parser, CLIENT_UPDATE_INFO * as
 				const int turn_off_unique_check, const int turn_off_serializable_conflict_check,
 				UPDATE_TYPE update_type, bool should_delete);
 static int update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement, UPDATE_TYPE update_type);
+#if 0
 static int init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE_INFO ** assigns_data,
 			     int *assigns_count, CLIENT_UPDATE_CLASS_INFO ** cls_data, int *cls_count,
 			     DB_VALUE ** values, int *values_cnt, bool has_delete);
+#endif
 static int do_set_pruning_type (PARSER_CONTEXT * parser, PT_NODE * spec, CLIENT_UPDATE_CLASS_INFO * cls);
 static int update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id, PT_NODE * statement,
 				      bool savepoint_started);
@@ -7609,7 +7631,7 @@ do_set_pruning_type (PARSER_CONTEXT * parser, PT_NODE * spec, CLIENT_UPDATE_CLAS
  *
  * Note:
  */
-static int
+int
 init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE_INFO ** assigns_data, int *assigns_count,
 		  CLIENT_UPDATE_CLASS_INFO ** cls_data, int *cls_count, DB_VALUE ** values, int *values_cnt,
 		  bool has_delete)
@@ -8952,6 +8974,11 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
       has_any_update_trigger = 0;
       while (spec && !has_trigger && err == NO_ERROR)
 	{
+	  if (spec->info.spec.remote_server_name)
+	    {
+	      spec = spec->next;
+	      continue;
+	    }
 	  if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
 	    {
 	      flat = spec->info.spec.flat_entity_list;
@@ -8992,12 +9019,19 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* sm_class_has_triggers() checked if the class has active triggers */
       statement->info.update.has_trigger = (bool) has_trigger;
 
-      /* check if the target class has UNIQUE constraint and get attributes that has NOT NULL constraint */
-      err = update_check_for_constraints (parser, &has_unique, &not_nulls, statement);
-      if (err < NO_ERROR)
+      if (statement->info.update.spec->info.spec.remote_server_name)
 	{
-	  PT_INTERNAL_ERROR (parser, "update");
-	  break;		/* stop while loop if error */
+	  not_nulls = NULL;
+	}
+      else
+	{
+	  /* check if the target class has UNIQUE constraint and get attributes that has NOT NULL constraint */
+	  err = update_check_for_constraints (parser, &has_unique, &not_nulls, statement);
+	  if (err < NO_ERROR)
+	    {
+	      PT_INTERNAL_ERROR (parser, "update");
+	      break;		/* stop while loop if error */
+	    }
 	}
 
       statement->info.update.has_unique = (bool) has_unique;
@@ -10324,6 +10358,11 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
       node = (PT_NODE *) statement->info.delete_.spec;
       while (node && err == NO_ERROR && !has_trigger)
 	{
+	  if (node->info.spec.remote_server_name)
+	    {
+	      node = node->next;
+	      continue;
+	    }
 	  if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
 	    {
 	      flat = node->info.spec.flat_entity_list;
@@ -11621,6 +11660,7 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
   DB_MIDXKEY midxkey;
   SM_ATTRIBUTE **attr = NULL;
   int buf_size = 0, bitmap_size = 0, i, error = NO_ERROR, attr_count = 0;
+  unsigned char *bits;
   char *bound_bits = NULL, *key_ptr = NULL;
   OR_BUF buf;
   DB_VALUE *val = NULL;
@@ -11681,7 +11721,7 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
   bound_bits = midxkey.buf;
   key_ptr = bound_bits + bitmap_size;
 
-  OR_BUF_INIT (buf, key_ptr, buf_size - bitmap_size);
+  or_init (&buf, key_ptr, buf_size - bitmap_size);
   MIDXKEY_BOUNDBITS_INIT (bound_bits, bitmap_size);
 
   for (i = 0, attr = constraint->attributes; *attr != NULL; attr++, i++)
@@ -13552,11 +13592,18 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *with = NULL;
   int save_au;
 
-  if (statement == NULL || statement->node_type != PT_INSERT || statement->info.insert.spec == NULL
-      || statement->info.insert.spec->info.spec.flat_entity_list == NULL)
+  if (statement == NULL || statement->node_type != PT_INSERT || statement->info.insert.spec == NULL)
     {
       assert (false);
       return ER_GENERIC_ERROR;
+    }
+  if (statement->info.insert.spec->info.spec.flat_entity_list == NULL)
+    {
+      if (statement->info.insert.spec->info.spec.remote_server_name == NULL)
+	{
+	  assert (false);
+	  return ER_GENERIC_ERROR;
+	}
     }
 
   AU_DISABLE (save_au);
@@ -13582,19 +13629,22 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   statement->etc = NULL;
-  class_ = statement->info.insert.spec->info.spec.flat_entity_list;
-  values = statement->info.insert.value_clauses;
-
-  error = do_insert_checks (parser, statement, &class_, &update, values);
-  if (error != NO_ERROR)
+  if (statement->info.insert.spec->info.spec.flat_entity_list)
     {
-      ASSERT_ERROR ();
-      goto cleanup;
-    }
+      class_ = statement->info.insert.spec->info.spec.flat_entity_list;
+      values = statement->info.insert.value_clauses;
 
-  if (statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
-    {
-      goto cleanup;
+      error = do_insert_checks (parser, statement, &class_, &update, values);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto cleanup;
+	}
+
+      if (statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
+	{
+	  goto cleanup;
+	}
     }
 
   error = do_prepare_insert_internal (parser, statement);
@@ -16255,40 +16305,47 @@ check_merge_trigger (PT_DO_FUNC * do_func, PARSER_CONTEXT * parser, PT_NODE * st
 
   state = NULL;
 
-  flat = (statement->info.merge.into) ? statement->info.merge.into->info.spec.flat_entity_list : NULL;
-  class_ = (flat) ? flat->info.name.db_object : NULL;
-  if (class_ == NULL)
+  if (statement->info.merge.into && statement->info.merge.into->info.spec.remote_server_name)
     {
-      PT_INTERNAL_ERROR (parser, "invalid spec id");
-      result = ER_FAILED;
-      goto exit;
+      ;
     }
-
-  if (statement->info.merge.update.assignment)
+  else
     {
-      /* UPDATE statement triggers */
-      result = tr_prepare_statement (&state, TR_EVENT_STATEMENT_UPDATE, class_, 0, NULL);
-      if (result != NO_ERROR)
+      flat = (statement->info.merge.into) ? statement->info.merge.into->info.spec.flat_entity_list : NULL;
+      class_ = (flat) ? flat->info.name.db_object : NULL;
+      if (class_ == NULL)
 	{
+	  PT_INTERNAL_ERROR (parser, "invalid spec id");
+	  result = ER_FAILED;
 	  goto exit;
 	}
-      /* DELETE statement triggers */
-      if (statement->info.merge.update.has_delete)
+
+      if (statement->info.merge.update.assignment)
 	{
-	  result = tr_prepare_statement (&state, TR_EVENT_STATEMENT_DELETE, class_, 0, NULL);
+	  /* UPDATE statement triggers */
+	  result = tr_prepare_statement (&state, TR_EVENT_STATEMENT_UPDATE, class_, 0, NULL);
 	  if (result != NO_ERROR)
 	    {
 	      goto exit;
 	    }
+	  /* DELETE statement triggers */
+	  if (statement->info.merge.update.has_delete)
+	    {
+	      result = tr_prepare_statement (&state, TR_EVENT_STATEMENT_DELETE, class_, 0, NULL);
+	      if (result != NO_ERROR)
+		{
+		  goto exit;
+		}
+	    }
 	}
-    }
-  if (statement->info.merge.insert.value_clauses)
-    {
-      /* INSERT statement triggers */
-      result = tr_prepare_statement (&state, TR_EVENT_STATEMENT_INSERT, class_, 0, NULL);
-      if (result != NO_ERROR)
+      if (statement->info.merge.insert.value_clauses)
 	{
-	  goto exit;
+	  /* INSERT statement triggers */
+	  result = tr_prepare_statement (&state, TR_EVENT_STATEMENT_INSERT, class_, 0, NULL);
+	  if (result != NO_ERROR)
+	    {
+	      goto exit;
+	    }
 	}
     }
 
@@ -16841,144 +16898,159 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto cleanup;
     }
 
-  /* check into for triggers and virtual class */
-  AU_SAVE_AND_DISABLE (au_save);
-
-  spec = statement->info.merge.into;
-  flat = spec->info.spec.flat_entity_list;
-  class_obj = (flat) ? flat->info.name.db_object : NULL;
-
-  if (statement->info.merge.update.assignment && !insert_only)
+  if (statement->info.merge.into->info.spec.remote_server_name)
     {
-      err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_UPDATE);
-      if (err == NO_ERROR && !has_trigger)
+      server_insert = server_update = false;
+      if (statement->info.merge.insert.value_clauses)
 	{
-	  err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_STATEMENT_UPDATE);
+	  server_insert = true;
 	}
-      if (err == NO_ERROR && !has_trigger && statement->info.merge.update.has_delete)
+      if (statement->info.merge.update.assignment && !insert_only)
 	{
-	  err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_DELETE);
+	  server_update = true;
+	}
+    }
+  else
+    {
+      /* check into for triggers and virtual class */
+      AU_SAVE_AND_DISABLE (au_save);
+
+      spec = statement->info.merge.into;
+      flat = spec->info.spec.flat_entity_list;
+      class_obj = (flat) ? flat->info.name.db_object : NULL;
+
+      if (statement->info.merge.update.assignment && !insert_only)
+	{
+	  err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_UPDATE);
 	  if (err == NO_ERROR && !has_trigger)
 	    {
-	      err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_STATEMENT_DELETE);
+	      err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_STATEMENT_UPDATE);
 	    }
-	}
-    }
-  if (err == NO_ERROR && !has_trigger && statement->info.merge.insert.value_clauses)
-    {
-      err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_INSERT);
-      if (err == NO_ERROR && !has_trigger)
-	{
-	  err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_STATEMENT_INSERT);
-	}
-    }
-
-  if (err == NO_ERROR)
-    {
-      is_vclass = db_is_vclass (class_obj);
-      if (is_vclass < 0)
-	{
-	  err = is_vclass;
-	}
-      else
-	{
-	  has_virt = is_vclass || ((flat) ? (flat->info.name.virt_object != NULL) : false);
-	}
-    }
-
-  AU_RESTORE (au_save);
-
-  if (err != NO_ERROR)
-    {
-      goto cleanup;
-    }
-
-  err = do_evaluate_default_expr (parser, flat);
-  if (err != NO_ERROR)
-    {
-      goto cleanup;
-    }
-
-  /* check update part */
-  if (statement->info.merge.update.assignment && !insert_only)
-    {
-      /* check if the target class has UNIQUE constraint */
-      err = update_check_for_constraints (parser, &has_unique, &non_nulls_upd, statement);
-      if (err != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-      if (has_unique)
-	{
-	  statement->info.merge.flags |= PT_MERGE_INFO_HAS_UNIQUE;
-	}
-
-      server_update = (!has_trigger && !has_virt
-		       && !update_check_having_meta_attr (parser, statement->info.merge.update.assignment));
-
-      lhs = statement->info.merge.update.assignment->info.expr.arg1;
-      if (PT_IS_N_COLUMN_UPDATE_EXPR (lhs))
-	{
-	  lhs = lhs->info.expr.arg1;
-	}
-
-      /* if we are updating class attributes, not need to prepare */
-      if (lhs->info.name.meta_class == PT_META_ATTR)
-	{
-	  statement->info.merge.update.do_class_attrs = true;
-	  goto cleanup;
-	}
-    }
-  else
-    {
-      server_update = !has_trigger && !has_virt;
-    }
-
-  /* check insert part */
-  if (statement->info.merge.insert.value_clauses)
-    {
-      PT_NODE *attr, *attrs = statement->info.merge.insert.attr_list;
-
-      if (prm_get_integer_value (PRM_ID_INSERT_MODE) & INSERT_SELECT)
-	{
-	  /* server insert cannot handle insert into a shared attribute */
-	  server_insert = true;
-	  attr = attrs;
-	  while (attr)
+	  if (err == NO_ERROR && !has_trigger && statement->info.merge.update.has_delete)
 	    {
-	      if (attr->node_type != PT_NAME || attr->info.name.meta_class != PT_NORMAL)
+	      err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_DELETE);
+	      if (err == NO_ERROR && !has_trigger)
 		{
-		  server_insert = false;
-		  break;
+		  err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_STATEMENT_DELETE);
 		}
-	      attr = attr->next;
+	    }
+	}
+      if (err == NO_ERROR && !has_trigger && statement->info.merge.insert.value_clauses)
+	{
+	  err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_INSERT);
+	  if (err == NO_ERROR && !has_trigger)
+	    {
+	      err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_STATEMENT_INSERT);
+	    }
+	}
+
+      if (err == NO_ERROR)
+	{
+	  is_vclass = db_is_vclass (class_obj);
+	  if (is_vclass < 0)
+	    {
+	      err = is_vclass;
+	    }
+	  else
+	    {
+	      has_virt = is_vclass || ((flat) ? (flat->info.name.virt_object != NULL) : false);
+	    }
+	}
+
+      AU_RESTORE (au_save);
+
+      if (err != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      err = do_evaluate_default_expr (parser, flat);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      /* check update part */
+      if (statement->info.merge.update.assignment && !insert_only)
+	{
+	  /* check if the target class has UNIQUE constraint */
+	  err = update_check_for_constraints (parser, &has_unique, &non_nulls_upd, statement);
+	  if (err != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	  if (has_unique)
+	    {
+	      statement->info.merge.flags |= PT_MERGE_INFO_HAS_UNIQUE;
+	    }
+
+	  server_update = (!has_trigger && !has_virt
+			   && !update_check_having_meta_attr (parser, statement->info.merge.update.assignment));
+
+	  lhs = statement->info.merge.update.assignment->info.expr.arg1;
+	  if (PT_IS_N_COLUMN_UPDATE_EXPR (lhs))
+	    {
+	      lhs = lhs->info.expr.arg1;
+	    }
+
+	  /* if we are updating class attributes, not need to prepare */
+	  if (lhs->info.name.meta_class == PT_META_ATTR)
+	    {
+	      statement->info.merge.update.do_class_attrs = true;
+	      goto cleanup;
 	    }
 	}
       else
 	{
-	  server_insert = false;
+	  server_update = !has_trigger && !has_virt;
 	}
 
-      err = check_for_cons (parser, &has_unique, &non_nulls_ins, attrs, flat->info.name.db_object);
-      if (err != NO_ERROR)
+      /* check insert part */
+      if (statement->info.merge.insert.value_clauses)
 	{
-	  goto cleanup;
-	}
-      if (has_unique)
-	{
-	  statement->info.merge.flags |= PT_MERGE_INFO_HAS_UNIQUE;
-	}
+	  PT_NODE *attr, *attrs = statement->info.merge.insert.attr_list;
 
-      /* check not nulls attrs are present in attr list */
-      err = check_missing_non_null_attrs (parser, spec, attrs, false);
-      if (err != NO_ERROR)
-	{
-	  goto cleanup;
+	  if (prm_get_integer_value (PRM_ID_INSERT_MODE) & INSERT_SELECT)
+	    {
+	      /* server insert cannot handle insert into a shared attribute */
+	      server_insert = true;
+	      attr = attrs;
+	      while (attr)
+		{
+		  if (attr->node_type != PT_NAME || attr->info.name.meta_class != PT_NORMAL)
+		    {
+		      server_insert = false;
+		      break;
+		    }
+		  attr = attr->next;
+		}
+	    }
+	  else
+	    {
+	      server_insert = false;
+	    }
+
+	  err = check_for_cons (parser, &has_unique, &non_nulls_ins, attrs, flat->info.name.db_object);
+	  if (err != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	  if (has_unique)
+	    {
+	      statement->info.merge.flags |= PT_MERGE_INFO_HAS_UNIQUE;
+	    }
+
+	  /* check not nulls attrs are present in attr list */
+	  err = check_missing_non_null_attrs (parser, spec, attrs, false);
+	  if (err != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
 	}
-    }
-  else
-    {
-      server_insert = !has_trigger && !has_virt;
+      else
+	{
+	  server_insert = !has_trigger && !has_virt;
+	}
     }
 
   server_op = (server_insert && server_update);
@@ -17029,7 +17101,8 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (stream.xasl_id == NULL && err == NO_ERROR)
 	{
-	  if (statement->info.merge.insert.value_clauses)
+	  if (statement->info.merge.insert.value_clauses &&
+	      (statement->info.merge.into->info.spec.remote_server_name == NULL))
 	    {
 	      err = pt_find_omitted_default_expr (parser, flat->info.name.db_object,
 						  statement->info.merge.insert.attr_list, &default_expr_attrs);
@@ -17249,13 +17322,21 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   spec = statement->info.merge.into;
-  flat = spec->info.spec.flat_entity_list;
-  if (flat == NULL)
+  if (spec->info.spec.remote_server_name)
     {
-      err = ER_GENERIC_ERROR;
-      goto exit;
+      class_obj = NULL;
     }
-  class_obj = flat->info.name.db_object;
+  else
+    {
+      flat = spec->info.spec.flat_entity_list;
+      if (flat == NULL)
+	{
+	  err = ER_GENERIC_ERROR;
+	  goto exit;
+	}
+      class_obj = flat->info.name.db_object;
+    }
+
 
   if (statement->info.merge.flags & PT_MERGE_INFO_SERVER_OP)
     {
@@ -17330,7 +17411,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* free returned QFILE_LIST_ID */
       if (list_id)
 	{
-	  if (list_id->tuple_cnt > 0)
+	  if ((list_id->tuple_cnt > 0) && class_obj)
 	    {
 	      if (statement->flag.use_auto_commit && tran_was_latest_query_committed ())
 		{
@@ -20130,8 +20211,11 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   pval = NULL;
 
   /* DBNAME */
-  assert (create_server->dbname->node_type == PT_NAME);
-  attr_val[2] = (char *) create_server->dbname->info.name.original;
+  assert (create_server->dbname->node_type == PT_NAME || create_server->dbname->node_type == PT_VALUE);
+  // *INDENT-OFF* 
+  attr_val[2] = (create_server->dbname->node_type == PT_NAME) ? (char *) create_server->dbname->info.name.original
+                                                              : (char *) PT_VALUE_GET_BYTES (create_server->dbname);
+  // *INDENT-ON* 
   if (attr_val[2] == NULL)
     {
       error = ER_FAILED;
@@ -20139,8 +20223,11 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* USER */
-  assert (create_server->user->node_type == PT_NAME);
-  attr_val[3] = (char *) create_server->user->info.name.original;
+  assert (create_server->user->node_type == PT_NAME || create_server->user->node_type == PT_VALUE);
+  // *INDENT-OFF* 
+  attr_val[3] = (create_server->user->node_type == PT_NAME) ? (char *) create_server->user->info.name.original
+                                                            : (char *) PT_VALUE_GET_BYTES (create_server->user);
+  // *INDENT-ON* 
   if (attr_val[3] == NULL)
     {
       error = ER_FAILED;
@@ -20425,8 +20512,15 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (alter->xbits.bit_dbname)
     {
-      assert (alter->dbname->node_type == PT_NAME);
-      pt = (char *) alter->dbname->info.name.original;
+      assert (alter->dbname->node_type == PT_NAME || alter->dbname->node_type == PT_VALUE);
+      if (alter->dbname->node_type == PT_VALUE)
+	{
+	  pt = (char *) PT_VALUE_GET_BYTES (alter->dbname);
+	}
+      else
+	{
+	  pt = (char *) alter->dbname->info.name.original;
+	}
 
       assert (pt && *pt);
       db_make_string (&value, pt);
@@ -20440,8 +20534,15 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (alter->xbits.bit_user)
     {
-      assert (alter->user->node_type == PT_NAME);
-      pt = (char *) alter->user->info.name.original;
+      assert (alter->user->node_type == PT_NAME || alter->user->node_type == PT_VALUE);
+      if (alter->user->node_type == PT_VALUE)
+	{
+	  pt = (char *) PT_VALUE_GET_BYTES (alter->user);
+	}
+      else
+	{
+	  pt = (char *) alter->user->info.name.original;
+	}
 
       assert (pt && *pt);
       db_make_string (&value, pt);
@@ -20564,19 +20665,19 @@ end:
 }
 
 int
-get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * out_val)
+get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_name, PT_NODE * owner_name, DB_VALUE * out_val)
 {
-  char *server_name;
   DB_OBJECT *server_object = NULL;
   DB_VALUE values[4], pwd_val;
   int au_save, error, cnt;
   const char *url_attr_names[4] = { SERVER_ATTR_HOST, SERVER_ATTR_PORT, SERVER_ATTR_DB_NAME, SERVER_ATTR_PROPERTIES };
-  PT_DBLINK_INFO *dblink_table = &node->info.dblink_table;
+  MOP user_obj = NULL;
+  DB_VALUE user_val;
 
-  server_name = (char *) dblink_table->conn->info.name.original;
+  db_make_null (&user_val);
+
   cnt = 0;
-
-  server_object = server_find (dblink_table->conn, dblink_table->owner_name, false);
+  server_object = server_find (server_name, owner_name, false);
   if (server_object == NULL)
     {
       return er_errid ();
@@ -20603,6 +20704,22 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE
   if (error < 0)
     {
       goto error_end;
+    }
+
+  if (owner_name == NULL)
+    {
+      error = db_get (server_object, SERVER_ATTR_OWNER, &user_val);
+      if (error < 0)
+	{
+	  goto error_end;
+	}
+
+      user_obj = db_get_object (&user_val);
+      error = db_get (user_obj, "name", &(out_val[3]));
+      if (error < 0)
+	{
+	  goto error_end;
+	}
     }
 
   error = get_dblink_password_decrypt (db_get_string (&pwd_val), &(out_val[2]));
@@ -20652,10 +20769,46 @@ error_end:
     {
       pr_clear_value (&(values[cnt]));
     }
+  pr_clear_value (&user_val);
 
   return error;
 }
 
+int
+get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_nm, PT_NODE * owner_nm,
+				     DB_VALUE * out_val)
+{
+  DB_OBJECT *server_object = NULL;
+  MOP user_obj = NULL;
+  int au_save, error;
+  DB_VALUE user_val;
+
+  db_make_null (&user_val);
+
+  server_object = server_find (server_nm, owner_nm, false);
+  if (server_object == NULL)
+    {
+      return er_errid ();
+    }
+
+  AU_DISABLE (au_save);		// disable checking authorization
+
+  if (owner_nm == NULL)
+    {
+      error = db_get (server_object, SERVER_ATTR_OWNER, &user_val);
+      if (error >= 0)
+	{
+	  user_obj = db_get_object (&user_val);
+	  error = db_get (user_obj, "name", out_val);
+	}
+    }
+
+error_end:
+  AU_ENABLE (au_save);
+  pr_clear_value (&user_val);
+
+  return error;
+}
 
 #define DBLINK_PASSWORD_MAX_LENGTH      (128)
 #define DBLINK_PASSWORD_CONFUSED_LENGTH (6)	// include 4(int) + 1(unsigned char) +  1(unsigned char)

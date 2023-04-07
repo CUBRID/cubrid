@@ -983,6 +983,30 @@ perfmon_server_get_stats (THREAD_ENTRY * thread_p)
 }
 
 /*
+ *   xperfmon_server_copy_stats_for - Copy recorded server statistics for trace
+ *				on the numbers of fetches, ioreads, and iowrites
+ *   return: none
+ *   to_stats(out): buffer to copy
+ */
+void
+xperfmon_server_copy_stats_for_trace (THREAD_ENTRY * thread_p, UINT64 * to_stats)
+{
+  UINT64 *from_stats;
+
+  from_stats = perfmon_server_get_stats (thread_p);
+
+  if (from_stats != NULL)
+    {
+      to_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset] =
+	from_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset];
+      to_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset] =
+	from_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset];
+      to_stats[pstat_Metadata[PSTAT_PB_NUM_IOWRITES].start_offset] =
+	from_stats[pstat_Metadata[PSTAT_PB_NUM_IOWRITES].start_offset];
+    }
+}
+
+/*
  *   xperfmon_server_copy_stats - Copy recorded server statistics for the current
  *				  transaction index
  *   return: none
@@ -1302,6 +1326,31 @@ perfmon_db_flushed_block_volumes (THREAD_ENTRY * thread_p, int num_volumes)
 #endif /* SERVER_MODE || SA_MODE */
 
 int
+perfmon_calc_diff_stats_for_trace (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats)
+{
+  int i;
+  int index[3] = {
+    pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset,
+    pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset,
+    pstat_Metadata[PSTAT_PB_NUM_IOWRITES].start_offset
+  };
+
+  for (i = 0; i < 3; i++)
+    {
+      if (new_stats[index[i]] >= old_stats[index[i]])
+	{
+	  stats_diff[index[i]] = new_stats[index[i]] - old_stats[index[i]];
+	}
+      else
+	{
+	  stats_diff[index[i]] = 0;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+int
 perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats)
 {
   int i, j;
@@ -1517,8 +1566,16 @@ perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *subs
 	    {
 	      if (pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
 		{
-		  fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
-			   (unsigned long long) stats_ptr[offset]);
+		  if (prm_get_bool_value (PRM_ID_STATDUMP_FORCE_ADD_INT_MAX))
+		    {
+		      fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+			       (unsigned long long) stats_ptr[offset] + INT_MAX);
+		    }
+		  else
+		    {
+		      fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+			       (unsigned long long) stats_ptr[offset]);
+		    }
 		}
 	      else
 		{

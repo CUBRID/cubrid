@@ -22,6 +22,8 @@ public class ColumnInfo {
     public byte shared;
     public String defaultValueString;
 
+    public ColumnInfo() {} // for mock server API
+
     public ColumnInfo(CUBRIDUnpacker unpacker) {
         type = unpacker.unpackInt();
         setType = unpacker.unpackInt();

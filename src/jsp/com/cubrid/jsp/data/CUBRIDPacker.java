@@ -32,6 +32,7 @@
 package com.cubrid.jsp.data;
 
 import com.cubrid.jsp.jdbc.CUBRIDServerSideResultSet;
+import com.cubrid.jsp.protocol.PackableObject;
 import cubrid.sql.CUBRIDOID;
 import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
@@ -125,6 +126,15 @@ public class CUBRIDPacker {
             buffer.put(value);
             align(DataUtilities.INT_ALIGNMENT);
         }
+    }
+
+    public void packPackableObject(PackableObject o) {
+        o.pack(this);
+    }
+
+    public void packPrimitiveBytes(ByteBuffer b) {
+        ensureSpace(b.position());
+        buffer.put(b.array(), 0, b.position());
     }
 
     // TODO: legacy implementation, this function will be modified
@@ -223,9 +233,9 @@ public class CUBRIDPacker {
         }
     }
 
-    private void align(int size) {
+    public void align(int size) {
         int currentPosition = buffer.position();
-        int newPosition = DataUtilities.alignedPosition(buffer, size);
+        int newPosition = DataUtilities.alignedPosition(currentPosition, size);
 
         ensureSpace(newPosition - currentPosition);
         if (newPosition - currentPosition > 0) {

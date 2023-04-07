@@ -132,8 +132,7 @@ namespace cubxasl
     regu_variable_node *src;
     regu_variable_node *pattern;
     regu_variable_node *case_sensitive;
-    mutable cub_regex_object *compiled_regex;
-    mutable char *compiled_pattern;
+    mutable cub_compiled_regex *compiled_regex;
   };
 
   struct eval_term

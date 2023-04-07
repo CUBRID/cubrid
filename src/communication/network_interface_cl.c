@@ -10888,3 +10888,60 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 #endif // CS_MODE
   return ER_NOT_IN_STANDALONE;
 }
+
+int
+plcsql_transfer_file (const std::string & input_file, const bool & verbose, PLCSQL_COMPILE_INFO & compile_info)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  packing_packer packer;
+  cubmem::extensible_block eb;
+  char *ptr = NULL;
+
+  char *data_reply = NULL;
+  int data_reply_size = 0;
+
+  packer.set_buffer_and_pack_all (eb, verbose, input_file);
+
+  OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int req_error = net_client_request_method_callback (NET_SERVER_PLCSQL_TRANSFER_FILE, eb.get_ptr (),
+						      (int) packer.get_current_size (),
+						      reply, OR_ALIGNED_BUF_SIZE (a_reply), &data_reply,
+						      &data_reply_size);
+  if (req_error != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* consumes dummy reply */
+  int dummy;
+  ptr = or_unpack_int (reply, &dummy);
+  ptr = or_unpack_int (ptr, &dummy);
+  ptr = or_unpack_int (ptr, &dummy);
+
+  /* receive result values / error */
+  if (data_reply != NULL)
+    {
+      packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
+      unpacker.unpack_all (compile_info);
+      rc = NO_ERROR;
+    }
+
+error:
+  // TODO error handling
+  if (req_error != NO_ERROR)
+    {
+      //
+    }
+
+  if (data_reply != NULL)
+    {
+      free_and_init (data_reply);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}

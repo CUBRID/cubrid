@@ -352,6 +352,44 @@ event_log_print_client_info (int tran_index, int indent)
 }
 
 /*
+ * event_log_sql_without_user_oid
+ *   print sql without user oid for event log
+ *   return: none
+*/
+void
+event_log_sql_without_user_oid (FILE * fp, const char *format, int indent, const char *hash_text)
+{
+  /* start from user=0|0|0, length = 10 */
+  int i, start = strlen (hash_text) - 10;
+  char *k;
+
+  for (i = start; i >= 0; i--)
+    {
+      if ((k = strstr ((char *) hash_text, "user=")) != NULL)
+	{
+	  /* cut the hash_text to exclude "user=" */
+	  *k = 0;
+	  break;
+	}
+    }
+
+  if (format)
+    {
+      fprintf (fp, format, indent, ' ', hash_text);
+    }
+  else
+    {
+      fprintf (fp, "%s\n", hash_text);
+    }
+
+  /* if "user=" was found then restore it */
+  if (k != NULL)
+    {
+      *k = 'u';
+    }
+}
+
+/*
  * event_log_sql_string -
  *   return:
  *   thread_p(in):
@@ -381,7 +419,7 @@ event_log_sql_string (THREAD_ENTRY * thread_p, FILE * log_fp, XASL_ID * xasl_id,
 
   if (ent != NULL && ent->sql_info.sql_hash_text != NULL)
     {
-      fprintf (log_fp, "%s\n", ent->sql_info.sql_hash_text);
+      event_log_sql_without_user_oid (log_fp, NULL, 0, ent->sql_info.sql_hash_text);
     }
   else
     {

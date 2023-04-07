@@ -97,6 +97,7 @@ extern "C"
     CSQL_SYSADM_PROMPT = 81,
     CSQL_TRANSACTIONS = 82,
     CSQL_TRANSACTION = 83,
+    CSQL_MSG_TOO_FEW_ARGS = 84,
 
     CSQL_HELP_SCHEMA_TITLE_TEXT = 145,
     CSQL_HELP_NONE_TEXT = 146,
@@ -117,6 +118,7 @@ extern "C"
     CSQL_E_INVALIDARGCOM_TEXT = 194,
     CSQL_E_UNKNOWN_TEXT = 196,
     CSQL_E_CANT_EDIT_TEXT = 197,
+    CSQL_E_FORMAT_TEXT = 198,
 
     CSQL_HELP_CLASS_HEAD_TEXT = 203,
     CSQL_HELP_SUPER_CLASS_HEAD_TEXT = 204,
@@ -169,7 +171,8 @@ extern "C"
     CSQL_ERR_INVALID_ARG_COMBINATION,
     CSQL_ERR_CANT_EDIT,
     CSQL_ERR_INFO_CMD_HELP,
-    CSQL_ERR_CLASS_NAME_MISSED
+    CSQL_ERR_CLASS_NAME_MISSED,
+    CSQL_ERR_FORMAT
   };
 
 /* session command numbers */
@@ -205,6 +208,7 @@ extern "C"
     S_CMD_PRINT_CMD,
     S_CMD_PAGER_CMD,
     S_CMD_NOPAGER_CMD,
+    S_CMD_FORMATTER_CMD,
     S_CMD_COLUMN_WIDTH,
     S_CMD_STRING_WIDTH,
 
@@ -234,7 +238,14 @@ extern "C"
     S_CMD_HISTORY_READ,
     S_CMD_HISTORY_LIST,
 
-    S_CMD_TRACE
+    S_CMD_TRACE,
+
+    S_CMD_SINGLELINE,
+
+    S_CMD_CONNECT,
+
+/* cmd PL/CSQL stuffs */
+    S_CMD_SERVER_OUTPUT
   } SESSION_CMD;
 
 /* iq_ function return status */
@@ -279,6 +290,7 @@ extern "C"
     char column_delimiter;
     char column_enclosure;
     bool loaddb_output;
+    bool pl_server_output;
 #if defined(CSQL_NO_LONGGING)
     bool no_logging;
 #endif				/* CSQL_NO_LONGGING */
@@ -300,6 +312,7 @@ extern "C"
   extern char csql_Print_cmd[];
   extern char csql_Pager_cmd[];
   extern char csql_Scratch_text[];
+  extern char csql_Formatter_cmd[];
   extern int csql_Error_code;
 
 
@@ -318,7 +331,8 @@ extern "C"
 
   extern char *csql_get_real_path (const char *pathname);
   extern void csql_invoke_system (const char *command);
-  extern int csql_invoke_system_editor (void);
+  extern int csql_invoke_formatter (void);
+  extern int csql_invoke_system_editor (const char *argument);
   extern void csql_fputs (const char *str, FILE * fp);
   extern void csql_fputs_console_conv (const char *str, FILE * fp);
   extern FILE *csql_popen (const char *cmd, FILE * fd);

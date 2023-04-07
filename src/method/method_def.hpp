@@ -30,6 +30,9 @@
 
 #define METHOD_MAX_RECURSION_DEPTH 15
 
+using METHOD_GROUP_ID = std::uint64_t;
+using METHOD_REQ_ID = int;
+
 typedef enum
 {
   METHOD_SUCCESS = 1,
@@ -47,10 +50,14 @@ enum METHOD_TYPE
 
 enum METHOD_REQUEST
 {
-  METHOD_REQUEST_ARG_PREPARE,
-  METHOD_REQUEST_INVOKE,
-  METHOD_REQUEST_CALLBACK,
-  METHOD_REQUEST_END
+  METHOD_REQUEST_ARG_PREPARE = 0x40,
+  METHOD_REQUEST_INVOKE = 0x01,
+  METHOD_REQUEST_CALLBACK = 0x08,
+  METHOD_REQUEST_END = 0x20,
+
+  METHOD_REQUEST_COMPILE = 0x80,
+  METHOD_REQUEST_SQL_SEMANTICS = 0xA0,
+  METHOD_REQUEST_GLOBAL_SEMANTICS = 0xA1
 };
 
 enum METHOD_RESPONSE
@@ -91,7 +98,11 @@ enum METHOD_CALLBACK_RESPONSE
   METHOD_CALLBACK_LOB_WRITE = 36,
   METHOD_CALLBACK_LOB_READ = 37,
 
-  METHOD_CALLBACK_CURSOR_CLOSE = 42
+  METHOD_CALLBACK_CURSOR_CLOSE = 42,
+
+  // COMPILE
+  METHOD_CALLBACK_GET_SQL_SEMANTICS = 100,
+  METHOD_CALLBACK_GET_GLOBAL_SEMANTICS = 101,
 };
 
 enum METHOD_ARG_MODE
@@ -133,7 +144,12 @@ struct method_sig_node
 
   void freemem ();
 
+  method_sig_node &operator= (const method_sig_node &rhs);
+
   method_sig_node ();
+  method_sig_node (method_sig_node &&); // move constructor
+  method_sig_node (const method_sig_node &obj); // copy constructor
+  ~method_sig_node ();
 };
 
 struct method_sig_list : public cubpacking::packable_object

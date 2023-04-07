@@ -88,6 +88,8 @@
 #include "log_manager.h"
 #include "crypt_opfunc.h"
 #include "flashback.h"
+#include "method_compile.hpp"
+
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -5150,7 +5152,14 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  return;
 	}
-      xperfmon_server_copy_stats (thread_p, base_stats);
+      if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
+	{
+	  xperfmon_server_copy_stats (thread_p, base_stats);
+	}
+      else
+	{
+	  xperfmon_server_copy_stats_for_trace (thread_p, base_stats);
+	}
 
       tsc_getticks (&start_tick);
 
@@ -5393,8 +5402,16 @@ null_list:
 	      goto exit;
 	    }
 
-	  xperfmon_server_copy_stats (thread_p, current_stats);
-	  perfmon_calc_diff_stats (diff_stats, current_stats, base_stats);
+	  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
+	    {
+	      xperfmon_server_copy_stats (thread_p, current_stats);
+	      perfmon_calc_diff_stats (diff_stats, current_stats, base_stats);
+	    }
+	  else
+	    {
+	      xperfmon_server_copy_stats_for_trace (thread_p, current_stats);
+	      perfmon_calc_diff_stats_for_trace (diff_stats, current_stats, base_stats);
+	    }
 
 	  if (response_time >= trace_slow_msec)
 	    {
@@ -5600,7 +5617,8 @@ event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, 
     }
 
   event_log_print_client_info (tran_index, indent);
-  fprintf (log_fp, "%*csql: %s\n", indent, ' ', info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
+  event_log_sql_without_user_oid (log_fp, "%*csql: %s\n", indent,
+				  info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {
@@ -5646,7 +5664,8 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time
     }
 
   event_log_print_client_info (tran_index, indent);
-  fprintf (log_fp, "%*csql: %s\n", indent, ' ', info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
+  event_log_sql_without_user_oid (log_fp, "%*csql: %s\n", indent,
+				  info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {
@@ -5686,7 +5705,8 @@ event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
     }
 
   event_log_print_client_info (tran_index, indent);
-  fprintf (log_fp, "%*csql: %s\n", indent, ' ', info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
+  event_log_sql_without_user_oid (log_fp, "%*csql: %s\n", indent,
+				  info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {
@@ -11112,4 +11132,35 @@ css_send_error:
 
   flashback_reset ();
   return;
+}
+
+
+void
+splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  packing_unpacker unpacker (request, (size_t) reqlen);
+
+  bool verbose;
+  std::string input_string;
+  unpacker.unpack_all (verbose, input_string);
+
+  cubmethod::runtime_context * ctx = NULL;
+  session_get_method_runtime_context (thread_p, ctx);
+
+  int error = ER_FAILED;
+  cubmem::extensible_block ext_blk;
+  if (ctx)
+    {
+      error = cubmethod::invoke_compile (*thread_p, *ctx, input_string, verbose, ext_blk);
+    }
+
+  // Error code and is_ignored.
+  OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = or_pack_int (reply, (int) END_CALLBACK);
+  ptr = or_pack_int (ptr, ext_blk.get_size ());
+  ptr = or_pack_int (ptr, error);
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				     ext_blk.get_ptr (), (int) ext_blk.get_size ());
 }

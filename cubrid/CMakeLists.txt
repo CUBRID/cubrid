@@ -231,6 +231,8 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/stream_to_xasl.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
+  ${QUERY_DIR}/string_regex_std.cpp
+  ${QUERY_DIR}/string_regex_re2.cpp
   ${QUERY_DIR}/vacuum.c
   ${QUERY_DIR}/xasl_cache.c
   )
@@ -241,7 +243,6 @@ set(QUERY_HEADERS
   ${QUERY_DIR}/query_monitoring.hpp
   ${QUERY_DIR}/query_reevaluation.hpp
   ${QUERY_DIR}/scan_json_table.hpp
-  ${QUERY_DIR}/string_regex.hpp
   )
 
 set(OBJECT_SOURCES
@@ -264,8 +265,11 @@ set(JSP_SOURCES
   )
 
 set(METHOD_SOURCES
+  ${METHOD_DIR}/method_connection_java.cpp
   ${METHOD_DIR}/method_connection_sr.cpp
   ${METHOD_DIR}/method_connection_pool.cpp
+  ${METHOD_DIR}/method_compile_def.cpp
+  ${METHOD_DIR}/method_compile.cpp
   ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_error.cpp
   ${METHOD_DIR}/method_invoke_builtin.cpp
@@ -338,10 +342,11 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
   ${STORAGE_DIR}/btree_unique.cpp
+  ${STORAGE_DIR}/byte_order.c
   ${STORAGE_DIR}/catalog_class.c
   ${STORAGE_DIR}/compactdb_sr.c
-  ${STORAGE_DIR}/double_write_buffer.c
   ${STORAGE_DIR}/disk_manager.c
+  ${STORAGE_DIR}/double_write_buffer.c
   ${STORAGE_DIR}/es.c
   ${STORAGE_DIR}/es_common.c
   ${STORAGE_DIR}/es_posix.c
@@ -509,7 +514,7 @@ if(WIN32)
   set_target_properties(cubrid PROPERTIES OUTPUT_NAME libcubrid)
 endif(WIN32)
 
-target_compile_definitions(cubrid PRIVATE SERVER_MODE ${COMMON_DEFS})
+target_compile_definitions(cubrid PRIVATE SERVER_MODE CUBRID_EXPORTING ${COMMON_DEFS})
 if(NOT USE_CUBRID_ENV)
   target_compile_definitions(cubrid PRIVATE ${DIR_DEFS})
 endif(NOT USE_CUBRID_ENV)

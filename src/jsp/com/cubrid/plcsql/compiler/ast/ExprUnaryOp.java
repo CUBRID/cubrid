@@ -28,15 +28,38 @@
  *
  */
 
-package com.cubrid.jsp.test;
+package com.cubrid.plcsql.compiler.ast;
 
-import static org.junit.Assert.assertTrue;
+import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-import org.junit.Test;
+public class ExprUnaryOp extends Expr {
 
-public class TestSample {
-    @Test
-    public void evaluatesExpression() {
-        assertTrue(true);
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprUnaryOp(this);
     }
+
+    public final String opStr;
+    public final Expr operand;
+
+    public ExprUnaryOp(ParserRuleContext ctx, String opStr, Expr operand) {
+        super(ctx);
+
+        this.opStr = opStr;
+        this.operand = operand;
+    }
+
+    @Override
+    public String exprToJavaCode() {
+        return tmpl.replace("%'OPERATION'%", opStr)
+                .replace("  %'OPERAND'%", Misc.indentLines(operand.toJavaCode(), 1));
+    }
+
+    // --------------------------------------------------
+    // Private
+    // --------------------------------------------------
+
+    private static final String tmpl = Misc.combineLines("op%'OPERATION'%(", "  %'OPERAND'%", ")");
 }

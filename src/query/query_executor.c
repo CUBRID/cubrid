@@ -1542,7 +1542,11 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 	    case F_REGEXP_REPLACE:
 	    case F_REGEXP_SUBSTR:
 	      {
-		delete regu_var->value.funcp->tmp_obj->compiled_regex;
+		if (regu_var->value.funcp->tmp_obj->compiled_regex)
+		  {
+		    delete regu_var->value.funcp->tmp_obj->compiled_regex;
+		    regu_var->value.funcp->tmp_obj->compiled_regex = NULL;
+		  }
 	      }
 	      break;
 	    default:
@@ -1759,7 +1763,11 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_rlike->case_sensitive, is_final);
 
 	    /* free memory of compiled regex */
-	    cubregex::clear (et_rlike->compiled_regex, et_rlike->compiled_pattern);
+	    if (et_rlike->compiled_regex)
+	      {
+		delete et_rlike->compiled_regex;
+		et_rlike->compiled_regex = NULL;
+	      }
 	  }
 	  break;
 	}
@@ -7875,11 +7883,11 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	      specp = xptr->spec_list;
 	      assert (specp);
 
-	      /* count(*) query will scan an index but does not have a data-filter */
+	      /* count(*) query will scan an index but does not have a data-filter(where, if_pred, after_join_pred) */
 	      if (specp->next == NULL && specp->access == ACCESS_METHOD_INDEX
 		  && specp->s.cls_node.cls_regu_list_pred == NULL && specp->where_pred == NULL
 		  && !specp->indexptr->use_iss && !SCAN_IS_INDEX_MRO (&specp->s_id.s.isid)
-		  && !xptr->if_pred /* no if predicates */ )
+		  && !xptr->after_join_pred && !xptr->if_pred)
 		{
 		  /* there are two optimization for query having count() only
 		   * 1. Skip saving data to temporary files.
@@ -13641,6 +13649,25 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   return NO_ERROR;
 }
 
+static int
+qexec_execute_dblink_query (XASL_NODE * xasl, XASL_STATE * xasl_state)
+{
+  int res;
+  DBLINK_HOST_VARS host_vars;
+
+  host_vars.count = xasl->spec_list->s.dblink_node.host_var_count;
+  host_vars.index = xasl->spec_list->s.dblink_node.host_var_index;
+
+  res = dblink_execute_query (xasl->spec_list, &xasl_state->vd, &host_vars);
+  if (res < 0)
+    {
+      return res;
+    }
+
+  xasl->list_id->tuple_cnt = res;
+  return NO_ERROR;
+}
+
 /*
  * qexec_execute_mainblock_internal () -
  *   return: NO_ERROR, or ER_code
@@ -13718,7 +13745,16 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	{
 	  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, xasl->proc.update.wait_msecs);
 	}
-      error = qexec_execute_update (thread_p, xasl, false, xasl_state);
+
+      if (xasl->spec_list && xasl->spec_list->type == TARGET_DBLINK)
+	{
+	  error = qexec_execute_dblink_query (xasl, xasl_state);
+	}
+      else
+	{
+	  error = qexec_execute_update (thread_p, xasl, false, xasl_state);
+	}
+
       if (old_wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 	{
 	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
@@ -13743,7 +13779,16 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	{
 	  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, xasl->proc.delete_.wait_msecs);
 	}
-      error = qexec_execute_delete (thread_p, xasl, xasl_state);
+
+      if (xasl->spec_list && xasl->spec_list->type == TARGET_DBLINK)
+	{
+	  error = qexec_execute_dblink_query (xasl, xasl_state);
+	}
+      else
+	{
+	  error = qexec_execute_delete (thread_p, xasl, xasl_state);
+	}
+
       if (old_wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 	{
 	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
@@ -13771,7 +13816,14 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
       old_no_logging = thread_p->no_logging;
 
-      error = qexec_execute_insert (thread_p, xasl, xasl_state, false);
+      if (xasl->spec_list && xasl->spec_list->type == TARGET_DBLINK)
+	{
+	  error = qexec_execute_dblink_query (xasl, xasl_state);
+	}
+      else
+	{
+	  error = qexec_execute_insert (thread_p, xasl, xasl_state, false);
+	}
 
       thread_p->no_logging = old_no_logging;
 
@@ -13819,7 +13871,14 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
 
       /* execute merge */
-      error = qexec_execute_merge (thread_p, xasl, xasl_state);
+      if (xasl->spec_list && xasl->spec_list->type == TARGET_DBLINK)
+	{
+	  error = qexec_execute_dblink_query (xasl, xasl_state);
+	}
+      else
+	{
+	  error = qexec_execute_merge (thread_p, xasl, xasl_state);
+	}
 
       if (old_wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 	{
@@ -15613,6 +15672,22 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
       qfile_close_scan (thread_p, &lfscan_id);
 
+      if (xasl->spec_list->s_id.type == S_INDX_SCAN && SCAN_IS_INDEX_COVERED (&xasl->spec_list->s_id.s.isid))
+	{
+	  INDX_SCAN_ID *isidp = &xasl->spec_list->s_id.s.isid;
+
+	  /* close current list and start a new one */
+	  qfile_close_scan (thread_p, isidp->indx_cov.lsid);
+	  qfile_destroy_list (thread_p, isidp->indx_cov.list_id);
+	  isidp->indx_cov.list_id =
+	    qfile_open_list (thread_p, isidp->indx_cov.type_list, NULL, isidp->indx_cov.query_id, 0,
+			     isidp->indx_cov.list_id);
+	  if (isidp->indx_cov.list_id == NULL)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	}
+
       if (qp_lfscan != S_END)
 	{
 	  GOTO_EXIT_ON_ERROR;
@@ -16273,7 +16348,7 @@ qexec_get_tuple_column_value (QFILE_TUPLE tpl, int index, DB_VALUE * valp, tp_do
 	  return ER_FAILED;
 	}
 
-      OR_BUF_INIT (buf, ptr, length);
+      or_init (&buf, ptr, length);
 
       if (pr_type->data_readval (&buf, valp, domain, -1, false, NULL, 0) != NO_ERROR)
 	{
@@ -20910,7 +20985,7 @@ qexec_analytic_sort_key_header_load (ANALYTIC_FUNCTION_STATE * func_state, bool 
     {
       length = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p);
       tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
-      OR_BUF_INIT (buf, tuple_p, length);
+      or_init (&buf, tuple_p, length);
 
       rc =
 	func_state->func_p->domain->type->data_readval (&buf, func_state->func_p->value, func_state->func_p->domain, -1,
