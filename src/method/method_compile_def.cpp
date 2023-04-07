@@ -500,7 +500,7 @@ namespace cubmethod
 
     for (const auto &res : qs)
       {
-	(*res).pack (serializator);
+	res->pack (serializator);
       }
   }
 
@@ -511,7 +511,7 @@ namespace cubmethod
 
     for (const auto &res : qs)
       {
-	size += (*res).get_packed_size (serializator, size);
+	size += res->get_packed_size (serializator, size);
       }
 
     return size;

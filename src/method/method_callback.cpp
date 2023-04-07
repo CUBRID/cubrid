@@ -768,7 +768,7 @@ exit:
 
     global_semantics_response response;
 
-    const std::vector <std::unique_ptr<global_semantics_response_common>> &qs_ptr = response.qs;
+    std::vector <std::unique_ptr<global_semantics_response_common>> &qs_ptr = response.qs;
 
     int i = 0;
     for (global_semantics_question &question : request.qsqs)
