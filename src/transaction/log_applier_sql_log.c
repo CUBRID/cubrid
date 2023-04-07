@@ -661,10 +661,9 @@ sl_remove_oldest_file (void)
 static int
 sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_size)
 {
-  int path_len;
-  const char *log_path = NULL;
+  const char *log_path = NULL, *path_base_name = "sql_log";
   char *p = NULL;
-  char er_msg[PATH_MAX];
+  char tmp_log_path[PATH_MAX], er_msg[PATH_MAX];
 
   assert (repl_log_path != NULL && path_buf != NULL && path_buf_size >= PATH_MAX);
 
@@ -673,9 +672,10 @@ sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_s
     {
       if (!IS_ABS_PATH (log_path))
 	{
-	  snprintf (path_buf, path_buf_size, "%s%s%s", repl_log_path, FILEIO_PATH_SEPARATOR (repl_log_path), log_path);
+	  snprintf (tmp_log_path, sizeof (tmp_log_path), "%s%s%s", repl_log_path, FILEIO_PATH_SEPARATOR (repl_log_path),
+		    log_path);
 
-	  log_path = path_buf;
+	  log_path = tmp_log_path;
 	}
     }
   else
@@ -683,18 +683,7 @@ sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_s
       log_path = repl_log_path;
     }
 
-  if (log_path == path_buf)
-    {
-      path_len = strlen (log_path);
-
-      snprintf (path_buf + path_len, path_buf_size - path_len, "%s%s", FILEIO_PATH_SEPARATOR (log_path), "sql_log");
-    }
-  else
-    {
-      snprintf (path_buf, path_buf_size, "%s%s%s", log_path, FILEIO_PATH_SEPARATOR (log_path), "sql_log");
-    }
-
-  if (strlen (path_buf) >= path_buf_size - 1)
+  if (strlen (log_path) + 1 + strlen (path_base_name) >= path_buf_size)
     {
       snprintf (er_msg, sizeof (er_msg), "Too long the SQL log path \'%s\'", path_buf);
 
@@ -704,6 +693,8 @@ sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_s
 
       return ER_FAILED;
     }
+
+  snprintf (path_buf, path_buf_size, "%s%s%s", log_path, FILEIO_PATH_SEPARATOR (log_path), path_base_name);
 
   p = path_buf;
   if (*p == PATH_SEPARATOR)
