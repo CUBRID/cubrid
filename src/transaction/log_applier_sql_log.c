@@ -725,11 +725,10 @@ sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_s
 	    {
 	      if (mkdir (path_buf, 0777) < 0)
 		{
-		  snprintf (er_msg, sizeof (er_msg), "Failed to create SQL log directory \'%s\' (%s)", path_buf,
-			    strerror (errno));
+		  snprintf (er_msg, sizeof (er_msg), "Failed to create SQL log directory \'%s\'", path_buf);
 
 		  er_stack_push ();
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, er_msg);
+		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, er_msg);
 		  er_stack_pop ();
 
 		  return ER_FAILED;
