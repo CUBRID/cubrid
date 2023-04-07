@@ -101,7 +101,7 @@ public class Unit extends AstNode {
                             .replace(
                                     "%'TRANSACTION-CONTROL'%",
                                     "transaction_control=true") // In PL/CSQL, enable TCL as a
-                                                                // default
+                            // default
                             .replace(
                                     "%'AUTONOMOUS-TRANSACTION'%",
                                     autonomousTransaction ? "autonomous_transaction=false" : "");
