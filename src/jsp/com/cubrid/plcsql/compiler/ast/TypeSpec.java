@@ -33,10 +33,14 @@ package com.cubrid.plcsql.compiler.ast;
 public abstract class TypeSpec extends AstNode {
 
     public final String name;
+    public final String nameOfGetMethod;
+    public final int simpleTypeIdx;
 
-    public TypeSpec(String name) {
+    public TypeSpec(String name, String nameOfGetMethod, int simpleTypeIdx) {
         super(null);
         this.name = name;
+        this.nameOfGetMethod = nameOfGetMethod;
+        this.simpleTypeIdx = simpleTypeIdx;
     }
 
     public static TypeSpec ofJavaName(String javaType) {
@@ -65,4 +69,9 @@ public abstract class TypeSpec extends AstNode {
     }
 
     public abstract String toJavaSignature();
+
+    // overriden by TypeSpecSimple
+    public boolean isNumber() { return false; }
+    public boolean isString() { return false; }
+    public boolean isDateTime() { return false; }
 }

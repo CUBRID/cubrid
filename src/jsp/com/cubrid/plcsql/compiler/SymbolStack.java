@@ -357,7 +357,7 @@ public class SymbolStack {
         putFuncOverload(cubridFuncs, name, df, CoercionScheme.Individual);
     }
 
-    private static DeclFunc getFuncOverload(List<Coerce> outCoercions, 
+    private static DeclFunc getFuncOverload(List<Coerce> outCoercions,
             Map<String, FuncOverloads> map, String name, int lineNoOfCall, TypeSpec... argTypes) {
         FuncOverloads overloads = map.get(name);
         if (overloads == null) {
@@ -450,50 +450,15 @@ public class SymbolStack {
 
         DeclFunc get(List<Coerce> outCoercions, List<TypeSpec> argTypes, int lineNoOfCall) {
 
-            DeclFunc bestFit = null;
-            List<Coerce> bestCoercions = null;
-            for (Map.Entry<List<TypeSpec>, DeclFunc> e : overloads.entrySet()) {
-
-                List<Coerce> coercions = coercionScheme.getCoercions(argTypes, e.getKey());
-                if (coercions != null) {
-                    assert argTypes.size() == coercions.size();
-
-                    if (bestFit == null) {
-                        bestFit = e.getValue();
-                        bestCoercions = coercions;
-                    } else {
-                        int r = compareCoercionLists(coercions, bestCoercions);
-                        switch (r) {
-                            case 1:
-                                // better fit found
-                                bestFit = e.getValue();
-                                bestCoercions = coercions;
-                                break;
-                            case 0:
-                                // ambiguous
-                                throw new SemanticError(lineNoOfCall,
-                                    "ambiguous overloads of function " + name +
-                                    " found for the argument types: noe of them fits better than the other");
-                                    // TODO: show the types in the error msg
-                            case -1:
-                                // do nothing for a worse fit
-                                break;
-                            default:
-                                assert false: "unreachable";
-                                throw new RuntimeException("unreachable");
-                        }
-                    }
-                }
-
-            }
-
-            if (bestFit == null) {
+            List<TypeSpec> paramTypes = coercionScheme.getCoercions(outCoercions, argTypes, name);
+            if (paramTypes == null) {
                 throw new SemanticError(lineNoOfCall,
                     "argument types are not compatible in the call of function " + name);
             } else {
-                assert bestCoercions != null;
-                outCoercions.addAll(bestCoercions);
-                return bestFit;
+                assert argTypes.size() == outCoercions.size();
+                DeclFunc declFunc = overloads.get(paramTypes);
+                assert declFunc != null;
+                return declFunc;
             }
         }
 
@@ -506,9 +471,37 @@ public class SymbolStack {
         private final CoercionScheme coercionScheme;
         private final String name;
 
+        /*
         private static int compareCoercionLists(List<Coerce> l, List<Coerce> r) {
-            return 0;   // TODO
-        }
-    }
 
+            int len = l.size();
+            assert len > 0;
+            assert len == r.size();
+
+            int sign = 0;
+            for (int i = 0; i < len; i++) {
+                int lPoint = l.get(i).getPoint();
+                int rPoint = r.get(i).getPoint();
+                int diff = lPoint - rPoint;
+                if (diff != 0) {
+                    if (sign == 0) {
+                        sign = diff; // first time set
+                    } else {
+                        if ((sign > 0 && diff < 0) || (sign < 0 && diff > 0)) {
+                            return 0; // ambiguous: l is better for some comparisons but r is better for this
+                        }
+                    }
+                }
+            }
+
+            if (sign == 0) {
+                // ambiguous: every comparison results in tie
+                return 0;
+            } else {
+                // 1: left is better, -1: right is better
+                return sign > 0 ? 1 : -1;
+            }
+        }
+         */
+    }
 }

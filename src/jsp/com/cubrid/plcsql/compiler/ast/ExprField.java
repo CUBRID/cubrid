@@ -66,15 +66,7 @@ public class ExprField extends Expr {
             // record is for a Static SQL
             //
             assert type != null;
-            String nameOfGetMethod = null;
-            if (type instanceof TypeSpecSimple) {
-                nameOfGetMethod = ((TypeSpecSimple) type).nameOfGetMethod;
-                assert nameOfGetMethod != null;
-            } else {
-                assert false : "unreachable";
-            }
-
-            return String.format("%s.%s(%d)", record.toJavaCode(), nameOfGetMethod, colIndex);
+            return String.format("%s.%s(%d)", record.toJavaCode(), type.nameOfGetMethod, colIndex);
         } else {
 
             // record is for a Dynamic SQL

@@ -65,10 +65,12 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         return null;
     }
 
+    /* TODO: restore
     @Override
     public TypeSpec visitTypeSpecNumeric(TypeSpecNumeric node) {
         return null; // nothing to do
     }
+     */
 
     @Override
     public TypeSpec visitTypeSpecPercent(TypeSpecPercent node) {

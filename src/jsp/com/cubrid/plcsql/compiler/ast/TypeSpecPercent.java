@@ -45,7 +45,7 @@ public class TypeSpecPercent extends TypeSpec {
     public final String column;
 
     public TypeSpecPercent(String table, String column) {
-        super("%ERROR%");
+        super("%ERROR%", null, -1);
         this.table = table;
         this.column = column;
     }
