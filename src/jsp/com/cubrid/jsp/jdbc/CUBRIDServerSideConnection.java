@@ -170,11 +170,9 @@ public class CUBRIDServerSideConnection implements Connection {
 
     public void commit() throws SQLException {
         if (context.canTransactionControl()) {
-            /* do nothing */
-            close();
-
             try {
                 getSUConnection().endTransaction(true);
+                close();
             } catch (IOException e) {
                 throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
                         CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
@@ -184,11 +182,9 @@ public class CUBRIDServerSideConnection implements Connection {
 
     public void rollback() throws SQLException {
         if (context.canTransactionControl()) {
-            /* do nothing */
-            close();
-
             try {
                 getSUConnection().endTransaction(false);
+                close();
             } catch (IOException e) {
                 throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
                         CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);

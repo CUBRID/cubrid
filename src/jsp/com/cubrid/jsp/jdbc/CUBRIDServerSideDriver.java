@@ -46,7 +46,10 @@ import java.util.regex.Pattern;
 public class CUBRIDServerSideDriver implements Driver {
 
     private static final String JDBC_DEFAULT_CONNECTION =
-            "jdbc:default:connection:(\\?[a-zA-Z_0-9]+=[^&=?]+(&[a-zA-Z_0-9]+=[^&=?]+)*)?";
+            "jdbc:default:connection";
+
+    private static final String JDBC_DEFAULT_CONNECTION_PATTERN =
+            "jdbc:default:connection::(\\?[a-zA-Z_0-9]+=[^&=?]+(&[a-zA-Z_0-9]+=[^&=?]+)*)?";
 
     private static String VERSION_STRING;
     private static int VERSION_MAJOR;
@@ -81,7 +84,7 @@ public class CUBRIDServerSideDriver implements Driver {
             return null;
         }
 
-        Pattern pattern = Pattern.compile(JDBC_DEFAULT_CONNECTION, Pattern.CASE_INSENSITIVE);
+        Pattern pattern = Pattern.compile(JDBC_DEFAULT_CONNECTION_PATTERN, Pattern.CASE_INSENSITIVE);
         Matcher matcher = pattern.matcher(url);
         if (!matcher.find()) {
             // TODO: error?
