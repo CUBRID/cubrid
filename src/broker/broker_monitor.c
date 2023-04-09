@@ -2030,7 +2030,7 @@ addstr (const char *str)
       return;
     }
 
-  fprintf (stdout, str);
+  fprintf (stdout, "%s", str);
   fflush (stdout);
 }
 
