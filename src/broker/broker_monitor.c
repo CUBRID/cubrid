@@ -357,7 +357,7 @@ static void *initscr ();
 static void noecho ();
 static void timeout (int delay);
 static void addstr (const char *);
-static int stdin_noblock (void);
+static int tty_noblock (void);
 static int get_timeout (void);
 
 typedef char *(*tgoto_func_t) (const char *cap, int col, int row);
@@ -2068,7 +2068,7 @@ clear ()
 }
 
 static int
-stdin_noblock ()
+tty_noblock ()
 {
   struct termios term;
 
@@ -2169,7 +2169,7 @@ initscr ()
   ce = tgetstr ("ce", NULL);
   cl = tgetstr ("cl", NULL);
 
-  if ((ret = stdin_noblock ()) < 0)
+  if ((ret = tty_noblock ()) < 0)
     {
       fprintf (stderr, "ERROR: Cannot set terminal: error = %d", ret);
       return NULL;
