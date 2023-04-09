@@ -517,6 +517,11 @@ public class SpLib {
     // comparison less than or equal to (<=)
 
     @Operator(coercionScheme=CoercionScheme.CompOp)
+    public static Boolean opLe(Boolean l, Boolean r) {
+        return commonOpLe(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opLe(String l, String r) {
         return commonOpLe(l, r);
     }
@@ -585,6 +590,11 @@ public class SpLib {
 
     // ====================================
     // comparison greater than or equal to (>=)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
+    public static Boolean opGe(Boolean l, Boolean r) {
+        return commonOpGe(l, r);
+    }
+
     @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opGe(String l, String r) {
         return commonOpGe(l, r);
@@ -655,6 +665,11 @@ public class SpLib {
     // ====================================
     // comparison less than (<)
     @Operator(coercionScheme=CoercionScheme.CompOp)
+    public static Boolean opLt(Boolean l, Boolean r) {
+        return commonOpLt(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opLt(String l, String r) {
         return commonOpLt(l, r);
     }
@@ -723,6 +738,11 @@ public class SpLib {
 
     // ====================================
     // comparison greater than (>)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
+    public static Boolean opGt(Boolean l, Boolean r) {
+        return commonOpGt(l, r);
+    }
+
     @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opGt(String l, String r) {
         return commonOpGt(l, r);
@@ -1614,221 +1634,221 @@ public class SpLib {
     // coercions
     // ------------------------------------
 
-    public static Date castDatetimeToDate(Timestamp e) {
+    public static Date convDatetimeToDate(Timestamp e) {
         return null;    // TODO
     }
-    public static Time castDatetimeToTime(Timestamp e) {
+    public static Time convDatetimeToTime(Timestamp e) {
         return null;    // TODO
     }
-    public static Timestamp castDatetimeToTimestamp(Timestamp e) {
+    public static Timestamp convDatetimeToTimestamp(Timestamp e) {
         return null;    // TODO
     }
-    public static String castDatetimeToString(Timestamp e) {
-        return null;    // TODO
-    }
-
-    public static Timestamp castDateToDatetime(Date e) {
-        return null;    // TODO
-    }
-    public static Timestamp castDateToTimestamp(Date e) {
-        return null;    // TODO
-    }
-    public static String castDateToString(Date e) {
+    public static String convDatetimeToString(Timestamp e) {
         return null;    // TODO
     }
 
-    public static String castTimeToString(Time e) {
+    public static Timestamp convDateToDatetime(Date e) {
+        return null;    // TODO
+    }
+    public static Timestamp convDateToTimestamp(Date e) {
+        return null;    // TODO
+    }
+    public static String convDateToString(Date e) {
         return null;    // TODO
     }
 
-    public static Timestamp castTimestampToDatetime(Timestamp e) {
-        return null;    // TODO
-    }
-    public static Date castTimestampToDate(Timestamp e) {
-        return null;    // TODO
-    }
-    public static Time castTimestampToTime(Timestamp e) {
-        return null;    // TODO
-    }
-    public static String castTimestampToString(Timestamp e) {
+    public static String convTimeToString(Time e) {
         return null;    // TODO
     }
 
-    public static Time castDoubleToTime(Double e) {
+    public static Timestamp convTimestampToDatetime(Timestamp e) {
         return null;    // TODO
     }
-    public static Timestamp castDoubleToTimestamp(Double e) {
+    public static Date convTimestampToDate(Timestamp e) {
         return null;    // TODO
     }
-    public static Integer castDoubleToInt(Double e) {
+    public static Time convTimestampToTime(Timestamp e) {
         return null;    // TODO
     }
-    public static Short castDoubleToShort(Double e) {
-        return null;    // TODO
-    }
-    public static String castDoubleToString(Double e) {
-        return null;    // TODO
-    }
-    public static Float castDoubleToFloat(Double e) {
-        return null;    // TODO
-    }
-    public static BigDecimal castDoubleToNumeric(Double e) {
-        return null;    // TODO
-    }
-    public static Long castDoubleToBigint(Double e) {
+    public static String convTimestampToString(Timestamp e) {
         return null;    // TODO
     }
 
-    public static Time castFloatToTime(Float e) {
+    public static Time convDoubleToTime(Double e) {
         return null;    // TODO
     }
-    public static Timestamp castFloatToTimestamp(Float e) {
+    public static Timestamp convDoubleToTimestamp(Double e) {
         return null;    // TODO
     }
-    public static Integer castFloatToInt(Float e) {
+    public static Integer convDoubleToInt(Double e) {
         return null;    // TODO
     }
-    public static Short castFloatToShort(Float e) {
+    public static Short convDoubleToShort(Double e) {
         return null;    // TODO
     }
-    public static String castFloatToString(Float e) {
+    public static String convDoubleToString(Double e) {
         return null;    // TODO
     }
-    public static Double castFloatToDouble(Float e) {
+    public static Float convDoubleToFloat(Double e) {
         return null;    // TODO
     }
-    public static BigDecimal castFloatToNumeric(Float e) {
+    public static BigDecimal convDoubleToNumeric(Double e) {
         return null;    // TODO
     }
-    public static Long castFloatToBigint(Float e) {
-        return null;    // TODO
-    }
-
-    public static Timestamp castNumericToTimestamp(BigDecimal e) {
-        return null;    // TODO
-    }
-    public static Integer castNumericToInt(BigDecimal e) {
-        return null;    // TODO
-    }
-    public static Short castNumericToShort(BigDecimal e) {
-        return null;    // TODO
-    }
-    public static String castNumericToString(BigDecimal e) {
-        return null;    // TODO
-    }
-    public static Double castNumericToDouble(BigDecimal e) {
-        return null;    // TODO
-    }
-    public static Float castNumericToFloat(BigDecimal e) {
-        return null;    // TODO
-    }
-    public static Long castNumericToBigint(BigDecimal e) {
+    public static Long convDoubleToBigint(Double e) {
         return null;    // TODO
     }
 
-    public static Time castBigintToTime(Long e) {
+    public static Time convFloatToTime(Float e) {
         return null;    // TODO
     }
-    public static Timestamp castBigintToTimestamp(Long e) {
+    public static Timestamp convFloatToTimestamp(Float e) {
         return null;    // TODO
     }
-    public static Integer castBigintToInt(Long e) {
+    public static Integer convFloatToInt(Float e) {
         return null;    // TODO
     }
-    public static Short castBigintToShort(Long e) {
+    public static Short convFloatToShort(Float e) {
         return null;    // TODO
     }
-    public static String castBigintToString(Long e) {
+    public static String convFloatToString(Float e) {
         return null;    // TODO
     }
-    public static Double castBigintToDouble(Long e) {
+    public static Double convFloatToDouble(Float e) {
         return null;    // TODO
     }
-    public static Float castBigintToFloat(Long e) {
+    public static BigDecimal convFloatToNumeric(Float e) {
         return null;    // TODO
     }
-    public static BigDecimal castBigintToNumeric(Long e) {
-        return null;    // TODO
-    }
-
-    public static Time castIntToTime(Integer e) {
-        return null;    // TODO
-    }
-    public static Timestamp castIntToTimestamp(Integer e) {
-        return null;    // TODO
-    }
-    public static Short castIntToShort(Integer e) {
-        return null;    // TODO
-    }
-    public static String castIntToString(Integer e) {
-        return null;    // TODO
-    }
-    public static Double castIntToDouble(Integer e) {
-        return null;    // TODO
-    }
-    public static Float castIntToFloat(Integer e) {
-        return null;    // TODO
-    }
-    public static BigDecimal castIntToNumeric(Integer e) {
-        return null;    // TODO
-    }
-    public static Long castIntToBigint(Integer e) {
+    public static Long convFloatToBigint(Float e) {
         return null;    // TODO
     }
 
-    public static Time castShortToTime(Short e) {
+    public static Timestamp convNumericToTimestamp(BigDecimal e) {
         return null;    // TODO
     }
-    public static Timestamp castShortToTimestamp(Short e) {
+    public static Integer convNumericToInt(BigDecimal e) {
         return null;    // TODO
     }
-    public static Integer castShortToInt(Short e) {
+    public static Short convNumericToShort(BigDecimal e) {
         return null;    // TODO
     }
-    public static String castShortToString(Short e) {
+    public static String convNumericToString(BigDecimal e) {
         return null;    // TODO
     }
-    public static Double castShortToDouble(Short e) {
+    public static Double convNumericToDouble(BigDecimal e) {
         return null;    // TODO
     }
-    public static Float castShortToFloat(Short e) {
+    public static Float convNumericToFloat(BigDecimal e) {
         return null;    // TODO
     }
-    public static BigDecimal castShortToNumeric(Short e) {
-        return null;    // TODO
-    }
-    public static Long castShortToBigint(Short e) {
+    public static Long convNumericToBigint(BigDecimal e) {
         return null;    // TODO
     }
 
-    public static Timestamp castStringToDatetime(String e) {
+    public static Time convBigintToTime(Long e) {
         return null;    // TODO
     }
-    public static Date castStringToDate(String e) {
+    public static Timestamp convBigintToTimestamp(Long e) {
         return null;    // TODO
     }
-    public static Time castStringToTime(String e) {
+    public static Integer convBigintToInt(Long e) {
         return null;    // TODO
     }
-    public static Timestamp castStringToTimestamp(String e) {
+    public static Short convBigintToShort(Long e) {
         return null;    // TODO
     }
-    public static Integer castStringToInt(String e) {
+    public static String convBigintToString(Long e) {
         return null;    // TODO
     }
-    public static Short castStringToShort(String e) {
+    public static Double convBigintToDouble(Long e) {
         return null;    // TODO
     }
-    public static Double castStringToDouble(String e) {
+    public static Float convBigintToFloat(Long e) {
         return null;    // TODO
     }
-    public static Float castStringToFloat(String e) {
+    public static BigDecimal convBigintToNumeric(Long e) {
         return null;    // TODO
     }
-    public static BigDecimal castStringToNumeric(String e) {
+
+    public static Time convIntToTime(Integer e) {
         return null;    // TODO
     }
-    public static Long castStringToBigint(String e) {
+    public static Timestamp convIntToTimestamp(Integer e) {
+        return null;    // TODO
+    }
+    public static Short convIntToShort(Integer e) {
+        return null;    // TODO
+    }
+    public static String convIntToString(Integer e) {
+        return null;    // TODO
+    }
+    public static Double convIntToDouble(Integer e) {
+        return null;    // TODO
+    }
+    public static Float convIntToFloat(Integer e) {
+        return null;    // TODO
+    }
+    public static BigDecimal convIntToNumeric(Integer e) {
+        return null;    // TODO
+    }
+    public static Long convIntToBigint(Integer e) {
+        return null;    // TODO
+    }
+
+    public static Time convShortToTime(Short e) {
+        return null;    // TODO
+    }
+    public static Timestamp convShortToTimestamp(Short e) {
+        return null;    // TODO
+    }
+    public static Integer convShortToInt(Short e) {
+        return null;    // TODO
+    }
+    public static String convShortToString(Short e) {
+        return null;    // TODO
+    }
+    public static Double convShortToDouble(Short e) {
+        return null;    // TODO
+    }
+    public static Float convShortToFloat(Short e) {
+        return null;    // TODO
+    }
+    public static BigDecimal convShortToNumeric(Short e) {
+        return null;    // TODO
+    }
+    public static Long convShortToBigint(Short e) {
+        return null;    // TODO
+    }
+
+    public static Timestamp convStringToDatetime(String e) {
+        return null;    // TODO
+    }
+    public static Date convStringToDate(String e) {
+        return null;    // TODO
+    }
+    public static Time convStringToTime(String e) {
+        return null;    // TODO
+    }
+    public static Timestamp convStringToTimestamp(String e) {
+        return null;    // TODO
+    }
+    public static Integer convStringToInt(String e) {
+        return null;    // TODO
+    }
+    public static Short convStringToShort(String e) {
+        return null;    // TODO
+    }
+    public static Double convStringToDouble(String e) {
+        return null;    // TODO
+    }
+    public static Float convStringToFloat(String e) {
+        return null;    // TODO
+    }
+    public static BigDecimal convStringToNumeric(String e) {
+        return null;    // TODO
+    }
+    public static Long convStringToBigint(String e) {
         return null;    // TODO
     }
 

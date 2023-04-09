@@ -33,7 +33,6 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-// TODO: can use singleton
 public class StmtNull extends Stmt {
 
     @Override

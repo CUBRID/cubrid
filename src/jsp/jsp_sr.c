@@ -747,7 +747,7 @@ jsp_server_port (void)
  *   return: if jsp is disabled return -2 (JAVASP_PORT_DISABLED)
  *           else if jsp is UDS mode return -1
  *           else return a port (TCP mode)
- * 
+ *
  *
  * Note:
  */

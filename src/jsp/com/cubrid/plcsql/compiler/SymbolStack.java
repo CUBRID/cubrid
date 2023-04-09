@@ -143,13 +143,13 @@ public class SymbolStack {
             // add constants TODO implement SQLERRM and SQLCODE properly
             DeclConst dc =
                     new DeclConst(
-                            null, "SQLERRM", TypeSpecSimple.STRING, false, ExprNull.SINGLETON);
+                            null, "SQLERRM", TypeSpecSimple.STRING, false, new ExprNull(null));
             putDeclTo(predefinedSymbols, "SQLERRM", dc);
 
-            dc = new DeclConst(null, "SQLCODE", TypeSpecSimple.INT, false, ExprNull.SINGLETON);
+            dc = new DeclConst(null, "SQLCODE", TypeSpecSimple.INT, false, new ExprNull(null));
             putDeclTo(predefinedSymbols, "SQLCODE", dc);
 
-            dc = new DeclConst(null, "SYSDATE", TypeSpecSimple.DATE, false, ExprNull.SINGLETON);
+            dc = new DeclConst(null, "SYSDATE", TypeSpecSimple.DATE, false, new ExprNull(null));
             putDeclTo(predefinedSymbols, "SYSDATE", dc);
         }
     }
@@ -232,21 +232,24 @@ public class SymbolStack {
         assert map != null;
         if (map == symbolTable.labels) {
             if (map.containsKey(name)) {
-                assert false : name + " has already been declared in the same scope";
-                throw new RuntimeException("unreachable");
+                throw new SemanticError(decl.lineNo(),  // s061
+                    "label " + name + " has already been declared in the same scope");
             }
         } else {
             if (symbolTable.ids.containsKey(name)
                     || symbolTable.procs.containsKey(name)
                     || symbolTable.funcs.containsKey(name)
                     || symbolTable.exceptions.containsKey(name)) {
-                assert false : name + " has already been declared in the same scope";
-                throw new RuntimeException("unreachable");
+                throw new SemanticError(decl.lineNo(),  // s062
+                    name + " has already been declared in the same scope");
             }
-            if (symbolTable.scope.level == 0 && map == symbolTable.funcs) {
+            if (symbolTable.scope.level == 1 && map.size() == 0) {
+                // the first symbol added to the level 1 is the top-level procedure/function being created or replaced
+
+                assert map == symbolTable.procs || map == symbolTable.funcs;    // top-level procedure/function
                 if (cubridFuncs.containsKey(name)) {
-                    assert false : name + " is a predefined function";
-                    throw new RuntimeException("unreachable");
+                    throw new SemanticError(decl.lineNo(),  // s063
+                        "procedure/function cannot be created with the same name as a built-in function");
                 }
             }
         }

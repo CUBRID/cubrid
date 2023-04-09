@@ -56,18 +56,22 @@ public abstract class Coerce {
             assert to != null;
         }
 
-        if (to.equals(TypeSpecSimple.OBJECT)
+        if (from.equals(TypeSpecSimple.NULL) && to.equals(TypeSpecSimple.OBJECT)) {
+            // in order for Javac to pick the right version among operator function overloads
+            // when all the arguments are nulls
+            return new Cast(TypeSpecSimple.OBJECT);
+        } else if (to.equals(TypeSpecSimple.OBJECT)
                 || from.equals(TypeSpecSimple.NULL)
                 || from.equals(to)) {
             return IDENTITY;
         } else if (from.equals(TypeSpecSimple.OBJECT)) {
             assert !to.equals(TypeSpecSimple.OBJECT);
-            return new DownCast(to);
+            return new Cast(to);
         }
 
         Set<TypeSpec> possibleTargets = possibleCasts.get(from);
         if (possibleTargets != null && possibleTargets.contains(to)) {
-            return new Cast(from.name, to.name);
+            return new Conversion(from.internalName, to.internalName);
         } else {
             return null;
         }
@@ -86,10 +90,10 @@ public abstract class Coerce {
 
     public static Coerce IDENTITY = new Identity();
 
-    public static class DownCast extends Coerce {
+    public static class Cast extends Coerce {
         public TypeSpec to;
 
-        public DownCast(TypeSpec to) {
+        public Cast(TypeSpec to) {
             this.to = to;
         }
 
@@ -99,18 +103,18 @@ public abstract class Coerce {
         }
     }
 
-    public static class Cast extends Coerce {
+    public static class Conversion extends Coerce {
         public String from;
         public String to;
 
-        public Cast(String from, String to) {
+        public Conversion(String from, String to) {
             this.from = from;
             this.to = to;
         }
 
         @Override
         public String toJavaCode(String exprJavaCode) {
-            return String.format("cast%sTo%s(%s)", from, to, exprJavaCode);
+            return String.format("conv%sTo%s(%s)", from, to, exprJavaCode);
         }
     }
 

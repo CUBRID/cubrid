@@ -31,17 +31,16 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprFalse extends Expr {
-
-    public static final ExprFalse SINGLETON = new ExprFalse();
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitExprFalse(this);
     }
 
-    private ExprFalse() {
+    public ExprFalse(ParserRuleContext ctx) {
         super(null);
     }
 
@@ -49,8 +48,4 @@ public class ExprFalse extends Expr {
     public String exprToJavaCode() {
         return "false";
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

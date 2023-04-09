@@ -59,7 +59,6 @@ public class TypeSpecSimple extends TypeSpec {
         return visitor.visitTypeSpecSimple(this);
     }
 
-    public final String name;
     public final String fullJavaType;
 
     public static TypeSpecSimple ofJavaName(String javaType) {
@@ -127,9 +126,8 @@ public class TypeSpecSimple extends TypeSpec {
     // Private
     // ------------------------------------------------------------------
 
-    private TypeSpecSimple(String name, String fullJavaType, String nameOfGetMethod, int simpleTypeIdx) {
-        super(getJavaCode(fullJavaType), nameOfGetMethod, simpleTypeIdx);
-        this.name = name;
+    private TypeSpecSimple(String internalName, String fullJavaType, String nameOfGetMethod, int simpleTypeIdx) {
+        super(internalName, getJavaCode(fullJavaType), nameOfGetMethod, simpleTypeIdx);
         this.fullJavaType = fullJavaType;
     }
 

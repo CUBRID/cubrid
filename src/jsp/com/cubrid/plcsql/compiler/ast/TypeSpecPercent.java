@@ -45,7 +45,7 @@ public class TypeSpecPercent extends TypeSpec {
     public final String column;
 
     public TypeSpecPercent(String table, String column) {
-        super("%ERROR%", null, -1);
+        super("Percent", null, null, -1);  // javaCode null: this value cannot be written to Java code
         this.table = table;
         this.column = column;
     }

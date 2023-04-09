@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.handler;
 
+import com.cubrid.jsp.Server;
 import com.cubrid.jsp.data.CompileInfo;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.ParseTreeConverter;
@@ -63,6 +64,14 @@ public class TestMain {
         } catch (SemanticError e) {
             // TODO: define an error code list
             CompileInfo err = new CompileInfo(-1, e.lineNo, e.getMessage());
+            return err;
+        } catch (AssertionError e) {    // TODO: AssertionError must have been turned into the built-in ProgramError
+            Server.log(e);
+            CompileInfo err = new CompileInfo(-1, 0, "Internal Error");
+            return err;
+        } catch (Throwable e) {
+            Server.log(e);
+            CompileInfo err = new CompileInfo(-1, 0, "Internal Error");
             return err;
         }
     }

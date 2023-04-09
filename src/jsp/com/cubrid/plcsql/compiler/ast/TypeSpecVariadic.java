@@ -59,7 +59,8 @@ public class TypeSpecVariadic extends TypeSpec {
     }
 
     public TypeSpecVariadic(TypeSpecSimple elem) {
-        super(elem.name + "[]", null, -1);
+        super("VariadicOf" + elem.internalName,
+            null, null, -1);  // javaCode null: this value cannot be written to Java code
         this.elem = elem;
     }
 }

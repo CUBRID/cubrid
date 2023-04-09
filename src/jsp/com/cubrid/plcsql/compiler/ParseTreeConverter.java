@@ -672,17 +672,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitNull_exp(Null_expContext ctx) {
-        return ExprNull.SINGLETON;
+        return new ExprNull(ctx);
     }
 
     @Override
     public Expr visitTrue_exp(True_expContext ctx) {
-        return ExprTrue.SINGLETON;
+        return new ExprTrue(ctx);
     }
 
     @Override
     public Expr visitFalse_exp(False_expContext ctx) {
-        return ExprFalse.SINGLETON;
+        return new ExprFalse(ctx);
     }
 
     @Override

@@ -142,7 +142,7 @@ public abstract class StmtSql extends Stmt {
             assert id.decl instanceof DeclVar || id.decl instanceof DeclParamOut
                     : "only variables or out-parameters can be used in into-clauses";
 
-            String ty = ((DeclIdTyped) id.decl).typeSpec().name;
+            String ty = ((DeclIdTyped) id.decl).typeSpec().javaCode;
 
             sbuf.append(
                     String.format(

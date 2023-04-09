@@ -57,7 +57,7 @@ public class StmtWhileLoop extends Stmt {
     @Override
     public String toJavaCode() {
         String condStr;
-        if (cond == ExprTrue.SINGLETON) {
+        if (cond instanceof ExprTrue) {
             // to avoid unreachable statement check of javac
             condStr = "opNot(false)";
         } else {
