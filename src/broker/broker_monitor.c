@@ -2170,10 +2170,29 @@ initscr ()
       return NULL;
     }
 
-  cm = tgetstr ("cm", NULL);
-  cd = tgetstr ("cd", NULL);
-  ce = tgetstr ("ce", NULL);
-  cl = tgetstr ("cl", NULL);
+  if ((cm = tgetstr ("cm", NULL)) == NULL)
+    {
+      fprintf (stderr, "ERROR: Cannot find 'cursor motion (cm)' capability for the terminal\n");
+      return NULL;
+    }
+
+  if ((cd = tgetstr ("cd", NULL)) == NULL)
+    {
+      fprintf (stderr, "ERROR: Cannot find 'clear to end of screen (cd)' capability for the terminal\n");
+      return NULL;
+    }
+
+  if ((ce = tgetstr ("ce", NULL)) == NULL)
+    {
+      fprintf (stderr, "ERROR: Cannot find 'Clear to end of line (ce)' capability for the terminal\n");
+      return NULL;
+    }
+
+  if ((cl = tgetstr ("cl", NULL)) == NULL)
+    {
+      fprintf (stderr, "ERROR: Cannot find 'Clear screen and cursor home (cl)' capability for the terminal\n");
+      return NULL;
+    }
 
   if ((ret = tty_noblock ()) < 0)
     {
