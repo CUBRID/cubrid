@@ -212,6 +212,15 @@ public class SpLib {
         return -l;
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithOp)
+    public static Double opNeg(Object l) {
+        if (l == null) {
+            return null;
+        }
+        assert false: "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
     // ====================================
     // bitwise compliment
     @Operator(coercionScheme=CoercionScheme.IntArithOp)
@@ -236,6 +245,15 @@ public class SpLib {
             return null;
         }
         return ~l;
+    }
+
+    @Operator(coercionScheme=CoercionScheme.IntArithOp)
+    public static Long opBitCompli(Object l) {
+        if (l == null) {
+            return null;
+        }
+        assert false: "unreachable";
+        throw new RuntimeException("unreachable");
     }
 
     // ====================================
@@ -321,23 +339,17 @@ public class SpLib {
         return commonOpEq(l, r);
     }
 
-    /*
     @Operator(coercionScheme=CoercionScheme.CompOp)
-    public static Boolean opEq(ZonedDateTime l, ZonedDateTime r) {
+    public static Boolean opEq(Timestamp l, Timestamp r) {
         return commonOpEq(l, r);
     }
-     */
+
     @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opEq(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
         throw new RuntimeException("unreachable");
-    }
-
-    @Operator(coercionScheme=CoercionScheme.CompOp)
-    public static Boolean opEq(Timestamp l, Timestamp r) {
-        return commonOpEq(l, r);
     }
 
     @Operator(coercionScheme=CoercionScheme.CompOp)
@@ -403,6 +415,11 @@ public class SpLib {
     }
 
     @Operator(coercionScheme=CoercionScheme.CompOp)
+    public static Boolean opNullSafeEq(Timestamp l, Timestamp r) {
+        return commonOpNullSafeEq(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opNullSafeEq(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
@@ -411,16 +428,11 @@ public class SpLib {
     }
 
     @Operator(coercionScheme=CoercionScheme.CompOp)
-    public static Boolean opNullSafeEq(Timestamp l, Timestamp r) {
-        return commonOpNullSafeEq(l, r);
-    }
-
-    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opNullSafeEq(Object l, Object r) {
         if (l == null) {
             return (r == null);
         } else if (r == null) {
-            return (l == null);
+            return false;
         }
         assert false: "unreachable";
         throw new RuntimeException("unreachable");
@@ -480,16 +492,16 @@ public class SpLib {
     }
 
     @Operator(coercionScheme=CoercionScheme.CompOp)
+    public static Boolean opNeq(Timestamp l, Timestamp r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opNeq(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
         throw new RuntimeException("unreachable");
-    }
-
-    @Operator(coercionScheme=CoercionScheme.CompOp)
-    public static Boolean opNeq(Timestamp l, Timestamp r) {
-        return commonOpNeq(l, r);
     }
 
     @Operator(coercionScheme=CoercionScheme.CompOp)
@@ -623,11 +635,6 @@ public class SpLib {
         return commonOpGe(l, r);
     }
 
-    /*
-    public static Boolean opGe(ZonedDateTime l, ZonedDateTime r) {
-        return commonOpGe(l, r);
-    }
-     */
     @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opGe(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
@@ -1084,6 +1091,15 @@ public class SpLib {
         return l * r;
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithOp)
+    public static Double opMult(Object l, Object r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert false: "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
     // ====================================
     // /
     @Operator(coercionScheme=CoercionScheme.ArithOp)
@@ -1134,6 +1150,15 @@ public class SpLib {
         return l / r;
     }
 
+    @Operator(coercionScheme=CoercionScheme.ArithOp)
+    public static Double opDiv(Object l, Object r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert false: "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
     // ====================================
     // DIV
     @Operator(coercionScheme=CoercionScheme.IntArithOp)
@@ -1160,6 +1185,15 @@ public class SpLib {
         return l / r;
     }
 
+    @Operator(coercionScheme=CoercionScheme.IntArithOp)
+    public static Long opDivInt(Object l, Object r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert false: "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
     // ====================================
     // MOD
     @Operator(coercionScheme=CoercionScheme.IntArithOp)
@@ -1184,6 +1218,15 @@ public class SpLib {
             return null;
         }
         return l % r;
+    }
+
+    @Operator(coercionScheme=CoercionScheme.IntArithOp)
+    public static Long opMod(Object l, Object r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert false: "unreachable";
+        throw new RuntimeException("unreachable");
     }
 
     // ====================================
@@ -1292,6 +1335,15 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ArithOp)
+    public static Timestamp opAdd(Object l, Object r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert false: "unreachable";
         throw new RuntimeException("unreachable");
     }
 
@@ -1466,6 +1518,15 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
+    @Operator(coercionScheme=CoercionScheme.ArithOp)
+    public static Long opSubtract(Object l, Object r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert false: "unreachable";
         throw new RuntimeException("unreachable");
     }
 
@@ -1786,7 +1847,7 @@ public class SpLib {
         if (l == null) {
             return (r == null);
         } else if (r == null) {
-            return (l == null);
+            return false;
         }
         return l.equals(r);
     }
@@ -1871,932 +1932,4 @@ public class SpLib {
 
         return sbuf.toString();
     }
-
-    /* TODO: restore later
-    // set and multiset ordering
-    enum SetOrder {
-        EQUAL,
-        INCLUDING,
-        INCLUDED,
-        NONE,
-    }
-
-    static SetOrder compareSets(Set l, Set r) {
-        assert l != null && r != null;
-
-        if (l.equals(r)) {
-            return SetOrder.EQUAL;
-        }
-        if (l.containsAll(r)) {
-            return SetOrder.INCLUDING;
-        }
-        if (r.containsAll(l)) {
-            return SetOrder.INCLUDED;
-        }
-
-        return SetOrder.NONE;
-    }
-
-    static SetOrder compareMultiSets(MultiSet l, MultiSet r) {
-        assert l != null && r != null;
-
-        if (l.equals(r)) {
-            return SetOrder.EQUAL;
-        } else {
-            boolean broken = false;
-            if (l.containsAll(r)) {
-                Set s = r.uniqueSet();
-
-                for (Object o : s) {
-                    int ln = l.getCount(o);
-                    int rn = r.getCount(o);
-                    if (ln < rn) {
-                        broken = true;
-                        break;
-                    }
-                }
-                if (!broken) {
-                    return SetOrder.INCLUDING;
-                }
-            }
-
-            broken = false;
-            if (r.containsAll(l)) {
-                Set s = l.uniqueSet();
-                for (Object o : s) {
-                    int ln = l.getCount(o);
-                    int rn = r.getCount(o);
-                    if (ln > rn) {
-                        broken = true;
-                        break;
-                    }
-                }
-                if (!broken) {
-                    return SetOrder.INCLUDED;
-                }
-            }
-
-            return SetOrder.NONE;
-        }
-    }
-
-    static <E extends Comparable<E>> int compareLists(List<E> l, List<E> r) {
-        assert l != null && r != null;
-
-        // lexicographic order
-
-        int ln = l.size();
-        int rn = r.size();
-        int common = Math.min(ln, rn);
-
-        for (int i = 0; i < common; i++) {
-            E le = l.get(i);
-            E re = r.get(i);
-            int sign = le.compareTo(re);
-            if (sign > 0) {
-                return 1;
-            }
-            if (sign < 0) {
-                return -1;
-            }
-        }
-
-        // every pair of elements upto first 'common' ones has the same elements
-        return (ln - rn);
-    }
-
-    static MultiSet set2MultiSet(Set s) {
-        assert s != null;
-        return new HashMultiSet(s);
-    }
-
-    static MultiSet list2MultiSet(List l) {
-        assert l != null;
-        return new HashMultiSet(
-                l); // TODO: check if the elements duplicate in the list has count larger than 1
-    }
-
-    static List concatLists(List l, List r) {
-        ArrayList ret = new ArrayList();
-        ret.addAll(l);
-        ret.addAll(r);
-        return ret;
-    }
-
-    static Set unionSets(Set l, Set r) {
-        HashSet ret = new HashSet();
-        ret.addAll(l);
-        ret.addAll(r);
-        return ret;
-    }
-
-    static Set diffSets(Set l, Set r) {
-        HashSet ret = new HashSet();
-        ret.addAll(l);
-        ret.removeAll(r);
-        return ret;
-    }
-
-    static Set intersectSets(Set l, Set r) {
-        HashSet ret = new HashSet();
-        ret.addAll(l);
-        ret.retainAll(r);
-        return ret;
-    }
-
-    static MultiSet unionMultiSets(MultiSet l, MultiSet r) {
-        HashMultiSet ret = new HashMultiSet(l);
-        ret.addAll(r);
-        return ret;
-    }
-
-    static MultiSet diffMultiSets(MultiSet l, MultiSet r) {
-        HashMultiSet ret = new HashMultiSet(l);
-        for (Object o : r) {
-            ret.remove(o);
-        }
-        return ret;
-    }
-
-    static MultiSet intersectMultiSets(MultiSet l, MultiSet r) {
-        HashMultiSet ret = new HashMultiSet();
-        Set s = l.uniqueSet();
-        for (Object o : s) {
-            int ln = l.getCount(o);
-            int rn = r.getCount(o);
-            int min = Math.min(ln, rn);
-            if (min > 0) {
-                ret.add(o, min);
-            }
-        }
-        return ret;
-    }
-     */
-    /* TODO: restore later
-    @Operator(coercionScheme=CoercionScheme.CompOp)
-    public static Boolean opEq(Set l, Set r) {
-        return commonOpEq(l, r);
-    }
-
-    @Operator(coercionScheme=CoercionScheme.CompOp)
-    public static Boolean opEq(MultiSet l, MultiSet r) {
-        return commonOpEq(l, r);
-    }
-
-    @Operator(coercionScheme=CoercionScheme.CompOp)
-    public static Boolean opEq(List l, List r) {
-        return commonOpEq(l, r);
-    }
-     */
-
-    /* TODO: restore later
-    @Operator(coercionScheme=CoercionScheme.CompOp)
-    public static Boolean opNullSafeEq(Set l, Set r) {
-        return commonOpNullSafeEq(l, r);
-    }
-
-    @Operator(coercionScheme=CoercionScheme.CompOp)
-    public static Boolean opNullSafeEq(MultiSet l, MultiSet r) {
-        return commonOpNullSafeEq(l, r);
-    }
-
-    @Operator(coercionScheme=CoercionScheme.CompOp)
-    public static Boolean opNullSafeEq(List l, List r) {
-        return commonOpNullSafeEq(l, r);
-    }
-     */
-
-    /* TODO: restore later
-    @Operator(coercionScheme=CoercionScheme.CompOp)
-    public static Boolean opNeq(Set l, Set r) {
-        return commonOpNeq(l, r);
-    }
-
-    @Operator(coercionScheme=CoercionScheme.CompOp)
-    public static Boolean opNeq(MultiSet l, MultiSet r) {
-        return commonOpNeq(l, r);
-    }
-
-    @Operator(coercionScheme=CoercionScheme.CompOp)
-    public static Boolean opNeq(List l, List r) {
-        return commonOpNeq(l, r);
-    }
-     */
-
-    /* TODO: restore later
-    @Operator(coercionScheme=CoercionScheme.CompOp)
-    public static Boolean opLe(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareSets(l, r);
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
-    }
-
-    @Operator(coercionScheme=CoercionScheme.CompOp)
-    public static Boolean opLe(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(l, r);
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
-    }
-
-    @Operator(coercionScheme=CoercionScheme.CompOp)
-    public static <E extends Comparable<E>> Boolean opLe(List<E> l, List<E> r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareLists(l, r) <= 0;
-    }
-     */
-
-    /* TODO: restore later
-    public static Boolean opGe(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareSets(l, r);
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opGe(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(l, r);
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
-    }
-
-    public static <E extends Comparable<E>> Boolean opGe(List<E> l, List<E> r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareLists(l, r) >= 0;
-    }
-     */
-
-    /*
-    public static Boolean opLt(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return (compareSets(l, r) == SetOrder.INCLUDED);
-    }
-
-    public static Boolean opLt(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return (compareMultiSets(l, r) == SetOrder.INCLUDED);
-    }
-
-    public static <E extends Comparable<E>> Boolean opLt(List<E> l, List<E> r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareLists(l, r) < 0;
-    }
-     */
-
-    /* TODO: restore later
-    public static Boolean opGt(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return (compareSets(l, r) == SetOrder.INCLUDING);
-    }
-
-    public static Boolean opGt(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return (compareMultiSets(l, r) == SetOrder.INCLUDING);
-    }
-
-    public static <E extends Comparable<E>> Boolean opGt(List<E> l, List<E> r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareLists(l, r) > 0;
-    }
-     */
-
-   /*
-    // ====================================
-    // comparison set equal
-    public static Boolean opSetEq(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareSets(l, r) == SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetEq(MultiSet l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, set2MultiSet(r)) == SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetEq(List l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(list2MultiSet(l), set2MultiSet(r)) == SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetEq(Set l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(set2MultiSet(l), r) == SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetEq(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, r) == SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetEq(List l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(list2MultiSet(l), r) == SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetEq(Set l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(set2MultiSet(l), list2MultiSet(r)) == SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetEq(MultiSet l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, list2MultiSet(r)) == SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetEq(List l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareLists(l, r) == 0;
-    }
-
-    // ====================================
-    // comparison set not equal
-    public static Boolean opSetNeq(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareSets(l, r) != SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetNeq(MultiSet l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, set2MultiSet(r)) != SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetNeq(List l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(list2MultiSet(l), set2MultiSet(r)) != SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetNeq(Set l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(set2MultiSet(l), r) != SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetNeq(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, r) != SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetNeq(List l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(list2MultiSet(l), r) != SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetNeq(Set l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(set2MultiSet(l), list2MultiSet(r)) != SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetNeq(MultiSet l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, list2MultiSet(r)) != SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetNeq(List l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(list2MultiSet(l), list2MultiSet(r)) != SetOrder.EQUAL;
-    }
-
-    // ====================================
-    // comparison superset
-    public static Boolean opSuperset(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return (compareSets(l, r) == SetOrder.INCLUDING);
-    }
-
-    public static Boolean opSuperset(MultiSet l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, set2MultiSet(r)) == SetOrder.INCLUDING;
-    }
-
-    public static Boolean opSuperset(List l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(list2MultiSet(l), set2MultiSet(r)) == SetOrder.INCLUDING;
-    }
-
-    public static Boolean opSuperset(Set l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(set2MultiSet(l), r) == SetOrder.INCLUDING;
-    }
-
-    public static Boolean opSuperset(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, r) == SetOrder.INCLUDING;
-    }
-
-    public static Boolean opSuperset(List l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(list2MultiSet(l), r) == SetOrder.INCLUDING;
-    }
-
-    public static Boolean opSuperset(Set l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(set2MultiSet(l), list2MultiSet(r)) == SetOrder.INCLUDING;
-    }
-
-    public static Boolean opSuperset(MultiSet l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, list2MultiSet(r)) == SetOrder.INCLUDING;
-    }
-
-    // ====================================
-    // comparison subset
-    public static Boolean opSubset(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return (compareSets(l, r) == SetOrder.INCLUDED);
-    }
-
-    public static Boolean opSubset(MultiSet l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, set2MultiSet(r)) == SetOrder.INCLUDED;
-    }
-
-    public static Boolean opSubset(List l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(list2MultiSet(l), set2MultiSet(r)) == SetOrder.INCLUDED;
-    }
-
-    public static Boolean opSubset(Set l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(set2MultiSet(l), r) == SetOrder.INCLUDED;
-    }
-
-    public static Boolean opSubset(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, r) == SetOrder.INCLUDED;
-    }
-
-    public static Boolean opSubset(List l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(list2MultiSet(l), r) == SetOrder.INCLUDED;
-    }
-
-    public static Boolean opSubset(Set l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(set2MultiSet(l), list2MultiSet(r)) == SetOrder.INCLUDED;
-    }
-
-    public static Boolean opSubset(MultiSet l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, list2MultiSet(r)) == SetOrder.INCLUDED;
-    }
-
-    // ====================================
-    // comparison superset or equal
-    public static Boolean opSupersetEq(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareSets(l, r);
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSupersetEq(MultiSet l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(l, set2MultiSet(r));
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSupersetEq(List l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(list2MultiSet(l), set2MultiSet(r));
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSupersetEq(Set l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(set2MultiSet(l), r);
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSupersetEq(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(l, r);
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSupersetEq(List l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(list2MultiSet(l), r);
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSupersetEq(Set l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(set2MultiSet(l), list2MultiSet(r));
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSupersetEq(MultiSet l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(l, list2MultiSet(r));
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
-    }
-
-    // ====================================
-    // comparison subset or equal
-    public static Boolean opSubsetEq(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareSets(l, r);
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSubsetEq(MultiSet l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(l, set2MultiSet(r));
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSubsetEq(List l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(list2MultiSet(l), set2MultiSet(r));
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSubsetEq(Set l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(set2MultiSet(l), r);
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSubsetEq(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(l, r);
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSubsetEq(List l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(list2MultiSet(l), r);
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSubsetEq(Set l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(set2MultiSet(l), list2MultiSet(r));
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSubsetEq(MultiSet l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(l, list2MultiSet(r));
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
-    }
-    */
-
-    /*
-    // sets
-    public static Set opMult(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return intersectSets(l, r);
-    }
-
-    public static MultiSet opMult(MultiSet l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return intersectMultiSets(l, set2MultiSet(r));
-    }
-
-    public static MultiSet opMult(List l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return intersectMultiSets(list2MultiSet(l), set2MultiSet(r));
-    }
-
-    public static MultiSet opMult(Set l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return intersectMultiSets(set2MultiSet(l), r);
-    }
-
-    public static MultiSet opMult(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return intersectMultiSets(l, r);
-    }
-
-    public static MultiSet opMult(List l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return intersectMultiSets(list2MultiSet(l), r);
-    }
-
-    public static MultiSet opMult(Set l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return intersectMultiSets(set2MultiSet(l), list2MultiSet(r));
-    }
-
-    public static MultiSet opMult(MultiSet l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return intersectMultiSets(l, list2MultiSet(r));
-    }
-
-    public static MultiSet opMult(List l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return intersectMultiSets(list2MultiSet(l), list2MultiSet(r));
-    }
-    */
-
-    /*
-    // sets
-    public static Set opAdd(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return unionSets(l, r);
-    }
-
-    public static MultiSet opAdd(MultiSet l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return unionMultiSets(l, set2MultiSet(r));
-    }
-
-    public static MultiSet opAdd(List l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return unionMultiSets(list2MultiSet(l), set2MultiSet(r));
-    }
-
-    public static MultiSet opAdd(Set l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return unionMultiSets(set2MultiSet(l), r);
-    }
-
-    public static MultiSet opAdd(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return unionMultiSets(l, r);
-    }
-
-    public static MultiSet opAdd(List l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return unionMultiSets(list2MultiSet(l), r);
-    }
-
-    public static MultiSet opAdd(Set l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return unionMultiSets(set2MultiSet(l), list2MultiSet(r));
-    }
-
-    public static MultiSet opAdd(MultiSet l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return unionMultiSets(l, list2MultiSet(r));
-    }
-
-    public static List opAdd(List l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return concatLists(l, r);
-    }
-    */
-
-    /*
-    public static ZonedDateTime opSubtract(ZonedDateTime l, Integer r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.minusSeconds(r.longValue());
-    }
-
-    public static Long opSubtract(LocalDate l, ZonedDateTime r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return opSubtract(ZonedDateTime.of(l, LocalTime.MIN, r.getZone()), r);
-    }
-     */
-
-    /*
-    public static Long opSubtract(LocalDateTime l, ZonedDateTime r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return opSubtract(l, r.toLocalDateTime());
-    }
-
-    public static Long opSubtract(ZonedDateTime l, LocalDate r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return opSubtract(l, ZonedDateTime.of(r, LocalTime.MIN, l.getZone()));
-    }
-
-    public static Long opSubtract(ZonedDateTime l, LocalDateTime r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return opSubtract(l.toLocalDateTime(), r);
-    }
-     */
-
-    /*
-    // sets
-    public static Set opSubtract(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return diffSets(l, r);
-    }
-
-    public static MultiSet opSubtract(MultiSet l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return diffMultiSets(l, set2MultiSet(r));
-    }
-
-    public static MultiSet opSubtract(List l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return diffMultiSets(list2MultiSet(l), set2MultiSet(r));
-    }
-
-    public static MultiSet opSubtract(Set l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return diffMultiSets(set2MultiSet(l), r);
-    }
-
-    public static MultiSet opSubtract(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return diffMultiSets(l, r);
-    }
-
-    public static MultiSet opSubtract(List l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return diffMultiSets(list2MultiSet(l), r);
-    }
-
-    public static MultiSet opSubtract(Set l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return diffMultiSets(set2MultiSet(l), list2MultiSet(r));
-    }
-
-    public static MultiSet opSubtract(MultiSet l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return diffMultiSets(l, list2MultiSet(r));
-    }
-
-    public static MultiSet opSubtract(List l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return diffMultiSets(list2MultiSet(l), list2MultiSet(r));
-    }
-     */
-
 }
