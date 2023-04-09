@@ -341,6 +341,7 @@ static const char *get_sql_log_mode_string (T_SQL_LOG_MODE_VALUE mode);
 static const char *get_status_string (T_APPL_SERVER_INFO * as_info_p, char appl_server);
 static void get_cpu_usage_string (char *buf_p, float usage);
 
+
 static void move (int x, int y);
 static void refresh ();
 static void clear ();
@@ -1983,24 +1984,28 @@ endwin ()
 static void
 refresh ()
 {
+  fflush (stdout);
 }
 
 static void
 move (int x, int y)
 {
   tputs (tgoto (cm, x, y), 1, putchar);
+  fflush (stdout);
 }
 
 static void
 clrtobot ()
 {
   tputs (cd, 1, putchar);
+  fflush (stdout);
 }
 
 static void
 clrtoeol ()
 {
   tputs (ce, 1, putchar);
+  fflush (stdout);
 }
 
 static void
@@ -2065,6 +2070,7 @@ static void
 clear ()
 {
   tputs (cl, 1, putchar);
+  fflush (stdout);
 }
 
 static int
