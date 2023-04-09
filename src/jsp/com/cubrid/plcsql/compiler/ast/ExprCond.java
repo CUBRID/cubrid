@@ -40,9 +40,9 @@ public class ExprCond extends Expr {
     @Override
     public void setCoerce(Coerce c) {
 
-        if (c instanceof Coerce.DownCast) {
+        if (c instanceof Coerce.Cast) {
             assert resultType.equals(TypeSpecSimple.OBJECT);
-            resultType = ((Coerce.DownCast) c).to;
+            resultType = ((Coerce.Cast) c).to;
             super.setCoerce(Coerce.IDENTITY);
         } else {
             super.setCoerce(c);

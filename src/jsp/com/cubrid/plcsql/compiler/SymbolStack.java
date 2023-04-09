@@ -460,7 +460,7 @@ public class SymbolStack {
             } else {
                 assert argTypes.size() == outCoercions.size();
                 DeclFunc declFunc = overloads.get(paramTypes);
-                assert declFunc != null;
+                assert declFunc != null : paramTypes + " do not have a matching version of op " + name;
                 return declFunc;
             }
         }

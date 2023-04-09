@@ -213,7 +213,7 @@ public class SpLib {
     }
 
     @Operator(coercionScheme=CoercionScheme.ArithOp)
-    public static Double opNeg(Object l) {
+    public static Object opNeg(Object l) {
         if (l == null) {
             return null;
         }
@@ -248,7 +248,7 @@ public class SpLib {
     }
 
     @Operator(coercionScheme=CoercionScheme.IntArithOp)
-    public static Long opBitCompli(Object l) {
+    public static Object opBitCompli(Object l) {
         if (l == null) {
             return null;
         }
@@ -1112,7 +1112,7 @@ public class SpLib {
     }
 
     @Operator(coercionScheme=CoercionScheme.ArithOp)
-    public static Double opMult(Object l, Object r) {
+    public static Object opMult(Object l, Object r) {
         if (l == null || r == null) {
             return null;
         }
@@ -1171,7 +1171,7 @@ public class SpLib {
     }
 
     @Operator(coercionScheme=CoercionScheme.ArithOp)
-    public static Double opDiv(Object l, Object r) {
+    public static Object opDiv(Object l, Object r) {
         if (l == null || r == null) {
             return null;
         }
@@ -1206,7 +1206,7 @@ public class SpLib {
     }
 
     @Operator(coercionScheme=CoercionScheme.IntArithOp)
-    public static Long opDivInt(Object l, Object r) {
+    public static Object opDivInt(Object l, Object r) {
         if (l == null || r == null) {
             return null;
         }
@@ -1241,7 +1241,7 @@ public class SpLib {
     }
 
     @Operator(coercionScheme=CoercionScheme.IntArithOp)
-    public static Long opMod(Object l, Object r) {
+    public static Object opMod(Object l, Object r) {
         if (l == null || r == null) {
             return null;
         }
@@ -1351,7 +1351,7 @@ public class SpLib {
     }
 
     @Operator(coercionScheme=CoercionScheme.ArithOp)
-    public static Timestamp opAdd(Long l, ZonedDateTime r) {
+    public static ZonedDateTime opAdd(Long l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
@@ -1359,7 +1359,7 @@ public class SpLib {
     }
 
     @Operator(coercionScheme=CoercionScheme.ArithOp)
-    public static Timestamp opAdd(Object l, Object r) {
+    public static Object opAdd(Object l, Object r) {
         if (l == null || r == null) {
             return null;
         }
@@ -1456,7 +1456,7 @@ public class SpLib {
     }
 
     @Operator(coercionScheme=CoercionScheme.ArithOp)
-    public static Time opSubtract(Time l, Integer r) {
+    public static Time opSubtract(Time l, Long r) {
         if (l == null || r == null) {
             return null;
         }
@@ -1465,7 +1465,7 @@ public class SpLib {
     }
 
     @Operator(coercionScheme=CoercionScheme.ArithOp)
-    public static Date opSubtract(Date l, Integer r) {
+    public static Date opSubtract(Date l, Long r) {
         if (l == null || r == null) {
             return null;
         }
@@ -1474,7 +1474,7 @@ public class SpLib {
     }
 
     @Operator(coercionScheme=CoercionScheme.ArithOp)
-    public static Timestamp opSubtract(Timestamp l, Integer r) {
+    public static Timestamp opSubtract(Timestamp l, Long r) {
         if (l == null || r == null) {
             return null;
         }
@@ -1483,7 +1483,7 @@ public class SpLib {
     }
 
     @Operator(coercionScheme=CoercionScheme.ArithOp)
-    public static ZonedDateTime opSubtract(ZonedDateTime l, Integer r) {
+    public static ZonedDateTime opSubtract(ZonedDateTime l, Long r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
@@ -1491,58 +1491,7 @@ public class SpLib {
     }
 
     @Operator(coercionScheme=CoercionScheme.ArithOp)
-    public static Long opSubtract(Date l, ZonedDateTime r) {
-        // cannot be called actually, but only to register this operator with a parameter type
-        // TIMESTAMP
-        assert false : "unreachable";
-        throw new RuntimeException("unreachable");
-    }
-
-    @Operator(coercionScheme=CoercionScheme.ArithOp)
-    public static Long opSubtract(Date l, Timestamp r) {
-        if (l == null || r == null) {
-            return null;
-        }
-
-        LocalDate lld = l.toLocalDate();
-        return opSubtract(Timestamp.valueOf(LocalDateTime.of(lld, LocalTime.MIN)), r);
-    }
-
-    @Operator(coercionScheme=CoercionScheme.ArithOp)
-    public static Long opSubtract(Timestamp l, Date r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        LocalDate rld = r.toLocalDate();
-        return opSubtract(l, Timestamp.valueOf(LocalDateTime.of(rld, LocalTime.MIN)));
-    }
-
-    @Operator(coercionScheme=CoercionScheme.ArithOp)
-    public static Long opSubtract(Timestamp l, ZonedDateTime r) {
-        // cannot be called actually, but only to register this operator with a parameter type
-        // TIMESTAMP
-        assert false : "unreachable";
-        throw new RuntimeException("unreachable");
-    }
-
-    @Operator(coercionScheme=CoercionScheme.ArithOp)
-    public static Long opSubtract(ZonedDateTime l, Date r) {
-        // cannot be called actually, but only to register this operator with a parameter type
-        // TIMESTAMP
-        assert false : "unreachable";
-        throw new RuntimeException("unreachable");
-    }
-
-    @Operator(coercionScheme=CoercionScheme.ArithOp)
-    public static Long opSubtract(ZonedDateTime l, Timestamp r) {
-        // cannot be called actually, but only to register this operator with a parameter type
-        // TIMESTAMP
-        assert false : "unreachable";
-        throw new RuntimeException("unreachable");
-    }
-
-    @Operator(coercionScheme=CoercionScheme.ArithOp)
-    public static Long opSubtract(Object l, Object r) {
+    public static Object opSubtract(Object l, Object r) {
         if (l == null || r == null) {
             return null;
         }
