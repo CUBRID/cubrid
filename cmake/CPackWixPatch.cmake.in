@@ -81,7 +81,7 @@
       </Component>
     </DirectoryRef>
 <!-- Create a schedule for autorun tray -->
-    <SetProperty Id="CreateScheduledTask" Before="CreateScheduledTask" Sequence="execute" Value="&quot;[SystemFolder]SCHTASKS.EXE&quot; /CREATE /SC ONLOGON /TN &quot;CUBRID Service Tray&quot; /TR &quot;[#CM_FP_Application.bin.CUBRID_Service_Tray.exe]&quot; /RU &quot;NT Authority\System&quot; /RP /RL HIGHEST"/>
+    <SetProperty Id="CreateScheduledTask" Before="CreateScheduledTask" Sequence="execute" Value="&quot;[SystemFolder]SCHTASKS.EXE&quot; /CREATE /SC ONLOGON /TN &quot;CUBRID Service Tray&quot; /TR &quot;[#CM_FP_Application.bin.CUBRID_Service_Tray.exe]&quot; /RU &quot;NT Authority\System&quot; /RP /RL HIGHEST /F"/>
     <CustomAction Id="CreateScheduledTask" Return="check" Impersonate="no" Execute="deferred" BinaryKey="WixCA" DllEntry="WixQuietExec"/>
     <SetProperty Id="DeleteScheduledTask" Before="DeleteScheduledTask" Sequence="execute" Value="&quot;[SystemFolder]SCHTASKS.EXE&quot; /DELETE /TN &quot;CUBRID Service Tray&quot; /F"/>
     <CustomAction Id="DeleteScheduledTask" Return="ignore" Impersonate="no" Execute="deferred" BinaryKey="WixCA" DllEntry="WixQuietExec"/>
