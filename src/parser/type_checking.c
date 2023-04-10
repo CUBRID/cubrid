@@ -1559,24 +1559,6 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       break;
 
     case PT_MODULUS:
-      num = 0;
-
-      /* one overload */
-
-      /* arg1 */
-      sig.arg1_type.type = pt_arg_type::GENERIC;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
-      /* arg2 */
-      sig.arg2_type.type = pt_arg_type::GENERIC;
-      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
-
-      sig.return_type.type = pt_arg_type::GENERIC;
-      sig.return_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
-      def->overloads[num++] = sig;
-
-      def->overloads_count = num;
-      break;
-
     case PT_DIVIDE:
       num = 0;
 
@@ -6236,8 +6218,7 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
       expr->type_enum = pt_expr_get_return_type (expr, sig);
       if (op == PT_DIVIDE)
 	{
-	  if (expr->type_enum == PT_TYPE_INTEGER || expr->type_enum == PT_TYPE_BIGINT
-	      || expr->type_enum == PT_TYPE_SMALLINT)
+	  if (PT_IS_DISCRETE_NUMBER_TYPE (expr->type_enum))
 	    {
 	      expr->type_enum = PT_TYPE_DOUBLE;
 	    }

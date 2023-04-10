@@ -84,10 +84,10 @@ struct db_type_double_profile
 /* double conversion 'format' macros */
 #define DOUBLE_FORMAT_SCIENTIFIC   'e'
 #define DOUBLE_FORMAT_DECIMAL      'f'
+#define DOUBLE_FORMAT_HYBRID       'g'
 
 static DB_TYPE_DOUBLE_PROFILE default_double_profile = {
-  //DOUBLE_FORMAT_SCIENTIFIC, 0, DBL_DIG, false, false, true, false
-  DOUBLE_FORMAT_DECIMAL, 0, DBL_DIG, false, false, true, false
+  DOUBLE_FORMAT_HYBRID, 0, DBL_DIG, false, false, true, false
 };
 
 static DB_TYPE_FLOAT_PROFILE default_float_profile = {
