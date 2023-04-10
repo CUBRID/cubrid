@@ -5762,12 +5762,6 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
   TP_DOMAIN *cast_dom1 = NULL;
   TP_DOMAIN *cast_dom2 = NULL;
   TP_DOMAIN_STATUS dom_status;
-  bool is_numeric_cast = false;
-
-  DB_VALUE dbval_tmp1;
-  DB_VALUE dbval_tmp2;
-  DB_VALUE result_tmp;
-  DB_DATA_STATUS status;
 
   if ((domain_p != NULL && TP_DOMAIN_TYPE (domain_p) == DB_TYPE_NULL) || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
@@ -5804,8 +5798,6 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       /* cast number to DOUBLE */
       cast_dom1 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
       cast_dom2 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-
-      is_numeric_cast = true;
     }
 
   if (cast_dom2 != NULL)
@@ -5847,84 +5839,33 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
   switch (type1)
     {
     case DB_TYPE_SHORT:
-      if ((error = qdata_divide_short_to_dbval (dbval1_p, dbval2_p, result_p)) == NO_ERROR)
-	{
-	  return qdata_coerce_result_to_domain (result_p, domain_p);
-	}
+      error = qdata_divide_short_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
+
     case DB_TYPE_INTEGER:
-      if ((error = qdata_divide_int_to_dbval (dbval1_p, dbval2_p, result_p)) == NO_ERROR)
-	{
-	  return qdata_coerce_result_to_domain (result_p, domain_p);
-	}
+      error = qdata_divide_int_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
+
     case DB_TYPE_BIGINT:
-      if ((error = qdata_divide_bigint_to_dbval (dbval1_p, dbval2_p, result_p)) == NO_ERROR)
-	{
-	  return qdata_coerce_result_to_domain (result_p, domain_p);
-	}
-      break;
-
-    case DB_TYPE_NUMERIC:
-      if ((error = qdata_divide_numeric_to_dbval (dbval1_p, dbval2_p, result_p)) == NO_ERROR)
-	{
-	  return qdata_coerce_result_to_domain (result_p, domain_p);
-	}
-      break;
-
-    case DB_TYPE_MONETARY:
-      if ((error = qdata_divide_monetary_to_dbval (dbval1_p, dbval2_p, result_p)) == NO_ERROR)
-	{
-	  return qdata_coerce_result_to_domain (result_p, domain_p);
-	}
+      error = qdata_divide_bigint_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
 
     case DB_TYPE_FLOAT:
-      if ((error = qdata_divide_float_to_dbval (dbval1_p, dbval2_p, result_p)) == NO_ERROR)
-	{
-	  return qdata_coerce_result_to_domain (result_p, domain_p);
-	}
+      error = qdata_divide_float_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
 
     case DB_TYPE_DOUBLE:
-      if ((error = qdata_divide_double_to_dbval (dbval1_p, dbval2_p, result_p)) == NO_ERROR)
-	{
-	  return qdata_coerce_result_to_domain (result_p, domain_p);
-	}
+      error = qdata_divide_double_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
-#if 0
-      dom_status = tp_value_auto_cast (dbval1_p, &dbval_tmp1, &tp_Double_domain);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval1_p, &tp_Double_domain);
-	  break;
-	}
 
-      dom_status = tp_value_auto_cast (dbval2_p, &dbval_tmp2, &tp_Double_domain);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval2_p, &tp_Double_domain);
-	  break;
-	}
-
-      if ((error = qdata_divide_double_to_dbval (&dbval_tmp1, &dbval_tmp2, &result_tmp)) != NO_ERROR)
-	{
-	  break;
-	}
-
-      if ((error = numeric_db_value_to_num (&result_tmp, result_p, &status)) != NO_ERROR)
-	{
-	  break;
-	}
-/*
-      if (domain_p)
-	{
-	  domain_p->precision = result_p->domain.numeric_info.precision;
-	  domain_p->scale = result_p->domain.numeric_info.scale;
-	}
-*/
+    case DB_TYPE_NUMERIC:
+      error = qdata_divide_numeric_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
-#endif
+
+    case DB_TYPE_MONETARY:
+      error = qdata_divide_monetary_to_dbval (dbval1_p, dbval2_p, result_p);
+      break;
+
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
@@ -5945,7 +5886,12 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 	}
     }
 
-  return error;
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return qdata_coerce_result_to_domain (result_p, domain_p);
 }
 
 /*
