@@ -3369,27 +3369,6 @@ get_significant_digit (DB_BIGINT i)
   return n;
 }
 
-int
-numeric_db_value_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_status)
-{
-  int ret = NO_ERROR;
-  unsigned char num[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
-  int precision, scale;
-  double adouble = db_get_double (src);
-
-  *data_status = DATA_STATUS_OK;
-  ret = numeric_internal_double_to_num (adouble, 0, num, &precision, &scale);
-
-  db_make_numeric (dest, num, precision, scale);
-
-  if (ret == ER_IT_DATA_OVERFLOW)
-    {
-      *data_status = DATA_STATUS_TRUNCATED;
-    }
-
-  return ret;
-}
-
 /*
  * numeric_db_value_coerce_to_num () -
  *   return: NO_ERROR, or ER_code
