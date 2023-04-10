@@ -48,7 +48,7 @@ public class CUBRIDServerSideDriver implements Driver {
     private static final String JDBC_DEFAULT_CONNECTION = "jdbc:default:connection";
 
     private static final String JDBC_DEFAULT_CONNECTION_PATTERN =
-            "jdbc:default:connection::(\\?[a-zA-Z_0-9]+=[^&=?]+(&[a-zA-Z_0-9]+=[^&=?]+)*)?";
+            "jdbc:default:connection(::\\?[a-zA-Z_0-9]+=[^&=?]+(&[a-zA-Z_0-9]+=[^&=?]+)*)?";
 
     private static String VERSION_STRING;
     private static int VERSION_MAJOR;
