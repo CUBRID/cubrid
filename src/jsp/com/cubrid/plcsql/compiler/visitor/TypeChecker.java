@@ -224,20 +224,17 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     public TypeSpec visitExprBetween(ExprBetween node) {
         TypeSpec targetType = visit(node.target);
         TypeSpec lowerType = visit(node.lowerBound);
-
-        if (!areComparableTypes(targetType, lowerType)) {
-            throw new SemanticError(
-                    node.lowerBound.lineNo(), // s208
-                    "lower bound has an incomparable type in the BETWEEN expression");
-        }
-
         TypeSpec upperType = visit(node.upperBound);
 
-        if (!areComparableTypes(targetType, upperType)) {
-            throw new SemanticError(
-                    node.upperBound.lineNo(), // s209
-                    "upper bound has an incomparable type in the BETWEEN expression");
-        }
+        List<Coerce> outCoercions = new ArrayList<>();
+        DeclFunc op = symbolStack.getOperator(outCoercions, "opBetween",    // s208, s209
+            node.lineNo(), targetType, lowerType, upperType);
+        assert op != null;
+        assert outCoercions.size() == 3;
+
+        node.target.setCoerce(outCoercions.get(0));
+        node.lowerBound.setCoerce(outCoercions.get(1));
+        node.upperBound.setCoerce(outCoercions.get(2));
 
         return TypeSpecSimple.BOOLEAN;
     }
@@ -422,17 +419,31 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprIn(ExprIn node) {
+        List<Expr> args = new ArrayList<>();
+        List<TypeSpec> argTypes = new ArrayList<>();
+
         TypeSpec targetType = visit(node.target);
-        int i = 1;
+        args.add(node.target);
+        argTypes.add(targetType);
+
         for (Expr e : node.inElements.nodes) {
             TypeSpec eType = visit(e);
-            if (!areComparableTypes(targetType, eType)) {
-                throw new SemanticError(
-                        e.lineNo(), // s212
-                        "element " + i + " has an incomparable type");
-            }
-            i++;
+            args.add(e);
+            argTypes.add(eType);
         }
+        int len = args.size();
+
+        List<Coerce> outCoercions = new ArrayList<>();
+        DeclFunc op = symbolStack.getOperator(outCoercions, "opIn", node.lineNo(), argTypes.toArray(tsArr)); // s212
+        assert op != null;
+        assert outCoercions.size() == len;
+
+        for (int i = 0; i < len; i++) {
+            Expr arg = args.get(i);
+            Coerce c = outCoercions.get(i);
+            arg.setCoerce(c);
+        }
+
         return TypeSpecSimple.BOOLEAN;
     }
 
@@ -893,6 +904,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     // ------------------------------------------------------------------
     // Private
     // ------------------------------------------------------------------
+
+    private static final TypeSpec[] tsArr = new TypeSpec[0];
 
     private SymbolStack symbolStack;
 

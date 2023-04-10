@@ -154,13 +154,17 @@ public class SymbolStack {
         }
     }
 
-    public static DeclFunc getOperator(List<Coerce> outCoercions, String name, int lineNoOfCall, TypeSpec... argTypes) {
+    public static DeclFunc
+    getOperator(List<Coerce> outCoercions, String name, int lineNoOfCall, TypeSpec... argTypes) {
         return getFuncOverload(outCoercions, operators, name, lineNoOfCall, argTypes);
     }
 
-    public static DeclFunc getCubridFunc(List<Coerce> outCoercions, String name, int lineNoOfCall, TypeSpec... argTypes) {
+    /*
+    public static DeclFunc
+    getCubridFunc(List<Coerce> outCoercions, String name, int lineNoOfCall, TypeSpec... argTypes) {
         return getFuncOverload(outCoercions, cubridFuncs, name, lineNoOfCall, argTypes);
     }
+     */
 
     // -----------------------------------------------------------------------------
     // end of Static
@@ -462,6 +466,15 @@ public class SymbolStack {
             } else {
                 assert argTypes.size() == outCoercions.size();
                 DeclFunc declFunc = overloads.get(paramTypes);
+                if (name.equals("opIn")) {
+                    // opIn is the only operation that uses variadic parameters
+                    TypeSpec ty = paramTypes.get(0);
+                    paramTypes.clear();
+                    paramTypes.add(ty);
+                    paramTypes.add(new TypeSpecVariadic((TypeSpecSimple) ty));
+                }
+
+                declFunc = overloads.get(paramTypes);
                 assert declFunc != null : paramTypes + " do not have a matching version of op " + name;
                 return declFunc;
             }
@@ -475,38 +488,5 @@ public class SymbolStack {
                 new HashMap<>(); // (arg types --> func decl) map
         private final CoercionScheme coercionScheme;
         private final String name;
-
-        /*
-        private static int compareCoercionLists(List<Coerce> l, List<Coerce> r) {
-
-            int len = l.size();
-            assert len > 0;
-            assert len == r.size();
-
-            int sign = 0;
-            for (int i = 0; i < len; i++) {
-                int lPoint = l.get(i).getPoint();
-                int rPoint = r.get(i).getPoint();
-                int diff = lPoint - rPoint;
-                if (diff != 0) {
-                    if (sign == 0) {
-                        sign = diff; // first time set
-                    } else {
-                        if ((sign > 0 && diff < 0) || (sign < 0 && diff > 0)) {
-                            return 0; // ambiguous: l is better for some comparisons but r is better for this
-                        }
-                    }
-                }
-            }
-
-            if (sign == 0) {
-                // ambiguous: every comparison results in tie
-                return 0;
-            } else {
-                // 1: left is better, -1: right is better
-                return sign > 0 ? 1 : -1;
-            }
-        }
-         */
     }
 }

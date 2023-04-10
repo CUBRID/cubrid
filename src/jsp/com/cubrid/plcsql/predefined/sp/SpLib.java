@@ -816,7 +816,7 @@ public class SpLib {
 
     // ====================================
     // between
-    @Operator(coercionScheme=CoercionScheme.BetweenOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opBetween(Boolean o, Boolean lower, Boolean upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -824,7 +824,7 @@ public class SpLib {
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
-    @Operator(coercionScheme=CoercionScheme.BetweenOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opBetween(String o, String lower, String upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -832,7 +832,7 @@ public class SpLib {
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
-    @Operator(coercionScheme=CoercionScheme.BetweenOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opBetween(Short o, Short lower, Short upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -840,7 +840,7 @@ public class SpLib {
         return o >= lower && o <= upper;
     }
 
-    @Operator(coercionScheme=CoercionScheme.BetweenOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opBetween(Integer o, Integer lower, Integer upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -848,7 +848,7 @@ public class SpLib {
         return o >= lower && o <= upper;
     }
 
-    @Operator(coercionScheme=CoercionScheme.BetweenOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opBetween(Long o, Long lower, Long upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -856,7 +856,7 @@ public class SpLib {
         return o >= lower && o <= upper;
     }
 
-    @Operator(coercionScheme=CoercionScheme.BetweenOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opBetween(BigDecimal o, BigDecimal lower, BigDecimal upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -864,7 +864,7 @@ public class SpLib {
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
-    @Operator(coercionScheme=CoercionScheme.BetweenOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opBetween(Float o, Float lower, Float upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -872,7 +872,7 @@ public class SpLib {
         return o >= lower && o <= upper;
     }
 
-    @Operator(coercionScheme=CoercionScheme.BetweenOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opBetween(Double o, Double lower, Double upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -880,7 +880,7 @@ public class SpLib {
         return o >= lower && o <= upper;
     }
 
-    @Operator(coercionScheme=CoercionScheme.BetweenOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opBetween(Date o, Date lower, Date upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -888,7 +888,7 @@ public class SpLib {
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
-    @Operator(coercionScheme=CoercionScheme.BetweenOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opBetween(Time o, Time lower, Time upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -896,7 +896,7 @@ public class SpLib {
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
-    @Operator(coercionScheme=CoercionScheme.BetweenOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opBetween(Timestamp o, Timestamp lower, Timestamp upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -904,7 +904,7 @@ public class SpLib {
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
-    @Operator(coercionScheme=CoercionScheme.BetweenOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opBetween(ZonedDateTime o, ZonedDateTime lower, ZonedDateTime upper) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
@@ -912,139 +912,227 @@ public class SpLib {
         throw new RuntimeException("unreachable");
     }
 
+    @Operator(coercionScheme=CoercionScheme.CompOp)
+    public static Boolean opBetween(Object o, Object lower, Object upper) {
+        if (o == null || lower == null || upper == null) {
+            return null;
+        }
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
     // ====================================
     // in
-    @Operator(coercionScheme=CoercionScheme.InOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opIn(Boolean o, Boolean... list) {
-        if (o == null || list == null) {
+        assert list != null;
+        if (o == null) {
             return null;
         }
+        boolean nullFound = false;
         for (Boolean p : list) {
-            if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                return true;
+            if (p == null) {
+                nullFound = true;
+            } else {
+                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
+                    return true;
+                }
             }
         }
         return false;
     }
 
-    @Operator(coercionScheme=CoercionScheme.InOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opIn(String o, String... list) {
-        if (o == null || list == null) {
+        assert list != null;
+        if (o == null) {
             return null;
         }
+        boolean nullFound = false;
         for (String p : list) {
-            if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                return true;
+            if (p == null) {
+                nullFound = true;
+            } else {
+                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
+                    return true;
+                }
             }
         }
         return false;
     }
 
-    @Operator(coercionScheme=CoercionScheme.InOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opIn(BigDecimal o, BigDecimal... list) {
-        if (o == null || list == null) {
+        assert list != null;
+        if (o == null) {
             return null;
         }
+        boolean nullFound = false;
         for (BigDecimal p : list) {
-            if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                return true;
+            if (p == null) {
+                nullFound = true;
+            } else {
+                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
+                    return true;
+                }
             }
         }
         return false;
     }
 
-    @Operator(coercionScheme=CoercionScheme.InOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opIn(Short o, Short... list) {
-        if (o == null || list == null) {
+        assert list != null;
+        if (o == null) {
             return null;
         }
+        boolean nullFound = false;
         for (Short p : list) {
-            if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                return true;
+            if (p == null) {
+                nullFound = true;
+            } else {
+                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
+                    return true;
+                }
             }
         }
         return false;
     }
 
-    @Operator(coercionScheme=CoercionScheme.InOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opIn(Integer o, Integer... list) {
-        if (o == null || list == null) {
+        assert list != null;
+        if (o == null) {
             return null;
         }
+        boolean nullFound = false;
         for (Integer p : list) {
-            if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                return true;
+            if (p == null) {
+                nullFound = true;
+            } else {
+                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
+                    return true;
+                }
             }
         }
         return false;
     }
 
-    @Operator(coercionScheme=CoercionScheme.InOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opIn(Long o, Long... list) {
-        if (o == null || list == null) {
+        assert list != null;
+        if (o == null) {
             return null;
         }
+        boolean nullFound = false;
         for (Long p : list) {
-            if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                return true;
+            if (p == null) {
+                nullFound = true;
+            } else {
+                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
+                    return true;
+                }
             }
         }
         return false;
     }
 
-    @Operator(coercionScheme=CoercionScheme.InOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opIn(Float o, Float... list) {
-        if (o == null || list == null) {
+        assert list != null;
+        if (o == null) {
             return null;
         }
+        boolean nullFound = false;
         for (Float p : list) {
-            if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                return true;
+            if (p == null) {
+                nullFound = true;
+            } else {
+                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
+                    return true;
+                }
             }
         }
         return false;
     }
 
-    @Operator(coercionScheme=CoercionScheme.InOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opIn(Double o, Double... list) {
-        if (o == null || list == null) {
+        assert list != null;
+        if (o == null) {
             return null;
         }
+        boolean nullFound = false;
         for (Double p : list) {
-            if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                return true;
+            if (p == null) {
+                nullFound = true;
+            } else {
+                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
+                    return true;
+                }
             }
         }
         return false;
     }
 
-    @Operator(coercionScheme=CoercionScheme.InOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opIn(Date o, Date... list) {
-        if (o == null || list == null) {
+        assert list != null;
+        if (o == null) {
             return null;
         }
+        boolean nullFound = false;
         for (Date p : list) {
-            if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                return true;
+            if (p == null) {
+                nullFound = true;
+            } else {
+                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
+                    return true;
+                }
             }
         }
         return false;
     }
 
-    @Operator(coercionScheme=CoercionScheme.InOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opIn(Time o, Time... list) {
-        if (o == null || list == null) {
+        assert list != null;
+        if (o == null) {
             return null;
         }
+        boolean nullFound = false;
         for (Time p : list) {
-            if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                return true;
+            if (p == null) {
+                nullFound = true;
+            } else {
+                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
+                    return true;
+                }
             }
         }
         return false;
     }
 
-    @Operator(coercionScheme=CoercionScheme.InOp)
+    @Operator(coercionScheme=CoercionScheme.CompOp)
+    public static Boolean opIn(Timestamp o, Timestamp... list) {
+        assert list != null;
+        if (o == null) {
+            return null;
+        }
+        boolean nullFound = false;
+        for (Timestamp p : list) {
+            if (p == null) {
+                nullFound = true;
+            } else {
+                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    @Operator(coercionScheme=CoercionScheme.CompOp)
     public static Boolean opIn(ZonedDateTime o, ZonedDateTime... list) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
@@ -1052,17 +1140,24 @@ public class SpLib {
         throw new RuntimeException("unreachable");
     }
 
-    @Operator(coercionScheme=CoercionScheme.InOp)
-    public static Boolean opIn(Timestamp o, Timestamp... list) {
-        if (o == null || list == null) {
+    @Operator(coercionScheme=CoercionScheme.CompOp)
+    public static Boolean opIn(Object o, Object... list) {
+        assert list != null;
+        if (o == null) {
             return null;
         }
-        for (Timestamp p : list) {
-            if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                return true;
+        boolean nullFound = false;
+        for (Object p : list) {
+            if (p == null) {
+                nullFound = true;
+            } else {
+                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
+                    return true;
+                }
             }
         }
-        return false;
+        assert nullFound;   // Object argument type means one of the argument is of Null type
+        return null;
     }
 
     // ====================================

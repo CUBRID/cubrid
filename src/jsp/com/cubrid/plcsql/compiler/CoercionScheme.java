@@ -36,42 +36,28 @@ import java.util.List;
 import java.util.ArrayList;
 
 public enum CoercionScheme {
+
     CompOp {
         public List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
-            assert argTypes.size() == 2;
+            assert argTypes.size() >= 2;
 
-            TypeSpec lType = argTypes.get(0);
-            int lTypeIdx = lType.simpleTypeIdx;
-            assert lTypeIdx >= 0 && lTypeIdx < TypeSpecSimple.COUNT_OF_IDX;
-            TypeSpec rType = argTypes.get(1);
-            int rTypeIdx = rType.simpleTypeIdx;
-            assert rTypeIdx >= 0 && rTypeIdx < TypeSpecSimple.COUNT_OF_IDX;
-
-            TypeSpec commonTy;
-            int row, col;
-            if (lTypeIdx >= rTypeIdx) {
-                row = lTypeIdx;
-                col = rTypeIdx;
-            } else {
-                row = rTypeIdx;
-                col = lTypeIdx;
+            int len = argTypes.size();
+            TypeSpec commonTy = argTypes.get(0);
+            for (int i = 1; i < len; i++) {
+                TypeSpec nextTy = argTypes.get(i);
+                commonTy = getCommonType(commonTy, nextTy, compOpCommonType);
+                if (commonTy == null) {
+                    return null;    // not applicable to this argument types
+                }
             }
-            commonTy = compOpCommonType[row][col];
-            if (commonTy == null) {
-                return null;    // not applicable to this argument types
-            }
-
-            Coerce c;
-            c = Coerce.getCoerce(lType, commonTy);
-            assert c != null;
-            outCoercions.add(c);
-            c = Coerce.getCoerce(rType, commonTy);
-            assert c != null;
-            outCoercions.add(c);
 
             List<TypeSpec> ret = new ArrayList<>();
-            ret.add(commonTy);
-            ret.add(commonTy);
+            for (int i = 0; i < len; i++){
+                Coerce c = Coerce.getCoerce(argTypes.get(i), commonTy);
+                assert c != null;
+                outCoercions.add(c);
+                ret.add(commonTy);
+            }
 
             return ret;
         }
@@ -275,19 +261,6 @@ public enum CoercionScheme {
         public List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
             // ||, like
             return getCoercionsToFixedType(outCoercions, argTypes, TypeSpecSimple.STRING);
-        }
-    },
-
-    BetweenOp {
-        public List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
-            assert argTypes.size() == 3;
-            return null;    // TODO
-        }
-    },
-
-    InOp {
-        public List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
-            return null;    // TODO
         }
     },
 
@@ -551,4 +524,32 @@ public enum CoercionScheme {
 
         return ret;
     }
+
+    private static TypeSpec getCommonType(TypeSpec lType, TypeSpec rType, TypeSpec[][]... table) {
+
+        int lTypeIdx = lType.simpleTypeIdx;
+        assert lTypeIdx >= 0 && lTypeIdx < TypeSpecSimple.COUNT_OF_IDX;
+        int rTypeIdx = rType.simpleTypeIdx;
+        assert rTypeIdx >= 0 && rTypeIdx < TypeSpecSimple.COUNT_OF_IDX;
+
+        int row, col;
+        if (lTypeIdx >= rTypeIdx) {
+            row = lTypeIdx;
+            col = rTypeIdx;
+        } else {
+            row = rTypeIdx;
+            col = lTypeIdx;
+        }
+
+        int tables = table.length;
+        for (int i = 0; i < tables; i++) {
+            TypeSpec commonTy = table[i][row][col];
+            if (commonTy != null) {
+                return commonTy;
+            }
+        }
+
+        return null;
+    }
+
 }
