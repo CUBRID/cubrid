@@ -135,7 +135,7 @@ public class SymbolStack {
                             null,
                             "PUT_LINE",
                             new NodeList<DeclParam>()
-                                    .addNode(new DeclParamIn(null, "s", TypeSpecSimple.OBJECT)),
+                                    .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING)),
                             null,
                             null);
             putDeclTo(predefinedSymbols, "PUT_LINE", dp);
@@ -356,9 +356,11 @@ public class SymbolStack {
         putFuncOverload(operators, name, df, cs);
     }
 
+    /*
     private static void putCubridFunc(String name, DeclFunc df) {
         putFuncOverload(cubridFuncs, name, df, CoercionScheme.Individual);
     }
+     */
 
     private static DeclFunc getFuncOverload(List<Coerce> outCoercions,
             Map<String, FuncOverloads> map, String name, int lineNoOfCall, TypeSpec... argTypes) {

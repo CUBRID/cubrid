@@ -439,11 +439,15 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitExprLike(ExprLike node) {
         TypeSpec targetType = visit(node.target);
-        if (!targetType.equals(TypeSpecSimple.STRING)) {
+        Coerce c = Coerce.getCoerce(targetType, TypeSpecSimple.STRING);
+        if (c == null) {
             throw new SemanticError(
                     node.target.lineNo(), // s213
-                    "tested expression is not of STRING type");
+                    "tested expression cannot be coerced to STRING type");
+        } else {
+            node.target.setCoerce(c);
         }
+
         return TypeSpecSimple.BOOLEAN;
     }
 

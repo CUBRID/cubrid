@@ -86,8 +86,8 @@ public class SpLib {
         throw new CASE_NOT_FOUND();
     }
 
-    public static void PUT_LINE(Object s) {
-        DBMS_OUTPUT.putLine(s.toString());
+    public static void PUT_LINE(String s) {
+        DBMS_OUTPUT.putLine(s);
     }
 
     public static class Query {
@@ -161,7 +161,7 @@ public class SpLib {
 
     // ====================================
     // is null
-    @Operator(coercionScheme=CoercionScheme.Individual)
+    @Operator(coercionScheme=CoercionScheme.ObjectOp)
     public static Boolean opIsNull(Object l) {
         return (l == null);
     }

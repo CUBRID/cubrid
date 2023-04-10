@@ -266,13 +266,15 @@ public enum CoercionScheme {
 
     LogicalOp {
         public List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
-            return null;    // TODO
+            // and, or, xor, not
+            return getCoercionsToFixedType(outCoercions, argTypes, TypeSpecSimple.BOOLEAN);  // TODO: verify
         }
     },
 
     StringOp {
         public List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
-            return null;    // TODO
+            // ||, like
+            return getCoercionsToFixedType(outCoercions, argTypes, TypeSpecSimple.STRING);
         }
     },
 
@@ -291,13 +293,15 @@ public enum CoercionScheme {
 
     BitOp {
         public List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
-            return null;    // TODO
+            // <<, >>, &, ^, |
+            return getCoercionsToFixedType(outCoercions, argTypes, TypeSpecSimple.BIGINT);  // TODO: verify
         }
     },
 
-    Individual {
+    ObjectOp {
         public List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
-            return null;    // TODO
+            // is-null
+            return getCoercionsToFixedType(outCoercions, argTypes, TypeSpecSimple.OBJECT);
         }
     };
 
@@ -390,7 +394,7 @@ public enum CoercionScheme {
         compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.TIMESTAMP;
         compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_INT] = TypeSpecSimple.TIMESTAMP;
         compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.TIMESTAMP;
-        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_DATE] = TypeSpecSimple.DATE;
+        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_DATE] = TypeSpecSimple.TIMESTAMP;
         compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_DATETIME] = TypeSpecSimple.DATETIME;
         compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_TIMESTAMP] = TypeSpecSimple.TIMESTAMP;
     }
@@ -529,5 +533,22 @@ public enum CoercionScheme {
         intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_NUMERIC] = TypeSpecSimple.BIGINT;
         intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_FLOAT] = TypeSpecSimple.BIGINT;
         intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_DOUBLE] = TypeSpecSimple.BIGINT;
+    }
+
+    private static List<TypeSpec>
+    getCoercionsToFixedType(List<Coerce> outCoercions, List<TypeSpec> argTypes, TypeSpec targetType) {
+
+        List<TypeSpec> ret = new ArrayList<>();
+        for (TypeSpec t: argTypes) {
+            Coerce c = Coerce.getCoerce(t, targetType);
+            if (c == null) {
+                return null;
+            } else {
+                ret.add(targetType);
+                outCoercions.add(c);
+            }
+        }
+
+        return ret;
     }
 }
