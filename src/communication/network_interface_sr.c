@@ -157,7 +157,7 @@ stran_server_commit_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool re
   state = xtran_server_commit (thread_p, retain_lock);
 
   cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
-  if (!rctx || rctx->is_running () == false)
+  if (!rctx || rctx->is_running () == false || rctx->get_depth () > 1)
     {
       net_cleanup_server_queues (rid);
     }
@@ -195,7 +195,7 @@ stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool * s
   state = xtran_server_abort (thread_p);
 
   cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
-  if (!rctx || rctx->is_running () == false)
+  if (!rctx || rctx->is_running () == false || rctx->get_depth () > 1)
     {
       net_cleanup_server_queues (rid);
     }
