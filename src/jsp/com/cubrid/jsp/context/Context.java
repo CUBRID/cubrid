@@ -29,7 +29,7 @@ public class Context {
     private Properties clientInfo = null;
 
     // Whether SP is able to process TCL (commit, rollback). (default: false)
-    private boolean transaction_control = false;
+    private boolean transactionControl = false;
 
     // Connection Properties
     private Properties connectionInfo = null;
@@ -106,11 +106,11 @@ public class Context {
     }
 
     public void setTransactionControl(boolean tc) {
-        this.transaction_control = tc;
+        this.transactionControl = tc;
     }
 
     public boolean canTransactionControl() {
-        if (transaction_control) {
+        if (transactionControl) {
             return true;
         }
 
