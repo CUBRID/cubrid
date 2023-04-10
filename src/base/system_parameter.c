@@ -2368,8 +2368,8 @@ bool PRM_STATDUMP_FORCE_ADD_INT_MAX = false;
 static bool prm_statdump_force_add_int_max_default = false;
 static unsigned int prm_statdump_force_add_int_max_flag = 0;
 
-bool PRM_PL_TRANSACTION_CONTROL = true;
-static bool prm_pl_transaction_control_default = true;
+bool PRM_PL_TRANSACTION_CONTROL = false;
+static bool prm_pl_transaction_control_default = false;
 static unsigned int prm_pl_transaction_control_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
