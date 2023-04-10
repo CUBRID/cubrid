@@ -32,8 +32,10 @@ package com.cubrid.plcsql.predefined.sp;
 
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
 import com.cubrid.plcsql.compiler.CoercionScheme;
+import com.cubrid.plcsql.compiler.DateTimeParser;
 import com.cubrid.plcsql.compiler.annotation.Operator;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.*;
 import java.sql.Date;
 import java.sql.Time;
@@ -43,6 +45,8 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.Objects;
 import java.util.regex.PatternSyntaxException;
 
@@ -1583,227 +1587,589 @@ public class SpLib {
     // coercions
     // ------------------------------------
 
+    // from datetime
     public static Date convDatetimeToDate(Timestamp e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return new Date(e.getYear(), e.getMonth(), e.getDate());
     }
     public static Time convDatetimeToTime(Timestamp e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return new Time(e.getHours(), e.getMinutes(), e.getSeconds());
     }
     public static Timestamp convDatetimeToTimestamp(Timestamp e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return new Timestamp(e.getYear(), e.getMonth(), e.getDate(), e.getHours(), e.getMinutes(), e.getSeconds(), 0);
     }
     public static String convDatetimeToString(Timestamp e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return datetimeFormat.format(e);
     }
 
+    // from date
     public static Timestamp convDateToDatetime(Date e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return new Timestamp(e.getYear(), e.getMonth(), e.getDate(), 0, 0, 0, 0);
     }
     public static Timestamp convDateToTimestamp(Date e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return new Timestamp(e.getYear(), e.getMonth(), e.getDate(), 0, 0, 0, 0);
     }
     public static String convDateToString(Date e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return dateFormat.format(e);
     }
 
+    // from time
     public static String convTimeToString(Time e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return timeFormat.format(e);
     }
 
+    // from timestamp
     public static Timestamp convTimestampToDatetime(Timestamp e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return new Timestamp(e.getYear(), e.getMonth(), e.getDate(), e.getHours(), e.getMinutes(), e.getSeconds(), 0);
     }
     public static Date convTimestampToDate(Timestamp e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return new Date(e.getYear(), e.getMonth(), e.getDate());
     }
     public static Time convTimestampToTime(Timestamp e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return new Time(e.getHours(), e.getMinutes(), e.getSeconds());
     }
     public static String convTimestampToString(Timestamp e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return timestampFormat.format(e);
     }
 
+    // from double
     public static Time convDoubleToTime(Double e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        long l = doubleToLong(e.doubleValue());
+        return longToTime(l);
     }
     public static Timestamp convDoubleToTimestamp(Double e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        long l = doubleToLong(e.doubleValue());
+        return longToTimestamp(l);
     }
     public static Integer convDoubleToInt(Double e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Integer.valueOf(doubleToInt(e.doubleValue()));
     }
     public static Short convDoubleToShort(Double e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Short.valueOf(doubleToShort(e.doubleValue()));
     }
     public static String convDoubleToString(Double e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return e.toString();
     }
     public static Float convDoubleToFloat(Double e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Float.valueOf(e.floatValue());
     }
     public static BigDecimal convDoubleToNumeric(Double e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return BigDecimal.valueOf(e.doubleValue());
     }
     public static Long convDoubleToBigint(Double e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Long.valueOf(doubleToLong(e.doubleValue()));
     }
 
+    // from float
     public static Time convFloatToTime(Float e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        long l = doubleToLong(e.doubleValue());
+        return longToTime(l);
     }
     public static Timestamp convFloatToTimestamp(Float e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        long l = doubleToLong(e.doubleValue());
+        return longToTimestamp(l);
     }
     public static Integer convFloatToInt(Float e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Integer.valueOf(doubleToInt(e.doubleValue()));
     }
     public static Short convFloatToShort(Float e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Short.valueOf(doubleToShort(e.doubleValue()));
     }
     public static String convFloatToString(Float e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return e.toString();
     }
     public static Double convFloatToDouble(Float e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Double.valueOf(e.doubleValue());
     }
     public static BigDecimal convFloatToNumeric(Float e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return BigDecimal.valueOf(e.doubleValue());
     }
     public static Long convFloatToBigint(Float e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Long.valueOf(doubleToLong(e.doubleValue()));
     }
 
+    // from numeric
     public static Timestamp convNumericToTimestamp(BigDecimal e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        long l = bigDecimalToLong(e);
+        return longToTimestamp(l);
     }
     public static Integer convNumericToInt(BigDecimal e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Integer.valueOf(bigDecimalToInt(e));
     }
     public static Short convNumericToShort(BigDecimal e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Short.valueOf(bigDecimalToShort(e));
     }
     public static String convNumericToString(BigDecimal e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return e.toPlainString();
     }
     public static Double convNumericToDouble(BigDecimal e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Double.valueOf(e.doubleValue());
     }
     public static Float convNumericToFloat(BigDecimal e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Float.valueOf(e.floatValue());
     }
     public static Long convNumericToBigint(BigDecimal e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Long.valueOf(bigDecimalToLong(e));
     }
 
+    // from bigint
     public static Time convBigintToTime(Long e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return longToTime(e.longValue());
     }
     public static Timestamp convBigintToTimestamp(Long e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return longToTimestamp(e.longValue());
     }
     public static Integer convBigintToInt(Long e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Integer.valueOf(longToInt(e.longValue()));
     }
     public static Short convBigintToShort(Long e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Short.valueOf(longToShort(e.longValue()));
     }
     public static String convBigintToString(Long e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return e.toString();
     }
     public static Double convBigintToDouble(Long e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Double.valueOf(e.doubleValue());
     }
     public static Float convBigintToFloat(Long e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Float.valueOf(e.floatValue());
     }
     public static BigDecimal convBigintToNumeric(Long e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return BigDecimal.valueOf(e.longValue());
     }
 
+    // from int
     public static Time convIntToTime(Integer e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return longToTime(e.longValue());
     }
     public static Timestamp convIntToTimestamp(Integer e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return longToTimestamp(e.longValue());
     }
     public static Short convIntToShort(Integer e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Short.valueOf(longToShort(e.longValue()));
     }
     public static String convIntToString(Integer e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return e.toString();
     }
     public static Double convIntToDouble(Integer e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Double.valueOf(e.doubleValue());
     }
     public static Float convIntToFloat(Integer e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Float.valueOf(e.floatValue());
     }
     public static BigDecimal convIntToNumeric(Integer e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return BigDecimal.valueOf(e.longValue());
     }
     public static Long convIntToBigint(Integer e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Long.valueOf(e.longValue());
     }
 
+    // from short
     public static Time convShortToTime(Short e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return longToTime(e.longValue());
     }
     public static Timestamp convShortToTimestamp(Short e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return longToTimestamp(e.longValue());
     }
     public static Integer convShortToInt(Short e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Integer.valueOf(e.intValue());
     }
     public static String convShortToString(Short e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return e.toString();
     }
     public static Double convShortToDouble(Short e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Double.valueOf(e.doubleValue());
     }
     public static Float convShortToFloat(Short e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Float.valueOf(e.floatValue());
     }
     public static BigDecimal convShortToNumeric(Short e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return BigDecimal.valueOf(e.longValue());
     }
     public static Long convShortToBigint(Short e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return Long.valueOf(e.longValue());
     }
 
+    // from string
     public static Timestamp convStringToDatetime(String e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        LocalDateTime dt = DateTimeParser.DatetimeLiteral.parse(e);
+        if (dt == null) {
+            // invalid string
+            throw new RuntimeException("value error");  // TODO: throw an appropriate built-in exception
+        }
+
+        if (dt.equals(DateTimeParser.nullDatetime)) {
+            return new Timestamp(-1900, -1, 0, 0, 0, 0, 0);
+        } else {
+            return new Timestamp(
+                dt.getYear() - 1900, 
+                dt.getMonthValue() - 1, 
+                dt.getDayOfMonth(), 
+                dt.getHour(), 
+                dt.getMinute(), 
+                dt.getSecond(), 
+                dt.getNano());
+        }
     }
     public static Date convStringToDate(String e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        LocalDate d = DateTimeParser.DateLiteral.parse(e);
+        if (d == null) {
+            // invalid string
+            throw new RuntimeException("value error");  // TODO: throw an appropriate built-in exception
+        }
+
+        if (d.equals(DateTimeParser.nullDate)) {
+            return new Date(-1900, -1, 0);
+        } else {
+            return new Date(d.getYear() - 1900, d.getMonthValue() - 1, d.getDayOfMonth());
+        }
     }
     public static Time convStringToTime(String e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        LocalTime t = DateTimeParser.TimeLiteral.parse(e);
+        if (t == null) {
+            // invalid string
+            throw new RuntimeException("value error");  // TODO: throw an appropriate built-in exception
+        }
+
+        return new Time(t.getHour(), t.getMinute(), t.getSecond());
     }
     public static Timestamp convStringToTimestamp(String e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        ZonedDateTime zdt = DateTimeParser.TimestampLiteral.parse(e);
+        if (zdt == null) {
+            // invalid string
+            throw new RuntimeException("value error");  // TODO: throw an appropriate built-in exception
+        }
+
+        if (zdt.equals(DateTimeParser.nullDatetimeUTC)) {
+            return new Timestamp(-1900, -1, 0, 0, 0, 0, 0);
+        } else {
+            assert zdt.getNano() == 0;
+            return new Timestamp(
+                zdt.getYear() - 1900, 
+                zdt.getMonthValue() - 1, 
+                zdt.getDayOfMonth(), 
+                zdt.getHour(), 
+                zdt.getMinute(), 
+                zdt.getSecond(), 
+                0);
+        }
     }
     public static Integer convStringToInt(String e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        BigDecimal bd = strToBigDecimal(e);;
+        bd = bd.setScale(0, RoundingMode.HALF_UP);
+        return Integer.valueOf(bigDecimalToInt(bd));
     }
     public static Short convStringToShort(String e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        BigDecimal bd = strToBigDecimal(e);;
+        bd = bd.setScale(0, RoundingMode.HALF_UP);
+        return Short.valueOf(bigDecimalToShort(bd));
     }
     public static Double convStringToDouble(String e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        try {
+            return Double.valueOf(e);
+        } catch (NumberFormatException ex) {
+            throw new RuntimeException("value error", ex);  // TODO: throw an appropriate built-in exception
+        }
     }
     public static Float convStringToFloat(String e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        try {
+            return Float.valueOf(e);
+        } catch (NumberFormatException ex) {
+            throw new RuntimeException("value error", ex);  // TODO: throw an appropriate built-in exception
+        }
     }
     public static BigDecimal convStringToNumeric(String e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        return strToBigDecimal(e);
     }
     public static Long convStringToBigint(String e) {
-        return null;    // TODO
+        if (e == null) {
+            return null;
+        }
+
+        BigDecimal bd = strToBigDecimal(e);;
+        bd = bd.setScale(0, RoundingMode.HALF_UP);
+        return Long.valueOf(bigDecimalToLong(bd));
     }
 
     // ------------------------------------------------
     // Private
     // ------------------------------------------------
+
+    private static final DateFormat dateFormat = new SimpleDateFormat("MM/dd/yyyy");
+    private static final DateFormat timeFormat = new SimpleDateFormat("hh:mm:ss a");
+    private static final DateFormat datetimeFormat = new SimpleDateFormat("hh:mm:ss.SSS a MM/dd/yyyy");
+    private static final DateFormat timestampFormat = new SimpleDateFormat("hh:mm:ss a MM/dd/yyyy");
 
     private static Boolean commonOpEq(Object l, Object r) {
         if (l == null || r == null) {
@@ -1900,5 +2266,102 @@ public class SpLib {
         }
 
         return sbuf.toString();
+    }
+
+    private static long doubleToLong(double d) {
+        BigDecimal bd = BigDecimal.valueOf(d);
+        bd = bd.setScale(0, RoundingMode.HALF_UP);  // 1.5 -->2, and -1.5 --> -2 NOTE: different from Math.round
+        return bigDecimalToLong(bd);
+    }
+
+    private static int doubleToInt(double d) {
+        BigDecimal bd = BigDecimal.valueOf(d);
+        bd = bd.setScale(0, RoundingMode.HALF_UP);  // 1.5 -->2, and -1.5 --> -2 NOTE: different from Math.round
+        return bigDecimalToInt(bd);
+    }
+
+    private static short doubleToShort(double d) {
+        BigDecimal bd = BigDecimal.valueOf(d);
+        bd = bd.setScale(0, RoundingMode.HALF_UP);  // 1.5 -->2, and -1.5 --> -2 NOTE: different from Math.round
+        return bigDecimalToShort(bd);
+    }
+
+    private static long bigDecimalToLong(BigDecimal bd) {
+        // CAUTION: bd must be set scale to zero
+        try {
+            return bd.longValueExact();
+        } catch (ArithmeticException e) {
+            throw new RuntimeException("value error");  // TODO: throw an appropriate built-in exception
+        }
+    }
+
+    private static int bigDecimalToInt(BigDecimal bd) {
+        // CAUTION: bd must be set scale to zero
+        try {
+            return bd.intValueExact();
+        } catch (ArithmeticException e) {
+            throw new RuntimeException("value error");  // TODO: throw an appropriate built-in exception
+        }
+    }
+
+    private static short bigDecimalToShort(BigDecimal bd) {
+        // CAUTION: bd must be set scale to zero
+        try {
+            return bd.shortValueExact();
+        } catch (ArithmeticException e) {
+            throw new RuntimeException("value error");  // TODO: throw an appropriate built-in exception
+        }
+    }
+
+    private static Time longToTime(long l) {
+        if (l < 0L) {
+            // negative values seem to result in a invalid time value
+            // e.g.
+            // select cast(cast(-1 as bigint) as time);
+            // === <Result of SELECT Command in Line 1> ===
+            //
+            // <00001>  cast( cast(-1 as bigint) as time): 12:00:0/ AM
+            //
+            // 1 row selected. (0.004910 sec) Committed. (0.000020 sec)
+
+            // TODO: figure out what to return
+            throw new RuntimeException("unimplemented yet");
+        }
+
+        int totalSec = (int) (l % 86400L);
+        int hour = totalSec / 3600;
+        int minuteSec = totalSec % 3600;
+        int min = minuteSec / 60;
+        int sec = minuteSec % 60;
+        return new Time(hour, min, sec);
+    }
+
+    private static Timestamp longToTimestamp(long l) {
+        if (l < 0L) {
+            // TODO: check the following error and decide what to do for negative values
+            //   select cast(cast(-100 as bigint) as timestamp);
+            //   ERROR: Cannot coerce value of domain "bigint" to domain "timestamp"
+            throw new RuntimeException("unimplemented yet");
+        } else if (l > 2147483647L) {   // 2147483647L : see section 'implicit type conversion' in the user manual
+            throw new RuntimeException("value error");  // TODO: throw an appropriate built-in exception
+        } else {
+            return new Timestamp(l * 1000L);  // * 1000 : converts it to milli-seconds
+        }
+    }
+
+    private static int longToInt(long l) {
+        return bigDecimalToInt(BigDecimal.valueOf(l));
+    }
+
+    private static short longToShort(long l) {
+        return bigDecimalToShort(BigDecimal.valueOf(l));
+    }
+
+    private static BigDecimal strToBigDecimal(String s) {
+        try {
+            return new BigDecimal(s);
+        } catch (NumberFormatException e) {
+            throw new RuntimeException("value error", e);  // TODO: throw an appropriate built-in exception
+        }
     }
 }
