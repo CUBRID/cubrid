@@ -1359,9 +1359,12 @@ if(USE_CUBRID_ENV)
     ${CMAKE_SOURCE_DIR}/README
     ${CMAKE_SOURCE_DIR}/contrib/readme/README_TAR_INSTALL
     DESTINATION ${CUBRID_PREFIXDIR})
+# on Windows, databases.txt is create from 'make_cubrid_demo.bat' because databases.txt is deleted in MSI file for install.
+  if(UNIX)
   install(FILES
     ${CMAKE_SOURCE_DIR}/contrib/readme/databases.txt.sample
     DESTINATION ${CUBRID_DATABASES})
+  endif(UNIX)
   install(FILES
     ${CMAKE_SOURCE_DIR}/contrib/readme/README_SOCK.txt
     DESTINATION ${CUBRID_VARDIR}/${CUBRID_SOCK}
