@@ -140,9 +140,10 @@ namespace cubmethod
 	  }
 
 	// free phase
-	if (response_blk.dim > 0)
+	if (response_blk.ptr)
 	  {
-	    free (response_blk.ptr);
+	    delete [] response_blk.ptr;
+	    response_blk.dim = 0;
 	  }
 
 	if (error_code != NO_ERROR)
@@ -329,14 +330,16 @@ namespace cubmethod
     db_parameter_info *parameter_info = m_group->get_db_parameter_info ();
     if (parameter_info)
       {
-	cubmem::block blk = mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, *parameter_info);
+	cubmem::block blk = std::move (mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, *parameter_info));
 	error = mcon_send_data_to_java (m_group->get_socket(), get_next_java_header (m_java_header), blk);
+	delete[]  blk.ptr;
       }
     else
       {
-	cubmem::block blk = mcon_pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
-			    ARG_FILE_LINE);
+	cubmem::block blk = std::move (mcon_pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+				       ARG_FILE_LINE));
 	error = mcon_send_data_to_java (m_group->get_socket(), get_next_java_header (m_java_header), blk);
+	delete[] blk.ptr;
       }
     return error;
   }
@@ -357,7 +360,7 @@ namespace cubmethod
 	return error;
       }
 
-    auto get_prepare_info = [&] (cubmem::block & b)
+    auto get_prepare_info = [&] (const cubmem::block & b)
     {
       packing_unpacker unpacker (b.ptr, (size_t) b.dim);
 
@@ -394,7 +397,7 @@ namespace cubmethod
 
     request.clear ();
 
-    auto get_execute_info = [&] (cubmem::block & b)
+    auto get_execute_info = [&] (const cubmem::block & b)
     {
       packing_unpacker unpacker (b.ptr, (size_t) b.dim);
 
@@ -485,8 +488,14 @@ namespace cubmethod
 	i++;
       }
 
-    cubmem::block blk = mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, info);
+    cubmem::block blk = std::move (mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, info));
     error = mcon_send_data_to_java (m_group->get_socket (), get_next_java_header (m_java_header), blk);
+    if (blk.ptr)
+      {
+	delete [] blk.ptr;
+	blk.dim = 0;
+      }
+
     return error;
   }
 
@@ -504,7 +513,7 @@ namespace cubmethod
 	return error;
       }
 
-    auto java_lambda = [&] (cubmem::block & b)
+    auto java_lambda = [&] (const cubmem::block & b)
     {
       return mcon_send_data_to_java (m_group->get_socket(), get_next_java_header (m_java_header), b);
     };
@@ -529,7 +538,7 @@ namespace cubmethod
 	return error;
       }
 
-    auto java_lambda = [&] (cubmem::block & b)
+    auto java_lambda = [&] (const cubmem::block & b)
     {
       return mcon_send_data_to_java (m_group->get_socket(), get_next_java_header (m_java_header), b);
     };
@@ -553,7 +562,7 @@ namespace cubmethod
 	return error;
       }
 
-    auto java_lambda = [&] (cubmem::block & b)
+    auto java_lambda = [&] (const cubmem::block & b)
     {
       return mcon_send_data_to_java (m_group->get_socket(), get_next_java_header (m_java_header), b);
     };
@@ -581,7 +590,7 @@ namespace cubmethod
 	return error;
       }
 
-    auto java_lambda = [&] (cubmem::block & b)
+    auto java_lambda = [&] (const cubmem::block & b)
     {
       return mcon_send_data_to_java (m_group->get_socket(), get_next_java_header (m_java_header), b);
     };
@@ -605,7 +614,7 @@ namespace cubmethod
 	return error;
       }
 
-    auto get_make_outresult_info = [&] (cubmem::block & b)
+    auto get_make_outresult_info = [&] (const cubmem::block & b)
     {
       packing_unpacker unpacker (b.ptr, (size_t) b.dim);
 
@@ -645,7 +654,7 @@ namespace cubmethod
 	return error;
       }
 
-    auto java_lambda = [&] (cubmem::block & b)
+    auto java_lambda = [&] (const cubmem::block & b)
     {
       return mcon_send_data_to_java (m_group->get_socket(), get_next_java_header (m_java_header), b);
     };
@@ -668,7 +677,7 @@ namespace cubmethod
 	return error;
       }
 
-    auto java_lambda = [&] (cubmem::block & b)
+    auto java_lambda = [&] (const cubmem::block & b)
     {
       return mcon_send_data_to_java (m_group->get_socket(), get_next_java_header (m_java_header), b);
     };
