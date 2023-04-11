@@ -11904,6 +11904,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	    LOG_REC_REDO *redo = NULL;
 	    LOG_RCVINDEX rcvindex;
 
+	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*redo), &process_lsa, log_page_p);
+
 	    redo = (LOG_REC_REDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = redo->data.rcvindex;
 
@@ -11925,6 +11927,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	  {
 	    LOG_REC_UNDO *undo = NULL;
 	    LOG_RCVINDEX rcvindex;
+
+	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undo), &process_lsa, log_page_p);
 
 	    undo = (LOG_REC_UNDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = undo->data.rcvindex;
