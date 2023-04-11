@@ -361,6 +361,7 @@ static void addstr (const char *);
 static int tty_noblock (void);
 static int get_timeout (void);
 static int num_newlines (const char *);
+char *term = NULL;
 
 typedef char *(*tgoto_func_t) (const char *cap, int col, int row);
 typedef int (*tgetent_func_t) (char *bp, const char *name);
@@ -377,6 +378,8 @@ tgetnum_func_t tgetnum;
 int Stdin_timer = 0;
 static int currentY = 0;
 static int tty_Lines = 0;
+static int tty_Cols = 0;
+static int num_Chars = 0;
 static char *cm = NULL;
 static char *cd = NULL;
 static char *ce = NULL;
@@ -2103,9 +2106,20 @@ num_newlines (const char *str)
   while (str[i])
     {
       if (str[i++] == '\n')
-	{
-	  num_nl++;
-	}
+        {
+          num_nl++;
+          num_Chars = 0;
+        }
+      else
+        {
+          num_Chars++;
+        }
+
+      if (num_Chars == tty_Cols)
+        {
+          num_nl++;
+          num_Chars = 0;
+        }
     }
 
   return num_nl;
@@ -2162,7 +2176,6 @@ initscr ()
   char tinfo_so[PATH_MAX];
   int major_version;
   int ret = -1;
-  char *term;
 
   for (major_version = TINFO_HIGH_VERSION; major_version >= TINFO_LOW_VERSION; major_version--)
     {
@@ -2245,6 +2258,13 @@ initscr ()
   if (tty_Lines < 1)
     {
       fprintf (stderr, "ERROR: cannot get #LINES for the terminal, check TERM environment variable\n");
+      return NULL;
+    }
+
+  tty_Cols = tgetnum ("co");
+  if (tty_Cols < 1)
+    {
+      fprintf (stderr, "ERROR: cannot get #COLUMNS for the terminal, check TERM environment variable\n");
       return NULL;
     }
 
