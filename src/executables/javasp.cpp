@@ -429,6 +429,7 @@ javasp_ping_server (const int server_port, const char *db_name, char *buf)
 {
   int status = NO_ERROR;
   SOCKET socket = INVALID_SOCKET;
+  cubmem::block ping_blk {0, NULL};
 
   socket = jsp_connect_server (db_name, server_port);
   if (socket != INVALID_SOCKET)
@@ -440,16 +441,20 @@ javasp_ping_server (const int server_port, const char *db_name, char *buf)
 	  goto exit;
 	}
 
-      cubmem::block b;
-      status = cubmethod::mcon_read_data_from_java (socket, b);
+      status = cubmethod::mcon_read_data_from_java (socket, ping_blk);
       if (status != NO_ERROR)
 	{
 	  goto exit;
 	}
-      memcpy (buf, b.ptr, b.dim);
+      memcpy (buf, ping_blk.ptr, ping_blk.dim);
     }
 
 exit:
+  if (ping_blk.ptr)
+    {
+      delete [] ping_blk.ptr;
+    }
+
   jsp_disconnect_server (socket);
   return er_errid ();
 }
