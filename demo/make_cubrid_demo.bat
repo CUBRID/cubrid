@@ -31,6 +31,7 @@ if not "%1"=="" (
 if exist %DBNAME% goto done
 
 if NOT exist %CUBRID_DATABASES%\demodb md %CUBRID_DATABASES%\demodb
+set PATH=%PATH%;%CUBRID%\cci\bin;
 cd %CUBRID_DATABASES%\demodb
 echo ********** Creating database %DBNAME% ...
 %CUBRID%\bin\cub_admin createdb --db-volume-size=100M --log-volume-size=100M --replace %DBNAME% en_US.utf8

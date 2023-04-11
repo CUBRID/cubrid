@@ -91,6 +91,8 @@ namespace cubmethod
       std::string get_sql_stmt () const;
       int get_statement_type () const;
 
+      uint64_t get_query_id () const;
+
       int get_num_markers ();
       bool get_is_occupied ();
       void set_is_occupied (bool flag);
@@ -159,6 +161,9 @@ namespace cubmethod
 
       /* statement handler cache */
       bool m_is_occupied; // Is occupied by CUBRIDServerSideStatement
+
+      /* query id */
+      uint64_t m_query_id;
 
       /* results */
       prepare_info m_prepare_info;

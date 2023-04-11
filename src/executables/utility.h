@@ -384,8 +384,7 @@ typedef enum
 /* Message id in the set MSGCAT_UTIL_SET_LOADJAVA */
 typedef enum
 {
-  LOADJAVA_ARG_FORCE_OVERWRITE = 5,
-  LOADJAVA_ARG_FORCE_OVERWRITE_HELP = 6
+  LOADJAVA_MSG_USAGE = 60
 } MSGCAT_LOADJAVA_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_COMPACTDB */

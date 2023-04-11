@@ -97,6 +97,7 @@ extern "C"
     CSQL_SYSADM_PROMPT = 81,
     CSQL_TRANSACTIONS = 82,
     CSQL_TRANSACTION = 83,
+    CSQL_MSG_TOO_FEW_ARGS = 84,
 
     CSQL_HELP_SCHEMA_TITLE_TEXT = 145,
     CSQL_HELP_NONE_TEXT = 146,
@@ -239,7 +240,9 @@ extern "C"
 
     S_CMD_TRACE,
 
-    S_CMD_SINGLELINE
+    S_CMD_SINGLELINE,
+
+    S_CMD_CONNECT
   } SESSION_CMD;
 
 /* iq_ function return status */

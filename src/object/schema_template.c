@@ -4442,6 +4442,8 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
   int is_class_attr;
   DB_VALUE *orig_value = NULL;
   DB_VALUE *new_orig_value = NULL;
+  DB_VALUE default_value;
+  DB_DEFAULT_EXPR default_expr;
   TP_DOMAIN_STATUS status;
 
   *found_att = NULL;
@@ -4458,12 +4460,34 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
       return error;
     }
 
+  /* 
+     The default value's domain should be checked even though the new default is not specified
+   */
+  db_make_null (&default_value);
+  if (new_default_value == NULL && new_default_expr->default_expr_type == DB_DEFAULT_NONE)
+    {
+      pr_clone_value (&(*found_att)->default_value.value, &default_value);
+      default_expr = (*found_att)->default_value.default_expr;
+
+      if (!DB_IS_NULL (&default_value))
+	{
+	  new_default_value = &default_value;
+	}
+
+      if (default_expr.default_expr_type != DB_DEFAULT_NONE)
+	{
+	  new_default_expr = &default_expr;
+	}
+    }
+
   is_class_attr = (name_space == ID_CLASS_ATTRIBUTE);
   if (new_default_value != NULL || (new_default_expr != NULL && new_default_expr->default_expr_type != DB_DEFAULT_NONE))
     {
       assert (((*found_att)->flags & SM_ATTFLAG_NEW) == 0);
       error = smt_set_attribute_default (def, ((new_name != NULL) ? new_name : name), is_class_attr, new_default_value,
 					 new_default_expr);
+
+      db_value_clear (&default_value);
       if (error != NO_ERROR)
 	{
 	  return error;

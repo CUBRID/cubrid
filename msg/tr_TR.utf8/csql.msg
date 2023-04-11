@@ -92,6 +92,7 @@ $  Bu 3 boş bırakılmalı
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 Çok az argüman verildi.
 
 145 <Help: Bir Sınıf Şeması>
 146 none
@@ -163,7 +164,9 @@ $ csql help messages
    ;COMmit                      - geçerli işlemleri iıle.\n\
    ;ROllback                    - geçerli işlemleri geri iıle.\n\
    ;AUtocommit [ON|OFF]         - otomatik tamamlama modunu etkinleştirme / devre dışı bırakma.\n\
-   ;REStart                     - veritabanını yeniden başlat.\n\
+   ;REStart                     - CSQL oturumunda hedef veritabanına yeniden bağlanın.\n\
+   ;CHeckpoint                  - kontrol noktasını yürütün (yalnızca --sysadm ile CSQL).\n\
+   ;Killtran                    - işlem durumu bilgilerini kontrol edin veya belirli bir işlemi sonlandırın. (yalnızca --sysadm ile CSQL).\n\
 \n\
    ;SHELL_Cmd     [shell-cmd]   - varsayılan dış kabuğu ayarla, editör, yazdır, çağrı cihazı ve biçimlendirici\n\
    ;EDITOR_Cmd    [editor-cmd]    yeni bir tane komut ver veya geçerli olanı görüntüle\n\
@@ -188,6 +191,12 @@ $ csql help messages
    ;HISTORYRead <history_num>   - komut buffer içine geçmiş numarası üzerinde giriş okuyun.\n\
    ;TRAce [ON/OFF] [text/json]  - sql otomatik iz etkinleştirmek/devre dışı.\n\
    ;SIngleline [ON|OFF]         - tek hat modunu etkinleştir/devre dışı bırak.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - mevcut veya diğer veritabanlarına bir kullanıcı adı olarak bağlanın.\n\
+   ;.Hist [ON/OFF]              - CSQL'de istatistik bilgisi toplamayı başlat/durdur (yalnızca DBA mevcuttur).\n\
+   ;.Clear_hist                 - tampondaki CSQL istatistik bilgilerini temizler.\n\
+   ;.Dump_hist                  - CSQL istatistik bilgilerini CSQL'de görüntüler.\n\
+   ;.X_hist                     - CSQL'de CSQL istatistik bilgilerini, istatistik verileri başlatıldı.\n\
    ;HElp                        - yardım mesajını görüntüler.\n\n
 
 232 <Constraints> 

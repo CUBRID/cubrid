@@ -52,6 +52,7 @@ namespace cubpacking
     assert (ptr + amount <= endptr);
     if (ptr + amount > endptr)
       {
+	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_ENOUGH_DATA_SIZE, 0);
 	abort ();
       }
   }

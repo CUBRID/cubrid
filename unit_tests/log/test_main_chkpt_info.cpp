@@ -796,6 +796,13 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
   assert (false);
 }
 
+void
+er_set (int, const char *, const int, int, int, ...)
+{
+  assert (false);
+  // nop
+}
+
 int
 csect_exit (THREAD_ENTRY *thread_p, int cs_index)
 {
