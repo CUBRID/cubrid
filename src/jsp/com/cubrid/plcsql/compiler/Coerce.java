@@ -56,17 +56,12 @@ public abstract class Coerce {
             assert to != null;
         }
 
-        if (from.equals(TypeSpecSimple.NULL) && to.equals(TypeSpecSimple.OBJECT)) {
+        if (from.equals(TypeSpecSimple.NULL) || from.equals(TypeSpecSimple.OBJECT)) {
             // in order for Javac to pick the right version among operator function overloads
             // when all the arguments are nulls
-            return new Cast(TypeSpecSimple.OBJECT);
-        } else if (to.equals(TypeSpecSimple.OBJECT)
-                || from.equals(TypeSpecSimple.NULL)
-                || from.equals(to)) {
-            return IDENTITY;
-        } else if (from.equals(TypeSpecSimple.OBJECT)) {
-            assert !to.equals(TypeSpecSimple.OBJECT);
             return new Cast(to);
+        } else if (to.equals(TypeSpecSimple.OBJECT) || from.equals(to)) {
+            return IDENTITY;
         }
 
         Set<TypeSpec> possibleTargets = possibleCasts.get(from);
