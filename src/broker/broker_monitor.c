@@ -360,18 +360,23 @@ static void timeout (int delay);
 static void addstr (const char *);
 static int tty_noblock (void);
 static int get_timeout (void);
+static int num_newlines (const char *);
 
 typedef char *(*tgoto_func_t) (const char *cap, int col, int row);
 typedef int (*tgetent_func_t) (char *bp, const char *name);
 typedef char *(*tgetstr_func_t) (char *id, char **area);
 typedef int (*tputs_func_t) (const char *str, int affcnt, int (*putc) (int));
+typedef int (*tgetnum_func_t) (char *id);
 
 tgoto_func_t tgoto;
 tgetent_func_t tgetent;
 tgetstr_func_t tgetstr;
 tputs_func_t tputs;
+tgetnum_func_t tgetnum;
 
 int Stdin_timer = 0;
+static int currentY = 0;
+static int tty_Lines = 0;
 static char *cm = NULL;
 static char *cd = NULL;
 static char *ce = NULL;
@@ -1990,6 +1995,7 @@ refresh ()
 static void
 move (int x, int y)
 {
+  currentY = y;
   tputs (tgoto (cm, x, y), 1, putchar);
   fflush (stdout);
 }
@@ -2025,7 +2031,15 @@ endwin ()
 static void
 addstr (const char *str)
 {
-  if (str == NULL)
+  /* line# starts at 0 */
+  if (str == NULL || currentY >= tty_Lines)
+   {
+      return;
+   }
+
+  currentY += num_newlines (str);
+
+  if (currentY >= tty_Lines)
     {
       return;
     }
@@ -2069,8 +2083,32 @@ getch ()
 static void
 clear ()
 {
+  currentY = 0;
   tputs (cl, 1, putchar);
   fflush (stdout);
+}
+
+static int
+num_newlines (const char *str)
+{
+  int num_nl = 0;
+  int i = 0;
+
+  if (str == NULL)
+    {
+      return 0;
+    }
+
+
+  while (str[i])
+    {
+      if (str[i++] == '\n')
+	{
+	  num_nl++;
+	}
+    }
+
+  return num_nl;
 }
 
 static int
@@ -2124,6 +2162,7 @@ initscr ()
   char tinfo_so[PATH_MAX];
   int major_version;
   int ret = -1;
+  char *term;
 
   for (major_version = TINFO_HIGH_VERSION; major_version >= TINFO_LOW_VERSION; major_version--)
     {
@@ -2164,7 +2203,15 @@ initscr ()
       return NULL;
     }
 
-  if (tgetent (NULL, "xterm") != 1)
+  tgetnum = (tgetnum_func_t) dlsym (dl_handle, "tgetnum");
+
+  term = getenv ("TERM");
+  if (term == NULL)
+    {
+      term = "xterm";
+    }
+
+  if (tgetent (NULL, term) != 1)
     {
       fprintf (stderr, "ERROR: Cannot find TERM type.");
       return NULL;
@@ -2191,6 +2238,13 @@ initscr ()
   if ((cl = tgetstr ("cl", NULL)) == NULL)
     {
       fprintf (stderr, "ERROR: Cannot find 'Clear screen and cursor home (cl)' capability for the terminal\n");
+      return NULL;
+    }
+
+  tty_Lines = tgetnum ("li");
+  if (tty_Lines < 1)
+    {
+      fprintf (stderr, "ERROR: cannot get #LINES for the terminal, check TERM environment variable\n");
       return NULL;
     }
 
