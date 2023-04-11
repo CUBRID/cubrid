@@ -2116,10 +2116,10 @@ num_newlines (const char *str)
         }
 
       if (num_Chars == tty_Cols)
-        {
-          num_nl++;
-          num_Chars = 0;
-        }
+	{
+	  num_nl++;
+	  num_Chars = 0;
+	}
     }
 
   return num_nl;
