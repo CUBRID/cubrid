@@ -2106,14 +2106,14 @@ num_newlines (const char *str)
   while (str[i])
     {
       if (str[i++] == '\n')
-        {
-          num_nl++;
-          num_Chars = 0;
-        }
+	{
+	  num_nl++;
+	  num_Chars = 0;
+	}
       else
-        {
-          num_Chars++;
-        }
+	{
+	  num_Chars++;
+	}
 
       if (num_Chars == tty_Cols)
 	{
