@@ -197,9 +197,11 @@ plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/test_tcl_commit.sql
 ```
 -- test
 csql -u public demodb
+;set pl_transaction_control=yes
 ;autocommit off
 ;server-output on
     TRUNCATE test_tcl_tbl;
+    SELECT * FROM test_tcl_tbl;
     CALL test_tcl_commit ();
     ROLLBACK; -- rollback in csql session
     SELECT * FROM test_tcl_tbl; -- committed rows should be displayed
@@ -223,6 +225,7 @@ plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/test_tcl_rollback.sql
 ```
 -- test
 csql -u public demodb
+;set pl_transaction_control=yes
 ;set autocommit off
 ;server-output on
     TRUNCATE test_tcl_tbl2;
