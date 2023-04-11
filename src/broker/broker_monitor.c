@@ -1998,6 +1998,18 @@ refresh ()
 static void
 move (int x, int y)
 {
+  int lines = -1;
+  int cols = -1;
+
+  if (tgetent (NULL, term) == 1)
+    {
+      lines = tgetnum ("li");
+      cols = tgetnum ("co");
+    }
+
+  tty_Lines = lines < 0 ? tty_Lines : lines;
+  tty_Cols = cols < 0 ? tty_Cols : cols;
+
   currentY = y;
   tputs (tgoto (cm, x, y), 1, putchar);
   fflush (stdout);
