@@ -1,4 +1,4 @@
-create or replace function StmtForStaticSqlLoop_test_without_condition() return int as
+create or replace function test_query_cursor_simple_nocond() return int as
 i int;
 begin
     i := 0;

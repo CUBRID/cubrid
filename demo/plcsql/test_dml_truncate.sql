@@ -1,4 +1,4 @@
-/* https://www.cubrid.org/manual/en/11.2/sql/query/update.html */
+/* https://www.cubrid.org/manual/en/11.2/sql/query/truncate.html */
 /*
 
 */
