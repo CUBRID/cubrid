@@ -274,14 +274,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                 commonType = getCommonType(commonType, ty);
             }
         }
-        if (node.elsePart == null) {
-            if (commonType.equals(TypeSpecSimple.NULL)) {
-                commonType =
-                        TypeSpecSimple
-                                .OBJECT; // cannot be a specific Java type: there is no Null type in
-                // Java
-            }
-        } else {
+        if (node.elsePart != null) {
             TypeSpec ty = visit(node.elsePart);
             commonType = getCommonType(commonType, ty);
         }
@@ -303,14 +296,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                 commonType = getCommonType(commonType, ty);
             }
         }
-        if (node.elsePart == null) {
-            if (commonType.equals(TypeSpecSimple.NULL)) {
-                commonType =
-                        TypeSpecSimple
-                                .OBJECT; // cannot be a specific Java type: there is no Null type in
-                // Java
-            }
-        } else {
+        if (node.elsePart != null) {
             TypeSpec ty = visit(node.elsePart);
             commonType = getCommonType(commonType, ty);
         }

@@ -41,7 +41,7 @@ public class ExprCond extends Expr {
     public void setCoerce(Coerce c) {
 
         if (c instanceof Coerce.Cast) {
-            assert resultType.equals(TypeSpecSimple.OBJECT);
+            assert resultType.equals(TypeSpecSimple.NULL) || resultType.equals(TypeSpecSimple.OBJECT);
             resultType = ((Coerce.Cast) c).to;
             super.setCoerce(Coerce.IDENTITY);
         } else {
