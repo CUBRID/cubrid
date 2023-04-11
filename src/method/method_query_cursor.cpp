@@ -74,6 +74,10 @@ namespace cubmethod
   void
   query_cursor::clear ()
   {
+    for (DB_VALUE &val : m_current_tuple)
+      {
+	db_value_clear (&val);
+      }
     m_current_tuple.clear ();
     m_current_row_index = 0;
   }
