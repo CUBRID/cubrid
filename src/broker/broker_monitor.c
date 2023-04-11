@@ -2033,9 +2033,9 @@ addstr (const char *str)
 {
   /* line# starts at 0 */
   if (str == NULL || currentY >= tty_Lines)
-   {
+    {
       return;
-   }
+    }
 
   currentY += num_newlines (str);
 
