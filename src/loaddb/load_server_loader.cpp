@@ -704,12 +704,12 @@ namespace cubload
 	m_error_handler.log_date_time_conversion_error (token, pr_type_name (attr.get_domain ().type->get_id ()));
       }
     else if (error_code == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
-           {
-              char class_attr[512];
+      {
+	char class_attr[512];
 
-              snprintf (class_attr, 512, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
-              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
-           }
+	snprintf (class_attr, 512, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
+      }
 
     return error_code;
   }
@@ -746,10 +746,10 @@ namespace cubload
 
 	if (error_code == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
 	  {
-            char class_attr[512];
+	    char class_attr[512];
 
-            snprintf (class_attr, 512, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
-            er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
+	    snprintf (class_attr, 512, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
 	  }
 
 	return error_code;
