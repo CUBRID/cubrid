@@ -69,8 +69,11 @@ namespace cubmethod
 	    mi = new method_invoke_builtin (this, sig);
 	    break;
 	  case METHOD_TYPE_JAVA_SP:
-	    mi = new method_invoke_java (this, sig);
-	    break;
+	  {
+	    bool use_tcl = prm_get_bool_value (PRM_ID_PL_TRANSACTION_CONTROL);
+	    mi = new method_invoke_java (this, sig, use_tcl);
+	  }
+	  break;
 	  default:
 	    assert (false); // not implemented yet
 	    break;

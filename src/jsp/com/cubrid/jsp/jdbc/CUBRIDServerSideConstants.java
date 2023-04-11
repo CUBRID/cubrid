@@ -69,4 +69,8 @@ public class CUBRIDServerSideConstants {
             DROP_ELEMENT_IN_SEQUENCE = 5,
             INSERT_ELEMENT_INTO_SEQUENCE = 6,
             PUT_ELEMENT_ON_SEQUENCE = 7;
+
+    /* end transaction constants */
+    public static final byte END_TRAN_COMMIT = 1;
+    public static final byte END_TRAN_ROLLBACK = 2;
 }

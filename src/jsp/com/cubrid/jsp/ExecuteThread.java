@@ -220,7 +220,7 @@ public class ExecuteThread extends Thread {
                     Server.log(throwable);
                     try {
                         if (throwable instanceof SQLException) {
-                            sendError(throwable.getMessage(), client);
+                            sendError(throwable.toString(), client);
                         } else {
                             sendError(throwable.toString(), client);
                         }
@@ -356,6 +356,9 @@ public class ExecuteThread extends Thread {
             methodArgs[i] = val;
         }
         int returnType = unpacker.unpackInt();
+
+        boolean transactionControl = unpacker.unpackBool();
+        getCurrentContext().setTransactionControl(transactionControl);
 
         storedProcedure = new StoredProcedure(methodSig, methodArgs, returnType);
         return storedProcedure;

@@ -99,7 +99,7 @@ public class Unit extends AstNode {
             strGetConn =
                     tmplGetConn.replace(
                             "%'AUTONOMOUS-TRANSACTION'%",
-                            autonomousTransaction ? "?autonomous_transaction=true" : "");
+                            autonomousTransaction ? "autonomous_transaction=false" : "");
         } else {
             strGetConn = "// connection not required";
         }
@@ -167,7 +167,7 @@ public class Unit extends AstNode {
     private static final String tmplGetConn =
             Misc.combineLines(
                     "Connection conn = DriverManager.getConnection"
-                            + "(\"jdbc:default:connection:%'AUTONOMOUS-TRANSACTION'%\");");
+                            + "(\"jdbc:default:connection::?%'AUTONOMOUS-TRANSACTION'%\");");
 
     private static final String tmplDeclClass =
             Misc.combineLines(

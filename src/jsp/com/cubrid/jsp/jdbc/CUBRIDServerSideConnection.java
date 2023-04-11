@@ -169,11 +169,27 @@ public class CUBRIDServerSideConnection implements Connection {
     }
 
     public void commit() throws SQLException {
-        /* do nothing */
+        if (context.canTransactionControl()) {
+            try {
+                close();
+                getSUConnection().endTransaction(true);
+            } catch (IOException e) {
+                throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                        CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
+            }
+        }
     }
 
     public void rollback() throws SQLException {
-        /* do nothing */
+        if (context.canTransactionControl()) {
+            try {
+                close();
+                getSUConnection().endTransaction(false);
+            } catch (IOException e) {
+                throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                        CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
+            }
+        }
     }
 
     public void close() throws SQLException {

@@ -32,7 +32,6 @@
 package com.cubrid.jsp.jdbc;
 
 import com.cubrid.jsp.context.ContextManager;
-import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.Driver;
 import java.sql.DriverManager;
@@ -41,10 +40,15 @@ import java.sql.SQLException;
 import java.util.Properties;
 import java.util.StringTokenizer;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class CUBRIDServerSideDriver implements Driver {
 
     private static final String JDBC_DEFAULT_CONNECTION = "jdbc:default:connection";
+
+    private static final String JDBC_DEFAULT_CONNECTION_PATTERN =
+            "jdbc:default:connection(::\\?[a-zA-Z_0-9]+=[^&=?]+(&[a-zA-Z_0-9]+=[^&=?]+)*)?";
 
     private static String VERSION_STRING;
     private static int VERSION_MAJOR;
@@ -79,9 +83,25 @@ public class CUBRIDServerSideDriver implements Driver {
             return null;
         }
 
+        Pattern pattern =
+                Pattern.compile(JDBC_DEFAULT_CONNECTION_PATTERN, Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pattern.matcher(url);
+        if (!matcher.find()) {
+            // TODO: error?
+            return null;
+        }
+
+        setDefaultProperties(info);
+
+        // parse property
+        String prop = matcher.group(1);
+        if (prop != null) {
+            setProperties(prop, info);
+        }
+
         Thread t = Thread.currentThread();
         Long ctxId = ContextManager.getContextIdByThreadId(t.getId());
-        return ContextManager.getContext(ctxId).getConnection();
+        return ContextManager.getContext(ctxId).getConnection(info);
     }
 
     @Override
@@ -95,6 +115,25 @@ public class CUBRIDServerSideDriver implements Driver {
         }
 
         return false;
+    }
+
+    private void setProperties(String propertyString, Properties info) {
+        StringTokenizer st = new StringTokenizer(propertyString, "?&;");
+        while (st.hasMoreTokens()) {
+            String propString = st.nextToken();
+            StringTokenizer pt = new StringTokenizer(propString, "=");
+            if (pt.hasMoreTokens()) {
+                String name = pt.nextToken().toLowerCase();
+                if (pt.hasMoreTokens()) {
+                    String value = pt.nextToken();
+                    info.put(name, value);
+                }
+            }
+        }
+    }
+
+    private void setDefaultProperties(Properties info) {
+        info.setProperty("transaction_control", "false");
     }
 
     @Override
@@ -120,16 +159,5 @@ public class CUBRIDServerSideDriver implements Driver {
     @Override
     public Logger getParentLogger() {
         throw new java.lang.UnsupportedOperationException();
-    }
-
-    private Object invoke(
-            String cls_name, String method, Class<?>[] param_cls, Object cls, Object[] params) {
-        try {
-            Class<?> c = Class.forName(cls_name);
-            Method m = c.getMethod(method, param_cls);
-            return m.invoke(cls, params);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
     }
 }
