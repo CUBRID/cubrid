@@ -99,7 +99,9 @@ public class Unit extends AstNode {
             strGetConn =
                     tmplGetConn.replace(
                             "%'AUTONOMOUS-TRANSACTION'%",
-                            autonomousTransaction ? "autonomous_transaction=true" : "autonomous_transaction=false");
+                            autonomousTransaction
+                                    ? "autonomous_transaction=true"
+                                    : "autonomous_transaction=false");
         } else {
             strGetConn = "// connection not required";
         }
