@@ -6237,7 +6237,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_PL_TRANSACTION_CONTROL,
    PRM_NAME_PL_TRANSACTION_CONTROL,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_FOR_SESSION),
    PRM_BOOLEAN,
    &prm_pl_transaction_control_flag,
    (void *) &prm_pl_transaction_control_default,
