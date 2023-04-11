@@ -64,7 +64,7 @@ s_subquery_operation_part // ???
 s_query_block
     : SELECT (DISTINCT | UNIQUE | ALL)? s_selected_list
       s_into_clause? s_from_clause s_where_clause? s_hierarchical_query_clause?
-      s_group_by_clause? s_order_by_clause? s_fetch_clause?
+      s_group_by_clause? s_order_by_clause? s_fetch_clause? s_limit_clause?
     ;
 
 s_selected_list
@@ -168,6 +168,11 @@ s_order_by_elements
 
 s_offset_clause
     : OFFSET s_expression (ROW | ROWS)
+    ;
+
+s_limit_clause
+    : LIMIT (s_expression',')? s_expression
+    | LIMIT s_expression (OFFSET s_expression)?
     ;
 
 s_fetch_clause
