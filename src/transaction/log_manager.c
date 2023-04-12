@@ -11213,7 +11213,9 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
   int tmpbuf_index;
 
   char *log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  LOG_PAGE *log_page_p = NULL;
+  char *reserve_log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *log_page_p = NULL;	// log_page for process_lsa : when process_lsa is advanced, then next log_page can be fetched into this buffer
+  LOG_PAGE *reserve_log_page_p = NULL;	// log_page for redo/undo lsa
 
   LOG_LSA process_lsa = LSA_INITIALIZER;
   LOG_LSA current_logrec_lsa = LSA_INITIALIZER;
@@ -11241,12 +11243,13 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
   int error_code = NO_ERROR;
 
+  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  reserve_log_page_p = (LOG_PAGE *) PTR_ALIGN (reserve_log_pgbuf, MAX_ALIGNMENT);
+
   /* Get UNDO RECDES from undo lsa */
 
   /* Because it is unable to know exact size of data (recdes.data), can not use log_get_undo_record. 
    * In order to use log_get_undo_record(), memory pool for recdes (assign_recdes_to_area()) is required just as scan cache where log_get_undo_record() is called. */
-
-  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   if (undo_lsa != NULL)
     {
@@ -11262,6 +11265,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	      goto error;
 	    }
 	}
+
+      memcpy (reserve_log_page_p, log_page_p, IO_MAX_PAGE_SIZE);
 
       LSA_COPY (&process_lsa, undo_lsa);
       LSA_COPY (&current_logrec_lsa, undo_lsa);
@@ -11360,7 +11365,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	      {
 		/* GET OVF UNDO IMAGE */
 		if ((error_code =
-		     cdc_get_overflow_recdes (thread_p, log_page_p, undo_recdes, *undo_lsa, rcvindex,
+		     cdc_get_overflow_recdes (thread_p, reserve_log_page_p, undo_recdes, *undo_lsa, rcvindex,
 					      false)) != NO_ERROR)
 		  {
 		    goto error;
@@ -11395,7 +11400,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	      {
 		/* GET OVF UNDO IMAGE */
 		if ((error_code =
-		     cdc_get_overflow_recdes (thread_p, log_page_p, undo_recdes, *undo_lsa, rcvindex,
+		     cdc_get_overflow_recdes (thread_p, reserve_log_page_p, undo_recdes, *undo_lsa, rcvindex,
 					      false)) != NO_ERROR)
 		  {
 		    goto error;
@@ -11436,6 +11441,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		}
 	    }
 	}
+
+      memcpy (reserve_log_page_p, log_page_p, IO_MAX_PAGE_SIZE);
 
       LSA_COPY (&process_lsa, redo_lsa);
       LSA_COPY (&current_logrec_lsa, redo_lsa);
@@ -11889,7 +11896,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	      {
 		/* GET OVF UNDO IMAGE */
 		if ((error_code =
-		     cdc_get_overflow_recdes (thread_p, log_page_p, redo_recdes, prev_lsa, RVOVF_PAGE_UPDATE,
+		     cdc_get_overflow_recdes (thread_p, reserve_log_page_p, redo_recdes, prev_lsa, RVOVF_PAGE_UPDATE,
 					      true)) != NO_ERROR)
 		  {
 		    goto error;
@@ -11913,7 +11920,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	      {
 		/* GET OVF REDO IMAGE */
 		if ((error_code =
-		     cdc_get_overflow_recdes (thread_p, log_page_p, redo_recdes, *redo_lsa, rcvindex,
+		     cdc_get_overflow_recdes (thread_p, reserve_log_page_p, redo_recdes, *redo_lsa, rcvindex,
 					      true)) != NO_ERROR)
 		  {
 		    goto error;
@@ -11936,7 +11943,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	    if (rcvindex == RVOVF_PAGE_UPDATE)
 	      {
 		if ((error_code =
-		     cdc_get_overflow_recdes (thread_p, log_page_p, redo_recdes, *redo_lsa, rcvindex,
+		     cdc_get_overflow_recdes (thread_p, reserve_log_page_p, redo_recdes, *redo_lsa, rcvindex,
 					      true)) != NO_ERROR)
 		  {
 		    goto error;
@@ -11983,12 +11990,12 @@ error:
       free_and_init (tmp_undo_recdes.data);
     }
 
-  if (redo_recdes->data != NULL)
+  if (redo_recdes != NULL && redo_recdes->data != NULL)
     {
       free_and_init (redo_recdes->data);
     }
 
-  if (undo_recdes->data != NULL)
+  if (undo_recdes != NULL && undo_recdes->data != NULL)
     {
       free_and_init (undo_recdes->data);
     }
