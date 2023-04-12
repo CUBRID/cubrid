@@ -46,7 +46,7 @@ passive_tran_server::connection_handler::request_handlers_map_t
 passive_tran_server::connection_handler::get_request_handlers ()
 {
   /* start from the request handlers in common on ATS and PTS */
-  auto  handlers_map = tran_server::connection_handler::get_request_handlers ();
+  auto handlers_map = tran_server::connection_handler::get_request_handlers ();
 
   auto from_ps_log_prior_list_handler = std::bind (&passive_tran_server::connection_handler::receive_log_prior_list,
 					this, std::placeholders::_1);

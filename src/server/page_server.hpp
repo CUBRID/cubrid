@@ -93,7 +93,7 @@ class page_server
 
     void set_active_tran_server_connection (cubcomm::channel &&chn);
     void set_passive_tran_server_connection (cubcomm::channel &&chn);
-    void disconnect_all_tran_server ();
+    void disconnect_all_tran_servers ();
     void push_request_to_active_tran_server (page_to_tran_request reqid, std::string &&payload);
     cublog::replicator &get_replicator ();
     void start_log_replicator (const log_lsa &start_lsa);
@@ -124,6 +124,9 @@ class page_server
 	const std::string &get_connection_id () const;
 
 	void remove_prior_sender_sink ();
+
+	// request disconnection of this connection (TS)
+	void push_disconnection_request ();
 
       private:
 	// Request handlers for the request server:
@@ -212,6 +215,7 @@ class page_server
     connection_handler_uptr_t m_active_tran_server_conn;
     std::vector<connection_handler_uptr_t> m_passive_tran_server_conn;
     std::mutex m_conn_mutex; // for the thread-safe connection and disconnection
+    std::condition_variable m_conn_cv;
 
     std::unique_ptr<cublog::replicator> m_replicator;
 

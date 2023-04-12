@@ -34,7 +34,7 @@ class active_tran_server : public tran_server
     }
 
     bool uses_remote_storage () const final override;
-    MVCCID get_oldest_active_mvccid_from_page_server () const;
+    MVCCID get_oldest_active_mvccid_from_page_server ();
     log_lsa compute_consensus_lsa ();
 
   private:
@@ -50,7 +50,7 @@ class active_tran_server : public tran_server
 	connection_handler &operator= (const connection_handler &) = delete;
 	connection_handler &operator= (connection_handler &&) = delete;
 
-	void disconnect () final override;
+	~connection_handler () override;
 
       private:
 	request_handlers_map_t get_request_handlers () final override;
