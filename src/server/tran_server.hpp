@@ -24,9 +24,11 @@
 #include "log_lsa.hpp"
 #include "request_sync_client_server.hpp"
 #include "tran_page_requests.hpp"
+#include "async_disconnect_handler.hpp"
 
 #include <string>
 #include <vector>
+#include <shared_mutex>
 
 // forward declaration
 namespace cubpacking
@@ -75,7 +77,7 @@ class tran_server
 
     /* send request to the main connection */
     void push_request (tran_to_page_request reqid, std::string &&payload);
-    int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
+    int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out);
 
     void disconnect_all_page_servers ();
     bool is_page_server_connected () const;
@@ -99,10 +101,11 @@ class tran_server
 	connection_handler &operator= (const connection_handler &) = delete;
 	connection_handler &operator= (connection_handler &&) = delete;
 
+	virtual ~connection_handler ();
+
 	void push_request (tran_to_page_request reqid, std::string &&payload);
 	int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
 
-	virtual void disconnect ();
 	const std::string get_channel_id () const;
 
 	virtual log_lsa get_saved_lsa () const = 0; // used in active_tran_server
@@ -117,6 +120,9 @@ class tran_server
 
       private:
 	// Request handlers for requests in common
+	void receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip);
+
+	void send_disconnect_request ();
 
       private:
 	std::unique_ptr<page_server_conn_t> m_conn;
@@ -136,20 +142,20 @@ class tran_server
      */
     std::vector<cubcomm::node> m_connection_list;
     std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
+    std::shared_mutex m_page_server_conn_vec_mtx;
 
   private:
     int init_page_server_hosts (const char *db_name);
     int get_boot_info_from_page_server ();
     int connect_to_page_server (const cubcomm::node &node, const char *db_name);
-
-    /* send request to a specific connection */
-    void push_request (size_t idx, tran_to_page_request reqid, std::string &&payload);
-    int send_receive (size_t idx, tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
+    void disconnect_page_server_async (const connection_handler *conn);
 
     int parse_server_host (const std::string &host);
     int parse_page_server_hosts_config (std::string &hosts);
 
   private:
+    async_disconnect_handler<connection_handler> m_async_disconnect_handler;
+
     cubcomm::server_server m_conn_type;
 };
 

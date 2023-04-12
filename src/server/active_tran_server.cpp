@@ -37,7 +37,7 @@ active_tran_server::uses_remote_storage () const
 }
 
 MVCCID
-active_tran_server::get_oldest_active_mvccid_from_page_server () const
+active_tran_server::get_oldest_active_mvccid_from_page_server ()
 {
   std::string response_message;
   const int error_code = send_receive (tran_to_page_request::GET_OLDEST_ACTIVE_MVCCID, std::string (), response_message);
@@ -68,8 +68,8 @@ active_tran_server::compute_consensus_lsa ()
   int cur_node_cnt;
   std::vector<log_lsa> collected_saved_lsa;
 
-  // TODO The next block has to be exclusive with connection and disconnection
   {
+    std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
     cur_node_cnt = m_page_server_conn_vec.size ();
     if (cur_node_cnt < quorum)
       {
@@ -139,6 +139,11 @@ active_tran_server::connection_handler::connection_handler (cubcomm::channel &&c
   log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hook_func);
 }
 
+active_tran_server::connection_handler::~connection_handler ()
+{
+  remove_prior_sender_sink ();
+}
+
 active_tran_server::connection_handler::request_handlers_map_t
 active_tran_server::connection_handler::get_request_handlers ()
 {
@@ -151,13 +156,6 @@ active_tran_server::connection_handler::get_request_handlers ()
   handlers_map.insert (std::make_pair (page_to_tran_request::SEND_SAVED_LSA, saved_lsa_handler));
 
   return handlers_map;
-}
-
-void
-active_tran_server::connection_handler::disconnect ()
-{
-  remove_prior_sender_sink ();
-  tran_server::connection_handler::disconnect ();
 }
 
 void
