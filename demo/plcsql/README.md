@@ -236,6 +236,7 @@ csql -u public demodb
 ```
 ---
 ## 4. Procedure/Function
+-  [demo_global_semantics_udpf.sql](./demo_global_semantics_udpf.sql)
 ```
 -- registration
 plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/demo_hello_ret.sql
@@ -251,6 +252,7 @@ csql -u public demodb
 ```
 ---
 ## 5. %TYPE
+-  [demo_global_semantics_type.sql](./demo_global_semantics_type.sql)
 -- registration
 ```
 plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/demo_global_semantics_type.sql
@@ -267,6 +269,7 @@ csql -u public demodb
 ## 6. Pseudocolumn
 
 ### 6.1 Serial
+-  [demo_global_semantics_type.sql](./demo_global_semantics_serial.sql)
 ```
 -- preparation
 csql -u public demodb
@@ -284,6 +287,8 @@ plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/demo_global_semantics_seri
 -- test
 csql -u public demodb
 ;server-output on
+    select demo_global_semantics_serial ();
+    select demo_global_semantics_serial ();
     select demo_global_semantics_serial ();
 ;ex
 ```
