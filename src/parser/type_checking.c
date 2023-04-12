@@ -1558,8 +1558,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
-    case PT_MODULUS:
     case PT_DIVIDE:
+    case PT_MODULUS:
       num = 0;
 
       /* one overload */
