@@ -295,7 +295,8 @@ namespace cubmethod
 
   pl_parameter_info::~pl_parameter_info ()
   {
-    //
+    // value is create by pt_value_to_db ()
+    // it doesn't have to call db_value_clear ()
   }
 
   void
@@ -310,7 +311,7 @@ namespace cubmethod
     serializator.pack_int (scale);
     serializator.pack_int (charset);
 
-    if (value.domain.general_info.is_null == 0)
+    if (!DB_IS_NULL (&value))
       {
 	dbvalue_java sp_val;
 	serializator.pack_int (1);
@@ -336,7 +337,7 @@ namespace cubmethod
     size += serializator.get_packed_int_size (size); // charset
 
     size += serializator.get_packed_int_size (size); // value is null
-    if (value.domain.general_info.is_null == 0)
+    if (!DB_IS_NULL (&value))
       {
 	dbvalue_java sp_val;
 	sp_val.value = (DB_VALUE *) &value;
@@ -349,7 +350,28 @@ namespace cubmethod
   void
   pl_parameter_info::unpack (cubpacking::unpacker &deserializator)
   {
-    //
+    deserializator.unpack_int (mode);
+
+    deserializator.unpack_string (name);
+
+    deserializator.unpack_int (type);
+    deserializator.unpack_int (precision);
+    deserializator.unpack_int (scale);
+    deserializator.unpack_int (charset);
+
+    int value_is_null;
+    deserializator.unpack_int (value_is_null);
+
+    if (value_is_null == 1)
+      {
+	dbvalue_java value_unpacker;
+	value_unpacker.value = &value;
+	value_unpacker.unpack (deserializator);
+      }
+    else
+      {
+	db_make_null (&value);
+      }
   }
 
 //////////////////////////////////////////////////////////////////////////

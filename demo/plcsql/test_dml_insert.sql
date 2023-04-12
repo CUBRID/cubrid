@@ -3,7 +3,7 @@
     drop table if exists a_tbl1;
     CREATE TABLE a_tbl1(id INT UNIQUE, name VARCHAR, phone VARCHAR DEFAULT '000-0000');
 */
-create or replace procedure test_dml() as
+create or replace procedure test_dml_insert() as
     i int;
     n varchar;
     p varchar;

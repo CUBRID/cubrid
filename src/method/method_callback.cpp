@@ -503,7 +503,7 @@ namespace cubmethod
 		      }
 
 		    TP_DOMAIN *hv_expected_domain = NULL;
-		    if (parser->host_var_count <= idx)
+		    if (idx >= parser->host_var_count)
 		      {
 			// auto parameterized
 			hv_expected_domain = marker->expected_domain;
@@ -524,9 +524,9 @@ namespace cubmethod
 		    semantics.hvs[idx].scale = (short) db_domain_scale (hv_expected_domain);
 		    semantics.hvs[idx].charset = db_domain_codeset (hv_expected_domain);
 
-		    if (db_session->parser->host_variables[idx].domain.general_info.is_null == 0)
+		    if (semantics.hvs[idx].type != DB_TYPE_NULL)
 		      {
-			pr_clone_value (& (db_session->parser->host_variables[idx]), & (semantics.hvs[idx].value));
+			db_value_clone (& (db_session->parser->host_variables[idx]), & (semantics.hvs[idx].value));
 		      }
 		    else
 		      {

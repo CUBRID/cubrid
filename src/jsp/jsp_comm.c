@@ -132,12 +132,9 @@ jsp_disconnect_server (SOCKET & sockfd)
 int
 jsp_writen (SOCKET fd, const void *vptr, int n)
 {
-  int nleft;
   int nwritten;
-  const char *ptr;
-
-  ptr = (const char *) vptr;
-  nleft = n;
+  int nleft = n;
+  const char *ptr = (const char *) vptr;
 
   while (nleft > 0)
     {
