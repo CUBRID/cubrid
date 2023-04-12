@@ -369,7 +369,6 @@ tran_server::disconnect_all_page_servers ()
     std::lock_guard<std::shared_mutex> lk_guard (m_page_server_conn_vec_mtx);
     m_page_server_conn_vec.swap (conn_vec);
   }
-
   // finalize connections out of the mutex, m_page_server_conn_vec_mtx, since it joins request handler thread internally, and receive_disconnect_request() also acquires the lock of the mutex.
   conn_vec.clear ();
   m_main_conn_cv.notify_all ();
