@@ -47,9 +47,10 @@ namespace cubmethod
   {
     cubmem::block b = std::move (mcon_pack_data_block (std::forward<Args> (args)...));
     int status = mcon_send_buffer_to_java (socket, b);
-    if (b.ptr)
+    if (b.is_valid ())
       {
 	delete [] b.ptr;
+	b.ptr = NULL;
 	b.dim = 0;
       }
     return status;

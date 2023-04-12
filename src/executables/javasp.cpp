@@ -450,7 +450,7 @@ javasp_ping_server (const int server_port, const char *db_name, char *buf)
     }
 
 exit:
-  if (ping_blk.ptr)
+  if (ping_blk.is_valid ())
     {
       delete [] ping_blk.ptr;
     }

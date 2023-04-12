@@ -140,9 +140,10 @@ namespace cubmethod
 	  }
 
 	// free phase
-	if (response_blk.ptr)
+	if (response_blk.is_valid ())
 	  {
 	    delete [] response_blk.ptr;
+	    response_blk.ptr = NULL;
 	    response_blk.dim = 0;
 	  }
 
@@ -489,13 +490,7 @@ namespace cubmethod
       }
 
     cubmem::block blk = std::move (mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, info));
-    error = mcon_send_data_to_java (m_group->get_socket (), get_next_java_header (m_java_header), blk);
-    if (blk.ptr)
-      {
-	delete [] blk.ptr;
-	blk.dim = 0;
-      }
-
+    error = mcon_send_data_to_java (m_group->get_socket (), get_next_java_header (m_java_header), std::move (blk));
     return error;
   }
 

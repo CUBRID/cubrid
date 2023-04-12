@@ -95,7 +95,6 @@ namespace cubmethod
 
   method_invoke_group::~method_invoke_group ()
   {
-    destroy_resources ();
     for (method_invoke *method: m_method_vector)
       {
 	delete method;
