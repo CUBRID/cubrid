@@ -616,6 +616,13 @@ namespace cubmethod
 
   execute_info::~execute_info ()
   {
+#if defined (SERVER_MODE)
+    // call_info is only allocated by unpack() in cub_server
+    if (call_info != nullptr)
+      {
+	delete call_info;
+      }
+#endif
     call_info = nullptr;
   }
 
@@ -672,6 +679,10 @@ namespace cubmethod
     if (has_call_info)
       {
 	call_info = new prepare_call_info (); // need to be freed;
+      }
+    else
+      {
+	call_info = nullptr;
       }
   }
 
