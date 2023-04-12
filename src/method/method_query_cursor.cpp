@@ -78,10 +78,6 @@ namespace cubmethod
   void
   query_cursor::clear ()
   {
-    for (DB_VALUE &val : m_current_tuple)
-      {
-	db_value_clear (&val);
-      }
     m_current_tuple.clear ();
     m_current_row_index = 0;
   }
@@ -116,7 +112,7 @@ namespace cubmethod
 
 	    if (flag == V_BOUND)
 	      {
-		if (pr_type->data_readval (&buf, value, domain, -1, true, NULL, 0) != NO_ERROR)
+		if (pr_type->data_readval (&buf, value, domain, -1, false /* Don't copy */, NULL, 0) != NO_ERROR)
 		  {
 		    scan_code = S_ERROR;
 		    break;
@@ -155,9 +151,9 @@ namespace cubmethod
 		TP_DOMAIN *domain = m_list_id->type_list.domp[i];
 		if (domain == NULL || domain->type == NULL)
 		  {
-		    //TODO: error handling?
+		    scan_code = S_ERROR;
 		    qfile_close_scan (m_thread, &m_scan_id);
-		    return S_ERROR;
+		    break;
 		  }
 
 		PR_TYPE *pr_type = domain->type;
@@ -168,8 +164,9 @@ namespace cubmethod
 
 		or_init (&buf, ptr, length);
 
-		if (pr_type->data_readval (&buf, value, domain, -1, true, NULL, 0) != NO_ERROR)
+		if (pr_type->data_readval (&buf, value, domain, -1, false /* Don't copy */, NULL, 0) != NO_ERROR)
 		  {
+		    qfile_close_scan (m_thread, &m_scan_id);
 		    return S_ERROR;
 		  }
 	      }
