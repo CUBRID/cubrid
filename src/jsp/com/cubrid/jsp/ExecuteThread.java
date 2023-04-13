@@ -324,7 +324,7 @@ public class ExecuteThread extends Thread {
                     "-classpath", cubrid_env_root + "/java/jspserver.jar", file.getPath()
                 };
 
-                if (compiler.run(null, System.out, System.out, javacOpts) != 0) {
+                if (compiler.run(null, null, null, javacOpts) != 0) {
                     String command =
                             "javac "
                                     + javaFilePath
