@@ -6446,7 +6446,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 {
   SCAN_TYPE scan_type;
   INDX_INFO *indx_info;
-  QFILE_LIST_ID * list_id;
+  QFILE_LIST_ID *list_id;
   bool mvcc_select_lock_needed = false;
   int error_code = NO_ERROR;
 
@@ -6631,7 +6631,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 
     case TARGET_LIST:
       /* open a list file scan */
-      if (ACCESS_SPEC_XASL_NODE(curr_spec) && ACCESS_SPEC_XASL_NODE(curr_spec)->spec_list == curr_spec)
+      if (ACCESS_SPEC_XASL_NODE (curr_spec) && ACCESS_SPEC_XASL_NODE (curr_spec)->spec_list == curr_spec)
 	{
 	  /* if XASL of access spec for list scan is itself then this is for HQ */
 	  list_id = ACCESS_SPEC_CONNECT_BY_LIST_ID (curr_spec);
@@ -15347,7 +15347,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		}
 
 	      if (cycle == 0)
-	        {
+		{
 		  isleaf_value = 0;
 		}
 
@@ -15371,8 +15371,9 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		  db_make_int (isleaf_valp, isleaf_value);
 
 		  /* preserve the parent position pseudocolumn value */
-		  if (qexec_get_tuple_column_value (tuple_rec.tpl,(xasl->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET),
-						    parent_pos_valp, &tp_Bit_domain) != NO_ERROR)
+		  if (qexec_get_tuple_column_value
+		      (tuple_rec.tpl, (xasl->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET), parent_pos_valp,
+		       &tp_Bit_domain) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
@@ -15405,7 +15406,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		  if (has_order_siblings_by)
 		    {
 		      if (qexec_insert_tuple_into_list (thread_p, listfile2_tmp, xasl->outptr_list, &xasl_state->vd,
-						        tplrec) != NO_ERROR)
+							tplrec) != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
 			}
@@ -15597,6 +15598,22 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	}
 
       qfile_close_scan (thread_p, &lfscan_id);
+
+      if (xasl->spec_list->s_id.type == S_INDX_SCAN && SCAN_IS_INDEX_COVERED (&xasl->spec_list->s_id.s.isid))
+	{
+	  INDX_SCAN_ID *isidp = &xasl->spec_list->s_id.s.isid;
+
+	  /* close current list and start a new one */
+	  qfile_close_scan (thread_p, isidp->indx_cov.lsid);
+	  qfile_destroy_list (thread_p, isidp->indx_cov.list_id);
+	  QFILE_FREE_AND_INIT_LIST_ID (isidp->indx_cov.list_id);
+	  isidp->indx_cov.list_id =
+	    qfile_open_list (thread_p, isidp->indx_cov.type_list, NULL, isidp->indx_cov.query_id, 0);
+	  if (isidp->indx_cov.list_id == NULL)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	}
 
       if (qp_lfscan != S_END)
 	{
