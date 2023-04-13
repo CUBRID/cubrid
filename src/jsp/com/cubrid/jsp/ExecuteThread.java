@@ -286,11 +286,15 @@ public class ExecuteThread extends Thread {
         } else {
             prepareArgs.readArgs(unpacker);
         }
+        ctx.checkTranId(prepareArgs.getTranId());
     }
 
     private void processStoredProcedure() throws Exception {
         unpacker.setBuffer(ctx.getInboundQueue().take());
         long id = unpacker.unpackBigint();
+        int tid = unpacker.unpackInt();
+
+        ctx.checkTranId(tid);
 
         StoredProcedure procedure = makeStoredProcedure(unpacker);
         Value result = procedure.invoke();

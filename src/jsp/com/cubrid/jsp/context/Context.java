@@ -1,6 +1,8 @@
 package com.cubrid.jsp.context;
 
 import com.cubrid.jsp.ExecuteThread;
+import com.cubrid.jsp.TargetMethodCache;
+import com.cubrid.jsp.classloader.ClassLoaderManager;
 import com.cubrid.jsp.classloader.ContextClassLoader;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
 import com.cubrid.jsp.protocol.Header;
@@ -14,6 +16,9 @@ import java.util.concurrent.LinkedBlockingQueue;
 public class Context {
     // To recognize unique DB session
     private long sessionId = -1;
+
+    // transaction Id
+    private int tranactionId = -1;
 
     // request Id (for future)
     private int prevRequestId = 0;
@@ -31,6 +36,9 @@ public class Context {
 
     // dynamic classLoader for a session
     private ContextClassLoader classLoader = null;
+
+    // method cache
+    private TargetMethodCache methodCache = null;
 
     // Whether SP is able to process TCL (commit, rollback). (default: false)
     private boolean transactionControl = false;
@@ -90,6 +98,27 @@ public class Context {
         prevRequestId = header.requestId;
     }
 
+    public void checkTranId(int tid) {
+        if (tranactionId == -1) {
+            tranactionId = tid;
+        }
+
+        if (tranactionId != tid) {
+            // re-cretae dynamic class loader
+            if (classLoader
+                            .getInitializedTime()
+                            .compareTo(
+                                    ClassLoaderManager.getLastModifiedTimeOfPath(
+                                            ClassLoaderManager.getDynamicPath()))
+                    != 0) {
+                classLoader = new ContextClassLoader();
+                methodCache.clear();
+            }
+            clear();
+            tranactionId = tid;
+        }
+    }
+
     public void clear() {
         try {
             closeConnection(connection);
@@ -111,7 +140,16 @@ public class Context {
         if (classLoader == null) {
             classLoader = new ContextClassLoader();
         }
+
         return classLoader;
+    }
+
+    public TargetMethodCache getTargetMethodCache() {
+        if (methodCache == null) {
+            methodCache = new TargetMethodCache();
+        }
+
+        return methodCache;
     }
 
     public void setTransactionControl(boolean tc) {

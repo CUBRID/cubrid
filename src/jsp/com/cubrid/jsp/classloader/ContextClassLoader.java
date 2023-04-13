@@ -40,7 +40,8 @@ public class ContextClassLoader extends BaseClassLoader {
     public ContextClassLoader(ClassLoader parent) {
         super(ClassLoaderManager.getDynamicPath(), new URL[0], parent);
         initializedTime =
-                ClassLoaderManager.getLastModifiedTime(ClassLoaderManager.getDynamicPath());
+                ClassLoaderManager.getLastModifiedTimeOfPath(ClassLoaderManager.getDynamicPath());
+        ClassLoaderManager.isModified(ClassLoaderManager.getDynamicPath());
     }
 
     public ContextClassLoader() {

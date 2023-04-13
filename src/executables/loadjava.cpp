@@ -173,7 +173,9 @@ copy_file (const fs::path &java_dir_path)
 
       std::string class_file_name = src_path.filename().generic_string();
       fs::path class_file_path = java_dir_path / class_file_name;
-      if (Force_overwrite == false && fs::exists (class_file_path) == true)
+
+      bool is_exists = fs::exists (class_file_path);
+      if (Force_overwrite == false && is_exists == true)
 	{
 	  fprintf (stdout, "'%s' is exist. overwrite? (y/n): ", class_file_path.c_str ());
 	  char c = getchar ();
@@ -182,6 +184,12 @@ copy_file (const fs::path &java_dir_path)
 	      fprintf (stdout, "loadjava is canceled\n");
 	      return NO_ERROR;
 	    }
+	}
+
+      // remove the previous file (to update modified time of the JAVA directory: CBRD-24695)
+      if (is_exists && fs::is_directory (class_file_path) == false)
+	{
+	  fs::remove (class_file_path);
 	}
 
       const auto copyOptions = fs::copy_options::overwrite_existing;

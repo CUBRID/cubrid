@@ -36,9 +36,7 @@ import java.util.HashMap;
 public class TargetMethodCache {
     private HashMap<String, TargetMethod> methods;
 
-    private static volatile TargetMethodCache instance = null;
-
-    private TargetMethodCache() {
+    public TargetMethodCache() {
         methods = new HashMap<String, TargetMethod>();
     }
 
@@ -54,15 +52,7 @@ public class TargetMethodCache {
         return method;
     }
 
-    public static TargetMethodCache getInstance() {
-        if (instance == null) {
-            synchronized (TargetMethodCache.class) {
-                if (instance == null) {
-                    instance = new TargetMethodCache();
-                }
-            }
-        }
-
-        return instance;
+    public void clear() {
+        methods.clear();
     }
 }

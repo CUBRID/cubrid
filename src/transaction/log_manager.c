@@ -5650,7 +5650,8 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 	  state = TRAN_UNACTIVE_ABORTED;
 	}
 
-      logtb_clear_tdes (thread_p, tdes);
+  // TODO: FIXME!! feature/plcsql only
+	  (void) logtb_get_new_tran_id (thread_p, tdes);
     }
   else
     {

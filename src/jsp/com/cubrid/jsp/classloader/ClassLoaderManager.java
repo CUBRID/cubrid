@@ -72,18 +72,29 @@ public class ClassLoaderManager {
         return server;
     }
 
-    public static boolean isModified(Path path) throws IOException {
-        Instant lastModifiedInstant = getLastModifiedTime(path).toInstant();
-        if (getLastModifiedTime(path).toInstant().compareTo(lastModifiedMap.get(path)) == 0) {
+    public static boolean isModified(Path path) {
+        Instant currentModified = getLastModifiedTimeOfPath(path).toInstant();
+        Instant prevModified = lastModifiedMap.get(path);
+        if (prevModified != null && currentModified.compareTo(prevModified) == 0) {
             return false;
         } else {
-            lastModifiedMap.put(path, lastModifiedInstant);
+            lastModifiedMap.put(path, currentModified);
             return true;
         }
     }
 
-    public static FileTime getLastModifiedTime(Path path) {
+    public static FileTime getLastModifiedTimeOfPath(Path path) {
         FileTime lastModifiedTime;
+        try {
+            lastModifiedTime = Files.getLastModifiedTime(path);
+        } catch (IOException e) {
+            // should not be here...
+            return null;
+        }
+        return lastModifiedTime;
+    }
+
+    public static FileTime setLastModifiedTime(Path path, FileTime lastModifiedTime) {
         try {
             lastModifiedTime = Files.getLastModifiedTime(path);
         } catch (IOException e) {
