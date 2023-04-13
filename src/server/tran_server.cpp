@@ -400,14 +400,14 @@ tran_server::disconnect_page_server_async (const connection_handler *conn)
     {
       if (conn_vec.size () == 1)
 	{
-	  _er_log_debug (ARG_FILE_LINE, "The last connection is disconnected (%s). No main connection available.\n",
-			 (*conn_it)->get_channel_id ().c_str ());
+	  er_log_debug (ARG_FILE_LINE, "The last connection is being disconnected (%s). No main connection available.\n",
+			(*conn_it)->get_channel_id ().c_str ());
 	}
       else
 	{
 	  main_conn_changed = true;
-	  _er_log_debug (ARG_FILE_LINE, "The main connection is changed from %s to %s.\n",
-			 (*conn_it)->get_channel_id ().c_str (), (* (conn_it + 1))->get_channel_id ().c_str ());
+	  er_log_debug (ARG_FILE_LINE, "The main connection is being changed from %s to %s.\n",
+			(*conn_it)->get_channel_id ().c_str (), (* (conn_it + 1))->get_channel_id ().c_str ());
 	}
     }
 
