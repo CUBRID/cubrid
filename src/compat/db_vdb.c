@@ -581,6 +581,19 @@ db_compile_statement_local (DB_SESSION * session)
   /* forget about any previous parsing errors, if any */
   pt_reset_error (parser);
 
+  /*
+     pt_rewrite_for_dblink:
+     the dblink with remote-table-name@server-name should be converted as
+     1) pure remote-DML query like UPDATE remote-table-name SET ...
+     2) SELECT ... FROM DBLink (server-name, 'SELECT ... ')
+   */
+  pt_rewrite_for_dblink (parser, statement);
+  if (pt_has_error (parser))
+    {
+      pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
+      return er_errid ();
+    }
+
   /* store user-specified-name in info.name.original. */
   parser_walk_tree (parser, statement, NULL, NULL, pt_set_user_specified_name, NULL);
 
@@ -593,7 +606,7 @@ db_compile_statement_local (DB_SESSION * session)
       /* to prevent a memory leak, register the query type list to session */
       session->type_list[stmt_ndx] = qtype;
     }
-  if (cmd_type == CUBRID_STMT_EXECUTE_PREPARE)
+  else if (cmd_type == CUBRID_STMT_EXECUTE_PREPARE)
     {
       /* we don't actually have the statement which will be executed and we need to get some information about it from
        * the server */
@@ -658,37 +671,48 @@ db_compile_statement_local (DB_SESSION * session)
 	}
     }
 
-  /* translate views or virtual classes into base classes */
-  statement_result = mq_translate (parser, statement);
-  if (!statement_result || pt_has_error (parser))
+  /*
+     the remote-DML of dblink must not execute mq_translate
+     because the query of remote-DML should be executed at remote server side
+   */
+  if (PT_IS_DBLINK_DML_QUERY (statement))
     {
-      pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
-      return er_errid ();
+      ;
     }
-  statement = statement_result;
-
-  /* prefetch and lock translated real classes to avoid deadlock */
-  (void) pt_class_pre_fetch (parser, statement);
-  if (pt_has_error (parser))
+  else
     {
-      pt_report_to_ersys_with_statement (parser, PT_SYNTAX, statement);
-      return er_errid ();
-    }
-
-  /* validate include_oid setting in the session */
-  if (session->include_oid)
-    {
-      if (mq_updatable (parser, statement) == PT_UPDATABLE)
+      /* translate views or virtual classes into base classes */
+      statement_result = mq_translate (parser, statement);
+      if (!statement_result || pt_has_error (parser))
 	{
-	  if (session->include_oid == DB_ROW_OIDS)
-	    {
-	      (void) pt_add_row_oid (parser, statement);
-	    }
+	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
+	  return er_errid ();
 	}
-      else
+      statement = statement_result;
+
+      /* prefetch and lock translated real classes to avoid deadlock */
+      (void) pt_class_pre_fetch (parser, statement);
+      if (pt_has_error (parser))
 	{
-	  /* disallow OID column for non-updatable query */
-	  session->include_oid = DB_NO_OIDS;
+	  pt_report_to_ersys_with_statement (parser, PT_SYNTAX, statement);
+	  return er_errid ();
+	}
+
+      /* validate include_oid setting in the session */
+      if (session->include_oid != DB_NO_OIDS)
+	{
+	  if (mq_updatable (parser, statement) == PT_UPDATABLE)
+	    {
+	      if (session->include_oid == DB_ROW_OIDS)
+		{
+		  (void) pt_add_row_oid (parser, statement);
+		}
+	    }
+	  else
+	    {
+	      /* disallow OID column for non-updatable query */
+	      session->include_oid = DB_NO_OIDS;
+	    }
 	}
     }
 
