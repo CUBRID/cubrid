@@ -51,6 +51,10 @@ using namespace std::regex_constants;
 static const std::string JAVA_PACKAGE_PATTERN = "^([a-z_]{1}[a-z0-9_]*(\\.[a-z_]{1}[a-z0-9_]*)*)$";
 static const std::string SEPARATOR_STRING (SEPERATOR);
 
+static const std::string DYNAMIC_PATH = JAVA_DIR + SEPARATOR_STRING + "dynamic";
+static const std::string SERVER_PATH = JAVA_DIR + SEPARATOR_STRING + "server";
+
+static std::string Path;
 static char *Program_name = NULL;
 static char *Dbname = NULL;
 std::string Src_class;
@@ -72,13 +76,14 @@ parse_argument (int argc, char *argv[])
   {
     {"overwrite", 0, 0, 'y'},
     {"package", 0, 0, 'p'},
+    {"jni", 0, 0, 'j'},
     {0, 0, 0, 0}
   };
 
   while (1)
     {
       int option_index = 0;
-      int option_key = getopt_long (argc, argv, "y:p:h", loadjava_option, &option_index);
+      int option_key = getopt_long (argc, argv, "yp:jh", loadjava_option, &option_index);
       if (option_key == -1)
 	{
 	  break;
@@ -107,6 +112,9 @@ parse_argument (int argc, char *argv[])
 	    }
 	}
 	break;
+	case 'j':
+	  Path = SERVER_PATH;
+	  break;
 	case 'h':
 	/* fall through */
 	default:
@@ -219,8 +227,12 @@ main (int argc, char *argv[])
   // DB path e.g. $CUBRID/demodb
   java_dir_path.assign (std::string (db->pathname));
 
-  // e.g. $CUBRID/demodb/java
-  java_dir_path.append (JAVA_DIR);
+  // e.g. $CUBRID/demodb/java/dynamic or $CUBRID/demodb/java/server
+  if (Path.empty())
+    {
+      Path = DYNAMIC_PATH;
+    }
+  java_dir_path.append (Path);
 
   // e.g. $CUBRID/demodb/java/org/cubrid/path/
   java_dir_path.append (package_path);
