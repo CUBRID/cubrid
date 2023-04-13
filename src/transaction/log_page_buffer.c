@@ -2115,6 +2115,10 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
   // client side communication to page server error
   if (error_code != NO_ERROR)
     {
+      if (error_code == ER_NO_PAGE_SERVER_CONNECTION)
+      {
+        assert_release (false); // TODO handling the case such as shutdown
+      }
       ASSERT_ERROR ();
       if (perform_logging)
         {

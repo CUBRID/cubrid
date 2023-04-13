@@ -8393,6 +8393,10 @@ pgbuf_request_data_page_from_page_server (THREAD_ENTRY & thread_r, const VPID * 
   // client side communication to page server error
   if (error_code != NO_ERROR)
     {
+      if (error_code == ER_NO_PAGE_SERVER_CONNECTION)
+	{
+	  assert_release (false);	// TODO handling the case such as shutdown
+	}
       ASSERT_ERROR ();
       if (perform_logging)
 	{
