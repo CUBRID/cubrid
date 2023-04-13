@@ -89,7 +89,6 @@ namespace cubmethod
   prepare_args::pack (cubpacking::packer &serializator) const
   {
     serializator.pack_bigint (group_id);
-    serializator.pack_int (tran_id);
     switch (type)
       {
       case METHOD_TYPE_INSTANCE_METHOD:
@@ -100,6 +99,7 @@ namespace cubmethod
       }
       case METHOD_TYPE_JAVA_SP:
       {
+	serializator.pack_int (tran_id);
 	serializator.pack_int (args.size ());
 	dbvalue_java dbvalue_wrapper;
 	std::for_each (args.begin (), args.end (),[&serializator, &dbvalue_wrapper] (DB_VALUE & value)
@@ -126,13 +126,12 @@ namespace cubmethod
   prepare_args::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     size_t size = serializator.get_packed_bigint_size (start_offset);	// group id
-    size += serializator.get_packed_int_size (size);	// tran_id
-    size += serializator.get_packed_int_size (size);	// arg count
     switch (type)
       {
       case METHOD_TYPE_INSTANCE_METHOD:
       case METHOD_TYPE_CLASS_METHOD:
       {
+	size += serializator.get_packed_bigint_size (size);	// arg count
 	std::for_each (args.begin (), args.end (),
 		       [&size, &serializator] (DB_VALUE & value)
 	{
@@ -142,6 +141,8 @@ namespace cubmethod
       }
       case METHOD_TYPE_JAVA_SP:
       {
+	size += serializator.get_packed_int_size (size);	// tran_id
+	size += serializator.get_packed_int_size (size);	// arg count
 	dbvalue_java dbvalue_wrapper;
 	std::for_each (args.begin (), args.end (),
 		       [&size, &serializator, &dbvalue_wrapper] (DB_VALUE & value)
