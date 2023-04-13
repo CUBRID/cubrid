@@ -5651,7 +5651,14 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 	}
 
       // TODO: FIXME!! feature/plcsql only
-      (void) logtb_get_new_tran_id (thread_p, tdes);
+      if (get_newtrid == LOG_NEED_NEWTRID)
+	{
+	  (void) logtb_get_new_tran_id (thread_p, tdes);
+	}
+      else
+	{
+	  logtb_clear_tdes (thread_p, tdes);
+	}
     }
   else
     {
