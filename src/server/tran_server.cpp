@@ -167,7 +167,7 @@ tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in,
    *  - Abnormal disconnection: in the error handler, here, or somewhere else (TODO)
    */
 
-  // TODO: exits when a thread waiting on it (transaction or whatever) stops. Then, it should wake up periodically and check it.
+  // TODO: exits when a thread waiting on it (transaction or whatever) stops. It should wake up periodically and check it.
   m_main_conn_cv.wait_for (s_lock, timeout_1m, [&] ()
   {
     if (m_page_server_conn_vec.empty())
@@ -383,33 +383,38 @@ void
 tran_server::disconnect_page_server_async (const connection_handler *conn)
 {
   bool main_conn_changed = false;
-
-  std::unique_lock<std::shared_mutex> ulock (m_page_server_conn_vec_mtx);
   auto &conn_vec = m_page_server_conn_vec;
+  auto ulock = std::unique_lock<std::shared_mutex> (m_page_server_conn_vec_mtx);
 
-  auto it = conn_vec.begin ();
-  for (; it != conn_vec.end (); it++)
+  auto conn_it = std::find_if (conn_vec.begin (), conn_vec.end (),
+			       [&conn] (std::unique_ptr<connection_handler> &conn_uptr)
+  {
+    return conn_uptr.get () == conn;
+  });
+
+  if (conn_it == conn_vec.end ())
     {
-      if (it->get () == conn)
+      return; // the connection is already cleared in disconnect_all_page_servers()
+    }
+  else if (conn_it == conn_vec.begin ())
+    {
+      if (conn_vec.size () == 1)
 	{
-	  // We assume the first one is the main connection.
-	  if (it == conn_vec.begin())
-	    {
-	      assert_release (conn_vec.size() > 1); // For now, it's not allowed to have no connection.
-
-	      main_conn_changed = true;
-
-	      _er_log_debug (ARG_FILE_LINE, "The main connection is changed from %s to %s.\n",
-			     (*it)->get_channel_id ().c_str (), (* (it+1))->get_channel_id ().c_str ());
-	    }
-
-	  m_async_disconnect_handler.disconnect (std::move (*it));
-	  assert (*it == nullptr);
-	  conn_vec.erase (it);
-	  break;
+	  _er_log_debug (ARG_FILE_LINE, "The last connection is disconnected (%s). No main connection available.\n",
+			 (*conn_it)->get_channel_id ().c_str ());
+	}
+      else
+	{
+	  main_conn_changed = true;
+	  _er_log_debug (ARG_FILE_LINE, "The main connection is changed from %s to %s.\n",
+			 (*conn_it)->get_channel_id ().c_str (), (* (conn_it + 1))->get_channel_id ().c_str ());
 	}
     }
-  // It's possible that the connection is already cleared in disconnect_all_page_servers()
+
+  m_async_disconnect_handler.disconnect (std::move (*conn_it));
+  assert (*conn_it == nullptr);
+  conn_vec.erase (conn_it);
+
   ulock.unlock ();
 
   if (main_conn_changed)
