@@ -176,7 +176,7 @@ tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in,
       }
 
     // we assume that 0-th conn is the main connection
-    err_code =  m_page_server_conn_vec[0]->send_receive (reqid, std::move (payload_in), payload_out);
+    err_code = m_page_server_conn_vec[0]->send_receive (reqid, std::move (payload_in), payload_out);
     // when an error occurs and the connection is disconnecting, wait until new connection become the main connection
     return err_code == NO_ERROR || !m_page_server_conn_vec[0]->is_disconnecting ();
   });
@@ -417,7 +417,7 @@ tran_server::disconnect_page_server_async (const connection_handler *conn)
       else
 	{
 	  er_log_debug (ARG_FILE_LINE, "The main connection is changed from %s to %s.\n",
-			(*conn_vec.begin())->get_channel_id ().c_str (), prev_main_conn_id.c_str ());
+			prev_main_conn_id.c_str (), (*conn_vec.begin())->get_channel_id ().c_str ());
 	}
       ulock.unlock ();
       m_main_conn_cv.notify_all ();
