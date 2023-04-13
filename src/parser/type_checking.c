@@ -20408,7 +20408,7 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
    * 
    * If this predicate remains without being removed, it becomes a data filter and MRO cannot be performed.
    *
-   * See CBRD-23983 for the details.
+   * See CBRD-24735 for the details.
    */
   tree = parser_walk_tree (parser, tree, NULL, NULL, pt_do_where_type, sc_info_ptr);
   if (pt_has_error (parser))
