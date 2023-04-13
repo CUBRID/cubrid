@@ -156,7 +156,11 @@ stran_server_commit_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool re
 
   state = xtran_server_commit (thread_p, retain_lock);
 
-  net_cleanup_server_queues (rid);
+  cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
+  if (!rctx || rctx->is_running () == false || rctx->get_depth () == 0)
+    {
+      net_cleanup_server_queues (rid);
+    }
 
   if (state != TRAN_UNACTIVE_COMMITTED && state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
     {
@@ -190,7 +194,11 @@ stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool * s
 
   state = xtran_server_abort (thread_p);
 
-  net_cleanup_server_queues (rid);
+  cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
+  if (!rctx || rctx->is_running () == false || rctx->get_depth () == 0)
+    {
+      net_cleanup_server_queues (rid);
+    }
 
   if (state != TRAN_UNACTIVE_ABORTED && state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
     {

@@ -191,7 +191,7 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 // Method Java
 //////////////////////////////////////////////////////////////////////////
-  invoke_java::invoke_java (METHOD_GROUP_ID id, method_sig_node *sig)
+  invoke_java::invoke_java (METHOD_GROUP_ID id, method_sig_node *sig, bool tc)
     : group_id (id)
   {
     signature.assign (sig->method_name);
@@ -209,6 +209,7 @@ namespace cubmethod
       }
 
     result_type = sig->arg_info.result_type;
+    transaction_control = tc;
   }
 
   void
@@ -226,6 +227,7 @@ namespace cubmethod
       }
 
     serializator.pack_int (result_type);
+    serializator.pack_bool (transaction_control);
   }
 
   void
@@ -250,6 +252,7 @@ namespace cubmethod
       }
 
     size += serializator.get_packed_int_size (size); // return_type
+    size += serializator.get_packed_bool_size (size); // transaction_control
     return size;
   }
 }

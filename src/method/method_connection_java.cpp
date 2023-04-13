@@ -21,7 +21,7 @@
 namespace cubmethod
 {
   int
-  mcon_send_buffer_to_java (SOCKET socket, cubmem::block &blk)
+  mcon_send_buffer_to_java (SOCKET socket, const cubmem::block &blk)
   {
     int error = NO_ERROR;
     OR_ALIGNED_BUF (OR_INT_SIZE) a_request;

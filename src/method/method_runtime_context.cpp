@@ -228,6 +228,12 @@ namespace cubmethod
     m_cond_var.wait (ulock, pred);
   }
 
+  int
+  runtime_context::get_depth ()
+  {
+    return m_group_map.size () - m_deferred_free_stack.size ();
+  }
+
   bool
   runtime_context::is_running ()
   {

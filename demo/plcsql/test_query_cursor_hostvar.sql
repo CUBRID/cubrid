@@ -1,4 +1,4 @@
-create or replace function StmtStaticSql_test_hostvar() return varchar as
+create or replace function test_query_cursor_hostvar() return varchar as
     g char(1) := 'M';
     n char(3) := 'KOR';
 
