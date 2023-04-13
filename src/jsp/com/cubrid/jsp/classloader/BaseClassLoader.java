@@ -42,18 +42,30 @@ public abstract class BaseClassLoader extends URLClassLoader {
         }
     }
 
-    public Class<?> loadClass(String name) throws ClassNotFoundException {
+    public Class<?> loadClass(String name) {
         Class c = findLoadedClass(name);
         if (c == null) {
             // find child first
-            c = super.loadClass(name);
+            try {
+                c = super.loadClass(name);
+            } catch (ClassNotFoundException e) {
+                // ignore
+            }
         }
 
         if (c == null && getParent() != null) {
             try {
                 c = getParent().loadClass(name);
             } catch (ClassNotFoundException e) {
-                c = super.loadClass(name);
+                // ignore
+            }
+        }
+
+        if (c == null) {
+            try {
+                c = getSystemClassLoader().loadClass(name);
+            } catch (ClassNotFoundException e) {
+                // ignore
             }
         }
 

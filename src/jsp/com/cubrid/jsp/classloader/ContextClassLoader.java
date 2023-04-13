@@ -37,14 +37,14 @@ import java.nio.file.attribute.FileTime;
 public class ContextClassLoader extends BaseClassLoader {
     private FileTime initializedTime = null;
 
-    public ContextClassLoader() {
-        super(
-                ClassLoaderManager.getDynamicPath(),
-                new URL[0],
-                ServerClassLoader.getInstance());
+    public ContextClassLoader(ClassLoader parent) {
+        super(ClassLoaderManager.getDynamicPath(), new URL[0], parent);
         initializedTime =
-                ClassLoaderManager.getLastModifiedTime(
-                        ClassLoaderManager.getDynamicPath());
+                ClassLoaderManager.getLastModifiedTime(ClassLoaderManager.getDynamicPath());
+    }
+
+    public ContextClassLoader() {
+        this(ServerClassLoader.getInstance());
     }
 
     public FileTime getInitializedTime() {

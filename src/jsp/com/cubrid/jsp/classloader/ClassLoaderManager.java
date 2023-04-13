@@ -58,7 +58,7 @@ public class ClassLoaderManager {
 
     public static Path getDynamicPath() {
         if (dynamic == null) {
-            dynamic = getRootPath().resolve("dynamic");
+            dynamic = getRootPath().resolve("dynamic/");
             createDirIfNotExists(dynamic);
         }
         return dynamic;
@@ -66,7 +66,7 @@ public class ClassLoaderManager {
 
     public static Path getServerPath() {
         if (server == null) {
-            server = getRootPath().resolve("server");
+            server = getRootPath().resolve("server/");
             createDirIfNotExists(server);
         }
         return server;

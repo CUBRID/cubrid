@@ -40,6 +40,8 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.net.ServerSocket;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
@@ -162,8 +164,8 @@ public class Server {
         }
     }
 
-    public static String getRootPath() {
-        return rootPath;
+    public static Path getRootPath() {
+        return Paths.get(rootPath);
     }
 
     public static String getSpPath() {

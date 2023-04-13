@@ -78,7 +78,7 @@ public class TargetMethod {
     }
 
     private Class<?> getClass(String name) throws ClassNotFoundException {
-        Context ctx = ContextManager.getContextofCurrentThread ();
+        Context ctx = ContextManager.getContextofCurrentThread();
         ClassLoader cl = ctx.getClassLoader();
         Class<?> c = null;
         try {

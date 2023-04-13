@@ -38,14 +38,11 @@ public class Context {
     // Connection Properties
     private Properties connectionInfo = null;
 
-    // TODO: dynamic classLoader for a session
-
     // message buffer for DBMS_OUTPUT
     private MessageBuffer messageBuffer;
 
     public Context(long id) {
         sessionId = id;
-        classLoader = new ContextClassLoader();
     }
 
     public long getSessionId() {
@@ -111,9 +108,12 @@ public class Context {
     }
 
     public ClassLoader getClassLoader() {
+        if (classLoader == null) {
+            classLoader = new ContextClassLoader();
+        }
         return classLoader;
     }
-    
+
     public void setTransactionControl(boolean tc) {
         this.transactionControl = tc;
     }

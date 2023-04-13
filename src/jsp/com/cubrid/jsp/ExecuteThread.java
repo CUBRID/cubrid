@@ -58,6 +58,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.List;
 
@@ -307,15 +308,22 @@ public class ExecuteThread extends Thread {
         try {
             info = TestMain.compilePLCSQL(inSource, verbose);
             if (info.errCode == 0) {
-                String javaFilePath = ClassLoaderManager.getRootPath() + info.className + ".java";
-                File file = new File(javaFilePath);
+                Path javaFilePath =
+                        ClassLoaderManager.getDynamicPath().resolve(info.className + ".java");
+                File file = javaFilePath.toFile();
                 FileOutputStream fos = new FileOutputStream(file, false);
                 fos.write(info.translated.getBytes(Charset.forName("UTF-8")));
                 fos.close();
 
-                String cubrid_env_root = Server.getRootPath();
+                Path cubrid_env_root = Server.getRootPath();
                 String command =
-                        "javac " + javaFilePath + " -cp " + cubrid_env_root + "/java/jspserver.jar";
+                        "javac "
+                                + javaFilePath.toString()
+                                + " -cp "
+                                + cubrid_env_root
+                                        .resolve("java")
+                                        .resolve("jspserver.jar")
+                                        .toString();
 
                 Process proc = Runtime.getRuntime().exec(command);
                 proc.getErrorStream().close();
@@ -329,7 +337,7 @@ public class ExecuteThread extends Thread {
                 }
             }
         } catch (Exception e) {
-            info = new CompileInfo(-1, -1, "unknown error");
+            info = new CompileInfo(-1, -1, e.getMessage());
             throw new RuntimeException(e);
         } finally {
             CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
