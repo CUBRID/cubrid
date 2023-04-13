@@ -159,7 +159,6 @@ tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in,
   int err_code = NO_ERROR;
   constexpr auto timeout_1m = std::chrono::minutes { 1 };  // 1m, TODO: should be configurable.
   std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
-
   /*
    *  send_receive () on a connection could fail when it is disconnected while waiting for its response.
    *  In this case, it waits and retries with the expectation that the main connection will be changed.
@@ -178,8 +177,8 @@ tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in,
 
     // we assume that 0-th conn is the main connection
     err_code =  m_page_server_conn_vec[0]->send_receive (reqid, std::move (payload_in), payload_out);
-    // when an error occurs, it expects the main connection to be changed soon and will retry with the new one.
-    return err_code == NO_ERROR;
+    // when an error occurs and the connection is disconnecting, wait until new connection become the main connection
+    return err_code == NO_ERROR || !m_page_server_conn_vec[0]->is_disconnecting ();
   });
 
   return err_code;
@@ -440,6 +439,7 @@ tran_server::uses_remote_storage () const
 tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tran_server &ts,
     request_handlers_map_t &&request_handlers)
   : m_ts { ts }
+  , m_is_disconnecting { false }
 {
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 24;   // Arbitrarily chosen
   // TODO: to reduce contention as much as possible, should be equal to the maximum number
@@ -484,8 +484,8 @@ tran_server::connection_handler::get_request_handlers ()
 void
 tran_server::connection_handler::receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip)
 {
+  m_is_disconnecting.store (true);
   m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
-
   m_ts.disconnect_page_server_async (this);
 }
 
@@ -527,6 +527,12 @@ const std::string
 tran_server::connection_handler::get_channel_id () const
 {
   return m_conn->get_underlying_channel_id ();
+}
+
+bool
+tran_server::connection_handler::is_disconnecting () const
+{
+  return m_is_disconnecting.load ();
 }
 
 void
