@@ -382,6 +382,7 @@ void
 tran_server::disconnect_page_server_async (const connection_handler *conn)
 {
   bool main_conn_changed = false;
+  std::string prev_main_conn_id;
   auto &conn_vec = m_page_server_conn_vec;
   auto ulock = std::unique_lock<std::shared_mutex> (m_page_server_conn_vec_mtx);
 
@@ -395,29 +396,30 @@ tran_server::disconnect_page_server_async (const connection_handler *conn)
     {
       return; // the connection is already cleared in disconnect_all_page_servers()
     }
-  else if (conn_it == conn_vec.begin ())
+
+  if (conn_it == conn_vec.begin ())
     {
-      if (conn_vec.size () == 1)
-	{
-	  er_log_debug (ARG_FILE_LINE, "The last connection is being disconnected (%s). No main connection available.\n",
-			(*conn_it)->get_channel_id ().c_str ());
-	}
-      else
-	{
-	  main_conn_changed = true;
-	  er_log_debug (ARG_FILE_LINE, "The main connection is being changed from %s to %s.\n",
-			(*conn_it)->get_channel_id ().c_str (), (* (conn_it + 1))->get_channel_id ().c_str ());
-	}
+      main_conn_changed = true;
+      prev_main_conn_id = (*conn_it)->get_channel_id ();
     }
 
   m_async_disconnect_handler.disconnect (std::move (*conn_it));
   assert (*conn_it == nullptr);
   conn_vec.erase (conn_it);
 
-  ulock.unlock ();
-
   if (main_conn_changed)
     {
+      if (conn_vec.size () == 0)
+	{
+	  er_log_debug (ARG_FILE_LINE, "The last connection is disconnected (%s). No main connection available.\n",
+			prev_main_conn_id.c_str ());
+	}
+      else
+	{
+	  er_log_debug (ARG_FILE_LINE, "The main connection is changed from %s to %s.\n",
+			(*conn_vec.begin())->get_channel_id ().c_str (), prev_main_conn_id.c_str ());
+	}
+      ulock.unlock ();
       m_main_conn_cv.notify_all ();
     }
 }
