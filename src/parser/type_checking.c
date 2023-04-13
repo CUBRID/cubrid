@@ -6808,8 +6808,6 @@ pt_product_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALUE * set1, D
 PT_NODE *
 pt_do_where_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  SEMANTIC_CHK_INFO *sc_info = (SEMANTIC_CHK_INFO *) arg;
-
   PT_NODE *spec = NULL;
 
   if (node == NULL)
@@ -20410,7 +20408,7 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
    *
    * See CBRD-24735 for the details.
    */
-  tree = parser_walk_tree (parser, tree, NULL, NULL, pt_do_where_type, sc_info_ptr);
+  tree = parser_walk_tree (parser, tree, NULL, NULL, pt_do_where_type, NULL);
   if (pt_has_error (parser))
     {
       tree = NULL;
