@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp;
 
+import com.cubrid.jsp.classloader.ClassLoaderManager;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.data.CUBRIDPacker;
@@ -306,8 +307,7 @@ public class ExecuteThread extends Thread {
         try {
             info = TestMain.compilePLCSQL(inSource, verbose);
             if (info.errCode == 0) {
-                String javaFilePath =
-                        StoredProcedureClassLoader.ROOT_PATH + info.className + ".java";
+                String javaFilePath = ClassLoaderManager.getRootPath() + info.className + ".java";
                 File file = new File(javaFilePath);
                 FileOutputStream fos = new FileOutputStream(file, false);
                 fos.write(info.translated.getBytes(Charset.forName("UTF-8")));

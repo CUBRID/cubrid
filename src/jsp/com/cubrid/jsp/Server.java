@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp;
 
+import com.cubrid.jsp.classloader.ClassLoaderManager;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -39,7 +40,6 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.net.ServerSocket;
 import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
@@ -121,7 +121,7 @@ public class Server {
             Class.forName("com.cubrid.jsp.jdbc.CUBRIDServerSideDriver");
 
             getJVMArguments(); /* store jvm options */
-            Files.createDirectories(Paths.get(StoredProcedureClassLoader.ROOT_PATH));
+            Files.createDirectories(ClassLoaderManager.getRootPath());
         } else {
             /* error, serverSocket is not properly initialized */
             System.exit(1);

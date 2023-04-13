@@ -31,6 +31,8 @@
 
 package com.cubrid.jsp;
 
+import com.cubrid.jsp.context.Context;
+import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.exception.ExecuteException;
 import cubrid.sql.CUBRIDOID;
 import java.lang.reflect.Method;
@@ -76,7 +78,8 @@ public class TargetMethod {
     }
 
     private Class<?> getClass(String name) throws ClassNotFoundException {
-        ClassLoader cl = StoredProcedureClassLoader.getInstance();
+        Context ctx = ContextManager.getContextofCurrentThread ();
+        ClassLoader cl = ctx.getClassLoader();
         Class<?> c = null;
         try {
             c = cl.loadClass(name);

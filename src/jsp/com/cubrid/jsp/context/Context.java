@@ -1,6 +1,7 @@
 package com.cubrid.jsp.context;
 
 import com.cubrid.jsp.ExecuteThread;
+import com.cubrid.jsp.classloader.ContextClassLoader;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
 import com.cubrid.jsp.protocol.Header;
 import com.cubrid.plcsql.builtin.MessageBuffer;
@@ -28,13 +29,15 @@ public class Context {
     // CAS client information connecting with this Context
     private Properties clientInfo = null;
 
-    // TODO: dynamic classLoader for a session
+    // dynamic classLoader for a session
+    private ContextClassLoader classLoader = null;
 
     // message buffer for DBMS_OUTPUT
     private MessageBuffer messageBuffer;
 
     public Context(long id) {
         sessionId = id;
+        classLoader = new ContextClassLoader();
     }
 
     public long getSessionId() {
@@ -96,6 +99,10 @@ public class Context {
             messageBuffer = new MessageBuffer();
         }
         return messageBuffer;
+    }
+
+    public ClassLoader getClassLoader() {
+        return classLoader;
     }
 
     // TODO: move this function to proper place
