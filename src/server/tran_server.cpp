@@ -409,7 +409,7 @@ tran_server::disconnect_page_server_async (const connection_handler *conn)
 
   if (main_conn_changed)
     {
-      if (conn_vec.size () == 0)
+      if (conn_vec.empty ())
 	{
 	  er_log_debug (ARG_FILE_LINE, "The last connection is disconnected (%s). No main connection available.\n",
 			prev_main_conn_id.c_str ());
