@@ -383,7 +383,6 @@ typedef struct sampling_info SAMPLING_INFO;
 struct sampling_info
 {
   int weight;			/* for sampling statistics */
-  bool partition_yn;		/* check if partition table */
 };
 
 /* Forward definition. */
