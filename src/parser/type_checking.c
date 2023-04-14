@@ -20401,10 +20401,11 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
       tree = NULL;
     }
 
-  /* When pt_lambda_node is executed in mq_optimize, a removable predicate like '1=1' is generated.
+  /* When qo_reduce_equality_terms is executed in mq_optimize, a removable predicate like '1=1' is generated.
    * This predicate is removed by executing pt_where_type after pt_fold_const_expr has executed.
    * 
-   * If this predicate remains without being removed, it becomes a data filter and MRO cannot be performed.
+   * If this predicate remains without being removed, it becomes a data filter and MRO (Multiple Key Ranges
+   * Optimization) cannot be performed.
    *
    * See CBRD-24735 for the details.
    */
