@@ -160,7 +160,7 @@ tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in,
   if (m_page_server_conn_vec.empty())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_NO_PAGE_SERVER_AVAILABLE, 0);
-      return ER_NO_PAGE_SERVER_CONNECTION;
+      return ER_CONN_NO_PAGE_SERVER_AVAILABLE;
     }
 
   return m_page_server_conn_vec[0]->send_receive (reqid, std::move (payload_in), payload_out);
