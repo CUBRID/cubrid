@@ -2115,15 +2115,14 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
   // client side communication to page server error
   if (error_code != NO_ERROR)
     {
-      if (error_code == ER_NO_PAGE_SERVER_CONNECTION)
-      {
-        assert_release (false); // TODO handling the case such as shutdown
-      }
       ASSERT_ERROR ();
       if (perform_logging)
         {
 	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from Page Server. Error code: %d\n", error_code);
         }
+
+      // TODO handling the case such as shutdown
+      assert_release (error_code != ER_CONN_NO_PAGE_SERVER_AVAILABLE);
       return error_code;
     }
 

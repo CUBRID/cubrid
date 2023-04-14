@@ -145,7 +145,7 @@ tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
   std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
   if (m_page_server_conn_vec.empty ())
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_PAGE_SERVER_CONNECTION, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_NO_PAGE_SERVER_AVAILABLE, 0);
       return; // All connections have been disconnected already
     }
 
@@ -159,7 +159,7 @@ tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in,
   std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
   if (m_page_server_conn_vec.empty())
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_PAGE_SERVER_CONNECTION, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_NO_PAGE_SERVER_AVAILABLE, 0);
       return ER_NO_PAGE_SERVER_CONNECTION;
     }
 
