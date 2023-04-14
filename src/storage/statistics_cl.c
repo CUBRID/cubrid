@@ -35,6 +35,8 @@
 #include "network_interface_cl.h"
 #include "tz_support.h"
 #include "db_date.h"
+#include "db.h"
+#include "dbtype_function.h"
 
 static CLASS_STATS *stats_client_unpack_statistics (char *buffer);
 
@@ -507,4 +509,241 @@ stats_dump (const char *class_name_p, FILE * file_p)
     }
 
   fprintf (file_p, "\n\n");
+}
+
+/*
+ * stats_ndv_dump () - Dumps the NDV about a class
+ *   return:
+ *   classname(in): The name of class to be printed
+ *   fp(in):
+ */
+void
+stats_ndv_dump (const char *class_name_p, FILE * file_p)
+{
+  MOP class_mop;
+  int error = NO_ERROR;
+  DB_ATTRIBUTE *att;
+  int col_cnt = 0;
+  ATTR_NDV *attr_ndv;
+  int i;
+
+  class_mop = sm_find_class (class_name_p);
+  if (class_mop == NULL)
+    {
+      return;
+    }
+
+  /* count number of the columns */
+  att = (DB_ATTRIBUTE *) db_get_attributes_force (class_mop);
+  while (att != NULL)
+    {
+      col_cnt++;
+      /* advance to next attribute */
+      att = db_attribute_next (att);
+    }
+
+  attr_ndv = (ATTR_NDV *) malloc (sizeof (ATTR_NDV) * (col_cnt + 1));
+  if (attr_ndv == NULL)
+    {
+      return;
+    }
+
+  /* get NDV by query */
+  if (stats_get_ndv_by_query (class_mop, &attr_ndv, class_name_p, col_cnt, file_p) != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* print NDV info */
+  fprintf (file_p, "\nNumber of Distinct Values\n");
+  fprintf (file_p, "****************\n");
+  fprintf (file_p, " Class name: %s\n", class_name_p);
+  for (i = 0; i < col_cnt; i++)
+    {
+      fprintf (file_p, "%s (%ld)\n", sm_get_att_name (class_mop, attr_ndv[i].id), attr_ndv[i].ndv);
+    }
+  fprintf (file_p, "total count : %ld\n", attr_ndv[i].ndv);
+  fprintf (file_p, "\n");
+
+end:
+  if (attr_ndv != NULL)
+    {
+      free_and_init (attr_ndv);
+    }
+  return;
+}
+
+/*
+ * stats_get_ndv_by_query () - get NDV by query
+ *   return:
+ *   class_mop(in):
+ *   attr_ndv(out):
+ *   class_name_p(in):
+ */
+int
+stats_get_ndv_by_query (const MOP class_mop, ATTR_NDV ** attr_ndv, const char *class_name_p, int col_cnt, FILE * file_p)
+{
+  DB_ATTRIBUTE *att;
+  int error = NO_ERROR;
+  char *select_list = NULL;
+  const char *query = NULL;
+  char *query_buf = NULL;
+  int buf_size = 0;
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE value;
+  INT64 v1, v2;
+  DB_DOMAIN *dom;
+  ATTR_NDV *att_ndv = *attr_ndv;
+  int i;
+
+  select_list = stats_make_select_list_for_ndv (class_mop, attr_ndv);
+  if (select_list == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* create sampling SQL statement */
+  query = "SELECT /*+ SAMPLING_SCAN */ %s FROM [%s]";
+
+  buf_size = strlen (select_list) + strlen (class_name_p) + 40;
+  query_buf = (char *) malloc (sizeof (char) * buf_size);
+  if (query_buf == NULL)
+    {
+      return ER_FAILED;
+    }
+  snprintf (query_buf, buf_size, query, select_list, class_name_p);
+
+  if (file_p != NULL)
+    {
+      fprintf (file_p, "Query : %s\n", query_buf);
+    }
+
+  /* execute sampling SQL */
+  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
+  if (error < NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* save result to NDV info */
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
+    {
+      goto end;
+    }
+
+  /* get NDV from tuple */
+  for (i = 0; i < col_cnt; i++)
+    {
+      error = db_query_get_tuple_value (query_result, i, &value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+      att_ndv[i].ndv = DB_GET_BIGINT (&value);
+    }
+
+  /* get count(*) */
+  error = db_query_get_tuple_value (query_result, i, &value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  att_ndv[i].ndv = DB_GET_BIGINT (&value);
+
+end:
+  if (select_list)
+    {
+      free_and_init (select_list);
+    }
+  if (query_buf)
+    {
+      free_and_init (query_buf);
+    }
+  if (query_result)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+
+  return error;
+}
+
+/*
+ * stats_make_select_list_for_ndv () - make select-list for ndv
+ *   return:
+ *   class_mop(in): ....
+ *   select_list(in/out):
+ */
+char *
+stats_make_select_list_for_ndv (const MOP class_mop, ATTR_NDV ** attr_ndv)
+{
+  DB_ATTRIBUTE *att;
+  char column[DB_MAX_IDENTIFIER_LENGTH + 20] = { '\0' };
+  DB_DOMAIN *dom;
+  size_t buf_size = 1024;
+  ATTR_NDV *att_ndv = *attr_ndv;
+  int i = 0;
+  char *select_list = NULL;
+
+  select_list = (char *) malloc (sizeof (char) * buf_size);
+  if (select_list == NULL)
+    {
+      return NULL;
+    }
+  /* init select_list */
+  *select_list = '\0';
+
+  /* make select_list */
+  att = (DB_ATTRIBUTE *) db_get_attributes_force (class_mop);
+  while (att != NULL)
+    {
+      /* to_do : check if type is varchar(4000) or lob. These types are not gathered for statistics. */
+      dom = db_attribute_domain (att);
+
+      /* make column */
+      snprintf (column, DB_MAX_IDENTIFIER_LENGTH + 20, "count(distinct %s), ", db_attribute_name (att));
+
+      /* alloc memory */
+      if (strlen (select_list) + strlen (column) > buf_size)
+	{
+	  buf_size += 1024;
+	  select_list = (char *) realloc (select_list, sizeof (char) * buf_size);
+	  if (select_list == NULL)
+	    {
+	      goto end;
+	    }
+	}
+
+      /* concat column */
+      strcat (select_list, column);
+
+      /* set column id */
+      att_ndv[i++].id = db_attribute_id (att);
+
+      /* advance to next attribute */
+      att = db_attribute_next (att);
+    }
+
+  /* add "count(*)" */
+  if (strlen (select_list) + strlen ("count(*)") > buf_size)
+    {
+      buf_size += 10;
+      select_list = (char *) realloc (select_list, sizeof (char) * buf_size);
+      if (select_list == NULL)
+	{
+	  goto end;
+	}
+    }
+  strcat (select_list, "count(*)");
+
+  return select_list;
+
+end:
+  if (select_list)
+    {
+      free_and_init (select_list);
+    }
+  return NULL;
 }

@@ -92,10 +92,22 @@ struct class_stats
   ATTR_STATS *attr_stats;	/* pointer to the array of attribute statistics */
 };
 
+/* Statistical Information about the attribute NDV */
+typedef struct attr_ndv ATTR_NDV;
+struct attr_ndv
+{
+  int id;
+  INT64 ndv;			/* Number of Distinct Values of column */
+};
+
 #if !defined(SERVER_MODE)
 extern int stats_get_statistics (OID * classoid, unsigned int timestamp, CLASS_STATS ** stats_p);
 extern void stats_free_statistics (CLASS_STATS * stats);
 extern void stats_dump (const char *classname, FILE * fp);
+extern void stats_ndv_dump (const char *classname, FILE * fp);
+extern char *stats_make_select_list_for_ndv (const MOP class_mop, ATTR_NDV ** attr_ndv);
+extern int stats_get_ndv_by_query (const MOP class_mop, ATTR_NDV ** attr_ndv, const char *class_name_p, int col_cnt,
+				   FILE * file_p);
 #endif /* !SERVER_MODE */
 
 #endif /* _STATISTICS_H_ */

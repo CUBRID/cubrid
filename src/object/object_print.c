@@ -700,6 +700,18 @@ help_print_info (const char *command, FILE * fpp)
     {
       logtb_dump_trantable (fpp);
     }
+  else if (MATCH_TOKEN (buffer, "ndv"))
+    {
+      ptr = obj_print_next_token (ptr, buffer);
+      if (!strlen (buffer))
+	{
+	  fprintf (fpp, "Info ndv class-name!!!!!\n");
+	}
+      else
+	{
+	  stats_ndv_dump (buffer, fpp);
+	}
+    }
 }
 
 /*
