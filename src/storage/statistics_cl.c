@@ -687,7 +687,7 @@ stats_make_select_list_for_ndv (const MOP class_mop, ATTR_NDV ** attr_ndv)
   size_t buf_size = 1024;
   ATTR_NDV *att_ndv = *attr_ndv;
   int i = 0;
-  char *select_list = NULL;
+  char *select_list = NULL, *select_buf = NULL;
 
   select_list = (char *) malloc (sizeof (char) * buf_size);
   if (select_list == NULL)
@@ -718,10 +718,14 @@ stats_make_select_list_for_ndv (const MOP class_mop, ATTR_NDV ** attr_ndv)
       if (strlen (select_list) + strlen (column) > buf_size)
 	{
 	  buf_size += 1024;
-	  select_list = (char *) realloc (select_list, sizeof (char) * buf_size);
-	  if (select_list == NULL)
+	  select_buf = (char *) realloc (select_list, sizeof (char) * buf_size);
+	  if (select_buf == NULL)
 	    {
 	      goto end;
+	    }
+	  else
+	    {
+	      select_list = select_buf;
 	    }
 	}
 
