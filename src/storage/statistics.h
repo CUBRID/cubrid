@@ -106,7 +106,7 @@ extern void stats_free_statistics (CLASS_STATS * stats);
 extern void stats_dump (const char *classname, FILE * fp);
 extern void stats_ndv_dump (const char *classname, FILE * fp);
 extern char *stats_make_select_list_for_ndv (const MOP class_mop, ATTR_NDV ** attr_ndv);
-extern int stats_get_ndv_by_query (const MOP class_mop, ATTR_NDV ** attr_ndv, const char *class_name_p, int col_cnt,
+extern int stats_get_ndv_by_query (const MOP class_mop, ATTR_NDV ** attr_ndv, const char *class_name_p, int *col_cnt,
 				   FILE * file_p);
 #endif /* !SERVER_MODE */
 

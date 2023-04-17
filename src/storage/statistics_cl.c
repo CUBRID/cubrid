@@ -524,7 +524,7 @@ stats_ndv_dump (const char *class_name_p, FILE * file_p)
   int error = NO_ERROR;
   DB_ATTRIBUTE *att;
   int col_cnt = 0;
-  ATTR_NDV *attr_ndv;
+  ATTR_NDV *attr_ndv = NULL;
   int i;
 
   class_mop = sm_find_class (class_name_p);
@@ -533,23 +533,8 @@ stats_ndv_dump (const char *class_name_p, FILE * file_p)
       return;
     }
 
-  /* count number of the columns */
-  att = (DB_ATTRIBUTE *) db_get_attributes_force (class_mop);
-  while (att != NULL)
-    {
-      col_cnt++;
-      /* advance to next attribute */
-      att = db_attribute_next (att);
-    }
-
-  attr_ndv = (ATTR_NDV *) malloc (sizeof (ATTR_NDV) * (col_cnt + 1));
-  if (attr_ndv == NULL)
-    {
-      return;
-    }
-
   /* get NDV by query */
-  if (stats_get_ndv_by_query (class_mop, &attr_ndv, class_name_p, col_cnt, file_p) != NO_ERROR)
+  if (stats_get_ndv_by_query (class_mop, &attr_ndv, class_name_p, &col_cnt, file_p) != NO_ERROR)
     {
       goto end;
     }
@@ -560,7 +545,7 @@ stats_ndv_dump (const char *class_name_p, FILE * file_p)
   fprintf (file_p, " Class name: %s\n", class_name_p);
   for (i = 0; i < col_cnt; i++)
     {
-      fprintf (file_p, "%s (%ld)\n", sm_get_att_name (class_mop, attr_ndv[i].id), attr_ndv[i].ndv);
+      fprintf (file_p, "  %s (%ld)\n", sm_get_att_name (class_mop, attr_ndv[i].id), attr_ndv[i].ndv);
     }
   fprintf (file_p, "total count : %ld\n", attr_ndv[i].ndv);
   fprintf (file_p, "\n");
@@ -581,7 +566,8 @@ end:
  *   class_name_p(in):
  */
 int
-stats_get_ndv_by_query (const MOP class_mop, ATTR_NDV ** attr_ndv, const char *class_name_p, int col_cnt, FILE * file_p)
+stats_get_ndv_by_query (const MOP class_mop, ATTR_NDV ** attr_ndv, const char *class_name_p, int *col_cnt,
+			FILE * file_p)
 {
   DB_ATTRIBUTE *att;
   int error = NO_ERROR;
@@ -594,8 +580,24 @@ stats_get_ndv_by_query (const MOP class_mop, ATTR_NDV ** attr_ndv, const char *c
   DB_VALUE value;
   INT64 v1, v2;
   DB_DOMAIN *dom;
-  ATTR_NDV *att_ndv = *attr_ndv;
+  ATTR_NDV *att_ndv = NULL;
   int i;
+
+  /* count number of the columns */
+  *col_cnt = 0;
+  att = (DB_ATTRIBUTE *) db_get_attributes_force (class_mop);
+  while (att != NULL)
+    {
+      (*col_cnt)++;
+      att = db_attribute_next (att);
+    }
+
+  *attr_ndv = (ATTR_NDV *) malloc (sizeof (ATTR_NDV) * (*col_cnt + 1));
+  if (*attr_ndv == NULL)
+    {
+      return ER_FAILED;
+    }
+  att_ndv = *attr_ndv;
 
   select_list = stats_make_select_list_for_ndv (class_mop, attr_ndv);
   if (select_list == NULL)
@@ -634,7 +636,7 @@ stats_get_ndv_by_query (const MOP class_mop, ATTR_NDV ** attr_ndv, const char *c
     }
 
   /* get NDV from tuple */
-  for (i = 0; i < col_cnt; i++)
+  for (i = 0; i < *col_cnt; i++)
     {
       error = db_query_get_tuple_value (query_result, i, &value);
       if (error != NO_ERROR)
@@ -699,11 +701,18 @@ stats_make_select_list_for_ndv (const MOP class_mop, ATTR_NDV ** attr_ndv)
   att = (DB_ATTRIBUTE *) db_get_attributes_force (class_mop);
   while (att != NULL)
     {
-      /* to_do : check if type is varchar(4000) or lob. These types are not gathered for statistics. */
+      /* check if type is varchar(4000) or lob. */
       dom = db_attribute_domain (att);
-
-      /* make column */
-      snprintf (column, DB_MAX_IDENTIFIER_LENGTH + 20, "count(distinct %s), ", db_attribute_name (att));
+      if (TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (dom)) || (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (dom)) && dom->precision > 4000))
+	{
+	  /* These types are not gathered for statistics. */
+	  snprintf (column, 23, "cast (-1 as BIGINT), ");
+	}
+      else
+	{
+	  /* make column */
+	  snprintf (column, DB_MAX_IDENTIFIER_LENGTH + 20, "count(distinct %s), ", db_attribute_name (att));
+	}
 
       /* alloc memory */
       if (strlen (select_list) + strlen (column) > buf_size)
