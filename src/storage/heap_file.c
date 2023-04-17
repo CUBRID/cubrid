@@ -15742,12 +15742,42 @@ int
 heap_rv_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   INT16 slotid;
+  int free_space = 0;
+
+  if (LOG_ISRESTARTED ())
+    {
+      free_space = spage_get_free_space_without_saving (thread_p, rcv->pgptr, NULL);
+    }
 
   slotid = rcv->offset;
   /* Clear HEAP_RV_FLAG_VACUUM_STATUS_CHANGE */
   slotid = slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
   (void) spage_delete_for_recovery (thread_p, rcv->pgptr, slotid);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
+  if (LOG_ISRESTARTED ())
+    {
+      HFID hfid = HFID_INITIALIZER;
+      OID class_oid = OID_INITIALIZER;
+
+      if (heap_get_class_oid_from_page (thread_p, rcv->pgptr, &class_oid) != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      if (heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL) != NO_ERROR)
+	{
+	  goto end;
+	}
+      assert (!HFID_IS_NULL (&hfid));
+#if defined(CUBRID_DEBUG)
+      assert (heap_hfid_isvalid (&hfid) == DISK_VALID);
+#endif
+
+      heap_stats_update (thread_p, rcv->pgptr, &hfid, free_space);
+    }
+
+end:
 
   return NO_ERROR;
 }
