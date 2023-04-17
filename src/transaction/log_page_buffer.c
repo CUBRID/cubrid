@@ -7653,10 +7653,12 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
 
   log_write_metalog_to_file (false);
 
-  // function explicitly needs to be called in critical section-free context
-  LOG_CS_EXIT (thread_p);
-  logpb_flush_pages (thread_p, &trantable_checkpoint_lsa);
-  LOG_CS_ENTER (thread_p);
+  /* NOTE. in development (TODO)
+   * If the log records up to trantable_checkpoint_lsa is not stored on PS,
+   * it will fail to do recovery with PS's which have lagged behind the snapshot LSA.
+   * In the near future, ATS will restore with the checkpoint info from the log in PS and it will wroks well.
+   */
+  logpb_flush_pages_direct (thread_p);
 
   // drop previous checkpoints and persist to disk
   if (detailed_logging)
