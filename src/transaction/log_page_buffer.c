@@ -7656,7 +7656,7 @@ logpb_checkpoint_trantable (THREAD_ENTRY * const thread_p)
   /* NOTE. in development (TODO)
    * If the log records up to trantable_checkpoint_lsa is not stored on PS,
    * it will fail to do recovery with PS's which have lagged behind the snapshot LSA.
-   * In the near future, ATS will restore with the checkpoint info from the log in PS and it will wroks well.
+   * In the near future, ATS will restore with the checkpoint info from the log in PS and it will work well.
    */
   logpb_flush_pages_direct (thread_p);
 
