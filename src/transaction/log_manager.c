@@ -12230,8 +12230,7 @@ cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES 
 
   if (((current_log_record->type == LOG_UNDO_DATA) && (rcvindex == RVOVF_PAGE_UPDATE) && is_redo)
       || ((current_log_record->type == LOG_REDO_DATA) && (rcvindex == RVOVF_PAGE_UPDATE) && !is_redo)
-      || rcvindex == RVOVF_CHANGE_LINK
-      || rcvindex == RVOVF_NEWPAGE_LINK)
+      || rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVOVF_NEWPAGE_LINK)
     {
       /* start to traverse with prev_transla log record */
       LSA_COPY (&current_lsa, &current_log_record->prev_tranlsa);
